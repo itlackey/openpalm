@@ -131,8 +131,12 @@ export function parseEnvSchema(schemaPath: string): EnvSchemaField[] {
     const helpLines: string[] = [];
 
     for (const comment of pendingComments) {
-      if (/@required(?!\s*=\s*false)/.test(comment)) required = true;
-      if (/@sensitive(?!\s*=\s*false)/.test(comment)) sensitive = true;
+      if (/@required(?:\s*=\s*false)?/.test(comment) && !/@required\s*=\s*false/.test(comment)) {
+        required = true;
+      }
+      if (/@sensitive(?:\s*=\s*false)?/.test(comment) && !/@sensitive\s*=\s*false/.test(comment)) {
+        sensitive = true;
+      }
       // Help text is any comment that isn't purely an annotation
       const stripped = comment.replace(/@required/g, "").replace(/@sensitive/g, "").trim();
       if (stripped) {

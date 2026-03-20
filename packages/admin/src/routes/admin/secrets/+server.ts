@@ -66,6 +66,9 @@ export const POST: RequestHandler = async (event) => {
   if (!key || value === null) {
     return errorResponse(400, 'bad_request', 'key and value are required', {}, requestId);
   }
+  if (value.length === 0) {
+    return errorResponse(400, 'bad_request', 'value must be non-empty; use DELETE to remove a secret', {}, requestId);
+  }
 
   try {
     const backend = detectSecretBackend(state);

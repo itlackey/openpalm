@@ -2,6 +2,8 @@ import { userInfo } from "node:os";
 import { parseEnvFile } from './env.js';
 
 export function readSecretsKeys(vaultDir: string): Record<string, boolean> {
+  // System scope wins on overlap because vault/system.env is the
+  // authoritative source for system-managed credentials and flags.
   const parsed = {
     ...parseEnvFile(`${vaultDir}/user.env`),
     ...parseEnvFile(`${vaultDir}/system.env`),

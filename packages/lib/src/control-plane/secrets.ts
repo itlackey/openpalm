@@ -6,11 +6,13 @@
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync } from "node:fs";
 import { randomBytes } from "node:crypto";
+import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState } from "./types.js";
 import { resolveVaultDir, resolveConfigDir } from "./home.js";
 
 const OPENCODE_STARTER_CONFIG = JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2) + "\n";
+const logger = createLogger("secrets");
 
 // ── Connection Key Management ───────────────────────────────────────────
 
@@ -68,8 +70,11 @@ function enforceVaultDirMode(vaultDir: string): void {
   mkdirSync(vaultDir, { recursive: true, mode: VAULT_DIR_MODE });
   try {
     chmodSync(vaultDir, VAULT_DIR_MODE);
-  } catch {
-    // best-effort on platforms/filesystems that ignore chmod
+  } catch (error) {
+    logger.warn("failed to enforce vault directory permissions", {
+      vaultDir,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -77,8 +82,11 @@ function writeVaultFile(path: string, content: string): void {
   writeFileSync(path, content, { mode: VAULT_FILE_MODE });
   try {
     chmodSync(path, VAULT_FILE_MODE);
-  } catch {
-    // best-effort on platforms/filesystems that ignore chmod
+  } catch (error) {
+    logger.warn("failed to enforce vault file permissions", {
+      path,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -171,8 +179,11 @@ export function ensureSecrets(state: ControlPlaneState): void {
   } else {
     try {
       chmodSync(userEnvPath, VAULT_FILE_MODE);
-    } catch {
-      // best-effort on platforms/filesystems that ignore chmod
+    } catch (error) {
+      logger.warn("failed to enforce vault file permissions", {
+        path: userEnvPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

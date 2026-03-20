@@ -1,9 +1,11 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join } from 'node:path';
+import { join, normalize, resolve } from 'node:path';
 import type { ControlPlaneState } from './types.js';
 import {
+  classifySecretKey,
+  classifySecretScope,
   ensurePlaintextSecretEntry,
   findCoreSecretByKey,
   getCoreSecretMappings,
@@ -43,6 +45,8 @@ export interface SecretBackend {
 }
 
 function generateSecretValue(length = 32): string {
+  // Hex encoding produces two output characters per byte. Clamp to at least
+  // 16 bytes (32 hex chars) so generated secrets stay comfortably strong.
   return randomBytes(Math.max(16, Math.ceil(length / 2))).toString('hex').slice(0, length);
 }
 
@@ -203,7 +207,13 @@ export class PassBackend implements SecretBackend {
   }
 
   private keyPath(key: string): string {
-    return join(this.passwordStoreDir, `${validatePassEntryName(key)}.gpg`);
+    const normalizedEntry = normalize(validatePassEntryName(key));
+    const resolvedPath = resolve(this.passwordStoreDir, `${normalizedEntry}.gpg`);
+    const resolvedStore = resolve(this.passwordStoreDir);
+    if (!resolvedPath.startsWith(`${resolvedStore}/`)) {
+      throw new Error('Secret key resolves outside the password store');
+    }
+    return resolvedPath;
   }
 
   async list(prefix = 'openpalm/'): Promise<SecretEntryMetadata[]> {
@@ -212,8 +222,8 @@ export class PassBackend implements SecretBackend {
       .sort((a, b) => a.localeCompare(b))
       .map((key) => ({
         key,
-        scope: key.startsWith('openpalm/component/') ? 'system' : key.startsWith('openpalm/custom/') ? 'user' : 'system',
-        kind: key.startsWith('openpalm/component/') ? 'component' : key.startsWith('openpalm/custom/') ? 'custom' : 'core',
+        scope: classifySecretScope(key),
+        kind: classifySecretKey(key),
         provider: this.provider,
         present: true,
       }));
@@ -228,8 +238,8 @@ export class PassBackend implements SecretBackend {
     });
     return {
       key: entry,
-      scope: entry.startsWith('openpalm/component/') ? 'system' : entry.startsWith('openpalm/custom/') ? 'user' : 'system',
-      kind: entry.startsWith('openpalm/component/') ? 'component' : entry.startsWith('openpalm/custom/') ? 'custom' : 'core',
+      scope: classifySecretScope(entry),
+      kind: classifySecretKey(entry),
       provider: this.provider,
       present: true,
     };
@@ -243,8 +253,8 @@ export class PassBackend implements SecretBackend {
     });
     return {
       key: entry,
-      scope: entry.startsWith('openpalm/component/') ? 'system' : entry.startsWith('openpalm/custom/') ? 'user' : 'system',
-      kind: entry.startsWith('openpalm/component/') ? 'component' : entry.startsWith('openpalm/custom/') ? 'custom' : 'core',
+      scope: classifySecretScope(entry),
+      kind: classifySecretKey(entry),
       provider: this.provider,
       present: true,
     };

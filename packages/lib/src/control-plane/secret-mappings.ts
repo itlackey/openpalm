@@ -43,6 +43,10 @@ const STATIC_CORE_MAPPINGS: CoreSecretMapping[] = [
   { secretKey: 'openpalm/embedding/api-key', envKey: 'EMBEDDING_API_KEY', scope: 'user' },
 ];
 
+// 128 bits of the SHA-256 digest keeps collision risk negligible while
+// leaving enough room for the OPENPALM_SECRET_ prefix in env var names.
+const HASH_PREFIX_LENGTH = 32;
+
 type SecretIndexFile = {
   entries: Record<string, IndexedSecretEntry>;
 };
@@ -75,8 +79,14 @@ export function classifySecretKey(key: string): SecretKind {
 }
 
 export function generatePlaintextEnvKey(secretKey: string): string {
-  const digest = createHash('sha256').update(secretKey).digest('hex').slice(0, 20).toUpperCase();
+  const digest = createHash('sha256').update(secretKey).digest('hex').slice(0, HASH_PREFIX_LENGTH).toUpperCase();
   return `OPENPALM_SECRET_${digest}`;
+}
+
+export function classifySecretScope(key: string): SecretScope {
+  if (key.startsWith('openpalm/component/')) return 'system';
+  if (key.startsWith('openpalm/custom/')) return 'user';
+  return 'system';
 }
 
 export function getCoreSecretMappings(systemEnv: Record<string, string>): CoreSecretMapping[] {

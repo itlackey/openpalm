@@ -78,6 +78,7 @@ export function createState(
 
   const fileEnv = loadSecretsEnvFile(vaultDir);
   const systemEnv = readSystemSecretsEnvFile(vaultDir);
+  // Precedence: explicit parameter > system.env > user.env > process.env.
   bootstrapState.adminToken =
     adminToken
       ?? systemEnv.OPENPALM_ADMIN_TOKEN

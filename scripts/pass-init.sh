@@ -53,8 +53,18 @@ PROVIDER_CONFIG="$SECRETS_DIR/provider.json"
 mkdir -p "$SECRETS_DIR"
 
 export PASSWORD_STORE_DIR="$STORE_DIR"
+if ! gpg --list-keys "$GPG_ID" >/dev/null 2>&1; then
+  echo "GPG key not found or not readable: $GPG_ID" >&2
+  exit 1
+fi
+
 if [[ ! -d "$STORE_DIR" || ! -f "$STORE_DIR/.gpg-id" ]]; then
   pass init "$GPG_ID"
+fi
+
+if [[ ! -f "$STORE_DIR/.gpg-id" ]] || ! grep -Fxq "$GPG_ID" "$STORE_DIR/.gpg-id"; then
+  echo "pass store initialization failed for $GPG_ID" >&2
+  exit 1
 fi
 
 cat >"$PROVIDER_CONFIG" <<EOF

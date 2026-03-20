@@ -94,7 +94,7 @@ export function identifyCallerByToken(event: RequestEvent): "admin" | "assistant
 export function requireAuth(event: RequestEvent, requestId: string): Response | null {
   const state = getState();
   if (!state.adminToken && !state.assistantToken) {
-    return jsonResponse(503, { error: 'admin_not_configured', message: 'Admin token has not been set. Complete setup first.' });
+    return jsonResponse(503, { error: 'admin_not_configured', message: 'Authentication tokens have not been set. Complete setup first.' });
   }
 
   if (identifyCallerByToken(event)) {

@@ -32,8 +32,8 @@ export const POST: RequestHandler = async (event) => {
   if (!key) {
     return errorResponse(400, 'bad_request', 'key is required', {}, requestId);
   }
-  if (!Number.isInteger(length) || length < 16 || length > 256) {
-    return errorResponse(400, 'bad_request', 'length must be an integer between 16 and 256', {}, requestId);
+  if (!Number.isInteger(length) || length < 16 || length > 4096) {
+    return errorResponse(400, 'bad_request', 'length must be an integer between 16 and 4096', {}, requestId);
   }
 
   try {
