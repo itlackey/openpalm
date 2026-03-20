@@ -9,10 +9,11 @@
  *
  * Security: all git operations use execFileSync (no shell) with validated inputs.
  */
-import { existsSync, readdirSync, readFileSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
+import type { RegistryComponentEntry } from "@openpalm/lib";
 import { resolveCacheHome } from "./paths.js";
 
 const REPO = "itlackey/openpalm";
@@ -116,11 +117,8 @@ export function pullRegistry(): { updated: boolean; error?: string } {
 
 // ── Registry item discovery ─────────────────────────────────────────
 
-export type RegistryComponentEntry = {
-  compose: string;
-  schema: string;
-  caddy?: string;
-};
+// Re-export canonical type from lib for consumers that import from this module
+export type { RegistryComponentEntry } from "@openpalm/lib";
 
 export type RegistryAutomationEntry = {
   name: string;
@@ -210,6 +208,7 @@ export function discoverRegistryAutomations(): RegistryAutomationEntry[] {
  * Get automation content from the cloned registry by name.
  */
 export function getRegistryAutomation(name: string): string | null {
+  if (!VALID_NAME_RE.test(name)) return null;
   const cloneDir = repoCloneDir();
   const automationsDir = join(cloneDir, "registry", "automations");
   const ymlPath = join(automationsDir, `${name}.yml`);

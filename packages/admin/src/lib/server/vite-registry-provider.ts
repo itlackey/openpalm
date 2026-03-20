@@ -71,6 +71,13 @@ for (const [path, content] of Object.entries(componentCaddyModules)) {
   _components[id].caddy = content;
 }
 
+// Filter out incomplete components (must have both compose and schema)
+for (const id of Object.keys(_components)) {
+  if (!_components[id].compose || !_components[id].schema) {
+    delete _components[id];
+  }
+}
+
 // ── Build automation map ─────────────────────────────────────────────
 const _automations: Record<string, string> = {};
 

@@ -347,8 +347,8 @@ export function buildArtifactMeta(artifacts: {
 // ── Channel Secrets ────────────────────────────────────────────────────
 
 /** Load persisted CHANNEL_*_SECRET entries from vault/system.env. */
-function loadPersistedChannelSecrets(dataDir: string): Record<string, string> {
-  const parsed = parseEnvFile(`${dataDir}/stack.env`);
+function loadPersistedChannelSecrets(vaultDir: string): Record<string, string> {
+  const parsed = parseEnvFile(`${vaultDir}/system.env`);
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed)) {
     const match = key.match(/^CHANNEL_([A-Z0-9_]+)_SECRET$/);
@@ -380,7 +380,7 @@ export function persistConfiguration(
   }
 
   // Load persisted channel HMAC secrets, generate new ones for new channels
-  const channelSecrets = loadPersistedChannelSecrets(state.dataDir);
+  const channelSecrets = loadPersistedChannelSecrets(state.vaultDir);
   const allChannels = discoverChannels(state.configDir);
   for (const ch of allChannels) {
     if (!channelSecrets[ch.name]) {

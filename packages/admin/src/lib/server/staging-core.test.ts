@@ -248,10 +248,10 @@ describe("persistArtifacts", () => {
   });
 
   test("preserves existing channel secrets (does not regenerate)", () => {
-    // Pre-seed a channel secret in data/stack.env (where loadPersistedChannelSecrets reads)
-    mkdirSync(state.dataDir, { recursive: true });
+    // Pre-seed a channel secret in vault/system.env (where loadPersistedChannelSecrets reads)
+    mkdirSync(state.vaultDir, { recursive: true });
     writeFileSync(
-      join(state.dataDir, "stack.env"),
+      join(state.vaultDir, "system.env"),
       "CHANNEL_CHAT_SECRET=pre-existing-secret-value\n"
     );
 
