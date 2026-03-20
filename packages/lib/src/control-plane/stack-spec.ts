@@ -232,7 +232,7 @@ export function readStackSpec(configDir: string): StackSpec | null {
     if (!existsSync(path)) continue;
     let raw: unknown;
     try {
-      raw = yamlParse(readFileSync(path, "utf-8"));
+      raw = yamlParse(readFileSync(path, "utf-8"), { maxAliasCount: 100 });
     } catch {
       continue;
     }
@@ -254,7 +254,7 @@ export function readRawStackSpec(configDir: string): (StackSpecV3 | StackSpec) |
     if (!existsSync(path)) continue;
     let raw: unknown;
     try {
-      raw = yamlParse(readFileSync(path, "utf-8"));
+      raw = yamlParse(readFileSync(path, "utf-8"), { maxAliasCount: 100 });
     } catch {
       continue;
     }

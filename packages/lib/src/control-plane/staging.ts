@@ -13,6 +13,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { mergeEnvContent } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { discoverChannels } from "./channels.js";
+import { readStackSpec } from "./stack-spec.js";
 import { appendAudit } from "./audit.js";
 import { parseAutomationYaml } from "./scheduler.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
@@ -45,44 +46,38 @@ export function randomHex(bytes: number): string {
 // ── Stack Config (openpalm.yml) ─────────────────────────────────────
 
 /**
- * Check whether Ollama is enabled by reading config/openpalm.yml.
- * Falls back to checking vault/system.env for legacy compatibility.
+ * Check whether Ollama is enabled. Reads from the StackSpec (v3 or v4,
+ * auto-upgraded) first, then falls back to vault/system.env for legacy
+ * installations that haven't been migrated yet.
  */
 export function isOllamaEnabled(state: ControlPlaneState): boolean {
-  // Try openpalm.yml first
-  const ymlPath = `${state.configDir}/openpalm.yml`;
-  if (existsSync(ymlPath)) {
-    const content = readFileSync(ymlPath, "utf-8");
-    const match = content.match(/^\s*ollama:\s*(true|false)/m);
-    if (match) return match[1] === "true";
-  }
+  // Try the StackSpec first (handles both .yaml and .yml, v3 and v4)
+  const spec = readStackSpec(state.configDir);
+  if (spec) return spec.features?.ollama === true;
 
   // Legacy fallback: check system.env
   const systemEnvPath = `${state.vaultDir}/system.env`;
   if (!existsSync(systemEnvPath)) return false;
   const content = readFileSync(systemEnvPath, "utf-8");
-  const match = content.match(/^OPENPALM_OLLAMA_ENABLED=(.+)$/m);
+  const match = content.match(/^(?:OP_|OPENPALM_)OLLAMA_ENABLED=(.+)$/m);
   return match?.[1]?.trim().toLowerCase() === "true";
 }
 
 /**
- * Check whether admin is enabled by reading config/openpalm.yml.
- * Falls back to checking vault/system.env for legacy compatibility.
+ * Check whether admin is enabled. Reads from the StackSpec (v3 or v4,
+ * auto-upgraded) first, then falls back to vault/system.env for legacy
+ * installations that haven't been migrated yet.
  */
 export function isAdminEnabled(state: ControlPlaneState): boolean {
-  // Try openpalm.yml first
-  const ymlPath = `${state.configDir}/openpalm.yml`;
-  if (existsSync(ymlPath)) {
-    const content = readFileSync(ymlPath, "utf-8");
-    const match = content.match(/^\s*admin:\s*(true|false)/m);
-    if (match) return match[1] === "true";
-  }
+  // Try the StackSpec first (handles both .yaml and .yml, v3 and v4)
+  const spec = readStackSpec(state.configDir);
+  if (spec) return spec.features?.admin === true;
 
   // Legacy fallback: check system.env
   const systemEnvPath = `${state.vaultDir}/system.env`;
   if (!existsSync(systemEnvPath)) return false;
   const content = readFileSync(systemEnvPath, "utf-8");
-  const match = content.match(/^OPENPALM_ADMIN_ENABLED=(.+)$/m);
+  const match = content.match(/^(?:OP_|OPENPALM_)ADMIN_ENABLED=(.+)$/m);
   return match?.[1]?.trim().toLowerCase() === "true";
 }
 

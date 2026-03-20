@@ -4,7 +4,7 @@
  * Reads all v3 sources (openpalm.yaml, openpalm.yml, profiles.json,
  * system.env, user.env) and produces a v4 StackSpec. Idempotent.
  */
-import { existsSync, readFileSync, writeFileSync, copyFileSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, copyFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
 
@@ -149,8 +149,14 @@ export function migrateV3ToV4(state: ControlPlaneState): MigrationResult {
 
   if (systemEnv.OPENPALM_UID || systemEnv.OPENPALM_GID || systemEnv.OPENPALM_DOCKER_SOCK) {
     v4.runtime = {};
-    if (systemEnv.OPENPALM_UID) v4.runtime.uid = Number.parseInt(systemEnv.OPENPALM_UID, 10) || undefined;
-    if (systemEnv.OPENPALM_GID) v4.runtime.gid = Number.parseInt(systemEnv.OPENPALM_GID, 10) || undefined;
+    if (systemEnv.OPENPALM_UID) {
+      const uid = Number.parseInt(systemEnv.OPENPALM_UID, 10);
+      if (!Number.isNaN(uid)) v4.runtime.uid = uid;
+    }
+    if (systemEnv.OPENPALM_GID) {
+      const gid = Number.parseInt(systemEnv.OPENPALM_GID, 10);
+      if (!Number.isNaN(gid)) v4.runtime.gid = gid;
+    }
     if (systemEnv.OPENPALM_DOCKER_SOCK && systemEnv.OPENPALM_DOCKER_SOCK !== "/var/run/docker.sock") {
       v4.runtime.dockerSock = systemEnv.OPENPALM_DOCKER_SOCK;
     }
@@ -175,12 +181,15 @@ export function migrateV3ToV4(state: ControlPlaneState): MigrationResult {
   writeStackSpec(state.configDir, v4);
   result.actions.push("Wrote v4 StackSpec to config/openpalm.yaml");
 
-  // ── 7. Rename legacy .yml to prevent confusion ────────────────────
-
+  // ── 7. Leave legacy .yml in place (non-destructive per core principles) ──
+  // readStackSpec() checks openpalm.yaml first, so .yaml takes precedence.
+  // The .yml file is already backed up above if it exists.
   const ymlPath = join(state.configDir, "openpalm.yml");
   if (existsSync(ymlPath)) {
-    renameSync(ymlPath, join(state.configDir, "openpalm.yml.migrated"));
-    result.actions.push("Renamed openpalm.yml -> openpalm.yml.migrated");
+    result.warnings.push(
+      "config/openpalm.yml still exists. It is superseded by config/openpalm.yaml (v4). " +
+      "You may safely delete it after verifying the migration.",
+    );
   }
 
   return result;
@@ -218,18 +227,9 @@ function mergeConnectionsFromProfiles(
 
   for (const p of profiles.profiles) {
     const existing = byId.get(p.id);
-    // Convert profile auth format to StackSpec v4 discriminated union
-    let auth: StackSpecConnectionAuth | undefined = existing?.auth;
-    if (p.auth) {
-      if (p.auth.mode === "api_key" && (p as Record<string, unknown>).auth) {
-        const profileAuth = p.auth as { mode: string; apiKeySecretRef?: string };
-        auth = profileAuth.apiKeySecretRef
-          ? { mode: "api_key", secretRef: profileAuth.apiKeySecretRef }
-          : { mode: "none" };
-      } else {
-        auth = { mode: "none" };
-      }
-    }
+    const auth = p.auth
+      ? convertProfileAuth(p as { auth?: { mode: string; apiKeySecretRef?: string } })
+      : existing?.auth;
     byId.set(p.id, {
       id: p.id,
       name: p.name,

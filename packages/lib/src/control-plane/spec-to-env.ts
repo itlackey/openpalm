@@ -44,8 +44,8 @@ export function deriveSystemEnvFromSpec(
   add("OP_DOCKER_SOCK", spec.runtime?.dockerSock ?? "/var/run/docker.sock");
 
   // Image
-  add("OP_IMAGE_NAMESPACE", image.namespace!);
-  add("OP_IMAGE_TAG", image.tag!);
+  add("OP_IMAGE_NAMESPACE", image.namespace ?? SPEC_DEFAULTS.image.namespace);
+  add("OP_IMAGE_TAG", image.tag ?? SPEC_DEFAULTS.image.tag);
 
   // Ports
   add("OP_INGRESS_PORT", String(ports.ingress));
