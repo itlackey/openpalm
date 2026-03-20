@@ -10,6 +10,8 @@
   interface Props {
     services: ServiceItem[];
     adminHealth: HealthPayload | null;
+    adminOpenCodeStatus: 'checking' | 'ready' | 'unavailable';
+    adminOpenCodeUrl: string;
     channelAccess: 'host' | 'lan' | 'custom';
     operationResult: string;
     operationResultType: 'success' | 'error' | 'info';
@@ -31,6 +33,8 @@
   let {
     services,
     adminHealth,
+    adminOpenCodeStatus,
+    adminOpenCodeUrl,
     channelAccess,
     operationResult,
     operationResultType,
@@ -53,6 +57,12 @@
     if (!status) return 'idle';
     if (status === 'ok' || status === 'running') return 'success';
     return 'danger';
+  }
+
+  function adminOpenCodeStatusLabel(status: 'checking' | 'ready' | 'unavailable'): string {
+    if (status === 'ready') return 'Available';
+    if (status === 'checking') return 'Checking';
+    return 'Unavailable';
   }
 
   // Derived: automation count
@@ -218,6 +228,34 @@
           <div class="action-content">
             <span class="action-title">Open OpenCode UI</span>
             <span class="action-desc">Open the assistant web interface</span>
+          </div>
+          <span class="action-arrow">
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </span>
+        </a>
+
+        <a
+          class="action-item"
+          href={adminOpenCodeUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="admin-opencode-link"
+        >
+          <span class="action-icon action-icon--amber">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <path d="M8 8h8v8H8z" />
+              <path d="M12 3v5" />
+            </svg>
+          </span>
+          <div class="action-content">
+            <span class="action-title">Open Admin OpenCode</span>
+            <span class="action-desc">Admin-authorized OpenCode UI on localhost:3881</span>
+            <span class="action-hint" data-testid="admin-opencode-status">
+              {adminOpenCodeStatusLabel(adminOpenCodeStatus)} · {adminOpenCodeUrl}
+            </span>
           </div>
           <span class="action-arrow">
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

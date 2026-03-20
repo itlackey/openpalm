@@ -15,6 +15,7 @@
   import { getAdminToken, clearToken, storeToken, validateToken } from '$lib/auth.js';
   import {
     fetchHealth,
+    fetchAdminOpenCodeStatus,
     fetchAccessScope,
     fetchContainers,
     fetchArtifacts,
@@ -37,6 +38,8 @@
   // ── Health & service state ──────────────────────────────────────────────────
   let adminHealth = $state<HealthPayload | null>(null);
   let guardianHealth = $state<HealthPayload | null>(null);
+  let adminOpenCodeStatus = $state<'checking' | 'ready' | 'unavailable'>('checking');
+  let adminOpenCodeUrl = $state('http://localhost:3881/');
   let channelAccess: 'host' | 'lan' | 'custom' = $state('lan');
   let adminStatus = $state('');
   let connectionsMissing = $state<string[]>([]);
@@ -110,6 +113,7 @@
     authLocked = true;
     authError = 'Invalid admin token.';
     adminStatus = 'Invalid admin token.';
+    adminOpenCodeStatus = 'unavailable';
   }
 
   function handleLogout(): void {
@@ -119,6 +123,7 @@
     authLocked = true;
     authError = '';
     adminStatus = '';
+    adminOpenCodeStatus = 'checking';
     operationResult = '';
     operationResultType = 'info';
     artifacts = '';
@@ -186,6 +191,9 @@
       const health = await fetchHealth();
       adminHealth = health.admin;
       guardianHealth = health.guardian;
+      const adminOpenCode = await fetchAdminOpenCodeStatus(token);
+      adminOpenCodeStatus = adminOpenCode.status;
+      adminOpenCodeUrl = adminOpenCode.url;
 
       const scope = await fetchAccessScope(token);
       if (scope.ok) {
@@ -196,9 +204,15 @@
       } else if (scope.status === 401) {
         applyInvalidTokenState();
       }
-    } catch {
+    } catch (e) {
       adminHealth = { status: 'error', service: 'admin' };
       guardianHealth = { status: 'error', service: 'guardian' };
+      adminOpenCodeStatus = 'unavailable';
+
+      const err = e as { status?: number };
+      if (err.status === 401) {
+        applyInvalidTokenState();
+      }
     }
     healthLoading = false;
   }
@@ -476,6 +490,8 @@
       <OverviewTab
         {services}
         {adminHealth}
+        {adminOpenCodeStatus}
+        {adminOpenCodeUrl}
         {channelAccess}
         {operationResult}
         {operationResultType}
