@@ -86,6 +86,8 @@ export function generatePlaintextEnvKey(secretKey: string): string {
 export function classifySecretScope(key: string): SecretScope {
   if (key.startsWith('openpalm/component/')) return 'system';
   if (key.startsWith('openpalm/custom/')) return 'user';
+  const coreMapping = STATIC_CORE_MAPPINGS.find((m) => m.secretKey === key);
+  if (coreMapping) return coreMapping.scope;
   return 'system';
 }
 

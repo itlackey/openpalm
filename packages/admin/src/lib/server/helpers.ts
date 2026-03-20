@@ -56,9 +56,9 @@ export function getRequestId(event: RequestEvent): string {
 }
 
 /** Guard: returns 503 if admin token has not been configured yet. */
-export function requireNonEmptyAdminToken(state: { adminToken: string }): Response | null {
+export function requireNonEmptyAdminToken(state: { adminToken: string }, requestId: string): Response | null {
   if (!state.adminToken) {
-    return jsonResponse(503, { error: 'admin_not_configured', message: 'Admin token has not been set. Complete setup first.' });
+    return errorResponse(503, 'admin_not_configured', 'Admin token has not been set. Complete setup first.', {}, requestId);
   }
   return null;
 }
@@ -66,7 +66,7 @@ export function requireNonEmptyAdminToken(state: { adminToken: string }): Respon
 /** Check admin token — returns error Response or null if OK */
 export function requireAdmin(event: RequestEvent, requestId: string): Response | null {
   const state = getState();
-  const notConfigured = requireNonEmptyAdminToken(state);
+  const notConfigured = requireNonEmptyAdminToken(state, requestId);
   if (notConfigured) return notConfigured;
   const token = event.request.headers.get("x-admin-token");
   if (!safeTokenCompare(token ?? "", state.adminToken)) {
@@ -94,7 +94,7 @@ export function identifyCallerByToken(event: RequestEvent): "admin" | "assistant
 export function requireAuth(event: RequestEvent, requestId: string): Response | null {
   const state = getState();
   if (!state.adminToken && !state.assistantToken) {
-    return jsonResponse(503, { error: 'admin_not_configured', message: 'Authentication tokens have not been set. Complete setup first.' });
+    return errorResponse(503, 'admin_not_configured', 'Authentication tokens have not been set. Complete setup first.', {}, requestId);
   }
 
   if (identifyCallerByToken(event)) {

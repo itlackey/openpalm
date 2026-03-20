@@ -18,7 +18,7 @@ import {
   resolveLogsDir,
   resolveCacheHome,
 } from "./home.js";
-import { ensureSecrets, loadSecretsEnvFile, readSystemSecretsEnvFile } from "./secrets.js";
+import { ensureSecrets, loadSecretsEnvFile, readSystemSecretsEnvFile, updateSystemSecretsEnv } from "./secrets.js";
 import {
   resolveArtifacts,
   persistConfiguration,
@@ -92,6 +92,18 @@ export function createState(
     systemEnv.ASSISTANT_TOKEN
       ?? process.env.ASSISTANT_TOKEN
       ?? "";
+
+  // Backfill: if admin token was resolved from user.env (legacy) but not in
+  // system.env, migrate it so system-managed credentials don't live in the
+  // user-editable file indefinitely.
+  if (
+    bootstrapState.adminToken &&
+    !systemEnv.OPENPALM_ADMIN_TOKEN &&
+    (fileEnv.OPENPALM_ADMIN_TOKEN || fileEnv.ADMIN_TOKEN)
+  ) {
+    updateSystemSecretsEnv(bootstrapState, { OPENPALM_ADMIN_TOKEN: bootstrapState.adminToken });
+  }
+
   bootstrapState.channelSecrets = {
     ...loadPersistedChannelSecrets(vaultDir),
   };

@@ -114,21 +114,24 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
   }
 
   if (!existsSync(systemEnvPath)) {
-    const lines: string[] = [
+    // Seed the header, then use mergeEnvContent to write values safely
+    // (quoteEnvValue handles special chars like newlines, quotes, #).
+    const header = [
       "# OpenPalm — System Secrets",
       "# Managed by the CLI/admin. Do not edit manually unless you understand",
       "# the control-plane contract.",
       "",
       "# Authentication",
-      `OPENPALM_ADMIN_TOKEN=${updates.OPENPALM_ADMIN_TOKEN ?? ""}`,
-      `ASSISTANT_TOKEN=${updates.ASSISTANT_TOKEN ?? ""}`,
+      "OPENPALM_ADMIN_TOKEN=",
+      "ASSISTANT_TOKEN=",
       "",
       "# Service auth",
-      `MEMORY_AUTH_TOKEN=${updates.MEMORY_AUTH_TOKEN ?? ""}`,
+      "MEMORY_AUTH_TOKEN=",
       "OPENCODE_SERVER_PASSWORD=",
       "",
-    ];
-    writeVaultFile(systemEnvPath, lines.join("\n"));
+    ].join("\n");
+    const content = mergeEnvContent(header, updates);
+    writeVaultFile(systemEnvPath, content.endsWith("\n") ? content : content + "\n");
     return;
   }
 

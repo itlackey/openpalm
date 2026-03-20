@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 usage() {
   cat <<'EOF'
@@ -51,6 +52,7 @@ STORE_DIR="$SECRETS_DIR/pass-store"
 PROVIDER_CONFIG="$SECRETS_DIR/provider.json"
 
 mkdir -p "$SECRETS_DIR"
+chmod 0700 "$SECRETS_DIR"
 
 export PASSWORD_STORE_DIR="$STORE_DIR"
 if ! gpg --list-keys "$GPG_ID" >/dev/null 2>&1; then
@@ -74,5 +76,6 @@ cat >"$PROVIDER_CONFIG" <<EOF
   "passPrefix": "$PASS_PREFIX"
 }
 EOF
+chmod 0600 "$PROVIDER_CONFIG"
 
 echo "Initialized pass backend at $STORE_DIR"
