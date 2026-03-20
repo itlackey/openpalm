@@ -188,7 +188,7 @@ export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): 
   namespace: string;
   tag: string;
 }> {
-  const systemEnvPath = `${state.vaultDir}/system.env`;
+  const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
   const parsed = parseEnvFile(systemEnvPath);
   const namespace = (parsed.OP_IMAGE_NAMESPACE ?? process.env.OP_IMAGE_NAMESPACE ?? "openpalm").trim().toLowerCase();
 

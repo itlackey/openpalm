@@ -555,7 +555,7 @@ services:
     expect(result.errors.some((e) => e.includes("vault"))).toBe(true);
   });
 
-  test("allows vault/user.env mount", () => {
+  test("allows vault/user/user.env mount", () => {
     const dir = join(tempDir, "vault-user");
     mkdirSync(dir, { recursive: true });
     writeFileSync(
@@ -566,9 +566,9 @@ services:
     image: ok:latest
     labels:
       openpalm.name: "OK"
-      openpalm.description: "Only mounts vault/user.env"
+      openpalm.description: "Only mounts vault/user/user.env"
     volumes:
-      - \${OP_HOME}/vault/user.env:/app/user.env:ro
+      - \${OP_HOME}/vault/user/user.env:/app/user.env:ro
 `
     );
 

@@ -5,10 +5,10 @@
 #
 # Manual equivalent (from project root):
 #   docker compose --project-directory . \
-#     -f assets/docker-compose.yml \
+#     -f stack/core.compose.yml \
 #     -f compose.dev.yaml \
-#     --env-file .dev/vault/system.env \
-#     --env-file .dev/vault/user.env \
+#     --env-file .dev/vault/stack/stack.env \
+#     --env-file .dev/vault/user/user.env \
 #     up --build -d
 #
 # The --project-directory . flag is REQUIRED when the core compose file lives

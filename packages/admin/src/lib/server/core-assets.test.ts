@@ -202,15 +202,15 @@ describe("refreshCoreAssets", () => {
     expect(result.updated).toContain("config/components/core.yml");
     expect(result.updated).toContain("data/assistant/opencode.jsonc");
     expect(result.updated).toContain("data/assistant/AGENTS.md");
-    expect(result.updated).toContain("vault/user.env.schema");
-    expect(result.updated).toContain("vault/system.env.schema");
+    expect(result.updated).toContain("vault/user/user.env.schema");
+    expect(result.updated).toContain("vault/stack/stack.env.schema");
     expect(result.backupDir).toBeNull(); // no existing files to back up
 
     expect(existsSync(join(homeDir, "config/components/core.yml"))).toBe(true);
     expect(existsSync(join(homeDir, "data/assistant/opencode.jsonc"))).toBe(true);
     expect(existsSync(join(homeDir, "data/assistant/AGENTS.md"))).toBe(true);
-    expect(existsSync(join(homeDir, "vault/user.env.schema"))).toBe(true);
-    expect(existsSync(join(homeDir, "vault/system.env.schema"))).toBe(true);
+    expect(existsSync(join(homeDir, "vault/user/user.env.schema"))).toBe(true);
+    expect(existsSync(join(homeDir, "vault/stack/stack.env.schema"))).toBe(true);
   });
 
   test("backs up changed files before overwriting", async () => {
@@ -269,9 +269,10 @@ describe("refreshCoreAssets", () => {
     writeFileSync(join(homeDir, "data/assistant/AGENTS.md"), content);
     mkdirSync(join(homeDir, "data/admin"), { recursive: true });
     writeFileSync(join(homeDir, "data/admin/opencode.jsonc"), content);
-    mkdirSync(join(homeDir, "vault"), { recursive: true });
-    writeFileSync(join(homeDir, "vault/user.env.schema"), content);
-    writeFileSync(join(homeDir, "vault/system.env.schema"), content);
+    mkdirSync(join(homeDir, "vault/user"), { recursive: true });
+    mkdirSync(join(homeDir, "vault/stack"), { recursive: true });
+    writeFileSync(join(homeDir, "vault/user/user.env.schema"), content);
+    writeFileSync(join(homeDir, "vault/stack/stack.env.schema"), content);
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       return new Response(content, { status: 200 });

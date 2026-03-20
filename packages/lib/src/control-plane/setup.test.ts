@@ -360,12 +360,14 @@ describe("performSetup", () => {
       mkdirSync(dir, { recursive: true });
     }
 
-    // Create stub system.env so isSetupComplete doesn't crash
-    writeFileSync(join(vaultDir, "system.env"), "OP_SETUP_COMPLETE=false\n");
+    // Create stub stack.env so isSetupComplete doesn't crash
+    mkdirSync(join(vaultDir, "stack"), { recursive: true });
+    mkdirSync(join(vaultDir, "user"), { recursive: true });
+    writeFileSync(join(vaultDir, "stack", "stack.env"), "OP_SETUP_COMPLETE=false\n");
 
     // Seed a user.env file to avoid ensureSecrets() file-not-found
     writeFileSync(
-      join(vaultDir, "user.env"),
+      join(vaultDir, "user", "user.env"),
       [
         "# OpenPalm Secrets",
         "export OP_ADMIN_TOKEN=",
@@ -403,11 +405,11 @@ describe("performSetup", () => {
     expect(result.error).toBeDefined();
   });
 
-  it("writes system.env with the admin token", async () => {
+  it("writes stack.env with the admin token", async () => {
     const result = await performSetup(makeValidInput(), createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const secretsContent = readFileSync(join(vaultDir, "system.env"), "utf-8");
+    const secretsContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     expect(secretsContent).toContain("test-admin-token-12345");
   });
 
@@ -1166,12 +1168,14 @@ describe("performSetupFromConfig", () => {
       mkdirSync(dir, { recursive: true });
     }
 
-    // Create stub system.env so isSetupComplete doesn't crash
-    writeFileSync(join(vaultDir, "system.env"), "OP_SETUP_COMPLETE=false\n");
+    // Create stub stack.env so isSetupComplete doesn't crash
+    mkdirSync(join(vaultDir, "stack"), { recursive: true });
+    mkdirSync(join(vaultDir, "user"), { recursive: true });
+    writeFileSync(join(vaultDir, "stack", "stack.env"), "OP_SETUP_COMPLETE=false\n");
 
     // Seed a user.env file to avoid ensureSecrets() file-not-found
     writeFileSync(
-      join(vaultDir, "user.env"),
+      join(vaultDir, "user", "user.env"),
       [
         "# OpenPalm Secrets",
         "export OP_ADMIN_TOKEN=",
@@ -1212,12 +1216,12 @@ describe("performSetupFromConfig", () => {
     const result = await performSetupFromConfig(makeValidConfig(), createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    // Verify system.env was written with the admin credential
-    const secretsContent = readFileSync(join(vaultDir, "system.env"), "utf-8");
+    // Verify stack.env was written with the admin credential
+    const secretsContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     expect(secretsContent).toContain("test-admin-token-12345");
   });
 
-  it("writes channel credentials to user.env", async () => {
+  it("writes channel credentials to user/user.env", async () => {
     const config = makeValidConfig({
       channels: {
         discord: {
@@ -1229,7 +1233,7 @@ describe("performSetupFromConfig", () => {
     const result = await performSetupFromConfig(config, createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const secretsContent = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const secretsContent = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(secretsContent).toContain("discord-bot-token-xyz");
     expect(secretsContent).toContain("discord-app-id-123");
   });

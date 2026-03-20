@@ -60,8 +60,8 @@ function normalizeBaseUrl(url: string): string {
  *
  * @param assignments  Current capability assignments
  * @param profiles     All connection profiles (used to resolve connectionId)
- * @param vaultDir     Vault directory path (used to resolve env: API key refs from user.env)
- * @returns Record of env var key → value to write to vault/user.env
+ * @param vaultDir     Vault directory path (used to resolve env: API key refs from user/user.env)
+ * @returns Record of env var key → value to write to vault/user/user.env
  */
 export function buildVoiceEnvVars(
   assignments: CapabilityAssignments,
@@ -150,8 +150,8 @@ export function applyVoiceEnvVars(
   const entries = Object.entries(envVars);
   if (entries.length === 0) return false;
 
-  // Write to vault/user.env (voice env vars are user-level secrets)
-  const secretsPath = `${state.vaultDir}/user.env`;
+  // Write to vault/user/user.env (voice env vars are user-level secrets)
+  const secretsPath = `${state.vaultDir}/user/user.env`;
   let existing = '';
   if (existsSync(secretsPath)) {
     try {

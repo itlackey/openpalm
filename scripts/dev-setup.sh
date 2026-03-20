@@ -8,8 +8,8 @@ Usage: scripts/dev-setup.sh [--seed-env] [--force] [--pass [--gpg-id <key>]]
 Creates local .dev directories and seeds dev config files.
 
 Options:
-  --seed-env          Seed .dev/vault/user.env from the user.env.schema template
-                      (if missing) and generate vault/system.env with auto-detected values.
+  --seed-env          Seed .dev/vault/user/user.env from the user.env.schema template
+                      (if missing) and generate vault/stack/stack.env with auto-detected values.
   --force             Overwrite seeded files even if they already exist.
   --pass              Initialize a pass backend for secret storage (requires GPG key).
   --gpg-id <key>      GPG key ID for the pass backend (required with --pass).
@@ -49,7 +49,7 @@ LOGS_DIR="$DEV_ROOT/logs"
 mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
 	"$CONFIG_DIR/automations" "$CONFIG_DIR/components" "$CONFIG_DIR/stash" \
-	"$VAULT_DIR" \
+	"$VAULT_DIR" "$VAULT_DIR/stack" "$VAULT_DIR/stack/addons" "$VAULT_DIR/user" \
 	"$DATA_DIR/memory" "$DATA_DIR/assistant/.config/opencode" \
 	"$DATA_DIR/guardian" \
 	"$DATA_DIR/automations" "$DATA_DIR/models" "$DATA_DIR/stash" "$DATA_DIR/workspace" \
@@ -59,14 +59,15 @@ mkdir -p \
 # ── Seed core assets (write-once unless --force) ─────────────────
 COMPOSE_DEST="$CONFIG_DIR/components/core.yml"
 
-[[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/assets/docker-compose.yml" "$COMPOSE_DEST"
+[[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/stack/core.compose.yml" "$COMPOSE_DEST"
 
 # Ensure vault env files exist (compose needs them even if empty)
-touch "$VAULT_DIR/user.env" "$VAULT_DIR/system.env"
+mkdir -p "$VAULT_DIR/user" "$VAULT_DIR/stack"
+touch "$VAULT_DIR/user/user.env" "$VAULT_DIR/stack/stack.env"
 
 # ── Seed environment files ───────────────────────────────────────
 if [[ $seed_env -eq 1 ]]; then
-	env_dest="$VAULT_DIR/user.env"
+	env_dest="$VAULT_DIR/user/user.env"
 	if [[ ! -f "$env_dest" || $force -eq 1 ]]; then
 		# Seed user.env with dev-friendly defaults (Ollama backend, dev tokens).
 		# The schema template (assets/user.env.schema) documents all supported
@@ -89,7 +90,7 @@ MEMORY_AUTH_TOKEN=${mem_token}
 USEREOF
 	fi
 
-	system_env="$VAULT_DIR/system.env"
+	system_env="$VAULT_DIR/stack/stack.env"
 	if [[ ! -f "$system_env" || $force -eq 1 ]]; then
 		# Detect Docker socket from active context (supports OrbStack, Colima, etc.)
 		docker_sock="/var/run/docker.sock"

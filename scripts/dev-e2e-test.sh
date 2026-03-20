@@ -68,7 +68,8 @@ echo ""
 echo "=== Step 2: Clean .dev/ state ==="
 
 # Vault — reset secrets
-echo "# OpenPalm secrets" >.dev/vault/user.env
+mkdir -p .dev/vault/user .dev/vault/stack
+echo "# OpenPalm secrets" >.dev/vault/user/user.env
 
 # Data — remove everything except models (HF cache)
 rm -f .dev/data/memory/default_config.json
@@ -92,7 +93,7 @@ docker run --rm -v "$ROOT_DIR/.dev/config/assistant:/c" alpine sh -c \
 	"find /c -user root -delete" 2>/dev/null || true
 
 # Vault — reset system env
-rm -f .dev/vault/system.env
+rm -f .dev/vault/stack/stack.env
 
 # State — remove setup markers and audit logs
 rm -f .dev/state/setup-complete
@@ -110,12 +111,12 @@ echo "=== Step 3: Seed config ==="
 # Clear admin tokens from seeded secrets so admin starts in first-boot state.
 # dev-setup seeds them for convenience, but the e2e test needs to verify the wizard sets them.
 # The user.env uses `export ` prefix, so match both with and without.
-sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/vault/user.env
-sed -i 's/^\(export \)\{0,1\}OP_ADMIN_TOKEN=.*/\1OP_ADMIN_TOKEN=/' .dev/vault/user.env
+sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/vault/user/user.env
+sed -i 's/^\(export \)\{0,1\}OP_ADMIN_TOKEN=.*/\1OP_ADMIN_TOKEN=/' .dev/vault/user/user.env
 
 # Use a dev-only image tag so the wizard's pull step doesn't overwrite locally
 # built images with remote ones (e.g. an older Python-based memory:latest).
-sed -i 's/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=dev/' .dev/vault/system.env
+sed -i 's/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=dev/' .dev/vault/stack/stack.env
 
 pass "Config seeded (admin token cleared, image tag set to dev)"
 
@@ -167,8 +168,8 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 	docker compose --project-directory . \
 		-f .dev/config/components/core.yml \
 		-f compose.dev.yaml \
-		--env-file .dev/vault/system.env \
-		--env-file .dev/vault/user.env \
+		--env-file .dev/vault/stack/stack.env \
+		--env-file .dev/vault/user/user.env \
 		--profile admin \
 		--project-name openpalm build 2>&1 | tail -5
 	pass "All images built"
@@ -183,8 +184,8 @@ echo "=== Step 5: Start stack ==="
 docker compose --project-directory . \
 	-f .dev/config/components/core.yml \
 	-f compose.dev.yaml \
-	--env-file .dev/vault/system.env \
-	--env-file .dev/vault/user.env \
+	--env-file .dev/vault/stack/stack.env \
+	--env-file .dev/vault/user/user.env \
 	--profile admin \
 	--project-name openpalm up -d 2>&1 | tail -10
 
@@ -310,8 +311,8 @@ fi
 docker compose --project-directory . \
 	-f .dev/config/components/core.yml \
 	-f compose.dev.yaml \
-	--env-file .dev/vault/system.env \
-	--env-file .dev/vault/user.env \
+	--env-file .dev/vault/stack/stack.env \
+	--env-file .dev/vault/user/user.env \
 	--profile admin \
 	--project-name openpalm up -d --force-recreate --no-deps assistant
 
@@ -367,7 +368,7 @@ fi
 # ── Step 10: Verify user.env ─────────────────────────────────────────
 echo ""
 echo "=== Step 10: Verify user.env ==="
-secrets=".dev/vault/user.env"
+secrets=".dev/vault/user/user.env"
 
 check_env_val() {
 	local key="$1" expected="$2"

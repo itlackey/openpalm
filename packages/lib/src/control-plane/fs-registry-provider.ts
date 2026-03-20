@@ -1,17 +1,16 @@
 /**
- * FilesystemRegistryProvider -- reads registry catalog from a directory on disk.
+ * FilesystemRegistryProvider -- reads addon catalog from a directory on disk.
  *
  * Used by the CLI. Scans component subdirectories and automation files
- * from the registry/ directory, which is downloaded from GitHub during
- * install or available in the repo.
+ * from the stack/addons/ and stack/catalog/ directories.
  *
  * Expected layout:
- *   registry/
- *     components/
+ *   <rootDir>/
+ *     components/    (addons)
  *       <id>/
  *         compose.yml
  *         .env.schema
- *     automations/
+ *     automations/   (catalog)
  *       <name>.yml
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";

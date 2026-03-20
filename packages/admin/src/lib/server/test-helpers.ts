@@ -29,8 +29,8 @@ export function seedConfigChannels(
 }
 
 export function seedSecretsEnv(vaultDir: string, content: string): void {
-  mkdirSync(vaultDir, { recursive: true });
-  writeFileSync(join(vaultDir, "user.env"), content);
+  mkdirSync(join(vaultDir, "user"), { recursive: true });
+  writeFileSync(join(vaultDir, "user", "user.env"), content);
 }
 
 export function makeTestState(overrides: Partial<ControlPlaneState> = {}): ControlPlaneState {

@@ -34,14 +34,14 @@ describe("ensureSecrets", () => {
 
     ensureSecrets(state);
 
-    const userEnv = readFileSync(join(vaultDir, "user.env"), "utf-8");
-    const systemEnv = readFileSync(join(vaultDir, "system.env"), "utf-8");
+    const userEnv = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    const systemEnv = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     expect(userEnv).toContain("OPENAI_API_KEY=");
     expect(userEnv).toContain("EMBEDDING_MODEL=");
     expect(systemEnv).toContain("OP_ADMIN_TOKEN=");
     expect(systemEnv).toContain("ASSISTANT_TOKEN=");
     expect(systemEnv).toContain("MEMORY_AUTH_TOKEN=");
-    expect(existsSync(join(vaultDir, "system.env"))).toBe(true);
+    expect(existsSync(join(vaultDir, "stack", "stack.env"))).toBe(true);
   });
 
   test("applies strict permissions to vault files", () => {
@@ -55,7 +55,7 @@ describe("ensureSecrets", () => {
     ensureSecrets(state);
 
     expect(statSync(vaultDir).mode & 0o777).toBe(0o700);
-    expect(statSync(join(vaultDir, "user.env")).mode & 0o777).toBe(0o600);
-    expect(statSync(join(vaultDir, "system.env")).mode & 0o777).toBe(0o600);
+    expect(statSync(join(vaultDir, "user", "user.env")).mode & 0o777).toBe(0o600);
+    expect(statSync(join(vaultDir, "stack", "stack.env")).mode & 0o777).toBe(0o600);
   });
 });

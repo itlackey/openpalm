@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../..');
-const STACK_ENV_PATH = resolve(REPO_ROOT, '.dev/vault/system.env');
+const STACK_ENV_PATH = resolve(REPO_ROOT, '.dev/vault/stack/stack.env');
 
 /**
  * Guardian URL: Gateway proxies /guardian/* to guardian:8080 (stripping prefix).

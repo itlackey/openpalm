@@ -1,11 +1,11 @@
 /**
- * Registry synchronization — clones or pulls the OpenPalm registry from GitHub.
+ * Registry synchronization — clones or pulls the OpenPalm stack from GitHub.
  *
- * On first call, performs a sparse checkout of just the registry/ directory.
+ * On first call, performs a sparse checkout of just the stack/ directory.
  * On subsequent calls, does a git pull to fetch the latest changes.
  *
- * The cloned registry lives at cache directory/registry-repo/ and is the runtime
- * source of truth for available components and automations.
+ * The cloned repo lives at cache directory/registry-repo/ and is the runtime
+ * source of truth for available addons and catalog automations.
  *
  * Security: all git operations use execFileSync (no shell) with validated inputs.
  */
@@ -43,7 +43,7 @@ export function registryRoot(): string {
   return join(resolveCacheHome(), "registry");
 }
 
-/** Path to the git repo clone (we clone the whole repo shallowly then read registry/) */
+/** Path to the git repo clone (we clone the whole repo shallowly then read stack/) */
 function repoCloneDir(): string {
   return join(resolveCacheHome(), "registry-repo");
 }
@@ -51,16 +51,16 @@ function repoCloneDir(): string {
 // ── Clone / Pull ────────────────────────────────────────────────────
 
 /**
- * Ensure the registry repo is cloned into cache directory/registry-repo/.
- * Uses sparse checkout to fetch only the registry/ directory.
- * Returns the path to the registry/ subdirectory inside the clone.
+ * Ensure the repo is cloned into cache directory/registry-repo/.
+ * Uses sparse checkout to fetch only the stack/ directory.
+ * Returns the path to the stack/ subdirectory inside the clone.
  */
 export function ensureRegistryClone(): string {
   const cloneDir = repoCloneDir();
-  const registryDir = join(cloneDir, "registry");
+  const stackDir = join(cloneDir, "stack");
 
   if (existsSync(join(cloneDir, ".git"))) {
-    return registryDir;
+    return stackDir;
   }
 
   mkdirSync(cloneDir, { recursive: true });
@@ -71,7 +71,7 @@ export function ensureRegistryClone(): string {
       "--branch", BRANCH, REPO_URL, "."
     ], { cwd: cloneDir, stdio: "pipe", timeout: 60_000 });
 
-    execFileSync("git", ["sparse-checkout", "set", "registry"], {
+    execFileSync("git", ["sparse-checkout", "set", "stack"], {
       cwd: cloneDir,
       stdio: "pipe",
       timeout: 30_000
@@ -81,7 +81,7 @@ export function ensureRegistryClone(): string {
     throw new Error(`Failed to clone registry from ${REPO_URL}: ${msg}`);
   }
 
-  return registryDir;
+  return stackDir;
 }
 
 /**
@@ -132,15 +132,15 @@ export type RegistryAutomationEntry = {
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 /**
- * Discover component entries from the cloned registry/components/ directory.
- * Each component is a subdirectory containing compose.yml and .env.schema.
+ * Discover addon entries from the cloned stack/addons/ directory.
+ * Each addon is a subdirectory containing compose.yml and .env.schema.
  */
 export function discoverRegistryComponents(): Record<string, RegistryComponentEntry> {
   const cloneDir = repoCloneDir();
-  const componentsDir = join(cloneDir, "registry", "components");
-  if (!existsSync(componentsDir)) return {};
+  const addonsDir = join(cloneDir, "stack", "addons");
+  if (!existsSync(addonsDir)) return {};
 
-  const entries = readdirSync(componentsDir, { withFileTypes: true });
+  const entries = readdirSync(addonsDir, { withFileTypes: true });
   const result: Record<string, RegistryComponentEntry> = {};
 
   for (const entry of entries) {
@@ -148,8 +148,8 @@ export function discoverRegistryComponents(): Record<string, RegistryComponentEn
     const id = entry.name;
     if (!VALID_NAME_RE.test(id)) continue;
 
-    const composeFile = join(componentsDir, id, "compose.yml");
-    const schemaFile = join(componentsDir, id, ".env.schema");
+    const composeFile = join(addonsDir, id, "compose.yml");
+    const schemaFile = join(addonsDir, id, ".env.schema");
     if (!existsSync(composeFile) || !existsSync(schemaFile)) continue;
 
     const compose = readFileSync(composeFile, "utf-8");
@@ -162,21 +162,21 @@ export function discoverRegistryComponents(): Record<string, RegistryComponentEn
 }
 
 /**
- * Discover automation entries from the cloned registry/automations/ directory.
+ * Discover automation entries from the cloned stack/catalog/ directory.
  */
 export function discoverRegistryAutomations(): RegistryAutomationEntry[] {
   const cloneDir = repoCloneDir();
-  const automationsDir = join(cloneDir, "registry", "automations");
-  if (!existsSync(automationsDir)) return [];
+  const catalogDir = join(cloneDir, "stack", "catalog");
+  if (!existsSync(catalogDir)) return [];
 
-  const files = readdirSync(automationsDir).filter((f) => f.endsWith(".yml"));
+  const files = readdirSync(catalogDir).filter((f) => f.endsWith(".yml"));
 
   return files
     .map((ymlFile) => {
       const name = ymlFile.replace(/\.yml$/, "");
       if (!VALID_NAME_RE.test(name)) return null;
 
-      const ymlContent = readFileSync(join(automationsDir, ymlFile), "utf-8");
+      const ymlContent = readFileSync(join(catalogDir, ymlFile), "utf-8");
 
       let description = "";
       let schedule = "";
@@ -202,13 +202,13 @@ export function discoverRegistryAutomations(): RegistryAutomationEntry[] {
 }
 
 /**
- * Get automation content from the cloned registry by name.
+ * Get automation content from the cloned catalog by name.
  */
 export function getRegistryAutomation(name: string): string | null {
   if (!VALID_NAME_RE.test(name)) return null;
   const cloneDir = repoCloneDir();
-  const automationsDir = join(cloneDir, "registry", "automations");
-  const ymlPath = join(automationsDir, `${name}.yml`);
+  const catalogDir = join(cloneDir, "stack", "catalog");
+  const ymlPath = join(catalogDir, `${name}.yml`);
   if (!existsSync(ymlPath)) return null;
   return readFileSync(ymlPath, "utf-8");
 }

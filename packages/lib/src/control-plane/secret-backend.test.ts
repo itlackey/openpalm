@@ -71,7 +71,7 @@ describe('secret backend', () => {
     expect(entry.scope).toBe('user');
     expect(await backend.exists('openpalm/custom/example')).toBe(true);
 
-    const userEnv = readFileSync(join(state.vaultDir, 'user.env'), 'utf-8');
+    const userEnv = readFileSync(join(state.vaultDir, 'user', 'user.env'), 'utf-8');
     expect(userEnv).toContain('very-secret');
   });
 

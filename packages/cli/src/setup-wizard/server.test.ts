@@ -58,9 +58,11 @@ function makeSetupDirs(): void {
     mkdirSync(dir, { recursive: true });
   }
 
-  writeFileSync(join(vaultDir, "system.env"), "OP_SETUP_COMPLETE=false\n");
+  mkdirSync(join(vaultDir, "stack"), { recursive: true });
+  mkdirSync(join(vaultDir, "user"), { recursive: true });
+  writeFileSync(join(vaultDir, "stack", "stack.env"), "OP_SETUP_COMPLETE=false\n");
   writeFileSync(
-    join(vaultDir, "user.env"),
+    join(vaultDir, "user", "user.env"),
     [
       "# OpenPalm Secrets",
       "export OP_ADMIN_TOKEN=",

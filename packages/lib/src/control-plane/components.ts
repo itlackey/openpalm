@@ -386,7 +386,7 @@ export function validateOverlay(composePath: string): OverlayValidationResult {
         if (typeof vol === "object" && vol !== null) {
           const volObj = vol as Record<string, unknown>;
           const source = String(volObj.source ?? "");
-          if (/vault\b/i.test(source) && !/vault\/[^/]+$/i.test(source)) {
+          if (/vault\b/i.test(source) && !/vault\/.*\.[a-z]+$/i.test(source)) {
             errors.push(
               `Service "${serviceName}" mounts vault/ directory — ` +
                 `only admin can mount full vault`
@@ -398,7 +398,7 @@ export function validateOverlay(composePath: string): OverlayValidationResult {
           // in source, but bind mounts always contain / or ${...}.
           const colonIdx = volStr.indexOf(":");
           const volSource = colonIdx >= 0 ? volStr.slice(0, colonIdx) : volStr;
-          if (/vault\b/i.test(volSource) && !/vault\/[^/]+$/i.test(volSource)) {
+          if (/vault\b/i.test(volSource) && !/vault\/.*\.[a-z]+$/i.test(volSource)) {
             errors.push(
               `Service "${serviceName}" mounts vault/ directory — ` +
                 `only admin can mount full vault`
@@ -733,7 +733,7 @@ export function setInstanceEnabled(openpalmHome: string, instanceId: string, ena
  * Build the complete docker compose args for the stack.
  *
  * Order:
- *   1. --env-file vault/system.env --env-file vault/user.env (always first)
+ *   1. --env-file vault/stack/stack.env --env-file vault/user/user.env (always first)
  *   2. -f config/components/core.yml (always)
  *   3. -f config/components/admin.yml (if admin enabled)
  *   4. For each enabled instance: -f data/components/{id}/compose.yml
@@ -748,19 +748,19 @@ export function buildComponentComposeArgs(openpalmHome: string, options?: {
   const dataComponents = componentsDataDir(openpalmHome);
 
   // 1. Env files from vault (always first)
-  const systemEnv = join(vault, "system.env");
-  const userEnv = join(vault, "user.env");
+  const stackEnv = join(vault, "stack", "stack.env");
+  const userEnv = join(vault, "user", "user.env");
 
-  if (existsSync(systemEnv)) {
-    args.push("--env-file", systemEnv);
+  if (existsSync(stackEnv)) {
+    args.push("--env-file", stackEnv);
   } else {
-    logger.warn("vault/system.env not found, skipping", { path: systemEnv });
+    logger.warn("vault/stack/stack.env not found, skipping", { path: stackEnv });
   }
 
   if (existsSync(userEnv)) {
     args.push("--env-file", userEnv);
   } else {
-    logger.warn("vault/user.env not found, skipping", { path: userEnv });
+    logger.warn("vault/user/user.env not found, skipping", { path: userEnv });
   }
 
   // 2. Core compose (always)

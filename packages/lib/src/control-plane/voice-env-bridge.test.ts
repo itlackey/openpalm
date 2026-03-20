@@ -39,7 +39,8 @@ describe("buildVoiceEnvVars", () => {
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "voice-env-test-"));
     vaultDir = tmpDir;
-    writeFileSync(join(vaultDir, "user.env"), `${TEST_API_KEY_VAR}=sk-test-key-123\n`);
+    mkdirSync(join(vaultDir, "user"), { recursive: true });
+    writeFileSync(join(vaultDir, "user", "user.env"), `${TEST_API_KEY_VAR}=sk-test-key-123\n`);
   });
 
   afterEach(() => {
@@ -169,7 +170,7 @@ describe("buildVoiceEnvVars", () => {
       baseUrl: "https://api.groq.com/openai/v1",
       auth: { mode: "api_key", apiKeySecretRef: `env:${TEST_API_KEY_VAR_2}` },
     });
-    writeFileSync(join(vaultDir, "user.env"), `${TEST_API_KEY_VAR}=sk-openai\n${TEST_API_KEY_VAR_2}=gsk-groq\n`);
+    writeFileSync(join(vaultDir, "user", "user.env"), `${TEST_API_KEY_VAR}=sk-openai\n${TEST_API_KEY_VAR_2}=gsk-groq\n`);
 
     const profiles = [makeProfile(), groqProfile];
     const assignments = makeAssignments({
@@ -200,8 +201,8 @@ describe("applyVoiceEnvVars", () => {
     tmpDir = mkdtempSync(join(tmpdir(), "voice-apply-test-"));
     homeDir = tmpDir;
     vaultDir = join(tmpDir, "vault");
-    mkdirSync(vaultDir, { recursive: true });
-    writeFileSync(join(vaultDir, "user.env"), "OPENAI_API_KEY=test\n");
+    mkdirSync(join(vaultDir, "user"), { recursive: true });
+    writeFileSync(join(vaultDir, "user", "user.env"), "OPENAI_API_KEY=test\n");
   });
 
   afterEach(() => {
@@ -223,7 +224,7 @@ describe("applyVoiceEnvVars", () => {
     };
   }
 
-  it("writes env vars to vault/user.env and returns true", () => {
+  it("writes env vars to vault/user/user.env and returns true", () => {
     const state = makeState();
     const result = applyVoiceEnvVars(state, {
       TTS_BASE_URL: "https://api.openai.com",
@@ -232,7 +233,7 @@ describe("applyVoiceEnvVars", () => {
 
     expect(result).toBe(true);
 
-    const content = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const content = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(content).toContain("TTS_BASE_URL=https://api.openai.com");
     expect(content).toContain("TTS_API_KEY=sk-test");
     expect(content).toContain("OPENAI_API_KEY=test"); // preserved

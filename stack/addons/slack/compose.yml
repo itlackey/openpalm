@@ -1,0 +1,27 @@
+# Addon: Slack — socket mode Slack bot adapter
+# Connects outbound to Slack via WebSocket (no public URL needed).
+# Requires Socket Mode enabled in Slack App settings.
+services:
+  slack:
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: "8185"
+      GUARDIAN_URL: http://guardian:8080
+      CHANNEL_NAME: "Slack Bot"
+      CHANNEL_PACKAGE: "@openpalm/channel-slack"
+    networks: [channel_lan]
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8185' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      openpalm.name: Slack
+      openpalm.description: Slack bot adapter via Socket Mode WebSocket
+      openpalm.icon: hash
+      openpalm.category: messaging
+      openpalm.healthcheck: http://slack:8185/health

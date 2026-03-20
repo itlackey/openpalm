@@ -65,10 +65,12 @@ for (const dir of [
 }
 
 // Seed minimal env files so the wizard's status endpoint works
-const systemEnvPath = join(vaultDir, "system.env");
+mkdirSync(join(vaultDir, "stack"), { recursive: true });
+const systemEnvPath = join(vaultDir, "stack", "stack.env");
 writeFileSync(systemEnvPath, "OP_SETUP_COMPLETE=false\n");
 
-const userEnvPath = join(vaultDir, "user.env");
+mkdirSync(join(vaultDir, "user"), { recursive: true });
+const userEnvPath = join(vaultDir, "user", "user.env");
 writeFileSync(
   userEnvPath,
   [

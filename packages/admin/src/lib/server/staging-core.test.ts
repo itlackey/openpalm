@@ -144,34 +144,35 @@ describe("buildEnvFiles", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(state.vaultDir, { recursive: true });
-    writeFileSync(join(state.vaultDir, "system.env"), "KEY=val");
-    writeFileSync(join(state.vaultDir, "user.env"), "SECRET=val");
+    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
+    mkdirSync(join(state.vaultDir, "user"), { recursive: true });
+    writeFileSync(join(state.vaultDir, "stack", "stack.env"), "KEY=val");
+    writeFileSync(join(state.vaultDir, "user", "user.env"), "SECRET=val");
 
     const files = buildEnvFiles(state);
     expect(files).toHaveLength(2);
-    expect(files[0]).toContain("system.env");
+    expect(files[0]).toContain("stack.env");
     expect(files[1]).toContain("user.env");
   });
 
-  test("returns only system.env when user.env is missing", () => {
+  test("returns only stack.env when user.env is missing", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(state.vaultDir, { recursive: true });
-    writeFileSync(join(state.vaultDir, "system.env"), "KEY=val");
+    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
+    writeFileSync(join(state.vaultDir, "stack", "stack.env"), "KEY=val");
 
     const files = buildEnvFiles(state);
     expect(files).toHaveLength(1);
-    expect(files[0]).toContain("system.env");
+    expect(files[0]).toContain("stack.env");
   });
 
-  test("returns only user.env when system.env is missing", () => {
+  test("returns only user.env when stack.env is missing", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(state.vaultDir, { recursive: true });
-    writeFileSync(join(state.vaultDir, "user.env"), "SECRET=val");
+    mkdirSync(join(state.vaultDir, "user"), { recursive: true });
+    writeFileSync(join(state.vaultDir, "user", "user.env"), "SECRET=val");
 
     const files = buildEnvFiles(state);
     expect(files).toHaveLength(1);
@@ -192,7 +193,8 @@ describe("persistArtifacts", () => {
     };
     // Create required base dirs
     mkdirSync(join(state.configDir, "components"), { recursive: true });
-    mkdirSync(join(state.vaultDir), { recursive: true });
+    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
+    mkdirSync(join(state.vaultDir, "user"), { recursive: true });
   });
 
   test("writes compose to config/components/", () => {
@@ -203,47 +205,47 @@ describe("persistArtifacts", () => {
     expect(readFileSync(composePath, "utf-8")).toBe(state.artifacts.compose);
   });
 
-  test("generates channel secrets for discovered channels in system.env", () => {
+  test("generates channel secrets for discovered channels in stack.env", () => {
     seedConfigChannels(state.configDir, [
       { name: "chat", yml: "services: {}" }
     ]);
 
     persistArtifacts(state);
 
-    const systemEnvPath = join(state.vaultDir, "system.env");
+    const systemEnvPath = join(state.vaultDir, "stack", "stack.env");
     const content = readFileSync(systemEnvPath, "utf-8");
     expect(content).toContain("CHANNEL_CHAT_SECRET=");
   });
 
-  test("writes system.env with runtime configuration", () => {
+  test("writes stack.env with runtime configuration", () => {
     persistArtifacts(state);
 
-    const systemEnvPath = join(state.vaultDir, "system.env");
+    const systemEnvPath = join(state.vaultDir, "stack", "stack.env");
     expect(existsSync(systemEnvPath)).toBe(true);
     const content = readFileSync(systemEnvPath, "utf-8");
     expect(content).toContain(`OP_HOME=${state.homeDir}`);
     expect(content).toContain(`OP_IMAGE_TAG=`);
   });
 
-  test("system.env does NOT contain user secrets (MEMORY_USER_ID)", () => {
+  test("stack.env does NOT contain user secrets (MEMORY_USER_ID)", () => {
     persistArtifacts(state);
 
-    const systemEnvPath = join(state.vaultDir, "system.env");
+    const systemEnvPath = join(state.vaultDir, "stack", "stack.env");
     const content = readFileSync(systemEnvPath, "utf-8");
-    // User secrets belong in user.env, not system.env.
+    // User secrets belong in user.env, not stack.env.
     // Having them in both causes precedence bugs with Docker Compose --env-file.
     expect(content).not.toContain("MEMORY_USER_ID=");
-    // OP_ADMIN_TOKEN is a system secret and correctly lives in system.env.
+    // OP_ADMIN_TOKEN is a system secret and correctly lives in stack.env.
     // Only the legacy bare ADMIN_TOKEN (without OP_ prefix) should not appear.
     const lines = content.split("\n");
     expect(lines.some((l) => /^ADMIN_TOKEN=/.test(l))).toBe(false);
   });
 
   test("preserves existing channel secrets (does not regenerate)", () => {
-    // Pre-seed a channel secret in vault/system.env (where loadPersistedChannelSecrets reads)
-    mkdirSync(state.vaultDir, { recursive: true });
+    // Pre-seed a channel secret in vault/stack/stack.env (where loadPersistedChannelSecrets reads)
+    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
     writeFileSync(
-      join(state.vaultDir, "system.env"),
+      join(state.vaultDir, "stack", "stack.env"),
       "CHANNEL_CHAT_SECRET=pre-existing-secret-value\n"
     );
 
@@ -254,7 +256,7 @@ describe("persistArtifacts", () => {
     persistArtifacts(state);
 
     // The pre-existing secret should be preserved, not regenerated
-    const systemEnvPath = join(state.vaultDir, "system.env");
+    const systemEnvPath = join(state.vaultDir, "stack", "stack.env");
     const content = readFileSync(systemEnvPath, "utf-8");
     expect(content).toContain("CHANNEL_CHAT_SECRET=pre-existing-secret-value");
   });

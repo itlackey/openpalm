@@ -68,9 +68,11 @@ function makeSetupDirs(): void {
     mkdirSync(dir, { recursive: true });
   }
 
-  writeFileSync(join(vaultDir, "system.env"), "OP_SETUP_COMPLETE=false\n");
+  mkdirSync(join(vaultDir, "stack"), { recursive: true });
+  mkdirSync(join(vaultDir, "user"), { recursive: true });
+  writeFileSync(join(vaultDir, "stack", "stack.env"), "OP_SETUP_COMPLETE=false\n");
   writeFileSync(
-    join(vaultDir, "user.env"),
+    join(vaultDir, "user", "user.env"),
     [
       "# OpenPalm Secrets",
       "export OP_ADMIN_TOKEN=",
@@ -248,12 +250,12 @@ describe("setup wizard server integration", () => {
       expect(data.ok).toBe(true);
       expect(result.ok).toBe(true);
 
-      // Verify vault/system.env was written with the admin token
-      const systemEnvContent = readFileSync(join(vaultDir, "system.env"), "utf-8");
+      // Verify vault/stack/stack.env was written with the admin token
+      const systemEnvContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
       expect(systemEnvContent).toContain("integration-test-token-123");
 
-      // Verify vault/user.env was written with owner info
-      const userEnvContent = readFileSync(join(vaultDir, "user.env"), "utf-8");
+      // Verify vault/user/user.env was written with owner info
+      const userEnvContent = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
       expect(userEnvContent).toContain("OWNER_NAME=Integration Test");
 
       // Verify memory config was written

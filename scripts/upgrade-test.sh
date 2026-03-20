@@ -19,15 +19,15 @@
 #   3. Seed some user state:
 #      - Add a memory via the assistant or memory API
 #      - Install a channel
-#      - Note the ADMIN_TOKEN and MEMORY_USER_ID in vault/user.env
+#      - Note the ADMIN_TOKEN and MEMORY_USER_ID in vault/user/user.env
 #
 #   4. Upgrade to the target version:
 #        curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh \
 #          | bash -s -- --force --version <target>
 #
 #   5. Verify:
-#      - vault/user.env is NOT overwritten (ADMIN_TOKEN, custom keys preserved)
-#      - vault/system.env is NOT overwritten (paths, UID/GID preserved)
+#      - vault/user/user.env is NOT overwritten (ADMIN_TOKEN, custom keys preserved)
+#      - vault/stack/stack.env is NOT overwritten (paths, UID/GID preserved)
 #      - Memory database still exists and responds
 #      - All services come back healthy
 #      - Admin token still authenticates
@@ -147,8 +147,8 @@ compose_cmd() {
   docker compose \
     --project-name "$PROJECT_NAME" \
     -f "${OP_CONFIG_HOME}/components/core.yml" \
-    --env-file "${VAULT_HOME}/user.env" \
-    --env-file "${VAULT_HOME}/system.env" \
+    --env-file "${VAULT_HOME}/user/user.env" \
+    --env-file "${VAULT_HOME}/stack/stack.env" \
     "$@"
 }
 
@@ -217,7 +217,7 @@ mkdir -p \
   "${OP_CONFIG_HOME}/assistant/skills" \
   "${OP_CONFIG_HOME}/automations" \
   "${OP_CONFIG_HOME}/stash" \
-  "${VAULT_HOME}" \
+  "${VAULT_HOME}/user" "${VAULT_HOME}/stack" \
   "${OP_DATA_HOME}/memory" \
   "${OP_DATA_HOME}/assistant" \
   "${OP_DATA_HOME}/guardian" \
@@ -237,7 +237,7 @@ if host_url="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/d
 fi
 
 # Seed user.env with a known admin token
-cat >"${VAULT_HOME}/user.env" <<EOF
+cat >"${VAULT_HOME}/user/user.env" <<EOF
 # Upgrade test secrets
 ADMIN_TOKEN=${ADMIN_TOKEN}
 OPENAI_API_KEY=
@@ -248,7 +248,7 @@ MY_CUSTOM_KEY=my-custom-value-12345
 EOF
 
 # Seed system.env
-cat >"${VAULT_HOME}/system.env" <<EOF
+cat >"${VAULT_HOME}/stack/stack.env" <<EOF
 OP_CONFIG_HOME=${OP_CONFIG_HOME}
 OP_DATA_HOME=${OP_DATA_HOME}
 OP_STATE_HOME=${OP_STATE_HOME}
@@ -331,8 +331,8 @@ if [[ $SKIP_BUILD -eq 0 && -z "$FROM_VERSION" ]]; then
   docker compose --project-directory "$ROOT_DIR" \
     -f "${OP_CONFIG_HOME}/components/core.yml" \
     -f compose.dev.yaml \
-    --env-file "${VAULT_HOME}/system.env" \
-    --env-file "${VAULT_HOME}/user.env" \
+    --env-file "${VAULT_HOME}/stack/stack.env" \
+    --env-file "${VAULT_HOME}/user/user.env" \
     --project-name "$PROJECT_NAME" build 2>&1 | tail -5
   pass "Images built from source"
 fi
@@ -343,7 +343,7 @@ if [[ -n "$FROM_VERSION" ]]; then
   OP_IMAGE_TAG="$FROM_VERSION"
   # Update system.env with the from-version tag
   sed -i "s/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=${FROM_VERSION}/" \
-    "${VAULT_HOME}/system.env"
+    "${VAULT_HOME}/stack/stack.env"
   compose_cmd pull 2>&1 | tail -5
   pass "Images pulled for ${FROM_VERSION}"
 fi
@@ -355,8 +355,8 @@ compose_cmd() {
     --project-name "$PROJECT_NAME" \
     -f "${OP_CONFIG_HOME}/components/core.yml" \
     -f "${OP_CONFIG_HOME}/components/compose-port-override.yml" \
-    --env-file "${VAULT_HOME}/user.env" \
-    --env-file "${VAULT_HOME}/system.env" \
+    --env-file "${VAULT_HOME}/user/user.env" \
+    --env-file "${VAULT_HOME}/stack/stack.env" \
     "$@"
 }
 
@@ -444,11 +444,11 @@ pass "Custom user file written to CONFIG_HOME/components/"
 header "Phase 3: Record pre-upgrade state"
 
 # Checksum user.env
-SECRETS_CHECKSUM_BEFORE=$(sha256sum "${VAULT_HOME}/user.env" | awk '{print $1}')
+SECRETS_CHECKSUM_BEFORE=$(sha256sum "${VAULT_HOME}/user/user.env" | awk '{print $1}')
 echo "  user.env checksum:    ${SECRETS_CHECKSUM_BEFORE}"
 
 # Checksum system.env
-STACK_ENV_CHECKSUM_BEFORE=$(sha256sum "${VAULT_HOME}/system.env" | awk '{print $1}')
+STACK_ENV_CHECKSUM_BEFORE=$(sha256sum "${VAULT_HOME}/stack/stack.env" | awk '{print $1}')
 echo "  system.env checksum:  ${STACK_ENV_CHECKSUM_BEFORE}"
 
 # Memory database size (if it exists)
@@ -481,10 +481,10 @@ pass "Pre-upgrade state recorded"
 header "Phase 4: Simulate upgrade"
 
 # The upgrade simulation mirrors what setup.sh does on re-run:
-#   1. Detects existing install (vault/user.env exists)
+#   1. Detects existing install (vault/user/user.env exists)
 #   2. Re-creates directory tree (mkdir -p, idempotent)
 #   3. Downloads fresh compose to config/components/
-#   4. Does NOT overwrite vault/user.env or vault/system.env
+#   4. Does NOT overwrite vault/user/user.env or vault/stack/stack.env
 #   5. Starts services with compose up
 
 echo "  Simulating setup.sh re-run..."
@@ -494,7 +494,7 @@ mkdir -p \
   "${OP_CONFIG_HOME}" "${OP_CONFIG_HOME}/components" \
   "${OP_CONFIG_HOME}/assistant" \
   "${OP_CONFIG_HOME}/automations" "${OP_CONFIG_HOME}/stash" \
-  "${VAULT_HOME}" \
+  "${VAULT_HOME}/user" "${VAULT_HOME}/stack" \
   "${OP_DATA_HOME}" "${OP_DATA_HOME}/memory" \
   "${OP_DATA_HOME}/assistant" \
   "${OP_DATA_HOME}/guardian" \
@@ -507,27 +507,27 @@ mkdir -p \
 # In a real upgrade, setup.sh downloads from GitHub. We copy from local assets.
 cp "${ROOT_DIR}/assets/docker-compose.yml" "${OP_CONFIG_HOME}/components/core.yml"
 
-# Step 3: vault/user.env — setup.sh checks if it exists and skips if so
-if [[ -f "${VAULT_HOME}/user.env" ]]; then
-  echo "  vault/user.env exists -- NOT overwriting (same as setup.sh)"
+# Step 3: vault/user/user.env — setup.sh checks if it exists and skips if so
+if [[ -f "${VAULT_HOME}/user/user.env" ]]; then
+  echo "  vault/user/user.env exists -- NOT overwriting (same as setup.sh)"
 else
-  echo "  BUG: vault/user.env was deleted during upgrade simulation!"
-  fail "vault/user.env should still exist"
+  echo "  BUG: vault/user/user.env was deleted during upgrade simulation!"
+  fail "vault/user/user.env should still exist"
 fi
 
-# Step 4: vault/system.env — setup.sh checks if it exists and skips if so
-if [[ -f "${VAULT_HOME}/system.env" ]]; then
-  echo "  vault/system.env exists -- NOT overwriting (same as setup.sh)"
+# Step 4: vault/stack/stack.env — setup.sh checks if it exists and skips if so
+if [[ -f "${VAULT_HOME}/stack/stack.env" ]]; then
+  echo "  vault/stack/stack.env exists -- NOT overwriting (same as setup.sh)"
 else
-  echo "  BUG: vault/system.env was deleted during upgrade simulation!"
-  fail "vault/system.env should still exist"
+  echo "  BUG: vault/stack/stack.env was deleted during upgrade simulation!"
+  fail "vault/stack/stack.env should still exist"
 fi
 
 # Step 6: If --to-version specified, update image tag
 if [[ -n "$TO_VERSION" ]]; then
   echo "  Updating image tag to ${TO_VERSION}..."
   sed -i "s/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=${TO_VERSION}/" \
-    "${VAULT_HOME}/system.env"
+    "${VAULT_HOME}/stack/stack.env"
   compose_cmd pull 2>&1 | tail -5
 fi
 
@@ -560,11 +560,11 @@ fi
 
 header "Phase 5: Verification"
 
-# ── 5a: vault/user.env unchanged ─────────────────────────────────────
+# ── 5a: vault/user/user.env unchanged ─────────────────────────────────────
 echo ""
-echo "=== 5a: vault/user.env preservation ==="
+echo "=== 5a: vault/user/user.env preservation ==="
 
-SECRETS_CHECKSUM_AFTER=$(sha256sum "${VAULT_HOME}/user.env" | awk '{print $1}')
+SECRETS_CHECKSUM_AFTER=$(sha256sum "${VAULT_HOME}/user/user.env" | awk '{print $1}')
 if [[ "$SECRETS_CHECKSUM_BEFORE" == "$SECRETS_CHECKSUM_AFTER" ]]; then
   pass "user.env checksum unchanged"
 else
@@ -572,32 +572,32 @@ else
 fi
 
 # Verify specific values in user.env
-ADMIN_TOKEN_VALUE=$(grep "^ADMIN_TOKEN=" "${VAULT_HOME}/user.env" | head -1 | cut -d= -f2-)
+ADMIN_TOKEN_VALUE=$(grep "^ADMIN_TOKEN=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
 if [[ "$ADMIN_TOKEN_VALUE" == "$ADMIN_TOKEN" ]]; then
   pass "ADMIN_TOKEN preserved in user.env"
 else
   fail "ADMIN_TOKEN changed (expected '${ADMIN_TOKEN}', got '${ADMIN_TOKEN_VALUE}')"
 fi
 
-CUSTOM_KEY_VALUE=$(grep "^MY_CUSTOM_KEY=" "${VAULT_HOME}/user.env" | head -1 | cut -d= -f2-)
+CUSTOM_KEY_VALUE=$(grep "^MY_CUSTOM_KEY=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
 if [[ "$CUSTOM_KEY_VALUE" == "my-custom-value-12345" ]]; then
   pass "Custom user key preserved in user.env"
 else
   fail "Custom user key lost (expected 'my-custom-value-12345', got '${CUSTOM_KEY_VALUE}')"
 fi
 
-MEMORY_USER_VALUE=$(grep "^MEMORY_USER_ID=" "${VAULT_HOME}/user.env" | head -1 | cut -d= -f2-)
+MEMORY_USER_VALUE=$(grep "^MEMORY_USER_ID=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
 if [[ "$MEMORY_USER_VALUE" == "upgrade-test-user" ]]; then
   pass "MEMORY_USER_ID preserved in user.env"
 else
   fail "MEMORY_USER_ID changed (expected 'upgrade-test-user', got '${MEMORY_USER_VALUE}')"
 fi
 
-# ── 5b: vault/system.env unchanged ───────────────────────────────────
+# ── 5b: vault/stack/stack.env unchanged ───────────────────────────────────
 echo ""
-echo "=== 5b: vault/system.env preservation ==="
+echo "=== 5b: vault/stack/stack.env preservation ==="
 
-STACK_ENV_CHECKSUM_AFTER=$(sha256sum "${VAULT_HOME}/system.env" | awk '{print $1}')
+STACK_ENV_CHECKSUM_AFTER=$(sha256sum "${VAULT_HOME}/stack/stack.env" | awk '{print $1}')
 if [[ "$STACK_ENV_CHECKSUM_BEFORE" == "$STACK_ENV_CHECKSUM_AFTER" ]]; then
   pass "system.env checksum unchanged"
 else

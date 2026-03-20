@@ -1,12 +1,12 @@
-declare module "$assets/docker-compose.yml?raw" {
+declare module "$stack/core.compose.yml?raw" {
   const content: string;
   export default content;
 }
-declare module "$assets/cleanup-logs.yml?raw" {
+declare module "$stack/automations/cleanup-logs.yml?raw" {
   const content: string;
   export default content;
 }
-declare module "$assets/cleanup-data.yml?raw" {
+declare module "$stack/automations/cleanup-data.yml?raw" {
   const content: string;
   export default content;
 }

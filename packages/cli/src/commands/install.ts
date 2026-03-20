@@ -113,7 +113,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const dataDir = defaultDataDir();
   const workDir = defaultWorkDir();
 
-  const secretsPath = join(vaultDir, 'user.env');
+  const secretsPath = join(vaultDir, 'user', 'user.env');
   const updateMode = await Bun.file(secretsPath).exists();
   if (updateMode && !options.force) {
     throw new Error('OpenPalm appears to already be installed. Re-run install with --force to continue.');
@@ -129,14 +129,14 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     // Host detection failure is non-fatal
   }
 
-  const composeContent = await fetchAsset(options.version, 'docker-compose.yml');
+  const composeContent = await fetchAsset(options.version, 'core.compose.yml');
   await Bun.write(join(configDir, 'components', 'core.yml'), composeContent);
 
   // Download schemas to vault/ for varlock validation and dataDir for FilesystemAssetProvider
   for (const [remoteFile, localPath] of [
-    ['user.env.schema', join(vaultDir, 'user.env.schema')],
-    ['system.env.schema', join(vaultDir, 'system.env.schema')],
-    ['setup-config.schema.json', join(dataDir, 'setup-config.schema.json')],
+    ['core/user.env.schema', join(vaultDir, 'user.env.schema')],
+    ['core/system.env.schema', join(vaultDir, 'system.env.schema')],
+    ['core/setup-config.schema.json', join(dataDir, 'setup-config.schema.json')],
   ] as const) {
     try {
       const content = await fetchAsset(options.version, remoteFile);
@@ -148,12 +148,12 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
   // Download remaining assets needed by FilesystemAssetProvider
   const assetFiles: Array<{ remote: string; localPath: string }> = [
-    { remote: 'ollama.yml', localPath: join(configDir, 'components', 'ollama.yml') },
-    { remote: 'AGENTS.md', localPath: join(dataDir, 'assistant', 'AGENTS.md') },
-    { remote: 'opencode.jsonc', localPath: join(dataDir, 'assistant', 'opencode.jsonc') },
-    { remote: 'cleanup-logs.yml', localPath: join(configDir, 'automations', 'cleanup-logs.yml') },
-    { remote: 'cleanup-data.yml', localPath: join(configDir, 'automations', 'cleanup-data.yml') },
-    { remote: 'validate-config.yml', localPath: join(configDir, 'automations', 'validate-config.yml') },
+    { remote: 'addons/ollama/compose.yml', localPath: join(configDir, 'components', 'ollama.yml') },
+    { remote: 'core/AGENTS.md', localPath: join(dataDir, 'assistant', 'AGENTS.md') },
+    { remote: 'core/opencode.jsonc', localPath: join(dataDir, 'assistant', 'opencode.jsonc') },
+    { remote: 'automations/cleanup-logs.yml', localPath: join(configDir, 'automations', 'cleanup-logs.yml') },
+    { remote: 'automations/cleanup-data.yml', localPath: join(configDir, 'automations', 'cleanup-data.yml') },
+    { remote: 'automations/validate-config.yml', localPath: join(configDir, 'automations', 'validate-config.yml') },
   ];
   await Promise.all(
     assetFiles.map(async ({ remote, localPath }) => {
@@ -184,7 +184,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   try {
     const varlockBin = await ensureVarlock(dataDir);
     const schemaPath = join(vaultDir, 'user.env.schema');
-    const envPath = join(vaultDir, 'user.env');
+    const envPath = join(vaultDir, 'user', 'user.env');
     if (await Bun.file(schemaPath).exists()) {
       const tmpDir = await prepareVarlockDir(schemaPath, envPath);
       try {

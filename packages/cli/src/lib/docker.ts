@@ -66,7 +66,7 @@ async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
  */
 export async function fetchAsset(repoRef: string, filename: string): Promise<string> {
   const releaseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${repoRef}/${filename}`;
-  const rawUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${repoRef}/assets/${filename}`;
+  const rawUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${repoRef}/stack/${filename}`;
 
   try {
     const releaseResponse = await fetchWithRetry(releaseUrl);

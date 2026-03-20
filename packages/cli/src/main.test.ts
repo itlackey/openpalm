@@ -304,7 +304,8 @@ describe('scan command', () => {
     chmodSync(fakeVarlock, 0o755);
 
     writeFileSync(join(vaultDir, 'user.env.schema'), 'ADMIN_TOKEN\n');
-    writeFileSync(join(vaultDir, 'user.env'), 'ADMIN_TOKEN=testtoken\n');
+    mkdirSync(join(vaultDir, 'user'), { recursive: true });
+    writeFileSync(join(vaultDir, 'user', 'user.env'), 'ADMIN_TOKEN=testtoken\n');
 
     const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
@@ -328,9 +329,9 @@ describe('scan command', () => {
     const artifactsDir = join(tempHome, 'data', 'artifacts');
     const vaultDir = join(tempHome, 'vault');
     mkdirSync(artifactsDir, { recursive: true });
-    mkdirSync(vaultDir, { recursive: true });
+    mkdirSync(join(vaultDir, 'user'), { recursive: true });
 
-    writeFileSync(join(vaultDir, 'user.env'), 'ADMIN_TOKEN=testtoken\n');
+    writeFileSync(join(vaultDir, 'user', 'user.env'), 'ADMIN_TOKEN=testtoken\n');
 
     const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
@@ -473,7 +474,7 @@ describe('secrets.env generation', () => {
 
     try {
       await ensureSecrets(vaultDir);
-      const content = await Bun.file(join(vaultDir, 'user.env')).text();
+      const content = await Bun.file(join(vaultDir, 'user', 'user.env')).text();
       expect(content).toContain('export OP_ADMIN_TOKEN=');
       expect(content).toContain('export OPENAI_API_KEY=');
       expect(content).toContain('export MEMORY_USER_ID=');

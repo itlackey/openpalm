@@ -6,7 +6,7 @@
  *   vault/              — env schemas
  *
  * All asset content is provided by a CoreAssetProvider (injected), not by
- * Vite $assets imports — making this module portable across Bun/Node/Vite.
+ * Vite $stack imports — making this module portable across Bun/Node/Vite.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync, renameSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -150,16 +150,16 @@ const REPO = "itlackey/openpalm";
 const VERSION = process.env.OP_ASSET_VERSION ?? "main";
 
 const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
-  { relPath: "config/components/core.yml", githubFilename: "docker-compose.yml" },
-  { relPath: "data/assistant/opencode.jsonc", githubFilename: "opencode.jsonc" },
-  { relPath: "data/assistant/AGENTS.md", githubFilename: "AGENTS.md" },
-  { relPath: "vault/user.env.schema", githubFilename: "user.env.schema" },
-  { relPath: "vault/system.env.schema", githubFilename: "system.env.schema" },
+  { relPath: "config/components/core.yml", githubFilename: "core.compose.yml" },
+  { relPath: "data/assistant/opencode.jsonc", githubFilename: "core/opencode.jsonc" },
+  { relPath: "data/assistant/AGENTS.md", githubFilename: "core/AGENTS.md" },
+  { relPath: "vault/user.env.schema", githubFilename: "core/user.env.schema" },
+  { relPath: "vault/system.env.schema", githubFilename: "core/system.env.schema" },
 ];
 
 async function downloadAsset(filename: string): Promise<string> {
   const releaseUrl = `https://github.com/${REPO}/releases/download/${VERSION}/${filename}`;
-  const rawUrl = `https://raw.githubusercontent.com/${REPO}/${VERSION}/assets/${filename}`;
+  const rawUrl = `https://raw.githubusercontent.com/${REPO}/${VERSION}/stack/${filename}`;
 
   for (const url of [releaseUrl, rawUrl]) {
     try {

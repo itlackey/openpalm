@@ -269,12 +269,12 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
     fail "Asset missing or empty: $CONFIG_HOME/components/core.yml"
   fi
 
-  # Verify vault/user.env was seeded
+  # Verify vault/user/user.env was seeded
   VAULT_HOME="$(dirname "$CONFIG_HOME")/vault"
-  if [ -f "$VAULT_HOME/user.env" ]; then
-    pass "vault/user.env created"
+  if [ -f "$VAULT_HOME/user/user.env" ]; then
+    pass "vault/user/user.env created"
   else
-    fail "vault/user.env not created"
+    fail "vault/user/user.env not created"
   fi
 else
   step "Skipping install (--skip-install)"
@@ -543,13 +543,13 @@ else
   fail "Setup is NOT marked complete: $FINAL_COMPLETE"
 fi
 
-# ── Step 9: Verify vault/user.env has expected values ─────────────────
+# ── Step 9: Verify vault/user/user.env has expected values ─────────────────
 
 if [ "$SKIP_INSTALL" -eq 0 ]; then
-  step "Verify vault/user.env"
+  step "Verify vault/user/user.env"
 
   VAULT_HOME="${VAULT_HOME:-$(dirname "$CONFIG_HOME")/vault}"
-  secrets="$VAULT_HOME/user.env"
+  secrets="$VAULT_HOME/user/user.env"
 
   check_env_key() {
     local key="$1"

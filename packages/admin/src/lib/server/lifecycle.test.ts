@@ -166,16 +166,16 @@ describe("createState", () => {
     process.env.ADMIN_TOKEN = origEnv.ADMIN_TOKEN;
   });
 
-  test("reads OP_ADMIN_TOKEN from vault/system.env file", () => {
+  test("reads OP_ADMIN_TOKEN from vault/stack/stack.env file", () => {
     const base = trackDir(makeTempDir());
     process.env.OP_HOME = base;
     delete process.env.ADMIN_TOKEN;
     delete process.env.OP_ADMIN_TOKEN;
 
     const vaultDir = join(base, "vault");
-    mkdirSync(vaultDir, { recursive: true });
+    mkdirSync(join(vaultDir, "stack"), { recursive: true });
     writeFileSync(
-      join(vaultDir, "system.env"),
+      join(vaultDir, "stack", "stack.env"),
       "OP_ADMIN_TOKEN=file-token\n"
     );
 
@@ -189,8 +189,8 @@ describe("createState", () => {
     process.env.ADMIN_TOKEN = "env-token";
 
     const vaultDir = join(base, "vault");
-    mkdirSync(vaultDir, { recursive: true });
-    writeFileSync(join(vaultDir, "user.env"), "ADMIN_TOKEN=file-token\n");
+    mkdirSync(join(vaultDir, "user"), { recursive: true });
+    writeFileSync(join(vaultDir, "user", "user.env"), "ADMIN_TOKEN=file-token\n");
 
     const state = createState("explicit-token");
     expect(state.adminToken).toBe("explicit-token");
@@ -296,12 +296,12 @@ describe("updateStackEnvToLatestImageTag", () => {
     vi.restoreAllMocks();
   });
 
-  test("updates OP_IMAGE_TAG in vault/system.env", async () => {
+  test("updates OP_IMAGE_TAG in vault/stack/stack.env", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    mkdirSync(state.vaultDir, { recursive: true });
+    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
     writeFileSync(
-      join(state.vaultDir, "system.env"),
+      join(state.vaultDir, "stack", "stack.env"),
       "OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=v0.1.0\n"
     );
 
@@ -315,7 +315,7 @@ describe("updateStackEnvToLatestImageTag", () => {
     );
 
     const result = await updateStackEnvToLatestImageTag(state);
-    const updated = readFileSync(join(state.vaultDir, "system.env"), "utf-8");
+    const updated = readFileSync(join(state.vaultDir, "stack", "stack.env"), "utf-8");
 
     expect(result.namespace).toBe("openpalm");
     expect(result.tag).toBe("v0.7.7");
@@ -325,8 +325,8 @@ describe("updateStackEnvToLatestImageTag", () => {
   test("throws when docker tag lookup fails", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    mkdirSync(state.vaultDir, { recursive: true });
-    writeFileSync(join(state.vaultDir, "system.env"), "OP_IMAGE_NAMESPACE=openpalm\n");
+    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
+    writeFileSync(join(state.vaultDir, "stack", "stack.env"), "OP_IMAGE_NAMESPACE=openpalm\n");
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("bad gateway", { status: 502 }));
 

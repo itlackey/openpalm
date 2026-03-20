@@ -85,19 +85,19 @@ jobs:
       - name: Validate Docker Compose manifests
         env:
           ADMIN_TOKEN: ci-placeholder
-        run: docker compose -f assets/docker-compose.yml -f compose.dev.yaml config -q
+        run: docker compose -f stack/core.compose.yml -f compose.dev.yaml config -q
 
-      - name: Validate registry components and automations
+      - name: Validate stack addons and catalog
         run: |
           set -euo pipefail
 
-          # Full component validation (compose.yml + .env.schema + conventions)
+          # Full addon validation (compose.yml + .env.schema + conventions)
           ./scripts/validate-registry.sh
 
-          # Also validate automation YAML files are well-formed
+          # Also validate catalog automation YAML files are well-formed
           pip install --quiet PyYAML
           errors=0
-          for f in registry/automations/*.yml; do
+          for f in stack/catalog/*.yml; do
             if [ ! -f "$f" ]; then continue; fi
             if ! python3 -c "import yaml, sys; yaml.safe_load(open(sys.argv[1]))" "$f" 2>/dev/null; then
               echo "::error file=$f::Invalid YAML: $f"
@@ -106,7 +106,7 @@ jobs:
           done
 
           if [ "$errors" -gt 0 ]; then
-            echo "::error::$errors registry file(s) failed validation"
+            echo "::error::$errors catalog file(s) failed validation"
             exit 1
           fi
-          echo "All registry files validated successfully"
+          echo "All stack files validated successfully"

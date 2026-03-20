@@ -42,7 +42,7 @@ export function randomHex(bytes: number): string {
 
 /**
  * Check whether Ollama is enabled. Reads from the StackSpec (v3 or v4,
- * auto-upgraded) first, then falls back to vault/system.env for legacy
+ * auto-upgraded) first, then falls back to vault/stack/stack.env for legacy
  * installations that haven't been migrated yet.
  */
 export function isOllamaEnabled(state: ControlPlaneState): boolean {
@@ -61,7 +61,7 @@ export function isOllamaEnabled(state: ControlPlaneState): boolean {
   }
 
   // Legacy fallback: check system.env
-  const systemEnvPath = `${state.vaultDir}/system.env`;
+  const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
   if (!existsSync(systemEnvPath)) return false;
   const content = readFileSync(systemEnvPath, "utf-8");
   const match = content.match(/^(?:OP_|OP_)OLLAMA_ENABLED=(.+)$/m);
@@ -70,7 +70,7 @@ export function isOllamaEnabled(state: ControlPlaneState): boolean {
 
 /**
  * Check whether admin is enabled. Reads from the StackSpec (v3 or v4,
- * auto-upgraded) first, then falls back to vault/system.env for legacy
+ * auto-upgraded) first, then falls back to vault/stack/stack.env for legacy
  * installations that haven't been migrated yet.
  */
 export function isAdminEnabled(state: ControlPlaneState): boolean {
@@ -89,7 +89,7 @@ export function isAdminEnabled(state: ControlPlaneState): boolean {
   }
 
   // Legacy fallback: check system.env
-  const systemEnvPath = `${state.vaultDir}/system.env`;
+  const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
   if (!existsSync(systemEnvPath)) return false;
   const content = readFileSync(systemEnvPath, "utf-8");
   const match = content.match(/^(?:OP_|OP_)ADMIN_ENABLED=(.+)$/m);
@@ -110,18 +110,18 @@ function resolveCompose(_state: ControlPlaneState, assets: CoreAssetProvider): s
  */
 export function buildEnvFiles(state: ControlPlaneState): string[] {
   return [
-    `${state.vaultDir}/system.env`,
-    `${state.vaultDir}/user.env`,
+    `${state.vaultDir}/stack/stack.env`,
+    `${state.vaultDir}/user/user.env`,
   ].filter(existsSync);
 }
 
 /**
- * Write system-managed values to vault/system.env.
+ * Write system-managed values to vault/stack/stack.env.
  */
 export function writeSystemEnv(state: ControlPlaneState, channelSecrets: Record<string, string> = {}): void {
-  mkdirSync(state.vaultDir, { recursive: true });
+  mkdirSync(`${state.vaultDir}/stack`, { recursive: true });
 
-  const systemEnvPath = `${state.vaultDir}/system.env`;
+  const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
 
   let base = "";
   if (existsSync(systemEnvPath)) {
@@ -271,9 +271,9 @@ export function buildArtifactMeta(artifacts: {
 
 // ── Channel Secrets ────────────────────────────────────────────────────
 
-/** Load persisted CHANNEL_*_SECRET entries from vault/system.env. */
+/** Load persisted CHANNEL_*_SECRET entries from vault/stack/stack.env. */
 function loadPersistedChannelSecrets(vaultDir: string): Record<string, string> {
-  const parsed = parseEnvFile(`${vaultDir}/system.env`);
+  const parsed = parseEnvFile(`${vaultDir}/stack/stack.env`);
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed)) {
     const match = key.match(/^CHANNEL_([A-Z0-9_]+)_SECRET$/);

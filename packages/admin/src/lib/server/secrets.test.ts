@@ -40,7 +40,7 @@ describe("ensureSecrets", () => {
 
     ensureSecrets(state);
 
-    const secrets = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const secrets = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(secrets).toContain("OPENAI_API_KEY=");
     expect(secrets).not.toContain("preconfigured-token");
   });
@@ -52,7 +52,7 @@ describe("ensureSecrets", () => {
 
     ensureSecrets(state);
 
-    const result = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const result = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(result).toBe(existingContent);
   });
 
@@ -60,7 +60,7 @@ describe("ensureSecrets", () => {
     const state = { vaultDir } as ControlPlaneState;
     ensureSecrets(state);
 
-    const secrets = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const secrets = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(secrets).toContain("OPENAI_API_KEY=");
     expect(secrets).toContain("GROQ_API_KEY=");
     expect(secrets).toContain("MISTRAL_API_KEY=");
@@ -73,7 +73,7 @@ describe("ensureSecrets", () => {
 
     ensureSecrets(state);
 
-    expect(existsSync(join(nestedDir, "user.env"))).toBe(true);
+    expect(existsSync(join(nestedDir, "user", "user.env"))).toBe(true);
   });
 });
 
@@ -97,7 +97,7 @@ describe("updateSecretsEnv", () => {
 
     updateSecretsEnv(state, { OPENAI_API_KEY: "sk-new" });
 
-    const result = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const result = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(result).toContain("OPENAI_API_KEY=sk-new");
     expect(result).not.toContain("old");
     expect(result).toContain("ADMIN_TOKEN=token");
@@ -109,7 +109,7 @@ describe("updateSecretsEnv", () => {
 
     updateSecretsEnv(state, { OPENAI_API_KEY: "sk-uncommented" });
 
-    const result = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const result = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(result).toContain("OPENAI_API_KEY=sk-uncommented");
     expect(result).not.toContain("# OPENAI_API_KEY");
   });
@@ -120,7 +120,7 @@ describe("updateSecretsEnv", () => {
 
     updateSecretsEnv(state, { NEW_KEY: "new-value" });
 
-    const result = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const result = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(result).toContain("NEW_KEY=new-value");
     expect(result).toContain("ADMIN_TOKEN=token");
   });
@@ -132,7 +132,7 @@ describe("updateSecretsEnv", () => {
 
     updateSecretsEnv(state, {});
 
-    expect(readFileSync(join(vaultDir, "user.env"), "utf-8")).toBe(original);
+    expect(readFileSync(join(vaultDir, "user", "user.env"), "utf-8")).toBe(original);
   });
 });
 
@@ -205,7 +205,7 @@ describe("patchSecretsEnvFile", () => {
       RANDOM_KEY: "injected" // NOT in ALLOWED_CONNECTION_KEYS
     });
 
-    const result = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const result = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(result).toContain("OPENAI_API_KEY=sk-new");
     expect(result).toContain("ADMIN_TOKEN=token"); // unchanged
     expect(result).not.toContain("RANDOM_KEY");
@@ -216,14 +216,14 @@ describe("patchSecretsEnvFile", () => {
     seedSecretsEnv(vaultDir, "OPENAI_API_KEY=existing\n");
     patchSecretsEnvFile(vaultDir, { GROQ_API_KEY: "gsk-new" });
 
-    const result = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const result = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(result).toContain("OPENAI_API_KEY=existing");
     expect(result).toContain("GROQ_API_KEY=gsk-new");
   });
 
   test("creates file if it does not exist", () => {
     patchSecretsEnvFile(vaultDir, { OPENAI_API_KEY: "sk-created" });
-    const result = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const result = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(result).toContain("OPENAI_API_KEY=sk-created");
   });
 
@@ -231,7 +231,7 @@ describe("patchSecretsEnvFile", () => {
     const original = "ADMIN_TOKEN=keep\n";
     seedSecretsEnv(vaultDir, original);
     patchSecretsEnvFile(vaultDir, { ADMIN_TOKEN: "nope", RANDOM: "nope" });
-    expect(readFileSync(join(vaultDir, "user.env"), "utf-8")).toBe(original);
+    expect(readFileSync(join(vaultDir, "user", "user.env"), "utf-8")).toBe(original);
   });
 
   test("preserves comments and non-allowed keys", () => {
@@ -241,7 +241,7 @@ describe("patchSecretsEnvFile", () => {
     );
     patchSecretsEnvFile(vaultDir, { OPENAI_API_KEY: "sk-updated" });
 
-    const result = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const result = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(result).toContain("# Config");
     expect(result).toContain("ADMIN_TOKEN=secret");
     expect(result).toContain("CUSTOM=val");

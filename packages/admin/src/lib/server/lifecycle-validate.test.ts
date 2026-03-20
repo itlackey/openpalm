@@ -5,8 +5,8 @@
  * validateEnvironment() co-locates schema + env files in a temp directory
  * (varlock discovers .env.schema alongside --path), then makes two execFile
  * calls:
- *   1. user.env validation   (vault/user.env + vault/user.env.schema)
- *   2. system.env validation (vault/system.env + vault/system.env.schema)
+ *   1. user.env validation   (vault/user/user.env + vault/user.env.schema)
+ *   2. system.env validation (vault/stack/stack.env + vault/system.env.schema)
  */
 import { describe, test, expect, afterEach, vi } from "vitest";
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -24,11 +24,12 @@ registerCleanup();
 
 /** Seed the schema and env files that validateEnvironment expects. */
 function seedValidationFiles(state: { vaultDir: string }): void {
-  mkdirSync(state.vaultDir, { recursive: true });
+  mkdirSync(join(state.vaultDir, "user"), { recursive: true });
+  mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
   writeFileSync(join(state.vaultDir, "user.env.schema"), "# test schema\nADMIN_TOKEN=\n");
-  writeFileSync(join(state.vaultDir, "user.env"), "ADMIN_TOKEN=test\n");
+  writeFileSync(join(state.vaultDir, "user", "user.env"), "ADMIN_TOKEN=test\n");
   writeFileSync(join(state.vaultDir, "system.env.schema"), "# test schema\nPORT=\n");
-  writeFileSync(join(state.vaultDir, "system.env"), "PORT=8100\n");
+  writeFileSync(join(state.vaultDir, "stack", "stack.env"), "PORT=8100\n");
 }
 
 // Helper: mock all execFile calls to succeed.

@@ -4,7 +4,7 @@
  * Verifies that:
  * 1. Channel .yml overlays exist in config/components/
  * 2. Compose file list uses config/components/ paths
- * 3. User secrets live in vault/user.env
+ * 3. User secrets live in vault/user/user.env
  * 4. Runtime validation checks config/components/ for channels
  * 5. Configuration persistence is idempotent
  */
@@ -72,8 +72,8 @@ function seedChannelComponents(
 }
 
 function seedUserEnv(vaultDir: string, content: string): void {
-  mkdirSync(vaultDir, { recursive: true });
-  writeFileSync(join(vaultDir, "user.env"), content);
+  mkdirSync(join(vaultDir, "user"), { recursive: true });
+  writeFileSync(join(vaultDir, "user", "user.env"), content);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
@@ -123,13 +123,13 @@ describe("Compose file list uses config/components/ paths", () => {
   });
 });
 
-describe("User secrets in vault/user.env", () => {
-  test("user.env is read from vault/", () => {
+describe("User secrets in vault/user/user.env", () => {
+  test("user.env is read from vault/user/", () => {
     const state = makeState(baseDir);
     const secretsContent = "ADMIN_TOKEN=test-token\n";
     seedUserEnv(state.vaultDir, secretsContent);
 
-    const userEnvPath = join(state.vaultDir, "user.env");
+    const userEnvPath = join(state.vaultDir, "user", "user.env");
     expect(existsSync(userEnvPath)).toBe(true);
     expect(readFileSync(userEnvPath, "utf-8")).toBe(secretsContent);
   });
