@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../..');
-const STACK_ENV_PATH = resolve(REPO_ROOT, '.dev/state/artifacts/stack.env');
+const STACK_ENV_PATH = resolve(REPO_ROOT, '.dev/vault/system.env');
 
 /**
  * Guardian URL: Caddy proxies /guardian/* to guardian:8080 (stripping prefix).

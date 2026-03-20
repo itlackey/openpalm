@@ -5,11 +5,11 @@
  * On subsequent calls, does a git pull to fetch the latest changes.
  *
  * The cloned registry lives at cache directory/registry-repo/ and is the runtime
- * source of truth for available channels and automations.
+ * source of truth for available components and automations.
  *
  * Security: all git operations use execFileSync (no shell) with validated inputs.
  */
-import { existsSync, readdirSync, readFileSync, mkdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, mkdirSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
@@ -116,13 +116,10 @@ export function pullRegistry(): { updated: boolean; error?: string } {
 
 // ── Registry item discovery ─────────────────────────────────────────
 
-export type RegistryChannelEntry = {
-  name: string;
-  type: "channel";
-  description: string;
-  hasRoute: boolean;
-  ymlContent: string;
-  caddyContent: string | null;
+export type RegistryComponentEntry = {
+  compose: string;
+  schema: string;
+  caddy?: string;
 };
 
 export type RegistryAutomationEntry = {
@@ -133,43 +130,40 @@ export type RegistryAutomationEntry = {
   ymlContent: string;
 };
 
-/** Strict name: lowercase alphanumeric + hyphens, 1–63 chars, starts with alnum */
+/** Strict name: lowercase alphanumeric + hyphens, 1-63 chars, starts with alnum */
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 /**
- * Discover channel entries from the cloned registry/channels/ directory.
+ * Discover component entries from the cloned registry/components/ directory.
+ * Each component is a subdirectory containing compose.yml, .env.schema, and optional .caddy.
  */
-export function discoverRegistryChannels(): RegistryChannelEntry[] {
+export function discoverRegistryComponents(): Record<string, RegistryComponentEntry> {
   const cloneDir = repoCloneDir();
-  const channelsDir = join(cloneDir, "registry", "channels");
-  if (!existsSync(channelsDir)) return [];
+  const componentsDir = join(cloneDir, "registry", "components");
+  if (!existsSync(componentsDir)) return {};
 
-  const files = readdirSync(channelsDir);
-  const ymlFiles = files.filter((f) => f.endsWith(".yml"));
-  const caddyFiles = new Set(files.filter((f) => f.endsWith(".caddy")));
+  const entries = readdirSync(componentsDir, { withFileTypes: true });
+  const result: Record<string, RegistryComponentEntry> = {};
 
-  return ymlFiles
-    .map((ymlFile) => {
-      const name = ymlFile.replace(/\.yml$/, "");
-      if (!VALID_NAME_RE.test(name)) return null;
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const id = entry.name;
+    if (!VALID_NAME_RE.test(id)) continue;
 
-      const ymlContent = readFileSync(join(channelsDir, ymlFile), "utf-8");
-      const caddyFile = `${name}.caddy`;
-      const hasRoute = caddyFiles.has(caddyFile);
-      const caddyContent = hasRoute
-        ? readFileSync(join(channelsDir, caddyFile), "utf-8")
-        : null;
+    const composeFile = join(componentsDir, id, "compose.yml");
+    const schemaFile = join(componentsDir, id, ".env.schema");
+    if (!existsSync(composeFile) || !existsSync(schemaFile)) continue;
 
-      return {
-        name,
-        type: "channel" as const,
-        description: `Docker compose service for the ${name} channel`,
-        hasRoute,
-        ymlContent,
-        caddyContent
-      };
-    })
-    .filter((entry): entry is RegistryChannelEntry => entry !== null);
+    const compose = readFileSync(composeFile, "utf-8");
+    const schema = readFileSync(schemaFile, "utf-8");
+
+    const caddyFile = join(componentsDir, id, ".caddy");
+    const caddy = existsSync(caddyFile) ? readFileSync(caddyFile, "utf-8") : undefined;
+
+    result[id] = { compose, schema, caddy };
+  }
+
+  return result;
 }
 
 /**
@@ -210,23 +204,6 @@ export function discoverRegistryAutomations(): RegistryAutomationEntry[] {
       };
     })
     .filter((entry): entry is RegistryAutomationEntry => entry !== null);
-}
-
-/**
- * Get channel content from the cloned registry by name.
- */
-export function getRegistryChannel(
-  name: string
-): { yml: string; caddy: string | null } | null {
-  const cloneDir = repoCloneDir();
-  const channelsDir = join(cloneDir, "registry", "channels");
-  const ymlPath = join(channelsDir, `${name}.yml`);
-  if (!existsSync(ymlPath)) return null;
-
-  const yml = readFileSync(ymlPath, "utf-8");
-  const caddyPath = join(channelsDir, `${name}.caddy`);
-  const caddy = existsSync(caddyPath) ? readFileSync(caddyPath, "utf-8") : null;
-  return { yml, caddy };
 }
 
 /**

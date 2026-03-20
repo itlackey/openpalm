@@ -47,6 +47,14 @@
       "icon": "brain",
       "category": "ai",
       "curated": true
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama",
+      "description": "Local LLM inference server for running AI models",
+      "icon": "cpu",
+      "category": "ai",
+      "curated": true
     }
   ]
 }

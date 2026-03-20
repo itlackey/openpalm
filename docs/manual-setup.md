@@ -16,16 +16,18 @@ For the automated path, see [setup-guide.md](setup-guide.md). For the developer 
 
 ## 1. Choose your paths
 
-OpenPalm uses three host directories following the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/). Pick paths that work for your system:
+OpenPalm uses a single home directory with subdirectories for config, vault, data, and logs:
 
-| Tier | Default | Purpose |
-|------|---------|---------|
-| **CONFIG_HOME** | `~/.config/openpalm` | User-editable: secrets, channels, OpenCode extensions |
-| **DATA_HOME** | `~/.local/share/openpalm` | Admin/service-managed data (memory, stack.env, caddy, assistant home, etc.) |
-| **STATE_HOME** | `~/.local/state/openpalm` | Assembled runtime artifacts, audit logs |
+| Directory | Default | Purpose |
+|-----------|---------|---------|
+| **OP_HOME** | `~/.openpalm` | Root of all OpenPalm state |
+| **config/** | `~/.openpalm/config` | User-editable: components, automations, OpenCode extensions |
+| **vault/** | `~/.openpalm/vault` | Secrets: `user.env` (LLM keys), `system.env` (admin token, HMAC) |
+| **data/** | `~/.openpalm/data` | Service-managed data (memory, caddy, assistant, etc.) |
+| **logs/** | `~/.openpalm/logs` | Audit and debug logs |
 | **WORK_DIR** | `~/openpalm` | Assistant working directory |
 
-`CONFIG_HOME` is the user-owned persistent source of truth. Allowed writers are:
+`config/` is the user-owned persistent source of truth. Allowed writers are:
 user direct edits, explicit admin UI/API config actions, and assistant actions
 through authenticated/allowlisted admin APIs on user request. Automatic
 lifecycle operations are non-destructive for existing user config files and
@@ -41,23 +43,27 @@ See [directory-structure.md](technical/directory-structure.md) for the full tree
 ## 2. Create the directory tree
 
 ```bash
-# CONFIG_HOME
-mkdir -p ~/.config/openpalm/channels
-mkdir -p ~/.config/openpalm/automations
-mkdir -p ~/.config/openpalm/assistant/{tools,plugins,skills}
+# Config
+mkdir -p ~/.openpalm/config/components
+mkdir -p ~/.openpalm/config/automations
+mkdir -p ~/.openpalm/config/assistant/{tools,plugins,skills}
 
-# DATA_HOME
-mkdir -p ~/.local/share/openpalm/admin
-mkdir -p ~/.local/share/openpalm/memory
-mkdir -p ~/.local/share/openpalm/assistant
-mkdir -p ~/.local/share/openpalm/guardian
-mkdir -p ~/.local/share/openpalm/caddy/{data,config}
-mkdir -p ~/.local/share/openpalm/automations
+# Vault (secrets)
+mkdir -p ~/.openpalm/vault
 
-# STATE_HOME
-mkdir -p ~/.local/state/openpalm/artifacts/channels
-mkdir -p ~/.local/state/openpalm/automations
-mkdir -p ~/.local/state/openpalm/audit
+# Data
+mkdir -p ~/.openpalm/data/admin
+mkdir -p ~/.openpalm/data/memory
+mkdir -p ~/.openpalm/data/assistant
+mkdir -p ~/.openpalm/data/guardian
+mkdir -p ~/.openpalm/data/caddy/{data,config}
+mkdir -p ~/.openpalm/data/catalog
+
+# Logs
+mkdir -p ~/.openpalm/logs
+
+# Cache
+mkdir -p ~/.cache/openpalm
 
 # Working directory
 mkdir -p ~/openpalm
@@ -69,46 +75,31 @@ mkdir -p ~/openpalm
 
 Two files from `assets/` are needed: the Docker Compose definition and the Caddyfile.
 
-Copy them to DATA_HOME (source of truth) **and** stage them to STATE_HOME (runtime):
+Copy them to the data directory:
 
 ```bash
-# Source of truth (DATA_HOME)
-cp assets/docker-compose.yml ~/.local/share/openpalm/docker-compose.yml
-cp assets/Caddyfile           ~/.local/share/openpalm/caddy/Caddyfile
-
-# Staged for runtime (STATE_HOME)
-cp assets/docker-compose.yml ~/.local/state/openpalm/artifacts/docker-compose.yml
-cp assets/Caddyfile           ~/.local/state/openpalm/artifacts/Caddyfile
+cp assets/docker-compose.yml ~/.openpalm/data/docker-compose.yml
+cp assets/Caddyfile           ~/.openpalm/data/caddy/Caddyfile
 ```
 
 If you don't have a local clone, download them from GitHub:
 
 ```bash
 BASE_URL="https://raw.githubusercontent.com/itlackey/openpalm/main/assets"
-curl -fsSL "$BASE_URL/docker-compose.yml" -o ~/.local/share/openpalm/docker-compose.yml
-curl -fsSL "$BASE_URL/Caddyfile"           -o ~/.local/share/openpalm/caddy/Caddyfile
-
-cp ~/.local/share/openpalm/docker-compose.yml ~/.local/state/openpalm/artifacts/docker-compose.yml
-cp ~/.local/share/openpalm/caddy/Caddyfile    ~/.local/state/openpalm/artifacts/Caddyfile
+curl -fsSL "$BASE_URL/docker-compose.yml" -o ~/.openpalm/data/docker-compose.yml
+curl -fsSL "$BASE_URL/Caddyfile"           -o ~/.openpalm/data/caddy/Caddyfile
 ```
 
 ---
 
-## 4. Create secrets.env
+## 4. Create vault env files
 
-This file holds your admin token and LLM provider keys. Copy the template from `assets/secrets.env` and fill in the values:
+Secrets are split into two files under `~/.openpalm/vault/`:
 
-```bash
-cp assets/secrets.env ~/.config/openpalm/secrets.env
-```
-
-Or create it manually:
+**`user.env`** -- User-managed secrets (LLM provider keys):
 
 ```bash
-cat > ~/.config/openpalm/secrets.env << 'EOF'
-# Required — change this before exposing the stack
-ADMIN_TOKEN=change-me-to-a-strong-token
-
+cat > ~/.openpalm/vault/user.env << 'EOF'
 # At least one LLM key recommended
 OPENAI_API_KEY=
 # ANTHROPIC_API_KEY=
@@ -120,36 +111,28 @@ MEMORY_USER_ID=default_user
 EOF
 ```
 
-Set `ADMIN_TOKEN` to a strong random value:
+**`system.env`** -- System-managed secrets (admin token, infrastructure config):
 
 ```bash
-# Generate a token and write it in place
 TOKEN=$(openssl rand -hex 24)
-sed -i "s/ADMIN_TOKEN=.*/ADMIN_TOKEN=$TOKEN/" ~/.config/openpalm/secrets.env
+cat > ~/.openpalm/vault/system.env << EOF
+# Required — change this before exposing the stack
+ADMIN_TOKEN=$TOKEN
+EOF
 echo "Your admin token: $TOKEN"
-```
-
-Stage it to STATE_HOME for compose:
-
-```bash
-cp ~/.config/openpalm/secrets.env ~/.local/state/openpalm/artifacts/secrets.env
 ```
 
 ---
 
-## 5. Create stack.env
+## 5. Add system config to system.env
 
-`stack.env` holds system-managed infrastructure config. The admin regenerates this on every apply, but it must exist before the first start.
+Append infrastructure config to `system.env`. The admin regenerates this on every apply, but it must exist before the first start.
 
 ```bash
-cat > ~/.local/share/openpalm/stack.env << EOF
-# OpenPalm Stack Configuration — system-managed
-# Overwritten by admin on each apply.
+cat >> ~/.openpalm/vault/system.env << EOF
 
-# ── XDG Paths ──────────────────────────────────────────────────────
-OP_CONFIG_HOME=$HOME/.config/openpalm
-OP_DATA_HOME=$HOME/.local/share/openpalm
-OP_STATE_HOME=$HOME/.local/state/openpalm
+# ── Paths ──────────────────────────────────────────────────────
+OP_HOME=$HOME/.openpalm
 OP_WORK_DIR=$HOME/openpalm
 
 # ── User/Group ──────────────────────────────────────────────────────
@@ -183,12 +166,6 @@ docker context inspect --format '{{.Endpoints.docker.Host}}'
 
 Set `OP_DOCKER_SOCK` to the path after `unix://`.
 
-Stage it to STATE_HOME:
-
-```bash
-cp ~/.local/share/openpalm/stack.env ~/.local/state/openpalm/artifacts/stack.env
-```
-
 ---
 
 ## 6. Seed Memory config (optional)
@@ -196,7 +173,7 @@ cp ~/.local/share/openpalm/stack.env ~/.local/state/openpalm/artifacts/stack.env
 Memory needs a default config file if you want memory features:
 
 ```bash
-cat > ~/.local/share/openpalm/memory/default_config.json << 'EOF'
+cat > ~/.openpalm/data/memory/default_config.json << 'EOF'
 {
   "mem0": {
     "llm": {
@@ -239,9 +216,7 @@ Ensure your user owns everything:
 
 ```bash
 chown -R "$(id -u):$(id -g)" \
-  ~/.config/openpalm \
-  ~/.local/share/openpalm \
-  ~/.local/state/openpalm \
+  ~/.openpalm \
   ~/openpalm
 ```
 
@@ -251,9 +226,9 @@ chown -R "$(id -u):$(id -g)" \
 
 ```bash
 docker compose \
-  -f ~/.local/state/openpalm/artifacts/docker-compose.yml \
-  --env-file ~/.local/state/openpalm/artifacts/stack.env \
-  --env-file ~/.local/state/openpalm/artifacts/secrets.env \
+  -f ~/.openpalm/data/docker-compose.yml \
+  --env-file ~/.openpalm/vault/system.env \
+  --env-file ~/.openpalm/vault/user.env \
   --project-name openpalm \
   up -d
 ```
@@ -280,36 +255,34 @@ The admin UI is available at `http://localhost:8080/admin/` (through Caddy) or d
 
 When the admin container starts, it automatically runs an **apply** that:
 
-1. Reads `CONFIG_HOME/channels/` and `CONFIG_HOME/automations/`
-2. Stages compose overlays, Caddy routes, and automation files into `STATE_HOME`
-3. Merges infrastructure config into `stack.env`
-4. Runs `docker compose up -d` against staged files
-5. Reloads Caddy with staged routes
+1. Reads `config/components/` and `config/automations/`
+2. Assembles compose command with all component overlays
+3. Writes Caddy route snippets from component `.caddy` files
+4. Runs `docker compose up -d`
+5. Reloads Caddy with routes
 
-This startup apply does not overwrite existing user files in `CONFIG_HOME`; it
-only seeds missing defaults and restages runtime artifacts.
+This startup apply does not overwrite existing user files in `config/`; it
+only seeds missing defaults.
 
-After the first apply, the admin manages `stack.env` and `STATE_HOME` — you only need to edit files in `CONFIG_HOME` and restart the admin (or call the apply API) to pick up changes. See [directory-structure.md](technical/directory-structure.md) for the full staging flow.
+After the first apply, the admin manages `vault/system.env` -- you only need to edit files in `config/` and `vault/user.env` and restart the admin (or call the apply API) to pick up changes. See [directory-structure.md](technical/directory-structure.md) for details.
 
 ---
 
-## Adding a channel manually
+## Adding a component manually
 
-Channels are compose overlays placed in CONFIG_HOME. Example for the built-in chat channel:
+Components are directories placed in `config/components/`. Example for the built-in chat channel:
 
-1. Copy the channel definition into CONFIG_HOME:
+1. Copy the component directory from the registry:
    ```bash
-   cp registry/channels/chat/chat.yml ~/.config/openpalm/channels/chat.yml
-   # If it has a Caddy route:
-   cp registry/channels/chat/chat.caddy ~/.config/openpalm/channels/chat.caddy
+   cp -r registry/components/chat ~/.openpalm/config/components/channel-chat
    ```
 
-2. Restart the admin (or call `POST /admin/apply`) to stage and activate:
+2. Restart the admin (or call `POST /admin/apply`) to activate:
    ```bash
    docker compose --project-name openpalm restart admin
    ```
 
-The admin auto-generates HMAC secrets for new channels and writes them to `stack.env`. See [managing-openpalm.md](managing-openpalm.md) for details.
+The admin auto-generates HMAC secrets for new components and writes them to `vault/system.env`. See [managing-openpalm.md](managing-openpalm.md) for details.
 
 ---
 
@@ -318,40 +291,35 @@ The admin auto-generates HMAC secrets for new channels and writes them to `stack
 After completing all steps, your host should have:
 
 ```
-~/.config/openpalm/                  # CONFIG_HOME
-├── secrets.env                      # ADMIN_TOKEN + LLM keys
-├── channels/                        # Channel overlays (.yml + .caddy)
-├── automations/                     # User automation definitions
-└── assistant/                       # OpenCode extensions
-    ├── opencode.json
-    ├── tools/
-    ├── plugins/
-    └── skills/
+~/.openpalm/                              # OP_HOME
+├── vault/
+│   ├── user.env                          # LLM provider keys
+│   └── system.env                        # Admin token, HMAC secrets, system config
+│
+├── config/
+│   ├── components/                       # Installed components (.yml + .caddy + .env)
+│   ├── automations/                      # User automation definitions
+│   └── assistant/                        # OpenCode extensions
+│       ├── opencode.json
+│       ├── tools/
+│       ├── plugins/
+│       └── skills/
+│
+├── data/
+│   ├── docker-compose.yml               # Core compose definition
+│   ├── memory/
+│   │   └── default_config.json
+│   ├── assistant/
+│   ├── guardian/
+│   ├── catalog/                          # Installed component catalog
+│   └── caddy/
+│       ├── Caddyfile                     # Core Caddy config
+│       ├── data/
+│       └── config/
+│
+└── logs/                                 # Audit and debug logs
 
-~/.local/share/openpalm/             # DATA_HOME
-├── stack.env                        # System config (source of truth)
-├── docker-compose.yml               # Core compose (source of truth)
-├── memory/
-│   └── default_config.json
-├── assistant/
-├── guardian/
-├── automations/
-└── caddy/
-    ├── Caddyfile                    # Core Caddy config (source of truth)
-    ├── data/
-    └── config/
-
-~/.local/state/openpalm/             # STATE_HOME
-├── artifacts/
-│   ├── docker-compose.yml           # Staged compose
-│   ├── stack.env                    # Staged stack config
-│   ├── secrets.env                  # Staged secrets
-│   ├── Caddyfile                    # Staged Caddy config
-│   └── channels/                    # Staged channel routes
-├── automations/                     # Staged automation files
-└── audit/                           # Audit logs
-
-~/openpalm/                          # WORK_DIR (assistant workspace)
+~/openpalm/                               # WORK_DIR (assistant workspace)
 ```
 
 ---

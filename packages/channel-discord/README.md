@@ -101,6 +101,6 @@ This channel supports:
 ]
 ```
 
-## Registry overlay
+## Registry component
 
-`registry/channels/discord.yml`
+`registry/components/discord/compose.yml`

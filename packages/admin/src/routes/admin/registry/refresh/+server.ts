@@ -16,8 +16,8 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
-  stageArtifacts,
-  persistArtifacts
+  resolveArtifacts,
+  persistConfiguration
 } from "$lib/server/control-plane.js";
 import { pullRegistry } from "$lib/server/registry-sync.js";
 
@@ -39,8 +39,8 @@ export const POST: RequestHandler = async (event) => {
   }
 
   // Re-stage artifacts (scheduler sidecar auto-reloads via file watching)
-  state.artifacts = stageArtifacts(state);
-  persistArtifacts(state);
+  state.artifacts = resolveArtifacts(state);
+  persistConfiguration(state);
 
   appendAudit(state, actor, "registry.refresh", { updated: pullResult.updated }, true, requestId, callerType);
   return jsonResponse(200, { ok: true, updated: pullResult.updated }, requestId);

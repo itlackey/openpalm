@@ -118,7 +118,7 @@ curl -X POST http://localhost:8100/admin/channels/install \
   -d '{"channel": "slack"}'
 ```
 
-Then add the required environment variables to `~/.config/openpalm/secrets.env`:
+Then add the required environment variables to `~/.openpalm/vault/user.env`:
 
 ```env
 SLACK_BOT_TOKEN=xoxb-your-bot-token-here
@@ -174,7 +174,7 @@ curl -X POST http://localhost:8100/admin/install \
 ## 9. Access Control (Optional)
 
 You can restrict which channels or users can interact with the bot by setting
-environment variables in `secrets.env`. All lists are comma-separated Slack IDs.
+environment variables in `vault/user.env`. All lists are comma-separated Slack IDs.
 
 | Variable | Purpose |
 |----------|---------|

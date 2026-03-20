@@ -70,6 +70,6 @@ See [docs/slack-setup.md](../../docs/slack-setup.md) for the full step-by-step g
 | `/clear` | Clears the current conversation session and drops queued follow-ups |
 | `/help` | Lists available commands |
 
-## Registry overlay
+## Registry component
 
-`registry/channels/slack.yml`
+`registry/components/slack/compose.yml`

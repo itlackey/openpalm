@@ -55,7 +55,7 @@ curl -X POST http://localhost:8100/admin/channels/install \
   -d '{"channel": "discord"}'
 ```
 
-Then add the required environment variables to `~/.config/openpalm/secrets.env`:
+Then add the required environment variables to `~/.openpalm/vault/user.env`:
 
 ```env
 DISCORD_BOT_TOKEN=your-bot-token-here
@@ -88,7 +88,7 @@ This enables slash commands to go through Discord's interactions system with
 Ed25519 signature verification for security.
 
 > For local development without a public URL, set `DISCORD_ALLOW_UNSIGNED_INTERACTIONS=true`
-> in your secrets.env. Do not use this setting in production.
+> in your `vault/user.env`. Do not use this setting in production.
 
 ## 5. Invite the Bot to Your Server
 
@@ -166,7 +166,7 @@ and Read Message History (1024). Adjust if you need additional permissions.
 ## 7. Access Control (Optional)
 
 You can restrict which guilds, roles, or users can interact with the bot by
-setting environment variables in `secrets.env`. All lists are comma-separated
+setting environment variables in `vault/user.env`. All lists are comma-separated
 Discord IDs.
 
 | Variable                 | Purpose                                    |
@@ -190,7 +190,7 @@ curl -X POST http://localhost:8100/admin/install \
 ## 8. Custom Slash Commands (Optional)
 
 You can add custom slash commands by setting `DISCORD_CUSTOM_COMMANDS` to a JSON
-array in your secrets.env. Each command can include a prompt template that maps
+array in your `vault/user.env`. Each command can include a prompt template that maps
 command options to an assistant prompt.
 
 ```env

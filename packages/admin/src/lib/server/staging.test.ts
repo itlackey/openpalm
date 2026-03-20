@@ -60,7 +60,6 @@ function makeState(tempDir?: string): ControlPlaneState {
     artifacts: { compose: "", caddyfile: "" },
     artifactMeta: [],
     audit: [],
-    channelSecrets: {},
   };
 }
 

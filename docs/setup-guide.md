@@ -35,13 +35,13 @@ curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setu
 ### What happens when you run the installer
 
 1. Checks your system for Docker, Docker Compose, curl, and openssl
-2. Creates the XDG directory tree and downloads core assets (compose file, Caddyfile)
+2. Creates the `~/.openpalm/` directory tree and downloads core assets (compose file, Caddyfile)
 3. Generates an admin token (or lets you set your own) and seeds missing default config files
 4. Pulls and starts the admin service, then opens the setup wizard in your browser
 5. The wizard walks you through connecting your AI provider and choosing channels (see [Setup Walkthrough](setup-walkthrough.md) for a detailed screen-by-screen guide)
 6. When you finish the wizard, the full stack starts automatically
 
-No code to clone. You can run fully from the UI if you want, and edit files directly any time. Existing user config files in `CONFIG_HOME` are never overwritten on subsequent runs; only missing defaults are seeded.
+No code to clone. You can run fully from the UI if you want, and edit files directly any time. Existing user config files are never overwritten on subsequent runs; only missing defaults are seeded.
 
 ### Installer options
 
@@ -54,13 +54,10 @@ Run `scripts/setup.ps1 --help` (Windows) or `scripts/setup.sh --help` (Mac/Linux
 | `--no-start` | Set up files but don't start Docker services |
 | `--no-open` | Don't open the admin UI in a browser after install |
 
-Custom paths via environment variables:
+Custom path via environment variable:
 
 ```bash
-OP_CONFIG_HOME=/opt/openpalm/config \
-OP_DATA_HOME=/opt/openpalm/data \
-OP_STATE_HOME=/opt/openpalm/state \
-  bash setup.sh
+OP_HOME=/opt/openpalm bash setup.sh
 ```
 
 ---
@@ -77,7 +74,7 @@ irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 |
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
 
-The installer re-downloads core assets and restarts the admin service. Your config, channels, and data are preserved — automatic lifecycle operations never overwrite existing user files in `CONFIG_HOME` (they may seed missing defaults).
+The installer re-downloads core assets and restarts the admin service. Your config, components, and data are preserved -- automatic lifecycle operations never overwrite existing user files (they may seed missing defaults).
 
 To pull the latest container images without re-running setup:
 
@@ -115,42 +112,42 @@ All ports are localhost-bound by default. Nothing is publicly exposed unless you
 
 ### Your files
 
-`CONFIG_HOME` (default `~/.config/openpalm`) is your persistent source of truth.
+`~/.openpalm/` (`OP_HOME`) is your persistent home directory.
 Allowed writers are: direct edits, explicit admin UI/API config actions, and
 authenticated assistant API actions on user request. See
 [core-principles.md](technical/core-principles.md) for the full filesystem contract.
-All of those paths write the same files:
+Key subdirectories:
 
 | Path | Purpose |
 |---|---|
-| `secrets.env` | Admin token and LLM provider API keys |
-| `channels/` | Channel compose overlays (`.yml`) and Caddy routes (`.caddy`) |
-| `automations/` | Scheduled automations — see [Managing OpenPalm](managing-openpalm.md#automations) |
-| `assistant/` | OpenCode extensions — tools, plugins, skills, and config |
+| `vault/user.env` | LLM provider API keys |
+| `vault/system.env` | Admin token, HMAC secrets, system config |
+| `config/components/` | Installed components (channels, services) |
+| `config/automations/` | Scheduled automations -- see [Managing OpenPalm](managing-openpalm.md#automations) |
+| `config/assistant/` | OpenCode extensions -- tools, plugins, skills, and config |
+| `data/` | Service-managed data (memory, caddy, assistant, etc.) |
+| `logs/` | Audit and debug logs |
 
-You normally do not need to touch the other two directories directly. `DATA_HOME` is managed by the admin and services (stack.env, caddy, memory, etc.); `STATE_HOME` is the assembled runtime assembled by the admin. See [directory-structure.md](technical/directory-structure.md) for the complete layout.
+You normally do not need to touch `data/` directly. See [directory-structure.md](technical/directory-structure.md) for the complete layout.
 
-### XDG path defaults
+### Path default
 
 | Variable | Default |
 |---|---|
-| `OP_CONFIG_HOME` | `~/.config/openpalm` |
-| `OP_DATA_HOME` | `~/.local/share/openpalm` |
-| `OP_STATE_HOME` | `~/.local/state/openpalm` |
-| `OP_WORK_DIR` | `~/openpalm` |
+| `OP_HOME` | `~/.openpalm` |
 
 ---
 
 ## Common Tasks
 
 **Change an LLM API key:**
-1. Edit `~/.config/openpalm/secrets.env`
+1. Edit `~/.openpalm/vault/user.env`
 2. Restart admin: `docker compose restart admin`
 
 Or use the Connections page in the admin UI, or ask the assistant to perform the same authenticated config update through the admin API.
 
-**Add a channel:**
-Install from the registry via the admin UI, or manually drop a `.yml` (and optional `.caddy`) into `~/.config/openpalm/channels/` and restart admin.
+**Add a component (channel/service):**
+Install from the registry via the admin UI, or manually add a component directory to `~/.openpalm/config/components/` and restart admin.
 
 **Check container status:**
 ```bash
@@ -160,14 +157,12 @@ curl http://localhost:8100/admin/containers/list \
 
 **View audit logs:**
 ```bash
-tail -f ~/.local/state/openpalm/audit/admin-audit.jsonl
+tail -f ~/.openpalm/logs/admin-audit.jsonl
 ```
 
 **Backup:**
 ```bash
-tar czf openpalm-backup.tar.gz \
-  ~/.config/openpalm \
-  ~/.local/share/openpalm
+tar czf openpalm-backup.tar.gz ~/.openpalm
 ```
 
 See [managing-openpalm.md](managing-openpalm.md) for the full operations guide.
@@ -218,7 +213,7 @@ docker compose logs <service-name>
 ```
 
 Common causes:
-- Missing API key in `secrets.env` (assistant needs at least one LLM provider key)
+- Missing API key in `vault/user.env` (assistant needs at least one LLM provider key)
 - Port conflict with another service on the host
 - Insufficient disk space for container data
 
@@ -231,7 +226,7 @@ To start over completely:
 docker compose down -v
 
 # Remove all OpenPalm data (DESTRUCTIVE — removes your config, data, and state)
-rm -rf ~/.config/openpalm ~/.local/share/openpalm ~/.local/state/openpalm
+rm -rf ~/.openpalm
 
 # Re-run the installer
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
@@ -242,7 +237,7 @@ curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setu
 docker compose down -v
 
 # Remove all OpenPalm data (DESTRUCTIVE — removes your config, data, and state)
-Remove-Item -Recurse -Force "$env:USERPROFILE\.config\openpalm", "$env:USERPROFILE\.local\share\openpalm", "$env:USERPROFILE\.local\state\openpalm"
+Remove-Item -Recurse -Force "$env:USERPROFILE\.openpalm"
 
 # Re-run the installer
 irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex

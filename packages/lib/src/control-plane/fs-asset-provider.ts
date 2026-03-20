@@ -29,10 +29,6 @@ export class FilesystemAssetProvider implements CoreAssetProvider {
     return this.read("data/caddy/Caddyfile");
   }
 
-  ollamaCompose(): string {
-    return this.read("config/components/ollama.yml");
-  }
-
   adminCompose(): string {
     return this.read("config/components/admin.yml");
   }

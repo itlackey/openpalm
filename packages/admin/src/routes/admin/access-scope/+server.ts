@@ -18,8 +18,8 @@ import {
   detectAccessScope,
   readCoreCaddyfile,
   setCoreCaddyAccessScope,
-  stageArtifacts,
-  persistArtifacts,
+  resolveArtifacts,
+  persistConfiguration,
   buildComposeFileList,
   buildEnvFiles
 } from "$lib/server/control-plane.js";
@@ -66,8 +66,8 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(500, "invalid_state", updated.error, {}, requestId);
   }
 
-  state.artifacts = stageArtifacts(state);
-  persistArtifacts(state);
+  state.artifacts = resolveArtifacts(state);
+  persistConfiguration(state);
   // Scheduler sidecar auto-reloads via file watching
 
   // Reload Caddy to apply new access scope

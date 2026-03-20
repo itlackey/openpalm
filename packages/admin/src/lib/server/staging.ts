@@ -29,8 +29,6 @@ export {
   setCoreCaddyAccessScope,
   ensureCoreCompose,
   readCoreCompose,
-  ensureOllamaCompose,
-  readOllamaCompose,
   ensureOpenCodeSystemConfig,
   ensureMemoryDir,
   ensureCoreAutomations,

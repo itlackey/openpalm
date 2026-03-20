@@ -9,8 +9,6 @@ import {
   setCoreCaddyAccessScope as _setCoreCaddyAccessScope,
   ensureCoreCompose as _ensureCoreCompose,
   readCoreCompose as _readCoreCompose,
-  ensureOllamaCompose as _ensureOllamaCompose,
-  readOllamaCompose as _readOllamaCompose,
   ensureOpenCodeSystemConfig as _ensureOpenCodeSystemConfig,
   ensureCoreAutomations as _ensureCoreAutomations,
   ensureSecretsSchema as _ensureSecretsSchema,
@@ -50,14 +48,6 @@ export function ensureCoreCompose(): string {
 
 export function readCoreCompose(): string {
   return _readCoreCompose(viteAssets);
-}
-
-export function ensureOllamaCompose(): string {
-  return _ensureOllamaCompose(viteAssets);
-}
-
-export function readOllamaCompose(): string {
-  return _readOllamaCompose(viteAssets);
 }
 
 export function ensureOpenCodeSystemConfig(): void {

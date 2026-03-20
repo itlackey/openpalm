@@ -19,8 +19,6 @@ import {
   setCoreCaddyAccessScope,
   ensureCoreCompose,
   readCoreCompose,
-  ensureOllamaCompose,
-  readOllamaCompose,
   ensureOpenCodeSystemConfig,
   refreshCoreAssets
 } from "./core-assets.js";
@@ -201,60 +199,6 @@ describe("ensureCoreCompose / readCoreCompose", () => {
   });
 });
 
-// ── Ollama Compose Overlay (config/components/ source of truth) ──────────
-
-describe("ensureOllamaCompose / readOllamaCompose", () => {
-  const origEnv: Record<string, string | undefined> = {};
-
-  beforeEach(() => {
-    origEnv.OP_HOME = process.env.OP_HOME;
-    process.env.OP_HOME = trackDir(makeTempDir());
-  });
-
-  afterEach(() => {
-    process.env.OP_HOME = origEnv.OP_HOME;
-  });
-
-  test("ensureOllamaCompose creates ollama.yml if missing", () => {
-    const path = ensureOllamaCompose();
-    expect(existsSync(path)).toBe(true);
-    expect(path).toContain("ollama.yml");
-  });
-
-  test("ensureOllamaCompose is idempotent", () => {
-    const path1 = ensureOllamaCompose();
-    const content1 = readFileSync(path1, "utf-8");
-    const path2 = ensureOllamaCompose();
-    const content2 = readFileSync(path2, "utf-8");
-    expect(content1).toBe(content2);
-  });
-
-  test("ensureOllamaCompose overwrites stale file and creates backup", () => {
-    const configDir = join(process.env.OP_HOME!, "config");
-    const componentsDir = join(configDir, "components");
-    mkdirSync(componentsDir, { recursive: true });
-    const staleContent = "# stale ollama compose\nservices: {}";
-    writeFileSync(join(componentsDir, "ollama.yml"), staleContent);
-
-    const path = ensureOllamaCompose();
-    const content = readFileSync(path, "utf-8");
-    expect(content).not.toBe(staleContent);
-
-    // Verify backup was created
-    const backupDir = join(componentsDir, "backups");
-    expect(existsSync(backupDir)).toBe(true);
-    const backups = readdirSync(backupDir).filter(f => f.startsWith("ollama."));
-    expect(backups.length).toBe(1);
-    expect(readFileSync(join(backupDir, backups[0]), "utf-8")).toBe(staleContent);
-  });
-
-  test("readOllamaCompose returns file content", () => {
-    const content = readOllamaCompose();
-    expect(content).toBeTruthy();
-    expect(typeof content).toBe("string");
-  });
-});
-
 // ── ensureOpenCodeSystemConfig ────────────────────────────────────────────
 
 describe("ensureOpenCodeSystemConfig", () => {
@@ -365,9 +309,6 @@ describe("refreshCoreAssets", () => {
       if (url.includes("AGENTS.md")) {
         return new Response("# OpenCode Agents\n", { status: 200 });
       }
-      if (url.includes("ollama.yml")) {
-        return new Response("services:\n  ollama:\n    image: ollama/ollama\n", { status: 200 });
-      }
       if (url.includes("admin.yml")) {
         return new Response("services:\n  caddy:\n    image: caddy\n", { status: 200 });
       }
@@ -385,7 +326,6 @@ describe("refreshCoreAssets", () => {
     expect(result.updated).toContain("data/caddy/Caddyfile");
     expect(result.updated).toContain("data/assistant/opencode.jsonc");
     expect(result.updated).toContain("data/assistant/AGENTS.md");
-    expect(result.updated).toContain("config/components/ollama.yml");
     expect(result.updated).toContain("vault/user.env.schema");
     expect(result.updated).toContain("vault/system.env.schema");
     expect(result.backupDir).toBeNull(); // no existing files to back up
@@ -394,7 +334,6 @@ describe("refreshCoreAssets", () => {
     expect(existsSync(join(homeDir, "data/caddy/Caddyfile"))).toBe(true);
     expect(existsSync(join(homeDir, "data/assistant/opencode.jsonc"))).toBe(true);
     expect(existsSync(join(homeDir, "data/assistant/AGENTS.md"))).toBe(true);
-    expect(existsSync(join(homeDir, "config/components/ollama.yml"))).toBe(true);
     expect(existsSync(join(homeDir, "vault/user.env.schema"))).toBe(true);
     expect(existsSync(join(homeDir, "vault/system.env.schema"))).toBe(true);
   });
@@ -410,7 +349,6 @@ describe("refreshCoreAssets", () => {
     writeFileSync(join(homeDir, "data/assistant/AGENTS.md"), "old-agents-content");
     mkdirSync(join(homeDir, "data/admin"), { recursive: true });
     writeFileSync(join(homeDir, "data/admin/opencode.jsonc"), "old-admin-opencode-content");
-    writeFileSync(join(homeDir, "config/components/ollama.yml"), "old-ollama-content");
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : (input as Request).url;
@@ -429,9 +367,6 @@ describe("refreshCoreAssets", () => {
       if (url.includes("AGENTS.md")) {
         return new Response("new-agents-content", { status: 200 });
       }
-      if (url.includes("ollama.yml")) {
-        return new Response("new-ollama-content", { status: 200 });
-      }
       if (url.includes("admin.yml")) {
         return new Response("new-admin-content", { status: 200 });
       }
@@ -445,7 +380,7 @@ describe("refreshCoreAssets", () => {
     });
 
     const result = await refreshCoreAssets();
-    expect(result.updated).toHaveLength(9);
+    expect(result.updated).toHaveLength(8);
     expect(result.backupDir).not.toBeNull();
 
     // Verify backup contains old content
@@ -457,15 +392,12 @@ describe("refreshCoreAssets", () => {
     expect(backupOpencode).toBe("old-opencode-content");
     const backupAgents = readFileSync(join(result.backupDir!, "data/assistant/AGENTS.md"), "utf-8");
     expect(backupAgents).toBe("old-agents-content");
-    const backupOllama = readFileSync(join(result.backupDir!, "config/components/ollama.yml"), "utf-8");
-    expect(backupOllama).toBe("old-ollama-content");
 
     // Verify new content written
     expect(readFileSync(join(homeDir, "config/components/core.yml"), "utf-8")).toBe("new-compose-content");
     expect(readFileSync(join(homeDir, "data/caddy/Caddyfile"), "utf-8")).toBe("new-caddy-content");
     expect(readFileSync(join(homeDir, "data/assistant/opencode.jsonc"), "utf-8")).toBe("new-opencode-content");
     expect(readFileSync(join(homeDir, "data/assistant/AGENTS.md"), "utf-8")).toBe("new-agents-content");
-    expect(readFileSync(join(homeDir, "config/components/ollama.yml"), "utf-8")).toBe("new-ollama-content");
   });
 
   test("skips assets with identical content", async () => {
@@ -473,7 +405,6 @@ describe("refreshCoreAssets", () => {
     const content = "same-content";
     mkdirSync(join(homeDir, "config/components"), { recursive: true });
     writeFileSync(join(homeDir, "config/components/core.yml"), content);
-    writeFileSync(join(homeDir, "config/components/ollama.yml"), content);
     writeFileSync(join(homeDir, "config/components/admin.yml"), content);
     mkdirSync(join(homeDir, "data/caddy"), { recursive: true });
     writeFileSync(join(homeDir, "data/caddy/Caddyfile"), content);

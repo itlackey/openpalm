@@ -1,8 +1,11 @@
 /**
- * POST /admin/registry/install — Install a registry item (channel or automation).
+ * POST /admin/registry/install — Install a registry item (automation only).
+ *
+ * Channel/component installation is handled via POST /api/instances.
+ * This endpoint only handles automations from the registry.
  *
  * Tries the cloned registry repo first, falls back to bundled assets.
- * Copies content into CONFIG_HOME, stages compose artifacts, and starts Docker.
+ * Copies content into CONFIG_HOME, stages compose artifacts.
  */
 import type { RequestHandler } from "./$types";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
@@ -18,21 +21,13 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
-  persistArtifacts,
-  stageArtifacts,
-  buildComposeFileList,
-  buildEnvFiles,
-  buildManagedServices,
-  randomHex,
-  REGISTRY_CHANNEL_YML,
-  REGISTRY_CHANNEL_CADDY,
+  persistConfiguration,
+  resolveArtifacts,
   REGISTRY_AUTOMATION_YML
 } from "$lib/server/control-plane.js";
 import {
-  getRegistryChannel,
   getRegistryAutomation
 } from "$lib/server/registry-sync.js";
-import { composeUp, checkDocker } from "$lib/server/docker.js";
 
 
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -55,61 +50,13 @@ export const POST: RequestHandler = async (event) => {
   if (!name || typeof name !== "string" || !VALID_NAME_RE.test(name)) {
     return errorResponse(400, "invalid_input", "name is required and must be valid", {}, requestId);
   }
-  if (type !== "channel" && type !== "automation") {
-    return errorResponse(400, "invalid_input", "type must be 'channel' or 'automation'", {}, requestId);
-  }
 
   if (type === "channel") {
-    // Try remote registry first, then bundled
-    const remote = getRegistryChannel(name);
-    const yml = remote?.yml ?? REGISTRY_CHANNEL_YML[name] ?? null;
-    const caddy = remote?.caddy ?? REGISTRY_CHANNEL_CADDY[name] ?? null;
+    return errorResponse(400, "invalid_input", "Channel installation is now handled via POST /api/instances. Use the component system instead.", {}, requestId);
+  }
 
-    if (!yml) {
-      appendAudit(state, actor, "registry.install", { name, type, error: "not found" }, false, requestId, callerType);
-      return errorResponse(400, "invalid_input", `Channel "${name}" not found in registry`, {}, requestId);
-    }
-
-    const channelsDir = `${state.configDir}/channels`;
-    mkdirSync(channelsDir, { recursive: true });
-    const ymlPath = `${channelsDir}/${name}.yml`;
-
-    if (existsSync(ymlPath)) {
-      return errorResponse(400, "invalid_input", `Channel "${name}" is already installed`, {}, requestId);
-    }
-
-    writeFileSync(ymlPath, yml);
-    if (caddy) {
-      writeFileSync(`${channelsDir}/${name}.caddy`, caddy);
-    }
-
-    if (!state.channelSecrets[name]) {
-      state.channelSecrets[name] = randomHex(16);
-    }
-
-    state.services[`channel-${name}`] = "running";
-    state.artifacts = stageArtifacts(state);
-    persistArtifacts(state);
-    // Scheduler sidecar auto-reloads via file watching
-
-    const dockerCheck = await checkDocker();
-    let dockerResult = null;
-    if (dockerCheck.ok) {
-      dockerResult = await composeUp(state.configDir, {
-        files: buildComposeFileList(state),
-        envFiles: buildEnvFiles(state),
-        services: buildManagedServices(state)
-      });
-    }
-
-    appendAudit(state, actor, "registry.install", { name, type }, true, requestId, callerType);
-    return jsonResponse(200, {
-      ok: true,
-      name,
-      type,
-      dockerAvailable: dockerCheck.ok,
-      composeResult: dockerResult ? { ok: dockerResult.ok, stderr: dockerResult.stderr } : null
-    }, requestId);
+  if (type !== "automation") {
+    return errorResponse(400, "invalid_input", "type must be 'automation'", {}, requestId);
   }
 
   // type === "automation"
@@ -131,8 +78,8 @@ export const POST: RequestHandler = async (event) => {
 
   writeFileSync(ymlPath, content);
 
-  state.artifacts = stageArtifacts(state);
-  persistArtifacts(state);
+  state.artifacts = resolveArtifacts(state);
+  persistConfiguration(state);
   // Scheduler sidecar auto-reloads via file watching
 
   appendAudit(state, actor, "registry.install", { name, type }, true, requestId, callerType);

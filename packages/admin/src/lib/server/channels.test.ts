@@ -1,11 +1,10 @@
 /**
- * Tests for channels.ts — channel validation, discovery, install/uninstall.
+ * Tests for channels.ts — channel validation and discovery.
  */
 import { describe, test, expect, beforeEach } from "vitest";
 import {
   mkdirSync,
   writeFileSync,
-  existsSync
 } from "node:fs";
 import { join } from "node:path";
 
@@ -13,12 +12,9 @@ import {
   discoverChannels,
   isAllowedService,
   isValidChannel,
-  installChannelFromRegistry,
-  uninstallChannel
 } from "./channels.js";
 import { CORE_SERVICES } from "./types.js";
-import { REGISTRY_CHANNEL_NAMES } from "./registry.js";
-import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
+import { makeTempDir, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
 
@@ -217,92 +213,3 @@ describe("isValidChannel", () => {
   });
 });
 
-// ── Channel Install / Uninstall ─────────────────────────────────────────
-
-describe("installChannelFromRegistry", () => {
-  let configDir: string;
-
-  beforeEach(() => {
-    configDir = trackDir(makeTempDir());
-  });
-
-  test("rejects invalid channel name", () => {
-    const result = installChannelFromRegistry("INVALID", configDir);
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toContain("Invalid channel name");
-  });
-
-  test("rejects channel not in registry", () => {
-    const result = installChannelFromRegistry("nonexistent-channel", configDir);
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toContain("not found in registry");
-  });
-
-  test("rejects already installed channel", () => {
-    // Only test if there are registry channels available
-    if (REGISTRY_CHANNEL_NAMES.length === 0) return;
-    const name = REGISTRY_CHANNEL_NAMES[0];
-    const componentsDir = join(configDir, "components");
-    mkdirSync(componentsDir, { recursive: true });
-    writeFileSync(join(componentsDir, `channel-${name}.yml`), "existing");
-
-    const result = installChannelFromRegistry(name, configDir);
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toContain("already installed");
-  });
-
-  test("installs registry channel successfully", () => {
-    if (REGISTRY_CHANNEL_NAMES.length === 0) return;
-    const name = REGISTRY_CHANNEL_NAMES[0];
-
-    const result = installChannelFromRegistry(name, configDir);
-    expect(result.ok).toBe(true);
-    expect(existsSync(join(configDir, "components", `channel-${name}.yml`))).toBe(true);
-  });
-});
-
-describe("uninstallChannel", () => {
-  let configDir: string;
-
-  beforeEach(() => {
-    configDir = trackDir(makeTempDir());
-  });
-
-  test("rejects invalid channel name", () => {
-    const result = uninstallChannel("INVALID", configDir);
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toContain("Invalid channel name");
-  });
-
-  test("rejects when channel is not installed", () => {
-    mkdirSync(join(configDir, "components"), { recursive: true });
-    const result = uninstallChannel("chat", configDir);
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toContain("not installed");
-  });
-
-  test("removes .yml file on uninstall", () => {
-    seedChannelComponents(configDir, [
-      { name: "chat", yml: "services: {}" }
-    ]);
-
-    const result = uninstallChannel("chat", configDir);
-    expect(result.ok).toBe(true);
-    expect(existsSync(join(configDir, "components", "channel-chat.yml"))).toBe(false);
-  });
-
-  test("removes both .yml and .caddy files", () => {
-    seedChannelComponents(configDir, [
-      {
-        name: "chat",
-        yml: "services: {}",
-        caddy: "handle_path /chat/* { reverse_proxy channel-chat:8080 }"
-      }
-    ]);
-
-    const result = uninstallChannel("chat", configDir);
-    expect(result.ok).toBe(true);
-    expect(existsSync(join(configDir, "components", "channel-chat.yml"))).toBe(false);
-    expect(existsSync(join(configDir, "components", "channel-chat.caddy"))).toBe(false);
-  });
-});

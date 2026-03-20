@@ -130,7 +130,6 @@ export type ControlPlaneState = {
   };
   artifactMeta: ArtifactMeta[];
   audit: AuditEntry[];
-  channelSecrets: Record<string, string>;
 };
 
 // ── Constants ──────────────────────────────────────────────────────────

@@ -196,7 +196,6 @@ describe("persistArtifacts", () => {
       caddyfile: ":8080 {\n  respond 200\n}"
     };
     // Create required base dirs
-    mkdirSync(join(state.configDir, "channels"), { recursive: true });
     mkdirSync(join(state.configDir, "components"), { recursive: true });
     mkdirSync(join(state.vaultDir), { recursive: true });
     mkdirSync(join(state.dataDir, "caddy"), { recursive: true });
@@ -212,15 +211,12 @@ describe("persistArtifacts", () => {
     expect(readFileSync(caddyPath, "utf-8")).toBe(state.artifacts.caddyfile);
   });
 
-  test("generates channel secrets for discovered channels", () => {
+  test("generates channel secrets for discovered channels in system.env", () => {
     seedConfigChannels(state.configDir, [
       { name: "chat", yml: "services: {}" }
     ]);
 
     persistArtifacts(state);
-
-    expect(state.channelSecrets.chat).toBeDefined();
-    expect(state.channelSecrets.chat.length).toBeGreaterThan(0);
 
     const systemEnvPath = join(state.vaultDir, "system.env");
     const content = readFileSync(systemEnvPath, "utf-8");
@@ -252,7 +248,12 @@ describe("persistArtifacts", () => {
   });
 
   test("preserves existing channel secrets (does not regenerate)", () => {
-    state.channelSecrets.chat = "pre-existing-secret-value";
+    // Pre-seed a channel secret in data/stack.env (where loadPersistedChannelSecrets reads)
+    mkdirSync(state.dataDir, { recursive: true });
+    writeFileSync(
+      join(state.dataDir, "stack.env"),
+      "CHANNEL_CHAT_SECRET=pre-existing-secret-value\n"
+    );
 
     seedConfigChannels(state.configDir, [
       { name: "chat", yml: "services: {}" }
@@ -260,9 +261,7 @@ describe("persistArtifacts", () => {
 
     persistArtifacts(state);
 
-    // The pre-set secret should be preserved, not regenerated
-    expect(state.channelSecrets.chat).toBe("pre-existing-secret-value");
-
+    // The pre-existing secret should be preserved, not regenerated
     const systemEnvPath = join(state.vaultDir, "system.env");
     const content = readFileSync(systemEnvPath, "utf-8");
     expect(content).toContain("CHANNEL_CHAT_SECRET=pre-existing-secret-value");

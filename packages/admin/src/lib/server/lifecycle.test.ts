@@ -167,23 +167,6 @@ describe("createState", () => {
     process.env.ADMIN_TOKEN = origEnv.ADMIN_TOKEN;
   });
 
-  test("loads persisted channel secrets from vault/system.env", () => {
-    const base = trackDir(makeTempDir());
-    process.env.OP_HOME = base;
-    delete process.env.ADMIN_TOKEN;
-
-    const vaultDir = join(base, "vault");
-    mkdirSync(vaultDir, { recursive: true });
-    writeFileSync(
-      join(vaultDir, "system.env"),
-      "# Stack config\nCHANNEL_CHAT_SECRET=abc123\nCHANNEL_DISCORD_SECRET=def456\n"
-    );
-
-    const state = createState();
-    expect(state.channelSecrets.chat).toBe("abc123");
-    expect(state.channelSecrets.discord).toBe("def456");
-  });
-
   test("reads OP_ADMIN_TOKEN from vault/system.env file", () => {
     const base = trackDir(makeTempDir());
     process.env.OP_HOME = base;
@@ -268,7 +251,6 @@ describe("applyInstall", () => {
     }
 
     // Create required dirs for persistConfiguration
-    mkdirSync(join(state.configDir, "channels"), { recursive: true });
     mkdirSync(join(state.configDir, "components"), { recursive: true });
     mkdirSync(join(state.vaultDir), { recursive: true });
     mkdirSync(join(state.dataDir, "caddy"), { recursive: true });
@@ -287,7 +269,6 @@ describe("applyUpdate", () => {
     trackDir(state.homeDir);
     state.services = { admin: "running", guardian: "running", memory: "stopped" };
 
-    mkdirSync(join(state.configDir, "channels"), { recursive: true });
     mkdirSync(join(state.configDir, "components"), { recursive: true });
     mkdirSync(join(state.vaultDir), { recursive: true });
     mkdirSync(join(state.dataDir, "caddy"), { recursive: true });
@@ -305,7 +286,6 @@ describe("applyUninstall", () => {
     trackDir(state.homeDir);
     state.services = { admin: "running", guardian: "running" };
 
-    mkdirSync(join(state.configDir, "channels"), { recursive: true });
     mkdirSync(join(state.configDir, "components"), { recursive: true });
     mkdirSync(join(state.vaultDir), { recursive: true });
     mkdirSync(join(state.dataDir, "caddy"), { recursive: true });

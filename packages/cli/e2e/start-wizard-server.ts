@@ -30,7 +30,6 @@ writeFileSync(`${tmpBase}/vault/user.env`, "# test\n");
 const noopAssetProvider: CoreAssetProvider = {
 	coreCompose: () => "",
 	caddyfile: () => "",
-	ollamaCompose: () => "",
 	agentsMd: () => "",
 	opencodeConfig: () => "",
 	adminOpencodeConfig: () => "",

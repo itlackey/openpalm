@@ -71,7 +71,6 @@ export function createState(
     artifacts: { compose: "", caddyfile: "" },
     artifactMeta: [],
     audit: [],
-    channelSecrets: {},
   };
 
   ensureSecrets(bootstrapState);
@@ -104,10 +103,6 @@ export function createState(
     updateSystemSecretsEnv(bootstrapState, { OP_ADMIN_TOKEN: bootstrapState.adminToken });
   }
 
-  bootstrapState.channelSecrets = {
-    ...loadPersistedChannelSecrets(vaultDir),
-  };
-
   writeSetupTokenFile(bootstrapState);
 
   return bootstrapState;
@@ -129,19 +124,6 @@ export function writeSetupTokenFile(state: ControlPlaneState): void {
 }
 
 // ── Private Loaders ───────────────────────────────────────────────────
-
-/**
- * Load persisted channel HMAC secrets from vault/system.env.
- */
-function loadPersistedChannelSecrets(vaultDir: string): Record<string, string> {
-  const parsed = parseEnvFile(`${vaultDir}/system.env`);
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(parsed)) {
-    const match = key.match(/^CHANNEL_([A-Z0-9_]+)_SECRET$/);
-    if (match?.[1] && value) result[match[1].toLowerCase()] = value;
-  }
-  return result;
-}
 
 // ── Lifecycle Helpers ──────────────────────────────────────────────────
 

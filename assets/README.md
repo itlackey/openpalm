@@ -1,48 +1,42 @@
-# OpenPalm Configuration Files
+# OpenPalm Core Assets
 
-This directory contains the static infrastructure configuration for OpenPalm. These files are consumed in three modes:
+This directory contains the core bootstrap infrastructure for OpenPalm. These files define the base stack -- the services that are always present regardless of which components are installed.
 
-1. **Standalone** — Copy to a directory, create a `.env` or `secrets.env`, run `docker compose up`.
-2. **CLI-managed** — The CLI reads assets from `DATA_HOME` (persisted during install) via `FilesystemAssetProvider`. The CLI stages artifacts, manages compose lifecycle, and serves a setup wizard during install.
-3. **Admin-managed** — The admin service bundles assets at build time via Vite (`ViteAssetProvider`) and channel definitions from `registry/` via `ViteRegistryProvider`. Channels are installed on demand via `POST /admin/channels/install`, which copies files to `CONFIG_HOME/channels/`. Channels can also be added manually by dropping files into the same directory.
-
-Both CLI and admin use the same shared control-plane library (`@openpalm/lib`) for all staging, lifecycle, and configuration logic. The only difference is how assets are loaded: CLI reads from the filesystem, admin reads from Vite-bundled imports.
-
-`CONFIG_HOME` is the user-owned persistent source of truth. Automatic lifecycle
-operations are non-destructive for existing user config files and only seed
-missing defaults. Allowed writers: user direct edits; explicit admin UI/API
-config actions; authenticated, allowlisted assistant calls on user request.
-See [docs/core-principles.md](../docs/technical/core-principles.md) for the full
-filesystem contract.
-
-## File Layout
+## Files
 
 ```
-docker-compose.yml       # Core services (never changes for channel additions)
-Caddyfile                # Core reverse proxy routes (auto-imports channel routes)
-secrets.env              # Environment variable reference with documentation
+docker-compose.yml       # Core services (caddy, admin, assistant, guardian, memory)
+Caddyfile                # Core reverse proxy routes (auto-imports component routes)
 ```
 
-Channel definitions live in the `registry/` directory at the repo root (see `registry/`).
+## How Assets Are Consumed
 
-## How It Works
+Assets are consumed in two modes:
 
-### Docker Compose Overlays
+1. **CLI-managed** -- The CLI reads assets from `DATA_HOME` (persisted during install) via `FilesystemAssetProvider`. The CLI manages compose lifecycle directly on the host.
+2. **Admin-managed** -- The admin service bundles assets at build time via Vite (`ViteAssetProvider`) and component definitions from `registry/` via `ViteRegistryProvider`. Components are installed on demand via the admin API, which copies files to `~/.openpalm/config/components/`.
 
-The core `docker-compose.yml` defines infrastructure services. Channel services live in separate compose files that are merged at runtime using the `-f` flag:
+Both CLI and admin use the same shared control-plane library (`@openpalm/lib`) for all lifecycle and configuration logic. The only difference is how assets are loaded: CLI reads from the filesystem, admin reads from Vite-bundled imports.
+
+## Components
+
+Component definitions (channels, services, integrations) live in the `registry/components/` directory at the repo root. Each component is a self-contained directory with a `compose.yml`, `.env.schema`, and optional `.caddy` file. See `registry/README.md` for details.
+
+## Docker Compose
+
+The core `docker-compose.yml` defines infrastructure services. Component services are added as separate compose files that are merged at runtime using the `-f` flag:
 
 ```bash
 docker compose \
   -f docker-compose.yml \
-  -f registry/chat.yml \
-  -f registry/discord.yml \
-  --env-file secrets.env \
+  -f config/components/channel-chat/compose.yml \
+  -f config/components/channel-discord/compose.yml \
   up -d
 ```
 
-Docker Compose merges all `-f` files into a single configuration. Channel overlays can reference networks and services defined in the core file.
+Docker Compose merges all `-f` files into a single configuration. Component overlays can reference networks and services defined in the core file.
 
-### Caddy Imports
+## Caddy Imports
 
 The core `Caddyfile` includes these lines:
 
@@ -51,14 +45,11 @@ import channels/public/*.caddy
 import channels/lan/*.caddy
 ```
 
-Caddy loads staged `.caddy` files from the `channels/public/` and `channels/lan/` directories at startup. No changes to the core Caddyfile are needed when adding or removing channels.
+Caddy loads `.caddy` files from the `channels/public/` and `channels/lan/` directories at startup. No changes to the core Caddyfile are needed when adding or removing components.
 
-In admin-managed mode, this file is seeded to and managed from
-`DATA_HOME/caddy/Caddyfile`, then staged to `STATE_HOME/artifacts/Caddyfile` during apply.
+**Caddy files are optional.** If a component has no `.caddy` file, it gets no HTTP route through Caddy and is only accessible on the Docker network (host and other containers). This is the default for components that don't need public or LAN access.
 
-**Caddy files are optional.** If a channel has no `.caddy` file, it gets no HTTP route through Caddy and is only accessible on the Docker network (host and other containers). This is the default for channels that don't need public or LAN access.
-
-### Access Control
+## Access Control
 
 The Caddyfile defines a `(lan_only)` snippet:
 
@@ -69,127 +60,36 @@ The Caddyfile defines a `(lan_only)` snippet:
 }
 ```
 
-Channel `.caddy` files are LAN-restricted by default. Add `import public_access` to opt into public routing.
+Component `.caddy` files are LAN-restricted by default. Add `import public_access` to opt into public routing.
 
 For host-only access (localhost only), replace the IP ranges with `127.0.0.1 ::1`.
 
-### Environment Variables
+## Environment Variables
 
-Each service's `environment:` block lists only the `${VAR}` references it needs. Docker Compose substitutes values from:
+Each service's `environment:` block lists only the `${VAR}` references it needs. Docker Compose substitutes values from the env files provided via `--env-file`.
 
-- A `.env` file in the project directory (standalone default)
-- An explicit `--env-file secrets.env` flag
+User secrets (admin token, LLM API keys) live in `~/.openpalm/vault/user.env`. System-managed infrastructure config lives in `~/.openpalm/vault/system.env`. Each container only receives the secrets it explicitly declares.
 
-This means each container only receives the secrets it explicitly declares — the guardian gets channel secrets, the assistant gets API keys, etc.
+## Adding a New Component
 
-## Adding a New Channel
+See `registry/README.md` for the full component model. In brief:
 
-To add a channel called `my-channel` that runs on port 8185:
-
-### 1. Create the compose overlay
-
-Create `registry/my-channel.yml`:
-
-```yaml
-services:
-  channel-my-channel:
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel-my-channel:${OP_IMAGE_TAG:-latest}
-    restart: unless-stopped
-    environment:
-      PORT: "8185"
-      GUARDIAN_URL: http://guardian:8080
-      CHANNEL_MY_CHANNEL_SECRET: ${CHANNEL_MY_CHANNEL_SECRET}
-    networks: [channel_lan]
-    depends_on:
-      guardian:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8185' || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-```
-
-**That's it for basic setup.** The channel will be accessible on the Docker network to other services and from the host. No Caddy file is needed unless you want HTTP routing.
-
-### 2. (Optional) Create a Caddy route
-
-If you want the channel accessible via Caddy HTTP routing (LAN-restricted by default), create `registry/my-channel.caddy`:
-
-```caddy
-handle_path /channels/my-channel/* {
-    import lan_only
-    reverse_proxy channel-my-channel:8185
-}
-```
-
-Add `import public_access` if the channel should be publicly accessible.
-
-### 3. Add the secret to your env file (standalone mode)
-
-Add to `secrets.env` (or `.env`):
-
-```
-CHANNEL_MY_CHANNEL_SECRET=<generated-secret>
-```
-
-Generate with: `openssl rand -hex 16`
-
-In this repository's compose file, guardian reads `CHANNEL_*_SECRET` values via
-`env_file` from `STATE_HOME/artifacts/secrets.env`.
-
-### 4. Start with the new channel
-
-```bash
-docker compose \
-  -f docker-compose.yml \
-  -f registry/chat.yml \
-  -f registry/my-channel.yml \
-  --env-file secrets.env \
-  up -d
-```
-
-### Installing a channel via the admin API
-
-When running admin-managed, install channels from the registry catalog:
-
-```bash
-curl -X POST http://localhost:8100/admin/channels/install \
-  -H "x-admin-token: $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"channel": "my-channel"}'
-```
-
-Or add channels manually without rebuilding the container:
-
-1. Place `my-channel.yml` (and optional `my-channel.caddy`) in `$OP_CONFIG_HOME/channels/`
-2. No manual channel secret is required; admin generates and stages it
-3. Lifecycle apply/install/update discovers the new channel without overwriting existing user files in `CONFIG_HOME`
-4. No code changes or container rebuilds required
-
-The admin scans `CONFIG_HOME/channels/` at runtime to discover all `.yml` files and includes them in the docker compose command.
-
-### Network choice
-
-- `channel_lan` — default network for channels (LAN/public exposure is controlled by route file)
-- `channel_public` — optional network for channels that need that segment
-- No `.caddy` file — Docker-network only (host + other containers, no HTTP route)
-
-The network name in the compose overlay determines which Docker network the channel joins. HTTP routing/access is controlled by the `.caddy` file and staging rules: LAN by default, public only with `import public_access`.
+1. Create a directory under `registry/components/<id>/` with `compose.yml` and `.env.schema`
+2. Optionally add a `.caddy` file for HTTP routing
+3. Install via the admin API or copy to `~/.openpalm/config/components/`
 
 ## Customization Reference
 
 | What you want to change | What to edit |
 |--------------------------|-------------|
-| Add a channel | Drop a `.yml` into `registry/` (optionally add a `.caddy`) |
-| Remove a channel | Delete the `.yml` (and `.caddy` if present) from `registry/` |
-| Add HTTP routing to a channel | Create a `.caddy` file for it |
-| Remove HTTP routing | Delete the `.caddy` file (channel becomes docker-network only) |
-| Change channel access (LAN ↔ public) | Edit the `.caddy` file: add/remove `import public_access` |
+| Add a component | Install from registry or drop files into `config/components/` |
+| Remove a component | Uninstall via admin API or remove from `config/components/` |
+| Add HTTP routing to a component | Create a `.caddy` file for it |
+| Remove HTTP routing | Delete the `.caddy` file (component becomes docker-network only) |
+| Change access (LAN vs public) | Edit the `.caddy` file: add/remove `import public_access` |
 | Change LAN IP ranges | Edit the `(lan_only)` snippet in `Caddyfile` |
 | Restrict to localhost only | Change `(lan_only)` IPs to `127.0.0.1 ::1` |
 | Change ingress port | Set `OP_INGRESS_PORT` in env file (default: 8080) |
 | Change bind address | Set `OP_INGRESS_BIND_ADDRESS` in env file (default: 127.0.0.1) |
 | Use different image registry | Set `OP_IMAGE_NAMESPACE` in env file |
-| Change config location | Set `OP_CONFIG_HOME` in env file (default: ~/.config/openpalm) |
-| Change data storage location | Set `OP_DATA_HOME` in env file (default: ~/.local/share/openpalm) |
+| Change home directory | Set `OP_HOME` in env file (default: ~/.openpalm) |

@@ -57,7 +57,7 @@ export {
 
 // ── Interfaces ──────────────────────────────────────────────────────────
 export type { CoreAssetProvider } from "./control-plane/core-asset-provider.js";
-export type { RegistryProvider } from "./control-plane/registry-provider.js";
+export type { RegistryProvider, RegistryComponentEntry } from "./control-plane/registry-provider.js";
 
 // ── Filesystem Providers ────────────────────────────────────────────────
 export { FilesystemAssetProvider } from "./control-plane/fs-asset-provider.js";
@@ -160,8 +160,6 @@ export {
   discoverChannels,
   isAllowedService,
   isValidChannel,
-  installChannelFromRegistry,
-  uninstallChannel,
   installAutomationFromRegistry,
   uninstallAutomation,
 } from "./control-plane/channels.js";
@@ -249,8 +247,6 @@ export {
   ensureMemoryDir,
   ensureCoreCompose,
   readCoreCompose,
-  ensureOllamaCompose,
-  readOllamaCompose,
   ensureAdminCompose,
   readAdminCompose,
   ensureOpenCodeSystemConfig,
@@ -275,10 +271,6 @@ export {
   writeCaddyRoutes,
   writeSystemEnv,
   writeComponentOverlay,
-  // Legacy aliases
-  stageArtifacts,
-  persistArtifacts,
-  discoverStagedChannelYmls,
 } from "./control-plane/staging.js";
 
 // ── Rollback ─────────────────────────────────────────────────────────────

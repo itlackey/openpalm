@@ -1,8 +1,8 @@
 # Backup & Restore
 
-OpenPalm stores all persistent data on the host filesystem using the XDG
-three-tier directory model. This makes backup and restore straightforward:
-archive the right directories, restore them, and restart the stack.
+OpenPalm stores all persistent data on the host filesystem under a single home
+directory (`~/.openpalm/` by default). This makes backup and restore
+straightforward: archive the directory, restore it, and restart the stack.
 
 ---
 
@@ -10,14 +10,12 @@ archive the right directories, restore them, and restart the stack.
 
 | Directory | Default path | Contains | Back up? |
 |-----------|-------------|----------|----------|
-| **CONFIG_HOME** | `~/.config/openpalm` | secrets.env, channels, automations, assistant extensions | Yes |
-| **DATA_HOME** | `~/.local/share/openpalm` | stack.env, memory (SQLite), assistant config, guardian data, Caddy certs | Yes |
-| **STATE_HOME** | `~/.local/state/openpalm` | Staged artifacts, audit logs | No -- regenerated on next apply |
+| **vault/** | `~/.openpalm/vault` | user.env (LLM keys), system.env (admin token, HMAC secrets) | Yes |
+| **config/** | `~/.openpalm/config` | components, automations, assistant extensions | Yes |
+| **data/** | `~/.openpalm/data` | memory (SQLite), assistant config, guardian data, Caddy certs | Yes |
+| **logs/** | `~/.openpalm/logs` | Audit and debug logs | Optional |
 
-STATE_HOME is assembled from CONFIG_HOME and DATA_HOME by the admin on every
-startup. It does not need to be backed up. Audit logs in
-`STATE_HOME/audit/` are the one exception -- archive those separately if
-you need an audit trail.
+The simplest approach is to back up the entire `~/.openpalm/` directory.
 
 ---
 
@@ -37,20 +35,16 @@ and a hot backup is unlikely to corrupt, but stopping is the only guarantee.
 
 ## Backup
 
-Archive CONFIG_HOME and DATA_HOME into a single tarball:
+Archive the OpenPalm home directory into a tarball:
 
 ```bash
-tar czf openpalm-backup-$(date +%Y%m%d).tar.gz \
-  ~/.config/openpalm \
-  ~/.local/share/openpalm
+tar czf openpalm-backup-$(date +%Y%m%d).tar.gz ~/.openpalm
 ```
 
-For custom XDG paths, substitute the actual directories:
+For a custom home path, substitute the actual directory:
 
 ```bash
-tar czf openpalm-backup-$(date +%Y%m%d).tar.gz \
-  "$OP_CONFIG_HOME" \
-  "$OP_DATA_HOME"
+tar czf openpalm-backup-$(date +%Y%m%d).tar.gz "$OP_HOME"
 ```
 
 Restart the stack after backup:
@@ -86,23 +80,20 @@ After restoring from a backup taken on a different machine or by a different
 user, fix file ownership:
 
 ```bash
-sudo chown -R $(id -u):$(id -g) \
-  ~/.config/openpalm \
-  ~/.local/share/openpalm \
-  ~/.local/state/openpalm
+sudo chown -R $(id -u):$(id -g) ~/.openpalm
 ```
 
 ### 4. Restart the stack
 
-The admin's startup apply regenerates STATE_HOME from the restored
-CONFIG_HOME and DATA_HOME:
+The admin's startup apply re-discovers components and automations from the
+restored config:
 
 ```bash
 docker compose up -d
 ```
 
 Run `docker compose` from the directory containing the compose file, or
-pass `-f` with the path to `STATE_HOME/artifacts/docker-compose.yml`.
+pass `-f` with the path to `~/.openpalm/data/docker-compose.yml`.
 
 ---
 
@@ -142,13 +133,13 @@ The admin will detect the existing configuration and skip the setup wizard.
 
 | File | Location | Purpose |
 |------|----------|---------|
-| `secrets.env` | CONFIG_HOME | Admin token, LLM provider API keys |
-| `channels/*.yml` | CONFIG_HOME | Installed channel compose overlays |
-| `channels/*.caddy` | CONFIG_HOME | Channel Caddy routes |
-| `automations/*.yml` | CONFIG_HOME | User-defined scheduled automations |
-| `assistant/` | CONFIG_HOME | User OpenCode extensions (tools, plugins, skills) |
-| `stack.env` | DATA_HOME | Host-detected infrastructure config, channel HMAC secrets |
-| `memory/` | DATA_HOME | Memory SQLite database and vector index |
-| `assistant/` | DATA_HOME | System-managed OpenCode config |
-| `caddy/` | DATA_HOME | TLS certificates and Caddy runtime config |
-| `connections/profiles.json` | CONFIG_HOME | LLM connection profiles and role assignments |
+| `vault/user.env` | OP_HOME | LLM provider API keys |
+| `vault/system.env` | OP_HOME | Admin token, HMAC secrets, infrastructure config |
+| `config/components/*/compose.yml` | OP_HOME | Installed component compose definitions |
+| `config/components/*/.caddy` | OP_HOME | Component Caddy routes |
+| `config/automations/*.yml` | OP_HOME | User-defined scheduled automations |
+| `config/assistant/` | OP_HOME | User OpenCode extensions (tools, plugins, skills) |
+| `config/connections/profiles.json` | OP_HOME | LLM connection profiles and role assignments |
+| `data/memory/` | OP_HOME | Memory SQLite database and vector index |
+| `data/assistant/` | OP_HOME | System-managed OpenCode config |
+| `data/caddy/` | OP_HOME | TLS certificates and Caddy runtime config |

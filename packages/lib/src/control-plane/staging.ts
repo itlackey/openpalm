@@ -10,7 +10,7 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync, copyFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
-import { mergeEnvContent } from './env.js';
+import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { discoverChannels } from "./channels.js";
 import { readStackSpec } from "./stack-spec.js";
@@ -22,7 +22,6 @@ import { readSystemSecretsEnvFile } from "./secrets.js";
 import {
   readCoreCaddyfile,
   readCoreCompose,
-  readOllamaCompose,
   readAdminCompose,
   ensureUserEnvSchema,
   ensureSystemEnvSchema,
@@ -191,7 +190,7 @@ export function buildEnvFiles(state: ControlPlaneState): string[] {
 /**
  * Write system-managed values to vault/system.env.
  */
-export function writeSystemEnv(state: ControlPlaneState): void {
+export function writeSystemEnv(state: ControlPlaneState, channelSecrets: Record<string, string> = {}): void {
   mkdirSync(state.vaultDir, { recursive: true });
 
   const systemEnvPath = `${state.vaultDir}/system.env`;
@@ -209,7 +208,7 @@ export function writeSystemEnv(state: ControlPlaneState): void {
   const adminManaged: Record<string, string> = {
     OP_SETUP_COMPLETE: alreadyComplete ? "true" : "false"
   };
-  for (const [ch, secret] of Object.entries(state.channelSecrets)) {
+  for (const [ch, secret] of Object.entries(channelSecrets)) {
     adminManaged[`CHANNEL_${ch.toUpperCase()}_SECRET`] = secret;
   }
 
@@ -345,6 +344,19 @@ export function buildArtifactMeta(artifacts: {
   }));
 }
 
+// ── Channel Secrets ────────────────────────────────────────────────────
+
+/** Load persisted CHANNEL_*_SECRET entries from vault/system.env. */
+function loadPersistedChannelSecrets(dataDir: string): Record<string, string> {
+  const parsed = parseEnvFile(`${dataDir}/stack.env`);
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    const match = key.match(/^CHANNEL_([A-Z0-9_]+)_SECRET$/);
+    if (match?.[1] && value) result[match[1].toLowerCase()] = value;
+  }
+  return result;
+}
+
 // ── Persistence (direct-write to live paths) ────────────────────────
 
 export function persistConfiguration(
@@ -363,24 +375,21 @@ export function persistConfiguration(
   writeFileSync(`${caddyDir}/Caddyfile`, state.artifacts.caddyfile);
 
   // Write optional compose overlays
-  if (isOllamaEnabled(state)) {
-    writeComponentOverlay(state, "ollama", readOllamaCompose(assets));
-  }
-
   if (isAdminEnabled(state)) {
     writeComponentOverlay(state, "admin", readAdminCompose(assets));
   }
 
-  // Ensure channel HMAC secrets
+  // Load persisted channel HMAC secrets, generate new ones for new channels
+  const channelSecrets = loadPersistedChannelSecrets(state.dataDir);
   const allChannels = discoverChannels(state.configDir);
   for (const ch of allChannels) {
-    if (!state.channelSecrets[ch.name]) {
-      state.channelSecrets[ch.name] = randomHex(16);
+    if (!channelSecrets[ch.name]) {
+      channelSecrets[ch.name] = randomHex(16);
     }
   }
 
   // Write system.env with channel secrets and system values
-  writeSystemEnv(state);
+  writeSystemEnv(state, channelSecrets);
 
   // Write channel Caddy routes
   writeCaddyRoutes(state);
@@ -396,17 +405,4 @@ export function persistConfiguration(
   writeFileSync(`${redactDir}/redact.env.schema`, generateRedactSchema(systemEnv));
 
   state.artifactMeta = buildArtifactMeta(state.artifacts);
-}
-
-// ── Legacy Compat Aliases ────────────────────────────────────────────
-
-/** @deprecated Use resolveArtifacts() */
-export const stageArtifacts = resolveArtifacts;
-
-/** @deprecated Use persistConfiguration() */
-export const persistArtifacts = persistConfiguration;
-
-/** @deprecated Use discoverChannelOverlays(configDir) */
-export function discoverStagedChannelYmls(configDir: string): string[] {
-  return discoverChannelOverlays(configDir);
 }

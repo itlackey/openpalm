@@ -52,7 +52,6 @@ export function makeTestState(overrides: Partial<ControlPlaneState> = {}): Contr
     artifacts: { compose: "", caddyfile: "" },
     artifactMeta: [],
     audit: [],
-    channelSecrets: {},
     ...overrides
   };
 }

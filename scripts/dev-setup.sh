@@ -8,8 +8,8 @@ Usage: scripts/dev-setup.sh [--seed-env] [--force] [--pass [--gpg-id <key>]]
 Creates local .dev directories and seeds dev config files.
 
 Options:
-  --seed-env          Copy assets/secrets.env to .dev/vault/user.env if missing,
-                      and generate vault/system.env with auto-detected values.
+  --seed-env          Seed .dev/vault/user.env from the user.env.schema template
+                      (if missing) and generate vault/system.env with auto-detected values.
   --force             Overwrite seeded files even if they already exist.
   --pass              Initialize a pass backend for secret storage (requires GPG key).
   --gpg-id <key>      GPG key ID for the pass backend (required with --pass).
@@ -48,7 +48,7 @@ LOGS_DIR="$DEV_ROOT/logs"
 
 mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
-	"$CONFIG_DIR/channels" "$CONFIG_DIR/automations" "$CONFIG_DIR/components" "$CONFIG_DIR/stash" \
+	"$CONFIG_DIR/automations" "$CONFIG_DIR/components" "$CONFIG_DIR/stash" \
 	"$VAULT_DIR" \
 	"$DATA_DIR/memory" "$DATA_DIR/assistant/.config/opencode" \
 	"$DATA_DIR/guardian" "$DATA_DIR/caddy/data" "$DATA_DIR/caddy/config" \
@@ -71,17 +71,25 @@ touch "$VAULT_DIR/user.env" "$VAULT_DIR/system.env"
 if [[ $seed_env -eq 1 ]]; then
 	env_dest="$VAULT_DIR/user.env"
 	if [[ ! -f "$env_dest" || $force -eq 1 ]]; then
-		cp "$ROOT_DIR/assets/secrets.env" "$env_dest"
-		sed -i 's/^export OP_ADMIN_TOKEN=$/export OP_ADMIN_TOKEN=dev-admin-token/' "$env_dest"
-		# Uncomment and set the legacy ADMIN_TOKEN alias for dev parity
-		sed -i 's/^# export ADMIN_TOKEN=$/export ADMIN_TOKEN=dev-admin-token/' "$env_dest"
-		# Seed Ollama as default LLM backend for dev
-		sed -i 's/^export OPENAI_API_KEY=$/export OPENAI_API_KEY=ollama/' "$env_dest"
-		sed -i 's|^export OPENAI_BASE_URL=$|export OPENAI_BASE_URL=http://host.docker.internal:11434/v1|' "$env_dest"
-		# Generate service auth tokens (matches admin's ensureSecrets())
+		# Seed user.env with dev-friendly defaults (Ollama backend, dev tokens).
+		# The schema template (assets/user.env.schema) documents all supported
+		# variables but contains no values; we write concrete dev values here.
 		mem_token=$(openssl rand -hex 32)
-		printf '\n# Service auth tokens (auto-generated)\nexport MEMORY_AUTH_TOKEN=%s\n' \
-			"$mem_token" >>"$env_dest"
+		cat >"$env_dest" <<USEREOF
+# OpenPalm user.env — dev environment
+# Seeded by dev-setup.sh; safe to edit.
+
+# LLM provider (Ollama for local dev)
+OPENAI_API_KEY=ollama
+OPENAI_BASE_URL=http://host.docker.internal:11434/v1
+
+# Admin token
+OP_ADMIN_TOKEN=dev-admin-token
+ADMIN_TOKEN=dev-admin-token
+
+# Service auth tokens (auto-generated)
+MEMORY_AUTH_TOKEN=${mem_token}
+USEREOF
 	fi
 
 	system_env="$VAULT_DIR/system.env"

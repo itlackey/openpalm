@@ -180,33 +180,6 @@ export function readCoreCompose(assets: CoreAssetProvider): string {
   return readFileSync(path, "utf-8");
 }
 
-// ── Ollama Compose Overlay ──────────────────────────────────────────
-
-function ollamaComposePath(): string {
-  return `${resolveConfigDir()}/components/ollama.yml`;
-}
-
-export function ensureOllamaCompose(assets: CoreAssetProvider): string {
-  const path = ollamaComposePath();
-  const content = assets.ollamaCompose();
-  mkdirSync(dirname(path), { recursive: true });
-  if (!existsSync(path)) {
-    writeFileSync(path, content);
-  } else if (sha256(readFileSync(path, "utf-8")) !== sha256(content)) {
-    const backupDir = join(dirname(path), "backups");
-    mkdirSync(backupDir, { recursive: true });
-    const ts = new Date().toISOString().replace(/[:.]/g, "-");
-    copyFileSync(path, join(backupDir, `ollama.${ts}.yml`));
-    writeFileSync(path, content);
-  }
-  return path;
-}
-
-export function readOllamaCompose(assets: CoreAssetProvider): string {
-  const path = ensureOllamaCompose(assets);
-  return readFileSync(path, "utf-8");
-}
-
 // ── Admin Compose Overlay ────────────────────────────────────────────
 
 function adminComposePath(): string {
@@ -278,7 +251,6 @@ const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
   { relPath: "data/assistant/opencode.jsonc", githubFilename: "opencode.jsonc" },
   { relPath: "data/admin/opencode.jsonc", githubFilename: "admin-opencode.jsonc" },
   { relPath: "data/assistant/AGENTS.md", githubFilename: "AGENTS.md" },
-  { relPath: "config/components/ollama.yml", githubFilename: "ollama.yml" },
   { relPath: "config/components/admin.yml", githubFilename: "admin.yml" },
   { relPath: "vault/user.env.schema", githubFilename: "user.env.schema" },
   { relPath: "vault/system.env.schema", githubFilename: "system.env.schema" },

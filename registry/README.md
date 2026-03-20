@@ -145,10 +145,6 @@ The `scripts/validate-registry.sh` script runs on every PR that touches `registr
 
 Run locally: `./scripts/validate-registry.sh`
 
-## Legacy channels (`registry/channels/`)
-
-The `registry/channels/` directory contains the legacy flat-file channel format (`.yml` + optional `.caddy`). This format is superseded by the component directory format in `registry/components/`. The legacy files are retained for reference during the transition period.
-
 ## Automations (`registry/automations/`)
 
 Pre-built YAML automations that can be installed to `~/.openpalm/config/automations/`.

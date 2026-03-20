@@ -14,7 +14,7 @@ import {
   ensureOpenCodeSystemConfig,
   ensureMemoryDir,
   ensureSecrets,
-  discoverStagedChannelYmls,
+  discoverChannelOverlays,
   buildComposeFileList,
   buildEnvFiles,
   buildManagedServices,
@@ -52,7 +52,7 @@ export const POST: RequestHandler = async (event) => {
   applyInstall(state);
 
   // 5. Discover channel overlays and register them in services state.
-  const channelYmls = discoverStagedChannelYmls(state.configDir);
+  const channelYmls = discoverChannelOverlays(state.configDir);
   const channelNames = channelYmls.map((p) => {
     const filename = p.split("/").pop() ?? "";
     return filename.replace(/^channel-/, "").replace(/\.yml$/, "");

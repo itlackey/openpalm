@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { HealthPayload, ContainerListResponse, AutomationsResponse, ChannelsResponse } from '$lib/types.js';
+  import type { HealthPayload, ContainerListResponse, AutomationsResponse } from '$lib/types.js';
 
   interface ServiceItem {
     name: string;
@@ -23,7 +23,6 @@
     anyDangerousLoading: boolean;
     automationsData: AutomationsResponse | null;
     containerData: ContainerListResponse | null;
-    channelsData: ChannelsResponse | null;
     onCheckHealth: () => void;
     onApplyChanges: () => void;
     onUpgradeStack: () => void;
@@ -46,7 +45,6 @@
     anyDangerousLoading,
     automationsData,
     containerData,
-    channelsData,
     onCheckHealth,
     onApplyChanges,
     onUpgradeStack,
@@ -99,9 +97,6 @@
     const running = [...mergedServices.values()].filter(s => s === 'running').length;
     return { total, running };
   });
-
-  // Derived: enabled channels list
-  let enabledChannels = $derived(channelsData?.installed ?? []);
 
   // Derived: guardian status from merged Docker data (not optimistic state.services)
   let guardianContainerStatus = $derived.by(() => {
@@ -339,24 +334,6 @@
           <span class="info-value">
             {#if automationsData}
               <span class="info-mono">{enabledAutomationCount} active / {automationCount} total</span>
-            {:else}
-              <span class="badge badge-idle">Loading</span>
-            {/if}
-          </span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">Channels</span>
-          <span class="info-value">
-            {#if enabledChannels.length > 0}
-              <span class="channel-list">
-                {#each enabledChannels as channel}
-                  <span class="badge" class:badge-success={channel.status === 'running'} class:badge-idle={channel.status !== 'running'}>
-                    {channel.name}
-                  </span>
-                {/each}
-              </span>
-            {:else if channelsData}
-              <span class="info-mono">None installed</span>
             {:else}
               <span class="badge badge-idle">Loading</span>
             {/if}
