@@ -23,7 +23,20 @@ export function deriveSystemEnvFromSpec(
   const uid = spec.runtime?.uid ?? (typeof process.getuid === "function" ? (process.getuid() ?? 1000) : 1000);
   const gid = spec.runtime?.gid ?? (typeof process.getgid === "function" ? (process.getgid() ?? 1000) : 1000);
 
-  const ports = { ...SPEC_DEFAULTS.ports, ...spec.ports };
+  const safePort = (val: number | undefined | null, def: number): number =>
+    typeof val === "number" && Number.isFinite(val) ? val : def;
+
+  const rawPorts = { ...SPEC_DEFAULTS.ports, ...spec.ports };
+  const ports = {
+    ingress: safePort(rawPorts.ingress, SPEC_DEFAULTS.ports.ingress),
+    assistant: safePort(rawPorts.assistant, SPEC_DEFAULTS.ports.assistant),
+    admin: safePort(rawPorts.admin, SPEC_DEFAULTS.ports.admin),
+    adminOpencode: safePort(rawPorts.adminOpencode, SPEC_DEFAULTS.ports.adminOpencode),
+    scheduler: safePort(rawPorts.scheduler, SPEC_DEFAULTS.ports.scheduler),
+    memory: safePort(rawPorts.memory, SPEC_DEFAULTS.ports.memory),
+    guardian: safePort(rawPorts.guardian, SPEC_DEFAULTS.ports.guardian),
+    assistantSsh: safePort(rawPorts.assistantSsh, SPEC_DEFAULTS.ports.assistantSsh),
+  };
   const network = { ...SPEC_DEFAULTS.network, ...spec.network };
   const image = { ...SPEC_DEFAULTS.image, ...spec.image };
 

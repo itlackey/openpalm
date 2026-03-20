@@ -75,9 +75,7 @@ export function resolveEnv(
 ): string | undefined {
   const source =
     env ??
-    (typeof globalThis.Bun !== "undefined"
-      ? (globalThis.Bun as { env: Record<string, string | undefined> }).env
-      : process.env);
+    (typeof process !== "undefined" ? process.env : {}) as Record<string, string | undefined>;
 
   const newVal = source[newName];
   if (newVal !== undefined && newVal !== "") return newVal;

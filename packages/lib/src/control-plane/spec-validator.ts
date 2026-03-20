@@ -135,6 +135,15 @@ function validateConnections(
     const c = connections[i];
     const prefix = `connections[${i}]`;
 
+    if (c === null || typeof c !== "object") {
+      errors.push({
+        code: "OP-CFG-004",
+        message: `${prefix} must be an object`,
+        path: prefix,
+      });
+      continue;
+    }
+
     if (!c.id || typeof c.id !== "string") {
       errors.push({
         code: "OP-CFG-004",
@@ -188,6 +197,12 @@ function validateAssignments(
       message: "assignments.llm is required",
       path: "assignments.llm",
     });
+  } else if (typeof assignments.llm !== "object" || assignments.llm === null) {
+    errors.push({
+      code: "OP-CFG-002",
+      message: "assignments.llm must be an object",
+      path: "assignments.llm",
+    });
   } else {
     if (
       assignments.llm.connectionId &&
@@ -214,6 +229,12 @@ function validateAssignments(
     errors.push({
       code: "OP-CFG-002",
       message: "assignments.embeddings is required",
+      path: "assignments.embeddings",
+    });
+  } else if (typeof assignments.embeddings !== "object" || assignments.embeddings === null) {
+    errors.push({
+      code: "OP-CFG-002",
+      message: "assignments.embeddings must be an object",
       path: "assignments.embeddings",
     });
   } else {
@@ -254,6 +275,8 @@ function validateAssignments(
     const asgn = assignments[key];
     if (
       asgn &&
+      typeof asgn === "object" &&
+      asgn !== null &&
       "connectionId" in asgn &&
       asgn.connectionId &&
       !connectionIds.has(asgn.connectionId)

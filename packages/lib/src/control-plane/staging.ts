@@ -55,6 +55,16 @@ export function isOllamaEnabled(state: ControlPlaneState): boolean {
   const spec = readStackSpec(state.configDir);
   if (spec) return spec.features?.ollama === true;
 
+  // Lightweight legacy fallback: check openpalm.yml for plain boolean flags
+  const ymlPath = `${state.configDir}/openpalm.yml`;
+  if (existsSync(ymlPath)) {
+    try {
+      const ymlContent = readFileSync(ymlPath, "utf-8");
+      const ymlMatch = ymlContent.match(/^\s*ollama:\s*(true|false)/m);
+      if (ymlMatch) return ymlMatch[1] === "true";
+    } catch { /* ignore */ }
+  }
+
   // Legacy fallback: check system.env
   const systemEnvPath = `${state.vaultDir}/system.env`;
   if (!existsSync(systemEnvPath)) return false;
@@ -72,6 +82,16 @@ export function isAdminEnabled(state: ControlPlaneState): boolean {
   // Try the StackSpec first (handles both .yaml and .yml, v3 and v4)
   const spec = readStackSpec(state.configDir);
   if (spec) return spec.features?.admin === true;
+
+  // Lightweight legacy fallback: check openpalm.yml for plain boolean flags
+  const ymlPath = `${state.configDir}/openpalm.yml`;
+  if (existsSync(ymlPath)) {
+    try {
+      const ymlContent = readFileSync(ymlPath, "utf-8");
+      const ymlMatch = ymlContent.match(/^\s*admin:\s*(true|false)/m);
+      if (ymlMatch) return ymlMatch[1] === "true";
+    } catch { /* ignore */ }
+  }
 
   // Legacy fallback: check system.env
   const systemEnvPath = `${state.vaultDir}/system.env`;

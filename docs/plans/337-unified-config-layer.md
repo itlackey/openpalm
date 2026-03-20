@@ -27,7 +27,7 @@ Five specialist agents (architect, security, DX, migration, testing) analyzed th
 | Topic | Architect | Security | Resolution |
 |-------|-----------|----------|------------|
 | Owner info location | Move to config | Keep in vault (PII) | **Keep in vault** — PII trumps convenience |
-| Base URLs | Move to config | Keep in vault (can embed creds) | **Keep in vault** — `SYSTEM_LLM_BASE_URL` can contain auth tokens in path |
+| Base URLs | Move to config | Keep in vault (can embed creds) | **Store in config** — `StackSpecConnection.baseUrl` is a non-secret URL stored in `config/openpalm.yaml`. `SYSTEM_LLM_BASE_URL` env var is derived from the connection. Users must not embed credentials in base URLs |
 | OP_ prefix for API keys | Rename to `OP_KEY_*` | Keep provider-standard names | **Keep standard names** — interoperability with ecosystem tools |
 | Bind address move | Move to config | Move with warnings | **Move to config with validation** — warn on public-facing values |
 | ADMIN_TOKEN rename timing | Rename now | Defer (high-risk, low-value) | **Rename now with dual-write** — the whole point of #337 is standardization |
@@ -323,7 +323,7 @@ export function migrateV3ToV4(state: ControlPlaneState): MigrationResult {
 These values are now derived from the StackSpec via the derivation pipeline:
 
 - `SYSTEM_LLM_PROVIDER` → derived from `spec.connections[spec.assignments.llm.connectionId].provider`
-- `SYSTEM_LLM_BASE_URL` → keep in vault (can embed creds — security council ruling)
+- `SYSTEM_LLM_BASE_URL` → derived from `spec.connections[spec.assignments.llm.connectionId].baseUrl` (base URLs are stored in config as part of connection definitions; credentials must not be embedded in URLs)
 - `SYSTEM_LLM_MODEL` → derived from `spec.assignments.llm.model`
 - `EMBEDDING_MODEL` → derived from `spec.assignments.embeddings.model`
 - `EMBEDDING_DIMS` → derived from `spec.assignments.embeddings.dims`
@@ -333,8 +333,6 @@ These values are now derived from the StackSpec via the derivation pipeline:
 ### Values that stay in user.env
 
 - All `*_API_KEY` values (secrets)
-- `SYSTEM_LLM_BASE_URL` (can embed creds)
-- `OPENAI_BASE_URL` (can embed creds)
 - `OWNER_NAME`, `OWNER_EMAIL` (PII)
 - `STT_*`, `TTS_*` channel contract vars (consumed by voice channel)
 

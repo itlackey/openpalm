@@ -109,8 +109,11 @@ export function migrateV3ToV4(state: ControlPlaneState): MigrationResult {
 
   // ── 4. Extract infrastructure config from system.env ──────────────
 
-  const parsePort = (v: string | undefined, def: number): number =>
-    v ? (Number.parseInt(v, 10) || def) : def;
+  const parsePort = (v: string | undefined, def: number): number => {
+    if (v === undefined) return def;
+    const parsed = Number.parseInt(v, 10);
+    return Number.isNaN(parsed) ? def : parsed;
+  };
 
   const hasPorts =
     systemEnv.OPENPALM_INGRESS_PORT || systemEnv.OPENPALM_ASSISTANT_PORT ||
