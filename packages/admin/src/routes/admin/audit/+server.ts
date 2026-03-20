@@ -24,7 +24,7 @@ type GuardianAuditEntry = {
 
 /** Read guardian audit JSONL file, returning parsed entries. */
 async function readGuardianAudit(logsDir: string): Promise<GuardianAuditEntry[]> {
-  const filePath = join(logsDir, "audit", "guardian-audit.log");
+  const filePath = join(logsDir, "guardian-audit.log");
   try {
     const content = await readFile(filePath, "utf-8");
     const entries: GuardianAuditEntry[] = [];

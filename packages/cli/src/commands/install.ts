@@ -177,7 +177,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   await ensureStackEnv(homeDir, vaultDir, workDir, options.version, imageTag);
   // Seed OpenCode config — non-fatal since performSetup() also seeds these
   try {
-    const fsAssets = new FilesystemAssetProvider(dataDir);
+    const fsAssets = new FilesystemAssetProvider(homeDir);
     ensureOpenCodeConfig();
     ensureOpenCodeSystemConfig(fsAssets);
     ensureAdminOpenCodeConfig(fsAssets);
@@ -251,7 +251,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
       throw new Error(`Failed to parse setup config '${options.file}': ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    const fsAssets = new FilesystemAssetProvider(dataDir);
+    const fsAssets = new FilesystemAssetProvider(homeDir);
     const config = parsed as Record<string, unknown>;
     let result: SetupResult;
 

@@ -226,8 +226,8 @@ export {
   buildArtifactMeta,
   refreshCoreAssets,
   ensureMemoryDir,
-  // Legacy aliases
-  discoverComponentOverlays as discoverStagedChannelYmls,
+  // Legacy alias — delegates to discoverChannelOverlays
+  discoverStagedChannelYmls,
 } from "@openpalm/lib";
 
 // ── memory-config.ts ─────────────────────────────────────────────────

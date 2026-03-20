@@ -16,7 +16,7 @@ import {
   FilesystemAssetProvider,
 } from '@openpalm/lib';
 import type { ControlPlaneState } from '@openpalm/lib';
-import { defaultDataDir } from './paths.ts';
+import { defaultHomeDir } from './paths.ts';
 
 /**
  * Ensure configuration is valid and ready for Docker Compose operations.
@@ -27,10 +27,10 @@ import { defaultDataDir } from './paths.ts';
  * Returns a ControlPlaneState usable with fullComposeArgs().
  */
 export async function ensureValidState(): Promise<ControlPlaneState> {
-  const dataDir = defaultDataDir();
+  const homeDir = defaultHomeDir();
 
   // Verify core assets exist (populated by `openpalm install`)
-  const assets = new FilesystemAssetProvider(dataDir);
+  const assets = new FilesystemAssetProvider(homeDir);
 
   const state = createState();
   state.artifacts = resolveArtifacts(state, assets);

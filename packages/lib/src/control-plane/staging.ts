@@ -375,10 +375,7 @@ export const stageArtifacts = resolveArtifacts;
 /** @deprecated Use persistConfiguration() */
 export const persistArtifacts = persistConfiguration;
 
-/** @deprecated Use discoverComponentOverlays() */
-export function discoverStagedChannelYmls(stateDir: string): string[] {
-  // In the new layout, stateDir is no longer used for artifacts.
-  // Look in the config/components directory instead.
-  // Callers should migrate to discoverChannelOverlays(configDir).
-  return [];
+/** @deprecated Use discoverChannelOverlays(configDir) */
+export function discoverStagedChannelYmls(configDir: string): string[] {
+  return discoverChannelOverlays(configDir);
 }

@@ -51,11 +51,11 @@ export const POST: RequestHandler = async (event) => {
   // 4. Update state and generate artifacts
   applyInstall(state);
 
-  // 5. Discover staged channels and register them in services state.
-  const stagedYmls = discoverStagedChannelYmls(state.configDir);
-  const channelNames = stagedYmls.map((p) => {
+  // 5. Discover channel overlays and register them in services state.
+  const channelYmls = discoverStagedChannelYmls(state.configDir);
+  const channelNames = channelYmls.map((p) => {
     const filename = p.split("/").pop() ?? "";
-    return filename.replace(/\.yml$/, "");
+    return filename.replace(/^channel-/, "").replace(/\.yml$/, "");
   }).filter(Boolean);
   for (const name of channelNames) {
     const serviceName = `channel-${name}`;
@@ -107,7 +107,7 @@ export const POST: RequestHandler = async (event) => {
       composeResult: dockerResult
         ? { ok: dockerResult.ok, stderr: dockerResult.stderr }
         : null,
-      artifactsDir: `${state.configDir}/artifacts`
+      artifactsDir: `${state.configDir}/components`
     },
     requestId
   );

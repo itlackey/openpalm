@@ -86,11 +86,14 @@ services:
       start_period: 30s
 
   # ── Guardian ────────────────────────────────────────────────────────
-  # Secrets come via ${VAR} substitution only — no env_file or bind mount.
-  # Installing a channel triggers a guardian recreate (~2 seconds).
+  # Channel HMAC secrets are loaded via env_file so newly installed
+  # channels automatically receive their credentials without modifying
+  # this file. Installing a channel triggers a guardian recreate (~2 s).
   guardian:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/guardian:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
+    env_file:
+      - ${OPENPALM_HOME}/vault/system.env
     environment:
       HOME: /app/data
       PORT: "8080"
@@ -98,11 +101,6 @@ services:
       OPENCODE_TIMEOUT_MS: "0"
       ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-}
       GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
-      CHANNEL_CHAT_SECRET: ${CHANNEL_CHAT_SECRET:-}
-      CHANNEL_DISCORD_SECRET: ${CHANNEL_DISCORD_SECRET:-}
-      CHANNEL_SLACK_SECRET: ${CHANNEL_SLACK_SECRET:-}
-      CHANNEL_API_SECRET: ${CHANNEL_API_SECRET:-}
-      CHANNEL_VOICE_SECRET: ${CHANNEL_VOICE_SECRET:-}
     volumes:
       - ${OPENPALM_HOME}/data/guardian:/app/data
       - ${OPENPALM_HOME}/logs:/app/audit
@@ -125,6 +123,7 @@ services:
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     environment:
       PORT: "8090"
+      OPENPALM_HOME: /openpalm
       OPENPALM_ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-}
       OPENPALM_ADMIN_API_URL: ${OPENPALM_ADMIN_API_URL:-}
       OPENCODE_API_URL: http://assistant:4096
@@ -133,7 +132,7 @@ services:
     ports:
       - "127.0.0.1:${OPENPALM_SCHEDULER_PORT:-3897}:8090"
     volumes:
-      - ${OPENPALM_HOME}/config/automations:/automations:ro
+      - ${OPENPALM_HOME}/config:/openpalm/config:ro
     networks: [ assistant_net ]
     depends_on:
       assistant:
