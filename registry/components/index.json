@@ -39,6 +39,14 @@
       "icon": "mic",
       "category": "messaging",
       "curated": true
+    },
+    {
+      "id": "openviking",
+      "name": "OpenViking",
+      "description": "Knowledge management and semantic search engine",
+      "icon": "brain",
+      "category": "ai",
+      "curated": true
     }
   ]
 }

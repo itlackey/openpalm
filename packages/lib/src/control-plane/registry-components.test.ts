@@ -175,12 +175,21 @@ describe("registry compose.yml validation", () => {
         expect(compose).toMatch(/healthcheck:/);
       });
 
-      it("does not mount vault paths", () => {
-        // Vault mounts are a security violation — only admin gets vault access
+      it("does not mount vault directory (single-file mounts allowed)", () => {
+        // Directory-level vault mounts are a security violation — only admin gets full vault access.
+        // Single-file mounts like vault/user.env or vault/ov.conf are allowed.
         const lines = compose.split("\n");
         for (const line of lines) {
           if (line.match(/^\s*-\s+.*vault.*:/)) {
-            throw new Error(`Vault mount detected: ${line.trim()}`);
+            // Extract the source portion (before first colon that follows a path)
+            const match = line.match(/^\s*-\s+(.+?):/);
+            if (match) {
+              const source = match[1];
+              // Allow single-file vault mounts (vault/<filename> with no deeper nesting)
+              if (/vault\b/i.test(source) && !/vault\/[^/]+$/i.test(source)) {
+                throw new Error(`Vault directory mount detected: ${line.trim()}`);
+              }
+            }
           }
         }
       });

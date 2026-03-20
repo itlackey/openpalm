@@ -1,0 +1,35 @@
+# Component: OpenViking — knowledge management and semantic search engine
+services:
+  openpalm-${INSTANCE_ID}:
+    # Image tag configurable via .env for operator upgrades
+    image: ghcr.io/itlackey/openviking:${OPENVIKING_IMAGE_TAG:-0.4.2}
+    container_name: openpalm-${INSTANCE_ID}
+    restart: unless-stopped
+    env_file:
+      - ${INSTANCE_DIR}/.env
+    environment:
+      OPENVIKING_CONFIG_FILE: /app/ov.conf
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${INSTANCE_DIR}/data/workspace:/workspace
+      - ${OPENPALM_HOME}/vault/ov.conf:/app/ov.conf:ro
+    networks: [assistant_net]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:1933/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    labels:
+      openpalm.name: OpenViking
+      openpalm.description: Knowledge management and semantic search engine
+      openpalm.icon: brain
+      openpalm.category: ai
+      openpalm.healthcheck: http://openpalm-${INSTANCE_ID}:1933/health
+
+  # Extend the existing assistant service with Viking env vars (additive only)
+  assistant:
+    environment:
+      OPENVIKING_URL: http://openpalm-${INSTANCE_ID}:1933
+      OPENVIKING_API_KEY: ${OPENVIKING_API_KEY}

@@ -392,21 +392,28 @@ export function validateOverlay(composePath: string): OverlayValidationResult {
         if (typeof vol === "object" && vol !== null) {
           const volObj = vol as Record<string, unknown>;
           const source = String(volObj.source ?? "");
-          if (/vault\b/i.test(source) && !/vault\/user\.env/i.test(source)) {
+          if (/vault\b/i.test(source) && !/vault\/[^/]+$/i.test(source)) {
             errors.push(
               `Service "${serviceName}" mounts vault/ directory — ` +
                 `only admin can mount full vault`
             );
           }
-        } else if (volStr && /vault\b/i.test(volStr) && !/vault\/user\.env/i.test(volStr)) {
-          errors.push(
-            `Service "${serviceName}" mounts vault/ directory — ` +
-              `only admin can mount full vault`
-          );
+        } else if (volStr) {
+          // Extract source portion of bind mount string (before first colon)
+          const volSource = volStr.split(":")[0];
+          if (/vault\b/i.test(volSource) && !/vault\/[^/]+$/i.test(volSource)) {
+            errors.push(
+              `Service "${serviceName}" mounts vault/ directory — ` +
+                `only admin can mount full vault`
+            );
+          }
         }
         // Warn about variable references that may resolve to vault paths
         const checkStr = typeof vol === "string" ? vol : String((vol as Record<string, unknown>)?.source ?? "");
-        if (/\$\{[^}]*[Vv][Aa][Uu][Ll][Tt][^}]*\}/.test(checkStr)) {
+        if (
+          /\$\{[^}]*[Vv][Aa][Uu][Ll][Tt][^}]*\}/.test(checkStr) ||
+          (/\$\{[^}]*OPENPALM_HOME[^}]*\}/.test(checkStr) && /vault/i.test(checkStr))
+        ) {
           warnings.push(
             `Service "${serviceName}" volume uses a variable reference that may point to vault — ` +
               `verify this does not expose the full vault directory`

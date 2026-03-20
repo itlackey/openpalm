@@ -1,10 +1,11 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@openpalm/assistant-tools", "akm-opencode"], //openviking-opencode
+  "plugin": ["@openpalm/assistant-tools", "akm-opencode@latest", "opencode-varlock@latest"], //openviking-opencode
   "server": {
     "port": 4096,
-    "hostname": "0.0.0.0",
-    "mdns": true
+    "hostname": "0.0.0.0",    
+    "mdns": true,
+    "mdnsDomain": "openpalm.local"
   },
   // Layer 3: Block the assistant from reading credential files.
   // auth.json and mcp-auth.json contain session tokens that must not
