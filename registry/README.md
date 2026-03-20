@@ -1,41 +1,157 @@
 # registry
 
-Catalog of installable channels and automations. The admin service bundles these at build time and serves them as an in-process catalog.
+Catalog of installable components and automations. Components are the unified model for all optional stack containers -- channels, services, and integrations are all components.
 
-## Channels (`registry/channels/`)
+## Components (`registry/components/`)
 
-Each channel consists of a compose overlay (`.yml`) and an optional Caddy route (`.caddy`).
+Each component is a directory containing a Docker Compose fragment, an environment variable schema, and an optional Caddy route snippet.
 
-| File | Description |
-|---|---|
-| `chat.yml` / `chat.caddy` | OpenAI/Anthropic-compatible chat API (`@openpalm/channel-chat`, port 8181) |
-| `api.yml` | Full OpenAI + Anthropic API facade (`@openpalm/channel-api`, port 8182) |
-| `discord.yml` | Discord interactions + webhook adapter (`@openpalm/channel-discord`, port 8184) |
+```
+registry/components/
+  chat/
+    compose.yml          # Docker Compose service definition
+    .env.schema          # Varlock @env-spec schema for configuration
+    .caddy               # Optional Caddy route snippet
+  discord/
+    compose.yml
+    .env.schema
+  api/
+    compose.yml
+    .env.schema
+  slack/
+    compose.yml
+    .env.schema
+  voice/
+    compose.yml
+    .env.schema
+```
 
-### Installing a channel
+### Available components
+
+| Component | Description | Category |
+|-----------|-------------|----------|
+| `chat` | Browser-based chat widget | messaging |
+| `api` | OpenAI and Anthropic compatible API facade | integration |
+| `discord` | Discord bot adapter via WebSocket gateway | messaging |
+| `slack` | Slack bot adapter via Socket Mode WebSocket | messaging |
+| `voice` | Voice interface with STT and TTS | messaging |
+
+### Component directory structure
+
+Every component directory must contain at minimum:
+
+- **`compose.yml`** -- Docker Compose service definition with `openpalm.*` labels
+- **`.env.schema`** -- Varlock `@env-spec` schema describing configurable environment variables
+
+Optional files:
+
+- **`.caddy`** -- Caddy route snippet for HTTP routing (LAN-restricted by default)
+
+### compose.yml conventions
+
+Component compose files follow these conventions:
+
+- **Service name**: `openpalm-${INSTANCE_ID}` -- uses Compose variable substitution, resolved at runtime
+- **Container name**: `openpalm-${INSTANCE_ID}` -- matches the service name
+- **env_file**: `${INSTANCE_DIR}/.env` -- points to the instance's environment file
+- **Networks**: `openpalm-internal` -- all components join the internal network
+- **Labels**: metadata for discovery and UI rendering
+
+Required labels:
+
+| Label | Description |
+|-------|-------------|
+| `openpalm.name` | Display name shown in the admin UI |
+| `openpalm.description` | One-line description of the component |
+
+Optional labels:
+
+| Label | Description |
+|-------|-------------|
+| `openpalm.icon` | Lucide icon name for UI rendering |
+| `openpalm.category` | Grouping category (messaging, integration, networking, ai, etc.) |
+| `openpalm.healthcheck` | Internal URL to poll for health status |
+| `openpalm.docs` | Path or URL to documentation |
+
+The compose.yml is copied unchanged into the instance directory. `${INSTANCE_ID}` and `${INSTANCE_DIR}` are resolved by Docker Compose at runtime via `--env-file`, not by string interpolation. No template rendering.
+
+### .env.schema format
+
+The `.env.schema` file uses the Varlock `@env-spec` format. Each variable is documented with comments and annotated with directives:
+
+```bash
+# Description of the variable.
+# @required @sensitive
+MY_SECRET_VAR=
+
+# Description with a default value.
+MY_CONFIG_VAR=default-value
+```
+
+Supported annotations:
+
+| Annotation | Meaning |
+|------------|---------|
+| `@required` | The variable must have a value before the component can start |
+| `@sensitive` | The value is a secret and should be managed by the secret manager |
+
+Every schema must include the instance identity variables at the bottom:
+
+```bash
+# Instance identity (auto-populated -- do not edit)
+# ---
+
+# Unique instance identifier.
+# @required
+INSTANCE_ID=
+
+# Absolute path to this instance directory.
+# @required
+INSTANCE_DIR=
+```
+
+### Installing a component
 
 Via admin API:
 ```bash
-curl -X POST http://localhost:8100/admin/channels/install \
-  -H "x-admin-token: $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"channel": "chat"}'
+curl -X POST http://localhost:8100/api/registry/chat/install \
+  -H "x-admin-token: $ADMIN_TOKEN"
 ```
 
-Or manually: copy the `.yml` (and optionally `.caddy`) to `~/.config/openpalm/channels/`.
+This copies the component directory to the local catalog at `~/.openpalm/data/catalog/`. From there, create an instance via the admin UI or API.
 
-### Adding a new channel
+### index.json
 
-1. Create `registry/channels/<name>.yml` — Docker Compose overlay defining the `channel-<name>` service
-2. (Optional) Create `registry/channels/<name>.caddy` — Caddy route (LAN-restricted by default)
+The `index.json` file at `registry/components/index.json` lists all available components with metadata extracted from compose labels. This file is auto-generated from the component directories.
 
-The `channel` image (`core/channel/`) runs any npm package that extends `BaseChannel`. Set `CHANNEL_PACKAGE` in the overlay's `environment:` block.
+## Submitting a new component
 
-See [`assets/README.md`](../assets/README.md) and [`docs/community-channels.md`](../docs/community-channels.md) for full details.
+1. Create a directory under `registry/components/<id>/`.
+2. Add `compose.yml` with the required labels and conventions above.
+3. Add `.env.schema` with all configurable variables documented.
+4. (Optional) Add `.caddy` for HTTP routing.
+5. Open a pull request. CI validates the compose file and schema.
+6. After merge, `index.json` is regenerated.
+
+### CI validation
+
+The `scripts/validate-registry.sh` script runs on every PR that touches `registry/components/`. It checks:
+
+- Every component directory has `compose.yml` and `.env.schema`
+- compose.yml contains the required `openpalm.name` and `openpalm.description` labels
+- .env.schema is parseable (valid `@env-spec` format)
+- No vault mount violations in compose.yml
+- Service names follow the `openpalm-${INSTANCE_ID}` convention
+
+Run locally: `./scripts/validate-registry.sh`
+
+## Legacy channels (`registry/channels/`)
+
+The `registry/channels/` directory contains the legacy flat-file channel format (`.yml` + optional `.caddy`). This format is superseded by the component directory format in `registry/components/`. The legacy files are retained for reference during the transition period.
 
 ## Automations (`registry/automations/`)
 
-Pre-built YAML automations that can be installed to `~/.config/openpalm/automations/` or `~/.local/share/openpalm/automations/`.
+Pre-built YAML automations that can be installed to `~/.openpalm/config/automations/`.
 
 | File | Description |
 |---|---|
@@ -45,6 +161,6 @@ Pre-built YAML automations that can be installed to `~/.config/openpalm/automati
 | `assistant-daily-briefing.yml` | Sends a daily briefing prompt to the assistant |
 | `cleanup-logs.yml` | Cleans up old log files |
 
-Browse and install automations from the **Registry** tab in the admin console, or copy any file directly to `~/.config/openpalm/automations/`.
+Browse and install automations from the admin console, or copy any file directly to `~/.openpalm/config/automations/`.
 
 See [`docs/managing-openpalm.md`](../docs/managing-openpalm.md) for automation configuration details.

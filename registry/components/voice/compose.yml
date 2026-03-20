@@ -1,0 +1,29 @@
+# Component: Voice — voice-driven conversational interface (STT -> LLM -> TTS)
+services:
+  openpalm-${INSTANCE_ID}:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-ghcr.io/itlackey/openpalm}-channel:${OPENPALM_IMAGE_TAG:-latest}
+    container_name: openpalm-${INSTANCE_ID}
+    restart: unless-stopped
+    env_file:
+      - ${INSTANCE_DIR}/.env
+    environment:
+      PORT: "8186"
+      CHANNEL_NAME: "Voice"
+      GUARDIAN_URL: http://guardian:8080
+      CHANNEL_PACKAGE: "@openpalm/channel-voice"
+    networks:
+      - openpalm-internal
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8186' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      openpalm.name: Voice
+      openpalm.description: Voice-driven conversational interface with speech-to-text and text-to-speech
+      openpalm.icon: mic
+      openpalm.category: messaging
+      openpalm.healthcheck: http://openpalm-${INSTANCE_ID}:8186/health

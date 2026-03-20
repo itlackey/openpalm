@@ -14,6 +14,9 @@ import type {
   ConnectionProfilePayload,
   CanonicalConnectionProfileDto,
   ConnectionProfileMutationResponse,
+  ComponentResponse,
+  InstanceResponse,
+  EnvSchemaFieldResponse,
 } from './types.js';
 
 const apiBase = '';
@@ -538,4 +541,245 @@ export async function fetchLocalProviders(token: string): Promise<{ providers: L
     return { providers: [] };
   }
   return (await res.json()) as { providers: LocalProviderDetection[] };
+}
+
+
+// ── Component System (v0.10.0) ────────────────────────────────────────
+
+export async function fetchComponents(token: string): Promise<ComponentResponse[]> {
+  const res = await get('/api/components', token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  const data = (await res.json()) as { components: ComponentResponse[] };
+  return data.components;
+}
+
+export async function fetchComponentDetail(
+  token: string,
+  componentId: string
+): Promise<ComponentResponse & { schema: EnvSchemaFieldResponse[]; hasCaddy: boolean }> {
+  const res = await get(`/api/components/${encodeURIComponent(componentId)}`, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (res.status === 404) {
+    throw Object.assign(new Error('Component not found.'), { status: 404 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return (await res.json()) as ComponentResponse & { schema: EnvSchemaFieldResponse[]; hasCaddy: boolean };
+}
+
+export async function fetchInstances(token: string): Promise<InstanceResponse[]> {
+  const res = await get('/api/instances', token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  const data = (await res.json()) as { instances: InstanceResponse[] };
+  return data.instances;
+}
+
+export async function createInstance(
+  token: string,
+  component: string,
+  name: string
+): Promise<InstanceResponse> {
+  const res = await post('/api/instances', { component, name }, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  const data = (await res.json()) as { instance: InstanceResponse };
+  return data.instance;
+}
+
+export async function fetchInstanceDetail(
+  token: string,
+  instanceId: string
+): Promise<InstanceResponse> {
+  const res = await get(`/api/instances/${encodeURIComponent(instanceId)}`, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (res.status === 404) {
+    throw Object.assign(new Error('Instance not found.'), { status: 404 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  const data = (await res.json()) as { instance: InstanceResponse };
+  return data.instance;
+}
+
+export async function configureInstance(
+  token: string,
+  instanceId: string,
+  values: Record<string, string>
+): Promise<void> {
+  const res = await put(
+    `/api/instances/${encodeURIComponent(instanceId)}`,
+    { values },
+    token
+  );
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (res.status === 404) {
+    throw Object.assign(new Error('Instance not found.'), { status: 404 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+}
+
+export async function deleteInstance(
+  token: string,
+  instanceId: string
+): Promise<void> {
+  const res = await del(
+    `/api/instances/${encodeURIComponent(instanceId)}`,
+    {},
+    token
+  );
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (res.status === 404) {
+    throw Object.assign(new Error('Instance not found.'), { status: 404 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+}
+
+export async function startInstance(
+  token: string,
+  instanceId: string
+): Promise<void> {
+  const res = await post(
+    `/api/instances/${encodeURIComponent(instanceId)}/start`,
+    {},
+    token
+  );
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (res.status === 404) {
+    throw Object.assign(new Error('Instance not found.'), { status: 404 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+}
+
+export async function stopInstance(
+  token: string,
+  instanceId: string
+): Promise<void> {
+  const res = await post(
+    `/api/instances/${encodeURIComponent(instanceId)}/stop`,
+    {},
+    token
+  );
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (res.status === 404) {
+    throw Object.assign(new Error('Instance not found.'), { status: 404 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+}
+
+export async function restartInstance(
+  token: string,
+  instanceId: string
+): Promise<void> {
+  const res = await post(
+    `/api/instances/${encodeURIComponent(instanceId)}/restart`,
+    {},
+    token
+  );
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (res.status === 404) {
+    throw Object.assign(new Error('Instance not found.'), { status: 404 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+}
+
+export async function fetchInstanceLogs(
+  token: string,
+  instanceId: string,
+  options?: { tail?: number; since?: string }
+): Promise<{ ok: boolean; logs: string }> {
+  const params = new URLSearchParams();
+  if (options?.tail) params.set('tail', String(options.tail));
+  if (options?.since) params.set('since', options.since);
+  const qs = params.toString();
+  const path = `/api/instances/${encodeURIComponent(instanceId)}/logs${qs ? `?${qs}` : ''}`;
+
+  const res = await get(path, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (res.status === 404) {
+    throw Object.assign(new Error('Instance not found.'), { status: 404 });
+  }
+  return (await res.json()) as { ok: boolean; logs: string };
+}
+
+export async function fetchInstanceHealth(
+  token: string,
+  instanceId: string
+): Promise<{ instanceId: string; healthy: boolean; checkedVia: string }> {
+  const res = await get(
+    `/api/instances/${encodeURIComponent(instanceId)}/health`,
+    token
+  );
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (res.status === 404) {
+    throw Object.assign(new Error('Instance not found.'), { status: 404 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return (await res.json()) as { instanceId: string; healthy: boolean; checkedVia: string };
+}
+
+export async function fetchInstanceSchema(
+  token: string,
+  instanceId: string
+): Promise<EnvSchemaFieldResponse[]> {
+  const res = await get(
+    `/api/instances/${encodeURIComponent(instanceId)}/schema`,
+    token
+  );
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (res.status === 404) {
+    throw Object.assign(new Error('Instance not found.'), { status: 404 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  const data = (await res.json()) as { schema: EnvSchemaFieldResponse[] };
+  return data.schema;
 }

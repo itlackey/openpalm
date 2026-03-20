@@ -1,0 +1,29 @@
+# Component: API — full OpenAI + Anthropic compatible API facade
+services:
+  openpalm-${INSTANCE_ID}:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-ghcr.io/itlackey/openpalm}-channel:${OPENPALM_IMAGE_TAG:-latest}
+    container_name: openpalm-${INSTANCE_ID}
+    restart: unless-stopped
+    env_file:
+      - ${INSTANCE_DIR}/.env
+    environment:
+      PORT: "8182"
+      GUARDIAN_URL: http://guardian:8080
+      CHANNEL_NAME: "API"
+      CHANNEL_PACKAGE: "@openpalm/channel-api"
+    networks:
+      - openpalm-internal
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8182' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      openpalm.name: API Gateway
+      openpalm.description: OpenAI and Anthropic compatible API facade
+      openpalm.icon: code
+      openpalm.category: integration
+      openpalm.healthcheck: http://openpalm-${INSTANCE_ID}:8182/health

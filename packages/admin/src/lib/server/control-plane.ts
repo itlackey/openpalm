@@ -18,10 +18,10 @@ import {
   ensureOpenCodeSystemConfig as _ensureOpenCodeSystemConfig,
   ensureAdminOpenCodeConfig as _ensureAdminOpenCodeConfig,
   ensureCoreAutomations as _ensureCoreAutomations,
-  ensureUserEnvSchema as _ensureUserEnvSchema,
-  ensureSystemEnvSchema as _ensureSystemEnvSchema,
-  resolveArtifacts as _resolveArtifacts,
-  persistConfiguration as _persistConfiguration,
+  ensureSecretsSchema as _ensureSecretsSchema,
+  ensureStackSchema as _ensureStackSchema,
+  stageArtifacts as _stageArtifacts,
+  persistArtifacts as _persistArtifacts,
   applyInstall as _applyInstall,
   applyUpdate as _applyUpdate,
   applyUninstall as _applyUninstall,
@@ -76,36 +76,24 @@ export function ensureCoreAutomations(): void {
   _ensureCoreAutomations(viteAssets);
 }
 
-export function ensureUserEnvSchema(): string {
-  return _ensureUserEnvSchema(viteAssets);
+export function ensureSecretsSchema(): string {
+  return _ensureSecretsSchema(viteAssets);
 }
 
-export function ensureSystemEnvSchema(): string {
-  return _ensureSystemEnvSchema(viteAssets);
+export function ensureStackSchema(): string {
+  return _ensureStackSchema(viteAssets);
 }
 
-/** @deprecated Use ensureUserEnvSchema() */
-export const ensureSecretsSchema = ensureUserEnvSchema;
-
-/** @deprecated Use ensureSystemEnvSchema() */
-export const ensureStackSchema = ensureSystemEnvSchema;
-
-export function resolveArtifacts(state: ControlPlaneState): {
+export function stageArtifacts(state: ControlPlaneState): {
   compose: string;
   caddyfile: string;
 } {
-  return _resolveArtifacts(state, viteAssets);
+  return _stageArtifacts(state, viteAssets);
 }
 
-export function persistConfiguration(state: ControlPlaneState): void {
-  _persistConfiguration(state, viteAssets);
+export function persistArtifacts(state: ControlPlaneState): void {
+  _persistArtifacts(state, viteAssets);
 }
-
-/** @deprecated Use resolveArtifacts() */
-export const stageArtifacts = resolveArtifacts;
-
-/** @deprecated Use persistConfiguration() */
-export const persistArtifacts = persistConfiguration;
 
 export function applyInstall(state: ControlPlaneState): void {
   _applyInstall(state, viteAssets);
@@ -177,8 +165,8 @@ export {
   OPTIONAL_CAPABILITIES,
 } from "./types.js";
 
-// ── home.ts ───────────────────────────────────────────────────────────
-export { ensureHomeDirs, ensureHomeDirs as ensureXdgDirs } from "@openpalm/lib";
+// ── paths.ts ──────────────────────────────────────────────────────────
+export { ensureXdgDirs } from "@openpalm/lib";
 
 // ── registry.ts (backward-compatible static exports) ─────────────────
 export {
@@ -220,14 +208,13 @@ export {
   randomHex,
   detectAccessScope,
   isOllamaEnabled,
+  stagedEnvFile,
+  stagedStackEnvFile,
   buildEnvFiles,
-  discoverComponentOverlays,
-  discoverChannelOverlays,
+  discoverStagedChannelYmls,
   buildArtifactMeta,
   refreshCoreAssets,
   ensureMemoryDir,
-  // Legacy alias — delegates to discoverChannelOverlays
-  discoverStagedChannelYmls,
 } from "@openpalm/lib";
 
 // ── memory-config.ts ─────────────────────────────────────────────────
@@ -311,3 +298,43 @@ export type {
   ConnectionMigrationFlags,
   ConnectionCompatibilityMode,
 } from "./connection-migration-flags.js";
+
+// ── components.ts (v0.10.0 unified component system) ──────────────────
+export type {
+  ComponentDefinition,
+  ComponentSource,
+  ComponentLabels,
+  EnabledInstance,
+  InstanceStatus,
+  InstanceDetail,
+  OverlayValidationResult,
+  EnvInjectionCollision,
+} from "@openpalm/lib";
+export {
+  discoverComponents,
+  parseComposeLabels,
+  validateOverlay,
+  detectEnvInjectionCollisions,
+  isValidInstanceId,
+  isReservedName,
+  readEnabledInstances,
+  writeEnabledInstances,
+  addEnabledInstance,
+  removeEnabledInstance,
+  setInstanceEnabled,
+  buildComponentComposeArgs,
+  buildAllowlist,
+} from "@openpalm/lib";
+
+// ── instance-lifecycle.ts (v0.10.0) ───────────────────────────────────
+export type { EnvSchemaField } from "@openpalm/lib";
+export {
+  createInstance,
+  configureInstance,
+  getInstanceDetail,
+  listInstances,
+  deleteInstance,
+  installCaddyRoute,
+  removeCaddyRoute,
+  parseEnvSchema,
+} from "@openpalm/lib";

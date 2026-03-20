@@ -214,3 +214,49 @@ export type RegistryResponse = {
   automations: RegistryAutomationItem[];
   source?: 'remote' | 'bundled';
 };
+
+// ── Component System DTOs (v0.10.0) ──────────────────────────────────
+
+/** Component definition as returned by the API. */
+export type ComponentResponse = {
+  id: string;
+  source: string;
+  labels: {
+    name: string;
+    description: string;
+    icon?: string;
+    category?: string;
+    docs?: string;
+    healthcheck?: string;
+  };
+};
+
+/** Instance summary as returned by list/create endpoints. */
+export type InstanceResponse = {
+  id: string;
+  component: string;
+  enabled: boolean;
+  status: string;
+  instanceDir: string;
+};
+
+/** Request body for creating a new instance. */
+export type CreateInstanceRequest = {
+  component: string;
+  name: string;
+};
+
+/** Request body for updating instance configuration. */
+export type ConfigureInstanceRequest = {
+  values: Record<string, string>;
+};
+
+/** Schema field definition as returned by the schema endpoint. */
+export type EnvSchemaFieldResponse = {
+  name: string;
+  defaultValue: string;
+  required: boolean;
+  sensitive: boolean;
+  helpText: string;
+  section: string;
+};

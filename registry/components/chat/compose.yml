@@ -1,0 +1,29 @@
+# Component: Web Chat — browser-based chat widget
+services:
+  openpalm-${INSTANCE_ID}:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-ghcr.io/itlackey/openpalm}-channel:${OPENPALM_IMAGE_TAG:-latest}
+    container_name: openpalm-${INSTANCE_ID}
+    restart: unless-stopped
+    env_file:
+      - ${INSTANCE_DIR}/.env
+    environment:
+      PORT: "8181"
+      CHANNEL_NAME: "Chat"
+      GUARDIAN_URL: http://guardian:8080
+      CHANNEL_PACKAGE: "@openpalm/channel-chat"
+    networks:
+      - openpalm-internal
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8181' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      openpalm.name: Web Chat
+      openpalm.description: Browser-based chat widget for conversational AI
+      openpalm.icon: message-circle
+      openpalm.category: messaging
+      openpalm.healthcheck: http://openpalm-${INSTANCE_ID}:8181/health
