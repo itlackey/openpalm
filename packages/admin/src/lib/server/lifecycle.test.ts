@@ -184,16 +184,17 @@ describe("createState", () => {
     expect(state.channelSecrets.discord).toBe("def456");
   });
 
-  test("reads ADMIN_TOKEN from vault/user.env file", () => {
+  test("reads OPENPALM_ADMIN_TOKEN from vault/system.env file", () => {
     const base = trackDir(makeTempDir());
     process.env.OPENPALM_HOME = base;
     delete process.env.ADMIN_TOKEN;
+    delete process.env.OPENPALM_ADMIN_TOKEN;
 
     const vaultDir = join(base, "vault");
     mkdirSync(vaultDir, { recursive: true });
     writeFileSync(
-      join(vaultDir, "user.env"),
-      "ADMIN_TOKEN=file-token\nOPENAI_API_KEY=sk-test\n"
+      join(vaultDir, "system.env"),
+      "OPENPALM_ADMIN_TOKEN=file-token\n"
     );
 
     const state = createState();

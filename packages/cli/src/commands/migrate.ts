@@ -361,9 +361,9 @@ export default defineCommand({
       } else {
         const legacy = detectLegacyLayout();
         if (legacy.detected) {
-          if (legacy.paths.configHome) summary.push(`  Would remove: ${legacy.paths.configHome}`);
-          if (legacy.paths.dataHome) summary.push(`  Would remove: ${legacy.paths.dataHome}`);
-          if (legacy.paths.stateHome) summary.push(`  Would remove: ${legacy.paths.stateHome}`);
+          if (legacy.configHome) summary.push(`  Would remove: ${legacy.configHome}`);
+          if (legacy.dataHome) summary.push(`  Would remove: ${legacy.dataHome}`);
+          if (legacy.stateHome) summary.push(`  Would remove: ${legacy.stateHome}`);
         } else {
           summary.push('  No legacy directories found.');
         }
@@ -375,9 +375,9 @@ export default defineCommand({
 
     // ── Step 1: Check for legacy env vars ────────────────────────────
     const legacyVars = hasLegacyEnvVars();
-    if (legacyVars.found) {
+    if (legacyVars.length > 0) {
       console.log('WARNING: Legacy environment variables detected:');
-      for (const v of legacyVars.vars) {
+      for (const v of legacyVars) {
         console.log(`  ${v}=${process.env[v]}`);
       }
       console.log('\nOpenPalm 0.10.0 uses OPENPALM_HOME (~/.openpalm by default).');
@@ -394,7 +394,7 @@ export default defineCommand({
       if (!existsSync(openpalmHome)) {
         console.log('\nCreating fresh directory structure...');
         if (!dryRun) {
-          ensureHomeDirs(openpalmHome);
+          ensureHomeDirs();
         }
         console.log('Done. Run `openpalm install` to set up the stack.');
       }
@@ -402,9 +402,9 @@ export default defineCommand({
     }
 
     console.log('Legacy XDG installation detected:');
-    if (legacy.paths.configHome) console.log(`  Config: ${legacy.paths.configHome}`);
-    if (legacy.paths.dataHome) console.log(`  Data:   ${legacy.paths.dataHome}`);
-    if (legacy.paths.stateHome) console.log(`  State:  ${legacy.paths.stateHome}`);
+    if (legacy.configHome) console.log(`  Config: ${legacy.configHome}`);
+    if (legacy.dataHome) console.log(`  Data:   ${legacy.dataHome}`);
+    if (legacy.stateHome) console.log(`  State:  ${legacy.stateHome}`);
     console.log(`\nMigrating to: ${openpalmHome}\n`);
 
     if (dryRun) {
@@ -416,7 +416,7 @@ export default defineCommand({
     // ── Step 3: Create new directory structure ──────────────────────
     console.log('Creating directory structure...');
     if (!dryRun) {
-      ensureHomeDirs(openpalmHome);
+      ensureHomeDirs();
     }
     summary.push('  Created ~/.openpalm/ directory structure');
 
@@ -424,9 +424,9 @@ export default defineCommand({
     console.log('Copying files...');
 
     if (!dryRun) {
-      const configHome = legacy.paths.configHome;
-      const dataHome = legacy.paths.dataHome;
-      const stateHome = legacy.paths.stateHome;
+      const configHome = legacy.configHome;
+      const dataHome = legacy.dataHome;
+      const stateHome = legacy.stateHome;
 
       // Config files
       if (configHome) {
@@ -495,10 +495,10 @@ export default defineCommand({
 
     // ── Step 5: Split env files ─────────────────────────────────────
     console.log('Splitting environment files...');
-    if (!dryRun && legacy.paths.configHome) {
+    if (!dryRun && legacy.configHome) {
       splitEnvFiles(
-        legacy.paths.configHome,
-        legacy.paths.dataHome ?? '',
+        legacy.configHome,
+        legacy.dataHome ?? '',
         openpalmHome,
         summary,
       );
@@ -510,8 +510,8 @@ export default defineCommand({
 
     // ── Step 6: Convert channel overlays ────────────────────────────
     console.log('Converting channel overlays to component instances...');
-    if (!dryRun && legacy.paths.configHome) {
-      convertChannelOverlays(legacy.paths.configHome, openpalmHome, summary);
+    if (!dryRun && legacy.configHome) {
+      convertChannelOverlays(legacy.configHome, openpalmHome, summary);
     } else if (!dryRun) {
       summary.push('  No config home found — skipping channel conversion.');
     } else {
@@ -531,9 +531,9 @@ export default defineCommand({
       console.log('Dry run complete. Re-run without --dry-run to apply changes.');
     } else {
       console.log('Migration complete. Old directories preserved at:');
-      if (legacy.paths.configHome) console.log(`  ${legacy.paths.configHome}`);
-      if (legacy.paths.dataHome) console.log(`  ${legacy.paths.dataHome}`);
-      if (legacy.paths.stateHome) console.log(`  ${legacy.paths.stateHome}`);
+      if (legacy.configHome) console.log(`  ${legacy.configHome}`);
+      if (legacy.dataHome) console.log(`  ${legacy.dataHome}`);
+      if (legacy.stateHome) console.log(`  ${legacy.stateHome}`);
       console.log("\nRun 'openpalm migrate --cleanup' to remove them after verifying.");
       console.log("Run 'openpalm status' to verify the stack is working.");
     }

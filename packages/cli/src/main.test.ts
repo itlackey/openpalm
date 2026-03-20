@@ -215,9 +215,7 @@ describe('npm bin launcher', () => {
     expect(launcher.startsWith('#!/usr/bin/env bun\n')).toBe(true);
   });
 
-  it('packs a real semver range for @openpalm/lib so published installs can resolve the latest compatible lib', {
-    timeout: 15000,
-  }, () => {
+  it('packs a real semver range for @openpalm/lib so published installs can resolve the latest compatible lib', () => {
     const cliPkg = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
     ) as {

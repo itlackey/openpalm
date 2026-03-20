@@ -9,6 +9,7 @@ const rootDir = resolve(__dirname, "../..");
 
 /** Keys whose values are filesystem paths and must be resolved relative to rootDir */
 const PATH_KEYS = new Set([
+  "OPENPALM_HOME",
   "OPENPALM_CONFIG_HOME",
   "OPENPALM_DATA_HOME",
   "OPENPALM_STATE_HOME",

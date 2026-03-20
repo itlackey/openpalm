@@ -256,10 +256,13 @@ describe("setup wizard server integration", () => {
       expect(data.ok).toBe(true);
       expect(result.ok).toBe(true);
 
-      // Verify secrets.env was written with the admin token
-      const secretsContent = readFileSync(join(configDir, "secrets.env"), "utf-8");
-      expect(secretsContent).toContain("integration-test-token-123");
-      expect(secretsContent).toContain("OWNER_NAME=Integration Test");
+      // Verify vault/system.env was written with the admin token
+      const systemEnvContent = readFileSync(join(vaultDir, "system.env"), "utf-8");
+      expect(systemEnvContent).toContain("integration-test-token-123");
+
+      // Verify vault/user.env was written with owner info
+      const userEnvContent = readFileSync(join(vaultDir, "user.env"), "utf-8");
+      expect(userEnvContent).toContain("OWNER_NAME=Integration Test");
 
       // Verify memory config was written
       const memConfigPath = join(dataDir, "memory", "default_config.json");

@@ -151,13 +151,13 @@ All OpenPalm services use the **38XX port range** to avoid conflicts with common
 | **Voice channel** | 3810 | `127.0.0.1:3810` | Voice interface (TTS/STT) |
 | **Admin** | 3880 | `127.0.0.1:3880` | Admin UI + API |
 | **Admin OpenCode** (#304) | 3881 | `127.0.0.1:3881` | Brokered admin OpenCode instance |
-| **Ingress** (Caddy) | 80 | `127.0.0.1:3880` → Caddy → services | Reverse proxy (maps to 38XX internally) |
+| **Ingress** (Caddy) | 80 | `127.0.0.1:3080` → Caddy → services | Reverse proxy (maps to 38XX internally) |
 | **Guardian** | 3899 | (internal only) | HMAC verification + rate limiting |
 | **Scheduler** | 3897 | (internal only) | Automation scheduler |
 | **Memory** | 3898 | (internal only) | Memory service API |
 | **Channel Chat** | 3820 | (internal only) | Chat channel adapter |
 
-Port assignments are defined via `OPENPALM_*_PORT` variables in `vault/system.env` and referenced in compose files via `${VAR}` substitution. The ingress port (Caddy's external bind) defaults to `3880` but is configurable via `OPENPALM_INGRESS_PORT`.
+Port assignments are defined via `OPENPALM_*_PORT` variables in `vault/system.env` and referenced in compose files via `${VAR}` substitution. The ingress port (Caddy's external bind) defaults to `3080` but is configurable via `OPENPALM_INGRESS_PORT`.
 
 ---
 

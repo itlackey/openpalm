@@ -237,7 +237,7 @@ describe("persistArtifacts", () => {
     expect(content).toContain(`OPENPALM_IMAGE_TAG=`);
   });
 
-  test("system.env does NOT contain user secrets (MEMORY_USER_ID, ADMIN_TOKEN)", () => {
+  test("system.env does NOT contain user secrets (MEMORY_USER_ID)", () => {
     persistArtifacts(state);
 
     const systemEnvPath = join(state.vaultDir, "system.env");
@@ -245,7 +245,10 @@ describe("persistArtifacts", () => {
     // User secrets belong in user.env, not system.env.
     // Having them in both causes precedence bugs with Docker Compose --env-file.
     expect(content).not.toContain("MEMORY_USER_ID=");
-    expect(content).not.toContain("ADMIN_TOKEN=");
+    // OPENPALM_ADMIN_TOKEN is a system secret and correctly lives in system.env.
+    // Only the legacy bare ADMIN_TOKEN (without OPENPALM_ prefix) should not appear.
+    const lines = content.split("\n");
+    expect(lines.some((l) => /^ADMIN_TOKEN=/.test(l))).toBe(false);
   });
 
   test("preserves existing channel secrets (does not regenerate)", () => {

@@ -42,6 +42,7 @@ const noopAssetProvider: CoreAssetProvider = {
 };
 
 // Override state/config home so the server doesn't touch real dirs.
+process.env.OPENPALM_HOME = tmpBase;
 process.env.OPENPALM_CONFIG_HOME = `${tmpBase}/config`;
 process.env.OPENPALM_STATE_HOME = `${tmpBase}/state`;
 process.env.OPENPALM_DATA_HOME = `${tmpBase}/data`;
