@@ -359,15 +359,54 @@ export { detectLocalProviders } from "./control-plane/model-runner.js";
 // ── Stack Spec ───────────────────────────────────────────────────────────
 export type {
   StackSpec,
+  StackSpecV3,
+  StackSpecV4,
   StackSpecConnection,
+  StackSpecConnectionV3,
+  StackSpecConnectionAuth,
   StackSpecAssignments,
+  StackSpecAssignmentsV3,
+  StackSpecPorts,
+  StackSpecNetwork,
+  StackSpecImage,
+  StackSpecRuntime,
+  StackSpecChannelConfig,
+  StackSpecServiceConfig,
 } from "./control-plane/stack-spec.js";
 export {
   STACK_SPEC_FILENAME,
+  SPEC_DEFAULTS,
   stackSpecPath,
   writeStackSpec,
+  writeStackSpecV3,
   readStackSpec,
+  readRawStackSpec,
+  upgradeV3ToV4InMemory,
 } from "./control-plane/stack-spec.js";
+
+// ── Env Compatibility (OP_ prefix migration) ────────────────────────────
+export {
+  ENV_ALIASES,
+  resolveEnv,
+  resolveEnvFromFile,
+  dualWriteEnvPair,
+  getOldName,
+  getNewName,
+  resetWarnings,
+} from "./control-plane/env-compat.js";
+
+// ── Spec-to-Env Derivation ──────────────────────────────────────────────
+export {
+  deriveSystemEnvFromSpec,
+} from "./control-plane/spec-to-env.js";
+
+// ── Spec Validation ─────────────────────────────────────────────────────
+export type { ValidationError } from "./control-plane/spec-validator.js";
+export { validateStackSpecV4 } from "./control-plane/spec-validator.js";
+
+// ── Migration ───────────────────────────────────────────────────────────
+export type { MigrationResult } from "./control-plane/migration.js";
+export { migrateV3ToV4 } from "./control-plane/migration.js";
 
 // ── Setup ────────────────────────────────────────────────────────────────
 export type {

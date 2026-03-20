@@ -29,8 +29,8 @@ import { buildMem0Mapping } from "./connection-mapping.js";
 import { writeMemoryConfig } from "./memory-config.js";
 import { ensureOpenCodeSystemConfig, ensureAdminOpenCodeConfig, ensureMemoryDir } from "./core-assets.js";
 import { applyInstall, createState, writeSetupTokenFile } from "./lifecycle.js";
-import { writeStackSpec } from "./stack-spec.js";
-import type { StackSpec } from "./stack-spec.js";
+import { writeStackSpecV3 } from "./stack-spec.js";
+import type { StackSpecV3 } from "./stack-spec.js";
 import { detectLocalProviders } from "./model-runner.js";
 import type { LocalProviderDetection } from "./model-runner.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
@@ -701,7 +701,9 @@ export async function performSetup(
   ensureMemoryDir();
 
   // ── Write stack spec (openpalm.yaml) ─────────────────────────────────
-  const stackSpec: StackSpec = {
+  // Still writes v3 format — the migration to v4 happens via migrateV3ToV4()
+  // or transparently via readStackSpec() which auto-upgrades v3→v4 on read.
+  const stackSpec: StackSpecV3 = {
     version: 3,
     connections: effectiveConnections.map((c) => ({
       id: c.id,
@@ -722,7 +724,7 @@ export async function performSetup(
     ...(input.channels ? { channels: input.channels } : {}),
     ...(input.services ? { services: input.services } : {}),
   };
-  writeStackSpec(state.configDir, stackSpec);
+  writeStackSpecV3(state.configDir, stackSpec);
 
   // ── Mark setup complete in DATA_HOME stack.env before staging ────────
   const dataStackEnv = `${state.dataDir}/stack.env`;
