@@ -251,8 +251,8 @@
             </svg>
           </span>
           <div class="action-content">
-            <span class="action-title">Open Admin OpenCode</span>
-            <span class="action-desc">Admin-authorized OpenCode UI on localhost:3881</span>
+            <span class="action-title">Admin OpenCode</span>
+            <span class="action-desc">Admin-authorized OpenCode UI</span>
             <span class="action-hint" data-testid="admin-opencode-status">
               {adminOpenCodeStatusLabel(adminOpenCodeStatus)} · {adminOpenCodeUrl}
             </span>

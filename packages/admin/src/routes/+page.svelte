@@ -191,10 +191,25 @@
       const health = await fetchHealth();
       adminHealth = health.admin;
       guardianHealth = health.guardian;
+    } catch {
+      adminHealth = { status: 'error', service: 'admin' };
+      guardianHealth = { status: 'error', service: 'guardian' };
+    }
+
+    try {
       const adminOpenCode = await fetchAdminOpenCodeStatus(token);
       adminOpenCodeStatus = adminOpenCode.status;
       adminOpenCodeUrl = adminOpenCode.url;
+    } catch (e) {
+      adminOpenCodeStatus = 'unavailable';
 
+      const err = e as { status?: number };
+      if (err.status === 401) {
+        applyInvalidTokenState();
+      }
+    }
+
+    try {
       const scope = await fetchAccessScope(token);
       if (scope.ok) {
         if (scope.accessScope === 'host' || scope.accessScope === 'lan' || scope.accessScope === 'custom') {
@@ -204,16 +219,10 @@
       } else if (scope.status === 401) {
         applyInvalidTokenState();
       }
-    } catch (e) {
-      adminHealth = { status: 'error', service: 'admin' };
-      guardianHealth = { status: 'error', service: 'guardian' };
-      adminOpenCodeStatus = 'unavailable';
-
-      const err = e as { status?: number };
-      if (err.status === 401) {
-        applyInvalidTokenState();
-      }
+    } catch {
+      // best-effort — don't disrupt health display if access scope fails
     }
+
     healthLoading = false;
   }
 
