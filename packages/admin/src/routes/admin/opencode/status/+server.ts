@@ -5,9 +5,9 @@ import {
 } from "$lib/server/helpers.js";
 import type { RequestHandler } from "./$types";
 
-const ADMIN_OPENCODE_INTERNAL_PORT = process.env.OPENCODE_PORT ?? '4097';
-const ADMIN_OPENCODE_PUBLIC_PORT = process.env.OPENPALM_ADMIN_OPENCODE_PORT ?? '3881';
-const ADMIN_OPENCODE_PUBLIC_URL = `http://localhost:${ADMIN_OPENCODE_PUBLIC_PORT}/`;
+const ADMIN_OPENCODE_CONTAINER_PORT = process.env.OPENCODE_PORT ?? '4097';
+const ADMIN_OPENCODE_HOST_PORT = process.env.OPENPALM_ADMIN_OPENCODE_PORT ?? '3881';
+const ADMIN_OPENCODE_PUBLIC_URL = `http://localhost:${ADMIN_OPENCODE_HOST_PORT}/`;
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -15,7 +15,7 @@ export const GET: RequestHandler = async (event) => {
   if (authError) return authError;
 
   try {
-    const response = await fetch(`http://127.0.0.1:${ADMIN_OPENCODE_INTERNAL_PORT}`, {
+    const response = await fetch(`http://127.0.0.1:${ADMIN_OPENCODE_CONTAINER_PORT}`, {
       signal: AbortSignal.timeout(3000),
     });
 
