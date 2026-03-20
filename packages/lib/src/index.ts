@@ -357,3 +357,43 @@ export {
   performSetupFromConfig,
   buildChannelCredentialEnvVars,
 } from "./control-plane/setup.js";
+
+// ── Components (v0.10.0) ─────────────────────────────────────────────
+export type {
+  ComponentDefinition,
+  ComponentSource,
+  ComponentLabels,
+  EnabledInstance,
+  InstanceStatus,
+  InstanceDetail,
+  OverlayValidationResult,
+  EnvInjectionCollision,
+} from "./control-plane/components.js";
+export {
+  isValidInstanceId,
+  isReservedName,
+  parseComposeLabels,
+  discoverComponents,
+  validateOverlay,
+  detectEnvInjectionCollisions,
+  readEnabledInstances,
+  writeEnabledInstances,
+  addEnabledInstance,
+  removeEnabledInstance,
+  setInstanceEnabled,
+  buildComponentComposeArgs,
+  buildAllowlist,
+} from "./control-plane/components.js";
+
+// ── Instance Lifecycle ─────────────────────────────────────────────────
+export type { EnvSchemaField } from "./control-plane/instance-lifecycle.js";
+export {
+  createInstance,
+  configureInstance,
+  getInstanceDetail,
+  listInstances,
+  deleteInstance,
+  installCaddyRoute,
+  removeCaddyRoute,
+  parseEnvSchema,
+} from "./control-plane/instance-lifecycle.js";

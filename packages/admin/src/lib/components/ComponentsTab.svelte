@@ -3,7 +3,9 @@
   import {
     fetchComponents,
     fetchInstances,
-    instanceAction,
+    startInstance,
+    stopInstance,
+    restartInstance,
     deleteInstance
   } from '$lib/api.js';
   import { getAdminToken } from '$lib/auth.js';
@@ -96,7 +98,9 @@
     actionLoading = instanceId;
     overflowOpen = null;
     try {
-      await instanceAction(token, instanceId, action);
+      if (action === 'start') await startInstance(token, instanceId);
+      else if (action === 'stop') await stopInstance(token, instanceId);
+      else await restartInstance(token, instanceId);
       await loadData();
     } catch (e) {
       const err = e as { status?: number; message?: string };

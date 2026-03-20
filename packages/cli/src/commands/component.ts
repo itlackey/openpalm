@@ -14,7 +14,7 @@
  * argument parsing, terminal output, and Docker Compose invocation.
  */
 import { defineCommand } from 'citty';
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 import {
   resolveOpenPalmHome,
   discoverComponents,
@@ -27,34 +27,9 @@ import {
   parseEnvSchema,
   buildComponentComposeArgs,
 } from '@openpalm/lib';
-import type { ComponentDefinition } from '@openpalm/lib';
 import { runDockerCompose } from '../lib/docker.ts';
 
 // ── Helpers ─────────────────────────────────────────────────────────────
-
-/**
- * Resolve the component source directories to search.
- * Built-in components live under OPENPALM_HOME/data/registry/components/.
- * User/catalog components can be added under OPENPALM_HOME/config/components/.
- */
-function componentSourceDirs(openpalmHome: string): string[] {
-  return [
-    join(openpalmHome, 'data', 'registry', 'components'),
-    join(openpalmHome, 'config', 'components'),
-  ];
-}
-
-/**
- * Find a component definition by ID across all source directories.
- */
-function findComponent(openpalmHome: string, componentId: string): ComponentDefinition | null {
-  for (const dir of componentSourceDirs(openpalmHome)) {
-    const components = discoverComponents(dir);
-    const found = components.find((c) => c.id === componentId);
-    if (found) return found;
-  }
-  return null;
-}
 
 /**
  * Format a status value with color hints for terminal output.
@@ -72,19 +47,10 @@ const listCmd = defineCommand({
   },
   async run() {
     const home = resolveOpenPalmHome();
-    const dirs = componentSourceDirs(home);
-
-    const allComponents: ComponentDefinition[] = [];
-    for (const dir of dirs) {
-      allComponents.push(...discoverComponents(dir));
-    }
+    const allComponents = discoverComponents(home);
 
     if (allComponents.length === 0) {
       console.log('No components found.');
-      console.log('Components are discovered from:');
-      for (const dir of dirs) {
-        console.log(`  ${dir}`);
-      }
       return;
     }
 
@@ -93,9 +59,9 @@ const listCmd = defineCommand({
     console.log('  ────────────────────  ────────  ───────  ─────');
     for (const comp of allComponents) {
       const id = comp.id.padEnd(20);
-      const compose = comp.hasCompose ? 'yes' : 'no';
-      const schema = comp.hasSchema ? 'yes' : 'no';
-      const caddy = comp.hasCaddy ? 'yes' : 'no';
+      const compose = comp.composePath ? 'yes' : 'no';
+      const schema = comp.schemaPath ? 'yes' : 'no';
+      const caddy = comp.caddyPath ? 'yes' : 'no';
       console.log(`  ${id}  ${compose.padEnd(8)}  ${schema.padEnd(7)}  ${caddy}`);
     }
     console.log(`\n  ${allComponents.length} component(s) found.`);
@@ -160,7 +126,7 @@ const addCmd = defineCommand({
 
     const home = resolveOpenPalmHome();
 
-    const componentDef = findComponent(home, componentId);
+    const componentDef = discoverComponents(home).find((c) => c.id === componentId);
     if (!componentDef) {
       console.error(`Error: component "${componentId}" not found.`);
       console.error('Run `openpalm component list` to see available components.');
@@ -179,7 +145,7 @@ const addCmd = defineCommand({
       }
 
       // Show schema fields that need configuration
-      if (componentDef.hasSchema) {
+      if (instance.schemaPath && existsSync(instance.schemaPath)) {
         const fields = parseEnvSchema(instance.schemaPath);
         const requiredFields = fields.filter((f) => f.required && !f.defaultValue);
         if (requiredFields.length > 0) {

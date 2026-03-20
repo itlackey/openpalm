@@ -24,7 +24,7 @@
   let groupedComponents = $derived.by(() => {
     const groups = new Map<string, ComponentResponse[]>();
     for (const comp of components) {
-      const cat = comp.category || 'other';
+      const cat = comp.labels.category || 'other';
       const list = groups.get(cat) ?? [];
       list.push(comp);
       groups.set(cat, list);
@@ -67,10 +67,7 @@
     creating = true;
     error = '';
     try {
-      await createInstance(token, {
-        component: selectedComponent,
-        name: effectiveInstanceName
-      });
+      await createInstance(token, selectedComponent, effectiveInstanceName);
       onCreated();
     } catch (e) {
       const err = e as { status?: number; message?: string };
@@ -125,12 +122,12 @@
                 >
                   <div class="card-icon">
                     <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      {#if comp.category === 'messaging'}
+                      {#if comp.labels.category === 'messaging'}
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                      {:else if comp.category === 'networking'}
+                      {:else if comp.labels.category === 'networking'}
                         <circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" />
                         <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                      {:else if comp.category === 'ai'}
+                      {:else if comp.labels.category === 'ai'}
                         <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
                       {:else}
                         <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
@@ -139,9 +136,9 @@
                     </svg>
                   </div>
                   <div class="card-text">
-                    <span class="card-name">{comp.name || comp.id}</span>
-                    {#if comp.description}
-                      <span class="card-desc">{comp.description}</span>
+                    <span class="card-name">{comp.labels.name || comp.id}</span>
+                    {#if comp.labels.description}
+                      <span class="card-desc">{comp.labels.description}</span>
                     {/if}
                   </div>
                   <svg class="card-arrow" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -165,9 +162,9 @@
       {#if selectedComponentDetail}
         <div class="selected-component">
           <span class="selected-label">Component:</span>
-          <span class="selected-name">{selectedComponentDetail.name || selectedComponentDetail.id}</span>
-          {#if selectedComponentDetail.description}
-            <span class="selected-desc">{selectedComponentDetail.description}</span>
+          <span class="selected-name">{selectedComponentDetail.labels.name || selectedComponentDetail.id}</span>
+          {#if selectedComponentDetail.labels.description}
+            <span class="selected-desc">{selectedComponentDetail.labels.description}</span>
           {/if}
         </div>
       {/if}

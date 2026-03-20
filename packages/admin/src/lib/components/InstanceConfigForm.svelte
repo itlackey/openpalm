@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { SchemaFieldEntry } from '$lib/types.js';
-  import { fetchInstanceSchema, updateInstanceConfig } from '$lib/api.js';
+  import type { EnvSchemaFieldResponse } from '$lib/types.js';
+  import { fetchInstanceSchema, configureInstance } from '$lib/api.js';
   import { getAdminToken } from '$lib/auth.js';
 
   interface Props {
@@ -13,7 +13,7 @@
   let { instanceId, onSave, onCancel, onAuthError }: Props = $props();
 
   // ── State ───────────────────────────────────────────────────────────
-  let fields = $state<SchemaFieldEntry[]>([]);
+  let fields = $state<EnvSchemaFieldResponse[]>([]);
   let formValues = $state<Record<string, string>>({});
   let loading = $state(true);
   let saving = $state(false);
@@ -25,7 +25,7 @@
 
   /** Group fields by section */
   let groupedFields = $derived.by(() => {
-    const groups = new Map<string, SchemaFieldEntry[]>();
+    const groups = new Map<string, EnvSchemaFieldResponse[]>();
     for (const field of fields) {
       const section = field.section || 'Configuration';
       const list = groups.get(section) ?? [];
@@ -50,12 +50,11 @@
     loading = true;
     error = '';
     try {
-      const schema = await fetchInstanceSchema(token, instanceId);
-      fields = schema.fields;
+      fields = await fetchInstanceSchema(token, instanceId);
       // Initialize form values from schema defaults
       const values: Record<string, string> = {};
-      for (const field of schema.fields) {
-        values[field.key] = field.value ?? '';
+      for (const field of fields) {
+        values[field.name] = field.defaultValue ?? '';
       }
       formValues = values;
     } catch (e) {
@@ -80,7 +79,7 @@
     saving = true;
     saveError = '';
     try {
-      await updateInstanceConfig(token, instanceId, { config: formValues });
+      await configureInstance(token, instanceId, formValues);
       onSave();
     } catch (e) {
       const err = e as { status?: number; message?: string };
@@ -135,10 +134,10 @@
         {#each groupedFields as [section, sectionFields]}
           <div class="form-section">
             <h3 class="form-section-title">{section}</h3>
-            {#each sectionFields as field (field.key)}
+            {#each sectionFields as field (field.name)}
               <div class="form-field">
-                <label class="form-label" for="field-{field.key}">
-                  {field.key}
+                <label class="form-label" for="field-{field.name}">
+                  {field.name}
                   {#if field.required}
                     <span class="required-mark" aria-label="required">*</span>
                   {/if}
@@ -149,10 +148,10 @@
                 <div class="field-input-row">
                   {#if field.sensitive}
                     <input
-                      id="field-{field.key}"
-                      type={showSensitive[field.key] ? 'text' : 'password'}
-                      value={formValues[field.key] ?? ''}
-                      oninput={(e) => handleFieldInput(field.key, e)}
+                      id="field-{field.name}"
+                      type={showSensitive[field.name] ? 'text' : 'password'}
+                      value={formValues[field.name] ?? ''}
+                      oninput={(e) => handleFieldInput(field.name, e)}
                       class="form-input"
                       required={field.required}
                       autocomplete="off"
@@ -160,11 +159,11 @@
                     <button
                       type="button"
                       class="btn btn-icon btn-sm"
-                      onclick={() => toggleSensitive(field.key)}
-                      aria-label={showSensitive[field.key] ? 'Hide value' : 'Show value'}
+                      onclick={() => toggleSensitive(field.name)}
+                      aria-label={showSensitive[field.name] ? 'Hide value' : 'Show value'}
                     >
                       <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        {#if showSensitive[field.key]}
+                        {#if showSensitive[field.name]}
                           <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
                           <line x1="1" y1="1" x2="23" y2="23" />
                         {:else}
@@ -175,17 +174,17 @@
                     </button>
                   {:else}
                     <input
-                      id="field-{field.key}"
+                      id="field-{field.name}"
                       type="text"
-                      value={formValues[field.key] ?? ''}
-                      oninput={(e) => handleFieldInput(field.key, e)}
+                      value={formValues[field.name] ?? ''}
+                      oninput={(e) => handleFieldInput(field.name, e)}
                       class="form-input"
                       required={field.required}
                     />
                   {/if}
                 </div>
-                {#if field.comment}
-                  <p class="form-help">{field.comment}</p>
+                {#if field.helpText}
+                  <p class="form-help">{field.helpText}</p>
                 {/if}
               </div>
             {/each}

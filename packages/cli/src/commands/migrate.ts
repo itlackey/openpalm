@@ -32,6 +32,7 @@ import {
   detectLegacyLayout,
   hasLegacyEnvVars,
   parseEnvContent,
+  isValidInstanceId,
 } from '@openpalm/lib';
 
 // ── Env Splitting Rules ─────────────────────────────────────────────────
@@ -237,6 +238,12 @@ function convertChannelOverlays(
 
   for (const file of ymlFiles) {
     const name = basename(file, file.endsWith('.yaml') ? '.yaml' : '.yml');
+
+    if (!isValidInstanceId(name)) {
+      summary.push(`  channels/${file} -> skipped (invalid instance ID: "${name}")`);
+      continue;
+    }
+
     const instanceDir = join(componentsDir, name);
 
     if (existsSync(instanceDir)) {
@@ -271,10 +278,12 @@ function convertChannelOverlays(
   // Write enabled.json with all migrated instances
   const enabledPath = join(componentsDir, 'enabled.json');
   if (!existsSync(enabledPath)) {
-    const instances = ymlFiles.map((f) => {
-      const name = basename(f, f.endsWith('.yaml') ? '.yaml' : '.yml');
-      return { id: name, component: name, enabled: true };
-    });
+    const instances = ymlFiles
+      .map((f) => {
+        const name = basename(f, f.endsWith('.yaml') ? '.yaml' : '.yml');
+        return { id: name, component: name, enabled: true };
+      })
+      .filter((inst) => isValidInstanceId(inst.id));
     writeFileSync(enabledPath, JSON.stringify({ instances }, null, 2));
     summary.push(`  enabled.json created (${instances.length} instances)`);
   }

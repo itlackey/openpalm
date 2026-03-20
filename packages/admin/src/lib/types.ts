@@ -215,6 +215,8 @@ export type RegistryResponse = {
   source?: 'remote' | 'bundled';
 };
 
+export type InstanceStatus = 'running' | 'stopped' | 'error' | 'unknown';
+
 // ── Component System DTOs (v0.10.0) ──────────────────────────────────
 
 /** Component definition as returned by the API. */
@@ -236,7 +238,8 @@ export type InstanceResponse = {
   id: string;
   component: string;
   enabled: boolean;
-  status: string;
+  status: InstanceStatus;
+  category?: string;
   instanceDir: string;
 };
 

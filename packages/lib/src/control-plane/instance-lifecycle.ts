@@ -278,11 +278,6 @@ export function configureInstance(
     }
   }
 
-  // Read current .env
-  const currentEnv = existsSync(envPath)
-    ? readFileSync(envPath, "utf-8")
-    : "";
-
   // Parse existing entries
   const existing = parseEnvFile(envPath);
 
@@ -356,20 +351,9 @@ export function getInstanceDetail(
   const enabledInstances = readEnabledInstances(openpalmHome);
   const entry = enabledInstances.find((i) => i.id === instanceId);
 
-  // If not in enabled.json, try to infer from .env
-  let component = entry?.component ?? "unknown";
+  // If not in enabled.json, component remains "unknown"
+  const component = entry?.component ?? "unknown";
   const enabled = entry?.enabled ?? false;
-
-  // Fallback: check if we can read component info from the directory
-  if (component === "unknown") {
-    const envPath = join(instDir, ".env");
-    if (existsSync(envPath)) {
-      const env = parseEnvFile(envPath);
-      if (env.INSTANCE_ID) {
-        component = env.INSTANCE_ID;
-      }
-    }
-  }
 
   return buildInstanceDetail(openpalmHome, instanceId, component, enabled);
 }

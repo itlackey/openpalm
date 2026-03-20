@@ -423,6 +423,49 @@ export function validateOverlay(composePath: string): OverlayValidationResult {
       );
     }
 
+    // Check for dangerous capabilities
+    if (Array.isArray(svc.cap_add)) {
+      const dangerousCaps = new Set(["ALL", "SYS_ADMIN", "NET_ADMIN", "SYS_PTRACE", "DAC_OVERRIDE"]);
+      for (const cap of svc.cap_add) {
+        const capStr = typeof cap === "string" ? cap.toUpperCase() : "";
+        if (dangerousCaps.has(capStr)) {
+          errors.push(
+            `Service "${serviceName}" adds dangerous capability "${capStr}" — ` +
+              `components must not use dangerous capabilities`
+          );
+        }
+      }
+    }
+
+    // Check for dangerous host device exposure
+    if (Array.isArray(svc.devices)) {
+      for (const device of svc.devices) {
+        const deviceStr = typeof device === "string" ? device : "";
+        if (deviceStr) {
+          errors.push(
+            `Service "${serviceName}" exposes host device "${deviceStr}" — ` +
+              `components must not expose host devices`
+          );
+        }
+      }
+    }
+
+    // Check for Docker socket mount
+    if (Array.isArray(svc.volumes)) {
+      for (const vol of svc.volumes) {
+        const volStr = typeof vol === "string" ? vol : "";
+        const volSource = typeof vol === "object" && vol !== null
+          ? String((vol as Record<string, unknown>).source ?? "")
+          : volStr;
+        if (volSource.includes("/var/run/docker.sock")) {
+          errors.push(
+            `Service "${serviceName}" mounts Docker socket — ` +
+              `components must not access the Docker socket`
+          );
+        }
+      }
+    }
+
     // Check for direct port exposure that bypasses guardian
     // (non-core services exposing ports that could bypass guardian)
     if (!isCoreService && Array.isArray(svc.ports)) {
@@ -590,6 +633,7 @@ function discoverInstancesByPresence(openpalmHome: string): EnabledInstance[] {
   const instances: EnabledInstance[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
+    if (!isValidInstanceId(entry.name)) continue;
     const envPath = join(dir, entry.name, ".env");
     if (existsSync(envPath)) {
       instances.push({
