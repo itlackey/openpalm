@@ -93,7 +93,8 @@ services:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/guardian:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:
-      - ${OPENPALM_HOME}/vault/system.env
+      - path: ${OPENPALM_HOME}/vault/system.env
+        required: false
     environment:
       HOME: /app/data
       PORT: "8080"
