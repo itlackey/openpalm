@@ -1,27 +1,48 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ensureHomeDirs } from '@openpalm/lib';
+import { resolveCacheHome } from '@openpalm/lib';
 
 const REPO_OWNER = 'itlackey';
 const REPO_NAME = 'openpalm';
 
 /**
  * Creates the full directory tree required by the stack.
- * Delegates to @openpalm/lib for core dirs, then adds CLI-specific extras.
+ * Uses the caller-provided directory roots, then adds CLI-specific extras.
  */
 export async function ensureDirectoryTree(
-  _homeDir: string,
-  _configDir: string,
-  _vaultDir: string,
+  homeDir: string,
+  configDir: string,
+  vaultDir: string,
   dataDir: string,
   workDir: string,
 ): Promise<void> {
-  // Core home dirs (OPENPALM_HOME subtrees + cache)
-  ensureHomeDirs();
+  const cacheDir = resolveCacheHome();
 
-  // CLI-specific extras not in lib
   for (const dir of [
+    homeDir,
+    configDir,
+    join(configDir, 'components'),
+    join(configDir, 'automations'),
+    join(configDir, 'assistant'),
+    vaultDir,
+    dataDir,
+    join(dataDir, 'assistant'),
+    join(dataDir, 'admin'),
+    join(dataDir, 'memory'),
+    join(dataDir, 'guardian'),
+    join(dataDir, 'caddy'),
+    join(dataDir, 'caddy', 'data'),
+    join(dataDir, 'caddy', 'channels'),
+    join(dataDir, 'caddy', 'channels', 'public'),
+    join(dataDir, 'caddy', 'channels', 'lan'),
+    join(dataDir, 'stash'),
     join(dataDir, 'bin'),
+    join(dataDir, 'workspace'),
+    join(homeDir, 'logs'),
+    join(homeDir, 'logs', 'opencode'),
+    cacheDir,
+    join(cacheDir, 'registry'),
+    join(cacheDir, 'rollback'),
     workDir,
   ]) {
     await mkdir(dir, { recursive: true });

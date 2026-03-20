@@ -10,7 +10,7 @@ import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
   errorResponse,
-  requireAuth,
+  requireAdmin,
   getRequestId,
   getActor,
   getCallerType,
@@ -39,7 +39,7 @@ const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authErr = requireAuth(event, requestId);
+  const authErr = requireAdmin(event, requestId);
   if (authErr) return authErr;
 
   const state = getState();

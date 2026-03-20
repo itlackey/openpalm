@@ -51,7 +51,7 @@ This package is separate from `@openpalm/assistant-tools`, which contains memory
 | Variable | Default | Purpose |
 |---|---|---|
 | `OPENPALM_ADMIN_API_URL` | `http://admin:8100` | Admin API endpoint |
-| `OPENPALM_ADMIN_TOKEN` | (required) | Authentication token |
+| `OPENPALM_ASSISTANT_TOKEN` | (required) | Authentication token |
 
 All requests use `x-admin-token` header authentication and are audit-logged with the `assistant` identity.
 

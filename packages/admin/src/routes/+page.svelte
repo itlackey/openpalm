@@ -68,7 +68,7 @@
   let legacyInstallDetected = $state(false);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: 'overview' | 'components' | 'containers' | 'artifacts' | 'automations' | 'connections' | 'registry' = $state('overview');
+  let activeTab: 'overview' | 'components' | 'containers' | 'artifacts' | 'automations' | 'connections' = $state('overview');
 
   // ── Container polling ──────────────────────────────────────────────────────
   const POLL_INTERVAL_MS = 10_000;
@@ -399,7 +399,7 @@
     selectedContainerId = selectedContainerId === id ? null : id;
   }
 
-  function handleTabSelect(tab: 'overview' | 'components' | 'containers' | 'artifacts' | 'automations' | 'connections' | 'registry'): void {
+  function handleTabSelect(tab: 'overview' | 'components' | 'containers' | 'artifacts' | 'automations' | 'connections'): void {
     activeTab = tab;
     if (tab === 'containers' && !containerData) {
       void loadContainers();

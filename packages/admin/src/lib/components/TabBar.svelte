@@ -1,5 +1,5 @@
 <script lang="ts">
-	type TabId = 'overview' | 'components' | 'containers' | 'artifacts' | 'automations' | 'connections' | 'registry';
+	type TabId = 'overview' | 'components' | 'containers' | 'artifacts' | 'automations' | 'connections';
 
 	interface Props {
 		active: TabId;

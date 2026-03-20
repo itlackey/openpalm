@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@openpalm/assistant-tools", "akm-opencode@latest", "opencode-varlock@latest"], //openviking-opencode
+  "plugin": ["@openpalm/assistant-tools", "akm-opencode@0.2.0", "opencode-varlock@0.0.10"], //openviking-opencode
   "server": {
     "port": 4096,
     "hostname": "0.0.0.0",    
