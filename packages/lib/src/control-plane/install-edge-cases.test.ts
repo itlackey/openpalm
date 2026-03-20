@@ -198,7 +198,6 @@ describe("Fresh Install", () => {
       artifacts: { compose: "", caddyfile: "" },
       artifactMeta: [],
       audit: [],
-      channelSecrets: {},
     };
 
     // No user.env exists yet
@@ -283,7 +282,6 @@ describe("Existing Install", () => {
       artifacts: { compose: "", caddyfile: "" },
       artifactMeta: [],
       audit: [],
-      channelSecrets: {},
     };
 
     ensureSecrets(state);
@@ -422,7 +420,6 @@ describe("Broken/Corrupt State", () => {
       artifacts: { compose: "", caddyfile: "" },
       artifactMeta: [],
       audit: [],
-      channelSecrets: {},
     };
 
     ensureSecrets(state);

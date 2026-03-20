@@ -27,7 +27,6 @@ function makeState(): ControlPlaneState {
     artifacts: { compose: "", caddyfile: "" },
     artifactMeta: [],
     audit: [],
-    channelSecrets: {},
   };
 }
 

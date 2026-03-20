@@ -93,8 +93,8 @@ jobs:
           pip install --quiet PyYAML
           errors=0
 
-          # Validate all registry channel YAML files
-          for f in registry/channels/*.yml; do
+          # Validate all registry component compose files
+          for f in registry/components/*/compose.yml; do
             if [ ! -f "$f" ]; then continue; fi
             if ! docker compose -f assets/docker-compose.yml -f "$f" config -q 2>/dev/null; then
               echo "::error file=$f::Invalid compose overlay: $f"
