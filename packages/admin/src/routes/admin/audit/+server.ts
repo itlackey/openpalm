@@ -23,8 +23,8 @@ type GuardianAuditEntry = {
 };
 
 /** Read guardian audit JSONL file, returning parsed entries. */
-async function readGuardianAudit(stateDir: string): Promise<GuardianAuditEntry[]> {
-  const filePath = join(stateDir, "audit", "guardian-audit.log");
+async function readGuardianAudit(logsDir: string): Promise<GuardianAuditEntry[]> {
+  const filePath = join(logsDir, "guardian-audit.log");
   try {
     const content = await readFile(filePath, "utf-8");
     const entries: GuardianAuditEntry[] = [];
@@ -64,13 +64,13 @@ export const GET: RequestHandler = async (event) => {
   }
 
   if (source === "guardian") {
-    const guardianEntries = await readGuardianAudit(state.stateDir);
+    const guardianEntries = await readGuardianAudit(state.logsDir);
     const limit = Math.min(rawLimit > 0 ? rawLimit : guardianEntries.length, 1000);
     return jsonResponse(200, { audit: guardianEntries.slice(-limit) }, requestId);
   }
 
   // source === "all": merge admin and guardian entries, sort by timestamp descending
-  const guardianEntries = await readGuardianAudit(state.stateDir);
+  const guardianEntries = await readGuardianAudit(state.logsDir);
 
   // Normalize both sources into a common shape with a timestamp key
   const adminNormalized = state.audit.map((e) => ({

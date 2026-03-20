@@ -15,10 +15,10 @@ import {
   detectProviders,
   isSetupComplete,
   fetchProviderModels,
-  resolveConfigHome,
-  resolveStateHome,
+  resolveConfigDir,
+  resolveVaultDir,
   FilesystemAssetProvider,
-  resolveDataHome,
+  resolveDataDir,
 } from "@openpalm/lib";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -104,8 +104,8 @@ export function createSetupServer(
     configDir?: string;
   }
 ): SetupServer {
-  const configDir = opts?.configDir ?? resolveConfigHome();
-  const assetProvider = opts?.assetProvider ?? new FilesystemAssetProvider(resolveDataHome());
+  const configDir = opts?.configDir ?? resolveConfigDir();
+  const assetProvider = opts?.assetProvider ?? new FilesystemAssetProvider(resolveDataDir());
 
   // Mutable server state
   const state: SetupServerState = {
@@ -154,8 +154,8 @@ export function createSetupServer(
     // ── API: Setup Status ────────────────────────────────────────────
 
     if (method === "GET" && path === "/api/setup/status") {
-      const stateDir = resolveStateHome();
-      const complete = isSetupComplete(stateDir, configDir);
+      const vaultDir = resolveVaultDir();
+      const complete = isSetupComplete(vaultDir);
       return jsonResponse(200, {
         ok: true,
         setupComplete: complete || state.setupComplete,

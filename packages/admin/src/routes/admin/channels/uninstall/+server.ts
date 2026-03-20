@@ -66,7 +66,7 @@ export const POST: RequestHandler = async (event) => {
   const dockerCheck = await checkDocker();
   let dockerResult = null;
   if (dockerCheck.ok) {
-    dockerResult = await composeStop(state.stateDir, [serviceName], {
+    dockerResult = await composeStop(state.configDir, [serviceName], {
       files: buildComposeFileList(state),
       envFiles: buildEnvFiles(state)
     });

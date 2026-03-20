@@ -35,7 +35,7 @@
 		}
 	}
 
-	# ── Channel routes (auto-imported from staged state) ─────────────
+	# ── Channel routes (auto-imported from data/caddy/channels/) ─────
 	import channels/public/*.caddy
 	import channels/lan/*.caddy
 

@@ -79,7 +79,7 @@ export const POST: RequestHandler = async (event) => {
   const envFiles = buildEnvFiles(state);
 
   logger.info("pulling images", { requestId });
-  const pullResult = await composePull(state.stateDir, { files, envFiles });
+  const pullResult = await composePull(state.configDir, { files, envFiles });
   if (!pullResult.ok) {
     logger.error("image pull failed", { requestId, stderr: pullResult.stderr });
     appendAudit(state, actor, "upgrade", { result: "error", reason: "pull_failed", stderr: pullResult.stderr }, false, requestId, callerType);
@@ -87,7 +87,7 @@ export const POST: RequestHandler = async (event) => {
   }
 
   logger.info("recreating containers", { requestId });
-  const upResult = await composeUp(state.stateDir, { files, envFiles, services: buildManagedServices(state), removeOrphans: true });
+  const upResult = await composeUp(state.configDir, { files, envFiles, services: buildManagedServices(state), removeOrphans: true });
   if (!upResult.ok) {
     logger.error("compose up failed after pull", { requestId, stderr: upResult.stderr });
     appendAudit(state, actor, "upgrade", { result: "error", reason: "up_failed", stderr: upResult.stderr }, false, requestId, callerType);
@@ -108,7 +108,7 @@ export const POST: RequestHandler = async (event) => {
   // response is flushed before Docker replaces this container.
   setTimeout(() => {
     logger.info("recreating admin container with new image", { requestId, imageTag });
-    selfRecreateAdmin(state.stateDir, { files, envFiles });
+    selfRecreateAdmin(state.configDir, { files, envFiles });
   }, 2_000);
 
   return jsonResponse(200, {

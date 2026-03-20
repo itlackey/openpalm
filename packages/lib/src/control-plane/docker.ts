@@ -2,8 +2,8 @@
  * Docker integration — executes real docker compose commands.
  *
  * This module shells out to `docker compose` for lifecycle operations.
- * It reads the generated docker-compose.yml from the state directory
- * and uses it for all operations.
+ * It reads compose files from the config directory (config/components/)
+ * and uses them for all operations.
  *
  * Security: All commands use execFile with argument arrays to prevent
  * command injection. No user input is ever interpolated into shell strings.
@@ -65,9 +65,9 @@ function run(
   });
 }
 
-/** Get the compose file path from state directory */
-function composeFile(stateDir: string): string {
-  return `${stateDir}/artifacts/docker-compose.yml`;
+/** Get the compose file path from config directory */
+function composeFile(configDir: string): string {
+  return `${configDir}/components/core.yml`;
 }
 
 /** Check if Docker is available */
@@ -112,8 +112,8 @@ export async function checkDockerCompose(): Promise<DockerResult> {
  * Build the `-f file1 -f file2 ...` args for docker compose.
  * Returns a flat array like ["-f", "path1", "-f", "path2"].
  */
-function composeFileArgs(stateDir: string, files?: string[]): string[] {
-  const fileList = files ?? [composeFile(stateDir)];
+function composeFileArgs(configDir: string, files?: string[]): string[] {
+  const fileList = files ?? [composeFile(configDir)];
   return fileList.flatMap((f) => ["-f", f]);
 }
 
@@ -131,8 +131,8 @@ function pushEnvFileArgs(args: string[], envFiles?: string[]): void {
  * Build the common prefix args for all docker compose commands:
  *   docker compose -f <file> ... --project-name openpalm [--env-file ...]
  */
-function buildComposeArgs(stateDir: string, options: { files?: string[]; envFiles?: string[] } = {}): string[] {
-  const args = ["compose", ...composeFileArgs(stateDir, options.files), "--project-name", "openpalm"];
+function buildComposeArgs(configDir: string, options: { files?: string[]; envFiles?: string[] } = {}): string[] {
+  const args = ["compose", ...composeFileArgs(configDir, options.files), "--project-name", "openpalm"];
   pushEnvFileArgs(args, options.envFiles);
   return args;
 }
@@ -142,7 +142,7 @@ function buildComposeArgs(stateDir: string, options: { files?: string[]; envFile
  * Pass `files` to merge multiple compose overlays (e.g. core + channel files).
  */
 export async function composeUp(
-  stateDir: string,
+  configDir: string,
   options: {
     files?: string[];
     profiles?: string[];
@@ -152,7 +152,7 @@ export async function composeUp(
     removeOrphans?: boolean;
   } = {}
 ): Promise<DockerResult> {
-  const primaryFile = options.files?.[0] ?? composeFile(stateDir);
+  const primaryFile = options.files?.[0] ?? composeFile(configDir);
   if (!existsSync(primaryFile)) {
     return {
       ok: false,
@@ -162,7 +162,7 @@ export async function composeUp(
     };
   }
 
-  const args = buildComposeArgs(stateDir, options);
+  const args = buildComposeArgs(configDir, options);
 
   if (options.profiles) {
     for (const p of options.profiles) {
@@ -193,14 +193,14 @@ export async function composeUp(
     Object.assign(envOverrides, parseEnvFile(ef));
   }
 
-  return run(args, stateDir, 300_000, envOverrides);
+  return run(args, configDir, 300_000, envOverrides);
 }
 
 /**
  * Run `docker compose down` to stop and remove containers.
  */
 export async function composeDown(
-  stateDir: string,
+  configDir: string,
   options: {
     files?: string[];
     profiles?: string[];
@@ -208,7 +208,7 @@ export async function composeDown(
     envFiles?: string[];
   } = {}
 ): Promise<DockerResult> {
-  const primaryFile = options.files?.[0] ?? composeFile(stateDir);
+  const primaryFile = options.files?.[0] ?? composeFile(configDir);
   if (!existsSync(primaryFile)) {
     return {
       ok: false,
@@ -218,7 +218,7 @@ export async function composeDown(
     };
   }
 
-  const args = buildComposeArgs(stateDir, options);
+  const args = buildComposeArgs(configDir, options);
 
   if (options.profiles) {
     for (const p of options.profiles) {
@@ -232,18 +232,18 @@ export async function composeDown(
     args.push("-v");
   }
 
-  return run(args, stateDir);
+  return run(args, configDir);
 }
 
 /**
  * Restart specific services.
  */
 export async function composeRestart(
-  stateDir: string,
+  configDir: string,
   services: string[],
   options: { files?: string[]; envFiles?: string[] } = {}
 ): Promise<DockerResult> {
-  const primaryFile = options.files?.[0] ?? composeFile(stateDir);
+  const primaryFile = options.files?.[0] ?? composeFile(configDir);
   if (!existsSync(primaryFile)) {
     return {
       ok: false,
@@ -253,49 +253,49 @@ export async function composeRestart(
     };
   }
 
-  const args = buildComposeArgs(stateDir, options);
+  const args = buildComposeArgs(configDir, options);
   args.push("restart", ...services);
 
-  return run(args, stateDir);
+  return run(args, configDir);
 }
 
 /**
  * Stop specific services.
  */
 export async function composeStop(
-  stateDir: string,
+  configDir: string,
   services: string[],
   options: { files?: string[]; envFiles?: string[] } = {}
 ): Promise<DockerResult> {
-  const args = buildComposeArgs(stateDir, options);
+  const args = buildComposeArgs(configDir, options);
   args.push("stop", ...services);
 
-  return run(args, stateDir);
+  return run(args, configDir);
 }
 
 /**
  * Start specific services (must already be created).
  */
 export async function composeStart(
-  stateDir: string,
+  configDir: string,
   services: string[],
   options: { files?: string[]; envFiles?: string[] } = {}
 ): Promise<DockerResult> {
-  const args = buildComposeArgs(stateDir, options);
+  const args = buildComposeArgs(configDir, options);
   // Use up -d for specific services to ensure they're created
   args.push("up", "-d", ...services);
 
-  return run(args, stateDir);
+  return run(args, configDir);
 }
 
 /**
  * Get the status of all containers in the project.
  */
 export async function composePs(
-  stateDir: string,
+  configDir: string,
   options: { files?: string[]; envFiles?: string[] } = {}
 ): Promise<DockerResult> {
-  const primaryFile = options.files?.[0] ?? composeFile(stateDir);
+  const primaryFile = options.files?.[0] ?? composeFile(configDir);
   if (!existsSync(primaryFile)) {
     // If no compose file, just list containers with the project label
     return run(
@@ -306,26 +306,26 @@ export async function composePs(
         "--format",
         "json"
       ],
-      stateDir
+      configDir
     );
   }
 
-  const args = buildComposeArgs(stateDir, options);
+  const args = buildComposeArgs(configDir, options);
   args.push("ps", "--format", "json");
 
-  return run(args, stateDir);
+  return run(args, configDir);
 }
 
 /**
  * Get logs for specific services or all services.
  */
 export async function composeLogs(
-  stateDir: string,
+  configDir: string,
   services?: string[],
   tail = 100,
   options: { files?: string[]; envFiles?: string[]; since?: string } = {}
 ): Promise<DockerResult> {
-  const args = buildComposeArgs(stateDir, options);
+  const args = buildComposeArgs(configDir, options);
   args.push("logs", "--tail", String(tail));
 
   if (options.since) {
@@ -336,28 +336,28 @@ export async function composeLogs(
     args.push(...services);
   }
 
-  return run(args, stateDir);
+  return run(args, configDir);
 }
 
 /**
  * Reload Caddy configuration by restarting the container.
  */
 export async function caddyReload(
-  stateDir: string,
+  configDir: string,
   options: { files?: string[]; envFiles?: string[] } = {}
 ): Promise<DockerResult> {
-  return composeRestart(stateDir, ["caddy"], options);
+  return composeRestart(configDir, ["caddy"], options);
 }
 
 /**
  * Pull image for a single service.
  */
 export async function composePullService(
-  stateDir: string,
+  configDir: string,
   service: string,
   options: { files?: string[]; envFiles?: string[] } = {}
 ): Promise<DockerResult> {
-  const args = buildComposeArgs(stateDir, options);
+  const args = buildComposeArgs(configDir, options);
   args.push("pull", service);
 
   const envOverrides: Record<string, string> = {};
@@ -365,17 +365,17 @@ export async function composePullService(
     Object.assign(envOverrides, parseEnvFile(ef));
   }
 
-  return run(args, stateDir, 300_000, envOverrides);
+  return run(args, configDir, 300_000, envOverrides);
 }
 
 /**
  * Pull latest images for all services.
  */
 export async function composePull(
-  stateDir: string,
+  configDir: string,
   options: { files?: string[]; envFiles?: string[] } = {}
 ): Promise<DockerResult> {
-  const args = buildComposeArgs(stateDir, options);
+  const args = buildComposeArgs(configDir, options);
   args.push("pull");
 
   const envOverrides: Record<string, string> = {};
@@ -383,20 +383,20 @@ export async function composePull(
     Object.assign(envOverrides, parseEnvFile(ef));
   }
 
-  return run(args, stateDir, 300_000, envOverrides);
+  return run(args, configDir, 300_000, envOverrides);
 }
 
 /**
  * Get resource usage stats for all containers in the project.
  */
 export async function composeStats(
-  stateDir: string,
+  configDir: string,
   options: { files?: string[]; envFiles?: string[] } = {}
 ): Promise<DockerResult> {
-  const args = buildComposeArgs(stateDir, options);
+  const args = buildComposeArgs(configDir, options);
   args.push("stats", "--no-stream", "--format", "json");
 
-  return run(args, stateDir);
+  return run(args, configDir);
 }
 
 /**
@@ -421,10 +421,10 @@ export async function getDockerEvents(
  * Fire-and-forget recreation of the admin container.
  */
 export function selfRecreateAdmin(
-  stateDir: string,
+  configDir: string,
   options: { files?: string[]; envFiles?: string[] } = {}
 ): void {
-  const args = buildComposeArgs(stateDir, options);
+  const args = buildComposeArgs(configDir, options);
   args.push("--profile", "admin", "up", "-d", "--force-recreate", "--remove-orphans", "admin");
 
   const envOverrides: Record<string, string> = {};
@@ -434,7 +434,7 @@ export function selfRecreateAdmin(
 
   try {
     const child = spawn("docker", args, {
-      cwd: stateDir,
+      cwd: configDir,
       stdio: "ignore",
       detached: true,
       env: { ...process.env, ...envOverrides }

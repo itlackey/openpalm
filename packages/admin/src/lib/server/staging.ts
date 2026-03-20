@@ -1,11 +1,11 @@
 /**
- * Artifact staging pipeline — wraps @openpalm/lib with Vite asset provider
- * pre-injected for staging and persistence functions.
+ * Configuration pipeline — wraps @openpalm/lib with Vite asset provider
+ * pre-injected for resolve and persistence functions.
  */
 import type { ControlPlaneState } from "@openpalm/lib";
 import {
-  stageArtifacts as _stageArtifacts,
-  persistArtifacts as _persistArtifacts,
+  resolveArtifacts as _resolveArtifacts,
+  persistConfiguration as _persistConfiguration,
 } from "@openpalm/lib";
 import { viteAssets } from "./vite-asset-provider.js";
 
@@ -14,10 +14,10 @@ export {
   sha256,
   randomHex,
   isOllamaEnabled,
-  stagedEnvFile,
-  stagedStackEnvFile,
+  isAdminEnabled,
   buildEnvFiles,
-  discoverStagedChannelYmls,
+  discoverComponentOverlays,
+  discoverChannelOverlays,
   buildArtifactMeta,
 } from "@openpalm/lib";
 
@@ -34,19 +34,25 @@ export {
   ensureOpenCodeSystemConfig,
   ensureMemoryDir,
   ensureCoreAutomations,
-  ensureSecretsSchema,
-  ensureStackSchema,
+  ensureUserEnvSchema,
+  ensureSystemEnvSchema,
   refreshCoreAssets,
 } from "./core-assets.js";
 
 // Wrapped functions (pre-inject Vite asset provider)
-export function stageArtifacts(state: ControlPlaneState): {
+export function resolveArtifacts(state: ControlPlaneState): {
   compose: string;
   caddyfile: string;
 } {
-  return _stageArtifacts(state, viteAssets);
+  return _resolveArtifacts(state, viteAssets);
 }
 
-export function persistArtifacts(state: ControlPlaneState): void {
-  _persistArtifacts(state, viteAssets);
+export function persistConfiguration(state: ControlPlaneState): void {
+  _persistConfiguration(state, viteAssets);
 }
+
+/** @deprecated Use resolveArtifacts() */
+export const stageArtifacts = resolveArtifacts;
+
+/** @deprecated Use persistConfiguration() */
+export const persistArtifacts = persistConfiguration;

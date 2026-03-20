@@ -2,7 +2,7 @@ import { defineCommand } from 'citty';
 import { join } from 'node:path';
 import { rm } from 'node:fs/promises';
 import cliPkg from '../../package.json' with { type: 'json' };
-import { defaultConfigHome, defaultDataHome, defaultStateHome, defaultWorkDir } from '../lib/paths.ts';
+import { defaultHomeDir, defaultConfigDir, defaultVaultDir, defaultDataDir, defaultWorkDir } from '../lib/paths.ts';
 import { ensureSecrets, ensureStackEnv, resolveRequestedImageTag } from '../lib/env.ts';
 import { ensureDirectoryTree, fetchAsset, runDockerCompose, openBrowser } from '../lib/docker.ts';
 import {
@@ -12,7 +12,7 @@ import {
 } from '@openpalm/lib';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
-import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
+import { ensureValidState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
 import { createSetupServer } from '../setup-wizard/server.ts';
 import { buildInstallServiceNames, buildDeployStatusEntries } from './install-services.ts';
 
@@ -44,7 +44,7 @@ async function resolveDefaultInstallRef(): Promise<string> {
 export default defineCommand({
   meta: {
     name: 'install',
-    description: 'Bootstrap XDG dirs, download assets, run setup wizard, start core services',
+    description: 'Bootstrap home dirs, download assets, run setup wizard, start core services',
   },
   args: {
     force: {
@@ -107,55 +107,57 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     throw new Error('Docker Compose v2 is required. Install it: https://docs.docker.com/compose/install/');
   }
 
-  const configHome = defaultConfigHome();
-  const dataHome = defaultDataHome();
-  const stateHome = defaultStateHome();
+  const homeDir = defaultHomeDir();
+  const configDir = defaultConfigDir();
+  const vaultDir = defaultVaultDir();
+  const dataDir = defaultDataDir();
   const workDir = defaultWorkDir();
 
-  const secretsPath = join(configHome, 'secrets.env');
+  const secretsPath = join(vaultDir, 'user.env');
   const updateMode = await Bun.file(secretsPath).exists();
   if (updateMode && !options.force) {
     throw new Error('OpenPalm appears to already be installed. Re-run install with --force to continue.');
   }
 
-  await ensureDirectoryTree(configHome, dataHome, stateHome, workDir);
+  await ensureDirectoryTree(homeDir, configDir, vaultDir, dataDir, workDir);
 
   // Detect host system info (non-fatal)
   try {
     const hostInfo = await detectHostInfo();
-    await Bun.write(join(dataHome, 'host.json'), JSON.stringify(hostInfo, null, 2) + '\n');
+    await Bun.write(join(dataDir, 'host.json'), JSON.stringify(hostInfo, null, 2) + '\n');
   } catch {
     // Host detection failure is non-fatal
   }
 
   const composeContent = await fetchAsset(options.version, 'docker-compose.yml');
   const caddyContent = await fetchAsset(options.version, 'Caddyfile');
-  await Bun.write(join(dataHome, 'docker-compose.yml'), composeContent);
-  await Bun.write(join(dataHome, 'caddy', 'Caddyfile'), caddyContent);
-  await Bun.write(join(stateHome, 'artifacts', 'docker-compose.yml'), composeContent);
-  await Bun.write(join(stateHome, 'artifacts', 'Caddyfile'), caddyContent);
+  await Bun.write(join(configDir, 'components', 'core.yml'), composeContent);
+  await Bun.write(join(dataDir, 'caddy', 'Caddyfile'), caddyContent);
 
-  // Download schemas to both DATA_HOME (for FilesystemAssetProvider) and STATE_HOME (for varlock validation)
-  for (const schemaFile of ['secrets.env.schema', 'stack.env.schema', 'setup-config.schema.json']) {
+  // Download schemas to vault/ for varlock validation and dataDir for FilesystemAssetProvider
+  for (const [remoteFile, localPath] of [
+    ['user.env.schema', join(vaultDir, 'user.env.schema')],
+    ['system.env.schema', join(vaultDir, 'system.env.schema')],
+    ['setup-config.schema.json', join(dataDir, 'setup-config.schema.json')],
+  ] as const) {
     try {
-      const content = await fetchAsset(options.version, schemaFile);
-      await Bun.write(join(dataHome, schemaFile), content);
-      await Bun.write(join(stateHome, 'artifacts', schemaFile), content);
+      const content = await fetchAsset(options.version, remoteFile);
+      await Bun.write(localPath, content);
     } catch (err) {
-      console.warn(`Warning: could not download schema '${schemaFile}': ${err instanceof Error ? err.message : String(err)}`);
+      console.warn(`Warning: could not download schema '${remoteFile}': ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
   // Download remaining assets needed by FilesystemAssetProvider
   const assetFiles: Array<{ remote: string; localPath: string }> = [
-    { remote: 'ollama.yml', localPath: join(dataHome, 'ollama.yml') },
-    { remote: 'admin.yml', localPath: join(dataHome, 'admin.yml') },
-    { remote: 'AGENTS.md', localPath: join(dataHome, 'assistant', 'AGENTS.md') },
-    { remote: 'opencode.jsonc', localPath: join(dataHome, 'assistant', 'opencode.jsonc') },
-    { remote: 'admin-opencode.jsonc', localPath: join(dataHome, 'admin', 'opencode.jsonc') },
-    { remote: 'cleanup-logs.yml', localPath: join(dataHome, 'automations', 'cleanup-logs.yml') },
-    { remote: 'cleanup-data.yml', localPath: join(dataHome, 'automations', 'cleanup-data.yml') },
-    { remote: 'validate-config.yml', localPath: join(dataHome, 'automations', 'validate-config.yml') },
+    { remote: 'ollama.yml', localPath: join(configDir, 'components', 'ollama.yml') },
+    { remote: 'admin.yml', localPath: join(configDir, 'components', 'admin.yml') },
+    { remote: 'AGENTS.md', localPath: join(dataDir, 'assistant', 'AGENTS.md') },
+    { remote: 'opencode.jsonc', localPath: join(dataDir, 'assistant', 'opencode.jsonc') },
+    { remote: 'admin-opencode.jsonc', localPath: join(dataDir, 'admin', 'opencode.jsonc') },
+    { remote: 'cleanup-logs.yml', localPath: join(configDir, 'automations', 'cleanup-logs.yml') },
+    { remote: 'cleanup-data.yml', localPath: join(configDir, 'automations', 'cleanup-data.yml') },
+    { remote: 'validate-config.yml', localPath: join(configDir, 'automations', 'validate-config.yml') },
   ];
   await Promise.all(
     assetFiles.map(async ({ remote, localPath }) => {
@@ -168,14 +170,14 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     }),
   );
 
-  await ensureSecrets(configHome);
+  await ensureSecrets(vaultDir);
   // Derive the image tag from the resolved version so that stale or
   // architecture-suffixed OPENPALM_IMAGE_TAG env vars don't leak in.
   const imageTag = resolveRequestedImageTag(options.version) ?? undefined;
-  await ensureStackEnv(configHome, dataHome, stateHome, workDir, options.version, imageTag);
+  await ensureStackEnv(homeDir, vaultDir, workDir, options.version, imageTag);
   // Seed OpenCode config — non-fatal since performSetup() also seeds these
   try {
-    const fsAssets = new FilesystemAssetProvider(dataHome);
+    const fsAssets = new FilesystemAssetProvider(homeDir);
     ensureOpenCodeConfig();
     ensureOpenCodeSystemConfig(fsAssets);
     ensureAdminOpenCodeConfig(fsAssets);
@@ -185,9 +187,9 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
   // Non-fatal validation
   try {
-    const varlockBin = await ensureVarlock(stateHome);
-    const schemaPath = join(stateHome, 'artifacts', 'secrets.env.schema');
-    const envPath = join(configHome, 'secrets.env');
+    const varlockBin = await ensureVarlock(dataDir);
+    const schemaPath = join(vaultDir, 'user.env.schema');
+    const envPath = join(vaultDir, 'user.env');
     if (await Bun.file(schemaPath).exists()) {
       const tmpDir = await prepareVarlockDir(schemaPath, envPath);
       try {
@@ -249,7 +251,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
       throw new Error(`Failed to parse setup config '${options.file}': ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    const fsAssets = new FilesystemAssetProvider(dataHome);
+    const fsAssets = new FilesystemAssetProvider(homeDir);
     const config = parsed as Record<string, unknown>;
     let result: SetupResult;
 
@@ -274,7 +276,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
     // Deploy (same as existing update-mode code)
     console.log('Starting services...');
-    const state = await ensureStagedState();
+    const state = await ensureValidState();
     const composeArgs = fullComposeArgs(state);
     const managedServices = buildManagedServiceNames(state);
     const allServices = buildInstallServiceNames(managedServices);
@@ -298,7 +300,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
     let wizard;
     try {
-      wizard = createSetupServer(SETUP_WIZARD_PORT, { configDir: configHome });
+      wizard = createSetupServer(SETUP_WIZARD_PORT, { configDir });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('EADDRINUSE') || msg.includes('address already in use') || msg.includes('Failed to start')) {
@@ -326,7 +328,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     // Keep wizard server running for deploy status polling from the browser.
     // Stage artifacts and start services while the wizard shows progress.
     try {
-      const state = await ensureStagedState();
+      const state = await ensureValidState();
       const composeArgs = fullComposeArgs(state);
       const managedServices = buildManagedServiceNames(state);
       const allServices = buildInstallServiceNames(managedServices);
@@ -367,7 +369,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   // Stage artifacts and start all managed services directly via Docker
   // Compose. No admin container required for lifecycle operations.
 
-  const state = await ensureStagedState();
+  const state = await ensureValidState();
   const composeArgs = fullComposeArgs(state);
   const managedServices = buildManagedServiceNames(state);
   const allServices = buildInstallServiceNames(managedServices);

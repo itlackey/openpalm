@@ -63,7 +63,24 @@ export type { RegistryProvider } from "./control-plane/registry-provider.js";
 export { FilesystemAssetProvider } from "./control-plane/fs-asset-provider.js";
 export { FilesystemRegistryProvider } from "./control-plane/fs-registry-provider.js";
 
-// ── Paths ───────────────────────────────────────────────────────────────
+// ── Home Layout (v0.10.0) ───────────────────────────────────────────────
+export {
+  resolveHome,
+  resolveOpenPalmHome,
+  resolveConfigDir,
+  resolveVaultDir,
+  resolveDataDir,
+  resolveLogsDir,
+  resolveCacheHome,
+  resolveRollbackDir,
+  resolveRegistryCacheDir,
+  ensureHomeDirs,
+  detectLegacyLayout,
+  hasLegacyEnvVars,
+} from "./control-plane/home.js";
+export type { LegacyLayout } from "./control-plane/home.js";
+
+// ── Paths (deprecated — use Home Layout) ─────────────────────────────────
 export {
   resolveConfigHome,
   resolveStateHome,
@@ -187,6 +204,8 @@ export {
   LAN_ONLY_IMPORT,
   ensureCoreCaddyfile,
   readCoreCaddyfile,
+  ensureUserEnvSchema,
+  ensureSystemEnvSchema,
   ensureSecretsSchema,
   ensureStackSchema,
   detectAccessScope,
@@ -204,25 +223,40 @@ export {
   refreshCoreAssets,
 } from "./control-plane/core-assets.js";
 
-// ── Staging ─────────────────────────────────────────────────────────────
+// ── Configuration (replaces staging) ─────────────────────────────────────
 export {
   sha256,
   randomHex,
   isOllamaEnabled,
   isAdminEnabled,
-  stagedEnvFile,
-  stagedStackEnvFile,
   buildEnvFiles,
-  discoverStagedChannelYmls,
-  stageArtifacts,
+  discoverComponentOverlays,
+  discoverChannelOverlays,
+  resolveArtifacts,
   buildArtifactMeta,
-  persistArtifacts,
+  persistConfiguration,
   withDefaultLanOnly,
-  stageChannelCaddyfiles,
-  stageChannelYmlFiles,
-  stageSecretsEnv,
-  stageAutomationFiles,
+  writeCaddyRoutes,
+  writeSystemEnv,
+  writeComponentOverlay,
+  // Legacy aliases
+  stageArtifacts,
+  persistArtifacts,
+  discoverStagedChannelYmls,
 } from "./control-plane/staging.js";
+
+// ── Rollback ─────────────────────────────────────────────────────────────
+export {
+  snapshotCurrentState,
+  restoreSnapshot,
+  hasSnapshot,
+  snapshotTimestamp,
+} from "./control-plane/rollback.js";
+
+// ── Validation ───────────────────────────────────────────────────────────
+export {
+  validateProposedState,
+} from "./control-plane/validate.js";
 
 // ── Lifecycle ───────────────────────────────────────────────────────────
 export {

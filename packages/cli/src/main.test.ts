@@ -38,9 +38,7 @@ describe('cli main', () => {
   const originalFetch = globalThis.fetch;
   const originalLog = console.log;
   const originalWarn = console.warn;
-  const originalConfigHome = process.env.OPENPALM_CONFIG_HOME;
-  const originalDataHome = process.env.OPENPALM_DATA_HOME;
-  const originalStateHome = process.env.OPENPALM_STATE_HOME;
+  const originalHome = process.env.OPENPALM_HOME;
   const originalWorkDir = process.env.OPENPALM_WORK_DIR;
   const originalAdminToken = process.env.ADMIN_TOKEN;
   const originalOpenPalmAdminToken = process.env.OPENPALM_ADMIN_TOKEN;
@@ -50,9 +48,7 @@ describe('cli main', () => {
     console.log = originalLog;
     console.warn = originalWarn;
     restoreDockerCli();
-    process.env.OPENPALM_CONFIG_HOME = originalConfigHome;
-    process.env.OPENPALM_DATA_HOME = originalDataHome;
-    process.env.OPENPALM_STATE_HOME = originalStateHome;
+    process.env.OPENPALM_HOME = originalHome;
     process.env.OPENPALM_WORK_DIR = originalWorkDir;
     process.env.ADMIN_TOKEN = originalAdminToken;
     process.env.OPENPALM_ADMIN_TOKEN = originalOpenPalmAdminToken;
@@ -62,17 +58,14 @@ describe('cli main', () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-install-'));
     const configHome = join(base, 'config');
     const dataHome = join(base, 'data');
-    const stateHome = join(base, 'state');
     const workDir = join(base, 'work');
-    const binDir = join(stateHome, 'bin');
+    const binDir = join(base, 'data', 'bin');
 
     mkdirSync(binDir, { recursive: true });
     writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
     chmodSync(join(binDir, 'varlock'), 0o755);
 
-    process.env.OPENPALM_CONFIG_HOME = configHome;
-    process.env.OPENPALM_DATA_HOME = dataHome;
-    process.env.OPENPALM_STATE_HOME = stateHome;
+    process.env.OPENPALM_HOME = base;
     process.env.OPENPALM_WORK_DIR = workDir;
     delete process.env.ADMIN_TOKEN;
     delete process.env.OPENPALM_ADMIN_TOKEN;
@@ -91,7 +84,7 @@ describe('cli main', () => {
       if (url.includes('/Caddyfile')) {
         return new Response(':80 {\n}\n', { status: 200 });
       }
-      if (url.includes('/secrets.env.schema') || url.includes('/stack.env.schema')) {
+      if (url.includes('/user.env.schema') || url.includes('/system.env.schema')) {
         return new Response('KEY=string\n', { status: 200 });
       }
       return new Response('', { status: 503 });
@@ -110,19 +103,15 @@ describe('cli main', () => {
 
   it('creates the admin data directory during bootstrap install', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-install-'));
-    const configHome = join(base, 'config');
     const dataHome = join(base, 'data');
-    const stateHome = join(base, 'state');
     const workDir = join(base, 'work');
-    const binDir = join(stateHome, 'bin');
+    const binDir = join(base, 'data', 'bin');
 
     mkdirSync(binDir, { recursive: true });
     writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
     chmodSync(join(binDir, 'varlock'), 0o755);
 
-    process.env.OPENPALM_CONFIG_HOME = configHome;
-    process.env.OPENPALM_DATA_HOME = dataHome;
-    process.env.OPENPALM_STATE_HOME = stateHome;
+    process.env.OPENPALM_HOME = base;
     process.env.OPENPALM_WORK_DIR = workDir;
 
     mockDockerCli();
@@ -137,7 +126,7 @@ describe('cli main', () => {
       if (url.includes('/Caddyfile')) {
         return new Response(':80 {\n}\n', { status: 200 });
       }
-      if (url.includes('/secrets.env.schema') || url.includes('/stack.env.schema')) {
+      if (url.includes('/user.env.schema') || url.includes('/system.env.schema')) {
         return new Response('KEY=string\n', { status: 200 });
       }
       return new Response('', { status: 503 });
@@ -154,20 +143,15 @@ describe('cli main', () => {
 
   it('resolves version-pinned install ref (falls back to CLI package version)', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-install-'));
-    const configHome = join(base, 'config');
-    const dataHome = join(base, 'data');
-    const stateHome = join(base, 'state');
     const workDir = join(base, 'work');
-    const binDir = join(stateHome, 'bin');
+    const binDir = join(base, 'data', 'bin');
     const fetchedUrls: string[] = [];
 
     mkdirSync(binDir, { recursive: true });
     writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
     chmodSync(join(binDir, 'varlock'), 0o755);
 
-    process.env.OPENPALM_CONFIG_HOME = configHome;
-    process.env.OPENPALM_DATA_HOME = dataHome;
-    process.env.OPENPALM_STATE_HOME = stateHome;
+    process.env.OPENPALM_HOME = base;
     process.env.OPENPALM_WORK_DIR = workDir;
 
     // Read the CLI package version to verify pinning behaviour
@@ -190,7 +174,7 @@ describe('cli main', () => {
       if (url.includes('/Caddyfile')) {
         return new Response(':80 {\n}\n', { status: 200 });
       }
-      if (url.includes('/secrets.env.schema') || url.includes('/stack.env.schema')) {
+      if (url.includes('/user.env.schema') || url.includes('/system.env.schema')) {
         return new Response('KEY=string\n', { status: 200 });
       }
       return new Response('', { status: 503 });
@@ -293,9 +277,9 @@ describe('npm bin launcher', () => {
 
 describe('validate command', () => {
   it('is a recognized command (does not throw Unknown command)', async () => {
-    const tempStateHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const binDir = join(tempStateHome, 'bin');
-    const artifactsDir = join(tempStateHome, 'artifacts');
+    const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
+    const binDir = join(tempHome, 'data', 'bin');
+    const artifactsDir = join(tempHome, 'data', 'artifacts');
     mkdirSync(binDir, { recursive: true });
     mkdirSync(artifactsDir, { recursive: true });
 
@@ -303,9 +287,9 @@ describe('validate command', () => {
     writeFileSync(fakeVarlock, '#!/bin/sh\nexit 1\n');
     chmodSync(fakeVarlock, 0o755);
 
-    const originalStateHome = process.env.OPENPALM_STATE_HOME;
+    const originalHome = process.env.OPENPALM_HOME;
     const originalExit = process.exit;
-    process.env.OPENPALM_STATE_HOME = tempStateHome;
+    process.env.OPENPALM_HOME = tempHome;
     process.exit = mock((_code?: number) => { throw new Error(`process.exit(${_code})`); }) as typeof process.exit;
 
     try {
@@ -314,33 +298,32 @@ describe('validate command', () => {
       expect(message).not.toContain('Unknown command');
     } finally {
       process.exit = originalExit;
-      process.env.OPENPALM_STATE_HOME = originalStateHome;
-      rmSync(tempStateHome, { recursive: true, force: true });
+      process.env.OPENPALM_HOME = originalHome;
+      rmSync(tempHome, { recursive: true, force: true });
     }
   });
 });
 
 describe('scan command', () => {
   it('is a recognized command (does not throw Unknown command)', async () => {
-    const tempStateHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const tempConfigHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const binDir = join(tempStateHome, 'bin');
-    const artifactsDir = join(tempStateHome, 'artifacts');
+    const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
+    const binDir = join(tempHome, 'data', 'bin');
+    const artifactsDir = join(tempHome, 'data', 'artifacts');
+    const vaultDir = join(tempHome, 'vault');
     mkdirSync(binDir, { recursive: true });
     mkdirSync(artifactsDir, { recursive: true });
+    mkdirSync(vaultDir, { recursive: true });
 
     const fakeVarlock = join(binDir, 'varlock');
     writeFileSync(fakeVarlock, '#!/bin/sh\nexit 0\n');
     chmodSync(fakeVarlock, 0o755);
 
-    writeFileSync(join(artifactsDir, 'secrets.env.schema'), 'ADMIN_TOKEN\n');
-    writeFileSync(join(tempConfigHome, 'secrets.env'), 'ADMIN_TOKEN=testtoken\n');
+    writeFileSync(join(vaultDir, 'user.env.schema'), 'ADMIN_TOKEN\n');
+    writeFileSync(join(vaultDir, 'user.env'), 'ADMIN_TOKEN=testtoken\n');
 
-    const originalStateHome = process.env.OPENPALM_STATE_HOME;
-    const originalConfigHome = process.env.OPENPALM_CONFIG_HOME;
+    const originalHome = process.env.OPENPALM_HOME;
     const originalExit = process.exit;
-    process.env.OPENPALM_STATE_HOME = tempStateHome;
-    process.env.OPENPALM_CONFIG_HOME = tempConfigHome;
+    process.env.OPENPALM_HOME = tempHome;
     process.exit = mock((_code?: number) => { throw new Error(`process.exit(${_code})`); }) as typeof process.exit;
 
     try {
@@ -350,28 +333,25 @@ describe('scan command', () => {
       expect(message).toBe('process.exit(0)');
     } finally {
       process.exit = originalExit;
-      process.env.OPENPALM_STATE_HOME = originalStateHome;
-      process.env.OPENPALM_CONFIG_HOME = originalConfigHome;
-      rmSync(tempStateHome, { recursive: true, force: true });
-      rmSync(tempConfigHome, { recursive: true, force: true });
+      process.env.OPENPALM_HOME = originalHome;
+      rmSync(tempHome, { recursive: true, force: true });
     }
   });
 
-  it('errors when secrets.env.schema is missing', async () => {
-    const tempStateHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const tempConfigHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const artifactsDir = join(tempStateHome, 'artifacts');
+  it('errors when user.env.schema is missing', async () => {
+    const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
+    const artifactsDir = join(tempHome, 'data', 'artifacts');
+    const vaultDir = join(tempHome, 'vault');
     mkdirSync(artifactsDir, { recursive: true });
+    mkdirSync(vaultDir, { recursive: true });
 
-    writeFileSync(join(tempConfigHome, 'secrets.env'), 'ADMIN_TOKEN=testtoken\n');
+    writeFileSync(join(vaultDir, 'user.env'), 'ADMIN_TOKEN=testtoken\n');
 
-    const originalStateHome = process.env.OPENPALM_STATE_HOME;
-    const originalConfigHome = process.env.OPENPALM_CONFIG_HOME;
+    const originalHome = process.env.OPENPALM_HOME;
     const originalExit = process.exit;
     const originalError = console.error;
     const errorCalls: string[] = [];
-    process.env.OPENPALM_STATE_HOME = tempStateHome;
-    process.env.OPENPALM_CONFIG_HOME = tempConfigHome;
+    process.env.OPENPALM_HOME = tempHome;
     process.exit = mock((_code?: number) => { throw new Error(`process.exit(${_code})`); }) as typeof process.exit;
     console.error = mock((...args: unknown[]) => { errorCalls.push(args.join(' ')); }) as typeof console.error;
 
@@ -379,15 +359,13 @@ describe('scan command', () => {
       const err = await main(['scan']).catch((e: unknown) => e);
       const message = err instanceof Error ? err.message : String(err);
       expect(message).toBe('process.exit(1)');
-      expect(errorCalls.some(msg => msg.includes('secrets.env.schema not found'))).toBe(true);
+      expect(errorCalls.some(msg => msg.includes('user.env.schema not found'))).toBe(true);
       expect(errorCalls.some(msg => msg.includes('openpalm install'))).toBe(true);
     } finally {
       process.exit = originalExit;
       console.error = originalError;
-      process.env.OPENPALM_STATE_HOME = originalStateHome;
-      process.env.OPENPALM_CONFIG_HOME = originalConfigHome;
-      rmSync(tempStateHome, { recursive: true, force: true });
-      rmSync(tempConfigHome, { recursive: true, force: true });
+      process.env.OPENPALM_HOME = originalHome;
+      rmSync(tempHome, { recursive: true, force: true });
     }
   });
 });
@@ -502,13 +480,15 @@ describe('install image tag pinning', () => {
 });
 
 describe('secrets.env generation', () => {
-  it('generates secrets.env with export prefix and OPENPALM_ADMIN_TOKEN', async () => {
+  it('generates user.env with export prefix and OPENPALM_ADMIN_TOKEN', async () => {
     const { ensureSecrets } = await import('./lib/env.ts');
     const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-secrets-'));
+    const vaultDir = join(tempDir, 'vault');
+    mkdirSync(vaultDir, { recursive: true });
 
     try {
-      await ensureSecrets(tempDir);
-      const content = await Bun.file(join(tempDir, 'secrets.env')).text();
+      await ensureSecrets(vaultDir);
+      const content = await Bun.file(join(vaultDir, 'user.env')).text();
       expect(content).toContain('export OPENPALM_ADMIN_TOKEN=');
       expect(content).toContain('export OPENAI_API_KEY=');
       expect(content).toContain('export MEMORY_USER_ID=');

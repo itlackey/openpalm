@@ -15,6 +15,8 @@ import {
   ensureCoreAutomations as _ensureCoreAutomations,
   ensureSecretsSchema as _ensureSecretsSchema,
   ensureStackSchema as _ensureStackSchema,
+  ensureUserEnvSchema as _ensureUserEnvSchema,
+  ensureSystemEnvSchema as _ensureSystemEnvSchema,
 } from "@openpalm/lib";
 import { viteAssets } from "./vite-asset-provider.js";
 
@@ -66,10 +68,20 @@ export function ensureCoreAutomations(): void {
   _ensureCoreAutomations(viteAssets);
 }
 
+export function ensureUserEnvSchema(): string {
+  return _ensureUserEnvSchema(viteAssets);
+}
+
+export function ensureSystemEnvSchema(): string {
+  return _ensureSystemEnvSchema(viteAssets);
+}
+
+/** @deprecated Use ensureUserEnvSchema() */
 export function ensureSecretsSchema(): string {
   return _ensureSecretsSchema(viteAssets);
 }
 
+/** @deprecated Use ensureSystemEnvSchema() */
 export function ensureStackSchema(): string {
   return _ensureStackSchema(viteAssets);
 }

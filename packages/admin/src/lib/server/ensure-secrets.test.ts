@@ -11,27 +11,31 @@ function makeTempDir(): string {
   return dir;
 }
 
-let configDir: string;
+let rootDir: string;
 
 beforeEach(() => {
-  configDir = makeTempDir();
+  rootDir = makeTempDir();
 });
 
 afterEach(() => {
-  rmSync(configDir, { recursive: true, force: true });
+  rmSync(rootDir, { recursive: true, force: true });
 });
 
 describe("ensureSecrets", () => {
-  test("seeds secrets.env with empty ADMIN_TOKEN on first run", () => {
+  test("seeds user.env with default keys on first run", () => {
+    const vaultDir = join(rootDir, "vault");
+    mkdirSync(vaultDir, { recursive: true });
+
     const state = {
-      configDir,
+      configDir: join(rootDir, "config"),
+      vaultDir,
       adminToken: "preconfigured-token"
     } as ControlPlaneState;
 
     ensureSecrets(state);
 
-    const secrets = readFileSync(join(configDir, "secrets.env"), "utf-8");
-    expect(secrets).toContain("ADMIN_TOKEN=\n");
-    expect(secrets).not.toContain("ADMIN_TOKEN=preconfigured-token");
+    const secrets = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    expect(secrets).toContain("OPENAI_API_KEY=");
+    expect(secrets).toContain("EMBEDDING_MODEL=");
   });
 });

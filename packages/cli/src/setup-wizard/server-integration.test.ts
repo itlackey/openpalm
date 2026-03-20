@@ -19,9 +19,11 @@ import type { CoreAssetProvider } from "@openpalm/lib";
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 let tempBase: string;
+let homeDir: string;
 let configDir: string;
+let vaultDir: string;
 let dataDir: string;
-let stateDir: string;
+let logsDir: string;
 
 const savedEnv: Record<string, string | undefined> = {};
 
@@ -45,17 +47,19 @@ function createStubAssetProvider(): CoreAssetProvider {
 
 function makeSetupDirs(): void {
   tempBase = mkdtempSync(join(tmpdir(), "openpalm-server-integ-test-"));
-  configDir = join(tempBase, "config");
-  dataDir = join(tempBase, "data");
-  stateDir = join(tempBase, "state");
+  homeDir = tempBase;
+  configDir = join(homeDir, "config");
+  vaultDir = join(homeDir, "vault");
+  dataDir = join(homeDir, "data");
+  logsDir = join(homeDir, "logs");
 
   for (const dir of [
     configDir,
-    join(configDir, "channels"),
+    join(configDir, "components"),
     join(configDir, "connections"),
     join(configDir, "assistant"),
     join(configDir, "automations"),
-    join(configDir, "stash"),
+    vaultDir,
     dataDir,
     join(dataDir, "admin"),
     join(dataDir, "memory"),
@@ -63,22 +67,18 @@ function makeSetupDirs(): void {
     join(dataDir, "guardian"),
     join(dataDir, "caddy"),
     join(dataDir, "caddy", "data"),
-    join(dataDir, "caddy", "config"),
-    join(dataDir, "automations"),
-    join(dataDir, "opencode"),
-    stateDir,
-    join(stateDir, "artifacts"),
-    join(stateDir, "audit"),
-    join(stateDir, "artifacts", "channels"),
-    join(stateDir, "automations"),
-    join(stateDir, "opencode"),
+    join(dataDir, "caddy", "channels"),
+    join(dataDir, "stash"),
+    join(dataDir, "workspace"),
+    logsDir,
+    join(logsDir, "opencode"),
   ]) {
     mkdirSync(dir, { recursive: true });
   }
 
-  writeFileSync(join(stateDir, "artifacts", "stack.env"), "OPENPALM_SETUP_COMPLETE=false\n");
+  writeFileSync(join(vaultDir, "system.env"), "OPENPALM_SETUP_COMPLETE=false\n");
   writeFileSync(
-    join(configDir, "secrets.env"),
+    join(vaultDir, "user.env"),
     [
       "# OpenPalm Secrets",
       "export OPENPALM_ADMIN_TOKEN=",
@@ -122,21 +122,15 @@ describe("setup wizard server integration", () => {
   beforeEach(async () => {
     makeSetupDirs();
 
-    savedEnv.OPENPALM_CONFIG_HOME = process.env.OPENPALM_CONFIG_HOME;
-    savedEnv.OPENPALM_DATA_HOME = process.env.OPENPALM_DATA_HOME;
-    savedEnv.OPENPALM_STATE_HOME = process.env.OPENPALM_STATE_HOME;
-    process.env.OPENPALM_CONFIG_HOME = configDir;
-    process.env.OPENPALM_DATA_HOME = dataDir;
-    process.env.OPENPALM_STATE_HOME = stateDir;
+    savedEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
+    process.env.OPENPALM_HOME = homeDir;
 
     serverPort = nextPort++;
     ollamaUp = await isOllamaAvailable();
   });
 
   afterEach(() => {
-    process.env.OPENPALM_CONFIG_HOME = savedEnv.OPENPALM_CONFIG_HOME;
-    process.env.OPENPALM_DATA_HOME = savedEnv.OPENPALM_DATA_HOME;
-    process.env.OPENPALM_STATE_HOME = savedEnv.OPENPALM_STATE_HOME;
+    process.env.OPENPALM_HOME = savedEnv.OPENPALM_HOME;
     if (tempBase) rmSync(tempBase, { recursive: true, force: true });
   });
 
@@ -284,7 +278,7 @@ describe("setup wizard server integration", () => {
       expect(profiles.assignments.llm.model).toBe("qwen2.5-coder:3b");
 
       // Verify staged compose artifact exists
-      const stagedCompose = join(stateDir, "artifacts", "docker-compose.yml");
+      const stagedCompose = join(configDir, "components", "core.yml");
       expect(existsSync(stagedCompose)).toBe(true);
 
       // Verify openpalm.yaml stack spec was written

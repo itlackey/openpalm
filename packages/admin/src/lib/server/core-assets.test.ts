@@ -1,5 +1,5 @@
 /**
- * Tests for core-assets.ts — DATA_HOME source-of-truth files:
+ * Tests for core-assets.ts — data dir source-of-truth files:
  * Caddyfile, compose, and access scope management.
  */
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
@@ -70,12 +70,12 @@ describe("ensureCoreCaddyfile / setCoreCaddyAccessScope", () => {
   const origEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    origEnv.OPENPALM_DATA_HOME = process.env.OPENPALM_DATA_HOME;
-    process.env.OPENPALM_DATA_HOME = trackDir(makeTempDir());
+    origEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
+    process.env.OPENPALM_HOME = trackDir(makeTempDir());
   });
 
   afterEach(() => {
-    process.env.OPENPALM_DATA_HOME = origEnv.OPENPALM_DATA_HOME;
+    process.env.OPENPALM_HOME = origEnv.OPENPALM_HOME;
   });
 
   test("ensureCoreCaddyfile creates Caddyfile if missing", () => {
@@ -93,8 +93,8 @@ describe("ensureCoreCaddyfile / setCoreCaddyAccessScope", () => {
   });
 
   test("setCoreCaddyAccessScope returns error if @denied line missing", () => {
-    const dataHome = process.env.OPENPALM_DATA_HOME!;
-    const caddyDir = join(dataHome, "caddy");
+    const dataDir = join(process.env.OPENPALM_HOME!, "data");
+    const caddyDir = join(dataDir, "caddy");
     mkdirSync(caddyDir, { recursive: true });
     writeFileSync(join(caddyDir, "Caddyfile"), ":8080 {\n  respond 200\n}");
 
@@ -144,24 +144,24 @@ describe("ensureCoreCaddyfile / setCoreCaddyAccessScope", () => {
   });
 });
 
-// ── Core Compose (DATA_HOME source of truth) ────────────────────────────
+// ── Core Compose (config/components/ source of truth) ──────────────────
 
 describe("ensureCoreCompose / readCoreCompose", () => {
   const origEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    origEnv.OPENPALM_DATA_HOME = process.env.OPENPALM_DATA_HOME;
-    process.env.OPENPALM_DATA_HOME = trackDir(makeTempDir());
+    origEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
+    process.env.OPENPALM_HOME = trackDir(makeTempDir());
   });
 
   afterEach(() => {
-    process.env.OPENPALM_DATA_HOME = origEnv.OPENPALM_DATA_HOME;
+    process.env.OPENPALM_HOME = origEnv.OPENPALM_HOME;
   });
 
-  test("ensureCoreCompose creates docker-compose.yml if missing", () => {
+  test("ensureCoreCompose creates core.yml if missing", () => {
     const path = ensureCoreCompose();
     expect(existsSync(path)).toBe(true);
-    expect(path).toContain("docker-compose.yml");
+    expect(path).toContain("core.yml");
   });
 
   test("ensureCoreCompose is idempotent", () => {
@@ -173,10 +173,11 @@ describe("ensureCoreCompose / readCoreCompose", () => {
   });
 
   test("ensureCoreCompose overwrites stale file and creates backup", () => {
-    const dataHome = process.env.OPENPALM_DATA_HOME!;
-    mkdirSync(dataHome, { recursive: true });
+    const configDir = join(process.env.OPENPALM_HOME!, "config");
+    const componentsDir = join(configDir, "components");
+    mkdirSync(componentsDir, { recursive: true });
     const staleContent = "# stale compose\nservices: {}";
-    writeFileSync(join(dataHome, "docker-compose.yml"), staleContent);
+    writeFileSync(join(componentsDir, "core.yml"), staleContent);
 
     const path = ensureCoreCompose();
     const content = readFileSync(path, "utf-8");
@@ -184,9 +185,9 @@ describe("ensureCoreCompose / readCoreCompose", () => {
     expect(content).toContain("services:");
 
     // Verify backup was created
-    const backupDir = join(dataHome, "backups");
+    const backupDir = join(componentsDir, "backups");
     expect(existsSync(backupDir)).toBe(true);
-    const backups = readdirSync(backupDir).filter(f => f.startsWith("docker-compose."));
+    const backups = readdirSync(backupDir).filter(f => f.startsWith("core."));
     expect(backups.length).toBe(1);
     expect(readFileSync(join(backupDir, backups[0]), "utf-8")).toBe(staleContent);
   });
@@ -195,23 +196,23 @@ describe("ensureCoreCompose / readCoreCompose", () => {
     const content = readCoreCompose();
     expect(content).toBeTruthy();
     expect(typeof content).toBe("string");
-    expect(content).toContain("HOME: /app/data");
-    expect(content).toContain("HOME: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/admin");
+    expect(content).toContain("HOME: /data");
+    expect(content).toContain("OPENPALM_HOME");
   });
 });
 
-// ── Ollama Compose Overlay (DATA_HOME source of truth) ──────────────────
+// ── Ollama Compose Overlay (config/components/ source of truth) ──────────
 
 describe("ensureOllamaCompose / readOllamaCompose", () => {
   const origEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    origEnv.OPENPALM_DATA_HOME = process.env.OPENPALM_DATA_HOME;
-    process.env.OPENPALM_DATA_HOME = trackDir(makeTempDir());
+    origEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
+    process.env.OPENPALM_HOME = trackDir(makeTempDir());
   });
 
   afterEach(() => {
-    process.env.OPENPALM_DATA_HOME = origEnv.OPENPALM_DATA_HOME;
+    process.env.OPENPALM_HOME = origEnv.OPENPALM_HOME;
   });
 
   test("ensureOllamaCompose creates ollama.yml if missing", () => {
@@ -229,17 +230,18 @@ describe("ensureOllamaCompose / readOllamaCompose", () => {
   });
 
   test("ensureOllamaCompose overwrites stale file and creates backup", () => {
-    const dataHome = process.env.OPENPALM_DATA_HOME!;
-    mkdirSync(dataHome, { recursive: true });
+    const configDir = join(process.env.OPENPALM_HOME!, "config");
+    const componentsDir = join(configDir, "components");
+    mkdirSync(componentsDir, { recursive: true });
     const staleContent = "# stale ollama compose\nservices: {}";
-    writeFileSync(join(dataHome, "ollama.yml"), staleContent);
+    writeFileSync(join(componentsDir, "ollama.yml"), staleContent);
 
     const path = ensureOllamaCompose();
     const content = readFileSync(path, "utf-8");
     expect(content).not.toBe(staleContent);
 
     // Verify backup was created
-    const backupDir = join(dataHome, "backups");
+    const backupDir = join(componentsDir, "backups");
     expect(existsSync(backupDir)).toBe(true);
     const backups = readdirSync(backupDir).filter(f => f.startsWith("ollama."));
     expect(backups.length).toBe(1);
@@ -259,20 +261,20 @@ describe("ensureOpenCodeSystemConfig", () => {
   const origEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    origEnv.OPENPALM_DATA_HOME = process.env.OPENPALM_DATA_HOME;
-    process.env.OPENPALM_DATA_HOME = trackDir(makeTempDir());
+    origEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
+    process.env.OPENPALM_HOME = trackDir(makeTempDir());
   });
 
   afterEach(() => {
-    process.env.OPENPALM_DATA_HOME = origEnv.OPENPALM_DATA_HOME;
+    process.env.OPENPALM_HOME = origEnv.OPENPALM_HOME;
   });
 
   test("seeds opencode.jsonc and AGENTS.md on first run", () => {
-    const dataHome = process.env.OPENPALM_DATA_HOME!;
+    const dataDir = join(process.env.OPENPALM_HOME!, "data");
     ensureOpenCodeSystemConfig();
 
-    const configPath = join(dataHome, "assistant", "opencode.jsonc");
-    const agentsPath = join(dataHome, "assistant", "AGENTS.md");
+    const configPath = join(dataDir, "assistant", "opencode.jsonc");
+    const agentsPath = join(dataDir, "assistant", "AGENTS.md");
     expect(existsSync(configPath)).toBe(true);
     expect(existsSync(agentsPath)).toBe(true);
 
@@ -284,8 +286,8 @@ describe("ensureOpenCodeSystemConfig", () => {
 
   test("is idempotent — skips unchanged files", () => {
     ensureOpenCodeSystemConfig();
-    const dataHome = process.env.OPENPALM_DATA_HOME!;
-    const configPath = join(dataHome, "assistant", "opencode.jsonc");
+    const dataDir = join(process.env.OPENPALM_HOME!, "data");
+    const configPath = join(dataDir, "assistant", "opencode.jsonc");
     const content1 = readFileSync(configPath, "utf-8");
 
     ensureOpenCodeSystemConfig();
@@ -293,13 +295,13 @@ describe("ensureOpenCodeSystemConfig", () => {
     expect(content1).toBe(content2);
 
     // No backups should exist since content didn't change
-    const backupDir = join(dataHome, "assistant", "backups");
+    const backupDir = join(dataDir, "assistant", "backups");
     expect(existsSync(backupDir)).toBe(false);
   });
 
   test("overwrites stale files and creates backups", () => {
-    const dataHome = process.env.OPENPALM_DATA_HOME!;
-    const assistantDir = join(dataHome, "assistant");
+    const dataDir = join(process.env.OPENPALM_HOME!, "data");
+    const assistantDir = join(dataDir, "assistant");
     mkdirSync(assistantDir, { recursive: true });
     writeFileSync(join(assistantDir, "opencode.jsonc"), "stale-config");
     writeFileSync(join(assistantDir, "AGENTS.md"), "stale-agents");
@@ -334,17 +336,17 @@ describe("refreshCoreAssets", () => {
   const origEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    origEnv.OPENPALM_DATA_HOME = process.env.OPENPALM_DATA_HOME;
-    process.env.OPENPALM_DATA_HOME = trackDir(makeTempDir());
+    origEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
+    process.env.OPENPALM_HOME = trackDir(makeTempDir());
   });
 
   afterEach(() => {
-    process.env.OPENPALM_DATA_HOME = origEnv.OPENPALM_DATA_HOME;
+    process.env.OPENPALM_HOME = origEnv.OPENPALM_HOME;
     vi.restoreAllMocks();
   });
 
   test("downloads and writes new assets when none exist", async () => {
-    const dataHome = process.env.OPENPALM_DATA_HOME!;
+    const homeDir = process.env.OPENPALM_HOME!;
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : (input as Request).url;
@@ -353,6 +355,9 @@ describe("refreshCoreAssets", () => {
       }
       if (url.includes("Caddyfile")) {
         return new Response(":8080 {\n  respond 200\n}\n", { status: 200 });
+      }
+      if (url.includes("admin-opencode.jsonc")) {
+        return new Response('{"$schema":"https://opencode.ai/config.json","admin":true}\n', { status: 200 });
       }
       if (url.includes("opencode.jsonc")) {
         return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
@@ -363,46 +368,49 @@ describe("refreshCoreAssets", () => {
       if (url.includes("ollama.yml")) {
         return new Response("services:\n  ollama:\n    image: ollama/ollama\n", { status: 200 });
       }
-      if (url.includes("secrets.env.schema")) {
+      if (url.includes("admin.yml")) {
+        return new Response("services:\n  caddy:\n    image: caddy\n", { status: 200 });
+      }
+      if (url.includes("user.env.schema")) {
         return new Response("# @defaultSensitive=true\n", { status: 200 });
       }
-      if (url.includes("stack.env.schema")) {
+      if (url.includes("system.env.schema")) {
         return new Response("# @defaultSensitive=false\n", { status: 200 });
       }
       return new Response("Not found", { status: 404 });
     });
 
     const result = await refreshCoreAssets();
-    expect(result.updated).toContain("docker-compose.yml");
-    expect(result.updated).toContain("caddy/Caddyfile");
-    expect(result.updated).toContain("assistant/opencode.jsonc");
-    expect(result.updated).toContain("assistant/AGENTS.md");
-    expect(result.updated).toContain("ollama.yml");
-    expect(result.updated).toContain("secrets.env.schema");
-    expect(result.updated).toContain("stack.env.schema");
+    expect(result.updated).toContain("config/components/core.yml");
+    expect(result.updated).toContain("data/caddy/Caddyfile");
+    expect(result.updated).toContain("data/assistant/opencode.jsonc");
+    expect(result.updated).toContain("data/assistant/AGENTS.md");
+    expect(result.updated).toContain("config/components/ollama.yml");
+    expect(result.updated).toContain("vault/user.env.schema");
+    expect(result.updated).toContain("vault/system.env.schema");
     expect(result.backupDir).toBeNull(); // no existing files to back up
 
-    expect(existsSync(join(dataHome, "docker-compose.yml"))).toBe(true);
-    expect(existsSync(join(dataHome, "caddy/Caddyfile"))).toBe(true);
-    expect(existsSync(join(dataHome, "assistant/opencode.jsonc"))).toBe(true);
-    expect(existsSync(join(dataHome, "assistant/AGENTS.md"))).toBe(true);
-    expect(existsSync(join(dataHome, "ollama.yml"))).toBe(true);
-    expect(existsSync(join(dataHome, "secrets.env.schema"))).toBe(true);
-    expect(existsSync(join(dataHome, "stack.env.schema"))).toBe(true);
+    expect(existsSync(join(homeDir, "config/components/core.yml"))).toBe(true);
+    expect(existsSync(join(homeDir, "data/caddy/Caddyfile"))).toBe(true);
+    expect(existsSync(join(homeDir, "data/assistant/opencode.jsonc"))).toBe(true);
+    expect(existsSync(join(homeDir, "data/assistant/AGENTS.md"))).toBe(true);
+    expect(existsSync(join(homeDir, "config/components/ollama.yml"))).toBe(true);
+    expect(existsSync(join(homeDir, "vault/user.env.schema"))).toBe(true);
+    expect(existsSync(join(homeDir, "vault/system.env.schema"))).toBe(true);
   });
 
   test("backs up changed files before overwriting", async () => {
-    const dataHome = process.env.OPENPALM_DATA_HOME!;
-    mkdirSync(dataHome, { recursive: true });
-    writeFileSync(join(dataHome, "docker-compose.yml"), "old-compose-content");
-    mkdirSync(join(dataHome, "caddy"), { recursive: true });
-    writeFileSync(join(dataHome, "caddy/Caddyfile"), "old-caddy-content");
-    mkdirSync(join(dataHome, "assistant"), { recursive: true });
-    writeFileSync(join(dataHome, "assistant/opencode.jsonc"), "old-opencode-content");
-    writeFileSync(join(dataHome, "assistant/AGENTS.md"), "old-agents-content");
-    mkdirSync(join(dataHome, "admin"), { recursive: true });
-    writeFileSync(join(dataHome, "admin/opencode.jsonc"), "old-admin-opencode-content");
-    writeFileSync(join(dataHome, "ollama.yml"), "old-ollama-content");
+    const homeDir = process.env.OPENPALM_HOME!;
+    mkdirSync(join(homeDir, "config/components"), { recursive: true });
+    writeFileSync(join(homeDir, "config/components/core.yml"), "old-compose-content");
+    mkdirSync(join(homeDir, "data/caddy"), { recursive: true });
+    writeFileSync(join(homeDir, "data/caddy/Caddyfile"), "old-caddy-content");
+    mkdirSync(join(homeDir, "data/assistant"), { recursive: true });
+    writeFileSync(join(homeDir, "data/assistant/opencode.jsonc"), "old-opencode-content");
+    writeFileSync(join(homeDir, "data/assistant/AGENTS.md"), "old-agents-content");
+    mkdirSync(join(homeDir, "data/admin"), { recursive: true });
+    writeFileSync(join(homeDir, "data/admin/opencode.jsonc"), "old-admin-opencode-content");
+    writeFileSync(join(homeDir, "config/components/ollama.yml"), "old-ollama-content");
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : (input as Request).url;
@@ -424,56 +432,59 @@ describe("refreshCoreAssets", () => {
       if (url.includes("ollama.yml")) {
         return new Response("new-ollama-content", { status: 200 });
       }
-      if (url.includes("secrets.env.schema")) {
+      if (url.includes("admin.yml")) {
+        return new Response("new-admin-content", { status: 200 });
+      }
+      if (url.includes("user.env.schema")) {
         return new Response("new-secrets-schema-content", { status: 200 });
       }
-      if (url.includes("stack.env.schema")) {
+      if (url.includes("system.env.schema")) {
         return new Response("new-stack-schema-content", { status: 200 });
       }
       return new Response("Not found", { status: 404 });
     });
 
     const result = await refreshCoreAssets();
-    expect(result.updated).toHaveLength(8);
+    expect(result.updated).toHaveLength(9);
     expect(result.backupDir).not.toBeNull();
 
     // Verify backup contains old content
-    const backupCompose = readFileSync(join(result.backupDir!, "docker-compose.yml"), "utf-8");
+    const backupCompose = readFileSync(join(result.backupDir!, "config/components/core.yml"), "utf-8");
     expect(backupCompose).toBe("old-compose-content");
-    const backupCaddy = readFileSync(join(result.backupDir!, "caddy/Caddyfile"), "utf-8");
+    const backupCaddy = readFileSync(join(result.backupDir!, "data/caddy/Caddyfile"), "utf-8");
     expect(backupCaddy).toBe("old-caddy-content");
-    const backupOpencode = readFileSync(join(result.backupDir!, "assistant/opencode.jsonc"), "utf-8");
+    const backupOpencode = readFileSync(join(result.backupDir!, "data/assistant/opencode.jsonc"), "utf-8");
     expect(backupOpencode).toBe("old-opencode-content");
-    const backupAgents = readFileSync(join(result.backupDir!, "assistant/AGENTS.md"), "utf-8");
+    const backupAgents = readFileSync(join(result.backupDir!, "data/assistant/AGENTS.md"), "utf-8");
     expect(backupAgents).toBe("old-agents-content");
-    const backupOllama = readFileSync(join(result.backupDir!, "ollama.yml"), "utf-8");
+    const backupOllama = readFileSync(join(result.backupDir!, "config/components/ollama.yml"), "utf-8");
     expect(backupOllama).toBe("old-ollama-content");
 
     // Verify new content written
-    expect(readFileSync(join(dataHome, "docker-compose.yml"), "utf-8")).toBe("new-compose-content");
-    expect(readFileSync(join(dataHome, "caddy/Caddyfile"), "utf-8")).toBe("new-caddy-content");
-    expect(readFileSync(join(dataHome, "assistant/opencode.jsonc"), "utf-8")).toBe("new-opencode-content");
-    expect(readFileSync(join(dataHome, "assistant/AGENTS.md"), "utf-8")).toBe("new-agents-content");
-    expect(readFileSync(join(dataHome, "ollama.yml"), "utf-8")).toBe("new-ollama-content");
+    expect(readFileSync(join(homeDir, "config/components/core.yml"), "utf-8")).toBe("new-compose-content");
+    expect(readFileSync(join(homeDir, "data/caddy/Caddyfile"), "utf-8")).toBe("new-caddy-content");
+    expect(readFileSync(join(homeDir, "data/assistant/opencode.jsonc"), "utf-8")).toBe("new-opencode-content");
+    expect(readFileSync(join(homeDir, "data/assistant/AGENTS.md"), "utf-8")).toBe("new-agents-content");
+    expect(readFileSync(join(homeDir, "config/components/ollama.yml"), "utf-8")).toBe("new-ollama-content");
   });
 
   test("skips assets with identical content", async () => {
-    const dataHome = process.env.OPENPALM_DATA_HOME!;
+    const homeDir = process.env.OPENPALM_HOME!;
     const content = "same-content";
-    mkdirSync(dataHome, { recursive: true });
-    writeFileSync(join(dataHome, "docker-compose.yml"), content);
-    mkdirSync(join(dataHome, "caddy"), { recursive: true });
-    writeFileSync(join(dataHome, "caddy/Caddyfile"), content);
-    mkdirSync(join(dataHome, "memory"), { recursive: true });
-    writeFileSync(join(dataHome, "memory/memory.py"), content);
-    mkdirSync(join(dataHome, "assistant"), { recursive: true });
-    writeFileSync(join(dataHome, "assistant/opencode.jsonc"), content);
-    writeFileSync(join(dataHome, "assistant/AGENTS.md"), content);
-    mkdirSync(join(dataHome, "admin"), { recursive: true });
-    writeFileSync(join(dataHome, "admin/opencode.jsonc"), content);
-    writeFileSync(join(dataHome, "ollama.yml"), content);
-    writeFileSync(join(dataHome, "secrets.env.schema"), content);
-    writeFileSync(join(dataHome, "stack.env.schema"), content);
+    mkdirSync(join(homeDir, "config/components"), { recursive: true });
+    writeFileSync(join(homeDir, "config/components/core.yml"), content);
+    writeFileSync(join(homeDir, "config/components/ollama.yml"), content);
+    writeFileSync(join(homeDir, "config/components/admin.yml"), content);
+    mkdirSync(join(homeDir, "data/caddy"), { recursive: true });
+    writeFileSync(join(homeDir, "data/caddy/Caddyfile"), content);
+    mkdirSync(join(homeDir, "data/assistant"), { recursive: true });
+    writeFileSync(join(homeDir, "data/assistant/opencode.jsonc"), content);
+    writeFileSync(join(homeDir, "data/assistant/AGENTS.md"), content);
+    mkdirSync(join(homeDir, "data/admin"), { recursive: true });
+    writeFileSync(join(homeDir, "data/admin/opencode.jsonc"), content);
+    mkdirSync(join(homeDir, "vault"), { recursive: true });
+    writeFileSync(join(homeDir, "vault/user.env.schema"), content);
+    writeFileSync(join(homeDir, "vault/system.env.schema"), content);
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       return new Response(content, { status: 200 });

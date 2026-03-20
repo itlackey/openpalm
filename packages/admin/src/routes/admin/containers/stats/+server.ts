@@ -26,7 +26,7 @@ export const GET: RequestHandler = async (event) => {
     return errorResponse(503, "docker_unavailable", "Docker is not available", {}, requestId);
   }
 
-  const result = await composeStats(state.stateDir, {
+  const result = await composeStats(state.configDir, {
     files: buildComposeFileList(state),
     envFiles: buildEnvFiles(state)
   });

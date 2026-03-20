@@ -226,10 +226,10 @@ function isStringRecord(v: unknown): v is Record<string, string> {
 // ── Load Automations ──────────────────────────────────────────────────
 
 /**
- * Read and parse all .yml automation files from STATE_HOME/automations/.
+ * Read and parse all .yml automation files from config/automations/.
  */
-export function loadAutomations(stateDir: string): AutomationConfig[] {
-  const dir = join(stateDir, "automations");
+export function loadAutomations(configDir: string): AutomationConfig[] {
+  const dir = join(configDir, "automations");
   if (!existsSync(dir)) return [];
 
   const files = readdirSync(dir, { withFileTypes: true });
@@ -320,7 +320,7 @@ async function executeHttpAction(action: AutomationAction): Promise<void> {
 /** Safe env vars allowlisted for shell automation actions. */
 const SHELL_SAFE_ENV_KEYS = [
   "PATH", "HOME", "LANG", "LC_ALL", "TZ", "NODE_ENV",
-  "OPENPALM_CONFIG_HOME", "OPENPALM_STATE_HOME", "OPENPALM_DATA_HOME",
+  "OPENPALM_HOME", "OPENPALM_CONFIG_HOME", "OPENPALM_STATE_HOME", "OPENPALM_DATA_HOME",
 ];
 
 /** Execute a shell action — uses execFile with argument array (no shell interpolation). */
@@ -417,11 +417,11 @@ export async function executeAction(
 let activeJobs: ActiveJob[] = [];
 
 /**
- * Start the in-process scheduler. Reads automations from STATE_HOME,
+ * Start the in-process scheduler. Reads automations from config/automations/,
  * creates Croner jobs for each enabled one.
  */
-export function startScheduler(stateDir: string, adminToken: string): void {
-  const configs = loadAutomations(stateDir);
+export function startScheduler(configDir: string, adminToken: string): void {
+  const configs = loadAutomations(configDir);
   const enabled = configs.filter((c) => c.enabled);
 
   for (const config of enabled) {
@@ -476,9 +476,9 @@ export function stopScheduler(): void {
 }
 
 /** Reload: stop all jobs, then start fresh. */
-export function reloadScheduler(stateDir: string, adminToken: string): void {
+export function reloadScheduler(configDir: string, adminToken: string): void {
   stopScheduler();
-  startScheduler(stateDir, adminToken);
+  startScheduler(configDir, adminToken);
 }
 
 /** Return current scheduler status for debugging. */

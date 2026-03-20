@@ -14,18 +14,12 @@ function makeTempDir(): string {
 }
 
 let rootDir = '';
-let originalConfigHome: string | undefined;
-let originalStateHome: string | undefined;
-let originalDataHome: string | undefined;
+let originalHome: string | undefined;
 
 beforeEach(() => {
   rootDir = makeTempDir();
-  originalConfigHome = process.env.OPENPALM_CONFIG_HOME;
-  originalStateHome = process.env.OPENPALM_STATE_HOME;
-  originalDataHome = process.env.OPENPALM_DATA_HOME;
-  process.env.OPENPALM_CONFIG_HOME = join(rootDir, 'config');
-  process.env.OPENPALM_STATE_HOME = join(rootDir, 'state');
-  process.env.OPENPALM_DATA_HOME = join(rootDir, 'data');
+  originalHome = process.env.OPENPALM_HOME;
+  process.env.OPENPALM_HOME = rootDir;
   resetState('admin-token');
 
   const state = getState();
@@ -53,9 +47,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  process.env.OPENPALM_CONFIG_HOME = originalConfigHome;
-  process.env.OPENPALM_STATE_HOME = originalStateHome;
-  process.env.OPENPALM_DATA_HOME = originalDataHome;
+  process.env.OPENPALM_HOME = originalHome;
   rmSync(rootDir, { recursive: true, force: true });
 });
 

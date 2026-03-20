@@ -88,9 +88,9 @@ function makeLegacySetupInput(): Record<string, unknown> {
 
 describe('install --file', () => {
   let tempBase: string;
+  let homeDir: string;
   let configDir: string;
   let dataDir: string;
-  let stateDir: string;
   let workDir: string;
 
   const savedEnv: Record<string, string | undefined> = {};
@@ -100,26 +100,22 @@ describe('install --file', () => {
 
   beforeEach(() => {
     tempBase = mkdtempSync(join(tmpdir(), 'openpalm-install-file-'));
-    configDir = join(tempBase, 'config');
-    dataDir = join(tempBase, 'data');
-    stateDir = join(tempBase, 'state');
+    homeDir = tempBase;
+    configDir = join(homeDir, 'config');
+    dataDir = join(homeDir, 'data');
     workDir = join(tempBase, 'work');
-    const binDir = join(stateDir, 'bin');
+    const binDir = join(dataDir, 'bin');
 
     mkdirSync(binDir, { recursive: true });
     writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
     chmodSync(join(binDir, 'varlock'), 0o755);
 
-    savedEnv.OPENPALM_CONFIG_HOME = process.env.OPENPALM_CONFIG_HOME;
-    savedEnv.OPENPALM_DATA_HOME = process.env.OPENPALM_DATA_HOME;
-    savedEnv.OPENPALM_STATE_HOME = process.env.OPENPALM_STATE_HOME;
+    savedEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
     savedEnv.OPENPALM_WORK_DIR = process.env.OPENPALM_WORK_DIR;
     savedEnv.ADMIN_TOKEN = process.env.ADMIN_TOKEN;
     savedEnv.OPENPALM_ADMIN_TOKEN = process.env.OPENPALM_ADMIN_TOKEN;
 
-    process.env.OPENPALM_CONFIG_HOME = configDir;
-    process.env.OPENPALM_DATA_HOME = dataDir;
-    process.env.OPENPALM_STATE_HOME = stateDir;
+    process.env.OPENPALM_HOME = homeDir;
     process.env.OPENPALM_WORK_DIR = workDir;
     delete process.env.ADMIN_TOKEN;
     delete process.env.OPENPALM_ADMIN_TOKEN;
@@ -149,9 +145,7 @@ describe('install --file', () => {
     console.log = originalLog;
     console.warn = originalWarn;
     restoreDockerCli();
-    process.env.OPENPALM_CONFIG_HOME = savedEnv.OPENPALM_CONFIG_HOME;
-    process.env.OPENPALM_DATA_HOME = savedEnv.OPENPALM_DATA_HOME;
-    process.env.OPENPALM_STATE_HOME = savedEnv.OPENPALM_STATE_HOME;
+    process.env.OPENPALM_HOME = savedEnv.OPENPALM_HOME;
     process.env.OPENPALM_WORK_DIR = savedEnv.OPENPALM_WORK_DIR;
     process.env.ADMIN_TOKEN = savedEnv.ADMIN_TOKEN;
     process.env.OPENPALM_ADMIN_TOKEN = savedEnv.OPENPALM_ADMIN_TOKEN;

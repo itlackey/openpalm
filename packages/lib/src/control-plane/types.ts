@@ -116,9 +116,12 @@ export type ArtifactMeta = {
 export type ControlPlaneState = {
   adminToken: string;
   setupToken: string;
-  stateDir: string;
+  homeDir: string;
   configDir: string;
+  vaultDir: string;
   dataDir: string;
+  logsDir: string;
+  cacheDir: string;
   services: Record<string, "running" | "stopped">;
   artifacts: {
     compose: string;
