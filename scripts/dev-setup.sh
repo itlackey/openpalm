@@ -3,27 +3,33 @@ set -euo pipefail
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/dev-setup.sh [--seed-env] [--force]
+Usage: scripts/dev-setup.sh [--seed-env] [--force] [--pass [--gpg-id <key>]]
 
 Creates local .dev directories and seeds dev config files.
 
 Options:
-  --seed-env   Copy assets/secrets.env to .dev/config/secrets.env if missing,
-               and generate STATE_HOME/artifacts/stack.env with auto-detected values.
-  --force      Overwrite seeded files even if they already exist.
-  -h, --help   Show this help
+  --seed-env          Copy assets/secrets.env to .dev/config/secrets.env if missing,
+                      and generate STATE_HOME/artifacts/stack.env with auto-detected values.
+  --force             Overwrite seeded files even if they already exist.
+  --pass              Initialize a pass backend for secret storage (requires GPG key).
+  --gpg-id <key>      GPG key ID for the pass backend (required with --pass).
+  -h, --help          Show this help
 EOF
 }
 
 seed_env=0
 force=0
+use_pass=0
+gpg_id=""
 
-for arg in "$@"; do
-	case "$arg" in
-	--seed-env) seed_env=1 ;;
-	--force) force=1 ;;
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--seed-env) seed_env=1; shift ;;
+	--force) force=1; shift ;;
+	--pass) use_pass=1; shift ;;
+	--gpg-id) gpg_id="${2:-}"; shift 2 ;;
 	-h | --help) usage; exit 0 ;;
-	*) echo "Unknown option: $arg" >&2; usage >&2; exit 1 ;;
+	*) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
 	esac
 done
 
@@ -182,6 +188,34 @@ if [ ! -f "$DATA_DIR/memory/default_config.json" ]; then
   }
 }
 OMEOF
+fi
+
+# ── Initialize pass backend (optional) ───────────────────────────
+if [[ $use_pass -eq 1 ]]; then
+	if [[ -z "$gpg_id" ]]; then
+		echo "Error: --pass requires --gpg-id <key>" >&2
+		exit 1
+	fi
+
+	if ! command -v pass &>/dev/null; then
+		echo "Error: 'pass' is not installed. Install it first (e.g. apt install pass)." >&2
+		exit 1
+	fi
+
+	if ! gpg --list-keys "$gpg_id" >/dev/null 2>&1; then
+		echo "Error: GPG key not found: $gpg_id" >&2
+		exit 1
+	fi
+
+	echo "Initializing pass backend..."
+	"$ROOT_DIR/scripts/pass-init.sh" --gpg-id "$gpg_id" --home "$DEV_ROOT"
+
+	# Seed test secrets into the pass store
+	SECRETS_DIR="$DATA_DIR/secrets"
+	export PASSWORD_STORE_DIR="$SECRETS_DIR/pass-store"
+	echo "dev-admin-token" | pass insert -m -f openpalm/openpalm/admin-token 2>/dev/null || true
+	echo "dev-assistant-token" | pass insert -m -f openpalm/openpalm/assistant-token 2>/dev/null || true
+	echo "Seeded test secrets into pass store."
 fi
 
 # ── Fix ownership ────────────────────────────────────────────────

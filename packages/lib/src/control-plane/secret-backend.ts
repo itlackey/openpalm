@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFile as execFileCb, spawn } from 'node:child_process';
+import { promisify } from 'node:util';
 import { join, normalize, resolve } from 'node:path';
 import type { ControlPlaneState } from './types.js';
 import {
@@ -21,6 +22,28 @@ import {
   updateSecretsEnv,
   updateSystemSecretsEnv,
 } from './secrets.js';
+
+const execFile = promisify(execFileCb);
+
+/** Run a command with stdin input, returning a promise. */
+function execWithInput(
+  cmd: string,
+  args: string[],
+  input: string,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    let stderr = '';
+    child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${cmd} exited with code ${code}: ${stderr}`));
+    });
+    child.stdin?.end(input);
+  });
+}
 
 type ResolvedSecretTarget = {
   key: string;
@@ -193,10 +216,12 @@ export class PassBackend implements SecretBackend {
   readonly provider = 'pass' as const;
   readonly capabilities = { generate: true, remove: true, rename: false } as const;
   private readonly passwordStoreDir: string;
+  private readonly passPrefix: string;
 
   constructor(private readonly state: ControlPlaneState) {
     const config = readSecretProviderConfig(state);
     this.passwordStoreDir = config?.passwordStoreDir ?? `${state.dataDir}/secrets/pass-store`;
+    this.passPrefix = config?.passPrefix ?? '';
   }
 
   private env(): NodeJS.ProcessEnv {
@@ -206,8 +231,15 @@ export class PassBackend implements SecretBackend {
     };
   }
 
+  /** Prepend passPrefix to a canonical key for pass store operations. */
+  private prefixedEntry(canonicalKey: string): string {
+    const entry = validatePassEntryName(canonicalKey);
+    return this.passPrefix ? `${this.passPrefix}/${entry}` : entry;
+  }
+
   private keyPath(key: string): string {
-    const normalizedEntry = normalize(validatePassEntryName(key));
+    const prefixed = this.prefixedEntry(key);
+    const normalizedEntry = normalize(prefixed);
     const resolvedPath = resolve(this.passwordStoreDir, `${normalizedEntry}.gpg`);
     const resolvedStore = resolve(this.passwordStoreDir);
     if (!resolvedPath.startsWith(`${resolvedStore}/`)) {
@@ -217,7 +249,11 @@ export class PassBackend implements SecretBackend {
   }
 
   async list(prefix = 'openpalm/'): Promise<SecretEntryMetadata[]> {
-    return walkPassStore(this.passwordStoreDir)
+    // Scope walk to the passPrefix subdirectory
+    const walkDir = this.passPrefix
+      ? join(this.passwordStoreDir, this.passPrefix)
+      : this.passwordStoreDir;
+    return walkPassStore(walkDir)
       .filter((entry) => entry.startsWith(prefix))
       .sort((a, b) => a.localeCompare(b))
       .map((key) => ({
@@ -230,41 +266,37 @@ export class PassBackend implements SecretBackend {
   }
 
   async write(key: string, value: string): Promise<SecretEntryMetadata> {
-    const entry = validatePassEntryName(key);
-    execFileSync('pass', ['insert', '-m', '-f', entry], {
-      env: this.env(),
-      input: `${value}\n`,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    const canonicalKey = validatePassEntryName(key);
+    const storeEntry = this.prefixedEntry(canonicalKey);
+    await execWithInput('pass', ['insert', '-m', '-f', storeEntry], `${value}\n`, this.env());
     return {
-      key: entry,
-      scope: classifySecretScope(entry),
-      kind: classifySecretKey(entry),
+      key: canonicalKey,
+      scope: classifySecretScope(canonicalKey),
+      kind: classifySecretKey(canonicalKey),
       provider: this.provider,
       present: true,
     };
   }
 
   async generate(key: string, length = 32): Promise<SecretEntryMetadata> {
-    const entry = validatePassEntryName(key);
-    execFileSync('pass', ['generate', '-n', '-f', entry, String(length)], {
+    const canonicalKey = validatePassEntryName(key);
+    const storeEntry = this.prefixedEntry(canonicalKey);
+    await execFile('pass', ['generate', '-n', '-f', storeEntry, String(length)], {
       env: this.env(),
-      stdio: ['ignore', 'pipe', 'pipe'],
     });
     return {
-      key: entry,
-      scope: classifySecretScope(entry),
-      kind: classifySecretKey(entry),
+      key: canonicalKey,
+      scope: classifySecretScope(canonicalKey),
+      kind: classifySecretKey(canonicalKey),
       provider: this.provider,
       present: true,
     };
   }
 
   async remove(key: string): Promise<void> {
-    const entry = validatePassEntryName(key);
-    execFileSync('pass', ['rm', '-f', entry], {
+    const storeEntry = this.prefixedEntry(key);
+    await execFile('pass', ['rm', '-f', storeEntry], {
       env: this.env(),
-      stdio: ['ignore', 'pipe', 'pipe'],
     });
   }
 

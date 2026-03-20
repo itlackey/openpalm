@@ -13,6 +13,7 @@ import {
   appendAudit,
   detectSecretBackend,
 } from '$lib/server/control-plane.js';
+import { validatePassEntryName } from '@openpalm/lib';
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -34,6 +35,12 @@ export const POST: RequestHandler = async (event) => {
   }
   if (!Number.isInteger(length) || length < 16 || length > 4096) {
     return errorResponse(400, 'bad_request', 'length must be an integer between 16 and 4096', {}, requestId);
+  }
+
+  try {
+    validatePassEntryName(key);
+  } catch (err) {
+    return errorResponse(400, 'invalid_key', String(err instanceof Error ? err.message : err), {}, requestId);
   }
 
   try {

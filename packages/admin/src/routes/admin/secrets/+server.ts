@@ -13,6 +13,7 @@ import {
   appendAudit,
   detectSecretBackend,
 } from '$lib/server/control-plane.js';
+import { validatePassEntryName } from '@openpalm/lib';
 
 function getSecretKeyFromInput(body: Record<string, unknown>): string | null {
   const key = typeof body.key === 'string' ? body.key.trim() : '';
@@ -68,6 +69,12 @@ export const POST: RequestHandler = async (event) => {
   }
   if (value.length === 0) {
     return errorResponse(400, 'bad_request', 'value must be non-empty; use DELETE to remove a secret', {}, requestId);
+  }
+
+  try {
+    validatePassEntryName(key);
+  } catch (err) {
+    return errorResponse(400, 'invalid_key', String(err instanceof Error ? err.message : err), {}, requestId);
   }
 
   try {

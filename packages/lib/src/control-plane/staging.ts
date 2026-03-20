@@ -16,6 +16,8 @@ import { discoverChannels } from "./channels.js";
 import { appendAudit } from "./audit.js";
 import { parseAutomationYaml } from "./scheduler.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
+import { generateRedactSchema } from "./redact-schema.js";
+import { readSystemSecretsEnvFile } from "./secrets.js";
 import {
   readCoreCaddyfile,
   readCoreCompose,
@@ -371,6 +373,12 @@ export function persistConfiguration(
   // Write env schemas to vault
   ensureUserEnvSchema(assets);
   ensureSystemEnvSchema(assets);
+
+  // Generate redact.env.schema from canonical mappings
+  const systemEnv = readSystemSecretsEnvFile(state.vaultDir);
+  const redactDir = `${state.dataDir}/secrets`;
+  mkdirSync(redactDir, { recursive: true });
+  writeFileSync(`${redactDir}/redact.env.schema`, generateRedactSchema(systemEnv));
 
   state.artifactMeta = buildArtifactMeta(state.artifacts);
 }

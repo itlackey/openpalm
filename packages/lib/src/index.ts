@@ -129,9 +129,18 @@ export type {
   SecretEntryMetadata,
 } from "./control-plane/secret-mappings.js";
 export {
+  getCoreSecretMappings,
+} from "./control-plane/secret-mappings.js";
+export {
   readSecretProviderConfig,
   writeSecretProviderConfig,
 } from "./control-plane/provider-config.js";
+export {
+  generateRedactSchema,
+} from "./control-plane/redact-schema.js";
+export {
+  generatePassSchema,
+} from "./control-plane/pass-schema.js";
 export {
   deriveComponentSecretRegistrations,
   registerComponentSensitiveFields,
