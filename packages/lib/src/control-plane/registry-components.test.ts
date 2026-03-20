@@ -162,8 +162,9 @@ describe("registry compose.yml validation", () => {
         expect(compose).toContain("${INSTANCE_DIR}/.env");
       });
 
-      it("joins openpalm-internal network", () => {
-        expect(compose).toContain("openpalm-internal");
+      it("joins a valid stack network", () => {
+        const hasValidNetwork = compose.includes("channel_lan") || compose.includes("channel_public") || compose.includes("assistant_net");
+        expect(hasValidNetwork).toBe(true);
       });
 
       it("has restart policy", () => {
@@ -346,10 +347,11 @@ describe("cross-component consistency", () => {
     }
   });
 
-  it("all components use the same network (openpalm-internal)", () => {
+  it("all components join a valid stack network", () => {
     for (const id of componentIds) {
       const compose = readComponentFile(id, "compose.yml");
-      expect(compose).toContain("openpalm-internal");
+      const hasValidNetwork = compose.includes("channel_lan") || compose.includes("channel_public") || compose.includes("assistant_net");
+      expect(hasValidNetwork).toBe(true);
     }
   });
 });

@@ -228,7 +228,7 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     `OPENPALM_SCHEDULER_PORT=3897`,
     `OPENPALM_MEMORY_PORT=3898`,
     `OPENPALM_GUARDIAN_PORT=3899`,
-    `OPENPALM_INGRESS_PORT=3880`,
+    `OPENPALM_INGRESS_PORT=3080`,
     "",
     "# ── Networking ──────────────────────────────────────────────────────",
     "# SECURITY: Bind addresses default to 127.0.0.1. Changing to 0.0.0.0 exposes services publicly.",

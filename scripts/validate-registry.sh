@@ -71,14 +71,8 @@ for component_dir in "$REGISTRY_DIR"/*/; do
     errors=$((errors + 1))
   fi
 
-  # 5. Check for vault mount violations
-  if grep -qi 'vault' "$compose_file" | grep -qi 'volumes\|mount'; then
-    echo "  FAIL: compose.yml contains vault mount reference (security violation)"
-    errors=$((errors + 1))
-  fi
-
-  # More precise vault volume check: look for vault in volume mount lines
-  if grep -E '^\s*-\s+.*vault' "$compose_file" | grep -qi 'volume\|mount\|:/'; then
+  # 5. Check for vault mount violations — look for vault paths in volume mount lines
+  if grep -qE '^\s*-\s+.*vault.*:/' "$compose_file"; then
     echo "  FAIL: compose.yml mounts a vault path (security violation)"
     errors=$((errors + 1))
   fi
@@ -105,9 +99,9 @@ for component_dir in "$REGISTRY_DIR"/*/; do
     fi
   fi
 
-  # 7. Check compose.yml joins the internal network
-  if ! grep -q 'openpalm-internal' "$compose_file"; then
-    echo "  FAIL: compose.yml must join the openpalm-internal network"
+  # 7. Check compose.yml joins a valid stack network (channel_lan, channel_public, or assistant_net)
+  if ! grep -qE 'channel_lan|channel_public|assistant_net' "$compose_file"; then
+    echo "  FAIL: compose.yml must join at least one stack network (channel_lan, channel_public, or assistant_net)"
     errors=$((errors + 1))
   fi
 

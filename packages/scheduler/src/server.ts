@@ -25,11 +25,11 @@ const logger = createLogger("scheduler:server");
 
 const PORT = parseInt(process.env.PORT ?? "8090", 10);
 const OPENPALM_HOME = process.env.OPENPALM_HOME ?? "";
-const CONFIG_DIR = OPENPALM_HOME ? `${OPENPALM_HOME}/config` : (process.env.OPENPALM_CONFIG_DIR ?? "");
+const CONFIG_DIR = OPENPALM_HOME ? `${OPENPALM_HOME}/config` : (process.env.OPENPALM_CONFIG_HOME ?? "");
 const ADMIN_TOKEN = process.env.OPENPALM_ADMIN_TOKEN ?? process.env.ADMIN_TOKEN ?? "";
 
 if (!CONFIG_DIR) {
-  logger.error("OPENPALM_HOME (or OPENPALM_CONFIG_DIR) is required");
+  logger.error("OPENPALM_HOME (or OPENPALM_CONFIG_HOME) is required");
   process.exit(1);
 }
 

@@ -11,8 +11,7 @@ services:
       CHANNEL_NAME: "Chat"
       GUARDIAN_URL: http://guardian:8080
       CHANNEL_PACKAGE: "@openpalm/channel-chat"
-    networks:
-      - openpalm-internal
+    networks: [channel_lan]
     depends_on:
       guardian:
         condition: service_healthy

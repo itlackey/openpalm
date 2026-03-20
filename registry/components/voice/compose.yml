@@ -11,8 +11,7 @@ services:
       CHANNEL_NAME: "Voice"
       GUARDIAN_URL: http://guardian:8080
       CHANNEL_PACKAGE: "@openpalm/channel-voice"
-    networks:
-      - openpalm-internal
+    networks: [channel_lan, assistant_net]
     depends_on:
       guardian:
         condition: service_healthy

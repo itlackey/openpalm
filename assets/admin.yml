@@ -10,7 +10,7 @@ services:
     restart: unless-stopped
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     ports:
-      - "${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_INGRESS_PORT:-3880}:80"
+      - "${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_INGRESS_PORT:-3080}:80"
     volumes:
       - ${OPENPALM_HOME}/data/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ${OPENPALM_HOME}/data/caddy/channels:/etc/caddy/channels:ro
