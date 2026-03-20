@@ -10,20 +10,28 @@ Each component is a directory containing a Docker Compose fragment.
 registry/components/
   chat/
     compose.yml          # Docker Compose service definition
+    .env.schema          # Environment variable schema
   api/
     compose.yml
+    .env.schema
   discord/
     compose.yml
+    .env.schema
   slack/
     compose.yml
+    .env.schema
   voice/
     compose.yml
+    .env.schema
   openviking/
     compose.yml
+    .env.schema
   ollama/
     compose.yml
+    .env.schema
   admin/
     compose.yml
+    .env.schema
 ```
 
 ### Available components
@@ -41,9 +49,10 @@ registry/components/
 
 ### Component directory structure
 
-Every component directory must contain at minimum:
+Every component directory must contain:
 
 - **`compose.yml`** -- Docker Compose service definition with `openpalm.*` labels
+- **`.env.schema`** -- Environment variable schema with `INSTANCE_ID`, `INSTANCE_DIR` identity vars and `@required`/`@sensitive` annotations
 
 ### compose.yml conventions
 
@@ -91,16 +100,18 @@ The `index.json` file at `registry/components/index.json` lists all available co
 
 1. Create a directory under `registry/components/<id>/`.
 2. Add `compose.yml` with the required labels and conventions above.
-3. Open a pull request. CI validates the compose file.
-4. After merge, `index.json` is regenerated.
+3. Add `.env.schema` with `INSTANCE_ID`, `INSTANCE_DIR`, and any component-specific variables.
+4. Open a pull request. CI validates the component structure.
+5. After merge, add an entry to `index.json`.
 
 ### CI validation
 
 The `scripts/validate-registry.sh` script runs on every PR that touches `registry/components/`. It checks:
 
-- Every component directory has `compose.yml`
-- compose.yml contains the required `openpalm.name` and `openpalm.description` labels
-- No vault mount violations in compose.yml
+- Every component directory has `compose.yml` and `.env.schema`
+- `compose.yml` contains the required `openpalm.name` and `openpalm.description` labels
+- `.env.schema` has `INSTANCE_ID` and `INSTANCE_DIR` identity variables with `@required`
+- No vault mount violations in `compose.yml`
 - Service names follow the `openpalm-${INSTANCE_ID}` convention
 
 Run locally: `./scripts/validate-registry.sh`

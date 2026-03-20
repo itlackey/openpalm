@@ -13,8 +13,9 @@ set -e
 
 # ── Try varlock scan first ──────────────────────────────────────────
 VARLOCK_BIN=""
-STATE_HOME="${OP_STATE_HOME:-${HOME}/.local/state/openpalm}"
-VAULT_HOME="${OP_VAULT_HOME:-${HOME}/.openpalm/vault}"
+OP_HOME_RESOLVED="${OP_HOME:-${HOME}/.openpalm}"
+STATE_HOME="${OP_STATE_HOME:-${OP_HOME_RESOLVED}}"
+VAULT_HOME="${OP_HOME_RESOLVED}/vault"
 SECRETS_ENV="${VAULT_HOME}/user.env"
 SCHEMA="${VAULT_HOME}/user.env.schema"
 

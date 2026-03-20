@@ -71,9 +71,10 @@ for component_dir in "$REGISTRY_DIR"/*/; do
     errors=$((errors + 1))
   fi
 
-  # 5. Check for vault mount violations — look for vault paths in volume mount lines
-  if grep -qE '^\s*-\s+.*vault.*:/' "$compose_file"; then
-    echo "  FAIL: compose.yml mounts a vault path (security violation)"
+  # 5. Check for vault mount violations — look for full vault directory mounts
+  # (mounting a specific config file like vault/ov.conf:ro is allowed)
+  if grep -qE '^\s*-\s+.*vault(/|")?\s*:/' "$compose_file" && ! grep -qE '^\s*-\s+.*vault/[^:]+:.*:ro' "$compose_file"; then
+    echo "  FAIL: compose.yml mounts vault directory (security violation)"
     errors=$((errors + 1))
   fi
 

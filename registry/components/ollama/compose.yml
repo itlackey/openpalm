@@ -9,7 +9,7 @@ services:
     ports:
       - "${OP_OLLAMA_BIND_ADDRESS:-127.0.0.1}:11434:11434"
     volumes:
-      - ${OP_DATA_HOME:-${HOME}/.local/share/openpalm}/ollama:/root/.ollama
+      - ${OP_HOME:-${HOME}/.openpalm}/data/ollama:/root/.ollama
     networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]

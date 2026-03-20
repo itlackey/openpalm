@@ -87,30 +87,18 @@ jobs:
           ADMIN_TOKEN: ci-placeholder
         run: docker compose -f assets/docker-compose.yml -f compose.dev.yaml config -q
 
-      - name: Validate registry YAML files
+      - name: Validate registry components and automations
         run: |
           set -euo pipefail
+
+          # Full component validation (compose.yml + .env.schema + conventions)
+          ./scripts/validate-registry.sh
+
+          # Also validate automation YAML files are well-formed
           pip install --quiet PyYAML
           errors=0
-
-          # Validate registry component compose files are valid YAML with a services key
-          # (docker compose config doesn't support ${INSTANCE_ID} template vars in service names)
-          for f in registry/components/*/compose.yml; do
-            if [ ! -f "$f" ]; then continue; fi
-            if ! python3 -c "
-          import yaml, sys
-          data = yaml.safe_load(open(sys.argv[1]))
-          assert isinstance(data, dict) and 'services' in data, 'missing services key'
-          " "$f" 2>/dev/null; then
-              echo "::error file=$f::Invalid component compose: $f"
-              errors=$((errors + 1))
-            fi
-          done
-
-          # Validate all registry automation YAML files are well-formed
           for f in registry/automations/*.yml; do
             if [ ! -f "$f" ]; then continue; fi
-            # Automations are plain YAML — validate with a quick parse
             if ! python3 -c "import yaml, sys; yaml.safe_load(open(sys.argv[1]))" "$f" 2>/dev/null; then
               echo "::error file=$f::Invalid YAML: $f"
               errors=$((errors + 1))
