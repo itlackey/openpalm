@@ -37,7 +37,7 @@ export const GET: RequestHandler = async (event) => {
   const callerType = getCallerType(event);
 
   // Try cloned registry first
-  let remoteComponents: Record<string, { compose: string; schema: string; caddy?: string }> = {};
+  let remoteComponents: Record<string, { compose: string; schema: string }> = {};
   let remoteAutomations: ReturnType<typeof discoverRegistryAutomations> = [];
   let source: "remote" | "bundled" = "bundled";
 
@@ -56,11 +56,9 @@ export const GET: RequestHandler = async (event) => {
     source = "remote";
 
     const components = remoteComponentIds.map((id) => {
-      const comp = remoteComponents[id];
       return {
         id,
         type: "component" as const,
-        hasCaddy: Boolean(comp.caddy),
       };
     });
 
@@ -80,11 +78,9 @@ export const GET: RequestHandler = async (event) => {
   }
 
   // Fallback: use bundled registry assets
-  const bundledComponents = viteRegistry.components();
   const components = viteRegistry.componentIds().map((id) => ({
     id,
     type: "component" as const,
-    hasCaddy: Boolean(bundledComponents[id]?.caddy),
   }));
 
   const automations = REGISTRY_AUTOMATION_NAMES.map((name) => {

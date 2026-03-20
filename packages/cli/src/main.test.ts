@@ -81,9 +81,6 @@ describe('cli main', () => {
       if (url.includes('/docker-compose.yml')) {
         return new Response('services: {}\n', { status: 200 });
       }
-      if (url.includes('/Caddyfile')) {
-        return new Response(':80 {\n}\n', { status: 200 });
-      }
       if (url.includes('/user.env.schema') || url.includes('/system.env.schema')) {
         return new Response('KEY=string\n', { status: 200 });
       }
@@ -122,9 +119,6 @@ describe('cli main', () => {
       }
       if (url.includes('/docker-compose.yml')) {
         return new Response('services: {}\n', { status: 200 });
-      }
-      if (url.includes('/Caddyfile')) {
-        return new Response(':80 {\n}\n', { status: 200 });
       }
       if (url.includes('/user.env.schema') || url.includes('/system.env.schema')) {
         return new Response('KEY=string\n', { status: 200 });
@@ -171,9 +165,6 @@ describe('cli main', () => {
       if (url.includes('/docker-compose.yml')) {
         return new Response('services: {}\n', { status: 200 });
       }
-      if (url.includes('/Caddyfile')) {
-        return new Response(':80 {\n}\n', { status: 200 });
-      }
       if (url.includes('/user.env.schema') || url.includes('/system.env.schema')) {
         return new Response('KEY=string\n', { status: 200 });
       }
@@ -190,10 +181,6 @@ describe('cli main', () => {
       expect(composeUrl).toBeDefined();
       expect(composeUrl).toContain(expectedRef);
       expect(composeUrl).not.toContain('/main/');
-
-      const caddyUrl = fetchedUrls.find((u) => u.includes('/Caddyfile'));
-      expect(caddyUrl).toBeDefined();
-      expect(caddyUrl).toContain(expectedRef);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }

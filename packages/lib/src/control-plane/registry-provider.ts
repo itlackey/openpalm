@@ -11,7 +11,6 @@
 export interface RegistryComponentEntry {
   compose: string;
   schema: string;
-  caddy?: string;
 }
 
 /**

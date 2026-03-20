@@ -7,26 +7,22 @@
  *
  * All asset content is provided by a CoreAssetProvider (injected).
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync, copyFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { discoverChannels } from "./channels.js";
 import { readStackSpec } from "./stack-spec.js";
-import { appendAudit } from "./audit.js";
+
 import { parseAutomationYaml } from "./scheduler.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
 import { generateRedactSchema } from "./redact-schema.js";
 import { readSystemSecretsEnvFile } from "./secrets.js";
 import {
-  readCoreCaddyfile,
   readCoreCompose,
-  readAdminCompose,
   ensureUserEnvSchema,
   ensureSystemEnvSchema,
-  PUBLIC_ACCESS_IMPORT,
-  LAN_ONLY_IMPORT
 } from "./core-assets.js";
 
 const DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
@@ -100,78 +96,10 @@ export function isAdminEnabled(state: ControlPlaneState): boolean {
   return match?.[1]?.trim().toLowerCase() === "true";
 }
 
-// ── Caddyfile Management ─────────────────────────────────────────────
-
-export function withDefaultLanOnly(rawCaddy: string): string | null {
-  if (rawCaddy.includes(PUBLIC_ACCESS_IMPORT) || rawCaddy.includes(LAN_ONLY_IMPORT)) {
-    return rawCaddy;
-  }
-
-  const blockStarts = [
-    /(handle_path\s+[^\n{]+\{\s*\n?)/,
-    /(handle\s+[^\n{]+\{\s*\n?)/,
-    /(route\s+[^\n{]+\{\s*\n?)/
-  ];
-
-  for (const pattern of blockStarts) {
-    if (pattern.test(rawCaddy)) {
-      return rawCaddy.replace(pattern, "$1\timport lan_only\n");
-    }
-  }
-
-  return null;
-}
-
-/**
- * Write channel Caddy route files to data/caddy/channels/{public,lan}/.
- */
-export function writeCaddyRoutes(state: ControlPlaneState): void {
-  const caddyChannelsDir = `${state.dataDir}/caddy/channels`;
-  const publicDir = `${caddyChannelsDir}/public`;
-  const lanDir = `${caddyChannelsDir}/lan`;
-  rmSync(publicDir, { recursive: true, force: true });
-  rmSync(lanDir, { recursive: true, force: true });
-  mkdirSync(publicDir, { recursive: true });
-  mkdirSync(lanDir, { recursive: true });
-
-  const channels = discoverChannels(state.configDir);
-  for (const ch of channels) {
-    if (!ch.caddyPath) continue;
-
-    const raw = readFileSync(ch.caddyPath, "utf-8");
-    if (raw.includes(PUBLIC_ACCESS_IMPORT)) {
-      writeFileSync(`${publicDir}/${ch.name}.caddy`, raw);
-      continue;
-    }
-
-    const lanScoped = withDefaultLanOnly(raw);
-    if (!lanScoped) {
-      appendAudit(
-        state,
-        "system",
-        "channels.route.skip",
-        {
-          channel: ch.name,
-          reason: "Unable to infer route block for default LAN scoping"
-        },
-        false,
-        "",
-        "system"
-      );
-      continue;
-    }
-    writeFileSync(`${lanDir}/${ch.name}.caddy`, lanScoped);
-  }
-}
-
-// ── Compose & Caddyfile Content ──────────────────────────────────────
+// ── Compose Content ──────────────────────────────────────────────────
 
 function resolveCompose(_state: ControlPlaneState, assets: CoreAssetProvider): string {
   return readCoreCompose(assets);
-}
-
-function resolveCaddyfile(_state: ControlPlaneState, assets: CoreAssetProvider): string {
-  return readCoreCaddyfile(assets);
 }
 
 // ── Env File Management ──────────────────────────────────────────────
@@ -321,11 +249,9 @@ export function resolveArtifacts(
   assets: CoreAssetProvider
 ): {
   compose: string;
-  caddyfile: string;
 } {
   return {
     compose: resolveCompose(state, assets),
-    caddyfile: resolveCaddyfile(state, assets)
   };
 }
 
@@ -333,10 +259,9 @@ export function resolveArtifacts(
 
 export function buildArtifactMeta(artifacts: {
   compose: string;
-  caddyfile: string;
 }): ArtifactMeta[] {
   const now = new Date().toISOString();
-  return (["compose", "caddyfile"] as const).map((name) => ({
+  return (["compose"] as const).map((name) => ({
     name,
     sha256: sha256(artifacts[name]),
     generatedAt: now,
@@ -369,16 +294,6 @@ export function persistConfiguration(
   // Write core compose overlay
   writeComponentOverlay(state, "core", state.artifacts.compose);
 
-  // Write Caddyfile to data/caddy/
-  const caddyDir = `${state.dataDir}/caddy`;
-  mkdirSync(caddyDir, { recursive: true });
-  writeFileSync(`${caddyDir}/Caddyfile`, state.artifacts.caddyfile);
-
-  // Write optional compose overlays
-  if (isAdminEnabled(state)) {
-    writeComponentOverlay(state, "admin", readAdminCompose(assets));
-  }
-
   // Load persisted channel HMAC secrets, generate new ones for new channels
   const channelSecrets = loadPersistedChannelSecrets(state.vaultDir);
   const allChannels = discoverChannels(state.configDir);
@@ -390,9 +305,6 @@ export function persistConfiguration(
 
   // Write system.env with channel secrets and system values
   writeSystemEnv(state, channelSecrets);
-
-  // Write channel Caddy routes
-  writeCaddyRoutes(state);
 
   // Write env schemas to vault
   ensureUserEnvSchema(assets);

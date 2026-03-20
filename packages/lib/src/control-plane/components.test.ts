@@ -27,7 +27,6 @@ function writeComponentDir(
   opts: {
     compose?: string;
     schema?: string;
-    caddy?: string;
   } = {}
 ): string {
   const dir = join(baseDir, name);
@@ -45,10 +44,6 @@ services:
 `;
   writeFileSync(join(dir, "compose.yml"), compose);
   writeFileSync(join(dir, ".env.schema"), opts.schema ?? `# ${name} schema\nTEST_VAR=default\n`);
-
-  if (opts.caddy) {
-    writeFileSync(join(dir, ".caddy"), opts.caddy);
-  }
 
   return dir;
 }
@@ -100,7 +95,6 @@ describe("isReservedName", () => {
 
   test("recognizes optional service names", () => {
     expect(isReservedName("admin")).toBe(true);
-    expect(isReservedName("caddy")).toBe(true);
     expect(isReservedName("docker-socket-proxy")).toBe(true);
   });
 
@@ -443,26 +437,6 @@ services:
 
     const components = discoverComponents(openpalmHome, builtinDir);
     expect(components).toHaveLength(0);
-  });
-
-  test("detects .caddy presence", () => {
-    const builtinDir = join(tempDir, "builtin");
-    const openpalmHome = join(tempDir, "home");
-    mkdirSync(builtinDir, { recursive: true });
-    mkdirSync(join(openpalmHome, "data", "catalog"), { recursive: true });
-
-    writeComponentDir(builtinDir, "with-caddy", {
-      caddy: "@test path /test\nhandle @test { reverse_proxy test:3000 }\n",
-    });
-
-    writeComponentDir(builtinDir, "without-caddy");
-
-    const components = discoverComponents(openpalmHome, builtinDir);
-    const withCaddy = components.find((c) => c.id === "with-caddy")!;
-    const withoutCaddy = components.find((c) => c.id === "without-caddy")!;
-
-    expect(withCaddy.caddyPath).not.toBeNull();
-    expect(withoutCaddy.caddyPath).toBeNull();
   });
 
   test("returns empty array when no sources exist", () => {

@@ -19,13 +19,9 @@ const savedEnv: Record<string, string | undefined> = {};
 
 function createStubAssetProvider(): CoreAssetProvider {
   return {
-    coreCompose: () => "services:\n  caddy:\n    image: caddy:latest\n",
-    caddyfile: () =>
-      ":80 {\n  @denied not remote_ip 127.0.0.0/8 ::1\n  respond @denied 403\n}\n",
-    adminCompose: () => "services:\n  admin:\n    image: openpalm/admin\n",
+    coreCompose: () => "services:\n  assistant:\n    image: assistant:latest\n",
     agentsMd: () => "# Agents\n",
     opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
-    adminOpencodeConfig: () => '{"$schema":"https://opencode.ai/config.json","plugin":["@openpalm/admin-tools"]}\n',
     secretsSchema: () => "ADMIN_TOKEN=string\n",
     stackSchema: () => "OP_IMAGE_TAG=string\n",
     cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
@@ -54,9 +50,6 @@ function makeSetupDirs(): void {
     join(dataDir, "memory"),
     join(dataDir, "assistant"),
     join(dataDir, "guardian"),
-    join(dataDir, "caddy"),
-    join(dataDir, "caddy", "data"),
-    join(dataDir, "caddy", "channels"),
     join(dataDir, "stash"),
     join(dataDir, "workspace"),
     logsDir,
@@ -223,8 +216,8 @@ describe("setup wizard server", () => {
 
     try {
       updateDeployStatus([
-        { service: "caddy", status: "pending", label: "Caddy" },
-        { service: "memory", status: "pulling", label: "Memory" },
+        { service: "memory", status: "pending", label: "Memory" },
+        { service: "assistant", status: "pulling", label: "Assistant" },
       ]);
 
       const res = await fetch(`http://localhost:${serverPort}/api/setup/deploy-status`);
@@ -236,7 +229,7 @@ describe("setup wizard server", () => {
       };
       expect(data.ok).toBe(true);
       expect(data.deployStatus).toHaveLength(2);
-      expect(data.deployStatus[0].service).toBe("caddy");
+      expect(data.deployStatus[0].service).toBe("memory");
     } finally {
       stop();
     }

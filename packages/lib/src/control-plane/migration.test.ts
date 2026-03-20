@@ -24,7 +24,7 @@ function makeState(): ControlPlaneState {
     logsDir: join(homeDir, "logs"),
     cacheDir: join(homeDir, "cache"),
     services: {},
-    artifacts: { compose: "", caddyfile: "" },
+    artifacts: { compose: "" },
     artifactMeta: [],
     audit: [],
   };

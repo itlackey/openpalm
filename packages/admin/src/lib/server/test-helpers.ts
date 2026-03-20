@@ -19,15 +19,12 @@ export function makeTempDir(): string {
 
 export function seedConfigChannels(
   configDir: string,
-  channels: { name: string; yml: string; caddy?: string }[]
+  channels: { name: string; yml: string }[]
 ): void {
   const componentsDir = join(configDir, "components");
   mkdirSync(componentsDir, { recursive: true });
   for (const ch of channels) {
     writeFileSync(join(componentsDir, `channel-${ch.name}.yml`), ch.yml);
-    if (ch.caddy) {
-      writeFileSync(join(componentsDir, `channel-${ch.name}.caddy`), ch.caddy);
-    }
   }
 }
 
@@ -49,7 +46,7 @@ export function makeTestState(overrides: Partial<ControlPlaneState> = {}): Contr
     logsDir: join(tempDir, "logs"),
     cacheDir: join(tempDir, "cache"),
     services: {},
-    artifacts: { compose: "", caddyfile: "" },
+    artifacts: { compose: "" },
     artifactMeta: [],
     audit: [],
     ...overrides

@@ -20,7 +20,6 @@ const SERVICES: { name: string; url: string }[] = [
   { name: "guardian", url: "http://guardian:8080/health" },
   { name: "memory", url: "http://memory:8765/health" },
   { name: "assistant", url: "http://assistant:4096" },
-  { name: "caddy", url: "http://caddy:8080" }
 ];
 
 async function checkService(url: string): Promise<ServiceCheckResult> {

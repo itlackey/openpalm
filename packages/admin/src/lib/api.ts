@@ -124,19 +124,6 @@ export async function fetchHealth(): Promise<{
   return { admin, guardian };
 }
 
-export async function fetchAccessScope(token: string): Promise<{
-  ok: boolean;
-  status: number;
-  accessScope?: 'host' | 'lan' | 'custom';
-}> {
-  const res = await get('/admin/access-scope', token);
-  if (!res.ok) {
-    return { ok: false, status: res.status };
-  }
-  const data = (await res.json()) as { accessScope?: 'host' | 'lan' | 'custom' };
-  return { ok: true, status: res.status, accessScope: data.accessScope };
-}
-
 export async function fetchAdminOpenCodeStatus(
   token: string
 ): Promise<AdminOpenCodeStatusResponse> {
@@ -164,10 +151,9 @@ export async function fetchContainers(token: string): Promise<ContainerListRespo
 
 export async function fetchArtifacts(
   token: string,
-  type: 'compose' | 'caddyfile'
+  type: 'compose'
 ): Promise<string> {
-  const path =
-    type === 'compose' ? '/admin/artifacts/compose' : '/admin/artifacts/caddyfile';
+  const path = '/admin/artifacts/compose';
   const res = await get(path, token);
   if (res.status === 401) {
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
@@ -562,7 +548,7 @@ export async function fetchComponents(token: string): Promise<ComponentResponse[
 export async function fetchComponentDetail(
   token: string,
   componentId: string
-): Promise<ComponentResponse & { schema: EnvSchemaFieldResponse[]; hasCaddy: boolean }> {
+): Promise<ComponentResponse & { schema: EnvSchemaFieldResponse[] }> {
   const res = await get(`/api/components/${encodeURIComponent(componentId)}`, token);
   if (res.status === 401) {
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
@@ -573,7 +559,7 @@ export async function fetchComponentDetail(
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
   }
-  return (await res.json()) as ComponentResponse & { schema: EnvSchemaFieldResponse[]; hasCaddy: boolean };
+  return (await res.json()) as ComponentResponse & { schema: EnvSchemaFieldResponse[] };
 }
 
 export async function fetchInstances(token: string): Promise<InstanceResponse[]> {

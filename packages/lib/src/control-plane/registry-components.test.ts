@@ -195,6 +195,8 @@ describe("registry compose.yml validation", () => {
       });
 
       it("does not mount docker socket", () => {
+        // admin component is exempt — docker-socket-proxy IS the docker socket accessor by design
+        if (id === "admin") return;
         expect(compose).not.toContain("/var/run/docker.sock");
       });
 

@@ -18,8 +18,7 @@ function isValidChannelName(name: string): boolean {
 // ── Channel Discovery ─────────────────────────────────────────────────
 
 /**
- * Discover installed channels by scanning config/components/ for channel-*.yml
- * and config/components/ for matching *.caddy route files.
+ * Discover installed channels by scanning config/components/ for channel-*.yml.
  */
 export function discoverChannels(configDir: string): ChannelInfo[] {
   const componentsDir = `${configDir}/components`;
@@ -27,19 +26,15 @@ export function discoverChannels(configDir: string): ChannelInfo[] {
 
   const files = readdirSync(componentsDir);
   const channelYmls = files.filter((f) => f.startsWith("channel-") && f.endsWith(".yml"));
-  const caddyFiles = new Set(files.filter((f) => f.endsWith(".caddy")));
 
   return channelYmls
     .map((ymlFile) => {
       // channel-chat.yml → chat
       const name = ymlFile.replace(/^channel-/, "").replace(/\.yml$/, "");
-      const caddyFile = `channel-${name}.caddy`;
-      const hasCaddy = caddyFiles.has(caddyFile);
       return {
         name,
-        hasRoute: hasCaddy,
+        hasRoute: false,
         ymlPath: `${componentsDir}/${ymlFile}`,
-        caddyPath: hasCaddy ? `${componentsDir}/${caddyFile}` : null
       };
     })
     .filter((ch) => isValidChannelName(ch.name));
@@ -59,7 +54,7 @@ export function isAllowedService(value: string, configDir?: string): boolean {
     if (value === "ollama") {
       return existsSync(`${configDir}/components/ollama.yml`);
     }
-    if (value === "admin" || value === "caddy" || value === "docker-socket-proxy") {
+    if (value === "admin" || value === "docker-socket-proxy") {
       return existsSync(`${configDir}/components/admin.yml`);
     }
     if (value.startsWith("channel-")) {

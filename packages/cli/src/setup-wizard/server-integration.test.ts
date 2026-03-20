@@ -29,13 +29,9 @@ const savedEnv: Record<string, string | undefined> = {};
 
 function createStubAssetProvider(): CoreAssetProvider {
   return {
-    coreCompose: () => "services:\n  caddy:\n    image: caddy:latest\n",
-    caddyfile: () =>
-      ":80 {\n  @denied not remote_ip 127.0.0.0/8 ::1\n  respond @denied 403\n}\n",
-    adminCompose: () => "services:\n  admin:\n    image: openpalm/admin\n",
+    coreCompose: () => "services:\n  assistant:\n    image: assistant:latest\n",
     agentsMd: () => "# Agents\n",
     opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
-    adminOpencodeConfig: () => '{"$schema":"https://opencode.ai/config.json","plugin":["@openpalm/admin-tools"]}\n',
     secretsSchema: () => "ADMIN_TOKEN=string\n",
     stackSchema: () => "OP_IMAGE_TAG=string\n",
     cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
@@ -64,9 +60,6 @@ function makeSetupDirs(): void {
     join(dataDir, "memory"),
     join(dataDir, "assistant"),
     join(dataDir, "guardian"),
-    join(dataDir, "caddy"),
-    join(dataDir, "caddy", "data"),
-    join(dataDir, "caddy", "channels"),
     join(dataDir, "stash"),
     join(dataDir, "workspace"),
     logsDir,
@@ -362,9 +355,9 @@ describe("setup wizard server integration", () => {
 
       // Set to pending
       updateDeployStatus([
-        { service: "caddy", status: "pending", label: "Caddy" },
         { service: "memory", status: "pending", label: "Memory" },
         { service: "assistant", status: "pending", label: "Assistant" },
+        { service: "guardian", status: "pending", label: "Guardian" },
       ]);
 
       const pendingRes = await fetch(`http://localhost:${serverPort}/api/setup/deploy-status`);
@@ -397,7 +390,7 @@ describe("setup wizard server integration", () => {
 
     try {
       updateDeployStatus([
-        { service: "caddy", status: "pulling", label: "Caddy" },
+        { service: "assistant", status: "pulling", label: "Assistant" },
         { service: "memory", status: "error", label: "Memory" },
       ]);
 
@@ -409,9 +402,9 @@ describe("setup wizard server integration", () => {
         deployStatus: Array<{ service: string; status: string }>;
       };
 
-      const caddy = data.deployStatus.find((e) => e.service === "caddy");
+      const assistant = data.deployStatus.find((e) => e.service === "assistant");
       const memory = data.deployStatus.find((e) => e.service === "memory");
-      expect(caddy?.status).toBe("running");
+      expect(assistant?.status).toBe("running");
       expect(memory?.status).toBe("error"); // Error entries stay as-is
     } finally {
       stop();
@@ -457,7 +450,7 @@ describe("setup wizard server integration", () => {
       ]);
 
       // Simulate deploy error
-      setDeployError("caddy failed to start");
+      setDeployError("assistant failed to start");
 
       // Retry should be allowed (not blocked by "already complete")
       const retryRes = await fetch(`http://localhost:${serverPort}/api/setup/complete`, {

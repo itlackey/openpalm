@@ -1,9 +1,8 @@
 import { tool } from "@opencode-ai/plugin";
 import { adminFetch } from "./lib.ts";
 
-const VALID_SERVICES = "caddy, memory, assistant, guardian, admin, channel-chat, channel-discord, channel-voice, channel-telegram";
+const VALID_SERVICES = "memory, assistant, guardian, admin, channel-chat, channel-discord, channel-voice, channel-telegram";
 const ALLOWED_SERVICES = new Set([
-  "caddy",
   "memory",
   "assistant",
   "guardian",

@@ -5,9 +5,7 @@ import type { RequestHandler } from "./$types";
 /**
  * Guardian health — proxy to the actual guardian service.
  *
- * In production Caddy handles this, but the SvelteKit dev server has no
- * reverse proxy. We check the container state instead of returning a
- * hardcoded "ok".
+ * We check the container state instead of returning a hardcoded "ok".
  */
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

@@ -12,7 +12,6 @@
     adminHealth: HealthPayload | null;
     adminOpenCodeStatus: 'checking' | 'ready' | 'unavailable';
     adminOpenCodeUrl: string;
-    channelAccess: 'host' | 'lan' | 'custom';
     operationResult: string;
     operationResultType: 'success' | 'error' | 'info';
     adminStatus: string;
@@ -34,7 +33,6 @@
     adminHealth,
     adminOpenCodeStatus,
     adminOpenCodeUrl,
-    channelAccess,
     operationResult,
     operationResultType,
     adminStatus,
@@ -179,7 +177,7 @@
           <div class="action-content">
             <span class="action-title">Apply Config + Restart</span>
             <span class="action-desc">Update configuration and restart running services</span>
-            <span class="action-hint">Restarts services with updated compose/caddy config.</span>
+            <span class="action-hint">Restarts services with updated compose config.</span>
           </div>
           <span class="action-arrow">
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -269,14 +267,6 @@
     </div>
     <div class="panel-body">
       <div class="info-grid">
-        <div class="info-item">
-          <span class="info-label">Access Mode</span>
-          <span class="info-value">
-            <span class="badge" class:badge-success={channelAccess === 'lan'} class:badge-warning={channelAccess === 'host' || channelAccess === 'custom'}>
-              {channelAccess.toUpperCase()}
-            </span>
-          </span>
-        </div>
         <div class="info-item">
           <span class="info-label">Admin API</span>
           <span class="info-value">

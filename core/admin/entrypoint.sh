@@ -9,6 +9,13 @@ SVELTEKIT_PORT="${PORT:-8100}"
 OPENCODE_PORT="${OPENCODE_PORT:-4097}"
 VARLOCK_SCHEMA_DIR="/app"
 
+# ── Seed admin OpenCode config if not already present ─────────────────
+OPENCODE_CFG="${OPENCODE_CONFIG_DIR:-/openpalm/data/admin}/opencode.jsonc"
+if [ ! -f "$OPENCODE_CFG" ]; then
+  mkdir -p "$(dirname "$OPENCODE_CFG")" 2>/dev/null || true
+  cp /app/admin-opencode.jsonc "$OPENCODE_CFG" 2>/dev/null || true
+fi
+
 # ── Varlock command prefix (runtime secret redaction) ─────────────────
 VARLOCK_CMD=()
 if command -v varlock >/dev/null 2>&1 && [ -f "$VARLOCK_SCHEMA_DIR/.env.schema" ]; then

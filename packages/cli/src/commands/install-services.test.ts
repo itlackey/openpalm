@@ -10,9 +10,8 @@ describe('install service helpers', () => {
   });
 
   it('includes admin services when they are in managed list', () => {
-    expect(buildInstallServiceNames(['memory', 'caddy', 'admin', 'docker-socket-proxy'])).toEqual([
+    expect(buildInstallServiceNames(['memory', 'admin', 'docker-socket-proxy'])).toEqual([
       'memory',
-      'caddy',
       'admin',
       'docker-socket-proxy',
     ]);

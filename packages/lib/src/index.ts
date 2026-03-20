@@ -234,23 +234,14 @@ export {
 
 // ── Core Assets ─────────────────────────────────────────────────────────
 export {
-  PUBLIC_ACCESS_IMPORT,
-  LAN_ONLY_IMPORT,
-  ensureCoreCaddyfile,
-  readCoreCaddyfile,
   ensureUserEnvSchema,
   ensureSystemEnvSchema,
   ensureSecretsSchema,
   ensureStackSchema,
-  detectAccessScope,
-  setCoreCaddyAccessScope,
   ensureMemoryDir,
   ensureCoreCompose,
   readCoreCompose,
-  ensureAdminCompose,
-  readAdminCompose,
   ensureOpenCodeSystemConfig,
-  ensureAdminOpenCodeConfig,
   ensureCoreAutomations,
   refreshCoreAssets,
 } from "./control-plane/core-assets.js";
@@ -267,8 +258,6 @@ export {
   resolveArtifacts,
   buildArtifactMeta,
   persistConfiguration,
-  withDefaultLanOnly,
-  writeCaddyRoutes,
   writeSystemEnv,
   writeComponentOverlay,
 } from "./control-plane/staging.js";
@@ -314,7 +303,6 @@ export {
   composeStart,
   composePs,
   composeLogs,
-  caddyReload,
   composePullService,
   composePull,
   composeStats,
@@ -464,8 +452,6 @@ export {
   getInstanceDetail,
   listInstances,
   deleteInstance,
-  installCaddyRoute,
-  removeCaddyRoute,
   parseEnvSchema,
 } from "./control-plane/instance-lifecycle.js";
 

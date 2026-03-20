@@ -189,7 +189,6 @@ export type SystemConnectionSaveResult = {
 export type RegistryComponentItem = {
   id: string;
   type: 'component';
-  hasCaddy: boolean;
 };
 
 export type RegistryAutomationItem = {

@@ -266,12 +266,6 @@ function convertChannelOverlays(
     ];
     writeFileSync(join(instanceDir, '.env'), envLines.join('\n'));
 
-    // Copy corresponding .caddy if it exists
-    const caddyFile = join(channelsDir, `${name}.caddy`);
-    if (existsSync(caddyFile)) {
-      copyFileSync(caddyFile, join(instanceDir, '.caddy'));
-    }
-
     summary.push(`  channels/${file} -> data/components/${name}/`);
   }
 
@@ -464,7 +458,6 @@ export default defineCommand({
         await copyDirSafe(join(dataHome, 'assistant'), join(openpalmHome, 'data', 'assistant'), summary);
         await copyDirSafe(join(dataHome, 'memory'), join(openpalmHome, 'data', 'memory'), summary);
         await copyDirSafe(join(dataHome, 'guardian'), join(openpalmHome, 'data', 'guardian'), summary);
-        await copyDirSafe(join(dataHome, 'caddy'), join(openpalmHome, 'data', 'caddy'), summary);
         await copyDirSafe(join(dataHome, 'opencode'), join(openpalmHome, 'data', 'assistant'), summary);
       }
 

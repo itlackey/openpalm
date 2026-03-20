@@ -23,7 +23,6 @@ import {
   configureInstance,
   deleteInstance,
   getInstanceDetail,
-  installCaddyRoute,
   parseEnvSchema,
   buildComponentComposeArgs,
 } from '@openpalm/lib';
@@ -55,14 +54,13 @@ const listCmd = defineCommand({
     }
 
     console.log('Available components:\n');
-    console.log('  ID                   Compose   Schema   Caddy');
-    console.log('  ────────────────────  ────────  ───────  ─────');
+    console.log('  ID                   Compose   Schema');
+    console.log('  ────────────────────  ────────  ───────');
     for (const comp of allComponents) {
       const id = comp.id.padEnd(20);
       const compose = comp.composePath ? 'yes' : 'no';
       const schema = comp.schemaPath ? 'yes' : 'no';
-      const caddy = comp.caddyPath ? 'yes' : 'no';
-      console.log(`  ${id}  ${compose.padEnd(8)}  ${schema.padEnd(7)}  ${caddy}`);
+      console.log(`  ${id}  ${compose.padEnd(8)}  ${schema}`);
     }
     console.log(`\n  ${allComponents.length} component(s) found.`);
   },
@@ -137,12 +135,6 @@ const addCmd = defineCommand({
       const instance = createInstance(home, componentDef, instanceId);
       console.log(`Created instance "${instance.id}" from component "${componentDef.id}".`);
       console.log(`  Directory: ${instance.instanceDir}`);
-
-      // Install Caddy route if present
-      if (instance.caddyPath) {
-        installCaddyRoute(home, instance.id);
-        console.log('  Caddy route installed.');
-      }
 
       // Show schema fields that need configuration
       if (instance.schemaPath && existsSync(instance.schemaPath)) {

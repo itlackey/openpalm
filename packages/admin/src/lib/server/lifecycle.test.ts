@@ -94,7 +94,6 @@ describe("isAllowedAction", () => {
       "extensions.list",
       "artifacts.list", "artifacts.get", "artifacts.manifest",
       "audit.list",
-      "accessScope.get", "accessScope.set",
       "connections.get", "connections.patch", "connections.status"
     ];
     for (const action of validActions) {
@@ -218,11 +217,6 @@ describe("CORE_SERVICES", () => {
     expect(CORE_SERVICES).toContain("scheduler");
   });
 
-  test("caddy is an optional service, not core (moved to admin.yml)", () => {
-    expect(CORE_SERVICES).not.toContain("caddy");
-    expect(OPTIONAL_SERVICES).toContain("caddy");
-  });
-
   test("admin is an optional service, not core", () => {
     expect(CORE_SERVICES).not.toContain("admin");
     expect(OPTIONAL_SERVICES).toContain("admin");
@@ -233,8 +227,8 @@ describe("CORE_SERVICES", () => {
     expect(CORE_SERVICES).toHaveLength(4);
   });
 
-  test("has exactly 3 optional services", () => {
-    expect(OPTIONAL_SERVICES).toHaveLength(3);
+  test("has exactly 2 optional services", () => {
+    expect(OPTIONAL_SERVICES).toHaveLength(2);
   });
 });
 
@@ -253,7 +247,6 @@ describe("applyInstall", () => {
     // Create required dirs for persistConfiguration
     mkdirSync(join(state.configDir, "components"), { recursive: true });
     mkdirSync(join(state.vaultDir), { recursive: true });
-    mkdirSync(join(state.dataDir, "caddy"), { recursive: true });
 
     applyInstall(state);
 
@@ -271,7 +264,6 @@ describe("applyUpdate", () => {
 
     mkdirSync(join(state.configDir, "components"), { recursive: true });
     mkdirSync(join(state.vaultDir), { recursive: true });
-    mkdirSync(join(state.dataDir, "caddy"), { recursive: true });
 
     const result = applyUpdate(state);
     expect(result.restarted).toContain("admin");
@@ -288,7 +280,6 @@ describe("applyUninstall", () => {
 
     mkdirSync(join(state.configDir, "components"), { recursive: true });
     mkdirSync(join(state.vaultDir), { recursive: true });
-    mkdirSync(join(state.dataDir, "caddy"), { recursive: true });
 
     const result = applyUninstall(state);
     expect(result.stopped).toContain("admin");

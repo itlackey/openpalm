@@ -27,7 +27,7 @@ import {
 import { ensureConnectionProfilesStore, writeConnectionsDocument } from "./connection-profiles.js";
 import { buildMem0Mapping } from "./connection-mapping.js";
 import { writeMemoryConfig } from "./memory-config.js";
-import { ensureOpenCodeSystemConfig, ensureAdminOpenCodeConfig, ensureMemoryDir } from "./core-assets.js";
+import { ensureOpenCodeSystemConfig, ensureMemoryDir } from "./core-assets.js";
 import { applyInstall, createState, writeSetupTokenFile } from "./lifecycle.js";
 import { writeStackSpecV3 } from "./stack-spec.js";
 import type { StackSpecV3 } from "./stack-spec.js";
@@ -697,7 +697,6 @@ export async function performSetup(
   // ── Ensure OpenCode configs ──────────────────────────────────────────
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig(assetProvider);
-  ensureAdminOpenCodeConfig(assetProvider);
   ensureMemoryDir();
 
   // ── Write stack spec (openpalm.yaml) ─────────────────────────────────

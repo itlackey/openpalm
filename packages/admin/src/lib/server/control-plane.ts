@@ -8,13 +8,9 @@
  */
 import type { ControlPlaneState, CoreAssetProvider, RegistryProvider } from "@openpalm/lib";
 import {
-  ensureCoreCaddyfile as _ensureCoreCaddyfile,
-  readCoreCaddyfile as _readCoreCaddyfile,
-  setCoreCaddyAccessScope as _setCoreCaddyAccessScope,
   ensureCoreCompose as _ensureCoreCompose,
   readCoreCompose as _readCoreCompose,
   ensureOpenCodeSystemConfig as _ensureOpenCodeSystemConfig,
-  ensureAdminOpenCodeConfig as _ensureAdminOpenCodeConfig,
   ensureCoreAutomations as _ensureCoreAutomations,
   ensureSecretsSchema as _ensureSecretsSchema,
   ensureStackSchema as _ensureStackSchema,
@@ -31,20 +27,6 @@ import { viteRegistry } from "./vite-registry-provider.js";
 
 // ── Wrapped functions (pre-inject Vite providers) ────────────────────
 
-export function ensureCoreCaddyfile(): string {
-  return _ensureCoreCaddyfile(viteAssets);
-}
-
-export function readCoreCaddyfile(): string {
-  return _readCoreCaddyfile(viteAssets);
-}
-
-export function setCoreCaddyAccessScope(
-  scope: "host" | "lan"
-): { ok: true } | { ok: false; error: string } {
-  return _setCoreCaddyAccessScope(scope, viteAssets);
-}
-
 export function ensureCoreCompose(): string {
   return _ensureCoreCompose(viteAssets);
 }
@@ -57,9 +39,6 @@ export function ensureOpenCodeSystemConfig(): void {
   _ensureOpenCodeSystemConfig(viteAssets);
 }
 
-export function ensureAdminOpenCodeConfig(): void {
-  _ensureAdminOpenCodeConfig(viteAssets);
-}
 
 export function ensureCoreAutomations(): void {
   _ensureCoreAutomations(viteAssets);
@@ -75,7 +54,6 @@ export function ensureStackSchema(): string {
 
 export function resolveArtifacts(state: ControlPlaneState): {
   compose: string;
-  caddyfile: string;
 } {
   return _resolveArtifacts(state, viteAssets);
 }
@@ -195,7 +173,6 @@ export {
 export {
   sha256,
   randomHex,
-  detectAccessScope,
   isOllamaEnabled,
   buildEnvFiles,
   discoverChannelOverlays,
@@ -322,8 +299,6 @@ export {
   getInstanceDetail,
   listInstances,
   deleteInstance,
-  installCaddyRoute,
-  removeCaddyRoute,
   parseEnvSchema,
 } from "@openpalm/lib";
 

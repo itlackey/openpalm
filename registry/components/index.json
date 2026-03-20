@@ -55,6 +55,14 @@
       "icon": "cpu",
       "category": "ai",
       "curated": true
+    },
+    {
+      "id": "admin",
+      "name": "Admin Panel",
+      "description": "Web-based admin UI and API for managing the OpenPalm stack",
+      "icon": "settings",
+      "category": "management",
+      "curated": true
     }
   ]
 }

@@ -43,7 +43,6 @@ export const GET: RequestHandler = async (event) => {
     source: component.source,
     labels: component.labels,
     schema,
-    hasCaddy: component.caddyPath !== null,
     requestId,
   }, requestId);
 };

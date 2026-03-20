@@ -81,11 +81,6 @@ export function ensureHomeDirs(): void {
     `${home}/data/admin`,
     `${home}/data/memory`,
     `${home}/data/guardian`,
-    `${home}/data/caddy`,
-    `${home}/data/caddy/data`,
-    `${home}/data/caddy/channels`,
-    `${home}/data/caddy/channels/public`,
-    `${home}/data/caddy/channels/lan`,
     `${home}/data/stash`,
     `${home}/data/workspace`,
 

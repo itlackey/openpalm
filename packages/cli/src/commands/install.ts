@@ -6,7 +6,7 @@ import { defaultHomeDir, defaultConfigDir, defaultVaultDir, defaultDataDir, defa
 import { ensureSecrets, ensureStackEnv, resolveRequestedImageTag } from '../lib/env.ts';
 import { ensureDirectoryTree, fetchAsset, runDockerCompose, openBrowser } from '../lib/docker.ts';
 import {
-  ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureAdminOpenCodeConfig, FilesystemAssetProvider,
+  ensureOpenCodeConfig, ensureOpenCodeSystemConfig, FilesystemAssetProvider,
   performSetupFromConfig,
   type SetupConfig, type SetupResult,
 } from '@openpalm/lib';
@@ -130,9 +130,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   }
 
   const composeContent = await fetchAsset(options.version, 'docker-compose.yml');
-  const caddyContent = await fetchAsset(options.version, 'Caddyfile');
   await Bun.write(join(configDir, 'components', 'core.yml'), composeContent);
-  await Bun.write(join(dataDir, 'caddy', 'Caddyfile'), caddyContent);
 
   // Download schemas to vault/ for varlock validation and dataDir for FilesystemAssetProvider
   for (const [remoteFile, localPath] of [
@@ -151,10 +149,8 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   // Download remaining assets needed by FilesystemAssetProvider
   const assetFiles: Array<{ remote: string; localPath: string }> = [
     { remote: 'ollama.yml', localPath: join(configDir, 'components', 'ollama.yml') },
-    { remote: 'admin.yml', localPath: join(configDir, 'components', 'admin.yml') },
     { remote: 'AGENTS.md', localPath: join(dataDir, 'assistant', 'AGENTS.md') },
     { remote: 'opencode.jsonc', localPath: join(dataDir, 'assistant', 'opencode.jsonc') },
-    { remote: 'admin-opencode.jsonc', localPath: join(dataDir, 'admin', 'opencode.jsonc') },
     { remote: 'cleanup-logs.yml', localPath: join(configDir, 'automations', 'cleanup-logs.yml') },
     { remote: 'cleanup-data.yml', localPath: join(configDir, 'automations', 'cleanup-data.yml') },
     { remote: 'validate-config.yml', localPath: join(configDir, 'automations', 'validate-config.yml') },
@@ -180,7 +176,6 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     const fsAssets = new FilesystemAssetProvider(homeDir);
     ensureOpenCodeConfig();
     ensureOpenCodeSystemConfig(fsAssets);
-    ensureAdminOpenCodeConfig(fsAssets);
   } catch {
     // Assets may not be available yet on first install; performSetup() will retry
   }

@@ -2,7 +2,7 @@
  * Tests for staging.ts — artifact staging pipeline, env staging,
  * channel/automation staging, and persistence.
  *
- * Core-asset tests (Caddyfile, compose, access scope) live in core-assets.test.ts.
+ * Core-asset tests (compose, access scope) live in core-assets.test.ts.
  */
 import { describe, test, expect, beforeEach } from "vitest";
 import {
@@ -54,34 +54,30 @@ describe("sha256", () => {
 // ── Artifact Metadata ───────────────────────────────────────────────────
 
 describe("buildArtifactMeta", () => {
-  test("generates metadata for compose and caddyfile", () => {
+  test("generates metadata for compose", () => {
     const artifacts = {
       compose: "services:\n  admin:\n    image: admin:latest\n",
-      caddyfile: ":8080 {\n  respond 200\n}"
     };
     const meta = buildArtifactMeta(artifacts);
-    expect(meta).toHaveLength(2);
+    expect(meta).toHaveLength(1);
     expect(meta[0].name).toBe("compose");
-    expect(meta[1].name).toBe("caddyfile");
   });
 
   test("sha256 matches content hash", () => {
     const content = "test content";
-    const artifacts = { compose: content, caddyfile: "" };
+    const artifacts = { compose: content };
     const meta = buildArtifactMeta(artifacts);
     expect(meta[0].sha256).toBe(sha256(content));
-    expect(meta[1].sha256).toBe(sha256(""));
   });
 
   test("bytes reflects buffer byte length (handles multibyte)", () => {
-    const artifacts = { compose: "hello", caddyfile: "\u00e9" }; // é = 2 bytes UTF-8
+    const artifacts = { compose: "\u00e9" }; // é = 2 bytes UTF-8
     const meta = buildArtifactMeta(artifacts);
-    expect(meta[0].bytes).toBe(5);
-    expect(meta[1].bytes).toBe(2);
+    expect(meta[0].bytes).toBe(2);
   });
 
   test("generatedAt is ISO timestamp", () => {
-    const meta = buildArtifactMeta({ compose: "", caddyfile: "" });
+    const meta = buildArtifactMeta({ compose: "" });
     expect(meta[0].generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });
@@ -193,22 +189,18 @@ describe("persistArtifacts", () => {
     trackDir(state.homeDir);
     state.artifacts = {
       compose: "services:\n  admin:\n    image: admin:latest\n",
-      caddyfile: ":8080 {\n  respond 200\n}"
     };
     // Create required base dirs
     mkdirSync(join(state.configDir, "components"), { recursive: true });
     mkdirSync(join(state.vaultDir), { recursive: true });
-    mkdirSync(join(state.dataDir, "caddy"), { recursive: true });
   });
 
-  test("writes compose to config/components/ and caddyfile to data/caddy/", () => {
+  test("writes compose to config/components/", () => {
     persistArtifacts(state);
 
     const composePath = join(state.configDir, "components", "core.yml");
-    const caddyPath = join(state.dataDir, "caddy", "Caddyfile");
     expect(existsSync(composePath)).toBe(true);
     expect(readFileSync(composePath, "utf-8")).toBe(state.artifacts.compose);
-    expect(readFileSync(caddyPath, "utf-8")).toBe(state.artifacts.caddyfile);
   });
 
   test("generates channel secrets for discovered channels in system.env", () => {
@@ -267,35 +259,4 @@ describe("persistArtifacts", () => {
     expect(content).toContain("CHANNEL_CHAT_SECRET=pre-existing-secret-value");
   });
 
-  test("stages channel caddy files to lan/ directory", () => {
-    seedConfigChannels(state.configDir, [
-      {
-        name: "chat",
-        yml: "services:\n  channel-chat:\n    image: chat:latest\n",
-        caddy: "handle_path /chat/* {\n\treverse_proxy channel-chat:3000\n}"
-      }
-    ]);
-
-    persistArtifacts(state);
-
-    const stagedCaddy = join(state.dataDir, "caddy", "channels", "lan", "chat.caddy");
-    expect(existsSync(stagedCaddy)).toBe(true);
-    const content = readFileSync(stagedCaddy, "utf-8");
-    expect(content).toContain("import lan_only");
-  });
-
-  test("stages channel caddy files to public/ when marked public", () => {
-    seedConfigChannels(state.configDir, [
-      {
-        name: "api",
-        yml: "services:\n  channel-api:\n    image: api:latest\n",
-        caddy: "handle_path /api/* {\n\timport public_access\n\treverse_proxy channel-api:3000\n}"
-      }
-    ]);
-
-    persistArtifacts(state);
-
-    const stagedCaddy = join(state.dataDir, "caddy", "channels", "public", "api.caddy");
-    expect(existsSync(stagedCaddy)).toBe(true);
-  });
 });

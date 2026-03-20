@@ -1,29 +1,5 @@
-# OpenPalm — Admin service overlay
-#
-# Merged into the compose stack when the user enables the admin dashboard.
-# Includes Caddy (reverse proxy), Docker Socket Proxy, and the Admin UI.
-
+# Component: Admin Panel — Web-based admin UI and API
 services:
-  # ── Caddy (reverse proxy) ──────────────────────────────────────────
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    user: "${OP_UID:-1000}:${OP_GID:-1000}"
-    ports:
-      - "${OP_INGRESS_BIND_ADDRESS:-127.0.0.1}:${OP_INGRESS_PORT:-3080}:80"
-    volumes:
-      - ${OP_HOME}/data/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ${OP_HOME}/data/caddy/channels:/etc/caddy/channels:ro
-      - ${OP_HOME}/data/caddy/data:/data/caddy
-    command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
-    networks: [ assistant_net, channel_lan, channel_public ]
-    healthcheck:
-      test: [ "CMD-SHELL", "wget -qO- http://localhost:2019/config/ || exit 1" ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-
   # ── Docker Socket Proxy ───────────────────────────────────────────
   docker-socket-proxy:
     image: tecnativa/docker-socket-proxy:v0.4.2@sha256:1f3a6f303320723d199d2316a3e82b2e2685d86c275d5e3deeaf182573b47476
@@ -38,24 +14,27 @@ services:
       INFO: 1
     volumes:
       - ${OP_DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
-    networks: [ admin_docker_net ]
+    networks: [admin_docker_net]
     healthcheck:
-      test: [ "CMD-SHELL", "wget -qO- http://localhost:2375/_ping || exit 1" ]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:2375/_ping || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 3
       start_period: 5s
 
   # ── Admin ──────────────────────────────────────────────────────────
-  admin:
+  openpalm-${INSTANCE_ID}:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/admin:${OP_IMAGE_TAG:-latest}
+    container_name: openpalm-${INSTANCE_ID}
     restart: unless-stopped
     init: true
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    env_file:
+      - ${INSTANCE_DIR}/.env
     ports:
-      - "127.0.0.1:${OP_ADMIN_PORT:-3880}:8100"
+      - "${OP_ADMIN_BIND_ADDRESS:-127.0.0.1}:${OP_ADMIN_PORT:-3880}:8100"
       - "${OP_ADMIN_OPENCODE_BIND_ADDRESS:-127.0.0.1}:${OP_ADMIN_OPENCODE_PORT:-3881}:4097"
     environment:
       PORT: "8100"
@@ -94,16 +73,21 @@ services:
         read_only: true
         bind:
           create_host_path: true
-    networks: [ assistant_net, admin_docker_net ]
+    networks: [assistant_net, admin_docker_net]
     depends_on:
       docker-socket-proxy:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "curl -sf http://localhost:8100/ || exit 1" ]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8100/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 15s
+    labels:
+      openpalm.name: Admin Panel
+      openpalm.description: Web-based admin UI and API for managing the OpenPalm stack
+      openpalm.icon: settings
+      openpalm.category: management
 
 networks:
   admin_docker_net: # Isolated: only admin + docker-socket-proxy

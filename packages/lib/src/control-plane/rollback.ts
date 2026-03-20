@@ -15,7 +15,6 @@ const SNAPSHOT_FILES = [
   "vault/user.env",
   "vault/system.env",
   "config/openpalm.yml",
-  "data/caddy/Caddyfile",
 ];
 
 /**

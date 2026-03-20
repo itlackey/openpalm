@@ -21,15 +21,12 @@ registerCleanup();
 /** Seed channel overlay files in config/components/ (the new layout). */
 function seedChannelComponents(
   configDir: string,
-  channels: { name: string; yml: string; caddy?: string }[]
+  channels: { name: string; yml: string }[]
 ): void {
   const componentsDir = join(configDir, "components");
   mkdirSync(componentsDir, { recursive: true });
   for (const ch of channels) {
     writeFileSync(join(componentsDir, `channel-${ch.name}.yml`), ch.yml);
-    if (ch.caddy) {
-      writeFileSync(join(componentsDir, `channel-${ch.name}.caddy`), ch.caddy);
-    }
   }
 }
 
@@ -55,24 +52,7 @@ describe("discoverChannels", () => {
     const result = discoverChannels(configDir);
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("chat");
-    expect(result[0].hasRoute).toBe(false);
     expect(result[0].ymlPath).toContain("channel-chat.yml");
-    expect(result[0].caddyPath).toBeNull();
-  });
-
-  test("detects hasRoute when .caddy file is present", () => {
-    seedChannelComponents(configDir, [
-      {
-        name: "chat",
-        yml: "services:\n  channel-chat:\n    image: chat:latest\n",
-        caddy: "handle_path /chat/* {\n\treverse_proxy channel-chat:8080\n}\n"
-      }
-    ]);
-
-    const result = discoverChannels(configDir);
-    expect(result).toHaveLength(1);
-    expect(result[0].hasRoute).toBe(true);
-    expect(result[0].caddyPath).toContain("channel-chat.caddy");
   });
 
   test("discovers multiple channels", () => {

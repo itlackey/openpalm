@@ -1,4 +1,0 @@
-handle_path /channels/chat/* {
-	import lan_only
-	reverse_proxy openpalm-{$INSTANCE_ID}:8181
-}

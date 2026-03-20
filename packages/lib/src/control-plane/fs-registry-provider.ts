@@ -11,7 +11,6 @@
  *       <id>/
  *         compose.yml
  *         .env.schema
- *         .caddy          (optional)
  *     automations/
  *       <name>.yml
  */
@@ -38,17 +37,10 @@ export class FilesystemRegistryProvider implements RegistryProvider {
       // Both compose.yml and .env.schema are required
       if (!existsSync(composePath) || !existsSync(schemaPath)) continue;
 
-      const component: RegistryComponentEntry = {
+      result[id] = {
         compose: readFileSync(composePath, "utf-8"),
         schema: readFileSync(schemaPath, "utf-8"),
       };
-
-      const caddyPath = join(dir, ".caddy");
-      if (existsSync(caddyPath)) {
-        component.caddy = readFileSync(caddyPath, "utf-8");
-      }
-
-      result[id] = component;
     }
     return result;
   }

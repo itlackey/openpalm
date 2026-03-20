@@ -23,10 +23,6 @@ export {
 
 // Re-export core-assets functions for barrel compatibility
 export {
-  ensureCoreCaddyfile,
-  readCoreCaddyfile,
-  detectAccessScope,
-  setCoreCaddyAccessScope,
   ensureCoreCompose,
   readCoreCompose,
   ensureOpenCodeSystemConfig,
@@ -40,7 +36,6 @@ export {
 // Wrapped functions (pre-inject Vite asset provider)
 export function resolveArtifacts(state: ControlPlaneState): {
   compose: string;
-  caddyfile: string;
 } {
   return _resolveArtifacts(state, viteAssets);
 }

@@ -23,10 +23,8 @@ import {
   resolveArtifacts,
   persistConfiguration,
   discoverComponentOverlays,
-  discoverChannelOverlays,
   randomHex,
   isOllamaEnabled,
-  isAdminEnabled,
   buildEnvFiles,
 } from "./staging.js";
 import { refreshCoreAssets, ensureMemoryDir, ensureCoreAutomations } from "./core-assets.js";
@@ -68,7 +66,7 @@ export function createState(
     logsDir,
     cacheDir,
     services,
-    artifacts: { compose: "", caddyfile: "" },
+    artifacts: { compose: "" },
     artifactMeta: [],
     audit: [],
   };
@@ -251,42 +249,41 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
     files.push(coreYml);
   }
 
-  if (isAdminEnabled(state)) {
-    const adminYml = `${state.configDir}/components/admin.yml`;
-    if (existsSync(adminYml)) files.push(adminYml);
-  }
-
   if (isOllamaEnabled(state)) {
     const ollamaYml = `${state.configDir}/components/ollama.yml`;
     if (existsSync(ollamaYml)) files.push(ollamaYml);
   }
 
-  // Add channel overlays
-  const channelYmls = discoverChannelOverlays(state.configDir);
-  files.push(...channelYmls);
+  // Add all non-core, non-ollama component overlays (admin, etc.)
+  const allOverlays = discoverComponentOverlays(state.configDir);
+  for (const p of allOverlays) {
+    const name = p.split("/").pop() ?? "";
+    // Skip core.yml and ollama.yml (already handled above)
+    if (name === "core.yml" || name === "ollama.yml") continue;
+    if (!files.includes(p)) files.push(p);
+  }
 
   return files;
 }
 
 /**
  * Build the list of services that `docker compose up` should manage.
- * Core services always; admin/caddy/docker-socket-proxy only when admin is enabled.
+ * Core services always; additional services discovered from component overlays.
  */
 export function buildManagedServices(state: ControlPlaneState): string[] {
   const services: string[] = [...CORE_SERVICES];
-
-  if (isAdminEnabled(state)) {
-    services.push("caddy", "admin", "docker-socket-proxy");
-  }
 
   if (isOllamaEnabled(state)) {
     services.push("ollama");
   }
 
-  const channelYmls = discoverChannelOverlays(state.configDir);
-  for (const p of channelYmls) {
+  // Discover all component overlay services (admin, channels, etc.)
+  const allOverlays = discoverComponentOverlays(state.configDir);
+  for (const p of allOverlays) {
     const filename = p.split("/").pop() ?? "";
     const name = filename.replace(/\.yml$/, "");
+    // Skip core and ollama (already handled above)
+    if (name === "core" || name === "ollama") continue;
     if (name) services.push(name);
   }
   return services;
@@ -327,8 +324,6 @@ const ALLOWED_ACTIONS = new Set([
   "artifacts.get",
   "artifacts.manifest",
   "audit.list",
-  "accessScope.get",
-  "accessScope.set",
   "connections.get",
   "connections.patch",
   "connections.status"

@@ -10,7 +10,7 @@ export type CoreServiceName =
   | "memory"
   | "scheduler";
 
-export type OptionalServiceName = "admin" | "caddy" | "docker-socket-proxy";
+export type OptionalServiceName = "admin" | "docker-socket-proxy";
 
 export type AccessScope = "host" | "lan";
 export type CallerType = "assistant" | "cli" | "ui" | "system" | "test" | "unknown";
@@ -93,7 +93,6 @@ export type ChannelInfo = {
   name: string;
   hasRoute: boolean;
   ymlPath: string;
-  caddyPath: string | null;
 };
 
 export type AuditEntry = {
@@ -126,7 +125,6 @@ export type ControlPlaneState = {
   services: Record<string, "running" | "stopped">;
   artifacts: {
     compose: string;
-    caddyfile: string;
   };
   artifactMeta: ArtifactMeta[];
   audit: AuditEntry[];
@@ -142,7 +140,6 @@ export const CORE_SERVICES: CoreServiceName[] = [
 ];
 
 export const OPTIONAL_SERVICES: OptionalServiceName[] = [
-  "caddy",
   "admin",
   "docker-socket-proxy",
 ];

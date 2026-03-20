@@ -340,16 +340,6 @@ export async function composeLogs(
 }
 
 /**
- * Reload Caddy configuration by restarting the container.
- */
-export async function caddyReload(
-  configDir: string,
-  options: { files?: string[]; envFiles?: string[] } = {}
-): Promise<DockerResult> {
-  return composeRestart(configDir, ["caddy"], options);
-}
-
-/**
  * Pull image for a single service.
  */
 export async function composePullService(

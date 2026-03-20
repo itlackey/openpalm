@@ -133,7 +133,7 @@ const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 /**
  * Discover component entries from the cloned registry/components/ directory.
- * Each component is a subdirectory containing compose.yml, .env.schema, and optional .caddy.
+ * Each component is a subdirectory containing compose.yml and .env.schema.
  */
 export function discoverRegistryComponents(): Record<string, RegistryComponentEntry> {
   const cloneDir = repoCloneDir();
@@ -155,10 +155,7 @@ export function discoverRegistryComponents(): Record<string, RegistryComponentEn
     const compose = readFileSync(composeFile, "utf-8");
     const schema = readFileSync(schemaFile, "utf-8");
 
-    const caddyFile = join(componentsDir, id, ".caddy");
-    const caddy = existsSync(caddyFile) ? readFileSync(caddyFile, "utf-8") : undefined;
-
-    result[id] = { compose, schema, caddy };
+    result[id] = { compose, schema };
   }
 
   return result;

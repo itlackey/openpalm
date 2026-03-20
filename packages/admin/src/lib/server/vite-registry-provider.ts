@@ -18,11 +18,6 @@ const componentSchemaModules: Record<string, string> = import.meta.glob(
   { query: "?raw", eager: true, import: "default" }
 ) as Record<string, string>;
 
-const componentCaddyModules: Record<string, string> = import.meta.glob(
-  "$registry/components/**/.caddy",
-  { query: "?raw", eager: true, import: "default" }
-) as Record<string, string>;
-
 // ── Registry automation catalog (discovered at build time) ────────────
 const automationYmlModules: Record<string, string> = import.meta.glob(
   "$registry/automations/*.yml",
@@ -31,7 +26,7 @@ const automationYmlModules: Record<string, string> = import.meta.glob(
 
 /** Extract component ID from a glob path like "/.../components/chat/compose.yml" → "chat" */
 function extractComponentId(path: string): string {
-  // Path pattern: .../components/<id>/compose.yml (or .env.schema or .caddy)
+  // Path pattern: .../components/<id>/compose.yml (or .env.schema)
   const parts = path.split("/");
   const compIdx = parts.indexOf("components");
   if (compIdx >= 0 && compIdx + 1 < parts.length) {
@@ -62,13 +57,6 @@ for (const [path, content] of Object.entries(componentSchemaModules)) {
   if (!id) continue;
   if (!_components[id]) _components[id] = { compose: "", schema: "" };
   _components[id].schema = content;
-}
-
-for (const [path, content] of Object.entries(componentCaddyModules)) {
-  const id = extractComponentId(path);
-  if (!id) continue;
-  if (!_components[id]) _components[id] = { compose: "", schema: "" };
-  _components[id].caddy = content;
 }
 
 // Filter out incomplete components (must have both compose and schema)

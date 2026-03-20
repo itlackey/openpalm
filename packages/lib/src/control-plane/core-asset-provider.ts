@@ -7,11 +7,8 @@
 
 export interface CoreAssetProvider {
   coreCompose(): string;
-  caddyfile(): string;
-  adminCompose(): string;
   agentsMd(): string;
   opencodeConfig(): string;
-  adminOpencodeConfig(): string;
   secretsSchema(): string;
   stackSchema(): string;
   cleanupLogs(): string;

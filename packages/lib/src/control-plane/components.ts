@@ -1,7 +1,7 @@
 /**
  * Unified component system for the OpenPalm control plane.
  *
- * A component is a directory containing compose.yml + .env.schema + optional .caddy.
+ * A component is a directory containing compose.yml + .env.schema.
  * Components are discovered from three catalog sources (built-in, registry, user-local)
  * and instantiated into data/components/ when enabled.
  *
@@ -25,12 +25,11 @@ const logger = createLogger("components");
 
 /** A component definition from any catalog source */
 export type ComponentDefinition = {
-  id: string;                    // directory name (e.g., "discord", "caddy")
+  id: string;                    // directory name (e.g., "discord")
   source: ComponentSource;       // where it came from
   sourceDir: string;             // absolute path to source directory
   composePath: string;           // absolute path to compose.yml
   schemaPath: string;            // absolute path to .env.schema
-  caddyPath: string | null;      // absolute path to .caddy (if present)
   labels: ComponentLabels;       // parsed from compose.yml
 };
 
@@ -61,7 +60,6 @@ export type InstanceDetail = EnabledInstance & {
   composePath: string;           // absolute path to instance compose.yml
   envPath: string;               // absolute path to instance .env
   schemaPath: string;            // absolute path to instance .env.schema
-  caddyPath: string | null;      // absolute path to instance .caddy
   dataDir: string;               // absolute path to instance data/ subdirectory
   status: InstanceStatus;
 };
@@ -228,9 +226,6 @@ function scanComponentDir(
     // .env.schema is also required
     if (!existsSync(schemaPath)) continue;
 
-    const caddyPath = join(componentDir, ".caddy");
-    const hasCaddy = existsSync(caddyPath);
-
     const labels = parseComposeLabels(composePath);
     if (!labels) {
       logger.warn("Component missing valid openpalm labels, skipping", {
@@ -247,7 +242,6 @@ function scanComponentDir(
       sourceDir: componentDir,
       composePath,
       schemaPath,
-      caddyPath: hasCaddy ? caddyPath : null,
       labels,
     });
   }

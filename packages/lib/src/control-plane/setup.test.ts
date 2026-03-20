@@ -48,13 +48,9 @@ function makeValidInput(overrides?: Partial<SetupInput>): SetupInput {
 /** Stub asset provider that returns minimal content for all assets. */
 function createStubAssetProvider(): CoreAssetProvider {
   return {
-    coreCompose: () => "services:\n  caddy:\n    image: caddy:latest\n",
-    caddyfile: () =>
-      ":80 {\n  @denied not remote_ip 127.0.0.0/8 ::1\n  respond @denied 403\n}\n",
-    adminCompose: () => "services:\n  admin:\n    image: openpalm/admin\n",
+    coreCompose: () => "services:\n  assistant:\n    image: assistant:latest\n",
     agentsMd: () => "# Agents\n",
     opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
-    adminOpencodeConfig: () => '{"$schema":"https://opencode.ai/config.json","plugin":["@openpalm/admin-tools"]}\n',
     secretsSchema: () => "ADMIN_TOKEN=string\n",
     stackSchema: () => "OP_IMAGE_TAG=string\n",
     cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
@@ -356,10 +352,6 @@ describe("performSetup", () => {
       join(dataDir, "memory"),
       join(dataDir, "assistant"),
       join(dataDir, "guardian"),
-      join(dataDir, "caddy"),
-      join(dataDir, "caddy", "data"),
-      join(dataDir, "caddy", "config"),
-      join(dataDir, "caddy", "channels"),
       join(dataDir, "automations"),
       join(dataDir, "opencode"),
       logsDir,
@@ -1166,10 +1158,6 @@ describe("performSetupFromConfig", () => {
       join(dataDir, "memory"),
       join(dataDir, "assistant"),
       join(dataDir, "guardian"),
-      join(dataDir, "caddy"),
-      join(dataDir, "caddy", "data"),
-      join(dataDir, "caddy", "config"),
-      join(dataDir, "caddy", "channels"),
       join(dataDir, "automations"),
       join(dataDir, "opencode"),
       logsDir,

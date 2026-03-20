@@ -8,8 +8,6 @@ import {
   getInstanceDetail,
   listInstances,
   deleteInstance,
-  installCaddyRoute,
-  removeCaddyRoute,
   parseEnvSchema,
 } from "./instance-lifecycle.js";
 import type { ComponentDefinition } from "./components.js";
@@ -23,13 +21,11 @@ let componentSourceDir: string;
 function createTestHome(): string {
   const dir = join(tmpdir(), `openpalm-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   mkdirSync(join(dir, "data", "components"), { recursive: true });
-  mkdirSync(join(dir, "data", "caddy", "channels"), { recursive: true });
   return dir;
 }
 
 function createTestComponent(baseDir: string, name: string, options?: {
   schema?: string;
-  caddy?: string;
 }): ComponentDefinition {
   const srcDir = join(baseDir, "catalog", name);
   mkdirSync(srcDir, { recursive: true });
@@ -50,17 +46,11 @@ function createTestComponent(baseDir: string, name: string, options?: {
     writeFileSync(join(srcDir, ".env.schema"), options.schema);
   }
 
-  // Write .caddy if provided
-  if (options?.caddy) {
-    writeFileSync(join(srcDir, ".caddy"), options.caddy);
-  }
-
   return {
     id: name,
     sourceDir: srcDir,
     hasCompose: true,
     hasSchema: !!options?.schema,
-    hasCaddy: !!options?.caddy,
   };
 }
 
@@ -86,12 +76,6 @@ DISCORD_PREFIX=!
 
 # Text shown under the bot's name in the member list.
 DISCORD_ACTIVITY_MESSAGE=Listening for messages
-`;
-
-const CADDY_SNIPPET = `@discord-webhook path /webhook/discord/*
-handle @discord-webhook {
-    reverse_proxy openpalm-{$INSTANCE_ID}:3000
-}
 `;
 
 // ── Setup / Teardown ──────────────────────────────────────────────────
@@ -184,7 +168,6 @@ describe("createInstance", () => {
   it("creates an instance with compose, env, schema, and data dir", () => {
     const comp = createTestComponent(openpalmHome, "discord", {
       schema: DISCORD_SCHEMA,
-      caddy: CADDY_SNIPPET,
     });
 
     const result = createInstance(openpalmHome, comp, "discord-main");
@@ -212,10 +195,6 @@ describe("createInstance", () => {
     // .env.schema copied
     expect(existsSync(result.schemaPath)).toBe(true);
 
-    // .caddy copied
-    expect(result.caddyPath).not.toBeNull();
-    expect(existsSync(result.caddyPath!)).toBe(true);
-
     // data/ subdirectory created
     expect(existsSync(result.dataDir)).toBe(true);
 
@@ -225,13 +204,12 @@ describe("createInstance", () => {
     expect(result.enabled).toBe(true);
   });
 
-  it("creates an instance without schema or caddy", () => {
+  it("creates an instance without schema", () => {
     const comp = createTestComponent(openpalmHome, "simple");
     const result = createInstance(openpalmHome, comp, "simple-1");
 
     expect(existsSync(result.composePath)).toBe(true);
     expect(existsSync(result.envPath)).toBe(true);
-    expect(result.caddyPath).toBeNull();
 
     const envContent = readFileSync(result.envPath, "utf-8");
     expect(envContent).toContain("INSTANCE_ID=simple-1");
@@ -400,7 +378,7 @@ describe("configureInstance", () => {
 
 describe("getInstanceDetail", () => {
   it("returns details for an existing instance", () => {
-    const comp = createTestComponent(openpalmHome, "discord", { caddy: CADDY_SNIPPET });
+    const comp = createTestComponent(openpalmHome, "discord");
     createInstance(openpalmHome, comp, "discord-main");
 
     const detail = getInstanceDetail(openpalmHome, "discord-main");
@@ -408,7 +386,6 @@ describe("getInstanceDetail", () => {
     expect(detail!.id).toBe("discord-main");
     expect(detail!.component).toBe("discord");
     expect(detail!.enabled).toBe(true);
-    expect(detail!.caddyPath).not.toBeNull();
   });
 
   it("returns null for a non-existing instance", () => {
@@ -501,83 +478,8 @@ describe("deleteInstance", () => {
     expect(data.instances[0].id).toBe("discord-gaming");
   });
 
-  it("removes caddy route if installed", () => {
-    const comp = createTestComponent(openpalmHome, "discord", { caddy: CADDY_SNIPPET });
-    createInstance(openpalmHome, comp, "discord-main");
-    installCaddyRoute(openpalmHome, "discord-main");
-
-    const caddyTarget = join(openpalmHome, "data", "caddy", "channels", "discord-main.caddy");
-    expect(existsSync(caddyTarget)).toBe(true);
-
-    deleteInstance(openpalmHome, "discord-main");
-    expect(existsSync(caddyTarget)).toBe(false);
-  });
-
-  it("does not error when no caddy route exists", () => {
-    const comp = createTestComponent(openpalmHome, "simple");
-    createInstance(openpalmHome, comp, "simple-1");
-
-    // Should not throw
-    deleteInstance(openpalmHome, "simple-1");
-    expect(existsSync(join(openpalmHome, "data", "components", "simple-1"))).toBe(false);
-  });
-
   it("throws if instance does not exist", () => {
     expect(() => deleteInstance(openpalmHome, "nonexistent")).toThrow("does not exist");
   });
 });
 
-// ── installCaddyRoute / removeCaddyRoute ──────────────────────────────
-
-describe("installCaddyRoute", () => {
-  it("copies .caddy file to the Caddy import directory", () => {
-    const comp = createTestComponent(openpalmHome, "discord", { caddy: CADDY_SNIPPET });
-    createInstance(openpalmHome, comp, "discord-main");
-
-    const result = installCaddyRoute(openpalmHome, "discord-main");
-    expect(result).toBe(true);
-
-    const targetPath = join(openpalmHome, "data", "caddy", "channels", "discord-main.caddy");
-    expect(existsSync(targetPath)).toBe(true);
-
-    const content = readFileSync(targetPath, "utf-8");
-    expect(content).toContain("reverse_proxy");
-  });
-
-  it("returns false if no .caddy file exists", () => {
-    const comp = createTestComponent(openpalmHome, "simple");
-    createInstance(openpalmHome, comp, "simple-1");
-
-    const result = installCaddyRoute(openpalmHome, "simple-1");
-    expect(result).toBe(false);
-  });
-
-  it("preserves the original .caddy in the instance directory", () => {
-    const comp = createTestComponent(openpalmHome, "discord", { caddy: CADDY_SNIPPET });
-    createInstance(openpalmHome, comp, "discord-main");
-    installCaddyRoute(openpalmHome, "discord-main");
-
-    // Original .caddy should still exist
-    const sourceCaddy = join(openpalmHome, "data", "components", "discord-main", ".caddy");
-    expect(existsSync(sourceCaddy)).toBe(true);
-  });
-});
-
-describe("removeCaddyRoute", () => {
-  it("removes the .caddy file from the Caddy import directory", () => {
-    const comp = createTestComponent(openpalmHome, "discord", { caddy: CADDY_SNIPPET });
-    createInstance(openpalmHome, comp, "discord-main");
-    installCaddyRoute(openpalmHome, "discord-main");
-
-    const result = removeCaddyRoute(openpalmHome, "discord-main");
-    expect(result).toBe(true);
-
-    const targetPath = join(openpalmHome, "data", "caddy", "channels", "discord-main.caddy");
-    expect(existsSync(targetPath)).toBe(false);
-  });
-
-  it("returns false if no caddy route was installed", () => {
-    const result = removeCaddyRoute(openpalmHome, "nonexistent");
-    expect(result).toBe(false);
-  });
-});

@@ -44,7 +44,7 @@ function createState(): ControlPlaneState {
     logsDir,
     cacheDir,
     services: {},
-    artifacts: { compose: '', caddyfile: '' },
+    artifacts: { compose: '' },
     artifactMeta: [],
     audit: [],
   };

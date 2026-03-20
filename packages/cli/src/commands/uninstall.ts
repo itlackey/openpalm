@@ -23,7 +23,7 @@ export default defineCommand({
   },
   async run({ args }) {
     // Compose file list includes admin.yml when admin is enabled,
-    // so `down` tears down all services including admin/caddy/socket-proxy.
+    // so `down` tears down all services including admin/socket-proxy.
     const state = await ensureStagedState();
     const composeArgs = fullComposeArgs(state);
     const downArgs = args.volumes || args.purge ? ['down', '-v'] : ['down'];

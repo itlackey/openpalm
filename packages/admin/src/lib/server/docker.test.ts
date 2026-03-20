@@ -9,9 +9,8 @@
  * 5. composeRestart, composeStop, composeStart build correct commands
  * 6. composePs handles missing compose file fallback
  * 7. composeLogs respects tail and service filters
- * 8. caddyReload restarts caddy via compose restart
- * 9. composePull builds pull command
- * 10. All commands use execFile (no shell injection — core security invariant)
+ * 8. composePull builds pull command
+ * 9. All commands use execFile (no shell injection — core security invariant)
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import type { DockerResult } from "./docker.js";
@@ -488,27 +487,6 @@ describe("composeLogs", () => {
     const args = capturedArgs();
     expect(args).toContain("admin");
     expect(args).toContain("guardian");
-  });
-});
-
-describe("caddyReload", () => {
-  beforeEach(() => {
-    execFileMock.mockReset();
-    existsSyncMock.mockReset();
-  });
-
-  test("restarts caddy via compose restart", async () => {
-    existsSyncMock.mockReturnValue(true);
-    mockExecSuccess();
-
-    const { caddyReload } = await import("./docker.js");
-    const result = await caddyReload("/tmp/caddyreload-test-state");
-
-    expect(result.ok).toBe(true);
-    // Should call compose restart caddy (no fetch to admin API)
-    const args = capturedArgs();
-    expect(args).toContain("restart");
-    expect(args).toContain("caddy");
   });
 });
 

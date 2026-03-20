@@ -64,15 +64,10 @@ function makeValidInput(overrides?: Partial<SetupInput>): SetupInput {
 
 function createStubAssetProvider(): CoreAssetProvider {
   return {
-    coreCompose: () => "services:\n  caddy:\n    image: caddy:latest\n",
-    caddyfile: () =>
-      ":80 {\n  @denied not remote_ip 127.0.0.0/8 ::1\n  respond @denied 403\n}\n",
-    adminCompose: () => "services:\n  admin:\n    image: openpalm/admin\n",
+    coreCompose: () => "services:\n  assistant:\n    image: assistant:latest\n",
     agentsMd: () => "# Agents\n",
     opencodeConfig: () =>
       '{"$schema":"https://opencode.ai/config.json"}\n',
-    adminOpencodeConfig: () =>
-      '{"$schema":"https://opencode.ai/config.json","plugin":["@openpalm/admin-tools"]}\n',
     secretsSchema: () => "ADMIN_TOKEN=string\n",
     stackSchema: () => "OP_IMAGE_TAG=string\n",
     cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
@@ -123,10 +118,6 @@ function createFullDirTree(): void {
     join(dataDir, "memory"),
     join(dataDir, "assistant"),
     join(dataDir, "guardian"),
-    join(dataDir, "caddy"),
-    join(dataDir, "caddy", "data"),
-    join(dataDir, "caddy", "config"),
-    join(dataDir, "caddy", "channels"),
     join(dataDir, "automations"),
     join(dataDir, "opencode"),
     join(dataDir, "stash"),
@@ -195,7 +186,7 @@ describe("Fresh Install", () => {
       logsDir,
       cacheDir: join(homeDir, "cache"),
       services: {},
-      artifacts: { compose: "", caddyfile: "" },
+      artifacts: { compose: "" },
       artifactMeta: [],
       audit: [],
     };
@@ -279,7 +270,7 @@ describe("Existing Install", () => {
       logsDir,
       cacheDir: join(homeDir, "cache"),
       services: {},
-      artifacts: { compose: "", caddyfile: "" },
+      artifacts: { compose: "" },
       artifactMeta: [],
       audit: [],
     };
@@ -417,7 +408,7 @@ describe("Broken/Corrupt State", () => {
       logsDir,
       cacheDir: join(homeDir, "cache"),
       services: {},
-      artifacts: { compose: "", caddyfile: "" },
+      artifacts: { compose: "" },
       artifactMeta: [],
       audit: [],
     };
@@ -534,7 +525,6 @@ describe("Broken/Corrupt State", () => {
     expect(existsSync(join(configDir, "components", "core.yml"))).toBe(
       true
     );
-    expect(existsSync(join(dataDir, "caddy", "Caddyfile"))).toBe(true);
     // Automations dir should be recreated
     expect(existsSync(join(configDir, "automations"))).toBe(true);
   });
@@ -831,13 +821,12 @@ describe("performSetup end-to-end artifacts", () => {
     expect(memConfig.mem0.vector_store.config.embedding_model_dims).toBe(768);
   });
 
-  it("writes core.yml and Caddyfile to their respective directories", async () => {
+  it("writes core.yml to config/components/", async () => {
     await performSetup(makeValidInput(), createStubAssetProvider());
 
     expect(
       existsSync(join(configDir, "components", "core.yml"))
     ).toBe(true);
-    expect(existsSync(join(dataDir, "caddy", "Caddyfile"))).toBe(true);
   });
 
   it("writes admin and assistant tokens to system.env", async () => {

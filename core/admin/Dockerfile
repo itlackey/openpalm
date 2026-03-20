@@ -102,6 +102,9 @@ RUN mkdir -p /state /data && chown node:node /state /data
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
 COPY assets/redact.env.schema /app/.env.schema
 
+# Bake admin OpenCode config into the image — seeded at runtime if missing
+COPY core/admin/admin-opencode.jsonc /app/admin-opencode.jsonc
+
 # Admin entrypoint — starts SvelteKit + OpenCode
 COPY core/admin/entrypoint.sh /usr/local/bin/admin-entrypoint.sh
 RUN chmod +x /usr/local/bin/admin-entrypoint.sh

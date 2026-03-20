@@ -16,7 +16,6 @@
   import {
     fetchHealth,
     fetchAdminOpenCodeStatus,
-    fetchAccessScope,
     fetchContainers,
     fetchArtifacts,
     fetchAutomations,
@@ -39,7 +38,6 @@
   let guardianHealth = $state<HealthPayload | null>(null);
   let adminOpenCodeStatus = $state<'checking' | 'ready' | 'unavailable'>('checking');
   let adminOpenCodeUrl = $state('http://localhost:3881/');
-  let channelAccess: 'host' | 'lan' | 'custom' = $state('lan');
   let adminStatus = $state('');
   let connectionsMissing = $state<string[]>([]);
 
@@ -55,7 +53,7 @@
   let operationResult = $state('');
   let operationResultType: 'success' | 'error' | 'info' = $state('info');
   let artifacts = $state('');
-  let artifactType: 'compose' | 'caddyfile' | null = $state(null);
+  let artifactType: 'compose' | null = $state(null);
   let containerData: ContainerListResponse | null = $state(null);
   let containerError = $state('');
   let containersLastUpdated: string | null = $state(null);
@@ -205,20 +203,6 @@
       }
     }
 
-    try {
-      const scope = await fetchAccessScope(token);
-      if (scope.ok) {
-        if (scope.accessScope === 'host' || scope.accessScope === 'lan' || scope.accessScope === 'custom') {
-          channelAccess = scope.accessScope;
-        }
-        adminStatus = '';
-      } else if (scope.status === 401) {
-        applyInvalidTokenState();
-      }
-    } catch {
-      // best-effort — don't disrupt health display if access scope fails
-    }
-
     healthLoading = false;
   }
 
@@ -253,7 +237,7 @@
     }
   }
 
-  async function loadArtifacts(type: 'compose' | 'caddyfile'): Promise<void> {
+  async function loadArtifacts(type: 'compose'): Promise<void> {
     const token = getAdminToken();
     tokenStored = Boolean(token);
     if (!token) {
@@ -486,7 +470,6 @@
         {adminHealth}
         {adminOpenCodeStatus}
         {adminOpenCodeUrl}
-        {channelAccess}
         {operationResult}
         {operationResultType}
         {adminStatus}

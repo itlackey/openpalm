@@ -1,8 +1,8 @@
 /**
  * Instance lifecycle operations for the OpenPalm unified component system.
  *
- * Handles creation, configuration, listing, deletion, and Caddy route
- * management for component instances under data/components/.
+ * Handles creation, configuration, listing, and deletion for component
+ * instances under data/components/.
  *
  * All functions take openpalmHome as a parameter for testability.
  * Docker operations (compose up/down/stop) are the caller's responsibility.
@@ -15,7 +15,6 @@ import {
   readdirSync,
   copyFileSync,
   renameSync,
-  unlinkSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { createLogger } from "../logger.js";
@@ -45,11 +44,6 @@ function componentsDir(openpalmHome: string): string {
 /** Directory for a specific instance. */
 function instanceDir(openpalmHome: string, instanceId: string): string {
   return join(componentsDir(openpalmHome), instanceId);
-}
-
-/** Caddy import directory where .caddy snippets are placed. */
-function caddyImportDir(openpalmHome: string): string {
-  return join(openpalmHome, "data", "caddy", "channels");
 }
 
 /** Archive directory for deleted instances. */
@@ -329,7 +323,6 @@ function buildInstanceDetail(
   status: InstanceStatus = "unknown"
 ): InstanceDetail {
   const instDir = instanceDir(openpalmHome, instanceId);
-  const caddyFile = join(instDir, ".caddy");
 
   return {
     id: instanceId,
@@ -338,7 +331,6 @@ function buildInstanceDetail(
     composePath: join(instDir, "compose.yml"),
     envPath: join(instDir, ".env"),
     schemaPath: join(instDir, ".env.schema"),
-    caddyPath: existsSync(caddyFile) ? caddyFile : null,
     dataDir: join(instDir, "data"),
     enabled,
     status,
@@ -409,7 +401,7 @@ export function listInstances(openpalmHome: string): InstanceDetail[] {
 // ── Delete / Archive Instance ──────────────────────────────────────────
 
 /**
- * Delete an instance: remove Caddy route, archive directory, remove from enabled.json.
+ * Delete an instance: archive directory, remove from enabled.json.
  *
  * Note: Does NOT call docker compose stop — that's the caller's responsibility.
  * The caller should stop the container before calling this function.
@@ -419,9 +411,6 @@ export function deleteInstance(openpalmHome: string, instanceId: string): void {
   if (!existsSync(instDir)) {
     throw new Error(`Instance "${instanceId}" does not exist.`);
   }
-
-  // Remove Caddy route if installed
-  removeCaddyRoute(openpalmHome, instanceId);
 
   // Archive the instance directory
   const archDir = archiveDir(openpalmHome);
@@ -437,42 +426,3 @@ export function deleteInstance(openpalmHome: string, instanceId: string): void {
   logger.info("deleted instance", { instanceId, archivedTo: archivePath });
 }
 
-// ── Caddy Route Management ────────────────────────────────────────────
-
-/**
- * Install a .caddy snippet from an instance to the Caddy import directory.
- * Copies (not moves) the file so the instance directory retains its .caddy.
- *
- * Returns true if a .caddy file was found and copied, false otherwise.
- */
-export function installCaddyRoute(openpalmHome: string, instanceId: string): boolean {
-  const instDir = instanceDir(openpalmHome, instanceId);
-  const sourceCaddy = join(instDir, ".caddy");
-
-  if (!existsSync(sourceCaddy)) return false;
-
-  const importDir = caddyImportDir(openpalmHome);
-  mkdirSync(importDir, { recursive: true });
-
-  const targetPath = join(importDir, `${instanceId}.caddy`);
-  copyFileSync(sourceCaddy, targetPath);
-
-  logger.info("installed caddy route", { instanceId, target: targetPath });
-  return true;
-}
-
-/**
- * Remove a .caddy snippet from the Caddy import directory.
- *
- * Returns true if a file was removed, false if no file existed.
- */
-export function removeCaddyRoute(openpalmHome: string, instanceId: string): boolean {
-  const importDir = caddyImportDir(openpalmHome);
-  const targetPath = join(importDir, `${instanceId}.caddy`);
-
-  if (!existsSync(targetPath)) return false;
-
-  unlinkSync(targetPath);
-  logger.info("removed caddy route", { instanceId });
-  return true;
-}

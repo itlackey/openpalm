@@ -29,10 +29,8 @@ writeFileSync(`${tmpBase}/vault/user.env`, "# test\n");
 // reach performSetup(), so these methods are never invoked.
 const noopAssetProvider: CoreAssetProvider = {
 	coreCompose: () => "",
-	caddyfile: () => "",
 	agentsMd: () => "",
 	opencodeConfig: () => "",
-	adminOpencodeConfig: () => "",
 	secretsSchema: () => "",
 	stackSchema: () => "",
 	cleanupLogs: () => "",
