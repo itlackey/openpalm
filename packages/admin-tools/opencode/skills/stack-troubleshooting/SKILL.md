@@ -270,7 +270,7 @@ Key environment variables that affect diagnostics:
 | `MEMORY_AUTH_TOKEN` | admin, memory | Memory service authentication |
 | `MEMORY_USER_ID` | assistant | Memory user identity |
 | `OPENPALM_ADMIN_API_URL` | assistant | Admin API from assistant (default: `http://admin:8100`) |
-| `OPENPALM_ADMIN_TOKEN` | assistant | Admin API token for assistant |
+| `OPENPALM_ASSISTANT_TOKEN` | assistant | Admin API token for assistant |
 | `GUARDIAN_AUDIT_PATH` | guardian | Audit log file location |
 | `GUARDIAN_SECRETS_PATH` | guardian | Channel secrets file path |
 | `OPENCODE_TIMEOUT_MS` | guardian | Message forwarding timeout (default: 120000ms) |

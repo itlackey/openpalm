@@ -53,5 +53,5 @@ See [`packages/assistant-tools/AGENTS.md`](../../packages/assistant-tools/AGENTS
 | Variable | Purpose |
 |---|---|
 | `OPENPALM_ADMIN_URL` | Admin API base URL |
-| `OPENPALM_ADMIN_TOKEN` | Token for Admin API authentication |
+| `OPENPALM_ASSISTANT_TOKEN` | Assistant token for Admin API authentication |
 | `OPENCODE_CONFIG_DIR` | System config directory (maps to `DATA_HOME/assistant`, mounted at `/etc/opencode`) |

@@ -2,7 +2,7 @@ import {
   getRequestId,
   jsonResponse,
   errorResponse,
-  requireAuth,
+  requireAdmin,
   getActor,
   getCallerType,
   parseJsonBody
@@ -18,7 +18,7 @@ const logger = createLogger("containers-down");
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   logger.info("container stop request", { requestId });
-  const authError = requireAuth(event, requestId);
+  const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
   const state = getState();

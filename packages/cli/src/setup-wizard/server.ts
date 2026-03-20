@@ -18,7 +18,7 @@ import {
   resolveConfigDir,
   resolveVaultDir,
   FilesystemAssetProvider,
-  resolveDataDir,
+  resolveOpenPalmHome,
 } from "@openpalm/lib";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -105,7 +105,7 @@ export function createSetupServer(
   }
 ): SetupServer {
   const configDir = opts?.configDir ?? resolveConfigDir();
-  const assetProvider = opts?.assetProvider ?? new FilesystemAssetProvider(resolveDataDir());
+  const assetProvider = opts?.assetProvider ?? new FilesystemAssetProvider(resolveOpenPalmHome());
 
   // Mutable server state
   const state: SetupServerState = {

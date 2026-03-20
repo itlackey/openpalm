@@ -10,7 +10,7 @@ import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
   errorResponse,
-  requireAuth,
+  requireAdmin,
   getRequestId,
   getActor,
   getCallerType,
@@ -30,7 +30,7 @@ import { composeStop, checkDocker } from "$lib/server/docker.js";
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authErr = requireAuth(event, requestId);
+  const authErr = requireAdmin(event, requestId);
   if (authErr) return authErr;
 
   const state = getState();

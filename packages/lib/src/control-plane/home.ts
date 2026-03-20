@@ -10,12 +10,16 @@
  * Cache and rollback data live in ~/.cache/openpalm/ (ephemeral).
  */
 import { mkdirSync, existsSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { resolve as resolvePath } from "node:path";
 
 // ── Path Resolution ──────────────────────────────────────────────────
 
 export function resolveHome(): string {
-  return process.env.HOME ?? "/tmp";
+  const home = homedir();
+  if (home) return home;
+
+  return tmpdir();
 }
 
 export function resolveOpenPalmHome(): string {
