@@ -110,6 +110,6 @@ test.describe('No default Caddy exposure', () => {
 	test('admin OpenCode is not exposed through Caddy by default', async ({ request }) => {
 		await expect(
 			request.get('http://localhost:8080/admin/health', { timeout: 5000 })
-		).rejects.toThrow();
+		).rejects.toThrow(/ECONNREFUSED|connect|socket/i);
 	});
 });

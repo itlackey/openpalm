@@ -68,8 +68,12 @@ services:
       GUARDIAN_URL: http://guardian:8080
       OPENPALM_ASSISTANT_URL: http://assistant:4096
       OPENPALM_ADMIN_API_URL: http://localhost:8100
-      # OpenCode instance for admin AI assistant
-      OPENCODE_CONFIG_DIR: /home/node
+      OPENPALM_ADMIN_OPENCODE_PORT: "${OPENPALM_ADMIN_OPENCODE_PORT:-3881}"
+      OPENPALM_CONFIG_HOME: ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}
+      OPENPALM_STATE_HOME: ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
+      OPENPALM_DATA_HOME: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
+      # OpenCode instance for admin AI assistant with admin-tools plugin
+      OPENCODE_CONFIG_DIR: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/admin
       OPENCODE_PORT: "4097"
       OPENCODE_AUTH: "false"
       # LLM provider keys — admin's OpenCode reads from vault mount
