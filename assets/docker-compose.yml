@@ -149,7 +149,7 @@ services:
       start_period: 10s
 
 # Channel networks: services join channel_lan (LAN-restricted) or
-# channel_public (publicly accessible) to control Caddy access.
+# channel_public (publicly accessible) to control access.
 networks:
   channel_lan:
   channel_public:

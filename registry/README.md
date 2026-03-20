@@ -4,26 +4,26 @@ Catalog of installable components and automations. Components are the unified mo
 
 ## Components (`registry/components/`)
 
-Each component is a directory containing a Docker Compose fragment, an environment variable schema, and an optional Caddy route snippet.
+Each component is a directory containing a Docker Compose fragment.
 
 ```
 registry/components/
   chat/
     compose.yml          # Docker Compose service definition
-    .env.schema          # Varlock @env-spec schema for configuration
-    .caddy               # Optional Caddy route snippet
-  discord/
-    compose.yml
-    .env.schema
   api/
     compose.yml
-    .env.schema
+  discord/
+    compose.yml
   slack/
     compose.yml
-    .env.schema
   voice/
     compose.yml
-    .env.schema
+  openviking/
+    compose.yml
+  ollama/
+    compose.yml
+  admin/
+    compose.yml
 ```
 
 ### Available components
@@ -35,17 +35,15 @@ registry/components/
 | `discord` | Discord bot adapter via WebSocket gateway | messaging |
 | `slack` | Slack bot adapter via Socket Mode WebSocket | messaging |
 | `voice` | Voice interface with STT and TTS | messaging |
+| `openviking` | OpenViking integration | integration |
+| `ollama` | Ollama local LLM runtime | ai |
+| `admin` | Admin web UI and API | management |
 
 ### Component directory structure
 
 Every component directory must contain at minimum:
 
 - **`compose.yml`** -- Docker Compose service definition with `openpalm.*` labels
-- **`.env.schema`** -- Varlock `@env-spec` schema describing configurable environment variables
-
-Optional files:
-
-- **`.caddy`** -- Caddy route snippet for HTTP routing (LAN-restricted by default)
 
 ### compose.yml conventions
 
@@ -75,41 +73,6 @@ Optional labels:
 
 The compose.yml is copied unchanged into the instance directory. `${INSTANCE_ID}` and `${INSTANCE_DIR}` are resolved by Docker Compose at runtime via `--env-file`, not by string interpolation. No template rendering.
 
-### .env.schema format
-
-The `.env.schema` file uses the Varlock `@env-spec` format. Each variable is documented with comments and annotated with directives:
-
-```bash
-# Description of the variable.
-# @required @sensitive
-MY_SECRET_VAR=
-
-# Description with a default value.
-MY_CONFIG_VAR=default-value
-```
-
-Supported annotations:
-
-| Annotation | Meaning |
-|------------|---------|
-| `@required` | The variable must have a value before the component can start |
-| `@sensitive` | The value is a secret and should be managed by the secret manager |
-
-Every schema must include the instance identity variables at the bottom:
-
-```bash
-# Instance identity (auto-populated -- do not edit)
-# ---
-
-# Unique instance identifier.
-# @required
-INSTANCE_ID=
-
-# Absolute path to this instance directory.
-# @required
-INSTANCE_DIR=
-```
-
 ### Installing a component
 
 Via admin API:
@@ -128,18 +91,15 @@ The `index.json` file at `registry/components/index.json` lists all available co
 
 1. Create a directory under `registry/components/<id>/`.
 2. Add `compose.yml` with the required labels and conventions above.
-3. Add `.env.schema` with all configurable variables documented.
-4. (Optional) Add `.caddy` for HTTP routing.
-5. Open a pull request. CI validates the compose file and schema.
-6. After merge, `index.json` is regenerated.
+3. Open a pull request. CI validates the compose file.
+4. After merge, `index.json` is regenerated.
 
 ### CI validation
 
 The `scripts/validate-registry.sh` script runs on every PR that touches `registry/components/`. It checks:
 
-- Every component directory has `compose.yml` and `.env.schema`
+- Every component directory has `compose.yml`
 - compose.yml contains the required `openpalm.name` and `openpalm.description` labels
-- .env.schema is parseable (valid `@env-spec` format)
 - No vault mount violations in compose.yml
 - Service names follow the `openpalm-${INSTANCE_ID}` convention
 
@@ -155,7 +115,6 @@ Pre-built YAML automations that can be installed to `~/.openpalm/config/automati
 | `update-containers.yml` | Pulls and restarts updated container images |
 | `prompt-assistant.yml` | Sends a scheduled prompt to the assistant |
 | `assistant-daily-briefing.yml` | Sends a daily briefing prompt to the assistant |
-| `cleanup-logs.yml` | Cleans up old log files |
 
 Browse and install automations from the admin console, or copy any file directly to `~/.openpalm/config/automations/`.
 

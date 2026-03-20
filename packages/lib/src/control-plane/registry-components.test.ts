@@ -284,6 +284,8 @@ describe("registry component sensitive fields", () => {
 
   for (const id of componentIds) {
     it(`${id}: has at least one @sensitive field (channel secret)`, () => {
+      // ollama is a local inference server — no channel secret or API key needed
+      if (id === "ollama") return;
       const schema = readComponentFile(id, ".env.schema");
       const entries = parseEnvSchema(schema);
       const sensitiveEntries = entries.filter((e) =>

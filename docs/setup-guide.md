@@ -35,7 +35,7 @@ curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setu
 ### What happens when you run the installer
 
 1. Checks your system for Docker, Docker Compose, curl, and openssl
-2. Creates the `~/.openpalm/` directory tree and downloads core assets (compose file, Caddyfile)
+2. Creates the `~/.openpalm/` directory tree and downloads core assets (compose file)
 3. Generates an admin token (or lets you set your own) and seeds missing default config files
 4. Pulls and starts the admin service, then opens the setup wizard in your browser
 5. The wizard walks you through connecting your AI provider and choosing channels (see [Setup Walkthrough](setup-walkthrough.md) for a detailed screen-by-screen guide)
@@ -103,9 +103,8 @@ Once the wizard completes, your stack is running. Here's where everything lives:
 
 | URL | What |
 |---|---|
-| `http://localhost/` | Admin dashboard (via Caddy) |
-| `http://localhost/opencode/` | OpenCode assistant UI |
-| `http://localhost:8100/` | Admin API (direct, no proxy) |
+| `http://localhost:8100/` | Admin dashboard and API |
+| `http://localhost:4096/` | OpenCode assistant UI |
 | `http://localhost:8765/docs` | Memory API docs |
 
 All ports are localhost-bound by default. Nothing is publicly exposed unless you explicitly change the access scope.
@@ -125,7 +124,7 @@ Key subdirectories:
 | `config/components/` | Installed components (channels, services) |
 | `config/automations/` | Scheduled automations -- see [Managing OpenPalm](managing-openpalm.md#automations) |
 | `config/assistant/` | OpenCode extensions -- tools, plugins, skills, and config |
-| `data/` | Service-managed data (memory, caddy, assistant, etc.) |
+| `data/` | Service-managed data (memory, assistant, etc.) |
 | `logs/` | Audit and debug logs |
 
 You normally do not need to touch `data/` directly. See [directory-structure.md](technical/directory-structure.md) for the complete layout.

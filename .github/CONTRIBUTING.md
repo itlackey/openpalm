@@ -47,7 +47,7 @@ bun run check            # admin:check + sdk:test
 
 `dev:stack` pulls pre-built images from the registry — use it for quick starts and testing admin apply flows. `dev:build` compiles all images from local source using `compose.dev.yaml` — use it when developing services or testing Dockerfile changes.
 
-`dev-setup.sh --seed-env` seeds `.dev/config/secrets.env` from `assets/secrets.env` and sets the `OP_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
+`dev-setup.sh --seed-env` seeds `.dev/vault/user.env` and `.dev/vault/system.env` and sets the `OP_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
 
 ## 1. Clone and bootstrap
 
@@ -55,16 +55,15 @@ bun run check            # admin:check + sdk:test
 git clone https://github.com/itlackey/openpalm.git
 cd openpalm
 bun install            # Installs all workspace dependencies
-bun run dev:setup      # Creates .dev/ dirs, seeds secrets.env and stack.env
+bun run dev:setup      # Creates .dev/ dirs, seeds vault env files
 ```
 
 `dev:setup` runs [`scripts/dev-setup.sh --seed-env`](../scripts/dev-setup.sh), which:
 
-- Creates the `.dev/config`, `.dev/data`, and `.dev/state` directories
-- Seeds `.dev/config/secrets.env` from [`assets/secrets.env`](../assets/secrets.env)
-- Generates `.dev/state/artifacts/stack.env` with auto-detected host values
+- Creates the `.dev/config`, `.dev/vault`, `.dev/data`, and `.dev/state` directories
+- Seeds `.dev/vault/user.env` and `.dev/vault/system.env` with dev-safe defaults
 
-After setup, edit `.dev/config/secrets.env` to add your `ADMIN_TOKEN` and any LLM provider keys.
+After setup, edit `.dev/vault/user.env` to add your LLM provider keys.
 
 ## 2. Run the admin UI (no Docker needed)
 
@@ -150,10 +149,10 @@ Dev mode mirrors the production [XDG three-tier layout](../docs/technical/direct
 
 ```
 .dev/
-├── config/          # CONFIG_HOME — secrets.env, channels/, assistant/
+├── config/          # CONFIG_HOME — components/, automations/, assistant/
+├── vault/           # VAULT — user.env, system.env
 ├── data/            # DATA_HOME  — memory, assistant, guardian data
 └── state/           # STATE_HOME — assembled runtime artifacts
-    └── artifacts/   # stack.env, secrets.env, docker-compose.yml
 ```
 
 See [docs/technical/directory-structure.md](../docs/technical/directory-structure.md) for the full tree.

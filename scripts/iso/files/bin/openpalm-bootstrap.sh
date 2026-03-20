@@ -6,26 +6,20 @@ export OP_CONFIG_HOME='/var/lib/openpalm/config'
 export OP_STATE_HOME='/var/lib/openpalm/state'
 export OP_DATA_HOME='/var/lib/openpalm/data'
 export OP_WORK_DIR='/var/lib/openpalm/work'
+VAULT_HOME='/var/lib/openpalm/vault'
 
-mkdir -p "$OP_CONFIG_HOME" "$OP_STATE_HOME" "$OP_DATA_HOME" "$OP_WORK_DIR"
+mkdir -p "$OP_CONFIG_HOME" "$OP_STATE_HOME" "$OP_DATA_HOME" "$OP_WORK_DIR" "$VAULT_HOME"
 mkdir -p "$OP_CONFIG_HOME/stash"
+mkdir -p "$OP_CONFIG_HOME/components"
 mkdir -p "$OP_DATA_HOME/admin"
 
-if [[ ! -f "$OP_CONFIG_HOME/secrets.env" ]]; then
-	cp "$OP_HOME/assets/secrets.env" "$OP_CONFIG_HOME/secrets.env"
-	chmod 600 "$OP_CONFIG_HOME/secrets.env"
+if [[ ! -f "$VAULT_HOME/user.env" ]]; then
+	touch "$VAULT_HOME/user.env"
+	chmod 600 "$VAULT_HOME/user.env"
 fi
 
-if [[ ! -f "$OP_CONFIG_HOME/Caddyfile" ]]; then
-	cp "$OP_HOME/assets/Caddyfile" "$OP_CONFIG_HOME/Caddyfile"
-fi
-
-if [[ ! -f "$OP_STATE_HOME/docker-compose.yml" ]]; then
-	cp "$OP_HOME/assets/docker-compose.yml" "$OP_STATE_HOME/docker-compose.yml"
-fi
-
-if [[ ! -d "$OP_CONFIG_HOME/channels" ]]; then
-	mkdir -p "$OP_CONFIG_HOME/channels"
+if [[ ! -f "$OP_CONFIG_HOME/components/core.yml" ]]; then
+	cp "$OP_HOME/assets/docker-compose.yml" "$OP_CONFIG_HOME/components/core.yml"
 fi
 
 if [[ -f "$OP_HOME/image-cache/openpalm-images.tar.zst" && ! -f /var/lib/openpalm/.images-loaded ]]; then
@@ -33,5 +27,5 @@ if [[ -f "$OP_HOME/image-cache/openpalm-images.tar.zst" && ! -f /var/lib/openpal
 	touch /var/lib/openpalm/.images-loaded
 fi
 
-cd "$OP_STATE_HOME"
-docker compose --env-file "$OP_CONFIG_HOME/secrets.env" -f "$OP_STATE_HOME/docker-compose.yml" up -d
+cd "$OP_CONFIG_HOME"
+docker compose --env-file "$VAULT_HOME/user.env" -f "$OP_CONFIG_HOME/components/core.yml" up -d

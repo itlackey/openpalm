@@ -36,7 +36,7 @@ using slash commands like `/ask` or by mentioning the bot in a channel.
 
 ### Via the Admin UI
 
-1. Open the OpenPalm admin UI in your browser (default: `http://localhost:8080`).
+1. Open the OpenPalm admin UI in your browser (default: `http://localhost:8100`).
 2. Navigate to the **Channels** page.
 3. Find **Discord** in the registry list and click **Install**.
 4. After installation, go to the **Connections** page (or the channel's

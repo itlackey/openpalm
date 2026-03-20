@@ -34,7 +34,7 @@ bun run dev:stack   # start the full stack
 
 ## Pre-commit Secret Scanning
 
-OpenPalm uses [varlock](https://varlock.dev) to scan for secrets before each commit. The schema at `assets/secrets.env.schema` defines the patterns to detect.
+OpenPalm uses [varlock](https://varlock.dev) to scan for secrets before each commit. The schemas at `assets/user.env.schema` and `assets/system.env.schema` define the patterns to detect.
 
 ### Install varlock
 
@@ -50,14 +50,14 @@ curl -fsSL https://varlock.dev/install.sh | sh
 
 The hook uses two strategies depending on what's available:
 
-1. **varlock scan** (preferred) — resolves actual `@sensitive` values from your local `secrets.env` and searches the working tree (all tracked files) for those literal values. Catches any secret format, not just known prefixes. Requires `openpalm install` to install the varlock binary.
+1. **varlock scan** (preferred) — resolves actual `@sensitive` values from your local vault env files and searches the working tree (all tracked files) for those literal values. Catches any secret format, not just known prefixes. Requires `openpalm install` to install the varlock binary.
 2. **grep fallback** — pattern-matches staged additions for known provider key formats (OpenAI `sk-*`, Groq `gsk_*`, Google `AIza*`). Used when varlock is not installed.
 
 CI uses grep patterns on the PR diff (see `.github/workflows/ci.yml`) since there are no real secrets in the Actions environment. The pre-commit hook is where varlock scan provides the most value — it catches your actual secret values regardless of format.
 
 ### Why this matters
 
-`CONFIG_HOME/secrets.env` holds API keys and auth tokens. The `.env.schema` files are safe to commit (they contain no values), but an accidental `git add secrets.env` or a key pasted into source code would be caught by the hook before reaching the remote.
+`vault/user.env` and `vault/system.env` hold API keys, auth tokens, and system secrets. The `.env.schema` files are safe to commit (they contain no values), but an accidental `git add user.env` or a key pasted into source code would be caught by the hook before reaching the remote.
 
 ---
 

@@ -5,8 +5,7 @@ This document describes the Admin API routes currently implemented in
 
 ## Conventions
 
-- Base URL (direct): `http://localhost:8100`
-- Base URL (via Caddy): `http://localhost:8080/admin`
+- Base URL: `http://localhost:8100`
 - Protected endpoints require header: `x-admin-token: <ADMIN_TOKEN>`
 - Optional caller attribution: `x-requested-by: assistant|cli|ui|system|test`
 - Optional correlation: `x-request-id: <uuid>`
@@ -55,64 +54,63 @@ Status code is `200` when running, `503` when unavailable.
 
 Policy for this section:
 
-- `CONFIG_HOME` is the user-owned persistent source of truth.
+- `config/` is the user-owned persistent source of truth.
 - `POST /admin/install`, `POST /admin/update`, and startup auto-apply are
   automatic lifecycle operations: non-destructive for existing user config files
-  in `CONFIG_HOME`; they only seed missing defaults and restage runtime
-  artifacts in `STATE_HOME`.
+  in `config/`; they only seed missing defaults.
 - Explicit mutation endpoints (`POST /admin/connections`,
   `POST /admin/channels/install`, `POST /admin/channels/uninstall`,
-  `POST /admin/access-scope`, `POST /admin/setup`) are the allowed write path
+  `POST /admin/setup`) are the allowed write path
   for requested config changes.
 
 ### `POST /admin/install`
 
-- Ensures XDG directories + OpenCode starter config + starter user secrets.
-- Seeds only missing defaults in `CONFIG_HOME`; never overwrites existing user files.
-- Stages artifacts into `STATE_HOME`.
-- Runs `docker compose up -d` using staged compose files and staged env file.
+- Ensures directories + OpenCode starter config + starter user secrets.
+- Seeds only missing defaults in `config/`; never overwrites existing user files.
+- Writes configuration files to their final locations.
+- Runs `docker compose up -d` using compose files and env files.
 
 Response:
 
 ```json
 {
   "ok": true,
-  "started": ["caddy", "memory", "assistant", "guardian", "admin", "channel-chat"],
+  "started": ["memory", "assistant", "guardian", "admin", "channel-chat"],
   "dockerAvailable": true,
   "composeResult": { "ok": true, "stderr": "" },
-  "artifactsDir": "/home/user/.local/state/openpalm/artifacts"
+  "artifactsDir": "/home/user/.openpalm/data"
 }
 ```
 
 ### `POST /admin/update`
 
-- Non-destructive for existing `CONFIG_HOME` user config; seeds missing defaults only.
-- Re-stages artifacts.
-- Re-applies compose with staged overlays.
+- Non-destructive for existing user config; seeds missing defaults only.
+- Writes configuration files to their final locations.
+- Re-applies compose with component overlays.
 
 Response:
 
 ```json
-{ "ok": true, "restarted": ["caddy", "guardian"], "dockerAvailable": true }
+{ "ok": true, "restarted": ["guardian"], "dockerAvailable": true }
 ```
 
 ### `POST /admin/uninstall`
 
 - Runs compose down.
-- Does not delete or rewrite existing user config in `CONFIG_HOME`.
-- Marks in-memory services stopped and re-stages artifacts.
+- Does not delete or rewrite existing user config in `config/`.
+- Marks in-memory services stopped.
 
 Response:
 
 ```json
-{ "ok": true, "stopped": ["caddy", "assistant"], "dockerAvailable": true }
+{ "ok": true, "stopped": ["assistant"], "dockerAvailable": true }
 ```
 
 ### `POST /admin/upgrade`
 
 Full upgrade sequence: fetches the latest image tag, downloads fresh core assets
-from GitHub, backs up changed files, stages artifacts, pulls images, and
-recreates all containers. After responding, schedules a deferred self-recreation
+from GitHub, backs up changed files, writes updated configuration, pulls images,
+and recreates all containers. After responding, schedules a deferred self-recreation
 of the admin container so the HTTP response is flushed first.
 
 Response:
@@ -121,9 +119,9 @@ Response:
 {
   "ok": true,
   "imageTag": "0.9.0",
-  "backupDir": "/home/user/.local/state/openpalm/backups/2025-01-01T00-00-00",
-  "assetsUpdated": ["docker-compose.yml", "Caddyfile"],
-  "restarted": ["caddy", "guardian"],
+  "backupDir": "/home/user/.openpalm/data/backups/2025-01-01T00-00-00",
+  "assetsUpdated": ["docker-compose.yml"],
+  "restarted": ["guardian"],
   "adminRecreateScheduled": true
 }
 ```
@@ -161,7 +159,7 @@ Response:
 Response:
 
 ```json
-{ "ok": true, "pulled": "...", "started": ["caddy", "memory", "assistant", "guardian"] }
+{ "ok": true, "pulled": "...", "started": ["memory", "assistant", "guardian"] }
 ```
 
 Note: `started` is an array of managed service names.
@@ -185,9 +183,9 @@ Body:
 Rules:
 
 - Allowed core services:
-  `assistant`, `guardian`, `memory`, `admin`, `caddy`
-- Allowed channel services: `channel-*` only if a matching staged
-  `STATE_HOME/artifacts/channels/<name>.yml` exists.
+  `assistant`, `guardian`, `memory`, `admin`
+- Allowed channel services: `channel-*` only if a matching component directory
+  exists in `config/components/`.
 
 Success response:
 
@@ -199,7 +197,7 @@ Success response:
 
 ### `GET /admin/channels`
 
-Returns staged-installed and registry-available channels:
+Returns installed and registry-available channels:
 
 ```json
 {
@@ -214,8 +212,8 @@ Returns staged-installed and registry-available channels:
 
 Notes:
 
-- `installed` is derived from staged `STATE_HOME/artifacts/channels/*.yml`.
-- `hasRoute` is derived from staged `STATE_HOME/artifacts/channels/public|lan/*.caddy`.
+- `installed` is derived from component directories in `config/components/`.
+- `hasRoute` indicates whether the component has an HTTP route configured.
 
 ### `POST /admin/channels/install`
 
@@ -227,9 +225,9 @@ Body:
 
 Behavior:
 
-- Copies registry files into `CONFIG_HOME/channels/`.
+- Copies registry files into `config/components/`.
 - Ensures system-managed channel secret exists.
-- Re-stages artifacts and runs compose up.
+- Runs compose up.
 
 Response:
 
@@ -253,9 +251,9 @@ Body:
 
 Behavior:
 
-- Removes channel `.yml` and optional `.caddy` from `CONFIG_HOME/channels/`.
+- Removes component directory from `config/components/`.
 - Removes system-managed channel secret from runtime state.
-- Re-stages artifacts and stops the channel service.
+- Stops the channel service.
 
 Response:
 
@@ -271,8 +269,7 @@ Response:
 
 ## Registry
 
-Unified registry for channels and automations. Tries the cloned registry repo
-(`STATE_HOME/registry-repo/registry/`) first, then falls back to build-time
+Unified registry for channels and automations. Tries the cloned registry repo first, then falls back to build-time
 bundled assets.
 
 ### `GET /admin/registry`
@@ -309,10 +306,10 @@ Body:
 - `name` (required) — Must match `^[a-z0-9][a-z0-9-]{0,62}$`.
 - `type` (required) — Must be `"channel"` or `"automation"`.
 
-For channels: copies `.yml` and optional `.caddy` into `CONFIG_HOME/channels/`,
-generates HMAC secret, re-stages artifacts, and runs compose up.
+For channels: copies component files into `config/components/`,
+generates HMAC secret, and runs compose up.
 
-For automations: copies `.yml` into `CONFIG_HOME/automations/` and reloads
+For automations: copies `.yml` into `config/automations/` and reloads
 the scheduler.
 
 Response (channel):
@@ -362,10 +359,10 @@ Body:
 { "name": "chat", "type": "channel" }
 ```
 
-For channels: removes files from `CONFIG_HOME/channels/`, clears channel secret,
-re-stages artifacts, and stops the Docker service.
+For channels: removes component directory from `config/components/`, clears channel secret,
+and stops the Docker service.
 
-For automations: removes `.yml` from `CONFIG_HOME/automations/` and reloads
+For automations: removes `.yml` from `config/automations/` and reloads
 the scheduler.
 
 Response (channel):
@@ -390,7 +387,7 @@ Response (automation):
 
 ### `GET /admin/automations`
 
-Lists all automation configs from `STATE_HOME` with scheduler status and
+Lists all automation configs with scheduler status and
 execution logs.
 
 Response:
@@ -424,55 +421,10 @@ Response:
 }
 ```
 
-## Access Scope
-
-### `GET /admin/access-scope`
-
-```json
-{ "accessScope": "lan" }
-```
-
-Notes:
-
-- Scope is derived from the system-managed core Caddyfile at
-  `DATA_HOME/caddy/Caddyfile`.
-- If the file contains user-edited IP ranges that don't match the known
-  `host` or `lan` patterns, the response returns `"custom"`.
-
-### `POST /admin/access-scope`
-
-Body:
-
-```json
-{ "scope": "host" }
-```
-
-Accepted values: `"host"` or `"lan"`. The value `"custom"` is read-only --
-it cannot be set via POST.
-
-Behavior:
-
-- Updates the `@denied not remote_ip ...` line in
-  `DATA_HOME/caddy/Caddyfile`.
-- Re-stages `STATE_HOME/artifacts/Caddyfile` and channel snippets.
-- Attempts Caddy reload.
-
-**Warning:** If the current scope is `"custom"` (user-edited IP ranges),
-a POST to this endpoint will overwrite those custom ranges with the
-standard `host` or `lan` pattern. Custom ranges cannot be restored via the
-API after being overwritten -- they must be re-applied by editing the
-Caddyfile directly.
-
-Response:
-
-```json
-{ "ok": true, "accessScope": "host" }
-```
-
 ## Connections
 
 Manage LLM provider credentials and related configuration stored in
-`CONFIG_HOME/secrets.env`. Values are patched in-place by `patchSecretsEnvFile`
+`vault/user.env`. Values are patched in-place by `patchSecretsEnvFile`
 -- existing keys not in the allowed set are never removed or overwritten.
 
 ### `GET /admin/connections`
@@ -593,7 +545,7 @@ Supports three payload shapes:
 
 3) **Legacy key patch (compatibility)**
 
-Patches one or more allowed keys into `CONFIG_HOME/secrets.env`. Keys not in
+Patches one or more allowed keys into `vault/user.env`. Keys not in
 `ALLOWED_CONNECTION_KEYS` are silently ignored. Existing keys outside the
 allowed set are preserved.
 
@@ -625,7 +577,7 @@ Response (legacy key patch path):
 Error responses:
 
 - `400 bad_request` -- No valid connection keys were provided.
-- `500 internal_error` -- Failed to write `secrets.env`.
+- `500 internal_error` -- Failed to write `vault/user.env`.
 
 ### `GET /admin/connections/status`
 
@@ -684,7 +636,7 @@ On failure:
 
 ### `GET /admin/connections/profiles`
 
-Returns canonical connection profiles from `CONFIG_HOME/connections/profiles.json`.
+Returns canonical connection profiles from `config/connections/profiles.json`.
 
 ```json
 {
@@ -723,7 +675,7 @@ Create a profile.
 
 When `auth.mode` is `"api_key"`, the profile payload may include a top-level
 `apiKey` field with the raw key. The handler derives the `apiKeySecretRef`
-from the provider and patches the key into `secrets.env`.
+from the provider and patches the key into `vault/user.env`.
 
 ### `PUT /admin/connections/profiles`
 
@@ -856,7 +808,7 @@ Error responses:
 
 ### `GET /admin/connections/export/opencode`
 
-Exports the generated `opencode.json` config from `CONFIG_HOME/assistant/opencode.json`.
+Exports the generated `opencode.json` config from `config/assistant/opencode.json`.
 Returns the config as a downloadable JSON file with `_nextSteps` guidance.
 
 Auth: admin token or setup token.
@@ -881,7 +833,7 @@ error semantics as their `/admin/connections/*` counterparts.
 ## Memory Configuration
 
 Manage the Memory service LLM and embedding provider configuration stored at
-`DATA_HOME/memory/default_config.json`. The persisted file still uses a
+`data/memory/default_config.json`. The persisted file still uses a
 mem0-shaped JSON schema for compatibility, but the running service is the
 OpenPalm Bun-based memory API backed by SQLite and `sqlite-vec`.
 
@@ -961,7 +913,7 @@ Body:
 
 - `provider` (required) -- Must be a recognized LLM or embedding provider name.
 - `apiKeyRef` -- Raw API key or `env:VAR_NAME` reference resolved from
-  `process.env` then `CONFIG_HOME/secrets.env`.
+  `process.env` then `vault/user.env`.
 - `baseUrl` -- Provider API base URL. Falls back to provider defaults when empty.
 
 Provider API conventions:
@@ -1039,8 +991,8 @@ When using Ollama as the LLM or embedding provider with Memory:
 
 ### `GET /admin/config/validate`
 
-Run varlock environment validation against `CONFIG_HOME/secrets.env` using the
-schema at `DATA_HOME/secrets.env.schema`. Always returns 200; validation failures
+Run varlock environment validation against `vault/user.env` using the
+bundled schema. Always returns 200; validation failures
 are non-fatal and are logged to the audit trail.
 
 **Authentication:** Required (`x-admin-token`)
@@ -1088,7 +1040,7 @@ When validation finds issues:
 
 ### `GET /admin/artifacts/:name`
 
-- Allowed names: `compose`, `caddyfile` (alias `caddy` accepted).
+- Allowed names: `compose`.
 - Returns `text/plain` and may include `x-artifact-sha256` header.
 
 ### `GET /admin/audit?limit=<n>`

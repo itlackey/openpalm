@@ -10,27 +10,22 @@ cloud, and all persistent data stays on your host.
 
 ```
 You (browser / CLI / chat client)
-        │
-        ▼
-   Caddy :80 (→ host:8080)    ← only public-facing ingress
-   │         │
-   ▼         ▼
-Admin      Channel adapter (e.g. channel-chat :8181)
-:8100            │
-                 ▼
-            Guardian :8080 (internal)   ← validates every channel message
-                 │
-                 ▼
-            Assistant :4096             ← OpenCode runtime
-                 │
-                 ▼
-            Admin API                   ← assistant requests stack ops here
+        |
+        v
+Admin :8100                  Channel adapter (e.g. channel-chat :8181)
+                                   |
+                                   v
+                            Guardian :8080 (internal)   <- validates every channel message
+                                   |
+                                   v
+                            Assistant :4096             <- OpenCode runtime
+                                   |
+                                   v
+                            Admin API                   <- assistant requests stack ops here
 ```
 
-> **Port note:** Caddy listens on port 80 inside its container, mapped to
-> host port 8080. Guardian listens on port 8080 inside its container but is
-> not exposed on the host — it is only reachable on the Docker network.
-> They do not conflict because they are on different Docker networks.
+> **Port note:** Guardian listens on port 8080 inside its container but is
+> not exposed on the host -- it is only reachable on the Docker network.
 
 Three hard rules define the whole design:
 1. **Admin is the only component that touches Docker.**
@@ -41,36 +36,21 @@ Three hard rules define the whole design:
 
 ## Components
 
-### Caddy (reverse proxy)
-The front door. Receives all HTTP traffic on `:8080` and routes it:
-
-| Path | Destination | Default access |
-|------|-------------|----------------|
-| `/opencode/*` | Assistant UI (OpenCode) | LAN only |
-| `/admin/*` | Admin UI + API | LAN only |
-| `/guardian/*` | Guardian | Unrestricted (Guardian enforces its own auth) |
-| channel routes | Channel adapters | LAN only by default |
-
-Channel routes are loaded via `import channels/lan/*.caddy` and
-`import channels/public/*.caddy` — Caddy picks them up automatically when the
-admin stages them into STATE_HOME.
-
 ### Admin (SvelteKit app, port 8100)
-The control plane. Only component with Docker socket access.
+The control plane. Only component with Docker socket access (via docker-socket-proxy).
 
 Responsibilities:
-- Assembles runtime artifacts (compose files, Caddyfile, secrets) from user
-  config into STATE_HOME
+- Writes runtime configuration (compose files, secrets) directly to their
+  final locations
 - Runs `docker compose` for all lifecycle operations (install, update, up, down,
   restart)
 - Exposes an authenticated API used by the CLI, the browser UI, and the assistant
-- Applies explicit config mutations to `CONFIG_HOME` (for example, connections or
-  channel install/uninstall) when requested through authorized UI/API actions
-- Runs scheduled automations — user-defined files from CONFIG_HOME/automations/
+- Applies explicit config mutations to `config/` (for example, connections or
+  component install/uninstall) when requested through authorized UI/API actions
+- Runs scheduled automations -- user-defined files from config/automations/
 - Writes the audit log
-- Discovers installed channels by scanning `CONFIG_HOME/channels/`, then stages
-  overlays/snippets into `STATE_HOME/artifacts/channels/` for runtime
-- Installs channels from the registry catalog on demand via the API
+- Discovers installed components by scanning `config/components/`
+- Installs components from the registry catalog on demand via the API
 
 ### Guardian (Bun server, port 8080)
 The security checkpoint for all inbound channel traffic.
@@ -89,13 +69,13 @@ The AI. Runs OpenCode. Has no Docker socket.
 
 When it needs to do something to the stack (restart a service, check status), it
 calls the Admin API using `OP_ADMIN_TOKEN`. The Admin allowlists which
-actions and service names are legal — the assistant can't do anything
+actions and service names are legal -- the assistant can't do anything
 unauthorized.
 
 Extensions live in two places:
-- `/etc/opencode/` — system config mounted from `DATA_HOME/assistant/`
-  (model, plugins, persona — managed by admin)
-- `CONFIG_HOME/assistant/` — user extensions mounted at runtime (no rebuild
+- `/etc/opencode/` -- system config mounted from `data/assistant/`
+  (model, plugins, persona -- managed by admin)
+- `config/assistant/` -- user extensions mounted at runtime (no rebuild
   needed)
 
 ### Channel adapters (e.g. channel-chat, port 8181)
@@ -108,7 +88,7 @@ The runtime image for registry-backed adapters is the unified
 `channel`, built from `core/channel/Dockerfile`.
 
 ### Supporting services
-- **Memory** — Bun.js service (`@openpalm/memory`) with sqlite-vec vector
+- **Memory** -- Bun.js service (`@openpalm/memory`) with sqlite-vec vector
   storage; gives the assistant persistent memory across conversations
 
 ---
@@ -117,29 +97,29 @@ The runtime image for registry-backed adapters is the unified
 
 ```
 User sends message via chat client
-        │
-        ▼
+        |
+        v
 channel-chat :8181
   Signs message: HMAC-SHA256(CHANNEL_CHAT_SECRET, payload)
   POSTs to guardian:8080/channel/inbound
-        │
-        ▼
+        |
+        v
 Guardian validates:
-  ✓ HMAC signature correct
-  ✓ Timestamp within 5 min skew
-  ✓ Not a replayed nonce
-  ✓ Rate limit not exceeded
-  ✓ Payload shape valid
-        │
-        ▼
+  + HMAC signature correct
+  + Timestamp within 5 min skew
+  + Not a replayed nonce
+  + Rate limit not exceeded
+  + Payload shape valid
+        |
+        v
 Guardian forwards to assistant:4096
-        │
-        ▼
+        |
+        v
 Assistant (OpenCode) processes the message
   Calls tools, reads memory, generates response
-        │
-        ▼
-Response flows back through Guardian → channel-chat → user
+        |
+        v
+Response flows back through Guardian -> channel-chat -> user
 ```
 
 If the assistant needs to do a stack operation during its turn (e.g., restart
@@ -149,8 +129,8 @@ a service):
 Assistant calls POST http://admin:8100/admin/containers/restart
   Header: x-admin-token: <ADMIN_TOKEN>
   Body:   { "service": "channel-chat" }
-        │
-        ▼
+        |
+        v
 Admin validates token + allowlists service name
 Runs: docker compose restart channel-chat
 Writes audit entry
@@ -162,26 +142,24 @@ Returns result
 ## Lifecycle (install / update)
 
 ```
-openpalm install   →   POST /admin/install
-                             │
-                             ▼
-                   Admin stages artifacts:
-                     copies core compose → STATE_HOME/artifacts/docker-compose.yml
-                      stages core Caddyfile (from DATA_HOME) → STATE_HOME/artifacts/Caddyfile
-                     copies secrets.env  → STATE_HOME/artifacts/secrets.env
-                     stages channel .yml → STATE_HOME/artifacts/channels/
-                     stages channel .caddy → STATE_HOME/artifacts/channels/lan/ or public/
-                             │
-                             ▼
-                   Admin runs: docker compose -f <staged files> up -d
+openpalm install   ->   POST /admin/install
+                             |
+                             v
+                   Admin writes configuration:
+                     writes core compose -> data/docker-compose.yml
+                     ensures vault env files exist
+                     discovers components from config/components/
+                             |
+                             v
+                   Admin runs: docker compose -f <compose files> up -d
 ```
 
-**Apply is idempotent.** The admin also runs it automatically on startup —
+**Apply is idempotent.** The admin also runs it automatically on startup --
 restarting the admin container syncs your latest config changes into the
 running stack.
 
 Automatic lifecycle operations (install/update/startup/apply/setup reruns/upgrades)
-are non-destructive for existing user config files in `CONFIG_HOME`; they only seed
+are non-destructive for existing user config files in `config/`; they only seed
 missing defaults.
 
 ---
@@ -190,50 +168,21 @@ missing defaults.
 
 OpenPalm doesn't generate config by filling in templates. It copies whole files.
 
-`CONFIG_HOME` is user-owned and persistent. Allowed writers are:
+`config/` is user-owned and persistent. Allowed writers are:
 - You, by editing files directly
 - The admin via explicit UI/API config actions
 - The assistant, only when you request it and it uses authenticated,
   allowlisted admin API actions
 
 ```
-CONFIG_HOME/channels/chat.yml   ──copy──▶  STATE_HOME/artifacts/channels/chat.yml
-CONFIG_HOME/channels/chat.caddy ──copy──▶  STATE_HOME/artifacts/channels/lan/chat.caddy
-CONFIG_HOME/secrets.env         ──copy──▶  STATE_HOME/artifacts/secrets.env
-assets/docker-compose.yml  ──copy──▶  STATE_HOME/artifacts/docker-compose.yml
-DATA_HOME/caddy/Caddyfile       ──copy──▶  STATE_HOME/artifacts/Caddyfile
+config/components/chat/compose.yml    -> used directly by docker compose -f
+vault/user.env                        -> passed via --env-file
+vault/system.env                      -> passed via --env-file
+assets/docker-compose.yml             -> core compose definition
 ```
 
-Docker and Caddy read exclusively from STATE_HOME at runtime. CONFIG_HOME is
-never read directly by Docker or Caddy — it's only read by the admin during
-apply.
-
-`STATE_HOME/artifacts/secrets.env` is a verbatim copy of
-`CONFIG_HOME/secrets.env`. System-managed values (channel HMAC secrets) are written into `STATE_HOME/artifacts/stack.env`
-separately — they do not appear in the staged `secrets.env`.
-
-Access scope is controlled by the system-managed core Caddyfile in
-`DATA_HOME/caddy/Caddyfile` (the `@denied not remote_ip ...` line), which admin
-stages into `STATE_HOME/artifacts/Caddyfile`.
-
-### Caddyfile lifecycle
-
-Three copies of the Caddyfile exist in the system:
-
-1. **`assets/Caddyfile`** — Immutable template bundled into the admin image.
-   Used to seed `DATA_HOME/caddy/Caddyfile` on first install. Contains
-   `import lan_only` snippets for default LAN access control.
-2. **`DATA_HOME/caddy/Caddyfile`** — Mutable system-managed source of truth.
-   The admin mutates the `@denied not remote_ip ...` line here when the
-   access scope changes via `POST /admin/access-scope`. This file persists
-   across reinstalls (it lives in DATA_HOME).
-3. **`STATE_HOME/artifacts/Caddyfile`** — Staged runtime copy. Read-only mount into
-   Caddy's container. Regenerated from `DATA_HOME/caddy/Caddyfile` on
-   every apply.
-
-Caddy only reads from `STATE_HOME/artifacts/Caddyfile` at runtime. User-facing access
-scope changes flow: API → `DATA_HOME/caddy/Caddyfile` → re-stage to
-`STATE_HOME/artifacts/Caddyfile` → Caddy reload.
+Docker reads compose files and env files directly from their final locations.
+There is no intermediate staging step.
 
 ---
 
@@ -244,7 +193,7 @@ scope changes flow: API → `DATA_HOME/caddy/Caddyfile` → re-stage to
 | Host CLI or admin is the orchestrator | CLI manages Docker Compose directly on host; admin (optional) uses docker-socket-proxy |
 | Guardian-only ingress | Channel adapters POST to Guardian only; Guardian HMAC-verifies every message |
 | Assistant isolation | `assistant` has no Docker socket; when admin is present, calls Admin API on allowlist |
-| LAN-first by default | All ports bind to `127.0.0.1`; Caddy restricts by IP range; nothing public without opt-in |
+| LAN-first by default | All ports bind to `127.0.0.1`; nothing public without opt-in |
 
 ### HMAC signing
 
@@ -256,10 +205,10 @@ is rejected at the door.
 ### Allowlist enforcement
 
 The admin keeps an explicit allowlist of:
-- **Legal service names** — core services + any `channel-*` with a staged `.yml`
-- **Legal actions** — `install`, `update`, `uninstall`, `containers.*`,
+- **Legal service names** -- core services + any `channel-*` with a matching compose.yml
+- **Legal actions** -- `install`, `update`, `uninstall`, `containers.*`,
   `channels.list`, `channels.install`, `channels.uninstall`, `artifacts.*`,
-  `audit.list`, `accessScope.*`
+  `audit.list`
 
 Anything not on the list is rejected with `400 invalid_service` or
 `400 invalid_action`.
@@ -268,11 +217,10 @@ Anything not on the list is rejected with `400 invalid_service` or
 
 ## Adding a Channel (the whole process)
 
-1. Drop `<name>.yml` into `CONFIG_HOME/channels/` — defines the Docker service
-2. Drop `<name>.caddy` into `CONFIG_HOME/channels/` — gives it an HTTP route
-   (optional; without this it's Docker-network only)
-3. Restart admin (triggers apply) or call `/admin/update`
-4. Admin stages files, ensures/generates the channel HMAC secret, runs compose up, reloads
-   Caddy
+1. Install from the registry via admin API or admin UI
+2. Or manually: create a component directory under `config/components/` with a
+   `compose.yml` defining the Docker service
+3. Restart admin (triggers apply) or call `/admin/install`
+4. Admin discovers the component, ensures/generates the channel HMAC secret, runs compose up
 
 No code changes. No image rebuild. The channel is live.

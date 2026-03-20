@@ -59,10 +59,10 @@ OP_INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/itlac
 
 1. Creates the XDG directory tree (`CONFIG_HOME`, `DATA_HOME`, `STATE_HOME`).
 2. Probes the host environment and writes `DATA_HOME/host.json` (see below).
-3. Downloads core assets (compose file, Caddyfile, schema files) to `STATE_HOME/artifacts/`.
+3. Downloads core assets (compose file, schema files) to `DATA_HOME/`.
 4. Seeds missing default config files in `CONFIG_HOME` (never overwrites existing user files).
-5. Generates an admin token and writes it to `CONFIG_HOME/secrets.env` if one is not already set.
-6. Validates `CONFIG_HOME/secrets.env` against the schema (non-fatal on first install).
+5. Generates an admin token and writes it to `vault/system.env` if one is not already set.
+6. Validates vault env files against their schemas (non-fatal on first install).
 7. Opens the setup wizard in your browser.
 
 The setup wizard walks you through connecting an AI provider, configuring channel credentials (Discord, Slack), and enabling services. When you finish, the full stack starts automatically.
@@ -92,7 +92,7 @@ The file is overwritten on every install and update — it reflects the current 
 
 ## Validating Configuration
 
-The `openpalm validate` command checks `CONFIG_HOME/secrets.env` against the schema at `assets/secrets.env.schema`. It downloads the `varlock` binary on first use and caches it in `STATE_HOME/bin/`.
+The `openpalm validate` command checks `vault/user.env` and `vault/system.env` against their respective schemas. It downloads the `varlock` binary on first use and caches it in `STATE_HOME/bin/`.
 
 ```bash
 openpalm validate
@@ -108,7 +108,7 @@ Output is human-readable. The command exits `0` when all required variables are 
 |---|---|
 | `openpalm install` | Full install or update: creates directories, downloads assets, starts the stack |
 | `openpalm install -f <file>` | Install from a SetupConfig file (JSON or YAML) without the interactive wizard |
-| `openpalm validate` | Validates `CONFIG_HOME/secrets.env` against the schema |
+| `openpalm validate` | Validates vault env files against their schemas |
 | `openpalm start` | Start all stack services |
 | `openpalm stop` | Stop all stack services |
 | `openpalm restart` | Restart all stack services |
@@ -128,8 +128,8 @@ Run `openpalm --help` or `openpalm <command> --help` for flags and options.
 | Variable | Default (Linux/macOS) | Purpose |
 |---|---|---|
 | `OP_CONFIG_HOME` | `~/.config/openpalm` | User-owned persistent config (secrets, channels, assistant config) |
-| `OP_DATA_HOME` | `~/.local/share/openpalm` | Service data (memory DB, Caddy certs, `host.json`) |
-| `OP_STATE_HOME` | `~/.local/state/openpalm` | Generated runtime artifacts (compose files, Caddyfile, audit logs) |
+| `OP_DATA_HOME` | `~/.local/share/openpalm` | Service data (memory DB, `host.json`) |
+| `OP_STATE_HOME` | `~/.local/state/openpalm` | Generated runtime artifacts (compose files, audit logs) |
 
 On Windows the defaults follow `%APPDATA%` / `%LOCALAPPDATA%` conventions.
 

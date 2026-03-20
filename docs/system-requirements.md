@@ -27,7 +27,7 @@ Hardware, software, and network requirements for running OpenPalm.
 
 ### Minimum (core stack only, no channels)
 
-The core stack runs 6 containers: caddy, memory, assistant, guardian, docker-socket-proxy, and admin.
+The core stack runs 5 containers: memory, assistant, guardian, docker-socket-proxy, and admin.
 
 | Resource | Minimum |
 |---|---|
@@ -58,7 +58,6 @@ The core compose file (`assets/docker-compose.yml`) does not currently define `d
 
 | Service | Base Image | Runtime | Typical Idle RAM | Typical Active RAM | Purpose |
 |---|---|---|---|---|---|
-| **caddy** | `caddy:2-alpine` | Go binary | ~15 MB | ~30 MB | Reverse proxy, TLS termination |
 | **memory** | `oven/bun:1-debian` | Bun + sqlite-vec | ~60 MB | ~150 MB | Vector memory store (embeddings + search) |
 | **assistant** | `node:lts-trixie` | Node.js + OpenCode + Bun | ~200 MB | ~500 MB | AI runtime, tool execution, SSH server |
 | **guardian** | `oven/bun:1.3-slim` | Bun | ~30 MB | ~60 MB | HMAC verification, rate limiting |
@@ -76,10 +75,10 @@ The core compose file (`assets/docker-compose.yml`) does not currently define `d
 
 | Category | Approximate Size | Notes |
 |---|---|---|
-| Docker images (core stack) | ~2-3 GB | 6 images; `node:lts-trixie` (assistant) is the largest at ~1 GB |
+| Docker images (core stack) | ~2-3 GB | 5 images; `node:lts-trixie` (assistant) is the largest at ~1 GB |
 | Docker images (per channel) | ~100-200 MB | Shares the `oven/bun:1.3-slim` base layer with guardian |
 | Config directory (`CONFIG_HOME`) | < 10 MB | User-editable YAML, secrets, channel configs |
-| State directory (`STATE_HOME`) | < 50 MB | Generated compose files, Caddyfile, audit logs |
+| State directory (`STATE_HOME`) | < 50 MB | Generated compose files, audit logs |
 | Data directory (`DATA_HOME`) | Varies | Memory database grows with usage; starts < 1 MB |
 | Ollama models (if local) | 2-8 GB per model | `qwen2.5-coder:3b` ~ 2 GB, `nomic-embed-text` ~ 270 MB |
 
@@ -88,8 +87,8 @@ The core compose file (`assets/docker-compose.yml`) does not currently define `d
 | Tier | Default Path | Purpose |
 |---|---|---|
 | `CONFIG_HOME` | `~/.config/openpalm` | User-owned config (channels, secrets, assistant config) |
-| `DATA_HOME` | `~/.local/share/openpalm` | Service data (memory DB, Caddy certs, assistant state) |
-| `STATE_HOME` | `~/.local/state/openpalm` | Generated runtime artifacts (compose files, audit logs) |
+| `DATA_HOME` | `~/.local/share/openpalm` | Service data (memory DB, assistant state) |
+| `STATE_HOME` | `~/.local/state/openpalm` | Generated runtime artifacts (audit logs) |
 
 ---
 
@@ -109,13 +108,12 @@ OpenPalm is **LAN-first by default**. No inbound ports need to be opened on your
 
 | Port | Binding | Service | Notes |
 |---|---|---|---|
-| 8080 | `127.0.0.1` (default) | Caddy ingress | Configurable via `OP_INGRESS_BIND_ADDRESS` and `OP_INGRESS_PORT` |
-| 8100 | `127.0.0.1` | Admin API (direct) | Always localhost-only |
-| 4096 | `127.0.0.1` | Assistant (OpenCode) | Host-only access; no auth required (bind address is the security boundary) |
-| 8765 | `127.0.0.1` | Memory API | Direct access; normally accessed by assistant internally |
+| 3880 | `127.0.0.1` | Admin UI + API | Configurable via `OP_ADMIN_PORT` |
+| 3800 | `127.0.0.1` | Assistant (OpenCode) | Host-only access; no auth required (bind address is the security boundary) |
+| 3898 | internal only | Memory API | Normally accessed by assistant internally |
 | 2222 | `127.0.0.1` | Assistant SSH | Optional SSH access to OpenCode; disabled by default |
 
-To expose the Caddy ingress on all interfaces (e.g., for LAN access), set `OP_INGRESS_BIND_ADDRESS=0.0.0.0` in your stack configuration. Public exposure requires additional Caddy TLS configuration.
+Services bind to `127.0.0.1` by default. Port assignments are configurable via `OP_*_PORT` variables in `vault/system.env`.
 
 ### Internal Networks
 

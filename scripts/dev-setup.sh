@@ -51,17 +51,14 @@ mkdir -p \
 	"$CONFIG_DIR/automations" "$CONFIG_DIR/components" "$CONFIG_DIR/stash" \
 	"$VAULT_DIR" \
 	"$DATA_DIR/memory" "$DATA_DIR/assistant/.config/opencode" \
-	"$DATA_DIR/guardian" "$DATA_DIR/caddy/data" "$DATA_DIR/caddy/config" \
-	"$DATA_DIR/caddy/channels/public" "$DATA_DIR/caddy/channels/lan" \
+	"$DATA_DIR/guardian" \
 	"$DATA_DIR/automations" "$DATA_DIR/models" "$DATA_DIR/stash" "$DATA_DIR/workspace" \
 	"$LOGS_DIR/opencode" \
 	"$DEV_ROOT/work"
 
 # ── Seed core assets (write-once unless --force) ─────────────────
-CADDY_DEST="$DATA_DIR/caddy/Caddyfile"
 COMPOSE_DEST="$CONFIG_DIR/components/core.yml"
 
-[[ ! -f "$CADDY_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/assets/Caddyfile" "$CADDY_DEST"
 [[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/assets/docker-compose.yml" "$COMPOSE_DEST"
 
 # Ensure vault env files exist (compose needs them even if empty)

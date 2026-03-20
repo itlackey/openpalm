@@ -14,7 +14,7 @@ OpenAI and Anthropic compatible API facade channel for OpenPalm. Routes standard
 
 ## Usage
 
-Point any OpenAI- or Anthropic-compatible client at `http://localhost:8182` (or the Caddy route `/channels/api/`).
+Point any OpenAI- or Anthropic-compatible client at `http://localhost:8182`.
 
 ## Environment variables
 

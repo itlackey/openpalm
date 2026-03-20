@@ -75,7 +75,7 @@ Creates `.dev/` XDG directories and optionally seeds config files for local deve
 Sets `OP_*_HOME` to absolute `.dev/` paths so the admin dev server picks them up without additional environment setup.
 
 When `--seed-env` is used, this script also:
-- Seeds `ADMIN_TOKEN=dev-admin-token` in `secrets.env` (matches test expectations)
+- Seeds `ADMIN_TOKEN=dev-admin-token` in `vault/system.env` (matches test expectations)
 - Seeds OpenMemory `default_config.json` with Ollama via `host.docker.internal:11434` and `nomic-embed-text` (768 dims)
 
 ## iso/

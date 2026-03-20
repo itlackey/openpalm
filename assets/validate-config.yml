@@ -1,12 +1,12 @@
 # validate-config.yml — Core automation: periodic environment validation
 #
 # Runs every day at 3 AM UTC. Calls the admin validation API to check
-# CONFIG_HOME/secrets.env against the schema. Failures are logged to
+# vault/user.env against the schema. Failures are logged to
 # the audit trail but never block services.
 #
 # This is a core automation — installed by default. To customize, copy this
-# file to ~/.config/openpalm/automations/validate-config.yml and edit there.
-# User copies in CONFIG_HOME override the system version.
+# file to ~/.openpalm/config/automations/validate-config.yml and edit there.
+# User copies in config/ override the system version.
 
 name: Validate Configuration
 description: Periodic check of environment configuration against the schema

@@ -32,8 +32,7 @@ All three paths are valid ways to write files in `~/.openpalm/config/`. You neve
 │   ├── components/                   # Installed components (channels, services)
 │   │   ├── channel-chat/
 │   │   │   ├── compose.yml
-│   │   │   ├── .env
-│   │   │   └── .caddy
+│   │   │   └── .env
 │   │   └── channel-discord/
 │   │       ├── compose.yml
 │   │       └── .env
@@ -108,7 +107,7 @@ curl http://localhost:8100/admin/connections/status \
 
 ## Components (Channels, Services, Integrations)
 
-A component is a directory containing a `compose.yml` (required), `.env.schema`, and optional `.caddy` route. Channels, services, and integrations are all components.
+A component is a directory containing a `compose.yml` (required) and `.env` file. Channels, services, and integrations are all components.
 
 ### Install a component from the registry
 
@@ -126,21 +125,11 @@ generates an HMAC secret, and starts the component.
 
 1. Create a directory under `~/.openpalm/config/components/<name>/`
 2. Add a `compose.yml` and `.env` file
-3. Optionally add a `.caddy` file for HTTP access through Caddy
-4. Apply (restart admin or POST to `/admin/install`)
+3. Apply (restart admin or POST to `/admin/install`)
 
 ### Uninstall a component
 
 Remove the component directory from `~/.openpalm/config/components/` and apply.
-
-### HTTP routing per channel
-
-| File present? | Result |
-|---|---|
-| No `.caddy` file | Channel is Docker-network only — no HTTP route |
-| `.caddy` with `import lan_only` | LAN-restricted HTTP route |
-| `.caddy` with `import public_access` | Publicly accessible HTTP route |
-| `.caddy` with no import statement | Admin auto-adds `import lan_only` (LAN by default) |
 
 ---
 
@@ -253,23 +242,6 @@ You don't need to edit system files directly.
 
 ---
 
-## Access Scope
-
-Controls which IPs the admin UI and LAN channels accept.
-
-| Scope | Accepts |
-|---|---|
-| `lan` (default) | Private network ranges + localhost |
-| `host` | Localhost only |
-
-The source of truth is the system-managed core Caddyfile at:
-
-`~/.openpalm/data/caddy/Caddyfile`
-
-`POST /admin/access-scope` updates that file directly.
-
----
-
 ## OpenCode / Assistant Extensions
 
 The assistant runs OpenCode. Core extensions are baked into the container
@@ -305,8 +277,7 @@ not overwrite existing user config files. They may seed missing default files.
 **When apply runs:**
 1. Discovers installed components from `config/components/`
 2. Assembles compose command with all component overlays
-3. Writes Caddy route snippets from component `.caddy` files
-4. Runs `docker compose up`
+3. Runs `docker compose up`
 
 **To trigger apply without a full reinstall:**
 
@@ -338,13 +309,12 @@ docker compose restart admin   # triggers apply
 
 | URL | Service |
 |---|---|
-| `http://localhost:8100/admin` | Admin UI (direct) |
-| `http://localhost:8080/admin` | Admin UI via Caddy |
-| `http://localhost:8080/opencode` | OpenCode assistant UI |
-| `http://localhost:8765` | Memory API (direct) |
+| `http://localhost:8100/` | Admin UI and API |
+| `http://localhost:4096/` | OpenCode assistant UI |
+| `http://localhost:8765/` | Memory API |
 | `http://localhost:8765/docs` | Memory API docs (Swagger UI) |
 
-All ports are `127.0.0.1`-bound by default. Caddy at `:8080` is the main ingress.
+All ports are `127.0.0.1`-bound by default.
 
 ---
 

@@ -23,7 +23,7 @@ OpenPalm uses a single home directory with subdirectories for config, vault, dat
 | **OP_HOME** | `~/.openpalm` | Root of all OpenPalm state |
 | **config/** | `~/.openpalm/config` | User-editable: components, automations, OpenCode extensions |
 | **vault/** | `~/.openpalm/vault` | Secrets: `user.env` (LLM keys), `system.env` (admin token, HMAC) |
-| **data/** | `~/.openpalm/data` | Service-managed data (memory, caddy, assistant, etc.) |
+| **data/** | `~/.openpalm/data` | Service-managed data (memory, assistant, etc.) |
 | **logs/** | `~/.openpalm/logs` | Audit and debug logs |
 | **WORK_DIR** | `~/openpalm` | Assistant working directory |
 
@@ -56,7 +56,6 @@ mkdir -p ~/.openpalm/data/admin
 mkdir -p ~/.openpalm/data/memory
 mkdir -p ~/.openpalm/data/assistant
 mkdir -p ~/.openpalm/data/guardian
-mkdir -p ~/.openpalm/data/caddy/{data,config}
 mkdir -p ~/.openpalm/data/catalog
 
 # Logs
@@ -73,21 +72,19 @@ mkdir -p ~/openpalm
 
 ## 3. Place the core assets
 
-Two files from `assets/` are needed: the Docker Compose definition and the Caddyfile.
+One file from `assets/` is needed: the Docker Compose definition.
 
-Copy them to the data directory:
+Copy it to the data directory:
 
 ```bash
 cp assets/docker-compose.yml ~/.openpalm/data/docker-compose.yml
-cp assets/Caddyfile           ~/.openpalm/data/caddy/Caddyfile
 ```
 
-If you don't have a local clone, download them from GitHub:
+If you don't have a local clone, download it from GitHub:
 
 ```bash
 BASE_URL="https://raw.githubusercontent.com/itlackey/openpalm/main/assets"
 curl -fsSL "$BASE_URL/docker-compose.yml" -o ~/.openpalm/data/docker-compose.yml
-curl -fsSL "$BASE_URL/Caddyfile"           -o ~/.openpalm/data/caddy/Caddyfile
 ```
 
 ---
@@ -233,7 +230,7 @@ docker compose \
   up -d
 ```
 
-The admin starts first and runs an apply on startup, which re-stages config and starts the remaining services.
+The admin starts first and runs an apply on startup, which writes config and starts the remaining services.
 
 ---
 
@@ -244,10 +241,10 @@ The admin starts first and runs an apply on startup, which re-stages config and 
 docker compose --project-name openpalm ps
 
 # Test admin health
-curl -s http://localhost:8080/admin/health | head
+curl -s http://localhost:8100/health | head
 ```
 
-The admin UI is available at `http://localhost:8080/admin/` (through Caddy) or directly at `http://localhost:8100/` (bypassing proxy). Both require the `x-admin-token` header for API calls.
+The admin UI is available at `http://localhost:8100/`. API calls require the `x-admin-token` header.
 
 ---
 
@@ -257,9 +254,7 @@ When the admin container starts, it automatically runs an **apply** that:
 
 1. Reads `config/components/` and `config/automations/`
 2. Assembles compose command with all component overlays
-3. Writes Caddy route snippets from component `.caddy` files
-4. Runs `docker compose up -d`
-5. Reloads Caddy with routes
+3. Runs `docker compose up -d`
 
 This startup apply does not overwrite existing user files in `config/`; it
 only seeds missing defaults.
@@ -297,7 +292,7 @@ After completing all steps, your host should have:
 │   └── system.env                        # Admin token, HMAC secrets, system config
 │
 ├── config/
-│   ├── components/                       # Installed components (.yml + .caddy + .env)
+│   ├── components/                       # Installed components (compose.yml + .env)
 │   ├── automations/                      # User automation definitions
 │   └── assistant/                        # OpenCode extensions
 │       ├── opencode.json
@@ -311,11 +306,7 @@ After completing all steps, your host should have:
 │   │   └── default_config.json
 │   ├── assistant/
 │   ├── guardian/
-│   ├── catalog/                          # Installed component catalog
-│   └── caddy/
-│       ├── Caddyfile                     # Core Caddy config
-│       ├── data/
-│       └── config/
+│   └── catalog/                          # Installed component catalog
 │
 └── logs/                                 # Audit and debug logs
 

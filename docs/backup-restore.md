@@ -12,7 +12,7 @@ straightforward: archive the directory, restore it, and restart the stack.
 |-----------|-------------|----------|----------|
 | **vault/** | `~/.openpalm/vault` | user.env (LLM keys), system.env (admin token, HMAC secrets) | Yes |
 | **config/** | `~/.openpalm/config` | components, automations, assistant extensions | Yes |
-| **data/** | `~/.openpalm/data` | memory (SQLite), assistant config, guardian data, Caddy certs | Yes |
+| **data/** | `~/.openpalm/data` | memory (SQLite), assistant config, guardian data | Yes |
 | **logs/** | `~/.openpalm/logs` | Audit and debug logs | Optional |
 
 The simplest approach is to back up the entire `~/.openpalm/` directory.
@@ -136,10 +136,10 @@ The admin will detect the existing configuration and skip the setup wizard.
 | `vault/user.env` | OP_HOME | LLM provider API keys |
 | `vault/system.env` | OP_HOME | Admin token, HMAC secrets, infrastructure config |
 | `config/components/*/compose.yml` | OP_HOME | Installed component compose definitions |
-| `config/components/*/.caddy` | OP_HOME | Component Caddy routes |
+| `config/components/*/.env` | OP_HOME | Component instance environment |
 | `config/automations/*.yml` | OP_HOME | User-defined scheduled automations |
 | `config/assistant/` | OP_HOME | User OpenCode extensions (tools, plugins, skills) |
 | `config/connections/profiles.json` | OP_HOME | LLM connection profiles and role assignments |
 | `data/memory/` | OP_HOME | Memory SQLite database and vector index |
 | `data/assistant/` | OP_HOME | System-managed OpenCode config |
-| `data/caddy/` | OP_HOME | TLS certificates and Caddy runtime config |
+| `data/catalog/` | OP_HOME | Installed component catalog |

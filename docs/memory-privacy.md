@@ -43,7 +43,7 @@ The config file still uses a mem0-shaped JSON structure for compatibility, but t
 
 ## What is NOT stored
 
-- **API keys or tokens.** API keys for LLM/embedding providers are stored in `secrets.env` (in CONFIG_HOME), not in the memory database. The memory service resolves `env:VAR_NAME` references at runtime.
+- **API keys or tokens.** API keys for LLM/embedding providers are stored in `vault/user.env`, not in the memory database. The memory service resolves `env:VAR_NAME` references at runtime.
 - **Passwords or credentials.**
 - **Raw conversation transcripts.** The memory service receives conversation text only to extract facts from it. The raw conversation text is not persisted; only the LLM-extracted facts are stored.
 - **Embedding model weights or binaries.** Only the computed vector embeddings are stored.

@@ -100,7 +100,7 @@ are optional — the bot also responds to @mentions and DMs.
 
 ### Via the Admin UI
 
-1. Open the OpenPalm admin UI in your browser (default: `http://localhost:8080`).
+1. Open the OpenPalm admin UI in your browser (default: `http://localhost:8100`).
 2. Navigate to the **Channels** page.
 3. Find **Slack** in the registry list and click **Install**.
 4. After installation, go to the **Connections** page (or the channel's

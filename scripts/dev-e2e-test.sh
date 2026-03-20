@@ -83,11 +83,9 @@ rm -f .dev/config/assistant/opencode.json
 # Config — remove generated compose so dev-setup seeds a fresh one
 rm -f .dev/config/components/core.yml
 
-# Root-owned data from containers (qdrant, caddy, opencode logs)
+# Root-owned data from containers (qdrant, opencode logs)
 docker run --rm -v "$ROOT_DIR/.dev/data/memory:/c" alpine sh -c \
 	"rm -rf /c/qdrant" 2>/dev/null || true
-docker run --rm -v "$ROOT_DIR/.dev/data/caddy:/c" alpine sh -c \
-	"rm -rf /c/data /c/config" 2>/dev/null || true
 docker run --rm -v "$ROOT_DIR/.dev/data/opencode:/c" alpine sh -c \
 	"find /c -user root -delete" 2>/dev/null || true
 docker run --rm -v "$ROOT_DIR/.dev/config/assistant:/c" alpine sh -c \
@@ -268,7 +266,7 @@ SETUP_OK=$(echo "$SETUP_RESULT" | python3 -c "import sys,json; print(json.load(s
 if [ "$SETUP_OK" = "True" ]; then
 	pass "Setup wizard completed"
 else
-	# Caddy restart may drop the connection — check if setup completed anyway
+	# Connection may have dropped — check if setup completed anyway
 	sleep 5
 	SETUP_COMPLETE2=$(curl -s http://localhost:8100/admin/setup -H "x-admin-token: dev-admin-token" 2>/dev/null |
 		python3 -c "import sys,json; print(json.load(sys.stdin)['setupComplete'])" 2>/dev/null || echo "unknown")
@@ -322,7 +320,6 @@ echo ""
 echo "=== Step 8: Wait for all containers healthy ==="
 
 # Poll until all services are ready (max 120s)
-# Healthchecked services must be "healthy"; caddy (no healthcheck) must be "running".
 HEALTHCHECK_SVCS="admin memory assistant guardian docker-socket-proxy"
 MAX_WAIT=120
 ELAPSED=0
@@ -337,12 +334,6 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
 			break
 		fi
 	done
-	# Also check caddy is running
-	caddy_status=$(docker inspect --format '{{.State.Status}}' "openpalm-caddy-1" 2>/dev/null || echo "missing")
-	if [ "$caddy_status" != "running" ]; then
-		ALL_UP=false
-		WAIT_MSG="caddy is $caddy_status"
-	fi
 	if [ "$ALL_UP" = "true" ]; then
 		break
 	fi
@@ -361,15 +352,6 @@ for svc in $HEALTHCHECK_SVCS; do
 		ALL_HEALTHY=false
 	fi
 done
-
-# Caddy doesn't have a healthcheck — check if running
-caddy_status=$(docker inspect --format '{{.State.Status}}' "openpalm-caddy-1" 2>/dev/null || echo "missing")
-if [ "$caddy_status" = "running" ]; then
-	pass "caddy is running"
-else
-	fail "caddy status: $caddy_status"
-	ALL_HEALTHY=false
-fi
 
 # ── Step 9: Check for root-owned files ───────────────────────────────
 echo ""

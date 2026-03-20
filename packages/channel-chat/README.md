@@ -13,7 +13,7 @@ OpenAI/Anthropic-compatible chat API channel for OpenPalm. Accepts standard LLM 
 
 ## Usage
 
-Point any OpenAI- or Anthropic-compatible client (e.g. Open WebUI, Cursor, Continue) at `http://localhost:8181` or the Caddy route.
+Point any OpenAI- or Anthropic-compatible client (e.g. Open WebUI, Cursor, Continue) at `http://localhost:8181`.
 
 ## Environment variables
 

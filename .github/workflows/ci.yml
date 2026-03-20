@@ -93,11 +93,16 @@ jobs:
           pip install --quiet PyYAML
           errors=0
 
-          # Validate all registry component compose files
+          # Validate registry component compose files are valid YAML with a services key
+          # (docker compose config doesn't support ${INSTANCE_ID} template vars in service names)
           for f in registry/components/*/compose.yml; do
             if [ ! -f "$f" ]; then continue; fi
-            if ! docker compose -f assets/docker-compose.yml -f "$f" config -q 2>/dev/null; then
-              echo "::error file=$f::Invalid compose overlay: $f"
+            if ! python3 -c "
+          import yaml, sys
+          data = yaml.safe_load(open(sys.argv[1]))
+          assert isinstance(data, dict) and 'services' in data, 'missing services key'
+          " "$f" 2>/dev/null; then
+              echo "::error file=$f::Invalid component compose: $f"
               errors=$((errors + 1))
             fi
           done

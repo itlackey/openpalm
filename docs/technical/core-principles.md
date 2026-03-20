@@ -5,7 +5,7 @@ The filesystem and volume-mount contract exists to guarantee:
 1. **Add containers and routes by file-drop** into known host locations (no code changes required).
 2. **Add assistant extensions by copying OpenCode assets** into known host locations.
 3. **Core container and routing configuration is stored on the host** for advanced users.
-4. **Leverage Docker Compose, Caddy, and OpenCode configuration features** to avoid custom config/orchestration implementations.
+4. **Leverage Docker Compose and OpenCode configuration features** to avoid custom config/orchestration implementations.
 5. **No template rendering** — manage configuration by copying whole files, not by string interpolation or code generation.
 6. **Never overwrite existing user-modified files in CONFIG_HOME during automatic lifecycle operations** (install/update/startup apply/setup reruns/upgrades); only seed missing defaults.
 7. **All persistent container data lives on the host** for backup/restore.
@@ -59,7 +59,7 @@ Files:
 * `system.env` — system-managed secrets: admin token, HMAC secrets, paths, UID/GID, image tags, service auth tokens. Written only by CLI/admin.
 * `system.env.schema` — Varlock schema for `system.env`
 
-**Rule:** no container except admin may mount `vault/` as a directory. The assistant receives only a file-level bind mount of `vault/user.env` (read-only). Guardian, scheduler, memory, and caddy receive secrets exclusively through `${VAR}` substitution at container creation time.
+**Rule:** no container except admin may mount `vault/` as a directory. The assistant receives only a file-level bind mount of `vault/user.env` (read-only). Guardian, scheduler, and memory receive secrets exclusively through `${VAR}` substitution at container creation time.
 
 ### 3) Data (service-managed, durable)
 
@@ -68,9 +68,9 @@ Files:
 
 **Rule:** every persistence-requiring container path is a bind mount into this tree.
 
-Subtrees: `assistant/`, `admin/`, `memory/`, `guardian/`, `caddy/`, `stash/` (AKM assets), `workspace/` (shared working directory).
+Subtrees: `assistant/`, `admin/`, `memory/`, `guardian/`, `stash/` (AKM assets), `workspace/` (shared working directory).
 
-**Write policy:** Containers own their durable runtime data. The CLI or admin manages system-policy files (`data/caddy/Caddyfile`, `data/caddy/channels/`). The assistant must not write to `data/` directly — when admin is present, it interacts through the admin API.
+**Write policy:** Containers own their durable runtime data. The assistant must not write to `data/` directly — when admin is present, it interacts through the admin API.
 
 ### 4) Logs (audit and debug)
 
@@ -95,31 +95,26 @@ Subtrees: `registry/` (cached extension/channel registry index), `rollback/` (pr
 The stack is defined by combining a base Compose file with component overlays using Compose’s native multi-file mechanisms (merge rules and/or `include`). ([Docker Documentation][3])
 **Implication:** adding a component is dropping a `.yml` compose overlay into `config/components/`, then running `openpalm apply` which validates the change, snapshots current state, and runs Docker Compose with the updated overlay chain.
 
-### B) Caddy: modular by native `import`
-
-Caddy loads a stable root Caddyfile that uses `import` (with globs) to include snippets from `data/caddy/channels/`. ([Caddy Web Server][4])
-**Implication:** adding an HTTP route for a component is including a `.caddy` snippet in its compose overlay directory. The apply command stages the snippet into `data/caddy/channels/` and reloads Caddy. If no `.caddy` file is present, the component has no HTTP route and is only accessible on the Docker network.
-
-### C) OpenCode: core precedence via baked-in `/etc/opencode`
+### B) OpenCode: core precedence via baked-in `/etc/opencode`
 
 * The assistant container includes core extensions/config at **`/etc/opencode`**.
 * The assistant container sets **`OPENCODE_CONFIG_DIR=/etc/opencode`** so OpenCode discovers core agents/commands/tools/skills/plugins from that directory. ([OpenCode][1])
 * Advanced users *may* bind-mount a host directory over `/etc/opencode` to override core behavior, but this is discouraged because bind-mounting replaces/obscures the container’s original contents. ([Docker Documentation][5])
 
-### D) Non-destructive lifecycle sync is enforced by directory boundaries
+### C) Non-destructive lifecycle sync is enforced by directory boundaries
 
 To guarantee lifecycle operations never clobber user configuration:
 
 * **`config/` is user-owned and persistently authoritative.** Automatic lifecycle sync only seeds missing defaults and never overwrites existing user files. Explicit mutation paths — user direct edits, admin UI/API config actions, authenticated/allowlisted assistant calls to admin API on user request — may create/update/remove files as requested. System-managed compose files (`core.yml`, `admin.yml`) may be updated on upgrade.
 * **`vault/` has strict access rules.** Only admin mounts the full directory (rw). The assistant mounts only `vault/user.env` (ro file-level mount). No other container mounts anything from `vault/`. Lifecycle operations never overwrite `vault/user.env`; they may update `vault/system.env` (system-managed).
-* **`data/` is admin- and service-writable.** Containers own durable data; the admin manages system-policy files (`data/caddy/Caddyfile`, `data/caddy/channels/`) directly. The assistant may not write to `data/` directly — it must go through the admin API.
+* **`data/` is admin- and service-writable.** Containers own durable data. The assistant may not write to `data/` directly — it must go through the admin API.
 * **Apply uses validate-in-place with snapshot rollback.** Changes are validated against temp copies before writing to live paths. A snapshot of the current state is saved to `~/.cache/openpalm/rollback/` before any write. If deployment fails health checks, the snapshot is automatically restored.
 
-### E) Host authority rule for mounts
+### D) Host authority rule for mounts
 
 Bind-mounting a host path over a container path **obscures** pre-existing container files at that path; therefore, any bind-mounted path must be considered authoritative from the host perspective. ([Docker Documentation][5])
 
-### F) User accessibility
+### E) User accessibility
 
 All host-mounted directories must remain readable/writable by the host user (ownership/permissions policy is part of the contract). The purpose is to allow users to easily view logs, edit files, and backup and restore these files.
 
@@ -151,13 +146,12 @@ All OpenPalm services use the **38XX port range** to avoid conflicts with common
 | **Voice channel** | 3810 | `127.0.0.1:3810` | Voice interface (TTS/STT) |
 | **Admin** | 3880 | `127.0.0.1:3880` | Admin UI + API |
 | **Admin OpenCode** (#304) | 3881 | `127.0.0.1:3881` | Admin OpenCode web UI + API (host-only) |
-| **Ingress** (Caddy) | 80 | `127.0.0.1:3080` → Caddy → services | Reverse proxy (maps to 38XX internally) |
 | **Guardian** | 3899 | (internal only) | HMAC verification + rate limiting |
 | **Scheduler** | 3897 | (internal only) | Automation scheduler |
 | **Memory** | 3898 | (internal only) | Memory service API |
 | **Channel Chat** | 3820 | (internal only) | Chat channel adapter |
 
-Port assignments are defined via `OP_*_PORT` variables in `vault/system.env` and referenced in compose files via `${VAR}` substitution. The ingress port (Caddy's external bind) defaults to `3080` but is configurable via `OP_INGRESS_PORT`.
+Port assignments are defined via `OP_*_PORT` variables in `vault/system.env` and referenced in compose files via `${VAR}` substitution.
 
 ---
 
@@ -192,10 +186,10 @@ This ensures sdk transitive dependencies are available at runtime. Since these s
 
 ## Operational behavior
 
-* **Add a component:** drop a `.yml` compose overlay into `config/components/`, run `openpalm apply`. The CLI validates the overlay, snapshots current state, writes the Caddy snippet (if any) to `data/caddy/channels/`, and runs `docker compose up -d` with the updated overlay chain. ([Docker Documentation][3], [Caddy Web Server][4])
+* **Add a component:** drop a `.yml` compose overlay into `config/components/`, run `openpalm apply`. The CLI validates the overlay, snapshots current state, and runs `docker compose up -d` with the updated overlay chain. ([Docker Documentation][3])
 * **Add an extension (user):** copy OpenCode assets into `config/assistant/` following OpenCode’s directory structure. ([OpenCode][1])
 * **Core precedence:** core extensions live in `/etc/opencode` inside the assistant container and are loaded via `OPENCODE_CONFIG_DIR`. ([OpenCode][1])
-* **Apply changes:** the CLI or admin validates proposed changes (Varlock schema, compose config, Caddy config) before writing anything. If validation passes, a snapshot of current live files is saved to `~/.cache/openpalm/rollback/`, changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution. Compose is invoked with two env files: `vault/system.env` (system-managed: admin token, HMAC secrets, paths, UID/GID, image tags) and `vault/user.env` (user-managed: LLM keys, provider URLs). Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` and `vault/user.env`; it may seed missing defaults and update system-managed files (`vault/system.env`, `config/components/core.yml`).
+* **Apply changes:** the CLI or admin validates proposed changes (Varlock schema, compose config) before writing anything. If validation passes, a snapshot of current live files is saved to `~/.cache/openpalm/rollback/`, changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution. Compose is invoked with two env files: `vault/system.env` (system-managed: admin token, HMAC secrets, paths, UID/GID, image tags) and `vault/user.env` (user-managed: LLM keys, provider URLs). Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` and `vault/user.env`; it may seed missing defaults and update system-managed files (`vault/system.env`, `config/components/core.yml`).
 * **Hot-reload LLM keys:** the assistant watches `vault/user.env` (mounted read-only) via file watcher. Editing `user.env` on the host takes effect within seconds — no container restart needed, no lost context.
 * **Rollback:** `openpalm rollback` restores the most recent snapshot from `~/.cache/openpalm/rollback/` and restarts the stack. Available both as an automated response to failed deploys and as a manual escape hatch.
 * **Backup/restore:** `tar czf backup.tar.gz ~/.openpalm` archives the entire stack. Restore is extract and `docker compose up -d` — no staging tier to reconstruct.
@@ -203,5 +197,5 @@ This ensures sdk transitive dependencies are available at runtime. Since these s
 [1]: https://opencode.ai/docs/config/?utm_source=chatgpt.com "Config"
 [2]: https://specifications.freedesktop.org/basedir/latest/?utm_source=chatgpt.com "XDG Base Directory Specification"
 [3]: https://docs.docker.com/reference/compose-file/merge/?utm_source=chatgpt.com "Merge | Docker Docs"
-[4]: https://caddyserver.com/docs/caddyfile/directives/import?utm_source=chatgpt.com "import (Caddyfile directive)"
+
 [5]: https://docs.docker.com/engine/storage/bind-mounts/?utm_source=chatgpt.com "Bind mounts"
