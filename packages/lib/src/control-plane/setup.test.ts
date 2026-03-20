@@ -554,6 +554,77 @@ describe("performSetup", () => {
     expect(secondary).toBeDefined();
     expect(secondary.auth.mode).toBe("none");
   });
+
+  it("includes tts and stt assignments when voice uses openai engines", async () => {
+    const input = makeValidInput({
+      voice: { tts: "openai-tts", stt: "openai-stt" },
+    });
+    const result = await performSetup(input, createStubAssetProvider());
+    expect(result.ok).toBe(true);
+
+    const profilesPath = join(configDir, "connections", "profiles.json");
+    const doc = JSON.parse(readFileSync(profilesPath, "utf-8"));
+
+    expect(doc.assignments.tts).toBeDefined();
+    expect(doc.assignments.tts.enabled).toBe(true);
+    expect(doc.assignments.tts.connectionId).toBe("openai-main");
+    expect(doc.assignments.tts.model).toBe("tts-1");
+    expect(doc.assignments.tts.voice).toBe("alloy");
+
+    expect(doc.assignments.stt).toBeDefined();
+    expect(doc.assignments.stt.enabled).toBe(true);
+    expect(doc.assignments.stt.connectionId).toBe("openai-main");
+    expect(doc.assignments.stt.model).toBe("whisper-1");
+  });
+
+  it("includes tts and stt without connectionId for browser engines", async () => {
+    const input = makeValidInput({
+      voice: { tts: "browser-tts", stt: "browser-stt" },
+    });
+    const result = await performSetup(input, createStubAssetProvider());
+    expect(result.ok).toBe(true);
+
+    const profilesPath = join(configDir, "connections", "profiles.json");
+    const doc = JSON.parse(readFileSync(profilesPath, "utf-8"));
+
+    expect(doc.assignments.tts).toBeDefined();
+    expect(doc.assignments.tts.enabled).toBe(true);
+    expect(doc.assignments.tts.connectionId).toBeUndefined();
+
+    expect(doc.assignments.stt).toBeDefined();
+    expect(doc.assignments.stt.enabled).toBe(true);
+    expect(doc.assignments.stt.connectionId).toBeUndefined();
+  });
+
+  it("omits tts and stt when voice is not provided", async () => {
+    const input = makeValidInput();
+    const result = await performSetup(input, createStubAssetProvider());
+    expect(result.ok).toBe(true);
+
+    const profilesPath = join(configDir, "connections", "profiles.json");
+    const doc = JSON.parse(readFileSync(profilesPath, "utf-8"));
+
+    expect(doc.assignments.tts).toBeUndefined();
+    expect(doc.assignments.stt).toBeUndefined();
+  });
+
+  it("includes tts only when stt is absent", async () => {
+    const input = makeValidInput({
+      voice: { tts: "kokoro" },
+    });
+    const result = await performSetup(input, createStubAssetProvider());
+    expect(result.ok).toBe(true);
+
+    const profilesPath = join(configDir, "connections", "profiles.json");
+    const doc = JSON.parse(readFileSync(profilesPath, "utf-8"));
+
+    expect(doc.assignments.tts).toBeDefined();
+    expect(doc.assignments.tts.enabled).toBe(true);
+    expect(doc.assignments.tts.connectionId).toBeUndefined();
+    expect(doc.assignments.tts.model).toBe("kokoro");
+
+    expect(doc.assignments.stt).toBeUndefined();
+  });
 });
 
 // ── Helpers: SetupConfig ─────────────────────────────────────────────────

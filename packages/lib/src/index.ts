@@ -437,3 +437,11 @@ export {
   removeCaddyRoute,
   parseEnvSchema,
 } from "./control-plane/instance-lifecycle.js";
+
+// ── Voice Env Bridge ─────────────────────────────────────────────────────
+export {
+  buildVoiceEnvVars,
+  applyVoiceEnvVars,
+  isVoiceChannelInstalled,
+} from "./control-plane/voice-env-bridge.js";
+export type { VoiceEnvVars } from "./control-plane/voice-env-bridge.js";

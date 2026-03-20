@@ -34,7 +34,7 @@ import type { StackSpec } from "./stack-spec.js";
 import { detectLocalProviders } from "./model-runner.js";
 import type { LocalProviderDetection } from "./model-runner.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
-import type { ControlPlaneState, CapabilityAssignments } from "./types.js";
+import type { ControlPlaneState, CapabilityAssignments, TtsAssignment, SttAssignment } from "./types.js";
 
 const logger = createLogger("setup");
 
@@ -457,6 +457,59 @@ export function buildSystemSecretsFromSetup(
   };
 }
 
+// ── Voice Assignment Builder ──────────────────────────────────────────────
+
+const PROVIDER_TTS_ENGINES = new Set(["openai-tts"]);
+const PROVIDER_STT_ENGINES = new Set(["openai-stt"]);
+
+const TTS_ENGINE_DEFAULTS: Record<string, { model: string; voice?: string }> = {
+  "openai-tts": { model: "tts-1", voice: "alloy" },
+  "kokoro": { model: "kokoro" },
+  "piper": { model: "piper" },
+  "browser-tts": { model: "browser" },
+};
+
+const STT_ENGINE_DEFAULTS: Record<string, { model: string }> = {
+  "openai-stt": { model: "whisper-1" },
+  "whisper-local": { model: "whisper-1" },
+  "browser-stt": { model: "browser" },
+};
+
+function buildTtsAssignment(
+  engine: string,
+  connections: SetupConnection[]
+): TtsAssignment | undefined {
+  const defaults = TTS_ENGINE_DEFAULTS[engine];
+  if (!defaults) return undefined;
+
+  const assignment: TtsAssignment = { enabled: true, model: defaults.model };
+  if (defaults.voice) assignment.voice = defaults.voice;
+
+  if (PROVIDER_TTS_ENGINES.has(engine)) {
+    const openaiConn = connections.find((c) => c.provider === "openai");
+    if (openaiConn) assignment.connectionId = openaiConn.id;
+  }
+
+  return assignment;
+}
+
+function buildSttAssignment(
+  engine: string,
+  connections: SetupConnection[]
+): SttAssignment | undefined {
+  const defaults = STT_ENGINE_DEFAULTS[engine];
+  if (!defaults) return undefined;
+
+  const assignment: SttAssignment = { enabled: true, model: defaults.model };
+
+  if (PROVIDER_STT_ENGINES.has(engine)) {
+    const openaiConn = connections.find((c) => c.provider === "openai");
+    if (openaiConn) assignment.connectionId = openaiConn.id;
+  }
+
+  return assignment;
+}
+
 // ── Connection Env Var Map Builder ───────────────────────────────────────
 
 /**
@@ -617,6 +670,17 @@ export async function performSetup(
     };
   });
 
+  const ttsAssignment = input.voice?.tts
+    ? buildTtsAssignment(input.voice.tts, effectiveConnections)
+    : undefined;
+  const sttAssignment = input.voice?.stt
+    ? buildSttAssignment(input.voice.stt, effectiveConnections)
+    : undefined;
+
+  const voiceAssignments: Pick<CapabilityAssignments, 'tts' | 'stt'> = {};
+  if (ttsAssignment) voiceAssignments.tts = ttsAssignment;
+  if (sttAssignment) voiceAssignments.stt = sttAssignment;
+
   writeConnectionsDocument(state.configDir, {
     profiles: profilesInput,
     assignments: {
@@ -626,7 +690,8 @@ export async function performSetup(
         model: input.assignments.embeddings.model,
         embeddingDims: resolvedDims,
       },
-    } as CapabilityAssignments,
+      ...voiceAssignments,
+    },
   });
 
   // ── Ensure OpenCode configs ──────────────────────────────────────────

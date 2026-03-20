@@ -7,6 +7,9 @@ import {
   buildOpenCodeMapping,
   writeOpenCodeProviderConfig,
   readConnectionProfilesDocument,
+  buildVoiceEnvVars,
+  applyVoiceEnvVars,
+  isVoiceChannelInstalled,
 } from '$lib/server/control-plane.js';
 import {
   errorResponse,
@@ -64,24 +67,56 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(result.status, errorCode, result.message, {}, requestId);
   }
 
-  // Wire OpenCode config write (non-critical side effect)
+  const savedAssignments = result.value;
+
+  // Read connection profiles document for side-effects (non-critical)
+  let doc: ReturnType<typeof readConnectionProfilesDocument> | null = null;
   try {
-    const doc = readConnectionProfilesDocument(state.configDir);
-    const savedAssignments = result.value;
-    const llmProfile = doc.profiles.find((p) => p.id === savedAssignments.llm.connectionId);
-    if (llmProfile) {
-      const mapping = buildOpenCodeMapping({
-        provider: llmProfile.provider,
-        baseUrl: llmProfile.baseUrl,
-        systemModel: savedAssignments.llm.model,
-        smallModel: savedAssignments.llm.smallModel,
-      });
-      writeOpenCodeProviderConfig(state.configDir, mapping);
-    }
+    doc = readConnectionProfilesDocument(state.configDir);
   } catch (err) {
-    logger.warn('failed to write opencode.json after assignments save', { error: String(err), requestId });
+    logger.warn('failed to read connection profiles for side-effects', { error: String(err), requestId });
+  }
+
+  // Wire OpenCode config write (non-critical side effect)
+  if (doc) {
+    try {
+      const llmProfile = doc.profiles.find((p) => p.id === savedAssignments.llm.connectionId);
+      if (llmProfile) {
+        const mapping = buildOpenCodeMapping({
+          provider: llmProfile.provider,
+          baseUrl: llmProfile.baseUrl,
+          systemModel: savedAssignments.llm.model,
+          smallModel: savedAssignments.llm.smallModel,
+        });
+        writeOpenCodeProviderConfig(state.configDir, mapping);
+      }
+    } catch (err) {
+      logger.warn('failed to write opencode.json after assignments save', { error: String(err), requestId });
+    }
+  }
+
+  // Wire voice channel env vars (non-critical side effect)
+  let voiceConfigUpdated = false;
+  let voiceRestartRequired = false;
+  if (doc) {
+    try {
+      if (isVoiceChannelInstalled(state.homeDir) && (savedAssignments.tts || savedAssignments.stt)) {
+        const envVars = buildVoiceEnvVars(savedAssignments, doc.profiles, state.vaultDir);
+        if (Object.keys(envVars).length > 0) {
+          voiceConfigUpdated = applyVoiceEnvVars(state, envVars);
+          voiceRestartRequired = voiceConfigUpdated;
+        }
+      }
+    } catch (err) {
+      logger.warn('failed to update voice env vars after assignments save', { error: String(err), requestId });
+    }
   }
 
   appendAudit(state, actor, 'connections.assignments.save', {}, true, requestId, callerType);
-  return jsonResponse(200, { ok: true, assignments: result.value }, requestId);
+  return jsonResponse(200, {
+    ok: true,
+    assignments: result.value,
+    voiceConfigUpdated,
+    voiceRestartRequired,
+  }, requestId);
 };

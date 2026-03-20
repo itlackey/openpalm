@@ -347,3 +347,11 @@ export {
   removeCaddyRoute,
   parseEnvSchema,
 } from "@openpalm/lib";
+
+// ── voice-env-bridge.ts ───────────────────────────────────────────────
+export {
+  buildVoiceEnvVars,
+  applyVoiceEnvVars,
+  isVoiceChannelInstalled,
+  type VoiceEnvVars,
+} from "@openpalm/lib";
