@@ -2,7 +2,10 @@ import { userInfo } from "node:os";
 import { parseEnvFile } from './env.js';
 
 export function readSecretsKeys(vaultDir: string): Record<string, boolean> {
-  const parsed = parseEnvFile(`${vaultDir}/user.env`);
+  const parsed = {
+    ...parseEnvFile(`${vaultDir}/user.env`),
+    ...parseEnvFile(`${vaultDir}/system.env`),
+  };
   const result: Record<string, boolean> = {};
   for (const [key, value] of Object.entries(parsed)) {
     result[key] = value.length > 0;
@@ -29,9 +32,5 @@ export function isSetupComplete(vaultDir: string): boolean {
     return parsed.OPENPALM_SETUP_COMPLETE.toLowerCase() === "true";
   }
 
-  // Fallback: check if admin token exists in user.env
-  const userParsed = parseEnvFile(`${vaultDir}/user.env`);
-  // Also check system.env for admin token
-  return (parsed.OPENPALM_ADMIN_TOKEN ?? "").length > 0 ||
-    (userParsed.OPENPALM_ADMIN_TOKEN ?? "").length > 0;
+  return (parsed.OPENPALM_ADMIN_TOKEN ?? "").length > 0;
 }

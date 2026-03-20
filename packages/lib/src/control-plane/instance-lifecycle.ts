@@ -28,6 +28,10 @@ import {
 } from "./components.js";
 import type { ComponentDefinition, InstanceDetail, InstanceStatus, EnabledInstance } from "./components.js";
 import { parseEnvFile } from "./env.js";
+import {
+  registerComponentSensitiveFields,
+  deregisterComponentSensitiveFields,
+} from "./component-secrets.js";
 
 const logger = createLogger("instance-lifecycle");
 
@@ -127,8 +131,8 @@ export function parseEnvSchema(schemaPath: string): EnvSchemaField[] {
     const helpLines: string[] = [];
 
     for (const comment of pendingComments) {
-      if (comment.includes("@required")) required = true;
-      if (comment.includes("@sensitive")) sensitive = true;
+      if (/@required(?!\s*=\s*false)/.test(comment)) required = true;
+      if (/@sensitive(?!\s*=\s*false)/.test(comment)) sensitive = true;
       // Help text is any comment that isn't purely an annotation
       const stripped = comment.replace(/@required/g, "").replace(/@sensitive/g, "").trim();
       if (stripped) {
@@ -223,6 +227,7 @@ export function createInstance(
   const schemaPath = join(instDir, ".env.schema");
   if (existsSync(schemaPath)) {
     const fields = parseEnvSchema(schemaPath);
+    registerComponentSensitiveFields(openpalmHome, instanceId, schemaPath);
     const defaults = fields.filter((f) => !f.sensitive && f.defaultValue !== "");
     if (defaults.length > 0) {
       envLines.push("");
@@ -423,6 +428,7 @@ export function deleteInstance(openpalmHome: string, instanceId: string): void {
 
   // Remove from enabled.json
   removeEnabledInstance(openpalmHome, instanceId);
+  deregisterComponentSensitiveFields(openpalmHome, instanceId);
 
   logger.info("deleted instance", { instanceId, archivedTo: archivePath });
 }

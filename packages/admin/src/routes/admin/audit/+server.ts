@@ -9,7 +9,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
-import { jsonResponse, errorResponse, requireAdmin, getRequestId } from "$lib/server/helpers.js";
+import { jsonResponse, errorResponse, requireAuth, getRequestId } from "$lib/server/helpers.js";
 
 type GuardianAuditEntry = {
   ts: string;
@@ -46,7 +46,7 @@ async function readGuardianAudit(logsDir: string): Promise<GuardianAuditEntry[]>
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authErr = requireAdmin(event, requestId);
+  const authErr = requireAuth(event, requestId);
   if (authErr) return authErr;
 
   const state = getState();

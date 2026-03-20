@@ -27,7 +27,7 @@ export const GET: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
-  const raw = readSecretsEnvFile(state.configDir);
+  const raw = readSecretsEnvFile(state.vaultDir);
   const missing: string[] = [];
 
   const provider = (raw.SYSTEM_LLM_PROVIDER ?? "").trim();

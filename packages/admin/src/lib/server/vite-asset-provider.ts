@@ -28,9 +28,9 @@ import cleanupDataAsset from "$assets/cleanup-data.yml?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import validateConfigAsset from "$assets/validate-config.yml?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
-import secretsSchemaAsset from "$assets/secrets.env.schema?raw";
+import secretsSchemaAsset from "$assets/user.env.schema?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
-import stackSchemaAsset from "$assets/stack.env.schema?raw";
+import stackSchemaAsset from "$assets/system.env.schema?raw";
 
 export class ViteAssetProvider implements CoreAssetProvider {
   coreCompose(): string { return coreComposeAsset; }

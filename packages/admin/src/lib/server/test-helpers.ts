@@ -40,6 +40,7 @@ export function makeTestState(overrides: Partial<ControlPlaneState> = {}): Contr
   const tempDir = makeTempDir();
   return {
     adminToken: "test-admin-token",
+    assistantToken: "test-assistant-token",
     setupToken: "test-setup-token",
     homeDir: tempDir,
     configDir: join(tempDir, "config"),

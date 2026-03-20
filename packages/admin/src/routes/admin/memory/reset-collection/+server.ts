@@ -11,7 +11,7 @@ import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
   errorResponse,
-  requireAdmin,
+  requireAuth,
   getRequestId,
   getActor,
   getCallerType
@@ -24,7 +24,7 @@ import {
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authErr = requireAdmin(event, requestId);
+  const authErr = requireAuth(event, requestId);
   if (authErr) return authErr;
 
   const state = getState();

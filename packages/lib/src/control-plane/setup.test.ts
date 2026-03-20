@@ -6,6 +6,7 @@ import { parse as yamlParse } from "yaml";
 import {
   validateSetupInput,
   buildSecretsFromSetup,
+  buildSystemSecretsFromSetup,
   buildConnectionEnvVarMap,
   performSetup,
   validateSetupConfig,
@@ -202,10 +203,10 @@ describe("validateSetupInput", () => {
 // ── Tests: buildSecretsFromSetup ─────────────────────────────────────────
 
 describe("buildSecretsFromSetup", () => {
-  it("includes admin token in both keys", () => {
+  it("does not include admin token in user secrets", () => {
     const secrets = buildSecretsFromSetup(makeValidInput());
-    expect(secrets.OPENPALM_ADMIN_TOKEN).toBe("test-admin-token-12345");
-    expect(secrets.ADMIN_TOKEN).toBe("test-admin-token-12345");
+    expect(secrets.OPENPALM_ADMIN_TOKEN).toBeUndefined();
+    expect(secrets.ADMIN_TOKEN).toBeUndefined();
   });
 
   it("sets SYSTEM_LLM_* from the LLM connection", () => {
@@ -258,6 +259,16 @@ describe("buildSecretsFromSetup", () => {
     // System LLM base URL should use in-stack Ollama URL
     expect(secrets.SYSTEM_LLM_BASE_URL).toBe("http://ollama:11434");
     expect(secrets.OPENAI_BASE_URL).toBe("http://ollama:11434/v1");
+  });
+});
+
+describe("buildSystemSecretsFromSetup", () => {
+  it("includes distinct admin and assistant credentials", () => {
+    const secrets = buildSystemSecretsFromSetup(makeValidInput());
+    expect(secrets.OPENPALM_ADMIN_TOKEN).toBe("test-admin-token-12345");
+    expect(typeof secrets.ASSISTANT_TOKEN).toBe("string");
+    expect(secrets.ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
+    expect(typeof secrets.MEMORY_AUTH_TOKEN).toBe("string");
   });
 });
 
@@ -401,11 +412,11 @@ describe("performSetup", () => {
     expect(result.error).toBeDefined();
   });
 
-  it("writes user.env with the admin token", async () => {
+  it("writes system.env with the admin token", async () => {
     const result = await performSetup(makeValidInput(), createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const secretsContent = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const secretsContent = readFileSync(join(vaultDir, "system.env"), "utf-8");
     expect(secretsContent).toContain("test-admin-token-12345");
   });
 
@@ -1143,8 +1154,8 @@ describe("performSetupFromConfig", () => {
     const result = await performSetupFromConfig(makeValidConfig(), createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    // Verify user.env was written
-    const secretsContent = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    // Verify system.env was written with the admin credential
+    const secretsContent = readFileSync(join(vaultDir, "system.env"), "utf-8");
     expect(secretsContent).toContain("test-admin-token-12345");
   });
 

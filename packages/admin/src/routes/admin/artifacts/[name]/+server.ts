@@ -4,7 +4,7 @@
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
-import { errorResponse, requireAdmin, getRequestId, getActor, getCallerType } from "$lib/server/helpers.js";
+import { errorResponse, requireAuth, getRequestId, getActor, getCallerType } from "$lib/server/helpers.js";
 import { appendAudit } from "$lib/server/control-plane.js";
 
 const ALLOWED_NAMES = ["compose", "caddyfile"] as const;
@@ -15,7 +15,7 @@ const NAME_ALIASES: Record<string, ArtifactName> = { caddy: "caddyfile" };
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authErr = requireAdmin(event, requestId);
+  const authErr = requireAuth(event, requestId);
   if (authErr) return authErr;
 
   const state = getState();

@@ -16,6 +16,8 @@ import {
   errorResponse,
   getRequestId,
   requireAdmin,
+  requireAuth,
+  identifyCallerByToken,
   getActor,
   getCallerType,
   parseJsonBody,
@@ -188,6 +190,12 @@ describe("getActor", () => {
     expect(getActor(event as never)).toBe("admin");
   });
 
+  test("returns 'assistant' when x-admin-token matches assistant token", () => {
+    const state = resetState("test-admin-token-12345");
+    const event = makeEvent({ "x-admin-token": state.assistantToken });
+    expect(getActor(event as never)).toBe("assistant");
+  });
+
   test("returns 'unauthenticated' when x-admin-token is wrong", () => {
     const event = makeEvent({ "x-admin-token": "wrong-token" });
     expect(getActor(event as never)).toBe("unauthenticated");
@@ -202,6 +210,38 @@ describe("getActor", () => {
     // Even if x-requested-by claims "admin", actor is based on token verification
     const event = makeEvent({ "x-requested-by": "admin" });
     expect(getActor(event as never)).toBe("unauthenticated");
+  });
+});
+
+describe("identifyCallerByToken / requireAuth", () => {
+  beforeEach(() => {
+    resetState("test-admin-token-12345");
+  });
+
+  test("identifyCallerByToken returns admin for admin token", () => {
+    const event = makeEvent({ "x-admin-token": "test-admin-token-12345" });
+    expect(identifyCallerByToken(event as never)).toBe("admin");
+  });
+
+  test("identifyCallerByToken returns assistant for assistant token", () => {
+    const state = resetState("test-admin-token-12345");
+    const event = makeEvent({ "x-admin-token": state.assistantToken });
+    expect(identifyCallerByToken(event as never)).toBe("assistant");
+  });
+
+  test("requireAuth passes for assistant token", () => {
+    const state = resetState("test-admin-token-12345");
+    const event = makeEvent({ "x-admin-token": state.assistantToken });
+    expect(requireAuth(event as never, "req-assistant")).toBeNull();
+  });
+
+  test("requireAuth rejects unknown token", async () => {
+    const event = makeEvent({ "x-admin-token": "nope" });
+    const result = requireAuth(event as never, "req-bad");
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe(401);
+    const body = await result!.json();
+    expect(body.requestId).toBe("req-bad");
   });
 });
 

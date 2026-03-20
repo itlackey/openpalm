@@ -81,12 +81,38 @@ export function requireAdmin(event: RequestEvent, requestId: string): Response |
   return null;
 }
 
+/** Identify caller by presented token. */
+export function identifyCallerByToken(event: RequestEvent): "admin" | "assistant" | null {
+  const state = getState();
+  const token = event.request.headers.get("x-admin-token") ?? "";
+  if (state.adminToken && safeTokenCompare(token, state.adminToken)) return "admin";
+  if (state.assistantToken && safeTokenCompare(token, state.assistantToken)) return "assistant";
+  return null;
+}
+
+/** Check for either admin or assistant token — returns error Response or null if OK. */
+export function requireAuth(event: RequestEvent, requestId: string): Response | null {
+  const state = getState();
+  if (!state.adminToken && !state.assistantToken) {
+    return jsonResponse(503, { error: 'admin_not_configured', message: 'Admin token has not been set. Complete setup first.' });
+  }
+
+  if (identifyCallerByToken(event)) {
+    return null;
+  }
+
+  return errorResponse(
+    401,
+    "unauthorized",
+    "Missing or invalid x-admin-token",
+    {},
+    requestId
+  );
+}
+
 /** Extract actor from request — derived from auth state, not caller-controlled. */
 export function getActor(event: RequestEvent): string {
-  const token = event.request.headers.get("x-admin-token");
-  if (!token) return "unauthenticated";
-  const state = getState();
-  return safeTokenCompare(token, state.adminToken) ? "admin" : "unauthenticated";
+  return identifyCallerByToken(event) ?? "unauthenticated";
 }
 
 /** Extract caller type from request */
