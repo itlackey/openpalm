@@ -201,7 +201,7 @@ function readYmlFlags(configDir: string): Record<string, unknown> | null {
   const path = join(configDir, "openpalm.yml");
   if (!existsSync(path)) return null;
   try {
-    const raw = yamlParse(readFileSync(path, "utf-8"));
+    const raw = yamlParse(readFileSync(path, "utf-8"), { maxAliasCount: 100 });
     if (typeof raw === "object" && raw !== null) return raw as Record<string, unknown>;
   } catch { /* ignore corrupt */ }
   return null;
@@ -249,11 +249,18 @@ function mergeAssignmentsFromProfiles(
 ): StackSpecAssignments {
   const merged = { ...v4Assignments };
 
-  // Merge optional capabilities that profiles.json may have
-  for (const key of ["reranking", "tts", "stt"] as const) {
-    if (key in profileAssignments && profileAssignments[key]) {
-      (merged as Record<string, unknown>)[key] = profileAssignments[key];
-    }
+  // Merge optional capabilities from profiles.json with explicit field mapping
+  const reranking = profileAssignments.reranking;
+  if (reranking && typeof reranking === "object") {
+    merged.reranking = reranking as StackSpecAssignments["reranking"];
+  }
+  const tts = profileAssignments.tts;
+  if (tts && typeof tts === "object") {
+    merged.tts = tts as StackSpecAssignments["tts"];
+  }
+  const stt = profileAssignments.stt;
+  if (stt && typeof stt === "object") {
+    merged.stt = stt as StackSpecAssignments["stt"];
   }
 
   return merged;
@@ -283,11 +290,14 @@ function buildFromProfilesOnly(profiles: CanonicalConnectionsDocument): StackSpe
       embeddings: {
         connectionId: profiles.assignments?.embeddings?.connectionId ?? "",
         model: profiles.assignments?.embeddings?.model ?? "",
-        dims: (profiles.assignments?.embeddings as Record<string, unknown>)?.embeddingDims as number | undefined,
+        dims: profiles.assignments?.embeddings?.embeddingDims,
       },
-      ...(profiles.assignments?.reranking ? { reranking: profiles.assignments.reranking as StackSpecAssignments["reranking"] } : {}),
-      ...(profiles.assignments?.tts ? { tts: profiles.assignments.tts as StackSpecAssignments["tts"] } : {}),
-      ...(profiles.assignments?.stt ? { stt: profiles.assignments.stt as StackSpecAssignments["stt"] } : {}),
+      ...(profiles.assignments?.reranking && typeof profiles.assignments.reranking === "object"
+        ? { reranking: profiles.assignments.reranking as StackSpecAssignments["reranking"] } : {}),
+      ...(profiles.assignments?.tts && typeof profiles.assignments.tts === "object"
+        ? { tts: profiles.assignments.tts as StackSpecAssignments["tts"] } : {}),
+      ...(profiles.assignments?.stt && typeof profiles.assignments.stt === "object"
+        ? { stt: profiles.assignments.stt as StackSpecAssignments["stt"] } : {}),
     },
   };
 }

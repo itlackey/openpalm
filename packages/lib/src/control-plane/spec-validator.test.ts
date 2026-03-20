@@ -146,4 +146,41 @@ describe("validateStackSpecV4", () => {
     const errors = validateStackSpecV4(spec);
     expect(errors.some((e) => e.code === "OP-CFG-003" && e.path?.includes("reranking"))).toBe(true);
   });
+
+  // ── Tests added from reviewer feedback ───────────────────────────
+
+  test("rejects non-string network.bindAddress (OP-CFG-011)", () => {
+    const spec = { ...makeValidSpec(), network: { bindAddress: 123 } };
+    const errors = validateStackSpecV4(spec);
+    expect(errors.some((e) => e.code === "OP-CFG-011")).toBe(true);
+  });
+
+  test("rejects connection with missing provider", () => {
+    const spec = makeValidSpec({
+      connections: [{ id: "test", name: "Test", provider: "", baseUrl: "" }],
+    });
+    const errors = validateStackSpecV4(spec);
+    expect(errors.some((e) => e.code === "OP-CFG-004" && e.path?.includes("provider"))).toBe(true);
+  });
+
+  test("rejects connection with missing name", () => {
+    const spec = makeValidSpec({
+      connections: [{ id: "test", name: "", provider: "openai", baseUrl: "" }],
+    });
+    const errors = validateStackSpecV4(spec);
+    expect(errors.some((e) => e.code === "OP-CFG-004" && e.path?.includes("name"))).toBe(true);
+  });
+
+  test("rejects missing embeddings model", () => {
+    const spec = makeValidSpec();
+    spec.assignments.embeddings.model = "";
+    const errors = validateStackSpecV4(spec);
+    expect(errors.some((e) => e.code === "OP-CFG-008" && e.path?.includes("embeddings"))).toBe(true);
+  });
+
+  test("rejects float port value", () => {
+    const spec = makeValidSpec({ ports: { ingress: 80.5 } });
+    const errors = validateStackSpecV4(spec);
+    expect(errors.some((e) => e.code === "OP-CFG-010")).toBe(true);
+  });
 });

@@ -248,4 +248,33 @@ describe("migrateV3ToV4", () => {
     expect(result2.ok).toBe(true);
     expect(result2.actions).toContain("Already at v4; no migration needed");
   });
+
+  test("builds from profiles.json only when no StackSpec exists", () => {
+    // No openpalm.yaml — only profiles.json
+    writeProfilesJson({
+      version: 1,
+      profiles: [{
+        id: "ollama", name: "Ollama Local", provider: "ollama",
+        baseUrl: "http://localhost:11434",
+        kind: "ollama_local",
+        auth: { mode: "none" },
+      }],
+      assignments: {
+        llm: { connectionId: "ollama", model: "llama3.2" },
+        embeddings: { connectionId: "ollama", model: "nomic-embed-text", embeddingDims: 768 },
+      },
+    });
+
+    const result = migrateV3ToV4(makeState());
+    expect(result.ok).toBe(true);
+    expect(result.actions.some(a => a.includes("profiles.json"))).toBe(true);
+
+    const spec = readStackSpec(configDir);
+    expect(spec).not.toBeNull();
+    expect(spec!.version).toBe(4);
+    expect(spec!.connections).toHaveLength(1);
+    expect(spec!.connections[0].id).toBe("ollama");
+    expect(spec!.connections[0].kind).toBe("ollama_local");
+    expect(spec!.assignments.embeddings.dims).toBe(768);
+  });
 });
