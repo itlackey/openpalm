@@ -16,6 +16,7 @@ services:
       - ${OPENPALM_HOME}/vault/ov.conf:/app/ov.conf:ro
     networks: [assistant_net]
     healthcheck:
+      # curl is available in the OpenViking image (Python 3.13 + Debian)
       test: ["CMD", "curl", "-sf", "http://localhost:1933/health"]
       interval: 30s
       timeout: 5s

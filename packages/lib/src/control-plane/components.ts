@@ -399,8 +399,11 @@ export function validateOverlay(composePath: string): OverlayValidationResult {
             );
           }
         } else if (volStr) {
-          // Extract source portion of bind mount string (before first colon)
-          const volSource = volStr.split(":")[0];
+          // Extract source portion of bind mount string.
+          // Format is source:target[:mode]. Named volumes have no path separators
+          // in source, but bind mounts always contain / or ${...}.
+          const colonIdx = volStr.indexOf(":");
+          const volSource = colonIdx >= 0 ? volStr.slice(0, colonIdx) : volStr;
           if (/vault\b/i.test(volSource) && !/vault\/[^/]+$/i.test(volSource)) {
             errors.push(
               `Service "${serviceName}" mounts vault/ directory — ` +
