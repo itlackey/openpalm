@@ -794,15 +794,16 @@ describe("performSetup end-to-end artifacts", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  it("writes openpalm.yaml with version 3", async () => {
+  it("writes openpalm.yaml and readStackSpec returns v4 (auto-upgraded)", async () => {
     await performSetup(makeValidInput(), createStubAssetProvider());
 
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
-    expect(spec!.version).toBe(3);
+    // readStackSpec auto-upgrades v3 to v4
+    expect(spec!.version).toBe(4);
     expect(spec!.connections).toHaveLength(1);
     expect(spec!.assignments.llm.model).toBe("gpt-4o");
-    expect(spec!.ollamaEnabled).toBe(false);
+    expect(spec!.features?.ollama).toBe(false);
   });
 
   it("writes memory config with correct embedding dims from lookup", async () => {
