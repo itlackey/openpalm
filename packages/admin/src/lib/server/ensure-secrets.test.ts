@@ -38,7 +38,7 @@ describe("ensureSecrets", () => {
     const systemEnv = readFileSync(join(vaultDir, "system.env"), "utf-8");
     expect(userEnv).toContain("OPENAI_API_KEY=");
     expect(userEnv).toContain("EMBEDDING_MODEL=");
-    expect(systemEnv).toContain("OPENPALM_ADMIN_TOKEN=");
+    expect(systemEnv).toContain("OP_ADMIN_TOKEN=");
     expect(systemEnv).toContain("ASSISTANT_TOKEN=");
     expect(systemEnv).toContain("MEMORY_AUTH_TOKEN=");
     expect(existsSync(join(vaultDir, "system.env"))).toBe(true);

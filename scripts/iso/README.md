@@ -47,7 +47,7 @@ From the repository root:
 ```bash
 KIOSK_USER=operator \
 KIOSK_PASSWORD='ChangeMeNow123!' \
-OPENPALM_ADMIN_URL='http://127.0.0.1:8100' \
+OP_ADMIN_URL='http://127.0.0.1:8100' \
 DEBIAN_ARCH=arm64 \
 ./scripts/iso/build-debian13-kiosk-iso.sh
 ```
@@ -60,7 +60,7 @@ DEBIAN_ARCH=amd64 ./scripts/iso/build-debian13-kiosk-iso.sh
 
 ### Optional overrides
 
-- `OPENPALM_IMAGES_TAR`: path to prebuilt `.tar.zst` image cache.
+- `OP_IMAGES_TAR`: path to prebuilt `.tar.zst` image cache.
 - `ISO_OUT_DIR`: output directory for final ISO.
 - `BUILD_ROOT`: temporary live-build workspace.
 - `DEBIAN_SUITE`: defaults to `trixie`.
@@ -73,16 +73,16 @@ DEBIAN_ARCH=amd64 ./scripts/iso/build-debian13-kiosk-iso.sh
 2. Boot the device.
 3. Sign in as configured `KIOSK_USER` with configured `KIOSK_PASSWORD`.
 4. System forces password change immediately.
-5. After successful password change, kiosk session opens OpenPalm admin at `OPENPALM_ADMIN_URL`.
+5. After successful password change, kiosk session opens OpenPalm admin at `OP_ADMIN_URL`.
 
 ## Runtime filesystem layout on device
 
 The boot service uses:
 
-- `OPENPALM_CONFIG_HOME=/var/lib/openpalm/config`
-- `OPENPALM_STATE_HOME=/var/lib/openpalm/state`
-- `OPENPALM_DATA_HOME=/var/lib/openpalm/data`
-- `OPENPALM_WORK_DIR=/var/lib/openpalm/work`
+- `OP_CONFIG_HOME=/var/lib/openpalm/config`
+- `OP_STATE_HOME=/var/lib/openpalm/state`
+- `OP_DATA_HOME=/var/lib/openpalm/data`
+- `OP_WORK_DIR=/var/lib/openpalm/work`
 
 This keeps config/state/data separated and aligned with OpenPalm's XDG-style
 contract. The paths intentionally deviate from the standard XDG defaults
@@ -93,6 +93,6 @@ appliance: a single-purpose device where all OpenPalm data lives under
 ## Notes for production rollout
 
 - Replace default password in build pipeline secrets.
-- Keep `OPENPALM_ADMIN_URL` on loopback for local-only kiosk access.
+- Keep `OP_ADMIN_URL` on loopback for local-only kiosk access.
 - If you need Wi-Fi onboarding, add NetworkManager + a first-boot provisioning UI before kiosk launch.
 - For fully immutable kiosk behavior, tighten TTY switching and shell access separately.

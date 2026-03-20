@@ -30,7 +30,7 @@ export { resolveLogsDir as defaultStateHome };
 
 // CLI-specific paths (not in lib)
 export function defaultDockerSock(): string {
-  if (process.env.OPENPALM_DOCKER_SOCK) return process.env.OPENPALM_DOCKER_SOCK;
+  if (process.env.OP_DOCKER_SOCK) return process.env.OP_DOCKER_SOCK;
   if (IS_WINDOWS) return '//./pipe/docker_engine';
 
   const home = homedir();
@@ -44,5 +44,5 @@ export function defaultDockerSock(): string {
 }
 
 export function defaultWorkDir(): string {
-  return process.env.OPENPALM_WORK_DIR || `${resolveDataDir()}/workspace`;
+  return process.env.OP_WORK_DIR || `${resolveDataDir()}/workspace`;
 }

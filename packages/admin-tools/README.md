@@ -1,6 +1,6 @@
 # @openpalm/admin-tools
 
-OpenCode plugin that provides tools for managing the OpenPalm stack through the admin API. These tools require a running admin container and are loaded only when `OPENPALM_ADMIN_API_URL` is available.
+OpenCode plugin that provides tools for managing the OpenPalm stack through the admin API. These tools require a running admin container and are loaded only when `OP_ADMIN_API_URL` is available.
 
 This package is separate from `@openpalm/assistant-tools`, which contains memory-only tools that work without admin.
 
@@ -50,8 +50,8 @@ This package is separate from `@openpalm/assistant-tools`, which contains memory
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENPALM_ADMIN_API_URL` | `http://admin:8100` | Admin API endpoint |
-| `OPENPALM_ASSISTANT_TOKEN` | (required) | Authentication token |
+| `OP_ADMIN_API_URL` | `http://admin:8100` | Admin API endpoint |
+| `OP_ASSISTANT_TOKEN` | (required) | Authentication token |
 
 All requests use `x-admin-token` header authentication and are audit-logged with the `assistant` identity.
 

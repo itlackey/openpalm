@@ -35,7 +35,7 @@ Create `packages/mcp/` with:
 
 Component registry entry at `registry/components/mcp/`:
 - `compose.yml` — MCP server container on `assistant_net`
-- `.env.schema` — `MCP_API_KEY`, `OPENPALM_ADMIN_TOKEN`
+- `.env.schema` — `MCP_API_KEY`, `OP_ADMIN_TOKEN`
 - `mcp.caddy` — LAN-only reverse proxy route
 
 Client config generation: `GET /admin/mcp/config` returns pre-filled config for Claude Desktop/Cursor.

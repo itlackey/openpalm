@@ -27,7 +27,7 @@ The admin container runs a second OpenCode instance alongside SvelteKit. The use
 
 Add a link or status card in the admin dashboard that:
 - Shows whether admin OpenCode is running (health check against `localhost:4097` from inside the container)
-- Links the user to `localhost:3881` (or the configured `OPENPALM_ADMIN_OPENCODE_PORT`)
+- Links the user to `localhost:3881` (or the configured `OP_ADMIN_OPENCODE_PORT`)
 
 ### 2. Documentation updates
 

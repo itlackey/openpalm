@@ -535,7 +535,7 @@ describe("composePull", () => {
   test("merges env file values into process env for pull", async () => {
     const tmpEnvFile = `/tmp/docker-pull-test-${Date.now()}.env`;
     const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
-    realFs.writeFileSync(tmpEnvFile, "OPENPALM_IMAGE_TAG=v1.2.3\nOPENPALM_IMAGE_NAMESPACE=myns\n");
+    realFs.writeFileSync(tmpEnvFile, "OP_IMAGE_TAG=v1.2.3\nOP_IMAGE_NAMESPACE=myns\n");
 
     existsSyncMock.mockReturnValue(true);
     mockExecSuccess();
@@ -546,8 +546,8 @@ describe("composePull", () => {
     // The env passed to execFile should contain the env file values
     const call = execFileMock.mock.calls[0];
     const opts = call[2] as { env: Record<string, string> };
-    expect(opts.env.OPENPALM_IMAGE_TAG).toBe("v1.2.3");
-    expect(opts.env.OPENPALM_IMAGE_NAMESPACE).toBe("myns");
+    expect(opts.env.OP_IMAGE_TAG).toBe("v1.2.3");
+    expect(opts.env.OP_IMAGE_NAMESPACE).toBe("myns");
 
     realFs.unlinkSync(tmpEnvFile);
   });
@@ -599,7 +599,7 @@ describe("selfRecreateAdmin", () => {
 
     const tmpEnvFile = `/tmp/docker-self-recreate-test-${Date.now()}.env`;
     const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
-    realFs.writeFileSync(tmpEnvFile, "OPENPALM_IMAGE_TAG=v2.0.0\n");
+    realFs.writeFileSync(tmpEnvFile, "OP_IMAGE_TAG=v2.0.0\n");
 
     existsSyncMock.mockReturnValue(true);
 
@@ -607,7 +607,7 @@ describe("selfRecreateAdmin", () => {
     selfRecreateAdmin("/state", { envFiles: [tmpEnvFile] });
 
     const opts = spawnMock.mock.calls[0][2];
-    expect(opts.env.OPENPALM_IMAGE_TAG).toBe("v2.0.0");
+    expect(opts.env.OP_IMAGE_TAG).toBe("v2.0.0");
 
     realFs.unlinkSync(tmpEnvFile);
   });

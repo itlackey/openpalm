@@ -1,7 +1,7 @@
 # Channel: API — Full OpenAI + Anthropic compatible API facade
 services:
   channel-api:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       PORT: "8182"

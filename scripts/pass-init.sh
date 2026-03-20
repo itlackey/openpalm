@@ -11,7 +11,7 @@ data/secrets/provider.json so the admin runtime can detect the pass backend.
 EOF
 }
 
-OPENPALM_HOME="${OPENPALM_HOME:-${HOME}/.openpalm}"
+OP_HOME="${OP_HOME:-${HOME}/.openpalm}"
 PASS_PREFIX="openpalm"
 GPG_ID=""
 
@@ -22,7 +22,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --home)
-      OPENPALM_HOME="${2:-}"
+      OP_HOME="${2:-}"
       shift 2
       ;;
     --prefix)
@@ -47,7 +47,7 @@ if [[ -z "$GPG_ID" ]]; then
   exit 1
 fi
 
-SECRETS_DIR="$OPENPALM_HOME/data/secrets"
+SECRETS_DIR="$OP_HOME/data/secrets"
 STORE_DIR="$SECRETS_DIR/pass-store"
 PROVIDER_CONFIG="$SECRETS_DIR/provider.json"
 

@@ -33,7 +33,7 @@ Implementation guide for migrating OpenPalm's secrets from plaintext `.env` file
 
 The secret manager is the single system through which ALL secrets are resolved, stored, and lifecycle-managed. It wraps Varlock (for boot-time resolution) and the configured `SecretBackend` (for runtime write operations). Three categories of secrets flow through this system:
 
-**Core secrets** — Global secrets for the OpenPalm stack itself: `OPENPALM_ADMIN_TOKEN`, `ASSISTANT_TOKEN`, LLM API keys, `MEMORY_AUTH_TOKEN`, etc. These are declared in `vault/user.env.schema` and `vault/system.env.schema` and mapped in `ENV_TO_SECRET_KEY`. User secrets (LLM keys, provider URLs) live in `vault/user.env`; system secrets (admin token, HMAC secrets, service auth) live in `vault/system.env`.
+**Core secrets** — Global secrets for the OpenPalm stack itself: `OP_ADMIN_TOKEN`, `ASSISTANT_TOKEN`, LLM API keys, `MEMORY_AUTH_TOKEN`, etc. These are declared in `vault/user.env.schema` and `vault/system.env.schema` and mapped in `ENV_TO_SECRET_KEY`. User secrets (LLM keys, provider URLs) live in `vault/user.env`; system secrets (admin token, HMAC secrets, service auth) live in `vault/system.env`.
 
 **Component secrets** — Per-instance secrets for installed components (e.g., `DISCORD_BOT_TOKEN` for a Discord channel instance). Each component's `.env.schema` file declares `@sensitive` fields. When a component instance is created, the secret manager initializes entries for its sensitive fields. When an instance is deleted, the secret manager cleans up its entries. Component secrets use the prefix convention `openpalm/component/<instance-id>/`.
 
@@ -298,22 +298,22 @@ The compose invocation uses `--env-file vault/system.env --env-file vault/user.e
 
 assistant:
   environment:
-    # BEFORE: OPENPALM_ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-}
-    OPENPALM_ASSISTANT_TOKEN: ${ASSISTANT_TOKEN:-}   # NEW
+    # BEFORE: OP_ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
+    OP_ASSISTANT_TOKEN: ${ASSISTANT_TOKEN:-}   # NEW
   volumes:
-    - ${OPENPALM_HOME}/vault/user.env:/etc/openpalm/user.env:ro  # hot-reload
+    - ${OP_HOME}/vault/user.env:/etc/openpalm/user.env:ro  # hot-reload
 
 admin:
   environment:
-    OPENPALM_ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-}
+    OP_ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
     ASSISTANT_TOKEN: ${ASSISTANT_TOKEN:-}             # NEW — for verification
   volumes:
-    - ${OPENPALM_HOME}/vault:/etc/openpalm/vault:rw  # full vault access
+    - ${OP_HOME}/vault:/etc/openpalm/vault:rw  # full vault access
 
 guardian:
   environment:
     # REMOVE: ADMIN_TOKEN: ${ADMIN_TOKEN:-}          # guardian never used it
-    OPENPALM_ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-}  # for request validation
+    OP_ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}  # for request validation
     # CHANNEL_*_SECRET vars injected via ${VAR} substitution from system.env
 ```
 
@@ -322,7 +322,7 @@ guardian:
 **File:** `packages/assistant-tools/opencode/tools/lib.ts`
 
 ```typescript
-const ASSISTANT_TOKEN = process.env.OPENPALM_ASSISTANT_TOKEN || "";
+const ASSISTANT_TOKEN = process.env.OP_ASSISTANT_TOKEN || "";
 // header name stays x-admin-token for backward compat
 headers: { "x-admin-token": ASSISTANT_TOKEN, ... }
 ```
@@ -407,7 +407,7 @@ export interface SecretBackend {
  */
 export const CORE_ENV_TO_SECRET_KEY: Record<string, string> = {
   // System secrets (vault/system.env in plaintext mode)
-  OPENPALM_ADMIN_TOKEN:     "openpalm/admin-token",
+  OP_ADMIN_TOKEN:     "openpalm/admin-token",
   ASSISTANT_TOKEN:          "openpalm/assistant-token",
   MEMORY_AUTH_TOKEN:        "openpalm/memory/auth-token",
   OPENCODE_SERVER_PASSWORD: "openpalm/opencode-server-password",
@@ -434,7 +434,7 @@ export const ENV_TO_SECRET_KEY: Record<string, string> = { ...CORE_ENV_TO_SECRET
 
 /** Keys that hold actual secrets — writes require admin token. */
 export const SECRET_KEYS = new Set([
-  "OPENPALM_ADMIN_TOKEN", "ASSISTANT_TOKEN",
+  "OP_ADMIN_TOKEN", "ASSISTANT_TOKEN",
   "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY",
   "MISTRAL_API_KEY", "GOOGLE_API_KEY",
   "OPENVIKING_API_KEY", "MCP_API_KEY", "EMBEDDING_API_KEY",
@@ -497,11 +497,11 @@ const logger = createLogger("plaintext-backend");
  * Keys not listed here default to "user" (user.env).
  */
 const SYSTEM_ENV_KEYS = new Set([
-  "OPENPALM_ADMIN_TOKEN", "ASSISTANT_TOKEN",
-  "OPENPALM_HOME", "OPENPALM_UID", "OPENPALM_GID", "OPENPALM_DOCKER_SOCK",
-  "OPENPALM_IMAGE_NAMESPACE", "OPENPALM_IMAGE_TAG",
+  "OP_ADMIN_TOKEN", "ASSISTANT_TOKEN",
+  "OP_HOME", "OP_UID", "OP_GID", "OP_DOCKER_SOCK",
+  "OP_IMAGE_NAMESPACE", "OP_IMAGE_TAG",
   "MEMORY_AUTH_TOKEN", "OPENCODE_SERVER_PASSWORD",
-  "OPENPALM_SETUP_COMPLETE",
+  "OP_SETUP_COMPLETE",
   // Channel HMAC secrets are dynamically added (CHANNEL_*_SECRET pattern)
 ]);
 
@@ -661,12 +661,12 @@ const BACKEND_CONSTRUCTORS: Record<
  * Detect the active secret backend by reading the @plugin() declaration
  * from the vault schema files (user.env.schema or system.env.schema).
  *
- * Falls back to OPENPALM_SECRET_BACKEND env var, then to PlaintextBackend
+ * Falls back to OP_SECRET_BACKEND env var, then to PlaintextBackend
  * (not pass — plaintext is the safe default for existing installations).
  */
 function detectProvider(openpalmHome: string): string | null {
   // 1. Check explicit override
-  const envOverride = process.env.OPENPALM_SECRET_BACKEND;
+  const envOverride = process.env.OP_SECRET_BACKEND;
   if (envOverride && BACKEND_CONSTRUCTORS[envOverride]) {
     return envOverride;
   }
@@ -919,8 +919,8 @@ Updated to target `~/.openpalm/data/secrets/pass-store/`:
 #!/usr/bin/env bash
 set -euo pipefail
 
-OPENPALM_HOME="${OPENPALM_HOME:-${HOME}/.openpalm}"
-STORE_DIR="$OPENPALM_HOME/data/secrets/pass-store"
+OP_HOME="${OP_HOME:-${HOME}/.openpalm}"
+STORE_DIR="$OP_HOME/data/secrets/pass-store"
 GPG_ID="${1:-}"
 
 if [ -z "$GPG_ID" ]; then
@@ -935,8 +935,8 @@ export PASSWORD_STORE_DIR="$STORE_DIR"
 pass init "$GPG_ID"
 
 # Write provider config
-mkdir -p "$OPENPALM_HOME/data/secrets"
-cat > "$OPENPALM_HOME/data/secrets/provider.json" <<EOF
+mkdir -p "$OP_HOME/data/secrets"
+cat > "$OP_HOME/data/secrets/provider.json" <<EOF
 {
   "provider": "@varlock/pass-plugin",
   "pass": {
@@ -993,7 +993,7 @@ When the pass backend is active, both vault schema files use `@plugin()` declara
 # OpenPalm — User Secrets Schema (pass-backed)
 #
 # @plugin(@varlock/pass-plugin@0.0.4)
-# @initPass(storePath=${OPENPALM_HOME}/data/secrets/pass-store, namePrefix=openpalm/)
+# @initPass(storePath=${OP_HOME}/data/secrets/pass-store, namePrefix=openpalm/)
 # @defaultSensitive=true
 # @defaultRequired=infer
 # ---
@@ -1056,13 +1056,13 @@ OWNER_EMAIL=pass("owner/email", allowMissing=true)
 # OpenPalm — System Secrets Schema (pass-backed)
 #
 # @plugin(@varlock/pass-plugin@0.0.4)
-# @initPass(storePath=${OPENPALM_HOME}/data/secrets/pass-store, namePrefix=openpalm/)
+# @initPass(storePath=${OP_HOME}/data/secrets/pass-store, namePrefix=openpalm/)
 # @defaultSensitive=true
 # @defaultRequired=infer
 # ---
 
 # @type=string(minLength=8) @required
-OPENPALM_ADMIN_TOKEN=pass("admin-token")
+OP_ADMIN_TOKEN=pass("admin-token")
 
 # @type=string(minLength=32) @required @sensitive
 ASSISTANT_TOKEN=pass("assistant-token")
@@ -1074,25 +1074,25 @@ MEMORY_AUTH_TOKEN=pass("memory/auth-token")
 OPENCODE_SERVER_PASSWORD=pass("opencode-server-password", allowMissing=true)
 
 # @type=string @sensitive=false @required
-OPENPALM_HOME=
+OP_HOME=
 
 # @type=integer @sensitive=false
-OPENPALM_UID=1000
+OP_UID=1000
 
 # @type=integer @sensitive=false
-OPENPALM_GID=1000
+OP_GID=1000
 
 # @type=string @sensitive=false
-OPENPALM_DOCKER_SOCK=/var/run/docker.sock
+OP_DOCKER_SOCK=/var/run/docker.sock
 
 # @type=string @sensitive=false
-OPENPALM_IMAGE_NAMESPACE=openpalm
+OP_IMAGE_NAMESPACE=openpalm
 
 # @type=string @sensitive=false
-OPENPALM_IMAGE_TAG=latest
+OP_IMAGE_TAG=latest
 
 # @type=boolean @sensitive=false
-OPENPALM_SETUP_COMPLETE=false
+OP_SETUP_COMPLETE=false
 
 # Channel HMAC secrets — dynamically extended as channels are installed
 # @type=string(minLength=32) @sensitive
@@ -1100,7 +1100,7 @@ OPENPALM_SETUP_COMPLETE=false
 # CHANNEL_DISCORD_SECRET=pass("channel/discord-secret", allowMissing=true)
 ```
 
-Note `storePath=${OPENPALM_HOME}/data/secrets/pass-store` in `@initPass()` — this tells the varlock plugin to read from the `~/.openpalm/`-scoped store, not `~/.password-store`.
+Note `storePath=${OP_HOME}/data/secrets/pass-store` in `@initPass()` — this tells the varlock plugin to read from the `~/.openpalm/`-scoped store, not `~/.password-store`.
 
 ### 3.6 — Setup wizard integration
 
@@ -1348,10 +1348,10 @@ Updated to target `~/.openpalm/data/secrets/pass-store/`. This migrates from the
 #!/usr/bin/env bash
 set -euo pipefail
 
-OPENPALM_HOME="${OPENPALM_HOME:-${HOME}/.openpalm}"
-STORE_DIR="$OPENPALM_HOME/data/secrets/pass-store"
-USER_ENV="$OPENPALM_HOME/vault/user.env"
-SYSTEM_ENV="$OPENPALM_HOME/vault/system.env"
+OP_HOME="${OP_HOME:-${HOME}/.openpalm}"
+STORE_DIR="$OP_HOME/data/secrets/pass-store"
+USER_ENV="$OP_HOME/vault/user.env"
+SYSTEM_ENV="$OP_HOME/vault/system.env"
 
 [ -f "$USER_ENV" ] || [ -f "$SYSTEM_ENV" ] || { echo "No vault env files — nothing to migrate."; exit 0; }
 command -v pass >/dev/null || { echo "Error: pass not installed."; exit 1; }
@@ -1360,7 +1360,7 @@ command -v pass >/dev/null || { echo "Error: pass not installed."; exit 1; }
 export PASSWORD_STORE_DIR="$STORE_DIR"
 
 declare -A KEY_MAP=(
-  [OPENPALM_ADMIN_TOKEN]="admin-token" [ASSISTANT_TOKEN]="assistant-token"
+  [OP_ADMIN_TOKEN]="admin-token" [ASSISTANT_TOKEN]="assistant-token"
   [OPENAI_API_KEY]="llm/openai-api-key" [OPENAI_BASE_URL]="llm/openai-base-url"
   [ANTHROPIC_API_KEY]="llm/anthropic-api-key" [GROQ_API_KEY]="llm/groq-api-key"
   [MISTRAL_API_KEY]="llm/mistral-api-key" [GOOGLE_API_KEY]="llm/google-api-key"
@@ -1399,7 +1399,7 @@ echo "Migrated: $migrated  Skipped: $skipped"
 
 ### 7.2 — CLI subcommands
 
-All commands respect `PASSWORD_STORE_DIR=${OPENPALM_HOME}/data/secrets/pass-store`:
+All commands respect `PASSWORD_STORE_DIR=${OP_HOME}/data/secrets/pass-store`:
 
 | Command | Action |
 |---------|--------|
@@ -1442,7 +1442,7 @@ OPENAI_API_KEY=azureSecret("openpalm-llm-openai-api-key", allowMissing=true)
 # ---
 
 # @type=string(minLength=8) @required
-OPENPALM_ADMIN_TOKEN=azureSecret("openpalm-admin-token")
+OP_ADMIN_TOKEN=azureSecret("openpalm-admin-token")
 
 # @type=string(minLength=32) @required @sensitive
 ASSISTANT_TOKEN=azureSecret("openpalm-assistant-token")
@@ -1501,7 +1501,7 @@ The admin OpenCode instance (#304) authenticates with `ADMIN_TOKEN` and has full
 
 ### Why the assistant can't write secrets
 
-The assistant receives `ASSISTANT_TOKEN` via `OPENPALM_ASSISTANT_TOKEN` env var. Secrets endpoints call `requireAdmin()` which only accepts `ADMIN_TOKEN`. The assistant does not possess `ADMIN_TOKEN` — it's not in its environment, not on disk it can access, and no endpoint returns it.
+The assistant receives `ASSISTANT_TOKEN` via `OP_ASSISTANT_TOKEN` env var. Secrets endpoints call `requireAdmin()` which only accepts `ADMIN_TOKEN`. The assistant does not possess `ADMIN_TOKEN` — it's not in its environment, not on disk it can access, and no endpoint returns it.
 
 ### Password manager UI invariants
 
@@ -1589,7 +1589,7 @@ The `PlaintextBackend` does not have this requirement — plaintext `vault/user.
 - config/components/core.yml             — token routing, vault mounts
 - vault/user.env.schema                  — user secret declarations
 - vault/system.env.schema                — system secret declarations + ASSISTANT_TOKEN
-- packages/assistant-tools/.../lib.ts    — OPENPALM_ASSISTANT_TOKEN
+- packages/assistant-tools/.../lib.ts    — OP_ASSISTANT_TOKEN
 - scripts/dev-setup.sh                   — generate ASSISTANT_TOKEN, create vault/ structure
 - docs + AGENTS.md                       — update references
 ```

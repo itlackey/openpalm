@@ -17,13 +17,13 @@ import { resolveCacheHome } from "./paths.js";
 
 const REPO = "itlackey/openpalm";
 const REPO_URL =
-  process.env.OPENPALM_REGISTRY_URL ??
+  process.env.OP_REGISTRY_URL ??
   `https://github.com/${REPO}.git`;
 
 /** Validate branch name: alphanumeric, hyphens, underscores, dots, slashes. Rejects '..' sequences. */
 const BRANCH_RE = /^[a-zA-Z0-9._\/-]+$/;
 const BRANCH = (() => {
-  const b = process.env.OPENPALM_REGISTRY_BRANCH ?? "main";
+  const b = process.env.OP_REGISTRY_BRANCH ?? "main";
   if (!BRANCH_RE.test(b)) throw new Error(`Invalid registry branch name: ${b}`);
   if (b.includes("..")) throw new Error(`Invalid registry branch name (contains '..'): ${b}`);
   return b;

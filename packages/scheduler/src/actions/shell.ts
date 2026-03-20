@@ -15,10 +15,10 @@ const SHELL_SAFE_ENV_KEYS = [
   "LC_ALL",
   "TZ",
   "NODE_ENV",
-  "OPENPALM_HOME",
-  "OPENPALM_CONFIG_HOME",
-  "OPENPALM_STATE_HOME",
-  "OPENPALM_DATA_HOME",
+  "OP_HOME",
+  "OP_CONFIG_HOME",
+  "OP_STATE_HOME",
+  "OP_DATA_HOME",
 ];
 
 export function executeShellAction(action: AutomationAction): Promise<void> {

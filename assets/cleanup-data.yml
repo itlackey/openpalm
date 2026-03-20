@@ -20,18 +20,18 @@ action:
     - -c
     - |
       # Compact SQLite memory database if it exists
-      DB="$OPENPALM_DATA_HOME/memory/memories.db"
+      DB="$OP_DATA_HOME/memory/memories.db"
       if [ -f "$DB" ]; then
         sqlite3 "$DB" "VACUUM;" 2>/dev/null || true
       fi
 
       # Remove stale backup files older than 30 days
-      if [ -d "$OPENPALM_DATA_HOME/backups" ]; then
-        find "$OPENPALM_DATA_HOME/backups" -type f -mtime +30 -delete 2>/dev/null || true
+      if [ -d "$OP_DATA_HOME/backups" ]; then
+        find "$OP_DATA_HOME/backups" -type f -mtime +30 -delete 2>/dev/null || true
       fi
 
       # Remove old staged artifact backups
-      for bdir in "$OPENPALM_DATA_HOME"/*/backups; do
+      for bdir in "$OP_DATA_HOME"/*/backups; do
         [ -d "$bdir" ] || continue
         find "$bdir" -type f -mtime +30 -delete 2>/dev/null || true
       done

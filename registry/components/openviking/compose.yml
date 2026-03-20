@@ -13,7 +13,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ${INSTANCE_DIR}/data/workspace:/workspace
-      - ${OPENPALM_HOME}/vault/ov.conf:/app/ov.conf:ro
+      - ${OP_HOME}/vault/ov.conf:/app/ov.conf:ro
     networks: [assistant_net]
     healthcheck:
       # curl is available in the OpenViking image (Python 3.13 + Debian)

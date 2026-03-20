@@ -15,11 +15,11 @@ full allowed-writers policy and filesystem contract.
 OpenCode supports a layered configuration model. OpenPalm uses three layers:
 
 1. **User config** — persisted on the host at
-   `$OPENPALM_CONFIG_HOME/assistant/` and bind-mounted into the container at
+   `$OP_CONFIG_HOME/assistant/` and bind-mounted into the container at
    `~/.config/opencode/`. Users can add custom tools, plugins, or skills here.
    This is the lowest-precedence layer.
 2. **System config** — persisted on the host at
-   `$OPENPALM_DATA_HOME/assistant/` and bind-mounted into the container at
+   `$OP_DATA_HOME/assistant/` and bind-mounted into the container at
    `/etc/opencode/` via `OPENCODE_CONFIG_DIR`. Contains plugin declarations
    and persona (AGENTS.md). Overrides user config for keys it sets.
 3. **Project config** — an `opencode.json` in the `/work` directory (if present).
@@ -97,8 +97,8 @@ Five non-overlapping mounts, each at a distinct container path:
 | `OPENCODE_AUTH` | `false` | Disabled — host-only binding (127.0.0.1) provides the security boundary |
 | `OPENCODE_ENABLE_SSH` | `0` (default) | SSH server (disabled by default, toggleable) |
 | `HOME` | `/home/opencode` | User home for dotfiles, caches, and user config |
-| `OPENPALM_ADMIN_API_URL` | `http://admin:8100` | Admin API base URL (used by admin tools) |
-| `OPENPALM_ADMIN_TOKEN` | *(from secrets.env)* | Bearer token for Admin API calls |
+| `OP_ADMIN_API_URL` | `http://admin:8100` | Admin API base URL (used by admin tools) |
+| `OP_ADMIN_TOKEN` | *(from secrets.env)* | Bearer token for Admin API calls |
 | `MEMORY_API_URL` | `http://memory:8765` | Memory service URL (used by memory tools and plugin) |
 | `MEMORY_USER_ID` | `default_user` | User identifier for memory operations |
 
@@ -161,8 +161,8 @@ Tools are TypeScript files provided by the `@openpalm/assistant-tools` plugin
 
 ### Admin Tools
 
-These call the Admin API at `$OPENPALM_ADMIN_API_URL` using
-`$OPENPALM_ADMIN_TOKEN` for authentication.
+These call the Admin API at `$OP_ADMIN_API_URL` using
+`$OP_ADMIN_TOKEN` for authentication.
 
 | Tool | Purpose |
 |---|---|
@@ -247,7 +247,7 @@ Skills are markdown reference documents that OpenCode surfaces on demand:
 
 Users can add their own tools, plugins, or skills without rebuilding the image.
 
-**Host path:** `$OPENPALM_CONFIG_HOME/assistant/`
+**Host path:** `$OP_CONFIG_HOME/assistant/`
 **Container path:** `/home/opencode/.config/opencode/`
 
 This directory lives under CONFIG_HOME — the user-owned persistent source of truth for all

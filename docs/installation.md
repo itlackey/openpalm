@@ -36,19 +36,19 @@ These variables are read by the setup scripts before downloading the binary.
 
 | Variable | Default | Description |
 |---|---|---|
-| `OPENPALM_VERSION` | latest release | Pin a specific release tag, e.g. `v0.9.0-rc11`. |
-| `OPENPALM_INSTALL_DIR` | `~/.local/bin` (Linux/macOS) or `%LOCALAPPDATA%\openpalm\bin` (Windows) | Directory where the `openpalm` binary is placed. Must be on `PATH` for the CLI to work without a full path. |
+| `OP_VERSION` | latest release | Pin a specific release tag, e.g. `v0.9.0-rc11`. |
+| `OP_INSTALL_DIR` | `~/.local/bin` (Linux/macOS) or `%LOCALAPPDATA%\openpalm\bin` (Windows) | Directory where the `openpalm` binary is placed. Must be on `PATH` for the CLI to work without a full path. |
 
 Example — pin a specific version:
 
 ```bash
-OPENPALM_VERSION=v0.9.0-rc11 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+OP_VERSION=v0.9.0-rc11 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
 
 Example — custom install location:
 
 ```bash
-OPENPALM_INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+OP_INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
 
 ---
@@ -127,9 +127,9 @@ Run `openpalm --help` or `openpalm <command> --help` for flags and options.
 
 | Variable | Default (Linux/macOS) | Purpose |
 |---|---|---|
-| `OPENPALM_CONFIG_HOME` | `~/.config/openpalm` | User-owned persistent config (secrets, channels, assistant config) |
-| `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` | Service data (memory DB, Caddy certs, `host.json`) |
-| `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | Generated runtime artifacts (compose files, Caddyfile, audit logs) |
+| `OP_CONFIG_HOME` | `~/.config/openpalm` | User-owned persistent config (secrets, channels, assistant config) |
+| `OP_DATA_HOME` | `~/.local/share/openpalm` | Service data (memory DB, Caddy certs, `host.json`) |
+| `OP_STATE_HOME` | `~/.local/state/openpalm` | Generated runtime artifacts (compose files, Caddyfile, audit logs) |
 
 On Windows the defaults follow `%APPDATA%` / `%LOCALAPPDATA%` conventions.
 

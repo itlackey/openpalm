@@ -242,13 +242,13 @@ All services move to the **38XX port range** to avoid conflicts with common dev 
 | Scheduler | 8090 | **3897** | Internal only |
 | Memory | 8080 | **3898** | Internal only |
 | Guardian | 8080 | **3899** | HMAC verification |
-| Ingress (Caddy) | 8080 | **3080** | Configurable via `OPENPALM_INGRESS_PORT` |
+| Ingress (Caddy) | 8080 | **3080** | Configurable via `OP_INGRESS_PORT` |
 
 **Implementation tasks:**
 - Update `assets/docker-compose.yml` — all `PORT` env vars and host port binds
 - Update `assets/admin.yml` — admin port, admin OpenCode port, Caddy upstream
 - Update `assets/Caddyfile` — `reverse_proxy admin:3880`
-- Update `vault/system.env` template — `OPENPALM_INGRESS_PORT=3080`
+- Update `vault/system.env` template — `OP_INGRESS_PORT=3080`
 - Update all healthcheck commands referencing old ports
 - Update `packages/lib/` constants (if any hardcoded port references exist)
 - Update channel compose overlays in `registry/components/`

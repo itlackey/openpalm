@@ -57,9 +57,9 @@ Run `scripts/setup.ps1 --help` (Windows) or `scripts/setup.sh --help` (Mac/Linux
 Custom paths via environment variables:
 
 ```bash
-OPENPALM_CONFIG_HOME=/opt/openpalm/config \
-OPENPALM_DATA_HOME=/opt/openpalm/data \
-OPENPALM_STATE_HOME=/opt/openpalm/state \
+OP_CONFIG_HOME=/opt/openpalm/config \
+OP_DATA_HOME=/opt/openpalm/data \
+OP_STATE_HOME=/opt/openpalm/state \
   bash setup.sh
 ```
 
@@ -134,10 +134,10 @@ You normally do not need to touch the other two directories directly. `DATA_HOME
 
 | Variable | Default |
 |---|---|
-| `OPENPALM_CONFIG_HOME` | `~/.config/openpalm` |
-| `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` |
-| `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` |
-| `OPENPALM_WORK_DIR` | `~/openpalm` |
+| `OP_CONFIG_HOME` | `~/.config/openpalm` |
+| `OP_DATA_HOME` | `~/.local/share/openpalm` |
+| `OP_STATE_HOME` | `~/.local/state/openpalm` |
+| `OP_WORK_DIR` | `~/openpalm` |
 
 ---
 

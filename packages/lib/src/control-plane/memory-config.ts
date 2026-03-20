@@ -342,7 +342,7 @@ export const resetQdrantCollection = resetVectorStore;
 function getMemoryApiBases(): string[] {
   const configured =
     process.env.MEMORY_API_URL?.trim() ||
-    process.env.OPENPALM_MEMORY_API_URL?.trim();
+    process.env.OP_MEMORY_API_URL?.trim();
 
   const bases = configured
     ? [configured]

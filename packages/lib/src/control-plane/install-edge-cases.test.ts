@@ -75,7 +75,7 @@ function createStubAssetProvider(): CoreAssetProvider {
     adminOpencodeConfig: () =>
       '{"$schema":"https://opencode.ai/config.json","plugin":["@openpalm/admin-tools"]}\n',
     secretsSchema: () => "ADMIN_TOKEN=string\n",
-    stackSchema: () => "OPENPALM_IMAGE_TAG=string\n",
+    stackSchema: () => "OP_IMAGE_TAG=string\n",
     cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
     cleanupData: () => "name: cleanup-data\nschedule: weekly\n",
     validateConfig: () => "name: validate-config\nschedule: hourly\n",
@@ -93,12 +93,12 @@ let logsDir: string;
 const savedEnv: Record<string, string | undefined> = {};
 
 function saveAndSetEnv(): void {
-  savedEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
-  process.env.OPENPALM_HOME = homeDir;
+  savedEnv.OP_HOME = process.env.OP_HOME;
+  process.env.OP_HOME = homeDir;
 }
 
 function restoreEnv(): void {
-  process.env.OPENPALM_HOME = savedEnv.OPENPALM_HOME;
+  process.env.OP_HOME = savedEnv.OP_HOME;
 }
 
 /** Create a full directory tree matching ensureHomeDirs() output. */
@@ -145,7 +145,7 @@ function seedMinimalEnvFiles(): void {
     join(vaultDir, "user.env"),
     [
       "# OpenPalm Secrets",
-      "export OPENPALM_ADMIN_TOKEN=",
+      "export OP_ADMIN_TOKEN=",
       "export ADMIN_TOKEN=",
       "export OPENAI_API_KEY=",
       "export OPENAI_BASE_URL=",
@@ -214,10 +214,10 @@ describe("Fresh Install", () => {
   });
 
   // Scenario 2: isSetupComplete returns false before setup
-  it("isSetupComplete returns false when system.env has OPENPALM_SETUP_COMPLETE=false", () => {
+  it("isSetupComplete returns false when system.env has OP_SETUP_COMPLETE=false", () => {
     writeFileSync(
       join(vaultDir, "system.env"),
-      "OPENPALM_SETUP_COMPLETE=false\n"
+      "OP_SETUP_COMPLETE=false\n"
     );
     // Empty user.env so fallback check doesn't trigger
     writeFileSync(join(vaultDir, "user.env"), "");
@@ -238,14 +238,14 @@ describe("Fresh Install", () => {
   });
 
   // Scenario 4: performSetup marks setup complete in data/stack.env
-  it("performSetup marks OPENPALM_SETUP_COMPLETE=true in data stack.env", async () => {
+  it("performSetup marks OP_SETUP_COMPLETE=true in data stack.env", async () => {
     seedMinimalEnvFiles();
 
     await performSetup(makeValidInput(), createStubAssetProvider());
 
     const stackEnv = readFileSync(join(dataDir, "stack.env"), "utf-8");
     const parsed = parseEnvContent(stackEnv);
-    expect(parsed.OPENPALM_SETUP_COMPLETE).toBe("true");
+    expect(parsed.OP_SETUP_COMPLETE).toBe("true");
   });
 });
 
@@ -268,7 +268,7 @@ describe("Existing Install", () => {
   // Scenario 5: ensureSecrets does NOT overwrite existing user.env
   it("ensureSecrets does not overwrite existing user.env", () => {
     const customContent =
-      "export OPENPALM_ADMIN_TOKEN=my-custom-token\nexport MEMORY_AUTH_TOKEN=custom-auth-token\n";
+      "export OP_ADMIN_TOKEN=my-custom-token\nexport MEMORY_AUTH_TOKEN=custom-auth-token\n";
     writeFileSync(join(vaultDir, "user.env"), customContent);
 
     const state: ControlPlaneState = {
@@ -336,8 +336,8 @@ describe("Existing Install", () => {
     expect(secondMatch![1]).toBe(firstToken);
   });
 
-  // Scenario 7: performSetup marks OPENPALM_SETUP_COMPLETE=true in dataDir/stack.env
-  it("performSetup marks OPENPALM_SETUP_COMPLETE=true in data stack.env", async () => {
+  // Scenario 7: performSetup marks OP_SETUP_COMPLETE=true in dataDir/stack.env
+  it("performSetup marks OP_SETUP_COMPLETE=true in data stack.env", async () => {
     await performSetup(makeValidInput(), createStubAssetProvider());
 
     const stackEnv = readFileSync(
@@ -345,7 +345,7 @@ describe("Existing Install", () => {
       "utf-8"
     );
     const parsed = parseEnvContent(stackEnv);
-    expect(parsed.OPENPALM_SETUP_COMPLETE).toBe("true");
+    expect(parsed.OP_SETUP_COMPLETE).toBe("true");
   });
 
   // Scenario 8: Re-setup with different provider preserves existing connections
@@ -455,27 +455,27 @@ describe("Broken/Corrupt State", () => {
     expect(parsed.ANOTHER_VALID).toBe("value");
   });
 
-  // Scenario 11: system.env missing OPENPALM_SETUP_COMPLETE
-  it("isSetupComplete falls back to token check when OPENPALM_SETUP_COMPLETE missing", () => {
-    // system.env without OPENPALM_SETUP_COMPLETE
+  // Scenario 11: system.env missing OP_SETUP_COMPLETE
+  it("isSetupComplete falls back to token check when OP_SETUP_COMPLETE missing", () => {
+    // system.env without OP_SETUP_COMPLETE
     writeFileSync(
       join(vaultDir, "system.env"),
-      "OPENPALM_IMAGE_TAG=latest\n"
+      "OP_IMAGE_TAG=latest\n"
     );
 
     // user.env without any token
     writeFileSync(
       join(vaultDir, "user.env"),
-      "export OPENPALM_ADMIN_TOKEN=\nexport ADMIN_TOKEN=\n"
+      "export OP_ADMIN_TOKEN=\nexport ADMIN_TOKEN=\n"
     );
 
     expect(isSetupComplete(vaultDir)).toBe(false);
   });
 
-  it("isSetupComplete falls back to true when admin token is set but OPENPALM_SETUP_COMPLETE missing", () => {
+  it("isSetupComplete falls back to true when admin token is set but OP_SETUP_COMPLETE missing", () => {
     writeFileSync(
       join(vaultDir, "system.env"),
-      "OPENPALM_IMAGE_TAG=latest\nexport OPENPALM_ADMIN_TOKEN=my-real-token\n"
+      "OP_IMAGE_TAG=latest\nexport OP_ADMIN_TOKEN=my-real-token\n"
     );
 
     expect(isSetupComplete(vaultDir)).toBe(true);
@@ -570,11 +570,11 @@ describe("Environment Edge Cases", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  // Scenario 16: Commented-out ADMIN_TOKEN but OPENPALM_ADMIN_TOKEN set
-  it("isSetupComplete detects OPENPALM_ADMIN_TOKEN when ADMIN_TOKEN is commented out", () => {
+  // Scenario 16: Commented-out ADMIN_TOKEN but OP_ADMIN_TOKEN set
+  it("isSetupComplete detects OP_ADMIN_TOKEN when ADMIN_TOKEN is commented out", () => {
     writeFileSync(
       join(vaultDir, "system.env"),
-      "SOME_OTHER_KEY=value\nexport OPENPALM_ADMIN_TOKEN=real-token-here\n"
+      "SOME_OTHER_KEY=value\nexport OP_ADMIN_TOKEN=real-token-here\n"
     );
 
     expect(isSetupComplete(vaultDir)).toBe(true);
@@ -848,7 +848,7 @@ describe("performSetup end-to-end artifacts", () => {
     await performSetup(makeValidInput(), createStubAssetProvider());
 
     const secrets = parseEnvFile(join(vaultDir, "system.env"));
-    expect(secrets.OPENPALM_ADMIN_TOKEN).toBe("test-admin-token-12345");
+    expect(secrets.OP_ADMIN_TOKEN).toBe("test-admin-token-12345");
     expect(typeof secrets.ASSISTANT_TOKEN).toBe("string");
     expect(secrets.ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
   });
@@ -1039,38 +1039,38 @@ describe("isSetupComplete edge cases", () => {
     expect(isSetupComplete(vaultDir)).toBe(false);
   });
 
-  it("returns true for OPENPALM_SETUP_COMPLETE=TRUE (case insensitive)", () => {
+  it("returns true for OP_SETUP_COMPLETE=TRUE (case insensitive)", () => {
     writeFileSync(
       join(vaultDir, "system.env"),
-      "OPENPALM_SETUP_COMPLETE=TRUE\n"
+      "OP_SETUP_COMPLETE=TRUE\n"
     );
 
     expect(isSetupComplete(vaultDir)).toBe(true);
   });
 
-  it("returns true for OPENPALM_SETUP_COMPLETE=True (mixed case)", () => {
+  it("returns true for OP_SETUP_COMPLETE=True (mixed case)", () => {
     writeFileSync(
       join(vaultDir, "system.env"),
-      "OPENPALM_SETUP_COMPLETE=True\n"
+      "OP_SETUP_COMPLETE=True\n"
     );
 
     expect(isSetupComplete(vaultDir)).toBe(true);
   });
 
-  it("returns false for OPENPALM_SETUP_COMPLETE=false", () => {
+  it("returns false for OP_SETUP_COMPLETE=false", () => {
     writeFileSync(
       join(vaultDir, "system.env"),
-      "OPENPALM_SETUP_COMPLETE=false\n"
+      "OP_SETUP_COMPLETE=false\n"
     );
     writeFileSync(join(vaultDir, "user.env"), "");
 
     expect(isSetupComplete(vaultDir)).toBe(false);
   });
 
-  it("falls back to OPENPALM_ADMIN_TOKEN presence when OPENPALM_SETUP_COMPLETE not in system.env", () => {
+  it("falls back to OP_ADMIN_TOKEN presence when OP_SETUP_COMPLETE not in system.env", () => {
     writeFileSync(
       join(vaultDir, "system.env"),
-      "OPENPALM_IMAGE_TAG=latest\nexport OPENPALM_ADMIN_TOKEN=my-admin-token\n"
+      "OP_IMAGE_TAG=latest\nexport OP_ADMIN_TOKEN=my-admin-token\n"
     );
 
     expect(isSetupComplete(vaultDir)).toBe(true);
@@ -1142,7 +1142,7 @@ describe("buildSystemSecretsFromSetup edge cases", () => {
       ASSISTANT_TOKEN: "existing-assistant-token",
       MEMORY_AUTH_TOKEN: "existing-memory-token",
     });
-    expect(secrets.OPENPALM_ADMIN_TOKEN).toBe("test-admin-token-12345");
+    expect(secrets.OP_ADMIN_TOKEN).toBe("test-admin-token-12345");
     expect(secrets.ASSISTANT_TOKEN).toBe("existing-assistant-token");
     expect(secrets.MEMORY_AUTH_TOKEN).toBe("existing-memory-token");
   });

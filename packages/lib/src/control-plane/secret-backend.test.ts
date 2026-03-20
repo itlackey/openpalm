@@ -306,7 +306,7 @@ describe('generateRedactSchema', () => {
     const schema = generateRedactSchema(systemEnv);
 
     // All static core mappings should be present
-    expect(schema).toContain('OPENPALM_ADMIN_TOKEN=');
+    expect(schema).toContain('OP_ADMIN_TOKEN=');
     expect(schema).toContain('ASSISTANT_TOKEN=');
     expect(schema).toContain('MEMORY_AUTH_TOKEN=');
     expect(schema).toContain('OPENAI_API_KEY=');

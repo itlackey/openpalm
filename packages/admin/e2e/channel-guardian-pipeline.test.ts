@@ -36,9 +36,9 @@ const STACK_ENV_PATH = resolve(REPO_ROOT, '.dev/state/artifacts/stack.env');
 
 /**
  * Guardian URL: Caddy proxies /guardian/* to guardian:8080 (stripping prefix).
- * The ingress port defaults to 8080 via OPENPALM_INGRESS_PORT in stack.env.
+ * The ingress port defaults to 8080 via OP_INGRESS_PORT in stack.env.
  */
-const CADDY_BASE = `http://localhost:${process.env.OPENPALM_INGRESS_PORT ?? '8080'}`;
+const CADDY_BASE = `http://localhost:${process.env.OP_INGRESS_PORT ?? '8080'}`;
 const GUARDIAN_URL = `${CADDY_BASE}/guardian`;
 
 const TEST_CHANNEL = 'e2etest';

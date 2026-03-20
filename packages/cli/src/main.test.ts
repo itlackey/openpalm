@@ -38,20 +38,20 @@ describe('cli main', () => {
   const originalFetch = globalThis.fetch;
   const originalLog = console.log;
   const originalWarn = console.warn;
-  const originalHome = process.env.OPENPALM_HOME;
-  const originalWorkDir = process.env.OPENPALM_WORK_DIR;
+  const originalHome = process.env.OP_HOME;
+  const originalWorkDir = process.env.OP_WORK_DIR;
   const originalAdminToken = process.env.ADMIN_TOKEN;
-  const originalOpenPalmAdminToken = process.env.OPENPALM_ADMIN_TOKEN;
+  const originalOpenPalmAdminToken = process.env.OP_ADMIN_TOKEN;
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
     console.log = originalLog;
     console.warn = originalWarn;
     restoreDockerCli();
-    process.env.OPENPALM_HOME = originalHome;
-    process.env.OPENPALM_WORK_DIR = originalWorkDir;
+    process.env.OP_HOME = originalHome;
+    process.env.OP_WORK_DIR = originalWorkDir;
     process.env.ADMIN_TOKEN = originalAdminToken;
-    process.env.OPENPALM_ADMIN_TOKEN = originalOpenPalmAdminToken;
+    process.env.OP_ADMIN_TOKEN = originalOpenPalmAdminToken;
   });
 
   it('runs bootstrap install directly without admin delegation', async () => {
@@ -65,10 +65,10 @@ describe('cli main', () => {
     writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
     chmodSync(join(binDir, 'varlock'), 0o755);
 
-    process.env.OPENPALM_HOME = base;
-    process.env.OPENPALM_WORK_DIR = workDir;
+    process.env.OP_HOME = base;
+    process.env.OP_WORK_DIR = workDir;
     delete process.env.ADMIN_TOKEN;
-    delete process.env.OPENPALM_ADMIN_TOKEN;
+    delete process.env.OP_ADMIN_TOKEN;
 
     mockDockerCli();
     const fetchedUrls: string[] = [];
@@ -111,8 +111,8 @@ describe('cli main', () => {
     writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
     chmodSync(join(binDir, 'varlock'), 0o755);
 
-    process.env.OPENPALM_HOME = base;
-    process.env.OPENPALM_WORK_DIR = workDir;
+    process.env.OP_HOME = base;
+    process.env.OP_WORK_DIR = workDir;
 
     mockDockerCli();
     globalThis.fetch = mock(async (input: string | URL) => {
@@ -151,8 +151,8 @@ describe('cli main', () => {
     writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
     chmodSync(join(binDir, 'varlock'), 0o755);
 
-    process.env.OPENPALM_HOME = base;
-    process.env.OPENPALM_WORK_DIR = workDir;
+    process.env.OP_HOME = base;
+    process.env.OP_WORK_DIR = workDir;
 
     // Read the CLI package version to verify pinning behaviour
     const cliPkg = JSON.parse(
@@ -285,9 +285,9 @@ describe('validate command', () => {
     writeFileSync(fakeVarlock, '#!/bin/sh\nexit 1\n');
     chmodSync(fakeVarlock, 0o755);
 
-    const originalHome = process.env.OPENPALM_HOME;
+    const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
-    process.env.OPENPALM_HOME = tempHome;
+    process.env.OP_HOME = tempHome;
     process.exit = mock((_code?: number) => { throw new Error(`process.exit(${_code})`); }) as typeof process.exit;
 
     try {
@@ -296,7 +296,7 @@ describe('validate command', () => {
       expect(message).not.toContain('Unknown command');
     } finally {
       process.exit = originalExit;
-      process.env.OPENPALM_HOME = originalHome;
+      process.env.OP_HOME = originalHome;
       rmSync(tempHome, { recursive: true, force: true });
     }
   });
@@ -319,9 +319,9 @@ describe('scan command', () => {
     writeFileSync(join(vaultDir, 'user.env.schema'), 'ADMIN_TOKEN\n');
     writeFileSync(join(vaultDir, 'user.env'), 'ADMIN_TOKEN=testtoken\n');
 
-    const originalHome = process.env.OPENPALM_HOME;
+    const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
-    process.env.OPENPALM_HOME = tempHome;
+    process.env.OP_HOME = tempHome;
     process.exit = mock((_code?: number) => { throw new Error(`process.exit(${_code})`); }) as typeof process.exit;
 
     try {
@@ -331,7 +331,7 @@ describe('scan command', () => {
       expect(message).toBe('process.exit(0)');
     } finally {
       process.exit = originalExit;
-      process.env.OPENPALM_HOME = originalHome;
+      process.env.OP_HOME = originalHome;
       rmSync(tempHome, { recursive: true, force: true });
     }
   });
@@ -345,11 +345,11 @@ describe('scan command', () => {
 
     writeFileSync(join(vaultDir, 'user.env'), 'ADMIN_TOKEN=testtoken\n');
 
-    const originalHome = process.env.OPENPALM_HOME;
+    const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
     const originalError = console.error;
     const errorCalls: string[] = [];
-    process.env.OPENPALM_HOME = tempHome;
+    process.env.OP_HOME = tempHome;
     process.exit = mock((_code?: number) => { throw new Error(`process.exit(${_code})`); }) as typeof process.exit;
     console.error = mock((...args: unknown[]) => { errorCalls.push(args.join(' ')); }) as typeof console.error;
 
@@ -362,7 +362,7 @@ describe('scan command', () => {
     } finally {
       process.exit = originalExit;
       console.error = originalError;
-      process.env.OPENPALM_HOME = originalHome;
+      process.env.OP_HOME = originalHome;
       rmSync(tempHome, { recursive: true, force: true });
     }
   });
@@ -422,39 +422,39 @@ describe('install image tag pinning', () => {
   });
 
   it('pins existing stack.env image tag to the requested release tag', () => {
-    const original = 'OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=latest\n';
+    const original = 'OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=latest\n';
     expect(reconcileStackEnvImageTag(original, 'v0.9.0-rc10')).toBe(
-      'OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=v0.9.0-rc10\n',
+      'OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=v0.9.0-rc10\n',
     );
   });
 
   it('does not overwrite existing stack.env image tag for main installs', () => {
-    const original = 'OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=latest\n';
+    const original = 'OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=latest\n';
     expect(reconcileStackEnvImageTag(original, 'main')).toBe(original);
   });
 
   it('prefers an explicit image tag over the requested release ref', () => {
-    const original = 'OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=latest\n';
+    const original = 'OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=latest\n';
     expect(reconcileStackEnvImageTag(original, 'v0.9.0-rc10', 'v9.9.9-test')).toBe(
-      'OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=v9.9.9-test\n',
+      'OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=v9.9.9-test\n',
     );
   });
 
   it('updates an existing key in env content', () => {
-    expect(upsertEnvValue('OPENPALM_IMAGE_TAG=latest\n', 'OPENPALM_IMAGE_TAG', 'v0.9.0-rc10')).toBe(
-      'OPENPALM_IMAGE_TAG=v0.9.0-rc10\n',
+    expect(upsertEnvValue('OP_IMAGE_TAG=latest\n', 'OP_IMAGE_TAG', 'v0.9.0-rc10')).toBe(
+      'OP_IMAGE_TAG=v0.9.0-rc10\n',
     );
   });
 
   it('inserts a new key into empty env content', () => {
-    expect(upsertEnvValue('', 'OPENPALM_IMAGE_TAG', 'v0.9.0-rc10')).toBe(
-      'OPENPALM_IMAGE_TAG=v0.9.0-rc10\n',
+    expect(upsertEnvValue('', 'OP_IMAGE_TAG', 'v0.9.0-rc10')).toBe(
+      'OP_IMAGE_TAG=v0.9.0-rc10\n',
     );
   });
 
   it('inserts a new key when the original content lacks a trailing newline', () => {
-    expect(upsertEnvValue('OPENPALM_IMAGE_NAMESPACE=openpalm', 'OPENPALM_IMAGE_TAG', 'v0.9.0-rc10')).toBe(
-      'OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=v0.9.0-rc10\n',
+    expect(upsertEnvValue('OP_IMAGE_NAMESPACE=openpalm', 'OP_IMAGE_TAG', 'v0.9.0-rc10')).toBe(
+      'OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=v0.9.0-rc10\n',
     );
   });
 
@@ -465,20 +465,20 @@ describe('install image tag pinning', () => {
   });
 
   it('preserves export prefix when upserting a key', () => {
-    expect(upsertEnvValue('export OPENPALM_ADMIN_TOKEN=old\n', 'OPENPALM_ADMIN_TOKEN', 'new')).toBe(
-      'export OPENPALM_ADMIN_TOKEN=new\n',
+    expect(upsertEnvValue('export OP_ADMIN_TOKEN=old\n', 'OP_ADMIN_TOKEN', 'new')).toBe(
+      'export OP_ADMIN_TOKEN=new\n',
     );
   });
 
   it('upserts without export prefix when original has none', () => {
-    expect(upsertEnvValue('OPENPALM_IMAGE_TAG=latest\n', 'OPENPALM_IMAGE_TAG', 'v1.0.0')).toBe(
-      'OPENPALM_IMAGE_TAG=v1.0.0\n',
+    expect(upsertEnvValue('OP_IMAGE_TAG=latest\n', 'OP_IMAGE_TAG', 'v1.0.0')).toBe(
+      'OP_IMAGE_TAG=v1.0.0\n',
     );
   });
 });
 
 describe('secrets.env generation', () => {
-  it('generates user.env with export prefix and OPENPALM_ADMIN_TOKEN', async () => {
+  it('generates user.env with export prefix and OP_ADMIN_TOKEN', async () => {
     const { ensureSecrets } = await import('./lib/env.ts');
     const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-secrets-'));
     const vaultDir = join(tempDir, 'vault');
@@ -487,7 +487,7 @@ describe('secrets.env generation', () => {
     try {
       await ensureSecrets(vaultDir);
       const content = await Bun.file(join(vaultDir, 'user.env')).text();
-      expect(content).toContain('export OPENPALM_ADMIN_TOKEN=');
+      expect(content).toContain('export OP_ADMIN_TOKEN=');
       expect(content).toContain('export OPENAI_API_KEY=');
       expect(content).toContain('export MEMORY_USER_ID=');
     } finally {

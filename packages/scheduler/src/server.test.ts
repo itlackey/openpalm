@@ -53,8 +53,8 @@ beforeAll(async () => {
     env: {
       ...process.env,
       PORT: String(PORT),
-      OPENPALM_HOME: TEST_DIR,
-      OPENPALM_ADMIN_TOKEN: ADMIN_TOKEN,
+      OP_HOME: TEST_DIR,
+      OP_ADMIN_TOKEN: ADMIN_TOKEN,
     },
     stdout: "pipe",
     stderr: "pipe",

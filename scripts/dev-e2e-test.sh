@@ -6,7 +6,7 @@
 # runs the setup wizard, and verifies:
 #   1. All containers are healthy
 #   2. No root-owned files in .dev/
-#   3. secrets.env has correct values
+#   3. user.env has correct values
 #   4. Assistant container has correct env vars
 #   5. Memory user is provisioned
 #   6. Setup is marked complete
@@ -67,8 +67,8 @@ fi
 echo ""
 echo "=== Step 2: Clean .dev/ state ==="
 
-# Config
-echo "# OpenPalm secrets" >.dev/config/secrets.env
+# Vault — reset secrets
+echo "# OpenPalm secrets" >.dev/vault/user.env
 
 # Data — remove everything except models (HF cache)
 rm -f .dev/data/memory/default_config.json
@@ -76,12 +76,12 @@ rm -f .dev/data/memory/memory.db
 rm -f .dev/data/memory/memory.py
 rm -f .dev/data/local-models.json
 rm -f .dev/data/local-models.yml
-rm -f .dev/data/stack.env
-rm -f .dev/data/docker-compose.yml
 rm -rf .dev/data/backups
 
 # Config — remove generated assistant config so the wizard writes a fresh one
 rm -f .dev/config/assistant/opencode.json
+# Config — remove generated compose so dev-setup seeds a fresh one
+rm -f .dev/config/components/core.yml
 
 # Root-owned data from containers (qdrant, caddy, opencode logs)
 docker run --rm -v "$ROOT_DIR/.dev/data/memory:/c" alpine sh -c \
@@ -93,16 +93,12 @@ docker run --rm -v "$ROOT_DIR/.dev/data/opencode:/c" alpine sh -c \
 docker run --rm -v "$ROOT_DIR/.dev/config/assistant:/c" alpine sh -c \
 	"find /c -user root -delete" 2>/dev/null || true
 
-# State artifacts
-rm -f .dev/state/artifacts/secrets.env
-rm -f .dev/state/artifacts/stack.env
-rm -f .dev/state/artifacts/docker-compose.yml
-rm -f .dev/state/artifacts/Caddyfile
-rm -f .dev/state/artifacts/local-models.yml
-rm -f .dev/state/artifacts/manifest.json
+# Vault — reset system env
+rm -f .dev/vault/system.env
+
+# State — remove setup markers and audit logs
 rm -f .dev/state/setup-complete
 rm -f .dev/state/setup-token.txt
-rm -rf .dev/state/artifacts/channels
 rm -f .dev/state/audit/admin-audit.jsonl
 rm -f .dev/state/audit/guardian-audit.log
 
@@ -115,16 +111,13 @@ echo "=== Step 3: Seed config ==="
 
 # Clear admin tokens from seeded secrets so admin starts in first-boot state.
 # dev-setup seeds them for convenience, but the e2e test needs to verify the wizard sets them.
-# The secrets.env uses `export ` prefix, so match both with and without.
-sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/config/secrets.env
-sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/state/artifacts/secrets.env
-sed -i 's/^\(export \)\{0,1\}OPENPALM_ADMIN_TOKEN=.*/\1OPENPALM_ADMIN_TOKEN=/' .dev/config/secrets.env
-sed -i 's/^\(export \)\{0,1\}OPENPALM_ADMIN_TOKEN=.*/\1OPENPALM_ADMIN_TOKEN=/' .dev/state/artifacts/secrets.env
+# The user.env uses `export ` prefix, so match both with and without.
+sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/vault/user.env
+sed -i 's/^\(export \)\{0,1\}OP_ADMIN_TOKEN=.*/\1OP_ADMIN_TOKEN=/' .dev/vault/user.env
 
 # Use a dev-only image tag so the wizard's pull step doesn't overwrite locally
 # built images with remote ones (e.g. an older Python-based memory:latest).
-sed -i 's/^OPENPALM_IMAGE_TAG=.*/OPENPALM_IMAGE_TAG=dev/' .dev/data/stack.env
-sed -i 's/^OPENPALM_IMAGE_TAG=.*/OPENPALM_IMAGE_TAG=dev/' .dev/state/artifacts/stack.env
+sed -i 's/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=dev/' .dev/vault/system.env
 
 pass "Config seeded (admin token cleared, image tag set to dev)"
 
@@ -174,10 +167,10 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 	echo "=== Step 4: Build all images from source ==="
 	npm run admin:build 2>&1 | tail -3
 	docker compose --project-directory . \
-		-f .dev/state/artifacts/docker-compose.yml \
+		-f .dev/config/components/core.yml \
 		-f compose.dev.yaml \
-		--env-file .dev/state/artifacts/stack.env \
-		--env-file .dev/state/artifacts/secrets.env \
+		--env-file .dev/vault/system.env \
+		--env-file .dev/vault/user.env \
 		--profile admin \
 		--project-name openpalm build 2>&1 | tail -5
 	pass "All images built"
@@ -190,10 +183,10 @@ fi
 echo ""
 echo "=== Step 5: Start stack ==="
 docker compose --project-directory . \
-	-f .dev/state/artifacts/docker-compose.yml \
+	-f .dev/config/components/core.yml \
 	-f compose.dev.yaml \
-	--env-file .dev/state/artifacts/stack.env \
-	--env-file .dev/state/artifacts/secrets.env \
+	--env-file .dev/vault/system.env \
+	--env-file .dev/vault/user.env \
 	--profile admin \
 	--project-name openpalm up -d 2>&1 | tail -10
 
@@ -317,10 +310,10 @@ fi
 # --no-deps: only recreate the assistant, not its dependencies.
 # Errors are surfaced (no || true) so we can detect silent failures.
 docker compose --project-directory . \
-	-f .dev/state/artifacts/docker-compose.yml \
+	-f .dev/config/components/core.yml \
 	-f compose.dev.yaml \
-	--env-file .dev/state/artifacts/stack.env \
-	--env-file .dev/state/artifacts/secrets.env \
+	--env-file .dev/vault/system.env \
+	--env-file .dev/vault/user.env \
 	--profile admin \
 	--project-name openpalm up -d --force-recreate --no-deps assistant
 
@@ -389,10 +382,10 @@ else
 	echo "$root_files" | while read -r f; do echo "    $f"; done
 fi
 
-# ── Step 10: Verify secrets.env ──────────────────────────────────────
+# ── Step 10: Verify user.env ─────────────────────────────────────────
 echo ""
-echo "=== Step 10: Verify secrets.env ==="
-secrets=".dev/config/secrets.env"
+echo "=== Step 10: Verify user.env ==="
+secrets=".dev/vault/user.env"
 
 check_env_val() {
 	local key="$1" expected="$2"
@@ -435,7 +428,7 @@ check_container_env() {
 	fi
 }
 
-check_container_env "OPENPALM_ADMIN_TOKEN" "dev-admin-token"
+check_container_env "OP_ADMIN_TOKEN" "dev-admin-token"
 check_container_env "MEMORY_USER_ID" "node"
 
 # OPENAI_BASE_URL should end with /v1

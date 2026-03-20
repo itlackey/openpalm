@@ -8,13 +8,13 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
-    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
     ports:
-      - "${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_INGRESS_PORT:-3080}:80"
+      - "${OP_INGRESS_BIND_ADDRESS:-127.0.0.1}:${OP_INGRESS_PORT:-3080}:80"
     volumes:
-      - ${OPENPALM_HOME}/data/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ${OPENPALM_HOME}/data/caddy/channels:/etc/caddy/channels:ro
-      - ${OPENPALM_HOME}/data/caddy/data:/data/caddy
+      - ${OP_HOME}/data/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${OP_HOME}/data/caddy/channels:/etc/caddy/channels:ro
+      - ${OP_HOME}/data/caddy/data:/data/caddy
     command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     networks: [ assistant_net, channel_lan, channel_public ]
     healthcheck:
@@ -37,7 +37,7 @@ services:
       POST: 1
       INFO: 1
     volumes:
-      - ${OPENPALM_DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
+      - ${OP_DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
     networks: [ admin_docker_net ]
     healthcheck:
       test: [ "CMD-SHELL", "wget -qO- http://localhost:2375/_ping || exit 1" ]
@@ -48,32 +48,29 @@ services:
 
   # ── Admin ──────────────────────────────────────────────────────────
   admin:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/admin:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
     init: true
-    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "127.0.0.1:${OPENPALM_ADMIN_PORT:-3880}:8100"
-      - "${OPENPALM_ADMIN_OPENCODE_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_ADMIN_OPENCODE_PORT:-3881}:4097"
+      - "127.0.0.1:${OP_ADMIN_PORT:-3880}:8100"
+      - "${OP_ADMIN_OPENCODE_BIND_ADDRESS:-127.0.0.1}:${OP_ADMIN_OPENCODE_PORT:-3881}:4097"
     environment:
       PORT: "8100"
       HOME: /home/node
-      OPENPALM_HOME: /openpalm
-      ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-}
+      OP_HOME: /openpalm
+      ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
       MEMORY_AUTH_TOKEN: ${MEMORY_AUTH_TOKEN:-}
       MEMORY_API_URL: http://memory:8765
       MEMORY_USER_ID: ${MEMORY_USER_ID:-default_user}
       GUARDIAN_URL: http://guardian:8080
-      OPENPALM_ASSISTANT_URL: http://assistant:4096
-      OPENPALM_ADMIN_API_URL: http://localhost:8100
-      OPENPALM_ADMIN_OPENCODE_PORT: "${OPENPALM_ADMIN_OPENCODE_PORT:-3881}"
-      OPENPALM_CONFIG_HOME: ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}
-      OPENPALM_STATE_HOME: ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
-      OPENPALM_DATA_HOME: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
+      OP_ASSISTANT_URL: http://assistant:4096
+      OP_ADMIN_API_URL: http://localhost:8100
+      OP_ADMIN_OPENCODE_PORT: "${OP_ADMIN_OPENCODE_PORT:-3881}"
       # OpenCode instance for admin AI assistant with admin-tools plugin
-      OPENCODE_CONFIG_DIR: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/admin
+      OPENCODE_CONFIG_DIR: /openpalm/data/admin
       OPENCODE_PORT: "4097"
       OPENCODE_AUTH: "false"
       # LLM provider keys — admin's OpenCode reads from vault mount
@@ -86,9 +83,9 @@ services:
       # Docker API via socket proxy
       DOCKER_HOST: tcp://docker-socket-proxy:2375
     volumes:
-      - ${OPENPALM_HOME}:/openpalm
-      - ${OPENPALM_HOME}/data/admin:/home/node
-      - ${OPENPALM_HOME}/data/workspace:/work
+      - ${OP_HOME}:/openpalm
+      - ${OP_HOME}/data/admin:/home/node
+      - ${OP_HOME}/data/workspace:/work
       - ${HOME}/.cache/openpalm/registry:/cache/registry
       # GPG agent socket for pass backend (read-only; only needed when pass is active)
       - type: bind

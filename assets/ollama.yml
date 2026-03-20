@@ -7,9 +7,9 @@ services:
     image: ollama/ollama:latest
     restart: unless-stopped
     ports:
-      - "${OPENPALM_OLLAMA_BIND_ADDRESS:-127.0.0.1}:11434:11434"
+      - "${OP_OLLAMA_BIND_ADDRESS:-127.0.0.1}:11434:11434"
     volumes:
-      - ${OPENPALM_HOME}/data/ollama:/root/.ollama
+      - ${OP_HOME}/data/ollama:/root/.ollama
     networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]

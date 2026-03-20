@@ -33,7 +33,7 @@ The core stack runs 6 containers: caddy, memory, assistant, guardian, docker-soc
 |---|---|
 | CPU | 2 cores |
 | RAM | 4 GB |
-| Disk | 5 GB free (Docker images + runtime data) |
+| Disk | 10 GB free (Docker images + runtime data) |
 
 This assumes you are using a **remote LLM provider** (OpenAI, Anthropic, etc.) and not running local models.
 
@@ -45,7 +45,7 @@ Running local models via Ollama significantly increases resource needs because m
 |---|---|
 | CPU | 4+ cores |
 | RAM | 16 GB (8 GB for stack + 8 GB for Ollama models) |
-| Disk | 20 GB+ free (images + model weights) |
+| Disk | 25 GB+ free (images + model weights) |
 | GPU | Optional but beneficial — any CUDA-capable NVIDIA GPU or Apple Silicon with Metal |
 
 For larger models (13B+ parameters), 32 GB RAM or a GPU with 8+ GB VRAM is recommended.
@@ -109,13 +109,13 @@ OpenPalm is **LAN-first by default**. No inbound ports need to be opened on your
 
 | Port | Binding | Service | Notes |
 |---|---|---|---|
-| 8080 | `127.0.0.1` (default) | Caddy ingress | Configurable via `OPENPALM_INGRESS_BIND_ADDRESS` and `OPENPALM_INGRESS_PORT` |
+| 8080 | `127.0.0.1` (default) | Caddy ingress | Configurable via `OP_INGRESS_BIND_ADDRESS` and `OP_INGRESS_PORT` |
 | 8100 | `127.0.0.1` | Admin API (direct) | Always localhost-only |
 | 4096 | `127.0.0.1` | Assistant (OpenCode) | Host-only access; no auth required (bind address is the security boundary) |
 | 8765 | `127.0.0.1` | Memory API | Direct access; normally accessed by assistant internally |
 | 2222 | `127.0.0.1` | Assistant SSH | Optional SSH access to OpenCode; disabled by default |
 
-To expose the Caddy ingress on all interfaces (e.g., for LAN access), set `OPENPALM_INGRESS_BIND_ADDRESS=0.0.0.0` in your stack configuration. Public exposure requires additional Caddy TLS configuration.
+To expose the Caddy ingress on all interfaces (e.g., for LAN access), set `OP_INGRESS_BIND_ADDRESS=0.0.0.0` in your stack configuration. Public exposure requires additional Caddy TLS configuration.
 
 ### Internal Networks
 

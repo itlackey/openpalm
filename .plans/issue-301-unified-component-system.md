@@ -12,7 +12,7 @@
 
 ### Shared prerequisite work (critical path, not exclusive to #301)
 
-- Replace XDG path helpers and staging-era assumptions with `OPENPALM_HOME` / `~/.openpalm/`, `config/`, `vault/`, `data/`, `logs/`, and cache-backed rollback snapshots.
+- Replace XDG path helpers and staging-era assumptions with `OP_HOME` / `~/.openpalm/`, `config/`, `vault/`, `data/`, `logs/`, and cache-backed rollback snapshots.
 - Remove the permanent staging pipeline in favor of validate-in-place plus rollback.
 - Standardize service ports to the 38XX range and update compose files, Caddy upstreams, health checks, tests, and setup scripts.
 - Split env handling into `vault/system.env` and `vault/user.env`, with assistant hot-reload from `vault/user.env` and strict vault mount boundaries.
@@ -29,9 +29,9 @@
 ### Phase 0 - Shared prerequisites: filesystem, rollback, and ports
 
 1. Create the new home-path abstraction in `packages/lib/`.
-   - Replace `packages/lib/src/control-plane/paths.ts` with a new home-rooted module (`home.ts` or equivalent) that resolves `OPENPALM_HOME`, cache paths, `config/components/`, `vault/`, `data/components/`, `data/caddy/`, `logs/`, and rollback directories.
+   - Replace `packages/lib/src/control-plane/paths.ts` with a new home-rooted module (`home.ts` or equivalent) that resolves `OP_HOME`, cache paths, `config/components/`, `vault/`, `data/components/`, `data/caddy/`, `logs/`, and rollback directories.
    - Update `packages/lib/src/index.ts`, `packages/cli/src/lib/paths.ts`, and `packages/admin/src/lib/server/control-plane.ts` to re-export the new helpers without preserving XDG-specific naming in new code.
-   - Add compatibility detection helpers for legacy `OPENPALM_CONFIG_HOME`, `OPENPALM_DATA_HOME`, and `OPENPALM_STATE_HOME` so CLI and admin can warn instead of silently diverging.
+   - Add compatibility detection helpers for legacy `OP_CONFIG_HOME`, `OP_DATA_HOME`, and `OP_STATE_HOME` so CLI and admin can warn instead of silently diverging.
 2. Eliminate the permanent staging pipeline.
    - Replace staging-centric flows in `packages/lib/src/control-plane/staging.ts`, `packages/lib/src/control-plane/lifecycle.ts`, and `packages/cli/src/lib/staging.ts` with validate-in-place operations that snapshot live files to `~/.cache/openpalm/rollback/` before writes.
    - Preserve non-destructive user config semantics from the architecture rules: automatic operations seed missing files only, while explicit admin/CLI actions may mutate requested files.

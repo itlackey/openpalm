@@ -122,7 +122,7 @@ Each entry contains:
 | `"timeout"` | LLM response took too long | Check model performance; consider faster model |
 | `"OPENCODE"` | OpenCode runtime messages | Context-dependent; check for errors |
 | `"varlock"` | Secret redaction active in output | Normal security behavior |
-| Connection errors to admin API | Cannot reach admin | Check OPENPALM_ADMIN_API_URL and admin container |
+| Connection errors to admin API | Cannot reach admin | Check OP_ADMIN_API_URL and admin container |
 
 ### Caddy Logs
 

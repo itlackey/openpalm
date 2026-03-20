@@ -266,7 +266,7 @@ async function executeApiAction(
     logger.warn(`Scheduler: rejecting unsafe action path: ${action.path}`);
     return;
   }
-  const adminUrl = process.env.OPENPALM_ADMIN_API_URL || "http://admin:8100";
+  const adminUrl = process.env.OP_ADMIN_API_URL || "http://admin:8100";
   const url = `${adminUrl}${action.path}`;
   const { "x-admin-token": _dropped, "authorization": _dropped2, ...safeHeaders } = action.headers ?? {};
   const headers: Record<string, string> = {
@@ -320,7 +320,7 @@ async function executeHttpAction(action: AutomationAction): Promise<void> {
 /** Safe env vars allowlisted for shell automation actions. */
 const SHELL_SAFE_ENV_KEYS = [
   "PATH", "HOME", "LANG", "LC_ALL", "TZ", "NODE_ENV",
-  "OPENPALM_HOME", "OPENPALM_CONFIG_HOME", "OPENPALM_STATE_HOME", "OPENPALM_DATA_HOME",
+  "OP_HOME", "OP_CONFIG_HOME", "OP_STATE_HOME", "OP_DATA_HOME",
 ];
 
 /** Execute a shell action — uses execFile with argument array (no shell interpolation). */

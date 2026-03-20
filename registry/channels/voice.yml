@@ -1,7 +1,7 @@
 # Channel: Voice — Voice-driven conversational interface (STT → LLM → TTS)
 services:
   channel-voice:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       PORT: "8186"

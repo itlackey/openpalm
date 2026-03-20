@@ -28,8 +28,8 @@ export default async function globalSetup() {
 	writeFileSync(
 		STACK_ENV,
 		content.replace(
-			/^OPENPALM_SETUP_COMPLETE=true$/m,
-			"OPENPALM_SETUP_COMPLETE=false"
+			/^OP_SETUP_COMPLETE=true$/m,
+			"OP_SETUP_COMPLETE=false"
 		)
 	);
 }

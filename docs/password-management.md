@@ -4,7 +4,7 @@ OpenPalm uses a layered secret management system built around a `vault/` directo
 
 ## Vault Layout
 
-All secrets live under `~/.openpalm/vault/` (or `$OPENPALM_HOME/vault/`):
+All secrets live under `~/.openpalm/vault/` (or `$OP_HOME/vault/`):
 
 ```
 ~/.openpalm/vault/
@@ -57,15 +57,15 @@ Contains tokens, service auth credentials, port bindings, and runtime paths. Thi
 
 | Key | Sensitive | Notes |
 |-----|-----------|-------|
-| `OPENPALM_ADMIN_TOKEN` | Yes | Admin API authentication |
+| `OP_ADMIN_TOKEN` | Yes | Admin API authentication |
 | `ASSISTANT_TOKEN` | Yes | Assistant/scheduler API authentication |
 | `MEMORY_AUTH_TOKEN` | Yes | Memory service authentication |
 | `OPENCODE_SERVER_PASSWORD` | Yes | OpenCode web UI password |
-| `OPENPALM_HOME` | No | OpenPalm root directory path |
-| `OPENPALM_ASSISTANT_PORT` | No | Assistant port (default 3800) |
-| `OPENPALM_ADMIN_PORT` | No | Admin port (default 3880) |
-| `OPENPALM_GUARDIAN_PORT` | No | Guardian port (default 3899) |
-| `OPENPALM_MEMORY_PORT` | No | Memory port (default 3898) |
+| `OP_HOME` | No | OpenPalm root directory path |
+| `OP_ASSISTANT_PORT` | No | Assistant port (default 3800) |
+| `OP_ADMIN_PORT` | No | Admin port (default 3880) |
+| `OP_GUARDIAN_PORT` | No | Guardian port (default 3899) |
+| `OP_MEMORY_PORT` | No | Memory port (default 3898) |
 | `CHANNEL_*_SECRET` | Yes | Per-channel HMAC secrets |
 
 ## Container Mount Contract
@@ -74,19 +74,19 @@ The vault boundary is enforced through Docker Compose volume mounts:
 
 | Container | Vault Access | Mount |
 |-----------|-------------|-------|
-| **Admin** | Full vault (rw) | `${OPENPALM_HOME}:/openpalm` |
+| **Admin** | Full vault (rw) | `${OP_HOME}:/openpalm` |
 | **Assistant** | `user.env` only (ro) | `vault/user.env:/etc/openpalm/user.env:ro` |
 | **Guardian** | None | Receives secrets via `env_file` at startup |
 | **Memory** | None | Receives secrets via `${VAR}` substitution |
 | **Scheduler** | None | Receives secrets via `${VAR}` substitution |
 
-Only the admin container has write access to the vault. The assistant can read `user.env` but cannot see system secrets like `OPENPALM_ADMIN_TOKEN`.
+Only the admin container has write access to the vault. The assistant can read `user.env` but cannot see system secrets like `OP_ADMIN_TOKEN`.
 
 ## Authentication Tokens
 
 OpenPalm uses two distinct authentication tokens:
 
-### OPENPALM_ADMIN_TOKEN
+### OP_ADMIN_TOKEN
 
 - Set during initial setup (user-provided or generated)
 - Required for privileged operations: secrets management, install/uninstall, connections, upgrade
@@ -122,7 +122,7 @@ Secrets are routed to the correct file based on scope:
 - **User scope** (API keys, custom secrets) go to `vault/user.env`
 - **System scope** (tokens, component secrets) go to `vault/system.env`
 
-For component and custom secrets that don't have a predefined env var name, the backend generates a deterministic key: `OPENPALM_SECRET_<SHA256-HASH>`.
+For component and custom secrets that don't have a predefined env var name, the backend generates a deterministic key: `OP_SECRET_<SHA256-HASH>`.
 
 ### PassBackend (Encrypted)
 

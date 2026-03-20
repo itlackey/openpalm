@@ -110,15 +110,15 @@ describe('install --file', () => {
     writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
     chmodSync(join(binDir, 'varlock'), 0o755);
 
-    savedEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
-    savedEnv.OPENPALM_WORK_DIR = process.env.OPENPALM_WORK_DIR;
+    savedEnv.OP_HOME = process.env.OP_HOME;
+    savedEnv.OP_WORK_DIR = process.env.OP_WORK_DIR;
     savedEnv.ADMIN_TOKEN = process.env.ADMIN_TOKEN;
-    savedEnv.OPENPALM_ADMIN_TOKEN = process.env.OPENPALM_ADMIN_TOKEN;
+    savedEnv.OP_ADMIN_TOKEN = process.env.OP_ADMIN_TOKEN;
 
-    process.env.OPENPALM_HOME = homeDir;
-    process.env.OPENPALM_WORK_DIR = workDir;
+    process.env.OP_HOME = homeDir;
+    process.env.OP_WORK_DIR = workDir;
     delete process.env.ADMIN_TOKEN;
-    delete process.env.OPENPALM_ADMIN_TOKEN;
+    delete process.env.OP_ADMIN_TOKEN;
 
     mockDockerCli();
     globalThis.fetch = mock(async (input: string | URL) => {
@@ -145,10 +145,10 @@ describe('install --file', () => {
     console.log = originalLog;
     console.warn = originalWarn;
     restoreDockerCli();
-    process.env.OPENPALM_HOME = savedEnv.OPENPALM_HOME;
-    process.env.OPENPALM_WORK_DIR = savedEnv.OPENPALM_WORK_DIR;
+    process.env.OP_HOME = savedEnv.OP_HOME;
+    process.env.OP_WORK_DIR = savedEnv.OP_WORK_DIR;
     process.env.ADMIN_TOKEN = savedEnv.ADMIN_TOKEN;
-    process.env.OPENPALM_ADMIN_TOKEN = savedEnv.OPENPALM_ADMIN_TOKEN;
+    process.env.OP_ADMIN_TOKEN = savedEnv.OP_ADMIN_TOKEN;
     rmSync(tempBase, { recursive: true, force: true });
   });
 

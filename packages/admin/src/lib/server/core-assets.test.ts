@@ -70,12 +70,12 @@ describe("ensureCoreCaddyfile / setCoreCaddyAccessScope", () => {
   const origEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    origEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
-    process.env.OPENPALM_HOME = trackDir(makeTempDir());
+    origEnv.OP_HOME = process.env.OP_HOME;
+    process.env.OP_HOME = trackDir(makeTempDir());
   });
 
   afterEach(() => {
-    process.env.OPENPALM_HOME = origEnv.OPENPALM_HOME;
+    process.env.OP_HOME = origEnv.OP_HOME;
   });
 
   test("ensureCoreCaddyfile creates Caddyfile if missing", () => {
@@ -93,7 +93,7 @@ describe("ensureCoreCaddyfile / setCoreCaddyAccessScope", () => {
   });
 
   test("setCoreCaddyAccessScope returns error if @denied line missing", () => {
-    const dataDir = join(process.env.OPENPALM_HOME!, "data");
+    const dataDir = join(process.env.OP_HOME!, "data");
     const caddyDir = join(dataDir, "caddy");
     mkdirSync(caddyDir, { recursive: true });
     writeFileSync(join(caddyDir, "Caddyfile"), ":8080 {\n  respond 200\n}");
@@ -150,12 +150,12 @@ describe("ensureCoreCompose / readCoreCompose", () => {
   const origEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    origEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
-    process.env.OPENPALM_HOME = trackDir(makeTempDir());
+    origEnv.OP_HOME = process.env.OP_HOME;
+    process.env.OP_HOME = trackDir(makeTempDir());
   });
 
   afterEach(() => {
-    process.env.OPENPALM_HOME = origEnv.OPENPALM_HOME;
+    process.env.OP_HOME = origEnv.OP_HOME;
   });
 
   test("ensureCoreCompose creates core.yml if missing", () => {
@@ -173,7 +173,7 @@ describe("ensureCoreCompose / readCoreCompose", () => {
   });
 
   test("ensureCoreCompose overwrites stale file and creates backup", () => {
-    const configDir = join(process.env.OPENPALM_HOME!, "config");
+    const configDir = join(process.env.OP_HOME!, "config");
     const componentsDir = join(configDir, "components");
     mkdirSync(componentsDir, { recursive: true });
     const staleContent = "# stale compose\nservices: {}";
@@ -197,7 +197,7 @@ describe("ensureCoreCompose / readCoreCompose", () => {
     expect(content).toBeTruthy();
     expect(typeof content).toBe("string");
     expect(content).toContain("HOME: /data");
-    expect(content).toContain("OPENPALM_HOME");
+    expect(content).toContain("OP_HOME");
   });
 });
 
@@ -207,12 +207,12 @@ describe("ensureOllamaCompose / readOllamaCompose", () => {
   const origEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    origEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
-    process.env.OPENPALM_HOME = trackDir(makeTempDir());
+    origEnv.OP_HOME = process.env.OP_HOME;
+    process.env.OP_HOME = trackDir(makeTempDir());
   });
 
   afterEach(() => {
-    process.env.OPENPALM_HOME = origEnv.OPENPALM_HOME;
+    process.env.OP_HOME = origEnv.OP_HOME;
   });
 
   test("ensureOllamaCompose creates ollama.yml if missing", () => {
@@ -230,7 +230,7 @@ describe("ensureOllamaCompose / readOllamaCompose", () => {
   });
 
   test("ensureOllamaCompose overwrites stale file and creates backup", () => {
-    const configDir = join(process.env.OPENPALM_HOME!, "config");
+    const configDir = join(process.env.OP_HOME!, "config");
     const componentsDir = join(configDir, "components");
     mkdirSync(componentsDir, { recursive: true });
     const staleContent = "# stale ollama compose\nservices: {}";
@@ -261,16 +261,16 @@ describe("ensureOpenCodeSystemConfig", () => {
   const origEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    origEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
-    process.env.OPENPALM_HOME = trackDir(makeTempDir());
+    origEnv.OP_HOME = process.env.OP_HOME;
+    process.env.OP_HOME = trackDir(makeTempDir());
   });
 
   afterEach(() => {
-    process.env.OPENPALM_HOME = origEnv.OPENPALM_HOME;
+    process.env.OP_HOME = origEnv.OP_HOME;
   });
 
   test("seeds opencode.jsonc and AGENTS.md on first run", () => {
-    const dataDir = join(process.env.OPENPALM_HOME!, "data");
+    const dataDir = join(process.env.OP_HOME!, "data");
     ensureOpenCodeSystemConfig();
 
     const configPath = join(dataDir, "assistant", "opencode.jsonc");
@@ -286,7 +286,7 @@ describe("ensureOpenCodeSystemConfig", () => {
 
   test("is idempotent — skips unchanged files", () => {
     ensureOpenCodeSystemConfig();
-    const dataDir = join(process.env.OPENPALM_HOME!, "data");
+    const dataDir = join(process.env.OP_HOME!, "data");
     const configPath = join(dataDir, "assistant", "opencode.jsonc");
     const content1 = readFileSync(configPath, "utf-8");
 
@@ -300,7 +300,7 @@ describe("ensureOpenCodeSystemConfig", () => {
   });
 
   test("overwrites stale files and creates backups", () => {
-    const dataDir = join(process.env.OPENPALM_HOME!, "data");
+    const dataDir = join(process.env.OP_HOME!, "data");
     const assistantDir = join(dataDir, "assistant");
     mkdirSync(assistantDir, { recursive: true });
     writeFileSync(join(assistantDir, "opencode.jsonc"), "stale-config");
@@ -336,17 +336,17 @@ describe("refreshCoreAssets", () => {
   const origEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    origEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
-    process.env.OPENPALM_HOME = trackDir(makeTempDir());
+    origEnv.OP_HOME = process.env.OP_HOME;
+    process.env.OP_HOME = trackDir(makeTempDir());
   });
 
   afterEach(() => {
-    process.env.OPENPALM_HOME = origEnv.OPENPALM_HOME;
+    process.env.OP_HOME = origEnv.OP_HOME;
     vi.restoreAllMocks();
   });
 
   test("downloads and writes new assets when none exist", async () => {
-    const homeDir = process.env.OPENPALM_HOME!;
+    const homeDir = process.env.OP_HOME!;
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : (input as Request).url;
@@ -400,7 +400,7 @@ describe("refreshCoreAssets", () => {
   });
 
   test("backs up changed files before overwriting", async () => {
-    const homeDir = process.env.OPENPALM_HOME!;
+    const homeDir = process.env.OP_HOME!;
     mkdirSync(join(homeDir, "config/components"), { recursive: true });
     writeFileSync(join(homeDir, "config/components/core.yml"), "old-compose-content");
     mkdirSync(join(homeDir, "data/caddy"), { recursive: true });
@@ -469,7 +469,7 @@ describe("refreshCoreAssets", () => {
   });
 
   test("skips assets with identical content", async () => {
-    const homeDir = process.env.OPENPALM_HOME!;
+    const homeDir = process.env.OP_HOME!;
     const content = "same-content";
     mkdirSync(join(homeDir, "config/components"), { recursive: true });
     writeFileSync(join(homeDir, "config/components/core.yml"), content);

@@ -23,7 +23,7 @@ export function resolveHome(): string {
 }
 
 export function resolveOpenPalmHome(): string {
-  const raw = process.env.OPENPALM_HOME;
+  const raw = process.env.OP_HOME;
   if (raw) return resolvePath(raw);
   return `${resolveHome()}/.openpalm`;
 }

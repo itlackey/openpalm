@@ -30,7 +30,7 @@ import {
   LAN_ONLY_IMPORT
 } from "./core-assets.js";
 
-const DEFAULT_IMAGE_TAG = process.env.OPENPALM_IMAGE_TAG ?? "latest";
+const DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
 
 // ── Crypto Utilities ──────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ export function isOllamaEnabled(state: ControlPlaneState): boolean {
   const systemEnvPath = `${state.vaultDir}/system.env`;
   if (!existsSync(systemEnvPath)) return false;
   const content = readFileSync(systemEnvPath, "utf-8");
-  const match = content.match(/^(?:OP_|OPENPALM_)OLLAMA_ENABLED=(.+)$/m);
+  const match = content.match(/^(?:OP_|OP_)OLLAMA_ENABLED=(.+)$/m);
   return match?.[1]?.trim().toLowerCase() === "true";
 }
 
@@ -97,7 +97,7 @@ export function isAdminEnabled(state: ControlPlaneState): boolean {
   const systemEnvPath = `${state.vaultDir}/system.env`;
   if (!existsSync(systemEnvPath)) return false;
   const content = readFileSync(systemEnvPath, "utf-8");
-  const match = content.match(/^(?:OP_|OPENPALM_)ADMIN_ENABLED=(.+)$/m);
+  const match = content.match(/^(?:OP_|OP_)ADMIN_ENABLED=(.+)$/m);
   return match?.[1]?.trim().toLowerCase() === "true";
 }
 
@@ -203,11 +203,11 @@ export function writeSystemEnv(state: ControlPlaneState): void {
     base = generateFallbackSystemEnv(state);
   }
 
-  // Preserve existing OPENPALM_SETUP_COMPLETE=true
-  const alreadyComplete = /^OPENPALM_SETUP_COMPLETE=true$/mi.test(base);
+  // Preserve existing OP_SETUP_COMPLETE=true
+  const alreadyComplete = /^OP_SETUP_COMPLETE=true$/mi.test(base);
 
   const adminManaged: Record<string, string> = {
-    OPENPALM_SETUP_COMPLETE: alreadyComplete ? "true" : "false"
+    OP_SETUP_COMPLETE: alreadyComplete ? "true" : "false"
   };
   for (const [ch, secret] of Object.entries(state.channelSecrets)) {
     adminManaged[`CHANNEL_${ch.toUpperCase()}_SECRET`] = secret;
@@ -229,7 +229,7 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "# Auto-generated fallback.",
     "",
     "# ── Authentication ──────────────────────────────────────────────────",
-    `OPENPALM_ADMIN_TOKEN=${state.adminToken}`,
+    `OP_ADMIN_TOKEN=${state.adminToken}`,
     `ASSISTANT_TOKEN=${state.assistantToken}`,
     "",
     "# ── Service Auth ─────────────────────────────────────────────────────",
@@ -237,27 +237,27 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "OPENCODE_SERVER_PASSWORD=",
     "",
     "# ── Paths ──────────────────────────────────────────────────────────",
-    `OPENPALM_HOME=${state.homeDir}`,
-    `OPENPALM_UID=${uid}`,
-    `OPENPALM_GID=${gid}`,
-    `OPENPALM_DOCKER_SOCK=${process.env.OPENPALM_DOCKER_SOCK ?? "/var/run/docker.sock"}`,
+    `OP_HOME=${state.homeDir}`,
+    `OP_UID=${uid}`,
+    `OP_GID=${gid}`,
+    `OP_DOCKER_SOCK=${process.env.OP_DOCKER_SOCK ?? "/var/run/docker.sock"}`,
     "",
     "# ── Images ──────────────────────────────────────────────────────────",
-    `OPENPALM_IMAGE_NAMESPACE=${process.env.OPENPALM_IMAGE_NAMESPACE ?? "openpalm"}`,
-    `OPENPALM_IMAGE_TAG=${DEFAULT_IMAGE_TAG}`,
+    `OP_IMAGE_NAMESPACE=${process.env.OP_IMAGE_NAMESPACE ?? "openpalm"}`,
+    `OP_IMAGE_TAG=${DEFAULT_IMAGE_TAG}`,
     "",
     "# ── Ports (38XX range) ──────────────────────────────────────────────",
-    `OPENPALM_ASSISTANT_PORT=3800`,
-    `OPENPALM_ADMIN_PORT=3880`,
-    `OPENPALM_ADMIN_OPENCODE_PORT=3881`,
-    `OPENPALM_SCHEDULER_PORT=3897`,
-    `OPENPALM_MEMORY_PORT=3898`,
-    `OPENPALM_GUARDIAN_PORT=3899`,
-    `OPENPALM_INGRESS_PORT=3080`,
+    `OP_ASSISTANT_PORT=3800`,
+    `OP_ADMIN_PORT=3880`,
+    `OP_ADMIN_OPENCODE_PORT=3881`,
+    `OP_SCHEDULER_PORT=3897`,
+    `OP_MEMORY_PORT=3898`,
+    `OP_GUARDIAN_PORT=3899`,
+    `OP_INGRESS_PORT=3080`,
     "",
     "# ── Networking ──────────────────────────────────────────────────────",
     "# SECURITY: Bind addresses default to 127.0.0.1. Changing to 0.0.0.0 exposes services publicly.",
-    `OPENPALM_INGRESS_BIND_ADDRESS=${process.env.OPENPALM_INGRESS_BIND_ADDRESS ?? "127.0.0.1"}`,
+    `OP_INGRESS_BIND_ADDRESS=${process.env.OP_INGRESS_BIND_ADDRESS ?? "127.0.0.1"}`,
     "",
     "# ── Channel HMAC Secrets ────────────────────────────────────────────",
     ""

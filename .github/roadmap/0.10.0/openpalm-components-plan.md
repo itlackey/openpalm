@@ -662,7 +662,7 @@ export function writeEnabledInstances(openpalmHome: string, instances: EnabledIn
 export function buildComponentComposeArgs(openpalmHome: string): string[];
 ```
 
-All path resolution uses `OPENPALM_HOME` (`~/.openpalm/` by default) as the single root. The `home.ts` module (which replaces the old `paths.ts`) provides the path helpers.
+All path resolution uses `OP_HOME` (`~/.openpalm/` by default) as the single root. The `home.ts` module (which replaces the old `paths.ts`) provides the path helpers.
 
 Both CLI and admin call these functions. The CLI calls them directly; the admin calls them from API route handlers.
 

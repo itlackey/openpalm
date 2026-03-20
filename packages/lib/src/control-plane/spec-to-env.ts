@@ -13,7 +13,7 @@ import { dualWriteEnvPair } from "./env-compat.js";
  * Derive the system.env key-value pairs determined by the StackSpec.
  * Secrets (tokens, API keys, HMAC) are NOT included — the caller merges them.
  *
- * Returns a flat Record with BOTH new (OP_*) and old (OPENPALM_*) names
+ * Returns a flat Record with BOTH new (OP_*) and old (OP_*) names
  * via dualWriteEnvPair for backward compatibility with compose templates.
  */
 export function deriveSystemEnvFromSpec(
@@ -71,7 +71,7 @@ export function deriveSystemEnvFromSpec(
   add("OP_ASSISTANT_SSH_PORT", String(ports.assistantSsh));
 
   // Network
-  add("OP_INGRESS_BIND", network.bindAddress ?? SPEC_DEFAULTS.network.bindAddress);
+  add("OP_INGRESS_BIND_ADDRESS", network.bindAddress ?? SPEC_DEFAULTS.network.bindAddress);
 
   // Feature flags
   add("OP_OLLAMA_ENABLED", spec.features?.ollama ? "true" : "false");

@@ -21,7 +21,7 @@
     ],
     "subtasks": [
       {
-        "description": "Replace XDG path helpers with an OPENPALM_HOME-based home layout API in packages/lib and add legacy-layout detection for CLI and admin consumers.",
+        "description": "Replace XDG path helpers with an OP_HOME-based home layout API in packages/lib and add legacy-layout detection for CLI and admin consumers.",
         "status": "pending",
         "references": [
           {
@@ -273,7 +273,7 @@
         ]
       },
       {
-        "description": "Extend shared control-plane state and startup flows to persist distinct admin and assistant credentials, including any needed `OPENPALM_ADMIN_TOKEN` compatibility handling and upgrade-time `ASSISTANT_TOKEN` backfill for existing installs.",
+        "description": "Extend shared control-plane state and startup flows to persist distinct admin and assistant credentials, including any needed `OP_ADMIN_TOKEN` compatibility handling and upgrade-time `ASSISTANT_TOKEN` backfill for existing installs.",
         "status": "pending",
         "references": [
           {

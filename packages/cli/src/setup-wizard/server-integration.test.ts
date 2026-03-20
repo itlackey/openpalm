@@ -38,7 +38,7 @@ function createStubAssetProvider(): CoreAssetProvider {
     opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
     adminOpencodeConfig: () => '{"$schema":"https://opencode.ai/config.json","plugin":["@openpalm/admin-tools"]}\n',
     secretsSchema: () => "ADMIN_TOKEN=string\n",
-    stackSchema: () => "OPENPALM_IMAGE_TAG=string\n",
+    stackSchema: () => "OP_IMAGE_TAG=string\n",
     cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
     cleanupData: () => "name: cleanup-data\nschedule: weekly\n",
     validateConfig: () => "name: validate-config\nschedule: hourly\n",
@@ -76,12 +76,12 @@ function makeSetupDirs(): void {
     mkdirSync(dir, { recursive: true });
   }
 
-  writeFileSync(join(vaultDir, "system.env"), "OPENPALM_SETUP_COMPLETE=false\n");
+  writeFileSync(join(vaultDir, "system.env"), "OP_SETUP_COMPLETE=false\n");
   writeFileSync(
     join(vaultDir, "user.env"),
     [
       "# OpenPalm Secrets",
-      "export OPENPALM_ADMIN_TOKEN=",
+      "export OP_ADMIN_TOKEN=",
       "export ADMIN_TOKEN=",
       "export OPENAI_API_KEY=",
       "export OPENAI_BASE_URL=",
@@ -122,15 +122,15 @@ describe("setup wizard server integration", () => {
   beforeEach(async () => {
     makeSetupDirs();
 
-    savedEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
-    process.env.OPENPALM_HOME = homeDir;
+    savedEnv.OP_HOME = process.env.OP_HOME;
+    process.env.OP_HOME = homeDir;
 
     serverPort = nextPort++;
     ollamaUp = await isOllamaAvailable();
   });
 
   afterEach(() => {
-    process.env.OPENPALM_HOME = savedEnv.OPENPALM_HOME;
+    process.env.OP_HOME = savedEnv.OP_HOME;
     if (tempBase) rmSync(tempBase, { recursive: true, force: true });
   });
 

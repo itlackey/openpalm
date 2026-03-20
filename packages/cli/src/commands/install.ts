@@ -16,7 +16,7 @@ import { ensureValidState, fullComposeArgs, buildManagedServiceNames } from '../
 import { createSetupServer } from '../setup-wizard/server.ts';
 import { buildInstallServiceNames, buildDeployStatusEntries } from './install-services.ts';
 
-const SETUP_WIZARD_PORT = Number(process.env.OPENPALM_SETUP_PORT) || 8100;
+const SETUP_WIZARD_PORT = Number(process.env.OP_SETUP_PORT) || 8100;
 
 const REPO_OWNER = 'itlackey';
 const REPO_NAME = 'openpalm';
@@ -172,7 +172,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
   await ensureSecrets(vaultDir);
   // Derive the image tag from the resolved version so that stale or
-  // architecture-suffixed OPENPALM_IMAGE_TAG env vars don't leak in.
+  // architecture-suffixed OP_IMAGE_TAG env vars don't leak in.
   const imageTag = resolveRequestedImageTag(options.version) ?? undefined;
   await ensureStackEnv(homeDir, vaultDir, workDir, options.version, imageTag);
   // Seed OpenCode config — non-fatal since performSetup() also seeds these
@@ -304,7 +304,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('EADDRINUSE') || msg.includes('address already in use') || msg.includes('Failed to start')) {
-        throw new Error(`Port ${SETUP_WIZARD_PORT} is in use. Stop the conflicting process or set OPENPALM_SETUP_PORT=<port>.`);
+        throw new Error(`Port ${SETUP_WIZARD_PORT} is in use. Stop the conflicting process or set OP_SETUP_PORT=<port>.`);
       }
       throw err;
     }

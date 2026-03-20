@@ -126,7 +126,7 @@ beforeAll(async () => {
       ...process.env,
       PORT: String(guardianPort),
       GUARDIAN_SECRETS_PATH: secretsPath,
-      OPENPALM_ASSISTANT_URL: `http://localhost:${assistantPort}`,
+      OP_ASSISTANT_URL: `http://localhost:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: auditPath,
     },
     stdout: "pipe",
@@ -435,7 +435,7 @@ describe("Guardian security contract", () => {
   });
 
   it("GET /stats with valid admin token → 200", async () => {
-    // No OPENPALM_ADMIN_TOKEN is set in test env, so any request should succeed
+    // No OP_ADMIN_TOKEN is set in test env, so any request should succeed
     const resp = await fetch(`${guardianUrl}/stats`, {
       headers: { "x-admin-token": "any-value" },
     });

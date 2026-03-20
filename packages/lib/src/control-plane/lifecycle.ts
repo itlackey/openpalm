@@ -58,7 +58,7 @@ export function createState(
 
   const setupToken = randomHex(16);
   const bootstrapState: ControlPlaneState = {
-    adminToken: adminToken ?? process.env.OPENPALM_ADMIN_TOKEN ?? process.env.ADMIN_TOKEN ?? "",
+    adminToken: adminToken ?? process.env.OP_ADMIN_TOKEN ?? process.env.ADMIN_TOKEN ?? "",
     assistantToken: "",
     setupToken,
     homeDir,
@@ -81,11 +81,11 @@ export function createState(
   // Precedence: explicit parameter > system.env > user.env > process.env.
   bootstrapState.adminToken =
     adminToken
-      ?? systemEnv.OPENPALM_ADMIN_TOKEN
+      ?? systemEnv.OP_ADMIN_TOKEN
       ?? systemEnv.ADMIN_TOKEN
-      ?? fileEnv.OPENPALM_ADMIN_TOKEN
+      ?? fileEnv.OP_ADMIN_TOKEN
       ?? fileEnv.ADMIN_TOKEN
-      ?? process.env.OPENPALM_ADMIN_TOKEN
+      ?? process.env.OP_ADMIN_TOKEN
       ?? process.env.ADMIN_TOKEN
       ?? "";
   bootstrapState.assistantToken =
@@ -98,10 +98,10 @@ export function createState(
   // user-editable file indefinitely.
   if (
     bootstrapState.adminToken &&
-    !systemEnv.OPENPALM_ADMIN_TOKEN &&
-    (fileEnv.OPENPALM_ADMIN_TOKEN || fileEnv.ADMIN_TOKEN)
+    !systemEnv.OP_ADMIN_TOKEN &&
+    (fileEnv.OP_ADMIN_TOKEN || fileEnv.ADMIN_TOKEN)
   ) {
-    updateSystemSecretsEnv(bootstrapState, { OPENPALM_ADMIN_TOKEN: bootstrapState.adminToken });
+    updateSystemSecretsEnv(bootstrapState, { OP_ADMIN_TOKEN: bootstrapState.adminToken });
   }
 
   bootstrapState.channelSecrets = {
@@ -210,7 +210,7 @@ export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): 
 }> {
   const systemEnvPath = `${state.vaultDir}/system.env`;
   const parsed = parseEnvFile(systemEnvPath);
-  const namespace = (parsed.OPENPALM_IMAGE_NAMESPACE ?? process.env.OPENPALM_IMAGE_NAMESPACE ?? "openpalm").trim().toLowerCase();
+  const namespace = (parsed.OP_IMAGE_NAMESPACE ?? process.env.OP_IMAGE_NAMESPACE ?? "openpalm").trim().toLowerCase();
 
   if (!IMAGE_NAMESPACE_RE.test(namespace)) {
     throw new Error(`Invalid image namespace in system.env: ${namespace}`);
@@ -237,7 +237,7 @@ export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): 
   }
 
   const currentContent = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
-  const updatedContent = mergeEnvContent(currentContent, { OPENPALM_IMAGE_TAG: latestTag }, { uncomment: true });
+  const updatedContent = mergeEnvContent(currentContent, { OP_IMAGE_TAG: latestTag }, { uncomment: true });
   writeFileSync(systemEnvPath, updatedContent);
 
   return { namespace, tag: latestTag };

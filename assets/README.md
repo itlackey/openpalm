@@ -93,7 +93,7 @@ Create `registry/my-channel.yml`:
 ```yaml
 services:
   channel-my-channel:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-my-channel:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel-my-channel:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       PORT: "8185"
@@ -162,7 +162,7 @@ curl -X POST http://localhost:8100/admin/channels/install \
 
 Or add channels manually without rebuilding the container:
 
-1. Place `my-channel.yml` (and optional `my-channel.caddy`) in `$OPENPALM_CONFIG_HOME/channels/`
+1. Place `my-channel.yml` (and optional `my-channel.caddy`) in `$OP_CONFIG_HOME/channels/`
 2. No manual channel secret is required; admin generates and stages it
 3. Lifecycle apply/install/update discovers the new channel without overwriting existing user files in `CONFIG_HOME`
 4. No code changes or container rebuilds required
@@ -188,8 +188,8 @@ The network name in the compose overlay determines which Docker network the chan
 | Change channel access (LAN ↔ public) | Edit the `.caddy` file: add/remove `import public_access` |
 | Change LAN IP ranges | Edit the `(lan_only)` snippet in `Caddyfile` |
 | Restrict to localhost only | Change `(lan_only)` IPs to `127.0.0.1 ::1` |
-| Change ingress port | Set `OPENPALM_INGRESS_PORT` in env file (default: 8080) |
-| Change bind address | Set `OPENPALM_INGRESS_BIND_ADDRESS` in env file (default: 127.0.0.1) |
-| Use different image registry | Set `OPENPALM_IMAGE_NAMESPACE` in env file |
-| Change config location | Set `OPENPALM_CONFIG_HOME` in env file (default: ~/.config/openpalm) |
-| Change data storage location | Set `OPENPALM_DATA_HOME` in env file (default: ~/.local/share/openpalm) |
+| Change ingress port | Set `OP_INGRESS_PORT` in env file (default: 8080) |
+| Change bind address | Set `OP_INGRESS_BIND_ADDRESS` in env file (default: 127.0.0.1) |
+| Use different image registry | Set `OP_IMAGE_NAMESPACE` in env file |
+| Change config location | Set `OP_CONFIG_HOME` in env file (default: ~/.config/openpalm) |
+| Change data storage location | Set `OP_DATA_HOME` in env file (default: ~/.local/share/openpalm) |

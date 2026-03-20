@@ -8,7 +8,7 @@
 
 ## Checklist
 
-- Replace XDG path helpers with an `OPENPALM_HOME`-based home layout API in `packages/lib` and add legacy-layout detection for CLI and admin consumers.
+- Replace XDG path helpers with an `OP_HOME`-based home layout API in `packages/lib` and add legacy-layout detection for CLI and admin consumers.
 - Remove the permanent staging pipeline, add validate-in-place with rollback snapshots, and expose a rollback command path through lib and CLI.
 - Rewrite core compose, Caddy, env templates, and setup assets for the `~/.openpalm/` layout, vault boundary, and 38XX port standardization.
 

@@ -57,7 +57,7 @@ function createStubAssetProvider(): CoreAssetProvider {
     opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
     adminOpencodeConfig: () => '{"$schema":"https://opencode.ai/config.json","plugin":["@openpalm/admin-tools"]}\n',
     secretsSchema: () => "ADMIN_TOKEN=string\n",
-    stackSchema: () => "OPENPALM_IMAGE_TAG=string\n",
+    stackSchema: () => "OP_IMAGE_TAG=string\n",
     cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
     cleanupData: () => "name: cleanup-data\nschedule: weekly\n",
     validateConfig: () => "name: validate-config\nschedule: hourly\n",
@@ -205,7 +205,7 @@ describe("validateSetupInput", () => {
 describe("buildSecretsFromSetup", () => {
   it("does not include admin token in user secrets", () => {
     const secrets = buildSecretsFromSetup(makeValidInput());
-    expect(secrets.OPENPALM_ADMIN_TOKEN).toBeUndefined();
+    expect(secrets.OP_ADMIN_TOKEN).toBeUndefined();
     expect(secrets.ADMIN_TOKEN).toBeUndefined();
   });
 
@@ -265,7 +265,7 @@ describe("buildSecretsFromSetup", () => {
 describe("buildSystemSecretsFromSetup", () => {
   it("includes distinct admin and assistant credentials", () => {
     const secrets = buildSystemSecretsFromSetup(makeValidInput());
-    expect(secrets.OPENPALM_ADMIN_TOKEN).toBe("test-admin-token-12345");
+    expect(secrets.OP_ADMIN_TOKEN).toBe("test-admin-token-12345");
     expect(typeof secrets.ASSISTANT_TOKEN).toBe("string");
     expect(secrets.ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
     expect(typeof secrets.MEMORY_AUTH_TOKEN).toBe("string");
@@ -370,14 +370,14 @@ describe("performSetup", () => {
     }
 
     // Create stub system.env so isSetupComplete doesn't crash
-    writeFileSync(join(vaultDir, "system.env"), "OPENPALM_SETUP_COMPLETE=false\n");
+    writeFileSync(join(vaultDir, "system.env"), "OP_SETUP_COMPLETE=false\n");
 
     // Seed a user.env file to avoid ensureSecrets() file-not-found
     writeFileSync(
       join(vaultDir, "user.env"),
       [
         "# OpenPalm Secrets",
-        "export OPENPALM_ADMIN_TOKEN=",
+        "export OP_ADMIN_TOKEN=",
         "export ADMIN_TOKEN=",
         "export OPENAI_API_KEY=",
         "export OPENAI_BASE_URL=",
@@ -394,12 +394,12 @@ describe("performSetup", () => {
     );
 
     // Override env vars for test isolation
-    savedEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
-    process.env.OPENPALM_HOME = homeDir;
+    savedEnv.OP_HOME = process.env.OP_HOME;
+    process.env.OP_HOME = homeDir;
   });
 
   afterEach(() => {
-    process.env.OPENPALM_HOME = savedEnv.OPENPALM_HOME;
+    process.env.OP_HOME = savedEnv.OP_HOME;
     rmSync(homeDir, { recursive: true, force: true });
   });
 
@@ -1180,14 +1180,14 @@ describe("performSetupFromConfig", () => {
     }
 
     // Create stub system.env so isSetupComplete doesn't crash
-    writeFileSync(join(vaultDir, "system.env"), "OPENPALM_SETUP_COMPLETE=false\n");
+    writeFileSync(join(vaultDir, "system.env"), "OP_SETUP_COMPLETE=false\n");
 
     // Seed a user.env file to avoid ensureSecrets() file-not-found
     writeFileSync(
       join(vaultDir, "user.env"),
       [
         "# OpenPalm Secrets",
-        "export OPENPALM_ADMIN_TOKEN=",
+        "export OP_ADMIN_TOKEN=",
         "export ADMIN_TOKEN=",
         "export OPENAI_API_KEY=",
         "export OPENAI_BASE_URL=",
@@ -1204,12 +1204,12 @@ describe("performSetupFromConfig", () => {
     );
 
     // Override env vars for test isolation
-    savedEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
-    process.env.OPENPALM_HOME = homeDir;
+    savedEnv.OP_HOME = process.env.OP_HOME;
+    process.env.OP_HOME = homeDir;
   });
 
   afterEach(() => {
-    process.env.OPENPALM_HOME = savedEnv.OPENPALM_HOME;
+    process.env.OP_HOME = savedEnv.OP_HOME;
     rmSync(homeDir, { recursive: true, force: true });
   });
 

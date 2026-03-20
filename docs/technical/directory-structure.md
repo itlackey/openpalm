@@ -16,9 +16,9 @@ to organize host-side files into three tiers. Each tier has a clear owner
 
 | Tier | Env Variable | Default | Owner | Purpose |
 |------|-------------|---------|-------|---------|
-| **CONFIG_HOME** | `OPENPALM_CONFIG_HOME` | `~/.config/openpalm` | User | Secrets, channels, OpenCode extensions |
-| **DATA_HOME** | `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` | Admin + Services | Memory, assistant home, guardian, caddy data, stack.env |
-| **STATE_HOME** | `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | Admin | Assembled runtime, audit logs |
+| **CONFIG_HOME** | `OP_CONFIG_HOME` | `~/.config/openpalm` | User | Secrets, channels, OpenCode extensions |
+| **DATA_HOME** | `OP_DATA_HOME` | `~/.local/share/openpalm` | Admin + Services | Memory, assistant home, guardian, caddy data, stack.env |
+| **STATE_HOME** | `OP_STATE_HOME` | `~/.local/state/openpalm` | Admin | Assembled runtime, audit logs |
 
 **CONFIG_HOME is the user-owned persistent source of truth** and the primary touchpoint for user-managed config.
 Allowed writers are: direct user edits; explicit admin UI/API config actions;
@@ -119,7 +119,7 @@ system-managed by admin logic.
 | `$CONFIG_HOME/assistant` | `/home/opencode/.config/opencode` | rw | User extensions — custom tools, plugins, skills |
 | `$STATE_HOME/opencode` | `/home/opencode/.local/state/opencode` | rw | Logs and session state |
 | `$DATA_HOME/opencode` | `/home/opencode/.local/share/opencode` | rw | OpenCode data directory |
-| `$OPENPALM_WORK_DIR` | `/work` | rw | Working directory for projects |
+| `$OP_WORK_DIR` | `/work` | rw | Working directory for projects |
 
 Users drop tools, plugins, or skills into `CONFIG_HOME/assistant/` and they
 appear inside the container at the standard OpenCode user config path. This
@@ -149,7 +149,7 @@ environment variables directly (useful for dev/test without a secrets file).
 
 The admin accesses Docker via the socket proxy (HTTP over `admin_docker_net`).
 It mounts CONFIG_HOME, DATA_HOME, and STATE_HOME using identical
-host-to-container paths, and uses `process.env.OPENPALM_*` to resolve paths
+host-to-container paths, and uses `process.env.OP_*` to resolve paths
 at runtime. The DATA_HOME mount allows the admin to manage system-policy files
 (`stack.env`, `caddy/Caddyfile`, `automations/`), pre-create subdirectories
 with correct ownership, and seed missing defaults before other services start.
@@ -188,16 +188,16 @@ The source of truth is `DATA_HOME/stack.env`, seeded by `setup.sh` (or
 config. The admin reads, merges, and updates this file on each apply — it is
 system-managed and not intended for direct user editing:
 
-- **XDG paths:** `OPENPALM_CONFIG_HOME`, `OPENPALM_DATA_HOME`, `OPENPALM_STATE_HOME`, `OPENPALM_WORK_DIR`
-- **User/Group:** `OPENPALM_UID`, `OPENPALM_GID` (auto-detected from host)
-- **Docker Socket:** `OPENPALM_DOCKER_SOCK` (auto-detected, supports OrbStack/Colima)
-- **Images:** `OPENPALM_IMAGE_NAMESPACE`, `OPENPALM_IMAGE_TAG`
-- **Networking:** `OPENPALM_INGRESS_BIND_ADDRESS`, `OPENPALM_INGRESS_PORT`
+- **XDG paths:** `OP_CONFIG_HOME`, `OP_DATA_HOME`, `OP_STATE_HOME`, `OP_WORK_DIR`
+- **User/Group:** `OP_UID`, `OP_GID` (auto-detected from host)
+- **Docker Socket:** `OP_DOCKER_SOCK` (auto-detected, supports OrbStack/Colima)
+- **Images:** `OP_IMAGE_NAMESPACE`, `OP_IMAGE_TAG`
+- **Networking:** `OP_INGRESS_BIND_ADDRESS`, `OP_INGRESS_PORT`
 - **Memory:** `MEMORY_DASHBOARD_API_URL`, `MEMORY_USER_ID`
 - **Channel HMAC keys:** `CHANNEL_<NAME>_SECRET` (auto-generated per channel by admin)
 
 On each apply, the admin reads `DATA_HOME/stack.env`, merges in its dynamic
-values (`OPENPALM_SETUP_COMPLETE`, `CHANNEL_*_SECRET`),
+values (`OP_SETUP_COMPLETE`, `CHANNEL_*_SECRET`),
 updates `DATA_HOME/stack.env`, and stages the result to
 `STATE_HOME/artifacts/stack.env` for compose consumption.
 
@@ -215,7 +215,7 @@ OPENAI_API_KEY=
 # GOOGLE_API_KEY=
 ```
 
-System-managed values (`CHANNEL_*_SECRET`, `OPENPALM_*`)
+System-managed values (`CHANNEL_*_SECRET`, `OP_*`)
 live in `stack.env` and do not need to appear here, but extra variables are
 allowed if a user has a specific need.
 
@@ -325,10 +325,10 @@ by apply).
 
 ## Working Directory
 
-The assistant container mounts `$OPENPALM_WORK_DIR` (default: `$HOME/openpalm`)
+The assistant container mounts `$OP_WORK_DIR` (default: `$HOME/openpalm`)
 at `/work` and sets it as the working directory. This is where the assistant
 operates on user projects and scripts.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `OPENPALM_WORK_DIR` | `$HOME/openpalm` | Host directory mounted at `/work` in the assistant |
+| `OP_WORK_DIR` | `$HOME/openpalm` | Host directory mounted at `/work` in the assistant |

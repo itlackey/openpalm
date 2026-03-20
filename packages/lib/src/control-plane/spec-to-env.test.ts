@@ -18,13 +18,13 @@ describe("deriveSystemEnvFromSpec", () => {
   test("produces OP_HOME", () => {
     const result = deriveSystemEnvFromSpec(makeSpec(), "/home/op");
     expect(result.OP_HOME).toBe("/home/op");
-    expect(result.OPENPALM_HOME).toBe("/home/op");
+    expect(result.OP_HOME).toBe("/home/op");
   });
 
   test("produces default port values", () => {
     const result = deriveSystemEnvFromSpec(makeSpec(), "/home/op");
     expect(result.OP_INGRESS_PORT).toBe("3080");
-    expect(result.OPENPALM_INGRESS_PORT).toBe("3080");
+    expect(result.OP_INGRESS_PORT).toBe("3080");
     expect(result.OP_ASSISTANT_PORT).toBe("3800");
     expect(result.OP_MEMORY_PORT).toBe("3898");
   });
@@ -60,7 +60,7 @@ describe("deriveSystemEnvFromSpec", () => {
   test("uses custom bind address", () => {
     const spec = makeSpec({ network: { bindAddress: "0.0.0.0" } });
     const result = deriveSystemEnvFromSpec(spec, "/home/op");
-    expect(result.OP_INGRESS_BIND).toBe("0.0.0.0");
+    expect(result.OP_INGRESS_BIND_ADDRESS).toBe("0.0.0.0");
   });
 
   test("derives feature flags", () => {

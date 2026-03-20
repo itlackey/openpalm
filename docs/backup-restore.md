@@ -49,8 +49,8 @@ For custom XDG paths, substitute the actual directories:
 
 ```bash
 tar czf openpalm-backup-$(date +%Y%m%d).tar.gz \
-  "$OPENPALM_CONFIG_HOME" \
-  "$OPENPALM_DATA_HOME"
+  "$OP_CONFIG_HOME" \
+  "$OP_DATA_HOME"
 ```
 
 Restart the stack after backup:
@@ -81,7 +81,7 @@ files to the correct locations.
 
 ### 3. Fix ownership
 
-Container processes run as `OPENPALM_UID:OPENPALM_GID` (default 1000:1000).
+Container processes run as `OP_UID:OP_GID` (default 1000:1000).
 After restoring from a backup taken on a different machine or by a different
 user, fix file ownership:
 

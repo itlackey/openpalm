@@ -8,8 +8,8 @@ Usage: scripts/dev-setup.sh [--seed-env] [--force] [--pass [--gpg-id <key>]]
 Creates local .dev directories and seeds dev config files.
 
 Options:
-  --seed-env          Copy assets/secrets.env to .dev/config/secrets.env if missing,
-                      and generate STATE_HOME/artifacts/stack.env with auto-detected values.
+  --seed-env          Copy assets/secrets.env to .dev/vault/user.env if missing,
+                      and generate vault/system.env with auto-detected values.
   --force             Overwrite seeded files even if they already exist.
   --pass              Initialize a pass backend for secret storage (requires GPG key).
   --gpg-id <key>      GPG key ID for the pass backend (required with --pass).
@@ -42,37 +42,37 @@ fi
 
 DEV_ROOT="$ROOT_DIR/.dev"
 CONFIG_DIR="$DEV_ROOT/config"
-STATE_DIR="$DEV_ROOT/state"
+VAULT_DIR="$DEV_ROOT/vault"
 DATA_DIR="$DEV_ROOT/data"
+LOGS_DIR="$DEV_ROOT/logs"
 
 mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
-	"$CONFIG_DIR/channels" "$CONFIG_DIR/automations" "$CONFIG_DIR/stash" \
-	"$STATE_DIR/artifacts/channels/public" "$STATE_DIR/artifacts/channels/lan" \
-	"$STATE_DIR/audit" "$STATE_DIR/automations" "$STATE_DIR/opencode" \
+	"$CONFIG_DIR/channels" "$CONFIG_DIR/automations" "$CONFIG_DIR/components" "$CONFIG_DIR/stash" \
+	"$VAULT_DIR" \
 	"$DATA_DIR/memory" "$DATA_DIR/assistant/.config/opencode" \
 	"$DATA_DIR/guardian" "$DATA_DIR/caddy/data" "$DATA_DIR/caddy/config" \
-	"$DATA_DIR/automations" "$DATA_DIR/models" "$DATA_DIR/opencode" \
+	"$DATA_DIR/caddy/channels/public" "$DATA_DIR/caddy/channels/lan" \
+	"$DATA_DIR/automations" "$DATA_DIR/models" "$DATA_DIR/stash" "$DATA_DIR/workspace" \
+	"$LOGS_DIR/opencode" \
 	"$DEV_ROOT/work"
 
-# ── Seed core assets to DATA_HOME (write-once unless --force) ────
+# ── Seed core assets (write-once unless --force) ─────────────────
 CADDY_DEST="$DATA_DIR/caddy/Caddyfile"
-COMPOSE_DEST="$DATA_DIR/docker-compose.yml"
+COMPOSE_DEST="$CONFIG_DIR/components/core.yml"
 
 [[ ! -f "$CADDY_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/assets/Caddyfile" "$CADDY_DEST"
 [[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/assets/docker-compose.yml" "$COMPOSE_DEST"
 
-# Bootstrap staging: copy to STATE so compose works before admin's first apply
-cp "$COMPOSE_DEST" "$STATE_DIR/artifacts/docker-compose.yml"
-cp "$CADDY_DEST" "$STATE_DIR/artifacts/Caddyfile"
-touch "$STATE_DIR/artifacts/secrets.env"
+# Ensure vault env files exist (compose needs them even if empty)
+touch "$VAULT_DIR/user.env" "$VAULT_DIR/system.env"
 
 # ── Seed environment files ───────────────────────────────────────
 if [[ $seed_env -eq 1 ]]; then
-	env_dest="$CONFIG_DIR/secrets.env"
+	env_dest="$VAULT_DIR/user.env"
 	if [[ ! -f "$env_dest" || $force -eq 1 ]]; then
 		cp "$ROOT_DIR/assets/secrets.env" "$env_dest"
-		sed -i 's/^export OPENPALM_ADMIN_TOKEN=$/export OPENPALM_ADMIN_TOKEN=dev-admin-token/' "$env_dest"
+		sed -i 's/^export OP_ADMIN_TOKEN=$/export OP_ADMIN_TOKEN=dev-admin-token/' "$env_dest"
 		# Uncomment and set the legacy ADMIN_TOKEN alias for dev parity
 		sed -i 's/^# export ADMIN_TOKEN=$/export ADMIN_TOKEN=dev-admin-token/' "$env_dest"
 		# Seed Ollama as default LLM backend for dev
@@ -83,10 +83,9 @@ if [[ $seed_env -eq 1 ]]; then
 		printf '\n# Service auth tokens (auto-generated)\nexport MEMORY_AUTH_TOKEN=%s\n' \
 			"$mem_token" >>"$env_dest"
 	fi
-	[[ -f "$env_dest" ]] && cp "$env_dest" "$STATE_DIR/artifacts/secrets.env"
 
-	stack_env="$DATA_DIR/stack.env"
-	if [[ ! -f "$stack_env" || $force -eq 1 ]]; then
+	system_env="$VAULT_DIR/system.env"
+	if [[ ! -f "$system_env" || $force -eq 1 ]]; then
 		# Detect Docker socket from active context (supports OrbStack, Colima, etc.)
 		docker_sock="/var/run/docker.sock"
 		if host_url="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null)"; then
@@ -98,28 +97,24 @@ if [[ $seed_env -eq 1 ]]; then
 			esac
 		fi
 
-		cat >"$stack_env" <<EOF
-# OpenPalm Stack Configuration — system-managed, do not edit
+		cat >"$system_env" <<EOF
+# OpenPalm System Environment — system-managed, do not edit
 
-OPENPALM_CONFIG_HOME=$DEV_ROOT/config
-OPENPALM_DATA_HOME=$DEV_ROOT/data
-OPENPALM_STATE_HOME=$DEV_ROOT/state
-OPENPALM_WORK_DIR=$DEV_ROOT/work
+OP_HOME=$DEV_ROOT
+OP_WORK_DIR=$DEV_ROOT/work
 
-OPENPALM_UID=$(id -u)
-OPENPALM_GID=$(id -g)
+OP_UID=$(id -u)
+OP_GID=$(id -g)
 
-OPENPALM_DOCKER_SOCK=$docker_sock
+OP_DOCKER_SOCK=$docker_sock
 
-OPENPALM_IMAGE_NAMESPACE=openpalm
-OPENPALM_IMAGE_TAG=latest
+OP_IMAGE_NAMESPACE=openpalm
+OP_IMAGE_TAG=latest
 
-OPENPALM_INGRESS_BIND_ADDRESS=127.0.0.1
-OPENPALM_INGRESS_PORT=8080
+OP_INGRESS_BIND_ADDRESS=127.0.0.1
+OP_INGRESS_PORT=8080
 EOF
 	fi
-
-	[[ -f "$stack_env" ]] && cp "$stack_env" "$STATE_DIR/artifacts/stack.env"
 fi
 
 # ── Seed OpenCode user config (Ollama for dev) ──────────────────
@@ -220,7 +215,7 @@ fi
 
 # ── Fix ownership ────────────────────────────────────────────────
 if [[ $EUID -ne 0 ]]; then
-	chown -R "$(id -u):$(id -g)" "$DATA_DIR" "$CONFIG_DIR" "$STATE_DIR"
+	chown -R "$(id -u):$(id -g)" "$CONFIG_DIR" "$VAULT_DIR" "$DATA_DIR" "$LOGS_DIR"
 else
 	echo "Note: running as root; ownership left as-is." >&2
 fi

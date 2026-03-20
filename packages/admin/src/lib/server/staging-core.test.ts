@@ -233,8 +233,8 @@ describe("persistArtifacts", () => {
     const systemEnvPath = join(state.vaultDir, "system.env");
     expect(existsSync(systemEnvPath)).toBe(true);
     const content = readFileSync(systemEnvPath, "utf-8");
-    expect(content).toContain(`OPENPALM_HOME=${state.homeDir}`);
-    expect(content).toContain(`OPENPALM_IMAGE_TAG=`);
+    expect(content).toContain(`OP_HOME=${state.homeDir}`);
+    expect(content).toContain(`OP_IMAGE_TAG=`);
   });
 
   test("system.env does NOT contain user secrets (MEMORY_USER_ID)", () => {
@@ -245,8 +245,8 @@ describe("persistArtifacts", () => {
     // User secrets belong in user.env, not system.env.
     // Having them in both causes precedence bugs with Docker Compose --env-file.
     expect(content).not.toContain("MEMORY_USER_ID=");
-    // OPENPALM_ADMIN_TOKEN is a system secret and correctly lives in system.env.
-    // Only the legacy bare ADMIN_TOKEN (without OPENPALM_ prefix) should not appear.
+    // OP_ADMIN_TOKEN is a system secret and correctly lives in system.env.
+    // Only the legacy bare ADMIN_TOKEN (without OP_ prefix) should not appear.
     const lines = content.split("\n");
     expect(lines.some((l) => /^ADMIN_TOKEN=/.test(l))).toBe(false);
   });

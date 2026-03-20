@@ -259,7 +259,7 @@ function scanComponentDir(
  * Discover available components from all catalog sources.
  * Priority: user-local > registry > built-in (by directory name).
  *
- * @param openpalmHome - The OPENPALM_HOME root (e.g., ~/.openpalm)
+ * @param openpalmHome - The OP_HOME root (e.g., ~/.openpalm)
  * @param builtinDir - Optional path to built-in components directory (e.g., packages/lib/assets/components/).
  *   When omitted, no built-in components are included in the discovery results.
  */
@@ -415,7 +415,7 @@ export function validateOverlay(composePath: string): OverlayValidationResult {
         const checkStr = typeof vol === "string" ? vol : String((vol as Record<string, unknown>)?.source ?? "");
         if (
           /\$\{[^}]*[Vv][Aa][Uu][Ll][Tt][^}]*\}/.test(checkStr) ||
-          (/\$\{[^}]*OPENPALM_HOME[^}]*\}/.test(checkStr) && /vault/i.test(checkStr))
+          (/\$\{[^}]*OP_HOME[^}]*\}/.test(checkStr) && /vault/i.test(checkStr))
         ) {
           warnings.push(
             `Service "${serviceName}" volume uses a variable reference that may point to vault — ` +

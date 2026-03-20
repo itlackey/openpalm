@@ -22,7 +22,7 @@ mkdirSync(`${tmpBase}/config`, { recursive: true });
 mkdirSync(`${tmpBase}/data`, { recursive: true });
 mkdirSync(`${tmpBase}/vault`, { recursive: true });
 
-writeFileSync(`${tmpBase}/vault/system.env`, "OPENPALM_SETUP_COMPLETE=false\n");
+writeFileSync(`${tmpBase}/vault/system.env`, "OP_SETUP_COMPLETE=false\n");
 writeFileSync(`${tmpBase}/vault/user.env`, "# test\n");
 
 // No-op asset provider — mocked tests intercept API calls before they
@@ -42,7 +42,7 @@ const noopAssetProvider: CoreAssetProvider = {
 };
 
 // Override state/config home so the server doesn't touch real dirs.
-process.env.OPENPALM_HOME = tmpBase;
+process.env.OP_HOME = tmpBase;
 
 const { server } = createSetupServer(port, {
 	configDir: `${tmpBase}/config`,

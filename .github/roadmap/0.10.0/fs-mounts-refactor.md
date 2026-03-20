@@ -235,28 +235,28 @@ OWNER_EMAIL=
 # ──────────────────────────────────────────────────────────────────
 
 # Authentication
-OPENPALM_ADMIN_TOKEN=
+OP_ADMIN_TOKEN=
 
 # Paths
-OPENPALM_HOME=/home/user/.openpalm
-OPENPALM_UID=1000
-OPENPALM_GID=1000
-OPENPALM_DOCKER_SOCK=/var/run/docker.sock
+OP_HOME=/home/user/.openpalm
+OP_UID=1000
+OP_GID=1000
+OP_DOCKER_SOCK=/var/run/docker.sock
 
 # Images
-OPENPALM_IMAGE_NAMESPACE=openpalm
-OPENPALM_IMAGE_TAG=v0.10.0
+OP_IMAGE_NAMESPACE=openpalm
+OP_IMAGE_TAG=v0.10.0
 
 # Ports (38XX range)
-OPENPALM_ASSISTANT_PORT=3800
-OPENPALM_CHANNEL_VOICE_PORT=3810
-OPENPALM_CHANNEL_CHAT_PORT=3820
-OPENPALM_ADMIN_PORT=3880
-OPENPALM_ADMIN_OPENCODE_PORT=3881
-OPENPALM_SCHEDULER_PORT=3897
-OPENPALM_MEMORY_PORT=3898
-OPENPALM_GUARDIAN_PORT=3899
-OPENPALM_INGRESS_PORT=3880
+OP_ASSISTANT_PORT=3800
+OP_CHANNEL_VOICE_PORT=3810
+OP_CHANNEL_CHAT_PORT=3820
+OP_ADMIN_PORT=3880
+OP_ADMIN_OPENCODE_PORT=3881
+OP_SCHEDULER_PORT=3897
+OP_MEMORY_PORT=3898
+OP_GUARDIAN_PORT=3899
+OP_INGRESS_PORT=3880
 
 # Service Auth
 MEMORY_AUTH_TOKEN=
@@ -268,7 +268,7 @@ CHANNEL_DISCORD_SECRET=
 CHANNEL_SLACK_SECRET=
 
 # Setup
-OPENPALM_SETUP_COMPLETE=true
+OP_SETUP_COMPLETE=true
 ```
 
 **Why two files instead of one:**
@@ -283,9 +283,9 @@ OPENPALM_SETUP_COMPLETE=true
 |-----------|---------------|--------------------------|------------------------|-------------|
 | **assistant** | `vault/user.env` → `/etc/openpalm/user.env` (ro) | `MEMORY_AUTH_TOKEN` | — | LLM keys (via file), memory token (via env) |
 | **admin** | `vault/` → `/etc/openpalm/vault/` (rw) | everything it needs | everything it needs | Full access — it manages both files |
-| **guardian** | none | `OPENPALM_ADMIN_TOKEN`, `CHANNEL_*_SECRET` | — | Admin token + HMAC secrets only |
+| **guardian** | none | `OP_ADMIN_TOKEN`, `CHANNEL_*_SECRET` | — | Admin token + HMAC secrets only |
 | **memory** | none | `MEMORY_AUTH_TOKEN` | `OPENAI_API_KEY`, `OPENAI_BASE_URL` | Memory auth + embedding provider only |
-| **scheduler** | none | `OPENPALM_ADMIN_TOKEN` | — | Admin token only |
+| **scheduler** | none | `OP_ADMIN_TOKEN` | — | Admin token only |
 | **caddy** | none | — | — | No secrets (TLS config is file-based) |
 
 Each container's compose `environment:` block is the explicit allowlist. The vault mount rules add a second layer: even if a container's `environment:` block references a variable, it can only read the file if it has a mount.
@@ -466,7 +466,7 @@ All host paths are relative to `~/.openpalm/` unless noted.
 
 | Host Path | Container Path | Mode | Purpose |
 |-----------|---------------|------|---------|
-| `$OPENPALM_DOCKER_SOCK` | `/var/run/docker.sock` | ro | Docker daemon socket |
+| `$OP_DOCKER_SOCK` | `/var/run/docker.sock` | ro | Docker daemon socket |
 
 ### 5.2 Mount Count Summary
 
@@ -623,17 +623,17 @@ OWNER_EMAIL=
 # admin, and may be overwritten on apply/upgrade.
 
 # ── Authentication ────────────────────────────────────────────────
-OPENPALM_ADMIN_TOKEN=
+OP_ADMIN_TOKEN=
 
 # ── Paths ─────────────────────────────────────────────────────────
-OPENPALM_HOME=
-OPENPALM_UID=1000
-OPENPALM_GID=1000
-OPENPALM_DOCKER_SOCK=/var/run/docker.sock
+OP_HOME=
+OP_UID=1000
+OP_GID=1000
+OP_DOCKER_SOCK=/var/run/docker.sock
 
 # ── Images ────────────────────────────────────────────────────────
-OPENPALM_IMAGE_NAMESPACE=openpalm
-OPENPALM_IMAGE_TAG=latest
+OP_IMAGE_NAMESPACE=openpalm
+OP_IMAGE_TAG=latest
 
 # ── Service Auth ──────────────────────────────────────────────────
 MEMORY_AUTH_TOKEN=
@@ -646,7 +646,7 @@ CHANNEL_SLACK_SECRET=
 CHANNEL_API_SECRET=
 
 # ── Setup ─────────────────────────────────────────────────────────
-OPENPALM_SETUP_COMPLETE=false
+OP_SETUP_COMPLETE=false
 ```
 
 ## Appendix C: `config/openpalm.yml` Template
@@ -693,7 +693,7 @@ openpalm migrate
                  • Check ~/.config/openpalm/ (CONFIG_HOME)
                  • Check ~/.local/share/openpalm/ (DATA_HOME)
                  • Check ~/.local/state/openpalm/ (STATE_HOME)
-                 • Check custom paths via OPENPALM_CONFIG_HOME / OPENPALM_DATA_HOME / OPENPALM_STATE_HOME
+                 • Check custom paths via OP_CONFIG_HOME / OP_DATA_HOME / OP_STATE_HOME
                  → if none found: skip migration, run fresh install
 
 2. STOP       — docker compose down (stop all containers)
@@ -745,24 +745,24 @@ openpalm migrate
 |--------|----------|-------------|
 | `secrets.env` | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `GOOGLE_API_KEY` | `vault/user.env` |
 | `secrets.env` | `OPENAI_BASE_URL`, `SYSTEM_LLM_*`, `EMBEDDING_*` | `vault/user.env` |
-| `secrets.env` | `ADMIN_TOKEN` | `vault/system.env` (as `OPENPALM_ADMIN_TOKEN`) |
+| `secrets.env` | `ADMIN_TOKEN` | `vault/system.env` (as `OP_ADMIN_TOKEN`) |
 | `secrets.env` | `OPENMEMORY_USER_ID` | `vault/user.env` (as `MEMORY_USER_ID`) |
-| `stack.env` | `OPENPALM_HOME`, `OPENPALM_UID`, `OPENPALM_GID` | `vault/system.env` |
-| `stack.env` | `OPENPALM_IMAGE_*` | `vault/system.env` |
+| `stack.env` | `OP_HOME`, `OP_UID`, `OP_GID` | `vault/system.env` |
+| `stack.env` | `OP_IMAGE_*` | `vault/system.env` |
 | `stack.env` | `MEMORY_AUTH_TOKEN`, `OPENCODE_SERVER_PASSWORD` | `vault/system.env` |
 | `stack.env` | `CHANNEL_*_SECRET` | `vault/system.env` |
-| `stack.env` | `OPENPALM_DOCKER_SOCK` | `vault/system.env` |
+| `stack.env` | `OP_DOCKER_SOCK` | `vault/system.env` |
 
 ### 8.4 Legacy Environment Variable Handling
 
-If the user has `OPENPALM_CONFIG_HOME`, `OPENPALM_DATA_HOME`, or `OPENPALM_STATE_HOME` set in their shell environment:
+If the user has `OP_CONFIG_HOME`, `OP_DATA_HOME`, or `OP_STATE_HOME` set in their shell environment:
 
 ```
 WARNING: Legacy environment variables detected:
-  OPENPALM_CONFIG_HOME=/custom/path/config
-  OPENPALM_DATA_HOME=/custom/path/data
+  OP_CONFIG_HOME=/custom/path/config
+  OP_DATA_HOME=/custom/path/data
 
-OpenPalm 0.10.0 uses OPENPALM_HOME (~/.openpalm by default).
+OpenPalm 0.10.0 uses OP_HOME (~/.openpalm by default).
 Remove these variables from your shell profile and re-run migration.
 ```
 

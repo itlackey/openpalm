@@ -15,9 +15,9 @@ services:
   # ── Memory ─────────────────────────────────────────────────────────
   # Lightweight Bun.js wrapper around @openpalm/memory with sqlite-vec.
   memory:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/memory:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/memory:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
-    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -28,9 +28,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
     ports:
-      - "${OPENPALM_MEMORY_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_MEMORY_PORT:-3898}:8765"
+      - "${OP_MEMORY_BIND_ADDRESS:-127.0.0.1}:${OP_MEMORY_PORT:-3898}:8765"
     volumes:
-      - ${OPENPALM_HOME}/data/memory:/data
+      - ${OP_HOME}/data/memory:/data
     networks: [ assistant_net ]
     healthcheck:
       test: [ "CMD-SHELL", "bun -e \"const r=await fetch('http://localhost:8765/health');if(!r.ok)process.exit(1)\" || exit 1" ]
@@ -41,7 +41,7 @@ services:
 
   # ── Assistant (opencode runtime — NO docker socket) ────────────────
   assistant:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/assistant:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -54,27 +54,27 @@ services:
       TERM: xterm-256color
       HOME: /home/opencode
       AKM_STASH_DIR: /stash
-      OPENPALM_ADMIN_API_URL: ${OPENPALM_ADMIN_API_URL:-}
-      OPENPALM_ASSISTANT_TOKEN: ${ASSISTANT_TOKEN:-}
+      OP_ADMIN_API_URL: ${OP_ADMIN_API_URL:-}
+      OP_ASSISTANT_TOKEN: ${ASSISTANT_TOKEN:-}
       MEMORY_API_URL: http://memory:8765
       MEMORY_AUTH_TOKEN: ${MEMORY_AUTH_TOKEN:-}
       MEMORY_USER_ID: ${MEMORY_USER_ID:-default_user}
-      OPENPALM_UID: ${OPENPALM_UID:-1000}
-      OPENPALM_GID: ${OPENPALM_GID:-1000}
+      OP_UID: ${OP_UID:-1000}
+      OP_GID: ${OP_GID:-1000}
     ports:
-      - "${OPENPALM_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_ASSISTANT_PORT:-3800}:4096"
-      - "${OPENPALM_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_ASSISTANT_SSH_PORT:-2222}:22"
+      - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
+      - "${OP_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_SSH_PORT:-2222}:22"
     volumes:
-      - ${OPENPALM_HOME}/config:/etc/openpalm:ro
-      - ${OPENPALM_HOME}/config/assistant:/home/opencode/.config/opencode
-      - ${OPENPALM_HOME}/vault/user.env:/etc/openpalm/user.env:ro
-      - ${OPENPALM_HOME}/data/assistant:/home/opencode/.opencode
-      - ${OPENPALM_HOME}/data/stash:/home/opencode/.akm
-      - ${OPENPALM_HOME}/data/workspace:/work
-      - ${OPENPALM_HOME}/logs/opencode:/home/opencode/.local/state/opencode
+      - ${OP_HOME}/config:/etc/openpalm:ro
+      - ${OP_HOME}/config/assistant:/home/opencode/.config/opencode
+      - ${OP_HOME}/vault/user.env:/etc/openpalm/user.env:ro
+      - ${OP_HOME}/data/assistant:/home/opencode/.opencode
+      - ${OP_HOME}/data/stash:/home/opencode/.akm
+      - ${OP_HOME}/data/workspace:/work
+      - ${OP_HOME}/logs/opencode:/home/opencode/.local/state/opencode
       - ${HOME}/.cache/openpalm/registry:/cache/registry
     env_file:
-      - path: ${OPENPALM_HOME}/vault/user.env
+      - path: ${OP_HOME}/vault/user.env
         required: false
     working_dir: /work
     networks: [ assistant_net ]
@@ -93,22 +93,22 @@ services:
   # channels automatically receive their credentials without modifying
   # this file. Installing a channel triggers a guardian recreate (~2 s).
   guardian:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/guardian:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:
-      - path: ${OPENPALM_HOME}/vault/system.env
+      - path: ${OP_HOME}/vault/system.env
         required: false
     environment:
       HOME: /app/data
       PORT: "8080"
-      OPENPALM_ASSISTANT_URL: http://assistant:4096
+      OP_ASSISTANT_URL: http://assistant:4096
       OPENCODE_TIMEOUT_MS: "0"
-      ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-}
+      ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
       GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
     volumes:
-      - ${OPENPALM_HOME}/data/guardian:/app/data
-      - ${OPENPALM_HOME}/logs:/app/audit
-    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
+      - ${OP_HOME}/data/guardian:/app/data
+      - ${OP_HOME}/logs:/app/audit
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
     networks: [ channel_lan, channel_public, assistant_net ]
     depends_on:
       assistant:
@@ -122,21 +122,21 @@ services:
 
   # ── Scheduler (automation engine — NO docker socket) ─────────────
   scheduler:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/scheduler:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/scheduler:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
-    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
       PORT: "8090"
-      OPENPALM_HOME: /openpalm
-      OPENPALM_ADMIN_TOKEN: ${ASSISTANT_TOKEN:-}
-      OPENPALM_ADMIN_API_URL: ${OPENPALM_ADMIN_API_URL:-}
+      OP_HOME: /openpalm
+      OP_ADMIN_TOKEN: ${ASSISTANT_TOKEN:-}
+      OP_ADMIN_API_URL: ${OP_ADMIN_API_URL:-}
       OPENCODE_API_URL: http://assistant:4096
       OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-}
       MEMORY_API_URL: http://memory:8765
     ports:
-      - "127.0.0.1:${OPENPALM_SCHEDULER_PORT:-3897}:8090"
+      - "127.0.0.1:${OP_SCHEDULER_PORT:-3897}:8090"
     volumes:
-      - ${OPENPALM_HOME}/config:/openpalm/config:ro
+      - ${OP_HOME}/config:/openpalm/config:ro
     networks: [ assistant_net ]
     depends_on:
       assistant:

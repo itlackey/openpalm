@@ -53,7 +53,7 @@ Either stop the conflicting process, or change the OpenPalm bind port by
 editing `DATA_HOME/stack.env`:
 
 ```env
-OPENPALM_INGRESS_PORT=9090
+OP_INGRESS_PORT=9090
 ```
 
 Then restart the stack:
@@ -62,7 +62,7 @@ Then restart the stack:
 docker compose down && docker compose up -d
 ```
 
-The default Caddy ingress port is `8080` (see `OPENPALM_INGRESS_PORT` in
+The default Caddy ingress port is `8080` (see `OP_INGRESS_PORT` in
 `docker-compose.yml`).
 
 ---
@@ -223,7 +223,7 @@ mounts, or files created by containers are owned by root and cannot be
 edited.
 
 **Cause:** UID/GID mismatch between the host user and the container user.
-Containers run as `OPENPALM_UID:OPENPALM_GID` (default 1000:1000).
+Containers run as `OP_UID:OP_GID` (default 1000:1000).
 
 **Solution:**
 
@@ -236,7 +236,7 @@ Containers run as `OPENPALM_UID:OPENPALM_GID` (default 1000:1000).
    ```
 2. Verify UID/GID in `DATA_HOME/stack.env` matches your host user:
    ```bash
-   grep OPENPALM_UID ~/.local/share/openpalm/stack.env
+   grep OP_UID ~/.local/share/openpalm/stack.env
    id -u
    ```
 3. After fixing ownership, recreate containers (do NOT use `docker restart`

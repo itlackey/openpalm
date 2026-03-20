@@ -72,7 +72,7 @@ Creates `.dev/` XDG directories and optionally seeds config files for local deve
 ./scripts/dev-setup.sh --seed-env --force # Overwrite existing configs
 ```
 
-Sets `OPENPALM_*_HOME` to absolute `.dev/` paths so the admin dev server picks them up without additional environment setup.
+Sets `OP_*_HOME` to absolute `.dev/` paths so the admin dev server picks them up without additional environment setup.
 
 When `--seed-env` is used, this script also:
 - Seeds `ADMIN_TOKEN=dev-admin-token` in `secrets.env` (matches test expectations)

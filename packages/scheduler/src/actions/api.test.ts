@@ -8,7 +8,7 @@ describe("executeApiAction", () => {
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
-    process.env.OPENPALM_ADMIN_API_URL = "http://admin:8100";
+    process.env.OP_ADMIN_API_URL = "http://admin:8100";
   });
 
   afterEach(() => {

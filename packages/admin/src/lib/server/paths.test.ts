@@ -14,20 +14,20 @@ describe("ensureXdgDirs (ensureHomeDirs)", () => {
   const origEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    origEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
+    origEnv.OP_HOME = process.env.OP_HOME;
 
     const base = trackDir(makeTempDir());
-    process.env.OPENPALM_HOME = base;
+    process.env.OP_HOME = base;
   });
 
   afterEach(() => {
-    process.env.OPENPALM_HOME = origEnv.OPENPALM_HOME;
+    process.env.OP_HOME = origEnv.OP_HOME;
   });
 
   test("creates full home directory tree", () => {
     ensureXdgDirs();
 
-    const home = process.env.OPENPALM_HOME!;
+    const home = process.env.OP_HOME!;
     const configDir = join(home, "config");
     const vaultDir = join(home, "vault");
     const dataDir = join(home, "data");
@@ -61,6 +61,6 @@ describe("ensureXdgDirs (ensureHomeDirs)", () => {
   test("is idempotent — safe to call multiple times", () => {
     ensureXdgDirs();
     ensureXdgDirs(); // No error
-    expect(existsSync(join(process.env.OPENPALM_HOME!, "config"))).toBe(true);
+    expect(existsSync(join(process.env.OP_HOME!, "config"))).toBe(true);
   });
 });

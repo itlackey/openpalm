@@ -158,18 +158,18 @@ describe("createState", () => {
   const origEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    origEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
+    origEnv.OP_HOME = process.env.OP_HOME;
     origEnv.ADMIN_TOKEN = process.env.ADMIN_TOKEN;
   });
 
   afterEach(() => {
-    process.env.OPENPALM_HOME = origEnv.OPENPALM_HOME;
+    process.env.OP_HOME = origEnv.OP_HOME;
     process.env.ADMIN_TOKEN = origEnv.ADMIN_TOKEN;
   });
 
   test("loads persisted channel secrets from vault/system.env", () => {
     const base = trackDir(makeTempDir());
-    process.env.OPENPALM_HOME = base;
+    process.env.OP_HOME = base;
     delete process.env.ADMIN_TOKEN;
 
     const vaultDir = join(base, "vault");
@@ -184,17 +184,17 @@ describe("createState", () => {
     expect(state.channelSecrets.discord).toBe("def456");
   });
 
-  test("reads OPENPALM_ADMIN_TOKEN from vault/system.env file", () => {
+  test("reads OP_ADMIN_TOKEN from vault/system.env file", () => {
     const base = trackDir(makeTempDir());
-    process.env.OPENPALM_HOME = base;
+    process.env.OP_HOME = base;
     delete process.env.ADMIN_TOKEN;
-    delete process.env.OPENPALM_ADMIN_TOKEN;
+    delete process.env.OP_ADMIN_TOKEN;
 
     const vaultDir = join(base, "vault");
     mkdirSync(vaultDir, { recursive: true });
     writeFileSync(
       join(vaultDir, "system.env"),
-      "OPENPALM_ADMIN_TOKEN=file-token\n"
+      "OP_ADMIN_TOKEN=file-token\n"
     );
 
     const state = createState();
@@ -203,7 +203,7 @@ describe("createState", () => {
 
   test("uses explicit adminToken parameter over file/env", () => {
     const base = trackDir(makeTempDir());
-    process.env.OPENPALM_HOME = base;
+    process.env.OP_HOME = base;
     process.env.ADMIN_TOKEN = "env-token";
 
     const vaultDir = join(base, "vault");
@@ -216,7 +216,7 @@ describe("createState", () => {
 
   test("initializes all core services as stopped", () => {
     const base = trackDir(makeTempDir());
-    process.env.OPENPALM_HOME = base;
+    process.env.OP_HOME = base;
 
     const state = createState();
     for (const service of CORE_SERVICES) {
@@ -325,13 +325,13 @@ describe("updateStackEnvToLatestImageTag", () => {
     vi.restoreAllMocks();
   });
 
-  test("updates OPENPALM_IMAGE_TAG in vault/system.env", async () => {
+  test("updates OP_IMAGE_TAG in vault/system.env", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
     mkdirSync(state.vaultDir, { recursive: true });
     writeFileSync(
       join(state.vaultDir, "system.env"),
-      "OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=v0.1.0\n"
+      "OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=v0.1.0\n"
     );
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -348,14 +348,14 @@ describe("updateStackEnvToLatestImageTag", () => {
 
     expect(result.namespace).toBe("openpalm");
     expect(result.tag).toBe("v0.7.7");
-    expect(updated).toContain("OPENPALM_IMAGE_TAG=v0.7.7");
+    expect(updated).toContain("OP_IMAGE_TAG=v0.7.7");
   });
 
   test("throws when docker tag lookup fails", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
     mkdirSync(state.vaultDir, { recursive: true });
-    writeFileSync(join(state.vaultDir, "system.env"), "OPENPALM_IMAGE_NAMESPACE=openpalm\n");
+    writeFileSync(join(state.vaultDir, "system.env"), "OP_IMAGE_NAMESPACE=openpalm\n");
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("bad gateway", { status: 502 }));
 

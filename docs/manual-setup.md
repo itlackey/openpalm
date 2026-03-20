@@ -147,25 +147,25 @@ cat > ~/.local/share/openpalm/stack.env << EOF
 # Overwritten by admin on each apply.
 
 # ── XDG Paths ──────────────────────────────────────────────────────
-OPENPALM_CONFIG_HOME=$HOME/.config/openpalm
-OPENPALM_DATA_HOME=$HOME/.local/share/openpalm
-OPENPALM_STATE_HOME=$HOME/.local/state/openpalm
-OPENPALM_WORK_DIR=$HOME/openpalm
+OP_CONFIG_HOME=$HOME/.config/openpalm
+OP_DATA_HOME=$HOME/.local/share/openpalm
+OP_STATE_HOME=$HOME/.local/state/openpalm
+OP_WORK_DIR=$HOME/openpalm
 
 # ── User/Group ──────────────────────────────────────────────────────
-OPENPALM_UID=$(id -u)
-OPENPALM_GID=$(id -g)
+OP_UID=$(id -u)
+OP_GID=$(id -g)
 
 # ── Docker Socket ───────────────────────────────────────────────────
-OPENPALM_DOCKER_SOCK=/var/run/docker.sock
+OP_DOCKER_SOCK=/var/run/docker.sock
 
 # ── Images ──────────────────────────────────────────────────────────
-OPENPALM_IMAGE_NAMESPACE=openpalm
-OPENPALM_IMAGE_TAG=latest
+OP_IMAGE_NAMESPACE=openpalm
+OP_IMAGE_TAG=latest
 
 # ── Networking ──────────────────────────────────────────────────────
-OPENPALM_INGRESS_BIND_ADDRESS=127.0.0.1
-OPENPALM_INGRESS_PORT=8080
+OP_INGRESS_BIND_ADDRESS=127.0.0.1
+OP_INGRESS_PORT=8080
 
 # ── Memory ──────────────────────────────────────────────────────
 MEMORY_DASHBOARD_API_URL=http://localhost:8765
@@ -181,7 +181,7 @@ docker context inspect --format '{{.Endpoints.docker.Host}}'
 # Example output: unix:///Users/you/.colima/default/docker.sock
 ```
 
-Set `OPENPALM_DOCKER_SOCK` to the path after `unix://`.
+Set `OP_DOCKER_SOCK` to the path after `unix://`.
 
 Stage it to STATE_HOME:
 

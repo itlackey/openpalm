@@ -181,11 +181,11 @@ Networks:
    | Symptom | Cause | Fix |
    |---------|-------|-----|
    | All containers fail | Docker daemon not running | Check Docker service on host |
-   | Admin won't start | docker-socket-proxy unhealthy | Check Docker socket path (`OPENPALM_DOCKER_SOCK`) |
+   | Admin won't start | docker-socket-proxy unhealthy | Check Docker socket path (`OP_DOCKER_SOCK`) |
    | Assistant restart loop | Memory service unhealthy | Assistant depends on memory health. Fix memory first. |
    | Guardian restart loop | Assistant unhealthy | Guardian depends on assistant health. Fix assistant first. |
    | Port conflict errors | Another service on the same port | Check ports 8080, 8100, 4096, 8765 for conflicts |
-   | Permission denied | UID/GID mismatch | Check `OPENPALM_UID`/`OPENPALM_GID` match volume ownership |
+   | Permission denied | UID/GID mismatch | Check `OP_UID`/`OP_GID` match volume ownership |
 
 ---
 
@@ -269,13 +269,13 @@ Key environment variables that affect diagnostics:
 | `MEMORY_API_URL` | assistant | Memory service endpoint (default: `http://memory:8765`) |
 | `MEMORY_AUTH_TOKEN` | admin, memory | Memory service authentication |
 | `MEMORY_USER_ID` | assistant | Memory user identity |
-| `OPENPALM_ADMIN_API_URL` | assistant | Admin API from assistant (default: `http://admin:8100`) |
-| `OPENPALM_ASSISTANT_TOKEN` | assistant | Admin API token for assistant |
+| `OP_ADMIN_API_URL` | assistant | Admin API from assistant (default: `http://admin:8100`) |
+| `OP_ASSISTANT_TOKEN` | assistant | Admin API token for assistant |
 | `GUARDIAN_AUDIT_PATH` | guardian | Audit log file location |
 | `GUARDIAN_SECRETS_PATH` | guardian | Channel secrets file path |
 | `OPENCODE_TIMEOUT_MS` | guardian | Message forwarding timeout (default: 120000ms) |
-| `OPENPALM_INGRESS_PORT` | caddy | External ingress port (default: 8080) |
-| `OPENPALM_DOCKER_SOCK` | docker-socket-proxy | Docker socket path |
+| `OP_INGRESS_PORT` | caddy | External ingress port (default: 8080) |
+| `OP_DOCKER_SOCK` | docker-socket-proxy | Docker socket path |
 | `SYSTEM_LLM_PROVIDER` | assistant | LLM provider configuration |
 | `SYSTEM_LLM_MODEL` | assistant | LLM model selection |
 

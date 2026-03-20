@@ -6,7 +6,7 @@
 
 > **Note:** This plan has been incorporated into the [Components Plan](openpalm-components-plan.md) and serves as additional detail on the registry aspect — specifically the discovery, install/uninstall flow, admin API, and admin UI for browsing and managing the component catalog. The components plan is the authoritative source for the instance lifecycle and compose overlay mechanics.
 >
-> **Filesystem context:** This plan uses the `~/.openpalm/` single-root layout defined in [fs-mounts-refactor.md](fs-mounts-refactor.md). All `~/.openpalm/` paths below follow that layout. The old `${OPENPALM_DATA}`, `${OPENPALM_STATE}`, `${OPENPALM_CONFIG}`, `CONFIG_HOME`, `DATA_HOME`, and `STATE_HOME` references from the three-tier XDG model are replaced by subdirectories under `~/.openpalm/`.
+> **Filesystem context:** This plan uses the `~/.openpalm/` single-root layout defined in [fs-mounts-refactor.md](fs-mounts-refactor.md). All `~/.openpalm/` paths below follow that layout. The old `${OP_DATA}`, `${OP_STATE}`, `${OP_CONFIG}`, `CONFIG_HOME`, `DATA_HOME`, and `STATE_HOME` references from the three-tier XDG model are replaced by subdirectories under `~/.openpalm/`.
 
 ---
 

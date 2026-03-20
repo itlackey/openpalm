@@ -1,5 +1,5 @@
-const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || "http://admin:8100";
-const ADMIN_TOKEN = process.env.OPENPALM_ASSISTANT_TOKEN || process.env.OPENPALM_ADMIN_TOKEN || "";
+const ADMIN_URL = process.env.OP_ADMIN_API_URL || "http://admin:8100";
+const ADMIN_TOKEN = process.env.OP_ASSISTANT_TOKEN || process.env.OP_ADMIN_TOKEN || "";
 
 export async function adminFetch(path: string, options?: RequestInit): Promise<string> {
   try {

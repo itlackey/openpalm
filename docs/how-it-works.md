@@ -88,7 +88,7 @@ A message that fails any check never reaches the assistant.
 The AI. Runs OpenCode. Has no Docker socket.
 
 When it needs to do something to the stack (restart a service, check status), it
-calls the Admin API using `OPENPALM_ADMIN_TOKEN`. The Admin allowlists which
+calls the Admin API using `OP_ADMIN_TOKEN`. The Admin allowlists which
 actions and service names are legal — the assistant can't do anything
 unauthorized.
 

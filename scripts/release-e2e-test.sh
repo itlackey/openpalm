@@ -26,12 +26,12 @@
 #   EMBED_DIMS          Embedding dimensions (default: 768)
 #
 # Optional environment variables:
-#   OPENPALM_IMAGE_TAG         Image tag to test (default: latest)
-#   OPENPALM_IMAGE_NAMESPACE   Image namespace (default: openpalm)
-#   OPENPALM_CONFIG_HOME       Override config dir (default: temp dir)
-#   OPENPALM_DATA_HOME         Override data dir (default: temp dir)
-#   OPENPALM_STATE_HOME        Override state dir (default: temp dir)
-#   OPENPALM_WORK_DIR          Override work dir (default: temp dir)
+#   OP_IMAGE_TAG         Image tag to test (default: latest)
+#   OP_IMAGE_NAMESPACE   Image namespace (default: openpalm)
+#   OP_CONFIG_HOME       Override config dir (default: temp dir)
+#   OP_DATA_HOME         Override data dir (default: temp dir)
+#   OP_STATE_HOME        Override state dir (default: temp dir)
+#   OP_WORK_DIR          Override work dir (default: temp dir)
 #
 # Usage:
 #   ./scripts/release-e2e-test.sh [OPTIONS]
@@ -104,21 +104,21 @@ TEMP_ROOT=""
 
 if [ "$SKIP_INSTALL" -eq 0 ]; then
   # Use temp dirs unless explicitly overridden — ensures clean-machine simulation
-  if [ -z "${OPENPALM_CONFIG_HOME:-}" ] && [ -z "${OPENPALM_DATA_HOME:-}" ] && \
-     [ -z "${OPENPALM_STATE_HOME:-}" ] && [ -z "${OPENPALM_WORK_DIR:-}" ]; then
+  if [ -z "${OP_CONFIG_HOME:-}" ] && [ -z "${OP_DATA_HOME:-}" ] && \
+     [ -z "${OP_STATE_HOME:-}" ] && [ -z "${OP_WORK_DIR:-}" ]; then
     USE_TEMP_DIRS=1
     TEMP_ROOT="$(mktemp -d -t openpalm-release-test-XXXXXX)"
-    export OPENPALM_CONFIG_HOME="$TEMP_ROOT/config"
-    export OPENPALM_DATA_HOME="$TEMP_ROOT/data"
-    export OPENPALM_STATE_HOME="$TEMP_ROOT/state"
-    export OPENPALM_WORK_DIR="$TEMP_ROOT/work"
+    export OP_CONFIG_HOME="$TEMP_ROOT/config"
+    export OP_DATA_HOME="$TEMP_ROOT/data"
+    export OP_STATE_HOME="$TEMP_ROOT/state"
+    export OP_WORK_DIR="$TEMP_ROOT/work"
     echo "Using temp dirs under: $TEMP_ROOT"
   fi
 fi
 
-CONFIG_HOME="${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}"
-DATA_HOME="${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}"
-STATE_HOME="${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}"
+CONFIG_HOME="${OP_CONFIG_HOME:-${HOME}/.config/openpalm}"
+DATA_HOME="${OP_DATA_HOME:-${HOME}/.local/share/openpalm}"
+STATE_HOME="${OP_STATE_HOME:-${HOME}/.local/state/openpalm}"
 
 # ── Cleanup handler ──────────────────────────────────────────────────
 
@@ -674,7 +674,7 @@ check_container_env() {
   fi
 }
 
-check_container_env "openpalm-assistant-1" "OPENPALM_ADMIN_TOKEN" "equals" "$ADMIN_TOKEN"
+check_container_env "openpalm-assistant-1" "OP_ADMIN_TOKEN" "equals" "$ADMIN_TOKEN"
 check_container_env "openpalm-assistant-1" "MEMORY_USER_ID" "nonempty"
 check_container_env "openpalm-assistant-1" "OPENAI_BASE_URL" "endswith" "/v1"
 
@@ -682,7 +682,7 @@ check_container_env "openpalm-assistant-1" "OPENAI_BASE_URL" "endswith" "/v1"
 
 step "Verify Caddy reverse proxy"
 
-CADDY_PORT="${OPENPALM_INGRESS_PORT:-8080}"
+CADDY_PORT="${OP_INGRESS_PORT:-8080}"
 CADDY_URL="http://127.0.0.1:$CADDY_PORT"
 
 CADDY_STATUS=$(curl -sf -o /dev/null -w '%{http_code}' "$CADDY_URL/" 2>/dev/null || echo "error")

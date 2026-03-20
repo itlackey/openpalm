@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 
-const ADMIN_TOKEN = process.env.OPENPALM_ASSISTANT_TOKEN || process.env.OPENPALM_ADMIN_TOKEN || "";
+const ADMIN_TOKEN = process.env.OP_ASSISTANT_TOKEN || process.env.OP_ADMIN_TOKEN || "";
 
 export default tool({
   description:

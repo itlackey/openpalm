@@ -451,7 +451,7 @@ export function buildSystemSecretsFromSetup(
   existingSystemEnv: Record<string, string> = {}
 ): Record<string, string> {
   return {
-    OPENPALM_ADMIN_TOKEN: input.adminToken,
+    OP_ADMIN_TOKEN: input.adminToken,
     ASSISTANT_TOKEN: existingSystemEnv.ASSISTANT_TOKEN || randomBytes(32).toString("hex"),
     MEMORY_AUTH_TOKEN: existingSystemEnv.MEMORY_AUTH_TOKEN || randomBytes(32).toString("hex"),
   };
@@ -733,9 +733,9 @@ export async function performSetup(
   writeFileSync(
     dataStackEnv,
     mergeEnvContent(stackBase, {
-      OPENPALM_SETUP_COMPLETE: "true",
-      OPENPALM_OLLAMA_ENABLED: input.ollamaEnabled ? "true" : "false",
-      OPENPALM_ADMIN_ENABLED: input.services?.admin ? "true" : "false",
+      OP_SETUP_COMPLETE: "true",
+      OP_OLLAMA_ENABLED: input.ollamaEnabled ? "true" : "false",
+      OP_ADMIN_ENABLED: input.services?.admin ? "true" : "false",
     })
   );
 

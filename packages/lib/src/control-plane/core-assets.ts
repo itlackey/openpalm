@@ -270,7 +270,7 @@ export function ensureCoreAutomations(assets: CoreAssetProvider): void {
 // ── Asset Refresh (GitHub download) ──────────────────────────────────
 
 const REPO = "itlackey/openpalm";
-const VERSION = process.env.OPENPALM_ASSET_VERSION ?? "main";
+const VERSION = process.env.OP_ASSET_VERSION ?? "main";
 
 const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
   { relPath: "config/components/core.yml", githubFilename: "docker-compose.yml" },

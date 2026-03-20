@@ -18,7 +18,7 @@ export async function executeApiAction(
     return;
   }
 
-  const adminUrl = process.env.OPENPALM_ADMIN_API_URL || "http://admin:8100";
+  const adminUrl = process.env.OP_ADMIN_API_URL || "http://admin:8100";
   const url = `${adminUrl}${action.path}`;
   const { "x-admin-token": _dropped, "authorization": _dropped2, ...safeHeaders } = action.headers ?? {};
   const headers: Record<string, string> = {

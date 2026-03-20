@@ -31,7 +31,7 @@ These are hard constraints that must never be violated during development:
 
 Configuration is managed by **writing whole files** — never by string interpolation, template expansion, or dynamic code generation. The CLI or admin validates proposed changes, writes them to live paths, and uses Docker Compose natively for variable substitution. All control-plane logic lives in `@openpalm/lib` — both CLI and admin import from this shared library. OpenCode core config is image-baked at `/etc/opencode`, with user extensions mounted from `config/assistant/`.
 
-All OpenPalm state lives under a single root: **`~/.openpalm/`** (configurable via `OPENPALM_HOME`). Ephemeral cache lives at `~/.cache/openpalm/`.
+All OpenPalm state lives under a single root: **`~/.openpalm/`** (configurable via `OP_HOME`). Ephemeral cache lives at `~/.cache/openpalm/`.
 
 ### 1) Config (user-owned, non-secret)
 
@@ -157,7 +157,7 @@ All OpenPalm services use the **38XX port range** to avoid conflicts with common
 | **Memory** | 3898 | (internal only) | Memory service API |
 | **Channel Chat** | 3820 | (internal only) | Chat channel adapter |
 
-Port assignments are defined via `OPENPALM_*_PORT` variables in `vault/system.env` and referenced in compose files via `${VAR}` substitution. The ingress port (Caddy's external bind) defaults to `3080` but is configurable via `OPENPALM_INGRESS_PORT`.
+Port assignments are defined via `OP_*_PORT` variables in `vault/system.env` and referenced in compose files via `${VAR}` substitution. The ingress port (Caddy's external bind) defaults to `3080` but is configurable via `OP_INGRESS_PORT`.
 
 ---
 

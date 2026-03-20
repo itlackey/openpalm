@@ -3,7 +3,7 @@
 # Requires Message Content Intent enabled in Discord Developer Portal.
 services:
   openpalm-${INSTANCE_ID}:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-ghcr.io/itlackey/openpalm}-channel:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-ghcr.io/itlackey/openpalm}-channel:${OP_IMAGE_TAG:-latest}
     container_name: openpalm-${INSTANCE_ID}
     restart: unless-stopped
     env_file:

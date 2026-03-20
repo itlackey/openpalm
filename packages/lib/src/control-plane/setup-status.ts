@@ -30,9 +30,9 @@ export function detectUserId(): string {
  */
 export function isSetupComplete(vaultDir: string): boolean {
   const parsed = parseEnvFile(`${vaultDir}/system.env`);
-  if ("OPENPALM_SETUP_COMPLETE" in parsed) {
-    return parsed.OPENPALM_SETUP_COMPLETE.toLowerCase() === "true";
+  if ("OP_SETUP_COMPLETE" in parsed) {
+    return parsed.OP_SETUP_COMPLETE.toLowerCase() === "true";
   }
 
-  return (parsed.OPENPALM_ADMIN_TOKEN ?? "").length > 0;
+  return (parsed.OP_ADMIN_TOKEN ?? "").length > 0;
 }

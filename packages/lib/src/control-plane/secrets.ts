@@ -102,8 +102,8 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
   const existing = existsSync(systemEnvPath) ? parseEnvFile(systemEnvPath) : {};
   const updates: Record<string, string> = {};
 
-  if (!existing.OPENPALM_ADMIN_TOKEN && state.adminToken) {
-    updates.OPENPALM_ADMIN_TOKEN = state.adminToken;
+  if (!existing.OP_ADMIN_TOKEN && state.adminToken) {
+    updates.OP_ADMIN_TOKEN = state.adminToken;
   }
   if (!existing.ASSISTANT_TOKEN) {
     updates.ASSISTANT_TOKEN = randomBytes(32).toString("hex");
@@ -121,7 +121,7 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
       "# the control-plane contract.",
       "",
       "# Authentication",
-      "OPENPALM_ADMIN_TOKEN=",
+      "OP_ADMIN_TOKEN=",
       "ASSISTANT_TOKEN=",
       "",
       "# Service auth",

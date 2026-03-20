@@ -338,18 +338,18 @@ describe("ensureOpenCodeConfig", () => {
   const origEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    origEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
-    process.env.OPENPALM_HOME = trackDir(makeTempDir());
+    origEnv.OP_HOME = process.env.OP_HOME;
+    process.env.OP_HOME = trackDir(makeTempDir());
   });
 
   afterEach(() => {
-    process.env.OPENPALM_HOME = origEnv.OPENPALM_HOME;
+    process.env.OP_HOME = origEnv.OP_HOME;
   });
 
   test("seeds opencode.json with schema reference", () => {
     ensureOpenCodeConfig();
 
-    const configFile = join(process.env.OPENPALM_HOME!, "config", "assistant", "opencode.json");
+    const configFile = join(process.env.OP_HOME!, "config", "assistant", "opencode.json");
     expect(existsSync(configFile)).toBe(true);
     const content = JSON.parse(readFileSync(configFile, "utf-8"));
     expect(content.$schema).toBe("https://opencode.ai/config.json");
@@ -357,14 +357,14 @@ describe("ensureOpenCodeConfig", () => {
 
   test("creates tools, plugins, skills subdirs", () => {
     ensureOpenCodeConfig();
-    const base = join(process.env.OPENPALM_HOME!, "config", "assistant");
+    const base = join(process.env.OP_HOME!, "config", "assistant");
     expect(existsSync(join(base, "tools"))).toBe(true);
     expect(existsSync(join(base, "plugins"))).toBe(true);
     expect(existsSync(join(base, "skills"))).toBe(true);
   });
 
   test("does not overwrite existing opencode.json", () => {
-    const configHome = join(process.env.OPENPALM_HOME!, "config");
+    const configHome = join(process.env.OP_HOME!, "config");
     const opencodePath = join(configHome, "assistant");
     mkdirSync(opencodePath, { recursive: true });
     const customConfig = '{"custom": true}\n';

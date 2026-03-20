@@ -7,7 +7,7 @@
  */
 
 const OPENCODE_BASE_URL =
-  process.env.OPENPALM_OPENCODE_URL ?? "http://localhost:4096";
+  process.env.OP_OPENCODE_URL ?? "http://localhost:4096";
 
 export type OpenCodeProvider = {
   id: string;

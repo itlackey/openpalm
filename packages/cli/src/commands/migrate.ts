@@ -65,24 +65,24 @@ const USER_ENV_KEYS = new Set([
 const SYSTEM_ENV_KEYS = new Set([
   // Admin and auth tokens
   'ADMIN_TOKEN',
-  'OPENPALM_ADMIN_TOKEN',
+  'OP_ADMIN_TOKEN',
   'MEMORY_AUTH_TOKEN',
   'OPENCODE_SERVER_PASSWORD',
   // System paths and config
-  'OPENPALM_HOME',
-  'OPENPALM_UID',
-  'OPENPALM_GID',
+  'OP_HOME',
+  'OP_UID',
+  'OP_GID',
   // Image tags
-  'OPENPALM_IMAGE_TAG',
-  'OPENPALM_IMAGE_NAMESPACE',
+  'OP_IMAGE_TAG',
+  'OP_IMAGE_NAMESPACE',
   // HMAC and channel secrets
   'CHANNEL_HMAC_SECRET',
-  'OPENPALM_DOCKER_SOCK',
+  'OP_DOCKER_SOCK',
 ]);
 
 /** Keys that start with these prefixes go to system.env */
 const SYSTEM_ENV_PREFIXES = [
-  'OPENPALM_IMAGE_',
+  'OP_IMAGE_',
   'CHANNEL_',
 ];
 
@@ -100,10 +100,10 @@ function categorizeEnvKey(key: string): 'user' | 'system' {
 }
 
 /**
- * Rename ADMIN_TOKEN to OPENPALM_ADMIN_TOKEN and OPENMEMORY_USER_ID to MEMORY_USER_ID.
+ * Rename ADMIN_TOKEN to OP_ADMIN_TOKEN and OPENMEMORY_USER_ID to MEMORY_USER_ID.
  */
 function normalizeEnvKey(key: string): string {
-  if (key === 'ADMIN_TOKEN') return 'OPENPALM_ADMIN_TOKEN';
+  if (key === 'ADMIN_TOKEN') return 'OP_ADMIN_TOKEN';
   if (key === 'OPENMEMORY_USER_ID') return 'MEMORY_USER_ID';
   return key;
 }
@@ -182,8 +182,8 @@ function splitEnvFiles(
     }
   }
 
-  // Set OPENPALM_HOME in system.env
-  systemVars['OPENPALM_HOME'] = openpalmHome;
+  // Set OP_HOME in system.env
+  systemVars['OP_HOME'] = openpalmHome;
 
   // Write user.env (only if not already present)
   if (!existsSync(userEnvPath)) {
@@ -300,7 +300,7 @@ function cleanupLegacyDirs(summary: string[]): void {
   ];
 
   // Also check custom env var paths
-  for (const envVar of ['OPENPALM_CONFIG_HOME', 'OPENPALM_DATA_HOME', 'OPENPALM_STATE_HOME']) {
+  for (const envVar of ['OP_CONFIG_HOME', 'OP_DATA_HOME', 'OP_STATE_HOME']) {
     const val = process.env[envVar];
     if (val && existsSync(val) && !legacyDirs.includes(val)) {
       legacyDirs.push(val);
@@ -380,7 +380,7 @@ export default defineCommand({
       for (const v of legacyVars) {
         console.log(`  ${v}=${process.env[v]}`);
       }
-      console.log('\nOpenPalm 0.10.0 uses OPENPALM_HOME (~/.openpalm by default).');
+      console.log('\nOpenPalm 0.10.0 uses OP_HOME (~/.openpalm by default).');
       console.log('Remove these variables from your shell profile and re-run migration.');
       process.exit(1);
     }

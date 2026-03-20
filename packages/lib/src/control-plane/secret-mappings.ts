@@ -29,7 +29,7 @@ type CoreSecretMapping = {
 };
 
 const STATIC_CORE_MAPPINGS: CoreSecretMapping[] = [
-  { secretKey: 'openpalm/admin-token', envKey: 'OPENPALM_ADMIN_TOKEN', scope: 'system' },
+  { secretKey: 'openpalm/admin-token', envKey: 'OP_ADMIN_TOKEN', scope: 'system' },
   { secretKey: 'openpalm/assistant-token', envKey: 'ASSISTANT_TOKEN', scope: 'system' },
   { secretKey: 'openpalm/memory/auth-token', envKey: 'MEMORY_AUTH_TOKEN', scope: 'system' },
   { secretKey: 'openpalm/opencode/server-password', envKey: 'OPENCODE_SERVER_PASSWORD', scope: 'system' },
@@ -44,7 +44,7 @@ const STATIC_CORE_MAPPINGS: CoreSecretMapping[] = [
 ];
 
 // 128 bits of the SHA-256 digest keeps collision risk negligible while
-// leaving enough room for the OPENPALM_SECRET_ prefix in env var names.
+// leaving enough room for the OP_SECRET_ prefix in env var names.
 const HASH_PREFIX_LENGTH = 32;
 
 type SecretIndexFile = {
@@ -80,7 +80,7 @@ export function classifySecretKey(key: string): SecretKind {
 
 export function generatePlaintextEnvKey(secretKey: string): string {
   const digest = createHash('sha256').update(secretKey).digest('hex').slice(0, HASH_PREFIX_LENGTH).toUpperCase();
-  return `OPENPALM_SECRET_${digest}`;
+  return `OP_SECRET_${digest}`;
 }
 
 export function classifySecretScope(key: string): SecretScope {

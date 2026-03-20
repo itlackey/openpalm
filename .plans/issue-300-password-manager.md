@@ -5,7 +5,7 @@
 - Implement the 0.10.0 password-manager work for roadmap phases 0-4: Varlock hardening, ADMIN_TOKEN / ASSISTANT_TOKEN split, provider-agnostic secret backend support, plaintext and `pass` backends, and admin secrets APIs.
 - Treat the `~/.openpalm/vault/` model as a hard prerequisite: `vault/user.env` is the assistant-readable hot-reload file, `vault/system.env` is system-managed, and no non-admin container gets full vault access.
 - Keep all reusable control-plane logic in `packages/lib/` first; admin, CLI, and scheduler should only consume thin wrappers per the shared-library rule.
-- Keep the token split explicit in both docs and implementation: the system must enforce a distinct admin credential and assistant credential everywhere. If the repo retains `OPENPALM_ADMIN_TOKEN` as the concrete env var name for compatibility, treat that as the admin token implementation detail rather than a separate third token concept.
+- Keep the token split explicit in both docs and implementation: the system must enforce a distinct admin credential and assistant credential everywhere. If the repo retains `OP_ADMIN_TOKEN` as the concrete env var name for compatibility, treat that as the admin token implementation detail rather than a separate third token concept.
 
 ## Dependencies and sequencing
 
@@ -47,7 +47,7 @@
   - validate key classification for system keys, user keys, and dynamic component secrets.
 - Move or replace current secret mutation helpers in `packages/lib/src/control-plane/secrets.ts:90` and `packages/lib/src/control-plane/secrets.ts:112` so they become backend-aware rather than direct file patchers tied to `secrets.env`.
 - Define the canonical routing/mapping layer for:
-  - core secrets (`OPENPALM_ADMIN_TOKEN`, `ASSISTANT_TOKEN`, `MEMORY_AUTH_TOKEN`, `OPENCODE_SERVER_PASSWORD`, provider keys),
+  - core secrets (`OP_ADMIN_TOKEN`, `ASSISTANT_TOKEN`, `MEMORY_AUTH_TOKEN`, `OPENCODE_SERVER_PASSWORD`, provider keys),
   - component secrets (`openpalm/component/<instance-id>/...`),
   - ad-hoc secrets (`openpalm/custom/...`).
 - Ensure no backend method returns secret values; runtime reads should continue to come from Varlock/env resolution only.
@@ -110,7 +110,7 @@
 - Add operator-facing docs for:
   - plaintext default behavior,
   - opting into `pass`,
-  - token semantics (`OPENPALM_ADMIN_TOKEN` vs `ASSISTANT_TOKEN`),
+  - token semantics (`OP_ADMIN_TOKEN` vs `ASSISTANT_TOKEN`),
   - backup/restore expectations for vault files and pass store data,
   - limitations and deferred UI/migration work.
 - Add release and upgrade notes covering the split from `secrets.env` / `stack.env` to `vault/user.env` / `vault/system.env`.

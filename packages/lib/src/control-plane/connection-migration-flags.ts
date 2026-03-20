@@ -19,11 +19,11 @@ function envFlag(name: string, fallback: boolean): boolean {
 
 export function readConnectionMigrationFlags(): ConnectionMigrationFlags {
   return {
-    enabled: envFlag('OPENPALM_CONNECTION_MIGRATION_ENABLED', true),
-    dualRead: envFlag('OPENPALM_CONNECTION_MIGRATION_DUAL_READ', true),
-    dualWrite: envFlag('OPENPALM_CONNECTION_MIGRATION_DUAL_WRITE', true),
-    preferLegacyRead: envFlag('OPENPALM_CONNECTION_MIGRATION_PREFER_LEGACY_READ', false),
-    annotateAudit: envFlag('OPENPALM_CONNECTION_MIGRATION_AUDIT_ANNOTATION', true),
+    enabled: envFlag('OP_CONNECTION_MIGRATION_ENABLED', true),
+    dualRead: envFlag('OP_CONNECTION_MIGRATION_DUAL_READ', true),
+    dualWrite: envFlag('OP_CONNECTION_MIGRATION_DUAL_WRITE', true),
+    preferLegacyRead: envFlag('OP_CONNECTION_MIGRATION_PREFER_LEGACY_READ', false),
+    annotateAudit: envFlag('OP_CONNECTION_MIGRATION_AUDIT_ANNOTATION', true),
   };
 }
 

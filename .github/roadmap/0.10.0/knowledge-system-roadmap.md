@@ -103,7 +103,7 @@ through the component registry, like Ollama or SearXNG.
          - assistant_net
        volumes:
          - ${INSTANCE_DIR}/data/workspace:/workspace
-         - ${OPENPALM_HOME}/vault/ov.conf:/app/ov.conf:ro
+         - ${OP_HOME}/vault/ov.conf:/app/ov.conf:ro
        healthcheck:
          test: ["CMD", "curl", "-sf", "http://localhost:1933/health"]
          interval: 30s
@@ -179,7 +179,7 @@ through the component registry, like Ollama or SearXNG.
    so it belongs in the vault. It is stored at `~/.openpalm/vault/ov.conf`
    (consistent with the fs-mounts-refactor vault layout). The admin mounts the
    full vault read-write and can write this file. The Viking component's
-   compose overlay mounts `${OPENPALM_HOME}/vault/ov.conf` read-only into the
+   compose overlay mounts `${OP_HOME}/vault/ov.conf` read-only into the
    container at `/app/ov.conf`. This was reconciled from review-decisions Q9
    (which said DATA_HOME before the fs refactor introduced the vault boundary).
 
@@ -353,21 +353,21 @@ Create `registry/components/mcp/` with `compose.yml`, `.env.schema`, and
 ```yaml
 services:
   mcp:
-    image: openpalm/mcp:${OPENPALM_IMAGE_TAG}
+    image: openpalm/mcp:${OP_IMAGE_TAG}
     restart: unless-stopped
     networks:
       - assistant_net
     environment:
-      OPENPALM_ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN}
-      OPENPALM_ADMIN_URL: http://admin:8100
-      OPENPALM_MEMORY_URL: http://memory:8765
+      OP_ADMIN_TOKEN: ${OP_ADMIN_TOKEN}
+      OP_ADMIN_URL: http://admin:8100
+      OP_MEMORY_URL: http://memory:8765
       OPENVIKING_URL: ${OPENVIKING_URL:-}
       MCP_API_KEY: ${MCP_API_KEY:-}
 ```
 
 `registry/components/mcp/.env.schema`:
 ```env
-OPENPALM_ADMIN_TOKEN=    # Admin API token
+OP_ADMIN_TOKEN=    # Admin API token
 MCP_API_KEY=             # API key for MCP client auth
 OPENVIKING_URL=          # Optional — set if OpenViking component is installed
 ```

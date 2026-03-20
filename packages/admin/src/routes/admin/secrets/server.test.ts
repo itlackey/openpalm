@@ -33,8 +33,8 @@ function makeEvent(method: string, path: string, body?: Record<string, unknown>,
 
 beforeEach(() => {
   rootDir = makeTempDir();
-  originalHome = process.env.OPENPALM_HOME;
-  process.env.OPENPALM_HOME = rootDir;
+  originalHome = process.env.OP_HOME;
+  process.env.OP_HOME = rootDir;
   resetState('admin-token');
 
   const state = getState();
@@ -45,7 +45,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  process.env.OPENPALM_HOME = originalHome;
+  process.env.OP_HOME = originalHome;
   rmSync(rootDir, { recursive: true, force: true });
 });
 

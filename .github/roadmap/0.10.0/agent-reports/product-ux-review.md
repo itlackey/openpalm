@@ -388,7 +388,7 @@ This is not a cosmetic update. The filesystem contract is the foundational abstr
 The explicit stack config file is a significant UX improvement over the current implicit model. Today, understanding what a stack does requires:
 
 1. List `CONFIG_HOME/channels/` to see which channels are installed
-2. Read `DATA_HOME/stack.env` to see which optional services are enabled (`OPENPALM_OLLAMA_ENABLED`, `OPENPALM_ADMIN_ENABLED`)
+2. Read `DATA_HOME/stack.env` to see which optional services are enabled (`OP_OLLAMA_ENABLED`, `OP_ADMIN_ENABLED`)
 3. Inspect `STATE_HOME/artifacts/` to see what was actually staged
 
 With `openpalm.yml`, the answer is in one file:

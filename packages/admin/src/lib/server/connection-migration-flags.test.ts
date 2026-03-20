@@ -25,8 +25,8 @@ describe('connection migration flags', () => {
   });
 
   test('respects environment override flags', () => {
-    process.env.OPENPALM_CONNECTION_MIGRATION_DUAL_READ = 'false';
-    process.env.OPENPALM_CONNECTION_MIGRATION_PREFER_LEGACY_READ = 'true';
+    process.env.OP_CONNECTION_MIGRATION_DUAL_READ = 'false';
+    process.env.OP_CONNECTION_MIGRATION_PREFER_LEGACY_READ = 'true';
     const flags = readConnectionMigrationFlags();
     expect(flags.dualRead).toBe(false);
     expect(flags.preferLegacyRead).toBe(true);

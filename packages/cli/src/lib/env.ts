@@ -44,7 +44,7 @@ export function resolveRequestedImageTag(repoRef: string): string | null {
 }
 
 /**
- * Reconciles the OPENPALM_IMAGE_TAG value in stack.env content.
+ * Reconciles the OP_IMAGE_TAG value in stack.env content.
  */
 export function reconcileStackEnvImageTag(
   content: string,
@@ -53,14 +53,14 @@ export function reconcileStackEnvImageTag(
 ): string {
   const desiredImageTag = explicitImageTag || resolveRequestedImageTag(repoRef);
   if (!desiredImageTag) return content;
-  return upsertEnvValue(content, 'OPENPALM_IMAGE_TAG', desiredImageTag);
+  return upsertEnvValue(content, 'OP_IMAGE_TAG', desiredImageTag);
 }
 
 /**
  * Seeds vault/user.env with initial template.
  * Uses `export` prefix so the file can be sourced in a shell and is still
  * compatible with Docker Compose v2 `env_file`.
- * Uses OPENPALM_ADMIN_TOKEN as the canonical variable name with a
+ * Uses OP_ADMIN_TOKEN as the canonical variable name with a
  * commented-out legacy ADMIN_TOKEN alias for backward compatibility.
  */
 export async function ensureSecrets(vaultDir: string): Promise<void> {
@@ -75,7 +75,7 @@ export async function ensureSecrets(vaultDir: string): Promise<void> {
 # All values are configured via the setup wizard.
 # This file is compatible with both \`source user.env\` and Docker Compose env_file.
 
-export OPENPALM_ADMIN_TOKEN=
+export OP_ADMIN_TOKEN=
 # Legacy alias — only needed if your compose file still references ADMIN_TOKEN:
 # export ADMIN_TOKEN=
 
@@ -99,7 +99,7 @@ export MEMORY_AUTH_TOKEN=${randomBytes(32).toString('hex')}
  * Creates or updates the vault/system.env bootstrap file.
  *
  * When `imageTagOverride` is provided (e.g. derived from --version during
- * install), it takes precedence over both the OPENPALM_IMAGE_TAG env var
+ * install), it takes precedence over both the OP_IMAGE_TAG env var
  * and the repo-ref heuristic. This prevents stale or architecture-suffixed
  * env vars (e.g. "latest-arm64") from leaking into the stack.
  */
@@ -111,7 +111,7 @@ export async function ensureStackEnv(
   imageTagOverride?: string,
 ): Promise<void> {
   const systemEnvPath = join(vaultDir, 'system.env');
-  const explicitImageTag = imageTagOverride ?? process.env.OPENPALM_IMAGE_TAG;
+  const explicitImageTag = imageTagOverride ?? process.env.OP_IMAGE_TAG;
   const hasExplicitImageTag = explicitImageTag !== undefined && explicitImageTag !== '';
   mkdirSync(vaultDir, { recursive: true });
   if (!(await Bun.file(systemEnvPath).exists())) {
@@ -119,13 +119,13 @@ export async function ensureStackEnv(
       ? explicitImageTag
       : (resolveRequestedImageTag(repoRef) || 'latest');
     const content = `# OpenPalm System Environment — system-managed, do not edit
-OPENPALM_HOME=${homeDir}
-OPENPALM_WORK_DIR=${workDir}
-OPENPALM_UID=${process.getuid?.() ?? 1000}
-OPENPALM_GID=${process.getgid?.() ?? 1000}
-OPENPALM_DOCKER_SOCK=${defaultDockerSock()}
-OPENPALM_IMAGE_NAMESPACE=${process.env.OPENPALM_IMAGE_NAMESPACE || 'openpalm'}
-OPENPALM_IMAGE_TAG=${defaultImageTag}
+OP_HOME=${homeDir}
+OP_WORK_DIR=${workDir}
+OP_UID=${process.getuid?.() ?? 1000}
+OP_GID=${process.getgid?.() ?? 1000}
+OP_DOCKER_SOCK=${defaultDockerSock()}
+OP_IMAGE_NAMESPACE=${process.env.OP_IMAGE_NAMESPACE || 'openpalm'}
+OP_IMAGE_TAG=${defaultImageTag}
 `;
     await Bun.write(systemEnvPath, content);
   } else {

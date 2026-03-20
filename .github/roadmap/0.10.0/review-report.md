@@ -42,7 +42,7 @@ runtime, not by admin code at staging time).
 **Affects:** openpalm-components-plan.md
 
 The components plan proposes merging CONFIG_HOME into DATA_HOME ("drop separate
-`${OPENPALM_CONFIG_HOME}`"). This fundamentally changes the three-tier XDG model
+`${OP_CONFIG_HOME}`"). This fundamentally changes the three-tier XDG model
 in core-principles.md:
 
 - CONFIG_HOME = user-owned, persistent source of truth

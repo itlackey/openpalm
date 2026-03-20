@@ -150,7 +150,7 @@ export function deriveSystemEnvFromSpec(
   spec: StackSpecV4,
   homeDir: string
 ): Record<string, string> {
-  // Returns OP_* keys + legacy OPENPALM_* aliases (dual-write)
+  // Returns OP_* keys + legacy OP_* aliases (dual-write)
   // Returns derived values: SYSTEM_LLM_PROVIDER, SYSTEM_LLM_MODEL, etc.
   // Does NOT include secrets (tokens, API keys, HMAC)
 }
@@ -184,8 +184,8 @@ Replace the regex-based `.yml` reader with `readStackSpec()?.features?.ollama` e
 ```typescript
 // packages/lib/src/control-plane/env-compat.ts
 export const ENV_ALIASES: [newName: string, oldName: string][] = [
-  ["OP_HOME", "OPENPALM_HOME"],
-  ["OP_ADMIN_TOKEN", "OPENPALM_ADMIN_TOKEN"],
+  ["OP_HOME", "OP_HOME"],
+  ["OP_ADMIN_TOKEN", "OP_ADMIN_TOKEN"],
   ["OP_ASSISTANT_TOKEN", "ASSISTANT_TOKEN"],
   ["OP_MEMORY_TOKEN", "MEMORY_AUTH_TOKEN"],
   // ... full mapping
@@ -197,33 +197,33 @@ export function dualWriteEnvPair(newName: string, value: string): Record<string,
 
 ### Compose file updates
 
-All `assets/*.yml` compose files updated to use `${OP_*:-${OPENPALM_*}}` pattern where supported, or rely on dual-write in `system.env`.
+All `assets/*.yml` compose files updated to use `${OP_*:-${OP_*}}` pattern where supported, or rely on dual-write in `system.env`.
 
 ### Full mapping table
 
 | New (OP_) | Old | Category |
 |-----------|-----|----------|
-| `OP_HOME` | `OPENPALM_HOME` | Path |
-| `OP_ADMIN_TOKEN` | `OPENPALM_ADMIN_TOKEN` | Secret |
+| `OP_HOME` | `OP_HOME` | Path |
+| `OP_ADMIN_TOKEN` | `OP_ADMIN_TOKEN` | Secret |
 | `OP_ASSISTANT_TOKEN` | `ASSISTANT_TOKEN` | Secret |
 | `OP_MEMORY_TOKEN` | `MEMORY_AUTH_TOKEN` | Secret |
 | `OP_OPENCODE_PASSWORD` | `OPENCODE_SERVER_PASSWORD` | Secret |
 | `OP_CHANNEL_*_SECRET` | `CHANNEL_*_SECRET` | Secret |
-| `OP_UID` | `OPENPALM_UID` | Runtime |
-| `OP_GID` | `OPENPALM_GID` | Runtime |
-| `OP_DOCKER_SOCK` | `OPENPALM_DOCKER_SOCK` | Runtime |
-| `OP_IMAGE_NAMESPACE` | `OPENPALM_IMAGE_NAMESPACE` | Image |
-| `OP_IMAGE_TAG` | `OPENPALM_IMAGE_TAG` | Image |
-| `OP_INGRESS_PORT` | `OPENPALM_INGRESS_PORT` | Network |
-| `OP_ASSISTANT_PORT` | `OPENPALM_ASSISTANT_PORT` | Network |
-| `OP_ADMIN_PORT` | `OPENPALM_ADMIN_PORT` | Network |
-| `OP_SCHEDULER_PORT` | `OPENPALM_SCHEDULER_PORT` | Network |
-| `OP_MEMORY_PORT` | `OPENPALM_MEMORY_PORT` | Network |
-| `OP_GUARDIAN_PORT` | `OPENPALM_GUARDIAN_PORT` | Network |
-| `OP_INGRESS_BIND` | `OPENPALM_INGRESS_BIND_ADDRESS` | Network |
-| `OP_SETUP_COMPLETE` | `OPENPALM_SETUP_COMPLETE` | Flag |
-| `OP_OLLAMA_ENABLED` | `OPENPALM_OLLAMA_ENABLED` | Flag |
-| `OP_ADMIN_ENABLED` | `OPENPALM_ADMIN_ENABLED` | Flag |
+| `OP_UID` | `OP_UID` | Runtime |
+| `OP_GID` | `OP_GID` | Runtime |
+| `OP_DOCKER_SOCK` | `OP_DOCKER_SOCK` | Runtime |
+| `OP_IMAGE_NAMESPACE` | `OP_IMAGE_NAMESPACE` | Image |
+| `OP_IMAGE_TAG` | `OP_IMAGE_TAG` | Image |
+| `OP_INGRESS_PORT` | `OP_INGRESS_PORT` | Network |
+| `OP_ASSISTANT_PORT` | `OP_ASSISTANT_PORT` | Network |
+| `OP_ADMIN_PORT` | `OP_ADMIN_PORT` | Network |
+| `OP_SCHEDULER_PORT` | `OP_SCHEDULER_PORT` | Network |
+| `OP_MEMORY_PORT` | `OP_MEMORY_PORT` | Network |
+| `OP_GUARDIAN_PORT` | `OP_GUARDIAN_PORT` | Network |
+| `OP_INGRESS_BIND` | `OP_INGRESS_BIND_ADDRESS` | Network |
+| `OP_SETUP_COMPLETE` | `OP_SETUP_COMPLETE` | Flag |
+| `OP_OLLAMA_ENABLED` | `OP_OLLAMA_ENABLED` | Flag |
+| `OP_ADMIN_ENABLED` | `OP_ADMIN_ENABLED` | Flag |
 
 Provider-standard keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.) are **NOT renamed**.
 
@@ -487,5 +487,5 @@ Phase 10: Test updates (validates everything)
 - [ ] No new secrets leak through config tier
 - [ ] Vault boundary preserved (API keys + tokens in vault only)
 - [ ] Backward compatibility: v3 StackSpec auto-upgraded on read
-- [ ] Backward compatibility: OPENPALM_* env vars still work (dual-write)
+- [ ] Backward compatibility: OP_* env vars still work (dual-write)
 - [ ] Core principles compliance verified

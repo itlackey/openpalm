@@ -11,7 +11,7 @@
  *
  * Environment:
  *   WIZARD_PORT          — Port to listen on (default: ephemeral/random)
- *   OPENPALM_HOME        — Home dir override (default: temp dir)
+ *   OP_HOME        — Home dir override (default: temp dir)
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,7 +22,7 @@ import { createSetupServer } from "./server.ts";
 // ── Configuration ──────────────────────────────────────────────────────
 
 const port = Number(process.env.WIZARD_PORT) || 0;
-const useDevDirs = !!process.env.OPENPALM_HOME;
+const useDevDirs = !!process.env.OP_HOME;
 
 // ── Directory Setup ────────────────────────────────────────────────────
 
@@ -31,7 +31,7 @@ let homeDir: string;
 
 if (useDevDirs) {
   // Use caller-provided home directory (e.g. .dev/ paths)
-  homeDir = process.env.OPENPALM_HOME!;
+  homeDir = process.env.OP_HOME!;
 } else {
   // Create isolated temp directory
   tempBase = mkdtempSync(join(tmpdir(), "openpalm-wizard-dev-"));
@@ -69,14 +69,14 @@ for (const dir of [
 
 // Seed minimal env files so the wizard's status endpoint works
 const systemEnvPath = join(vaultDir, "system.env");
-writeFileSync(systemEnvPath, "OPENPALM_SETUP_COMPLETE=false\n");
+writeFileSync(systemEnvPath, "OP_SETUP_COMPLETE=false\n");
 
 const userEnvPath = join(vaultDir, "user.env");
 writeFileSync(
   userEnvPath,
   [
     "# OpenPalm Secrets (standalone wizard — dev/test)",
-    "export OPENPALM_ADMIN_TOKEN=",
+    "export OP_ADMIN_TOKEN=",
     "export ADMIN_TOKEN=",
     "export OPENAI_API_KEY=",
     "export OPENAI_BASE_URL=",
@@ -93,7 +93,7 @@ writeFileSync(
 );
 
 // Point lib's home resolver at our directory
-process.env.OPENPALM_HOME = homeDir;
+process.env.OP_HOME = homeDir;
 
 // ── Stub Asset Provider ────────────────────────────────────────────────
 // Provides minimal valid asset content so performSetup() can write config
@@ -111,7 +111,7 @@ function createStubAssetProvider(): CoreAssetProvider {
     adminOpencodeConfig: () =>
       '{"$schema":"https://opencode.ai/config.json","plugin":["@openpalm/admin-tools"]}\n',
     secretsSchema: () => "ADMIN_TOKEN=string\n",
-    stackSchema: () => "OPENPALM_IMAGE_TAG=string\n",
+    stackSchema: () => "OP_IMAGE_TAG=string\n",
     cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
     cleanupData: () => "name: cleanup-data\nschedule: weekly\n",
     validateConfig: () => "name: validate-config\nschedule: hourly\n",

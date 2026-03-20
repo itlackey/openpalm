@@ -7,12 +7,12 @@
 #   docker compose --project-directory . \
 #     -f assets/docker-compose.yml \
 #     -f compose.dev.yaml \
-#     --env-file .dev/state/artifacts/stack.env \
-#     --env-file .dev/state/artifacts/secrets.env \
+#     --env-file .dev/vault/system.env \
+#     --env-file .dev/vault/user.env \
 #     up --build -d
 #
 # The --project-directory . flag is REQUIRED when the core compose file lives
-# in a different directory (assets/ or .dev/state/artifacts/). Without it,
+# in a different directory (assets/ or .dev/config/components/). Without it,
 # Docker Compose resolves build contexts relative to the first -f file's
 # directory, which breaks builds.
 
@@ -21,19 +21,19 @@ services:
     build:
       context: .
       dockerfile: core/admin/Dockerfile
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/admin:${OP_IMAGE_TAG:-latest}
 
   guardian:
     build:
       context: .
       dockerfile: core/guardian/Dockerfile
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/guardian:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_IMAGE_TAG:-latest}
 
   assistant:
     build:
       context: .
       dockerfile: core/assistant/Dockerfile
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/assistant:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_IMAGE_TAG:-latest}
     # Dev override: use host env API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY).
     # OpenCode picks the default model based on available keys.
     environment:
@@ -47,24 +47,24 @@ services:
     build:
       context: .
       dockerfile: core/channel/Dockerfile
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
 
   scheduler:
     build:
       context: .
       dockerfile: core/scheduler/Dockerfile
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/scheduler:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/scheduler:${OP_IMAGE_TAG:-latest}
 
   memory:
     build:
       context: .
       dockerfile: core/memory/Dockerfile
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/memory:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/memory:${OP_IMAGE_TAG:-latest}
 
   # Voice channel dev override: mount local source instead of npm install.
   # Requires voice.yml overlay loaded before this file (-f channels/voice.yml -f compose.dev.yaml).
   channel-voice:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
     ports:
       - "8186:8186"
     volumes:

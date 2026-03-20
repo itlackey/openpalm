@@ -1,5 +1,5 @@
 /**
- * FilesystemAssetProvider — reads core assets from OPENPALM_HOME on disk.
+ * FilesystemAssetProvider — reads core assets from OP_HOME on disk.
  *
  * Used by the CLI and any non-Vite consumer. Assets are downloaded from
  * GitHub during `openpalm install` and stored in the home layout:

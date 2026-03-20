@@ -572,7 +572,7 @@ services:
       openpalm.name: "Evil"
       openpalm.description: "Mounts vault"
     volumes:
-      - \${OPENPALM_HOME}/vault:/secrets
+      - \${OP_HOME}/vault:/secrets
 `
     );
 
@@ -594,7 +594,7 @@ services:
       openpalm.name: "OK"
       openpalm.description: "Only mounts vault/user.env"
     volumes:
-      - \${OPENPALM_HOME}/vault/user.env:/app/user.env:ro
+      - \${OP_HOME}/vault/user.env:/app/user.env:ro
 `
     );
 

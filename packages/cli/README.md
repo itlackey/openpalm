@@ -51,12 +51,12 @@ On first install, the CLI serves a setup wizard on port 8100 via `Bun.serve()`. 
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENPALM_CONFIG_HOME` | `~/.config/openpalm` | User config + secrets |
-| `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` | Persistent service data |
-| `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | Assembled runtime |
-| `OPENPALM_WORK_DIR` | `~/openpalm` | Assistant working directory |
-| `OPENPALM_ADMIN_API_URL` | `http://localhost:8100` | Admin API endpoint (for optional delegation) |
-| `OPENPALM_ADMIN_TOKEN` | (from `secrets.env`) | Admin API auth token |
+| `OP_CONFIG_HOME` | `~/.config/openpalm` | User config + secrets |
+| `OP_DATA_HOME` | `~/.local/share/openpalm` | Persistent service data |
+| `OP_STATE_HOME` | `~/.local/state/openpalm` | Assembled runtime |
+| `OP_WORK_DIR` | `~/openpalm` | Assistant working directory |
+| `OP_ADMIN_API_URL` | `http://localhost:8100` | Admin API endpoint (for optional delegation) |
+| `OP_ADMIN_TOKEN` | (from `secrets.env`) | Admin API auth token |
 
 ## How It Works
 

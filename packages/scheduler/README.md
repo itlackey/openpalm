@@ -45,9 +45,9 @@ action:
 | Variable | Default | Purpose |
 |---|---|---|
 | `PORT` | `8090` | HTTP server port |
-| `OPENPALM_STATE_HOME` | (required) | Path to state directory containing `automations/` |
-| `OPENPALM_ADMIN_TOKEN` | (recommended) | Token for authenticated endpoints and `api` actions |
-| `OPENPALM_ADMIN_API_URL` | `http://admin:8100` | Admin API URL for `api` actions (optional) |
+| `OP_STATE_HOME` | (required) | Path to state directory containing `automations/` |
+| `OP_ADMIN_TOKEN` | (recommended) | Token for authenticated endpoints and `api` actions |
+| `OP_ADMIN_API_URL` | `http://admin:8100` | Admin API URL for `api` actions (optional) |
 | `OPENCODE_API_URL` | `http://assistant:4096` | OpenCode API URL for `assistant` actions |
 
 ## Docker
