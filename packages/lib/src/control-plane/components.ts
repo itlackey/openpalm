@@ -208,25 +208,25 @@ function scanComponentDir(
 ): ComponentDefinition[] {
   if (!existsSync(dir)) return [];
 
-  let entries: import("node:fs").Dirent[];
+  let names: string[];
   try {
-    entries = readdirSync(dir, { withFileTypes: true });
+    names = readdirSync(dir);
   } catch {
     return [];
   }
 
   const components: ComponentDefinition[] = [];
 
-  for (const entry of entries) {
-    // Skip non-directories
-    if (!entry.isDirectory()) continue;
-    const componentDir = join(dir, entry.name);
+  for (const name of names) {
+    const componentDir = join(dir, name);
+    // Skip non-directories (check by looking for compose.yml inside)
+    if (!existsSync(join(componentDir, "compose.yml"))) continue;
 
     const composePath = join(componentDir, "compose.yml");
     const schemaPath = join(componentDir, ".env.schema");
 
-    // Both compose.yml and .env.schema are required
-    if (!existsSync(composePath) || !existsSync(schemaPath)) continue;
+    // .env.schema is also required
+    if (!existsSync(schemaPath)) continue;
 
     const caddyPath = join(componentDir, ".caddy");
     const hasCaddy = existsSync(caddyPath);
@@ -234,7 +234,7 @@ function scanComponentDir(
     const labels = parseComposeLabels(composePath);
     if (!labels) {
       logger.warn("Component missing valid openpalm labels, skipping", {
-        id: entry.name,
+        id: name,
         source,
         composePath,
       });
@@ -242,7 +242,7 @@ function scanComponentDir(
     }
 
     components.push({
-      id: entry.name,
+      id: name,
       source,
       sourceDir: componentDir,
       composePath,
@@ -623,22 +623,21 @@ function discoverInstancesByPresence(openpalmHome: string): EnabledInstance[] {
   const dir = componentsDataDir(openpalmHome);
   if (!existsSync(dir)) return [];
 
-  let entries: import("node:fs").Dirent[];
+  let names: string[];
   try {
-    entries = readdirSync(dir, { withFileTypes: true });
+    names = readdirSync(dir);
   } catch {
     return [];
   }
 
   const instances: EnabledInstance[] = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    if (!isValidInstanceId(entry.name)) continue;
-    const envPath = join(dir, entry.name, ".env");
+  for (const name of names) {
+    if (!isValidInstanceId(name)) continue;
+    const envPath = join(dir, name, ".env");
     if (existsSync(envPath)) {
       instances.push({
-        id: entry.name,
-        component: entry.name,
+        id: name,
+        component: name,
         enabled: true,
       });
     }

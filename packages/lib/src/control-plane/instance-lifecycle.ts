@@ -374,28 +374,24 @@ export function listInstances(openpalmHome: string): InstanceDetail[] {
   const results: InstanceDetail[] = [];
 
   // Scan instance directories
-  let entries: ReturnType<typeof readdirSync>;
+  let names: string[];
   try {
-    entries = readdirSync(compDir, { withFileTypes: true });
+    names = readdirSync(compDir);
   } catch {
     return [];
   }
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    // Skip enabled.json file name if it happens to be a dir
-    if (entry.name === "enabled.json") continue;
-
-    const instDir = join(compDir, entry.name);
-
-    // An instance must have a compose.yml to be valid
+  for (const name of names) {
+    // Skip non-directory entries and the enabled.json file
+    if (name === "enabled.json") continue;
+    const instDir = join(compDir, name);
     if (!existsSync(join(instDir, "compose.yml"))) continue;
 
-    const enabledEntry = enabledMap.get(entry.name);
+    const enabledEntry = enabledMap.get(name);
     const component = enabledEntry?.component ?? "unknown";
     const enabled = enabledEntry?.enabled ?? false;
 
-    results.push(buildInstanceDetail(openpalmHome, entry.name, component, enabled));
+    results.push(buildInstanceDetail(openpalmHome, name, component, enabled));
   }
 
   return results;

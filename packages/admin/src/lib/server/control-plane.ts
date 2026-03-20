@@ -208,8 +208,6 @@ export {
   randomHex,
   detectAccessScope,
   isOllamaEnabled,
-  stagedEnvFile,
-  stagedStackEnvFile,
   buildEnvFiles,
   discoverStagedChannelYmls,
   buildArtifactMeta,
