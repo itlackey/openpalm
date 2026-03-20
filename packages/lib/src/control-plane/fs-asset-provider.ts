@@ -4,7 +4,7 @@
  * Used by the CLI and any non-Vite consumer. Assets are downloaded from
  * GitHub during `openpalm install` and stored in the home layout:
  *   config/components/  — compose overlays
- *   config/assistant/   — OpenCode config
+ *   data/assistant/     — OpenCode config
  *   config/automations/ — automation YAMLs
  *   data/caddy/         — Caddyfile
  *   data/admin/         — admin OpenCode config
@@ -38,11 +38,11 @@ export class FilesystemAssetProvider implements CoreAssetProvider {
   }
 
   agentsMd(): string {
-    return this.read("config/assistant/AGENTS.md");
+    return this.read("data/assistant/AGENTS.md");
   }
 
   opencodeConfig(): string {
-    return this.read("config/assistant/opencode.jsonc");
+    return this.read("data/assistant/opencode.jsonc");
   }
 
   adminOpencodeConfig(): string {

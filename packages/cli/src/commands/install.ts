@@ -152,8 +152,8 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const assetFiles: Array<{ remote: string; localPath: string }> = [
     { remote: 'ollama.yml', localPath: join(configDir, 'components', 'ollama.yml') },
     { remote: 'admin.yml', localPath: join(configDir, 'components', 'admin.yml') },
-    { remote: 'AGENTS.md', localPath: join(configDir, 'assistant', 'AGENTS.md') },
-    { remote: 'opencode.jsonc', localPath: join(configDir, 'assistant', 'opencode.jsonc') },
+    { remote: 'AGENTS.md', localPath: join(dataDir, 'assistant', 'AGENTS.md') },
+    { remote: 'opencode.jsonc', localPath: join(dataDir, 'assistant', 'opencode.jsonc') },
     { remote: 'admin-opencode.jsonc', localPath: join(dataDir, 'admin', 'opencode.jsonc') },
     { remote: 'cleanup-logs.yml', localPath: join(configDir, 'automations', 'cleanup-logs.yml') },
     { remote: 'cleanup-data.yml', localPath: join(configDir, 'automations', 'cleanup-data.yml') },
