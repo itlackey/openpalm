@@ -58,7 +58,7 @@ export function deriveSystemEnvFromSpec(
   add("OP_ASSISTANT_SSH_PORT", String(ports.assistantSsh));
 
   // Network
-  add("OP_INGRESS_BIND", network.bindAddress!);
+  add("OP_INGRESS_BIND", network.bindAddress ?? SPEC_DEFAULTS.network.bindAddress);
 
   // Feature flags
   add("OP_OLLAMA_ENABLED", spec.features?.ollama ? "true" : "false");
