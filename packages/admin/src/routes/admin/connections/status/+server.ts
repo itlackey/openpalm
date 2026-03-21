@@ -33,7 +33,7 @@ export const GET: RequestHandler = async (event) => {
   if (!spec) {
     missing.push("Stack configuration (stack.yaml)");
   } else {
-    if (!spec.capabilities.llm.trim()) {
+    if (typeof spec.capabilities.llm !== 'string' || !spec.capabilities.llm.trim()) {
       missing.push("System LLM (capabilities.llm)");
     }
     if (!spec.capabilities.embeddings?.provider?.trim() || !spec.capabilities.embeddings?.model?.trim()) {

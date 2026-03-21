@@ -49,6 +49,8 @@ export function discoverChannels(configDir: string): ChannelInfo[] {
 /**
  * Check if a service name is allowed. Core services are always allowed.
  * Addon services are allowed if a compose.yml exists in stack/addons/<name>/.
+ *
+ * Validation is purely filesystem-based: no naming patterns are assumed.
  */
 export function isAllowedService(value: string, configDir?: string): boolean {
   if (!value || !value.trim() || value !== value.toLowerCase()) return false;
@@ -58,16 +60,8 @@ export function isAllowedService(value: string, configDir?: string): boolean {
     const homeDir = dirname(configDir);
     const addonsDir = `${homeDir}/stack/addons`;
 
-    // Check if addon exists directly in stack/addons/
+    // Allowed if a compose.yml exists in stack/addons/<name>/
     if (existsSync(`${addonsDir}/${value}/compose.yml`)) return true;
-
-    // Also check for "channel-" prefixed services (e.g., channel-chat maps to chat addon)
-    if (value.startsWith("channel-")) {
-      const addonName = value.slice("channel-".length);
-      if (isValidChannelName(addonName)) {
-        return existsSync(`${addonsDir}/${addonName}/compose.yml`);
-      }
-    }
   }
   return false;
 }

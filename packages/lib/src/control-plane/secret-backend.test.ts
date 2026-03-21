@@ -289,9 +289,9 @@ describe('detectSecretBackend', () => {
 
   test('returns PassBackend when schema contains @varlock/pass-plugin', () => {
     const state = createState();
-    mkdirSync(state.vaultDir, { recursive: true });
+    mkdirSync(join(state.vaultDir, 'user'), { recursive: true });
     writeFileSync(
-      join(state.vaultDir, 'user.env.schema'),
+      join(state.vaultDir, 'user', 'user.env.schema'),
       '# @plugin(@varlock/pass-plugin)\nOPENAI_API_KEY=pass("openpalm/openai/api-key")\n',
     );
 

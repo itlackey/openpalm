@@ -24,7 +24,7 @@ export async function runRestartAction(services: string[]): Promise<void> {
   if (services.length === 0) {
     // Restart all managed services (admin included if enabled)
     const state = await ensureValidState();
-    const managedServices = buildManagedServiceNames(state);
+    const managedServices = await buildManagedServiceNames(state);
     await runDockerCompose([...fullComposeArgs(state), 'restart', ...managedServices]);
     return;
   }

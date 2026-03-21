@@ -28,6 +28,17 @@ cp -R openpalm/.openpalm "$HOME/.openpalm"
 $EDITOR "$HOME/.openpalm/vault/stack/stack.env"
 $EDITOR "$HOME/.openpalm/vault/user/user.env"
 cd "$HOME/.openpalm/stack"
+
+# Preflight: validate compose merge and variable substitution before starting
+docker compose \
+  -f core.compose.yml \
+  -f addons/admin/compose.yml \
+  -f addons/chat/compose.yml \
+  --env-file ../vault/stack/stack.env \
+  --env-file ../vault/user/user.env \
+  config --quiet
+
+# Start the stack
 docker compose \
   -f core.compose.yml \
   -f addons/admin/compose.yml \
@@ -111,10 +122,13 @@ stack.
 
 ## Optional convenience paths
 
-### `stack/start.sh`
+The primary workflow is always raw `docker compose` as shown above. The
+shortcuts below are provided for convenience but are not the canonical form.
 
-The copied bundle includes `~/.openpalm/stack/start.sh`, which wraps the same
-compose files:
+### `stack/start.sh` (convenience alternative)
+
+The copied bundle includes `~/.openpalm/stack/start.sh`, a thin wrapper that
+prints the resolved `docker compose` command before running it:
 
 ```bash
 cd "$HOME/.openpalm/stack"
@@ -122,6 +136,9 @@ cd "$HOME/.openpalm/stack"
 ./start.sh --status admin chat
 ./start.sh --stop admin chat
 ```
+
+Prefer raw `docker compose` for documentation, debugging, and any situation
+where the exact invocation needs to be explicit.
 
 ### Installer scripts and CLI
 

@@ -308,16 +308,6 @@ export {
   formatCapabilityString,
 } from "./control-plane/stack-spec.js";
 
-// ── Env Compatibility (OP_ prefix migration) ────────────────────────────
-export {
-  ENV_ALIASES,
-  resolveEnv,
-  resolveEnvFromFile,
-  getOldName,
-  getNewName,
-  resetWarnings,
-} from "./control-plane/env-compat.js";
-
 // ── Spec-to-Env Derivation ──────────────────────────────────────────────
 export {
   deriveSystemEnvFromSpec,

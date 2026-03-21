@@ -147,8 +147,8 @@ const VERSION = process.env.OP_ASSET_VERSION ?? "main";
 
 const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
   { relPath: "stack/core.compose.yml", githubFilename: ".openpalm/stack/core.compose.yml" },
-  { relPath: "data/assistant/opencode.jsonc", githubFilename: "core/assistant/opencode.jsonc" },
-  { relPath: "data/assistant/AGENTS.md", githubFilename: "core/assistant/AGENTS.md" },
+  { relPath: "data/assistant/opencode.jsonc", githubFilename: "core/assistant/opencode/opencode.jsonc" },
+  { relPath: "data/assistant/AGENTS.md", githubFilename: "core/assistant/opencode/AGENTS.md" },
   { relPath: "vault/user/user.env.schema", githubFilename: ".openpalm/vault/user/user.env.schema" },
   { relPath: "vault/stack/stack.env.schema", githubFilename: ".openpalm/vault/stack/stack.env.schema" },
 ];

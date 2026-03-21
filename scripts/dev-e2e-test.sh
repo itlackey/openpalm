@@ -82,7 +82,7 @@ rm -rf .dev/data/backups
 # Config — remove generated assistant config so the wizard writes a fresh one
 rm -f .dev/config/assistant/opencode.json
 # Config — remove generated compose so dev-setup seeds a fresh one
-rm -f .dev/config/components/core.yml
+rm -f .dev/stack/core.compose.yml
 
 # Root-owned data from containers (qdrant, opencode logs)
 docker run --rm -v "$ROOT_DIR/.dev/data/memory:/c" alpine sh -c \
@@ -172,7 +172,7 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 	echo "=== Step 4: Build all images from source ==="
 	npm run admin:build 2>&1 | tail -3
 	docker compose --project-directory . \
-		-f .dev/config/components/core.yml \
+		-f .dev/stack/core.compose.yml \
 		-f compose.dev.yaml \
 		--env-file .dev/vault/stack/stack.env \
 		--env-file .dev/vault/stack/services/memory/managed.env \
@@ -189,7 +189,7 @@ fi
 echo ""
 echo "=== Step 5: Start stack ==="
 docker compose --project-directory . \
-	-f .dev/config/components/core.yml \
+	-f .dev/stack/core.compose.yml \
 	-f compose.dev.yaml \
 	--env-file .dev/vault/stack/stack.env \
 	--env-file .dev/vault/stack/services/memory/managed.env \
@@ -317,7 +317,7 @@ fi
 # --no-deps: only recreate the assistant, not its dependencies.
 # Errors are surfaced (no || true) so we can detect silent failures.
 docker compose --project-directory . \
-	-f .dev/config/components/core.yml \
+	-f .dev/stack/core.compose.yml \
 	-f compose.dev.yaml \
 	--env-file .dev/vault/stack/stack.env \
 	--env-file .dev/vault/stack/services/memory/managed.env \

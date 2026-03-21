@@ -140,11 +140,11 @@ generates an HMAC secret, and starts the service.
 
 1. Create `~/.openpalm/stack/addons/<name>/`
 2. Add a `compose.yml`
-3. Rerun `docker compose` or `stack/start.sh` with that addon included
+3. Run preflight to confirm the merge is clean, then rerun `docker compose` with that addon included
 
 ### Uninstall an addon
 
-Remove the addon directory from `~/.openpalm/stack/addons/`, then rerun `docker compose` or `stack/start.sh` without it.
+Remove the addon directory from `~/.openpalm/stack/addons/`, then rerun `docker compose` without it.
 
 ---
 
@@ -287,7 +287,10 @@ write to the same config files.
 The running stack is whatever compose file set you launch. To change it:
 
 1. Edit files under `~/.openpalm/config/`, `~/.openpalm/vault/`, or `~/.openpalm/stack/`
-2. Rerun `docker compose` with the desired `-f` list, or use `stack/start.sh` with the same addon set
+2. Rerun `docker compose` with the desired `-f` list
+
+`stack/start.sh` is a convenience shorthand for the same compose command — raw
+`docker compose` is the canonical form.
 
 Lifecycle operations remain non-destructive for existing user files in `config/`.
 
@@ -299,9 +302,19 @@ Lifecycle operations remain non-destructive for existing user files in `config/`
 # Backup: archive the entire openpalm home directory
 tar czf openpalm-backup.tar.gz ~/.openpalm
 
-# Restore: extract then rerun the same compose command you normally use
+# Restore: extract, then rerun the same compose command you normally use
 tar xzf openpalm-backup.tar.gz -C /
-cd ~/.openpalm/stack && ./start.sh admin chat
+docker compose \
+  --project-name openpalm \
+  --env-file ~/.openpalm/vault/stack/stack.env \
+  --env-file ~/.openpalm/vault/user/user.env \
+  -f ~/.openpalm/stack/core.compose.yml \
+  -f ~/.openpalm/stack/addons/admin/compose.yml \
+  -f ~/.openpalm/stack/addons/chat/compose.yml \
+  up -d
+
+# Convenience alternative: use start.sh with the same addon set
+# cd ~/.openpalm/stack && ./start.sh admin chat
 ```
 
 ---

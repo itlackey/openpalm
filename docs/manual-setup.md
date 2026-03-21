@@ -81,10 +81,20 @@ openssl rand -hex 24
 
 ## 4. Start the core stack
 
-Run Docker Compose directly from `~/.openpalm/stack/`:
+Run Docker Compose directly from `~/.openpalm/stack/`. Always run the preflight
+check first to catch misconfiguration before containers are affected:
 
 ```bash
 cd "$HOME/.openpalm/stack"
+
+# Preflight: validate compose merge and variable substitution (exits non-zero on error)
+docker compose \
+  -f core.compose.yml \
+  --env-file ../vault/stack/stack.env \
+  --env-file ../vault/user/user.env \
+  config --quiet
+
+# Start the stack
 docker compose \
   -f core.compose.yml \
   --env-file ../vault/stack/stack.env \
@@ -98,12 +108,24 @@ That starts the foundation services only.
 
 ## 5. Add addons explicitly
 
-Add an addon by including its compose file in the command.
+Add an addon by including its compose file in the command. Run preflight before
+starting to confirm the merged file set is valid.
 
 Example: core + admin + chat
 
 ```bash
 cd "$HOME/.openpalm/stack"
+
+# Preflight: validate the full file set before starting
+docker compose \
+  -f core.compose.yml \
+  -f addons/admin/compose.yml \
+  -f addons/chat/compose.yml \
+  --env-file ../vault/stack/stack.env \
+  --env-file ../vault/user/user.env \
+  config --quiet
+
+# Start the stack with addons
 docker compose \
   -f core.compose.yml \
   -f addons/admin/compose.yml \

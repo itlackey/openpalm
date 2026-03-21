@@ -71,11 +71,11 @@ export function applyVoiceEnvVars(
   const entries = Object.entries(envVars);
   if (entries.length === 0) return false;
 
-  const secretsPath = `${state.vaultDir}/user/user.env`;
+  const userEnvPath = `${state.vaultDir}/user/user.env`;
   let existing = '';
-  if (existsSync(secretsPath)) {
+  if (existsSync(userEnvPath)) {
     try {
-      existing = readFileSync(secretsPath, 'utf-8');
+      existing = readFileSync(userEnvPath, 'utf-8');
     } catch {
       // start fresh
     }
@@ -88,7 +88,7 @@ export function applyVoiceEnvVars(
 
   let result = mergeEnvContent(existing, updates, { uncomment: true });
   if (!result.endsWith('\n')) result += '\n';
-  writeFileSync(secretsPath, result);
+  writeFileSync(userEnvPath, result);
 
   return true;
 }

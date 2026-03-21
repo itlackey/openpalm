@@ -16,7 +16,10 @@ export const GET: RequestHandler = async (event) => {
 
   const data = result.data as { all?: Array<{ id: string; models?: Record<string, unknown> }> };
   const provider = data.all?.find((p) => p.id === providerId);
-  if (!provider || !provider.models) {
+  if (!provider) {
+    return errorResponse(404, 'not_found', `Provider "${providerId}" not found`, {}, requestId);
+  }
+  if (!provider.models) {
     return jsonResponse(200, { models: [] }, requestId);
   }
 

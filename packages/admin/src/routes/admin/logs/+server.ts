@@ -11,16 +11,8 @@ import {
   getActor,
   getCallerType
 } from "$lib/server/helpers.js";
-import { appendAudit, buildComposeFileList, buildEnvFiles } from "$lib/server/control-plane.js";
+import { appendAudit, buildComposeFileList, buildEnvFiles, isAllowedService } from "$lib/server/control-plane.js";
 import { composeLogs, checkDocker } from "$lib/server/docker.js";
-import { CORE_SERVICES } from "$lib/server/types.js";
-
-/** Validate a service name against known services. */
-function isValidServiceName(name: string): boolean {
-  if ((CORE_SERVICES as readonly string[]).includes(name)) return true;
-  if (/^channel-[a-z0-9-]+$/.test(name)) return true;
-  return false;
-}
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -47,7 +39,7 @@ export const GET: RequestHandler = async (event) => {
   let services: string[] | undefined;
   if (serviceParam) {
     services = serviceParam.split(",").map((s) => s.trim()).filter(Boolean);
-    const invalid = services.filter((s) => !isValidServiceName(s));
+    const invalid = services.filter((s) => !isAllowedService(s, state.configDir));
     if (invalid.length > 0) {
       return errorResponse(
         400,

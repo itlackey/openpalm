@@ -13,12 +13,12 @@ export default defineCommand({
     const vaultDir = defaultVaultDir();
     const dataDir = defaultDataDir();
 
-    const schemaPath = join(vaultDir, 'user.env.schema');
+    const schemaPath = join(vaultDir, 'user', 'user.env.schema');
     const envPath = join(vaultDir, 'user', 'user.env');
 
     if (!(await Bun.file(schemaPath).exists())) {
       console.error(
-        `Error: user.env.schema not found at ${schemaPath}.\nRun 'openpalm install' first.`,
+        `Error: vault/user/user.env.schema not found at ${schemaPath}.\nRun 'openpalm install' first.`,
       );
       process.exit(1);
     }

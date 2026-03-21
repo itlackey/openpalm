@@ -10,7 +10,7 @@ export default defineCommand({
   async run() {
     const state = await ensureValidState();
     const composeArgs = fullComposeArgs(state);
-    const managedServices = buildManagedServiceNames(state);
+    const managedServices = await buildManagedServiceNames(state);
 
     console.log('Pulling latest images...');
     await runDockerCompose([...composeArgs, 'pull', ...managedServices]);

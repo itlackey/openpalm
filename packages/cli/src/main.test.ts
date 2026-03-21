@@ -312,8 +312,8 @@ describe('scan command', () => {
     writeFileSync(fakeVarlock, '#!/bin/sh\nexit 0\n');
     chmodSync(fakeVarlock, 0o755);
 
-    writeFileSync(join(vaultDir, 'user.env.schema'), 'ADMIN_TOKEN\n');
     mkdirSync(join(vaultDir, 'user'), { recursive: true });
+    writeFileSync(join(vaultDir, 'user', 'user.env.schema'), 'ADMIN_TOKEN\n');
     writeFileSync(join(vaultDir, 'user', 'user.env'), 'ADMIN_TOKEN=testtoken\n');
 
     const originalHome = process.env.OP_HOME;

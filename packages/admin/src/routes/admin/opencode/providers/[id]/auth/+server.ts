@@ -24,11 +24,15 @@ import { createLogger } from '$lib/server/logger.js';
 
 const logger = createLogger('opencode.auth');
 
+// TODO: Add unit tests for api_key and oauth POST modes, and for GET poll session logic.
+
 // ── API key validation ────────────────────────────────────────────────
 const MAX_API_KEY_LENGTH = 512;
 const API_KEY_PATTERN = /^[\x20-\x7E]+$/; // printable ASCII only
 const OAUTH_SESSION_TTL_MS = 600_000;
 const MAX_OAUTH_SESSIONS = 1_000;
+const MAX_PROVIDER_ID_LENGTH = 128;
+const PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_.-]+$/;
 
 function validateApiKey(key: string): string | null {
   if (key.length > MAX_API_KEY_LENGTH) return 'API key exceeds maximum length';
@@ -121,6 +125,11 @@ export const POST: RequestHandler = async (event) => {
   const callerType = getCallerType(event);
   const providerId = event.params.id;
   const mode = typeof body.mode === 'string' ? body.mode : '';
+
+  // Validate providerId from URL parameter
+  if (!providerId || providerId.length > MAX_PROVIDER_ID_LENGTH || !PROVIDER_ID_PATTERN.test(providerId)) {
+    return errorResponse(400, 'bad_request', 'Invalid provider ID', {}, requestId);
+  }
 
   purgeExpiredSessions();
 

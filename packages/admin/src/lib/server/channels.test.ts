@@ -130,7 +130,7 @@ describe("isAllowedService", () => {
     expect(isAllowedService("GUARDIAN")).toBe(false);
   });
 
-  test("allows channel-* when stack/addons/chat/compose.yml exists", () => {
+  test("allows addon service when stack/addons/<name>/compose.yml exists", () => {
     const homeDir = trackDir(makeTempDir());
     const configDir = join(homeDir, "config");
     mkdirSync(configDir, { recursive: true });
@@ -138,22 +138,17 @@ describe("isAllowedService", () => {
       { name: "chat", yml: "services: {}" }
     ]);
 
-    expect(isAllowedService("channel-chat", configDir)).toBe(true);
-  });
-
-  test("rejects channel-* when stack addon does not exist", () => {
-    const homeDir = trackDir(makeTempDir());
-    const configDir = join(homeDir, "config");
-    mkdirSync(configDir, { recursive: true });
+    // Service name must match addon directory name exactly
+    expect(isAllowedService("chat", configDir)).toBe(true);
+    // No prefix-stripping: "channel-chat" is checked as-is
     expect(isAllowedService("channel-chat", configDir)).toBe(false);
   });
 
-  test("rejects channel- with invalid channel name", () => {
+  test("rejects service when stack addon does not exist", () => {
     const homeDir = trackDir(makeTempDir());
     const configDir = join(homeDir, "config");
     mkdirSync(configDir, { recursive: true });
-    expect(isAllowedService("channel-UPPER", configDir)).toBe(false);
-    expect(isAllowedService("channel--double", configDir)).toBe(false);
+    expect(isAllowedService("chat", configDir)).toBe(false);
   });
 
   test("rejects non-core, non-channel services", () => {

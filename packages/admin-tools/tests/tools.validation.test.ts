@@ -38,11 +38,12 @@ describe('admin tools validation', () => {
     expect(calls.length).toBe(0);
   });
 
-  it('rejects invalid admin container service before API call', async () => {
-    const result = await adminContainers.up.execute({ service: 'postgres' } as never, {} as never);
-    const parsed = JSON.parse(result) as { error?: boolean };
-    expect(parsed.error).toBe(true);
-    expect(calls.length).toBe(0);
+  it('forwards container service requests to the admin API (server validates)', async () => {
+    // Client-side service validation was removed; the admin API is the authoritative
+    // validator. The tool should always forward the request rather than rejecting locally.
+    await adminContainers.up.execute({ service: 'postgres' } as never, {} as never);
+    expect(calls.length).toBe(1);
+    expect(calls[0].url).toContain('/admin/containers/up');
   });
 
   it('rejects unsupported connection keys', async () => {

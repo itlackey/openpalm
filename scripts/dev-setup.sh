@@ -48,7 +48,8 @@ LOGS_DIR="$DEV_ROOT/logs"
 
 mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
-	"$CONFIG_DIR/automations" "$CONFIG_DIR/components" "$CONFIG_DIR/stash" \
+	"$CONFIG_DIR/automations" "$CONFIG_DIR/stash" \
+	"$DEV_ROOT/stack" \
 	"$VAULT_DIR" "$VAULT_DIR/stack" "$VAULT_DIR/stack/addons" "$VAULT_DIR/user" \
 	"$VAULT_DIR/stack/services/memory" \
 	"$DATA_DIR/memory" "$DATA_DIR/assistant/.config/opencode" \
@@ -58,7 +59,7 @@ mkdir -p \
 	"$DEV_ROOT/work"
 
 # ── Seed core assets (write-once unless --force) ─────────────────
-COMPOSE_DEST="$CONFIG_DIR/components/core.yml"
+COMPOSE_DEST="$DEV_ROOT/stack/core.compose.yml"
 
 [[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/.openpalm/stack/core.compose.yml" "$COMPOSE_DEST"
 

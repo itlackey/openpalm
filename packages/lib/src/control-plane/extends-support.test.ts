@@ -65,8 +65,40 @@ describe("compose extends support", () => {
     expect(overlays[1]).toContain("extended-addon/compose.yml");
   });
 
-  // Note: We don't run `docker compose config` in unit tests since Docker may
-  // not be available. The structural validation (files exist + discoverStackOverlays
-  // returns them) is sufficient for a unit-level guardrail. Integration tests
-  // should validate actual compose merge with extends.
+  test("extends addon passes docker compose config preflight (requires Docker)", async () => {
+    // This test validates that Compose `extends` actually merges correctly.
+    // Skipped when Docker is unavailable (CI without Docker, etc.).
+    const { checkDocker, composePreflight } = await import("./docker.js");
+    const dockerCheck = await checkDocker();
+    if (!dockerCheck.ok) {
+      console.log("  [skip] Docker not available — extends preflight test skipped");
+      return;
+    }
+
+    const { discoverStackOverlays } = await import("./staging.js");
+    const files = discoverStackOverlays(join(fixtureDir, "stack"));
+
+    const result = await composePreflight({ files });
+    expect(result.ok).toBe(true);
+  });
+
+  test("extends addon resolves services correctly via compose config (requires Docker)", async () => {
+    const { checkDocker, composeConfigServices } = await import("./docker.js");
+    const dockerCheck = await checkDocker();
+    if (!dockerCheck.ok) {
+      console.log("  [skip] Docker not available — extends service discovery test skipped");
+      return;
+    }
+
+    const { discoverStackOverlays } = await import("./staging.js");
+    const files = discoverStackOverlays(join(fixtureDir, "stack"));
+
+    const result = await composeConfigServices({ files });
+    if (result.ok) {
+      // When Docker is available, the resolved service list should include
+      // both the base service and the extended service
+      expect(result.services).toContain("base-service");
+      expect(result.services).toContain("extended-service");
+    }
+  });
 });

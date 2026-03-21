@@ -263,10 +263,10 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
   done
 
   # Verify key files were created
-  if [ -f "$CONFIG_HOME/components/core.yml" ] && [ -s "$CONFIG_HOME/components/core.yml" ]; then
-    pass "Asset present: config/components/core.yml"
+  if [ -f "$CONFIG_HOME/stack/core.compose.yml" ] && [ -s "$CONFIG_HOME/stack/core.compose.yml" ]; then
+    pass "Asset present: stack/core.compose.yml"
   else
-    fail "Asset missing or empty: $CONFIG_HOME/components/core.yml"
+    fail "Asset missing or empty: $CONFIG_HOME/stack/core.compose.yml"
   fi
 
   # Verify vault/user/user.env was seeded

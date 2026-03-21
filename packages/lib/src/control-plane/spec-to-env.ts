@@ -85,8 +85,8 @@ export function deriveAddonEnv(spec: StackSpec, addonName: string): Record<strin
   const env = addon.env ?? {};
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
-    if (typeof value !== "string") continue;
-    result[key] = value.startsWith("@secret:") ? `\${${value.slice(8)}}` : value;
+    const strValue = typeof value === "string" ? value : String(value ?? "");
+    result[key] = strValue.startsWith("@secret:") ? `\${${strValue.slice(8)}}` : strValue;
   }
   return result;
 }

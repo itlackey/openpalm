@@ -34,6 +34,17 @@ cp -R openpalm/.openpalm "$HOME/.openpalm"
 $EDITOR "$HOME/.openpalm/vault/stack/stack.env"
 $EDITOR "$HOME/.openpalm/vault/user/user.env"
 cd "$HOME/.openpalm/stack"
+
+# Preflight: validate compose merge and variable substitution before starting
+docker compose \
+  -f core.compose.yml \
+  -f addons/admin/compose.yml \
+  -f addons/chat/compose.yml \
+  --env-file ../vault/stack/stack.env \
+  --env-file ../vault/user/user.env \
+  config --quiet
+
+# Start the stack
 docker compose \
   -f core.compose.yml \
   -f addons/admin/compose.yml \
@@ -62,9 +73,13 @@ This keeps the live system understandable: if a compose file is not in the comma
 
 ## Convenience options
 
-### `stack/start.sh`
+The primary workflow is always raw `docker compose` as shown above. The options
+below are typing shortcuts only.
 
-The copied bundle includes `~/.openpalm/stack/start.sh`, a thin wrapper around the same compose files.
+### `stack/start.sh` (convenience alternative)
+
+The copied bundle includes `~/.openpalm/stack/start.sh`, a thin wrapper that
+prints the resolved `docker compose` command before running it.
 
 Examples:
 
@@ -76,7 +91,8 @@ cd "$HOME/.openpalm/stack"
 ./start.sh --stop admin chat
 ```
 
-Use this when you want shorter commands, but prefer raw `docker compose` when documenting or debugging the live stack. For `status`, `stop`, and `down`, pass the same addon set you used for `up`.
+Prefer raw `docker compose` when documenting or debugging the live stack. For
+`status`, `stop`, and `down`, pass the same addon set you used for `up`.
 
 ### Setup scripts
 

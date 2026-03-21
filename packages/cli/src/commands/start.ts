@@ -27,7 +27,7 @@ export async function runStartAction(
     // Stage artifacts and start all managed services (admin included if enabled)
     const state = await ensureValidState();
     const composeArgs = fullComposeArgs(state);
-    const managedServices = buildManagedServiceNames(state);
+    const managedServices = await buildManagedServiceNames(state);
     await runDockerCompose([...composeArgs, 'up', '-d', ...managedServices]);
     return;
   }

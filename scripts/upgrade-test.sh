@@ -211,7 +211,7 @@ rm -rf "${TEST_ROOT}" 2>/dev/null || true
 VAULT_HOME="${TEST_ROOT}/vault"
 
 mkdir -p \
-  "${OP_CONFIG_HOME}/components" \
+  "${OP_CONFIG_HOME}/stack" \
   "${OP_CONFIG_HOME}/assistant/tools" \
   "${OP_CONFIG_HOME}/assistant/plugins" \
   "${OP_CONFIG_HOME}/assistant/skills" \
@@ -262,12 +262,12 @@ OP_INGRESS_BIND_ADDRESS=127.0.0.1
 OP_INGRESS_PORT=8180
 EOF
 
-# Seed compose to config/components/ (source of truth)
-cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_CONFIG_HOME}/components/core.yml"
+# Seed compose to stack/ (source of truth)
+cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_CONFIG_HOME}/stack/core.compose.yml"
 
 # Override ports so we don't conflict with a running dev stack.
 # We override admin's port via a compose override.
-cat >"${OP_CONFIG_HOME}/components/compose-port-override.yml" <<EOF
+cat >"${OP_CONFIG_HOME}/stack/compose-port-override.yml" <<EOF
 services:
   admin:
     ports:
@@ -329,7 +329,7 @@ if [[ $SKIP_BUILD -eq 0 && -z "$FROM_VERSION" ]]; then
   header "Building images from source"
   npm run admin:build 2>&1 | tail -3
   docker compose --project-directory "$ROOT_DIR" \
-    -f "${OP_CONFIG_HOME}/components/core.yml" \
+    -f "${OP_CONFIG_HOME}/stack/core.compose.yml" \
     -f compose.dev.yaml \
     --env-file "${VAULT_HOME}/stack/stack.env" \
     --env-file "${VAULT_HOME}/user/user.env" \
@@ -353,8 +353,8 @@ fi
 compose_cmd() {
   docker compose \
     --project-name "$PROJECT_NAME" \
-    -f "${OP_CONFIG_HOME}/components/core.yml" \
-    -f "${OP_CONFIG_HOME}/components/compose-port-override.yml" \
+    -f "${OP_CONFIG_HOME}/stack/core.compose.yml" \
+    -f "${OP_CONFIG_HOME}/stack/compose-port-override.yml" \
     --env-file "${VAULT_HOME}/user/user.env" \
     --env-file "${VAULT_HOME}/stack/stack.env" \
     "$@"
@@ -434,8 +434,8 @@ fi
 
 # ── 2c: Write a custom user file in CONFIG_HOME ─────────────────────
 
-echo "# My custom channel config" > "${OP_CONFIG_HOME}/components/my-custom-channel.yml"
-pass "Custom user file written to CONFIG_HOME/components/"
+echo "# My custom channel config" > "${OP_CONFIG_HOME}/stack/my-custom-channel.yml"
+pass "Custom user file written to CONFIG_HOME/stack/"
 
 # ══════════════════════════════════════════════════════════════════════
 # PHASE 3: Record pre-upgrade state
@@ -463,7 +463,7 @@ SERVICES_BEFORE=$(compose_cmd ps --format '{{.Service}}' 2>/dev/null | sort | tr
 echo "  Running services:     ${SERVICES_BEFORE}"
 
 # Custom user file checksum
-CUSTOM_FILE_CHECKSUM=$(sha256sum "${OP_CONFIG_HOME}/components/my-custom-channel.yml" | awk '{print $1}')
+CUSTOM_FILE_CHECKSUM=$(sha256sum "${OP_CONFIG_HOME}/stack/my-custom-channel.yml" | awk '{print $1}')
 echo "  Custom file checksum: ${CUSTOM_FILE_CHECKSUM}"
 
 # Record admin token works
@@ -483,7 +483,7 @@ header "Phase 4: Simulate upgrade"
 # The upgrade simulation mirrors what setup.sh does on re-run:
 #   1. Detects existing install (vault/user/user.env exists)
 #   2. Re-creates directory tree (mkdir -p, idempotent)
-#   3. Downloads fresh compose to config/components/
+#   3. Downloads fresh compose to stack/
 #   4. Does NOT overwrite vault/user/user.env or vault/stack/stack.env
 #   5. Starts services with compose up
 
@@ -491,7 +491,7 @@ echo "  Simulating setup.sh re-run..."
 
 # Step 1: Directory creation (idempotent, same as setup.sh)
 mkdir -p \
-  "${OP_CONFIG_HOME}" "${OP_CONFIG_HOME}/components" \
+  "${OP_CONFIG_HOME}" "${OP_CONFIG_HOME}/stack" \
   "${OP_CONFIG_HOME}/assistant" \
   "${OP_CONFIG_HOME}/automations" "${OP_CONFIG_HOME}/stash" \
   "${VAULT_HOME}/user" "${VAULT_HOME}/stack" \
@@ -505,7 +505,7 @@ mkdir -p \
 
 # Step 2: Re-download assets (simulate by copying from source)
 # In a real upgrade, setup.sh downloads from GitHub. We copy from local assets.
-cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_CONFIG_HOME}/components/core.yml"
+cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_CONFIG_HOME}/stack/core.compose.yml"
 
 # Step 3: vault/user/user.env — setup.sh checks if it exists and skips if so
 if [[ -f "${VAULT_HOME}/user/user.env" ]]; then
@@ -650,8 +650,8 @@ fi
 echo ""
 echo "=== 5d: User file preservation ==="
 
-if [[ -f "${OP_CONFIG_HOME}/components/my-custom-channel.yml" ]]; then
-  CUSTOM_FILE_CHECKSUM_AFTER=$(sha256sum "${OP_CONFIG_HOME}/components/my-custom-channel.yml" | awk '{print $1}')
+if [[ -f "${OP_CONFIG_HOME}/stack/my-custom-channel.yml" ]]; then
+  CUSTOM_FILE_CHECKSUM_AFTER=$(sha256sum "${OP_CONFIG_HOME}/stack/my-custom-channel.yml" | awk '{print $1}')
   if [[ "$CUSTOM_FILE_CHECKSUM" == "$CUSTOM_FILE_CHECKSUM_AFTER" ]]; then
     pass "Custom channel file preserved and unchanged"
   else

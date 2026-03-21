@@ -60,6 +60,9 @@
     const headers: HeadersInit = { 'x-admin-token': token, 'x-request-id': crypto.randomUUID() };
 
     try {
+      // TODO: N+1 optimization — if the providers endpoint does not return inline models,
+      // this will require a separate fetch per provider. Consider a batch endpoint that
+      // returns all providers with their models in a single round-trip.
       const [providersRes, configRes] = await Promise.all([
         fetch('/admin/opencode/providers', { headers }),
         fetch('/admin/opencode/model', { headers }),

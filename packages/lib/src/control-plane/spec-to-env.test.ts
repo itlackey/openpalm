@@ -93,7 +93,7 @@ describe("deriveMemoryEnv", () => {
 });
 
 describe("deriveAddonEnv", () => {
-  test("ignores non-string addon env values from malformed stack specs", () => {
+  test("coerces non-string addon env values to strings from malformed stack specs", () => {
     const spec = makeSpec({
       addons: {
         memory: {
@@ -108,6 +108,8 @@ describe("deriveAddonEnv", () => {
 
     expect(deriveAddonEnv(spec, "memory")).toEqual({
       GOOD: "${OPENAI_API_KEY}",
+      BAD_NUMBER: "123",
+      BAD_NULL: "",
     });
   });
 });

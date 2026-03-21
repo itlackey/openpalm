@@ -10,7 +10,7 @@ import {
   getActor,
   getCallerType
 } from "$lib/server/helpers.js";
-import { appendAudit } from "$lib/server/control-plane.js";
+import { appendAudit, discoverChannels } from "$lib/server/control-plane.js";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -20,9 +20,7 @@ export const GET: RequestHandler = async (event) => {
   const state = getState();
   const actor = getActor(event);
   const callerType = getCallerType(event);
-  const installed = Object.keys(state.services)
-    .filter((name) => name.startsWith("channel-"))
-    .map((name) => name.replace(/^channel-/, ""));
+  const installed = discoverChannels(state.configDir).map((ch) => ch.name);
 
   appendAudit(state, actor, "extensions.list", {}, true, requestId, callerType);
   return jsonResponse(

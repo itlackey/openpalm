@@ -252,33 +252,6 @@ docker compose \
 
 Containers from addons no longer in the file list are stopped and removed.
 
-### The `start.sh` wrapper
-
-`~/.openpalm/stack/start.sh` is a thin shell wrapper that builds and executes
-the same `docker compose` command. It always prints the resolved command before
-running it.
-
-```bash
-# Core stack only
-~/.openpalm/stack/start.sh
-
-# Core + named addons
-~/.openpalm/stack/start.sh admin chat
-
-# Load addon list from config/stack.yaml
-~/.openpalm/stack/start.sh --from-stack-yaml
-
-# Dry-run: print resolved command without executing
-~/.openpalm/stack/start.sh --dry-run admin chat
-
-# Status / stop / down
-~/.openpalm/stack/start.sh --status admin chat
-~/.openpalm/stack/start.sh --stop   admin chat
-~/.openpalm/stack/start.sh --down   admin chat
-```
-
-Use `--dry-run` to inspect the exact command before committing to any operation.
-
 ---
 
 ## Environment Variable Precedence
@@ -431,3 +404,35 @@ directly — extract and start.
 | [core-principles.md](../technical/core-principles.md) | Architectural rules and filesystem contract |
 | [environment-and-mounts.md](../technical/environment-and-mounts.md) | Per-service mount and env details |
 | `.openpalm/stack/README.md` | Stack directory quick reference |
+
+---
+
+## Convenience alternative: `start.sh`
+
+`~/.openpalm/stack/start.sh` is a thin shell wrapper that builds and prints
+the resolved `docker compose` command before executing it. It is provided as a
+typing shortcut — not as the primary workflow. All operations in this runbook
+use raw `docker compose` as the canonical form.
+
+```bash
+# Core stack only
+~/.openpalm/stack/start.sh
+
+# Core + named addons
+~/.openpalm/stack/start.sh admin chat
+
+# Load addon list from config/stack.yaml
+~/.openpalm/stack/start.sh --from-stack-yaml
+
+# Dry-run: print the resolved command without executing it
+~/.openpalm/stack/start.sh --dry-run admin chat
+
+# Status / stop / down
+~/.openpalm/stack/start.sh --status admin chat
+~/.openpalm/stack/start.sh --stop   admin chat
+~/.openpalm/stack/start.sh --down   admin chat
+```
+
+`--dry-run` is useful for verifying which compose files and env files `start.sh`
+would pass before you commit to any operation. Prefer raw `docker compose` for
+documentation, debugging, and any situation where the exact invocation matters.
