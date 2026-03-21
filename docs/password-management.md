@@ -262,7 +262,7 @@ Registrations are tracked in `~/.openpalm/data/secrets/component-secrets.json`.
 
 ## Runtime Log Redaction
 
-Varlock wraps container processes to prevent secrets from leaking into Docker logs. The `assets/redact.env.schema` file lists all sensitive env vars. Any matching values in stdout/stderr output are replaced with `[REDACTED]`.
+Varlock wraps container processes to prevent secrets from leaking into Docker logs. The `.openpalm/vault/redact.env.schema` file lists all sensitive env vars. Any matching values in stdout/stderr output are replaced with `[REDACTED]`.
 
 The redact schema is regenerated during configuration persistence to stay in sync with `@sensitive` declarations in the vault schemas.
 

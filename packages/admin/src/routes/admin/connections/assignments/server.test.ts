@@ -29,7 +29,7 @@ beforeEach(() => {
     'OPENAI_API_KEY=sk-test\nSYSTEM_LLM_PROVIDER=openai\nSYSTEM_LLM_MODEL=gpt-4.1-mini\nEMBEDDING_MODEL=text-embedding-3-small\nEMBEDDING_DIMS=1536\n'
   );
 
-  // Seed profiles.json so readConnectionProfilesDocument doesn't throw
+  // Seed stack.yaml with connection profiles
   writeConnectionsDocument(state.configDir, {
     profiles: [{
       id: 'primary',
@@ -92,9 +92,9 @@ describe('/admin/connections/assignments route', () => {
     expect(valid.status).toBe(200);
   });
 
-  test('GET returns empty-default assignments when profiles.json does not exist', async () => {
+  test('GET returns empty-default assignments when stack.yaml does not exist', async () => {
     const state = getState();
-    const profilesPath = join(state.configDir, 'connections', 'profiles.json');
+    const profilesPath = join(state.configDir, 'stack.yaml');
     rmSync(profilesPath, { force: true });
 
     const res = await GET(makeEvent('GET'));

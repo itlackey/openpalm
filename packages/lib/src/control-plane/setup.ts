@@ -703,6 +703,7 @@ export async function performSetup(
   const addons: string[] = [];
   if (input.ollamaEnabled) addons.push("ollama");
   if (input.services?.admin) addons.push("admin");
+  if (input.services?.openviking) addons.push("openviking");
   if (input.channels) {
     for (const ch of input.channels) addons.push(ch);
   }
@@ -726,6 +727,7 @@ export async function performSetup(
     }),
     assignments: {
       llm: input.assignments.llm,
+      ...(llmSmallModel ? { slm: { connectionId: input.assignments.llm.connectionId, model: llmSmallModel } } : {}),
       embeddings: {
         connectionId: input.assignments.embeddings.connectionId,
         model: input.assignments.embeddings.model,

@@ -207,8 +207,8 @@ Docker Compose.
 
 Components are discovered from `config/components/` at apply time.
 
-Add-on definitions (channels, services) live in `stack/addons/` and are bundled into
-the admin image at build time. Automations live in `stack/automations/`. Components
+Add-on definitions (channels, services) live in `.openpalm/stack/addons/` and are bundled into
+the admin image at build time. Automations live in `.openpalm/config/automations/`. Components
 are installed from the addon catalog via the admin API or manually by placing a
 directory with `compose.yml` in `config/components/`. No container rebuild required.
 The admin's apply endpoint scans the directory and runs compose operations against

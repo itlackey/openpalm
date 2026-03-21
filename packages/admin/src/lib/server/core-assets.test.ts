@@ -174,7 +174,7 @@ describe("refreshCoreAssets", () => {
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : (input as Request).url;
-      if (url.includes("docker-compose.yml")) {
+      if (url.includes("core.compose.yml")) {
         return new Response("services:\n  admin:\n    image: test\n", { status: 200 });
       }
       if (url.includes("admin-opencode.jsonc")) {
@@ -192,7 +192,7 @@ describe("refreshCoreAssets", () => {
       if (url.includes("user.env.schema")) {
         return new Response("# @defaultSensitive=true\n", { status: 200 });
       }
-      if (url.includes("system.env.schema")) {
+      if (url.includes("stack.env.schema")) {
         return new Response("# @defaultSensitive=false\n", { status: 200 });
       }
       return new Response("Not found", { status: 404 });
@@ -222,7 +222,7 @@ describe("refreshCoreAssets", () => {
     writeFileSync(join(homeDir, "data/assistant/AGENTS.md"), "old-agents-content");
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : (input as Request).url;
-      if (url.includes("docker-compose.yml")) {
+      if (url.includes("core.compose.yml")) {
         return new Response("new-compose-content", { status: 200 });
       }
       if (url.includes("opencode.jsonc")) {
@@ -234,7 +234,7 @@ describe("refreshCoreAssets", () => {
       if (url.includes("user.env.schema")) {
         return new Response("new-secrets-schema-content", { status: 200 });
       }
-      if (url.includes("system.env.schema")) {
+      if (url.includes("stack.env.schema")) {
         return new Response("new-stack-schema-content", { status: 200 });
       }
       return new Response("Not found", { status: 404 });

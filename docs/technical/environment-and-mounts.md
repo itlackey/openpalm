@@ -1,7 +1,7 @@
 # Environment Variables & Container Mount Points
 
 This document describes every environment variable and volume mount used by the
-OpenPalm stack. The `stack/core.compose.yml` is the source of truth --
+OpenPalm stack. The `.openpalm/stack/core.compose.yml` is the source of truth --
 this document mirrors its content for reference.
 
 **Canonical sources:** Volume mounts and directory layout are also described in
@@ -301,8 +301,8 @@ environment variable. They are safe to commit -- they contain no secret values.
 
 | File | Documents |
 |---|---|
-| [`vault/user.env.schema`](../../vault/user.env.schema) | All variables in `vault/user/user.env` (user-managed) |
-| [`vault/system.env.schema`](../../vault/system.env.schema) | All variables in `vault/stack/stack.env` (system-managed) |
+| [`vault/user/user.env.schema`](../../.openpalm/vault/user/user.env.schema) | All variables in `vault/user/user.env` (user-managed) |
+| [`vault/stack/stack.env.schema`](../../.openpalm/vault/stack/stack.env.schema) | All variables in `vault/stack/stack.env` (system-managed) |
 
 ### Varlock decorator syntax
 

@@ -130,15 +130,10 @@ export function writeConnectionProfilesDocument(
     model: document.assignments.embeddings.model,
     embeddingDims: document.assignments.embeddings.embeddingDims,
   };
-  if (document.assignments.reranking) {
-    spec.assignments.reranking = document.assignments.reranking;
-  }
-  if (document.assignments.tts) {
-    spec.assignments.tts = document.assignments.tts;
-  }
-  if (document.assignments.stt) {
-    spec.assignments.stt = document.assignments.stt;
-  }
+  // Unconditionally update optional assignments — undefined clears them
+  spec.assignments.reranking = document.assignments.reranking;
+  spec.assignments.tts = document.assignments.tts;
+  spec.assignments.stt = document.assignments.stt;
   writeStackSpec(configDir, spec);
 }
 

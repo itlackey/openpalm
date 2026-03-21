@@ -94,7 +94,9 @@ describe('/admin/connections route', () => {
 
     const state = getState();
     const connections = readConnectionProfilesDocument(state.configDir);
-    expect(connections.assignments.llm.smallModel).toBe('gpt-4.1-mini');
+    // smallModel is not round-tripped through stack.yaml — it's written to the OpenCode config
+    expect(connections.assignments.llm.connectionId).toBe('primary');
+    expect(connections.assignments.llm.model).toBe('gpt-4o');
     expect(connections.assignments.reranking?.model).toBe('rerank-2');
     expect(connections.assignments.tts?.voice).toBe('alloy');
     expect(connections.assignments.stt?.language).toBe('en');

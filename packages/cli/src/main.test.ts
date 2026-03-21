@@ -78,12 +78,15 @@ describe('cli main', () => {
       if (url.endsWith('/health')) {
         return new Response('ok', { status: 200 });
       }
-      if (url.includes('/docker-compose.yml')) {
+      if (url.includes('/core.compose.yml') || url.includes('/compose.yml')) {
         return new Response('services: {}\n', { status: 200 });
       }
-      if (url.includes('/user.env.schema') || url.includes('/system.env.schema')) {
+      if (url.includes('.env.schema')) {
         return new Response('KEY=string\n', { status: 200 });
       }
+      if (url.includes('/AGENTS.md')) return new Response('# Agents\n', { status: 200 });
+      if (url.includes('/opencode.jsonc')) return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
+      if (url.endsWith('.yml')) return new Response('name: test\nschedule: daily\n', { status: 200 });
       return new Response('', { status: 503 });
     }) as typeof fetch;
     console.log = mock(() => {}) as typeof console.log;
@@ -117,12 +120,15 @@ describe('cli main', () => {
       if (url.endsWith('/health')) {
         throw new TypeError('fetch failed');
       }
-      if (url.includes('/docker-compose.yml')) {
+      if (url.includes('/core.compose.yml') || url.includes('/compose.yml')) {
         return new Response('services: {}\n', { status: 200 });
       }
-      if (url.includes('/user.env.schema') || url.includes('/system.env.schema')) {
+      if (url.includes('.env.schema')) {
         return new Response('KEY=string\n', { status: 200 });
       }
+      if (url.includes('/AGENTS.md')) return new Response('# Agents\n', { status: 200 });
+      if (url.includes('/opencode.jsonc')) return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
+      if (url.endsWith('.yml')) return new Response('name: test\nschedule: daily\n', { status: 200 });
       return new Response('', { status: 503 });
     }) as typeof fetch;
     console.log = mock(() => {}) as typeof console.log;
@@ -162,12 +168,15 @@ describe('cli main', () => {
         throw new TypeError('fetch failed');
       }
       // Respond to version-pinned asset URLs
-      if (url.includes('/docker-compose.yml')) {
+      if (url.includes('/core.compose.yml') || url.includes('/compose.yml')) {
         return new Response('services: {}\n', { status: 200 });
       }
-      if (url.includes('/user.env.schema') || url.includes('/system.env.schema')) {
+      if (url.includes('.env.schema')) {
         return new Response('KEY=string\n', { status: 200 });
       }
+      if (url.includes('/AGENTS.md')) return new Response('# Agents\n', { status: 200 });
+      if (url.includes('/opencode.jsonc')) return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
+      if (url.endsWith('.yml')) return new Response('name: test\nschedule: daily\n', { status: 200 });
       return new Response('', { status: 503 });
     }) as typeof fetch;
     console.log = mock(() => {}) as typeof console.log;
@@ -177,7 +186,7 @@ describe('cli main', () => {
       await main(['install', '--no-start', '--force', '--no-open']);
 
       // Verify that assets were fetched using the version-pinned ref, not 'main'
-      const composeUrl = fetchedUrls.find((u) => u.includes('/docker-compose.yml'));
+      const composeUrl = fetchedUrls.find((u) => u.includes('/core.compose.yml'));
       expect(composeUrl).toBeDefined();
       expect(composeUrl).toContain(expectedRef);
       expect(composeUrl).not.toContain('/main/');

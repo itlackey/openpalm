@@ -29,7 +29,7 @@ Optional services (add-ons):
 - `admin`
 - Channels (chat, discord, etc.)
 
-Channel services are added via compose overlays from `stack/addons/`
+Channel services are added via compose overlays from `.openpalm/stack/addons/`
 and installed into `config/components/`.
 
 ## Filesystem model

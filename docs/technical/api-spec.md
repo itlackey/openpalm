@@ -269,7 +269,7 @@ Response:
 
 ## Registry
 
-Unified registry for channels and automations. Add-on definitions live in `stack/addons/` and automations in `stack/automations/`. These are bundled into the admin image at build time.
+Unified registry for channels and automations. Add-on definitions live in `.openpalm/stack/addons/` and automations in `.openpalm/config/automations/`. These are bundled into the admin image at build time.
 
 ### `GET /admin/registry`
 

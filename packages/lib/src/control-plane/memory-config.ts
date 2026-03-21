@@ -281,15 +281,15 @@ export function deriveMemoryConfig(spec: StackSpec): MemoryConfig {
     max_tokens: mem.llm.maxTokens ?? 2000,
   };
   if (llmApiKeyRef) llmConfig.api_key = llmApiKeyRef;
-  const llmBaseUrl = mem0BaseUrlConfig(llmProvider, llmConn?.baseUrl ?? "");
-  if (llmBaseUrl) llmConfig.openai_base_url = llmBaseUrl;
+  const llmBaseUrlEntry = mem0BaseUrlConfig(llmProvider, llmConn?.baseUrl ?? "");
+  if (llmBaseUrlEntry) llmConfig[llmBaseUrlEntry.key] = llmBaseUrlEntry.value;
 
   const embConfig: Record<string, unknown> = {
     model: mem.embeddings.model,
   };
   if (embApiKeyRef) embConfig.api_key = embApiKeyRef;
-  const embBaseUrl = mem0BaseUrlConfig(embProvider, embConn?.baseUrl ?? "");
-  if (embBaseUrl) embConfig.openai_base_url = embBaseUrl;
+  const embBaseUrlEntry = mem0BaseUrlConfig(embProvider, embConn?.baseUrl ?? "");
+  if (embBaseUrlEntry) embConfig[embBaseUrlEntry.key] = embBaseUrlEntry.value;
 
   return {
     mem0: {
@@ -306,7 +306,7 @@ export function deriveMemoryConfig(spec: StackSpec): MemoryConfig {
         config: {
           collection_name: mem.vectorStore.collectionName,
           db_path: mem.vectorStore.dbPath,
-          embedding_model_dims: emb.embeddingDims ?? EMBEDDING_DIMS[embProvider] ?? 1536,
+          embedding_model_dims: emb.embeddingDims ?? EMBEDDING_DIMS[`${embProvider}/${mem.embeddings.model}`] ?? 1536,
         },
       },
     },

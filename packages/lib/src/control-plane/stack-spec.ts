@@ -130,8 +130,10 @@ export const SPEC_DEFAULTS = {
 /** Normalize a mixed addon entry into { name, env } */
 export function normalizeAddon(entry: StackSpecAddon): { name: string; env: Record<string, string> } {
   if (typeof entry === "string") return { name: entry, env: {} };
-  const name = Object.keys(entry)[0];
-  return { name, env: entry[name] };
+  const keys = Object.keys(entry);
+  if (keys.length === 0) return { name: "", env: {} };
+  const name = keys[0];
+  return { name, env: entry[name] ?? {} };
 }
 
 /** Check if an addon is enabled by name */
@@ -172,5 +174,8 @@ export function readStackSpec(configDir: string): StackSpec | null {
   if (typeof raw !== "object" || raw === null) return null;
   const obj = raw as Record<string, unknown>;
   if (obj.version !== 1) return null;
+  if (!Array.isArray(obj.connections)) return null;
+  if (typeof obj.assignments !== "object" || obj.assignments === null) return null;
+  if (!Array.isArray(obj.addons)) obj.addons = [];
   return obj as unknown as StackSpec;
 }

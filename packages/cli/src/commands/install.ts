@@ -182,7 +182,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   // Non-fatal validation
   try {
     const varlockBin = await ensureVarlock(dataDir);
-    const schemaPath = join(vaultDir, 'user.env.schema');
+    const schemaPath = join(vaultDir, 'user', 'user.env.schema');
     const envPath = join(vaultDir, 'user', 'user.env');
     if (await Bun.file(schemaPath).exists()) {
       const tmpDir = await prepareVarlockDir(schemaPath, envPath);
