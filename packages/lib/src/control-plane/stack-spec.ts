@@ -2,103 +2,76 @@
  * Stack specification file (stack.yaml) management.
  *
  * The stack spec is a YAML document that captures the high-level
- * configuration of an OpenPalm installation: connections, capability
- * assignments, and addons. It lives in CONFIG_HOME.
+ * configuration of an OpenPalm installation: capabilities, addons,
+ * and optional services. It lives in CONFIG_HOME.
  *
- * v1: Clean break — connections, assignments (llm, slm, embeddings, memory,
- *     tts, stt, reranking), and addons list. Replaces openpalm.yaml (v3/v4)
- *     and profiles.json.
+ * v2: Capabilities-based schema. No connections array — capabilities
+ *     carry their own provider info. Addons are a Record, not an array.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { stringify as yamlStringify, parse as yamlParse } from "yaml";
 
-// ── Connection Types ────────────────────────────────────────────────────
+// ── Capability Types ────────────────────────────────────────────────────
 
-export type StackSpecConnectionAuth =
-  | { mode: "api_key"; apiKeySecretRef?: string }
-  | { mode: "none" };
-
-export type StackSpecConnectionKind =
-  | "openai_compatible_remote"
-  | "openai_compatible_local"
-  | "ollama_local"
-  | "ollama_stack";
-
-export type StackSpecConnection = {
-  id: string;
-  name: string;
-  kind: StackSpecConnectionKind;
+export type StackSpecEmbeddings = {
   provider: string;
-  baseUrl: string;
-  auth: StackSpecConnectionAuth;
-};
-
-// ── Assignment Types ────────────────────────────────────────────────────
-
-export type StackSpecModelAssignment = {
-  connectionId: string;
   model: string;
+  dims: number;
 };
 
-export type StackSpecEmbeddingsAssignment = {
-  connectionId: string;
-  model: string;
-  embeddingDims?: number;
-};
-
-export type StackSpecMemoryAssignment = {
-  llm: { connectionId: string; model: string; temperature?: number; maxTokens?: number };
-  embeddings: { connectionId: string; model: string };
-  vectorStore: { provider: "sqlite-vec" | "qdrant"; collectionName: string; dbPath: string };
+export type StackSpecMemory = {
+  userId: string;
   customInstructions?: string;
 };
 
-export type StackSpecTtsAssignment = {
+export type StackSpecTts = {
   enabled: boolean;
-  connectionId?: string;
+  provider?: string;
   model?: string;
   voice?: string;
   format?: string;
 };
 
-export type StackSpecSttAssignment = {
+export type StackSpecStt = {
   enabled: boolean;
-  connectionId?: string;
+  provider?: string;
   model?: string;
   language?: string;
 };
 
-export type StackSpecRerankerAssignment = {
+export type StackSpecReranker = {
   enabled: boolean;
-  connectionId?: string;
+  provider?: string;
   mode?: "llm" | "dedicated";
   model?: string;
   topK?: number;
   topN?: number;
 };
 
-export type StackSpecAssignments = {
-  llm: StackSpecModelAssignment;
-  slm?: StackSpecModelAssignment;
-  embeddings: StackSpecEmbeddingsAssignment;
-  memory: StackSpecMemoryAssignment;
-  tts?: StackSpecTtsAssignment;
-  stt?: StackSpecSttAssignment;
-  reranking?: StackSpecRerankerAssignment;
+export type StackSpecCapabilities = {
+  /** Primary LLM: "provider/model" */
+  llm: string;
+  /** Small/fast model: "provider/model" */
+  slm?: string;
+  embeddings: StackSpecEmbeddings;
+  memory: StackSpecMemory;
+  tts?: StackSpecTts;
+  stt?: StackSpecStt;
+  reranking?: StackSpecReranker;
 };
 
-// ── Addon Types ─────────────────────────────────────────────────────────
+// ── Addon / Service Types ───────────────────────────────────────────────
 
-/** Addon can be a simple string or an object with env config */
-export type StackSpecAddon = string | Record<string, Record<string, string>>;
+export type StackSpecAddonValue = boolean | { env?: Record<string, string> };
+export type StackSpecServiceValue = { env?: Record<string, string> };
 
-// ── StackSpec v1 ────────────────────────────────────────────────────────
+// ── StackSpec v2 ────────────────────────────────────────────────────────
 
 export type StackSpec = {
-  version: 1;
-  connections: StackSpecConnection[];
-  assignments: StackSpecAssignments;
-  addons: StackSpecAddon[];
+  version: 2;
+  capabilities: StackSpecCapabilities;
+  addons: Record<string, StackSpecAddonValue>;
+  services?: Record<string, StackSpecServiceValue>;
 };
 
 // ── Constants ───────────────────────────────────────────────────────────
@@ -127,23 +100,30 @@ export const SPEC_DEFAULTS = {
 
 // ── Addon Helpers ───────────────────────────────────────────────────────
 
-/** Normalize a mixed addon entry into { name, env } */
-export function normalizeAddon(entry: StackSpecAddon): { name: string; env: Record<string, string> } {
-  if (typeof entry === "string") return { name: entry, env: {} };
-  const keys = Object.keys(entry);
-  if (keys.length === 0) return { name: "", env: {} };
-  const name = keys[0];
-  return { name, env: entry[name] ?? {} };
-}
-
 /** Check if an addon is enabled by name */
 export function hasAddon(spec: StackSpec, name: string): boolean {
-  return spec.addons.some((a) => normalizeAddon(a).name === name);
+  const value = spec.addons[name];
+  if (value === undefined || value === false) return false;
+  return true;
 }
 
-/** Get the list of addon names */
+/** Get the list of enabled addon names */
 export function addonNames(spec: StackSpec): string[] {
-  return spec.addons.map((a) => normalizeAddon(a).name);
+  return Object.keys(spec.addons).filter((k) => hasAddon(spec, k));
+}
+
+// ── Capability Helpers ──────────────────────────────────────────────────
+
+/** Parse a "provider/model" capability string into parts */
+export function parseCapabilityString(cap: string): { provider: string; model: string } {
+  const idx = cap.indexOf("/");
+  if (idx < 0) return { provider: cap, model: "" };
+  return { provider: cap.slice(0, idx), model: cap.slice(idx + 1) };
+}
+
+/** Format provider + model into a capability string */
+export function formatCapabilityString(provider: string, model: string): string {
+  return `${provider}/${model}`;
 }
 
 // ── Read / Write ────────────────────────────────────────────────────────
@@ -173,9 +153,18 @@ export function readStackSpec(configDir: string): StackSpec | null {
   }
   if (typeof raw !== "object" || raw === null) return null;
   const obj = raw as Record<string, unknown>;
-  if (obj.version !== 1) return null;
-  if (!Array.isArray(obj.connections)) return null;
-  if (typeof obj.assignments !== "object" || obj.assignments === null) return null;
-  if (!Array.isArray(obj.addons)) obj.addons = [];
+  if (obj.version !== 2) return null;
+  if (typeof obj.capabilities !== "object" || obj.capabilities === null) return null;
+  if (typeof obj.addons !== "object" || obj.addons === null) obj.addons = {};
   return obj as unknown as StackSpec;
+}
+
+/**
+ * Update a single capability key in the stack spec.
+ */
+export function updateCapability(configDir: string, key: string, value: unknown): void {
+  const spec = readStackSpec(configDir);
+  if (!spec) throw new Error("stack.yaml not found or invalid");
+  (spec.capabilities as Record<string, unknown>)[key] = value;
+  writeStackSpec(configDir, spec);
 }

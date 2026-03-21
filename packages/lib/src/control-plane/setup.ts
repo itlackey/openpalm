@@ -24,17 +24,17 @@ import {
   ensureOpenCodeConfig,
   readSystemSecretsEnvFile,
 } from "./secrets.js";
-import { ensureConnectionProfilesStore, writeConnectionsDocument } from "./connection-profiles.js";
 import { buildMem0Mapping } from "./connection-mapping.js";
 import { writeMemoryConfig } from "./memory-config.js";
 import { ensureOpenCodeSystemConfig, ensureMemoryDir } from "./core-assets.js";
 import { applyInstall, createState, writeSetupTokenFile } from "./lifecycle.js";
-import { writeStackSpec } from "./stack-spec.js";
-import type { StackSpec, StackSpecConnection } from "./stack-spec.js";
+import { writeStackSpec, formatCapabilityString } from "./stack-spec.js";
+import type { StackSpec, StackSpecCapabilities, StackSpecAddonValue } from "./stack-spec.js";
+import { writeManagedEnvFiles } from "./spec-to-env.js";
 import { detectLocalProviders } from "./model-runner.js";
 import type { LocalProviderDetection } from "./model-runner.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
-import type { ControlPlaneState, CapabilityAssignments, TtsAssignment, SttAssignment } from "./types.js";
+import type { ControlPlaneState } from "./types.js";
 
 const logger = createLogger("setup");
 
@@ -70,10 +70,10 @@ export type SetupInput = {
   connections: SetupConnection[];
   assignments: SetupAssignments;
   voice?: {
-    tts?: string;  // e.g. 'kokoro', 'piper', 'openai-tts', 'browser-tts', null
-    stt?: string;  // e.g. 'whisper-local', 'openai-stt', 'browser-stt', null
+    tts?: string;
+    stt?: string;
   };
-  channels?: string[];  // e.g. ['chat', 'discord', 'api']
+  channels?: string[];
   services?: {
     admin?: boolean;
     openviking?: boolean;
@@ -196,8 +196,7 @@ function validateConnectionsArray(
 
 /**
  * Validate assignments block (llm + embeddings) and cross-validate
- * connectionIds against the connections array. Pushes errors to the
- * provided array.
+ * connectionIds against the connections array.
  */
 function validateAssignmentsBlock(
   assignments: unknown,
@@ -246,8 +245,7 @@ function validateAssignmentsBlock(
     }
   }
 
-  // Cross-validate: assignment connectionIds must reference a connection.
-  // Only run when no new assignment errors were added above.
+  // Cross-validate connectionIds
   if (Array.isArray(connections) && errors.length === preAssignmentLength) {
     const connectionIds = new Set(
       (connections as Array<Record<string, unknown>>).map(
@@ -281,35 +279,28 @@ export function validateSetupInput(input: unknown): { valid: boolean; errors: st
 
   const body = input as Record<string, unknown>;
 
-  // adminToken
   if (typeof body.adminToken !== "string" || !body.adminToken) {
     errors.push("adminToken is required and must be a non-empty string");
   } else if (body.adminToken.length < 8) {
     errors.push("adminToken must be at least 8 characters");
   }
 
-  // ownerName and ownerEmail are optional strings
   if (body.ownerName !== undefined && typeof body.ownerName !== "string") {
     errors.push("ownerName must be a string if provided");
   }
   if (body.ownerEmail !== undefined && typeof body.ownerEmail !== "string") {
     errors.push("ownerEmail must be a string if provided");
   }
-
-  // memoryUserId
   if (body.memoryUserId !== undefined && typeof body.memoryUserId !== "string") {
     errors.push("memoryUserId must be a string");
   }
   if (typeof body.memoryUserId === "string" && !/^[A-Za-z0-9_]+$/.test(body.memoryUserId)) {
     errors.push("memoryUserId contains invalid characters (alphanumeric and underscores only)");
   }
-
-  // ollamaEnabled
   if (body.ollamaEnabled !== undefined && typeof body.ollamaEnabled !== "boolean") {
     errors.push("ollamaEnabled must be a boolean");
   }
 
-  // voice (optional)
   if (body.voice !== undefined) {
     if (typeof body.voice !== "object" || body.voice === null) {
       errors.push("voice must be an object if provided");
@@ -324,7 +315,6 @@ export function validateSetupInput(input: unknown): { valid: boolean; errors: st
     }
   }
 
-  // channels (optional)
   if (body.channels !== undefined) {
     if (!Array.isArray(body.channels)) {
       errors.push("channels must be an array if provided");
@@ -337,7 +327,6 @@ export function validateSetupInput(input: unknown): { valid: boolean; errors: st
     }
   }
 
-  // services (optional)
   if (body.services !== undefined) {
     if (typeof body.services !== "object" || body.services === null) {
       errors.push("services must be an object if provided");
@@ -351,10 +340,7 @@ export function validateSetupInput(input: unknown): { valid: boolean; errors: st
     }
   }
 
-  // connections
   validateConnectionsArray(body.connections, errors);
-
-  // assignments
   validateAssignmentsBlock(body.assignments, body.connections, errors);
 
   return { valid: errors.length === 0, errors };
@@ -363,15 +349,14 @@ export function validateSetupInput(input: unknown): { valid: boolean; errors: st
 // ── Secrets Builder ──────────────────────────────────────────────────────
 
 /**
- * Build the env var map from connections + assignments.
- *
- * Returns a Record<string, string> of secrets.env updates that should be
- * written during setup.
+ * Build the env var map from connections.
+ * Only writes actual secrets (API keys) and owner info to user.env.
+ * Config vars (SYSTEM_LLM_*, EMBEDDING_*) are now in stack.yaml capabilities.
  */
 export function buildSecretsFromSetup(input: SetupInput): Record<string, string> {
   const updates: Record<string, string> = {};
 
-  // Owner info — strip control characters to prevent env-file injection
+  // Owner info
   const ownerName = (input.ownerName?.trim() ?? "").replace(/[\r\n\0]/g, "").slice(0, 200);
   const ownerEmail = (input.ownerEmail?.trim() ?? "").replace(/[\r\n\0]/g, "").slice(0, 200);
   if (ownerName) updates.OWNER_NAME = ownerName;
@@ -383,33 +368,15 @@ export function buildSecretsFromSetup(input: SetupInput): Record<string, string>
   // Build connectionId -> envVarName map
   const connEnvVarMap = buildConnectionEnvVarMap(effectiveConnections);
 
-  // Write API keys
+  // Write API keys only
   for (const conn of effectiveConnections) {
     if (!conn.apiKey) continue;
     const envVar = connEnvVarMap.get(conn.id);
     if (envVar) updates[envVar] = conn.apiKey;
   }
 
-  // System LLM vars
-  const llmConnection = effectiveConnections.find((c) => c.id === input.assignments.llm.connectionId);
-  if (llmConnection) {
-    updates.SYSTEM_LLM_PROVIDER = llmConnection.provider;
-    updates.SYSTEM_LLM_MODEL = input.assignments.llm.model;
-    if (llmConnection.baseUrl) {
-      updates.SYSTEM_LLM_BASE_URL = llmConnection.baseUrl;
-      const normalizedUrl = llmConnection.baseUrl.replace(/\/+$/, "");
-      updates.OPENAI_BASE_URL = normalizedUrl.endsWith("/v1") ? normalizedUrl : `${normalizedUrl}/v1`;
-    }
-  }
-
-  // Memory user ID
-  updates.MEMORY_USER_ID = input.memoryUserId || "default_user";
-
-  // Voice: TTS/STT env vars based on engine choice
+  // Voice env vars (these are actual config consumed by voice channel containers)
   if (input.voice) {
-    // Find an OpenAI-compatible connection for cloud engines.
-    // Normalize base URL: strip trailing slashes and /v1 suffix since
-    // the voice channel providers append /v1/... themselves.
     const openaiConn = effectiveConnections.find((c) => c.provider === "openai");
     const openaiBaseUrl = (openaiConn?.baseUrl || "https://api.openai.com")
       .replace(/\/+$/, "")
@@ -426,7 +393,6 @@ export function buildSecretsFromSetup(input: SetupInput): Record<string, string>
       updates.STT_BASE_URL = "http://whisper:9000";
       updates.STT_MODEL = "whisper-1";
     }
-    // browser-stt / skip-stt: no env vars needed (voice channel falls back to browser)
 
     if (tts === "openai-tts") {
       updates.TTS_BASE_URL = openaiBaseUrl;
@@ -440,7 +406,6 @@ export function buildSecretsFromSetup(input: SetupInput): Record<string, string>
       updates.TTS_BASE_URL = "http://piper:5000";
       updates.TTS_MODEL = "piper";
     }
-    // browser-tts / skip-tts: no env vars needed (voice channel falls back to browser)
   }
 
   return updates;
@@ -457,65 +422,8 @@ export function buildSystemSecretsFromSetup(
   };
 }
 
-// ── Voice Assignment Builder ──────────────────────────────────────────────
-
-const PROVIDER_TTS_ENGINES = new Set(["openai-tts"]);
-const PROVIDER_STT_ENGINES = new Set(["openai-stt"]);
-
-const TTS_ENGINE_DEFAULTS: Record<string, { model: string; voice?: string }> = {
-  "openai-tts": { model: "tts-1", voice: "alloy" },
-  "kokoro": { model: "kokoro" },
-  "piper": { model: "piper" },
-  "browser-tts": { model: "browser" },
-};
-
-const STT_ENGINE_DEFAULTS: Record<string, { model: string }> = {
-  "openai-stt": { model: "whisper-1" },
-  "whisper-local": { model: "whisper-1" },
-  "browser-stt": { model: "browser" },
-};
-
-function buildTtsAssignment(
-  engine: string,
-  connections: SetupConnection[]
-): TtsAssignment | undefined {
-  const defaults = TTS_ENGINE_DEFAULTS[engine];
-  if (!defaults) return undefined;
-
-  const assignment: TtsAssignment = { enabled: true, model: defaults.model };
-  if (defaults.voice) assignment.voice = defaults.voice;
-
-  if (PROVIDER_TTS_ENGINES.has(engine)) {
-    const openaiConn = connections.find((c) => c.provider === "openai");
-    if (openaiConn) assignment.connectionId = openaiConn.id;
-  }
-
-  return assignment;
-}
-
-function buildSttAssignment(
-  engine: string,
-  connections: SetupConnection[]
-): SttAssignment | undefined {
-  const defaults = STT_ENGINE_DEFAULTS[engine];
-  if (!defaults) return undefined;
-
-  const assignment: SttAssignment = { enabled: true, model: defaults.model };
-
-  if (PROVIDER_STT_ENGINES.has(engine)) {
-    const openaiConn = connections.find((c) => c.provider === "openai");
-    if (openaiConn) assignment.connectionId = openaiConn.id;
-  }
-
-  return assignment;
-}
-
 // ── Connection Env Var Map Builder ───────────────────────────────────────
 
-/**
- * Build a Map<connectionId, envVarName> from connections, using PROVIDER_KEY_MAP
- * for the canonical mapping and falling back to namespaced vars for duplicates.
- */
 export function buildConnectionEnvVarMap(
   connections: SetupConnection[]
 ): Map<string, string> {
@@ -546,22 +454,18 @@ export function buildConnectionEnvVarMap(
  *
  * Steps:
  * 1. Validate input fields
- * 2. Build connection env var map
- * 3. Update secrets.env with API keys and system config
- * 4. Build and write memory config via buildMem0Mapping()
- * 5. Write connection profiles
+ * 2. Write secrets (API keys, owner info) to vault/user/user.env
+ * 3. Build and write stack.yaml v2 with capabilities
+ * 4. Write managed.env files derived from capabilities
+ * 5. Build and write memory config
  * 6. Ensure OpenCode configs
  * 7. Apply install via applyInstall()
- *
- * Does NOT include Docker operations (compose up, pull, etc.) — the caller
- * handles those separately after setup completes.
  */
 export async function performSetup(
   input: SetupInput,
   assetProvider: CoreAssetProvider,
   opts?: { state?: ControlPlaneState }
 ): Promise<SetupResult> {
-  // ── Validate ─────────────────────────────────────────────────────────
   const validation = validateSetupInput(input);
   if (!validation.valid) {
     return { ok: false, error: validation.errors.join("; ") };
@@ -572,24 +476,17 @@ export async function performSetup(
     ollamaEnabled: input.ollamaEnabled,
   });
 
-  // ── Resolve state ────────────────────────────────────────────────────
   const state = opts?.state ?? createState(input.adminToken);
-
-  // ── Resolve effective connections (Ollama in-stack override) ──────────
   const effectiveConnections = resolveOllamaUrls(input.connections, input.ollamaEnabled);
-
-  // ── Build connection env var map ─────────────────────────────────────
   const connEnvVarMap = buildConnectionEnvVarMap(effectiveConnections);
 
-  // ── Build secrets.env updates ────────────────────────────────────────
-  // Pass already-resolved connections to avoid a second resolveOllamaUrls call
+  // Build secrets (API keys + owner info only)
   const updates = buildSecretsFromSetup({ ...input, connections: effectiveConnections });
 
   // ── Persist vault env files ──────────────────────────────────────────
   try {
     ensureHomeDirs();
     ensureSecrets(state);
-    ensureConnectionProfilesStore(state.configDir);
     const existingSystemEnv = readSystemSecretsEnvFile(state.vaultDir);
     updateSecretsEnv(state, updates);
     updateSystemSecretsEnv(state, buildSystemSecretsFromSetup(input, existingSystemEnv));
@@ -599,12 +496,11 @@ export async function performSetup(
     return { ok: false, error: `Failed to update vault env files: ${message}` };
   }
 
-  // Update state with new admin token
   state.adminToken = input.adminToken;
   state.assistantToken = readSystemSecretsEnvFile(state.vaultDir).ASSISTANT_TOKEN ?? state.assistantToken;
   writeSetupTokenFile(state);
 
-  // ── Build and persist Memory config ──────────────────────────────────
+  // ── Resolve models ────────────────────────────────────────────────────
   const llmConnectionId = input.assignments.llm.connectionId;
   const embConnectionId = input.assignments.embeddings.connectionId;
   const llmModel = input.assignments.llm.model;
@@ -622,7 +518,43 @@ export async function performSetup(
   }
 
   const memoryModel = llmSmallModel || llmModel;
+  const embLookupKey = `${embConnection.provider}/${embModel}`;
+  const resolvedDims = embDims || EMBEDDING_DIMS[embLookupKey] || 1536;
 
+  // ── Build and write stack.yaml v2 ─────────────────────────────────────
+  const capabilities: StackSpecCapabilities = {
+    llm: formatCapabilityString(llmConnection.provider, llmModel),
+    ...(llmSmallModel ? { slm: formatCapabilityString(llmConnection.provider, llmSmallModel) } : {}),
+    embeddings: {
+      provider: embConnection.provider,
+      model: embModel || "text-embedding-3-small",
+      dims: resolvedDims,
+    },
+    memory: {
+      userId: input.memoryUserId || "default_user",
+      customInstructions: "",
+    },
+  };
+
+  const addons: Record<string, StackSpecAddonValue> = {};
+  if (input.ollamaEnabled) addons.ollama = true;
+  if (input.services?.admin) addons.admin = true;
+  if (input.services?.openviking) addons.openviking = true;
+  if (input.channels) {
+    for (const ch of input.channels) addons[ch] = true;
+  }
+
+  const stackSpec: StackSpec = {
+    version: 2,
+    capabilities,
+    addons,
+  };
+  writeStackSpec(state.configDir, stackSpec);
+
+  // ── Write managed.env files ───────────────────────────────────────────
+  writeManagedEnvFiles(stackSpec, state.vaultDir);
+
+  // ── Build and persist Memory config ──────────────────────────────────
   const llmEnvVar = connEnvVarMap.get(llmConnection.id);
   if (!llmEnvVar) {
     return { ok: false, error: `No env var mapping found for LLM connection "${llmConnection.id}"` };
@@ -634,9 +566,6 @@ export async function performSetup(
     return { ok: false, error: `No env var mapping found for embeddings connection "${embConnection.id}"` };
   }
   const embApiKeyEnvRef = embConnection.apiKey ? `env:${embEnvVar}` : "not-needed";
-
-  const embLookupKey = `${embConnection.provider}/${embModel}`;
-  const resolvedDims = embDims || EMBEDDING_DIMS[embLookupKey] || 1536;
 
   const omConfig = buildMem0Mapping({
     llm: {
@@ -657,106 +586,10 @@ export async function performSetup(
 
   writeMemoryConfig(state.dataDir, omConfig);
 
-  // ── Write connection profiles ────────────────────────────────────────
-  const profilesInput = effectiveConnections.map((conn) => {
-    const apiKeyEnvVar = connEnvVarMap.get(conn.id);
-    return {
-      id: conn.id,
-      name: conn.name,
-      provider: conn.provider,
-      baseUrl: conn.baseUrl,
-      hasApiKey: Boolean(conn.apiKey) && Boolean(apiKeyEnvVar),
-      apiKeyEnvVar: apiKeyEnvVar ?? "",
-    };
-  });
-
-  const ttsAssignment = input.voice?.tts
-    ? buildTtsAssignment(input.voice.tts, effectiveConnections)
-    : undefined;
-  const sttAssignment = input.voice?.stt
-    ? buildSttAssignment(input.voice.stt, effectiveConnections)
-    : undefined;
-
-  const voiceAssignments: Pick<CapabilityAssignments, 'tts' | 'stt'> = {};
-  if (ttsAssignment) voiceAssignments.tts = ttsAssignment;
-  if (sttAssignment) voiceAssignments.stt = sttAssignment;
-
-  writeConnectionsDocument(state.configDir, {
-    profiles: profilesInput,
-    assignments: {
-      llm: input.assignments.llm,
-      embeddings: {
-        connectionId: input.assignments.embeddings.connectionId,
-        model: input.assignments.embeddings.model,
-        embeddingDims: resolvedDims,
-      },
-      ...voiceAssignments,
-    },
-  });
-
   // ── Ensure OpenCode configs ──────────────────────────────────────────
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig(assetProvider);
   ensureMemoryDir();
-
-  // ── Write stack spec (stack.yaml v1) ─────────────────────────────────
-  const addons: string[] = [];
-  if (input.ollamaEnabled) addons.push("ollama");
-  if (input.services?.admin) addons.push("admin");
-  if (input.services?.openviking) addons.push("openviking");
-  if (input.channels) {
-    for (const ch of input.channels) addons.push(ch);
-  }
-
-  const stackSpec: StackSpec = {
-    version: 1,
-    connections: effectiveConnections.map((c): StackSpecConnection => {
-      const apiKeyEnvVar = connEnvVarMap.get(c.id);
-      return {
-        id: c.id,
-        name: c.name,
-        kind: c.provider === "ollama" || c.provider === "ollama-instack" ? "ollama_stack" as const
-          : ["lmstudio", "model-runner"].includes(c.provider) ? "openai_compatible_local" as const
-          : "openai_compatible_remote" as const,
-        provider: c.provider,
-        baseUrl: c.baseUrl,
-        auth: c.apiKey && apiKeyEnvVar
-          ? { mode: "api_key" as const, apiKeySecretRef: `env:${apiKeyEnvVar}` }
-          : { mode: "none" as const },
-      };
-    }),
-    assignments: {
-      llm: input.assignments.llm,
-      ...(llmSmallModel ? { slm: { connectionId: input.assignments.llm.connectionId, model: llmSmallModel } } : {}),
-      embeddings: {
-        connectionId: input.assignments.embeddings.connectionId,
-        model: input.assignments.embeddings.model,
-        embeddingDims: resolvedDims,
-      },
-      memory: {
-        llm: {
-          connectionId: input.assignments.llm.connectionId,
-          model: memoryModel,
-          temperature: 0.1,
-          maxTokens: 2000,
-        },
-        embeddings: {
-          connectionId: input.assignments.embeddings.connectionId,
-          model: embModel || "text-embedding-3-small",
-        },
-        vectorStore: {
-          provider: "sqlite-vec",
-          collectionName: "memory",
-          dbPath: "/data/memory.db",
-        },
-        customInstructions: "",
-      },
-      ...(ttsAssignment ? { tts: { enabled: true, connectionId: ttsAssignment.connectionId, model: ttsAssignment.model, voice: ttsAssignment.voice, format: ttsAssignment.format } } : {}),
-      ...(sttAssignment ? { stt: { enabled: true, connectionId: sttAssignment.connectionId, model: sttAssignment.model, language: sttAssignment.language } } : {}),
-    },
-    addons,
-  };
-  writeStackSpec(state.configDir, stackSpec);
 
   // ── Mark setup complete in DATA_HOME stack.env before staging ────────
   const dataStackEnv = `${state.dataDir}/stack.env`;
@@ -784,10 +617,6 @@ export async function performSetup(
 
 // ── Provider Detection ───────────────────────────────────────────────────
 
-/**
- * Detect available local providers in a setup-friendly format.
- * Wraps detectLocalProviders() from model-runner.ts.
- */
 export async function detectProviders(): Promise<DetectedProvider[]> {
   const raw = await detectLocalProviders();
   return raw.map((r: LocalProviderDetection) => ({
@@ -799,7 +628,6 @@ export async function detectProviders(): Promise<DetectedProvider[]> {
 
 // ── Channel Credential Env Var Mapping ───────────────────────────────────
 
-/** Maps channel IDs to their credential field → env var name mappings. */
 export const CHANNEL_CREDENTIAL_ENV_MAP: Record<string, Record<string, string>> = {
   discord: {
     botToken: "DISCORD_BOT_TOKEN",
@@ -821,10 +649,6 @@ export const CHANNEL_CREDENTIAL_ENV_MAP: Record<string, Record<string, string>> 
 
 // ── SetupConfig Validation ───────────────────────────────────────────────
 
-/**
- * Validate a SetupConfig object. Returns { valid, errors } in the same
- * shape as validateSetupInput().
- */
 export function validateSetupConfig(config: unknown): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
@@ -834,12 +658,10 @@ export function validateSetupConfig(config: unknown): { valid: boolean; errors: 
 
   const body = config as Record<string, unknown>;
 
-  // version
   if (body.version !== 1) {
     errors.push("version must be 1");
   }
 
-  // owner (optional)
   if (body.owner !== undefined) {
     if (typeof body.owner !== "object" || body.owner === null) {
       errors.push("owner must be an object if provided");
@@ -854,7 +676,6 @@ export function validateSetupConfig(config: unknown): { valid: boolean; errors: 
     }
   }
 
-  // security
   if (typeof body.security !== "object" || body.security === null) {
     errors.push("security object is required");
   } else {
@@ -866,13 +687,9 @@ export function validateSetupConfig(config: unknown): { valid: boolean; errors: 
     }
   }
 
-  // connections
   validateConnectionsArray(body.connections, errors);
-
-  // assignments
   validateAssignmentsBlock(body.assignments, body.connections, errors);
 
-  // channels (optional)
   if (body.channels !== undefined) {
     if (typeof body.channels !== "object" || body.channels === null) {
       errors.push("channels must be an object if provided");
@@ -884,7 +701,6 @@ export function validateSetupConfig(config: unknown): { valid: boolean; errors: 
           errors.push(`channels.${channelId} must be a boolean or object`);
           continue;
         }
-        // Channel-specific credential validation
         if (channelId === "discord") {
           const creds = value as Record<string, unknown>;
           if (creds.enabled !== false && !creds.botToken) {
@@ -906,7 +722,6 @@ export function validateSetupConfig(config: unknown): { valid: boolean; errors: 
     }
   }
 
-  // services (optional)
   if (body.services !== undefined) {
     if (typeof body.services !== "object" || body.services === null) {
       errors.push("services must be an object if provided");
@@ -923,7 +738,6 @@ export function validateSetupConfig(config: unknown): { valid: boolean; errors: 
     }
   }
 
-  // memory (optional)
   if (body.memory !== undefined) {
     if (typeof body.memory !== "object" || body.memory === null) {
       errors.push("memory must be an object if provided");
@@ -943,34 +757,22 @@ export function validateSetupConfig(config: unknown): { valid: boolean; errors: 
 
 // ── Normalization ────────────────────────────────────────────────────────
 
-/**
- * Convert a structured SetupConfig to the flat SetupInput format so that
- * the existing performSetup() pipeline works unchanged.
- */
 export function normalizeToSetupInput(config: SetupConfig): SetupInput {
-  // Resolve TTS/STT voice fields
   let tts: string | undefined;
   let stt: string | undefined;
 
   if (config.assignments.tts !== undefined && config.assignments.tts !== null) {
-    // SetupInput.voice only carries engine strings; connectionId and model
-    // from the object form are dropped during normalization. To preserve
-    // them, the caller should write the original SetupConfig to
-    // openpalm.yaml separately.
     tts = typeof config.assignments.tts === "string"
       ? config.assignments.tts
       : config.assignments.tts.engine;
   }
 
   if (config.assignments.stt !== undefined && config.assignments.stt !== null) {
-    // Same as tts above — connectionId and model are dropped during
-    // normalization and not written to the stack spec by performSetup().
     stt = typeof config.assignments.stt === "string"
       ? config.assignments.stt
       : config.assignments.stt.engine;
   }
 
-  // Extract enabled channels
   const enabledChannels: string[] = [];
   if (config.channels) {
     for (const [id, value] of Object.entries(config.channels)) {
@@ -985,7 +787,6 @@ export function normalizeToSetupInput(config: SetupConfig): SetupInput {
     }
   }
 
-  // Extract enabled services
   const enabledServices: Record<string, boolean> = {};
   if (config.services) {
     for (const [id, value] of Object.entries(config.services)) {
@@ -997,7 +798,6 @@ export function normalizeToSetupInput(config: SetupConfig): SetupInput {
     }
   }
 
-  // Determine ollamaEnabled from services
   const ollamaEnabled = enabledServices.ollama ?? false;
 
   return {
@@ -1019,14 +819,6 @@ export function normalizeToSetupInput(config: SetupConfig): SetupInput {
 
 // ── Channel Credential Env Var Builder ───────────────────────────────────
 
-/**
- * Extract credential fields from typed channel configs using
- * CHANNEL_CREDENTIAL_ENV_MAP and return a Record<string, string> suitable
- * for writing to secrets.env.
- *
- * Unknown channels (not in CHANNEL_CREDENTIAL_ENV_MAP) are skipped.
- * Boolean values are converted to strings.
- */
 export function buildChannelCredentialEnvVars(
   channels: Record<string, boolean | ChannelCredentials> | undefined
 ): Record<string, string> {
@@ -1057,30 +849,16 @@ export function buildChannelCredentialEnvVars(
 
 // ── Structured Setup Orchestration ───────────────────────────────────────
 
-/**
- * Setup from a structured SetupConfig:
- * 1. Validate the config
- * 2. Write channel credential env vars to CONFIG_HOME/secrets.env
- * 3. Normalize to SetupInput and call performSetup()
- *
- * Channel credentials are written BEFORE performSetup() so that when
- * performSetup() stages secrets.env from CONFIG_HOME to STATE_HOME
- * (via applyInstall), the staged copy already contains channel creds.
- */
 export async function performSetupFromConfig(
   config: SetupConfig,
   assetProvider: CoreAssetProvider,
   opts?: { state?: ControlPlaneState }
 ): Promise<SetupResult> {
-  // ── Validate ─────────────────────────────────────────────────────────
   const validation = validateSetupConfig(config);
   if (!validation.valid) {
     return { ok: false, error: validation.errors.join("; ") };
   }
 
-  // ── Write channel credentials to CONFIG_HOME/secrets.env FIRST ─────
-  // This must happen before performSetup() which stages secrets.env
-  // from CONFIG_HOME to STATE_HOME via applyInstall().
   const input = normalizeToSetupInput(config);
   const state = opts?.state ?? createState(config.security.adminToken);
   const channelEnvVars = buildChannelCredentialEnvVars(config.channels);
@@ -1096,9 +874,6 @@ export async function performSetupFromConfig(
     }
   }
 
-  // ── Normalize and delegate to performSetup ─────────────────────────
-  // performSetup() writes its own secrets (admin token, API keys, etc.)
-  // and then stages the now-complete secrets.env to STATE_HOME.
   const result = await performSetup(input, assetProvider, { ...opts, state });
   return result;
 }

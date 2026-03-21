@@ -1,13 +1,14 @@
+/**
+ * GET  /admin/connections/assignments — Return current capabilities from stack.yaml.
+ * POST /admin/connections/assignments — Update capabilities in stack.yaml.
+ */
 import type { RequestHandler } from './$types';
 import { getState } from '$lib/server/state.js';
 import {
   appendAudit,
-  getCapabilityAssignments,
-  saveCapabilityAssignments,
-  readConnectionProfilesDocument,
-  buildVoiceEnvVars,
-  applyVoiceEnvVars,
-  isVoiceChannelInstalled,
+  readStackSpec,
+  writeStackSpec,
+  writeManagedEnvFiles,
 } from '$lib/server/control-plane.js';
 import {
   errorResponse,
@@ -15,13 +16,9 @@ import {
   getCallerType,
   getRequestId,
   jsonResponse,
-  parseCapabilityAssignments,
   parseJsonBody,
   requireAdmin,
 } from '$lib/server/helpers.js';
-import { createLogger } from '$lib/server/logger.js';
-
-const logger = createLogger('connections.assignments');
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -29,15 +26,11 @@ export const GET: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  let assignments;
-  try {
-    assignments = getCapabilityAssignments(state.configDir);
-  } catch {
-    // No profiles.json yet — return empty defaults
-    assignments = { llm: { connectionId: '', model: '' }, embeddings: { connectionId: '', model: '' } };
-  }
+  const spec = readStackSpec(state.configDir);
+  const capabilities = spec?.capabilities ?? null;
+
   appendAudit(state, getActor(event), 'connections.assignments.get', {}, true, requestId, getCallerType(event));
-  return jsonResponse(200, { assignments }, requestId);
+  return jsonResponse(200, { capabilities }, requestId);
 };
 
 export const POST: RequestHandler = async (event) => {
@@ -54,49 +47,36 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, 'invalid_input', 'Request body must be valid JSON', {}, requestId);
   }
 
-  const parsed = parseCapabilityAssignments(body.assignments ?? body);
-  if (!parsed.ok) {
-    return errorResponse(400, 'bad_request', parsed.message, {}, requestId);
+  const raw = body.capabilities ?? body;
+  if (typeof raw !== 'object' || raw === null) {
+    return errorResponse(400, 'bad_request', 'capabilities must be an object', {}, requestId);
   }
 
-  const result = saveCapabilityAssignments(state.configDir, parsed.value);
-  if (!result.ok) {
-    const errorCode = result.status === 409 ? 'conflict' : result.status === 404 ? 'not_found' : 'bad_request';
-    return errorResponse(result.status, errorCode, result.message, {}, requestId);
+  const capabilities = raw as Record<string, unknown>;
+
+  const spec = readStackSpec(state.configDir);
+  if (!spec) {
+    return errorResponse(500, 'internal_error', 'stack.yaml not found', {}, requestId);
   }
 
-  const savedAssignments = result.value;
+  // Merge provided capabilities
+  if (typeof capabilities.llm === 'string') spec.capabilities.llm = capabilities.llm;
+  if (typeof capabilities.slm === 'string') spec.capabilities.slm = capabilities.slm;
+  if (typeof capabilities.embeddings === 'object' && capabilities.embeddings !== null) {
+    spec.capabilities.embeddings = { ...spec.capabilities.embeddings, ...(capabilities.embeddings as Record<string, unknown>) } as typeof spec.capabilities.embeddings;
+  }
+  if (typeof capabilities.memory === 'object' && capabilities.memory !== null) {
+    spec.capabilities.memory = { ...spec.capabilities.memory, ...(capabilities.memory as Record<string, unknown>) } as typeof spec.capabilities.memory;
+  }
 
-  // Read connection profiles document for side-effects (non-critical)
-  let doc: ReturnType<typeof readConnectionProfilesDocument> | null = null;
   try {
-    doc = readConnectionProfilesDocument(state.configDir);
+    writeStackSpec(state.configDir, spec);
+    writeManagedEnvFiles(spec, state.vaultDir);
   } catch (err) {
-    logger.warn('failed to read connection profiles for side-effects', { error: String(err), requestId });
-  }
-
-  // Wire voice channel env vars (non-critical side effect)
-  let voiceConfigUpdated = false;
-  let voiceRestartRequired = false;
-  if (doc) {
-    try {
-      if (isVoiceChannelInstalled(state.homeDir) && (savedAssignments.tts || savedAssignments.stt)) {
-        const envVars = buildVoiceEnvVars(savedAssignments, doc.profiles, state.vaultDir);
-        if (Object.keys(envVars).length > 0) {
-          voiceConfigUpdated = applyVoiceEnvVars(state, envVars);
-          voiceRestartRequired = voiceConfigUpdated;
-        }
-      }
-    } catch (err) {
-      logger.warn('failed to update voice env vars after assignments save', { error: String(err), requestId });
-    }
+    appendAudit(state, actor, 'connections.assignments.save', { error: String(err) }, false, requestId, callerType);
+    return errorResponse(500, 'internal_error', 'Failed to persist capabilities', {}, requestId);
   }
 
   appendAudit(state, actor, 'connections.assignments.save', {}, true, requestId, callerType);
-  return jsonResponse(200, {
-    ok: true,
-    assignments: result.value,
-    voiceConfigUpdated,
-    voiceRestartRequired,
-  }, requestId);
+  return jsonResponse(200, { ok: true, capabilities: spec.capabilities }, requestId);
 };

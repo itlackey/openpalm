@@ -1,3 +1,6 @@
+/**
+ * GET /admin/connections/export/mem0 — Export current memory config as JSON.
+ */
 import type { RequestHandler } from './$types';
 import { getState } from '$lib/server/state.js';
 import {
@@ -6,10 +9,11 @@ import {
   requireAdmin,
 } from '$lib/server/helpers.js';
 import {
-  readConnectionProfilesDocument,
-  buildMem0MappingFromProfiles,
+  readStackSpec,
+  parseCapabilityString,
+  buildMem0Mapping,
 } from '$lib/server/control-plane.js';
-import { EMBEDDING_DIMS } from '$lib/provider-constants.js';
+import { PROVIDER_KEY_MAP } from '$lib/provider-constants.js';
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -18,38 +22,33 @@ export const GET: RequestHandler = async (event) => {
 
   const state = getState();
 
-  let doc;
-  try {
-    doc = readConnectionProfilesDocument(state.configDir);
-  } catch {
-    return errorResponse(404, 'not_found', 'No connection profiles found. Complete wizard setup first.', {}, requestId);
+  const spec = readStackSpec(state.configDir);
+  if (!spec) {
+    return errorResponse(404, 'not_found', 'No stack configuration found. Complete wizard setup first.', {}, requestId);
   }
 
-  const { profiles, assignments } = doc;
+  const { capabilities } = spec;
+  const { provider: llmProvider, model: llmModel } = parseCapabilityString(capabilities.llm);
+  const apiKeyEnvRef = PROVIDER_KEY_MAP[llmProvider]
+    ? `env:${PROVIDER_KEY_MAP[llmProvider]}`
+    : 'not-needed';
 
-  const llmProfile = profiles.find((p) => p.id === assignments.llm.connectionId);
-  const embedProfile = profiles.find((p) => p.id === assignments.embeddings.connectionId);
-
-  if (!llmProfile) {
-    return errorResponse(409, 'conflict', `LLM connection profile not found: ${assignments.llm.connectionId}`, {}, requestId);
-  }
-  if (!embedProfile) {
-    return errorResponse(409, 'conflict', `Embeddings connection profile not found: ${assignments.embeddings.connectionId}`, {}, requestId);
-  }
-
-  const lookupKey = `${embedProfile.provider}/${assignments.embeddings.model}`;
-  const resolvedDims = assignments.embeddings.embeddingDims
-    ?? EMBEDDING_DIMS[lookupKey]
-    ?? 1536;
-
-  const mapping = buildMem0MappingFromProfiles(
-    llmProfile,
-    embedProfile,
-    assignments.llm.model,
-    assignments.embeddings.model,
-    resolvedDims,
-    '',
-  );
+  const mapping = buildMem0Mapping({
+    llm: {
+      provider: llmProvider,
+      baseUrl: '',
+      model: llmModel,
+      apiKeyRef: apiKeyEnvRef,
+    },
+    embedder: {
+      provider: capabilities.embeddings.provider,
+      baseUrl: '',
+      model: capabilities.embeddings.model,
+      apiKeyRef: apiKeyEnvRef,
+    },
+    embeddingDims: capabilities.embeddings.dims,
+    customInstructions: capabilities.memory.customInstructions ?? '',
+  });
 
   return new Response(JSON.stringify(mapping, null, 2) + '\n', {
     status: 200,

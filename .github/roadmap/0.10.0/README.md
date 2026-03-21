@@ -12,7 +12,7 @@ v0.10.0 is a structural release that rebuilds the extension model, filesystem la
 
 1. **Unified Component System** — replaces the legacy channel/service distinction with a single "component" abstraction backed by compose overlays and `.env.schema` config forms
 2. **Filesystem Simplification** — collapses three XDG directories into `~/.openpalm/` with a vault-based secrets boundary, eliminates the staging tier, adds validate-in-place with snapshot rollback
-3. **Secrets Management** — splits secrets into `user.env` (hot-reloadable user keys) and `system.env` (admin-managed tokens), introduces ADMIN_TOKEN/ASSISTANT_TOKEN split, adds pluggable encrypted backend via `pass`
+3. **Secrets Management** — splits secrets into `vault/user/user.env` (hot-reloadable user keys) and `vault/stack/stack.env` (admin-managed tokens), introduces ADMIN_TOKEN/ASSISTANT_TOKEN split, adds pluggable encrypted backend via `pass`
 
 ---
 
@@ -52,7 +52,7 @@ Introduces a provider-agnostic secrets backend with `PlaintextBackend` as defaul
 
 - **Phase 0:** Varlock hardening — file permissions (`0o600`), redact schema for log safety
 - **Phase 1:** Auth refactor — ADMIN_TOKEN / ASSISTANT_TOKEN split across all admin routes, guardian, and scheduler
-- **Phase 2:** Secret backend abstraction — `SecretBackend` interface + `PlaintextBackend` handling `vault/user.env` + `vault/system.env`
+- **Phase 2:** Secret backend abstraction — `SecretBackend` interface + `PlaintextBackend` handling `vault/user/user.env` + `vault/stack/stack.env`
 - **Phase 3:** `pass` provider — GPG integration, `pass` CLI shelling, `validateEntryName()`, setup wizard opt-in
 - **Phase 4:** Secrets API routes — `GET/POST/DELETE /admin/secrets`, audit logging, component secret lifecycle
 
@@ -71,10 +71,10 @@ Replaces the three-tier XDG layout with a single `~/.openpalm/` root. Unanimousl
 **Deliverables:**
 
 - **Single root:** `~/.openpalm/` with `config/`, `vault/`, `data/`, `logs/`
-- **Vault boundary:** `vault/user.env` (user-editable LLM keys) + `vault/system.env` (system-managed tokens). Admin mounts full vault rw; assistant mounts only `user.env` ro; no other container mounts vault
+- **Vault boundary:** `vault/user/user.env` (user-editable LLM keys) + `vault/stack/stack.env` (system-managed tokens). Admin mounts full vault rw; assistant mounts only `vault/user/user.env` ro; no other container mounts vault
 - **Staging elimination:** replace CONFIG→STATE copy pipeline with validate-in-place + `~/.cache/openpalm/rollback/` snapshot
-- **Hot-reload:** assistant file watcher on `vault/user.env` — LLM key changes apply in seconds, no restart
-- **Two-file env model:** `--env-file vault/system.env --env-file vault/user.env` for compose substitution
+- **Hot-reload:** assistant file watcher on `vault/user/user.env` — LLM key changes apply in seconds, no restart
+- **Two-file env model:** `--env-file vault/stack/stack.env --env-file vault/user/user.env` for compose substitution
 - **Rollback:** `openpalm rollback` as first-class CLI command, automated on deploy failure
 - **Migration tool:** `openpalm migrate` for XDG-to-`~/.openpalm/` transition (env file splitting, directory relocation, validation)
 - **Backup simplification:** `tar czf backup.tar.gz ~/.openpalm` — one directory, one command

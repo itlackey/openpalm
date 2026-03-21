@@ -30,6 +30,9 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
     ports:
       - "${OP_MEMORY_BIND_ADDRESS:-127.0.0.1}:${OP_MEMORY_PORT:-3898}:8765"
+    env_file:
+      - path: ${OP_HOME}/vault/stack/services/memory/managed.env
+        required: false
     volumes:
       - ${OP_HOME}/data/memory:/data
     networks: [ assistant_net ]
@@ -68,6 +71,7 @@ services:
     volumes:
       - ${OP_HOME}/config:/etc/openpalm
       - ${OP_HOME}/config/assistant:/home/opencode/.config/opencode
+      - ${OP_HOME}/vault/stack/auth.json:/home/opencode/.local/share/opencode/auth.json
       - ${OP_HOME}/vault/user/user.env:/etc/openpalm-vault/user.env:ro
       - ${OP_HOME}/data/assistant:/home/opencode
       - ${OP_HOME}/data/stash:/home/opencode/.akm

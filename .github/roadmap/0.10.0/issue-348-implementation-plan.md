@@ -157,7 +157,7 @@
 
 ### Task 3.4: Delete legacy assets
 
-**Delete:** `assets/secrets.env` (legacy name; vault/user.env is the current model)
+**Delete:** any remaining legacy `secrets.env` asset or references (the current model is `vault/user/user.env` + `vault/stack/stack.env`)
 **Delete:** `assets/ollama.yml` (moved to registry/components/ollama/)
 
 ### Task 3.5: Update registry/components/index.json
@@ -180,7 +180,7 @@ Add the new `ollama` component entry to the index.
 
 ### Task 4.3: Update legacy scripts
 
-- `scripts/release-e2e-test.sh` — Update STATE_HOME/artifacts and CONFIG_HOME/secrets.env references
+- `scripts/release-e2e-test.sh` — Update old staging and flat-vault references to `.dev/vault/user/user.env` and `.dev/vault/stack/stack.env`
 - `scripts/upgrade-test.sh` — Update for vault/components layout
 - `scripts/iso/files/bin/openpalm-bootstrap.sh` — Update for vault/components layout
 
@@ -191,7 +191,7 @@ Add the new `ollama` component entry to the index.
 ### Task 5.1: Fix e2e test legacy path
 
 **File:** `packages/admin/e2e/channel-guardian-pipeline.test.ts`
-- Line 36: Change `STACK_ENV_PATH` from `.dev/state/artifacts/stack.env` to `.dev/vault/system.env`
+- Line 36: change `STACK_ENV_PATH` from staged-artifact paths to `.dev/vault/stack/stack.env`
 
 ### Task 5.2: Remove vestigial test setup
 
@@ -215,7 +215,7 @@ Add the new `ollama` component entry to the index.
 
 ### Task 6.1: Rewrite assets/README.md
 
-Describe the core-only bootstrap role. Remove all references to registry flat files, CONFIG_HOME/channels, secrets.env, STATE_HOME staging.
+Describe the core-only bootstrap role. Remove all references to registry flat files, legacy channel config paths, `secrets.env`, and STATE_HOME staging.
 
 ### Task 6.2: Rewrite registry/README.md
 
@@ -225,18 +225,18 @@ Remove the legacy `registry/channels/` section. Document only `registry/componen
 
 **File:** `docs/technical/api-spec.md`
 - Replace all STATE_HOME/artifacts references with current paths
-- Replace all CONFIG_HOME/channels references with config/components
-- Replace all secrets.env references with vault/user.env
+- Replace all CONFIG_HOME/channels references with the current `stack/` and `registry/components/` model as appropriate
+- Replace all `secrets.env` references with `vault/user/user.env` (and `vault/stack/stack.env` where system-managed values are meant)
 - Document the registry/component install flow
 
 ### Task 6.4: Update user-facing docs
 
 - `docs/how-it-works.md` — Update channel discovery, staging references
 - `docs/managing-openpalm.md` — Update channel management, directory layout
-- `docs/setup-guide.md` — Update secrets.env references
-- `docs/manual-setup.md` — Update secrets.env, directory layout
-- `docs/backup-restore.md` — Update secrets.env reference
-- `docs/memory-privacy.md` — Update secrets.env reference
+- `docs/setup-guide.md` — Update legacy flat-vault references
+- `docs/manual-setup.md` — Update legacy flat-vault references and directory layout
+- `docs/backup-restore.md` — Update legacy flat-vault references
+- `docs/memory-privacy.md` — Update legacy flat-vault references
 
 ### Task 6.5: Update technical docs
 
@@ -249,8 +249,8 @@ All 5 channel packages — Replace `registry/channels/*.yml` references with `re
 
 ### Task 6.7: Update channel-specific setup docs
 
-- `docs/channels/discord-setup.md` — Update secrets.env reference
-- `docs/channels/slack-setup.md` — Update secrets.env reference
+- `docs/channels/discord-setup.md` — Update legacy flat-vault references
+- `docs/channels/slack-setup.md` — Update legacy flat-vault references
 
 ---
 
@@ -275,5 +275,5 @@ All 5 channel packages — Replace `registry/channels/*.yml` references with `re
 - [ ] No code calls `installChannelFromRegistry()` or `uninstallChannel()`
 - [ ] `RegistryProvider` interface has no channel-shaped methods
 - [ ] All docs reference `~/.openpalm/` layout, not XDG three-tier
-- [ ] All docs reference `vault/user.env`, not `secrets.env`
-- [ ] All docs reference `config/components/`, not `CONFIG_HOME/channels/`
+- [ ] All docs reference `vault/user/user.env` and `vault/stack/stack.env`, not `secrets.env`
+- [ ] All docs reference the current `stack/` and `registry/components/` runtime model, not `CONFIG_HOME/channels/`

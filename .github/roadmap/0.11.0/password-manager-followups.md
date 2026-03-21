@@ -8,10 +8,9 @@ It is derived from the original 0.10.0 password-manager roadmap and the normaliz
 
 ## Source references
 
-- `.github/roadmap/0.10.0/README.md:45`
-- `.github/roadmap/0.10.0/README.md:59`
-- `.github/roadmap/0.10.0/openpalm-pass-impl-v3.md:1246`
-- `.plans/issue-300-password-manager.md:126`
+- `.github/roadmap/0.10.0/README.md`
+- `.github/roadmap/0.10.0/openpalm-pass-impl-v3.md`
+- `.github/roadmap/0.10.0/plans/issue-300-password-manager.md`
 
 ## Deferred phases from the original plan
 
@@ -33,7 +32,7 @@ Goal: make the existing connections patch flow backend-aware so it uses `SecretB
 
 Carry-forward work:
 
-- Refactor `patchConnections()` to write through `SecretBackend`.
+- Refactor both `/admin/connections` and `/admin/opencode/providers/[id]/auth` to write through `SecretBackend`.
 - Route secret and non-secret keys through the backend routing layer.
 - Reject secret writes from non-admin callers while preserving permitted non-secret writes.
 - Use token-aware caller identification with `identifyCallerByToken()`.
@@ -46,10 +45,11 @@ Goal: provide a clean post-0.10 migration path from plaintext vault files into t
 Carry-forward work:
 
 - Add `scripts/migrate-to-pass.sh`.
-- Migrate `vault/user.env` and `vault/system.env` into `~/.openpalm/data/secrets/pass-store/`.
+- Migrate `vault/user/user.env` and `vault/stack/stack.env` into `~/.openpalm/data/secrets/pass-store/`.
 - Add CLI commands for `openpalm secrets init`, `migrate`, `ls`, `set`, and `generate`.
 - Preserve safe skip behavior for pre-existing pass entries.
 - Archive migrated plaintext env files after successful migration.
+- Keep migration logic aligned with the current canonical key model in `packages/lib/src/control-plane/secret-mappings.ts` and the current `passPrefix` behavior in `PassBackend`.
 
 ## Suggested issue split for 0.11.0
 

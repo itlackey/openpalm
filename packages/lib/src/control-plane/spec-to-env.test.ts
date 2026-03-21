@@ -1,21 +1,16 @@
 import { describe, test, expect } from "bun:test";
-import { deriveSystemEnvFromSpec } from "./spec-to-env.js";
+import { deriveSystemEnvFromSpec, deriveMemoryEnv } from "./spec-to-env.js";
 import type { StackSpec } from "./stack-spec.js";
 
 function makeSpec(overrides?: Partial<StackSpec>): StackSpec {
   return {
-    version: 1,
-    connections: [{ id: "openai", name: "OpenAI", kind: "openai_compatible_remote", provider: "openai", baseUrl: "", auth: { mode: "none" } }],
-    assignments: {
-      llm: { connectionId: "openai", model: "gpt-4o" },
-      embeddings: { connectionId: "openai", model: "text-embedding-3-small", embeddingDims: 1536 },
-      memory: {
-        llm: { connectionId: "openai", model: "gpt-4o" },
-        embeddings: { connectionId: "openai", model: "text-embedding-3-small" },
-        vectorStore: { provider: "sqlite-vec", collectionName: "memory", dbPath: "/data/memory.db" },
-      },
+    version: 2,
+    capabilities: {
+      llm: "openai/gpt-4o",
+      embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
+      memory: { userId: "default_user" },
     },
-    addons: [],
+    addons: {},
     ...overrides,
   };
 }
@@ -33,39 +28,53 @@ describe("deriveSystemEnvFromSpec", () => {
     expect(result.OP_MEMORY_PORT).toBe("3898");
   });
 
-  test("derives LLM provider from assigned connection", () => {
+  test("does not include LLM provider in system env (now in deriveMemoryEnv)", () => {
     const result = deriveSystemEnvFromSpec(makeSpec(), "/home/op");
-    expect(result.SYSTEM_LLM_PROVIDER).toBe("openai");
-    expect(result.SYSTEM_LLM_MODEL).toBe("gpt-4o");
+    expect(result.SYSTEM_LLM_PROVIDER).toBeUndefined();
+    expect(result.SYSTEM_LLM_MODEL).toBeUndefined();
   });
 
-  test("derives embedding config", () => {
+  test("does not include embedding config in system env (now in deriveMemoryEnv)", () => {
     const result = deriveSystemEnvFromSpec(makeSpec(), "/home/op");
-    expect(result.EMBEDDING_MODEL).toBe("text-embedding-3-small");
-    expect(result.EMBEDDING_DIMS).toBe("1536");
+    expect(result.EMBEDDING_MODEL).toBeUndefined();
+    expect(result.EMBEDDING_DIMS).toBeUndefined();
   });
 
   test("derives feature flags from addons", () => {
-    const spec = makeSpec({ addons: ["ollama"] });
+    const spec = makeSpec({ addons: { ollama: true } });
     const result = deriveSystemEnvFromSpec(spec, "/home/op");
     expect(result.OP_OLLAMA_ENABLED).toBe("true");
     expect(result.OP_ADMIN_ENABLED).toBe("false");
   });
+});
 
-  test("handles empty LLM provider gracefully", () => {
+describe("deriveMemoryEnv", () => {
+  test("derives LLM provider from capabilities", () => {
+    const result = deriveMemoryEnv(makeSpec());
+    expect(result.SYSTEM_LLM_PROVIDER).toBe("openai");
+    expect(result.SYSTEM_LLM_MODEL).toBe("gpt-4o");
+  });
+
+  test("derives embedding config from capabilities", () => {
+    const result = deriveMemoryEnv(makeSpec());
+    expect(result.EMBEDDING_MODEL).toBe("text-embedding-3-small");
+    expect(result.EMBEDDING_DIMS).toBe("1536");
+  });
+
+  test("derives MEMORY_USER_ID from capabilities", () => {
+    const result = deriveMemoryEnv(makeSpec());
+    expect(result.MEMORY_USER_ID).toBe("default_user");
+  });
+
+  test("defaults MEMORY_USER_ID when empty", () => {
     const spec = makeSpec({
-      connections: [],
-      assignments: {
-        llm: { connectionId: "nonexistent", model: "gpt-4o" },
-        embeddings: { connectionId: "nonexistent", model: "embed" },
-        memory: {
-          llm: { connectionId: "nonexistent", model: "gpt-4o" },
-          embeddings: { connectionId: "nonexistent", model: "embed" },
-          vectorStore: { provider: "sqlite-vec", collectionName: "memory", dbPath: "/data/memory.db" },
-        },
+      capabilities: {
+        llm: "openai/gpt-4o",
+        embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
+        memory: { userId: "" },
       },
     });
-    const result = deriveSystemEnvFromSpec(spec, "/home/op");
-    expect(result.SYSTEM_LLM_PROVIDER).toBe("");
+    const result = deriveMemoryEnv(spec);
+    expect(result.MEMORY_USER_ID).toBe("default_user");
   });
 });

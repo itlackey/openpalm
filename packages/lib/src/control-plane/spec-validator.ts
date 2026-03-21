@@ -1,11 +1,11 @@
 /**
- * StackSpec v1 validation.
+ * StackSpec v2 validation.
  *
  * Returns structured, actionable error messages with codes
  * so users can quickly identify and fix configuration issues.
  */
 
-import type { StackSpec, StackSpecConnection, StackSpecAssignments } from "./stack-spec.js";
+import type { StackSpec, StackSpecCapabilities } from "./stack-spec.js";
 
 export type ValidationError = {
   code: string;
@@ -14,7 +14,6 @@ export type ValidationError = {
   hint?: string;
 };
 
-const CONNECTION_ID_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const IMAGE_NS_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 
 export function validateStackSpec(input: unknown): ValidationError[] {
@@ -32,65 +31,35 @@ export function validateStackSpec(input: unknown): ValidationError[] {
   const spec = input as Record<string, unknown>;
 
   // Version check
-  if (spec.version !== 1) {
+  if (spec.version !== 2) {
     errors.push({
       code: "OP-CFG-020",
-      message: `Expected version: 1, got: ${spec.version ?? "(missing)"}`,
+      message: `Expected version: 2, got: ${spec.version ?? "(missing)"}`,
       path: "version",
-      hint: "Set version: 1 at the top of your config file",
+      hint: "Set version: 2 at the top of your config file",
     });
-    return errors; // Cannot validate further without correct version
+    return errors;
   }
 
-  // Connections
-  if (!Array.isArray(spec.connections)) {
+  // Capabilities
+  if (typeof spec.capabilities !== "object" || spec.capabilities === null) {
     errors.push({
       code: "OP-CFG-001",
-      message: "No connections defined",
-      path: "connections",
-      hint: "Add at least one connection entry",
+      message: "No capabilities defined",
+      path: "capabilities",
+      hint: "Add capabilities.llm and capabilities.embeddings sections",
     });
   } else {
-    validateConnections(spec.connections as StackSpecConnection[], errors);
+    validateCapabilities(spec.capabilities as StackSpecCapabilities, errors);
   }
 
-  // Assignments
-  if (typeof spec.assignments !== "object" || spec.assignments === null) {
-    errors.push({
-      code: "OP-CFG-002",
-      message: "No model assignments defined",
-      path: "assignments",
-      hint: "Add assignments.llm and assignments.embeddings sections",
-    });
-  } else {
-    const connectionIds = new Set(
-      Array.isArray(spec.connections)
-        ? (spec.connections as StackSpecConnection[]).map((c) => c.id)
-        : [],
-    );
-    validateAssignments(
-      spec.assignments as StackSpecAssignments,
-      connectionIds,
-      errors,
-    );
-  }
-
-  // Ports
-  if (spec.ports && typeof spec.ports === "object") {
-    validatePorts(spec.ports as Record<string, unknown>, errors);
-  }
-
-  // Network
-  if (spec.network && typeof spec.network === "object") {
-    const net = spec.network as Record<string, unknown>;
-    if (
-      net.bindAddress !== undefined &&
-      typeof net.bindAddress !== "string"
-    ) {
+  // Addons
+  if (spec.addons !== undefined) {
+    if (typeof spec.addons !== "object" || spec.addons === null || Array.isArray(spec.addons)) {
       errors.push({
-        code: "OP-CFG-011",
-        message: "network.bindAddress must be a string",
-        path: "network.bindAddress",
+        code: "OP-CFG-002",
+        message: "addons must be an object (Record<string, boolean | { env }>)",
+        path: "addons",
       });
     }
   }
@@ -114,199 +83,88 @@ export function validateStackSpec(input: unknown): ValidationError[] {
   return errors;
 }
 
-function validateConnections(
-  connections: StackSpecConnection[],
+function validateCapabilities(
+  capabilities: StackSpecCapabilities,
   errors: ValidationError[],
 ): void {
-  if (connections.length === 0) {
+  // LLM (required, "provider/model" string)
+  if (!capabilities.llm || typeof capabilities.llm !== "string") {
     errors.push({
-      code: "OP-CFG-001",
-      message: "connections list is empty",
-      path: "connections",
-      hint: "Add at least one connection entry",
+      code: "OP-CFG-008",
+      message: "capabilities.llm is required (format: provider/model)",
+      path: "capabilities.llm",
+      hint: 'Example: "anthropic/claude-sonnet-4-5" or "ollama/qwen2.5-coder:3b"',
     });
-    return;
+  } else if (!capabilities.llm.includes("/")) {
+    errors.push({
+      code: "OP-CFG-008",
+      message: `capabilities.llm "${capabilities.llm}" must be in provider/model format`,
+      path: "capabilities.llm",
+      hint: 'Example: "anthropic/claude-sonnet-4-5"',
+    });
   }
 
-  const ids = new Set<string>();
-  for (let i = 0; i < connections.length; i++) {
-    const c = connections[i];
-    const prefix = `connections[${i}]`;
-
-    if (c === null || typeof c !== "object") {
-      errors.push({
-        code: "OP-CFG-004",
-        message: `${prefix} must be an object`,
-        path: prefix,
-      });
-      continue;
-    }
-
-    if (!c.id || typeof c.id !== "string") {
-      errors.push({
-        code: "OP-CFG-004",
-        message: `${prefix} is missing an id`,
-        path: `${prefix}.id`,
-      });
-    } else if (!CONNECTION_ID_RE.test(c.id)) {
-      errors.push({
-        code: "OP-CFG-005",
-        message: `${prefix}.id "${c.id}" is invalid`,
-        path: `${prefix}.id`,
-        hint: "Use lowercase letters, numbers, and hyphens (1-63 chars)",
-      });
-    } else if (ids.has(c.id)) {
-      errors.push({
-        code: "OP-CFG-006",
-        message: `Duplicate connection id "${c.id}"`,
-        path: `${prefix}.id`,
-      });
-    } else {
-      ids.add(c.id);
-    }
-
-    if (!c.provider || typeof c.provider !== "string") {
-      errors.push({
-        code: "OP-CFG-004",
-        message: `${prefix} is missing a provider`,
-        path: `${prefix}.provider`,
-      });
-    }
-
-    if (!c.name || typeof c.name !== "string") {
-      errors.push({
-        code: "OP-CFG-004",
-        message: `${prefix} is missing a name`,
-        path: `${prefix}.name`,
-      });
-    }
-  }
-}
-
-function validateAssignments(
-  assignments: StackSpecAssignments,
-  connectionIds: Set<string>,
-  errors: ValidationError[],
-): void {
-  // LLM assignment (required)
-  if (!assignments.llm) {
-    errors.push({
-      code: "OP-CFG-002",
-      message: "assignments.llm is required",
-      path: "assignments.llm",
-    });
-  } else if (typeof assignments.llm !== "object" || assignments.llm === null) {
-    errors.push({
-      code: "OP-CFG-002",
-      message: "assignments.llm must be an object",
-      path: "assignments.llm",
-    });
-  } else {
-    if (
-      assignments.llm.connectionId &&
-      !connectionIds.has(assignments.llm.connectionId)
-    ) {
-      errors.push({
-        code: "OP-CFG-003",
-        message: `assignments.llm.connectionId "${assignments.llm.connectionId}" does not match any connection`,
-        path: "assignments.llm.connectionId",
-        hint: `Available connections: ${[...connectionIds].join(", ") || "(none)"}`,
-      });
-    }
-    if (!assignments.llm.model) {
+  // SLM (optional, same format)
+  if (capabilities.slm !== undefined) {
+    if (typeof capabilities.slm !== "string") {
       errors.push({
         code: "OP-CFG-008",
-        message: "assignments.llm.model is required",
-        path: "assignments.llm.model",
+        message: "capabilities.slm must be a string (format: provider/model)",
+        path: "capabilities.slm",
+      });
+    } else if (!capabilities.slm.includes("/")) {
+      errors.push({
+        code: "OP-CFG-008",
+        message: `capabilities.slm "${capabilities.slm}" must be in provider/model format`,
+        path: "capabilities.slm",
       });
     }
   }
 
-  // Embeddings assignment (required)
-  if (!assignments.embeddings) {
+  // Embeddings (required object)
+  if (!capabilities.embeddings || typeof capabilities.embeddings !== "object") {
     errors.push({
       code: "OP-CFG-002",
-      message: "assignments.embeddings is required",
-      path: "assignments.embeddings",
-    });
-  } else if (typeof assignments.embeddings !== "object" || assignments.embeddings === null) {
-    errors.push({
-      code: "OP-CFG-002",
-      message: "assignments.embeddings must be an object",
-      path: "assignments.embeddings",
+      message: "capabilities.embeddings is required",
+      path: "capabilities.embeddings",
+      hint: "Add provider, model, and dims fields",
     });
   } else {
-    if (
-      assignments.embeddings.connectionId &&
-      !connectionIds.has(assignments.embeddings.connectionId)
-    ) {
+    const emb = capabilities.embeddings;
+    if (!emb.provider || typeof emb.provider !== "string") {
       errors.push({
-        code: "OP-CFG-003",
-        message: `assignments.embeddings.connectionId "${assignments.embeddings.connectionId}" does not match any connection`,
-        path: "assignments.embeddings.connectionId",
-        hint: `Available connections: ${[...connectionIds].join(", ") || "(none)"}`,
+        code: "OP-CFG-004",
+        message: "capabilities.embeddings.provider is required",
+        path: "capabilities.embeddings.provider",
       });
     }
-    if (!assignments.embeddings.model) {
+    if (!emb.model || typeof emb.model !== "string") {
       errors.push({
         code: "OP-CFG-008",
-        message: "assignments.embeddings.model is required",
-        path: "assignments.embeddings.model",
+        message: "capabilities.embeddings.model is required",
+        path: "capabilities.embeddings.model",
       });
     }
     if (
-      assignments.embeddings.embeddingDims !== undefined &&
-      (typeof assignments.embeddings.embeddingDims !== "number" ||
-        assignments.embeddings.embeddingDims < 1)
+      emb.dims !== undefined &&
+      (typeof emb.dims !== "number" || emb.dims < 1)
     ) {
       errors.push({
         code: "OP-CFG-009",
-        message: "assignments.embeddings.embeddingDims must be a positive integer",
-        path: "assignments.embeddings.embeddingDims",
+        message: "capabilities.embeddings.dims must be a positive integer",
+        path: "capabilities.embeddings.dims",
         hint: "Common values: nomic-embed-text: 768, text-embedding-3-small: 1536",
       });
     }
   }
 
-  // Optional assignments — validate connectionId if present
-  for (const key of ["reranking", "tts", "stt"] as const) {
-    const asgn = assignments[key];
-    if (
-      asgn &&
-      typeof asgn === "object" &&
-      asgn !== null &&
-      "connectionId" in asgn &&
-      asgn.connectionId &&
-      !connectionIds.has(asgn.connectionId)
-    ) {
-      errors.push({
-        code: "OP-CFG-003",
-        message: `assignments.${key}.connectionId "${asgn.connectionId}" does not match any connection`,
-        path: `assignments.${key}.connectionId`,
-        hint: `Available connections: ${[...connectionIds].join(", ") || "(none)"}`,
-      });
-    }
-  }
-}
-
-function validatePorts(
-  ports: Record<string, unknown>,
-  errors: ValidationError[],
-): void {
-  for (const [key, value] of Object.entries(ports)) {
-    if (value === undefined || value === null) continue;
-    if (typeof value !== "number" || !Number.isInteger(value)) {
-      errors.push({
-        code: "OP-CFG-010",
-        message: `ports.${key} must be an integer`,
-        path: `ports.${key}`,
-      });
-    } else if (value < 1 || value > 65535) {
-      errors.push({
-        code: "OP-CFG-010",
-        message: `ports.${key} must be between 1 and 65535`,
-        path: `ports.${key}`,
-      });
-    }
+  // Memory (required object)
+  if (!capabilities.memory || typeof capabilities.memory !== "object") {
+    errors.push({
+      code: "OP-CFG-002",
+      message: "capabilities.memory is required",
+      path: "capabilities.memory",
+      hint: "Add at minimum a userId field",
+    });
   }
 }

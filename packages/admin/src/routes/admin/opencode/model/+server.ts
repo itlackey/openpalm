@@ -2,7 +2,13 @@ import type { RequestHandler } from './$types';
 import { requireAdmin, jsonResponse, errorResponse, getRequestId, parseJsonBody } from '$lib/server/helpers.js';
 import { getOpenCodeConfig, proxyToOpenCode } from '$lib/opencode/client.server.js';
 import { getState } from '$lib/server/state.js';
-import { patchSecretsEnvFile } from '$lib/server/control-plane.js';
+import {
+  updateCapability,
+  formatCapabilityString,
+  parseCapabilityString,
+  readStackSpec,
+  writeManagedEnvFiles,
+} from '$lib/server/control-plane.js';
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -34,8 +40,23 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, 'bad_request', 'model is required', {}, requestId);
   }
 
+  const state = getState();
+
   try {
-    patchSecretsEnvFile(getState().vaultDir, { SYSTEM_LLM_MODEL: model });
+    // Read current LLM capability to preserve provider
+    const spec = readStackSpec(state.configDir);
+    if (!spec) {
+      return errorResponse(500, 'internal_error', 'stack.yaml not found', {}, requestId);
+    }
+
+    const { provider } = parseCapabilityString(spec.capabilities.llm);
+    updateCapability(state.configDir, 'llm', formatCapabilityString(provider, model));
+
+    // Regenerate managed env files
+    const updatedSpec = readStackSpec(state.configDir);
+    if (updatedSpec) {
+      writeManagedEnvFiles(updatedSpec, state.vaultDir);
+    }
   } catch {
     return errorResponse(500, 'internal_error', 'Failed to persist model selection', {}, requestId);
   }

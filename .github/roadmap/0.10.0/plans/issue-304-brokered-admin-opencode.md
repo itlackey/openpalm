@@ -1,5 +1,7 @@
 # Issue #304 — Admin OpenCode instance inside the admin container
 
+> Current repo alignment: this is no longer a brokered-runtime plan. The shipped direction is a directly exposed, host-only admin OpenCode instance running inside the admin container, with compose assets under `.openpalm/stack/addons/admin/compose.yml` and seeded config owned by the shared lib.
+
 ## Design (simplified 2026-03-20)
 
 The admin container runs a second OpenCode instance alongside SvelteKit. The user accesses it directly via the web UI at `localhost:3881` — the same pattern as the assistant OpenCode at `localhost:3800`. No broker, no intermediary API, no session proxying.
@@ -14,9 +16,9 @@ The admin container runs a second OpenCode instance alongside SvelteKit. The use
 |-----------|--------|----------|
 | **Dockerfile** | ✅ Done | `core/admin/Dockerfile:65-86` — OpenCode v1.2.24 + Bun installed at runtime |
 | **Entrypoint auto-start** | ✅ Done | `core/admin/entrypoint.sh:60` — `start_opencode` runs automatically |
-| **Compose port binding** | ✅ Done | `assets/admin.yml:59` — `127.0.0.1:3881:4097` (host-only) |
+| **Compose port binding** | ✅ Done | `.openpalm/stack/addons/admin/compose.yml:34` — `127.0.0.1:${OP_ADMIN_OPENCODE_PORT:-3881}:3881` (host-only) |
 | **Config seeding** | ✅ Done | `packages/lib/src/control-plane/core-assets.ts:246` — `ensureAdminOpenCodeConfig()` |
-| **Admin-tools plugin** | ✅ Done | `assets/admin-opencode.jsonc` loads `@openpalm/admin-tools` + `@openpalm/assistant-tools` |
+| **Admin-tools plugin** | ✅ Done | `core/admin/opencode.jsonc` loads the admin-side OpenCode config baked into the image |
 | **Auth (token split)** | ✅ Done | `packages/admin/src/lib/server/helpers.ts` — `ADMIN_TOKEN` / `ASSISTANT_TOKEN` distinct |
 | **38XX port scheme** | ✅ Done | Admin UI at `3880`, admin OpenCode at `3881`, all localhost-bound |
 | **No Caddy route** | ✅ Correct | Caddyfile has no admin OpenCode proxy — host-only access by design |
@@ -26,7 +28,7 @@ The admin container runs a second OpenCode instance alongside SvelteKit. The use
 ### 1. Admin UI link/status indicator
 
 Add a link or status card in the admin dashboard that:
-- Shows whether admin OpenCode is running (health check against `localhost:4097` from inside the container)
+- Shows whether admin OpenCode is running (health check against `localhost:3881` from inside the container)
 - Links the user to `localhost:3881` (or the configured `OP_ADMIN_OPENCODE_PORT`)
 
 ### 2. Documentation updates
@@ -62,9 +64,9 @@ Add a link or status card in the admin dashboard that:
 ## Relevant files
 
 - `core/admin/Dockerfile` — runtime image with OpenCode + Bun
-- `core/admin/entrypoint.sh` — auto-starts SvelteKit + OpenCode
-- `assets/admin.yml` — compose overlay with port binds and env vars
-- `assets/admin-opencode.jsonc` — seeded OpenCode config with admin-tools
+- `core/admin/entrypoint.sh` — auto-starts SvelteKit + admin OpenCode on `OPENCODE_PORT` (default `3881`)
+- `.openpalm/stack/addons/admin/compose.yml` — compose overlay with host-only admin UI and admin OpenCode port binds
+- `core/admin/opencode.jsonc` — baked admin OpenCode config
 - `packages/lib/src/control-plane/core-assets.ts` — config seeding function
-- `packages/admin/src/lib/opencode/client.server.ts` — existing OpenCode client (targets assistant at 4096; admin instance is separate at 4097)
-- `packages/admin/e2e/opencode-ui.test.ts` — existing E2E tests to update
+- `packages/admin/src/lib/opencode/client.server.ts` — admin-side proxy client for the assistant OpenCode instance at `http://localhost:4096`
+- `packages/admin/e2e/opencode-ui.test.ts` — E2E coverage to extend

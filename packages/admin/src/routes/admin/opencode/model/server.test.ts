@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { join } from 'node:path';
-import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { getState, resetState } from '$lib/server/state.js';
 import { GET, POST } from './+server.js';
+import { stringify as yamlStringify } from 'yaml';
 
 vi.mock('$lib/opencode/client.server.js', () => ({
   getOpenCodeConfig: vi.fn(),
@@ -21,6 +22,21 @@ function makeTempDir(): string {
 
 let rootDir = '';
 let originalHome: string | undefined;
+
+function seedStackYaml(): void {
+  const state = getState();
+  mkdirSync(state.configDir, { recursive: true });
+  const spec = {
+    version: 2,
+    capabilities: {
+      llm: 'openai/gpt-4o',
+      embeddings: { provider: 'openai', model: 'text-embedding-3-small', dims: 1536 },
+      memory: { userId: 'default_user' },
+    },
+    addons: {},
+  };
+  writeFileSync(join(state.configDir, 'stack.yaml'), yamlStringify(spec));
+}
 
 function makeEvent(method: string, body?: unknown, token = 'admin-token'): Parameters<typeof GET>[0] {
   return {
@@ -41,6 +57,7 @@ beforeEach(() => {
   originalHome = process.env.OP_HOME;
   process.env.OP_HOME = rootDir;
   resetState('admin-token');
+  seedStackYaml();
 });
 
 afterEach(() => {
@@ -80,9 +97,6 @@ describe('/admin/opencode/model route', () => {
 
     const body = await res.json() as { message: string };
     expect(body.message).toBe('Invalid model');
-
-    const userEnvPath = join(getState().vaultDir, 'user', 'user.env');
-    expect(readFileSync(userEnvPath, 'utf-8')).toContain('SYSTEM_LLM_MODEL=bad-model');
   });
 
   test('POST degrades gracefully when OpenCode is unavailable', async () => {
@@ -100,8 +114,5 @@ describe('/admin/opencode/model route', () => {
     expect(body.ok).toBe(true);
     expect(body.liveApplied).toBe(false);
     expect(body.restartRequired).toBe(true);
-
-    const userEnvPath = join(getState().vaultDir, 'user', 'user.env');
-    expect(readFileSync(userEnvPath, 'utf-8')).toContain('SYSTEM_LLM_MODEL=gpt-4.1-mini');
   });
 });

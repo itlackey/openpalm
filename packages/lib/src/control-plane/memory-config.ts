@@ -11,6 +11,7 @@ import {
   mem0BaseUrlConfig,
 } from "../provider-constants.js";
 import type { StackSpec } from "./stack-spec.js";
+import { parseCapabilityString } from "./stack-spec.js";
 
 // Re-export shared constants for barrel compatibility
 export { LLM_PROVIDERS, EMBEDDING_DIMS, PROVIDER_DEFAULT_URLS };
@@ -259,37 +260,24 @@ export function ensureMemoryConfig(dataDir: string): void {
 // ── Derive from StackSpec ─────────────────────────────────────────────
 
 /**
- * Derive a MemoryConfig from the stack.yaml assignments.memory block.
- * Resolves connectionId → connection for provider/baseUrl/apiKeyRef.
+ * Derive a MemoryConfig from the stack.yaml v2 capabilities.
  */
 export function deriveMemoryConfig(spec: StackSpec): MemoryConfig {
-  const mem = spec.assignments.memory;
-  const emb = spec.assignments.embeddings;
-
-  const llmConn = spec.connections.find((c) => c.id === mem.llm.connectionId);
-  const embConn = spec.connections.find((c) => c.id === mem.embeddings.connectionId);
-
-  const llmProvider = llmConn?.provider ?? "openai";
-  const embProvider = embConn?.provider ?? "openai";
-
-  const llmApiKeyRef = llmConn?.auth?.mode === "api_key" ? llmConn.auth.apiKeySecretRef : undefined;
-  const embApiKeyRef = embConn?.auth?.mode === "api_key" ? embConn.auth.apiKeySecretRef : undefined;
+  const { capabilities } = spec;
+  const { provider: llmProvider, model: llmModel } = parseCapabilityString(capabilities.llm);
+  const embProvider = capabilities.embeddings.provider;
+  const embModel = capabilities.embeddings.model;
+  const embDims = capabilities.embeddings.dims;
 
   const llmConfig: Record<string, unknown> = {
-    model: mem.llm.model,
-    temperature: mem.llm.temperature ?? 0.1,
-    max_tokens: mem.llm.maxTokens ?? 2000,
+    model: llmModel,
+    temperature: 0.1,
+    max_tokens: 2000,
   };
-  if (llmApiKeyRef) llmConfig.api_key = llmApiKeyRef;
-  const llmBaseUrlEntry = mem0BaseUrlConfig(llmProvider, llmConn?.baseUrl ?? "");
-  if (llmBaseUrlEntry) llmConfig[llmBaseUrlEntry.key] = llmBaseUrlEntry.value;
 
   const embConfig: Record<string, unknown> = {
-    model: mem.embeddings.model,
+    model: embModel,
   };
-  if (embApiKeyRef) embConfig.api_key = embApiKeyRef;
-  const embBaseUrlEntry = mem0BaseUrlConfig(embProvider, embConn?.baseUrl ?? "");
-  if (embBaseUrlEntry) embConfig[embBaseUrlEntry.key] = embBaseUrlEntry.value;
 
   return {
     mem0: {
@@ -302,15 +290,15 @@ export function deriveMemoryConfig(spec: StackSpec): MemoryConfig {
         config: embConfig,
       },
       vector_store: {
-        provider: mem.vectorStore.provider,
+        provider: "sqlite-vec",
         config: {
-          collection_name: mem.vectorStore.collectionName,
-          db_path: mem.vectorStore.dbPath,
-          embedding_model_dims: emb.embeddingDims ?? EMBEDDING_DIMS[`${embProvider}/${mem.embeddings.model}`] ?? 1536,
+          collection_name: "memory",
+          db_path: "/data/memory.db",
+          embedding_model_dims: embDims ?? EMBEDDING_DIMS[`${embProvider}/${embModel}`] ?? 1536,
         },
       },
     },
-    memory: { custom_instructions: mem.customInstructions ?? "" },
+    memory: { custom_instructions: capabilities.memory.customInstructions ?? "" },
   };
 }
 

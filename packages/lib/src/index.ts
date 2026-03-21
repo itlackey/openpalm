@@ -31,28 +31,12 @@ export type {
   AccessScope,
   ChannelInfo,
   CallerType,
-  ConnectionKind,
-  ConnectionAuthMode,
   ArtifactMeta,
   AuditEntry,
-  RequiredCapability,
-  OptionalCapability,
-  Capability,
-  LlmAssignment,
-  EmbeddingsAssignment,
-  RerankerAssignment,
-  TtsAssignment,
-  SttAssignment,
-  CapabilityAssignments,
-  CanonicalConnectionProfile,
-  CanonicalConnectionsDocument,
 } from "./control-plane/types.js";
 export {
   CORE_SERVICES,
   OPTIONAL_SERVICES,
-  CONNECTION_KINDS,
-  REQUIRED_CAPABILITIES,
-  OPTIONAL_CAPABILITIES,
 } from "./control-plane/types.js";
 
 // ── Interfaces ──────────────────────────────────────────────────────────
@@ -167,34 +151,11 @@ export {
   uninstallAutomation,
 } from "./control-plane/channels.js";
 
-// ── Connection Profiles ─────────────────────────────────────────────────
-export {
-  getConnectionProfilesDir,
-  getConnectionProfilesPath,
-  writeConnectionProfilesDocument,
-  readConnectionProfilesDocument,
-  ensureConnectionProfilesStore,
-  writeConnectionsDocument,
-  listConnectionProfiles,
-  getCapabilityAssignments,
-  createConnectionProfile,
-  updateConnectionProfile,
-  deleteConnectionProfile,
-  saveCapabilityAssignments,
-} from "./control-plane/connection-profiles.js";
-export type { WriteConnectionsInput } from "./control-plane/connection-profiles.js";
-
 // ── Connection Mapping ──────────────────────────────────────────────────
 export {
-  buildOpenCodeMapping,
-  writeOpenCodeProviderConfig,
   buildMem0Mapping,
-  resolveApiKeyRef,
-  buildMem0MappingFromProfiles,
 } from "./control-plane/connection-mapping.js";
 export type {
-  OpenCodeConnectionMappingInput,
-  OpenCodeConnectionMapping,
   Mem0ConnectionMappingInput,
   Mem0ConnectionMapping,
 } from "./control-plane/connection-mapping.js";
@@ -331,20 +292,17 @@ export {
 export type { LocalProviderDetection } from "./control-plane/model-runner.js";
 export { detectLocalProviders } from "./control-plane/model-runner.js";
 
-// ── Stack Spec (v1) ──────────────────────────────────────────────────────
+// ── Stack Spec (v2) ──────────────────────────────────────────────────────
 export type {
   StackSpec,
-  StackSpecConnection,
-  StackSpecConnectionAuth,
-  StackSpecConnectionKind,
-  StackSpecAssignments,
-  StackSpecModelAssignment,
-  StackSpecEmbeddingsAssignment,
-  StackSpecMemoryAssignment,
-  StackSpecTtsAssignment,
-  StackSpecSttAssignment,
-  StackSpecRerankerAssignment,
-  StackSpecAddon,
+  StackSpecCapabilities,
+  StackSpecEmbeddings,
+  StackSpecMemory,
+  StackSpecTts,
+  StackSpecStt,
+  StackSpecReranker,
+  StackSpecAddonValue,
+  StackSpecServiceValue,
 } from "./control-plane/stack-spec.js";
 export {
   STACK_SPEC_FILENAME,
@@ -352,9 +310,11 @@ export {
   stackSpecPath,
   writeStackSpec,
   readStackSpec,
-  normalizeAddon,
+  updateCapability,
   hasAddon,
   addonNames,
+  parseCapabilityString,
+  formatCapabilityString,
 } from "./control-plane/stack-spec.js";
 
 // ── Env Compatibility (OP_ prefix migration) ────────────────────────────
@@ -371,6 +331,9 @@ export {
 // ── Spec-to-Env Derivation ──────────────────────────────────────────────
 export {
   deriveSystemEnvFromSpec,
+  deriveMemoryEnv,
+  deriveAddonEnv,
+  writeManagedEnvFiles,
 } from "./control-plane/spec-to-env.js";
 
 // ── Spec Validation ─────────────────────────────────────────────────────
@@ -401,6 +364,7 @@ export {
   normalizeToSetupInput,
   performSetupFromConfig,
   buildChannelCredentialEnvVars,
+  buildSystemSecretsFromSetup,
 } from "./control-plane/setup.js";
 
 // ── Viking Config ───────────────────────────────────────────────────────

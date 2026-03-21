@@ -14,6 +14,7 @@ import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { discoverChannels } from "./channels.js";
 import { readStackSpec, hasAddon } from "./stack-spec.js";
+import { writeManagedEnvFiles } from "./spec-to-env.js";
 
 import { parseAutomationYaml } from "./scheduler.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
@@ -73,6 +74,7 @@ function resolveCompose(_state: ControlPlaneState, assets: CoreAssetProvider): s
 export function buildEnvFiles(state: ControlPlaneState): string[] {
   return [
     `${state.vaultDir}/stack/stack.env`,
+    `${state.vaultDir}/stack/services/memory/managed.env`,
     `${state.vaultDir}/user/user.env`,
   ].filter(existsSync);
 }
@@ -271,6 +273,12 @@ export function persistConfiguration(
   // Write env schemas to vault
   ensureUserEnvSchema(assets);
   ensureSystemEnvSchema(assets);
+
+  // Write managed.env files derived from stack spec
+  const spec = readStackSpec(state.configDir);
+  if (spec) {
+    writeManagedEnvFiles(spec, state.vaultDir);
+  }
 
   // Generate redact.env.schema from canonical mappings
   const systemEnv = readSystemSecretsEnvFile(state.vaultDir);

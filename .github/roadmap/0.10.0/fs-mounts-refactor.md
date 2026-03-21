@@ -3,6 +3,8 @@
 **Version:** 3 — Final
 **Date:** 2026-03-19
 
+> Current repo alignment: this proposal drove the move to `~/.openpalm/`, but the shipped layout has since been refined. The current implementation uses nested vault paths (`vault/user/user.env`, `vault/stack/stack.env`) and runtime compose assembly under `.openpalm/stack/`. Treat older flat-vault examples in this document as superseded planning detail unless they have already been normalized inline elsewhere.
+
 ---
 
 ## TLDR

@@ -93,37 +93,17 @@ export function installAutomationFromRegistry(
 export type {
   CoreServiceName,
   CallerType,
-  ConnectionKind,
-  CanonicalConnectionProfile,
-  CapabilityAssignments,
-  CanonicalConnectionsDocument,
   ChannelInfo,
   AuditEntry,
   ArtifactMeta,
   ControlPlaneState,
-} from "@openpalm/lib";
-
-// Re-export types that are in admin's types.ts but exposed via lib
-export type {
   AccessScope,
-  ConnectionAuthMode,
-  RequiredCapability,
-  OptionalCapability,
-  Capability,
-  LlmAssignment,
-  EmbeddingsAssignment,
-  RerankerAssignment,
-  TtsAssignment,
-  SttAssignment,
-} from "./types.js";
+} from "@openpalm/lib";
 
 export {
   CORE_SERVICES,
   OPTIONAL_SERVICES,
-  CONNECTION_KINDS,
-  REQUIRED_CAPABILITIES,
-  OPTIONAL_CAPABILITIES,
-} from "./types.js";
+} from "@openpalm/lib";
 
 // ── paths.ts ──────────────────────────────────────────────────────────
 export { ensureXdgDirs } from "@openpalm/lib";
@@ -218,40 +198,35 @@ export {
   validateEnvironment,
 } from "@openpalm/lib";
 
-// ── connection-profiles.ts ────────────────────────────────────────────
+// ── connection-mapping.ts ─────────────────────────────────────────────
 export {
-  getConnectionProfilesDir,
-  getConnectionProfilesPath,
-  readConnectionProfilesDocument,
-  writeConnectionProfilesDocument,
-  writeConnectionsDocument,
-  ensureConnectionProfilesStore,
-  listConnectionProfiles,
-  getCapabilityAssignments,
-  createConnectionProfile,
-  updateConnectionProfile,
-  deleteConnectionProfile,
-  saveCapabilityAssignments,
-  type WriteConnectionsInput,
+  buildMem0Mapping,
+  type Mem0ConnectionMappingInput,
+  type Mem0ConnectionMapping,
+} from "@openpalm/lib";
+
+// ── stack-spec.ts (v2) ────────────────────────────────────────────────
+export {
+  readStackSpec,
+  writeStackSpec,
+  updateCapability,
+  hasAddon,
+  addonNames,
+  parseCapabilityString,
+  formatCapabilityString,
+  type StackSpec,
+  type StackSpecCapabilities,
+} from "@openpalm/lib";
+
+// ── spec-to-env.ts ───────────────────────────────────────────────────
+export {
+  writeManagedEnvFiles,
 } from "@openpalm/lib";
 
 // ── model-runner.ts ──────────────────────────────────────────────────
 export {
   detectLocalProviders,
   type LocalProviderDetection,
-} from "@openpalm/lib";
-
-// ── connection-mapping.ts ─────────────────────────────────────────────
-export {
-  buildOpenCodeMapping,
-  buildMem0Mapping,
-  writeOpenCodeProviderConfig,
-  resolveApiKeyRef,
-  buildMem0MappingFromProfiles,
-  type OpenCodeConnectionMappingInput,
-  type OpenCodeConnectionMapping,
-  type Mem0ConnectionMappingInput,
-  type Mem0ConnectionMapping,
 } from "@openpalm/lib";
 
 // ── components.ts (v0.10.0 unified component system) ──────────────────

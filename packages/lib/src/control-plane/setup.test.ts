@@ -203,22 +203,22 @@ describe("buildSecretsFromSetup", () => {
     expect(secrets.ADMIN_TOKEN).toBeUndefined();
   });
 
-  it("sets SYSTEM_LLM_* from the LLM connection", () => {
+  it("does not include SYSTEM_LLM_* in user secrets (now in capabilities)", () => {
     const secrets = buildSecretsFromSetup(makeValidInput());
-    expect(secrets.SYSTEM_LLM_PROVIDER).toBe("openai");
-    expect(secrets.SYSTEM_LLM_MODEL).toBe("gpt-4o");
-    expect(secrets.SYSTEM_LLM_BASE_URL).toBe("https://api.openai.com");
-    expect(secrets.OPENAI_BASE_URL).toBe("https://api.openai.com/v1");
+    expect(secrets.SYSTEM_LLM_PROVIDER).toBeUndefined();
+    expect(secrets.SYSTEM_LLM_MODEL).toBeUndefined();
+    expect(secrets.SYSTEM_LLM_BASE_URL).toBeUndefined();
+    expect(secrets.OPENAI_BASE_URL).toBeUndefined();
   });
 
-  it("sets MEMORY_USER_ID", () => {
+  it("does not include MEMORY_USER_ID in user secrets (now in capabilities)", () => {
     const secrets = buildSecretsFromSetup(makeValidInput());
-    expect(secrets.MEMORY_USER_ID).toBe("test_user");
+    expect(secrets.MEMORY_USER_ID).toBeUndefined();
   });
 
-  it("defaults MEMORY_USER_ID when empty", () => {
+  it("does not include MEMORY_USER_ID even when empty (now in capabilities)", () => {
     const secrets = buildSecretsFromSetup(makeValidInput({ memoryUserId: "" }));
-    expect(secrets.MEMORY_USER_ID).toBe("default_user");
+    expect(secrets.MEMORY_USER_ID).toBeUndefined();
   });
 
   it("sets owner info when provided", () => {
@@ -238,7 +238,7 @@ describe("buildSecretsFromSetup", () => {
     expect(secrets.OPENAI_API_KEY).toBe("sk-test-key-123");
   });
 
-  it("overrides Ollama base URL when ollamaEnabled is true", () => {
+  it("does not include Ollama base URL in user secrets when ollamaEnabled (now in capabilities)", () => {
     const input = makeValidInput({
       ollamaEnabled: true,
       connections: [
@@ -250,9 +250,9 @@ describe("buildSecretsFromSetup", () => {
       },
     });
     const secrets = buildSecretsFromSetup(input);
-    // System LLM base URL should use in-stack Ollama URL
-    expect(secrets.SYSTEM_LLM_BASE_URL).toBe("http://ollama:11434");
-    expect(secrets.OPENAI_BASE_URL).toBe("http://ollama:11434/v1");
+    // These are no longer written to user.env — they live in capabilities/managed.env
+    expect(secrets.SYSTEM_LLM_BASE_URL).toBeUndefined();
+    expect(secrets.OPENAI_BASE_URL).toBeUndefined();
   });
 });
 
@@ -424,17 +424,16 @@ describe("performSetup", () => {
     expect(memConfig.mem0.embedder.config.model).toBe("text-embedding-3-small");
   });
 
-  it("writes connection data to stack.yaml", async () => {
+  it("writes capabilities to stack.yaml v2", async () => {
     const result = await performSetup(makeValidInput(), createStubAssetProvider());
     expect(result.ok).toBe(true);
 
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
-    expect(spec!.version).toBe(1);
-    expect(spec!.connections).toHaveLength(1);
-    expect(spec!.connections[0].id).toBe("openai-main");
-    expect(spec!.assignments.llm.model).toBe("gpt-4o");
-    expect(spec!.assignments.embeddings.model).toBe("text-embedding-3-small");
+    expect(spec!.version).toBe(2);
+    expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
+    expect(spec!.capabilities.embeddings.model).toBe("text-embedding-3-small");
+    expect(spec!.capabilities.embeddings.provider).toBe("openai");
   });
 
   it("creates staged artifacts directory", async () => {
@@ -446,7 +445,7 @@ describe("performSetup", () => {
     expect(existsSync(stagedCompose)).toBe(true);
   });
 
-  it("uses Ollama in-stack URL when ollamaEnabled is true", async () => {
+  it("writes ollama addon when ollamaEnabled is true", async () => {
     const input = makeValidInput({
       ollamaEnabled: true,
       connections: [
@@ -467,10 +466,12 @@ describe("performSetup", () => {
     const result = await performSetup(input, createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    // Connection in stack.yaml should use the in-stack URL
+    // v2 spec should have ollama addon enabled and correct capabilities
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
-    expect(spec!.connections[0].baseUrl).toBe("http://ollama:11434");
+    expect(spec!.version).toBe(2);
+    expect(spec!.addons.ollama).toBe(true);
+    expect(spec!.capabilities.llm).toBe("ollama/llama3.2");
   });
 
   it("resolves embedding dims from EMBEDDING_DIMS lookup", async () => {
@@ -499,7 +500,7 @@ describe("performSetup", () => {
     expect(memConfig.mem0.vector_store.config.embedding_model_dims).toBe(768);
   });
 
-  it("writes stack.yaml with correct structure", async () => {
+  it("writes stack.yaml with correct v2 structure", async () => {
     const result = await performSetup(makeValidInput(), createStubAssetProvider());
     expect(result.ok).toBe(true);
 
@@ -508,20 +509,18 @@ describe("performSetup", () => {
 
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
-    expect(spec!.version).toBe(1);
-    expect(spec!.connections).toBeArrayOfSize(1);
-    expect(spec!.connections[0].id).toBe("openai-main");
-    expect(spec!.connections[0].provider).toBe("openai");
-    expect(spec!.assignments.llm.model).toBe("gpt-4o");
-    expect(spec!.assignments.embeddings.model).toBe("text-embedding-3-small");
-    expect(spec!.addons).toBeArrayOfSize(0);
+    expect(spec!.version).toBe(2);
+    expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
+    expect(spec!.capabilities.embeddings.provider).toBe("openai");
+    expect(spec!.capabilities.embeddings.model).toBe("text-embedding-3-small");
+    expect(spec!.capabilities.memory.userId).toBe("test_user");
+    expect(Object.keys(spec!.addons)).toHaveLength(0);
   });
 
-  it("does not corrupt profile when duplicate connection ID with hyphen is skipped by env var map", async () => {
+  it("completes setup even when duplicate connection ID with hyphen is skipped by env var map", async () => {
     // When two connections share a provider and the second has a hyphen in the ID,
     // buildConnectionEnvVarMap skips it (OPENAI_API_KEY_OPENAI-2 fails SAFE_ENV_KEY_RE).
-    // The profile for that connection should have hasApiKey=false and apiKeyEnvVar=""
-    // rather than passing undefined through via a non-null assertion.
+    // Setup should still succeed — the primary connection's key is written.
     const input = makeValidInput({
       connections: [
         { id: "openai_primary", name: "OpenAI Primary", provider: "openai", baseUrl: "https://api.openai.com", apiKey: "sk-primary" },
@@ -536,85 +535,60 @@ describe("performSetup", () => {
     const result = await performSetup(input, createStubAssetProvider());
     expect(result.ok).toBe(true);
 
+    // v2 spec should still have correct capabilities
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
-    expect(spec!.connections).toHaveLength(2);
-
-    // The second connection's env var was skipped — auth mode must be "none"
-    const secondary = spec!.connections.find((c: { id: string }) => c.id === "openai-secondary");
-    expect(secondary).toBeDefined();
-    expect(secondary!.auth.mode).toBe("none");
+    expect(spec!.version).toBe(2);
+    expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
   });
 
-  it("includes tts and stt assignments when voice uses openai engines", async () => {
+  it("writes TTS and STT env vars to user.env when voice uses openai engines", async () => {
     const input = makeValidInput({
       voice: { tts: "openai-tts", stt: "openai-stt" },
     });
     const result = await performSetup(input, createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const spec = readStackSpec(configDir);
-    expect(spec).not.toBeNull();
-
-    expect(spec!.assignments.tts).toBeDefined();
-    expect(spec!.assignments.tts!.enabled).toBe(true);
-    expect(spec!.assignments.tts!.connectionId).toBe("openai-main");
-    expect(spec!.assignments.tts!.model).toBe("tts-1");
-    expect(spec!.assignments.tts!.voice).toBe("alloy");
-
-    expect(spec!.assignments.stt).toBeDefined();
-    expect(spec!.assignments.stt!.enabled).toBe(true);
-    expect(spec!.assignments.stt!.connectionId).toBe("openai-main");
-    expect(spec!.assignments.stt!.model).toBe("whisper-1");
+    const secretsContent = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    expect(secretsContent).toContain("TTS_MODEL=tts-1");
+    expect(secretsContent).toContain("TTS_VOICE=alloy");
+    expect(secretsContent).toContain("STT_MODEL=whisper-1");
   });
 
-  it("includes tts and stt without connectionId for browser engines", async () => {
+  it("writes TTS env vars for local engines without API key", async () => {
     const input = makeValidInput({
-      voice: { tts: "browser-tts", stt: "browser-stt" },
+      voice: { tts: "kokoro", stt: "whisper-local" },
     });
     const result = await performSetup(input, createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const spec = readStackSpec(configDir);
-    expect(spec).not.toBeNull();
-
-    expect(spec!.assignments.tts).toBeDefined();
-    expect(spec!.assignments.tts!.enabled).toBe(true);
-    expect(spec!.assignments.tts!.connectionId).toBeUndefined();
-
-    expect(spec!.assignments.stt).toBeDefined();
-    expect(spec!.assignments.stt!.enabled).toBe(true);
-    expect(spec!.assignments.stt!.connectionId).toBeUndefined();
+    const secretsContent = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    expect(secretsContent).toContain("TTS_MODEL=kokoro");
+    expect(secretsContent).toContain("TTS_BASE_URL=http://kokoro:8880");
+    expect(secretsContent).toContain("STT_MODEL=whisper-1");
+    expect(secretsContent).toContain("STT_BASE_URL=http://whisper:9000");
   });
 
-  it("omits tts and stt when voice is not provided", async () => {
+  it("does not write voice env vars when voice is not provided", async () => {
     const input = makeValidInput();
     const result = await performSetup(input, createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const spec = readStackSpec(configDir);
-    expect(spec).not.toBeNull();
-
-    expect(spec!.assignments.tts).toBeUndefined();
-    expect(spec!.assignments.stt).toBeUndefined();
+    const secretsContent = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    expect(secretsContent).not.toContain("TTS_MODEL=");
+    expect(secretsContent).not.toContain("STT_MODEL=");
   });
 
-  it("includes tts only when stt is absent", async () => {
+  it("writes TTS only when stt is absent", async () => {
     const input = makeValidInput({
       voice: { tts: "kokoro" },
     });
     const result = await performSetup(input, createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const spec = readStackSpec(configDir);
-    expect(spec).not.toBeNull();
-
-    expect(spec!.assignments.tts).toBeDefined();
-    expect(spec!.assignments.tts!.enabled).toBe(true);
-    expect(spec!.assignments.tts!.connectionId).toBeUndefined();
-    expect(spec!.assignments.tts!.model).toBe("kokoro");
-
-    expect(spec!.assignments.stt).toBeUndefined();
+    const secretsContent = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    expect(secretsContent).toContain("TTS_MODEL=kokoro");
+    expect(secretsContent).not.toContain("STT_MODEL=");
   });
 });
 
