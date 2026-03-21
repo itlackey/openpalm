@@ -4,7 +4,7 @@
  * In v0.10.0, user secrets live in vault/user/user.env and system secrets
  * in vault/stack/stack.env. This module manages the user-editable vault file.
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSync, rmSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
@@ -176,10 +176,26 @@ export function ensureSecrets(state: ControlPlaneState): void {
  */
 function ensureAuthJson(vaultDir: string): void {
   const authJsonPath = `${vaultDir}/stack/auth.json`;
-  if (!existsSync(authJsonPath)) {
-    mkdirSync(`${vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
-    writeVaultFile(authJsonPath, "{}\n");
+  mkdirSync(`${vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
+
+  if (existsSync(authJsonPath)) {
+    try {
+      if (lstatSync(authJsonPath).isDirectory()) {
+        rmSync(authJsonPath, { recursive: true, force: true });
+      } else {
+        chmodSync(authJsonPath, VAULT_FILE_MODE);
+        return;
+      }
+    } catch (error) {
+      logger.warn("failed to repair auth.json path", {
+        path: authJsonPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
   }
+
+  writeVaultFile(authJsonPath, "{}\n");
 }
 
 export function updateSecretsEnv(

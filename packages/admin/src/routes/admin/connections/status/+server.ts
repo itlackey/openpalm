@@ -33,10 +33,10 @@ export const GET: RequestHandler = async (event) => {
   if (!spec) {
     missing.push("Stack configuration (stack.yaml)");
   } else {
-    if (!spec.capabilities.llm) {
+    if (!spec.capabilities.llm.trim()) {
       missing.push("System LLM (capabilities.llm)");
     }
-    if (!spec.capabilities.embeddings?.model) {
+    if (!spec.capabilities.embeddings?.provider?.trim() || !spec.capabilities.embeddings?.model?.trim()) {
       missing.push("Embedding model (capabilities.embeddings)");
     }
   }

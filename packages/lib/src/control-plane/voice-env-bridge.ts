@@ -60,7 +60,7 @@ export function buildVoiceEnvVars(
 }
 
 /**
- * Write voice env vars to secrets.env.
+ * Write voice env vars to vault/user/user.env.
  *
  * @returns true if any voice env vars were written
  */

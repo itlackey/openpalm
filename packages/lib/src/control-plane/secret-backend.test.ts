@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -59,6 +59,17 @@ afterEach(() => {
 });
 
 describe('secret backend', () => {
+  test('ensureSecrets repairs auth.json when Docker created it as a directory', () => {
+    const state = createState();
+    mkdirSync(join(state.vaultDir, 'stack', 'auth.json'), { recursive: true });
+
+    ensureSecrets(state);
+
+    const authJsonPath = join(state.vaultDir, 'stack', 'auth.json');
+    expect(lstatSync(authJsonPath).isFile()).toBe(true);
+    expect(readFileSync(authJsonPath, 'utf-8')).toBe('{}\n');
+  });
+
   test('detectSecretBackend defaults to plaintext and routes custom secrets into vault env files', async () => {
     const state = createState();
     ensureSecrets(state);
