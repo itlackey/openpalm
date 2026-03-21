@@ -70,9 +70,13 @@ calls the Admin API using its assistant-scoped token. The Admin allowlists which
 actions and service names are legal -- the assistant can't do anything
 unauthorized.
 
-The assistant uses baked-in core config inside the image and reads user
-extensions from `~/.openpalm/config/assistant/`. It also mounts
-`~/.openpalm/vault/user/user.env` read-only for user-managed provider keys.
+The assistant uses baked-in core config inside the image at `/etc/opencode`,
+mounts user extensions from `~/.openpalm/config/assistant/` into
+`/home/opencode/.config/opencode`, mounts `~/.openpalm/vault/stack/auth.json`
+for OpenCode auth state, and mounts `~/.openpalm/vault/user/user.env`
+read-only for user-managed provider keys. Its durable home is
+`~/.openpalm/data/assistant/`, and its shared workspace is
+`~/.openpalm/data/workspace/` mounted at `/work`.
 
 ### Addon edge services (e.g. `chat`, host port 3820)
 Translate external protocols into signed Guardian messages. The `chat` addon is
@@ -87,6 +91,9 @@ The runtime image for registry-backed adapters is the unified
 ### Supporting services
 - **Memory** -- Bun.js service (`@openpalm/memory`) with sqlite-vec vector
   storage; gives the assistant persistent memory across conversations
+- **Scheduler** -- automation service on host port `3897` / container port
+  `8090`; reads `~/.openpalm/config/automations/` through the mounted
+  `config/` tree and calls the admin API using the assistant-scoped token
 
 ---
 
@@ -174,7 +181,9 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
 ```
 
 Docker reads compose files and env files directly from their final locations.
-There is no intermediate staging step.
+There is no intermediate staging step. The standard wrapper includes
+`vault/stack/stack.env` and `vault/user/user.env`; the memory service may also
+load its own managed env file from `vault/stack/services/memory/managed.env`.
 
 ---
 

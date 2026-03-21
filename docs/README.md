@@ -25,6 +25,7 @@ Repo layout convention:
 | Document | Description |
 |---|---|
 | [core-principles.md](technical/core-principles.md) | **Authoritative.** Core goals, security invariants, filesystem + volume-mount contracts |
+| [foundations.md](technical/foundations.md) | Stripped-down runtime contract for env, filesystem, mounts, and networks |
 | [directory-structure.md](technical/directory-structure.md) | `~/.openpalm/` home layout, `stack/` assembly, and volume design |
 | [docker-dependency-resolution.md](technical/docker-dependency-resolution.md) | **Mandatory.** Docker build patterns — no Bun in admin, no symlinks |
 

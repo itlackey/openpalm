@@ -1,59 +1,65 @@
 # ~/.openpalm
 
-This is the OpenPalm home directory bundle. Users can copy it directly to
+This bundle is the shipped OpenPalm home directory skeleton. Copy it to
 `~/.openpalm/` (or another location via `OP_HOME`) and run the stack from the
 files here.
 
 ## Directory layout
 
-```
+```text
 ~/.openpalm/
   config/             User-editable configuration (non-secret)
-    stack.yaml          Optional tooling metadata (connections, assignments, preferred addons)
-    host.yaml           Host environment info (written at install time)
-    assistant/          OpenCode user config, plugins, skills, tools
-    automations/        Scheduler automation definitions (core + optional)
-    guardian/           Guardian configuration
-  vault/              Secrets boundary
-    stack/              System-managed secrets (stack.env, HMAC tokens)
-    user/               User-managed secrets (API keys, owner info)
-    redact.env.schema   Log redaction rules for varlock
+    stack.yaml          Optional addon/tooling metadata
+    host.yaml           Optional host metadata written by setup tooling
+    assistant/          OpenCode user tools, plugins, skills, commands
+    automations/        Scheduler automation definitions
 
-  data/               Service-managed persistent data
-    admin/              Admin UI state
-    assistant/          OpenCode project data (.opencode)
-    guardian/           Guardian runtime data
-    memory/             Memory database and config
-    stash/              AgentiKit stash directory
+  vault/              Secrets boundary
+    stack/              System-managed env and auth files
+      stack.env
+      auth.json
+      services/
+        memory/
+          managed.env
+    user/               User-managed secrets (API keys, provider settings)
+
+  data/               Durable service-managed data
+    admin/              Admin home
+    assistant/          Assistant home
+    guardian/           Guardian runtime state
+    memory/             Memory database and related files
+    stash/              AKM stash
+    workspace/          Shared /work mount
 
   stack/              Docker Compose runtime assets
     core.compose.yml    Core services
-    start.sh            Canonical transparent compose wrapper
+    start.sh            Canonical compose wrapper
     addons/             Optional service overlays
 
-  backups/            Snapshot backups (created during upgrades)
-  workspace/          Shared workspace (mounted as /work in the assistant)
+  logs/               Audit and debug logs
+    admin-audit.jsonl
+    guardian-audit.log
+    opencode/
 ```
 
 ## Quick start
 
-The recommended way to install is via the CLI:
+Recommended install path:
 
 ```bash
 openpalm install
 ```
 
-For manual setup, copy this directory to your server and fill in the env files:
+Manual setup:
 
 ```bash
 cp -r .openpalm/ ~/.openpalm/
-$EDITOR ~/.openpalm/vault/stack/stack.env   # Set OP_HOME, OP_ADMIN_TOKEN, etc.
-$EDITOR ~/.openpalm/vault/user/user.env     # Set your LLM API keys
-$EDITOR ~/.openpalm/config/stack.yaml       # Optional tooling metadata for wrappers/tools
+$EDITOR ~/.openpalm/vault/stack/stack.env
+$EDITOR ~/.openpalm/vault/user/user.env
 cd ~/.openpalm/stack && ./start.sh chat admin
 ```
 
-You can also run Docker Compose directly:
+Direct Docker Compose also works:
 
 ```bash
 cd ~/.openpalm/stack
@@ -67,25 +73,24 @@ docker compose \
   up -d
 ```
 
-The live stack is defined by `stack/core.compose.yml` plus the addon compose
-files you include. `config/stack.yaml` is optional helper metadata used by
-wrappers and tools to pick addons; it does not define the runtime by itself.
-
-The bundled `stack.env` and `user.env` files are already present. Use the
-matching `.schema` files as reference; do not overwrite the shipped files with
-the schemas.
-
-When you use `start.sh` for `stop`, `down`, or `status`, pass the same addon set
-you used for `up` or use `--from-stack-yaml`.
+The live stack is defined by `stack/core.compose.yml` plus whichever addon
+compose files you include. `config/stack.yaml` is helper metadata for wrappers;
+it does not replace Compose as the runtime source of truth.
 
 ## Ownership rules
 
 | Directory | Owner | Who writes |
-|-----------|-------|------------|
-| `config/` | User | User edits, CLI/admin seeds defaults, assistant via admin API |
-| `vault/stack/` | System | CLI and admin only |
-| `vault/user/` | User | User edits directly |
+|---|---|---|
+| `config/` | User | User edits, explicit admin actions, assistant via authenticated admin API |
+| `vault/stack/` | System | CLI/admin |
+| `vault/user/` | User | User edits and explicit admin UI/API secret updates |
 | `data/` | Services | Containers at runtime |
-| `stack/` | System | Shipped compose assets used directly at runtime |
-| `backups/` | System | Created during upgrades |
-| `workspace/` | User + Assistant | Shared read-write workspace |
+| `stack/` | System-managed runtime assembly | CLI/admin lifecycle writes; user may inspect or edit |
+| `logs/` | Services | Containers at runtime |
+
+## Runtime notes
+
+- `start.sh` includes `vault/stack/stack.env` and `vault/user/user.env` automatically.
+- The `memory` service may also load `vault/stack/services/memory/managed.env`.
+- The assistant workspace is `data/workspace/`, mounted at `/work`.
+- The admin addon mounts the full OpenPalm home at `/openpalm` and reaches Docker only through `docker-socket-proxy`.

@@ -1,99 +1,120 @@
 # OpenCode Configuration Integration
 
-OpenPalm uses a compose-first, manual-first OpenCode setup. The assistant runs as
-an OpenCode container, but the host-owned files under `~/.openpalm/` remain the
-source of truth for what gets mounted and how the service starts.
+This document covers how OpenPalm wires OpenCode into the assistant and admin
+containers today.
+
+Primary runtime sources:
+
+- `.openpalm/stack/core.compose.yml`
+- `.openpalm/stack/addons/admin/compose.yml`
+- `core/assistant/entrypoint.sh`
+- `core/admin/entrypoint.sh`
 
 ---
 
-## What is authoritative
+## What Is Authoritative
 
-- The running assistant comes from the compose files under `~/.openpalm/stack/`.
-- `~/.openpalm/config/assistant/` is the user-editable OpenCode config surface.
-- `~/.openpalm/config/stack.yaml` is optional tooling metadata only. It does not
-  change the running assistant unless some helper reads it and turns it into a
-  compose command.
-- `vault/user/user.env` and `vault/stack/stack.env` provide runtime env values;
-  they are not replaced by any XDG or staging model.
+- The running assistant is defined by `.openpalm/stack/core.compose.yml`.
+- The optional admin-side OpenCode runtime is defined by `.openpalm/stack/addons/admin/compose.yml`.
+- `~/.openpalm/config/assistant/` is the user-editable OpenCode extension surface.
+- `~/.openpalm/vault/user/user.env` and `~/.openpalm/vault/stack/stack.env` provide runtime env values.
+- Project-local OpenCode config inside `/work` still works per normal OpenCode behavior, but OpenPalm's container wiring is controlled by Compose.
 
 ---
 
-## Runtime mounts
+## Assistant Runtime Wiring
 
-The core compose file mounts the assistant like this:
+### Mounts
 
 | Host path | Container path | Purpose |
 |---|---|---|
-| `~/.openpalm/config/` | `/etc/openpalm` | Read-only OpenPalm config root |
-| `~/.openpalm/config/assistant/` | `/home/opencode/.config/opencode` | User OpenCode config, tools, skills, plugins |
+| baked into image | `/etc/opencode` | Core OpenCode config and built-in extensions |
+| `~/.openpalm/config/assistant/` | `/home/opencode/.config/opencode` | User tools, plugins, skills, commands |
+| `~/.openpalm/config/` | `/etc/openpalm` | OpenPalm config tree |
+| `~/.openpalm/vault/stack/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | OpenCode auth state |
 | `~/.openpalm/vault/user/user.env` | `/etc/openpalm-vault/user.env` | Read-only user secrets file |
-| `~/.openpalm/data/assistant/` | `/home/opencode/.opencode` | Assistant runtime state |
+| `~/.openpalm/data/assistant/` | `/home/opencode` | Assistant home |
 | `~/.openpalm/data/stash/` | `/home/opencode/.akm` | AKM stash |
-| `~/.openpalm/data/workspace/` | `/work` | Working directory |
-| `~/.openpalm/logs/opencode/` | `/home/opencode/.local/state/opencode` | Logs and session state |
+| `~/.openpalm/data/workspace/` | `/work` | Shared workspace |
+| `~/.openpalm/logs/opencode/` | `/home/opencode/.local/state/opencode` | Logs and OpenCode state |
 
-The assistant also receives `vault/user/user.env` through Compose `env_file`, so
-provider keys and related settings are available as environment variables.
+### Key environment variables
 
----
-
-## Key environment variables
-
-| Variable | Source | Purpose |
+| Variable | Value | Purpose |
 |---|---|---|
-| `OPENCODE_PORT` | compose | OpenCode web server port inside the container (`4096`) |
-| `OPENCODE_AUTH` | compose | Disabled by default; host bind address is the main boundary |
-| `OPENCODE_ENABLE_SSH` | `vault/stack/stack.env` | Optional SSH server toggle |
-| `OP_ADMIN_API_URL` | compose/addon wiring | Admin API base URL when the admin addon is present |
-| `OP_ASSISTANT_TOKEN` | mapped from `ASSISTANT_TOKEN` in `vault/stack/stack.env` | Assistant auth token for admin API calls |
-| `MEMORY_API_URL` | compose | Memory service URL |
-| `MEMORY_AUTH_TOKEN` | `vault/stack/stack.env` | Memory API auth token |
-| `MEMORY_USER_ID` | `vault/user/user.env` | Default memory identity |
+| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Core OpenCode config root |
+| `OPENCODE_PORT` | `4096` | Assistant OpenCode HTTP port |
+| `OPENCODE_AUTH` | `false` | Disabled by default because host exposure is loopback-only |
+| `OPENCODE_ENABLE_SSH` | from `stack.env` | Optional SSH server toggle |
+| `HOME` | `/home/opencode` | Runtime home |
+| `OP_ADMIN_API_URL` | from `stack.env` / addon wiring | Admin API URL when admin is present |
+| `OP_ASSISTANT_TOKEN` | mapped from `ASSISTANT_TOKEN` | Assistant auth token for admin API calls |
+| `MEMORY_API_URL` | `http://memory:8765` | Memory service URL |
+| `MEMORY_AUTH_TOKEN` | from `stack.env` | Memory auth token |
+| `MEMORY_USER_ID` | from env or default | Default memory identity |
 
-Provider keys and model settings such as `OPENAI_API_KEY`, `OPENAI_BASE_URL`,
-`SYSTEM_LLM_PROVIDER`, and `SYSTEM_LLM_MODEL` come from
-`~/.openpalm/vault/user/user.env`.
+### Operational notes
 
----
-
-## Configuration layers
-
-OpenPalm keeps this simple:
-
-1. `~/.openpalm/config/assistant/` - the active OpenCode config directory in the
-   current compose setup.
-2. Project-level `.opencode/` or `opencode.json` files inside `/work` - optional
-   per-project OpenCode config, following normal OpenCode behavior.
-
-The assistant image may still bundle core defaults, but the current stack points
-`OPENCODE_CONFIG_DIR` at the mounted user config path.
-
-There is no separate OpenPalm XDG config/data/state split in the current model,
-and there is no generated staging/artifacts layer that you need to inspect to
-understand the live assistant configuration.
+- The assistant starts in `/work`.
+- The assistant has no Docker socket mount.
+- The assistant mounts only `vault/user/user.env` from the vault boundary, not the full directory.
+- The entrypoint normalizes permissions, optionally enables SSH, then drops privileges to `OP_UID:OP_GID`.
 
 ---
 
-## Security boundary
+## Admin OpenCode Wiring
+
+The optional admin addon runs its own OpenCode instance alongside the SvelteKit
+admin API/UI process.
+
+### Mounts
+
+| Host path | Container path | Purpose |
+|---|---|---|
+| baked into image | `/etc/opencode` | Built-in admin OpenCode config |
+| `~/.openpalm/` | `/openpalm` | Full OpenPalm home for control-plane access |
+| `~/.openpalm/data/admin/` | `/home/node` | Admin home |
+| `~/.openpalm/data/workspace/` | `/work` | Shared workspace |
+
+### Key environment variables
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Admin OpenCode config root |
+| `OPENCODE_PORT` | `3881` | Admin-side OpenCode port |
+| `OPENCODE_AUTH` | `false` | Disabled by default for loopback-only host binding |
+| `OP_ADMIN_API_URL` | `http://localhost:8100` | Admin self-reference |
+| `DOCKER_HOST` | `tcp://docker-socket-proxy:2375` | Docker API via proxy |
+
+This OpenCode runtime is where the admin-tools plugin is loaded.
+
+---
+
+## Configuration Layers
+
+There are three practical layers to remember:
+
+1. `/etc/opencode` - image-baked core config
+2. `/home/opencode/.config/opencode` - user extensions mounted from `config/assistant/`
+3. Project-local OpenCode config inside `/work` - optional per-project overrides managed by normal OpenCode behavior
+
+OpenPalm's filesystem and mount contract decides what is available to each layer;
+Compose remains the source of truth for that contract.
+
+---
+
+## Security Boundary
 
 - The assistant has no Docker socket.
-- The assistant does not mount the full `vault/` directory; it only gets
-  `vault/user/user.env` as a single read-only file.
-- System secrets such as `OP_ADMIN_TOKEN` stay in `vault/stack/stack.env` and
-  are not broadly exposed to the assistant container.
-- All addon and service wiring still flows through the compose file set under
-  `~/.openpalm/stack/`.
+- The assistant receives only `vault/user/user.env` as a read-only file mount from the vault boundary.
+- Stack-level secrets such as `OP_ADMIN_TOKEN` and channel HMAC secrets remain in `vault/stack/stack.env` and are not mounted as files into the assistant.
+- Admin-side Docker access is mediated by `docker-socket-proxy` on the isolated `admin_docker_net` network.
 
 ---
 
-## Day-to-day changes
+## Day-To-Day Changes
 
-- Add your own OpenCode tools, skills, or plugins under
-  `~/.openpalm/config/assistant/`.
-- Change provider keys or model settings in `~/.openpalm/vault/user/user.env`.
-- Change which services are available to the assistant by changing the compose
-  file set you run from `~/.openpalm/stack/`.
-
-If you want to verify the exact runtime definition, inspect the compose files
-directly - especially `~/.openpalm/stack/core.compose.yml` and any addon files
-you started with `-f`.
+- Add tools, plugins, commands, or skills under `~/.openpalm/config/assistant/`.
+- Update provider keys and model-related env in `~/.openpalm/vault/user/user.env`.
+- Change service wiring by editing the compose file set in `~/.openpalm/stack/`.
+- Verify the exact runtime by reading `~/.openpalm/stack/core.compose.yml` and any addon overlays used for startup.

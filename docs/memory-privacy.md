@@ -16,8 +16,9 @@ OpenPalm's compose-first layout stores memory data under `~/.openpalm/data/memor
 - Sidecar files: `~/.openpalm/data/memory/memory.db-wal`, `~/.openpalm/data/memory/memory.db-shm`
 - In container: `/data/...`
 
-The running memory container uses its built-in `/app/default_config.json` unless
-you intentionally customize the image or compose mounts.
+The shipped runtime persists memory state through `/data` only. In the current
+compose file, there is no separate `default_config.json` bind mount; any
+generated memory config is expected to live under the durable memory data tree.
 
 The memory API is exposed on `http://localhost:3898` by default and listens on container port `8765`.
 
