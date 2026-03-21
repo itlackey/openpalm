@@ -18,7 +18,8 @@ action:
     - /bin/bash
     - -c
     - |
-      for f in "$OP_STATE_HOME"/audit/*.jsonl "$OP_STATE_HOME"/audit/*.log; do
+      LOGS_DIR="${OP_HOME:?OP_HOME is required}/logs"
+      for f in "$LOGS_DIR"/*.jsonl "$LOGS_DIR"/*.log; do
         [ -f "$f" ] || continue
         tail -n 10000 "$f" > "$f.tmp" && mv "$f.tmp" "$f"
       done

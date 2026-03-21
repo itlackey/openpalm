@@ -7,7 +7,7 @@ The filesystem and volume-mount contract exists to guarantee:
 3. **Core container and routing configuration is stored on the host** for advanced users.
 4. **Leverage Docker Compose and OpenCode configuration features** to avoid custom config/orchestration implementations.
 5. **No template rendering** — manage configuration by copying whole files, not by string interpolation or code generation.
-6. **Never overwrite existing user-modified files in CONFIG_HOME during automatic lifecycle operations** (install/update/startup apply/setup reruns/upgrades); only seed missing defaults.
+6. **Never overwrite existing user-modified files in `~/.openpalm/config/` during automatic lifecycle operations** (install/update/startup apply/setup reruns/upgrades); only seed missing defaults.
 7. **All persistent container data lives on the host** for backup/restore.
 8. **All host-stored container files are user-accessible** (ownership/permissions contract).
 9. **Core assistant extensions are baked into the assistant container** and loaded from a fixed OpenCode config directory to ensure core extensions take precedence.
@@ -22,7 +22,7 @@ These are hard constraints that must never be violated during development:
 
 1. **Host CLI or admin is the orchestrator.** The host CLI manages Docker Compose directly on the host. The admin container, when present, provides a web UI and API for remote/assistant-driven stack operations via docker-socket-proxy. Only one orchestrator should manage compose operations at a time. The Docker socket is never exposed to any other container.
 2. **Guardian-only ingress.** All channel traffic enters through the guardian, which enforces HMAC verification, timestamp skew rejection, replay detection, and rate limiting. No channel may communicate directly with the assistant.
-3. **Assistant isolation.** The assistant has no Docker socket, no host filesystem access beyond its designated mounts (`config/` ro, `vault/user/user.env` ro, `data/assistant/`, `data/stash/`, `data/workspace/`, `logs/opencode/`). When the admin service is present, the assistant interacts with the stack through the admin API. When admin is absent, assistant stack-management tools are unavailable — the assistant operates with memory tools only.
+3. **Assistant isolation.** The assistant has no Docker socket, no host filesystem access beyond its designated mounts (`config/`, `vault/user/user.env` ro, `data/assistant/`, `data/stash/`, `data/workspace/`, `logs/opencode/`). When the admin service is present, the assistant interacts with the stack through the admin API. When admin is absent, assistant stack-management tools are unavailable — the assistant operates with memory tools only.
 4. **LAN-first by default.** Admin interfaces, dashboards, and channels are LAN-restricted by default. Nothing is publicly exposed without explicit user opt-in.
 
 ---
@@ -36,16 +36,27 @@ All OpenPalm state lives under a single root: **`~/.openpalm/`** (configurable v
 ### 1) Config (user-owned, non-secret)
 
 **Location:** `~/.openpalm/config/`
-**Purpose:** user-editable, non-secret configuration. Compose overlays, automations, OpenCode extensions, and the stack config file.
+**Purpose:** user-editable, non-secret configuration. Automations, OpenCode extensions, and user-managed stack settings.
 
 Subtrees:
 
-* `components/` — compose overlays (one `.yml` per component: `core.yml`, `admin.yml`, `channel-discord.yml`, etc.)
 * `automations/` — automation YAML files (mounted to scheduler)
 * `assistant/` — user OpenCode extensions (tools, plugins, skills)
-* `openpalm.yml` — stack-level config: enabled components, feature flags, network settings
+* `stack.yaml` — optional tooling metadata such as preferred addons and higher-level settings
 
-**Rule:** allowed writers are: user direct edits; explicit admin UI/API config actions; assistant calls through authenticated/allowlisted admin APIs on user request. Automatic lifecycle operations (install/update/startup apply/setup reruns/upgrades) are non-destructive for existing user files and only seed missing defaults. System-managed compose files (`core.yml`, `admin.yml`) may be updated on upgrade.
+**Rule:** allowed writers are: user direct edits; explicit admin UI/API config actions; assistant calls through authenticated/allowlisted admin APIs on user request. Automatic lifecycle operations (install/update/startup apply/setup reruns/upgrades) are non-destructive for existing user files and only seed missing defaults.
+
+### 1b) Stack (system-managed runtime assembly)
+
+**Location:** `~/.openpalm/stack/`
+**Purpose:** live Docker Compose assembly used to run the stack.
+
+Subtrees:
+
+* `core.compose.yml` — base compose definition for core services
+* `addons/<name>/compose.yml` — addon overlays such as `chat`, `api`, `voice`, `admin`
+
+**Rule:** the CLI/admin may write and update files here as part of lifecycle operations and explicit addon install/uninstall actions. Users may inspect or edit them directly, but this tree is system-assembled runtime state rather than the primary user config surface.
 
 ### 2) Vault (secrets boundary)
 
@@ -92,8 +103,8 @@ Subtrees: `rollback/` (previous known-good config snapshots for automated rollba
 
 ### A) Compose: modular by native multi-file composition
 
-The stack is defined by combining a base Compose file with component overlays using Compose’s native multi-file mechanisms (merge rules and/or `include`). ([Docker Documentation][3])
-**Implication:** adding a component is dropping a `.yml` compose overlay into `config/components/`, then running `openpalm apply` which validates the change, snapshots current state, and runs Docker Compose with the updated overlay chain.
+The stack is defined by combining a base Compose file with addon overlays using Compose’s native multi-file mechanisms (merge rules and/or `include`). ([Docker Documentation][3])
+**Implication:** adding an addon is dropping a `compose.yml` overlay into `stack/addons/<name>/`, then rerunning Docker Compose or `stack/start.sh` with the updated file list.
 
 ### B) OpenCode: core precedence via baked-in `/etc/opencode`
 
@@ -105,7 +116,8 @@ The stack is defined by combining a base Compose file with component overlays us
 
 To guarantee lifecycle operations never clobber user configuration:
 
-* **`config/` is user-owned and persistently authoritative.** Automatic lifecycle sync only seeds missing defaults and never overwrites existing user files. Explicit mutation paths — user direct edits, admin UI/API config actions, authenticated/allowlisted assistant calls to admin API on user request — may create/update/remove files as requested. System-managed compose files (`core.yml`, `admin.yml`) may be updated on upgrade.
+* **`config/` is user-owned and persistently authoritative.** Automatic lifecycle sync only seeds missing defaults and never overwrites existing user files. Explicit mutation paths — user direct edits, admin UI/API config actions, authenticated/allowlisted assistant calls to admin API on user request — may create/update/remove files as requested.
+* **`stack/` is the live runtime assembly.** Automatic lifecycle sync may update `core.compose.yml` and addon overlays there to keep runtime assets aligned with the current release and installed addon set.
 * **`vault/` has strict access rules.** Only admin mounts the full directory (rw). The assistant mounts only `vault/user/user.env` (ro file-level mount). No other container mounts anything from `vault/`. Lifecycle operations never overwrite `vault/user/user.env`; they may update `vault/stack/stack.env` (system-managed).
 * **`data/` is admin- and service-writable.** Containers own durable data. The assistant may not write to `data/` directly — it must go through the admin API.
 * **Apply uses validate-in-place with snapshot rollback.** Changes are validated against temp copies before writing to live paths. A snapshot of the current state is saved to `~/.cache/openpalm/rollback/` before any write. If deployment fails health checks, the snapshot is automatically restored.
@@ -138,18 +150,18 @@ All portable control-plane logic — lifecycle management, component operations,
 
 ## Service port assignments
 
-All OpenPalm services use the **38XX port range** to avoid conflicts with common development tools and other self-hosted services.
+Host-exposed OpenPalm services default to a small localhost-friendly port set. Core services use the `38xx` range and addon edges map their internal ports onto nearby host ports for manual use.
 
 | Service | Internal Port | Default Host Bind | Purpose |
 |---------|--------------|-------------------|---------|
-| **Assistant** (OpenCode) | 3800 | `127.0.0.1:3800` | OpenCode web UI + API |
-| **Voice channel** | 3810 | `127.0.0.1:3810` | Voice interface (TTS/STT) |
-| **Admin** | 3880 | `127.0.0.1:3880` | Admin UI + API |
-| **Admin OpenCode** (#304) | 3881 | `127.0.0.1:3881` | Admin OpenCode web UI + API (host-only) |
-| **Guardian** | 3899 | (internal only) | HMAC verification + rate limiting |
+| **Assistant** (OpenCode) | 4096 | `127.0.0.1:3800` | OpenCode web UI + API |
+| **Voice addon** | 8186 | `127.0.0.1:3810` | Voice interface (TTS/STT) |
+| **Admin** | 8100 | `127.0.0.1:3880` | Admin UI + API |
+| **Guardian** | 8080 | (internal only) | HMAC verification + rate limiting |
 | **Scheduler** | 3897 | (internal only) | Automation scheduler |
-| **Memory** | 3898 | (internal only) | Memory service API |
-| **Channel Chat** | 3820 | (internal only) | Chat channel adapter |
+| **Memory** | 8765 | `127.0.0.1:3898` | Memory service API |
+| **Chat addon** | 8181 | `127.0.0.1:3820` | OpenAI-compatible chat edge |
+| **API addon** | 8182 | `127.0.0.1:3821` | OpenAI/Anthropic-compatible API edge |
 
 Port assignments are defined via `OP_*_PORT` variables in `vault/stack/stack.env` and referenced in compose files via `${VAR}` substitution.
 
@@ -186,16 +198,15 @@ This ensures sdk transitive dependencies are available at runtime. Since these s
 
 ## Operational behavior
 
-* **Add a component:** drop a `.yml` compose overlay into `config/components/`, run `openpalm apply`. The CLI validates the overlay, snapshots current state, and runs `docker compose up -d` with the updated overlay chain. ([Docker Documentation][3])
+* **Add an addon:** drop `compose.yml` into `stack/addons/<name>/`, then rerun `docker compose up -d` or `stack/start.sh` with that addon included. ([Docker Documentation][3])
 * **Add an extension (user):** copy OpenCode assets into `config/assistant/` following OpenCode’s directory structure. ([OpenCode][1])
 * **Core precedence:** core extensions live in `/etc/opencode` inside the assistant container and are loaded via `OPENCODE_CONFIG_DIR`. ([OpenCode][1])
-* **Apply changes:** the CLI or admin validates proposed changes (Varlock schema, compose config) before writing anything. If validation passes, a snapshot of current live files is saved to `~/.cache/openpalm/rollback/`, changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution. Compose is invoked with two env files: `vault/stack/stack.env` (system-managed: admin token, HMAC secrets, paths, UID/GID, image tags) and `vault/user/user.env` (user-managed: LLM keys, provider URLs). Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` and `vault/user/user.env`; it may seed missing defaults and update system-managed files (`vault/stack/stack.env`, `config/components/core.yml`).
+* **Apply changes:** the CLI or admin validates proposed changes (Varlock schema, compose config) before writing anything. If validation passes, a snapshot of current live files is saved to `~/.cache/openpalm/rollback/`, changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution. Compose is invoked with two env files: `vault/stack/stack.env` (system-managed: admin token, HMAC secrets, paths, UID/GID, image tags, bind ports) and `vault/user/user.env` (user-managed: LLM keys, provider URLs). Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` and `vault/user/user.env`; it may seed missing defaults and update system-managed files in `stack/` and `vault/stack/stack.env`.
 * **Hot-reload LLM keys:** the assistant watches `vault/user/user.env` (mounted read-only) via file watcher. Editing `user.env` on the host takes effect within seconds — no container restart needed, no lost context.
 * **Rollback:** `openpalm rollback` restores the most recent snapshot from `~/.cache/openpalm/rollback/` and restarts the stack. Available both as an automated response to failed deploys and as a manual escape hatch.
 * **Backup/restore:** `tar czf backup.tar.gz ~/.openpalm` archives the entire stack. Restore is extract and `docker compose up -d` — no staging tier to reconstruct.
 
 [1]: https://opencode.ai/docs/config/?utm_source=chatgpt.com "Config"
-[2]: https://specifications.freedesktop.org/basedir/latest/?utm_source=chatgpt.com "XDG Base Directory Specification"
 [3]: https://docs.docker.com/reference/compose-file/merge/?utm_source=chatgpt.com "Merge | Docker Docs"
 
 [5]: https://docs.docker.com/engine/storage/bind-mounts/?utm_source=chatgpt.com "Bind mounts"

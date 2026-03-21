@@ -5,6 +5,11 @@ services:
   discord:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
+    env_file:
+      - path: ${OP_HOME}/vault/stack/stack.env
+        required: false
+      - path: ${OP_HOME}/vault/user/user.env
+        required: false
     environment:
       PORT: "8184"
       GUARDIAN_URL: http://guardian:8080

@@ -8,7 +8,7 @@ overwrite existing user files.
 
 | File | Purpose |
 |------|---------|
-| `stack.yaml` | **Primary configuration file.** Connections, model assignments, memory config, and enabled addons. Read by `@openpalm/lib` for all stack operations. |
+| `stack.yaml` | Optional tooling metadata. Connections, model assignments, and preferred addons for helper tooling. |
 | `host.yaml` | Host environment snapshot (platform, Docker status, local LLM availability). Written at install time by the CLI. Not committed to the repo. |
 
 ## Subdirectories
@@ -18,12 +18,13 @@ overwrite existing user files.
 | `assistant/` | OpenCode user config (`opencode.json`), plugins, skills, and tools. Mounted into the assistant container at `/home/opencode/.config/opencode`. |
 | `automations/` | Scheduler automation definitions (YAML). Core automations (cleanup, validation) are seeded at install; optional ones can be added from the catalog or written by hand. |
 | `guardian/` | Guardian-specific configuration. |
-| `components/` | Compose overlays installed at runtime. The CLI writes `core.yml` here; channel and addon overlays are added during setup. |
 
 ## stack.yaml
 
-This is the single source of truth for stack configuration. It replaces
-the previous `openpalm.yaml`, `profiles.json`, and per-feature flags.
+This file is optional. It can help tooling choose addons and describe preferred
+settings, but the runtime stack is still defined by the compose files in
+`~/.openpalm/stack/`. If `stack.yaml` disagrees with an explicit compose
+command, the explicit compose command wins.
 
 ```yaml
 version: 1
@@ -46,7 +47,7 @@ assignments:          # Which connection + model to use for each capability
     connectionId: openai
     model: text-embedding-3-small
     embeddingDims: 1536
-  memory:             # Memory service config (drives data/memory/default_config.json)
+  memory:             # Preferred memory settings for helper tooling
     llm: { connectionId: openai, model: gpt-4o }
     embeddings: { connectionId: openai, model: text-embedding-3-small }
     vectorStore: { provider: sqlite-vec, collectionName: memory, dbPath: /data/memory.db }
@@ -56,3 +57,8 @@ addons:               # Enabled addon services
   - chat
   - ollama
 ```
+
+Use `~/.openpalm/stack/start.sh --from-stack-yaml` if you want the wrapper to
+resolve addon compose files from this list. Only a simple top-level `addons:`
+list is supported. Otherwise, select addons directly with compose `-f` flags or
+raw addon arguments to `start.sh`.

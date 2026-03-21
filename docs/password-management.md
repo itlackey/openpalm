@@ -1,296 +1,147 @@
 # Password & Secret Management
 
-OpenPalm uses a layered secret management system built around a `vault/` directory boundary, pluggable backends, and strict container isolation. Secrets are never returned over the API and are redacted from container logs at runtime.
+OpenPalm keeps secrets inside one vault boundary under `~/.openpalm/vault/`.
+The current model is simple: one user env file, one stack env file, and Docker
+Compose reads both directly.
 
-## Vault Layout
+---
 
-All secrets live under `~/.openpalm/vault/` (or `$OP_HOME/vault/`):
+## Vault layout
 
-```
+```text
 ~/.openpalm/vault/
-  user.env            # User-editable secrets (LLM API keys, provider URLs)
-  user.env.schema     # Varlock schema for user.env
-  system.env          # System-managed secrets (tokens, HMAC, paths)
-  system.env.schema   # Varlock schema for system.env
+  stack/
+    stack.env
+    stack.env.schema
+  user/
+    user.env
+    user.env.schema
 ```
 
-The vault directory is created with `0700` permissions. All files inside are `0600`. Only the file owner can read or write them.
+- `vault/user/user.env` is user-managed.
+- `vault/stack/stack.env` is system-managed.
+- Compose is run with both files, usually as:
+  `--env-file ../vault/stack/stack.env --env-file ../vault/user/user.env`.
 
-## Two-File Environment Model
+---
 
-Secrets are split across two files based on who owns them:
+## `vault/user/user.env`
 
-### vault/user.env (User-Editable)
+This file is for provider keys, model settings, and user-level configuration.
 
-Contains LLM API keys, provider configuration, and owner info. This file is:
+Common keys include:
 
-- **Hot-reloadable** -- the assistant picks up changes within seconds
-- **Never overwritten** by automatic lifecycle operations (install, update, startup)
-- **Mounted read-only** into the assistant container as a single file
+| Key | Notes |
+|---|---|
+| `OPENAI_API_KEY` | OpenAI-compatible provider key |
+| `OPENAI_BASE_URL` | Alternate OpenAI-compatible endpoint |
+| `ANTHROPIC_API_KEY` | Anthropic key |
+| `GROQ_API_KEY` | Groq key |
+| `MISTRAL_API_KEY` | Mistral key |
+| `GOOGLE_API_KEY` | Google AI key |
+| `EMBEDDING_API_KEY` | Embedding provider key |
+| `SYSTEM_LLM_PROVIDER` | Default provider selection |
+| `SYSTEM_LLM_BASE_URL` | Default provider base URL |
+| `SYSTEM_LLM_MODEL` | Default model |
+| `EMBEDDING_MODEL` | Embedding model |
+| `EMBEDDING_DIMS` | Embedding dimensions |
+| `MEMORY_USER_ID` | Default memory identity |
+| `OWNER_NAME` | Operator display name |
+| `OWNER_EMAIL` | Operator email |
 
-| Key | Sensitive | Notes |
-|-----|-----------|-------|
-| `OPENAI_API_KEY` | Yes | OpenAI provider key |
-| `ANTHROPIC_API_KEY` | Yes | Anthropic provider key |
-| `GROQ_API_KEY` | Yes | Groq provider key |
-| `MISTRAL_API_KEY` | Yes | Mistral provider key |
-| `GOOGLE_API_KEY` | Yes | Google AI provider key |
-| `MCP_API_KEY` | Yes | MCP service key |
-| `EMBEDDING_API_KEY` | Yes | Embedding provider key |
-| `OPENVIKING_API_KEY` | Yes | OpenViking integration key |
-| `SYSTEM_LLM_PROVIDER` | No | LLM provider name |
-| `SYSTEM_LLM_BASE_URL` | No | LLM provider base URL |
-| `SYSTEM_LLM_MODEL` | No | Default model name |
-| `EMBEDDING_MODEL` | No | Embedding model name |
-| `EMBEDDING_DIMS` | No | Embedding dimensions |
-| `MEMORY_USER_ID` | No | Memory system user ID |
-| `OWNER_NAME` | No | Operator display name |
-| `OWNER_EMAIL` | No | Operator email |
+Behavior:
 
-### vault/system.env (System-Managed)
+- safe to edit directly on the host
+- mounted into the assistant as a single read-only file
+- also passed as container environment via Compose
+- not overwritten by normal lifecycle operations
 
-Contains tokens, service auth credentials, port bindings, and runtime paths. This file is:
+---
 
-- **Written only by the CLI or admin** during install, setup, or upgrade
-- **Not hot-reloadable** -- changes require a stack restart
-- **Never mounted directly** into non-admin containers (values are injected via compose `${VAR}` substitution)
+## `vault/stack/stack.env`
 
-| Key | Sensitive | Notes |
-|-----|-----------|-------|
-| `OP_ADMIN_TOKEN` | Yes | Admin API authentication |
-| `ASSISTANT_TOKEN` | Yes | Assistant/scheduler API authentication |
-| `MEMORY_AUTH_TOKEN` | Yes | Memory service authentication |
-| `OPENCODE_SERVER_PASSWORD` | Yes | OpenCode web UI password |
-| `OP_HOME` | No | OpenPalm root directory path |
-| `OP_ASSISTANT_PORT` | No | Assistant port (default 3800) |
-| `OP_ADMIN_PORT` | No | Admin port (default 3880) |
-| `OP_GUARDIAN_PORT` | No | Guardian port (default 3899) |
-| `OP_MEMORY_PORT` | No | Memory port (default 3898) |
-| `CHANNEL_*_SECRET` | Yes | Per-channel HMAC secrets |
+This file is for stack-level tokens, host paths, ports, and other runtime
+settings used by Compose.
 
-## Container Mount Contract
+Important keys include:
 
-The vault boundary is enforced through Docker Compose volume mounts:
+| Key | Notes |
+|---|---|
+| `OP_ADMIN_TOKEN` | Admin UI/API authentication token |
+| `ASSISTANT_TOKEN` | Assistant/scheduler auth token for admin API access |
+| `MEMORY_AUTH_TOKEN` | Memory API auth token |
+| `OP_HOME` | OpenPalm home directory |
+| `OP_UID` / `OP_GID` | Host user/group mapping |
+| `OP_IMAGE_NAMESPACE` / `OP_IMAGE_TAG` | Image source and tag |
+| `OP_ASSISTANT_PORT` | Assistant host port, default `3800` |
+| `OP_ADMIN_PORT` | Admin host port, default `3880` |
+| `OP_ADMIN_OPENCODE_PORT` | Admin-side OpenCode port, default `3881` |
+| `OP_MEMORY_PORT` | Memory host port, default `3898` |
+| `OP_CHAT_PORT` | Chat addon host port, default `3820` |
+| `OP_API_PORT` | API addon host port, default `3821` |
+| `OP_VOICE_PORT` | Voice addon host port, default `3810` |
+| `OP_ASSISTANT_SSH_PORT` | Optional assistant SSH port, default `2222` |
 
-| Container | Vault Access | Mount |
-|-----------|-------------|-------|
-| **Admin** | Full vault (rw) | `${OP_HOME}:/openpalm` |
-| **Assistant** | `user.env` only (ro) | `vault/user/user.env:/etc/openpalm-vault/user.env:ro` |
-| **Guardian** | None | Receives secrets via `env_file` at startup |
-| **Memory** | None | Receives secrets via `${VAR}` substitution |
-| **Scheduler** | None | Receives secrets via `${VAR}` substitution |
+Behavior:
 
-Only the admin container has write access to the vault. The assistant can read `user.env` but cannot see system secrets like `OP_ADMIN_TOKEN`.
+- read directly by Docker Compose
+- normally written by CLI/admin tooling, but still plain text on the host
+- changes usually require recreating containers to take effect
 
-## Authentication Tokens
+---
 
-OpenPalm uses two distinct authentication tokens:
+## Container access rules
 
-### OP_ADMIN_TOKEN
+| Container | Vault access | Notes |
+|---|---|---|
+| `admin` addon | full `~/.openpalm/` bind mount | Only service with broad vault visibility |
+| `assistant` | `vault/user/user.env` only | Read-only file mount plus env injection |
+| `guardian` | no vault mount | Reads needed values from Compose env |
+| `memory` | no vault mount | Reads needed values from Compose env |
+| `scheduler` | no vault mount | Reads needed values from Compose env |
 
-- Set during initial setup (user-provided or generated)
-- Required for privileged operations: secrets management, install/uninstall, connections, upgrade
-- Sent via the `x-admin-token` HTTP header
+The assistant does not mount the full `vault/` directory and does not get broad
+access to stack secrets by filesystem path.
 
-### ASSISTANT_TOKEN
+---
 
-- Auto-generated during install (32 random hex characters)
-- Used by the assistant and scheduler for operational API calls
-- Grants access to non-privileged endpoints: container management, logs, registry, automations
-- Also sent via the `x-admin-token` header (same header, different credential)
+## Authentication tokens
 
-Token comparison uses SHA-256 hashing with `timingSafeEqual` to prevent timing attacks.
+### `OP_ADMIN_TOKEN`
 
-### Route Authorization
+- primary admin credential
+- used for privileged admin UI/API operations
+- sent in the `x-admin-token` header
 
-Admin routes are classified into two tiers:
+### `ASSISTANT_TOKEN`
 
-| Auth Level | Endpoints | Who Can Call |
-|-----------|-----------|-------------|
-| `requireAdmin` | `/admin/secrets/*`, `/admin/connections/*`, `/admin/install`, `/admin/uninstall`, `/admin/upgrade` | Admin token only |
-| `requireAuth` | `/admin/containers/*`, `/admin/channels/*`, `/admin/logs`, `/admin/registry/*`, `/admin/automations`, `/admin/audit` | Admin or assistant token |
+- separate operational token for the assistant and scheduler
+- exposed inside the assistant as `OP_ASSISTANT_TOKEN`
+- also sent in the `x-admin-token` header when assistant tooling calls the admin API
 
-## Secret Backends
+OpenPalm does not use `Authorization: Bearer` for these admin endpoints.
 
-OpenPalm supports pluggable secret backends through the `SecretBackend` interface. The active backend is detected automatically.
+---
 
-### PlaintextBackend (Default)
+## Optional encrypted backend
 
-The default backend stores secrets directly in `vault/user.env` and `vault/system.env`. No additional setup is required.
+The default backend stores values in the two env files above. OpenPalm also has
+an optional `pass` backend for encrypted storage.
 
-Secrets are routed to the correct file based on scope:
-- **User scope** (API keys, custom secrets) go to `vault/user.env`
-- **System scope** (tokens, component secrets) go to `vault/system.env`
+When enabled, related metadata lives under `~/.openpalm/data/secrets/`, such as:
 
-For component and custom secrets that don't have a predefined env var name, the backend generates a deterministic key: `OP_SECRET_<SHA256-HASH>`.
+- `~/.openpalm/data/secrets/provider.json`
+- `~/.openpalm/data/secrets/pass-store/`
 
-### PassBackend (Encrypted)
+If you are not explicitly using `pass`, assume the env files are the active
+source of truth.
 
-The `pass` backend stores secrets in a GPG-encrypted password store. It requires:
-- GPG key pair available in the admin container's keyring
-- The `pass` CLI (installed in the admin Docker image)
+---
 
-#### Setting Up Encrypted Secrets
+## Practical guidance
 
-1. **Generate or import a GPG key** on your host:
-   ```bash
-   gpg --gen-key
-   ```
-
-2. **Initialize the pass store:**
-   ```bash
-   ./scripts/pass-init.sh --gpg-id your-email@example.com
-   ```
-
-   This creates:
-   - `~/.openpalm/data/secrets/pass-store/` -- the encrypted store
-   - `~/.openpalm/data/secrets/provider.json` -- backend configuration
-
-3. **Restart the stack** to pick up the new backend.
-
-The pass store is scoped to the OpenPalm installation. Entry names follow a canonical hierarchy:
-
-```
-openpalm/admin-token
-openpalm/assistant-token
-openpalm/openai/api-key
-openpalm/component/<instance-id>/<field-name>
-openpalm/custom/<user-defined-key>
-```
-
-Entry names are validated to prevent path traversal -- only lowercase alphanumeric characters, dots, hyphens, and forward slashes are allowed.
-
-#### Provider Configuration
-
-The backend selection is stored in `~/.openpalm/data/secrets/provider.json`:
-
-```json
-{
-  "provider": "pass",
-  "passwordStoreDir": "/home/user/.openpalm/data/secrets/pass-store",
-  "passPrefix": "openpalm"
-}
-```
-
-If this file doesn't exist, the plaintext backend is used.
-
-## Secrets API
-
-The admin exposes four endpoints for secret management. All require the admin token and never return secret values.
-
-### List Secrets
-
-```
-GET /admin/secrets?prefix=openpalm/
-```
-
-Returns metadata for all secrets:
-```json
-{
-  "provider": "plaintext",
-  "capabilities": { "generate": true, "remove": true, "rename": false },
-  "entries": [
-    {
-      "key": "openpalm/openai/api-key",
-      "scope": "user",
-      "kind": "core",
-      "provider": "plaintext",
-      "present": true,
-      "envKey": "OPENAI_API_KEY"
-    }
-  ]
-}
-```
-
-### Write a Secret
-
-```
-POST /admin/secrets
-Content-Type: application/json
-
-{ "key": "openpalm/custom/my-service-token", "value": "sk-..." }
-```
-
-### Generate a Random Secret
-
-```
-POST /admin/secrets/generate
-Content-Type: application/json
-
-{ "key": "openpalm/custom/webhook-secret", "length": 64 }
-```
-
-Generates a cryptographically random hex value (length 16-4096, default 32).
-
-### Remove a Secret
-
-```
-DELETE /admin/secrets?key=openpalm/custom/my-service-token
-```
-
-All operations are audit-logged to `~/.openpalm/logs/admin-audit.jsonl` with actor attribution (admin vs assistant), action type, and request ID.
-
-## Secret Key Hierarchy
-
-Secrets are organized into three scopes:
-
-| Scope | Key Pattern | File (Plaintext) | Example |
-|-------|-------------|-------------------|---------|
-| **Core** | `openpalm/<name>` | user.env or system.env | `openpalm/openai/api-key` |
-| **Component** | `openpalm/component/<instance>/<field>` | system.env | `openpalm/component/my-discord/bot-token` |
-| **Custom** | `openpalm/custom/<name>` | user.env | `openpalm/custom/webhook-secret` |
-
-Core mappings are static (12 predefined keys). Component mappings are derived from `.env.schema` files with `@sensitive` annotations. Custom mappings are user-created via the API.
-
-## Component Sensitive Fields
-
-When a component's `.env.schema` marks a field as `@sensitive`, the secret backend manages it automatically:
-
-```ini
-# --- Discord Configuration ---
-# Discord bot token
-# @type=string @required @sensitive
-DISCORD_BOT_TOKEN=
-```
-
-The lifecycle is:
-1. **On instance creation** -- sensitive fields are registered with the secret backend under `openpalm/component/<instance-id>/<field-name>`
-2. **On configuration** -- values for sensitive fields are written through the backend, not stored in the instance `.env` file
-3. **On instance deletion** -- sensitive field registrations are removed and backend entries cleaned up
-
-Registrations are tracked in `~/.openpalm/data/secrets/component-secrets.json`.
-
-## Runtime Log Redaction
-
-Varlock wraps container processes to prevent secrets from leaking into Docker logs. The `.openpalm/vault/redact.env.schema` file lists all sensitive env vars. Any matching values in stdout/stderr output are replaced with `[REDACTED]`.
-
-The redact schema is regenerated during configuration persistence to stay in sync with `@sensitive` declarations in the vault schemas.
-
-## Dev Environment
-
-For local development with the plaintext backend:
-
-```bash
-./scripts/dev-setup.sh --seed-env
-```
-
-This seeds `vault/user.env` and `vault/system.env` with dev-safe defaults including `dev-admin-token`.
-
-For development with encrypted secrets:
-
-```bash
-./scripts/dev-setup.sh --seed-env --pass --gpg-id your-key@example.com
-```
-
-This initializes a pass store under `.dev/data/secrets/pass-store/` and seeds test entries.
-
-## Upgrading from v0.9.x
-
-Older installs used `secrets.env` and `stack.env` under XDG directories. The migration path:
-
-1. Run `openpalm migrate` to move files into the `~/.openpalm/` layout
-2. The migrate command splits `secrets.env` into `vault/user.env` (API keys) and `vault/system.env` (tokens)
-3. If `ASSISTANT_TOKEN` is missing, it is auto-generated and written to `vault/system.env`
-4. Old files are preserved until `openpalm migrate --cleanup` is run
-
-The admin UI shows a migration banner when a legacy installation is detected.
+- Edit `~/.openpalm/vault/user/user.env` when changing model keys or provider settings.
+- Edit `~/.openpalm/vault/stack/stack.env` only when you need to change ports,
+  paths, or stack-level tokens.
+- Back up the whole `~/.openpalm/vault/` tree.
+- Never commit real env values from either vault file.

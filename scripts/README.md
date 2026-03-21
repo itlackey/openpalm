@@ -1,83 +1,55 @@
 # scripts
 
-Utility scripts for installing, updating, and developing OpenPalm.
+Utility scripts for installing, testing, and developing OpenPalm.
+The platform model is compose-first and manual-first; these scripts help seed or package that flow, but they do not replace Docker Compose as deployment truth.
 
-## Production scripts
+## Install and release helpers
 
 ### `setup.sh` / `setup.ps1`
 
-One-liner installer for Mac/Linux and Windows respectively.
-
-```bash
-# Mac / Linux
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.sh | bash
-
-# Windows (PowerShell)
-irm https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.ps1 | iex
-```
-
-Re-run to update — secrets are never overwritten. Options:
-
-| Flag | Effect |
-|---|---|
-| `--force` | Skip confirmation prompts |
-| `--version TAG` | Install a specific release tag (default: current release) |
-| `--no-start` | Set up files but don't start Docker services |
-| `--no-open` | Don't open the admin UI after install |
-
-### `install.sh`
-
-Installs the compiled OpenPalm CLI binary from GitHub Releases into `~/.local/bin/openpalm` by default.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/install.sh | bash
-```
-
-Options:
-
-| Flag | Effect |
-|---|---|
-| `--version TAG` | Install a specific release tag (default: `latest`) |
-| `--install-dir PATH` | Install to a custom directory |
+Convenience installers for users who want a guided bootstrap instead of copying the repo's `.openpalm/` bundle by hand.
 
 ### `release.sh`
 
-Bumps platform package versions, runs tests, commits, pushes, and tags a release. The tag triggers the Release workflow (Docker images, CLI binaries, GitHub release). npm packages are **not** bumped — they are versioned independently via per-package publish workflows.
-
-```bash
-./scripts/release.sh 0.7.2        # stable release
-./scripts/release.sh 0.8.0-rc1    # prerelease
-```
-
-Aborts if the working tree is dirty or the tag already exists.
+Bumps platform versions, runs release checks, and creates a tagged release.
 
 ### `bump-platform.sh`
 
-Updates platform `package.json` files (root, `packages/admin`, `core/guardian`, `packages/cli`) to a new semver version. Does not touch npm packages or dependency cross-references.
+Updates platform package versions without touching independently versioned npm packages.
 
-```bash
-./scripts/bump-platform.sh 1.2.3
-```
-
-npm packages (`packages/channels-sdk`, `packages/channel-*`, `packages/assistant-tools`) are versioned independently via their own GitHub Actions publish workflows.
-
-## Development scripts
+## Development helpers
 
 ### `dev-setup.sh`
 
-Creates `.dev/` XDG directories and optionally seeds config files for local development.
+Creates a local `.dev/` OpenPalm home for development.
+
+- Seeds `.dev/vault/user/user.env` and `.dev/vault/stack/stack.env` when `--seed-env` is used
+- Copies the repo's compose assets into `.dev/stack/`
+- Seeds a local OpenCode config and memory `default_config.json`
+- Can initialize the optional `pass` backend
+
+Examples:
 
 ```bash
-./scripts/dev-setup.sh --seed-env        # Seed configs (non-destructive)
-./scripts/dev-setup.sh --seed-env --force # Overwrite existing configs
+./scripts/dev-setup.sh --seed-env
+./scripts/dev-setup.sh --seed-env --force
+./scripts/dev-setup.sh --seed-env --pass --gpg-id <key>
 ```
 
-Sets `OP_*_HOME` to absolute `.dev/` paths so the admin dev server picks them up without additional environment setup.
+Notes:
 
-When `--seed-env` is used, this script also:
-- Seeds `OP_ADMIN_TOKEN=dev-admin-token` in `vault/user.env` (matches test expectations)
-- Seeds OpenMemory `default_config.json` with Ollama via `host.docker.internal:11434` and `nomic-embed-text` (768 dims)
+- This is a dev-only compatibility layout, not the recommended user-facing manual setup flow
+- Current seeded tokens include `OP_ADMIN_TOKEN=dev-admin-token` and `ADMIN_TOKEN=dev-admin-token` for compatibility with existing tests
 
-## iso/
+## Test and misc helpers
 
-Scripts and config files for building a Debian 13 kiosk ISO that auto-starts the OpenPalm stack. See [`iso/README.md`](iso/README.md).
+- `dev-e2e-test.sh` - local dev-stack test flow
+- `release-e2e-test.sh` - release validation flow
+- `upgrade-test.sh` - upgrade scenario checks
+- `validate-registry.sh` - registry validation
+- `install-hooks.sh` - git hook setup
+- `pass-init.sh` - pass backend bootstrap
+
+## ISO helper
+
+See `scripts/iso/README.md` for the kiosk ISO builder.

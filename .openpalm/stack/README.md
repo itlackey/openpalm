@@ -1,55 +1,76 @@
 # stack/
 
-Self-contained Docker Compose foundation for running OpenPalm. The core
-compose file defines 4 services; addons are layered on with `-f` overlays.
+This directory is the runtime stack. OpenPalm runs from `core.compose.yml`
+plus whichever addon compose files you include from `addons/`.
 
 ## Quick start
 
 ```bash
-# Start core services only
+# Run the core stack by hand
 cd ~/.openpalm/stack
-docker compose -f core.compose.yml \
+docker compose \
+  --project-name openpalm \
   --env-file ../vault/stack/stack.env \
   --env-file ../vault/user/user.env \
+  -f core.compose.yml \
   up -d
 
-# Or use the wrapper script
-./start.sh                      # Core only
-./start.sh chat admin           # Core + addons
-./start.sh --stop               # Stop everything
-./start.sh --status             # Show service status
+# Add addons by adding more -f files
+docker compose \
+  --project-name openpalm \
+  --env-file ../vault/stack/stack.env \
+  --env-file ../vault/user/user.env \
+  -f core.compose.yml \
+  -f addons/chat/compose.yml \
+  -f addons/admin/compose.yml \
+  up -d
+
+# Or use the transparent wrapper
+./start.sh
+./start.sh chat admin
+./start.sh --from-stack-yaml
+./start.sh --dry-run chat admin
+./start.sh --status chat admin
 ```
+
+`start.sh` always prints the resolved `docker compose` command before running
+it. Explicit addon arguments win over `config/stack.yaml`. If you do not pass
+addons and do not use `--from-stack-yaml`, it runs the core stack only.
+
+For `ps`, `stop`, and `down`, use the same addon set you used for `up`, or use
+`--from-stack-yaml` so the wrapper resolves the same compose file list.
 
 ## Core services
 
-| Service | Port | Purpose |
-|---------|------|---------|
-| `memory` | 3898 | Bun.js memory service with sqlite-vec vector store |
-| `assistant` | 3800 | OpenCode AI runtime (no Docker socket) |
-| `guardian` | 3899 | Channel ingress — HMAC verification, replay protection, rate limiting |
-| `scheduler` | 3897 | Automation engine — runs cron jobs from `config/automations/` |
+| Service | Host port | Purpose |
+|---------|-----------|---------|
+| `memory` | `3898 -> 8765` | Bun memory service with sqlite-vec vector store |
+| `assistant` | `3800 -> 4096` | OpenCode runtime without Docker socket |
+| `guardian` | none (`8080` internal) | Signed ingress and channel traffic gateway |
+| `scheduler` | `3897 -> 8090` | Automation engine for `config/automations/` |
 
 ## Addons
 
-Each addon is a compose overlay in `addons/<name>/compose.yml` with a
-companion `.env.schema` documenting its configuration variables.
+Each addon is a compose overlay in `addons/<name>/compose.yml`. Compose file
+selection is the deployment model. `config/stack.yaml` is optional tooling
+metadata that can help choose addons, but it does not replace these files.
 
-| Addon | Port | Network | Purpose |
-|-------|------|---------|---------|
-| `admin` | 3880 | admin_docker_net | Web UI + API (Docker socket proxy) |
-| `api` | 3882 | channel_lan | OpenAI/Anthropic-compatible API facade |
-| `chat` | 3881 | channel_lan | Browser-based chat widget |
-| `discord` | — | channel_lan | Discord bot (gateway-based) |
-| `ollama` | 11434 | assistant_net | Local LLM inference server |
-| `openviking` | 1933 | assistant_net | Knowledge management engine |
-| `slack` | — | channel_lan | Slack bot (socket mode) |
-| `voice` | 3810 | channel_lan | Voice interface (STT/LLM/TTS) |
+| Addon | Host port | Purpose |
+|-------|-----------|---------|
+| `admin` | `3880 -> 8100` | Admin UI/API |
+| `api` | `3821 -> 8182` | OpenAI/Anthropic-compatible API facade |
+| `chat` | `3820 -> 8181` | OpenAI-compatible chat edge |
+| `discord` | none | Discord bot adapter |
+| `ollama` | `11434` | Local LLM inference server |
+| `openviking` | none | Knowledge management engine |
+| `slack` | none | Slack bot adapter |
+| `voice` | `3810 -> 8186` | Voice channel |
 
 ## Networks
 
 | Network | Purpose |
 |---------|---------|
-| `channel_lan` | LAN-restricted channel traffic (bound to 127.0.0.1) |
-| `channel_public` | Publicly accessible channels (opt-in, bound to 0.0.0.0) |
-| `assistant_net` | Internal communication between core services |
-| `admin_docker_net` | Isolated network for admin + Docker socket proxy |
+| `channel_lan` | Internal/LAN-facing channel traffic |
+| `channel_public` | Public channel traffic when an addon opts in |
+| `assistant_net` | Internal core-service communication |
+| `admin_docker_net` | Isolated network for admin and docker-socket-proxy |

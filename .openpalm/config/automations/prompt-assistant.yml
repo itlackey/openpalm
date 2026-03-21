@@ -1,22 +1,24 @@
-# prompt-assistant.yml — Send a scheduled message to the assistant
+# prompt-assistant.yml — Example scheduled prompt for the chat addon
 #
-# Sends a prompt through the chat channel's OpenAI-compatible API
-# daily at 8 AM. Requires the chat channel to be installed.
+# Sends a prompt through the optional chat addon's OpenAI-compatible API.
+# This example is disabled by default because the scheduler service cannot reach
+# the chat addon unless you intentionally extend the network topology and
+# replace the URL below with a reachable endpoint.
 #
 # Customize the body to suit your needs.
 # Common uses: daily briefing, system report, recurring task reminders.
 #
-# To use: copy this file to ~/.config/openpalm/automations/prompt-assistant.yml
+# This file already lives in the bundled automations directory.
 
 name: Prompt Assistant
-description: Send a daily prompt to the assistant via the chat channel
+description: Example scheduled prompt routed through the optional chat addon
 schedule: daily-8am
-enabled: true
+enabled: false
 
 action:
   type: http
   method: POST
-  url: http://channel-chat:8181/v1/chat/completions
+  url: http://replace-me/v1/chat/completions
   body:
     model: default
     messages:

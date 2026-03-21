@@ -1,15 +1,16 @@
 # Directory Structure & Volume Design
 
-OpenPalm uses a single home directory (`~/.openpalm/` by default) with four
-subdirectories that separate concerns by owner and sensitivity.
+OpenPalm uses a single home directory (`~/.openpalm/` by default) with a small
+set of top-level directories that separate concerns by owner and sensitivity.
 
 ---
 
-## Four-Directory Layout
+## Home Layout
 
 ```
 ~/.openpalm/                  OP_HOME — root of all OpenPalm state
 ├── config/                   User-editable configuration
+├── stack/                    Live compose assembly
 ├── vault/                    Secrets boundary
 ├── data/                     Service-managed persistent data
 └── logs/                     Audit and debug logs
@@ -17,10 +18,11 @@ subdirectories that separate concerns by owner and sensitivity.
 
 | Directory | Owner | Purpose |
 |-----------|-------|---------|
-| **config/** | User | Non-secret config: components, automations, OpenCode extensions |
+| **config/** | User | Non-secret config: automations, connections, OpenCode extensions |
+| **stack/** | User + CLI/Admin | Live compose assets: `core.compose.yml` + addon overlays |
 | **vault/user/** | User | User-managed secrets: `user.env` (LLM keys, owner info) |
 | **vault/stack/** | Admin | System-managed secrets: `stack.env` (admin token, HMAC, paths) |
-| **data/** | Admin + Services | Memory, assistant home, guardian, component catalog |
+| **data/** | Services | Memory, assistant state, guardian runtime data, stash, workspace |
 | **logs/** | Services | Consolidated audit/debug output |
 
 **config/ is the user-owned persistent source of truth** and the primary touchpoint for user-managed config.
@@ -38,6 +40,18 @@ system-policy files there.
 
 ```
 ~/.openpalm/                           # OP_HOME
+├── stack/
+│   ├── core.compose.yml               # Base compose definition
+│   └── addons/
+│       ├── admin/
+│       │   └── compose.yml
+│       ├── chat/
+│       │   └── compose.yml
+│       ├── api/
+│       │   └── compose.yml
+│       └── voice/
+│           └── compose.yml
+│
 ├── vault/
 │   ├── user/
 │   │   └── user.env                   # User secrets: LLM provider keys
@@ -45,16 +59,7 @@ system-policy files there.
 │       └── stack.env                  # System secrets: admin token, HMAC keys, paths
 │
 ├── config/
-│   ├── components/                    # Installed component instances
-│   │   ├── channel-chat/
-│   │   │   ├── compose.yml
-│   │   │   └── .env
-│   │   └── channel-discord/
-│   │       ├── compose.yml
-│   │       └── .env
-│   ├── connections/                   # Canonical connection profile storage (user-editable JSON)
-│   │   └── profiles.json             # Canonical profiles + assignments (v1 schema)
-│   ├── automations/                   # Scheduled automations (YAML format, executed in-process)
+│   ├── automations/                   # Scheduled automations (YAML format)
 │   │   └── <name>.yml
 │   └── assistant/                     # OpenCode user extensions (tools, plugins, skills)
 │       ├── opencode.json             # User OpenCode config (schema ref only; never overwritten)
@@ -65,12 +70,11 @@ system-policy files there.
 ├── data/
 │   ├── admin/                        # Admin runtime home
 │   ├── memory/                       # Memory persistent data (SQLite + sqlite-vec)
-│   ├── assistant/                    # System-managed OpenCode config (opencode.jsonc, AGENTS.md)
-│   ├── opencode/                    # OpenCode data directory
-│   ├── guardian/                    # Guardian runtime data
-│   ├── catalog/                     # Installed component catalog
-│   └── automations/                 # System-managed automations (YAML, pre-installed)
-│       └── <name>.yml
+│   ├── assistant/                    # Assistant runtime state
+│   ├── opencode/                     # OpenCode data directory
+│   ├── guardian/                     # Guardian runtime data
+│   ├── stash/                        # AKM stash directory
+│   └── workspace/                    # Shared assistant workspace
 │
 └── logs/                              # Audit and debug logs
     ├── admin-audit.jsonl
@@ -78,7 +82,7 @@ system-policy files there.
 
 ~/.cache/openpalm/                     # Ephemeral cache (rollback snapshots)
 
-~/openpalm/                            # WORK_DIR (assistant workspace)
+~/.openpalm/data/workspace/            # Assistant workspace mounted at /work
 ```
 
 ---
@@ -99,14 +103,18 @@ mount in the stack.
 
 | Host Path | Container Path | Mode | Purpose |
 |-----------|---------------|------|---------|
-| `$OP_HOME/data/assistant` | `/etc/opencode` | rw | System config (`OPENCODE_CONFIG_DIR`) -- model, plugins, persona |
+| baked into image | `/etc/opencode` | ro | Core OpenCode config baked into the assistant image |
+| `$OP_HOME/config` | `/etc/openpalm` | ro | Host-side OpenPalm config bundle |
 | `$OP_HOME/config/assistant` | `/home/opencode/.config/opencode` | rw | User extensions -- custom tools, plugins, skills |
-| `$OP_HOME/data/opencode` | `/home/opencode/.local/share/opencode` | rw | OpenCode data directory |
-| `$OP_WORK_DIR` | `/work` | rw | Working directory for projects |
+| `$OP_HOME/vault/user/user.env` | `/etc/openpalm-vault/user.env` | ro | User-managed provider keys |
+| `$OP_HOME/data/assistant` | `/home/opencode/.opencode` | rw | Assistant runtime state |
+| `$OP_HOME/data/stash` | `/home/opencode/.akm` | rw | AKM stash data |
+| `$OP_HOME/data/workspace` | `/work` | rw | Working directory for projects |
+| `$OP_HOME/logs/opencode` | `/home/opencode/.local/state/opencode` | rw | OpenCode logs/state |
 
-Users drop tools, plugins, or skills into `config/assistant/` and they
-appear inside the container at the standard OpenCode user config path. This
-complements the system config at `/etc/opencode/` without requiring a rebuild.
+Users drop tools, plugins, or skills into `config/assistant/` and they appear
+inside the container at the standard OpenCode user config path. Core config is
+still baked into the image at `/etc/opencode`.
 
 ### Guardian
 
@@ -130,8 +138,8 @@ Docker Compose from the vault env files.
 
 The admin accesses Docker via the socket proxy (HTTP over `admin_docker_net`).
 
-Scheduled automations run in-process on the admin container using the
-Croner scheduler. The admin container runs as non-root (USER node).
+The admin provides the web UI and API. Scheduled automations run separately on
+the dedicated `scheduler` service.
 
 ### Docker Socket Proxy
 
@@ -156,8 +164,8 @@ If not set, it defaults to `/var/run/docker.sock`.
 | Network | Services | Purpose |
 |---------|----------|---------|
 | `assistant_net` | memory, assistant, guardian, admin, scheduler | Internal service mesh |
-| `channel_lan` | guardian, channel services | LAN-restricted channel access |
-| `channel_public` | guardian, channel services | Publicly accessible channels |
+| `channel_lan` | guardian, addon edge services | LAN-restricted channel access |
+| `channel_public` | guardian, addon edge services | Publicly accessible channels |
 
 Component compose overlays specify which networks they join.
 
@@ -170,14 +178,14 @@ Runtime configuration is split into two env files in `vault/`:
 ### `vault/stack/stack.env` -- system-managed config
 
 Seeded by setup scripts. Contains host-detected infrastructure config.
-The admin reads and updates this file on each apply -- it is system-managed
+The CLI/admin may update this file during lifecycle operations -- it is system-managed
 and not intended for direct user editing:
 
-- **Paths:** `OP_HOME`, `OP_WORK_DIR`
+- **Paths:** `OP_HOME`
 - **User/Group:** `OP_UID`, `OP_GID` (auto-detected from host)
 - **Docker Socket:** `OP_DOCKER_SOCK` (auto-detected, supports OrbStack/Colima)
 - **Images:** `OP_IMAGE_NAMESPACE`, `OP_IMAGE_TAG`
-- **Networking:** `OP_INGRESS_BIND_ADDRESS`, `OP_INGRESS_PORT`
+- **Host binds:** `OP_ADMIN_PORT`, `OP_ASSISTANT_PORT`, `OP_MEMORY_PORT`, `OP_CHAT_PORT`, `OP_API_PORT`, `OP_VOICE_PORT`
 - **Memory:** `MEMORY_DASHBOARD_API_URL`, `MEMORY_USER_ID`
 - **Channel HMAC keys:** `CHANNEL_<NAME>_SECRET` (auto-generated per channel by admin)
 
@@ -203,50 +211,40 @@ Docker Compose.
 
 ---
 
-## Component Discovery
+## Addon Discovery
 
-Components are discovered from `config/components/` at apply time.
+Addon overlays live in `~/.openpalm/stack/addons/`.
 
-Add-on definitions (channels, services) live in `.openpalm/stack/addons/` and are bundled into
-the admin image at build time. Automations live in `.openpalm/config/automations/`. Components
-are installed from the addon catalog via the admin API or manually by placing a
-directory with `compose.yml` in `config/components/`. No container rebuild required.
-The admin's apply endpoint scans the directory and runs compose operations against
-discovered files.
+The compose command you run determines which addons are enabled. Manual users do
+that by including the desired addon compose files with `-f`. Tools such as the
+CLI, admin, or `stack/start.sh` may help generate the same compose command, but
+they do not replace this file-based model.
 
-## Apply Action (Required)
+## Runtime Updates
 
-OpenPalm uses an explicit **apply** step to synchronize source configuration
-into the running stack:
+To change the running stack:
 
-1. Read user-edited files from `config/` and system assets bundled with the admin.
-2. Write configuration files directly to their final locations.
-3. Run `docker compose` and restart services.
+1. Edit files under `~/.openpalm/config/`, `~/.openpalm/vault/`, or `~/.openpalm/stack/` as needed.
+2. Rerun `docker compose` with the desired `-f` file list, or use `stack/start.sh` with the same addon set.
 
-The admin automatically runs apply during application startup. Restarting the
-admin container syncs the latest source configuration into the running stack.
+Automatic lifecycle operations remain non-destructive for `config/`: they may
+seed missing defaults, but they do not overwrite existing user configuration
+files. Explicit config mutations happen only through direct edits, admin UI/API
+actions, or authenticated/allowlisted assistant calls via the admin API.
 
-Automatic lifecycle apply is a non-destructive sync for config/: it writes
-from current source files and may seed missing defaults, but it does not
-overwrite existing user configuration files. Explicit config mutations in
-config/ happen only through explicit user-intent actions -- direct edits,
-admin UI/API config actions, or authenticated/allowlisted assistant calls via
-admin API. (See [core-principles.md](./core-principles.md) for the full policy.)
-
-A component needs:
+An addon needs:
 - `compose.yml` -- compose definition for the service (required)
-- `.env` -- instance environment variables (created during install)
 
 `CHANNEL_<NAME>_SECRET` values are generated by admin logic and written into
-`vault/stack/stack.env` on every apply.
+`vault/stack/stack.env` during lifecycle operations.
 
 ---
 
 ## Automations
 
-OpenPalm supports scheduled automations on the admin container using an
-in-process scheduler (Croner). Automation files are YAML. The scheduler
-runs in-process -- no system cron or root privileges required.
+OpenPalm supports scheduled automations on the dedicated `scheduler` service
+using Croner. Automation files are YAML. No system cron or root privileges are
+required.
 
 ### Adding an automation
 
@@ -270,27 +268,17 @@ token), `http` (any HTTP endpoint), and `shell` (execFile with argument array).
 Filenames must be lowercase alphanumeric with hyphens and a `.yml` extension
 (`[a-z0-9][a-z0-9-]*.yml`). Examples: `backup.yml`, `weekly-cleanup.yml`.
 
-### System automations
-
-System-managed automation files live in `data/automations/`. These are
-seeded during install and survive updates. They use the same YAML format as
-user automations.
-
-### Precedence
-
-User files with the same name as a system file override the system version.
-The in-process scheduler loads files on startup and reloads after
-component install/uninstall. Changes require a container restart (triggered
-by apply).
+The scheduler loads automation files from `config/automations/` on startup.
+Changes take effect after restarting the `scheduler` service.
 
 ---
 
 ## Working Directory
 
-The assistant container mounts `$OP_WORK_DIR` (default: `$HOME/openpalm`)
-at `/work` and sets it as the working directory. This is where the assistant
-operates on user projects and scripts.
+The assistant container mounts `~/.openpalm/data/workspace` at `/work` and sets
+it as the working directory. This is where the assistant operates on user
+projects and scripts.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `OP_WORK_DIR` | `$HOME/openpalm` | Host directory mounted at `/work` in the assistant |
+| `~/.openpalm/data/workspace` | default workspace | Host directory mounted at `/work` in the assistant |

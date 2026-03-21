@@ -5,7 +5,7 @@ This document describes the Admin API routes currently implemented in
 
 ## Conventions
 
-- Base URL: `http://localhost:8100`
+- Base URL: `http://localhost:3880`
 - Protected endpoints require header: `x-admin-token: <ADMIN_TOKEN>`
 - Optional caller attribution: `x-requested-by: assistant|cli|ui|system|test`
 - Optional correlation: `x-request-id: <uuid>`
@@ -68,14 +68,14 @@ Policy for this section:
 - Ensures directories + OpenCode starter config + starter user secrets.
 - Seeds only missing defaults in `config/`; never overwrites existing user files.
 - Writes configuration files to their final locations.
-- Runs `docker compose up -d` using compose files and env files.
+- Runs `docker compose up -d` using `stack/core.compose.yml`, installed addon overlays, and vault env files.
 
 Response:
 
 ```json
 {
   "ok": true,
-  "started": ["memory", "assistant", "guardian", "admin", "channel-chat"],
+  "started": ["memory", "assistant", "guardian", "admin", "chat"],
   "dockerAvailable": true,
   "composeResult": { "ok": true, "stderr": "" },
   "artifactsDir": "/home/user/.openpalm/data"
@@ -86,7 +86,7 @@ Response:
 
 - Non-destructive for existing user config; seeds missing defaults only.
 - Writes configuration files to their final locations.
-- Re-applies compose with component overlays.
+- Re-applies compose with addon overlays.
 
 Response:
 
@@ -177,20 +177,20 @@ Error responses:
 Body:
 
 ```json
-{ "service": "channel-chat" }
+{ "service": "chat" }
 ```
 
 Rules:
 
 - Allowed core services:
   `assistant`, `guardian`, `memory`, `admin`
-- Allowed channel services: `channel-*` only if a matching component directory
-  exists in `config/components/`.
+- Allowed addon services: installed addon service names such as `chat`, `api`,
+  `voice`, `discord`, or `slack` when a matching overlay exists in `stack/addons/`.
 
 Success response:
 
 ```json
-{ "ok": true, "service": "channel-chat", "status": "running" }
+{ "ok": true, "service": "chat", "status": "running" }
 ```
 
 ## Channel Management
@@ -202,7 +202,7 @@ Returns installed and registry-available channels:
 ```json
 {
   "installed": [
-    { "name": "chat", "hasRoute": true, "service": "channel-chat", "status": "running" }
+    { "name": "chat", "hasRoute": true, "service": "chat", "status": "running" }
   ],
   "available": [
     { "name": "discord", "hasRoute": false }
@@ -212,8 +212,8 @@ Returns installed and registry-available channels:
 
 Notes:
 
-- `installed` is derived from component directories in `config/components/`.
-- `hasRoute` indicates whether the component has an HTTP route configured.
+- `installed` is derived from addon overlays in `stack/addons/`.
+- `hasRoute` indicates whether the addon has an HTTP route configured.
 
 ### `POST /admin/channels/install`
 
@@ -225,7 +225,7 @@ Body:
 
 Behavior:
 
-- Copies registry files into `config/components/`.
+- Copies registry files into `stack/addons/`.
 - Ensures system-managed channel secret exists.
 - Runs compose up.
 
@@ -235,7 +235,7 @@ Response:
 {
   "ok": true,
   "channel": "chat",
-  "service": "channel-chat",
+  "service": "chat",
   "dockerAvailable": true,
   "composeResult": { "ok": true, "stderr": "" }
 }
@@ -251,7 +251,7 @@ Body:
 
 Behavior:
 
-- Removes component directory from `config/components/`.
+- Removes the addon directory from `stack/addons/`.
 - Removes system-managed channel secret from runtime state.
 - Stops the channel service.
 
@@ -261,7 +261,7 @@ Response:
 {
   "ok": true,
   "channel": "chat",
-  "service": "channel-chat",
+  "service": "chat",
   "dockerAvailable": true,
   "composeResult": { "ok": true, "stderr": "" }
 }
@@ -305,7 +305,7 @@ Body:
 - `name` (required) — Must match `^[a-z0-9][a-z0-9-]{0,62}$`.
 - `type` (required) — Must be `"channel"` or `"automation"`.
 
-For channels: copies component files into `config/components/`,
+For channels: copies addon files into `stack/addons/`,
 generates HMAC secret, and runs compose up.
 
 For automations: copies `.yml` into `config/automations/` and reloads
@@ -358,7 +358,7 @@ Body:
 { "name": "chat", "type": "channel" }
 ```
 
-For channels: removes component directory from `config/components/`, clears channel secret,
+For channels: removes the addon directory from `stack/addons/`, clears channel secret,
 and stops the Docker service.
 
 For automations: removes `.yml` from `config/automations/` and reloads

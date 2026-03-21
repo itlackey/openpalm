@@ -24,8 +24,8 @@ Repo layout convention:
 
 | Document | Description |
 |---|---|
-| [core-principles.md](technical/core-principles.md) | **Authoritative.** 9 core goals, 4 security invariants, filesystem + volume-mount contracts |
-| [directory-structure.md](technical/directory-structure.md) | XDG three-tier layout (CONFIG / DATA / STATE) |
+| [core-principles.md](technical/core-principles.md) | **Authoritative.** Core goals, security invariants, filesystem + volume-mount contracts |
+| [directory-structure.md](technical/directory-structure.md) | `~/.openpalm/` home layout, `stack/` assembly, and volume design |
 | [docker-dependency-resolution.md](technical/docker-dependency-resolution.md) | **Mandatory.** Docker build patterns — no Bun in admin, no symlinks |
 
 ## Implementation rules

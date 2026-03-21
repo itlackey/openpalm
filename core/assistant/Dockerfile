@@ -64,7 +64,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 
     && mv /root/.local/bin/uvx /usr/local/bin/
 
 # Azure CLI + Hugging Face CLI
-RUN pip install --break-system-packages azure-cli huggingface-hub[cli]
+RUN pip install --break-system-packages azure-cli huggingface-hub[cli] apprise
 
 
 # Install opencode to /usr/local/.opencode/bin (set HOME so installer puts it there)

@@ -1,8 +1,15 @@
-# Addon: Web Chat — browser-based chat widget
+# Addon: Chat — chat-focused API edge
 services:
   chat:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
+    env_file:
+      - path: ${OP_HOME}/vault/stack/stack.env
+        required: false
+      - path: ${OP_HOME}/vault/user/user.env
+        required: false
+    ports:
+      - "${OP_CHAT_BIND_ADDRESS:-127.0.0.1}:${OP_CHAT_PORT:-3820}:8181"
     environment:
       PORT: "8181"
       CHANNEL_NAME: "Chat"
@@ -18,8 +25,8 @@ services:
       timeout: 5s
       retries: 3
     labels:
-      openpalm.name: Web Chat
-      openpalm.description: Browser-based chat widget for conversational AI
+      openpalm.name: Chat
+      openpalm.description: OpenAI-compatible chat edge for conversational clients
       openpalm.icon: message-circle
       openpalm.category: messaging
       openpalm.healthcheck: http://chat:8181/health

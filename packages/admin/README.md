@@ -1,70 +1,60 @@
-# packages/admin — Admin UI & Control Plane
+# packages/admin
 
-SvelteKit application that provides a web UI and API for managing the OpenPalm stack. Admin is optional — the CLI handles all lifecycle operations directly. When present, admin provides a web dashboard and API for remote/assistant-driven operations via docker-socket-proxy.
+Optional SvelteKit admin UI and API for OpenPalm.
+OpenPalm remains compose-first and manual-first; the admin addon is a convenience layer for inspecting state and performing stack actions through Docker Socket Proxy.
 
 ## Responsibilities
 
-- **Admin dashboard** — manage stack, channels, connections, view audit log
-- **REST API** (`/admin/*`) — authenticated API consumed by the UI, assistant tools, and CLI
-- **Artifact staging** — assembles `docker-compose.yml` and component overlays from CONFIG/DATA (delegates to `@openpalm/lib`)
-- **Automations listing** — read-only view of automation configs (execution handled by the scheduler sidecar)
-- **Registry catalog** — bundles channel and automation definitions from `registry/` at build time
+- Web UI for stack status, addons, connections, automations, and memory settings
+- Authenticated `/admin/*` API used by the UI and assistant tools
+- Thin control-plane consumer built on `@openpalm/lib`
+- Registry catalog bundling for built-in addons and automations
+
+## Notes on internals
+
+- Some module names still use historical terms like `staging`
+- The current runtime model is direct write + Docker Compose over `~/.openpalm/`
+- Compose overlays under `stack/addons/` are deployment truth; admin does not replace that model
 
 ## Structure
 
-```
+```text
 src/
-├── lib/
-│   ├── server/               # Business logic
-│   │   ├── control-plane.ts  # Barrel re-export of all modules below
-│   │   ├── types.ts          # Shared types and constants
-│   │   ├── paths.ts          # XDG path resolution
-│   │   ├── state.ts          # Runtime state factory
-│   │   ├── env.ts            # Environment/env-file utilities
-│   │   ├── channels.ts       # Channel discovery and install/uninstall
-│   │   ├── staging.ts        # Artifact staging pipeline (CONFIG/DATA → STATE)
-│   │   ├── core-assets.ts    # Bundled compose/schema management
-│   │   ├── lifecycle.ts      # Compose builders and lifecycle helpers
-│   │   ├── secrets.ts        # Secrets/connections CRUD
-│   │   ├── docker.ts         # Docker Compose shell-out wrapper
-│   │   ├── helpers.ts        # Request/response utilities
-│   │   ├── audit.ts          # Audit logging
-│   │   ├── registry.ts       # Channel/automation registry catalog
-│   │   ├── registry-sync.ts  # Remote registry sync
-│   │   ├── scheduler.ts      # Automations parsing (re-exports from @openpalm/lib)
-│   │   ├── memory-config.ts  # Memory provider/model config
-│   │   └── logger.ts         # Structured logger
-│   ├── components/           # Svelte UI components
-│   ├── auth.ts               # Auth utilities
-│   ├── api.ts                # Client-side API helpers
-│   └── types.ts              # Shared TypeScript types
-└── routes/
-    └── admin/                # Admin API endpoints (+server.ts files)
+├── lib/server/        # server-side wrappers around @openpalm/lib + admin helpers
+├── lib/components/    # Svelte UI components
+└── routes/admin/      # admin API endpoints
 ```
 
 ## Development
 
+Local dev is package-local only; it does not represent the deployed admin addon port mapping.
+
 ```bash
+cd packages/admin
 npm install
-npm run dev      # dev server on http://localhost:8100
-npm run check    # svelte-check + TypeScript
+npm run dev
+npm run check
 ```
 
-Or from the repo root:
+Repo-root shortcuts:
 
 ```bash
 bun run admin:dev
 bun run admin:check
 ```
 
-## API
+`npm run dev` uses Vite's local dev server. The deployed admin addon is served on `http://localhost:3880` by default.
 
-All endpoints require `x-admin-token: <ADMIN_TOKEN>` (except `/health`). Full spec: [`docs/api-spec.md`](../../docs/technical/api-spec.md).
+## API auth
+
+Protected endpoints require `x-admin-token`.
+In a normal install the token source of truth is `~/.openpalm/vault/stack/stack.env` as `OP_ADMIN_TOKEN`.
 
 ## Key environment variables
 
 | Variable | Purpose |
 |---|---|
-| `OP_HOME` | OpenPalm home directory (`~/.openpalm`). All subdirs (config/, vault/, data/, logs/) are resolved from this root. |
-| `OP_ADMIN_TOKEN` | Admin API authentication token |
-| `DOCKER_SOCKET_PROXY_URL` | Docker socket proxy URL |
+| `OP_HOME` | OpenPalm root mounted into the container, usually `~/.openpalm` |
+| `ADMIN_TOKEN` | Runtime admin API token injected from `OP_ADMIN_TOKEN` |
+| `DOCKER_HOST` | Docker Socket Proxy URL inside the addon network |
+| `MEMORY_AUTH_TOKEN` | Bearer token for the memory service |

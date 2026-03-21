@@ -29,6 +29,10 @@ Examples:
   $0 chat admin
   $0 --from-stack-yaml
   $0 --dry-run --project-name my-openpalm chat
+
+Notes:
+  - Explicit addon arguments win over --from-stack-yaml.
+  - stop/down/status should use the same addon selection as up.
 EOF
 }
 
@@ -59,9 +63,17 @@ load_addons_from_stack_yaml() {
 			continue
 		fi
 
+		if [[ "$line" =~ ^[[:space:]]*# ]]; then
+			continue
+		fi
+
 		if [[ ! "$line" =~ ^[[:space:]] ]]; then
 			break
 		fi
+
+		echo "Error: unsupported stack.yaml format near: $line" >&2
+		echo "Only a simple top-level addons: list is supported." >&2
+		exit 1
 	done <"$stack_yaml"
 }
 
@@ -128,6 +140,11 @@ done
 if ((use_stack_yaml == 1)) && [[ ${#addons[@]} -eq 0 ]]; then
 	load_addons_from_stack_yaml
 	addons=("${STACK_YAML_ADDONS[@]}")
+fi
+
+if [[ "$action" != "up" && ${#addons[@]} -eq 0 && $use_stack_yaml -eq 0 ]]; then
+	echo "Warning: no addons selected; $action will target the core stack only." >&2
+	echo "Pass the same addons used for up, or use --from-stack-yaml." >&2
 fi
 
 compose_cmd=(docker compose --project-name "$PROJECT_NAME")

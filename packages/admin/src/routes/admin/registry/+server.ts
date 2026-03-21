@@ -1,8 +1,8 @@
 /**
- * GET /admin/registry — List all registry items (components + automations) with install status.
+ * GET /admin/registry — List available registry items (components + automations).
  *
- * Tries the cloned registry repo first (cache/registry-repo/registry/).
- * Falls back to build-time bundled assets if the clone is unavailable or empty.
+ * Components are listed by ID. Automations include install status and metadata.
+ * Tries the cloned registry repo first; falls back to build-time bundled assets.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";

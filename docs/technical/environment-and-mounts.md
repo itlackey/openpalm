@@ -20,13 +20,13 @@ These variables control where OpenPalm stores data on the **host** filesystem.
 | Variable | Default | Purpose |
 |---|---|---|
 | `OP_HOME` | `~/.openpalm` | Root of all OpenPalm state (config, vault, data, logs) |
-| `OP_WORK_DIR` | `$HOME/openpalm` | Assistant working directory mounted at /work |
+| `OP_WORK_DIR` | `$HOME/openpalm` | Optional tooling/workspace override retained for compatibility |
 
 Within `OP_HOME`, the layout is:
 
 | Subdirectory | Purpose |
 |---|---|
-| `config/` | User-editable: components, automations, OpenCode extensions |
+| `config/` | User-editable: automations, assistant extensions, helper metadata |
 | `vault/user/` | User-managed secrets: user.env (LLM keys, owner info) |
 | `vault/stack/` | System-managed secrets: stack.env (admin token, HMAC, paths) |
 | `data/` | Admin/service-managed data (memory, assistant home, guardian, catalog) |
@@ -58,10 +58,14 @@ storage -- all data is stored within `$OP_HOME/data/memory/`.
 
 | Host Path | Container Path | Mode | Purpose |
 |---|---|---|---|
-| `$OP_HOME/data/assistant` | `/etc/opencode` | rw | System config (`OPENCODE_CONFIG_DIR`) -- model, plugins, persona |
+| baked into image | `/etc/opencode` | ro | Core OpenCode config baked into the assistant image |
+| `$OP_HOME/config` | `/etc/openpalm` | ro | Host-side OpenPalm config bundle |
 | `$OP_HOME/config/assistant` | `/home/opencode/.config/opencode` | rw | User extensions -- custom tools, plugins, skills |
-| `$OP_HOME/data/opencode` | `/home/opencode/.local/share/opencode` | rw | OpenCode data directory |
-| `$OP_WORK_DIR` | `/work` | rw | Working directory for user projects |
+| `$OP_HOME/vault/user/user.env` | `/etc/openpalm-vault/user.env` | ro | User-managed provider keys |
+| `$OP_HOME/data/assistant` | `/home/opencode/.opencode` | rw | Assistant runtime state |
+| `$OP_HOME/data/stash` | `/home/opencode/.akm` | rw | AKM stash data |
+| `$OP_HOME/data/workspace` | `/work` | rw | Working directory for user projects |
+| `$OP_HOME/logs/opencode` | `/home/opencode/.local/state/opencode` | rw | OpenCode logs and state |
 
 Users add tools, plugins, or skills to `config/assistant/` without
 rebuilding the image. OpenCode merges config from `/etc/opencode/` (system)
@@ -113,13 +117,12 @@ If not set, it defaults to `/var/run/docker.sock`.
 | `$OP_HOME/logs` | logs mount | rw | Audit logs |
 
 The CLI is the primary host-side orchestrator, managing Docker Compose directly.
-The admin (optional, behind the `admin` compose profile) connects to Docker via
+The admin (optional addon) connects to Docker via
 the socket proxy (HTTP over the internal network) and mounts config, vault, data,
 and logs directories.
 
-The admin container starts as root for scheduled automation setup, then
-drops privileges to the target UID/GID (`$OP_UID:$OP_GID`,
-default `1000:1000`) via gosu before running the SvelteKit app.
+The admin container runs as the target UID/GID (`$OP_UID:$OP_GID`, default
+`1000:1000`) and does not need root privileges for normal operation.
 
 ---
 
@@ -136,16 +139,15 @@ Docker compose is invoked with both: `--env-file vault/stack/stack.env --env-fil
 
 Channel HMAC secrets are persisted in `vault/stack/stack.env`. Users typically only need to edit `vault/user/user.env` for LLM keys.
 
-Configuration changes are activated through an explicit **apply** action:
-the admin reads config and system assets, writes files to their final locations,
-then runs compose operations and service restarts. The admin also runs apply
-automatically on application startup, so restarting the admin container syncs
-latest configuration into the running stack.
+Configuration changes are activated by rerunning `docker compose` with the
+desired file list, or by using `stack/start.sh` with the same addon selection.
+Helper tooling may write updated files to their final locations first, but the
+runtime model is still the visible compose command over files in `~/.openpalm/`.
 
-This automatic apply path is lifecycle sync, not config mutation: it does
-not overwrite existing user configuration files in config/. config/ writes
-occur only through explicit user-intent actions (see
-[core-principles.md](./core-principles.md) for the allowed-writers rule).
+Lifecycle sync is non-destructive for `config/`: it does not overwrite existing
+user configuration files. `config/` writes occur only through explicit
+user-intent actions (see [core-principles.md](./core-principles.md) for the
+allowed-writers rule).
 
 **User-managed** (`vault/user/user.env`):
 
@@ -161,7 +163,8 @@ occur only through explicit user-intent actions (see
 
 | Secret | Consumed By | Purpose |
 |---|---|---|
-| `ADMIN_TOKEN` | admin, guardian, assistant | Admin API authentication |
+| `OP_ADMIN_TOKEN` | admin, guardian | Admin/API control-plane authentication |
+| `ASSISTANT_TOKEN` | assistant, scheduler | Assistant-authenticated access to stack-management APIs |
 | `CHANNEL_<NAME>_SECRET` | guardian, channel-\<name\> | HMAC signing key -- generated per channel, never user-edited |
 
 Channel HMAC secrets are generated when a channel is installed and reused on subsequent restarts.
@@ -175,13 +178,13 @@ Channel HMAC secrets are generated when a channel is installed and reused on sub
 | Variable | Value | Purpose |
 |---|---|---|
 | `PORT` | `8100` | HTTP server listen port |
-| `ADMIN_TOKEN` | from stack.env | Bearer token for Admin API |
+| `ADMIN_TOKEN` | from stack.env (`OP_ADMIN_TOKEN` source variable) | Bearer token for Admin API |
 | `GUARDIAN_URL` | `http://guardian:8080` | Internal URL to guardian |
 | `OP_ASSISTANT_URL` | `http://assistant:4096` | Internal URL to assistant |
-| `HOME` | `${OP_HOME}/data/admin` | Writable home directory for varlock runtime state (`~/.varlock`) |
+| `HOME` | `/home/node` | Writable home directory inside the admin container |
 | `OP_HOME` | Same as host path | In-container path to OP_HOME |
-| `OP_UID` | `${OP_UID:-1000}` | Target UID for privilege drop (gosu) |
-| `OP_GID` | `${OP_GID:-1000}` | Target GID for privilege drop (gosu) |
+| `OP_UID` | `${OP_UID:-1000}` | Runtime UID for the admin container |
+| `OP_GID` | `${OP_GID:-1000}` | Runtime GID for the admin container |
 
 ### 4.2 Guardian Service
 
@@ -190,21 +193,21 @@ Channel HMAC secrets are generated when a channel is installed and reused on sub
 | `PORT` | `8080` | HTTP server listen port |
 | `OP_ASSISTANT_URL` | `http://assistant:4096` | Internal URL for message forwarding |
 | `GUARDIAN_AUDIT_PATH` | `/app/audit/guardian-audit.log` | Audit log path |
-| `OPENCODE_TIMEOUT_MS` | `120000` | Timeout (ms) for assistant message response (LLM inference can be slow; code default 120s) |
-| `ADMIN_TOKEN` | from stack.env | Admin API token |
+| `OPENCODE_TIMEOUT_MS` | `0` | Timeout (ms) for assistant message response (`0` disables the guardian-side timeout) |
+| `OP_ADMIN_TOKEN` | from stack.env | Admin API token |
 | `CHANNEL_*_SECRET` | system-generated | HMAC keys for channel signature verification |
 
 ### 4.3 Assistant Service (OpenCode Runtime)
 
 | Variable | Value | Purpose |
 |---|---|---|
-| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Built-in config, tools, plugins, skills |
+| `OPENCODE_CONFIG_DIR` | `/home/opencode/.config/opencode` | Active OpenCode config directory inside the assistant container |
 | `OPENCODE_PORT` | `4096` | Web-server listen port |
 | `OPENCODE_AUTH` | `false` | Disabled -- host-only binding (127.0.0.1) provides the security boundary |
 | `OPENCODE_ENABLE_SSH` | `0` (default) | SSH server toggle |
 | `HOME` | `/home/opencode` | User home directory |
-| `OP_ADMIN_API_URL` | `http://admin:8100` | Admin API URL for admin tools |
-| `OP_ADMIN_TOKEN` | from stack.env | Bearer token for Admin API |
+| `OP_ADMIN_API_URL` | `http://admin:8100` | Internal Admin API URL for admin tools |
+| `OP_ASSISTANT_TOKEN` | from stack.env (`ASSISTANT_TOKEN` source variable) | Assistant-authenticated token for admin tools |
 | `MEMORY_API_URL` | `http://memory:8765` | Memory service URL |
 | `MEMORY_USER_ID` | `default_user` | User identifier for memory (entrypoint auto-falls back to runtime username when left as default) |
 | `OP_UID` | `${OP_UID:-1000}` | Target runtime UID used by assistant entrypoint before dropping privileges |
@@ -240,17 +243,25 @@ You never set these in `vault/user/user.env`.
 | Variable | Default | Source |
 |---|---|---|
 | `OP_HOME` | `~/.openpalm` | admin process env |
-| `OP_WORK_DIR` | `$HOME/openpalm` | admin process env |
+| `OP_WORK_DIR` | `$HOME/openpalm` | compatibility env (not used by the current compose files) |
 | `OP_UID` | current user UID | `process.getuid()` |
 | `OP_GID` | current group GID | `process.getgid()` |
 | `OP_IMAGE_NAMESPACE` | `openpalm` | admin process env (overridable) |
 | `OP_IMAGE_TAG` | `latest` | admin process env (overridable) |
-| `OP_INGRESS_BIND_ADDRESS` | `127.0.0.1` | admin process env (overridable) |
-| `OP_INGRESS_PORT` | `8080` | admin process env (overridable) |
+| `OP_ADMIN_BIND_ADDRESS` | `127.0.0.1` | compose default |
+| `OP_ADMIN_PORT` | `3880` | compose default |
 | `OP_ASSISTANT_BIND_ADDRESS` | `127.0.0.1` | compose default |
+| `OP_ASSISTANT_PORT` | `3800` | compose default |
 | `OP_ASSISTANT_SSH_BIND_ADDRESS` | `127.0.0.1` | compose default |
 | `OP_ASSISTANT_SSH_PORT` | `2222` | compose default |
 | `OP_MEMORY_BIND_ADDRESS` | `127.0.0.1` | compose default |
+| `OP_MEMORY_PORT` | `3898` | compose default |
+| `OP_CHAT_BIND_ADDRESS` | `127.0.0.1` | compose default |
+| `OP_CHAT_PORT` | `3820` | compose default |
+| `OP_API_BIND_ADDRESS` | `127.0.0.1` | compose default |
+| `OP_API_PORT` | `3821` | compose default |
+| `OP_VOICE_BIND_ADDRESS` | `127.0.0.1` | compose default |
+| `OP_VOICE_PORT` | `3810` | compose default |
 | `MEMORY_USER_ID` | `default_user` | admin process env (overridable) |
 
 Overridable values can be customized by setting the variable in the admin container's
@@ -287,10 +298,13 @@ Never generated or defaulted by OpenPalm.
 
 | Service | Container Port | Host Binding | Default Host Port |
 |---|---|---|---|
-| Admin | 8100 | `127.0.0.1` (fixed) | 8100 |
-| Assistant | 4096 | `$OP_ASSISTANT_BIND_ADDRESS` | 4096 |
+| Admin | 8100 | `$OP_ADMIN_BIND_ADDRESS` | 3880 |
+| Assistant | 4096 | `$OP_ASSISTANT_BIND_ADDRESS` | 3800 |
 | Assistant SSH | 22 | `$OP_ASSISTANT_SSH_BIND_ADDRESS` | 2222 |
 | Memory API | 8765 | `$OP_MEMORY_BIND_ADDRESS` | 3898 |
+| Chat addon | 8181 | `$OP_CHAT_BIND_ADDRESS` | 3820 |
+| API addon | 8182 | `$OP_API_BIND_ADDRESS` | 3821 |
+| Voice addon | 8186 | `$OP_VOICE_BIND_ADDRESS` | 3810 |
 
 ---
 
@@ -330,7 +344,7 @@ The schema files are used by the [Varlock](https://varlock.dev) CLI for validati
   Docker socket (read-only). The proxy lives on an isolated `admin_docker_net`
   network shared only with the admin -- no other service can reach it. The
   proxy allowlists only the Docker API categories needed for compose operations.
-- **ADMIN_TOKEN** -- Required at startup (`${ADMIN_TOKEN:?...}`). The compose
+- **OP_ADMIN_TOKEN** -- Required at startup (`${OP_ADMIN_TOKEN:?...}`). The compose
   file will fail if unset in vault/stack/stack.env.
 - **Bind addresses** -- All service ports default to `127.0.0.1` (localhost only).
 - **UID/GID mapping** -- The assistant, guardian, and admin run with the host

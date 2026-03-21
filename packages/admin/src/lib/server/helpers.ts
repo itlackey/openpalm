@@ -104,7 +104,7 @@ export function requireAuth(event: RequestEvent, requestId: string): Response | 
   return errorResponse(
     401,
     "unauthorized",
-    "Missing or invalid x-admin-token",
+    "Missing or invalid x-admin-token (admin or assistant token accepted)",
     {},
     requestId
   );
