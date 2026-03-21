@@ -65,8 +65,6 @@ All endpoints require `x-admin-token: <ADMIN_TOKEN>` (except `/health`). Full sp
 
 | Variable | Purpose |
 |---|---|
-| `OP_CONFIG_HOME` | User config directory |
-| `OP_DATA_HOME` | Service data directory |
-| `OP_STATE_HOME` | Assembled runtime directory |
+| `OP_HOME` | OpenPalm home directory (`~/.openpalm`). All subdirs (config/, vault/, data/, logs/) are resolved from this root. |
 | `OP_ADMIN_TOKEN` | Admin API authentication token |
 | `DOCKER_SOCKET_PROXY_URL` | Docker socket proxy URL |

@@ -107,7 +107,7 @@ export const POST: RequestHandler = async (event) => {
       composeResult: dockerResult
         ? { ok: dockerResult.ok, stderr: dockerResult.stderr }
         : null,
-      artifactsDir: `${state.configDir}/components`
+      componentsDir: `${state.configDir}/components`
     },
     requestId
   );
