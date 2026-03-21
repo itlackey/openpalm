@@ -111,6 +111,7 @@ If not set, it defaults to `/var/run/docker.sock`.
 
 | Host Path | Container Path | Mode | Purpose |
 |---|---|---|---|
+| baked into image | `/etc/opencode` | ro | Core admin OpenCode config baked into the admin image |
 | `$OP_HOME/config` | config mount | rw | Component source files, extensions |
 | `$OP_HOME/vault` | vault mount | rw | Secrets (user/user.env, stack/stack.env) |
 | `$OP_HOME/data` | data mount | rw | Manage system-policy files, pre-create subdirs |
@@ -181,6 +182,9 @@ Channel HMAC secrets are generated when a channel is installed and reused on sub
 | `ADMIN_TOKEN` | from stack.env (`OP_ADMIN_TOKEN` source variable) | Bearer token for Admin API |
 | `GUARDIAN_URL` | `http://guardian:8080` | Internal URL to guardian |
 | `OP_ASSISTANT_URL` | `http://assistant:4096` | Internal URL to assistant |
+| `OP_ADMIN_API_URL` | `http://localhost:8100` | Loopback Admin API URL for the admin-side OpenCode instance |
+| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Active admin OpenCode config directory |
+| `OPENCODE_PORT` | `3881` | Admin-side OpenCode web-server listen port |
 | `HOME` | `/home/node` | Writable home directory inside the admin container |
 | `OP_HOME` | Same as host path | In-container path to OP_HOME |
 | `OP_UID` | `${OP_UID:-1000}` | Runtime UID for the admin container |
@@ -299,6 +303,7 @@ Never generated or defaulted by OpenPalm.
 | Service | Container Port | Host Binding | Default Host Port |
 |---|---|---|---|
 | Admin | 8100 | `$OP_ADMIN_BIND_ADDRESS` | 3880 |
+| Admin OpenCode | 3881 | `$OP_ADMIN_OPENCODE_BIND_ADDRESS` | 3881 |
 | Assistant | 4096 | `$OP_ASSISTANT_BIND_ADDRESS` | 3800 |
 | Assistant SSH | 22 | `$OP_ASSISTANT_SSH_BIND_ADDRESS` | 2222 |
 | Memory API | 8765 | `$OP_MEMORY_BIND_ADDRESS` | 3898 |

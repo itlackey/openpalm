@@ -19,6 +19,8 @@
   } from '$lib/types.js';
   import ConnectionForm from './ConnectionForm.svelte';
   import ModelSelector from './ModelSelector.svelte';
+  import ManageModelsSheet from './opencode/ManageModelsSheet.svelte';
+  import ConnectProviderSheet from './opencode/ConnectProviderSheet.svelte';
 
   interface Props {
     loading: boolean;
@@ -84,6 +86,10 @@
   let resetting = $state(false);
   let resetSuccess = $state(false);
   let settingsTab = $state<'memory' | 'models'>('models');
+
+  // ── OpenCode provider/model sheet state ─────────────────────────
+  let showModelsSheet = $state(false);
+  let showConnectSheet = $state(false);
 
   let selectedConnectionIds = $derived(
     [...new Set([
@@ -638,6 +644,12 @@
     <div class="panel-header">
       <h3>Connections</h3>
       {#if !listLoading}
+        <button class="btn btn-sm btn-ghost" type="button" onclick={() => showModelsSheet = true}>
+          Manage Models
+        </button>
+        <button class="btn btn-sm btn-ghost" type="button" onclick={() => showConnectSheet = true}>
+          Connect Provider
+        </button>
         <button class="btn btn-sm btn-outline" type="button" onclick={handleAddNew}>
           Add connection
         </button>
@@ -1758,3 +1770,10 @@
     }
   }
 </style>
+
+<ManageModelsSheet open={showModelsSheet} onClose={() => showModelsSheet = false} />
+<ConnectProviderSheet
+  open={showConnectSheet}
+  onClose={() => showConnectSheet = false}
+  onConnected={() => { showConnectSheet = false; void loadProfiles(); }}
+/>

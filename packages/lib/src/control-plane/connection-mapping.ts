@@ -48,6 +48,11 @@ export function buildOpenCodeMapping(input: OpenCodeConnectionMappingInput): Ope
   };
 }
 
+/**
+ * @deprecated OpenCode v1.2.24 rejects `providers` and `smallModel` keys in config files
+ * with a fatal `ConfigInvalidError: Unrecognized key`. All callers have been removed.
+ * This function is scheduled for deletion in a future release.
+ */
 export function writeOpenCodeProviderConfig(
   configDir: string,
   mapping: OpenCodeConnectionMapping,

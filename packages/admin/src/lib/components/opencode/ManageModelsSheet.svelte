@@ -1,0 +1,190 @@
+<script lang="ts">
+  import { getAdminToken } from '$lib/auth.js';
+  import ModalSheet from './ModalSheet.svelte';
+
+  interface Props {
+    open: boolean;
+    onClose: () => void;
+  }
+
+  let { open, onClose }: Props = $props();
+
+  type ModelEntry = { id: string; name: string; family: string; status: string };
+
+  type ProviderWithModels = {
+    id: string;
+    name: string;
+    models: ModelEntry[];
+  };
+
+  let providers = $state<ProviderWithModels[]>([]);
+  let filterQuery = $state('');
+  let loading = $state(false);
+  let error = $state('');
+  let currentModel = $state('');
+  let selectedModel = $state('');
+  let saving = $state(false);
+  let saveSuccess = $state('');
+
+  $effect(() => {
+    if (open) {
+      filterQuery = '';
+      void loadModels();
+    }
+  });
+
+  async function loadModels() {
+    loading = true;
+    error = '';
+    const token = getAdminToken() ?? '';
+    const headers: HeadersInit = { 'x-admin-token': token, 'x-request-id': crypto.randomUUID() };
+
+    try {
+      const [providersRes, configRes] = await Promise.all([
+        fetch('/admin/opencode/providers', { headers }),
+        fetch('/admin/opencode/model', { headers }),
+      ]);
+
+      if (providersRes.ok) {
+        const pData = await providersRes.json();
+        const providerList: Array<{ id: string; name: string }> = pData.providers ?? [];
+        const withModels = await Promise.all(
+          providerList.map(async (p) => {
+            const mRes = await fetch(
+              `/admin/opencode/providers/${encodeURIComponent(p.id)}/models`,
+              { headers }
+            );
+            const mData = mRes.ok ? await mRes.json() : { models: [] };
+            return {
+              id: p.id,
+              name: p.name,
+              models: (mData.models ?? []) as ModelEntry[],
+            };
+          })
+        );
+        providers = withModels.filter((p) => p.models.length > 0);
+      }
+
+      if (configRes.ok) {
+        const cData = await configRes.json();
+        currentModel = cData.model ?? '';
+        selectedModel = currentModel;
+      }
+    } catch {
+      error = 'Failed to load models. Is the assistant running?';
+    } finally {
+      loading = false;
+    }
+  }
+
+  let filteredProviders = $derived.by(() => {
+    if (!filterQuery) return providers;
+    const q = filterQuery.toLowerCase();
+    return providers
+      .map((p) => ({
+        ...p,
+        models: p.models.filter(
+          (m) => m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q)
+        ),
+      }))
+      .filter((p) => p.models.length > 0);
+  });
+
+  async function handleSave() {
+    if (!selectedModel || selectedModel === currentModel) {
+      onClose();
+      return;
+    }
+    saving = true;
+    error = '';
+    saveSuccess = '';
+    try {
+      const token = getAdminToken() ?? '';
+      const res = await fetch('/admin/opencode/model', {
+        method: 'POST',
+        headers: {
+          'x-admin-token': token,
+          'x-request-id': crypto.randomUUID(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ model: selectedModel }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to save');
+      saveSuccess = data.message || 'Model updated';
+      currentModel = selectedModel;
+      setTimeout(onClose, 2000);
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to save';
+    } finally {
+      saving = false;
+    }
+  }
+</script>
+
+<ModalSheet {open} wide title="Manage Models" {onClose}>
+  {#snippet children()}
+    <div class="form-field" style="margin-bottom: var(--space-4)">
+      <input
+        class="form-input"
+        type="search"
+        aria-label="Filter models"
+        placeholder="Filter models..."
+        bind:value={filterQuery}
+      />
+    </div>
+
+    {#if loading}
+      <p class="field-status" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span> Loading models...</p>
+    {:else if error}
+      <div class="feedback feedback--error" role="alert">
+        {error}
+        <button class="btn btn-sm btn-ghost" type="button" onclick={loadModels}>Retry</button>
+      </div>
+    {:else if filteredProviders.length === 0}
+      <p class="empty-state">No models available.</p>
+    {:else}
+      {#each filteredProviders as provider (provider.id)}
+        <details class="provider-group" open>
+          <summary>{provider.name} ({provider.models.length})</summary>
+          <div>
+            {#each provider.models as model (model.id)}
+              <label class="model-row">
+                <input
+                  type="radio"
+                  name="default-model"
+                  value={model.id}
+                  bind:group={selectedModel}
+                  style="accent-color: var(--color-primary)"
+                />
+                <span class="model-row-name">{model.name || model.id}</span>
+                {#if model.id === currentModel}
+                  <span
+                    style="font-size: var(--text-xs); color: var(--color-primary); font-weight: var(--font-medium)"
+                    >current</span
+                  >
+                {/if}
+              </label>
+            {/each}
+          </div>
+        </details>
+      {/each}
+    {/if}
+
+    {#if saveSuccess}
+      <div class="feedback feedback--success" role="status" aria-live="polite">{saveSuccess}</div>
+    {/if}
+  {/snippet}
+
+  {#snippet footer()}
+    <button class="btn btn-outline" type="button" onclick={onClose}>Cancel</button>
+    <button
+      class="btn btn-primary"
+      type="button"
+      onclick={handleSave}
+      disabled={saving || selectedModel === currentModel}
+    >
+      {saving ? 'Saving...' : 'Set Default Model'}
+    </button>
+  {/snippet}
+</ModalSheet>

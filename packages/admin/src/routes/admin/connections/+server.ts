@@ -35,8 +35,6 @@ import {
   checkQdrantDimensions,
   buildMem0Mapping,
   buildMem0MappingFromProfiles,
-  buildOpenCodeMapping,
-  writeOpenCodeProviderConfig,
   type MemoryConfig,
   type CallerType
 } from "$lib/server/control-plane.js";
@@ -406,18 +404,6 @@ async function handleCanonicalDtoSave(
     : undefined;
 
   writeMemoryConfig(state.dataDir, omConfig);
-
-  try {
-    const mapping = buildOpenCodeMapping({
-      provider: llmProfile.provider,
-      baseUrl: llmProfile.baseUrl,
-      systemModel: assignments.llm.model,
-      smallModel: assignments.llm.smallModel,
-    });
-    writeOpenCodeProviderConfig(state.configDir, mapping);
-  } catch (err) {
-    logger.warn('failed to write opencode config after DTO save', { error: String(err), requestId });
-  }
 
   let pushed = false;
   let pushError: string | undefined;

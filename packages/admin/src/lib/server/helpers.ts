@@ -171,6 +171,11 @@ export function validateExternalUrl(url: string): string | null {
     return `Blocked internal service: ${hostname}`;
   }
 
+  // Block localhost (resolves to loopback)
+  if (hostname === 'localhost') {
+    return `Blocked address: ${hostname}`;
+  }
+
   // Block loopback and dangerous IPs (but allow LAN IPs)
   if (isDangerousIp(hostname)) {
     return `Blocked address: ${hostname}`;

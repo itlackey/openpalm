@@ -253,3 +253,46 @@ export type EnvSchemaFieldResponse = {
   helpText: string;
   section: string;
 };
+
+// ── OpenCode Provider/Model Types (Issue #350) ────────────────────────
+
+export type OpenCodeProviderSummary = {
+  id: string;
+  name: string;
+  connected: boolean;
+  env: string[];
+  modelCount: number;
+};
+
+export type OpenCodeModelInfo = {
+  id: string;
+  name: string;
+  family?: string;
+  providerID: string;
+  capabilities?: Record<string, unknown>;
+};
+
+export type OpenCodeAuthMethod = {
+  type: 'oauth' | 'api';
+  label: string;
+};
+
+export type DeviceAuthStartResponse = {
+  pollToken: string;
+  userCode: string;
+  verificationUri: string;
+  instructions?: string;
+  method: 'auto' | 'code';
+};
+
+export type DeviceAuthPollEvent = {
+  status: 'pending' | 'complete' | 'error';
+  message: string;
+};
+
+export type ModelSetResponse = {
+  ok: boolean;
+  liveApplied: boolean;
+  restartRequired: boolean;
+  message: string;
+};

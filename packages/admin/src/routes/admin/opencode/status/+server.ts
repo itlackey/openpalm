@@ -5,7 +5,7 @@ import {
 } from "$lib/server/helpers.js";
 import type { RequestHandler } from "./$types";
 
-const ADMIN_OPENCODE_CONTAINER_PORT = process.env.OPENCODE_PORT ?? '4097';
+const ADMIN_OPENCODE_CONTAINER_PORT = process.env.OPENCODE_PORT ?? '3881';
 const ADMIN_OPENCODE_HOST_PORT = process.env.OP_ADMIN_OPENCODE_PORT ?? '3881';
 const ADMIN_OPENCODE_PUBLIC_URL = `http://localhost:${ADMIN_OPENCODE_HOST_PORT}/`;
 

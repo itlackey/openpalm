@@ -105,8 +105,9 @@ RUN mkdir -p /state /data && chown node:node /state /data
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
 COPY .openpalm/vault/redact.env.schema /app/.env.schema
 
-# Bake admin OpenCode config into the image — seeded at runtime if missing
-COPY core/admin/admin-opencode.jsonc /app/admin-opencode.jsonc
+# Bake admin OpenCode config into the image — seeded at runtime if overridden
+COPY core/admin/opencode/opencode.jsonc /app/opencode.jsonc
+COPY core/admin/opencode /etc/opencode
 
 # Admin entrypoint — starts SvelteKit + OpenCode
 COPY core/admin/entrypoint.sh /usr/local/bin/admin-entrypoint.sh
@@ -118,7 +119,7 @@ USER node
 # so varlock writes into a user-writable bind mount at runtime.
 ENV HOME=/tmp
 ENV PORT=8100
-EXPOSE 8100 4097
+EXPOSE 8100 3881
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
   CMD curl -sf http://localhost:8100/health || exit 1

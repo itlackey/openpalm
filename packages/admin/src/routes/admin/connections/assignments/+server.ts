@@ -4,8 +4,6 @@ import {
   appendAudit,
   getCapabilityAssignments,
   saveCapabilityAssignments,
-  buildOpenCodeMapping,
-  writeOpenCodeProviderConfig,
   readConnectionProfilesDocument,
   buildVoiceEnvVars,
   applyVoiceEnvVars,
@@ -75,24 +73,6 @@ export const POST: RequestHandler = async (event) => {
     doc = readConnectionProfilesDocument(state.configDir);
   } catch (err) {
     logger.warn('failed to read connection profiles for side-effects', { error: String(err), requestId });
-  }
-
-  // Wire OpenCode config write (non-critical side effect)
-  if (doc) {
-    try {
-      const llmProfile = doc.profiles.find((p) => p.id === savedAssignments.llm.connectionId);
-      if (llmProfile) {
-        const mapping = buildOpenCodeMapping({
-          provider: llmProfile.provider,
-          baseUrl: llmProfile.baseUrl,
-          systemModel: savedAssignments.llm.model,
-          smallModel: savedAssignments.llm.smallModel,
-        });
-        writeOpenCodeProviderConfig(state.configDir, mapping);
-      }
-    } catch (err) {
-      logger.warn('failed to write opencode.json after assignments save', { error: String(err), requestId });
-    }
   }
 
   // Wire voice channel env vars (non-critical side effect)
