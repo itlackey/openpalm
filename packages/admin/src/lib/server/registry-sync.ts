@@ -5,7 +5,7 @@
  * On subsequent calls, does a git pull to fetch the latest changes.
  *
  * The cloned repo lives at cache directory/registry-repo/ and is the runtime
- * source of truth for available addons and catalog automations.
+ * source of truth for available addons and automations automations.
  *
  * Security: all git operations use execFileSync (no shell) with validated inputs.
  */
@@ -162,21 +162,21 @@ export function discoverRegistryComponents(): Record<string, RegistryComponentEn
 }
 
 /**
- * Discover automation entries from the cloned stack/catalog/ directory.
+ * Discover automation entries from the cloned stack/automations/ directory.
  */
 export function discoverRegistryAutomations(): RegistryAutomationEntry[] {
   const cloneDir = repoCloneDir();
-  const catalogDir = join(cloneDir, "stack", "catalog");
-  if (!existsSync(catalogDir)) return [];
+  const automationsDir = join(cloneDir, "stack", "automations");
+  if (!existsSync(automationsDir)) return [];
 
-  const files = readdirSync(catalogDir).filter((f) => f.endsWith(".yml"));
+  const files = readdirSync(automationsDir).filter((f) => f.endsWith(".yml"));
 
   return files
     .map((ymlFile) => {
       const name = ymlFile.replace(/\.yml$/, "");
       if (!VALID_NAME_RE.test(name)) return null;
 
-      const ymlContent = readFileSync(join(catalogDir, ymlFile), "utf-8");
+      const ymlContent = readFileSync(join(automationsDir, ymlFile), "utf-8");
 
       let description = "";
       let schedule = "";
@@ -202,13 +202,13 @@ export function discoverRegistryAutomations(): RegistryAutomationEntry[] {
 }
 
 /**
- * Get automation content from the cloned catalog by name.
+ * Get automation content from the cloned automations by name.
  */
 export function getRegistryAutomation(name: string): string | null {
   if (!VALID_NAME_RE.test(name)) return null;
   const cloneDir = repoCloneDir();
-  const catalogDir = join(cloneDir, "stack", "catalog");
-  const ymlPath = join(catalogDir, `${name}.yml`);
+  const automationsDir = join(cloneDir, "stack", "automations");
+  const ymlPath = join(automationsDir, `${name}.yml`);
   if (!existsSync(ymlPath)) return null;
   return readFileSync(ymlPath, "utf-8");
 }

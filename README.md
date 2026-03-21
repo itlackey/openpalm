@@ -122,7 +122,8 @@ OpenPalm is a starting point. Here's how people build on it:
 
 | Component | README |
 |---|---|
-| Assets (compose, Caddyfile) | [assets/README.md](assets/README.md) |
+| Stack (compose, addons) | [stack/README.md](stack/README.md) |
+| Vault (env schemas, examples) | [vault/README.md](vault/README.md) |
 | Admin (UI + API) | [packages/admin/README.md](packages/admin/README.md) |
 | Guardian | [core/guardian/README.md](core/guardian/README.md) |
 | Assistant | [core/assistant/README.md](core/assistant/README.md) |

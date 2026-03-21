@@ -61,16 +61,15 @@ COMPOSE_DEST="$CONFIG_DIR/components/core.yml"
 
 [[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/stack/core.compose.yml" "$COMPOSE_DEST"
 
-# Ensure vault env files exist (compose needs them even if empty)
-mkdir -p "$VAULT_DIR/user" "$VAULT_DIR/stack"
-touch "$VAULT_DIR/user/user.env" "$VAULT_DIR/stack/stack.env"
+# Ensure vault subdirs exist
+mkdir -p "$VAULT_DIR/user" "$VAULT_DIR/stack" "$VAULT_DIR/stack/addons"
 
 # ── Seed environment files ───────────────────────────────────────
 if [[ $seed_env -eq 1 ]]; then
 	env_dest="$VAULT_DIR/user/user.env"
 	if [[ ! -f "$env_dest" || $force -eq 1 ]]; then
 		# Seed user.env with dev-friendly defaults (Ollama backend, dev tokens).
-		# The schema template (assets/user.env.schema) documents all supported
+		# The schema template (vault/user.env.schema) documents all supported
 		# variables but contains no values; we write concrete dev values here.
 		mem_token=$(openssl rand -hex 32)
 		cat >"$env_dest" <<USEREOF
@@ -122,6 +121,9 @@ OP_INGRESS_PORT=8080
 EOF
 	fi
 fi
+
+# Ensure vault env files exist (compose needs them even if empty)
+touch "$VAULT_DIR/user/user.env" "$VAULT_DIR/stack/stack.env"
 
 # ── Seed OpenCode user config (Ollama for dev) ──────────────────
 # OpenCode has two config files:

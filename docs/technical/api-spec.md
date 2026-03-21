@@ -108,10 +108,10 @@ Response:
 
 ### `POST /admin/upgrade`
 
-Full upgrade sequence: fetches the latest image tag, downloads fresh core assets
-from GitHub, backs up changed files, writes updated configuration, pulls images,
-and recreates all containers. After responding, schedules a deferred self-recreation
-of the admin container so the HTTP response is flushed first.
+Full upgrade sequence: fetches the latest image tag, downloads fresh stack
+files from GitHub, backs up changed files, writes updated configuration, pulls
+images, and recreates all containers. After responding, schedules a deferred
+self-recreation of the admin container so the HTTP response is flushed first.
 
 Response:
 
@@ -120,7 +120,7 @@ Response:
   "ok": true,
   "imageTag": "0.9.0",
   "backupDir": "/home/user/.openpalm/data/backups/2025-01-01T00-00-00",
-  "assetsUpdated": ["docker-compose.yml"],
+  "assetsUpdated": ["core.compose.yml"],
   "restarted": ["guardian"],
   "adminRecreateScheduled": true
 }
@@ -129,7 +129,7 @@ Response:
 Error responses:
 
 - `502 image_tag_update_failed` — Failed to resolve latest image tag.
-- `502 asset_download_failed` — Failed to download fresh assets from GitHub.
+- `502 asset_download_failed` — Failed to download fresh stack files from GitHub.
 - `503 docker_unavailable` — Docker is not reachable.
 - `502 pull_failed` — `docker compose pull` failed.
 - `502 up_failed` — Images pulled but container recreation failed.
@@ -269,8 +269,7 @@ Response:
 
 ## Registry
 
-Unified registry for channels and automations. Tries the cloned registry repo first, then falls back to build-time
-bundled assets.
+Unified registry for channels and automations. Add-on definitions live in `stack/addons/` and automations in `stack/automations/`. These are bundled into the admin image at build time.
 
 ### `GET /admin/registry`
 
@@ -290,8 +289,8 @@ Response:
 }
 ```
 
-`source` is `"remote"` when using the cloned registry repo, `"bundled"` when
-falling back to build-time assets.
+`source` indicates where the registry data was loaded from (e.g. `"bundled"` when
+using build-time bundled stack assets).
 
 ### `POST /admin/registry/install`
 
@@ -337,7 +336,7 @@ Error responses:
 
 ### `POST /admin/registry/refresh`
 
-Pulls the latest registry from GitHub via `git pull` on the cloned repo.
+Refreshes the registry index from bundled stack assets.
 
 Response:
 
@@ -347,7 +346,7 @@ Response:
 
 Error responses:
 
-- `500 registry_sync_error` — Git pull failed.
+- `500 registry_sync_error` — Refresh failed.
 
 ### `POST /admin/registry/uninstall`
 
@@ -424,7 +423,7 @@ Response:
 ## Connections
 
 Manage LLM provider credentials and related configuration stored in
-`vault/user.env`. Values are patched in-place by `patchSecretsEnvFile`
+`vault/user/user.env`. Values are patched in-place by `patchSecretsEnvFile`
 -- existing keys not in the allowed set are never removed or overwritten.
 
 ### `GET /admin/connections`
@@ -545,7 +544,7 @@ Supports three payload shapes:
 
 3) **Legacy key patch (compatibility)**
 
-Patches one or more allowed keys into `vault/user.env`. Keys not in
+Patches one or more allowed keys into `vault/user/user.env`. Keys not in
 `ALLOWED_CONNECTION_KEYS` are silently ignored. Existing keys outside the
 allowed set are preserved.
 
@@ -577,7 +576,7 @@ Response (legacy key patch path):
 Error responses:
 
 - `400 bad_request` -- No valid connection keys were provided.
-- `500 internal_error` -- Failed to write `vault/user.env`.
+- `500 internal_error` -- Failed to write `vault/user/user.env`.
 
 ### `GET /admin/connections/status`
 
@@ -675,7 +674,7 @@ Create a profile.
 
 When `auth.mode` is `"api_key"`, the profile payload may include a top-level
 `apiKey` field with the raw key. The handler derives the `apiKeySecretRef`
-from the provider and patches the key into `vault/user.env`.
+from the provider and patches the key into `vault/user/user.env`.
 
 ### `PUT /admin/connections/profiles`
 
@@ -913,7 +912,7 @@ Body:
 
 - `provider` (required) -- Must be a recognized LLM or embedding provider name.
 - `apiKeyRef` -- Raw API key or `env:VAR_NAME` reference resolved from
-  `process.env` then `vault/user.env`.
+  `process.env` then `vault/user/user.env`.
 - `baseUrl` -- Provider API base URL. Falls back to provider defaults when empty.
 
 Provider API conventions:
@@ -991,7 +990,7 @@ When using Ollama as the LLM or embedding provider with Memory:
 
 ### `GET /admin/config/validate`
 
-Run varlock environment validation against `vault/user.env` using the
+Run varlock environment validation against `vault/user/user.env` using the
 bundled schema. Always returns 200; validation failures
 are non-fatal and are logged to the audit trail.
 

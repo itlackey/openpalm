@@ -68,7 +68,7 @@ services:
     volumes:
       - ${OP_HOME}/config:/etc/openpalm:ro
       - ${OP_HOME}/config/assistant:/home/opencode/.config/opencode
-      - ${OP_HOME}/vault/user/user.env:/etc/openpalm/user.env:ro
+      - ${OP_HOME}/vault/user/user.env:/etc/openpalm-vault/user.env:ro
       - ${OP_HOME}/data/assistant:/home/opencode/.opencode
       - ${OP_HOME}/data/stash:/home/opencode/.akm
       - ${OP_HOME}/data/workspace:/work

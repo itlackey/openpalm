@@ -36,7 +36,9 @@ export default defineConfig(({ mode }) => {
     envDir: rootDir,
     resolve: {
       alias: {
-        "$stack": resolve(__dirname, "../../stack")
+        "$stack": resolve(__dirname, "../../stack"),
+        "$vault": resolve(__dirname, "../../vault"),
+        "$assistant": resolve(__dirname, "../../core/assistant")
       }
     },
     test: {

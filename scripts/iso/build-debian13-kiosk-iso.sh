@@ -98,8 +98,9 @@ render_livebuild_tree() {
   cp "$FILES_DIR/systemd/openpalm-stack.timer" \
     "$BUILD_ROOT/config/includes.chroot/etc/systemd/system/openpalm-stack.timer"
 
-  # --- Repository assets ---
-  rsync -a "$REPO_ROOT/assets/" "$BUILD_ROOT/config/includes.chroot/opt/openpalm/assets/"
+  # --- Repository stack and vault ---
+  rsync -a "$REPO_ROOT/stack/" "$BUILD_ROOT/config/includes.chroot/opt/openpalm/stack/"
+  rsync -a "$REPO_ROOT/vault/" "$BUILD_ROOT/config/includes.chroot/opt/openpalm/vault/"
 
   # --- Pre-built Docker image cache (optional) ---
   if [[ -f "$OP_IMAGES_TAR" ]]; then

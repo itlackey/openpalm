@@ -150,16 +150,16 @@ const REPO = "itlackey/openpalm";
 const VERSION = process.env.OP_ASSET_VERSION ?? "main";
 
 const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
-  { relPath: "config/components/core.yml", githubFilename: "core.compose.yml" },
-  { relPath: "data/assistant/opencode.jsonc", githubFilename: "core/opencode.jsonc" },
-  { relPath: "data/assistant/AGENTS.md", githubFilename: "core/AGENTS.md" },
-  { relPath: "vault/user.env.schema", githubFilename: "core/user.env.schema" },
-  { relPath: "vault/system.env.schema", githubFilename: "core/system.env.schema" },
+  { relPath: "config/components/core.yml", githubFilename: "stack/core.compose.yml" },
+  { relPath: "data/assistant/opencode.jsonc", githubFilename: "core/assistant/opencode.jsonc" },
+  { relPath: "data/assistant/AGENTS.md", githubFilename: "core/assistant/AGENTS.md" },
+  { relPath: "vault/user.env.schema", githubFilename: "vault/user.env.schema" },
+  { relPath: "vault/system.env.schema", githubFilename: "vault/system.env.schema" },
 ];
 
 async function downloadAsset(filename: string): Promise<string> {
   const releaseUrl = `https://github.com/${REPO}/releases/download/${VERSION}/${filename}`;
-  const rawUrl = `https://raw.githubusercontent.com/${REPO}/${VERSION}/stack/${filename}`;
+  const rawUrl = `https://raw.githubusercontent.com/${REPO}/${VERSION}/${filename}`;
 
   for (const url of [releaseUrl, rawUrl]) {
     try {

@@ -1,7 +1,7 @@
 # Environment Variables & Container Mount Points
 
 This document describes every environment variable and volume mount used by the
-OpenPalm stack. The `assets/docker-compose.yml` is the source of truth --
+OpenPalm stack. The `stack/core.compose.yml` is the source of truth --
 this document mirrors its content for reference.
 
 **Canonical sources:** Volume mounts and directory layout are also described in
@@ -27,7 +27,8 @@ Within `OP_HOME`, the layout is:
 | Subdirectory | Purpose |
 |---|---|
 | `config/` | User-editable: components, automations, OpenCode extensions |
-| `vault/` | Secrets: user.env (LLM keys), system.env (admin token, HMAC, paths) |
+| `vault/user/` | User-managed secrets: user.env (LLM keys, owner info) |
+| `vault/stack/` | System-managed secrets: stack.env (admin token, HMAC, paths) |
 | `data/` | Admin/service-managed data (memory, assistant home, guardian, catalog) |
 | `logs/` | Audit and debug logs |
 
@@ -97,7 +98,7 @@ Desktop, OrbStack, Colima, Podman). The admin never mounts the socket directly
 and runs as a non-root user.
 
 **`OP_DOCKER_SOCK`** is auto-detected by the setup scripts via
-`docker context inspect` and written to `vault/system.env`.
+`docker context inspect` and written to `vault/stack/stack.env`.
 This supports Docker runtimes whose socket is not at the default
 `/var/run/docker.sock` (e.g. OrbStack, Colima, Rancher Desktop).
 If not set, it defaults to `/var/run/docker.sock`.
@@ -107,7 +108,7 @@ If not set, it defaults to `/var/run/docker.sock`.
 | Host Path | Container Path | Mode | Purpose |
 |---|---|---|---|
 | `$OP_HOME/config` | config mount | rw | Component source files, extensions |
-| `$OP_HOME/vault` | vault mount | rw | Secrets (user.env, system.env) |
+| `$OP_HOME/vault` | vault mount | rw | Secrets (user/user.env, stack/stack.env) |
 | `$OP_HOME/data` | data mount | rw | Manage system-policy files, pre-create subdirs |
 | `$OP_HOME/logs` | logs mount | rw | Audit logs |
 
@@ -126,14 +127,14 @@ default `1000:1000`) via gosu before running the SvelteKit app.
 
 Runtime configuration is split into two env files in `vault/`:
 
-- **`system.env`** -- ALL system-managed config. Seeded by setup scripts. Contains:
+- **`vault/stack/stack.env`** -- ALL system-managed config. Seeded by setup scripts. Contains:
   - Infrastructure: paths, UID/GID, Docker socket, image namespace/tag, networking, Memory URLs
-  - Channel HMAC keys: `CHANNEL_<NAME>_SECRET` (generated per channel, persisted in system.env)
-- **`user.env`** -- User-managed secrets. By convention contains LLM provider keys.
+  - Channel HMAC keys: `CHANNEL_<NAME>_SECRET` (generated per channel, persisted in stack.env)
+- **`vault/user/user.env`** -- User-managed secrets. By convention contains LLM provider keys.
 
-Docker compose is invoked with both: `--env-file vault/system.env --env-file vault/user.env`.
+Docker compose is invoked with both: `--env-file vault/stack/stack.env --env-file vault/user/user.env`.
 
-Channel HMAC secrets are persisted in `vault/system.env`. Users typically only need to edit `vault/user.env` for LLM keys.
+Channel HMAC secrets are persisted in `vault/stack/stack.env`. Users typically only need to edit `vault/user/user.env` for LLM keys.
 
 Configuration changes are activated through an explicit **apply** action:
 the admin reads config and system assets, writes files to their final locations,
@@ -146,7 +147,7 @@ not overwrite existing user configuration files in config/. config/ writes
 occur only through explicit user-intent actions (see
 [core-principles.md](./core-principles.md) for the allowed-writers rule).
 
-**User-managed** (`vault/user.env`):
+**User-managed** (`vault/user/user.env`):
 
 | Secret | Consumed By | Purpose |
 |---|---|---|
@@ -156,7 +157,7 @@ occur only through explicit user-intent actions (see
 | `MISTRAL_API_KEY` | assistant | Mistral API key (optional) |
 | `GOOGLE_API_KEY` | assistant | Google API key (optional) |
 
-**System-managed** (`vault/system.env`):
+**System-managed** (`vault/stack/stack.env`):
 
 | Secret | Consumed By | Purpose |
 |---|---|---|
@@ -174,7 +175,7 @@ Channel HMAC secrets are generated when a channel is installed and reused on sub
 | Variable | Value | Purpose |
 |---|---|---|
 | `PORT` | `8100` | HTTP server listen port |
-| `ADMIN_TOKEN` | from system.env | Bearer token for Admin API |
+| `ADMIN_TOKEN` | from stack.env | Bearer token for Admin API |
 | `GUARDIAN_URL` | `http://guardian:8080` | Internal URL to guardian |
 | `OP_ASSISTANT_URL` | `http://assistant:4096` | Internal URL to assistant |
 | `HOME` | `${OP_HOME}/data/admin` | Writable home directory for varlock runtime state (`~/.varlock`) |
@@ -190,7 +191,7 @@ Channel HMAC secrets are generated when a channel is installed and reused on sub
 | `OP_ASSISTANT_URL` | `http://assistant:4096` | Internal URL for message forwarding |
 | `GUARDIAN_AUDIT_PATH` | `/app/audit/guardian-audit.log` | Audit log path |
 | `OPENCODE_TIMEOUT_MS` | `120000` | Timeout (ms) for assistant message response (LLM inference can be slow; code default 120s) |
-| `ADMIN_TOKEN` | from system.env | Admin API token |
+| `ADMIN_TOKEN` | from stack.env | Admin API token |
 | `CHANNEL_*_SECRET` | system-generated | HMAC keys for channel signature verification |
 
 ### 4.3 Assistant Service (OpenCode Runtime)
@@ -203,7 +204,7 @@ Channel HMAC secrets are generated when a channel is installed and reused on sub
 | `OPENCODE_ENABLE_SSH` | `0` (default) | SSH server toggle |
 | `HOME` | `/home/opencode` | User home directory |
 | `OP_ADMIN_API_URL` | `http://admin:8100` | Admin API URL for admin tools |
-| `OP_ADMIN_TOKEN` | from system.env | Bearer token for Admin API |
+| `OP_ADMIN_TOKEN` | from stack.env | Bearer token for Admin API |
 | `MEMORY_API_URL` | `http://memory:8765` | Memory service URL |
 | `MEMORY_USER_ID` | `default_user` | User identifier for memory (entrypoint auto-falls back to runtime username when left as default) |
 | `OP_UID` | `${OP_UID:-1000}` | Target runtime UID used by assistant entrypoint before dropping privileges |
@@ -232,9 +233,9 @@ needed.
 
 ## 5. Stack-Level Configuration Variables
 
-These variables are consumed by `docker compose` via `vault/system.env`.
+These variables are consumed by `docker compose` via `vault/stack/stack.env`.
 They are **system-managed** -- the admin auto-detects and writes them on every apply.
-You never set these in `vault/user.env`.
+You never set these in `vault/user/user.env`.
 
 | Variable | Default | Source |
 |---|---|---|
@@ -295,13 +296,13 @@ Never generated or defaulted by OpenPalm.
 
 ## 9. Schema Reference
 
-The `.env.schema` files in `assets/` provide machine-parseable documentation for every
+The `.env.schema` files in `vault/` provide machine-parseable documentation for every
 environment variable. They are safe to commit -- they contain no secret values.
 
 | File | Documents |
 |---|---|
-| [`assets/user.env.schema`](../../assets/user.env.schema) | All variables in `vault/user.env` (user-managed) |
-| [`assets/system.env.schema`](../../assets/system.env.schema) | All variables in `vault/system.env` (system-managed) |
+| [`vault/user.env.schema`](../../vault/user.env.schema) | All variables in `vault/user/user.env` (user-managed) |
+| [`vault/system.env.schema`](../../vault/system.env.schema) | All variables in `vault/stack/stack.env` (system-managed) |
 
 ### Varlock decorator syntax
 
@@ -330,11 +331,11 @@ The schema files are used by the [Varlock](https://varlock.dev) CLI for validati
   network shared only with the admin -- no other service can reach it. The
   proxy allowlists only the Docker API categories needed for compose operations.
 - **ADMIN_TOKEN** -- Required at startup (`${ADMIN_TOKEN:?...}`). The compose
-  file will fail if unset in vault/system.env.
+  file will fail if unset in vault/stack/stack.env.
 - **Bind addresses** -- All service ports default to `127.0.0.1` (localhost only).
 - **UID/GID mapping** -- The assistant, guardian, and admin run with the host
   user's UID/GID for correct file ownership on bind-mounted volumes.
 - **Secrets isolation** -- Most containers receive only the secrets they
   explicitly declare in their `environment:` block. Channel HMAC secrets are
-  system-generated by the admin and stored in `vault/system.env`; they
+  system-generated by the admin and stored in `vault/stack/stack.env`; they
   are never present in user-editable files.

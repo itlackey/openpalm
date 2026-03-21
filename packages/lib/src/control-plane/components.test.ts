@@ -298,7 +298,7 @@ describe("discoverComponents", () => {
     expect(discord.schemaPath).toContain(".env.schema");
   });
 
-  test("discovers components from registry/catalog", () => {
+  test("discovers components from data/catalog", () => {
     const openpalmHome = join(tempDir, "home");
     const catalogDir = join(openpalmHome, "data", "catalog");
     mkdirSync(catalogDir, { recursive: true });

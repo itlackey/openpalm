@@ -104,7 +104,7 @@ RUN curl -fsSL https://raw.githubusercontent.com/itlackey/agentikit/"$AGENTIKIT_
 # ── Varlock binary + redaction schema for runtime secret redaction ────────────
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
 RUN mkdir -p /usr/local/etc/varlock
-COPY assets/redact.env.schema /usr/local/etc/varlock/.env.schema
+COPY vault/redact.env.schema /usr/local/etc/varlock/.env.schema
 
 EXPOSE 4096 22
 

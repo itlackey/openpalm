@@ -129,14 +129,13 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     // Host detection failure is non-fatal
   }
 
-  const composeContent = await fetchAsset(options.version, 'core.compose.yml');
+  const composeContent = await fetchAsset(options.version, 'stack/core.compose.yml');
   await Bun.write(join(configDir, 'components', 'core.yml'), composeContent);
 
   // Download schemas to vault/ for varlock validation and dataDir for FilesystemAssetProvider
   for (const [remoteFile, localPath] of [
-    ['core/user.env.schema', join(vaultDir, 'user.env.schema')],
-    ['core/system.env.schema', join(vaultDir, 'system.env.schema')],
-    ['core/setup-config.schema.json', join(dataDir, 'setup-config.schema.json')],
+    ['vault/user.env.schema', join(vaultDir, 'user.env.schema')],
+    ['vault/system.env.schema', join(vaultDir, 'system.env.schema')],
   ] as const) {
     try {
       const content = await fetchAsset(options.version, remoteFile);
@@ -148,12 +147,12 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
   // Download remaining assets needed by FilesystemAssetProvider
   const assetFiles: Array<{ remote: string; localPath: string }> = [
-    { remote: 'addons/ollama/compose.yml', localPath: join(configDir, 'components', 'ollama.yml') },
-    { remote: 'core/AGENTS.md', localPath: join(dataDir, 'assistant', 'AGENTS.md') },
-    { remote: 'core/opencode.jsonc', localPath: join(dataDir, 'assistant', 'opencode.jsonc') },
-    { remote: 'automations/cleanup-logs.yml', localPath: join(configDir, 'automations', 'cleanup-logs.yml') },
-    { remote: 'automations/cleanup-data.yml', localPath: join(configDir, 'automations', 'cleanup-data.yml') },
-    { remote: 'automations/validate-config.yml', localPath: join(configDir, 'automations', 'validate-config.yml') },
+    { remote: 'stack/addons/ollama/compose.yml', localPath: join(configDir, 'components', 'ollama.yml') },
+    { remote: 'core/assistant/AGENTS.md', localPath: join(dataDir, 'assistant', 'AGENTS.md') },
+    { remote: 'core/assistant/opencode.jsonc', localPath: join(dataDir, 'assistant', 'opencode.jsonc') },
+    { remote: 'stack/automations/cleanup-logs.yml', localPath: join(configDir, 'automations', 'cleanup-logs.yml') },
+    { remote: 'stack/automations/cleanup-data.yml', localPath: join(configDir, 'automations', 'cleanup-data.yml') },
+    { remote: 'stack/automations/validate-config.yml', localPath: join(configDir, 'automations', 'validate-config.yml') },
   ];
   await Promise.all(
     assetFiles.map(async ({ remote, localPath }) => {

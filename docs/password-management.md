@@ -75,7 +75,7 @@ The vault boundary is enforced through Docker Compose volume mounts:
 | Container | Vault Access | Mount |
 |-----------|-------------|-------|
 | **Admin** | Full vault (rw) | `${OP_HOME}:/openpalm` |
-| **Assistant** | `user.env` only (ro) | `vault/user.env:/etc/openpalm/user.env:ro` |
+| **Assistant** | `user.env` only (ro) | `vault/user/user.env:/etc/openpalm-vault/user.env:ro` |
 | **Guardian** | None | Receives secrets via `env_file` at startup |
 | **Memory** | None | Receives secrets via `${VAR}` substitution |
 | **Scheduler** | None | Receives secrets via `${VAR}` substitution |

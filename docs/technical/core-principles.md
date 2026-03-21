@@ -22,7 +22,7 @@ These are hard constraints that must never be violated during development:
 
 1. **Host CLI or admin is the orchestrator.** The host CLI manages Docker Compose directly on the host. The admin container, when present, provides a web UI and API for remote/assistant-driven stack operations via docker-socket-proxy. Only one orchestrator should manage compose operations at a time. The Docker socket is never exposed to any other container.
 2. **Guardian-only ingress.** All channel traffic enters through the guardian, which enforces HMAC verification, timestamp skew rejection, replay detection, and rate limiting. No channel may communicate directly with the assistant.
-3. **Assistant isolation.** The assistant has no Docker socket, no host filesystem access beyond its designated mounts (`config/` ro, `vault/user.env` ro, `data/assistant/`, `data/stash/`, `data/workspace/`, `logs/opencode/`). When the admin service is present, the assistant interacts with the stack through the admin API. When admin is absent, assistant stack-management tools are unavailable — the assistant operates with memory tools only.
+3. **Assistant isolation.** The assistant has no Docker socket, no host filesystem access beyond its designated mounts (`config/` ro, `vault/user/user.env` ro, `data/assistant/`, `data/stash/`, `data/workspace/`, `logs/opencode/`). When the admin service is present, the assistant interacts with the stack through the admin API. When admin is absent, assistant stack-management tools are unavailable — the assistant operates with memory tools only.
 4. **LAN-first by default.** Admin interfaces, dashboards, and channels are LAN-restricted by default. Nothing is publicly exposed without explicit user opt-in.
 
 ---
@@ -50,16 +50,16 @@ Subtrees:
 ### 2) Vault (secrets boundary)
 
 **Location:** `~/.openpalm/vault/`
-**Purpose:** all secrets and secret-adjacent configuration. Hard filesystem boundary — only admin mounts the full directory (rw); assistant mounts only `vault/user.env` (ro); no other container mounts anything from vault.
+**Purpose:** all secrets and secret-adjacent configuration. Hard filesystem boundary — only admin mounts the full directory (rw); assistant mounts only `vault/user/user.env` (ro); no other container mounts anything from vault.
 
-Files:
+Subtrees:
 
-* `user.env` — user-editable secrets: LLM API keys, provider URLs, embedding config, owner info. Hot-reloadable by the assistant via file watcher.
-* `user.env.schema` — Varlock schema for `user.env`
-* `system.env` — system-managed secrets: admin token, HMAC secrets, paths, UID/GID, image tags, service auth tokens. Written only by CLI/admin.
-* `system.env.schema` — Varlock schema for `system.env`
+* `user/user.env` — user-editable secrets: LLM API keys, provider URLs, embedding config, owner info. Hot-reloadable by the assistant via file watcher.
+* `stack/stack.env` — system-managed secrets: admin token, HMAC secrets, paths, UID/GID, image tags, service auth tokens. Written only by CLI/admin.
 
-**Rule:** no container except admin may mount `vault/` as a directory. The assistant receives only a file-level bind mount of `vault/user.env` (read-only). Guardian, scheduler, and memory receive secrets exclusively through `${VAR}` substitution at container creation time.
+Env schemas and example files live in the repo at `vault/` (committed, no secret values).
+
+**Rule:** no container except admin may mount `vault/` as a directory. The assistant receives only a file-level bind mount of `vault/user/user.env` (read-only). Guardian, scheduler, and memory receive secrets exclusively through `${VAR}` substitution at container creation time.
 
 ### 3) Data (service-managed, durable)
 
@@ -84,7 +84,7 @@ Files: `guardian-audit.log`, `admin-audit.jsonl`, `opencode/` (OpenCode state/se
 **Location:** `~/.cache/openpalm/`
 **Purpose:** regenerable cache data that does not need backing up.
 
-Subtrees: `registry/` (cached extension/channel registry index), `rollback/` (previous known-good config snapshots for automated rollback on deploy failure).
+Subtrees: `rollback/` (previous known-good config snapshots for automated rollback on deploy failure).
 
 ---
 
@@ -106,7 +106,7 @@ The stack is defined by combining a base Compose file with component overlays us
 To guarantee lifecycle operations never clobber user configuration:
 
 * **`config/` is user-owned and persistently authoritative.** Automatic lifecycle sync only seeds missing defaults and never overwrites existing user files. Explicit mutation paths — user direct edits, admin UI/API config actions, authenticated/allowlisted assistant calls to admin API on user request — may create/update/remove files as requested. System-managed compose files (`core.yml`, `admin.yml`) may be updated on upgrade.
-* **`vault/` has strict access rules.** Only admin mounts the full directory (rw). The assistant mounts only `vault/user.env` (ro file-level mount). No other container mounts anything from `vault/`. Lifecycle operations never overwrite `vault/user.env`; they may update `vault/system.env` (system-managed).
+* **`vault/` has strict access rules.** Only admin mounts the full directory (rw). The assistant mounts only `vault/user/user.env` (ro file-level mount). No other container mounts anything from `vault/`. Lifecycle operations never overwrite `vault/user/user.env`; they may update `vault/stack/stack.env` (system-managed).
 * **`data/` is admin- and service-writable.** Containers own durable data. The assistant may not write to `data/` directly — it must go through the admin API.
 * **Apply uses validate-in-place with snapshot rollback.** Changes are validated against temp copies before writing to live paths. A snapshot of the current state is saved to `~/.cache/openpalm/rollback/` before any write. If deployment fails health checks, the snapshot is automatically restored.
 
@@ -151,7 +151,7 @@ All OpenPalm services use the **38XX port range** to avoid conflicts with common
 | **Memory** | 3898 | (internal only) | Memory service API |
 | **Channel Chat** | 3820 | (internal only) | Chat channel adapter |
 
-Port assignments are defined via `OP_*_PORT` variables in `vault/system.env` and referenced in compose files via `${VAR}` substitution.
+Port assignments are defined via `OP_*_PORT` variables in `vault/stack/stack.env` and referenced in compose files via `${VAR}` substitution.
 
 ---
 
@@ -165,7 +165,7 @@ The admin Dockerfile uses **plain `npm install`** (not Bun) at a workspace root 
 
 **Rules:**
 * Never use Bun to install dependencies in the admin Docker build — Bun's symlink-based `node_modules` layout is fragile under Node/Vite resolution.
-* `node_modules` must be at a common ancestor of all source directories that Vite resolves (admin source, assets, registry).
+* `node_modules` must be at a common ancestor of all source directories that Vite resolves (admin source, stack).
 * `PATH` must include `node_modules/.bin` so build tool binaries (svelte-kit, vite) are available from subdirectories.
 
 ### Guardian + Channels (Bun runtime)
@@ -189,8 +189,8 @@ This ensures sdk transitive dependencies are available at runtime. Since these s
 * **Add a component:** drop a `.yml` compose overlay into `config/components/`, run `openpalm apply`. The CLI validates the overlay, snapshots current state, and runs `docker compose up -d` with the updated overlay chain. ([Docker Documentation][3])
 * **Add an extension (user):** copy OpenCode assets into `config/assistant/` following OpenCode’s directory structure. ([OpenCode][1])
 * **Core precedence:** core extensions live in `/etc/opencode` inside the assistant container and are loaded via `OPENCODE_CONFIG_DIR`. ([OpenCode][1])
-* **Apply changes:** the CLI or admin validates proposed changes (Varlock schema, compose config) before writing anything. If validation passes, a snapshot of current live files is saved to `~/.cache/openpalm/rollback/`, changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution. Compose is invoked with two env files: `vault/system.env` (system-managed: admin token, HMAC secrets, paths, UID/GID, image tags) and `vault/user.env` (user-managed: LLM keys, provider URLs). Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` and `vault/user.env`; it may seed missing defaults and update system-managed files (`vault/system.env`, `config/components/core.yml`).
-* **Hot-reload LLM keys:** the assistant watches `vault/user.env` (mounted read-only) via file watcher. Editing `user.env` on the host takes effect within seconds — no container restart needed, no lost context.
+* **Apply changes:** the CLI or admin validates proposed changes (Varlock schema, compose config) before writing anything. If validation passes, a snapshot of current live files is saved to `~/.cache/openpalm/rollback/`, changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution. Compose is invoked with two env files: `vault/stack/stack.env` (system-managed: admin token, HMAC secrets, paths, UID/GID, image tags) and `vault/user/user.env` (user-managed: LLM keys, provider URLs). Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` and `vault/user/user.env`; it may seed missing defaults and update system-managed files (`vault/stack/stack.env`, `config/components/core.yml`).
+* **Hot-reload LLM keys:** the assistant watches `vault/user/user.env` (mounted read-only) via file watcher. Editing `user.env` on the host takes effect within seconds — no container restart needed, no lost context.
 * **Rollback:** `openpalm rollback` restores the most recent snapshot from `~/.cache/openpalm/rollback/` and restarts the stack. Available both as an automated response to failed deploys and as a manual escape hatch.
 * **Backup/restore:** `tar czf backup.tar.gz ~/.openpalm` archives the entire stack. Restore is extract and `docker compose up -d` — no staging tier to reconstruct.
 
