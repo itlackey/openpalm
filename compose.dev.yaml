@@ -28,6 +28,17 @@ services:
       context: .
       dockerfile: core/guardian/Dockerfile
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_IMAGE_TAG:-latest}
+    # Dev override: publish guardian to host for integration tests.
+    # Uses OP_GUARDIAN_PORT (default 8180) to avoid conflict with the legacy
+    # ingress port 8080 (which tests expect to be ECONNREFUSED).
+    ports:
+      - "${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-8180}:8080"
+    # Mount stack.env so guardian can re-read channel secrets dynamically
+    # (tests append CHANNEL_*_SECRET vars without restarting the container).
+    volumes:
+      - ${OP_HOME}/vault/stack/stack.env:/app/secrets/stack.env:ro
+    environment:
+      GUARDIAN_SECRETS_PATH: /app/secrets/stack.env
 
   assistant:
     build:
@@ -40,8 +51,11 @@ services:
       GROQ_API_KEY: ""
       MISTRAL_API_KEY: ""
       GOOGLE_API_KEY: ""
-      LMSTUDIO_API_KEY: ""
-      LMSTUDIO_BASE_URL: ""
+      # Dev: lmstudio provider with socat proxy to Ollama on host.
+      # LMSTUDIO_API_KEY must be non-empty for OpenCode to activate the provider.
+      # LMSTUDIO_BASE_URL tells entrypoint.sh socat proxy where to forward.
+      LMSTUDIO_API_KEY: "ollama"
+      LMSTUDIO_BASE_URL: "http://host.docker.internal:11434/v1"
 
   channel:
     build:

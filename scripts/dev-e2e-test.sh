@@ -92,8 +92,14 @@ docker run --rm -v "$ROOT_DIR/.dev/data/opencode:/c" alpine sh -c \
 docker run --rm -v "$ROOT_DIR/.dev/config/assistant:/c" alpine sh -c \
 	"find /c -user root -delete" 2>/dev/null || true
 
-# Vault — reset system env
+# Vault — reset system env and managed files
 rm -f .dev/vault/stack/stack.env
+rm -f .dev/vault/stack/auth.json
+rm -rf .dev/vault/stack/services
+rm -rf .dev/vault/stack/addons
+
+# Config — remove stack.yaml so the wizard writes a fresh one
+rm -f .dev/config/stack.yaml
 
 # State — remove setup markers and audit logs
 rm -f .dev/state/setup-complete
@@ -169,6 +175,7 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 		-f .dev/config/components/core.yml \
 		-f compose.dev.yaml \
 		--env-file .dev/vault/stack/stack.env \
+		--env-file .dev/vault/stack/services/memory/managed.env \
 		--env-file .dev/vault/user/user.env \
 		--profile admin \
 		--project-name openpalm build 2>&1 | tail -5
@@ -185,6 +192,7 @@ docker compose --project-directory . \
 	-f .dev/config/components/core.yml \
 	-f compose.dev.yaml \
 	--env-file .dev/vault/stack/stack.env \
+	--env-file .dev/vault/stack/services/memory/managed.env \
 	--env-file .dev/vault/user/user.env \
 	--profile admin \
 	--project-name openpalm up -d 2>&1 | tail -10
@@ -312,6 +320,7 @@ docker compose --project-directory . \
 	-f .dev/config/components/core.yml \
 	-f compose.dev.yaml \
 	--env-file .dev/vault/stack/stack.env \
+	--env-file .dev/vault/stack/services/memory/managed.env \
 	--env-file .dev/vault/user/user.env \
 	--profile admin \
 	--project-name openpalm up -d --force-recreate --no-deps assistant
@@ -383,10 +392,46 @@ check_env_val() {
 }
 
 check_env_val "ADMIN_TOKEN" "dev-admin-token"
-check_env_val "MEMORY_USER_ID" "node"
-check_env_val "SYSTEM_LLM_PROVIDER" "ollama"
-check_env_val "SYSTEM_LLM_MODEL" "qwen2.5-coder:3b"
-check_env_val "SYSTEM_LLM_BASE_URL" "http://host.docker.internal:11434"
+# Config vars (SYSTEM_LLM_*, EMBEDDING_*, MEMORY_USER_ID) are now in
+# stack.yaml capabilities and vault/stack/services/memory/managed.env,
+# NOT in user.env. Verify they are NOT in user.env.
+if grep -qE 'SYSTEM_LLM_PROVIDER=' "$secrets" 2>/dev/null; then
+	fail "SYSTEM_LLM_PROVIDER should NOT be in user.env (lives in stack.yaml now)"
+else
+	pass "Config vars correctly absent from user.env"
+fi
+
+# Verify stack.yaml has correct capabilities
+STACK_YAML=".dev/config/stack.yaml"
+if [ -f "$STACK_YAML" ]; then
+	if grep -q "llm: ollama/" "$STACK_YAML"; then
+		pass "stack.yaml has capabilities.llm with ollama provider"
+	else
+		fail "stack.yaml capabilities.llm missing or wrong provider"
+	fi
+else
+	fail "stack.yaml not found"
+fi
+
+# Verify managed.env exists with correct values
+MANAGED_ENV=".dev/vault/stack/services/memory/managed.env"
+if [ -f "$MANAGED_ENV" ]; then
+	managed_llm=$(grep 'SYSTEM_LLM_PROVIDER=' "$MANAGED_ENV" | cut -d= -f2-)
+	if [ "$managed_llm" = "ollama" ]; then
+		pass "managed.env has SYSTEM_LLM_PROVIDER=ollama"
+	else
+		fail "managed.env SYSTEM_LLM_PROVIDER expected 'ollama', got '$managed_llm'"
+	fi
+else
+	fail "managed.env not found at $MANAGED_ENV"
+fi
+
+# Verify auth.json exists
+if [ -f ".dev/vault/stack/auth.json" ]; then
+	pass "auth.json exists"
+else
+	fail "auth.json not found"
+fi
 
 # ── Step 11: Verify assistant env ────────────────────────────────────
 echo ""

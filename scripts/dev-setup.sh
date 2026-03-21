@@ -50,6 +50,7 @@ mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
 	"$CONFIG_DIR/automations" "$CONFIG_DIR/components" "$CONFIG_DIR/stash" \
 	"$VAULT_DIR" "$VAULT_DIR/stack" "$VAULT_DIR/stack/addons" "$VAULT_DIR/user" \
+	"$VAULT_DIR/stack/services/memory" \
 	"$DATA_DIR/memory" "$DATA_DIR/assistant/.config/opencode" \
 	"$DATA_DIR/guardian" \
 	"$DATA_DIR/automations" "$DATA_DIR/models" "$DATA_DIR/stash" "$DATA_DIR/workspace" \
@@ -61,8 +62,44 @@ COMPOSE_DEST="$CONFIG_DIR/components/core.yml"
 
 [[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/.openpalm/stack/core.compose.yml" "$COMPOSE_DEST"
 
-# Ensure vault subdirs exist
-mkdir -p "$VAULT_DIR/user" "$VAULT_DIR/stack" "$VAULT_DIR/stack/addons"
+# Seed stack.yaml v2 (capabilities-based config)
+STACK_YAML="$CONFIG_DIR/stack.yaml"
+if [[ ! -f "$STACK_YAML" || $force -eq 1 ]]; then
+	cat >"$STACK_YAML" <<'SYEOF'
+version: 2
+capabilities:
+  llm: ollama/qwen2.5-coder:3b
+  embeddings:
+    provider: ollama
+    model: nomic-embed-text
+    dims: 768
+  memory:
+    userId: default_user
+    customInstructions: ""
+addons:
+  admin: true
+  ollama: true
+SYEOF
+fi
+
+# Seed auth.json (empty — prevents Docker creating it as directory)
+AUTH_JSON="$VAULT_DIR/stack/auth.json"
+if [[ ! -f "$AUTH_JSON" || $force -eq 1 ]]; then
+	echo '{}' >"$AUTH_JSON"
+	chmod 600 "$AUTH_JSON"
+fi
+
+# Seed managed.env for memory service (derived from capabilities)
+MANAGED_ENV="$VAULT_DIR/stack/services/memory/managed.env"
+if [[ ! -f "$MANAGED_ENV" || $force -eq 1 ]]; then
+	cat >"$MANAGED_ENV" <<'MEEOF'
+SYSTEM_LLM_PROVIDER=ollama
+SYSTEM_LLM_MODEL=qwen2.5-coder:3b
+EMBEDDING_MODEL=nomic-embed-text
+EMBEDDING_DIMS=768
+MEMORY_USER_ID=default_user
+MEEOF
+fi
 
 # ── Seed environment files ───────────────────────────────────────
 if [[ $seed_env -eq 1 ]]; then
@@ -118,6 +155,12 @@ OP_IMAGE_TAG=latest
 
 OP_INGRESS_BIND_ADDRESS=127.0.0.1
 OP_INGRESS_PORT=8080
+
+# Dev override: map host ports to match internal ports so tests can use hardcoded URLs
+OP_ASSISTANT_PORT=4096
+OP_MEMORY_PORT=8765
+OP_ADMIN_PORT=8100
+OP_GUARDIAN_PORT=8180
 EOF
 	fi
 fi
@@ -222,8 +265,14 @@ if [[ $use_pass -eq 1 ]]; then
 fi
 
 # ── Fix ownership ────────────────────────────────────────────────
+# Use Docker to fix root-owned files created by containers (qdrant, opencode, etc.)
+if docker info >/dev/null 2>&1; then
+	docker run --rm -v "$DEV_ROOT:/cleanup" alpine sh -c \
+		"find /cleanup -user root -exec chown $(id -u):$(id -g) {} +" 2>/dev/null || true
+fi
+
 if [[ $EUID -ne 0 ]]; then
-	chown -R "$(id -u):$(id -g)" "$CONFIG_DIR" "$VAULT_DIR" "$DATA_DIR" "$LOGS_DIR"
+	chown -R "$(id -u):$(id -g)" "$CONFIG_DIR" "$VAULT_DIR" "$DATA_DIR" "$LOGS_DIR" 2>/dev/null || true
 else
 	echo "Note: running as root; ownership left as-is." >&2
 fi

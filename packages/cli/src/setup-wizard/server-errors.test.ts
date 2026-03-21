@@ -273,6 +273,7 @@ describe("setup wizard server error scenarios", () => {
     }
   });
 
+  // lmstudio fetch to 127.0.0.1:1234 can take >5s to fail when nothing listens
   it("returns empty model list when provider has no base URL", async () => {
     const { stop } = createSetupServer(serverPort, {
       assetProvider: createStubAssetProvider(),
@@ -294,7 +295,7 @@ describe("setup wizard server error scenarios", () => {
     } finally {
       stop();
     }
-  });
+  }, 15000);
 
   it("returns recoverable error when model fetch hits unreachable server", async () => {
     const { stop } = createSetupServer(serverPort, {

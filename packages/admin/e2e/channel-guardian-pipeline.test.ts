@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { createHmac, randomUUID } from 'node:crypto';
-import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, openSync, ftruncateSync, writeSync, closeSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -35,11 +35,12 @@ const REPO_ROOT = resolve(HERE, '../../..');
 const STACK_ENV_PATH = resolve(REPO_ROOT, '.dev/vault/stack/stack.env');
 
 /**
- * Guardian URL: Gateway proxies /guardian/* to guardian:8080 (stripping prefix).
- * The ingress port defaults to 8080 via OP_INGRESS_PORT in stack.env.
+ * Guardian URL: In dev mode, guardian is published directly on OP_GUARDIAN_PORT
+ * (default 8180). No gateway prefix stripping needed — hit guardian routes
+ * at their native paths (/health, /channel/inbound).
  */
-const GATEWAY_BASE = `http://localhost:${process.env.OP_INGRESS_PORT ?? '8080'}`;
-const GUARDIAN_URL = `${GATEWAY_BASE}/guardian`;
+const GUARDIAN_PORT = process.env.OP_GUARDIAN_PORT ?? '8180';
+const GUARDIAN_URL = `http://localhost:${GUARDIAN_PORT}`;
 
 const TEST_CHANNEL = 'e2etest';
 const TEST_SECRET = `e2e-test-secret-${Date.now()}`;
@@ -81,15 +82,18 @@ function seedTestSecret(): boolean {
 		originalStackEnv = readFileSync(STACK_ENV_PATH, 'utf8');
 		const secretLine = `CHANNEL_E2ETEST_SECRET=${TEST_SECRET}`;
 		if (originalStackEnv.includes('CHANNEL_E2ETEST_SECRET=')) {
-			// Replace existing — must rewrite, but use truncate+write to keep inode
-			const fd = require('node:fs').openSync(STACK_ENV_PATH, 'r+');
+			// Replace existing — truncate+write to keep inode (Docker bind mount)
 			const updated = originalStackEnv.replace(
 				/^CHANNEL_E2ETEST_SECRET=.*$/m,
 				secretLine
 			);
-			require('node:fs').ftruncateSync(fd, 0);
-			require('node:fs').writeSync(fd, updated, 0);
-			require('node:fs').closeSync(fd);
+			const fd = openSync(STACK_ENV_PATH, 'r+');
+			try {
+				ftruncateSync(fd, 0);
+				writeSync(fd, updated, 0);
+			} finally {
+				closeSync(fd);
+			}
 		} else {
 			// Append in-place — preserves inode
 			appendFileSync(STACK_ENV_PATH, '\n' + secretLine + '\n');
@@ -104,10 +108,13 @@ function restoreStackEnv(): void {
 	if (originalStackEnv !== null) {
 		try {
 			// Truncate+write to preserve inode (Docker bind mount compatibility)
-			const fd = require('node:fs').openSync(STACK_ENV_PATH, 'r+');
-			require('node:fs').ftruncateSync(fd, 0);
-			require('node:fs').writeSync(fd, originalStackEnv, 0);
-			require('node:fs').closeSync(fd);
+			const fd = openSync(STACK_ENV_PATH, 'r+');
+			try {
+				ftruncateSync(fd, 0);
+				writeSync(fd, originalStackEnv, 0);
+			} finally {
+				closeSync(fd);
+			}
 		} catch {
 			// Best-effort restore
 		}
