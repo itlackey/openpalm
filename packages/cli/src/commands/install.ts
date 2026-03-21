@@ -4,7 +4,7 @@ import { rm } from 'node:fs/promises';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultHomeDir, defaultConfigDir, defaultVaultDir, defaultDataDir, defaultWorkDir } from '../lib/paths.ts';
 import { ensureSecrets, ensureStackEnv, resolveRequestedImageTag } from '../lib/env.ts';
-import { ensureDirectoryTree, fetchAsset, runDockerCompose, openBrowser } from '../lib/docker.ts';
+import { ensureDirectoryTree, fetchAsset, openBrowser } from '../lib/docker.ts';
 import {
   ensureOpenCodeConfig, ensureOpenCodeSystemConfig, FilesystemAssetProvider,
   performSetupFromConfig,
@@ -12,7 +12,7 @@ import {
 } from '@openpalm/lib';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
-import { ensureValidState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
+import { ensureValidState, buildManagedServiceNames, runComposeWithPreflight } from '../lib/staging.ts';
 import { createSetupServer } from '../setup-wizard/server.ts';
 import { buildInstallServiceNames, buildDeployStatusEntries } from './install-services.ts';
 
@@ -271,14 +271,13 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     // Deploy (same as existing update-mode code)
     console.log('Starting services...');
     const state = await ensureValidState();
-    const composeArgs = fullComposeArgs(state);
-    const managedServices = buildManagedServiceNames(state);
+    const managedServices = await buildManagedServiceNames(state);
     const allServices = buildInstallServiceNames(managedServices);
 
-    await runDockerCompose([...composeArgs, 'pull', ...allServices]).catch(() => {
+    await runComposeWithPreflight(state, ['pull', ...allServices]).catch(() => {
       console.warn('Warning: image pull failed.');
     });
-    await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
+    await runComposeWithPreflight(state, ['up', '-d', ...allServices]);
     console.log(JSON.stringify({ ok: true, mode: 'install', services: allServices }, null, 2));
     return;
   }
@@ -323,19 +322,18 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     // Stage artifacts and start services while the wizard shows progress.
     try {
       const state = await ensureValidState();
-      const composeArgs = fullComposeArgs(state);
-      const managedServices = buildManagedServiceNames(state);
+      const managedServices = await buildManagedServiceNames(state);
       const allServices = buildInstallServiceNames(managedServices);
 
       wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Waiting...'));
 
-      await runDockerCompose([...composeArgs, 'pull', ...allServices]).catch(() => {
+      await runComposeWithPreflight(state, ['pull', ...allServices]).catch(() => {
         console.warn('Warning: image pull failed — if this is your first install, check your network connection.');
       });
 
       wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pulling', 'Starting...'));
 
-      await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
+      await runComposeWithPreflight(state, ['up', '-d', ...allServices]);
 
       wizard.markAllRunning();
 
@@ -364,11 +362,10 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   // Compose. No admin container required for lifecycle operations.
 
   const state = await ensureValidState();
-  const composeArgs = fullComposeArgs(state);
-  const managedServices = buildManagedServiceNames(state);
+  const managedServices = await buildManagedServiceNames(state);
   const allServices = buildInstallServiceNames(managedServices);
 
-  await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
+  await runComposeWithPreflight(state, ['up', '-d', ...allServices]);
 
   console.log(JSON.stringify({
     ok: true,

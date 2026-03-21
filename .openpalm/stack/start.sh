@@ -7,6 +7,7 @@ PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
 
 DEFAULT_ENV_FILES=(
 	"$OP_HOME/vault/stack/stack.env"
+	"$OP_HOME/vault/stack/services/memory/managed.env"
 	"$OP_HOME/vault/user/user.env"
 )
 
@@ -150,7 +151,9 @@ fi
 compose_cmd=(docker compose --project-name "$PROJECT_NAME")
 
 for env_file in "${DEFAULT_ENV_FILES[@]}" "${extra_env_files[@]}"; do
-	compose_cmd+=(--env-file "$env_file")
+	if [[ -f "$env_file" ]]; then
+		compose_cmd+=(--env-file "$env_file")
+	fi
 done
 
 compose_cmd+=(

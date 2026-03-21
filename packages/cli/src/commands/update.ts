@@ -1,6 +1,5 @@
 import { defineCommand } from 'citty';
-import { runDockerCompose } from '../lib/docker.ts';
-import { ensureValidState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
+import { ensureValidState, buildManagedServiceNames, runComposeWithPreflight } from '../lib/staging.ts';
 
 export default defineCommand({
   meta: {
@@ -9,14 +8,13 @@ export default defineCommand({
   },
   async run() {
     const state = await ensureValidState();
-    const composeArgs = fullComposeArgs(state);
     const managedServices = await buildManagedServiceNames(state);
 
     console.log('Pulling latest images...');
-    await runDockerCompose([...composeArgs, 'pull', ...managedServices]);
+    await runComposeWithPreflight(state, ['pull', ...managedServices]);
 
     console.log('Recreating containers...');
-    await runDockerCompose([...composeArgs, 'up', '-d', '--force-recreate', ...managedServices]);
+    await runComposeWithPreflight(state, ['up', '-d', '--force-recreate', ...managedServices]);
 
     console.log('Update complete.');
   },

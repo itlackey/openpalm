@@ -146,7 +146,7 @@ trap cleanup EXIT
 compose_cmd() {
   docker compose \
     --project-name "$PROJECT_NAME" \
-    -f "${OP_CONFIG_HOME}/components/core.yml" \
+    -f "${OP_CONFIG_HOME}/stack/core.compose.yml" \
     --env-file "${VAULT_HOME}/user/user.env" \
     --env-file "${VAULT_HOME}/stack/stack.env" \
     "$@"

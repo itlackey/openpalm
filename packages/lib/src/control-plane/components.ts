@@ -726,60 +726,86 @@ export function setInstanceEnabled(openpalmHome: string, instanceId: string, ena
 // ── Compose Overlay Assembly ───────────────────────────────────────────
 
 /**
- * Build the complete docker compose args for the stack.
+ * Build the complete docker compose args for the stack, including all enabled
+ * component instance overlays.
+ *
+ * Callers should supply `coreFiles` and `coreEnvFiles` from the canonical
+ * resolvers (`buildComposeFileList` / `buildEnvFiles` in lifecycle.ts) so that
+ * the core compose + env logic is not duplicated here. When those options are
+ * omitted the function falls back to direct vault path inference (e.g. when
+ * a ControlPlaneState is not available to the caller).
  *
  * Order:
- *   1. --env-file vault/stack/stack.env --env-file vault/user/user.env (always first)
- *   2. -f stack/core.compose.yml (always)
- *   3. -f stack/addons/admin/compose.yml (if admin enabled)
- *   4. For each enabled instance: -f data/components/{id}/compose.yml
- *      --env-file data/components/{id}/.env
+ *   1. --env-file for each canonical env file (or vault fallback)
+ *   2. -f for each canonical compose file (or stack/core.compose.yml + optional admin fallback)
+ *   3. For each enabled instance: -f data/components/{id}/compose.yml
+ *      [--env-file data/components/{id}/.env]
  */
 export function buildComponentComposeArgs(openpalmHome: string, options?: {
   adminEnabled?: boolean;
+  /** Canonical compose files from buildComposeFileList(). When provided, used instead of the fallback stack-dir logic. */
+  coreFiles?: string[];
+  /** Canonical env files from buildEnvFiles(). When provided, used instead of the fallback vault-dir logic. */
+  coreEnvFiles?: string[];
 }): string[] {
   const args: string[] = [];
-  const vault = vaultDir(openpalmHome);
-  const stackDir = join(openpalmHome, "stack");
   const dataComponents = componentsDataDir(openpalmHome);
 
-  // 1. Env files from vault (always first)
-  const stackEnv = join(vault, "stack", "stack.env");
-  const userEnv = join(vault, "user", "user.env");
-
-  if (existsSync(stackEnv)) {
-    args.push("--env-file", stackEnv);
+  // 1. Env files — prefer canonical list supplied by caller
+  if (options?.coreEnvFiles) {
+    for (const ef of options.coreEnvFiles) {
+      if (existsSync(ef)) args.push("--env-file", ef);
+    }
   } else {
-    logger.warn("vault/stack/stack.env not found, skipping", { path: stackEnv });
-  }
+    const vault = vaultDir(openpalmHome);
+    const stackEnv = join(vault, "stack", "stack.env");
+    const managedEnv = join(vault, "stack", "services", "memory", "managed.env");
+    const userEnv = join(vault, "user", "user.env");
 
-  if (existsSync(userEnv)) {
-    args.push("--env-file", userEnv);
-  } else {
-    logger.warn("vault/user/user.env not found, skipping", { path: userEnv });
-  }
-
-  // 2. Core compose from stack/ (always)
-  const coreYml = join(stackDir, "core.compose.yml");
-  if (existsSync(coreYml)) {
-    args.push("-f", coreYml);
-  } else {
-    logger.warn("stack/core.compose.yml not found, skipping", { path: coreYml });
-  }
-
-  // 3. Admin addon from stack/addons/ (optional)
-  if (options?.adminEnabled) {
-    const adminYml = join(stackDir, "addons", "admin", "compose.yml");
-    if (existsSync(adminYml)) {
-      args.push("-f", adminYml);
+    if (existsSync(stackEnv)) {
+      args.push("--env-file", stackEnv);
     } else {
-      logger.warn("stack/addons/admin/compose.yml not found but admin is enabled, skipping", {
-        path: adminYml,
-      });
+      logger.warn("vault/stack/stack.env not found, skipping", { path: stackEnv });
+    }
+
+    if (existsSync(managedEnv)) {
+      args.push("--env-file", managedEnv);
+    }
+
+    if (existsSync(userEnv)) {
+      args.push("--env-file", userEnv);
+    } else {
+      logger.warn("vault/user/user.env not found, skipping", { path: userEnv });
     }
   }
 
-  // 4. Enabled component instances
+  // 2. Core compose files — prefer canonical list supplied by caller
+  if (options?.coreFiles) {
+    for (const f of options.coreFiles) {
+      if (existsSync(f)) args.push("-f", f);
+    }
+  } else {
+    const stackDir = join(openpalmHome, "stack");
+    const coreYml = join(stackDir, "core.compose.yml");
+    if (existsSync(coreYml)) {
+      args.push("-f", coreYml);
+    } else {
+      logger.warn("stack/core.compose.yml not found, skipping", { path: coreYml });
+    }
+
+    if (options?.adminEnabled) {
+      const adminYml = join(stackDir, "addons", "admin", "compose.yml");
+      if (existsSync(adminYml)) {
+        args.push("-f", adminYml);
+      } else {
+        logger.warn("stack/addons/admin/compose.yml not found but admin is enabled, skipping", {
+          path: adminYml,
+        });
+      }
+    }
+  }
+
+  // 3. Enabled component instance overlays
   const instances = readEnabledInstances(openpalmHome);
   for (const instance of instances) {
     if (!instance.enabled) continue;
@@ -810,6 +836,12 @@ export function buildComponentComposeArgs(openpalmHome: string, options?: {
 
 /**
  * Build the set of allowed Docker service names from core + enabled instances.
+ *
+ * This is a static allowlist for synchronous validation. Service names for
+ * component instances are derived from instance IDs using the
+ * `openpalm-{instanceId}` convention. For the authoritative runtime service
+ * list (reflecting the actual compose project), use `composeConfigServices()`
+ * from docker.ts instead.
  */
 export function buildAllowlist(openpalmHome: string): Set<string> {
   const allowed = new Set<string>([...CORE_SERVICES, ...OPTIONAL_SERVICES]);

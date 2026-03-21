@@ -25,6 +25,9 @@ import {
   getInstanceDetail,
   parseEnvSchema,
   buildComponentComposeArgs,
+  createState,
+  buildComposeFileList,
+  buildEnvFiles,
 } from '@openpalm/lib';
 import { runDockerCompose } from '../lib/docker.ts';
 
@@ -268,7 +271,11 @@ const removeCmd = defineCommand({
 
     // Stop the container first (best effort)
     try {
-      const composeArgs = buildComponentComposeArgs(home);
+      const state = createState();
+      const composeArgs = buildComponentComposeArgs(home, {
+        coreFiles: buildComposeFileList(state),
+        coreEnvFiles: buildEnvFiles(state),
+      });
       await runDockerCompose([...composeArgs, 'stop', `openpalm-${instanceId}`]);
     } catch {
       // Container may not be running — that's fine
@@ -315,7 +322,11 @@ const startCmd = defineCommand({
     }
 
     try {
-      const composeArgs = buildComponentComposeArgs(home);
+      const state = createState();
+      const composeArgs = buildComponentComposeArgs(home, {
+        coreFiles: buildComposeFileList(state),
+        coreEnvFiles: buildEnvFiles(state),
+      });
       // Compose service name convention: openpalm-{instanceId}
       await runDockerCompose([...composeArgs, 'up', '-d', `openpalm-${instanceId}`]);
       console.log(`Instance "${instanceId}" started.`);
@@ -357,7 +368,11 @@ const stopCmd = defineCommand({
     }
 
     try {
-      const composeArgs = buildComponentComposeArgs(home);
+      const state = createState();
+      const composeArgs = buildComponentComposeArgs(home, {
+        coreFiles: buildComposeFileList(state),
+        coreEnvFiles: buildEnvFiles(state),
+      });
       await runDockerCompose([...composeArgs, 'stop', `openpalm-${instanceId}`]);
       console.log(`Instance "${instanceId}" stopped.`);
     } catch (err) {

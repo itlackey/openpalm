@@ -15,9 +15,11 @@ import {
   buildEnvFiles,
   FilesystemAssetProvider,
   resolveComposeProjectName,
+  composePreflight,
 } from '@openpalm/lib';
 import type { ControlPlaneState } from '@openpalm/lib';
 import { defaultHomeDir } from './paths.ts';
+import { runDockerCompose } from './docker.ts';
 
 /**
  * Ensure configuration is valid and ready for Docker Compose operations.
@@ -64,4 +66,35 @@ export function fullComposeArgs(state: ControlPlaneState): string[] {
  */
 export async function buildManagedServiceNames(state: ControlPlaneState): Promise<string[]> {
   return buildManagedServices(state);
+}
+
+/**
+ * Run compose preflight validation, then execute the compose command.
+ * This is the canonical CLI mutation path — all compose operations
+ * that modify state must go through this function.
+ *
+ * Preflight can be bypassed by setting OP_SKIP_COMPOSE_PREFLIGHT=1 (e.g. in tests).
+ */
+export async function runComposeWithPreflight(
+  state: ControlPlaneState,
+  composeSubArgs: string[],
+): Promise<void> {
+  const files = buildComposeFileList(state);
+  const envFiles = buildEnvFiles(state);
+
+  // Preflight: validate compose merge before mutation
+  if (files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
+    const preflight = await composePreflight({ files, envFiles });
+    if (!preflight.ok) {
+      const projectName = resolveComposeProjectName();
+      throw new Error(
+        `Compose preflight failed: ${preflight.stderr}\n` +
+        `Resolved command: docker compose ${files.map(f => `-f ${f}`).join(' ')} --project-name ${projectName} config --quiet\n` +
+        `Project: ${projectName}`,
+      );
+    }
+  }
+
+  const composeArgs = fullComposeArgs(state);
+  await runDockerCompose([...composeArgs, ...composeSubArgs]);
 }
