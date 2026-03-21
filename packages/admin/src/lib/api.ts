@@ -6,14 +6,10 @@ import type {
   MemoryConfig,
   MemoryConfigResponse,
   MemoryConfigSaveResult,
-  SystemConnectionPayload,
   SystemConnectionSaveResult,
   RegistryResponse,
   ConnectionsResponseDto,
-  SaveConnectionsDtoPayload,
-  ConnectionProfilePayload,
-  CanonicalConnectionProfileDto,
-  ConnectionProfileMutationResponse,
+  SaveConnectionsPayload,
   ComponentResponse,
   InstanceResponse,
   EnvSchemaFieldResponse,
@@ -239,7 +235,7 @@ export async function fetchConnections(
   token: string
 ): Promise<Record<string, string>> {
   const dto = await fetchConnectionsDto(token);
-  return dto.connections;
+  return dto.secrets;
 }
 
 export async function fetchConnectionsDto(
@@ -250,31 +246,9 @@ export async function fetchConnectionsDto(
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }
   if (!res.ok) {
-    return {
-      profiles: [],
-      assignments: {
-        llm: { connectionId: '', model: '' },
-        embeddings: { connectionId: '', model: '' },
-      },
-      connections: {},
-    };
+    return { capabilities: null, secrets: {} };
   }
-  const data = (await res.json()) as Partial<ConnectionsResponseDto> & { connections?: Record<string, string> };
-  if (!data.profiles || !data.assignments) {
-    return {
-      profiles: [],
-      assignments: {
-        llm: { connectionId: '', model: '' },
-        embeddings: { connectionId: '', model: '' },
-      },
-      connections: data.connections ?? {},
-    };
-  }
-  return {
-    profiles: data.profiles,
-    assignments: data.assignments,
-    connections: data.connections ?? {},
-  };
+  return (await res.json()) as ConnectionsResponseDto;
 }
 
 export async function fetchMemoryConfig(
@@ -326,55 +300,14 @@ export async function fetchProviderModels(
 
 export async function saveSystemConnection(
   token: string,
-  payload: SystemConnectionPayload
+  payload: SaveConnectionsPayload
 ): Promise<SystemConnectionSaveResult> {
-  const dtoPayload: SaveConnectionsDtoPayload = {
-    profiles: [
-      {
-        id: 'primary',
-        name: 'Primary connection',
-        kind: payload.provider === 'ollama-instack'
-          ? 'ollama_local'
-          : (payload.provider === 'ollama' || payload.provider === 'lmstudio' || payload.provider === 'model-runner'
-            ? 'openai_compatible_local'
-            : 'openai_compatible_remote'),
-        provider: payload.provider,
-        baseUrl: payload.baseUrl,
-        auth: {
-          mode: payload.apiKey ? 'api_key' : 'none',
-        },
-      },
-    ],
-    assignments: {
-      llm: {
-        connectionId: 'primary',
-        model: payload.systemModel,
-      },
-      embeddings: {
-        connectionId: 'primary',
-        model: payload.embeddingModel,
-        embeddingDims: payload.embeddingDims,
-      },
-    },
-    apiKey: payload.apiKey,
-    memoryUserId: payload.memoryUserId,
-    customInstructions: payload.customInstructions,
-    capabilities: ['llm', 'embeddings'],
-  };
-
-  const res = await post('/admin/connections', dtoPayload, token);
-  if (res.status === 401) {
-    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
-  }
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
-  }
-  return (await res.json()) as SystemConnectionSaveResult;
+  return saveConnections(token, payload);
 }
 
-export async function saveConnectionsDto(
+export async function saveConnections(
   token: string,
-  payload: SaveConnectionsDtoPayload
+  payload: SaveConnectionsPayload
 ): Promise<SystemConnectionSaveResult> {
   const res = await post('/admin/connections', payload, token);
   if (res.status === 401) {
@@ -384,56 +317,6 @@ export async function saveConnectionsDto(
     throw new Error(await readErrorMessage(res));
   }
   return (await res.json()) as SystemConnectionSaveResult;
-}
-
-export async function createConnectionProfile(
-  token: string,
-  profile: ConnectionProfilePayload
-): Promise<ConnectionProfileMutationResponse> {
-  const res = await post('/admin/connections/profiles', { profile }, token);
-  if (res.status === 401) {
-    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
-  }
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
-  }
-  return (await res.json()) as ConnectionProfileMutationResponse;
-}
-
-export async function updateConnectionProfile(
-  token: string,
-  profile: ConnectionProfilePayload
-): Promise<ConnectionProfileMutationResponse> {
-  const res = await put('/admin/connections/profiles', { profile }, token);
-  if (res.status === 401) {
-    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
-  }
-  if (res.status === 404) {
-    throw Object.assign(new Error('Profile not found.'), { status: 404 });
-  }
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
-  }
-  return (await res.json()) as ConnectionProfileMutationResponse;
-}
-
-export async function deleteConnectionProfile(
-  token: string,
-  id: string
-): Promise<void> {
-  const res = await del('/admin/connections/profiles', { id }, token);
-  if (res.status === 401) {
-    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
-  }
-  if (res.status === 409) {
-    throw Object.assign(
-      new Error('Profile is referenced by assignments and cannot be removed.'),
-      { status: 409 }
-    );
-  }
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
-  }
 }
 
 export async function testConnectionProfile(

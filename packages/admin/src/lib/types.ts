@@ -82,100 +82,27 @@ export type MemoryConfigSaveResult = {
   dimensionMismatch?: boolean;
 };
 
-export type SystemConnectionPayload = {
-  provider: string;
-  apiKey: string;
-  baseUrl: string;
-  systemModel: string;
-  embeddingModel: string;
-  embeddingDims: number;
-  memoryUserId: string;
-  customInstructions: string;
-};
-
-export type CanonicalConnectionProfileDto = {
-  id: string;
-  name: string;
-  kind: 'openai_compatible_remote' | 'openai_compatible_local' | 'ollama_local';
-  provider: string;
-  baseUrl: string;
-  auth: {
-    mode: 'api_key' | 'none';
-    apiKeySecretRef?: string;
-  };
-};
-
-export type CanonicalAssignmentsDto = {
-  llm: {
-    connectionId: string;
-    model: string;
-    smallModel?: string;
-  };
-  embeddings: {
-    connectionId: string;
-    model: string;
-    embeddingDims?: number;
-  };
-  reranking?: {
-    enabled: boolean;
-    connectionId?: string;
-    mode?: 'llm' | 'dedicated';
-    model?: string;
-    topK?: number;
-    topN?: number;
-  };
-  tts?: {
-    enabled: boolean;
-    connectionId?: string;
-    model?: string;
-    voice?: string;
-    format?: string;
-  };
-  stt?: {
-    enabled: boolean;
-    connectionId?: string;
-    model?: string;
-    language?: string;
-  };
+export type ConnectionsCapabilities = {
+  llm: string;
+  slm?: string;
+  embeddings: { provider: string; model: string; dims: number };
+  memory: { userId: string; customInstructions?: string };
 };
 
 export type ConnectionsResponseDto = {
-  profiles: CanonicalConnectionProfileDto[];
-  assignments: CanonicalAssignmentsDto;
-  connections: Record<string, string>;
+  capabilities: ConnectionsCapabilities | null;
+  secrets: Record<string, string>;
 };
 
-export type SaveConnectionsDtoPayload = {
-  profiles: CanonicalConnectionProfileDto[];
-  assignments: CanonicalAssignmentsDto;
-  memoryModel?: string;
+export type SaveConnectionsPayload = {
+  provider: string;
+  apiKey?: string;
+  baseUrl?: string;
+  systemModel?: string;
+  embeddingModel?: string;
+  embeddingDims?: number;
   memoryUserId?: string;
   customInstructions?: string;
-  apiKey?: string;
-  capabilities?: string[];
-};
-
-export type ConnectionProfilePayload = {
-  id: string;
-  name: string;
-  kind: 'openai_compatible_remote' | 'openai_compatible_local';
-  provider: string;
-  baseUrl: string;
-  auth:
-    | {
-        mode: 'none';
-      }
-    | {
-        mode: 'api_key';
-        apiKeySecretRef?: string | null;
-      };
-  /** Raw API key — stored in secrets.env, not in the profile document. */
-  apiKey?: string;
-};
-
-export type ConnectionProfileMutationResponse = {
-  ok: true;
-  profile: CanonicalConnectionProfileDto;
 };
 
 export type SystemConnectionSaveResult = {

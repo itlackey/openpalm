@@ -53,35 +53,29 @@ async function setupConsoleMocks(page: import('@playwright/test').Page) {
 			body: JSON.stringify({ complete: true, missing: [] })
 		})
 	);
-	// New-format GET /admin/connections: profiles + assignments + connections
+	await page.route('**/admin/opencode/status', (route) =>
+		route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify({ status: 'unavailable', url: '' })
+		})
+	);
+	// GET /admin/connections: capabilities + secrets
 	await page.route('**/admin/connections', (route) => {
 		if (route.request().method() === 'GET') {
 			return route.fulfill({
 				status: 200,
 				contentType: 'application/json',
 				body: JSON.stringify({
-					profiles: [
-						{
-							id: 'primary',
-							name: 'OpenAI Production',
-							kind: 'openai_compatible_remote',
-							provider: 'openai',
-							baseUrl: 'https://api.openai.com/v1',
-							auth: { mode: 'api_key', apiKeySecretRef: 'OPENAI_API_KEY' }
-						}
-					],
-					assignments: {
-						llm: { connectionId: 'primary', model: 'gpt-4o-mini' },
-						embeddings: { connectionId: 'primary', model: 'text-embedding-3-small', embeddingDims: 1536 }
+					capabilities: {
+						llm: 'openai/gpt-4o-mini',
+						embeddings: { provider: 'openai', model: 'text-embedding-3-small', dims: 1536 },
+						memory: { userId: 'default_user', customInstructions: '' }
 					},
-					connections: {
-						SYSTEM_LLM_PROVIDER: 'openai',
-						SYSTEM_LLM_BASE_URL: 'https://api.openai.com',
+					secrets: {
 						OPENAI_API_KEY: 'sk-****1234',
-						SYSTEM_LLM_MODEL: 'gpt-4o-mini',
-						EMBEDDING_MODEL: 'text-embedding-3-small',
-						EMBEDDING_DIMS: '1536',
-						MEMORY_USER_ID: 'default_user'
+						OWNER_NAME: '',
+						OWNER_EMAIL: ''
 					}
 				})
 			});
@@ -141,7 +135,7 @@ test.describe('@mocked Connections Tab UI', () => {
 		// Verify the top-level Connections heading is visible
 		await expect(page.locator('h2:has-text("Connections")')).toBeVisible();
 
-		// Verify the Connections profiles panel heading
+		// Verify the Connections panel heading
 		await expect(page.locator('h3:has-text("Connections")')).toBeVisible();
 
 		// Memory settings are now behind a "Memory" tab in the settings panel
@@ -153,11 +147,11 @@ test.describe('@mocked Connections Tab UI', () => {
 		// Verify loaded Memory User ID from mocked connections
 		await expect(page.locator('#conn-memory-user-id')).toHaveValue('default_user', { timeout: 5000 });
 
-		// Verify the Add connection button is present in the profiles panel
+		// Verify the Add connection button is present
 		await expect(page.getByRole('button', { name: 'Add connection' })).toBeVisible();
 
-		// Verify the existing mocked profile is shown in the table (scoped to the name column)
-		await expect(page.locator('.conn-name', { hasText: 'OpenAI Production' }).first()).toBeVisible({ timeout: 5000 });
+		// Verify the connection display name (derived from provider) is shown
+		await expect(page.locator('.conn-name', { hasText: 'Openai Production' }).first()).toBeVisible({ timeout: 5000 });
 	});
 
 	test('saving memory settings sends correct data', async ({ page }) => {
@@ -180,27 +174,15 @@ test.describe('@mocked Connections Tab UI', () => {
 					status: 200,
 					contentType: 'application/json',
 					body: JSON.stringify({
-						profiles: [
-							{
-								id: 'primary',
-								name: 'OpenAI Production',
-								kind: 'openai_compatible_remote',
-								provider: 'openai',
-								baseUrl: 'https://api.openai.com/v1',
-								auth: { mode: 'api_key', apiKeySecretRef: 'OPENAI_API_KEY' }
-							}
-						],
-						assignments: {
-							llm: { connectionId: 'primary', model: 'gpt-4o-mini' },
-							embeddings: { connectionId: 'primary', model: 'text-embedding-3-small', embeddingDims: 1536 }
+						capabilities: {
+							llm: 'openai/gpt-4o-mini',
+							embeddings: { provider: 'openai', model: 'text-embedding-3-small', dims: 1536 },
+							memory: { userId: 'default_user', customInstructions: '' }
 						},
-						connections: {
-							SYSTEM_LLM_PROVIDER: 'openai',
+						secrets: {
 							OPENAI_API_KEY: 'sk-****1234',
-							SYSTEM_LLM_MODEL: 'gpt-4o-mini',
-							EMBEDDING_MODEL: 'text-embedding-3-small',
-							EMBEDDING_DIMS: '1536',
-							MEMORY_USER_ID: 'default_user'
+							OWNER_NAME: '',
+							OWNER_EMAIL: ''
 						}
 					})
 				});
@@ -224,23 +206,19 @@ test.describe('@mocked Connections Tab UI', () => {
 		// Verify success indicator (header shows "Saved" status)
 		await expect(page.locator('.header-save-status--success')).toBeVisible({ timeout: 5000 });
 
-		// Verify the posted payload includes the provider from the first profile
+		// Verify the posted payload has the flat format
 		expect(savedPayload).not.toBeNull();
 		if (!savedPayload) {
 			throw new Error('Expected /admin/connections payload to be captured');
 		}
 		const payload = savedPayload as {
-			profiles: Array<Record<string, unknown>>;
-			assignments: Record<string, unknown>;
+			provider?: string;
 			memoryUserId?: string;
+			systemModel?: string;
 		};
-		// The canonical DTO save path sends profiles + assignments (not a top-level provider)
-		expect(Array.isArray(payload.profiles)).toBe(true);
-		expect(payload.profiles.length).toBeGreaterThan(0);
-		// The provider comes from the first profile (built from the loaded connection)
-		expect(typeof payload.profiles[0]?.provider).toBe('string');
-		// assignments object must be present
-		expect(typeof payload.assignments).toBe('object');
+		// The flat payload includes provider derived from capabilities
+		expect(typeof payload.provider).toBe('string');
+		expect(payload.provider).toBe('openai');
 		// memoryUserId should reflect what was typed
 		expect(payload.memoryUserId).toBe('test_user');
 	});
