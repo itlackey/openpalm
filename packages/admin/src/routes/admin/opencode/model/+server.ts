@@ -1,6 +1,8 @@
 import type { RequestHandler } from './$types';
 import { requireAdmin, jsonResponse, errorResponse, getRequestId, parseJsonBody } from '$lib/server/helpers.js';
 import { getOpenCodeConfig, proxyToOpenCode } from '$lib/opencode/client.server.js';
+import { getState } from '$lib/server/state.js';
+import { patchSecretsEnvFile } from '$lib/server/control-plane.js';
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -32,25 +34,44 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, 'bad_request', 'model is required', {}, requestId);
   }
 
-  // Try to update via OpenCode config API (non-critical)
-  let liveApplied = false;
+  try {
+    patchSecretsEnvFile(getState().vaultDir, { SYSTEM_LLM_MODEL: model });
+  } catch {
+    return errorResponse(500, 'internal_error', 'Failed to persist model selection', {}, requestId);
+  }
+
   try {
     const result = await proxyToOpenCode('/config', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model }),
     });
-    liveApplied = result.ok;
-  } catch {
-    // Non-critical — container restart will apply
-  }
 
-  return jsonResponse(200, {
-    ok: true,
-    liveApplied,
-    restartRequired: !liveApplied,
-    message: liveApplied
-      ? 'Model updated successfully'
-      : 'Model saved. Restart the assistant container to apply.',
-  }, requestId);
+    if (!result.ok) {
+      if (result.code !== 'opencode_unavailable') {
+        return errorResponse(result.status, result.code, result.message, {}, requestId);
+      }
+
+      return jsonResponse(200, {
+        ok: true,
+        liveApplied: false,
+        restartRequired: true,
+        message: 'Model saved. Restart the assistant container to apply.',
+      }, requestId);
+    }
+
+    return jsonResponse(200, {
+      ok: true,
+      liveApplied: true,
+      restartRequired: false,
+      message: 'Model updated successfully',
+    }, requestId);
+  } catch {
+    return jsonResponse(200, {
+      ok: true,
+      liveApplied: false,
+      restartRequired: true,
+      message: 'Model saved. Restart the assistant container to apply.',
+    }, requestId);
+  }
 };

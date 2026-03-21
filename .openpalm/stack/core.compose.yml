@@ -72,6 +72,7 @@ services:
       - ${OP_HOME}/data/assistant:/home/opencode
       - ${OP_HOME}/data/stash:/home/opencode/.akm
       - ${OP_HOME}/data/workspace:/work
+      - ${OP_HOME}/logs/opencode:/home/opencode/.local/state/opencode
     env_file:
       - path: ${OP_HOME}/vault/user/user.env
         required: false

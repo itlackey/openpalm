@@ -14,7 +14,11 @@ import {
   completeProviderOAuth,
 } from '$lib/opencode/client.server.js';
 import { getState } from '$lib/server/state.js';
-import { appendAudit, patchSecretsEnvFile } from '$lib/server/control-plane.js';
+import {
+  appendAudit,
+  patchSecretsEnvFile,
+  ALLOWED_CONNECTION_KEYS,
+} from '$lib/server/control-plane.js';
 import { PROVIDER_KEY_MAP } from '$lib/provider-constants.js';
 import { createLogger } from '$lib/server/logger.js';
 
@@ -23,6 +27,8 @@ const logger = createLogger('opencode.auth');
 // ── API key validation ────────────────────────────────────────────────
 const MAX_API_KEY_LENGTH = 512;
 const API_KEY_PATTERN = /^[\x20-\x7E]+$/; // printable ASCII only
+const OAUTH_SESSION_TTL_MS = 600_000;
+const MAX_OAUTH_SESSIONS = 1_000;
 
 function validateApiKey(key: string): string | null {
   if (key.length > MAX_API_KEY_LENGTH) return 'API key exceeds maximum length';
@@ -37,13 +43,25 @@ const oauthSessions = new Map<string, {
   createdAt: number;
 }>();
 
-// Lazy cleanup: purge expired sessions on access rather than setInterval
 function purgeExpiredSessions(): void {
   const now = Date.now();
   for (const [token, session] of oauthSessions) {
-    if (now - session.createdAt > 600_000) {
+    if (now - session.createdAt > OAUTH_SESSION_TTL_MS) {
       oauthSessions.delete(token);
     }
+  }
+}
+
+function trimOAuthSessions(): void {
+  if (oauthSessions.size <= MAX_OAUTH_SESSIONS) {
+    return;
+  }
+
+  const sessions = Array.from(oauthSessions.entries()).sort((a, b) => a[1].createdAt - b[1].createdAt);
+  const excess = oauthSessions.size - MAX_OAUTH_SESSIONS;
+  for (let index = 0; index < excess; index += 1) {
+    const token = sessions[index][0];
+    oauthSessions.delete(token);
   }
 }
 
@@ -80,7 +98,7 @@ export const GET: RequestHandler = async (event) => {
   }
 
   // Check if expired
-  if (Date.now() - session.createdAt > 600_000) {
+  if (Date.now() - session.createdAt > OAUTH_SESSION_TTL_MS) {
     oauthSessions.delete(pollToken);
     return jsonResponse(200, { status: 'error', message: 'Authorization session expired' }, requestId);
   }
@@ -104,6 +122,8 @@ export const POST: RequestHandler = async (event) => {
   const providerId = event.params.id;
   const mode = typeof body.mode === 'string' ? body.mode : '';
 
+  purgeExpiredSessions();
+
   if (mode === 'api_key') {
     const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
     if (!apiKey) {
@@ -116,10 +136,18 @@ export const POST: RequestHandler = async (event) => {
       return errorResponse(400, 'bad_request', keyError, {}, requestId);
     }
 
-    // Write to vault/user/user.env
-    const envVarName =
-      PROVIDER_KEY_MAP[providerId] ??
-      `${providerId.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+    const envVarName = PROVIDER_KEY_MAP[providerId];
+    if (!envVarName || !ALLOWED_CONNECTION_KEYS.has(envVarName)) {
+      appendAudit(state, actor, 'opencode.auth.api_key', { providerId, error: 'unsupported_provider' }, false, requestId, callerType);
+      return errorResponse(
+        400,
+        'bad_request',
+        'This provider cannot be persisted to the OpenPalm vault yet. Use a supported provider mapping or OAuth.',
+        {},
+        requestId,
+      );
+    }
+
     try {
       patchSecretsEnvFile(state.vaultDir, { [envVarName]: apiKey });
     } catch {
@@ -153,6 +181,7 @@ export const POST: RequestHandler = async (event) => {
       methodIndex,
       createdAt: Date.now(),
     });
+    trimOAuthSessions();
 
     // L1 fix: audit log for OAuth initiation
     appendAudit(state, actor, 'opencode.auth.oauth.start', { providerId, methodIndex }, true, requestId, callerType);

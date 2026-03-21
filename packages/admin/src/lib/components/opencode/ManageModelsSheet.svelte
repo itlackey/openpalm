@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getAdminToken } from '$lib/auth.js';
+  import type { OpenCodeProviderSummary } from '$lib/types.js';
   import ModalSheet from './ModalSheet.svelte';
 
   interface Props {
@@ -25,12 +26,31 @@
   let selectedModel = $state('');
   let saving = $state(false);
   let saveSuccess = $state('');
+  let closeTimeout: ReturnType<typeof setTimeout> | null = $state(null);
+
+  function clearCloseTimeout() {
+    if (closeTimeout !== null) {
+      clearTimeout(closeTimeout);
+      closeTimeout = null;
+    }
+  }
+
+  function closeSheet() {
+    clearCloseTimeout();
+    onClose();
+  }
 
   $effect(() => {
     if (open) {
       filterQuery = '';
       void loadModels();
+    } else {
+      clearCloseTimeout();
     }
+
+    return () => {
+      clearCloseTimeout();
+    };
   });
 
   async function loadModels() {
@@ -47,22 +67,14 @@
 
       if (providersRes.ok) {
         const pData = await providersRes.json();
-        const providerList: Array<{ id: string; name: string }> = pData.providers ?? [];
-        const withModels = await Promise.all(
-          providerList.map(async (p) => {
-            const mRes = await fetch(
-              `/admin/opencode/providers/${encodeURIComponent(p.id)}/models`,
-              { headers }
-            );
-            const mData = mRes.ok ? await mRes.json() : { models: [] };
-            return {
-              id: p.id,
-              name: p.name,
-              models: (mData.models ?? []) as ModelEntry[],
-            };
-          })
-        );
-        providers = withModels.filter((p) => p.models.length > 0);
+        const rawProviders = (pData.providers ?? []) as Array<OpenCodeProviderSummary & { models?: ModelEntry[] }>;
+        providers = rawProviders
+          .map((provider) => ({
+            id: provider.id,
+            name: provider.name,
+            models: (provider.models ?? []) as ModelEntry[],
+          }))
+          .filter((provider) => provider.models.length > 0);
       }
 
       if (configRes.ok) {
@@ -92,7 +104,7 @@
 
   async function handleSave() {
     if (!selectedModel || selectedModel === currentModel) {
-      onClose();
+      closeSheet();
       return;
     }
     saving = true;
@@ -113,7 +125,11 @@
       if (!res.ok) throw new Error(data.message || 'Failed to save');
       saveSuccess = data.message || 'Model updated';
       currentModel = selectedModel;
-      setTimeout(onClose, 2000);
+      clearCloseTimeout();
+      closeTimeout = setTimeout(() => {
+        closeTimeout = null;
+        closeSheet();
+      }, 2000);
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to save';
     } finally {
@@ -122,7 +138,7 @@
   }
 </script>
 
-<ModalSheet {open} wide title="Manage Models" {onClose}>
+<ModalSheet {open} wide title="Manage Models" onClose={closeSheet}>
   {#snippet children()}
     <div class="form-field" style="margin-bottom: var(--space-4)">
       <input
@@ -177,7 +193,7 @@
   {/snippet}
 
   {#snippet footer()}
-    <button class="btn btn-outline" type="button" onclick={onClose}>Cancel</button>
+    <button class="btn btn-outline" type="button" onclick={closeSheet}>Cancel</button>
     <button
       class="btn btn-primary"
       type="button"

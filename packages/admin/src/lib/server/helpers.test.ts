@@ -23,6 +23,7 @@ import {
   parseJsonBody,
   parseCanonicalConnectionProfile,
   parseCapabilityAssignments,
+  validateExternalUrl,
 } from "./helpers.js";
 import { resetState } from "./state.js";
 
@@ -242,6 +243,12 @@ describe("identifyCallerByToken / requireAuth", () => {
     expect(result!.status).toBe(401);
     const body = await result!.json();
     expect(body.requestId).toBe("req-bad");
+  });
+});
+
+describe('validateExternalUrl', () => {
+  test('blocks localhost loopback targets', () => {
+    expect(validateExternalUrl('http://localhost:11434')).toBe('Blocked address: localhost');
   });
 });
 
