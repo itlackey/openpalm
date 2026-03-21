@@ -105,7 +105,7 @@ curl -X POST http://localhost:3880/admin/connections \
   -H "Content-Type: application/json" \
   -d '{"OPENAI_API_KEY": "sk-..."}'
 
-# Check if at least one provider key is configured
+# Check whether stack.yaml has non-empty LLM and embedding assignments
 curl http://localhost:3880/admin/connections/status \
   -H "x-admin-token: $OP_ADMIN_TOKEN"
 ```

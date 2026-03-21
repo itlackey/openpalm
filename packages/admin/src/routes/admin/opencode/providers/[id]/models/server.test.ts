@@ -52,6 +52,22 @@ describe('/admin/opencode/providers/[id]/models route', () => {
     expect(res.status).toBe(401);
   });
 
+  test('propagates OpenCode proxy failures', async () => {
+    vi.mocked(proxyToOpenCode).mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      code: 'opencode_unavailable',
+      message: 'OpenCode is not reachable',
+    });
+
+    const res = await GET(makeEvent('openai'));
+    expect(res.status).toBe(503);
+
+    const body = await res.json() as { error: string; message: string };
+    expect(body.error).toBe('opencode_unavailable');
+    expect(body.message).toBe('OpenCode is not reachable');
+  });
+
   test('filters out models without string ids', async () => {
     vi.mocked(proxyToOpenCode).mockResolvedValueOnce({
       ok: true,

@@ -126,7 +126,17 @@
           `/admin/opencode/providers/${encodeURIComponent(provider.id)}/auth?pollToken=${encodeURIComponent(pollToken)}`,
           { headers: { 'x-admin-token': token, 'x-request-id': crypto.randomUUID() } }
         );
-        const data = await res.json();
+        const data = await res.json().catch(() => null) as { status?: string; message?: string } | null;
+        if (!res.ok) {
+          error = data?.message || `Authorization failed (HTTP ${res.status})`;
+          polling = false;
+          return;
+        }
+        if (!data) {
+          error = 'Authorization failed';
+          polling = false;
+          return;
+        }
         if (data.status === 'complete') {
           success = 'Authorization successful!';
           polling = false;

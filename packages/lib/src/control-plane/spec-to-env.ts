@@ -9,7 +9,10 @@
 import type { StackSpec } from "./stack-spec.js";
 import { SPEC_DEFAULTS, hasAddon, parseCapabilityString } from "./stack-spec.js";
 import { dualWriteEnvPair } from "./env-compat.js";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { mergeEnvContent } from "./env.js";
+
+const MANAGED_ENV_FILE_MODE = 0o600;
 
 /**
  * Derive the system.env key-value pairs from the StackSpec.
@@ -87,6 +90,7 @@ export function deriveAddonEnv(spec: StackSpec, addonName: string): Record<strin
   const env = addon.env ?? {};
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
+    if (typeof value !== "string") continue;
     result[key] = value.startsWith("@secret:") ? `\${${value.slice(8)}}` : value;
   }
   return result;
@@ -96,9 +100,21 @@ export function deriveAddonEnv(spec: StackSpec, addonName: string): Record<strin
  * Format a Record as .env file content.
  */
 function formatEnv(vars: Record<string, string>): string {
-  return Object.entries(vars)
-    .map(([k, v]) => `${k}=${v}`)
-    .join("\n") + "\n";
+  const template = Object.keys(vars)
+    .map((key) => `${key}=`)
+    .join("\n");
+  const content = mergeEnvContent(template, vars);
+  return content.endsWith("\n") ? content : `${content}\n`;
+}
+
+function writeManagedEnvFile(path: string, vars: Record<string, string>): void {
+  const content = formatEnv(vars);
+  writeFileSync(path, content, { mode: MANAGED_ENV_FILE_MODE });
+  try {
+    chmodSync(path, MANAGED_ENV_FILE_MODE);
+  } catch {
+    // best-effort permission fixup
+  }
 }
 
 /**
@@ -109,7 +125,7 @@ export function writeManagedEnvFiles(spec: StackSpec, vaultDir: string): void {
   // Memory service managed env
   const memoryEnvDir = `${vaultDir}/stack/services/memory`;
   mkdirSync(memoryEnvDir, { recursive: true });
-  writeFileSync(`${memoryEnvDir}/managed.env`, formatEnv(deriveMemoryEnv(spec)));
+  writeManagedEnvFile(`${memoryEnvDir}/managed.env`, deriveMemoryEnv(spec));
 
   // Addon managed env files
   for (const addonName of Object.keys(spec.addons)) {
@@ -117,6 +133,6 @@ export function writeManagedEnvFiles(spec: StackSpec, vaultDir: string): void {
     if (Object.keys(addonEnv).length === 0) continue;
     const addonEnvDir = `${vaultDir}/stack/addons/${addonName}`;
     mkdirSync(addonEnvDir, { recursive: true });
-    writeFileSync(`${addonEnvDir}/managed.env`, formatEnv(addonEnv));
+    writeManagedEnvFile(`${addonEnvDir}/managed.env`, addonEnv);
   }
 }

@@ -580,9 +580,9 @@ Error responses:
 
 ### `GET /admin/connections/status`
 
-Checks whether the system LLM connection is configured. Returns `complete: true`
-when both `SYSTEM_LLM_PROVIDER` and `SYSTEM_LLM_MODEL` are set. API keys are
-never required (optional for all providers).
+Checks whether `stack.yaml` has non-empty capability assignments for the
+system LLM and embeddings provider/model. Leading and trailing whitespace is
+ignored during the completeness check. API keys are not required here.
 
 Response:
 
@@ -590,7 +590,8 @@ Response:
 { "complete": true, "missing": [] }
 ```
 
-`complete` is `true` when provider and model are set; `false` with `missing` listing what's absent.
+`complete` is `true` when `capabilities.llm` and `capabilities.embeddings.provider/model`
+are non-empty strings after trimming; otherwise `missing` lists what is absent.
 
 ### `POST /admin/connections/test`
 
@@ -760,16 +761,20 @@ Error responses:
 
 ### `GET /admin/connections/assignments`
 
-Returns canonical capability assignments:
+Returns the current `stack.yaml` capability assignments:
 
 ```json
 {
-  "assignments": {
-    "llm": { "connectionId": "primary", "model": "gpt-4.1-mini" },
+  "capabilities": {
+    "llm": "openai/gpt-4.1-mini",
     "embeddings": {
-      "connectionId": "primary",
+      "provider": "openai",
       "model": "text-embedding-3-small",
-      "embeddingDims": 1536
+      "dims": 1536
+    },
+    "memory": {
+      "userId": "default_user",
+      "customInstructions": ""
     }
   }
 }
@@ -777,20 +782,47 @@ Returns canonical capability assignments:
 
 ### `POST /admin/connections/assignments`
 
-Save canonical assignments. Also writes the OpenCode provider config as a
-side effect. If any `connectionId` does not exist in profiles, returns
-`409 conflict`.
+Saves validated capability updates back to `stack.yaml` and regenerates any
+derived managed env files. The request body may either be the capabilities
+object directly or `{ "capabilities": ... }`.
+
+Supported top-level keys are `llm`, `slm`, `embeddings`, `memory`, `tts`,
+`stt`, and `reranking`. Unknown keys are rejected with `400 bad_request`.
+
+Example body:
+
+```json
+{
+  "capabilities": {
+    "llm": "anthropic/claude-sonnet-4",
+    "embeddings": {
+      "provider": "google",
+      "model": "text-embedding-004",
+      "dims": 768
+    },
+    "memory": {
+      "userId": "owner",
+      "customInstructions": "Keep it concise."
+    }
+  }
+}
+```
 
 Response:
 
 ```json
-{ "ok": true, "assignments": { "llm": { "..." : "..." }, "embeddings": { "..." : "..." } } }
+{ "ok": true, "capabilities": { "llm": "anthropic/claude-sonnet-4", "..." : "..." } }
 ```
+
+Error responses:
+
+- `400 bad_request` -- malformed capability payload, unknown keys, or invalid field types.
+- `500 internal_error` -- `stack.yaml` could not be written.
 
 ### `GET /admin/connections/export/mem0`
 
 Exports the compatibility-formatted memory config derived from current
-connection profiles and assignments. The route name remains `export/mem0`
+`stack.yaml` capabilities. The route name remains `export/mem0`
 for backward compatibility, but the generated file configures OpenPalm's
 Bun-based memory service.
 
@@ -802,8 +834,7 @@ Response: `application/json` with `Content-Disposition: attachment; filename="me
 
 Error responses:
 
-- `404 not_found` -- No connection profiles found.
-- `409 conflict` -- LLM or embeddings connection profile not found.
+- `404 not_found` -- No stack configuration found.
 
 ### `GET /admin/connections/export/opencode`
 

@@ -29,8 +29,12 @@ export const GET: RequestHandler = async (event) => {
 
   const { capabilities } = spec;
   const { provider: llmProvider, model: llmModel } = parseCapabilityString(capabilities.llm);
+  const embeddingProvider = capabilities.embeddings.provider;
   const apiKeyEnvRef = PROVIDER_KEY_MAP[llmProvider]
     ? `env:${PROVIDER_KEY_MAP[llmProvider]}`
+    : 'not-needed';
+  const embeddingApiKeyEnvRef = PROVIDER_KEY_MAP[embeddingProvider]
+    ? `env:${PROVIDER_KEY_MAP[embeddingProvider]}`
     : 'not-needed';
 
   const mapping = buildMem0Mapping({
@@ -41,10 +45,10 @@ export const GET: RequestHandler = async (event) => {
       apiKeyRef: apiKeyEnvRef,
     },
     embedder: {
-      provider: capabilities.embeddings.provider,
+      provider: embeddingProvider,
       baseUrl: '',
       model: capabilities.embeddings.model,
-      apiKeyRef: apiKeyEnvRef,
+      apiKeyRef: embeddingApiKeyEnvRef,
     },
     embeddingDims: capabilities.embeddings.dims,
     customInstructions: capabilities.memory.customInstructions ?? '',
