@@ -58,7 +58,6 @@ function mockDeployStatus(phase: "pulling" | "running", complete: boolean) {
 		ok: true,
 		setupComplete: complete,
 		deployStatus: [
-			{ service: "caddy", status: phase, label: "Reverse Proxy" },
 			{ service: "memory", status: phase, label: "Memory" },
 			{ service: "assistant", status: phase, label: "Assistant" },
 			{ service: "guardian", status: phase, label: "Guardian" },
@@ -739,7 +738,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 						ok: true,
 						setupComplete: false,
 						deployStatus: [
-							{ service: "caddy", status: "error", label: "Reverse Proxy" },
+							{ service: "memory", status: "error", label: "Memory" },
 						],
 						deployError: "Docker Compose failed: port conflict on 8080",
 					}),

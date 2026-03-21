@@ -26,7 +26,7 @@ The admin container is optional. Use `--with-admin` to include the admin UI prof
 | `openpalm logs [svc...]` | Tail last 100 log lines |
 | `openpalm status` | Show container status |
 | `openpalm service <sub> [svc...]` | Alias -- subcommands: `start`, `stop`, `restart`, `logs`, `status`, `update` |
-| `openpalm validate` | Validate `secrets.env` against the schema (requires prior install) |
+| `openpalm validate` | Validate vault env files against their schemas (requires prior install) |
 | `openpalm scan` | Scan for leaked secrets in config files |
 
 ### Install options
@@ -56,11 +56,11 @@ On first install, the CLI serves a setup wizard on port 8100 via `Bun.serve()`. 
 | `OP_STATE_HOME` | `~/.local/state/openpalm` | Assembled runtime |
 | `OP_WORK_DIR` | `~/openpalm` | Assistant working directory |
 | `OP_ADMIN_API_URL` | `http://localhost:8100` | Admin API endpoint (for optional delegation) |
-| `OP_ADMIN_TOKEN` | (from `secrets.env`) | Admin API auth token |
+| `OP_ADMIN_TOKEN` | (from `vault/system.env`) | Admin API auth token |
 
 ## How It Works
 
-1. **Bootstrap** (first install) -- creates XDG directory tree, downloads core assets from GitHub, seeds `secrets.env` and `stack.env`, serves setup wizard, stages artifacts via `@openpalm/lib`, starts core services via `docker compose up`
+1. **Bootstrap** (first install) -- creates XDG directory tree, downloads core assets from GitHub, seeds `vault/user.env` and `vault/system.env`, serves setup wizard, stages artifacts via `@openpalm/lib`, starts core services via `docker compose up`
 2. **Running stack** -- commands stage artifacts locally using `FilesystemAssetProvider`, then execute Docker Compose directly.
 3. **Admin absent** -- all commands work identically. Admin is never required for any operation.
 

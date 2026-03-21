@@ -20,20 +20,18 @@ const tmpBase = `/tmp/openpalm-wizard-test-${port}`;
 // by Playwright's page.route(), so these dirs just prevent crashes.
 mkdirSync(`${tmpBase}/config`, { recursive: true });
 mkdirSync(`${tmpBase}/data`, { recursive: true });
-mkdirSync(`${tmpBase}/vault`, { recursive: true });
+mkdirSync(`${tmpBase}/vault/stack`, { recursive: true });
+mkdirSync(`${tmpBase}/vault/user`, { recursive: true });
 
-writeFileSync(`${tmpBase}/vault/system.env`, "OP_SETUP_COMPLETE=false\n");
-writeFileSync(`${tmpBase}/vault/user.env`, "# test\n");
+writeFileSync(`${tmpBase}/vault/stack/stack.env`, "OP_SETUP_COMPLETE=false\n");
+writeFileSync(`${tmpBase}/vault/user/user.env`, "# test\n");
 
 // No-op asset provider — mocked tests intercept API calls before they
 // reach performSetup(), so these methods are never invoked.
 const noopAssetProvider: CoreAssetProvider = {
 	coreCompose: () => "",
-	caddyfile: () => "",
-	ollamaCompose: () => "",
 	agentsMd: () => "",
 	opencodeConfig: () => "",
-	adminOpencodeConfig: () => "",
 	secretsSchema: () => "",
 	stackSchema: () => "",
 	cleanupLogs: () => "",

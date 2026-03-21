@@ -2,11 +2,11 @@ import { userInfo } from "node:os";
 import { parseEnvFile } from './env.js';
 
 export function readSecretsKeys(vaultDir: string): Record<string, boolean> {
-  // System scope wins on overlap because vault/system.env is the
+  // System scope wins on overlap because vault/stack/stack.env is the
   // authoritative source for system-managed credentials and flags.
   const parsed = {
-    ...parseEnvFile(`${vaultDir}/user.env`),
-    ...parseEnvFile(`${vaultDir}/system.env`),
+    ...parseEnvFile(`${vaultDir}/user/user.env`),
+    ...parseEnvFile(`${vaultDir}/stack/stack.env`),
   };
   const result: Record<string, boolean> = {};
   for (const [key, value] of Object.entries(parsed)) {
@@ -26,10 +26,10 @@ export function detectUserId(): string {
 }
 
 /**
- * Check if setup is complete by reading vault/system.env.
+ * Check if setup is complete by reading vault/stack/stack.env.
  */
 export function isSetupComplete(vaultDir: string): boolean {
-  const parsed = parseEnvFile(`${vaultDir}/system.env`);
+  const parsed = parseEnvFile(`${vaultDir}/stack/stack.env`);
   if ("OP_SETUP_COMPLETE" in parsed) {
     return parsed.OP_SETUP_COMPLETE.toLowerCase() === "true";
   }

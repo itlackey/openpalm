@@ -73,7 +73,7 @@ describe('admin secrets routes', () => {
     expect(body.value).toBeUndefined();
 
     const state = getState();
-    const userEnv = readFileSync(join(state.vaultDir, 'user.env'), 'utf-8');
+    const userEnv = readFileSync(join(state.vaultDir, 'user', 'user.env'), 'utf-8');
     expect(userEnv).toContain('super-secret-value');
   });
 

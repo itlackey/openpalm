@@ -56,9 +56,6 @@ for (const dir of [
   join(dataDir, "memory"),
   join(dataDir, "assistant"),
   join(dataDir, "guardian"),
-  join(dataDir, "caddy"),
-  join(dataDir, "caddy", "data"),
-  join(dataDir, "caddy", "channels"),
   join(dataDir, "stash"),
   join(dataDir, "workspace"),
   logsDir,
@@ -68,10 +65,12 @@ for (const dir of [
 }
 
 // Seed minimal env files so the wizard's status endpoint works
-const systemEnvPath = join(vaultDir, "system.env");
+mkdirSync(join(vaultDir, "stack"), { recursive: true });
+const systemEnvPath = join(vaultDir, "stack", "stack.env");
 writeFileSync(systemEnvPath, "OP_SETUP_COMPLETE=false\n");
 
-const userEnvPath = join(vaultDir, "user.env");
+mkdirSync(join(vaultDir, "user"), { recursive: true });
+const userEnvPath = join(vaultDir, "user", "user.env");
 writeFileSync(
   userEnvPath,
   [
@@ -101,15 +100,9 @@ process.env.OP_HOME = homeDir;
 
 function createStubAssetProvider(): CoreAssetProvider {
   return {
-    coreCompose: () => "services:\n  caddy:\n    image: caddy:latest\n",
-    caddyfile: () =>
-      ":80 {\n  @denied not remote_ip 127.0.0.0/8 ::1\n  respond @denied 403\n}\n",
-    ollamaCompose: () => "services:\n  ollama:\n    image: ollama/ollama\n",
-    adminCompose: () => "services:\n  admin:\n    image: openpalm/admin\n",
+    coreCompose: () => "services:\n  admin:\n    image: admin:latest\n",
     agentsMd: () => "# Agents\n",
     opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
-    adminOpencodeConfig: () =>
-      '{"$schema":"https://opencode.ai/config.json","plugin":["@openpalm/admin-tools"]}\n',
     secretsSchema: () => "ADMIN_TOKEN=string\n",
     stackSchema: () => "OP_IMAGE_TAG=string\n",
     cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",

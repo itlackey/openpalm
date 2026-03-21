@@ -123,11 +123,10 @@ describe('install --file', () => {
     mockDockerCli();
     globalThis.fetch = mock(async (input: string | URL) => {
       const url = String(input);
-      if (url.includes('/docker-compose.yml')) return new Response('services: {}\n', { status: 200 });
-      if (url.includes('/Caddyfile')) return new Response(':80 {\n}\n', { status: 200 });
+      if (url.includes('/core.compose.yml') || url.includes('/docker-compose.yml')) return new Response('services: {}\n', { status: 200 });
+      if (url.includes('/compose.yml')) return new Response('services: {}\n', { status: 200 });
       if (url.endsWith('.schema') || url.endsWith('.schema.json')) return new Response('KEY=string\n', { status: 200 });
       // Return valid content for asset files needed by FilesystemAssetProvider
-      if (url.includes('/ollama.yml')) return new Response('services:\n  ollama:\n    image: ollama/ollama\n', { status: 200 });
       if (url.includes('/AGENTS.md')) return new Response('# Agents\n', { status: 200 });
       if (url.includes('/opencode.jsonc') || url.includes('/admin-opencode.jsonc'))
         return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });

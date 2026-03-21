@@ -5,7 +5,7 @@
  *   1. Detect legacy XDG layout and env vars
  *   2. Create the new ~/.openpalm/ directory structure
  *   3. Move directories from old XDG locations to new layout
- *   4. Split env files (secrets.env + stack.env → vault/user.env + vault/system.env)
+ *   4. Split env files (secrets.env + stack.env → vault/user/user.env + vault/stack/stack.env)
  *   5. Convert legacy channel overlays to component instances
  *   6. Print summary
  *   7. Preserve old directories until --cleanup is passed
@@ -37,7 +37,7 @@ import {
 
 // ── Env Splitting Rules ─────────────────────────────────────────────────
 
-/** Keys from secrets.env / stack.env that go to vault/user.env */
+/** Keys from secrets.env / stack.env that go to vault/user/user.env */
 const USER_ENV_KEYS = new Set([
   // LLM provider API keys
   'OPENAI_API_KEY',
@@ -61,7 +61,7 @@ const USER_ENV_KEYS = new Set([
   'MEMORY_USER_ID',
 ]);
 
-/** Keys from secrets.env / stack.env that go to vault/system.env */
+/** Keys from secrets.env / stack.env that go to vault/stack/stack.env */
 const SYSTEM_ENV_KEYS = new Set([
   // Admin and auth tokens
   'ADMIN_TOKEN',
@@ -137,7 +137,7 @@ function copyFileSafe(src: string, dest: string, summary: string[]): void {
 }
 
 /**
- * Split secrets.env + stack.env into vault/user.env + vault/system.env.
+ * Split secrets.env + stack.env into vault/user/user.env + vault/stack/stack.env.
  */
 function splitEnvFiles(
   configHome: string,
@@ -150,8 +150,10 @@ function splitEnvFiles(
   // Also check STATE_HOME for stack.env (some installs put it there)
   const altStackPath = join(configHome, 'stack.env');
 
-  const userEnvPath = join(openpalmHome, 'vault', 'user.env');
-  const systemEnvPath = join(openpalmHome, 'vault', 'system.env');
+  mkdirSync(join(openpalmHome, 'vault', 'user'), { recursive: true });
+  mkdirSync(join(openpalmHome, 'vault', 'stack'), { recursive: true });
+  const userEnvPath = join(openpalmHome, 'vault', 'user', 'user.env');
+  const systemEnvPath = join(openpalmHome, 'vault', 'stack', 'stack.env');
 
   // Collect all env vars from both source files
   const allVars: Record<string, string> = {};
@@ -189,18 +191,18 @@ function splitEnvFiles(
   if (!existsSync(userEnvPath)) {
     const userLines = Object.entries(userVars).map(([k, v]) => `${k}=${v}`);
     writeFileSync(userEnvPath, userLines.join('\n') + '\n');
-    summary.push(`  vault/user.env created (${Object.keys(userVars).length} keys)`);
+    summary.push(`  vault/user/user.env created (${Object.keys(userVars).length} keys)`);
   } else {
-    summary.push('  vault/user.env already exists (skipped)');
+    summary.push('  vault/user/user.env already exists (skipped)');
   }
 
-  // Write system.env (only if not already present)
+  // Write stack.env (only if not already present)
   if (!existsSync(systemEnvPath)) {
     const systemLines = Object.entries(systemVars).map(([k, v]) => `${k}=${v}`);
     writeFileSync(systemEnvPath, systemLines.join('\n') + '\n');
-    summary.push(`  vault/system.env created (${Object.keys(systemVars).length} keys)`);
+    summary.push(`  vault/stack/stack.env created (${Object.keys(systemVars).length} keys)`);
   } else {
-    summary.push('  vault/system.env already exists (skipped)');
+    summary.push('  vault/stack/stack.env already exists (skipped)');
   }
 }
 
@@ -265,12 +267,6 @@ function convertChannelOverlays(
       '',
     ];
     writeFileSync(join(instanceDir, '.env'), envLines.join('\n'));
-
-    // Copy corresponding .caddy if it exists
-    const caddyFile = join(channelsDir, `${name}.caddy`);
-    if (existsSync(caddyFile)) {
-      copyFileSync(caddyFile, join(instanceDir, '.caddy'));
-    }
 
     summary.push(`  channels/${file} -> data/components/${name}/`);
   }
@@ -464,7 +460,6 @@ export default defineCommand({
         await copyDirSafe(join(dataHome, 'assistant'), join(openpalmHome, 'data', 'assistant'), summary);
         await copyDirSafe(join(dataHome, 'memory'), join(openpalmHome, 'data', 'memory'), summary);
         await copyDirSafe(join(dataHome, 'guardian'), join(openpalmHome, 'data', 'guardian'), summary);
-        await copyDirSafe(join(dataHome, 'caddy'), join(openpalmHome, 'data', 'caddy'), summary);
         await copyDirSafe(join(dataHome, 'opencode'), join(openpalmHome, 'data', 'assistant'), summary);
       }
 

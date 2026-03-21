@@ -11,7 +11,7 @@ Admin is a thin UI layer that re-exports from this package. The CLI calls these 
 | `types` | Core type definitions -- `ControlPlaneState`, `CoreServiceName`, `ChannelInfo`, `CanonicalConnectionProfile`, etc. |
 | `paths` | XDG directory resolution (`resolveConfigHome`, `resolveDataHome`, `resolveStateHome`, `ensureXdgDirs`) |
 | `env` | `.env` file parsing and merging (`parseEnvContent`, `parseEnvFile`, `mergeEnvContent`) |
-| `secrets` | Secrets management -- ensure, read, patch, mask `secrets.env` |
+| `secrets` | Secrets management -- ensure, read, patch, mask vault env files |
 | `setup-status` | First-boot detection (`isSetupComplete`, `readSecretsKeys`, `detectUserId`) |
 | `setup` | Setup wizard backend (`performSetup`, `detectProviders`, `validateSetupInput`) |
 | `staging` | Artifact staging pipeline (`stageArtifacts`, `persistArtifacts`, `buildEnvFiles`) |
@@ -23,7 +23,7 @@ Admin is a thin UI layer that re-exports from this package. The CLI calls these 
 | `memory-config` | Read/write memory service config, push to running memory container |
 | `scheduler` | Automation YAML parsing, Croner-based scheduler, execution log |
 | `model-runner` | Local provider detection (Ollama, Docker Model Runner, LM Studio) |
-| `core-assets` | Seed and read core infrastructure files (compose, Caddyfile, schemas) |
+| `core-assets` | Seed and read core infrastructure files (compose, schemas) |
 | `connection-migration-flags` | Migration compatibility detection (`readConnectionMigrationFlags`, `detectConnectionCompatibilityMode`) |
 | `audit` | Append to the audit log |
 | `logger` | Structured logger factory (`createLogger`) |
@@ -35,7 +35,7 @@ Asset loading differs between CLI and admin. Two interfaces abstract this:
 
 ### CoreAssetProvider
 
-Returns the content of bundled infrastructure files (compose, Caddyfile, schemas, automations). Functions that need these files accept a `CoreAssetProvider` parameter.
+Returns the content of bundled infrastructure files (compose, schemas, automations). Functions that need these files accept a `CoreAssetProvider` parameter.
 
 | Implementation | Consumer | Source |
 |---|---|---|

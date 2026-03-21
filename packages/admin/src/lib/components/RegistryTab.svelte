@@ -14,9 +14,9 @@
 
   let { data, loading, error, tokenStored, actionLoading, onRefresh, onInstall, onUninstall }: Props = $props();
 
-  let hasChannels = $derived(data !== null && data.channels.length > 0);
+  let hasComponents = $derived(data !== null && data.components.length > 0);
   let hasAutomations = $derived(data !== null && data.automations.length > 0);
-  let hasAny = $derived(hasChannels || hasAutomations);
+  let hasAny = $derived(hasComponents || hasAutomations);
 
   /** Reverse map: cron expression to friendly label */
   const CRON_TO_LABEL: Record<string, string> = {
@@ -70,44 +70,36 @@
   </div>
   <div class="panel-body">
     {#if hasAny && data}
-      <!-- Channels Section -->
-      {#if hasChannels}
+      <!-- Components Section -->
+      {#if hasComponents}
         <div class="section">
           <h3 class="section-title">
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              <rect x="3" y="3" width="7" height="7" />
+              <rect x="14" y="3" width="7" height="7" />
+              <rect x="14" y="14" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" />
             </svg>
-            Channels
+            Components
           </h3>
           <div class="card-grid">
-            {#each data.channels as channel}
-              {@const isActioning = actionLoading === `channel:${channel.name}`}
+            {#each data.components as component}
               <div class="registry-card channel-card">
                 <div class="card-header">
                   <div class="card-icon channel-icon">
                     <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                      <rect x="3" y="3" width="7" height="7" />
+                      <rect x="14" y="3" width="7" height="7" />
+                      <rect x="14" y="14" width="7" height="7" />
+                      <rect x="3" y="14" width="7" height="7" />
                     </svg>
                   </div>
                   <div class="card-title-row">
-                    <span class="card-name">{formatChannelName(channel.name)}</span>
-                    <span class="badge" class:badge-installed={channel.installed} class:badge-available={!channel.installed}>
-                      {channel.installed ? 'Installed' : 'Available'}
-                    </span>
+                    <span class="card-name">{component.id}</span>
                   </div>
                 </div>
                 <div class="card-body">
-                  <p class="card-desc">{channel.description}</p>
                   <div class="card-meta">
-                    {#if channel.hasRoute}
-                      <span class="meta-tag">
-                        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                        </svg>
-                        HTTP Route
-                      </span>
-                    {/if}
                     <span class="meta-tag">
                       <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
@@ -115,34 +107,14 @@
                         <line x1="6" y1="6" x2="6.01" y2="6" />
                         <line x1="6" y1="18" x2="6.01" y2="18" />
                       </svg>
-                      Docker Service
+                      Component
                     </span>
                   </div>
-                </div>
-                <div class="card-footer">
-                  {#if channel.installed}
-                    <button
-                      class="btn btn-danger btn-sm"
-                      disabled={isActioning}
-                      onclick={() => onUninstall(channel.name, 'channel')}
-                    >
-                      {#if isActioning}<span class="spinner"></span>{/if}
-                      Uninstall
-                    </button>
-                  {:else}
-                    <button
-                      class="btn btn-primary btn-sm"
-                      disabled={isActioning}
-                      onclick={() => onInstall(channel.name, 'channel')}
-                    >
-                      {#if isActioning}<span class="spinner"></span>{/if}
-                      Install
-                    </button>
-                  {/if}
                 </div>
               </div>
             {/each}
           </div>
+          <p class="section-hint">Install components via the Components tab.</p>
         </div>
       {/if}
 
@@ -288,6 +260,13 @@
     margin-bottom: var(--space-4);
     padding-bottom: var(--space-2);
     border-bottom: 1px solid var(--color-border);
+  }
+
+  .section-hint {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    margin-top: var(--space-3);
+    font-style: italic;
   }
 
   /* ── Card Grid ────────────────────────────────────────────────────── */

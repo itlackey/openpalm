@@ -38,9 +38,13 @@ describe("ensureXdgDirs (ensureHomeDirs)", () => {
     expect(existsSync(join(configDir, "components"))).toBe(true);
     expect(existsSync(join(configDir, "automations"))).toBe(true);
     expect(existsSync(join(configDir, "assistant"))).toBe(true);
+    expect(existsSync(join(configDir, "guardian"))).toBe(true);
 
-    // vault/
+    // vault/ subtrees
     expect(existsSync(vaultDir)).toBe(true);
+    expect(existsSync(join(vaultDir, "stack"))).toBe(true);
+    expect(existsSync(join(vaultDir, "stack", "addons"))).toBe(true);
+    expect(existsSync(join(vaultDir, "user"))).toBe(true);
 
     // data/ subtrees
     expect(existsSync(dataDir)).toBe(true);
@@ -48,10 +52,17 @@ describe("ensureXdgDirs (ensureHomeDirs)", () => {
     expect(existsSync(join(dataDir, "admin"))).toBe(true);
     expect(existsSync(join(dataDir, "memory"))).toBe(true);
     expect(existsSync(join(dataDir, "guardian"))).toBe(true);
-    expect(existsSync(join(dataDir, "caddy"))).toBe(true);
-    expect(existsSync(join(dataDir, "caddy", "data"))).toBe(true);
     expect(existsSync(join(dataDir, "stash"))).toBe(true);
-    expect(existsSync(join(dataDir, "workspace"))).toBe(true);
+
+    // stack/ subtrees
+    expect(existsSync(join(home, "stack"))).toBe(true);
+    expect(existsSync(join(home, "stack", "addons"))).toBe(true);
+
+    // backups/
+    expect(existsSync(join(home, "backups"))).toBe(true);
+
+    // workspace/
+    expect(existsSync(join(home, "workspace"))).toBe(true);
 
     // logs/ subtrees
     expect(existsSync(logsDir)).toBe(true);

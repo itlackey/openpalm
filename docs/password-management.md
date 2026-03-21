@@ -75,7 +75,7 @@ The vault boundary is enforced through Docker Compose volume mounts:
 | Container | Vault Access | Mount |
 |-----------|-------------|-------|
 | **Admin** | Full vault (rw) | `${OP_HOME}:/openpalm` |
-| **Assistant** | `user.env` only (ro) | `vault/user.env:/etc/openpalm/user.env:ro` |
+| **Assistant** | `user.env` only (ro) | `vault/user/user.env:/etc/openpalm-vault/user.env:ro` |
 | **Guardian** | None | Receives secrets via `env_file` at startup |
 | **Memory** | None | Receives secrets via `${VAR}` substitution |
 | **Scheduler** | None | Receives secrets via `${VAR}` substitution |
@@ -262,7 +262,7 @@ Registrations are tracked in `~/.openpalm/data/secrets/component-secrets.json`.
 
 ## Runtime Log Redaction
 
-Varlock wraps container processes to prevent secrets from leaking into Docker logs. The `assets/redact.env.schema` file lists all sensitive env vars. Any matching values in stdout/stderr output are replaced with `[REDACTED]`.
+Varlock wraps container processes to prevent secrets from leaking into Docker logs. The `.openpalm/vault/redact.env.schema` file lists all sensitive env vars. Any matching values in stdout/stderr output are replaced with `[REDACTED]`.
 
 The redact schema is regenerated during configuration persistence to stay in sync with `@sensitive` declarations in the vault schemas.
 

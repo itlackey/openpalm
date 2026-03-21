@@ -8,45 +8,24 @@
  */
 import type { ControlPlaneState, CoreAssetProvider, RegistryProvider } from "@openpalm/lib";
 import {
-  ensureCoreCaddyfile as _ensureCoreCaddyfile,
-  readCoreCaddyfile as _readCoreCaddyfile,
-  setCoreCaddyAccessScope as _setCoreCaddyAccessScope,
   ensureCoreCompose as _ensureCoreCompose,
   readCoreCompose as _readCoreCompose,
-  ensureOllamaCompose as _ensureOllamaCompose,
-  readOllamaCompose as _readOllamaCompose,
   ensureOpenCodeSystemConfig as _ensureOpenCodeSystemConfig,
-  ensureAdminOpenCodeConfig as _ensureAdminOpenCodeConfig,
   ensureCoreAutomations as _ensureCoreAutomations,
   ensureSecretsSchema as _ensureSecretsSchema,
   ensureStackSchema as _ensureStackSchema,
-  stageArtifacts as _stageArtifacts,
-  persistArtifacts as _persistArtifacts,
+  resolveArtifacts as _resolveArtifacts,
+  persistConfiguration as _persistConfiguration,
   applyInstall as _applyInstall,
   applyUpdate as _applyUpdate,
   applyUninstall as _applyUninstall,
   applyUpgrade as _applyUpgrade,
-  installChannelFromRegistry as _installChannelFromRegistry,
   installAutomationFromRegistry as _installAutomationFromRegistry,
 } from "@openpalm/lib";
 import { viteAssets } from "./vite-asset-provider.js";
 import { viteRegistry } from "./vite-registry-provider.js";
 
 // ── Wrapped functions (pre-inject Vite providers) ────────────────────
-
-export function ensureCoreCaddyfile(): string {
-  return _ensureCoreCaddyfile(viteAssets);
-}
-
-export function readCoreCaddyfile(): string {
-  return _readCoreCaddyfile(viteAssets);
-}
-
-export function setCoreCaddyAccessScope(
-  scope: "host" | "lan"
-): { ok: true } | { ok: false; error: string } {
-  return _setCoreCaddyAccessScope(scope, viteAssets);
-}
 
 export function ensureCoreCompose(): string {
   return _ensureCoreCompose(viteAssets);
@@ -56,21 +35,10 @@ export function readCoreCompose(): string {
   return _readCoreCompose(viteAssets);
 }
 
-export function ensureOllamaCompose(): string {
-  return _ensureOllamaCompose(viteAssets);
-}
-
-export function readOllamaCompose(): string {
-  return _readOllamaCompose(viteAssets);
-}
-
 export function ensureOpenCodeSystemConfig(): void {
   _ensureOpenCodeSystemConfig(viteAssets);
 }
 
-export function ensureAdminOpenCodeConfig(): void {
-  _ensureAdminOpenCodeConfig(viteAssets);
-}
 
 export function ensureCoreAutomations(): void {
   _ensureCoreAutomations(viteAssets);
@@ -84,15 +52,14 @@ export function ensureStackSchema(): string {
   return _ensureStackSchema(viteAssets);
 }
 
-export function stageArtifacts(state: ControlPlaneState): {
+export function resolveArtifacts(state: ControlPlaneState): {
   compose: string;
-  caddyfile: string;
 } {
-  return _stageArtifacts(state, viteAssets);
+  return _resolveArtifacts(state, viteAssets);
 }
 
-export function persistArtifacts(state: ControlPlaneState): void {
-  _persistArtifacts(state, viteAssets);
+export function persistConfiguration(state: ControlPlaneState): void {
+  _persistConfiguration(state, viteAssets);
 }
 
 export function applyInstall(state: ControlPlaneState): void {
@@ -113,13 +80,6 @@ export async function applyUpgrade(state: ControlPlaneState): Promise<{
   restarted: string[];
 }> {
   return _applyUpgrade(state, viteAssets);
-}
-
-export function installChannelFromRegistry(
-  name: string,
-  configDir: string
-): { ok: true } | { ok: false; error: string } {
-  return _installChannelFromRegistry(name, configDir, viteRegistry);
 }
 
 export function installAutomationFromRegistry(
@@ -168,11 +128,8 @@ export {
 // ── paths.ts ──────────────────────────────────────────────────────────
 export { ensureXdgDirs } from "@openpalm/lib";
 
-// ── registry.ts (backward-compatible static exports) ─────────────────
+// ── registry (automation-only static exports) ─────────────────────────
 export {
-  REGISTRY_CHANNEL_YML,
-  REGISTRY_CHANNEL_CADDY,
-  REGISTRY_CHANNEL_NAMES,
   REGISTRY_AUTOMATION_YML,
   REGISTRY_AUTOMATION_NAMES
 } from "./vite-registry-provider.js";
@@ -209,7 +166,6 @@ export {
   discoverChannels,
   isAllowedService,
   isValidChannel,
-  uninstallChannel,
   uninstallAutomation,
 } from "@openpalm/lib";
 
@@ -217,10 +173,10 @@ export {
 export {
   sha256,
   randomHex,
-  detectAccessScope,
   isOllamaEnabled,
   buildEnvFiles,
-  discoverStagedChannelYmls,
+  discoverChannelOverlays,
+  discoverComponentOverlays,
   buildArtifactMeta,
   refreshCoreAssets,
   ensureMemoryDir,
@@ -298,16 +254,6 @@ export {
   type Mem0ConnectionMapping,
 } from "@openpalm/lib";
 
-// ── connection-migration-flags.ts ─────────────────────────────────────
-export {
-  readConnectionMigrationFlags,
-  detectConnectionCompatibilityMode,
-} from "@openpalm/lib";
-export type {
-  ConnectionMigrationFlags,
-  ConnectionCompatibilityMode,
-} from "./connection-migration-flags.js";
-
 // ── components.ts (v0.10.0 unified component system) ──────────────────
 export type {
   ComponentDefinition,
@@ -343,8 +289,6 @@ export {
   getInstanceDetail,
   listInstances,
   deleteInstance,
-  installCaddyRoute,
-  removeCaddyRoute,
   parseEnvSchema,
 } from "@openpalm/lib";
 

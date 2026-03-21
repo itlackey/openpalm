@@ -100,7 +100,7 @@ are optional — the bot also responds to @mentions and DMs.
 
 ### Via the Admin UI
 
-1. Open the OpenPalm admin UI in your browser (default: `http://localhost:8080`).
+1. Open the OpenPalm admin UI in your browser (default: `http://localhost:8100`).
 2. Navigate to the **Channels** page.
 3. Find **Slack** in the registry list and click **Install**.
 4. After installation, go to the **Connections** page (or the channel's
@@ -118,7 +118,7 @@ curl -X POST http://localhost:8100/admin/channels/install \
   -d '{"channel": "slack"}'
 ```
 
-Then add the required environment variables to `~/.config/openpalm/secrets.env`:
+Then add the required environment variables to `~/.openpalm/vault/user.env`:
 
 ```env
 SLACK_BOT_TOKEN=xoxb-your-bot-token-here
@@ -174,7 +174,7 @@ curl -X POST http://localhost:8100/admin/install \
 ## 9. Access Control (Optional)
 
 You can restrict which channels or users can interact with the bot by setting
-environment variables in `secrets.env`. All lists are comma-separated Slack IDs.
+environment variables in `vault/user.env`. All lists are comma-separated Slack IDs.
 
 | Variable | Purpose |
 |----------|---------|

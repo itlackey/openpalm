@@ -18,11 +18,11 @@ import { makeTempDir, registerCleanup, trackDir } from './test-helpers.js';
 registerCleanup();
 
 describe('connection profiles storage', () => {
-  test('ensures connections directory exists', () => {
+  test('getConnectionProfilesPath returns stack.yaml path', () => {
     const configDir = trackDir(makeTempDir());
     ensureConnectionProfilesStore(configDir);
     const path = getConnectionProfilesPath(configDir);
-    expect(path).toBe(join(configDir, 'connections', 'profiles.json'));
+    expect(path).toBe(join(configDir, 'stack.yaml'));
   });
 
   test('readConnectionProfilesDocument returns empty default when file does not exist', () => {
@@ -142,7 +142,7 @@ describe('connection profiles storage', () => {
     expect(deleted.ok).toBe(true);
   });
 
-  test('ensureConnectionProfilesStore does not overwrite existing profiles.json', () => {
+  test('ensureConnectionProfilesStore is a no-op and does not overwrite existing stack.yaml', () => {
     const configDir = trackDir(makeTempDir());
 
     // Write a valid document first
@@ -164,7 +164,7 @@ describe('connection profiles storage', () => {
     const profilesPath = getConnectionProfilesPath(configDir);
     const contentBefore = readFileSync(profilesPath, 'utf8');
 
-    // Call ensureConnectionProfilesStore twice — must be idempotent and non-destructive
+    // Call ensureConnectionProfilesStore twice — must be idempotent and non-destructive (it's a no-op now)
     ensureConnectionProfilesStore(configDir);
     ensureConnectionProfilesStore(configDir);
 

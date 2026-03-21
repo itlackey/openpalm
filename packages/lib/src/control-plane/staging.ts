@@ -7,27 +7,22 @@
  *
  * All asset content is provided by a CoreAssetProvider (injected).
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync, copyFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
-import { mergeEnvContent } from './env.js';
+import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { discoverChannels } from "./channels.js";
-import { readStackSpec } from "./stack-spec.js";
-import { appendAudit } from "./audit.js";
+import { readStackSpec, hasAddon } from "./stack-spec.js";
+
 import { parseAutomationYaml } from "./scheduler.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
 import { generateRedactSchema } from "./redact-schema.js";
 import { readSystemSecretsEnvFile } from "./secrets.js";
 import {
-  readCoreCaddyfile,
   readCoreCompose,
-  readOllamaCompose,
-  readAdminCompose,
   ensureUserEnvSchema,
   ensureSystemEnvSchema,
-  PUBLIC_ACCESS_IMPORT,
-  LAN_ONLY_IMPORT
 } from "./core-assets.js";
 
 const DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
@@ -43,136 +38,30 @@ export function randomHex(bytes: number): string {
   return randomBytes(bytes).toString("hex");
 }
 
-// ── Stack Config (openpalm.yml) ─────────────────────────────────────
+// ── Stack Config (stack.yaml) ─────────────────────────────────────
 
 /**
- * Check whether Ollama is enabled. Reads from the StackSpec (v3 or v4,
- * auto-upgraded) first, then falls back to vault/system.env for legacy
- * installations that haven't been migrated yet.
+ * Check whether Ollama is enabled via stack.yaml addons list.
  */
 export function isOllamaEnabled(state: ControlPlaneState): boolean {
-  // Try the StackSpec first (handles both .yaml and .yml, v3 and v4)
   const spec = readStackSpec(state.configDir);
-  if (spec) return spec.features?.ollama === true;
-
-  // Lightweight legacy fallback: check openpalm.yml for plain boolean flags
-  const ymlPath = `${state.configDir}/openpalm.yml`;
-  if (existsSync(ymlPath)) {
-    try {
-      const ymlContent = readFileSync(ymlPath, "utf-8");
-      const ymlMatch = ymlContent.match(/^\s*ollama:\s*(true|false)/m);
-      if (ymlMatch) return ymlMatch[1] === "true";
-    } catch { /* ignore */ }
-  }
-
-  // Legacy fallback: check system.env
-  const systemEnvPath = `${state.vaultDir}/system.env`;
-  if (!existsSync(systemEnvPath)) return false;
-  const content = readFileSync(systemEnvPath, "utf-8");
-  const match = content.match(/^(?:OP_|OP_)OLLAMA_ENABLED=(.+)$/m);
-  return match?.[1]?.trim().toLowerCase() === "true";
+  if (spec) return hasAddon(spec, "ollama");
+  return false;
 }
 
 /**
- * Check whether admin is enabled. Reads from the StackSpec (v3 or v4,
- * auto-upgraded) first, then falls back to vault/system.env for legacy
- * installations that haven't been migrated yet.
+ * Check whether admin is enabled via stack.yaml addons list.
  */
 export function isAdminEnabled(state: ControlPlaneState): boolean {
-  // Try the StackSpec first (handles both .yaml and .yml, v3 and v4)
   const spec = readStackSpec(state.configDir);
-  if (spec) return spec.features?.admin === true;
-
-  // Lightweight legacy fallback: check openpalm.yml for plain boolean flags
-  const ymlPath = `${state.configDir}/openpalm.yml`;
-  if (existsSync(ymlPath)) {
-    try {
-      const ymlContent = readFileSync(ymlPath, "utf-8");
-      const ymlMatch = ymlContent.match(/^\s*admin:\s*(true|false)/m);
-      if (ymlMatch) return ymlMatch[1] === "true";
-    } catch { /* ignore */ }
-  }
-
-  // Legacy fallback: check system.env
-  const systemEnvPath = `${state.vaultDir}/system.env`;
-  if (!existsSync(systemEnvPath)) return false;
-  const content = readFileSync(systemEnvPath, "utf-8");
-  const match = content.match(/^(?:OP_|OP_)ADMIN_ENABLED=(.+)$/m);
-  return match?.[1]?.trim().toLowerCase() === "true";
+  if (spec) return hasAddon(spec, "admin");
+  return false;
 }
 
-// ── Caddyfile Management ─────────────────────────────────────────────
-
-export function withDefaultLanOnly(rawCaddy: string): string | null {
-  if (rawCaddy.includes(PUBLIC_ACCESS_IMPORT) || rawCaddy.includes(LAN_ONLY_IMPORT)) {
-    return rawCaddy;
-  }
-
-  const blockStarts = [
-    /(handle_path\s+[^\n{]+\{\s*\n?)/,
-    /(handle\s+[^\n{]+\{\s*\n?)/,
-    /(route\s+[^\n{]+\{\s*\n?)/
-  ];
-
-  for (const pattern of blockStarts) {
-    if (pattern.test(rawCaddy)) {
-      return rawCaddy.replace(pattern, "$1\timport lan_only\n");
-    }
-  }
-
-  return null;
-}
-
-/**
- * Write channel Caddy route files to data/caddy/channels/{public,lan}/.
- */
-export function writeCaddyRoutes(state: ControlPlaneState): void {
-  const caddyChannelsDir = `${state.dataDir}/caddy/channels`;
-  const publicDir = `${caddyChannelsDir}/public`;
-  const lanDir = `${caddyChannelsDir}/lan`;
-  rmSync(publicDir, { recursive: true, force: true });
-  rmSync(lanDir, { recursive: true, force: true });
-  mkdirSync(publicDir, { recursive: true });
-  mkdirSync(lanDir, { recursive: true });
-
-  const channels = discoverChannels(state.configDir);
-  for (const ch of channels) {
-    if (!ch.caddyPath) continue;
-
-    const raw = readFileSync(ch.caddyPath, "utf-8");
-    if (raw.includes(PUBLIC_ACCESS_IMPORT)) {
-      writeFileSync(`${publicDir}/${ch.name}.caddy`, raw);
-      continue;
-    }
-
-    const lanScoped = withDefaultLanOnly(raw);
-    if (!lanScoped) {
-      appendAudit(
-        state,
-        "system",
-        "channels.route.skip",
-        {
-          channel: ch.name,
-          reason: "Unable to infer route block for default LAN scoping"
-        },
-        false,
-        "",
-        "system"
-      );
-      continue;
-    }
-    writeFileSync(`${lanDir}/${ch.name}.caddy`, lanScoped);
-  }
-}
-
-// ── Compose & Caddyfile Content ──────────────────────────────────────
+// ── Compose Content ──────────────────────────────────────────────────
 
 function resolveCompose(_state: ControlPlaneState, assets: CoreAssetProvider): string {
   return readCoreCompose(assets);
-}
-
-function resolveCaddyfile(_state: ControlPlaneState, assets: CoreAssetProvider): string {
-  return readCoreCaddyfile(assets);
 }
 
 // ── Env File Management ──────────────────────────────────────────────
@@ -183,18 +72,18 @@ function resolveCaddyfile(_state: ControlPlaneState, assets: CoreAssetProvider):
  */
 export function buildEnvFiles(state: ControlPlaneState): string[] {
   return [
-    `${state.vaultDir}/system.env`,
-    `${state.vaultDir}/user.env`,
+    `${state.vaultDir}/stack/stack.env`,
+    `${state.vaultDir}/user/user.env`,
   ].filter(existsSync);
 }
 
 /**
- * Write system-managed values to vault/system.env.
+ * Write system-managed values to vault/stack/stack.env.
  */
-export function writeSystemEnv(state: ControlPlaneState): void {
-  mkdirSync(state.vaultDir, { recursive: true });
+export function writeSystemEnv(state: ControlPlaneState, channelSecrets: Record<string, string> = {}): void {
+  mkdirSync(`${state.vaultDir}/stack`, { recursive: true });
 
-  const systemEnvPath = `${state.vaultDir}/system.env`;
+  const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
 
   let base = "";
   if (existsSync(systemEnvPath)) {
@@ -209,7 +98,7 @@ export function writeSystemEnv(state: ControlPlaneState): void {
   const adminManaged: Record<string, string> = {
     OP_SETUP_COMPLETE: alreadyComplete ? "true" : "false"
   };
-  for (const [ch, secret] of Object.entries(state.channelSecrets)) {
+  for (const [ch, secret] of Object.entries(channelSecrets)) {
     adminManaged[`CHANNEL_${ch.toUpperCase()}_SECRET`] = secret;
   }
 
@@ -322,11 +211,9 @@ export function resolveArtifacts(
   assets: CoreAssetProvider
 ): {
   compose: string;
-  caddyfile: string;
 } {
   return {
     compose: resolveCompose(state, assets),
-    caddyfile: resolveCaddyfile(state, assets)
   };
 }
 
@@ -334,15 +221,27 @@ export function resolveArtifacts(
 
 export function buildArtifactMeta(artifacts: {
   compose: string;
-  caddyfile: string;
 }): ArtifactMeta[] {
   const now = new Date().toISOString();
-  return (["compose", "caddyfile"] as const).map((name) => ({
+  return (["compose"] as const).map((name) => ({
     name,
     sha256: sha256(artifacts[name]),
     generatedAt: now,
     bytes: Buffer.byteLength(artifacts[name])
   }));
+}
+
+// ── Channel Secrets ────────────────────────────────────────────────────
+
+/** Load persisted CHANNEL_*_SECRET entries from vault/stack/stack.env. */
+function loadPersistedChannelSecrets(vaultDir: string): Record<string, string> {
+  const parsed = parseEnvFile(`${vaultDir}/stack/stack.env`);
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    const match = key.match(/^CHANNEL_([A-Z0-9_]+)_SECRET$/);
+    if (match?.[1] && value) result[match[1].toLowerCase()] = value;
+  }
+  return result;
 }
 
 // ── Persistence (direct-write to live paths) ────────────────────────
@@ -357,33 +256,17 @@ export function persistConfiguration(
   // Write core compose overlay
   writeComponentOverlay(state, "core", state.artifacts.compose);
 
-  // Write Caddyfile to data/caddy/
-  const caddyDir = `${state.dataDir}/caddy`;
-  mkdirSync(caddyDir, { recursive: true });
-  writeFileSync(`${caddyDir}/Caddyfile`, state.artifacts.caddyfile);
-
-  // Write optional compose overlays
-  if (isOllamaEnabled(state)) {
-    writeComponentOverlay(state, "ollama", readOllamaCompose(assets));
-  }
-
-  if (isAdminEnabled(state)) {
-    writeComponentOverlay(state, "admin", readAdminCompose(assets));
-  }
-
-  // Ensure channel HMAC secrets
+  // Load persisted channel HMAC secrets, generate new ones for new channels
+  const channelSecrets = loadPersistedChannelSecrets(state.vaultDir);
   const allChannels = discoverChannels(state.configDir);
   for (const ch of allChannels) {
-    if (!state.channelSecrets[ch.name]) {
-      state.channelSecrets[ch.name] = randomHex(16);
+    if (!channelSecrets[ch.name]) {
+      channelSecrets[ch.name] = randomHex(16);
     }
   }
 
   // Write system.env with channel secrets and system values
-  writeSystemEnv(state);
-
-  // Write channel Caddy routes
-  writeCaddyRoutes(state);
+  writeSystemEnv(state, channelSecrets);
 
   // Write env schemas to vault
   ensureUserEnvSchema(assets);
@@ -396,17 +279,4 @@ export function persistConfiguration(
   writeFileSync(`${redactDir}/redact.env.schema`, generateRedactSchema(systemEnv));
 
   state.artifactMeta = buildArtifactMeta(state.artifacts);
-}
-
-// ── Legacy Compat Aliases ────────────────────────────────────────────
-
-/** @deprecated Use resolveArtifacts() */
-export const stageArtifacts = resolveArtifacts;
-
-/** @deprecated Use persistConfiguration() */
-export const persistArtifacts = persistConfiguration;
-
-/** @deprecated Use discoverChannelOverlays(configDir) */
-export function discoverStagedChannelYmls(configDir: string): string[] {
-  return discoverChannelOverlays(configDir);
 }

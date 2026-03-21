@@ -16,7 +16,6 @@
   import {
     fetchHealth,
     fetchAdminOpenCodeStatus,
-    fetchAccessScope,
     fetchContainers,
     fetchArtifacts,
     fetchAutomations,
@@ -25,9 +24,8 @@
     containerAction,
     fetchConnectionStatus,
     fetchConnections,
-    fetchChannels,
   } from '$lib/api.js';
-  import type { HealthPayload, ContainerListResponse, AutomationsResponse, ChannelsResponse } from '$lib/types.js';
+  import type { HealthPayload, ContainerListResponse, AutomationsResponse } from '$lib/types.js';
 
   // ── Auth state ──────────────────────────────────────────────────────────────
   let authLocked = $state(true);
@@ -40,7 +38,6 @@
   let guardianHealth = $state<HealthPayload | null>(null);
   let adminOpenCodeStatus = $state<'checking' | 'ready' | 'unavailable'>('checking');
   let adminOpenCodeUrl = $state('http://localhost:3881/');
-  let channelAccess: 'host' | 'lan' | 'custom' = $state('lan');
   let adminStatus = $state('');
   let connectionsMissing = $state<string[]>([]);
 
@@ -56,7 +53,7 @@
   let operationResult = $state('');
   let operationResultType: 'success' | 'error' | 'info' = $state('info');
   let artifacts = $state('');
-  let artifactType: 'compose' | 'caddyfile' | null = $state(null);
+  let artifactType: 'compose' | null = $state(null);
   let containerData: ContainerListResponse | null = $state(null);
   let containerError = $state('');
   let containersLastUpdated: string | null = $state(null);
@@ -65,8 +62,6 @@
   let selectedContainerId: string | null = $state(null);
   let connectionsData: Record<string, string> = $state({});
   let connectionsLoading = $state(false);
-  let channelsData: ChannelsResponse | null = $state(null);
-
   // ── Migration ───────────────────────────────────────────────────────────────
   let legacyInstallDetected = $state(false);
 
@@ -153,7 +148,6 @@
       await loadHealth();
       void loadContainers();
       void loadAutomations();
-      void loadChannels();
       void checkConnectionStatus();
       return true;
     } catch {
@@ -209,20 +203,6 @@
       }
     }
 
-    try {
-      const scope = await fetchAccessScope(token);
-      if (scope.ok) {
-        if (scope.accessScope === 'host' || scope.accessScope === 'lan' || scope.accessScope === 'custom') {
-          channelAccess = scope.accessScope;
-        }
-        adminStatus = '';
-      } else if (scope.status === 401) {
-        applyInvalidTokenState();
-      }
-    } catch {
-      // best-effort — don't disrupt health display if access scope fails
-    }
-
     healthLoading = false;
   }
 
@@ -257,7 +237,7 @@
     }
   }
 
-  async function loadArtifacts(type: 'compose' | 'caddyfile'): Promise<void> {
+  async function loadArtifacts(type: 'compose'): Promise<void> {
     const token = getAdminToken();
     tokenStored = Boolean(token);
     if (!token) {
@@ -332,16 +312,6 @@
       }
     }
     connectionsLoading = false;
-  }
-
-  async function loadChannels(): Promise<void> {
-    const token = getAdminToken();
-    if (!token) return;
-    try {
-      channelsData = await fetchChannels(token);
-    } catch {
-      // best-effort — don't disrupt auth flow on failure
-    }
   }
 
   // ── Actions ──────────────────────────────────────────────────────────────────
@@ -468,7 +438,6 @@
         void loadHealth();
         void loadContainers();
         void loadAutomations();
-        void loadChannels();
         void checkConnectionStatus();
       } catch {
         authLocked = true;
@@ -501,7 +470,6 @@
         {adminHealth}
         {adminOpenCodeStatus}
         {adminOpenCodeUrl}
-        {channelAccess}
         {operationResult}
         {operationResultType}
         {adminStatus}
@@ -512,7 +480,6 @@
         {anyDangerousLoading}
         {automationsData}
         {containerData}
-        {channelsData}
         onCheckHealth={loadHealth}
         onApplyChanges={handleApplyChanges}
         onUpgradeStack={handleUpgradeStack}

@@ -1,6 +1,6 @@
 /**
  * GET  /admin/connections — Return current connection config values (masked).
- * POST /admin/connections — Patch vault/user.env with provided connection keys,
+ * POST /admin/connections — Patch vault/user/user.env with provided connection keys,
  *       or perform a unified system connection save when `provider` key is present.
  *
  * Only keys in ALLOWED_CONNECTION_KEYS are readable/writable via this endpoint.
@@ -138,7 +138,7 @@ export const POST: RequestHandler = async (event) => {
       { keys: Object.keys(patches), error: String(err) },
       false, requestId, callerType
     );
-    return errorResponse(500, "internal_error", "Failed to update vault/user.env", {}, requestId);
+    return errorResponse(500, "internal_error", "Failed to update vault/user/user.env", {}, requestId);
   }
 
   appendAudit(
@@ -182,7 +182,7 @@ async function handleUnifiedSave(
     return errorResponse(400, 'bad_request', capabilitiesValidation.message, {}, requestId);
   }
 
-  // 1. Build vault/user.env patches
+  // 1. Build vault/user/user.env patches
   const patches: Record<string, string> = {};
 
   // Map provider → env var, patch API key
@@ -214,7 +214,7 @@ async function handleUnifiedSave(
       { provider, error: String(err) },
       false, requestId, callerType
     );
-    return errorResponse(500, "internal_error", "Failed to update vault/user.env", {}, requestId);
+    return errorResponse(500, "internal_error", "Failed to update vault/user/user.env", {}, requestId);
   }
 
   // 2. Build and write Memory config

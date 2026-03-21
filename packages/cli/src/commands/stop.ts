@@ -23,7 +23,7 @@ export default defineCommand({
 export async function runStopAction(services: string[]): Promise<void> {
   if (services.length === 0) {
     // Compose file list includes admin.yml when admin is enabled,
-    // so `down` tears down all services including admin/caddy/socket-proxy.
+    // so `down` tears down all services including admin/socket-proxy.
     const state = await ensureStagedState();
     await runDockerCompose([...fullComposeArgs(state), 'down']);
     return;

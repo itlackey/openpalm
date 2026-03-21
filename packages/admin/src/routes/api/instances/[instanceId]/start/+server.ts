@@ -14,11 +14,10 @@ import {
 import {
   appendAudit,
   getInstanceDetail,
-  installCaddyRoute,
   buildComposeFileList,
   buildEnvFiles,
 } from "$lib/server/control-plane.js";
-import { composeStart, checkDocker, caddyReload } from "$lib/server/docker.js";
+import { composeStart, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 
 const logger = createLogger("api-instance-start");
@@ -48,9 +47,6 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(503, "docker_unavailable", "Docker is not available", {}, requestId);
   }
 
-  // Install Caddy route if the component has a .caddy file
-  const caddyInstalled = installCaddyRoute(state.homeDir, instanceId);
-
   const result = await composeStart(state.configDir, [containerName], {
     files: buildComposeFileList(state),
     envFiles: buildEnvFiles(state),
@@ -59,16 +55,6 @@ export const POST: RequestHandler = async (event) => {
   if (!result.ok) {
     appendAudit(state, actor, "instances.start", { instanceId, error: result.stderr }, false, requestId, callerType);
     return errorResponse(500, "docker_error", `Failed to start instance: ${result.stderr}`, { instanceId }, requestId);
-  }
-
-  // Reload Caddy if a route was installed
-  if (caddyInstalled) {
-    await caddyReload(state.configDir, {
-      files: buildComposeFileList(state),
-      envFiles: buildEnvFiles(state),
-    }).catch((err) => {
-      logger.warn("caddy reload failed after start", { requestId, instanceId, error: String(err) });
-    });
   }
 
   state.services[containerName] = "running";

@@ -50,18 +50,6 @@ export type AutomationsResponse = {
   automations: AutomationInfo[];
 };
 
-export type ChannelInfo = {
-  name: string;
-  hasRoute: boolean;
-  service: string;
-  status: string;
-};
-
-export type ChannelsResponse = {
-  installed: ChannelInfo[];
-  available: { name: string; hasRoute: boolean }[];
-};
-
 export type MemoryConfig = {
   mem0: {
     llm: { provider: string; config: Record<string, unknown> };
@@ -198,12 +186,9 @@ export type SystemConnectionSaveResult = {
   dimensionMismatch?: boolean;
 };
 
-export type RegistryChannelItem = {
-  name: string;
-  type: 'channel';
-  installed: boolean;
-  hasRoute: boolean;
-  description: string;
+export type RegistryComponentItem = {
+  id: string;
+  type: 'component';
 };
 
 export type RegistryAutomationItem = {
@@ -215,7 +200,7 @@ export type RegistryAutomationItem = {
 };
 
 export type RegistryResponse = {
-  channels: RegistryChannelItem[];
+  components: RegistryComponentItem[];
   automations: RegistryAutomationItem[];
   source?: 'remote' | 'bundled';
 };

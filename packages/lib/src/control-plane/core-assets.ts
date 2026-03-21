@@ -2,12 +2,11 @@
  * Core asset management for the OpenPalm control plane.
  *
  * Manages source-of-truth files for the ~/.openpalm/ layout:
- *   config/components/  — compose overlays (core.yml, admin.yml, etc.)
- *   data/caddy/         — Caddyfile and channel routes
+ *   config/components/  — compose overlays (core.yml, etc.)
  *   vault/              — env schemas
  *
  * All asset content is provided by a CoreAssetProvider (injected), not by
- * Vite $assets imports — making this module portable across Bun/Node/Vite.
+ * Vite $stack imports — making this module portable across Bun/Node/Vite.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync, renameSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -17,19 +16,6 @@ import { createLogger } from "../logger.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
 
 const logger = createLogger("core-assets");
-
-// ── Constants ──────────────────────────────────────────────────────────
-
-const PUBLIC_ACCESS_IMPORT = "import public_access";
-const LAN_ONLY_IMPORT = "import lan_only";
-
-/** IP ranges for each access scope mode */
-const HOST_ONLY_IPS = "127.0.0.0/8 ::1";
-const LAN_IPS = "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8 ::1 fc00::/7 fe80::/10";
-const REMOTE_IP_LINE_RE = /@denied not remote_ip [^\n]+/;
-
-// Re-export for use by staging.ts Caddyfile management
-export { PUBLIC_ACCESS_IMPORT, LAN_ONLY_IMPORT };
 
 /** SHA-256 hex digest of a string. */
 function sha256(content: string): string {
@@ -55,37 +41,13 @@ function writeIfChanged(path: string, content: string): void {
   writeFileSync(path, content);
 }
 
-// ── Core Caddyfile (data/caddy/) ─────────────────────────────────────
-
-function coreCaddyfilePath(): string {
-  return `${resolveDataDir()}/caddy/Caddyfile`;
-}
-
-/**
- * Ensure the system-managed core Caddyfile exists.
- * Seeds the bundled asset on first run. On subsequent runs, leaves the
- * existing file intact (user may have customized access scope).
- */
-export function ensureCoreCaddyfile(assets: CoreAssetProvider): string {
-  const path = coreCaddyfilePath();
-  mkdirSync(dirname(path), { recursive: true });
-  if (!existsSync(path)) {
-    writeFileSync(path, assets.caddyfile());
-  }
-  return path;
-}
-
-export function readCoreCaddyfile(assets: CoreAssetProvider): string {
-  const path = ensureCoreCaddyfile(assets);
-  return readFileSync(path, "utf-8");
-}
-
 // ── Env Schema Files (vault/) ────────────────────────────────────────
 
 export function ensureUserEnvSchema(assets: CoreAssetProvider): string {
   const vaultDir = resolveVaultDir();
-  mkdirSync(vaultDir, { recursive: true });
-  const path = `${vaultDir}/user.env.schema`;
+  const dir = `${vaultDir}/user`;
+  mkdirSync(dir, { recursive: true });
+  const path = `${dir}/user.env.schema`;
   if (!existsSync(path)) {
     writeFileSync(path, assets.secretsSchema());
   }
@@ -94,8 +56,9 @@ export function ensureUserEnvSchema(assets: CoreAssetProvider): string {
 
 export function ensureSystemEnvSchema(assets: CoreAssetProvider): string {
   const vaultDir = resolveVaultDir();
-  mkdirSync(vaultDir, { recursive: true });
-  const path = `${vaultDir}/system.env.schema`;
+  const dir = `${vaultDir}/stack`;
+  mkdirSync(dir, { recursive: true });
+  const path = `${dir}/stack.env.schema`;
   if (!existsSync(path)) {
     writeFileSync(path, assets.stackSchema());
   }
@@ -107,30 +70,6 @@ export const ensureSecretsSchema = ensureUserEnvSchema;
 
 /** @deprecated Use ensureSystemEnvSchema() */
 export const ensureStackSchema = ensureSystemEnvSchema;
-
-export function detectAccessScope(rawCaddyfile: string): "host" | "lan" | "custom" {
-  const match = rawCaddyfile.match(REMOTE_IP_LINE_RE);
-  if (!match) return "custom";
-  const ips = match[0].replace("@denied not remote_ip", "").trim();
-  if (ips === HOST_ONLY_IPS) return "host";
-  if (ips === LAN_IPS) return "lan";
-  return "custom";
-}
-
-export function setCoreCaddyAccessScope(
-  scope: "host" | "lan",
-  assets: CoreAssetProvider
-): { ok: true } | { ok: false; error: string } {
-  const path = ensureCoreCaddyfile(assets);
-  const raw = readFileSync(path, "utf-8");
-  if (!REMOTE_IP_LINE_RE.test(raw)) {
-    return { ok: false, error: "core Caddyfile missing '@denied not remote_ip' line" };
-  }
-  const ips = scope === "host" ? HOST_ONLY_IPS : LAN_IPS;
-  const updated = raw.replace(REMOTE_IP_LINE_RE, `@denied not remote_ip ${ips}`);
-  writeFileSync(path, updated);
-  return { ok: true };
-}
 
 // ── Memory data directory ────────────────────────────────────────────
 
@@ -180,60 +119,6 @@ export function readCoreCompose(assets: CoreAssetProvider): string {
   return readFileSync(path, "utf-8");
 }
 
-// ── Ollama Compose Overlay ──────────────────────────────────────────
-
-function ollamaComposePath(): string {
-  return `${resolveConfigDir()}/components/ollama.yml`;
-}
-
-export function ensureOllamaCompose(assets: CoreAssetProvider): string {
-  const path = ollamaComposePath();
-  const content = assets.ollamaCompose();
-  mkdirSync(dirname(path), { recursive: true });
-  if (!existsSync(path)) {
-    writeFileSync(path, content);
-  } else if (sha256(readFileSync(path, "utf-8")) !== sha256(content)) {
-    const backupDir = join(dirname(path), "backups");
-    mkdirSync(backupDir, { recursive: true });
-    const ts = new Date().toISOString().replace(/[:.]/g, "-");
-    copyFileSync(path, join(backupDir, `ollama.${ts}.yml`));
-    writeFileSync(path, content);
-  }
-  return path;
-}
-
-export function readOllamaCompose(assets: CoreAssetProvider): string {
-  const path = ensureOllamaCompose(assets);
-  return readFileSync(path, "utf-8");
-}
-
-// ── Admin Compose Overlay ────────────────────────────────────────────
-
-function adminComposePath(): string {
-  return `${resolveConfigDir()}/components/admin.yml`;
-}
-
-export function ensureAdminCompose(assets: CoreAssetProvider): string {
-  const path = adminComposePath();
-  const content = assets.adminCompose();
-  mkdirSync(dirname(path), { recursive: true });
-  if (!existsSync(path)) {
-    writeFileSync(path, content);
-  } else if (sha256(readFileSync(path, "utf-8")) !== sha256(content)) {
-    const backupDir = join(dirname(path), "backups");
-    mkdirSync(backupDir, { recursive: true });
-    const ts = new Date().toISOString().replace(/[:.]/g, "-");
-    copyFileSync(path, join(backupDir, `admin.${ts}.yml`));
-    writeFileSync(path, content);
-  }
-  return path;
-}
-
-export function readAdminCompose(assets: CoreAssetProvider): string {
-  const path = ensureAdminCompose(assets);
-  return readFileSync(path, "utf-8");
-}
-
 // ── OpenCode System Config ──────────────────────────────────────────
 
 export function ensureOpenCodeSystemConfig(assets: CoreAssetProvider): void {
@@ -243,12 +128,6 @@ export function ensureOpenCodeSystemConfig(assets: CoreAssetProvider): void {
   writeIfChanged(`${dir}/AGENTS.md`, assets.agentsMd());
 }
 
-export function ensureAdminOpenCodeConfig(assets: CoreAssetProvider): void {
-  const dir = `${resolveDataDir()}/admin`;
-  mkdirSync(dir, { recursive: true });
-  writeIfChanged(`${dir}/opencode.jsonc`, assets.adminOpencodeConfig());
-  writeIfChanged(`${dir}/AGENTS.md`, assets.agentsMd());
-}
 
 // ── Core Automations (config/automations/) ──────────────────────────
 
@@ -273,20 +152,16 @@ const REPO = "itlackey/openpalm";
 const VERSION = process.env.OP_ASSET_VERSION ?? "main";
 
 const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
-  { relPath: "config/components/core.yml", githubFilename: "docker-compose.yml" },
-  { relPath: "data/caddy/Caddyfile", githubFilename: "Caddyfile" },
-  { relPath: "data/assistant/opencode.jsonc", githubFilename: "opencode.jsonc" },
-  { relPath: "data/admin/opencode.jsonc", githubFilename: "admin-opencode.jsonc" },
-  { relPath: "data/assistant/AGENTS.md", githubFilename: "AGENTS.md" },
-  { relPath: "config/components/ollama.yml", githubFilename: "ollama.yml" },
-  { relPath: "config/components/admin.yml", githubFilename: "admin.yml" },
-  { relPath: "vault/user.env.schema", githubFilename: "user.env.schema" },
-  { relPath: "vault/system.env.schema", githubFilename: "system.env.schema" },
+  { relPath: "config/components/core.yml", githubFilename: ".openpalm/stack/core.compose.yml" },
+  { relPath: "data/assistant/opencode.jsonc", githubFilename: "core/assistant/opencode.jsonc" },
+  { relPath: "data/assistant/AGENTS.md", githubFilename: "core/assistant/AGENTS.md" },
+  { relPath: "vault/user/user.env.schema", githubFilename: ".openpalm/vault/user/user.env.schema" },
+  { relPath: "vault/stack/stack.env.schema", githubFilename: ".openpalm/vault/stack/stack.env.schema" },
 ];
 
 async function downloadAsset(filename: string): Promise<string> {
   const releaseUrl = `https://github.com/${REPO}/releases/download/${VERSION}/${filename}`;
-  const rawUrl = `https://raw.githubusercontent.com/${REPO}/${VERSION}/assets/${filename}`;
+  const rawUrl = `https://raw.githubusercontent.com/${REPO}/${VERSION}/${filename}`;
 
   for (const url of [releaseUrl, rawUrl]) {
     try {

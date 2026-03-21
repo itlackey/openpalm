@@ -1,10 +1,7 @@
 /**
- * Channel validation, discovery, install, and uninstall for the OpenPalm control plane.
- *
- * In v0.10.0, channels are installed as compose overlays in config/components/
- * (named channel-*.yml) with optional Caddy route files.
+ * Channel validation, discovery, and allowlist checks for the OpenPalm control plane.
  */
-import { mkdirSync, writeFileSync, existsSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import type { ChannelInfo } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
 import type { RegistryProvider } from "./registry-provider.js";
@@ -21,8 +18,7 @@ function isValidChannelName(name: string): boolean {
 // ── Channel Discovery ─────────────────────────────────────────────────
 
 /**
- * Discover installed channels by scanning config/components/ for channel-*.yml
- * and config/components/ for matching *.caddy route files.
+ * Discover installed channels by scanning config/components/ for channel-*.yml.
  */
 export function discoverChannels(configDir: string): ChannelInfo[] {
   const componentsDir = `${configDir}/components`;
@@ -30,19 +26,15 @@ export function discoverChannels(configDir: string): ChannelInfo[] {
 
   const files = readdirSync(componentsDir);
   const channelYmls = files.filter((f) => f.startsWith("channel-") && f.endsWith(".yml"));
-  const caddyFiles = new Set(files.filter((f) => f.endsWith(".caddy")));
 
   return channelYmls
     .map((ymlFile) => {
       // channel-chat.yml → chat
       const name = ymlFile.replace(/^channel-/, "").replace(/\.yml$/, "");
-      const caddyFile = `channel-${name}.caddy`;
-      const hasCaddy = caddyFiles.has(caddyFile);
       return {
         name,
-        hasRoute: hasCaddy,
+        hasRoute: false,
         ymlPath: `${componentsDir}/${ymlFile}`,
-        caddyPath: hasCaddy ? `${componentsDir}/${caddyFile}` : null
       };
     })
     .filter((ch) => isValidChannelName(ch.name));
@@ -62,7 +54,7 @@ export function isAllowedService(value: string, configDir?: string): boolean {
     if (value === "ollama") {
       return existsSync(`${configDir}/components/ollama.yml`);
     }
-    if (value === "admin" || value === "caddy" || value === "docker-socket-proxy") {
+    if (value === "admin" || value === "docker-socket-proxy") {
       return existsSync(`${configDir}/components/admin.yml`);
     }
     if (value.startsWith("channel-")) {
@@ -87,61 +79,6 @@ export function isValidChannel(value: string, configDir?: string): boolean {
   return false;
 }
 
-// ── Channel Install / Uninstall ─────────────────────────────────────────
-
-/**
- * Install a channel from the registry catalog into config/components/.
- * Copies the .yml (and optional .caddy) from the registry provider.
- */
-export function installChannelFromRegistry(
-  name: string,
-  configDir: string,
-  registry: RegistryProvider
-): { ok: true } | { ok: false; error: string } {
-  if (!isValidChannelName(name)) {
-    return { ok: false, error: `Invalid channel name: ${name}` };
-  }
-  const channelYml = registry.channelYml();
-  if (!(name in channelYml)) {
-    return { ok: false, error: `Channel "${name}" not found in registry` };
-  }
-  const componentsDir = `${configDir}/components`;
-  mkdirSync(componentsDir, { recursive: true });
-
-  const ymlPath = `${componentsDir}/channel-${name}.yml`;
-  if (existsSync(ymlPath)) {
-    return { ok: false, error: `Channel "${name}" is already installed` };
-  }
-
-  writeFileSync(ymlPath, channelYml[name]);
-  const channelCaddy = registry.channelCaddy();
-  if (name in channelCaddy) {
-    writeFileSync(`${componentsDir}/channel-${name}.caddy`, channelCaddy[name]);
-  }
-  return { ok: true };
-}
-
-/**
- * Uninstall a channel by removing its overlay from config/components/.
- */
-export function uninstallChannel(
-  name: string,
-  configDir: string
-): { ok: true } | { ok: false; error: string } {
-  if (!isValidChannelName(name)) {
-    return { ok: false, error: `Invalid channel name: ${name}` };
-  }
-  const componentsDir = `${configDir}/components`;
-  const ymlPath = `${componentsDir}/channel-${name}.yml`;
-  if (!existsSync(ymlPath)) {
-    return { ok: false, error: `Channel "${name}" is not installed` };
-  }
-
-  rmSync(ymlPath, { force: true });
-  rmSync(`${componentsDir}/channel-${name}.caddy`, { force: true });
-  return { ok: true };
-}
-
 // ── Automation Install / Uninstall ──────────────────────────────────────
 
 /** Strict automation name: same rules as channel names */
@@ -158,7 +95,7 @@ export function installAutomationFromRegistry(
   if (!AUTOMATION_NAME_RE.test(name)) {
     return { ok: false, error: `Invalid automation name: ${name}` };
   }
-  const automationYml = registry.automationYml();
+  const automationYml = registry.automations();
   if (!(name in automationYml)) {
     return { ok: false, error: `Automation "${name}" not found in registry` };
   }

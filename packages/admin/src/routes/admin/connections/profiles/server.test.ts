@@ -24,13 +24,13 @@ beforeEach(() => {
 
   const state = getState();
   mkdirSync(state.configDir, { recursive: true });
-  mkdirSync(state.vaultDir, { recursive: true });
+  mkdirSync(join(state.vaultDir, 'user'), { recursive: true });
   writeFileSync(
-    join(state.vaultDir, 'user.env'),
+    join(state.vaultDir, 'user', 'user.env'),
     'OPENAI_API_KEY=sk-test\nSYSTEM_LLM_PROVIDER=openai\nSYSTEM_LLM_MODEL=gpt-4.1-mini\nEMBEDDING_MODEL=text-embedding-3-small\nEMBEDDING_DIMS=1536\n'
   );
 
-  // Seed profiles.json so readConnectionProfilesDocument doesn't throw
+  // Seed stack.yaml with connection profiles
   writeConnectionsDocument(state.configDir, {
     profiles: [{
       id: 'primary',
@@ -105,9 +105,9 @@ describe('/admin/connections/profiles route', () => {
     expect(missing.status).toBe(404);
   });
 
-  test('GET returns empty profiles list when profiles.json does not exist', async () => {
+  test('GET returns empty profiles list when stack.yaml does not exist', async () => {
     const state = getState();
-    const profilesPath = join(state.configDir, 'connections', 'profiles.json');
+    const profilesPath = join(state.configDir, 'stack.yaml');
     rmSync(profilesPath, { force: true });
 
     const res = await GET(makeEvent('GET'));
@@ -166,11 +166,11 @@ describe('/admin/connections/profiles route', () => {
       };
     };
     expect(body.profile.auth.apiKeySecretRef).toBe('env:OPENAI_API_KEY');
-    expect(readFileSync(join(getState().vaultDir, 'user.env'), 'utf-8')).toContain('OPENAI_API_KEY=sk-new-openai');
+    expect(readFileSync(join(getState().vaultDir, 'user', 'user.env'), 'utf-8')).toContain('OPENAI_API_KEY=sk-new-openai');
   });
 
   test('POST conflict does not update secrets.env from a raw apiKey payload', async () => {
-    const before = readFileSync(join(getState().vaultDir, 'user.env'), 'utf-8');
+    const before = readFileSync(join(getState().vaultDir, 'user', 'user.env'), 'utf-8');
     const res = await POST(makeEvent('POST', {
       profile: {
         id: 'primary',
@@ -184,7 +184,7 @@ describe('/admin/connections/profiles route', () => {
     }));
 
     expect(res.status).toBe(409);
-    expect(readFileSync(join(getState().vaultDir, 'user.env'), 'utf-8')).toBe(before);
+    expect(readFileSync(join(getState().vaultDir, 'user', 'user.env'), 'utf-8')).toBe(before);
   });
 
   test('PUT returns 404 when updating a non-existent profile', async () => {
@@ -280,6 +280,6 @@ describe('/admin/connections/profiles route', () => {
       };
     };
     expect(body.profile.auth.apiKeySecretRef).toBe('env:OPENAI_API_KEY');
-    expect(readFileSync(join(getState().vaultDir, 'user.env'), 'utf-8')).toContain('OPENAI_API_KEY=sk-updated-openai');
+    expect(readFileSync(join(getState().vaultDir, 'user', 'user.env'), 'utf-8')).toContain('OPENAI_API_KEY=sk-updated-openai');
   });
 });

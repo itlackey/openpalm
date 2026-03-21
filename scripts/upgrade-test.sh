@@ -19,15 +19,15 @@
 #   3. Seed some user state:
 #      - Add a memory via the assistant or memory API
 #      - Install a channel
-#      - Note the ADMIN_TOKEN and MEMORY_USER_ID in secrets.env
+#      - Note the ADMIN_TOKEN and MEMORY_USER_ID in vault/user/user.env
 #
 #   4. Upgrade to the target version:
 #        curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh \
 #          | bash -s -- --force --version <target>
 #
 #   5. Verify:
-#      - secrets.env is NOT overwritten (ADMIN_TOKEN, custom keys preserved)
-#      - stack.env is NOT overwritten (paths, UID/GID preserved)
+#      - vault/user/user.env is NOT overwritten (ADMIN_TOKEN, custom keys preserved)
+#      - vault/stack/stack.env is NOT overwritten (paths, UID/GID preserved)
 #      - Memory database still exists and responds
 #      - All services come back healthy
 #      - Admin token still authenticates
@@ -146,9 +146,9 @@ trap cleanup EXIT
 compose_cmd() {
   docker compose \
     --project-name "$PROJECT_NAME" \
-    -f "${OP_STATE_HOME}/artifacts/docker-compose.yml" \
-    --env-file "${OP_CONFIG_HOME}/secrets.env" \
-    --env-file "${OP_STATE_HOME}/artifacts/stack.env" \
+    -f "${OP_CONFIG_HOME}/components/core.yml" \
+    --env-file "${VAULT_HOME}/user/user.env" \
+    --env-file "${VAULT_HOME}/stack/stack.env" \
     "$@"
 }
 
@@ -208,21 +208,20 @@ rm -rf "${TEST_ROOT}" 2>/dev/null || true
 
 # ── 1b: Create directory structure ───────────────────────────────────
 
+VAULT_HOME="${TEST_ROOT}/vault"
+
 mkdir -p \
-  "${OP_CONFIG_HOME}/channels" \
+  "${OP_CONFIG_HOME}/components" \
   "${OP_CONFIG_HOME}/assistant/tools" \
   "${OP_CONFIG_HOME}/assistant/plugins" \
   "${OP_CONFIG_HOME}/assistant/skills" \
   "${OP_CONFIG_HOME}/automations" \
   "${OP_CONFIG_HOME}/stash" \
+  "${VAULT_HOME}/user" "${VAULT_HOME}/stack" \
   "${OP_DATA_HOME}/memory" \
   "${OP_DATA_HOME}/assistant" \
   "${OP_DATA_HOME}/guardian" \
-  "${OP_DATA_HOME}/caddy/data" \
-  "${OP_DATA_HOME}/caddy/config" \
   "${OP_DATA_HOME}/automations" \
-  "${OP_STATE_HOME}/artifacts/channels/public" \
-  "${OP_STATE_HOME}/artifacts/channels/lan" \
   "${OP_STATE_HOME}/audit" \
   "${OP_STATE_HOME}/automations" \
   "${OP_WORK_DIR}"
@@ -237,8 +236,8 @@ if host_url="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/d
   esac
 fi
 
-# Seed secrets.env with a known admin token
-cat >"${OP_CONFIG_HOME}/secrets.env" <<EOF
+# Seed user.env with a known admin token
+cat >"${VAULT_HOME}/user/user.env" <<EOF
 # Upgrade test secrets
 ADMIN_TOKEN=${ADMIN_TOKEN}
 OPENAI_API_KEY=
@@ -248,8 +247,8 @@ MEMORY_USER_ID=upgrade-test-user
 MY_CUSTOM_KEY=my-custom-value-12345
 EOF
 
-# Seed stack.env
-cat >"${OP_DATA_HOME}/stack.env" <<EOF
+# Seed system.env
+cat >"${VAULT_HOME}/stack/stack.env" <<EOF
 OP_CONFIG_HOME=${OP_CONFIG_HOME}
 OP_DATA_HOME=${OP_DATA_HOME}
 OP_STATE_HOME=${OP_STATE_HOME}
@@ -263,20 +262,12 @@ OP_INGRESS_BIND_ADDRESS=127.0.0.1
 OP_INGRESS_PORT=8180
 EOF
 
-# Seed compose and Caddyfile to DATA_HOME (source of truth)
-cp "${ROOT_DIR}/assets/docker-compose.yml" "${OP_DATA_HOME}/docker-compose.yml"
-cp "${ROOT_DIR}/assets/Caddyfile" "${OP_DATA_HOME}/caddy/Caddyfile"
-
-# Stage artifacts for compose
-cp "${OP_DATA_HOME}/docker-compose.yml" "${OP_STATE_HOME}/artifacts/docker-compose.yml"
-cp "${OP_DATA_HOME}/caddy/Caddyfile" "${OP_STATE_HOME}/artifacts/Caddyfile"
-cp "${OP_DATA_HOME}/stack.env" "${OP_STATE_HOME}/artifacts/stack.env"
-cp "${OP_CONFIG_HOME}/secrets.env" "${OP_STATE_HOME}/artifacts/secrets.env"
+# Seed compose to config/components/ (source of truth)
+cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_CONFIG_HOME}/components/core.yml"
 
 # Override ports so we don't conflict with a running dev stack.
-# The compose file uses OP_INGRESS_PORT for Caddy (8180) and hardcodes
-# admin to 127.0.0.1:8100. We override admin's port via a compose override.
-cat >"${OP_STATE_HOME}/artifacts/compose-port-override.yml" <<EOF
+# We override admin's port via a compose override.
+cat >"${OP_CONFIG_HOME}/components/compose-port-override.yml" <<EOF
 services:
   admin:
     ports:
@@ -338,10 +329,10 @@ if [[ $SKIP_BUILD -eq 0 && -z "$FROM_VERSION" ]]; then
   header "Building images from source"
   npm run admin:build 2>&1 | tail -3
   docker compose --project-directory "$ROOT_DIR" \
-    -f "${OP_STATE_HOME}/artifacts/docker-compose.yml" \
+    -f "${OP_CONFIG_HOME}/components/core.yml" \
     -f compose.dev.yaml \
-    --env-file "${OP_STATE_HOME}/artifacts/stack.env" \
-    --env-file "${OP_STATE_HOME}/artifacts/secrets.env" \
+    --env-file "${VAULT_HOME}/stack/stack.env" \
+    --env-file "${VAULT_HOME}/user/user.env" \
     --project-name "$PROJECT_NAME" build 2>&1 | tail -5
   pass "Images built from source"
 fi
@@ -350,11 +341,9 @@ fi
 if [[ -n "$FROM_VERSION" ]]; then
   header "Pulling images for from-version: ${FROM_VERSION}"
   OP_IMAGE_TAG="$FROM_VERSION"
-  # Update stack.env with the from-version tag
+  # Update system.env with the from-version tag
   sed -i "s/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=${FROM_VERSION}/" \
-    "${OP_DATA_HOME}/stack.env"
-  sed -i "s/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=${FROM_VERSION}/" \
-    "${OP_STATE_HOME}/artifacts/stack.env"
+    "${VAULT_HOME}/stack/stack.env"
   compose_cmd pull 2>&1 | tail -5
   pass "Images pulled for ${FROM_VERSION}"
 fi
@@ -364,10 +353,10 @@ fi
 compose_cmd() {
   docker compose \
     --project-name "$PROJECT_NAME" \
-    -f "${OP_STATE_HOME}/artifacts/docker-compose.yml" \
-    -f "${OP_STATE_HOME}/artifacts/compose-port-override.yml" \
-    --env-file "${OP_CONFIG_HOME}/secrets.env" \
-    --env-file "${OP_STATE_HOME}/artifacts/stack.env" \
+    -f "${OP_CONFIG_HOME}/components/core.yml" \
+    -f "${OP_CONFIG_HOME}/components/compose-port-override.yml" \
+    --env-file "${VAULT_HOME}/user/user.env" \
+    --env-file "${VAULT_HOME}/stack/stack.env" \
     "$@"
 }
 
@@ -445,8 +434,8 @@ fi
 
 # ── 2c: Write a custom user file in CONFIG_HOME ─────────────────────
 
-echo "# My custom channel config" > "${OP_CONFIG_HOME}/channels/my-custom-channel.yml"
-pass "Custom user file written to CONFIG_HOME/channels/"
+echo "# My custom channel config" > "${OP_CONFIG_HOME}/components/my-custom-channel.yml"
+pass "Custom user file written to CONFIG_HOME/components/"
 
 # ══════════════════════════════════════════════════════════════════════
 # PHASE 3: Record pre-upgrade state
@@ -454,13 +443,13 @@ pass "Custom user file written to CONFIG_HOME/channels/"
 
 header "Phase 3: Record pre-upgrade state"
 
-# Checksum secrets.env
-SECRETS_CHECKSUM_BEFORE=$(sha256sum "${OP_CONFIG_HOME}/secrets.env" | awk '{print $1}')
-echo "  secrets.env checksum: ${SECRETS_CHECKSUM_BEFORE}"
+# Checksum user.env
+SECRETS_CHECKSUM_BEFORE=$(sha256sum "${VAULT_HOME}/user/user.env" | awk '{print $1}')
+echo "  user.env checksum:    ${SECRETS_CHECKSUM_BEFORE}"
 
-# Checksum stack.env
-STACK_ENV_CHECKSUM_BEFORE=$(sha256sum "${OP_DATA_HOME}/stack.env" | awk '{print $1}')
-echo "  stack.env checksum:   ${STACK_ENV_CHECKSUM_BEFORE}"
+# Checksum system.env
+STACK_ENV_CHECKSUM_BEFORE=$(sha256sum "${VAULT_HOME}/stack/stack.env" | awk '{print $1}')
+echo "  system.env checksum:  ${STACK_ENV_CHECKSUM_BEFORE}"
 
 # Memory database size (if it exists)
 MEMORY_DB_SIZE_BEFORE=0
@@ -474,7 +463,7 @@ SERVICES_BEFORE=$(compose_cmd ps --format '{{.Service}}' 2>/dev/null | sort | tr
 echo "  Running services:     ${SERVICES_BEFORE}"
 
 # Custom user file checksum
-CUSTOM_FILE_CHECKSUM=$(sha256sum "${OP_CONFIG_HOME}/channels/my-custom-channel.yml" | awk '{print $1}')
+CUSTOM_FILE_CHECKSUM=$(sha256sum "${OP_CONFIG_HOME}/components/my-custom-channel.yml" | awk '{print $1}')
 echo "  Custom file checksum: ${CUSTOM_FILE_CHECKSUM}"
 
 # Record admin token works
@@ -492,62 +481,53 @@ pass "Pre-upgrade state recorded"
 header "Phase 4: Simulate upgrade"
 
 # The upgrade simulation mirrors what setup.sh does on re-run:
-#   1. Detects existing install (secrets.env exists)
+#   1. Detects existing install (vault/user/user.env exists)
 #   2. Re-creates directory tree (mkdir -p, idempotent)
-#   3. Downloads fresh assets (compose, Caddyfile) to DATA_HOME
-#   4. Copies assets to STATE_HOME staging
-#   5. Does NOT overwrite secrets.env or stack.env
-#   6. Starts services with compose up
+#   3. Downloads fresh compose to config/components/
+#   4. Does NOT overwrite vault/user/user.env or vault/stack/stack.env
+#   5. Starts services with compose up
 
 echo "  Simulating setup.sh re-run..."
 
 # Step 1: Directory creation (idempotent, same as setup.sh)
 mkdir -p \
-  "${OP_CONFIG_HOME}" "${OP_CONFIG_HOME}/channels" \
+  "${OP_CONFIG_HOME}" "${OP_CONFIG_HOME}/components" \
   "${OP_CONFIG_HOME}/assistant" \
   "${OP_CONFIG_HOME}/automations" "${OP_CONFIG_HOME}/stash" \
+  "${VAULT_HOME}/user" "${VAULT_HOME}/stack" \
   "${OP_DATA_HOME}" "${OP_DATA_HOME}/memory" \
   "${OP_DATA_HOME}/assistant" \
-  "${OP_DATA_HOME}/guardian" "${OP_DATA_HOME}/caddy/data" \
-  "${OP_DATA_HOME}/caddy/config" \
+  "${OP_DATA_HOME}/guardian" \
   "${OP_DATA_HOME}/automations" \
-  "${OP_STATE_HOME}" "${OP_STATE_HOME}/artifacts" \
+  "${OP_STATE_HOME}" \
   "${OP_STATE_HOME}/audit" \
-  "${OP_STATE_HOME}/artifacts/channels" \
   "${OP_WORK_DIR}"
 
 # Step 2: Re-download assets (simulate by copying from source)
 # In a real upgrade, setup.sh downloads from GitHub. We copy from local assets.
-cp "${ROOT_DIR}/assets/docker-compose.yml" "${OP_DATA_HOME}/docker-compose.yml"
-cp "${ROOT_DIR}/assets/Caddyfile" "${OP_DATA_HOME}/caddy/Caddyfile"
+cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_CONFIG_HOME}/components/core.yml"
 
-# Step 3: Stage artifacts (same as setup.sh)
-cp "${OP_DATA_HOME}/docker-compose.yml" "${OP_STATE_HOME}/artifacts/docker-compose.yml"
-cp "${OP_DATA_HOME}/caddy/Caddyfile" "${OP_STATE_HOME}/artifacts/Caddyfile"
-
-# Step 4: secrets.env — setup.sh checks if it exists and skips if so
-if [[ -f "${OP_CONFIG_HOME}/secrets.env" ]]; then
-  echo "  secrets.env exists -- NOT overwriting (same as setup.sh)"
+# Step 3: vault/user/user.env — setup.sh checks if it exists and skips if so
+if [[ -f "${VAULT_HOME}/user/user.env" ]]; then
+  echo "  vault/user/user.env exists -- NOT overwriting (same as setup.sh)"
 else
-  echo "  BUG: secrets.env was deleted during upgrade simulation!"
-  fail "secrets.env should still exist"
+  echo "  BUG: vault/user/user.env was deleted during upgrade simulation!"
+  fail "vault/user/user.env should still exist"
 fi
 
-# Step 5: stack.env — setup.sh checks if it exists and skips if so
-if [[ -f "${OP_DATA_HOME}/stack.env" ]]; then
-  echo "  stack.env exists -- NOT overwriting (same as setup.sh)"
+# Step 4: vault/stack/stack.env — setup.sh checks if it exists and skips if so
+if [[ -f "${VAULT_HOME}/stack/stack.env" ]]; then
+  echo "  vault/stack/stack.env exists -- NOT overwriting (same as setup.sh)"
 else
-  echo "  BUG: stack.env was deleted during upgrade simulation!"
-  fail "stack.env should still exist"
+  echo "  BUG: vault/stack/stack.env was deleted during upgrade simulation!"
+  fail "vault/stack/stack.env should still exist"
 fi
 
 # Step 6: If --to-version specified, update image tag
 if [[ -n "$TO_VERSION" ]]; then
   echo "  Updating image tag to ${TO_VERSION}..."
   sed -i "s/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=${TO_VERSION}/" \
-    "${OP_DATA_HOME}/stack.env"
-  sed -i "s/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=${TO_VERSION}/" \
-    "${OP_STATE_HOME}/artifacts/stack.env"
+    "${VAULT_HOME}/stack/stack.env"
   compose_cmd pull 2>&1 | tail -5
 fi
 
@@ -580,52 +560,52 @@ fi
 
 header "Phase 5: Verification"
 
-# ── 5a: secrets.env unchanged ────────────────────────────────────────
+# ── 5a: vault/user/user.env unchanged ─────────────────────────────────────
 echo ""
-echo "=== 5a: secrets.env preservation ==="
+echo "=== 5a: vault/user/user.env preservation ==="
 
-SECRETS_CHECKSUM_AFTER=$(sha256sum "${OP_CONFIG_HOME}/secrets.env" | awk '{print $1}')
+SECRETS_CHECKSUM_AFTER=$(sha256sum "${VAULT_HOME}/user/user.env" | awk '{print $1}')
 if [[ "$SECRETS_CHECKSUM_BEFORE" == "$SECRETS_CHECKSUM_AFTER" ]]; then
-  pass "secrets.env checksum unchanged"
+  pass "user.env checksum unchanged"
 else
-  fail "secrets.env was modified during upgrade (before: ${SECRETS_CHECKSUM_BEFORE}, after: ${SECRETS_CHECKSUM_AFTER})"
+  fail "user.env was modified during upgrade (before: ${SECRETS_CHECKSUM_BEFORE}, after: ${SECRETS_CHECKSUM_AFTER})"
 fi
 
-# Verify specific values in secrets.env
-ADMIN_TOKEN_VALUE=$(grep "^ADMIN_TOKEN=" "${OP_CONFIG_HOME}/secrets.env" | head -1 | cut -d= -f2-)
+# Verify specific values in user.env
+ADMIN_TOKEN_VALUE=$(grep "^ADMIN_TOKEN=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
 if [[ "$ADMIN_TOKEN_VALUE" == "$ADMIN_TOKEN" ]]; then
-  pass "ADMIN_TOKEN preserved in secrets.env"
+  pass "ADMIN_TOKEN preserved in user.env"
 else
   fail "ADMIN_TOKEN changed (expected '${ADMIN_TOKEN}', got '${ADMIN_TOKEN_VALUE}')"
 fi
 
-CUSTOM_KEY_VALUE=$(grep "^MY_CUSTOM_KEY=" "${OP_CONFIG_HOME}/secrets.env" | head -1 | cut -d= -f2-)
+CUSTOM_KEY_VALUE=$(grep "^MY_CUSTOM_KEY=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
 if [[ "$CUSTOM_KEY_VALUE" == "my-custom-value-12345" ]]; then
-  pass "Custom user key preserved in secrets.env"
+  pass "Custom user key preserved in user.env"
 else
   fail "Custom user key lost (expected 'my-custom-value-12345', got '${CUSTOM_KEY_VALUE}')"
 fi
 
-MEMORY_USER_VALUE=$(grep "^MEMORY_USER_ID=" "${OP_CONFIG_HOME}/secrets.env" | head -1 | cut -d= -f2-)
+MEMORY_USER_VALUE=$(grep "^MEMORY_USER_ID=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
 if [[ "$MEMORY_USER_VALUE" == "upgrade-test-user" ]]; then
-  pass "MEMORY_USER_ID preserved in secrets.env"
+  pass "MEMORY_USER_ID preserved in user.env"
 else
   fail "MEMORY_USER_ID changed (expected 'upgrade-test-user', got '${MEMORY_USER_VALUE}')"
 fi
 
-# ── 5b: stack.env unchanged ──────────────────────────────────────────
+# ── 5b: vault/stack/stack.env unchanged ───────────────────────────────────
 echo ""
-echo "=== 5b: stack.env preservation ==="
+echo "=== 5b: vault/stack/stack.env preservation ==="
 
-STACK_ENV_CHECKSUM_AFTER=$(sha256sum "${OP_DATA_HOME}/stack.env" | awk '{print $1}')
+STACK_ENV_CHECKSUM_AFTER=$(sha256sum "${VAULT_HOME}/stack/stack.env" | awk '{print $1}')
 if [[ "$STACK_ENV_CHECKSUM_BEFORE" == "$STACK_ENV_CHECKSUM_AFTER" ]]; then
-  pass "stack.env checksum unchanged"
+  pass "system.env checksum unchanged"
 else
-  # If --to-version was used, stack.env will change (image tag update). That's expected.
+  # If --to-version was used, system.env will change (image tag update). That's expected.
   if [[ -n "$TO_VERSION" ]]; then
-    pass "stack.env changed (expected: image tag updated to ${TO_VERSION})"
+    pass "system.env changed (expected: image tag updated to ${TO_VERSION})"
   else
-    fail "stack.env was modified during upgrade (before: ${STACK_ENV_CHECKSUM_BEFORE}, after: ${STACK_ENV_CHECKSUM_AFTER})"
+    fail "system.env was modified during upgrade (before: ${STACK_ENV_CHECKSUM_BEFORE}, after: ${STACK_ENV_CHECKSUM_AFTER})"
   fi
 fi
 
@@ -670,8 +650,8 @@ fi
 echo ""
 echo "=== 5d: User file preservation ==="
 
-if [[ -f "${OP_CONFIG_HOME}/channels/my-custom-channel.yml" ]]; then
-  CUSTOM_FILE_CHECKSUM_AFTER=$(sha256sum "${OP_CONFIG_HOME}/channels/my-custom-channel.yml" | awk '{print $1}')
+if [[ -f "${OP_CONFIG_HOME}/components/my-custom-channel.yml" ]]; then
+  CUSTOM_FILE_CHECKSUM_AFTER=$(sha256sum "${OP_CONFIG_HOME}/components/my-custom-channel.yml" | awk '{print $1}')
   if [[ "$CUSTOM_FILE_CHECKSUM" == "$CUSTOM_FILE_CHECKSUM_AFTER" ]]; then
     pass "Custom channel file preserved and unchanged"
   else
@@ -694,14 +674,6 @@ for svc in $HEALTHCHECK_SVCS; do
     fail "${svc} status: ${status}"
   fi
 done
-
-# Caddy doesn't have a healthcheck — check if running
-caddy_status=$(docker inspect --format '{{.State.Status}}' "${PROJECT_NAME}-caddy-1" 2>/dev/null || echo "missing")
-if [[ "$caddy_status" == "running" ]]; then
-  pass "caddy is running"
-else
-  fail "caddy status: ${caddy_status}"
-fi
 
 # Optional services (may not be healthy without Ollama)
 OPTIONAL_SVCS="memory assistant guardian"
@@ -754,7 +726,7 @@ fi
 
 # Check for container restarts (CrashLoopBackOff indicator)
 RESTART_COUNT=0
-for svc in admin memory assistant guardian docker-socket-proxy caddy; do
+for svc in admin memory assistant guardian docker-socket-proxy; do
   restarts=$(docker inspect --format '{{.RestartCount}}' "${PROJECT_NAME}-${svc}-1" 2>/dev/null || echo "0")
   if [[ "$restarts" -gt 2 ]]; then
     fail "${svc} restarted ${restarts} times (possible crash loop)"

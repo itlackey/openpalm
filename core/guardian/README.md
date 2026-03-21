@@ -29,7 +29,7 @@ Any failure at steps 2–6 returns an error and the message never reaches the as
 |---|---|---|
 | `PORT` | `8080` | HTTP listen port |
 | `OP_ASSISTANT_URL` | `http://assistant:4096` | Assistant endpoint |
-| `GUARDIAN_SECRETS_PATH` | — | Path to `secrets.env` for channel secrets |
+| `GUARDIAN_SECRETS_PATH` | — | Path to env file containing channel secrets |
 | `GUARDIAN_AUDIT_PATH` | `/app/audit/guardian-audit.log` | Audit log path |
 | `CHANNEL_<NAME>_SECRET` | — | Per-channel HMAC secret (from secrets file or env) |
 

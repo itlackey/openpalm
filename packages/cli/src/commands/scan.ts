@@ -14,7 +14,7 @@ export default defineCommand({
     const dataDir = defaultDataDir();
 
     const schemaPath = join(vaultDir, 'user.env.schema');
-    const envPath = join(vaultDir, 'user.env');
+    const envPath = join(vaultDir, 'user', 'user.env');
 
     if (!(await Bun.file(schemaPath).exists())) {
       console.error(

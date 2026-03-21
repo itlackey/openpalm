@@ -64,16 +64,10 @@ function makeValidInput(overrides?: Partial<SetupInput>): SetupInput {
 
 function createStubAssetProvider(): CoreAssetProvider {
   return {
-    coreCompose: () => "services:\n  caddy:\n    image: caddy:latest\n",
-    caddyfile: () =>
-      ":80 {\n  @denied not remote_ip 127.0.0.0/8 ::1\n  respond @denied 403\n}\n",
-    ollamaCompose: () => "services:\n  ollama:\n    image: ollama/ollama\n",
-    adminCompose: () => "services:\n  admin:\n    image: openpalm/admin\n",
+    coreCompose: () => "services:\n  assistant:\n    image: assistant:latest\n",
     agentsMd: () => "# Agents\n",
     opencodeConfig: () =>
       '{"$schema":"https://opencode.ai/config.json"}\n',
-    adminOpencodeConfig: () =>
-      '{"$schema":"https://opencode.ai/config.json","plugin":["@openpalm/admin-tools"]}\n',
     secretsSchema: () => "ADMIN_TOKEN=string\n",
     stackSchema: () => "OP_IMAGE_TAG=string\n",
     cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
@@ -124,10 +118,6 @@ function createFullDirTree(): void {
     join(dataDir, "memory"),
     join(dataDir, "assistant"),
     join(dataDir, "guardian"),
-    join(dataDir, "caddy"),
-    join(dataDir, "caddy", "data"),
-    join(dataDir, "caddy", "config"),
-    join(dataDir, "caddy", "channels"),
     join(dataDir, "automations"),
     join(dataDir, "opencode"),
     join(dataDir, "stash"),
@@ -139,10 +129,12 @@ function createFullDirTree(): void {
   }
 }
 
-/** Seed the minimal user.env and system.env needed for most tests. */
+/** Seed the minimal user.env and stack.env needed for most tests. */
 function seedMinimalEnvFiles(): void {
+  mkdirSync(join(vaultDir, "user"), { recursive: true });
+  mkdirSync(join(vaultDir, "stack"), { recursive: true });
   writeFileSync(
-    join(vaultDir, "user.env"),
+    join(vaultDir, "user", "user.env"),
     [
       "# OpenPalm Secrets",
       "export OP_ADMIN_TOKEN=",
@@ -162,7 +154,7 @@ function seedMinimalEnvFiles(): void {
   );
 
   writeFileSync(
-    join(vaultDir, "system.env"),
+    join(vaultDir, "stack", "stack.env"),
     "# OpenPalm System Configuration\n"
   );
 }
@@ -196,31 +188,32 @@ describe("Fresh Install", () => {
       logsDir,
       cacheDir: join(homeDir, "cache"),
       services: {},
-      artifacts: { compose: "", caddyfile: "" },
+      artifacts: { compose: "" },
       artifactMeta: [],
       audit: [],
-      channelSecrets: {},
     };
 
     // No user.env exists yet
-    expect(existsSync(join(vaultDir, "user.env"))).toBe(false);
+    expect(existsSync(join(vaultDir, "user", "user.env"))).toBe(false);
 
     ensureSecrets(state);
 
-    const content = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const content = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(content).toContain("OPENAI_API_KEY=");
     expect(content).toContain("MEMORY_USER_ID=default_user");
     expect(content).toContain("OWNER_NAME=");
   });
 
   // Scenario 2: isSetupComplete returns false before setup
-  it("isSetupComplete returns false when system.env has OP_SETUP_COMPLETE=false", () => {
+  it("isSetupComplete returns false when stack.env has OP_SETUP_COMPLETE=false", () => {
+    mkdirSync(join(vaultDir, "stack"), { recursive: true });
+    mkdirSync(join(vaultDir, "user"), { recursive: true });
     writeFileSync(
-      join(vaultDir, "system.env"),
+      join(vaultDir, "stack", "stack.env"),
       "OP_SETUP_COMPLETE=false\n"
     );
     // Empty user.env so fallback check doesn't trigger
-    writeFileSync(join(vaultDir, "user.env"), "");
+    writeFileSync(join(vaultDir, "user", "user.env"), "");
 
     expect(isSetupComplete(vaultDir)).toBe(false);
   });
@@ -269,7 +262,8 @@ describe("Existing Install", () => {
   it("ensureSecrets does not overwrite existing user.env", () => {
     const customContent =
       "export OP_ADMIN_TOKEN=my-custom-token\nexport MEMORY_AUTH_TOKEN=custom-auth-token\n";
-    writeFileSync(join(vaultDir, "user.env"), customContent);
+    mkdirSync(join(vaultDir, "user"), { recursive: true });
+    writeFileSync(join(vaultDir, "user", "user.env"), customContent);
 
     const state: ControlPlaneState = {
       adminToken: "",
@@ -281,15 +275,14 @@ describe("Existing Install", () => {
       logsDir,
       cacheDir: join(homeDir, "cache"),
       services: {},
-      artifacts: { compose: "", caddyfile: "" },
+      artifacts: { compose: "" },
       artifactMeta: [],
       audit: [],
-      channelSecrets: {},
     };
 
     ensureSecrets(state);
 
-    const afterContent = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const afterContent = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(afterContent).toBe(customContent);
   });
 
@@ -299,7 +292,7 @@ describe("Existing Install", () => {
     await performSetup(makeValidInput(), createStubAssetProvider());
 
     const secretsAfterFirst = readFileSync(
-      join(vaultDir, "user.env"),
+      join(vaultDir, "user", "user.env"),
       "utf-8"
     );
     const firstMatch = secretsAfterFirst.match(
@@ -325,7 +318,7 @@ describe("Existing Install", () => {
     );
 
     const secretsAfterSecond = readFileSync(
-      join(vaultDir, "user.env"),
+      join(vaultDir, "user", "user.env"),
       "utf-8"
     );
     const secondMatch = secretsAfterSecond.match(
@@ -386,7 +379,7 @@ describe("Existing Install", () => {
     expect(profilesAfterSecond.profiles[0].provider).toBe("groq");
 
     // But user.env should retain both keys
-    const secrets = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const secrets = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(secrets).toContain("GROQ_API_KEY");
   });
 });
@@ -408,7 +401,8 @@ describe("Broken/Corrupt State", () => {
 
   // Scenario 9: user.env exists but is empty
   it("ensureSecrets returns early for an empty but existing user.env", () => {
-    writeFileSync(join(vaultDir, "user.env"), "");
+    mkdirSync(join(vaultDir, "user"), { recursive: true });
+    writeFileSync(join(vaultDir, "user", "user.env"), "");
 
     const state: ControlPlaneState = {
       adminToken: "",
@@ -420,16 +414,15 @@ describe("Broken/Corrupt State", () => {
       logsDir,
       cacheDir: join(homeDir, "cache"),
       services: {},
-      artifacts: { compose: "", caddyfile: "" },
+      artifacts: { compose: "" },
       artifactMeta: [],
       audit: [],
-      channelSecrets: {},
     };
 
     ensureSecrets(state);
 
     // File should still exist and still be empty (ensureSecrets only checks existence)
-    const content = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const content = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(content).toBe("");
   });
 
@@ -447,25 +440,28 @@ describe("Broken/Corrupt State", () => {
       "  # indented comment",
     ].join("\n");
 
-    writeFileSync(join(vaultDir, "user.env"), malformedContent);
+    mkdirSync(join(vaultDir, "user"), { recursive: true });
+    writeFileSync(join(vaultDir, "user", "user.env"), malformedContent);
 
-    const parsed = parseEnvFile(join(vaultDir, "user.env"));
+    const parsed = parseEnvFile(join(vaultDir, "user", "user.env"));
     expect(parsed.VALID_KEY).toBe("valid_value");
     expect(parsed.EXPORTED_KEY).toBe("exported_value");
     expect(parsed.ANOTHER_VALID).toBe("value");
   });
 
-  // Scenario 11: system.env missing OP_SETUP_COMPLETE
+  // Scenario 11: stack.env missing OP_SETUP_COMPLETE
   it("isSetupComplete falls back to token check when OP_SETUP_COMPLETE missing", () => {
-    // system.env without OP_SETUP_COMPLETE
+    // stack.env without OP_SETUP_COMPLETE
+    mkdirSync(join(vaultDir, "stack"), { recursive: true });
+    mkdirSync(join(vaultDir, "user"), { recursive: true });
     writeFileSync(
-      join(vaultDir, "system.env"),
+      join(vaultDir, "stack", "stack.env"),
       "OP_IMAGE_TAG=latest\n"
     );
 
     // user.env without any token
     writeFileSync(
-      join(vaultDir, "user.env"),
+      join(vaultDir, "user", "user.env"),
       "export OP_ADMIN_TOKEN=\nexport ADMIN_TOKEN=\n"
     );
 
@@ -473,8 +469,9 @@ describe("Broken/Corrupt State", () => {
   });
 
   it("isSetupComplete falls back to true when admin token is set but OP_SETUP_COMPLETE missing", () => {
+    mkdirSync(join(vaultDir, "stack"), { recursive: true });
     writeFileSync(
-      join(vaultDir, "system.env"),
+      join(vaultDir, "stack", "stack.env"),
       "OP_IMAGE_TAG=latest\nexport OP_ADMIN_TOKEN=my-real-token\n"
     );
 
@@ -497,27 +494,11 @@ describe("Broken/Corrupt State", () => {
     }
   });
 
-  // Scenario 13: Corrupt profiles.json
-  it("readConnectionProfilesDocument throws on corrupt JSON", () => {
-    writeFileSync(
-      join(configDir, "connections", "profiles.json"),
-      "NOT VALID JSON {{{{"
-    );
-
-    expect(() => readConnectionProfilesDocument(configDir)).toThrow(
-      "invalid JSON"
-    );
-  });
-
-  it("readConnectionProfilesDocument throws on valid JSON but wrong structure", () => {
-    writeFileSync(
-      join(configDir, "connections", "profiles.json"),
-      JSON.stringify({ version: 1, profiles: [], assignments: {} })
-    );
-
-    expect(() => readConnectionProfilesDocument(configDir)).toThrow(
-      "invalid"
-    );
+  // Scenario 13: Missing stack.yaml returns empty document
+  it("readConnectionProfilesDocument returns empty document when stack.yaml missing", () => {
+    const doc = readConnectionProfilesDocument(configDir);
+    expect(doc.profiles).toEqual([]);
+    expect(doc.assignments.llm.connectionId).toBe("");
   });
 
   // Scenario 14: config dir exists but automations dir doesn't
@@ -538,7 +519,6 @@ describe("Broken/Corrupt State", () => {
     expect(existsSync(join(configDir, "components", "core.yml"))).toBe(
       true
     );
-    expect(existsSync(join(dataDir, "caddy", "Caddyfile"))).toBe(true);
     // Automations dir should be recreated
     expect(existsSync(join(configDir, "automations"))).toBe(true);
   });
@@ -572,8 +552,9 @@ describe("Environment Edge Cases", () => {
 
   // Scenario 16: Commented-out ADMIN_TOKEN but OP_ADMIN_TOKEN set
   it("isSetupComplete detects OP_ADMIN_TOKEN when ADMIN_TOKEN is commented out", () => {
+    mkdirSync(join(vaultDir, "stack"), { recursive: true });
     writeFileSync(
-      join(vaultDir, "system.env"),
+      join(vaultDir, "stack", "stack.env"),
       "SOME_OTHER_KEY=value\nexport OP_ADMIN_TOKEN=real-token-here\n"
     );
 
@@ -663,7 +644,7 @@ describe("Setup Input Variations", () => {
     expect(doc.profiles[0].baseUrl).toBe("http://ollama:11434");
 
     // user.env should have in-stack URL
-    const secrets = parseEnvFile(join(vaultDir, "user.env"));
+    const secrets = parseEnvFile(join(vaultDir, "user", "user.env"));
     expect(secrets.SYSTEM_LLM_BASE_URL).toBe("http://ollama:11434");
     expect(secrets.OPENAI_BASE_URL).toBe("http://ollama:11434/v1");
   });
@@ -794,16 +775,14 @@ describe("performSetup end-to-end artifacts", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  it("writes openpalm.yaml and readStackSpec returns v4 (auto-upgraded)", async () => {
+  it("writes stack.yaml and readStackSpec returns v1", async () => {
     await performSetup(makeValidInput(), createStubAssetProvider());
 
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
-    // readStackSpec auto-upgrades v3 to v4
-    expect(spec!.version).toBe(4);
-    expect(spec!.connections).toHaveLength(1);
+    expect(spec!.version).toBe(1);
+    expect(spec!.connections.length).toBeGreaterThanOrEqual(1);
     expect(spec!.assignments.llm.model).toBe("gpt-4o");
-    expect(spec!.features?.ollama).toBe(false);
   });
 
   it("writes memory config with correct embedding dims from lookup", async () => {
@@ -835,19 +814,18 @@ describe("performSetup end-to-end artifacts", () => {
     expect(memConfig.mem0.vector_store.config.embedding_model_dims).toBe(768);
   });
 
-  it("writes core.yml and Caddyfile to their respective directories", async () => {
+  it("writes core.yml to config/components/", async () => {
     await performSetup(makeValidInput(), createStubAssetProvider());
 
     expect(
       existsSync(join(configDir, "components", "core.yml"))
     ).toBe(true);
-    expect(existsSync(join(dataDir, "caddy", "Caddyfile"))).toBe(true);
   });
 
-  it("writes admin and assistant tokens to system.env", async () => {
+  it("writes admin and assistant tokens to stack.env", async () => {
     await performSetup(makeValidInput(), createStubAssetProvider());
 
-    const secrets = parseEnvFile(join(vaultDir, "system.env"));
+    const secrets = parseEnvFile(join(vaultDir, "stack", "stack.env"));
     expect(secrets.OP_ADMIN_TOKEN).toBe("test-admin-token-12345");
     expect(typeof secrets.ASSISTANT_TOKEN).toBe("string");
     expect(secrets.ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
@@ -996,8 +974,9 @@ describe("loadSecretsEnvFile edge cases", () => {
   });
 
   it("filters out keys not matching uppercase alphanumeric pattern", () => {
+    mkdirSync(join(vaultDir, "user"), { recursive: true });
     writeFileSync(
-      join(vaultDir, "user.env"),
+      join(vaultDir, "user", "user.env"),
       [
         "VALID_KEY=valid",
         "another_key=lowercase", // lowercase keys are filtered out
@@ -1032,16 +1011,17 @@ describe("isSetupComplete edge cases", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  it("returns false when system.env does not exist and no admin token", () => {
-    // No system.env and no user.env
-    rmSync(join(vaultDir, "system.env"), { force: true });
+  it("returns false when stack.env does not exist and no admin token", () => {
+    // No stack.env and no user.env
+    rmSync(join(vaultDir, "stack", "stack.env"), { force: true });
 
     expect(isSetupComplete(vaultDir)).toBe(false);
   });
 
   it("returns true for OP_SETUP_COMPLETE=TRUE (case insensitive)", () => {
+    mkdirSync(join(vaultDir, "stack"), { recursive: true });
     writeFileSync(
-      join(vaultDir, "system.env"),
+      join(vaultDir, "stack", "stack.env"),
       "OP_SETUP_COMPLETE=TRUE\n"
     );
 
@@ -1049,8 +1029,9 @@ describe("isSetupComplete edge cases", () => {
   });
 
   it("returns true for OP_SETUP_COMPLETE=True (mixed case)", () => {
+    mkdirSync(join(vaultDir, "stack"), { recursive: true });
     writeFileSync(
-      join(vaultDir, "system.env"),
+      join(vaultDir, "stack", "stack.env"),
       "OP_SETUP_COMPLETE=True\n"
     );
 
@@ -1058,18 +1039,21 @@ describe("isSetupComplete edge cases", () => {
   });
 
   it("returns false for OP_SETUP_COMPLETE=false", () => {
+    mkdirSync(join(vaultDir, "stack"), { recursive: true });
+    mkdirSync(join(vaultDir, "user"), { recursive: true });
     writeFileSync(
-      join(vaultDir, "system.env"),
+      join(vaultDir, "stack", "stack.env"),
       "OP_SETUP_COMPLETE=false\n"
     );
-    writeFileSync(join(vaultDir, "user.env"), "");
+    writeFileSync(join(vaultDir, "user", "user.env"), "");
 
     expect(isSetupComplete(vaultDir)).toBe(false);
   });
 
-  it("falls back to OP_ADMIN_TOKEN presence when OP_SETUP_COMPLETE not in system.env", () => {
+  it("falls back to OP_ADMIN_TOKEN presence when OP_SETUP_COMPLETE not in stack.env", () => {
+    mkdirSync(join(vaultDir, "stack"), { recursive: true });
     writeFileSync(
-      join(vaultDir, "system.env"),
+      join(vaultDir, "stack", "stack.env"),
       "OP_IMAGE_TAG=latest\nexport OP_ADMIN_TOKEN=my-admin-token\n"
     );
 

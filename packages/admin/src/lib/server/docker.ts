@@ -12,7 +12,6 @@ export {
   composeStart,
   composePs,
   composeLogs,
-  caddyReload,
   composePullService,
   composePull,
   composeStats,

@@ -1,5 +1,5 @@
 /**
- * GET /admin/artifacts/[name] — Get artifact content by name (compose, caddyfile).
+ * GET /admin/artifacts/[name] — Get artifact content by name (compose).
  * Returns text/plain with x-artifact-sha256 header.
  */
 import type { RequestHandler } from "./$types";
@@ -7,11 +7,10 @@ import { getState } from "$lib/server/state.js";
 import { errorResponse, requireAuth, getRequestId, getActor, getCallerType } from "$lib/server/helpers.js";
 import { appendAudit } from "$lib/server/control-plane.js";
 
-const ALLOWED_NAMES = ["compose", "caddyfile"] as const;
+const ALLOWED_NAMES = ["compose"] as const;
 type ArtifactName = (typeof ALLOWED_NAMES)[number];
 
-// Backward compat: "caddy" → "caddyfile"
-const NAME_ALIASES: Record<string, ArtifactName> = { caddy: "caddyfile" };
+const NAME_ALIASES: Record<string, ArtifactName> = {};
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

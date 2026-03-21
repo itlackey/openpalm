@@ -6,7 +6,7 @@ import { defaultHomeDir, defaultConfigDir, defaultVaultDir, defaultDataDir, defa
 import { ensureSecrets, ensureStackEnv, resolveRequestedImageTag } from '../lib/env.ts';
 import { ensureDirectoryTree, fetchAsset, runDockerCompose, openBrowser } from '../lib/docker.ts';
 import {
-  ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureAdminOpenCodeConfig, FilesystemAssetProvider,
+  ensureOpenCodeConfig, ensureOpenCodeSystemConfig, FilesystemAssetProvider,
   performSetupFromConfig,
   type SetupConfig, type SetupResult,
 } from '@openpalm/lib';
@@ -113,7 +113,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const dataDir = defaultDataDir();
   const workDir = defaultWorkDir();
 
-  const secretsPath = join(vaultDir, 'user.env');
+  const secretsPath = join(vaultDir, 'user', 'user.env');
   const updateMode = await Bun.file(secretsPath).exists();
   if (updateMode && !options.force) {
     throw new Error('OpenPalm appears to already be installed. Re-run install with --force to continue.');
@@ -129,16 +129,13 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     // Host detection failure is non-fatal
   }
 
-  const composeContent = await fetchAsset(options.version, 'docker-compose.yml');
-  const caddyContent = await fetchAsset(options.version, 'Caddyfile');
+  const composeContent = await fetchAsset(options.version, '.openpalm/stack/core.compose.yml');
   await Bun.write(join(configDir, 'components', 'core.yml'), composeContent);
-  await Bun.write(join(dataDir, 'caddy', 'Caddyfile'), caddyContent);
 
   // Download schemas to vault/ for varlock validation and dataDir for FilesystemAssetProvider
   for (const [remoteFile, localPath] of [
-    ['user.env.schema', join(vaultDir, 'user.env.schema')],
-    ['system.env.schema', join(vaultDir, 'system.env.schema')],
-    ['setup-config.schema.json', join(dataDir, 'setup-config.schema.json')],
+    ['.openpalm/vault/user/user.env.schema', join(vaultDir, 'user', 'user.env.schema')],
+    ['.openpalm/vault/stack/stack.env.schema', join(vaultDir, 'stack', 'stack.env.schema')],
   ] as const) {
     try {
       const content = await fetchAsset(options.version, remoteFile);
@@ -150,14 +147,12 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
   // Download remaining assets needed by FilesystemAssetProvider
   const assetFiles: Array<{ remote: string; localPath: string }> = [
-    { remote: 'ollama.yml', localPath: join(configDir, 'components', 'ollama.yml') },
-    { remote: 'admin.yml', localPath: join(configDir, 'components', 'admin.yml') },
-    { remote: 'AGENTS.md', localPath: join(dataDir, 'assistant', 'AGENTS.md') },
-    { remote: 'opencode.jsonc', localPath: join(dataDir, 'assistant', 'opencode.jsonc') },
-    { remote: 'admin-opencode.jsonc', localPath: join(dataDir, 'admin', 'opencode.jsonc') },
-    { remote: 'cleanup-logs.yml', localPath: join(configDir, 'automations', 'cleanup-logs.yml') },
-    { remote: 'cleanup-data.yml', localPath: join(configDir, 'automations', 'cleanup-data.yml') },
-    { remote: 'validate-config.yml', localPath: join(configDir, 'automations', 'validate-config.yml') },
+    { remote: '.openpalm/stack/addons/ollama/compose.yml', localPath: join(configDir, 'components', 'ollama.yml') },
+    { remote: 'core/assistant/AGENTS.md', localPath: join(dataDir, 'assistant', 'AGENTS.md') },
+    { remote: 'core/assistant/opencode.jsonc', localPath: join(dataDir, 'assistant', 'opencode.jsonc') },
+    { remote: '.openpalm/config/automations/cleanup-logs.yml', localPath: join(configDir, 'automations', 'cleanup-logs.yml') },
+    { remote: '.openpalm/config/automations/cleanup-data.yml', localPath: join(configDir, 'automations', 'cleanup-data.yml') },
+    { remote: '.openpalm/config/automations/validate-config.yml', localPath: join(configDir, 'automations', 'validate-config.yml') },
   ];
   await Promise.all(
     assetFiles.map(async ({ remote, localPath }) => {
@@ -180,7 +175,6 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     const fsAssets = new FilesystemAssetProvider(homeDir);
     ensureOpenCodeConfig();
     ensureOpenCodeSystemConfig(fsAssets);
-    ensureAdminOpenCodeConfig(fsAssets);
   } catch {
     // Assets may not be available yet on first install; performSetup() will retry
   }
@@ -188,8 +182,8 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   // Non-fatal validation
   try {
     const varlockBin = await ensureVarlock(dataDir);
-    const schemaPath = join(vaultDir, 'user.env.schema');
-    const envPath = join(vaultDir, 'user.env');
+    const schemaPath = join(vaultDir, 'user', 'user.env.schema');
+    const envPath = join(vaultDir, 'user', 'user.env');
     if (await Bun.file(schemaPath).exists()) {
       const tmpDir = await prepareVarlockDir(schemaPath, envPath);
       try {

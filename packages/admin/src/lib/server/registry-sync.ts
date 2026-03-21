@@ -1,11 +1,11 @@
 /**
- * Registry synchronization — clones or pulls the OpenPalm registry from GitHub.
+ * Registry synchronization — clones or pulls the OpenPalm stack from GitHub.
  *
- * On first call, performs a sparse checkout of just the registry/ directory.
+ * On first call, performs a sparse checkout of just the stack/ directory.
  * On subsequent calls, does a git pull to fetch the latest changes.
  *
- * The cloned registry lives at cache directory/registry-repo/ and is the runtime
- * source of truth for available channels and automations.
+ * The cloned repo lives at cache directory/registry-repo/ and is the runtime
+ * source of truth for available addons and automations automations.
  *
  * Security: all git operations use execFileSync (no shell) with validated inputs.
  */
@@ -13,6 +13,7 @@ import { existsSync, readdirSync, readFileSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
+import type { RegistryComponentEntry } from "@openpalm/lib";
 import { resolveCacheHome } from "./paths.js";
 
 const REPO = "itlackey/openpalm";
@@ -42,7 +43,7 @@ export function registryRoot(): string {
   return join(resolveCacheHome(), "registry");
 }
 
-/** Path to the git repo clone (we clone the whole repo shallowly then read registry/) */
+/** Path to the git repo clone (we clone the whole repo shallowly then read stack/) */
 function repoCloneDir(): string {
   return join(resolveCacheHome(), "registry-repo");
 }
@@ -50,16 +51,16 @@ function repoCloneDir(): string {
 // ── Clone / Pull ────────────────────────────────────────────────────
 
 /**
- * Ensure the registry repo is cloned into cache directory/registry-repo/.
- * Uses sparse checkout to fetch only the registry/ directory.
- * Returns the path to the registry/ subdirectory inside the clone.
+ * Ensure the repo is cloned into cache directory/registry-repo/.
+ * Uses sparse checkout to fetch only the stack/ directory.
+ * Returns the path to the stack/ subdirectory inside the clone.
  */
 export function ensureRegistryClone(): string {
   const cloneDir = repoCloneDir();
-  const registryDir = join(cloneDir, "registry");
+  const stackDir = join(cloneDir, "stack");
 
   if (existsSync(join(cloneDir, ".git"))) {
-    return registryDir;
+    return stackDir;
   }
 
   mkdirSync(cloneDir, { recursive: true });
@@ -70,7 +71,7 @@ export function ensureRegistryClone(): string {
       "--branch", BRANCH, REPO_URL, "."
     ], { cwd: cloneDir, stdio: "pipe", timeout: 60_000 });
 
-    execFileSync("git", ["sparse-checkout", "set", "registry"], {
+    execFileSync("git", ["sparse-checkout", "set", "stack"], {
       cwd: cloneDir,
       stdio: "pipe",
       timeout: 30_000
@@ -80,7 +81,7 @@ export function ensureRegistryClone(): string {
     throw new Error(`Failed to clone registry from ${REPO_URL}: ${msg}`);
   }
 
-  return registryDir;
+  return stackDir;
 }
 
 /**
@@ -116,14 +117,8 @@ export function pullRegistry(): { updated: boolean; error?: string } {
 
 // ── Registry item discovery ─────────────────────────────────────────
 
-export type RegistryChannelEntry = {
-  name: string;
-  type: "channel";
-  description: string;
-  hasRoute: boolean;
-  ymlContent: string;
-  caddyContent: string | null;
-};
+// Re-export canonical type from lib for consumers that import from this module
+export type { RegistryComponentEntry } from "@openpalm/lib";
 
 export type RegistryAutomationEntry = {
   name: string;
@@ -133,51 +128,45 @@ export type RegistryAutomationEntry = {
   ymlContent: string;
 };
 
-/** Strict name: lowercase alphanumeric + hyphens, 1–63 chars, starts with alnum */
+/** Strict name: lowercase alphanumeric + hyphens, 1-63 chars, starts with alnum */
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 /**
- * Discover channel entries from the cloned registry/channels/ directory.
+ * Discover addon entries from the cloned .openpalm/stack/addons/ directory.
+ * Each addon is a subdirectory containing compose.yml and .env.schema.
  */
-export function discoverRegistryChannels(): RegistryChannelEntry[] {
+export function discoverRegistryComponents(): Record<string, RegistryComponentEntry> {
   const cloneDir = repoCloneDir();
-  const channelsDir = join(cloneDir, "registry", "channels");
-  if (!existsSync(channelsDir)) return [];
+  const addonsDir = join(cloneDir, ".openpalm", "stack", "addons");
+  if (!existsSync(addonsDir)) return {};
 
-  const files = readdirSync(channelsDir);
-  const ymlFiles = files.filter((f) => f.endsWith(".yml"));
-  const caddyFiles = new Set(files.filter((f) => f.endsWith(".caddy")));
+  const entries = readdirSync(addonsDir, { withFileTypes: true });
+  const result: Record<string, RegistryComponentEntry> = {};
 
-  return ymlFiles
-    .map((ymlFile) => {
-      const name = ymlFile.replace(/\.yml$/, "");
-      if (!VALID_NAME_RE.test(name)) return null;
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const id = entry.name;
+    if (!VALID_NAME_RE.test(id)) continue;
 
-      const ymlContent = readFileSync(join(channelsDir, ymlFile), "utf-8");
-      const caddyFile = `${name}.caddy`;
-      const hasRoute = caddyFiles.has(caddyFile);
-      const caddyContent = hasRoute
-        ? readFileSync(join(channelsDir, caddyFile), "utf-8")
-        : null;
+    const composeFile = join(addonsDir, id, "compose.yml");
+    const schemaFile = join(addonsDir, id, ".env.schema");
+    if (!existsSync(composeFile) || !existsSync(schemaFile)) continue;
 
-      return {
-        name,
-        type: "channel" as const,
-        description: `Docker compose service for the ${name} channel`,
-        hasRoute,
-        ymlContent,
-        caddyContent
-      };
-    })
-    .filter((entry): entry is RegistryChannelEntry => entry !== null);
+    const compose = readFileSync(composeFile, "utf-8");
+    const schema = readFileSync(schemaFile, "utf-8");
+
+    result[id] = { compose, schema };
+  }
+
+  return result;
 }
 
 /**
- * Discover automation entries from the cloned registry/automations/ directory.
+ * Discover automation entries from the cloned .openpalm/config/automations/ directory.
  */
 export function discoverRegistryAutomations(): RegistryAutomationEntry[] {
   const cloneDir = repoCloneDir();
-  const automationsDir = join(cloneDir, "registry", "automations");
+  const automationsDir = join(cloneDir, ".openpalm", "config", "automations");
   if (!existsSync(automationsDir)) return [];
 
   const files = readdirSync(automationsDir).filter((f) => f.endsWith(".yml"));
@@ -213,28 +202,12 @@ export function discoverRegistryAutomations(): RegistryAutomationEntry[] {
 }
 
 /**
- * Get channel content from the cloned registry by name.
- */
-export function getRegistryChannel(
-  name: string
-): { yml: string; caddy: string | null } | null {
-  const cloneDir = repoCloneDir();
-  const channelsDir = join(cloneDir, "registry", "channels");
-  const ymlPath = join(channelsDir, `${name}.yml`);
-  if (!existsSync(ymlPath)) return null;
-
-  const yml = readFileSync(ymlPath, "utf-8");
-  const caddyPath = join(channelsDir, `${name}.caddy`);
-  const caddy = existsSync(caddyPath) ? readFileSync(caddyPath, "utf-8") : null;
-  return { yml, caddy };
-}
-
-/**
- * Get automation content from the cloned registry by name.
+ * Get automation content from the cloned automations by name.
  */
 export function getRegistryAutomation(name: string): string | null {
+  if (!VALID_NAME_RE.test(name)) return null;
   const cloneDir = repoCloneDir();
-  const automationsDir = join(cloneDir, "registry", "automations");
+  const automationsDir = join(cloneDir, "stack", "automations");
   const ymlPath = join(automationsDir, `${name}.yml`);
   if (!existsSync(ymlPath)) return null;
   return readFileSync(ymlPath, "utf-8");

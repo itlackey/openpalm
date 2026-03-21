@@ -35,8 +35,8 @@ before retrying.
 ## 2. Port conflicts
 
 **Symptoms:** Container exits immediately or `docker compose up` reports
-"address already in use." Common ports: 8080 (Caddy ingress), 8100 (admin),
-8765 (memory), 4096 (assistant).
+"address already in use." Common ports: 3880 (admin), 3800 (assistant),
+3898 (memory).
 
 **Cause:** Another process is already bound to the port.
 
@@ -62,15 +62,15 @@ Then restart the stack:
 docker compose down && docker compose up -d
 ```
 
-The default Caddy ingress port is `8080` (see `OP_INGRESS_PORT` in
-`docker-compose.yml`).
+The default ingress port is configurable via `OP_INGRESS_PORT` in
+`vault/system.env`.
 
 ---
 
 ## 3. Setup wizard won't load
 
 **Symptoms:** Browser shows connection refused or a blank page at
-`http://localhost:8080/` after install.
+`http://localhost:3880/` after install.
 
 **Cause:** The admin container is still starting (pulling images on first
 boot can take several minutes) or the admin healthcheck hasn't passed yet.
@@ -81,8 +81,7 @@ boot can take several minutes) or the admin healthcheck hasn't passed yet.
    ```bash
    docker logs openpalm-admin-1 --tail 50
    ```
-2. If the admin is healthy but Caddy isn't routing, access the admin directly
-   at `http://localhost:8100/setup`.
+2. Access the admin directly at `http://localhost:3880/setup`.
 3. Wait up to 60 seconds on first boot for image pulls and healthcheck
    stabilization.
 
@@ -145,7 +144,7 @@ the special hostname `host.docker.internal`.
    docker exec openpalm-admin-1 curl http://host.docker.internal:11434/api/tags
    ```
 3. Set the Ollama base URL to `http://host.docker.internal:11434` in the
-   admin UI Connections page, or in `secrets.env`:
+   admin UI Connections page, or in `vault/user.env`:
    ```env
    OPENAI_BASE_URL=http://host.docker.internal:11434/v1
    ```
@@ -205,9 +204,9 @@ or unable to reach the configured provider.
    ```bash
    docker logs openpalm-assistant-1 --tail 50
    ```
-3. Verify at least one LLM provider key is set in `CONFIG_HOME/secrets.env`:
+3. Verify at least one LLM provider key is set in `vault/user.env`:
    ```bash
-   grep -E 'API_KEY|BASE_URL' ~/.config/openpalm/secrets.env
+   grep -E 'API_KEY|BASE_URL' ~/.openpalm/vault/user.env
    ```
 4. If using Ollama, confirm the model is pulled:
    ```bash

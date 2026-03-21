@@ -17,8 +17,8 @@ import {
   ensureCoreAutomations,
   ensureSecretsSchema,
   ensureStackSchema,
-  stageArtifacts,
-  persistArtifacts,
+  resolveArtifacts,
+  persistConfiguration,
   appendAudit,
   readMemoryConfig,
   resolveConfigForPush,
@@ -43,8 +43,8 @@ function runStartupApply(): void {
     ensureCoreAutomations();
     ensureSecretsSchema();
     ensureStackSchema();
-    state.artifacts = stageArtifacts(state);
-    persistArtifacts(state);
+    state.artifacts = resolveArtifacts(state);
+    persistConfiguration(state);
 
     appendAudit(
       state,

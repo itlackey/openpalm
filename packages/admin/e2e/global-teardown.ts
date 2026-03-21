@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
-const STACK_ENV = resolve(REPO_ROOT, ".dev/state/artifacts/stack.env");
+const STACK_ENV = resolve(REPO_ROOT, ".dev/vault/stack/stack.env");
 const BACKUP = `${STACK_ENV}.e2e-backup`;
 
 export default async function globalTeardown() {

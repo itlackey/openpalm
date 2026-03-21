@@ -19,34 +19,39 @@ OpenPalm delivers a local-first AI platform with a strict control plane:
 
 Core services:
 
-- `caddy`
 - `memory`
 - `assistant`
 - `guardian`
-- `admin`
+- `scheduler`
 
-Channel services are added via compose overlays and staged into
-`STATE_HOME/artifacts/channels/*.yml`.
+Optional services (add-ons):
+
+- `admin`
+- Channels (chat, discord, etc.)
+
+Channel services are added via compose overlays from `.openpalm/stack/addons/`
+and installed into `config/components/`.
 
 ## Filesystem model
 
-- `CONFIG_HOME`: user-owned persistent source of truth (`secrets.env`, `channels/`, `assistant/`).
+- `config/`: user-owned persistent source of truth (`components/`, `automations/`, `assistant/`).
   Allowed writers: user direct edits; explicit admin UI/API config actions;
   assistant calls via authenticated/allowlisted admin APIs on user request.
-- `DATA_HOME`: persistent service data and source-of-truth `stack.env`.
-- `STATE_HOME`: assembled runtime (`artifacts/`, staged channels, audit).
+- `vault/user/`: user-managed secrets (`user.env` with LLM keys).
+- `vault/stack/`: system-managed secrets (`stack.env` with admin token, HMAC, paths).
+- `data/`: persistent service data (memory, assistant, guardian, catalog).
+- `logs/`: audit and debug logs.
 
-Admin startup runs an idempotent auto-apply that stages artifacts from CONFIG +
-bundled assets into STATE. Lifecycle apply/install/update is non-destructive
-for existing user config files and only seeds missing defaults.
+Admin startup runs an idempotent auto-apply that syncs bundled stack
+assets into the running configuration. Lifecycle apply/install/update is
+non-destructive for existing user config files and only seeds missing defaults.
 
 ## Secrets model
 
-- User-managed: `CONFIG_HOME/secrets.env` (`ADMIN_TOKEN`, LLM provider keys).
-- System-managed: `DATA_HOME/stack.env` (host-detected infrastructure config,
-  `CHANNEL_<NAME>_SECRET` — seeded by setup.sh, updated by admin).
-- System-managed Caddy policy source: `DATA_HOME/caddy/Caddyfile`.
-- Staged runtime env: `STATE_HOME/artifacts/stack.env` and `STATE_HOME/artifacts/secrets.env`.
+- User-managed: `vault/user/user.env` (LLM provider keys, embedding config).
+- System-managed: `vault/stack/stack.env` (admin token, HMAC secrets, host-detected
+  infrastructure config, `CHANNEL_<NAME>_SECRET` — seeded by setup scripts, updated by admin).
+- Env schemas and example files committed at `vault/` in the repo (no secret values).
 
 ## API scope (implemented)
 
@@ -70,9 +75,9 @@ Not implemented in current code: setup wizard endpoints.
 1. `install` brings up core stack via admin API orchestration.
 2. Channel ingress flows channel → guardian → assistant with security checks.
 3. Assistant can perform allowlisted admin actions without Docker socket access.
-4. Operators can inspect staged runtime artifacts under `STATE_HOME/artifacts`.
+4. Operators can inspect configuration under `config/` and secrets in `vault/`.
 5. Admin actions are authenticated and audit-logged.
 6. Connections API manages LLM provider keys without manual file editing.
-7. `upgrade` applies upstream asset and image updates.
+7. `upgrade` applies upstream stack and image updates.
 9. Community channels can be built using the `@openpalm/channels-sdk` package
    and the `core/channel` Docker image.

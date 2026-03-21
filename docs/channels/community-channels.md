@@ -31,9 +31,8 @@ export default class MyChannel extends BaseChannel {
    channels). Registry channels use `CHANNEL_PACKAGE` to install the package
    at container start.
 
-3. Create a compose overlay (`my-channel.yml`) and optional Caddy route
-   (`my-channel.caddy`), then install via the admin API or drop them into
-   `CONFIG_HOME/channels/`.
+3. Create a component directory with a `compose.yml`, then install via the
+   admin API or drop it into `config/components/`.
 
 ---
 

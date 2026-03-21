@@ -1,45 +1,33 @@
 /**
- * ViteAssetProvider — provides core assets from Vite $assets imports.
+ * ViteAssetProvider — provides core assets from Vite alias imports.
  *
  * This is the admin-specific implementation of CoreAssetProvider.
- * Assets are bundled into the admin image at build time via Vite's
- * $assets alias (configured in vite.config.ts).
+ * Assets are bundled into the admin image at build time via Vite aliases
+ * ($stack, $vault, $assistant) configured in vite.config.ts.
  */
 import type { CoreAssetProvider } from "@openpalm/lib";
 
 // @ts-ignore — raw asset imports bundled by Vite at build time
-import coreComposeAsset from "$assets/docker-compose.yml?raw";
+import coreComposeAsset from "$stack/core.compose.yml?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
-import caddyfileAsset from "$assets/Caddyfile?raw";
+import opencodeConfigAsset from "$assistant/opencode.jsonc?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
-import opencodeConfigAsset from "$assets/opencode.jsonc?raw";
+import agentsMdAsset from "$assistant/AGENTS.md?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
-import adminOpencodeConfigAsset from "$assets/admin-opencode.jsonc?raw";
+import cleanupLogsAsset from "$config/automations/cleanup-logs.yml?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
-import agentsMdAsset from "$assets/AGENTS.md?raw";
+import cleanupDataAsset from "$config/automations/cleanup-data.yml?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
-import ollamaComposeAsset from "$assets/ollama.yml?raw";
+import validateConfigAsset from "$config/automations/validate-config.yml?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
-import adminComposeAsset from "$assets/admin.yml?raw";
+import secretsSchemaAsset from "$vault/user/user.env.schema?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
-import cleanupLogsAsset from "$assets/cleanup-logs.yml?raw";
-// @ts-ignore — raw asset imports bundled by Vite at build time
-import cleanupDataAsset from "$assets/cleanup-data.yml?raw";
-// @ts-ignore — raw asset imports bundled by Vite at build time
-import validateConfigAsset from "$assets/validate-config.yml?raw";
-// @ts-ignore — raw asset imports bundled by Vite at build time
-import secretsSchemaAsset from "$assets/user.env.schema?raw";
-// @ts-ignore — raw asset imports bundled by Vite at build time
-import stackSchemaAsset from "$assets/system.env.schema?raw";
+import stackSchemaAsset from "$vault/stack/stack.env.schema?raw";
 
 export class ViteAssetProvider implements CoreAssetProvider {
   coreCompose(): string { return coreComposeAsset; }
-  caddyfile(): string { return caddyfileAsset; }
-  ollamaCompose(): string { return ollamaComposeAsset; }
-  adminCompose(): string { return adminComposeAsset; }
   agentsMd(): string { return agentsMdAsset; }
   opencodeConfig(): string { return opencodeConfigAsset; }
-  adminOpencodeConfig(): string { return adminOpencodeConfigAsset; }
   secretsSchema(): string { return secretsSchemaAsset; }
   stackSchema(): string { return stackSchemaAsset; }
   cleanupLogs(): string { return cleanupLogsAsset; }

@@ -1,9 +1,9 @@
 /**
  * Tests for the registry component directory format.
  *
- * Validates that all components in registry/components/ follow the
+ * Validates that all components in .openpalm/stack/addons/ follow the
  * component conventions: compose.yml with required labels, .env.schema
- * with identity variables, proper service naming, and no security
+ * with documented variables, proper service naming, and no security
  * violations.
  */
 import { describe, expect, it } from "bun:test";
@@ -18,7 +18,7 @@ import { join, resolve } from "node:path";
 
 /** Resolve path from repo root */
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
-const REGISTRY_DIR = join(REPO_ROOT, "registry/components");
+const REGISTRY_DIR = join(REPO_ROOT, ".openpalm/stack/addons");
 
 /** List all component directories in the registry */
 function listComponentDirs(): string[] {
@@ -59,11 +59,8 @@ function parseEnvSchema(content: string): Array<{
     }
 
     if (trimmed === "" || trimmed === "---") {
-      // Blank line or section separator — reset pending comments only if
-      // no variable follows immediately. We keep comments for the next var.
-      if (trimmed === "" || trimmed === "---") {
-        // Keep accumulating — comments may belong to the next variable
-      }
+      // Blank line or section separator — keep accumulating comments
+      // for the next variable.
       continue;
     }
 
@@ -150,16 +147,16 @@ describe("registry compose.yml validation", () => {
         expect(compose).toMatch(/openpalm\.description:/);
       });
 
-      it("uses openpalm-${INSTANCE_ID} service name convention", () => {
-        expect(compose).toContain("openpalm-${INSTANCE_ID}");
+      it("uses static service name (no INSTANCE_ID)", () => {
+        expect(compose).not.toContain("${INSTANCE_ID}");
       });
 
-      it("uses openpalm-${INSTANCE_ID} container name", () => {
-        expect(compose).toMatch(/container_name:\s*openpalm-\$\{INSTANCE_ID\}/);
+      it("does not use container_name", () => {
+        expect(compose).not.toMatch(/container_name:/);
       });
 
-      it("references ${INSTANCE_DIR}/.env in env_file", () => {
-        expect(compose).toContain("${INSTANCE_DIR}/.env");
+      it("does not reference INSTANCE_DIR", () => {
+        expect(compose).not.toContain("${INSTANCE_DIR}");
       });
 
       it("joins a valid stack network", () => {
@@ -177,7 +174,7 @@ describe("registry compose.yml validation", () => {
 
       it("does not mount vault directory (single-file mounts allowed)", () => {
         // Directory-level vault mounts are a security violation — only admin gets full vault access.
-        // Single-file mounts like vault/user.env or vault/ov.conf are allowed.
+        // Single-file mounts like vault/user/ov.conf are allowed (the source must end with a filename).
         const lines = compose.split("\n");
         for (const line of lines) {
           if (line.match(/^\s*-\s+.*vault.*:/)) {
@@ -185,8 +182,9 @@ describe("registry compose.yml validation", () => {
             const match = line.match(/^\s*-\s+(.+?):/);
             if (match) {
               const source = match[1];
-              // Allow single-file vault mounts (vault/<filename> with no deeper nesting)
-              if (/vault\b/i.test(source) && !/vault\/[^/]+$/i.test(source)) {
+              // Allow single-file vault mounts (path ends with a file, i.e. has an extension or
+              // a non-directory final segment). Block bare vault/ or vault/<dir>/ mounts.
+              if (/vault\b/i.test(source) && !/vault\/.*\.[a-z]+$/i.test(source)) {
                 throw new Error(`Vault directory mount detected: ${line.trim()}`);
               }
             }
@@ -195,6 +193,8 @@ describe("registry compose.yml validation", () => {
       });
 
       it("does not mount docker socket", () => {
+        // admin component is exempt — docker-socket-proxy IS the docker socket accessor by design
+        if (id === "admin") return;
         expect(compose).not.toContain("/var/run/docker.sock");
       });
 
@@ -223,36 +223,21 @@ describe("registry .env.schema validation", () => {
         expect(entries.length).toBeGreaterThan(0);
       });
 
-      it("includes INSTANCE_ID identity variable", () => {
+      it("does not include INSTANCE_ID (removed)", () => {
         const names = entries.map((e) => e.variable);
-        expect(names).toContain("INSTANCE_ID");
+        expect(names).not.toContain("INSTANCE_ID");
       });
 
-      it("includes INSTANCE_DIR identity variable", () => {
+      it("does not include INSTANCE_DIR (removed)", () => {
         const names = entries.map((e) => e.variable);
-        expect(names).toContain("INSTANCE_DIR");
+        expect(names).not.toContain("INSTANCE_DIR");
       });
 
-      it("INSTANCE_ID is marked @required", () => {
-        const entry = entries.find((e) => e.variable === "INSTANCE_ID");
-        expect(entry).toBeDefined();
-        expect(entry!.annotations).toContain("@required");
-      });
-
-      it("INSTANCE_DIR is marked @required", () => {
-        const entry = entries.find((e) => e.variable === "INSTANCE_DIR");
-        expect(entry).toBeDefined();
-        expect(entry!.annotations).toContain("@required");
-      });
-
-      it("has at least one @required variable beyond identity vars", () => {
-        const requiredNonIdentity = entries.filter(
-          (e) =>
-            e.annotations.includes("@required") &&
-            e.variable !== "INSTANCE_ID" &&
-            e.variable !== "INSTANCE_DIR"
+      it("has at least one @required variable", () => {
+        const requiredEntries = entries.filter((e) =>
+          e.annotations.includes("@required")
         );
-        expect(requiredNonIdentity.length).toBeGreaterThan(0);
+        expect(requiredEntries.length).toBeGreaterThan(0);
       });
 
       it("variable names are valid (uppercase with underscores)", () => {
@@ -282,6 +267,8 @@ describe("registry component sensitive fields", () => {
 
   for (const id of componentIds) {
     it(`${id}: has at least one @sensitive field (channel secret)`, () => {
+      // ollama is a local inference server — no channel secret or API key needed
+      if (id === "ollama") return;
       const schema = readComponentFile(id, ".env.schema");
       const entries = parseEnvSchema(schema);
       const sensitiveEntries = entries.filter((e) =>
@@ -290,53 +277,6 @@ describe("registry component sensitive fields", () => {
       expect(sensitiveEntries.length).toBeGreaterThan(0);
     });
   }
-});
-
-// ── Index File Tests ─────────────────────────────────────────────────────
-
-describe("registry index.json", () => {
-  const indexPath = join(REGISTRY_DIR, "index.json");
-
-  it("exists", () => {
-    expect(existsSync(indexPath)).toBe(true);
-  });
-
-  it("is valid JSON", () => {
-    const content = readFileSync(indexPath, "utf-8");
-    expect(() => JSON.parse(content)).not.toThrow();
-  });
-
-  it("has a components array", () => {
-    const index = JSON.parse(readFileSync(indexPath, "utf-8"));
-    expect(Array.isArray(index.components)).toBe(true);
-    expect(index.components.length).toBeGreaterThan(0);
-  });
-
-  it("every entry has id, name, and category", () => {
-    const index = JSON.parse(readFileSync(indexPath, "utf-8"));
-    for (const entry of index.components) {
-      expect(typeof entry.id).toBe("string");
-      expect(typeof entry.name).toBe("string");
-      expect(typeof entry.category).toBe("string");
-    }
-  });
-
-  it("index entries match actual component directories", () => {
-    const index = JSON.parse(readFileSync(indexPath, "utf-8"));
-    const indexIds = index.components.map((c: { id: string }) => c.id).sort();
-    const dirIds = listComponentDirs().sort();
-    expect(indexIds).toEqual(dirIds);
-  });
-
-  it("index names match compose.yml openpalm.name labels", () => {
-    const index = JSON.parse(readFileSync(indexPath, "utf-8"));
-    for (const entry of index.components) {
-      const compose = readComponentFile(entry.id, "compose.yml");
-      const nameMatch = compose.match(/openpalm\.name:\s*(.+)/);
-      expect(nameMatch).not.toBeNull();
-      expect(nameMatch![1].trim()).toBe(entry.name);
-    }
-  });
 });
 
 // ── Cross-Component Consistency Tests ────────────────────────────────────
@@ -361,6 +301,13 @@ describe("cross-component consistency", () => {
       const compose = readComponentFile(id, "compose.yml");
       const hasValidNetwork = compose.includes("channel_lan") || compose.includes("channel_public") || compose.includes("assistant_net");
       expect(hasValidNetwork).toBe(true);
+    }
+  });
+
+  it("no compose file uses INSTANCE_ID anywhere", () => {
+    for (const id of componentIds) {
+      const compose = readComponentFile(id, "compose.yml");
+      expect(compose).not.toContain("INSTANCE_ID");
     }
   });
 });

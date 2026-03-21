@@ -4,13 +4,8 @@
  */
 import type { ControlPlaneState } from "@openpalm/lib";
 import {
-  ensureCoreCaddyfile as _ensureCoreCaddyfile,
-  readCoreCaddyfile as _readCoreCaddyfile,
-  setCoreCaddyAccessScope as _setCoreCaddyAccessScope,
   ensureCoreCompose as _ensureCoreCompose,
   readCoreCompose as _readCoreCompose,
-  ensureOllamaCompose as _ensureOllamaCompose,
-  readOllamaCompose as _readOllamaCompose,
   ensureOpenCodeSystemConfig as _ensureOpenCodeSystemConfig,
   ensureCoreAutomations as _ensureCoreAutomations,
   ensureSecretsSchema as _ensureSecretsSchema,
@@ -22,27 +17,9 @@ import { viteAssets } from "./vite-asset-provider.js";
 
 // Pure re-exports (no provider needed)
 export {
-  PUBLIC_ACCESS_IMPORT,
-  LAN_ONLY_IMPORT,
-  detectAccessScope,
   ensureMemoryDir,
   refreshCoreAssets,
 } from "@openpalm/lib";
-
-// Wrapped functions (pre-inject Vite asset provider)
-export function ensureCoreCaddyfile(): string {
-  return _ensureCoreCaddyfile(viteAssets);
-}
-
-export function readCoreCaddyfile(): string {
-  return _readCoreCaddyfile(viteAssets);
-}
-
-export function setCoreCaddyAccessScope(
-  scope: "host" | "lan"
-): { ok: true } | { ok: false; error: string } {
-  return _setCoreCaddyAccessScope(scope, viteAssets);
-}
 
 export function ensureCoreCompose(): string {
   return _ensureCoreCompose(viteAssets);
@@ -50,14 +27,6 @@ export function ensureCoreCompose(): string {
 
 export function readCoreCompose(): string {
   return _readCoreCompose(viteAssets);
-}
-
-export function ensureOllamaCompose(): string {
-  return _ensureOllamaCompose(viteAssets);
-}
-
-export function readOllamaCompose(): string {
-  return _readOllamaCompose(viteAssets);
 }
 
 export function ensureOpenCodeSystemConfig(): void {

@@ -54,8 +54,8 @@ async function runVarlockLoad(
  * Validate the current live configuration files in place.
  *
  * Checks:
- * 1. vault/user.env against vault/user.env.schema
- * 2. vault/system.env against vault/system.env.schema
+ * 1. vault/user/user.env against vault/user.env.schema
+ * 2. vault/stack/stack.env against vault/system.env.schema
  */
 export async function validateProposedState(state: ControlPlaneState): Promise<{
   ok: boolean;
@@ -77,7 +77,7 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
 
   // Validate user.env
   const userEnvSchema = `${state.vaultDir}/user.env.schema`;
-  const userEnv = `${state.vaultDir}/user.env`;
+  const userEnv = `${state.vaultDir}/user/user.env`;
   if (existsSync(userEnvSchema) && existsSync(userEnv)) {
     try {
       await runVarlockLoad(userEnvSchema, userEnv);
@@ -91,7 +91,7 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
 
   // Validate system.env
   const systemEnvSchema = `${state.vaultDir}/system.env.schema`;
-  const systemEnv = `${state.vaultDir}/system.env`;
+  const systemEnv = `${state.vaultDir}/stack/stack.env`;
   if (existsSync(systemEnvSchema) && existsSync(systemEnv)) {
     try {
       await runVarlockLoad(systemEnvSchema, systemEnv);

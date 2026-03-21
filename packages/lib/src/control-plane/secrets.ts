@@ -1,8 +1,8 @@
 /**
  * Secrets and connection key management for the OpenPalm control plane.
  *
- * In v0.10.0, user secrets live in vault/user.env and system secrets
- * in vault/system.env. This module manages the user-editable vault file.
+ * In v0.10.0, user secrets live in vault/user/user.env and system secrets
+ * in vault/stack/stack.env. This module manages the user-editable vault file.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync } from "node:fs";
 import { randomBytes } from "node:crypto";
@@ -98,7 +98,7 @@ function mergeVaultEnvFile(path: string, updates: Record<string, string>, uncomm
 }
 
 function ensureSystemSecrets(state: ControlPlaneState): void {
-  const systemEnvPath = `${state.vaultDir}/system.env`;
+  const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
   const existing = existsSync(systemEnvPath) ? parseEnvFile(systemEnvPath) : {};
   const updates: Record<string, string> = {};
 
@@ -138,11 +138,13 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
 }
 
 /**
- * Ensure the vault/user.env file exists with defaults.
+ * Ensure the vault/user/user.env file exists with defaults.
  */
 export function ensureSecrets(state: ControlPlaneState): void {
   enforceVaultDirMode(state.vaultDir);
-  const userEnvPath = `${state.vaultDir}/user.env`;
+  mkdirSync(`${state.vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
+  mkdirSync(`${state.vaultDir}/user`, { recursive: true, mode: VAULT_DIR_MODE });
+  const userEnvPath = `${state.vaultDir}/user/user.env`;
   if (!existsSync(userEnvPath)) {
     const lines: string[] = [
       "# OpenPalm — User Configuration",
@@ -196,23 +198,23 @@ export function updateSecretsEnv(
   state: ControlPlaneState,
   updates: Record<string, string>
 ): void {
-  const userEnvPath = `${state.vaultDir}/user.env`;
+  const userEnvPath = `${state.vaultDir}/user/user.env`;
   if (!existsSync(userEnvPath)) {
-    throw new Error("vault/user.env does not exist — run setup first");
+    throw new Error("vault/user/user.env does not exist — run setup first");
   }
 
   mergeVaultEnvFile(userEnvPath, updates, true);
 }
 
 export function readSystemSecretsEnvFile(vaultDir: string): Record<string, string> {
-  return parseEnvFile(`${vaultDir}/system.env`);
+  return parseEnvFile(`${vaultDir}/stack/stack.env`);
 }
 
 export function updateSystemSecretsEnv(
   state: ControlPlaneState,
   updates: Record<string, string>
 ): void {
-  const systemEnvPath = `${state.vaultDir}/system.env`;
+  const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
   enforceVaultDirMode(state.vaultDir);
   if (!existsSync(systemEnvPath)) {
     ensureSystemSecrets(state);
@@ -221,7 +223,7 @@ export function updateSystemSecretsEnv(
 }
 
 export function readSecretsEnvFile(vaultDir: string): Record<string, string> {
-  const parsed = parseEnvFile(`${vaultDir}/user.env`);
+  const parsed = parseEnvFile(`${vaultDir}/user/user.env`);
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed)) {
     if (ALLOWED_CONNECTION_KEYS.has(key)) result[key] = value;
@@ -241,8 +243,9 @@ export function patchSecretsEnvFile(
   }
   if (Object.keys(allowed).length === 0) return;
 
-  const userEnvPath = `${vaultDir}/user.env`;
+  const userEnvPath = `${vaultDir}/user/user.env`;
   enforceVaultDirMode(vaultDir);
+  mkdirSync(`${vaultDir}/user`, { recursive: true, mode: VAULT_DIR_MODE });
 
   let existingContent = "";
   try {
@@ -270,12 +273,12 @@ export function maskConnectionValue(key: string, value: string): string {
 // ── Secrets Loading ────────────────────────────────────────────────────
 
 /**
- * Load secrets from vault/user.env.
+ * Load secrets from vault/user/user.env.
  * Accepts vaultDir for explicit path, or resolves from home.ts.
  */
 export function loadSecretsEnvFile(vaultDir?: string): Record<string, string> {
   const base = vaultDir ?? resolveVaultDir();
-  const parsed = parseEnvFile(`${base}/user.env`);
+  const parsed = parseEnvFile(`${base}/user/user.env`);
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed)) {
     if (/^[A-Z0-9_]+$/.test(key)) result[key] = value;

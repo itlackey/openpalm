@@ -1,0 +1,25 @@
+# Addon: Voice — voice-driven conversational interface (STT -> LLM -> TTS)
+services:
+  voice:
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: "8186"
+      CHANNEL_NAME: "Voice"
+      GUARDIAN_URL: http://guardian:8080
+      CHANNEL_PACKAGE: "@openpalm/channel-voice"
+    networks: [channel_lan, assistant_net]
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8186' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      openpalm.name: Voice
+      openpalm.description: Voice-driven conversational interface with speech-to-text and text-to-speech
+      openpalm.icon: mic
+      openpalm.category: messaging
+      openpalm.healthcheck: http://voice:8186/health

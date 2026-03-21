@@ -68,7 +68,8 @@ echo ""
 echo "=== Step 2: Clean .dev/ state ==="
 
 # Vault — reset secrets
-echo "# OpenPalm secrets" >.dev/vault/user.env
+mkdir -p .dev/vault/user .dev/vault/stack
+echo "# OpenPalm secrets" >.dev/vault/user/user.env
 
 # Data — remove everything except models (HF cache)
 rm -f .dev/data/memory/default_config.json
@@ -83,18 +84,16 @@ rm -f .dev/config/assistant/opencode.json
 # Config — remove generated compose so dev-setup seeds a fresh one
 rm -f .dev/config/components/core.yml
 
-# Root-owned data from containers (qdrant, caddy, opencode logs)
+# Root-owned data from containers (qdrant, opencode logs)
 docker run --rm -v "$ROOT_DIR/.dev/data/memory:/c" alpine sh -c \
 	"rm -rf /c/qdrant" 2>/dev/null || true
-docker run --rm -v "$ROOT_DIR/.dev/data/caddy:/c" alpine sh -c \
-	"rm -rf /c/data /c/config" 2>/dev/null || true
 docker run --rm -v "$ROOT_DIR/.dev/data/opencode:/c" alpine sh -c \
 	"find /c -user root -delete" 2>/dev/null || true
 docker run --rm -v "$ROOT_DIR/.dev/config/assistant:/c" alpine sh -c \
 	"find /c -user root -delete" 2>/dev/null || true
 
 # Vault — reset system env
-rm -f .dev/vault/system.env
+rm -f .dev/vault/stack/stack.env
 
 # State — remove setup markers and audit logs
 rm -f .dev/state/setup-complete
@@ -112,12 +111,12 @@ echo "=== Step 3: Seed config ==="
 # Clear admin tokens from seeded secrets so admin starts in first-boot state.
 # dev-setup seeds them for convenience, but the e2e test needs to verify the wizard sets them.
 # The user.env uses `export ` prefix, so match both with and without.
-sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/vault/user.env
-sed -i 's/^\(export \)\{0,1\}OP_ADMIN_TOKEN=.*/\1OP_ADMIN_TOKEN=/' .dev/vault/user.env
+sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/vault/user/user.env
+sed -i 's/^\(export \)\{0,1\}OP_ADMIN_TOKEN=.*/\1OP_ADMIN_TOKEN=/' .dev/vault/user/user.env
 
 # Use a dev-only image tag so the wizard's pull step doesn't overwrite locally
 # built images with remote ones (e.g. an older Python-based memory:latest).
-sed -i 's/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=dev/' .dev/vault/system.env
+sed -i 's/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=dev/' .dev/vault/stack/stack.env
 
 pass "Config seeded (admin token cleared, image tag set to dev)"
 
@@ -169,8 +168,8 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 	docker compose --project-directory . \
 		-f .dev/config/components/core.yml \
 		-f compose.dev.yaml \
-		--env-file .dev/vault/system.env \
-		--env-file .dev/vault/user.env \
+		--env-file .dev/vault/stack/stack.env \
+		--env-file .dev/vault/user/user.env \
 		--profile admin \
 		--project-name openpalm build 2>&1 | tail -5
 	pass "All images built"
@@ -185,8 +184,8 @@ echo "=== Step 5: Start stack ==="
 docker compose --project-directory . \
 	-f .dev/config/components/core.yml \
 	-f compose.dev.yaml \
-	--env-file .dev/vault/system.env \
-	--env-file .dev/vault/user.env \
+	--env-file .dev/vault/stack/stack.env \
+	--env-file .dev/vault/user/user.env \
 	--profile admin \
 	--project-name openpalm up -d 2>&1 | tail -10
 
@@ -268,7 +267,7 @@ SETUP_OK=$(echo "$SETUP_RESULT" | python3 -c "import sys,json; print(json.load(s
 if [ "$SETUP_OK" = "True" ]; then
 	pass "Setup wizard completed"
 else
-	# Caddy restart may drop the connection — check if setup completed anyway
+	# Connection may have dropped — check if setup completed anyway
 	sleep 5
 	SETUP_COMPLETE2=$(curl -s http://localhost:8100/admin/setup -H "x-admin-token: dev-admin-token" 2>/dev/null |
 		python3 -c "import sys,json; print(json.load(sys.stdin)['setupComplete'])" 2>/dev/null || echo "unknown")
@@ -312,8 +311,8 @@ fi
 docker compose --project-directory . \
 	-f .dev/config/components/core.yml \
 	-f compose.dev.yaml \
-	--env-file .dev/vault/system.env \
-	--env-file .dev/vault/user.env \
+	--env-file .dev/vault/stack/stack.env \
+	--env-file .dev/vault/user/user.env \
 	--profile admin \
 	--project-name openpalm up -d --force-recreate --no-deps assistant
 
@@ -322,7 +321,6 @@ echo ""
 echo "=== Step 8: Wait for all containers healthy ==="
 
 # Poll until all services are ready (max 120s)
-# Healthchecked services must be "healthy"; caddy (no healthcheck) must be "running".
 HEALTHCHECK_SVCS="admin memory assistant guardian docker-socket-proxy"
 MAX_WAIT=120
 ELAPSED=0
@@ -337,12 +335,6 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
 			break
 		fi
 	done
-	# Also check caddy is running
-	caddy_status=$(docker inspect --format '{{.State.Status}}' "openpalm-caddy-1" 2>/dev/null || echo "missing")
-	if [ "$caddy_status" != "running" ]; then
-		ALL_UP=false
-		WAIT_MSG="caddy is $caddy_status"
-	fi
 	if [ "$ALL_UP" = "true" ]; then
 		break
 	fi
@@ -362,15 +354,6 @@ for svc in $HEALTHCHECK_SVCS; do
 	fi
 done
 
-# Caddy doesn't have a healthcheck — check if running
-caddy_status=$(docker inspect --format '{{.State.Status}}' "openpalm-caddy-1" 2>/dev/null || echo "missing")
-if [ "$caddy_status" = "running" ]; then
-	pass "caddy is running"
-else
-	fail "caddy status: $caddy_status"
-	ALL_HEALTHY=false
-fi
-
 # ── Step 9: Check for root-owned files ───────────────────────────────
 echo ""
 echo "=== Step 9: Root-owned file check ==="
@@ -385,7 +368,7 @@ fi
 # ── Step 10: Verify user.env ─────────────────────────────────────────
 echo ""
 echo "=== Step 10: Verify user.env ==="
-secrets=".dev/vault/user.env"
+secrets=".dev/vault/user/user.env"
 
 check_env_val() {
 	local key="$1" expected="$2"

@@ -24,20 +24,23 @@ export async function ensureDirectoryTree(
     join(configDir, 'components'),
     join(configDir, 'automations'),
     join(configDir, 'assistant'),
+    join(configDir, 'assistant', 'tools'),
+    join(configDir, 'assistant', 'plugins'),
+    join(configDir, 'assistant', 'skills'),
+    join(configDir, 'guardian'),
     vaultDir,
+    join(vaultDir, 'user'),
+    join(vaultDir, 'stack'),
+    join(vaultDir, 'stack', 'addons'),
     dataDir,
     join(dataDir, 'assistant'),
     join(dataDir, 'admin'),
     join(dataDir, 'memory'),
     join(dataDir, 'guardian'),
-    join(dataDir, 'caddy'),
-    join(dataDir, 'caddy', 'data'),
-    join(dataDir, 'caddy', 'channels'),
-    join(dataDir, 'caddy', 'channels', 'public'),
-    join(dataDir, 'caddy', 'channels', 'lan'),
     join(dataDir, 'stash'),
-    join(dataDir, 'bin'),
-    join(dataDir, 'workspace'),
+    join(homeDir, 'stack'),
+    join(homeDir, 'stack', 'addons'),
+    join(homeDir, 'backups'),
     join(homeDir, 'logs'),
     join(homeDir, 'logs', 'opencode'),
     cacheDir,
@@ -71,7 +74,7 @@ async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
  */
 export async function fetchAsset(repoRef: string, filename: string): Promise<string> {
   const releaseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${repoRef}/${filename}`;
-  const rawUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${repoRef}/assets/${filename}`;
+  const rawUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${repoRef}/${filename}`;
 
   try {
     const releaseResponse = await fetchWithRetry(releaseUrl);

@@ -2,7 +2,6 @@ import { tool } from "@opencode-ai/plugin";
 import { adminFetch } from "./lib.ts";
 
 const CORE_SERVICES = new Set([
-  "caddy",
   "memory",
   "assistant",
   "guardian",
@@ -24,7 +23,7 @@ export default tool({
       .string()
       .optional()
       .describe(
-        "Comma-separated service names (guardian, memory, admin, caddy, assistant, channel-*). Omit for all services."
+        "Comma-separated service names (guardian, memory, admin, assistant, channel-*). Omit for all services."
       ),
     tail: tool.schema
       .string()
@@ -43,7 +42,7 @@ export default tool({
         if (!isValidService(svc)) {
           return JSON.stringify({
             error: true,
-            message: `Invalid service '${svc}'. Valid: caddy, memory, assistant, guardian, admin, or channel-* pattern.`,
+            message: `Invalid service '${svc}'. Valid: memory, assistant, guardian, admin, or channel-* pattern.`,
           });
         }
       }

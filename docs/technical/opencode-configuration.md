@@ -34,8 +34,9 @@ no `npm install` in the Dockerfile.
 ## Build-Time: Image Contents
 
 The `core/assistant/Dockerfile` installs OpenCode, Bun, and system tools.
-It does **not** bake in plugins, config files, or persona — those are
-mounted at runtime.
+Core config files (`opencode.jsonc`, `AGENTS.md`) live in `core/assistant/`
+in the repo and are baked into the image at build time. The image also
+includes the entrypoint script and varlock shell wrapper.
 
 ```dockerfile
 FROM node:lts-trixie
@@ -98,7 +99,7 @@ Five non-overlapping mounts, each at a distinct container path:
 | `OPENCODE_ENABLE_SSH` | `0` (default) | SSH server (disabled by default, toggleable) |
 | `HOME` | `/home/opencode` | User home for dotfiles, caches, and user config |
 | `OP_ADMIN_API_URL` | `http://admin:8100` | Admin API base URL (used by admin tools) |
-| `OP_ADMIN_TOKEN` | *(from secrets.env)* | Bearer token for Admin API calls |
+| `OP_ADMIN_TOKEN` | *(from vault/stack/stack.env)* | Bearer token for Admin API calls |
 | `MEMORY_API_URL` | `http://memory:8765` | Memory service URL (used by memory tools and plugin) |
 | `MEMORY_USER_ID` | `default_user` | User identifier for memory operations |
 
@@ -169,7 +170,7 @@ These call the Admin API at `$OP_ADMIN_API_URL` using
 | `admin-lifecycle` | Start, stop, and restart stack services |
 | `admin-containers` | List running containers and their status |
 | `admin-config` | Read and update the network access scope |
-| `admin-artifacts` | Inspect generated compose/caddy/env artifacts |
+| `admin-artifacts` | Inspect generated compose/env artifacts |
 | `admin-audit` | Query the admin audit log |
 | `admin-channels` | List installed and available channels |
 

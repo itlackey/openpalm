@@ -14,11 +14,10 @@ import {
 import {
   appendAudit,
   getInstanceDetail,
-  removeCaddyRoute,
   buildComposeFileList,
   buildEnvFiles,
 } from "$lib/server/control-plane.js";
-import { composeStop, checkDocker, caddyReload } from "$lib/server/docker.js";
+import { composeStop, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 
 const logger = createLogger("api-instance-stop");
@@ -56,17 +55,6 @@ export const POST: RequestHandler = async (event) => {
   if (!result.ok) {
     appendAudit(state, actor, "instances.stop", { instanceId, error: result.stderr }, false, requestId, callerType);
     return errorResponse(500, "docker_error", `Failed to stop instance: ${result.stderr}`, { instanceId }, requestId);
-  }
-
-  // Remove Caddy route on stop
-  const caddyRemoved = removeCaddyRoute(state.homeDir, instanceId);
-  if (caddyRemoved) {
-    await caddyReload(state.configDir, {
-      files: buildComposeFileList(state),
-      envFiles: buildEnvFiles(state),
-    }).catch((err) => {
-      logger.warn("caddy reload failed after stop", { requestId, instanceId, error: String(err) });
-    });
   }
 
   state.services[containerName] = "stopped";

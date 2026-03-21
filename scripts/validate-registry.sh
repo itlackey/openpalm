@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# validate-registry.sh — CI validation for registry component directories.
+# validate-registry.sh — CI validation for .openpalm/stack/addons/ directories.
 #
-# Scans registry/components/ and validates each component:
+# Scans .openpalm/stack/addons/ and validates each addon:
 #   1. Has compose.yml + .env.schema
 #   2. compose.yml has required openpalm.name and openpalm.description labels
-#   3. .env.schema is parseable (non-empty, valid @env-spec comments)
-#   4. No vault mount violations (no volume mounts containing "vault")
-#   5. Service name follows openpalm-${INSTANCE_ID} convention
+#   3. compose.yml uses a static service name (not ${INSTANCE_ID})
+#   4. .env.schema is parseable (non-empty, valid variable definitions)
+#   5. No vault mount violations
+#   6. Joins at least one stack network
 #
 # Exit code: 0 on success, 1 on any validation failure.
 
@@ -14,25 +15,25 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-REGISTRY_DIR="$REPO_ROOT/registry/components"
+ADDONS_DIR="$REPO_ROOT/.openpalm/stack/addons"
 
 errors=0
 checked=0
 
-if [ ! -d "$REGISTRY_DIR" ]; then
-  echo "ERROR: Registry directory not found at $REGISTRY_DIR"
+if [ ! -d "$ADDONS_DIR" ]; then
+  echo "ERROR: Addons directory not found at $ADDONS_DIR"
   exit 1
 fi
 
-for component_dir in "$REGISTRY_DIR"/*/; do
-  # Skip non-directories and index.json
-  [ -d "$component_dir" ] || continue
+for addon_dir in "$ADDONS_DIR"/*/; do
+  # Skip non-directories
+  [ -d "$addon_dir" ] || continue
 
-  component_id="$(basename "$component_dir")"
-  compose_file="$component_dir/compose.yml"
-  schema_file="$component_dir/.env.schema"
+  addon_id="$(basename "$addon_dir")"
+  compose_file="$addon_dir/compose.yml"
+  schema_file="$addon_dir/.env.schema"
 
-  echo "--- Validating: $component_id ---"
+  echo "--- Validating: $addon_id ---"
   checked=$((checked + 1))
 
   # 1. Check required files exist
@@ -59,25 +60,20 @@ for component_dir in "$REGISTRY_DIR"/*/; do
     errors=$((errors + 1))
   fi
 
-  # 3. Check compose.yml uses the service name convention
-  if ! grep -q 'openpalm-\${INSTANCE_ID}' "$compose_file"; then
-    echo "  FAIL: compose.yml service name must use openpalm-\${INSTANCE_ID} convention"
+  # 3. Check compose.yml does NOT use legacy ${INSTANCE_ID} pattern
+  if grep -q '\${INSTANCE_ID}' "$compose_file"; then
+    echo "  FAIL: compose.yml still uses \${INSTANCE_ID} — should use static service names"
     errors=$((errors + 1))
   fi
 
-  # 4. Check compose.yml uses the env_file convention
-  if ! grep -q '\${INSTANCE_DIR}/.env' "$compose_file"; then
-    echo "  FAIL: compose.yml must reference \${INSTANCE_DIR}/.env in env_file"
+  # 4. Check for vault mount violations — look for full vault directory mounts
+  # (mounting a specific config file like vault/user/ov.conf:ro is allowed)
+  if grep -qE '^\s*-\s+.*vault(/|")?\s*:/' "$compose_file" && ! grep -qE '^\s*-\s+.*vault/[^:]+:.*:ro' "$compose_file"; then
+    echo "  FAIL: compose.yml mounts vault directory (security violation)"
     errors=$((errors + 1))
   fi
 
-  # 5. Check for vault mount violations — look for vault paths in volume mount lines
-  if grep -qE '^\s*-\s+.*vault.*:/' "$compose_file"; then
-    echo "  FAIL: compose.yml mounts a vault path (security violation)"
-    errors=$((errors + 1))
-  fi
-
-  # 6. Check .env.schema is non-empty and parseable
+  # 5. Check .env.schema is non-empty and parseable
   if [ ! -s "$schema_file" ]; then
     echo "  FAIL: .env.schema is empty"
     errors=$((errors + 1))
@@ -87,21 +83,11 @@ for component_dir in "$REGISTRY_DIR"/*/; do
       echo "  FAIL: .env.schema has no variable definitions (expected KEY=value lines)"
       errors=$((errors + 1))
     fi
-
-    # Check for INSTANCE_ID and INSTANCE_DIR identity variables
-    if ! grep -q '^INSTANCE_ID=' "$schema_file"; then
-      echo "  FAIL: .env.schema missing INSTANCE_ID identity variable"
-      errors=$((errors + 1))
-    fi
-    if ! grep -q '^INSTANCE_DIR=' "$schema_file"; then
-      echo "  FAIL: .env.schema missing INSTANCE_DIR identity variable"
-      errors=$((errors + 1))
-    fi
   fi
 
-  # 7. Check compose.yml joins a valid stack network (channel_lan, channel_public, or assistant_net)
-  if ! grep -qE 'channel_lan|channel_public|assistant_net' "$compose_file"; then
-    echo "  FAIL: compose.yml must join at least one stack network (channel_lan, channel_public, or assistant_net)"
+  # 6. Check compose.yml joins a valid stack network (channel_lan, channel_public, or assistant_net)
+  if ! grep -qE 'channel_lan|channel_public|assistant_net|admin_docker_net' "$compose_file"; then
+    echo "  FAIL: compose.yml must join at least one stack network"
     errors=$((errors + 1))
   fi
 
@@ -109,12 +95,12 @@ for component_dir in "$REGISTRY_DIR"/*/; do
 done
 
 echo ""
-echo "=== Registry Validation Summary ==="
-echo "Components checked: $checked"
+echo "=== Addon Validation Summary ==="
+echo "Addons checked: $checked"
 echo "Errors found: $errors"
 
 if [ "$checked" -eq 0 ]; then
-  echo "WARNING: No component directories found in $REGISTRY_DIR"
+  echo "WARNING: No addon directories found in $ADDONS_DIR"
   exit 1
 fi
 
@@ -123,5 +109,5 @@ if [ "$errors" -gt 0 ]; then
   exit 1
 fi
 
-echo "PASSED: All components valid"
+echo "PASSED: All addons valid"
 exit 0

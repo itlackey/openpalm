@@ -6,8 +6,6 @@
  *   config/components/  — compose overlays
  *   data/assistant/     — OpenCode config
  *   config/automations/ — automation YAMLs
- *   data/caddy/         — Caddyfile
- *   data/admin/         — admin OpenCode config
  *   vault/              — env schemas
  */
 import { readFileSync } from "node:fs";
@@ -25,18 +23,6 @@ export class FilesystemAssetProvider implements CoreAssetProvider {
     return this.read("config/components/core.yml");
   }
 
-  caddyfile(): string {
-    return this.read("data/caddy/Caddyfile");
-  }
-
-  ollamaCompose(): string {
-    return this.read("config/components/ollama.yml");
-  }
-
-  adminCompose(): string {
-    return this.read("config/components/admin.yml");
-  }
-
   agentsMd(): string {
     return this.read("data/assistant/AGENTS.md");
   }
@@ -45,16 +31,12 @@ export class FilesystemAssetProvider implements CoreAssetProvider {
     return this.read("data/assistant/opencode.jsonc");
   }
 
-  adminOpencodeConfig(): string {
-    return this.read("data/admin/opencode.jsonc");
-  }
-
   secretsSchema(): string {
-    return this.read("vault/user.env.schema");
+    return this.read("vault/user/user.env.schema");
   }
 
   stackSchema(): string {
-    return this.read("vault/system.env.schema");
+    return this.read("vault/stack/stack.env.schema");
   }
 
   cleanupLogs(): string {

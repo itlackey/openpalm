@@ -1,14 +1,16 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { PROVIDER_KEY_MAP } from '../provider-constants.js';
+/**
+ * Connection profile CRUD operations — backed by stack.yaml.
+ *
+ * Replaces the old profiles.json approach. All connection and assignment
+ * data now lives in stack.yaml as the single source of truth.
+ */
 import type {
   CapabilityAssignments,
   CanonicalConnectionProfile,
   CanonicalConnectionsDocument,
   ConnectionKind,
 } from './types.js';
-
-const CONNECTIONS_DIRNAME = 'connections';
-const CONNECTION_PROFILES_FILENAME = 'profiles.json';
+import { readStackSpec, writeStackSpec, type StackSpec, type StackSpecConnection } from './stack-spec.js';
 
 const LOCAL_PROVIDERS = new Set(['ollama', 'lmstudio', 'model-runner']);
 const INSTACK_PROVIDERS = new Set(['ollama-instack']);
@@ -19,107 +21,121 @@ function normalizeConnectionKind(provider: string): ConnectionKind {
   return 'openai_compatible_remote';
 }
 
-export function getConnectionProfilesDir(configDir: string): string {
-  return `${configDir}/${CONNECTIONS_DIRNAME}`;
+// ── Conversion helpers ──────────────────────────────────────────────────
+
+function specConnectionToProfile(conn: StackSpecConnection): CanonicalConnectionProfile {
+  return {
+    id: conn.id,
+    name: conn.name,
+    kind: (conn.kind === 'ollama_stack' ? 'ollama_local' : conn.kind) as ConnectionKind,
+    provider: conn.provider,
+    baseUrl: conn.baseUrl,
+    auth: conn.auth.mode === 'api_key'
+      ? { mode: 'api_key' as const, apiKeySecretRef: conn.auth.apiKeySecretRef ?? '' }
+      : { mode: 'none' as const },
+  };
 }
 
-export function getConnectionProfilesPath(configDir: string): string {
-  return `${getConnectionProfilesDir(configDir)}/${CONNECTION_PROFILES_FILENAME}`;
+function profileToSpecConnection(profile: CanonicalConnectionProfile): StackSpecConnection {
+  return {
+    id: profile.id,
+    name: profile.name,
+    kind: normalizeConnectionKind(profile.provider) as StackSpecConnection['kind'],
+    provider: profile.provider,
+    baseUrl: profile.baseUrl,
+    auth: profile.auth.mode === 'api_key'
+      ? { mode: 'api_key' as const, apiKeySecretRef: profile.auth.apiKeySecretRef }
+      : { mode: 'none' as const },
+  };
+}
+
+function specToAssignments(spec: StackSpec): CapabilityAssignments {
+  return {
+    llm: { connectionId: spec.assignments.llm.connectionId, model: spec.assignments.llm.model },
+    embeddings: {
+      connectionId: spec.assignments.embeddings.connectionId,
+      model: spec.assignments.embeddings.model,
+      embeddingDims: spec.assignments.embeddings.embeddingDims,
+    },
+    reranking: spec.assignments.reranking ? {
+      enabled: spec.assignments.reranking.enabled,
+      connectionId: spec.assignments.reranking.connectionId,
+      mode: spec.assignments.reranking.mode,
+      model: spec.assignments.reranking.model,
+      topK: spec.assignments.reranking.topK,
+      topN: spec.assignments.reranking.topN,
+    } : undefined,
+    tts: spec.assignments.tts ? {
+      enabled: spec.assignments.tts.enabled,
+      connectionId: spec.assignments.tts.connectionId,
+      model: spec.assignments.tts.model,
+      voice: spec.assignments.tts.voice,
+      format: spec.assignments.tts.format,
+    } : undefined,
+    stt: spec.assignments.stt ? {
+      enabled: spec.assignments.stt.enabled,
+      connectionId: spec.assignments.stt.connectionId,
+      model: spec.assignments.stt.model,
+      language: spec.assignments.stt.language,
+    } : undefined,
+  };
 }
 
 // ── Validation helpers ──────────────────────────────────────────────────
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-function isValidProfile(value: unknown): value is CanonicalConnectionProfile {
-  if (!isRecord(value)) return false;
-  if (!isNonEmptyString(value.id)) return false;
-  if (!isNonEmptyString(value.name)) return false;
-  if (value.kind !== 'openai_compatible_remote' && value.kind !== 'openai_compatible_local' && value.kind !== 'ollama_local') return false;
-  if (!isNonEmptyString(value.provider)) return false;
-  if (typeof value.baseUrl !== 'string') return false;
-  if (!isRecord(value.auth)) return false;
-  if (value.auth.mode !== 'api_key' && value.auth.mode !== 'none') return false;
-  if (value.auth.mode === 'api_key' && !isNonEmptyString(value.auth.apiKeySecretRef)) return false;
-  return true;
-}
-
-function isValidConnectionDocument(value: unknown): value is CanonicalConnectionsDocument {
-  if (!isRecord(value)) return false;
-  if (value.version !== 1) return false;
-  if (!Array.isArray(value.profiles) || value.profiles.length === 0) return false;
-  if (!isRecord(value.assignments)) return false;
-
-  if (!value.profiles.every(isValidProfile)) return false;
-
-  const llm = value.assignments.llm;
-  const embeddings = value.assignments.embeddings;
-  if (!isRecord(llm) || !isRecord(embeddings)) return false;
-  if (!isNonEmptyString(llm.connectionId) || !isNonEmptyString(llm.model)) return false;
-  if (!isNonEmptyString(embeddings.connectionId) || !isNonEmptyString(embeddings.model)) return false;
-  const embeddingDims = embeddings.embeddingDims;
-  if (
-    embeddingDims !== undefined
-    && (typeof embeddingDims !== 'number' || !Number.isInteger(embeddingDims) || embeddingDims <= 0)
-  ) {
-    return false;
-  }
-
-  return true;
-}
-
 // ── Read / Write ────────────────────────────────────────────────────────
+
+function readOrDefaultSpec(configDir: string): StackSpec {
+  const spec = readStackSpec(configDir);
+  if (spec) return spec;
+  return {
+    version: 1,
+    connections: [],
+    assignments: {
+      llm: { connectionId: '', model: '' },
+      embeddings: { connectionId: '', model: '', embeddingDims: undefined },
+      memory: {
+        llm: { connectionId: '', model: '' },
+        embeddings: { connectionId: '', model: '' },
+        vectorStore: { provider: 'sqlite-vec', collectionName: 'memory', dbPath: '/data/memory.db' },
+      },
+    },
+    addons: [],
+  };
+}
+
+export function readConnectionProfilesDocument(configDir: string): CanonicalConnectionsDocument {
+  const spec = readOrDefaultSpec(configDir);
+  return {
+    version: 1,
+    profiles: spec.connections.map(specConnectionToProfile),
+    assignments: specToAssignments(spec),
+  };
+}
 
 export function writeConnectionProfilesDocument(
   configDir: string,
   document: CanonicalConnectionsDocument
 ): void {
-  const dir = getConnectionProfilesDir(configDir);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(
-    getConnectionProfilesPath(configDir),
-    JSON.stringify(document, null, 2) + '\n'
-  );
+  const spec = readOrDefaultSpec(configDir);
+  spec.connections = document.profiles.map(profileToSpecConnection);
+  // Update assignments from document
+  spec.assignments.llm = { connectionId: document.assignments.llm.connectionId, model: document.assignments.llm.model };
+  spec.assignments.embeddings = {
+    connectionId: document.assignments.embeddings.connectionId,
+    model: document.assignments.embeddings.model,
+    embeddingDims: document.assignments.embeddings.embeddingDims,
+  };
+  // Unconditionally update optional assignments — undefined clears them
+  spec.assignments.reranking = document.assignments.reranking;
+  spec.assignments.tts = document.assignments.tts;
+  spec.assignments.stt = document.assignments.stt;
+  writeStackSpec(configDir, spec);
 }
-
-export function readConnectionProfilesDocument(configDir: string): CanonicalConnectionsDocument {
-  const path = getConnectionProfilesPath(configDir);
-  if (!existsSync(path)) {
-    return {
-      version: 1,
-      profiles: [],
-      assignments: {
-        llm: { connectionId: '', model: '' },
-        embeddings: { connectionId: '', model: '' },
-      },
-    };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(readFileSync(path, 'utf8')) as unknown;
-  } catch {
-    throw new Error('connections/profiles.json is invalid JSON');
-  }
-
-  if (!isValidConnectionDocument(parsed)) {
-    throw new Error('connections/profiles.json is invalid: expected CanonicalConnectionsDocument v1');
-  }
-
-  return parsed;
-}
-
-export function ensureConnectionProfilesStore(configDir: string): void {
-  mkdirSync(getConnectionProfilesDir(configDir), { recursive: true });
-}
-
-// ── Multi-connection write ──────────────────────────────────────────────
 
 export type WriteConnectionsInput = {
   profiles: Array<{
@@ -198,12 +214,6 @@ function validateAssignments(
   assignments: CapabilityAssignments,
   profileIds: Set<string>
 ): MutationResult<CapabilityAssignments> {
-  if (!isRecord(assignments.llm)) {
-    return { ok: false, status: 400, message: 'assignments.llm must be an object' };
-  }
-  if (!isRecord(assignments.embeddings)) {
-    return { ok: false, status: 400, message: 'assignments.embeddings must be an object' };
-  }
   if (!isNonEmptyString(assignments.llm.connectionId) || !isNonEmptyString(assignments.llm.model)) {
     return { ok: false, status: 400, message: 'assignments.llm requires connectionId and model' };
   }
@@ -314,4 +324,17 @@ export function saveCapabilityAssignments(
     assignments,
   });
   return { ok: true, value: assignments };
+}
+
+// Legacy compat — these are no-ops now since stack.yaml is always the backing store
+export function getConnectionProfilesDir(configDir: string): string {
+  return configDir;
+}
+
+export function getConnectionProfilesPath(configDir: string): string {
+  return `${configDir}/stack.yaml`;
+}
+
+export function ensureConnectionProfilesStore(_configDir: string): void {
+  // No-op — stack.yaml is created by writeStackSpec
 }

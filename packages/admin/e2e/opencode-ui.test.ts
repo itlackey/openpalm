@@ -103,11 +103,11 @@ test.describe('Admin OpenCode Web UI', () => {
 	});
 });
 
-test.describe('No default Caddy ingress', () => {
+test.describe('No default legacy ingress', () => {
 	const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 	test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
 
-	test('OpenCode is not exposed through the legacy Caddy port by default', async ({ request }) => {
+	test('OpenCode is not exposed through the legacy ingress port by default', async ({ request }) => {
 		await expect(
 			request.get('http://localhost:8080/opencode/config', { timeout: 5000 })
 		).rejects.toThrow(/ECONNREFUSED|connect|socket/i);

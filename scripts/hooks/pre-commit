@@ -3,20 +3,21 @@
 # Install via: ./scripts/install-hooks.sh
 #
 # Strategy:
-#   1. If varlock is available and secrets.env exists, use varlock scan.
+#   1. If varlock is available and vault/user.env exists, use varlock scan.
 #      This resolves actual @sensitive values and searches for them —
 #      catches ANY secret format, not just known prefixes.
 #   2. Fall back to grep pattern matching for provider-specific key formats
-#      when varlock is not installed or no secrets.env exists.
+#      when varlock is not installed or no vault/user.env exists.
 
 set -e
 
 # ── Try varlock scan first ──────────────────────────────────────────
 VARLOCK_BIN=""
-STATE_HOME="${OP_STATE_HOME:-${HOME}/.local/state/openpalm}"
-CONFIG_HOME="${OP_CONFIG_HOME:-${HOME}/.config/openpalm}"
-SECRETS_ENV="${CONFIG_HOME}/secrets.env"
-SCHEMA="${STATE_HOME}/artifacts/secrets.env.schema"
+OP_HOME_RESOLVED="${OP_HOME:-${HOME}/.openpalm}"
+STATE_HOME="${OP_STATE_HOME:-${OP_HOME_RESOLVED}}"
+VAULT_HOME="${OP_HOME_RESOLVED}/vault"
+SECRETS_ENV="${VAULT_HOME}/user.env"
+SCHEMA="${VAULT_HOME}/user.env.schema"
 
 # Check common locations for the varlock binary
 for candidate in \
@@ -36,7 +37,7 @@ if [ -n "$VARLOCK_BIN" ] && [ -f "$SECRETS_ENV" ]; then
   # of whether the key matches a known prefix pattern.
   #
   # varlock expects --path <dir>/ with .env + .env.schema inside.
-  # Stage secrets.env as .env in a temp dir to match the convention used
+  # Stage user.env as .env in a temp dir to match the convention used
   # by the CLI and admin validation.
   TMP_ENV_DIR="$(mktemp -d 2>/dev/null || true)"
   if [ -n "$TMP_ENV_DIR" ] && [ -d "$TMP_ENV_DIR" ]; then

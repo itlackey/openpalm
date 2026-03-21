@@ -20,8 +20,7 @@ Install admin's dependencies at the **workspace root** (`/workspace/`) so
 /workspace/
 ├── node_modules/        ← npm install puts deps here (real dirs, no symlinks)
 ├── packages/admin/          ← SvelteKit source + vite.config.ts
-├── assets/
-└── registry/
+└── stack/
 ```
 
 Key details:

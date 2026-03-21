@@ -21,7 +21,7 @@ Docker image used by all registry-backed channel adapters. It bundles the `@open
 
 ## Registry usage
 
-Each channel in `registry/channels/` uses this image:
+Each channel in `registry/components/` uses this image:
 
 ```yaml
 services:

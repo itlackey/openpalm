@@ -78,15 +78,15 @@ describe('cli main', () => {
       if (url.endsWith('/health')) {
         return new Response('ok', { status: 200 });
       }
-      if (url.includes('/docker-compose.yml')) {
+      if (url.includes('/core.compose.yml') || url.includes('/compose.yml')) {
         return new Response('services: {}\n', { status: 200 });
       }
-      if (url.includes('/Caddyfile')) {
-        return new Response(':80 {\n}\n', { status: 200 });
-      }
-      if (url.includes('/user.env.schema') || url.includes('/system.env.schema')) {
+      if (url.includes('.env.schema')) {
         return new Response('KEY=string\n', { status: 200 });
       }
+      if (url.includes('/AGENTS.md')) return new Response('# Agents\n', { status: 200 });
+      if (url.includes('/opencode.jsonc')) return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
+      if (url.endsWith('.yml')) return new Response('name: test\nschedule: daily\n', { status: 200 });
       return new Response('', { status: 503 });
     }) as typeof fetch;
     console.log = mock(() => {}) as typeof console.log;
@@ -120,15 +120,15 @@ describe('cli main', () => {
       if (url.endsWith('/health')) {
         throw new TypeError('fetch failed');
       }
-      if (url.includes('/docker-compose.yml')) {
+      if (url.includes('/core.compose.yml') || url.includes('/compose.yml')) {
         return new Response('services: {}\n', { status: 200 });
       }
-      if (url.includes('/Caddyfile')) {
-        return new Response(':80 {\n}\n', { status: 200 });
-      }
-      if (url.includes('/user.env.schema') || url.includes('/system.env.schema')) {
+      if (url.includes('.env.schema')) {
         return new Response('KEY=string\n', { status: 200 });
       }
+      if (url.includes('/AGENTS.md')) return new Response('# Agents\n', { status: 200 });
+      if (url.includes('/opencode.jsonc')) return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
+      if (url.endsWith('.yml')) return new Response('name: test\nschedule: daily\n', { status: 200 });
       return new Response('', { status: 503 });
     }) as typeof fetch;
     console.log = mock(() => {}) as typeof console.log;
@@ -168,15 +168,15 @@ describe('cli main', () => {
         throw new TypeError('fetch failed');
       }
       // Respond to version-pinned asset URLs
-      if (url.includes('/docker-compose.yml')) {
+      if (url.includes('/core.compose.yml') || url.includes('/compose.yml')) {
         return new Response('services: {}\n', { status: 200 });
       }
-      if (url.includes('/Caddyfile')) {
-        return new Response(':80 {\n}\n', { status: 200 });
-      }
-      if (url.includes('/user.env.schema') || url.includes('/system.env.schema')) {
+      if (url.includes('.env.schema')) {
         return new Response('KEY=string\n', { status: 200 });
       }
+      if (url.includes('/AGENTS.md')) return new Response('# Agents\n', { status: 200 });
+      if (url.includes('/opencode.jsonc')) return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
+      if (url.endsWith('.yml')) return new Response('name: test\nschedule: daily\n', { status: 200 });
       return new Response('', { status: 503 });
     }) as typeof fetch;
     console.log = mock(() => {}) as typeof console.log;
@@ -186,14 +186,10 @@ describe('cli main', () => {
       await main(['install', '--no-start', '--force', '--no-open']);
 
       // Verify that assets were fetched using the version-pinned ref, not 'main'
-      const composeUrl = fetchedUrls.find((u) => u.includes('/docker-compose.yml'));
+      const composeUrl = fetchedUrls.find((u) => u.includes('/core.compose.yml'));
       expect(composeUrl).toBeDefined();
       expect(composeUrl).toContain(expectedRef);
       expect(composeUrl).not.toContain('/main/');
-
-      const caddyUrl = fetchedUrls.find((u) => u.includes('/Caddyfile'));
-      expect(caddyUrl).toBeDefined();
-      expect(caddyUrl).toContain(expectedRef);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
@@ -317,7 +313,8 @@ describe('scan command', () => {
     chmodSync(fakeVarlock, 0o755);
 
     writeFileSync(join(vaultDir, 'user.env.schema'), 'ADMIN_TOKEN\n');
-    writeFileSync(join(vaultDir, 'user.env'), 'ADMIN_TOKEN=testtoken\n');
+    mkdirSync(join(vaultDir, 'user'), { recursive: true });
+    writeFileSync(join(vaultDir, 'user', 'user.env'), 'ADMIN_TOKEN=testtoken\n');
 
     const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
@@ -341,9 +338,9 @@ describe('scan command', () => {
     const artifactsDir = join(tempHome, 'data', 'artifacts');
     const vaultDir = join(tempHome, 'vault');
     mkdirSync(artifactsDir, { recursive: true });
-    mkdirSync(vaultDir, { recursive: true });
+    mkdirSync(join(vaultDir, 'user'), { recursive: true });
 
-    writeFileSync(join(vaultDir, 'user.env'), 'ADMIN_TOKEN=testtoken\n');
+    writeFileSync(join(vaultDir, 'user', 'user.env'), 'ADMIN_TOKEN=testtoken\n');
 
     const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
@@ -486,7 +483,7 @@ describe('secrets.env generation', () => {
 
     try {
       await ensureSecrets(vaultDir);
-      const content = await Bun.file(join(vaultDir, 'user.env')).text();
+      const content = await Bun.file(join(vaultDir, 'user', 'user.env')).text();
       expect(content).toContain('export OP_ADMIN_TOKEN=');
       expect(content).toContain('export OPENAI_API_KEY=');
       expect(content).toContain('export MEMORY_USER_ID=');

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
  * Exercises the COMPLETE message flow that real channel adapters use:
  *   1. Build a ChannelPayload (userId, channel, text, nonce, timestamp)
  *   2. HMAC-SHA256 sign it with the channel secret
- *   3. POST to guardian /channel/inbound (via Caddy proxy)
+ *   3. POST to guardian /channel/inbound (via gateway proxy)
  *   4. Guardian verifies HMAC, checks nonce/replay, checks rate limit
  *   5. Guardian forwards to the assistant (OpenCode)
  *   6. Response flows back: assistant -> guardian -> test client
@@ -32,14 +32,14 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../..');
-const STACK_ENV_PATH = resolve(REPO_ROOT, '.dev/state/artifacts/stack.env');
+const STACK_ENV_PATH = resolve(REPO_ROOT, '.dev/vault/stack/stack.env');
 
 /**
- * Guardian URL: Caddy proxies /guardian/* to guardian:8080 (stripping prefix).
+ * Guardian URL: Gateway proxies /guardian/* to guardian:8080 (stripping prefix).
  * The ingress port defaults to 8080 via OP_INGRESS_PORT in stack.env.
  */
-const CADDY_BASE = `http://localhost:${process.env.OP_INGRESS_PORT ?? '8080'}`;
-const GUARDIAN_URL = `${CADDY_BASE}/guardian`;
+const GATEWAY_BASE = `http://localhost:${process.env.OP_INGRESS_PORT ?? '8080'}`;
+const GUARDIAN_URL = `${GATEWAY_BASE}/guardian`;
 
 const TEST_CHANNEL = 'e2etest';
 const TEST_SECRET = `e2e-test-secret-${Date.now()}`;
@@ -132,7 +132,7 @@ test.describe('Channel -> Guardian -> Assistant Pipeline', () => {
 
 	// ── Group 1: Guardian reachability (no LLM needed) ──────────────
 
-	test('guardian health check responds via Caddy proxy', async ({ request }) => {
+	test('guardian health check responds via gateway proxy', async ({ request }) => {
 		const res = await request.get(`${GUARDIAN_URL}/health`, { timeout: 10_000 });
 		expect(res.ok(), `Guardian health check failed: ${res.status()}`).toBeTruthy();
 		const body = await res.json();

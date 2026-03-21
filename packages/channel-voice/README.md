@@ -78,15 +78,15 @@ Server-side speech synthesis. If not configured, the browser's `speechSynthesis`
 
 ## Docker Compose
 
-The voice channel runs in the unified `openpalm/channel` image. Add the registry overlay to your stack:
+The voice channel runs in the unified `openpalm/channel` image. Install it from the registry:
 
 ```bash
-# Copy the overlay
-cp registry/channels/voice.yml ~/.config/openpalm/channels/
-
-# Restart the stack
-docker compose -f docker-compose.yml -f channels/voice.yml up -d
+# Install via admin API
+curl -X POST http://localhost:8100/api/registry/voice/install \
+  -H "x-admin-token: $ADMIN_TOKEN"
 ```
+
+The component definition lives at `registry/components/voice/compose.yml`.
 
 The web UI is served at the channel's port (default 8186).
 

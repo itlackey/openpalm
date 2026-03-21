@@ -29,14 +29,9 @@ const savedEnv: Record<string, string | undefined> = {};
 
 function createStubAssetProvider(): CoreAssetProvider {
   return {
-    coreCompose: () => "services:\n  caddy:\n    image: caddy:latest\n",
-    caddyfile: () =>
-      ":80 {\n  @denied not remote_ip 127.0.0.0/8 ::1\n  respond @denied 403\n}\n",
-    ollamaCompose: () => "services:\n  ollama:\n    image: ollama/ollama\n",
-    adminCompose: () => "services:\n  admin:\n    image: openpalm/admin\n",
+    coreCompose: () => "services:\n  assistant:\n    image: assistant:latest\n",
     agentsMd: () => "# Agents\n",
     opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
-    adminOpencodeConfig: () => '{"$schema":"https://opencode.ai/config.json","plugin":["@openpalm/admin-tools"]}\n',
     secretsSchema: () => "ADMIN_TOKEN=string\n",
     stackSchema: () => "OP_IMAGE_TAG=string\n",
     cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
@@ -65,9 +60,6 @@ function makeSetupDirs(): void {
     join(dataDir, "memory"),
     join(dataDir, "assistant"),
     join(dataDir, "guardian"),
-    join(dataDir, "caddy"),
-    join(dataDir, "caddy", "data"),
-    join(dataDir, "caddy", "channels"),
     join(dataDir, "stash"),
     join(dataDir, "workspace"),
     logsDir,
@@ -76,9 +68,11 @@ function makeSetupDirs(): void {
     mkdirSync(dir, { recursive: true });
   }
 
-  writeFileSync(join(vaultDir, "system.env"), "OP_SETUP_COMPLETE=false\n");
+  mkdirSync(join(vaultDir, "stack"), { recursive: true });
+  mkdirSync(join(vaultDir, "user"), { recursive: true });
+  writeFileSync(join(vaultDir, "stack", "stack.env"), "OP_SETUP_COMPLETE=false\n");
   writeFileSync(
-    join(vaultDir, "user.env"),
+    join(vaultDir, "user", "user.env"),
     [
       "# OpenPalm Secrets",
       "export OP_ADMIN_TOKEN=",
@@ -256,12 +250,12 @@ describe("setup wizard server integration", () => {
       expect(data.ok).toBe(true);
       expect(result.ok).toBe(true);
 
-      // Verify vault/system.env was written with the admin token
-      const systemEnvContent = readFileSync(join(vaultDir, "system.env"), "utf-8");
+      // Verify vault/stack/stack.env was written with the admin token
+      const systemEnvContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
       expect(systemEnvContent).toContain("integration-test-token-123");
 
-      // Verify vault/user.env was written with owner info
-      const userEnvContent = readFileSync(join(vaultDir, "user.env"), "utf-8");
+      // Verify vault/user/user.env was written with owner info
+      const userEnvContent = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
       expect(userEnvContent).toContain("OWNER_NAME=Integration Test");
 
       // Verify memory config was written
@@ -272,21 +266,13 @@ describe("setup wizard server integration", () => {
       expect(memConfig.mem0.embedder.config.model).toBe("nomic-embed-text");
       expect(memConfig.mem0.vector_store.config.embedding_model_dims).toBe(768);
 
-      // Verify connection profiles were written
-      const profilesPath = join(configDir, "connections", "profiles.json");
-      expect(existsSync(profilesPath)).toBe(true);
-      const profiles = JSON.parse(readFileSync(profilesPath, "utf-8"));
-      expect(profiles.profiles).toHaveLength(1);
-      expect(profiles.profiles[0].provider).toBe("ollama");
-      expect(profiles.assignments.llm.model).toBe("qwen2.5-coder:3b");
+      // Verify stack.yaml was written with connections
+      const specPath = join(configDir, "stack.yaml");
+      expect(existsSync(specPath)).toBe(true);
 
       // Verify staged compose artifact exists
       const stagedCompose = join(configDir, "components", "core.yml");
       expect(existsSync(stagedCompose)).toBe(true);
-
-      // Verify openpalm.yaml stack spec was written
-      const specPath = join(configDir, "openpalm.yaml");
-      expect(existsSync(specPath)).toBe(true);
     } finally {
       stop();
     }
@@ -363,9 +349,9 @@ describe("setup wizard server integration", () => {
 
       // Set to pending
       updateDeployStatus([
-        { service: "caddy", status: "pending", label: "Caddy" },
         { service: "memory", status: "pending", label: "Memory" },
         { service: "assistant", status: "pending", label: "Assistant" },
+        { service: "guardian", status: "pending", label: "Guardian" },
       ]);
 
       const pendingRes = await fetch(`http://localhost:${serverPort}/api/setup/deploy-status`);
@@ -398,7 +384,7 @@ describe("setup wizard server integration", () => {
 
     try {
       updateDeployStatus([
-        { service: "caddy", status: "pulling", label: "Caddy" },
+        { service: "assistant", status: "pulling", label: "Assistant" },
         { service: "memory", status: "error", label: "Memory" },
       ]);
 
@@ -410,9 +396,9 @@ describe("setup wizard server integration", () => {
         deployStatus: Array<{ service: string; status: string }>;
       };
 
-      const caddy = data.deployStatus.find((e) => e.service === "caddy");
+      const assistant = data.deployStatus.find((e) => e.service === "assistant");
       const memory = data.deployStatus.find((e) => e.service === "memory");
-      expect(caddy?.status).toBe("running");
+      expect(assistant?.status).toBe("running");
       expect(memory?.status).toBe("error"); // Error entries stay as-is
     } finally {
       stop();
@@ -458,7 +444,7 @@ describe("setup wizard server integration", () => {
       ]);
 
       // Simulate deploy error
-      setDeployError("caddy failed to start");
+      setDeployError("assistant failed to start");
 
       // Retry should be allowed (not blocked by "already complete")
       const retryRes = await fetch(`http://localhost:${serverPort}/api/setup/complete`, {

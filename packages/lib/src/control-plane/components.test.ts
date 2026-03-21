@@ -27,7 +27,6 @@ function writeComponentDir(
   opts: {
     compose?: string;
     schema?: string;
-    caddy?: string;
   } = {}
 ): string {
   const dir = join(baseDir, name);
@@ -45,10 +44,6 @@ services:
 `;
   writeFileSync(join(dir, "compose.yml"), compose);
   writeFileSync(join(dir, ".env.schema"), opts.schema ?? `# ${name} schema\nTEST_VAR=default\n`);
-
-  if (opts.caddy) {
-    writeFileSync(join(dir, ".caddy"), opts.caddy);
-  }
 
   return dir;
 }
@@ -100,7 +95,6 @@ describe("isReservedName", () => {
 
   test("recognizes optional service names", () => {
     expect(isReservedName("admin")).toBe(true);
-    expect(isReservedName("caddy")).toBe(true);
     expect(isReservedName("docker-socket-proxy")).toBe(true);
   });
 
@@ -304,7 +298,7 @@ describe("discoverComponents", () => {
     expect(discord.schemaPath).toContain(".env.schema");
   });
 
-  test("discovers components from registry/catalog", () => {
+  test("discovers components from data/catalog", () => {
     const openpalmHome = join(tempDir, "home");
     const catalogDir = join(openpalmHome, "data", "catalog");
     mkdirSync(catalogDir, { recursive: true });
@@ -445,26 +439,6 @@ services:
     expect(components).toHaveLength(0);
   });
 
-  test("detects .caddy presence", () => {
-    const builtinDir = join(tempDir, "builtin");
-    const openpalmHome = join(tempDir, "home");
-    mkdirSync(builtinDir, { recursive: true });
-    mkdirSync(join(openpalmHome, "data", "catalog"), { recursive: true });
-
-    writeComponentDir(builtinDir, "with-caddy", {
-      caddy: "@test path /test\nhandle @test { reverse_proxy test:3000 }\n",
-    });
-
-    writeComponentDir(builtinDir, "without-caddy");
-
-    const components = discoverComponents(openpalmHome, builtinDir);
-    const withCaddy = components.find((c) => c.id === "with-caddy")!;
-    const withoutCaddy = components.find((c) => c.id === "without-caddy")!;
-
-    expect(withCaddy.caddyPath).not.toBeNull();
-    expect(withoutCaddy.caddyPath).toBeNull();
-  });
-
   test("returns empty array when no sources exist", () => {
     const openpalmHome = join(tempDir, "empty-home");
     const components = discoverComponents(openpalmHome);
@@ -581,7 +555,7 @@ services:
     expect(result.errors.some((e) => e.includes("vault"))).toBe(true);
   });
 
-  test("allows vault/user.env mount", () => {
+  test("allows vault/user/user.env mount", () => {
     const dir = join(tempDir, "vault-user");
     mkdirSync(dir, { recursive: true });
     writeFileSync(
@@ -592,9 +566,9 @@ services:
     image: ok:latest
     labels:
       openpalm.name: "OK"
-      openpalm.description: "Only mounts vault/user.env"
+      openpalm.description: "Only mounts vault/user/user.env"
     volumes:
-      - \${OP_HOME}/vault/user.env:/app/user.env:ro
+      - \${OP_HOME}/vault/user/user.env:/app/user.env:ro
 `
     );
 
