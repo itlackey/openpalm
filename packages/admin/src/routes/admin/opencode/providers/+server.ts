@@ -4,6 +4,7 @@ import {
   getOpenCodeProviders,
   getOpenCodeProviderAuth,
 } from '$lib/opencode/client.server.js';
+import { sanitizeOpenCodeModels } from '$lib/opencode/provider-models.js';
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -15,16 +16,20 @@ export const GET: RequestHandler = async (event) => {
     getOpenCodeProviderAuth(),
   ]);
 
-  const result = providers.map((p) => ({
-    id: p.id,
-    name: p.name ?? p.id,
-    env: Array.isArray(p.env) ? p.env : [],
-    // Provider is "connected" if it has auth methods configured for it
-    // Never reference p.key directly — it may contain a resolved secret
-    connected: Boolean(authMethods[p.id as string]?.length),
-    modelCount: p.models && typeof p.models === 'object' ? Object.keys(p.models as object).length : 0,
-    authMethods: authMethods[p.id as string] ?? [],
-  }));
+  const result = providers.map((p) => {
+    const models = sanitizeOpenCodeModels(p.models, p.id);
+    return {
+      id: p.id,
+      name: p.name ?? p.id,
+      env: Array.isArray(p.env) ? p.env : [],
+      // Provider is "connected" if it has auth methods configured for it
+      // Never reference p.key directly — it may contain a resolved secret
+      connected: Boolean(authMethods[p.id as string]?.length),
+      modelCount: models.length,
+      models,
+      authMethods: authMethods[p.id as string] ?? [],
+    };
+  });
 
   return jsonResponse(200, { providers: result }, requestId);
 };

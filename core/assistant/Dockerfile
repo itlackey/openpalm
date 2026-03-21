@@ -107,9 +107,9 @@ RUN mkdir -p /usr/local/etc/varlock && mkdir -p /etc/opencode
 COPY .openpalm/vault/redact.env.schema /usr/local/etc/varlock/.env.schema
 COPY core/assistant/opencode /etc/opencode
 
-EXPOSE 3800 22
+EXPOSE 4096 22
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-  CMD bash -c 'echo > /dev/tcp/localhost/${OPENCODE_PORT:-3800}' || exit 1
+  CMD bash -c 'echo > /dev/tcp/localhost/${OPENCODE_PORT:-4096}' || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/opencode-entrypoint.sh"]

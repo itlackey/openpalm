@@ -1,6 +1,7 @@
 import type { RequestHandler } from './$types';
 import { requireAdmin, jsonResponse, getRequestId } from '$lib/server/helpers.js';
 import { proxyToOpenCode } from '$lib/opencode/client.server.js';
+import { sanitizeOpenCodeModels } from '$lib/opencode/provider-models.js';
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -19,19 +20,7 @@ export const GET: RequestHandler = async (event) => {
     return jsonResponse(200, { models: [] }, requestId);
   }
 
-  const models = Object.values(provider.models).map((m) => {
-    const model = m as Record<string, unknown>;
-    return {
-      id: model.id,
-      name: model.name ?? model.id,
-      family: model.family ?? '',
-      providerID: model.providerID ?? providerId,
-      status: model.status ?? 'active',
-      capabilities: model.capabilities ?? {},
-      cost: model.cost ?? {},
-      limit: model.limit ?? {},
-    };
-  });
+  const models = sanitizeOpenCodeModels(provider.models, providerId);
 
   return jsonResponse(200, { models }, requestId);
 };

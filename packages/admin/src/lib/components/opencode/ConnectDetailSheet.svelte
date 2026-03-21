@@ -24,14 +24,35 @@
   let oauthInstructions = $state('');
   let pollToken = $state('');
   let polling = $state(false);
+  let connectedTimeout: ReturnType<typeof setTimeout> | null = $state(null);
 
   let selectedMethod = $derived(provider.authMethods[selectedMethodIndex]);
+
+  function clearConnectedTimeout() {
+    if (connectedTimeout !== null) {
+      clearTimeout(connectedTimeout);
+      connectedTimeout = null;
+    }
+  }
+
+  function scheduleConnected() {
+    clearConnectedTimeout();
+    connectedTimeout = setTimeout(() => {
+      connectedTimeout = null;
+      onConnected();
+    }, 2000);
+  }
 
   // Stop the poll loop if the sheet is closed externally (e.g. onClose without cancelPolling).
   $effect(() => {
     if (!open) {
       polling = false;
+      clearConnectedTimeout();
     }
+
+    return () => {
+      clearConnectedTimeout();
+    };
   });
 
   async function handleSubmit() {
@@ -65,7 +86,7 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Failed to save');
         success = 'Connected successfully!';
-        setTimeout(onConnected, 2000);
+        scheduleConnected();
       } else if (selectedMethod.type === 'oauth') {
         const res = await fetch(
           `/admin/opencode/providers/${encodeURIComponent(provider.id)}/auth`,
@@ -109,7 +130,7 @@
         if (data.status === 'complete') {
           success = 'Authorization successful!';
           polling = false;
-          setTimeout(onConnected, 2000);
+          scheduleConnected();
           return;
         }
         if (data.status === 'error') {
@@ -132,10 +153,27 @@
     pollToken = '';
     oauthUrl = '';
     oauthInstructions = '';
+    clearConnectedTimeout();
+  }
+
+  function handleBackClick() {
+    cancelPolling();
+    onBack();
+  }
+
+  function handleCloseClick() {
+    cancelPolling();
+    onClose();
   }
 </script>
 
-<ModalSheet {open} title="Connect {provider.name}" backLabel={provider.name} {onBack} {onClose}>
+<ModalSheet
+  {open}
+  title="Connect {provider.name}"
+  backLabel={provider.name}
+  onBack={handleBackClick}
+  onClose={handleCloseClick}
+>
   {#snippet children()}
     <div style="margin-bottom: var(--space-4)">
       <p
@@ -206,7 +244,7 @@
 
   {#snippet footer()}
     {#if !polling && !success}
-      <button class="btn btn-outline" type="button" onclick={onBack}>Cancel</button>
+      <button class="btn btn-outline" type="button" onclick={handleBackClick}>Cancel</button>
       <button
         class="btn btn-primary"
         type="button"

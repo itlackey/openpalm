@@ -262,6 +262,7 @@ export type OpenCodeProviderSummary = {
   connected: boolean;
   env: string[];
   modelCount: number;
+  models?: OpenCodeModelInfo[];
 };
 
 export type OpenCodeModelInfo = {
@@ -269,6 +270,7 @@ export type OpenCodeModelInfo = {
   name: string;
   family?: string;
   providerID: string;
+  status?: string;
   capabilities?: Record<string, unknown>;
 };
 

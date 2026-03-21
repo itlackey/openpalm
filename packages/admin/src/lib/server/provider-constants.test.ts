@@ -19,56 +19,63 @@ import {
   EMBEDDING_DIMS,
   mem0ProviderName,
   mem0BaseUrlConfig,
-} from "$lib/provider-constants.js";
+} from '$lib/provider-constants.js';
 
 // ── mem0ProviderName ──────────────────────────────────────────────────────
 
 describe("mem0ProviderName", () => {
   test("maps 'model-runner' to 'openai'", () => {
-    expect(mem0ProviderName("model-runner")).toBe("openai");
+    expect(mem0ProviderName('model-runner')).toBe('openai');
   });
 
   test("maps 'lmstudio' to 'lmstudio' (dedicated adapter, no response_format)", () => {
-    expect(mem0ProviderName("lmstudio")).toBe("lmstudio");
+    expect(mem0ProviderName('lmstudio')).toBe('lmstudio');
   });
 
   test("passes 'openai' through unchanged", () => {
-    expect(mem0ProviderName("openai")).toBe("openai");
+    expect(mem0ProviderName('openai')).toBe('openai');
   });
 
   test("maps 'ollama' to 'ollama' (dedicated adapter)", () => {
-    expect(mem0ProviderName("ollama")).toBe("ollama");
+    expect(mem0ProviderName('ollama')).toBe('ollama');
   });
 
   test("passes 'anthropic' through unchanged", () => {
-    expect(mem0ProviderName("anthropic")).toBe("anthropic");
+    expect(mem0ProviderName('anthropic')).toBe('anthropic');
   });
 
   test("passes unknown provider names through unchanged", () => {
-    expect(mem0ProviderName("some-future-provider")).toBe("some-future-provider");
+    expect(mem0ProviderName('some-future-provider')).toBe('some-future-provider');
   });
 });
 
 describe("mem0BaseUrlConfig", () => {
   test("uses openai_base_url for ollama with /v1 suffix", () => {
-    expect(mem0BaseUrlConfig("ollama", "http://localhost:11434/")).toEqual({
-      key: "openai_base_url",
-      value: "http://localhost:11434/v1",
+    expect(mem0BaseUrlConfig('ollama', 'http://localhost:11434/')).toEqual({
+      key: 'openai_base_url',
+      value: 'http://localhost:11434/v1',
     });
   });
 
   test("uses openai_base_url for openai-compatible providers with /v1 suffix", () => {
-    expect(mem0BaseUrlConfig("model-runner", "http://model-runner.docker.internal/engines")).toEqual({
-      key: "openai_base_url",
-      value: "http://model-runner.docker.internal/engines/v1",
+    expect(mem0BaseUrlConfig('model-runner', 'http://model-runner.docker.internal/engines')).toEqual({
+      key: 'openai_base_url',
+      value: 'http://model-runner.docker.internal/engines/v1',
     });
   });
 
   test("returns null for empty base url, maps any non-empty provider", () => {
-    expect(mem0BaseUrlConfig("anthropic", "")).toBeNull();
-    expect(mem0BaseUrlConfig("anthropic", "https://api.anthropic.com")).toEqual({
-      key: "openai_base_url",
-      value: "https://api.anthropic.com/v1",
+    expect(mem0BaseUrlConfig('anthropic', '')).toBeNull();
+    expect(mem0BaseUrlConfig('anthropic', 'https://api.anthropic.com')).toEqual({
+      key: 'openai_base_url',
+      value: 'https://api.anthropic.com/v1',
+    });
+  });
+
+  test('does not double-append /v1 when the base URL already includes it', () => {
+    expect(mem0BaseUrlConfig('openai', 'https://api.openai.com/v1')).toEqual({
+      key: 'openai_base_url',
+      value: 'https://api.openai.com/v1',
     });
   });
 });
@@ -79,38 +86,38 @@ describe("PROVIDER_LABELS", () => {
   test("has a label for every provider in LLM_PROVIDERS", () => {
     for (const provider of LLM_PROVIDERS) {
       expect(PROVIDER_LABELS).toHaveProperty(provider);
-      expect(typeof PROVIDER_LABELS[provider]).toBe("string");
+      expect(typeof PROVIDER_LABELS[provider]).toBe('string');
       expect(PROVIDER_LABELS[provider].length).toBeGreaterThan(0);
     }
   });
 
   test("label values are human-readable (not raw slugs)", () => {
     // Spot-check a few known labels
-    expect(PROVIDER_LABELS["openai"]).toBe("OpenAI");
-    expect(PROVIDER_LABELS["anthropic"]).toBe("Anthropic");
-    expect(PROVIDER_LABELS["model-runner"]).toBe("Docker Model Runner");
-    expect(PROVIDER_LABELS["lmstudio"]).toBe("LM Studio");
+    expect(PROVIDER_LABELS['openai']).toBe('OpenAI');
+    expect(PROVIDER_LABELS['anthropic']).toBe('Anthropic');
+    expect(PROVIDER_LABELS['model-runner']).toBe('Docker Model Runner');
+    expect(PROVIDER_LABELS['lmstudio']).toBe('LM Studio');
   });
 });
 
 // ── LOCAL_PROVIDER_HELP coverage ──────────────────────────────────────────
 
 describe("LOCAL_PROVIDER_HELP", () => {
-  const LOCAL_PROVIDERS = ["model-runner", "ollama", "lmstudio"] as const;
+  const LOCAL_PROVIDERS = ['model-runner', 'ollama', 'lmstudio'] as const;
 
   test("has help text for all local providers", () => {
     for (const provider of LOCAL_PROVIDERS) {
       expect(LOCAL_PROVIDER_HELP).toHaveProperty(provider);
-      expect(typeof LOCAL_PROVIDER_HELP[provider]).toBe("string");
+      expect(typeof LOCAL_PROVIDER_HELP[provider]).toBe('string');
       expect(LOCAL_PROVIDER_HELP[provider].length).toBeGreaterThan(0);
     }
   });
 
   test("help text contains actionable guidance", () => {
     // Each help string should mention how to add models
-    expect(LOCAL_PROVIDER_HELP["model-runner"]).toContain("docker model");
-    expect(LOCAL_PROVIDER_HELP["ollama"]).toContain("ollama pull");
-    expect(LOCAL_PROVIDER_HELP["lmstudio"]).toContain("LM Studio");
+    expect(LOCAL_PROVIDER_HELP['model-runner']).toContain('docker model');
+    expect(LOCAL_PROVIDER_HELP['ollama']).toContain('ollama pull');
+    expect(LOCAL_PROVIDER_HELP['lmstudio']).toContain('LM Studio');
   });
 });
 
@@ -118,22 +125,22 @@ describe("LOCAL_PROVIDER_HELP", () => {
 
 describe("PROVIDER_DEFAULT_URLS", () => {
   test("has a base URL for model-runner", () => {
-    expect(PROVIDER_DEFAULT_URLS["model-runner"]).toBeDefined();
-    expect(PROVIDER_DEFAULT_URLS["model-runner"]).toContain("model-runner");
+    expect(PROVIDER_DEFAULT_URLS['model-runner']).toBeDefined();
+    expect(PROVIDER_DEFAULT_URLS['model-runner']).toContain('model-runner');
   });
 
   test("has a base URL for lmstudio", () => {
-    expect(PROVIDER_DEFAULT_URLS["lmstudio"]).toBeDefined();
-    expect(PROVIDER_DEFAULT_URLS["lmstudio"]).toContain("1234");
+    expect(PROVIDER_DEFAULT_URLS['lmstudio']).toBeDefined();
+    expect(PROVIDER_DEFAULT_URLS['lmstudio']).toContain('1234');
   });
 
   test("has a base URL for ollama", () => {
-    expect(PROVIDER_DEFAULT_URLS["ollama"]).toBeDefined();
-    expect(PROVIDER_DEFAULT_URLS["ollama"]).toContain("11434");
+    expect(PROVIDER_DEFAULT_URLS['ollama']).toBeDefined();
+    expect(PROVIDER_DEFAULT_URLS['ollama']).toContain('11434');
   });
 
   test("cloud provider URLs use HTTPS", () => {
-    const cloudProviders = ["openai", "groq", "mistral", "together", "deepseek", "xai"];
+    const cloudProviders = ['openai', 'groq', 'mistral', 'together', 'deepseek', 'xai', 'google', 'huggingface'];
     for (const provider of cloudProviders) {
       if (PROVIDER_DEFAULT_URLS[provider]) {
         expect(PROVIDER_DEFAULT_URLS[provider]).toMatch(/^https:\/\//);
@@ -142,7 +149,7 @@ describe("PROVIDER_DEFAULT_URLS", () => {
   });
 
   test("local provider URLs use HTTP", () => {
-    const localProviders = ["model-runner", "ollama", "lmstudio"];
+    const localProviders = ['model-runner', 'ollama', 'lmstudio'];
     for (const provider of localProviders) {
       expect(PROVIDER_DEFAULT_URLS[provider]).toMatch(/^http:\/\//);
     }
@@ -153,17 +160,17 @@ describe("PROVIDER_DEFAULT_URLS", () => {
 
 describe("PROVIDER_KEY_MAP", () => {
   test("maps openai to OPENAI_API_KEY", () => {
-    expect(PROVIDER_KEY_MAP["openai"]).toBe("OPENAI_API_KEY");
+    expect(PROVIDER_KEY_MAP['openai']).toBe('OPENAI_API_KEY');
   });
 
   test("maps anthropic to ANTHROPIC_API_KEY", () => {
-    expect(PROVIDER_KEY_MAP["anthropic"]).toBe("ANTHROPIC_API_KEY");
+    expect(PROVIDER_KEY_MAP['anthropic']).toBe('ANTHROPIC_API_KEY');
   });
 
-  test("all values follow *_API_KEY naming convention", () => {
-    for (const [, envVar] of Object.entries(PROVIDER_KEY_MAP)) {
-      expect(envVar).toMatch(/_API_KEY$/);
-    }
+  test('maps additional supported providers', () => {
+    expect(PROVIDER_KEY_MAP.deepseek).toBe('DEEPSEEK_API_KEY');
+    expect(PROVIDER_KEY_MAP.together).toBe('TOGETHER_API_KEY');
+    expect(PROVIDER_KEY_MAP.huggingface).toBe('HF_TOKEN');
   });
 });
 
@@ -184,8 +191,9 @@ describe("EMBEDDING_DIMS", () => {
   });
 
   test("includes known OpenAI embedding models", () => {
-    expect(EMBEDDING_DIMS["openai/text-embedding-3-small"]).toBe(1536);
-    expect(EMBEDDING_DIMS["openai/text-embedding-3-large"]).toBe(3072);
+    expect(EMBEDDING_DIMS['openai/text-embedding-3-small']).toBe(1536);
+    expect(EMBEDDING_DIMS['openai/text-embedding-3-large']).toBe(3072);
+    expect(EMBEDDING_DIMS['google/text-embedding-004']).toBe(768);
   });
 });
 
@@ -199,12 +207,15 @@ describe("LLM_PROVIDERS", () => {
 
   test("includes both cloud and local providers", () => {
     // Cloud
-    expect(LLM_PROVIDERS).toContain("openai");
-    expect(LLM_PROVIDERS).toContain("anthropic");
+    expect(LLM_PROVIDERS).toContain('openai');
+    expect(LLM_PROVIDERS).toContain('anthropic');
     // Local
-    expect(LLM_PROVIDERS).toContain("model-runner");
-    expect(LLM_PROVIDERS).toContain("ollama");
-    expect(LLM_PROVIDERS).toContain("lmstudio");
+    expect(LLM_PROVIDERS).toContain('model-runner');
+    expect(LLM_PROVIDERS).toContain('ollama');
+    expect(LLM_PROVIDERS).toContain('lmstudio');
+    // Additional shared providers
+    expect(LLM_PROVIDERS).toContain('google');
+    expect(LLM_PROVIDERS).toContain('huggingface');
   });
 
   test("has no duplicate entries", () => {
