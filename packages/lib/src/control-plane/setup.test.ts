@@ -436,12 +436,12 @@ describe("performSetup", () => {
     expect(spec!.capabilities.embeddings.provider).toBe("openai");
   });
 
-  it("creates staged artifacts directory", async () => {
+  it("writes core compose file to stack/", async () => {
     const result = await performSetup(makeValidInput(), createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    // applyInstall should have written the compose file
-    const stagedCompose = join(configDir, "components", "core.yml");
+    // applyInstall should have written the compose file to stack/ (not config/components/)
+    const stagedCompose = join(homeDir, "stack", "core.compose.yml");
     expect(existsSync(stagedCompose)).toBe(true);
   });
 
@@ -1226,7 +1226,8 @@ describe("performSetupFromConfig", () => {
     const result = await performSetupFromConfig(makeValidConfig(), createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const stagedCompose = join(configDir, "components", "core.yml");
+    // compose file now lives in stack/ (not config/components/)
+    const stagedCompose = join(homeDir, "stack", "core.compose.yml");
     expect(existsSync(stagedCompose)).toBe(true);
   });
 });

@@ -2,14 +2,15 @@
  * Docker integration — executes real docker compose commands.
  *
  * This module shells out to `docker compose` for lifecycle operations.
- * It reads compose files from the config directory (config/components/)
- * and uses them for all operations.
+ * Compose file lists are always provided explicitly by callers; there is
+ * no default fallback to a config directory path.
  *
  * Security: All commands use execFile with argument arrays to prevent
  * command injection. No user input is ever interpolated into shell strings.
  */
 import { execFile, spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { parseEnvFile } from "./env.js";
 
 export type DockerResult = {
   ok: boolean;
@@ -18,28 +19,8 @@ export type DockerResult = {
   code: number;
 };
 
-/**
- * Parse a dotenv file into a key-value map.
- * Handles `KEY=value` lines; ignores comments and blank lines.
- */
-function parseEnvFile(path: string): Record<string, string> {
-  const vars: Record<string, string> = {};
-  try {
-    const content = readFileSync(path, "utf-8");
-    for (const line of content.split("\n")) {
-      let trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      trimmed = trimmed.replace(/^export\s+/, '');
-      const eqIdx = trimmed.indexOf("=");
-      if (eqIdx > 0) {
-        vars[trimmed.slice(0, eqIdx)] = trimmed.slice(eqIdx + 1);
-      }
-    }
-  } catch {
-    // File not readable — skip
-  }
-  return vars;
-}
+// Re-export so callers that import from this module can use it directly.
+export { parseEnvFile };
 
 /** Execute docker with an argument array — no shell interpolation. */
 function run(
@@ -65,9 +46,9 @@ function run(
   });
 }
 
-/** Get the compose file path from config directory */
-function composeFile(configDir: string): string {
-  return `${configDir}/components/core.yml`;
+/** Resolve the Docker Compose project name. Respects OP_PROJECT_NAME env var. */
+export function resolveComposeProjectName(): string {
+  return process.env.OP_PROJECT_NAME?.trim() || "openpalm";
 }
 
 /** Check if Docker is available */
@@ -112,9 +93,8 @@ export async function checkDockerCompose(): Promise<DockerResult> {
  * Build the `-f file1 -f file2 ...` args for docker compose.
  * Returns a flat array like ["-f", "path1", "-f", "path2"].
  */
-function composeFileArgs(configDir: string, files?: string[]): string[] {
-  const fileList = files ?? [composeFile(configDir)];
-  return fileList.flatMap((f) => ["-f", f]);
+function composeFileArgs(files: string[]): string[] {
+  return files.flatMap((f) => ["-f", f]);
 }
 
 /**
@@ -129,30 +109,72 @@ function pushEnvFileArgs(args: string[], envFiles?: string[]): void {
 
 /**
  * Build the common prefix args for all docker compose commands:
- *   docker compose -f <file> ... --project-name openpalm [--env-file ...]
+ *   docker compose -f <file> ... --project-name <name> [--env-file ...]
  */
-function buildComposeArgs(configDir: string, options: { files?: string[]; envFiles?: string[] } = {}): string[] {
-  const args = ["compose", ...composeFileArgs(configDir, options.files), "--project-name", "openpalm"];
+function buildComposeArgs(options: { files: string[]; envFiles?: string[] }): string[] {
+  const args = ["compose", ...composeFileArgs(options.files), "--project-name", resolveComposeProjectName()];
   pushEnvFileArgs(args, options.envFiles);
   return args;
 }
 
 /**
+ * Run `docker compose config` to validate compose file merge and variable substitution.
+ * Must be called before any lifecycle mutation (install/apply/update).
+ */
+export async function composePreflight(
+  options: { files: string[]; envFiles?: string[] }
+): Promise<DockerResult> {
+  const args = buildComposeArgs(options);
+  args.push("config", "--quiet");
+
+  const envOverrides: Record<string, string> = {};
+  for (const ef of options.envFiles ?? []) {
+    Object.assign(envOverrides, parseEnvFile(ef));
+  }
+
+  return run(args, undefined, 30_000, envOverrides);
+}
+
+/**
+ * Run `docker compose config --services` to get the resolved service list.
+ * Use this instead of filename-derived service inference.
+ */
+export async function composeConfigServices(
+  options: { files: string[]; envFiles?: string[] }
+): Promise<{ ok: boolean; services: string[] }> {
+  const args = buildComposeArgs(options);
+  args.push("config", "--services");
+
+  const envOverrides: Record<string, string> = {};
+  for (const ef of options.envFiles ?? []) {
+    Object.assign(envOverrides, parseEnvFile(ef));
+  }
+
+  const result = await run(args, undefined, 30_000, envOverrides);
+  if (!result.ok) return { ok: false, services: [] };
+
+  const services = result.stdout
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return { ok: true, services };
+}
+
+/**
  * Run `docker compose up -d` with the generated compose file(s).
- * Pass `files` to merge multiple compose overlays (e.g. core + channel files).
+ * Pass `files` to merge multiple compose overlays (e.g. core + addon files).
  */
 export async function composeUp(
-  configDir: string,
   options: {
-    files?: string[];
+    files: string[];
     profiles?: string[];
     services?: string[];
     envFiles?: string[];
     forceRecreate?: boolean;
     removeOrphans?: boolean;
-  } = {}
+  }
 ): Promise<DockerResult> {
-  const primaryFile = options.files?.[0] ?? composeFile(configDir);
+  const primaryFile = options.files[0];
   if (!existsSync(primaryFile)) {
     return {
       ok: false,
@@ -162,7 +184,7 @@ export async function composeUp(
     };
   }
 
-  const args = buildComposeArgs(configDir, options);
+  const args = buildComposeArgs(options);
 
   if (options.profiles) {
     for (const p of options.profiles) {
@@ -193,22 +215,21 @@ export async function composeUp(
     Object.assign(envOverrides, parseEnvFile(ef));
   }
 
-  return run(args, configDir, 300_000, envOverrides);
+  return run(args, undefined, 300_000, envOverrides);
 }
 
 /**
  * Run `docker compose down` to stop and remove containers.
  */
 export async function composeDown(
-  configDir: string,
   options: {
-    files?: string[];
+    files: string[];
     profiles?: string[];
     removeVolumes?: boolean;
     envFiles?: string[];
-  } = {}
+  }
 ): Promise<DockerResult> {
-  const primaryFile = options.files?.[0] ?? composeFile(configDir);
+  const primaryFile = options.files[0];
   if (!existsSync(primaryFile)) {
     return {
       ok: false,
@@ -218,7 +239,7 @@ export async function composeDown(
     };
   }
 
-  const args = buildComposeArgs(configDir, options);
+  const args = buildComposeArgs(options);
 
   if (options.profiles) {
     for (const p of options.profiles) {
@@ -232,18 +253,17 @@ export async function composeDown(
     args.push("-v");
   }
 
-  return run(args, configDir);
+  return run(args, undefined);
 }
 
 /**
  * Restart specific services.
  */
 export async function composeRestart(
-  configDir: string,
   services: string[],
-  options: { files?: string[]; envFiles?: string[] } = {}
+  options: { files: string[]; envFiles?: string[] }
 ): Promise<DockerResult> {
-  const primaryFile = options.files?.[0] ?? composeFile(configDir);
+  const primaryFile = options.files[0];
   if (!existsSync(primaryFile)) {
     return {
       ok: false,
@@ -253,79 +273,75 @@ export async function composeRestart(
     };
   }
 
-  const args = buildComposeArgs(configDir, options);
+  const args = buildComposeArgs(options);
   args.push("restart", ...services);
 
-  return run(args, configDir);
+  return run(args, undefined);
 }
 
 /**
  * Stop specific services.
  */
 export async function composeStop(
-  configDir: string,
   services: string[],
-  options: { files?: string[]; envFiles?: string[] } = {}
+  options: { files: string[]; envFiles?: string[] }
 ): Promise<DockerResult> {
-  const args = buildComposeArgs(configDir, options);
+  const args = buildComposeArgs(options);
   args.push("stop", ...services);
 
-  return run(args, configDir);
+  return run(args, undefined);
 }
 
 /**
  * Start specific services (must already be created).
  */
 export async function composeStart(
-  configDir: string,
   services: string[],
-  options: { files?: string[]; envFiles?: string[] } = {}
+  options: { files: string[]; envFiles?: string[] }
 ): Promise<DockerResult> {
-  const args = buildComposeArgs(configDir, options);
+  const args = buildComposeArgs(options);
   // Use up -d for specific services to ensure they're created
   args.push("up", "-d", ...services);
 
-  return run(args, configDir);
+  return run(args, undefined);
 }
 
 /**
  * Get the status of all containers in the project.
  */
 export async function composePs(
-  configDir: string,
-  options: { files?: string[]; envFiles?: string[] } = {}
+  options: { files: string[]; envFiles?: string[] }
 ): Promise<DockerResult> {
-  const primaryFile = options.files?.[0] ?? composeFile(configDir);
+  const primaryFile = options.files[0];
   if (!existsSync(primaryFile)) {
     // If no compose file, just list containers with the project label
     return run(
       [
         "ps",
         "--filter",
-        "label=com.docker.compose.project=openpalm",
+        `label=com.docker.compose.project=${resolveComposeProjectName()}`,
         "--format",
         "json"
       ],
-      configDir
+      undefined
     );
   }
 
-  const args = buildComposeArgs(configDir, options);
+  const args = buildComposeArgs(options);
   args.push("ps", "--format", "json");
 
-  return run(args, configDir);
+  return run(args, undefined);
 }
 
 /**
  * Get logs for specific services or all services.
  */
 export async function composeLogs(
-  configDir: string,
-  services?: string[],
-  tail = 100,
-  options: { files?: string[]; envFiles?: string[]; since?: string } = {}
+  services: string[] | undefined,
+  tail: number,
+  options: { files: string[]; envFiles?: string[]; since?: string }
 ): Promise<DockerResult> {
-  const args = buildComposeArgs(configDir, options);
+  const args = buildComposeArgs(options);
   args.push("logs", "--tail", String(tail));
 
   if (options.since) {
@@ -336,18 +352,17 @@ export async function composeLogs(
     args.push(...services);
   }
 
-  return run(args, configDir);
+  return run(args, undefined);
 }
 
 /**
  * Pull image for a single service.
  */
 export async function composePullService(
-  configDir: string,
   service: string,
-  options: { files?: string[]; envFiles?: string[] } = {}
+  options: { files: string[]; envFiles?: string[] }
 ): Promise<DockerResult> {
-  const args = buildComposeArgs(configDir, options);
+  const args = buildComposeArgs(options);
   args.push("pull", service);
 
   const envOverrides: Record<string, string> = {};
@@ -355,17 +370,16 @@ export async function composePullService(
     Object.assign(envOverrides, parseEnvFile(ef));
   }
 
-  return run(args, configDir, 300_000, envOverrides);
+  return run(args, undefined, 300_000, envOverrides);
 }
 
 /**
  * Pull latest images for all services.
  */
 export async function composePull(
-  configDir: string,
-  options: { files?: string[]; envFiles?: string[] } = {}
+  options: { files: string[]; envFiles?: string[] }
 ): Promise<DockerResult> {
-  const args = buildComposeArgs(configDir, options);
+  const args = buildComposeArgs(options);
   args.push("pull");
 
   const envOverrides: Record<string, string> = {};
@@ -373,20 +387,19 @@ export async function composePull(
     Object.assign(envOverrides, parseEnvFile(ef));
   }
 
-  return run(args, configDir, 300_000, envOverrides);
+  return run(args, undefined, 300_000, envOverrides);
 }
 
 /**
  * Get resource usage stats for all containers in the project.
  */
 export async function composeStats(
-  configDir: string,
-  options: { files?: string[]; envFiles?: string[] } = {}
+  options: { files: string[]; envFiles?: string[] }
 ): Promise<DockerResult> {
-  const args = buildComposeArgs(configDir, options);
+  const args = buildComposeArgs(options);
   args.push("stats", "--no-stream", "--format", "json");
 
-  return run(args, configDir);
+  return run(args, undefined);
 }
 
 /**
@@ -411,10 +424,9 @@ export async function getDockerEvents(
  * Fire-and-forget recreation of the admin container.
  */
 export function selfRecreateAdmin(
-  configDir: string,
-  options: { files?: string[]; envFiles?: string[] } = {}
+  options: { files: string[]; envFiles?: string[] }
 ): void {
-  const args = buildComposeArgs(configDir, options);
+  const args = buildComposeArgs(options);
   args.push("--profile", "admin", "up", "-d", "--force-recreate", "--remove-orphans", "admin");
 
   const envOverrides: Record<string, string> = {};
@@ -424,7 +436,6 @@ export function selfRecreateAdmin(
 
   try {
     const child = spawn("docker", args, {
-      cwd: configDir,
       stdio: "ignore",
       detached: true,
       env: { ...process.env, ...envOverrides }

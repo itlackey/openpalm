@@ -1,9 +1,9 @@
 import { defineCommand } from 'citty';
 import { runDockerCompose } from '../lib/docker.ts';
-import { ensureStagedState, fullComposeArgs } from '../lib/staging.ts';
+import { ensureValidState, fullComposeArgs } from '../lib/staging.ts';
 
 export async function runLogsAction(services: string[]): Promise<void> {
-  const state = await ensureStagedState();
+  const state = await ensureValidState();
   await runDockerCompose([...fullComposeArgs(state), 'logs', '--tail', '100', ...services]);
 }
 

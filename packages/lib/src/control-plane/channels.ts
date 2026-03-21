@@ -18,25 +18,28 @@ function isValidChannelName(name: string): boolean {
 // ── Channel Discovery ─────────────────────────────────────────────────
 
 /**
- * Discover installed channels by scanning config/components/ for channel-*.yml.
+ * Discover installed channels by scanning stack/addons/ for channel directories.
+ * A channel addon has a compose.yml in stack/addons/<name>/.
+ *
+ * @param configDir - The config directory (~/.openpalm/config). The stack
+ *   directory is derived from the parent (homeDir).
  */
 export function discoverChannels(configDir: string): ChannelInfo[] {
-  const componentsDir = `${configDir}/components`;
-  if (!existsSync(componentsDir)) return [];
+  const homeDir = configDir.replace(/\/config$/, '');
+  const addonsDir = `${homeDir}/stack/addons`;
+  if (!existsSync(addonsDir)) return [];
 
-  const files = readdirSync(componentsDir);
-  const channelYmls = files.filter((f) => f.startsWith("channel-") && f.endsWith(".yml"));
-
-  return channelYmls
-    .map((ymlFile) => {
-      // channel-chat.yml → chat
-      const name = ymlFile.replace(/^channel-/, "").replace(/\.yml$/, "");
-      return {
-        name,
-        hasRoute: false,
-        ymlPath: `${componentsDir}/${ymlFile}`,
-      };
+  const entries = readdirSync(addonsDir, { withFileTypes: true });
+  return entries
+    .filter((entry) => {
+      if (!entry.isDirectory()) return false;
+      return existsSync(`${addonsDir}/${entry.name}/compose.yml`);
     })
+    .map((entry) => ({
+      name: entry.name,
+      hasRoute: false,
+      ymlPath: `${addonsDir}/${entry.name}/compose.yml`,
+    }))
     .filter((ch) => isValidChannelName(ch.name));
 }
 
@@ -44,37 +47,40 @@ export function discoverChannels(configDir: string): ChannelInfo[] {
 
 /**
  * Check if a service name is allowed. Core services are always allowed.
- * Component services are allowed if a corresponding .yml exists in config/components/.
+ * Addon services are allowed if a compose.yml exists in stack/addons/<name>/.
  */
 export function isAllowedService(value: string, configDir?: string): boolean {
   if (!value || !value.trim() || value !== value.toLowerCase()) return false;
   if ((CORE_SERVICES as string[]).includes(value)) return true;
 
   if (configDir) {
-    if (value === "ollama") {
-      return existsSync(`${configDir}/components/ollama.yml`);
-    }
-    if (value === "admin" || value === "docker-socket-proxy") {
-      return existsSync(`${configDir}/components/admin.yml`);
-    }
+    const homeDir = configDir.replace(/\/config$/, '');
+    const addonsDir = `${homeDir}/stack/addons`;
+
+    // Check if addon exists directly in stack/addons/
+    if (existsSync(`${addonsDir}/${value}/compose.yml`)) return true;
+
+    // Also check for "channel-" prefixed services (e.g., channel-chat maps to chat addon)
     if (value.startsWith("channel-")) {
-      const ch = value.slice("channel-".length);
-      if (!isValidChannelName(ch)) return false;
-      return existsSync(`${configDir}/components/channel-${ch}.yml`);
+      const addonName = value.slice("channel-".length);
+      if (isValidChannelName(addonName)) {
+        return existsSync(`${addonsDir}/${addonName}/compose.yml`);
+      }
     }
   }
   return false;
 }
 
 /**
- * Check if a channel name is valid. Accepts any channel with a
- * compose overlay in config/components/.
+ * Check if a channel name is valid and installed.
+ * Accepts any channel with a compose.yml in stack/addons/<name>/.
  */
 export function isValidChannel(value: string, configDir?: string): boolean {
   if (!value || !value.trim()) return false;
   if (!isValidChannelName(value)) return false;
   if (configDir) {
-    return existsSync(`${configDir}/components/channel-${value}.yml`);
+    const homeDir = configDir.replace(/\/config$/, '');
+    return existsSync(`${homeDir}/stack/addons/${value}/compose.yml`);
   }
   return false;
 }

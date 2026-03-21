@@ -55,7 +55,7 @@ export const GET: RequestHandler = async (event) => {
   }
 
   const containerName = `openpalm-${instanceId}`;
-  const result = await composeLogs(state.configDir, [containerName], tail, {
+  const result = await composeLogs([containerName], tail, {
     files: buildComposeFileList(state),
     envFiles: buildEnvFiles(state),
     since: sinceParam ?? undefined,

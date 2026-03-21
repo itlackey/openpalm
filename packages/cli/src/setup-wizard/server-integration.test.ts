@@ -270,8 +270,8 @@ describe("setup wizard server integration", () => {
       const specPath = join(configDir, "stack.yaml");
       expect(existsSync(specPath)).toBe(true);
 
-      // Verify staged compose artifact exists
-      const stagedCompose = join(configDir, "components", "core.yml");
+      // Verify core compose artifact exists in stack/
+      const stagedCompose = join(homeDir, "stack", "core.compose.yml");
       expect(existsSync(stagedCompose)).toBe(true);
     } finally {
       stop();

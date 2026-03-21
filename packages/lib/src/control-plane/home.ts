@@ -80,7 +80,6 @@ export function ensureHomeDirs(): void {
   for (const dir of [
     // config/ — user-editable, non-secret
     `${home}/config`,
-    `${home}/config/components`,
     `${home}/config/automations`,
     `${home}/config/assistant`,
     `${home}/config/guardian`,

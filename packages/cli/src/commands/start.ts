@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty';
 import { runDockerCompose } from '../lib/docker.ts';
-import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
+import { ensureValidState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
 
 export default defineCommand({
   meta: {
@@ -25,7 +25,7 @@ export async function runStartAction(
 ): Promise<void> {
   if (services.length === 0) {
     // Stage artifacts and start all managed services (admin included if enabled)
-    const state = await ensureStagedState();
+    const state = await ensureValidState();
     const composeArgs = fullComposeArgs(state);
     const managedServices = buildManagedServiceNames(state);
     await runDockerCompose([...composeArgs, 'up', '-d', ...managedServices]);
@@ -34,7 +34,7 @@ export async function runStartAction(
 
   // Start specific services
   for (const service of services) {
-    const state = await ensureStagedState();
+    const state = await ensureValidState();
     const composeArgs = fullComposeArgs(state);
     await runDockerCompose([...composeArgs, 'up', '-d', service]);
   }

@@ -12,8 +12,8 @@ import {
   readCoreCompose as _readCoreCompose,
   ensureOpenCodeSystemConfig as _ensureOpenCodeSystemConfig,
   ensureCoreAutomations as _ensureCoreAutomations,
-  ensureSecretsSchema as _ensureSecretsSchema,
-  ensureStackSchema as _ensureStackSchema,
+  ensureUserEnvSchema as _ensureUserEnvSchema,
+  ensureSystemEnvSchema as _ensureSystemEnvSchema,
   resolveArtifacts as _resolveArtifacts,
   persistConfiguration as _persistConfiguration,
   applyInstall as _applyInstall,
@@ -44,12 +44,12 @@ export function ensureCoreAutomations(): void {
   _ensureCoreAutomations(viteAssets);
 }
 
-export function ensureSecretsSchema(): string {
-  return _ensureSecretsSchema(viteAssets);
+export function ensureUserEnvSchema(): string {
+  return _ensureUserEnvSchema(viteAssets);
 }
 
-export function ensureStackSchema(): string {
-  return _ensureStackSchema(viteAssets);
+export function ensureSystemEnvSchema(): string {
+  return _ensureSystemEnvSchema(viteAssets);
 }
 
 export function resolveArtifacts(state: ControlPlaneState): {
@@ -62,15 +62,15 @@ export function persistConfiguration(state: ControlPlaneState): void {
   _persistConfiguration(state, viteAssets);
 }
 
-export function applyInstall(state: ControlPlaneState): void {
-  _applyInstall(state, viteAssets);
+export async function applyInstall(state: ControlPlaneState): Promise<void> {
+  await _applyInstall(state, viteAssets);
 }
 
-export function applyUpdate(state: ControlPlaneState): { restarted: string[] } {
+export async function applyUpdate(state: ControlPlaneState): Promise<{ restarted: string[] }> {
   return _applyUpdate(state, viteAssets);
 }
 
-export function applyUninstall(state: ControlPlaneState): { stopped: string[] } {
+export async function applyUninstall(state: ControlPlaneState): Promise<{ stopped: string[] }> {
   return _applyUninstall(state, viteAssets);
 }
 
@@ -104,9 +104,6 @@ export {
   CORE_SERVICES,
   OPTIONAL_SERVICES,
 } from "@openpalm/lib";
-
-// ── paths.ts ──────────────────────────────────────────────────────────
-export { ensureXdgDirs } from "@openpalm/lib";
 
 // ── registry (automation-only static exports) ─────────────────────────
 export {
@@ -155,8 +152,7 @@ export {
   randomHex,
   isOllamaEnabled,
   buildEnvFiles,
-  discoverChannelOverlays,
-  discoverComponentOverlays,
+  discoverStackOverlays,
   buildArtifactMeta,
   refreshCoreAssets,
   ensureMemoryDir,

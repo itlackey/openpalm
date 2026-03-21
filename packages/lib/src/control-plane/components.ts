@@ -609,10 +609,6 @@ function enabledFilePath(openpalmHome: string): string {
   return join(componentsDataDir(openpalmHome), "enabled.json");
 }
 
-function componentsConfigDir(openpalmHome: string): string {
-  return join(openpalmHome, "config", "components");
-}
-
 function vaultDir(openpalmHome: string): string {
   return join(openpalmHome, "vault");
 }
@@ -734,8 +730,8 @@ export function setInstanceEnabled(openpalmHome: string, instanceId: string, ena
  *
  * Order:
  *   1. --env-file vault/stack/stack.env --env-file vault/user/user.env (always first)
- *   2. -f config/components/core.yml (always)
- *   3. -f config/components/admin.yml (if admin enabled)
+ *   2. -f stack/core.compose.yml (always)
+ *   3. -f stack/addons/admin/compose.yml (if admin enabled)
  *   4. For each enabled instance: -f data/components/{id}/compose.yml
  *      --env-file data/components/{id}/.env
  */
@@ -744,7 +740,7 @@ export function buildComponentComposeArgs(openpalmHome: string, options?: {
 }): string[] {
   const args: string[] = [];
   const vault = vaultDir(openpalmHome);
-  const configComponents = componentsConfigDir(openpalmHome);
+  const stackDir = join(openpalmHome, "stack");
   const dataComponents = componentsDataDir(openpalmHome);
 
   // 1. Env files from vault (always first)
@@ -763,21 +759,21 @@ export function buildComponentComposeArgs(openpalmHome: string, options?: {
     logger.warn("vault/user/user.env not found, skipping", { path: userEnv });
   }
 
-  // 2. Core compose (always)
-  const coreYml = join(configComponents, "core.yml");
+  // 2. Core compose from stack/ (always)
+  const coreYml = join(stackDir, "core.compose.yml");
   if (existsSync(coreYml)) {
     args.push("-f", coreYml);
   } else {
-    logger.warn("config/components/core.yml not found, skipping", { path: coreYml });
+    logger.warn("stack/core.compose.yml not found, skipping", { path: coreYml });
   }
 
-  // 3. Admin compose (optional)
+  // 3. Admin addon from stack/addons/ (optional)
   if (options?.adminEnabled) {
-    const adminYml = join(configComponents, "admin.yml");
+    const adminYml = join(stackDir, "addons", "admin", "compose.yml");
     if (existsSync(adminYml)) {
       args.push("-f", adminYml);
     } else {
-      logger.warn("config/components/admin.yml not found but admin is enabled, skipping", {
+      logger.warn("stack/addons/admin/compose.yml not found but admin is enabled, skipping", {
         path: adminYml,
       });
     }

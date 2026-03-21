@@ -1,6 +1,5 @@
 /**
- * Tests for staging.ts — artifact staging pipeline, env staging,
- * channel/automation staging, and persistence.
+ * Tests for staging.ts — artifact staging pipeline, env staging, and persistence.
  *
  * Core-asset tests (compose, access scope) live in core-assets.test.ts.
  */
@@ -16,11 +15,23 @@ import { join } from "node:path";
 import {
   sha256,
   buildArtifactMeta,
-  discoverChannelOverlays,
+  discoverStackOverlays,
   buildEnvFiles,
   persistArtifacts
 } from "./staging.js";
-import { makeTempDir, makeTestState, trackDir, registerCleanup, seedConfigChannels } from "./test-helpers.js";
+import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
+
+/** Seed channel addon files in stack/addons/<name>/compose.yml. */
+function seedChannelAddons(
+  homeDir: string,
+  channels: { name: string; yml: string }[]
+): void {
+  for (const ch of channels) {
+    const addonDir = join(homeDir, "stack", "addons", ch.name);
+    mkdirSync(addonDir, { recursive: true });
+    writeFileSync(join(addonDir, "compose.yml"), ch.yml);
+  }
+}
 
 registerCleanup();
 
@@ -82,51 +93,50 @@ describe("buildArtifactMeta", () => {
   });
 });
 
-// ── Channel Overlay Discovery ────────────────────────────────────────────
+// ── Stack Overlay Discovery ───────────────────────────────────────────────
 
-describe("discoverChannelOverlays", () => {
-  let configDir: string;
+describe("discoverStackOverlays", () => {
+  let stackDir: string;
 
   beforeEach(() => {
-    configDir = trackDir(makeTempDir());
+    stackDir = trackDir(makeTempDir());
   });
 
-  test("returns empty when components dir does not exist", () => {
-    expect(discoverChannelOverlays(configDir)).toEqual([]);
+  test("returns empty when stack dir has no compose files", () => {
+    expect(discoverStackOverlays(stackDir)).toEqual([]);
   });
 
-  test("discovers channel overlay .yml files", () => {
-    const componentsDir = join(configDir, "components");
-    mkdirSync(componentsDir, { recursive: true });
-    writeFileSync(join(componentsDir, "channel-chat.yml"), "services: {}");
-    writeFileSync(join(componentsDir, "channel-discord.yml"), "services: {}");
+  test("discovers core.compose.yml", () => {
+    writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
 
-    const result = discoverChannelOverlays(configDir);
-    expect(result).toHaveLength(2);
-    expect(result.every((f) => f.startsWith(configDir))).toBe(true);
-  });
-
-  test("ignores non-channel .yml files", () => {
-    const componentsDir = join(configDir, "components");
-    mkdirSync(componentsDir, { recursive: true });
-    writeFileSync(join(componentsDir, "channel-chat.yml"), "services: {}");
-    writeFileSync(join(componentsDir, "core.yml"), "services: {}");
-    writeFileSync(join(componentsDir, "admin.yml"), "services: {}");
-
-    const result = discoverChannelOverlays(configDir);
+    const result = discoverStackOverlays(stackDir);
     expect(result).toHaveLength(1);
-    expect(result[0]).toMatch(/channel-chat\.yml$/);
+    expect(result[0]).toMatch(/core\.compose\.yml$/);
   });
 
-  test("ignores subdirectories (only files)", () => {
-    const componentsDir = join(configDir, "components");
-    mkdirSync(componentsDir, { recursive: true });
-    mkdirSync(join(componentsDir, "public"), { recursive: true });
-    mkdirSync(join(componentsDir, "lan"), { recursive: true });
-    writeFileSync(join(componentsDir, "channel-chat.yml"), "services: {}");
+  test("discovers addon compose.yml files", () => {
+    writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
+    const addonsDir = join(stackDir, "addons");
+    mkdirSync(join(addonsDir, "admin"), { recursive: true });
+    mkdirSync(join(addonsDir, "ollama"), { recursive: true });
+    writeFileSync(join(addonsDir, "admin", "compose.yml"), "services: {}");
+    writeFileSync(join(addonsDir, "ollama", "compose.yml"), "services: {}");
 
-    const result = discoverChannelOverlays(configDir);
-    expect(result).toHaveLength(1);
+    const result = discoverStackOverlays(stackDir);
+    expect(result).toHaveLength(3);
+    expect(result[0]).toMatch(/core\.compose\.yml$/);
+    expect(result.some((f) => f.includes("admin"))).toBe(true);
+    expect(result.some((f) => f.includes("ollama"))).toBe(true);
+  });
+
+  test("ignores addon dirs without compose.yml", () => {
+    writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
+    const addonsDir = join(stackDir, "addons");
+    mkdirSync(join(addonsDir, "empty-addon"), { recursive: true });
+    // no compose.yml in empty-addon
+
+    const result = discoverStackOverlays(stackDir);
+    expect(result).toHaveLength(1); // only core.compose.yml
   });
 });
 
@@ -192,21 +202,21 @@ describe("persistArtifacts", () => {
       compose: "services:\n  admin:\n    image: admin:latest\n",
     };
     // Create required base dirs
-    mkdirSync(join(state.configDir, "components"), { recursive: true });
+    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
     mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
     mkdirSync(join(state.vaultDir, "user"), { recursive: true });
   });
 
-  test("writes compose to config/components/", () => {
+  test("writes compose to stack/", () => {
     persistArtifacts(state);
 
-    const composePath = join(state.configDir, "components", "core.yml");
+    const composePath = join(state.homeDir, "stack", "core.compose.yml");
     expect(existsSync(composePath)).toBe(true);
     expect(readFileSync(composePath, "utf-8")).toBe(state.artifacts.compose);
   });
 
   test("generates channel secrets for discovered channels in stack.env", () => {
-    seedConfigChannels(state.configDir, [
+    seedChannelAddons(state.homeDir, [
       { name: "chat", yml: "services: {}" }
     ]);
 
@@ -249,7 +259,7 @@ describe("persistArtifacts", () => {
       "CHANNEL_CHAT_SECRET=pre-existing-secret-value\n"
     );
 
-    seedConfigChannels(state.configDir, [
+    seedChannelAddons(state.homeDir, [
       { name: "chat", yml: "services: {}" }
     ]);
 

@@ -22,7 +22,7 @@ import { makeTempDir, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
 
-// ── Core Compose (config/components/ source of truth) ──────────────────
+// ── Core Compose (stack/ source of truth) ──────────────────────────────
 
 describe("ensureCoreCompose / readCoreCompose", () => {
   const origEnv: Record<string, string | undefined> = {};
@@ -36,10 +36,11 @@ describe("ensureCoreCompose / readCoreCompose", () => {
     process.env.OP_HOME = origEnv.OP_HOME;
   });
 
-  test("ensureCoreCompose creates core.yml if missing", () => {
+  test("ensureCoreCompose creates core.compose.yml in stack/ if missing", () => {
     const path = ensureCoreCompose();
     expect(existsSync(path)).toBe(true);
-    expect(path).toContain("core.yml");
+    expect(path).toContain("core.compose.yml");
+    expect(path).toContain("stack");
   });
 
   test("ensureCoreCompose is idempotent", () => {
@@ -51,11 +52,10 @@ describe("ensureCoreCompose / readCoreCompose", () => {
   });
 
   test("ensureCoreCompose overwrites stale file and creates backup", () => {
-    const configDir = join(process.env.OP_HOME!, "config");
-    const componentsDir = join(configDir, "components");
-    mkdirSync(componentsDir, { recursive: true });
+    const stackDir = join(process.env.OP_HOME!, "stack");
+    mkdirSync(stackDir, { recursive: true });
     const staleContent = "# stale compose\nservices: {}";
-    writeFileSync(join(componentsDir, "core.yml"), staleContent);
+    writeFileSync(join(stackDir, "core.compose.yml"), staleContent);
 
     const path = ensureCoreCompose();
     const content = readFileSync(path, "utf-8");
@@ -63,7 +63,7 @@ describe("ensureCoreCompose / readCoreCompose", () => {
     expect(content).toContain("services:");
 
     // Verify backup was created
-    const backupDir = join(componentsDir, "backups");
+    const backupDir = join(stackDir, "backups");
     expect(existsSync(backupDir)).toBe(true);
     const backups = readdirSync(backupDir).filter(f => f.startsWith("core."));
     expect(backups.length).toBe(1);
@@ -199,14 +199,14 @@ describe("refreshCoreAssets", () => {
     });
 
     const result = await refreshCoreAssets();
-    expect(result.updated).toContain("config/components/core.yml");
+    expect(result.updated).toContain("stack/core.compose.yml");
     expect(result.updated).toContain("data/assistant/opencode.jsonc");
     expect(result.updated).toContain("data/assistant/AGENTS.md");
     expect(result.updated).toContain("vault/user/user.env.schema");
     expect(result.updated).toContain("vault/stack/stack.env.schema");
     expect(result.backupDir).toBeNull(); // no existing files to back up
 
-    expect(existsSync(join(homeDir, "config/components/core.yml"))).toBe(true);
+    expect(existsSync(join(homeDir, "stack/core.compose.yml"))).toBe(true);
     expect(existsSync(join(homeDir, "data/assistant/opencode.jsonc"))).toBe(true);
     expect(existsSync(join(homeDir, "data/assistant/AGENTS.md"))).toBe(true);
     expect(existsSync(join(homeDir, "vault/user/user.env.schema"))).toBe(true);
@@ -215,8 +215,8 @@ describe("refreshCoreAssets", () => {
 
   test("backs up changed files before overwriting", async () => {
     const homeDir = process.env.OP_HOME!;
-    mkdirSync(join(homeDir, "config/components"), { recursive: true });
-    writeFileSync(join(homeDir, "config/components/core.yml"), "old-compose-content");
+    mkdirSync(join(homeDir, "stack"), { recursive: true });
+    writeFileSync(join(homeDir, "stack/core.compose.yml"), "old-compose-content");
     mkdirSync(join(homeDir, "data/assistant"), { recursive: true });
     writeFileSync(join(homeDir, "data/assistant/opencode.jsonc"), "old-opencode-content");
     writeFileSync(join(homeDir, "data/assistant/AGENTS.md"), "old-agents-content");
@@ -245,7 +245,7 @@ describe("refreshCoreAssets", () => {
     expect(result.backupDir).not.toBeNull();
 
     // Verify backup contains old content
-    const backupCompose = readFileSync(join(result.backupDir!, "config/components/core.yml"), "utf-8");
+    const backupCompose = readFileSync(join(result.backupDir!, "stack/core.compose.yml"), "utf-8");
     expect(backupCompose).toBe("old-compose-content");
     const backupOpencode = readFileSync(join(result.backupDir!, "data/assistant/opencode.jsonc"), "utf-8");
     expect(backupOpencode).toBe("old-opencode-content");
@@ -253,7 +253,7 @@ describe("refreshCoreAssets", () => {
     expect(backupAgents).toBe("old-agents-content");
 
     // Verify new content written
-    expect(readFileSync(join(homeDir, "config/components/core.yml"), "utf-8")).toBe("new-compose-content");
+    expect(readFileSync(join(homeDir, "stack/core.compose.yml"), "utf-8")).toBe("new-compose-content");
     expect(readFileSync(join(homeDir, "data/assistant/opencode.jsonc"), "utf-8")).toBe("new-opencode-content");
     expect(readFileSync(join(homeDir, "data/assistant/AGENTS.md"), "utf-8")).toBe("new-agents-content");
   });
@@ -261,9 +261,8 @@ describe("refreshCoreAssets", () => {
   test("skips assets with identical content", async () => {
     const homeDir = process.env.OP_HOME!;
     const content = "same-content";
-    mkdirSync(join(homeDir, "config/components"), { recursive: true });
-    writeFileSync(join(homeDir, "config/components/core.yml"), content);
-    writeFileSync(join(homeDir, "config/components/admin.yml"), content);
+    mkdirSync(join(homeDir, "stack"), { recursive: true });
+    writeFileSync(join(homeDir, "stack/core.compose.yml"), content);
     mkdirSync(join(homeDir, "data/assistant"), { recursive: true });
     writeFileSync(join(homeDir, "data/assistant/opencode.jsonc"), content);
     writeFileSync(join(homeDir, "data/assistant/AGENTS.md"), content);

@@ -21,7 +21,6 @@ export async function ensureDirectoryTree(
   for (const dir of [
     homeDir,
     configDir,
-    join(configDir, 'components'),
     join(configDir, 'automations'),
     join(configDir, 'assistant'),
     join(configDir, 'assistant', 'tools'),
@@ -40,6 +39,7 @@ export async function ensureDirectoryTree(
     join(dataDir, 'stash'),
     join(homeDir, 'stack'),
     join(homeDir, 'stack', 'addons'),
+    join(homeDir, 'stack', 'addons', 'ollama'),
     join(homeDir, 'backups'),
     join(homeDir, 'logs'),
     join(homeDir, 'logs', 'opencode'),

@@ -10,9 +10,4 @@ export {
   resolveCacheHome,
   resolveRegistryCacheDir,
   ensureHomeDirs,
-  // Deprecated aliases
-  resolveConfigDir as resolveConfigHome,
-  resolveLogsDir as resolveStateHome,
-  resolveDataDir as resolveDataHome,
-  ensureHomeDirs as ensureXdgDirs,
 } from "@openpalm/lib";

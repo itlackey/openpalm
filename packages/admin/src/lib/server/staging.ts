@@ -16,8 +16,7 @@ export {
   isOllamaEnabled,
   isAdminEnabled,
   buildEnvFiles,
-  discoverComponentOverlays,
-  discoverChannelOverlays,
+  discoverStackOverlays,
   buildArtifactMeta,
 } from "@openpalm/lib";
 

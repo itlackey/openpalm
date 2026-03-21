@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty';
 import { runDockerCompose } from '../lib/docker.ts';
-import { ensureStagedState, fullComposeArgs } from '../lib/staging.ts';
+import { ensureValidState, fullComposeArgs } from '../lib/staging.ts';
 
 export default defineCommand({
   meta: {
@@ -8,7 +8,7 @@ export default defineCommand({
     description: 'Show container status',
   },
   async run() {
-    const state = await ensureStagedState();
+    const state = await ensureValidState();
     await runDockerCompose([...fullComposeArgs(state), 'ps', '--format', 'table']);
   },
 });

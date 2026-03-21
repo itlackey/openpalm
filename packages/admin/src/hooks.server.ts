@@ -9,14 +9,13 @@
 import { createLogger } from "$lib/server/logger.js";
 import { getState } from "$lib/server/state.js";
 import {
-  ensureXdgDirs,
   ensureSecrets,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
   ensureMemoryDir,
   ensureCoreAutomations,
-  ensureSecretsSchema,
-  ensureStackSchema,
+  ensureUserEnvSchema,
+  ensureSystemEnvSchema,
   resolveArtifacts,
   persistConfiguration,
   appendAudit,
@@ -24,6 +23,7 @@ import {
   resolveConfigForPush,
   pushConfigToMemory
 } from "$lib/server/control-plane.js";
+import { ensureHomeDirs } from "@openpalm/lib";
 
 const logger = createLogger("admin");
 
@@ -34,15 +34,15 @@ function runStartupApply(): void {
   startupApplyDone = true;
 
   try {
-    ensureXdgDirs();
+    ensureHomeDirs();
     const state = getState();
     ensureSecrets(state);
     ensureOpenCodeConfig();
     ensureOpenCodeSystemConfig();
     ensureMemoryDir();
     ensureCoreAutomations();
-    ensureSecretsSchema();
-    ensureStackSchema();
+    ensureUserEnvSchema();
+    ensureSystemEnvSchema();
     state.artifacts = resolveArtifacts(state);
     persistConfiguration(state);
 

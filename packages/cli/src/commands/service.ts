@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty';
 import { runDockerCompose } from '../lib/docker.ts';
-import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
+import { ensureValidState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
 import { runLogsAction } from './logs.ts';
 import { runStartAction } from './start.ts';
 import { runStopAction } from './stop.ts';
@@ -41,7 +41,7 @@ const logsCmd = defineCommand({
 const updateCmd = defineCommand({
   meta: { name: 'update', description: 'Pull latest images' },
   async run() {
-    const state = await ensureStagedState();
+    const state = await ensureValidState();
     const composeArgs = fullComposeArgs(state);
     const managedServices = buildManagedServiceNames(state);
     console.log('Pulling latest images...');
@@ -55,7 +55,7 @@ const updateCmd = defineCommand({
 const statusCmd = defineCommand({
   meta: { name: 'status', description: 'Show container status' },
   async run() {
-    const state = await ensureStagedState();
+    const state = await ensureValidState();
     await runDockerCompose([...fullComposeArgs(state), 'ps', '--format', 'table']);
   },
 });

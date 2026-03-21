@@ -155,39 +155,28 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
   ].join("\n");
 }
 
-// ── Component Overlay Management ──────────────────────────────────────
+// ── Stack Overlay Discovery ────────────────────────────────────────────
 
 /**
- * Write a compose overlay to config/components/.
+ * Discover compose overlays from the stack directory.
+ * Returns full paths: [stack/core.compose.yml, stack/addons/{name}/compose.yml].
  */
-export function writeComponentOverlay(state: ControlPlaneState, name: string, content: string): void {
-  const dir = `${state.configDir}/components`;
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(`${dir}/${name}.yml`, content);
-}
+export function discoverStackOverlays(stackDir: string): string[] {
+  const files: string[] = [];
 
-/**
- * Discover component overlays from config/components/.
- * Returns full paths to .yml files.
- */
-export function discoverComponentOverlays(configDir: string): string[] {
-  const componentsDir = `${configDir}/components`;
-  if (!existsSync(componentsDir)) return [];
+  const coreYml = `${stackDir}/core.compose.yml`;
+  if (existsSync(coreYml)) files.push(coreYml);
 
-  return readdirSync(componentsDir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".yml"))
-    .map((entry) => `${componentsDir}/${entry.name}`);
-}
+  const addonsDir = `${stackDir}/addons`;
+  if (existsSync(addonsDir)) {
+    for (const entry of readdirSync(addonsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const addonCompose = `${addonsDir}/${entry.name}/compose.yml`;
+      if (existsSync(addonCompose)) files.push(addonCompose);
+    }
+  }
 
-/**
- * Discover channel component overlays specifically (channel-*.yml).
- */
-export function discoverChannelOverlays(configDir: string): string[] {
-  return discoverComponentOverlays(configDir)
-    .filter((p) => {
-      const name = p.split("/").pop() ?? "";
-      return name.startsWith("channel-");
-    });
+  return files;
 }
 
 // ── Automation Management ────────────────────────────────────────────
@@ -252,11 +241,10 @@ export function persistConfiguration(
   state: ControlPlaneState,
   assets: CoreAssetProvider
 ): void {
-  const componentsDir = `${state.configDir}/components`;
-  mkdirSync(componentsDir, { recursive: true });
-
-  // Write core compose overlay
-  writeComponentOverlay(state, "core", state.artifacts.compose);
+  // Write core compose to stack/
+  const stackDir = `${state.homeDir}/stack`;
+  mkdirSync(stackDir, { recursive: true });
+  writeFileSync(`${stackDir}/core.compose.yml`, state.artifacts.compose);
 
   // Load persisted channel HMAC secrets, generate new ones for new channels
   const channelSecrets = loadPersistedChannelSecrets(state.vaultDir);

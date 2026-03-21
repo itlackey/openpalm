@@ -8,7 +8,6 @@
 
 import type { StackSpec } from "./stack-spec.js";
 import { SPEC_DEFAULTS, hasAddon, parseCapabilityString } from "./stack-spec.js";
-import { dualWriteEnvPair } from "./env-compat.js";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { mergeEnvContent } from "./env.js";
 
@@ -31,36 +30,32 @@ export function deriveSystemEnvFromSpec(
 
   const result: Record<string, string> = {};
 
-  const add = (newName: string, value: string) => {
-    Object.assign(result, dualWriteEnvPair(newName, value));
-  };
-
   // Paths
-  add("OP_HOME", homeDir);
-  add("OP_UID", String(uid));
-  add("OP_GID", String(gid));
-  add("OP_DOCKER_SOCK", process.env.OP_DOCKER_SOCK ?? "/var/run/docker.sock");
+  result["OP_HOME"] = homeDir;
+  result["OP_UID"] = String(uid);
+  result["OP_GID"] = String(gid);
+  result["OP_DOCKER_SOCK"] = process.env.OP_DOCKER_SOCK ?? "/var/run/docker.sock";
 
   // Image
-  add("OP_IMAGE_NAMESPACE", image.namespace);
-  add("OP_IMAGE_TAG", image.tag);
+  result["OP_IMAGE_NAMESPACE"] = image.namespace;
+  result["OP_IMAGE_TAG"] = image.tag;
 
   // Ports
-  add("OP_INGRESS_PORT", String(ports.ingress));
-  add("OP_ASSISTANT_PORT", String(ports.assistant));
-  add("OP_ADMIN_PORT", String(ports.admin));
-  add("OP_ADMIN_OPENCODE_PORT", String(ports.adminOpencode));
-  add("OP_SCHEDULER_PORT", String(ports.scheduler));
-  add("OP_MEMORY_PORT", String(ports.memory));
-  add("OP_GUARDIAN_PORT", String(ports.guardian));
-  add("OP_ASSISTANT_SSH_PORT", String(ports.assistantSsh));
+  result["OP_INGRESS_PORT"] = String(ports.ingress);
+  result["OP_ASSISTANT_PORT"] = String(ports.assistant);
+  result["OP_ADMIN_PORT"] = String(ports.admin);
+  result["OP_ADMIN_OPENCODE_PORT"] = String(ports.adminOpencode);
+  result["OP_SCHEDULER_PORT"] = String(ports.scheduler);
+  result["OP_MEMORY_PORT"] = String(ports.memory);
+  result["OP_GUARDIAN_PORT"] = String(ports.guardian);
+  result["OP_ASSISTANT_SSH_PORT"] = String(ports.assistantSsh);
 
   // Network
-  add("OP_INGRESS_BIND_ADDRESS", network.bindAddress);
+  result["OP_INGRESS_BIND_ADDRESS"] = network.bindAddress;
 
   // Feature flags (derived from addons)
-  add("OP_OLLAMA_ENABLED", hasAddon(spec, "ollama") ? "true" : "false");
-  add("OP_ADMIN_ENABLED", hasAddon(spec, "admin") ? "true" : "false");
+  result["OP_OLLAMA_ENABLED"] = hasAddon(spec, "ollama") ? "true" : "false";
+  result["OP_ADMIN_ENABLED"] = hasAddon(spec, "admin") ? "true" : "false";
 
   return result;
 }

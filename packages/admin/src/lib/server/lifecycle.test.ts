@@ -112,38 +112,47 @@ describe("isAllowedAction", () => {
 // ── Build Compose File List ─────────────────────────────────────────────
 
 describe("buildComposeFileList", () => {
-  test("starts with core compose from config/components/", () => {
+  test("starts with core compose from stack/", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    // Create the core.yml so it's found
-    mkdirSync(join(state.configDir, "components"), { recursive: true });
-    writeFileSync(join(state.configDir, "components", "core.yml"), "services: {}");
+    // Create the core.compose.yml so it's found
+    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
+    writeFileSync(join(state.homeDir, "stack", "core.compose.yml"), "services: {}");
 
     const files = buildComposeFileList(state);
-    expect(files[0]).toBe(`${state.configDir}/components/core.yml`);
+    expect(files[0]).toBe(`${state.homeDir}/stack/core.compose.yml`);
   });
 
-  test("includes channel overlays from config/components/", () => {
+  test("includes addon overlays from stack/addons/", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    const componentsDir = join(state.configDir, "components");
-    mkdirSync(componentsDir, { recursive: true });
-    writeFileSync(join(componentsDir, "core.yml"), "services: {}");
-    writeFileSync(join(componentsDir, "channel-chat.yml"), "services: {}");
+    const stackDir = join(state.homeDir, "stack");
+    const addonsDir = join(stackDir, "addons");
+    mkdirSync(stackDir, { recursive: true });
+    writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
+
+    // Seed stack.yaml with chat addon enabled (version + capabilities required by readStackSpec)
+    const configDir = join(state.homeDir, "config");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "stack.yaml"), "version: 2\ncapabilities: {}\naddons:\n  chat: true\n");
+
+    // Create the addon compose file
+    mkdirSync(join(addonsDir, "chat"), { recursive: true });
+    writeFileSync(join(addonsDir, "chat", "compose.yml"), "services: {}");
 
     const files = buildComposeFileList(state);
     expect(files).toHaveLength(2);
-    expect(files[1]).toContain("channel-chat.yml");
+    expect(files[1]).toContain("chat");
   });
 
-  test("does not include local-models.yml overlay (removed)", () => {
+  test("does not include removed overlays", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(join(state.configDir, "components"), { recursive: true });
-    writeFileSync(join(state.configDir, "components", "core.yml"), "services: {}");
+    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
+    writeFileSync(join(state.homeDir, "stack", "core.compose.yml"), "services: {}");
 
     const files = buildComposeFileList(state);
     expect(files).toHaveLength(1); // just core compose
@@ -235,7 +244,7 @@ describe("CORE_SERVICES", () => {
 // ── Lifecycle State Transitions ─────────────────────────────────────────
 
 describe("applyInstall", () => {
-  test("marks all core services as running", () => {
+  test("marks all core services as running", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
@@ -245,10 +254,10 @@ describe("applyInstall", () => {
     }
 
     // Create required dirs for persistConfiguration
-    mkdirSync(join(state.configDir, "components"), { recursive: true });
+    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
     mkdirSync(join(state.vaultDir), { recursive: true });
 
-    applyInstall(state);
+    await applyInstall(state);
 
     for (const service of CORE_SERVICES) {
       expect(state.services[service]).toBe("running");
@@ -257,15 +266,15 @@ describe("applyInstall", () => {
 });
 
 describe("applyUpdate", () => {
-  test("returns list of running services that were restarted", () => {
+  test("returns list of running services that were restarted", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
     state.services = { admin: "running", guardian: "running", memory: "stopped" };
 
-    mkdirSync(join(state.configDir, "components"), { recursive: true });
+    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
     mkdirSync(join(state.vaultDir), { recursive: true });
 
-    const result = applyUpdate(state);
+    const result = await applyUpdate(state);
     expect(result.restarted).toContain("admin");
     expect(result.restarted).toContain("guardian");
     expect(result.restarted).not.toContain("memory");
@@ -273,15 +282,15 @@ describe("applyUpdate", () => {
 });
 
 describe("applyUninstall", () => {
-  test("stops all services", () => {
+  test("stops all services", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
     state.services = { admin: "running", guardian: "running" };
 
-    mkdirSync(join(state.configDir, "components"), { recursive: true });
+    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
     mkdirSync(join(state.vaultDir), { recursive: true });
 
-    const result = applyUninstall(state);
+    const result = await applyUninstall(state);
     expect(result.stopped).toContain("admin");
     expect(result.stopped).toContain("guardian");
 

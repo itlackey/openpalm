@@ -130,7 +130,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   }
 
   const composeContent = await fetchAsset(options.version, '.openpalm/stack/core.compose.yml');
-  await Bun.write(join(configDir, 'components', 'core.yml'), composeContent);
+  await Bun.write(join(homeDir, 'stack', 'core.compose.yml'), composeContent);
 
   // Download schemas to vault/ for varlock validation and dataDir for FilesystemAssetProvider
   for (const [remoteFile, localPath] of [
@@ -147,7 +147,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
   // Download remaining assets needed by FilesystemAssetProvider
   const assetFiles: Array<{ remote: string; localPath: string }> = [
-    { remote: '.openpalm/stack/addons/ollama/compose.yml', localPath: join(configDir, 'components', 'ollama.yml') },
+    { remote: '.openpalm/stack/addons/ollama/compose.yml', localPath: join(homeDir, 'stack', 'addons', 'ollama', 'compose.yml') },
     { remote: 'core/assistant/AGENTS.md', localPath: join(dataDir, 'assistant', 'AGENTS.md') },
     { remote: 'core/assistant/opencode.jsonc', localPath: join(dataDir, 'assistant', 'opencode.jsonc') },
     { remote: '.openpalm/config/automations/cleanup-logs.yml', localPath: join(configDir, 'automations', 'cleanup-logs.yml') },

@@ -2,7 +2,6 @@ import { describe, test, expect, beforeEach } from "bun:test";
 import {
   resolveEnv,
   resolveEnvFromFile,
-  dualWriteEnvPair,
   getOldName,
   getNewName,
   resetWarnings,
@@ -74,25 +73,6 @@ describe("resolveEnvFromFile", () => {
   test("returns undefined when missing", () => {
     const parsed = {};
     expect(resolveEnvFromFile(parsed, "OP_IMAGE_TAG")).toBeUndefined();
-  });
-});
-
-describe("dualWriteEnvPair", () => {
-  test("produces both new and old keys", () => {
-    const result = dualWriteEnvPair("OP_HOME", "/home/openpalm");
-    expect(result.OP_HOME).toBe("/home/openpalm");
-    expect(result.OPENPALM_HOME).toBe("/home/openpalm");
-  });
-
-  test("produces both keys for token aliases", () => {
-    const result = dualWriteEnvPair("OP_ASSISTANT_TOKEN", "tok");
-    expect(result.OP_ASSISTANT_TOKEN).toBe("tok");
-    expect(result.ASSISTANT_TOKEN).toBe("tok");
-  });
-
-  test("returns only new name if no alias exists", () => {
-    const result = dualWriteEnvPair("CUSTOM_VAR", "val");
-    expect(result).toEqual({ CUSTOM_VAR: "val" });
   });
 });
 

@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty';
 import { runDockerCompose } from '../lib/docker.ts';
-import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
+import { ensureValidState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
 
 export default defineCommand({
   meta: {
@@ -8,7 +8,7 @@ export default defineCommand({
     description: 'Pull latest images and recreate containers',
   },
   async run() {
-    const state = await ensureStagedState();
+    const state = await ensureValidState();
     const composeArgs = fullComposeArgs(state);
     const managedServices = buildManagedServiceNames(state);
 

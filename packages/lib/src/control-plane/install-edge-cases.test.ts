@@ -105,12 +105,13 @@ function createFullDirTree(): void {
   for (const dir of [
     homeDir,
     configDir,
-    join(configDir, "components"),
     join(configDir, "automations"),
     join(configDir, "channels"),
     join(configDir, "connections"),
     join(configDir, "assistant"),
     join(configDir, "stash"),
+    join(homeDir, "stack"),
+    join(homeDir, "stack", "addons"),
     vaultDir,
     dataDir,
     join(dataDir, "admin"),
@@ -511,8 +512,8 @@ describe("Broken/Corrupt State", () => {
     );
     expect(result.ok).toBe(true);
 
-    // Artifacts should exist
-    expect(existsSync(join(configDir, "components", "core.yml"))).toBe(
+    // Artifacts should exist in stack/ (not config/components/)
+    expect(existsSync(join(homeDir, "stack", "core.compose.yml"))).toBe(
       true
     );
     // Automations dir should be recreated
@@ -743,11 +744,11 @@ describe("performSetup end-to-end artifacts", () => {
     expect(memConfig.mem0.vector_store.config.embedding_model_dims).toBe(768);
   });
 
-  it("writes core.yml to config/components/", async () => {
+  it("writes core.compose.yml to stack/", async () => {
     await performSetup(makeValidInput(), createStubAssetProvider());
 
     expect(
-      existsSync(join(configDir, "components", "core.yml"))
+      existsSync(join(homeDir, "stack", "core.compose.yml"))
     ).toBe(true);
   });
 

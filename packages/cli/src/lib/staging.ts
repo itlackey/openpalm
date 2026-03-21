@@ -2,7 +2,7 @@
  * CLI-side configuration pipeline for Docker Compose operations.
  *
  * Delegates to @openpalm/lib for all control-plane logic. The CLI
- * uses FilesystemAssetProvider (reads from config/components/) and
+ * uses FilesystemAssetProvider (reads from stack/) and
  * validates configuration in place (no staging tier).
  */
 import { existsSync } from 'node:fs';
@@ -14,6 +14,7 @@ import {
   buildManagedServices,
   buildEnvFiles,
   FilesystemAssetProvider,
+  resolveComposeProjectName,
 } from '@openpalm/lib';
 import type { ControlPlaneState } from '@openpalm/lib';
 import { defaultHomeDir } from './paths.ts';
@@ -39,8 +40,6 @@ export async function ensureValidState(): Promise<ControlPlaneState> {
   return state;
 }
 
-/** @deprecated Use ensureValidState() */
-export const ensureStagedState = ensureValidState;
 
 /**
  * Build the full list of docker compose CLI arguments for a given state.
@@ -53,7 +52,7 @@ export function fullComposeArgs(state: ControlPlaneState): string[] {
 
   return [
     '--project-name',
-    'openpalm',
+    resolveComposeProjectName(),
     ...files.flatMap((f) => ['-f', f]),
     ...envFiles.filter((f) => existsSync(f)).flatMap((f) => ['--env-file', f]),
   ];

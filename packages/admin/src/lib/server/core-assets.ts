@@ -2,14 +2,11 @@
  * Core asset management — wraps @openpalm/lib with Vite asset provider
  * pre-injected for functions that need bundled assets.
  */
-import type { ControlPlaneState } from "@openpalm/lib";
 import {
   ensureCoreCompose as _ensureCoreCompose,
   readCoreCompose as _readCoreCompose,
   ensureOpenCodeSystemConfig as _ensureOpenCodeSystemConfig,
   ensureCoreAutomations as _ensureCoreAutomations,
-  ensureSecretsSchema as _ensureSecretsSchema,
-  ensureStackSchema as _ensureStackSchema,
   ensureUserEnvSchema as _ensureUserEnvSchema,
   ensureSystemEnvSchema as _ensureSystemEnvSchema,
 } from "@openpalm/lib";
@@ -45,12 +42,3 @@ export function ensureSystemEnvSchema(): string {
   return _ensureSystemEnvSchema(viteAssets);
 }
 
-/** @deprecated Use ensureUserEnvSchema() */
-export function ensureSecretsSchema(): string {
-  return _ensureSecretsSchema(viteAssets);
-}
-
-/** @deprecated Use ensureSystemEnvSchema() */
-export function ensureStackSchema(): string {
-  return _ensureStackSchema(viteAssets);
-}

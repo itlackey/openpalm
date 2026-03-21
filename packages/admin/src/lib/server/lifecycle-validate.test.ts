@@ -26,9 +26,9 @@ registerCleanup();
 function seedValidationFiles(state: { vaultDir: string }): void {
   mkdirSync(join(state.vaultDir, "user"), { recursive: true });
   mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
-  writeFileSync(join(state.vaultDir, "user.env.schema"), "# test schema\nADMIN_TOKEN=\n");
+  writeFileSync(join(state.vaultDir, "user", "user.env.schema"), "# test schema\nADMIN_TOKEN=\n");
   writeFileSync(join(state.vaultDir, "user", "user.env"), "ADMIN_TOKEN=test\n");
-  writeFileSync(join(state.vaultDir, "system.env.schema"), "# test schema\nPORT=\n");
+  writeFileSync(join(state.vaultDir, "stack", "stack.env.schema"), "# test schema\nPORT=\n");
   writeFileSync(join(state.vaultDir, "stack", "stack.env"), "PORT=8100\n");
 }
 

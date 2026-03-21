@@ -148,20 +148,6 @@ export function resolveEnvFromFile(
   return undefined;
 }
 
-/**
- * When writing env files, produce BOTH old and new names during deprecation.
- * This ensures old compose templates that reference ${OPENPALM_*} still work.
- */
-export function dualWriteEnvPair(
-  newName: string,
-  value: string,
-): Record<string, string> {
-  const result: Record<string, string> = { [newName]: value };
-  const oldName = NEW_TO_OLD.get(newName);
-  if (oldName) result[oldName] = value;
-  return result;
-}
-
 /** Get the old name for a new name (for display/migration messages). */
 export function getOldName(newName: string): string | undefined {
   return NEW_TO_OLD.get(newName);

@@ -201,6 +201,7 @@ describe('install --file', () => {
     expect((err as Error).message).toContain('Failed to parse setup config');
   });
 
+  // Timeout increased: applyInstall now runs `docker compose config` preflight
   it('--file config.json with version: 1 calls performSetupFromConfig path', async () => {
     const { bootstrapInstall } = await import('./install.ts');
     const configPath = join(tempBase, 'config.json');
@@ -228,8 +229,9 @@ describe('install --file', () => {
       // It may fail with "Setup failed" due to missing filesystem state
       // or it may succeed; either is acceptable for this routing test.
     }
-  });
+  }, 30_000);
 
+  // Timeout increased: applyInstall now runs `docker compose config` preflight
   it('--file setup.yaml with valid YAML is parsed correctly', async () => {
     const { bootstrapInstall } = await import('./install.ts');
     const yamlPath = join(tempBase, 'setup.yaml');
@@ -266,8 +268,9 @@ describe('install --file', () => {
       expect((err as Error).message).not.toContain('Unsupported config file format');
       expect((err as Error).message).not.toContain('Failed to parse');
     }
-  });
+  }, 30_000);
 
+  // Timeout increased: applyInstall now runs `docker compose config` preflight
   it('--file config.json --no-start exits after setup without compose up', async () => {
     const { bootstrapInstall } = await import('./install.ts');
     const configPath = join(tempBase, 'config.json');
@@ -295,5 +298,5 @@ describe('install --file', () => {
     if (err) {
       expect((err as Error).message).not.toContain('Unsupported config file format');
     }
-  });
+  }, 30_000);
 });

@@ -2,10 +2,10 @@
  * Tests for the configuration persistence contract.
  *
  * Verifies that:
- * 1. Channel .yml overlays exist in config/components/
- * 2. Compose file list uses config/components/ paths
+ * 1. Stack compose overlays live in stack/ (not config/components/)
+ * 2. Compose file list uses stack/ paths
  * 3. User secrets live in vault/user/user.env
- * 4. Runtime validation checks config/components/ for channels
+ * 4. Runtime validation checks the stack spec for channels
  * 5. Configuration persistence is idempotent
  */
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
@@ -25,8 +25,7 @@ import type { ControlPlaneState } from "@openpalm/lib";
 import {
   discoverChannels,
   isValidChannel,
-  discoverChannelOverlays,
-  writeComponentOverlay,
+  discoverStackOverlays,
   writeSystemEnv,
   parseAutomationYaml,
 } from "@openpalm/lib";
@@ -59,15 +58,15 @@ function makeState(tempDir?: string): ControlPlaneState {
   };
 }
 
-/** Seed channel overlay files in config/components/ (the new layout). */
-function seedChannelComponents(
-  configDir: string,
+/** Seed channel addon files in stack/addons/<name>/compose.yml. */
+function seedChannelAddons(
+  homeDir: string,
   channels: { name: string; yml: string }[]
 ): void {
-  const componentsDir = join(configDir, "components");
-  mkdirSync(componentsDir, { recursive: true });
   for (const ch of channels) {
-    writeFileSync(join(componentsDir, `channel-${ch.name}.yml`), ch.yml);
+    const addonDir = join(homeDir, "stack", "addons", ch.name);
+    mkdirSync(addonDir, { recursive: true });
+    writeFileSync(join(addonDir, "compose.yml"), ch.yml);
   }
 }
 
@@ -88,38 +87,36 @@ afterEach(() => {
   rmSync(baseDir, { recursive: true, force: true });
 });
 
-describe("Channel component overlay writing", () => {
-  test("overlay files are written to config/components/", () => {
-    const ymlContent = "services:\n  channel-chat:\n    image: chat:latest\n";
-    const state = makeState(baseDir);
-    writeComponentOverlay(state, "channel-chat", ymlContent);
+describe("Stack overlay discovery — stack/ layout", () => {
+  test("discoverStackOverlays returns core.compose.yml from stack/", () => {
+    const stackDir = join(baseDir, "stack");
+    mkdirSync(stackDir, { recursive: true });
+    writeFileSync(join(stackDir, "core.compose.yml"), "services:\n  guardian:\n    image: guardian:latest\n");
 
-    const overlayPath = join(state.configDir, "components", "channel-chat.yml");
-    expect(existsSync(overlayPath)).toBe(true);
-    expect(readFileSync(overlayPath, "utf-8")).toBe(ymlContent);
-  });
-
-  test("multiple channel overlays are all written", () => {
-    const state = makeState(baseDir);
-    writeComponentOverlay(state, "channel-chat", "services:\n  channel-chat:\n    image: chat:latest\n");
-    writeComponentOverlay(state, "channel-discord", "services:\n  channel-discord:\n    image: discord:latest\n");
-
-    expect(existsSync(join(state.configDir, "components", "channel-chat.yml"))).toBe(true);
-    expect(existsSync(join(state.configDir, "components", "channel-discord.yml"))).toBe(true);
-  });
-});
-
-describe("Compose file list uses config/components/ paths", () => {
-  test("discoverChannelOverlays returns config/components/ paths", () => {
-    const state = makeState(baseDir);
-    seedChannelComponents(state.configDir, [
-      { name: "chat", yml: "services:\n  channel-chat:\n    image: chat:latest\n" }
-    ]);
-
-    const files = discoverChannelOverlays(state.configDir);
+    const files = discoverStackOverlays(stackDir);
     expect(files.length).toBe(1);
-    expect(files[0]).toContain(state.configDir);
-    expect(files[0]).toMatch(/channel-chat\.yml$/);
+    expect(files[0]).toMatch(/core\.compose\.yml$/);
+  });
+
+  test("discoverStackOverlays discovers addon compose.yml files", () => {
+    const stackDir = join(baseDir, "stack");
+    mkdirSync(stackDir, { recursive: true });
+    writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
+
+    const addonsDir = join(stackDir, "addons");
+    mkdirSync(join(addonsDir, "admin"), { recursive: true });
+    writeFileSync(join(addonsDir, "admin", "compose.yml"), "services: {}");
+
+    const files = discoverStackOverlays(stackDir);
+    expect(files.length).toBe(2);
+    expect(files.some((f) => f.includes("admin"))).toBe(true);
+  });
+
+  test("discoverStackOverlays returns empty when stack dir is empty", () => {
+    const stackDir = join(baseDir, "stack");
+    mkdirSync(stackDir, { recursive: true });
+
+    expect(discoverStackOverlays(stackDir)).toEqual([]);
   });
 });
 
@@ -135,28 +132,28 @@ describe("User secrets in vault/user/user.env", () => {
   });
 });
 
-describe("Runtime validation uses config/components/", () => {
-  test("isValidChannel checks config/components/ for channel overlays", () => {
+describe("Runtime validation uses stack/addons/", () => {
+  test("isValidChannel checks stack/addons/<name>/compose.yml for channel overlays", () => {
     const state = makeState(baseDir);
-    seedChannelComponents(state.configDir, [
+    seedChannelAddons(state.homeDir, [
       { name: "custom", yml: "services:\n  channel-custom:\n    image: custom:latest\n" }
     ]);
 
-    // Should find it in config/components/
+    // Should find it in stack/addons/custom/compose.yml
     expect(isValidChannel("custom", state.configDir)).toBe(true);
 
     // Should NOT find an uninstalled channel
     expect(isValidChannel("nonexistent", state.configDir)).toBe(false);
   });
 
-  test("source-only channel (not in components/) is not valid at runtime", () => {
+  test("source-only channel (not in stack/addons/) is not valid at runtime", () => {
     const state = makeState(baseDir);
-    // Write to old channels/ dir, not components/
+    // Write to old channels/ dir, not stack/addons/
     const channelsDir = join(state.configDir, "channels");
     mkdirSync(channelsDir, { recursive: true });
     writeFileSync(join(channelsDir, "unstaged.yml"), "services:\n  channel-unstaged:\n    image: unstaged:latest\n");
 
-    // NOT in components/ — so runtime validation should reject
+    // NOT in stack/addons/ — so runtime validation should reject
     expect(isValidChannel("unstaged", state.configDir)).toBe(false);
   });
 });

@@ -1,9 +1,9 @@
 /**
  * FilesystemAssetProvider — reads core assets from OP_HOME on disk.
  *
- * Used by the CLI and any non-Vite consumer. Assets are downloaded from
- * GitHub during `openpalm install` and stored in the home layout:
- *   config/components/  — compose overlays
+ * Used by the CLI and any non-Vite consumer. Assets are written to disk
+ * during `openpalm install` and stored in the home layout:
+ *   stack/              — compose overlays (core.compose.yml, addons/)
  *   data/assistant/     — OpenCode config
  *   config/automations/ — automation YAMLs
  *   vault/              — env schemas
@@ -20,7 +20,7 @@ export class FilesystemAssetProvider implements CoreAssetProvider {
   }
 
   coreCompose(): string {
-    return this.read("config/components/core.yml");
+    return this.read("stack/core.compose.yml");
   }
 
   agentsMd(): string {

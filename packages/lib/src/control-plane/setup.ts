@@ -603,7 +603,7 @@ export async function performSetup(
   );
 
   // ── Apply install (stages artifacts, no Docker) ──────────────────────
-  applyInstall(state, assetProvider);
+  await applyInstall(state, assetProvider);
 
   logger.info("setup complete", {
     connectionCount: input.connections.length,

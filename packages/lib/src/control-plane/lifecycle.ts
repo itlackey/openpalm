@@ -22,16 +22,16 @@ import { ensureSecrets, loadSecretsEnvFile, readSystemSecretsEnvFile, updateSyst
 import {
   resolveArtifacts,
   persistConfiguration,
-  discoverComponentOverlays,
   randomHex,
-  isOllamaEnabled,
   buildEnvFiles,
 } from "./staging.js";
+import { readStackSpec } from "./stack-spec.js";
 import { refreshCoreAssets, ensureMemoryDir, ensureCoreAutomations } from "./core-assets.js";
 import { ensureMemoryConfig } from "./memory-config.js";
 import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
 import { validateProposedState } from "./validate.js";
+import { checkDocker, composePreflight, resolveComposeProjectName } from "./docker.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
@@ -125,11 +125,11 @@ export function writeSetupTokenFile(state: ControlPlaneState): void {
 
 // ── Lifecycle Helpers ──────────────────────────────────────────────────
 
-function reconcileCore(
+async function reconcileCore(
   state: ControlPlaneState,
   assets: CoreAssetProvider,
   opts: { activateServices?: boolean; deactivateServices?: boolean; seedMemoryConfig?: boolean },
-): string[] {
+): Promise<string[]> {
   if (opts.activateServices) {
     for (const s of CORE_SERVICES) state.services[s] = "running";
   }
@@ -146,6 +146,27 @@ function reconcileCore(
     for (const name of Object.keys(state.services)) state.services[name] = "stopped";
   }
 
+  // Preflight: validate compose merge before mutation.
+  // Only runs when Docker is available and compose files exist.
+  // If Docker is unavailable (e.g., first install before Docker setup),
+  // the check is skipped with a warning rather than blocking.
+  const files = buildComposeFileList(state);
+  const envFiles = buildEnvFiles(state);
+  if (files.length > 0) {
+    const dockerCheck = await checkDocker();
+    if (dockerCheck.ok) {
+      const preflight = await composePreflight({ files, envFiles });
+      if (!preflight.ok) {
+        throw new Error(
+          `Compose preflight failed: ${preflight.stderr}\n` +
+          `Files: ${files.join(", ")}\n` +
+          `Env files: ${envFiles.join(", ")}\n` +
+          `Project: ${resolveComposeProjectName()}`
+        );
+      }
+    }
+  }
+
   // Snapshot before writing (for rollback on failure)
   snapshotCurrentState(state);
 
@@ -155,16 +176,16 @@ function reconcileCore(
   return active;
 }
 
-export function applyInstall(state: ControlPlaneState, assets: CoreAssetProvider): void {
-  reconcileCore(state, assets, { activateServices: true, seedMemoryConfig: true });
+export async function applyInstall(state: ControlPlaneState, assets: CoreAssetProvider): Promise<void> {
+  await reconcileCore(state, assets, { activateServices: true, seedMemoryConfig: true });
 }
 
-export function applyUpdate(state: ControlPlaneState, assets: CoreAssetProvider): { restarted: string[] } {
-  return { restarted: reconcileCore(state, assets, {}) };
+export async function applyUpdate(state: ControlPlaneState, assets: CoreAssetProvider): Promise<{ restarted: string[] }> {
+  return { restarted: await reconcileCore(state, assets, {}) };
 }
 
-export function applyUninstall(state: ControlPlaneState, assets: CoreAssetProvider): { stopped: string[] } {
-  return { stopped: reconcileCore(state, assets, { deactivateServices: true }) };
+export async function applyUninstall(state: ControlPlaneState, assets: CoreAssetProvider): Promise<{ stopped: string[] }> {
+  return { stopped: await reconcileCore(state, assets, { deactivateServices: true }) };
 }
 
 type DockerTagEntry = { name?: unknown };
@@ -232,60 +253,58 @@ export async function applyUpgrade(
   restarted: string[];
 }> {
   const { backupDir, updated } = await refreshCoreAssets();
-  const restarted = reconcileCore(state, assets, {});
+  const restarted = await reconcileCore(state, assets, {});
   return { backupDir, updated, restarted };
 }
 
 // ── Compose File List Builder ────────────────────────────────────────────
 
 /**
- * Build the compose file list from config/components/.
+ * Build the compose file list from stack/.
+ * Returns: [stack/core.compose.yml, stack/addons/{name}/compose.yml]
+ * filtered by enabled addons in stack.yaml.
  */
 export function buildComposeFileList(state: ControlPlaneState): string[] {
-  const coreYml = `${state.configDir}/components/core.yml`;
+  const stackDir = `${state.homeDir}/stack`;
+  const coreYml = `${stackDir}/core.compose.yml`;
   const files: string[] = [];
 
   if (existsSync(coreYml)) {
     files.push(coreYml);
   }
 
-  if (isOllamaEnabled(state)) {
-    const ollamaYml = `${state.configDir}/components/ollama.yml`;
-    if (existsSync(ollamaYml)) files.push(ollamaYml);
-  }
-
-  // Add all non-core, non-ollama component overlays (admin, etc.)
-  const allOverlays = discoverComponentOverlays(state.configDir);
-  for (const p of allOverlays) {
-    const name = p.split("/").pop() ?? "";
-    // Skip core.yml and ollama.yml (already handled above)
-    if (name === "core.yml" || name === "ollama.yml") continue;
-    if (!files.includes(p)) files.push(p);
+  // Add addon overlays for enabled addons
+  const spec = readStackSpec(state.configDir);
+  if (spec?.addons) {
+    for (const [addonName, addon] of Object.entries(spec.addons)) {
+      if (addon === false) continue;
+      const addonYml = `${stackDir}/addons/${addonName}/compose.yml`;
+      if (existsSync(addonYml)) files.push(addonYml);
+    }
   }
 
   return files;
 }
 
 /**
- * Build the list of services that `docker compose up` should manage.
- * Core services always; additional services discovered from component overlays.
+ * Build the list of services managed by the stack.
+ * Core services always included; addon services derived from stack.yaml.
+ *
+ * For the authoritative runtime service list from Docker Compose,
+ * use composeConfigServices() which runs `docker compose config --services`.
  */
 export function buildManagedServices(state: ControlPlaneState): string[] {
   const services: string[] = [...CORE_SERVICES];
 
-  if (isOllamaEnabled(state)) {
-    services.push("ollama");
+  // Add addon-specific services based on stack.yaml
+  const spec = readStackSpec(state.configDir);
+  if (spec?.addons) {
+    for (const [addonName, addon] of Object.entries(spec.addons)) {
+      if (addon === false) continue;
+      services.push(addonName);
+    }
   }
 
-  // Discover all component overlay services (admin, channels, etc.)
-  const allOverlays = discoverComponentOverlays(state.configDir);
-  for (const p of allOverlays) {
-    const filename = p.split("/").pop() ?? "";
-    const name = filename.replace(/\.yml$/, "");
-    // Skip core and ollama (already handled above)
-    if (name === "core" || name === "ollama") continue;
-    if (name) services.push(name);
-  }
   return services;
 }
 

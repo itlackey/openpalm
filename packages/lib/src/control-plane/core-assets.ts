@@ -2,7 +2,7 @@
  * Core asset management for the OpenPalm control plane.
  *
  * Manages source-of-truth files for the ~/.openpalm/ layout:
- *   config/components/  — compose overlays (core.yml, etc.)
+ *   stack/              — compose overlays (core.compose.yml, addons/{name}/compose.yml)
  *   vault/              — env schemas
  *
  * All asset content is provided by a CoreAssetProvider (injected), not by
@@ -11,7 +11,7 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync, renameSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
-import { resolveDataDir, resolveConfigDir, resolveVaultDir } from "./home.js";
+import { resolveDataDir, resolveConfigDir, resolveVaultDir, resolveOpenPalmHome } from "./home.js";
 import { createLogger } from "../logger.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
 
@@ -65,12 +65,6 @@ export function ensureSystemEnvSchema(assets: CoreAssetProvider): string {
   return path;
 }
 
-/** @deprecated Use ensureUserEnvSchema() */
-export const ensureSecretsSchema = ensureUserEnvSchema;
-
-/** @deprecated Use ensureSystemEnvSchema() */
-export const ensureStackSchema = ensureSystemEnvSchema;
-
 // ── Memory data directory ────────────────────────────────────────────
 
 export function ensureMemoryDir(): string {
@@ -92,10 +86,10 @@ export function ensureMemoryDir(): string {
   return dir;
 }
 
-// ── Core Compose (config/components/) ────────────────────────────────
+// ── Core Compose (stack/) ─────────────────────────────────────────────
 
 function coreComposePath(): string {
-  return `${resolveConfigDir()}/components/core.yml`;
+  return `${resolveOpenPalmHome()}/stack/core.compose.yml`;
 }
 
 export function ensureCoreCompose(assets: CoreAssetProvider): string {
@@ -152,7 +146,7 @@ const REPO = "itlackey/openpalm";
 const VERSION = process.env.OP_ASSET_VERSION ?? "main";
 
 const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
-  { relPath: "config/components/core.yml", githubFilename: ".openpalm/stack/core.compose.yml" },
+  { relPath: "stack/core.compose.yml", githubFilename: ".openpalm/stack/core.compose.yml" },
   { relPath: "data/assistant/opencode.jsonc", githubFilename: "core/assistant/opencode.jsonc" },
   { relPath: "data/assistant/AGENTS.md", githubFilename: "core/assistant/AGENTS.md" },
   { relPath: "vault/user/user.env.schema", githubFilename: ".openpalm/vault/user/user.env.schema" },

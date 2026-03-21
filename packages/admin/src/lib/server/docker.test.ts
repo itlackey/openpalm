@@ -171,7 +171,7 @@ describe("composeUp", () => {
   test("returns error when compose file not found", async () => {
     existsSyncMock.mockReturnValue(false);
     const { composeUp } = await import("./docker.js");
-    const result = await composeUp("/state");
+    const result = await composeUp({ files: ["/state/core.compose.yml"] });
     expect(result.ok).toBe(false);
     expect(result.stderr).toContain("Compose file not found");
   });
@@ -181,7 +181,7 @@ describe("composeUp", () => {
     mockExecSuccess("Creating containers...");
 
     const { composeUp } = await import("./docker.js");
-    const result = await composeUp("/state");
+    const result = await composeUp({ files: ["/state/core.compose.yml"] });
     expect(result.ok).toBe(true);
 
     const args = capturedArgs();
@@ -198,7 +198,7 @@ describe("composeUp", () => {
     mockExecSuccess();
 
     const { composeUp } = await import("./docker.js");
-    await composeUp("/state", { profiles: ["dev", "debug"] });
+    await composeUp({ files: ["/state/core.compose.yml"], profiles: ["dev", "debug"] });
 
     const args = capturedArgs();
     expect(args).toContain("--profile");
@@ -215,7 +215,7 @@ describe("composeUp", () => {
     mockExecSuccess();
 
     const { composeUp } = await import("./docker.js");
-    await composeUp("/state", { services: ["admin", "guardian"] });
+    await composeUp({ files: ["/state/core.compose.yml"], services: ["admin", "guardian"] });
 
     const args = capturedArgs();
     const upIdx = args.indexOf("up");
@@ -228,7 +228,7 @@ describe("composeUp", () => {
     mockExecSuccess();
 
     const { composeUp } = await import("./docker.js");
-    await composeUp("/state", { files: ["/a/compose.yml", "/b/overlay.yml"] });
+    await composeUp({ files: ["/a/compose.yml", "/b/overlay.yml"] });
 
     const args = capturedArgs();
     expect(args).toContain("/a/compose.yml");
@@ -240,7 +240,7 @@ describe("composeUp", () => {
     mockExecSuccess();
 
     const { composeUp } = await import("./docker.js");
-    await composeUp("/state", { forceRecreate: true });
+    await composeUp({ files: ["/state/core.compose.yml"], forceRecreate: true });
 
     const args = capturedArgs();
     expect(args).toContain("--force-recreate");
@@ -255,7 +255,7 @@ describe("composeUp", () => {
     mockExecSuccess();
 
     const { composeUp } = await import("./docker.js");
-    await composeUp("/state");
+    await composeUp({ files: ["/state/core.compose.yml"] });
 
     const args = capturedArgs();
     expect(args).not.toContain("--force-recreate");
@@ -266,7 +266,7 @@ describe("composeUp", () => {
     mockExecSuccess();
 
     const { composeUp } = await import("./docker.js");
-    await composeUp("/state", { removeOrphans: true });
+    await composeUp({ files: ["/state/core.compose.yml"], removeOrphans: true });
 
     const args = capturedArgs();
     expect(args).toContain("--remove-orphans");
@@ -281,7 +281,7 @@ describe("composeUp", () => {
     mockExecSuccess();
 
     const { composeUp } = await import("./docker.js");
-    await composeUp("/state");
+    await composeUp({ files: ["/state/core.compose.yml"] });
 
     const args = capturedArgs();
     expect(args).not.toContain("--remove-orphans");
@@ -297,7 +297,7 @@ describe("composeUp", () => {
     mockExecSuccess();
 
     const { composeUp } = await import("./docker.js");
-    await composeUp("/state", { envFiles: [tmpEnvFile] });
+    await composeUp({ files: ["/state/core.compose.yml"], envFiles: [tmpEnvFile] });
 
     // The env passed to execFile should contain the env file values
     const call = execFileMock.mock.calls[0];
@@ -318,7 +318,7 @@ describe("composeDown", () => {
   test("returns error when compose file not found", async () => {
     existsSyncMock.mockReturnValue(false);
     const { composeDown } = await import("./docker.js");
-    const result = await composeDown("/state");
+    const result = await composeDown({ files: ["/state/core.compose.yml"] });
     expect(result.ok).toBe(false);
   });
 
@@ -327,7 +327,7 @@ describe("composeDown", () => {
     mockExecSuccess();
 
     const { composeDown } = await import("./docker.js");
-    await composeDown("/state", { removeVolumes: true });
+    await composeDown({ files: ["/state/core.compose.yml"], removeVolumes: true });
 
     const args = capturedArgs();
     expect(args).toContain("-v");
@@ -339,7 +339,7 @@ describe("composeDown", () => {
     mockExecSuccess();
 
     const { composeDown } = await import("./docker.js");
-    await composeDown("/state");
+    await composeDown({ files: ["/state/core.compose.yml"] });
 
     const args = capturedArgs();
     expect(args).not.toContain("-v");
@@ -355,7 +355,7 @@ describe("composeRestart", () => {
   test("returns error when compose file not found", async () => {
     existsSyncMock.mockReturnValue(false);
     const { composeRestart } = await import("./docker.js");
-    const result = await composeRestart("/state", ["admin"]);
+    const result = await composeRestart(["admin"], { files: ["/state/core.compose.yml"] });
     expect(result.ok).toBe(false);
   });
 
@@ -364,7 +364,7 @@ describe("composeRestart", () => {
     mockExecSuccess();
 
     const { composeRestart } = await import("./docker.js");
-    await composeRestart("/state", ["admin", "guardian"]);
+    await composeRestart(["admin", "guardian"], { files: ["/state/core.compose.yml"] });
 
     const args = capturedArgs();
     expect(args).toContain("restart");
@@ -384,7 +384,7 @@ describe("composeStop", () => {
     mockExecSuccess();
 
     const { composeStop } = await import("./docker.js");
-    await composeStop("/state", ["memory"]);
+    await composeStop(["memory"], { files: ["/state/core.compose.yml"] });
 
     const args = capturedArgs();
     expect(args).toContain("stop");
@@ -403,7 +403,7 @@ describe("composeStart", () => {
     mockExecSuccess();
 
     const { composeStart } = await import("./docker.js");
-    await composeStart("/state", ["admin"]);
+    await composeStart(["admin"], { files: ["/state/core.compose.yml"] });
 
     const args = capturedArgs();
     expect(args).toContain("up");
@@ -423,7 +423,7 @@ describe("composePs", () => {
     mockExecSuccess('[{"Name": "admin"}]');
 
     const { composePs } = await import("./docker.js");
-    await composePs("/state");
+    await composePs({ files: ["/state/core.compose.yml"] });
 
     const args = capturedArgs();
     expect(args).toContain("ps");
@@ -436,7 +436,7 @@ describe("composePs", () => {
     mockExecSuccess('[{"Service": "admin"}]');
 
     const { composePs } = await import("./docker.js");
-    await composePs("/state");
+    await composePs({ files: ["/state/core.compose.yml"] });
 
     const args = capturedArgs();
     expect(args).toContain("compose");
@@ -452,12 +452,12 @@ describe("composeLogs", () => {
     existsSyncMock.mockReset();
   });
 
-  test("includes --tail flag with default 100", async () => {
+  test("includes --tail flag with value 100", async () => {
     existsSyncMock.mockReturnValue(true);
     mockExecSuccess("log output...");
 
     const { composeLogs } = await import("./docker.js");
-    await composeLogs("/state");
+    await composeLogs(undefined, 100, { files: ["/state/core.compose.yml"] });
 
     const args = capturedArgs();
     expect(args).toContain("logs");
@@ -470,7 +470,7 @@ describe("composeLogs", () => {
     mockExecSuccess();
 
     const { composeLogs } = await import("./docker.js");
-    await composeLogs("/state", undefined, 50);
+    await composeLogs(undefined, 50, { files: ["/state/core.compose.yml"] });
 
     const args = capturedArgs();
     expect(args).toContain("--tail");
@@ -482,7 +482,7 @@ describe("composeLogs", () => {
     mockExecSuccess();
 
     const { composeLogs } = await import("./docker.js");
-    await composeLogs("/state", ["admin", "guardian"]);
+    await composeLogs(["admin", "guardian"], 100, { files: ["/state/core.compose.yml"] });
 
     const args = capturedArgs();
     expect(args).toContain("admin");
@@ -501,7 +501,7 @@ describe("composePull", () => {
     mockExecSuccess("Pulling images...");
 
     const { composePull } = await import("./docker.js");
-    await composePull("/state");
+    await composePull({ files: ["/state/core.compose.yml"] });
 
     const args = capturedArgs();
     expect(args).toContain("compose");
@@ -519,7 +519,7 @@ describe("composePull", () => {
     mockExecSuccess();
 
     const { composePull } = await import("./docker.js");
-    await composePull("/state", { envFiles: [tmpEnvFile] });
+    await composePull({ files: ["/state/core.compose.yml"], envFiles: [tmpEnvFile] });
 
     // The env passed to execFile should contain the env file values
     const call = execFileMock.mock.calls[0];
@@ -547,7 +547,7 @@ describe("selfRecreateAdmin", () => {
     const fakeChild = mockSpawn();
 
     const { selfRecreateAdmin } = await import("./docker.js");
-    selfRecreateAdmin("/state");
+    selfRecreateAdmin({ files: ["/state/core.compose.yml"] });
 
     expect(spawnMock).toHaveBeenCalledOnce();
     const [cmd, args] = spawnMock.mock.calls[0];
@@ -565,7 +565,7 @@ describe("selfRecreateAdmin", () => {
     mockSpawn();
 
     const { selfRecreateAdmin } = await import("./docker.js");
-    selfRecreateAdmin("/state");
+    selfRecreateAdmin({ files: ["/state/core.compose.yml"] });
 
     const opts = spawnMock.mock.calls[0][2];
     expect(opts.detached).toBe(true);
@@ -582,7 +582,7 @@ describe("selfRecreateAdmin", () => {
     existsSyncMock.mockReturnValue(true);
 
     const { selfRecreateAdmin } = await import("./docker.js");
-    selfRecreateAdmin("/state", { envFiles: [tmpEnvFile] });
+    selfRecreateAdmin({ files: ["/state/core.compose.yml"], envFiles: [tmpEnvFile] });
 
     const opts = spawnMock.mock.calls[0][2];
     expect(opts.env.OP_IMAGE_TAG).toBe("v2.0.0");
@@ -594,7 +594,7 @@ describe("selfRecreateAdmin", () => {
     const fakeChild = mockSpawn();
 
     const { selfRecreateAdmin } = await import("./docker.js");
-    selfRecreateAdmin("/state");
+    selfRecreateAdmin({ files: ["/state/core.compose.yml"] });
 
     expect(fakeChild.on).toHaveBeenCalledWith("error", expect.any(Function));
   });
@@ -610,7 +610,7 @@ describe("security: no shell injection", () => {
     mockExecSuccess();
 
     const docker = await import("./docker.js");
-    await docker.composeUp("/state");
+    await docker.composeUp({ files: ["/state/core.compose.yml"] });
 
     // Verify execFile is called with "docker" as first arg (not a shell string)
     expect(execFileMock).toHaveBeenCalled();

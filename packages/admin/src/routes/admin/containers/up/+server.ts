@@ -39,7 +39,7 @@ export const POST: RequestHandler = async (event) => {
   // Try real Docker — only update state based on actual result
   const dockerCheck = await checkDocker();
   if (dockerCheck.ok) {
-    const result = await composeStart(state.configDir, [service], { files: buildComposeFileList(state), envFiles: buildEnvFiles(state) });
+    const result = await composeStart([service], { files: buildComposeFileList(state), envFiles: buildEnvFiles(state) });
     if (result.ok) {
       state.services[service] = "running";
     } else {

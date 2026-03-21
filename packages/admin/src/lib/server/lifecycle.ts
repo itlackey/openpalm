@@ -23,15 +23,15 @@ export {
 } from "@openpalm/lib";
 
 // Wrapped functions (pre-inject Vite asset provider)
-export function applyInstall(state: ControlPlaneState): void {
-  _applyInstall(state, viteAssets);
+export async function applyInstall(state: ControlPlaneState): Promise<void> {
+  await _applyInstall(state, viteAssets);
 }
 
-export function applyUpdate(state: ControlPlaneState): { restarted: string[] } {
+export async function applyUpdate(state: ControlPlaneState): Promise<{ restarted: string[] }> {
   return _applyUpdate(state, viteAssets);
 }
 
-export function applyUninstall(state: ControlPlaneState): { stopped: string[] } {
+export async function applyUninstall(state: ControlPlaneState): Promise<{ stopped: string[] }> {
   return _applyUninstall(state, viteAssets);
 }
 

@@ -18,45 +18,51 @@ import { makeTempDir, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
 
-/** Seed channel overlay files in config/components/ (the new layout). */
-function seedChannelComponents(
-  configDir: string,
+/**
+ * Seed channel addon files in stack/addons/<name>/compose.yml.
+ * homeDir is the openpalm home (parent of config/). configDir = join(homeDir, "config").
+ */
+function seedChannelAddons(
+  homeDir: string,
   channels: { name: string; yml: string }[]
 ): void {
-  const componentsDir = join(configDir, "components");
-  mkdirSync(componentsDir, { recursive: true });
   for (const ch of channels) {
-    writeFileSync(join(componentsDir, `channel-${ch.name}.yml`), ch.yml);
+    const addonDir = join(homeDir, "stack", "addons", ch.name);
+    mkdirSync(addonDir, { recursive: true });
+    writeFileSync(join(addonDir, "compose.yml"), ch.yml);
   }
 }
 
 // ── Channel Name Validation & Discovery ─────────────────────────────────
 
 describe("discoverChannels", () => {
+  let homeDir: string;
   let configDir: string;
 
   beforeEach(() => {
-    configDir = trackDir(makeTempDir());
+    homeDir = trackDir(makeTempDir());
+    configDir = join(homeDir, "config");
+    mkdirSync(configDir, { recursive: true });
   });
 
-  test("returns empty array when components dir does not exist", () => {
+  test("returns empty array when stack/addons dir does not exist", () => {
     const result = discoverChannels(configDir);
     expect(result).toEqual([]);
   });
 
-  test("discovers channel-*.yml files as channels", () => {
-    seedChannelComponents(configDir, [
+  test("discovers addons as channels", () => {
+    seedChannelAddons(homeDir, [
       { name: "chat", yml: "services:\n  channel-chat:\n    image: chat:latest\n" }
     ]);
 
     const result = discoverChannels(configDir);
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("chat");
-    expect(result[0].ymlPath).toContain("channel-chat.yml");
+    expect(result[0].ymlPath).toContain("compose.yml");
   });
 
   test("discovers multiple channels", () => {
-    seedChannelComponents(configDir, [
+    seedChannelAddons(homeDir, [
       { name: "chat", yml: "services:\n  channel-chat:\n    image: chat:latest\n" },
       { name: "discord", yml: "services:\n  channel-discord:\n    image: discord:latest\n" },
       { name: "api", yml: "services:\n  channel-api:\n    image: api:latest\n" }
@@ -69,24 +75,32 @@ describe("discoverChannels", () => {
   });
 
   test("filters out invalid channel names", () => {
-    const componentsDir = join(configDir, "components");
-    mkdirSync(componentsDir, { recursive: true });
-    // Invalid names: uppercase, starts with hyphen, too long, special chars
-    writeFileSync(join(componentsDir, "channel-UPPER.yml"), "services: {}");
-    writeFileSync(join(componentsDir, "channel--leading-hyphen.yml"), "services: {}");
-    writeFileSync(join(componentsDir, "channel-valid-name.yml"), "services: {}");
+    const addonsDir = join(homeDir, "stack", "addons");
+    // Invalid: uppercase
+    const upperDir = join(addonsDir, "UPPER");
+    mkdirSync(upperDir, { recursive: true });
+    writeFileSync(join(upperDir, "compose.yml"), "services: {}");
+    // Invalid: starts with hyphen
+    const leadingHyphenDir = join(addonsDir, "-leading-hyphen");
+    mkdirSync(leadingHyphenDir, { recursive: true });
+    writeFileSync(join(leadingHyphenDir, "compose.yml"), "services: {}");
+    // Valid
+    seedChannelAddons(homeDir, [
+      { name: "valid-name", yml: "services: {}" }
+    ]);
 
     const result = discoverChannels(configDir);
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("valid-name");
   });
 
-  test("ignores non-channel .yml files in components directory", () => {
-    const componentsDir = join(configDir, "components");
-    mkdirSync(componentsDir, { recursive: true });
-    writeFileSync(join(componentsDir, "core.yml"), "services: {}");
-    writeFileSync(join(componentsDir, "channel-chat.yml"), "services: {}");
-    writeFileSync(join(componentsDir, "admin.yml"), "services: {}");
+  test("ignores addon dirs without compose.yml", () => {
+    const addonsDir = join(homeDir, "stack", "addons");
+    mkdirSync(join(addonsDir, "no-compose"), { recursive: true });
+    // no compose.yml
+    seedChannelAddons(homeDir, [
+      { name: "chat", yml: "services: {}" }
+    ]);
 
     const result = discoverChannels(configDir);
     expect(result).toHaveLength(1);
@@ -116,22 +130,28 @@ describe("isAllowedService", () => {
     expect(isAllowedService("GUARDIAN")).toBe(false);
   });
 
-  test("allows channel-* when component overlay exists", () => {
-    const configDir = trackDir(makeTempDir());
-    const componentsDir = join(configDir, "components");
-    mkdirSync(componentsDir, { recursive: true });
-    writeFileSync(join(componentsDir, "channel-chat.yml"), "services: {}");
+  test("allows channel-* when stack/addons/chat/compose.yml exists", () => {
+    const homeDir = trackDir(makeTempDir());
+    const configDir = join(homeDir, "config");
+    mkdirSync(configDir, { recursive: true });
+    seedChannelAddons(homeDir, [
+      { name: "chat", yml: "services: {}" }
+    ]);
 
     expect(isAllowedService("channel-chat", configDir)).toBe(true);
   });
 
-  test("rejects channel-* when component overlay does not exist", () => {
-    const configDir = trackDir(makeTempDir());
+  test("rejects channel-* when stack addon does not exist", () => {
+    const homeDir = trackDir(makeTempDir());
+    const configDir = join(homeDir, "config");
+    mkdirSync(configDir, { recursive: true });
     expect(isAllowedService("channel-chat", configDir)).toBe(false);
   });
 
   test("rejects channel- with invalid channel name", () => {
-    const configDir = trackDir(makeTempDir());
+    const homeDir = trackDir(makeTempDir());
+    const configDir = join(homeDir, "config");
+    mkdirSync(configDir, { recursive: true });
     expect(isAllowedService("channel-UPPER", configDir)).toBe(false);
     expect(isAllowedService("channel--double", configDir)).toBe(false);
   });
@@ -141,17 +161,21 @@ describe("isAllowedService", () => {
     expect(isAllowedService("nginx")).toBe(false);
   });
 
-  test("allows ollama when component overlay exists", () => {
-    const configDir = trackDir(makeTempDir());
-    const componentsDir = join(configDir, "components");
-    mkdirSync(componentsDir, { recursive: true });
-    writeFileSync(join(componentsDir, "ollama.yml"), "services:\n  ollama:\n    image: ollama/ollama\n");
+  test("allows ollama when stack/addons/ollama/compose.yml exists", () => {
+    const homeDir = trackDir(makeTempDir());
+    const configDir = join(homeDir, "config");
+    mkdirSync(configDir, { recursive: true });
+    const ollamaDir = join(homeDir, "stack", "addons", "ollama");
+    mkdirSync(ollamaDir, { recursive: true });
+    writeFileSync(join(ollamaDir, "compose.yml"), "services:\n  ollama:\n    image: ollama/ollama\n");
 
     expect(isAllowedService("ollama", configDir)).toBe(true);
   });
 
-  test("rejects ollama when component overlay does not exist", () => {
-    const configDir = trackDir(makeTempDir());
+  test("rejects ollama when stack addon does not exist", () => {
+    const homeDir = trackDir(makeTempDir());
+    const configDir = join(homeDir, "config");
+    mkdirSync(configDir, { recursive: true });
     expect(isAllowedService("ollama", configDir)).toBe(false);
   });
 
@@ -162,10 +186,12 @@ describe("isAllowedService", () => {
 
 describe("isValidChannel", () => {
   test("validates channel name format (lowercase alnum + hyphens)", () => {
-    const configDir = trackDir(makeTempDir());
-    const componentsDir = join(configDir, "components");
-    mkdirSync(componentsDir, { recursive: true });
-    writeFileSync(join(componentsDir, "channel-my-channel.yml"), "services: {}");
+    const homeDir = trackDir(makeTempDir());
+    const configDir = join(homeDir, "config");
+    mkdirSync(configDir, { recursive: true });
+    seedChannelAddons(homeDir, [
+      { name: "my-channel", yml: "services: {}" }
+    ]);
 
     expect(isValidChannel("my-channel", configDir)).toBe(true);
   });
@@ -181,15 +207,15 @@ describe("isValidChannel", () => {
     expect(isValidChannel("has space")).toBe(false);
   });
 
-  test("requires configDir to confirm component overlay", () => {
+  test("requires configDir to confirm addon overlay", () => {
     // Without configDir: format-valid but returns false (no overlay check)
     expect(isValidChannel("chat")).toBe(false);
   });
 
-  test("rejects valid-format name if not installed as component", () => {
-    const configDir = trackDir(makeTempDir());
-    mkdirSync(join(configDir, "components"), { recursive: true });
+  test("rejects valid-format name if not installed as addon", () => {
+    const homeDir = trackDir(makeTempDir());
+    const configDir = join(homeDir, "config");
+    mkdirSync(configDir, { recursive: true });
     expect(isValidChannel("unstaged", configDir)).toBe(false);
   });
 });
-

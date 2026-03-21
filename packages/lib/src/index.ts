@@ -67,14 +67,6 @@ export {
 } from "./control-plane/home.js";
 export type { LegacyLayout } from "./control-plane/home.js";
 
-// ── Paths (deprecated — use Home Layout) ─────────────────────────────────
-export {
-  resolveConfigHome,
-  resolveStateHome,
-  resolveDataHome,
-  ensureXdgDirs,
-} from "./control-plane/paths.js";
-
 // ── Env ─────────────────────────────────────────────────────────────────
 export {
   parseEnvContent,
@@ -192,8 +184,6 @@ export {
 export {
   ensureUserEnvSchema,
   ensureSystemEnvSchema,
-  ensureSecretsSchema,
-  ensureStackSchema,
   ensureMemoryDir,
   ensureCoreCompose,
   readCoreCompose,
@@ -209,13 +199,11 @@ export {
   isOllamaEnabled,
   isAdminEnabled,
   buildEnvFiles,
-  discoverComponentOverlays,
-  discoverChannelOverlays,
+  discoverStackOverlays,
   resolveArtifacts,
   buildArtifactMeta,
   persistConfiguration,
   writeSystemEnv,
-  writeComponentOverlay,
 } from "./control-plane/staging.js";
 
 // ── Rollback ─────────────────────────────────────────────────────────────
@@ -252,6 +240,9 @@ export type { DockerResult } from "./control-plane/docker.js";
 export {
   checkDocker,
   checkDockerCompose,
+  resolveComposeProjectName,
+  composePreflight,
+  composeConfigServices,
   composeUp,
   composeDown,
   composeRestart,
@@ -322,7 +313,6 @@ export {
   ENV_ALIASES,
   resolveEnv,
   resolveEnvFromFile,
-  dualWriteEnvPair,
   getOldName,
   getNewName,
   resetWarnings,

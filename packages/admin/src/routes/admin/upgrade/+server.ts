@@ -11,7 +11,6 @@ import {
   applyUpgrade,
   updateStackEnvToLatestImageTag,
   appendAudit,
-  ensureXdgDirs,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
   ensureMemoryDir,
@@ -20,6 +19,7 @@ import {
   buildEnvFiles,
   buildManagedServices
 } from "$lib/server/control-plane.js";
+import { ensureHomeDirs } from "@openpalm/lib";
 import { composePull, composeUp, checkDocker, selfRecreateAdmin } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
@@ -36,7 +36,7 @@ export const POST: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
-  ensureXdgDirs();
+  ensureHomeDirs();
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
   ensureMemoryDir();
@@ -79,7 +79,7 @@ export const POST: RequestHandler = async (event) => {
   const envFiles = buildEnvFiles(state);
 
   logger.info("pulling images", { requestId });
-  const pullResult = await composePull(state.configDir, { files, envFiles });
+  const pullResult = await composePull({ files, envFiles });
   if (!pullResult.ok) {
     logger.error("image pull failed", { requestId, stderr: pullResult.stderr });
     appendAudit(state, actor, "upgrade", { result: "error", reason: "pull_failed", stderr: pullResult.stderr }, false, requestId, callerType);
@@ -87,7 +87,7 @@ export const POST: RequestHandler = async (event) => {
   }
 
   logger.info("recreating containers", { requestId });
-  const upResult = await composeUp(state.configDir, { files, envFiles, services: buildManagedServices(state), removeOrphans: true });
+  const upResult = await composeUp({ files, envFiles, services: buildManagedServices(state), removeOrphans: true });
   if (!upResult.ok) {
     logger.error("compose up failed after pull", { requestId, stderr: upResult.stderr });
     appendAudit(state, actor, "upgrade", { result: "error", reason: "up_failed", stderr: upResult.stderr }, false, requestId, callerType);
@@ -108,7 +108,7 @@ export const POST: RequestHandler = async (event) => {
   // response is flushed before Docker replaces this container.
   setTimeout(() => {
     logger.info("recreating admin container with new image", { requestId, imageTag });
-    selfRecreateAdmin(state.configDir, { files, envFiles });
+    selfRecreateAdmin({ files, envFiles });
   }, 2_000);
 
   return jsonResponse(200, {
