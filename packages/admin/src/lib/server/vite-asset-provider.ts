@@ -14,15 +14,15 @@ import opencodeConfigAsset from "$assistant/opencode.jsonc?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import agentsMdAsset from "$assistant/AGENTS.md?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
-import cleanupLogsAsset from "$stack/automations/cleanup-logs.yml?raw";
+import cleanupLogsAsset from "$config/automations/cleanup-logs.yml?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
-import cleanupDataAsset from "$stack/automations/cleanup-data.yml?raw";
+import cleanupDataAsset from "$config/automations/cleanup-data.yml?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
-import validateConfigAsset from "$stack/automations/validate-config.yml?raw";
+import validateConfigAsset from "$config/automations/validate-config.yml?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
-import secretsSchemaAsset from "$vault/user.env.schema?raw";
+import secretsSchemaAsset from "$vault/user/user.env.schema?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
-import stackSchemaAsset from "$vault/system.env.schema?raw";
+import stackSchemaAsset from "$vault/stack/stack.env.schema?raw";
 
 export class ViteAssetProvider implements CoreAssetProvider {
   coreCompose(): string { return coreComposeAsset; }

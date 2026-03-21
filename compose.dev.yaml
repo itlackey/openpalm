@@ -5,7 +5,7 @@
 #
 # Manual equivalent (from project root):
 #   docker compose --project-directory . \
-#     -f stack/core.compose.yml \
+#     -f .openpalm/stack/core.compose.yml \
 #     -f compose.dev.yaml \
 #     --env-file .dev/vault/stack/stack.env \
 #     --env-file .dev/vault/user/user.env \

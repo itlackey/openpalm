@@ -2,7 +2,7 @@
  * FilesystemRegistryProvider -- reads addon catalog from a directory on disk.
  *
  * Used by the CLI. Scans component subdirectories and automation files
- * from the stack/addons/ and stack/catalog/ directories.
+ * from the .openpalm/stack/addons/ and .openpalm/config/automations/ directories.
  *
  * Expected layout:
  *   <rootDir>/

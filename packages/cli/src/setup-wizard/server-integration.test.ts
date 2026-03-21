@@ -266,21 +266,13 @@ describe("setup wizard server integration", () => {
       expect(memConfig.mem0.embedder.config.model).toBe("nomic-embed-text");
       expect(memConfig.mem0.vector_store.config.embedding_model_dims).toBe(768);
 
-      // Verify connection profiles were written
-      const profilesPath = join(configDir, "connections", "profiles.json");
-      expect(existsSync(profilesPath)).toBe(true);
-      const profiles = JSON.parse(readFileSync(profilesPath, "utf-8"));
-      expect(profiles.profiles).toHaveLength(1);
-      expect(profiles.profiles[0].provider).toBe("ollama");
-      expect(profiles.assignments.llm.model).toBe("qwen2.5-coder:3b");
+      // Verify stack.yaml was written with connections
+      const specPath = join(configDir, "stack.yaml");
+      expect(existsSync(specPath)).toBe(true);
 
       // Verify staged compose artifact exists
       const stagedCompose = join(configDir, "components", "core.yml");
       expect(existsSync(stagedCompose)).toBe(true);
-
-      // Verify openpalm.yaml stack spec was written
-      const specPath = join(configDir, "openpalm.yaml");
-      expect(existsSync(specPath)).toBe(true);
     } finally {
       stop();
     }

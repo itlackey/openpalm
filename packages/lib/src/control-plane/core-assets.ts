@@ -45,8 +45,9 @@ function writeIfChanged(path: string, content: string): void {
 
 export function ensureUserEnvSchema(assets: CoreAssetProvider): string {
   const vaultDir = resolveVaultDir();
-  mkdirSync(vaultDir, { recursive: true });
-  const path = `${vaultDir}/user.env.schema`;
+  const dir = `${vaultDir}/user`;
+  mkdirSync(dir, { recursive: true });
+  const path = `${dir}/user.env.schema`;
   if (!existsSync(path)) {
     writeFileSync(path, assets.secretsSchema());
   }
@@ -55,8 +56,9 @@ export function ensureUserEnvSchema(assets: CoreAssetProvider): string {
 
 export function ensureSystemEnvSchema(assets: CoreAssetProvider): string {
   const vaultDir = resolveVaultDir();
-  mkdirSync(vaultDir, { recursive: true });
-  const path = `${vaultDir}/system.env.schema`;
+  const dir = `${vaultDir}/stack`;
+  mkdirSync(dir, { recursive: true });
+  const path = `${dir}/stack.env.schema`;
   if (!existsSync(path)) {
     writeFileSync(path, assets.stackSchema());
   }
@@ -150,11 +152,11 @@ const REPO = "itlackey/openpalm";
 const VERSION = process.env.OP_ASSET_VERSION ?? "main";
 
 const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
-  { relPath: "config/components/core.yml", githubFilename: "stack/core.compose.yml" },
+  { relPath: "config/components/core.yml", githubFilename: ".openpalm/stack/core.compose.yml" },
   { relPath: "data/assistant/opencode.jsonc", githubFilename: "core/assistant/opencode.jsonc" },
   { relPath: "data/assistant/AGENTS.md", githubFilename: "core/assistant/AGENTS.md" },
-  { relPath: "vault/user.env.schema", githubFilename: "vault/user.env.schema" },
-  { relPath: "vault/system.env.schema", githubFilename: "vault/system.env.schema" },
+  { relPath: "vault/user/user.env.schema", githubFilename: ".openpalm/vault/user/user.env.schema" },
+  { relPath: "vault/stack/stack.env.schema", githubFilename: ".openpalm/vault/stack/stack.env.schema" },
 ];
 
 async function downloadAsset(filename: string): Promise<string> {

@@ -1,7 +1,7 @@
 /**
  * Tests for the registry component directory format.
  *
- * Validates that all components in stack/addons/ follow the
+ * Validates that all components in .openpalm/stack/addons/ follow the
  * component conventions: compose.yml with required labels, .env.schema
  * with documented variables, proper service naming, and no security
  * violations.
@@ -18,7 +18,7 @@ import { join, resolve } from "node:path";
 
 /** Resolve path from repo root */
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
-const REGISTRY_DIR = join(REPO_ROOT, "stack/addons");
+const REGISTRY_DIR = join(REPO_ROOT, ".openpalm/stack/addons");
 
 /** List all component directories in the registry */
 function listComponentDirs(): string[] {
@@ -277,53 +277,6 @@ describe("registry component sensitive fields", () => {
       expect(sensitiveEntries.length).toBeGreaterThan(0);
     });
   }
-});
-
-// ── Index File Tests ─────────────────────────────────────────────────────
-
-describe("registry index.json", () => {
-  const indexPath = join(REGISTRY_DIR, "index.json");
-
-  it("exists", () => {
-    expect(existsSync(indexPath)).toBe(true);
-  });
-
-  it("is valid JSON", () => {
-    const content = readFileSync(indexPath, "utf-8");
-    expect(() => JSON.parse(content)).not.toThrow();
-  });
-
-  it("has a components array", () => {
-    const index = JSON.parse(readFileSync(indexPath, "utf-8"));
-    expect(Array.isArray(index.components)).toBe(true);
-    expect(index.components.length).toBeGreaterThan(0);
-  });
-
-  it("every entry has id, name, and category", () => {
-    const index = JSON.parse(readFileSync(indexPath, "utf-8"));
-    for (const entry of index.components) {
-      expect(typeof entry.id).toBe("string");
-      expect(typeof entry.name).toBe("string");
-      expect(typeof entry.category).toBe("string");
-    }
-  });
-
-  it("index entries match actual component directories", () => {
-    const index = JSON.parse(readFileSync(indexPath, "utf-8"));
-    const indexIds = index.components.map((c: { id: string }) => c.id).sort();
-    const dirIds = listComponentDirs().sort();
-    expect(indexIds).toEqual(dirIds);
-  });
-
-  it("index names match compose.yml openpalm.name labels", () => {
-    const index = JSON.parse(readFileSync(indexPath, "utf-8"));
-    for (const entry of index.components) {
-      const compose = readComponentFile(entry.id, "compose.yml");
-      const nameMatch = compose.match(/openpalm\.name:\s*(.+)/);
-      expect(nameMatch).not.toBeNull();
-      expect(nameMatch![1].trim()).toBe(entry.name);
-    }
-  });
 });
 
 // ── Cross-Component Consistency Tests ────────────────────────────────────

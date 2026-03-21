@@ -25,7 +25,7 @@ if [[ ! -f "$VAULT_HOME/stack/stack.env" ]]; then
 fi
 
 if [[ ! -f "$OP_CONFIG_HOME/components/core.yml" ]]; then
-	cp "$OP_HOME/stack/core.compose.yml" "$OP_CONFIG_HOME/components/core.yml"
+	cp "$OP_HOME/.openpalm/stack/core.compose.yml" "$OP_CONFIG_HOME/components/core.yml"
 fi
 
 if [[ -f "$OP_HOME/image-cache/openpalm-images.tar.zst" && ! -f /var/lib/openpalm/.images-loaded ]]; then

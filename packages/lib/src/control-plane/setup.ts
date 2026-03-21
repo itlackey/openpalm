@@ -29,8 +29,8 @@ import { buildMem0Mapping } from "./connection-mapping.js";
 import { writeMemoryConfig } from "./memory-config.js";
 import { ensureOpenCodeSystemConfig, ensureMemoryDir } from "./core-assets.js";
 import { applyInstall, createState, writeSetupTokenFile } from "./lifecycle.js";
-import { writeStackSpecV3 } from "./stack-spec.js";
-import type { StackSpecV3 } from "./stack-spec.js";
+import { writeStackSpec } from "./stack-spec.js";
+import type { StackSpec, StackSpecConnection } from "./stack-spec.js";
 import { detectLocalProviders } from "./model-runner.js";
 import type { LocalProviderDetection } from "./model-runner.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
@@ -699,17 +699,31 @@ export async function performSetup(
   ensureOpenCodeSystemConfig(assetProvider);
   ensureMemoryDir();
 
-  // ── Write stack spec (openpalm.yaml) ─────────────────────────────────
-  // Still writes v3 format — the migration to v4 happens via migrateV3ToV4()
-  // or transparently via readStackSpec() which auto-upgrades v3→v4 on read.
-  const stackSpec: StackSpecV3 = {
-    version: 3,
-    connections: effectiveConnections.map((c) => ({
-      id: c.id,
-      name: c.name,
-      provider: c.provider,
-      baseUrl: c.baseUrl,
-    })),
+  // ── Write stack spec (stack.yaml v1) ─────────────────────────────────
+  const addons: string[] = [];
+  if (input.ollamaEnabled) addons.push("ollama");
+  if (input.services?.admin) addons.push("admin");
+  if (input.channels) {
+    for (const ch of input.channels) addons.push(ch);
+  }
+
+  const stackSpec: StackSpec = {
+    version: 1,
+    connections: effectiveConnections.map((c): StackSpecConnection => {
+      const apiKeyEnvVar = connEnvVarMap.get(c.id);
+      return {
+        id: c.id,
+        name: c.name,
+        kind: c.provider === "ollama" || c.provider === "ollama-instack" ? "ollama_stack" as const
+          : ["lmstudio", "model-runner"].includes(c.provider) ? "openai_compatible_local" as const
+          : "openai_compatible_remote" as const,
+        provider: c.provider,
+        baseUrl: c.baseUrl,
+        auth: c.apiKey && apiKeyEnvVar
+          ? { mode: "api_key" as const, apiKeySecretRef: `env:${apiKeyEnvVar}` }
+          : { mode: "none" as const },
+      };
+    }),
     assignments: {
       llm: input.assignments.llm,
       embeddings: {
@@ -717,13 +731,30 @@ export async function performSetup(
         model: input.assignments.embeddings.model,
         embeddingDims: resolvedDims,
       },
+      memory: {
+        llm: {
+          connectionId: input.assignments.llm.connectionId,
+          model: memoryModel,
+          temperature: 0.1,
+          maxTokens: 2000,
+        },
+        embeddings: {
+          connectionId: input.assignments.embeddings.connectionId,
+          model: embModel || "text-embedding-3-small",
+        },
+        vectorStore: {
+          provider: "sqlite-vec",
+          collectionName: "memory",
+          dbPath: "/data/memory.db",
+        },
+        customInstructions: "",
+      },
+      ...(ttsAssignment ? { tts: { enabled: true, connectionId: ttsAssignment.connectionId, model: ttsAssignment.model, voice: ttsAssignment.voice, format: ttsAssignment.format } } : {}),
+      ...(sttAssignment ? { stt: { enabled: true, connectionId: sttAssignment.connectionId, model: sttAssignment.model, language: sttAssignment.language } } : {}),
     },
-    ollamaEnabled: input.ollamaEnabled,
-    ...(input.voice ? { voice: input.voice } : {}),
-    ...(input.channels ? { channels: input.channels } : {}),
-    ...(input.services ? { services: input.services } : {}),
+    addons,
   };
-  writeStackSpecV3(state.configDir, stackSpec);
+  writeStackSpec(state.configDir, stackSpec);
 
   // ── Mark setup complete in DATA_HOME stack.env before staging ────────
   const dataStackEnv = `${state.dataDir}/stack.env`;
@@ -733,8 +764,6 @@ export async function performSetup(
     dataStackEnv,
     mergeEnvContent(stackBase, {
       OP_SETUP_COMPLETE: "true",
-      OP_OLLAMA_ENABLED: input.ollamaEnabled ? "true" : "false",
-      OP_ADMIN_ENABLED: input.services?.admin ? "true" : "false",
     })
   );
 

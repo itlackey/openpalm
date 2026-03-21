@@ -263,7 +263,7 @@ OP_INGRESS_PORT=8180
 EOF
 
 # Seed compose to config/components/ (source of truth)
-cp "${ROOT_DIR}/stack/core.compose.yml" "${OP_CONFIG_HOME}/components/core.yml"
+cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_CONFIG_HOME}/components/core.yml"
 
 # Override ports so we don't conflict with a running dev stack.
 # We override admin's port via a compose override.
@@ -505,7 +505,7 @@ mkdir -p \
 
 # Step 2: Re-download assets (simulate by copying from source)
 # In a real upgrade, setup.sh downloads from GitHub. We copy from local assets.
-cp "${ROOT_DIR}/stack/core.compose.yml" "${OP_CONFIG_HOME}/components/core.yml"
+cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_CONFIG_HOME}/components/core.yml"
 
 # Step 3: vault/user/user.env — setup.sh checks if it exists and skips if so
 if [[ -f "${VAULT_HOME}/user/user.env" ]]; then

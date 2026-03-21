@@ -56,6 +56,18 @@ export function resolveRegistryCacheDir(): string {
   return `${resolveCacheHome()}/registry`;
 }
 
+export function resolveStackDir(): string {
+  return `${resolveOpenPalmHome()}/stack`;
+}
+
+export function resolveBackupsDir(): string {
+  return `${resolveOpenPalmHome()}/backups`;
+}
+
+export function resolveWorkspaceDir(): string {
+  return `${resolveOpenPalmHome()}/workspace`;
+}
+
 // ── Directory Setup ──────────────────────────────────────────────────
 
 /**
@@ -71,6 +83,7 @@ export function ensureHomeDirs(): void {
     `${home}/config/components`,
     `${home}/config/automations`,
     `${home}/config/assistant`,
+    `${home}/config/guardian`,
 
     // vault/ — secrets boundary
     `${home}/vault`,
@@ -85,7 +98,16 @@ export function ensureHomeDirs(): void {
     `${home}/data/memory`,
     `${home}/data/guardian`,
     `${home}/data/stash`,
-    `${home}/data/workspace`,
+
+    // stack/ — compose files
+    `${home}/stack`,
+    `${home}/stack/addons`,
+
+    // backups/ — user backups
+    `${home}/backups`,
+
+    // workspace/ — assistant workspace
+    `${home}/workspace`,
 
     // logs/ — consolidated audit/debug
     `${home}/logs`,

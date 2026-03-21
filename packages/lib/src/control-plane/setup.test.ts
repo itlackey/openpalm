@@ -2,7 +2,6 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parse as yamlParse } from "yaml";
 import {
   validateSetupInput,
   buildSecretsFromSetup,
@@ -17,7 +16,7 @@ import {
 } from "./setup.js";
 import type { SetupInput, SetupConnection, SetupConfig } from "./setup.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
-import { STACK_SPEC_FILENAME } from "./stack-spec.js";
+import { STACK_SPEC_FILENAME, readStackSpec } from "./stack-spec.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -425,19 +424,17 @@ describe("performSetup", () => {
     expect(memConfig.mem0.embedder.config.model).toBe("text-embedding-3-small");
   });
 
-  it("writes connection profiles document", async () => {
+  it("writes connection data to stack.yaml", async () => {
     const result = await performSetup(makeValidInput(), createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const profilesPath = join(configDir, "connections", "profiles.json");
-    expect(existsSync(profilesPath)).toBe(true);
-
-    const doc = JSON.parse(readFileSync(profilesPath, "utf-8"));
-    expect(doc.version).toBe(1);
-    expect(doc.profiles).toHaveLength(1);
-    expect(doc.profiles[0].id).toBe("openai-main");
-    expect(doc.assignments.llm.model).toBe("gpt-4o");
-    expect(doc.assignments.embeddings.model).toBe("text-embedding-3-small");
+    const spec = readStackSpec(configDir);
+    expect(spec).not.toBeNull();
+    expect(spec!.version).toBe(1);
+    expect(spec!.connections).toHaveLength(1);
+    expect(spec!.connections[0].id).toBe("openai-main");
+    expect(spec!.assignments.llm.model).toBe("gpt-4o");
+    expect(spec!.assignments.embeddings.model).toBe("text-embedding-3-small");
   });
 
   it("creates staged artifacts directory", async () => {
@@ -470,10 +467,10 @@ describe("performSetup", () => {
     const result = await performSetup(input, createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    // Connection profiles should use the in-stack URL
-    const profilesPath = join(configDir, "connections", "profiles.json");
-    const doc = JSON.parse(readFileSync(profilesPath, "utf-8"));
-    expect(doc.profiles[0].baseUrl).toBe("http://ollama:11434");
+    // Connection in stack.yaml should use the in-stack URL
+    const spec = readStackSpec(configDir);
+    expect(spec).not.toBeNull();
+    expect(spec!.connections[0].baseUrl).toBe("http://ollama:11434");
   });
 
   it("resolves embedding dims from EMBEDDING_DIMS lookup", async () => {
@@ -502,21 +499,22 @@ describe("performSetup", () => {
     expect(memConfig.mem0.vector_store.config.embedding_model_dims).toBe(768);
   });
 
-  it("writes openpalm.yaml with correct structure", async () => {
+  it("writes stack.yaml with correct structure", async () => {
     const result = await performSetup(makeValidInput(), createStubAssetProvider());
     expect(result.ok).toBe(true);
 
     const specPath = join(configDir, STACK_SPEC_FILENAME);
     expect(existsSync(specPath)).toBe(true);
 
-    const spec = yamlParse(readFileSync(specPath, "utf-8"));
-    expect(spec.version).toBe(3);
-    expect(spec.connections).toBeArrayOfSize(1);
-    expect(spec.connections[0].id).toBe("openai-main");
-    expect(spec.connections[0].provider).toBe("openai");
-    expect(spec.assignments.llm.model).toBe("gpt-4o");
-    expect(spec.assignments.embeddings.model).toBe("text-embedding-3-small");
-    expect(spec.ollamaEnabled).toBe(false);
+    const spec = readStackSpec(configDir);
+    expect(spec).not.toBeNull();
+    expect(spec!.version).toBe(1);
+    expect(spec!.connections).toBeArrayOfSize(1);
+    expect(spec!.connections[0].id).toBe("openai-main");
+    expect(spec!.connections[0].provider).toBe("openai");
+    expect(spec!.assignments.llm.model).toBe("gpt-4o");
+    expect(spec!.assignments.embeddings.model).toBe("text-embedding-3-small");
+    expect(spec!.addons).toBeArrayOfSize(0);
   });
 
   it("does not corrupt profile when duplicate connection ID with hyphen is skipped by env var map", async () => {
@@ -538,14 +536,14 @@ describe("performSetup", () => {
     const result = await performSetup(input, createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const profilesPath = join(configDir, "connections", "profiles.json");
-    const doc = JSON.parse(readFileSync(profilesPath, "utf-8"));
-    expect(doc.profiles).toHaveLength(2);
+    const spec = readStackSpec(configDir);
+    expect(spec).not.toBeNull();
+    expect(spec!.connections).toHaveLength(2);
 
-    // The second connection's env var was skipped — hasApiKey must be false, apiKeyEnvVar must be ""
-    const secondary = doc.profiles.find((p: { id: string }) => p.id === "openai-secondary");
+    // The second connection's env var was skipped — auth mode must be "none"
+    const secondary = spec!.connections.find((c: { id: string }) => c.id === "openai-secondary");
     expect(secondary).toBeDefined();
-    expect(secondary.auth.mode).toBe("none");
+    expect(secondary!.auth.mode).toBe("none");
   });
 
   it("includes tts and stt assignments when voice uses openai engines", async () => {
@@ -555,19 +553,19 @@ describe("performSetup", () => {
     const result = await performSetup(input, createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const profilesPath = join(configDir, "connections", "profiles.json");
-    const doc = JSON.parse(readFileSync(profilesPath, "utf-8"));
+    const spec = readStackSpec(configDir);
+    expect(spec).not.toBeNull();
 
-    expect(doc.assignments.tts).toBeDefined();
-    expect(doc.assignments.tts.enabled).toBe(true);
-    expect(doc.assignments.tts.connectionId).toBe("openai-main");
-    expect(doc.assignments.tts.model).toBe("tts-1");
-    expect(doc.assignments.tts.voice).toBe("alloy");
+    expect(spec!.assignments.tts).toBeDefined();
+    expect(spec!.assignments.tts!.enabled).toBe(true);
+    expect(spec!.assignments.tts!.connectionId).toBe("openai-main");
+    expect(spec!.assignments.tts!.model).toBe("tts-1");
+    expect(spec!.assignments.tts!.voice).toBe("alloy");
 
-    expect(doc.assignments.stt).toBeDefined();
-    expect(doc.assignments.stt.enabled).toBe(true);
-    expect(doc.assignments.stt.connectionId).toBe("openai-main");
-    expect(doc.assignments.stt.model).toBe("whisper-1");
+    expect(spec!.assignments.stt).toBeDefined();
+    expect(spec!.assignments.stt!.enabled).toBe(true);
+    expect(spec!.assignments.stt!.connectionId).toBe("openai-main");
+    expect(spec!.assignments.stt!.model).toBe("whisper-1");
   });
 
   it("includes tts and stt without connectionId for browser engines", async () => {
@@ -577,16 +575,16 @@ describe("performSetup", () => {
     const result = await performSetup(input, createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const profilesPath = join(configDir, "connections", "profiles.json");
-    const doc = JSON.parse(readFileSync(profilesPath, "utf-8"));
+    const spec = readStackSpec(configDir);
+    expect(spec).not.toBeNull();
 
-    expect(doc.assignments.tts).toBeDefined();
-    expect(doc.assignments.tts.enabled).toBe(true);
-    expect(doc.assignments.tts.connectionId).toBeUndefined();
+    expect(spec!.assignments.tts).toBeDefined();
+    expect(spec!.assignments.tts!.enabled).toBe(true);
+    expect(spec!.assignments.tts!.connectionId).toBeUndefined();
 
-    expect(doc.assignments.stt).toBeDefined();
-    expect(doc.assignments.stt.enabled).toBe(true);
-    expect(doc.assignments.stt.connectionId).toBeUndefined();
+    expect(spec!.assignments.stt).toBeDefined();
+    expect(spec!.assignments.stt!.enabled).toBe(true);
+    expect(spec!.assignments.stt!.connectionId).toBeUndefined();
   });
 
   it("omits tts and stt when voice is not provided", async () => {
@@ -594,11 +592,11 @@ describe("performSetup", () => {
     const result = await performSetup(input, createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const profilesPath = join(configDir, "connections", "profiles.json");
-    const doc = JSON.parse(readFileSync(profilesPath, "utf-8"));
+    const spec = readStackSpec(configDir);
+    expect(spec).not.toBeNull();
 
-    expect(doc.assignments.tts).toBeUndefined();
-    expect(doc.assignments.stt).toBeUndefined();
+    expect(spec!.assignments.tts).toBeUndefined();
+    expect(spec!.assignments.stt).toBeUndefined();
   });
 
   it("includes tts only when stt is absent", async () => {
@@ -608,15 +606,15 @@ describe("performSetup", () => {
     const result = await performSetup(input, createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const profilesPath = join(configDir, "connections", "profiles.json");
-    const doc = JSON.parse(readFileSync(profilesPath, "utf-8"));
+    const spec = readStackSpec(configDir);
+    expect(spec).not.toBeNull();
 
-    expect(doc.assignments.tts).toBeDefined();
-    expect(doc.assignments.tts.enabled).toBe(true);
-    expect(doc.assignments.tts.connectionId).toBeUndefined();
-    expect(doc.assignments.tts.model).toBe("kokoro");
+    expect(spec!.assignments.tts).toBeDefined();
+    expect(spec!.assignments.tts!.enabled).toBe(true);
+    expect(spec!.assignments.tts!.connectionId).toBeUndefined();
+    expect(spec!.assignments.tts!.model).toBe("kokoro");
 
-    expect(doc.assignments.stt).toBeUndefined();
+    expect(spec!.assignments.stt).toBeUndefined();
   });
 });
 

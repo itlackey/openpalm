@@ -254,16 +254,6 @@ export {
   type Mem0ConnectionMapping,
 } from "@openpalm/lib";
 
-// ── connection-migration-flags.ts ─────────────────────────────────────
-export {
-  readConnectionMigrationFlags,
-  detectConnectionCompatibilityMode,
-} from "@openpalm/lib";
-export type {
-  ConnectionMigrationFlags,
-  ConnectionCompatibilityMode,
-} from "./connection-migration-flags.js";
-
 // ── components.ts (v0.10.0 unified component system) ──────────────────
 export type {
   ComponentDefinition,

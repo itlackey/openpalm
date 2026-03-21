@@ -32,11 +32,11 @@ export class FilesystemAssetProvider implements CoreAssetProvider {
   }
 
   secretsSchema(): string {
-    return this.read("vault/user.env.schema");
+    return this.read("vault/user/user.env.schema");
   }
 
   stackSchema(): string {
-    return this.read("vault/system.env.schema");
+    return this.read("vault/stack/stack.env.schema");
   }
 
   cleanupLogs(): string {

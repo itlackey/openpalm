@@ -13,7 +13,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { discoverChannels } from "./channels.js";
-import { readStackSpec } from "./stack-spec.js";
+import { readStackSpec, hasAddon } from "./stack-spec.js";
 
 import { parseAutomationYaml } from "./scheduler.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
@@ -38,62 +38,24 @@ export function randomHex(bytes: number): string {
   return randomBytes(bytes).toString("hex");
 }
 
-// ── Stack Config (openpalm.yml) ─────────────────────────────────────
+// ── Stack Config (stack.yaml) ─────────────────────────────────────
 
 /**
- * Check whether Ollama is enabled. Reads from the StackSpec (v3 or v4,
- * auto-upgraded) first, then falls back to vault/stack/stack.env for legacy
- * installations that haven't been migrated yet.
+ * Check whether Ollama is enabled via stack.yaml addons list.
  */
 export function isOllamaEnabled(state: ControlPlaneState): boolean {
-  // Try the StackSpec first (handles both .yaml and .yml, v3 and v4)
   const spec = readStackSpec(state.configDir);
-  if (spec) return spec.features?.ollama === true;
-
-  // Lightweight legacy fallback: check openpalm.yml for plain boolean flags
-  const ymlPath = `${state.configDir}/openpalm.yml`;
-  if (existsSync(ymlPath)) {
-    try {
-      const ymlContent = readFileSync(ymlPath, "utf-8");
-      const ymlMatch = ymlContent.match(/^\s*ollama:\s*(true|false)/m);
-      if (ymlMatch) return ymlMatch[1] === "true";
-    } catch { /* ignore */ }
-  }
-
-  // Legacy fallback: check system.env
-  const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
-  if (!existsSync(systemEnvPath)) return false;
-  const content = readFileSync(systemEnvPath, "utf-8");
-  const match = content.match(/^(?:OP_|OP_)OLLAMA_ENABLED=(.+)$/m);
-  return match?.[1]?.trim().toLowerCase() === "true";
+  if (spec) return hasAddon(spec, "ollama");
+  return false;
 }
 
 /**
- * Check whether admin is enabled. Reads from the StackSpec (v3 or v4,
- * auto-upgraded) first, then falls back to vault/stack/stack.env for legacy
- * installations that haven't been migrated yet.
+ * Check whether admin is enabled via stack.yaml addons list.
  */
 export function isAdminEnabled(state: ControlPlaneState): boolean {
-  // Try the StackSpec first (handles both .yaml and .yml, v3 and v4)
   const spec = readStackSpec(state.configDir);
-  if (spec) return spec.features?.admin === true;
-
-  // Lightweight legacy fallback: check openpalm.yml for plain boolean flags
-  const ymlPath = `${state.configDir}/openpalm.yml`;
-  if (existsSync(ymlPath)) {
-    try {
-      const ymlContent = readFileSync(ymlPath, "utf-8");
-      const ymlMatch = ymlContent.match(/^\s*admin:\s*(true|false)/m);
-      if (ymlMatch) return ymlMatch[1] === "true";
-    } catch { /* ignore */ }
-  }
-
-  // Legacy fallback: check system.env
-  const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
-  if (!existsSync(systemEnvPath)) return false;
-  const content = readFileSync(systemEnvPath, "utf-8");
-  const match = content.match(/^(?:OP_|OP_)ADMIN_ENABLED=(.+)$/m);
-  return match?.[1]?.trim().toLowerCase() === "true";
+  if (spec) return hasAddon(spec, "admin");
+  return false;
 }
 
 // ── Compose Content ──────────────────────────────────────────────────

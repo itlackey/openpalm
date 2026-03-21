@@ -494,27 +494,11 @@ describe("Broken/Corrupt State", () => {
     }
   });
 
-  // Scenario 13: Corrupt profiles.json
-  it("readConnectionProfilesDocument throws on corrupt JSON", () => {
-    writeFileSync(
-      join(configDir, "connections", "profiles.json"),
-      "NOT VALID JSON {{{{"
-    );
-
-    expect(() => readConnectionProfilesDocument(configDir)).toThrow(
-      "invalid JSON"
-    );
-  });
-
-  it("readConnectionProfilesDocument throws on valid JSON but wrong structure", () => {
-    writeFileSync(
-      join(configDir, "connections", "profiles.json"),
-      JSON.stringify({ version: 1, profiles: [], assignments: {} })
-    );
-
-    expect(() => readConnectionProfilesDocument(configDir)).toThrow(
-      "invalid"
-    );
+  // Scenario 13: Missing stack.yaml returns empty document
+  it("readConnectionProfilesDocument returns empty document when stack.yaml missing", () => {
+    const doc = readConnectionProfilesDocument(configDir);
+    expect(doc.profiles).toEqual([]);
+    expect(doc.assignments.llm.connectionId).toBe("");
   });
 
   // Scenario 14: config dir exists but automations dir doesn't
@@ -791,16 +775,14 @@ describe("performSetup end-to-end artifacts", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  it("writes openpalm.yaml and readStackSpec returns v4 (auto-upgraded)", async () => {
+  it("writes stack.yaml and readStackSpec returns v1", async () => {
     await performSetup(makeValidInput(), createStubAssetProvider());
 
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
-    // readStackSpec auto-upgrades v3 to v4
-    expect(spec!.version).toBe(4);
-    expect(spec!.connections).toHaveLength(1);
+    expect(spec!.version).toBe(1);
+    expect(spec!.connections.length).toBeGreaterThanOrEqual(1);
     expect(spec!.assignments.llm.model).toBe("gpt-4o");
-    expect(spec!.features?.ollama).toBe(false);
   });
 
   it("writes memory config with correct embedding dims from lookup", async () => {

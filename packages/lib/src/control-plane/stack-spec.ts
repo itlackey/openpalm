@@ -1,146 +1,109 @@
 /**
- * Stack specification file (openpalm.yaml) management.
+ * Stack specification file (stack.yaml) management.
  *
  * The stack spec is a YAML document that captures the high-level
  * configuration of an OpenPalm installation: connections, capability
- * assignments, and feature flags. It lives in CONFIG_HOME.
+ * assignments, and addons. It lives in CONFIG_HOME.
  *
- * v3: Original format (connections, assignments, ollamaEnabled)
- * v4: Unified config layer — absorbs profiles.json, adds ports/network/image/runtime
+ * v1: Clean break — connections, assignments (llm, slm, embeddings, memory,
+ *     tts, stt, reranking), and addons list. Replaces openpalm.yaml (v3/v4)
+ *     and profiles.json.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { stringify as yamlStringify, parse as yamlParse } from "yaml";
 
-// ── v3 Types (legacy, kept for migration) ────────────────────────────────
-
-export type StackSpecConnectionV3 = {
-  id: string;
-  name: string;
-  provider: string;
-  baseUrl: string;
-};
-
-export type StackSpecAssignmentsV3 = {
-  llm: { connectionId: string; model: string; smallModel?: string };
-  embeddings: { connectionId: string; model: string; embeddingDims?: number };
-};
-
-export type StackSpecV3 = {
-  version: 3;
-  connections: StackSpecConnectionV3[];
-  assignments: StackSpecAssignmentsV3;
-  ollamaEnabled: boolean;
-  voice?: { tts?: string; stt?: string };
-  channels?: string[];
-  services?: Record<string, boolean>;
-};
-
-// ── v4 Types (unified config layer) ──────────────────────────────────────
+// ── Connection Types ────────────────────────────────────────────────────
 
 export type StackSpecConnectionAuth =
-  | { mode: "none" }
-  | { mode: "api_key"; secretRef: string };
+  | { mode: "api_key"; apiKeySecretRef?: string }
+  | { mode: "none" };
+
+export type StackSpecConnectionKind =
+  | "openai_compatible_remote"
+  | "openai_compatible_local"
+  | "ollama_local"
+  | "ollama_stack";
 
 export type StackSpecConnection = {
   id: string;
   name: string;
+  kind: StackSpecConnectionKind;
   provider: string;
   baseUrl: string;
-  kind?: "openai_compatible_remote" | "openai_compatible_local" | "ollama_local";
-  auth?: StackSpecConnectionAuth;
+  auth: StackSpecConnectionAuth;
+};
+
+// ── Assignment Types ────────────────────────────────────────────────────
+
+export type StackSpecModelAssignment = {
+  connectionId: string;
+  model: string;
+};
+
+export type StackSpecEmbeddingsAssignment = {
+  connectionId: string;
+  model: string;
+  embeddingDims?: number;
+};
+
+export type StackSpecMemoryAssignment = {
+  llm: { connectionId: string; model: string; temperature?: number; maxTokens?: number };
+  embeddings: { connectionId: string; model: string };
+  vectorStore: { provider: "sqlite-vec" | "qdrant"; collectionName: string; dbPath: string };
+  customInstructions?: string;
+};
+
+export type StackSpecTtsAssignment = {
+  enabled: boolean;
+  connectionId?: string;
+  model?: string;
+  voice?: string;
+  format?: string;
+};
+
+export type StackSpecSttAssignment = {
+  enabled: boolean;
+  connectionId?: string;
+  model?: string;
+  language?: string;
+};
+
+export type StackSpecRerankerAssignment = {
+  enabled: boolean;
+  connectionId?: string;
+  mode?: "llm" | "dedicated";
+  model?: string;
+  topK?: number;
+  topN?: number;
 };
 
 export type StackSpecAssignments = {
-  llm: { connectionId: string; model: string; smallModel?: string };
-  embeddings: { connectionId: string; model: string; dims?: number };
-  reranking?: {
-    enabled: boolean;
-    connectionId?: string;
-    mode?: string;
-    model?: string;
-    topK?: number;
-    topN?: number;
-  };
-  tts?: {
-    enabled: boolean;
-    connectionId?: string;
-    model?: string;
-    voice?: string;
-    format?: string;
-  };
-  stt?: {
-    enabled: boolean;
-    connectionId?: string;
-    model?: string;
-    language?: string;
-  };
+  llm: StackSpecModelAssignment;
+  slm?: StackSpecModelAssignment;
+  embeddings: StackSpecEmbeddingsAssignment;
+  memory: StackSpecMemoryAssignment;
+  tts?: StackSpecTtsAssignment;
+  stt?: StackSpecSttAssignment;
+  reranking?: StackSpecRerankerAssignment;
 };
 
-export type StackSpecPorts = {
-  ingress?: number;
-  assistant?: number;
-  admin?: number;
-  adminOpencode?: number;
-  scheduler?: number;
-  memory?: number;
-  guardian?: number;
-  assistantSsh?: number;
-};
+// ── Addon Types ─────────────────────────────────────────────────────────
 
-export type StackSpecNetwork = {
-  bindAddress?: string;
-};
+/** Addon can be a simple string or an object with env config */
+export type StackSpecAddon = string | Record<string, Record<string, string>>;
 
-export type StackSpecImage = {
-  namespace?: string;
-  tag?: string;
-};
-
-export type StackSpecRuntime = {
-  uid?: number;
-  gid?: number;
-  dockerSock?: string;
-};
-
-export type StackSpecChannelConfig = {
-  name?: string;
-  description?: string;
-  enabled?: boolean;
-  volumes?: string[];
-};
-
-export type StackSpecServiceConfig = {
-  name?: string;
-  description?: string;
-  enabled?: boolean;
-};
+// ── StackSpec v1 ────────────────────────────────────────────────────────
 
 export type StackSpec = {
-  version: 4;
+  version: 1;
   connections: StackSpecConnection[];
   assignments: StackSpecAssignments;
-  features?: {
-    ollama?: boolean;
-    admin?: boolean;
-  };
-  ports?: StackSpecPorts;
-  network?: StackSpecNetwork;
-  image?: StackSpecImage;
-  runtime?: StackSpecRuntime;
-  memory?: {
-    userId?: string;
-  };
-  channels?: Record<string, StackSpecChannelConfig | boolean>;
-  services?: Record<string, StackSpecServiceConfig | boolean>;
-  voice?: { tts?: string; stt?: string };
+  addons: StackSpecAddon[];
 };
 
-/** Alias: StackSpec is always v4 in the current codebase. */
-export type StackSpecV4 = StackSpec;
+// ── Constants ───────────────────────────────────────────────────────────
 
-// ── Constants ──────────────────────────────────────────────────────────
-
-export const STACK_SPEC_FILENAME = "openpalm.yaml";
+export const STACK_SPEC_FILENAME = "stack.yaml";
 
 export const SPEC_DEFAULTS = {
   ports: {
@@ -162,41 +125,23 @@ export const SPEC_DEFAULTS = {
   },
 } as const;
 
-// ── v3 → v4 In-Memory Upgrade ──────────────────────────────────────────
+// ── Addon Helpers ───────────────────────────────────────────────────────
 
-export function upgradeV3ToV4InMemory(v3: StackSpecV3): StackSpec {
-  return {
-    version: 4,
-    connections: (v3.connections ?? []).map((c) => ({
-      id: c.id,
-      name: c.name,
-      provider: c.provider,
-      baseUrl: c.baseUrl ?? "",
-    })),
-    assignments: {
-      llm: v3.assignments?.llm ?? { connectionId: "", model: "" },
-      embeddings: {
-        connectionId: v3.assignments?.embeddings?.connectionId ?? "",
-        model: v3.assignments?.embeddings?.model ?? "",
-        dims: v3.assignments?.embeddings?.embeddingDims,
-      },
-    },
-    features: {
-      ollama: v3.ollamaEnabled ?? false,
-      admin: v3.services?.admin ?? false,
-    },
-    voice: v3.voice,
-    channels: v3.channels
-      ? Object.fromEntries(v3.channels.map((c) => [c, true]))
-      : undefined,
-    services: v3.services
-      ? Object.fromEntries(
-          Object.entries(v3.services)
-            .filter(([k]) => k !== "admin")
-            .map(([k, v]) => [k, v]),
-        )
-      : undefined,
-  };
+/** Normalize a mixed addon entry into { name, env } */
+export function normalizeAddon(entry: StackSpecAddon): { name: string; env: Record<string, string> } {
+  if (typeof entry === "string") return { name: entry, env: {} };
+  const name = Object.keys(entry)[0];
+  return { name, env: entry[name] };
+}
+
+/** Check if an addon is enabled by name */
+export function hasAddon(spec: StackSpec, name: string): boolean {
+  return spec.addons.some((a) => normalizeAddon(a).name === name);
+}
+
+/** Get the list of addon names */
+export function addonNames(spec: StackSpec): string[] {
+  return spec.addons.map((a) => normalizeAddon(a).name);
 }
 
 // ── Read / Write ────────────────────────────────────────────────────────
@@ -212,56 +157,20 @@ export function writeStackSpec(configDir: string, spec: StackSpec): void {
 }
 
 /**
- * Write a v3 spec for backward compatibility during migration.
- * @deprecated Use writeStackSpec (v4) instead.
- */
-export function writeStackSpecV3(configDir: string, spec: StackSpecV3): void {
-  mkdirSync(configDir, { recursive: true });
-  const content = yamlStringify(spec, { indent: 2 });
-  writeFileSync(stackSpecPath(configDir), content);
-}
-
-/**
- * Read the stack spec, auto-upgrading v3 to v4 in memory.
- * Returns null for missing, corrupt, or unrecognized version files.
- * Also checks openpalm.yml as fallback for the .yaml/.yml inconsistency.
+ * Read the stack spec. Returns null for missing, corrupt, or unrecognized version files.
  */
 export function readStackSpec(configDir: string): StackSpec | null {
-  for (const filename of [STACK_SPEC_FILENAME, "openpalm.yml"]) {
-    const path = `${configDir}/${filename}`;
-    if (!existsSync(path)) continue;
-    let raw: unknown;
-    try {
-      raw = yamlParse(readFileSync(path, "utf-8"), { maxAliasCount: 100 });
-    } catch {
-      continue;
-    }
-    if (typeof raw !== "object" || raw === null) continue;
-    const obj = raw as Record<string, unknown>;
-    if (obj.version === 3) return upgradeV3ToV4InMemory(obj as unknown as StackSpecV3);
-    if (obj.version === 4) return obj as unknown as StackSpec;
-  }
-  return null;
-}
+  const path = stackSpecPath(configDir);
+  if (!existsSync(path)) return null;
 
-/**
- * Read the raw stack spec without auto-upgrade. Returns the version as-is.
- * Useful for migration code that needs to know the original version.
- */
-export function readRawStackSpec(configDir: string): (StackSpecV3 | StackSpec) | null {
-  for (const filename of [STACK_SPEC_FILENAME, "openpalm.yml"]) {
-    const path = `${configDir}/${filename}`;
-    if (!existsSync(path)) continue;
-    let raw: unknown;
-    try {
-      raw = yamlParse(readFileSync(path, "utf-8"), { maxAliasCount: 100 });
-    } catch {
-      continue;
-    }
-    if (typeof raw !== "object" || raw === null) continue;
-    const obj = raw as Record<string, unknown>;
-    if (obj.version === 3) return obj as unknown as StackSpecV3;
-    if (obj.version === 4) return obj as unknown as StackSpec;
+  let raw: unknown;
+  try {
+    raw = yamlParse(readFileSync(path, "utf-8"), { maxAliasCount: 100 });
+  } catch {
+    return null;
   }
-  return null;
+  if (typeof raw !== "object" || raw === null) return null;
+  const obj = raw as Record<string, unknown>;
+  if (obj.version !== 1) return null;
+  return obj as unknown as StackSpec;
 }

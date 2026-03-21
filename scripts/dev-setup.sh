@@ -59,7 +59,7 @@ mkdir -p \
 # ── Seed core assets (write-once unless --force) ─────────────────
 COMPOSE_DEST="$CONFIG_DIR/components/core.yml"
 
-[[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/stack/core.compose.yml" "$COMPOSE_DEST"
+[[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/.openpalm/stack/core.compose.yml" "$COMPOSE_DEST"
 
 # Ensure vault subdirs exist
 mkdir -p "$VAULT_DIR/user" "$VAULT_DIR/stack" "$VAULT_DIR/stack/addons"

@@ -129,13 +129,13 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     // Host detection failure is non-fatal
   }
 
-  const composeContent = await fetchAsset(options.version, 'stack/core.compose.yml');
+  const composeContent = await fetchAsset(options.version, '.openpalm/stack/core.compose.yml');
   await Bun.write(join(configDir, 'components', 'core.yml'), composeContent);
 
   // Download schemas to vault/ for varlock validation and dataDir for FilesystemAssetProvider
   for (const [remoteFile, localPath] of [
-    ['vault/user.env.schema', join(vaultDir, 'user.env.schema')],
-    ['vault/system.env.schema', join(vaultDir, 'system.env.schema')],
+    ['.openpalm/vault/user/user.env.schema', join(vaultDir, 'user', 'user.env.schema')],
+    ['.openpalm/vault/stack/stack.env.schema', join(vaultDir, 'stack', 'stack.env.schema')],
   ] as const) {
     try {
       const content = await fetchAsset(options.version, remoteFile);
@@ -147,12 +147,12 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
   // Download remaining assets needed by FilesystemAssetProvider
   const assetFiles: Array<{ remote: string; localPath: string }> = [
-    { remote: 'stack/addons/ollama/compose.yml', localPath: join(configDir, 'components', 'ollama.yml') },
+    { remote: '.openpalm/stack/addons/ollama/compose.yml', localPath: join(configDir, 'components', 'ollama.yml') },
     { remote: 'core/assistant/AGENTS.md', localPath: join(dataDir, 'assistant', 'AGENTS.md') },
     { remote: 'core/assistant/opencode.jsonc', localPath: join(dataDir, 'assistant', 'opencode.jsonc') },
-    { remote: 'stack/automations/cleanup-logs.yml', localPath: join(configDir, 'automations', 'cleanup-logs.yml') },
-    { remote: 'stack/automations/cleanup-data.yml', localPath: join(configDir, 'automations', 'cleanup-data.yml') },
-    { remote: 'stack/automations/validate-config.yml', localPath: join(configDir, 'automations', 'validate-config.yml') },
+    { remote: '.openpalm/config/automations/cleanup-logs.yml', localPath: join(configDir, 'automations', 'cleanup-logs.yml') },
+    { remote: '.openpalm/config/automations/cleanup-data.yml', localPath: join(configDir, 'automations', 'cleanup-data.yml') },
+    { remote: '.openpalm/config/automations/validate-config.yml', localPath: join(configDir, 'automations', 'validate-config.yml') },
   ];
   await Promise.all(
     assetFiles.map(async ({ remote, localPath }) => {

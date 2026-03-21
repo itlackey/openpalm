@@ -36,8 +36,9 @@ export default defineConfig(({ mode }) => {
     envDir: rootDir,
     resolve: {
       alias: {
-        "$stack": resolve(__dirname, "../../stack"),
-        "$vault": resolve(__dirname, "../../vault"),
+        "$stack": resolve(__dirname, "../../.openpalm/stack"),
+        "$vault": resolve(__dirname, "../../.openpalm/vault"),
+        "$config": resolve(__dirname, "../../.openpalm/config"),
         "$assistant": resolve(__dirname, "../../core/assistant")
       }
     },

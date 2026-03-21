@@ -1,5 +1,5 @@
 /**
- * StackSpec v4 validation.
+ * StackSpec v1 validation.
  *
  * Returns structured, actionable error messages with codes
  * so users can quickly identify and fix configuration issues.
@@ -17,7 +17,7 @@ export type ValidationError = {
 const CONNECTION_ID_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const IMAGE_NS_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 
-export function validateStackSpecV4(input: unknown): ValidationError[] {
+export function validateStackSpec(input: unknown): ValidationError[] {
   const errors: ValidationError[] = [];
 
   if (typeof input !== "object" || input === null) {
@@ -32,14 +32,12 @@ export function validateStackSpecV4(input: unknown): ValidationError[] {
   const spec = input as Record<string, unknown>;
 
   // Version check
-  if (spec.version !== 4) {
+  if (spec.version !== 1) {
     errors.push({
       code: "OP-CFG-020",
-      message: `Expected version: 4, got: ${spec.version ?? "(missing)"}`,
+      message: `Expected version: 1, got: ${spec.version ?? "(missing)"}`,
       path: "version",
-      hint: spec.version === 3
-        ? "Run: openpalm config migrate"
-        : "Set version: 4 at the top of your config file",
+      hint: "Set version: 1 at the top of your config file",
     });
     return errors; // Cannot validate further without correct version
   }
@@ -257,14 +255,14 @@ function validateAssignments(
       });
     }
     if (
-      assignments.embeddings.dims !== undefined &&
-      (typeof assignments.embeddings.dims !== "number" ||
-        assignments.embeddings.dims < 1)
+      assignments.embeddings.embeddingDims !== undefined &&
+      (typeof assignments.embeddings.embeddingDims !== "number" ||
+        assignments.embeddings.embeddingDims < 1)
     ) {
       errors.push({
         code: "OP-CFG-009",
-        message: "assignments.embeddings.dims must be a positive integer",
-        path: "assignments.embeddings.dims",
+        message: "assignments.embeddings.embeddingDims must be a positive integer",
+        path: "assignments.embeddings.embeddingDims",
         hint: "Common values: nomic-embed-text: 768, text-embedding-3-small: 1536",
       });
     }

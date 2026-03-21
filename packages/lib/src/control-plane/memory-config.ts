@@ -7,7 +7,10 @@ import {
   LLM_PROVIDERS,
   EMBEDDING_DIMS,
   PROVIDER_DEFAULT_URLS,
+  mem0ProviderName,
+  mem0BaseUrlConfig,
 } from "../provider-constants.js";
+import type { StackSpec } from "./stack-spec.js";
 
 // Re-export shared constants for barrel compatibility
 export { LLM_PROVIDERS, EMBEDDING_DIMS, PROVIDER_DEFAULT_URLS };
@@ -251,6 +254,64 @@ export function ensureMemoryConfig(dataDir: string): void {
   const path = configPath(dataDir);
   if (existsSync(path)) return;
   writeMemoryConfig(dataDir, getDefaultConfig());
+}
+
+// ── Derive from StackSpec ─────────────────────────────────────────────
+
+/**
+ * Derive a MemoryConfig from the stack.yaml assignments.memory block.
+ * Resolves connectionId → connection for provider/baseUrl/apiKeyRef.
+ */
+export function deriveMemoryConfig(spec: StackSpec): MemoryConfig {
+  const mem = spec.assignments.memory;
+  const emb = spec.assignments.embeddings;
+
+  const llmConn = spec.connections.find((c) => c.id === mem.llm.connectionId);
+  const embConn = spec.connections.find((c) => c.id === mem.embeddings.connectionId);
+
+  const llmProvider = llmConn?.provider ?? "openai";
+  const embProvider = embConn?.provider ?? "openai";
+
+  const llmApiKeyRef = llmConn?.auth?.mode === "api_key" ? llmConn.auth.apiKeySecretRef : undefined;
+  const embApiKeyRef = embConn?.auth?.mode === "api_key" ? embConn.auth.apiKeySecretRef : undefined;
+
+  const llmConfig: Record<string, unknown> = {
+    model: mem.llm.model,
+    temperature: mem.llm.temperature ?? 0.1,
+    max_tokens: mem.llm.maxTokens ?? 2000,
+  };
+  if (llmApiKeyRef) llmConfig.api_key = llmApiKeyRef;
+  const llmBaseUrl = mem0BaseUrlConfig(llmProvider, llmConn?.baseUrl ?? "");
+  if (llmBaseUrl) llmConfig.openai_base_url = llmBaseUrl;
+
+  const embConfig: Record<string, unknown> = {
+    model: mem.embeddings.model,
+  };
+  if (embApiKeyRef) embConfig.api_key = embApiKeyRef;
+  const embBaseUrl = mem0BaseUrlConfig(embProvider, embConn?.baseUrl ?? "");
+  if (embBaseUrl) embConfig.openai_base_url = embBaseUrl;
+
+  return {
+    mem0: {
+      llm: {
+        provider: mem0ProviderName(llmProvider),
+        config: llmConfig,
+      },
+      embedder: {
+        provider: mem0ProviderName(embProvider),
+        config: embConfig,
+      },
+      vector_store: {
+        provider: mem.vectorStore.provider,
+        config: {
+          collection_name: mem.vectorStore.collectionName,
+          db_path: mem.vectorStore.dbPath,
+          embedding_model_dims: emb.embeddingDims ?? EMBEDDING_DIMS[embProvider] ?? 1536,
+        },
+      },
+    },
+    memory: { custom_instructions: mem.customInstructions ?? "" },
+  };
 }
 
 // ── Config Resolution ────────────────────────────────────────────────

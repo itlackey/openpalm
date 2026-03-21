@@ -132,12 +132,12 @@ export type RegistryAutomationEntry = {
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 /**
- * Discover addon entries from the cloned stack/addons/ directory.
+ * Discover addon entries from the cloned .openpalm/stack/addons/ directory.
  * Each addon is a subdirectory containing compose.yml and .env.schema.
  */
 export function discoverRegistryComponents(): Record<string, RegistryComponentEntry> {
   const cloneDir = repoCloneDir();
-  const addonsDir = join(cloneDir, "stack", "addons");
+  const addonsDir = join(cloneDir, ".openpalm", "stack", "addons");
   if (!existsSync(addonsDir)) return {};
 
   const entries = readdirSync(addonsDir, { withFileTypes: true });
@@ -162,11 +162,11 @@ export function discoverRegistryComponents(): Record<string, RegistryComponentEn
 }
 
 /**
- * Discover automation entries from the cloned stack/automations/ directory.
+ * Discover automation entries from the cloned .openpalm/config/automations/ directory.
  */
 export function discoverRegistryAutomations(): RegistryAutomationEntry[] {
   const cloneDir = repoCloneDir();
-  const automationsDir = join(cloneDir, "stack", "automations");
+  const automationsDir = join(cloneDir, ".openpalm", "config", "automations");
   if (!existsSync(automationsDir)) return [];
 
   const files = readdirSync(automationsDir).filter((f) => f.endsWith(".yml"));

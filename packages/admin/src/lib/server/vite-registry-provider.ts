@@ -18,9 +18,9 @@ const componentSchemaModules: Record<string, string> = import.meta.glob(
   { query: "?raw", eager: true, import: "default" }
 ) as Record<string, string>;
 
-// ── Automation entries (discovered at build time from stack/automations/) ───
+// ── Automation entries (discovered at build time from config/automations/) ───
 const automationYmlModules: Record<string, string> = import.meta.glob(
-  "$stack/automations/*.yml",
+  "$config/automations/*.yml",
   { query: "?raw", eager: true, import: "default" }
 ) as Record<string, string>;
 

@@ -74,6 +74,9 @@ export {
   resolveCacheHome,
   resolveRollbackDir,
   resolveRegistryCacheDir,
+  resolveStackDir,
+  resolveBackupsDir,
+  resolveWorkspaceDir,
   ensureHomeDirs,
   detectLegacyLayout,
   hasLegacyEnvVars,
@@ -196,15 +199,6 @@ export type {
   Mem0ConnectionMapping,
 } from "./control-plane/connection-mapping.js";
 
-// ── Connection Migration Flags ──────────────────────────────────────────
-export type {
-  ConnectionMigrationFlags,
-  ConnectionCompatibilityMode,
-} from "./control-plane/connection-migration-flags.js";
-export {
-  readConnectionMigrationFlags,
-  detectConnectionCompatibilityMode,
-} from "./control-plane/connection-migration-flags.js";
 
 // ── Memory Config ───────────────────────────────────────────────────────
 export type {
@@ -222,6 +216,7 @@ export {
   readMemoryConfig,
   writeMemoryConfig,
   ensureMemoryConfig,
+  deriveMemoryConfig,
   resolveConfigForPush,
   checkVectorDimensions,
   checkQdrantDimensions,
@@ -336,32 +331,30 @@ export {
 export type { LocalProviderDetection } from "./control-plane/model-runner.js";
 export { detectLocalProviders } from "./control-plane/model-runner.js";
 
-// ── Stack Spec ───────────────────────────────────────────────────────────
+// ── Stack Spec (v1) ──────────────────────────────────────────────────────
 export type {
   StackSpec,
-  StackSpecV3,
-  StackSpecV4,
   StackSpecConnection,
-  StackSpecConnectionV3,
   StackSpecConnectionAuth,
+  StackSpecConnectionKind,
   StackSpecAssignments,
-  StackSpecAssignmentsV3,
-  StackSpecPorts,
-  StackSpecNetwork,
-  StackSpecImage,
-  StackSpecRuntime,
-  StackSpecChannelConfig,
-  StackSpecServiceConfig,
+  StackSpecModelAssignment,
+  StackSpecEmbeddingsAssignment,
+  StackSpecMemoryAssignment,
+  StackSpecTtsAssignment,
+  StackSpecSttAssignment,
+  StackSpecRerankerAssignment,
+  StackSpecAddon,
 } from "./control-plane/stack-spec.js";
 export {
   STACK_SPEC_FILENAME,
   SPEC_DEFAULTS,
   stackSpecPath,
   writeStackSpec,
-  writeStackSpecV3,
   readStackSpec,
-  readRawStackSpec,
-  upgradeV3ToV4InMemory,
+  normalizeAddon,
+  hasAddon,
+  addonNames,
 } from "./control-plane/stack-spec.js";
 
 // ── Env Compatibility (OP_ prefix migration) ────────────────────────────
@@ -382,11 +375,8 @@ export {
 
 // ── Spec Validation ─────────────────────────────────────────────────────
 export type { ValidationError } from "./control-plane/spec-validator.js";
-export { validateStackSpecV4 } from "./control-plane/spec-validator.js";
+export { validateStackSpec } from "./control-plane/spec-validator.js";
 
-// ── Migration ───────────────────────────────────────────────────────────
-export type { MigrationResult } from "./control-plane/migration.js";
-export { migrateV3ToV4 } from "./control-plane/migration.js";
 
 // ── Setup ────────────────────────────────────────────────────────────────
 export type {
