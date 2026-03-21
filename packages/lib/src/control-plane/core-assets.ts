@@ -172,7 +172,6 @@ export async function refreshCoreAssets(): Promise<{
   backupDir: string | null;
   updated: string[];
 }> {
-  const { resolveOpenPalmHome } = await import("./home.js");
   const homeDir = resolveOpenPalmHome();
   const updated: string[] = [];
   let backupDir: string | null = null;

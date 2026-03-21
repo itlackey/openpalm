@@ -39,7 +39,7 @@ export const POST: RequestHandler = async (event) => {
     dockerResult = await composeUp({
       files: buildComposeFileList(state),
       envFiles: buildEnvFiles(state),
-      services: buildManagedServices(state)
+      services: await buildManagedServices(state)
     });
   }
 

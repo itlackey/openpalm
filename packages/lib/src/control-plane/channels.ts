@@ -2,6 +2,7 @@
  * Channel validation, discovery, and allowlist checks for the OpenPalm control plane.
  */
 import { existsSync, readdirSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import type { ChannelInfo } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
 import type { RegistryProvider } from "./registry-provider.js";
@@ -25,7 +26,7 @@ function isValidChannelName(name: string): boolean {
  *   directory is derived from the parent (homeDir).
  */
 export function discoverChannels(configDir: string): ChannelInfo[] {
-  const homeDir = configDir.replace(/\/config$/, '');
+  const homeDir = dirname(configDir);
   const addonsDir = `${homeDir}/stack/addons`;
   if (!existsSync(addonsDir)) return [];
 
@@ -54,7 +55,7 @@ export function isAllowedService(value: string, configDir?: string): boolean {
   if ((CORE_SERVICES as string[]).includes(value)) return true;
 
   if (configDir) {
-    const homeDir = configDir.replace(/\/config$/, '');
+    const homeDir = dirname(configDir);
     const addonsDir = `${homeDir}/stack/addons`;
 
     // Check if addon exists directly in stack/addons/
@@ -79,7 +80,7 @@ export function isValidChannel(value: string, configDir?: string): boolean {
   if (!value || !value.trim()) return false;
   if (!isValidChannelName(value)) return false;
   if (configDir) {
-    const homeDir = configDir.replace(/\/config$/, '');
+    const homeDir = dirname(configDir);
     return existsSync(`${homeDir}/stack/addons/${value}/compose.yml`);
   }
   return false;

@@ -23,10 +23,6 @@ export { resolveOpenPalmHome as defaultHomeDir };
 export { resolveLogsDir as defaultLogsDir };
 export { resolveCacheHome as defaultCacheDir };
 
-// Legacy aliases
-export { resolveConfigDir as defaultConfigHome };
-export { resolveDataDir as defaultDataHome };
-export { resolveLogsDir as defaultStateHome };
 
 // CLI-specific paths (not in lib)
 export function defaultDockerSock(): string {

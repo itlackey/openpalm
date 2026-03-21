@@ -60,7 +60,8 @@ export function fullComposeArgs(state: ControlPlaneState): string[] {
 
 /**
  * Build the list of managed service names (used for targeted `up` commands).
+ * Uses compose-derived discovery when Docker is available.
  */
-export function buildManagedServiceNames(state: ControlPlaneState): string[] {
+export async function buildManagedServiceNames(state: ControlPlaneState): Promise<string[]> {
   return buildManagedServices(state);
 }

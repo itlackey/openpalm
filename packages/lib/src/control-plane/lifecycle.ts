@@ -31,7 +31,10 @@ import { ensureMemoryConfig } from "./memory-config.js";
 import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
 import { validateProposedState } from "./validate.js";
-import { checkDocker, composePreflight, resolveComposeProjectName } from "./docker.js";
+import { checkDocker, composePreflight, composeConfigServices, resolveComposeProjectName } from "./docker.js";
+import { createLogger } from "../logger.js";
+
+const logger = createLogger("lifecycle");
 import type { CoreAssetProvider } from "./core-asset-provider.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
@@ -149,19 +152,30 @@ async function reconcileCore(
   // Preflight: validate compose merge before mutation.
   // Only runs when Docker is available and compose files exist.
   // If Docker is unavailable (e.g., first install before Docker setup),
-  // the check is skipped with a warning rather than blocking.
+  // the check is skipped rather than blocking the lifecycle.
+  // Set OP_SKIP_COMPOSE_PREFLIGHT=1 to disable in test environments.
   const files = buildComposeFileList(state);
   const envFiles = buildEnvFiles(state);
-  if (files.length > 0) {
+  if (files.length === 0) {
+    logger.debug("compose preflight skipped: no compose files found yet");
+  } else if (process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
+    logger.debug("compose preflight skipped: OP_SKIP_COMPOSE_PREFLIGHT is set");
+  }
+  if (files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
     const dockerCheck = await checkDocker();
     if (dockerCheck.ok) {
       const preflight = await composePreflight({ files, envFiles });
       if (!preflight.ok) {
+        const projectName = resolveComposeProjectName();
+        const fileArgs = files.flatMap((f) => ["-f", f]).join(" ");
+        const envArgs = envFiles.filter(existsSync).flatMap((f) => ["--env-file", f]).join(" ");
+        const resolvedCmd = `docker compose ${fileArgs} --project-name ${projectName} ${envArgs} config --quiet`;
         throw new Error(
           `Compose preflight failed: ${preflight.stderr}\n` +
+          `Resolved command: ${resolvedCmd}\n` +
           `Files: ${files.join(", ")}\n` +
           `Env files: ${envFiles.join(", ")}\n` +
-          `Project: ${resolveComposeProjectName()}`
+          `Project: ${projectName}`
         );
       }
     }
@@ -288,15 +302,25 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
 
 /**
  * Build the list of services managed by the stack.
- * Core services always included; addon services derived from stack.yaml.
  *
- * For the authoritative runtime service list from Docker Compose,
- * use composeConfigServices() which runs `docker compose config --services`.
+ * Uses `docker compose config --services` (compose-derived) when Docker
+ * is available. Falls back to CORE_SERVICES + stack.yaml addons when
+ * Docker is unavailable (e.g., during offline config generation).
  */
-export function buildManagedServices(state: ControlPlaneState): string[] {
-  const services: string[] = [...CORE_SERVICES];
+export async function buildManagedServices(state: ControlPlaneState): Promise<string[]> {
+  const files = buildComposeFileList(state);
+  const envFiles = buildEnvFiles(state);
 
-  // Add addon-specific services based on stack.yaml
+  // Prefer compose-derived service list when Docker is available
+  if (files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
+    const result = await composeConfigServices({ files, envFiles });
+    if (result.ok && result.services.length > 0) {
+      return result.services;
+    }
+  }
+
+  // Fallback: static inference from CORE_SERVICES + stack.yaml addons
+  const services: string[] = [...CORE_SERVICES];
   const spec = readStackSpec(state.configDir);
   if (spec?.addons) {
     for (const [addonName, addon] of Object.entries(spec.addons)) {
@@ -304,7 +328,6 @@ export function buildManagedServices(state: ControlPlaneState): string[] {
       services.push(addonName);
     }
   }
-
   return services;
 }
 

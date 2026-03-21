@@ -42,7 +42,7 @@ export const POST: RequestHandler = async (event) => {
   }
 
   logger.info("recreating containers", { requestId });
-  const managedServices = buildManagedServices(state);
+  const managedServices = await buildManagedServices(state);
   const upResult = await composeUp({ files, envFiles, services: managedServices });
   if (!upResult.ok) {
     logger.error("compose up failed after pull", { requestId, stderr: upResult.stderr });

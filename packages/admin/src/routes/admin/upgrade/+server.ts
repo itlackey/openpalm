@@ -87,7 +87,7 @@ export const POST: RequestHandler = async (event) => {
   }
 
   logger.info("recreating containers", { requestId });
-  const upResult = await composeUp({ files, envFiles, services: buildManagedServices(state), removeOrphans: true });
+  const upResult = await composeUp({ files, envFiles, services: await buildManagedServices(state), removeOrphans: true });
   if (!upResult.ok) {
     logger.error("compose up failed after pull", { requestId, stderr: upResult.stderr });
     appendAudit(state, actor, "upgrade", { result: "error", reason: "up_failed", stderr: upResult.stderr }, false, requestId, callerType);

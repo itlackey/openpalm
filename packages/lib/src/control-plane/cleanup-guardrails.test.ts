@@ -94,9 +94,9 @@ describe("guardrail: no hardcoded compose project names", () => {
   });
 });
 
-// ── Guardrail 3: Compose preflight and service discovery are available ──
+// ── Guardrail 3: Compose preflight is called before mutation ──────────
 
-describe("guardrail: compose preflight and service discovery exports", () => {
+describe("guardrail: compose preflight before mutation", () => {
   test("composePreflight is exported from docker.ts", async () => {
     const mod = await import("./docker.js");
     expect(typeof mod.composePreflight).toBe("function");
@@ -106,14 +106,33 @@ describe("guardrail: compose preflight and service discovery exports", () => {
     const mod = await import("./docker.js");
     expect(typeof mod.composeConfigServices).toBe("function");
   });
+
+  test("lifecycle.ts reconcileCore calls composePreflight before snapshotCurrentState", () => {
+    const lifecycleTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "lifecycle.ts"), "utf-8");
+    // Verify composePreflight is imported
+    expect(lifecycleTs).toContain("composePreflight");
+    // Verify preflight appears BEFORE snapshot in the source
+    const preflightIdx = lifecycleTs.indexOf("composePreflight({ files, envFiles })");
+    const snapshotIdx = lifecycleTs.indexOf("snapshotCurrentState(state)");
+    expect(preflightIdx).toBeGreaterThan(0);
+    expect(snapshotIdx).toBeGreaterThan(0);
+    expect(preflightIdx).toBeLessThan(snapshotIdx);
+  });
+
+  test("preflight error includes resolved command string", () => {
+    const lifecycleTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "lifecycle.ts"), "utf-8");
+    expect(lifecycleTs).toContain("Resolved command:");
+  });
 });
 
 // ── Guardrail 4: Service discovery is not filename-derived ────────────
 
-describe("guardrail: no filename-derived service inference", () => {
-  test("lifecycle.ts buildManagedServices does not scan config/components filenames", () => {
+describe("guardrail: compose-derived service discovery", () => {
+  test("lifecycle.ts buildManagedServices uses composeConfigServices", () => {
     const lifecycleTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "lifecycle.ts"), "utf-8");
-    // Should not contain patterns like `.replace(/\.yml$/, "")` for service name extraction
+    // Must use compose-derived discovery
+    expect(lifecycleTs).toContain("composeConfigServices");
+    // Should not contain filename-scanning patterns
     expect(lifecycleTs).not.toContain('.replace(/\\.yml$/');
     // Should not reference discoverComponentOverlays
     expect(lifecycleTs).not.toContain("discoverComponentOverlays");

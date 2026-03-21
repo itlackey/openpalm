@@ -14,7 +14,7 @@ Each backup is stored in a timestamped subdirectory:
 ```
 backups/
   2026-03-20T15-30-00-000Z/
-    config/components/core.yml
+    stack/core.compose.yml
     vault/user/user.env.schema
     vault/stack/stack.env.schema
     ...

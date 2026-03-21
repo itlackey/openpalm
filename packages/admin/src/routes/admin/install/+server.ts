@@ -50,8 +50,8 @@ export const POST: RequestHandler = async (event) => {
   // 4. Update state and generate artifacts
   await applyInstall(state);
 
-  // 5. Run docker compose up — managed services are derived from the stack spec
-  const managedServices = buildManagedServices(state);
+  // 5. Run docker compose up — managed services derived from compose config
+  const managedServices = await buildManagedServices(state);
   logger.info("checking Docker availability", { requestId });
   const dockerCheck = await checkDocker();
   let dockerResult = null;

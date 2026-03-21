@@ -169,8 +169,10 @@ export function discoverStackOverlays(stackDir: string): string[] {
 
   const addonsDir = `${stackDir}/addons`;
   if (existsSync(addonsDir)) {
-    for (const entry of readdirSync(addonsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
+    const entries = readdirSync(addonsDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
       const addonCompose = `${addonsDir}/${entry.name}/compose.yml`;
       if (existsSync(addonCompose)) files.push(addonCompose);
     }
