@@ -48,7 +48,7 @@ services:
       - "host.docker.internal:host-gateway"
 
     environment:
-      OPENCODE_CONFIG_DIR: /home/opencode/.config/opencode
+      OPENCODE_CONFIG_DIR: /etc/opencode
       OPENCODE_PORT: "4096"
       OPENCODE_AUTH: "false"
       OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
@@ -66,14 +66,12 @@ services:
       - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
       - "${OP_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_SSH_PORT:-2222}:22"
     volumes:
-      - ${OP_HOME}/config:/etc/openpalm:ro
+      - ${OP_HOME}/config:/etc/openpalm
       - ${OP_HOME}/config/assistant:/home/opencode/.config/opencode
       - ${OP_HOME}/vault/user/user.env:/etc/openpalm-vault/user.env:ro
-      - ${OP_HOME}/data/assistant:/home/opencode/.opencode
+      - ${OP_HOME}/data/assistant:/home/opencode
       - ${OP_HOME}/data/stash:/home/opencode/.akm
       - ${OP_HOME}/data/workspace:/work
-      - ${OP_HOME}/logs/opencode:/home/opencode/.local/state/opencode
-      - ${HOME}/.cache/openpalm/registry:/cache/registry
     env_file:
       - path: ${OP_HOME}/vault/user/user.env
         required: false
