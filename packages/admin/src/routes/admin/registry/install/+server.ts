@@ -5,7 +5,7 @@
  * This endpoint only handles automations from the registry.
  *
  * Tries the cloned registry repo first, falls back to bundled assets.
- * Copies content into CONFIG_HOME, stages compose artifacts.
+ * Copies content into CONFIG_HOME, writes runtime configuration.
  */
 import type { RequestHandler } from "./$types";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
@@ -21,8 +21,8 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
-  persistConfiguration,
-  resolveArtifacts,
+  writeRuntimeFiles,
+  resolveRuntimeFiles,
   REGISTRY_AUTOMATION_YML
 } from "$lib/server/control-plane.js";
 import {
@@ -78,8 +78,8 @@ export const POST: RequestHandler = async (event) => {
 
   writeFileSync(ymlPath, content);
 
-  state.artifacts = resolveArtifacts(state);
-  persistConfiguration(state);
+  state.artifacts = resolveRuntimeFiles(state);
+  writeRuntimeFiles(state);
   // Scheduler sidecar auto-reloads via file watching
 
   appendAudit(state, actor, "registry.install", { name, type }, true, requestId, callerType);

@@ -7,12 +7,16 @@ import { ensureSecrets, ensureStackEnv, resolveRequestedImageTag } from '../lib/
 import { ensureDirectoryTree, fetchAsset, openBrowser } from '../lib/docker.ts';
 import {
   ensureOpenCodeConfig, ensureOpenCodeSystemConfig, FilesystemAssetProvider,
-  performSetupFromConfig,
-  type SetupConfig, type SetupResult,
+  performSetup,
+  type SetupSpec, type SetupResult,
+  formatCapabilityString,
+  EMBEDDING_DIMS,
 } from '@openpalm/lib';
+import type { StackSpec, StackSpecCapabilities, StackSpecAddonValue } from '@openpalm/lib';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
-import { ensureValidState, buildManagedServiceNames, runComposeWithPreflight } from '../lib/staging.ts';
+import { ensureValidState } from '../lib/cli-state.ts';
+import { buildManagedServiceNames, runComposeWithPreflight } from '../lib/cli-compose.ts';
 import { createSetupServer } from '../setup-wizard/server.ts';
 import { buildInstallServiceNames, buildDeployStatusEntries } from './install-services.ts';
 
@@ -39,6 +43,116 @@ async function resolveDefaultInstallRef(): Promise<string> {
     // Network error — fall through to package version
   }
   return cliPkg.version ? `v${cliPkg.version}` : 'main';
+}
+
+/**
+ * Migrate a v1 SetupConfig to a SetupSpec.
+ * Handles the v1 -> v2 shape transformation.
+ */
+function migrateSetupConfigToSetupSpec(config: Record<string, unknown>): SetupSpec {
+  const security = config.security as { adminToken: string };
+  const owner = config.owner as { name?: string; email?: string } | undefined;
+  const connections = config.connections as Array<{
+    id: string; name: string; provider: string; baseUrl: string; apiKey: string;
+  }>;
+  const assignments = config.assignments as {
+    llm: { connectionId: string; model: string; smallModel?: string };
+    embeddings: { connectionId: string; model: string; embeddingDims?: number };
+    tts?: unknown;
+    stt?: unknown;
+  };
+  const memory = config.memory as { userId?: string } | undefined;
+  const channels = config.channels as Record<string, boolean | Record<string, unknown>> | undefined;
+  const services = config.services as Record<string, boolean | { enabled: boolean }> | undefined;
+
+  // Resolve connections by ID
+  const llmConn = connections.find(c => c.id === assignments.llm.connectionId);
+  const embConn = connections.find(c => c.id === assignments.embeddings.connectionId);
+
+  if (!llmConn) throw new Error(`LLM connection "${assignments.llm.connectionId}" not found`);
+  if (!embConn) throw new Error(`Embeddings connection "${assignments.embeddings.connectionId}" not found`);
+
+  // Build capabilities
+  const embLookupKey = `${embConn.provider}/${assignments.embeddings.model}`;
+  const resolvedDims = assignments.embeddings.embeddingDims || EMBEDDING_DIMS[embLookupKey] || 1536;
+
+  const capabilities: StackSpecCapabilities = {
+    llm: formatCapabilityString(llmConn.provider, assignments.llm.model),
+    ...(assignments.llm.smallModel
+      ? { slm: formatCapabilityString(llmConn.provider, assignments.llm.smallModel) }
+      : {}),
+    embeddings: {
+      provider: embConn.provider,
+      model: assignments.embeddings.model || 'text-embedding-3-small',
+      dims: resolvedDims,
+    },
+    memory: {
+      userId: memory?.userId || 'default_user',
+      customInstructions: '',
+    },
+  };
+
+  // Build addons
+  const addons: Record<string, StackSpecAddonValue> = {};
+  const ollamaEnabled = services && ('ollama' in services)
+    ? (typeof services.ollama === 'boolean' ? services.ollama : services.ollama.enabled)
+    : false;
+  if (ollamaEnabled) addons.ollama = true;
+  if (services) {
+    if (typeof services.admin === 'boolean' ? services.admin : (services.admin as { enabled: boolean })?.enabled) {
+      addons.admin = true;
+    }
+    if (typeof services.openviking === 'boolean' ? services.openviking : (services.openviking as { enabled: boolean })?.enabled) {
+      addons.openviking = true;
+    }
+  }
+  if (channels) {
+    for (const [id, value] of Object.entries(channels)) {
+      if (value === true) {
+        addons[id] = true;
+      } else if (typeof value === 'object' && value !== null) {
+        const obj = value as Record<string, unknown>;
+        if (obj.enabled !== false) {
+          addons[id] = true;
+        }
+      }
+    }
+  }
+
+  // Build channel credentials from channels
+  const channelCredentials: Record<string, Record<string, string>> = {};
+  if (channels) {
+    for (const [id, value] of Object.entries(channels)) {
+      if (typeof value !== 'object' || value === null) continue;
+      const creds = value as Record<string, unknown>;
+      const mapped: Record<string, string> = {};
+      for (const [key, val] of Object.entries(creds)) {
+        if (key === 'enabled') continue;
+        if (typeof val === 'string' && val) {
+          mapped[key] = val;
+        } else if (typeof val === 'boolean') {
+          mapped[key] = String(val);
+        }
+      }
+      if (Object.keys(mapped).length > 0) {
+        channelCredentials[id] = mapped;
+      }
+    }
+  }
+
+  const spec: StackSpec = {
+    version: 2,
+    capabilities,
+    addons,
+  };
+
+  return {
+    spec,
+    security,
+    owner,
+    connections,
+    ...(Object.keys(channelCredentials).length > 0 ? { channelCredentials } : {}),
+  };
 }
 
 export default defineCommand({
@@ -211,8 +325,8 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   }
 
   // ── File-based install (--file / -f) ──────────────────────────────────
-  // Read a JSON or YAML setup config file and call performSetup() or
-  // performSetupFromConfig() directly — no wizard needed.
+  // Read a JSON or YAML setup config file and call performSetup() directly.
+  // Supports both v1 (SetupConfig, migrated) and v2 (SetupSpec).
 
   if (options.file) {
     console.log(`Reading setup config from ${options.file}...`);
@@ -247,18 +361,25 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
     const fsAssets = new FilesystemAssetProvider(homeDir);
     const config = parsed as Record<string, unknown>;
-    let result: SetupResult;
+    let setupSpec: SetupSpec;
 
     if (typeof config.version !== "number") {
       throw new Error(
-        `Setup config file is missing a 'version' field. Use 'version: 1' for the current format.`
+        `Setup config file is missing a 'version' field. Use 'version: 1' for the legacy format or include a 'spec' field for the new format.`
       );
     }
+
     if (config.version === 1) {
-      result = await performSetupFromConfig(config as SetupConfig, fsAssets);
+      // Migrate v1 SetupConfig to SetupSpec
+      setupSpec = migrateSetupConfigToSetupSpec(config);
+    } else if (config.spec !== undefined) {
+      // Direct SetupSpec (no version field on the envelope, version is on spec)
+      setupSpec = config as unknown as SetupSpec;
     } else {
-      throw new Error(`Unsupported setup config version: ${config.version}. Only version 1 is supported.`);
+      throw new Error(`Unsupported setup config version: ${config.version}. Use version 1 (legacy) or the new SetupSpec format.`);
     }
+
+    const result = await performSetup(setupSpec, fsAssets);
 
     if (!result.ok) throw new Error(`Setup failed: ${result.error}`);
     console.log('Setup complete.');

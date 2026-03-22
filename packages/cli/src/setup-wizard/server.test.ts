@@ -66,7 +66,7 @@ function makeSetupDirs(): void {
     [
       "# OpenPalm Secrets",
       "export OP_ADMIN_TOKEN=",
-      
+
       "export OPENAI_API_KEY=",
       "export OPENAI_BASE_URL=",
       "export ANTHROPIC_API_KEY=",
@@ -266,10 +266,24 @@ describe("setup wizard server", () => {
 
     try {
       const body = {
-        version: 1,
-        owner: { name: "Test", email: "test@example.com" },
+        spec: {
+          version: 2,
+          capabilities: {
+            llm: "openai/gpt-4o",
+            embeddings: {
+              provider: "openai",
+              model: "text-embedding-3-small",
+              dims: 1536,
+            },
+            memory: {
+              userId: "test_user",
+              customInstructions: "",
+            },
+          },
+          addons: {},
+        },
         security: { adminToken: "test-admin-token-12345" },
-        memory: { userId: "test_user" },
+        owner: { name: "Test", email: "test@example.com" },
         connections: [
           {
             id: "openai-main",
@@ -279,10 +293,6 @@ describe("setup wizard server", () => {
             apiKey: "sk-test-key-123",
           },
         ],
-        assignments: {
-          llm: { connectionId: "openai-main", model: "gpt-4o" },
-          embeddings: { connectionId: "openai-main", model: "text-embedding-3-small" },
-        },
       };
 
       // Fire POST and await both the response and the completion signal
@@ -324,7 +334,7 @@ describe("setup wizard server", () => {
       const res = await fetch(`http://localhost:${serverPort}/api/setup/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ version: 1, security: { adminToken: "short" } }),
+        body: JSON.stringify({ security: { adminToken: "short" } }),
       });
       expect(res.status).toBe(400);
       const data = (await res.json()) as { ok: boolean; error: string };

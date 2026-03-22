@@ -65,7 +65,7 @@ function makeSetupDirs(): void {
     [
       "# OpenPalm Secrets",
       "export OP_ADMIN_TOKEN=",
-      
+
       "export OPENAI_API_KEY=",
       "export OPENAI_BASE_URL=",
       "export ANTHROPIC_API_KEY=",
@@ -114,14 +114,17 @@ describe("setup wizard server error scenarios", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          version: 1,
           // no security.adminToken
-          memory: { userId: "user1" },
-          connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
-          assignments: {
-            llm: { connectionId: "c1", model: "gpt-4o" },
-            embeddings: { connectionId: "c1", model: "text-embedding-3-small" },
+          spec: {
+            version: 2,
+            capabilities: {
+              llm: "openai/gpt-4o",
+              embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
+              memory: { userId: "user1", customInstructions: "" },
+            },
+            addons: {},
           },
+          connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
         }),
       });
       expect(res.status).toBe(400);
@@ -144,14 +147,17 @@ describe("setup wizard server error scenarios", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          version: 1,
-          security: { adminToken: "valid-token-12345" },
-          memory: { userId: "user1" },
-          connections: [],
-          assignments: {
-            llm: { connectionId: "c1", model: "gpt-4o" },
-            embeddings: { connectionId: "c1", model: "text-embedding-3-small" },
+          spec: {
+            version: 2,
+            capabilities: {
+              llm: "openai/gpt-4o",
+              embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
+              memory: { userId: "user1", customInstructions: "" },
+            },
+            addons: {},
           },
+          security: { adminToken: "valid-token-12345" },
+          connections: [],
         }),
       });
       expect(res.status).toBe(400);
@@ -163,7 +169,7 @@ describe("setup wizard server error scenarios", () => {
     }
   });
 
-  it("returns 400 when assignments are missing", async () => {
+  it("returns 400 when spec is missing", async () => {
     const { stop } = createSetupServer(serverPort, {
       assetProvider: createStubAssetProvider(),
       configDir,
@@ -174,17 +180,15 @@ describe("setup wizard server error scenarios", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          version: 1,
           security: { adminToken: "valid-token-12345" },
-          memory: { userId: "user1" },
           connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
-          // no assignments
+          // no spec
         }),
       });
       expect(res.status).toBe(400);
       const data = (await res.json()) as { ok: boolean; error: string };
       expect(data.ok).toBe(false);
-      expect(data.error).toContain("assignments");
+      expect(data.error).toContain("spec");
     } finally {
       stop();
     }
@@ -201,14 +205,17 @@ describe("setup wizard server error scenarios", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          version: 1,
-          security: { adminToken: "valid-token-12345" },
-          memory: { userId: "user1" },
-          connections: [{ id: "c1", name: "C1", provider: "fakeprovider", baseUrl: "", apiKey: "sk-test" }],
-          assignments: {
-            llm: { connectionId: "c1", model: "gpt-4o" },
-            embeddings: { connectionId: "c1", model: "text-embedding-3-small" },
+          spec: {
+            version: 2,
+            capabilities: {
+              llm: "fakeprovider/gpt-4o",
+              embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
+              memory: { userId: "user1", customInstructions: "" },
+            },
+            addons: {},
           },
+          security: { adminToken: "valid-token-12345" },
+          connections: [{ id: "c1", name: "C1", provider: "fakeprovider", baseUrl: "", apiKey: "sk-test" }],
         }),
       });
       expect(res.status).toBe(400);
@@ -220,7 +227,7 @@ describe("setup wizard server error scenarios", () => {
     }
   });
 
-  it("returns 400 when assignment references nonexistent connection", async () => {
+  it("returns 400 when no connection matches LLM provider", async () => {
     const { stop } = createSetupServer(serverPort, {
       assetProvider: createStubAssetProvider(),
       configDir,
@@ -231,20 +238,23 @@ describe("setup wizard server error scenarios", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          version: 1,
-          security: { adminToken: "valid-token-12345" },
-          memory: { userId: "user1" },
-          connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
-          assignments: {
-            llm: { connectionId: "nonexistent", model: "gpt-4o" },
-            embeddings: { connectionId: "c1", model: "text-embedding-3-small" },
+          spec: {
+            version: 2,
+            capabilities: {
+              llm: "anthropic/claude-3-opus", // No anthropic connection provided
+              embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
+              memory: { userId: "user1", customInstructions: "" },
+            },
+            addons: {},
           },
+          security: { adminToken: "valid-token-12345" },
+          connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
         }),
       });
       expect(res.status).toBe(400);
       const data = (await res.json()) as { ok: boolean; error: string };
       expect(data.ok).toBe(false);
-      expect(data.error).toContain("does not match any connection");
+      expect(data.error).toContain("No connection found for LLM provider");
     } finally {
       stop();
     }

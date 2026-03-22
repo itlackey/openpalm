@@ -1,6 +1,7 @@
 import { defineCommand } from 'citty';
 import { rmSync } from 'node:fs';
-import { ensureValidState, runComposeWithPreflight } from '../lib/staging.ts';
+import { ensureValidState } from '../lib/cli-state.ts';
+import { runComposeWithPreflight } from '../lib/cli-compose.ts';
 import { resolveConfigDir, resolveDataDir, resolveLogsDir } from '@openpalm/lib';
 
 export default defineCommand({

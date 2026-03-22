@@ -1,5 +1,6 @@
 import { defineCommand } from 'citty';
-import { ensureValidState, buildManagedServiceNames, runComposeWithPreflight } from '../lib/staging.ts';
+import { ensureValidState } from '../lib/cli-state.ts';
+import { buildManagedServiceNames, runComposeWithPreflight } from '../lib/cli-compose.ts';
 import {
   createState,
   restoreSnapshot,

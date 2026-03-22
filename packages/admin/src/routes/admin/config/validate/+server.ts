@@ -15,7 +15,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { appendAudit } from "$lib/server/audit.js";
-import { validateEnvironment } from "$lib/server/lifecycle.js";
+import { validateProposedState } from "$lib/server/lifecycle.js";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -26,7 +26,7 @@ export const GET: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
-  const result = await validateEnvironment(state);
+  const result = await validateProposedState(state);
 
   // Log validation failures to the audit trail as warnings
   if (!result.ok) {

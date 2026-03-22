@@ -1,42 +1,20 @@
 /**
- * CLI-side configuration pipeline for Docker Compose operations.
+ * CLI Docker Compose orchestration.
  *
- * Delegates to @openpalm/lib for all control-plane logic. The CLI
- * uses FilesystemAssetProvider (reads from stack/) and
- * validates configuration in place (no staging tier).
+ * Builds compose CLI arguments and runs compose commands with
+ * optional preflight validation. Delegates to @openpalm/lib
+ * for compose file resolution and preflight checks.
  */
 import { existsSync } from 'node:fs';
 import {
-  createState,
-  resolveArtifacts,
   buildComposeFileList,
   buildManagedServices,
   buildEnvFiles,
-  FilesystemAssetProvider,
   resolveComposeProjectName,
   composePreflight,
 } from '@openpalm/lib';
 import type { ControlPlaneState } from '@openpalm/lib';
-import { defaultHomeDir } from './paths.ts';
 import { runDockerCompose } from './docker.ts';
-
-/**
- * Ensure configuration state is valid and ready for Docker Compose operations.
- *
- * Uses FilesystemAssetProvider to read core assets and resolves artifacts.
- * Does NOT persist to disk — persistence happens inside runComposeWithPreflight()
- * after compose preflight validation, ensuring no mutation before validation.
- *
- * Returns a ControlPlaneState usable with fullComposeArgs().
- */
-export async function ensureValidState(): Promise<ControlPlaneState> {
-  const homeDir = defaultHomeDir();
-  const assets = new FilesystemAssetProvider(homeDir);
-  const state = createState();
-  state.artifacts = resolveArtifacts(state, assets);
-  return state;
-}
-
 
 /**
  * Build the full list of docker compose CLI arguments for a given state.

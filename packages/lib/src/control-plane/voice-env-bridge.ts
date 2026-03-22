@@ -88,7 +88,7 @@ export function applyVoiceEnvVars(
 
   let result = mergeEnvContent(existing, updates, { uncomment: true });
   if (!result.endsWith('\n')) result += '\n';
-  writeFileSync(userEnvPath, result);
+  writeFileSync(userEnvPath, result, { mode: 0o600 });
 
   return true;
 }

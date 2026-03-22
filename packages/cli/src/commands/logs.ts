@@ -1,5 +1,6 @@
 import { defineCommand } from 'citty';
-import { ensureValidState, runComposeReadOnly } from '../lib/staging.ts';
+import { ensureValidState } from '../lib/cli-state.ts';
+import { runComposeReadOnly } from '../lib/cli-compose.ts';
 
 export async function runLogsAction(services: string[]): Promise<void> {
   const state = await ensureValidState();

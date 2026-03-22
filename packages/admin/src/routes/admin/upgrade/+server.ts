@@ -61,13 +61,13 @@ export const POST: RequestHandler = async (event) => {
     imageTag = tagResult.tag;
     logger.info("image tag resolved", { requestId, imageTag });
 
-    // 1. Download fresh assets, back up changed files, stage artifacts
-    logger.info("downloading fresh assets and staging artifacts", { requestId });
+    // 1. Download fresh assets, back up changed files, write runtime configuration
+    logger.info("downloading fresh assets and writing runtime files", { requestId });
     upgradeResult = await applyUpgrade(state);
-    logger.info("assets staged", { requestId, updated: upgradeResult.updated });
+    logger.info("runtime files written", { requestId, updated: upgradeResult.updated });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    logger.error("upgrade staging failed, restoring stack.env", { requestId, error: msg });
+    logger.error("upgrade failed, restoring stack.env", { requestId, error: msg });
 
     // Restore original stack.env to avoid half-applied state
     if (originalStackEnv !== null) {

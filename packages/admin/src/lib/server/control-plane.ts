@@ -7,6 +7,7 @@
  * existing API surface so route handlers need no changes.
  */
 import type { ControlPlaneState, CoreAssetProvider, RegistryProvider } from "@openpalm/lib";
+import type { SetupSpec, SetupResult } from "@openpalm/lib";
 import {
   ensureCoreCompose as _ensureCoreCompose,
   readCoreCompose as _readCoreCompose,
@@ -14,13 +15,14 @@ import {
   ensureCoreAutomations as _ensureCoreAutomations,
   ensureUserEnvSchema as _ensureUserEnvSchema,
   ensureSystemEnvSchema as _ensureSystemEnvSchema,
-  resolveArtifacts as _resolveArtifacts,
-  persistConfiguration as _persistConfiguration,
+  resolveRuntimeFiles as _resolveRuntimeFiles,
+  writeRuntimeFiles as _writeRuntimeFiles,
   applyInstall as _applyInstall,
   applyUpdate as _applyUpdate,
   applyUninstall as _applyUninstall,
   applyUpgrade as _applyUpgrade,
   installAutomationFromRegistry as _installAutomationFromRegistry,
+  performSetup as _performSetup,
 } from "@openpalm/lib";
 import { viteAssets } from "./vite-asset-provider.js";
 import { viteRegistry } from "./vite-registry-provider.js";
@@ -52,14 +54,14 @@ export function ensureSystemEnvSchema(): string {
   return _ensureSystemEnvSchema(viteAssets);
 }
 
-export function resolveArtifacts(state: ControlPlaneState): {
+export function resolveRuntimeFiles(state: ControlPlaneState): {
   compose: string;
 } {
-  return _resolveArtifacts(state, viteAssets);
+  return _resolveRuntimeFiles(state, viteAssets);
 }
 
-export function persistConfiguration(state: ControlPlaneState): void {
-  _persistConfiguration(state, viteAssets);
+export function writeRuntimeFiles(state: ControlPlaneState): void {
+  _writeRuntimeFiles(state, viteAssets);
 }
 
 export async function applyInstall(state: ControlPlaneState): Promise<void> {
@@ -88,6 +90,23 @@ export function installAutomationFromRegistry(
 ): { ok: true } | { ok: false; error: string } {
   return _installAutomationFromRegistry(name, configDir, viteRegistry);
 }
+
+export async function performSetup(
+  input: SetupSpec,
+  opts?: { state?: ControlPlaneState }
+): Promise<SetupResult> {
+  return _performSetup(input, viteAssets, opts);
+}
+
+// ── setup.ts (unified SetupSpec) ──────────────────────────────────────
+export type {
+  SetupSpec,
+  SetupConnection,
+  SetupResult,
+} from "@openpalm/lib";
+export {
+  validateSetupSpec,
+} from "@openpalm/lib";
 
 // ── types.ts ──────────────────────────────────────────────────────────
 export type {
@@ -146,14 +165,14 @@ export {
   uninstallAutomation,
 } from "@openpalm/lib";
 
-// ── staging.ts (non-asset functions pass through directly) ───────────
+// ── Configuration utilities (non-asset functions pass through directly) ──
 export {
   sha256,
   randomHex,
   isOllamaEnabled,
   buildEnvFiles,
   discoverStackOverlays,
-  buildArtifactMeta,
+  buildRuntimeFileMeta,
   refreshCoreAssets,
   ensureMemoryDir,
 } from "@openpalm/lib";
@@ -187,8 +206,11 @@ export {
   buildComposeFileList,
   buildManagedServices,
   normalizeCaller,
-  isAllowedAction,
-  validateEnvironment,
+} from "@openpalm/lib";
+
+// ── validate.ts (direct re-export) ──────────────────────────────────
+export {
+  validateProposedState,
 } from "@openpalm/lib";
 
 // ── connection-mapping.ts ─────────────────────────────────────────────
@@ -230,23 +252,15 @@ export type {
   EnabledInstance,
   InstanceStatus,
   InstanceDetail,
-  OverlayValidationResult,
-  EnvInjectionCollision,
 } from "@openpalm/lib";
 export {
   discoverComponents,
-  parseComposeLabels,
-  validateOverlay,
-  detectEnvInjectionCollisions,
   isValidInstanceId,
   isReservedName,
   readEnabledInstances,
-  writeEnabledInstances,
   addEnabledInstance,
   removeEnabledInstance,
-  setInstanceEnabled,
   buildComponentComposeArgs,
-  buildAllowlist,
 } from "@openpalm/lib";
 
 // ── instance-lifecycle.ts (v0.10.0) ───────────────────────────────────

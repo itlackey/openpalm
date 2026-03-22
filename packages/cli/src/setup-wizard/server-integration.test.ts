@@ -76,7 +76,7 @@ function makeSetupDirs(): void {
     [
       "# OpenPalm Secrets",
       "export OP_ADMIN_TOKEN=",
-      
+
       "export OPENAI_API_KEY=",
       "export OPENAI_BASE_URL=",
       "export ANTHROPIC_API_KEY=",
@@ -213,10 +213,24 @@ describe("setup wizard server integration", () => {
 
     try {
       const body = {
-        version: 1,
-        owner: { name: "Integration Test", email: "integ@test.local" },
+        spec: {
+          version: 2,
+          capabilities: {
+            llm: "ollama/qwen2.5-coder:3b",
+            embeddings: {
+              provider: "ollama",
+              model: "nomic-embed-text",
+              dims: 768,
+            },
+            memory: {
+              userId: "integ_user",
+              customInstructions: "",
+            },
+          },
+          addons: {},
+        },
         security: { adminToken: "integration-test-token-123" },
-        memory: { userId: "integ_user" },
+        owner: { name: "Integration Test", email: "integ@test.local" },
         connections: [
           {
             id: "ollama-local",
@@ -226,14 +240,6 @@ describe("setup wizard server integration", () => {
             apiKey: "",
           },
         ],
-        assignments: {
-          llm: { connectionId: "ollama-local", model: "qwen2.5-coder:3b" },
-          embeddings: {
-            connectionId: "ollama-local",
-            model: "nomic-embed-text",
-            embeddingDims: 768,
-          },
-        },
       };
 
       const [res, result] = await Promise.all([
@@ -294,9 +300,23 @@ describe("setup wizard server integration", () => {
 
       // Complete setup
       const body = {
-        version: 1,
+        spec: {
+          version: 2,
+          capabilities: {
+            llm: "openai/gpt-4o",
+            embeddings: {
+              provider: "openai",
+              model: "text-embedding-3-small",
+              dims: 1536,
+            },
+            memory: {
+              userId: "status_user",
+              customInstructions: "",
+            },
+          },
+          addons: {},
+        },
         security: { adminToken: "status-test-token-123" },
-        memory: { userId: "status_user" },
         connections: [
           {
             id: "openai-test",
@@ -306,10 +326,6 @@ describe("setup wizard server integration", () => {
             apiKey: "sk-test-key-status",
           },
         ],
-        assignments: {
-          llm: { connectionId: "openai-test", model: "gpt-4o" },
-          embeddings: { connectionId: "openai-test", model: "text-embedding-3-small" },
-        },
       };
 
       await Promise.all([
@@ -415,9 +431,23 @@ describe("setup wizard server integration", () => {
 
     try {
       const body = {
-        version: 1,
+        spec: {
+          version: 2,
+          capabilities: {
+            llm: "openai/gpt-4o",
+            embeddings: {
+              provider: "openai",
+              model: "text-embedding-3-small",
+              dims: 1536,
+            },
+            memory: {
+              userId: "retry_user",
+              customInstructions: "",
+            },
+          },
+          addons: {},
+        },
         security: { adminToken: "retry-test-token-123" },
-        memory: { userId: "retry_user" },
         connections: [
           {
             id: "openai-retry",
@@ -427,10 +457,6 @@ describe("setup wizard server integration", () => {
             apiKey: "sk-test-key-retry",
           },
         ],
-        assignments: {
-          llm: { connectionId: "openai-retry", model: "gpt-4o" },
-          embeddings: { connectionId: "openai-retry", model: "text-embedding-3-small" },
-        },
       };
 
       // First setup completes successfully

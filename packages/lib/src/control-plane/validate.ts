@@ -1,8 +1,8 @@
 /**
- * Validate-in-place for the OpenPalm control plane.
+ * Runtime configuration validation for the OpenPalm control plane.
  *
- * Replaces the permanent staging tier. Proposed changes are validated
- * against temp copies before writing to live paths.
+ * Proposed changes are validated against temp copies before writing
+ * to live paths.
  */
 import { existsSync, copyFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";

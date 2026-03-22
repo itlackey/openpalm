@@ -8,11 +8,11 @@
  * Uses Bun.serve() with a fetch handler for routing.
  */
 import {
-  type SetupConfig,
+  type SetupSpec,
   type SetupResult,
   type CoreAssetProvider,
-  performSetupFromConfig,
-  detectProviders,
+  performSetup,
+  detectLocalProviders,
   isSetupComplete,
   fetchProviderModels,
   resolveConfigDir,
@@ -166,7 +166,7 @@ export function createSetupServer(
 
     if (method === "GET" && path === "/api/setup/detect-providers") {
       try {
-        const providers = await detectProviders();
+        const providers = await detectLocalProviders();
         return jsonResponse(200, { ok: true, providers });
       } catch (err) {
         return errorResponse(500, "detection_failed", String(err));
@@ -216,10 +216,10 @@ export function createSetupServer(
         return errorResponse(400, "invalid_json", "Request body must be valid JSON");
       }
 
-      const config = body as SetupConfig;
+      const setupSpec = body as SetupSpec;
       let result: SetupResult;
       try {
-        result = await performSetupFromConfig(config, assetProvider);
+        result = await performSetup(setupSpec, assetProvider);
       } catch (err) {
         return errorResponse(500, "setup_failed", String(err));
       }

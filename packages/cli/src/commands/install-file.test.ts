@@ -1,9 +1,10 @@
 /**
  * Tests for the --file install path in the install command.
  *
- * Mocks performSetupFromConfig and performSetup to avoid filesystem
- * side effects, and verifies that the file-based install flow correctly
- * reads, parses, and dispatches JSON/YAML config files.
+ * Mocks performSetup to avoid filesystem side effects, and verifies that
+ * the file-based install flow correctly reads, parses, and dispatches
+ * JSON/YAML config files. Supports both v1 (SetupConfig, migrated) and
+ * v2 (SetupSpec) formats.
  */
 import { describe, expect, it, mock, afterEach, beforeEach } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
@@ -39,6 +40,7 @@ function restoreDockerCli(): void {
   Bun.which = originalBunWhich;
 }
 
+/** v1 SetupConfig format (legacy) */
 function makeValidSetupConfig(): Record<string, unknown> {
   return {
     version: 1,
@@ -58,29 +60,6 @@ function makeValidSetupConfig(): Record<string, unknown> {
       embeddings: { connectionId: 'openai-main', model: 'text-embedding-3-small' },
     },
     memory: { userId: 'test_user' },
-  };
-}
-
-function makeLegacySetupInput(): Record<string, unknown> {
-  return {
-    adminToken: 'test-admin-token-12345',
-    ownerName: 'Test User',
-    ownerEmail: 'test@example.com',
-    memoryUserId: 'test_user',
-    ollamaEnabled: false,
-    connections: [
-      {
-        id: 'openai-main',
-        name: 'OpenAI',
-        provider: 'openai',
-        baseUrl: 'https://api.openai.com',
-        apiKey: 'sk-test-key-123',
-      },
-    ],
-    assignments: {
-      llm: { connectionId: 'openai-main', model: 'gpt-4o' },
-      embeddings: { connectionId: 'openai-main', model: 'text-embedding-3-small' },
-    },
   };
 }
 
@@ -209,16 +188,16 @@ describe('install --file', () => {
     expect((err as Error).message).toContain('Failed to parse setup config');
   });
 
-  it('--file config.json with version: 1 calls performSetupFromConfig path', async () => {
+  it('--file config.json with version: 1 migrates and calls performSetup', async () => {
     const { bootstrapInstall } = await import('./install.ts');
     const configPath = join(tempBase, 'config.json');
     const config = makeValidSetupConfig();
     writeFileSync(configPath, JSON.stringify(config));
 
-    // This will call performSetupFromConfig which needs filesystem dirs.
+    // This will call performSetup after migrating v1 -> SetupSpec.
     // The function will fail at staging since we don't have the full
     // filesystem setup, but the important thing is it reaches the right
-    // code path (version 1 -> performSetupFromConfig).
+    // code path (version 1 -> migrateSetupConfigToSetupSpec -> performSetup).
     const err = await bootstrapInstall({
       force: true,
       version: 'main',
@@ -229,7 +208,7 @@ describe('install --file', () => {
 
     // If setup fails it will throw "Setup failed: ..." — but NOT
     // "Unsupported config file format" or "Failed to parse" which
-    // confirms the JSON was parsed and routed to performSetupFromConfig.
+    // confirms the JSON was parsed and routed correctly.
     if (err) {
       expect((err as Error).message).not.toContain('Unsupported config file format');
       expect((err as Error).message).not.toContain('Failed to parse');

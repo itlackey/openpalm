@@ -18,8 +18,7 @@ export {
   buildComposeFileList,
   buildManagedServices,
   normalizeCaller,
-  isAllowedAction,
-  validateEnvironment,
+  validateProposedState,
 } from "@openpalm/lib";
 
 // Wrapped functions (pre-inject Vite asset provider)

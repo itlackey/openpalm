@@ -125,6 +125,9 @@ function parseMemory(value: unknown): { ok: true; value: Partial<StackSpecMemory
     if (typeof value.userId !== 'string') {
       return { ok: false, message: 'memory.userId must be a string' };
     }
+    if (!/^[a-zA-Z0-9_]+$/.test(value.userId)) {
+      return { ok: false, message: 'memory.userId must contain only alphanumeric characters and underscores' };
+    }
     result.userId = value.userId;
   }
 

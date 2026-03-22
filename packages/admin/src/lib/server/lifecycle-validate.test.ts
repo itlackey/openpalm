@@ -1,8 +1,8 @@
 /**
- * Tests for validateEnvironment() in lifecycle.ts.
+ * Tests for validateProposedState() in lifecycle.ts.
  * Mocks node:child_process to avoid requiring the varlock binary.
  *
- * validateEnvironment() co-locates schema + env files in a temp directory
+ * validateProposedState() co-locates schema + env files in a temp directory
  * (varlock discovers .env.schema alongside --path), then makes two execFile
  * calls:
  *   1. user.env validation   (vault/user/user.env + vault/user.env.schema)
@@ -17,12 +17,12 @@ vi.mock("node:child_process", () => ({
   execFile: vi.fn()
 }));
 
-import { validateEnvironment } from "./lifecycle.js";
+import { validateProposedState } from "./lifecycle.js";
 import { makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
 
-/** Seed the schema and env files that validateEnvironment expects. */
+/** Seed the schema and env files that validateProposedState expects. */
 function seedValidationFiles(state: { vaultDir: string }): void {
   mkdirSync(join(state.vaultDir, "user"), { recursive: true });
   mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
@@ -70,7 +70,7 @@ function mockExecFileAllFail(stderr: string): void {
   });
 }
 
-describe("validateEnvironment", () => {
+describe("validateProposedState", () => {
   afterEach(() => {
     vi.resetAllMocks();
   });
@@ -82,7 +82,7 @@ describe("validateEnvironment", () => {
     trackDir(state.homeDir);
     seedValidationFiles(state);
 
-    const result = await validateEnvironment(state);
+    const result = await validateProposedState(state);
     expect(result).toEqual({ ok: true, errors: [], warnings: [] });
   });
 
@@ -93,7 +93,7 @@ describe("validateEnvironment", () => {
     trackDir(state.homeDir);
     seedValidationFiles(state);
 
-    const result = await validateEnvironment(state);
+    const result = await validateProposedState(state);
     expect(result.ok).toBe(false);
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toContain("ERROR");
@@ -108,7 +108,7 @@ describe("validateEnvironment", () => {
     trackDir(state.homeDir);
     seedValidationFiles(state);
 
-    const result = await validateEnvironment(state);
+    const result = await validateProposedState(state);
     expect(result.ok).toBe(false);
     expect(result.errors).toHaveLength(0);
     expect(result.warnings).toHaveLength(0);
@@ -129,7 +129,7 @@ describe("validateEnvironment", () => {
     trackDir(state.homeDir);
     seedValidationFiles(state);
 
-    await validateEnvironment(state);
+    await validateProposedState(state);
 
     // Both calls should use "load" with "--path" pointing to a temp directory
     expect(capturedArgs).toHaveLength(2);
@@ -151,7 +151,7 @@ describe("validateEnvironment", () => {
     trackDir(state.homeDir);
     seedValidationFiles(state);
 
-    const result = await validateEnvironment(state);
+    const result = await validateProposedState(state);
     expect(result.errors[0]).not.toContain(fakeKey);
     expect(result.errors[0]).toContain("[REDACTED]");
   });

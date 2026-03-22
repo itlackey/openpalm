@@ -1,5 +1,6 @@
 import { defineCommand } from 'citty';
-import { ensureValidState, buildManagedServiceNames, runComposeWithPreflight, runComposeReadOnly } from '../lib/staging.ts';
+import { ensureValidState } from '../lib/cli-state.ts';
+import { buildManagedServiceNames, runComposeWithPreflight, runComposeReadOnly } from '../lib/cli-compose.ts';
 import { runLogsAction } from './logs.ts';
 import { runStartAction } from './start.ts';
 import { runStopAction } from './stop.ts';

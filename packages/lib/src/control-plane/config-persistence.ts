@@ -1,7 +1,7 @@
 /**
- * Configuration management for the OpenPalm control plane (v0.10.0+).
+ * Runtime file resolution and persistence for the OpenPalm control plane.
  *
- * Replaces the permanent staging pipeline with direct-write operations.
+ * Writes and derives live runtime files (compose, env, schemas).
  * Files are validated in-place before writing; rollback is handled by
  * the rollback module (snapshot to ~/.cache/openpalm/rollback/).
  *
@@ -69,7 +69,7 @@ function resolveCompose(_state: ControlPlaneState, assets: CoreAssetProvider): s
 
 /**
  * Return the env files used for docker compose --env-file args.
- * In v0.10.0, these are the live vault env files (no staging).
+ * These are the live vault env files.
  */
 export function buildEnvFiles(state: ControlPlaneState): string[] {
   return [
@@ -199,7 +199,7 @@ function validateAutomationContent(content: string, fileName: string): boolean {
 
 // ── Top-Level Operations ─────────────────────────────────────────────
 
-export function resolveArtifacts(
+export function resolveRuntimeFiles(
   state: ControlPlaneState,
   assets: CoreAssetProvider
 ): {
@@ -210,9 +210,9 @@ export function resolveArtifacts(
   };
 }
 
-// ── Artifact Metadata ──────────────────────────────────────────────────
+// ── Runtime File Metadata ──────────────────────────────────────────────
 
-export function buildArtifactMeta(artifacts: {
+export function buildRuntimeFileMeta(artifacts: {
   compose: string;
 }): ArtifactMeta[] {
   const now = new Date().toISOString();
@@ -239,7 +239,7 @@ function loadPersistedChannelSecrets(vaultDir: string): Record<string, string> {
 
 // ── Persistence (direct-write to live paths) ────────────────────────
 
-export function persistConfiguration(
+export function writeRuntimeFiles(
   state: ControlPlaneState,
   assets: CoreAssetProvider
 ): void {
@@ -276,5 +276,5 @@ export function persistConfiguration(
   mkdirSync(redactDir, { recursive: true });
   writeFileSync(`${redactDir}/redact.env.schema`, generateRedactSchema(systemEnv));
 
-  state.artifactMeta = buildArtifactMeta(state.artifacts);
+  state.artifactMeta = buildRuntimeFileMeta(state.artifacts);
 }

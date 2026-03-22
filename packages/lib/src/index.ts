@@ -186,7 +186,7 @@ export {
   refreshCoreAssets,
 } from "./control-plane/core-assets.js";
 
-// ── Configuration (replaces staging) ─────────────────────────────────────
+// ── Configuration Persistence ────────────────────────────────────────────
 export {
   sha256,
   randomHex,
@@ -194,11 +194,11 @@ export {
   isAdminEnabled,
   buildEnvFiles,
   discoverStackOverlays,
-  resolveArtifacts,
-  buildArtifactMeta,
-  persistConfiguration,
+  resolveRuntimeFiles,
+  buildRuntimeFileMeta,
+  writeRuntimeFiles,
   writeSystemEnv,
-} from "./control-plane/staging.js";
+} from "./control-plane/config-persistence.js";
 
 // ── Rollback ─────────────────────────────────────────────────────────────
 export {
@@ -225,8 +225,6 @@ export {
   buildComposeFileList,
   buildManagedServices,
   normalizeCaller,
-  isAllowedAction,
-  validateEnvironment,
 } from "./control-plane/lifecycle.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
@@ -318,26 +316,17 @@ export { validateStackSpec } from "./control-plane/spec-validator.js";
 // ── Setup ────────────────────────────────────────────────────────────────
 export type {
   SetupConnection,
-  SetupAssignments,
-  SetupInput,
+  SetupSpec,
   SetupResult,
-  DetectedProvider,
-  SetupConfig,
-  SetupConfigAssignments,
-  ChannelCredentials,
-  ServiceConfig,
 } from "./control-plane/setup.js";
 export {
-  validateSetupInput,
+  validateSetupSpec,
   buildSecretsFromSetup,
   buildConnectionEnvVarMap,
   performSetup,
-  detectProviders,
   CHANNEL_CREDENTIAL_ENV_MAP,
-  validateSetupConfig,
-  normalizeToSetupInput,
-  performSetupFromConfig,
   buildChannelCredentialEnvVars,
+  buildChannelCredentialEnvVarsFromMap,
   buildSystemSecretsFromSetup,
 } from "./control-plane/setup.js";
 
@@ -353,23 +342,15 @@ export type {
   EnabledInstance,
   InstanceStatus,
   InstanceDetail,
-  OverlayValidationResult,
-  EnvInjectionCollision,
 } from "./control-plane/components.js";
 export {
   isValidInstanceId,
   isReservedName,
-  parseComposeLabels,
   discoverComponents,
-  validateOverlay,
-  detectEnvInjectionCollisions,
   readEnabledInstances,
-  writeEnabledInstances,
   addEnabledInstance,
   removeEnabledInstance,
-  setInstanceEnabled,
   buildComponentComposeArgs,
-  buildAllowlist,
 } from "./control-plane/components.js";
 
 // ── Instance Lifecycle ──────────────────────────────────────────────────

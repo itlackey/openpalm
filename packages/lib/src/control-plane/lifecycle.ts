@@ -2,7 +2,7 @@
  * Lifecycle helpers for the OpenPalm control plane.
  *
  * State factory, apply* lifecycle transitions, compose file list builders,
- * and caller/action validation.
+ * and caller normalization.
  *
  * All asset operations are delegated via CoreAssetProvider (injected).
  */
@@ -20,21 +20,17 @@ import {
 } from "./home.js";
 import { ensureSecrets, loadSecretsEnvFile, readSystemSecretsEnvFile, updateSystemSecretsEnv } from "./secrets.js";
 import {
-  resolveArtifacts,
-  persistConfiguration,
+  resolveRuntimeFiles,
+  writeRuntimeFiles,
   randomHex,
   buildEnvFiles,
-} from "./staging.js";
-import { readStackSpec } from "./stack-spec.js";
+} from "./config-persistence.js";
+import { readStackSpec, addonNames } from "./stack-spec.js";
 import { refreshCoreAssets, ensureMemoryDir, ensureCoreAutomations } from "./core-assets.js";
 import { ensureMemoryConfig } from "./memory-config.js";
 import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
-import { validateProposedState } from "./validate.js";
 import { checkDocker, composePreflight, composeConfigServices, resolveComposeProjectName } from "./docker.js";
-import { createLogger } from "../logger.js";
-
-const logger = createLogger("lifecycle");
 import type { CoreAssetProvider } from "./core-asset-provider.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
@@ -167,9 +163,9 @@ async function reconcileCore(
   // Snapshot before writing (for rollback on failure)
   snapshotCurrentState(state);
 
-  // Resolve and persist configuration directly to live paths
-  state.artifacts = resolveArtifacts(state, assets);
-  persistConfiguration(state, assets);
+  // Resolve and write runtime files to live paths
+  state.artifacts = resolveRuntimeFiles(state, assets);
+  writeRuntimeFiles(state, assets);
   return active;
 }
 
@@ -308,11 +304,8 @@ export async function buildManagedServices(state: ControlPlaneState): Promise<st
   // Fallback: static inference from CORE_SERVICES + stack.yaml addons
   const services: string[] = [...CORE_SERVICES];
   const spec = readStackSpec(state.configDir);
-  if (spec?.addons) {
-    for (const [addonName, addon] of Object.entries(spec.addons)) {
-      if (addon === false) continue;
-      services.push(addonName);
-    }
+  if (spec) {
+    services.push(...addonNames(spec));
   }
   return services;
 }
@@ -332,41 +325,3 @@ export function normalizeCaller(headerValue: string | null): CallerType {
   return VALID_CALLERS.has(v) ? v : "unknown";
 }
 
-// ── Action Validation ──────────────────────────────────────────────────
-
-const ALLOWED_ACTIONS = new Set([
-  "install",
-  "update",
-  "upgrade",
-  "uninstall",
-  "containers.list",
-  "containers.up",
-  "containers.down",
-  "containers.restart",
-  "channels.list",
-  "channels.install",
-  "channels.uninstall",
-
-  "extensions.list",
-  "artifacts.list",
-  "artifacts.get",
-  "artifacts.manifest",
-  "audit.list",
-  "connections.get",
-  "connections.patch",
-  "connections.status"
-]);
-
-export function isAllowedAction(action: string): boolean {
-  return ALLOWED_ACTIONS.has(action);
-}
-
-// ── Environment Validation ─────────────────────────────────────────────
-
-export async function validateEnvironment(state: ControlPlaneState): Promise<{
-  ok: boolean;
-  errors: string[];
-  warnings: string[];
-}> {
-  return validateProposedState(state);
-}

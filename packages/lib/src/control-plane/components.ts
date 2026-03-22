@@ -2,16 +2,16 @@
  * Unified component system for the OpenPalm control plane.
  *
  * A component is a directory containing compose.yml + .env.schema.
- * Components are discovered from three catalog sources (built-in, registry, user-local)
+ * Components are discovered from two catalog sources (built-in, registry)
  * and instantiated into data/components/ when enabled.
  *
  * This module provides:
  * - Component types and constants
  * - Discovery across catalog sources
  * - Compose label parsing
- * - Overlay safety validation
- * - Cross-component env injection collision detection
  * - Instance ID validation
+ * - Enabled instance persistence
+ * - Compose overlay assembly
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -64,39 +64,19 @@ export type InstanceDetail = EnabledInstance & {
   status: InstanceStatus;
 };
 
-/** Validation result for overlay safety */
-export type OverlayValidationResult = {
-  valid: boolean;
-  errors: string[];
-  warnings: string[];
-};
-
-/** Env injection collision */
-export type EnvInjectionCollision = {
-  variable: string;
-  targetService: string;
-  sources: string[];  // instance IDs that inject the same var
-};
-
 // ── Constants ──────────────────────────────────────────────────────────
 
 /** Strict instance ID: lowercase alphanumeric + hyphens, 1-63 chars, starts with alnum */
 const INSTANCE_ID_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 /**
- * All core/optional service names used for overlay validation.
+ * Reserved names that cannot be used as instance IDs.
  * Derived from the canonical CORE_SERVICES + OPTIONAL_SERVICES lists in types.ts.
  */
-const CORE_SERVICE_NAMES = new Set<string>([
+const RESERVED_NAMES = new Set<string>([
   ...CORE_SERVICES,
   ...OPTIONAL_SERVICES,
 ]);
-
-/**
- * Reserved names that cannot be used as instance IDs.
- * Derived from CORE_SERVICE_NAMES so the two never diverge.
- */
-const RESERVED_NAMES = CORE_SERVICE_NAMES;
 
 // ── Instance ID Validation ─────────────────────────────────────────────
 
@@ -108,20 +88,21 @@ export function isReservedName(id: string): boolean {
   return RESERVED_NAMES.has(id);
 }
 
-// ── Label Parsing ──────────────────────────────────────────────────────
+// ── YAML Parsing Helpers ──────────────────────────────────────────────
 
 /**
- * Parse openpalm.* labels from a compose.yml file.
- * Returns labels from the first service that has them.
+ * Parse a compose YAML file into a document object.
+ * Returns null on any parse error.
  */
-export function parseComposeLabels(composePath: string): ComponentLabels | null {
+function parseComposeYaml(
+  composePath: string
+): Record<string, unknown> | null {
   if (!existsSync(composePath)) return null;
 
   let content: string;
   try {
     content = readFileSync(composePath, "utf-8");
   } catch {
-    logger.warn("Failed to read compose file", { path: composePath });
     return null;
   }
 
@@ -129,13 +110,27 @@ export function parseComposeLabels(composePath: string): ComponentLabels | null 
   try {
     doc = yamlParse(content);
   } catch {
-    logger.warn("Failed to parse YAML", { path: composePath });
     return null;
   }
 
   if (typeof doc !== "object" || doc === null) return null;
-  const root = doc as Record<string, unknown>;
-  const services = root.services;
+  return doc as Record<string, unknown>;
+}
+
+// ── Label Parsing ──────────────────────────────────────────────────────
+
+/**
+ * Parse openpalm.* labels from a compose.yml file.
+ * Returns labels from the first service that has them.
+ *
+ * Exported for direct testing; not part of the public barrel API.
+ * Runtime consumers should use discoverComponents() instead.
+ */
+export function parseComposeLabels(composePath: string): ComponentLabels | null {
+  const doc = parseComposeYaml(composePath);
+  if (!doc) return null;
+
+  const services = doc.services;
   if (typeof services !== "object" || services === null) return null;
 
   const serviceMap = services as Record<string, unknown>;
@@ -246,7 +241,7 @@ function scanComponentDir(
 
 /**
  * Discover available components from all catalog sources.
- * Priority: user-local > registry > built-in (by directory name).
+ * Priority: registry > built-in (by directory name).
  *
  * @param openpalmHome - The OP_HOME root (e.g., ~/.openpalm)
  * @param builtinDir - Optional path to built-in components directory (e.g., packages/lib/assets/components/).
@@ -256,7 +251,6 @@ export function discoverComponents(
   openpalmHome: string,
   builtinDir?: string
 ): ComponentDefinition[] {
-  // Scan all three sources
   const builtinComponents = builtinDir
     ? scanComponentDir(builtinDir, "builtin")
     : [];
@@ -264,13 +258,8 @@ export function discoverComponents(
     join(openpalmHome, "data", "catalog"),
     "registry"
   );
-  // User-local components are no longer discovered from config/components.
-  // The component system uses data/components for instances and
-  // stack/addons for addon overlays. User-local component definitions
-  // should be placed in data/catalog instead.
-  const userLocalComponents: ComponentDefinition[] = [];
 
-  // Apply override precedence: user-local > registry > built-in
+  // Apply override precedence: registry > built-in
   const byId = new Map<string, ComponentDefinition>();
 
   for (const c of builtinComponents) {
@@ -279,314 +268,8 @@ export function discoverComponents(
   for (const c of registryComponents) {
     byId.set(c.id, c);
   }
-  for (const c of userLocalComponents) {
-    byId.set(c.id, c);
-  }
 
   return Array.from(byId.values());
-}
-
-// ── Overlay Validation ─────────────────────────────────────────────────
-
-/**
- * Parse a compose YAML file into a document object.
- * Returns null on any parse error.
- */
-function parseComposeYaml(
-  composePath: string
-): Record<string, unknown> | null {
-  if (!existsSync(composePath)) return null;
-
-  let content: string;
-  try {
-    content = readFileSync(composePath, "utf-8");
-  } catch {
-    return null;
-  }
-
-  let doc: unknown;
-  try {
-    doc = yamlParse(content);
-  } catch {
-    return null;
-  }
-
-  if (typeof doc !== "object" || doc === null) return null;
-  return doc as Record<string, unknown>;
-}
-
-/**
- * Validate a component's compose.yml overlay for safety.
- * Checks architectural guardrails from core-principles.md.
- */
-export function validateOverlay(composePath: string): OverlayValidationResult {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-
-  const doc = parseComposeYaml(composePath);
-  if (!doc) {
-    return { valid: false, errors: [`Failed to parse compose.yml: ${composePath}`], warnings };
-  }
-
-  const services = doc.services;
-  if (typeof services !== "object" || services === null) {
-    return {
-      valid: false,
-      errors: ["No services defined in compose.yml"],
-      warnings,
-    };
-  }
-
-  const serviceMap = services as Record<string, unknown>;
-  let hasOpenpalmLabels = false;
-
-  for (const serviceName of Object.keys(serviceMap)) {
-    const service = serviceMap[serviceName];
-    if (typeof service !== "object" || service === null) continue;
-    const svc = service as Record<string, unknown>;
-
-    // Check for openpalm labels on any service (map or list style)
-    if (typeof svc.labels === "object" && svc.labels !== null) {
-      if (Array.isArray(svc.labels)) {
-        if (svc.labels.some((l: unknown) => typeof l === "string" && l.startsWith("openpalm.name="))) {
-          hasOpenpalmLabels = true;
-        }
-      } else {
-        const labels = svc.labels as Record<string, unknown>;
-        if ("openpalm.name" in labels) hasOpenpalmLabels = true;
-      }
-    }
-
-    // Check if this service name matches a core service
-    const isCoreService = CORE_SERVICE_NAMES.has(serviceName);
-
-    if (isCoreService) {
-      // Component overlays extending core services should ONLY add environment keys
-      const allowedCoreExtensionKeys = new Set(["environment"]);
-      const svcKeys = Object.keys(svc);
-
-      for (const key of svcKeys) {
-        if (!allowedCoreExtensionKeys.has(key)) {
-          errors.push(
-            `Service "${serviceName}" is a core service — component overlays extending ` +
-              `core services should only add "environment" keys, not "${key}"`
-          );
-        }
-      }
-    }
-
-    // Check for vault mount violations
-    if (Array.isArray(svc.volumes)) {
-      for (const vol of svc.volumes) {
-        const volStr = typeof vol === "string" ? vol : "";
-        if (typeof vol === "object" && vol !== null) {
-          const volObj = vol as Record<string, unknown>;
-          const source = String(volObj.source ?? "");
-          if (/vault\b/i.test(source) && !/vault\/.*\.[a-z]+$/i.test(source)) {
-            errors.push(
-              `Service "${serviceName}" mounts vault/ directory — ` +
-                `only admin can mount full vault`
-            );
-          }
-        } else if (volStr) {
-          // Extract source portion of bind mount string.
-          // Format is source:target[:mode]. Named volumes have no path separators
-          // in source, but bind mounts always contain / or ${...}.
-          const colonIdx = volStr.indexOf(":");
-          const volSource = colonIdx >= 0 ? volStr.slice(0, colonIdx) : volStr;
-          if (/vault\b/i.test(volSource) && !/vault\/.*\.[a-z]+$/i.test(volSource)) {
-            errors.push(
-              `Service "${serviceName}" mounts vault/ directory — ` +
-                `only admin can mount full vault`
-            );
-          }
-        }
-        // Warn about variable references that may resolve to vault paths
-        const checkStr = typeof vol === "string" ? vol : String((vol as Record<string, unknown>)?.source ?? "");
-        if (
-          /\$\{[^}]*[Vv][Aa][Uu][Ll][Tt][^}]*\}/.test(checkStr) ||
-          (/\$\{[^}]*OP_HOME[^}]*\}/.test(checkStr) && /vault/i.test(checkStr))
-        ) {
-          warnings.push(
-            `Service "${serviceName}" volume uses a variable reference that may point to vault — ` +
-              `verify this does not expose the full vault directory`
-          );
-        }
-      }
-    }
-
-    // Check for privileged mode
-    if (svc.privileged === true) {
-      errors.push(
-        `Service "${serviceName}" uses privileged mode — ` +
-          `components must not use privileged mode`
-      );
-    }
-
-    // Check for dangerous capabilities
-    if (Array.isArray(svc.cap_add)) {
-      const dangerousCaps = new Set(["ALL", "SYS_ADMIN", "NET_ADMIN", "SYS_PTRACE", "DAC_OVERRIDE"]);
-      for (const cap of svc.cap_add) {
-        const capStr = typeof cap === "string" ? cap.toUpperCase() : "";
-        if (dangerousCaps.has(capStr)) {
-          errors.push(
-            `Service "${serviceName}" adds dangerous capability "${capStr}" — ` +
-              `components must not use dangerous capabilities`
-          );
-        }
-      }
-    }
-
-    // Check for dangerous host device exposure
-    if (Array.isArray(svc.devices)) {
-      for (const device of svc.devices) {
-        const deviceStr = typeof device === "string" ? device : "";
-        if (deviceStr) {
-          errors.push(
-            `Service "${serviceName}" exposes host device "${deviceStr}" — ` +
-              `components must not expose host devices`
-          );
-        }
-      }
-    }
-
-    // Check for Docker socket mount
-    if (Array.isArray(svc.volumes)) {
-      for (const vol of svc.volumes) {
-        const volStr = typeof vol === "string" ? vol : "";
-        const volSource = typeof vol === "object" && vol !== null
-          ? String((vol as Record<string, unknown>).source ?? "")
-          : volStr;
-        if (volSource.includes("/var/run/docker.sock")) {
-          errors.push(
-            `Service "${serviceName}" mounts Docker socket — ` +
-              `components must not access the Docker socket`
-          );
-        }
-      }
-    }
-
-    // Check for direct port exposure that bypasses guardian
-    // (non-core services exposing ports that could bypass guardian)
-    if (!isCoreService && Array.isArray(svc.ports)) {
-      for (const port of svc.ports) {
-        const portStr = typeof port === "string" ? port : String(port);
-        // Guardian ports are on :8080. Warn about any public port exposure.
-        warnings.push(
-          `Service "${serviceName}" exposes port ${portStr} — ` +
-            `ensure this does not bypass guardian ingress`
-        );
-      }
-    }
-  }
-
-  if (!hasOpenpalmLabels) {
-    warnings.push(
-      "No openpalm.name label found — component may not appear correctly in the admin UI"
-    );
-  }
-
-  return { valid: errors.length === 0, errors, warnings };
-}
-
-// ── Env Injection Collision Detection ──────────────────────────────────
-
-/**
- * Extract environment variable injections into core services from a compose overlay.
- * Returns a map of { targetService -> { variable -> true } }.
- */
-function extractCoreEnvInjections(
-  composePath: string
-): Map<string, Set<string>> {
-  const injections = new Map<string, Set<string>>();
-
-  const doc = parseComposeYaml(composePath);
-  if (!doc) return injections;
-
-  const services = doc.services;
-  if (typeof services !== "object" || services === null) return injections;
-
-  const serviceMap = services as Record<string, unknown>;
-
-  for (const serviceName of Object.keys(serviceMap)) {
-    // Only look at core service extensions
-    if (!CORE_SERVICE_NAMES.has(serviceName)) continue;
-
-    const service = serviceMap[serviceName];
-    if (typeof service !== "object" || service === null) continue;
-    const svc = service as Record<string, unknown>;
-
-    const env = svc.environment;
-    if (typeof env !== "object" || env === null) continue;
-
-    const vars = new Set<string>();
-
-    if (Array.isArray(env)) {
-      // environment as list: ["VAR=value", "VAR2=value2"]
-      for (const entry of env) {
-        if (typeof entry === "string") {
-          const eqIdx = entry.indexOf("=");
-          const varName = eqIdx >= 0 ? entry.slice(0, eqIdx) : entry;
-          vars.add(varName);
-        }
-      }
-    } else {
-      // environment as map: { VAR: value, VAR2: value2 }
-      const envMap = env as Record<string, unknown>;
-      for (const varName of Object.keys(envMap)) {
-        vars.add(varName);
-      }
-    }
-
-    if (vars.size > 0) {
-      injections.set(serviceName, vars);
-    }
-  }
-
-  return injections;
-}
-
-/**
- * Check for environment variable injection collisions across enabled instances.
- * Two instances should not inject the same env var into the same core service.
- *
- * @param instances - Array of { id, dir } objects where id is the instance identifier
- *   and dir is the absolute path to the instance directory (data/components/{id}/)
- */
-export function detectEnvInjectionCollisions(
-  instances: Array<{ id: string; dir: string }>
-): EnvInjectionCollision[] {
-  // Map of "targetService:variable" -> list of instance IDs
-  const seen = new Map<string, string[]>();
-
-  for (const { id: instanceId, dir: instanceDir } of instances) {
-    const composePath = join(instanceDir, "compose.yml");
-
-    const injections = extractCoreEnvInjections(composePath);
-
-    for (const [targetService, vars] of injections) {
-      for (const variable of vars) {
-        const key = `${targetService}:${variable}`;
-        const existing = seen.get(key);
-        if (existing) {
-          existing.push(instanceId);
-        } else {
-          seen.set(key, [instanceId]);
-        }
-      }
-    }
-  }
-
-  // Collect collisions (where more than one instance injects the same var)
-  const collisions: EnvInjectionCollision[] = [];
-  for (const [key, sources] of seen) {
-    if (sources.length > 1) {
-      const [targetService, variable] = key.split(":", 2);
-      collisions.push({ variable, targetService, sources });
-    }
-  }
-
-  return collisions;
 }
 
 // ── Enabled Instance File Format ───────────────────────────────────────
@@ -672,8 +355,9 @@ export function readEnabledInstances(openpalmHome: string): EnabledInstance[] {
 
 /**
  * Write enabled instances to data/components/enabled.json.
+ * Internal helper — used by addEnabledInstance and removeEnabledInstance.
  */
-export function writeEnabledInstances(openpalmHome: string, instances: EnabledInstance[]): void {
+function writeEnabledInstances(openpalmHome: string, instances: EnabledInstance[]): void {
   const dir = componentsDataDir(openpalmHome);
   mkdirSync(dir, { recursive: true });
 
@@ -701,18 +385,6 @@ export function removeEnabledInstance(openpalmHome: string, instanceId: string):
   const existing = readEnabledInstances(openpalmHome);
   const filtered = existing.filter((i) => i.id !== instanceId);
   writeEnabledInstances(openpalmHome, filtered);
-}
-
-/**
- * Update an instance's enabled flag in enabled.json.
- * No-op if the instance is not found.
- */
-export function setInstanceEnabled(openpalmHome: string, instanceId: string, enabled: boolean): void {
-  const existing = readEnabledInstances(openpalmHome);
-  const updated = existing.map((i) =>
-    i.id === instanceId ? { ...i, enabled } : i
-  );
-  writeEnabledInstances(openpalmHome, updated);
 }
 
 // ── Compose Overlay Assembly ───────────────────────────────────────────
@@ -777,63 +449,4 @@ export function buildComponentComposeArgs(openpalmHome: string, options: {
   }
 
   return args;
-}
-
-// ── Dynamic Allowlist ──────────────────────────────────────────────────
-
-/**
- * Build the set of allowed Docker service names from core services,
- * addon compose files, and enabled component instances.
- *
- * Service names are compose-derived: addon services are extracted from
- * stack/addons compose files, and instance services from their compose files.
- * For the authoritative runtime list, use `composeConfigServices()` from docker.ts.
- */
-export function buildAllowlist(openpalmHome: string): Set<string> {
-  const allowed = new Set<string>([...CORE_SERVICES, ...OPTIONAL_SERVICES]);
-
-  // Add services from stack/addons compose files (YAML-parsed)
-  const addonsDir = join(openpalmHome, "stack", "addons");
-  if (existsSync(addonsDir)) {
-    for (const entry of readdirSync(addonsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const composePath = join(addonsDir, entry.name, "compose.yml");
-      if (!existsSync(composePath)) continue;
-      try {
-        const content = readFileSync(composePath, "utf-8");
-        const doc = yamlParse(content);
-        if (typeof doc === "object" && doc !== null) {
-          const services = (doc as Record<string, unknown>).services;
-          if (typeof services === "object" && services !== null) {
-            for (const svcName of Object.keys(services as Record<string, unknown>)) {
-              allowed.add(svcName);
-            }
-          }
-        }
-      } catch { /* skip unreadable */ }
-    }
-  }
-
-  // Add services from enabled component instances (YAML-parsed)
-  const instances = readEnabledInstances(openpalmHome);
-  for (const instance of instances) {
-    if (!instance.enabled) continue;
-    const instanceCompose = join(componentsDataDir(openpalmHome), instance.id, "compose.yml");
-    if (existsSync(instanceCompose)) {
-      try {
-        const content = readFileSync(instanceCompose, "utf-8");
-        const doc = yamlParse(content);
-        if (typeof doc === "object" && doc !== null) {
-          const services = (doc as Record<string, unknown>).services;
-          if (typeof services === "object" && services !== null) {
-            for (const svcName of Object.keys(services as Record<string, unknown>)) {
-              allowed.add(svcName);
-            }
-          }
-        }
-      } catch { /* skip unreadable */ }
-    }
-  }
-
-  return allowed;
 }

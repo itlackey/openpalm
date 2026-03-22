@@ -1,5 +1,5 @@
 /**
- * Tests for staging.ts — artifact staging pipeline, env staging, and persistence.
+ * Tests for configuration persistence — artifact metadata, env files, and runtime file writing.
  *
  * Core-asset tests (compose, access scope) live in core-assets.test.ts.
  */
@@ -14,11 +14,11 @@ import { join } from "node:path";
 
 import {
   sha256,
-  buildArtifactMeta,
+  buildRuntimeFileMeta,
   discoverStackOverlays,
   buildEnvFiles,
-  persistConfiguration
-} from "./staging.js";
+  writeRuntimeFiles
+} from "./control-plane.js";
 import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
 /** Seed channel addon files in stack/addons/<name>/compose.yml. */
@@ -64,12 +64,12 @@ describe("sha256", () => {
 
 // ── Artifact Metadata ───────────────────────────────────────────────────
 
-describe("buildArtifactMeta", () => {
+describe("buildRuntimeFileMeta", () => {
   test("generates metadata for compose", () => {
     const artifacts = {
       compose: "services:\n  admin:\n    image: admin:latest\n",
     };
-    const meta = buildArtifactMeta(artifacts);
+    const meta = buildRuntimeFileMeta(artifacts);
     expect(meta).toHaveLength(1);
     expect(meta[0].name).toBe("compose");
   });
@@ -77,18 +77,18 @@ describe("buildArtifactMeta", () => {
   test("sha256 matches content hash", () => {
     const content = "test content";
     const artifacts = { compose: content };
-    const meta = buildArtifactMeta(artifacts);
+    const meta = buildRuntimeFileMeta(artifacts);
     expect(meta[0].sha256).toBe(sha256(content));
   });
 
   test("bytes reflects buffer byte length (handles multibyte)", () => {
     const artifacts = { compose: "\u00e9" }; // é = 2 bytes UTF-8
-    const meta = buildArtifactMeta(artifacts);
+    const meta = buildRuntimeFileMeta(artifacts);
     expect(meta[0].bytes).toBe(2);
   });
 
   test("generatedAt is ISO timestamp", () => {
-    const meta = buildArtifactMeta({ compose: "" });
+    const meta = buildRuntimeFileMeta({ compose: "" });
     expect(meta[0].generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });
@@ -192,7 +192,7 @@ describe("buildEnvFiles", () => {
 
 // ── Persist Configuration (Integration) ─────────────────────────────────
 
-describe("persistConfiguration", () => {
+describe("writeRuntimeFiles", () => {
   let state: ReturnType<typeof makeTestState>;
 
   beforeEach(() => {
@@ -208,7 +208,7 @@ describe("persistConfiguration", () => {
   });
 
   test("writes compose to stack/", () => {
-    persistConfiguration(state);
+    writeRuntimeFiles(state);
 
     const composePath = join(state.homeDir, "stack", "core.compose.yml");
     expect(existsSync(composePath)).toBe(true);
@@ -220,7 +220,7 @@ describe("persistConfiguration", () => {
       { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" }
     ]);
 
-    persistConfiguration(state);
+    writeRuntimeFiles(state);
 
     const systemEnvPath = join(state.vaultDir, "stack", "stack.env");
     const content = readFileSync(systemEnvPath, "utf-8");
@@ -228,7 +228,7 @@ describe("persistConfiguration", () => {
   });
 
   test("writes stack.env with runtime configuration", () => {
-    persistConfiguration(state);
+    writeRuntimeFiles(state);
 
     const systemEnvPath = join(state.vaultDir, "stack", "stack.env");
     expect(existsSync(systemEnvPath)).toBe(true);
@@ -238,7 +238,7 @@ describe("persistConfiguration", () => {
   });
 
   test("stack.env does NOT contain user secrets (MEMORY_USER_ID)", () => {
-    persistConfiguration(state);
+    writeRuntimeFiles(state);
 
     const systemEnvPath = join(state.vaultDir, "stack", "stack.env");
     const content = readFileSync(systemEnvPath, "utf-8");
@@ -263,7 +263,7 @@ describe("persistConfiguration", () => {
       { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" }
     ]);
 
-    persistConfiguration(state);
+    writeRuntimeFiles(state);
 
     // The pre-existing secret should be preserved, not regenerated
     const systemEnvPath = join(state.vaultDir, "stack", "stack.env");

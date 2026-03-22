@@ -2,8 +2,8 @@
  * SvelteKit server hooks — runs once on admin startup.
  *
  * Performs an idempotent auto-apply: ensures XDG dirs exist, seeds
- * secrets and OpenCode config, stages artifacts to STATE_HOME, and
- * records the outcome in the audit log. This guarantees that the latest
+ * secrets and OpenCode config, resolves runtime files, and records
+ * the outcome in the audit log. This guarantees that the latest
  * CONFIG_HOME state is synced into the runtime on every admin boot.
  */
 import { createLogger } from "$lib/server/logger.js";
@@ -16,8 +16,8 @@ import {
   ensureCoreAutomations,
   ensureUserEnvSchema,
   ensureSystemEnvSchema,
-  resolveArtifacts,
-  persistConfiguration,
+  resolveRuntimeFiles,
+  writeRuntimeFiles,
   appendAudit,
   readMemoryConfig,
   resolveConfigForPush,
@@ -43,8 +43,8 @@ function runStartupApply(): void {
     ensureCoreAutomations();
     ensureUserEnvSchema();
     ensureSystemEnvSchema();
-    state.artifacts = resolveArtifacts(state);
-    persistConfiguration(state);
+    state.artifacts = resolveRuntimeFiles(state);
+    writeRuntimeFiles(state);
 
     appendAudit(
       state,

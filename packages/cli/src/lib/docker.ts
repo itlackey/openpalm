@@ -122,8 +122,8 @@ export async function runDockerComposeCapture(args: string[]): Promise<string> {
   return output;
 }
 
-// composeProjectArgs() removed — use fullComposeArgs(state) from staging.ts instead.
-// That function builds the correct file list including channel overlays and staged env files.
+// composeProjectArgs() removed — use fullComposeArgs(state) from cli-compose.ts instead.
+// That function builds the correct file list including channel overlays and env files.
 
 // ensureOpenCodeConfig and ensureOpenCodeSystemConfig are imported from @openpalm/lib.
 // See packages/lib/src/control-plane/secrets.ts and core-assets.ts.

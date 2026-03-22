@@ -1,5 +1,6 @@
 import { defineCommand } from 'citty';
-import { ensureValidState, runComposeWithPreflight } from '../lib/staging.ts';
+import { ensureValidState } from '../lib/cli-state.ts';
+import { runComposeWithPreflight } from '../lib/cli-compose.ts';
 
 export default defineCommand({
   meta: {

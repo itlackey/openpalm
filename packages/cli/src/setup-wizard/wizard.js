@@ -1366,36 +1366,80 @@
       };
     });
 
-    var ttsVal = activeTts() !== "skip-tts" ? activeTts() : null;
-    var sttVal = activeStt() !== "skip-stt" ? activeStt() : null;
+    // Resolve LLM and embeddings connection providers
+    var llmConnId = llm ? llm.connId : "";
+    var embConnId = emb ? emb.connId : "";
+    var llmConn = connections.find(function (c) { return c.id === llmConnId; });
+    var embConn = connections.find(function (c) { return c.id === embConnId; });
+    var llmProvider = llmConn ? llmConn.provider : "";
+    var embProvider = embConn ? embConn.provider : "";
 
-    return {
-      version: 1,
-      owner: (ownerName || ownerEmail) ? { name: ownerName || undefined, email: ownerEmail || undefined } : undefined,
+    // Build addons from channels and services
+    var addons = {};
+    if (ollamaEnabled) addons.ollama = true;
+    if (serviceSelection.admin) addons.admin = true;
+    if (serviceSelection.openviking) addons.openviking = true;
+
+    // Add channel addons and extract channel credentials
+    var channelCredentials = {};
+    var channelsConfig = buildChannelsConfig();
+    for (var chId in channelsConfig) {
+      var chVal = channelsConfig[chId];
+      if (chVal === true) {
+        addons[chId] = true;
+      } else if (typeof chVal === "object" && chVal !== null) {
+        addons[chId] = true;
+        // Extract credentials (all fields except 'enabled')
+        var creds = {};
+        for (var key in chVal) {
+          if (key !== "enabled" && chVal[key]) {
+            creds[key] = typeof chVal[key] === "boolean" ? String(chVal[key]) : chVal[key];
+          }
+        }
+        if (Object.keys(creds).length > 0) {
+          channelCredentials[chId] = creds;
+        }
+      }
+    }
+
+    // Build SetupSpec payload
+    var payload = {
+      spec: {
+        version: 2,
+        capabilities: {
+          llm: llmProvider + "/" + (llm ? llm.model : ""),
+          embeddings: {
+            provider: embProvider,
+            model: emb ? emb.model : "",
+            dims: emb ? (emb.dims || 1536) : 1536,
+          },
+          memory: {
+            userId: memoryUserId,
+            customInstructions: "",
+          },
+        },
+        addons: addons,
+      },
       security: { adminToken: adminToken },
       connections: connections,
-      assignments: {
-        llm: {
-          connectionId: llm ? llm.connId : "",
-          model: llm ? llm.model : "",
-          smallModel: (small && small.model) ? small.model : undefined,
-        },
-        embeddings: {
-          connectionId: emb ? emb.connId : "",
-          model: emb ? emb.model : "",
-          embeddingDims: emb ? (emb.dims || 1536) : 1536,
-        },
-        tts: ttsVal,
-        stt: sttVal,
-      },
-      memory: { userId: memoryUserId },
-      channels: buildChannelsConfig(),
-      services: {
-        admin: serviceSelection.admin || false,
-        openviking: serviceSelection.openviking || false,
-        ollama: ollamaEnabled,
-      },
     };
+
+    // Add optional slm capability
+    if (small && small.model) {
+      payload.spec.capabilities.slm = llmProvider + "/" + small.model;
+    }
+
+    // Add owner if provided
+    if (ownerName || ownerEmail) {
+      payload.owner = { name: ownerName || undefined, email: ownerEmail || undefined };
+    }
+
+    // Add channel credentials if any
+    if (Object.keys(channelCredentials).length > 0) {
+      payload.channelCredentials = channelCredentials;
+    }
+
+    return payload;
   }
 
   async function handleInstall() {

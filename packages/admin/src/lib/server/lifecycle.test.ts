@@ -1,6 +1,6 @@
 /**
  * Tests for lifecycle.ts — state factory, lifecycle helpers, compose builders,
- * caller/action validation.
+ * caller normalization.
  */
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import {
@@ -19,9 +19,8 @@ import {
   updateStackEnvToLatestImageTag,
   buildComposeFileList,
   normalizeCaller,
-  isAllowedAction
 } from "./lifecycle.js";
-import { randomHex } from "./staging.js";
+import { randomHex } from "./control-plane.js";
 import { CORE_SERVICES, OPTIONAL_SERVICES } from "./types.js";
 import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
@@ -79,33 +78,6 @@ describe("normalizeCaller", () => {
 
   test("returns 'unknown' for null", () => {
     expect(normalizeCaller(null)).toBe("unknown");
-  });
-});
-
-// ── Action Validation ───────────────────────────────────────────────────
-
-describe("isAllowedAction", () => {
-  test("allows documented actions from api-spec.md", () => {
-    const validActions = [
-      "install", "update", "upgrade", "uninstall",
-      "containers.list", "containers.up",
-      "containers.down", "containers.restart",
-      "channels.list", "channels.install", "channels.uninstall",
-      "extensions.list",
-      "artifacts.list", "artifacts.get", "artifacts.manifest",
-      "audit.list",
-      "connections.get", "connections.patch", "connections.status"
-    ];
-    for (const action of validActions) {
-      expect(isAllowedAction(action)).toBe(true);
-    }
-  });
-
-  test("rejects invalid actions", () => {
-    expect(isAllowedAction("")).toBe(false);
-    expect(isAllowedAction("destroy")).toBe(false);
-    expect(isAllowedAction("INSTALL")).toBe(false);
-    expect(isAllowedAction("admin.delete")).toBe(false);
   });
 });
 
@@ -253,7 +225,7 @@ describe("applyInstall", () => {
       state.services[service] = "stopped";
     }
 
-    // Create required dirs for persistConfiguration
+    // Create required dirs for writeRuntimeFiles
     mkdirSync(join(state.homeDir, "stack"), { recursive: true });
     mkdirSync(join(state.vaultDir), { recursive: true });
 

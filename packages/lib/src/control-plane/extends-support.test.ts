@@ -57,7 +57,7 @@ describe("compose extends support", () => {
   });
 
   test("extends addon composes correctly with discoverStackOverlays", async () => {
-    const { discoverStackOverlays } = await import("./staging.js");
+    const { discoverStackOverlays } = await import("./config-persistence.js");
     const overlays = discoverStackOverlays(join(fixtureDir, "stack"));
 
     expect(overlays.length).toBe(2);
@@ -75,7 +75,7 @@ describe("compose extends support", () => {
       return;
     }
 
-    const { discoverStackOverlays } = await import("./staging.js");
+    const { discoverStackOverlays } = await import("./config-persistence.js");
     const files = discoverStackOverlays(join(fixtureDir, "stack"));
 
     const result = await composePreflight({ files });
@@ -90,7 +90,7 @@ describe("compose extends support", () => {
       return;
     }
 
-    const { discoverStackOverlays } = await import("./staging.js");
+    const { discoverStackOverlays } = await import("./config-persistence.js");
     const files = discoverStackOverlays(join(fixtureDir, "stack"));
 
     const result = await composeConfigServices({ files });
