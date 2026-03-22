@@ -72,14 +72,13 @@ ensure_stack_running() {
 	echo "Stack not running. Setting up and starting..."
 	ensure_dev_setup
 
-	# Build and start with admin addon overlay
+	# Build and start with admin addon overlay using .dev as OP_HOME
 	bun run admin:build
 	docker compose --project-directory . \
-		-f .openpalm/stack/core.compose.yml \
+		-f .dev/stack/core.compose.yml \
 		-f .openpalm/stack/addons/admin/compose.yml \
 		-f compose.dev.yaml \
 		--env-file .dev/vault/stack/stack.env \
-		--env-file .dev/vault/stack/services/memory/managed.env \
 		--env-file .dev/vault/user/user.env \
 		--project-name openpalm up --build -d
 
