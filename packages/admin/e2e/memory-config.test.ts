@@ -151,7 +151,7 @@ test.describe('@mocked Connections Tab UI', () => {
 		await expect(page.getByRole('button', { name: 'Add connection' })).toBeVisible();
 
 		// Verify the connection display name (derived from provider) is shown
-		await expect(page.locator('.conn-name', { hasText: 'Openai Production' }).first()).toBeVisible({ timeout: 5000 });
+		await expect(page.locator('.conn-name', { hasText: 'Openai' }).first()).toBeVisible({ timeout: 5000 });
 	});
 
 	test('saving memory settings sends correct data', async ({ page }) => {

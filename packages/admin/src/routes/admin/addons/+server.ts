@@ -31,24 +31,28 @@ import { createLogger } from "$lib/server/logger.js";
 
 const logger = createLogger("addons");
 
+import { existsSync } from "node:fs";
+
 type AddonItem = {
-  id: string;
+  name: string;
   enabled: boolean;
+  hasCompose: boolean;
   env: Record<string, string>;
 };
 
-function buildAddonList(spec: StackSpec | null, availableIds: string[]): AddonItem[] {
-  return availableIds.map((id) => {
+function buildAddonList(spec: StackSpec | null, availableIds: string[], homeDir: string): AddonItem[] {
+  return availableIds.map((name) => {
+    const hasCompose = existsSync(`${homeDir}/stack/addons/${name}/compose.yml`);
     if (!spec) {
-      return { id, enabled: false, env: {} };
+      return { name, enabled: false, hasCompose, env: {} };
     }
-    const enabled = hasAddon(spec, id);
-    const value: StackSpecAddonValue | undefined = spec.addons[id];
+    const enabled = hasAddon(spec, name);
+    const value: StackSpecAddonValue | undefined = spec.addons[name];
     const env =
       value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value)
         ? (value.env ?? {})
         : {};
-    return { id, enabled, env };
+    return { name, enabled, hasCompose, env };
   });
 }
 
@@ -63,7 +67,7 @@ export const GET: RequestHandler = async (event) => {
 
   const spec = readStackSpec(state.configDir);
   const availableIds = viteRegistry.componentIds();
-  const addons = buildAddonList(spec, availableIds);
+  const addons = buildAddonList(spec, availableIds, state.homeDir);
 
   appendAudit(state, actor, "addons.get", {}, true, requestId, callerType);
   return jsonResponse(200, { addons }, requestId);
@@ -156,5 +160,5 @@ export const POST: RequestHandler = async (event) => {
   appendAudit(state, actor, "addons.post", { name, enabled: resultEnabled }, true, requestId, callerType);
   logger.info("addon updated", { name, enabled: resultEnabled, requestId });
 
-  return jsonResponse(200, { ok: true, addon: { id: name, enabled: resultEnabled, env: resultEnv } }, requestId);
+  return jsonResponse(200, { ok: true, addon: name, enabled: resultEnabled, changed: true }, requestId);
 };

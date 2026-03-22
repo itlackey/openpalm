@@ -77,8 +77,7 @@ Response:
   "ok": true,
   "started": ["memory", "assistant", "guardian", "admin", "chat"],
   "dockerAvailable": true,
-  "composeResult": { "ok": true, "stderr": "" },
-  "artifactsDir": "/home/user/.openpalm/data"
+  "composeResult": { "ok": true, "stderr": "" }
 }
 ```
 
@@ -196,20 +195,57 @@ Success response:
 ### `GET /admin/containers/stats`
 
 Returns live Docker container resource usage (CPU, memory, network I/O) for managed services.
+Each entry is one JSON object from `docker compose stats --format json --no-stream`.
 
 Auth: `requireAuth`
+
+Response:
+
+```json
+{
+  "stats": [
+    { "Name": "openpalm-assistant-1", "CPUPerc": "0.50%", "MemUsage": "120MiB / 8GiB", "NetIO": "1kB / 2kB" }
+  ]
+}
+```
+
+Error responses:
+
+- `503 docker_unavailable` -- Docker is not reachable.
+- `500 docker_error` -- `docker compose stats` failed.
+- `500 parse_error` -- Failed to parse stats output.
 
 ### `GET /admin/containers/events`
 
 Returns recent Docker engine events (container start/stop/restart/die) filtered to managed services.
 
+Query parameters:
+
+- `since` (optional, default `"1h"`) -- Docker `--since` time filter.
+
 Auth: `requireAuth`
+
+Response:
+
+```json
+{
+  "events": [
+    { "status": "start", "id": "abc123", "Type": "container", "Actor": { "Attributes": { "name": "openpalm-assistant-1" } } }
+  ]
+}
+```
+
+Error responses:
+
+- `503 docker_unavailable` -- Docker is not reachable.
+- `500 docker_error` -- `docker events` failed.
+- `500 parse_error` -- Failed to parse events output.
 
 ### `GET /admin/network/check`
 
 Checks inter-container connectivity by probing each core service health endpoint from within the admin container.
 
-Auth: `requireAdmin`
+Auth: `requireAuth`
 
 Response:
 
@@ -316,57 +352,42 @@ Unified registry for channels and automations. Add-on definitions live in `.open
 
 ### `GET /admin/registry`
 
-Lists all registry items (channels and automations) with install status.
+Lists available registry automations with install status. Channel addons are
+managed via `/admin/addons`. Tries the cloned registry repo first; falls back
+to build-time bundled assets.
 
 Response:
 
 ```json
 {
-  "channels": [
-    { "name": "chat", "type": "channel", "installed": true, "hasRoute": true, "description": "..." }
-  ],
   "automations": [
-    { "name": "daily-summary", "type": "automation", "installed": false, "description": "...", "schedule": "0 9 * * *" }
+    { "name": "health-check", "type": "automation", "installed": true, "description": "...", "schedule": "0 */5 * * *" }
   ],
-  "source": "remote"
+  "source": "bundled"
 }
 ```
 
-`source` indicates where the registry data was loaded from (e.g. `"bundled"` when
-using build-time bundled stack assets).
+`source` is `"remote"` when loaded from a cloned registry repo, `"bundled"`
+when using build-time bundled stack assets.
 
 ### `POST /admin/registry/install`
 
-Install a registry item (channel or automation).
+Install a registry automation. Channel addons are managed via
+`POST /admin/addons/:name`.
 
 Body:
 
 ```json
-{ "name": "chat", "type": "channel" }
+{ "name": "daily-summary", "type": "automation" }
 ```
 
-- `name` (required) — Must match `^[a-z0-9][a-z0-9-]{0,62}$`.
-- `type` (required) — Must be `"channel"` or `"automation"`.
+- `name` (required) -- Must match `^[a-z0-9][a-z0-9-]{0,62}$`.
+- `type` (required) -- Must be `"automation"`. Passing `"channel"` returns 400.
 
-For channels: copies addon files into `stack/addons/`,
-generates HMAC secret, and runs compose up.
+Copies the `.yml` into `config/automations/` and refreshes runtime files.
+The scheduler sidecar auto-reloads via file watching.
 
-For automations: copies `.yml` into `config/automations/` and reloads
-the scheduler.
-
-Response (channel):
-
-```json
-{
-  "ok": true,
-  "name": "chat",
-  "type": "channel",
-  "dockerAvailable": true,
-  "composeResult": { "ok": true, "stderr": "" }
-}
-```
-
-Response (automation):
+Response:
 
 ```json
 { "ok": true, "name": "daily-summary", "type": "automation" }
@@ -374,8 +395,8 @@ Response (automation):
 
 Error responses:
 
-- `400 invalid_input` — Invalid name, invalid type, item not found in registry,
-  or item already installed.
+- `400 invalid_input` -- Invalid name, type is not `"automation"`, item not
+  found in registry, or item already installed.
 
 ### `POST /admin/registry/refresh`
 
@@ -393,33 +414,22 @@ Error responses:
 
 ### `POST /admin/registry/uninstall`
 
-Uninstall a registry item (channel or automation).
+Uninstall a registry automation. Channel addons are managed via
+`POST /admin/addons/:name`.
 
 Body:
 
 ```json
-{ "name": "chat", "type": "channel" }
+{ "name": "daily-summary", "type": "automation" }
 ```
 
-For channels: removes the addon directory from `stack/addons/`, clears channel secret,
-and stops the Docker service.
+- `name` (required) -- Automation name.
+- `type` (required) -- Must be `"automation"`. Passing `"channel"` returns 400.
 
-For automations: removes `.yml` from `config/automations/` and reloads
-the scheduler.
+Removes the `.yml` from `config/automations/` and refreshes runtime files.
+The scheduler sidecar auto-reloads via file watching.
 
-Response (channel):
-
-```json
-{
-  "ok": true,
-  "name": "chat",
-  "type": "channel",
-  "dockerAvailable": true,
-  "composeResult": { "ok": true, "stderr": "" }
-}
-```
-
-Response (automation):
+Response:
 
 ```json
 { "ok": true, "name": "daily-summary", "type": "automation" }
@@ -429,8 +439,7 @@ Response (automation):
 
 ### `GET /admin/automations`
 
-Lists all automation configs with scheduler status and
-execution logs.
+Lists all automation configs from `config/automations/`.
 
 Response:
 
@@ -452,14 +461,9 @@ Response:
         "agent": null
       },
       "on_failure": "log",
-      "fileName": "daily-summary.yml",
-      "logs": []
+      "fileName": "daily-summary.yml"
     }
-  ],
-  "scheduler": {
-    "running": true,
-    "jobCount": 1
-  }
+  ]
 }
 ```
 
@@ -471,41 +475,19 @@ Manage LLM provider credentials and related configuration stored in
 
 ### `GET /admin/connections`
 
-Returns the canonical v1 DTO plus a compatibility `connections` map.
-
-- `profiles` contains canonical connection profiles (`openai_compatible_remote` or `openai_compatible_local`).
-- `assignments` contains canonical required-capability assignments (`llm`, `embeddings`).
-- `connections` preserves the legacy masked key/value response for existing clients.
+Returns the current capability assignments from `stack.yaml` and masked secret
+values from `vault/user/user.env`.
 
 Response:
 
 ```json
 {
-  "profiles": [
-    {
-      "id": "primary",
-      "name": "Primary connection",
-      "kind": "openai_compatible_remote",
-      "provider": "openai",
-      "baseUrl": "https://api.openai.com",
-      "auth": {
-        "mode": "api_key",
-        "apiKeySecretRef": "env:OPENAI_API_KEY"
-      }
-    }
-  ],
-  "assignments": {
-    "llm": {
-      "connectionId": "primary",
-      "model": "gpt-4.1-mini"
-    },
-    "embeddings": {
-      "connectionId": "primary",
-      "model": "text-embedding-3-small",
-      "embeddingDims": 1536
-    }
+  "capabilities": {
+    "llm": "openai/gpt-4o-mini",
+    "embeddings": { "provider": "openai", "model": "text-embedding-3-small", "dims": 1536 },
+    "memory": { "userId": "default_user" }
   },
-  "connections": {
+  "secrets": {
     "OPENAI_API_KEY": "*********************1234",
     "ANTHROPIC_API_KEY": "",
     "GROQ_API_KEY": "",
@@ -520,56 +502,13 @@ Response:
     "MEMORY_USER_ID": "default_user"
   }
 }
-```
-
-Allowed keys (`ALLOWED_CONNECTION_KEYS`):
-
-- `OPENAI_API_KEY`
-- `ANTHROPIC_API_KEY`
-- `GROQ_API_KEY`
-- `MISTRAL_API_KEY`
-- `GOOGLE_API_KEY`
-- `SYSTEM_LLM_PROVIDER`
-- `SYSTEM_LLM_BASE_URL`
-- `SYSTEM_LLM_MODEL`
-- `OPENAI_BASE_URL`
-- `EMBEDDING_MODEL`
-- `EMBEDDING_DIMS`
-- `MEMORY_USER_ID`
 
 ### `POST /admin/connections`
 
-Supports three payload shapes:
+Saves provider credentials, updates `stack.yaml` capabilities, writes memory
+config, and pushes the resolved config to the running memory container.
 
-1) **Canonical DTO (preferred)**
-
-```json
-{
-  "profiles": [
-    {
-      "id": "primary",
-      "name": "Primary connection",
-      "kind": "openai_compatible_remote",
-      "provider": "openai",
-      "baseUrl": "https://api.openai.com",
-      "auth": { "mode": "api_key" }
-    }
-  ],
-  "assignments": {
-    "llm": { "connectionId": "primary", "model": "gpt-4.1-mini" },
-    "embeddings": {
-      "connectionId": "primary",
-      "model": "text-embedding-3-small",
-      "embeddingDims": 1536
-    }
-  },
-  "memoryUserId": "default_user",
-  "customInstructions": "",
-  "memoryModel": ""
-}
-```
-
-2) **Unified save (has `provider` key)**
+Body:
 
 ```json
 {
@@ -580,25 +519,20 @@ Supports three payload shapes:
   "embeddingModel": "text-embedding-3-small",
   "embeddingDims": 1536,
   "memoryUserId": "default_user",
-  "customInstructions": "",
-  "capabilities": ["llm", "embeddings"]
+  "customInstructions": ""
 }
 ```
 
-3) **Legacy key patch (compatibility)**
+- `provider` (required) -- Must be a supported provider name.
+- `apiKey` -- API key to write to `vault/user/user.env`.
+- `baseUrl` -- Provider base URL.
+- `systemModel` -- Model name for the LLM capability.
+- `embeddingModel` -- Model name for the embeddings capability.
+- `embeddingDims` -- Embedding dimensions (falls back to known defaults or 1536).
+- `memoryUserId` -- User ID for memory capability (default `"default_user"`).
+- `customInstructions` -- Custom instructions for memory.
 
-Patches one or more allowed keys into `vault/user/user.env`. Keys not in
-`ALLOWED_CONNECTION_KEYS` are silently ignored. Existing keys outside the
-allowed set are preserved.
-
-```json
-{
-  "OPENAI_API_KEY": "sk-...",
-  "SYSTEM_LLM_PROVIDER": "anthropic"
-}
-```
-
-Response (canonical DTO and unified save paths):
+Response:
 
 ```json
 {
@@ -610,16 +544,10 @@ Response (canonical DTO and unified save paths):
 }
 ```
 
-Response (legacy key patch path):
-
-```json
-{ "ok": true, "updated": ["OPENAI_API_KEY", "SYSTEM_LLM_PROVIDER"] }
-```
-
 Error responses:
 
-- `400 bad_request` -- No valid connection keys were provided.
-- `500 internal_error` -- Failed to write `vault/user/user.env`.
+- `400 bad_request` -- `provider` is missing or not in scope.
+- `500 internal_error` -- Failed to write `vault/user/user.env` or `stack.yaml`.
 
 ### `GET /admin/connections/status`
 
@@ -767,15 +695,6 @@ Error responses:
 
 - `404 not_found` -- opencode.json has not been generated yet.
 - `500 internal_error` -- Failed to read opencode.json.
-
-### Setup-token route variants
-
-During setup (or with admin token), the same handlers are available at:
-
-- `GET/POST /admin/setup/connections/assignments`
-
-These routes use setup-token compatible auth and preserve the same payload and
-error semantics as their `/admin/connections/*` counterparts.
 
 ## Memory Configuration
 
@@ -1033,3 +952,305 @@ Response:
   ]
 }
 ```
+
+## Secrets Management
+
+Manage secrets via the detected secret backend (env-file or pass-based).
+
+### `GET /admin/secrets`
+
+Lists secret entry names (values are never returned in full).
+
+Query parameters:
+
+- `prefix` (optional, default `"openpalm/"`) -- Filter entries by prefix.
+
+Auth: `requireAdmin`
+
+Response:
+
+```json
+{
+  "provider": "env-file",
+  "capabilities": { "generate": true },
+  "entries": [
+    { "key": "openpalm/OPENAI_API_KEY", "scope": "user", "kind": "api-key" }
+  ]
+}
+```
+
+### `POST /admin/secrets`
+
+Set or update a secret value.
+
+Auth: `requireAdmin`
+
+Body:
+
+```json
+{ "key": "openpalm/OPENAI_API_KEY", "value": "sk-..." }
+```
+
+- `key` (required) -- Secret entry name. Must pass `validatePassEntryName`.
+- `value` (required) -- Secret value (must be non-empty; use DELETE to remove).
+
+Response:
+
+```json
+{ "ok": true, "provider": "env-file", "entry": { "key": "openpalm/OPENAI_API_KEY", "scope": "user", "kind": "api-key" } }
+```
+
+Error responses:
+
+- `400 bad_request` -- `key` or `value` missing/empty.
+- `400 invalid_key` -- Key fails `validatePassEntryName` validation.
+- `500 internal_error` -- Failed to write secret.
+
+### `DELETE /admin/secrets`
+
+Delete a secret entry.
+
+Auth: `requireAdmin`
+
+Query parameters:
+
+- `key` (required) -- Secret entry name to delete.
+
+Response:
+
+```json
+{ "ok": true, "key": "openpalm/OPENAI_API_KEY", "provider": "env-file" }
+```
+
+Error responses:
+
+- `400 bad_request` -- `key` query parameter missing.
+- `500 internal_error` -- Failed to remove secret.
+
+### `POST /admin/secrets/generate`
+
+Generate a random secret and store it under the given key.
+
+Auth: `requireAdmin`
+
+Body:
+
+```json
+{ "key": "openpalm/HMAC_SECRET", "length": 32 }
+```
+
+- `key` (required) -- Secret entry name.
+- `length` (optional, default `32`) -- Length of generated secret (16--4096).
+
+Response:
+
+```json
+{ "ok": true, "provider": "env-file", "entry": { "key": "openpalm/HMAC_SECRET", "scope": "system", "kind": "generated" } }
+```
+
+Error responses:
+
+- `400 bad_request` -- `key` missing or `length` out of range.
+- `400 invalid_key` -- Key fails validation.
+- `400 unsupported_operation` -- Backend does not support generation.
+- `500 internal_error` -- Failed to generate secret.
+
+## OpenCode Management
+
+### `GET /admin/opencode/status`
+
+Returns whether the OpenCode process is reachable.
+
+Auth: `requireAdmin`
+
+Response:
+
+```json
+{ "status": "ready", "url": "http://localhost:3881/" }
+```
+
+When unreachable:
+
+```json
+{ "status": "unavailable", "url": "http://localhost:3881/" }
+```
+
+### `GET /admin/opencode/model`
+
+Returns the current model from OpenCode's live config.
+
+Auth: `requireAdmin`
+
+Response:
+
+```json
+{ "model": "anthropic/claude-sonnet-4" }
+```
+
+Error responses:
+
+- `503 opencode_unavailable` -- OpenCode is not reachable.
+
+### `POST /admin/opencode/model`
+
+Update the active model. Persists to `stack.yaml` and attempts live-apply
+via OpenCode's config API. If live-apply fails, the model is still persisted
+and a container restart will pick it up.
+
+Auth: `requireAdmin`
+
+Body:
+
+```json
+{ "model": "anthropic/claude-sonnet-4" }
+```
+
+Response (live-applied):
+
+```json
+{ "ok": true, "liveApplied": true, "restartRequired": false, "message": "Model updated successfully" }
+```
+
+Response (persisted only):
+
+```json
+{ "ok": true, "liveApplied": false, "restartRequired": true, "message": "Model saved. Restart the assistant container to apply." }
+```
+
+Error responses:
+
+- `400 bad_request` -- `model` is missing or empty.
+- `500 internal_error` -- `stack.yaml` not found or write failed.
+
+### `GET /admin/opencode/providers`
+
+Lists all OpenCode providers with auth status and available models.
+
+Auth: `requireAdmin`
+
+Response:
+
+```json
+{
+  "providers": [
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "env": ["ANTHROPIC_API_KEY"],
+      "connected": true,
+      "modelCount": 5,
+      "models": [{ "id": "claude-sonnet-4", "name": "Claude Sonnet 4" }],
+      "authMethods": [{ "type": "api_key" }]
+    }
+  ]
+}
+```
+
+### `GET /admin/opencode/providers/:id/auth`
+
+Poll an OAuth authorization session for a provider.
+
+Auth: `requireAdmin`
+
+Query parameters:
+
+- `pollToken` (required) -- Token returned by the POST auth endpoint.
+
+Response:
+
+```json
+{ "status": "complete", "message": "Authorization successful" }
+```
+
+Other statuses: `"pending"` (still waiting), `"error"` (session expired).
+
+Error responses:
+
+- `400 bad_request` -- `pollToken` missing or provider ID mismatch.
+- `404 not_found` -- Poll session not found or expired.
+
+### `POST /admin/opencode/providers/:id/auth`
+
+Start an auth flow for a provider (API key or OAuth).
+
+Auth: `requireAdmin`
+
+Body (API key mode):
+
+```json
+{ "mode": "api_key", "apiKey": "sk-..." }
+```
+
+Body (OAuth mode):
+
+```json
+{ "mode": "oauth", "methodIndex": 0 }
+```
+
+Response (API key):
+
+```json
+{ "ok": true, "mode": "api_key" }
+```
+
+Response (OAuth):
+
+```json
+{
+  "ok": true,
+  "mode": "oauth",
+  "pollToken": "uuid",
+  "url": "https://...",
+  "method": "browser",
+  "instructions": "Open the URL in your browser..."
+}
+```
+
+Error responses:
+
+- `400 bad_request` -- Invalid mode, missing `apiKey`, invalid API key format,
+  unsupported provider, or invalid `methodIndex`.
+- `500 internal_error` -- Failed to write API key to vault.
+
+### `GET /admin/opencode/providers/:id/models`
+
+Lists available models for a specific provider.
+
+Auth: `requireAdmin`
+
+Response:
+
+```json
+{ "models": [{ "id": "claude-sonnet-4", "name": "Claude Sonnet 4" }] }
+```
+
+Error responses:
+
+- `404 not_found` -- Provider not found.
+
+## Logs
+
+### `GET /admin/logs`
+
+Retrieves Docker Compose service logs via `docker compose logs`.
+
+Auth: `requireAuth`
+
+Query parameters:
+
+- `service` (optional) -- Comma-separated service names. When omitted, returns
+  logs for all managed services.
+- `tail` (optional, default `100`) -- Number of log lines (1--10000).
+- `since` (optional) -- Docker `--since` time filter (e.g. `"1h"`, `"2025-01-01T00:00:00"`).
+
+Response:
+
+```json
+{ "ok": true, "logs": "assistant  | 2025-01-01 Starting...\nguardian   | 2025-01-01 Ready" }
+```
+
+Error responses:
+
+- `400 invalid_parameter` -- `tail` out of range or `since` contains invalid characters.
+- `400 invalid_service` -- Unknown service name(s).
+- `503 docker_unavailable` -- Docker is not available.

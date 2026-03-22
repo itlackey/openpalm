@@ -70,7 +70,7 @@ export async function ensureVarlock(dataDir: string): Promise<string> {
   const tarballUrl = `https://github.com/dmno-dev/varlock/releases/download/varlock%40${VARLOCK_VERSION}/${artifact}`;
   const tarballPath = join(binDir, 'varlock.tar.gz');
 
-  const response = await fetch(tarballUrl);
+  const response = await fetch(tarballUrl, { signal: AbortSignal.timeout(60_000) });
   if (!response.ok) {
     throw new Error(`Failed to download varlock tarball (HTTP ${response.status} ${response.statusText})`);
   }
