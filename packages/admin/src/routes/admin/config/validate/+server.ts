@@ -1,7 +1,7 @@
 /**
  * GET /admin/config/validate — Run varlock environment validation.
  *
- * Checks CONFIG_HOME/secrets.env against the schema in DATA_HOME/secrets.env.schema.
+ * Checks vault/user/user.env and vault/stack/stack.env against their schemas.
  * Always returns 200; validation failures are logged to the audit trail.
  * Requires admin authentication.
  */

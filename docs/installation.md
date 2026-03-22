@@ -71,8 +71,8 @@ Common values include:
 This file holds system-managed values such as:
 
 - `OP_ADMIN_TOKEN`
-- `ASSISTANT_TOKEN`
-- `MEMORY_AUTH_TOKEN`
+- `OP_ASSISTANT_TOKEN`
+- `OP_MEMORY_TOKEN`
 - `OP_HOME`, `OP_UID`, `OP_GID`
 - `OP_ASSISTANT_PORT`, `OP_ADMIN_PORT`, `OP_MEMORY_PORT`, `OP_CHAT_PORT`
 

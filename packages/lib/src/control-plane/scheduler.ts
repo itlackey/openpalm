@@ -320,7 +320,7 @@ async function executeHttpAction(action: AutomationAction): Promise<void> {
 /** Safe env vars allowlisted for shell automation actions. */
 const SHELL_SAFE_ENV_KEYS = [
   "PATH", "HOME", "LANG", "LC_ALL", "TZ", "NODE_ENV",
-  "OP_HOME", "OP_CONFIG_HOME", "OP_STATE_HOME", "OP_DATA_HOME",
+  "OP_HOME",
 ];
 
 /** Execute a shell action — uses execFile with argument array (no shell interpolation). */

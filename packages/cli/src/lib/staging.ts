@@ -64,6 +64,18 @@ export async function buildManagedServiceNames(state: ControlPlaneState): Promis
 }
 
 /**
+ * Run a compose command that does NOT mutate state (e.g. logs, ps, status).
+ * Skips preflight validation since these commands are read-only.
+ */
+export async function runComposeReadOnly(
+  state: ControlPlaneState,
+  composeSubArgs: string[],
+): Promise<void> {
+  const composeArgs = fullComposeArgs(state);
+  await runDockerCompose([...composeArgs, ...composeSubArgs]);
+}
+
+/**
  * Run compose preflight validation, then execute the compose command.
  * This is the canonical CLI mutation path — all compose operations
  * that modify state must go through this function.

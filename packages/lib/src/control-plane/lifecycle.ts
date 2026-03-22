@@ -260,6 +260,9 @@ export async function applyUpgrade(
  * Build the compose file list from stack/.
  * Returns: [stack/core.compose.yml, stack/addons/{name}/compose.yml]
  * filtered by enabled addons in stack.yaml.
+ *
+ * stack.yaml is optional metadata that determines which addon overlays
+ * are included. The resulting file list is deployment truth.
  */
 export function buildComposeFileList(state: ControlPlaneState): string[] {
   const stackDir = `${state.homeDir}/stack`;

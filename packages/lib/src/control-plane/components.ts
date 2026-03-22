@@ -83,18 +83,13 @@ export type EnvInjectionCollision = {
 /** Strict instance ID: lowercase alphanumeric + hyphens, 1-63 chars, starts with alnum */
 const INSTANCE_ID_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
-/** Additional Compose service names used by the core stack (not in CORE_SERVICES/OPTIONAL_SERVICES) */
-const COMPOSE_SERVICE_ALIASES = ["opencode-core", "gateway", "openmemory"] as const;
-
 /**
  * All core/optional service names used for overlay validation.
- * Derived from the canonical CORE_SERVICES + OPTIONAL_SERVICES lists in types.ts,
- * plus the additional Compose service aliases.
+ * Derived from the canonical CORE_SERVICES + OPTIONAL_SERVICES lists in types.ts.
  */
 const CORE_SERVICE_NAMES = new Set<string>([
   ...CORE_SERVICES,
   ...OPTIONAL_SERVICES,
-  ...COMPOSE_SERVICE_ALIASES,
 ]);
 
 /**
@@ -797,7 +792,7 @@ export function buildComponentComposeArgs(openpalmHome: string, options: {
 export function buildAllowlist(openpalmHome: string): Set<string> {
   const allowed = new Set<string>([...CORE_SERVICES, ...OPTIONAL_SERVICES]);
 
-  // Add services from stack/addons compose files
+  // Add services from stack/addons compose files (YAML-parsed)
   const addonsDir = join(openpalmHome, "stack", "addons");
   if (existsSync(addonsDir)) {
     for (const entry of readdirSync(addonsDir, { withFileTypes: true })) {
@@ -806,22 +801,20 @@ export function buildAllowlist(openpalmHome: string): Set<string> {
       if (!existsSync(composePath)) continue;
       try {
         const content = readFileSync(composePath, "utf-8");
-        // Extract service names from "services:" section
-        const servicesMatch = content.match(/^services:\s*$/m);
-        if (servicesMatch) {
-          const afterServices = content.slice((servicesMatch.index ?? 0) + servicesMatch[0].length);
-          for (const line of afterServices.split("\n")) {
-            const svcMatch = line.match(/^  ([a-z][a-z0-9_-]*):/);
-            if (svcMatch) allowed.add(svcMatch[1]);
-            // Stop at next top-level key
-            if (/^[a-z]/.test(line) && !line.startsWith("  ")) break;
+        const doc = yamlParse(content);
+        if (typeof doc === "object" && doc !== null) {
+          const services = (doc as Record<string, unknown>).services;
+          if (typeof services === "object" && services !== null) {
+            for (const svcName of Object.keys(services as Record<string, unknown>)) {
+              allowed.add(svcName);
+            }
           }
         }
       } catch { /* skip unreadable */ }
     }
   }
 
-  // Add services from enabled component instances
+  // Add services from enabled component instances (YAML-parsed)
   const instances = readEnabledInstances(openpalmHome);
   for (const instance of instances) {
     if (!instance.enabled) continue;
@@ -829,13 +822,13 @@ export function buildAllowlist(openpalmHome: string): Set<string> {
     if (existsSync(instanceCompose)) {
       try {
         const content = readFileSync(instanceCompose, "utf-8");
-        const servicesMatch = content.match(/^services:\s*$/m);
-        if (servicesMatch) {
-          const afterServices = content.slice((servicesMatch.index ?? 0) + servicesMatch[0].length);
-          for (const line of afterServices.split("\n")) {
-            const svcMatch = line.match(/^  ([a-z][a-z0-9_-]*):/);
-            if (svcMatch) allowed.add(svcMatch[1]);
-            if (/^[a-z]/.test(line) && !line.startsWith("  ")) break;
+        const doc = yamlParse(content);
+        if (typeof doc === "object" && doc !== null) {
+          const services = (doc as Record<string, unknown>).services;
+          if (typeof services === "object" && services !== null) {
+            for (const svcName of Object.keys(services as Record<string, unknown>)) {
+              allowed.add(svcName);
+            }
           }
         }
       } catch { /* skip unreadable */ }

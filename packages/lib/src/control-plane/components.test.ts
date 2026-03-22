@@ -98,10 +98,11 @@ describe("isReservedName", () => {
     expect(isReservedName("docker-socket-proxy")).toBe(true);
   });
 
-  test("recognizes compose service names", () => {
-    expect(isReservedName("opencode-core")).toBe(true);
-    expect(isReservedName("gateway")).toBe(true);
-    expect(isReservedName("openmemory")).toBe(true);
+  test("stale compose aliases are no longer reserved", () => {
+    // COMPOSE_SERVICE_ALIASES was removed — these names are no longer reserved
+    expect(isReservedName("opencode-core")).toBe(false);
+    expect(isReservedName("gateway")).toBe(false);
+    expect(isReservedName("openmemory")).toBe(false);
   });
 
   test("rejects non-reserved names", () => {

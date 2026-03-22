@@ -10,9 +10,6 @@ const rootDir = resolve(__dirname, "../..");
 /** Keys whose values are filesystem paths and must be resolved relative to rootDir */
 const PATH_KEYS = new Set([
   "OP_HOME",
-  "OP_CONFIG_HOME",
-  "OP_DATA_HOME",
-  "OP_STATE_HOME",
   "OP_WORK_DIR"
 ]);
 

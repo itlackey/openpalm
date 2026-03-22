@@ -8,7 +8,7 @@
  * All asset content is provided by a CoreAssetProvider (injected), not by
  * Vite $stack imports — making this module portable across Bun/Node/Vite.
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync, renameSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { resolveDataDir, resolveConfigDir, resolveVaultDir, resolveOpenPalmHome } from "./home.js";
@@ -70,18 +70,6 @@ export function ensureSystemEnvSchema(assets: CoreAssetProvider): string {
 export function ensureMemoryDir(): string {
   const dataDir = resolveDataDir();
   const dir = `${dataDir}/memory`;
-  const legacyDir = `${dataDir}/openmemory`;
-
-  if (!existsSync(dir) && existsSync(legacyDir)) {
-    try {
-      renameSync(legacyDir, dir);
-    } catch (error) {
-      const code = error instanceof Error && "code" in error ? String(error.code) : "unknown";
-      const message = error instanceof Error ? error.message : String(error);
-      logger.warn("failed to migrate legacy memory dir", { legacyDir, dir, code, message });
-    }
-  }
-
   mkdirSync(dir, { recursive: true });
   return dir;
 }

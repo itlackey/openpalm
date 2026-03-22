@@ -3,6 +3,7 @@
  */
 import { existsSync, readdirSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { parse as yamlParse } from "yaml";
 import type { ChannelInfo } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
 import type { RegistryProvider } from "./registry-provider.js";
@@ -26,7 +27,23 @@ function isValidChannelName(name: string): boolean {
 function isChannelAddon(composePath: string): boolean {
   try {
     const content = readFileSync(composePath, "utf-8");
-    return content.includes("CHANNEL_NAME") || content.includes("GUARDIAN_URL");
+    const doc = yamlParse(content);
+    if (typeof doc !== "object" || doc === null) return false;
+    const services = (doc as Record<string, unknown>).services;
+    if (typeof services !== "object" || services === null) return false;
+
+    for (const svcDef of Object.values(services as Record<string, unknown>)) {
+      if (typeof svcDef !== "object" || svcDef === null) continue;
+      const env = (svcDef as Record<string, unknown>).environment;
+      if (typeof env === "object" && env !== null) {
+        if (Array.isArray(env)) {
+          if (env.some((e: unknown) => typeof e === "string" && (e.startsWith("CHANNEL_NAME=") || e.startsWith("GUARDIAN_URL=")))) return true;
+        } else {
+          if ("CHANNEL_NAME" in (env as Record<string, unknown>) || "GUARDIAN_URL" in (env as Record<string, unknown>)) return true;
+        }
+      }
+    }
+    return false;
   } catch {
     return false;
   }
@@ -79,15 +96,20 @@ export function isAllowedService(value: string, configDir?: string): boolean {
     const addonsDir = `${homeDir}/stack/addons`;
     if (!existsSync(addonsDir)) return false;
 
-    // Check if any addon compose.yml defines this service name
+    // Check if any addon compose.yml defines this service name (YAML-parsed)
     for (const entry of readdirSync(addonsDir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       const composePath = `${addonsDir}/${entry.name}/compose.yml`;
       if (!existsSync(composePath)) continue;
       try {
         const content = readFileSync(composePath, "utf-8");
-        // Check for "  <serviceName>:" at the start of a line under services:
-        if (content.includes(`  ${value}:`)) return true;
+        const doc = yamlParse(content);
+        if (typeof doc === "object" && doc !== null) {
+          const services = (doc as Record<string, unknown>).services;
+          if (typeof services === "object" && services !== null && value in (services as Record<string, unknown>)) {
+            return true;
+          }
+        }
       } catch {
         continue;
       }

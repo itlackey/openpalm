@@ -42,30 +42,50 @@ export const POST: RequestHandler = async (event) => {
   ensureMemoryDir();
   ensureSecrets(state);
 
+  // Snapshot the current stack.env so we can restore on failure.
+  // Both updateStackEnvToLatestImageTag and applyUpgrade mutate state;
+  // if either fails, the original stack.env is restored to avoid a
+  // half-applied upgrade.
+  const stackEnvPath = `${state.vaultDir}/stack/stack.env`;
+  let originalStackEnv: string | null = null;
+  try {
+    const { readFileSync } = await import("node:fs");
+    originalStackEnv = readFileSync(stackEnvPath, "utf-8");
+  } catch { /* stack.env may not exist yet */ }
+
   let imageTag = "";
+  let upgradeResult: { backupDir: string | null; updated: string[]; restarted: string[] };
   try {
     logger.info("updating stack.env with latest image tag", { requestId });
     const tagResult = await updateStackEnvToLatestImageTag(state);
     imageTag = tagResult.tag;
     logger.info("image tag resolved", { requestId, imageTag });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    logger.error("failed to update image tag", { requestId, error: msg });
-    appendAudit(state, actor, "upgrade", { result: "error", reason: "image_tag_update_failed", message: msg }, false, requestId, callerType);
-    return errorResponse(502, "image_tag_update_failed", "Failed to update stack.env with the latest image tag", { message: msg }, requestId);
-  }
 
-  // 1. Download fresh assets, back up changed files, stage artifacts
-  logger.info("downloading fresh assets and staging artifacts", { requestId });
-  let upgradeResult;
-  try {
+    // 1. Download fresh assets, back up changed files, stage artifacts
+    logger.info("downloading fresh assets and staging artifacts", { requestId });
     upgradeResult = await applyUpgrade(state);
     logger.info("assets staged", { requestId, updated: upgradeResult.updated });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    logger.error("asset download failed", { requestId, error: msg });
-    appendAudit(state, actor, "upgrade", { result: "error", reason: "asset_download_failed", message: msg }, false, requestId, callerType);
-    return errorResponse(502, "asset_download_failed", msg, {}, requestId);
+    logger.error("upgrade staging failed, restoring stack.env", { requestId, error: msg });
+
+    // Restore original stack.env to avoid half-applied state
+    if (originalStackEnv !== null) {
+      try {
+        const { writeFileSync } = await import("node:fs");
+        writeFileSync(stackEnvPath, originalStackEnv);
+        logger.info("stack.env restored to pre-upgrade state", { requestId });
+      } catch (restoreErr) {
+        logger.error("failed to restore stack.env", { requestId, error: String(restoreErr) });
+      }
+    }
+
+    const reason = imageTag ? "asset_download_failed" : "image_tag_update_failed";
+    const detail = imageTag
+      ? msg
+      : "Failed to update stack.env with the latest image tag";
+    appendAudit(state, actor, "upgrade", { result: "error", reason, message: msg }, false, requestId, callerType);
+    return errorResponse(502, reason, detail, { message: msg }, requestId);
   }
 
   // 2. Docker: pull + up

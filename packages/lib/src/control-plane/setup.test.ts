@@ -339,7 +339,6 @@ describe("performSetup", () => {
     for (const dir of [
       homeDir,
       configDir,
-      join(configDir, "components"),
       join(configDir, "automations"),
       join(configDir, "channels"),
       join(configDir, "connections"),
@@ -1120,7 +1119,6 @@ describe("performSetupFromConfig", () => {
     for (const dir of [
       homeDir,
       configDir,
-      join(configDir, "components"),
       join(configDir, "automations"),
       join(configDir, "channels"),
       join(configDir, "connections"),

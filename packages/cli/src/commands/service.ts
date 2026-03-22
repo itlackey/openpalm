@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty';
-import { ensureValidState, buildManagedServiceNames, runComposeWithPreflight } from '../lib/staging.ts';
+import { ensureValidState, buildManagedServiceNames, runComposeWithPreflight, runComposeReadOnly } from '../lib/staging.ts';
 import { runLogsAction } from './logs.ts';
 import { runStartAction } from './start.ts';
 import { runStopAction } from './stop.ts';
@@ -54,7 +54,7 @@ const statusCmd = defineCommand({
   meta: { name: 'status', description: 'Show container status' },
   async run() {
     const state = await ensureValidState();
-    await runComposeWithPreflight(state, ['ps', '--format', 'table']);
+    await runComposeReadOnly(state, ['ps', '--format', 'table']);
   },
 });
 

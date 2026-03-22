@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty';
-import { ensureValidState, runComposeWithPreflight } from '../lib/staging.ts';
+import { ensureValidState, runComposeReadOnly } from '../lib/staging.ts';
 
 export default defineCommand({
   meta: {
@@ -8,6 +8,6 @@ export default defineCommand({
   },
   async run() {
     const state = await ensureValidState();
-    await runComposeWithPreflight(state, ['ps', '--format', 'table']);
+    await runComposeReadOnly(state, ['ps', '--format', 'table']);
   },
 });

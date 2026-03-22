@@ -175,7 +175,6 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 		-f .dev/stack/core.compose.yml \
 		-f compose.dev.yaml \
 		--env-file .dev/vault/stack/stack.env \
-		--env-file .dev/vault/stack/services/memory/managed.env \
 		--env-file .dev/vault/user/user.env \
 		--profile admin \
 		--project-name openpalm build 2>&1 | tail -5
@@ -192,7 +191,6 @@ docker compose --project-directory . \
 	-f .dev/stack/core.compose.yml \
 	-f compose.dev.yaml \
 	--env-file .dev/vault/stack/stack.env \
-	--env-file .dev/vault/stack/services/memory/managed.env \
 	--env-file .dev/vault/user/user.env \
 	--profile admin \
 	--project-name openpalm up -d 2>&1 | tail -10
@@ -320,7 +318,6 @@ docker compose --project-directory . \
 	-f .dev/stack/core.compose.yml \
 	-f compose.dev.yaml \
 	--env-file .dev/vault/stack/stack.env \
-	--env-file .dev/vault/stack/services/memory/managed.env \
 	--env-file .dev/vault/user/user.env \
 	--profile admin \
 	--project-name openpalm up -d --force-recreate --no-deps assistant

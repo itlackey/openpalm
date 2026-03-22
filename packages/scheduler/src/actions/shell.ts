@@ -16,9 +16,6 @@ const SHELL_SAFE_ENV_KEYS = [
   "TZ",
   "NODE_ENV",
   "OP_HOME",
-  "OP_CONFIG_HOME",
-  "OP_STATE_HOME",
-  "OP_DATA_HOME",
 ];
 
 export function executeShellAction(action: AutomationAction): Promise<void> {

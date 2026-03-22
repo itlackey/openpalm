@@ -92,7 +92,7 @@ Completed dots turn green with a checkmark. You can click any completed dot to j
 
 **Common mistakes:**
 - Using a short or trivial admin token. This token is the only thing protecting your admin console. Use something strong.
-- Forgetting to save the admin token. There is no "forgot password" flow -- you would need to edit `secrets.env` manually.
+- Forgetting to save the admin token. There is no "forgot password" flow -- you would need to edit `vault/user/user.env` manually.
 
 ---
 
@@ -272,7 +272,7 @@ Each saved connection shows:
 | Field | Required | Notes |
 |-------|----------|-------|
 | Connection name | Yes (auto-filled from provider if left blank) | A friendly name shown throughout the wizard. |
-| API key | Yes (for most cloud providers) | Stored server-side in `secrets.env`. Masked in the review screen. |
+| API key | Yes (for most cloud providers) | Stored server-side in `vault/user/user.env`. Masked in the review screen. |
 | Base URL | Auto-filled | Do NOT include `/v1` at the end. The wizard warns you if you do. |
 
 **What to do:**
@@ -607,7 +607,7 @@ These are useful for backup or for manual configuration outside the wizard.
 
 Click **Save** to begin installation. The wizard:
 1. Sends your configuration to the CLI setup server as a versioned `SetupConfig` document.
-2. Generates and writes configuration files (`secrets.env`, `stack.env`, connection profiles, OpenCode config, memory config).
+2. Generates and writes configuration files (`vault/user/user.env`, `vault/stack/stack.env`, connection profiles, OpenCode config, memory config).
 3. Assembles the Docker Compose stack.
 4. Transitions to the Deploying screen.
 

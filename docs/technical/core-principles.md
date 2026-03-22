@@ -1,16 +1,19 @@
-## Core goals
+# Core Principles
 
-The filesystem and volume-mount contract exists to guarantee:
+## File System
+
+Golden rules:
 
 1. **Add containers and routes by file-drop** into known host locations (no code changes required).
 2. **Add assistant extensions by copying OpenCode assets** into known host locations.
 3. **Core container and routing configuration is stored on the host** for advanced users.
 4. **Leverage Docker Compose and OpenCode configuration features** to avoid custom config/orchestration implementations.
-5. **No template rendering** — manage configuration by copying whole files, not by string interpolation or code generation.
+5. **No template rendering** — manage configuration by copying whole files and editing existing configuration files, not by string interpolation or code generation.
 6. **Never overwrite existing user-modified files in `~/.openpalm/config/` during automatic lifecycle operations** (install/update/startup apply/setup reruns/upgrades); only seed missing defaults.
 7. **All persistent container data lives on the host** for backup/restore.
-8. **All host-stored container files are user-accessible** (ownership/permissions contract).
+8. **All host-stored container files are user-accessible** (ownership/permissions contract - not owned by root).
 9. **Core assistant extensions are baked into the assistant container** and loaded from a fixed OpenCode config directory to ensure core extensions take precedence.
+10 **Tooling is a thin wrapper over existing tech** and should be as simple and light weight as possible. The goal is for CLI, admin and other management tools to be additive convenience tools, not custom infrastructure tooling etc. This means making the most of foundational dependencies like Docker compose, varlock, etc.
 
 For (9), OpenCode supports a custom config directory via `OPENCODE_CONFIG_DIR`; it is searched like a standard `.opencode` directory for agents/commands/tools/skills/plugins. ([OpenCode][1])
 
@@ -177,6 +180,7 @@ Docker builds run outside the Bun workspace — the monorepo's hoisted `node_mod
 The admin Dockerfile uses **plain `npm install`** (not Bun) at a workspace root directory so `node_modules/` lands at a common ancestor of admin source paths. This gives standard Node module resolution a real directory tree with no symlinks. The build output is a self-contained SvelteKit adapter-node bundle — no runtime `node_modules` needed.
 
 **Rules:**
+
 * Never use Bun to install dependencies in the admin Docker build — Bun's symlink-based `node_modules` layout is fragile under Node/Vite resolution.
 * `node_modules` must be at a common ancestor of all source directories that Vite resolves (admin source, stack).
 * `PATH` must include `node_modules/.bin` so build tool binaries (svelte-kit, vite) are available from subdirectories.
@@ -192,6 +196,7 @@ RUN cd /app/node_modules/@openpalm/channels-sdk && bun install --production
 This ensures sdk transitive dependencies are available at runtime. Since these services run on Bun (which created the install), there is no cross-tool resolution concern.
 
 **Rules:**
+
 * Every Dockerfile that copies `packages/channels-sdk` must run `bun install --production` inside the copied sdk directory.
 * If `packages/channels-sdk/package.json` gains new dependencies, all service Dockerfiles automatically pick them up — no per-service changes needed.
 

@@ -46,10 +46,7 @@
 #   -h, --help            Show this help
 #
 # Environment overrides:
-#   OP_CONFIG_HOME  Config directory (default: .upgrade-test/config)
-#   OP_DATA_HOME    Data directory   (default: .upgrade-test/data)
-#   OP_STATE_HOME   State directory  (default: .upgrade-test/state)
-#   OP_WORK_DIR     Work directory   (default: .upgrade-test/work)
+#   OP_HOME         Home directory (default: .upgrade-test)
 #
 set -euo pipefail
 
@@ -94,10 +91,11 @@ cd "$ROOT_DIR"
 # Use a separate directory tree so this test doesn't interfere with .dev/
 
 TEST_ROOT="${ROOT_DIR}/.upgrade-test"
-export OP_CONFIG_HOME="${OP_CONFIG_HOME:-${TEST_ROOT}/config}"
-export OP_DATA_HOME="${OP_DATA_HOME:-${TEST_ROOT}/data}"
-export OP_STATE_HOME="${OP_STATE_HOME:-${TEST_ROOT}/state}"
-export OP_WORK_DIR="${OP_WORK_DIR:-${TEST_ROOT}/work}"
+export OP_HOME="${OP_HOME:-${TEST_ROOT}}"
+OP_CONFIG_HOME="${OP_HOME}/config"
+OP_DATA_HOME="${OP_HOME}/data"
+OP_STATE_HOME="${OP_HOME}/state"
+OP_WORK_DIR="${OP_HOME}/work"
 
 PROJECT_NAME="openpalm-upgrade-test"
 ADMIN_PORT=8101
@@ -249,10 +247,7 @@ EOF
 
 # Seed system.env
 cat >"${VAULT_HOME}/stack/stack.env" <<EOF
-OP_CONFIG_HOME=${OP_CONFIG_HOME}
-OP_DATA_HOME=${OP_DATA_HOME}
-OP_STATE_HOME=${OP_STATE_HOME}
-OP_WORK_DIR=${OP_WORK_DIR}
+OP_HOME=${OP_HOME}
 OP_UID=$(id -u)
 OP_GID=$(id -g)
 OP_DOCKER_SOCK=${docker_sock}

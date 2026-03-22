@@ -194,7 +194,9 @@ if ((dry_run == 1)); then
 	exit 0
 fi
 
-# Preflight: validate compose merge before mutation (same contract as lib code)
+# Preflight: validate compose merge before mutation (same contract as lib code).
+# stop/down/ps skip preflight because they are non-mutating or teardown
+# operations that do not create or modify containers.
 if [[ "$action" == "up" ]]; then
 	preflight_cmd=("${compose_cmd[@]}")
 	# Replace the trailing "up -d" with "config --quiet"

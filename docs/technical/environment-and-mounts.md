@@ -135,7 +135,7 @@ Key env:
 | `HOME` | `/home/opencode` | Runtime home |
 | `AKM_STASH_DIR` | `/stash` | AKM stash location hint |
 | `OP_ADMIN_API_URL` | `stack.env` / addon wiring | Admin API URL when admin is present |
-| `OP_ASSISTANT_TOKEN` | `ASSISTANT_TOKEN` from `stack.env` | Assistant-scoped auth token |
+| `OP_ASSISTANT_TOKEN` | `OP_ASSISTANT_TOKEN` from `stack.env` | Assistant-scoped auth token |
 | `MEMORY_API_URL` | `http://memory:8765` | Memory service URL |
 | `MEMORY_AUTH_TOKEN` | `stack.env` | Memory auth token |
 | `MEMORY_USER_ID` | `stack.env` or default | Default memory identity |

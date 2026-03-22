@@ -869,7 +869,7 @@ export async function performSetupFromConfig(
       updateSecretsEnv(state, channelEnvVars);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error("failed to write channel credentials to secrets.env", { error: message });
+      logger.error("failed to write channel credentials to vault/stack/stack.env", { error: message });
       return { ok: false, error: `Failed to write channel credentials: ${message}` };
     }
   }

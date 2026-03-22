@@ -1,9 +1,9 @@
 import { defineCommand } from 'citty';
-import { ensureValidState, runComposeWithPreflight } from '../lib/staging.ts';
+import { ensureValidState, runComposeReadOnly } from '../lib/staging.ts';
 
 export async function runLogsAction(services: string[]): Promise<void> {
   const state = await ensureValidState();
-  await runComposeWithPreflight(state, ['logs', '--tail', '100', ...services]);
+  await runComposeReadOnly(state, ['logs', '--tail', '100', ...services]);
 }
 
 export default defineCommand({

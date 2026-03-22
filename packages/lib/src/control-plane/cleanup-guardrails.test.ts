@@ -162,3 +162,69 @@ describe("guardrail: env schema validation paths", () => {
     expect(validateTs).not.toContain("vaultDir}/system.env.schema");
   });
 });
+
+// ── Guardrail 6: No deprecated split-root env vars in non-test source ──
+
+describe("guardrail: no deprecated OP_CONFIG_HOME/OP_STATE_HOME/OP_DATA_HOME", () => {
+  test("source files do not reference split-root env vars", () => {
+    const files = readSourceFiles();
+    const deprecated = ["OP_CONFIG_HOME", "OP_STATE_HOME", "OP_DATA_HOME"];
+    const violations: string[] = [];
+
+    for (const { path, content } of files) {
+      const filename = path.split("/").pop()!;
+      if (filename === "cleanup-guardrails.test.ts") continue;
+      // home.ts may contain backward-compat resolution — skip it
+      if (filename === "home.ts") continue;
+
+      const lines = content.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.trim().startsWith("//") || line.trim().startsWith("*")) continue;
+        for (const d of deprecated) {
+          if (line.includes(d)) {
+            violations.push(`${filename}:${i + 1}: ${d} — ${line.trim()}`);
+          }
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+});
+
+// ── Guardrail 7: No secrets.env references in active source ──────────
+
+describe("guardrail: no secrets.env references", () => {
+  test("source files do not reference secrets.env in active code", () => {
+    const files = readSourceFiles();
+    const violations: string[] = [];
+
+    for (const { path, content } of files) {
+      const filename = path.split("/").pop()!;
+      if (filename === "cleanup-guardrails.test.ts") continue;
+
+      const lines = content.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.trim().startsWith("//") || line.trim().startsWith("*")) continue;
+        if (line.includes("@deprecated")) continue;
+        // Allow string mentions in error messages that reference user.env or stack.env
+        if (line.includes("secrets.env")) {
+          violations.push(`${filename}:${i + 1}: ${line.trim()}`);
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+});
+
+// ── Guardrail 8: COMPOSE_SERVICE_ALIASES is removed ──────────────────
+
+describe("guardrail: COMPOSE_SERVICE_ALIASES removed", () => {
+  test("components.ts does not contain COMPOSE_SERVICE_ALIASES", () => {
+    const componentsTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "components.ts"), "utf-8");
+    expect(componentsTs).not.toContain("COMPOSE_SERVICE_ALIASES");
+  });
+});

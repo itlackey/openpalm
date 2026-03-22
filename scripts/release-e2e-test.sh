@@ -28,10 +28,7 @@
 # Optional environment variables:
 #   OP_IMAGE_TAG         Image tag to test (default: latest)
 #   OP_IMAGE_NAMESPACE   Image namespace (default: openpalm)
-#   OP_CONFIG_HOME       Override config dir (default: temp dir)
-#   OP_DATA_HOME         Override data dir (default: temp dir)
-#   OP_STATE_HOME        Override state dir (default: temp dir)
-#   OP_WORK_DIR          Override work dir (default: temp dir)
+#   OP_HOME              Override home dir (default: temp dir)
 #
 # Usage:
 #   ./scripts/release-e2e-test.sh [OPTIONS]
@@ -103,22 +100,18 @@ USE_TEMP_DIRS=0
 TEMP_ROOT=""
 
 if [ "$SKIP_INSTALL" -eq 0 ]; then
-  # Use temp dirs unless explicitly overridden — ensures clean-machine simulation
-  if [ -z "${OP_CONFIG_HOME:-}" ] && [ -z "${OP_DATA_HOME:-}" ] && \
-     [ -z "${OP_STATE_HOME:-}" ] && [ -z "${OP_WORK_DIR:-}" ]; then
+  # Use temp dir unless explicitly overridden — ensures clean-machine simulation
+  if [ -z "${OP_HOME:-}" ]; then
     USE_TEMP_DIRS=1
     TEMP_ROOT="$(mktemp -d -t openpalm-release-test-XXXXXX)"
-    export OP_CONFIG_HOME="$TEMP_ROOT/config"
-    export OP_DATA_HOME="$TEMP_ROOT/data"
-    export OP_STATE_HOME="$TEMP_ROOT/state"
-    export OP_WORK_DIR="$TEMP_ROOT/work"
+    export OP_HOME="$TEMP_ROOT"
     echo "Using temp dirs under: $TEMP_ROOT"
   fi
 fi
 
-CONFIG_HOME="${OP_CONFIG_HOME:-${HOME}/.config/openpalm}"
-DATA_HOME="${OP_DATA_HOME:-${HOME}/.local/share/openpalm}"
-STATE_HOME="${OP_STATE_HOME:-${HOME}/.local/state/openpalm}"
+OP_HOME="${OP_HOME:-${HOME}/.openpalm}"
+CONFIG_HOME="${OP_HOME}/config"
+DATA_HOME="${OP_HOME}/data"
 
 # ── Cleanup handler ──────────────────────────────────────────────────
 
@@ -126,9 +119,7 @@ cleanup() {
   if [ "$KEEP" -eq 1 ]; then
     echo ""
     echo "  --keep flag set. Stack is still running."
-    echo "  Config: ${CONFIG_HOME}"
-    echo "  Data:   ${DATA_HOME}"
-    echo "  State:  ${STATE_HOME}"
+    echo "  OP_HOME: ${OP_HOME}"
     return
   fi
 
@@ -254,7 +245,7 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
   fi
 
   # Verify directory structure was created
-  for dir in "$CONFIG_HOME" "$DATA_HOME" "$STATE_HOME"; do
+  for dir in "$CONFIG_HOME" "$DATA_HOME" "${OP_HOME}/vault"; do
     if [ -d "$dir" ]; then
       pass "Directory created: $dir"
     else
@@ -270,7 +261,7 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
   fi
 
   # Verify vault/user/user.env was seeded
-  VAULT_HOME="$(dirname "$CONFIG_HOME")/vault"
+  VAULT_HOME="${OP_HOME}/vault"
   if [ -f "$VAULT_HOME/user/user.env" ]; then
     pass "vault/user/user.env created"
   else
@@ -548,7 +539,7 @@ fi
 if [ "$SKIP_INSTALL" -eq 0 ]; then
   step "Verify vault/user/user.env"
 
-  VAULT_HOME="${VAULT_HOME:-$(dirname "$CONFIG_HOME")/vault}"
+  VAULT_HOME="${VAULT_HOME:-${OP_HOME}/vault}"
   secrets="$VAULT_HOME/user/user.env"
 
   check_env_key() {

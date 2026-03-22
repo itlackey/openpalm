@@ -81,7 +81,7 @@ GOOGLE_API_KEY=...
 ```
 
 System-managed values (`CHANNEL_*_SECRET`, `OP_*` infrastructure vars,
-`OP_ADMIN_TOKEN`, `ASSISTANT_TOKEN`, bind addresses, image tags) are generated
+`OP_ADMIN_TOKEN`, `OP_ASSISTANT_TOKEN`, bind addresses, image tags) are generated
 by setup/admin tooling and written into `vault/stack/stack.env` -- you do not
 normally edit them manually.
 
