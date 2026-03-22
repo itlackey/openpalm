@@ -18,7 +18,7 @@ export default defineConfig(
 	prettier,
 	...svelte.configs.prettier,
 	{
-		ignores: ['.svelte-kit/**', 'build/**', 'coverage/**', 'test-results/**', 'undefined/**']
+		ignores: ['.svelte-kit/**', 'build/**', 'coverage/**', 'test-results/**']
 	},
 	{
 		languageOptions: { globals: { ...globals.browser, ...globals.node } },

@@ -10,10 +10,14 @@ type FetchCall = {
 };
 
 const originalFetch = globalThis.fetch;
+const originalAssistantToken = process.env.OP_ASSISTANT_TOKEN;
+const originalAdminToken = process.env.OP_ADMIN_TOKEN;
 let calls: FetchCall[] = [];
 
 beforeEach(() => {
   calls = [];
+  process.env.OP_ASSISTANT_TOKEN = 'assistant-token';
+  delete process.env.OP_ADMIN_TOKEN;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = (init?.method ?? 'GET').toUpperCase();
@@ -28,6 +32,10 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  if (originalAssistantToken === undefined) delete process.env.OP_ASSISTANT_TOKEN;
+  else process.env.OP_ASSISTANT_TOKEN = originalAssistantToken;
+  if (originalAdminToken === undefined) delete process.env.OP_ADMIN_TOKEN;
+  else process.env.OP_ADMIN_TOKEN = originalAdminToken;
 });
 
 describe('admin tools validation', () => {
@@ -73,5 +81,17 @@ describe('admin tools validation', () => {
     expect(calls.length).toBe(1);
     // adminFetch adds these headers; we verify the call was made
     expect(calls[0].url).toContain('/admin/artifacts');
+  });
+
+  it('does not fall back to OP_ADMIN_TOKEN when the assistant token is missing', async () => {
+    delete process.env.OP_ASSISTANT_TOKEN;
+    process.env.OP_ADMIN_TOKEN = 'admin-token';
+
+    const result = await adminArtifacts.list.execute({} as never, {} as never);
+    const parsed = JSON.parse(result) as { error?: boolean; message?: string };
+
+    expect(parsed.error).toBe(true);
+    expect(parsed.message).toContain('Missing OP_ASSISTANT_TOKEN');
+    expect(calls.length).toBe(0);
   });
 });

@@ -5,7 +5,7 @@
 #
 # Docker Compose reads variable values via --env-file vault/stack/stack.env --env-file vault/user/user.env.
 #
-# Directory model (v0.11.0):
+# Directory model (v0.10.0):
 #   ~/.openpalm/config/       — user-editable, non-secret configuration
 #   ~/.openpalm/vault/stack/   — system-managed secrets (stack.env)
 #   ~/.openpalm/vault/user/    — user-managed runtime files (user.env)
