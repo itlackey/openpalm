@@ -27,8 +27,6 @@ COPY packages/admin/ packages/admin/
 COPY .openpalm/stack/ .openpalm/stack/
 COPY .openpalm/vault/ .openpalm/vault/
 COPY .openpalm/config/ .openpalm/config/
-COPY core/assistant/opencode.jsonc core/assistant/opencode.jsonc
-COPY core/assistant/AGENTS.md core/assistant/AGENTS.md
 
 # Build SvelteKit (adapter-node produces self-contained build/)
 WORKDIR /workspace/packages/admin

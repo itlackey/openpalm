@@ -1,7 +1,5 @@
 import { tool } from "@opencode-ai/plugin";
-import { adminFetch } from "./lib.ts";
-
-const ADMIN_TOKEN = process.env.OP_ASSISTANT_TOKEN || process.env.OP_ADMIN_TOKEN || "";
+import { adminFetch, buildAdminHeaders } from "./lib.ts";
 
 interface ServiceHealth {
   status: string;
@@ -40,12 +38,14 @@ async function fetchServiceHealth(
 }
 
 async function safeJsonFetch(url: string, timeout = 5_000): Promise<unknown> {
+  const headers = buildAdminHeaders();
+  if (!headers) {
+    return { error: 'Missing OP_ASSISTANT_TOKEN. Admin-token fallback is disabled for assistant/admin-tools contexts.' };
+  }
+
   try {
     const res = await fetch(url, {
-      headers: {
-        "x-admin-token": ADMIN_TOKEN,
-        "x-requested-by": "assistant",
-      },
+      headers,
       signal: AbortSignal.timeout(timeout),
     });
     return res.json();

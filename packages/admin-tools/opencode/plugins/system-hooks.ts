@@ -4,15 +4,13 @@
  * and admin tool guidance retrieval from stack-scoped memory.
  */
 import type { Plugin } from '@opencode-ai/plugin';
+import { buildAdminHeaders } from '../tools/lib.ts';
 
 type HookIO = Record<string, unknown>;
 
 const ADMIN_URL = process.env.OP_ADMIN_API_URL || 'http://admin:8100';
-const ADMIN_TOKEN = process.env.OP_ASSISTANT_TOKEN || process.env.OP_ADMIN_TOKEN || '';
 const MEMORY_URL = process.env.MEMORY_API_URL || 'http://memory:8765';
 const STACK_USER_ID = 'openpalm';
-
-const ADMIN_HEADERS = { 'x-admin-token': ADMIN_TOKEN, 'x-requested-by': 'assistant', 'content-type': 'application/json' };
 
 type AdminSessionState = {
   sessionId: string;
@@ -75,8 +73,11 @@ export const SystemHooksPlugin: Plugin = async () => {
 };
 
 async function adminFetch(path: string): Promise<unknown | null> {
+  const headers = buildAdminHeaders();
+  if (!headers) return null;
+
   try {
-    const res = await fetch(`${ADMIN_URL}${path}`, { headers: ADMIN_HEADERS, signal: AbortSignal.timeout(5_000) });
+    const res = await fetch(`${ADMIN_URL}${path}`, { headers, signal: AbortSignal.timeout(5_000) });
     return res.ok ? await res.json() : null;
   } catch { return null; }
 }

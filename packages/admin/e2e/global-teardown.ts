@@ -13,7 +13,7 @@ const BACKUP = `${STACK_ENV}.e2e-backup`;
  * with a new inode, making the mounted file invisible to containers.
  */
 function writeInPlace(path: string, data: string): void {
-	const fd = openSync(path, "r+");
+	const fd = openSync(path, existsSync(path) ? "r+" : "w");
 	try {
 		ftruncateSync(fd, 0);
 		writeSync(fd, data, 0);

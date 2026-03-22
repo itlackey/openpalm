@@ -211,5 +211,5 @@ Before submitting any change:
 | `core/guardian/src/server.ts` | HMAC-signed message guardian |
 | `core/channel/Dockerfile` | Unified `channel` image build |
 | `assets/` | Bundled compose files, Caddyfile, channel overlays |
-| `core/assistant/AGENTS.md` | Assistant persona and operational guidelines |
+| `core/assistant/opencode/AGENTS.md` | Assistant persona and operational guidelines |
 | `.opencode/opencode.json` | OpenCode project configuration |
