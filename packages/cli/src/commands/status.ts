@@ -1,6 +1,5 @@
 import { defineCommand } from 'citty';
-import { runDockerCompose } from '../lib/docker.ts';
-import { ensureValidState, fullComposeArgs } from '../lib/staging.ts';
+import { ensureValidState, runComposeWithPreflight } from '../lib/staging.ts';
 
 export default defineCommand({
   meta: {
@@ -9,6 +8,6 @@ export default defineCommand({
   },
   async run() {
     const state = await ensureValidState();
-    await runDockerCompose([...fullComposeArgs(state), 'ps', '--format', 'table']);
+    await runComposeWithPreflight(state, ['ps', '--format', 'table']);
   },
 });

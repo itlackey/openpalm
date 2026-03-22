@@ -15,7 +15,7 @@ AI assistants should not be someone else's product. They should be something you
 - **Defense in depth** - Every message passes through HMAC-signed verification, replay detection, and rate limiting before reaching the assistant. The assistant has no Docker socket and no host access beyond its mounts.
 - **Manual-first stack** - The live stack is just Docker Compose files under `~/.openpalm/stack/`. You can inspect them, run them directly, and add addons with normal Compose flags.
 - **Working asset bundle** - The repo ships a `.openpalm/` bundle meant to be copied to `~/.openpalm/`. It includes stack files, env templates, defaults, and helper scripts.
-- **Optional tooling** - Raw `docker compose` is the source of truth. `stack/start.sh`, setup scripts, and future tooling are convenience layers on top.
+- **Optional tooling** - Raw `docker compose` is the source of truth. Setup scripts and future tooling are convenience layers on top.
 - **Memory that persists** - Data stays on the host under `~/.openpalm/` for backup, restore, and direct editing.
 
 ## Extend it with integrations
@@ -70,7 +70,7 @@ docker compose \
   up -d
 ```
 
-That example starts the core stack plus the `admin` and `chat` addons. Review the copied env files before first boot, then change the `-f addons/<name>/compose.yml` list to choose a different stack. You can also use `~/.openpalm/stack/start.sh` as a convenience wrapper.
+That example starts the core stack plus the `admin` and `chat` addons. Review the copied env files before first boot, then change the `-f addons/<name>/compose.yml` list to choose a different stack. See the [Manual Compose Runbook](docs/operations/manual-compose-runbook.md) for the full command reference.
 
 `config/stack.yaml` is optional metadata for tooling. It is not the deployment truth. The running stack is always the compose file set you pass to Docker Compose.
 

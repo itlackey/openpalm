@@ -6,7 +6,6 @@ Primary sources:
 
 - `.openpalm/stack/core.compose.yml`
 - `.openpalm/stack/addons/*/compose.yml`
-- `.openpalm/stack/start.sh`
 - `core/*/entrypoint.sh` and service source where runtime defaults matter
 
 When this document conflicts with older prose elsewhere, the compose files win.
@@ -40,7 +39,7 @@ Current durable data subdirectories used by the shipped stack:
 
 ## Compose Env Files
 
-The standard wrapper at `.openpalm/stack/start.sh` invokes Docker Compose with:
+Docker Compose is invoked with these env files (see [Manual Compose Runbook](../operations/manual-compose-runbook.md)):
 
 ```bash
 --env-file "$OP_HOME/vault/stack/stack.env"
@@ -208,10 +207,10 @@ Key env:
 |---|---|---|
 | `PORT` | `8090` | HTTP listen port |
 | `OP_HOME` | `/openpalm` | Runtime root used by scheduler code |
-| `OP_ADMIN_TOKEN` | `${ASSISTANT_TOKEN:-}` | Scheduler admin token |
+| `OP_ADMIN_TOKEN` | `${OP_ASSISTANT_TOKEN:-}` | Scheduler admin token |
 | `OP_ADMIN_API_URL` | `stack.env` / addon wiring | Admin API base URL |
 | `OPENCODE_API_URL` | `http://assistant:4096` | Assistant API URL |
-| `OPENCODE_SERVER_PASSWORD` | `stack.env` | Optional assistant auth wiring |
+| `OPENCODE_SERVER_PASSWORD` | `${OP_OPENCODE_PASSWORD:-}` | Optional assistant auth wiring |
 | `MEMORY_API_URL` | `http://memory:8765` | Memory URL |
 
 Notes:
@@ -334,8 +333,9 @@ These variables are consumed by Compose and service env blocks.
 | `OP_API_BIND_ADDRESS`, `OP_API_PORT` | API addon host bind |
 | `OP_VOICE_BIND_ADDRESS`, `OP_VOICE_PORT` | Voice addon host bind |
 | `OP_ADMIN_TOKEN` | Admin auth token |
-| `ASSISTANT_TOKEN` | Assistant and scheduler auth token source |
-| `MEMORY_AUTH_TOKEN` | Memory API auth token |
+| `OP_ASSISTANT_TOKEN` | Assistant and scheduler auth token |
+| `OP_MEMORY_TOKEN` | Memory API auth token |
+| `OP_OPENCODE_PASSWORD` | OpenCode server password |
 | `MEMORY_USER_ID` | Default memory identity |
 | `CHANNEL_<NAME>_SECRET` | Guardian / channel HMAC secrets |
 

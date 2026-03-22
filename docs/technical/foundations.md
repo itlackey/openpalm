@@ -80,7 +80,7 @@ Key env:
 - `MEMORY_DATA_DIR=/data`
 - `HOME=/data`
 - `MEM0_DIR=/data/.mem0`
-- `MEMORY_AUTH_TOKEN`
+- `OP_MEMORY_TOKEN`
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`
 
@@ -118,7 +118,7 @@ Key env:
 - `OP_ADMIN_API_URL`
 - `OP_ASSISTANT_TOKEN`
 - `MEMORY_API_URL=http://memory:8765`
-- `MEMORY_AUTH_TOKEN`
+- `OP_MEMORY_TOKEN`
 - `MEMORY_USER_ID`
 - `OP_UID`, `OP_GID`
 
@@ -193,10 +193,10 @@ Key env:
 
 - `PORT=8090`
 - `OP_HOME=/openpalm`
-- `OP_ADMIN_TOKEN=${ASSISTANT_TOKEN:-}`
+- `OP_ADMIN_TOKEN=${OP_ASSISTANT_TOKEN:-}`
 - `OP_ADMIN_API_URL`
 - `OPENCODE_API_URL=http://assistant:4096`
-- `OPENCODE_SERVER_PASSWORD`
+- `OP_OPENCODE_PASSWORD`
 - `MEMORY_API_URL=http://memory:8765`
 
 Mounts:

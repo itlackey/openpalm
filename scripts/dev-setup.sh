@@ -118,12 +118,8 @@ if [[ $seed_env -eq 1 ]]; then
 OPENAI_API_KEY=ollama
 OPENAI_BASE_URL=http://host.docker.internal:11434/v1
 
-# Admin token
-OP_ADMIN_TOKEN=dev-admin-token
-ADMIN_TOKEN=dev-admin-token
-
-# Service auth tokens (auto-generated)
-MEMORY_AUTH_TOKEN=${mem_token}
+# Memory
+MEMORY_USER_ID=default_user
 USEREOF
 	fi
 
@@ -140,8 +136,14 @@ USEREOF
 			esac
 		fi
 
+		assistant_token=$(openssl rand -hex 32)
 		cat >"$system_env" <<EOF
 # OpenPalm System Environment — system-managed, do not edit
+
+OP_ADMIN_TOKEN=dev-admin-token
+OP_ASSISTANT_TOKEN=${assistant_token}
+OP_MEMORY_TOKEN=${mem_token}
+OP_OPENCODE_PASSWORD=
 
 OP_HOME=$DEV_ROOT
 OP_WORK_DIR=$DEV_ROOT/work

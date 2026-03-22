@@ -58,7 +58,6 @@ addons:               # Enabled addon services
   - ollama
 ```
 
-Use `~/.openpalm/stack/start.sh --from-stack-yaml` if you want the wrapper to
-resolve addon compose files from this list. Only a simple top-level `addons:`
-list is supported. Otherwise, select addons directly with compose `-f` flags or
-raw addon arguments to `start.sh`.
+Select addons by adding their compose files as `-f` flags to `docker compose`.
+See the [Manual Compose Runbook](../../docs/operations/manual-compose-runbook.md)
+for the full command reference.

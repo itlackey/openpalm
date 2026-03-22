@@ -62,10 +62,7 @@ export {
   resolveBackupsDir,
   resolveWorkspaceDir,
   ensureHomeDirs,
-  detectLegacyLayout,
-  hasLegacyEnvVars,
 } from "./control-plane/home.js";
-export type { LegacyLayout } from "./control-plane/home.js";
 
 // ── Env ─────────────────────────────────────────────────────────────────
 export {

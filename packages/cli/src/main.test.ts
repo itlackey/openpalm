@@ -40,7 +40,7 @@ describe('cli main', () => {
   const originalWarn = console.warn;
   const originalHome = process.env.OP_HOME;
   const originalWorkDir = process.env.OP_WORK_DIR;
-  const originalAdminToken = process.env.ADMIN_TOKEN;
+  const originalAdminToken = process.env.OP_ADMIN_TOKEN;
   const originalOpenPalmAdminToken = process.env.OP_ADMIN_TOKEN;
 
   afterEach(() => {
@@ -50,7 +50,7 @@ describe('cli main', () => {
     restoreDockerCli();
     process.env.OP_HOME = originalHome;
     process.env.OP_WORK_DIR = originalWorkDir;
-    process.env.ADMIN_TOKEN = originalAdminToken;
+    process.env.OP_ADMIN_TOKEN = originalAdminToken;
     process.env.OP_ADMIN_TOKEN = originalOpenPalmAdminToken;
   });
 
@@ -67,7 +67,7 @@ describe('cli main', () => {
 
     process.env.OP_HOME = base;
     process.env.OP_WORK_DIR = workDir;
-    delete process.env.ADMIN_TOKEN;
+    delete process.env.OP_ADMIN_TOKEN;
     delete process.env.OP_ADMIN_TOKEN;
 
     mockDockerCli();

@@ -104,7 +104,7 @@ Subtrees: `rollback/` (previous known-good config snapshots for automated rollba
 ### A) Compose: modular by native multi-file composition
 
 The stack is defined by combining a base Compose file with addon overlays using Compose’s native multi-file mechanisms (merge rules and/or `include`). ([Docker Documentation][3])
-**Implication:** adding an addon is dropping a `compose.yml` overlay into `stack/addons/<name>/`, then rerunning Docker Compose or `stack/start.sh` with the updated file list.
+**Implication:** adding an addon is dropping a `compose.yml` overlay into `stack/addons/<name>/`, then rerunning `docker compose` with the updated file list.
 
 ### B) OpenCode: core precedence via baked-in `/etc/opencode`
 
@@ -199,7 +199,7 @@ This ensures sdk transitive dependencies are available at runtime. Since these s
 
 ## Operational behavior
 
-* **Add an addon:** drop `compose.yml` into `stack/addons/<name>/`, then rerun `docker compose up -d` or `stack/start.sh` with that addon included. ([Docker Documentation][3])
+* **Add an addon:** drop `compose.yml` into `stack/addons/<name>/`, then rerun `docker compose up -d` with that addon included. ([Docker Documentation][3])
 * **Add an extension (user):** copy OpenCode assets into `config/assistant/` following OpenCode’s directory structure. ([OpenCode][1])
 * **Core precedence:** core extensions live in `/etc/opencode` inside the assistant container and are loaded via `OPENCODE_CONFIG_DIR`. ([OpenCode][1])
 * **Apply changes:** the CLI or admin validates proposed changes (Varlock schema, compose config) before writing anything. If validation passes, a snapshot of current live files is saved to `~/.cache/openpalm/rollback/`, changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution. Compose is normally invoked with `vault/stack/stack.env` (system-managed: admin token, HMAC secrets, paths, UID/GID, image tags, bind ports) and `vault/user/user.env` (user-managed: LLM keys, provider URLs); individual services may additionally load service-specific managed env files such as `vault/stack/services/memory/managed.env`. Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` and `vault/user/user.env`; it may seed missing defaults and update system-managed files in `stack/` and `vault/stack/`.

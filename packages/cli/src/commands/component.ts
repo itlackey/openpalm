@@ -30,6 +30,27 @@ import {
   buildEnvFiles,
 } from '@openpalm/lib';
 import { runDockerCompose } from '../lib/docker.ts';
+import { composePreflight, resolveComposeProjectName } from '@openpalm/lib';
+
+/** Run compose preflight then execute. Uses component compose args (includes instance overlays). */
+async function runComponentCompose(composeArgs: string[], subArgs: string[]): Promise<void> {
+  // Extract file and env-file args for preflight
+  const files: string[] = [];
+  const envFiles: string[] = [];
+  for (let i = 0; i < composeArgs.length; i++) {
+    if (composeArgs[i] === '-f' && composeArgs[i + 1]) files.push(composeArgs[++i]);
+    else if (composeArgs[i] === '--env-file' && composeArgs[i + 1]) envFiles.push(composeArgs[++i]);
+  }
+
+  if (files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
+    const result = await composePreflight({ files, envFiles });
+    if (!result.ok) {
+      throw new Error(`Compose preflight failed: ${result.stderr}\nProject: ${resolveComposeProjectName()}`);
+    }
+  }
+
+  await runDockerCompose([...composeArgs, ...subArgs]);
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -276,7 +297,7 @@ const removeCmd = defineCommand({
         coreFiles: buildComposeFileList(state),
         coreEnvFiles: buildEnvFiles(state),
       });
-      await runDockerCompose([...composeArgs, 'stop', `openpalm-${instanceId}`]);
+      await runComponentCompose(composeArgs, ['stop', `openpalm-${instanceId}`]);
     } catch {
       // Container may not be running — that's fine
     }
@@ -328,7 +349,7 @@ const startCmd = defineCommand({
         coreEnvFiles: buildEnvFiles(state),
       });
       // Compose service name convention: openpalm-{instanceId}
-      await runDockerCompose([...composeArgs, 'up', '-d', `openpalm-${instanceId}`]);
+      await runComponentCompose(composeArgs, ['up', '-d', `openpalm-${instanceId}`]);
       console.log(`Instance "${instanceId}" started.`);
     } catch (err) {
       console.error(`Error starting instance: ${err instanceof Error ? err.message : String(err)}`);
@@ -373,7 +394,7 @@ const stopCmd = defineCommand({
         coreFiles: buildComposeFileList(state),
         coreEnvFiles: buildEnvFiles(state),
       });
-      await runDockerCompose([...composeArgs, 'stop', `openpalm-${instanceId}`]);
+      await runComponentCompose(composeArgs, ['stop', `openpalm-${instanceId}`]);
       console.log(`Instance "${instanceId}" stopped.`);
     } catch (err) {
       console.error(`Error stopping instance: ${err instanceof Error ? err.message : String(err)}`);

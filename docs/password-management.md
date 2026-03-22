@@ -68,8 +68,8 @@ Important keys include:
 | Key | Notes |
 |---|---|
 | `OP_ADMIN_TOKEN` | Admin UI/API authentication token |
-| `ASSISTANT_TOKEN` | Assistant/scheduler auth token for admin API access |
-| `MEMORY_AUTH_TOKEN` | Memory API auth token |
+| `OP_ASSISTANT_TOKEN` | Assistant/scheduler auth token for admin API access |
+| `OP_MEMORY_TOKEN` | Memory API auth token |
 | `OP_HOME` | OpenPalm home directory |
 | `OP_UID` / `OP_GID` | Host user/group mapping |
 | `OP_IMAGE_NAMESPACE` / `OP_IMAGE_TAG` | Image source and tag |
@@ -113,7 +113,7 @@ access to stack secrets by filesystem path.
 - used for privileged admin UI/API operations
 - sent in the `x-admin-token` header
 
-### `ASSISTANT_TOKEN`
+### `OP_ASSISTANT_TOKEN`
 
 - separate operational token for the assistant and scheduler
 - exposed inside the assistant as `OP_ASSISTANT_TOKEN`

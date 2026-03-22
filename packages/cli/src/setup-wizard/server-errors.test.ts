@@ -21,7 +21,7 @@ function createStubAssetProvider(): CoreAssetProvider {
     coreCompose: () => "services:\n  assistant:\n    image: assistant:latest\n",
     agentsMd: () => "# Agents\n",
     opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
-    secretsSchema: () => "ADMIN_TOKEN=string\n",
+    secretsSchema: () => "OP_ADMIN_TOKEN=string\n",
     stackSchema: () => "OP_IMAGE_TAG=string\n",
     cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
     cleanupData: () => "name: cleanup-data\nschedule: weekly\n",
@@ -65,7 +65,7 @@ function makeSetupDirs(): void {
     [
       "# OpenPalm Secrets",
       "export OP_ADMIN_TOKEN=",
-      "export ADMIN_TOKEN=",
+      
       "export OPENAI_API_KEY=",
       "export OPENAI_BASE_URL=",
       "export ANTHROPIC_API_KEY=",
@@ -73,7 +73,7 @@ function makeSetupDirs(): void {
       "export MISTRAL_API_KEY=",
       "export GOOGLE_API_KEY=",
       "export MEMORY_USER_ID=default_user",
-      "export MEMORY_AUTH_TOKEN=abc123",
+      "export MEMORY_USER_ID=default_user",
       "export OWNER_NAME=",
       "export OWNER_EMAIL=",
       "",

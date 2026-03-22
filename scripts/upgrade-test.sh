@@ -103,7 +103,7 @@ PROJECT_NAME="openpalm-upgrade-test"
 ADMIN_PORT=8101
 ADMIN_URL="http://127.0.0.1:${ADMIN_PORT}"
 MEMORY_PORT=8766
-ADMIN_TOKEN="upgrade-test-token"
+OP_ADMIN_TOKEN="upgrade-test-token"
 
 # ── Colors / Output ──────────────────────────────────────────────────
 
@@ -239,7 +239,7 @@ fi
 # Seed user.env with a known admin token
 cat >"${VAULT_HOME}/user/user.env" <<EOF
 # Upgrade test secrets
-ADMIN_TOKEN=${ADMIN_TOKEN}
+OP_ADMIN_TOKEN=${OP_ADMIN_TOKEN}
 OPENAI_API_KEY=
 OPENAI_BASE_URL=
 MEMORY_USER_ID=upgrade-test-user
@@ -386,7 +386,7 @@ header "Phase 2: Seed test data"
 
 echo "  Calling admin install endpoint..."
 INSTALL_RESULT=$(curl -sf -X POST "${ADMIN_URL}/admin/install" \
-  -H "x-admin-token: ${ADMIN_TOKEN}" \
+  -H "x-admin-token: ${OP_ADMIN_TOKEN}" \
   -H "content-type: application/json" \
   -d '{}' 2>&1 || echo '{"ok":false}')
 
@@ -469,7 +469,7 @@ echo "  Custom file checksum: ${CUSTOM_FILE_CHECKSUM}"
 # Record admin token works
 AUTH_CHECK_BEFORE=$(curl -sf -o /dev/null -w '%{http_code}' \
   "${ADMIN_URL}/admin/containers/list" \
-  -H "x-admin-token: ${ADMIN_TOKEN}" 2>/dev/null || echo "error")
+  -H "x-admin-token: ${OP_ADMIN_TOKEN}" 2>/dev/null || echo "error")
 echo "  Admin auth status:    ${AUTH_CHECK_BEFORE}"
 
 pass "Pre-upgrade state recorded"
@@ -572,11 +572,11 @@ else
 fi
 
 # Verify specific values in user.env
-ADMIN_TOKEN_VALUE=$(grep "^ADMIN_TOKEN=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
-if [[ "$ADMIN_TOKEN_VALUE" == "$ADMIN_TOKEN" ]]; then
-  pass "ADMIN_TOKEN preserved in user.env"
+OP_ADMIN_TOKEN_VALUE=$(grep "^OP_ADMIN_TOKEN= "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
+if [[ "$OP_ADMIN_TOKEN_VALUE" == "$OP_ADMIN_TOKEN" ]]; then
+  pass "OP_ADMIN_TOKEN preserved in user.env"
 else
-  fail "ADMIN_TOKEN changed (expected '${ADMIN_TOKEN}', got '${ADMIN_TOKEN_VALUE}')"
+  fail "OP_ADMIN_TOKEN changed (expected '${OP_ADMIN_TOKEN}', got '${ADMIN_TOKEN_VALUE}')"
 fi
 
 CUSTOM_KEY_VALUE=$(grep "^MY_CUSTOM_KEY=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
@@ -692,7 +692,7 @@ echo "=== 5f: Admin authentication ==="
 
 AUTH_CHECK_AFTER=$(curl -sf -o /dev/null -w '%{http_code}' \
   "${ADMIN_URL}/admin/containers/list" \
-  -H "x-admin-token: ${ADMIN_TOKEN}" 2>/dev/null || echo "error")
+  -H "x-admin-token: ${OP_ADMIN_TOKEN}" 2>/dev/null || echo "error")
 
 if [[ "$AUTH_CHECK_AFTER" == "200" ]]; then
   pass "Admin token still authenticates (HTTP 200)"

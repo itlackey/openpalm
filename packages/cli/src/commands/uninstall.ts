@@ -1,7 +1,6 @@
 import { defineCommand } from 'citty';
 import { rmSync } from 'node:fs';
-import { runDockerCompose } from '../lib/docker.ts';
-import { ensureValidState, fullComposeArgs } from '../lib/staging.ts';
+import { ensureValidState, runComposeWithPreflight } from '../lib/staging.ts';
 import { resolveConfigDir, resolveDataDir, resolveLogsDir } from '@openpalm/lib';
 
 export default defineCommand({
@@ -25,9 +24,8 @@ export default defineCommand({
     // Compose file list includes admin.yml when admin is enabled,
     // so `down` tears down all services including admin/socket-proxy.
     const state = await ensureValidState();
-    const composeArgs = fullComposeArgs(state);
     const downArgs = args.volumes || args.purge ? ['down', '-v'] : ['down'];
-    await runDockerCompose([...composeArgs, ...downArgs]);
+    await runComposeWithPreflight(state, downArgs);
 
     if (args.purge) {
       const dirs = [resolveConfigDir(), resolveDataDir(), resolveLogsDir()];

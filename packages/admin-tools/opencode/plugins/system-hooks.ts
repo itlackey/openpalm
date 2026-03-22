@@ -27,8 +27,8 @@ type HookOutput = {
   error?: unknown;
 };
 
-const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || 'http://admin:8100';
-const ADMIN_TOKEN = process.env.OPENPALM_ADMIN_TOKEN || '';
+const ADMIN_URL = process.env.OP_ADMIN_API_URL || 'http://admin:8100';
+const ADMIN_TOKEN = process.env.OP_ASSISTANT_TOKEN || process.env.OP_ADMIN_TOKEN || '';
 const MEMORY_URL = process.env.MEMORY_API_URL || 'http://memory:8765';
 const MEMORY_USER_ID = process.env.MEMORY_USER_ID || 'default_user';
 const STACK_USER_ID = 'openpalm';

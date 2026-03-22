@@ -167,18 +167,18 @@ describe("createState", () => {
 
   beforeEach(() => {
     origEnv.OP_HOME = process.env.OP_HOME;
-    origEnv.ADMIN_TOKEN = process.env.ADMIN_TOKEN;
+    origEnv.OP_ADMIN_TOKEN = process.env.OP_ADMIN_TOKEN;
   });
 
   afterEach(() => {
     process.env.OP_HOME = origEnv.OP_HOME;
-    process.env.ADMIN_TOKEN = origEnv.ADMIN_TOKEN;
+    process.env.OP_ADMIN_TOKEN = origEnv.OP_ADMIN_TOKEN;
   });
 
   test("reads OP_ADMIN_TOKEN from vault/stack/stack.env file", () => {
     const base = trackDir(makeTempDir());
     process.env.OP_HOME = base;
-    delete process.env.ADMIN_TOKEN;
+    delete process.env.OP_ADMIN_TOKEN;
     delete process.env.OP_ADMIN_TOKEN;
 
     const vaultDir = join(base, "vault");
@@ -195,11 +195,11 @@ describe("createState", () => {
   test("uses explicit adminToken parameter over file/env", () => {
     const base = trackDir(makeTempDir());
     process.env.OP_HOME = base;
-    process.env.ADMIN_TOKEN = "env-token";
+    process.env.OP_ADMIN_TOKEN = "env-token";
 
     const vaultDir = join(base, "vault");
     mkdirSync(join(vaultDir, "user"), { recursive: true });
-    writeFileSync(join(vaultDir, "user", "user.env"), "ADMIN_TOKEN=file-token\n");
+    writeFileSync(join(vaultDir, "user", "user.env"), "OP_ADMIN_TOKEN=file-token\n");
 
     const state = createState("explicit-token");
     expect(state.adminToken).toBe("explicit-token");

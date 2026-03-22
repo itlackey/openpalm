@@ -33,7 +33,7 @@ files here.
 
   stack/              Docker Compose runtime assets
     core.compose.yml    Core services
-    start.sh            Canonical compose wrapper
+    start.sh            Convenience compose wrapper (see manual-compose-runbook.md)
     addons/             Optional service overlays
 
   logs/               Audit and debug logs
@@ -56,22 +56,17 @@ Manual setup:
 cp -r .openpalm/ ~/.openpalm/
 $EDITOR ~/.openpalm/vault/stack/stack.env
 $EDITOR ~/.openpalm/vault/user/user.env
-cd ~/.openpalm/stack && ./start.sh chat admin
-```
-
-Direct Docker Compose also works:
-
-```bash
-cd ~/.openpalm/stack
 docker compose \
   --project-name openpalm \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  -f core.compose.yml \
-  -f addons/chat/compose.yml \
-  -f addons/admin/compose.yml \
+  --env-file ~/.openpalm/vault/stack/stack.env \
+  --env-file ~/.openpalm/vault/user/user.env \
+  -f ~/.openpalm/stack/core.compose.yml \
+  -f ~/.openpalm/stack/addons/chat/compose.yml \
+  -f ~/.openpalm/stack/addons/admin/compose.yml \
   up -d
 ```
+
+See [Manual Compose Runbook](../docs/operations/manual-compose-runbook.md) for the full reference.
 
 The live stack is defined by `stack/core.compose.yml` plus whichever addon
 compose files you include. `config/stack.yaml` is helper metadata for wrappers;
@@ -90,7 +85,7 @@ it does not replace Compose as the runtime source of truth.
 
 ## Runtime notes
 
-- `start.sh` includes `vault/stack/stack.env` and `vault/user/user.env` automatically.
+- Docker Compose env files: `vault/stack/stack.env`, `vault/stack/services/memory/managed.env`, and `vault/user/user.env`.
 - The `memory` service may also load `vault/stack/services/memory/managed.env`.
 - The assistant workspace is `data/workspace/`, mounted at `/work`.
 - The admin addon mounts the full OpenPalm home at `/openpalm` and reaches Docker only through `docker-socket-proxy`.

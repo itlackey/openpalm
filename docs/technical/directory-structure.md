@@ -162,8 +162,7 @@ Do not treat `data/` as user configuration. It is durable, but service-owned.
 To change the running stack:
 
 1. Edit files under `config/`, `vault/`, or `stack/`.
-2. Rerun Docker Compose with `stack/core.compose.yml` plus any addon overlays.
-3. Or use `stack/start.sh` with the same addon selection.
+2. Rerun `docker compose` with `stack/core.compose.yml` plus any addon overlays (see [Manual Compose Runbook](../operations/manual-compose-runbook.md)).
 
 The wrapper always includes:
 

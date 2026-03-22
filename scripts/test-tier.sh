@@ -55,8 +55,8 @@ ensure_admin_build() {
 
 load_memory_token() {
 	MEMORY_AUTH_TOKEN=""
-	if [[ -f .dev/vault/user/user.env ]]; then
-		MEMORY_AUTH_TOKEN=$(grep -E '^MEMORY_AUTH_TOKEN=' .dev/vault/user/user.env | cut -d= -f2- || echo "")
+	if [[ -f .dev/vault/stack/stack.env ]]; then
+		MEMORY_AUTH_TOKEN=$(grep -E '^OP_MEMORY_TOKEN=' .dev/vault/stack/stack.env | cut -d= -f2- || echo "")
 	fi
 	export MEMORY_AUTH_TOKEN
 }

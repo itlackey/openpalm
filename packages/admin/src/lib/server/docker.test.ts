@@ -66,6 +66,10 @@ function capturedArgs(): string[] {
   return call[1]; // args array
 }
 
+// Skip compose preflight in all docker tests since execFile is mocked
+beforeEach(() => { process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1'; });
+afterEach(() => { delete process.env.OP_SKIP_COMPOSE_PREFLIGHT; });
+
 describe("checkDocker", () => {
   beforeEach(() => {
     execFileMock.mockReset();

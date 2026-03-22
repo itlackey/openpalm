@@ -149,7 +149,7 @@ Returns result
 openpalm install   ->   writes files into ~/.openpalm/
                              |
                              v
-                    You / CLI / start.sh choose compose files:
+                    You / CLI choose compose files:
                       core.compose.yml
                       + zero or more addon overlays
                              |
@@ -220,7 +220,7 @@ Anything not on the list is rejected with `400 invalid_service` or
 
 1. Install from the registry via admin API or admin UI
 2. Or manually: add `~/.openpalm/stack/addons/<name>/compose.yml`
-3. Rerun `docker compose` or `stack/start.sh` with that addon included
+3. Rerun `docker compose` with that addon included
 4. If admin tooling is involved, it may also ensure/generate the channel HMAC secret first
 
 No code changes. No image rebuild. The channel is live.

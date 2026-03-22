@@ -25,20 +25,10 @@ docker compose \
   -f addons/admin/compose.yml \
   up -d
 
-# Or use the transparent wrapper
-./start.sh
-./start.sh chat admin
-./start.sh --from-stack-yaml
-./start.sh --dry-run chat admin
-./start.sh --status chat admin
 ```
 
-`start.sh` always prints the resolved `docker compose` command before running
-it. Explicit addon arguments win over `config/stack.yaml`. If you do not pass
-addons and do not use `--from-stack-yaml`, it runs the core stack only.
-
-For `ps`, `stop`, and `down`, use the same addon set you used for `up`, or use
-`--from-stack-yaml` so the wrapper resolves the same compose file list.
+See the [Manual Compose Runbook](../../docs/operations/manual-compose-runbook.md) for preflight,
+status, logs, and all other operations.
 
 ## Core services
 

@@ -50,7 +50,7 @@ Primary runtime sources:
 | `OP_ADMIN_API_URL` | from `stack.env` / addon wiring | Admin API URL when admin is present |
 | `OP_ASSISTANT_TOKEN` | mapped from `ASSISTANT_TOKEN` | Assistant auth token for admin API calls |
 | `MEMORY_API_URL` | `http://memory:8765` | Memory service URL |
-| `MEMORY_AUTH_TOKEN` | from `stack.env` | Memory auth token |
+| `MEMORY_AUTH_TOKEN` | compose-mapped from `OP_MEMORY_TOKEN` | Memory auth token |
 | `MEMORY_USER_ID` | from env or default | Default memory identity |
 
 ### Operational notes
