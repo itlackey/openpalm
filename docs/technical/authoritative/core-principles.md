@@ -133,6 +133,13 @@ Files: `guardian-audit.log`, `admin-audit.jsonl`, `opencode/` (OpenCode state/se
 
 Subtrees: `rollback/` (previous known-good config snapshots for automated rollback on deploy failure).
 
+### 6) Backups
+
+**Location:** `~/.openpalm/backups/`
+**Purpose:** durable upgrade backup snapshots created by lifecycle operations before destructive transitions.
+
+**Rule:** CLI/admin writes backup snapshots here before upgrades and major lifecycle changes. These are user-accessible for manual restore and are included in `tar` backups of `~/.openpalm/`. Unlike rollback snapshots (in `~/.cache/openpalm/rollback/`), backups are durable and not automatically cleaned up.
+
 ---
 
 ## Volume-mount contract
@@ -273,7 +280,7 @@ On health check failure after deploy, the snapshot is automatically restored and
 - **Add an addon:** drop `compose.yml` into `stack/addons/<n>/`, then rerun `docker compose up -d` with that addon included. ([Docker Documentation][3])
 - **Add an extension (user):** copy OpenCode assets into `config/assistant/` following OpenCode's directory structure. ([OpenCode][1])
 - **Core precedence:** core extensions live in `/etc/opencode` inside the assistant container and are loaded via `OPENCODE_CONFIG_DIR`. ([OpenCode][1])
-- **Apply changes:** the CLI or admin validates proposed changes (Varlock schema, compose config) before writing anything. If validation passes, a snapshot of current live files is saved to `~/.cache/openpalm/rollback/` (see § Rollback scope), changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution. Compose is normally invoked with `vault/stack/stack.env` (system-managed: admin token, HMAC secrets, paths, UID/GID, image tags, bind ports) and `vault/user/user.env` (user-managed: LLM keys, provider URLs); individual services may additionally load service-specific managed env files such as `vault/stack/services/memory/managed.env`. Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` and `vault/user/user.env`; it may seed missing defaults, do targeted updates, and update system-managed files in `stack/` and `vault/stack/`.
+- **Apply changes:** the CLI or admin validates proposed changes (Varlock schema, compose config) before writing anything. If validation passes, a snapshot of current live files is saved to `~/.cache/openpalm/rollback/` (see § Rollback scope), changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution. Compose is normally invoked with `vault/stack/stack.env` (system-managed: admin token, paths, UID/GID, image tags, bind ports), `vault/user/user.env` (user-managed: LLM keys, provider URLs), and `vault/stack/guardian.env` (channel HMAC secrets); individual services may additionally load service-specific managed env files such as `vault/stack/services/memory/managed.env`. Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` and `vault/user/user.env`; it may seed missing defaults, do targeted updates, and update system-managed files in `stack/` and `vault/stack/`.
 - **Addon overlays may extend core services.** Addon compose files can inject environment variables or volumes into core service definitions via Compose multi-file merge. For example, the OpenViking addon adds `OPENVIKING_URL` and `OPENVIKING_API_KEY` to the assistant service by defining an `assistant:` block with additional `environment:` entries in its overlay. This is standard Docker Compose merge behavior — no custom merging logic is involved. See § Addon conflict detection for limitations.
 - **Hot-reload LLM keys:** the assistant watches the bind-mounted `vault/user/` directory. Editing `user.env` on the host takes effect within seconds — no container restart needed, no lost context.
 - **Rollback:** `openpalm rollback` restores the most recent snapshot from `~/.cache/openpalm/rollback/` and restarts the stack. Available both as an automated response to failed deploys and as a manual escape hatch. See § Rollback scope for snapshot contents.

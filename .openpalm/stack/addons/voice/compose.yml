@@ -3,11 +3,6 @@ services:
   voice:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
-    env_file:
-      - path: ${OP_HOME}/vault/stack/stack.env
-        required: false
-      - path: ${OP_HOME}/vault/user/user.env
-        required: false
     ports:
       - "${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT:-3810}:8186"
     environment:
@@ -15,6 +10,7 @@ services:
       CHANNEL_NAME: "Voice"
       GUARDIAN_URL: http://guardian:8080
       CHANNEL_PACKAGE: "@openpalm/channel-voice"
+      CHANNEL_SECRET: ${CHANNEL_VOICE_SECRET:-}
     networks: [channel_lan]
     depends_on:
       guardian:

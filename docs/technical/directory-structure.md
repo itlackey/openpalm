@@ -59,11 +59,12 @@ existing user files.
 ├── vault/
 │   ├── stack/
 │   │   ├── stack.env
+│   │   ├── guardian.env
 │   │   ├── auth.json
 │   │   ├── addons/            per-addon managed.env files
 │   │   └── services/
 │   │       └── memory/
-│   │           └── managed.env
+│   │           └── managed.env # Optional convention defined in overlay
 │   └── user/
 │       └── user.env
 ├── data/
@@ -93,8 +94,8 @@ existing user files.
 - `$OP_HOME/config -> /etc/openpalm`
 - `$OP_HOME/config/assistant -> /home/opencode/.config/opencode`
 - `$OP_HOME/vault/stack/auth.json -> /home/opencode/.local/share/opencode/auth.json`
-- `$OP_HOME/vault/user/user.env -> /etc/openpalm-vault/user.env:ro`
-- `$OP_HOME/data/assistant -> /home/opencode/data`
+- `$OP_HOME/vault/user/ -> /etc/vault/`
+- `$OP_HOME/data/assistant -> /home/opencode/`
 - `$OP_HOME/data/stash -> /home/opencode/.akm`
 - `$OP_HOME/data/workspace -> /work`
 - `$OP_HOME/logs/opencode -> /home/opencode/.local/state/opencode`
@@ -172,5 +173,6 @@ The wrapper always includes:
 
 - `vault/stack/stack.env`
 - `vault/user/user.env`
+- `vault/stack/guardian.env`
 
 The `memory` service may also load `vault/stack/services/memory/managed.env`.

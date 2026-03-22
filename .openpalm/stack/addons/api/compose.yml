@@ -3,11 +3,6 @@ services:
   api:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
-    env_file:
-      - path: ${OP_HOME}/vault/stack/stack.env
-        required: false
-      - path: ${OP_HOME}/vault/user/user.env
-        required: false
     ports:
       - "${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182"
     environment:
@@ -15,6 +10,7 @@ services:
       GUARDIAN_URL: http://guardian:8080
       CHANNEL_NAME: "API"
       CHANNEL_PACKAGE: "@openpalm/channel-api"
+      CHANNEL_SECRET: ${CHANNEL_API_SECRET:-}
     networks: [channel_lan]
     depends_on:
       guardian:

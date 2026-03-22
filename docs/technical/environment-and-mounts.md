@@ -44,6 +44,7 @@ Docker Compose is invoked with these env files (see [Manual Compose Runbook](../
 ```bash
 --env-file "$OP_HOME/vault/stack/stack.env"
 --env-file "$OP_HOME/vault/user/user.env"
+--env-file "$OP_HOME/vault/stack/guardian.env"
 ```
 
 In addition, the `memory` service optionally loads:
@@ -54,8 +55,9 @@ $OP_HOME/vault/stack/services/memory/managed.env
 
 That means the effective env model is:
 
-- `vault/stack/stack.env` - system-managed runtime env and secrets
-- `vault/user/user.env` - user-managed provider keys and user-supplied settings
+- `vault/stack/stack.env` - system-managed runtime env and secrets (admin token, paths, UID/GID, image tags, bind ports)
+- `vault/user/user.env` - user-managed provider keys and user-supplied settings (LLM keys, provider URLs)
+- `vault/stack/guardian.env` - channel HMAC secrets (loaded by guardian as env_file and via GUARDIAN_SECRETS_PATH)
 - `vault/stack/services/memory/managed.env` - optional memory-only managed overrides
 
 ---
@@ -87,9 +89,9 @@ Key env:
 | `MEMORY_DATA_DIR` | `/data` | Persistent data root |
 | `HOME` | `/data` | Writable home |
 | `MEM0_DIR` | `/data/.mem0` | mem0 compatibility directory |
-| `MEMORY_AUTH_TOKEN` | `stack.env` | Memory API auth |
-| `OPENAI_API_KEY` | `user.env` | Embeddings / model provider |
-| `OPENAI_BASE_URL` | `user.env` | Optional provider override |
+| `MEMORY_AUTH_TOKEN` | `stack.env` via `${VAR}` | Memory API auth |
+| `OPENAI_API_KEY` | `user.env` via `${VAR}` | Embeddings / model provider |
+| `OPENAI_BASE_URL` | `user.env` via `${VAR}` | Optional provider override |
 
 Notes:
 
@@ -108,8 +110,8 @@ Mounts:
 | `$OP_HOME/config` | `/etc/openpalm` | rw | OpenPalm config tree available inside container |
 | `$OP_HOME/config/assistant` | `/home/opencode/.config/opencode` | rw | User OpenCode tools, plugins, skills, commands |
 | `$OP_HOME/vault/stack/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | OpenCode auth state |
-| `$OP_HOME/vault/user/user.env` | `/etc/openpalm-vault/user.env` | ro | Read-only user secrets file |
-| `$OP_HOME/data/assistant` | `/home/opencode/data` | rw | Assistant persistent data |
+| `$OP_HOME/vault/user/` | `/etc/vault/` | rw | User secrets directory |
+| `$OP_HOME/data/assistant` | `/home/opencode/` | rw | Assistant persistent data |
 | `$OP_HOME/data/stash` | `/home/opencode/.akm` | rw | AKM stash |
 | `$OP_HOME/data/workspace` | `/work` | rw | Shared workspace |
 | `$OP_HOME/logs/opencode` | `/home/opencode/.local/state/opencode` | rw | OpenCode logs and local state |
@@ -144,7 +146,7 @@ Key env:
 Notes:
 
 - The assistant has no Docker socket mount.
-- The assistant only mounts `vault/user/user.env`, not the full `vault/` tree.
+- The assistant mounts `vault/user/` directory (rw) to `/etc/vault/`, not the full `vault/` tree.
 - The entrypoint starts as root only long enough to normalize permissions and optional SSH setup, then drops privileges.
 
 ### Guardian
@@ -176,12 +178,14 @@ Key env:
 | `OPENCODE_TIMEOUT_MS` | `0` | Guardian-side timeout override |
 | `ADMIN_TOKEN` | `${OP_ADMIN_TOKEN:-}` | Admin token forwarded from stack env |
 | `GUARDIAN_AUDIT_PATH` | `/app/audit/guardian-audit.log` | Audit log path |
-| `CHANNEL_<NAME>_SECRET` | `stack.env` | Channel HMAC verification secrets |
+| `GUARDIAN_SECRETS_PATH` | `/app/secrets/guardian.env` | Path to mounted guardian secrets for hot-reload |
+| `CHANNEL_<NAME>_SECRET` | `vault/stack/guardian.env` (via env_file) | Channel HMAC verification secrets |
 
 Notes:
 
 - Guardian is internal-only from the host perspective.
 - It is the only bridge between addon ingress networks and `assistant_net`.
+- Guardian loads `vault/stack/guardian.env` as a compose `env_file` for channel HMAC secrets. The same file is bind-mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload. Non-secret config (`OP_ADMIN_TOKEN`) is passed via `${VAR}` substitution in the compose `environment:` block.
 
 ### Scheduler
 
@@ -198,7 +202,7 @@ Ports and networks:
 | Item | Value |
 |---|---|
 | Container port | `8090` |
-| Host bind | `127.0.0.1:${OP_SCHEDULER_PORT:-3897}` |
+| Host bind | none |
 | Networks | `assistant_net` |
 
 Key env:
@@ -212,11 +216,12 @@ Key env:
 | `OPENCODE_API_URL` | `http://assistant:4096` | Assistant API URL |
 | `OPENCODE_SERVER_PASSWORD` | `${OP_OPENCODE_PASSWORD:-}` | Optional assistant auth wiring |
 | `MEMORY_API_URL` | `http://memory:8765` | Memory URL |
+| `MEMORY_AUTH_TOKEN` | `${OP_MEMORY_TOKEN:-}` | Memory API auth token |
 
 Notes:
 
 - Scheduler does not mount the Docker socket.
-- Scheduler is loopback-exposed on the host in the current compose file.
+- Scheduler has no host port; it is internal-only on `assistant_net`.
 
 ---
 
@@ -298,7 +303,7 @@ Key env:
 | `ollama` | `${OP_OLLAMA_BIND_ADDRESS:-127.0.0.1}:11434` | `11434` | `assistant_net` | Mounts `$OP_HOME/data/ollama:/root/.ollama` |
 | `openviking` | none | service-specific | `assistant_net` | Mounts `$OP_HOME/data/openviking:/workspace` |
 
-All shipped channel overlays depend on guardian and load both `stack.env` and `user.env` through Compose `env_file` entries.
+All shipped channel overlays depend on guardian and receive only their own HMAC secret via `${VAR}` substitution from `vault/stack/guardian.env` (passed as a compose `--env-file`).
 
 ---
 
@@ -353,4 +358,4 @@ Typical user-managed variables:
 - `GOOGLE_API_KEY`
 - provider/model selections used by assistant and memory integrations
 
-These are passed into containers either through Compose `env_file` loading or explicit service environment mappings.
+These are passed into containers through compose `${VAR}` substitution in service `environment:` blocks. Memory receives `OPENAI_API_KEY`, `OPENAI_BASE_URL`, etc. this way. Channels receive only their own HMAC secret via `${VAR}` substitution from `guardian.env`.

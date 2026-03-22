@@ -3,7 +3,7 @@
 # This file defines the core infrastructure. Addon services are added
 # via compose overlays in stack/addons/.
 #
-# Docker Compose reads variable values via --env-file vault/stack/stack.env --env-file vault/user/user.env.
+# Docker Compose reads variable values via --env-file vault/stack/stack.env --env-file vault/user/user.env --env-file vault/stack/guardian.env.
 #
 # Directory model (v0.10.0):
 #   ~/.openpalm/config/       — user-editable, non-secret configuration
@@ -75,8 +75,8 @@ services:
       - ${OP_HOME}/config:/etc/openpalm
       - ${OP_HOME}/config/assistant:/home/opencode/.config/opencode
       - ${OP_HOME}/vault/stack/auth.json:/home/opencode/.local/share/opencode/auth.json
-      - ${OP_HOME}/vault/user/user.env:/etc/openpalm-vault/user.env:ro
-      - ${OP_HOME}/data/assistant:/home/opencode/data
+      - ${OP_HOME}/vault/user:/etc/vault
+      - ${OP_HOME}/data/assistant:/home/opencode
       - ${OP_HOME}/data/stash:/home/opencode/.akm
       - ${OP_HOME}/data/workspace:/work
       - ${OP_HOME}/logs/opencode:/home/opencode/.local/state/opencode
@@ -103,7 +103,7 @@ services:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:
-      - path: ${OP_HOME}/vault/stack/stack.env
+      - path: ${OP_HOME}/vault/stack/guardian.env
         required: false
     environment:
       HOME: /app/data
@@ -112,9 +112,11 @@ services:
       OPENCODE_TIMEOUT_MS: "0"
       OP_ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
       GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
+      GUARDIAN_SECRETS_PATH: /app/secrets/guardian.env
     volumes:
       - ${OP_HOME}/data/guardian:/app/data
       - ${OP_HOME}/logs:/app/audit
+      - ${OP_HOME}/vault/stack/guardian.env:/app/secrets/guardian.env:ro
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     networks: [ channel_lan, channel_public, assistant_net ]
     depends_on:
@@ -140,8 +142,7 @@ services:
       OPENCODE_API_URL: http://assistant:4096
       OPENCODE_SERVER_PASSWORD: ${OP_OPENCODE_PASSWORD:-}
       MEMORY_API_URL: http://memory:8765
-    ports:
-      - "127.0.0.1:${OP_SCHEDULER_PORT:-3897}:8090"
+      MEMORY_AUTH_TOKEN: ${OP_MEMORY_TOKEN:-}
     volumes:
       - ${OP_HOME}/config:/openpalm/config:ro
     networks: [ assistant_net ]

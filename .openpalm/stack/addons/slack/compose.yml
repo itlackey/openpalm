@@ -5,16 +5,12 @@ services:
   slack:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
-    env_file:
-      - path: ${OP_HOME}/vault/stack/stack.env
-        required: false
-      - path: ${OP_HOME}/vault/user/user.env
-        required: false
     environment:
       PORT: "8185"
       GUARDIAN_URL: http://guardian:8080
       CHANNEL_NAME: "Slack Bot"
       CHANNEL_PACKAGE: "@openpalm/channel-slack"
+      CHANNEL_SECRET: ${CHANNEL_SLACK_SECRET:-}
     networks: [channel_lan]
     depends_on:
       guardian:

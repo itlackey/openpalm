@@ -26,7 +26,8 @@ All persistent runtime state lives under `OP_HOME`, which defaults to `~/.openpa
 ├── stack/      live compose assembly
 ├── vault/      secrets boundary
 ├── data/       durable service data
-└── logs/       audit and debug logs
+├── logs/       audit and debug logs
+└── backups/    durable upgrade backup snapshots
 ```
 
 Ephemeral cache lives under `~/.cache/openpalm/`.
@@ -37,6 +38,7 @@ The standard startup path uses:
 
 - `vault/stack/stack.env`
 - `vault/user/user.env`
+- `vault/stack/guardian.env`
 
 Individual services may additionally load service-specific managed env files under `vault/stack/services/<service-name>/`. For example, the `memory` service may load:
 
@@ -73,7 +75,8 @@ Role:
 
 Env sources:
 
-- `stack.env`
+- `stack.env` (via compose ${VAR} substitution)
+- `user.env` (selected values via compose ${VAR} substitution: OPENAI_API_KEY, OPENAI_BASE_URL, etc.)
 - optional `vault/stack/services/memory/managed.env`
 
 Key env:
@@ -171,8 +174,9 @@ Role:
 
 Env sources:
 
-- `stack.env`
-- direct compose env
+- direct compose `environment:` block (non-secret config via ${VAR} substitution)
+- `vault/stack/guardian.env` as compose `env_file` (channel HMAC secrets)
+- same file mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload
 
 Key env:
 
@@ -248,6 +252,8 @@ Key env:
 - `OP_ADMIN_API_URL`
 - `MEMORY_API_URL=http://memory:8765`
 - `MEMORY_AUTH_TOKEN`
+- `OPENCODE_API_URL=http://assistant:4096`
+- `OPENCODE_SERVER_PASSWORD`
 
 Mounts:
 
@@ -255,6 +261,8 @@ Mounts:
 
 Ports and network:
 
+- host: none
+- container: 8090
 - network: `assistant_net`
 
 ---
@@ -330,7 +338,7 @@ Ports and network:
 
 Shipped channel-style addons follow the same basic pattern:
 
-- load `stack.env` and `user.env`
+- receive their channel HMAC secret via `${VAR}` substitution from `vault/stack/guardian.env` (passed as a compose `--env-file`)
 - join `channel_lan` by default (or `channel_public` for internet-facing channels once that network's access semantics are finalized)
 - depend on `guardian`
 - send signed traffic to guardian, not directly to assistant

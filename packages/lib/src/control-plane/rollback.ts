@@ -10,11 +10,12 @@ import { join, dirname } from "node:path";
 import type { ControlPlaneState } from "./types.js";
 import { resolveRollbackDir } from "./home.js";
 
-/** Files that are tracked for rollback (relative to homeDir). */
+/** Files that are tracked for rollback (relative to homeDir).
+ *  Only vault/stack/ files are included — vault/user/ and config/ are
+ *  user-owned and never overwritten by lifecycle operations. */
 const SNAPSHOT_FILES = [
-  "vault/user/user.env",
   "vault/stack/stack.env",
-  "config/stack.yaml",
+  "vault/stack/guardian.env",
 ];
 
 /**
