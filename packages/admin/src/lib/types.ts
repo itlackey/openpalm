@@ -55,10 +55,11 @@ export type MemoryConfig = {
     llm: { provider: string; config: Record<string, unknown> };
     embedder: { provider: string; config: Record<string, unknown> };
     vector_store: {
-      provider: "qdrant";
+      provider: "sqlite-vec" | "qdrant";
       config: {
         collection_name: string;
-        path: string;
+        db_path?: string;
+        path?: string;
         embedding_model_dims: number;
       };
     };

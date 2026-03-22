@@ -1,12 +1,4 @@
-/**
- * Instance lifecycle operations for the OpenPalm unified component system.
- *
- * Handles creation, configuration, listing, and deletion for component
- * instances under data/components/.
- *
- * All functions take openpalmHome as a parameter for testability.
- * Docker operations (compose up/down/stop) are the caller's responsibility.
- */
+/** Instance lifecycle — create, configure, list, delete component instances. */
 import {
   existsSync,
   mkdirSync,
@@ -34,28 +26,18 @@ import {
 
 const logger = createLogger("instance-lifecycle");
 
-// ── Path Helpers ───────────────────────────────────────────────────────
-
-/** Root directory for all component instances. */
 function componentsDir(openpalmHome: string): string {
   return join(openpalmHome, "data", "components");
 }
 
-/** Directory for a specific instance. */
 function instanceDir(openpalmHome: string, instanceId: string): string {
   return join(componentsDir(openpalmHome), instanceId);
 }
 
-/** Archive directory for deleted instances. */
 function archiveDir(openpalmHome: string): string {
   return join(openpalmHome, "data", "archived");
 }
 
-// ── Enabled Instance Persistence (delegates to components.ts) ─────────
-
-// ── .env.schema Parsing ────────────────────────────────────────────────
-
-/** A field definition extracted from an .env.schema file. */
 export type EnvSchemaField = {
   name: string;
   defaultValue: string;
@@ -65,15 +47,6 @@ export type EnvSchemaField = {
   section: string;
 };
 
-/**
- * Parse an .env.schema file and extract field definitions.
- *
- * Format:
- * - Lines starting with `#` are comments (look for `@required`, `@sensitive` annotations)
- * - Lines with `KEY=VALUE` are field definitions
- * - Section separators are `# ---` lines
- * - Section headers are comment lines immediately before a `# ---` separator
- */
 export function parseEnvSchema(schemaPath: string): EnvSchemaField[] {
   if (!existsSync(schemaPath)) return [];
 
@@ -153,12 +126,6 @@ export function parseEnvSchema(schemaPath: string): EnvSchemaField[] {
   return fields;
 }
 
-// ── Create Instance ────────────────────────────────────────────────────
-
-/**
- * Copy all files from a source directory to a destination directory.
- * Does not copy subdirectories — only top-level files.
- */
 function copyDirectoryFiles(srcDir: string, destDir: string): void {
   const entries = readdirSync(srcDir, { withFileTypes: true });
   for (const entry of entries) {
@@ -167,16 +134,6 @@ function copyDirectoryFiles(srcDir: string, destDir: string): void {
   }
 }
 
-/**
- * Create a new component instance.
- *
- * 1. Validate instance ID (valid format, not reserved, not already existing)
- * 2. Copy component source directory to data/components/{instanceId}/
- * 3. Write instance identity vars to .env (INSTANCE_ID, INSTANCE_DIR)
- * 4. Seed non-sensitive defaults from .env.schema
- * 5. Create data/ subdirectory for persistent volumes
- * 6. Add instance to enabled.json
- */
 export function createInstance(
   openpalmHome: string,
   componentDef: ComponentDefinition,
@@ -247,13 +204,6 @@ export function createInstance(
   return buildInstanceDetail(openpalmHome, instanceId, componentDef.id, true);
 }
 
-// ── Configure Instance ─────────────────────────────────────────────────
-
-/**
- * Update instance .env with user-provided values.
- * Non-sensitive fields are written directly. Identity vars (INSTANCE_ID,
- * INSTANCE_DIR) are preserved and cannot be overwritten.
- */
 export function configureInstance(
   openpalmHome: string,
   instanceId: string,
@@ -310,11 +260,6 @@ export function configureInstance(
   logger.info("configured instance", { instanceId, keys: Object.keys(values) });
 }
 
-// ── Get Instance Detail ────────────────────────────────────────────────
-
-/**
- * Build an InstanceDetail from an instance directory.
- */
 function buildInstanceDetail(
   openpalmHome: string,
   instanceId: string,
@@ -337,10 +282,6 @@ function buildInstanceDetail(
   };
 }
 
-/**
- * Get full details of an instance including paths and status.
- * Returns null if the instance doesn't exist.
- */
 export function getInstanceDetail(
   openpalmHome: string,
   instanceId: string
@@ -359,12 +300,6 @@ export function getInstanceDetail(
   return buildInstanceDetail(openpalmHome, instanceId, component, enabled);
 }
 
-// ── List Instances ─────────────────────────────────────────────────────
-
-/**
- * List all instances with their details.
- * Combines enabled.json data with filesystem discovery.
- */
 export function listInstances(openpalmHome: string): InstanceDetail[] {
   const compDir = componentsDir(openpalmHome);
   if (!existsSync(compDir)) return [];
@@ -398,14 +333,6 @@ export function listInstances(openpalmHome: string): InstanceDetail[] {
   return results;
 }
 
-// ── Delete / Archive Instance ──────────────────────────────────────────
-
-/**
- * Delete an instance: archive directory, remove from enabled.json.
- *
- * Note: Does NOT call docker compose stop — that's the caller's responsibility.
- * The caller should stop the container before calling this function.
- */
 export function deleteInstance(openpalmHome: string, instanceId: string): void {
   const instDir = instanceDir(openpalmHome, instanceId);
   if (!existsSync(instDir)) {

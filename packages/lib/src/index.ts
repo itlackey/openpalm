@@ -42,12 +42,8 @@ export {
 // ── Interfaces ──────────────────────────────────────────────────────────
 export type { RegistryProvider, RegistryComponentEntry } from "./control-plane/registry-provider.js";
 
-// ── Filesystem Providers ────────────────────────────────────────────────
-export { FilesystemRegistryProvider } from "./control-plane/fs-registry-provider.js";
-
 // ── Home Layout (v0.10.0) ───────────────────────────────────────────────
 export {
-  resolveHome,
   resolveOpenPalmHome,
   resolveConfigDir,
   resolveVaultDir,
@@ -56,9 +52,6 @@ export {
   resolveCacheHome,
   resolveRollbackDir,
   resolveRegistryCacheDir,
-  resolveStackDir,
-  resolveBackupsDir,
-  resolveWorkspaceDir,
   ensureHomeDirs,
 } from "./control-plane/home.js";
 
@@ -113,9 +106,6 @@ export {
   generateRedactSchema,
 } from "./control-plane/redact-schema.js";
 export {
-  generatePassSchema,
-} from "./control-plane/pass-schema.js";
-export {
   deriveComponentSecretRegistrations,
   registerComponentSensitiveFields,
   deregisterComponentSensitiveFields,
@@ -147,7 +137,6 @@ export type {
   Mem0ConnectionMapping,
 } from "./control-plane/connection-mapping.js";
 
-
 // ── Memory Config ───────────────────────────────────────────────────────
 export type {
   MemoryConfig,
@@ -163,7 +152,6 @@ export {
   readMemoryConfig,
   writeMemoryConfig,
   ensureMemoryConfig,
-  deriveMemoryConfig,
   resolveConfigForPush,
   checkVectorDimensions,
   resetVectorStore,
@@ -188,8 +176,6 @@ export {
 export {
   sha256,
   randomHex,
-  isOllamaEnabled,
-  isAdminEnabled,
   buildEnvFiles,
   discoverStackOverlays,
   resolveRuntimeFiles,
@@ -214,7 +200,6 @@ export {
 // ── Lifecycle ───────────────────────────────────────────────────────────
 export {
   createState,
-  writeSetupTokenFile,
   applyInstall,
   applyUpdate,
   applyUninstall,
@@ -283,12 +268,8 @@ export type {
   StackSpecStt,
   StackSpecReranker,
   StackSpecAddonValue,
-  StackSpecServiceValue,
 } from "./control-plane/stack-spec.js";
 export {
-  STACK_SPEC_FILENAME,
-  SPEC_DEFAULTS,
-  stackSpecPath,
   writeStackSpec,
   readStackSpec,
   updateCapability,
@@ -322,9 +303,6 @@ export {
   buildSecretsFromSetup,
   buildConnectionEnvVarMap,
   performSetup,
-  CHANNEL_CREDENTIAL_ENV_MAP,
-  buildChannelCredentialEnvVars,
-  buildChannelCredentialEnvVarsFromMap,
   buildSystemSecretsFromSetup,
 } from "./control-plane/setup.js";
 

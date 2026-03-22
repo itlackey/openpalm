@@ -1,9 +1,4 @@
-/**
- * Secrets and connection key management for the OpenPalm control plane.
- *
- * In v0.10.0, user secrets live in vault/user/user.env and system secrets
- * in vault/stack/stack.env. This module manages the user-editable vault file.
- */
+/** Secrets and connection key management. */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSync, rmSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createLogger } from "../logger.js";
@@ -14,7 +9,6 @@ import { resolveVaultDir, resolveConfigDir } from "./home.js";
 const OPENCODE_STARTER_CONFIG = JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2) + "\n";
 const logger = createLogger("secrets");
 
-// ── Connection Key Management ───────────────────────────────────────────
 
 export const ALLOWED_CONNECTION_KEYS = new Set([
   "OPENAI_API_KEY",
@@ -40,14 +34,12 @@ export const REQUIRED_LLM_PROVIDER_KEYS = [
   "EMBEDDING_API_KEY",
 ];
 
-/** Keys that are non-secret config — returned unmasked in connection responses. */
 export const PLAIN_CONFIG_KEYS = new Set([
   "OPENAI_BASE_URL",
   "OWNER_NAME",
   "OWNER_EMAIL",
 ]);
 
-// ── Secrets Management ──────────────────────────────────────────────────
 
 const VAULT_DIR_MODE = 0o700;
 const VAULT_FILE_MODE = 0o600;
@@ -124,9 +116,6 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
   mergeVaultEnvFile(systemEnvPath, updates, true);
 }
 
-/**
- * Ensure the vault/user/user.env file exists with defaults.
- */
 export function ensureSecrets(state: ControlPlaneState): void {
   enforceVaultDirMode(state.vaultDir);
   mkdirSync(`${state.vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
@@ -169,10 +158,6 @@ export function ensureSecrets(state: ControlPlaneState): void {
   ensureAuthJson(state.vaultDir);
 }
 
-/**
- * Ensure vault/stack/auth.json exists as a valid JSON file.
- * Docker creates it as a directory if it doesn't exist when volume-mounted.
- */
 function ensureAuthJson(vaultDir: string): void {
   const authJsonPath = `${vaultDir}/stack/auth.json`;
   mkdirSync(`${vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
@@ -264,7 +249,6 @@ export function patchSecretsEnvFile(
   writeVaultFile(userEnvPath, result);
 }
 
-// ── Connection Value Masking ────────────────────────────────────────────
 
 export function maskConnectionValue(key: string, value: string): string {
   if (!value) return "";
@@ -273,12 +257,6 @@ export function maskConnectionValue(key: string, value: string): string {
   return "*".repeat(value.length - 4) + value.slice(-4);
 }
 
-// ── Secrets Loading ────────────────────────────────────────────────────
-
-/**
- * Load secrets from vault/user/user.env.
- * Accepts vaultDir for explicit path, or resolves from home.ts.
- */
 export function loadSecretsEnvFile(vaultDir?: string): Record<string, string> {
   const base = vaultDir ?? resolveVaultDir();
   const parsed = parseEnvFile(`${base}/user/user.env`);
@@ -289,7 +267,6 @@ export function loadSecretsEnvFile(vaultDir?: string): Record<string, string> {
   return result;
 }
 
-// ── OpenCode Config ────────────────────────────────────────────────────
 
 export function ensureOpenCodeConfig(): void {
   const configDir = resolveConfigDir();

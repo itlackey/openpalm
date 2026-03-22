@@ -228,28 +228,4 @@ export async function parseJsonBody(
   }
 }
 
-type ParseResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; message: string };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function asNonEmptyString(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function asOptionalString(value: unknown): string | undefined {
-  if (value === undefined) return undefined;
-  return typeof value === "string" ? value : undefined;
-}
-
-function asPositiveInteger(value: unknown): number | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) return undefined;
-  return value;
-}
 

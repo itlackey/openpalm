@@ -1,13 +1,4 @@
-/**
- * Docker integration — executes real docker compose commands.
- *
- * This module shells out to `docker compose` for lifecycle operations.
- * Compose file lists are always provided explicitly by callers; there is
- * no default fallback to a config directory path.
- *
- * Security: All commands use execFile with argument arrays to prevent
- * command injection. No user input is ever interpolated into shell strings.
- */
+/** Docker integration — executes docker compose commands via execFile (no shell). */
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { parseEnvFile } from "./env.js";
@@ -18,9 +9,6 @@ export type DockerResult = {
   stderr: string;
   code: number;
 };
-
-// Re-export so callers that import from this module can use it directly.
-export { parseEnvFile };
 
 /** Execute docker with an argument array — no shell interpolation. */
 function run(
@@ -89,32 +77,20 @@ export async function checkDockerCompose(): Promise<DockerResult> {
   });
 }
 
-/**
- * Build the `-f file1 -f file2 ...` args for docker compose.
- * Returns a flat array like ["-f", "path1", "-f", "path2"].
- */
-function composeFileArgs(files: string[]): string[] {
-  return files.flatMap((f) => ["-f", f]);
-}
-
-/**
- * Append `--env-file <path>` args for each existing env file.
- * Files that do not exist are silently skipped.
- */
-function pushEnvFileArgs(args: string[], envFiles?: string[]): void {
-  for (const ef of envFiles ?? []) {
+/** Build common prefix: compose -f ... --project-name ... --env-file ... */
+function buildComposeArgs(options: { files: string[]; envFiles?: string[] }): string[] {
+  const args = ["compose", ...options.files.flatMap((f) => ["-f", f]), "--project-name", resolveComposeProjectName()];
+  for (const ef of options.envFiles ?? []) {
     if (existsSync(ef)) args.push("--env-file", ef);
   }
+  return args;
 }
 
-/**
- * Build the common prefix args for all docker compose commands:
- *   docker compose -f <file> ... --project-name <name> [--env-file ...]
- */
-function buildComposeArgs(options: { files: string[]; envFiles?: string[] }): string[] {
-  const args = ["compose", ...composeFileArgs(options.files), "--project-name", resolveComposeProjectName()];
-  pushEnvFileArgs(args, options.envFiles);
-  return args;
+/** Merge all env files into a single overrides object for process env. */
+function collectEnvOverrides(envFiles?: string[]): Record<string, string> {
+  const overrides: Record<string, string> = {};
+  for (const ef of envFiles ?? []) Object.assign(overrides, parseEnvFile(ef));
+  return overrides;
 }
 
 /**
@@ -126,37 +102,17 @@ export async function composePreflight(
 ): Promise<DockerResult> {
   const args = buildComposeArgs(options);
   args.push("config", "--quiet");
-
-  const envOverrides: Record<string, string> = {};
-  for (const ef of options.envFiles ?? []) {
-    Object.assign(envOverrides, parseEnvFile(ef));
-  }
-
-  return run(args, undefined, 30_000, envOverrides);
+  return run(args, undefined, 30_000, collectEnvOverrides(options.envFiles));
 }
 
-/**
- * Run `docker compose config --services` to get the resolved service list.
- * Use this instead of filename-derived service inference.
- */
 export async function composeConfigServices(
   options: { files: string[]; envFiles?: string[] }
 ): Promise<{ ok: boolean; services: string[] }> {
   const args = buildComposeArgs(options);
   args.push("config", "--services");
-
-  const envOverrides: Record<string, string> = {};
-  for (const ef of options.envFiles ?? []) {
-    Object.assign(envOverrides, parseEnvFile(ef));
-  }
-
-  const result = await run(args, undefined, 30_000, envOverrides);
+  const result = await run(args, undefined, 30_000, collectEnvOverrides(options.envFiles));
   if (!result.ok) return { ok: false, services: [] };
-
-  const services = result.stdout
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const services = result.stdout.split("\n").map((s) => s.trim()).filter(Boolean);
   return { ok: true, services };
 }
 
@@ -174,48 +130,16 @@ export async function composeUp(
     removeOrphans?: boolean;
   }
 ): Promise<DockerResult> {
-  const primaryFile = options.files[0];
-  if (!existsSync(primaryFile)) {
-    return {
-      ok: false,
-      stdout: "",
-      stderr: "Compose file not found",
-      code: 1
-    };
+  if (!existsSync(options.files[0])) {
+    return { ok: false, stdout: "", stderr: "Compose file not found", code: 1 };
   }
-
   const args = buildComposeArgs(options);
-
-  if (options.profiles) {
-    for (const p of options.profiles) {
-      args.push("--profile", p);
-    }
-  }
-
+  for (const p of options.profiles ?? []) args.push("--profile", p);
   args.push("up", "-d");
-
-  if (options.forceRecreate) {
-    args.push("--force-recreate");
-  }
-
-  if (options.removeOrphans) {
-    args.push("--remove-orphans");
-  }
-
-  if (options.services && options.services.length > 0) {
-    args.push(...options.services);
-  }
-
-  // Merge env file values into the process environment so Docker Compose
-  // resolves ${VAR} from fresh env files, not stale admin process env.
-  // Process env takes precedence over --env-file in Docker Compose,
-  // so we must override it explicitly.
-  const envOverrides: Record<string, string> = {};
-  for (const ef of options.envFiles ?? []) {
-    Object.assign(envOverrides, parseEnvFile(ef));
-  }
-
-  return run(args, undefined, 300_000, envOverrides);
+  if (options.forceRecreate) args.push("--force-recreate");
+  if (options.removeOrphans) args.push("--remove-orphans");
+  if (options.services?.length) args.push(...options.services);
+  return run(args, undefined, 300_000, collectEnvOverrides(options.envFiles));
 }
 
 /**
@@ -229,30 +153,13 @@ export async function composeDown(
     envFiles?: string[];
   }
 ): Promise<DockerResult> {
-  const primaryFile = options.files[0];
-  if (!existsSync(primaryFile)) {
-    return {
-      ok: false,
-      stdout: "",
-      stderr: "Compose file not found",
-      code: 1
-    };
+  if (!existsSync(options.files[0])) {
+    return { ok: false, stdout: "", stderr: "Compose file not found", code: 1 };
   }
-
   const args = buildComposeArgs(options);
-
-  if (options.profiles) {
-    for (const p of options.profiles) {
-      args.push("--profile", p);
-    }
-  }
-
+  for (const p of options.profiles ?? []) args.push("--profile", p);
   args.push("down");
-
-  if (options.removeVolumes) {
-    args.push("-v");
-  }
-
+  if (options.removeVolumes) args.push("-v");
   return run(args, undefined);
 }
 
@@ -364,30 +271,15 @@ export async function composePullService(
 ): Promise<DockerResult> {
   const args = buildComposeArgs(options);
   args.push("pull", service);
-
-  const envOverrides: Record<string, string> = {};
-  for (const ef of options.envFiles ?? []) {
-    Object.assign(envOverrides, parseEnvFile(ef));
-  }
-
-  return run(args, undefined, 300_000, envOverrides);
+  return run(args, undefined, 300_000, collectEnvOverrides(options.envFiles));
 }
 
-/**
- * Pull latest images for all services.
- */
 export async function composePull(
   options: { files: string[]; envFiles?: string[] }
 ): Promise<DockerResult> {
   const args = buildComposeArgs(options);
   args.push("pull");
-
-  const envOverrides: Record<string, string> = {};
-  for (const ef of options.envFiles ?? []) {
-    Object.assign(envOverrides, parseEnvFile(ef));
-  }
-
-  return run(args, undefined, 300_000, envOverrides);
+  return run(args, undefined, 300_000, collectEnvOverrides(options.envFiles));
 }
 
 /**
@@ -428,17 +320,11 @@ export function selfRecreateAdmin(
 ): void {
   const args = buildComposeArgs(options);
   args.push("--profile", "admin", "up", "-d", "--force-recreate", "--remove-orphans", "admin");
-
-  const envOverrides: Record<string, string> = {};
-  for (const ef of options.envFiles ?? []) {
-    Object.assign(envOverrides, parseEnvFile(ef));
-  }
-
   try {
     const child = spawn("docker", args, {
       stdio: "ignore",
       detached: true,
-      env: { ...process.env, ...envOverrides }
+      env: { ...process.env, ...collectEnvOverrides(options.envFiles) }
     });
     child.on("error", (err) => {
       console.error("[selfRecreateAdmin] spawn error:", err.message);

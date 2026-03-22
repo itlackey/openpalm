@@ -188,16 +188,12 @@ describe('install --file', () => {
     expect((err as Error).message).toContain('Failed to parse setup config');
   });
 
-  it('--file config.json with version: 1 migrates and calls performSetup', async () => {
+  it('--file config.json with version: 1 rejects v1 format', async () => {
     const { bootstrapInstall } = await import('./install.ts');
     const configPath = join(tempBase, 'config.json');
     const config = makeValidSetupConfig();
     writeFileSync(configPath, JSON.stringify(config));
 
-    // This will call performSetup after migrating v1 -> SetupSpec.
-    // The function will fail at staging since we don't have the full
-    // filesystem setup, but the important thing is it reaches the right
-    // code path (version 1 -> migrateSetupConfigToSetupSpec -> performSetup).
     const err = await bootstrapInstall({
       force: true,
       version: 'main',
@@ -206,18 +202,11 @@ describe('install --file', () => {
       file: configPath,
     }).catch((e: unknown) => e);
 
-    // If setup fails it will throw "Setup failed: ..." — but NOT
-    // "Unsupported config file format" or "Failed to parse" which
-    // confirms the JSON was parsed and routed correctly.
-    if (err) {
-      expect((err as Error).message).not.toContain('Unsupported config file format');
-      expect((err as Error).message).not.toContain('Failed to parse');
-      // It may fail with "Setup failed" due to missing filesystem state
-      // or it may succeed; either is acceptable for this routing test.
-    }
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain('v1 setup config format is no longer supported');
   });
 
-  it('--file setup.yaml with valid YAML is parsed correctly', async () => {
+  it('--file setup.yaml with v1 YAML rejects v1 format', async () => {
     const { bootstrapInstall } = await import('./install.ts');
     const yamlPath = join(tempBase, 'setup.yaml');
     const yamlContent = [
@@ -248,11 +237,8 @@ describe('install --file', () => {
       file: yamlPath,
     }).catch((e: unknown) => e);
 
-    // If it gets past parsing, it will NOT throw a parse error.
-    if (err) {
-      expect((err as Error).message).not.toContain('Unsupported config file format');
-      expect((err as Error).message).not.toContain('Failed to parse');
-    }
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain('v1 setup config format is no longer supported');
   });
 
   it('--file config.json --no-start exits after setup without compose up', async () => {

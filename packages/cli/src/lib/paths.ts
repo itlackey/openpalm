@@ -9,8 +9,6 @@ import {
   resolveDataDir,
   resolveVaultDir,
   resolveOpenPalmHome,
-  resolveLogsDir,
-  resolveCacheHome,
 } from '@openpalm/lib';
 
 export const IS_WINDOWS = process.platform === 'win32';
@@ -20,8 +18,6 @@ export { resolveConfigDir as defaultConfigDir };
 export { resolveDataDir as defaultDataDir };
 export { resolveVaultDir as defaultVaultDir };
 export { resolveOpenPalmHome as defaultHomeDir };
-export { resolveLogsDir as defaultLogsDir };
-export { resolveCacheHome as defaultCacheDir };
 
 
 // CLI-specific paths (not in lib)

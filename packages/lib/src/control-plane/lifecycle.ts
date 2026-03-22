@@ -1,9 +1,4 @@
-/**
- * Lifecycle helpers for the OpenPalm control plane.
- *
- * State factory, apply* lifecycle transitions, compose file list builders,
- * and caller normalization.
- */
+/** Lifecycle helpers — state factory, apply transitions, compose file list. */
 import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
 import { parseEnvFile, mergeEnvContent } from "./env.js";
 import type { ControlPlaneState, CallerType } from "./types.js";
@@ -33,7 +28,6 @@ import { checkDocker, composePreflight, composeConfigServices, resolveComposePro
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 
-// ── State Factory ──────────────────────────────────────────────────────
 
 export function createState(
   adminToken?: string
@@ -88,9 +82,6 @@ export function createState(
   return bootstrapState;
 }
 
-/**
- * Write or remove the setup-token.txt file based on setup completion state.
- */
 export function writeSetupTokenFile(state: ControlPlaneState): void {
   const tokenPath = `${state.dataDir}/setup-token.txt`;
   const setupComplete = isSetupComplete(state.vaultDir);
@@ -103,9 +94,6 @@ export function writeSetupTokenFile(state: ControlPlaneState): void {
   }
 }
 
-// ── Private Loaders ───────────────────────────────────────────────────
-
-// ── Lifecycle Helpers ──────────────────────────────────────────────────
 
 async function reconcileCore(
   state: ControlPlaneState,
@@ -245,16 +233,6 @@ export async function applyUpgrade(
   return { backupDir, updated, restarted };
 }
 
-// ── Compose File List Builder ────────────────────────────────────────────
-
-/**
- * Build the compose file list from stack/.
- * Returns: [stack/core.compose.yml, stack/addons/{name}/compose.yml]
- * filtered by enabled addons in stack.yaml.
- *
- * stack.yaml is optional metadata that determines which addon overlays
- * are included. The resulting file list is deployment truth.
- */
 export function buildComposeFileList(state: ControlPlaneState): string[] {
   const stackDir = `${state.homeDir}/stack`;
   const coreYml = `${stackDir}/core.compose.yml`;
@@ -277,13 +255,6 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
   return files;
 }
 
-/**
- * Build the list of services managed by the stack.
- *
- * Uses `docker compose config --services` (compose-derived) when Docker
- * is available. Falls back to CORE_SERVICES + stack.yaml addons when
- * Docker is unavailable (e.g., during offline config generation).
- */
 export async function buildManagedServices(state: ControlPlaneState): Promise<string[]> {
   const files = buildComposeFileList(state);
   const envFiles = buildEnvFiles(state);
@@ -305,7 +276,6 @@ export async function buildManagedServices(state: ControlPlaneState): Promise<st
   return services;
 }
 
-// ── Caller Normalization ───────────────────────────────────────────────
 
 const VALID_CALLERS = new Set<CallerType>([
   "assistant",

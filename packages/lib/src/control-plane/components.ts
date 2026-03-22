@@ -1,18 +1,4 @@
-/**
- * Unified component system for the OpenPalm control plane.
- *
- * A component is a directory containing compose.yml + .env.schema.
- * Components are discovered from two catalog sources (built-in, registry)
- * and instantiated into data/components/ when enabled.
- *
- * This module provides:
- * - Component types and constants
- * - Discovery across catalog sources
- * - Compose label parsing
- * - Instance ID validation
- * - Enabled instance persistence
- * - Compose overlay assembly
- */
+/** Unified component system — discovery, instances, compose overlay assembly. */
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
@@ -21,9 +7,6 @@ import { createLogger } from "../logger.js";
 
 const logger = createLogger("components");
 
-// ── Types ──────────────────────────────────────────────────────────────
-
-/** A component definition from any catalog source */
 export type ComponentDefinition = {
   id: string;                    // directory name (e.g., "discord")
   source: ComponentSource;       // where it came from
@@ -64,21 +47,11 @@ export type InstanceDetail = EnabledInstance & {
   status: InstanceStatus;
 };
 
-// ── Constants ──────────────────────────────────────────────────────────
-
-/** Strict instance ID: lowercase alphanumeric + hyphens, 1-63 chars, starts with alnum */
 const INSTANCE_ID_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
-
-/**
- * Reserved names that cannot be used as instance IDs.
- * Derived from the canonical CORE_SERVICES + OPTIONAL_SERVICES lists in types.ts.
- */
 const RESERVED_NAMES = new Set<string>([
   ...CORE_SERVICES,
   ...OPTIONAL_SERVICES,
 ]);
-
-// ── Instance ID Validation ─────────────────────────────────────────────
 
 export function isValidInstanceId(id: string): boolean {
   return INSTANCE_ID_RE.test(id);
@@ -88,49 +61,19 @@ export function isReservedName(id: string): boolean {
   return RESERVED_NAMES.has(id);
 }
 
-// ── YAML Parsing Helpers ──────────────────────────────────────────────
-
-/**
- * Parse a compose YAML file into a document object.
- * Returns null on any parse error.
- */
-function parseComposeYaml(
-  composePath: string
-): Record<string, unknown> | null {
+/** Parse openpalm.* labels from a compose.yml file. Exported for testing. */
+export function parseComposeLabels(composePath: string): ComponentLabels | null {
   if (!existsSync(composePath)) return null;
-
-  let content: string;
-  try {
-    content = readFileSync(composePath, "utf-8");
-  } catch {
-    return null;
-  }
-
   let doc: unknown;
   try {
-    doc = yamlParse(content);
+    doc = yamlParse(readFileSync(composePath, "utf-8"));
   } catch {
     return null;
   }
-
   if (typeof doc !== "object" || doc === null) return null;
-  return doc as Record<string, unknown>;
-}
+  const docObj = doc as Record<string, unknown>;
 
-// ── Label Parsing ──────────────────────────────────────────────────────
-
-/**
- * Parse openpalm.* labels from a compose.yml file.
- * Returns labels from the first service that has them.
- *
- * Exported for direct testing; not part of the public barrel API.
- * Runtime consumers should use discoverComponents() instead.
- */
-export function parseComposeLabels(composePath: string): ComponentLabels | null {
-  const doc = parseComposeYaml(composePath);
-  if (!doc) return null;
-
-  const services = doc.services;
+  const services = docObj.services;
   if (typeof services !== "object" || services === null) return null;
 
   const serviceMap = services as Record<string, unknown>;
@@ -184,12 +127,6 @@ export function parseComposeLabels(composePath: string): ComponentLabels | null 
   return null;
 }
 
-// ── Component Discovery ────────────────────────────────────────────────
-
-/**
- * Scan a directory for component subdirectories.
- * A valid component directory contains both compose.yml and .env.schema.
- */
 function scanComponentDir(
   dir: string,
   source: ComponentSource
@@ -239,14 +176,7 @@ function scanComponentDir(
   return components;
 }
 
-/**
- * Discover available components from all catalog sources.
- * Priority: registry > built-in (by directory name).
- *
- * @param openpalmHome - The OP_HOME root (e.g., ~/.openpalm)
- * @param builtinDir - Optional path to built-in components directory (e.g., packages/lib/assets/components/).
- *   When omitted, no built-in components are included in the discovery results.
- */
+/** Discover available components. Priority: registry > built-in. */
 export function discoverComponents(
   openpalmHome: string,
   builtinDir?: string
@@ -272,13 +202,9 @@ export function discoverComponents(
   return Array.from(byId.values());
 }
 
-// ── Enabled Instance File Format ───────────────────────────────────────
-
 type EnabledInstancesFile = {
   instances: EnabledInstance[];
 };
-
-// ── Path Helpers ───────────────────────────────────────────────────────
 
 function componentsDataDir(openpalmHome: string): string {
   return join(openpalmHome, "data", "components");
@@ -288,12 +214,6 @@ function enabledFilePath(openpalmHome: string): string {
   return join(componentsDataDir(openpalmHome), "enabled.json");
 }
 
-// ── Presence-Based Fallback ────────────────────────────────────────────
-
-/**
- * Scan data/components/ for directories containing a .env file.
- * Used as fallback when enabled.json is missing or corrupted.
- */
 function discoverInstancesByPresence(openpalmHome: string): EnabledInstance[] {
   const dir = componentsDataDir(openpalmHome);
   if (!existsSync(dir)) return [];
@@ -321,12 +241,6 @@ function discoverInstancesByPresence(openpalmHome: string): EnabledInstance[] {
   return instances;
 }
 
-// ── Enabled Instance Persistence ───────────────────────────────────────
-
-/**
- * Read enabled instances from data/components/enabled.json.
- * Falls back to presence-based discovery if file is missing/corrupted.
- */
 export function readEnabledInstances(openpalmHome: string): EnabledInstance[] {
   const filePath = enabledFilePath(openpalmHome);
 
@@ -353,10 +267,6 @@ export function readEnabledInstances(openpalmHome: string): EnabledInstance[] {
   }
 }
 
-/**
- * Write enabled instances to data/components/enabled.json.
- * Internal helper — used by addEnabledInstance and removeEnabledInstance.
- */
 function writeEnabledInstances(openpalmHome: string, instances: EnabledInstance[]): void {
   const dir = componentsDataDir(openpalmHome);
   mkdirSync(dir, { recursive: true });
@@ -366,10 +276,6 @@ function writeEnabledInstances(openpalmHome: string, instances: EnabledInstance[
   writeFileSync(filePath, JSON.stringify(data, null, 2) + "\n");
 }
 
-/**
- * Add an instance to enabled.json. Creates the file if missing.
- * Deduplicates by instance ID — if an instance with the same ID exists, it is replaced.
- */
 export function addEnabledInstance(openpalmHome: string, instance: EnabledInstance): void {
   const existing = readEnabledInstances(openpalmHome);
   const filtered = existing.filter((i) => i.id !== instance.id);
@@ -377,34 +283,13 @@ export function addEnabledInstance(openpalmHome: string, instance: EnabledInstan
   writeEnabledInstances(openpalmHome, filtered);
 }
 
-/**
- * Remove an instance from enabled.json by ID.
- * No-op if the instance is not found.
- */
 export function removeEnabledInstance(openpalmHome: string, instanceId: string): void {
   const existing = readEnabledInstances(openpalmHome);
   const filtered = existing.filter((i) => i.id !== instanceId);
   writeEnabledInstances(openpalmHome, filtered);
 }
 
-// ── Compose Overlay Assembly ───────────────────────────────────────────
-
-/**
- * Build the complete docker compose args for the stack, including all enabled
- * component instance overlays.
- *
- * Callers should supply `coreFiles` and `coreEnvFiles` from the canonical
- * resolvers (`buildComposeFileList` / `buildEnvFiles` in lifecycle.ts) so that
- * the core compose + env logic is not duplicated here. When those options are
- * omitted the function falls back to direct vault path inference (e.g. when
- * a ControlPlaneState is not available to the caller).
- *
- * Order:
- *   1. --env-file for each canonical env file (or vault fallback)
- *   2. -f for each canonical compose file (or stack/core.compose.yml + optional admin fallback)
- *   3. For each enabled instance: -f data/components/{id}/compose.yml
- *      [--env-file data/components/{id}/.env]
- */
+/** Build compose args: core env files + core compose files + enabled instance overlays. */
 export function buildComponentComposeArgs(openpalmHome: string, options: {
   /** Canonical compose files from buildComposeFileList() — required. */
   coreFiles: string[];

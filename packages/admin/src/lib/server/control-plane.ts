@@ -118,7 +118,6 @@ export {
 export {
   sha256,
   randomHex,
-  isOllamaEnabled,
   buildEnvFiles,
   discoverStackOverlays,
   buildRuntimeFileMeta,

@@ -6,7 +6,6 @@
  * the rollback module (snapshot to ~/.cache/openpalm/rollback/).
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
@@ -14,7 +13,6 @@ import { discoverChannels } from "./channels.js";
 import { readStackSpec, hasAddon } from "./stack-spec.js";
 import { writeManagedEnvFiles } from "./spec-to-env.js";
 
-import { parseAutomationYaml } from "./scheduler.js";
 import { generateRedactSchema } from "./redact-schema.js";
 import { readSystemSecretsEnvFile } from "./secrets.js";
 import {
@@ -176,22 +174,6 @@ export function discoverStackOverlays(stackDir: string): string[] {
   }
 
   return files;
-}
-
-// ── Automation Management ────────────────────────────────────────────
-
-const AUTOMATION_FILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}\.yml$/;
-
-function discoverAutomationFiles(dir: string): { name: string; path: string }[] {
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && !entry.name.startsWith("."))
-    .map((entry) => ({ name: entry.name, path: join(dir, entry.name) }))
-    .filter((entry) => AUTOMATION_FILE_NAME_RE.test(entry.name));
-}
-
-function validateAutomationContent(content: string, fileName: string): boolean {
-  return parseAutomationYaml(content, fileName) !== null;
 }
 
 // ── Top-Level Operations ─────────────────────────────────────────────

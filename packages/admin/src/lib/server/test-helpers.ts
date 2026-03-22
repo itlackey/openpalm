@@ -17,17 +17,6 @@ export function makeTempDir(): string {
   return dir;
 }
 
-export function seedConfigChannels(
-  configDir: string,
-  channels: { name: string; yml: string }[]
-): void {
-  const componentsDir = join(configDir, "components");
-  mkdirSync(componentsDir, { recursive: true });
-  for (const ch of channels) {
-    writeFileSync(join(componentsDir, `channel-${ch.name}.yml`), ch.yml);
-  }
-}
-
 export function seedSecretsEnv(vaultDir: string, content: string): void {
   mkdirSync(join(vaultDir, "user"), { recursive: true });
   writeFileSync(join(vaultDir, "user", "user.env"), content);
