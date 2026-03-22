@@ -71,9 +71,9 @@ RUN pip install --break-system-packages azure-cli huggingface-hub[cli] apprise
 RUN HOME=/usr/local curl -fsSL https://opencode.ai/install | HOME=/usr/local bash -s -- --no-modify-path --version "$OPENCODE_VERSION"
 ENV PATH="/home/opencode/.local/bin:/usr/local/.opencode/bin:$PATH"
 
-RUN mkdir -p /home/opencode/.cache /work /stash \
-    && chmod 777 /home/opencode /home/opencode/.cache /stash \
-    && chown node:node /home/opencode /home/opencode/.cache /work /stash \
+RUN mkdir -p /home/opencode/.cache /work /home/opencode/.akm \
+    && chmod 777 /home/opencode /home/opencode/.cache /home/opencode/.akm \
+    && chown node:node /home/opencode /home/opencode/.cache /work /home/opencode/.akm \
     && sed -i 's@^#\?PasswordAuthentication .*@PasswordAuthentication no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config

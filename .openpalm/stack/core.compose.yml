@@ -145,6 +145,8 @@ services:
       MEMORY_AUTH_TOKEN: ${OP_MEMORY_TOKEN:-}
     volumes:
       - ${OP_HOME}/config:/openpalm/config:ro
+      - ${OP_HOME}/logs:/openpalm/logs
+      - ${OP_HOME}/data:/openpalm/data
     networks: [ assistant_net ]
     depends_on:
       assistant:

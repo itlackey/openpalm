@@ -30,7 +30,7 @@ The memory API is exposed on `http://localhost:3898` by default and listens on c
 - Model weights
 
 Secrets such as `OPENAI_API_KEY` live in `~/.openpalm/vault/user/user.env`.
-Service auth such as `MEMORY_AUTH_TOKEN` lives in `~/.openpalm/vault/stack/stack.env`.
+Service auth such as `OP_MEMORY_TOKEN` lives in `~/.openpalm/vault/stack/stack.env` (exposed to the container as `MEMORY_AUTH_TOKEN`).
 
 ## External service calls
 
@@ -44,7 +44,7 @@ If they point to remote APIs, submitted fact text and search queries leave your 
 
 ## Viewing stored memories
 
-The memory API requires `Authorization: Bearer $MEMORY_AUTH_TOKEN`.
+The memory API requires `Authorization: Bearer <token>`, where the token value is `OP_MEMORY_TOKEN` from `~/.openpalm/vault/stack/stack.env`.
 
 ```bash
 curl -X POST http://localhost:3898/api/v1/memories/filter \

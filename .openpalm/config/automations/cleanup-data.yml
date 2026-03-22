@@ -22,7 +22,7 @@ action:
       DATA_DIR="${OP_HOME:?OP_HOME is required}/data"
 
       # Compact SQLite memory database if it exists
-      DB="$DATA_DIR/memory/memories.db"
+      DB="$DATA_DIR/memory/memory.db"
       if [ -f "$DB" ]; then
         sqlite3 "$DB" "VACUUM;" 2>/dev/null || true
       fi

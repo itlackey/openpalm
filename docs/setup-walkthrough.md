@@ -92,7 +92,7 @@ Completed dots turn green with a checkmark. You can click any completed dot to j
 
 **Common mistakes:**
 - Using a short or trivial admin token. This token is the only thing protecting your admin console. Use something strong.
-- Forgetting to save the admin token. There is no "forgot password" flow -- you would need to edit `vault/user/user.env` manually.
+- Forgetting to save the admin token. There is no "forgot password" flow -- you would need to edit `OP_ADMIN_TOKEN` in `vault/stack/stack.env` manually.
 
 ---
 
@@ -752,7 +752,7 @@ The error card includes:
 | Error | Likely cause | Fix |
 |-------|-------------|-----|
 | "Docker is not available" | Docker daemon stopped | Start Docker, then Try Again |
-| "Error mounting..." | Stale mount paths from previous failed run | Reset dev environment or remove ~/.openpalm/ |
+| "Error mounting..." | Stale mount paths from previous failed run | Remove the stale mount directory under `~/.openpalm/stack/`, or back up `~/.openpalm/vault/` and `~/.openpalm/data/` first if you need to remove the entire `~/.openpalm/` directory |
 | Network/timeout errors | Slow internet or unreachable registry | Wait and Try Again, or check network |
 
 ---

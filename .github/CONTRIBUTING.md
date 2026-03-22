@@ -47,7 +47,7 @@ bun run check            # admin:check + sdk:test
 
 `dev:stack` pulls pre-built images from the registry — use it for quick starts and testing admin apply flows. `dev:build` compiles all images from local source using `compose.dev.yaml` — use it when developing services or testing Dockerfile changes.
 
-`dev-setup.sh --seed-env` seeds `.dev/vault/user.env` and `.dev/vault/system.env` and sets the `OP_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
+`dev-setup.sh --seed-env` seeds `.dev/vault/user/user.env` and `.dev/vault/stack/stack.env` and sets the `OP_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
 
 ## 1. Clone and bootstrap
 
@@ -61,7 +61,7 @@ bun run dev:setup      # Creates .dev/ dirs, seeds vault env files
 `dev:setup` runs [`scripts/dev-setup.sh --seed-env`](../scripts/dev-setup.sh), which:
 
 - Creates the `.dev/config`, `.dev/vault`, `.dev/data`, and `.dev/state` directories
-- Seeds `.dev/vault/user.env` and `.dev/vault/system.env` with dev-safe defaults
+- Seeds `.dev/vault/user/user.env` and `.dev/vault/stack/stack.env` with dev-safe defaults
 
 After setup, edit `.dev/vault/user.env` to add your LLM provider keys.
 

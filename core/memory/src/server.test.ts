@@ -322,84 +322,8 @@ describe('error response safety', () => {
   });
 });
 
-// ── buildConfigFromEnv logic ─────────────────────────────────────────
-
-type MemoryConfig = {
-  llm?: { provider: string; config: Record<string, unknown> };
-  embedder?: { provider: string; config: Record<string, unknown> };
-  vectorStore?: { provider: string; config: Record<string, unknown> };
-  historyDbPath?: string | null;
-  customPrompt?: string;
-};
-
-/**
- * Standalone copy of buildConfigFromEnv for testing (avoids importing server.ts
- * which starts Bun.serve on import).
- */
-function buildConfigFromEnv(env: Record<string, string | undefined>): MemoryConfig | null {
-  const provider = env.SYSTEM_LLM_PROVIDER;
-  if (!provider) return null;
-
-  const model = env.SYSTEM_LLM_MODEL || undefined;
-  const baseUrl = env.SYSTEM_LLM_BASE_URL || undefined;
-  const embeddingModel = env.EMBEDDING_MODEL || undefined;
-  const embeddingDims = env.EMBEDDING_DIMS ? parseInt(env.EMBEDDING_DIMS, 10) : 1536;
-
-  const providerKeyName = `${provider.toUpperCase()}_API_KEY`;
-  const apiKey = env[providerKeyName] || env.OPENAI_API_KEY || undefined;
-
-  let llmBaseUrl = baseUrl;
-  if (!llmBaseUrl && provider === 'ollama') {
-    llmBaseUrl = 'http://host.docker.internal:11434';
-  }
-  if (!llmBaseUrl && env.OPENAI_BASE_URL) {
-    llmBaseUrl = env.OPENAI_BASE_URL;
-  }
-
-  let embedderProvider = provider;
-  if (embeddingModel) {
-    if (embeddingModel.startsWith('nomic-') || embeddingModel.includes('ollama')) {
-      embedderProvider = 'ollama';
-    }
-  }
-
-  const embedderKeyName = `${embedderProvider.toUpperCase()}_API_KEY`;
-  const embedderApiKey = env[embedderKeyName] || env.OPENAI_API_KEY || undefined;
-  let embedderBaseUrl: string | undefined;
-  if (embedderProvider === 'ollama') {
-    embedderBaseUrl = env.SYSTEM_LLM_BASE_URL || 'http://host.docker.internal:11434';
-  } else if (env.OPENAI_BASE_URL) {
-    embedderBaseUrl = env.OPENAI_BASE_URL;
-  }
-
-  return {
-    llm: {
-      provider,
-      config: {
-        model,
-        apiKey,
-        baseUrl: llmBaseUrl,
-      },
-    },
-    embedder: {
-      provider: embedderProvider,
-      config: {
-        model: embeddingModel,
-        apiKey: embedderApiKey,
-        baseUrl: embedderBaseUrl,
-        dimensions: embeddingDims,
-      },
-    },
-    vectorStore: {
-      provider: 'sqlite-vec',
-      config: {
-        collectionName: 'memory',
-        dimensions: embeddingDims,
-      },
-    },
-    historyDbPath: null,
-  };
-}
+// ── buildConfigFromEnv logic (imported from config.ts) ──────────────
+import { buildConfigFromEnv } from './config';
 
 describe('buildConfigFromEnv', () => {
   test('returns null when SYSTEM_LLM_PROVIDER is not set', () => {

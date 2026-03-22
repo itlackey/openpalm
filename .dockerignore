@@ -21,5 +21,8 @@ admin/node_modules
 guardian/node_modules
 admin/.svelte-kit
 admin/build
-**/*.md
 docs/
+*.md
+!core/**/*.md
+!packages/**/*.md
+!.openpalm/**/*.md

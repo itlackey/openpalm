@@ -85,7 +85,11 @@ jobs:
       - name: Validate Docker Compose manifests
         env:
           ADMIN_TOKEN: ci-placeholder
-        run: docker compose -f .openpalm/stack/core.compose.yml -f compose.dev.yaml config -q
+          OP_HOME: ${{ github.workspace }}/.op-home
+        run: |
+          set -euo pipefail
+          mkdir -p "${OP_HOME}/vault/stack" "${OP_HOME}/vault/user" "${OP_HOME}/data" "${OP_HOME}/config" "${OP_HOME}/logs" "${OP_HOME}/stack"
+          docker compose -f .openpalm/stack/core.compose.yml -f compose.dev.yaml config -q
 
       - name: Validate stack addons and catalog
         run: |

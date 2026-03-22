@@ -13,7 +13,7 @@ Containerized [OpenCode](https://opencode.ai) instance that is the AI brain of O
 
 The assistant is deliberately isolated:
 - No Docker socket mount
-- No host filesystem access beyond designated mounts (`DATA_HOME/assistant`, `CONFIG_HOME/assistant`, `DATA_HOME/opencode`, `STATE_HOME/opencode`, `OP_WORK_DIR`)
+- No host filesystem access beyond designated mounts (`$OP_HOME/data/assistant`, `$OP_HOME/config/assistant`, `$OP_HOME/data/workspace`, `$OP_HOME/vault/user/`, `$OP_HOME/logs/opencode`)
 - Admin API calls are HMAC-authenticated and allowlisted
 
 ## Plugin Architecture
@@ -52,6 +52,6 @@ See [`packages/assistant-tools/AGENTS.md`](../../packages/assistant-tools/AGENTS
 
 | Variable | Purpose |
 |---|---|
-| `OP_ADMIN_URL` | Admin API base URL |
+| `OP_ADMIN_API_URL` | Admin API base URL |
 | `OP_ASSISTANT_TOKEN` | Assistant token for Admin API authentication |
 | `OPENCODE_CONFIG_DIR` | System config directory (maps to `DATA_HOME/assistant`, mounted at `/etc/opencode`) |
