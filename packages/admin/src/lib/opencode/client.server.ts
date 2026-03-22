@@ -39,6 +39,15 @@ export async function proxyToOpenCode(
       const message = typeof (body as Record<string, unknown>).message === 'string'
         ? (body as Record<string, unknown>).message as string
         : `OpenCode returned ${res.status}`;
+      // Treat gateway errors as unavailable so callers can consistently degrade
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        return {
+          ok: false,
+          status: res.status,
+          code: 'opencode_unavailable',
+          message,
+        };
+      }
       return {
         ok: false,
         status: res.status >= 500 ? 502 : res.status,

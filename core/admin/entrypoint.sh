@@ -13,7 +13,9 @@ VARLOCK_SCHEMA_DIR="/app"
 OPENCODE_CFG="${OPENCODE_CONFIG_DIR:-/etc/opencode}/opencode.jsonc"
 if [ ! -f "$OPENCODE_CFG" ]; then
 	mkdir -p "$(dirname "$OPENCODE_CFG")" 2>/dev/null || true
-	cp /app/opencode.jsonc "$OPENCODE_CFG" 2>/dev/null || true
+	if ! cp /app/opencode.jsonc "$OPENCODE_CFG" 2>/dev/null; then
+		echo "WARN: failed to seed OpenCode config at $OPENCODE_CFG" >&2
+	fi
 fi
 
 # ── Varlock command prefix (runtime secret redaction) ─────────────────

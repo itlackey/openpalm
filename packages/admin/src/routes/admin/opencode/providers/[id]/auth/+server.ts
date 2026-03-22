@@ -69,6 +69,10 @@ function trimOAuthSessions(): void {
   }
 }
 
+// Periodic cleanup every 5 minutes to prevent unbounded growth if
+// requests stop arriving (purgeExpiredSessions only runs on demand).
+setInterval(purgeExpiredSessions, 300_000).unref?.();
+
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const authError = requireAdmin(event, requestId);

@@ -202,10 +202,14 @@ if [[ "$action" == "up" ]]; then
 	# Replace the trailing "up -d" with "config --quiet"
 	preflight_cmd=("${preflight_cmd[@]::${#preflight_cmd[@]}-2}")
 	preflight_cmd+=(config --quiet)
-	if ! "${preflight_cmd[@]}" 2>/dev/null; then
+	preflight_stderr=$(mktemp)
+	if ! "${preflight_cmd[@]}" 2>"$preflight_stderr"; then
 		echo "Error: compose preflight failed. Run with --dry-run to see the resolved command." >&2
+		cat "$preflight_stderr" >&2
+		rm -f "$preflight_stderr"
 		exit 1
 	fi
+	rm -f "$preflight_stderr"
 fi
 
 exec "${compose_cmd[@]}"

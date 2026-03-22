@@ -124,9 +124,14 @@
         },
         body: JSON.stringify({ model: selectedModel }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to save');
-      saveSuccess = data.message || 'Model updated';
+      let data: Record<string, unknown>;
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(`${res.status} ${res.statusText}`);
+      }
+      if (!res.ok) throw new Error((data.message as string) || 'Failed to save');
+      saveSuccess = (data.message as string) || 'Model updated';
       currentModel = selectedModel;
       clearCloseTimeout();
       closeTimeout = setTimeout(() => {

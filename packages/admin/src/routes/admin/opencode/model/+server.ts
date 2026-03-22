@@ -69,7 +69,10 @@ export const POST: RequestHandler = async (event) => {
     });
 
     if (!result.ok) {
-      if (result.code !== 'opencode_unavailable') {
+      // 4xx from OpenCode means the caller sent something invalid — surface it.
+      // 5xx / network failures are non-critical because config was already persisted;
+      // the container just needs a restart to pick up the change.
+      if (result.status >= 400 && result.status < 500) {
         return errorResponse(result.status, result.code, result.message, {}, requestId);
       }
 

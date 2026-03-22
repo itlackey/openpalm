@@ -92,14 +92,12 @@ describe('install --file', () => {
     savedEnv.OP_HOME = process.env.OP_HOME;
     savedEnv.OP_WORK_DIR = process.env.OP_WORK_DIR;
     savedEnv.OP_ADMIN_TOKEN = process.env.OP_ADMIN_TOKEN;
-    savedEnv.OP_ADMIN_TOKEN = process.env.OP_ADMIN_TOKEN;
     savedEnv.OP_SKIP_COMPOSE_PREFLIGHT = process.env.OP_SKIP_COMPOSE_PREFLIGHT;
 
     process.env.OP_HOME = homeDir;
     process.env.OP_WORK_DIR = workDir;
     // Skip compose preflight: Bun.spawn is mocked so execFile hangs waiting for null streams
     process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
-    delete process.env.OP_ADMIN_TOKEN;
     delete process.env.OP_ADMIN_TOKEN;
 
     mockDockerCli();
@@ -128,7 +126,6 @@ describe('install --file', () => {
     restoreDockerCli();
     process.env.OP_HOME = savedEnv.OP_HOME;
     process.env.OP_WORK_DIR = savedEnv.OP_WORK_DIR;
-    process.env.OP_ADMIN_TOKEN = savedEnv.OP_ADMIN_TOKEN;
     process.env.OP_ADMIN_TOKEN = savedEnv.OP_ADMIN_TOKEN;
     if (savedEnv.OP_SKIP_COMPOSE_PREFLIGHT !== undefined) {
       process.env.OP_SKIP_COMPOSE_PREFLIGHT = savedEnv.OP_SKIP_COMPOSE_PREFLIGHT;
