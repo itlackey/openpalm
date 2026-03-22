@@ -53,6 +53,7 @@ mkdir -p \
 	"$VAULT_DIR" "$VAULT_DIR/stack" "$VAULT_DIR/stack/addons" "$VAULT_DIR/user" \
 	"$VAULT_DIR/stack/services/memory" \
 	"$DATA_DIR/memory" "$DATA_DIR/assistant/.config/opencode" \
+	"$DATA_DIR/admin/.varlock" \
 	"$DATA_DIR/guardian" \
 	"$DATA_DIR/automations" "$DATA_DIR/models" "$DATA_DIR/stash" "$DATA_DIR/workspace" \
 	"$LOGS_DIR/opencode" \
