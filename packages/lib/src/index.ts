@@ -40,11 +40,9 @@ export {
 } from "./control-plane/types.js";
 
 // ── Interfaces ──────────────────────────────────────────────────────────
-export type { CoreAssetProvider } from "./control-plane/core-asset-provider.js";
 export type { RegistryProvider, RegistryComponentEntry } from "./control-plane/registry-provider.js";
 
 // ── Filesystem Providers ────────────────────────────────────────────────
-export { FilesystemAssetProvider } from "./control-plane/fs-asset-provider.js";
 export { FilesystemRegistryProvider } from "./control-plane/fs-registry-provider.js";
 
 // ── Home Layout (v0.10.0) ───────────────────────────────────────────────

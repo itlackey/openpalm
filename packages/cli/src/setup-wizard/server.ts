@@ -10,15 +10,12 @@
 import {
   type SetupSpec,
   type SetupResult,
-  type CoreAssetProvider,
   performSetup,
   detectLocalProviders,
   isSetupComplete,
   fetchProviderModels,
   resolveConfigDir,
   resolveVaultDir,
-  FilesystemAssetProvider,
-  resolveOpenPalmHome,
 } from "@openpalm/lib";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -95,17 +92,15 @@ export type SetupServer = {
  * Create and start the setup wizard HTTP server.
  *
  * @param port - Port to listen on (default 8100)
- * @param opts - Optional overrides for asset provider and config dir
+ * @param opts - Optional overrides for config dir
  */
 export function createSetupServer(
   port: number = 8100,
   opts?: {
-    assetProvider?: CoreAssetProvider;
     configDir?: string;
   }
 ): SetupServer {
   const configDir = opts?.configDir ?? resolveConfigDir();
-  const assetProvider = opts?.assetProvider ?? new FilesystemAssetProvider(resolveOpenPalmHome());
 
   // Mutable server state
   const state: SetupServerState = {
@@ -219,7 +214,7 @@ export function createSetupServer(
       const setupSpec = body as SetupSpec;
       let result: SetupResult;
       try {
-        result = await performSetup(setupSpec, assetProvider);
+        result = await performSetup(setupSpec);
       } catch (err) {
         return errorResponse(500, "setup_failed", String(err));
       }
@@ -289,7 +284,6 @@ export function createSetupServer(
 export async function waitForSetupComplete(
   port: number = 8100,
   opts?: {
-    assetProvider?: CoreAssetProvider;
     configDir?: string;
   }
 ): Promise<SetupResult> {

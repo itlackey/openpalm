@@ -6,7 +6,7 @@ import { defaultHomeDir, defaultConfigDir, defaultVaultDir, defaultDataDir, defa
 import { ensureSecrets, ensureStackEnv, resolveRequestedImageTag } from '../lib/env.ts';
 import { ensureDirectoryTree, fetchAsset, openBrowser } from '../lib/docker.ts';
 import {
-  ensureOpenCodeConfig, ensureOpenCodeSystemConfig, FilesystemAssetProvider,
+  ensureOpenCodeConfig, ensureOpenCodeSystemConfig,
   performSetup,
   type SetupSpec, type SetupResult,
   formatCapabilityString,
@@ -286,9 +286,8 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   await ensureStackEnv(homeDir, vaultDir, workDir, options.version, imageTag);
   // Seed OpenCode config — non-fatal since performSetup() also seeds these
   try {
-    const fsAssets = new FilesystemAssetProvider(homeDir);
     ensureOpenCodeConfig();
-    ensureOpenCodeSystemConfig(fsAssets);
+    ensureOpenCodeSystemConfig();
   } catch {
     // Assets may not be available yet on first install; performSetup() will retry
   }
@@ -359,7 +358,6 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
       throw new Error(`Failed to parse setup config '${options.file}': ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    const fsAssets = new FilesystemAssetProvider(homeDir);
     const config = parsed as Record<string, unknown>;
     let setupSpec: SetupSpec;
 
@@ -379,7 +377,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
       throw new Error(`Unsupported setup config version: ${config.version}. Use version 1 (legacy) or the new SetupSpec format.`);
     }
 
-    const result = await performSetup(setupSpec, fsAssets);
+    const result = await performSetup(setupSpec);
 
     if (!result.ok) throw new Error(`Setup failed: ${result.error}`);
     console.log('Setup complete.');

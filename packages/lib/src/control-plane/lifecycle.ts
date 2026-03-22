@@ -3,8 +3,6 @@
  *
  * State factory, apply* lifecycle transitions, compose file list builders,
  * and caller normalization.
- *
- * All asset operations are delegated via CoreAssetProvider (injected).
  */
 import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
 import { parseEnvFile, mergeEnvContent } from "./env.js";
@@ -31,7 +29,6 @@ import { ensureMemoryConfig } from "./memory-config.js";
 import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composeConfigServices, resolveComposeProjectName } from "./docker.js";
-import type { CoreAssetProvider } from "./core-asset-provider.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
@@ -112,14 +109,13 @@ export function writeSetupTokenFile(state: ControlPlaneState): void {
 
 async function reconcileCore(
   state: ControlPlaneState,
-  assets: CoreAssetProvider,
   opts: { activateServices?: boolean; deactivateServices?: boolean; seedMemoryConfig?: boolean },
 ): Promise<string[]> {
   if (opts.activateServices) {
     for (const s of CORE_SERVICES) state.services[s] = "running";
   }
   ensureMemoryDir();
-  ensureCoreAutomations(assets);
+  ensureCoreAutomations();
   if (opts.seedMemoryConfig) ensureMemoryConfig(state.dataDir);
 
   const active: string[] = [];
@@ -164,21 +160,21 @@ async function reconcileCore(
   snapshotCurrentState(state);
 
   // Resolve and write runtime files to live paths
-  state.artifacts = resolveRuntimeFiles(state, assets);
-  writeRuntimeFiles(state, assets);
+  state.artifacts = resolveRuntimeFiles(state);
+  writeRuntimeFiles(state);
   return active;
 }
 
-export async function applyInstall(state: ControlPlaneState, assets: CoreAssetProvider): Promise<void> {
-  await reconcileCore(state, assets, { activateServices: true, seedMemoryConfig: true });
+export async function applyInstall(state: ControlPlaneState): Promise<void> {
+  await reconcileCore(state, { activateServices: true, seedMemoryConfig: true });
 }
 
-export async function applyUpdate(state: ControlPlaneState, assets: CoreAssetProvider): Promise<{ restarted: string[] }> {
-  return { restarted: await reconcileCore(state, assets, {}) };
+export async function applyUpdate(state: ControlPlaneState): Promise<{ restarted: string[] }> {
+  return { restarted: await reconcileCore(state, {}) };
 }
 
-export async function applyUninstall(state: ControlPlaneState, assets: CoreAssetProvider): Promise<{ stopped: string[] }> {
-  return { stopped: await reconcileCore(state, assets, { deactivateServices: true }) };
+export async function applyUninstall(state: ControlPlaneState): Promise<{ stopped: string[] }> {
+  return { stopped: await reconcileCore(state, { deactivateServices: true }) };
 }
 
 type DockerTagEntry = { name?: unknown };
@@ -238,15 +234,14 @@ export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): 
 }
 
 export async function applyUpgrade(
-  state: ControlPlaneState,
-  assets: CoreAssetProvider
+  state: ControlPlaneState
 ): Promise<{
   backupDir: string | null;
   updated: string[];
   restarted: string[];
 }> {
   const { backupDir, updated } = await refreshCoreAssets();
-  const restarted = await reconcileCore(state, assets, {});
+  const restarted = await reconcileCore(state, {});
   return { backupDir, updated, restarted };
 }
 

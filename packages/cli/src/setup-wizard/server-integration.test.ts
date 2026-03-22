@@ -14,7 +14,6 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSetupServer } from "./server.ts";
-import type { CoreAssetProvider } from "@openpalm/lib";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -27,17 +26,19 @@ let logsDir: string;
 
 const savedEnv: Record<string, string | undefined> = {};
 
-function createStubAssetProvider(): CoreAssetProvider {
-  return {
-    coreCompose: () => "services:\n  assistant:\n    image: assistant:latest\n",
-    agentsMd: () => "# Agents\n",
-    opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
-    secretsSchema: () => "OP_ADMIN_TOKEN=string\n",
-    stackSchema: () => "OP_IMAGE_TAG=string\n",
-    cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
-    cleanupData: () => "name: cleanup-data\nschedule: weekly\n",
-    validateConfig: () => "name: validate-config\nschedule: hourly\n",
-  };
+/** Seed minimal asset files so performSetup() can read them at OP_HOME. */
+function seedRequiredAssets(homeDir: string): void {
+  mkdirSync(join(homeDir, "stack"), { recursive: true });
+  writeFileSync(join(homeDir, "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
+  mkdirSync(join(homeDir, "data", "assistant"), { recursive: true });
+  writeFileSync(join(homeDir, "data", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
+  writeFileSync(join(homeDir, "data", "assistant", "AGENTS.md"), "# Agents\n");
+  writeFileSync(join(homeDir, "vault", "user", "user.env.schema"), "OP_ADMIN_TOKEN=string\n");
+  writeFileSync(join(homeDir, "vault", "stack", "stack.env.schema"), "OP_IMAGE_TAG=string\n");
+  mkdirSync(join(homeDir, "config", "automations"), { recursive: true });
+  writeFileSync(join(homeDir, "config", "automations", "cleanup-logs.yml"), "name: cleanup-logs\nschedule: daily\n");
+  writeFileSync(join(homeDir, "config", "automations", "cleanup-data.yml"), "name: cleanup-data\nschedule: weekly\n");
+  writeFileSync(join(homeDir, "config", "automations", "validate-config.yml"), "name: validate-config\nschedule: hourly\n");
 }
 
 function makeSetupDirs(): void {
@@ -90,6 +91,9 @@ function makeSetupDirs(): void {
       "",
     ].join("\n")
   );
+
+  // Seed asset files for performSetup() reads
+  seedRequiredAssets(homeDir);
 }
 
 /** Check if Ollama is reachable before running integration tests. */
@@ -137,7 +141,6 @@ describe("setup wizard server integration", () => {
     }
 
     const { stop } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -165,7 +168,6 @@ describe("setup wizard server integration", () => {
 
   it("returns recoverable error for Ollama with empty baseUrl (default is docker-internal)", async () => {
     const { stop } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -207,7 +209,6 @@ describe("setup wizard server integration", () => {
     }
 
     const { stop, waitForComplete } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -288,7 +289,6 @@ describe("setup wizard server integration", () => {
 
   it("setup status returns true after successful completion", async () => {
     const { stop, waitForComplete } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -350,7 +350,6 @@ describe("setup wizard server integration", () => {
 
   it("deploy status transitions through pending -> running via markAllRunning", async () => {
     const { stop, updateDeployStatus, markAllRunning } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -394,7 +393,6 @@ describe("setup wizard server integration", () => {
 
   it("markAllRunning preserves error status entries", async () => {
     const { stop, updateDeployStatus, markAllRunning } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -425,7 +423,6 @@ describe("setup wizard server integration", () => {
 
   it("allows re-completing setup after a deploy error", async () => {
     const { stop, waitForComplete, setDeployError } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -495,7 +492,6 @@ describe("setup wizard server integration", () => {
     }
 
     const { stop } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 

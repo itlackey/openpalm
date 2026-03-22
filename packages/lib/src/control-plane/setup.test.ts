@@ -13,7 +13,6 @@ import {
   CHANNEL_CREDENTIAL_ENV_MAP,
 } from "./setup.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
-import type { CoreAssetProvider } from "./core-asset-provider.js";
 import { STACK_SPEC_FILENAME, readStackSpec } from "./stack-spec.js";
 import type { StackSpec } from "./stack-spec.js";
 
@@ -52,18 +51,21 @@ function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
   };
 }
 
-/** Stub asset provider that returns minimal content for all assets. */
-function createStubAssetProvider(): CoreAssetProvider {
-  return {
-    coreCompose: () => "services:\n  assistant:\n    image: assistant:latest\n",
-    agentsMd: () => "# Agents\n",
-    opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
-    secretsSchema: () => "ADMIN_TOKEN=string\n",
-    stackSchema: () => "OP_IMAGE_TAG=string\n",
-    cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
-    cleanupData: () => "name: cleanup-data\nschedule: weekly\n",
-    validateConfig: () => "name: validate-config\nschedule: hourly\n",
-  };
+/** Seed the minimal asset files that ensure* functions expect to find at OP_HOME. */
+function seedRequiredAssets(homeDir: string): void {
+  mkdirSync(join(homeDir, "stack"), { recursive: true });
+  writeFileSync(join(homeDir, "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
+  mkdirSync(join(homeDir, "data", "assistant"), { recursive: true });
+  writeFileSync(join(homeDir, "data", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
+  writeFileSync(join(homeDir, "data", "assistant", "AGENTS.md"), "# Agents\n");
+  mkdirSync(join(homeDir, "vault", "user"), { recursive: true });
+  writeFileSync(join(homeDir, "vault", "user", "user.env.schema"), "ADMIN_TOKEN=string\n");
+  mkdirSync(join(homeDir, "vault", "stack"), { recursive: true });
+  writeFileSync(join(homeDir, "vault", "stack", "stack.env.schema"), "OP_IMAGE_TAG=string\n");
+  mkdirSync(join(homeDir, "config", "automations"), { recursive: true });
+  writeFileSync(join(homeDir, "config", "automations", "cleanup-logs.yml"), "name: cleanup-logs\nschedule: daily\n");
+  writeFileSync(join(homeDir, "config", "automations", "cleanup-data.yml"), "name: cleanup-data\nschedule: weekly\n");
+  writeFileSync(join(homeDir, "config", "automations", "validate-config.yml"), "name: validate-config\nschedule: hourly\n");
 }
 
 // ── Tests: validateSetupSpec ────────────────────────────────────────────
@@ -436,6 +438,9 @@ describe("performSetup", () => {
       ].join("\n")
     );
 
+    // Seed required asset files at OP_HOME
+    seedRequiredAssets(homeDir);
+
     // Override env vars for test isolation
     savedEnv.OP_HOME = process.env.OP_HOME;
     process.env.OP_HOME = homeDir;
@@ -448,15 +453,14 @@ describe("performSetup", () => {
 
   it("returns an error for invalid input", async () => {
     const result = await performSetup(
-      { security: { adminToken: "short" } } as SetupSpec,
-      createStubAssetProvider()
+      { security: { adminToken: "short" } } as SetupSpec
     );
     expect(result.ok).toBe(false);
     expect(result.error).toBeDefined();
   });
 
   it("writes stack.env with the admin token", async () => {
-    const result = await performSetup(makeValidSpec(), createStubAssetProvider());
+    const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
     const secretsContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
@@ -464,7 +468,7 @@ describe("performSetup", () => {
   });
 
   it("writes memory config", async () => {
-    const result = await performSetup(makeValidSpec(), createStubAssetProvider());
+    const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
     const memConfigPath = join(dataDir, "memory", "default_config.json");
@@ -476,7 +480,7 @@ describe("performSetup", () => {
   });
 
   it("writes capabilities to stack.yaml v2", async () => {
-    const result = await performSetup(makeValidSpec(), createStubAssetProvider());
+    const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
     const spec = readStackSpec(configDir);
@@ -488,7 +492,7 @@ describe("performSetup", () => {
   });
 
   it("writes core compose file to stack/", async () => {
-    const result = await performSetup(makeValidSpec(), createStubAssetProvider());
+    const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
     // applyInstall should have written the compose file to stack/ (not config/components/)
@@ -525,7 +529,7 @@ describe("performSetup", () => {
       ],
     });
 
-    const result = await performSetup(input, createStubAssetProvider());
+    const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
     // v2 spec should have ollama addon enabled and correct capabilities
@@ -565,7 +569,7 @@ describe("performSetup", () => {
       ],
     });
 
-    const result = await performSetup(input, createStubAssetProvider());
+    const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
     // nomic-embed-text is 768 dims per EMBEDDING_DIMS
@@ -575,7 +579,7 @@ describe("performSetup", () => {
   });
 
   it("writes stack.yaml with correct v2 structure", async () => {
-    const result = await performSetup(makeValidSpec(), createStubAssetProvider());
+    const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
     const specPath = join(configDir, STACK_SPEC_FILENAME);
@@ -599,7 +603,7 @@ describe("performSetup", () => {
       ],
     });
 
-    const result = await performSetup(input, createStubAssetProvider());
+    const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
     // v2 spec should still have correct capabilities
@@ -635,7 +639,7 @@ describe("performSetup", () => {
       },
     });
 
-    const result = await performSetup(input, createStubAssetProvider());
+    const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
     const secretsContent = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");

@@ -36,7 +36,6 @@ import { applyInstall, createState, writeSetupTokenFile } from "./lifecycle.js";
 import { writeStackSpec, parseCapabilityString, hasAddon } from "./stack-spec.js";
 import type { StackSpec } from "./stack-spec.js";
 import { writeManagedEnvFiles } from "./spec-to-env.js";
-import type { CoreAssetProvider } from "./core-asset-provider.js";
 import type { ControlPlaneState } from "./types.js";
 
 const logger = createLogger("setup");
@@ -331,7 +330,6 @@ function resolveOllamaUrls(connections: SetupConnection[], ollamaEnabled: boolea
  */
 export async function performSetup(
   input: SetupSpec,
-  assetProvider: CoreAssetProvider,
   opts?: { state?: ControlPlaneState }
 ): Promise<SetupResult> {
   const validation = validateSetupSpec(input);
@@ -455,7 +453,7 @@ export async function performSetup(
 
   // ── Ensure OpenCode configs ────────────────────────────────────────
   ensureOpenCodeConfig();
-  ensureOpenCodeSystemConfig(assetProvider);
+  ensureOpenCodeSystemConfig();
   ensureMemoryDir();
 
   // ── Mark setup complete in DATA_HOME stack.env before persistence ──
@@ -470,7 +468,7 @@ export async function performSetup(
   );
 
   // ── Apply install (stages artifacts, no Docker) ────────────────────
-  await applyInstall(state, assetProvider);
+  await applyInstall(state);
 
   logger.info("setup complete", {
     connectionCount: connections.length,

@@ -15,7 +15,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { appendAudit } from "$lib/server/audit.js";
-import { validateProposedState } from "$lib/server/lifecycle.js";
+import { validateProposedState } from "$lib/server/control-plane.js";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

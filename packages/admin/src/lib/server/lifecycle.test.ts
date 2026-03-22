@@ -19,9 +19,10 @@ import {
   updateStackEnvToLatestImageTag,
   buildComposeFileList,
   normalizeCaller,
-} from "./lifecycle.js";
-import { randomHex } from "./control-plane.js";
-import { CORE_SERVICES, OPTIONAL_SERVICES } from "./types.js";
+  randomHex,
+  CORE_SERVICES,
+  OPTIONAL_SERVICES,
+} from "./control-plane.js";
 import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();

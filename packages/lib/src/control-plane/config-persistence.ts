@@ -4,8 +4,6 @@
  * Writes and derives live runtime files (compose, env, schemas).
  * Files are validated in-place before writing; rollback is handled by
  * the rollback module (snapshot to ~/.cache/openpalm/rollback/).
- *
- * All asset content is provided by a CoreAssetProvider (injected).
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -17,7 +15,6 @@ import { readStackSpec, hasAddon } from "./stack-spec.js";
 import { writeManagedEnvFiles } from "./spec-to-env.js";
 
 import { parseAutomationYaml } from "./scheduler.js";
-import type { CoreAssetProvider } from "./core-asset-provider.js";
 import { generateRedactSchema } from "./redact-schema.js";
 import { readSystemSecretsEnvFile } from "./secrets.js";
 import {
@@ -61,8 +58,8 @@ export function isAdminEnabled(state: ControlPlaneState): boolean {
 
 // ── Compose Content ──────────────────────────────────────────────────
 
-function resolveCompose(_state: ControlPlaneState, assets: CoreAssetProvider): string {
-  return readCoreCompose(assets);
+function resolveCompose(_state: ControlPlaneState): string {
+  return readCoreCompose();
 }
 
 // ── Env File Management ──────────────────────────────────────────────
@@ -200,13 +197,12 @@ function validateAutomationContent(content: string, fileName: string): boolean {
 // ── Top-Level Operations ─────────────────────────────────────────────
 
 export function resolveRuntimeFiles(
-  state: ControlPlaneState,
-  assets: CoreAssetProvider
+  state: ControlPlaneState
 ): {
   compose: string;
 } {
   return {
-    compose: resolveCompose(state, assets),
+    compose: resolveCompose(state),
   };
 }
 
@@ -240,8 +236,7 @@ function loadPersistedChannelSecrets(vaultDir: string): Record<string, string> {
 // ── Persistence (direct-write to live paths) ────────────────────────
 
 export function writeRuntimeFiles(
-  state: ControlPlaneState,
-  assets: CoreAssetProvider
+  state: ControlPlaneState
 ): void {
   // Write core compose to stack/
   const stackDir = `${state.homeDir}/stack`;
@@ -260,9 +255,9 @@ export function writeRuntimeFiles(
   // Write system.env with channel secrets and system values
   writeSystemEnv(state, channelSecrets);
 
-  // Write env schemas to vault
-  ensureUserEnvSchema(assets);
-  ensureSystemEnvSchema(assets);
+  // Ensure env schema directories exist
+  ensureUserEnvSchema();
+  ensureSystemEnvSchema();
 
   // Write managed.env files derived from stack spec
   const spec = readStackSpec(state.configDir);

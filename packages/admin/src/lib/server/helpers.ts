@@ -4,7 +4,7 @@
 import type { RequestEvent } from "@sveltejs/kit";
 import { timingSafeEqual, createHash } from "node:crypto";
 import { getState } from "./state.js";
-import { normalizeCaller } from "./lifecycle.js";
+import { normalizeCaller } from "./control-plane.js";
 import {
   type CallerType,
 } from "./types.js";

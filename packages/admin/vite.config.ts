@@ -34,9 +34,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "$stack": resolve(__dirname, "../../.openpalm/stack"),
-        "$vault": resolve(__dirname, "../../.openpalm/vault"),
         "$config": resolve(__dirname, "../../.openpalm/config"),
-        "$assistant": resolve(__dirname, "../../core/assistant")
       }
     },
     test: {

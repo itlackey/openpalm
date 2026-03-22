@@ -8,8 +8,8 @@ import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 
 // Mock validateProposedState to avoid needing the varlock binary
-vi.mock("$lib/server/lifecycle.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("$lib/server/lifecycle.js")>();
+vi.mock("$lib/server/control-plane.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("$lib/server/control-plane.js")>();
   return {
     ...actual,
     validateProposedState: vi.fn()
@@ -17,7 +17,7 @@ vi.mock("$lib/server/lifecycle.js", async (importOriginal) => {
 });
 
 import { getState, resetState } from "$lib/server/state.js";
-import { validateProposedState } from "$lib/server/lifecycle.js";
+import { validateProposedState } from "$lib/server/control-plane.js";
 import { GET } from "./+server.js";
 
 function makeTempDir(): string {

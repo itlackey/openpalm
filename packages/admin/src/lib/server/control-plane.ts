@@ -2,100 +2,49 @@
  * OpenPalm Control Plane — Barrel re-export module.
  *
  * Delegates all control-plane logic to @openpalm/lib. Functions that
- * require a CoreAssetProvider or RegistryProvider are wrapped here to
- * pre-inject the Vite-backed implementations. This preserves the
- * existing API surface so route handlers need no changes.
+ * require a RegistryProvider are wrapped here to pre-inject the
+ * Vite-backed implementation. Everything else is a direct re-export.
  */
-import type { ControlPlaneState, CoreAssetProvider, RegistryProvider } from "@openpalm/lib";
-import type { SetupSpec, SetupResult } from "@openpalm/lib";
 import {
-  ensureCoreCompose as _ensureCoreCompose,
-  readCoreCompose as _readCoreCompose,
-  ensureOpenCodeSystemConfig as _ensureOpenCodeSystemConfig,
-  ensureCoreAutomations as _ensureCoreAutomations,
-  ensureUserEnvSchema as _ensureUserEnvSchema,
-  ensureSystemEnvSchema as _ensureSystemEnvSchema,
-  resolveRuntimeFiles as _resolveRuntimeFiles,
-  writeRuntimeFiles as _writeRuntimeFiles,
-  applyInstall as _applyInstall,
-  applyUpdate as _applyUpdate,
-  applyUninstall as _applyUninstall,
-  applyUpgrade as _applyUpgrade,
   installAutomationFromRegistry as _installAutomationFromRegistry,
-  performSetup as _performSetup,
 } from "@openpalm/lib";
-import { viteAssets } from "./vite-asset-provider.js";
 import { viteRegistry } from "./vite-registry-provider.js";
 
-// ── Wrapped functions (pre-inject Vite providers) ────────────────────
+// ── Core asset functions (direct re-export — no provider needed) ─────
+export {
+  ensureCoreCompose,
+  readCoreCompose,
+  ensureOpenCodeSystemConfig,
+  ensureCoreAutomations,
+  ensureUserEnvSchema,
+  ensureSystemEnvSchema,
+} from "@openpalm/lib";
 
-export function ensureCoreCompose(): string {
-  return _ensureCoreCompose(viteAssets);
-}
+// ── Config persistence (direct re-export) ────────────────────────────
+export {
+  resolveRuntimeFiles,
+  writeRuntimeFiles,
+} from "@openpalm/lib";
 
-export function readCoreCompose(): string {
-  return _readCoreCompose(viteAssets);
-}
+// ── Lifecycle transitions (direct re-export) ─────────────────────────
+export {
+  applyInstall,
+  applyUpdate,
+  applyUninstall,
+  applyUpgrade,
+} from "@openpalm/lib";
 
-export function ensureOpenCodeSystemConfig(): void {
-  _ensureOpenCodeSystemConfig(viteAssets);
-}
+// ── Setup (direct re-export) ─────────────────────────────────────────
+export {
+  performSetup,
+} from "@openpalm/lib";
 
-
-export function ensureCoreAutomations(): void {
-  _ensureCoreAutomations(viteAssets);
-}
-
-export function ensureUserEnvSchema(): string {
-  return _ensureUserEnvSchema(viteAssets);
-}
-
-export function ensureSystemEnvSchema(): string {
-  return _ensureSystemEnvSchema(viteAssets);
-}
-
-export function resolveRuntimeFiles(state: ControlPlaneState): {
-  compose: string;
-} {
-  return _resolveRuntimeFiles(state, viteAssets);
-}
-
-export function writeRuntimeFiles(state: ControlPlaneState): void {
-  _writeRuntimeFiles(state, viteAssets);
-}
-
-export async function applyInstall(state: ControlPlaneState): Promise<void> {
-  await _applyInstall(state, viteAssets);
-}
-
-export async function applyUpdate(state: ControlPlaneState): Promise<{ restarted: string[] }> {
-  return _applyUpdate(state, viteAssets);
-}
-
-export async function applyUninstall(state: ControlPlaneState): Promise<{ stopped: string[] }> {
-  return _applyUninstall(state, viteAssets);
-}
-
-export async function applyUpgrade(state: ControlPlaneState): Promise<{
-  backupDir: string | null;
-  updated: string[];
-  restarted: string[];
-}> {
-  return _applyUpgrade(state, viteAssets);
-}
-
+// ── Wrapped function (pre-inject Vite registry provider) ─────────────
 export function installAutomationFromRegistry(
   name: string,
   configDir: string
 ): { ok: true } | { ok: false; error: string } {
   return _installAutomationFromRegistry(name, configDir, viteRegistry);
-}
-
-export async function performSetup(
-  input: SetupSpec,
-  opts?: { state?: ControlPlaneState }
-): Promise<SetupResult> {
-  return _performSetup(input, viteAssets, opts);
 }
 
 // ── setup.ts (unified SetupSpec) ──────────────────────────────────────

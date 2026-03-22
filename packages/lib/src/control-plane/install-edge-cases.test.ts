@@ -28,7 +28,6 @@ import {
   buildConnectionEnvVarMap,
 } from "./setup.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
-import type { CoreAssetProvider } from "./core-asset-provider.js";
 import type { ControlPlaneState } from "./types.js";
 import { STACK_SPEC_FILENAME, readStackSpec } from "./stack-spec.js";
 
@@ -67,18 +66,21 @@ function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
   };
 }
 
-function createStubAssetProvider(): CoreAssetProvider {
-  return {
-    coreCompose: () => "services:\n  assistant:\n    image: assistant:latest\n",
-    agentsMd: () => "# Agents\n",
-    opencodeConfig: () =>
-      '{"$schema":"https://opencode.ai/config.json"}\n',
-    secretsSchema: () => "ADMIN_TOKEN=string\n",
-    stackSchema: () => "OP_IMAGE_TAG=string\n",
-    cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
-    cleanupData: () => "name: cleanup-data\nschedule: weekly\n",
-    validateConfig: () => "name: validate-config\nschedule: hourly\n",
-  };
+/** Seed the minimal asset files that ensure* functions expect to find at OP_HOME. */
+function seedRequiredAssets(homeDir: string): void {
+  mkdirSync(join(homeDir, "stack"), { recursive: true });
+  writeFileSync(join(homeDir, "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
+  mkdirSync(join(homeDir, "data", "assistant"), { recursive: true });
+  writeFileSync(join(homeDir, "data", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
+  writeFileSync(join(homeDir, "data", "assistant", "AGENTS.md"), "# Agents\n");
+  mkdirSync(join(homeDir, "vault", "user"), { recursive: true });
+  writeFileSync(join(homeDir, "vault", "user", "user.env.schema"), "ADMIN_TOKEN=string\n");
+  mkdirSync(join(homeDir, "vault", "stack"), { recursive: true });
+  writeFileSync(join(homeDir, "vault", "stack", "stack.env.schema"), "OP_IMAGE_TAG=string\n");
+  mkdirSync(join(homeDir, "config", "automations"), { recursive: true });
+  writeFileSync(join(homeDir, "config", "automations", "cleanup-logs.yml"), "name: cleanup-logs\nschedule: daily\n");
+  writeFileSync(join(homeDir, "config", "automations", "cleanup-data.yml"), "name: cleanup-data\nschedule: weekly\n");
+  writeFileSync(join(homeDir, "config", "automations", "validate-config.yml"), "name: validate-config\nschedule: hourly\n");
 }
 
 // ── Shared test fixture ──────────────────────────────────────────────────
@@ -133,6 +135,9 @@ function createFullDirTree(): void {
   ]) {
     mkdirSync(dir, { recursive: true });
   }
+
+  // Seed asset files that ensure* functions expect to find at OP_HOME
+  seedRequiredAssets(homeDir);
 }
 
 /** Seed the minimal user.env and stack.env needed for most tests. */
@@ -228,8 +233,7 @@ describe("Fresh Install", () => {
     seedMinimalEnvFiles();
 
     const result = await performSetup(
-      makeValidSpec(),
-      createStubAssetProvider()
+      makeValidSpec()
     );
 
     expect(result.ok).toBe(true);
@@ -239,7 +243,7 @@ describe("Fresh Install", () => {
   it("performSetup marks OP_SETUP_COMPLETE=true in data stack.env", async () => {
     seedMinimalEnvFiles();
 
-    await performSetup(makeValidSpec(), createStubAssetProvider());
+    await performSetup(makeValidSpec());
 
     const stackEnv = readFileSync(join(dataDir, "stack.env"), "utf-8");
     const parsed = parseEnvContent(stackEnv);
@@ -294,7 +298,7 @@ describe("Existing Install", () => {
   // Scenario 6: performSetup re-run preserves OP_MEMORY_TOKEN
   it("performSetup re-run preserves OP_MEMORY_TOKEN from first run", async () => {
     // First setup
-    await performSetup(makeValidSpec(), createStubAssetProvider());
+    await performSetup(makeValidSpec());
 
     const secretsAfterFirst = readFileSync(
       join(vaultDir, "user", "user.env"),
@@ -318,8 +322,7 @@ describe("Existing Install", () => {
             apiKey: "sk-different-key-999",
           },
         ],
-      }),
-      createStubAssetProvider()
+      })
     );
 
     const secretsAfterSecond = readFileSync(
@@ -336,7 +339,7 @@ describe("Existing Install", () => {
 
   // Scenario 7: performSetup marks OP_SETUP_COMPLETE=true in dataDir/stack.env
   it("performSetup marks OP_SETUP_COMPLETE=true in data stack.env", async () => {
-    await performSetup(makeValidSpec(), createStubAssetProvider());
+    await performSetup(makeValidSpec());
 
     const stackEnv = readFileSync(
       join(dataDir, "stack.env"),
@@ -349,7 +352,7 @@ describe("Existing Install", () => {
   // Scenario 8: Re-setup with different provider updates stack.yaml capabilities
   it("re-setup with different provider updates capabilities in stack.yaml", async () => {
     // First setup with OpenAI
-    await performSetup(makeValidSpec(), createStubAssetProvider());
+    await performSetup(makeValidSpec());
 
     const specAfterFirst = readStackSpec(configDir);
     expect(specAfterFirst).not.toBeNull();
@@ -383,8 +386,7 @@ describe("Existing Install", () => {
             apiKey: "gsk-test-key-456",
           },
         ],
-      }),
-      createStubAssetProvider()
+      })
     );
 
     const specAfterSecond = readStackSpec(configDir);
@@ -522,8 +524,7 @@ describe("Broken/Corrupt State", () => {
     rmSync(join(configDir, "automations"), { recursive: true, force: true });
 
     const result = await performSetup(
-      makeValidSpec(),
-      createStubAssetProvider()
+      makeValidSpec()
     );
     expect(result.ok).toBe(true);
 
@@ -656,7 +657,7 @@ describe("Setup Input Variations", () => {
       ],
     });
 
-    const result = await performSetup(input, createStubAssetProvider());
+    const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
     // stack.yaml should have ollama capabilities
@@ -730,7 +731,7 @@ describe("performSetup end-to-end artifacts", () => {
   });
 
   it("writes stack.yaml and readStackSpec returns v2", async () => {
-    await performSetup(makeValidSpec(), createStubAssetProvider());
+    await performSetup(makeValidSpec());
 
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
@@ -768,7 +769,7 @@ describe("performSetup end-to-end artifacts", () => {
       ],
     });
 
-    await performSetup(input, createStubAssetProvider());
+    await performSetup(input);
 
     const memConfig = JSON.parse(
       readFileSync(join(dataDir, "memory", "default_config.json"), "utf-8")
@@ -778,7 +779,7 @@ describe("performSetup end-to-end artifacts", () => {
   });
 
   it("writes core.compose.yml to stack/", async () => {
-    await performSetup(makeValidSpec(), createStubAssetProvider());
+    await performSetup(makeValidSpec());
 
     expect(
       existsSync(join(homeDir, "stack", "core.compose.yml"))
@@ -786,7 +787,7 @@ describe("performSetup end-to-end artifacts", () => {
   });
 
   it("writes admin and assistant tokens to stack.env", async () => {
-    await performSetup(makeValidSpec(), createStubAssetProvider());
+    await performSetup(makeValidSpec());
 
     const secrets = parseEnvFile(join(vaultDir, "stack", "stack.env"));
     expect(secrets.OP_ADMIN_TOKEN).toBe("test-admin-token-12345");
@@ -795,7 +796,7 @@ describe("performSetup end-to-end artifacts", () => {
   });
 
   it("writes managed.env files from capabilities", async () => {
-    await performSetup(makeValidSpec(), createStubAssetProvider());
+    await performSetup(makeValidSpec());
 
     const managedEnvPath = join(vaultDir, "stack", "services", "memory", "managed.env");
     expect(existsSync(managedEnvPath)).toBe(true);

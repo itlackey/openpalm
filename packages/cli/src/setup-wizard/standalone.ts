@@ -16,7 +16,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CoreAssetProvider } from "@openpalm/lib";
 import { createSetupServer } from "./server.ts";
 
 // ── Configuration ──────────────────────────────────────────────────────
@@ -88,30 +87,23 @@ writeFileSync(
   ].join("\n"),
 );
 
+// Seed minimal asset files so performSetup() can read them
+mkdirSync(join(homeDir, "stack"), { recursive: true });
+writeFileSync(join(homeDir, "stack", "core.compose.yml"), "services:\n  admin:\n    image: admin:latest\n");
+writeFileSync(join(dataDir, "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
+writeFileSync(join(dataDir, "assistant", "AGENTS.md"), "# Agents\n");
+writeFileSync(join(vaultDir, "user", "user.env.schema"), "OP_ADMIN_TOKEN=string\n");
+writeFileSync(join(vaultDir, "stack", "stack.env.schema"), "OP_IMAGE_TAG=string\n");
+writeFileSync(join(configDir, "automations", "cleanup-logs.yml"), "name: cleanup-logs\nschedule: daily\n");
+writeFileSync(join(configDir, "automations", "cleanup-data.yml"), "name: cleanup-data\nschedule: weekly\n");
+writeFileSync(join(configDir, "automations", "validate-config.yml"), "name: validate-config\nschedule: hourly\n");
+
 // Point lib's home resolver at our directory
 process.env.OP_HOME = homeDir;
-
-// ── Stub Asset Provider ────────────────────────────────────────────────
-// Provides minimal valid asset content so performSetup() can write config
-// files without needing real downloaded assets.
-
-function createStubAssetProvider(): CoreAssetProvider {
-  return {
-    coreCompose: () => "services:\n  admin:\n    image: admin:latest\n",
-    agentsMd: () => "# Agents\n",
-    opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
-    secretsSchema: () => "OP_ADMIN_TOKEN=string\n",
-    stackSchema: () => "OP_IMAGE_TAG=string\n",
-    cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
-    cleanupData: () => "name: cleanup-data\nschedule: weekly\n",
-    validateConfig: () => "name: validate-config\nschedule: hourly\n",
-  };
-}
 
 // ── Start Server ───────────────────────────────────────────────────────
 
 const wizard = createSetupServer(port, {
-  assetProvider: createStubAssetProvider(),
   configDir,
 });
 

@@ -17,7 +17,7 @@ vi.mock("node:child_process", () => ({
   execFile: vi.fn()
 }));
 
-import { validateProposedState } from "./lifecycle.js";
+import { validateProposedState } from "./control-plane.js";
 import { makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
