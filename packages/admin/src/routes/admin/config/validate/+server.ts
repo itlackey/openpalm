@@ -15,7 +15,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { appendAudit } from "$lib/server/audit.js";
-import { validateProposedState } from "$lib/server/control-plane.js";
+import { validateProposedState } from "@openpalm/lib";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

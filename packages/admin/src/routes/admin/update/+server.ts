@@ -6,8 +6,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { applyUpdate, appendAudit, ensureSecrets, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureMemoryDir, buildComposeFileList, buildEnvFiles, buildManagedServices } from "$lib/server/control-plane.js";
-import { ensureHomeDirs } from "@openpalm/lib";
+import { applyUpdate, appendAudit, ensureSecrets, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureMemoryDir, buildComposeFileList, buildEnvFiles, buildManagedServices, ensureHomeDirs } from "@openpalm/lib";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";

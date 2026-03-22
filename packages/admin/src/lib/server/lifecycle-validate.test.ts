@@ -17,7 +17,7 @@ vi.mock("node:child_process", () => ({
   execFile: vi.fn()
 }));
 
-import { validateProposedState } from "./control-plane.js";
+import { validateProposedState } from "@openpalm/lib";
 import { makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
@@ -138,6 +138,34 @@ describe("validateProposedState", () => {
       expect(args[1]).toBe("--path");
       expect(args[2]).toMatch(/varlock-.*\/$/);
     }
+  });
+
+  test("returns errors from both user.env and stack.env when both fail", async () => {
+    mockExecFileAllFail("ERROR: MISSING_KEY is required\n");
+
+    const state = makeTestState();
+    trackDir(state.homeDir);
+    seedValidationFiles(state);
+
+    const result = await validateProposedState(state);
+    expect(result.ok).toBe(false);
+    // Both calls failed, so errors from both should be present
+    expect(result.errors.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("collects multiple errors and warnings from a single validation call", async () => {
+    mockExecFileFirstFails(
+      "ERROR: ADMIN_TOKEN is required\nERROR: OPENAI_API_KEY is empty\nWARN: OPENAI_BASE_URL looks wrong\nWARN: GROQ_API_KEY is unused\n"
+    );
+
+    const state = makeTestState();
+    trackDir(state.homeDir);
+    seedValidationFiles(state);
+
+    const result = await validateProposedState(state);
+    expect(result.ok).toBe(false);
+    expect(result.errors).toHaveLength(2);
+    expect(result.warnings).toHaveLength(2);
   });
 
   test("sanitizes API key patterns in varlock error output", async () => {

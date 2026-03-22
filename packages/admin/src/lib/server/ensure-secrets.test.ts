@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, rmSync, statSync, existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureSecrets, type ControlPlaneState } from "./control-plane.js";
+import { ensureSecrets, type ControlPlaneState } from "@openpalm/lib";
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `openpalm-test-${randomBytes(4).toString("hex")}`);

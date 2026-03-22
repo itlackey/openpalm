@@ -20,7 +20,7 @@ import {
   fetchProviderModels,
   LLM_PROVIDERS,
   EMBED_PROVIDERS
-} from "$lib/server/control-plane.js";
+} from "@openpalm/lib";
 
 const VALID_PROVIDERS = new Set<string>([...LLM_PROVIDERS, ...EMBED_PROVIDERS]);
 

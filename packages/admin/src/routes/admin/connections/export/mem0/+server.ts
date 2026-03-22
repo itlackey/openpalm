@@ -12,7 +12,7 @@ import {
   readStackSpec,
   parseCapabilityString,
   buildMem0Mapping,
-} from '$lib/server/control-plane.js';
+} from '@openpalm/lib';
 import { PROVIDER_KEY_MAP } from '$lib/provider-constants.js';
 
 export const GET: RequestHandler = async (event) => {

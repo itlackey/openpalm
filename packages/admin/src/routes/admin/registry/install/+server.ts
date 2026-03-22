@@ -23,8 +23,8 @@ import {
   appendAudit,
   writeRuntimeFiles,
   resolveRuntimeFiles,
-  REGISTRY_AUTOMATION_YML
-} from "$lib/server/control-plane.js";
+} from "@openpalm/lib";
+import { REGISTRY_AUTOMATION_YML } from "$lib/server/vite-registry-provider.js";
 import {
   getRegistryAutomation
 } from "$lib/server/registry-sync.js";

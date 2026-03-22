@@ -23,7 +23,7 @@ import {
   uninstallAutomation,
   writeRuntimeFiles,
   resolveRuntimeFiles,
-} from "$lib/server/control-plane.js";
+} from "@openpalm/lib";
 
 
 export const POST: RequestHandler = async (event) => {

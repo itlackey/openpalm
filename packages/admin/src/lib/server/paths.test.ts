@@ -5,7 +5,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { ensureHomeDirs } from "./paths.js";
+import { ensureHomeDirs } from "@openpalm/lib";
 import { makeTempDir, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();

@@ -18,7 +18,7 @@ import {
   appendAudit,
   resolveRuntimeFiles,
   writeRuntimeFiles
-} from "$lib/server/control-plane.js";
+} from "@openpalm/lib";
 import { pullRegistry } from "$lib/server/registry-sync.js";
 
 

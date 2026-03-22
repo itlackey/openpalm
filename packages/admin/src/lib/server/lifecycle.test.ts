@@ -22,7 +22,7 @@ import {
   randomHex,
   CORE_SERVICES,
   OPTIONAL_SERVICES,
-} from "./control-plane.js";
+} from "@openpalm/lib";
 import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();

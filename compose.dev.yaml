@@ -89,6 +89,7 @@ services:
     volumes:
       - ./packages/channel-voice:/app/channel-voice:ro
     environment:
+      PORT: "8186"
       CHANNEL_NAME: "Voice"
       GUARDIAN_URL: http://guardian:8080
       CHANNEL_PACKAGE: ""

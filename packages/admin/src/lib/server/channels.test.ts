@@ -12,7 +12,7 @@ import {
   discoverChannels,
   isAllowedService,
   isValidChannel,
-} from "./channels.js";
+} from "@openpalm/lib";
 import { CORE_SERVICES } from "./types.js";
 import { makeTempDir, trackDir, registerCleanup } from "./test-helpers.js";
 

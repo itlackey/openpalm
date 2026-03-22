@@ -21,7 +21,7 @@ import {
   readCoreCompose,
   ensureOpenCodeSystemConfig,
   refreshCoreAssets
-} from "./control-plane.js";
+} from "@openpalm/lib";
 import { makeTempDir, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();

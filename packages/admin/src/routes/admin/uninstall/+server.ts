@@ -6,7 +6,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { applyUninstall, appendAudit, buildComposeFileList, buildEnvFiles } from "$lib/server/control-plane.js";
+import { applyUninstall, appendAudit, buildComposeFileList, buildEnvFiles } from "@openpalm/lib";
 import { composeDown, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";

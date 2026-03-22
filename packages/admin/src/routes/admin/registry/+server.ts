@@ -13,12 +13,12 @@ import {
   getActor,
   getCallerType
 } from "$lib/server/helpers.js";
+import { appendAudit } from "@openpalm/lib";
 import {
-  appendAudit,
+  viteRegistry,
   REGISTRY_AUTOMATION_YML,
-  REGISTRY_AUTOMATION_NAMES
-} from "$lib/server/control-plane.js";
-import { viteRegistry } from "$lib/server/vite-registry-provider.js";
+  REGISTRY_AUTOMATION_NAMES,
+} from "$lib/server/vite-registry-provider.js";
 import {
   ensureRegistryClone,
   discoverRegistryComponents,

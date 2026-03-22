@@ -18,7 +18,7 @@ import {
   appendAudit,
   patchSecretsEnvFile,
   ALLOWED_CONNECTION_KEYS,
-} from '$lib/server/control-plane.js';
+} from '@openpalm/lib';
 import { PROVIDER_KEY_MAP } from '$lib/provider-constants.js';
 import { createLogger } from '$lib/server/logger.js';
 

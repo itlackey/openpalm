@@ -8,7 +8,7 @@ import {
   parseJsonBody
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { isAllowedService, appendAudit, buildComposeFileList, buildEnvFiles } from "$lib/server/control-plane.js";
+import { isAllowedService, appendAudit, buildComposeFileList, buildEnvFiles } from "@openpalm/lib";
 import { composeStop, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";

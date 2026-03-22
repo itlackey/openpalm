@@ -4,7 +4,7 @@
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
 import { jsonResponse, requireAuth, getRequestId, getActor, getCallerType } from "$lib/server/helpers.js";
-import { appendAudit } from "$lib/server/control-plane.js";
+import { appendAudit } from "@openpalm/lib";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

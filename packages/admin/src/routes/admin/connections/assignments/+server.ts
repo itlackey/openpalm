@@ -16,7 +16,7 @@ import {
   readStackSpec,
   writeStackSpec,
   writeManagedEnvFiles,
-} from '$lib/server/control-plane.js';
+} from '@openpalm/lib';
 import {
   errorResponse,
   getActor,

@@ -20,7 +20,7 @@ import {
   appendAudit,
   readMemoryConfig,
   resetVectorStore
-} from "$lib/server/control-plane.js";
+} from "@openpalm/lib";
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

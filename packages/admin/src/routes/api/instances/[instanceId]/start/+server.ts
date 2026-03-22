@@ -16,7 +16,7 @@ import {
   getInstanceDetail,
   buildComposeFileList,
   buildEnvFiles,
-} from "$lib/server/control-plane.js";
+} from "@openpalm/lib";
 import { composeStart, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 

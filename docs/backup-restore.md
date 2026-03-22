@@ -33,6 +33,7 @@ Example:
 ```bash
 cd "$HOME/.openpalm/stack"
 docker compose \
+  --project-name openpalm \
   -f core.compose.yml \
   -f addons/admin/compose.yml \
   -f addons/chat/compose.yml \

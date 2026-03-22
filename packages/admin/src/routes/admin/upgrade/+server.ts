@@ -17,10 +17,11 @@ import {
   ensureSecrets,
   buildComposeFileList,
   buildEnvFiles,
-  buildManagedServices
-} from "$lib/server/control-plane.js";
-import { ensureHomeDirs } from "@openpalm/lib";
+  buildManagedServices,
+  ensureHomeDirs,
+} from "@openpalm/lib";
 import { composePull, composeUp, checkDocker, selfRecreateAdmin } from "$lib/server/docker.js";
+import { composePreflight } from "@openpalm/lib";
 import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
 
@@ -42,10 +43,25 @@ export const POST: RequestHandler = async (event) => {
   ensureMemoryDir();
   ensureSecrets(state);
 
-  // Snapshot the current stack.env so we can restore on failure.
-  // Both updateStackEnvToLatestImageTag and applyUpgrade mutate state;
-  // if either fails, the original stack.env is restored to avoid a
-  // half-applied upgrade.
+  // 1. Preflight: validate compose merge BEFORE any mutation
+  const files = buildComposeFileList(state);
+  const envFiles = buildEnvFiles(state);
+
+  const dockerCheck = await checkDocker();
+  if (!dockerCheck.ok) {
+    appendAudit(state, actor, "upgrade", { result: "error", reason: "docker_unavailable" }, false, requestId, callerType);
+    return errorResponse(503, "docker_unavailable", "Docker is not available", { stderr: dockerCheck.stderr }, requestId);
+  }
+
+  if (files.length > 0) {
+    const preflight = await composePreflight({ files, envFiles });
+    if (!preflight.ok) {
+      appendAudit(state, actor, "upgrade", { result: "error", reason: "preflight_failed", stderr: preflight.stderr }, false, requestId, callerType);
+      return errorResponse(400, "preflight_failed", `Compose preflight failed: ${preflight.stderr}`, {}, requestId);
+    }
+  }
+
+  // 2. Snapshot stack.env so we can restore on failure
   const stackEnvPath = `${state.vaultDir}/stack/stack.env`;
   let originalStackEnv: string | null = null;
   try {
@@ -53,6 +69,7 @@ export const POST: RequestHandler = async (event) => {
     originalStackEnv = readFileSync(stackEnvPath, "utf-8");
   } catch { /* stack.env may not exist yet */ }
 
+  // 3. Mutate: update image tag + download fresh assets
   let imageTag = "";
   let upgradeResult: { backupDir: string | null; updated: string[]; restarted: string[] };
   try {
@@ -61,7 +78,6 @@ export const POST: RequestHandler = async (event) => {
     imageTag = tagResult.tag;
     logger.info("image tag resolved", { requestId, imageTag });
 
-    // 1. Download fresh assets, back up changed files, write runtime configuration
     logger.info("downloading fresh assets and writing runtime files", { requestId });
     upgradeResult = await applyUpgrade(state);
     logger.info("runtime files written", { requestId, updated: upgradeResult.updated });
@@ -69,7 +85,6 @@ export const POST: RequestHandler = async (event) => {
     const msg = e instanceof Error ? e.message : String(e);
     logger.error("upgrade failed, restoring stack.env", { requestId, error: msg });
 
-    // Restore original stack.env to avoid half-applied state
     if (originalStackEnv !== null) {
       try {
         const { writeFileSync } = await import("node:fs");
@@ -81,22 +96,10 @@ export const POST: RequestHandler = async (event) => {
     }
 
     const reason = imageTag ? "asset_download_failed" : "image_tag_update_failed";
-    const detail = imageTag
-      ? msg
-      : "Failed to update stack.env with the latest image tag";
+    const detail = imageTag ? msg : "Failed to update stack.env with the latest image tag";
     appendAudit(state, actor, "upgrade", { result: "error", reason, message: msg }, false, requestId, callerType);
     return errorResponse(502, reason, detail, { message: msg }, requestId);
   }
-
-  // 2. Docker: pull + up
-  const dockerCheck = await checkDocker();
-  if (!dockerCheck.ok) {
-    appendAudit(state, actor, "upgrade", { result: "error", reason: "docker_unavailable" }, false, requestId, callerType);
-    return errorResponse(503, "docker_unavailable", "Docker is not available", { stderr: dockerCheck.stderr }, requestId);
-  }
-
-  const files = buildComposeFileList(state);
-  const envFiles = buildEnvFiles(state);
 
   logger.info("pulling images", { requestId });
   const pullResult = await composePull({ files, envFiles });

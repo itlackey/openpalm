@@ -21,9 +21,9 @@ import {
   appendAudit,
   readMemoryConfig,
   resolveConfigForPush,
-  pushConfigToMemory
-} from "$lib/server/control-plane.js";
-import { ensureHomeDirs } from "@openpalm/lib";
+  pushConfigToMemory,
+  ensureHomeDirs,
+} from "@openpalm/lib";
 
 const logger = createLogger("admin");
 

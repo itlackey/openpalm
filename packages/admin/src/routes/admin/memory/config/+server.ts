@@ -26,7 +26,7 @@ import {
   EMBED_PROVIDERS,
   EMBEDDING_DIMS,
   type MemoryConfig
-} from "$lib/server/control-plane.js";
+} from "@openpalm/lib";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

@@ -14,7 +14,7 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { RegistryComponentEntry } from "@openpalm/lib";
-import { resolveCacheHome } from "./paths.js";
+import { resolveCacheHome } from "@openpalm/lib";
 
 const REPO = "itlackey/openpalm";
 const REPO_URL =

@@ -10,7 +10,7 @@ import {
   getActor,
   getCallerType
 } from "$lib/server/helpers.js";
-import { appendAudit, discoverChannels } from "$lib/server/control-plane.js";
+import { appendAudit, discoverChannels } from "@openpalm/lib";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

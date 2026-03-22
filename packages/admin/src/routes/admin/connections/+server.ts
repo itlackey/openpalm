@@ -32,7 +32,7 @@ import {
   type MemoryConfig,
   type CallerType,
   type StackSpec,
-} from "$lib/server/control-plane.js";
+} from "@openpalm/lib";
 import {
   PROVIDER_KEY_MAP,
   EMBEDDING_DIMS,

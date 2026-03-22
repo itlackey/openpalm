@@ -16,9 +16,9 @@ import {
   buildComposeFileList,
   buildEnvFiles,
   buildManagedServices,
-  CORE_SERVICES
-} from "$lib/server/control-plane.js";
-import { ensureHomeDirs } from "@openpalm/lib";
+  CORE_SERVICES,
+  ensureHomeDirs,
+} from "@openpalm/lib";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";

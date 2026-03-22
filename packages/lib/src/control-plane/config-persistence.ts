@@ -67,9 +67,11 @@ function resolveCompose(_state: ControlPlaneState): string {
  * These are the live vault env files.
  */
 export function buildEnvFiles(state: ControlPlaneState): string[] {
+  // managed.env is NOT included here — it's loaded at service level in
+  // core.compose.yml (memory service only). Global --env-file would leak
+  // memory-specific vars to all services.
   return [
     `${state.vaultDir}/stack/stack.env`,
-    `${state.vaultDir}/stack/services/memory/managed.env`,
     `${state.vaultDir}/user/user.env`,
   ].filter(existsSync);
 }
