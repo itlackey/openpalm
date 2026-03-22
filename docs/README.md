@@ -28,7 +28,7 @@ Repo layout convention:
 | [foundations.md](technical/authoritative/foundations.md) | Stripped-down runtime contract for env, filesystem, mounts, and networks |
 | [directory-structure.md](technical/directory-structure.md) | `~/.openpalm/` home layout, `stack/` assembly, and volume design |
 | [undocumented-details.md](technical/undocumented-details.md) | Source-backed inventory of important runtime details not yet covered in the primary docs |
-| [docker-dependency-resolution.md](technical/docker-dependency-resolution.md) | **Mandatory.** Docker build patterns — no Bun in admin, no symlinks |
+| [docker-dependency-resolution.md](technical/authoritative/docker-dependency-resolution.md) | **Mandatory.** Docker build patterns — no Bun in admin, no symlinks |
 
 ## Implementation rules
 
