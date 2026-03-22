@@ -10,7 +10,7 @@ services:
       CHANNEL_NAME: "Voice"
       GUARDIAN_URL: http://guardian:8080
       CHANNEL_PACKAGE: "@openpalm/channel-voice"
-      CHANNEL_SECRET: ${CHANNEL_VOICE_SECRET:-}
+      CHANNEL_VOICE_SECRET: ${CHANNEL_VOICE_SECRET:-}
     networks: [channel_lan]
     depends_on:
       guardian:
