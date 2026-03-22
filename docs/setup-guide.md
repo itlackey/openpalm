@@ -57,12 +57,8 @@ This keeps the live system understandable: if a compose file is not in the comma
 The primary workflow is always raw `docker compose` as shown above. The options
 below are typing shortcuts only.
 
-### `stack/start.sh` (convenience alternative)
-
-The copied bundle includes `~/.openpalm/stack/start.sh`, a thin wrapper that
-prints the resolved `docker compose` command before running it. See the
-[Manual Compose Runbook](operations/manual-compose-runbook.md) for `start.sh` usage
-and the full compose command reference.
+For the full compose command reference including convenience shortcuts, see the
+[Manual Compose Runbook](operations/manual-compose-runbook.md).
 
 ### Setup scripts
 

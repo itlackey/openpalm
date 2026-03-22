@@ -475,7 +475,7 @@ describe('install image tag pinning', () => {
 });
 
 describe('secrets.env generation', () => {
-  it('generates user.env with export prefix and OP_ADMIN_TOKEN', async () => {
+  it('generates user.env with export prefix and user-managed keys', async () => {
     const { ensureSecrets } = await import('./lib/env.ts');
     const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-secrets-'));
     const vaultDir = join(tempDir, 'vault');
@@ -484,9 +484,11 @@ describe('secrets.env generation', () => {
     try {
       await ensureSecrets(vaultDir);
       const content = await Bun.file(join(vaultDir, 'user', 'user.env')).text();
-      expect(content).toContain('export OP_ADMIN_TOKEN=');
       expect(content).toContain('export OPENAI_API_KEY=');
       expect(content).toContain('export MEMORY_USER_ID=');
+      // System secrets (OP_ADMIN_TOKEN, OP_MEMORY_TOKEN) belong in stack.env, not user.env
+      expect(content).not.toContain('OP_ADMIN_TOKEN');
+      expect(content).not.toContain('OP_MEMORY_TOKEN');
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

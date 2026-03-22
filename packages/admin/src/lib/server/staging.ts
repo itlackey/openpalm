@@ -43,8 +43,3 @@ export function persistConfiguration(state: ControlPlaneState): void {
   _persistConfiguration(state, viteAssets);
 }
 
-/** @deprecated Use resolveArtifacts() */
-export const stageArtifacts = resolveArtifacts;
-
-/** @deprecated Use persistConfiguration() */
-export const persistArtifacts = persistConfiguration;

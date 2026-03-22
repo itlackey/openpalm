@@ -194,4 +194,16 @@ if ((dry_run == 1)); then
 	exit 0
 fi
 
+# Preflight: validate compose merge before mutation (same contract as lib code)
+if [[ "$action" == "up" ]]; then
+	preflight_cmd=("${compose_cmd[@]}")
+	# Replace the trailing "up -d" with "config --quiet"
+	preflight_cmd=("${preflight_cmd[@]::${#preflight_cmd[@]}-2}")
+	preflight_cmd+=(config --quiet)
+	if ! "${preflight_cmd[@]}" 2>/dev/null; then
+		echo "Error: compose preflight failed. Run with --dry-run to see the resolved command." >&2
+		exit 1
+	fi
+fi
+
 exec "${compose_cmd[@]}"

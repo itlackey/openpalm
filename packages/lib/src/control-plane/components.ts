@@ -269,10 +269,11 @@ export function discoverComponents(
     join(openpalmHome, "data", "catalog"),
     "registry"
   );
-  const userLocalComponents = scanComponentDir(
-    join(openpalmHome, "config", "components"),
-    "user-local"
-  );
+  // User-local components are no longer discovered from config/components.
+  // The component system uses data/components for instances and
+  // stack/addons for addon overlays. User-local component definitions
+  // should be placed in data/catalog instead.
+  const userLocalComponents: ComponentDefinition[] = [];
 
   // Apply override precedence: user-local > registry > built-in
   const byId = new Map<string, ComponentDefinition>();
@@ -786,21 +787,58 @@ export function buildComponentComposeArgs(openpalmHome: string, options: {
 // ── Dynamic Allowlist ──────────────────────────────────────────────────
 
 /**
- * Build the set of allowed Docker service names from core + enabled instances.
+ * Build the set of allowed Docker service names from core services,
+ * addon compose files, and enabled component instances.
  *
- * This is a static allowlist for synchronous validation. Service names for
- * component instances are derived from instance IDs using the
- * `openpalm-{instanceId}` convention. For the authoritative runtime service
- * list (reflecting the actual compose project), use `composeConfigServices()`
- * from docker.ts instead.
+ * Service names are compose-derived: addon services are extracted from
+ * stack/addons compose files, and instance services from their compose files.
+ * For the authoritative runtime list, use `composeConfigServices()` from docker.ts.
  */
 export function buildAllowlist(openpalmHome: string): Set<string> {
   const allowed = new Set<string>([...CORE_SERVICES, ...OPTIONAL_SERVICES]);
 
+  // Add services from stack/addons compose files
+  const addonsDir = join(openpalmHome, "stack", "addons");
+  if (existsSync(addonsDir)) {
+    for (const entry of readdirSync(addonsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const composePath = join(addonsDir, entry.name, "compose.yml");
+      if (!existsSync(composePath)) continue;
+      try {
+        const content = readFileSync(composePath, "utf-8");
+        // Extract service names from "services:" section
+        const servicesMatch = content.match(/^services:\s*$/m);
+        if (servicesMatch) {
+          const afterServices = content.slice((servicesMatch.index ?? 0) + servicesMatch[0].length);
+          for (const line of afterServices.split("\n")) {
+            const svcMatch = line.match(/^  ([a-z][a-z0-9_-]*):/);
+            if (svcMatch) allowed.add(svcMatch[1]);
+            // Stop at next top-level key
+            if (/^[a-z]/.test(line) && !line.startsWith("  ")) break;
+          }
+        }
+      } catch { /* skip unreadable */ }
+    }
+  }
+
+  // Add services from enabled component instances
   const instances = readEnabledInstances(openpalmHome);
   for (const instance of instances) {
-    if (instance.enabled) {
-      allowed.add(`openpalm-${instance.id}`);
+    if (!instance.enabled) continue;
+    const instanceCompose = join(componentsDataDir(openpalmHome), instance.id, "compose.yml");
+    if (existsSync(instanceCompose)) {
+      try {
+        const content = readFileSync(instanceCompose, "utf-8");
+        const servicesMatch = content.match(/^services:\s*$/m);
+        if (servicesMatch) {
+          const afterServices = content.slice((servicesMatch.index ?? 0) + servicesMatch[0].length);
+          for (const line of afterServices.split("\n")) {
+            const svcMatch = line.match(/^  ([a-z][a-z0-9_-]*):/);
+            if (svcMatch) allowed.add(svcMatch[1]);
+            if (/^[a-z]/.test(line) && !line.startsWith("  ")) break;
+          }
+        }
+      } catch { /* skip unreadable */ }
     }
   }
 

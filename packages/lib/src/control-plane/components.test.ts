@@ -311,31 +311,14 @@ describe("discoverComponents", () => {
     expect(components[0].source).toBe("registry");
   });
 
-  test("discovers components from user-local", () => {
-    const openpalmHome = join(tempDir, "home");
-    const userDir = join(openpalmHome, "config", "components");
-    mkdirSync(userDir, { recursive: true });
-    mkdirSync(join(openpalmHome, "data", "catalog"), { recursive: true });
-
-    writeComponentDir(userDir, "custom-bot");
-
-    const components = discoverComponents(openpalmHome);
-    expect(components).toHaveLength(1);
-    expect(components[0].id).toBe("custom-bot");
-    expect(components[0].source).toBe("user-local");
-  });
-
-  test("user-local overrides registry overrides builtin", () => {
+  test("registry overrides builtin", () => {
     const builtinDir = join(tempDir, "builtin");
     const openpalmHome = join(tempDir, "home");
     const catalogDir = join(openpalmHome, "data", "catalog");
-    const userDir = join(openpalmHome, "config", "components");
 
     mkdirSync(builtinDir, { recursive: true });
     mkdirSync(catalogDir, { recursive: true });
-    mkdirSync(userDir, { recursive: true });
 
-    // Same component ID in all three sources
     writeComponentDir(builtinDir, "discord", {
       compose: `
 services:
@@ -358,21 +341,10 @@ services:
 `,
     });
 
-    writeComponentDir(userDir, "discord", {
-      compose: `
-services:
-  svc:
-    image: user:latest
-    labels:
-      openpalm.name: "User Discord"
-      openpalm.description: "From user"
-`,
-    });
-
     const components = discoverComponents(openpalmHome, builtinDir);
     expect(components).toHaveLength(1);
-    expect(components[0].source).toBe("user-local");
-    expect(components[0].labels.name).toBe("User Discord");
+    expect(components[0].source).toBe("registry");
+    expect(components[0].labels.name).toBe("Registry Discord");
   });
 
   test("registry overrides builtin", () => {

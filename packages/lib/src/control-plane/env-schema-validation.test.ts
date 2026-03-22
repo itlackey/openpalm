@@ -51,19 +51,34 @@ describe("env schema validation paths", () => {
   });
 
   test("schema paths match canonical vault layout", () => {
-    // The validate module should check these paths:
     const expectedUserSchema = join(tmpDir, "vault/user/user.env.schema");
     const expectedStackSchema = join(tmpDir, "vault/stack/stack.env.schema");
 
-    // Create schemas to verify the paths are correct
     writeFileSync(expectedUserSchema, "# test schema\n");
     writeFileSync(expectedStackSchema, "# test schema\n");
 
     expect(existsSync(expectedUserSchema)).toBe(true);
     expect(existsSync(expectedStackSchema)).toBe(true);
 
-    // Verify OLD paths do NOT exist (proving we're not using them)
+    // Old flat paths must NOT exist
     expect(existsSync(join(tmpDir, "vault/user.env.schema"))).toBe(false);
     expect(existsSync(join(tmpDir, "vault/system.env.schema"))).toBe(false);
+  });
+
+  test("validate.ts reads from nested paths, not flat paths", async () => {
+    // Write schemas at OLD flat paths — should be ignored
+    writeFileSync(join(tmpDir, "vault/user.env.schema"), "OPENAI_API_KEY\n");
+    writeFileSync(join(tmpDir, "vault/system.env.schema"), "OP_ADMIN_TOKEN\n");
+    // Write env files
+    writeFileSync(join(tmpDir, "vault/user/user.env"), "# empty\n");
+    writeFileSync(join(tmpDir, "vault/stack/stack.env"), "# empty\n");
+    // Delete nested schemas to prove flat paths are ignored
+    try { rmSync(join(tmpDir, "vault/user/user.env.schema")); } catch { /* may not exist */ }
+    try { rmSync(join(tmpDir, "vault/stack/stack.env.schema")); } catch { /* may not exist */ }
+
+    const { validateProposedState } = await import("./validate.js");
+    const result = await validateProposedState(state);
+    // Should pass because nested schemas don't exist (skipped), not because flat schemas were read
+    expect(result.ok).toBe(true);
   });
 });

@@ -17,7 +17,7 @@ import {
   buildArtifactMeta,
   discoverStackOverlays,
   buildEnvFiles,
-  persistArtifacts
+  persistConfiguration
 } from "./staging.js";
 import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
@@ -192,7 +192,7 @@ describe("buildEnvFiles", () => {
 
 // ── Persist Configuration (Integration) ─────────────────────────────────
 
-describe("persistArtifacts", () => {
+describe("persistConfiguration", () => {
   let state: ReturnType<typeof makeTestState>;
 
   beforeEach(() => {
@@ -208,7 +208,7 @@ describe("persistArtifacts", () => {
   });
 
   test("writes compose to stack/", () => {
-    persistArtifacts(state);
+    persistConfiguration(state);
 
     const composePath = join(state.homeDir, "stack", "core.compose.yml");
     expect(existsSync(composePath)).toBe(true);
@@ -217,10 +217,10 @@ describe("persistArtifacts", () => {
 
   test("generates channel secrets for discovered channels in stack.env", () => {
     seedChannelAddons(state.homeDir, [
-      { name: "chat", yml: "services: {}" }
+      { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" }
     ]);
 
-    persistArtifacts(state);
+    persistConfiguration(state);
 
     const systemEnvPath = join(state.vaultDir, "stack", "stack.env");
     const content = readFileSync(systemEnvPath, "utf-8");
@@ -228,7 +228,7 @@ describe("persistArtifacts", () => {
   });
 
   test("writes stack.env with runtime configuration", () => {
-    persistArtifacts(state);
+    persistConfiguration(state);
 
     const systemEnvPath = join(state.vaultDir, "stack", "stack.env");
     expect(existsSync(systemEnvPath)).toBe(true);
@@ -238,7 +238,7 @@ describe("persistArtifacts", () => {
   });
 
   test("stack.env does NOT contain user secrets (MEMORY_USER_ID)", () => {
-    persistArtifacts(state);
+    persistConfiguration(state);
 
     const systemEnvPath = join(state.vaultDir, "stack", "stack.env");
     const content = readFileSync(systemEnvPath, "utf-8");
@@ -260,10 +260,10 @@ describe("persistArtifacts", () => {
     );
 
     seedChannelAddons(state.homeDir, [
-      { name: "chat", yml: "services: {}" }
+      { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" }
     ]);
 
-    persistArtifacts(state);
+    persistConfiguration(state);
 
     // The pre-existing secret should be preserved, not regenerated
     const systemEnvPath = join(state.vaultDir, "stack", "stack.env");

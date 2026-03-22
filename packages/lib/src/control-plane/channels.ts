@@ -1,7 +1,7 @@
 /**
  * Channel validation, discovery, and allowlist checks for the OpenPalm control plane.
  */
-import { existsSync, readdirSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { ChannelInfo } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
@@ -19,8 +19,25 @@ function isValidChannelName(name: string): boolean {
 // ── Channel Discovery ─────────────────────────────────────────────────
 
 /**
- * Discover installed channels by scanning stack/addons/ for channel directories.
- * A channel addon has a compose.yml in stack/addons/<name>/.
+ * Check if a compose file defines a channel service (has CHANNEL_NAME or GUARDIAN_URL).
+ * This is compose-derived: we parse the actual compose content rather than
+ * relying on filename patterns or directory naming conventions.
+ */
+function isChannelAddon(composePath: string): boolean {
+  try {
+    const content = readFileSync(composePath, "utf-8");
+    return content.includes("CHANNEL_NAME") || content.includes("GUARDIAN_URL");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Discover installed channels by scanning stack/addons/ for channel addons.
+ * A channel addon is identified by compose-derived truth: its compose.yml
+ * defines services with CHANNEL_NAME or GUARDIAN_URL environment variables.
+ *
+ * Non-channel addons (admin, ollama, etc.) are excluded.
  *
  * @param configDir - The config directory (~/.openpalm/config). The stack
  *   directory is derived from the parent (homeDir).
@@ -34,7 +51,8 @@ export function discoverChannels(configDir: string): ChannelInfo[] {
   return entries
     .filter((entry) => {
       if (!entry.isDirectory()) return false;
-      return existsSync(`${addonsDir}/${entry.name}/compose.yml`);
+      const composePath = `${addonsDir}/${entry.name}/compose.yml`;
+      return existsSync(composePath) && isChannelAddon(composePath);
     })
     .map((entry) => ({
       name: entry.name,
@@ -48,9 +66,9 @@ export function discoverChannels(configDir: string): ChannelInfo[] {
 
 /**
  * Check if a service name is allowed. Core services are always allowed.
- * Addon services are allowed if a compose.yml exists in stack/addons/<name>/.
- *
- * Validation is purely filesystem-based: no naming patterns are assumed.
+ * Addon services are allowed if they appear as a compose service defined in
+ * any addon compose file under stack/addons/. This is compose-derived: the
+ * actual compose content is checked, not directory naming conventions.
  */
 export function isAllowedService(value: string, configDir?: string): boolean {
   if (!value || !value.trim() || value !== value.toLowerCase()) return false;
@@ -59,9 +77,21 @@ export function isAllowedService(value: string, configDir?: string): boolean {
   if (configDir) {
     const homeDir = dirname(configDir);
     const addonsDir = `${homeDir}/stack/addons`;
+    if (!existsSync(addonsDir)) return false;
 
-    // Allowed if a compose.yml exists in stack/addons/<name>/
-    if (existsSync(`${addonsDir}/${value}/compose.yml`)) return true;
+    // Check if any addon compose.yml defines this service name
+    for (const entry of readdirSync(addonsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const composePath = `${addonsDir}/${entry.name}/compose.yml`;
+      if (!existsSync(composePath)) continue;
+      try {
+        const content = readFileSync(composePath, "utf-8");
+        // Check for "  <serviceName>:" at the start of a line under services:
+        if (content.includes(`  ${value}:`)) return true;
+      } catch {
+        continue;
+      }
+    }
   }
   return false;
 }

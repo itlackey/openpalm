@@ -21,17 +21,21 @@
     'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
     'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+  let savedOverflow = '';
+
   $effect(() => {
     if (open) {
       // Capture trigger element before moving focus (Critical fix #2)
       triggerEl = document.activeElement;
+      // Save and restore original overflow instead of blanking it
+      savedOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       requestAnimationFrame(() => {
         const first = sheetEl?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
         first?.focus();
       });
     } else {
-      document.body.style.overflow = '';
+      document.body.style.overflow = savedOverflow;
       // Return focus to trigger on close (Critical fix #2)
       if (triggerEl instanceof HTMLElement) {
         triggerEl.focus();
@@ -39,7 +43,7 @@
       triggerEl = null;
     }
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = savedOverflow;
     };
   });
 

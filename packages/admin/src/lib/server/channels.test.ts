@@ -50,9 +50,9 @@ describe("discoverChannels", () => {
     expect(result).toEqual([]);
   });
 
-  test("discovers addons as channels", () => {
+  test("discovers channel addons (those with CHANNEL_NAME)", () => {
     seedChannelAddons(homeDir, [
-      { name: "chat", yml: "services:\n  channel-chat:\n    image: chat:latest\n" }
+      { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n      GUARDIAN_URL: http://guardian:8080\n" }
     ]);
 
     const result = discoverChannels(configDir);
@@ -63,9 +63,9 @@ describe("discoverChannels", () => {
 
   test("discovers multiple channels", () => {
     seedChannelAddons(homeDir, [
-      { name: "chat", yml: "services:\n  channel-chat:\n    image: chat:latest\n" },
-      { name: "discord", yml: "services:\n  channel-discord:\n    image: discord:latest\n" },
-      { name: "api", yml: "services:\n  channel-api:\n    image: api:latest\n" }
+      { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n      GUARDIAN_URL: http://guardian:8080\n" },
+      { name: "discord", yml: "services:\n  discord:\n    environment:\n      CHANNEL_NAME: Discord\n      GUARDIAN_URL: http://guardian:8080\n" },
+      { name: "api", yml: "services:\n  api:\n    environment:\n      CHANNEL_NAME: API\n      GUARDIAN_URL: http://guardian:8080\n" }
     ]);
 
     const result = discoverChannels(configDir);
@@ -74,19 +74,30 @@ describe("discoverChannels", () => {
     expect(names).toEqual(["api", "chat", "discord"]);
   });
 
+  test("excludes non-channel addons (no CHANNEL_NAME)", () => {
+    seedChannelAddons(homeDir, [
+      { name: "admin", yml: "services:\n  admin:\n    image: admin:latest\n" },
+      { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" }
+    ]);
+
+    const result = discoverChannels(configDir);
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe("chat");
+  });
+
   test("filters out invalid channel names", () => {
     const addonsDir = join(homeDir, "stack", "addons");
     // Invalid: uppercase
     const upperDir = join(addonsDir, "UPPER");
     mkdirSync(upperDir, { recursive: true });
-    writeFileSync(join(upperDir, "compose.yml"), "services: {}");
+    writeFileSync(join(upperDir, "compose.yml"), "services:\n  x:\n    environment:\n      CHANNEL_NAME: X\n");
     // Invalid: starts with hyphen
     const leadingHyphenDir = join(addonsDir, "-leading-hyphen");
     mkdirSync(leadingHyphenDir, { recursive: true });
-    writeFileSync(join(leadingHyphenDir, "compose.yml"), "services: {}");
+    writeFileSync(join(leadingHyphenDir, "compose.yml"), "services:\n  x:\n    environment:\n      CHANNEL_NAME: X\n");
     // Valid
     seedChannelAddons(homeDir, [
-      { name: "valid-name", yml: "services: {}" }
+      { name: "valid-name", yml: "services:\n  valid-name:\n    environment:\n      CHANNEL_NAME: Valid\n" }
     ]);
 
     const result = discoverChannels(configDir);
@@ -97,9 +108,8 @@ describe("discoverChannels", () => {
   test("ignores addon dirs without compose.yml", () => {
     const addonsDir = join(homeDir, "stack", "addons");
     mkdirSync(join(addonsDir, "no-compose"), { recursive: true });
-    // no compose.yml
     seedChannelAddons(homeDir, [
-      { name: "chat", yml: "services: {}" }
+      { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" }
     ]);
 
     const result = discoverChannels(configDir);
@@ -130,18 +140,18 @@ describe("isAllowedService", () => {
     expect(isAllowedService("GUARDIAN")).toBe(false);
   });
 
-  test("allows addon service when stack/addons/<name>/compose.yml exists", () => {
+  test("allows service defined in addon compose.yml", () => {
     const homeDir = trackDir(makeTempDir());
     const configDir = join(homeDir, "config");
     mkdirSync(configDir, { recursive: true });
     seedChannelAddons(homeDir, [
-      { name: "chat", yml: "services: {}" }
+      { name: "chat", yml: "services:\n  chat:\n    image: chat:latest\n" }
     ]);
 
-    // Service name must match addon directory name exactly
+    // Service name found in compose content
     expect(isAllowedService("chat", configDir)).toBe(true);
-    // No prefix-stripping: "channel-chat" is checked as-is
-    expect(isAllowedService("channel-chat", configDir)).toBe(false);
+    // Service not defined in any compose file
+    expect(isAllowedService("unknown", configDir)).toBe(false);
   });
 
   test("rejects service when stack addon does not exist", () => {

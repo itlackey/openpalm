@@ -75,10 +75,6 @@ export async function ensureSecrets(vaultDir: string): Promise<void> {
 # All values are configured via the setup wizard.
 # This file is compatible with both \`source user.env\` and Docker Compose env_file.
 
-export OP_ADMIN_TOKEN=
-# Legacy alias — only needed if your compose file still references ADMIN_TOKEN:
-# export ADMIN_TOKEN=
-
 # LLM provider keys (configure at least one via the setup wizard)
 export OPENAI_API_KEY=
 export OPENAI_BASE_URL=
@@ -89,7 +85,6 @@ export OPENAI_BASE_URL=
 
 # Memory
 export MEMORY_USER_ID=${userId}
-export MEMORY_AUTH_TOKEN=${randomBytes(32).toString('hex')}
 `;
 
   await Bun.write(secretsPath, content);

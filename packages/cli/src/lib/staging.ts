@@ -82,9 +82,13 @@ export async function runComposeWithPreflight(
     const preflight = await composePreflight({ files, envFiles });
     if (!preflight.ok) {
       const projectName = resolveComposeProjectName();
+      const fileArgs = files.map(f => `-f ${f}`).join(' ');
+      const envArgs = envFiles.filter(f => existsSync(f)).map(f => `--env-file ${f}`).join(' ');
       throw new Error(
         `Compose preflight failed: ${preflight.stderr}\n` +
-        `Resolved command: docker compose ${files.map(f => `-f ${f}`).join(' ')} --project-name ${projectName} config --quiet\n` +
+        `Resolved command: docker compose ${fileArgs} --project-name ${projectName} ${envArgs} config --quiet\n` +
+        `Files: ${files.join(', ')}\n` +
+        `Env files: ${envFiles.join(', ')}\n` +
         `Project: ${projectName}`,
       );
     }

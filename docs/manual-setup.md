@@ -13,7 +13,7 @@ For the convenience-oriented version of the same flow, see [setup-guide.md](setu
 - The live stack is defined only by compose files under `~/.openpalm/stack/`.
 - Enabled addons come from the compose command you run, for example extra `-f addons/<name>/compose.yml` flags.
 - `~/.openpalm/config/stack.yaml` is optional metadata for helper tooling. It is not deployment truth.
-- `~/.openpalm/stack/start.sh` is a convenience wrapper around `docker compose`, not a separate control plane. See the [Manual Compose Runbook](operations/manual-compose-runbook.md) for details.
+- See the [Manual Compose Runbook](operations/manual-compose-runbook.md) for the full compose command reference.
 
 ---
 
