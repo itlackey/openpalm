@@ -1,22 +1,21 @@
 # data/
 
-Service-managed persistent data. Each service gets its own subdirectory,
-typically mounted as the container's `$HOME` or data volume. Do not edit
-files here unless you know what you're doing — services own this data.
+Durable service-owned data lives here. These directories survive restarts and
+reinstalls, but they are not the main user configuration surface.
 
 ## Subdirectories
 
 | Directory | Mounted as | Purpose |
-|-----------|------------|---------|
-| `admin/` | `/state` | Admin UI state (setup status, cached data) |
-| `assistant/` | `/home/opencode/.opencode` | OpenCode project data, conversation history, tool state |
-| `guardian/` | `/app/data` | Guardian runtime data (nonce cache, rate limit state) |
-| `memory/` | `/data` | Memory database (SQLite), embeddings, and generated config |
-| `stash/` | `/home/opencode/.akm` | AgentiKit stash directory (shared tools and knowledge) |
+|---|---|---|
+| `admin/` | `/home/node` | Admin runtime home |
+| `assistant/` | `/home/opencode` | Assistant home and local runtime state |
+| `guardian/` | `/app/data` | Guardian nonce and rate-limit state |
+| `memory/` | `/data` | Memory database, mem0 compatibility data, generated config |
+| `stash/` | `/home/opencode/.akm` | AKM stash |
+| `workspace/` | `/work` | Shared workspace mounted into assistant and admin |
 
-## Memory config
+## Notes
 
-`memory/default_config.json` is generated from `config/stack.yaml`
-assignments. It configures the memory service's LLM provider, embedding
-model, and vector store. The CLI and admin regenerate this file when
-connections or assignments change.
+- `memory/` is the only shipped persistent mount for the memory service.
+- `workspace/` is durable and intentionally shared; it is not a secret store.
+- User-editable configuration belongs in `config/`, not here.

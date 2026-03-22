@@ -7,17 +7,17 @@ import { mkdirSync, rmSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 
-// Mock validateEnvironment to avoid needing the varlock binary
-vi.mock("$lib/server/lifecycle.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("$lib/server/lifecycle.js")>();
+// Mock validateProposedState to avoid needing the varlock binary
+vi.mock("@openpalm/lib", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@openpalm/lib")>();
   return {
     ...actual,
-    validateEnvironment: vi.fn()
+    validateProposedState: vi.fn()
   };
 });
 
 import { getState, resetState } from "$lib/server/state.js";
-import { validateEnvironment } from "$lib/server/lifecycle.js";
+import { validateProposedState } from "@openpalm/lib";
 import { GET } from "./+server.js";
 
 function makeTempDir(): string {
@@ -65,7 +65,7 @@ function makeGetEvent(token = "admin-token"): Parameters<typeof GET>[0] {
 
 describe("GET /admin/config/validate", () => {
   test("returns 200 with { ok: true } when validation succeeds", async () => {
-    vi.mocked(validateEnvironment).mockResolvedValue({
+    vi.mocked(validateProposedState).mockResolvedValue({
       ok: true,
       errors: [],
       warnings: []
@@ -80,7 +80,7 @@ describe("GET /admin/config/validate", () => {
   });
 
   test("returns 200 with { ok: false } when validation finds errors", async () => {
-    vi.mocked(validateEnvironment).mockResolvedValue({
+    vi.mocked(validateProposedState).mockResolvedValue({
       ok: false,
       errors: ["ERROR: ADMIN_TOKEN is required but not set"],
       warnings: []

@@ -15,7 +15,7 @@ import {
   appendAudit,
   getInstanceDetail,
   parseEnvSchema,
-} from "$lib/server/control-plane.js";
+} from "@openpalm/lib";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

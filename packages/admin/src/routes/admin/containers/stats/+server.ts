@@ -7,7 +7,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { appendAudit, buildComposeFileList, buildEnvFiles } from "$lib/server/control-plane.js";
+import { appendAudit, buildComposeFileList, buildEnvFiles } from "@openpalm/lib";
 import { composeStats, checkDocker } from "$lib/server/docker.js";
 import type { RequestHandler } from "./$types";
 
@@ -26,7 +26,7 @@ export const GET: RequestHandler = async (event) => {
     return errorResponse(503, "docker_unavailable", "Docker is not available", {}, requestId);
   }
 
-  const result = await composeStats(state.configDir, {
+  const result = await composeStats({
     files: buildComposeFileList(state),
     envFiles: buildEnvFiles(state)
   });

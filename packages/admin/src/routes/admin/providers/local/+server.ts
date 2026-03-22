@@ -11,7 +11,7 @@ import {
   jsonResponse,
   requireAdmin,
 } from "$lib/server/helpers.js";
-import { detectLocalProviders } from "$lib/server/control-plane.js";
+import { detectLocalProviders } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 export const GET: RequestHandler = async (event) => {

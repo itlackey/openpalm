@@ -5,7 +5,7 @@
  * This endpoint only handles automations.
  *
  * Removes the .yml from CONFIG_HOME/automations/,
- * re-stages artifacts, and reloads the scheduler.
+ * refreshes runtime files, and reloads the scheduler.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -21,9 +21,9 @@ import {
 import {
   appendAudit,
   uninstallAutomation,
-  persistConfiguration,
-  resolveArtifacts,
-} from "$lib/server/control-plane.js";
+  writeRuntimeFiles,
+  resolveRuntimeFiles,
+} from "@openpalm/lib";
 
 
 export const POST: RequestHandler = async (event) => {
@@ -60,8 +60,8 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_input", result.error, {}, requestId);
   }
 
-  state.artifacts = resolveArtifacts(state);
-  persistConfiguration(state);
+  state.artifacts = resolveRuntimeFiles(state);
+  writeRuntimeFiles(state);
   // Scheduler sidecar auto-reloads via file watching
 
   appendAudit(state, actor, "registry.uninstall", { name, type }, true, requestId, callerType);

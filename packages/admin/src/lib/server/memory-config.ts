@@ -6,7 +6,6 @@ export type {
   ModelDiscoveryReason,
   ProviderModelsResult,
   VectorDimensionResult,
-  QdrantDimensionResult,
 } from "@openpalm/lib";
 
 export {
@@ -22,9 +21,7 @@ export {
   ensureMemoryConfig,
   resolveConfigForPush,
   checkVectorDimensions,
-  checkQdrantDimensions,
   resetVectorStore,
-  resetQdrantCollection,
   pushConfigToMemory,
   fetchConfigFromMemory,
   provisionMemoryUser,

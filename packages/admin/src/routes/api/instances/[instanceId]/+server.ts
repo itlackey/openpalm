@@ -19,7 +19,9 @@ import {
   getInstanceDetail,
   configureInstance,
   deleteInstance,
-} from "$lib/server/control-plane.js";
+  buildComposeFileList,
+  buildEnvFiles,
+} from "@openpalm/lib";
 import { composeStop, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 
@@ -111,7 +113,7 @@ export const DELETE: RequestHandler = async (event) => {
   const dockerCheck = await checkDocker();
   if (dockerCheck.ok) {
     const containerName = `openpalm-${instanceId}`;
-    await composeStop(state.configDir, [containerName]).catch((err) => {
+    await composeStop([containerName], { files: buildComposeFileList(state), envFiles: buildEnvFiles(state) }).catch((err) => {
       logger.warn("failed to stop container before delete", {
         requestId,
         instanceId,

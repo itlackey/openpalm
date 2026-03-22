@@ -1,7 +1,7 @@
 import { defineCommand } from 'citty';
 import { join } from 'node:path';
 import { rm } from 'node:fs/promises';
-import { defaultVaultDir, defaultDataDir } from '../lib/paths.ts';
+import { resolveVaultDir, resolveDataDir } from '@openpalm/lib';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 
 export default defineCommand({
@@ -10,15 +10,15 @@ export default defineCommand({
     description: 'Validate configuration against schema',
   },
   async run() {
-    const vaultDir = defaultVaultDir();
-    const dataDir = defaultDataDir();
+    const vaultDir = resolveVaultDir();
+    const dataDir = resolveDataDir();
 
-    const primarySchema = join(vaultDir, 'user.env.schema');
+    const primarySchema = join(vaultDir, 'user', 'user.env.schema');
     const envPath = join(vaultDir, 'user', 'user.env');
 
     if (!(await Bun.file(primarySchema).exists())) {
       console.error(
-        `Error: user.env.schema not found at ${primarySchema}.\nRun 'openpalm install' first.`,
+        `Error: vault/user/user.env.schema not found at ${primarySchema}.\nRun 'openpalm install' first.`,
       );
       process.exit(1);
     }

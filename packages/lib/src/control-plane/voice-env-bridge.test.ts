@@ -3,82 +3,37 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildVoiceEnvVars, applyVoiceEnvVars, isVoiceChannelInstalled } from "./voice-env-bridge.js";
-import type { CapabilityAssignments, CanonicalConnectionProfile, ControlPlaneState } from "./types.js";
-
-// ── Helpers ──────────────────────────────────────────────────────────────
-
-const TEST_API_KEY_VAR = "TEST_VOICE_BRIDGE_API_KEY";
-const TEST_API_KEY_VAR_2 = "TEST_VOICE_BRIDGE_API_KEY_2";
-
-function makeProfile(overrides?: Partial<CanonicalConnectionProfile>): CanonicalConnectionProfile {
-  return {
-    id: "openai-main",
-    name: "OpenAI",
-    kind: "openai_compatible_remote",
-    provider: "openai",
-    baseUrl: "https://api.openai.com/v1",
-    auth: { mode: "api_key", apiKeySecretRef: `env:${TEST_API_KEY_VAR}` },
-    ...overrides,
-  };
-}
-
-function makeAssignments(overrides?: Partial<CapabilityAssignments>): CapabilityAssignments {
-  return {
-    llm: { connectionId: "openai-main", model: "gpt-4o" },
-    embeddings: { connectionId: "openai-main", model: "text-embedding-3-small" },
-    ...overrides,
-  };
-}
+import type { ControlPlaneState } from "./types.js";
+import type { StackSpecTts, StackSpecStt } from "./stack-spec.js";
 
 // ── Tests: buildVoiceEnvVars ─────────────────────────────────────────────
 
 describe("buildVoiceEnvVars", () => {
-  let tmpDir: string;
-  let vaultDir: string;
+  it("returns TTS env vars when TTS is enabled with model and voice", () => {
+    const tts: StackSpecTts = { enabled: true, provider: "openai", model: "tts-1", voice: "alloy" };
 
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), "voice-env-test-"));
-    vaultDir = tmpDir;
-    mkdirSync(join(vaultDir, "user"), { recursive: true });
-    writeFileSync(join(vaultDir, "user", "user.env"), `${TEST_API_KEY_VAR}=sk-test-key-123\n`);
-  });
+    const vars = buildVoiceEnvVars(tts);
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it("returns TTS env vars when TTS has a connectionId", () => {
-    const profiles = [makeProfile()];
-    const assignments = makeAssignments({
-      tts: { enabled: true, connectionId: "openai-main", model: "tts-1", voice: "alloy" },
-    });
-
-    const vars = buildVoiceEnvVars(assignments, profiles, vaultDir);
-
-    expect(vars.TTS_BASE_URL).toBe("https://api.openai.com");
-    expect(vars.TTS_API_KEY).toBe("sk-test-key-123");
+    expect(vars.TTS_BASE_URL).toBe("");
+    expect(vars.TTS_API_KEY).toBe("");
     expect(vars.TTS_MODEL).toBe("tts-1");
     expect(vars.TTS_VOICE).toBe("alloy");
   });
 
-  it("returns STT env vars when STT has a connectionId", () => {
-    const profiles = [makeProfile()];
-    const assignments = makeAssignments({
-      stt: { enabled: true, connectionId: "openai-main", model: "whisper-1" },
-    });
+  it("returns STT env vars when STT is enabled with model", () => {
+    const stt: StackSpecStt = { enabled: true, provider: "openai", model: "whisper-1" };
 
-    const vars = buildVoiceEnvVars(assignments, profiles, vaultDir);
+    const vars = buildVoiceEnvVars(undefined, stt);
 
-    expect(vars.STT_BASE_URL).toBe("https://api.openai.com");
-    expect(vars.STT_API_KEY).toBe("sk-test-key-123");
+    expect(vars.STT_BASE_URL).toBe("");
+    expect(vars.STT_API_KEY).toBe("");
     expect(vars.STT_MODEL).toBe("whisper-1");
   });
 
-  it("clears env vars when TTS assignment is disabled", () => {
-    const profiles = [makeProfile()];
-    const assignments = makeAssignments({ tts: { enabled: false } });
+  it("clears env vars when TTS is disabled", () => {
+    const tts: StackSpecTts = { enabled: false };
 
-    const vars = buildVoiceEnvVars(assignments, profiles, vaultDir);
+    const vars = buildVoiceEnvVars(tts);
 
     expect(vars.TTS_BASE_URL).toBe("");
     expect(vars.TTS_API_KEY).toBe("");
@@ -86,22 +41,18 @@ describe("buildVoiceEnvVars", () => {
     expect(vars.TTS_VOICE).toBe("");
   });
 
-  it("clears env vars when STT assignment is disabled", () => {
-    const profiles = [makeProfile()];
-    const assignments = makeAssignments({ stt: { enabled: false } });
+  it("clears env vars when STT is disabled", () => {
+    const stt: StackSpecStt = { enabled: false };
 
-    const vars = buildVoiceEnvVars(assignments, profiles, vaultDir);
+    const vars = buildVoiceEnvVars(undefined, stt);
 
     expect(vars.STT_BASE_URL).toBe("");
     expect(vars.STT_API_KEY).toBe("");
     expect(vars.STT_MODEL).toBe("");
   });
 
-  it("clears env vars when TTS assignment is absent", () => {
-    const profiles = [makeProfile()];
-    const assignments = makeAssignments();
-
-    const vars = buildVoiceEnvVars(assignments, profiles, vaultDir);
+  it("clears env vars when TTS is absent", () => {
+    const vars = buildVoiceEnvVars(undefined);
 
     expect(vars.TTS_BASE_URL).toBe("");
     expect(vars.TTS_API_KEY).toBe("");
@@ -109,14 +60,11 @@ describe("buildVoiceEnvVars", () => {
     expect(vars.TTS_VOICE).toBe("");
   });
 
-  it("sets no base URL or API key for local engine (no connectionId)", () => {
-    const profiles = [makeProfile()];
-    const assignments = makeAssignments({
-      tts: { enabled: true, model: "kokoro" },
-      stt: { enabled: true, model: "whisper-local" },
-    });
+  it("sets model but no base URL or API key for local engine", () => {
+    const tts: StackSpecTts = { enabled: true, model: "kokoro" };
+    const stt: StackSpecStt = { enabled: true, model: "whisper-local" };
 
-    const vars = buildVoiceEnvVars(assignments, profiles, vaultDir);
+    const vars = buildVoiceEnvVars(tts, stt);
 
     expect(vars.TTS_BASE_URL).toBe("");
     expect(vars.TTS_API_KEY).toBe("");
@@ -126,66 +74,18 @@ describe("buildVoiceEnvVars", () => {
     expect(vars.STT_MODEL).toBe("whisper-local");
   });
 
-  it("strips trailing /v1 from base URL", () => {
-    const profiles = [makeProfile({ baseUrl: "https://api.openai.com/v1" })];
-    const assignments = makeAssignments({
-      tts: { enabled: true, connectionId: "openai-main", model: "tts-1" },
-    });
+  it("handles both TTS and STT enabled simultaneously", () => {
+    const tts: StackSpecTts = { enabled: true, provider: "openai", model: "tts-1", voice: "alloy" };
+    const stt: StackSpecStt = { enabled: true, provider: "groq", model: "whisper-large-v3" };
 
-    const vars = buildVoiceEnvVars(assignments, profiles, vaultDir);
-
-    expect(vars.TTS_BASE_URL).toBe("https://api.openai.com");
-  });
-
-  it("handles profile with auth mode 'none' (no API key)", () => {
-    const profiles = [makeProfile({ auth: { mode: "none" } })];
-    const assignments = makeAssignments({
-      tts: { enabled: true, connectionId: "openai-main", model: "tts-1" },
-    });
-
-    const vars = buildVoiceEnvVars(assignments, profiles, vaultDir);
-
-    expect(vars.TTS_API_KEY).toBe("");
-  });
-
-  it("clears env vars when connectionId references a missing profile", () => {
-    const profiles: CanonicalConnectionProfile[] = [];
-    const assignments = makeAssignments({
-      tts: { enabled: true, connectionId: "missing-profile", model: "tts-1" },
-    });
-
-    const vars = buildVoiceEnvVars(assignments, profiles, vaultDir);
+    const vars = buildVoiceEnvVars(tts, stt);
 
     expect(vars.TTS_BASE_URL).toBe("");
     expect(vars.TTS_API_KEY).toBe("");
-    expect(vars.TTS_MODEL).toBe("");
-    expect(vars.TTS_VOICE).toBe("");
-  });
-
-  it("handles both TTS and STT with different connections", () => {
-    const groqProfile = makeProfile({
-      id: "groq-main",
-      name: "Groq",
-      provider: "groq",
-      baseUrl: "https://api.groq.com/openai/v1",
-      auth: { mode: "api_key", apiKeySecretRef: `env:${TEST_API_KEY_VAR_2}` },
-    });
-    writeFileSync(join(vaultDir, "user", "user.env"), `${TEST_API_KEY_VAR}=sk-openai\n${TEST_API_KEY_VAR_2}=gsk-groq\n`);
-
-    const profiles = [makeProfile(), groqProfile];
-    const assignments = makeAssignments({
-      tts: { enabled: true, connectionId: "openai-main", model: "tts-1", voice: "alloy" },
-      stt: { enabled: true, connectionId: "groq-main", model: "whisper-large-v3" },
-    });
-
-    const vars = buildVoiceEnvVars(assignments, profiles, vaultDir);
-
-    expect(vars.TTS_BASE_URL).toBe("https://api.openai.com");
-    expect(vars.TTS_API_KEY).toBe("sk-openai");
     expect(vars.TTS_MODEL).toBe("tts-1");
     expect(vars.TTS_VOICE).toBe("alloy");
-    expect(vars.STT_BASE_URL).toBe("https://api.groq.com/openai");
-    expect(vars.STT_API_KEY).toBe("gsk-groq");
+    expect(vars.STT_BASE_URL).toBe("");
+    expect(vars.STT_API_KEY).toBe("");
     expect(vars.STT_MODEL).toBe("whisper-large-v3");
   });
 });
@@ -259,31 +159,19 @@ describe("isVoiceChannelInstalled", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("returns true when legacy voice.yml exists", () => {
-    mkdirSync(join(tmpDir, "config", "channels"), { recursive: true });
-    writeFileSync(join(tmpDir, "config", "channels", "voice.yml"), "services: {}\n");
+  it("returns true when voice addon compose exists", () => {
+    mkdirSync(join(tmpDir, "stack", "addons", "voice"), { recursive: true });
+    writeFileSync(join(tmpDir, "stack", "addons", "voice", "compose.yml"), "services:\n  voice:\n    image: test\n");
     expect(isVoiceChannelInstalled(tmpDir)).toBe(true);
   });
 
-  it("returns true when voice component instance is enabled", () => {
-    mkdirSync(join(tmpDir, "data", "components"), { recursive: true });
-    writeFileSync(
-      join(tmpDir, "data", "components", "enabled.json"),
-      JSON.stringify([{ id: "my-voice", component: "voice", enabled: true }]),
-    );
-    expect(isVoiceChannelInstalled(tmpDir)).toBe(true);
-  });
-
-  it("returns false when no voice channel or component exists", () => {
+  it("returns false when voice addon does not exist", () => {
     expect(isVoiceChannelInstalled(tmpDir)).toBe(false);
   });
 
-  it("returns false when voice component is disabled", () => {
-    mkdirSync(join(tmpDir, "data", "components"), { recursive: true });
-    writeFileSync(
-      join(tmpDir, "data", "components", "enabled.json"),
-      JSON.stringify([{ id: "my-voice", component: "voice", enabled: false }]),
-    );
+  it("returns false when stack/addons exists but no voice subdirectory", () => {
+    mkdirSync(join(tmpDir, "stack", "addons", "chat"), { recursive: true });
+    writeFileSync(join(tmpDir, "stack", "addons", "chat", "compose.yml"), "services:\n  chat:\n    image: test\n");
     expect(isVoiceChannelInstalled(tmpDir)).toBe(false);
   });
 });

@@ -1,10 +1,5 @@
-/**
- * Secrets and connection key management for the OpenPalm control plane.
- *
- * In v0.10.0, user secrets live in vault/user/user.env and system secrets
- * in vault/stack/stack.env. This module manages the user-editable vault file.
- */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync } from "node:fs";
+/** Secrets and connection key management. */
+import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSync, rmSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
@@ -14,7 +9,6 @@ import { resolveVaultDir, resolveConfigDir } from "./home.js";
 const OPENCODE_STARTER_CONFIG = JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2) + "\n";
 const logger = createLogger("secrets");
 
-// ── Connection Key Management ───────────────────────────────────────────
 
 export const ALLOWED_CONNECTION_KEYS = new Set([
   "OPENAI_API_KEY",
@@ -25,14 +19,7 @@ export const ALLOWED_CONNECTION_KEYS = new Set([
   "GOOGLE_API_KEY",
   "MCP_API_KEY",
   "EMBEDDING_API_KEY",
-  "SYSTEM_LLM_PROVIDER",
-  "SYSTEM_LLM_BASE_URL",
-  "SYSTEM_LLM_MODEL",
   "OPENAI_BASE_URL",
-  "EMBEDDING_MODEL",
-  "EMBEDDING_DIMS",
-  "MEMORY_USER_ID",
-  "MEMORY_AUTH_TOKEN",
   "OWNER_NAME",
   "OWNER_EMAIL",
 ]);
@@ -47,20 +34,12 @@ export const REQUIRED_LLM_PROVIDER_KEYS = [
   "EMBEDDING_API_KEY",
 ];
 
-/** Keys that are non-secret config — returned unmasked in connection responses. */
 export const PLAIN_CONFIG_KEYS = new Set([
-  "SYSTEM_LLM_PROVIDER",
-  "SYSTEM_LLM_BASE_URL",
-  "SYSTEM_LLM_MODEL",
   "OPENAI_BASE_URL",
-  "EMBEDDING_MODEL",
-  "EMBEDDING_DIMS",
-  "MEMORY_USER_ID",
   "OWNER_NAME",
   "OWNER_EMAIL",
 ]);
 
-// ── Secrets Management ──────────────────────────────────────────────────
 
 const VAULT_DIR_MODE = 0o700;
 const VAULT_FILE_MODE = 0o600;
@@ -105,11 +84,11 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
   if (!existing.OP_ADMIN_TOKEN && state.adminToken) {
     updates.OP_ADMIN_TOKEN = state.adminToken;
   }
-  if (!existing.ASSISTANT_TOKEN) {
-    updates.ASSISTANT_TOKEN = randomBytes(32).toString("hex");
+  if (!existing.OP_ASSISTANT_TOKEN) {
+    updates.OP_ASSISTANT_TOKEN = randomBytes(32).toString("hex");
   }
-  if (!existing.MEMORY_AUTH_TOKEN) {
-    updates.MEMORY_AUTH_TOKEN = randomBytes(32).toString("hex");
+  if (!existing.OP_MEMORY_TOKEN) {
+    updates.OP_MEMORY_TOKEN = randomBytes(32).toString("hex");
   }
 
   if (!existsSync(systemEnvPath)) {
@@ -122,11 +101,11 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
       "",
       "# Authentication",
       "OP_ADMIN_TOKEN=",
-      "ASSISTANT_TOKEN=",
+      "OP_ASSISTANT_TOKEN=",
       "",
       "# Service auth",
-      "MEMORY_AUTH_TOKEN=",
-      "OPENCODE_SERVER_PASSWORD=",
+      "OP_MEMORY_TOKEN=",
+      "OP_OPENCODE_PASSWORD=",
       "",
     ].join("\n");
     const content = mergeEnvContent(header, updates);
@@ -137,9 +116,6 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
   mergeVaultEnvFile(systemEnvPath, updates, true);
 }
 
-/**
- * Ensure the vault/user/user.env file exists with defaults.
- */
 export function ensureSecrets(state: ControlPlaneState): void {
   enforceVaultDirMode(state.vaultDir);
   mkdirSync(`${state.vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
@@ -147,11 +123,10 @@ export function ensureSecrets(state: ControlPlaneState): void {
   const userEnvPath = `${state.vaultDir}/user/user.env`;
   if (!existsSync(userEnvPath)) {
     const lines: string[] = [
-      "# OpenPalm — User Configuration",
-      "# Edit these values directly. The assistant picks up changes within",
-      "# seconds via file watcher — no restart needed.",
+      "# OpenPalm — User Secrets",
+      "# API keys and owner info only. LLM/embedding config is in stack.yaml.",
       "",
-      "# LLM provider keys",
+      "# LLM provider API keys",
       "OPENAI_API_KEY=",
       "OPENVIKING_API_KEY=",
       "OPENAI_BASE_URL=",
@@ -161,18 +136,6 @@ export function ensureSecrets(state: ControlPlaneState): void {
       "GOOGLE_API_KEY=",
       "MCP_API_KEY=",
       "EMBEDDING_API_KEY=",
-      "",
-      "# System LLM",
-      "SYSTEM_LLM_PROVIDER=",
-      "SYSTEM_LLM_BASE_URL=",
-      "SYSTEM_LLM_MODEL=",
-      "",
-      "# Embedding",
-      "EMBEDDING_MODEL=",
-      "EMBEDDING_DIMS=",
-      "",
-      "# Memory",
-      `MEMORY_USER_ID=${process.env.MEMORY_USER_ID ?? process.env.OPENMEMORY_USER_ID ?? "default_user"}`,
       "",
       "# Owner",
       `OWNER_NAME=${process.env.OWNER_NAME ?? ""}`,
@@ -192,6 +155,31 @@ export function ensureSecrets(state: ControlPlaneState): void {
   }
 
   ensureSystemSecrets(state);
+  ensureAuthJson(state.vaultDir);
+}
+
+function ensureAuthJson(vaultDir: string): void {
+  const authJsonPath = `${vaultDir}/stack/auth.json`;
+  mkdirSync(`${vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
+
+  if (existsSync(authJsonPath)) {
+    try {
+      if (lstatSync(authJsonPath).isDirectory()) {
+        rmSync(authJsonPath, { recursive: true, force: true });
+      } else {
+        chmodSync(authJsonPath, VAULT_FILE_MODE);
+        return;
+      }
+    } catch (error) {
+      logger.warn("failed to repair auth.json path", {
+        path: authJsonPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  writeVaultFile(authJsonPath, "{}\n");
 }
 
 export function updateSecretsEnv(
@@ -261,7 +249,6 @@ export function patchSecretsEnvFile(
   writeVaultFile(userEnvPath, result);
 }
 
-// ── Connection Value Masking ────────────────────────────────────────────
 
 export function maskConnectionValue(key: string, value: string): string {
   if (!value) return "";
@@ -270,12 +257,6 @@ export function maskConnectionValue(key: string, value: string): string {
   return "*".repeat(value.length - 4) + value.slice(-4);
 }
 
-// ── Secrets Loading ────────────────────────────────────────────────────
-
-/**
- * Load secrets from vault/user/user.env.
- * Accepts vaultDir for explicit path, or resolves from home.ts.
- */
 export function loadSecretsEnvFile(vaultDir?: string): Record<string, string> {
   const base = vaultDir ?? resolveVaultDir();
   const parsed = parseEnvFile(`${base}/user/user.env`);
@@ -286,7 +267,6 @@ export function loadSecretsEnvFile(vaultDir?: string): Record<string, string> {
   return result;
 }
 
-// ── OpenCode Config ────────────────────────────────────────────────────
 
 export function ensureOpenCodeConfig(): void {
   const configDir = resolveConfigDir();

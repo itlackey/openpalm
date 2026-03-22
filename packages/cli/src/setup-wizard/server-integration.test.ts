@@ -14,7 +14,6 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSetupServer } from "./server.ts";
-import type { CoreAssetProvider } from "@openpalm/lib";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -27,17 +26,19 @@ let logsDir: string;
 
 const savedEnv: Record<string, string | undefined> = {};
 
-function createStubAssetProvider(): CoreAssetProvider {
-  return {
-    coreCompose: () => "services:\n  assistant:\n    image: assistant:latest\n",
-    agentsMd: () => "# Agents\n",
-    opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
-    secretsSchema: () => "ADMIN_TOKEN=string\n",
-    stackSchema: () => "OP_IMAGE_TAG=string\n",
-    cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
-    cleanupData: () => "name: cleanup-data\nschedule: weekly\n",
-    validateConfig: () => "name: validate-config\nschedule: hourly\n",
-  };
+/** Seed minimal asset files so performSetup() can read them at OP_HOME. */
+function seedRequiredAssets(homeDir: string): void {
+  mkdirSync(join(homeDir, "stack"), { recursive: true });
+  writeFileSync(join(homeDir, "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
+  mkdirSync(join(homeDir, "data", "assistant"), { recursive: true });
+  writeFileSync(join(homeDir, "data", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
+  writeFileSync(join(homeDir, "data", "assistant", "AGENTS.md"), "# Agents\n");
+  writeFileSync(join(homeDir, "vault", "user", "user.env.schema"), "OP_ADMIN_TOKEN=string\n");
+  writeFileSync(join(homeDir, "vault", "stack", "stack.env.schema"), "OP_IMAGE_TAG=string\n");
+  mkdirSync(join(homeDir, "config", "automations"), { recursive: true });
+  writeFileSync(join(homeDir, "config", "automations", "cleanup-logs.yml"), "name: cleanup-logs\nschedule: daily\n");
+  writeFileSync(join(homeDir, "config", "automations", "cleanup-data.yml"), "name: cleanup-data\nschedule: weekly\n");
+  writeFileSync(join(homeDir, "config", "automations", "validate-config.yml"), "name: validate-config\nschedule: hourly\n");
 }
 
 function makeSetupDirs(): void {
@@ -76,7 +77,7 @@ function makeSetupDirs(): void {
     [
       "# OpenPalm Secrets",
       "export OP_ADMIN_TOKEN=",
-      "export ADMIN_TOKEN=",
+
       "export OPENAI_API_KEY=",
       "export OPENAI_BASE_URL=",
       "export ANTHROPIC_API_KEY=",
@@ -84,12 +85,15 @@ function makeSetupDirs(): void {
       "export MISTRAL_API_KEY=",
       "export GOOGLE_API_KEY=",
       "export MEMORY_USER_ID=default_user",
-      "export MEMORY_AUTH_TOKEN=abc123",
+      "export MEMORY_USER_ID=default_user",
       "export OWNER_NAME=",
       "export OWNER_EMAIL=",
       "",
     ].join("\n")
   );
+
+  // Seed asset files for performSetup() reads
+  seedRequiredAssets(homeDir);
 }
 
 /** Check if Ollama is reachable before running integration tests. */
@@ -137,7 +141,6 @@ describe("setup wizard server integration", () => {
     }
 
     const { stop } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -165,7 +168,6 @@ describe("setup wizard server integration", () => {
 
   it("returns recoverable error for Ollama with empty baseUrl (default is docker-internal)", async () => {
     const { stop } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -207,16 +209,29 @@ describe("setup wizard server integration", () => {
     }
 
     const { stop, waitForComplete } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
     try {
       const body = {
-        version: 1,
-        owner: { name: "Integration Test", email: "integ@test.local" },
+        spec: {
+          version: 2,
+          capabilities: {
+            llm: "ollama/qwen2.5-coder:3b",
+            embeddings: {
+              provider: "ollama",
+              model: "nomic-embed-text",
+              dims: 768,
+            },
+            memory: {
+              userId: "integ_user",
+              customInstructions: "",
+            },
+          },
+          addons: {},
+        },
         security: { adminToken: "integration-test-token-123" },
-        memory: { userId: "integ_user" },
+        owner: { name: "Integration Test", email: "integ@test.local" },
         connections: [
           {
             id: "ollama-local",
@@ -226,14 +241,6 @@ describe("setup wizard server integration", () => {
             apiKey: "",
           },
         ],
-        assignments: {
-          llm: { connectionId: "ollama-local", model: "qwen2.5-coder:3b" },
-          embeddings: {
-            connectionId: "ollama-local",
-            model: "nomic-embed-text",
-            embeddingDims: 768,
-          },
-        },
       };
 
       const [res, result] = await Promise.all([
@@ -270,8 +277,8 @@ describe("setup wizard server integration", () => {
       const specPath = join(configDir, "stack.yaml");
       expect(existsSync(specPath)).toBe(true);
 
-      // Verify staged compose artifact exists
-      const stagedCompose = join(configDir, "components", "core.yml");
+      // Verify core compose artifact exists in stack/
+      const stagedCompose = join(homeDir, "stack", "core.compose.yml");
       expect(existsSync(stagedCompose)).toBe(true);
     } finally {
       stop();
@@ -282,7 +289,6 @@ describe("setup wizard server integration", () => {
 
   it("setup status returns true after successful completion", async () => {
     const { stop, waitForComplete } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -294,9 +300,23 @@ describe("setup wizard server integration", () => {
 
       // Complete setup
       const body = {
-        version: 1,
+        spec: {
+          version: 2,
+          capabilities: {
+            llm: "openai/gpt-4o",
+            embeddings: {
+              provider: "openai",
+              model: "text-embedding-3-small",
+              dims: 1536,
+            },
+            memory: {
+              userId: "status_user",
+              customInstructions: "",
+            },
+          },
+          addons: {},
+        },
         security: { adminToken: "status-test-token-123" },
-        memory: { userId: "status_user" },
         connections: [
           {
             id: "openai-test",
@@ -306,10 +326,6 @@ describe("setup wizard server integration", () => {
             apiKey: "sk-test-key-status",
           },
         ],
-        assignments: {
-          llm: { connectionId: "openai-test", model: "gpt-4o" },
-          embeddings: { connectionId: "openai-test", model: "text-embedding-3-small" },
-        },
       };
 
       await Promise.all([
@@ -334,7 +350,6 @@ describe("setup wizard server integration", () => {
 
   it("deploy status transitions through pending -> running via markAllRunning", async () => {
     const { stop, updateDeployStatus, markAllRunning } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -378,7 +393,6 @@ describe("setup wizard server integration", () => {
 
   it("markAllRunning preserves error status entries", async () => {
     const { stop, updateDeployStatus, markAllRunning } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -409,15 +423,28 @@ describe("setup wizard server integration", () => {
 
   it("allows re-completing setup after a deploy error", async () => {
     const { stop, waitForComplete, setDeployError } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
     try {
       const body = {
-        version: 1,
+        spec: {
+          version: 2,
+          capabilities: {
+            llm: "openai/gpt-4o",
+            embeddings: {
+              provider: "openai",
+              model: "text-embedding-3-small",
+              dims: 1536,
+            },
+            memory: {
+              userId: "retry_user",
+              customInstructions: "",
+            },
+          },
+          addons: {},
+        },
         security: { adminToken: "retry-test-token-123" },
-        memory: { userId: "retry_user" },
         connections: [
           {
             id: "openai-retry",
@@ -427,10 +454,6 @@ describe("setup wizard server integration", () => {
             apiKey: "sk-test-key-retry",
           },
         ],
-        assignments: {
-          llm: { connectionId: "openai-retry", model: "gpt-4o" },
-          embeddings: { connectionId: "openai-retry", model: "text-embedding-3-small" },
-        },
       };
 
       // First setup completes successfully
@@ -469,7 +492,6 @@ describe("setup wizard server integration", () => {
     }
 
     const { stop } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 

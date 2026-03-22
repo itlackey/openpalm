@@ -311,7 +311,7 @@ export function detectSecretBackend(state: ControlPlaneState): SecretBackend {
     return new PassBackend(state);
   }
 
-  for (const schemaPath of [`${state.vaultDir}/user.env.schema`, `${state.vaultDir}/system.env.schema`]) {
+  for (const schemaPath of [`${state.vaultDir}/user/user.env.schema`, `${state.vaultDir}/stack/stack.env.schema`]) {
     if (!existsSync(schemaPath)) continue;
     const content = readFileSync(schemaPath, 'utf-8');
     if (content.includes('@varlock/pass-plugin')) {

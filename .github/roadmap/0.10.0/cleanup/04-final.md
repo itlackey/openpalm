@@ -1,0 +1,294 @@
+# Cleanup Refactor Final Decision
+
+Date: 2026-03-21
+
+This document is the consensus outcome after reviewing:
+
+- `.github/roadmap/0.10.0/cleanup/01.md`
+- `.github/roadmap/0.10.0/cleanup/02.md`
+- `.github/roadmap/0.10.0/cleanup/03.md`
+- `docs/technical/core-principles.md`
+- `docs/technical/code-quality-principles.md`
+- current implementation under `.openpalm/stack/` and `packages/lib/src/control-plane/`
+
+The goal of the 0.10.0 cleanup refactor is to reduce drift and operational ambiguity without changing the core filesystem contract, security model, or manual-first Docker Compose workflow.
+
+The following directives are explicitly in scope for this refactor and should be treated as required outcomes:
+
+1. remove all references to `config/components`
+2. remove wrappers that provide no value beyond native Compose behavior
+3. support Compose `extends` as an optional deduplication tool and document how to use it safely, without making it the default/common addon pattern
+4. remove aliases, shims, backward-compatibility paths, and other legacy support code
+
+## Consensus
+
+We should keep the cleanup focused on removing real inconsistencies in the current system rather than introducing new abstractions.
+
+The highest-value problems are:
+
+1. Runtime assembly still leaks older `config/components` assumptions.
+2. Compose invocation behavior is not fully consistent across wrapper and library code.
+3. Service discovery and management still rely on brittle filename conventions in some paths.
+4. Env loading behavior is hard to reason about because it is under-documented.
+5. Manual Compose operation is supported in principle, but the canonical preflight workflow is not documented strongly enough.
+
+We should not turn this refactor into a platform redesign. In particular, we should not change the file-drop addon model, add new runtime truth surfaces, or rewrite the mount/security model as part of cleanup.
+
+---
+
+## Final Changes To Make In This Refactor
+
+### 1) Remove all `config/components` references and standardize on `stack/`
+
+Keep and implement.
+
+This refactor should fully remove `config/components` from the active runtime/control-plane model and make `~/.openpalm/stack/` the only compose assembly location.
+
+Required outcomes:
+
+- remove code paths that read or write runtime compose files under `config/components`
+- update control-plane helpers to use `stack/core.compose.yml` and `stack/addons/*/compose.yml`
+- remove docs/comments that describe `config/components` as part of the runtime path
+- preserve manual parity by ensuring tooling uses the same file set an operator would pass to Compose directly
+
+Why this stays in scope:
+
+- the current split is one of the main sources of architectural drift
+- the user explicitly wants all `config/components` references removed
+- the documented runtime contract already centers `stack/`
+
+### 2) Unify the canonical Compose invocation contract and remove no-op wrappers
+
+Keep and implement.
+
+Make one shared Compose invocation contract in `@openpalm/lib` and remove wrappers/scripts that do not add policy enforcement, validation, or useful diagnostics beyond what native Compose already provides.
+
+Required outcomes:
+
+- use one resolved project-name path everywhere
+- use one resolved compose file list path everywhere
+- use one resolved env-file list path everywhere
+- surface the resolved command and file set in diagnostics
+- delete wrapper behavior that only re-expresses standard Compose features without adding OpenPalm-specific value
+
+Why this stays in scope:
+
+- `.openpalm/stack/start.sh` supports `OP_PROJECT_NAME` and `--project-name`
+- `packages/lib/src/control-plane/docker.ts` currently hardcodes `openpalm`
+- the user explicitly wants wrappers removed when they add no new capability
+- this is a real correctness and parity issue, not a speculative cleanup
+
+### 3) Make `docker compose config` the required preflight
+
+Keep and implement.
+
+Before apply/update style operations, run Compose render validation and use it as the canonical diagnostics path.
+
+Required outcomes:
+
+- preflight with `docker compose config`
+- expose `docker compose config --services` where useful
+- fail early on invalid merges, missing env inputs, or broken service definitions
+- document the same workflow for manual operators
+
+Why this stays in scope:
+
+- it reduces wrapper/lib/manual drift
+- it aligns with the compose-first architecture already documented
+- it is low risk and high leverage
+
+### 4) Replace filename-based service inference with explicit Compose-derived service discovery
+
+Keep and implement.
+
+Stop assuming overlay filename equals managed service name. Derive service names from Compose-resolved configuration or explicit metadata instead.
+
+Required outcomes:
+
+- remove filename-only service inference in control-plane lifecycle paths
+- align admin/runtime service handling with actual Compose service names
+- preserve current operator-visible compose behavior
+
+Why this stays in scope:
+
+- this is brittle today and can cause drift between overlays and managed-service logic
+- it improves correctness without changing the architecture
+
+### 5) Publish and enforce the env-loading contract
+
+Keep and implement.
+
+Document exactly how env values are sourced and used, and add tests around the agreed behavior.
+
+Required outcomes:
+
+- define precedence between process env, `--env-file`, service `env_file`, and inline `environment`
+- distinguish substitution-time env from container runtime env
+- keep service-level `env_file` where runtime injection is required
+- remove only truly redundant env wiring after verification
+
+Why this stays in scope:
+
+- the current model is valid but too implicit
+- the cleanup docs correctly identified operator confusion here
+- this is mostly clarity and contract hardening, not redesign
+
+### 6) Support Compose `extends` as an optional deduplication tool
+
+Keep and implement.
+
+OpenPalm should support Compose `extends` and document how to use it correctly, but it should not become the default or common addon authoring pattern.
+
+Required outcomes:
+
+- ensure the stack/tooling/manual workflow continues to work correctly when an addon uses `extends`
+- provide guidance on when `extends` is appropriate and when a self-contained addon file is preferable
+- keep the default/common addon pattern transparent and file-drop friendly
+- avoid introducing generated compose artifacts or hidden runtime assembly steps
+
+Why this stays in scope:
+
+- some compose overlays are repetitive and advanced users may want deduplication
+- the user explicitly wants `extends` to be supported, but not made the common approach
+- documenting safe usage preserves operator clarity while allowing optional reuse
+
+### 7) Add a first-class manual operations runbook
+
+Keep and implement.
+
+Create a manual/no-tooling operations document that matches the exact supported Compose workflow.
+
+Required outcomes:
+
+- canonical `up`, `down`, `ps`, `logs`, and preflight examples
+- addon file selection examples
+- rollback and secret rotation guidance at the level already supported by current architecture
+- explicit note that the compose file list remains deployment truth
+
+Why this stays in scope:
+
+- it reinforces the project's manual-first and tooling-optional contract
+- it reduces operator error without adding implementation risk
+
+### 8) Remove aliases, shims, backward-compatibility paths, and legacy support code
+
+Keep and implement.
+
+Required outcomes:
+
+- remove compatibility aliases for env names, paths, and older assembly models
+- remove shims that preserve deprecated runtime/control-plane behavior
+- delete stale comments/docs tied to removed compatibility layers
+- leave one canonical code path for current behavior rather than layered fallback logic
+
+Why this stays in scope:
+
+- the user explicitly wants legacy support removed rather than preserved
+- compatibility layers are a direct source of cognitive overhead and drift
+- cleanup is the right time to collapse onto one supported contract
+
+---
+
+## Changes To Defer
+
+These are reasonable ideas, but they should not be part of the 0.10.0 cleanup refactor.
+
+### 1) Narrowing the admin addon from full `${OP_HOME}` mount to subpath mounts
+
+Defer.
+
+This is a valid hardening project, but it touches rollback, setup, secret access, workspace behavior, and runtime assembly. It is too broad for cleanup-sized change.
+
+### 2) Drift reports, env explainability reports, mount audits, and doctor-style tooling
+
+Defer.
+
+These would be useful after the canonical Compose contract is cleaned up, but they are secondary to fixing the core inconsistencies first.
+
+### 3) Optional Docker secrets profiles
+
+Defer.
+
+This is a later hardening/usability tradeoff discussion, not a cleanup refactor task.
+
+---
+
+## Changes To Deny
+
+These proposals should not be part of this refactor, and some should not become the default model at all.
+
+### 1) Make Compose profiles the primary addon-selection mechanism
+
+Deny.
+
+This conflicts with the file-drop overlay model and with the principle that the compose file list is deployment truth.
+
+Profiles may be evaluated later as an optional convenience, but not as the primary activation model.
+
+### 2) Remove service-level `env_file` entries just because global `--env-file` is present
+
+Deny.
+
+Those mechanisms do different jobs. Global `--env-file` supports Compose substitution. Service `env_file` also injects runtime env into containers. Removing runtime `env_file` blindly would break current services.
+
+### 3) Add a generated single-file `compose.bundle.yml` as a new operational artifact
+
+Deny.
+
+This creates another truth surface and increases drift risk instead of simplifying the system.
+
+### 4) Replace the current secret model with broad Docker `secrets:` adoption in this cleanup pass
+
+Deny for this refactor.
+
+The current vault/env model is part of the documented contract and supports current hot-reload and operator ergonomics. Changing the default secret transport now is out of scope.
+
+### 5) Add new compatibility fallbacks to preserve removed legacy behavior
+
+Deny.
+
+This cleanup is explicitly meant to remove aliases, shims, and backward-compatibility code. We should not reintroduce fallback behavior once the new canonical contract is in place.
+
+### 6) Make `extends` the default or common addon authoring approach
+
+Deny.
+
+`extends` can be supported as an option, but the normal addon model should remain a clear, self-contained file-drop compose overlay.
+
+### 7) Refactor addon overlays into opaque shared machinery that weakens file-drop transparency
+
+Deny as a default approach.
+
+Reducing duplication is good only if each addon remains a self-contained, understandable drop-in compose overlay. Any anchor/base-file approach that makes addons depend on hidden shared runtime fragments should be rejected.
+
+---
+
+## What Must Stay Intact
+
+The cleanup docs reviewed correctly did not challenge these fundamentals, and this final plan keeps them unchanged:
+
+- guardian-only ingress
+- assistant isolation from Docker socket and broad host control
+- host-owned persistent filesystem contract
+- non-destructive lifecycle behavior for user-owned config
+- manual-first Docker Compose operation
+- file-drop addon model
+
+---
+
+## Final Refactor Scope
+
+The 0.10.0 cleanup refactor should ship the following concrete outcomes:
+
+1. one canonical Compose invocation contract across wrapper/lib/admin paths
+2. all `config/components` references removed and runtime assembly standardized on `stack/`
+3. wrappers with no value beyond native Compose removed
+4. project-name handling fixed across all orchestration paths
+5. `docker compose config` and `config --services` added as standard preflight/diagnostics
+6. filename-derived service inference removed from managed-service logic
+7. env-loading contract documented and tested
+8. Compose `extends` support verified and documented as an optional pattern, without making it the common addon approach
+9. a manual operations runbook added for tooling-free workflows
+10. aliases, shims, backward-compatibility paths, and stale legacy docs/comments removed
+
+Anything larger than that should move to a follow-up roadmap item instead of being folded into this cleanup pass.

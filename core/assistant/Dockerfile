@@ -33,7 +33,7 @@ FROM node:lts-trixie
 # Bump these ARGs when upgrading; keeps curl|bash installs reproducible.
 ARG OPENCODE_VERSION=1.2.24
 ARG BUN_VERSION=bun-v1.3.10
-ARG AGENTIKIT_VERSION=v0.0.21
+ARG AGENTIKIT_VERSION=v0.2.0
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu socat \
@@ -69,7 +69,7 @@ RUN pip install --break-system-packages azure-cli huggingface-hub[cli] apprise
 
 # Install opencode to /usr/local/.opencode/bin (set HOME so installer puts it there)
 RUN HOME=/usr/local curl -fsSL https://opencode.ai/install | HOME=/usr/local bash -s -- --no-modify-path --version "$OPENCODE_VERSION"
-ENV PATH="/usr/local/.opencode/bin:$PATH"
+ENV PATH="/home/opencode/.local/bin:/usr/local/.opencode/bin:$PATH"
 
 RUN mkdir -p /home/opencode/.cache /work /stash \
     && chmod 777 /home/opencode /home/opencode/.cache /stash \
@@ -103,8 +103,9 @@ RUN curl -fsSL https://raw.githubusercontent.com/itlackey/agentikit/"$AGENTIKIT_
 
 # ── Varlock binary + redaction schema for runtime secret redaction ────────────
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
-RUN mkdir -p /usr/local/etc/varlock
+RUN mkdir -p /usr/local/etc/varlock && mkdir -p /etc/opencode
 COPY .openpalm/vault/redact.env.schema /usr/local/etc/varlock/.env.schema
+COPY core/assistant/opencode /etc/opencode
 
 EXPOSE 4096 22
 

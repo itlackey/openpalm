@@ -8,7 +8,7 @@ import {
   parseJsonBody
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { isAllowedService, appendAudit, buildComposeFileList, buildEnvFiles } from "$lib/server/control-plane.js";
+import { isAllowedService, appendAudit, buildComposeFileList, buildEnvFiles } from "@openpalm/lib";
 import { composeStart, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
@@ -39,7 +39,7 @@ export const POST: RequestHandler = async (event) => {
   // Try real Docker — only update state based on actual result
   const dockerCheck = await checkDocker();
   if (dockerCheck.ok) {
-    const result = await composeStart(state.configDir, [service], { files: buildComposeFileList(state), envFiles: buildEnvFiles(state) });
+    const result = await composeStart([service], { files: buildComposeFileList(state), envFiles: buildEnvFiles(state) });
     if (result.ok) {
       state.services[service] = "running";
     } else {

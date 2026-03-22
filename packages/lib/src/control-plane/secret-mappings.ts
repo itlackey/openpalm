@@ -30,9 +30,9 @@ type CoreSecretMapping = {
 
 const STATIC_CORE_MAPPINGS: CoreSecretMapping[] = [
   { secretKey: 'openpalm/admin-token', envKey: 'OP_ADMIN_TOKEN', scope: 'system' },
-  { secretKey: 'openpalm/assistant-token', envKey: 'ASSISTANT_TOKEN', scope: 'system' },
-  { secretKey: 'openpalm/memory/auth-token', envKey: 'MEMORY_AUTH_TOKEN', scope: 'system' },
-  { secretKey: 'openpalm/opencode/server-password', envKey: 'OPENCODE_SERVER_PASSWORD', scope: 'system' },
+  { secretKey: 'openpalm/assistant-token', envKey: 'OP_ASSISTANT_TOKEN', scope: 'system' },
+  { secretKey: 'openpalm/memory/auth-token', envKey: 'OP_MEMORY_TOKEN', scope: 'system' },
+  { secretKey: 'openpalm/opencode/server-password', envKey: 'OP_OPENCODE_PASSWORD', scope: 'system' },
   { secretKey: 'openpalm/openai/api-key', envKey: 'OPENAI_API_KEY', scope: 'user' },
   { secretKey: 'openpalm/openviking/api-key', envKey: 'OPENVIKING_API_KEY', scope: 'user' },
   { secretKey: 'openpalm/anthropic/api-key', envKey: 'ANTHROPIC_API_KEY', scope: 'user' },

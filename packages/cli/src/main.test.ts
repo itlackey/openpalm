@@ -5,6 +5,49 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { detectHostInfo, main, reconcileStackEnvImageTag, resolveRequestedImageTag, upsertEnvValue } from './main.ts';
 
+const TAR_BLOCK_SIZE = 512;
+
+async function gunzipBytes(data: Uint8Array): Promise<Uint8Array> {
+  return Uint8Array.from(Bun.gunzipSync(Uint8Array.from(data)));
+}
+
+function readTarEntry(archive: Uint8Array, entryName: string): Uint8Array | null {
+  for (let offset = 0; offset + TAR_BLOCK_SIZE <= archive.length; offset += TAR_BLOCK_SIZE) {
+    const header = archive.subarray(offset, offset + TAR_BLOCK_SIZE);
+    if (header.every((byte) => byte === 0)) {
+      return null;
+    }
+
+    const rawName = new TextDecoder().decode(header.subarray(0, 100));
+    const name = rawName.replace(/\0.*$/, '');
+    const rawSize = new TextDecoder().decode(header.subarray(124, 136));
+    const size = Number.parseInt(rawSize.replace(/\0.*$/, '').trim() || '0', 8);
+    const contentOffset = offset + TAR_BLOCK_SIZE;
+    const contentEnd = contentOffset + size;
+
+    if (name === entryName) {
+      return archive.slice(contentOffset, contentEnd);
+    }
+
+    offset += Math.ceil(size / TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE;
+  }
+
+  return null;
+}
+
+async function readPackedPackageJson(tarballPath: string): Promise<{ dependencies?: Record<string, string> }> {
+  const compressed = new Uint8Array(await Bun.file(tarballPath).arrayBuffer());
+  const archive = await gunzipBytes(compressed);
+  const packageJson = readTarEntry(archive, 'package/package.json');
+  if (!packageJson) {
+    throw new Error('Expected packed tarball to include package/package.json');
+  }
+
+  return JSON.parse(new TextDecoder().decode(packageJson)) as {
+    dependencies?: Record<string, string>;
+  };
+}
+
 // Helpers to mock Bun.spawn and Bun.which for tests that would otherwise
 // shell out to `docker info` / `docker compose version` and block in CI.
 const originalBunSpawn = Bun.spawn;
@@ -40,7 +83,7 @@ describe('cli main', () => {
   const originalWarn = console.warn;
   const originalHome = process.env.OP_HOME;
   const originalWorkDir = process.env.OP_WORK_DIR;
-  const originalAdminToken = process.env.ADMIN_TOKEN;
+  const originalAdminToken = process.env.OP_ADMIN_TOKEN;
   const originalOpenPalmAdminToken = process.env.OP_ADMIN_TOKEN;
 
   afterEach(() => {
@@ -50,7 +93,7 @@ describe('cli main', () => {
     restoreDockerCli();
     process.env.OP_HOME = originalHome;
     process.env.OP_WORK_DIR = originalWorkDir;
-    process.env.ADMIN_TOKEN = originalAdminToken;
+    process.env.OP_ADMIN_TOKEN = originalAdminToken;
     process.env.OP_ADMIN_TOKEN = originalOpenPalmAdminToken;
   });
 
@@ -67,7 +110,7 @@ describe('cli main', () => {
 
     process.env.OP_HOME = base;
     process.env.OP_WORK_DIR = workDir;
-    delete process.env.ADMIN_TOKEN;
+    delete process.env.OP_ADMIN_TOKEN;
     delete process.env.OP_ADMIN_TOKEN;
 
     mockDockerCli();
@@ -88,7 +131,7 @@ describe('cli main', () => {
       if (url.includes('/opencode.jsonc')) return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
       if (url.endsWith('.yml')) return new Response('name: test\nschedule: daily\n', { status: 200 });
       return new Response('', { status: 503 });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
     console.log = mock(() => {}) as typeof console.log;
     console.warn = mock(() => {}) as typeof console.warn;
 
@@ -130,7 +173,7 @@ describe('cli main', () => {
       if (url.includes('/opencode.jsonc')) return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
       if (url.endsWith('.yml')) return new Response('name: test\nschedule: daily\n', { status: 200 });
       return new Response('', { status: 503 });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
     console.log = mock(() => {}) as typeof console.log;
 
     try {
@@ -178,7 +221,7 @@ describe('cli main', () => {
       if (url.includes('/opencode.jsonc')) return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
       if (url.endsWith('.yml')) return new Response('name: test\nschedule: daily\n', { status: 200 });
       return new Response('', { status: 503 });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
     console.log = mock(() => {}) as typeof console.log;
     console.warn = mock(() => {}) as typeof console.warn;
 
@@ -211,7 +254,7 @@ describe('npm bin launcher', () => {
     expect(launcher.startsWith('#!/usr/bin/env bun\n')).toBe(true);
   });
 
-  it('packs a real semver range for @openpalm/lib so published installs can resolve the latest compatible lib', () => {
+  it('packs a real semver range for @openpalm/lib so published installs can resolve the latest compatible lib', async () => {
     const cliPkg = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
     ) as {
@@ -248,19 +291,7 @@ describe('npm bin launcher', () => {
       const tarball = readdirSync(packDir).find((name) => name.endsWith('.tgz'));
       if (!tarball) throw new Error('Expected bun pm pack to produce a tarball');
 
-      const extract = Bun.spawnSync(
-        ['tar', '-xOf', join(packDir, tarball), 'package/package.json'],
-        {
-          stdout: 'pipe',
-          stderr: 'pipe',
-        },
-      );
-
-      expect(extract.exitCode).toBe(0);
-
-      const packedPkg = JSON.parse(new TextDecoder().decode(extract.stdout)) as {
-        dependencies?: Record<string, string>;
-      };
+      const packedPkg = await readPackedPackageJson(join(packDir, tarball));
 
       expect(packedPkg.dependencies?.['@openpalm/lib']).toBe(expectedRange);
     } finally {
@@ -312,8 +343,8 @@ describe('scan command', () => {
     writeFileSync(fakeVarlock, '#!/bin/sh\nexit 0\n');
     chmodSync(fakeVarlock, 0o755);
 
-    writeFileSync(join(vaultDir, 'user.env.schema'), 'ADMIN_TOKEN\n');
     mkdirSync(join(vaultDir, 'user'), { recursive: true });
+    writeFileSync(join(vaultDir, 'user', 'user.env.schema'), 'ADMIN_TOKEN\n');
     writeFileSync(join(vaultDir, 'user', 'user.env'), 'ADMIN_TOKEN=testtoken\n');
 
     const originalHome = process.env.OP_HOME;
@@ -375,7 +406,7 @@ describe('detectHostInfo', () => {
 
   it('returns valid HostInfo structure', async () => {
     mockDockerCli();
-    globalThis.fetch = mock(async () => new Response('', { status: 503 })) as typeof fetch;
+    globalThis.fetch = mock(async () => new Response('', { status: 503 })) as unknown as typeof fetch;
     const info = await detectHostInfo();
     expect(info).toHaveProperty('platform');
     expect(info).toHaveProperty('arch');
@@ -388,7 +419,7 @@ describe('detectHostInfo', () => {
 
   it('platform and arch match process values', async () => {
     mockDockerCli();
-    globalThis.fetch = mock(async () => new Response('', { status: 503 })) as typeof fetch;
+    globalThis.fetch = mock(async () => new Response('', { status: 503 })) as unknown as typeof fetch;
     const info = await detectHostInfo();
     expect(info.platform).toBe(process.platform);
     expect(info.arch).toBe(process.arch);
@@ -396,7 +427,7 @@ describe('detectHostInfo', () => {
 
   it('HTTP probes handle connection refused gracefully', async () => {
     mockDockerCli();
-    globalThis.fetch = mock(async () => { throw new TypeError('fetch failed'); }) as typeof fetch;
+    globalThis.fetch = mock(async () => { throw new TypeError('fetch failed'); }) as unknown as typeof fetch;
     const info = await detectHostInfo();
     expect(info.ollama.running).toBe(false);
     expect(info.lmstudio.running).toBe(false);
@@ -475,7 +506,7 @@ describe('install image tag pinning', () => {
 });
 
 describe('secrets.env generation', () => {
-  it('generates user.env with export prefix and OP_ADMIN_TOKEN', async () => {
+  it('generates user.env with export prefix and user-managed keys', async () => {
     const { ensureSecrets } = await import('./lib/env.ts');
     const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-secrets-'));
     const vaultDir = join(tempDir, 'vault');
@@ -484,9 +515,11 @@ describe('secrets.env generation', () => {
     try {
       await ensureSecrets(vaultDir);
       const content = await Bun.file(join(vaultDir, 'user', 'user.env')).text();
-      expect(content).toContain('export OP_ADMIN_TOKEN=');
       expect(content).toContain('export OPENAI_API_KEY=');
       expect(content).toContain('export MEMORY_USER_ID=');
+      // System secrets (OP_ADMIN_TOKEN, OP_MEMORY_TOKEN) belong in stack.env, not user.env
+      expect(content).not.toContain('OP_ADMIN_TOKEN');
+      expect(content).not.toContain('OP_MEMORY_TOKEN');
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

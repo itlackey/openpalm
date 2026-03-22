@@ -12,23 +12,23 @@ It is an aggregation layer over the original 0.10.0 roadmap, issue plans, and is
 - `.github/roadmap/0.10.0/openpalm-pass-impl-v3.md`
 - `.github/roadmap/0.10.0/knowledge-system-roadmap.md`
 - `.github/roadmap/0.11.0/knowledge-system.md`
-- `.plans/issue-300-password-manager.md`
+- `.github/roadmap/0.10.0/plans/issue-300-password-manager.md`
 - `.plans/issue-298-openviking-integration.md`
-- `.plans/issue-304-brokered-admin-opencode.md`
+- `.github/roadmap/0.10.0/plans/issue-304-brokered-admin-opencode.md`
 - GitHub issues `#298`, `#300`, and `#304`
 
 ## Deferred scope summary
 
 | Source | Deferred work now targeted at 0.11.0 | Primary source |
 |--------|--------------------------------------|----------------|
-| `#300` | Password Manager UI | `.github/roadmap/0.10.0/openpalm-pass-impl-v3.md:1246` |
-| `#300` | Connections endpoint refactor onto `SecretBackend` | `.github/roadmap/0.10.0/openpalm-pass-impl-v3.md:1288` |
-| `#300` | Pass-store migration tooling and CLI secrets commands | `.github/roadmap/0.10.0/openpalm-pass-impl-v3.md:1341` |
+| `#300` | Password Manager UI | `.github/roadmap/0.10.0/openpalm-pass-impl-v3.md` |
+| `#300` | Connections endpoint refactor onto `SecretBackend` | `.github/roadmap/0.10.0/openpalm-pass-impl-v3.md` |
+| `#300` | Pass-store migration tooling and CLI secrets commands | `.github/roadmap/0.10.0/openpalm-pass-impl-v3.md` |
 | `#298` | MCP server component | `.github/roadmap/0.11.0/knowledge-system.md:17` |
 | `#298` | Eval framework | `.github/roadmap/0.11.0/knowledge-system.md:47` |
 | `#298` | MemRL-inspired feedback loop | `.github/roadmap/0.11.0/knowledge-system.md:89` |
-| `#304` | Admin-mediated remediation tools | `.plans/issue-304-brokered-admin-opencode.md:148` |
-| `#304` | Hardening for the brokered admin runtime | `.plans/issue-304-brokered-admin-opencode.md:148` |
+| `#304` | Admin-mediated remediation tools | `.github/roadmap/0.10.0/plans/issue-304-brokered-admin-opencode.md` |
+| `#304` | Hardening for the direct admin OpenCode runtime | `.github/roadmap/0.10.0/plans/issue-304-brokered-admin-opencode.md` |
 
 ## 1. Password Manager work moved from 0.10.0 to 0.11.0
 
@@ -36,8 +36,8 @@ Source anchors:
 
 - `.github/roadmap/0.10.0/README.md:45`
 - `.github/roadmap/0.10.0/README.md:59`
-- `.github/roadmap/0.10.0/openpalm-pass-impl-v3.md:1246`
-- `.plans/issue-300-password-manager.md:126`
+- `.github/roadmap/0.10.0/openpalm-pass-impl-v3.md`
+- `.github/roadmap/0.10.0/plans/issue-300-password-manager.md`
 - GitHub issue `#300`: `https://github.com/itlackey/openpalm/issues/300`
 
 ### Phase 5 - Password Manager UI
@@ -71,7 +71,7 @@ This is the post-0.10 migration layer for moving existing plaintext vault instal
 
 Carry-forward work:
 
-- Add `scripts/migrate-to-pass.sh` for migrating `vault/user.env` and `vault/system.env` into the install-scoped pass store.
+- Add `scripts/migrate-to-pass.sh` for migrating `vault/user/user.env` and `vault/stack/stack.env` into the install-scoped pass store.
 - Preserve the `~/.openpalm/data/secrets/pass-store/` convention introduced by the backend work.
 - Add CLI commands for `openpalm secrets init`, `migrate`, `ls`, `set`, and `generate`.
 - Ensure migration skips already-populated pass entries and archives migrated plaintext env files safely.
@@ -134,14 +134,14 @@ These items were also explicitly marked out of 0.10.0 in the 0.10 knowledge plan
 - MemRL/Q-value reranking and maintenance logic
 - any generic `packages/mcp/` work beyond the shipped Viking component and assistant tools
 
-## 3. Brokered Admin OpenCode work moved from 0.10.0 to 0.11.0
+## 3. Admin OpenCode follow-up work moved from 0.10.0 to 0.11.0
 
 Source anchors:
 
-- `.plans/issue-304-brokered-admin-opencode.md:148`
+- `.github/roadmap/0.10.0/plans/issue-304-brokered-admin-opencode.md`
 - GitHub issue `#304`: `https://github.com/itlackey/openpalm/issues/304`
 
-0.10.0 keeps #304 scoped to phases 1-2: foundations, brokered session flow, diagnostics, configuration help, and audit/auth integration. The remaining work moved forward is:
+0.10.0 keeps #304 scoped to the direct, host-only admin OpenCode instance plus its baseline auth/audit integration. The remaining work moved forward is:
 
 ### Phase 3 - Admin-mediated remediation
 
@@ -158,15 +158,13 @@ Carry-forward work:
 
 - Add session TTLs and one-shot grants.
 - Strengthen delegation semantics and abuse resistance.
-- Harden restart and upgrade behavior for the brokered runtime.
-- Improve degraded-health reporting for the broker/runtime pair.
+- Harden restart and upgrade behavior for the direct admin OpenCode runtime.
+- Improve degraded-health reporting for the admin container/runtime pair.
 - Add deeper test coverage for authz, isolation, auditability, and no-public-route guarantees.
 
 ### Explicit exclusion
 
-The brokered-runtime plan also notes that direct exposure of a separate elevated OpenCode UI remains deferred indefinitely unless there is a fresh architecture review. That item is not counted here as 0.11.0 committed scope.
-
-Source: `.plans/issue-304-brokered-admin-opencode.md:152`
+The accepted 0.10.0 architecture already uses direct host-only exposure for admin OpenCode. The deferred work here is therefore hardening and UX improvement, not a future switch from brokered to direct exposure.
 
 ## Not currently carried forward from the reviewed 0.10.0 plans
 
@@ -180,12 +178,12 @@ Based on the reviewed roadmap and issue plans, these areas do not currently have
 
 1. Finish the knowledge-track deferred work in `.github/roadmap/0.11.0/knowledge-system.md`.
 2. Land #300 deferred Phase 5-7 work after the 0.10.0 secrets backend and API surface are stable.
-3. Land #304 deferred remediation and hardening after the 0.10.0 brokered runtime baseline is proven in production/dev use.
+3. Land #304 deferred remediation and hardening after the 0.10.0 direct admin OpenCode baseline is proven in production/dev use.
 
 ## Cross-links
 
 - `.github/roadmap/0.11.0/knowledge-system.md` - detailed 0.11.0 knowledge-system plan already split out from 0.10.0
 - `.github/roadmap/0.10.0/README.md` - original milestone summary with deferred markers
-- `.plans/issue-300-password-manager.md` - normalized implementation framing for the 0.10/0.11 split on #300
+- `.github/roadmap/0.10.0/plans/issue-300-password-manager.md` - normalized implementation framing for the 0.10/0.11 split on #300
 - `.plans/issue-298-openviking-integration.md` - normalized implementation framing for the 0.10/0.11 split on #298
-- `.plans/issue-304-brokered-admin-opencode.md` - normalized implementation framing for the 0.10/0.11 split on #304
+- `.github/roadmap/0.10.0/plans/issue-304-brokered-admin-opencode.md` - normalized implementation framing for the 0.10/0.11 split on #304

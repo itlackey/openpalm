@@ -14,7 +14,7 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { RegistryComponentEntry } from "@openpalm/lib";
-import { resolveCacheHome } from "./paths.js";
+import { resolveCacheHome } from "@openpalm/lib";
 
 const REPO = "itlackey/openpalm";
 const REPO_URL =
@@ -207,7 +207,7 @@ export function discoverRegistryAutomations(): RegistryAutomationEntry[] {
 export function getRegistryAutomation(name: string): string | null {
   if (!VALID_NAME_RE.test(name)) return null;
   const cloneDir = repoCloneDir();
-  const automationsDir = join(cloneDir, "stack", "automations");
+  const automationsDir = join(cloneDir, ".openpalm", "config", "automations");
   const ymlPath = join(automationsDir, `${name}.yml`);
   if (!existsSync(ymlPath)) return null;
   return readFileSync(ymlPath, "utf-8");

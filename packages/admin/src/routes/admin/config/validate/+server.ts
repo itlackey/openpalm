@@ -1,7 +1,7 @@
 /**
  * GET /admin/config/validate — Run varlock environment validation.
  *
- * Checks CONFIG_HOME/secrets.env against the schema in DATA_HOME/secrets.env.schema.
+ * Checks vault/user/user.env and vault/stack/stack.env against their schemas.
  * Always returns 200; validation failures are logged to the audit trail.
  * Requires admin authentication.
  */
@@ -15,7 +15,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { appendAudit } from "$lib/server/audit.js";
-import { validateEnvironment } from "$lib/server/lifecycle.js";
+import { validateProposedState } from "@openpalm/lib";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -26,7 +26,7 @@ export const GET: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
-  const result = await validateEnvironment(state);
+  const result = await validateProposedState(state);
 
   // Log validation failures to the audit trail as warnings
   if (!result.ok) {

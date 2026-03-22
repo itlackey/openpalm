@@ -1,21 +1,8 @@
-/**
- * Memory LLM & Embedding configuration management.
- */
+/** Memory LLM & Embedding configuration management. */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { loadSecretsEnvFile } from "./secrets.js";
-import {
-  LLM_PROVIDERS,
-  EMBEDDING_DIMS,
-  PROVIDER_DEFAULT_URLS,
-  mem0ProviderName,
-  mem0BaseUrlConfig,
-} from "../provider-constants.js";
-import type { StackSpec } from "./stack-spec.js";
+import { EMBEDDING_DIMS, PROVIDER_DEFAULT_URLS } from "../provider-constants.js";
 
-// Re-export shared constants for barrel compatibility
-export { LLM_PROVIDERS, EMBEDDING_DIMS, PROVIDER_DEFAULT_URLS };
-
-// ── Types ────────────────────────────────────────────────────────────────
 
 export type MemoryConfig = {
   mem0: {
@@ -34,7 +21,6 @@ export type MemoryConfig = {
   memory: { custom_instructions: string };
 };
 
-// ── Constants (module-specific) ─────────────────────────────────────────
 
 export const EMBED_PROVIDERS = [
   "openai", "ollama", "huggingface", "lmstudio"
@@ -51,7 +37,6 @@ const ANTHROPIC_MODELS = [
   "claude-3-5-haiku-20241022",
 ];
 
-// ── API Key Resolution ──────────────────────────────────────────────────
 
 export function resolveApiKey(apiKeyRef: string, configDir: string): string {
   if (!apiKeyRef) return "";
@@ -64,7 +49,6 @@ export function resolveApiKey(apiKeyRef: string, configDir: string): string {
   return secrets[varName] ?? "";
 }
 
-// ── Provider Model Listing ──────────────────────────────────────────────
 
 export type ModelDiscoveryReason =
   | 'none'
@@ -81,37 +65,15 @@ export type ProviderModelsResult = {
   error?: string;
 };
 
-function describeHttpStatus(status: number): string {
-  switch (status) {
-    case 401: return 'Invalid or missing API key';
-    case 403: return 'Access denied — check API key permissions';
-    case 404: return 'Endpoint not found — verify the base URL';
-    case 429: return 'Rate limited — try again shortly';
-    case 500: return 'Provider internal error';
-    case 502: return 'Provider returned a bad gateway error';
-    case 503: return 'Provider is temporarily unavailable';
-    default:  return `HTTP ${status}`;
-  }
-}
-
-async function extractProviderErrorDetail(res: Response): Promise<string> {
-  try {
-    const text = await res.text();
-    const json = JSON.parse(text) as Record<string, unknown>;
-    if (
-      typeof json.error === 'object' && json.error !== null &&
-      typeof (json.error as Record<string, unknown>).message === 'string'
-    ) {
-      return (json.error as Record<string, unknown>).message as string;
-    }
-    if (typeof json.error === 'string') return json.error;
-    if (typeof json.message === 'string') return json.message;
-    if (typeof json.detail === 'string') return json.detail;
-    return '';
-  } catch {
-    return '';
-  }
-}
+const HTTP_STATUS_LABELS: Record<number, string> = {
+  401: 'Invalid or missing API key',
+  403: 'Access denied — check API key permissions',
+  404: 'Endpoint not found — verify the base URL',
+  429: 'Rate limited — try again shortly',
+  500: 'Provider internal error',
+  502: 'Provider returned a bad gateway error',
+  503: 'Provider is temporarily unavailable',
+};
 
 export async function fetchProviderModels(
   provider: string,
@@ -135,7 +97,7 @@ export async function fetchProviderModels(
           models: [],
           status: 'recoverable_error',
           reason: 'provider_http',
-          error: `Ollama API returned ${res.status}: ${describeHttpStatus(res.status)}`,
+          error: `Ollama API returned ${res.status}: ${(HTTP_STATUS_LABELS[res.status] ?? `HTTP ${res.status}`)}`,
         };
       }
       const data = (await res.json()) as { models?: { name: string }[] };
@@ -161,14 +123,22 @@ export async function fetchProviderModels(
 
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(5000) });
     if (!res.ok) {
-      const detail = await extractProviderErrorDetail(res);
+      let detail = '';
+      try {
+        const json = JSON.parse(await res.text()) as Record<string, unknown>;
+        const errObj = json.error as Record<string, unknown> | string | undefined;
+        detail = (typeof errObj === 'object' && errObj !== null && typeof errObj.message === 'string') ? errObj.message
+          : typeof errObj === 'string' ? errObj
+          : typeof json.message === 'string' ? json.message
+          : typeof json.detail === 'string' ? json.detail : '';
+      } catch { /* ignore parse errors */ }
       return {
         models: [],
         status: 'recoverable_error',
         reason: 'provider_http',
         error: detail
           ? `Provider API returned ${res.status}: ${detail}`
-          : `Provider API returned ${res.status}: ${describeHttpStatus(res.status)}`,
+          : `Provider API returned ${res.status}: ${(HTTP_STATUS_LABELS[res.status] ?? `HTTP ${res.status}`)}`,
       };
     }
     const data = (await res.json()) as { data?: { id: string }[] };
@@ -188,7 +158,6 @@ export async function fetchProviderModels(
   }
 }
 
-// ── Default Config ───────────────────────────────────────────────────────
 
 export function getDefaultConfig(): MemoryConfig {
   return {
@@ -222,99 +191,27 @@ export function getDefaultConfig(): MemoryConfig {
   };
 }
 
-// ── File I/O ─────────────────────────────────────────────────────────────
-
-const CONFIG_FILENAME = "memory/default_config.json";
-
-function configPath(dataDir: string): string {
-  return `${dataDir}/${CONFIG_FILENAME}`;
-}
 
 export function readMemoryConfig(dataDir: string): MemoryConfig {
-  const path = configPath(dataDir);
+  const path = `${dataDir}/memory/default_config.json`;
   if (!existsSync(path)) return getDefaultConfig();
   try {
-    const raw = readFileSync(path, "utf-8");
-    return JSON.parse(raw) as MemoryConfig;
+    return JSON.parse(readFileSync(path, "utf-8")) as MemoryConfig;
   } catch {
     return getDefaultConfig();
   }
 }
 
-export function writeMemoryConfig(
-  dataDir: string,
-  config: MemoryConfig
-): void {
-  const path = configPath(dataDir);
+export function writeMemoryConfig(dataDir: string, config: MemoryConfig): void {
   mkdirSync(`${dataDir}/memory`, { recursive: true });
-  writeFileSync(path, JSON.stringify(config, null, 2) + "\n");
+  writeFileSync(`${dataDir}/memory/default_config.json`, JSON.stringify(config, null, 2) + "\n");
 }
 
 export function ensureMemoryConfig(dataDir: string): void {
-  const path = configPath(dataDir);
-  if (existsSync(path)) return;
+  if (existsSync(`${dataDir}/memory/default_config.json`)) return;
   writeMemoryConfig(dataDir, getDefaultConfig());
 }
 
-// ── Derive from StackSpec ─────────────────────────────────────────────
-
-/**
- * Derive a MemoryConfig from the stack.yaml assignments.memory block.
- * Resolves connectionId → connection for provider/baseUrl/apiKeyRef.
- */
-export function deriveMemoryConfig(spec: StackSpec): MemoryConfig {
-  const mem = spec.assignments.memory;
-  const emb = spec.assignments.embeddings;
-
-  const llmConn = spec.connections.find((c) => c.id === mem.llm.connectionId);
-  const embConn = spec.connections.find((c) => c.id === mem.embeddings.connectionId);
-
-  const llmProvider = llmConn?.provider ?? "openai";
-  const embProvider = embConn?.provider ?? "openai";
-
-  const llmApiKeyRef = llmConn?.auth?.mode === "api_key" ? llmConn.auth.apiKeySecretRef : undefined;
-  const embApiKeyRef = embConn?.auth?.mode === "api_key" ? embConn.auth.apiKeySecretRef : undefined;
-
-  const llmConfig: Record<string, unknown> = {
-    model: mem.llm.model,
-    temperature: mem.llm.temperature ?? 0.1,
-    max_tokens: mem.llm.maxTokens ?? 2000,
-  };
-  if (llmApiKeyRef) llmConfig.api_key = llmApiKeyRef;
-  const llmBaseUrlEntry = mem0BaseUrlConfig(llmProvider, llmConn?.baseUrl ?? "");
-  if (llmBaseUrlEntry) llmConfig[llmBaseUrlEntry.key] = llmBaseUrlEntry.value;
-
-  const embConfig: Record<string, unknown> = {
-    model: mem.embeddings.model,
-  };
-  if (embApiKeyRef) embConfig.api_key = embApiKeyRef;
-  const embBaseUrlEntry = mem0BaseUrlConfig(embProvider, embConn?.baseUrl ?? "");
-  if (embBaseUrlEntry) embConfig[embBaseUrlEntry.key] = embBaseUrlEntry.value;
-
-  return {
-    mem0: {
-      llm: {
-        provider: mem0ProviderName(llmProvider),
-        config: llmConfig,
-      },
-      embedder: {
-        provider: mem0ProviderName(embProvider),
-        config: embConfig,
-      },
-      vector_store: {
-        provider: mem.vectorStore.provider,
-        config: {
-          collection_name: mem.vectorStore.collectionName,
-          db_path: mem.vectorStore.dbPath,
-          embedding_model_dims: emb.embeddingDims ?? EMBEDDING_DIMS[`${embProvider}/${mem.embeddings.model}`] ?? 1536,
-        },
-      },
-    },
-    memory: { custom_instructions: mem.customInstructions ?? "" },
-  };
-}
-
-// ── Config Resolution ────────────────────────────────────────────────
 
 export function resolveConfigForPush(
   config: MemoryConfig,
@@ -339,16 +236,12 @@ export function resolveConfigForPush(
   return resolved;
 }
 
-// ── Dimension Checking ──────────────────────────────────────────────
 
 export type VectorDimensionResult = {
   match: boolean;
   currentDims?: number;
   expectedDims: number;
 };
-
-/** @deprecated Use checkVectorDimensions instead */
-export type QdrantDimensionResult = VectorDimensionResult;
 
 export function checkVectorDimensions(
   dataDir: string,
@@ -359,9 +252,6 @@ export function checkVectorDimensions(
   const currentDims = persisted.mem0.vector_store.config.embedding_model_dims;
   return { match: currentDims === expectedDims, currentDims, expectedDims };
 }
-
-/** @deprecated Use checkVectorDimensions instead */
-export const checkQdrantDimensions = checkVectorDimensions;
 
 export function resetVectorStore(
   dataDir: string
@@ -395,47 +285,23 @@ export function resetVectorStore(
   }
 }
 
-/** @deprecated Use resetVectorStore instead */
-export const resetQdrantCollection = resetVectorStore;
 
-// ── Runtime API ──────────────────────────────────────────────────────────
-
-function getMemoryApiBases(): string[] {
-  const configured =
-    process.env.MEMORY_API_URL?.trim() ||
-    process.env.OP_MEMORY_API_URL?.trim();
-
-  const bases = configured
-    ? [configured]
-    : ["http://memory:8765", "http://127.0.0.1:8765"];
-
-  return Array.from(new Set(bases.map((base) => base.replace(/\/+$/, ""))));
-}
-
-function getMemoryAuthHeaders(): Record<string, string> {
+async function callMemoryApi(path: string, init?: RequestInit): Promise<Response> {
+  const configured = process.env.MEMORY_API_URL?.trim() || process.env.OP_MEMORY_API_URL?.trim();
+  const bases = configured ? [configured.replace(/\/+$/, "")] : ["http://memory:8765", "http://127.0.0.1:8765"];
   const token = process.env.MEMORY_AUTH_TOKEN?.trim();
-  return token ? { authorization: `Bearer ${token}` } : {};
-}
-
-async function callMemoryApi(
-  path: string,
-  init?: RequestInit,
-): Promise<Response> {
-  const bases = getMemoryApiBases();
-  const authHeaders = getMemoryAuthHeaders();
+  const authHeaders: Record<string, string> = token ? { authorization: `Bearer ${token}` } : {};
   let lastError: unknown;
 
   for (let i = 0; i < bases.length; i++) {
-    const url = `${bases[i]}${path}`;
     try {
       const headers = { ...authHeaders, ...(init?.headers as Record<string, string>) };
-      return await fetch(url, { ...init, headers });
+      return await fetch(`${bases[i]}${path}`, { ...init, headers });
     } catch (err) {
       lastError = err;
       if (i === bases.length - 1) throw err;
     }
   }
-
   throw lastError ?? new Error("Memory API request failed");
 }
 

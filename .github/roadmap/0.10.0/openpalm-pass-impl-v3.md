@@ -1,12 +1,14 @@
 # OpenPalm — Secrets Management Integration
 
-Implementation guide for migrating OpenPalm's secrets from plaintext `.env` files to encrypted-at-rest storage, with a provider-agnostic design that supports `pass`, Azure Key Vault, AWS Secrets Manager, 1Password, Bitwarden, Google Secret Manager, and Infisical — swappable via schema/config without code changes.
+Implementation guide for migrating OpenPalm's secrets from plaintext env files to encrypted-at-rest storage, with a provider-agnostic design centered on the current repo layout: `vault/user/user.env`, `vault/stack/stack.env`, and `data/secrets/provider.json`. The read path remains Varlock-driven; the write path goes through the shared `@openpalm/lib` secret backend.
 
 **Scope:** Phases 0-4 ship in 0.10.0. Phases 5-7 are deferred to 0.11.0.
 
-**Default provider:** `PlaintextBackend` (manages `~/.openpalm/vault/user.env` + `~/.openpalm/vault/system.env` with a routing layer). Encrypted storage via `pass` (passwordstore.org) + `@varlock/pass-plugin` is opt-in through the setup wizard.
-**Read path (all providers):** Varlock resolves secrets via provider-specific schema — swap the `.env.schema` file to swap the provider
-**Write path:** `SecretBackend` interface with pluggable driver — selected automatically from the schema
+**Default provider:** `PlaintextBackend` (manages `~/.openpalm/vault/user/user.env` + `~/.openpalm/vault/stack/stack.env`, plus a plaintext secret index in `~/.openpalm/data/secrets/plaintext-index.json`). Encrypted storage via `pass` remains opt-in.
+**Read path (all providers):** Varlock resolves secrets from the scope-specific schemas in `vault/user/user.env.schema` and `vault/stack/stack.env.schema`.
+**Write path:** `SecretBackend` interface in `packages/lib/src/control-plane/secret-backend.ts`, with runtime provider detection from `data/secrets/provider.json` first and schema/plugin detection second.
+
+**Repository note:** some shared-lib validation/detection helpers still reference legacy flat schema filenames under `state.vaultDir`. Any implementation from this plan should normalize those helpers to the nested vault layout or make the compatibility layer explicit.
 
 ---
 
@@ -33,19 +35,19 @@ Implementation guide for migrating OpenPalm's secrets from plaintext `.env` file
 
 The secret manager is the single system through which ALL secrets are resolved, stored, and lifecycle-managed. It wraps Varlock (for boot-time resolution) and the configured `SecretBackend` (for runtime write operations). Three categories of secrets flow through this system:
 
-**Core secrets** — Global secrets for the OpenPalm stack itself: `OP_ADMIN_TOKEN`, `ASSISTANT_TOKEN`, LLM API keys, `MEMORY_AUTH_TOKEN`, etc. These are declared in `vault/user.env.schema` and `vault/system.env.schema` and mapped in `ENV_TO_SECRET_KEY`. User secrets (LLM keys, provider URLs) live in `vault/user.env`; system secrets (admin token, HMAC secrets, service auth) live in `vault/system.env`.
+**Core secrets** — Global secrets for the OpenPalm stack itself: `OP_ADMIN_TOKEN`, `ASSISTANT_TOKEN`, LLM API keys, `MEMORY_AUTH_TOKEN`, `OPENCODE_SERVER_PASSWORD`, and channel HMAC keys. In plaintext mode, user-scoped values live in `vault/user/user.env`; system-scoped values live in `vault/stack/stack.env`. Canonical mappings now live in `packages/lib/src/control-plane/secret-mappings.ts`.
 
-**Component secrets** — Per-instance secrets for installed components (e.g., `DISCORD_BOT_TOKEN` for a Discord channel instance). Each component's `.env.schema` file declares `@sensitive` fields. When a component instance is created, the secret manager initializes entries for its sensitive fields. When an instance is deleted, the secret manager cleans up its entries. Component secrets use the prefix convention `openpalm/component/<instance-id>/`.
+**Component secrets** — Per-instance secrets for installed components (for example, `DISCORD_BOT_TOKEN` for a Discord instance). Canonical secret keys still use the `openpalm/component/<instance-id>/...` prefix, but plaintext mode stores their generated env var names in `data/secrets/plaintext-index.json` instead of a static routing map.
 
-**Ad-hoc secrets** — Secrets the user or assistant discovers and wants to store (e.g., an API key for a custom tool). These use the prefix `openpalm/custom/` and are managed through the secrets API.
+**Ad-hoc secrets** — User-created secrets that do not have a fixed env var mapping. These use the `openpalm/custom/` prefix and are also tracked through the plaintext index when the plaintext backend is active.
 
-The `ENV_TO_SECRET_KEY` map is dynamic: it includes static core mappings (split across user and system scopes) plus per-component instance mappings derived from `.env.schema` files at runtime. When a component instance is created, its `@sensitive` fields are registered with a prefix of `openpalm/component/<instance-id>/`; when the instance is deleted, they are deregistered.
+The canonical secret namespace is dynamic: core mappings are static, channel mappings are inferred from `CHANNEL_*_SECRET` entries already present in `vault/stack/stack.env`, and non-core plaintext entries are allocated hashed env var names (`OP_SECRET_<sha256-prefix>`) on demand.
 
 ### Two independent paths
 
-**Read path** (boot-time, all providers): Varlock resolves secrets from the `.env.schema` files using whichever provider plugin is declared. Changing the provider is a schema-file swap — no code changes.
+**Read path** (boot-time, all providers): Varlock resolves secrets from `vault/user/user.env.schema` and `vault/stack/stack.env.schema` using whichever provider plugin those files declare. Changing providers is still a schema/config change rather than an application code change.
 
-**Write path** (runtime, admin UI): The `SecretBackend` interface abstracts list/write/generate/delete operations. The admin auto-detects which backend to use by parsing the `@plugin()` declaration from the active schema. Adding a new provider requires only a new driver file implementing the interface. The `PlaintextBackend` is the default when no encrypted provider is configured — it manages both `vault/user.env` and `vault/system.env` with a routing layer that determines which file a given secret key belongs to based on the `SECRET_FILE_ROUTING` map.
+**Write path** (runtime, admin UI and future CLI flows): The `SecretBackend` interface abstracts list/write/generate/delete operations and returns metadata rather than decrypted values. Runtime detection first checks `data/secrets/provider.json`; if no explicit provider is configured, it falls back to schema/plugin detection, then finally to `PlaintextBackend`.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -69,25 +71,23 @@ The `ENV_TO_SECRET_KEY` map is dynamic: it includes static core mappings (split 
 ┌──────────────────────────────────────────────────────────────────┐
 │  WRITE PATH (runtime) — SecretBackend interface                  │
 │                                                                  │
-│  Admin detects @plugin from schema → selects matching driver     │
-│  No @plugin detected → PlaintextBackend (default)                │
+│  Runtime checks provider.json, then schema plugin markers        │
+│  No encrypted provider detected → PlaintextBackend               │
 │                                                                  │
 │  SecretBackend {                                                 │
-│    list(prefix): string[]                                        │
-│    write(key, value): void                                       │
-│    generate(key, length): void                                   │
+│    list(prefix?): SecretEntryMetadata[]                          │
+│    write(key, value): SecretEntryMetadata                        │
+│    generate(key, length?): SecretEntryMetadata                   │
 │    remove(key): void                                             │
 │    exists(key): boolean                                          │
 │    readonly capabilities: { generate, remove, rename }           │
 │  }                                                               │
 │                                                                  │
 │  Drivers:                                                        │
-│    PlaintextBackend → routes reads/writes to vault/user.env      │
-│                       and vault/system.env                       │
+│    PlaintextBackend → routes to vault/user/user.env              │
+│                       and vault/stack/stack.env + index file     │
 │    PassBackend      → shells out to `pass` CLI                   │
-│    AzureKvBackend   → REST API (az login / managed identity)     │
-│    AwsSmBackend     → AWS CLI / SDK                              │
-│    (future providers follow same pattern)                        │
+│    Future providers  → implement the same metadata-only surface  │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -107,38 +107,41 @@ When a component instance is deleted:
 
 ### Secret store location
 
-For the `PlaintextBackend`, secrets live directly in the vault directory:
+For the `PlaintextBackend`, the current repository layout is:
 
 ```
 ~/.openpalm/vault/
-├── user.env               ← user-editable: LLM keys, provider URLs
-├── user.env.schema        ← Varlock schema for user.env
-├── system.env             ← system-managed: admin token, HMAC secrets, paths
-├── system.env.schema      ← Varlock schema for system.env
-└── ov.conf                ← OpenViking / secrets backend config
+├── user/
+│   ├── user.env           ← user-editable: provider keys, model prefs, owner info
+│   └── user.env.schema    ← Varlock schema for user scope
+└── stack/
+    ├── stack.env          ← system-managed: admin token, HMAC secrets, ports, paths
+    └── stack.env.schema   ← Varlock schema for system scope
 ```
 
 For encrypted backends (pass, Azure, etc.), provider-specific data lives under `~/.openpalm/data/secrets/`:
 
 ```
 ~/.openpalm/data/secrets/
-├── provider.json          ← backend config (which provider, init params)
+├── provider.json          ← active write-backend config (`plaintext` or `pass` today)
 ├── pass-store/            ← PASSWORD_STORE_DIR for pass backend
 │   ├── .gpg-id
 │   └── openpalm/
-│       ├── admin-token.gpg
-│       ├── assistant-token.gpg
-│       ├── llm/
+│       ├── openpalm/
+│       │   ├── admin-token.gpg
+│       │   ├── assistant-token.gpg
+│       │   ├── openai/
+│       │   │   └── api-key.gpg
 │       │   └── ...
 │       ├── component/
 │       │   └── discord-main/
 │       │       └── discord-bot-token.gpg
 │       └── custom/
 │           └── ...
-└── (future: azure-kv/, aws-sm/, etc. — provider-specific cache/state)
+└── plaintext-index.json   ← plaintext-only metadata for component/custom keys
 ```
 
-The pass store is scoped to the OpenPalm install (not `~/.password-store`), making multi-instance setups possible and keeping secrets co-located with their stack for backup/restore. The entire `~/.openpalm/` directory is backed up with a single `tar` command.
+The pass store is scoped to the OpenPalm install (not `~/.password-store`), making multi-instance setups possible and keeping secrets co-located with their stack for backup/restore. The current helper script also supports an explicit pass prefix, defaulting to `openpalm`.
 
 ### Container topology
 
@@ -148,7 +151,7 @@ The pass store is scoped to the OpenPalm install (not `~/.password-store`), maki
 │  Auth: ADMIN_TOKEN (user-chosen)                                │
 │  Mounts: ~/.openpalm/vault/ (rw), GPG agent socket (ro)        │
 │  Can: list, write, generate, delete secrets                     │
-│  Can: read/write both vault/user.env and vault/system.env       │
+│  Can: read/write both vault/user/user.env and vault/stack/stack.env │
 │  Cannot: read/decrypt secret values into HTTP responses          │
 └─────────────────────────────────────────────────────────────────┘
 
@@ -166,12 +169,12 @@ The pass store is scoped to the OpenPalm install (not `~/.password-store`), maki
 ┌─────────────────────────────────────────────────────────────────┐
 │ ASSISTANT CONTAINER                                             │
 │  Auth: ASSISTANT_TOKEN (auto-generated)                         │
-│  Mounts: vault/user.env (ro) — hot-reload LLM keys             │
+│  Mounts: vault/user/user.env (ro) — hot-reload LLM/provider keys │
 │  Can: call operational admin endpoints (containers, channels)   │
-│  Can: read vault/user.env via file watcher (LLM key changes     │
+│  Can: read vault/user/user.env via file watcher (LLM key changes │
 │       apply in seconds — no restart, no `openpalm apply`)       │
 │  Cannot: call /admin/secrets, write API keys                    │
-│  Cannot: access vault/system.env (not mounted)                  │
+│  Cannot: access vault/stack/stack.env (not mounted)             │
 │  Note: The assistant is isolated. It does NOT have ADMIN_TOKEN. │
 │        For privileged operations, it calls allowlisted admin    │
 │        API endpoints using ASSISTANT_TOKEN.                     │
@@ -180,7 +183,7 @@ The pass store is scoped to the OpenPalm install (not `~/.password-store`), maki
 
 ### Vault directory contract note
 
-The `~/.openpalm/vault/` directory is the hard secrets boundary. In plaintext mode, `vault/user.env` and `vault/system.env` hold raw values. After migration to an encrypted backend, these files hold `@plugin()` resolver declarations pointing to the secret store rather than plaintext values. The schema files (`vault/user.env.schema`, `vault/system.env.schema`) declare which secrets exist and their validation rules. The admin mounts the full `vault/` directory read-write; the assistant mounts only `vault/user.env` read-only; no other container mounts anything from `vault/`.
+The `~/.openpalm/vault/` directory is the hard secrets boundary. In plaintext mode, raw values live in `vault/user/user.env` and `vault/stack/stack.env`. After migration to an encrypted backend, those files can become resolver-driven surfaces backed by `pass`, while the schemas in `vault/user/user.env.schema` and `vault/stack/stack.env.schema` continue to define the contract. The admin mounts the full `vault/` directory read-write; the assistant mounts only `vault/user/user.env` read-only; no other container mounts anything from `vault/`.
 
 ---
 
@@ -190,18 +193,19 @@ No `pass` or auth changes. Ship independently.
 
 ### 0.1 — Set vault file permissions
 
-With the staging tier eliminated, file permissions apply directly to the vault files. Both env files must be `0o600` (owner read-write only):
+With the staging tier eliminated, file permissions apply directly to the live vault files. Both env files must be `0o600` (owner read-write only):
 
 ```typescript
 // Applied when creating or writing vault files
-writeFileSync(`${openpalmHome}/vault/user.env`, content, { mode: 0o600 });
-writeFileSync(`${openpalmHome}/vault/system.env`, content, { mode: 0o600 });
+writeFileSync(`${openpalmHome}/vault/user/user.env`, content, { mode: 0o600 });
+writeFileSync(`${openpalmHome}/vault/stack/stack.env`, content, { mode: 0o600 });
 ```
 
 The vault directory itself should be `0o700`:
 
 ```typescript
-mkdirSync(`${openpalmHome}/vault`, { recursive: true, mode: 0o700 });
+mkdirSync(`${openpalmHome}/vault/user`, { recursive: true, mode: 0o700 });
+mkdirSync(`${openpalmHome}/vault/stack`, { recursive: true, mode: 0o700 });
 ```
 
 Note: `stageSecretsEnv()` no longer exists — staging has been eliminated. Secrets are written directly to their vault files and validated in-place before being applied.
@@ -212,19 +216,19 @@ Same pattern as admin/assistant: varlock-fetch stage, bake in `redact.env.schema
 
 ### 0.3 — Auto-generate `redact.env.schema` from vault schemas
 
-New build script extracts `@sensitive` keys from both `vault/user.env.schema` and `vault/system.env.schema`. Run before `docker build`.
+New build script extracts `@sensitive` keys from both `vault/user/user.env.schema` and `vault/stack/stack.env.schema`. Run before `docker build`.
 
 ---
 
 ## Phase 1 — Auth Refactor
 
-**Goal:** `ADMIN_TOKEN` is the user's credential. `ASSISTANT_TOKEN` is the assistant's credential. Secrets endpoints accept only `ADMIN_TOKEN`.
+**Goal:** `OP_ADMIN_TOKEN` remains the user/admin credential at rest, `ASSISTANT_TOKEN` remains the assistant/scheduler credential at rest, and transport headers continue to use the existing `x-admin-token` header for both callers. Secrets endpoints accept only the admin token.
 
 ### 1.1 — State and secrets changes
 
 **`types.ts`** — add `assistantToken: string` to `ControlPlaneState`
 
-**`secrets.ts`** — `ensureSecrets()` generates `ASSISTANT_TOKEN=<randomBytes(32).hex>` alongside `MEMORY_AUTH_TOKEN`, writing to `~/.openpalm/vault/system.env`
+**`secrets.ts`** — `ensureSecrets()` generates `ASSISTANT_TOKEN=<randomBytes(32).hex>` alongside `MEMORY_AUTH_TOKEN`, writing to `~/.openpalm/vault/stack/stack.env`
 
 **`lifecycle.ts`** — `createState()` loads `assistantToken` from `fileEnv.ASSISTANT_TOKEN ?? process.env.ASSISTANT_TOKEN`
 
@@ -285,36 +289,46 @@ See [Appendix C](#appendix-c--token-refactor-migration-checklist) for the comple
 
 ### 1.4 — Docker Compose changes
 
-The compose invocation uses `--env-file vault/system.env --env-file vault/user.env` for variable substitution. Per-container `environment:` blocks are explicit allowlists:
+The compose invocation uses `--env-file vault/stack/stack.env --env-file vault/user/user.env` for variable substitution. Per-container `environment:` blocks are explicit allowlists:
 
 ```yaml
 # Compose invocation (built by CLI from openpalm.yml):
 # docker compose \
-#   --env-file ~/.openpalm/vault/system.env \
-#   --env-file ~/.openpalm/vault/user.env \
-#   -f ~/.openpalm/config/components/core.yml \
-#   -f ~/.openpalm/config/components/admin.yml \
+#   --env-file ~/.openpalm/vault/stack/stack.env \
+#   --env-file ~/.openpalm/vault/user/user.env \
+#   -f ~/.openpalm/stack/core.compose.yml \
+#   -f ~/.openpalm/stack/addons/admin/compose.yml \
 #   up -d
 
 assistant:
   environment:
-    # BEFORE: OP_ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
-    OP_ASSISTANT_TOKEN: ${ASSISTANT_TOKEN:-}   # NEW
+    OPENCODE_CONFIG_DIR: /etc/opencode
+    OP_ASSISTANT_TOKEN: ${ASSISTANT_TOKEN:-}
   volumes:
-    - ${OP_HOME}/vault/user.env:/etc/openpalm/user.env:ro  # hot-reload
+    - ${OP_HOME}/vault/user/user.env:/etc/openpalm-vault/user.env:ro
+  env_file:
+    - path: ${OP_HOME}/vault/user/user.env
+      required: false
 
 admin:
   environment:
-    OP_ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
-    ASSISTANT_TOKEN: ${ASSISTANT_TOKEN:-}             # NEW — for verification
+    ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
+    OPENCODE_CONFIG_DIR: /etc/opencode
   volumes:
-    - ${OP_HOME}/vault:/etc/openpalm/vault:rw  # full vault access
+    - ${OP_HOME}:/openpalm
 
 guardian:
+  env_file:
+    - path: ${OP_HOME}/vault/stack/stack.env
+      required: false
   environment:
-    # REMOVE: ADMIN_TOKEN: ${ADMIN_TOKEN:-}          # guardian never used it
-    OP_ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}  # for request validation
-    # CHANNEL_*_SECRET vars injected via ${VAR} substitution from system.env
+    ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
+    # CHANNEL_*_SECRET vars injected via ${VAR} substitution from stack.env
+
+scheduler:
+  environment:
+    # Backward-compat field name in scheduler container, sourced from assistant token
+    OP_ADMIN_TOKEN: ${ASSISTANT_TOKEN:-}
 ```
 
 ### 1.5 — Assistant tools
@@ -332,14 +346,22 @@ headers: { "x-admin-token": ASSISTANT_TOKEN, ... }
 In `hooks.server.ts`, after `ensureSecrets()`:
 
 ```typescript
-const systemEnv = loadEnvFile(`${openpalmHome}/vault/system.env`);
+const systemEnv = loadEnvFile(`${openpalmHome}/vault/stack/stack.env`);
 if (!systemEnv.ASSISTANT_TOKEN) {
-  patchEnvFile(`${openpalmHome}/vault/system.env`, {
+  patchEnvFile(`${openpalmHome}/vault/stack/stack.env`, {
     ASSISTANT_TOKEN: randomBytes(32).toString("hex"),
   });
-  state.assistantToken = loadEnvFile(`${openpalmHome}/vault/system.env`).ASSISTANT_TOKEN ?? "";
+  state.assistantToken = loadEnvFile(`${openpalmHome}/vault/stack/stack.env`).ASSISTANT_TOKEN ?? "";
 }
 ```
+
+### 1.7 — OpenCode provider integration note
+
+Recent repository work adds admin-side OpenCode provider proxy routes under `/admin/opencode/providers/*`. That does **not** replace vault-backed persistence:
+
+- API key persistence remains server-side writes to `vault/user/user.env`
+- OpenCode `/auth/{providerID}` calls are a best-effort runtime supplement, not the source of truth
+- OAuth initiation/completion is proxied through admin routes and audited, but the long-term plan here should keep vault-backed state authoritative
 
 ---
 
@@ -354,398 +376,96 @@ The core abstraction that makes provider swap possible.
 > **Lib-first rule:** The `SecretBackend` interface and all implementations (`PlaintextBackend`, `PassBackend`) live in `@openpalm/lib`, not in admin. Both CLI and admin import from lib. The admin re-exports via its barrel (`packages/admin/src/lib/server/control-plane.ts`) for convenience but adds no independent logic.
 
 ```typescript
-/**
- * Provider-agnostic interface for secret store operations.
- *
- * CRITICAL CONSTRAINT: No method returns decrypted secret values.
- * The read path goes through varlock (process.env at boot).
- * This interface is write-only + metadata.
- */
 export interface SecretBackend {
-  /** Provider identifier (e.g., "plaintext", "pass", "azure-key-vault"). */
-  readonly provider: string;
-
-  /** What this backend can do — UI disables unsupported actions. */
+  readonly provider: 'plaintext' | 'pass';
   readonly capabilities: {
-    /** Can generate random secrets server-side. */
     generate: boolean;
-    /** Can delete individual entries. */
     remove: boolean;
-    /** Can rename/move entries. */
     rename: boolean;
-    /** Can list entries without decryption. */
-    list: boolean;
   };
-
-  /** List entry names/keys under a prefix. No decryption. */
-  list(prefix: string): Promise<string[]>;
-
-  /** Check if an entry exists without decrypting. */
-  exists(key: string): Promise<boolean>;
-
-  /** Write a secret value. The value is encrypted by the provider. */
-  write(key: string, value: string): Promise<void>;
-
-  /** Generate a random secret and store it. No value returned. */
-  generate(key: string, length: number): Promise<void>;
-
-  /** Delete an entry. */
+  list(prefix?: string): Promise<SecretEntryMetadata[]>;
+  write(key: string, value: string): Promise<SecretEntryMetadata>;
+  generate(key: string, length?: number): Promise<SecretEntryMetadata>;
   remove(key: string): Promise<void>;
-
-  /** Rename/move an entry. */
-  rename(from: string, to: string): Promise<void>;
-}
-
-/**
- * Static core mappings from env var names to provider-specific entry identifiers.
- * These are always present. Component mappings are added dynamically at runtime
- * via registerComponentSecrets() / deregisterComponentSecrets().
- *
- * For the PlaintextBackend, the routing layer uses SYSTEM_ENV_KEYS to determine
- * which file (vault/user.env or vault/system.env) each key belongs to.
- * For encrypted backends (pass, Azure, etc.), all keys resolve to a single store.
- */
-export const CORE_ENV_TO_SECRET_KEY: Record<string, string> = {
-  // System secrets (vault/system.env in plaintext mode)
-  OP_ADMIN_TOKEN:     "openpalm/admin-token",
-  ASSISTANT_TOKEN:          "openpalm/assistant-token",
-  MEMORY_AUTH_TOKEN:        "openpalm/memory/auth-token",
-  OPENCODE_SERVER_PASSWORD: "openpalm/opencode-server-password",
-  // User secrets (vault/user.env in plaintext mode — hot-reloadable by assistant)
-  OPENAI_API_KEY:           "openpalm/llm/openai-api-key",
-  OPENAI_BASE_URL:          "openpalm/llm/openai-base-url",
-  ANTHROPIC_API_KEY:        "openpalm/llm/anthropic-api-key",
-  GROQ_API_KEY:             "openpalm/llm/groq-api-key",
-  MISTRAL_API_KEY:          "openpalm/llm/mistral-api-key",
-  GOOGLE_API_KEY:           "openpalm/llm/google-api-key",
-  OPENVIKING_API_KEY:       "openpalm/openviking/api-key",
-  MCP_API_KEY:              "openpalm/mcp/api-key",
-  EMBEDDING_API_KEY:        "openpalm/embedding/api-key",
-  MEMORY_USER_ID:           "openpalm/memory/user-id",
-  OWNER_NAME:               "openpalm/owner/name",
-  OWNER_EMAIL:              "openpalm/owner/email",
-};
-
-/**
- * Dynamic map — starts with core mappings, extended at runtime
- * as components are installed/removed.
- */
-export const ENV_TO_SECRET_KEY: Record<string, string> = { ...CORE_ENV_TO_SECRET_KEY };
-
-/** Keys that hold actual secrets — writes require admin token. */
-export const SECRET_KEYS = new Set([
-  "OP_ADMIN_TOKEN", "ASSISTANT_TOKEN",
-  "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY",
-  "MISTRAL_API_KEY", "GOOGLE_API_KEY",
-  "OPENVIKING_API_KEY", "MCP_API_KEY", "EMBEDDING_API_KEY",
-  "MEMORY_AUTH_TOKEN", "OPENCODE_SERVER_PASSWORD",
-]);
-
-/**
- * Register component secrets from a parsed .env.schema.
- * Called when a component instance is created.
- *
- * @param instanceId - Component instance identifier (e.g., "discord-main")
- * @param sensitiveFields - Field names marked @sensitive in the component's .env.schema
- */
-export function registerComponentSecrets(
-  instanceId: string,
-  sensitiveFields: string[],
-): void {
-  for (const field of sensitiveFields) {
-    const secretKey = `openpalm/component/${instanceId}/${toEntryName(field)}`;
-    ENV_TO_SECRET_KEY[field] = secretKey;
-    SECRET_KEYS.add(field);
-  }
-}
-
-/**
- * Deregister component secrets when an instance is deleted.
- */
-export function deregisterComponentSecrets(
-  instanceId: string,
-  sensitiveFields: string[],
-): void {
-  for (const field of sensitiveFields) {
-    delete ENV_TO_SECRET_KEY[field];
-    SECRET_KEYS.delete(field);
-  }
-}
-
-/** Convert an env var name to a pass entry name: DISCORD_BOT_TOKEN → discord-bot-token */
-function toEntryName(envVar: string): string {
-  return envVar.toLowerCase().replace(/_/g, "-");
+  exists(key: string): Promise<boolean>;
 }
 ```
 
+Supporting logic now lives alongside the interface:
+
+- `packages/lib/src/control-plane/secret-mappings.ts` defines canonical core mappings such as `openpalm/admin-token`, `openpalm/openai/api-key`, and `openpalm/opencode/server-password`
+- dynamic channel mappings are inferred from `CHANNEL_*_SECRET` keys already present in `vault/stack/stack.env`
+- component/custom plaintext entries are tracked in `data/secrets/plaintext-index.json` with generated env names like `OP_SECRET_<HASH>`
+
 ### 2.2 — `PlaintextBackend` implementation
 
-**File:** `packages/admin/src/lib/server/backends/plaintext-backend.ts`
+**File:** `packages/lib/src/control-plane/secret-backend.ts`
 
-The `PlaintextBackend` is the DEFAULT backend when no encrypted provider is configured. It manages two plaintext env files — `vault/user.env` (user-editable LLM keys and provider config) and `vault/system.env` (system-managed tokens, HMAC secrets, paths) — with a routing layer that determines which file a given secret key belongs to.
+The `PlaintextBackend` remains the default backend when no encrypted provider is configured. The current implementation is more metadata-driven than the original roadmap draft:
+
+- core keys resolve through `secret-mappings.ts`
+- user-scoped writes go to `vault/user/user.env`
+- system-scoped writes go to `vault/stack/stack.env`
+- non-core component/custom entries get indexed in `data/secrets/plaintext-index.json`
+- `list()` returns `SecretEntryMetadata[]` so the UI can show provider, scope, kind, and presence without ever reading decrypted values back out
 
 ```typescript
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { randomBytes } from "node:crypto";
-import type { SecretBackend } from "../secret-backend.js";
-import { createLogger } from "../logger.js";
-
-const logger = createLogger("plaintext-backend");
-
-/**
- * Routing map: determines which vault file each env var belongs to.
- * Keys not listed here default to "user" (user.env).
- */
-const SYSTEM_ENV_KEYS = new Set([
-  "OP_ADMIN_TOKEN", "ASSISTANT_TOKEN",
-  "OP_HOME", "OP_UID", "OP_GID", "OP_DOCKER_SOCK",
-  "OP_IMAGE_NAMESPACE", "OP_IMAGE_TAG",
-  "MEMORY_AUTH_TOKEN", "OPENCODE_SERVER_PASSWORD",
-  "OP_SETUP_COMPLETE",
-  // Channel HMAC secrets are dynamically added (CHANNEL_*_SECRET pattern)
-]);
-
-/** Returns true if a key belongs in system.env, false for user.env. */
-function isSystemKey(key: string): boolean {
-  return SYSTEM_ENV_KEYS.has(key) || /^CHANNEL_\w+_SECRET$/.test(key);
-}
-
-/**
- * Plaintext secret backend — routes reads/writes to vault/user.env
- * and vault/system.env based on key classification.
- *
- * This is the default backend when no encrypted provider (pass, Azure, etc.)
- * is configured. Users can opt into encrypted storage through the
- * setup wizard at any time.
- *
- * Security note: secrets are stored in plaintext on disk, protected only
- * by filesystem permissions (0o600 on both files, 0o700 on vault/).
- *
- * Hot-reload note: the assistant watches vault/user.env via file watcher.
- * Writes to user.env (e.g., LLM key rotation) are picked up by the
- * assistant within seconds — no restart or `openpalm apply` needed.
- */
 export class PlaintextBackend implements SecretBackend {
-  readonly provider = "plaintext";
-  readonly capabilities = {
-    generate: true,
-    remove: true,
-    rename: false,   // rename is complex with key=value format
-    list: true,
-  };
-
-  private readonly userEnvPath: string;
-  private readonly systemEnvPath: string;
-
-  constructor(openpalmHome: string) {
-    this.userEnvPath = `${openpalmHome}/vault/user.env`;
-    this.systemEnvPath = `${openpalmHome}/vault/system.env`;
-    logger.info("plaintext backend initialized", {
-      userEnv: this.userEnvPath,
-      systemEnv: this.systemEnvPath,
-    });
-  }
-
-  /** Parse an env file into a key-value map. */
-  private parseEnv(path: string): Record<string, string> {
-    if (!existsSync(path)) return {};
-    const content = readFileSync(path, "utf-8");
-    const result: Record<string, string> = {};
-    for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eqIdx = trimmed.indexOf("=");
-      if (eqIdx < 0) continue;
-      const key = trimmed.slice(0, eqIdx).trim();
-      const value = trimmed.slice(eqIdx + 1).trim();
-      if (key) result[key] = value;
-    }
-    return result;
-  }
-
-  /** Write the full env map back to disk with 0o600 permissions. */
-  private writeEnv(path: string, env: Record<string, string>): void {
-    const lines = Object.entries(env).map(([k, v]) => `${k}=${v}`);
-    writeFileSync(path, lines.join("\n") + "\n", { mode: 0o600 });
-  }
-
-  /** Route a key to the correct env file path. */
-  private routeKey(envKey: string): string {
-    return isSystemKey(envKey) ? this.systemEnvPath : this.userEnvPath;
-  }
-
-  async list(prefix: string): Promise<string[]> {
-    const userEnv = this.parseEnv(this.userEnvPath);
-    const systemEnv = this.parseEnv(this.systemEnvPath);
-    const allKeys = [...Object.keys(userEnv), ...Object.keys(systemEnv)];
-    return allKeys.filter((k) => k.length > 0);
-  }
-
-  async exists(key: string): Promise<boolean> {
-    const envKey = this.resolveEnvKey(key);
-    const path = this.routeKey(envKey);
-    const env = this.parseEnv(path);
-    return envKey in env;
-  }
-
-  async write(key: string, value: string): Promise<void> {
-    logger.info("write", { key });
-    const envKey = this.resolveEnvKey(key);
-    const path = this.routeKey(envKey);
-    const env = this.parseEnv(path);
-    env[envKey] = value;
-    this.writeEnv(path, env);
-  }
-
-  async generate(key: string, length = 64): Promise<void> {
-    if (length < 8 || length > 1024) throw new Error(`Invalid length: ${length}`);
-    const value = randomBytes(Math.ceil(length / 2)).toString("hex").slice(0, length);
-    await this.write(key, value);
-  }
-
-  async remove(key: string): Promise<void> {
-    logger.info("remove", { key });
-    const envKey = this.resolveEnvKey(key);
-    const path = this.routeKey(envKey);
-    const env = this.parseEnv(path);
-    delete env[envKey];
-    this.writeEnv(path, env);
-  }
-
-  async rename(_from: string, _to: string): Promise<void> {
-    throw new Error("PlaintextBackend does not support rename");
-  }
-
-  /** Resolve a pass-style key path back to an env var name. */
-  private resolveEnvKey(key: string): string {
-    // If it looks like an env var already (UPPER_CASE), use as-is
-    if (/^[A-Z][A-Z0-9_]*$/.test(key)) return key;
-    // Otherwise reverse-lookup from ENV_TO_SECRET_KEY
-    const { ENV_TO_SECRET_KEY } = require("../secret-backend.js");
-    for (const [envVar, secretPath] of Object.entries(ENV_TO_SECRET_KEY)) {
-      if (secretPath === key) return envVar;
-    }
-    // Last resort: convert path to env-var-style name
-    return key.split("/").pop()?.toUpperCase().replace(/-/g, "_") ?? key;
-  }
+  readonly provider = 'plaintext';
+  readonly capabilities = { generate: true, remove: true, rename: false };
+  // write(), generate(), remove(), and exists() resolve canonical secret keys
+  // to either core env vars or indexed plaintext entries.
 }
 ```
 
 ### 2.3 — Backend registry and auto-detection
 
-**File:** `packages/lib/src/control-plane/secret-backend-registry.ts`
+**Files:** `packages/lib/src/control-plane/secret-backend.ts`, `packages/lib/src/control-plane/provider-config.ts`
 
 ```typescript
-import type { SecretBackend } from "./secret-backend.js";
-import { PassBackend } from "./backends/pass-backend.js";
-import { PlaintextBackend } from "./backends/plaintext-backend.js";
-import { readFileSync, existsSync } from "node:fs";
-import { resolveOpenpalmHome } from "./home.js";
-import { createLogger } from "./logger.js";
+export function detectSecretBackend(state: ControlPlaneState): SecretBackend {
+  const providerConfig = readSecretProviderConfig(state);
+  if (providerConfig?.provider === 'pass') return new PassBackend(state);
 
-const logger = createLogger("secret-backend");
-
-/** Map from varlock @plugin package name → backend constructor. */
-const BACKEND_CONSTRUCTORS: Record<
-  string,
-  (openpalmHome: string) => SecretBackend
-> = {
-  "@varlock/pass-plugin":              (h) => new PassBackend(h),
-  // Future backends register here:
-  // "@varlock/azure-key-vault-plugin": (h) => new AzureKvBackend(h),
-  // "@varlock/aws-secrets-plugin":     (h) => new AwsSmBackend(h),
-  // "@varlock/1password-plugin":       (h) => new OnePasswordBackend(h),
-};
-
-/**
- * Detect the active secret backend by reading the @plugin() declaration
- * from the vault schema files (user.env.schema or system.env.schema).
- *
- * Falls back to OP_SECRET_BACKEND env var, then to PlaintextBackend
- * (not pass — plaintext is the safe default for existing installations).
- */
-function detectProvider(openpalmHome: string): string | null {
-  // 1. Check explicit override
-  const envOverride = process.env.OP_SECRET_BACKEND;
-  if (envOverride && BACKEND_CONSTRUCTORS[envOverride]) {
-    return envOverride;
-  }
-
-  // 2. Parse @plugin() from vault schemas (check user.env.schema first)
-  for (const schemaFile of ["vault/user.env.schema", "vault/system.env.schema"]) {
-    const schemaPath = `${openpalmHome}/${schemaFile}`;
-    if (existsSync(schemaPath)) {
-      const content = readFileSync(schemaPath, "utf-8");
-      const match = content.match(/@plugin\(([^)]+)\)/);
-      if (match) {
-        // Extract package name: "@varlock/pass-plugin@0.0.4" → "@varlock/pass-plugin"
-        const raw = match[1].trim();
-        const pkgName = raw.replace(/@[\d.]+$/, ""); // strip version suffix
-        if (BACKEND_CONSTRUCTORS[pkgName]) {
-          return pkgName;
-        }
-      }
+  for (const schemaPath of [
+    `${state.vaultDir}/user.env.schema`,
+    `${state.vaultDir}/system.env.schema`,
+  ]) {
+    if (readFileSync(schemaPath, 'utf-8').includes('@varlock/pass-plugin')) {
+      return new PassBackend(state);
     }
   }
 
-  // 3. No encrypted provider detected — fall back to PlaintextBackend
-  return null;
-}
-
-let _backend: SecretBackend | null = null;
-
-/** Get the active secret backend (lazy singleton). */
-export function getSecretBackend(): SecretBackend {
-  if (!_backend) {
-    const openpalmHome = resolveOpenpalmHome();
-    const provider = detectProvider(openpalmHome);
-
-    if (provider === null) {
-      // Default: PlaintextBackend manages vault/user.env + vault/system.env
-      _backend = new PlaintextBackend(openpalmHome);
-      logger.info("secret backend initialized", { provider: "plaintext" });
-    } else {
-      const constructor = BACKEND_CONSTRUCTORS[provider];
-      if (!constructor) {
-        throw new Error(`No backend implementation for provider: ${provider}`);
-      }
-      _backend = constructor(openpalmHome);
-      logger.info("secret backend initialized", { provider: _backend.provider });
-    }
-  }
-  return _backend;
-}
-
-/** Reset backend (for testing or config change). */
-export function resetSecretBackend(): void {
-  _backend = null;
+  return new PlaintextBackend(state);
 }
 ```
+
+Note the current order of precedence:
+
+1. explicit `data/secrets/provider.json`
+2. pass plugin marker in the active schema files
+3. plaintext fallback
 
 ### 2.4 — Provider config file
 
 **File (runtime):** `~/.openpalm/data/secrets/provider.json`
 
-Written by `scripts/pass-init.sh` (or future setup tools). Read by the backend registry for provider-specific settings. When no `provider.json` exists, the system uses `PlaintextBackend`.
+Written by `scripts/pass-init.sh` (or future setup tools). Read by `readSecretProviderConfig()`. When no `provider.json` exists, the system falls back to schema detection and then `PlaintextBackend`.
 
 ```json
 {
-  "provider": "@varlock/pass-plugin",
-  "pass": {
-    "storeDir": "secrets/pass-store",
-    "gpgId": "user@example.com"
-  }
+  "provider": "pass",
+  "passwordStoreDir": "/home/user/.openpalm/data/secrets/pass-store",
+  "passPrefix": "openpalm"
 }
 ```
 
-For Azure Key Vault, the same file would look like:
+If more encrypted providers are added later, this file should stay runtime-oriented and simple rather than mirroring varlock package names. The schema files still carry the read-path plugin declarations.
 
 ```json
 {
-  "provider": "@varlock/azure-key-vault-plugin",
-  "azureKeyVault": {
-    "vaultUrl": "https://my-openpalm-vault.vault.azure.net/"
-  }
+  "provider": "azure-key-vault",
+  "vaultUrl": "https://my-openpalm-vault.vault.azure.net/"
 }
 ```
 
@@ -757,131 +477,30 @@ The admin UI (future work) would let users choose and configure their provider t
 
 ### 3.1 — `PassBackend` implementation
 
-**File:** `packages/admin/src/lib/server/backends/pass-backend.ts`
+**File:** `packages/lib/src/control-plane/secret-backend.ts`
 
 ```typescript
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { existsSync, mkdirSync } from "node:fs";
-import type { SecretBackend } from "../secret-backend.js";
-import { createLogger } from "../logger.js";
-
-const execFileAsync = promisify(execFile);
-const logger = createLogger("pass-backend");
-const PASS_TIMEOUT = 10_000;
-
-const ENTRY_NAME_RE = /^[a-z0-9][a-z0-9\-\/]*[a-z0-9]$/;
-
-function validateEntryName(name: string): void {
-  if (!name || name.length > 200 || !ENTRY_NAME_RE.test(name)) {
-    throw new Error(`Invalid entry name: ${name}`);
-  }
-  if (name.includes("..") || name.includes("//")) {
-    throw new Error("Path traversal in entry name");
-  }
-}
-
 export class PassBackend implements SecretBackend {
-  readonly provider = "pass";
-  readonly capabilities = {
-    generate: true,
-    remove: true,
-    rename: true,
-    list: true,
-  };
+  readonly provider = 'pass';
+  readonly capabilities = { generate: true, remove: true, rename: false };
 
-  private readonly storeDir: string;
-  private readonly env: Record<string, string>;
+  constructor(private readonly state: ControlPlaneState) {}
 
-  constructor(openpalmHome: string) {
-    this.storeDir = `${openpalmHome}/data/secrets/pass-store`;
-    mkdirSync(this.storeDir, { recursive: true });
-
-    // Build env with PASSWORD_STORE_DIR pointing to data/secrets location
-    this.env = {
-      ...process.env as Record<string, string>,
-      PASSWORD_STORE_DIR: this.storeDir,
-    };
-
-    logger.info("pass backend initialized", { storeDir: this.storeDir });
-  }
-
-  private opts() {
-    return { timeout: PASS_TIMEOUT, env: this.env };
-  }
-
-  async list(prefix: string): Promise<string[]> {
-    validateEntryName(prefix);
-    try {
-      const { stdout } = await execFileAsync("pass", ["ls", prefix], this.opts());
-      return parsePassTreeOutput(stdout);
-    } catch {
-      return [];
-    }
-  }
-
-  async exists(key: string): Promise<boolean> {
-    // Check for .gpg file directly — faster than pass ls
-    const gpgPath = `${this.storeDir}/${key}.gpg`;
-    return existsSync(gpgPath);
-  }
-
-  async write(key: string, value: string): Promise<void> {
-    validateEntryName(key);
-    logger.info("write", { key });
-    await execFileAsync(
-      "pass", ["insert", "-m", "-f", key],
-      { ...this.opts(), input: value }
-    );
-  }
-
-  async generate(key: string, length = 64): Promise<void> {
-    validateEntryName(key);
-    if (length < 8 || length > 1024) throw new Error(`Invalid length: ${length}`);
-    logger.info("generate", { key, length });
-    await execFileAsync(
-      "pass", ["generate", "-f", key, String(length)],
-      this.opts()
-    );
-  }
-
-  async remove(key: string): Promise<void> {
-    validateEntryName(key);
-    logger.info("remove", { key });
-    await execFileAsync("pass", ["rm", "-f", key], this.opts());
-  }
-
-  async rename(from: string, to: string): Promise<void> {
-    validateEntryName(from);
-    validateEntryName(to);
-    logger.info("rename", { from, to });
-    await execFileAsync("pass", ["mv", "-f", from, to], this.opts());
-  }
-}
-
-/** Parse `pass ls` tree output into leaf entry paths. */
-export function parsePassTreeOutput(output: string): string[] {
-  const entries: string[] = [];
-  const stack: { indent: number; name: string }[] = [];
-
-  for (const line of output.split("\n")) {
-    const stripped = line.replace(/[│├└─\s]+/g, " ").trim();
-    if (!stripped || stripped === "Password Store") continue;
-    const indent = line.search(/\S/);
-    if (indent < 0) continue;
-
-    while (stack.length > 0 && stack[stack.length - 1].indent >= indent) stack.pop();
-    stack.push({ indent, name: stripped });
-    entries.push(stack.map((s) => s.name).join("/"));
-  }
-
-  return entries.filter((e) => !entries.some((o) => o !== e && o.startsWith(e + "/")));
+  // Key implementation details in the current repo:
+  // - pass store root comes from provider.json or defaults to `${state.dataDir}/secrets/pass-store`
+  // - canonical secret keys are validated with `validatePassEntryName()`
+  // - runtime pass entries are prefixed with `passPrefix` from provider.json
+  // - write() uses `pass insert -m -f`
+  // - generate() uses `pass generate -n -f`
+  // - exists() checks the resolved `.gpg` path directly
 }
 ```
 
+One subtle but important repository-specific detail: the current `PassBackend` applies `passPrefix` to already-canonical secret keys. With the default prefix of `openpalm` and canonical keys like `openpalm/admin-token`, the physical pass entry path becomes `openpalm/openpalm/admin-token`.
+
 ### 3.2 — Compose mounts (pass-specific)
 
-**File:** `~/.openpalm/config/components/admin.yml` — admin service:
+**File:** `~/.openpalm/stack/addons/admin/compose.yml` — admin service:
 
 ```yaml
 admin:
@@ -890,16 +509,14 @@ admin:
     GNUPGHOME: /home/node/.gnupg
     # PASSWORD_STORE_DIR is set by PassBackend at runtime, not here
   volumes:
-    # ... existing vault/, config/, data/ mounts ...
-    # GPG agent socket (read-only)
-    - ${GNUPGHOME:-${HOME}/.gnupg}/S.gpg-agent:/home/node/.gnupg/S.gpg-agent:ro
-    # GPG public keyring (read-only — encrypt only, no key management)
-    - ${GNUPGHOME:-${HOME}/.gnupg}/pubring.kbx:/home/node/.gnupg/pubring.kbx:ro
-    - ${GNUPGHOME:-${HOME}/.gnupg}/trustdb.gpg:/home/node/.gnupg/trustdb.gpg:ro
-    # Password store is inside data/secrets/ — accessible through existing data/ mount
+     # Current compose mounts the whole GNUPGHOME directory read-only:
+     - type: bind
+       source: ${GNUPGHOME:-${HOME}/.gnupg}
+       target: /home/node/.gnupg
+       read_only: true
 ```
 
-The pass store at `~/.openpalm/data/secrets/pass-store/` is already accessible through the admin's existing `data/` bind mount. No new mount is needed for the store itself — only the GPG agent socket and keyring.
+The pass store at `~/.openpalm/data/secrets/pass-store/` is already accessible because the admin bind-mounts the whole `OP_HOME` at `/openpalm`. No extra mount is needed for the store itself.
 
 ### 3.3 — Install `pass` in admin Dockerfile
 
@@ -913,81 +530,54 @@ RUN apt-get update \
 
 ### 3.4 — `scripts/pass-init.sh`
 
-Updated to target `~/.openpalm/data/secrets/pass-store/`:
+Updated to target `~/.openpalm/data/secrets/pass-store/` and write the simplified runtime provider config:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 OP_HOME="${OP_HOME:-${HOME}/.openpalm}"
-STORE_DIR="$OP_HOME/data/secrets/pass-store"
-GPG_ID="${1:-}"
+PASS_PREFIX="openpalm"
+GPG_ID=""
 
-if [ -z "$GPG_ID" ]; then
-  echo "Usage: scripts/pass-init.sh <gpg-key-id>"
-  echo "  e.g.: scripts/pass-init.sh user@example.com"
-  exit 1
-fi
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --gpg-id) GPG_ID="${2:-}"; shift 2 ;;
+    --home) OP_HOME="${2:-}"; shift 2 ;;
+    --prefix) PASS_PREFIX="${2:-}"; shift 2 ;;
+    *) echo "Unknown argument: $1" >&2; exit 1 ;;
+  esac
+done
 
-# Initialize pass store at the OpenPalm data location
-mkdir -p "$STORE_DIR"
+SECRETS_DIR="$OP_HOME/data/secrets"
+STORE_DIR="$SECRETS_DIR/pass-store"
+PROVIDER_CONFIG="$SECRETS_DIR/provider.json"
+
+mkdir -p "$SECRETS_DIR"
+chmod 0700 "$SECRETS_DIR"
 export PASSWORD_STORE_DIR="$STORE_DIR"
 pass init "$GPG_ID"
 
-# Write provider config
-mkdir -p "$OP_HOME/data/secrets"
-cat > "$OP_HOME/data/secrets/provider.json" <<EOF
+cat >"$PROVIDER_CONFIG" <<EOF
 {
-  "provider": "@varlock/pass-plugin",
-  "pass": {
-    "storeDir": "secrets/pass-store",
-    "gpgId": "$GPG_ID"
-  }
+  "provider": "pass",
+  "passwordStoreDir": "$STORE_DIR",
+  "passPrefix": "$PASS_PREFIX"
 }
 EOF
+chmod 0600 "$PROVIDER_CONFIG"
 
-PREFIX="openpalm"
-
-ensure_entry() {
-  local entry="$1" generator="${2:-}"
-  if ! pass show "$PREFIX/$entry" >/dev/null 2>&1; then
-    if [ -n "$generator" ]; then
-      eval "$generator" | pass insert -m "$PREFIX/$entry"
-      echo "  CREATED: $PREFIX/$entry"
-    else
-      echo "  MISSING: $PREFIX/$entry — set with: PASSWORD_STORE_DIR=$STORE_DIR pass insert $PREFIX/$entry"
-    fi
-  else
-    echo "       OK: $PREFIX/$entry"
-  fi
-}
-
-echo ""
-echo "Populating entries..."
-
-ensure_entry "admin-token" "openssl rand -hex 16"
-ensure_entry "assistant-token" "openssl rand -hex 32"
-ensure_entry "memory/auth-token" "openssl rand -hex 32"
-
-for entry in \
-  "llm/openai-api-key" "llm/openai-base-url" \
-  "llm/anthropic-api-key" "llm/groq-api-key" \
-  "llm/mistral-api-key" "llm/google-api-key" \
-  "openviking/api-key" "mcp/api-key" "embedding/api-key" \
-  "memory/user-id" "owner/name" "owner/email" "opencode-server-password"; do
-  ensure_entry "$entry"
-done
-
-echo ""
-echo "Done. Store: $STORE_DIR"
-echo "Verify: PASSWORD_STORE_DIR=$STORE_DIR pass ls $PREFIX/"
+echo "Initialized pass backend at $STORE_DIR"
 ```
+
+Repository alignment note: the current helper initializes the store and writes `provider.json`; it does **not** pre-seed secret entries. Initial secret creation still happens through setup flows or future `SecretBackend.write()` calls.
 
 ### 3.5 — Vault schemas (pass-backed)
 
 When the pass backend is active, both vault schema files use `@plugin()` declarations. The schemas are split to match the two-file vault model.
 
-**`vault/user.env.schema` (pass-backed):**
+**`vault/user/user.env.schema` (pass-backed):**
 
 ```env
 # OpenPalm — User Secrets Schema (pass-backed)
@@ -999,31 +589,31 @@ When the pass backend is active, both vault schema files use `@plugin()` declara
 # ---
 
 # @type=string(startsWith=sk-) @sensitive
-OPENAI_API_KEY=pass("llm/openai-api-key", allowMissing=true)
+OPENAI_API_KEY=pass("openpalm/openai/api-key", allowMissing=true)
 
 # @type=url @sensitive=false
-OPENAI_BASE_URL=pass("llm/openai-base-url", allowMissing=true)
+OPENAI_BASE_URL=
 
 # @type=string @sensitive
-ANTHROPIC_API_KEY=pass("llm/anthropic-api-key", allowMissing=true)
+ANTHROPIC_API_KEY=pass("openpalm/anthropic/api-key", allowMissing=true)
 
 # @type=string @sensitive
-GROQ_API_KEY=pass("llm/groq-api-key", allowMissing=true)
+GROQ_API_KEY=pass("openpalm/groq/api-key", allowMissing=true)
 
 # @type=string @sensitive
-MISTRAL_API_KEY=pass("llm/mistral-api-key", allowMissing=true)
+MISTRAL_API_KEY=pass("openpalm/mistral/api-key", allowMissing=true)
 
 # @type=string @sensitive
-GOOGLE_API_KEY=pass("llm/google-api-key", allowMissing=true)
+GOOGLE_API_KEY=pass("openpalm/google/api-key", allowMissing=true)
 
 # @type=string @sensitive
-OPENVIKING_API_KEY=pass("openviking/api-key", allowMissing=true)
+OPENVIKING_API_KEY=pass("openpalm/openviking/api-key", allowMissing=true)
 
 # @type=string @sensitive
-MCP_API_KEY=pass("mcp/api-key", allowMissing=true)
+MCP_API_KEY=pass("openpalm/mcp/api-key", allowMissing=true)
 
 # @type=string @sensitive
-EMBEDDING_API_KEY=pass("embedding/api-key", allowMissing=true)
+EMBEDDING_API_KEY=pass("openpalm/embedding/api-key", allowMissing=true)
 
 # @type=enum(openai,anthropic,groq,mistral,google,ollama,litellm) @sensitive=false
 SYSTEM_LLM_PROVIDER=
@@ -1041,16 +631,16 @@ EMBEDDING_MODEL=
 EMBEDDING_DIMS=
 
 # @type=string @sensitive=false
-MEMORY_USER_ID=pass("memory/user-id", allowMissing=true)
+MEMORY_USER_ID=
 
 # @type=string @sensitive=false
-OWNER_NAME=pass("owner/name", allowMissing=true)
+OWNER_NAME=
 
 # @type=email @sensitive=false
-OWNER_EMAIL=pass("owner/email", allowMissing=true)
+OWNER_EMAIL=
 ```
 
-**`vault/system.env.schema` (pass-backed):**
+**`vault/stack/stack.env.schema` (pass-backed):**
 
 ```env
 # OpenPalm — System Secrets Schema (pass-backed)
@@ -1062,16 +652,16 @@ OWNER_EMAIL=pass("owner/email", allowMissing=true)
 # ---
 
 # @type=string(minLength=8) @required
-OP_ADMIN_TOKEN=pass("admin-token")
+OP_ADMIN_TOKEN=pass("openpalm/admin-token")
 
 # @type=string(minLength=32) @required @sensitive
-ASSISTANT_TOKEN=pass("assistant-token")
+ASSISTANT_TOKEN=pass("openpalm/assistant-token")
 
 # @type=string(minLength=32) @required @sensitive
-MEMORY_AUTH_TOKEN=pass("memory/auth-token")
+MEMORY_AUTH_TOKEN=pass("openpalm/memory/auth-token")
 
 # @type=string(minLength=32) @required=false @sensitive
-OPENCODE_SERVER_PASSWORD=pass("opencode-server-password", allowMissing=true)
+OPENCODE_SERVER_PASSWORD=pass("openpalm/opencode/server-password", allowMissing=true)
 
 # @type=string @sensitive=false @required
 OP_HOME=
@@ -1096,8 +686,8 @@ OP_SETUP_COMPLETE=false
 
 # Channel HMAC secrets — dynamically extended as channels are installed
 # @type=string(minLength=32) @sensitive
-# CHANNEL_CHAT_SECRET=pass("channel/chat-secret", allowMissing=true)
-# CHANNEL_DISCORD_SECRET=pass("channel/discord-secret", allowMissing=true)
+# CHANNEL_CHAT_SECRET=pass("openpalm/channel/chat/secret", allowMissing=true)
+# CHANNEL_DISCORD_SECRET=pass("openpalm/channel/discord/secret", allowMissing=true)
 ```
 
 Note `storePath=${OP_HOME}/data/secrets/pass-store` in `@initPass()` — this tells the varlock plugin to read from the `~/.openpalm/`-scoped store, not `~/.password-store`.
@@ -1111,13 +701,13 @@ The setup wizard presents the encrypted secrets choice during first boot:
 - **Yes** — Guide the user through GPG key setup:
   1. Check if a GPG key exists (`gpg --list-keys`)
   2. If not, offer to generate one (`gpg --gen-key`)
-  3. Run `pass-init.sh <gpg-id>` to initialize the pass store
-  4. Write `provider.json` and pass-backed `vault/user.env.schema` + `vault/system.env.schema`
+  3. Run `scripts/pass-init.sh --gpg-id <gpg-id>` to initialize the pass store
+  4. Write `provider.json` and pass-backed `vault/user/user.env.schema` + `vault/stack/stack.env.schema`
   5. Continue with the rest of setup (ADMIN_TOKEN etc. written to pass)
 
 - **No** — Continue with `PlaintextBackend`:
   1. No GPG setup, no pass initialization
-  2. `vault/user.env` and `vault/system.env` are created in `~/.openpalm/vault/` as plaintext
+  2. `vault/user/user.env` and `vault/stack/stack.env` are created in `~/.openpalm/vault/` as plaintext
   3. User can opt in to encrypted storage later via `openpalm secrets init`
 
 This ensures zero-breaking-change upgrades: existing users keep working with plaintext until they explicitly opt in. New users make an informed choice at first boot.
@@ -1127,7 +717,7 @@ This ensures zero-breaking-change upgrades: existing users keep working with pla
 ## Phase 4 — Secrets API Routes
 
 All routes use `requireAdmin()` — assistant token is rejected.
-All routes use `getSecretBackend()` — provider-agnostic.
+All routes should resolve the backend from shared lib state (`detectSecretBackend(state)` or equivalent shared wrapper) rather than duplicating provider detection in admin.
 
 ### 4.1 — `GET/POST/DELETE /admin/secrets`
 
@@ -1138,18 +728,18 @@ import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
 import { jsonResponse, errorResponse, requireAdmin, getRequestId, getActor, getCallerType } from "$lib/server/helpers.js";
 import { appendAudit } from "$lib/server/control-plane.js";
-import { getSecretBackend } from "$lib/server/secret-backend-registry.js";
+import { detectSecretBackend } from '@openpalm/lib/control-plane';
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const authErr = requireAdmin(event, requestId);
   if (authErr) return authErr;
 
-  const backend = getSecretBackend();
+  const state = getState();
+  const backend = detectSecretBackend(state);
   const prefix = event.url.searchParams.get("prefix") ?? "openpalm";
   const entries = await backend.list(prefix);
 
-  const state = getState();
   appendAudit(state, getActor(event), "secrets.list", { prefix, provider: backend.provider }, true, requestId, getCallerType(event));
   return jsonResponse(200, {
     entries,
@@ -1162,6 +752,8 @@ export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const authErr = requireAdmin(event, requestId);
   if (authErr) return authErr;
+
+  const state = getState();
 
   const body = await event.request.json().catch(() => null);
   const key = typeof body?.key === "string" ? body.key.trim() : "";
@@ -1177,10 +769,9 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "bad_request", "Scope must be 'component/<instance-id>' or 'custom'", {}, requestId);
   }
 
-  const backend = getSecretBackend();
+  const backend = detectSecretBackend(state);
   await backend.write(key, value);
 
-  const state = getState();
   appendAudit(state, getActor(event), "secrets.write", { key, scope, provider: backend.provider }, true, requestId, getCallerType(event));
   return jsonResponse(200, { ok: true, key }, requestId);
 };
@@ -1190,6 +781,8 @@ export const DELETE: RequestHandler = async (event) => {
   const authErr = requireAdmin(event, requestId);
   if (authErr) return authErr;
 
+  const state = getState();
+
   const body = await event.request.json().catch(() => null);
   const key = typeof body?.key === "string" ? body.key.trim() : "";
 
@@ -1197,14 +790,13 @@ export const DELETE: RequestHandler = async (event) => {
     return errorResponse(400, "bad_request", "Key must start with openpalm/", {}, requestId);
   }
 
-  const backend = getSecretBackend();
+  const backend = detectSecretBackend(state);
   if (!backend.capabilities.remove) {
     return errorResponse(501, "not_supported", `${backend.provider} does not support deletion`, {}, requestId);
   }
 
   await backend.remove(key);
 
-  const state = getState();
   appendAudit(state, getActor(event), "secrets.delete", { key, provider: backend.provider }, true, requestId, getCallerType(event));
   return jsonResponse(200, { ok: true, deleted: key }, requestId);
 };
@@ -1220,6 +812,8 @@ export const POST: RequestHandler = async (event) => {
   const authErr = requireAdmin(event, requestId);
   if (authErr) return authErr;
 
+  const state = getState();
+
   const body = await event.request.json().catch(() => null);
   const key = typeof body?.key === "string" ? body.key.trim() : "";
   const length = typeof body?.length === "number" ? body.length : 64;
@@ -1228,14 +822,13 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "bad_request", "Key must start with openpalm/", {}, requestId);
   }
 
-  const backend = getSecretBackend();
+  const backend = detectSecretBackend(state);
   if (!backend.capabilities.generate) {
     return errorResponse(501, "not_supported", `${backend.provider} does not support generation`, {}, requestId);
   }
 
   await backend.generate(key, length);
 
-  const state = getState();
   appendAudit(state, getActor(event), "secrets.generate", { key, length, provider: backend.provider }, true, requestId, getCallerType(event));
   return jsonResponse(200, { ok: true, key, length }, requestId);
 };
@@ -1291,50 +884,18 @@ Add to `TabBar.svelte` after Connections.
 
 **File:** `packages/admin/src/routes/admin/connections/+server.ts`
 
-```typescript
-import { getSecretBackend, ENV_TO_SECRET_KEY, SECRET_KEYS } from "$lib/server/secret-backend.js";
-import { identifyCallerByToken } from "$lib/server/helpers.js";
+Current repository state already moved part of the provider story into `/admin/opencode/providers/*`:
 
-async function patchConnections(
-  event: RequestEvent,
-  configDir: string,
-  patches: Record<string, string>,
-): Promise<{ envPatched: string[]; secretsPatched: string[]; rejected: string[] }> {
-  const caller = identifyCallerByToken(event);
-  const backend = getSecretBackend();
-  const envPatches: Record<string, string> = {};
-  const secretsPatched: string[] = [];
-  const rejected: string[] = [];
+- `/admin/connections` still patches `vault/user/user.env` directly via `patchSecretsEnvFile(state.vaultDir, patches)`
+- `/admin/opencode/providers/[id]/auth` validates API keys, writes them to `vault/user/user.env`, and then optionally mirrors them into OpenCode with `setProviderApiKey()`
+- OAuth initiation/completion is already proxied through admin routes and audited
 
-  for (const [envKey, value] of Object.entries(patches)) {
-    if (SECRET_KEYS.has(envKey)) {
-      if (caller !== "admin") {
-        rejected.push(envKey);
-        continue;
-      }
-      const secretKey = ENV_TO_SECRET_KEY[envKey];
-      if (secretKey && value) {
-        await backend.write(secretKey, value);
-        secretsPatched.push(envKey);
-      }
-    } else {
-      envPatches[envKey] = value;
-    }
-  }
+Deferred refactor goal for this phase should therefore be updated to:
 
-  if (Object.keys(envPatches).length > 0) {
-    // Non-secret config values are written to the appropriate vault file
-    // via the PlaintextBackend's routing layer
-    for (const [k, v] of Object.entries(envPatches)) {
-      await backend.write(k, v);
-    }
-  }
-
-  return { envPatched: Object.keys(envPatches), secretsPatched, rejected };
-}
-```
-
-Note: `patchConnections` calls `backend.write()`, not `insertEntry()`. It works identically regardless of the backend provider.
+1. replace direct env patching in both `/admin/connections` and `/admin/opencode/providers/[id]/auth` with `SecretBackend.write()`
+2. keep `vault/user/user.env` as the user-visible plaintext surface when `PlaintextBackend` is active
+3. preserve OpenCode API calls as best-effort live sync only, not the durable source of truth
+4. make provider/model UI flows backend-agnostic without changing their external API shape
 
 ---
 
@@ -1344,14 +905,16 @@ Note: `patchConnections` calls `backend.write()`, not `insertEntry()`. It works 
 
 Updated to target `~/.openpalm/data/secrets/pass-store/`. This migrates from the plaintext vault files to the pass-encrypted store:
 
+Important repository-alignment note: the current `PassBackend` applies `passPrefix` to canonical keys that already start with `openpalm/`. If that behavior stays unchanged, migration tooling must write entries at the exact paths the backend will later look up (for example `openpalm/openpalm/admin-token` with the default prefix).
+
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
 OP_HOME="${OP_HOME:-${HOME}/.openpalm}"
 STORE_DIR="$OP_HOME/data/secrets/pass-store"
-USER_ENV="$OP_HOME/vault/user.env"
-SYSTEM_ENV="$OP_HOME/vault/system.env"
+USER_ENV="$OP_HOME/vault/user/user.env"
+SYSTEM_ENV="$OP_HOME/vault/stack/stack.env"
 
 [ -f "$USER_ENV" ] || [ -f "$SYSTEM_ENV" ] || { echo "No vault env files — nothing to migrate."; exit 0; }
 command -v pass >/dev/null || { echo "Error: pass not installed."; exit 1; }
@@ -1361,15 +924,15 @@ export PASSWORD_STORE_DIR="$STORE_DIR"
 
 declare -A KEY_MAP=(
   [OP_ADMIN_TOKEN]="admin-token" [ASSISTANT_TOKEN]="assistant-token"
-  [OPENAI_API_KEY]="llm/openai-api-key" [OPENAI_BASE_URL]="llm/openai-base-url"
-  [ANTHROPIC_API_KEY]="llm/anthropic-api-key" [GROQ_API_KEY]="llm/groq-api-key"
-  [MISTRAL_API_KEY]="llm/mistral-api-key" [GOOGLE_API_KEY]="llm/google-api-key"
+  [OPENAI_API_KEY]="openai/api-key"
+  [ANTHROPIC_API_KEY]="anthropic/api-key" [GROQ_API_KEY]="groq/api-key"
+  [MISTRAL_API_KEY]="mistral/api-key" [GOOGLE_API_KEY]="google/api-key"
   [OPENVIKING_API_KEY]="openviking/api-key"
   [MCP_API_KEY]="mcp/api-key"
   [EMBEDDING_API_KEY]="embedding/api-key"
   [MEMORY_AUTH_TOKEN]="memory/auth-token" [MEMORY_USER_ID]="memory/user-id"
   [OWNER_NAME]="owner/name" [OWNER_EMAIL]="owner/email"
-  [OPENCODE_SERVER_PASSWORD]="opencode-server-password"
+  [OPENCODE_SERVER_PASSWORD]="opencode/server-password"
 )
 
 migrated=0 skipped=0
@@ -1399,15 +962,15 @@ echo "Migrated: $migrated  Skipped: $skipped"
 
 ### 7.2 — CLI subcommands
 
-All commands respect `PASSWORD_STORE_DIR=${OP_HOME}/data/secrets/pass-store`:
+All commands respect `PASSWORD_STORE_DIR=${OP_HOME}/data/secrets/pass-store`. If the current `passPrefix` behavior is preserved, CLI helpers should also target the fully resolved entry path that the backend uses:
 
 | Command | Action |
 |---------|--------|
-| `openpalm secrets init <gpg-id>` | `scripts/pass-init.sh <gpg-id>` |
+| `openpalm secrets init <gpg-id>` | `scripts/pass-init.sh --gpg-id <gpg-id>` |
 | `openpalm secrets migrate` | `scripts/migrate-to-pass.sh` |
-| `openpalm secrets ls` | `pass ls openpalm/` |
-| `openpalm secrets set <entry>` | `pass insert openpalm/<entry>` |
-| `openpalm secrets generate <entry>` | `pass generate openpalm/<entry> 64` |
+| `openpalm secrets ls` | `pass ls <resolved-prefix>/` |
+| `openpalm secrets set <entry>` | `pass insert <resolved-prefix>/<entry>` |
+| `openpalm secrets generate <entry>` | `pass generate <resolved-prefix>/<entry> 64` |
 
 ---
 
@@ -1417,10 +980,10 @@ All commands respect `PASSWORD_STORE_DIR=${OP_HOME}/data/secrets/pass-store`:
 
 Two files change. No code changes.
 
-**1. Replace `vault/user.env.schema` and `vault/system.env.schema`:**
+**1. Replace `vault/user/user.env.schema` and `vault/stack/stack.env.schema`:**
 
 ```env
-# vault/user.env.schema (Azure-backed)
+# vault/user/user.env.schema (Azure-backed)
 # @plugin(@varlock/azure-key-vault-plugin@0.0.4)
 # @initAzure(vaultUrl=https://openpalm-vault.vault.azure.net/)
 # @defaultSensitive=true
@@ -1428,13 +991,13 @@ Two files change. No code changes.
 # ---
 
 # @type=string(startsWith=sk-) @sensitive
-OPENAI_API_KEY=azureSecret("openpalm-llm-openai-api-key", allowMissing=true)
+OPENAI_API_KEY=azureSecret("openpalm-openai-api-key", allowMissing=true)
 
 # ... (same pattern for all user keys)
 ```
 
 ```env
-# vault/system.env.schema (Azure-backed)
+# vault/stack/stack.env.schema (Azure-backed)
 # @plugin(@varlock/azure-key-vault-plugin@0.0.4)
 # @initAzure(vaultUrl=https://openpalm-vault.vault.azure.net/)
 # @defaultSensitive=true
@@ -1454,20 +1017,18 @@ ASSISTANT_TOKEN=azureSecret("openpalm-assistant-token")
 
 ```json
 {
-  "provider": "@varlock/azure-key-vault-plugin",
-  "azureKeyVault": {
-    "vaultUrl": "https://openpalm-vault.vault.azure.net/"
-  }
+  "provider": "azure-key-vault",
+  "vaultUrl": "https://openpalm-vault.vault.azure.net/"
 }
 ```
 
-**3. Register `AzureKvBackend`** in `secret-backend-registry.ts` (one-time code addition per new provider):
+**3. Register `AzureKvBackend`** in the lib secret backend detection path (one-time code addition per new provider):
 
 ```typescript
-"@varlock/azure-key-vault-plugin": (dh) => new AzureKvBackend(dh),
+if (providerConfig?.provider === 'azure-key-vault') return new AzureKvBackend(state);
 ```
 
-The `AzureKvBackend` class implements `SecretBackend` using the Azure Key Vault REST API (`az keyvault secret set`, etc.).
+The `AzureKvBackend` class would implement `SecretBackend` using Azure APIs, while the schema files would continue to use the matching Varlock plugin for the read path.
 
 ### Available varlock provider plugins
 
@@ -1522,7 +1083,7 @@ After migrating to the pass backend, the pass store (`~/.openpalm/data/secrets/p
 2. Store the GPG key backup in a different location than the pass store backup
 3. Test restore procedures periodically
 
-The `PlaintextBackend` does not have this requirement — plaintext `vault/user.env` and `vault/system.env` files are self-contained and portable. The entire `~/.openpalm/` directory can be archived with a single `tar` command.
+The `PlaintextBackend` does not have this requirement — plaintext `vault/user/user.env` and `vault/stack/stack.env` files are self-contained and portable. The entire `~/.openpalm/` directory can be archived with a single `tar` command.
 
 ---
 
@@ -1575,21 +1136,27 @@ The `PlaintextBackend` does not have this requirement — plaintext `vault/user.
 - routes/admin/upgrade/+server.ts
 - routes/admin/secrets/+server.ts          (NEW)
 - routes/admin/secrets/generate/+server.ts (NEW)
+- routes/admin/opencode/providers/+server.ts
+- routes/admin/opencode/providers/[id]/auth/+server.ts
+- routes/admin/opencode/providers/[id]/models/+server.ts
+- routes/admin/opencode/model/+server.ts
 ```
 
 ### Other changes
 
 ```
-- lib/server/types.ts                    — add assistantToken
-- lib/server/secrets.ts                  — generate ASSISTANT_TOKEN (writes to vault/system.env)
-- lib/server/lifecycle.ts                — load assistantToken
-- lib/server/home.ts                     — resolveOpenpalmHome() (replaces paths.ts)
-- lib/server/helpers.ts                  — identifyCallerByToken, requireAuth, getActor
+- packages/lib/src/control-plane/types.ts          — shared state typing
+- packages/lib/src/control-plane/secrets.ts        — generate ASSISTANT_TOKEN (writes to `vault/stack/stack.env`)
+- packages/lib/src/control-plane/lifecycle.ts      — load assistantToken
+- packages/lib/src/control-plane/home.ts           — resolve OP_HOME paths
+- packages/admin/src/lib/server/helpers.ts         — identifyCallerByToken, requireAuth, getActor
 - hooks.server.ts                        — upgrade migration
-- config/components/core.yml             — token routing, vault mounts
-- vault/user.env.schema                  — user secret declarations
-- vault/system.env.schema                — system secret declarations + ASSISTANT_TOKEN
-- packages/assistant-tools/.../lib.ts    — OP_ASSISTANT_TOKEN
+- .openpalm/stack/core.compose.yml       — token routing, env files, vault mounts
+- .openpalm/stack/addons/admin/compose.yml — admin token wiring + admin OpenCode port
+- vault/user/user.env.schema             — user secret declarations
+- vault/stack/stack.env.schema           — system secret declarations + ASSISTANT_TOKEN
+- packages/assistant-tools/opencode/tools/lib.ts — OP_ASSISTANT_TOKEN
+- packages/admin/src/routes/admin/opencode/providers/[id]/auth/+server.ts — provider auth vault writes + OpenCode sync
 - scripts/dev-setup.sh                   — generate ASSISTANT_TOKEN, create vault/ structure
 - docs + AGENTS.md                       — update references
 ```

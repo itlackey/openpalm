@@ -33,6 +33,7 @@ Example:
 ```bash
 cd "$HOME/.openpalm/stack"
 docker compose \
+  --project-name openpalm \
   -f core.compose.yml \
   -f addons/admin/compose.yml \
   -f addons/chat/compose.yml \
@@ -41,7 +42,7 @@ docker compose \
   down
 ```
 
-If you use `start.sh`, you can use the matching stop wrapper instead.
+See the [Manual Compose Runbook](operations/manual-compose-runbook.md) for the full command reference.
 
 ---
 
@@ -59,7 +60,7 @@ If `OP_HOME` points elsewhere, archive that directory instead.
 
 ### 1. Stop any running stack
 
-Use the same compose file set you normally run, or stop via `start.sh` first.
+Use the same compose file set you normally run (see the [runbook](operations/manual-compose-runbook.md)).
 
 ### 2. Extract the backup
 

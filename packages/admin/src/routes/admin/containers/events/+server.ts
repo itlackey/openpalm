@@ -7,7 +7,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { appendAudit } from "$lib/server/control-plane.js";
+import { appendAudit } from "@openpalm/lib";
 import { getDockerEvents, checkDocker } from "$lib/server/docker.js";
 import type { RequestHandler } from "./$types";
 

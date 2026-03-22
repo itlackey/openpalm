@@ -27,17 +27,9 @@ git clone https://github.com/itlackey/openpalm.git
 cp -R openpalm/.openpalm "$HOME/.openpalm"
 $EDITOR "$HOME/.openpalm/vault/stack/stack.env"
 $EDITOR "$HOME/.openpalm/vault/user/user.env"
-cd "$HOME/.openpalm/stack"
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  -f addons/chat/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  up -d
 ```
 
-That example starts the core stack plus the `admin` and `chat` addons.
+Then start the stack using the compose commands in the [Manual Compose Runbook](operations/manual-compose-runbook.md). That example starts the core stack plus any addons you choose (e.g., `admin` and `chat`).
 
 ---
 
@@ -79,8 +71,8 @@ Common values include:
 This file holds system-managed values such as:
 
 - `OP_ADMIN_TOKEN`
-- `ASSISTANT_TOKEN`
-- `MEMORY_AUTH_TOKEN`
+- `OP_ASSISTANT_TOKEN`
+- `OP_MEMORY_TOKEN`
 - `OP_HOME`, `OP_UID`, `OP_GID`
 - `OP_ASSISTANT_PORT`, `OP_ADMIN_PORT`, `OP_MEMORY_PORT`, `OP_CHAT_PORT`
 
@@ -111,17 +103,11 @@ stack.
 
 ## Optional convenience paths
 
-### `stack/start.sh`
+The primary workflow is always raw `docker compose` as shown above. The
+shortcuts below are provided for convenience but are not the canonical form.
 
-The copied bundle includes `~/.openpalm/stack/start.sh`, which wraps the same
-compose files:
-
-```bash
-cd "$HOME/.openpalm/stack"
-./start.sh admin chat
-./start.sh --status admin chat
-./start.sh --stop admin chat
-```
+For the full compose command reference including convenience shortcuts, see the
+[Manual Compose Runbook](operations/manual-compose-runbook.md).
 
 ### Installer scripts and CLI
 
@@ -133,15 +119,7 @@ run Docker Compose against files in `~/.openpalm/stack/`.
 
 ## Verify
 
-```bash
-cd "$HOME/.openpalm/stack"
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  ps
-```
+Check container status using the `ps` command from the [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
 Default host ports are documented in [system-requirements.md](system-requirements.md).
 

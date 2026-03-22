@@ -2,28 +2,28 @@
  * SvelteKit server hooks — runs once on admin startup.
  *
  * Performs an idempotent auto-apply: ensures XDG dirs exist, seeds
- * secrets and OpenCode config, stages artifacts to STATE_HOME, and
- * records the outcome in the audit log. This guarantees that the latest
+ * secrets and OpenCode config, resolves runtime files, and records
+ * the outcome in the audit log. This guarantees that the latest
  * CONFIG_HOME state is synced into the runtime on every admin boot.
  */
 import { createLogger } from "$lib/server/logger.js";
 import { getState } from "$lib/server/state.js";
 import {
-  ensureXdgDirs,
   ensureSecrets,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
   ensureMemoryDir,
   ensureCoreAutomations,
-  ensureSecretsSchema,
-  ensureStackSchema,
-  resolveArtifacts,
-  persistConfiguration,
+  ensureUserEnvSchema,
+  ensureSystemEnvSchema,
+  resolveRuntimeFiles,
+  writeRuntimeFiles,
   appendAudit,
   readMemoryConfig,
   resolveConfigForPush,
-  pushConfigToMemory
-} from "$lib/server/control-plane.js";
+  pushConfigToMemory,
+  ensureHomeDirs,
+} from "@openpalm/lib";
 
 const logger = createLogger("admin");
 
@@ -34,17 +34,17 @@ function runStartupApply(): void {
   startupApplyDone = true;
 
   try {
-    ensureXdgDirs();
+    ensureHomeDirs();
     const state = getState();
     ensureSecrets(state);
     ensureOpenCodeConfig();
     ensureOpenCodeSystemConfig();
     ensureMemoryDir();
     ensureCoreAutomations();
-    ensureSecretsSchema();
-    ensureStackSchema();
-    state.artifacts = resolveArtifacts(state);
-    persistConfiguration(state);
+    ensureUserEnvSchema();
+    ensureSystemEnvSchema();
+    state.artifacts = resolveRuntimeFiles(state);
+    writeRuntimeFiles(state);
 
     appendAudit(
       state,

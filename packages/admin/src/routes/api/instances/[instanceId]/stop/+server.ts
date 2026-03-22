@@ -16,7 +16,7 @@ import {
   getInstanceDetail,
   buildComposeFileList,
   buildEnvFiles,
-} from "$lib/server/control-plane.js";
+} from "@openpalm/lib";
 import { composeStop, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 
@@ -47,7 +47,7 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(503, "docker_unavailable", "Docker is not available", {}, requestId);
   }
 
-  const result = await composeStop(state.configDir, [containerName], {
+  const result = await composeStop([containerName], {
     files: buildComposeFileList(state),
     envFiles: buildEnvFiles(state),
   });

@@ -1,29 +1,151 @@
+/**
+ * GET  /admin/connections/assignments — Return current capabilities from stack.yaml.
+ * POST /admin/connections/assignments — Update capabilities in stack.yaml.
+ */
 import type { RequestHandler } from './$types';
+import type {
+  StackSpecEmbeddings,
+  StackSpecMemory,
+  StackSpecReranker,
+  StackSpecStt,
+  StackSpecTts,
+} from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import {
   appendAudit,
-  getCapabilityAssignments,
-  saveCapabilityAssignments,
-  buildOpenCodeMapping,
-  writeOpenCodeProviderConfig,
-  readConnectionProfilesDocument,
-  buildVoiceEnvVars,
-  applyVoiceEnvVars,
-  isVoiceChannelInstalled,
-} from '$lib/server/control-plane.js';
+  readStackSpec,
+  writeStackSpec,
+  writeManagedEnvFiles,
+} from '@openpalm/lib';
 import {
   errorResponse,
   getActor,
   getCallerType,
   getRequestId,
   jsonResponse,
-  parseCapabilityAssignments,
   parseJsonBody,
   requireAdmin,
 } from '$lib/server/helpers.js';
-import { createLogger } from '$lib/server/logger.js';
 
-const logger = createLogger('connections.assignments');
+const TOP_LEVEL_KEYS = new Set(['llm', 'slm', 'embeddings', 'memory', 'tts', 'stt', 'reranking']);
+
+type ParseResult<T> = { ok: true; value: T } | { ok: false; message: string };
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function requireString(v: unknown, label: string): ParseResult<string> {
+  if (typeof v !== 'string' || !v.trim()) return { ok: false, message: `${label} must be a non-empty string` };
+  return { ok: true, value: v.trim() };
+}
+
+function rejectUnknownKeys(obj: Record<string, unknown>, allowed: Set<string>, label: string): string | null {
+  for (const k of Object.keys(obj)) {
+    if (!allowed.has(k)) return `${label} contains unsupported key "${k}"`;
+  }
+  return null;
+}
+
+function parseCapabilityRef(value: unknown, key: string): ParseResult<string> {
+  const r = requireString(value, key);
+  if (!r.ok) return { ok: false, message: `${key} must be a non-empty "provider/model" string` };
+  const idx = r.value.indexOf('/');
+  if (idx <= 0 || idx === r.value.length - 1) return { ok: false, message: `${key} must use "provider/model" format` };
+  return r;
+}
+
+/** Parse an object with known string fields, optional boolean `enabled`, and reject unknown keys. */
+function parseObjectCapability<T>(
+  value: unknown,
+  label: string,
+  allowedKeys: Set<string>,
+  stringKeys: readonly string[],
+  extraValidate?: (obj: Record<string, unknown>, result: Record<string, unknown>) => string | null,
+): ParseResult<Partial<T>> {
+  if (!isRecord(value)) return { ok: false, message: `${label} must be an object` };
+  const bad = rejectUnknownKeys(value, allowedKeys, label);
+  if (bad) return { ok: false, message: bad };
+
+  const result: Record<string, unknown> = {};
+  if ('enabled' in value) {
+    if (typeof value.enabled !== 'boolean') return { ok: false, message: `${label}.enabled must be a boolean` };
+    result.enabled = value.enabled;
+  }
+  for (const k of stringKeys) {
+    if (k in value) {
+      if (typeof value[k] !== 'string') return { ok: false, message: `${label}.${k} must be a string` };
+      result[k] = value[k];
+    }
+  }
+  const extraErr = extraValidate?.(value, result);
+  if (extraErr) return { ok: false, message: extraErr };
+  return { ok: true, value: result as Partial<T> };
+}
+
+function parseEmbeddings(value: unknown): ParseResult<Partial<StackSpecEmbeddings>> {
+  return parseObjectCapability<StackSpecEmbeddings>(value, 'embeddings', new Set(['provider', 'model', 'dims']), ['provider', 'model'], (obj, result) => {
+    if ('dims' in obj) {
+      if (typeof obj.dims !== 'number' || !Number.isInteger(obj.dims) || obj.dims <= 0) {
+        return 'embeddings.dims must be a positive integer';
+      }
+      result.dims = obj.dims;
+    }
+    return null;
+  });
+}
+
+function parseMemory(value: unknown): ParseResult<Partial<StackSpecMemory>> {
+  return parseObjectCapability<StackSpecMemory>(value, 'memory', new Set(['userId', 'customInstructions']), ['customInstructions'], (obj, result) => {
+    if ('userId' in obj) {
+      if (typeof obj.userId !== 'string') return 'memory.userId must be a string';
+      if (!/^[a-zA-Z0-9_]+$/.test(obj.userId)) return 'memory.userId must contain only alphanumeric characters and underscores';
+      result.userId = obj.userId;
+    }
+    return null;
+  });
+}
+
+function parseReranking(value: unknown): ParseResult<Partial<StackSpecReranker>> {
+  return parseObjectCapability<StackSpecReranker>(value, 'reranking', new Set(['enabled', 'provider', 'mode', 'model', 'topK', 'topN']), ['provider', 'model'], (obj, result) => {
+    if ('mode' in obj) {
+      if (obj.mode !== 'llm' && obj.mode !== 'dedicated') return 'reranking.mode must be "llm" or "dedicated"';
+      result.mode = obj.mode;
+    }
+    for (const k of ['topK', 'topN'] as const) {
+      if (k in obj) {
+        if (typeof obj[k] !== 'number' || !Number.isInteger(obj[k]) || (obj[k] as number) <= 0) return `reranking.${k} must be a positive integer`;
+        result[k] = obj[k];
+      }
+    }
+    return null;
+  });
+}
+
+/** Apply an optional capability that supports `undefined` (delete) or merge. */
+function applyOptionalCapability<T>(
+  capabilities: Record<string, unknown>,
+  spec: { capabilities: Record<string, unknown> },
+  key: string,
+  parser: (v: unknown) => ParseResult<Partial<T>>,
+  requestId: string,
+  requireEnabled = false,
+): Response | null {
+  if (!(key in capabilities)) return null;
+  if (capabilities[key] === undefined) {
+    delete spec.capabilities[key];
+    return null;
+  }
+  const parsed = parser(capabilities[key]);
+  if (!parsed.ok) return errorResponse(400, 'bad_request', parsed.message, {}, requestId);
+
+  const merged = { ...spec.capabilities[key] as Record<string, unknown>, ...parsed.value };
+  if (requireEnabled && typeof merged.enabled !== 'boolean') {
+    return errorResponse(400, 'bad_request', `${key}.enabled must be a boolean`, {}, requestId);
+  }
+  spec.capabilities[key] = merged;
+  return null;
+}
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -31,15 +153,9 @@ export const GET: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  let assignments;
-  try {
-    assignments = getCapabilityAssignments(state.configDir);
-  } catch {
-    // No profiles.json yet — return empty defaults
-    assignments = { llm: { connectionId: '', model: '' }, embeddings: { connectionId: '', model: '' } };
-  }
+  const spec = readStackSpec(state.configDir);
   appendAudit(state, getActor(event), 'connections.assignments.get', {}, true, requestId, getCallerType(event));
-  return jsonResponse(200, { assignments }, requestId);
+  return jsonResponse(200, { capabilities: spec?.capabilities ?? null }, requestId);
 };
 
 export const POST: RequestHandler = async (event) => {
@@ -52,71 +168,71 @@ export const POST: RequestHandler = async (event) => {
   const callerType = getCallerType(event);
 
   const body = await parseJsonBody(event.request);
-  if (!body) {
-    return errorResponse(400, 'invalid_input', 'Request body must be valid JSON', {}, requestId);
+  if (!body) return errorResponse(400, 'invalid_input', 'Request body must be valid JSON', {}, requestId);
+
+  const raw = body.capabilities ?? body;
+  if (!isRecord(raw)) return errorResponse(400, 'bad_request', 'capabilities must be an object', {}, requestId);
+
+  const capabilities = raw;
+  const unknownKey = rejectUnknownKeys(capabilities, TOP_LEVEL_KEYS, 'capabilities');
+  if (unknownKey) return errorResponse(400, 'bad_request', unknownKey, {}, requestId);
+
+  const spec = readStackSpec(state.configDir);
+  if (!spec) return errorResponse(500, 'internal_error', 'stack.yaml not found', {}, requestId);
+
+  // LLM (required string, never deletable)
+  if ('llm' in capabilities) {
+    const parsed = parseCapabilityRef(capabilities.llm, 'llm');
+    if (!parsed.ok) return errorResponse(400, 'bad_request', parsed.message, {}, requestId);
+    spec.capabilities.llm = parsed.value;
   }
 
-  const parsed = parseCapabilityAssignments(body.assignments ?? body);
-  if (!parsed.ok) {
-    return errorResponse(400, 'bad_request', parsed.message, {}, requestId);
+  // SLM (optional string, deletable)
+  if ('slm' in capabilities) {
+    if (capabilities.slm === undefined) { delete spec.capabilities.slm; }
+    else {
+      const parsed = parseCapabilityRef(capabilities.slm, 'slm');
+      if (!parsed.ok) return errorResponse(400, 'bad_request', parsed.message, {}, requestId);
+      spec.capabilities.slm = parsed.value;
+    }
   }
 
-  const result = saveCapabilityAssignments(state.configDir, parsed.value);
-  if (!result.ok) {
-    const errorCode = result.status === 409 ? 'conflict' : result.status === 404 ? 'not_found' : 'bad_request';
-    return errorResponse(result.status, errorCode, result.message, {}, requestId);
+  // Object capabilities (merge-style)
+  if ('embeddings' in capabilities) {
+    const parsed = parseEmbeddings(capabilities.embeddings);
+    if (!parsed.ok) return errorResponse(400, 'bad_request', parsed.message, {}, requestId);
+    spec.capabilities.embeddings = { ...spec.capabilities.embeddings, ...parsed.value };
   }
 
-  const savedAssignments = result.value;
+  if ('memory' in capabilities) {
+    const parsed = parseMemory(capabilities.memory);
+    if (!parsed.ok) return errorResponse(400, 'bad_request', parsed.message, {}, requestId);
+    spec.capabilities.memory = { ...spec.capabilities.memory, ...parsed.value };
+  }
 
-  // Read connection profiles document for side-effects (non-critical)
-  let doc: ReturnType<typeof readConnectionProfilesDocument> | null = null;
+  // Optional capabilities with required `enabled` boolean
+  let err: Response | null;
+  err = applyOptionalCapability<StackSpecTts>(capabilities, spec, 'tts',
+    (v) => parseObjectCapability<StackSpecTts>(v, 'tts', new Set(['enabled', 'provider', 'model', 'voice', 'format']), ['provider', 'model', 'voice', 'format']),
+    requestId, true);
+  if (err) return err;
+
+  err = applyOptionalCapability<StackSpecStt>(capabilities, spec, 'stt',
+    (v) => parseObjectCapability<StackSpecStt>(v, 'stt', new Set(['enabled', 'provider', 'model', 'language']), ['provider', 'model', 'language']),
+    requestId, true);
+  if (err) return err;
+
+  err = applyOptionalCapability<StackSpecReranker>(capabilities, spec, 'reranking', parseReranking, requestId, true);
+  if (err) return err;
+
   try {
-    doc = readConnectionProfilesDocument(state.configDir);
-  } catch (err) {
-    logger.warn('failed to read connection profiles for side-effects', { error: String(err), requestId });
-  }
-
-  // Wire OpenCode config write (non-critical side effect)
-  if (doc) {
-    try {
-      const llmProfile = doc.profiles.find((p) => p.id === savedAssignments.llm.connectionId);
-      if (llmProfile) {
-        const mapping = buildOpenCodeMapping({
-          provider: llmProfile.provider,
-          baseUrl: llmProfile.baseUrl,
-          systemModel: savedAssignments.llm.model,
-          smallModel: savedAssignments.llm.smallModel,
-        });
-        writeOpenCodeProviderConfig(state.configDir, mapping);
-      }
-    } catch (err) {
-      logger.warn('failed to write opencode.json after assignments save', { error: String(err), requestId });
-    }
-  }
-
-  // Wire voice channel env vars (non-critical side effect)
-  let voiceConfigUpdated = false;
-  let voiceRestartRequired = false;
-  if (doc) {
-    try {
-      if (isVoiceChannelInstalled(state.homeDir) && (savedAssignments.tts || savedAssignments.stt)) {
-        const envVars = buildVoiceEnvVars(savedAssignments, doc.profiles, state.vaultDir);
-        if (Object.keys(envVars).length > 0) {
-          voiceConfigUpdated = applyVoiceEnvVars(state, envVars);
-          voiceRestartRequired = voiceConfigUpdated;
-        }
-      }
-    } catch (err) {
-      logger.warn('failed to update voice env vars after assignments save', { error: String(err), requestId });
-    }
+    writeStackSpec(state.configDir, spec);
+    writeManagedEnvFiles(spec, state.vaultDir);
+  } catch (e) {
+    appendAudit(state, actor, 'connections.assignments.save', { error: String(e) }, false, requestId, callerType);
+    return errorResponse(500, 'internal_error', 'Failed to persist capabilities', {}, requestId);
   }
 
   appendAudit(state, actor, 'connections.assignments.save', {}, true, requestId, callerType);
-  return jsonResponse(200, {
-    ok: true,
-    assignments: result.value,
-    voiceConfigUpdated,
-    voiceRestartRequired,
-  }, requestId);
+  return jsonResponse(200, { ok: true, capabilities: spec.capabilities }, requestId);
 };

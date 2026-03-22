@@ -1,40 +1,48 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OP_HOME='/opt/openpalm'
-export OP_CONFIG_HOME='/var/lib/openpalm/config'
-export OP_STATE_HOME='/var/lib/openpalm/state'
-export OP_DATA_HOME='/var/lib/openpalm/data'
-export OP_WORK_DIR='/var/lib/openpalm/work'
-VAULT_HOME='/var/lib/openpalm/vault'
+# ISO bootstrap — single OP_HOME layout, no split roots.
+# All state lives under /var/lib/openpalm/ with the standard subdirectory
+# structure: config/, vault/, data/, logs/, stack/.
 
-mkdir -p "$OP_CONFIG_HOME" "$OP_STATE_HOME" "$OP_DATA_HOME" "$OP_WORK_DIR"
-mkdir -p "$VAULT_HOME/stack" "$VAULT_HOME/user"
-mkdir -p "$OP_CONFIG_HOME/stash"
-mkdir -p "$OP_CONFIG_HOME/components"
-mkdir -p "$OP_DATA_HOME/admin"
+export OP_HOME='/var/lib/openpalm'
+INSTALL_HOME='/opt/openpalm'
 
-if [[ ! -f "$VAULT_HOME/user/user.env" ]]; then
-	cp "$OP_HOME/vault/user.env.example" "$VAULT_HOME/user/user.env"
-	chmod 600 "$VAULT_HOME/user/user.env"
+mkdir -p \
+	"$OP_HOME/config/stash" \
+	"$OP_HOME/config/automations" \
+	"$OP_HOME/config/assistant" \
+	"$OP_HOME/vault/stack" \
+	"$OP_HOME/vault/user" \
+	"$OP_HOME/data/admin" \
+	"$OP_HOME/data/memory" \
+	"$OP_HOME/data/assistant" \
+	"$OP_HOME/data/guardian" \
+	"$OP_HOME/logs" \
+	"$OP_HOME/stack"
+
+if [[ ! -f "$OP_HOME/vault/user/user.env" ]]; then
+	cp "$INSTALL_HOME/vault/user.env.example" "$OP_HOME/vault/user/user.env"
+	chmod 600 "$OP_HOME/vault/user/user.env"
 fi
 
-if [[ ! -f "$VAULT_HOME/stack/stack.env" ]]; then
-	cp "$OP_HOME/vault/stack.env.example" "$VAULT_HOME/stack/stack.env"
-	chmod 600 "$VAULT_HOME/stack/stack.env"
+if [[ ! -f "$OP_HOME/vault/stack/stack.env" ]]; then
+	cp "$INSTALL_HOME/vault/stack.env.example" "$OP_HOME/vault/stack/stack.env"
+	chmod 600 "$OP_HOME/vault/stack/stack.env"
 fi
 
-if [[ ! -f "$OP_CONFIG_HOME/components/core.yml" ]]; then
-	cp "$OP_HOME/.openpalm/stack/core.compose.yml" "$OP_CONFIG_HOME/components/core.yml"
+# Seed core compose into stack/ (source of truth for compose)
+if [[ ! -f "$OP_HOME/stack/core.compose.yml" ]]; then
+	cp "$INSTALL_HOME/.openpalm/stack/core.compose.yml" "$OP_HOME/stack/core.compose.yml"
 fi
 
-if [[ -f "$OP_HOME/image-cache/openpalm-images.tar.zst" && ! -f /var/lib/openpalm/.images-loaded ]]; then
-	zstd -dc "$OP_HOME/image-cache/openpalm-images.tar.zst" | docker load
-	touch /var/lib/openpalm/.images-loaded
+if [[ -f "$INSTALL_HOME/image-cache/openpalm-images.tar.zst" && ! -f "$OP_HOME/.images-loaded" ]]; then
+	zstd -dc "$INSTALL_HOME/image-cache/openpalm-images.tar.zst" | docker load
+	touch "$OP_HOME/.images-loaded"
 fi
 
-cd "$OP_CONFIG_HOME"
 docker compose \
-	--env-file "$VAULT_HOME/stack/stack.env" \
-	--env-file "$VAULT_HOME/user/user.env" \
-	-f "$OP_CONFIG_HOME/components/core.yml" up -d
+	--project-name openpalm \
+	--env-file "$OP_HOME/vault/stack/stack.env" \
+	--env-file "$OP_HOME/vault/user/user.env" \
+	-f "$OP_HOME/stack/core.compose.yml" up -d

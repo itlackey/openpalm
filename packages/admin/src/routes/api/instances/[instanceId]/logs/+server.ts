@@ -16,7 +16,7 @@ import {
   getInstanceDetail,
   buildComposeFileList,
   buildEnvFiles,
-} from "$lib/server/control-plane.js";
+} from "@openpalm/lib";
 import { composeLogs, checkDocker } from "$lib/server/docker.js";
 
 export const GET: RequestHandler = async (event) => {
@@ -55,7 +55,7 @@ export const GET: RequestHandler = async (event) => {
   }
 
   const containerName = `openpalm-${instanceId}`;
-  const result = await composeLogs(state.configDir, [containerName], tail, {
+  const result = await composeLogs([containerName], tail, {
     files: buildComposeFileList(state),
     envFiles: buildEnvFiles(state),
     since: sinceParam ?? undefined,

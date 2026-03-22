@@ -18,7 +18,7 @@ import {
   listInstances,
   createInstance,
   discoverComponents,
-} from "$lib/server/control-plane.js";
+} from "@openpalm/lib";
 import { createLogger } from "$lib/server/logger.js";
 import type { InstanceResponse } from "$lib/types.js";
 

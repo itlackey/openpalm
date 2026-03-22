@@ -82,7 +82,7 @@ rm -rf .dev/data/backups
 # Config — remove generated assistant config so the wizard writes a fresh one
 rm -f .dev/config/assistant/opencode.json
 # Config — remove generated compose so dev-setup seeds a fresh one
-rm -f .dev/config/components/core.yml
+rm -f .dev/stack/core.compose.yml
 
 # Root-owned data from containers (qdrant, opencode logs)
 docker run --rm -v "$ROOT_DIR/.dev/data/memory:/c" alpine sh -c \
@@ -92,8 +92,14 @@ docker run --rm -v "$ROOT_DIR/.dev/data/opencode:/c" alpine sh -c \
 docker run --rm -v "$ROOT_DIR/.dev/config/assistant:/c" alpine sh -c \
 	"find /c -user root -delete" 2>/dev/null || true
 
-# Vault — reset system env
+# Vault — reset system env and managed files
 rm -f .dev/vault/stack/stack.env
+rm -f .dev/vault/stack/auth.json
+rm -rf .dev/vault/stack/services
+rm -rf .dev/vault/stack/addons
+
+# Config — remove stack.yaml so the wizard writes a fresh one
+rm -f .dev/config/stack.yaml
 
 # State — remove setup markers and audit logs
 rm -f .dev/state/setup-complete
@@ -166,7 +172,7 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 	echo "=== Step 4: Build all images from source ==="
 	npm run admin:build 2>&1 | tail -3
 	docker compose --project-directory . \
-		-f .dev/config/components/core.yml \
+		-f .dev/stack/core.compose.yml \
 		-f compose.dev.yaml \
 		--env-file .dev/vault/stack/stack.env \
 		--env-file .dev/vault/user/user.env \
@@ -182,7 +188,7 @@ fi
 echo ""
 echo "=== Step 5: Start stack ==="
 docker compose --project-directory . \
-	-f .dev/config/components/core.yml \
+	-f .dev/stack/core.compose.yml \
 	-f compose.dev.yaml \
 	--env-file .dev/vault/stack/stack.env \
 	--env-file .dev/vault/user/user.env \
@@ -309,7 +315,7 @@ fi
 # --no-deps: only recreate the assistant, not its dependencies.
 # Errors are surfaced (no || true) so we can detect silent failures.
 docker compose --project-directory . \
-	-f .dev/config/components/core.yml \
+	-f .dev/stack/core.compose.yml \
 	-f compose.dev.yaml \
 	--env-file .dev/vault/stack/stack.env \
 	--env-file .dev/vault/user/user.env \
@@ -383,10 +389,46 @@ check_env_val() {
 }
 
 check_env_val "ADMIN_TOKEN" "dev-admin-token"
-check_env_val "MEMORY_USER_ID" "node"
-check_env_val "SYSTEM_LLM_PROVIDER" "ollama"
-check_env_val "SYSTEM_LLM_MODEL" "qwen2.5-coder:3b"
-check_env_val "SYSTEM_LLM_BASE_URL" "http://host.docker.internal:11434"
+# Config vars (SYSTEM_LLM_*, EMBEDDING_*, MEMORY_USER_ID) are now in
+# stack.yaml capabilities and vault/stack/services/memory/managed.env,
+# NOT in user.env. Verify they are NOT in user.env.
+if grep -qE 'SYSTEM_LLM_PROVIDER=' "$secrets" 2>/dev/null; then
+	fail "SYSTEM_LLM_PROVIDER should NOT be in user.env (lives in stack.yaml now)"
+else
+	pass "Config vars correctly absent from user.env"
+fi
+
+# Verify stack.yaml has correct capabilities
+STACK_YAML=".dev/config/stack.yaml"
+if [ -f "$STACK_YAML" ]; then
+	if grep -q "llm: ollama/" "$STACK_YAML"; then
+		pass "stack.yaml has capabilities.llm with ollama provider"
+	else
+		fail "stack.yaml capabilities.llm missing or wrong provider"
+	fi
+else
+	fail "stack.yaml not found"
+fi
+
+# Verify managed.env exists with correct values
+MANAGED_ENV=".dev/vault/stack/services/memory/managed.env"
+if [ -f "$MANAGED_ENV" ]; then
+	managed_llm=$(grep 'SYSTEM_LLM_PROVIDER=' "$MANAGED_ENV" | cut -d= -f2-)
+	if [ "$managed_llm" = "ollama" ]; then
+		pass "managed.env has SYSTEM_LLM_PROVIDER=ollama"
+	else
+		fail "managed.env SYSTEM_LLM_PROVIDER expected 'ollama', got '$managed_llm'"
+	fi
+else
+	fail "managed.env not found at $MANAGED_ENV"
+fi
+
+# Verify auth.json exists
+if [ -f ".dev/vault/stack/auth.json" ]; then
+	pass "auth.json exists"
+else
+	fail "auth.json not found"
+fi
 
 # ── Step 11: Verify assistant env ────────────────────────────────────
 echo ""
@@ -443,7 +485,7 @@ fi
 echo ""
 echo "=== Step 12: Verify Memory user provisioned ==="
 
-MEMORY_AUTH_TOKEN=$(grep -E '^(export )?MEMORY_AUTH_TOKEN=' "$secrets" 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
+MEMORY_AUTH_TOKEN=$(grep -E '^(export )?OP_MEMORY_TOKEN=' "$ROOT/.dev/vault/stack/stack.env" 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
 
 # Check memory API is responding (curl from host since memory port is published)
 OM_STATUS="error"

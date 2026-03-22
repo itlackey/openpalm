@@ -20,9 +20,10 @@ The memory service runs in the OpenPalm stack:
 |---------|------|------|
 | `memory` | 8765 | Bun-based OpenPalm memory API backed by SQLite and `sqlite-vec` |
 
-The assistant connects to `http://memory:8765` via REST API. The service
-wraps the local `@openpalm/memory` library and preserves the older REST surface
-for compatibility. Configuration is read from `/app/default_config.json`.
+The assistant connects to `http://memory:8765` via REST API. The service wraps
+the local `@openpalm/memory` library and preserves the older REST surface for
+compatibility. In the shipped stack, memory state persists through the `/data`
+mount.
 
 ## Available Tools
 

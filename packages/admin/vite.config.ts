@@ -10,9 +10,6 @@ const rootDir = resolve(__dirname, "../..");
 /** Keys whose values are filesystem paths and must be resolved relative to rootDir */
 const PATH_KEYS = new Set([
   "OP_HOME",
-  "OP_CONFIG_HOME",
-  "OP_DATA_HOME",
-  "OP_STATE_HOME",
   "OP_WORK_DIR"
 ]);
 
@@ -37,9 +34,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "$stack": resolve(__dirname, "../../.openpalm/stack"),
-        "$vault": resolve(__dirname, "../../.openpalm/vault"),
         "$config": resolve(__dirname, "../../.openpalm/config"),
-        "$assistant": resolve(__dirname, "../../core/assistant")
       }
     },
     test: {

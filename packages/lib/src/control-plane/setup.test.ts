@@ -3,30 +3,38 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  validateSetupInput,
+  validateSetupSpec,
   buildSecretsFromSetup,
   buildSystemSecretsFromSetup,
   buildConnectionEnvVarMap,
   performSetup,
-  validateSetupConfig,
-  normalizeToSetupInput,
-  buildChannelCredentialEnvVars,
-  performSetupFromConfig,
-  CHANNEL_CREDENTIAL_ENV_MAP,
 } from "./setup.js";
-import type { SetupInput, SetupConnection, SetupConfig } from "./setup.js";
-import type { CoreAssetProvider } from "./core-asset-provider.js";
+import type { SetupSpec, SetupConnection } from "./setup.js";
 import { STACK_SPEC_FILENAME, readStackSpec } from "./stack-spec.js";
+import type { StackSpec } from "./stack-spec.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function makeValidInput(overrides?: Partial<SetupInput>): SetupInput {
+function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
   return {
-    adminToken: "test-admin-token-12345",
-    ownerName: "Test User",
-    ownerEmail: "test@example.com",
-    memoryUserId: "test_user",
-    ollamaEnabled: false,
+    spec: {
+      version: 2,
+      capabilities: {
+        llm: "openai/gpt-4o",
+        embeddings: {
+          provider: "openai",
+          model: "text-embedding-3-small",
+          dims: 1536,
+        },
+        memory: {
+          userId: "test_user",
+          customInstructions: "",
+        },
+      },
+      addons: {},
+    },
+    security: { adminToken: "test-admin-token-12345" },
+    owner: { name: "Test User", email: "test@example.com" },
     connections: [
       {
         id: "openai-main",
@@ -36,60 +44,69 @@ function makeValidInput(overrides?: Partial<SetupInput>): SetupInput {
         apiKey: "sk-test-key-123",
       },
     ],
-    assignments: {
-      llm: { connectionId: "openai-main", model: "gpt-4o" },
-      embeddings: { connectionId: "openai-main", model: "text-embedding-3-small" },
-    },
     ...overrides,
   };
 }
 
-/** Stub asset provider that returns minimal content for all assets. */
-function createStubAssetProvider(): CoreAssetProvider {
-  return {
-    coreCompose: () => "services:\n  assistant:\n    image: assistant:latest\n",
-    agentsMd: () => "# Agents\n",
-    opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
-    secretsSchema: () => "ADMIN_TOKEN=string\n",
-    stackSchema: () => "OP_IMAGE_TAG=string\n",
-    cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
-    cleanupData: () => "name: cleanup-data\nschedule: weekly\n",
-    validateConfig: () => "name: validate-config\nschedule: hourly\n",
-  };
+/** Seed the minimal asset files that ensure* functions expect to find at OP_HOME. */
+function seedRequiredAssets(homeDir: string): void {
+  mkdirSync(join(homeDir, "stack"), { recursive: true });
+  writeFileSync(join(homeDir, "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
+  mkdirSync(join(homeDir, "data", "assistant"), { recursive: true });
+  writeFileSync(join(homeDir, "data", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
+  writeFileSync(join(homeDir, "data", "assistant", "AGENTS.md"), "# Agents\n");
+  mkdirSync(join(homeDir, "vault", "user"), { recursive: true });
+  writeFileSync(join(homeDir, "vault", "user", "user.env.schema"), "ADMIN_TOKEN=string\n");
+  mkdirSync(join(homeDir, "vault", "stack"), { recursive: true });
+  writeFileSync(join(homeDir, "vault", "stack", "stack.env.schema"), "OP_IMAGE_TAG=string\n");
+  mkdirSync(join(homeDir, "config", "automations"), { recursive: true });
+  writeFileSync(join(homeDir, "config", "automations", "cleanup-logs.yml"), "name: cleanup-logs\nschedule: daily\n");
+  writeFileSync(join(homeDir, "config", "automations", "cleanup-data.yml"), "name: cleanup-data\nschedule: weekly\n");
+  writeFileSync(join(homeDir, "config", "automations", "validate-config.yml"), "name: validate-config\nschedule: hourly\n");
 }
 
-// ── Tests: validateSetupInput ────────────────────────────────────────────
+// ── Tests: validateSetupSpec ────────────────────────────────────────────
 
-describe("validateSetupInput", () => {
+describe("validateSetupSpec", () => {
   it("accepts a valid input", () => {
-    const result = validateSetupInput(makeValidInput());
+    const result = validateSetupSpec(makeValidSpec());
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(0);
   });
 
   it("rejects null input", () => {
-    const result = validateSetupInput(null);
+    const result = validateSetupSpec(null);
     expect(result.valid).toBe(false);
     expect(result.errors).toContain("Input must be a non-null object");
   });
 
-  it("rejects missing adminToken", () => {
-    const input = makeValidInput({ adminToken: "" });
-    const result = validateSetupInput(input);
+  it("rejects missing security object", () => {
+    const spec = makeValidSpec();
+    (spec as Record<string, unknown>).security = null;
+    const result = validateSetupSpec(spec);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("adminToken"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("security object is required"))).toBe(true);
   });
 
-  it("rejects short adminToken", () => {
-    const input = makeValidInput({ adminToken: "short" });
-    const result = validateSetupInput(input);
+  it("rejects missing security.adminToken", () => {
+    const spec = makeValidSpec();
+    spec.security.adminToken = "";
+    const result = validateSetupSpec(spec);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("security.adminToken"))).toBe(true);
+  });
+
+  it("rejects short security.adminToken", () => {
+    const spec = makeValidSpec();
+    spec.security.adminToken = "short";
+    const result = validateSetupSpec(spec);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes("at least 8"))).toBe(true);
   });
 
   it("rejects empty connections array", () => {
-    const input = makeValidInput({ connections: [] });
-    const result = validateSetupInput(input);
+    const spec = makeValidSpec({ connections: [] });
+    const result = validateSetupSpec(spec);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes("connections"))).toBe(true);
   });
@@ -102,94 +119,134 @@ describe("validateSetupInput", () => {
       baseUrl: "",
       apiKey: "",
     };
-    const input = makeValidInput({ connections: [conn, conn] });
-    const result = validateSetupInput(input);
+    const spec = makeValidSpec({ connections: [conn, conn] });
+    const result = validateSetupSpec(spec);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes("Duplicate"))).toBe(true);
   });
 
   it("rejects unsupported provider", () => {
-    const input = makeValidInput({
+    const spec = makeValidSpec({
       connections: [
         { id: "bad", name: "Bad", provider: "unsupported-provider", baseUrl: "", apiKey: "" },
       ],
     });
-    const result = validateSetupInput(input);
+    const result = validateSetupSpec(spec);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes("outside wizard scope"))).toBe(true);
   });
 
   it("rejects invalid connection ID pattern", () => {
-    const input = makeValidInput({
+    const spec = makeValidSpec({
       connections: [
         { id: "-invalid", name: "Bad", provider: "openai", baseUrl: "", apiKey: "" },
       ],
     });
-    const result = validateSetupInput(input);
+    const result = validateSetupSpec(spec);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes("must start with a letter or digit"))).toBe(true);
   });
 
-  it("rejects missing assignments.llm", () => {
-    const input = makeValidInput();
-    (input.assignments as Record<string, unknown>).llm = null;
-    const result = validateSetupInput(input);
+  it("rejects missing spec object", () => {
+    const input = makeValidSpec();
+    (input as Record<string, unknown>).spec = null;
+    const result = validateSetupSpec(input);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("assignments.llm"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("spec object is required"))).toBe(true);
   });
 
-  it("rejects missing assignments.embeddings", () => {
-    const input = makeValidInput();
-    (input.assignments as Record<string, unknown>).embeddings = null;
-    const result = validateSetupInput(input);
+  it("rejects wrong spec version", () => {
+    const input = makeValidSpec();
+    (input.spec as Record<string, unknown>).version = 1;
+    const result = validateSetupSpec(input);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("assignments.embeddings"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("spec.version must be 2"))).toBe(true);
   });
 
-  it("rejects non-integer embeddingDims", () => {
-    const input = makeValidInput();
-    input.assignments.embeddings.embeddingDims = 1.5;
-    const result = validateSetupInput(input);
+  it("rejects missing capabilities.llm", () => {
+    const input = makeValidSpec();
+    (input.spec.capabilities as Record<string, unknown>).llm = "";
+    const result = validateSetupSpec(input);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("embeddingDims"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("spec.capabilities.llm"))).toBe(true);
   });
 
-  it("rejects assignment referencing non-existent connection", () => {
-    const input = makeValidInput();
-    input.assignments.llm.connectionId = "does-not-exist";
-    const result = validateSetupInput(input);
+  it("rejects missing capabilities.embeddings", () => {
+    const input = makeValidSpec();
+    (input.spec.capabilities as Record<string, unknown>).embeddings = null;
+    const result = validateSetupSpec(input);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("does not match any connection"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("spec.capabilities.embeddings"))).toBe(true);
+  });
+
+  it("rejects missing capabilities.memory", () => {
+    const input = makeValidSpec();
+    (input.spec.capabilities as Record<string, unknown>).memory = null;
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("spec.capabilities.memory"))).toBe(true);
+  });
+
+  it("rejects non-integer embeddings.dims", () => {
+    const input = makeValidSpec();
+    input.spec.capabilities.embeddings.dims = 1.5;
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("dims must be a positive integer"))).toBe(true);  // or 0 (auto-resolve)
   });
 
   it("accepts multiple connections with different IDs", () => {
-    const input = makeValidInput({
+    const spec = makeValidSpec({
       connections: [
         { id: "openai-main", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-abc" },
         { id: "ollama-local", name: "Ollama", provider: "ollama", baseUrl: "http://localhost:11434", apiKey: "" },
       ],
     });
-    const result = validateSetupInput(input);
+    const result = validateSetupSpec(spec);
     expect(result.valid).toBe(true);
   });
 
-  it("rejects memoryUserId with dots", () => {
-    const input = makeValidInput({ memoryUserId: "user.name" });
-    const result = validateSetupInput(input);
+  it("rejects memory.userId with dots", () => {
+    const input = makeValidSpec();
+    input.spec.capabilities.memory.userId = "user.name";
+    const result = validateSetupSpec(input);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes("alphanumeric and underscores only"))).toBe(true);
   });
 
-  it("rejects memoryUserId with hyphens", () => {
-    const input = makeValidInput({ memoryUserId: "user-name" });
-    const result = validateSetupInput(input);
+  it("rejects memory.userId with hyphens", () => {
+    const input = makeValidSpec();
+    input.spec.capabilities.memory.userId = "user-name";
+    const result = validateSetupSpec(input);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes("alphanumeric and underscores only"))).toBe(true);
   });
 
-  it("accepts memoryUserId with underscores", () => {
-    const input = makeValidInput({ memoryUserId: "user_name_123" });
-    const result = validateSetupInput(input);
+  it("accepts memory.userId with underscores", () => {
+    const input = makeValidSpec();
+    input.spec.capabilities.memory.userId = "user_name_123";
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts valid owner fields", () => {
+    const spec = makeValidSpec({ owner: { name: "Alice", email: "alice@test.com" } });
+    const result = validateSetupSpec(spec);
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects non-string owner.name", () => {
+    const spec = makeValidSpec();
+    (spec.owner as Record<string, unknown>).name = 42;
+    const result = validateSetupSpec(spec);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("owner.name"))).toBe(true);
+  });
+
+  it("accepts valid memory section", () => {
+    const spec = makeValidSpec();
+    spec.spec.capabilities.memory.userId = "my_user";
+    const result = validateSetupSpec(spec);
     expect(result.valid).toBe(true);
   });
 });
@@ -198,71 +255,65 @@ describe("validateSetupInput", () => {
 
 describe("buildSecretsFromSetup", () => {
   it("does not include admin token in user secrets", () => {
-    const secrets = buildSecretsFromSetup(makeValidInput());
+    const spec = makeValidSpec();
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.OP_ADMIN_TOKEN).toBeUndefined();
     expect(secrets.ADMIN_TOKEN).toBeUndefined();
   });
 
-  it("sets SYSTEM_LLM_* from the LLM connection", () => {
-    const secrets = buildSecretsFromSetup(makeValidInput());
-    expect(secrets.SYSTEM_LLM_PROVIDER).toBe("openai");
-    expect(secrets.SYSTEM_LLM_MODEL).toBe("gpt-4o");
-    expect(secrets.SYSTEM_LLM_BASE_URL).toBe("https://api.openai.com");
-    expect(secrets.OPENAI_BASE_URL).toBe("https://api.openai.com/v1");
+  it("does not include SYSTEM_LLM_* in user secrets (now in capabilities)", () => {
+    const spec = makeValidSpec();
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
+    expect(secrets.SYSTEM_LLM_PROVIDER).toBeUndefined();
+    expect(secrets.SYSTEM_LLM_MODEL).toBeUndefined();
+    expect(secrets.SYSTEM_LLM_BASE_URL).toBeUndefined();
+    expect(secrets.OPENAI_BASE_URL).toBeUndefined();
   });
 
-  it("sets MEMORY_USER_ID", () => {
-    const secrets = buildSecretsFromSetup(makeValidInput());
-    expect(secrets.MEMORY_USER_ID).toBe("test_user");
-  });
-
-  it("defaults MEMORY_USER_ID when empty", () => {
-    const secrets = buildSecretsFromSetup(makeValidInput({ memoryUserId: "" }));
-    expect(secrets.MEMORY_USER_ID).toBe("default_user");
+  it("does not include MEMORY_USER_ID in user secrets (now in capabilities)", () => {
+    const spec = makeValidSpec();
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
+    expect(secrets.MEMORY_USER_ID).toBeUndefined();
   });
 
   it("sets owner info when provided", () => {
-    const secrets = buildSecretsFromSetup(makeValidInput());
+    const spec = makeValidSpec();
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.OWNER_NAME).toBe("Test User");
     expect(secrets.OWNER_EMAIL).toBe("test@example.com");
   });
 
   it("omits owner info when empty", () => {
-    const secrets = buildSecretsFromSetup(makeValidInput({ ownerName: "", ownerEmail: "" }));
+    const spec = makeValidSpec({ owner: { name: "", email: "" } });
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.OWNER_NAME).toBeUndefined();
     expect(secrets.OWNER_EMAIL).toBeUndefined();
   });
 
   it("maps API key to correct env var", () => {
-    const secrets = buildSecretsFromSetup(makeValidInput());
+    const spec = makeValidSpec();
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.OPENAI_API_KEY).toBe("sk-test-key-123");
   });
 
-  it("overrides Ollama base URL when ollamaEnabled is true", () => {
-    const input = makeValidInput({
-      ollamaEnabled: true,
-      connections: [
-        { id: "ollama-1", name: "Ollama", provider: "ollama", baseUrl: "http://localhost:11434", apiKey: "" },
-      ],
-      assignments: {
-        llm: { connectionId: "ollama-1", model: "llama3.2" },
-        embeddings: { connectionId: "ollama-1", model: "nomic-embed-text" },
-      },
-    });
-    const secrets = buildSecretsFromSetup(input);
-    // System LLM base URL should use in-stack Ollama URL
-    expect(secrets.SYSTEM_LLM_BASE_URL).toBe("http://ollama:11434");
-    expect(secrets.OPENAI_BASE_URL).toBe("http://ollama:11434/v1");
+  it("does not include Ollama base URL in user secrets when ollamaEnabled (now in capabilities)", () => {
+    const connections: SetupConnection[] = [
+      { id: "ollama-1", name: "Ollama", provider: "ollama", baseUrl: "http://localhost:11434", apiKey: "" },
+    ];
+    const secrets = buildSecretsFromSetup(connections);
+    // These are no longer written to user.env — they live in capabilities/managed.env
+    expect(secrets.SYSTEM_LLM_BASE_URL).toBeUndefined();
+    expect(secrets.OPENAI_BASE_URL).toBeUndefined();
   });
 });
 
 describe("buildSystemSecretsFromSetup", () => {
   it("includes distinct admin and assistant credentials", () => {
-    const secrets = buildSystemSecretsFromSetup(makeValidInput());
+    const secrets = buildSystemSecretsFromSetup("test-admin-token-12345");
     expect(secrets.OP_ADMIN_TOKEN).toBe("test-admin-token-12345");
-    expect(typeof secrets.ASSISTANT_TOKEN).toBe("string");
-    expect(secrets.ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
-    expect(typeof secrets.MEMORY_AUTH_TOKEN).toBe("string");
+    expect(typeof secrets.OP_ASSISTANT_TOKEN).toBe("string");
+    expect(secrets.OP_ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
+    expect(typeof secrets.OP_MEMORY_TOKEN).toBe("string");
   });
 });
 
@@ -339,7 +390,6 @@ describe("performSetup", () => {
     for (const dir of [
       homeDir,
       configDir,
-      join(configDir, "components"),
       join(configDir, "automations"),
       join(configDir, "channels"),
       join(configDir, "connections"),
@@ -378,12 +428,15 @@ describe("performSetup", () => {
         "export MISTRAL_API_KEY=",
         "export GOOGLE_API_KEY=",
         "export MEMORY_USER_ID=default_user",
-        "export MEMORY_AUTH_TOKEN=abc123",
+        "export OP_MEMORY_TOKEN=abc123",
         "export OWNER_NAME=",
         "export OWNER_EMAIL=",
         "",
       ].join("\n")
     );
+
+    // Seed required asset files at OP_HOME
+    seedRequiredAssets(homeDir);
 
     // Override env vars for test isolation
     savedEnv.OP_HOME = process.env.OP_HOME;
@@ -397,15 +450,14 @@ describe("performSetup", () => {
 
   it("returns an error for invalid input", async () => {
     const result = await performSetup(
-      { adminToken: "short" } as SetupInput,
-      createStubAssetProvider()
+      { security: { adminToken: "short" } } as SetupSpec
     );
     expect(result.ok).toBe(false);
     expect(result.error).toBeDefined();
   });
 
   it("writes stack.env with the admin token", async () => {
-    const result = await performSetup(makeValidInput(), createStubAssetProvider());
+    const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
     const secretsContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
@@ -413,7 +465,7 @@ describe("performSetup", () => {
   });
 
   it("writes memory config", async () => {
-    const result = await performSetup(makeValidInput(), createStubAssetProvider());
+    const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
     const memConfigPath = join(dataDir, "memory", "default_config.json");
@@ -424,31 +476,45 @@ describe("performSetup", () => {
     expect(memConfig.mem0.embedder.config.model).toBe("text-embedding-3-small");
   });
 
-  it("writes connection data to stack.yaml", async () => {
-    const result = await performSetup(makeValidInput(), createStubAssetProvider());
+  it("writes capabilities to stack.yaml v2", async () => {
+    const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
-    expect(spec!.version).toBe(1);
-    expect(spec!.connections).toHaveLength(1);
-    expect(spec!.connections[0].id).toBe("openai-main");
-    expect(spec!.assignments.llm.model).toBe("gpt-4o");
-    expect(spec!.assignments.embeddings.model).toBe("text-embedding-3-small");
+    expect(spec!.version).toBe(2);
+    expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
+    expect(spec!.capabilities.embeddings.model).toBe("text-embedding-3-small");
+    expect(spec!.capabilities.embeddings.provider).toBe("openai");
   });
 
-  it("creates staged artifacts directory", async () => {
-    const result = await performSetup(makeValidInput(), createStubAssetProvider());
+  it("writes core compose file to stack/", async () => {
+    const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
-    // applyInstall should have written the compose file
-    const stagedCompose = join(configDir, "components", "core.yml");
+    // applyInstall should have written the compose file to stack/ (not config/components/)
+    const stagedCompose = join(homeDir, "stack", "core.compose.yml");
     expect(existsSync(stagedCompose)).toBe(true);
   });
 
-  it("uses Ollama in-stack URL when ollamaEnabled is true", async () => {
-    const input = makeValidInput({
-      ollamaEnabled: true,
+  it("writes ollama addon when ollama is in spec.addons", async () => {
+    const input = makeValidSpec({
+      spec: {
+        version: 2,
+        capabilities: {
+          llm: "ollama/llama3.2",
+          embeddings: {
+            provider: "ollama",
+            model: "nomic-embed-text",
+            dims: 768,
+          },
+          memory: {
+            userId: "test_user",
+            customInstructions: "",
+          },
+        },
+        addons: { ollama: true },
+      },
       connections: [
         {
           id: "ollama-local",
@@ -458,23 +524,37 @@ describe("performSetup", () => {
           apiKey: "",
         },
       ],
-      assignments: {
-        llm: { connectionId: "ollama-local", model: "llama3.2" },
-        embeddings: { connectionId: "ollama-local", model: "nomic-embed-text" },
-      },
     });
 
-    const result = await performSetup(input, createStubAssetProvider());
+    const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    // Connection in stack.yaml should use the in-stack URL
+    // v2 spec should have ollama addon enabled and correct capabilities
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
-    expect(spec!.connections[0].baseUrl).toBe("http://ollama:11434");
+    expect(spec!.version).toBe(2);
+    expect(spec!.addons.ollama).toBe(true);
+    expect(spec!.capabilities.llm).toBe("ollama/llama3.2");
   });
 
   it("resolves embedding dims from EMBEDDING_DIMS lookup", async () => {
-    const input = makeValidInput({
+    const input = makeValidSpec({
+      spec: {
+        version: 2,
+        capabilities: {
+          llm: "ollama/llama3.2",
+          embeddings: {
+            provider: "ollama",
+            model: "nomic-embed-text",
+            dims: 0, // Should be resolved from lookup
+          },
+          memory: {
+            userId: "test_user",
+            customInstructions: "",
+          },
+        },
+        addons: {},
+      },
       connections: [
         {
           id: "ollama-local",
@@ -484,13 +564,9 @@ describe("performSetup", () => {
           apiKey: "",
         },
       ],
-      assignments: {
-        llm: { connectionId: "ollama-local", model: "llama3.2" },
-        embeddings: { connectionId: "ollama-local", model: "nomic-embed-text" },
-      },
     });
 
-    const result = await performSetup(input, createStubAssetProvider());
+    const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
     // nomic-embed-text is 768 dims per EMBEDDING_DIMS
@@ -499,8 +575,8 @@ describe("performSetup", () => {
     expect(memConfig.mem0.vector_store.config.embedding_model_dims).toBe(768);
   });
 
-  it("writes stack.yaml with correct structure", async () => {
-    const result = await performSetup(makeValidInput(), createStubAssetProvider());
+  it("writes stack.yaml with correct v2 structure", async () => {
+    const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
     const specPath = join(configDir, STACK_SPEC_FILENAME);
@@ -508,751 +584,64 @@ describe("performSetup", () => {
 
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
-    expect(spec!.version).toBe(1);
-    expect(spec!.connections).toBeArrayOfSize(1);
-    expect(spec!.connections[0].id).toBe("openai-main");
-    expect(spec!.connections[0].provider).toBe("openai");
-    expect(spec!.assignments.llm.model).toBe("gpt-4o");
-    expect(spec!.assignments.embeddings.model).toBe("text-embedding-3-small");
-    expect(spec!.addons).toBeArrayOfSize(0);
+    expect(spec!.version).toBe(2);
+    expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
+    expect(spec!.capabilities.embeddings.provider).toBe("openai");
+    expect(spec!.capabilities.embeddings.model).toBe("text-embedding-3-small");
+    expect(spec!.capabilities.memory.userId).toBe("test_user");
+    expect(Object.keys(spec!.addons)).toHaveLength(0);
   });
 
-  it("does not corrupt profile when duplicate connection ID with hyphen is skipped by env var map", async () => {
-    // When two connections share a provider and the second has a hyphen in the ID,
-    // buildConnectionEnvVarMap skips it (OPENAI_API_KEY_OPENAI-2 fails SAFE_ENV_KEY_RE).
-    // The profile for that connection should have hasApiKey=false and apiKeyEnvVar=""
-    // rather than passing undefined through via a non-null assertion.
-    const input = makeValidInput({
+  it("completes setup even when duplicate connection ID with hyphen is skipped by env var map", async () => {
+    const input = makeValidSpec({
       connections: [
         { id: "openai_primary", name: "OpenAI Primary", provider: "openai", baseUrl: "https://api.openai.com", apiKey: "sk-primary" },
         { id: "openai-secondary", name: "OpenAI Secondary", provider: "openai", baseUrl: "https://api.openai.com", apiKey: "sk-secondary" },
       ],
-      assignments: {
-        llm: { connectionId: "openai_primary", model: "gpt-4o" },
-        embeddings: { connectionId: "openai_primary", model: "text-embedding-3-small" },
-      },
     });
 
-    const result = await performSetup(input, createStubAssetProvider());
+    const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
+    // v2 spec should still have correct capabilities
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
-    expect(spec!.connections).toHaveLength(2);
-
-    // The second connection's env var was skipped — auth mode must be "none"
-    const secondary = spec!.connections.find((c: { id: string }) => c.id === "openai-secondary");
-    expect(secondary).toBeDefined();
-    expect(secondary!.auth.mode).toBe("none");
+    expect(spec!.version).toBe(2);
+    expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
   });
 
-  it("includes tts and stt assignments when voice uses openai engines", async () => {
-    const input = makeValidInput({
-      voice: { tts: "openai-tts", stt: "openai-stt" },
-    });
-    const result = await performSetup(input, createStubAssetProvider());
-    expect(result.ok).toBe(true);
-
-    const spec = readStackSpec(configDir);
-    expect(spec).not.toBeNull();
-
-    expect(spec!.assignments.tts).toBeDefined();
-    expect(spec!.assignments.tts!.enabled).toBe(true);
-    expect(spec!.assignments.tts!.connectionId).toBe("openai-main");
-    expect(spec!.assignments.tts!.model).toBe("tts-1");
-    expect(spec!.assignments.tts!.voice).toBe("alloy");
-
-    expect(spec!.assignments.stt).toBeDefined();
-    expect(spec!.assignments.stt!.enabled).toBe(true);
-    expect(spec!.assignments.stt!.connectionId).toBe("openai-main");
-    expect(spec!.assignments.stt!.model).toBe("whisper-1");
-  });
-
-  it("includes tts and stt without connectionId for browser engines", async () => {
-    const input = makeValidInput({
-      voice: { tts: "browser-tts", stt: "browser-stt" },
-    });
-    const result = await performSetup(input, createStubAssetProvider());
-    expect(result.ok).toBe(true);
-
-    const spec = readStackSpec(configDir);
-    expect(spec).not.toBeNull();
-
-    expect(spec!.assignments.tts).toBeDefined();
-    expect(spec!.assignments.tts!.enabled).toBe(true);
-    expect(spec!.assignments.tts!.connectionId).toBeUndefined();
-
-    expect(spec!.assignments.stt).toBeDefined();
-    expect(spec!.assignments.stt!.enabled).toBe(true);
-    expect(spec!.assignments.stt!.connectionId).toBeUndefined();
-  });
-
-  it("omits tts and stt when voice is not provided", async () => {
-    const input = makeValidInput();
-    const result = await performSetup(input, createStubAssetProvider());
-    expect(result.ok).toBe(true);
-
-    const spec = readStackSpec(configDir);
-    expect(spec).not.toBeNull();
-
-    expect(spec!.assignments.tts).toBeUndefined();
-    expect(spec!.assignments.stt).toBeUndefined();
-  });
-
-  it("includes tts only when stt is absent", async () => {
-    const input = makeValidInput({
-      voice: { tts: "kokoro" },
-    });
-    const result = await performSetup(input, createStubAssetProvider());
-    expect(result.ok).toBe(true);
-
-    const spec = readStackSpec(configDir);
-    expect(spec).not.toBeNull();
-
-    expect(spec!.assignments.tts).toBeDefined();
-    expect(spec!.assignments.tts!.enabled).toBe(true);
-    expect(spec!.assignments.tts!.connectionId).toBeUndefined();
-    expect(spec!.assignments.tts!.model).toBe("kokoro");
-
-    expect(spec!.assignments.stt).toBeUndefined();
-  });
-});
-
-// ── Helpers: SetupConfig ─────────────────────────────────────────────────
-
-function makeValidConfig(overrides?: Partial<SetupConfig>): SetupConfig {
-  return {
-    version: 1,
-    owner: { name: "Test User", email: "test@example.com" },
-    security: { adminToken: "test-admin-token-12345" },
-    connections: [
-      {
-        id: "openai-main",
-        name: "OpenAI",
-        provider: "openai",
-        baseUrl: "https://api.openai.com",
-        apiKey: "sk-test-key-123",
-      },
-    ],
-    assignments: {
-      llm: { connectionId: "openai-main", model: "gpt-4o" },
-      embeddings: { connectionId: "openai-main", model: "text-embedding-3-small" },
-    },
-    memory: { userId: "test_user" },
-    ...overrides,
-  };
-}
-
-// ── Tests: validateSetupConfig ───────────────────────────────────────────
-
-describe("validateSetupConfig", () => {
-  it("accepts a valid config", () => {
-    const result = validateSetupConfig(makeValidConfig());
-    expect(result.valid).toBe(true);
-    expect(result.errors).toHaveLength(0);
-  });
-
-  it("rejects null input", () => {
-    const result = validateSetupConfig(null);
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContain("Config must be a non-null object");
-  });
-
-  it("rejects wrong version", () => {
-    const config = { ...makeValidConfig(), version: 2 };
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("version must be 1"))).toBe(true);
-  });
-
-  it("rejects missing security object", () => {
-    const config = makeValidConfig();
-    (config as Record<string, unknown>).security = null;
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("security object is required"))).toBe(true);
-  });
-
-  it("rejects missing security.adminToken", () => {
-    const config = makeValidConfig();
-    config.security.adminToken = "";
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("security.adminToken"))).toBe(true);
-  });
-
-  it("rejects short security.adminToken", () => {
-    const config = makeValidConfig();
-    config.security.adminToken = "short";
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("at least 8"))).toBe(true);
-  });
-
-  it("rejects empty connections array", () => {
-    const config = makeValidConfig({ connections: [] });
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("connections"))).toBe(true);
-  });
-
-  it("rejects duplicate connection IDs", () => {
-    const conn: SetupConnection = {
-      id: "dup",
-      name: "Dup",
-      provider: "openai",
-      baseUrl: "",
-      apiKey: "",
-    };
-    const config = makeValidConfig({ connections: [conn, conn] });
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("Duplicate"))).toBe(true);
-  });
-
-  it("rejects unsupported provider", () => {
-    const config = makeValidConfig({
-      connections: [
-        { id: "bad", name: "Bad", provider: "unsupported-provider", baseUrl: "", apiKey: "" },
-      ],
-    });
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("outside wizard scope"))).toBe(true);
-  });
-
-  it("rejects missing assignments.llm", () => {
-    const config = makeValidConfig();
-    (config.assignments as Record<string, unknown>).llm = null;
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("assignments.llm"))).toBe(true);
-  });
-
-  it("rejects missing assignments.embeddings", () => {
-    const config = makeValidConfig();
-    (config.assignments as Record<string, unknown>).embeddings = null;
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("assignments.embeddings"))).toBe(true);
-  });
-
-  it("rejects assignment referencing non-existent connection", () => {
-    const config = makeValidConfig();
-    config.assignments.llm.connectionId = "does-not-exist";
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("does not match any connection"))).toBe(true);
-  });
-
-  it("requires discord botToken when discord channel is an enabled object", () => {
-    const config = makeValidConfig({
-      channels: {
-        discord: { applicationId: "123456" },
-      },
-    });
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("discord.botToken"))).toBe(true);
-  });
-
-  it("does not require discord botToken when enabled is false", () => {
-    const config = makeValidConfig({
-      channels: {
-        discord: { enabled: false },
-      },
-    });
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(true);
-  });
-
-  it("requires slack slackBotToken and slackAppToken when slack is an enabled object", () => {
-    const config = makeValidConfig({
-      channels: {
-        slack: { allowedChannels: "#general" },
-      },
-    });
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("slack.slackBotToken"))).toBe(true);
-    expect(result.errors.some((e) => e.includes("slack.slackAppToken"))).toBe(true);
-  });
-
-  it("accepts slack with required tokens", () => {
-    const config = makeValidConfig({
-      channels: {
-        slack: { slackBotToken: "xoxb-test", slackAppToken: "xapp-test" },
-      },
-    });
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(true);
-  });
-
-  it("accepts channels as boolean values", () => {
-    const config = makeValidConfig({
-      channels: { chat: true, api: false },
-    });
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(true);
-  });
-
-  it("rejects invalid channel value type", () => {
-    const config = makeValidConfig({
-      channels: { chat: "yes" as unknown as boolean },
-    });
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("channels.chat"))).toBe(true);
-  });
-
-  it("accepts valid owner fields", () => {
-    const config = makeValidConfig({ owner: { name: "Alice", email: "alice@test.com" } });
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(true);
-  });
-
-  it("rejects non-string owner.name", () => {
-    const config = makeValidConfig();
-    (config.owner as Record<string, unknown>).name = 42;
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("owner.name"))).toBe(true);
-  });
-
-  it("accepts valid memory section", () => {
-    const config = makeValidConfig({ memory: { userId: "my_user" } });
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(true);
-  });
-
-  it("rejects non-string memory.userId", () => {
-    const config = makeValidConfig();
-    (config.memory as Record<string, unknown>).userId = 123;
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("memory.userId"))).toBe(true);
-  });
-
-  it("rejects memory.userId with dots", () => {
-    const config = makeValidConfig({ memory: { userId: "user.name" } });
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("alphanumeric and underscores only"))).toBe(true);
-  });
-
-  it("rejects memory.userId with hyphens", () => {
-    const config = makeValidConfig({ memory: { userId: "user-name" } });
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("alphanumeric and underscores only"))).toBe(true);
-  });
-
-  it("rejects non-integer embeddingDims", () => {
-    const config = makeValidConfig();
-    config.assignments.embeddings.embeddingDims = 1.5;
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("embeddingDims"))).toBe(true);
-  });
-
-  it("rejects non-boolean/object service value", () => {
-    const config = makeValidConfig({ services: { admin: "yes" } as unknown as Record<string, boolean> });
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContainEqual(expect.stringContaining("services.admin"));
-  });
-
-  it("rejects service object without enabled boolean", () => {
-    const config = makeValidConfig({ services: { admin: { enabled: "yes" } } as unknown as Record<string, boolean> });
-    const result = validateSetupConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContainEqual(expect.stringContaining("services.admin.enabled"));
-  });
-});
-
-// ── Tests: normalizeToSetupInput ─────────────────────────────────────────
-
-describe("normalizeToSetupInput", () => {
-  it("maps all fields correctly for a full config", () => {
-    const config = makeValidConfig();
-    const input = normalizeToSetupInput(config);
-
-    expect(input.adminToken).toBe("test-admin-token-12345");
-    expect(input.ownerName).toBe("Test User");
-    expect(input.ownerEmail).toBe("test@example.com");
-    expect(input.memoryUserId).toBe("test_user");
-    expect(input.ollamaEnabled).toBe(false);
-    expect(input.connections).toHaveLength(1);
-    expect(input.connections[0].id).toBe("openai-main");
-    expect(input.assignments.llm.model).toBe("gpt-4o");
-    expect(input.assignments.embeddings.model).toBe("text-embedding-3-small");
-  });
-
-  it("defaults memoryUserId when not provided", () => {
-    const config = makeValidConfig({ memory: undefined });
-    const input = normalizeToSetupInput(config);
-    expect(input.memoryUserId).toBe("default_user");
-  });
-
-  it("maps tts string to voice.tts", () => {
-    const config = makeValidConfig();
-    config.assignments.tts = "kokoro";
-    const input = normalizeToSetupInput(config);
-    expect(input.voice?.tts).toBe("kokoro");
-  });
-
-  it("maps tts object to voice.tts using engine field", () => {
-    const config = makeValidConfig();
-    config.assignments.tts = { engine: "openai-tts", model: "tts-1" };
-    const input = normalizeToSetupInput(config);
-    expect(input.voice?.tts).toBe("openai-tts");
-  });
-
-  it("maps stt string to voice.stt", () => {
-    const config = makeValidConfig();
-    config.assignments.stt = "whisper-local";
-    const input = normalizeToSetupInput(config);
-    expect(input.voice?.stt).toBe("whisper-local");
-  });
-
-  it("maps stt object to voice.stt using engine field", () => {
-    const config = makeValidConfig();
-    config.assignments.stt = { engine: "openai-stt", model: "whisper-1" };
-    const input = normalizeToSetupInput(config);
-    expect(input.voice?.stt).toBe("openai-stt");
-  });
-
-  it("omits voice when neither tts nor stt are set", () => {
-    const config = makeValidConfig();
-    const input = normalizeToSetupInput(config);
-    expect(input.voice).toBeUndefined();
-  });
-
-  it("handles null tts/stt values", () => {
-    const config = makeValidConfig();
-    config.assignments.tts = null;
-    config.assignments.stt = null;
-    const input = normalizeToSetupInput(config);
-    expect(input.voice).toBeUndefined();
-  });
-
-  it("extracts enabled channels from boolean values", () => {
-    const config = makeValidConfig({
-      channels: { chat: true, api: true, discord: false },
-    });
-    const input = normalizeToSetupInput(config);
-    expect(input.channels).toContain("chat");
-    expect(input.channels).toContain("api");
-    expect(input.channels).not.toContain("discord");
-  });
-
-  it("extracts enabled channels from object values", () => {
-    const config = makeValidConfig({
-      channels: {
-        discord: { botToken: "bot-token-123", enabled: true },
-        slack: { slackBotToken: "xoxb-test", slackAppToken: "xapp-test", enabled: false },
-      },
-    });
-    const input = normalizeToSetupInput(config);
-    expect(input.channels).toContain("discord");
-    expect(input.channels).not.toContain("slack");
-  });
-
-  it("defaults channel enabled to true when object has no enabled field", () => {
-    const config = makeValidConfig({
-      channels: {
-        discord: { botToken: "bot-token-123" },
-      },
-    });
-    const input = normalizeToSetupInput(config);
-    expect(input.channels).toContain("discord");
-  });
-
-  it("extracts services from boolean and object values", () => {
-    const config = makeValidConfig({
-      services: {
-        admin: true,
-        ollama: false,
-        openviking: { enabled: true },
-      },
-    });
-    const input = normalizeToSetupInput(config);
-    expect(input.services?.admin).toBe(true);
-    expect(input.services?.ollama).toBe(false);
-    expect(input.ollamaEnabled).toBe(false);
-  });
-
-  it("sets ollamaEnabled from services.ollama", () => {
-    const config = makeValidConfig({
-      services: { ollama: true },
-    });
-    const input = normalizeToSetupInput(config);
-    expect(input.ollamaEnabled).toBe(true);
-  });
-
-  it("omits channels when all channels are disabled", () => {
-    const config = makeValidConfig({
-      channels: { chat: false, api: false, discord: { enabled: false } },
-    });
-    const input = normalizeToSetupInput(config);
-    expect(input.channels).toBeUndefined();
-  });
-
-  it("omits channels when none are configured", () => {
-    const config = makeValidConfig({ channels: undefined });
-    const input = normalizeToSetupInput(config);
-    expect(input.channels).toBeUndefined();
-  });
-
-  it("omits services when none are configured", () => {
-    const config = makeValidConfig({ services: undefined });
-    const input = normalizeToSetupInput(config);
-    expect(input.services).toBeUndefined();
-  });
-});
-
-// ── Tests: buildChannelCredentialEnvVars ──────────────────────────────────
-
-describe("buildChannelCredentialEnvVars", () => {
-  it("maps discord credentials to env vars", () => {
-    const envVars = buildChannelCredentialEnvVars({
-      discord: {
-        botToken: "bot-token-123",
-        applicationId: "app-id-456",
-        allowedGuilds: "guild1,guild2",
-      },
-    });
-    expect(envVars.DISCORD_BOT_TOKEN).toBe("bot-token-123");
-    expect(envVars.DISCORD_APPLICATION_ID).toBe("app-id-456");
-    expect(envVars.DISCORD_ALLOWED_GUILDS).toBe("guild1,guild2");
-  });
-
-  it("maps slack credentials to env vars", () => {
-    const envVars = buildChannelCredentialEnvVars({
-      slack: {
-        slackBotToken: "xoxb-slack-token",
-        slackAppToken: "xapp-slack-token",
-        allowedChannels: "#general,#random",
-      },
-    });
-    expect(envVars.SLACK_BOT_TOKEN).toBe("xoxb-slack-token");
-    expect(envVars.SLACK_APP_TOKEN).toBe("xapp-slack-token");
-    expect(envVars.SLACK_ALLOWED_CHANNELS).toBe("#general,#random");
-  });
-
-  it("converts boolean values to strings", () => {
-    const envVars = buildChannelCredentialEnvVars({
-      discord: {
-        botToken: "bot-token-123",
-        registerCommands: true,
-      },
-    });
-    expect(envVars.DISCORD_REGISTER_COMMANDS).toBe("true");
-  });
-
-  it("skips boolean-only channel entries", () => {
-    const envVars = buildChannelCredentialEnvVars({
-      chat: true,
-      api: false,
-    });
-    expect(Object.keys(envVars)).toHaveLength(0);
-  });
-
-  it("skips unknown channels not in CHANNEL_CREDENTIAL_ENV_MAP", () => {
-    const envVars = buildChannelCredentialEnvVars({
-      "custom-channel": {
-        apiKey: "custom-key",
-        enabled: true,
-      },
-    });
-    expect(Object.keys(envVars)).toHaveLength(0);
-  });
-
-  it("skips undefined and null credential values", () => {
-    const envVars = buildChannelCredentialEnvVars({
-      discord: {
-        botToken: "bot-token-123",
-        applicationId: undefined,
-        allowedGuilds: undefined,
-      },
-    });
-    expect(envVars.DISCORD_BOT_TOKEN).toBe("bot-token-123");
-    expect(envVars.DISCORD_APPLICATION_ID).toBeUndefined();
-    expect(envVars.DISCORD_ALLOWED_GUILDS).toBeUndefined();
-  });
-
-  it("skips empty string credential values", () => {
-    const envVars = buildChannelCredentialEnvVars({
-      discord: {
-        botToken: "bot-token-123",
-        applicationId: "",
-      },
-    });
-    expect(envVars.DISCORD_BOT_TOKEN).toBe("bot-token-123");
-    expect(envVars.DISCORD_APPLICATION_ID).toBeUndefined();
-  });
-
-  it("returns empty object for undefined channels", () => {
-    const envVars = buildChannelCredentialEnvVars(undefined);
-    expect(Object.keys(envVars)).toHaveLength(0);
-  });
-
-  it("handles multiple channels simultaneously", () => {
-    const envVars = buildChannelCredentialEnvVars({
-      discord: { botToken: "discord-bot" },
-      slack: { slackBotToken: "slack-bot", slackAppToken: "slack-app" },
-      chat: true,
-    });
-    expect(envVars.DISCORD_BOT_TOKEN).toBe("discord-bot");
-    expect(envVars.SLACK_BOT_TOKEN).toBe("slack-bot");
-    expect(envVars.SLACK_APP_TOKEN).toBe("slack-app");
-    expect(Object.keys(envVars)).toHaveLength(3);
-  });
-});
-
-// ── Tests: CHANNEL_CREDENTIAL_ENV_MAP ────────────────────────────────────
-
-describe("CHANNEL_CREDENTIAL_ENV_MAP", () => {
-  it("has discord mappings", () => {
-    expect(CHANNEL_CREDENTIAL_ENV_MAP.discord).toBeDefined();
-    expect(CHANNEL_CREDENTIAL_ENV_MAP.discord.botToken).toBe("DISCORD_BOT_TOKEN");
-  });
-
-  it("has slack mappings", () => {
-    expect(CHANNEL_CREDENTIAL_ENV_MAP.slack).toBeDefined();
-    expect(CHANNEL_CREDENTIAL_ENV_MAP.slack.slackBotToken).toBe("SLACK_BOT_TOKEN");
-  });
-});
-
-// ── Tests: performSetupFromConfig ────────────────────────────────────────
-
-describe("performSetupFromConfig", () => {
-  let homeDir: string;
-  let configDir: string;
-  let vaultDir: string;
-  let dataDir: string;
-  let logsDir: string;
-
-  const savedEnv: Record<string, string | undefined> = {};
-
-  beforeEach(() => {
-    homeDir = mkdtempSync(join(tmpdir(), "openpalm-setup-config-"));
-    configDir = join(homeDir, "config");
-    vaultDir = join(homeDir, "vault");
-    dataDir = join(homeDir, "data");
-    logsDir = join(homeDir, "logs");
-
-    // Create required directory structure
-    for (const dir of [
-      homeDir,
-      configDir,
-      join(configDir, "components"),
-      join(configDir, "automations"),
-      join(configDir, "channels"),
-      join(configDir, "connections"),
-      join(configDir, "assistant"),
-      join(configDir, "stash"),
-      vaultDir,
-      dataDir,
-      join(dataDir, "admin"),
-      join(dataDir, "memory"),
-      join(dataDir, "assistant"),
-      join(dataDir, "guardian"),
-      join(dataDir, "automations"),
-      join(dataDir, "opencode"),
-      logsDir,
-      join(logsDir, "opencode"),
-    ]) {
-      mkdirSync(dir, { recursive: true });
-    }
-
-    // Create stub stack.env so isSetupComplete doesn't crash
-    mkdirSync(join(vaultDir, "stack"), { recursive: true });
-    mkdirSync(join(vaultDir, "user"), { recursive: true });
-    writeFileSync(join(vaultDir, "stack", "stack.env"), "OP_SETUP_COMPLETE=false\n");
-
-    // Seed a user.env file to avoid ensureSecrets() file-not-found
-    writeFileSync(
-      join(vaultDir, "user", "user.env"),
-      [
-        "# OpenPalm Secrets",
-        "export OP_ADMIN_TOKEN=",
-        "export ADMIN_TOKEN=",
-        "export OPENAI_API_KEY=",
-        "export OPENAI_BASE_URL=",
-        "export ANTHROPIC_API_KEY=",
-        "export GROQ_API_KEY=",
-        "export MISTRAL_API_KEY=",
-        "export GOOGLE_API_KEY=",
-        "export MEMORY_USER_ID=default_user",
-        "export MEMORY_AUTH_TOKEN=abc123",
-        "export OWNER_NAME=",
-        "export OWNER_EMAIL=",
-        "",
-      ].join("\n")
-    );
-
-    // Override env vars for test isolation
-    savedEnv.OP_HOME = process.env.OP_HOME;
-    process.env.OP_HOME = homeDir;
-  });
-
-  afterEach(() => {
-    process.env.OP_HOME = savedEnv.OP_HOME;
-    rmSync(homeDir, { recursive: true, force: true });
-  });
-
-  it("returns an error for invalid config", async () => {
-    const config = makeValidConfig();
-    (config as Record<string, unknown>).version = 99;
-    const result = await performSetupFromConfig(config, createStubAssetProvider());
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain("version must be 1");
-  });
-
-  it("completes setup with a valid config", async () => {
-    const result = await performSetupFromConfig(makeValidConfig(), createStubAssetProvider());
-    expect(result.ok).toBe(true);
-
-    // Verify stack.env was written with the admin credential
-    const secretsContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
-    expect(secretsContent).toContain("test-admin-token-12345");
-  });
-
-  it("writes channel credentials to user/user.env", async () => {
-    const config = makeValidConfig({
-      channels: {
+  it("writes channel credentials to user.env when channelCredentials provided", async () => {
+    const input = makeValidSpec({
+      channelCredentials: {
         discord: {
           botToken: "discord-bot-token-xyz",
           applicationId: "discord-app-id-123",
         },
       },
+      spec: {
+        version: 2,
+        capabilities: {
+          llm: "openai/gpt-4o",
+          embeddings: {
+            provider: "openai",
+            model: "text-embedding-3-small",
+            dims: 1536,
+          },
+          memory: {
+            userId: "test_user",
+            customInstructions: "",
+          },
+        },
+        addons: { discord: true },
+      },
     });
-    const result = await performSetupFromConfig(config, createStubAssetProvider());
+
+    const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
     const secretsContent = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(secretsContent).toContain("discord-bot-token-xyz");
     expect(secretsContent).toContain("discord-app-id-123");
   });
-
-  it("writes memory config with correct models", async () => {
-    const result = await performSetupFromConfig(makeValidConfig(), createStubAssetProvider());
-    expect(result.ok).toBe(true);
-
-    const memConfigPath = join(dataDir, "memory", "default_config.json");
-    expect(existsSync(memConfigPath)).toBe(true);
-
-    const memConfig = JSON.parse(readFileSync(memConfigPath, "utf-8"));
-    expect(memConfig.mem0.llm.config.model).toBe("gpt-4o");
-    expect(memConfig.mem0.embedder.config.model).toBe("text-embedding-3-small");
-  });
-
-  it("creates staged artifacts", async () => {
-    const result = await performSetupFromConfig(makeValidConfig(), createStubAssetProvider());
-    expect(result.ok).toBe(true);
-
-    const stagedCompose = join(configDir, "components", "core.yml");
-    expect(existsSync(stagedCompose)).toBe(true);
-  });
 });
+

@@ -6,7 +6,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { appendAudit, buildComposeFileList, buildEnvFiles } from "$lib/server/control-plane.js";
+import { appendAudit, buildComposeFileList, buildEnvFiles } from "@openpalm/lib";
 import { composePs, checkDocker } from "$lib/server/docker.js";
 import type { RequestHandler } from "./$types";
 
@@ -23,7 +23,7 @@ export const GET: RequestHandler = async (event) => {
   const dockerCheck = await checkDocker();
   let dockerContainers = null;
   if (dockerCheck.ok) {
-    const ps = await composePs(state.configDir, { files: buildComposeFileList(state), envFiles: buildEnvFiles(state) });
+    const ps = await composePs({ files: buildComposeFileList(state), envFiles: buildEnvFiles(state) });
     if (ps.ok && ps.stdout.trim()) {
       try {
         // docker compose ps --format json returns one JSON object per line

@@ -2,42 +2,30 @@ import { defineCommand } from 'citty';
 import { join } from 'node:path';
 import { rm } from 'node:fs/promises';
 import cliPkg from '../../package.json' with { type: 'json' };
-import { defaultHomeDir, defaultConfigDir, defaultVaultDir, defaultDataDir, defaultWorkDir } from '../lib/paths.ts';
+import { defaultWorkDir } from '../lib/paths.ts';
+import { resolveOpenPalmHome, resolveConfigDir, resolveVaultDir, resolveDataDir } from '@openpalm/lib';
 import { ensureSecrets, ensureStackEnv, resolveRequestedImageTag } from '../lib/env.ts';
-import { ensureDirectoryTree, fetchAsset, runDockerCompose, openBrowser } from '../lib/docker.ts';
+import { ensureDirectoryTree, fetchAsset, openBrowser } from '../lib/docker.ts';
 import {
-  ensureOpenCodeConfig, ensureOpenCodeSystemConfig, FilesystemAssetProvider,
-  performSetupFromConfig,
-  type SetupConfig, type SetupResult,
+  ensureOpenCodeConfig, ensureOpenCodeSystemConfig,
+  performSetup,
+  type SetupSpec,
 } from '@openpalm/lib';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
-import { ensureValidState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
+import { ensureValidState } from '../lib/cli-state.ts';
+import { buildManagedServiceNames, runComposeWithPreflight } from '../lib/cli-compose.ts';
 import { createSetupServer } from '../setup-wizard/server.ts';
 import { buildInstallServiceNames, buildDeployStatusEntries } from './install-services.ts';
 
 const SETUP_WIZARD_PORT = Number(process.env.OP_SETUP_PORT) || 8100;
 
-const REPO_OWNER = 'itlackey';
-const REPO_NAME = 'openpalm';
-
-/**
- * Resolves the latest release tag from GitHub. Falls back to the CLI package
- * version (prefixed with 'v') so the install never silently defaults to 'main'
- * which produces an un-pinned 'latest' image tag.
- */
 async function resolveDefaultInstallRef(): Promise<string> {
   try {
-    const res = await fetch(
-      `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
-      { redirect: 'manual', signal: AbortSignal.timeout(10000) },
-    );
-    const location = res.headers.get('location') ?? '';
-    const match = location.match(/\/tag\/(v[0-9]+\.[0-9]+\.[0-9]+[^\s]*)$/);
+    const res = await fetch('https://github.com/itlackey/openpalm/releases/latest', { redirect: 'manual', signal: AbortSignal.timeout(10000) });
+    const match = (res.headers.get('location') ?? '').match(/\/tag\/(v[0-9]+\.[0-9]+\.[0-9]+[^\s]*)$/);
     if (match?.[1]) return match[1];
-  } catch {
-    // Network error — fall through to package version
-  }
+  } catch { /* fall through */ }
   return cliPkg.version ? `v${cliPkg.version}` : 'main';
 }
 
@@ -92,118 +80,84 @@ type InstallOptions = {
   file?: string;
 };
 
+async function requireCmd(cmd: string[], msg: string): Promise<void> {
+  if ((await Bun.spawn(cmd, { stdout: 'ignore', stderr: 'ignore' }).exited) !== 0) throw new Error(msg);
+}
+
+async function requireDocker(): Promise<void> {
+  if (!Bun.which('docker')) throw new Error('Docker is not installed. Install Docker first: https://docs.docker.com/get-docker/');
+  await requireCmd(['docker', 'info'], 'Docker is not running (or current user lacks permission). Start Docker and retry.');
+  await requireCmd(['docker', 'compose', 'version'], 'Docker Compose v2 is required. Install it: https://docs.docker.com/compose/install/');
+}
+
+async function deployServices(mode: string, pull = true): Promise<string[]> {
+  const state = await ensureValidState();
+  const managedServices = await buildManagedServiceNames(state);
+  const allServices = buildInstallServiceNames(managedServices);
+  if (pull) await runComposeWithPreflight(state, ['pull', ...allServices]).catch(() => console.warn('Warning: image pull failed.'));
+  await runComposeWithPreflight(state, ['up', '-d', ...allServices]);
+  console.log(JSON.stringify({ ok: true, mode, services: allServices }, null, 2));
+  return allServices;
+}
+
+async function parseConfigFile(filePath: string, raw: string): Promise<Record<string, unknown>> {
+  const ext = filePath.toLowerCase();
+  const isYaml = ext.endsWith('.yaml') || ext.endsWith('.yml');
+  if (!isYaml && !ext.endsWith('.json')) throw new Error(`Unsupported config file format: ${filePath}. Use .json or .yaml.`);
+  try {
+    return isYaml ? (await import('yaml')).parse(raw) : JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`Failed to parse setup config '${filePath}': ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 export async function bootstrapInstall(options: InstallOptions): Promise<void> {
-  if (!Bun.which('docker')) {
-    throw new Error('Docker is not installed. Install Docker first: https://docs.docker.com/get-docker/');
-  }
+  await requireDocker();
 
-  const dockerInfo = Bun.spawn(['docker', 'info'], { stdout: 'ignore', stderr: 'ignore' });
-  if ((await dockerInfo.exited) !== 0) {
-    throw new Error('Docker is not running (or current user lacks permission). Start Docker and retry.');
-  }
-
-  const composeVersion = Bun.spawn(['docker', 'compose', 'version'], { stdout: 'ignore', stderr: 'ignore' });
-  if ((await composeVersion.exited) !== 0) {
-    throw new Error('Docker Compose v2 is required. Install it: https://docs.docker.com/compose/install/');
-  }
-
-  const homeDir = defaultHomeDir();
-  const configDir = defaultConfigDir();
-  const vaultDir = defaultVaultDir();
-  const dataDir = defaultDataDir();
+  const homeDir = resolveOpenPalmHome();
+  const configDir = resolveConfigDir();
+  const vaultDir = resolveVaultDir();
+  const dataDir = resolveDataDir();
   const workDir = defaultWorkDir();
 
-  const secretsPath = join(vaultDir, 'user', 'user.env');
-  const updateMode = await Bun.file(secretsPath).exists();
+  const updateMode = await Bun.file(join(vaultDir, 'user', 'user.env')).exists();
   if (updateMode && !options.force) {
     throw new Error('OpenPalm appears to already be installed. Re-run install with --force to continue.');
   }
 
   await ensureDirectoryTree(homeDir, configDir, vaultDir, dataDir, workDir);
 
-  // Detect host system info (non-fatal)
-  try {
-    const hostInfo = await detectHostInfo();
-    await Bun.write(join(dataDir, 'host.json'), JSON.stringify(hostInfo, null, 2) + '\n');
-  } catch {
-    // Host detection failure is non-fatal
-  }
+  try { await Bun.write(join(dataDir, 'host.json'), JSON.stringify(await detectHostInfo(), null, 2) + '\n'); }
+  catch { /* non-fatal */ }
 
-  const composeContent = await fetchAsset(options.version, '.openpalm/stack/core.compose.yml');
-  await Bun.write(join(configDir, 'components', 'core.yml'), composeContent);
-
-  // Download schemas to vault/ for varlock validation and dataDir for FilesystemAssetProvider
-  for (const [remoteFile, localPath] of [
-    ['.openpalm/vault/user/user.env.schema', join(vaultDir, 'user', 'user.env.schema')],
-    ['.openpalm/vault/stack/stack.env.schema', join(vaultDir, 'stack', 'stack.env.schema')],
-  ] as const) {
-    try {
-      const content = await fetchAsset(options.version, remoteFile);
-      await Bun.write(localPath, content);
-    } catch (err) {
-      console.warn(`Warning: could not download schema '${remoteFile}': ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-
-  // Download remaining assets needed by FilesystemAssetProvider
-  const assetFiles: Array<{ remote: string; localPath: string }> = [
-    { remote: '.openpalm/stack/addons/ollama/compose.yml', localPath: join(configDir, 'components', 'ollama.yml') },
-    { remote: 'core/assistant/AGENTS.md', localPath: join(dataDir, 'assistant', 'AGENTS.md') },
-    { remote: 'core/assistant/opencode.jsonc', localPath: join(dataDir, 'assistant', 'opencode.jsonc') },
-    { remote: '.openpalm/config/automations/cleanup-logs.yml', localPath: join(configDir, 'automations', 'cleanup-logs.yml') },
-    { remote: '.openpalm/config/automations/cleanup-data.yml', localPath: join(configDir, 'automations', 'cleanup-data.yml') },
-    { remote: '.openpalm/config/automations/validate-config.yml', localPath: join(configDir, 'automations', 'validate-config.yml') },
-  ];
-  await Promise.all(
-    assetFiles.map(async ({ remote, localPath }) => {
-      try {
-        const content = await fetchAsset(options.version, remote);
-        await Bun.write(localPath, content);
-      } catch (err) {
-        console.warn(`Warning: could not download asset '${remote}': ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }),
+  await Bun.write(
+    join(homeDir, 'stack', 'core.compose.yml'),
+    await fetchAsset(options.version, '.openpalm/stack/core.compose.yml'),
   );
 
-  await ensureSecrets(vaultDir);
-  // Derive the image tag from the resolved version so that stale or
-  // architecture-suffixed OP_IMAGE_TAG env vars don't leak in.
-  const imageTag = resolveRequestedImageTag(options.version) ?? undefined;
-  await ensureStackEnv(homeDir, vaultDir, workDir, options.version, imageTag);
-  // Seed OpenCode config — non-fatal since performSetup() also seeds these
-  try {
-    const fsAssets = new FilesystemAssetProvider(homeDir);
-    ensureOpenCodeConfig();
-    ensureOpenCodeSystemConfig(fsAssets);
-  } catch {
-    // Assets may not be available yet on first install; performSetup() will retry
-  }
+  // Download schemas and assets (all non-fatal)
+  const downloads: Array<[string, string]> = [
+    ['.openpalm/vault/user/user.env.schema', join(vaultDir, 'user', 'user.env.schema')],
+    ['.openpalm/vault/stack/stack.env.schema', join(vaultDir, 'stack', 'stack.env.schema')],
+    ['.openpalm/stack/addons/ollama/compose.yml', join(homeDir, 'stack', 'addons', 'ollama', 'compose.yml')],
+    ['core/assistant/AGENTS.md', join(dataDir, 'assistant', 'AGENTS.md')],
+    ['core/assistant/opencode.jsonc', join(dataDir, 'assistant', 'opencode.jsonc')],
+    ['.openpalm/config/automations/cleanup-logs.yml', join(configDir, 'automations', 'cleanup-logs.yml')],
+    ['.openpalm/config/automations/cleanup-data.yml', join(configDir, 'automations', 'cleanup-data.yml')],
+    ['.openpalm/config/automations/validate-config.yml', join(configDir, 'automations', 'validate-config.yml')],
+  ];
+  await Promise.all(downloads.map(async ([remote, local]) => {
+    try { await Bun.write(local, await fetchAsset(options.version, remote)); }
+    catch { /* non-fatal */ }
+  }));
 
-  // Non-fatal validation
-  try {
-    const varlockBin = await ensureVarlock(dataDir);
-    const schemaPath = join(vaultDir, 'user', 'user.env.schema');
-    const envPath = join(vaultDir, 'user', 'user.env');
-    if (await Bun.file(schemaPath).exists()) {
-      const tmpDir = await prepareVarlockDir(schemaPath, envPath);
-      try {
-        const proc = Bun.spawn([varlockBin, 'load', '--path', `${tmpDir}/`], {
-          stdout: 'ignore',
-          stderr: 'ignore',
-        });
-        const code = await proc.exited;
-        if (code === 0) {
-          console.log('Configuration validated.');
-        } else {
-          console.warn('Configuration has validation warnings (non-fatal on first install).');
-        }
-      } finally {
-        await rm(tmpDir, { recursive: true, force: true });
-      }
-    }
-  } catch {
-    // Varlock install/execution failures are non-fatal during install
-  }
+  await ensureSecrets(vaultDir);
+  await ensureStackEnv(homeDir, vaultDir, workDir, options.version, resolveRequestedImageTag(options.version) ?? undefined);
+
+  try { ensureOpenCodeConfig(); ensureOpenCodeSystemConfig(); } catch { /* non-fatal on first install */ }
+
+  // Non-fatal varlock validation
+  try { await runVarlockValidation(dataDir, vaultDir); } catch { /* non-fatal */ }
 
   if (options.noStart && !options.file) {
     console.log('OpenPalm files prepared. Run `openpalm start` to start services.');
@@ -211,168 +165,83 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   }
 
   // ── File-based install (--file / -f) ──────────────────────────────────
-  // Read a JSON or YAML setup config file and call performSetup() or
-  // performSetupFromConfig() directly — no wizard needed.
-
   if (options.file) {
-    console.log(`Reading setup config from ${options.file}...`);
-
-    if (!(await Bun.file(options.file).exists())) {
-      throw new Error(`Setup config file not found: ${options.file}. Check the --file path and try again.`);
-    }
-    let raw: string;
-    try {
-      raw = await Bun.file(options.file).text();
-    } catch (err) {
-      throw new Error(`Failed to read setup config file '${options.file}': ${err instanceof Error ? err.message : String(err)}`);
-    }
-
-    const ext = options.file.toLowerCase();
-    let parsed: unknown;
-    try {
-      if (ext.endsWith('.yaml') || ext.endsWith('.yml')) {
-        const { parse } = await import('yaml');
-        parsed = parse(raw);
-      } else if (ext.endsWith('.json')) {
-        parsed = JSON.parse(raw);
-      } else {
-        throw new Error(`Unsupported config file format: ${options.file}. Use .json or .yaml.`);
-      }
-    } catch (err) {
-      if (err instanceof Error && err.message.startsWith('Unsupported config file format:')) {
-        throw err;
-      }
-      throw new Error(`Failed to parse setup config '${options.file}': ${err instanceof Error ? err.message : String(err)}`);
-    }
-
-    const fsAssets = new FilesystemAssetProvider(homeDir);
-    const config = parsed as Record<string, unknown>;
-    let result: SetupResult;
-
-    if (typeof config.version !== "number") {
-      throw new Error(
-        `Setup config file is missing a 'version' field. Use 'version: 1' for the current format.`
-      );
-    }
-    if (config.version === 1) {
-      result = await performSetupFromConfig(config as SetupConfig, fsAssets);
-    } else {
-      throw new Error(`Unsupported setup config version: ${config.version}. Only version 1 is supported.`);
-    }
-
-    if (!result.ok) throw new Error(`Setup failed: ${result.error}`);
-    console.log('Setup complete.');
-
-    if (options.noStart) {
-      console.log('Config written. Run `openpalm start` to start services.');
-      return;
-    }
-
-    // Deploy (same as existing update-mode code)
-    console.log('Starting services...');
-    const state = await ensureValidState();
-    const composeArgs = fullComposeArgs(state);
-    const managedServices = buildManagedServiceNames(state);
-    const allServices = buildInstallServiceNames(managedServices);
-
-    await runDockerCompose([...composeArgs, 'pull', ...allServices]).catch(() => {
-      console.warn('Warning: image pull failed.');
-    });
-    await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
-    console.log(JSON.stringify({ ok: true, mode: 'install', services: allServices }, null, 2));
+    await runFileInstall(options.file, options.noStart);
     return;
   }
 
-  // ── Setup Wizard ──────────────────────────────────────────────────────
-  // First-time install: serve the setup wizard locally and wait for user
-  // to complete it. The wizard calls performSetup() from @openpalm/lib
-  // which writes secrets, connection profiles, memory config, and stages
-  // all artifacts. No admin container needed.
-
+  // ── Setup Wizard (first install) ──────────────────────────────────────
   if (!updateMode) {
-    console.log('Starting setup wizard...');
-
-    let wizard;
-    try {
-      wizard = createSetupServer(SETUP_WIZARD_PORT, { configDir });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('EADDRINUSE') || msg.includes('address already in use') || msg.includes('Failed to start')) {
-        throw new Error(`Port ${SETUP_WIZARD_PORT} is in use. Stop the conflicting process or set OP_SETUP_PORT=<port>.`);
-      }
-      throw err;
-    }
-    const wizardUrl = `http://localhost:${wizard.server.port}/setup`;
-    console.log(`Setup wizard running at ${wizardUrl}`);
-
-    if (!options.noOpen) {
-      await openBrowser(wizardUrl);
-    }
-
-    // Block until user completes the wizard
-    const result = await wizard.waitForComplete();
-
-    if (!result.ok) {
-      wizard.stop();
-      throw new Error(`Setup failed: ${result.error ?? 'unknown error'}`);
-    }
-
-    console.log('Setup complete. Starting services...');
-
-    // Keep wizard server running for deploy status polling from the browser.
-    // Stage artifacts and start services while the wizard shows progress.
-    try {
-      const state = await ensureValidState();
-      const composeArgs = fullComposeArgs(state);
-      const managedServices = buildManagedServiceNames(state);
-      const allServices = buildInstallServiceNames(managedServices);
-
-      wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Waiting...'));
-
-      await runDockerCompose([...composeArgs, 'pull', ...allServices]).catch(() => {
-        console.warn('Warning: image pull failed — if this is your first install, check your network connection.');
-      });
-
-      wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pulling', 'Starting...'));
-
-      await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
-
-      wizard.markAllRunning();
-
-      console.log(JSON.stringify({
-        ok: true,
-        mode: 'install',
-        services: allServices,
-      }, null, 2));
-
-      // Give the browser a moment to poll the final status, then stop
-      await new Promise(resolve => setTimeout(resolve, 3000));
-    } catch (err) {
-      wizard.setDeployError(String(err));
-      // Keep server alive briefly so user can see the error
-      await new Promise(resolve => setTimeout(resolve, 10000));
-      throw err;
-    } finally {
-      wizard.stop();
-    }
-
+    await runWizardInstall(configDir, options.noOpen);
     return;
   }
 
-  // ── Start Core Services (update mode — no wizard) ────────────────────
-  // Stage artifacts and start all managed services directly via Docker
-  // Compose. No admin container required for lifecycle operations.
+  // ── Update mode (no wizard) ───────────────────────────────────────────
+  await deployServices('update', false);
+}
 
-  const state = await ensureValidState();
-  const composeArgs = fullComposeArgs(state);
-  const managedServices = buildManagedServiceNames(state);
-  const allServices = buildInstallServiceNames(managedServices);
+async function runWizardInstall(configDir: string, noOpen: boolean): Promise<void> {
+  console.log('Starting setup wizard...');
+  let wizard;
+  try {
+    wizard = createSetupServer(SETUP_WIZARD_PORT, { configDir });
+  } catch (err) {
+    const msg = String(err);
+    throw msg.includes('EADDRINUSE') || msg.includes('address already in use') || msg.includes('Failed to start')
+      ? new Error(`Port ${SETUP_WIZARD_PORT} is in use. Stop the conflicting process or set OP_SETUP_PORT=<port>.`)
+      : err;
+  }
+  const wizardUrl = `http://localhost:${wizard.server.port}/setup`;
+  console.log(`Setup wizard running at ${wizardUrl}`);
+  if (!noOpen) await openBrowser(wizardUrl);
 
-  await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
+  const result = await wizard.waitForComplete();
+  if (!result.ok) { wizard.stop(); throw new Error(`Setup failed: ${result.error ?? 'unknown error'}`); }
 
-  console.log(JSON.stringify({
-    ok: true,
-    mode: 'update',
-    services: allServices,
-  }, null, 2));
+  console.log('Setup complete. Starting services...');
+  try {
+    const state = await ensureValidState();
+    const managedServices = await buildManagedServiceNames(state);
+    const allServices = buildInstallServiceNames(managedServices);
+    wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Waiting...'));
+    await runComposeWithPreflight(state, ['pull', ...allServices]).catch(() => {
+      console.warn('Warning: image pull failed — if this is your first install, check your network connection.');
+    });
+    wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pulling', 'Starting...'));
+    await runComposeWithPreflight(state, ['up', '-d', ...allServices]);
+    wizard.markAllRunning();
+    console.log(JSON.stringify({ ok: true, mode: 'install', services: allServices }, null, 2));
+    await new Promise(resolve => setTimeout(resolve, 3000));
+  } catch (err) {
+    wizard.setDeployError(String(err));
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    throw err;
+  } finally { wizard.stop(); }
+}
+
+async function runFileInstall(filePath: string, noStart: boolean): Promise<void> {
+  console.log(`Reading setup config from ${filePath}...`);
+  if (!(await Bun.file(filePath).exists())) {
+    throw new Error(`Setup config file not found: ${filePath}. Check the --file path and try again.`);
+  }
+  const config = await parseConfigFile(filePath, await Bun.file(filePath).text());
+  if (config.version === 1) throw new Error('v1 setup config format is no longer supported. Use the v2 SetupSpec format (with a "spec" field).');
+  if (!config.spec) throw new Error('Setup config must contain a "spec" field with the v2 StackSpec.');
+
+  const result = await performSetup(config as unknown as SetupSpec);
+  if (!result.ok) throw new Error(`Setup failed: ${result.error}`);
+  console.log('Setup complete.');
+  if (noStart) { console.log('Config written. Run `openpalm start` to start services.'); return; }
+  await deployServices('install');
+}
+
+async function runVarlockValidation(dataDir: string, vaultDir: string): Promise<void> {
+  const varlockBin = await ensureVarlock(dataDir);
+  const schemaPath = join(vaultDir, 'user', 'user.env.schema');
+  if (!(await Bun.file(schemaPath).exists())) return;
+  const tmpDir = await prepareVarlockDir(schemaPath, join(vaultDir, 'user', 'user.env'));
+  try {
+    const code = await Bun.spawn([varlockBin, 'load', '--path', `${tmpDir}/`], { stdout: 'ignore', stderr: 'ignore' }).exited;
+    console.log(code === 0 ? 'Configuration validated.' : 'Configuration has validation warnings (non-fatal on first install).');
+  } finally { await rm(tmpDir, { recursive: true, force: true }); }
 }

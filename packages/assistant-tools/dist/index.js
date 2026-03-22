@@ -9,9 +9,6 @@ var __export = (target, all) => {
     });
 };
 
-// opencode/plugins/memory-context.ts
-import { basename as basename2 } from "node:path";
-
 // opencode/plugins/memory-lib.ts
 import { basename } from "node:path";
 var MEMORY_URL = process.env.MEMORY_API_URL || "http://memory:8765";
@@ -21,6 +18,16 @@ var GLOBAL_USER_ID = "global";
 var APP_NAME = "openpalm-assistant";
 var DEFAULT_AGENT_ID = process.env.MEMORY_AGENT_ID || "openpalm";
 var DEFAULT_APP_ID = deriveDefaultAppId();
+function identityBody(id) {
+  const body = { user_id: id.userId };
+  if (id.agentId)
+    body.agent_id = id.agentId;
+  if (id.appId)
+    body.app_id = id.appId;
+  if (id.runId)
+    body.run_id = id.runId;
+  return body;
+}
 async function pluginMemoryFetch(path, options) {
   try {
     const { timeoutMs, ...rest } = options ?? {};
@@ -37,48 +44,29 @@ async function pluginMemoryFetch(path, options) {
   }
 }
 async function searchMemories(query, opts) {
-  const fetchSize = opts?.category ? (opts.size ?? 10) * 2 : opts?.size ?? 10;
-  const identity = resolveMemoryIdentity(opts);
-  const commonSearchBody = {
-    user_id: identity.userId,
-    agent_id: identity.agentId,
-    app_id: identity.appId,
-    ...identity.runId ? { run_id: identity.runId } : {},
-    search_query: query,
-    page: 1,
-    size: fetchSize
-  };
+  const size = opts?.category ? (opts.size ?? 10) * 2 : opts?.size ?? 10;
+  const base = { ...identityBody(resolveRetrievalIdentity(opts)), search_query: query, page: 1, size };
   const v2data = await pluginMemoryFetch("/api/v2/memories/search", {
     method: "POST",
     timeoutMs: opts?.timeoutMs,
-    body: JSON.stringify({
-      ...commonSearchBody,
-      query,
-      filters: opts?.category ? { category: opts.category } : {}
-    })
+    body: JSON.stringify({ ...base, query, filters: opts?.category ? { category: opts.category } : {} })
   });
   const v2items = readItems(v2data);
-  if (v2items) {
+  if (v2items)
     return postFilterMemories(v2items, opts);
-  }
-  const v1data = await pluginMemoryFetch("/api/v1/memories/filter", {
+  const v1items = readItems(await pluginMemoryFetch("/api/v1/memories/filter", {
     method: "POST",
     timeoutMs: opts?.timeoutMs,
-    body: JSON.stringify(commonSearchBody)
-  });
-  const v1items = readItems(v1data) ?? [];
+    body: JSON.stringify(base)
+  })) ?? [];
   return postFilterMemories(v1items, opts);
 }
 async function listMemories(opts) {
-  const identity = resolveMemoryIdentity(opts);
   const data = await pluginMemoryFetch("/api/v1/memories/filter", {
     method: "POST",
     timeoutMs: opts?.timeoutMs,
     body: JSON.stringify({
-      user_id: identity.userId,
-      agent_id: identity.agentId,
-      app_id: identity.appId,
-      ...identity.runId ? { run_id: identity.runId } : {},
+      ...identityBody(resolveRetrievalIdentity(opts)),
       page: opts?.page ?? 1,
       size: opts?.size ?? 50,
       search_query: opts?.search_query ?? null,
@@ -102,19 +90,9 @@ async function addMemory(text, meta, identityInput) {
   const data = await pluginMemoryFetch("/api/v1/memories/", {
     method: "POST",
     timeoutMs: 1e4,
-    body: JSON.stringify({
-      user_id: identity.userId,
-      agent_id: identity.agentId,
-      app_id: identity.appId,
-      ...identity.runId ? { run_id: identity.runId } : {},
-      text,
-      app: APP_NAME,
-      metadata,
-      infer: true
-    })
+    body: JSON.stringify({ ...identityBody(identity), text, app: APP_NAME, metadata, infer: true })
   });
-  const dataRecord = asRecord(data);
-  const id = dataRecord?.id;
+  const id = asRecord(data)?.id;
   return typeof id === "string" ? id : null;
 }
 async function addMemoryIfNovel(text, meta, identityInput) {
@@ -137,20 +115,21 @@ async function addMemoryIfNovel(text, meta, identityInput) {
 async function deleteMemories(memoryIds, identityInput) {
   if (memoryIds.length === 0)
     return true;
-  const identity = resolveMemoryIdentity(identityInput);
-  const response = await pluginMemoryFetch("/api/v1/memories/", {
+  return await pluginMemoryFetch("/api/v1/memories/", {
     method: "DELETE",
     timeoutMs: 8000,
-    body: JSON.stringify({ memory_ids: memoryIds, user_id: identity.userId })
-  });
-  return response !== null;
+    body: JSON.stringify({ memory_ids: memoryIds, user_id: resolveMemoryIdentity(identityInput).userId })
+  }) !== null;
 }
-async function isMemoryAvailable(timeoutMs, identity) {
-  return await getMemoryStatsWithIdentity(timeoutMs, identity) !== null;
+async function isMemoryAvailable(timeoutMs, identityInput) {
+  const identity = resolveMemoryIdentity(identityInput);
+  const stats = await pluginMemoryFetch(`/api/v1/stats/?user_id=${encodeURIComponent(identity.userId)}`, { timeoutMs: timeoutMs ?? 3000 });
+  const s = asRecord(stats);
+  return s !== null && typeof s.total_memories === "number" && typeof s.total_apps === "number";
 }
 async function sendMemoryFeedback(memoryId, positive, reason, identityInput) {
   const identity = resolveMemoryIdentity(identityInput);
-  const feedback = {
+  const body = JSON.stringify({
     memory_id: memoryId,
     user_id: identity.userId,
     agent_id: identity.agentId,
@@ -158,22 +137,9 @@ async function sendMemoryFeedback(memoryId, positive, reason, identityInput) {
     ...identity.runId ? { run_id: identity.runId } : {},
     value: positive ? 1 : -1,
     reason
-  };
-  const endpoints = [
-    `/api/v1/memories/${encodeURIComponent(memoryId)}/feedback`,
-    "/api/v1/feedback",
-    "/api/v2/feedback"
-  ];
-  for (const endpoint of endpoints) {
-    const result = await pluginMemoryFetch(endpoint, {
-      method: "POST",
-      timeoutMs: 3000,
-      body: JSON.stringify(feedback)
-    });
-    if (result)
-      return true;
-  }
-  return false;
+  });
+  const opts = { method: "POST", timeoutMs: 3000, body };
+  return await pluginMemoryFetch(`/api/v1/memories/${encodeURIComponent(memoryId)}/feedback`, opts) !== null || await pluginMemoryFetch("/api/v1/feedback", opts) !== null || await pluginMemoryFetch("/api/v2/feedback", opts) !== null;
 }
 function formatMemoriesForContext(memories, heading) {
   if (memories.length === 0)
@@ -199,6 +165,14 @@ function resolveMemoryIdentity(identityInput) {
     runId: identityInput?.runId
   };
 }
+function resolveRetrievalIdentity(identityInput) {
+  return {
+    userId: identityInput?.userId ?? resolveScopeUserId(identityInput?.scope),
+    agentId: identityInput?.agentId?.trim() || undefined,
+    appId: identityInput?.appId?.trim() || undefined,
+    runId: identityInput?.runId?.trim() || undefined
+  };
+}
 function deriveDefaultAppId() {
   const envAppId = process.env.MEMORY_APP_ID?.trim();
   if (envAppId)
@@ -219,64 +193,34 @@ function resolveScopeUserId(scope = "personal") {
   return USER_ID;
 }
 function postFilterMemories(memories, opts) {
-  let items = memories;
-  if (opts?.category) {
-    items = items.filter((memory) => memory.metadata?.category === opts.category);
-  }
-  if (opts?.highSignalOnly) {
-    items = items.filter((memory) => isHighSignalMemory(memory.metadata));
-  }
-  return items.slice(0, opts?.size ?? 10);
+  return memories.filter((item) => (!opts?.category || item.metadata?.category === opts.category) && (!opts?.highSignalOnly || isHighSignal(item.metadata))).slice(0, opts?.size ?? 10);
 }
-function isHighSignalMemory(metadata) {
-  if (!metadata)
+function isHighSignal(m) {
+  if (!m)
     return false;
-  if (metadata.pinned === true || metadata.immutable === true)
-    return true;
-  if (typeof metadata.confidence === "number" && metadata.confidence >= 0.85) {
-    return true;
-  }
-  if (typeof metadata.feedback_score === "number" && metadata.feedback_score > 0) {
-    return true;
-  }
-  if (typeof metadata.positive_feedback_count === "number" && typeof metadata.negative_feedback_count === "number") {
-    return metadata.positive_feedback_count > metadata.negative_feedback_count;
-  }
-  return false;
-}
-async function getMemoryStatsWithIdentity(timeoutMs = 3000, identityInput) {
-  const identity = resolveMemoryIdentity(identityInput);
-  const stats = await pluginMemoryFetch(`/api/v1/stats/?user_id=${encodeURIComponent(identity.userId)}`, { timeoutMs });
-  const statsRecord = asRecord(stats);
-  if (statsRecord && typeof statsRecord.total_memories === "number" && typeof statsRecord.total_apps === "number") {
-    return {
-      total_memories: statsRecord.total_memories,
-      total_apps: statsRecord.total_apps
-    };
-  }
-  return null;
+  return !!(m.pinned || m.immutable || typeof m.confidence === "number" && m.confidence >= 0.85 || typeof m.feedback_score === "number" && m.feedback_score > 0 || typeof m.positive_feedback_count === "number" && typeof m.negative_feedback_count === "number" && m.positive_feedback_count > m.negative_feedback_count);
 }
 function readItems(data) {
-  const record = asRecord(data);
-  if (!record)
+  const r = asRecord(data);
+  if (!r)
     return;
-  const items = record.items ?? record.results;
+  const items = r.items ?? r.results;
   if (!Array.isArray(items))
     return;
-  return items.flatMap((item) => toMemoryItem(item));
-}
-function toMemoryItem(item) {
-  if (!item || typeof item !== "object")
-    return [];
-  const maybeItem = item;
-  const id = maybeItem.id;
-  const content = maybeItem.content ?? maybeItem.memory;
-  if (typeof id !== "string" || typeof content !== "string")
-    return [];
-  const metadata = asRecord(maybeItem.metadata) ?? undefined;
-  const createdAt = typeof maybeItem.created_at === "string" ? maybeItem.created_at : undefined;
-  const appName = typeof maybeItem.app_name === "string" ? maybeItem.app_name : undefined;
-  return [{ id, content, metadata, created_at: createdAt, app_name: appName }];
+  return items.reduce((acc, raw) => {
+    const m = raw;
+    const id = m?.id, content = m?.content ?? m?.memory;
+    if (typeof id === "string" && typeof content === "string") {
+      acc.push({
+        id,
+        content,
+        metadata: asRecord(m.metadata) ?? undefined,
+        created_at: typeof m.created_at === "string" ? m.created_at : undefined,
+        app_name: typeof m.app_name === "string" ? m.app_name : undefined
+      });
+    }
+    return acc;
+  }, []);
 }
 function asRecord(value) {
   if (value && typeof value === "object")
@@ -444,6 +388,286 @@ function uniqueIds(ids) {
   return [...new Set(ids)];
 }
 
+// opencode/tools/viking-lib.ts
+function isVikingConfigured() {
+  return Boolean(process.env.OPENVIKING_URL) && Boolean(process.env.OPENVIKING_API_KEY);
+}
+async function vikingFetch(path, options) {
+  const url = process.env.OPENVIKING_URL || "";
+  const apiKey = process.env.OPENVIKING_API_KEY || "";
+  if (!url || !apiKey) {
+    return JSON.stringify({ error: true, message: "OpenViking is not configured" });
+  }
+  try {
+    const res = await fetch(`${url}/api/v1${path}`, {
+      ...options,
+      headers: {
+        "content-type": "application/json",
+        ...options?.headers,
+        "x-api-key": apiKey
+      },
+      signal: options?.signal ?? AbortSignal.timeout(30000)
+    });
+    const body = await res.text();
+    if (!res.ok)
+      return JSON.stringify({ error: true, status: res.status, body });
+    return body;
+  } catch (err) {
+    return JSON.stringify({ error: true, message: err instanceof Error ? err.message : String(err) });
+  }
+}
+function vikingResponseHasError(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed?.error === true;
+  } catch {
+    return false;
+  }
+}
+
+// opencode/plugins/memory-context-helpers.ts
+import { basename as basename2 } from "node:path";
+var CODE_TOOL_PREFIXES = ["bash", "view", "rg", "glob", "task", "search_code_subagent", "apply_patch", "read_bash", "write_bash", "code_review"];
+var PREFERENCE_PATTERNS = [/\b(i|we)\s+(prefer|like)\b/i, /\b(always|never|avoid|please use|do not)\b/i, /\bconvention\b/i];
+var SECRET_REDACTIONS = [
+  [/\b(sk-[a-zA-Z0-9]{8,})\b/g, "[redacted-token]"],
+  [/\b([a-zA-Z0-9_]{24,}\.[a-zA-Z0-9_\-]{6,}\.[a-zA-Z0-9_\-]{20,})\b/g, "[redacted-jwt]"],
+  [/\b(password|token|secret|api[_-]?key)\s*[:=]\s*\S+/gi, "$1=[redacted]"]
+];
+function getIdentity(state, scope) {
+  return { scope, appId: state.appId || DEFAULT_APP_ID };
+}
+function getSessionId(input) {
+  const session = input?.session;
+  const props = input?.properties;
+  return session?.id ?? props?.sessionId ?? "unknown";
+}
+function deriveAppId(project) {
+  if (!project || project === "unknown")
+    return DEFAULT_APP_ID;
+  const name = basename2(project);
+  if (!name || name === "." || name === "/")
+    return DEFAULT_APP_ID;
+  return name.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
+}
+function isProjectCodeTool(toolName) {
+  return CODE_TOOL_PREFIXES.some((p) => toolName.startsWith(p));
+}
+function didToolFail(input, output) {
+  if (input?.error || output?.error)
+    return true;
+  const r = output?.result ?? input?.result;
+  return !!r && typeof r === "object" && (Boolean(r.error) || r.ok === false || r.success === false);
+}
+function readCommandText(command) {
+  if (typeof command === "string")
+    return command.trim() || null;
+  const rec = command;
+  if (!rec || typeof rec !== "object")
+    return null;
+  for (const key of ["text", "command", "raw"]) {
+    if (typeof rec[key] === "string" && rec[key].trim())
+      return rec[key].trim();
+  }
+  return null;
+}
+function extractPreferenceSignal(text) {
+  if (!text)
+    return null;
+  const trimmed = text.trim();
+  if (trimmed.length < 24 || trimmed.length > 240)
+    return null;
+  if (!PREFERENCE_PATTERNS.some((p) => p.test(trimmed)))
+    return null;
+  let redacted = trimmed;
+  for (const [pattern, replacement] of SECRET_REDACTIONS)
+    redacted = redacted.replace(pattern, replacement);
+  redacted = redacted.trim();
+  return redacted ? `Preference: ${redacted}` : null;
+}
+function getExecutionId(input, toolName, sessionId) {
+  const explicitId = input?.execution?.id ?? input?.toolCall?.id ?? input?.call?.id;
+  if (explicitId)
+    return `${sessionId}::${explicitId}`;
+  try {
+    const json = JSON.stringify(input?.args) || "";
+    let h = 0;
+    for (let i = 0;i < json.length; i++)
+      h = h * 31 + json.charCodeAt(i) | 0;
+    return `${sessionId}::${toolName}::${Math.abs(h).toString(36)}`;
+  } catch {
+    return `${sessionId}::${toolName}::noargs`;
+  }
+}
+function uniqueById(items) {
+  const seen = new Set;
+  return items.filter((item) => {
+    if (seen.has(item.id))
+      return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+function ensureContext(output) {
+  if (!output.context)
+    output.context = [];
+  return output.context;
+}
+function asRecord2(value) {
+  if (value && typeof value === "object")
+    return value;
+  return {};
+}
+function groupOutcomesByTool(outcomes) {
+  const grouped = new Map;
+  for (const o of outcomes) {
+    const list = grouped.get(o.toolName) ?? [];
+    list.push(o);
+    grouped.set(o.toolName, list);
+  }
+  return grouped;
+}
+function extractRecurringOutcomeSignals(episodes, appId) {
+  const counts = new Map;
+  const text = episodes.map((e) => e.content.toLowerCase()).join(" ");
+  for (const token of text.split(/[^a-z0-9_-]+/g)) {
+    if (token.length >= 4 && (token.includes("memory-") || token.includes("bash"))) {
+      counts.set(token, (counts.get(token) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()].filter(([, c]) => c >= 3).slice(0, 4).map(([t]) => `Across recent ${appId} sessions, ${t} appears repeatedly; prefer validating context before and after using it.`);
+}
+function rememberOutcome(state, outcome) {
+  state.outcomes.push(outcome);
+  if (state.outcomes.length > 100) {
+    state.outcomes.splice(0, state.outcomes.length - 100);
+  }
+}
+async function log(client, level, message, extra) {
+  const logger = client?.app;
+  const logFn = logger?.log;
+  if (!logFn)
+    return;
+  try {
+    await logFn({ body: { service: "assistant-memory-lifecycle", level, message, extra } });
+  } catch {}
+}
+async function persistSessionLearnings(state, finalFlush) {
+  if (state.outcomes.length === 0)
+    return;
+  const identity = getIdentity(state, "personal");
+  const hookName = finalFlush ? "session.deleted" : "session.idle";
+  const additions = [];
+  for (const [toolName, outcomes] of groupOutcomesByTool(state.outcomes).entries()) {
+    const successes = outcomes.filter((o) => o.ok).length;
+    const rate = successes / outcomes.length;
+    if (successes >= 2 && rate >= 0.8) {
+      additions.push(addMemoryIfNovel(`${toolName} is a reliable workflow in ${state.appId}; ${successes}/${outcomes.length} recent executions succeeded.`, {
+        category: "procedural",
+        source: "consolidation",
+        confidence: Math.min(0.95, 0.55 + rate * 0.35),
+        keywords: [toolName, "workflow", state.appId],
+        project: state.project,
+        session_id: state.sessionId,
+        created_by_hook: hookName
+      }, identity));
+    } else if (outcomes.length - successes >= 2 && rate <= 0.35) {
+      additions.push(addMemoryIfNovel(`${toolName} has low reliability in ${state.appId}; validate prerequisites before using it.`, {
+        category: "procedural",
+        source: "consolidation",
+        confidence: 0.55,
+        expiration_days: 45,
+        keywords: [toolName, "failure", state.appId],
+        project: state.project,
+        session_id: state.sessionId,
+        created_by_hook: hookName
+      }, identity));
+    }
+  }
+  await Promise.all(additions);
+}
+async function persistSessionEpisode(state, minIdleCount) {
+  if (state.idleCount < minIdleCount)
+    return;
+  if (!await isMemoryAvailable(1800, getIdentity(state, "personal")))
+    return;
+  const fragments = [];
+  for (const [tool, outs] of groupOutcomesByTool(state.outcomes).entries()) {
+    fragments.push(`${tool} ${outs.filter((o) => o.ok).length}/${outs.length} succeeded`);
+  }
+  await addMemoryIfNovel(`Session ${state.sessionId} in ${state.appId} ran ${state.outcomes.length} tracked tool executions. Outcome snapshot: ${fragments.slice(0, 6).join("; ") || "no tool outcomes recorded"}.`, { category: "episodic", source: "auto-extract", confidence: 0.78, session_id: state.sessionId, project: state.project, keywords: ["session-summary", state.appId], created_by_hook: "session.deleted" }, getIdentity(state, "personal"));
+}
+async function maybeSynthesizeCrossSessions(state, sessionsSinceSynthesis, interval, minEpisodes) {
+  if (sessionsSinceSynthesis < interval)
+    return { reset: false };
+  const episodes = await searchMemories(`${state.appId} session outcomes failures successes`, { size: 30, category: "episodic", timeoutMs: 2500, ...getIdentity(state, "personal") });
+  if (episodes.length < minEpisodes)
+    return { reset: false };
+  const recurring = extractRecurringOutcomeSignals(episodes, state.appId);
+  await Promise.all(recurring.map((signal) => addMemoryIfNovel(signal, { category: "procedural", source: "consolidation", confidence: 0.6, keywords: ["cross-session", "synthesis", state.appId], project: state.project, created_by_hook: "session.created" }, getIdentity(state, "personal"))));
+  return { reset: true };
+}
+async function initViking(state, sessionId, client) {
+  if (!isVikingConfigured())
+    return [];
+  state.vikingAvailable = true;
+  const context = [];
+  try {
+    const [sessionResult, memoriesAbstract, resourcesAbstract] = await Promise.all([
+      vikingFetch("/sessions", { method: "POST", body: "{}" }),
+      vikingFetch("/content/abstract?uri=" + encodeURIComponent("viking://agent/memories/")),
+      vikingFetch("/content/abstract?uri=" + encodeURIComponent("viking://resources/"))
+    ]);
+    if (!vikingResponseHasError(sessionResult)) {
+      state.vikingSessionId = JSON.parse(sessionResult)?.result?.session_id ?? null;
+    }
+    for (const [label, raw] of [["Viking Agent Memories", memoriesAbstract], ["Viking Resources", resourcesAbstract]]) {
+      if (!vikingResponseHasError(raw)) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.result)
+          context.push(`### ${label}
+${parsed.result}`);
+      }
+    }
+  } catch (err) {
+    await log(client, "warn", "Viking initialization failed", { sessionId, error: err instanceof Error ? err.message : String(err) });
+    state.vikingAvailable = false;
+  }
+  if (state.vikingAvailable && !state.vikingSessionId)
+    state.vikingAvailable = false;
+  return context;
+}
+async function retrieveAndBuildSessionContext(state, includeStack, includeGlobal) {
+  const personal = getIdentity(state, "personal");
+  const searches = [
+    ["Personal Facts And Preferences", searchMemories("preferences conventions technical decisions", { size: 10, category: "semantic", ...personal })],
+    ["Personal Procedures", searchMemories("procedures workflows patterns how to", { size: 7, category: "procedural", ...personal })],
+    [`Project Context (${state.appId})`, searchMemories(`${state.appId} project conventions coding patterns`, { size: 6, ...personal })],
+    ["OpenPalm Stack Procedures", includeStack ? searchMemories("openpalm operations procedures workflow", { size: 5, category: "procedural", ...getIdentity(state, "stack") }) : Promise.resolve([])],
+    ["Global Procedures", includeGlobal ? searchMemories("global procedural rules", { size: 4, category: "procedural", ...getIdentity(state, "global") }) : Promise.resolve([])],
+    ["Recent Episodic Notes", searchMemories(`${state.appId} recent outcomes failures results`, { size: 8, category: "episodic", ...personal })]
+  ];
+  const results = await Promise.all(searches.map(([, p]) => p));
+  const lines = ["## Memory - Session Context"];
+  for (let i = 0;i < searches.length; i++) {
+    const items = uniqueById(results[i]);
+    if (items.length > 0)
+      lines.push("", `### ${searches[i][0]}`, formatMemoriesForContext(items));
+  }
+  lines.push("", "### Memory Lifecycle", "- Context retrieval is automatic at session start.", "- Tool outcomes automatically reinforce or downrank injected memories.", "- Session learnings and episodic summaries are curated automatically.", "- Use `memory-search` and `memory-add` for explicit memory control.");
+  return lines.join(`
+`);
+}
+async function retrieveToolGuidance(state, toolName) {
+  const name = toolName.replace(/_/g, " ");
+  const identity = getIdentity(state, "personal");
+  const [a, b] = await Promise.all([
+    searchMemories(`preferred workflow for ${name}`, { size: 4, category: "procedural", timeoutMs: 1200, highSignalOnly: true, ...identity }),
+    searchMemories(`${state.appId} project patterns for ${name}`, { size: 4, timeoutMs: 1200, ...identity })
+  ]);
+  return uniqueById([...a, ...b]);
+}
+
 // opencode/plugins/memory-context.ts
 var sessions = new Map;
 var pendingToolFeedback = new Map;
@@ -454,64 +678,56 @@ var LEARNING_COOLDOWN_MS = 75000;
 var MIN_IDLE_COUNT_FOR_LEARNING = 2;
 var SYNTHESIS_SESSION_INTERVAL = 8;
 var SYNTHESIS_MIN_EPISODES = 10;
-var MAX_SESSION_OUTCOMES = 100;
 var INCLUDE_STACK_MEMORY = (process.env.MEMORY_INCLUDE_STACK_MEMORY ?? "true").toLowerCase() !== "false";
 var INCLUDE_GLOBAL_PROCEDURAL = (process.env.MEMORY_INCLUDE_GLOBAL_PROCEDURAL ?? "").toLowerCase() === "true";
 var MemoryContextPlugin = async (ctx) => {
-  await log(ctx.client, "info", "Memory lifecycle plugin initialized", {
-    memoryUrl: MEMORY_URL
-  });
+  await log(ctx.client, "info", "Memory lifecycle plugin initialized", { memoryUrl: MEMORY_URL });
   return {
     "session.created": async (input, output) => {
-      const hookInput = asHookInput(input);
-      const hookOutput = asHookOutput(output);
-      const sessionId = getSessionId(hookInput);
-      const project = getProjectName(hookInput, ctx.directory);
-      const agentId = getAgentName(hookInput);
-      const appId = deriveAppId(project);
-      sessions.set(sessionId, {
+      const inp = asRecord2(input);
+      const out = asRecord2(output);
+      const sessionId = getSessionId(inp);
+      const project = inp?.project?.name ?? ctx.directory ?? "unknown";
+      const state = {
         sessionId,
         project,
-        agentId,
-        appId,
+        appId: deriveAppId(project),
         startedAtIso: new Date().toISOString(),
         idleCount: 0,
         lastLearningAtMs: 0,
         contextInjected: false,
         commandSignals: new Set,
-        outcomes: []
-      });
-      const state = sessions.get(sessionId);
-      if (!state)
-        return;
-      const personalIdentity = getSessionIdentity(state, "personal");
-      const memoryReady = await isMemoryAvailable(2500, personalIdentity);
-      if (!memoryReady) {
-        await log(ctx.client, "warn", "Memory API unavailable during session.created", {
-          sessionId,
-          project
-        });
+        outcomes: [],
+        vikingSessionId: null,
+        vikingAvailable: false,
+        vikingSessionCommitted: false
+      };
+      sessions.set(sessionId, state);
+      if (!await isMemoryAvailable(2500, getIdentity(state, "personal"))) {
+        await log(ctx.client, "warn", "Memory API unavailable during session.created", { sessionId, project });
         return;
       }
-      const retrieval = await retrieveSessionContext(state);
-      const contextBlock = buildSessionContextBlock(state, retrieval);
-      ensureContext(hookOutput).push(contextBlock);
+      ensureContext(out).push(await retrieveAndBuildSessionContext(state, INCLUDE_STACK_MEMORY, INCLUDE_GLOBAL_PROCEDURAL));
       state.contextInjected = true;
-      await maybeRunHygiene(state, hookOutput);
+      const vikingCtx = await initViking(state, sessionId, ctx.client);
+      if (vikingCtx.length > 0)
+        ensureContext(out).push(`## Viking Knowledge Context
+` + vikingCtx.join(`
+
+`));
+      await maybeRunHygiene(state, out);
       sessionsSinceSynthesis++;
-      await maybeRunCrossSessionSynthesis(state);
+      const syn = await maybeSynthesizeCrossSessions(state, sessionsSinceSynthesis, SYNTHESIS_SESSION_INTERVAL, SYNTHESIS_MIN_EPISODES);
+      if (syn.reset)
+        sessionsSinceSynthesis = 0;
     },
     "command.executed": async (input) => {
-      const hookInput = asHookInput(input);
-      const sessionId = getSessionId(hookInput);
-      const state = sessions.get(sessionId);
+      const inp = asRecord2(input);
+      const state = sessions.get(getSessionId(inp));
       if (!state)
         return;
-      const commandText = readCommandText(hookInput.command);
-      const preference = extractPreferenceSignal(commandText);
-      if (!preference)
-        return;
-      if (state.commandSignals.has(preference))
+      const preference = extractPreferenceSignal(readCommandText(inp?.command));
+      if (!preference || state.commandSignals.has(preference))
         return;
       state.commandSignals.add(preference);
       await addMemoryIfNovel(preference, {
@@ -520,14 +736,12 @@ var MemoryContextPlugin = async (ctx) => {
         confidence: 0.65,
         keywords: ["preference", state.appId],
         project: state.project,
-        session_id: sessionId,
+        session_id: state.sessionId,
         created_by_hook: "command.executed"
-      }, getSessionIdentity(state, "personal"));
+      }, getIdentity(state, "personal"));
     },
     "session.idle": async (input) => {
-      const hookInput = asHookInput(input);
-      const sessionId = getSessionId(hookInput);
-      const state = sessions.get(sessionId);
+      const state = sessions.get(getSessionId(asRecord2(input)));
       if (!state)
         return;
       state.idleCount++;
@@ -537,533 +751,121 @@ var MemoryContextPlugin = async (ctx) => {
       if (now - state.lastLearningAtMs < LEARNING_COOLDOWN_MS)
         return;
       state.lastLearningAtMs = now;
-      await persistSessionLearnings(state, { finalFlush: false });
+      await persistSessionLearnings(state, false);
     },
     "tool.execute.before": async (input, output) => {
-      const hookInput = asHookInput(input);
-      const hookOutput = asHookOutput(output);
-      const toolName = hookInput.tool?.name;
-      if (!toolName || toolName.startsWith("memory-"))
+      const inp = asRecord2(input);
+      const toolName = inp?.tool?.name;
+      if (!toolName || toolName.startsWith("memory-") || !isProjectCodeTool(toolName))
         return;
-      const sessionId = getSessionId(hookInput);
-      const state = sessions.get(sessionId);
+      const state = sessions.get(getSessionId(inp));
       if (!state)
         return;
-      const isAdminTool = toolName.startsWith("admin-");
-      if (!isAdminTool && !isProjectCodeTool(toolName))
+      const memories = await retrieveToolGuidance(state, toolName);
+      if (memories.length === 0)
         return;
-      const scopedMemories = await retrieveToolGuidance(state, toolName, isAdminTool);
-      if (scopedMemories.length === 0)
-        return;
-      const guidance = formatMemoriesForContext(scopedMemories, `### Learned Procedures For ${toolName}`);
-      ensureContext(hookOutput).push(guidance);
-      const executionId = getExecutionId(hookInput, toolName, sessionId);
-      const queue = pendingToolFeedback.get(executionId) ?? [];
-      queue.push({
-        memoryIds: scopedMemories.map((memory) => memory.id),
-        identity: isAdminTool ? getSessionIdentity(state, "stack") : getSessionIdentity(state, "personal"),
-        startedAt: Date.now()
-      });
-      pendingToolFeedback.set(executionId, queue);
+      ensureContext(asRecord2(output)).push(formatMemoriesForContext(memories, `### Learned Procedures For ${toolName}`));
+      const eid = getExecutionId(inp, toolName, state.sessionId);
+      const queue = pendingToolFeedback.get(eid) ?? [];
+      queue.push({ memoryIds: memories.map((m) => m.id), identity: getIdentity(state, "personal"), startedAt: Date.now() });
+      pendingToolFeedback.set(eid, queue);
     },
     "tool.execute.after": async (input, output) => {
-      const hookInput = asHookInput(input);
-      const hookOutput = asHookOutput(output);
-      const toolName = hookInput.tool?.name;
+      const inp = asRecord2(input);
+      const toolName = inp?.tool?.name;
       if (!toolName)
         return;
-      const sessionId = getSessionId(hookInput);
+      const sessionId = getSessionId(inp);
       const state = sessions.get(sessionId);
       if (!state)
         return;
-      const executionId = getExecutionId(hookInput, toolName, sessionId);
-      const queue = pendingToolFeedback.get(executionId) ?? [];
+      const eid = getExecutionId(inp, toolName, sessionId);
+      const queue = pendingToolFeedback.get(eid) ?? [];
       const pending = queue.shift();
-      const failed = didToolFail(hookInput, hookOutput);
+      const failed = didToolFail(inp, asRecord2(output));
       if (pending && pending.memoryIds.length > 0) {
-        const reason = failed ? `Tool ${toolName} failed after procedural memory injection` : `Tool ${toolName} succeeded with procedural memory injection`;
-        await Promise.all(pending.memoryIds.map((memoryId) => sendMemoryFeedback(memoryId, !failed, reason, {
-          ...pending.identity,
-          runId: sessionId
-        })));
+        await Promise.all(pending.memoryIds.map((id) => sendMemoryFeedback(id, !failed, `Tool ${toolName} ${failed ? "failed" : "succeeded"} with procedural memory injection`, { ...pending.identity, runId: sessionId })));
       }
-      const startedAt = pending?.startedAt ?? Date.now();
-      const finishedAt = Date.now();
-      rememberOutcome(state, {
-        toolName,
-        ok: !failed,
-        startedAt,
-        finishedAt,
-        durationMs: Math.max(0, finishedAt - startedAt),
-        executionId
-      });
-      if (queue.length === 0) {
-        pendingToolFeedback.delete(executionId);
-      } else {
-        pendingToolFeedback.set(executionId, queue);
+      const t0 = pending?.startedAt ?? Date.now();
+      const t1 = Date.now();
+      rememberOutcome(state, { toolName, ok: !failed, startedAt: t0, finishedAt: t1, durationMs: t1 - t0, executionId: eid });
+      if (state.vikingAvailable && state.vikingSessionId) {
+        vikingFetch(`/sessions/${state.vikingSessionId}/messages`, {
+          method: "POST",
+          body: JSON.stringify({ role: "assistant", content: `Tool ${toolName} ${!failed ? "succeeded" : "failed"} (${t1 - t0}ms)` })
+        }).catch(() => {});
       }
+      if (queue.length === 0)
+        pendingToolFeedback.delete(eid);
+      else
+        pendingToolFeedback.set(eid, queue);
     },
     "session.deleted": async (input) => {
-      const hookInput = asHookInput(input);
-      const sessionId = getSessionId(hookInput);
+      const sessionId = getSessionId(asRecord2(input));
       const state = sessions.get(sessionId);
       if (!state)
         return;
-      await persistSessionLearnings(state, { finalFlush: true });
-      await persistSessionEpisode(state);
+      if (state.vikingAvailable && state.vikingSessionId && !state.vikingSessionCommitted) {
+        state.vikingSessionCommitted = !vikingResponseHasError(await vikingFetch(`/sessions/${state.vikingSessionId}/commit`, { method: "POST", body: "{}", signal: AbortSignal.timeout(60000) }));
+      }
+      await persistSessionLearnings(state, true);
+      await persistSessionEpisode(state, MIN_IDLE_COUNT_FOR_LEARNING);
       sessions.delete(sessionId);
-      for (const [executionId] of pendingToolFeedback.entries()) {
-        if (executionId.startsWith(`${sessionId}::`)) {
-          pendingToolFeedback.delete(executionId);
-        }
+      for (const [eid] of pendingToolFeedback.entries()) {
+        if (eid.startsWith(`${sessionId}::`))
+          pendingToolFeedback.delete(eid);
       }
     },
     "experimental.session.compacting": async (input, output) => {
-      const hookInput = asHookInput(input);
-      const hookOutput = asHookOutput(output);
-      const sessionId = getSessionId(hookInput);
-      const state = sessions.get(sessionId);
+      const state = sessions.get(getSessionId(asRecord2(input)));
+      const out = asRecord2(output);
       if (!state)
         return;
-      const [semanticMemories, proceduralMemories] = await Promise.all([
-        searchMemories("user preferences project context important decisions", {
-          size: 8,
-          category: "semantic",
-          timeoutMs: 1200,
-          highSignalOnly: true,
-          ...getSessionIdentity(state, "personal")
-        }),
-        searchMemories("procedures workflows patterns", {
-          size: 6,
-          category: "procedural",
-          timeoutMs: 1200,
-          highSignalOnly: true,
-          ...getSessionIdentity(state, "personal")
-        })
+      const identity = getIdentity(state, "personal");
+      const [semantic, procedural] = await Promise.all([
+        searchMemories("user preferences project context important decisions", { size: 8, category: "semantic", timeoutMs: 1200, highSignalOnly: true, ...identity }),
+        searchMemories("procedures workflows patterns", { size: 6, category: "procedural", timeoutMs: 1200, highSignalOnly: true, ...identity })
       ]);
       const lines = ["## Memory Context (Compaction)"];
-      if (semanticMemories.length > 0) {
-        lines.push("", "### Facts And Preferences", formatMemoriesForContext(semanticMemories));
-      }
-      if (proceduralMemories.length > 0) {
-        lines.push("", "### Learned Procedures", formatMemoriesForContext(proceduralMemories));
+      if (semantic.length > 0)
+        lines.push("", "### Facts And Preferences", formatMemoriesForContext(semantic));
+      if (procedural.length > 0)
+        lines.push("", "### Learned Procedures", formatMemoriesForContext(procedural));
+      if (state.vikingAvailable) {
+        try {
+          const r = await vikingFetch("/content/overview?uri=" + encodeURIComponent("viking://agent/memories/"), { signal: AbortSignal.timeout(5000) });
+          if (!vikingResponseHasError(r)) {
+            const p = JSON.parse(r);
+            if (p?.result)
+              lines.push("", "### Viking Knowledge Overview", p.result);
+          }
+        } catch {}
       }
       lines.push("", "### Session State", `- Project: ${state.project}`, `- Tool outcomes tracked: ${state.outcomes.length}`);
-      ensureContext(hookOutput).push(lines.join(`
+      ensureContext(out).push(lines.join(`
 `));
     },
     "shell.env": async (_input, output) => {
-      const hookOutput = asHookOutput(output);
-      if (!hookOutput.env)
-        hookOutput.env = {};
-      hookOutput.env.MEMORY_API_URL = MEMORY_URL;
-      hookOutput.env.MEMORY_USER_ID = USER_ID;
+      const out = asRecord2(output);
+      if (!out.env)
+        out.env = {};
+      const env = out.env;
+      env.MEMORY_API_URL = MEMORY_URL;
+      env.MEMORY_USER_ID = USER_ID;
+      if (isVikingConfigured())
+        env.OPENVIKING_URL = process.env.OPENVIKING_URL ?? "";
     }
   };
 };
-async function retrieveSessionContext(state) {
-  const personalIdentity = getSessionIdentity(state, "personal");
-  const stackIdentity = getSessionIdentity(state, "stack");
-  const globalIdentity = getSessionIdentity(state, "global");
-  const [
-    personalSemantic,
-    personalProcedural,
-    projectScoped,
-    stackProcedural,
-    globalProcedural,
-    episodic
-  ] = await Promise.all([
-    searchMemories("preferences conventions technical decisions", {
-      size: 10,
-      category: "semantic",
-      ...personalIdentity
-    }),
-    searchMemories("procedures workflows patterns how to", {
-      size: 7,
-      category: "procedural",
-      ...personalIdentity
-    }),
-    searchMemories(`${state.appId} project conventions coding patterns`, {
-      size: 6,
-      ...personalIdentity
-    }),
-    INCLUDE_STACK_MEMORY ? searchMemories("openpalm operations procedures workflow", {
-      size: 5,
-      category: "procedural",
-      ...stackIdentity
-    }) : Promise.resolve([]),
-    INCLUDE_GLOBAL_PROCEDURAL ? searchMemories("global procedural rules", {
-      size: 4,
-      category: "procedural",
-      ...globalIdentity
-    }) : Promise.resolve([]),
-    searchMemories(`${state.appId} recent outcomes failures results`, {
-      size: 8,
-      category: "episodic",
-      ...personalIdentity
-    })
-  ]);
-  return {
-    personalSemantic: uniqueById(personalSemantic),
-    personalProcedural: uniqueById(personalProcedural),
-    projectScoped: uniqueById(projectScoped),
-    stackProcedural: uniqueById(stackProcedural),
-    globalProcedural: uniqueById(globalProcedural),
-    episodic: uniqueById(episodic)
-  };
-}
-function buildSessionContextBlock(state, retrieval) {
-  const lines = ["## Memory - Session Context"];
-  if (retrieval.personalSemantic.length > 0) {
-    lines.push("", "### Personal Facts And Preferences", formatMemoriesForContext(retrieval.personalSemantic));
-  }
-  if (retrieval.personalProcedural.length > 0) {
-    lines.push("", "### Personal Procedures", formatMemoriesForContext(retrieval.personalProcedural));
-  }
-  if (retrieval.projectScoped.length > 0) {
-    lines.push("", `### Project Context (${state.appId})`, formatMemoriesForContext(retrieval.projectScoped));
-  }
-  if (retrieval.stackProcedural.length > 0) {
-    lines.push("", "### OpenPalm Stack Procedures", formatMemoriesForContext(retrieval.stackProcedural));
-  }
-  if (retrieval.globalProcedural.length > 0) {
-    lines.push("", "### Global Procedures", formatMemoriesForContext(retrieval.globalProcedural));
-  }
-  if (retrieval.episodic.length > 0) {
-    lines.push("", "### Recent Episodic Notes", formatMemoriesForContext(retrieval.episodic));
-  }
-  lines.push("", "### Memory Lifecycle", "- Context retrieval is automatic at session start.", "- Tool outcomes automatically reinforce or downrank injected memories.", "- Session learnings and episodic summaries are curated automatically.", "- Use `memory-search` and `memory-add` for explicit memory control.");
-  return lines.join(`
-`);
-}
-async function retrieveToolGuidance(state, toolName, isAdminTool) {
-  if (isAdminTool) {
-    return searchMemories(`openpalm procedure for ${toolName.replace(/_/g, " ")} operations`, {
-      size: 5,
-      category: "procedural",
-      timeoutMs: 1200,
-      highSignalOnly: true,
-      ...getSessionIdentity(state, "stack")
-    });
-  }
-  const [personalProcedural, projectPatterns] = await Promise.all([
-    searchMemories(`preferred workflow for ${toolName.replace(/_/g, " ")}`, {
-      size: 4,
-      category: "procedural",
-      timeoutMs: 1200,
-      highSignalOnly: true,
-      ...getSessionIdentity(state, "personal")
-    }),
-    searchMemories(`${state.appId} project patterns for ${toolName.replace(/_/g, " ")}`, {
-      size: 4,
-      timeoutMs: 1200,
-      ...getSessionIdentity(state, "personal")
-    })
-  ]);
-  return uniqueById([...personalProcedural, ...projectPatterns]);
-}
-async function persistSessionLearnings(state, options) {
-  if (state.outcomes.length === 0)
-    return;
-  const grouped = groupOutcomesByTool(state.outcomes);
-  const personalIdentity = getSessionIdentity(state, "personal");
-  const additions = [];
-  for (const [toolName, outcomes] of grouped.entries()) {
-    const attempts = outcomes.length;
-    const successes = outcomes.filter((o) => o.ok).length;
-    const failureCount = attempts - successes;
-    const successRate = attempts > 0 ? successes / attempts : 0;
-    if (successes >= 2 && successRate >= 0.8) {
-      additions.push(addMemoryIfNovel(`${toolName} is a reliable workflow in ${state.appId}; ${successes}/${attempts} recent executions succeeded.`, {
-        category: "procedural",
-        source: "consolidation",
-        confidence: clamp(0.55 + successRate * 0.35, 0.55, 0.95),
-        keywords: [toolName, "workflow", "success", state.appId],
-        project: state.project,
-        session_id: state.sessionId,
-        created_by_hook: options.finalFlush ? "session.deleted" : "session.idle"
-      }, personalIdentity));
-    }
-    if (failureCount >= 2 && successRate <= 0.35) {
-      additions.push(addMemoryIfNovel(`${toolName} has low reliability in ${state.appId}; validate prerequisites before using it.`, {
-        category: "procedural",
-        source: "consolidation",
-        confidence: 0.55,
-        expiration_days: 45,
-        keywords: [toolName, "failure", "prerequisite", state.appId],
-        project: state.project,
-        session_id: state.sessionId,
-        created_by_hook: options.finalFlush ? "session.deleted" : "session.idle"
-      }, personalIdentity));
-    }
-  }
-  await Promise.all(additions);
-}
-async function persistSessionEpisode(state) {
-  if (state.idleCount < MIN_IDLE_COUNT_FOR_LEARNING)
-    return;
-  if (!await isMemoryAvailable(1800, getSessionIdentity(state, "personal")))
-    return;
-  const grouped = groupOutcomesByTool(state.outcomes);
-  const fragments = [];
-  for (const [toolName, outcomes] of grouped.entries()) {
-    const successCount = outcomes.filter((outcome) => outcome.ok).length;
-    fragments.push(`${toolName} ${successCount}/${outcomes.length} succeeded`);
-  }
-  const episode = `Session ${state.sessionId} in ${state.appId} ran ${state.outcomes.length} tracked tool executions. ` + `Outcome snapshot: ${fragments.slice(0, 6).join("; ") || "no tool outcomes recorded"}.`;
-  await addMemoryIfNovel(episode, {
-    category: "episodic",
-    source: "auto-extract",
-    confidence: 0.78,
-    session_id: state.sessionId,
-    project: state.project,
-    keywords: ["session-summary", state.appId],
-    created_by_hook: "session.deleted"
-  }, getSessionIdentity(state, "personal"));
-}
-async function maybeRunCrossSessionSynthesis(state) {
-  if (sessionsSinceSynthesis < SYNTHESIS_SESSION_INTERVAL)
-    return;
-  const episodes = await searchMemories(`${state.appId} session outcomes failures successes`, {
-    size: 30,
-    category: "episodic",
-    timeoutMs: 2500,
-    ...getSessionIdentity(state, "personal")
-  });
-  if (episodes.length < SYNTHESIS_MIN_EPISODES)
-    return;
-  sessionsSinceSynthesis = 0;
-  const recurring = extractRecurringOutcomeSignals(episodes, state.appId);
-  if (recurring.length === 0)
-    return;
-  await Promise.all(recurring.map((signal) => addMemoryIfNovel(signal, {
-    category: "procedural",
-    source: "consolidation",
-    confidence: 0.6,
-    keywords: ["cross-session", "synthesis", state.appId],
-    project: state.project,
-    created_by_hook: "session.created"
-  }, getSessionIdentity(state, "personal"))));
-}
 async function maybeRunHygiene(state, output) {
   const now = Date.now();
   if (now - lastHygieneRunAt < HYGIENE_INTERVAL_MS)
     return;
   lastHygieneRunAt = now;
-  const report = await runAutomatedHygiene(getSessionIdentity(state, "personal"));
+  const report = await runAutomatedHygiene(getIdentity(state, "personal"));
   const note = buildHygieneContextNote(report);
   if (note)
     ensureContext(output).push(note);
-}
-function getSessionIdentity(state, scope) {
-  return {
-    scope,
-    agentId: state.agentId || DEFAULT_AGENT_ID,
-    appId: state.appId || DEFAULT_APP_ID,
-    runId: state.sessionId
-  };
-}
-function rememberOutcome(state, outcome) {
-  state.outcomes.push(outcome);
-  if (state.outcomes.length > MAX_SESSION_OUTCOMES) {
-    state.outcomes.splice(0, state.outcomes.length - MAX_SESSION_OUTCOMES);
-  }
-}
-function extractRecurringOutcomeSignals(episodes, appId) {
-  const counts = new Map;
-  for (const episode of episodes) {
-    const text = episode.content.toLowerCase();
-    for (const token of text.split(/[^a-z0-9_-]+/g)) {
-      if (!token || token.length < 4)
-        continue;
-      if (!token.includes("admin-") && !token.includes("memory-") && !token.includes("bash")) {
-        continue;
-      }
-      counts.set(token, (counts.get(token) ?? 0) + 1);
-    }
-  }
-  const recurring = [];
-  for (const [token, count] of counts.entries()) {
-    if (count < 3)
-      continue;
-    recurring.push(`Across recent ${appId} sessions, ${token} appears repeatedly; prefer validating context before and after using it.`);
-  }
-  return recurring.slice(0, 4);
-}
-function groupOutcomesByTool(outcomes) {
-  const grouped = new Map;
-  for (const outcome of outcomes) {
-    const list = grouped.get(outcome.toolName) ?? [];
-    list.push(outcome);
-    grouped.set(outcome.toolName, list);
-  }
-  return grouped;
-}
-function isProjectCodeTool(toolName) {
-  const codePrefixes = [
-    "bash",
-    "view",
-    "rg",
-    "glob",
-    "task",
-    "search_code_subagent",
-    "apply_patch",
-    "read_bash",
-    "write_bash",
-    "code_review"
-  ];
-  return codePrefixes.some((prefix) => toolName.startsWith(prefix));
-}
-function didToolFail(input, output) {
-  if (input.error || output.error)
-    return true;
-  const result = output.result ?? input.result;
-  if (!result || typeof result !== "object")
-    return false;
-  const record = result;
-  if ("error" in record && Boolean(record.error))
-    return true;
-  if ("ok" in record && record.ok === false)
-    return true;
-  if ("success" in record && record.success === false)
-    return true;
-  return false;
-}
-function getSessionId(input) {
-  return input.session?.id ?? input.properties?.sessionId ?? "unknown";
-}
-function getProjectName(input, directory) {
-  return input.project?.name ?? directory ?? "unknown";
-}
-function getAgentName(input) {
-  return input.agent?.name ?? DEFAULT_AGENT_ID;
-}
-function readCommandText(command) {
-  if (typeof command === "string" && command.trim())
-    return command.trim();
-  if (!command || typeof command !== "object")
-    return null;
-  const record = command;
-  const direct = record.text ?? record.command ?? record.raw;
-  if (typeof direct === "string" && direct.trim())
-    return direct.trim();
-  const parts = record.parts;
-  if (Array.isArray(parts)) {
-    for (const part of parts) {
-      if (!part || typeof part !== "object")
-        continue;
-      const partRecord = part;
-      if (typeof partRecord.text === "string" && partRecord.text.trim()) {
-        return partRecord.text.trim();
-      }
-    }
-  }
-  return null;
-}
-function extractPreferenceSignal(text) {
-  if (!text)
-    return null;
-  const trimmed = text.trim();
-  if (trimmed.length < 24 || trimmed.length > 240)
-    return null;
-  const preferencePatterns = [
-    /\b(i|we)\s+(prefer|like)\b/i,
-    /\b(always|never|avoid|please use|do not)\b/i,
-    /\bconvention\b/i
-  ];
-  const hasSignal = preferencePatterns.some((pattern) => pattern.test(trimmed));
-  if (!hasSignal)
-    return null;
-  const redacted = redactSecrets(trimmed);
-  if (!redacted)
-    return null;
-  return `Preference: ${redacted}`;
-}
-function redactSecrets(value) {
-  return value.replace(/\b(sk-[a-zA-Z0-9]{8,})\b/g, "[redacted-token]").replace(/\b([a-zA-Z0-9_]{24,}\.[a-zA-Z0-9_\-]{6,}\.[a-zA-Z0-9_\-]{20,})\b/g, "[redacted-jwt]").replace(/\b(password|token|secret|api[_-]?key)\s*[:=]\s*\S+/gi, "$1=[redacted]").trim();
-}
-function getExecutionId(input, toolName, sessionId) {
-  const explicitId = input.execution?.id ?? input.toolCall?.id ?? input.call?.id;
-  if (explicitId)
-    return `${sessionId}::${explicitId}`;
-  const argsSignature = hashArgs(input.args);
-  return `${sessionId}::${toolName}::${argsSignature}`;
-}
-function hashArgs(args) {
-  if (!args)
-    return "noargs";
-  try {
-    const asJson = JSON.stringify(args);
-    if (!asJson)
-      return "noargs";
-    let hash = 0;
-    for (let index = 0;index < asJson.length; index++) {
-      hash = hash * 31 + asJson.charCodeAt(index) | 0;
-    }
-    return Math.abs(hash).toString(36);
-  } catch {
-    return "noargs";
-  }
-}
-function deriveAppId(project) {
-  if (!project || project === "unknown")
-    return DEFAULT_APP_ID;
-  const projectName = basename2(project);
-  if (!projectName || projectName === "." || projectName === "/") {
-    return DEFAULT_APP_ID;
-  }
-  return normaliseIdValue(projectName);
-}
-function normaliseIdValue(value) {
-  return value.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
-}
-function uniqueById(items) {
-  const seen = new Set;
-  const unique = [];
-  for (const item of items) {
-    if (seen.has(item.id))
-      continue;
-    seen.add(item.id);
-    unique.push(item);
-  }
-  return unique;
-}
-function ensureContext(output) {
-  if (!output.context)
-    output.context = [];
-  return output.context;
-}
-function clamp(value, min, max) {
-  if (value < min)
-    return min;
-  if (value > max)
-    return max;
-  return value;
-}
-function asHookInput(value) {
-  if (!value || typeof value !== "object")
-    return {};
-  return value;
-}
-function asHookOutput(value) {
-  if (!value || typeof value !== "object")
-    return {};
-  return value;
-}
-async function log(client, level, message, extra) {
-  const logger = client?.app?.log;
-  if (!logger)
-    return;
-  try {
-    await logger({
-      body: {
-        service: "assistant-memory-lifecycle",
-        level,
-        message,
-        extra
-      }
-    });
-  } catch {}
 }
 
 // ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/classic/external.js
@@ -13388,15 +13190,15 @@ function tool(input) {
 tool.schema = exports_external;
 // opencode/tools/health-check.ts
 var health_check_default = tool({
-  description: "Check health of core OpenPalm services. Specify comma-separated service names: guardian, memory, admin. Defaults to all.",
+  description: "Check health of core OpenPalm services. Specify comma-separated service names: guardian, memory. Defaults to all core services (no admin).",
   args: {
-    services: tool.schema.string().optional().describe("Comma-separated service names to check (guardian, memory, admin). Defaults to all.")
+    services: tool.schema.string().optional().describe("Comma-separated service names to check (guardian, memory). Defaults to all core services.")
   },
   async execute(args) {
-    const ALL = ["guardian", "memory", "admin"];
+    const ALL = ["guardian", "memory"];
     const requested = args.services ? args.services.split(",").map((service) => service.trim()).filter(Boolean) : ALL;
     const targets = [...new Set(requested)];
-    const portMap = { guardian: 8080, memory: 8765, admin: 8100 };
+    const portMap = { guardian: 8080, memory: 8765 };
     const results = {};
     await Promise.all(targets.map(async (svc) => {
       const port = portMap[svc];
@@ -13417,16 +13219,16 @@ var health_check_default = tool({
 });
 
 // opencode/tools/lib.ts
-var ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || "http://admin:8100";
-var ADMIN_TOKEN = process.env.OPENPALM_ADMIN_TOKEN || "";
 var MEMORY_URL2 = process.env.MEMORY_API_URL || "http://memory:8765";
+var MEMORY_AUTH_TOKEN = process.env.MEMORY_AUTH_TOKEN || "";
 var USER_ID2 = process.env.MEMORY_USER_ID || "default_user";
 var userProvisionPromise = null;
 async function provisionMemoryUser(userId) {
   try {
+    const authHeaders = MEMORY_AUTH_TOKEN ? { authorization: `Bearer ${MEMORY_AUTH_TOKEN}` } : {};
     const res = await fetch(`${MEMORY_URL2}/api/v1/users`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...authHeaders },
       body: JSON.stringify({ user_id: userId }),
       signal: AbortSignal.timeout(5000)
     });
@@ -13447,32 +13249,13 @@ async function ensureMemoryUserProvisioned() {
   })();
   await userProvisionPromise;
 }
-async function adminFetch(path, options) {
-  try {
-    const res = await fetch(`${ADMIN_URL}${path}`, {
-      ...options,
-      headers: {
-        "x-admin-token": ADMIN_TOKEN,
-        "x-requested-by": "assistant",
-        "content-type": "application/json",
-        ...options?.headers
-      },
-      signal: options?.signal ?? AbortSignal.timeout(30000)
-    });
-    const body = await res.text();
-    if (!res.ok)
-      return JSON.stringify({ error: true, status: res.status, body });
-    return body;
-  } catch (err) {
-    return JSON.stringify({ error: true, message: err instanceof Error ? err.message : String(err) });
-  }
-}
 async function memoryFetch(path, options) {
   try {
     await ensureMemoryUserProvisioned();
+    const authHeaders = MEMORY_AUTH_TOKEN ? { authorization: `Bearer ${MEMORY_AUTH_TOKEN}` } : {};
     const res = await fetch(`${MEMORY_URL2}${path}`, {
       ...options,
-      headers: { "content-type": "application/json", ...options?.headers },
+      headers: { "content-type": "application/json", ...authHeaders, ...options?.headers },
       signal: options?.signal ?? AbortSignal.timeout(30000)
     });
     const body = await res.text();
@@ -13498,18 +13281,6 @@ function resolveMemoryScopeUserId(scope) {
     return GLOBAL_USER_ID;
   return USER_ID2;
 }
-
-// opencode/tools/admin-audit.ts
-var admin_audit_default = tool({
-  description: "View the admin audit log. Every admin API action is recorded with timestamp, actor, action, and result. Use this to review what changes have been made to the system.",
-  args: {
-    limit: tool.schema.number().optional().describe("Maximum number of entries to return. Omit for all entries.")
-  },
-  async execute(args) {
-    const query = args.limit ? `?limit=${args.limit}` : "";
-    return adminFetch(`/admin/audit${query}`);
-  }
-});
 
 // opencode/tools/memory-search.ts
 var memory_search_default = tool({
@@ -13714,288 +13485,141 @@ var memory_events_default = tool({
   }
 });
 
-// opencode/tools/admin-config.ts
-var get_access_scope = tool({
-  description: "Get the current access scope (host-only or LAN)",
-  async execute() {
-    return adminFetch("/admin/access-scope");
-  }
-});
-var set_access_scope = tool({
-  description: "Set the access scope to control who can reach OpenPalm services. 'host' restricts to localhost only, 'lan' allows local network access.",
+// opencode/tools/viking-search.ts
+var viking_search_default = tool({
+  description: "Semantic vector search across Viking knowledge. Returns scored results from resources, memories, and skills. Use this to find relevant knowledge by meaning rather than exact text.",
   args: {
-    scope: tool.schema.enum(["host", "lan"]).describe("The access scope to set: host or lan")
+    query: tool.schema.string().describe("The search query — describe what you're looking for in natural language"),
+    target_uri: tool.schema.string().optional().describe("Scope search to a Viking URI path like 'viking://resources/docs'"),
+    limit: tool.schema.string().optional().describe("Number of results to return (default: 10)"),
+    score_threshold: tool.schema.string().optional().describe("Minimum relevance score (0.0–1.0) to include in results")
   },
   async execute(args) {
-    return adminFetch("/admin/access-scope", {
-      method: "POST",
-      body: JSON.stringify({ scope: args.scope })
-    });
-  }
-});
-
-// opencode/tools/admin-containers.ts
-var VALID_SERVICES = "caddy, memory, assistant, guardian, admin, channel-chat, channel-discord, channel-voice, channel-telegram";
-var ALLOWED_SERVICES = new Set([
-  "caddy",
-  "memory",
-  "assistant",
-  "guardian",
-  "admin",
-  "channel-chat",
-  "channel-discord",
-  "channel-voice",
-  "channel-telegram"
-]);
-function validateService(service) {
-  if (ALLOWED_SERVICES.has(service))
-    return null;
-  return `Invalid service '${service}'. Valid services: ${VALID_SERVICES}`;
-}
-var list = tool({
-  description: "List all OpenPalm containers and their current status (running/stopped/healthy)",
-  async execute() {
-    return adminFetch("/admin/containers/list");
-  }
-});
-var up = tool({
-  description: "Start a stopped OpenPalm service container",
-  args: {
-    service: tool.schema.string().describe(`The service to start. Valid: ${VALID_SERVICES}`)
-  },
-  async execute(args) {
-    const error45 = validateService(args.service);
-    if (error45)
-      return JSON.stringify({ error: true, message: error45 });
-    return adminFetch("/admin/containers/up", {
-      method: "POST",
-      body: JSON.stringify({ service: args.service })
-    });
-  }
-});
-var down = tool({
-  description: "Stop a running OpenPalm service container",
-  args: {
-    service: tool.schema.string().describe(`The service to stop. Valid: ${VALID_SERVICES}`)
-  },
-  async execute(args) {
-    const error45 = validateService(args.service);
-    if (error45)
-      return JSON.stringify({ error: true, message: error45 });
-    return adminFetch("/admin/containers/down", {
-      method: "POST",
-      body: JSON.stringify({ service: args.service })
-    });
-  }
-});
-var restart = tool({
-  description: "Restart an OpenPalm service container",
-  args: {
-    service: tool.schema.string().describe(`The service to restart. Valid: ${VALID_SERVICES}`)
-  },
-  async execute(args) {
-    const error45 = validateService(args.service);
-    if (error45)
-      return JSON.stringify({ error: true, message: error45 });
-    return adminFetch("/admin/containers/restart", {
-      method: "POST",
-      body: JSON.stringify({ service: args.service })
-    });
-  }
-});
-
-// opencode/tools/admin-artifacts.ts
-var ALLOWED_ARTIFACTS = new Set(["compose", "caddyfile", "caddy"]);
-var list2 = tool({
-  description: "List all generated artifacts with their metadata (name, sha256 hash, generation time, size)",
-  async execute() {
-    return adminFetch("/admin/artifacts");
-  }
-});
-var manifest = tool({
-  description: "Get the full artifact manifest with detailed metadata for all generated configuration files",
-  async execute() {
-    return adminFetch("/admin/artifacts/manifest");
-  }
-});
-var get = tool({
-  description: "Get the raw content of a specific artifact. Use this to inspect the generated docker-compose.yml or Caddyfile.",
-  args: {
-    name: tool.schema.string().describe("The artifact to retrieve: 'compose' for docker-compose.yml or 'caddyfile'/'caddy' for Caddyfile")
-  },
-  async execute(args) {
-    if (!ALLOWED_ARTIFACTS.has(args.name)) {
-      return JSON.stringify({
-        error: true,
-        message: "Invalid artifact name. Expected one of: compose, caddyfile, caddy"
-      });
+    if (args.target_uri && !args.target_uri.startsWith("viking://")) {
+      return JSON.stringify({ error: true, message: "target_uri must start with 'viking://'" });
     }
-    return adminFetch(`/admin/artifacts/${args.name}`);
-  }
-});
-
-// opencode/tools/admin-connections.ts
-var ALLOWED_KEYS = new Set([
-  "OPENAI_API_KEY",
-  "ANTHROPIC_API_KEY",
-  "GROQ_API_KEY",
-  "MISTRAL_API_KEY",
-  "GOOGLE_API_KEY",
-  "SYSTEM_LLM_PROVIDER",
-  "SYSTEM_LLM_BASE_URL",
-  "SYSTEM_LLM_MODEL",
-  "OPENAI_BASE_URL",
-  "EMBEDDING_MODEL",
-  "EMBEDDING_DIMS",
-  "MEMORY_USER_ID"
-]);
-var get2 = tool({
-  description: "Get current LLM provider connection keys and config values. API key values are masked (all but last 4 characters visible). Use this to see which keys are configured without exposing actual values.",
-  async execute() {
-    return adminFetch("/admin/connections");
-  }
-});
-var set2 = tool({
-  description: "Update one or more LLM provider connection keys in secrets.env. Only allowed keys are accepted: OPENAI_API_KEY, ANTHROPIC_API_KEY, GROQ_API_KEY, MISTRAL_API_KEY, GOOGLE_API_KEY, SYSTEM_LLM_PROVIDER, SYSTEM_LLM_BASE_URL, SYSTEM_LLM_MODEL, OPENAI_BASE_URL, EMBEDDING_MODEL, EMBEDDING_DIMS, MEMORY_USER_ID. Never log or echo the actual key values.",
-  args: {
-    patches: tool.schema.string().describe(`JSON object of key-value pairs to update, e.g. '{"OPENAI_API_KEY":"sk-...","SYSTEM_LLM_PROVIDER":"anthropic"}'`)
-  },
-  async execute(args) {
-    let body;
-    try {
-      const parsed = JSON.parse(args.patches);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        return JSON.stringify({ error: true, message: "patches must be a JSON object" });
-      }
-      body = {};
-      for (const [key, value] of Object.entries(parsed)) {
-        if (!ALLOWED_KEYS.has(key)) {
-          return JSON.stringify({
-            error: true,
-            message: `Unsupported key '${key}'. Only approved connection keys can be set.`
-          });
-        }
-        if (typeof value !== "string") {
-          return JSON.stringify({
-            error: true,
-            message: `Invalid value for '${key}'. Expected a string value.`
-          });
-        }
-        body[key] = value;
-      }
-    } catch {
-      return JSON.stringify({ error: true, message: "Invalid JSON in patches argument" });
+    const body = { query: args.query };
+    if (args.target_uri)
+      body.target_uri = args.target_uri;
+    if (args.limit) {
+      const parsed = Number(args.limit);
+      if (Number.isFinite(parsed) && parsed > 0)
+        body.limit = Math.floor(parsed);
     }
-    return adminFetch("/admin/connections", {
+    if (args.score_threshold) {
+      const parsed = Number(args.score_threshold);
+      if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 1) {
+        body.score_threshold = parsed;
+      }
+    }
+    return vikingFetch("/search/find", {
       method: "POST",
       body: JSON.stringify(body)
     });
   }
 });
-var status = tool({
-  description: "Check whether the system LLM connection is configured (provider and model set). Returns { complete: boolean, missing: string[] }. API keys are optional for all providers.",
-  async execute() {
-    return adminFetch("/admin/connections/status");
-  }
-});
 
-// opencode/tools/admin-channels.ts
-var LONG_TIMEOUT = { signal: AbortSignal.timeout(120000) };
-var CHANNEL_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
-function validateChannelName(channel) {
-  if (!CHANNEL_NAME_PATTERN.test(channel)) {
-    return "Invalid channel name. Use lowercase letters, numbers, and hyphens only.";
-  }
-  return null;
-}
-var list3 = tool({
-  description: "List all discovered channels, their routing status (hasRoute), and whether they are built-in or community-added",
-  async execute() {
-    return adminFetch("/admin/channels");
-  }
-});
-var install = tool({
-  description: "Install a channel from the registry. Copies channel files into config, generates an HMAC secret, re-stages artifacts, and runs docker compose up. Requires the channel name (e.g. 'chat').",
+// opencode/tools/viking-grep.ts
+var viking_grep_default = tool({
+  description: "Text pattern search within a Viking URI scope. Use for exact text matching when you know the specific string or pattern to find, rather than semantic similarity.",
   args: {
-    channel: tool.schema.string().describe("The channel name to install (e.g. 'chat', 'telegram')")
+    uri: tool.schema.string().describe("Viking URI scope to search within, e.g. 'viking://resources'"),
+    pattern: tool.schema.string().describe("Text pattern to search for"),
+    case_insensitive: tool.schema.string().optional().describe("Set to 'true' for case-insensitive matching (default: false)")
   },
   async execute(args) {
-    const error45 = validateChannelName(args.channel);
-    if (error45)
-      return JSON.stringify({ error: true, message: error45 });
-    return adminFetch("/admin/channels/install", {
+    if (!args.uri.startsWith("viking://")) {
+      return JSON.stringify({ error: true, message: "URI must start with 'viking://'" });
+    }
+    const body = { uri: args.uri, pattern: args.pattern };
+    if (args.case_insensitive?.toLowerCase() === "true")
+      body.case_insensitive = true;
+    return vikingFetch("/search/grep", {
       method: "POST",
-      body: JSON.stringify({ channel: args.channel }),
-      ...LONG_TIMEOUT
-    });
-  }
-});
-var uninstall = tool({
-  description: "Uninstall a channel. Removes channel files from config, removes the HMAC secret and service entry, re-stages artifacts, and stops the channel container. WARNING: This will stop the channel service.",
-  args: {
-    channel: tool.schema.string().describe("The channel name to uninstall (e.g. 'chat', 'telegram')")
-  },
-  async execute(args) {
-    const error45 = validateChannelName(args.channel);
-    if (error45)
-      return JSON.stringify({ error: true, message: error45 });
-    return adminFetch("/admin/channels/uninstall", {
-      method: "POST",
-      body: JSON.stringify({ channel: args.channel }),
-      ...LONG_TIMEOUT
+      body: JSON.stringify(body)
     });
   }
 });
 
-// opencode/tools/admin-lifecycle.ts
-var LONG_TIMEOUT2 = { signal: AbortSignal.timeout(120000) };
-var install2 = tool({
-  description: "Install the full OpenPalm stack. Creates directories, generates secrets, renders configuration artifacts, and starts all containers via docker compose. This is a heavyweight operation.",
-  async execute() {
-    return adminFetch("/admin/install", { method: "POST", ...LONG_TIMEOUT2 });
-  }
-});
-var update = tool({
-  description: "Update the OpenPalm stack. Regenerates secrets and configuration artifacts, then applies changes by restarting containers. Use after config changes.",
-  async execute() {
-    return adminFetch("/admin/update", { method: "POST", ...LONG_TIMEOUT2 });
-  }
-});
-var uninstall2 = tool({
-  description: "Uninstall the OpenPalm stack. Stops all containers via docker compose down, clears installed extensions, and regenerates artifacts. WARNING: This will stop all services.",
-  async execute() {
-    return adminFetch("/admin/uninstall", { method: "POST", ...LONG_TIMEOUT2 });
-  }
-});
-var installed = tool({
-  description: "List installed extensions and the status of all services",
-  async execute() {
-    return adminFetch("/admin/installed");
-  }
-});
-var upgrade = tool({
-  description: "Upgrade the OpenPalm stack. Downloads fresh assets from upstream, backs up changed files, re-stages artifacts, pulls the latest Docker images, and recreates all containers. This is a heavyweight operation that will briefly interrupt running services.",
-  async execute() {
-    return adminFetch("/admin/upgrade", { method: "POST", ...LONG_TIMEOUT2 });
+// opencode/tools/viking-browse.ts
+var viking_browse_default = tool({
+  description: "Browse Viking filesystem — list directory contents with L0 abstracts. Use this to explore what resources, memories, and skills are available at a given path.",
+  args: {
+    uri: tool.schema.string().describe("Viking URI path to browse, e.g. 'viking://resources'")
+  },
+  async execute(args) {
+    if (!args.uri.startsWith("viking://")) {
+      return JSON.stringify({ error: true, message: "URI must start with 'viking://'" });
+    }
+    const params = new URLSearchParams({ uri: args.uri });
+    return vikingFetch(`/fs/ls?${params.toString()}`);
   }
 });
 
-// opencode/tools/admin-automations.ts
-var list4 = tool({
-  description: "List configured automations, scheduler status, and recent execution logs for each automation.",
-  async execute() {
-    return adminFetch("/admin/automations");
+// opencode/tools/viking-read.ts
+var viking_read_default = tool({
+  description: "Read full content (L2) of a Viking resource. Returns the complete text of the resource at the given URI. Use viking-overview for a cheaper summary instead when full content isn't needed.",
+  args: {
+    uri: tool.schema.string().describe("Viking URI path to the resource to read")
+  },
+  async execute(args) {
+    if (!args.uri.startsWith("viking://")) {
+      return JSON.stringify({ error: true, message: "URI must start with 'viking://'" });
+    }
+    const params = new URLSearchParams({ uri: args.uri });
+    return vikingFetch(`/content/read?${params.toString()}`);
+  }
+});
+
+// opencode/tools/viking-add-resource.ts
+var viking_add_resource_default = tool({
+  description: "Add a resource to Viking for indexing. Supports URLs and text content. The resource will be embedded and made searchable. Use this to ingest documents, web pages, or knowledge into Viking.",
+  args: {
+    content: tool.schema.string().describe("The text content or URL to ingest into Viking"),
+    destination: tool.schema.string().describe("Target Viking URI like 'viking://resources/docs'"),
+    reason: tool.schema.string().optional().describe("Description of why this resource is being added")
+  },
+  async execute(args) {
+    if (!args.destination.startsWith("viking://")) {
+      return JSON.stringify({ error: true, message: "destination must start with 'viking://'" });
+    }
+    const body = {
+      content: args.content,
+      destination: args.destination,
+      wait: true
+    };
+    if (args.reason)
+      body.reason = args.reason;
+    return vikingFetch("/resources", {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+  }
+});
+
+// opencode/tools/viking-overview.ts
+var viking_overview_default = tool({
+  description: "Get L1 overview summary (~2k tokens) of a Viking resource. Cheaper than reading full content — use this first to decide if the full resource is relevant before calling viking-read.",
+  args: {
+    uri: tool.schema.string().describe("Viking URI path to get an overview of")
+  },
+  async execute(args) {
+    if (!args.uri.startsWith("viking://")) {
+      return JSON.stringify({ error: true, message: "URI must start with 'viking://'" });
+    }
+    const params = new URLSearchParams({ uri: args.uri });
+    return vikingFetch(`/content/overview?${params.toString()}`);
   }
 });
 
 // opencode/tools/memory-apps.ts
-var list5 = tool({
+var list = tool({
   description: "List all apps (memory sources/clients) registered in the memory service with their memory counts and access statistics. Use this to understand which applications are contributing memories.",
   async execute() {
     return memoryFetch("/api/v1/apps/?page=1&page_size=50");
   }
 });
-var get3 = tool({
+var get = tool({
   description: "Get details for a specific app including memory count, access statistics, and activity timestamps.",
   args: {
     app_id: tool.schema.string().describe("The app identifier to inspect")
@@ -14047,7 +13671,7 @@ var create = tool({
     return result;
   }
 });
-var get4 = tool({
+var get2 = tool({
   description: "Fetch status/details for a memory export job by export ID.",
   args: {
     export_id: tool.schema.string().describe("Export job identifier"),
@@ -14066,47 +13690,34 @@ var get4 = tool({
 // src/index.ts
 var plugin = async (input) => {
   const memoryHooks = await MemoryContextPlugin(input);
+  const tools = {
+    "health-check": health_check_default,
+    "memory-search": memory_search_default,
+    "memory-add": memory_add_default,
+    "memory-update": memory_update_default,
+    "memory-delete": memory_delete_default,
+    "memory-get": memory_get_default,
+    "memory-list": memory_list_default,
+    "memory-stats": memory_stats_default,
+    "memory-feedback": memory_feedback_default,
+    "memory-events_get": memory_events_default,
+    "memory-apps_list": list,
+    "memory-apps_get": get,
+    "memory-apps_memories": memories,
+    "memory-exports_create": create,
+    "memory-exports_get": get2
+  };
+  if (isVikingConfigured()) {
+    tools["viking-search"] = viking_search_default;
+    tools["viking-grep"] = viking_grep_default;
+    tools["viking-browse"] = viking_browse_default;
+    tools["viking-read"] = viking_read_default;
+    tools["viking-add-resource"] = viking_add_resource_default;
+    tools["viking-overview"] = viking_overview_default;
+  }
   return {
     ...memoryHooks,
-    tool: {
-      "health-check": health_check_default,
-      "admin-audit": admin_audit_default,
-      "memory-search": memory_search_default,
-      "memory-add": memory_add_default,
-      "memory-update": memory_update_default,
-      "memory-delete": memory_delete_default,
-      "memory-get": memory_get_default,
-      "memory-list": memory_list_default,
-      "memory-stats": memory_stats_default,
-      "memory-feedback": memory_feedback_default,
-      "memory-events_get": memory_events_default,
-      "admin-config_get_access_scope": get_access_scope,
-      "admin-config_set_access_scope": set_access_scope,
-      "admin-containers_list": list,
-      "admin-containers_up": up,
-      "admin-containers_down": down,
-      "admin-containers_restart": restart,
-      "admin-artifacts_list": list2,
-      "admin-artifacts_manifest": manifest,
-      "admin-artifacts_get": get,
-      "admin-connections_get": get2,
-      "admin-connections_set": set2,
-      "admin-connections_status": status,
-      "admin-channels_list": list3,
-      "admin-channels_install": install,
-      "admin-channels_uninstall": uninstall,
-      "admin-lifecycle_install": install2,
-      "admin-lifecycle_update": update,
-      "admin-lifecycle_uninstall": uninstall2,
-      "admin-lifecycle_installed": installed,
-      "admin-lifecycle_upgrade": upgrade,
-      "admin-automations_list": list4,
-      "memory-apps_list": list5,
-      "memory-apps_get": get3,
-      "memory-apps_memories": memories,
-      "memory-exports_create": create,
-      "memory-exports_get": get4
-    }
+    tool: tools
   };
 };
 export {

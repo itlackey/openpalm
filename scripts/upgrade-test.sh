@@ -46,10 +46,7 @@
 #   -h, --help            Show this help
 #
 # Environment overrides:
-#   OP_CONFIG_HOME  Config directory (default: .upgrade-test/config)
-#   OP_DATA_HOME    Data directory   (default: .upgrade-test/data)
-#   OP_STATE_HOME   State directory  (default: .upgrade-test/state)
-#   OP_WORK_DIR     Work directory   (default: .upgrade-test/work)
+#   OP_HOME         Home directory (default: .upgrade-test)
 #
 set -euo pipefail
 
@@ -94,16 +91,17 @@ cd "$ROOT_DIR"
 # Use a separate directory tree so this test doesn't interfere with .dev/
 
 TEST_ROOT="${ROOT_DIR}/.upgrade-test"
-export OP_CONFIG_HOME="${OP_CONFIG_HOME:-${TEST_ROOT}/config}"
-export OP_DATA_HOME="${OP_DATA_HOME:-${TEST_ROOT}/data}"
-export OP_STATE_HOME="${OP_STATE_HOME:-${TEST_ROOT}/state}"
-export OP_WORK_DIR="${OP_WORK_DIR:-${TEST_ROOT}/work}"
+export OP_HOME="${OP_HOME:-${TEST_ROOT}}"
+OP_CONFIG_HOME="${OP_HOME}/config"
+OP_DATA_HOME="${OP_HOME}/data"
+OP_STATE_HOME="${OP_HOME}/state"
+OP_WORK_DIR="${OP_HOME}/work"
 
 PROJECT_NAME="openpalm-upgrade-test"
 ADMIN_PORT=8101
 ADMIN_URL="http://127.0.0.1:${ADMIN_PORT}"
 MEMORY_PORT=8766
-ADMIN_TOKEN="upgrade-test-token"
+OP_ADMIN_TOKEN="upgrade-test-token"
 
 # ── Colors / Output ──────────────────────────────────────────────────
 
@@ -146,7 +144,7 @@ trap cleanup EXIT
 compose_cmd() {
   docker compose \
     --project-name "$PROJECT_NAME" \
-    -f "${OP_CONFIG_HOME}/components/core.yml" \
+    -f "${OP_CONFIG_HOME}/stack/core.compose.yml" \
     --env-file "${VAULT_HOME}/user/user.env" \
     --env-file "${VAULT_HOME}/stack/stack.env" \
     "$@"
@@ -211,7 +209,7 @@ rm -rf "${TEST_ROOT}" 2>/dev/null || true
 VAULT_HOME="${TEST_ROOT}/vault"
 
 mkdir -p \
-  "${OP_CONFIG_HOME}/components" \
+  "${OP_CONFIG_HOME}/stack" \
   "${OP_CONFIG_HOME}/assistant/tools" \
   "${OP_CONFIG_HOME}/assistant/plugins" \
   "${OP_CONFIG_HOME}/assistant/skills" \
@@ -239,7 +237,7 @@ fi
 # Seed user.env with a known admin token
 cat >"${VAULT_HOME}/user/user.env" <<EOF
 # Upgrade test secrets
-ADMIN_TOKEN=${ADMIN_TOKEN}
+OP_ADMIN_TOKEN=${OP_ADMIN_TOKEN}
 OPENAI_API_KEY=
 OPENAI_BASE_URL=
 MEMORY_USER_ID=upgrade-test-user
@@ -249,10 +247,7 @@ EOF
 
 # Seed system.env
 cat >"${VAULT_HOME}/stack/stack.env" <<EOF
-OP_CONFIG_HOME=${OP_CONFIG_HOME}
-OP_DATA_HOME=${OP_DATA_HOME}
-OP_STATE_HOME=${OP_STATE_HOME}
-OP_WORK_DIR=${OP_WORK_DIR}
+OP_HOME=${OP_HOME}
 OP_UID=$(id -u)
 OP_GID=$(id -g)
 OP_DOCKER_SOCK=${docker_sock}
@@ -262,12 +257,12 @@ OP_INGRESS_BIND_ADDRESS=127.0.0.1
 OP_INGRESS_PORT=8180
 EOF
 
-# Seed compose to config/components/ (source of truth)
-cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_CONFIG_HOME}/components/core.yml"
+# Seed compose to stack/ (source of truth)
+cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_CONFIG_HOME}/stack/core.compose.yml"
 
 # Override ports so we don't conflict with a running dev stack.
 # We override admin's port via a compose override.
-cat >"${OP_CONFIG_HOME}/components/compose-port-override.yml" <<EOF
+cat >"${OP_CONFIG_HOME}/stack/compose-port-override.yml" <<EOF
 services:
   admin:
     ports:
@@ -329,7 +324,7 @@ if [[ $SKIP_BUILD -eq 0 && -z "$FROM_VERSION" ]]; then
   header "Building images from source"
   npm run admin:build 2>&1 | tail -3
   docker compose --project-directory "$ROOT_DIR" \
-    -f "${OP_CONFIG_HOME}/components/core.yml" \
+    -f "${OP_CONFIG_HOME}/stack/core.compose.yml" \
     -f compose.dev.yaml \
     --env-file "${VAULT_HOME}/stack/stack.env" \
     --env-file "${VAULT_HOME}/user/user.env" \
@@ -353,8 +348,8 @@ fi
 compose_cmd() {
   docker compose \
     --project-name "$PROJECT_NAME" \
-    -f "${OP_CONFIG_HOME}/components/core.yml" \
-    -f "${OP_CONFIG_HOME}/components/compose-port-override.yml" \
+    -f "${OP_CONFIG_HOME}/stack/core.compose.yml" \
+    -f "${OP_CONFIG_HOME}/stack/compose-port-override.yml" \
     --env-file "${VAULT_HOME}/user/user.env" \
     --env-file "${VAULT_HOME}/stack/stack.env" \
     "$@"
@@ -386,7 +381,7 @@ header "Phase 2: Seed test data"
 
 echo "  Calling admin install endpoint..."
 INSTALL_RESULT=$(curl -sf -X POST "${ADMIN_URL}/admin/install" \
-  -H "x-admin-token: ${ADMIN_TOKEN}" \
+  -H "x-admin-token: ${OP_ADMIN_TOKEN}" \
   -H "content-type: application/json" \
   -d '{}' 2>&1 || echo '{"ok":false}')
 
@@ -434,8 +429,8 @@ fi
 
 # ── 2c: Write a custom user file in CONFIG_HOME ─────────────────────
 
-echo "# My custom channel config" > "${OP_CONFIG_HOME}/components/my-custom-channel.yml"
-pass "Custom user file written to CONFIG_HOME/components/"
+echo "# My custom channel config" > "${OP_CONFIG_HOME}/stack/my-custom-channel.yml"
+pass "Custom user file written to CONFIG_HOME/stack/"
 
 # ══════════════════════════════════════════════════════════════════════
 # PHASE 3: Record pre-upgrade state
@@ -463,13 +458,13 @@ SERVICES_BEFORE=$(compose_cmd ps --format '{{.Service}}' 2>/dev/null | sort | tr
 echo "  Running services:     ${SERVICES_BEFORE}"
 
 # Custom user file checksum
-CUSTOM_FILE_CHECKSUM=$(sha256sum "${OP_CONFIG_HOME}/components/my-custom-channel.yml" | awk '{print $1}')
+CUSTOM_FILE_CHECKSUM=$(sha256sum "${OP_CONFIG_HOME}/stack/my-custom-channel.yml" | awk '{print $1}')
 echo "  Custom file checksum: ${CUSTOM_FILE_CHECKSUM}"
 
 # Record admin token works
 AUTH_CHECK_BEFORE=$(curl -sf -o /dev/null -w '%{http_code}' \
   "${ADMIN_URL}/admin/containers/list" \
-  -H "x-admin-token: ${ADMIN_TOKEN}" 2>/dev/null || echo "error")
+  -H "x-admin-token: ${OP_ADMIN_TOKEN}" 2>/dev/null || echo "error")
 echo "  Admin auth status:    ${AUTH_CHECK_BEFORE}"
 
 pass "Pre-upgrade state recorded"
@@ -483,7 +478,7 @@ header "Phase 4: Simulate upgrade"
 # The upgrade simulation mirrors what setup.sh does on re-run:
 #   1. Detects existing install (vault/user/user.env exists)
 #   2. Re-creates directory tree (mkdir -p, idempotent)
-#   3. Downloads fresh compose to config/components/
+#   3. Downloads fresh compose to stack/
 #   4. Does NOT overwrite vault/user/user.env or vault/stack/stack.env
 #   5. Starts services with compose up
 
@@ -491,7 +486,7 @@ echo "  Simulating setup.sh re-run..."
 
 # Step 1: Directory creation (idempotent, same as setup.sh)
 mkdir -p \
-  "${OP_CONFIG_HOME}" "${OP_CONFIG_HOME}/components" \
+  "${OP_CONFIG_HOME}" "${OP_CONFIG_HOME}/stack" \
   "${OP_CONFIG_HOME}/assistant" \
   "${OP_CONFIG_HOME}/automations" "${OP_CONFIG_HOME}/stash" \
   "${VAULT_HOME}/user" "${VAULT_HOME}/stack" \
@@ -505,7 +500,7 @@ mkdir -p \
 
 # Step 2: Re-download assets (simulate by copying from source)
 # In a real upgrade, setup.sh downloads from GitHub. We copy from local assets.
-cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_CONFIG_HOME}/components/core.yml"
+cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_CONFIG_HOME}/stack/core.compose.yml"
 
 # Step 3: vault/user/user.env — setup.sh checks if it exists and skips if so
 if [[ -f "${VAULT_HOME}/user/user.env" ]]; then
@@ -572,11 +567,11 @@ else
 fi
 
 # Verify specific values in user.env
-ADMIN_TOKEN_VALUE=$(grep "^ADMIN_TOKEN=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
-if [[ "$ADMIN_TOKEN_VALUE" == "$ADMIN_TOKEN" ]]; then
-  pass "ADMIN_TOKEN preserved in user.env"
+OP_ADMIN_TOKEN_VALUE=$(grep "^OP_ADMIN_TOKEN= "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
+if [[ "$OP_ADMIN_TOKEN_VALUE" == "$OP_ADMIN_TOKEN" ]]; then
+  pass "OP_ADMIN_TOKEN preserved in user.env"
 else
-  fail "ADMIN_TOKEN changed (expected '${ADMIN_TOKEN}', got '${ADMIN_TOKEN_VALUE}')"
+  fail "OP_ADMIN_TOKEN changed (expected '${OP_ADMIN_TOKEN}', got '${ADMIN_TOKEN_VALUE}')"
 fi
 
 CUSTOM_KEY_VALUE=$(grep "^MY_CUSTOM_KEY=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
@@ -650,8 +645,8 @@ fi
 echo ""
 echo "=== 5d: User file preservation ==="
 
-if [[ -f "${OP_CONFIG_HOME}/components/my-custom-channel.yml" ]]; then
-  CUSTOM_FILE_CHECKSUM_AFTER=$(sha256sum "${OP_CONFIG_HOME}/components/my-custom-channel.yml" | awk '{print $1}')
+if [[ -f "${OP_CONFIG_HOME}/stack/my-custom-channel.yml" ]]; then
+  CUSTOM_FILE_CHECKSUM_AFTER=$(sha256sum "${OP_CONFIG_HOME}/stack/my-custom-channel.yml" | awk '{print $1}')
   if [[ "$CUSTOM_FILE_CHECKSUM" == "$CUSTOM_FILE_CHECKSUM_AFTER" ]]; then
     pass "Custom channel file preserved and unchanged"
   else
@@ -692,7 +687,7 @@ echo "=== 5f: Admin authentication ==="
 
 AUTH_CHECK_AFTER=$(curl -sf -o /dev/null -w '%{http_code}' \
   "${ADMIN_URL}/admin/containers/list" \
-  -H "x-admin-token: ${ADMIN_TOKEN}" 2>/dev/null || echo "error")
+  -H "x-admin-token: ${OP_ADMIN_TOKEN}" 2>/dev/null || echo "error")
 
 if [[ "$AUTH_CHECK_AFTER" == "200" ]]; then
   pass "Admin token still authenticates (HTTP 200)"

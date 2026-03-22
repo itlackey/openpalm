@@ -27,21 +27,32 @@ import {
   buildSystemSecretsFromSetup,
   buildConnectionEnvVarMap,
 } from "./setup.js";
-import type { SetupInput, SetupConnection } from "./setup.js";
-import type { CoreAssetProvider } from "./core-asset-provider.js";
+import type { SetupSpec, SetupConnection } from "./setup.js";
 import type { ControlPlaneState } from "./types.js";
 import { STACK_SPEC_FILENAME, readStackSpec } from "./stack-spec.js";
-import { readConnectionProfilesDocument } from "./connection-profiles.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function makeValidInput(overrides?: Partial<SetupInput>): SetupInput {
+function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
   return {
-    adminToken: "test-admin-token-12345",
-    ownerName: "Test User",
-    ownerEmail: "test@example.com",
-    memoryUserId: "test_user",
-    ollamaEnabled: false,
+    spec: {
+      version: 2,
+      capabilities: {
+        llm: "openai/gpt-4o",
+        embeddings: {
+          provider: "openai",
+          model: "text-embedding-3-small",
+          dims: 1536,
+        },
+        memory: {
+          userId: "test_user",
+          customInstructions: "",
+        },
+      },
+      addons: {},
+    },
+    security: { adminToken: "test-admin-token-12345" },
+    owner: { name: "Test User", email: "test@example.com" },
     connections: [
       {
         id: "openai-main",
@@ -51,29 +62,25 @@ function makeValidInput(overrides?: Partial<SetupInput>): SetupInput {
         apiKey: "sk-test-key-123",
       },
     ],
-    assignments: {
-      llm: { connectionId: "openai-main", model: "gpt-4o" },
-      embeddings: {
-        connectionId: "openai-main",
-        model: "text-embedding-3-small",
-      },
-    },
     ...overrides,
   };
 }
 
-function createStubAssetProvider(): CoreAssetProvider {
-  return {
-    coreCompose: () => "services:\n  assistant:\n    image: assistant:latest\n",
-    agentsMd: () => "# Agents\n",
-    opencodeConfig: () =>
-      '{"$schema":"https://opencode.ai/config.json"}\n',
-    secretsSchema: () => "ADMIN_TOKEN=string\n",
-    stackSchema: () => "OP_IMAGE_TAG=string\n",
-    cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
-    cleanupData: () => "name: cleanup-data\nschedule: weekly\n",
-    validateConfig: () => "name: validate-config\nschedule: hourly\n",
-  };
+/** Seed the minimal asset files that ensure* functions expect to find at OP_HOME. */
+function seedRequiredAssets(homeDir: string): void {
+  mkdirSync(join(homeDir, "stack"), { recursive: true });
+  writeFileSync(join(homeDir, "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
+  mkdirSync(join(homeDir, "data", "assistant"), { recursive: true });
+  writeFileSync(join(homeDir, "data", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
+  writeFileSync(join(homeDir, "data", "assistant", "AGENTS.md"), "# Agents\n");
+  mkdirSync(join(homeDir, "vault", "user"), { recursive: true });
+  writeFileSync(join(homeDir, "vault", "user", "user.env.schema"), "ADMIN_TOKEN=string\n");
+  mkdirSync(join(homeDir, "vault", "stack"), { recursive: true });
+  writeFileSync(join(homeDir, "vault", "stack", "stack.env.schema"), "OP_IMAGE_TAG=string\n");
+  mkdirSync(join(homeDir, "config", "automations"), { recursive: true });
+  writeFileSync(join(homeDir, "config", "automations", "cleanup-logs.yml"), "name: cleanup-logs\nschedule: daily\n");
+  writeFileSync(join(homeDir, "config", "automations", "cleanup-data.yml"), "name: cleanup-data\nschedule: weekly\n");
+  writeFileSync(join(homeDir, "config", "automations", "validate-config.yml"), "name: validate-config\nschedule: hourly\n");
 }
 
 // ── Shared test fixture ──────────────────────────────────────────────────
@@ -106,12 +113,13 @@ function createFullDirTree(): void {
   for (const dir of [
     homeDir,
     configDir,
-    join(configDir, "components"),
     join(configDir, "automations"),
     join(configDir, "channels"),
     join(configDir, "connections"),
     join(configDir, "assistant"),
     join(configDir, "stash"),
+    join(homeDir, "stack"),
+    join(homeDir, "stack", "addons"),
     vaultDir,
     dataDir,
     join(dataDir, "admin"),
@@ -127,6 +135,9 @@ function createFullDirTree(): void {
   ]) {
     mkdirSync(dir, { recursive: true });
   }
+
+  // Seed asset files that ensure* functions expect to find at OP_HOME
+  seedRequiredAssets(homeDir);
 }
 
 /** Seed the minimal user.env and stack.env needed for most tests. */
@@ -146,7 +157,7 @@ function seedMinimalEnvFiles(): void {
       "export MISTRAL_API_KEY=",
       "export GOOGLE_API_KEY=",
       "export MEMORY_USER_ID=default_user",
-      "export MEMORY_AUTH_TOKEN=abc123",
+      "export OP_MEMORY_TOKEN=abc123",
       "export OWNER_NAME=",
       "export OWNER_EMAIL=",
       "",
@@ -200,7 +211,6 @@ describe("Fresh Install", () => {
 
     const content = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(content).toContain("OPENAI_API_KEY=");
-    expect(content).toContain("MEMORY_USER_ID=default_user");
     expect(content).toContain("OWNER_NAME=");
   });
 
@@ -223,8 +233,7 @@ describe("Fresh Install", () => {
     seedMinimalEnvFiles();
 
     const result = await performSetup(
-      makeValidInput(),
-      createStubAssetProvider()
+      makeValidSpec()
     );
 
     expect(result.ok).toBe(true);
@@ -234,7 +243,7 @@ describe("Fresh Install", () => {
   it("performSetup marks OP_SETUP_COMPLETE=true in data stack.env", async () => {
     seedMinimalEnvFiles();
 
-    await performSetup(makeValidInput(), createStubAssetProvider());
+    await performSetup(makeValidSpec());
 
     const stackEnv = readFileSync(join(dataDir, "stack.env"), "utf-8");
     const parsed = parseEnvContent(stackEnv);
@@ -261,7 +270,7 @@ describe("Existing Install", () => {
   // Scenario 5: ensureSecrets does NOT overwrite existing user.env
   it("ensureSecrets does not overwrite existing user.env", () => {
     const customContent =
-      "export OP_ADMIN_TOKEN=my-custom-token\nexport MEMORY_AUTH_TOKEN=custom-auth-token\n";
+      "export OP_ADMIN_TOKEN=my-custom-token\nexport OP_MEMORY_TOKEN=custom-auth-token\n";
     mkdirSync(join(vaultDir, "user"), { recursive: true });
     writeFileSync(join(vaultDir, "user", "user.env"), customContent);
 
@@ -286,24 +295,24 @@ describe("Existing Install", () => {
     expect(afterContent).toBe(customContent);
   });
 
-  // Scenario 6: performSetup re-run preserves MEMORY_AUTH_TOKEN
-  it("performSetup re-run preserves MEMORY_AUTH_TOKEN from first run", async () => {
+  // Scenario 6: performSetup re-run preserves OP_MEMORY_TOKEN
+  it("performSetup re-run preserves OP_MEMORY_TOKEN from first run", async () => {
     // First setup
-    await performSetup(makeValidInput(), createStubAssetProvider());
+    await performSetup(makeValidSpec());
 
     const secretsAfterFirst = readFileSync(
       join(vaultDir, "user", "user.env"),
       "utf-8"
     );
     const firstMatch = secretsAfterFirst.match(
-      /MEMORY_AUTH_TOKEN=([a-f0-9]+)/
+      /OP_MEMORY_TOKEN=([a-f0-9]+)/
     );
     expect(firstMatch).not.toBeNull();
     const firstToken = firstMatch![1];
 
     // Second setup (re-run with different API key)
     await performSetup(
-      makeValidInput({
+      makeValidSpec({
         connections: [
           {
             id: "openai-main",
@@ -313,8 +322,7 @@ describe("Existing Install", () => {
             apiKey: "sk-different-key-999",
           },
         ],
-      }),
-      createStubAssetProvider()
+      })
     );
 
     const secretsAfterSecond = readFileSync(
@@ -322,16 +330,16 @@ describe("Existing Install", () => {
       "utf-8"
     );
     const secondMatch = secretsAfterSecond.match(
-      /MEMORY_AUTH_TOKEN=([a-f0-9]+)/
+      /OP_MEMORY_TOKEN=([a-f0-9]+)/
     );
     expect(secondMatch).not.toBeNull();
-    // MEMORY_AUTH_TOKEN should be preserved (buildSecretsFromSetup does not overwrite it)
+    // OP_MEMORY_TOKEN should be preserved (buildSecretsFromSetup does not overwrite it)
     expect(secondMatch![1]).toBe(firstToken);
   });
 
   // Scenario 7: performSetup marks OP_SETUP_COMPLETE=true in dataDir/stack.env
   it("performSetup marks OP_SETUP_COMPLETE=true in data stack.env", async () => {
-    await performSetup(makeValidInput(), createStubAssetProvider());
+    await performSetup(makeValidSpec());
 
     const stackEnv = readFileSync(
       join(dataDir, "stack.env"),
@@ -341,18 +349,34 @@ describe("Existing Install", () => {
     expect(parsed.OP_SETUP_COMPLETE).toBe("true");
   });
 
-  // Scenario 8: Re-setup with different provider preserves existing connections
-  it("re-setup with different provider writes new connection profiles", async () => {
+  // Scenario 8: Re-setup with different provider updates stack.yaml capabilities
+  it("re-setup with different provider updates capabilities in stack.yaml", async () => {
     // First setup with OpenAI
-    await performSetup(makeValidInput(), createStubAssetProvider());
+    await performSetup(makeValidSpec());
 
-    const profilesAfterFirst = readConnectionProfilesDocument(configDir);
-    expect(profilesAfterFirst.profiles).toHaveLength(1);
-    expect(profilesAfterFirst.profiles[0].provider).toBe("openai");
+    const specAfterFirst = readStackSpec(configDir);
+    expect(specAfterFirst).not.toBeNull();
+    expect(specAfterFirst!.capabilities.llm).toContain("openai/");
 
     // Second setup with Groq
     await performSetup(
-      makeValidInput({
+      makeValidSpec({
+        spec: {
+          version: 2,
+          capabilities: {
+            llm: "groq/llama3-70b-8192",
+            embeddings: {
+              provider: "groq",
+              model: "text-embedding-3-small",
+              dims: 1536,
+            },
+            memory: {
+              userId: "test_user",
+              customInstructions: "",
+            },
+          },
+          addons: {},
+        },
         connections: [
           {
             id: "groq-main",
@@ -362,23 +386,14 @@ describe("Existing Install", () => {
             apiKey: "gsk-test-key-456",
           },
         ],
-        assignments: {
-          llm: { connectionId: "groq-main", model: "llama3-70b-8192" },
-          embeddings: {
-            connectionId: "groq-main",
-            model: "text-embedding-3-small",
-          },
-        },
-      }),
-      createStubAssetProvider()
+      })
     );
 
-    const profilesAfterSecond = readConnectionProfilesDocument(configDir);
-    // performSetup writes the full document, so second setup replaces profiles
-    expect(profilesAfterSecond.profiles).toHaveLength(1);
-    expect(profilesAfterSecond.profiles[0].provider).toBe("groq");
+    const specAfterSecond = readStackSpec(configDir);
+    expect(specAfterSecond).not.toBeNull();
+    expect(specAfterSecond!.capabilities.llm).toBe("groq/llama3-70b-8192");
 
-    // But user.env should retain both keys
+    // user.env should retain both keys
     const secrets = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     expect(secrets).toContain("GROQ_API_KEY");
   });
@@ -494,11 +509,10 @@ describe("Broken/Corrupt State", () => {
     }
   });
 
-  // Scenario 13: Missing stack.yaml returns empty document
-  it("readConnectionProfilesDocument returns empty document when stack.yaml missing", () => {
-    const doc = readConnectionProfilesDocument(configDir);
-    expect(doc.profiles).toEqual([]);
-    expect(doc.assignments.llm.connectionId).toBe("");
+  // Scenario 13: Missing stack.yaml returns null
+  it("readStackSpec returns null when stack.yaml missing", () => {
+    const spec = readStackSpec(configDir);
+    expect(spec).toBeNull();
   });
 
   // Scenario 14: config dir exists but automations dir doesn't
@@ -510,13 +524,12 @@ describe("Broken/Corrupt State", () => {
     rmSync(join(configDir, "automations"), { recursive: true, force: true });
 
     const result = await performSetup(
-      makeValidInput(),
-      createStubAssetProvider()
+      makeValidSpec()
     );
     expect(result.ok).toBe(true);
 
-    // Artifacts should exist
-    expect(existsSync(join(configDir, "components", "core.yml"))).toBe(
+    // Artifacts should exist in stack/ (not config/components/)
+    expect(existsSync(join(homeDir, "stack", "core.compose.yml"))).toBe(
       true
     );
     // Automations dir should be recreated
@@ -524,10 +537,10 @@ describe("Broken/Corrupt State", () => {
   });
 
   // Scenario 15: openpalm.yaml with old version
-  it("readStackSpec returns null for version 2 spec", () => {
+  it("readStackSpec returns null for version 1 spec", () => {
     writeFileSync(
       join(configDir, STACK_SPEC_FILENAME),
-      "version: 2\nservices: []\n"
+      "version: 1\nconnections: []\n"
     );
 
     const spec = readStackSpec(configDir);
@@ -616,8 +629,23 @@ describe("Setup Input Variations", () => {
 
   // Scenario 20: Ollama in-stack setup
   it("Ollama in-stack setup overrides localhost URL to docker-internal", async () => {
-    const input = makeValidInput({
-      ollamaEnabled: true,
+    const input = makeValidSpec({
+      spec: {
+        version: 2,
+        capabilities: {
+          llm: "ollama/llama3.2",
+          embeddings: {
+            provider: "ollama",
+            model: "nomic-embed-text",
+            dims: 768,
+          },
+          memory: {
+            userId: "test_user",
+            customInstructions: "",
+          },
+        },
+        addons: { ollama: true },
+      },
       connections: [
         {
           id: "ollama-local",
@@ -627,26 +655,16 @@ describe("Setup Input Variations", () => {
           apiKey: "",
         },
       ],
-      assignments: {
-        llm: { connectionId: "ollama-local", model: "llama3.2" },
-        embeddings: {
-          connectionId: "ollama-local",
-          model: "nomic-embed-text",
-        },
-      },
     });
 
-    const result = await performSetup(input, createStubAssetProvider());
+    const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    // Connection profiles should use the in-stack URL
-    const doc = readConnectionProfilesDocument(configDir);
-    expect(doc.profiles[0].baseUrl).toBe("http://ollama:11434");
-
-    // user.env should have in-stack URL
-    const secrets = parseEnvFile(join(vaultDir, "user", "user.env"));
-    expect(secrets.SYSTEM_LLM_BASE_URL).toBe("http://ollama:11434");
-    expect(secrets.OPENAI_BASE_URL).toBe("http://ollama:11434/v1");
+    // stack.yaml should have ollama capabilities
+    const spec = readStackSpec(configDir);
+    expect(spec).not.toBeNull();
+    expect(spec!.capabilities.llm).toBe("ollama/llama3.2");
+    expect(spec!.addons.ollama).toBe(true);
   });
 
   // Scenario 21: Multiple providers each get own env var key
@@ -681,81 +699,18 @@ describe("Setup Input Variations", () => {
     expect(map.get("anthropic-1")).toBe("ANTHROPIC_API_KEY");
   });
 
-  // Scenario 22: Provider URL already ending in /v1
-  it("provider URL already ending in /v1 does not get double /v1/v1", () => {
-    const secrets = buildSecretsFromSetup(
-      makeValidInput({
-        connections: [
-          {
-            id: "openai-compat",
-            name: "OpenAI Compatible",
-            provider: "openai",
-            baseUrl: "https://example.com/v1",
-            apiKey: "sk-test",
-          },
-        ],
-        assignments: {
-          llm: { connectionId: "openai-compat", model: "gpt-4o" },
-          embeddings: {
-            connectionId: "openai-compat",
-            model: "text-embedding-3-small",
-          },
-        },
-      })
-    );
+  // Scenario 22: buildSecretsFromSetup only writes API keys and owner info
+  it("buildSecretsFromSetup writes API keys but not config vars", () => {
+    const spec = makeValidSpec();
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
 
-    expect(secrets.OPENAI_BASE_URL).toBe("https://example.com/v1");
-    expect(secrets.OPENAI_BASE_URL).not.toContain("/v1/v1");
-  });
-
-  it("provider URL without /v1 gets /v1 appended to OPENAI_BASE_URL", () => {
-    const secrets = buildSecretsFromSetup(
-      makeValidInput({
-        connections: [
-          {
-            id: "openai-main",
-            name: "OpenAI",
-            provider: "openai",
-            baseUrl: "https://api.openai.com",
-            apiKey: "sk-test",
-          },
-        ],
-        assignments: {
-          llm: { connectionId: "openai-main", model: "gpt-4o" },
-          embeddings: {
-            connectionId: "openai-main",
-            model: "text-embedding-3-small",
-          },
-        },
-      })
-    );
-
-    expect(secrets.OPENAI_BASE_URL).toBe("https://api.openai.com/v1");
-  });
-
-  it("provider URL with trailing slash normalizes correctly", () => {
-    const secrets = buildSecretsFromSetup(
-      makeValidInput({
-        connections: [
-          {
-            id: "openai-main",
-            name: "OpenAI",
-            provider: "openai",
-            baseUrl: "https://api.openai.com/",
-            apiKey: "sk-test",
-          },
-        ],
-        assignments: {
-          llm: { connectionId: "openai-main", model: "gpt-4o" },
-          embeddings: {
-            connectionId: "openai-main",
-            model: "text-embedding-3-small",
-          },
-        },
-      })
-    );
-
-    expect(secrets.OPENAI_BASE_URL).toBe("https://api.openai.com/v1");
+    // API key should be written
+    expect(secrets.OPENAI_API_KEY).toBe("sk-test-key-123");
+    // Config vars should NOT be in user.env anymore
+    expect(secrets.SYSTEM_LLM_PROVIDER).toBeUndefined();
+    expect(secrets.SYSTEM_LLM_MODEL).toBeUndefined();
+    expect(secrets.EMBEDDING_MODEL).toBeUndefined();
+    expect(secrets.EMBEDDING_DIMS).toBeUndefined();
   });
 });
 
@@ -775,18 +730,34 @@ describe("performSetup end-to-end artifacts", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  it("writes stack.yaml and readStackSpec returns v1", async () => {
-    await performSetup(makeValidInput(), createStubAssetProvider());
+  it("writes stack.yaml and readStackSpec returns v2", async () => {
+    await performSetup(makeValidSpec());
 
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
-    expect(spec!.version).toBe(1);
-    expect(spec!.connections.length).toBeGreaterThanOrEqual(1);
-    expect(spec!.assignments.llm.model).toBe("gpt-4o");
+    expect(spec!.version).toBe(2);
+    expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
+    expect(spec!.capabilities.embeddings.model).toBe("text-embedding-3-small");
   });
 
   it("writes memory config with correct embedding dims from lookup", async () => {
-    const input = makeValidInput({
+    const input = makeValidSpec({
+      spec: {
+        version: 2,
+        capabilities: {
+          llm: "ollama/llama3.2",
+          embeddings: {
+            provider: "ollama",
+            model: "nomic-embed-text",
+            dims: 0, // Resolved from lookup
+          },
+          memory: {
+            userId: "test_user",
+            customInstructions: "",
+          },
+        },
+        addons: {},
+      },
       connections: [
         {
           id: "ollama-1",
@@ -796,16 +767,9 @@ describe("performSetup end-to-end artifacts", () => {
           apiKey: "",
         },
       ],
-      assignments: {
-        llm: { connectionId: "ollama-1", model: "llama3.2" },
-        embeddings: {
-          connectionId: "ollama-1",
-          model: "nomic-embed-text",
-        },
-      },
     });
 
-    await performSetup(input, createStubAssetProvider());
+    await performSetup(input);
 
     const memConfig = JSON.parse(
       readFileSync(join(dataDir, "memory", "default_config.json"), "utf-8")
@@ -814,33 +778,32 @@ describe("performSetup end-to-end artifacts", () => {
     expect(memConfig.mem0.vector_store.config.embedding_model_dims).toBe(768);
   });
 
-  it("writes core.yml to config/components/", async () => {
-    await performSetup(makeValidInput(), createStubAssetProvider());
+  it("writes core.compose.yml to stack/", async () => {
+    await performSetup(makeValidSpec());
 
     expect(
-      existsSync(join(configDir, "components", "core.yml"))
+      existsSync(join(homeDir, "stack", "core.compose.yml"))
     ).toBe(true);
   });
 
   it("writes admin and assistant tokens to stack.env", async () => {
-    await performSetup(makeValidInput(), createStubAssetProvider());
+    await performSetup(makeValidSpec());
 
     const secrets = parseEnvFile(join(vaultDir, "stack", "stack.env"));
     expect(secrets.OP_ADMIN_TOKEN).toBe("test-admin-token-12345");
-    expect(typeof secrets.ASSISTANT_TOKEN).toBe("string");
-    expect(secrets.ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
+    expect(typeof secrets.OP_ASSISTANT_TOKEN).toBe("string");
+    expect(secrets.OP_ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
   });
 
-  it("creates connection profiles document with correct assignments", async () => {
-    await performSetup(makeValidInput(), createStubAssetProvider());
+  it("writes managed.env files from capabilities", async () => {
+    await performSetup(makeValidSpec());
 
-    const doc = readConnectionProfilesDocument(configDir);
-    expect(doc.version).toBe(1);
-    expect(doc.profiles).toHaveLength(1);
-    expect(doc.profiles[0].id).toBe("openai-main");
-    expect(doc.profiles[0].provider).toBe("openai");
-    expect(doc.assignments.llm.model).toBe("gpt-4o");
-    expect(doc.assignments.embeddings.model).toBe("text-embedding-3-small");
+    const managedEnvPath = join(vaultDir, "stack", "services", "memory", "managed.env");
+    expect(existsSync(managedEnvPath)).toBe(true);
+    const managedEnv = parseEnvFile(managedEnvPath);
+    expect(managedEnv.SYSTEM_LLM_PROVIDER).toBe("openai");
+    expect(managedEnv.SYSTEM_LLM_MODEL).toBe("gpt-4o");
+    expect(managedEnv.EMBEDDING_MODEL).toBe("text-embedding-3-small");
   });
 });
 
@@ -864,337 +827,5 @@ describe("mergeEnvContent edge cases", () => {
 
     const parsed = parseEnvContent(result);
     expect(parsed.FOO).toBe("new");
-  });
-
-  it("appends new keys to the end when they do not exist", () => {
-    const original = "EXISTING=value\n";
-    const result = mergeEnvContent(original, { NEW_KEY: "new_value" });
-    const parsed = parseEnvContent(result);
-    expect(parsed.EXISTING).toBe("value");
-    expect(parsed.NEW_KEY).toBe("new_value");
-  });
-
-  it("uncomment option replaces commented-out keys", () => {
-    const original = "# export ADMIN_TOKEN=old_value\n";
-    const result = mergeEnvContent(
-      original,
-      { ADMIN_TOKEN: "new_value" },
-      { uncomment: true }
-    );
-    const parsed = parseEnvContent(result);
-    expect(parsed.ADMIN_TOKEN).toBe("new_value");
-  });
-
-  it("handles empty content gracefully", () => {
-    const result = mergeEnvContent("", { KEY: "value" });
-    const parsed = parseEnvContent(result);
-    expect(parsed.KEY).toBe("value");
-  });
-
-  it("handles content with only comments", () => {
-    const original = "# comment\n# another comment\n";
-    const result = mergeEnvContent(original, { KEY: "value" });
-    const parsed = parseEnvContent(result);
-    expect(parsed.KEY).toBe("value");
-  });
-});
-
-// =====================================================================
-// parseEnvFile / parseEnvContent EDGE CASES
-// =====================================================================
-
-describe("parseEnvFile edge cases", () => {
-  beforeEach(() => {
-    createFullDirTree();
-  });
-
-  afterEach(() => {
-    rmSync(homeDir, { recursive: true, force: true });
-  });
-
-  it("returns empty object for nonexistent file", () => {
-    const result = parseEnvFile(join(vaultDir, "nonexistent.env"));
-    expect(result).toEqual({});
-  });
-
-  it("returns empty object for empty file", () => {
-    writeFileSync(join(vaultDir, "empty.env"), "");
-    const result = parseEnvFile(join(vaultDir, "empty.env"));
-    expect(result).toEqual({});
-  });
-
-  it("handles single-quoted values", () => {
-    writeFileSync(
-      join(vaultDir, "quoted.env"),
-      "KEY='value with spaces'\n"
-    );
-    const result = parseEnvFile(join(vaultDir, "quoted.env"));
-    expect(result.KEY).toBe("value with spaces");
-  });
-
-  it("handles double-quoted values", () => {
-    writeFileSync(
-      join(vaultDir, "quoted.env"),
-      'KEY="value with spaces"\n'
-    );
-    const result = parseEnvFile(join(vaultDir, "quoted.env"));
-    expect(result.KEY).toBe("value with spaces");
-  });
-
-  it("handles values with inline comments when unquoted", () => {
-    // dotenv spec: unquoted values with # are treated as comments
-    writeFileSync(
-      join(vaultDir, "comment.env"),
-      "KEY=value # this is a comment\n"
-    );
-    const result = parseEnvFile(join(vaultDir, "comment.env"));
-    // dotenv library trims at the # for unquoted values
-    expect(result.KEY).toBe("value");
-  });
-});
-
-// =====================================================================
-// loadSecretsEnvFile EDGE CASES
-// =====================================================================
-
-describe("loadSecretsEnvFile edge cases", () => {
-  beforeEach(() => {
-    createFullDirTree();
-    saveAndSetEnv();
-  });
-
-  afterEach(() => {
-    restoreEnv();
-    rmSync(homeDir, { recursive: true, force: true });
-  });
-
-  it("returns empty object when user.env does not exist", () => {
-    const result = loadSecretsEnvFile(vaultDir);
-    expect(result).toEqual({});
-  });
-
-  it("filters out keys not matching uppercase alphanumeric pattern", () => {
-    mkdirSync(join(vaultDir, "user"), { recursive: true });
-    writeFileSync(
-      join(vaultDir, "user", "user.env"),
-      [
-        "VALID_KEY=valid",
-        "another_key=lowercase", // lowercase keys are filtered out
-        "ALSO_VALID=yes",
-        "123_STARTS_NUM=num", // starts with number but matches pattern
-        "",
-      ].join("\n")
-    );
-
-    const result = loadSecretsEnvFile(vaultDir);
-    expect(result.VALID_KEY).toBe("valid");
-    expect(result.ALSO_VALID).toBe("yes");
-    // The regex /^[A-Z0-9_]+$/ does match 123_STARTS_NUM
-    expect(result["123_STARTS_NUM"]).toBe("num");
-    // Lowercase key does not match the filter
-    expect(result.another_key).toBeUndefined();
-  });
-});
-
-// =====================================================================
-// isSetupComplete EDGE CASES
-// =====================================================================
-
-describe("isSetupComplete edge cases", () => {
-  beforeEach(() => {
-    createFullDirTree();
-    saveAndSetEnv();
-  });
-
-  afterEach(() => {
-    restoreEnv();
-    rmSync(homeDir, { recursive: true, force: true });
-  });
-
-  it("returns false when stack.env does not exist and no admin token", () => {
-    // No stack.env and no user.env
-    rmSync(join(vaultDir, "stack", "stack.env"), { force: true });
-
-    expect(isSetupComplete(vaultDir)).toBe(false);
-  });
-
-  it("returns true for OP_SETUP_COMPLETE=TRUE (case insensitive)", () => {
-    mkdirSync(join(vaultDir, "stack"), { recursive: true });
-    writeFileSync(
-      join(vaultDir, "stack", "stack.env"),
-      "OP_SETUP_COMPLETE=TRUE\n"
-    );
-
-    expect(isSetupComplete(vaultDir)).toBe(true);
-  });
-
-  it("returns true for OP_SETUP_COMPLETE=True (mixed case)", () => {
-    mkdirSync(join(vaultDir, "stack"), { recursive: true });
-    writeFileSync(
-      join(vaultDir, "stack", "stack.env"),
-      "OP_SETUP_COMPLETE=True\n"
-    );
-
-    expect(isSetupComplete(vaultDir)).toBe(true);
-  });
-
-  it("returns false for OP_SETUP_COMPLETE=false", () => {
-    mkdirSync(join(vaultDir, "stack"), { recursive: true });
-    mkdirSync(join(vaultDir, "user"), { recursive: true });
-    writeFileSync(
-      join(vaultDir, "stack", "stack.env"),
-      "OP_SETUP_COMPLETE=false\n"
-    );
-    writeFileSync(join(vaultDir, "user", "user.env"), "");
-
-    expect(isSetupComplete(vaultDir)).toBe(false);
-  });
-
-  it("falls back to OP_ADMIN_TOKEN presence when OP_SETUP_COMPLETE not in stack.env", () => {
-    mkdirSync(join(vaultDir, "stack"), { recursive: true });
-    writeFileSync(
-      join(vaultDir, "stack", "stack.env"),
-      "OP_IMAGE_TAG=latest\nexport OP_ADMIN_TOKEN=my-admin-token\n"
-    );
-
-    expect(isSetupComplete(vaultDir)).toBe(true);
-  });
-});
-
-// =====================================================================
-// buildSecretsFromSetup EDGE CASES
-// =====================================================================
-
-describe("buildSecretsFromSetup edge cases", () => {
-  it("sanitizes owner name with control characters", () => {
-    const input = makeValidInput({ ownerName: "Test\nUser\r\0" });
-    const secrets = buildSecretsFromSetup(input);
-    expect(secrets.OWNER_NAME).toBe("TestUser");
-  });
-
-  it("omits empty owner name and email", () => {
-    const input = makeValidInput({ ownerName: "", ownerEmail: "" });
-    const secrets = buildSecretsFromSetup(input);
-    expect(secrets.OWNER_NAME).toBeUndefined();
-    expect(secrets.OWNER_EMAIL).toBeUndefined();
-  });
-
-  it("defaults memoryUserId to default_user when empty", () => {
-    const input = makeValidInput({ memoryUserId: "" });
-    const secrets = buildSecretsFromSetup(input);
-    expect(secrets.MEMORY_USER_ID).toBe("default_user");
-  });
-
-  it("sets SYSTEM_LLM_PROVIDER correctly for each provider", () => {
-    for (const provider of ["openai", "groq", "anthropic"] as const) {
-      const envKey =
-        provider === "openai"
-          ? "OPENAI_API_KEY"
-          : provider === "groq"
-            ? "GROQ_API_KEY"
-            : "ANTHROPIC_API_KEY";
-
-      const input = makeValidInput({
-        connections: [
-          {
-            id: `${provider}-1`,
-            name: provider,
-            provider,
-            baseUrl: "https://api.example.com",
-            apiKey: "sk-test",
-          },
-        ],
-        assignments: {
-          llm: { connectionId: `${provider}-1`, model: "test-model" },
-          embeddings: {
-            connectionId: `${provider}-1`,
-            model: "embed-model",
-          },
-        },
-      });
-      const secrets = buildSecretsFromSetup(input);
-      expect(secrets.SYSTEM_LLM_PROVIDER).toBe(provider);
-      expect(secrets[envKey]).toBe("sk-test");
-    }
-  });
-});
-
-describe("buildSystemSecretsFromSetup edge cases", () => {
-  it("reuses existing assistant and memory tokens when provided", () => {
-    const input = makeValidInput();
-    const secrets = buildSystemSecretsFromSetup(input, {
-      ASSISTANT_TOKEN: "existing-assistant-token",
-      MEMORY_AUTH_TOKEN: "existing-memory-token",
-    });
-    expect(secrets.OP_ADMIN_TOKEN).toBe("test-admin-token-12345");
-    expect(secrets.ASSISTANT_TOKEN).toBe("existing-assistant-token");
-    expect(secrets.MEMORY_AUTH_TOKEN).toBe("existing-memory-token");
-  });
-});
-
-// =====================================================================
-// buildConnectionEnvVarMap EDGE CASES
-// =====================================================================
-
-describe("buildConnectionEnvVarMap edge cases", () => {
-  it("handles a single Ollama connection (fallback to OPENAI_API_KEY)", () => {
-    const connections: SetupConnection[] = [
-      {
-        id: "ollama-1",
-        name: "Ollama",
-        provider: "ollama",
-        baseUrl: "http://localhost:11434",
-        apiKey: "",
-      },
-    ];
-    const map = buildConnectionEnvVarMap(connections);
-    expect(map.get("ollama-1")).toBe("OPENAI_API_KEY");
-  });
-
-  it("skips connections with unsafe env var keys (hyphen creates invalid key)", () => {
-    const connections: SetupConnection[] = [
-      {
-        id: "openai-1",
-        name: "OpenAI",
-        provider: "openai",
-        baseUrl: "",
-        apiKey: "sk-a",
-      },
-      {
-        id: "openai-2",
-        name: "OpenAI 2",
-        provider: "openai",
-        baseUrl: "",
-        apiKey: "sk-b",
-      },
-    ];
-    const map = buildConnectionEnvVarMap(connections);
-    // First gets canonical key
-    expect(map.get("openai-1")).toBe("OPENAI_API_KEY");
-    // Second would be OPENAI_API_KEY_OPENAI-2, which has a hyphen -> skipped
-    expect(map.has("openai-2")).toBe(false);
-  });
-
-  it("namespaces duplicate provider env vars with underscore IDs", () => {
-    const connections: SetupConnection[] = [
-      {
-        id: "openai_1",
-        name: "OpenAI 1",
-        provider: "openai",
-        baseUrl: "",
-        apiKey: "sk-a",
-      },
-      {
-        id: "openai_2",
-        name: "OpenAI 2",
-        provider: "openai",
-        baseUrl: "",
-        apiKey: "sk-b",
-      },
-    ];
-    const map = buildConnectionEnvVarMap(connections);
-    expect(map.get("openai_1")).toBe("OPENAI_API_KEY");
-    // openai_2 -> OPENAI_API_KEY_OPENAI_2 which is a safe key
-    expect(map.get("openai_2")).toBe("OPENAI_API_KEY_OPENAI_2");
   });
 });

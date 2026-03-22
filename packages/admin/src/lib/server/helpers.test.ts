@@ -21,8 +21,7 @@ import {
   getActor,
   getCallerType,
   parseJsonBody,
-  parseCanonicalConnectionProfile,
-  parseCapabilityAssignments,
+  validateExternalUrl,
 } from "./helpers.js";
 import { resetState } from "./state.js";
 
@@ -245,6 +244,12 @@ describe("identifyCallerByToken / requireAuth", () => {
   });
 });
 
+describe('validateExternalUrl', () => {
+  test('blocks localhost loopback targets', () => {
+    expect(validateExternalUrl('http://localhost:11434')).toBe('Blocked address: localhost');
+  });
+});
+
 // ── getCallerType ───────────────────────────────────────────────────────
 
 describe("getCallerType", () => {
@@ -298,91 +303,3 @@ describe("parseJsonBody", () => {
   });
 });
 
-describe("parseCanonicalConnectionProfile", () => {
-  test("parses a valid canonical profile", () => {
-    const result = parseCanonicalConnectionProfile({
-      id: "conn_local_1",
-      name: "LM Studio local",
-      kind: "openai_compatible_local",
-      provider: 'lmstudio',
-      baseUrl: "http://localhost:1234/v1",
-      auth: { mode: "none" },
-    });
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value.kind).toBe("openai_compatible_local");
-      expect(result.value.auth.mode).toBe("none");
-    }
-  });
-
-  test("rejects profile with unsupported kind", () => {
-    const result = parseCanonicalConnectionProfile({
-      id: "conn_1",
-      name: "legacy",
-      kind: "ollama_native",
-      provider: 'ollama',
-      auth: { mode: "none" },
-    });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.message).toContain("kind is invalid");
-    }
-  });
-
-  test("requires apiKeySecretRef when auth mode is api_key", () => {
-    const result = parseCanonicalConnectionProfile({
-      id: "conn_1",
-      name: "remote",
-      kind: "openai_compatible_remote",
-      provider: 'openai',
-      auth: { mode: "api_key" },
-    });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.message).toContain("apiKeySecretRef is required");
-    }
-  });
-});
-
-describe("parseCapabilityAssignments", () => {
-  test("parses required assignment blocks", () => {
-    const result = parseCapabilityAssignments({
-      llm: { connectionId: "conn_remote", model: "gpt-4.1-mini" },
-      embeddings: {
-        connectionId: "conn_local",
-        model: "nomic-embed-text",
-        embeddingDims: 768,
-      },
-    });
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value.llm.connectionId).toBe("conn_remote");
-      expect(result.value.embeddings.embeddingDims).toBe(768);
-    }
-  });
-
-  test("rejects missing required embeddings block", () => {
-    const result = parseCapabilityAssignments({
-      llm: { connectionId: "conn_remote", model: "gpt-4.1-mini" },
-    });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.message).toContain("assignments.embeddings is required");
-    }
-  });
-
-  test("rejects non-positive embedding dimensions", () => {
-    const result = parseCapabilityAssignments({
-      llm: { connectionId: "conn_remote", model: "gpt-4.1-mini" },
-      embeddings: {
-        connectionId: "conn_local",
-        model: "nomic-embed-text",
-        embeddingDims: 0,
-      },
-    });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.message).toContain("embeddingDims must be a positive integer");
-    }
-  });
-});

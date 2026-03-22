@@ -7,3 +7,8 @@ bun.lockb
 
 # Miscellaneous
 /static/
+/.svelte-kit/
+/build/
+/coverage/
+/test-results/
+/undefined/

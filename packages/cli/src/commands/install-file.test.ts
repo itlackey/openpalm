@@ -1,9 +1,10 @@
 /**
  * Tests for the --file install path in the install command.
  *
- * Mocks performSetupFromConfig and performSetup to avoid filesystem
- * side effects, and verifies that the file-based install flow correctly
- * reads, parses, and dispatches JSON/YAML config files.
+ * Mocks performSetup to avoid filesystem side effects, and verifies that
+ * the file-based install flow correctly reads, parses, and dispatches
+ * JSON/YAML config files. Supports both v1 (SetupConfig, migrated) and
+ * v2 (SetupSpec) formats.
  */
 import { describe, expect, it, mock, afterEach, beforeEach } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
@@ -39,6 +40,7 @@ function restoreDockerCli(): void {
   Bun.which = originalBunWhich;
 }
 
+/** v1 SetupConfig format (legacy) */
 function makeValidSetupConfig(): Record<string, unknown> {
   return {
     version: 1,
@@ -58,29 +60,6 @@ function makeValidSetupConfig(): Record<string, unknown> {
       embeddings: { connectionId: 'openai-main', model: 'text-embedding-3-small' },
     },
     memory: { userId: 'test_user' },
-  };
-}
-
-function makeLegacySetupInput(): Record<string, unknown> {
-  return {
-    adminToken: 'test-admin-token-12345',
-    ownerName: 'Test User',
-    ownerEmail: 'test@example.com',
-    memoryUserId: 'test_user',
-    ollamaEnabled: false,
-    connections: [
-      {
-        id: 'openai-main',
-        name: 'OpenAI',
-        provider: 'openai',
-        baseUrl: 'https://api.openai.com',
-        apiKey: 'sk-test-key-123',
-      },
-    ],
-    assignments: {
-      llm: { connectionId: 'openai-main', model: 'gpt-4o' },
-      embeddings: { connectionId: 'openai-main', model: 'text-embedding-3-small' },
-    },
   };
 }
 
@@ -112,12 +91,13 @@ describe('install --file', () => {
 
     savedEnv.OP_HOME = process.env.OP_HOME;
     savedEnv.OP_WORK_DIR = process.env.OP_WORK_DIR;
-    savedEnv.ADMIN_TOKEN = process.env.ADMIN_TOKEN;
     savedEnv.OP_ADMIN_TOKEN = process.env.OP_ADMIN_TOKEN;
+    savedEnv.OP_SKIP_COMPOSE_PREFLIGHT = process.env.OP_SKIP_COMPOSE_PREFLIGHT;
 
     process.env.OP_HOME = homeDir;
     process.env.OP_WORK_DIR = workDir;
-    delete process.env.ADMIN_TOKEN;
+    // Skip compose preflight: Bun.spawn is mocked so execFile hangs waiting for null streams
+    process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
     delete process.env.OP_ADMIN_TOKEN;
 
     mockDockerCli();
@@ -126,7 +106,7 @@ describe('install --file', () => {
       if (url.includes('/core.compose.yml') || url.includes('/docker-compose.yml')) return new Response('services: {}\n', { status: 200 });
       if (url.includes('/compose.yml')) return new Response('services: {}\n', { status: 200 });
       if (url.endsWith('.schema') || url.endsWith('.schema.json')) return new Response('KEY=string\n', { status: 200 });
-      // Return valid content for asset files needed by FilesystemAssetProvider
+      // Return valid content for asset files needed by core-assets reads
       if (url.includes('/AGENTS.md')) return new Response('# Agents\n', { status: 200 });
       if (url.includes('/opencode.jsonc') || url.includes('/admin-opencode.jsonc'))
         return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
@@ -146,8 +126,12 @@ describe('install --file', () => {
     restoreDockerCli();
     process.env.OP_HOME = savedEnv.OP_HOME;
     process.env.OP_WORK_DIR = savedEnv.OP_WORK_DIR;
-    process.env.ADMIN_TOKEN = savedEnv.ADMIN_TOKEN;
     process.env.OP_ADMIN_TOKEN = savedEnv.OP_ADMIN_TOKEN;
+    if (savedEnv.OP_SKIP_COMPOSE_PREFLIGHT !== undefined) {
+      process.env.OP_SKIP_COMPOSE_PREFLIGHT = savedEnv.OP_SKIP_COMPOSE_PREFLIGHT;
+    } else {
+      delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
+    }
     rmSync(tempBase, { recursive: true, force: true });
   });
 
@@ -201,16 +185,12 @@ describe('install --file', () => {
     expect((err as Error).message).toContain('Failed to parse setup config');
   });
 
-  it('--file config.json with version: 1 calls performSetupFromConfig path', async () => {
+  it('--file config.json with version: 1 rejects v1 format', async () => {
     const { bootstrapInstall } = await import('./install.ts');
     const configPath = join(tempBase, 'config.json');
     const config = makeValidSetupConfig();
     writeFileSync(configPath, JSON.stringify(config));
 
-    // This will call performSetupFromConfig which needs filesystem dirs.
-    // The function will fail at staging since we don't have the full
-    // filesystem setup, but the important thing is it reaches the right
-    // code path (version 1 -> performSetupFromConfig).
     const err = await bootstrapInstall({
       force: true,
       version: 'main',
@@ -219,18 +199,11 @@ describe('install --file', () => {
       file: configPath,
     }).catch((e: unknown) => e);
 
-    // If setup fails it will throw "Setup failed: ..." — but NOT
-    // "Unsupported config file format" or "Failed to parse" which
-    // confirms the JSON was parsed and routed to performSetupFromConfig.
-    if (err) {
-      expect((err as Error).message).not.toContain('Unsupported config file format');
-      expect((err as Error).message).not.toContain('Failed to parse');
-      // It may fail with "Setup failed" due to missing filesystem state
-      // or it may succeed; either is acceptable for this routing test.
-    }
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain('v1 setup config format is no longer supported');
   });
 
-  it('--file setup.yaml with valid YAML is parsed correctly', async () => {
+  it('--file setup.yaml with v1 YAML rejects v1 format', async () => {
     const { bootstrapInstall } = await import('./install.ts');
     const yamlPath = join(tempBase, 'setup.yaml');
     const yamlContent = [
@@ -261,11 +234,8 @@ describe('install --file', () => {
       file: yamlPath,
     }).catch((e: unknown) => e);
 
-    // If it gets past parsing, it will NOT throw a parse error.
-    if (err) {
-      expect((err as Error).message).not.toContain('Unsupported config file format');
-      expect((err as Error).message).not.toContain('Failed to parse');
-    }
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain('v1 setup config format is no longer supported');
   });
 
   it('--file config.json --no-start exits after setup without compose up', async () => {

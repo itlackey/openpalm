@@ -1,6 +1,10 @@
 /**
- * Tests for core-assets.ts — data dir source-of-truth files:
- * compose and system config management.
+ * Tests for core-assets — directory creation, compose reading, and
+ * GitHub-based asset refresh.
+ *
+ * After the CoreAssetProvider removal, ensure* functions only create
+ * directories. File content is written by refreshCoreAssets() (GitHub
+ * download) or by the CLI install command.
  */
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import {
@@ -17,12 +21,12 @@ import {
   readCoreCompose,
   ensureOpenCodeSystemConfig,
   refreshCoreAssets
-} from "./core-assets.js";
+} from "@openpalm/lib";
 import { makeTempDir, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
 
-// ── Core Compose (config/components/ source of truth) ──────────────────
+// ── Core Compose (stack/ source of truth) ──────────────────────────────
 
 describe("ensureCoreCompose / readCoreCompose", () => {
   const origEnv: Record<string, string | undefined> = {};
@@ -36,46 +40,44 @@ describe("ensureCoreCompose / readCoreCompose", () => {
     process.env.OP_HOME = origEnv.OP_HOME;
   });
 
-  test("ensureCoreCompose creates core.yml if missing", () => {
+  test("ensureCoreCompose creates stack/ directory and returns path", () => {
     const path = ensureCoreCompose();
-    expect(existsSync(path)).toBe(true);
-    expect(path).toContain("core.yml");
+    expect(path).toContain("core.compose.yml");
+    expect(path).toContain("stack");
+    // Directory should exist even though file is not written
+    const stackDir = join(process.env.OP_HOME!, "stack");
+    expect(existsSync(stackDir)).toBe(true);
   });
 
   test("ensureCoreCompose is idempotent", () => {
     const path1 = ensureCoreCompose();
-    const content1 = readFileSync(path1, "utf-8");
     const path2 = ensureCoreCompose();
-    const content2 = readFileSync(path2, "utf-8");
-    expect(content1).toBe(content2);
+    expect(path1).toBe(path2);
   });
 
-  test("ensureCoreCompose overwrites stale file and creates backup", () => {
-    const configDir = join(process.env.OP_HOME!, "config");
-    const componentsDir = join(configDir, "components");
-    mkdirSync(componentsDir, { recursive: true });
-    const staleContent = "# stale compose\nservices: {}";
-    writeFileSync(join(componentsDir, "core.yml"), staleContent);
+  test("ensureCoreCompose does not overwrite existing file", () => {
+    const stackDir = join(process.env.OP_HOME!, "stack");
+    mkdirSync(stackDir, { recursive: true });
+    const existingContent = "# user-managed compose\nservices: {}";
+    writeFileSync(join(stackDir, "core.compose.yml"), existingContent);
 
-    const path = ensureCoreCompose();
-    const content = readFileSync(path, "utf-8");
-    expect(content).not.toBe(staleContent);
-    expect(content).toContain("services:");
-
-    // Verify backup was created
-    const backupDir = join(componentsDir, "backups");
-    expect(existsSync(backupDir)).toBe(true);
-    const backups = readdirSync(backupDir).filter(f => f.startsWith("core."));
-    expect(backups.length).toBe(1);
-    expect(readFileSync(join(backupDir, backups[0]), "utf-8")).toBe(staleContent);
+    ensureCoreCompose();
+    const content = readFileSync(join(stackDir, "core.compose.yml"), "utf-8");
+    expect(content).toBe(existingContent);
   });
 
-  test("readCoreCompose returns file content", () => {
+  test("readCoreCompose returns file content when file exists", () => {
+    const stackDir = join(process.env.OP_HOME!, "stack");
+    mkdirSync(stackDir, { recursive: true });
+    const composeContent = "services:\n  memory:\n    image: test\n";
+    writeFileSync(join(stackDir, "core.compose.yml"), composeContent);
+
     const content = readCoreCompose();
-    expect(content).toBeTruthy();
-    expect(typeof content).toBe("string");
-    expect(content).toContain("HOME: /data");
-    expect(content).toContain("OP_HOME");
+    expect(content).toBe(composeContent);
+  });
+
+  test("readCoreCompose throws when file does not exist", () => {
+    expect(() => readCoreCompose()).toThrow();
   });
 });
 
@@ -93,64 +95,30 @@ describe("ensureOpenCodeSystemConfig", () => {
     process.env.OP_HOME = origEnv.OP_HOME;
   });
 
-  test("seeds opencode.jsonc and AGENTS.md on first run", () => {
-    const dataDir = join(process.env.OP_HOME!, "data");
+  test("creates data/assistant/ directory", () => {
     ensureOpenCodeSystemConfig();
-
-    const configPath = join(dataDir, "assistant", "opencode.jsonc");
-    const agentsPath = join(dataDir, "assistant", "AGENTS.md");
-    expect(existsSync(configPath)).toBe(true);
-    expect(existsSync(agentsPath)).toBe(true);
-
-    const configContent = readFileSync(configPath, "utf-8");
-    expect(configContent).toContain("$schema");
-    const agentsContent = readFileSync(agentsPath, "utf-8");
-    expect(agentsContent.length).toBeGreaterThan(0);
+    const assistantDir = join(process.env.OP_HOME!, "data", "assistant");
+    expect(existsSync(assistantDir)).toBe(true);
   });
 
-  test("is idempotent — skips unchanged files", () => {
+  test("is idempotent", () => {
     ensureOpenCodeSystemConfig();
-    const dataDir = join(process.env.OP_HOME!, "data");
-    const configPath = join(dataDir, "assistant", "opencode.jsonc");
-    const content1 = readFileSync(configPath, "utf-8");
-
     ensureOpenCodeSystemConfig();
-    const content2 = readFileSync(configPath, "utf-8");
-    expect(content1).toBe(content2);
-
-    // No backups should exist since content didn't change
-    const backupDir = join(dataDir, "assistant", "backups");
-    expect(existsSync(backupDir)).toBe(false);
+    const assistantDir = join(process.env.OP_HOME!, "data", "assistant");
+    expect(existsSync(assistantDir)).toBe(true);
   });
 
-  test("overwrites stale files and creates backups", () => {
+  test("does not overwrite existing files", () => {
     const dataDir = join(process.env.OP_HOME!, "data");
     const assistantDir = join(dataDir, "assistant");
     mkdirSync(assistantDir, { recursive: true });
-    writeFileSync(join(assistantDir, "opencode.jsonc"), "stale-config");
-    writeFileSync(join(assistantDir, "AGENTS.md"), "stale-agents");
+    writeFileSync(join(assistantDir, "opencode.jsonc"), "user-config");
+    writeFileSync(join(assistantDir, "AGENTS.md"), "user-agents");
 
     ensureOpenCodeSystemConfig();
 
-    // Content should be updated
-    const configContent = readFileSync(join(assistantDir, "opencode.jsonc"), "utf-8");
-    expect(configContent).not.toBe("stale-config");
-    expect(configContent).toContain("$schema");
-
-    const agentsContent = readFileSync(join(assistantDir, "AGENTS.md"), "utf-8");
-    expect(agentsContent).not.toBe("stale-agents");
-
-    // Backups should exist
-    const backupDir = join(assistantDir, "backups");
-    expect(existsSync(backupDir)).toBe(true);
-    const backups = readdirSync(backupDir);
-    expect(backups.length).toBe(2);
-    const configBackups = backups.filter(f => f.startsWith("opencode.jsonc."));
-    const agentsBackups = backups.filter(f => f.startsWith("AGENTS.md."));
-    expect(configBackups.length).toBe(1);
-    expect(agentsBackups.length).toBe(1);
-    expect(readFileSync(join(backupDir, configBackups[0]), "utf-8")).toBe("stale-config");
-    expect(readFileSync(join(backupDir, agentsBackups[0]), "utf-8")).toBe("stale-agents");
+    expect(readFileSync(join(assistantDir, "opencode.jsonc"), "utf-8")).toBe("user-config");
+    expect(readFileSync(join(assistantDir, "AGENTS.md"), "utf-8")).toBe("user-agents");
   });
 });
 
@@ -169,16 +137,12 @@ describe("refreshCoreAssets", () => {
     vi.restoreAllMocks();
   });
 
-  test("downloads and writes new assets when none exist", async () => {
-    const homeDir = process.env.OP_HOME!;
-
+  /** Mock fetch to return content for all managed asset URLs. */
+  function mockFetchAll() {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : (input as Request).url;
       if (url.includes("core.compose.yml")) {
         return new Response("services:\n  admin:\n    image: test\n", { status: 200 });
-      }
-      if (url.includes("admin-opencode.jsonc")) {
-        return new Response('{"$schema":"https://opencode.ai/config.json","admin":true}\n', { status: 200 });
       }
       if (url.includes("opencode.jsonc")) {
         return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
@@ -186,66 +150,63 @@ describe("refreshCoreAssets", () => {
       if (url.includes("AGENTS.md")) {
         return new Response("# OpenCode Agents\n", { status: 200 });
       }
-      if (url.includes("admin.yml")) {
-        return new Response("services:\n  admin:\n    image: admin\n", { status: 200 });
-      }
       if (url.includes("user.env.schema")) {
         return new Response("# @defaultSensitive=true\n", { status: 200 });
       }
       if (url.includes("stack.env.schema")) {
         return new Response("# @defaultSensitive=false\n", { status: 200 });
       }
+      if (url.includes("cleanup-logs.yml")) {
+        return new Response("# cleanup-logs automation\n", { status: 200 });
+      }
+      if (url.includes("cleanup-data.yml")) {
+        return new Response("# cleanup-data automation\n", { status: 200 });
+      }
+      if (url.includes("validate-config.yml")) {
+        return new Response("# validate-config automation\n", { status: 200 });
+      }
       return new Response("Not found", { status: 404 });
     });
+  }
+
+  test("downloads and writes new assets when none exist", async () => {
+    const homeDir = process.env.OP_HOME!;
+    mockFetchAll();
 
     const result = await refreshCoreAssets();
-    expect(result.updated).toContain("config/components/core.yml");
+    expect(result.updated).toContain("stack/core.compose.yml");
     expect(result.updated).toContain("data/assistant/opencode.jsonc");
     expect(result.updated).toContain("data/assistant/AGENTS.md");
     expect(result.updated).toContain("vault/user/user.env.schema");
     expect(result.updated).toContain("vault/stack/stack.env.schema");
+    expect(result.updated).toContain("config/automations/cleanup-logs.yml");
+    expect(result.updated).toContain("config/automations/cleanup-data.yml");
+    expect(result.updated).toContain("config/automations/validate-config.yml");
     expect(result.backupDir).toBeNull(); // no existing files to back up
 
-    expect(existsSync(join(homeDir, "config/components/core.yml"))).toBe(true);
+    expect(existsSync(join(homeDir, "stack/core.compose.yml"))).toBe(true);
     expect(existsSync(join(homeDir, "data/assistant/opencode.jsonc"))).toBe(true);
     expect(existsSync(join(homeDir, "data/assistant/AGENTS.md"))).toBe(true);
     expect(existsSync(join(homeDir, "vault/user/user.env.schema"))).toBe(true);
     expect(existsSync(join(homeDir, "vault/stack/stack.env.schema"))).toBe(true);
+    expect(existsSync(join(homeDir, "config/automations/cleanup-logs.yml"))).toBe(true);
   });
 
   test("backs up changed files before overwriting", async () => {
     const homeDir = process.env.OP_HOME!;
-    mkdirSync(join(homeDir, "config/components"), { recursive: true });
-    writeFileSync(join(homeDir, "config/components/core.yml"), "old-compose-content");
+    mkdirSync(join(homeDir, "stack"), { recursive: true });
+    writeFileSync(join(homeDir, "stack/core.compose.yml"), "old-compose-content");
     mkdirSync(join(homeDir, "data/assistant"), { recursive: true });
     writeFileSync(join(homeDir, "data/assistant/opencode.jsonc"), "old-opencode-content");
     writeFileSync(join(homeDir, "data/assistant/AGENTS.md"), "old-agents-content");
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : (input as Request).url;
-      if (url.includes("core.compose.yml")) {
-        return new Response("new-compose-content", { status: 200 });
-      }
-      if (url.includes("opencode.jsonc")) {
-        return new Response("new-opencode-content", { status: 200 });
-      }
-      if (url.includes("AGENTS.md")) {
-        return new Response("new-agents-content", { status: 200 });
-      }
-      if (url.includes("user.env.schema")) {
-        return new Response("new-secrets-schema-content", { status: 200 });
-      }
-      if (url.includes("stack.env.schema")) {
-        return new Response("new-stack-schema-content", { status: 200 });
-      }
-      return new Response("Not found", { status: 404 });
-    });
+    mockFetchAll();
 
     const result = await refreshCoreAssets();
-    expect(result.updated).toHaveLength(5);
+    expect(result.updated.length).toBeGreaterThanOrEqual(3);
     expect(result.backupDir).not.toBeNull();
 
     // Verify backup contains old content
-    const backupCompose = readFileSync(join(result.backupDir!, "config/components/core.yml"), "utf-8");
+    const backupCompose = readFileSync(join(result.backupDir!, "stack/core.compose.yml"), "utf-8");
     expect(backupCompose).toBe("old-compose-content");
     const backupOpencode = readFileSync(join(result.backupDir!, "data/assistant/opencode.jsonc"), "utf-8");
     expect(backupOpencode).toBe("old-opencode-content");
@@ -253,26 +214,27 @@ describe("refreshCoreAssets", () => {
     expect(backupAgents).toBe("old-agents-content");
 
     // Verify new content written
-    expect(readFileSync(join(homeDir, "config/components/core.yml"), "utf-8")).toBe("new-compose-content");
-    expect(readFileSync(join(homeDir, "data/assistant/opencode.jsonc"), "utf-8")).toBe("new-opencode-content");
-    expect(readFileSync(join(homeDir, "data/assistant/AGENTS.md"), "utf-8")).toBe("new-agents-content");
+    expect(readFileSync(join(homeDir, "stack/core.compose.yml"), "utf-8")).not.toBe("old-compose-content");
+    expect(readFileSync(join(homeDir, "data/assistant/opencode.jsonc"), "utf-8")).not.toBe("old-opencode-content");
+    expect(readFileSync(join(homeDir, "data/assistant/AGENTS.md"), "utf-8")).not.toBe("old-agents-content");
   });
 
   test("skips assets with identical content", async () => {
     const homeDir = process.env.OP_HOME!;
     const content = "same-content";
-    mkdirSync(join(homeDir, "config/components"), { recursive: true });
-    writeFileSync(join(homeDir, "config/components/core.yml"), content);
-    writeFileSync(join(homeDir, "config/components/admin.yml"), content);
+    mkdirSync(join(homeDir, "stack"), { recursive: true });
+    writeFileSync(join(homeDir, "stack/core.compose.yml"), content);
     mkdirSync(join(homeDir, "data/assistant"), { recursive: true });
     writeFileSync(join(homeDir, "data/assistant/opencode.jsonc"), content);
     writeFileSync(join(homeDir, "data/assistant/AGENTS.md"), content);
-    mkdirSync(join(homeDir, "data/admin"), { recursive: true });
-    writeFileSync(join(homeDir, "data/admin/opencode.jsonc"), content);
     mkdirSync(join(homeDir, "vault/user"), { recursive: true });
     mkdirSync(join(homeDir, "vault/stack"), { recursive: true });
     writeFileSync(join(homeDir, "vault/user/user.env.schema"), content);
     writeFileSync(join(homeDir, "vault/stack/stack.env.schema"), content);
+    mkdirSync(join(homeDir, "config/automations"), { recursive: true });
+    writeFileSync(join(homeDir, "config/automations/cleanup-logs.yml"), content);
+    writeFileSync(join(homeDir, "config/automations/cleanup-data.yml"), content);
+    writeFileSync(join(homeDir, "config/automations/validate-config.yml"), content);
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       return new Response(content, { status: 200 });

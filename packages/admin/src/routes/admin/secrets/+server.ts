@@ -12,7 +12,7 @@ import {
 import {
   appendAudit,
   detectSecretBackend,
-} from '$lib/server/control-plane.js';
+} from '@openpalm/lib';
 import { validatePassEntryName } from '@openpalm/lib';
 
 function getSecretKeyFromInput(body: Record<string, unknown>): string | null {

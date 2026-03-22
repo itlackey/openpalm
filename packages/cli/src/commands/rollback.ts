@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty';
-import { runDockerCompose } from '../lib/docker.ts';
-import { ensureValidState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
+import { ensureValidState } from '../lib/cli-state.ts';
+import { buildManagedServiceNames, runComposeWithPreflight } from '../lib/cli-compose.ts';
 import {
   createState,
   restoreSnapshot,
@@ -32,15 +32,10 @@ export default defineCommand({
     // Now validate and persist with the restored files in place
     const state = await ensureValidState();
 
-    const composeArgs = fullComposeArgs(state);
-    const managedServices = buildManagedServiceNames(state);
+    const managedServices = await buildManagedServiceNames(state);
 
-    await runDockerCompose([
-      ...composeArgs,
-      'up',
-      '-d',
-      '--remove-orphans',
-      ...managedServices,
+    await runComposeWithPreflight(state, [
+      'up', '-d', '--remove-orphans', ...managedServices,
     ]);
 
     console.log('Rollback complete.');

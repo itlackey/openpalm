@@ -1,0 +1,23 @@
+{
+  "score_cap": 1000,
+  "exclude_directories": [
+    "node_modules",
+    "__fixtures__",
+    ".svelte-kit",
+    ".dev",
+    ".openpalm",
+    "dist",
+    "build",
+    ".github"
+  ],
+  "exclude_filenames": [
+    "*.test.{ts,tsx}",
+    "*.spec.{ts,tsx}",
+    "*.test.{js,jsx}",
+    "*.spec.{js,jsx}",
+    "*.svelte.test.ts",
+    "*.d.ts"
+  ],
+  "include_comments": false,
+  "exclude_under": 10
+}

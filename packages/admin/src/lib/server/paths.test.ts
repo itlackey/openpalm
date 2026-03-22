@@ -5,12 +5,12 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { ensureXdgDirs } from "./paths.js";
+import { ensureHomeDirs } from "@openpalm/lib";
 import { makeTempDir, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
 
-describe("ensureXdgDirs (ensureHomeDirs)", () => {
+describe("ensureHomeDirs", () => {
   const origEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
@@ -25,7 +25,7 @@ describe("ensureXdgDirs (ensureHomeDirs)", () => {
   });
 
   test("creates full home directory tree", () => {
-    ensureXdgDirs();
+    ensureHomeDirs();
 
     const home = process.env.OP_HOME!;
     const configDir = join(home, "config");
@@ -35,7 +35,6 @@ describe("ensureXdgDirs (ensureHomeDirs)", () => {
 
     // config/ subtrees
     expect(existsSync(configDir)).toBe(true);
-    expect(existsSync(join(configDir, "components"))).toBe(true);
     expect(existsSync(join(configDir, "automations"))).toBe(true);
     expect(existsSync(join(configDir, "assistant"))).toBe(true);
     expect(existsSync(join(configDir, "guardian"))).toBe(true);
@@ -70,8 +69,8 @@ describe("ensureXdgDirs (ensureHomeDirs)", () => {
   });
 
   test("is idempotent — safe to call multiple times", () => {
-    ensureXdgDirs();
-    ensureXdgDirs(); // No error
+    ensureHomeDirs();
+    ensureHomeDirs(); // No error
     expect(existsSync(join(process.env.OP_HOME!, "config"))).toBe(true);
   });
 });

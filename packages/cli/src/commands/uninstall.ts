@@ -1,8 +1,8 @@
 import { defineCommand } from 'citty';
 import { rmSync } from 'node:fs';
-import { runDockerCompose } from '../lib/docker.ts';
-import { ensureStagedState, fullComposeArgs } from '../lib/staging.ts';
-import { resolveConfigHome, resolveDataHome, resolveStateHome } from '@openpalm/lib';
+import { ensureValidState } from '../lib/cli-state.ts';
+import { runComposeWithPreflight } from '../lib/cli-compose.ts';
+import { resolveConfigDir, resolveDataDir, resolveLogsDir } from '@openpalm/lib';
 
 export default defineCommand({
   meta: {
@@ -24,13 +24,12 @@ export default defineCommand({
   async run({ args }) {
     // Compose file list includes admin.yml when admin is enabled,
     // so `down` tears down all services including admin/socket-proxy.
-    const state = await ensureStagedState();
-    const composeArgs = fullComposeArgs(state);
+    const state = await ensureValidState();
     const downArgs = args.volumes || args.purge ? ['down', '-v'] : ['down'];
-    await runDockerCompose([...composeArgs, ...downArgs]);
+    await runComposeWithPreflight(state, downArgs);
 
     if (args.purge) {
-      const dirs = [resolveConfigHome(), resolveDataHome(), resolveStateHome()];
+      const dirs = [resolveConfigDir(), resolveDataDir(), resolveLogsDir()];
       for (const dir of dirs) {
         console.log(`Removing ${dir}`);
         rmSync(dir, { recursive: true, force: true });

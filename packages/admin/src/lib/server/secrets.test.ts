@@ -271,8 +271,8 @@ describe("maskConnectionValue", () => {
     }
   });
 
-  test("SYSTEM_LLM_MODEL is returned unmasked", () => {
-    expect(maskConnectionValue("SYSTEM_LLM_MODEL", "gpt-4o-mini")).toBe("gpt-4o-mini");
+  test("OWNER_NAME is returned unmasked", () => {
+    expect(maskConnectionValue("OWNER_NAME", "Test User")).toBe("Test User");
   });
 
 });
@@ -287,13 +287,9 @@ describe("ALLOWED_CONNECTION_KEYS", () => {
       "GROQ_API_KEY",
       "MISTRAL_API_KEY",
       "GOOGLE_API_KEY",
-      "SYSTEM_LLM_PROVIDER",
-      "SYSTEM_LLM_BASE_URL",
-      "SYSTEM_LLM_MODEL",
       "OPENAI_BASE_URL",
-      "EMBEDDING_MODEL",
-      "EMBEDDING_DIMS",
-      "MEMORY_USER_ID",
+      "OWNER_NAME",
+      "OWNER_EMAIL",
     ];
     for (const key of expectedKeys) {
       expect(ALLOWED_CONNECTION_KEYS.has(key)).toBe(true);

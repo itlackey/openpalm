@@ -1,9 +1,28 @@
 <script lang="ts">
-  import type { CanonicalConnectionProfileDto, ConnectionProfilePayload } from '$lib/types.js';
+  /** Shape accepted by the form for pre-populating edit mode. */
+  type ConnectionFormInitial = {
+    id: string;
+    name: string;
+    kind: string;
+    provider: string;
+    baseUrl: string;
+    auth: { mode: 'api_key' | 'none'; apiKeySecretRef?: string };
+  };
+
+  /** Shape emitted when the form is saved. */
+  type ConnectionFormPayload = {
+    id: string;
+    name: string;
+    kind: 'openai_compatible_remote' | 'openai_compatible_local';
+    provider: string;
+    baseUrl: string;
+    auth: { mode: 'none' } | { mode: 'api_key'; apiKeySecretRef?: string };
+    apiKey?: string;
+  };
 
   interface Props {
     /** Populate for edit mode; omit (or pass null) for create mode. */
-    initial: CanonicalConnectionProfileDto | null;
+    initial: ConnectionFormInitial | null;
     /** Whether a "Test connection" operation is in flight. */
     testLoading: boolean;
     /** Model list populated after a successful test. */
@@ -13,7 +32,7 @@
     /** Whether the last test succeeded. */
     connectionTested: boolean;
     /** Emitted when the user submits the form (create or save). */
-    onSave: (payload: ConnectionProfilePayload) => void;
+    onSave: (payload: ConnectionFormPayload) => void;
     /** Emitted when the user clicks "Cancel". */
     onCancel: () => void;
     /** Emitted when the user clicks "Test connection". */
@@ -112,7 +131,7 @@
     const existingSecretRef = initial?.auth.mode === 'api_key'
       ? initial.auth.apiKeySecretRef
       : undefined;
-    const payload: ConnectionProfilePayload = {
+    const payload: ConnectionFormPayload = {
       id: id || crypto.randomUUID().slice(0, 8),
       name: name.trim(),
       kind,

@@ -60,8 +60,9 @@ export function reconcileStackEnvImageTag(
  * Seeds vault/user/user.env with initial template.
  * Uses `export` prefix so the file can be sourced in a shell and is still
  * compatible with Docker Compose v2 `env_file`.
- * Uses OP_ADMIN_TOKEN as the canonical variable name with a
- * commented-out legacy ADMIN_TOKEN alias for backward compatibility.
+ * Contains user-managed secrets only (API keys, memory user ID).
+ * System secrets (OP_ADMIN_TOKEN, OP_ASSISTANT_TOKEN, OP_MEMORY_TOKEN)
+ * live in vault/stack/stack.env and are managed by the control plane.
  */
 export async function ensureSecrets(vaultDir: string): Promise<void> {
   const secretsPath = join(vaultDir, 'user', 'user.env');
@@ -75,10 +76,6 @@ export async function ensureSecrets(vaultDir: string): Promise<void> {
 # All values are configured via the setup wizard.
 # This file is compatible with both \`source user.env\` and Docker Compose env_file.
 
-export OP_ADMIN_TOKEN=
-# Legacy alias — only needed if your compose file still references ADMIN_TOKEN:
-# export ADMIN_TOKEN=
-
 # LLM provider keys (configure at least one via the setup wizard)
 export OPENAI_API_KEY=
 export OPENAI_BASE_URL=
@@ -89,7 +86,6 @@ export OPENAI_BASE_URL=
 
 # Memory
 export MEMORY_USER_ID=${userId}
-export MEMORY_AUTH_TOKEN=${randomBytes(32).toString('hex')}
 `;
 
   await Bun.write(secretsPath, content);

@@ -13,7 +13,7 @@ import {
 import {
   appendAudit,
   discoverComponents,
-} from "$lib/server/control-plane.js";
+} from "@openpalm/lib";
 import type { ComponentResponse } from "$lib/types.js";
 
 export const GET: RequestHandler = async (event) => {

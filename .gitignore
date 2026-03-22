@@ -37,3 +37,4 @@ packages/channel-voice/test-results/.last-run.json
 !.openpalm/backups/README.md
 .openpalm/workspace/*/
 !.openpalm/workspace/README.md
+packages/admin-tools/dist/index.js

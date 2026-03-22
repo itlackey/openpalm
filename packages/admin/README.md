@@ -55,6 +55,6 @@ In a normal install the token source of truth is `~/.openpalm/vault/stack/stack.
 | Variable | Purpose |
 |---|---|
 | `OP_HOME` | OpenPalm root mounted into the container, usually `~/.openpalm` |
-| `ADMIN_TOKEN` | Runtime admin API token injected from `OP_ADMIN_TOKEN` |
+| `ADMIN_TOKEN` | Runtime admin API token (compose-mapped from `OP_ADMIN_TOKEN` in stack.env) |
 | `DOCKER_HOST` | Docker Socket Proxy URL inside the addon network |
-| `MEMORY_AUTH_TOKEN` | Bearer token for the memory service |
+| `MEMORY_AUTH_TOKEN` | Memory service bearer token (compose-mapped from `OP_MEMORY_TOKEN` in stack.env) |

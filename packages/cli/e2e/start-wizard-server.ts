@@ -10,7 +10,6 @@
  */
 import { createSetupServer } from "../src/setup-wizard/server.ts";
 import { mkdirSync, writeFileSync } from "node:fs";
-import type { CoreAssetProvider } from "@openpalm/lib";
 
 const port = parseInt(Bun.argv[2] || "18100", 10);
 const tmpBase = `/tmp/openpalm-wizard-test-${port}`;
@@ -19,32 +18,31 @@ const tmpBase = `/tmp/openpalm-wizard-test-${port}`;
 // API endpoints that need real files are mocked at the browser level
 // by Playwright's page.route(), so these dirs just prevent crashes.
 mkdirSync(`${tmpBase}/config`, { recursive: true });
+mkdirSync(`${tmpBase}/config/automations`, { recursive: true });
 mkdirSync(`${tmpBase}/data`, { recursive: true });
+mkdirSync(`${tmpBase}/data/assistant`, { recursive: true });
+mkdirSync(`${tmpBase}/stack`, { recursive: true });
 mkdirSync(`${tmpBase}/vault/stack`, { recursive: true });
 mkdirSync(`${tmpBase}/vault/user`, { recursive: true });
 
 writeFileSync(`${tmpBase}/vault/stack/stack.env`, "OP_SETUP_COMPLETE=false\n");
 writeFileSync(`${tmpBase}/vault/user/user.env`, "# test\n");
 
-// No-op asset provider — mocked tests intercept API calls before they
-// reach performSetup(), so these methods are never invoked.
-const noopAssetProvider: CoreAssetProvider = {
-	coreCompose: () => "",
-	agentsMd: () => "",
-	opencodeConfig: () => "",
-	secretsSchema: () => "",
-	stackSchema: () => "",
-	cleanupLogs: () => "",
-	cleanupData: () => "",
-	validateConfig: () => "",
-};
+// Seed minimal asset files so performSetup() can read them if invoked
+writeFileSync(`${tmpBase}/stack/core.compose.yml`, "services:\n  admin:\n    image: admin:latest\n");
+writeFileSync(`${tmpBase}/data/assistant/opencode.jsonc`, '{"$schema":"https://opencode.ai/config.json"}\n');
+writeFileSync(`${tmpBase}/data/assistant/AGENTS.md`, "# Agents\n");
+writeFileSync(`${tmpBase}/vault/user/user.env.schema`, "OP_ADMIN_TOKEN=string\n");
+writeFileSync(`${tmpBase}/vault/stack/stack.env.schema`, "OP_IMAGE_TAG=string\n");
+writeFileSync(`${tmpBase}/config/automations/cleanup-logs.yml`, "name: cleanup-logs\nschedule: daily\n");
+writeFileSync(`${tmpBase}/config/automations/cleanup-data.yml`, "name: cleanup-data\nschedule: weekly\n");
+writeFileSync(`${tmpBase}/config/automations/validate-config.yml`, "name: validate-config\nschedule: hourly\n");
 
 // Override state/config home so the server doesn't touch real dirs.
 process.env.OP_HOME = tmpBase;
 
 const { server } = createSetupServer(port, {
 	configDir: `${tmpBase}/config`,
-	assetProvider: noopAssetProvider,
 });
 
 console.log(`WIZARD_READY:${port}`);

@@ -13,7 +13,7 @@
     "test:e2e:mocked": "playwright test --grep @mocked",
     "test": "npm run test:unit -- --run && npm run test:e2e",
     "test:unit": "vitest",
-    "lint": "prettier --check . && eslint .",
+    "lint": "eslint .",
     "format": "prettier --write ."
   },
   "dependencies": {

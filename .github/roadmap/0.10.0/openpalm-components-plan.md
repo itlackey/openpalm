@@ -3,6 +3,8 @@
 **Status:** Proposal
 **Scope:** All optional stack containers are components. A component is a directory with a `compose.yml` and `.env.schema`. Enabling a component copies its directory into the data path as an instance. Each instance's `compose.yml` is used as a compose overlay. No code generation, no templating, no channel/service distinction.
 
+> Current repo alignment: use the current nested vault layout (`vault/user/user.env`, `vault/stack/stack.env`) and runtime compose assembly under `.openpalm/stack/` when interpreting this plan. Older references to `config/components/core.yml`, `config/components/admin.yml`, or flat vault files reflect an earlier planning stage.
+
 > **Filesystem context:** This plan uses the `~/.openpalm/` single-root layout defined in [fs-mounts-refactor.md](fs-mounts-refactor.md). All paths below are relative to `~/.openpalm/` unless noted otherwise.
 
 ---
@@ -64,14 +66,14 @@ The instance name is chosen by the user at creation time. For components where y
 
 ## Compose Overlays
 
-No compose files are generated or modified. Each instance's `compose.yml` is passed directly to Docker Compose as an overlay, with an `--env-file` pointing to the instance's `.env`. The two vault env files (`vault/system.env` and `vault/user.env`) are always included first for `${VAR}` substitution of stack-level secrets:
+No compose files are generated or modified. Each instance's `compose.yml` is passed directly to Docker Compose as an overlay, with an `--env-file` pointing to the instance's `.env`. The two vault env files (`vault/stack/stack.env` and `vault/user/user.env`) are always included first for `${VAR}` substitution of stack-level secrets:
 
 ```bash
 docker compose \
-  --env-file ~/.openpalm/vault/system.env \
-  --env-file ~/.openpalm/vault/user.env \
-  -f ~/.openpalm/config/components/core.yml \
-  -f ~/.openpalm/config/components/admin.yml \
+  --env-file ~/.openpalm/vault/stack/stack.env \
+  --env-file ~/.openpalm/vault/user/user.env \
+  -f ~/.openpalm/stack/core.compose.yml \
+  -f ~/.openpalm/stack/addons/admin/compose.yml \
   -f ~/.openpalm/data/components/caddy/compose.yml \
   --env-file ~/.openpalm/data/components/caddy/.env \
   -f ~/.openpalm/data/components/discord-main/compose.yml \
@@ -194,8 +196,8 @@ When a user configures a component instance:
 
 1. The admin UI renders the config form from `.env.schema`.
 2. For fields marked `@sensitive` (e.g., `DISCORD_BOT_TOKEN`), the user enters the value in the form.
-3. The admin writes the sensitive value to the unified secret manager under a namespaced key (e.g., `components/discord-main/DISCORD_BOT_TOKEN`).
-4. The instance `.env` file contains a reference that the secret manager resolves at compose-up time, not the plaintext secret.
+3. The admin writes the sensitive value to the unified secret manager under a canonical namespaced key (for example `openpalm/component/discord-main/discord-bot-token`).
+4. The instance `.env` file does not persist the plaintext secret; the secret manager/backend remains the durable source of truth.
 5. Non-sensitive fields (e.g., `DISCORD_PREFIX`, `DISCORD_GUILD_ID`) are written directly to the `.env` file.
 
 This ensures all secrets — core, component, and ad-hoc — flow through the same secret management system. No separate plaintext `.env` path for component secrets.
@@ -319,7 +321,7 @@ GET    /api/instances/:instanceId/schema         # parsed .env.schema as JSON
 1. Write user values to `.env` (non-sensitive fields directly; `@sensitive` fields through the unified secret manager).
 2. If a `.caddy` file exists, copy it to `data/caddy/channels/`.
 3. Add the instance's `compose.yml` and `--env-file` to the overlay list.
-4. Run `docker compose --env-file vault/system.env --env-file vault/user.env -f ... --env-file ... up -d`.
+4. Run `docker compose --env-file vault/stack/stack.env --env-file vault/user/user.env -f ... --env-file ... up -d`.
 5. Reload Caddy if a `.caddy` file was added.
 
 **Stop:**
@@ -438,7 +440,7 @@ function buildAllowlist(instances: string[]): Set<string> {
 ## Compose Structure
 
 ```yaml
-# config/components/core.yml -- base stack, system-managed (may be updated on upgrade)
+# .openpalm/stack/core.compose.yml -- base stack, system-managed runtime assembly
 services:
   gateway:
     expose: ["3000"]
@@ -453,7 +455,7 @@ networks:
 ```
 
 ```yaml
-# config/components/admin.yml -- admin overlay, system-managed
+# .openpalm/stack/addons/admin/compose.yml -- admin overlay, system-managed runtime assembly
 services:
   admin:
     ports:
@@ -464,10 +466,10 @@ Enabled instances are overlays. The vault env files are always included first fo
 
 ```bash
 docker compose \
-  --env-file ~/.openpalm/vault/system.env \
-  --env-file ~/.openpalm/vault/user.env \
-  -f ~/.openpalm/config/components/core.yml \
-  -f ~/.openpalm/config/components/admin.yml \
+  --env-file ~/.openpalm/vault/stack/stack.env \
+  --env-file ~/.openpalm/vault/user/user.env \
+  -f ~/.openpalm/stack/core.compose.yml \
+  -f ~/.openpalm/stack/addons/admin/compose.yml \
   -f ~/.openpalm/data/components/caddy/compose.yml \
   --env-file ~/.openpalm/data/components/caddy/.env \
   -f ~/.openpalm/data/components/discord-main/compose.yml \
@@ -572,7 +574,7 @@ That's it. No code changes. No admin UI changes. The discovery scan picks it up 
 - [ ] @env-spec parser integration in admin container
 - [ ] Instance creation: copy component directory as-is, write identity vars (`INSTANCE_ID`, `INSTANCE_DIR`) to `.env`
 - [ ] Service name collision validation against core services on instance creation
-- [ ] Compose overlay runner: build `-f` / `--env-file` chain from enabled instances (prepend `--env-file vault/system.env --env-file vault/user.env`)
+- [ ] Compose overlay runner: build `-f` / `--env-file` chain from enabled instances (prepend `--env-file vault/stack/stack.env --env-file vault/user/user.env`)
 - [ ] Caddy route management: discover `.caddy` files, copy to `data/caddy/channels/`, reload Caddy
 - [ ] Enabled instance persistence: `enabled.json` at `data/components/`
 - [ ] Dynamic allowlist from enabled instances
@@ -640,11 +642,11 @@ The staging tier (`STATE_HOME`) is eliminated in 0.10.0. The current staging pip
 - `stageChannelYmlFiles()` → removed. Component compose overlays are used directly from `data/components/` via `--env-file` — no staging needed.
 - `stageChannelCaddyfiles()` → replaced by direct copy of `.caddy` snippets from `data/components/*/.caddy` to `data/caddy/channels/`.
 - `discoverStagedChannelYmls()` → replaced by reading `data/components/enabled.json` and building the overlay chain.
-- `buildComposeFileList()` → updated to start with `config/components/core.yml` + `config/components/admin.yml` (if admin enabled), then append component overlays from enabled instances.
+- `buildComposeFileList()` → updated to start with `.openpalm/stack/core.compose.yml` + admin addon overlays (if admin enabled), then append component overlays from enabled instances.
 - `fullComposeArgs()` in `packages/cli/src/lib/staging.ts` → rewritten. Builds the full compose invocation:
-  1. `--env-file vault/system.env --env-file vault/user.env` (always first)
-  2. `-f config/components/core.yml` (always)
-  3. `-f config/components/admin.yml` (if admin enabled in `config/openpalm.yml`)
+  1. `--env-file vault/stack/stack.env --env-file vault/user/user.env` (always first)
+  2. `-f .openpalm/stack/core.compose.yml` (always)
+  3. `-f .openpalm/stack/addons/admin/compose.yml` (if admin is enabled)
   4. For each enabled instance: `-f data/components/{id}/compose.yml --env-file data/components/{id}/.env`
 - `staging.ts` itself → eliminated or renamed. The staging module is replaced by a validate-and-apply module that validates proposed changes against temp copies, snapshots current state to `~/.cache/openpalm/rollback/`, and writes to live paths only after validation passes.
 
@@ -700,7 +702,7 @@ services:
       OPENVIKING_API_KEY: ${OPENVIKING_API_KEY}
 ```
 
-When Docker Compose merges this overlay with `config/components/core.yml`, the `assistant` service's environment block is extended (not replaced) with the new variables. This is standard Compose merge behavior for maps. The `${OPENVIKING_API_KEY}` reference is resolved by Docker Compose from the vault env files (`--env-file vault/system.env --env-file vault/user.env`) or from the component's own `--env-file`.
+When Docker Compose merges this overlay with `.openpalm/stack/core.compose.yml`, the `assistant` service's environment block is extended (not replaced) with the new variables. This is standard Compose merge behavior for maps. The `${OPENVIKING_API_KEY}` reference is resolved by Docker Compose from the vault env files (`--env-file vault/stack/stack.env --env-file vault/user/user.env`) or from the component's own `--env-file`.
 
 ### Constraints
 
@@ -729,7 +731,7 @@ The 0.10.0 upgrade involves two breaking changes: the filesystem layout (XDG to 
 
 The migration tool handles:
 1. **Directory relocation** — XDG directories (`~/.config/openpalm/`, `~/.local/share/openpalm/`, `~/.local/state/openpalm/`) to `~/.openpalm/`
-2. **Env file splitting** — `secrets.env` + `stack.env` to `vault/user.env` + `vault/system.env`
+2. **Env file splitting** — legacy flat env files to `vault/user/user.env` + `vault/stack/stack.env`
 3. **Channel-to-component conversion** — legacy `.yml` overlays in `channels/` move to `config/components/`
 
 ### Migration Detection

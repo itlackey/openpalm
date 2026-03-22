@@ -31,41 +31,19 @@ export type {
   AccessScope,
   ChannelInfo,
   CallerType,
-  ConnectionKind,
-  ConnectionAuthMode,
   ArtifactMeta,
   AuditEntry,
-  RequiredCapability,
-  OptionalCapability,
-  Capability,
-  LlmAssignment,
-  EmbeddingsAssignment,
-  RerankerAssignment,
-  TtsAssignment,
-  SttAssignment,
-  CapabilityAssignments,
-  CanonicalConnectionProfile,
-  CanonicalConnectionsDocument,
 } from "./control-plane/types.js";
 export {
   CORE_SERVICES,
   OPTIONAL_SERVICES,
-  CONNECTION_KINDS,
-  REQUIRED_CAPABILITIES,
-  OPTIONAL_CAPABILITIES,
 } from "./control-plane/types.js";
 
 // ── Interfaces ──────────────────────────────────────────────────────────
-export type { CoreAssetProvider } from "./control-plane/core-asset-provider.js";
 export type { RegistryProvider, RegistryComponentEntry } from "./control-plane/registry-provider.js";
-
-// ── Filesystem Providers ────────────────────────────────────────────────
-export { FilesystemAssetProvider } from "./control-plane/fs-asset-provider.js";
-export { FilesystemRegistryProvider } from "./control-plane/fs-registry-provider.js";
 
 // ── Home Layout (v0.10.0) ───────────────────────────────────────────────
 export {
-  resolveHome,
   resolveOpenPalmHome,
   resolveConfigDir,
   resolveVaultDir,
@@ -74,22 +52,8 @@ export {
   resolveCacheHome,
   resolveRollbackDir,
   resolveRegistryCacheDir,
-  resolveStackDir,
-  resolveBackupsDir,
-  resolveWorkspaceDir,
   ensureHomeDirs,
-  detectLegacyLayout,
-  hasLegacyEnvVars,
 } from "./control-plane/home.js";
-export type { LegacyLayout } from "./control-plane/home.js";
-
-// ── Paths (deprecated — use Home Layout) ─────────────────────────────────
-export {
-  resolveConfigHome,
-  resolveStateHome,
-  resolveDataHome,
-  ensureXdgDirs,
-} from "./control-plane/paths.js";
 
 // ── Env ─────────────────────────────────────────────────────────────────
 export {
@@ -142,9 +106,6 @@ export {
   generateRedactSchema,
 } from "./control-plane/redact-schema.js";
 export {
-  generatePassSchema,
-} from "./control-plane/pass-schema.js";
-export {
   deriveComponentSecretRegistrations,
   registerComponentSensitiveFields,
   deregisterComponentSensitiveFields,
@@ -167,38 +128,14 @@ export {
   uninstallAutomation,
 } from "./control-plane/channels.js";
 
-// ── Connection Profiles ─────────────────────────────────────────────────
-export {
-  getConnectionProfilesDir,
-  getConnectionProfilesPath,
-  writeConnectionProfilesDocument,
-  readConnectionProfilesDocument,
-  ensureConnectionProfilesStore,
-  writeConnectionsDocument,
-  listConnectionProfiles,
-  getCapabilityAssignments,
-  createConnectionProfile,
-  updateConnectionProfile,
-  deleteConnectionProfile,
-  saveCapabilityAssignments,
-} from "./control-plane/connection-profiles.js";
-export type { WriteConnectionsInput } from "./control-plane/connection-profiles.js";
-
 // ── Connection Mapping ──────────────────────────────────────────────────
 export {
-  buildOpenCodeMapping,
-  writeOpenCodeProviderConfig,
   buildMem0Mapping,
-  resolveApiKeyRef,
-  buildMem0MappingFromProfiles,
 } from "./control-plane/connection-mapping.js";
 export type {
-  OpenCodeConnectionMappingInput,
-  OpenCodeConnectionMapping,
   Mem0ConnectionMappingInput,
   Mem0ConnectionMapping,
 } from "./control-plane/connection-mapping.js";
-
 
 // ── Memory Config ───────────────────────────────────────────────────────
 export type {
@@ -206,7 +143,6 @@ export type {
   ModelDiscoveryReason,
   ProviderModelsResult,
   VectorDimensionResult,
-  QdrantDimensionResult,
 } from "./control-plane/memory-config.js";
 export {
   EMBED_PROVIDERS,
@@ -216,12 +152,9 @@ export {
   readMemoryConfig,
   writeMemoryConfig,
   ensureMemoryConfig,
-  deriveMemoryConfig,
   resolveConfigForPush,
   checkVectorDimensions,
-  checkQdrantDimensions,
   resetVectorStore,
-  resetQdrantCollection,
   pushConfigToMemory,
   fetchConfigFromMemory,
   provisionMemoryUser,
@@ -231,8 +164,6 @@ export {
 export {
   ensureUserEnvSchema,
   ensureSystemEnvSchema,
-  ensureSecretsSchema,
-  ensureStackSchema,
   ensureMemoryDir,
   ensureCoreCompose,
   readCoreCompose,
@@ -241,21 +172,17 @@ export {
   refreshCoreAssets,
 } from "./control-plane/core-assets.js";
 
-// ── Configuration (replaces staging) ─────────────────────────────────────
+// ── Configuration Persistence ────────────────────────────────────────────
 export {
   sha256,
   randomHex,
-  isOllamaEnabled,
-  isAdminEnabled,
   buildEnvFiles,
-  discoverComponentOverlays,
-  discoverChannelOverlays,
-  resolveArtifacts,
-  buildArtifactMeta,
-  persistConfiguration,
+  discoverStackOverlays,
+  resolveRuntimeFiles,
+  buildRuntimeFileMeta,
+  writeRuntimeFiles,
   writeSystemEnv,
-  writeComponentOverlay,
-} from "./control-plane/staging.js";
+} from "./control-plane/config-persistence.js";
 
 // ── Rollback ─────────────────────────────────────────────────────────────
 export {
@@ -273,7 +200,6 @@ export {
 // ── Lifecycle ───────────────────────────────────────────────────────────
 export {
   createState,
-  writeSetupTokenFile,
   applyInstall,
   applyUpdate,
   applyUninstall,
@@ -282,8 +208,6 @@ export {
   buildComposeFileList,
   buildManagedServices,
   normalizeCaller,
-  isAllowedAction,
-  validateEnvironment,
 } from "./control-plane/lifecycle.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
@@ -291,6 +215,9 @@ export type { DockerResult } from "./control-plane/docker.js";
 export {
   checkDocker,
   checkDockerCompose,
+  resolveComposeProjectName,
+  composePreflight,
+  composeConfigServices,
   composeUp,
   composeDown,
   composeRestart,
@@ -331,46 +258,33 @@ export {
 export type { LocalProviderDetection } from "./control-plane/model-runner.js";
 export { detectLocalProviders } from "./control-plane/model-runner.js";
 
-// ── Stack Spec (v1) ──────────────────────────────────────────────────────
+// ── Stack Spec (v2) ──────────────────────────────────────────────────────
 export type {
   StackSpec,
-  StackSpecConnection,
-  StackSpecConnectionAuth,
-  StackSpecConnectionKind,
-  StackSpecAssignments,
-  StackSpecModelAssignment,
-  StackSpecEmbeddingsAssignment,
-  StackSpecMemoryAssignment,
-  StackSpecTtsAssignment,
-  StackSpecSttAssignment,
-  StackSpecRerankerAssignment,
-  StackSpecAddon,
+  StackSpecCapabilities,
+  StackSpecEmbeddings,
+  StackSpecMemory,
+  StackSpecTts,
+  StackSpecStt,
+  StackSpecReranker,
+  StackSpecAddonValue,
 } from "./control-plane/stack-spec.js";
 export {
-  STACK_SPEC_FILENAME,
-  SPEC_DEFAULTS,
-  stackSpecPath,
   writeStackSpec,
   readStackSpec,
-  normalizeAddon,
+  updateCapability,
   hasAddon,
   addonNames,
+  parseCapabilityString,
+  formatCapabilityString,
 } from "./control-plane/stack-spec.js";
-
-// ── Env Compatibility (OP_ prefix migration) ────────────────────────────
-export {
-  ENV_ALIASES,
-  resolveEnv,
-  resolveEnvFromFile,
-  dualWriteEnvPair,
-  getOldName,
-  getNewName,
-  resetWarnings,
-} from "./control-plane/env-compat.js";
 
 // ── Spec-to-Env Derivation ──────────────────────────────────────────────
 export {
   deriveSystemEnvFromSpec,
+  deriveMemoryEnv,
+  deriveAddonEnv,
+  writeManagedEnvFiles,
 } from "./control-plane/spec-to-env.js";
 
 // ── Spec Validation ─────────────────────────────────────────────────────
@@ -381,26 +295,15 @@ export { validateStackSpec } from "./control-plane/spec-validator.js";
 // ── Setup ────────────────────────────────────────────────────────────────
 export type {
   SetupConnection,
-  SetupAssignments,
-  SetupInput,
+  SetupSpec,
   SetupResult,
-  DetectedProvider,
-  SetupConfig,
-  SetupConfigAssignments,
-  ChannelCredentials,
-  ServiceConfig,
 } from "./control-plane/setup.js";
 export {
-  validateSetupInput,
+  validateSetupSpec,
   buildSecretsFromSetup,
   buildConnectionEnvVarMap,
   performSetup,
-  detectProviders,
-  CHANNEL_CREDENTIAL_ENV_MAP,
-  validateSetupConfig,
-  normalizeToSetupInput,
-  performSetupFromConfig,
-  buildChannelCredentialEnvVars,
+  buildSystemSecretsFromSetup,
 } from "./control-plane/setup.js";
 
 // ── Viking Config ───────────────────────────────────────────────────────
@@ -415,23 +318,12 @@ export type {
   EnabledInstance,
   InstanceStatus,
   InstanceDetail,
-  OverlayValidationResult,
-  EnvInjectionCollision,
 } from "./control-plane/components.js";
 export {
   isValidInstanceId,
   isReservedName,
-  parseComposeLabels,
   discoverComponents,
-  validateOverlay,
-  detectEnvInjectionCollisions,
-  readEnabledInstances,
-  writeEnabledInstances,
-  addEnabledInstance,
-  removeEnabledInstance,
-  setInstanceEnabled,
   buildComponentComposeArgs,
-  buildAllowlist,
 } from "./control-plane/components.js";
 
 // ── Instance Lifecycle ──────────────────────────────────────────────────

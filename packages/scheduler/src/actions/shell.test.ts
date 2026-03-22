@@ -61,7 +61,7 @@ describe("executeShellAction", () => {
     // to verify the allowlist actually excludes SECRET_KEY
     const { execFile } = await import("node:child_process");
     const SAFE_KEYS = ["PATH", "HOME", "LANG", "LC_ALL", "TZ", "NODE_ENV",
-      "OP_CONFIG_HOME", "OP_STATE_HOME", "OP_DATA_HOME"];
+      "OP_HOME"];
     const safeEnv: Record<string, string> = {};
     for (const key of SAFE_KEYS) {
       if (process.env[key]) safeEnv[key] = process.env[key]!;

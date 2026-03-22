@@ -6,7 +6,7 @@
  * (or manual `openpalm rollback`), the snapshot is restored.
  */
 import { mkdirSync, copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, basename, dirname } from "node:path";
+import { join, dirname } from "node:path";
 import type { ControlPlaneState } from "./types.js";
 import { resolveRollbackDir } from "./home.js";
 
@@ -14,7 +14,7 @@ import { resolveRollbackDir } from "./home.js";
 const SNAPSHOT_FILES = [
   "vault/user/user.env",
   "vault/stack/stack.env",
-  "config/openpalm.yml",
+  "config/stack.yaml",
 ];
 
 /**
@@ -28,7 +28,8 @@ function safeCopy(src: string, dest: string): void {
 
 /**
  * Save the current live configuration files to the rollback directory.
- * Also snapshots all component overlays from config/components/.
+ * Also snapshots stack/core.compose.yml and all addon compose.yml files
+ * under stack/addons/.
  */
 export function snapshotCurrentState(state: ControlPlaneState): void {
   const rollbackDir = resolveRollbackDir();
@@ -41,17 +42,22 @@ export function snapshotCurrentState(state: ControlPlaneState): void {
     safeCopy(src, dest);
   }
 
-  // Snapshot component overlays
-  const componentsDir = `${state.configDir}/components`;
-  if (existsSync(componentsDir)) {
-    const destDir = join(rollbackDir, "config/components");
-    mkdirSync(destDir, { recursive: true });
-    for (const entry of readdirSync(componentsDir, { withFileTypes: true })) {
-      if (entry.isFile() && entry.name.endsWith(".yml")) {
-        copyFileSync(
-          join(componentsDir, entry.name),
-          join(destDir, entry.name),
-        );
+  // Snapshot stack/core.compose.yml
+  const coreCompose = join(state.homeDir, "stack/core.compose.yml");
+  safeCopy(coreCompose, join(rollbackDir, "stack/core.compose.yml"));
+
+  // Snapshot stack/addons/*/compose.yml
+  const addonsDir = join(state.homeDir, "stack/addons");
+  if (existsSync(addonsDir)) {
+    for (const entry of readdirSync(addonsDir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        const addonCompose = join(addonsDir, entry.name, "compose.yml");
+        if (existsSync(addonCompose)) {
+          safeCopy(
+            addonCompose,
+            join(rollbackDir, "stack/addons", entry.name, "compose.yml"),
+          );
+        }
       }
     }
   }
@@ -80,17 +86,24 @@ export function restoreSnapshot(state: ControlPlaneState): void {
     safeCopy(src, dest);
   }
 
-  // Restore component overlays
-  const srcComponents = join(rollbackDir, "config/components");
-  if (existsSync(srcComponents)) {
-    const destComponents = `${state.configDir}/components`;
-    mkdirSync(destComponents, { recursive: true });
-    for (const entry of readdirSync(srcComponents, { withFileTypes: true })) {
-      if (entry.isFile() && entry.name.endsWith(".yml")) {
-        copyFileSync(
-          join(srcComponents, entry.name),
-          join(destComponents, entry.name),
-        );
+  // Restore stack/core.compose.yml
+  const srcCoreCompose = join(rollbackDir, "stack/core.compose.yml");
+  if (existsSync(srcCoreCompose)) {
+    safeCopy(srcCoreCompose, join(state.homeDir, "stack/core.compose.yml"));
+  }
+
+  // Restore stack/addons/*/compose.yml
+  const srcAddons = join(rollbackDir, "stack/addons");
+  if (existsSync(srcAddons)) {
+    for (const entry of readdirSync(srcAddons, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        const srcAddonCompose = join(srcAddons, entry.name, "compose.yml");
+        if (existsSync(srcAddonCompose)) {
+          safeCopy(
+            srcAddonCompose,
+            join(state.homeDir, "stack/addons", entry.name, "compose.yml"),
+          );
+        }
       }
     }
   }

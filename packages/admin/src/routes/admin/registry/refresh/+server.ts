@@ -16,9 +16,9 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
-  resolveArtifacts,
-  persistConfiguration
-} from "$lib/server/control-plane.js";
+  resolveRuntimeFiles,
+  writeRuntimeFiles
+} from "@openpalm/lib";
 import { pullRegistry } from "$lib/server/registry-sync.js";
 
 
@@ -38,9 +38,9 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(500, "registry_sync_error", pullResult.error, {}, requestId);
   }
 
-  // Re-stage artifacts (scheduler sidecar auto-reloads via file watching)
-  state.artifacts = resolveArtifacts(state);
-  persistConfiguration(state);
+  // Refresh runtime files (scheduler sidecar auto-reloads via file watching)
+  state.artifacts = resolveRuntimeFiles(state);
+  writeRuntimeFiles(state);
 
   appendAudit(state, actor, "registry.refresh", { updated: pullResult.updated }, true, requestId, callerType);
   return jsonResponse(200, { ok: true, updated: pullResult.updated }, requestId);

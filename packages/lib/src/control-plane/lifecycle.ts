@@ -1,11 +1,4 @@
-/**
- * Lifecycle helpers for the OpenPalm control plane.
- *
- * State factory, apply* lifecycle transitions, compose file list builders,
- * and caller/action validation.
- *
- * All asset operations are delegated via CoreAssetProvider (injected).
- */
+/** Lifecycle helpers — state factory, apply transitions, compose file list. */
 import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
 import { parseEnvFile, mergeEnvContent } from "./env.js";
 import type { ControlPlaneState, CallerType } from "./types.js";
@@ -20,24 +13,21 @@ import {
 } from "./home.js";
 import { ensureSecrets, loadSecretsEnvFile, readSystemSecretsEnvFile, updateSystemSecretsEnv } from "./secrets.js";
 import {
-  resolveArtifacts,
-  persistConfiguration,
-  discoverComponentOverlays,
+  resolveRuntimeFiles,
+  writeRuntimeFiles,
   randomHex,
-  isOllamaEnabled,
   buildEnvFiles,
-} from "./staging.js";
+} from "./config-persistence.js";
+import { readStackSpec, addonNames } from "./stack-spec.js";
 import { refreshCoreAssets, ensureMemoryDir, ensureCoreAutomations } from "./core-assets.js";
 import { ensureMemoryConfig } from "./memory-config.js";
 import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
-import { validateProposedState } from "./validate.js";
-import type { CoreAssetProvider } from "./core-asset-provider.js";
+import { checkDocker, composePreflight, composeConfigServices, resolveComposeProjectName } from "./docker.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 
-// ── State Factory ──────────────────────────────────────────────────────
 
 export function createState(
   adminToken?: string
@@ -56,7 +46,7 @@ export function createState(
 
   const setupToken = randomHex(16);
   const bootstrapState: ControlPlaneState = {
-    adminToken: adminToken ?? process.env.OP_ADMIN_TOKEN ?? process.env.ADMIN_TOKEN ?? "",
+    adminToken: adminToken ?? process.env.OP_ADMIN_TOKEN ?? "",
     assistantToken: "",
     setupToken,
     homeDir,
@@ -79,36 +69,19 @@ export function createState(
   bootstrapState.adminToken =
     adminToken
       ?? systemEnv.OP_ADMIN_TOKEN
-      ?? systemEnv.ADMIN_TOKEN
       ?? fileEnv.OP_ADMIN_TOKEN
-      ?? fileEnv.ADMIN_TOKEN
       ?? process.env.OP_ADMIN_TOKEN
-      ?? process.env.ADMIN_TOKEN
       ?? "";
   bootstrapState.assistantToken =
-    systemEnv.ASSISTANT_TOKEN
-      ?? process.env.ASSISTANT_TOKEN
+    systemEnv.OP_ASSISTANT_TOKEN
+      ?? process.env.OP_ASSISTANT_TOKEN
       ?? "";
-
-  // Backfill: if admin token was resolved from user.env (legacy) but not in
-  // system.env, migrate it so system-managed credentials don't live in the
-  // user-editable file indefinitely.
-  if (
-    bootstrapState.adminToken &&
-    !systemEnv.OP_ADMIN_TOKEN &&
-    (fileEnv.OP_ADMIN_TOKEN || fileEnv.ADMIN_TOKEN)
-  ) {
-    updateSystemSecretsEnv(bootstrapState, { OP_ADMIN_TOKEN: bootstrapState.adminToken });
-  }
 
   writeSetupTokenFile(bootstrapState);
 
   return bootstrapState;
 }
 
-/**
- * Write or remove the setup-token.txt file based on setup completion state.
- */
 export function writeSetupTokenFile(state: ControlPlaneState): void {
   const tokenPath = `${state.dataDir}/setup-token.txt`;
   const setupComplete = isSetupComplete(state.vaultDir);
@@ -121,20 +94,16 @@ export function writeSetupTokenFile(state: ControlPlaneState): void {
   }
 }
 
-// ── Private Loaders ───────────────────────────────────────────────────
 
-// ── Lifecycle Helpers ──────────────────────────────────────────────────
-
-function reconcileCore(
+async function reconcileCore(
   state: ControlPlaneState,
-  assets: CoreAssetProvider,
   opts: { activateServices?: boolean; deactivateServices?: boolean; seedMemoryConfig?: boolean },
-): string[] {
+): Promise<string[]> {
   if (opts.activateServices) {
     for (const s of CORE_SERVICES) state.services[s] = "running";
   }
   ensureMemoryDir();
-  ensureCoreAutomations(assets);
+  ensureCoreAutomations();
   if (opts.seedMemoryConfig) ensureMemoryConfig(state.dataDir);
 
   const active: string[] = [];
@@ -146,25 +115,54 @@ function reconcileCore(
     for (const name of Object.keys(state.services)) state.services[name] = "stopped";
   }
 
+  // Preflight: validate compose merge before mutation.
+  // Mandatory when compose files exist and OP_SKIP_COMPOSE_PREFLIGHT is not set.
+  // Fails if Docker is unavailable (Docker is required for any compose operation).
+  const files = buildComposeFileList(state);
+  const envFiles = buildEnvFiles(state);
+  if (files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
+    const dockerCheck = await checkDocker();
+    if (!dockerCheck.ok) {
+      throw new Error(
+        "Compose preflight failed: Docker is not available.\n" +
+        "Docker must be running before install/update/apply operations."
+      );
+    }
+    const preflight = await composePreflight({ files, envFiles });
+    if (!preflight.ok) {
+      const projectName = resolveComposeProjectName();
+      const fileArgs = files.flatMap((f) => ["-f", f]).join(" ");
+      const envArgs = envFiles.filter(existsSync).flatMap((f) => ["--env-file", f]).join(" ");
+      const resolvedCmd = `docker compose ${fileArgs} --project-name ${projectName} ${envArgs} config --quiet`;
+      throw new Error(
+        `Compose preflight failed: ${preflight.stderr}\n` +
+        `Resolved command: ${resolvedCmd}\n` +
+        `Files: ${files.join(", ")}\n` +
+        `Env files: ${envFiles.join(", ")}\n` +
+        `Project: ${projectName}`
+      );
+    }
+  }
+
   // Snapshot before writing (for rollback on failure)
   snapshotCurrentState(state);
 
-  // Resolve and persist configuration directly to live paths
-  state.artifacts = resolveArtifacts(state, assets);
-  persistConfiguration(state, assets);
+  // Resolve and write runtime files to live paths
+  state.artifacts = resolveRuntimeFiles(state);
+  writeRuntimeFiles(state);
   return active;
 }
 
-export function applyInstall(state: ControlPlaneState, assets: CoreAssetProvider): void {
-  reconcileCore(state, assets, { activateServices: true, seedMemoryConfig: true });
+export async function applyInstall(state: ControlPlaneState): Promise<void> {
+  await reconcileCore(state, { activateServices: true, seedMemoryConfig: true });
 }
 
-export function applyUpdate(state: ControlPlaneState, assets: CoreAssetProvider): { restarted: string[] } {
-  return { restarted: reconcileCore(state, assets, {}) };
+export async function applyUpdate(state: ControlPlaneState): Promise<{ restarted: string[] }> {
+  return { restarted: await reconcileCore(state, {}) };
 }
 
-export function applyUninstall(state: ControlPlaneState, assets: CoreAssetProvider): { stopped: string[] } {
-  return { stopped: reconcileCore(state, assets, { deactivateServices: true }) };
+export async function applyUninstall(state: ControlPlaneState): Promise<{ stopped: string[] }> {
+  return { stopped: await reconcileCore(state, { deactivateServices: true }) };
 }
 
 type DockerTagEntry = { name?: unknown };
@@ -224,72 +222,60 @@ export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): 
 }
 
 export async function applyUpgrade(
-  state: ControlPlaneState,
-  assets: CoreAssetProvider
+  state: ControlPlaneState
 ): Promise<{
   backupDir: string | null;
   updated: string[];
   restarted: string[];
 }> {
   const { backupDir, updated } = await refreshCoreAssets();
-  const restarted = reconcileCore(state, assets, {});
+  const restarted = await reconcileCore(state, {});
   return { backupDir, updated, restarted };
 }
 
-// ── Compose File List Builder ────────────────────────────────────────────
-
-/**
- * Build the compose file list from config/components/.
- */
 export function buildComposeFileList(state: ControlPlaneState): string[] {
-  const coreYml = `${state.configDir}/components/core.yml`;
+  const stackDir = `${state.homeDir}/stack`;
+  const coreYml = `${stackDir}/core.compose.yml`;
   const files: string[] = [];
 
   if (existsSync(coreYml)) {
     files.push(coreYml);
   }
 
-  if (isOllamaEnabled(state)) {
-    const ollamaYml = `${state.configDir}/components/ollama.yml`;
-    if (existsSync(ollamaYml)) files.push(ollamaYml);
-  }
-
-  // Add all non-core, non-ollama component overlays (admin, etc.)
-  const allOverlays = discoverComponentOverlays(state.configDir);
-  for (const p of allOverlays) {
-    const name = p.split("/").pop() ?? "";
-    // Skip core.yml and ollama.yml (already handled above)
-    if (name === "core.yml" || name === "ollama.yml") continue;
-    if (!files.includes(p)) files.push(p);
+  // Add addon overlays for enabled addons
+  const spec = readStackSpec(state.configDir);
+  if (spec?.addons) {
+    for (const [addonName, addon] of Object.entries(spec.addons)) {
+      if (addon === false) continue;
+      const addonYml = `${stackDir}/addons/${addonName}/compose.yml`;
+      if (existsSync(addonYml)) files.push(addonYml);
+    }
   }
 
   return files;
 }
 
-/**
- * Build the list of services that `docker compose up` should manage.
- * Core services always; additional services discovered from component overlays.
- */
-export function buildManagedServices(state: ControlPlaneState): string[] {
-  const services: string[] = [...CORE_SERVICES];
+export async function buildManagedServices(state: ControlPlaneState): Promise<string[]> {
+  const files = buildComposeFileList(state);
+  const envFiles = buildEnvFiles(state);
 
-  if (isOllamaEnabled(state)) {
-    services.push("ollama");
+  // Prefer compose-derived service list when Docker is available
+  if (files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
+    const result = await composeConfigServices({ files, envFiles });
+    if (result.ok && result.services.length > 0) {
+      return result.services;
+    }
   }
 
-  // Discover all component overlay services (admin, channels, etc.)
-  const allOverlays = discoverComponentOverlays(state.configDir);
-  for (const p of allOverlays) {
-    const filename = p.split("/").pop() ?? "";
-    const name = filename.replace(/\.yml$/, "");
-    // Skip core and ollama (already handled above)
-    if (name === "core" || name === "ollama") continue;
-    if (name) services.push(name);
+  // Fallback: static inference from CORE_SERVICES + stack.yaml addons
+  const services: string[] = [...CORE_SERVICES];
+  const spec = readStackSpec(state.configDir);
+  if (spec) {
+    services.push(...addonNames(spec));
   }
   return services;
 }
 
-// ── Caller Normalization ───────────────────────────────────────────────
 
 const VALID_CALLERS = new Set<CallerType>([
   "assistant",
@@ -304,41 +290,3 @@ export function normalizeCaller(headerValue: string | null): CallerType {
   return VALID_CALLERS.has(v) ? v : "unknown";
 }
 
-// ── Action Validation ──────────────────────────────────────────────────
-
-const ALLOWED_ACTIONS = new Set([
-  "install",
-  "update",
-  "upgrade",
-  "uninstall",
-  "containers.list",
-  "containers.up",
-  "containers.down",
-  "containers.restart",
-  "channels.list",
-  "channels.install",
-  "channels.uninstall",
-
-  "extensions.list",
-  "artifacts.list",
-  "artifacts.get",
-  "artifacts.manifest",
-  "audit.list",
-  "connections.get",
-  "connections.patch",
-  "connections.status"
-]);
-
-export function isAllowedAction(action: string): boolean {
-  return ALLOWED_ACTIONS.has(action);
-}
-
-// ── Environment Validation ─────────────────────────────────────────────
-
-export async function validateEnvironment(state: ControlPlaneState): Promise<{
-  ok: boolean;
-  errors: string[];
-  warnings: string[];
-}> {
-  return validateProposedState(state);
-}

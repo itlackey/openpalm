@@ -21,7 +21,6 @@ export async function ensureDirectoryTree(
   for (const dir of [
     homeDir,
     configDir,
-    join(configDir, 'components'),
     join(configDir, 'automations'),
     join(configDir, 'assistant'),
     join(configDir, 'assistant', 'tools'),
@@ -40,6 +39,7 @@ export async function ensureDirectoryTree(
     join(dataDir, 'stash'),
     join(homeDir, 'stack'),
     join(homeDir, 'stack', 'addons'),
+    join(homeDir, 'stack', 'addons', 'ollama'),
     join(homeDir, 'backups'),
     join(homeDir, 'logs'),
     join(homeDir, 'logs', 'opencode'),
@@ -122,8 +122,8 @@ export async function runDockerComposeCapture(args: string[]): Promise<string> {
   return output;
 }
 
-// composeProjectArgs() removed — use fullComposeArgs(state) from staging.ts instead.
-// That function builds the correct file list including channel overlays and staged env files.
+// composeProjectArgs() removed — use fullComposeArgs(state) from cli-compose.ts instead.
+// That function builds the correct file list including channel overlays and env files.
 
 // ensureOpenCodeConfig and ensureOpenCodeSystemConfig are imported from @openpalm/lib.
 // See packages/lib/src/control-plane/secrets.ts and core-assets.ts.

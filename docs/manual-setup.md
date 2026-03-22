@@ -13,7 +13,7 @@ For the convenience-oriented version of the same flow, see [setup-guide.md](setu
 - The live stack is defined only by compose files under `~/.openpalm/stack/`.
 - Enabled addons come from the compose command you run, for example extra `-f addons/<name>/compose.yml` flags.
 - `~/.openpalm/config/stack.yaml` is optional metadata for helper tooling. It is not deployment truth.
-- `~/.openpalm/stack/start.sh` is a convenience wrapper around `docker compose`, not a separate control plane.
+- See the [Manual Compose Runbook](operations/manual-compose-runbook.md) for the full compose command reference.
 
 ---
 
@@ -44,7 +44,7 @@ After copying, the important paths are:
 
 | Path | Purpose |
 |---|---|
-| `~/.openpalm/stack/` | Base compose file, addon compose files, `start.sh` |
+| `~/.openpalm/stack/` | Base compose file and addon compose files |
 | `~/.openpalm/vault/stack/stack.env` | System values used by compose |
 | `~/.openpalm/vault/user/user.env` | User secrets like provider API keys |
 | `~/.openpalm/config/` | User-editable config and automations |
@@ -81,16 +81,10 @@ openssl rand -hex 24
 
 ## 4. Start the core stack
 
-Run Docker Compose directly from `~/.openpalm/stack/`:
+Run Docker Compose directly from `~/.openpalm/stack/`. Always run the preflight
+check first to catch misconfiguration before containers are affected.
 
-```bash
-cd "$HOME/.openpalm/stack"
-docker compose \
-  -f core.compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  up -d
-```
+For the full compose command reference (preflight, start, stop, logs, and more), see the [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
 That starts the foundation services only.
 
@@ -98,20 +92,10 @@ That starts the foundation services only.
 
 ## 5. Add addons explicitly
 
-Add an addon by including its compose file in the command.
+Add an addon by including its compose file in the command. Run preflight before
+starting to confirm the merged file set is valid.
 
-Example: core + admin + chat
-
-```bash
-cd "$HOME/.openpalm/stack"
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  -f addons/chat/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  up -d
-```
+For compose command syntax with addons, see the [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
 Common addon files:
 
@@ -130,23 +114,7 @@ Each addon directory may also contain an `.env.schema` file that documents extra
 
 ---
 
-## 6. Optional convenience wrapper
-
-If you do not want to type the full compose command each time, use the bundled wrapper:
-
-```bash
-cd "$HOME/.openpalm/stack"
-./start.sh admin chat
-./start.sh --status admin chat
-./start.sh --stop admin chat
-```
-
-Use raw `docker compose` whenever you want the clearest possible source of truth.
-For `status`, `stop`, and `down`, pass the same addon set you used for `up`.
-
----
-
-## 7. Optional `config/stack.yaml`
+## 6. Optional `config/stack.yaml`
 
 `~/.openpalm/config/stack.yaml` can list preferred addons or other metadata for scripts and tooling.
 
@@ -154,19 +122,9 @@ Important: changing `stack.yaml` alone does not change the running stack unless 
 
 ---
 
-## 8. Verify
+## 7. Verify
 
-Check container status:
-
-```bash
-cd "$HOME/.openpalm/stack"
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  ps
-```
+Check container status using the `ps` command from the [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
 If you started the `admin` addon, open `http://localhost:3880/`.
 
@@ -198,26 +156,11 @@ That is expected unless you used a helper that reads `config/stack.yaml`. Docker
 
 **An addon fails to start**
 
-Check its `.env.schema` file and container logs:
-
-```bash
-docker compose logs <service-name>
-```
+Check its `.env.schema` file and container logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
 
 **Need to stop everything**
 
-Run the same file set with `down` instead of `up`:
-
-```bash
-cd "$HOME/.openpalm/stack"
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  -f addons/chat/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  down
-```
+Run the same file set with `down` instead of `up`. See the [Manual Compose Runbook](operations/manual-compose-runbook.md) for the full command.
 
 ---
 

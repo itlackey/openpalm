@@ -6,8 +6,8 @@ In the full stack it runs as a core service on host port `3897` and container po
 ## Runtime model
 
 - In-stack path: `~/.openpalm/config/automations/*.yml`
-- In-stack auth: scheduler endpoints accept `x-admin-token`, but the configured token is typically wired from `ASSISTANT_TOKEN`
-- Standalone/dev: set `OP_HOME`; `OP_CONFIG_HOME` remains a compatibility fallback for older standalone setups
+- In-stack auth: scheduler endpoints accept `x-admin-token`, configured via `OP_ASSISTANT_TOKEN` in `stack.env`
+- Standalone/dev: set `OP_HOME`
 
 ## Action types
 
@@ -53,11 +53,10 @@ Use safe argument arrays; do not depend on shell interpolation.
 |---|---|---|
 | `PORT` | `8090` | HTTP listen port |
 | `OP_HOME` | - | OpenPalm root; scheduler reads `config/automations/` from here |
-| `OP_CONFIG_HOME` | - | Standalone fallback when `OP_HOME` is not set |
-| `OP_ADMIN_TOKEN` | - | Token accepted by authenticated endpoints |
+| `OP_ADMIN_TOKEN` | - | Token accepted by authenticated endpoints (from `OP_ASSISTANT_TOKEN` in stack.env) |
 | `OP_ADMIN_API_URL` | - | Admin API URL for `api` actions |
 | `OPENCODE_API_URL` | `http://assistant:4096` | Assistant API URL for `assistant` actions |
-| `OPENCODE_SERVER_PASSWORD` | - | Optional password for assistant API auth |
+| `OPENCODE_SERVER_PASSWORD` | - | Optional password for assistant API auth (compose-mapped from `OP_OPENCODE_PASSWORD`) |
 | `MEMORY_API_URL` | `http://memory:8765` | Memory service URL |
 
 ## Development

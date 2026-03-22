@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, rmSync, statSync, existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureSecrets, type ControlPlaneState } from "./control-plane.js";
+import { ensureSecrets, type ControlPlaneState } from "@openpalm/lib";
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `openpalm-test-${randomBytes(4).toString("hex")}`);
@@ -37,10 +37,10 @@ describe("ensureSecrets", () => {
     const userEnv = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
     const systemEnv = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     expect(userEnv).toContain("OPENAI_API_KEY=");
-    expect(userEnv).toContain("EMBEDDING_MODEL=");
+    expect(userEnv).toContain("OWNER_NAME=");
     expect(systemEnv).toContain("OP_ADMIN_TOKEN=");
-    expect(systemEnv).toContain("ASSISTANT_TOKEN=");
-    expect(systemEnv).toContain("MEMORY_AUTH_TOKEN=");
+    expect(systemEnv).toContain("OP_ASSISTANT_TOKEN=");
+    expect(systemEnv).toContain("OP_MEMORY_TOKEN=");
     expect(existsSync(join(vaultDir, "stack", "stack.env"))).toBe(true);
   });
 

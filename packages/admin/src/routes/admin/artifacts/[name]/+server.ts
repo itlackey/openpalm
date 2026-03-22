@@ -5,7 +5,7 @@
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
 import { errorResponse, requireAuth, getRequestId, getActor, getCallerType } from "$lib/server/helpers.js";
-import { appendAudit } from "$lib/server/control-plane.js";
+import { appendAudit } from "@openpalm/lib";
 
 const ALLOWED_NAMES = ["compose"] as const;
 type ArtifactName = (typeof ALLOWED_NAMES)[number];

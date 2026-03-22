@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -59,6 +59,17 @@ afterEach(() => {
 });
 
 describe('secret backend', () => {
+  test('ensureSecrets repairs auth.json when Docker created it as a directory', () => {
+    const state = createState();
+    mkdirSync(join(state.vaultDir, 'stack', 'auth.json'), { recursive: true });
+
+    ensureSecrets(state);
+
+    const authJsonPath = join(state.vaultDir, 'stack', 'auth.json');
+    expect(lstatSync(authJsonPath).isFile()).toBe(true);
+    expect(readFileSync(authJsonPath, 'utf-8')).toBe('{}\n');
+  });
+
   test('detectSecretBackend defaults to plaintext and routes custom secrets into vault env files', async () => {
     const state = createState();
     ensureSecrets(state);
@@ -278,9 +289,9 @@ describe('detectSecretBackend', () => {
 
   test('returns PassBackend when schema contains @varlock/pass-plugin', () => {
     const state = createState();
-    mkdirSync(state.vaultDir, { recursive: true });
+    mkdirSync(join(state.vaultDir, 'user'), { recursive: true });
     writeFileSync(
-      join(state.vaultDir, 'user.env.schema'),
+      join(state.vaultDir, 'user', 'user.env.schema'),
       '# @plugin(@varlock/pass-plugin)\nOPENAI_API_KEY=pass("openpalm/openai/api-key")\n',
     );
 
@@ -306,8 +317,8 @@ describe('generateRedactSchema', () => {
 
     // All static core mappings should be present
     expect(schema).toContain('OP_ADMIN_TOKEN=');
-    expect(schema).toContain('ASSISTANT_TOKEN=');
-    expect(schema).toContain('MEMORY_AUTH_TOKEN=');
+    expect(schema).toContain('OP_ASSISTANT_TOKEN=');
+    expect(schema).toContain('OP_MEMORY_TOKEN=');
     expect(schema).toContain('OPENAI_API_KEY=');
     expect(schema).toContain('ANTHROPIC_API_KEY=');
     expect(schema).toContain('GROQ_API_KEY=');
@@ -320,7 +331,7 @@ describe('generateRedactSchema', () => {
   test('includes legacy aliases', () => {
     const schema = generateRedactSchema({});
     expect(schema).toContain('ADMIN_TOKEN=');
-    expect(schema).toContain('OPENCODE_SERVER_PASSWORD=');
+    expect(schema).toContain('OP_OPENCODE_PASSWORD=');
   });
 
   test('includes dynamic channel secrets', () => {

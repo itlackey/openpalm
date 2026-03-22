@@ -150,7 +150,9 @@ fi
 compose_cmd=(docker compose --project-name "$PROJECT_NAME")
 
 for env_file in "${DEFAULT_ENV_FILES[@]}" "${extra_env_files[@]}"; do
-	compose_cmd+=(--env-file "$env_file")
+	if [[ -f "$env_file" ]]; then
+		compose_cmd+=(--env-file "$env_file")
+	fi
 done
 
 compose_cmd+=(
@@ -189,6 +191,24 @@ printf '\n'
 
 if ((dry_run == 1)); then
 	exit 0
+fi
+
+# Preflight: validate compose merge before mutation (same contract as lib code).
+# stop/down/ps skip preflight because they are non-mutating or teardown
+# operations that do not create or modify containers.
+if [[ "$action" == "up" ]]; then
+	preflight_cmd=("${compose_cmd[@]}")
+	# Replace the trailing "up -d" with "config --quiet"
+	preflight_cmd=("${preflight_cmd[@]::${#preflight_cmd[@]}-2}")
+	preflight_cmd+=(config --quiet)
+	preflight_stderr=$(mktemp)
+	if ! "${preflight_cmd[@]}" 2>"$preflight_stderr"; then
+		echo "Error: compose preflight failed. Run with --dry-run to see the resolved command." >&2
+		cat "$preflight_stderr" >&2
+		rm -f "$preflight_stderr"
+		exit 1
+	fi
+	rm -f "$preflight_stderr"
 fi
 
 exec "${compose_cmd[@]}"

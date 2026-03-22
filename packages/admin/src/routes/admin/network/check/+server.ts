@@ -6,7 +6,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { appendAudit } from "$lib/server/control-plane.js";
+import { appendAudit } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 type ServiceCheckResult = {

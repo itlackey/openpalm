@@ -33,19 +33,11 @@ git clone https://github.com/itlackey/openpalm.git
 cp -R openpalm/.openpalm "$HOME/.openpalm"
 $EDITOR "$HOME/.openpalm/vault/stack/stack.env"
 $EDITOR "$HOME/.openpalm/vault/user/user.env"
-cd "$HOME/.openpalm/stack"
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  -f addons/chat/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  up -d
 ```
 
-That starts the base stack plus `admin` and `chat` after you review the copied env files.
+Then start the stack using the compose commands in the [Manual Compose Runbook](operations/manual-compose-runbook.md). That starts the base stack plus any addons you choose after you review the copied env files.
 
-To choose a different stack, change the addon `-f` flags. The running deployment is always the exact compose file list you pass to Docker Compose.
+The running deployment is always the exact compose file list you pass to Docker Compose.
 
 ---
 
@@ -62,21 +54,11 @@ This keeps the live system understandable: if a compose file is not in the comma
 
 ## Convenience options
 
-### `stack/start.sh`
+The primary workflow is always raw `docker compose` as shown above. The options
+below are typing shortcuts only.
 
-The copied bundle includes `~/.openpalm/stack/start.sh`, a thin wrapper around the same compose files.
-
-Examples:
-
-```bash
-cd "$HOME/.openpalm/stack"
-./start.sh
-./start.sh admin chat
-./start.sh --status admin chat
-./start.sh --stop admin chat
-```
-
-Use this when you want shorter commands, but prefer raw `docker compose` when documenting or debugging the live stack. For `status`, `stop`, and `down`, pass the same addon set you used for `up`.
+For the full compose command reference including convenience shortcuts, see the
+[Manual Compose Runbook](operations/manual-compose-runbook.md).
 
 ### Setup scripts
 
@@ -88,64 +70,7 @@ If you use helper tooling that reads `config/stack.yaml`, treat that file as inp
 
 ## Common tasks
 
-**Start a different addon set**
-
-```bash
-cd "$HOME/.openpalm/stack"
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  -f addons/discord/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  up -d
-```
-
-**Check status**
-
-```bash
-cd "$HOME/.openpalm/stack"
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  ps
-```
-
-**Stop the stack**
-
-```bash
-cd "$HOME/.openpalm/stack"
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  -f addons/chat/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  down
-```
-
-**Update images**
-
-```bash
-cd "$HOME/.openpalm/stack"
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  -f addons/chat/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  pull
-
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  -f addons/chat/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  up -d
-```
+For all common compose operations (start, stop, status, pull, logs, restart), see the [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
 **Change model keys**
 
@@ -159,7 +84,7 @@ The copied bundle gives you a predictable host layout:
 
 | Path | Purpose |
 |---|---|
-| `~/.openpalm/stack/` | Compose files and helper wrapper |
+| `~/.openpalm/stack/` | Compose files |
 | `~/.openpalm/vault/stack/stack.env` | Stack-level env values |
 | `~/.openpalm/vault/user/user.env` | User secrets |
 | `~/.openpalm/config/` | User-managed config |
@@ -190,11 +115,7 @@ That file is optional metadata. It only matters when a helper tool reads it.
 
 ### An addon fails to start
 
-Review its `.env.schema` file under `~/.openpalm/stack/addons/<name>/` and then inspect logs:
-
-```bash
-docker compose logs <service-name>
-```
+Review its `.env.schema` file under `~/.openpalm/stack/addons/<name>/` and then inspect logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
 
 ### Start over
 
