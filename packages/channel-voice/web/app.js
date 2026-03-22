@@ -20,12 +20,21 @@
   var inputWakelock = document.getElementById('setting-wakelock')
   var inputContinuous = document.getElementById('setting-continuous')
   var continuousBtn = document.getElementById('continuous-btn')
+  var tauriCore = window.__TAURI__ && window.__TAURI__.core ? window.__TAURI__.core : null
+  var tauriInvoke = tauriCore && typeof tauriCore.invoke === 'function' ? tauriCore.invoke : null
 
   // --- State ---
   var state = 'idle'
   var continuous = false
   var recorder = null
+  var recorderMimeType = ''
   var chunks = []
+  var pcmAudioContext = null
+  var pcmSourceNode = null
+  var pcmProcessorNode = null
+  var pcmGainNode = null
+  var pcmSampleRate = 16000
+  var pcmChunks = []
   var wakeLock = null
   var audioCtx = null
 
@@ -33,6 +42,8 @@
   var caps = {
     serverStt: false,
     serverTts: false,
+    nativeStt: false,
+    nativeSttProvider: '',
     browserStt: !!(window.SpeechRecognition || window.webkitSpeechRecognition),
     browserTts: 'speechSynthesis' in window
   }
@@ -107,6 +118,130 @@
     if (getSetting('haptic') && navigator.vibrate) {
       navigator.vibrate(pattern)
     }
+  }
+
+  function blobToBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader()
+      reader.onloadend = function () {
+        var result = typeof reader.result === 'string' ? reader.result : ''
+        var comma = result.indexOf(',')
+        resolve(comma === -1 ? result : result.slice(comma + 1))
+      }
+      reader.onerror = function () {
+        reject(reader.error || new Error('Failed to read audio blob'))
+      }
+      reader.readAsDataURL(blob)
+    })
+  }
+
+  function startPcmCapture(stream) {
+    if (!(caps.nativeStt && !caps.serverStt)) return
+    if (!window.AudioContext && !window.webkitAudioContext) return
+
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext
+      pcmAudioContext = new Ctx()
+      pcmSampleRate = pcmAudioContext.sampleRate || 16000
+      pcmChunks = []
+
+      pcmSourceNode = pcmAudioContext.createMediaStreamSource(stream)
+      pcmProcessorNode = pcmAudioContext.createScriptProcessor(4096, 1, 1)
+      pcmGainNode = pcmAudioContext.createGain()
+      pcmGainNode.gain.value = 0
+
+      pcmProcessorNode.onaudioprocess = function (event) {
+        if (!event.inputBuffer || event.inputBuffer.numberOfChannels < 1) return
+        var input = event.inputBuffer.getChannelData(0)
+        var copy = new Float32Array(input.length)
+        copy.set(input)
+        pcmChunks.push(copy)
+      }
+
+      pcmSourceNode.connect(pcmProcessorNode)
+      pcmProcessorNode.connect(pcmGainNode)
+      pcmGainNode.connect(pcmAudioContext.destination)
+      addLog('SYS', 'PCM fallback capture armed (' + pcmSampleRate + 'Hz)')
+    } catch (err) {
+      addLog('ERR', 'PCM fallback unavailable: ' + err.message)
+      stopPcmCapture(false)
+    }
+  }
+
+  function stopPcmCapture(resetChunks) {
+    if (pcmProcessorNode) {
+      try { pcmProcessorNode.disconnect() } catch (_) {}
+      pcmProcessorNode.onaudioprocess = null
+      pcmProcessorNode = null
+    }
+    if (pcmSourceNode) {
+      try { pcmSourceNode.disconnect() } catch (_) {}
+      pcmSourceNode = null
+    }
+    if (pcmGainNode) {
+      try { pcmGainNode.disconnect() } catch (_) {}
+      pcmGainNode = null
+    }
+    if (pcmAudioContext) {
+      try { pcmAudioContext.close() } catch (_) {}
+      pcmAudioContext = null
+    }
+    if (resetChunks !== false) {
+      pcmChunks = []
+    }
+  }
+
+  function floatTo16BitPCM(view, offset, input) {
+    for (var i = 0; i < input.length; i++, offset += 2) {
+      var sample = Math.max(-1, Math.min(1, input[i]))
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true)
+    }
+  }
+
+  function writeString(view, offset, text) {
+    for (var i = 0; i < text.length; i++) {
+      view.setUint8(offset + i, text.charCodeAt(i))
+    }
+  }
+
+  function buildWavBlobFromPcm() {
+    if (!pcmChunks.length) return null
+
+    var totalLength = 0
+    for (var i = 0; i < pcmChunks.length; i++) {
+      totalLength += pcmChunks[i].length
+    }
+    if (!totalLength) return null
+
+    var merged = new Float32Array(totalLength)
+    var offset = 0
+    for (var j = 0; j < pcmChunks.length; j++) {
+      merged.set(pcmChunks[j], offset)
+      offset += pcmChunks[j].length
+    }
+
+    var bytesPerSample = 2
+    var buffer = new ArrayBuffer(44 + merged.length * bytesPerSample)
+    var view = new DataView(buffer)
+    var sampleRate = pcmSampleRate || 16000
+    var dataSize = merged.length * bytesPerSample
+
+    writeString(view, 0, 'RIFF')
+    view.setUint32(4, 36 + dataSize, true)
+    writeString(view, 8, 'WAVE')
+    writeString(view, 12, 'fmt ')
+    view.setUint32(16, 16, true)
+    view.setUint16(20, 1, true)
+    view.setUint16(22, 1, true)
+    view.setUint32(24, sampleRate, true)
+    view.setUint32(28, sampleRate * bytesPerSample, true)
+    view.setUint16(32, bytesPerSample, true)
+    view.setUint16(34, 16, true)
+    writeString(view, 36, 'data')
+    view.setUint32(40, dataSize, true)
+    floatTo16BitPCM(view, 44, merged)
+
+    return new Blob([buffer], { type: 'audio/wav' })
   }
 
   // --- UI Updates ---
@@ -260,20 +395,45 @@
     })
   }
 
-  // --- Recording (server STT path) ---
+  function transcribeWithTauri(blob, mimeType) {
+    if (!tauriInvoke) {
+      return Promise.reject(new Error('Tauri native STT unavailable'))
+    }
+    return blobToBase64(blob).then(function (base64Audio) {
+      return tauriInvoke('transcribe_audio', {
+        base64Audio: base64Audio,
+        mimeType: mimeType
+      })
+    })
+  }
+
+  // --- Recording (server/native STT path) ---
   async function startRecordingAudio() {
     try {
       var stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       chunks = []
       var mimeType = pickMimeType()
       recorder = new MediaRecorder(stream, mimeType ? { mimeType: mimeType } : undefined)
+      recorderMimeType = recorder.mimeType || mimeType || 'audio/webm'
+      startPcmCapture(stream)
 
       recorder.ondataavailable = function (e) {
-        if (e.data.size > 0) chunks.push(e.data)
+        if (e.data && e.data.size > 0) {
+          chunks.push(e.data)
+          addLog('SYS', 'Recorded audio chunk: ' + e.data.size + ' bytes')
+        }
       }
 
-      recorder.start()
+      recorder.onerror = function (event) {
+        var errorMessage = event && event.error && event.error.message
+          ? event.error.message
+          : 'unknown recorder error'
+        addLog('ERR', 'Audio recorder error: ' + errorMessage)
+      }
+
+      recorder.start(250)
       setState('recording', 'recording')
+      addLog('SYS', 'Recording started using ' + recorderMimeType)
       haptic(50)
       await acquireWakeLock()
     } catch (err) {
@@ -287,24 +447,109 @@
     haptic([30, 50, 30])
     releaseWakeLock()
 
-    await new Promise(function (resolve) {
-      recorder.onstop = function () {
-        recorder.stream.getTracks().forEach(function (t) { t.stop() })
-        resolve()
-      }
-      recorder.stop()
-    })
-
-    if (chunks.length === 0) {
-      addLog('ERR', 'No audio recorded')
+    if (!recorder) {
+      addLog('ERR', 'No active recorder')
+      stopPcmCapture(true)
       setState('idle', 'ready')
       return
     }
 
-    var detectedMime = pickMimeType()
+    await new Promise(function (resolve) {
+      var activeRecorder = recorder
+      activeRecorder.onstop = function () {
+        activeRecorder.stream.getTracks().forEach(function (t) { t.stop() })
+        resolve()
+      }
+
+      if (typeof activeRecorder.requestData === 'function' && activeRecorder.state === 'recording') {
+        try {
+          activeRecorder.requestData()
+        } catch (_) {}
+      }
+
+      setTimeout(function () {
+        if (activeRecorder.state !== 'inactive') {
+          activeRecorder.stop()
+        }
+      }, 100)
+    })
+
+    await new Promise(function (resolve) { setTimeout(resolve, 150) })
+    stopPcmCapture(false)
+
+    addLog('SYS', 'Recording stopped with ' + chunks.length + ' chunk(s)')
+
+    if (chunks.length === 0) {
+      if (caps.nativeStt && !caps.serverStt) {
+        var wavBlob = buildWavBlobFromPcm()
+        if (wavBlob && wavBlob.size > 0) {
+          addLog('SYS', 'Using PCM fallback audio: ' + wavBlob.size + ' bytes (audio/wav)')
+          try {
+            var fallbackTranscript = await transcribeWithTauri(wavBlob, 'audio/wav')
+            if (!fallbackTranscript || !fallbackTranscript.trim()) {
+              if (continuous) {
+                setState('idle', 'listening...')
+                setTimeout(function () { startRecording() }, 300)
+              } else {
+                addLog('SYS', 'No speech detected')
+                setState('idle', 'ready')
+              }
+              recorder = null
+              pcmChunks = []
+              return
+            }
+
+            var fallbackForm = new FormData()
+            fallbackForm.append('text', fallbackTranscript.trim())
+            pcmChunks = []
+            recorder = null
+            await sendToServer(fallbackForm)
+            return
+          } catch (fallbackErr) {
+            addLog('ERR', 'PCM fallback STT failed: ' + fallbackErr.message)
+          }
+        }
+      }
+
+      addLog('ERR', 'No audio recorded')
+      setState('idle', 'ready')
+      recorder = null
+      pcmChunks = []
+      return
+    }
+
+    var detectedMime = recorderMimeType || pickMimeType() || 'audio/webm'
     var blob = new Blob(chunks, { type: detectedMime || 'audio/webm' })
     chunks = []
     recorder = null
+    recorderMimeType = ''
+    pcmChunks = []
+    addLog('SYS', 'Preparing audio payload: ' + blob.size + ' bytes (' + detectedMime + ')')
+
+    if (caps.nativeStt && !caps.serverStt) {
+      try {
+        var transcript = await transcribeWithTauri(blob, detectedMime || 'audio/webm')
+        if (!transcript || !transcript.trim()) {
+          if (continuous) {
+            setState('idle', 'listening...')
+            setTimeout(function () { startRecording() }, 300)
+          } else {
+            addLog('SYS', 'No speech detected')
+            setState('idle', 'ready')
+          }
+          return
+        }
+
+        var nativeForm = new FormData()
+        nativeForm.append('text', transcript.trim())
+        await sendToServer(nativeForm)
+        return
+      } catch (err) {
+        addLog('ERR', 'Desktop STT failed: ' + err.message)
+        setState('idle', 'ready')
+        return
+      }
+    }
 
     var ext = detectedMime.indexOf('mp4') !== -1 ? 'm4a' : 'webm'
     var form = new FormData()
@@ -363,11 +608,14 @@
         // If server STT failed for any reason, switch to browser STT for future recordings
         if (errBody && (errBody.code === 'stt_not_configured' || errBody.code === 'stt_error')) {
           caps.serverStt = false
-          if (caps.browserStt) {
+          if (caps.nativeStt) {
+            addLog('SYS', 'Server STT unavailable, switching to desktop speech recognition')
+            addLog('SYS', 'Tap the microphone again to retry')
+          } else if (caps.browserStt) {
             addLog('SYS', 'Server STT unavailable, switching to browser speech recognition')
             addLog('SYS', 'Tap the microphone again to retry')
           } else {
-            addLog('ERR', 'Server STT failed and browser speech recognition not available')
+            addLog('ERR', 'Server STT failed and no local speech recognition is available')
           }
           setState('idle', 'ready')
           return
@@ -416,6 +664,8 @@
   function startRecording() {
     if (state !== 'idle') return
     if (caps.serverStt) {
+      startRecordingAudio()
+    } else if (caps.nativeStt) {
       startRecordingAudio()
     } else if (caps.browserStt) {
       startBrowserSTT()
@@ -485,23 +735,40 @@
 
   // --- Check server capabilities ---
   function checkCapabilities() {
-    fetch('/api/health').then(function (res) {
+    var serverCheck = fetch('/api/health').then(function (res) {
       return res.json()
     }).then(function (data) {
       caps.serverStt = !!(data.stt && data.stt.configured)
       caps.serverTts = !!(data.tts && data.tts.configured)
-
-      var sttSource = caps.serverStt ? 'server (' + data.stt.model + ')' : (caps.browserStt ? 'browser' : 'none')
-      var ttsSource = caps.serverTts ? 'server (' + data.tts.model + ')' : (caps.browserTts ? 'browser' : 'none')
-      addLog('SYS', 'STT: ' + sttSource + ' | TTS: ' + ttsSource)
-
-      if (!caps.serverStt && !caps.browserStt) {
-        addLog('ERR', 'No speech recognition available')
-      }
     }).catch(function () {
-      addLog('SYS', 'Server unreachable, using browser APIs')
+      addLog('SYS', 'Server unreachable, checking local APIs')
       caps.serverStt = false
       caps.serverTts = false
+    })
+
+    var nativeCheck = Promise.resolve().then(function () {
+      if (!tauriInvoke) return
+      return tauriInvoke('health').then(function (data) {
+        caps.nativeStt = !!(data && data.sttProvider)
+        caps.nativeSttProvider = data && data.sttProvider ? data.sttProvider : ''
+      }).catch(function () {
+        caps.nativeStt = false
+        caps.nativeSttProvider = ''
+      })
+    })
+
+    Promise.all([serverCheck, nativeCheck]).then(function () {
+      var sttSource = caps.serverStt
+        ? 'server'
+        : (caps.nativeStt
+          ? 'desktop (' + caps.nativeSttProvider + ')'
+          : (caps.browserStt ? 'browser' : 'none'))
+      var ttsSource = caps.serverTts ? 'server' : (caps.browserTts ? 'browser' : 'none')
+      addLog('SYS', 'STT: ' + sttSource + ' | TTS: ' + ttsSource)
+
+      if (!caps.serverStt && !caps.nativeStt && !caps.browserStt) {
+        addLog('ERR', 'No speech recognition available')
+      }
     })
   }
 

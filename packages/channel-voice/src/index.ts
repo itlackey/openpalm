@@ -35,6 +35,15 @@ const MIME_TYPES: Record<string, string> = {
 export default class VoiceChannel extends BaseChannel {
   name = 'voice'
 
+  override start(): void {
+    this.log('info', 'starting voice channel', {
+      port: this.port,
+      webRoot: config.server.webRoot,
+    })
+
+    super.start()
+  }
+
   async route(req: Request, url: URL): Promise<Response | null> {
     // POST /api/pipeline — full voice pipeline
     if (url.pathname === '/api/pipeline' && req.method === 'POST') {
