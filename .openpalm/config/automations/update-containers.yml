@@ -2,7 +2,7 @@
 #
 # Runs every Sunday at 3 AM. Keeps your stack up to date automatically.
 #
-# To use: copy this file to ~/.config/openpalm/automations/update-containers.yml
+# To use: copy this file to ~/.openpalm/config/automations/update-containers.yml
 
 name: Upgrade Stack
 description: Download latest assets, pull images, and restart services weekly

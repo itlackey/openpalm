@@ -59,7 +59,7 @@ Policy for this section:
   automatic lifecycle operations: non-destructive for existing user config files
   in `config/`; they only seed missing defaults.
 - Explicit mutation endpoints (`POST /admin/connections`,
-  `POST /admin/channels/install`, `POST /admin/channels/uninstall`,
+  `POST /admin/addons`, `POST /admin/addons/:name`,
   `POST /admin/setup`) are the allowed write path
   for requested config changes.
 
@@ -193,79 +193,122 @@ Success response:
 { "ok": true, "service": "chat", "status": "running" }
 ```
 
-## Channel Management
+### `GET /admin/containers/stats`
 
-### `GET /admin/channels`
+Returns live Docker container resource usage (CPU, memory, network I/O) for managed services.
 
-Returns installed and registry-available channels:
+Auth: `requireAuth`
+
+### `GET /admin/containers/events`
+
+Returns recent Docker engine events (container start/stop/restart/die) filtered to managed services.
+
+Auth: `requireAuth`
+
+### `GET /admin/network/check`
+
+Checks inter-container connectivity by probing each core service health endpoint from within the admin container.
+
+Auth: `requireAdmin`
+
+Response:
 
 ```json
 {
-  "installed": [
-    { "name": "chat", "hasRoute": true, "service": "chat", "status": "running" }
-  ],
-  "available": [
-    { "name": "discord", "hasRoute": false }
+  "results": {
+    "guardian": { "status": "reachable", "latencyMs": 12 },
+    "memory": { "status": "reachable", "latencyMs": 8 },
+    "assistant": { "status": "unreachable", "latencyMs": 0, "error": "fetch failed" }
+  }
+}
+```
+
+---
+
+## Addon Management
+
+### `GET /admin/addons`
+
+Returns all available addons with enabled status and env config.
+
+Response:
+
+```json
+{
+  "addons": [
+    { "id": "chat", "enabled": true, "env": {} },
+    { "id": "discord", "enabled": false, "env": {} },
+    { "id": "admin", "enabled": true, "env": {} }
   ]
 }
 ```
 
-Notes:
+### `POST /admin/addons`
 
-- `installed` is derived from addon overlays in `stack/addons/`.
-- `hasRoute` indicates whether the addon has an HTTP route configured.
-
-### `POST /admin/channels/install`
+Enable/disable an addon and/or update its env config.
 
 Body:
 
 ```json
-{ "channel": "chat" }
+{ "name": "chat", "enabled": true, "env": {} }
 ```
 
-Behavior:
-
-- Copies registry files into `stack/addons/`.
-- Ensures system-managed channel secret exists.
-- Runs compose up.
+- `name` (required) -- Addon name (must be a known addon from the registry).
+- `enabled` (optional) -- Set to `true` or `false` to enable/disable.
+- `env` (optional) -- Key-value pairs to merge into the addon's env config.
 
 Response:
 
 ```json
-{
-  "ok": true,
-  "channel": "chat",
-  "service": "chat",
-  "dockerAvailable": true,
-  "composeResult": { "ok": true, "stderr": "" }
-}
+{ "ok": true, "addon": { "id": "chat", "enabled": true, "env": {} } }
 ```
 
-### `POST /admin/channels/uninstall`
+Error responses:
+
+- `400 bad_request` -- `name` is missing.
+- `404 not_found` -- Addon name is not available in the registry.
+- `500 internal_error` -- Failed to update `stack.yaml`.
+
+### `GET /admin/addons/:name`
+
+Returns detail for a single addon: enabled state and env overrides.
+
+Response:
+
+```json
+{ "name": "chat", "enabled": true, "env": {} }
+```
+
+Error responses:
+
+- `404 not_found` -- Addon name is not available in the registry.
+
+### `POST /admin/addons/:name`
+
+Enable/disable a specific addon and/or update its env config.
 
 Body:
 
 ```json
-{ "channel": "chat" }
+{ "enabled": true, "env": { "SOME_VAR": "value" } }
 ```
 
-Behavior:
+- `enabled` (optional) -- Set to `true` or `false`.
+- `env` (optional) -- Key-value pairs to merge into the addon's env config.
 
-- Removes the addon directory from `stack/addons/`.
-- Removes system-managed channel secret from runtime state.
-- Stops the channel service.
+When disabling, runs compose down for affected services.
+When enabling a channel addon, generates an HMAC secret.
 
 Response:
 
 ```json
-{
-  "ok": true,
-  "channel": "chat",
-  "service": "chat",
-  "dockerAvailable": true,
-  "composeResult": { "ok": true, "stderr": "" }
-}
+{ "ok": true, "addon": "chat", "enabled": true, "changed": true }
 ```
+
+Error responses:
+
+- `404 not_found` -- Addon name is not available in the registry.
+- `500 internal_error` -- Failed to update `stack.yaml`.
 
 ## Registry
 
@@ -634,131 +677,6 @@ On failure:
 }
 ```
 
-### `GET /admin/connections/profiles`
-
-Returns canonical connection profiles from `config/connections/profiles.json`.
-
-```json
-{
-  "profiles": [
-    {
-      "id": "primary",
-      "name": "Primary connection",
-      "kind": "openai_compatible_remote",
-      "provider": "openai",
-      "baseUrl": "https://api.openai.com",
-      "auth": {
-        "mode": "api_key",
-        "apiKeySecretRef": "env:OPENAI_API_KEY"
-      }
-    }
-  ]
-}
-```
-
-### `POST /admin/connections/profiles`
-
-Create a profile.
-
-```json
-{
-  "profile": {
-    "id": "local-lmstudio",
-    "name": "LM Studio",
-    "kind": "openai_compatible_local",
-    "provider": "lmstudio",
-    "baseUrl": "http://host.docker.internal:1234",
-    "auth": { "mode": "none" }
-  }
-}
-```
-
-When `auth.mode` is `"api_key"`, the profile payload may include a top-level
-`apiKey` field with the raw key. The handler derives the `apiKeySecretRef`
-from the provider and patches the key into `vault/user/user.env`.
-
-### `PUT /admin/connections/profiles`
-
-Update an existing profile by id (id provided inside `profile` object).
-
-### `DELETE /admin/connections/profiles`
-
-Delete by id:
-
-```json
-{ "id": "local-lmstudio" }
-```
-
-Error responses:
-
-- `400 bad_request` -- malformed profile payload.
-- `404 not_found` -- profile id not found.
-- `409 conflict` -- duplicate create or profile currently referenced by assignments.
-
-### `GET /admin/connections/profiles/:id`
-
-Returns a single profile by URL parameter id.
-
-```json
-{
-  "profile": {
-    "id": "primary",
-    "name": "Primary connection",
-    "kind": "openai_compatible_remote",
-    "provider": "openai",
-    "baseUrl": "https://api.openai.com",
-    "auth": {
-      "mode": "api_key",
-      "apiKeySecretRef": "env:OPENAI_API_KEY"
-    }
-  }
-}
-```
-
-Error responses:
-
-- `404 not_found` -- profile id not found.
-
-### `PUT /admin/connections/profiles/:id`
-
-Update a profile by URL parameter id. The `id` from the URL takes precedence
-over any id in the request body.
-
-Body:
-
-```json
-{
-  "profile": {
-    "name": "Updated Name",
-    "kind": "openai_compatible_local",
-    "provider": "ollama",
-    "baseUrl": "http://host.docker.internal:11434",
-    "auth": { "mode": "none" }
-  }
-}
-```
-
-Response:
-
-```json
-{ "ok": true, "profile": { "id": "primary", "..." : "..." } }
-```
-
-### `DELETE /admin/connections/profiles/:id`
-
-Delete a profile by URL parameter id. No request body needed.
-
-Response:
-
-```json
-{ "ok": true, "id": "primary" }
-```
-
-Error responses:
-
-- `404 not_found` -- profile id not found.
-- `409 conflict` -- profile currently referenced by assignments.
-
 ### `GET /admin/connections/assignments`
 
 Returns the current `stack.yaml` capability assignments:
@@ -854,7 +772,6 @@ Error responses:
 
 During setup (or with admin token), the same handlers are available at:
 
-- `GET/POST/PUT/DELETE /admin/setup/connections/profiles`
 - `GET/POST /admin/setup/connections/assignments`
 
 These routes use setup-token compatible auth and preserve the same payload and

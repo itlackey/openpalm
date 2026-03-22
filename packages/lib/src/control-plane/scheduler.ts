@@ -1,12 +1,9 @@
-/** In-process automation scheduler using Croner. */
-import { Cron } from "croner";
+/** Automation scheduler — types, parsing, and action execution. */
 import { parse as parseYaml } from "yaml";
 import { execFile } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../logger.js";
-import { appendAudit } from "./audit.js";
-import type { ControlPlaneState } from "./types.js";
 
 const logger = createLogger("scheduler");
 
@@ -37,45 +34,12 @@ export type AutomationConfig = {
   fileName: string;
 };
 
-type ActiveJob = {
-  cron: Cron;
-  config: AutomationConfig;
-};
-
-
 export type ExecutionLogEntry = {
   at: string;
   ok: boolean;
   durationMs: number;
   error?: string;
 };
-
-const MAX_LOG_ENTRIES = 50;
-const executionLogs = new Map<string, ExecutionLogEntry[]>();
-
-function recordExecution(fileName: string, entry: ExecutionLogEntry): void {
-  let entries = executionLogs.get(fileName);
-  if (!entries) {
-    entries = [];
-    executionLogs.set(fileName, entries);
-  }
-  entries.push(entry);
-  if (entries.length > MAX_LOG_ENTRIES) {
-    executionLogs.set(fileName, entries.slice(-MAX_LOG_ENTRIES));
-  }
-}
-
-export function getExecutionLog(fileName: string): ExecutionLogEntry[] {
-  return [...(executionLogs.get(fileName) ?? [])].reverse();
-}
-
-export function getAllExecutionLogs(): Record<string, ExecutionLogEntry[]> {
-  const result: Record<string, ExecutionLogEntry[]> = {};
-  for (const [fileName, entries] of executionLogs) {
-    result[fileName] = [...entries].reverse();
-  }
-  return result;
-}
 
 
 export const SCHEDULE_PRESETS: Record<string, string> = {
@@ -253,6 +217,7 @@ export async function executeApiAction(
 }
 
 export async function executeHttpAction(action: AutomationAction): Promise<void> {
+  if (!action.url) throw new Error("http action requires a url");
   const headers: Record<string, string> = { ...action.headers };
   if (action.body) {
     headers["content-type"] = headers["content-type"] ?? "application/json";
@@ -260,7 +225,7 @@ export async function executeHttpAction(action: AutomationAction): Promise<void>
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), action.timeout ?? 30_000);
   try {
-    const resp = await fetch(action.url!, {
+    const resp = await fetch(action.url, {
       method: action.method ?? "GET",
       headers,
       body: action.body ? JSON.stringify(action.body) : undefined,
@@ -280,7 +245,8 @@ const SHELL_SAFE_ENV_KEYS = [
 ];
 
 export function executeShellAction(action: AutomationAction): Promise<void> {
-  const cmd = action.command!;
+  if (!action.command?.length) throw new Error("shell action requires a non-empty command array");
+  const cmd = action.command;
 
   const safeEnv: Record<string, string> = {};
   for (const key of SHELL_SAFE_ENV_KEYS) {
@@ -357,89 +323,4 @@ export async function executeAction(
     case "assistant":
       return executeAssistantAction(action);
   }
-}
-
-let activeJobs: ActiveJob[] = [];
-
-export function startScheduler(configDir: string, adminToken: string, state?: ControlPlaneState): void {
-  const configs = loadAutomations(configDir);
-  const enabled = configs.filter((c) => c.enabled);
-
-  for (const config of enabled) {
-    try {
-      const cron = new Cron(config.schedule, {
-        timezone: config.timezone,
-        protect: true // over-run protection
-      }, async () => {
-        const start = Date.now();
-        try {
-          await executeAction(config.action, adminToken);
-          const durationMs = Date.now() - start;
-          recordExecution(config.fileName, { at: new Date().toISOString(), ok: true, durationMs });
-          logger.info("automation executed", { name: config.name, fileName: config.fileName, durationMs });
-        } catch (err) {
-          const durationMs = Date.now() - start;
-          const errorMsg = String(err);
-          recordExecution(config.fileName, { at: new Date().toISOString(), ok: false, durationMs, error: errorMsg });
-
-          if (config.on_failure === "audit" && state) {
-            appendAudit(state, "scheduler", `automation.failed:${config.name}`, {
-              fileName: config.fileName,
-              error: errorMsg,
-              durationMs,
-            }, false);
-          } else {
-            logger.error("automation failed", {
-              name: config.name,
-              fileName: config.fileName,
-              error: errorMsg
-            });
-          }
-        }
-      });
-
-      activeJobs.push({ cron, config });
-    } catch (err) {
-      logger.error("failed to schedule automation", {
-        name: config.name,
-        fileName: config.fileName,
-        schedule: config.schedule,
-        error: String(err)
-      });
-    }
-  }
-
-  logger.info(`scheduler started with ${activeJobs.length} automation(s)`);
-}
-
-export function stopScheduler(): void {
-  for (const job of activeJobs) {
-    job.cron.stop();
-  }
-  const count = activeJobs.length;
-  activeJobs = [];
-  executionLogs.clear();
-  if (count > 0) {
-    logger.info(`scheduler stopped (${count} job(s) cleared)`);
-  }
-}
-
-export function reloadScheduler(configDir: string, adminToken: string, state?: ControlPlaneState): void {
-  stopScheduler();
-  startScheduler(configDir, adminToken, state);
-}
-
-export function getSchedulerStatus(): {
-  jobCount: number;
-  jobs: { name: string; fileName: string; schedule: string; running: boolean }[];
-} {
-  return {
-    jobCount: activeJobs.length,
-    jobs: activeJobs.map((j) => ({
-      name: j.config.name,
-      fileName: j.config.fileName,
-      schedule: j.config.schedule,
-      running: j.cron.isRunning()
-    }))
-  };
 }

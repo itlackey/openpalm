@@ -20,9 +20,9 @@ async function provisionMemoryUser(userId: string): Promise<ProvisionResult> {
       body: JSON.stringify({ user_id: userId }),
       signal: AbortSignal.timeout(5_000),
     });
-    return { ok: res.ok };
+    return res.ok ? { ok: true as const } : { ok: false as const, error: `HTTP ${res.status}` };
   } catch {
-    return { ok: false, error: 'User provision failed' };
+    return { ok: false as const, error: 'User provision failed' };
   }
 }
 

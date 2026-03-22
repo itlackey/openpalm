@@ -217,7 +217,7 @@ SETUP_RESPONSE=$(curl -s http://localhost:8100/admin/setup)
 SETUP_COMPLETE=$(echo "$SETUP_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['setupComplete'])" 2>/dev/null)
 
 # The setup token is intentionally not exposed by the API.
-# Read the bootstrap token from STATE_HOME, where the admin writes it on startup.
+# Read the bootstrap token from data/admin, where the admin writes it on startup.
 SETUP_TOKEN=""
 if [ -f .dev/state/setup-token.txt ]; then
 	SETUP_TOKEN=$(tr -d '\r\n' <.dev/state/setup-token.txt)

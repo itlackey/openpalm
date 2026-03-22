@@ -12,11 +12,6 @@ import {
   generateRedactSchema,
   getCoreSecretMappings,
 } from '../index.js';
-import {
-  deriveComponentSecretRegistrations,
-  registerComponentSensitiveFields,
-  deregisterComponentSensitiveFields,
-} from './component-secrets.js';
 import { writeSecretProviderConfig } from './provider-config.js';
 
 let rootDir = '';
@@ -362,27 +357,3 @@ describe('generateRedactSchema', () => {
   });
 });
 
-describe('component secret registration', () => {
-  test('registers and deregisters sensitive fields from env schema', () => {
-    const schemaPath = join(rootDir, '.env.schema');
-    writeFileSync(schemaPath, [
-      '# @sensitive',
-      'DISCORD_BOT_TOKEN=',
-      '# @sensitive=false',
-      'CHANNEL_NAME=general',
-      '# @sensitive',
-      'SLACK_APP_TOKEN=',
-      '',
-    ].join('\n'));
-
-    const derived = deriveComponentSecretRegistrations('discord-main', schemaPath);
-    expect(derived).toHaveLength(2);
-    expect(derived[0]?.secretKey).toBe('openpalm/component/discord-main/discord-bot-token');
-
-    const registered = registerComponentSensitiveFields(rootDir, 'discord-main', schemaPath);
-    expect(registered).toHaveLength(2);
-
-    const removed = deregisterComponentSensitiveFields(rootDir, 'discord-main');
-    expect(removed).toHaveLength(2);
-  });
-});

@@ -1,7 +1,7 @@
 /**
  * POST /admin/registry/refresh — Pull latest registry from GitHub and re-stage.
  *
- * Runs `git pull` on the cloned registry repo in STATE_HOME to fetch any
+ * Runs `git pull` on the cloned registry repo in the cache directory to fetch any
  * new or updated registry items from the remote repository.
  */
 import type { RequestHandler } from "./$types";

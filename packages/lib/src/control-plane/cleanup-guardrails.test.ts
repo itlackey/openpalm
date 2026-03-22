@@ -220,11 +220,29 @@ describe("guardrail: no secrets.env references", () => {
   });
 });
 
-// ── Guardrail 8: COMPOSE_SERVICE_ALIASES is removed ──────────────────
+// ── Guardrail 8: component/instance system removed ──────────────────
 
-describe("guardrail: COMPOSE_SERVICE_ALIASES removed", () => {
-  test("components.ts does not contain COMPOSE_SERVICE_ALIASES", () => {
-    const componentsTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "components.ts"), "utf-8");
-    expect(componentsTs).not.toContain("COMPOSE_SERVICE_ALIASES");
+describe("guardrail: component/instance system removed", () => {
+  test("components.ts no longer exists", () => {
+    const exists = readdirSync(LIB_CONTROL_PLANE_DIR).includes("components.ts");
+    expect(exists).toBe(false);
+  });
+
+  test("instance-lifecycle.ts no longer exists", () => {
+    const exists = readdirSync(LIB_CONTROL_PLANE_DIR).includes("instance-lifecycle.ts");
+    expect(exists).toBe(false);
+  });
+
+  test("component-secrets.ts no longer exists", () => {
+    const exists = readdirSync(LIB_CONTROL_PLANE_DIR).includes("component-secrets.ts");
+    expect(exists).toBe(false);
+  });
+
+  test("no source file references data/components or data/catalog", () => {
+    const sources = readSourceFiles();
+    for (const { path, content } of sources) {
+      expect(content).not.toContain("data/components");
+      expect(content).not.toContain("data/catalog");
+    }
   });
 });

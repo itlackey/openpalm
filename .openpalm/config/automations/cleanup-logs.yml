@@ -4,7 +4,7 @@
 # audit log file to prevent unbounded disk growth.
 #
 # This is a core automation — installed by default. To customize, copy this
-# file to ~/.config/openpalm/automations/cleanup-logs.yml and edit there.
+# file to ~/.openpalm/config/automations/cleanup-logs.yml and edit there.
 # User copies in CONFIG_HOME override the system version.
 
 name: Cleanup Logs

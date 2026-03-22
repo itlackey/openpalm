@@ -108,13 +108,6 @@ export {
 export {
   generateRedactSchema,
 } from "./control-plane/redact-schema.js";
-export {
-  deriveComponentSecretRegistrations,
-  registerComponentSensitiveFields,
-  deregisterComponentSensitiveFields,
-  listComponentSensitiveFields,
-} from "./control-plane/component-secrets.js";
-
 // ── Setup Status ────────────────────────────────────────────────────────
 export {
   readSecretsKeys,
@@ -127,6 +120,7 @@ export {
   discoverChannels,
   isAllowedService,
   isValidChannel,
+  isChannelAddon,
   installAutomationFromRegistry,
   uninstallAutomation,
 } from "./control-plane/channels.js";
@@ -256,12 +250,6 @@ export {
   executeHttpAction,
   executeShellAction,
   executeAssistantAction,
-  startScheduler,
-  stopScheduler,
-  reloadScheduler,
-  getSchedulerStatus,
-  getExecutionLog,
-  getAllExecutionLogs,
 } from "./control-plane/scheduler.js";
 
 // ── Model Runner (local provider detection) ─────────────────────────────
@@ -319,33 +307,6 @@ export {
 // ── Viking Config ───────────────────────────────────────────────────────
 export { assembleVikingConfig, validateVikingConfigOpts } from "./control-plane/viking-config.js";
 export type { VikingConfigOpts } from "./control-plane/viking-config.js";
-
-// ── Components (v0.10.0) ────────────────────────────────────────────────
-export type {
-  ComponentDefinition,
-  ComponentSource,
-  ComponentLabels,
-  EnabledInstance,
-  InstanceStatus,
-  InstanceDetail,
-} from "./control-plane/components.js";
-export {
-  isValidInstanceId,
-  isReservedName,
-  discoverComponents,
-  buildComponentComposeArgs,
-} from "./control-plane/components.js";
-
-// ── Instance Lifecycle ──────────────────────────────────────────────────
-export type { EnvSchemaField } from "./control-plane/instance-lifecycle.js";
-export {
-  createInstance,
-  configureInstance,
-  getInstanceDetail,
-  listInstances,
-  deleteInstance,
-  parseEnvSchema,
-} from "./control-plane/instance-lifecycle.js";
 
 // ── Voice Env Bridge ─────────────────────────────────────────────────────
 export {

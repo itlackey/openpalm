@@ -5,7 +5,7 @@
 # and removes temporary files that may accumulate in DATA_HOME.
 #
 # This is a core automation — installed by default. To customize, copy this
-# file to ~/.config/openpalm/automations/cleanup-data.yml and edit there.
+# file to ~/.openpalm/config/automations/cleanup-data.yml and edit there.
 # User copies in CONFIG_HOME override the system version.
 
 name: Cleanup Data

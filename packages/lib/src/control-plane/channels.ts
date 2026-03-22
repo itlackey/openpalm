@@ -24,7 +24,7 @@ function isValidChannelName(name: string): boolean {
  * This is compose-derived: we parse the actual compose content rather than
  * relying on filename patterns or directory naming conventions.
  */
-function isChannelAddon(composePath: string): boolean {
+export function isChannelAddon(composePath: string): boolean {
   try {
     const content = readFileSync(composePath, "utf-8");
     const doc = yamlParse(content);
@@ -73,7 +73,6 @@ export function discoverChannels(configDir: string): ChannelInfo[] {
     })
     .map((entry) => ({
       name: entry.name,
-      hasRoute: false,
       ymlPath: `${addonsDir}/${entry.name}/compose.yml`,
     }))
     .filter((ch) => isValidChannelName(ch.name));

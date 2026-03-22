@@ -4,11 +4,11 @@ const TOKEN_KEY = 'openpalm.adminToken';
 
 /** Standard set of mocks for navigating to the authenticated console. */
 async function setupConsoleMocks(page: import('@playwright/test').Page) {
-	await page.route('**/admin/access-scope', (route) =>
+	await page.route('**/admin/connections/status', (route) =>
 		route.fulfill({
 			status: 200,
 			contentType: 'application/json',
-			body: JSON.stringify({ accessScope: 'lan' })
+			body: JSON.stringify({ complete: true, missing: [] })
 		})
 	);
 	await page.route('**/health', (route) =>

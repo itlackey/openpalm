@@ -7,9 +7,6 @@ import type {
   SystemConnectionSaveResult,
   ConnectionsResponseDto,
   SaveConnectionsPayload,
-  ComponentResponse,
-  InstanceResponse,
-  EnvSchemaFieldResponse,
 } from './types.js';
 
 const apiBase = '';
@@ -204,76 +201,22 @@ export async function resetMemoryCollection(token: string): Promise<void> {
   await requireOk(await request('POST', '/admin/memory/reset-collection', token, {}));
 }
 
-// ── Component System (v0.10.0) ──────────────────────────────────────────
+// ── Addon Management ────────────────────────────────────────────────────
 
-export async function fetchComponents(token: string): Promise<ComponentResponse[]> {
-  const res = await requireOk(await request('GET', '/api/components', token));
-  const data = (await res.json()) as { components: ComponentResponse[] };
-  return data.components;
+export async function fetchAddons(token: string): Promise<{ name: string; enabled: boolean; hasCompose: boolean }[]> {
+  const res = await requireOk(await request('GET', '/admin/addons', token));
+  const data = (await res.json()) as { addons: { name: string; enabled: boolean; hasCompose: boolean }[] };
+  return data.addons;
 }
 
-export async function fetchInstances(token: string): Promise<InstanceResponse[]> {
-  const res = await requireOk(await request('GET', '/api/instances', token));
-  const data = (await res.json()) as { instances: InstanceResponse[] };
-  return data.instances;
-}
-
-export async function createInstance(
+export async function toggleAddon(
   token: string,
-  component: string,
-  name: string
-): Promise<InstanceResponse> {
-  const res = await requireOk(await request('POST', '/api/instances', token, { component, name }));
-  const data = (await res.json()) as { instance: InstanceResponse };
-  return data.instance;
-}
-
-export async function configureInstance(
-  token: string,
-  instanceId: string,
-  values: Record<string, string>
-): Promise<void> {
-  await requireOk(await request(
-    'PUT',
-    `/api/instances/${encodeURIComponent(instanceId)}`,
-    token,
-    { values }
-  ));
-}
-
-export async function deleteInstance(
-  token: string,
-  instanceId: string
-): Promise<void> {
-  await requireOk(await request(
-    'DELETE',
-    `/api/instances/${encodeURIComponent(instanceId)}`,
-    token,
-    {}
-  ));
-}
-
-export async function startInstance(token: string, instanceId: string): Promise<void> {
-  await requireOk(await request('POST', `/api/instances/${encodeURIComponent(instanceId)}/start`, token, {}));
-}
-
-export async function stopInstance(token: string, instanceId: string): Promise<void> {
-  await requireOk(await request('POST', `/api/instances/${encodeURIComponent(instanceId)}/stop`, token, {}));
-}
-
-export async function restartInstance(token: string, instanceId: string): Promise<void> {
-  await requireOk(await request('POST', `/api/instances/${encodeURIComponent(instanceId)}/restart`, token, {}));
-}
-
-export async function fetchInstanceSchema(
-  token: string,
-  instanceId: string
-): Promise<EnvSchemaFieldResponse[]> {
-  const res = await requireOk(await request(
-    'GET',
-    `/api/instances/${encodeURIComponent(instanceId)}/schema`,
-    token
-  ));
-  const data = (await res.json()) as { schema: EnvSchemaFieldResponse[] };
-  return data.schema;
+  name: string,
+  enabled: boolean,
+  env?: Record<string, string>
+): Promise<{ ok: boolean; changed: boolean }> {
+  const body: Record<string, unknown> = { enabled };
+  if (env) body.env = env;
+  const res = await requireOk(await request('POST', `/admin/addons/${encodeURIComponent(name)}`, token, body));
+  return (await res.json()) as { ok: boolean; changed: boolean };
 }

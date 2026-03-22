@@ -6,7 +6,7 @@
   import AuthGate from '$lib/components/AuthGate.svelte';
   import TabBar from '$lib/components/TabBar.svelte';
   import OverviewTab from '$lib/components/OverviewTab.svelte';
-  import ComponentsTab from '$lib/components/ComponentsTab.svelte';
+  import AddonsTab from '$lib/components/AddonsTab.svelte';
   import ContainersTab from '$lib/components/ContainersTab.svelte';
   import ArtifactsTab from '$lib/components/ArtifactsTab.svelte';
   import AutomationsTab from '$lib/components/AutomationsTab.svelte';
@@ -66,7 +66,7 @@
   let legacyInstallDetected = $state(false);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: 'overview' | 'components' | 'containers' | 'artifacts' | 'automations' | 'connections' = $state('overview');
+  let activeTab: 'overview' | 'addons' | 'containers' | 'artifacts' | 'automations' | 'connections' = $state('overview');
 
   // ── Container polling ──────────────────────────────────────────────────────
   const POLL_INTERVAL_MS = 10_000;
@@ -392,7 +392,7 @@
     selectedContainerId = selectedContainerId === id ? null : id;
   }
 
-  function handleTabSelect(tab: 'overview' | 'components' | 'containers' | 'artifacts' | 'automations' | 'connections'): void {
+  function handleTabSelect(tab: 'overview' | 'addons' | 'containers' | 'artifacts' | 'automations' | 'connections'): void {
     activeTab = tab;
     if (tab === 'containers' && !containerData) {
       void loadContainers();
@@ -485,8 +485,8 @@
         onUpgradeStack={handleUpgradeStack}
         onDismissResult={() => { operationResult = ''; operationResultType = 'info'; }}
       />
-    {:else if activeTab === 'components'}
-      <ComponentsTab
+    {:else if activeTab === 'addons'}
+      <AddonsTab
         onAuthError={handleComponentsAuthError}
       />
     {:else if activeTab === 'containers'}

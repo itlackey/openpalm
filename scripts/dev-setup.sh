@@ -188,10 +188,10 @@ touch "$VAULT_DIR/user/user.env" "$VAULT_DIR/stack/stack.env"
 
 # ── Seed OpenCode user config (Ollama for dev) ──────────────────
 # OpenCode has two config files:
-#   - Project config (DATA_HOME/assistant/opencode.jsonc) — $schema + plugin ONLY.
+#   - Project config (data/assistant/opencode.jsonc) — $schema + plugin ONLY.
 #     Seeded by admin's ensureOpenCodeSystemConfig(). Does NOT accept providers,
 #     model, or smallModel keys (causes ConfigInvalidError).
-#   - User config (CONFIG_HOME/assistant/opencode.json) — $schema + model ONLY.
+#   - User config (config/assistant/opencode.json) — $schema + model ONLY.
 #     v1.2.24 rejects providers, smallModel, and any other unrecognized keys
 #     with a fatal ConfigInvalidError.
 #

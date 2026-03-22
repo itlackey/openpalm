@@ -7,6 +7,7 @@ import {
   isMemoryAvailable,
   searchMemories,
   sendMemoryFeedback,
+  type MemoryIdentity,
 } from './memory-lib.ts';
 import { buildHygieneContextNote, runAutomatedHygiene } from './memory-hygiene.ts';
 import { isVikingConfigured, vikingFetch, vikingResponseHasError } from '../tools/viking-lib.ts';
@@ -34,7 +35,7 @@ import {
 } from './memory-context-helpers.ts';
 
 const sessions = new Map<string, SessionState>();
-const pendingToolFeedback = new Map<string, { memoryIds: string[]; identity: { scope?: string; appId?: string }; startedAt: number }[]>();
+const pendingToolFeedback = new Map<string, { memoryIds: string[]; identity: MemoryIdentity; startedAt: number }[]>();
 
 let lastHygieneRunAt = 0;
 let sessionsSinceSynthesis = 0;

@@ -31,7 +31,7 @@ admin-logs service=memory tail=100 # Last 100 lines
 Accessed via the `admin-guardian-audit` tool.
 
 **Format:** JSONL (one JSON object per line)
-**Location:** `STATE_HOME/audit/guardian-audit.log`
+**Location:** `OP_HOME/logs/guardian-audit.log`
 
 Each entry contains:
 
@@ -52,7 +52,7 @@ Each entry contains:
 Accessed via the `admin-audit` tool.
 
 **Format:** JSONL (one JSON object per line)
-**Location:** `STATE_HOME/audit/admin-audit.jsonl`
+**Location:** `OP_HOME/logs/admin-audit.jsonl`
 **In-memory buffer:** Last 1000 entries (most recent operations always available)
 
 Each entry contains:
@@ -123,16 +123,6 @@ Each entry contains:
 | `"OPENCODE"` | OpenCode runtime messages | Context-dependent; check for errors |
 | `"varlock"` | Secret redaction active in output | Normal security behavior |
 | Connection errors to admin API | Cannot reach admin | Check OP_ADMIN_API_URL and admin container |
-
-### Caddy Logs
-
-| Pattern | Meaning | Action |
-|---------|---------|--------|
-| `"dial"` errors | Cannot connect to upstream service | Upstream service is down or wrong address |
-| `"tls"` messages | Certificate-related | Check TLS configuration if using HTTPS |
-| `"502"` responses | Bad gateway — upstream unavailable | Check the target service (guardian or admin) |
-| `"503"` responses | Service unavailable | Service may be starting up or overloaded |
-| `"reverse_proxy"` | Proxy operation logged | Normal — check status code for issues |
 
 ## Cross-Service Correlation
 

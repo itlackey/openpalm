@@ -1,5 +1,5 @@
 /**
- * GET /admin/automations — List automation configs from STATE_HOME.
+ * GET /admin/automations — List automation configs from config/automations/.
  *
  * Read-only endpoint. The scheduler sidecar is the sole automation engine;
  * admin does not run any background scheduler process. For execution logs

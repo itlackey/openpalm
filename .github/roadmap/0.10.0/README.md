@@ -1,5 +1,7 @@
 # OpenPalm v0.10.0 Roadmap
 
+> **Note (2026-03):** The component/instance system described in some sub-plans below (e.g., `/api/components`, `/api/instances`, `data/components/`, `registry/components/`, multi-instance support) was removed during implementation and replaced by the simpler addon model. Addons are managed via `stack.yaml` and the `/admin/addons` API. References to the old component system in sub-plan documents are historical and do not reflect the current codebase.
+
 **Status:** Planning complete, ready for implementation
 **Target:** 6-8 weeks with 1-2 developers
 **Breaking changes:** Yes (filesystem layout, legacy channel removal, addon model cleanup, env file split)

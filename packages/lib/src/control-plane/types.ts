@@ -18,7 +18,6 @@ export type CallerType = "assistant" | "cli" | "ui" | "system" | "test" | "unkno
 /** Info about a discovered channel */
 export type ChannelInfo = {
   name: string;
-  hasRoute: boolean;
   ymlPath: string;
 };
 

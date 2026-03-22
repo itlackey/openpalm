@@ -1,13 +1,14 @@
 /**
- * Tests for the in-process automation scheduler.
+ * Tests for the automation scheduler — parsing, resolution, and action execution.
  *
  * Verifies:
  * 1. YAML parsing and validation (valid, invalid, defaults)
  * 2. Schedule preset resolution
  * 3. Automation loading from directory
- * 4. Scheduler start/stop lifecycle
- * 5. executeAction integration (http action with real HTTP server)
- * 6. Scheduler fires cron job and records execution log
+ * 4. executeAction integration (http action with real HTTP server)
+ *
+ * Scheduler lifecycle tests (start/stop/reload/cron firing) live in
+ * packages/scheduler/src/scheduler.test.ts.
  */
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
@@ -20,10 +21,6 @@ import {
   resolveSchedule,
   SCHEDULE_PRESETS,
   loadAutomations,
-  startScheduler,
-  stopScheduler,
-  getSchedulerStatus,
-  getExecutionLog,
   executeAction
 } from "./scheduler.js";
 
@@ -423,72 +420,6 @@ describe("loadAutomations", () => {
   });
 });
 
-// ── Scheduler lifecycle ─────────────────────────────────────────────
-
-describe("scheduler lifecycle", () => {
-  let configDir: string;
-
-  beforeEach(() => {
-    configDir = makeTempDir();
-    stopScheduler(); // ensure clean state
-  });
-
-  afterEach(() => {
-    stopScheduler();
-    rmSync(configDir, { recursive: true, force: true });
-  });
-
-  test("startScheduler creates jobs for enabled automations", () => {
-    const dir = join(configDir, "automations");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, "health.yml"),
-      'schedule: every-5-minutes\naction:\n  type: api\n  path: /health\n'
-    );
-    writeFileSync(
-      join(dir, "disabled.yml"),
-      'schedule: daily\nenabled: false\naction:\n  type: api\n  path: /health\n'
-    );
-
-    startScheduler(configDir, "test-token");
-    const status = getSchedulerStatus();
-    expect(status.jobCount).toBe(1);
-    expect(status.jobs[0].name).toBe("health");
-    expect(status.jobs[0].running).toBe(true);
-  });
-
-  test("stopScheduler clears all jobs", () => {
-    const dir = join(configDir, "automations");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, "health.yml"),
-      'schedule: every-5-minutes\naction:\n  type: api\n  path: /health\n'
-    );
-
-    startScheduler(configDir, "test-token");
-    expect(getSchedulerStatus().jobCount).toBe(1);
-
-    stopScheduler();
-    expect(getSchedulerStatus().jobCount).toBe(0);
-  });
-
-  test("getSchedulerStatus returns empty when no jobs", () => {
-    const status = getSchedulerStatus();
-    expect(status.jobCount).toBe(0);
-    expect(status.jobs).toEqual([]);
-  });
-
-  test("startScheduler handles empty automations dir gracefully", () => {
-    mkdirSync(join(configDir, "automations"), { recursive: true });
-    startScheduler(configDir, "test-token");
-    expect(getSchedulerStatus().jobCount).toBe(0);
-  });
-
-  test("startScheduler handles missing automations dir gracefully", () => {
-    startScheduler(configDir, "test-token");
-    expect(getSchedulerStatus().jobCount).toBe(0);
-  });
-});
 
 // ── executeAction: assistant ─────────────────────────────────────────
 
@@ -720,127 +651,3 @@ describe("executeAction http integration", () => {
   });
 });
 
-// ── Scheduler fires cron and records execution log ───────────────────
-
-describe("scheduler cron firing", () => {
-  let configDir: string;
-  let server: Server;
-  let serverPort: number;
-  let hitCount: number;
-
-  beforeEach(async () => {
-    configDir = makeTempDir();
-    hitCount = 0;
-    stopScheduler();
-
-    server = createServer((_req, res) => {
-      hitCount++;
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true }));
-    });
-
-    await new Promise<void>((resolve) => {
-      server.listen(0, "127.0.0.1", () => resolve());
-    });
-    const addr = server.address();
-    serverPort = typeof addr === "object" && addr !== null ? addr.port : 0;
-  });
-
-  afterEach(async () => {
-    stopScheduler();
-    rmSync(configDir, { recursive: true, force: true });
-    await new Promise<void>((resolve) => {
-      server.close(() => resolve());
-    });
-  });
-
-  test("scheduler fires http automation and records execution log", async () => {
-    const dir = join(configDir, "automations");
-    mkdirSync(dir, { recursive: true });
-
-    // Use a per-second cron pattern so it fires within 2 seconds
-    writeFileSync(
-      join(dir, "e2e-probe.yml"),
-      [
-        "name: E2E Probe",
-        "description: Integration test automation",
-        "schedule: '* * * * * *'",  // every second (Croner supports seconds)
-        "action:",
-        "  type: http",
-        "  method: GET",
-        `  url: http://127.0.0.1:${serverPort}/scheduler-probe`,
-        "  timeout: 5000"
-      ].join("\n")
-    );
-
-    startScheduler(configDir, "test-token");
-
-    const status = getSchedulerStatus();
-    expect(status.jobCount).toBe(1);
-    expect(status.jobs[0].name).toBe("E2E Probe");
-    expect(status.jobs[0].running).toBe(true);
-
-    // Wait for the cron to fire (up to 8 seconds, polling every 200ms)
-    const deadline = Date.now() + 8_000;
-    while (hitCount === 0 && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 200));
-    }
-
-    expect(hitCount).toBeGreaterThanOrEqual(1);
-
-    // Verify execution log was recorded
-    const logs = getExecutionLog("e2e-probe.yml");
-    expect(logs.length).toBeGreaterThanOrEqual(1);
-    expect(logs[0].ok).toBe(true);
-    expect(typeof logs[0].durationMs).toBe("number");
-    expect(typeof logs[0].at).toBe("string");
-  }, 15_000);
-
-  test("scheduler records failure in execution log when action fails", async () => {
-    // Replace server with one that returns 500
-    await new Promise<void>((resolve) => {
-      server.close(() => resolve());
-    });
-
-    server = createServer((_req, res) => {
-      hitCount++;
-      res.writeHead(500, { "content-type": "text/plain" });
-      res.end("Internal Server Error");
-    });
-    await new Promise<void>((resolve) => {
-      server.listen(serverPort, "127.0.0.1", () => resolve());
-    });
-
-    const dir = join(configDir, "automations");
-    mkdirSync(dir, { recursive: true });
-
-    writeFileSync(
-      join(dir, "failing-probe.yml"),
-      [
-        "name: Failing Probe",
-        "schedule: '* * * * * *'",
-        "action:",
-        "  type: http",
-        "  method: GET",
-        `  url: http://127.0.0.1:${serverPort}/will-fail`,
-        "  timeout: 5000"
-      ].join("\n")
-    );
-
-    startScheduler(configDir, "test-token");
-
-    // Wait for the cron to fire (up to 8 seconds, polling every 200ms)
-    const deadline = Date.now() + 8_000;
-    while (hitCount === 0 && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 200));
-    }
-
-    expect(hitCount).toBeGreaterThanOrEqual(1);
-
-    // Verify failure was recorded in execution log
-    const logs = getExecutionLog("failing-probe.yml");
-    expect(logs.length).toBeGreaterThanOrEqual(1);
-    expect(logs[0].ok).toBe(false);
-    expect(logs[0].error).toContain("HTTP 500");
-  }, 15_000);
-});

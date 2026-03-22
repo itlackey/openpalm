@@ -9,8 +9,8 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 
 import { createHash, randomBytes } from "node:crypto";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
-import { discoverChannels } from "./channels.js";
-import { readStackSpec, hasAddon } from "./stack-spec.js";
+import { isChannelAddon } from "./channels.js";
+import { readStackSpec, hasAddon, addonNames } from "./stack-spec.js";
 import { writeManagedEnvFiles } from "./spec-to-env.js";
 
 import { generateRedactSchema } from "./redact-schema.js";
@@ -227,12 +227,18 @@ export function writeRuntimeFiles(
   mkdirSync(stackDir, { recursive: true });
   writeFileSync(`${stackDir}/core.compose.yml`, state.artifacts.compose);
 
-  // Load persisted channel HMAC secrets, generate new ones for new channels
+  // Load persisted channel HMAC secrets, generate new ones for new channels.
+  // Only generate secrets for addons that are enabled in stack.yaml AND are
+  // channel addons (have CHANNEL_NAME/GUARDIAN_URL in their compose).
   const channelSecrets = loadPersistedChannelSecrets(state.vaultDir);
-  const allChannels = discoverChannels(state.configDir);
-  for (const ch of allChannels) {
-    if (!channelSecrets[ch.name]) {
-      channelSecrets[ch.name] = randomHex(16);
+  const spec = readStackSpec(state.configDir);
+  if (spec) {
+    const stackDir = `${state.homeDir}/stack`;
+    for (const addon of addonNames(spec)) {
+      const composePath = `${stackDir}/addons/${addon}/compose.yml`;
+      if (isChannelAddon(composePath) && !channelSecrets[addon]) {
+        channelSecrets[addon] = randomHex(16);
+      }
     }
   }
 
@@ -244,9 +250,9 @@ export function writeRuntimeFiles(
   ensureSystemEnvSchema();
 
   // Write managed.env files derived from stack spec
-  const spec = readStackSpec(state.configDir);
-  if (spec) {
-    writeManagedEnvFiles(spec, state.vaultDir);
+  const specForEnv = spec ?? readStackSpec(state.configDir);
+  if (specForEnv) {
+    writeManagedEnvFiles(specForEnv, state.vaultDir);
   }
 
   // Generate redact.env.schema from canonical mappings

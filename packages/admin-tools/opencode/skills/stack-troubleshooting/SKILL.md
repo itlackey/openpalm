@@ -16,36 +16,35 @@ This skill provides a systematic approach to diagnosing and resolving issues in 
 
 ### Stack Services
 
-The OpenPalm stack runs 6 core services:
+The OpenPalm stack runs 4 core services:
 
 | Service | Role | Health endpoint |
 |---------|------|-----------------|
-| **caddy** | Reverse proxy, TLS termination, access control | curl http://localhost:80 |
-| **admin** | Control plane API (sole Docker socket access) | curl http://localhost:8100/ |
-| **guardian** | HMAC-verified message ingress, rate limiting, replay detection | http://localhost:8080/health |
-| **assistant** | OpenCode runtime (no Docker socket) | TCP check on port 4096 |
-| **memory** | Semantic memory service (sqlite-vec + embeddings) | http://localhost:8765/health |
-| **docker-socket-proxy** | Filtered Docker API proxy (admin-only access) | http://localhost:2375/_ping |
+| **memory** | Semantic memory service (sqlite-vec + embeddings) | http://localhost:3898/health |
+| **assistant** | OpenCode runtime (no Docker socket) | TCP check on port 3800 |
+| **guardian** | HMAC-verified message ingress, rate limiting, replay detection | http://localhost:3899/health |
+| **scheduler** | Lightweight automation sidecar (cron jobs) | http://localhost:3897/health |
+
+Optional addons (enabled via stack.yaml):
+| **admin** | Control plane API (Docker socket access via docker-socket-proxy) | http://localhost:3880/ |
 
 ### Service Communication
 
 ```
-External clients -> Caddy -> Guardian (HMAC/validate) -> Assistant
-                                                          |
-                                                          v
-                                                        Memory (semantic search)
-                                                          |
-                                                          v
-                                                   Embedding model (Ollama/cloud)
+External clients -> Guardian (HMAC/validate) -> Assistant
+                                                    |
+                                                    v
+                                                  Memory (semantic search)
+                                                    |
+                                                    v
+                                             Embedding model (Ollama/cloud)
 
 Assistant -> Admin API (stack operations, authenticated)
 Admin -> Docker Socket Proxy -> Docker daemon
 ```
 
 Networks:
-- `assistant_net` — admin, memory, assistant, guardian (internal communication)
-- `channel_lan` — caddy, guardian, LAN-accessible channels
-- `channel_public` — caddy, guardian, publicly accessible channels
+- `assistant_net` — admin, memory, assistant, guardian, scheduler (internal communication)
 - `admin_docker_net` — admin, docker-socket-proxy only (isolated)
 
 ### Diagnostic Tools Available
@@ -66,7 +65,7 @@ Networks:
 | `admin-connections-status` | Check external API connection status |
 | `admin-connections-test` | Test connectivity to LLM providers |
 | `admin-providers-local` | Detect local LLM providers (Ollama, LMStudio) |
-| `admin-artifacts-get` | Inspect generated config files (compose, caddyfile) |
+| `admin-artifacts-get` | Inspect generated config files (compose) |
 | `message-trace` | Trace a request across services by requestId |
 
 ## Diagnostic Workflow
@@ -104,8 +103,8 @@ Networks:
    - Connection errors -> check the channel's configuration and environment variables.
    - Auth errors -> verify the channel's API token or credentials.
 
-6. **Check Caddy routing:** `admin-artifacts-get` artifact=caddy — does the channel have a route?
-   - No route -> the channel has no `.caddy` file. It may be docker-network only, or the caddy config needs regeneration via `admin-lifecycle-update`.
+6. **Check channel addon:** Verify the channel addon is enabled in `stack.yaml` and its compose overlay exists in `stack/addons/<name>/`.
+   - Not enabled -> enable the addon via `admin-addons` or the admin UI.
 
 ---
 
@@ -161,7 +160,7 @@ Networks:
 ### "Stack won't start / containers keep restarting"
 
 1. **Check all containers:** `admin-containers-list` — which services are stopped or restarting?
-   - Note the dependency chain: docker-socket-proxy -> admin, memory -> assistant -> guardian.
+   - Note the dependency chain: memory -> assistant -> guardian. Admin addon: docker-socket-proxy -> admin.
 
 2. **Check logs for failing service:** `admin-logs service=<name>`
    - Look for startup errors, missing environment variables, or configuration issues.
@@ -181,7 +180,7 @@ Networks:
    | Symptom | Cause | Fix |
    |---------|-------|-----|
    | All containers fail | Docker daemon not running | Check Docker service on host |
-   | Admin won't start | docker-socket-proxy unhealthy | Check Docker socket path (`OP_DOCKER_SOCK`) |
+   | Admin addon won't start | docker-socket-proxy unhealthy | Check Docker socket path (`OP_DOCKER_SOCK`) |
    | Assistant restart loop | Memory service unhealthy | Assistant depends on memory health. Fix memory first. |
    | Guardian restart loop | Assistant unhealthy | Guardian depends on assistant health. Fix assistant first. |
    | Port conflict errors | Another service on the same port | Check ports 8080, 8100, 4096, 8765 for conflicts |
@@ -240,11 +239,6 @@ Networks:
 Understanding dependencies is critical for diagnosing cascade failures:
 
 ```
-docker-socket-proxy  (no deps — starts first)
-       |
-       v
-     admin  (depends on: docker-socket-proxy healthy)
-
      memory  (no compose deps — starts independently)
        |
        v
@@ -252,9 +246,14 @@ docker-socket-proxy  (no deps — starts first)
        |
        v
     guardian  (depends on: assistant healthy)
+
+    scheduler  (depends on: assistant healthy)
+
+Optional (admin addon):
+  docker-socket-proxy  (no deps — starts first)
        |
        v
-     caddy  (no compose deps — routes to guardian and admin)
+     admin  (depends on: docker-socket-proxy healthy)
 ```
 
 **Cascade failure pattern:** If memory goes down, assistant becomes unhealthy, which causes guardian to become unhealthy, which causes all channels to stop receiving messages. Fix memory first, then wait for the chain to recover.
@@ -274,7 +273,7 @@ Key environment variables that affect diagnostics:
 | `GUARDIAN_AUDIT_PATH` | guardian | Audit log file location |
 | `GUARDIAN_SECRETS_PATH` | guardian | Channel secrets file path |
 | `OPENCODE_TIMEOUT_MS` | guardian | Message forwarding timeout (default: 120000ms) |
-| `OP_INGRESS_PORT` | caddy | External ingress port (default: 8080) |
+| `OP_INGRESS_PORT` | guardian | External ingress port (default: 3080) |
 | `OP_DOCKER_SOCK` | docker-socket-proxy | Docker socket path |
 | `SYSTEM_LLM_PROVIDER` | assistant | LLM provider configuration |
 | `SYSTEM_LLM_MODEL` | assistant | LLM model selection |

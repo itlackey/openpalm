@@ -109,7 +109,7 @@ Mounts:
 | `$OP_HOME/config/assistant` | `/home/opencode/.config/opencode` | rw | User OpenCode tools, plugins, skills, commands |
 | `$OP_HOME/vault/stack/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | OpenCode auth state |
 | `$OP_HOME/vault/user/user.env` | `/etc/openpalm-vault/user.env` | ro | Read-only user secrets file |
-| `$OP_HOME/data/assistant` | `/home/opencode` | rw | Assistant home directory |
+| `$OP_HOME/data/assistant` | `/home/opencode/data` | rw | Assistant persistent data |
 | `$OP_HOME/data/stash` | `/home/opencode/.akm` | rw | AKM stash |
 | `$OP_HOME/data/workspace` | `/work` | rw | Shared workspace |
 | `$OP_HOME/logs/opencode` | `/home/opencode/.local/state/opencode` | rw | OpenCode logs and local state |

@@ -94,8 +94,8 @@ TEST_ROOT="${ROOT_DIR}/.upgrade-test"
 export OP_HOME="${OP_HOME:-${TEST_ROOT}}"
 OP_CONFIG_HOME="${OP_HOME}/config"
 OP_DATA_HOME="${OP_HOME}/data"
-OP_STATE_HOME="${OP_HOME}/state"
-OP_WORK_DIR="${OP_HOME}/work"
+OP_LOGS_HOME="${OP_HOME}/logs"
+OP_STACK_HOME="${OP_HOME}/stack"
 
 PROJECT_NAME="openpalm-upgrade-test"
 ADMIN_PORT=8101
@@ -144,7 +144,7 @@ trap cleanup EXIT
 compose_cmd() {
   docker compose \
     --project-name "$PROJECT_NAME" \
-    -f "${OP_CONFIG_HOME}/stack/core.compose.yml" \
+    -f "${OP_STACK_HOME}/core.compose.yml" \
     --env-file "${VAULT_HOME}/user/user.env" \
     --env-file "${VAULT_HOME}/stack/stack.env" \
     "$@"
@@ -209,20 +209,17 @@ rm -rf "${TEST_ROOT}" 2>/dev/null || true
 VAULT_HOME="${TEST_ROOT}/vault"
 
 mkdir -p \
-  "${OP_CONFIG_HOME}/stack" \
+  "${OP_STACK_HOME}" \
   "${OP_CONFIG_HOME}/assistant/tools" \
   "${OP_CONFIG_HOME}/assistant/plugins" \
   "${OP_CONFIG_HOME}/assistant/skills" \
   "${OP_CONFIG_HOME}/automations" \
-  "${OP_CONFIG_HOME}/stash" \
   "${VAULT_HOME}/user" "${VAULT_HOME}/stack" \
   "${OP_DATA_HOME}/memory" \
   "${OP_DATA_HOME}/assistant" \
   "${OP_DATA_HOME}/guardian" \
-  "${OP_DATA_HOME}/automations" \
-  "${OP_STATE_HOME}/audit" \
-  "${OP_STATE_HOME}/automations" \
-  "${OP_WORK_DIR}"
+  "${OP_DATA_HOME}/stash" \
+  "${OP_LOGS_HOME}"
 
 # ── 1c: Seed config files ───────────────────────────────────────────
 
@@ -258,11 +255,11 @@ OP_INGRESS_PORT=8180
 EOF
 
 # Seed compose to stack/ (source of truth)
-cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_CONFIG_HOME}/stack/core.compose.yml"
+cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_STACK_HOME}/core.compose.yml"
 
 # Override ports so we don't conflict with a running dev stack.
 # We override admin's port via a compose override.
-cat >"${OP_CONFIG_HOME}/stack/compose-port-override.yml" <<EOF
+cat >"${OP_STACK_HOME}/compose-port-override.yml" <<EOF
 services:
   admin:
     ports:
@@ -324,7 +321,7 @@ if [[ $SKIP_BUILD -eq 0 && -z "$FROM_VERSION" ]]; then
   header "Building images from source"
   npm run admin:build 2>&1 | tail -3
   docker compose --project-directory "$ROOT_DIR" \
-    -f "${OP_CONFIG_HOME}/stack/core.compose.yml" \
+    -f "${OP_STACK_HOME}/core.compose.yml" \
     -f compose.dev.yaml \
     --env-file "${VAULT_HOME}/stack/stack.env" \
     --env-file "${VAULT_HOME}/user/user.env" \
@@ -348,8 +345,8 @@ fi
 compose_cmd() {
   docker compose \
     --project-name "$PROJECT_NAME" \
-    -f "${OP_CONFIG_HOME}/stack/core.compose.yml" \
-    -f "${OP_CONFIG_HOME}/stack/compose-port-override.yml" \
+    -f "${OP_STACK_HOME}/core.compose.yml" \
+    -f "${OP_STACK_HOME}/compose-port-override.yml" \
     --env-file "${VAULT_HOME}/user/user.env" \
     --env-file "${VAULT_HOME}/stack/stack.env" \
     "$@"
@@ -427,10 +424,10 @@ else
   echo "  (Memory seeding may fail if Ollama models are not available — this is ok for config-only tests)"
 fi
 
-# ── 2c: Write a custom user file in CONFIG_HOME ─────────────────────
+# ── 2c: Write a custom user file in stack/ ───────────────────────────
 
-echo "# My custom channel config" > "${OP_CONFIG_HOME}/stack/my-custom-channel.yml"
-pass "Custom user file written to CONFIG_HOME/stack/"
+echo "# My custom channel config" > "${OP_STACK_HOME}/my-custom-channel.yml"
+pass "Custom user file written to stack/"
 
 # ══════════════════════════════════════════════════════════════════════
 # PHASE 3: Record pre-upgrade state
@@ -458,7 +455,7 @@ SERVICES_BEFORE=$(compose_cmd ps --format '{{.Service}}' 2>/dev/null | sort | tr
 echo "  Running services:     ${SERVICES_BEFORE}"
 
 # Custom user file checksum
-CUSTOM_FILE_CHECKSUM=$(sha256sum "${OP_CONFIG_HOME}/stack/my-custom-channel.yml" | awk '{print $1}')
+CUSTOM_FILE_CHECKSUM=$(sha256sum "${OP_STACK_HOME}/my-custom-channel.yml" | awk '{print $1}')
 echo "  Custom file checksum: ${CUSTOM_FILE_CHECKSUM}"
 
 # Record admin token works
@@ -486,21 +483,19 @@ echo "  Simulating setup.sh re-run..."
 
 # Step 1: Directory creation (idempotent, same as setup.sh)
 mkdir -p \
-  "${OP_CONFIG_HOME}" "${OP_CONFIG_HOME}/stack" \
+  "${OP_CONFIG_HOME}" "${OP_STACK_HOME}" \
   "${OP_CONFIG_HOME}/assistant" \
-  "${OP_CONFIG_HOME}/automations" "${OP_CONFIG_HOME}/stash" \
+  "${OP_CONFIG_HOME}/automations" \
   "${VAULT_HOME}/user" "${VAULT_HOME}/stack" \
   "${OP_DATA_HOME}" "${OP_DATA_HOME}/memory" \
   "${OP_DATA_HOME}/assistant" \
   "${OP_DATA_HOME}/guardian" \
-  "${OP_DATA_HOME}/automations" \
-  "${OP_STATE_HOME}" \
-  "${OP_STATE_HOME}/audit" \
-  "${OP_WORK_DIR}"
+  "${OP_DATA_HOME}/stash" \
+  "${OP_LOGS_HOME}"
 
 # Step 2: Re-download assets (simulate by copying from source)
 # In a real upgrade, setup.sh downloads from GitHub. We copy from local assets.
-cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_CONFIG_HOME}/stack/core.compose.yml"
+cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_STACK_HOME}/core.compose.yml"
 
 # Step 3: vault/user/user.env — setup.sh checks if it exists and skips if so
 if [[ -f "${VAULT_HOME}/user/user.env" ]]; then
@@ -567,7 +562,7 @@ else
 fi
 
 # Verify specific values in user.env
-OP_ADMIN_TOKEN_VALUE=$(grep "^OP_ADMIN_TOKEN= "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
+OP_ADMIN_TOKEN_VALUE=$(grep "^OP_ADMIN_TOKEN=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
 if [[ "$OP_ADMIN_TOKEN_VALUE" == "$OP_ADMIN_TOKEN" ]]; then
   pass "OP_ADMIN_TOKEN preserved in user.env"
 else
@@ -645,8 +640,8 @@ fi
 echo ""
 echo "=== 5d: User file preservation ==="
 
-if [[ -f "${OP_CONFIG_HOME}/stack/my-custom-channel.yml" ]]; then
-  CUSTOM_FILE_CHECKSUM_AFTER=$(sha256sum "${OP_CONFIG_HOME}/stack/my-custom-channel.yml" | awk '{print $1}')
+if [[ -f "${OP_STACK_HOME}/my-custom-channel.yml" ]]; then
+  CUSTOM_FILE_CHECKSUM_AFTER=$(sha256sum "${OP_STACK_HOME}/my-custom-channel.yml" | awk '{print $1}')
   if [[ "$CUSTOM_FILE_CHECKSUM" == "$CUSTOM_FILE_CHECKSUM_AFTER" ]]; then
     pass "Custom channel file preserved and unchanged"
   else

@@ -1,7 +1,7 @@
 /**
  * POST /admin/registry/uninstall — Uninstall a registry item (automation only).
  *
- * Channel/component uninstallation is handled via DELETE /api/instances/:id.
+ * Channel addons are managed via POST /admin/addons/:name.
  * This endpoint only handles automations.
  *
  * Removes the .yml from CONFIG_HOME/automations/,
@@ -46,7 +46,7 @@ export const POST: RequestHandler = async (event) => {
   }
 
   if (type === "channel") {
-    return errorResponse(400, "invalid_input", "Channel uninstallation is now handled via DELETE /api/instances/:id. Use the component system instead.", {}, requestId);
+    return errorResponse(400, "invalid_input", "Channel addons are managed via POST /admin/addons/:name. Use the addon system.", {}, requestId);
   }
 
   if (type !== "automation") {

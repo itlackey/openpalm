@@ -1,6 +1,12 @@
 # Documentation vs. Implementation Misalignment Report
 
-Generated: 2026-03-22  
+> **Status: RESOLVED.** All items in this report have been addressed in the 0.10.0 refactor.
+> The component/instance system (`/api/instances`, `/api/components`) referenced below has been
+> deleted and replaced by the addon system (`/admin/addons`). `api-spec.md` has been rewritten.
+> Doc mount paths, env vars, and response shapes have been corrected.
+> This file is retained as a historical audit trail.
+
+Generated: 2026-03-22
 Audited sources: `docs/technical/api-spec.md`, `docs/technical/environment-and-mounts.md`,
 `docs/technical/directory-structure.md`, `docs/technical/foundations.md`,
 `docs/technical/undocumented-details.md`, and all

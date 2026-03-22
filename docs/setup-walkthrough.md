@@ -752,7 +752,7 @@ The error card includes:
 | Error | Likely cause | Fix |
 |-------|-------------|-----|
 | "Docker is not available" | Docker daemon stopped | Start Docker, then Try Again |
-| "Error mounting..." | Stale mount paths from previous failed run | Reset dev environment or clear STATE_HOME |
+| "Error mounting..." | Stale mount paths from previous failed run | Reset dev environment or remove ~/.openpalm/ |
 | Network/timeout errors | Slow internet or unreachable registry | Wait and Try Again, or check network |
 
 ---

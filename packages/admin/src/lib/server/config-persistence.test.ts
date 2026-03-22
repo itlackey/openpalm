@@ -21,7 +21,7 @@ import {
 } from "@openpalm/lib";
 import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
-/** Seed channel addon files in stack/addons/<name>/compose.yml. */
+/** Seed channel addon files in stack/addons/<name>/compose.yml and enable them in stack.yaml. */
 function seedChannelAddons(
   homeDir: string,
   channels: { name: string; yml: string }[]
@@ -31,6 +31,13 @@ function seedChannelAddons(
     mkdirSync(addonDir, { recursive: true });
     writeFileSync(join(addonDir, "compose.yml"), ch.yml);
   }
+  // Enable the addons in stack.yaml so HMAC generation picks them up
+  const configDir = join(homeDir, "config");
+  mkdirSync(configDir, { recursive: true });
+  const addons: Record<string, boolean> = {};
+  for (const ch of channels) addons[ch.name] = true;
+  const yaml = `version: 2\ncapabilities:\n  llm: openai/gpt-4.1-mini\n  embeddings:\n    provider: openai\n    model: text-embedding-3-small\n    dims: 1536\n  memory:\n    userId: test-user\naddons:\n${Object.keys(addons).map(n => `  ${n}: true`).join("\n")}\n`;
+  writeFileSync(join(configDir, "stack.yaml"), yaml);
 }
 
 registerCleanup();

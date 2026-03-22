@@ -27,7 +27,6 @@ export const mainCommand = defineCommand({
     validate: () => import('./commands/validate.ts').then((m) => m.default),
     scan: () => import('./commands/scan.ts').then((m) => m.default),
     rollback: () => import('./commands/rollback.ts').then((m) => m.default),
-    component: () => import('./commands/component.ts').then((m) => m.default),
   },
 });
 

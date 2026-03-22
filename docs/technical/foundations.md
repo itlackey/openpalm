@@ -129,7 +129,7 @@ Mounts:
 - `$OP_HOME/config/assistant -> /home/opencode/.config/opencode`
 - `$OP_HOME/vault/stack/auth.json -> /home/opencode/.local/share/opencode/auth.json`
 - `$OP_HOME/vault/user/user.env -> /etc/openpalm-vault/user.env:ro`
-- `$OP_HOME/data/assistant -> /home/opencode`
+- `$OP_HOME/data/assistant -> /home/opencode/data`
 - `$OP_HOME/data/stash -> /home/opencode/.akm`
 - `$OP_HOME/data/workspace -> /work`
 - `$OP_HOME/logs/opencode -> /home/opencode/.local/state/opencode`

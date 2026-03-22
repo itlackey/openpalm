@@ -1,7 +1,7 @@
 /**
  * POST /admin/registry/install — Install a registry item (automation only).
  *
- * Channel/component installation is handled via POST /api/instances.
+ * Channel addons are managed via POST /admin/addons/:name.
  * This endpoint only handles automations from the registry.
  *
  * Tries the cloned registry repo first, falls back to bundled assets.
@@ -52,7 +52,7 @@ export const POST: RequestHandler = async (event) => {
   }
 
   if (type === "channel") {
-    return errorResponse(400, "invalid_input", "Channel installation is now handled via POST /api/instances. Use the component system instead.", {}, requestId);
+    return errorResponse(400, "invalid_input", "Channel addons are managed via POST /admin/addons/:name. Use the addon system.", {}, requestId);
   }
 
   if (type !== "automation") {

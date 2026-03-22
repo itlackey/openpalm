@@ -2,7 +2,7 @@
 #
 # Checks the admin health endpoint every 5 minutes.
 #
-# To use: copy this file to ~/.config/openpalm/automations/health-check.yml
+# To use: copy this file to ~/.openpalm/config/automations/health-check.yml
 
 name: Health Check
 description: Monitor that all services are running
