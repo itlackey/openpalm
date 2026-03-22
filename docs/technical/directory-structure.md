@@ -132,6 +132,7 @@ existing user files.
 | `data/memory/` | memory | SQLite, mem0 compatibility data, generated config |
 | `data/stash/` | assistant | AKM stash |
 | `data/workspace/` | assistant, admin | Shared working directory mounted at `/work` |
+| `data/host.json` | CLI install | Host environment probe (platform, arch, Docker status, local AI endpoints) |
 
 Do not treat `data/` as user configuration. It is durable, but service-owned.
 

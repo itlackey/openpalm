@@ -143,6 +143,23 @@ Ports and network:
 - container SSH: `22`
 - network: `assistant_net`
 
+Security — provider-key pruning:
+
+The entrypoint removes unused provider API keys from the process environment based on `SYSTEM_LLM_PROVIDER`. For example, if the provider is `openai`, keys for Anthropic, Groq, Mistral, and Google are unset before OpenCode starts, reducing secret exposure in the LLM context. Local-only providers (`ollama`, `lmstudio`, `model-runner`) unset all cloud provider keys.
+
+SSH (optional, gated by `OPENCODE_ENABLE_SSH=1`):
+
+- Key-based authentication only (`PasswordAuthentication no`, `PubkeyAuthentication yes`)
+- Root login disabled (`PermitRootLogin no`)
+- TCP forwarding, X11 forwarding, and tunnels disabled
+- PAM disabled; strict modes enforced
+- Host keys auto-generated if missing (`ssh-keygen -A`)
+
+Secret redaction (varlock):
+
+- Process-level: when varlock is available, the OpenCode process is launched via `varlock run --path <schema-dir> --` which redacts secret values from the process environment.
+- Shell-level: `SHELL` is set to `/usr/local/bin/varlock-shell`, a wrapper that runs all `bash -c` invocations (OpenCode's shell tool) through `varlock run`, redacting secrets from command output before they enter the LLM context window. Interactive PTY sessions fall back to plain `/bin/bash`.
+
 ### Guardian
 
 Role:
@@ -187,6 +204,21 @@ Channel payload metadata fields:
 
 - `metadata.sessionKey` -- When present in the inbound message metadata, overrides the default per-user session key (`userId`). This allows channels to maintain multiple independent sessions per user.
 - `metadata.clearSession: true` -- When set, clears all assistant sessions matching the resolved session target instead of sending a message. Returns `{ cleared: true }`.
+
+Rate limits (fixed-window):
+
+- Per-user: 120 requests/minute
+- Per-channel: 200 requests/minute
+
+Payload limits:
+
+- Request body: 100 KB max (checked via both `Content-Length` header and raw body length)
+- `channel`: 64 chars max
+- `userId`: 256 chars max
+- `nonce`: 128 chars max
+- `text`: 10,000 chars max
+
+Field length validation is enforced in `packages/channels-sdk/src/channel.ts` (shared between guardian and channel adapters).
 
 Notes:
 
@@ -310,3 +342,21 @@ Default host binds for shipped HTTP-ish edges:
 - `voice`: `127.0.0.1:3810 -> 8186`
 
 `discord` and `slack` do not expose host ports in the shipped overlays.
+
+Addon metadata labels:
+
+Addon compose files use `openpalm.*` Docker labels for discovery and UI metadata:
+
+- `openpalm.name` (required) — human-readable display name
+- `openpalm.description` (required) — short description
+- `openpalm.icon` (optional) — Lucide icon name
+- `openpalm.category` (optional) — `messaging`, `ai`, `integration`, `management`
+- `openpalm.healthcheck` (optional) — internal health check URL
+
+The `openpalm.name` and `openpalm.description` labels are validated by the registry test suite (`scripts/validate-registry.sh`). The admin UI reads addon state from `stack.yaml`, not from Docker labels at runtime.
+
+---
+
+## CLI Install
+
+The setup wizard runs on `127.0.0.1:8190` by default. The port is configurable via the `OP_SETUP_PORT` environment variable.
