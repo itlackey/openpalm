@@ -81,9 +81,16 @@ services:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
     ports:
       - "8186:8186"
+    env_file:
+      - path: ${OP_HOME}/vault/stack/stack.env
+        required: false
+      - path: ${OP_HOME}/vault/user/user.env
+        required: false
     volumes:
       - ./packages/channel-voice:/app/channel-voice:ro
     environment:
+      CHANNEL_NAME: "Voice"
+      GUARDIAN_URL: http://guardian:8080
       CHANNEL_PACKAGE: ""
       CHANNEL_FILE: /app/channel-voice/src/index.ts
       # Dev: no cloud TTS/STT — use browser fallback
@@ -92,3 +99,7 @@ services:
       STT_BASE_URL: ""
       TTS_BASE_URL: ""
       OPENAI_API_KEY: ""
+    networks: [channel_lan]
+    depends_on:
+      guardian:
+        condition: service_healthy

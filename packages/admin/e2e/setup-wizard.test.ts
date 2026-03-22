@@ -1024,13 +1024,14 @@ test.describe("Setup Wizard with Real Ollama", () => {
 		await page.click("#btn-install");
 		await expect(page.locator("#deploy-done")).toBeVisible({ timeout: 15_000 });
 
-		// Verify payload
+		// Verify payload (SetupSpec v2)
 		expect(setupPayload).not.toBeNull();
 		const payload = setupPayload as Record<string, unknown>;
-		expect(payload.version).toBe(1);
 		expect((payload.security as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
-		const assignments = payload.assignments as Record<string, Record<string, unknown>>;
-		expect(assignments.llm.connectionId).toBe("ollama");
-		expect(assignments.embeddings.connectionId).toBe("ollama");
+		const spec = payload.spec as Record<string, unknown>;
+		expect(spec.version).toBe(2);
+		const caps = spec.capabilities as Record<string, unknown>;
+		expect(typeof caps.llm).toBe("string");
+		expect((caps.llm as string)).toContain("ollama/");
 	});
 });
