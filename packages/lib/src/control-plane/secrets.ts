@@ -26,7 +26,6 @@ export const ALLOWED_CONNECTION_KEYS = new Set([
   "MCP_API_KEY",
   "EMBEDDING_API_KEY",
   "OPENAI_BASE_URL",
-  "MEMORY_AUTH_TOKEN",
   "OWNER_NAME",
   "OWNER_EMAIL",
 ]);
@@ -93,11 +92,11 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
   if (!existing.OP_ADMIN_TOKEN && state.adminToken) {
     updates.OP_ADMIN_TOKEN = state.adminToken;
   }
-  if (!existing.ASSISTANT_TOKEN) {
-    updates.ASSISTANT_TOKEN = randomBytes(32).toString("hex");
+  if (!existing.OP_ASSISTANT_TOKEN) {
+    updates.OP_ASSISTANT_TOKEN = randomBytes(32).toString("hex");
   }
-  if (!existing.MEMORY_AUTH_TOKEN) {
-    updates.MEMORY_AUTH_TOKEN = randomBytes(32).toString("hex");
+  if (!existing.OP_MEMORY_TOKEN) {
+    updates.OP_MEMORY_TOKEN = randomBytes(32).toString("hex");
   }
 
   if (!existsSync(systemEnvPath)) {
@@ -110,11 +109,11 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
       "",
       "# Authentication",
       "OP_ADMIN_TOKEN=",
-      "ASSISTANT_TOKEN=",
+      "OP_ASSISTANT_TOKEN=",
       "",
       "# Service auth",
-      "MEMORY_AUTH_TOKEN=",
-      "OPENCODE_SERVER_PASSWORD=",
+      "OP_MEMORY_TOKEN=",
+      "OP_OPENCODE_PASSWORD=",
       "",
     ].join("\n");
     const content = mergeEnvContent(header, updates);

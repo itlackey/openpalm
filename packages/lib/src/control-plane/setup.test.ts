@@ -260,9 +260,9 @@ describe("buildSystemSecretsFromSetup", () => {
   it("includes distinct admin and assistant credentials", () => {
     const secrets = buildSystemSecretsFromSetup(makeValidInput());
     expect(secrets.OP_ADMIN_TOKEN).toBe("test-admin-token-12345");
-    expect(typeof secrets.ASSISTANT_TOKEN).toBe("string");
-    expect(secrets.ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
-    expect(typeof secrets.MEMORY_AUTH_TOKEN).toBe("string");
+    expect(typeof secrets.OP_ASSISTANT_TOKEN).toBe("string");
+    expect(secrets.OP_ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
+    expect(typeof secrets.OP_MEMORY_TOKEN).toBe("string");
   });
 });
 
@@ -378,7 +378,7 @@ describe("performSetup", () => {
         "export MISTRAL_API_KEY=",
         "export GOOGLE_API_KEY=",
         "export MEMORY_USER_ID=default_user",
-        "export MEMORY_AUTH_TOKEN=abc123",
+        "export OP_MEMORY_TOKEN=abc123",
         "export OWNER_NAME=",
         "export OWNER_EMAIL=",
         "",
@@ -1159,7 +1159,7 @@ describe("performSetupFromConfig", () => {
         "export MISTRAL_API_KEY=",
         "export GOOGLE_API_KEY=",
         "export MEMORY_USER_ID=default_user",
-        "export MEMORY_AUTH_TOKEN=abc123",
+        "export OP_MEMORY_TOKEN=abc123",
         "export OWNER_NAME=",
         "export OWNER_EMAIL=",
         "",

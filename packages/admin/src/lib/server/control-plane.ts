@@ -169,9 +169,7 @@ export {
   resolveConfigForPush,
   fetchProviderModels,
   checkVectorDimensions,
-  checkQdrantDimensions,
   resetVectorStore,
-  resetQdrantCollection,
   provisionMemoryUser,
   LLM_PROVIDERS,
   EMBED_PROVIDERS,
@@ -180,7 +178,6 @@ export {
   type MemoryConfig,
   type ProviderModelsResult,
   type VectorDimensionResult,
-  type QdrantDimensionResult,
 } from "@openpalm/lib";
 
 // ── lifecycle.ts (non-asset functions pass through directly) ─────────

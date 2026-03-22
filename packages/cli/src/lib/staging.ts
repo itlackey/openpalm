@@ -9,7 +9,6 @@ import { existsSync } from 'node:fs';
 import {
   createState,
   resolveArtifacts,
-  persistConfiguration,
   buildComposeFileList,
   buildManagedServices,
   buildEnvFiles,
@@ -22,23 +21,19 @@ import { defaultHomeDir } from './paths.ts';
 import { runDockerCompose } from './docker.ts';
 
 /**
- * Ensure configuration is valid and ready for Docker Compose operations.
+ * Ensure configuration state is valid and ready for Docker Compose operations.
  *
- * Uses FilesystemAssetProvider to read core assets and writes
- * configuration directly to live paths (no staging tier).
+ * Uses FilesystemAssetProvider to read core assets and resolves artifacts.
+ * Does NOT persist to disk — persistence happens inside runComposeWithPreflight()
+ * after compose preflight validation, ensuring no mutation before validation.
  *
  * Returns a ControlPlaneState usable with fullComposeArgs().
  */
 export async function ensureValidState(): Promise<ControlPlaneState> {
   const homeDir = defaultHomeDir();
-
-  // Verify core assets exist (populated by `openpalm install`)
   const assets = new FilesystemAssetProvider(homeDir);
-
   const state = createState();
   state.artifacts = resolveArtifacts(state, assets);
-  persistConfiguration(state, assets);
-
   return state;
 }
 

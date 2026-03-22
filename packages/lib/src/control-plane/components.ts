@@ -609,10 +609,6 @@ function enabledFilePath(openpalmHome: string): string {
   return join(componentsDataDir(openpalmHome), "enabled.json");
 }
 
-function vaultDir(openpalmHome: string): string {
-  return join(openpalmHome, "vault");
-}
-
 // ── Presence-Based Fallback ────────────────────────────────────────────
 
 /**
@@ -741,68 +737,23 @@ export function setInstanceEnabled(openpalmHome: string, instanceId: string, ena
  *   3. For each enabled instance: -f data/components/{id}/compose.yml
  *      [--env-file data/components/{id}/.env]
  */
-export function buildComponentComposeArgs(openpalmHome: string, options?: {
-  adminEnabled?: boolean;
-  /** Canonical compose files from buildComposeFileList(). When provided, used instead of the fallback stack-dir logic. */
-  coreFiles?: string[];
-  /** Canonical env files from buildEnvFiles(). When provided, used instead of the fallback vault-dir logic. */
-  coreEnvFiles?: string[];
+export function buildComponentComposeArgs(openpalmHome: string, options: {
+  /** Canonical compose files from buildComposeFileList() — required. */
+  coreFiles: string[];
+  /** Canonical env files from buildEnvFiles() — required. */
+  coreEnvFiles: string[];
 }): string[] {
   const args: string[] = [];
   const dataComponents = componentsDataDir(openpalmHome);
 
-  // 1. Env files — prefer canonical list supplied by caller
-  if (options?.coreEnvFiles) {
-    for (const ef of options.coreEnvFiles) {
-      if (existsSync(ef)) args.push("--env-file", ef);
-    }
-  } else {
-    const vault = vaultDir(openpalmHome);
-    const stackEnv = join(vault, "stack", "stack.env");
-    const managedEnv = join(vault, "stack", "services", "memory", "managed.env");
-    const userEnv = join(vault, "user", "user.env");
-
-    if (existsSync(stackEnv)) {
-      args.push("--env-file", stackEnv);
-    } else {
-      logger.warn("vault/stack/stack.env not found, skipping", { path: stackEnv });
-    }
-
-    if (existsSync(managedEnv)) {
-      args.push("--env-file", managedEnv);
-    }
-
-    if (existsSync(userEnv)) {
-      args.push("--env-file", userEnv);
-    } else {
-      logger.warn("vault/user/user.env not found, skipping", { path: userEnv });
-    }
+  // 1. Env files from canonical resolver
+  for (const ef of options.coreEnvFiles) {
+    if (existsSync(ef)) args.push("--env-file", ef);
   }
 
-  // 2. Core compose files — prefer canonical list supplied by caller
-  if (options?.coreFiles) {
-    for (const f of options.coreFiles) {
-      if (existsSync(f)) args.push("-f", f);
-    }
-  } else {
-    const stackDir = join(openpalmHome, "stack");
-    const coreYml = join(stackDir, "core.compose.yml");
-    if (existsSync(coreYml)) {
-      args.push("-f", coreYml);
-    } else {
-      logger.warn("stack/core.compose.yml not found, skipping", { path: coreYml });
-    }
-
-    if (options?.adminEnabled) {
-      const adminYml = join(stackDir, "addons", "admin", "compose.yml");
-      if (existsSync(adminYml)) {
-        args.push("-f", adminYml);
-      } else {
-        logger.warn("stack/addons/admin/compose.yml not found but admin is enabled, skipping", {
-          path: adminYml,
-        });
-      }
-    }
+  // 2. Core compose files from canonical resolver
+  for (const f of options.coreFiles) {
+    if (existsSync(f)) args.push("-f", f);
   }
 
   // 3. Enabled component instance overlays

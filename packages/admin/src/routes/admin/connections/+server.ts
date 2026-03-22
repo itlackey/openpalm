@@ -27,7 +27,7 @@ import {
   writeMemoryConfig,
   resolveConfigForPush,
   pushConfigToMemory,
-  checkQdrantDimensions,
+  checkVectorDimensions,
   buildMem0Mapping,
   type MemoryConfig,
   type CallerType,
@@ -180,7 +180,7 @@ export const POST: RequestHandler = async (event) => {
 
   let dimensionWarning: string | undefined;
   let dimensionMismatch = false;
-  const dimResult = checkQdrantDimensions(state.dataDir, omConfig);
+  const dimResult = checkVectorDimensions(state.dataDir, omConfig);
   if (!dimResult.match) {
     dimensionMismatch = true;
     dimensionWarning = `Embedding dimensions changed: current ${dimResult.currentDims}, config expects ${dimResult.expectedDims}. Reset the memory collection to apply.`;

@@ -25,7 +25,7 @@ services:
       MEMORY_DATA_DIR: /data
       HOME: /data
       MEM0_DIR: /data/.mem0
-      MEMORY_AUTH_TOKEN: ${MEMORY_AUTH_TOKEN:-}
+      MEMORY_AUTH_TOKEN: ${OP_MEMORY_TOKEN:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
     ports:
@@ -59,9 +59,9 @@ services:
       HOME: /home/opencode
       AKM_STASH_DIR: /stash
       OP_ADMIN_API_URL: ${OP_ADMIN_API_URL:-}
-      OP_ASSISTANT_TOKEN: ${ASSISTANT_TOKEN:-}
+      OP_ASSISTANT_TOKEN: ${OP_ASSISTANT_TOKEN:-}
       MEMORY_API_URL: http://memory:8765
-      MEMORY_AUTH_TOKEN: ${MEMORY_AUTH_TOKEN:-}
+      MEMORY_AUTH_TOKEN: ${OP_MEMORY_TOKEN:-}
       MEMORY_USER_ID: ${MEMORY_USER_ID:-default_user}
       OP_UID: ${OP_UID:-1000}
       OP_GID: ${OP_GID:-1000}
@@ -132,10 +132,10 @@ services:
     environment:
       PORT: "8090"
       OP_HOME: /openpalm
-      OP_ADMIN_TOKEN: ${ASSISTANT_TOKEN:-}
+      OP_ADMIN_TOKEN: ${OP_ASSISTANT_TOKEN:-}
       OP_ADMIN_API_URL: ${OP_ADMIN_API_URL:-}
       OPENCODE_API_URL: http://assistant:4096
-      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-}
+      OPENCODE_SERVER_PASSWORD: ${OP_OPENCODE_PASSWORD:-}
       MEMORY_API_URL: http://memory:8765
     ports:
       - "127.0.0.1:${OP_SCHEDULER_PORT:-3897}:8090"

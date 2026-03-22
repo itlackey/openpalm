@@ -21,7 +21,7 @@ import {
   pushConfigToMemory,
   fetchConfigFromMemory,
   resolveConfigForPush,
-  checkQdrantDimensions,
+  checkVectorDimensions,
   LLM_PROVIDERS,
   EMBED_PROVIDERS,
   EMBEDDING_DIMS,
@@ -70,7 +70,7 @@ export const POST: RequestHandler = async (event) => {
   }
 
   // Check embedding dimension mismatch BEFORE writing (compare new vs previously-persisted)
-  const dimCheck = checkQdrantDimensions(state.dataDir, config);
+  const dimCheck = checkVectorDimensions(state.dataDir, config);
   const dimensionMismatch = !dimCheck.match;
   const dimensionWarning = dimensionMismatch
     ? `Embedding dimensions changed (current: ${dimCheck.currentDims}, config: ${dimCheck.expectedDims}). Reset the memory collection to apply.`

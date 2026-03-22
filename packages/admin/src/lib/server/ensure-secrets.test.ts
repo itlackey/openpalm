@@ -39,8 +39,8 @@ describe("ensureSecrets", () => {
     expect(userEnv).toContain("OPENAI_API_KEY=");
     expect(userEnv).toContain("OWNER_NAME=");
     expect(systemEnv).toContain("OP_ADMIN_TOKEN=");
-    expect(systemEnv).toContain("ASSISTANT_TOKEN=");
-    expect(systemEnv).toContain("MEMORY_AUTH_TOKEN=");
+    expect(systemEnv).toContain("OP_ASSISTANT_TOKEN=");
+    expect(systemEnv).toContain("OP_MEMORY_TOKEN=");
     expect(existsSync(join(vaultDir, "stack", "stack.env"))).toBe(true);
   });
 

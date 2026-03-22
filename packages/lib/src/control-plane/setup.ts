@@ -417,8 +417,8 @@ export function buildSystemSecretsFromSetup(
 ): Record<string, string> {
   return {
     OP_ADMIN_TOKEN: input.adminToken,
-    ASSISTANT_TOKEN: existingSystemEnv.ASSISTANT_TOKEN || randomBytes(32).toString("hex"),
-    MEMORY_AUTH_TOKEN: existingSystemEnv.MEMORY_AUTH_TOKEN || randomBytes(32).toString("hex"),
+    OP_ASSISTANT_TOKEN: existingSystemEnv.OP_ASSISTANT_TOKEN || randomBytes(32).toString("hex"),
+    OP_MEMORY_TOKEN: existingSystemEnv.OP_MEMORY_TOKEN || randomBytes(32).toString("hex"),
   };
 }
 
@@ -497,7 +497,7 @@ export async function performSetup(
   }
 
   state.adminToken = input.adminToken;
-  state.assistantToken = readSystemSecretsEnvFile(state.vaultDir).ASSISTANT_TOKEN ?? state.assistantToken;
+  state.assistantToken = readSystemSecretsEnvFile(state.vaultDir).OP_ASSISTANT_TOKEN ?? state.assistantToken;
   writeSetupTokenFile(state);
 
   // ── Resolve models ────────────────────────────────────────────────────

@@ -159,7 +159,6 @@ export type {
   ModelDiscoveryReason,
   ProviderModelsResult,
   VectorDimensionResult,
-  QdrantDimensionResult,
 } from "./control-plane/memory-config.js";
 export {
   EMBED_PROVIDERS,
@@ -172,9 +171,7 @@ export {
   deriveMemoryConfig,
   resolveConfigForPush,
   checkVectorDimensions,
-  checkQdrantDimensions,
   resetVectorStore,
-  resetQdrantCollection,
   pushConfigToMemory,
   fetchConfigFromMemory,
   provisionMemoryUser,

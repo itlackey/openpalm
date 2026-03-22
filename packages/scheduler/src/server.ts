@@ -25,11 +25,11 @@ const logger = createLogger("scheduler:server");
 
 const PORT = parseInt(process.env.PORT ?? "8090", 10);
 const OP_HOME = process.env.OP_HOME ?? "";
-const CONFIG_DIR = OP_HOME ? `${OP_HOME}/config` : (process.env.OP_CONFIG_HOME ?? "");
-const ADMIN_TOKEN = process.env.OP_ADMIN_TOKEN ?? process.env.ADMIN_TOKEN ?? "";
+const CONFIG_DIR = OP_HOME ? `${OP_HOME}/config` : "";
+const ADMIN_TOKEN = process.env.OP_ADMIN_TOKEN ?? "";
 
 if (!CONFIG_DIR) {
-  logger.error("OP_HOME (or OP_CONFIG_HOME) is required");
+  logger.error("OP_HOME is required");
   process.exit(1);
 }
 

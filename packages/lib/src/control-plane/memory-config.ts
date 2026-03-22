@@ -335,9 +335,6 @@ export type VectorDimensionResult = {
   expectedDims: number;
 };
 
-/** @deprecated Use checkVectorDimensions instead */
-export type QdrantDimensionResult = VectorDimensionResult;
-
 export function checkVectorDimensions(
   dataDir: string,
   newConfig: MemoryConfig
@@ -347,9 +344,6 @@ export function checkVectorDimensions(
   const currentDims = persisted.mem0.vector_store.config.embedding_model_dims;
   return { match: currentDims === expectedDims, currentDims, expectedDims };
 }
-
-/** @deprecated Use checkVectorDimensions instead */
-export const checkQdrantDimensions = checkVectorDimensions;
 
 export function resetVectorStore(
   dataDir: string
@@ -382,9 +376,6 @@ export function resetVectorStore(
     return { ok: false, error: String(err) };
   }
 }
-
-/** @deprecated Use resetVectorStore instead */
-export const resetQdrantCollection = resetVectorStore;
 
 // ── Runtime API ──────────────────────────────────────────────────────────
 

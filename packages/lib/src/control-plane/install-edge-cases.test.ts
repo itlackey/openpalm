@@ -146,7 +146,7 @@ function seedMinimalEnvFiles(): void {
       "export MISTRAL_API_KEY=",
       "export GOOGLE_API_KEY=",
       "export MEMORY_USER_ID=default_user",
-      "export MEMORY_AUTH_TOKEN=abc123",
+      "export OP_MEMORY_TOKEN=abc123",
       "export OWNER_NAME=",
       "export OWNER_EMAIL=",
       "",
@@ -260,7 +260,7 @@ describe("Existing Install", () => {
   // Scenario 5: ensureSecrets does NOT overwrite existing user.env
   it("ensureSecrets does not overwrite existing user.env", () => {
     const customContent =
-      "export OP_ADMIN_TOKEN=my-custom-token\nexport MEMORY_AUTH_TOKEN=custom-auth-token\n";
+      "export OP_ADMIN_TOKEN=my-custom-token\nexport OP_MEMORY_TOKEN=custom-auth-token\n";
     mkdirSync(join(vaultDir, "user"), { recursive: true });
     writeFileSync(join(vaultDir, "user", "user.env"), customContent);
 
@@ -285,8 +285,8 @@ describe("Existing Install", () => {
     expect(afterContent).toBe(customContent);
   });
 
-  // Scenario 6: performSetup re-run preserves MEMORY_AUTH_TOKEN
-  it("performSetup re-run preserves MEMORY_AUTH_TOKEN from first run", async () => {
+  // Scenario 6: performSetup re-run preserves OP_MEMORY_TOKEN
+  it("performSetup re-run preserves OP_MEMORY_TOKEN from first run", async () => {
     // First setup
     await performSetup(makeValidInput(), createStubAssetProvider());
 
@@ -295,7 +295,7 @@ describe("Existing Install", () => {
       "utf-8"
     );
     const firstMatch = secretsAfterFirst.match(
-      /MEMORY_AUTH_TOKEN=([a-f0-9]+)/
+      /OP_MEMORY_TOKEN=([a-f0-9]+)/
     );
     expect(firstMatch).not.toBeNull();
     const firstToken = firstMatch![1];
@@ -321,10 +321,10 @@ describe("Existing Install", () => {
       "utf-8"
     );
     const secondMatch = secretsAfterSecond.match(
-      /MEMORY_AUTH_TOKEN=([a-f0-9]+)/
+      /OP_MEMORY_TOKEN=([a-f0-9]+)/
     );
     expect(secondMatch).not.toBeNull();
-    // MEMORY_AUTH_TOKEN should be preserved (buildSecretsFromSetup does not overwrite it)
+    // OP_MEMORY_TOKEN should be preserved (buildSecretsFromSetup does not overwrite it)
     expect(secondMatch![1]).toBe(firstToken);
   });
 
@@ -757,8 +757,8 @@ describe("performSetup end-to-end artifacts", () => {
 
     const secrets = parseEnvFile(join(vaultDir, "stack", "stack.env"));
     expect(secrets.OP_ADMIN_TOKEN).toBe("test-admin-token-12345");
-    expect(typeof secrets.ASSISTANT_TOKEN).toBe("string");
-    expect(secrets.ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
+    expect(typeof secrets.OP_ASSISTANT_TOKEN).toBe("string");
+    expect(secrets.OP_ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
   });
 
   it("writes managed.env files from capabilities", async () => {
@@ -1047,12 +1047,12 @@ describe("buildSystemSecretsFromSetup edge cases", () => {
   it("reuses existing assistant and memory tokens when provided", () => {
     const input = makeValidInput();
     const secrets = buildSystemSecretsFromSetup(input, {
-      ASSISTANT_TOKEN: "existing-assistant-token",
-      MEMORY_AUTH_TOKEN: "existing-memory-token",
+      OP_ASSISTANT_TOKEN: "existing-assistant-token",
+      OP_MEMORY_TOKEN: "existing-memory-token",
     });
     expect(secrets.OP_ADMIN_TOKEN).toBe("test-admin-token-12345");
-    expect(secrets.ASSISTANT_TOKEN).toBe("existing-assistant-token");
-    expect(secrets.MEMORY_AUTH_TOKEN).toBe("existing-memory-token");
+    expect(secrets.OP_ASSISTANT_TOKEN).toBe("existing-assistant-token");
+    expect(secrets.OP_MEMORY_TOKEN).toBe("existing-memory-token");
   });
 });
 

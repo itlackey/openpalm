@@ -59,7 +59,7 @@ export function createState(
 
   const setupToken = randomHex(16);
   const bootstrapState: ControlPlaneState = {
-    adminToken: adminToken ?? process.env.OP_ADMIN_TOKEN ?? process.env.ADMIN_TOKEN ?? "",
+    adminToken: adminToken ?? process.env.OP_ADMIN_TOKEN ?? "",
     assistantToken: "",
     setupToken,
     homeDir,
@@ -82,27 +82,13 @@ export function createState(
   bootstrapState.adminToken =
     adminToken
       ?? systemEnv.OP_ADMIN_TOKEN
-      ?? systemEnv.ADMIN_TOKEN
       ?? fileEnv.OP_ADMIN_TOKEN
-      ?? fileEnv.ADMIN_TOKEN
       ?? process.env.OP_ADMIN_TOKEN
-      ?? process.env.ADMIN_TOKEN
       ?? "";
   bootstrapState.assistantToken =
-    systemEnv.ASSISTANT_TOKEN
-      ?? process.env.ASSISTANT_TOKEN
+    systemEnv.OP_ASSISTANT_TOKEN
+      ?? process.env.OP_ASSISTANT_TOKEN
       ?? "";
-
-  // Backfill: if admin token was resolved from user.env (legacy) but not in
-  // system.env, migrate it so system-managed credentials don't live in the
-  // user-editable file indefinitely.
-  if (
-    bootstrapState.adminToken &&
-    !systemEnv.OP_ADMIN_TOKEN &&
-    (fileEnv.OP_ADMIN_TOKEN || fileEnv.ADMIN_TOKEN)
-  ) {
-    updateSystemSecretsEnv(bootstrapState, { OP_ADMIN_TOKEN: bootstrapState.adminToken });
-  }
 
   writeSetupTokenFile(bootstrapState);
 
@@ -150,34 +136,31 @@ async function reconcileCore(
   }
 
   // Preflight: validate compose merge before mutation.
-  // Only runs when Docker is available and compose files exist.
-  // If Docker is unavailable (e.g., first install before Docker setup),
-  // the check is skipped rather than blocking the lifecycle.
-  // Set OP_SKIP_COMPOSE_PREFLIGHT=1 to disable in test environments.
+  // Mandatory when compose files exist and OP_SKIP_COMPOSE_PREFLIGHT is not set.
+  // Fails if Docker is unavailable (Docker is required for any compose operation).
   const files = buildComposeFileList(state);
   const envFiles = buildEnvFiles(state);
-  if (files.length === 0) {
-    logger.debug("compose preflight skipped: no compose files found yet");
-  } else if (process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
-    logger.debug("compose preflight skipped: OP_SKIP_COMPOSE_PREFLIGHT is set");
-  }
   if (files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
     const dockerCheck = await checkDocker();
-    if (dockerCheck.ok) {
-      const preflight = await composePreflight({ files, envFiles });
-      if (!preflight.ok) {
-        const projectName = resolveComposeProjectName();
-        const fileArgs = files.flatMap((f) => ["-f", f]).join(" ");
-        const envArgs = envFiles.filter(existsSync).flatMap((f) => ["--env-file", f]).join(" ");
-        const resolvedCmd = `docker compose ${fileArgs} --project-name ${projectName} ${envArgs} config --quiet`;
-        throw new Error(
-          `Compose preflight failed: ${preflight.stderr}\n` +
-          `Resolved command: ${resolvedCmd}\n` +
-          `Files: ${files.join(", ")}\n` +
-          `Env files: ${envFiles.join(", ")}\n` +
-          `Project: ${projectName}`
-        );
-      }
+    if (!dockerCheck.ok) {
+      throw new Error(
+        "Compose preflight failed: Docker is not available.\n" +
+        "Docker must be running before install/update/apply operations."
+      );
+    }
+    const preflight = await composePreflight({ files, envFiles });
+    if (!preflight.ok) {
+      const projectName = resolveComposeProjectName();
+      const fileArgs = files.flatMap((f) => ["-f", f]).join(" ");
+      const envArgs = envFiles.filter(existsSync).flatMap((f) => ["--env-file", f]).join(" ");
+      const resolvedCmd = `docker compose ${fileArgs} --project-name ${projectName} ${envArgs} config --quiet`;
+      throw new Error(
+        `Compose preflight failed: ${preflight.stderr}\n` +
+        `Resolved command: ${resolvedCmd}\n` +
+        `Files: ${files.join(", ")}\n` +
+        `Env files: ${envFiles.join(", ")}\n` +
+        `Project: ${projectName}`
+      );
     }
   }
 

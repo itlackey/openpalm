@@ -27,28 +27,9 @@ git clone https://github.com/itlackey/openpalm.git
 cp -R openpalm/.openpalm "$HOME/.openpalm"
 $EDITOR "$HOME/.openpalm/vault/stack/stack.env"
 $EDITOR "$HOME/.openpalm/vault/user/user.env"
-cd "$HOME/.openpalm/stack"
-
-# Preflight: validate compose merge and variable substitution before starting
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  -f addons/chat/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  config --quiet
-
-# Start the stack
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  -f addons/chat/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  up -d
 ```
 
-That example starts the core stack plus the `admin` and `chat` addons.
+Then start the stack using the compose commands in the [Manual Compose Runbook](operations/manual-compose-runbook.md). That example starts the core stack plus any addons you choose (e.g., `admin` and `chat`).
 
 ---
 
@@ -128,17 +109,9 @@ shortcuts below are provided for convenience but are not the canonical form.
 ### `stack/start.sh` (convenience alternative)
 
 The copied bundle includes `~/.openpalm/stack/start.sh`, a thin wrapper that
-prints the resolved `docker compose` command before running it:
-
-```bash
-cd "$HOME/.openpalm/stack"
-./start.sh admin chat
-./start.sh --status admin chat
-./start.sh --stop admin chat
-```
-
-Prefer raw `docker compose` for documentation, debugging, and any situation
-where the exact invocation needs to be explicit.
+prints the resolved `docker compose` command before running it. See the
+[Manual Compose Runbook](operations/manual-compose-runbook.md) for `start.sh` usage
+and the full compose command reference.
 
 ### Installer scripts and CLI
 
@@ -150,15 +123,7 @@ run Docker Compose against files in `~/.openpalm/stack/`.
 
 ## Verify
 
-```bash
-cd "$HOME/.openpalm/stack"
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  ps
-```
+Check container status using the `ps` command from the [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
 Default host ports are documented in [system-requirements.md](system-requirements.md).
 
