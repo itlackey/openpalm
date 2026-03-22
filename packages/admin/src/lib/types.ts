@@ -220,9 +220,3 @@ export type DeviceAuthPollEvent = {
   message: string;
 };
 
-export type ModelSetResponse = {
-  ok: boolean;
-  liveApplied: boolean;
-  restartRequired: boolean;
-  message: string;
-};

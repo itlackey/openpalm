@@ -28,7 +28,7 @@ admin-logs service=memory tail=100 # Last 100 lines
 
 ### 2. Guardian Audit Log
 
-Accessed via the `admin-guardian_audit` tool.
+Accessed via the `admin-guardian-audit` tool.
 
 **Format:** JSONL (one JSON object per line)
 **Location:** `STATE_HOME/audit/guardian-audit.log`
@@ -74,7 +74,7 @@ Each entry contains:
 | `invalid_json` | 400 | Request body is not valid JSON | Malformed channel message | Check channel adapter code and logs |
 | `invalid_payload` | 400 | JSON valid but required fields missing or malformed | Channel sending incomplete data | Verify payload has userId, channel, text, nonce, timestamp |
 | `payload_too_large` | 413 | Request body exceeds 100KB | Large file attachment or message | Reduce payload size |
-| `invalid_signature` | 403 | HMAC-SHA256 verification failed | Secret mismatch between channel and guardian | Reinstall channel or run `admin-lifecycle_update` to sync secrets |
+| `invalid_signature` | 403 | HMAC-SHA256 verification failed | Secret mismatch between channel and guardian | Reinstall channel or run `admin-lifecycle-update` to sync secrets |
 | `rate_limited` | 429 | Too many requests in window | Bot loop or flood (120/min user, 200/min channel) | Check for loops, wait for 1-minute window reset |
 | `replay_detected` | 409 | Nonce already seen within 5-minute window | Duplicate message send or replay attack | Check for duplicate sends, verify clock sync (5-min skew tolerance) |
 | `assistant_unavailable` | 502 | Cannot reach assistant service | Container down, unhealthy, or timeout | Check assistant container status and logs |
@@ -88,7 +88,7 @@ Each entry contains:
 |---------|---------|--------|
 | `"setup complete"` | Stack initialization finished | Normal — no action needed |
 | `"compose up"` / `"compose down"` | Container lifecycle operation | Check if expected; verify with `admin-audit` |
-| `"channel installed"` / `"channel uninstalled"` | Channel management | Verify channel appears in `admin-channels_list` |
+| `"channel installed"` / `"channel uninstalled"` | Channel management | Verify channel appears in `admin-channels-list` |
 | `"ENOENT"` | File or path not found | Check volume mounts and file paths |
 | `"EACCES"` | Permission denied | Check UID/GID settings and volume ownership |
 | `"ECONNREFUSED"` | Cannot connect to Docker daemon | Docker socket proxy may be down |
@@ -162,9 +162,9 @@ Follow this progression from broad to narrow:
 1. **Start broad:** `admin-logs tail=50` — all services, most recent entries. Scan for ERROR or WARN levels.
 2. **Identify the failing service:** Look for which service is generating errors.
 3. **Narrow down:** `admin-logs service=<name> tail=100` — focus on the specific service.
-4. **Check audit logs:** `admin-guardian_audit limit=20` or `admin-audit` — see what actions were taken and their outcomes.
+4. **Check audit logs:** `admin-guardian-audit limit=20` or `admin-audit` — see what actions were taken and their outcomes.
 5. **Correlate by requestId:** `message-trace requestId=<id>` — trace a specific failing request end-to-end.
-6. **Check config:** `admin-config_validate` — verify the configuration is valid after identifying the problem area.
+6. **Check config:** `admin-config-validate` — verify the configuration is valid after identifying the problem area.
 
 ## Common Multi-Service Failure Patterns
 
@@ -178,19 +178,19 @@ Follow this progression from broad to narrow:
 **Symptom:** `invalid_signature` errors in guardian audit after a config change.
 **Pattern:** `secrets.env` was updated but containers were not recreated. Guardian reads secrets from a file at runtime, but channels may have cached old secrets.
 **Diagnosis:** Compare the guardian's loaded secrets (check startup logs) with the channel's configured secret.
-**Fix:** Run `admin-lifecycle_update` to sync all configuration. If a specific channel is affected, reinstall it.
+**Fix:** Run `admin-lifecycle-update` to sync all configuration. If a specific channel is affected, reinstall it.
 
 ### Resource Exhaustion
 **Symptom:** `assistant_unavailable` in guardian audit, assistant container restarting.
 **Pattern:** Assistant runs out of memory (OOM) processing a large model response -> health check fails -> guardian returns 502.
-**Diagnosis:** Check `admin-containers_events` for OOM kill events. Check `admin-logs service=assistant` for memory-related errors.
+**Diagnosis:** Check `admin-containers-events` for OOM kill events. Check `admin-logs service=assistant` for memory-related errors.
 **Fix:** Use a smaller model, increase container memory limits, or reduce concurrent sessions.
 
 ### Network Partition
 **Symptom:** All inter-service calls fail simultaneously.
 **Pattern:** Docker network issue causes services to lose connectivity to each other.
 **Diagnosis:** All services show "connection refused" or "dial" errors at approximately the same timestamp.
-**Fix:** Run `admin-lifecycle_update` to recreate networks and containers. In severe cases, `admin-containers_down` then `admin-containers_up` for the full stack.
+**Fix:** Run `admin-lifecycle-update` to recreate networks and containers. In severe cases, `admin-containers-down` then `admin-containers-up` for the full stack.
 
 ## When to Use This Skill
 

@@ -4,7 +4,7 @@
   "server": {
     "port": 4096,
     "hostname": "0.0.0.0",    
-    "mdns": true,
+    "mdns": false,
     "mdnsDomain": "openpalm.local"
   },
   // Layer 3: Block the assistant from reading credential files.
@@ -18,7 +18,7 @@
     },
     "external_directory": {
       "/tmp": "allow",
-      "/stash": "allow",
+      "/home/opencode/.akm": "allow",
       "/home/opencode": "allow"
     }
   }

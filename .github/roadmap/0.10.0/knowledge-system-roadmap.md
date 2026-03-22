@@ -1,22 +1,22 @@
 # OpenPalm 0.10.0 — Knowledge System Roadmap (Revised)
 
-> **Scope Update (2026-03-18):** Agent review consensus (3/5 agents) narrowed the 0.10.0 scope to **Priority 1 only** (Phases 1A-1D: OpenViking as component + assistant tools). Priorities 2-4 (MCP server, eval framework, MemRL feedback loop) are deferred to 0.11.0 and are included below only as "deferred" context. See `../0.11.0/knowledge-system.md` for the deferred work.
+> **Scope Update (2026-03-18):** Agent review consensus (3/5 agents) narrowed the 0.10.0 scope to **Priority 1 only** (Phases 1A-1D: OpenViking as addon + assistant tools). Priorities 2-4 (MCP server, eval framework, MemRL feedback loop) are deferred to 0.11.0 and are included below only as "deferred" context. See `../0.11.0/knowledge-system.md` for the deferred work.
 >
 > **Filesystem context:** This plan uses the `~/.openpalm/` single-root layout defined in [fs-mounts-refactor.md](fs-mounts-refactor.md). The old three-tier XDG references (`DATA_HOME`, `CONFIG_HOME`, `STATE_HOME`) are replaced by subdirectories under `~/.openpalm/`.
 
 ## Alignment with Milestone 0.10.0
 
-This plan covers Priority 1: OpenViking as an optional knowledge component with
+This plan covers Priority 1: OpenViking as an optional knowledge addon with
 assistant tool integration. Priorities 2-4 were moved to 0.11.0 because the
-component system rewrite (#301) consumes most of the 0.10.0 development window.
+addon-system rewrite (#301) consumes most of the 0.10.0 development window.
 
 ### Milestone 0.10.0 Issues
 
 | # | Feature | How Knowledge Work Connects |
 |---|---------|----------------------------|
 | **304** | Admin OpenCode instance | **Admin-level agent with full ADMIN_TOKEN access** — runs learning maintenance, curation, and eval jobs. Accessed directly via web UI at `localhost:3881`. When available, invokes shell-based eval/maintenance scripts; but those scripts work standalone via scheduled automations as a fallback |
-| **298** | OpenViking integration | **Optional structured knowledge component** — enhances search and context retrieval when installed, but the core learning lifecycle (Q-values, feedback, memory injection) works without it |
-| **301** | Configurable services | **Component system** that Viking uses for installation — compose overlay, `.env.schema`, cross-component env injection. MCP server component deferred to 0.11.0 |
+| **298** | OpenViking integration | **Optional structured knowledge addon** — enhances search and context retrieval when installed, but the core learning lifecycle (Q-values, feedback, memory injection) works without it |
+| **301** | Configurable services | **Addon model** that Viking uses for installation — compose overlay, `.env.schema`, cross-addon env injection. MCP server addon deferred to 0.11.0 |
 | **300** | Password manager (Varlock) | API keys for embedding providers and LLM judge stored securely via improved Varlock |
 | **302** | TTS/STT voice interface | Voice-driven learning capture and context retrieval (future, not in this plan) |
 | **13** | Advanced channel config | Per-channel OpenCode config enables per-channel learning scopes (future) |
@@ -29,7 +29,7 @@ three complementary stores, each playing a distinct role:
 
 | Store | Role | Maps To (Research) |
 |-------|------|-------------------|
-| **OpenViking** (optional component) | Hierarchical knowledge — resources, agent skills, structured memories with L0/L1/L2 tiered loading. Enhances search when installed but is not required for the core learning lifecycle | Hindsight's four-network model (facts, experiences, observations, beliefs) via viking:// filesystem hierarchy |
+| **OpenViking** (optional addon) | Hierarchical knowledge — resources, agent skills, structured memories with L0/L1/L2 tiered loading. Enhances search when installed but is not required for the core learning lifecycle | Hindsight's four-network model (facts, experiences, observations, beliefs) via viking:// filesystem hierarchy |
 | **@openpalm/memory** | Episodic/preference persistence — LLM-extracted facts, user preferences, session summaries. Also the primary store for Q-value utility scores | Mem0 pattern (already implemented) |
 | **MemRL Q-values** | Utility scoring layer — tracks which memories/learnings actually help via reinforcement | MemRL's Monte Carlo Q-value updates: `Q_new = Q_old + alpha(R - Q_old)` |
 
@@ -39,7 +39,7 @@ outcomes. Some failures are still valuable (they encode near-correct reasoning).
 The scoring formula changes from the original plan's `0.7 * confidence + 0.3 *
 recency` to a Q-value that converges toward empirical expected return.
 
-**Key architectural constraint**: OpenViking is an **optional component** that
+**Key architectural constraint**: OpenViking is an **optional addon** that
 enhances search when installed. The core learning lifecycle (Q-values, feedback
 signals, memory injection via `assembleContext()`) works entirely through
 `@openpalm/memory` without Viking. When Viking is not installed,
@@ -49,11 +49,11 @@ Q-value.
 
 ---
 
-## Priority 1: OpenViking as Knowledge Store (#298)
+## Priority 1: OpenViking as Knowledge Addon (#298)
 
 ### Goal
 
-Wire OpenViking as an optional structured knowledge component, using its native
+Wire OpenViking as an optional structured knowledge addon, using its native
 capabilities to enhance search and context retrieval when installed.
 
 ### Why OpenViking Instead of Custom Learnings Files
@@ -86,10 +86,10 @@ it is installed, and fall back to memory-only retrieval when it is not.
 
 ### Implementation Plan
 
-#### Phase 1A: Create Viking Component Directory (1 day)
+#### Phase 1A: Create Viking Addon Definition (1 day)
 
-OpenViking is a **component**, not a core service. It is installed on demand
-through the component registry, like Ollama or SearXNG.
+OpenViking is an **addon**, not a core service. It is installed on demand
+through the addon registry, like Ollama or SearXNG.
 
 1. **Create `registry/components/openviking/`** with `compose.yml` + `.env.schema`:
 

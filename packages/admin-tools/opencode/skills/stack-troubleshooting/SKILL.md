@@ -54,19 +54,19 @@ Networks:
 |------|---------|
 | `stack-diagnostics` | Full snapshot of all services, health, and config |
 | `health-check` | Quick probe of core services (guardian, memory, admin) |
-| `admin-containers_list` | List all containers with status |
-| `admin-containers_up` | Start a specific service |
-| `admin-containers_down` | Stop a specific service |
-| `admin-containers_restart` | Restart a specific service |
+| `admin-containers-list` | List all containers with status |
+| `admin-containers-up` | Start a specific service |
+| `admin-containers-down` | Stop a specific service |
+| `admin-containers-restart` | Restart a specific service |
 | `admin-logs` | Read Docker service logs |
-| `admin-guardian_audit` | Read guardian audit log (JSONL) |
-| `admin-guardian_stats` | Guardian statistics and rate limit status |
+| `admin-guardian-audit` | Read guardian audit log (JSONL) |
+| `admin-guardian-stats` | Guardian statistics and rate limit status |
 | `admin-audit` | Read admin audit trail |
-| `admin-config_validate` | Validate stack configuration |
-| `admin-connections_status` | Check external API connection status |
-| `admin-connections_test` | Test connectivity to LLM providers |
-| `admin-providers_local` | Detect local LLM providers (Ollama, LMStudio) |
-| `admin-artifacts_get` | Inspect generated config files (compose, caddyfile) |
+| `admin-config-validate` | Validate stack configuration |
+| `admin-connections-status` | Check external API connection status |
+| `admin-connections-test` | Test connectivity to LLM providers |
+| `admin-providers-local` | Detect local LLM providers (Ollama, LMStudio) |
+| `admin-artifacts-get` | Inspect generated config files (compose, caddyfile) |
 | `message-trace` | Trace a request across services by requestId |
 
 ## Diagnostic Workflow
@@ -85,12 +85,12 @@ Networks:
 ### "Channel not responding" (user sends message, nothing happens)
 
 1. **Check health:** `health-check` — is guardian healthy?
-   - No -> guardian is down. Run `admin-containers_list`, then `admin-containers_up` for guardian.
+   - No -> guardian is down. Run `admin-containers-list`, then `admin-containers-up` for guardian.
    - Yes -> continue.
 
-2. **Check guardian audit:** `admin-guardian_audit` — any `invalid_signature` errors?
+2. **Check guardian audit:** `admin-guardian-audit` — any `invalid_signature` errors?
    - Yes -> HMAC secret mismatch between the channel and the guardian. This typically happens after a channel is installed or secrets are rotated.
-   - **Fix:** Run `admin-lifecycle_update` to regenerate secrets and sync them. If that does not resolve it, uninstall and reinstall the channel.
+   - **Fix:** Run `admin-lifecycle-update` to regenerate secrets and sync them. If that does not resolve it, uninstall and reinstall the channel.
 
 3. **Check guardian audit:** any `rate_limited` entries?
    - Yes -> user or channel hit rate limits (120 req/min per user, 200 req/min per channel).
@@ -98,14 +98,14 @@ Networks:
 
 4. **Check guardian audit:** any `assistant_unavailable` errors?
    - Yes -> assistant container is down or unreachable.
-   - **Fix:** Run `admin-containers_list` to check assistant status, then `admin-containers_up` for assistant.
+   - **Fix:** Run `admin-containers-list` to check assistant status, then `admin-containers-up` for assistant.
 
 5. **Check channel logs:** `admin-logs` for the specific channel service — any errors?
    - Connection errors -> check the channel's configuration and environment variables.
    - Auth errors -> verify the channel's API token or credentials.
 
-6. **Check Caddy routing:** `admin-artifacts_get` artifact=caddy — does the channel have a route?
-   - No route -> the channel has no `.caddy` file. It may be docker-network only, or the caddy config needs regeneration via `admin-lifecycle_update`.
+6. **Check Caddy routing:** `admin-artifacts-get` artifact=caddy — does the channel have a route?
+   - No route -> the channel has no `.caddy` file. It may be docker-network only, or the caddy config needs regeneration via `admin-lifecycle-update`.
 
 ---
 
@@ -115,8 +115,8 @@ Networks:
    - Unreachable -> continue to step 2.
    - Healthy -> skip to step 4.
 
-2. **Check container:** `admin-containers_list` — is memory running?
-   - No -> `admin-containers_up service=memory`
+2. **Check container:** `admin-containers-list` — is memory running?
+   - No -> `admin-containers-up service=memory`
    - Yes but unhealthy -> continue to step 3.
 
 3. **Check logs:** `admin-logs service=memory`
@@ -130,50 +130,50 @@ Networks:
 
    | Symptom | Cause | Fix |
    |---------|-------|-----|
-   | Embedding errors | Model not available | Run `admin-memory_models` to verify. Ensure Ollama is running with the model pulled. |
+   | Embedding errors | Model not available | Run `admin-memory-models` to verify. Ensure Ollama is running with the model pulled. |
    | Dimension mismatch | Wrong `embedding_model_dims` | nomic-embed-text = 768 dims. Check and correct the memory config. |
    | User ID mismatch | MEMORY_USER_ID differs between services | Check MEMORY_USER_ID in connections — must be consistent. |
    | Connection refused to Ollama | Wrong URL from container | Must use `http://host.docker.internal:11434` from containers, not `localhost`. |
-   | SQLite lock errors | Concurrent access issue | Restart memory service: `admin-containers_restart service=memory` |
+   | SQLite lock errors | Concurrent access issue | Restart memory service: `admin-containers-restart service=memory` |
 
 ---
 
 ### "Assistant is slow or timing out"
 
-1. **Check container resources:** `admin-containers_list` — is assistant using high CPU/memory?
+1. **Check container resources:** `admin-containers-list` — is assistant using high CPU/memory?
    - OOM or high resource usage -> the model or workload may be too heavy. Check logs for OOM kills.
 
-2. **Check LLM provider:** `admin-connections_test` — is the provider reachable?
+2. **Check LLM provider:** `admin-connections-test` — is the provider reachable?
    - No -> provider may be down or API key expired. See "Can't connect to LLM provider" below.
 
-3. **Check local providers:** `admin-providers_local` — is Ollama/LMStudio running?
+3. **Check local providers:** `admin-providers-local` — is Ollama/LMStudio running?
    - Not detected -> start Ollama on the host machine.
 
 4. **Check logs:** `admin-logs service=assistant` — any timeout or error messages?
    - Timeout errors -> the `OPENCODE_TIMEOUT_MS` default is 120s. If the model is very slow, this may need to be increased.
    - socat errors -> LLM proxy setup failed. Check the assistant entrypoint configuration.
 
-5. **Check guardian stats:** `admin-guardian_stats` — are rate limits being hit?
+5. **Check guardian stats:** `admin-guardian-stats` — are rate limits being hit?
    - Yes -> requests are being throttled before reaching the assistant. See rate limiting notes above.
 
 ---
 
 ### "Stack won't start / containers keep restarting"
 
-1. **Check all containers:** `admin-containers_list` — which services are stopped or restarting?
+1. **Check all containers:** `admin-containers-list` — which services are stopped or restarting?
    - Note the dependency chain: docker-socket-proxy -> admin, memory -> assistant -> guardian.
 
 2. **Check logs for failing service:** `admin-logs service=<name>`
    - Look for startup errors, missing environment variables, or configuration issues.
 
-3. **Check Docker events:** `admin-containers_events` — OOM kills? Health check failures?
+3. **Check Docker events:** `admin-containers-events` — OOM kills? Health check failures?
    - OOM -> increase container memory limits or reduce model size.
    - Health check failure -> the service starts but fails its health probe. Check the health endpoint directly.
 
-4. **Validate config:** `admin-config_validate` — missing env vars? Invalid values?
+4. **Validate config:** `admin-config-validate` — missing env vars? Invalid values?
    - Fix any reported issues in the configuration.
 
-5. **Check connections:** `admin-connections_status` — is an LLM provider configured?
+5. **Check connections:** `admin-connections-status` — is an LLM provider configured?
    - Missing connections may prevent the assistant from starting correctly.
 
 6. **Common causes:**
@@ -191,7 +191,7 @@ Networks:
 
 ### "Authentication / security errors"
 
-1. **Check guardian audit:** `admin-guardian_audit` — what error codes?
+1. **Check guardian audit:** `admin-guardian-audit` — what error codes?
 
    | Error Code | Meaning | Investigation |
    |------------|---------|---------------|
@@ -213,13 +213,13 @@ Networks:
 
 ### "Can't connect to LLM provider"
 
-1. **Check connection status:** `admin-connections_status` — what is missing?
+1. **Check connection status:** `admin-connections-status` — what is missing?
    - Lists required keys and which are present.
 
-2. **Test connectivity:** `admin-connections_test` with the provider URL.
+2. **Test connectivity:** `admin-connections-test` with the provider URL.
    - Verifies network reachability and authentication.
 
-3. **Detect local providers:** `admin-providers_local`
+3. **Detect local providers:** `admin-providers-local`
    - Checks for Ollama and LMStudio on the host.
 
 4. **Check logs:** `admin-logs service=assistant` — connection errors?
@@ -229,7 +229,7 @@ Networks:
 
    | Problem | Fix |
    |---------|-----|
-   | API key expired/invalid | Update via `admin-connections_set` |
+   | API key expired/invalid | Update via `admin-connections-set` |
    | Ollama not running | Start Ollama on the host machine |
    | Wrong Ollama URL from container | Must use `http://host.docker.internal:11434` |
    | LMStudio not detected | LMStudio must be running with API server enabled |

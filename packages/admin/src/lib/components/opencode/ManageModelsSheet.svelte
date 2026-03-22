@@ -57,7 +57,7 @@
     loading = true;
     error = '';
     const token = getAdminToken() ?? '';
-    const headers: HeadersInit = { 'x-admin-token': token, 'x-request-id': crypto.randomUUID() };
+    const headers: HeadersInit = { 'x-admin-token': token, 'x-request-id': crypto.randomUUID(), 'x-requested-by': 'ui' };
 
     try {
       // TODO: N+1 optimization — if the providers endpoint does not return inline models,
@@ -120,6 +120,7 @@
         headers: {
           'x-admin-token': token,
           'x-request-id': crypto.randomUUID(),
+          'x-requested-by': 'ui',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ model: selectedModel }),

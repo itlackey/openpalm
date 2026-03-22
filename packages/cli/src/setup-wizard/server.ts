@@ -276,25 +276,6 @@ export function createSetupServer(
   };
 }
 
-// ── Convenience: Wait for Setup Complete ─────────────────────────────────
-
-/**
- * High-level helper: starts the server, waits for setup to complete, then stops.
- */
-export async function waitForSetupComplete(
-  port: number = 8100,
-  opts?: {
-    configDir?: string;
-  }
-): Promise<SetupResult> {
-  const { server, waitForComplete, stop } = createSetupServer(port, opts);
-  try {
-    return await waitForComplete();
-  } finally {
-    stop();
-  }
-}
-
 // ── Static Assets (wizard UI from task 2.1) ─────────────────────────────
 // Embedded at build time via Bun text imports from sibling files.
 

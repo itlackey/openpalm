@@ -12,7 +12,7 @@ Updated 2026-03-19: Q2 reversed, Q9 updated, Q3/Q10 annotated, Q11 added (FS ref
 Remove from `assets/docker-compose.yml`. Create `registry/components/openviking/` with
 `compose.yml` + `.env.schema`. Installed on demand like Ollama/SearXNG.
 
-**Affected plans:** knowledge-system-roadmap.md, openpalm-components-plan.md
+**Affected plans:** knowledge-system-roadmap.md, plans/issue-301-unified-component-system.md
 
 **Resolves:** H5 (Viking core vs component), C4 (network wiring — handled by component
 compose overlay instead of core compose), D1 (container_name non-standard), D2 (image
@@ -42,7 +42,7 @@ chain, ~21 bind mounts with bulk secret injection). The vault boundary is strict
 more secure than the current `env_file:` model. Agent review consensus: 5/5
 unanimous.
 
-**Affected plans:** openpalm-components-plan.md, core-principles.md (major rewrite
+**Affected plans:** plans/issue-301-unified-component-system.md, core-principles.md (major rewrite
 needed), openpalm-pass-impl-v3.md (PlaintextBackend must handle two-file model),
 CLAUDE.md
 
@@ -70,7 +70,7 @@ plaintext `.env` path for components.
 > system-managed.
 
 **Affected plans:** openpalm-pass-impl-v3.md (major revision — must support component
-and ad-hoc secrets, not just global), openpalm-components-plan.md (component `.env.schema`
+and ad-hoc secrets, not just global), plans/issue-301-unified-component-system.md (component `.env.schema`
 must integrate with the unified secret manager).
 
 **Resolves:** H1 (missing secrets — all secrets flow through one system), H2 (component
@@ -145,11 +145,11 @@ automations are out of scope)
 
 **Decision: Clean break — no migration, no coexistence.**
 
-The legacy `CONFIG_HOME/channels/*.yml` format is dropped entirely. Components are the
+The legacy `CONFIG_HOME/channels/*.yml` format is dropped entirely. Addons are the
 only path for 0.10.0. No migration tool, no dual-format staging pipeline. Users must
-reinstall channels as components.
+reinstall channels as addons.
 
-**Affected plans:** openpalm-components-plan.md (remove any coexistence language, document
+**Affected plans:** plans/issue-301-unified-component-system.md (document
 the clean break)
 
 **Resolves:** M5 (no migration path — intentionally none needed).
@@ -277,7 +277,7 @@ decision subsumes and formalizes the Q2 reversal.
    relocation, validation). Guardian restarts on channel install (~2 seconds) since HMAC
    secrets come from `${VAR}` substitution only (no bind-mounted secrets file).
 
-**Affected plans:** core-principles.md (major rewrite — completed), openpalm-components-plan.md
+**Affected plans:** core-principles.md (major rewrite — completed), plans/issue-301-unified-component-system.md
 (path references), openpalm-pass-impl-v3.md (PlaintextBackend handles two-file model),
 CLAUDE.md (XDG references), all compose files, dev-setup.sh, CLI staging pipeline
 (eliminated).

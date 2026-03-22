@@ -52,6 +52,9 @@ export {
   resolveCacheHome,
   resolveRollbackDir,
   resolveRegistryCacheDir,
+  resolveStackDir,
+  resolveBackupsDir,
+  resolveWorkspaceDir,
   ensureHomeDirs,
 } from "./control-plane/home.js";
 
@@ -182,6 +185,8 @@ export {
   buildRuntimeFileMeta,
   writeRuntimeFiles,
   writeSystemEnv,
+  isOllamaEnabled,
+  isAdminEnabled,
 } from "./control-plane/config-persistence.js";
 
 // ── Rollback ─────────────────────────────────────────────────────────────
@@ -200,6 +205,7 @@ export {
 // ── Lifecycle ───────────────────────────────────────────────────────────
 export {
   createState,
+  writeSetupTokenFile,
   applyInstall,
   applyUpdate,
   applyUninstall,
@@ -246,6 +252,10 @@ export {
   parseAutomationYaml,
   loadAutomations,
   executeAction,
+  executeApiAction,
+  executeHttpAction,
+  executeShellAction,
+  executeAssistantAction,
   startScheduler,
   stopScheduler,
   reloadScheduler,

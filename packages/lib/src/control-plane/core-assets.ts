@@ -13,7 +13,7 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
-import { resolveDataDir, resolveConfigDir, resolveVaultDir, resolveOpenPalmHome } from "./home.js";
+import { resolveDataDir, resolveConfigDir, resolveVaultDir, resolveOpenPalmHome, resolveBackupsDir } from "./home.js";
 import { createLogger } from "../logger.js";
 
 const logger = createLogger("core-assets");
@@ -25,6 +25,11 @@ function sha256(content: string): string {
 
 // ── Env Schema Files (vault/) ────────────────────────────────────────
 
+/**
+ * Ensure the user env schema directory exists and return the expected
+ * schema file path. The file itself may not exist yet — it is written
+ * by refreshCoreAssets() or the CLI install command.
+ */
 export function ensureUserEnvSchema(): string {
   const vaultDir = resolveVaultDir();
   const dir = `${vaultDir}/user`;
@@ -33,6 +38,11 @@ export function ensureUserEnvSchema(): string {
   return path;
 }
 
+/**
+ * Ensure the system env schema directory exists and return the expected
+ * schema file path. The file itself may not exist yet — it is written
+ * by refreshCoreAssets() or the CLI install command.
+ */
 export function ensureSystemEnvSchema(): string {
   const vaultDir = resolveVaultDir();
   const dir = `${vaultDir}/stack`;
@@ -43,9 +53,9 @@ export function ensureSystemEnvSchema(): string {
 
 // ── Memory data directory ────────────────────────────────────────────
 
-export function ensureMemoryDir(): string {
-  const dataDir = resolveDataDir();
-  const dir = `${dataDir}/memory`;
+export function ensureMemoryDir(dataDir?: string): string {
+  const resolved = dataDir ?? resolveDataDir();
+  const dir = `${resolved}/memory`;
   mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -76,8 +86,9 @@ export function ensureOpenCodeSystemConfig(): void {
 
 // ── Core Automations (config/automations/) ──────────────────────────
 
-export function ensureCoreAutomations(): void {
-  const dir = `${resolveConfigDir()}/automations`;
+export function ensureCoreAutomations(configDir?: string): void {
+  const resolved = configDir ?? resolveConfigDir();
+  const dir = `${resolved}/automations`;
   mkdirSync(dir, { recursive: true });
 }
 
@@ -131,7 +142,7 @@ export async function refreshCoreAssets(): Promise<{
       }
 
       if (!backupDir) {
-        backupDir = join(homeDir, "data/backups", new Date().toISOString().replace(/[:.]/g, "-"));
+        backupDir = join(resolveBackupsDir(), new Date().toISOString().replace(/[:.]/g, "-"));
       }
       const backupPath = join(backupDir, asset.relPath);
       mkdirSync(dirname(backupPath), { recursive: true });

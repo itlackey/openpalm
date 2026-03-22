@@ -39,6 +39,10 @@ export function buildVoiceEnvVars(
     vars.TTS_MODEL = '';
     vars.TTS_VOICE = '';
   } else {
+    // TTS_BASE_URL and TTS_API_KEY are intentionally left empty here.
+    // These values come from the provider's API key in vault/user/user.env
+    // and are injected by the caller (spec-to-env or applyVoiceEnvVars)
+    // since this function only has access to capability config, not secrets.
     vars.TTS_BASE_URL = '';
     vars.TTS_API_KEY = '';
     if (tts.model) vars.TTS_MODEL = tts.model;
@@ -51,6 +55,9 @@ export function buildVoiceEnvVars(
     vars.STT_API_KEY = '';
     vars.STT_MODEL = '';
   } else {
+    // STT_BASE_URL and STT_API_KEY are intentionally left empty here.
+    // Same as TTS: actual values come from provider secrets in vault
+    // and are injected by the caller, not this capability mapper.
     vars.STT_BASE_URL = '';
     vars.STT_API_KEY = '';
     if (stt.model) vars.STT_MODEL = stt.model;

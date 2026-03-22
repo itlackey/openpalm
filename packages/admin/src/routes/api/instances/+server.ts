@@ -34,11 +34,14 @@ export const GET: RequestHandler = async (event) => {
   const callerType = getCallerType(event);
 
   const details = listInstances(state.homeDir);
+  const components = discoverComponents(state.homeDir);
+  const componentMap = new Map(components.map((c) => [c.id, c]));
   const instances: InstanceResponse[] = details.map((d) => ({
     id: d.id,
     component: d.component,
     enabled: d.enabled,
     status: d.status,
+    category: componentMap.get(d.component)?.labels.category,
     instanceDir: d.instanceDir,
   }));
 
@@ -90,6 +93,7 @@ export const POST: RequestHandler = async (event) => {
       component: detail.component,
       enabled: detail.enabled,
       status: detail.status,
+      category: componentDef.labels.category,
       instanceDir: detail.instanceDir,
     };
 

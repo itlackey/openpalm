@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchConnections,
   fetchConnectionsDto,
-  saveSystemConnection,
   saveConnections,
   testConnectionProfile,
 } from './api.js';
@@ -67,7 +66,7 @@ describe('api connections DTO adapter', () => {
     expect(connections.OPENAI_API_KEY).toBe('sk-****1234');
   });
 
-  it('posts flat payload for saveSystemConnection', async () => {
+  it('posts flat payload for saveConnections (legacy saveSystemConnection)', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(
@@ -77,7 +76,7 @@ describe('api connections DTO adapter', () => {
         }),
       );
 
-    await saveSystemConnection('admin-token', {
+    await saveConnections('admin-token', {
       provider: 'openai',
       apiKey: 'sk-test',
       baseUrl: 'https://api.openai.com',

@@ -84,7 +84,6 @@ describe('cli main', () => {
   const originalHome = process.env.OP_HOME;
   const originalWorkDir = process.env.OP_WORK_DIR;
   const originalAdminToken = process.env.OP_ADMIN_TOKEN;
-  const originalOpenPalmAdminToken = process.env.OP_ADMIN_TOKEN;
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
@@ -94,7 +93,6 @@ describe('cli main', () => {
     process.env.OP_HOME = originalHome;
     process.env.OP_WORK_DIR = originalWorkDir;
     process.env.OP_ADMIN_TOKEN = originalAdminToken;
-    process.env.OP_ADMIN_TOKEN = originalOpenPalmAdminToken;
   });
 
   it('runs bootstrap install directly without admin delegation', async () => {
@@ -110,7 +108,6 @@ describe('cli main', () => {
 
     process.env.OP_HOME = base;
     process.env.OP_WORK_DIR = workDir;
-    delete process.env.OP_ADMIN_TOKEN;
     delete process.env.OP_ADMIN_TOKEN;
 
     mockDockerCli();

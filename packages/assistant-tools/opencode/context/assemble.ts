@@ -93,7 +93,10 @@ export async function assembleContext(opts: AssembleContextOpts): Promise<{
         content: m.content,
         score: m.score,
       }));
-      // Memory search uses combined budget — per-category enforcement deferred to 0.11.0
+      // Per-category budget enforcement deferred to 0.11.0.
+      // Currently all three memory category budgets (semantic, procedural, episodic)
+      // are combined into a single allocation. The per-category values from
+      // calculateRecommendedBudgets() are computed but not individually enforced.
       const remainingBudget = budget.semanticMemory + budget.proceduralMemory + budget.episodicMemory;
       const fittedMemory = fitItemsInBudget(memoryItems, (i) => i.content, remainingBudget);
       items.push(...fittedMemory);

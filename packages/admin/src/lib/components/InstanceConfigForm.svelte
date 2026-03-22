@@ -38,6 +38,7 @@
   // ── Load Schema ─────────────────────────────────────────────────────
 
   $effect(() => {
+    const _id = instanceId; // track prop changes
     void loadSchema();
   });
 

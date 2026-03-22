@@ -5,6 +5,8 @@ import { execFile } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../logger.js";
+import { appendAudit } from "./audit.js";
+import type { ControlPlaneState } from "./types.js";
 
 const logger = createLogger("scheduler");
 
@@ -214,7 +216,7 @@ export function loadAutomations(configDir: string): AutomationConfig[] {
 
 export const SAFE_PATH_RE = /^\/admin\/[a-zA-Z0-9/._-]+$/;
 
-async function executeApiAction(
+export async function executeApiAction(
   action: AutomationAction,
   adminToken: string
 ): Promise<void> {
@@ -250,7 +252,7 @@ async function executeApiAction(
   }
 }
 
-async function executeHttpAction(action: AutomationAction): Promise<void> {
+export async function executeHttpAction(action: AutomationAction): Promise<void> {
   const headers: Record<string, string> = { ...action.headers };
   if (action.body) {
     headers["content-type"] = headers["content-type"] ?? "application/json";
@@ -277,7 +279,7 @@ const SHELL_SAFE_ENV_KEYS = [
   "OP_HOME",
 ];
 
-function executeShellAction(action: AutomationAction): Promise<void> {
+export function executeShellAction(action: AutomationAction): Promise<void> {
   const cmd = action.command!;
 
   const safeEnv: Record<string, string> = {};
@@ -301,12 +303,12 @@ function executeShellAction(action: AutomationAction): Promise<void> {
   });
 }
 
-async function executeAssistantAction(action: AutomationAction): Promise<void> {
+export async function executeAssistantAction(action: AutomationAction): Promise<void> {
   if (!action.content) {
     throw new Error("assistant action requires a non-empty 'content' field");
   }
 
-  const baseUrl = process.env.OPENCODE_API_URL ?? "http://localhost:4096";
+  const baseUrl = process.env.OPENCODE_API_URL ?? "http://assistant:4096";
   const password = process.env.OPENCODE_SERVER_PASSWORD;
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (password) {
@@ -359,7 +361,7 @@ export async function executeAction(
 
 let activeJobs: ActiveJob[] = [];
 
-export function startScheduler(configDir: string, adminToken: string): void {
+export function startScheduler(configDir: string, adminToken: string, state?: ControlPlaneState): void {
   const configs = loadAutomations(configDir);
   const enabled = configs.filter((c) => c.enabled);
 
@@ -379,11 +381,20 @@ export function startScheduler(configDir: string, adminToken: string): void {
           const durationMs = Date.now() - start;
           const errorMsg = String(err);
           recordExecution(config.fileName, { at: new Date().toISOString(), ok: false, durationMs, error: errorMsg });
-          logger.error("automation failed", {
-            name: config.name,
-            fileName: config.fileName,
-            error: errorMsg
-          });
+
+          if (config.on_failure === "audit" && state) {
+            appendAudit(state, "scheduler", `automation.failed:${config.name}`, {
+              fileName: config.fileName,
+              error: errorMsg,
+              durationMs,
+            }, false);
+          } else {
+            logger.error("automation failed", {
+              name: config.name,
+              fileName: config.fileName,
+              error: errorMsg
+            });
+          }
         }
       });
 
@@ -413,9 +424,9 @@ export function stopScheduler(): void {
   }
 }
 
-export function reloadScheduler(configDir: string, adminToken: string): void {
+export function reloadScheduler(configDir: string, adminToken: string, state?: ControlPlaneState): void {
   stopScheduler();
-  startScheduler(configDir, adminToken);
+  startScheduler(configDir, adminToken, state);
 }
 
 export function getSchedulerStatus(): {

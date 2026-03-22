@@ -70,31 +70,31 @@ These tools help investigate and troubleshoot issues across the stack.
 ### `admin-logs`
 Read Docker logs from service containers. Filter by service name, number of lines, and time window. Use this as the first step when a service is misbehaving or returning errors.
 
-### `admin-guardian_audit`
+### `admin-guardian-audit`
 Read the guardian's security audit log. Shows HMAC verification results, rate limiting events, and replay detection. Use this when investigating authentication failures or suspicious channel traffic.
 
-### `admin-config_validate`
+### `admin-config-validate`
 Validate the current stack configuration. Returns errors and warnings about missing files, invalid settings, or configuration drift. Use before applying changes or when troubleshooting startup failures.
 
-### `admin-connections_test`
+### `admin-connections-test`
 Test connectivity to an LLM provider endpoint. Verifies the URL is reachable and optionally tests an API key. Use this before saving new connection settings to confirm they work.
 
-### `admin-providers_local`
+### `admin-providers-local`
 Detect local LLM providers (Ollama, Docker Model Runner, LM Studio) on the host. Use during initial setup to discover what's available without manual configuration.
 
-### `admin-memory_models`
+### `admin-memory-models`
 Check the memory service embedding model configuration and availability. Use this when memory search returns unexpected results or embedding errors appear in logs.
 
-### `admin-containers_inspect`
+### `admin-containers-inspect`
 Get container resource usage: CPU%, memory, network I/O, and PID count per container. Use to identify resource-hungry or leaking containers.
 
-### `admin-containers_events`
+### `admin-containers-events`
 Get recent Docker container lifecycle events: starts, stops, restarts, OOM kills, health check failures. Use to spot crash loops or unexpected restarts.
 
-### `admin-guardian_stats`
+### `admin-guardian-stats`
 Get internal metrics directly from the guardian: rate limiter state, nonce cache size, session count, per-channel request counts. Use to understand traffic patterns and rate limiting behavior.
 
-### `admin-network_check`
+### `admin-network-check`
 Test inter-service network connectivity. Returns a connectivity matrix with latency. Use to diagnose DNS resolution failures or network isolation issues between containers.
 
 ### `stack-diagnostics`
@@ -105,12 +105,12 @@ Trace a request through the pipeline by its request ID. Searches both guardian a
 
 ## Guidelines
 
-1. **Always check status before acting.** Use `admin-containers_list` or `health-check` before restarting or stopping services.
+1. **Always check status before acting.** Use `admin-containers-list` or `health-check` before restarting or stopping services.
 2. **Explain what you're about to do** before making changes. The user should understand the impact.
 3. **Check the audit log** when diagnosing issues — it shows what changed and when.
 4. **Never restart the admin service** unless the user explicitly asks — it's the control plane.
 5. **Be careful with lifecycle operations.** `uninstall` stops everything. `install` is idempotent but heavyweight.
 6. **Access scope changes affect security.** Switching from `host` to `lan` exposes services to the local network. Always confirm with the user.
 7. **Channel routing is file-based.** Channels with a `.caddy` file get HTTP routing; those without are docker-network only. Access levels (LAN vs public) are controlled by the `.caddy` file content, not by an API call.
-8. **Check connections status before operations that need external APIs.** Use `admin-connections_status` to confirm all required keys are present. Use `admin-connections_get` to see which keys are configured. Never log or expose unmasked secret values.
-9. **Use `admin-lifecycle_upgrade` to apply upstream updates** without reinstalling. This downloads fresh assets, pulls latest images, and recreates containers in place.
+8. **Check connections status before operations that need external APIs.** Use `admin-connections-status` to confirm all required keys are present. Use `admin-connections-get` to see which keys are configured. Never log or expose unmasked secret values.
+9. **Use `admin-lifecycle-upgrade` to apply upstream updates** without reinstalling. This downloads fresh assets, pulls latest images, and recreates containers in place.

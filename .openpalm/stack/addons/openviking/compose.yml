@@ -10,7 +10,6 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ${OP_HOME}/data/openviking:/workspace
-      - ${OP_HOME}/vault/user/ov.conf:/app/ov.conf:ro
     networks: [assistant_net]
     healthcheck:
       # curl is available in the OpenViking image (Python 3.13 + Debian)
@@ -30,4 +29,4 @@ services:
   assistant:
     environment:
       OPENVIKING_URL: http://openviking:1933
-      OPENVIKING_API_KEY: ${OPENVIKING_API_KEY}
+      OPENVIKING_API_KEY: ${OPENVIKING_API_KEY:-}

@@ -70,18 +70,11 @@ export async function ensureVarlock(dataDir: string): Promise<string> {
   const tarballUrl = `https://github.com/dmno-dev/varlock/releases/download/varlock%40${VARLOCK_VERSION}/${artifact}`;
   const tarballPath = join(binDir, 'varlock.tar.gz');
 
-  const downloadProc = Bun.spawn(
-    ['curl', '-fsSL', '--retry', '5', '--retry-delay', '10', '--retry-all-errors', tarballUrl, '-o', tarballPath],
-    {
-      env: { ...process.env, HOME: process.env.HOME ?? '' },
-      stdout: 'inherit',
-      stderr: 'inherit',
-    },
-  );
-  const downloadCode = await downloadProc.exited;
-  if (downloadCode !== 0) {
-    throw new Error(`Failed to download varlock tarball (curl exited with code ${downloadCode})`);
+  const response = await fetch(tarballUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to download varlock tarball (HTTP ${response.status} ${response.statusText})`);
   }
+  await Bun.write(tarballPath, response);
 
   const hasher = new Bun.CryptoHasher('sha256');
   hasher.update(await Bun.file(tarballPath).arrayBuffer());

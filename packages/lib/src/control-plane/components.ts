@@ -16,7 +16,7 @@ export type ComponentDefinition = {
   labels: ComponentLabels;       // parsed from compose.yml
 };
 
-export type ComponentSource = "builtin" | "registry" | "user-local";
+export type ComponentSource = "builtin" | "registry";
 
 export type ComponentLabels = {
   name: string;                  // openpalm.name (required)

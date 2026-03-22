@@ -16,9 +16,9 @@ import { detectHostInfo } from '../lib/host-info.ts';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { buildManagedServiceNames, runComposeWithPreflight } from '../lib/cli-compose.ts';
 import { createSetupServer } from '../setup-wizard/server.ts';
-import { buildInstallServiceNames, buildDeployStatusEntries } from './install-services.ts';
+import { buildDeployStatusEntries } from './install-services.ts';
 
-const SETUP_WIZARD_PORT = Number(process.env.OP_SETUP_PORT) || 8100;
+const SETUP_WIZARD_PORT = Number(process.env.OP_SETUP_PORT) || 8190;
 
 async function resolveDefaultInstallRef(): Promise<string> {
   try {
@@ -93,11 +93,10 @@ async function requireDocker(): Promise<void> {
 async function deployServices(mode: string, pull = true): Promise<string[]> {
   const state = await ensureValidState();
   const managedServices = await buildManagedServiceNames(state);
-  const allServices = buildInstallServiceNames(managedServices);
-  if (pull) await runComposeWithPreflight(state, ['pull', ...allServices]).catch(() => console.warn('Warning: image pull failed.'));
-  await runComposeWithPreflight(state, ['up', '-d', ...allServices]);
-  console.log(JSON.stringify({ ok: true, mode, services: allServices }, null, 2));
-  return allServices;
+  if (pull) await runComposeWithPreflight(state, ['pull', ...managedServices]).catch(() => console.warn('Warning: image pull failed.'));
+  await runComposeWithPreflight(state, ['up', '-d', ...managedServices]);
+  console.log(JSON.stringify({ ok: true, mode, services: managedServices }, null, 2));
+  return managedServices;
 }
 
 async function parseConfigFile(filePath: string, raw: string): Promise<Record<string, unknown>> {
@@ -199,20 +198,21 @@ async function runWizardInstall(configDir: string, noOpen: boolean): Promise<voi
   if (!result.ok) { wizard.stop(); throw new Error(`Setup failed: ${result.error ?? 'unknown error'}`); }
 
   console.log('Setup complete. Starting services...');
+  const state = await ensureValidState();
+  const managedServices = await buildManagedServiceNames(state);
+  const allServices = managedServices;
   try {
-    const state = await ensureValidState();
-    const managedServices = await buildManagedServiceNames(state);
-    const allServices = buildInstallServiceNames(managedServices);
     wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Waiting...'));
     await runComposeWithPreflight(state, ['pull', ...allServices]).catch(() => {
       console.warn('Warning: image pull failed — if this is your first install, check your network connection.');
     });
-    wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pulling', 'Starting...'));
+    wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Starting...'));
     await runComposeWithPreflight(state, ['up', '-d', ...allServices]);
     wizard.markAllRunning();
     console.log(JSON.stringify({ ok: true, mode: 'install', services: allServices }, null, 2));
     await new Promise(resolve => setTimeout(resolve, 3000));
   } catch (err) {
+    wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'error', String(err)));
     wizard.setDeployError(String(err));
     await new Promise(resolve => setTimeout(resolve, 10000));
     throw err;

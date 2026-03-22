@@ -25,12 +25,12 @@ import {
   getInstanceDetail,
   parseEnvSchema,
   buildComponentComposeArgs,
-  createState,
   buildComposeFileList,
   buildEnvFiles,
 } from '@openpalm/lib';
 import { runDockerCompose } from '../lib/docker.ts';
 import { composePreflight, resolveComposeProjectName } from '@openpalm/lib';
+import { ensureValidState } from '../lib/cli-state.ts';
 
 /** Run compose preflight then execute. Uses component compose args (includes instance overlays). */
 async function runComponentCompose(composeArgs: string[], subArgs: string[]): Promise<void> {
@@ -292,7 +292,7 @@ const removeCmd = defineCommand({
 
     // Stop the container first (best effort)
     try {
-      const state = createState();
+      const state = await ensureValidState();
       const composeArgs = buildComponentComposeArgs(home, {
         coreFiles: buildComposeFileList(state),
         coreEnvFiles: buildEnvFiles(state),
@@ -343,7 +343,7 @@ const startCmd = defineCommand({
     }
 
     try {
-      const state = createState();
+      const state = await ensureValidState();
       const composeArgs = buildComponentComposeArgs(home, {
         coreFiles: buildComposeFileList(state),
         coreEnvFiles: buildEnvFiles(state),
@@ -389,7 +389,7 @@ const stopCmd = defineCommand({
     }
 
     try {
-      const state = createState();
+      const state = await ensureValidState();
       const composeArgs = buildComponentComposeArgs(home, {
         coreFiles: buildComposeFileList(state),
         coreEnvFiles: buildEnvFiles(state),

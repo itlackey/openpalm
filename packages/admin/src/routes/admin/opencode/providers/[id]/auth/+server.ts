@@ -179,6 +179,9 @@ export const POST: RequestHandler = async (event) => {
   }
 
   if (mode === 'oauth') {
+    if (typeof body.methodIndex !== 'undefined' && (typeof body.methodIndex !== 'number' || !Number.isInteger(body.methodIndex) || body.methodIndex < 0)) {
+      return errorResponse(400, 'bad_request', 'methodIndex must be a non-negative integer', {}, requestId);
+    }
     const methodIndex = typeof body.methodIndex === 'number' ? body.methodIndex : 0;
 
     const result = await startProviderOAuth(providerId, methodIndex);

@@ -4,37 +4,39 @@ OpenCode plugin that provides tools for managing the OpenPalm stack through the 
 
 This package is separate from `@openpalm/assistant-tools`, which contains memory-only tools that work without admin.
 
-## Tools (35 total)
+## Tools (37 total)
 
 ### Containers & Logs
 - `admin-health-check` -- Platform health overview (all services including admin, scheduler)
-- `admin-containers_list` / `_up` / `_down` / `_restart` -- Container lifecycle
-- `admin-containers_inspect` -- Detailed container inspection
-- `admin-containers_events` -- Recent Docker events
+- `admin-containers-list` / `-up` / `-down` / `-restart` -- Container lifecycle
+- `admin-containers-inspect` -- Detailed container inspection
+- `admin-containers-events` -- Recent Docker events
 - `admin-logs` -- Service log retrieval
 
 ### Configuration & Connections
-- `admin-config_get_access_scope` / `_set_access_scope` -- LAN/public access control
-- `admin-config_validate` -- Configuration validation
-- `admin-connections_get` / `_set` / `_status` -- Connection profile management
-- `admin-connections_test` -- Test provider connectivity
-- `admin-providers_local` -- Detect local LLM providers (Ollama, LM Studio, etc.)
-- `admin-memory_models` -- List available embedding models
+- `admin-config-get-access-scope` / `-set-access-scope` -- LAN/public access control
+- `admin-config-validate` -- Configuration validation
+- `admin-connections-get` / `-set` / `-status` -- Connection profile management
+- `admin-connections-test` -- Test provider connectivity
+- `admin-providers-local` -- Detect local LLM providers (Ollama, LM Studio, etc.)
+- `admin-memory-models` -- List available embedding models
 
 ### Channels
-- `admin-channels_list` / `_install` / `_uninstall` -- Channel management
+- `admin-channels-list` / `-install` / `-uninstall` -- Channel management
 
 ### Lifecycle
-- `admin-lifecycle_install` / `_update` / `_uninstall` / `_upgrade` / `_installed` -- Stack lifecycle
+- `admin-lifecycle-install` / `-update` / `-uninstall` / `-upgrade` / `-installed` -- Stack lifecycle
 
 ### Automations
-- `admin-automations_list` -- List loaded automations
+- `admin-automations-list` -- List loaded automations
+- `admin-automations-trigger` -- Manually trigger an automation
+- `admin-automations-log` -- Retrieve execution history for an automation
 
 ### Diagnostics
 - `admin-audit` -- Audit log review
-- `admin-guardian_audit` / `_stats` -- Guardian ingress audit and stats
-- `admin-network_check` -- Inter-service network connectivity
-- `admin-artifacts_list` / `_manifest` / `_get` -- Staged artifact inspection
+- `admin-guardian-audit` / `-stats` -- Guardian ingress audit and stats
+- `admin-network-check` -- Inter-service network connectivity
+- `admin-artifacts-list` / `-manifest` / `-get` -- Staged artifact inspection
 - `stack-diagnostics` -- Full stack diagnostic report
 - `message-trace` -- Trace a message through the pipeline
 

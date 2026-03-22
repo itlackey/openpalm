@@ -5,8 +5,9 @@
     fetchMemoryConfig,
     saveConnections,
     testConnectionProfile,
+    resetMemoryCollection,
   } from '$lib/api.js';
-  import { EMBEDDING_DIMS } from '$lib/provider-constants.js';
+  import { EMBEDDING_DIMS, PROVIDER_KEY_MAP } from '$lib/provider-constants.js';
   import { mapConnectionTestError } from '$lib/model-discovery.js';
   import type { ConnectionsCapabilities, SaveConnectionsPayload } from '$lib/types.js';
   import ConnectionForm from './ConnectionForm.svelte';
@@ -69,18 +70,23 @@
   /** Derive a human-readable display name from the provider string. */
   function providerDisplayName(provider: string): string {
     if (!provider) return 'Unknown';
-    return provider.charAt(0).toUpperCase() + provider.slice(1) + ' Production';
+    return provider.charAt(0).toUpperCase() + provider.slice(1);
   }
 
   let currentProvider = $derived(capabilities ? parseCapString(capabilities.llm).provider : '');
   let currentModel = $derived(capabilities ? parseCapString(capabilities.llm).model : '');
   let connDisplayName = $derived(providerDisplayName(currentProvider));
-  let hasApiKey = $derived(
-    Object.values(secrets).some((v) => v.startsWith('sk-') || (v.length > 4 && v.includes('****')))
-  );
+  let hasApiKey = $derived.by(() => {
+    const keyField = PROVIDER_KEY_MAP[currentProvider];
+    if (!keyField) return false;
+    const val = secrets[keyField] ?? '';
+    return val.startsWith('sk-') || (val.length > 4 && val.includes('****'));
+  });
 
   // ── Load on mount ─────────────────────────────────────────────────
-  void loadConnections();
+  $effect(() => {
+    void loadConnections();
+  });
 
   function readConfigValue(config: Record<string, unknown>, key: string): string {
     const value = config[key];
@@ -247,25 +253,12 @@
 
     resetting = true;
     try {
-      const res = await fetch('/admin/memory/reset-collection', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-admin-token': token,
-          'x-requested-by': 'ui',
-          'x-request-id': crypto.randomUUID()
-        }
-      });
-      if (res.ok) {
-        resetSuccess = true;
-        dimensionMismatch = false;
-        dimensionWarning = '';
-      } else {
-        const data = await res.json().catch(() => ({})) as { message?: string };
-        memorySaveError = data.message ?? 'Failed to reset memory collection.';
-      }
-    } catch {
-      memorySaveError = 'Unable to reach admin API.';
+      await resetMemoryCollection(token);
+      resetSuccess = true;
+      dimensionMismatch = false;
+      dimensionWarning = '';
+    } catch (e) {
+      memorySaveError = e instanceof Error ? e.message : 'Failed to reset memory collection.';
     } finally {
       resetting = false;
     }

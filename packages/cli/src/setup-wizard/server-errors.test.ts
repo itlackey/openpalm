@@ -74,7 +74,6 @@ function makeSetupDirs(): void {
       "export MISTRAL_API_KEY=",
       "export GOOGLE_API_KEY=",
       "export MEMORY_USER_ID=default_user",
-      "export MEMORY_USER_ID=default_user",
       "export OWNER_NAME=",
       "export OWNER_EMAIL=",
       "",

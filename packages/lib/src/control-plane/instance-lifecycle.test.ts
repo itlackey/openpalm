@@ -14,7 +14,6 @@ import type { ComponentDefinition } from "./components.js";
 
 // ── Test Helpers ───────────────────────────────────────────────────────
 
-let testDir: string;
 let openpalmHome: string;
 let componentSourceDir: string;
 

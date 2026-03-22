@@ -67,8 +67,9 @@ for addon_dir in "$ADDONS_DIR"/*/; do
   fi
 
   # 4. Check for vault mount violations — look for full vault directory mounts
-  # (mounting a specific config file like vault/user/ov.conf:ro is allowed)
-  if grep -qE '^\s*-\s+.*vault(/|")?\s*:/' "$compose_file" && ! grep -qE '^\s*-\s+.*vault/[^:]+:.*:ro' "$compose_file"; then
+  # (mounting a specific file like vault/user/ov.conf:ro is allowed)
+  # Flag any broad vault mount (vault:, vault/:) regardless of other mounts
+  if grep -qE '^\s*-\s+.*vault(/?)"\s*:' "$compose_file" || grep -qE '^\s*-\s+.*vault(/?)\s*:/' "$compose_file"; then
     echo "  FAIL: compose.yml mounts vault directory (security violation)"
     errors=$((errors + 1))
   fi

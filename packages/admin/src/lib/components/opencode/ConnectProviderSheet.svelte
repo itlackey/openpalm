@@ -36,7 +36,7 @@
     try {
       const token = getAdminToken() ?? '';
       const res = await fetch('/admin/opencode/providers', {
-        headers: { 'x-admin-token': token, 'x-request-id': crypto.randomUUID() },
+        headers: { 'x-admin-token': token, 'x-request-id': crypto.randomUUID(), 'x-requested-by': 'ui' },
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();

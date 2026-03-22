@@ -37,6 +37,7 @@
   var pcmChunks = []
   var wakeLock = null
   var audioCtx = null
+  var activeSpeechRecognition = null
 
   // --- Capabilities (populated on init from /api/health) ---
   var caps = {
@@ -146,6 +147,8 @@
       pcmChunks = []
 
       pcmSourceNode = pcmAudioContext.createMediaStreamSource(stream)
+      // NOTE: createScriptProcessor is deprecated (Chrome 66+).
+      // TODO: Migrate to AudioWorklet for main-thread-free audio processing.
       pcmProcessorNode = pcmAudioContext.createScriptProcessor(4096, 1, 1)
       pcmGainNode = pcmAudioContext.createGain()
       pcmGainNode.gain.value = 0
@@ -371,16 +374,19 @@
       var SR = window.SpeechRecognition || window.webkitSpeechRecognition
       if (!SR) { reject(new Error('Browser speech recognition not supported')); return }
       var recognition = new SR()
+      activeSpeechRecognition = recognition
       recognition.lang = navigator.language || 'en-US'
       recognition.interimResults = false
       recognition.maxAlternatives = 1
       var gotResult = false
       recognition.onresult = function (event) {
         gotResult = true
+        activeSpeechRecognition = null
         var text = event.results[0][0].transcript
         resolve(text)
       }
       recognition.onerror = function (event) {
+        activeSpeechRecognition = null
         // no-speech and aborted are normal in continuous mode — treat as empty
         if (event.error === 'no-speech' || event.error === 'aborted') {
           resolve('')
@@ -389,6 +395,7 @@
         }
       }
       recognition.onend = function () {
+        activeSpeechRecognition = null
         if (!gotResult) resolve('')
       }
       recognition.start()
@@ -676,6 +683,12 @@
 
   function stopRecording() {
     if (state !== 'recording') return
+
+    if (activeSpeechRecognition) {
+      activeSpeechRecognition.abort()
+      activeSpeechRecognition = null
+    }
+
     // If user manually stops, also turn off continuous
     if (continuous) setContinuous(false)
     if (recorder) {

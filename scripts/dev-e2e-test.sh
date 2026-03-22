@@ -176,7 +176,6 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 		-f compose.dev.yaml \
 		--env-file .dev/vault/stack/stack.env \
 		--env-file .dev/vault/user/user.env \
-		--profile admin \
 		--project-name openpalm build 2>&1 | tail -5
 	pass "All images built"
 else
@@ -192,7 +191,6 @@ docker compose --project-directory . \
 	-f compose.dev.yaml \
 	--env-file .dev/vault/stack/stack.env \
 	--env-file .dev/vault/user/user.env \
-	--profile admin \
 	--project-name openpalm up -d 2>&1 | tail -10
 
 # Wait for admin to be healthy
@@ -319,7 +317,6 @@ docker compose --project-directory . \
 	-f compose.dev.yaml \
 	--env-file .dev/vault/stack/stack.env \
 	--env-file .dev/vault/user/user.env \
-	--profile admin \
 	--project-name openpalm up -d --force-recreate --no-deps assistant
 
 # ── Step 8: Wait for containers ──────────────────────────────────────
@@ -485,7 +482,7 @@ fi
 echo ""
 echo "=== Step 12: Verify Memory user provisioned ==="
 
-MEMORY_AUTH_TOKEN=$(grep -E '^(export )?OP_MEMORY_TOKEN=' "$ROOT/.dev/vault/stack/stack.env" 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
+MEMORY_AUTH_TOKEN=$(grep -E '^(export )?OP_MEMORY_TOKEN=' "$ROOT_DIR/.dev/vault/stack/stack.env" 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
 
 # Check memory API is responding (curl from host since memory port is published)
 OM_STATUS="error"

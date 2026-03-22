@@ -2,8 +2,7 @@
  * Automation scheduler — loads automations from config/automations/,
  * schedules them with Croner, watches for filesystem changes.
  *
- * Re-uses parsing and loading logic from @openpalm/lib. Action execution
- * is handled by the sidecar's own action executors (with configurable URLs).
+ * Re-uses parsing, loading, and action execution logic from @openpalm/lib.
  */
 import { Cron } from "croner";
 import { watch, type FSWatcher } from "node:fs";
@@ -12,10 +11,10 @@ import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import {
   loadAutomations,
   createLogger,
+  executeAction,
   type AutomationConfig,
   type ExecutionLogEntry,
 } from "@openpalm/lib";
-import { executeAction } from "./actions/index.js";
 
 const logger = createLogger("scheduler");
 
@@ -39,6 +38,11 @@ function recordExecution(fileName: string, entry: ExecutionLogEntry): void {
 /** Return recent execution log entries for an automation (newest first). */
 export function getExecutionLog(fileName: string): ExecutionLogEntry[] {
   return [...(executionLogs.get(fileName) ?? [])].reverse();
+}
+
+/** Clear all execution logs (for testing). */
+export function clearExecutionLogs(): void {
+  executionLogs.clear();
 }
 
 /** Return all execution logs keyed by fileName. */
@@ -127,7 +131,6 @@ export function stopScheduler(): void {
   }
   const count = activeJobs.length;
   activeJobs = [];
-  executionLogs.clear();
   if (count > 0) {
     logger.info(`scheduler stopped (${count} job(s) cleared)`);
   }

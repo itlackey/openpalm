@@ -20,6 +20,7 @@ import {
   getInstanceDetail,
   discoverComponents,
 } from "@openpalm/lib";
+import { inspectContainerStatus } from "$lib/server/docker.js";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -56,9 +57,10 @@ export const GET: RequestHandler = async (event) => {
       healthy = false;
     }
   } else {
-    // Fallback: check if the container is marked as running in state
+    // Fallback: query Docker for actual container status
     const containerName = `openpalm-${instanceId}`;
-    healthy = state.services[containerName] === "running";
+    const dockerStatus = await inspectContainerStatus(containerName);
+    healthy = dockerStatus === "running";
   }
 
   appendAudit(state, actor, "instances.health", { instanceId, healthy }, true, requestId, callerType);

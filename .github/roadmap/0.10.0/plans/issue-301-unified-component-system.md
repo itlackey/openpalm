@@ -1,13 +1,15 @@
-# Issue #301: Unified Component System
+# Issue #301: Unified Addon Model
 
-> Current repo alignment: the home-rooted layout and shared-lib control-plane refactor have already landed substantially. Read this plan as a component-system follow-on plan against the current `.openpalm/stack/`, `vault/user/user.env`, `vault/stack/stack.env`, and `packages/lib/src/control-plane/` architecture rather than against the older flat-vault or XDG/staging model.
+> Current repo alignment: the home-rooted layout and shared-lib control-plane refactor have already landed substantially. Read this plan as an addon-model follow-on plan against the current `.openpalm/stack/`, `vault/user/user.env`, `vault/stack/stack.env`, and `packages/lib/src/control-plane/` architecture rather than against the older flat-vault or XDG/staging model.
+
+> **Terminology update:** The improved design now uses **addon** as the user-facing term. Historical references to `component` in APIs, paths, and earlier notes describe the same runtime model.
 
 ## Scope and dependency summary
 
-- Issue #301 delivers the v0.10.0 component model: every optional stack capability becomes a component with a standardized directory contract (`compose.yml`, `.env.schema`, optional `.caddy`), instance lifecycle support, registry integration, admin UI/API, and CLI workflows.
+- Issue #301 delivers the v0.10.0 addon model: every optional stack capability becomes an addon with a standardized directory contract (`compose.yml`, `.env.schema`, optional `.caddy`), instance lifecycle support, registry integration, admin UI/API, and CLI workflows.
 - The roadmap places two shared prerequisites on the critical path before the main #301 feature work: the filesystem refactor to `~/.openpalm/` and 38XX port standardization. Those changes are required for #301 to land cleanly, but they are broader platform work and should be tracked as shared prerequisite work even when implemented in the same branch/release train.
 - Control-plane logic for both prerequisite work and #301 must live in `packages/lib/` first. CLI and admin stay thin wrappers over `@openpalm/lib`; no new lifecycle/discovery/configuration logic should be added directly to `packages/cli/` or `packages/admin/`.
-- #301 also depends on concurrent secrets/auth changes from roadmap issue #300 where component config touches `@sensitive` fields, token splits, and the nested vault model (`vault/user/user.env` plus `vault/stack/stack.env`). The component plan should define clean handoff points rather than duplicating that implementation.
+- #301 also depends on concurrent secrets/auth changes from roadmap issue #300 where addon config touches `@sensitive` fields, token splits, and the nested vault model (`vault/user/user.env` plus `vault/stack/stack.env`). The addon plan should define clean handoff points rather than duplicating that implementation.
 - Keep the ownership split from `docs/technical/core-principles.md` explicit: `config/openpalm.yml` remains the user-editable stack config, `.openpalm/stack/core.compose.yml` and `.openpalm/stack/addons/*/compose.yml` remain the system-managed runtime assembly, and any `data/components/` instance copies or `data/components/enabled.json` state are service-managed runtime artifacts rather than a second user-facing config authority.
 
 ## Delivery boundaries
@@ -21,10 +23,10 @@
 
 ### Issue #301 work proper
 
-- Replace the legacy channel/service distinction with component definitions, catalog discovery, instance directories, `enabled.json` persistence, and compose overlay assembly from enabled instances.
-- Add component lifecycle operations across `@openpalm/lib`, CLI, admin API, and admin UI.
-- Move registry structure and validation from `registry/channels/` to `registry/components/`, with multi-instance metadata sourced from the component directory itself instead of bespoke UI logic.
-- Ship migration detection and migration execution paths that convert legacy channels into the new component model as part of the 0.10.0 upgrade.
+- Replace the legacy channel/service distinction with addon definitions, catalog discovery, instance directories, `enabled.json` persistence, and compose overlay assembly from enabled instances.
+- Add addon lifecycle operations across `@openpalm/lib`, CLI, admin API, and admin UI.
+- Move registry structure and validation from `registry/channels/` to `registry/components/`, with multi-instance metadata sourced from the addon directory itself instead of bespoke UI logic.
+- Enforce the clean break from legacy channels with no migration path and no dual runtime model.
 
 ## Phased implementation plan
 
@@ -77,9 +79,9 @@
    - For `@sensitive` fields, store values through the shared secret backend namespace (`components/{instanceId}/{KEY}` or final agreed convention) and keep plaintext out of instance env files.
    - Coordinate with #300 so component lifecycle can read/update/delete secret-backed fields without reimplementing backend logic inside #301.
 3. Replace channel-specific mutation flows.
-   - Retire lib functions and admin wrappers built around `discoverChannels`, `installChannelFromRegistry`, and staged channel overlays.
-   - Provide compatibility shims only where needed for migration or transitional UI messages; do not keep dual runtime models.
-4. Add migration-ready lifecycle behaviors.
+    - Retire lib functions and admin wrappers built around `discoverChannels`, `installChannelFromRegistry`, and staged channel overlays.
+    - Do not keep dual runtime models or migration shims.
+4. Add clean-break lifecycle behaviors.
    - Deleting an instance should stop it, remove secret namespace entries, clean up route snippets, update `enabled.json`, and archive the instance directory to a recoverable location.
    - Starting/stopping should rebuild the compose chain from `enabled.json` rather than operating only on detached one-off container names.
 
@@ -90,67 +92,63 @@
    - Keep route handlers transport-only: auth, request parsing, lib call, structured response, audit logging.
    - Preserve request id and caller metadata conventions already used by current admin endpoints.
 2. Remove or deprecate channel-specific admin endpoints.
-    - Replace `/admin/channels/*` and any remaining legacy registry install/uninstall flows that still assume raw channel overlay files.
-   - Add migration-safe responses or redirect guidance while the UI and CLI move over.
+     - Replace `/admin/channels/*` and any remaining legacy registry install/uninstall flows that still assume raw channel overlay files.
+    - Return explicit clean-break guidance while the UI and CLI move over.
 3. Update admin server types and client contracts.
    - Replace `ChannelInfo`, `ChannelsResponse`, and `RegistryChannelItem`-centric DTOs with component and instance DTOs in `packages/admin/src/lib/types.ts`.
    - Update client helpers in `packages/admin/src/lib/api.ts` to match the new API surface, including schema-driven config forms and instance actions.
 4. Keep control-plane extraction discipline.
    - Any server-side helper that still owns reusable lifecycle logic should be moved into `packages/lib/` before the API layer is finalized.
 
-### Phase 4 - CLI commands and migration tooling
+### Phase 4 - CLI commands and install/setup cleanup
 
 1. Extend the CLI command tree.
    - Add `openpalm component list`, `openpalm component instances`, `openpalm component add`, `openpalm component configure`, `openpalm component remove`, `openpalm component start`, and `openpalm component stop` in `packages/cli/src/main.ts` and `packages/cli/src/commands/`.
    - Route all operations through `@openpalm/lib`; CLI-specific work should be argument parsing, prompts, and terminal output only.
-2. Implement `openpalm migrate` for the combined 0.9.x to 0.10.0 transition.
-    - Detect legacy XDG roots and refuse ambiguous runs when legacy env vars are still set.
-    - Move directories into `~/.openpalm/`, split env files into `vault/user/user.env` and `vault/stack/stack.env`, convert legacy channel overlays into component-era locations, validate, deploy, and preserve old directories until optional cleanup.
-   - Ensure migration also updates port references and warns about the new ingress/admin endpoints.
 3. Update CLI setup/status/install flows.
-   - Replace XDG/staging references in install, start, stop, restart, status, validate, logs, and setup-wizard code.
-   - Add legacy installation warnings to status/up flows until migration completes.
+    - Replace XDG/staging references in install, start, stop, restart, status, validate, logs, and setup-wizard code.
+    - Treat detected legacy installs as unsupported and direct users to the clean-break release notes instead of attempting conversion.
 4. Rework the setup wizard for component selection.
    - Replace channel/service toggles with optional component selection and per-component config collection.
    - Ensure the wizard can create singleton instances during install without bypassing lib lifecycle rules.
 
 ### Phase 5 - Admin UI replacement and form rendering
 
-1. Replace the current Containers plus Registry split with a Components experience.
-   - Update `packages/admin/src/routes/+page.svelte` and related components so the primary workflow becomes a unified Components tab, grouped by category and instance state.
-   - Show available components, enabled instances, status, docs, logs, restart/remove actions, and multi-instance creation from one screen.
+1. Replace the current Containers plus Registry split with an Addons experience.
+    - Update `packages/admin/src/routes/+page.svelte` and related components so the primary workflow becomes a unified Addons tab, grouped by category and instance state.
+    - Show available addons, enabled instances, status, docs, logs, restart/remove actions, and multi-instance creation from one screen.
 2. Build a schema-driven configuration renderer.
    - Parse `.env.schema` once on the server, return normalized JSON, and render forms for required, optional, defaulted, and `@sensitive` fields.
    - Mask secret-backed values, show provenance/help text, and make validation errors map back to schema fields.
-3. Add migration and compatibility UX.
-   - Show a banner when legacy XDG installs or legacy channel overlays are detected.
-   - Provide explicit upgrade guidance that points users to `openpalm migrate` and explains that legacy channels no longer load directly.
+3. Add clean-break UX.
+    - Show an unsupported-legacy-install notice when legacy XDG installs or legacy channel overlays are detected.
+    - Provide explicit upgrade guidance explaining that legacy channels no longer load directly and must be reinstalled as addons.
 4. Update setup wizard UI and supporting components.
    - Replace registry/channel terminology everywhere in the admin client.
    - Keep mobile and desktop behavior usable since this becomes the primary install/configure workflow.
 
-### Phase 6 - Registry, CI, and built-in component packaging
+### Phase 6 - Registry, CI, and built-in addon packaging
 
-1. Move the repository catalog to component directories.
+1. Move the repository catalog to addon directories.
    - Replace `registry/channels/*.yml` plus optional `.caddy` with `registry/components/<name>/compose.yml`, `.env.schema`, and optional `.caddy`.
    - Decide which current assets remain system-managed overlays (`core`, `admin`) versus registry/built-in component templates.
 2. Update discovery providers.
    - Replace Vite registry globs and filesystem registry providers that assume flat channel files.
    - Ensure built-time bundling and local filesystem discovery work with the new directory structure and override precedence.
-3. Add CI validation for component submissions.
+3. Add CI validation for addon submissions.
    - Enforce directory contract, compose label presence, schema parseability, optional Caddy validation, port and mount policy, and forbidden security-boundary violations.
    - Add validation for overlays that extend core services so collisions and unsafe mutations are caught in CI rather than at runtime.
 4. Refresh developer-facing registry docs.
-   - Rewrite `registry/README.md` and related docs to explain component authoring, multi-instance expectations, schema usage, and route snippets.
+    - Rewrite `registry/README.md` and related docs to explain addon authoring, multi-instance expectations, schema usage, and route snippets.
 
-### Phase 7 - Documentation, test migration, and release readiness
+### Phase 7 - Documentation, test updates, and release readiness
 
 1. Update architecture and operator docs.
    - Rewrite docs that still describe channels, XDG roots, staging artifacts, or old port numbers.
-   - Add a component developer guide, upgrade guide, migration guide, and release notes for the 0.10.0 breaking changes.
+    - Add an addon developer guide, clean-break upgrade guide, and release notes for the 0.10.0 breaking changes.
 2. Migrate and expand automated tests.
-   - Replace channel/staging tests in `packages/lib/` and admin with component/home-layout/rollback tests.
-   - Add unit coverage for discovery, instance lifecycle, `enabled.json`, compose arg order, secret field handling, route staging, migration detection, and env-injection collisions.
+    - Replace channel/staging tests in `packages/lib/` and admin with addon/home-layout/rollback tests.
+    - Add unit coverage for discovery, instance lifecycle, `enabled.json`, compose arg order, secret field handling, route staging, legacy-install rejection, and env-injection collisions.
    - Add API tests for the new component endpoints and Playwright or equivalent E2E coverage for create/configure/start/stop/delete and multi-instance flows.
 3. Add script and fixture updates.
    - Refresh dev fixtures, mocked compose outputs, Caddy fixtures, and any shell scripts that hardcode old paths or ports.
@@ -159,21 +157,12 @@
    - Confirm no user-facing copy, command help, or docs still describe channels as the primary extensibility model.
    - Confirm no new control-plane logic remains stranded in admin or CLI after the refactor.
 
-## Migration work breakdown
+## Clean-Break Work Breakdown
 
-### Shared prerequisite migration
-
-- Filesystem migration moves users from XDG roots to `~/.openpalm/` and introduces the new vault boundary.
-- Port migration updates host binds, bookmarks, health checks, and docs to the 38XX standard.
-- Staging migration removes `STATE_HOME/artifacts/` as the runtime source of truth and replaces it with rollback snapshots plus live-file validation.
-- Shared prerequisite migration must also preserve the config/data contract: user-editable stack intent stays in `config/openpalm.yml`, while copied instance directories and derived enablement indexes remain under `data/`.
-
-### Issue #301 migration
-
-- Detect existing legacy channel overlay installations and block silent partial upgrades.
-- Convert legacy channel overlays into component-era locations during `openpalm migrate`, preserving user data and clearly reporting any component definitions that need manual follow-up.
-- Surface warnings in both CLI and admin until migration is complete.
-- Remove runtime loading of legacy channels after migration support is in place; do not run two parallel component models.
+- Reject legacy XDG and legacy channel layouts as unsupported runtime inputs for 0.10.0.
+- Surface clear CLI/admin messaging that 0.10.0 requires a fresh `~/.openpalm/` layout.
+- Remove runtime loading of legacy channels entirely; do not run two parallel models.
+- Keep the config/data ownership split intact inside the new layout: user-facing intent in `config/openpalm.yml`, derived runtime state in `data/`.
 
 ## Acceptance criteria
 
@@ -183,13 +172,13 @@
 - Users can discover components, create one or more instances, configure schema-backed values, start/stop/restart/delete instances, and view status from both CLI and admin.
 - `@sensitive` component fields use the shared secret backend and do not persist plaintext secrets in instance `.env` files.
 - Registry packaging, built-in component discovery, and CI validation all operate on `registry/components/<name>/` directories.
-- Legacy channel installs are detected, migration is documented and executable, and runtime support for direct `channels/*.yml` loading is removed.
-- Automated coverage exists for the new home layout, compose arg ordering, instance lifecycle, migration detection, registry validation, and UI/API happy paths.
+- Legacy channel installs are detected as unsupported, and runtime support for direct `channels/*.yml` loading is removed.
+- Automated coverage exists for the new home layout, compose arg ordering, instance lifecycle, legacy-install rejection, registry validation, and UI/API happy paths.
 
 ## Risks and mitigation
 
 - Large refactor breadth: filesystem, ports, secrets, CLI, admin, and registry all change together. Mitigate by landing Phase 0 first and keeping lib-level tests green before UI work starts.
-- Dual-model temptation: keeping channel codepaths for too long will create divergent behavior. Mitigate by using migration shims only at boundaries and removing legacy runtime loading early.
+- Dual-model temptation: keeping channel codepaths for too long will create divergent behavior. Mitigate by removing legacy runtime loading early and documenting the clean break clearly.
 - Security regressions from overlay flexibility: component overlays can become an escape hatch around guardian/vault rules. Mitigate with explicit lib validation plus CI policy checks.
 - Secrets integration coupling with #300: if secret backend contracts move late, component config can stall. Mitigate by agreeing early on the lib interface for secret-backed component fields.
 - Test churn: staging and channel assumptions are widespread. Mitigate by budgeting explicit rewrite time instead of treating tests as incidental cleanup.
@@ -198,8 +187,8 @@
 
 - `docs/technical/core-principles.md:30` - authoritative filesystem contract, lib-first control-plane rule, and service-port assignments.
 - `.github/roadmap/0.10.0/README.md:21` - roadmap scope for #301; `.github/roadmap/0.10.0/README.md:65` and `.github/roadmap/0.10.0/README.md:169` - embedded filesystem and port prerequisite work.
-- `.github/roadmap/0.10.0/openpalm-components-plan.md:33` - instance directory model; `.github/roadmap/0.10.0/openpalm-components-plan.md:285` - target admin API; `.github/roadmap/0.10.0/openpalm-components-plan.md:616` - CLI and lib-first guidance.
-- `.github/roadmap/0.10.0/fs-mounts-refactor.md:94` - target filesystem layout; `.github/roadmap/0.10.0/fs-mounts-refactor.md:358` - validate/rollback flow; `.github/roadmap/0.10.0/fs-mounts-refactor.md:677` - migration plan.
+- `.github/roadmap/0.10.0/README.md:21` - roadmap scope for #301 and addon terminology; `.github/roadmap/0.10.0/README.md:221` - shared-lib rule.
+- `.github/roadmap/0.10.0/fs-mounts-refactor.md:94` - target filesystem layout; `.github/roadmap/0.10.0/fs-mounts-refactor.md:358` - validate/rollback flow; `.github/roadmap/0.10.0/fs-mounts-refactor.md:677` - clean-break direction.
 - `packages/lib/src/control-plane/paths.ts:1` - current XDG path resolver to replace with home-rooted helpers.
 - `packages/lib/src/control-plane/staging.ts:1` - current staging pipeline to remove or repurpose.
 - `packages/lib/src/control-plane/lifecycle.ts:46` - current state creation and compose assembly; `packages/lib/src/control-plane/lifecycle.ts:222` - staged compose file list builder that must become instance-based.

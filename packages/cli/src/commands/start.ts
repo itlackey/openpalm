@@ -32,8 +32,8 @@ export async function runStartAction(
   }
 
   // Start specific services
+  const state = await ensureValidState();
   for (const service of services) {
-    const state = await ensureValidState();
     await runComposeWithPreflight(state, ['up', '-d', service]);
   }
 }

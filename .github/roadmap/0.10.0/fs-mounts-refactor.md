@@ -676,106 +676,27 @@ network:
 
 ---
 
-## Part 8: Migration (0.9.x → 0.10.0)
+## Part 8: Clean Break (0.9.x → 0.10.0)
 
-> Added 2026-03-19 by agent review consensus (5/5 unanimous). An automated migration tool is non-negotiable if the FS refactor ships.
+> Updated for the final 0.10.0 direction: the filesystem refactor ships as a clean break, not an in-place migration.
 
-### 8.1 `openpalm migrate` Command
+0.10.0 standardizes on `~/.openpalm/` as the only supported runtime layout.
 
-The CLI provides a migration command that handles the XDG-to-`~/.openpalm/` transition atomically:
+- There is no `openpalm migrate` command.
+- Legacy XDG roots are not converted in place.
+- Legacy `channels/*.yml` overlays are not translated into addon definitions.
+- Users must reinstall and re-seed their stack into the new layout.
 
-```bash
-openpalm migrate
-```
+### 8.1 Operator Expectations
 
-### 8.2 Migration Steps
+Users upgrading from 0.9.x should:
 
-```
-1. DETECT     — scan for existing XDG directories
-                 • Check ~/.config/openpalm/ (CONFIG_HOME)
-                 • Check ~/.local/share/openpalm/ (DATA_HOME)
-                 • Check ~/.local/state/openpalm/ (STATE_HOME)
-                 • Check custom paths via OP_CONFIG_HOME / OP_DATA_HOME / OP_STATE_HOME
-                 → if none found: skip migration, run fresh install
+1. Back up existing XDG config/data/secrets manually.
+2. Install or update to 0.10.0.
+3. Create a fresh `~/.openpalm/` layout.
+4. Reinstall channels/services as addons.
+5. Re-enter secrets into `vault/user/user.env` and `vault/stack/stack.env`.
 
-2. STOP       — docker compose down (stop all containers)
+### 8.2 Legacy State Handling
 
-3. CREATE     — create ~/.openpalm/ directory structure
-                 • config/, vault/, data/, logs/
-
-4. MOVE       — relocate files from old to new locations
-                 CONFIG_HOME/channels/*.yml     → config/components/channel-*.yml
-                 CONFIG_HOME/opencode/          → config/assistant/
-                 CONFIG_HOME/secrets.env        → (split into vault/user.env + vault/system.env)
-                 DATA_HOME/admin/               → data/admin/
-                 DATA_HOME/assistant/           → data/assistant/
-                 DATA_HOME/memory/              → data/memory/
-                 DATA_HOME/guardian/            → data/guardian/
-                 DATA_HOME/caddy/              → data/caddy/
-                 DATA_HOME/opencode/           → data/assistant/ (merge)
-                 DATA_HOME/stack.env           → (merge system values into vault/system.env)
-                 DATA_HOME/automations/        → config/automations/
-                 STATE_HOME/opencode/          → logs/opencode/
-                 STATE_HOME/artifacts/         → (discarded — staging tier eliminated)
-                 ~/openpalm/ (WORK_DIR)        → data/workspace/
-
-5. SPLIT ENV  — split secrets.env + stack.env into user.env + system.env
-                 • LLM keys, provider URLs, MEMORY_USER_ID → vault/user.env
-                 • ADMIN_TOKEN, HMAC secrets, paths, UID/GID, image tags → vault/system.env
-                 • Generate user.env.schema + system.env.schema from templates
-
-6. VALIDATE   — run the standard validate-in-place checks
-                 • varlock validates both env files against schemas
-                 • docker compose config validates compose files
-                 → if validation fails: report errors, do NOT delete old directories
-
-7. VERIFY     — start stack with new layout, run health checks
-                 → if health checks pass: report success, print next steps
-                 → if health checks fail: stop stack, report error
-
-8. PRESERVE   — OLD directories are NOT deleted automatically
-                 • Print: "Migration complete. Old directories preserved at:"
-                 • Print: "  ~/.config/openpalm/"
-                 • Print: "  ~/.local/share/openpalm/"
-                 • Print: "  ~/.local/state/openpalm/"
-                 • Print: "Run 'openpalm migrate --cleanup' to remove them after verifying."
-```
-
-### 8.3 Env File Splitting Rules
-
-| Source | Variable | Destination |
-|--------|----------|-------------|
-| `secrets.env` | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `GOOGLE_API_KEY` | `vault/user.env` |
-| `secrets.env` | `OPENAI_BASE_URL`, `SYSTEM_LLM_*`, `EMBEDDING_*` | `vault/user.env` |
-| `secrets.env` | `ADMIN_TOKEN` | `vault/system.env` (as `OP_ADMIN_TOKEN`) |
-| `secrets.env` | `OPENMEMORY_USER_ID` | `vault/user.env` (as `MEMORY_USER_ID`) |
-| `stack.env` | `OP_HOME`, `OP_UID`, `OP_GID` | `vault/system.env` |
-| `stack.env` | `OP_IMAGE_*` | `vault/system.env` |
-| `stack.env` | `MEMORY_AUTH_TOKEN`, `OPENCODE_SERVER_PASSWORD` | `vault/system.env` |
-| `stack.env` | `CHANNEL_*_SECRET` | `vault/system.env` |
-| `stack.env` | `OP_DOCKER_SOCK` | `vault/system.env` |
-
-### 8.4 Legacy Environment Variable Handling
-
-If the user has `OP_CONFIG_HOME`, `OP_DATA_HOME`, or `OP_STATE_HOME` set in their shell environment:
-
-```
-WARNING: Legacy environment variables detected:
-  OP_CONFIG_HOME=/custom/path/config
-  OP_DATA_HOME=/custom/path/data
-
-OpenPalm 0.10.0 uses OP_HOME (~/.openpalm by default).
-Remove these variables from your shell profile and re-run migration.
-```
-
-The migration tool refuses to proceed with legacy env vars set, to prevent confusion about which paths are authoritative.
-
-### 8.5 Combined Migration
-
-Since 0.10.0 also introduces the component system (replacing legacy channels), `openpalm migrate` handles both transitions:
-
-1. Directory relocation (XDG → `~/.openpalm/`)
-2. Env file splitting (`secrets.env` + `stack.env` → `user.env` + `system.env`)
-3. Channel-to-component conversion (`.yml` overlays move to `config/components/`)
-
-Users do NOT need to run separate migration commands for the filesystem and component changes.
+If legacy XDG directories or legacy env vars are detected, tooling should treat them as unsupported legacy state and direct the user to the clean-break upgrade documentation rather than attempting relocation or conversion.

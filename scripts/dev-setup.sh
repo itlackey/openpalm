@@ -155,7 +155,6 @@ OP_MEMORY_TOKEN=${mem_token}
 OP_OPENCODE_PASSWORD=
 
 OP_HOME=$DEV_ROOT
-OP_WORK_DIR=$DEV_ROOT/work
 
 OP_UID=$(id -u)
 OP_GID=$(id -g)

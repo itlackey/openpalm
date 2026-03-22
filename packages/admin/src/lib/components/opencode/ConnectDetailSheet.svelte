@@ -65,6 +65,7 @@
     const headers: HeadersInit = {
       'x-admin-token': token,
       'x-request-id': crypto.randomUUID(),
+      'x-requested-by': 'ui',
       'Content-Type': 'application/json',
     };
 
@@ -118,14 +119,16 @@
     if (!pollToken) return;
     const token = getAdminToken() ?? '';
     const maxAttempts = 120; // 10 minutes at 5s intervals
+    let consecutiveErrors = 0;
     for (let i = 0; i < maxAttempts && polling; i++) {
       await new Promise((r) => setTimeout(r, 5000));
       if (!polling) break;
       try {
         const res = await fetch(
           `/admin/opencode/providers/${encodeURIComponent(provider.id)}/auth?pollToken=${encodeURIComponent(pollToken)}`,
-          { headers: { 'x-admin-token': token, 'x-request-id': crypto.randomUUID() } }
+          { headers: { 'x-admin-token': token, 'x-request-id': crypto.randomUUID(), 'x-requested-by': 'ui' } }
         );
+        consecutiveErrors = 0;
         const data = await res.json().catch(() => null) as { status?: string; message?: string } | null;
         if (!res.ok) {
           error = data?.message || `Authorization failed (HTTP ${res.status})`;
@@ -149,7 +152,12 @@
           return;
         }
       } catch {
-        // Retry on network error
+        consecutiveErrors += 1;
+        if (consecutiveErrors >= 5) {
+          error = 'Unable to reach the server. Please check your connection and try again.';
+          polling = false;
+          return;
+        }
       }
     }
     if (polling) {

@@ -346,41 +346,6 @@ services:
     expect(components[0].labels.name).toBe("Registry Discord");
   });
 
-  test("registry overrides builtin", () => {
-    const builtinDir = join(tempDir, "builtin");
-    const openpalmHome = join(tempDir, "home");
-    const catalogDir = join(openpalmHome, "data", "catalog");
-    mkdirSync(builtinDir, { recursive: true });
-    mkdirSync(catalogDir, { recursive: true });
-
-    writeComponentDir(builtinDir, "discord", {
-      compose: `
-services:
-  svc:
-    image: builtin:latest
-    labels:
-      openpalm.name: "Builtin Discord"
-      openpalm.description: "From builtin"
-`,
-    });
-
-    writeComponentDir(catalogDir, "discord", {
-      compose: `
-services:
-  svc:
-    image: registry:latest
-    labels:
-      openpalm.name: "Registry Discord"
-      openpalm.description: "From registry"
-`,
-    });
-
-    const components = discoverComponents(openpalmHome, builtinDir);
-    expect(components).toHaveLength(1);
-    expect(components[0].source).toBe("registry");
-    expect(components[0].labels.name).toBe("Registry Discord");
-  });
-
   test("skips directories missing compose.yml", () => {
     const builtinDir = join(tempDir, "builtin");
     const openpalmHome = join(tempDir, "home");

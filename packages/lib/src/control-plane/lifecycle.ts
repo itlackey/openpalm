@@ -102,8 +102,8 @@ async function reconcileCore(
   if (opts.activateServices) {
     for (const s of CORE_SERVICES) state.services[s] = "running";
   }
-  ensureMemoryDir();
-  ensureCoreAutomations();
+  ensureMemoryDir(state.dataDir);
+  ensureCoreAutomations(state.configDir);
   if (opts.seedMemoryConfig) ensureMemoryConfig(state.dataDir);
 
   const active: string[] = [];

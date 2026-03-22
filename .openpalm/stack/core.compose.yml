@@ -57,7 +57,7 @@ services:
       OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
       TERM: xterm-256color
       HOME: /home/opencode
-      AKM_STASH_DIR: /stash
+      AKM_STASH_DIR: /home/opencode/.akm
       OP_ADMIN_API_URL: ${OP_ADMIN_API_URL:-}
       OP_ASSISTANT_TOKEN: ${OP_ASSISTANT_TOKEN:-}
       MEMORY_API_URL: http://memory:8765
@@ -73,7 +73,7 @@ services:
       - ${OP_HOME}/config/assistant:/home/opencode/.config/opencode
       - ${OP_HOME}/vault/stack/auth.json:/home/opencode/.local/share/opencode/auth.json
       - ${OP_HOME}/vault/user/user.env:/etc/openpalm-vault/user.env:ro
-      - ${OP_HOME}/data/assistant:/home/opencode
+      - ${OP_HOME}/data/assistant:/home/opencode/data
       - ${OP_HOME}/data/stash:/home/opencode/.akm
       - ${OP_HOME}/data/workspace:/work
       - ${OP_HOME}/logs/opencode:/home/opencode/.local/state/opencode
@@ -107,7 +107,7 @@ services:
       PORT: "8080"
       OP_ASSISTANT_URL: http://assistant:4096
       OPENCODE_TIMEOUT_MS: "0"
-      ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
+      OP_ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
       GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
     volumes:
       - ${OP_HOME}/data/guardian:/app/data
@@ -132,7 +132,7 @@ services:
     environment:
       PORT: "8090"
       OP_HOME: /openpalm
-      OP_ADMIN_TOKEN: ${OP_ASSISTANT_TOKEN:-}
+      OP_ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
       OP_ADMIN_API_URL: ${OP_ADMIN_API_URL:-}
       OPENCODE_API_URL: http://assistant:4096
       OPENCODE_SERVER_PASSWORD: ${OP_OPENCODE_PASSWORD:-}

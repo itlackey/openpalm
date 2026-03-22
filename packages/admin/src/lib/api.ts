@@ -3,9 +3,7 @@ import type {
   HealthPayload,
   ContainerListResponse,
   AutomationsResponse,
-  MemoryConfig,
   MemoryConfigResponse,
-  MemoryConfigSaveResult,
   SystemConnectionSaveResult,
   ConnectionsResponseDto,
   SaveConnectionsPayload,
@@ -174,13 +172,6 @@ export async function fetchConnectionsDto(
   return (await res.json()) as ConnectionsResponseDto;
 }
 
-export async function saveSystemConnection(
-  token: string,
-  payload: SaveConnectionsPayload
-): Promise<SystemConnectionSaveResult> {
-  return saveConnections(token, payload);
-}
-
 export async function saveConnections(
   token: string,
   payload: SaveConnectionsPayload
@@ -207,6 +198,10 @@ export async function fetchMemoryConfig(
 ): Promise<MemoryConfigResponse> {
   const res = await requireOk(await request('GET', '/admin/memory/config', token));
   return (await res.json()) as MemoryConfigResponse;
+}
+
+export async function resetMemoryCollection(token: string): Promise<void> {
+  await requireOk(await request('POST', '/admin/memory/reset-collection', token, {}));
 }
 
 // ── Component System (v0.10.0) ──────────────────────────────────────────

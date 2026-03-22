@@ -2,6 +2,7 @@
  * Docker Compose CLI wrapper — re-exported from @openpalm/lib
  * with preflight-enforcing wrappers for mutation operations.
  */
+import { execFile } from "node:child_process";
 import type { DockerResult } from "@openpalm/lib";
 import {
   checkDocker as _checkDocker,
@@ -112,4 +113,30 @@ export function selfRecreateAdmin(
   // Preflight is synchronous-incompatible here but the compose files
   // were already validated by the lifecycle preflight in reconcileCore().
   _selfRecreateAdmin(options);
+}
+
+// ── Container inspection ──────────────────────────────────────────────
+
+/**
+ * Query Docker for a container's running state by name.
+ * Returns "running" or "stopped". Falls back to "unknown" on error.
+ */
+export function inspectContainerStatus(
+  containerName: string
+): Promise<"running" | "stopped" | "unknown"> {
+  return new Promise((resolve) => {
+    execFile(
+      "docker",
+      ["inspect", "--format", "{{.State.Status}}", containerName],
+      { timeout: 5000 },
+      (error, stdout) => {
+        if (error) {
+          resolve("unknown");
+          return;
+        }
+        const status = (stdout ?? "").toString().trim();
+        resolve(status === "running" ? "running" : "stopped");
+      }
+    );
+  });
 }

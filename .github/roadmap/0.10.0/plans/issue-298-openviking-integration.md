@@ -175,7 +175,7 @@
 - `.github/roadmap/0.10.0/README.md:219` - roadmap-level rule that all control-plane logic belongs in `packages/lib/`.
 - `.github/roadmap/0.10.0/knowledge-system-roadmap.md:52` - detailed OpenViking implementation breakdown for the 0.10.0 priority.
 - `.github/roadmap/0.10.0/knowledge-system-roadmap.md:89` - proposed component layout, `ov.conf` handling, assistant tools, session hooks, and token-budget work.
-- `.github/roadmap/0.10.0/openpalm-components-plan.md:671` - cross-component env injection design for extending `assistant` from a component overlay.
+- `.github/roadmap/0.10.0/plans/issue-301-unified-component-system.md` - addon overlay design and extension points for issue #301.
 - `docs/technical/core-principles.md:30` - whole-file assembly, single-root filesystem, and shared-lib control-plane requirements.
 - `docs/technical/core-principles.md:50` - vault boundary and assistant/admin write-access rules relevant to `ov.conf` and secrets.
 - `docs/technical/core-principles.md:128` - authoritative shared control-plane library rule.

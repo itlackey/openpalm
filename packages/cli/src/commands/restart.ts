@@ -29,8 +29,8 @@ export async function runRestartAction(services: string[]): Promise<void> {
     return;
   }
 
+  const state = await ensureValidState();
   for (const service of services) {
-    const state = await ensureValidState();
     await runComposeWithPreflight(state, ['restart', service]);
   }
 }

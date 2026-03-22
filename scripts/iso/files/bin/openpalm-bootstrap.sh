@@ -22,12 +22,12 @@ mkdir -p \
 	"$OP_HOME/stack"
 
 if [[ ! -f "$OP_HOME/vault/user/user.env" ]]; then
-	cp "$INSTALL_HOME/vault/user.env.example" "$OP_HOME/vault/user/user.env"
+	touch "$OP_HOME/vault/user/user.env"
 	chmod 600 "$OP_HOME/vault/user/user.env"
 fi
 
 if [[ ! -f "$OP_HOME/vault/stack/stack.env" ]]; then
-	cp "$INSTALL_HOME/vault/stack.env.example" "$OP_HOME/vault/stack/stack.env"
+	touch "$OP_HOME/vault/stack/stack.env"
 	chmod 600 "$OP_HOME/vault/stack/stack.env"
 fi
 
