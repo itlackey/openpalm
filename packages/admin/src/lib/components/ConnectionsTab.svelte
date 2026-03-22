@@ -504,11 +504,11 @@
           </div>
           {#if capabilities}
             <div class="field-group">
-              <label>LLM</label>
+              <span class="field-label">LLM</span>
               <span class="field-value">{capabilities.llm}</span>
             </div>
             <div class="field-group">
-              <label>Embeddings</label>
+              <span class="field-label">Embeddings</span>
               <span class="field-value">{capabilities.embeddings.provider}/{capabilities.embeddings.model} ({capabilities.embeddings.dims} dims)</span>
             </div>
           {:else}
@@ -760,36 +760,6 @@
     color: var(--color-text-tertiary);
   }
 
-  .field-status-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-  }
-
-  .field-status {
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
-  }
-
-  .field-status--warning {
-    color: var(--color-warning, #b45309);
-  }
-
-  .btn-link-inline {
-    padding: 0;
-    border: none;
-    background: none;
-    color: var(--color-primary);
-    font-size: var(--text-xs);
-    font-weight: var(--font-medium);
-    cursor: pointer;
-  }
-
-  .btn-link-inline:hover {
-    text-decoration: underline;
-  }
-
   .settings-stack {
     display: flex;
     flex-direction: column;
@@ -830,7 +800,7 @@
     margin-bottom: 0;
   }
 
-  .field-group label {
+  .field-label {
     display: block;
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
@@ -838,100 +808,12 @@
     margin-bottom: var(--space-2);
   }
 
-  .field-group input[type='text'],
-  .field-group input[type='number'],
-  .field-group select {
-    width: 100%;
-    height: 44px;
-    border: 1.5px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    padding: 0 14px;
-    background: var(--color-bg);
+  .field-value {
+    display: block;
     color: var(--color-text);
     font-size: var(--text-base);
-    transition: all 0.2s ease;
-  }
-
-  .field-group input:focus,
-  .field-group select:focus {
-    outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 4px var(--color-primary-subtle);
-  }
-
-  .addon-row {
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    overflow: hidden;
-  }
-
-  .addon-row--active {
-    border-color: var(--color-primary);
-  }
-
-  .addon-toggle-row {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
-    background: var(--color-surface);
-  }
-
-  .addon-toggle-label {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-
-  .addon-label-text {
-    font-size: var(--text-sm);
-    font-weight: var(--font-medium);
-    color: var(--color-text);
-  }
-
-  .addon-help {
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
-    line-height: 1.4;
-    padding-top: 2px;
-  }
-
-  .addon-fields {
-    padding: var(--space-3) var(--space-4) var(--space-4);
-    border-top: 1px solid var(--color-border);
-    background: var(--color-bg-secondary);
-  }
-
-  .radio-fieldset {
-    border: none;
-    padding: 0;
-    margin: 0;
-  }
-
-  .radio-legend {
-    display: block;
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
-    margin-bottom: var(--space-2);
-    padding: 0;
-  }
-
-  .radio-group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .radio-label {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-sm);
-    color: var(--color-text);
-    cursor: pointer;
+    line-height: 1.5;
+    word-break: break-word;
   }
 
   /* ── Settings Tabs ──────────────────────────────────────────── */
@@ -1119,63 +1001,20 @@
     border-bottom: none;
   }
 
-  .conn-col--name  { flex: 2; min-width: 0; }
-  .conn-col--type  { flex: 1; min-width: 0; }
-  .conn-col--url   { flex: 3; min-width: 0; overflow: hidden;
-                     text-overflow: ellipsis; white-space: nowrap; }
-  .conn-col--auth  { flex: 1; min-width: 0; }
-  .conn-col--actions {
-    flex: 0 0 auto;
-    display: flex;
-    gap: var(--space-2);
+  .conn-col--name { flex: 2; min-width: 0; }
+  .conn-col--model,
+  .conn-col--embed {
+    flex: 3;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
+
+  .conn-col--auth { flex: 1; min-width: 0; }
 
   .conn-name {
     font-weight: var(--font-medium);
-  }
-
-  .conn-url {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
-  }
-
-  .badge-local {
-    color: var(--color-info);
-    background: var(--color-info-bg);
-    padding: 2px 8px;
-    border-radius: var(--radius-full);
-    font-size: var(--text-xs);
-    font-weight: var(--font-semibold);
-  }
-
-  .badge-remote {
-    color: var(--color-text-secondary);
-    background: var(--color-bg-tertiary);
-    padding: 2px 8px;
-    border-radius: var(--radius-full);
-    font-size: var(--text-xs);
-    font-weight: var(--font-semibold);
-  }
-
-  .btn-action {
-    background: none;
-    border: none;
-    font-size: var(--text-xs);
-    font-family: var(--font-sans);
-    font-weight: var(--font-medium);
-    color: var(--color-primary);
-    cursor: pointer;
-    padding: 2px 4px;
-    border-radius: var(--radius-sm);
-  }
-
-  .btn-action:hover {
-    text-decoration: underline;
-  }
-
-  .btn-action--danger {
-    color: var(--color-danger);
   }
 
   /* ── Empty state ─────────────────────────────────────────────── */
@@ -1220,7 +1059,7 @@
       grid-template-columns: 1fr;
     }
 
-    .conn-col--url,
+    .conn-col--embed,
     .conn-col--auth {
       display: none;
     }

@@ -704,12 +704,13 @@ test.describe("@mocked Setup Wizard UI", () => {
 			// Deploy screen should appear
 			await expect(page.locator('[data-testid="step-deploy"]')).toBeVisible();
 
-			// Verify the payload sent to /api/setup/complete
+			// Verify the payload sent to /api/setup/complete (SetupSpec v2)
 			expect(setupPayload).not.toBeNull();
 			const payload = setupPayload as Record<string, unknown>;
-			expect(payload.version).toBe(1);
 			expect((payload.security as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
-			expect((payload.memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
+			const spec = payload.spec as Record<string, unknown>;
+			expect(spec.version).toBe(2);
+			expect(((spec.capabilities as Record<string, unknown>).memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
 			const conns = payload.connections;
 			expect(Array.isArray(conns)).toBe(true);
 			expect((conns as Array<Record<string, string>>)[0].provider).toBe("ollama");
@@ -870,14 +871,19 @@ test.describe("@mocked Setup Wizard UI", () => {
 			// Wait for deploy to complete
 			await expect(page.locator("#deploy-done")).toBeVisible({ timeout: 15_000 });
 
-			// Validate the captured payload
+			// Validate the captured payload (SetupSpec v2 format)
 			expect(capturedPayload).not.toBeNull();
 			const payload = capturedPayload as Record<string, unknown>;
-			expect(payload.version).toBe(1);
 			expect((payload.security as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
 			expect((payload.owner as Record<string, unknown>).name).toBe(TEST_OWNER_NAME);
 			expect((payload.owner as Record<string, unknown>).email).toBe(TEST_OWNER_EMAIL);
-			expect((payload.memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
+
+			// Spec (stack.yaml content)
+			const spec = payload.spec as Record<string, unknown>;
+			expect(spec.version).toBe(2);
+			const caps = spec.capabilities as Record<string, unknown>;
+			expect(typeof caps.llm).toBe("string");
+			expect((caps.memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
 
 			// Connections
 			const conns = payload.connections as Array<Record<string, string>>;
@@ -885,11 +891,6 @@ test.describe("@mocked Setup Wizard UI", () => {
 			expect(conns[0].provider).toBe("ollama");
 			expect(conns[0].baseUrl).toBe(OLLAMA_URL);
 			expect(conns[0].name).toBe("Ollama");
-
-			// Assignments
-			const assignments = payload.assignments as Record<string, Record<string, unknown>>;
-			expect(assignments.llm.connectionId).toBe("ollama");
-			expect(assignments.embeddings.connectionId).toBe("ollama");
 		});
 	});
 });
