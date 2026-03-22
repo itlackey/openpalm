@@ -321,3 +321,189 @@ describe('error response safety', () => {
     expect(safeMessage).not.toContain('handleRequest');
   });
 });
+
+// ── buildConfigFromEnv logic ─────────────────────────────────────────
+
+type MemoryConfig = {
+  llm?: { provider: string; config: Record<string, unknown> };
+  embedder?: { provider: string; config: Record<string, unknown> };
+  vectorStore?: { provider: string; config: Record<string, unknown> };
+  historyDbPath?: string | null;
+  customPrompt?: string;
+};
+
+/**
+ * Standalone copy of buildConfigFromEnv for testing (avoids importing server.ts
+ * which starts Bun.serve on import).
+ */
+function buildConfigFromEnv(env: Record<string, string | undefined>): MemoryConfig | null {
+  const provider = env.SYSTEM_LLM_PROVIDER;
+  if (!provider) return null;
+
+  const model = env.SYSTEM_LLM_MODEL || undefined;
+  const baseUrl = env.SYSTEM_LLM_BASE_URL || undefined;
+  const embeddingModel = env.EMBEDDING_MODEL || undefined;
+  const embeddingDims = env.EMBEDDING_DIMS ? parseInt(env.EMBEDDING_DIMS, 10) : 1536;
+
+  const providerKeyName = `${provider.toUpperCase()}_API_KEY`;
+  const apiKey = env[providerKeyName] || env.OPENAI_API_KEY || undefined;
+
+  let llmBaseUrl = baseUrl;
+  if (!llmBaseUrl && provider === 'ollama') {
+    llmBaseUrl = 'http://host.docker.internal:11434';
+  }
+  if (!llmBaseUrl && env.OPENAI_BASE_URL) {
+    llmBaseUrl = env.OPENAI_BASE_URL;
+  }
+
+  let embedderProvider = provider;
+  if (embeddingModel) {
+    if (embeddingModel.startsWith('nomic-') || embeddingModel.includes('ollama')) {
+      embedderProvider = 'ollama';
+    }
+  }
+
+  const embedderKeyName = `${embedderProvider.toUpperCase()}_API_KEY`;
+  const embedderApiKey = env[embedderKeyName] || env.OPENAI_API_KEY || undefined;
+  let embedderBaseUrl: string | undefined;
+  if (embedderProvider === 'ollama') {
+    embedderBaseUrl = env.SYSTEM_LLM_BASE_URL || 'http://host.docker.internal:11434';
+  } else if (env.OPENAI_BASE_URL) {
+    embedderBaseUrl = env.OPENAI_BASE_URL;
+  }
+
+  return {
+    llm: {
+      provider,
+      config: {
+        model,
+        apiKey,
+        baseUrl: llmBaseUrl,
+      },
+    },
+    embedder: {
+      provider: embedderProvider,
+      config: {
+        model: embeddingModel,
+        apiKey: embedderApiKey,
+        baseUrl: embedderBaseUrl,
+        dimensions: embeddingDims,
+      },
+    },
+    vectorStore: {
+      provider: 'sqlite-vec',
+      config: {
+        collectionName: 'memory',
+        dimensions: embeddingDims,
+      },
+    },
+    historyDbPath: null,
+  };
+}
+
+describe('buildConfigFromEnv', () => {
+  test('returns null when SYSTEM_LLM_PROVIDER is not set', () => {
+    expect(buildConfigFromEnv({})).toBeNull();
+    expect(buildConfigFromEnv({ SYSTEM_LLM_MODEL: 'gpt-4o' })).toBeNull();
+  });
+
+  test('builds openai config from env vars', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'openai',
+      SYSTEM_LLM_MODEL: 'gpt-4o-mini',
+      OPENAI_API_KEY: 'sk-test123',
+      EMBEDDING_MODEL: 'text-embedding-3-small',
+      EMBEDDING_DIMS: '1536',
+    });
+    expect(config).not.toBeNull();
+    expect(config!.llm!.provider).toBe('openai');
+    expect(config!.llm!.config.model).toBe('gpt-4o-mini');
+    expect(config!.llm!.config.apiKey).toBe('sk-test123');
+    expect(config!.embedder!.provider).toBe('openai');
+    expect(config!.embedder!.config.model).toBe('text-embedding-3-small');
+    expect(config!.embedder!.config.dimensions).toBe(1536);
+  });
+
+  test('builds ollama config with default base URL', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'ollama',
+      SYSTEM_LLM_MODEL: 'qwen2.5-coder:3b',
+      EMBEDDING_MODEL: 'nomic-embed-text',
+      EMBEDDING_DIMS: '768',
+    });
+    expect(config).not.toBeNull();
+    expect(config!.llm!.provider).toBe('ollama');
+    expect(config!.llm!.config.baseUrl).toBe('http://host.docker.internal:11434');
+    expect(config!.embedder!.provider).toBe('ollama');
+    expect(config!.embedder!.config.baseUrl).toBe('http://host.docker.internal:11434');
+    expect(config!.embedder!.config.dimensions).toBe(768);
+  });
+
+  test('uses SYSTEM_LLM_BASE_URL when set', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'openai',
+      SYSTEM_LLM_MODEL: 'gpt-4o',
+      SYSTEM_LLM_BASE_URL: 'https://custom.api.example.com/v1',
+      OPENAI_API_KEY: 'sk-custom',
+    });
+    expect(config!.llm!.config.baseUrl).toBe('https://custom.api.example.com/v1');
+  });
+
+  test('falls back to OPENAI_BASE_URL for non-ollama providers', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'openai',
+      SYSTEM_LLM_MODEL: 'gpt-4o',
+      OPENAI_BASE_URL: 'https://proxy.example.com/v1',
+      OPENAI_API_KEY: 'sk-proxy',
+    });
+    expect(config!.llm!.config.baseUrl).toBe('https://proxy.example.com/v1');
+  });
+
+  test('uses provider-specific API key over OPENAI_API_KEY', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'anthropic',
+      SYSTEM_LLM_MODEL: 'claude-3-haiku-20240307',
+      ANTHROPIC_API_KEY: 'sk-ant-specific',
+      OPENAI_API_KEY: 'sk-openai-fallback',
+    });
+    expect(config!.llm!.config.apiKey).toBe('sk-ant-specific');
+  });
+
+  test('falls back to OPENAI_API_KEY when provider key not set', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'groq',
+      SYSTEM_LLM_MODEL: 'llama-3.1-8b-instant',
+      OPENAI_API_KEY: 'sk-openai-fallback',
+    });
+    expect(config!.llm!.config.apiKey).toBe('sk-openai-fallback');
+  });
+
+  test('nomic embedding model selects ollama as embedder provider', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'openai',
+      SYSTEM_LLM_MODEL: 'gpt-4o-mini',
+      OPENAI_API_KEY: 'sk-test',
+      EMBEDDING_MODEL: 'nomic-embed-text',
+      EMBEDDING_DIMS: '768',
+    });
+    expect(config!.llm!.provider).toBe('openai');
+    expect(config!.embedder!.provider).toBe('ollama');
+    expect(config!.embedder!.config.baseUrl).toBe('http://host.docker.internal:11434');
+  });
+
+  test('defaults embedding dims to 1536 when not set', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'openai',
+    });
+    expect(config!.embedder!.config.dimensions).toBe(1536);
+    expect(config!.vectorStore!.config.dimensions).toBe(1536);
+  });
+
+  test('vectorStore is always sqlite-vec', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'openai',
+    });
+    expect(config!.vectorStore!.provider).toBe('sqlite-vec');
+    expect(config!.vectorStore!.config.collectionName).toBe('memory');
+  });
+});

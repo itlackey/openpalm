@@ -21,15 +21,9 @@ import {
   writeStackSpec,
   writeManagedEnvFiles,
   formatCapabilityString,
-  parseCapabilityString,
   ALLOWED_CONNECTION_KEYS,
   maskConnectionValue,
-  writeMemoryConfig,
-  resolveConfigForPush,
-  pushConfigToMemory,
-  checkVectorDimensions,
-  buildMem0Mapping,
-  type MemoryConfig,
+  readMemoryConfig,
   type CallerType,
   type StackSpec,
 } from "@openpalm/lib";
@@ -156,57 +150,21 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(500, "internal_error", "Failed to update stack.yaml", {}, requestId);
   }
 
-  // 3. Build and write Memory config
-  const apiKeyEnvRef = PROVIDER_KEY_MAP[provider]
-    ? `env:${PROVIDER_KEY_MAP[provider]}`
-    : (apiKey || "not-needed");
-
-  const omConfig: MemoryConfig = buildMem0Mapping({
-    llm: {
-      provider,
-      baseUrl,
-      model: systemModel,
-      apiKeyRef: apiKeyEnvRef,
-    },
-    embedder: {
-      provider,
-      baseUrl,
-      model: embeddingModel || 'text-embedding-3-small',
-      apiKeyRef: apiKeyEnvRef,
-    },
-    embeddingDims: resolvedDims,
-    customInstructions,
-  });
-
+  // 3. Check embedding dimension mismatch against persisted config
   let dimensionWarning: string | undefined;
   let dimensionMismatch = false;
-  const dimResult = checkVectorDimensions(state.dataDir, omConfig);
-  if (!dimResult.match) {
+  const persisted = readMemoryConfig(state.dataDir);
+  const currentDims = persisted.mem0.vector_store.config.embedding_model_dims;
+  if (currentDims !== resolvedDims) {
     dimensionMismatch = true;
-    dimensionWarning = `Embedding dimensions changed: current ${dimResult.currentDims}, config expects ${dimResult.expectedDims}. Reset the memory collection to apply.`;
+    dimensionWarning = `Embedding dimensions changed: current ${currentDims}, config expects ${resolvedDims}. Reset the memory collection to apply.`;
   }
 
-  writeMemoryConfig(state.dataDir, omConfig);
-
-  // 4. Push resolved config to running memory container
-  let pushed = false;
-  let pushError: string | undefined;
-  try {
-    const resolved = resolveConfigForPush(omConfig, state.configDir);
-    const pushResult = await pushConfigToMemory(resolved);
-    pushed = pushResult.ok;
-    if (!pushResult.ok) pushError = pushResult.error;
-  } catch (err) {
-    pushError = String(err);
-  }
-
-  appendAudit(state, actor, "connections.save", { provider, pushed, dimensionMismatch }, true, requestId, callerType);
-  logger.info("connections save", { provider, pushed, dimensionMismatch, requestId });
+  appendAudit(state, actor, "connections.save", { provider, dimensionMismatch }, true, requestId, callerType);
+  logger.info("connections save", { provider, dimensionMismatch, requestId });
 
   return jsonResponse(200, {
     ok: true,
-    pushed,
-    pushError,
     dimensionWarning,
     dimensionMismatch,
   }, requestId);

@@ -133,7 +133,7 @@ Key env:
 | `OPENCODE_AUTH` | `false` | Auth disabled because host binding is loopback-only by default |
 | `OPENCODE_ENABLE_SSH` | `stack.env` | Optional SSH enablement |
 | `HOME` | `/home/opencode` | Runtime home |
-| `AKM_STASH_DIR` | `/stash` | AKM stash location hint |
+| `AKM_STASH_DIR` | `/home/opencode/.akm` | AKM stash location hint |
 | `OP_ADMIN_API_URL` | `stack.env` / addon wiring | Admin API URL when admin is present |
 | `OP_ASSISTANT_TOKEN` | `OP_ASSISTANT_TOKEN` from `stack.env` | Assistant-scoped auth token |
 | `MEMORY_API_URL` | `http://memory:8765` | Memory service URL |
@@ -207,7 +207,7 @@ Key env:
 |---|---|---|
 | `PORT` | `8090` | HTTP listen port |
 | `OP_HOME` | `/openpalm` | Runtime root used by scheduler code |
-| `OP_ADMIN_TOKEN` | `${OP_ASSISTANT_TOKEN:-}` | Scheduler admin token |
+| `OP_ADMIN_TOKEN` | `${OP_ADMIN_TOKEN:-}` | Scheduler admin token |
 | `OP_ADMIN_API_URL` | `stack.env` / addon wiring | Admin API base URL |
 | `OPENCODE_API_URL` | `http://assistant:4096` | Assistant API URL |
 | `OPENCODE_SERVER_PASSWORD` | `${OP_OPENCODE_PASSWORD:-}` | Optional assistant auth wiring |
@@ -296,7 +296,7 @@ Key env:
 | `discord` | none | service-specific | `channel_lan` | No host port exposure |
 | `slack` | none | service-specific | `channel_lan` | No host port exposure |
 | `ollama` | `${OP_OLLAMA_BIND_ADDRESS:-127.0.0.1}:11434` | `11434` | `assistant_net` | Mounts `$OP_HOME/data/ollama:/root/.ollama` |
-| `openviking` | none | service-specific | `assistant_net` | Mounts `$OP_HOME/data/openviking:/workspace` and `$OP_HOME/vault/user/ov.conf:/app/ov.conf:ro` |
+| `openviking` | none | service-specific | `assistant_net` | Mounts `$OP_HOME/data/openviking:/workspace` |
 
 All shipped channel overlays depend on guardian and load both `stack.env` and `user.env` through Compose `env_file` entries.
 

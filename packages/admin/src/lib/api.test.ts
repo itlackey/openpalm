@@ -3,7 +3,7 @@ import {
   fetchConnections,
   fetchConnectionsDto,
   saveConnections,
-  testConnectionProfile,
+  testConnection,
 } from './api.js';
 
 const randomUuidSpy = vi.spyOn(globalThis.crypto, 'randomUUID');
@@ -70,7 +70,7 @@ describe('api connections DTO adapter', () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ ok: true, pushed: true }), {
+        new Response(JSON.stringify({ ok: true }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         }),
@@ -106,7 +106,7 @@ describe('api connections DTO adapter', () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ ok: true, pushed: true }), {
+        new Response(JSON.stringify({ ok: true }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         }),
@@ -147,7 +147,7 @@ describe('api connections DTO adapter', () => {
       ),
     );
 
-    const result = await testConnectionProfile('admin-token', {
+    const result = await testConnection('admin-token', {
       baseUrl: 'http://localhost:11434',
       apiKey: '',
       kind: 'openai_compatible_local',

@@ -22,8 +22,6 @@ import {
   ensureOpenCodeConfig,
   readSystemSecretsEnvFile,
 } from "./secrets.js";
-import { buildMem0Mapping } from "./connection-mapping.js";
-import { writeMemoryConfig } from "./memory-config.js";
 import { ensureOpenCodeSystemConfig, ensureMemoryDir } from "./core-assets.js";
 import { applyInstall, createState, writeSetupTokenFile } from "./lifecycle.js";
 import { writeStackSpec, parseCapabilityString, hasAddon } from "./stack-spec.js";
@@ -208,12 +206,11 @@ export async function performSetup(
   return { ok: true };
 }
 
-/** Resolve capabilities, write stack.yaml, managed.env, and memory config. Returns error result or null. */
+/** Resolve capabilities, write stack.yaml and managed.env. Returns error result or null. */
 function writeMemoryAndStackConfigs(
   spec: StackSpec, connections: SetupConnection[], connEnvVarMap: Map<string, string>, state: ControlPlaneState
 ): SetupResult | null {
-  const { provider: llmProvider, model: llmModel } = parseCapabilityString(spec.capabilities.llm);
-  const slmCap = spec.capabilities.slm ? parseCapabilityString(spec.capabilities.slm) : null;
+  const { provider: llmProvider } = parseCapabilityString(spec.capabilities.llm);
   const { provider: embProvider, model: embModel } = spec.capabilities.embeddings;
   const resolvedDims = spec.capabilities.embeddings.dims || EMBEDDING_DIMS[`${embProvider}/${embModel}`] || 1536;
 
@@ -233,21 +230,6 @@ function writeMemoryAndStackConfigs(
   };
   writeStackSpec(state.configDir, specToWrite);
   writeManagedEnvFiles(specToWrite, state.vaultDir);
-
-  writeMemoryConfig(state.dataDir, buildMem0Mapping({
-    llm: {
-      provider: llmConn.provider, baseUrl: llmConn.baseUrl,
-      model: slmCap ? slmCap.model : llmModel,
-      apiKeyRef: llmConn.apiKey ? `env:${llmEnvVar}` : "not-needed",
-    },
-    embedder: {
-      provider: embConn.provider, baseUrl: embConn.baseUrl,
-      model: embModel || "text-embedding-3-small",
-      apiKeyRef: embConn.apiKey ? `env:${embEnvVar}` : "not-needed",
-    },
-    embeddingDims: resolvedDims,
-    customInstructions: spec.capabilities.memory.customInstructions || "",
-  }));
 
   return null;
 }

@@ -60,8 +60,8 @@ describe("ensureHomeDirs", () => {
     // backups/
     expect(existsSync(join(home, "backups"))).toBe(true);
 
-    // workspace/
-    expect(existsSync(join(home, "workspace"))).toBe(true);
+    // data/workspace/
+    expect(existsSync(join(dataDir, "workspace"))).toBe(true);
 
     // logs/ subtrees
     expect(existsSync(logsDir)).toBe(true);

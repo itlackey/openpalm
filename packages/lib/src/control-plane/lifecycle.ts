@@ -20,7 +20,6 @@ import {
 } from "./config-persistence.js";
 import { readStackSpec, addonNames } from "./stack-spec.js";
 import { refreshCoreAssets, ensureMemoryDir, ensureCoreAutomations } from "./core-assets.js";
-import { ensureMemoryConfig } from "./memory-config.js";
 import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composeConfigServices, resolveComposeProjectName } from "./docker.js";
@@ -97,14 +96,13 @@ export function writeSetupTokenFile(state: ControlPlaneState): void {
 
 async function reconcileCore(
   state: ControlPlaneState,
-  opts: { activateServices?: boolean; deactivateServices?: boolean; seedMemoryConfig?: boolean },
+  opts: { activateServices?: boolean; deactivateServices?: boolean },
 ): Promise<string[]> {
   if (opts.activateServices) {
     for (const s of CORE_SERVICES) state.services[s] = "running";
   }
   ensureMemoryDir(state.dataDir);
   ensureCoreAutomations(state.configDir);
-  if (opts.seedMemoryConfig) ensureMemoryConfig(state.dataDir);
 
   const active: string[] = [];
   for (const [name, status] of Object.entries(state.services)) {
@@ -154,7 +152,7 @@ async function reconcileCore(
 }
 
 export async function applyInstall(state: ControlPlaneState): Promise<void> {
-  await reconcileCore(state, { activateServices: true, seedMemoryConfig: true });
+  await reconcileCore(state, { activateServices: true });
 }
 
 export async function applyUpdate(state: ControlPlaneState): Promise<{ restarted: string[] }> {

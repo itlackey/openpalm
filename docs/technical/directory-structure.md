@@ -42,6 +42,7 @@ existing user files.
 ├── config/
 │   ├── assistant/
 │   ├── automations/
+│   ├── guardian/
 │   └── stack.yaml
 ├── stack/
 │   ├── core.compose.yml
@@ -59,6 +60,7 @@ existing user files.
 │   ├── stack/
 │   │   ├── stack.env
 │   │   ├── auth.json
+│   │   ├── addons/            per-addon managed.env files
 │   │   └── services/
 │   │       └── memory/
 │   │           └── managed.env
@@ -71,6 +73,7 @@ existing user files.
 │   ├── memory/
 │   ├── stash/
 │   └── workspace/
+├── backups/                  upgrade backup snapshots
 └── logs/
     ├── admin-audit.jsonl
     ├── guardian-audit.log

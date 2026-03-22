@@ -65,7 +65,7 @@ export function resolveBackupsDir(): string {
 }
 
 export function resolveWorkspaceDir(): string {
-  return `${resolveOpenPalmHome()}/workspace`;
+  return `${resolveOpenPalmHome()}/data/workspace`;
 }
 
 // ── Directory Setup ──────────────────────────────────────────────────
@@ -105,8 +105,8 @@ export function ensureHomeDirs(): void {
     // backups/ — user backups
     `${home}/backups`,
 
-    // workspace/ — assistant workspace
-    `${home}/workspace`,
+    // data/workspace/ — shared assistant workspace (compose: $OP_HOME/data/workspace:/work)
+    `${home}/data/workspace`,
 
     // logs/ — consolidated audit/debug
     `${home}/logs`,

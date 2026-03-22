@@ -4,7 +4,7 @@
     fetchConnectionsDto,
     fetchMemoryConfig,
     saveConnections,
-    testConnectionProfile,
+    testConnection,
     resetMemoryCollection,
   } from '$lib/api.js';
   import { EMBEDDING_DIMS, PROVIDER_KEY_MAP } from '$lib/provider-constants.js';
@@ -217,7 +217,7 @@
     testModelList = [];
     connectionTested = false;
     try {
-      const result = await testConnectionProfile(token, draft);
+      const result = await testConnection(token, draft);
       if (!result.ok) {
         testError = mapConnectionTestError(result);
         return;

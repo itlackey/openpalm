@@ -264,13 +264,13 @@ describe("setup wizard server integration", () => {
       const userEnvContent = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
       expect(userEnvContent).toContain("OWNER_NAME=Integration Test");
 
-      // Verify memory config was written
-      const memConfigPath = join(dataDir, "memory", "default_config.json");
-      expect(existsSync(memConfigPath)).toBe(true);
-      const memConfig = JSON.parse(readFileSync(memConfigPath, "utf-8"));
-      expect(memConfig.mem0.llm.config.model).toBe("qwen2.5-coder:3b");
-      expect(memConfig.mem0.embedder.config.model).toBe("nomic-embed-text");
-      expect(memConfig.mem0.vector_store.config.embedding_model_dims).toBe(768);
+      // Verify managed.env was written with correct memory service config
+      const managedEnvPath = join(vaultDir, "stack", "services", "memory", "managed.env");
+      expect(existsSync(managedEnvPath)).toBe(true);
+      const managedEnvContent = readFileSync(managedEnvPath, "utf-8");
+      expect(managedEnvContent).toContain("SYSTEM_LLM_MODEL=qwen2.5-coder:3b");
+      expect(managedEnvContent).toContain("EMBEDDING_MODEL=nomic-embed-text");
+      expect(managedEnvContent).toContain("EMBEDDING_DIMS=768");
 
       // Verify stack.yaml was written with connections
       const specPath = join(configDir, "stack.yaml");

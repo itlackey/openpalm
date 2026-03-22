@@ -20,6 +20,8 @@ let _memoryInit: Promise<Memory> | null = null;
 // Serialize memory operations so a config-driven reset cannot close the
 // sqlite-backed Memory instance while another request is still using it.
 let _memoryQueue: Promise<void> = Promise.resolve();
+// When true, skip env-var config and use file config (set after PUT /api/v1/config/)
+let _useFileConfig = false;
 
 function withMemoryLock<T>(operation: () => Promise<T>): Promise<T> {
   const run = _memoryQueue.then(operation, operation);
@@ -51,6 +53,86 @@ function resolveEnvKeys(config: Record<string, unknown>): Record<string, unknown
     }
   }
   return resolved;
+}
+
+/**
+ * Build a MemoryConfig directly from environment variables (injected via managed.env + compose).
+ * Returns null if SYSTEM_LLM_PROVIDER is not set (env-based config not available).
+ */
+function buildConfigFromEnv(): MemoryConfig | null {
+  const provider = process.env.SYSTEM_LLM_PROVIDER;
+  if (!provider) return null;
+
+  const model = process.env.SYSTEM_LLM_MODEL || undefined;
+  const baseUrl = process.env.SYSTEM_LLM_BASE_URL || undefined;
+  const embeddingModel = process.env.EMBEDDING_MODEL || undefined;
+  const embeddingDims = process.env.EMBEDDING_DIMS ? parseInt(process.env.EMBEDDING_DIMS, 10) : 1536;
+
+  // Resolve API key: check provider-specific key first, then fall back to OPENAI_API_KEY
+  const providerKeyName = `${provider.toUpperCase()}_API_KEY`;
+  const apiKey = process.env[providerKeyName] || process.env.OPENAI_API_KEY || undefined;
+
+  // Resolve LLM base URL: explicit env var, then provider-specific defaults
+  let llmBaseUrl = baseUrl;
+  if (!llmBaseUrl && provider === 'ollama') {
+    llmBaseUrl = 'http://host.docker.internal:11434';
+  }
+  // Also check OPENAI_BASE_URL for openai-compatible providers
+  if (!llmBaseUrl && process.env.OPENAI_BASE_URL) {
+    llmBaseUrl = process.env.OPENAI_BASE_URL;
+  }
+
+  // Determine embedder provider from model name
+  let embedderProvider = provider;
+  if (embeddingModel) {
+    if (embeddingModel.startsWith('nomic-') || embeddingModel.includes('ollama')) {
+      embedderProvider = 'ollama';
+    }
+  }
+
+  // Resolve embedder API key and base URL
+  const embedderKeyName = `${embedderProvider.toUpperCase()}_API_KEY`;
+  const embedderApiKey = process.env[embedderKeyName] || process.env.OPENAI_API_KEY || undefined;
+  let embedderBaseUrl: string | undefined;
+  if (embedderProvider === 'ollama') {
+    embedderBaseUrl = process.env.SYSTEM_LLM_BASE_URL || 'http://host.docker.internal:11434';
+  } else if (process.env.OPENAI_BASE_URL) {
+    embedderBaseUrl = process.env.OPENAI_BASE_URL;
+  }
+
+  const dbPath = join(DATA_DIR, 'memory.db');
+  mkdirSync(dirname(dbPath), { recursive: true });
+
+  console.log(`[config] Using env-based config: provider=${provider}, model=${model ?? 'default'}, embedder=${embedderProvider}/${embeddingModel ?? 'default'}`);
+
+  return {
+    llm: {
+      provider,
+      config: {
+        model,
+        apiKey,
+        baseUrl: llmBaseUrl,
+      },
+    },
+    embedder: {
+      provider: embedderProvider,
+      config: {
+        model: embeddingModel,
+        apiKey: embedderApiKey,
+        baseUrl: embedderBaseUrl,
+        dimensions: embeddingDims,
+      },
+    },
+    vectorStore: {
+      provider: 'sqlite-vec',
+      config: {
+        dbPath,
+        collectionName: 'memory',
+        dimensions: embeddingDims,
+      },
+    },
+    historyDbPath: null,
+  };
 }
 
 function configToMemoryConfig(raw: Record<string, unknown>): MemoryConfig {
@@ -109,8 +191,18 @@ async function getMemory(): Promise<Memory> {
   if (_memoryInit) return _memoryInit;
   _memoryInit = (async () => {
     try {
-      const rawConfig = resolveEnvKeys(loadConfig());
-      const memConfig = configToMemoryConfig(rawConfig);
+      // 1. Try env-based config (from managed.env + compose environment)
+      //    Skip if _useFileConfig is set (after PUT /api/v1/config/)
+      let memConfig: MemoryConfig | null = null;
+      if (!_useFileConfig) {
+        memConfig = buildConfigFromEnv();
+      }
+      // 2. Fall back to file config (default_config.json) + env key resolution
+      if (!memConfig) {
+        const rawConfig = resolveEnvKeys(loadConfig());
+        memConfig = configToMemoryConfig(rawConfig);
+        console.log('[config] Using file-based config from', CONFIG_PATH);
+      }
       const m = new Memory(memConfig);
       await m.initialize();
       _memory = m;
@@ -391,11 +483,15 @@ async function handleRequest(req: Request): Promise<Response> {
 
       // GET /api/v1/config/
       if (path === '/api/v1/config/' && method === 'GET') {
-        if (existsSync(CONFIG_PATH)) {
-          const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
-          return json(redactApiKeys(raw));
-        }
-        return json({});
+        const fileConfig = existsSync(CONFIG_PATH)
+          ? JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'))
+          : {};
+        const envConfig = buildConfigFromEnv();
+        return json({
+          source: _useFileConfig ? 'file' : (envConfig ? 'env' : 'file'),
+          file: redactApiKeys(fileConfig),
+          ...(envConfig ? { env: redactApiKeys(envConfig) } : {}),
+        });
       }
 
       // PUT /api/v1/config/
@@ -404,6 +500,9 @@ async function handleRequest(req: Request): Promise<Response> {
         const validated = validateConfigStructure(body);
         mkdirSync(dirname(CONFIG_PATH), { recursive: true });
         writeFileSync(CONFIG_PATH, JSON.stringify(validated, null, 2) + '\n');
+        // After explicit config write, use file config instead of env vars
+        // (resets on container restart since this is in-memory state)
+        _useFileConfig = true;
         await resetMemory();
         return json({ status: 'ok' });
       }

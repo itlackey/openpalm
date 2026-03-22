@@ -80,7 +80,7 @@ Key env:
 - `MEMORY_DATA_DIR=/data`
 - `HOME=/data`
 - `MEM0_DIR=/data/.mem0`
-- `OP_MEMORY_TOKEN`
+- `MEMORY_AUTH_TOKEN` (set from `OP_MEMORY_TOKEN` in stack.env)
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`
 
@@ -118,7 +118,7 @@ Key env:
 - `OP_ADMIN_API_URL`
 - `OP_ASSISTANT_TOKEN`
 - `MEMORY_API_URL=http://memory:8765`
-- `OP_MEMORY_TOKEN`
+- `MEMORY_AUTH_TOKEN` (set from `OP_MEMORY_TOKEN` in stack.env)
 - `MEMORY_USER_ID`
 - `OP_UID`, `OP_GID`
 
@@ -176,6 +176,22 @@ Ports and network:
 - container: `8080`
 - networks: `channel_lan`, `channel_public`, `assistant_net`
 
+Additional env:
+
+- `GUARDIAN_SECRETS_PATH` -- File path to a dotenv file containing `CHANNEL_<NAME>_SECRET` entries. When set, secrets are loaded from this file with mtime-based hot-reload instead of from `process.env`. This allows channel secrets to be updated without restarting the guardian container.
+- `GUARDIAN_SECRETS_CACHE_TTL_MS` -- Cache TTL in milliseconds for the secrets file (default `30000`). The file is re-read when the mtime changes or the TTL expires.
+- `GUARDIAN_SESSION_TTL_MS` -- Session TTL in milliseconds (default `900000` / 15 minutes). Sessions idle longer than this are evicted from the cache.
+
+Channel payload metadata fields:
+
+- `metadata.sessionKey` -- When present in the inbound message metadata, overrides the default per-user session key (`userId`). This allows channels to maintain multiple independent sessions per user.
+- `metadata.clearSession: true` -- When set, clears all assistant sessions matching the resolved session target instead of sending a message. Returns `{ cleared: true }`.
+
+Notes:
+
+- Guardian is internal-only from the host perspective.
+- It is the only bridge between addon ingress networks and `assistant_net`.
+
 ### Scheduler
 
 Role:
@@ -193,7 +209,7 @@ Key env:
 
 - `PORT=8090`
 - `OP_HOME=/openpalm`
-- `OP_ADMIN_TOKEN=${OP_ASSISTANT_TOKEN:-}`
+- `OP_ADMIN_TOKEN=${OP_ADMIN_TOKEN:-}`
 - `OP_ADMIN_API_URL`
 - `OPENCODE_API_URL=http://assistant:4096`
 - `OP_OPENCODE_PASSWORD`

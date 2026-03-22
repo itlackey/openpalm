@@ -464,16 +464,16 @@ describe("performSetup", () => {
     expect(secretsContent).toContain("test-admin-token-12345");
   });
 
-  it("writes memory config", async () => {
+  it("writes managed.env for memory service", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
-    const memConfigPath = join(dataDir, "memory", "default_config.json");
-    expect(existsSync(memConfigPath)).toBe(true);
+    const managedEnvPath = join(vaultDir, "stack", "services", "memory", "managed.env");
+    expect(existsSync(managedEnvPath)).toBe(true);
 
-    const memConfig = JSON.parse(readFileSync(memConfigPath, "utf-8"));
-    expect(memConfig.mem0.llm.config.model).toBe("gpt-4o");
-    expect(memConfig.mem0.embedder.config.model).toBe("text-embedding-3-small");
+    const content = readFileSync(managedEnvPath, "utf-8");
+    expect(content).toContain("SYSTEM_LLM_MODEL=gpt-4o");
+    expect(content).toContain("EMBEDDING_MODEL=text-embedding-3-small");
   });
 
   it("writes capabilities to stack.yaml v2", async () => {
@@ -569,10 +569,10 @@ describe("performSetup", () => {
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    // nomic-embed-text is 768 dims per EMBEDDING_DIMS
-    const memConfigPath = join(dataDir, "memory", "default_config.json");
-    const memConfig = JSON.parse(readFileSync(memConfigPath, "utf-8"));
-    expect(memConfig.mem0.vector_store.config.embedding_model_dims).toBe(768);
+    // nomic-embed-text is 768 dims per EMBEDDING_DIMS — verify via managed.env
+    const managedEnvPath = join(vaultDir, "stack", "services", "memory", "managed.env");
+    const content = readFileSync(managedEnvPath, "utf-8");
+    expect(content).toContain("EMBEDDING_DIMS=768");
   });
 
   it("writes stack.yaml with correct v2 structure", async () => {

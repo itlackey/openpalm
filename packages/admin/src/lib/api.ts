@@ -177,7 +177,7 @@ export async function saveConnections(
   return (await res.json()) as SystemConnectionSaveResult;
 }
 
-export async function testConnectionProfile(
+export async function testConnection(
   token: string,
   draft: { baseUrl: string; apiKey: string; kind: string }
 ): Promise<{ ok: boolean; models?: string[]; error?: string; errorCode?: string }> {

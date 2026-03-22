@@ -50,6 +50,38 @@ When the guardian is not running:
 
 Status code is `200` when running, `503` when unavailable.
 
+### `GET /guardian/stats`
+
+Returns guardian runtime statistics: uptime, rate limiter state, nonce cache
+size, active session counts, and per-channel/per-status request counters.
+This endpoint is served directly by the guardian process (not proxied through admin).
+
+Auth: Protected by admin token (`x-admin-token`) when `OP_ADMIN_TOKEN` is set.
+When no admin token is configured (dev/LAN), the endpoint is open.
+
+Response:
+
+```json
+{
+  "uptime_seconds": 3600,
+  "rate_limits": {
+    "user_window_ms": 60000,
+    "user_max_requests": 120,
+    "channel_window_ms": 60000,
+    "channel_max_requests": 200,
+    "active_user_limiters": 5,
+    "active_channel_limiters": 2
+  },
+  "nonce_cache": { "size": 42, "max_size": 50000, "window_ms": 300000 },
+  "sessions": { "active": 3, "max_size": 10000, "ttl_ms": 900000 },
+  "requests": {
+    "total": 150,
+    "by_status": { "ok": 140, "rate_limited": 10 },
+    "by_channel": { "chat": 100, "api": 50 }
+  }
+}
+```
+
 ## Lifecycle Endpoints
 
 Policy for this section:
@@ -118,7 +150,7 @@ Response:
 {
   "ok": true,
   "imageTag": "0.9.0",
-  "backupDir": "/home/user/.openpalm/data/backups/2025-01-01T00-00-00",
+  "backupDir": "/home/user/.openpalm/backups/2025-01-01T00-00-00",
   "assetsUpdated": ["core.compose.yml"],
   "restarted": ["guardian"],
   "adminRecreateScheduled": true
@@ -272,9 +304,9 @@ Response:
 ```json
 {
   "addons": [
-    { "id": "chat", "enabled": true, "env": {} },
-    { "id": "discord", "enabled": false, "env": {} },
-    { "id": "admin", "enabled": true, "env": {} }
+    { "name": "chat", "enabled": true, "env": {}, "hasCompose": true },
+    { "name": "discord", "enabled": false, "env": {}, "hasCompose": true },
+    { "name": "admin", "enabled": true, "env": {}, "hasCompose": true }
   ]
 }
 ```
@@ -296,7 +328,7 @@ Body:
 Response:
 
 ```json
-{ "ok": true, "addon": { "id": "chat", "enabled": true, "env": {} } }
+{ "ok": true, "addon": "chat", "enabled": true, "changed": true }
 ```
 
 Error responses:
@@ -502,6 +534,7 @@ Response:
     "MEMORY_USER_ID": "default_user"
   }
 }
+```
 
 ### `POST /admin/connections`
 
@@ -568,7 +601,9 @@ are non-empty strings after trimming; otherwise `missing` lists what is absent.
 
 Tests a connection endpoint by fetching models from the given base URL. Derives
 the provider type from the URL (Ollama for URLs containing `ollama` or `:11434`,
-otherwise OpenAI-compatible). Accepts setup token or admin token.
+otherwise OpenAI-compatible).
+
+Auth: `requireAdmin`
 
 Body:
 
@@ -674,7 +709,7 @@ Bun-based memory service.
 
 Returns the config as a downloadable JSON file (`mem0-config.json`).
 
-Auth: admin token or setup token.
+Auth: `requireAdmin`
 
 Response: `application/json` with `Content-Disposition: attachment; filename="mem0-config.json"`.
 
@@ -687,7 +722,7 @@ Error responses:
 Exports the generated `opencode.json` config from `config/assistant/opencode.json`.
 Returns the config as a downloadable JSON file with `_nextSteps` guidance.
 
-Auth: admin token or setup token.
+Auth: `requireAdmin`
 
 Response: `application/json` with `Content-Disposition: attachment; filename="opencode.json"`.
 
@@ -793,14 +828,18 @@ Provider API conventions:
 Response:
 
 ```json
-{ "models": ["gpt-4o", "gpt-4o-mini"], "error": null }
+{ "models": ["gpt-4o", "gpt-4o-mini"], "status": "ok", "reason": "provider_api", "error": null }
 ```
 
 On failure (unreachable provider, timeout, etc.):
 
 ```json
-{ "models": [], "error": "Request timed out after 5s" }
+{ "models": [], "status": "recoverable_error", "reason": "network", "error": "Request timed out after 5s" }
 ```
+
+`status` is `"ok"` on success or `"recoverable_error"` when the provider could not be reached.
+`reason` indicates how the model list was obtained: `"provider_api"` (live fetch),
+`"provider_static"` (built-in list, e.g. Anthropic), or on error: `"network"`, `"auth"`, `"parse"`, or `"unknown"`.
 
 Error responses:
 
@@ -909,7 +948,15 @@ When validation finds issues:
 - Allowed names: `compose`.
 - Returns `text/plain` and may include `x-artifact-sha256` header.
 
-### `GET /admin/audit?limit=<n>`
+### `GET /admin/audit?limit=<n>&source=<source>`
+
+Query parameters:
+
+- `limit` (optional) -- Maximum entries to return (capped at 1000).
+- `source` (optional, default `"admin"`) -- `"admin"` returns admin audit entries,
+  `"guardian"` returns guardian audit entries, `"all"` merges both sources sorted
+  by timestamp descending. Each merged entry includes a `_source` field indicating
+  its origin.
 
 ```json
 { "audit": [{ "at": "...", "action": "install", "ok": true }] }

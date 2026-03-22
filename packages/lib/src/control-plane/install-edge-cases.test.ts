@@ -740,7 +740,7 @@ describe("performSetup end-to-end artifacts", () => {
     expect(spec!.capabilities.embeddings.model).toBe("text-embedding-3-small");
   });
 
-  it("writes memory config with correct embedding dims from lookup", async () => {
+  it("writes managed.env with correct embedding dims from lookup", async () => {
     const input = makeValidSpec({
       spec: {
         version: 2,
@@ -771,11 +771,10 @@ describe("performSetup end-to-end artifacts", () => {
 
     await performSetup(input);
 
-    const memConfig = JSON.parse(
-      readFileSync(join(dataDir, "memory", "default_config.json"), "utf-8")
-    );
-    // nomic-embed-text is 768 dims per EMBEDDING_DIMS constant
-    expect(memConfig.mem0.vector_store.config.embedding_model_dims).toBe(768);
+    // nomic-embed-text is 768 dims per EMBEDDING_DIMS constant — verify via managed.env
+    const managedEnvPath = join(vaultDir, "stack", "services", "memory", "managed.env");
+    const content = readFileSync(managedEnvPath, "utf-8");
+    expect(content).toContain("EMBEDDING_DIMS=768");
   });
 
   it("writes core.compose.yml to stack/", async () => {

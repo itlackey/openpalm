@@ -108,8 +108,6 @@ export type SaveConnectionsPayload = {
 
 export type SystemConnectionSaveResult = {
   ok: boolean;
-  pushed: boolean;
-  pushError?: string;
   dimensionWarning?: string;
   dimensionMismatch?: boolean;
 };
