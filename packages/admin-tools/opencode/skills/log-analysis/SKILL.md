@@ -88,7 +88,7 @@ Each entry contains:
 |---------|---------|--------|
 | `"setup complete"` | Stack initialization finished | Normal — no action needed |
 | `"compose up"` / `"compose down"` | Container lifecycle operation | Check if expected; verify with `admin-audit` |
-| `"channel installed"` / `"channel uninstalled"` | Channel management | Verify channel appears in `admin-channels-list` |
+| `"addon enabled"` / `"addon disabled"` | Addon management | Verify addon state with `admin-addons-list` |
 | `"ENOENT"` | File or path not found | Check volume mounts and file paths |
 | `"EACCES"` | Permission denied | Check UID/GID settings and volume ownership |
 | `"ECONNREFUSED"` | Cannot connect to Docker daemon | Docker socket proxy may be down |

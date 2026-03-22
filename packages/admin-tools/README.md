@@ -21,8 +21,8 @@ This package is separate from `@openpalm/assistant-tools`, which contains memory
 - `admin-providers-local` -- Detect local LLM providers (Ollama, LM Studio, etc.)
 - `admin-memory-models` -- List available embedding models
 
-### Channels
-- `admin-channels-list` / `-install` / `-uninstall` -- Channel management
+### Addons
+- `admin-addons-list` / `-enable` / `-disable` -- Addon management via stack.yaml
 
 ### Lifecycle
 - `admin-lifecycle-install` / `-update` / `-uninstall` / `-upgrade` / `-installed` -- Stack lifecycle

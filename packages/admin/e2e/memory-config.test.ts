@@ -39,11 +39,11 @@ async function setupConsoleMocks(page: import('@playwright/test').Page) {
 			body: JSON.stringify({ automations: [], scheduler: { jobCount: 0, jobs: [] } })
 		})
 	);
-	await page.route('**/admin/channels', (route) =>
+	await page.route('**/admin/addons', (route) =>
 		route.fulfill({
 			status: 200,
 			contentType: 'application/json',
-			body: JSON.stringify({ installed: [], available: [] })
+			body: JSON.stringify({ addons: [] })
 		})
 	);
 	await page.route('**/admin/connections/status', (route) =>

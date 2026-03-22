@@ -21,7 +21,7 @@ import * as adminConfig from "../opencode/tools/admin-config.ts";
 import * as adminContainers from "../opencode/tools/admin-containers.ts";
 import * as adminArtifacts from "../opencode/tools/admin-artifacts.ts";
 import * as adminConnections from "../opencode/tools/admin-connections.ts";
-import * as adminChannels from "../opencode/tools/admin-channels.ts";
+import * as adminAddons from "../opencode/tools/admin-addons.ts";
 import * as adminLifecycle from "../opencode/tools/admin-lifecycle.ts";
 import * as adminAutomations from "../opencode/tools/admin-automations.ts";
 
@@ -64,10 +64,10 @@ export const plugin: Plugin = async () => {
       "admin-connections-set": adminConnections.set,
       "admin-connections-status": adminConnections.status,
 
-      // admin-channels
-      "admin-channels-list": adminChannels.list,
-      "admin-channels-install": adminChannels.install,
-      "admin-channels-uninstall": adminChannels.uninstall,
+      // admin-addons (addon management via stack.yaml)
+      "admin-addons-list": adminAddons.list,
+      "admin-addons-enable": adminAddons.install,
+      "admin-addons-disable": adminAddons.uninstall,
 
       // admin-lifecycle
       "admin-lifecycle-install": adminLifecycle.install,

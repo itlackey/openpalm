@@ -538,8 +538,8 @@ Response:
 
 ### `POST /admin/connections`
 
-Saves provider credentials, updates `stack.yaml` capabilities, writes memory
-config, and pushes the resolved config to the running memory container.
+Saves provider credentials to `vault/user/user.env`, updates `stack.yaml`
+capabilities, and writes `managed.env` for the memory service.
 
 Body:
 
@@ -570,8 +570,6 @@ Response:
 ```json
 {
   "ok": true,
-  "pushed": true,
-  "pushError": null,
   "dimensionWarning": null,
   "dimensionMismatch": false
 }

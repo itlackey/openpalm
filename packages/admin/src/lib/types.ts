@@ -74,15 +74,6 @@ export type MemoryConfigResponse = {
   embeddingDims: Record<string, number>;
 };
 
-export type MemoryConfigSaveResult = {
-  ok: boolean;
-  persisted: boolean;
-  pushed: boolean;
-  pushError?: string;
-  dimensionWarning?: string;
-  dimensionMismatch?: boolean;
-};
-
 export type ConnectionsCapabilities = {
   llm: string;
   slm?: string;
@@ -110,19 +101,6 @@ export type SystemConnectionSaveResult = {
   ok: boolean;
   dimensionWarning?: string;
   dimensionMismatch?: boolean;
-};
-
-export type RegistryAutomationItem = {
-  name: string;
-  type: 'automation';
-  installed: boolean;
-  description: string;
-  schedule: string;
-};
-
-export type RegistryResponse = {
-  automations: RegistryAutomationItem[];
-  source?: 'remote' | 'bundled';
 };
 
 // ── OpenCode Provider/Model Types (Issue #350) ────────────────────────
