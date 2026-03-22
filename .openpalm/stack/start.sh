@@ -7,7 +7,6 @@ PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
 
 DEFAULT_ENV_FILES=(
 	"$OP_HOME/vault/stack/stack.env"
-	"$OP_HOME/vault/stack/services/memory/managed.env"
 	"$OP_HOME/vault/user/user.env"
 )
 

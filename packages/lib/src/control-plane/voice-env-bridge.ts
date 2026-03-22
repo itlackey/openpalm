@@ -97,18 +97,5 @@ export function applyVoiceEnvVars(
  * Check whether the voice channel is installed.
  */
 export function isVoiceChannelInstalled(openpalmHome: string): boolean {
-  const configDir = `${openpalmHome}/config`;
-  if (existsSync(`${configDir}/channels/voice.yml`)) return true;
-
-  try {
-    const enabledPath = `${openpalmHome}/data/components/enabled.json`;
-    if (!existsSync(enabledPath)) return false;
-    const enabled = JSON.parse(readFileSync(enabledPath, 'utf-8'));
-    return Array.isArray(enabled) && enabled.some(
-      (i: { component?: string; enabled?: boolean }) =>
-        i.component === 'voice' && i.enabled !== false
-    );
-  } catch {
-    return false;
-  }
+  return existsSync(`${openpalmHome}/stack/addons/voice/compose.yml`);
 }

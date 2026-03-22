@@ -1,12 +1,12 @@
 /**
- * Tests for validateProposedState() in lifecycle.ts.
+ * Tests for validateProposedState().
  * Mocks node:child_process to avoid requiring the varlock binary.
  *
  * validateProposedState() co-locates schema + env files in a temp directory
  * (varlock discovers .env.schema alongside --path), then makes two execFile
  * calls:
- *   1. user.env validation   (vault/user/user.env + vault/user.env.schema)
- *   2. system.env validation (vault/stack/stack.env + vault/system.env.schema)
+ *   1. user.env validation   (vault/user/user.env + vault/user/user.env.schema)
+ *   2. stack.env validation  (vault/stack/stack.env + vault/stack/stack.env.schema)
  */
 import { describe, test, expect, afterEach, vi } from "vitest";
 import { writeFileSync, mkdirSync } from "node:fs";

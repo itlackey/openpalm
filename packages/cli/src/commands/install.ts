@@ -2,7 +2,8 @@ import { defineCommand } from 'citty';
 import { join } from 'node:path';
 import { rm } from 'node:fs/promises';
 import cliPkg from '../../package.json' with { type: 'json' };
-import { defaultHomeDir, defaultConfigDir, defaultVaultDir, defaultDataDir, defaultWorkDir } from '../lib/paths.ts';
+import { defaultWorkDir } from '../lib/paths.ts';
+import { resolveOpenPalmHome, resolveConfigDir, resolveVaultDir, resolveDataDir } from '@openpalm/lib';
 import { ensureSecrets, ensureStackEnv, resolveRequestedImageTag } from '../lib/env.ts';
 import { ensureDirectoryTree, fetchAsset, openBrowser } from '../lib/docker.ts';
 import {
@@ -113,10 +114,10 @@ async function parseConfigFile(filePath: string, raw: string): Promise<Record<st
 export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   await requireDocker();
 
-  const homeDir = defaultHomeDir();
-  const configDir = defaultConfigDir();
-  const vaultDir = defaultVaultDir();
-  const dataDir = defaultDataDir();
+  const homeDir = resolveOpenPalmHome();
+  const configDir = resolveConfigDir();
+  const vaultDir = resolveVaultDir();
+  const dataDir = resolveDataDir();
   const workDir = defaultWorkDir();
 
   const updateMode = await Bun.file(join(vaultDir, 'user', 'user.env')).exists();

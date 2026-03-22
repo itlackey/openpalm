@@ -9,7 +9,6 @@ import {
   resolveRuntimeFiles,
 } from '@openpalm/lib';
 import type { ControlPlaneState } from '@openpalm/lib';
-import { defaultHomeDir } from './paths.ts';
 
 /**
  * Ensure configuration state is valid and ready for Docker Compose operations.

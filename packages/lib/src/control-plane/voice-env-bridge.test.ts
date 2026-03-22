@@ -159,31 +159,19 @@ describe("isVoiceChannelInstalled", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("returns true when legacy voice.yml exists", () => {
-    mkdirSync(join(tmpDir, "config", "channels"), { recursive: true });
-    writeFileSync(join(tmpDir, "config", "channels", "voice.yml"), "services: {}\n");
+  it("returns true when voice addon compose exists", () => {
+    mkdirSync(join(tmpDir, "stack", "addons", "voice"), { recursive: true });
+    writeFileSync(join(tmpDir, "stack", "addons", "voice", "compose.yml"), "services:\n  voice:\n    image: test\n");
     expect(isVoiceChannelInstalled(tmpDir)).toBe(true);
   });
 
-  it("returns true when voice component instance is enabled", () => {
-    mkdirSync(join(tmpDir, "data", "components"), { recursive: true });
-    writeFileSync(
-      join(tmpDir, "data", "components", "enabled.json"),
-      JSON.stringify([{ id: "my-voice", component: "voice", enabled: true }]),
-    );
-    expect(isVoiceChannelInstalled(tmpDir)).toBe(true);
-  });
-
-  it("returns false when no voice channel or component exists", () => {
+  it("returns false when voice addon does not exist", () => {
     expect(isVoiceChannelInstalled(tmpDir)).toBe(false);
   });
 
-  it("returns false when voice component is disabled", () => {
-    mkdirSync(join(tmpDir, "data", "components"), { recursive: true });
-    writeFileSync(
-      join(tmpDir, "data", "components", "enabled.json"),
-      JSON.stringify([{ id: "my-voice", component: "voice", enabled: false }]),
-    );
+  it("returns false when stack/addons exists but no voice subdirectory", () => {
+    mkdirSync(join(tmpDir, "stack", "addons", "chat"), { recursive: true });
+    writeFileSync(join(tmpDir, "stack", "addons", "chat", "compose.yml"), "services:\n  chat:\n    image: test\n");
     expect(isVoiceChannelInstalled(tmpDir)).toBe(false);
   });
 });

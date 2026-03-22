@@ -323,9 +323,6 @@ export {
   isValidInstanceId,
   isReservedName,
   discoverComponents,
-  readEnabledInstances,
-  addEnabledInstance,
-  removeEnabledInstance,
   buildComponentComposeArgs,
 } from "./control-plane/components.js";
 
