@@ -1,5 +1,8 @@
 # Docker Dependency Resolution
 
+> The normative rules for Docker dependency resolution are defined in `core-principles.md` § Docker build dependency contract. This document provides the rationale and background for those rules.
+> Authoritative document. Do not edit without a specific request to do so, or direct approval.
+
 ## Problem
 
 The monorepo uses Bun workspaces locally, where `bun install` at the repo root
@@ -53,11 +56,3 @@ Bun's `node_modules` layout uses symlinks to a `.bun/` cache directory. While
 this works with Bun's own resolver, it couples the Docker build to Bun's
 internal implementation detail. The admin build runs on Node.js/Vite, so
 depending on Bun's symlink structure for Node module resolution is fragile.
-
-## Files changed
-
-| File | What | Why |
-|------|------|-----|
-| `core/admin/Dockerfile` | npm install at workspace root | Common ancestor for module resolution |
-| `core/guardian/Dockerfile` | Install channels-sdk deps after copy | Ensure sdk transitive deps resolve |
-| `core/channel/Dockerfile` | Install channels-sdk deps after copy | Robustness for future sdk dependencies |

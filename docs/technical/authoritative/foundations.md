@@ -10,7 +10,7 @@ It focuses on three things only:
 - filesystem and mount boundaries
 - Docker network boundaries
 
-For the full architectural rule set, see `docs/technical/core-principles.md`.
+For the full architectural rule set, see `docs/technical/core-principles.md`. The security boundaries listed here are a summary; `core-principles.md` defines additional invariants (e.g., "host only by default") not repeated here.
 
 ---
 
@@ -38,15 +38,15 @@ The standard startup path uses:
 - `vault/stack/stack.env`
 - `vault/user/user.env`
 
-The `memory` service may additionally load:
+Individual services may additionally load service-specific managed env files under `vault/stack/services/<service-name>/`. For example, the `memory` service may load:
 
-- `vault/stack/services/memory/[managed].env`
+- `vault/stack/services/memory/managed.env`
 
 ### Security boundaries
 
 - Only `docker-socket-proxy` mounts the Docker socket.
 - Only `admin` mounts the full OpenPalm home (`$OP_HOME -> /openpalm`).
-- `assistant` mounts only `vault/user` from the vault boundary, not the whole vault directory.
+- `assistant` mounts only `vault/user/` (the directory, rw) from the vault boundary, not the whole vault directory.
 - `guardian` is the only path from channel ingress networks to the assistant.
 
 ---
@@ -56,8 +56,9 @@ The `memory` service may additionally load:
 | Network | Purpose | Core members |
 |---|---|---|
 | `assistant_net` | Core internal mesh | `memory`, `assistant`, `guardian`, `scheduler`, optional `admin` |
-| `channel_lan` | Default channel ingress | `guardian` and LAN-facing channel addons |
-| `admin_docker_net` | Isolated Docker control plane | `admin`, `docker-socket-proxy` |
+| `channel_lan` | Default channel ingress (LAN-restricted) | `guardian` and LAN-facing channel addons |
+| `channel_public` | Reserved for internet-facing channel ingress | `guardian` and public-facing channel addons. Access semantics and membership rules are under design. |
+| `admin_docker_net` | Isolated Docker control plane | `admin`, `docker-socket-proxy`. Only exists when the admin addon is installed. |
 
 ---
 
@@ -73,8 +74,7 @@ Role:
 Env sources:
 
 - `stack.env`
-- `user.env`
-- optional `vault/stack/services/memory/[managed].env`
+- optional `vault/stack/services/memory/managed.env`
 
 Key env:
 
@@ -106,9 +106,9 @@ Role:
 
 Env sources:
 
-- direct compose env
-- `user.env`
-- selected values from `stack.env`
+- direct compose `environment:` block
+- `user.env` also bind-mounted into the container for runtime access
+- selected values from `stack.env` (via compose `${VAR}` substitution)
 
 Key env:
 
@@ -132,7 +132,7 @@ Mounts:
 - `$OP_HOME/config -> /etc/openpalm`
 - `$OP_HOME/config/assistant -> /home/opencode/.config/opencode`
 - `$OP_HOME/vault/stack/auth.json -> /home/opencode/.local/share/opencode/auth.json`
-- `$OP_HOME/vault/user/ -> /etc/vault/`
+- `$OP_HOME/vault/user/ -> /etc/vault/` (directory mount, rw)
 - `$OP_HOME/logs/opencode -> /home/opencode/.local/state/opencode`
 
 Ports and network:
@@ -179,9 +179,9 @@ Key env:
 - `PORT=8080`
 - `OP_ASSISTANT_URL=http://assistant:4096`
 - `OPENCODE_TIMEOUT_MS=0`
-- `ADMIN_TOKEN=${OP_ADMIN_TOKEN:-}`
+- `OP_ADMIN_TOKEN=${OP_ADMIN_TOKEN:-}`
 - `GUARDIAN_AUDIT_PATH=/app/audit/guardian-audit.log`
-- `CHANNEL_<NAME>_SECRET`
+- `CHANNEL_<n>_SECRET`
 
 Mounts:
 
@@ -196,7 +196,7 @@ Ports and network:
 
 Additional env:
 
-- `GUARDIAN_SECRETS_PATH` -- File path to a dotenv file containing `CHANNEL_<NAME>_SECRET` entries. When set, secrets are loaded from this file with mtime-based hot-reload instead of from `process.env`. This allows channel secrets to be updated without restarting the guardian container.
+- `GUARDIAN_SECRETS_PATH` -- File path to a dotenv file containing `CHANNEL_<n>_SECRET` entries. When set, secrets are loaded from this file with mtime-based hot-reload instead of from `process.env`. This allows channel secrets to be updated without restarting the guardian container.
 - `GUARDIAN_SECRETS_CACHE_TTL_MS` -- Cache TTL in milliseconds for the secrets file (default `30000`). The file is re-read when the mtime changes or the TTL expires.
 - `GUARDIAN_SESSION_TTL_MS` -- Session TTL in milliseconds (default `900000` / 15 minutes). Sessions idle longer than this are evicted from the cache.
 
@@ -233,6 +233,8 @@ Role:
 - admin API caller
 - assistant and memory client
 
+The scheduler is a local-only automation runner. It does not serve an OpenCode instance and runs a private instance locally.
+
 Env sources:
 
 - direct compose env
@@ -244,9 +246,8 @@ Key env:
 - `OP_HOME=/openpalm`
 - `OP_ADMIN_TOKEN=${OP_ADMIN_TOKEN:-}`
 - `OP_ADMIN_API_URL`
-- `OPENCODE_API_URL=http://assistant:4096`
-- `OP_OPENCODE_PASSWORD`
 - `MEMORY_API_URL=http://memory:8765`
+- `MEMORY_AUTH_TOKEN`
 
 Mounts:
 
@@ -254,8 +255,6 @@ Mounts:
 
 Ports and network:
 
-- host: `127.0.0.1:${OP_SCHEDULER_PORT:-3897}`
-- container: `8090`
 - network: `assistant_net`
 
 ---
@@ -301,6 +300,7 @@ Key env:
 - `OP_HOME=/openpalm`
 - `ADMIN_TOKEN`
 - `MEMORY_API_URL=http://memory:8765`
+- `MEMORY_AUTH_TOKEN`
 - `GUARDIAN_URL=http://guardian:8080`
 - `OP_ASSISTANT_URL=http://assistant:4096`
 - `OP_ADMIN_API_URL=http://localhost:8100`
@@ -331,9 +331,11 @@ Ports and network:
 Shipped channel-style addons follow the same basic pattern:
 
 - load `stack.env` and `user.env`
-- join `channel_lan` by default
+- join `channel_lan` by default (or `channel_public` for internet-facing channels once that network's access semantics are finalized)
 - depend on `guardian`
 - send signed traffic to guardian, not directly to assistant
+
+Channel secret distribution: when a channel addon is installed, a shared HMAC secret is generated and written to both the channel's addon env and the guardian's secrets store (either `stack.env` as a `CHANNEL_<n>_SECRET` entry or the file at `GUARDIAN_SECRETS_PATH`). The channel SDK uses this secret to sign outbound requests; the guardian uses it to verify inbound requests. See the Guardian section above for hot-reload details.
 
 Default host binds for shipped HTTP-ish edges:
 
