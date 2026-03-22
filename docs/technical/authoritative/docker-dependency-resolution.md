@@ -24,6 +24,7 @@ Install admin's dependencies at the **workspace root** (`/workspace/`) so
 ```
 
 Key details:
+
 - `npm install` (not Bun) creates standard flat `node_modules/` — real
   directories, no symlinks
 - `ENV PATH="/workspace/node_modules/.bin:$PATH"` makes build tool binaries

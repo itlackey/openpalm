@@ -328,7 +328,13 @@ export async function fetchConfigFromMemory(): Promise<MemoryConfig | null> {
   try {
     const res = await callMemoryApi("/api/v1/config/");
     if (!res.ok) return null;
-    return (await res.json()) as MemoryConfig;
+    const data = (await res.json()) as Record<string, unknown>;
+    // The memory container returns { source, file, env } when env vars are configured.
+    // Unwrap to return the file-based config for backward compatibility.
+    if (data.file && typeof data.file === "object") {
+      return data.file as MemoryConfig;
+    }
+    return data as MemoryConfig;
   } catch {
     return null;
   }

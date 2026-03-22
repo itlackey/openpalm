@@ -1,5 +1,7 @@
 # Foundations
 
+> Authoritative document. Do not edit without a specific request to do so, or direct approval.
+
 This is the stripped-down runtime contract for OpenPalm.
 
 It focuses on three things only:
@@ -38,13 +40,13 @@ The standard startup path uses:
 
 The `memory` service may additionally load:
 
-- `vault/stack/services/memory/managed.env`
+- `vault/stack/services/memory/[managed].env`
 
 ### Security boundaries
 
 - Only `docker-socket-proxy` mounts the Docker socket.
 - Only `admin` mounts the full OpenPalm home (`$OP_HOME -> /openpalm`).
-- `assistant` mounts only `vault/user/user.env` from the vault boundary, not the whole directory.
+- `assistant` mounts only `vault/user` from the vault boundary, not the whole vault directory.
 - `guardian` is the only path from channel ingress networks to the assistant.
 
 ---
@@ -55,7 +57,6 @@ The `memory` service may additionally load:
 |---|---|---|
 | `assistant_net` | Core internal mesh | `memory`, `assistant`, `guardian`, `scheduler`, optional `admin` |
 | `channel_lan` | Default channel ingress | `guardian` and LAN-facing channel addons |
-| `channel_public` | Optional public ingress | `guardian` and intentionally public overlays |
 | `admin_docker_net` | Isolated Docker control plane | `admin`, `docker-socket-proxy` |
 
 ---
@@ -73,7 +74,7 @@ Env sources:
 
 - `stack.env`
 - `user.env`
-- optional `vault/stack/services/memory/managed.env`
+- optional `vault/stack/services/memory/[managed].env`
 
 Key env:
 
@@ -125,13 +126,13 @@ Key env:
 Mounts:
 
 - image-baked `/etc/opencode`
+- `$OP_HOME/data/assistant -> /home/opencode/`
+- `$OP_HOME/data/stash -> /home/opencode/.akm`
+- `$OP_HOME/data/workspace -> /work`
 - `$OP_HOME/config -> /etc/openpalm`
 - `$OP_HOME/config/assistant -> /home/opencode/.config/opencode`
 - `$OP_HOME/vault/stack/auth.json -> /home/opencode/.local/share/opencode/auth.json`
-- `$OP_HOME/vault/user/user.env -> /etc/openpalm-vault/user.env:ro`
-- `$OP_HOME/data/assistant -> /home/opencode/data`
-- `$OP_HOME/data/stash -> /home/opencode/.akm`
-- `$OP_HOME/data/workspace -> /work`
+- `$OP_HOME/vault/user/ -> /etc/vault/`
 - `$OP_HOME/logs/opencode -> /home/opencode/.local/state/opencode`
 
 Ports and network:
