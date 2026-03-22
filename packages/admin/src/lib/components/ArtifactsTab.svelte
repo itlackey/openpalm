@@ -3,8 +3,8 @@
     artifacts: string;
     loading: boolean;
     tokenStored: boolean;
-    artifactType: 'compose' | 'caddyfile' | null;
-    onInspect: (type: 'compose' | 'caddyfile') => void;
+    artifactType: 'compose' | null;
+    onInspect: (type: 'compose') => void;
     onDismiss: () => void;
   }
 
@@ -21,7 +21,7 @@
   }
 
   function handleDownload() {
-    const filename = artifactType === 'compose' ? 'docker-compose.yml' : 'Caddyfile';
+    const filename = 'docker-compose.yml';
     const blob = new Blob([artifacts], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -50,20 +50,6 @@
           <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
         </svg>
         Compose
-      </button>
-      <button
-        class="btn btn-sm {artifactType === 'caddyfile' ? 'btn-selector-active' : 'btn-secondary'}"
-        onclick={() => onInspect('caddyfile')}
-        disabled={loading || !tokenStored}
-      >
-        {#if loading && artifactType === 'caddyfile'}
-          <span class="spinner"></span>
-        {/if}
-        <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.23.62.84 1 1.51 1H21a2 2 0 0 1 0 4h-.09c-.67 0-1.28.38-1.51 1z" />
-        </svg>
-        Caddyfile
       </button>
     </div>
 
@@ -104,7 +90,7 @@
           </div>
         </div>
         <div class="result-meta">
-          <span>{artifactType === 'compose' ? 'Docker Compose' : 'Caddyfile'}</span>
+          <span>Docker Compose</span>
           <span class="meta-separator">·</span>
           <span>Generated from current configuration</span>
         </div>

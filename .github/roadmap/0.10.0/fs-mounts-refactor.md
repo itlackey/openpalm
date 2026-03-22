@@ -3,6 +3,8 @@
 **Version:** 3 — Final
 **Date:** 2026-03-19
 
+> Current repo alignment: this proposal drove the move to `~/.openpalm/`, but the shipped layout has since been refined. The current implementation uses nested vault paths (`vault/user/user.env`, `vault/stack/stack.env`) and runtime compose assembly under `.openpalm/stack/`. Treat older flat-vault examples in this document as superseded planning detail unless they have already been normalized inline elsewhere.
+
 ---
 
 ## TLDR
@@ -235,17 +237,28 @@ OWNER_EMAIL=
 # ──────────────────────────────────────────────────────────────────
 
 # Authentication
-OPENPALM_ADMIN_TOKEN=
+OP_ADMIN_TOKEN=
 
 # Paths
-OPENPALM_HOME=/home/user/.openpalm
-OPENPALM_UID=1000
-OPENPALM_GID=1000
-OPENPALM_DOCKER_SOCK=/var/run/docker.sock
+OP_HOME=/home/user/.openpalm
+OP_UID=1000
+OP_GID=1000
+OP_DOCKER_SOCK=/var/run/docker.sock
 
 # Images
-OPENPALM_IMAGE_NAMESPACE=openpalm
-OPENPALM_IMAGE_TAG=v0.9.2
+OP_IMAGE_NAMESPACE=openpalm
+OP_IMAGE_TAG=v0.10.0
+
+# Ports (38XX range)
+OP_ASSISTANT_PORT=3800
+OP_CHANNEL_VOICE_PORT=3810
+OP_CHANNEL_CHAT_PORT=3820
+OP_ADMIN_PORT=3880
+OP_ADMIN_OPENCODE_PORT=3881
+OP_SCHEDULER_PORT=3897
+OP_MEMORY_PORT=3898
+OP_GUARDIAN_PORT=3899
+OP_INGRESS_PORT=3880
 
 # Service Auth
 MEMORY_AUTH_TOKEN=
@@ -257,7 +270,7 @@ CHANNEL_DISCORD_SECRET=
 CHANNEL_SLACK_SECRET=
 
 # Setup
-OPENPALM_SETUP_COMPLETE=true
+OP_SETUP_COMPLETE=true
 ```
 
 **Why two files instead of one:**
@@ -272,9 +285,9 @@ OPENPALM_SETUP_COMPLETE=true
 |-----------|---------------|--------------------------|------------------------|-------------|
 | **assistant** | `vault/user.env` → `/etc/openpalm/user.env` (ro) | `MEMORY_AUTH_TOKEN` | — | LLM keys (via file), memory token (via env) |
 | **admin** | `vault/` → `/etc/openpalm/vault/` (rw) | everything it needs | everything it needs | Full access — it manages both files |
-| **guardian** | none | `OPENPALM_ADMIN_TOKEN`, `CHANNEL_*_SECRET` | — | Admin token + HMAC secrets only |
+| **guardian** | none | `OP_ADMIN_TOKEN`, `CHANNEL_*_SECRET` | — | Admin token + HMAC secrets only |
 | **memory** | none | `MEMORY_AUTH_TOKEN` | `OPENAI_API_KEY`, `OPENAI_BASE_URL` | Memory auth + embedding provider only |
-| **scheduler** | none | `OPENPALM_ADMIN_TOKEN` | — | Admin token only |
+| **scheduler** | none | `OP_ADMIN_TOKEN` | — | Admin token only |
 | **caddy** | none | — | — | No secrets (TLS config is file-based) |
 
 Each container's compose `environment:` block is the explicit allowlist. The vault mount rules add a second layer: even if a container's `environment:` block references a variable, it can only read the file if it has a mount.
@@ -455,7 +468,7 @@ All host paths are relative to `~/.openpalm/` unless noted.
 
 | Host Path | Container Path | Mode | Purpose |
 |-----------|---------------|------|---------|
-| `$OPENPALM_DOCKER_SOCK` | `/var/run/docker.sock` | ro | Docker daemon socket |
+| `$OP_DOCKER_SOCK` | `/var/run/docker.sock` | ro | Docker daemon socket |
 
 ### 5.2 Mount Count Summary
 
@@ -612,17 +625,17 @@ OWNER_EMAIL=
 # admin, and may be overwritten on apply/upgrade.
 
 # ── Authentication ────────────────────────────────────────────────
-OPENPALM_ADMIN_TOKEN=
+OP_ADMIN_TOKEN=
 
 # ── Paths ─────────────────────────────────────────────────────────
-OPENPALM_HOME=
-OPENPALM_UID=1000
-OPENPALM_GID=1000
-OPENPALM_DOCKER_SOCK=/var/run/docker.sock
+OP_HOME=
+OP_UID=1000
+OP_GID=1000
+OP_DOCKER_SOCK=/var/run/docker.sock
 
 # ── Images ────────────────────────────────────────────────────────
-OPENPALM_IMAGE_NAMESPACE=openpalm
-OPENPALM_IMAGE_TAG=latest
+OP_IMAGE_NAMESPACE=openpalm
+OP_IMAGE_TAG=latest
 
 # ── Service Auth ──────────────────────────────────────────────────
 MEMORY_AUTH_TOKEN=
@@ -635,7 +648,7 @@ CHANNEL_SLACK_SECRET=
 CHANNEL_API_SECRET=
 
 # ── Setup ─────────────────────────────────────────────────────────
-OPENPALM_SETUP_COMPLETE=false
+OP_SETUP_COMPLETE=false
 ```
 
 ## Appendix C: `config/openpalm.yml` Template
@@ -663,106 +676,27 @@ network:
 
 ---
 
-## Part 8: Migration (0.9.x → 0.10.0)
+## Part 8: Clean Break (0.9.x → 0.10.0)
 
-> Added 2026-03-19 by agent review consensus (5/5 unanimous). An automated migration tool is non-negotiable if the FS refactor ships.
+> Updated for the final 0.10.0 direction: the filesystem refactor ships as a clean break, not an in-place migration.
 
-### 8.1 `openpalm migrate` Command
+0.10.0 standardizes on `~/.openpalm/` as the only supported runtime layout.
 
-The CLI provides a migration command that handles the XDG-to-`~/.openpalm/` transition atomically:
+- There is no `openpalm migrate` command.
+- Legacy XDG roots are not converted in place.
+- Legacy `channels/*.yml` overlays are not translated into addon definitions.
+- Users must reinstall and re-seed their stack into the new layout.
 
-```bash
-openpalm migrate
-```
+### 8.1 Operator Expectations
 
-### 8.2 Migration Steps
+Users upgrading from 0.9.x should:
 
-```
-1. DETECT     — scan for existing XDG directories
-                 • Check ~/.config/openpalm/ (CONFIG_HOME)
-                 • Check ~/.local/share/openpalm/ (DATA_HOME)
-                 • Check ~/.local/state/openpalm/ (STATE_HOME)
-                 • Check custom paths via OPENPALM_CONFIG_HOME / OPENPALM_DATA_HOME / OPENPALM_STATE_HOME
-                 → if none found: skip migration, run fresh install
+1. Back up existing XDG config/data/secrets manually.
+2. Install or update to 0.10.0.
+3. Create a fresh `~/.openpalm/` layout.
+4. Reinstall channels/services as addons.
+5. Re-enter secrets into `vault/user/user.env` and `vault/stack/stack.env`.
 
-2. STOP       — docker compose down (stop all containers)
+### 8.2 Legacy State Handling
 
-3. CREATE     — create ~/.openpalm/ directory structure
-                 • config/, vault/, data/, logs/
-
-4. MOVE       — relocate files from old to new locations
-                 CONFIG_HOME/channels/*.yml     → config/components/channel-*.yml
-                 CONFIG_HOME/opencode/          → config/assistant/
-                 CONFIG_HOME/secrets.env        → (split into vault/user.env + vault/system.env)
-                 DATA_HOME/admin/               → data/admin/
-                 DATA_HOME/assistant/           → data/assistant/
-                 DATA_HOME/memory/              → data/memory/
-                 DATA_HOME/guardian/            → data/guardian/
-                 DATA_HOME/caddy/              → data/caddy/
-                 DATA_HOME/opencode/           → data/assistant/ (merge)
-                 DATA_HOME/stack.env           → (merge system values into vault/system.env)
-                 DATA_HOME/automations/        → config/automations/
-                 STATE_HOME/opencode/          → logs/opencode/
-                 STATE_HOME/artifacts/         → (discarded — staging tier eliminated)
-                 ~/openpalm/ (WORK_DIR)        → data/workspace/
-
-5. SPLIT ENV  — split secrets.env + stack.env into user.env + system.env
-                 • LLM keys, provider URLs, MEMORY_USER_ID → vault/user.env
-                 • ADMIN_TOKEN, HMAC secrets, paths, UID/GID, image tags → vault/system.env
-                 • Generate user.env.schema + system.env.schema from templates
-
-6. VALIDATE   — run the standard validate-in-place checks
-                 • varlock validates both env files against schemas
-                 • docker compose config validates compose files
-                 → if validation fails: report errors, do NOT delete old directories
-
-7. VERIFY     — start stack with new layout, run health checks
-                 → if health checks pass: report success, print next steps
-                 → if health checks fail: stop stack, report error
-
-8. PRESERVE   — OLD directories are NOT deleted automatically
-                 • Print: "Migration complete. Old directories preserved at:"
-                 • Print: "  ~/.config/openpalm/"
-                 • Print: "  ~/.local/share/openpalm/"
-                 • Print: "  ~/.local/state/openpalm/"
-                 • Print: "Run 'openpalm migrate --cleanup' to remove them after verifying."
-```
-
-### 8.3 Env File Splitting Rules
-
-| Source | Variable | Destination |
-|--------|----------|-------------|
-| `secrets.env` | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `GOOGLE_API_KEY` | `vault/user.env` |
-| `secrets.env` | `OPENAI_BASE_URL`, `SYSTEM_LLM_*`, `EMBEDDING_*` | `vault/user.env` |
-| `secrets.env` | `ADMIN_TOKEN` | `vault/system.env` (as `OPENPALM_ADMIN_TOKEN`) |
-| `secrets.env` | `OPENMEMORY_USER_ID` | `vault/user.env` (as `MEMORY_USER_ID`) |
-| `stack.env` | `OPENPALM_HOME`, `OPENPALM_UID`, `OPENPALM_GID` | `vault/system.env` |
-| `stack.env` | `OPENPALM_IMAGE_*` | `vault/system.env` |
-| `stack.env` | `MEMORY_AUTH_TOKEN`, `OPENCODE_SERVER_PASSWORD` | `vault/system.env` |
-| `stack.env` | `CHANNEL_*_SECRET` | `vault/system.env` |
-| `stack.env` | `OPENPALM_DOCKER_SOCK` | `vault/system.env` |
-
-### 8.4 Legacy Environment Variable Handling
-
-If the user has `OPENPALM_CONFIG_HOME`, `OPENPALM_DATA_HOME`, or `OPENPALM_STATE_HOME` set in their shell environment:
-
-```
-WARNING: Legacy environment variables detected:
-  OPENPALM_CONFIG_HOME=/custom/path/config
-  OPENPALM_DATA_HOME=/custom/path/data
-
-OpenPalm 0.10.0 uses OPENPALM_HOME (~/.openpalm by default).
-Remove these variables from your shell profile and re-run migration.
-```
-
-The migration tool refuses to proceed with legacy env vars set, to prevent confusion about which paths are authoritative.
-
-### 8.5 Combined Migration
-
-Since 0.10.0 also introduces the component system (replacing legacy channels), `openpalm migrate` handles both transitions:
-
-1. Directory relocation (XDG → `~/.openpalm/`)
-2. Env file splitting (`secrets.env` + `stack.env` → `user.env` + `system.env`)
-3. Channel-to-component conversion (`.yml` overlays move to `config/components/`)
-
-Users do NOT need to run separate migration commands for the filesystem and component changes.
+If legacy XDG directories or legacy env vars are detected, tooling should treat them as unsupported legacy state and direct the user to the clean-break upgrade documentation rather than attempting relocation or conversion.

@@ -1,6 +1,6 @@
 /**
  * Tests for lifecycle.ts — state factory, lifecycle helpers, compose builders,
- * caller/action validation.
+ * caller normalization.
  */
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import {
@@ -19,11 +19,11 @@ import {
   updateStackEnvToLatestImageTag,
   buildComposeFileList,
   normalizeCaller,
-  isAllowedAction
-} from "./lifecycle.js";
-import { randomHex } from "./staging.js";
-import { CORE_SERVICES, OPTIONAL_SERVICES } from "./types.js";
-import { makeTempDir, makeTestState, trackDir, registerCleanup, seedConfigChannels } from "./test-helpers.js";
+  randomHex,
+  CORE_SERVICES,
+  OPTIONAL_SERVICES,
+} from "@openpalm/lib";
+import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
 
@@ -82,67 +82,50 @@ describe("normalizeCaller", () => {
   });
 });
 
-// ── Action Validation ───────────────────────────────────────────────────
-
-describe("isAllowedAction", () => {
-  test("allows documented actions from api-spec.md", () => {
-    const validActions = [
-      "install", "update", "upgrade", "uninstall",
-      "containers.list", "containers.up",
-      "containers.down", "containers.restart",
-      "channels.list", "channels.install", "channels.uninstall",
-      "extensions.list",
-      "artifacts.list", "artifacts.get", "artifacts.manifest",
-      "audit.list",
-      "accessScope.get", "accessScope.set",
-      "connections.get", "connections.patch", "connections.status"
-    ];
-    for (const action of validActions) {
-      expect(isAllowedAction(action)).toBe(true);
-    }
-  });
-
-  test("rejects invalid actions", () => {
-    expect(isAllowedAction("")).toBe(false);
-    expect(isAllowedAction("destroy")).toBe(false);
-    expect(isAllowedAction("INSTALL")).toBe(false);
-    expect(isAllowedAction("admin.delete")).toBe(false);
-  });
-});
-
 // ── Build Compose File List ─────────────────────────────────────────────
 
 describe("buildComposeFileList", () => {
-  test("starts with core compose from artifacts dir", () => {
+  test("starts with core compose from stack/", () => {
     const state = makeTestState();
-    trackDir(state.stateDir);
-    trackDir(state.configDir);
-    trackDir(state.dataDir);
+    trackDir(state.homeDir);
+
+    // Create the core.compose.yml so it's found
+    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
+    writeFileSync(join(state.homeDir, "stack", "core.compose.yml"), "services: {}");
 
     const files = buildComposeFileList(state);
-    expect(files[0]).toBe(`${state.stateDir}/artifacts/docker-compose.yml`);
+    expect(files[0]).toBe(`${state.homeDir}/stack/core.compose.yml`);
   });
 
-  test("includes staged channel overlays", () => {
+  test("includes addon overlays from stack/addons/", () => {
     const state = makeTestState();
-    trackDir(state.stateDir);
-    trackDir(state.configDir);
-    trackDir(state.dataDir);
+    trackDir(state.homeDir);
 
-    const channelsDir = join(state.stateDir, "artifacts", "channels");
-    mkdirSync(channelsDir, { recursive: true });
-    writeFileSync(join(channelsDir, "chat.yml"), "services: {}");
+    const stackDir = join(state.homeDir, "stack");
+    const addonsDir = join(stackDir, "addons");
+    mkdirSync(stackDir, { recursive: true });
+    writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
+
+    // Seed stack.yaml with chat addon enabled (version + capabilities required by readStackSpec)
+    const configDir = join(state.homeDir, "config");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "stack.yaml"), "version: 2\ncapabilities: {}\naddons:\n  chat: true\n");
+
+    // Create the addon compose file
+    mkdirSync(join(addonsDir, "chat"), { recursive: true });
+    writeFileSync(join(addonsDir, "chat", "compose.yml"), "services: {}");
 
     const files = buildComposeFileList(state);
     expect(files).toHaveLength(2);
-    expect(files[1]).toContain("chat.yml");
+    expect(files[1]).toContain("chat");
   });
 
-  test("does not include local-models.yml overlay (removed)", () => {
+  test("does not include removed overlays", () => {
     const state = makeTestState();
-    trackDir(state.stateDir);
-    trackDir(state.configDir);
-    trackDir(state.dataDir);
+    trackDir(state.homeDir);
+
+    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
+    writeFileSync(join(state.homeDir, "stack", "core.compose.yml"), "services: {}");
 
     const files = buildComposeFileList(state);
     expect(files).toHaveLength(1); // just core compose
@@ -156,49 +139,26 @@ describe("createState", () => {
   const origEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    origEnv.OPENPALM_CONFIG_HOME = process.env.OPENPALM_CONFIG_HOME;
-    origEnv.OPENPALM_STATE_HOME = process.env.OPENPALM_STATE_HOME;
-    origEnv.OPENPALM_DATA_HOME = process.env.OPENPALM_DATA_HOME;
-    origEnv.ADMIN_TOKEN = process.env.ADMIN_TOKEN;
+    origEnv.OP_HOME = process.env.OP_HOME;
+    origEnv.OP_ADMIN_TOKEN = process.env.OP_ADMIN_TOKEN;
   });
 
   afterEach(() => {
-    process.env.OPENPALM_CONFIG_HOME = origEnv.OPENPALM_CONFIG_HOME;
-    process.env.OPENPALM_STATE_HOME = origEnv.OPENPALM_STATE_HOME;
-    process.env.OPENPALM_DATA_HOME = origEnv.OPENPALM_DATA_HOME;
-    process.env.ADMIN_TOKEN = origEnv.ADMIN_TOKEN;
+    process.env.OP_HOME = origEnv.OP_HOME;
+    process.env.OP_ADMIN_TOKEN = origEnv.OP_ADMIN_TOKEN;
   });
 
-  test("loads persisted channel secrets from stack.env", () => {
+  test("reads OP_ADMIN_TOKEN from vault/stack/stack.env file", () => {
     const base = trackDir(makeTempDir());
-    process.env.OPENPALM_CONFIG_HOME = join(base, "config");
-    process.env.OPENPALM_STATE_HOME = join(base, "state");
-    process.env.OPENPALM_DATA_HOME = join(base, "data");
-    delete process.env.ADMIN_TOKEN;
+    process.env.OP_HOME = base;
+    delete process.env.OP_ADMIN_TOKEN;
+    delete process.env.OP_ADMIN_TOKEN;
 
-    const dataDir = join(base, "data");
-    mkdirSync(dataDir, { recursive: true });
+    const vaultDir = join(base, "vault");
+    mkdirSync(join(vaultDir, "stack"), { recursive: true });
     writeFileSync(
-      join(dataDir, "stack.env"),
-      "# Stack config\nCHANNEL_CHAT_SECRET=abc123\nCHANNEL_DISCORD_SECRET=def456\n"
-    );
-
-    const state = createState();
-    expect(state.channelSecrets.chat).toBe("abc123");
-    expect(state.channelSecrets.discord).toBe("def456");
-  });
-
-  test("reads ADMIN_TOKEN from secrets.env file", () => {
-    const base = trackDir(makeTempDir());
-    process.env.OPENPALM_CONFIG_HOME = join(base, "config");
-    process.env.OPENPALM_STATE_HOME = join(base, "state");
-    process.env.OPENPALM_DATA_HOME = join(base, "data");
-    delete process.env.ADMIN_TOKEN;
-
-    mkdirSync(join(base, "config"), { recursive: true });
-    writeFileSync(
-      join(base, "config", "secrets.env"),
-      "ADMIN_TOKEN=file-token\nOPENAI_API_KEY=sk-test\n"
+      join(vaultDir, "stack", "stack.env"),
+      "OP_ADMIN_TOKEN=file-token\n"
     );
 
     const state = createState();
@@ -207,13 +167,12 @@ describe("createState", () => {
 
   test("uses explicit adminToken parameter over file/env", () => {
     const base = trackDir(makeTempDir());
-    process.env.OPENPALM_CONFIG_HOME = join(base, "config");
-    process.env.OPENPALM_STATE_HOME = join(base, "state");
-    process.env.OPENPALM_DATA_HOME = join(base, "data");
-    process.env.ADMIN_TOKEN = "env-token";
+    process.env.OP_HOME = base;
+    process.env.OP_ADMIN_TOKEN = "env-token";
 
-    mkdirSync(join(base, "config"), { recursive: true });
-    writeFileSync(join(base, "config", "secrets.env"), "ADMIN_TOKEN=file-token\n");
+    const vaultDir = join(base, "vault");
+    mkdirSync(join(vaultDir, "user"), { recursive: true });
+    writeFileSync(join(vaultDir, "user", "user.env"), "OP_ADMIN_TOKEN=file-token\n");
 
     const state = createState("explicit-token");
     expect(state.adminToken).toBe("explicit-token");
@@ -221,9 +180,7 @@ describe("createState", () => {
 
   test("initializes all core services as stopped", () => {
     const base = trackDir(makeTempDir());
-    process.env.OPENPALM_CONFIG_HOME = join(base, "config");
-    process.env.OPENPALM_STATE_HOME = join(base, "state");
-    process.env.OPENPALM_DATA_HOME = join(base, "data");
+    process.env.OP_HOME = base;
 
     const state = createState();
     for (const service of CORE_SERVICES) {
@@ -236,7 +193,6 @@ describe("createState", () => {
 
 describe("CORE_SERVICES", () => {
   test("includes all expected core services", () => {
-    expect(CORE_SERVICES).toContain("caddy");
     expect(CORE_SERVICES).toContain("memory");
     expect(CORE_SERVICES).toContain("assistant");
     expect(CORE_SERVICES).toContain("guardian");
@@ -249,8 +205,8 @@ describe("CORE_SERVICES", () => {
     expect(OPTIONAL_SERVICES).toContain("docker-socket-proxy");
   });
 
-  test("has exactly 5 core services", () => {
-    expect(CORE_SERVICES).toHaveLength(5);
+  test("has exactly 4 core services", () => {
+    expect(CORE_SERVICES).toHaveLength(4);
   });
 
   test("has exactly 2 optional services", () => {
@@ -261,25 +217,20 @@ describe("CORE_SERVICES", () => {
 // ── Lifecycle State Transitions ─────────────────────────────────────────
 
 describe("applyInstall", () => {
-  test("marks all core services as running", () => {
+  test("marks all core services as running", async () => {
     const state = makeTestState();
-    trackDir(state.stateDir);
-    trackDir(state.configDir);
-    trackDir(state.dataDir);
+    trackDir(state.homeDir);
 
     // Initialize services as stopped
     for (const service of CORE_SERVICES) {
       state.services[service] = "stopped";
     }
 
-    // Create required dirs for persistArtifacts
-    mkdirSync(join(state.configDir, "channels"), { recursive: true });
-    mkdirSync(join(state.stateDir, "artifacts"), { recursive: true });
-    mkdirSync(join(state.stateDir, "channels"), { recursive: true });
-    mkdirSync(join(state.stateDir, "secrets"), { recursive: true });
-    mkdirSync(join(state.dataDir, "caddy"), { recursive: true });
+    // Create required dirs for writeRuntimeFiles
+    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
+    mkdirSync(join(state.vaultDir), { recursive: true });
 
-    applyInstall(state);
+    await applyInstall(state);
 
     for (const service of CORE_SERVICES) {
       expect(state.services[service]).toBe("running");
@@ -288,20 +239,15 @@ describe("applyInstall", () => {
 });
 
 describe("applyUpdate", () => {
-  test("returns list of running services that were restarted", () => {
+  test("returns list of running services that were restarted", async () => {
     const state = makeTestState();
-    trackDir(state.stateDir);
-    trackDir(state.configDir);
-    trackDir(state.dataDir);
+    trackDir(state.homeDir);
     state.services = { admin: "running", guardian: "running", memory: "stopped" };
 
-    mkdirSync(join(state.configDir, "channels"), { recursive: true });
-    mkdirSync(join(state.stateDir, "artifacts"), { recursive: true });
-    mkdirSync(join(state.stateDir, "channels"), { recursive: true });
-    mkdirSync(join(state.stateDir, "secrets"), { recursive: true });
-    mkdirSync(join(state.dataDir, "caddy"), { recursive: true });
+    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
+    mkdirSync(join(state.vaultDir), { recursive: true });
 
-    const result = applyUpdate(state);
+    const result = await applyUpdate(state);
     expect(result.restarted).toContain("admin");
     expect(result.restarted).toContain("guardian");
     expect(result.restarted).not.toContain("memory");
@@ -309,20 +255,15 @@ describe("applyUpdate", () => {
 });
 
 describe("applyUninstall", () => {
-  test("stops all services", () => {
+  test("stops all services", async () => {
     const state = makeTestState();
-    trackDir(state.stateDir);
-    trackDir(state.configDir);
-    trackDir(state.dataDir);
+    trackDir(state.homeDir);
     state.services = { admin: "running", guardian: "running" };
 
-    mkdirSync(join(state.configDir, "channels"), { recursive: true });
-    mkdirSync(join(state.stateDir, "artifacts"), { recursive: true });
-    mkdirSync(join(state.stateDir, "channels"), { recursive: true });
-    mkdirSync(join(state.stateDir, "secrets"), { recursive: true });
-    mkdirSync(join(state.dataDir, "caddy"), { recursive: true });
+    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
+    mkdirSync(join(state.vaultDir), { recursive: true });
 
-    const result = applyUninstall(state);
+    const result = await applyUninstall(state);
     expect(result.stopped).toContain("admin");
     expect(result.stopped).toContain("guardian");
 
@@ -337,15 +278,13 @@ describe("updateStackEnvToLatestImageTag", () => {
     vi.restoreAllMocks();
   });
 
-  test("updates OPENPALM_IMAGE_TAG in DATA_HOME/stack.env", async () => {
+  test("updates OP_IMAGE_TAG in vault/stack/stack.env", async () => {
     const state = makeTestState();
-    trackDir(state.stateDir);
-    trackDir(state.configDir);
-    trackDir(state.dataDir);
-    mkdirSync(state.dataDir, { recursive: true });
+    trackDir(state.homeDir);
+    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
     writeFileSync(
-      join(state.dataDir, "stack.env"),
-      "OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=v0.1.0\n"
+      join(state.vaultDir, "stack", "stack.env"),
+      "OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=v0.1.0\n"
     );
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -358,20 +297,18 @@ describe("updateStackEnvToLatestImageTag", () => {
     );
 
     const result = await updateStackEnvToLatestImageTag(state);
-    const updated = readFileSync(join(state.dataDir, "stack.env"), "utf-8");
+    const updated = readFileSync(join(state.vaultDir, "stack", "stack.env"), "utf-8");
 
     expect(result.namespace).toBe("openpalm");
     expect(result.tag).toBe("v0.7.7");
-    expect(updated).toContain("OPENPALM_IMAGE_TAG=v0.7.7");
+    expect(updated).toContain("OP_IMAGE_TAG=v0.7.7");
   });
 
   test("throws when docker tag lookup fails", async () => {
     const state = makeTestState();
-    trackDir(state.stateDir);
-    trackDir(state.configDir);
-    trackDir(state.dataDir);
-    mkdirSync(state.dataDir, { recursive: true });
-    writeFileSync(join(state.dataDir, "stack.env"), "OPENPALM_IMAGE_NAMESPACE=openpalm\n");
+    trackDir(state.homeDir);
+    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
+    writeFileSync(join(state.vaultDir, "stack", "stack.env"), "OP_IMAGE_NAMESPACE=openpalm\n");
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("bad gateway", { status: 502 }));
 

@@ -91,7 +91,7 @@
           <p class="text-danger">{error}</p>
           <button class="btn btn-secondary btn-sm" onclick={onRefresh}>Try Again</button>
         {:else}
-          <p>No automations configured. Drop .yml files into <code>~/.config/openpalm/automations/</code> to get started.</p>
+          <p>No automations configured. Drop .yml files into <code>~/.openpalm/config/automations/</code> to get started.</p>
           <p class="empty-state-hint">Automations run on a cron schedule and can execute API calls, scripts, or compose commands.</p>
         {/if}
       </div>

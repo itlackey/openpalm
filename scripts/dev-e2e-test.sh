@@ -6,7 +6,7 @@
 # runs the setup wizard, and verifies:
 #   1. All containers are healthy
 #   2. No root-owned files in .dev/
-#   3. secrets.env has correct values
+#   3. user.env has correct values
 #   4. Assistant container has correct env vars
 #   5. Memory user is provisioned
 #   6. Setup is marked complete
@@ -67,8 +67,9 @@ fi
 echo ""
 echo "=== Step 2: Clean .dev/ state ==="
 
-# Config
-echo "# OpenPalm secrets" >.dev/config/secrets.env
+# Vault — reset secrets
+mkdir -p .dev/vault/user .dev/vault/stack
+echo "# OpenPalm secrets" >.dev/vault/user/user.env
 
 # Data — remove everything except models (HF cache)
 rm -f .dev/data/memory/default_config.json
@@ -76,33 +77,33 @@ rm -f .dev/data/memory/memory.db
 rm -f .dev/data/memory/memory.py
 rm -f .dev/data/local-models.json
 rm -f .dev/data/local-models.yml
-rm -f .dev/data/stack.env
-rm -f .dev/data/docker-compose.yml
 rm -rf .dev/data/backups
 
 # Config — remove generated assistant config so the wizard writes a fresh one
 rm -f .dev/config/assistant/opencode.json
+# Config — remove generated compose so dev-setup seeds a fresh one
+rm -f .dev/stack/core.compose.yml
 
-# Root-owned data from containers (qdrant, caddy, opencode logs)
+# Root-owned data from containers (qdrant, opencode logs)
 docker run --rm -v "$ROOT_DIR/.dev/data/memory:/c" alpine sh -c \
 	"rm -rf /c/qdrant" 2>/dev/null || true
-docker run --rm -v "$ROOT_DIR/.dev/data/caddy:/c" alpine sh -c \
-	"rm -rf /c/data /c/config" 2>/dev/null || true
 docker run --rm -v "$ROOT_DIR/.dev/data/opencode:/c" alpine sh -c \
 	"find /c -user root -delete" 2>/dev/null || true
 docker run --rm -v "$ROOT_DIR/.dev/config/assistant:/c" alpine sh -c \
 	"find /c -user root -delete" 2>/dev/null || true
 
-# State artifacts
-rm -f .dev/state/artifacts/secrets.env
-rm -f .dev/state/artifacts/stack.env
-rm -f .dev/state/artifacts/docker-compose.yml
-rm -f .dev/state/artifacts/Caddyfile
-rm -f .dev/state/artifacts/local-models.yml
-rm -f .dev/state/artifacts/manifest.json
+# Vault — reset system env and managed files
+rm -f .dev/vault/stack/stack.env
+rm -f .dev/vault/stack/auth.json
+rm -rf .dev/vault/stack/services
+rm -rf .dev/vault/stack/addons
+
+# Config — remove stack.yaml so the wizard writes a fresh one
+rm -f .dev/config/stack.yaml
+
+# State — remove setup markers and audit logs
 rm -f .dev/state/setup-complete
 rm -f .dev/state/setup-token.txt
-rm -rf .dev/state/artifacts/channels
 rm -f .dev/state/audit/admin-audit.jsonl
 rm -f .dev/state/audit/guardian-audit.log
 
@@ -115,16 +116,13 @@ echo "=== Step 3: Seed config ==="
 
 # Clear admin tokens from seeded secrets so admin starts in first-boot state.
 # dev-setup seeds them for convenience, but the e2e test needs to verify the wizard sets them.
-# The secrets.env uses `export ` prefix, so match both with and without.
-sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/config/secrets.env
-sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/state/artifacts/secrets.env
-sed -i 's/^\(export \)\{0,1\}OPENPALM_ADMIN_TOKEN=.*/\1OPENPALM_ADMIN_TOKEN=/' .dev/config/secrets.env
-sed -i 's/^\(export \)\{0,1\}OPENPALM_ADMIN_TOKEN=.*/\1OPENPALM_ADMIN_TOKEN=/' .dev/state/artifacts/secrets.env
+# The user.env uses `export ` prefix, so match both with and without.
+sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/vault/user/user.env
+sed -i 's/^\(export \)\{0,1\}OP_ADMIN_TOKEN=.*/\1OP_ADMIN_TOKEN=/' .dev/vault/user/user.env
 
 # Use a dev-only image tag so the wizard's pull step doesn't overwrite locally
 # built images with remote ones (e.g. an older Python-based memory:latest).
-sed -i 's/^OPENPALM_IMAGE_TAG=.*/OPENPALM_IMAGE_TAG=dev/' .dev/data/stack.env
-sed -i 's/^OPENPALM_IMAGE_TAG=.*/OPENPALM_IMAGE_TAG=dev/' .dev/state/artifacts/stack.env
+sed -i 's/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=dev/' .dev/vault/stack/stack.env
 
 pass "Config seeded (admin token cleared, image tag set to dev)"
 
@@ -174,11 +172,10 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 	echo "=== Step 4: Build all images from source ==="
 	npm run admin:build 2>&1 | tail -3
 	docker compose --project-directory . \
-		-f .dev/state/artifacts/docker-compose.yml \
+		-f .dev/stack/core.compose.yml \
 		-f compose.dev.yaml \
-		--env-file .dev/state/artifacts/stack.env \
-		--env-file .dev/state/artifacts/secrets.env \
-		--profile admin \
+		--env-file .dev/vault/stack/stack.env \
+		--env-file .dev/vault/user/user.env \
 		--project-name openpalm build 2>&1 | tail -5
 	pass "All images built"
 else
@@ -190,11 +187,10 @@ fi
 echo ""
 echo "=== Step 5: Start stack ==="
 docker compose --project-directory . \
-	-f .dev/state/artifacts/docker-compose.yml \
+	-f .dev/stack/core.compose.yml \
 	-f compose.dev.yaml \
-	--env-file .dev/state/artifacts/stack.env \
-	--env-file .dev/state/artifacts/secrets.env \
-	--profile admin \
+	--env-file .dev/vault/stack/stack.env \
+	--env-file .dev/vault/user/user.env \
 	--project-name openpalm up -d 2>&1 | tail -10
 
 # Wait for admin to be healthy
@@ -221,7 +217,7 @@ SETUP_RESPONSE=$(curl -s http://localhost:8100/admin/setup)
 SETUP_COMPLETE=$(echo "$SETUP_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['setupComplete'])" 2>/dev/null)
 
 # The setup token is intentionally not exposed by the API.
-# Read the bootstrap token from STATE_HOME, where the admin writes it on startup.
+# Read the bootstrap token from data/admin, where the admin writes it on startup.
 SETUP_TOKEN=""
 if [ -f .dev/state/setup-token.txt ]; then
 	SETUP_TOKEN=$(tr -d '\r\n' <.dev/state/setup-token.txt)
@@ -275,7 +271,7 @@ SETUP_OK=$(echo "$SETUP_RESULT" | python3 -c "import sys,json; print(json.load(s
 if [ "$SETUP_OK" = "True" ]; then
 	pass "Setup wizard completed"
 else
-	# Caddy restart may drop the connection — check if setup completed anyway
+	# Connection may have dropped — check if setup completed anyway
 	sleep 5
 	SETUP_COMPLETE2=$(curl -s http://localhost:8100/admin/setup -H "x-admin-token: dev-admin-token" 2>/dev/null |
 		python3 -c "import sys,json; print(json.load(sys.stdin)['setupComplete'])" 2>/dev/null || echo "unknown")
@@ -317,11 +313,10 @@ fi
 # --no-deps: only recreate the assistant, not its dependencies.
 # Errors are surfaced (no || true) so we can detect silent failures.
 docker compose --project-directory . \
-	-f .dev/state/artifacts/docker-compose.yml \
+	-f .dev/stack/core.compose.yml \
 	-f compose.dev.yaml \
-	--env-file .dev/state/artifacts/stack.env \
-	--env-file .dev/state/artifacts/secrets.env \
-	--profile admin \
+	--env-file .dev/vault/stack/stack.env \
+	--env-file .dev/vault/user/user.env \
 	--project-name openpalm up -d --force-recreate --no-deps assistant
 
 # ── Step 8: Wait for containers ──────────────────────────────────────
@@ -329,7 +324,6 @@ echo ""
 echo "=== Step 8: Wait for all containers healthy ==="
 
 # Poll until all services are ready (max 120s)
-# Healthchecked services must be "healthy"; caddy (no healthcheck) must be "running".
 HEALTHCHECK_SVCS="admin memory assistant guardian docker-socket-proxy"
 MAX_WAIT=120
 ELAPSED=0
@@ -344,12 +338,6 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
 			break
 		fi
 	done
-	# Also check caddy is running
-	caddy_status=$(docker inspect --format '{{.State.Status}}' "openpalm-caddy-1" 2>/dev/null || echo "missing")
-	if [ "$caddy_status" != "running" ]; then
-		ALL_UP=false
-		WAIT_MSG="caddy is $caddy_status"
-	fi
 	if [ "$ALL_UP" = "true" ]; then
 		break
 	fi
@@ -369,15 +357,6 @@ for svc in $HEALTHCHECK_SVCS; do
 	fi
 done
 
-# Caddy doesn't have a healthcheck — check if running
-caddy_status=$(docker inspect --format '{{.State.Status}}' "openpalm-caddy-1" 2>/dev/null || echo "missing")
-if [ "$caddy_status" = "running" ]; then
-	pass "caddy is running"
-else
-	fail "caddy status: $caddy_status"
-	ALL_HEALTHY=false
-fi
-
 # ── Step 9: Check for root-owned files ───────────────────────────────
 echo ""
 echo "=== Step 9: Root-owned file check ==="
@@ -389,10 +368,10 @@ else
 	echo "$root_files" | while read -r f; do echo "    $f"; done
 fi
 
-# ── Step 10: Verify secrets.env ──────────────────────────────────────
+# ── Step 10: Verify user.env ─────────────────────────────────────────
 echo ""
-echo "=== Step 10: Verify secrets.env ==="
-secrets=".dev/config/secrets.env"
+echo "=== Step 10: Verify user.env ==="
+secrets=".dev/vault/user/user.env"
 
 check_env_val() {
 	local key="$1" expected="$2"
@@ -407,10 +386,46 @@ check_env_val() {
 }
 
 check_env_val "ADMIN_TOKEN" "dev-admin-token"
-check_env_val "MEMORY_USER_ID" "node"
-check_env_val "SYSTEM_LLM_PROVIDER" "ollama"
-check_env_val "SYSTEM_LLM_MODEL" "qwen2.5-coder:3b"
-check_env_val "SYSTEM_LLM_BASE_URL" "http://host.docker.internal:11434"
+# Config vars (SYSTEM_LLM_*, EMBEDDING_*, MEMORY_USER_ID) are now in
+# stack.yaml capabilities and vault/stack/services/memory/managed.env,
+# NOT in user.env. Verify they are NOT in user.env.
+if grep -qE 'SYSTEM_LLM_PROVIDER=' "$secrets" 2>/dev/null; then
+	fail "SYSTEM_LLM_PROVIDER should NOT be in user.env (lives in stack.yaml now)"
+else
+	pass "Config vars correctly absent from user.env"
+fi
+
+# Verify stack.yaml has correct capabilities
+STACK_YAML=".dev/config/stack.yaml"
+if [ -f "$STACK_YAML" ]; then
+	if grep -q "llm: ollama/" "$STACK_YAML"; then
+		pass "stack.yaml has capabilities.llm with ollama provider"
+	else
+		fail "stack.yaml capabilities.llm missing or wrong provider"
+	fi
+else
+	fail "stack.yaml not found"
+fi
+
+# Verify managed.env exists with correct values
+MANAGED_ENV=".dev/vault/stack/services/memory/managed.env"
+if [ -f "$MANAGED_ENV" ]; then
+	managed_llm=$(grep 'SYSTEM_LLM_PROVIDER=' "$MANAGED_ENV" | cut -d= -f2-)
+	if [ "$managed_llm" = "ollama" ]; then
+		pass "managed.env has SYSTEM_LLM_PROVIDER=ollama"
+	else
+		fail "managed.env SYSTEM_LLM_PROVIDER expected 'ollama', got '$managed_llm'"
+	fi
+else
+	fail "managed.env not found at $MANAGED_ENV"
+fi
+
+# Verify auth.json exists
+if [ -f ".dev/vault/stack/auth.json" ]; then
+	pass "auth.json exists"
+else
+	fail "auth.json not found"
+fi
 
 # ── Step 11: Verify assistant env ────────────────────────────────────
 echo ""
@@ -435,7 +450,7 @@ check_container_env() {
 	fi
 }
 
-check_container_env "OPENPALM_ADMIN_TOKEN" "dev-admin-token"
+check_container_env "OP_ADMIN_TOKEN" "dev-admin-token"
 check_container_env "MEMORY_USER_ID" "node"
 
 # OPENAI_BASE_URL should end with /v1
@@ -467,7 +482,7 @@ fi
 echo ""
 echo "=== Step 12: Verify Memory user provisioned ==="
 
-MEMORY_AUTH_TOKEN=$(grep -E '^(export )?MEMORY_AUTH_TOKEN=' "$secrets" 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
+MEMORY_AUTH_TOKEN=$(grep -E '^(export )?OP_MEMORY_TOKEN=' "$ROOT_DIR/.dev/vault/stack/stack.env" 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
 
 # Check memory API is responding (curl from host since memory port is published)
 OM_STATUS="error"

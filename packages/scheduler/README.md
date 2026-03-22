@@ -1,63 +1,68 @@
 # @openpalm/scheduler
 
-Lightweight Bun HTTP server that runs cron-based automations for the OpenPalm stack. Reads automation definitions from `STATE_HOME/automations/*.yml`, schedules them with [Croner](https://github.com/hexagon/croner), and watches the filesystem for changes (no restart required).
+Lightweight Bun service that loads automation YAML from `config/automations/`, schedules jobs with Croner, and watches for file changes.
+In the full stack it runs as a core service on host port `3897` and container port `8090`.
 
-This is a core service with no Docker socket access.
+## Runtime model
 
-## Action Types
+- In-stack path: `~/.openpalm/config/automations/*.yml`
+- In-stack auth: scheduler endpoints accept `x-admin-token`, configured via `OP_ASSISTANT_TOKEN` in `stack.env`
+- Standalone/dev: set `OP_HOME`
+
+## Action types
 
 | Type | Description |
 |---|---|
-| `http` | Fetch a URL (any method, optional body/headers) |
-| `shell` | Run a command via `execFile` with argument arrays (no shell interpolation) |
-| `assistant` | Send a message to the OpenCode API to trigger an assistant session |
-| `api` | Call the admin API (gracefully skipped when admin is absent) |
+| `http` | Fetch a URL with optional method, headers, and body |
+| `shell` | Run a command via `execFile` with argument arrays |
+| `assistant` | Send a request to the OpenCode API |
+| `api` | Call the admin API when one is configured |
 
 ## HTTP API
 
-All endpoints except `/health` require authentication via `x-admin-token` header.
+All endpoints except `/health` require the configured auth token.
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `GET` | `/health` | No | Health check (returns `{ status, service, jobCount, uptime }`) |
-| `GET` | `/automations` | Yes | List all automations from disk with next run times (if scheduled) and execution logs |
-| `GET` | `/automations/:fileName/log` | Yes | Execution history for a specific automation by filename (last 50 runs) |
-| `POST` | `/automations/:fileName/run` | Yes | Manually trigger an automation by filename (e.g., `cleanup-logs.yml`) |
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Health check |
+| `GET` | `/automations` | List loaded automations, next run times, and recent logs |
+| `GET` | `/automations/:fileName/log` | Read execution history for one automation |
+| `POST` | `/automations/:fileName/run` | Trigger one automation immediately |
 
-## Automation Format
+## Automation format
 
-Place `.yml` files in `STATE_HOME/automations/`:
+Store `.yml` files in `config/automations/`:
 
 ```yaml
 name: cleanup-logs
 description: Remove old container logs
-schedule: "@daily"          # Cron expression or preset (@hourly, @daily, @weekly)
+schedule: '@daily'
 timezone: UTC
 enabled: true
 action:
   type: shell
-  command: find
-  args: ["/data/logs", "-mtime", "+7", "-delete"]
+  command: rm
+  args: ['/tmp/example.log']
 ```
 
-## Environment Variables
+Use safe argument arrays; do not depend on shell interpolation.
+
+## Environment variables
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PORT` | `8090` | HTTP server port |
-| `OPENPALM_STATE_HOME` | (required) | Path to state directory containing `automations/` |
-| `OPENPALM_ADMIN_TOKEN` | (recommended) | Token for authenticated endpoints and `api` actions |
-| `OPENPALM_ADMIN_API_URL` | `http://admin:8100` | Admin API URL for `api` actions (optional) |
-| `OPENCODE_API_URL` | `http://assistant:4096` | OpenCode API URL for `assistant` actions |
-
-## Docker
-
-Runs as the `scheduler` service in docker-compose. Port 8090, user `bun`, healthcheck on `/health`. Depends on the assistant service being healthy. Volumes are read-only mounts of `automations/` and `artifacts/`.
+| `PORT` | `8090` | HTTP listen port |
+| `OP_HOME` | - | OpenPalm root; scheduler reads `config/automations/` from here |
+| `OP_ADMIN_TOKEN` | - | Token accepted by authenticated endpoints (from `OP_ASSISTANT_TOKEN` in stack.env) |
+| `OP_ADMIN_API_URL` | - | Admin API URL for `api` actions |
+| `OPENCODE_API_URL` | `http://assistant:4096` | Assistant API URL for `assistant` actions |
+| `OPENCODE_SERVER_PASSWORD` | - | Optional password for assistant API auth (compose-mapped from `OP_OPENCODE_PASSWORD`) |
+| `MEMORY_API_URL` | `http://memory:8765` | Memory service URL |
 
 ## Development
 
 ```bash
 cd packages/scheduler
-bun run start       # Start the server
-bun test            # Run tests
+bun run start
+bun test
 ```

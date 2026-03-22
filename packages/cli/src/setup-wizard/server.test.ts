@@ -3,75 +3,70 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSetupServer } from "./server.ts";
-import type { CoreAssetProvider } from "@openpalm/lib";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 let tempBase: string;
+let homeDir: string;
 let configDir: string;
+let vaultDir: string;
 let dataDir: string;
-let stateDir: string;
+let logsDir: string;
 
 const savedEnv: Record<string, string | undefined> = {};
 
-function createStubAssetProvider(): CoreAssetProvider {
-  return {
-    coreCompose: () => "services:\n  caddy:\n    image: caddy:latest\n",
-    caddyfile: () =>
-      ":80 {\n  @denied not remote_ip 127.0.0.0/8 ::1\n  respond @denied 403\n}\n",
-    ollamaCompose: () => "services:\n  ollama:\n    image: ollama/ollama\n",
-    adminCompose: () => "services:\n  admin:\n    image: openpalm/admin\n",
-    agentsMd: () => "# Agents\n",
-    opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
-    adminOpencodeConfig: () => '{"$schema":"https://opencode.ai/config.json","plugin":["@openpalm/admin-tools"]}\n',
-    secretsSchema: () => "ADMIN_TOKEN=string\n",
-    stackSchema: () => "OPENPALM_IMAGE_TAG=string\n",
-    cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",
-    cleanupData: () => "name: cleanup-data\nschedule: weekly\n",
-    validateConfig: () => "name: validate-config\nschedule: hourly\n",
-  };
+/** Seed minimal asset files so performSetup() can read them at OP_HOME. */
+function seedRequiredAssets(homeDir: string): void {
+  mkdirSync(join(homeDir, "stack"), { recursive: true });
+  writeFileSync(join(homeDir, "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
+  mkdirSync(join(homeDir, "data", "assistant"), { recursive: true });
+  writeFileSync(join(homeDir, "data", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
+  writeFileSync(join(homeDir, "data", "assistant", "AGENTS.md"), "# Agents\n");
+  writeFileSync(join(homeDir, "vault", "user", "user.env.schema"), "OP_ADMIN_TOKEN=string\n");
+  writeFileSync(join(homeDir, "vault", "stack", "stack.env.schema"), "OP_IMAGE_TAG=string\n");
+  mkdirSync(join(homeDir, "config", "automations"), { recursive: true });
+  writeFileSync(join(homeDir, "config", "automations", "cleanup-logs.yml"), "name: cleanup-logs\nschedule: daily\n");
+  writeFileSync(join(homeDir, "config", "automations", "cleanup-data.yml"), "name: cleanup-data\nschedule: weekly\n");
+  writeFileSync(join(homeDir, "config", "automations", "validate-config.yml"), "name: validate-config\nschedule: hourly\n");
 }
 
 function makeSetupDirs(): void {
   tempBase = mkdtempSync(join(tmpdir(), "openpalm-server-test-"));
-  configDir = join(tempBase, "config");
-  dataDir = join(tempBase, "data");
-  stateDir = join(tempBase, "state");
+  homeDir = tempBase;
+  configDir = join(homeDir, "config");
+  vaultDir = join(homeDir, "vault");
+  dataDir = join(homeDir, "data");
+  logsDir = join(homeDir, "logs");
 
   for (const dir of [
     configDir,
-    join(configDir, "channels"),
+    join(configDir, "components"),
     join(configDir, "connections"),
     join(configDir, "assistant"),
     join(configDir, "automations"),
-    join(configDir, "stash"),
+    vaultDir,
     dataDir,
     join(dataDir, "admin"),
     join(dataDir, "memory"),
     join(dataDir, "assistant"),
     join(dataDir, "guardian"),
-    join(dataDir, "caddy"),
-    join(dataDir, "caddy", "data"),
-    join(dataDir, "caddy", "config"),
-    join(dataDir, "automations"),
-    join(dataDir, "opencode"),
-    stateDir,
-    join(stateDir, "artifacts"),
-    join(stateDir, "audit"),
-    join(stateDir, "artifacts", "channels"),
-    join(stateDir, "automations"),
-    join(stateDir, "opencode"),
+    join(dataDir, "stash"),
+    join(dataDir, "workspace"),
+    logsDir,
+    join(logsDir, "opencode"),
   ]) {
     mkdirSync(dir, { recursive: true });
   }
 
-  writeFileSync(join(stateDir, "artifacts", "stack.env"), "OPENPALM_SETUP_COMPLETE=false\n");
+  mkdirSync(join(vaultDir, "stack"), { recursive: true });
+  mkdirSync(join(vaultDir, "user"), { recursive: true });
+  writeFileSync(join(vaultDir, "stack", "stack.env"), "OP_SETUP_COMPLETE=false\n");
   writeFileSync(
-    join(configDir, "secrets.env"),
+    join(vaultDir, "user", "user.env"),
     [
       "# OpenPalm Secrets",
-      "export OPENPALM_ADMIN_TOKEN=",
-      "export ADMIN_TOKEN=",
+      "export OP_ADMIN_TOKEN=",
+
       "export OPENAI_API_KEY=",
       "export OPENAI_BASE_URL=",
       "export ANTHROPIC_API_KEY=",
@@ -79,12 +74,14 @@ function makeSetupDirs(): void {
       "export MISTRAL_API_KEY=",
       "export GOOGLE_API_KEY=",
       "export MEMORY_USER_ID=default_user",
-      "export MEMORY_AUTH_TOKEN=abc123",
       "export OWNER_NAME=",
       "export OWNER_EMAIL=",
       "",
     ].join("\n")
   );
+
+  // Seed asset files for performSetup() reads
+  seedRequiredAssets(homeDir);
 }
 
 // ── Test Suites ──────────────────────────────────────────────────────────
@@ -98,27 +95,20 @@ describe("setup wizard server", () => {
   beforeEach(() => {
     makeSetupDirs();
 
-    savedEnv.OPENPALM_CONFIG_HOME = process.env.OPENPALM_CONFIG_HOME;
-    savedEnv.OPENPALM_DATA_HOME = process.env.OPENPALM_DATA_HOME;
-    savedEnv.OPENPALM_STATE_HOME = process.env.OPENPALM_STATE_HOME;
-    process.env.OPENPALM_CONFIG_HOME = configDir;
-    process.env.OPENPALM_DATA_HOME = dataDir;
-    process.env.OPENPALM_STATE_HOME = stateDir;
+    savedEnv.OP_HOME = process.env.OP_HOME;
+    process.env.OP_HOME = homeDir;
 
     // Use incrementing ports to avoid conflicts between sequential tests
     serverPort = nextPort++;
   });
 
   afterEach(() => {
-    process.env.OPENPALM_CONFIG_HOME = savedEnv.OPENPALM_CONFIG_HOME;
-    process.env.OPENPALM_DATA_HOME = savedEnv.OPENPALM_DATA_HOME;
-    process.env.OPENPALM_STATE_HOME = savedEnv.OPENPALM_STATE_HOME;
+    process.env.OP_HOME = savedEnv.OP_HOME;
     if (tempBase) rmSync(tempBase, { recursive: true, force: true });
   });
 
   it("serves the wizard HTML at GET /setup", async () => {
     const { server, stop } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -135,7 +125,6 @@ describe("setup wizard server", () => {
 
   it("serves wizard.js at GET /setup/wizard.js", async () => {
     const { server, stop } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -150,7 +139,6 @@ describe("setup wizard server", () => {
 
   it("serves wizard.css at GET /setup/wizard.css", async () => {
     const { server, stop } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -165,7 +153,6 @@ describe("setup wizard server", () => {
 
   it("returns setup status at GET /api/setup/status", async () => {
     const { server, stop } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -182,7 +169,6 @@ describe("setup wizard server", () => {
 
   it("returns provider detection at GET /api/setup/detect-providers", async () => {
     const { server, stop } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -206,7 +192,6 @@ describe("setup wizard server", () => {
 
   it("returns 404 for unknown routes", async () => {
     const { server, stop } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -223,14 +208,13 @@ describe("setup wizard server", () => {
 
   it("returns deploy status at GET /api/setup/deploy-status", async () => {
     const { server, stop, updateDeployStatus } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
     try {
       updateDeployStatus([
-        { service: "caddy", status: "pending", label: "Caddy" },
-        { service: "memory", status: "pulling", label: "Memory" },
+        { service: "memory", status: "pending", label: "Memory" },
+        { service: "assistant", status: "pulling", label: "Assistant" },
       ]);
 
       const res = await fetch(`http://localhost:${serverPort}/api/setup/deploy-status`);
@@ -242,7 +226,7 @@ describe("setup wizard server", () => {
       };
       expect(data.ok).toBe(true);
       expect(data.deployStatus).toHaveLength(2);
-      expect(data.deployStatus[0].service).toBe("caddy");
+      expect(data.deployStatus[0].service).toBe("memory");
     } finally {
       stop();
     }
@@ -250,7 +234,6 @@ describe("setup wizard server", () => {
 
   it("rejects invalid JSON on POST /api/setup/complete", async () => {
     const { server, stop } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -271,16 +254,29 @@ describe("setup wizard server", () => {
 
   it("completes setup and resolves waitForComplete", async () => {
     const { server, stop, waitForComplete } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
     try {
       const body = {
-        version: 1,
-        owner: { name: "Test", email: "test@example.com" },
+        spec: {
+          version: 2,
+          capabilities: {
+            llm: "openai/gpt-4o",
+            embeddings: {
+              provider: "openai",
+              model: "text-embedding-3-small",
+              dims: 1536,
+            },
+            memory: {
+              userId: "test_user",
+              customInstructions: "",
+            },
+          },
+          addons: {},
+        },
         security: { adminToken: "test-admin-token-12345" },
-        memory: { userId: "test_user" },
+        owner: { name: "Test", email: "test@example.com" },
         connections: [
           {
             id: "openai-main",
@@ -290,10 +286,6 @@ describe("setup wizard server", () => {
             apiKey: "sk-test-key-123",
           },
         ],
-        assignments: {
-          llm: { connectionId: "openai-main", model: "gpt-4o" },
-          embeddings: { connectionId: "openai-main", model: "text-embedding-3-small" },
-        },
       };
 
       // Fire POST and await both the response and the completion signal
@@ -327,7 +319,6 @@ describe("setup wizard server", () => {
 
   it("returns 400 for invalid setup input on POST /api/setup/complete", async () => {
     const { server, stop } = createSetupServer(serverPort, {
-      assetProvider: createStubAssetProvider(),
       configDir,
     });
 
@@ -335,7 +326,7 @@ describe("setup wizard server", () => {
       const res = await fetch(`http://localhost:${serverPort}/api/setup/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ version: 1, security: { adminToken: "short" } }),
+        body: JSON.stringify({ security: { adminToken: "short" } }),
       });
       expect(res.status).toBe(400);
       const data = (await res.json()) as { ok: boolean; error: string };

@@ -8,7 +8,7 @@ import {
   parseJsonBody
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { isAllowedService, appendAudit, buildComposeFileList, buildEnvFiles } from "$lib/server/control-plane.js";
+import { isAllowedService, appendAudit, buildComposeFileList, buildEnvFiles } from "@openpalm/lib";
 import { composeRestart, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
@@ -30,7 +30,7 @@ export const POST: RequestHandler = async (event) => {
   }
   const service = typeof body.service === "string" ? body.service : "";
 
-  if (!isAllowedService(service, state.stateDir)) {
+  if (!isAllowedService(service, state.configDir)) {
     appendAudit(state, actor, "containers.restart", { service }, false, requestId, callerType);
     return errorResponse(400, "invalid_service", "Service is not in allowlist", { service }, requestId);
   }
@@ -38,7 +38,7 @@ export const POST: RequestHandler = async (event) => {
   // Try real Docker — only update state based on actual result
   const dockerCheck = await checkDocker();
   if (dockerCheck.ok) {
-    const result = await composeRestart(state.stateDir, [service], { files: buildComposeFileList(state), envFiles: buildEnvFiles(state) });
+    const result = await composeRestart([service], { files: buildComposeFileList(state), envFiles: buildEnvFiles(state) });
     if (result.ok) {
       state.services[service] = "running";
     } else {

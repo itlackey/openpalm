@@ -7,17 +7,17 @@ import { mkdirSync, rmSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 
-// Mock validateEnvironment to avoid needing the varlock binary
-vi.mock("$lib/server/lifecycle.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("$lib/server/lifecycle.js")>();
+// Mock validateProposedState to avoid needing the varlock binary
+vi.mock("@openpalm/lib", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@openpalm/lib")>();
   return {
     ...actual,
-    validateEnvironment: vi.fn()
+    validateProposedState: vi.fn()
   };
 });
 
 import { getState, resetState } from "$lib/server/state.js";
-import { validateEnvironment } from "$lib/server/lifecycle.js";
+import { validateProposedState } from "@openpalm/lib";
 import { GET } from "./+server.js";
 
 function makeTempDir(): string {
@@ -27,31 +27,24 @@ function makeTempDir(): string {
 }
 
 let rootDir = "";
-let originalConfigHome: string | undefined;
-let originalStateHome: string | undefined;
-let originalDataHome: string | undefined;
+let originalHome: string | undefined;
 
 beforeEach(() => {
   rootDir = makeTempDir();
-  originalConfigHome = process.env.OPENPALM_CONFIG_HOME;
-  originalStateHome = process.env.OPENPALM_STATE_HOME;
-  originalDataHome = process.env.OPENPALM_DATA_HOME;
-  process.env.OPENPALM_CONFIG_HOME = join(rootDir, "config");
-  process.env.OPENPALM_STATE_HOME = join(rootDir, "state");
-  process.env.OPENPALM_DATA_HOME = join(rootDir, "data");
+  originalHome = process.env.OP_HOME;
+  process.env.OP_HOME = rootDir;
   resetState("admin-token");
 
   const state = getState();
   mkdirSync(state.configDir, { recursive: true });
-  mkdirSync(state.stateDir, { recursive: true });
+  mkdirSync(state.vaultDir, { recursive: true });
   mkdirSync(state.dataDir, { recursive: true });
+  mkdirSync(state.logsDir, { recursive: true });
 });
 
 afterEach(() => {
   vi.resetAllMocks();
-  process.env.OPENPALM_CONFIG_HOME = originalConfigHome;
-  process.env.OPENPALM_STATE_HOME = originalStateHome;
-  process.env.OPENPALM_DATA_HOME = originalDataHome;
+  process.env.OP_HOME = originalHome;
   rmSync(rootDir, { recursive: true, force: true });
 });
 
@@ -72,7 +65,7 @@ function makeGetEvent(token = "admin-token"): Parameters<typeof GET>[0] {
 
 describe("GET /admin/config/validate", () => {
   test("returns 200 with { ok: true } when validation succeeds", async () => {
-    vi.mocked(validateEnvironment).mockResolvedValue({
+    vi.mocked(validateProposedState).mockResolvedValue({
       ok: true,
       errors: [],
       warnings: []
@@ -87,7 +80,7 @@ describe("GET /admin/config/validate", () => {
   });
 
   test("returns 200 with { ok: false } when validation finds errors", async () => {
-    vi.mocked(validateEnvironment).mockResolvedValue({
+    vi.mocked(validateProposedState).mockResolvedValue({
       ok: false,
       errors: ["ERROR: ADMIN_TOKEN is required but not set"],
       warnings: []

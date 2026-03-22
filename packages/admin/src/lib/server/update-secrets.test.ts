@@ -1,12 +1,12 @@
 /**
- * Tests for updateSecretsEnv — secrets.env patching utility used by the connections API.
+ * Tests for updateSecretsEnv — user.env patching utility used by the connections API.
  *
  * Verifies:
  * 1. All provided keys are written
  * 2. Existing lines are updated in-place
  * 3. Commented-out lines are uncommented and updated
  * 4. New keys are appended when not present in file
- * 5. Throws when secrets.env does not exist
+ * 5. Throws when user.env does not exist
  * 6. Comments and blank lines are preserved
  */
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
@@ -32,9 +32,9 @@ function updateSecretsEnv(
   state: TestState,
   updates: Record<string, string>
 ): void {
-  const secretsPath = `${state.configDir}/secrets.env`;
+  const secretsPath = `${state.configDir}/user.env`;
   if (!existsSync(secretsPath)) {
-    throw new Error("secrets.env does not exist — run setup first");
+    throw new Error("user.env does not exist — run setup first");
   }
 
   const raw = readFileSync(secretsPath, "utf-8");
@@ -51,11 +51,11 @@ function makeTempDir(): string {
 
 function seedSecrets(configDir: string, content: string): void {
   mkdirSync(configDir, { recursive: true });
-  writeFileSync(join(configDir, "secrets.env"), content);
+  writeFileSync(join(configDir, "user.env"), content);
 }
 
 function readSecrets(configDir: string): string {
-  return readFileSync(join(configDir, "secrets.env"), "utf-8");
+  return readFileSync(join(configDir, "user.env"), "utf-8");
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────
@@ -71,10 +71,10 @@ afterEach(() => {
 });
 
 describe("updateSecretsEnv", () => {
-  test("throws when secrets.env does not exist", () => {
+  test("throws when user.env does not exist", () => {
     const state: TestState = { configDir };
     expect(() => updateSecretsEnv(state, { OPENAI_API_KEY: "sk-test" })).toThrow(
-      "secrets.env does not exist"
+      "user.env does not exist — run setup first"
     );
   });
 

@@ -5,8 +5,7 @@ This document describes the Admin API routes currently implemented in
 
 ## Conventions
 
-- Base URL (direct): `http://localhost:8100`
-- Base URL (via Caddy): `http://localhost:8080/admin`
+- Base URL: `http://localhost:3880`
 - Protected endpoints require header: `x-admin-token: <ADMIN_TOKEN>`
 - Optional caller attribution: `x-requested-by: assistant|cli|ui|system|test`
 - Optional correlation: `x-request-id: <uuid>`
@@ -55,65 +54,64 @@ Status code is `200` when running, `503` when unavailable.
 
 Policy for this section:
 
-- `CONFIG_HOME` is the user-owned persistent source of truth.
+- `config/` is the user-owned persistent source of truth.
 - `POST /admin/install`, `POST /admin/update`, and startup auto-apply are
   automatic lifecycle operations: non-destructive for existing user config files
-  in `CONFIG_HOME`; they only seed missing defaults and restage runtime
-  artifacts in `STATE_HOME`.
+  in `config/`; they only seed missing defaults.
 - Explicit mutation endpoints (`POST /admin/connections`,
-  `POST /admin/channels/install`, `POST /admin/channels/uninstall`,
-  `POST /admin/access-scope`, `POST /admin/setup`) are the allowed write path
+  `POST /admin/addons`, `POST /admin/addons/:name`,
+  `POST /admin/setup`) are the allowed write path
   for requested config changes.
 
 ### `POST /admin/install`
 
-- Ensures XDG directories + OpenCode starter config + starter user secrets.
-- Seeds only missing defaults in `CONFIG_HOME`; never overwrites existing user files.
-- Stages artifacts into `STATE_HOME`.
-- Runs `docker compose up -d` using staged compose files and staged env file.
+- Ensures directories + OpenCode starter config + starter user secrets.
+- Seeds only missing defaults in `config/`; never overwrites existing user files.
+- Writes configuration files to their final locations.
+- Runs `docker compose up -d` using `stack/core.compose.yml`, installed addon overlays, and vault env files.
 
 Response:
 
 ```json
 {
   "ok": true,
-  "started": ["caddy", "memory", "assistant", "guardian", "admin", "channel-chat"],
+  "started": ["memory", "assistant", "guardian", "admin", "chat"],
   "dockerAvailable": true,
   "composeResult": { "ok": true, "stderr": "" },
-  "artifactsDir": "/home/user/.local/state/openpalm/artifacts"
+  "artifactsDir": "/home/user/.openpalm/data"
 }
 ```
 
 ### `POST /admin/update`
 
-- Non-destructive for existing `CONFIG_HOME` user config; seeds missing defaults only.
-- Re-stages artifacts.
-- Re-applies compose with staged overlays.
+- Non-destructive for existing user config; seeds missing defaults only.
+- Writes configuration files to their final locations.
+- Re-applies compose with addon overlays.
 
 Response:
 
 ```json
-{ "ok": true, "restarted": ["caddy", "guardian"], "dockerAvailable": true }
+{ "ok": true, "restarted": ["guardian"], "dockerAvailable": true }
 ```
 
 ### `POST /admin/uninstall`
 
 - Runs compose down.
-- Does not delete or rewrite existing user config in `CONFIG_HOME`.
-- Marks in-memory services stopped and re-stages artifacts.
+- Does not delete or rewrite existing user config in `config/`.
+- Marks in-memory services stopped.
 
 Response:
 
 ```json
-{ "ok": true, "stopped": ["caddy", "assistant"], "dockerAvailable": true }
+{ "ok": true, "stopped": ["assistant"], "dockerAvailable": true }
 ```
 
 ### `POST /admin/upgrade`
 
-Full upgrade sequence: fetches the latest image tag, downloads fresh core assets
-from GitHub, backs up changed files, stages artifacts, pulls images, and
-recreates all containers. After responding, schedules a deferred self-recreation
-of the admin container so the HTTP response is flushed first.
+Full upgrade sequence: fetches the latest image tag, downloads fresh stack
+files from GitHub, backs up changed files, writes updated configuration, pulls
+images, and recreates all containers. After responding, schedules a deferred
+self-recreation of the admin container so the HTTP response is flushed first.
 
 Response:
 
@@ -121,9 +119,9 @@ Response:
 {
   "ok": true,
   "imageTag": "0.9.0",
-  "backupDir": "/home/user/.local/state/openpalm/backups/2025-01-01T00-00-00",
-  "assetsUpdated": ["docker-compose.yml", "Caddyfile"],
-  "restarted": ["caddy", "guardian"],
+  "backupDir": "/home/user/.openpalm/data/backups/2025-01-01T00-00-00",
+  "assetsUpdated": ["core.compose.yml"],
+  "restarted": ["guardian"],
   "adminRecreateScheduled": true
 }
 ```
@@ -131,7 +129,7 @@ Response:
 Error responses:
 
 - `502 image_tag_update_failed` — Failed to resolve latest image tag.
-- `502 asset_download_failed` — Failed to download fresh assets from GitHub.
+- `502 asset_download_failed` — Failed to download fresh stack files from GitHub.
 - `503 docker_unavailable` — Docker is not reachable.
 - `502 pull_failed` — `docker compose pull` failed.
 - `502 up_failed` — Images pulled but container recreation failed.
@@ -161,7 +159,7 @@ Response:
 Response:
 
 ```json
-{ "ok": true, "pulled": "...", "started": ["caddy", "memory", "assistant", "guardian"] }
+{ "ok": true, "pulled": "...", "started": ["memory", "assistant", "guardian"] }
 ```
 
 Note: `started` is an array of managed service names.
@@ -179,101 +177,142 @@ Error responses:
 Body:
 
 ```json
-{ "service": "channel-chat" }
+{ "service": "chat" }
 ```
 
 Rules:
 
 - Allowed core services:
-  `assistant`, `guardian`, `memory`, `admin`, `caddy`
-- Allowed channel services: `channel-*` only if a matching staged
-  `STATE_HOME/artifacts/channels/<name>.yml` exists.
+  `assistant`, `guardian`, `memory`, `admin`
+- Allowed addon services: installed addon service names such as `chat`, `api`,
+  `voice`, `discord`, or `slack` when a matching overlay exists in `stack/addons/`.
 
 Success response:
 
 ```json
-{ "ok": true, "service": "channel-chat", "status": "running" }
+{ "ok": true, "service": "chat", "status": "running" }
 ```
 
-## Channel Management
+### `GET /admin/containers/stats`
 
-### `GET /admin/channels`
+Returns live Docker container resource usage (CPU, memory, network I/O) for managed services.
 
-Returns staged-installed and registry-available channels:
+Auth: `requireAuth`
+
+### `GET /admin/containers/events`
+
+Returns recent Docker engine events (container start/stop/restart/die) filtered to managed services.
+
+Auth: `requireAuth`
+
+### `GET /admin/network/check`
+
+Checks inter-container connectivity by probing each core service health endpoint from within the admin container.
+
+Auth: `requireAdmin`
+
+Response:
 
 ```json
 {
-  "installed": [
-    { "name": "chat", "hasRoute": true, "service": "channel-chat", "status": "running" }
-  ],
-  "available": [
-    { "name": "discord", "hasRoute": false }
+  "results": {
+    "guardian": { "status": "reachable", "latencyMs": 12 },
+    "memory": { "status": "reachable", "latencyMs": 8 },
+    "assistant": { "status": "unreachable", "latencyMs": 0, "error": "fetch failed" }
+  }
+}
+```
+
+---
+
+## Addon Management
+
+### `GET /admin/addons`
+
+Returns all available addons with enabled status and env config.
+
+Response:
+
+```json
+{
+  "addons": [
+    { "id": "chat", "enabled": true, "env": {} },
+    { "id": "discord", "enabled": false, "env": {} },
+    { "id": "admin", "enabled": true, "env": {} }
   ]
 }
 ```
 
-Notes:
+### `POST /admin/addons`
 
-- `installed` is derived from staged `STATE_HOME/artifacts/channels/*.yml`.
-- `hasRoute` is derived from staged `STATE_HOME/artifacts/channels/public|lan/*.caddy`.
-
-### `POST /admin/channels/install`
+Enable/disable an addon and/or update its env config.
 
 Body:
 
 ```json
-{ "channel": "chat" }
+{ "name": "chat", "enabled": true, "env": {} }
 ```
 
-Behavior:
-
-- Copies registry files into `CONFIG_HOME/channels/`.
-- Ensures system-managed channel secret exists.
-- Re-stages artifacts and runs compose up.
+- `name` (required) -- Addon name (must be a known addon from the registry).
+- `enabled` (optional) -- Set to `true` or `false` to enable/disable.
+- `env` (optional) -- Key-value pairs to merge into the addon's env config.
 
 Response:
 
 ```json
-{
-  "ok": true,
-  "channel": "chat",
-  "service": "channel-chat",
-  "dockerAvailable": true,
-  "composeResult": { "ok": true, "stderr": "" }
-}
+{ "ok": true, "addon": { "id": "chat", "enabled": true, "env": {} } }
 ```
 
-### `POST /admin/channels/uninstall`
+Error responses:
+
+- `400 bad_request` -- `name` is missing.
+- `404 not_found` -- Addon name is not available in the registry.
+- `500 internal_error` -- Failed to update `stack.yaml`.
+
+### `GET /admin/addons/:name`
+
+Returns detail for a single addon: enabled state and env overrides.
+
+Response:
+
+```json
+{ "name": "chat", "enabled": true, "env": {} }
+```
+
+Error responses:
+
+- `404 not_found` -- Addon name is not available in the registry.
+
+### `POST /admin/addons/:name`
+
+Enable/disable a specific addon and/or update its env config.
 
 Body:
 
 ```json
-{ "channel": "chat" }
+{ "enabled": true, "env": { "SOME_VAR": "value" } }
 ```
 
-Behavior:
+- `enabled` (optional) -- Set to `true` or `false`.
+- `env` (optional) -- Key-value pairs to merge into the addon's env config.
 
-- Removes channel `.yml` and optional `.caddy` from `CONFIG_HOME/channels/`.
-- Removes system-managed channel secret from runtime state.
-- Re-stages artifacts and stops the channel service.
+When disabling, runs compose down for affected services.
+When enabling a channel addon, generates an HMAC secret.
 
 Response:
 
 ```json
-{
-  "ok": true,
-  "channel": "chat",
-  "service": "channel-chat",
-  "dockerAvailable": true,
-  "composeResult": { "ok": true, "stderr": "" }
-}
+{ "ok": true, "addon": "chat", "enabled": true, "changed": true }
 ```
+
+Error responses:
+
+- `404 not_found` -- Addon name is not available in the registry.
+- `500 internal_error` -- Failed to update `stack.yaml`.
 
 ## Registry
 
-Unified registry for channels and automations. Tries the cloned registry repo
-(`STATE_HOME/registry-repo/registry/`) first, then falls back to build-time
-bundled assets.
+Unified registry for channels and automations. Add-on definitions live in `.openpalm/stack/addons/` and automations in `.openpalm/config/automations/`. These are bundled into the admin image at build time.
 
 ### `GET /admin/registry`
 
@@ -293,8 +332,8 @@ Response:
 }
 ```
 
-`source` is `"remote"` when using the cloned registry repo, `"bundled"` when
-falling back to build-time assets.
+`source` indicates where the registry data was loaded from (e.g. `"bundled"` when
+using build-time bundled stack assets).
 
 ### `POST /admin/registry/install`
 
@@ -309,10 +348,10 @@ Body:
 - `name` (required) — Must match `^[a-z0-9][a-z0-9-]{0,62}$`.
 - `type` (required) — Must be `"channel"` or `"automation"`.
 
-For channels: copies `.yml` and optional `.caddy` into `CONFIG_HOME/channels/`,
-generates HMAC secret, re-stages artifacts, and runs compose up.
+For channels: copies addon files into `stack/addons/`,
+generates HMAC secret, and runs compose up.
 
-For automations: copies `.yml` into `CONFIG_HOME/automations/` and reloads
+For automations: copies `.yml` into `config/automations/` and reloads
 the scheduler.
 
 Response (channel):
@@ -340,7 +379,7 @@ Error responses:
 
 ### `POST /admin/registry/refresh`
 
-Pulls the latest registry from GitHub via `git pull` on the cloned repo.
+Refreshes the registry index from bundled stack assets.
 
 Response:
 
@@ -350,7 +389,7 @@ Response:
 
 Error responses:
 
-- `500 registry_sync_error` — Git pull failed.
+- `500 registry_sync_error` — Refresh failed.
 
 ### `POST /admin/registry/uninstall`
 
@@ -362,10 +401,10 @@ Body:
 { "name": "chat", "type": "channel" }
 ```
 
-For channels: removes files from `CONFIG_HOME/channels/`, clears channel secret,
-re-stages artifacts, and stops the Docker service.
+For channels: removes the addon directory from `stack/addons/`, clears channel secret,
+and stops the Docker service.
 
-For automations: removes `.yml` from `CONFIG_HOME/automations/` and reloads
+For automations: removes `.yml` from `config/automations/` and reloads
 the scheduler.
 
 Response (channel):
@@ -390,7 +429,7 @@ Response (automation):
 
 ### `GET /admin/automations`
 
-Lists all automation configs from `STATE_HOME` with scheduler status and
+Lists all automation configs with scheduler status and
 execution logs.
 
 Response:
@@ -424,55 +463,10 @@ Response:
 }
 ```
 
-## Access Scope
-
-### `GET /admin/access-scope`
-
-```json
-{ "accessScope": "lan" }
-```
-
-Notes:
-
-- Scope is derived from the system-managed core Caddyfile at
-  `DATA_HOME/caddy/Caddyfile`.
-- If the file contains user-edited IP ranges that don't match the known
-  `host` or `lan` patterns, the response returns `"custom"`.
-
-### `POST /admin/access-scope`
-
-Body:
-
-```json
-{ "scope": "host" }
-```
-
-Accepted values: `"host"` or `"lan"`. The value `"custom"` is read-only --
-it cannot be set via POST.
-
-Behavior:
-
-- Updates the `@denied not remote_ip ...` line in
-  `DATA_HOME/caddy/Caddyfile`.
-- Re-stages `STATE_HOME/artifacts/Caddyfile` and channel snippets.
-- Attempts Caddy reload.
-
-**Warning:** If the current scope is `"custom"` (user-edited IP ranges),
-a POST to this endpoint will overwrite those custom ranges with the
-standard `host` or `lan` pattern. Custom ranges cannot be restored via the
-API after being overwritten -- they must be re-applied by editing the
-Caddyfile directly.
-
-Response:
-
-```json
-{ "ok": true, "accessScope": "host" }
-```
-
 ## Connections
 
 Manage LLM provider credentials and related configuration stored in
-`CONFIG_HOME/secrets.env`. Values are patched in-place by `patchSecretsEnvFile`
+`vault/user/user.env`. Values are patched in-place by `patchSecretsEnvFile`
 -- existing keys not in the allowed set are never removed or overwritten.
 
 ### `GET /admin/connections`
@@ -593,7 +587,7 @@ Supports three payload shapes:
 
 3) **Legacy key patch (compatibility)**
 
-Patches one or more allowed keys into `CONFIG_HOME/secrets.env`. Keys not in
+Patches one or more allowed keys into `vault/user/user.env`. Keys not in
 `ALLOWED_CONNECTION_KEYS` are silently ignored. Existing keys outside the
 allowed set are preserved.
 
@@ -625,13 +619,13 @@ Response (legacy key patch path):
 Error responses:
 
 - `400 bad_request` -- No valid connection keys were provided.
-- `500 internal_error` -- Failed to write `secrets.env`.
+- `500 internal_error` -- Failed to write `vault/user/user.env`.
 
 ### `GET /admin/connections/status`
 
-Checks whether the system LLM connection is configured. Returns `complete: true`
-when both `SYSTEM_LLM_PROVIDER` and `SYSTEM_LLM_MODEL` are set. API keys are
-never required (optional for all providers).
+Checks whether `stack.yaml` has non-empty capability assignments for the
+system LLM and embeddings provider/model. Leading and trailing whitespace is
+ignored during the completeness check. API keys are not required here.
 
 Response:
 
@@ -639,7 +633,8 @@ Response:
 { "complete": true, "missing": [] }
 ```
 
-`complete` is `true` when provider and model are set; `false` with `missing` listing what's absent.
+`complete` is `true` when `capabilities.llm` and `capabilities.embeddings.provider/model`
+are non-empty strings after trimming; otherwise `missing` lists what is absent.
 
 ### `POST /admin/connections/test`
 
@@ -682,143 +677,22 @@ On failure:
 }
 ```
 
-### `GET /admin/connections/profiles`
-
-Returns canonical connection profiles from `CONFIG_HOME/connections/profiles.json`.
-
-```json
-{
-  "profiles": [
-    {
-      "id": "primary",
-      "name": "Primary connection",
-      "kind": "openai_compatible_remote",
-      "provider": "openai",
-      "baseUrl": "https://api.openai.com",
-      "auth": {
-        "mode": "api_key",
-        "apiKeySecretRef": "env:OPENAI_API_KEY"
-      }
-    }
-  ]
-}
-```
-
-### `POST /admin/connections/profiles`
-
-Create a profile.
-
-```json
-{
-  "profile": {
-    "id": "local-lmstudio",
-    "name": "LM Studio",
-    "kind": "openai_compatible_local",
-    "provider": "lmstudio",
-    "baseUrl": "http://host.docker.internal:1234",
-    "auth": { "mode": "none" }
-  }
-}
-```
-
-When `auth.mode` is `"api_key"`, the profile payload may include a top-level
-`apiKey` field with the raw key. The handler derives the `apiKeySecretRef`
-from the provider and patches the key into `secrets.env`.
-
-### `PUT /admin/connections/profiles`
-
-Update an existing profile by id (id provided inside `profile` object).
-
-### `DELETE /admin/connections/profiles`
-
-Delete by id:
-
-```json
-{ "id": "local-lmstudio" }
-```
-
-Error responses:
-
-- `400 bad_request` -- malformed profile payload.
-- `404 not_found` -- profile id not found.
-- `409 conflict` -- duplicate create or profile currently referenced by assignments.
-
-### `GET /admin/connections/profiles/:id`
-
-Returns a single profile by URL parameter id.
-
-```json
-{
-  "profile": {
-    "id": "primary",
-    "name": "Primary connection",
-    "kind": "openai_compatible_remote",
-    "provider": "openai",
-    "baseUrl": "https://api.openai.com",
-    "auth": {
-      "mode": "api_key",
-      "apiKeySecretRef": "env:OPENAI_API_KEY"
-    }
-  }
-}
-```
-
-Error responses:
-
-- `404 not_found` -- profile id not found.
-
-### `PUT /admin/connections/profiles/:id`
-
-Update a profile by URL parameter id. The `id` from the URL takes precedence
-over any id in the request body.
-
-Body:
-
-```json
-{
-  "profile": {
-    "name": "Updated Name",
-    "kind": "openai_compatible_local",
-    "provider": "ollama",
-    "baseUrl": "http://host.docker.internal:11434",
-    "auth": { "mode": "none" }
-  }
-}
-```
-
-Response:
-
-```json
-{ "ok": true, "profile": { "id": "primary", "..." : "..." } }
-```
-
-### `DELETE /admin/connections/profiles/:id`
-
-Delete a profile by URL parameter id. No request body needed.
-
-Response:
-
-```json
-{ "ok": true, "id": "primary" }
-```
-
-Error responses:
-
-- `404 not_found` -- profile id not found.
-- `409 conflict` -- profile currently referenced by assignments.
-
 ### `GET /admin/connections/assignments`
 
-Returns canonical capability assignments:
+Returns the current `stack.yaml` capability assignments:
 
 ```json
 {
-  "assignments": {
-    "llm": { "connectionId": "primary", "model": "gpt-4.1-mini" },
+  "capabilities": {
+    "llm": "openai/gpt-4.1-mini",
     "embeddings": {
-      "connectionId": "primary",
+      "provider": "openai",
       "model": "text-embedding-3-small",
-      "embeddingDims": 1536
+      "dims": 1536
+    },
+    "memory": {
+      "userId": "default_user",
+      "customInstructions": ""
     }
   }
 }
@@ -826,20 +700,47 @@ Returns canonical capability assignments:
 
 ### `POST /admin/connections/assignments`
 
-Save canonical assignments. Also writes the OpenCode provider config as a
-side effect. If any `connectionId` does not exist in profiles, returns
-`409 conflict`.
+Saves validated capability updates back to `stack.yaml` and regenerates any
+derived managed env files. The request body may either be the capabilities
+object directly or `{ "capabilities": ... }`.
+
+Supported top-level keys are `llm`, `slm`, `embeddings`, `memory`, `tts`,
+`stt`, and `reranking`. Unknown keys are rejected with `400 bad_request`.
+
+Example body:
+
+```json
+{
+  "capabilities": {
+    "llm": "anthropic/claude-sonnet-4",
+    "embeddings": {
+      "provider": "google",
+      "model": "text-embedding-004",
+      "dims": 768
+    },
+    "memory": {
+      "userId": "owner",
+      "customInstructions": "Keep it concise."
+    }
+  }
+}
+```
 
 Response:
 
 ```json
-{ "ok": true, "assignments": { "llm": { "..." : "..." }, "embeddings": { "..." : "..." } } }
+{ "ok": true, "capabilities": { "llm": "anthropic/claude-sonnet-4", "..." : "..." } }
 ```
+
+Error responses:
+
+- `400 bad_request` -- malformed capability payload, unknown keys, or invalid field types.
+- `500 internal_error` -- `stack.yaml` could not be written.
 
 ### `GET /admin/connections/export/mem0`
 
 Exports the compatibility-formatted memory config derived from current
-connection profiles and assignments. The route name remains `export/mem0`
+`stack.yaml` capabilities. The route name remains `export/mem0`
 for backward compatibility, but the generated file configures OpenPalm's
 Bun-based memory service.
 
@@ -851,12 +752,11 @@ Response: `application/json` with `Content-Disposition: attachment; filename="me
 
 Error responses:
 
-- `404 not_found` -- No connection profiles found.
-- `409 conflict` -- LLM or embeddings connection profile not found.
+- `404 not_found` -- No stack configuration found.
 
 ### `GET /admin/connections/export/opencode`
 
-Exports the generated `opencode.json` config from `CONFIG_HOME/assistant/opencode.json`.
+Exports the generated `opencode.json` config from `config/assistant/opencode.json`.
 Returns the config as a downloadable JSON file with `_nextSteps` guidance.
 
 Auth: admin token or setup token.
@@ -872,7 +772,6 @@ Error responses:
 
 During setup (or with admin token), the same handlers are available at:
 
-- `GET/POST/PUT/DELETE /admin/setup/connections/profiles`
 - `GET/POST /admin/setup/connections/assignments`
 
 These routes use setup-token compatible auth and preserve the same payload and
@@ -881,7 +780,7 @@ error semantics as their `/admin/connections/*` counterparts.
 ## Memory Configuration
 
 Manage the Memory service LLM and embedding provider configuration stored at
-`DATA_HOME/memory/default_config.json`. The persisted file still uses a
+`data/memory/default_config.json`. The persisted file still uses a
 mem0-shaped JSON schema for compatibility, but the running service is the
 OpenPalm Bun-based memory API backed by SQLite and `sqlite-vec`.
 
@@ -961,7 +860,7 @@ Body:
 
 - `provider` (required) -- Must be a recognized LLM or embedding provider name.
 - `apiKeyRef` -- Raw API key or `env:VAR_NAME` reference resolved from
-  `process.env` then `CONFIG_HOME/secrets.env`.
+  `process.env` then `vault/user/user.env`.
 - `baseUrl` -- Provider API base URL. Falls back to provider defaults when empty.
 
 Provider API conventions:
@@ -1039,8 +938,8 @@ When using Ollama as the LLM or embedding provider with Memory:
 
 ### `GET /admin/config/validate`
 
-Run varlock environment validation against `CONFIG_HOME/secrets.env` using the
-schema at `DATA_HOME/secrets.env.schema`. Always returns 200; validation failures
+Run varlock environment validation against `vault/user/user.env` using the
+bundled schema. Always returns 200; validation failures
 are non-fatal and are logged to the audit trail.
 
 **Authentication:** Required (`x-admin-token`)
@@ -1088,7 +987,7 @@ When validation finds issues:
 
 ### `GET /admin/artifacts/:name`
 
-- Allowed names: `compose`, `caddyfile` (alias `caddy` accepted).
+- Allowed names: `compose`.
 - Returns `text/plain` and may include `x-artifact-sha256` header.
 
 ### `GET /admin/audit?limit=<n>`

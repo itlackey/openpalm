@@ -1,5 +1,6 @@
 <script lang="ts">
   import { version } from '$app/environment';
+  import VoiceControl from './VoiceControl.svelte';
 
   interface Props {
     onLogout: () => void;
@@ -18,6 +19,7 @@
       <span class="version-badge">v{version}</span>
     </div>
     <div class="navbar-actions">
+      <VoiceControl />
       <button class="btn btn-secondary btn-sm" type="button" onclick={onLogout}>Sign Out</button>
     </div>
   </div>

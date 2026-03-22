@@ -1,0 +1,29 @@
+# prompt-assistant.yml — Example scheduled prompt for the chat addon
+#
+# Sends a prompt through the optional chat addon's OpenAI-compatible API.
+# This example is disabled by default because the scheduler service cannot reach
+# the chat addon unless you intentionally extend the network topology and
+# replace the URL below with a reachable endpoint.
+#
+# Customize the body to suit your needs.
+# Common uses: daily briefing, system report, recurring task reminders.
+#
+# This file already lives in the bundled automations directory.
+
+name: Prompt Assistant
+description: Example scheduled prompt routed through the optional chat addon
+schedule: daily-8am
+enabled: false
+
+action:
+  type: http
+  method: POST
+  url: http://replace-me/v1/chat/completions
+  body:
+    model: default
+    messages:
+      - role: user
+        content: Good morning. Give me a brief summary of system health and any open tasks.
+  timeout: 60000
+
+on_failure: log

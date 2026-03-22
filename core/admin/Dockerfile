@@ -24,8 +24,9 @@ COPY packages/lib/ node_modules/@openpalm/lib/
 
 # Copy source into monorepo layout
 COPY packages/admin/ packages/admin/
-COPY assets/ assets/
-COPY registry/ registry/ registry/
+COPY .openpalm/stack/ .openpalm/stack/
+COPY .openpalm/vault/ .openpalm/vault/
+COPY .openpalm/config/ .openpalm/config/
 
 # Build SvelteKit (adapter-node produces self-contained build/)
 WORKDIR /workspace/packages/admin
@@ -66,7 +67,7 @@ ARG OPENCODE_VERSION=1.2.24
 ARG BUN_VERSION=bun-v1.3.10
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends curl ca-certificates gnupg git unzip bash \
+  && apt-get install -y --no-install-recommends curl ca-certificates gnupg git unzip bash pass \
   && install -m 0755 -d /etc/apt/keyrings \
   && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list \
@@ -100,7 +101,11 @@ RUN mkdir -p /state /data && chown node:node /state /data
 
 # Copy varlock binary from fetch stage — no Bun required (standalone ELF binary)
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
-COPY assets/redact.env.schema /app/.env.schema
+COPY .openpalm/vault/redact.env.schema /app/.env.schema
+
+# Bake admin OpenCode config into the image — seeded at runtime if overridden
+COPY core/admin/opencode/opencode.jsonc /app/opencode.jsonc
+COPY core/admin/opencode /etc/opencode
 
 # Admin entrypoint — starts SvelteKit + OpenCode
 COPY core/admin/entrypoint.sh /usr/local/bin/admin-entrypoint.sh
@@ -112,7 +117,7 @@ USER node
 # so varlock writes into a user-writable bind mount at runtime.
 ENV HOME=/tmp
 ENV PORT=8100
-EXPOSE 8100 4097
+EXPOSE 8100 3881
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
   CMD curl -sf http://localhost:8100/health || exit 1

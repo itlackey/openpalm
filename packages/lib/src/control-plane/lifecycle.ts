@@ -1,125 +1,109 @@
-/**
- * Lifecycle helpers for the OpenPalm control plane.
- *
- * State factory, apply* lifecycle transitions, compose file list builders,
- * and caller/action validation.
- *
- * All asset operations are delegated via CoreAssetProvider (injected).
- */
-import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, copyFileSync, mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+/** Lifecycle helpers — state factory, apply transitions, compose file list. */
+import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
 import { parseEnvFile, mergeEnvContent } from "./env.js";
 import type { ControlPlaneState, CallerType } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
-import { resolveConfigHome, resolveStateHome, resolveDataHome } from "./paths.js";
-import { loadSecretsEnvFile } from "./secrets.js";
-import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, randomHex, isOllamaEnabled, isAdminEnabled } from "./staging.js";
+import {
+  resolveOpenPalmHome,
+  resolveConfigDir,
+  resolveVaultDir,
+  resolveDataDir,
+  resolveLogsDir,
+  resolveCacheHome,
+} from "./home.js";
+import { ensureSecrets, loadSecretsEnvFile, readSystemSecretsEnvFile, updateSystemSecretsEnv } from "./secrets.js";
+import {
+  resolveRuntimeFiles,
+  writeRuntimeFiles,
+  randomHex,
+  buildEnvFiles,
+} from "./config-persistence.js";
+import { readStackSpec, addonNames } from "./stack-spec.js";
 import { refreshCoreAssets, ensureMemoryDir, ensureCoreAutomations } from "./core-assets.js";
 import { ensureMemoryConfig } from "./memory-config.js";
 import { isSetupComplete } from "./setup-status.js";
-import type { CoreAssetProvider } from "./core-asset-provider.js";
-
-const execFileAsync = promisify(execFile);
-
-/** Resolve the varlock binary path — honours VARLOCK_BIN for dev environments. */
-const envVarlockBin = process.env.VARLOCK_BIN;
-let VARLOCK_BIN = "varlock";
-if (envVarlockBin) {
-  if (envVarlockBin === "varlock" || envVarlockBin.startsWith("/")) {
-    VARLOCK_BIN = envVarlockBin;
-  } else {
-    console.warn(
-      `Unsafe VARLOCK_BIN value: ${envVarlockBin}. Falling back to "varlock". ` +
-      "Must be \"varlock\" or an absolute path.",
-    );
-  }
-}
+import { snapshotCurrentState } from "./rollback.js";
+import { checkDocker, composePreflight, composeConfigServices, resolveComposeProjectName } from "./docker.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 
-// ── State Factory ──────────────────────────────────────────────────────
 
 export function createState(
   adminToken?: string
 ): ControlPlaneState {
-  const stateDir = resolveStateHome();
-  const configDir = resolveConfigHome();
-  const fileEnv = loadSecretsEnvFile(configDir);
-  const resolvedAdminToken =
-    adminToken ?? fileEnv.OPENPALM_ADMIN_TOKEN ?? fileEnv.ADMIN_TOKEN ?? process.env.OPENPALM_ADMIN_TOKEN ?? process.env.ADMIN_TOKEN ?? "";
+  const homeDir = resolveOpenPalmHome();
+  const configDir = resolveConfigDir();
+  const vaultDir = resolveVaultDir();
+  const dataDir = resolveDataDir();
+  const logsDir = resolveLogsDir();
+  const cacheDir = resolveCacheHome();
 
   const services: Record<string, "running" | "stopped"> = {};
   for (const name of CORE_SERVICES) {
     services[name] = "stopped";
   }
 
-  const dataDir = resolveDataHome();
-
-  const persistedSecrets = loadPersistedChannelSecrets(dataDir);
-  const channelSecrets: Record<string, string> = { ...persistedSecrets };
-
   const setupToken = randomHex(16);
-  const state: ControlPlaneState = {
-    adminToken: resolvedAdminToken,
+  const bootstrapState: ControlPlaneState = {
+    adminToken: adminToken ?? process.env.OP_ADMIN_TOKEN ?? "",
+    assistantToken: "",
     setupToken,
-    stateDir,
+    homeDir,
     configDir,
+    vaultDir,
     dataDir,
+    logsDir,
+    cacheDir,
     services,
-    artifacts: { compose: "", caddyfile: "" },
+    artifacts: { compose: "" },
     artifactMeta: [],
     audit: [],
-    channelSecrets
   };
 
-  writeSetupTokenFile(state);
+  ensureSecrets(bootstrapState);
 
-  return state;
+  const fileEnv = loadSecretsEnvFile(vaultDir);
+  const systemEnv = readSystemSecretsEnvFile(vaultDir);
+  // Precedence: explicit parameter > system.env > user.env > process.env.
+  bootstrapState.adminToken =
+    adminToken
+      ?? systemEnv.OP_ADMIN_TOKEN
+      ?? fileEnv.OP_ADMIN_TOKEN
+      ?? process.env.OP_ADMIN_TOKEN
+      ?? "";
+  bootstrapState.assistantToken =
+    systemEnv.OP_ASSISTANT_TOKEN
+      ?? process.env.OP_ASSISTANT_TOKEN
+      ?? "";
+
+  writeSetupTokenFile(bootstrapState);
+
+  return bootstrapState;
 }
 
-/**
- * Write or remove the setup-token.txt file based on setup completion state.
- */
 export function writeSetupTokenFile(state: ControlPlaneState): void {
-  const tokenPath = `${state.stateDir}/setup-token.txt`;
-  const setupComplete = isSetupComplete(state.stateDir, state.configDir);
+  const tokenPath = `${state.dataDir}/setup-token.txt`;
+  const setupComplete = isSetupComplete(state.vaultDir);
 
   if (setupComplete) {
     try { unlinkSync(tokenPath); } catch { /* already gone */ }
   } else {
-    mkdirSync(state.stateDir, { recursive: true });
+    mkdirSync(state.dataDir, { recursive: true });
     writeFileSync(tokenPath, state.setupToken + "\n", { mode: 0o600 });
   }
 }
 
-// ── Private Loaders ───────────────────────────────────────────────────
 
-function loadPersistedChannelSecrets(dataDir: string): Record<string, string> {
-  const parsed = parseEnvFile(`${dataDir}/stack.env`);
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(parsed)) {
-    const match = key.match(/^CHANNEL_([A-Z0-9_]+)_SECRET$/);
-    if (match?.[1] && value) result[match[1].toLowerCase()] = value;
-  }
-  return result;
-}
-
-// ── Lifecycle Helpers ──────────────────────────────────────────────────
-
-function reconcileCore(
+async function reconcileCore(
   state: ControlPlaneState,
-  assets: CoreAssetProvider,
   opts: { activateServices?: boolean; deactivateServices?: boolean; seedMemoryConfig?: boolean },
-): string[] {
+): Promise<string[]> {
   if (opts.activateServices) {
     for (const s of CORE_SERVICES) state.services[s] = "running";
   }
-  ensureMemoryDir();
-  ensureCoreAutomations(assets);
+  ensureMemoryDir(state.dataDir);
+  ensureCoreAutomations(state.configDir);
   if (opts.seedMemoryConfig) ensureMemoryConfig(state.dataDir);
 
   const active: string[] = [];
@@ -131,21 +115,54 @@ function reconcileCore(
     for (const name of Object.keys(state.services)) state.services[name] = "stopped";
   }
 
-  state.artifacts = stageArtifacts(state, assets);
-  persistArtifacts(state, assets);
+  // Preflight: validate compose merge before mutation.
+  // Mandatory when compose files exist and OP_SKIP_COMPOSE_PREFLIGHT is not set.
+  // Fails if Docker is unavailable (Docker is required for any compose operation).
+  const files = buildComposeFileList(state);
+  const envFiles = buildEnvFiles(state);
+  if (files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
+    const dockerCheck = await checkDocker();
+    if (!dockerCheck.ok) {
+      throw new Error(
+        "Compose preflight failed: Docker is not available.\n" +
+        "Docker must be running before install/update/apply operations."
+      );
+    }
+    const preflight = await composePreflight({ files, envFiles });
+    if (!preflight.ok) {
+      const projectName = resolveComposeProjectName();
+      const fileArgs = files.flatMap((f) => ["-f", f]).join(" ");
+      const envArgs = envFiles.filter(existsSync).flatMap((f) => ["--env-file", f]).join(" ");
+      const resolvedCmd = `docker compose ${fileArgs} --project-name ${projectName} ${envArgs} config --quiet`;
+      throw new Error(
+        `Compose preflight failed: ${preflight.stderr}\n` +
+        `Resolved command: ${resolvedCmd}\n` +
+        `Files: ${files.join(", ")}\n` +
+        `Env files: ${envFiles.join(", ")}\n` +
+        `Project: ${projectName}`
+      );
+    }
+  }
+
+  // Snapshot before writing (for rollback on failure)
+  snapshotCurrentState(state);
+
+  // Resolve and write runtime files to live paths
+  state.artifacts = resolveRuntimeFiles(state);
+  writeRuntimeFiles(state);
   return active;
 }
 
-export function applyInstall(state: ControlPlaneState, assets: CoreAssetProvider): void {
-  reconcileCore(state, assets, { activateServices: true, seedMemoryConfig: true });
+export async function applyInstall(state: ControlPlaneState): Promise<void> {
+  await reconcileCore(state, { activateServices: true, seedMemoryConfig: true });
 }
 
-export function applyUpdate(state: ControlPlaneState, assets: CoreAssetProvider): { restarted: string[] } {
-  return { restarted: reconcileCore(state, assets, {}) };
+export async function applyUpdate(state: ControlPlaneState): Promise<{ restarted: string[] }> {
+  return { restarted: await reconcileCore(state, {}) };
 }
 
-export function applyUninstall(state: ControlPlaneState, assets: CoreAssetProvider): { stopped: string[] } {
-  return { stopped: reconcileCore(state, assets, { deactivateServices: true }) };
+export async function applyUninstall(state: ControlPlaneState): Promise<{ stopped: string[] }> {
+  return { stopped: await reconcileCore(state, { deactivateServices: true }) };
 }
 
 type DockerTagEntry = { name?: unknown };
@@ -169,12 +186,12 @@ export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): 
   namespace: string;
   tag: string;
 }> {
-  const stackEnvPath = `${state.dataDir}/stack.env`;
-  const parsed = parseEnvFile(stackEnvPath);
-  const namespace = (parsed.OPENPALM_IMAGE_NAMESPACE ?? process.env.OPENPALM_IMAGE_NAMESPACE ?? "openpalm").trim().toLowerCase();
+  const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
+  const parsed = parseEnvFile(systemEnvPath);
+  const namespace = (parsed.OP_IMAGE_NAMESPACE ?? process.env.OP_IMAGE_NAMESPACE ?? "openpalm").trim().toLowerCase();
 
   if (!IMAGE_NAMESPACE_RE.test(namespace)) {
-    throw new Error(`Invalid image namespace in stack.env: ${namespace}`);
+    throw new Error(`Invalid image namespace in system.env: ${namespace}`);
   }
 
   let response: Response;
@@ -197,72 +214,68 @@ export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): 
     throw new Error("No usable Docker image tag found");
   }
 
-  const currentContent = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
-  const updatedContent = mergeEnvContent(currentContent, { OPENPALM_IMAGE_TAG: latestTag }, { uncomment: true });
-  writeFileSync(stackEnvPath, updatedContent);
+  const currentContent = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
+  const updatedContent = mergeEnvContent(currentContent, { OP_IMAGE_TAG: latestTag }, { uncomment: true });
+  writeFileSync(systemEnvPath, updatedContent);
 
   return { namespace, tag: latestTag };
 }
 
 export async function applyUpgrade(
-  state: ControlPlaneState,
-  assets: CoreAssetProvider
+  state: ControlPlaneState
 ): Promise<{
   backupDir: string | null;
   updated: string[];
   restarted: string[];
 }> {
   const { backupDir, updated } = await refreshCoreAssets();
-  const restarted = reconcileCore(state, assets, {});
+  const restarted = await reconcileCore(state, {});
   return { backupDir, updated, restarted };
 }
 
-// ── Compose File List Builder ────────────────────────────────────────────
-
 export function buildComposeFileList(state: ControlPlaneState): string[] {
-  const files = [`${state.stateDir}/artifacts/docker-compose.yml`];
+  const stackDir = `${state.homeDir}/stack`;
+  const coreYml = `${stackDir}/core.compose.yml`;
+  const files: string[] = [];
 
-  if (isAdminEnabled(state)) {
-    const adminYml = `${state.stateDir}/artifacts/admin.yml`;
-    files.push(adminYml);
+  if (existsSync(coreYml)) {
+    files.push(coreYml);
   }
 
-  if (isOllamaEnabled(state)) {
-    const ollamaYml = `${state.stateDir}/artifacts/ollama.yml`;
-    files.push(ollamaYml);
+  // Add addon overlays for enabled addons
+  const spec = readStackSpec(state.configDir);
+  if (spec?.addons) {
+    for (const [addonName, addon] of Object.entries(spec.addons)) {
+      if (addon === false) continue;
+      const addonYml = `${stackDir}/addons/${addonName}/compose.yml`;
+      if (existsSync(addonYml)) files.push(addonYml);
+    }
   }
-
-  const stagedYmls = discoverStagedChannelYmls(state.stateDir);
-  files.push(...stagedYmls);
 
   return files;
 }
 
-/**
- * Build the list of services that `docker compose up` should manage.
- * Core services always; admin/caddy/docker-socket-proxy only when admin is enabled.
- */
-export function buildManagedServices(state: ControlPlaneState): string[] {
+export async function buildManagedServices(state: ControlPlaneState): Promise<string[]> {
+  const files = buildComposeFileList(state);
+  const envFiles = buildEnvFiles(state);
+
+  // Prefer compose-derived service list when Docker is available
+  if (files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
+    const result = await composeConfigServices({ files, envFiles });
+    if (result.ok && result.services.length > 0) {
+      return result.services;
+    }
+  }
+
+  // Fallback: static inference from CORE_SERVICES + stack.yaml addons
   const services: string[] = [...CORE_SERVICES];
-
-  if (isAdminEnabled(state)) {
-    services.push("caddy", "admin", "docker-socket-proxy");
-  }
-
-  if (isOllamaEnabled(state)) {
-    services.push("ollama");
-  }
-
-  const stagedYmls = discoverStagedChannelYmls(state.stateDir);
-  for (const p of stagedYmls) {
-    const filename = p.split("/").pop() ?? "";
-    const name = filename.replace(/\.yml$/, "");
-    if (name) services.push(`channel-${name}`);
+  const spec = readStackSpec(state.configDir);
+  if (spec) {
+    services.push(...addonNames(spec));
   }
   return services;
 }
 
-// ── Caller Normalization ───────────────────────────────────────────────
 
 const VALID_CALLERS = new Set<CallerType>([
   "assistant",
@@ -277,106 +290,3 @@ export function normalizeCaller(headerValue: string | null): CallerType {
   return VALID_CALLERS.has(v) ? v : "unknown";
 }
 
-// ── Action Validation ──────────────────────────────────────────────────
-
-const ALLOWED_ACTIONS = new Set([
-  "install",
-  "update",
-  "upgrade",
-  "uninstall",
-  "containers.list",
-  "containers.up",
-  "containers.down",
-  "containers.restart",
-  "channels.list",
-  "channels.install",
-  "channels.uninstall",
-
-  "extensions.list",
-  "artifacts.list",
-  "artifacts.get",
-  "artifacts.manifest",
-  "audit.list",
-  "accessScope.get",
-  "accessScope.set",
-  "connections.get",
-  "connections.patch",
-  "connections.status"
-]);
-
-export function isAllowedAction(action: string): boolean {
-  return ALLOWED_ACTIONS.has(action);
-}
-
-// ── Environment Validation ─────────────────────────────────────────────
-
-export async function validateEnvironment(state: ControlPlaneState): Promise<{
-  ok: boolean;
-  errors: string[];
-  warnings: string[];
-}> {
-  const schemaPath = `${state.dataDir}/secrets.env.schema`;
-  const envPath = `${state.configDir}/secrets.env`;
-
-  function sanitizeVarlockMessage(msg: string): string {
-    return msg
-      .replace(/sk-[A-Za-z0-9]{20,}/g, "[REDACTED]")
-      .replace(/gsk_[A-Za-z0-9]{30,}/g, "[REDACTED]")
-      .replace(/AIza[A-Za-z0-9_\-]{35}/g, "[REDACTED]")
-      .replace(/[0-9a-f]{32,}/gi, "[REDACTED]")
-      .replace(/value '([^']*)'/g, "value '[REDACTED]'");
-  }
-
-  function collectVarlockOutput(stderr: string, errors: string[], warnings: string[]): void {
-    for (const line of stderr.split("\n")) {
-      const trimmed = sanitizeVarlockMessage(line.trim());
-      if (!trimmed) continue;
-      if (trimmed.includes("ERROR")) errors.push(trimmed);
-      else if (trimmed.includes("WARN")) warnings.push(trimmed);
-    }
-  }
-
-  async function runVarlockLoad(
-    schemaFile: string,
-    envFile: string,
-  ): Promise<void> {
-    const tmpDir = mkdtempSync(join(tmpdir(), "varlock-"));
-    try {
-      copyFileSync(schemaFile, join(tmpDir, ".env.schema"));
-      copyFileSync(envFile, join(tmpDir, ".env"));
-      await execFileAsync(
-        VARLOCK_BIN,
-        ["load", "--path", `${tmpDir}/`],
-        { timeout: 10000 }
-      );
-    } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
-    }
-  }
-
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  let anyFailed = false;
-
-  try {
-    await runVarlockLoad(schemaPath, envPath);
-  } catch (err: unknown) {
-    anyFailed = true;
-    if (err && typeof err === "object" && "stderr" in err) {
-      collectVarlockOutput(String((err as { stderr: string }).stderr), errors, warnings);
-    }
-  }
-
-  const stackSchemaPath = `${state.dataDir}/stack.env.schema`;
-  const stackEnvPath = `${state.stateDir}/artifacts/stack.env`;
-  try {
-    await runVarlockLoad(stackSchemaPath, stackEnvPath);
-  } catch (err: unknown) {
-    anyFailed = true;
-    if (err && typeof err === "object" && "stderr" in err) {
-      collectVarlockOutput(String((err as { stderr: string }).stderr), errors, warnings);
-    }
-  }
-
-  return { ok: !anyFailed && errors.length === 0, errors, warnings };
-}

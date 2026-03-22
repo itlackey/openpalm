@@ -17,40 +17,27 @@ export function makeTempDir(): string {
   return dir;
 }
 
-export function seedConfigChannels(
-  configDir: string,
-  channels: { name: string; yml: string; caddy?: string }[]
-): void {
-  const channelsDir = join(configDir, "channels");
-  mkdirSync(channelsDir, { recursive: true });
-  for (const ch of channels) {
-    writeFileSync(join(channelsDir, `${ch.name}.yml`), ch.yml);
-    if (ch.caddy) {
-      writeFileSync(join(channelsDir, `${ch.name}.caddy`), ch.caddy);
-    }
-  }
-}
-
-export function seedSecretsEnv(configDir: string, content: string): void {
-  mkdirSync(configDir, { recursive: true });
-  writeFileSync(join(configDir, "secrets.env"), content);
+export function seedSecretsEnv(vaultDir: string, content: string): void {
+  mkdirSync(join(vaultDir, "user"), { recursive: true });
+  writeFileSync(join(vaultDir, "user", "user.env"), content);
 }
 
 export function makeTestState(overrides: Partial<ControlPlaneState> = {}): ControlPlaneState {
-  const stateDir = makeTempDir();
-  const configDir = makeTempDir();
-  const dataDir = makeTempDir();
+  const tempDir = makeTempDir();
   return {
     adminToken: "test-admin-token",
+    assistantToken: "test-assistant-token",
     setupToken: "test-setup-token",
-    stateDir,
-    configDir,
-    dataDir,
+    homeDir: tempDir,
+    configDir: join(tempDir, "config"),
+    vaultDir: join(tempDir, "vault"),
+    dataDir: join(tempDir, "data"),
+    logsDir: join(tempDir, "logs"),
+    cacheDir: join(tempDir, "cache"),
     services: {},
-    artifacts: { compose: "", caddyfile: "" },
+    artifacts: { compose: "" },
     artifactMeta: [],
     audit: [],
-    channelSecrets: {},
     ...overrides
   };
 }

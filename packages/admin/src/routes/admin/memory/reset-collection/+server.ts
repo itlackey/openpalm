@@ -19,8 +19,8 @@ import {
 import {
   appendAudit,
   readMemoryConfig,
-  resetQdrantCollection
-} from "$lib/server/control-plane.js";
+  resetVectorStore
+} from "@openpalm/lib";
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -34,7 +34,7 @@ export const POST: RequestHandler = async (event) => {
   const config = readMemoryConfig(state.dataDir);
   const collectionName = config.mem0.vector_store.config.collection_name;
 
-  const result = resetQdrantCollection(state.dataDir);
+  const result = resetVectorStore(state.dataDir);
 
   appendAudit(
     state, actor, "memory.collection.reset",

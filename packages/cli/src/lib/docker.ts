@@ -1,26 +1,51 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ensureXdgDirs } from '@openpalm/lib';
+import { resolveCacheHome } from '@openpalm/lib';
 
 const REPO_OWNER = 'itlackey';
 const REPO_NAME = 'openpalm';
 
 /**
- * Creates the full XDG directory tree required by the stack.
- * Delegates to @openpalm/lib for core dirs, then adds CLI-specific extras.
+ * Creates the full directory tree required by the stack.
+ * Uses the caller-provided directory roots, then adds CLI-specific extras.
  */
 export async function ensureDirectoryTree(
-  _configHome: string,
-  _dataHome: string,
-  stateHome: string,
+  homeDir: string,
+  configDir: string,
+  vaultDir: string,
+  dataDir: string,
   workDir: string,
 ): Promise<void> {
-  // Core XDG dirs (CONFIG_HOME, DATA_HOME, STATE_HOME subtrees)
-  ensureXdgDirs();
+  const cacheDir = resolveCacheHome();
 
-  // CLI-specific extras not in lib
   for (const dir of [
-    join(stateHome, 'bin'),
+    homeDir,
+    configDir,
+    join(configDir, 'automations'),
+    join(configDir, 'assistant'),
+    join(configDir, 'assistant', 'tools'),
+    join(configDir, 'assistant', 'plugins'),
+    join(configDir, 'assistant', 'skills'),
+    join(configDir, 'guardian'),
+    vaultDir,
+    join(vaultDir, 'user'),
+    join(vaultDir, 'stack'),
+    join(vaultDir, 'stack', 'addons'),
+    dataDir,
+    join(dataDir, 'assistant'),
+    join(dataDir, 'admin'),
+    join(dataDir, 'memory'),
+    join(dataDir, 'guardian'),
+    join(dataDir, 'stash'),
+    join(homeDir, 'stack'),
+    join(homeDir, 'stack', 'addons'),
+    join(homeDir, 'stack', 'addons', 'ollama'),
+    join(homeDir, 'backups'),
+    join(homeDir, 'logs'),
+    join(homeDir, 'logs', 'opencode'),
+    cacheDir,
+    join(cacheDir, 'registry'),
+    join(cacheDir, 'rollback'),
     workDir,
   ]) {
     await mkdir(dir, { recursive: true });
@@ -49,7 +74,7 @@ async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
  */
 export async function fetchAsset(repoRef: string, filename: string): Promise<string> {
   const releaseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${repoRef}/${filename}`;
-  const rawUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${repoRef}/assets/${filename}`;
+  const rawUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${repoRef}/${filename}`;
 
   try {
     const releaseResponse = await fetchWithRetry(releaseUrl);
@@ -97,8 +122,8 @@ export async function runDockerComposeCapture(args: string[]): Promise<string> {
   return output;
 }
 
-// composeProjectArgs() removed — use fullComposeArgs(state) from staging.ts instead.
-// That function builds the correct file list including channel overlays and staged env files.
+// composeProjectArgs() removed — use fullComposeArgs(state) from cli-compose.ts instead.
+// That function builds the correct file list including channel overlays and env files.
 
 // ensureOpenCodeConfig and ensureOpenCodeSystemConfig are imported from @openpalm/lib.
 // See packages/lib/src/control-plane/secrets.ts and core-assets.ts.

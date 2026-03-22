@@ -1,7 +1,7 @@
 /**
  * POST /admin/registry/refresh — Pull latest registry from GitHub and re-stage.
  *
- * Runs `git pull` on the cloned registry repo in STATE_HOME to fetch any
+ * Runs `git pull` on the cloned registry repo in the cache directory to fetch any
  * new or updated registry items from the remote repository.
  */
 import type { RequestHandler } from "./$types";
@@ -16,9 +16,9 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
-  stageArtifacts,
-  persistArtifacts
-} from "$lib/server/control-plane.js";
+  resolveRuntimeFiles,
+  writeRuntimeFiles
+} from "@openpalm/lib";
 import { pullRegistry } from "$lib/server/registry-sync.js";
 
 
@@ -38,9 +38,9 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(500, "registry_sync_error", pullResult.error, {}, requestId);
   }
 
-  // Re-stage artifacts (scheduler sidecar auto-reloads via file watching)
-  state.artifacts = stageArtifacts(state);
-  persistArtifacts(state);
+  // Refresh runtime files (scheduler sidecar auto-reloads via file watching)
+  state.artifacts = resolveRuntimeFiles(state);
+  writeRuntimeFiles(state);
 
   appendAudit(state, actor, "registry.refresh", { updated: pullResult.updated }, true, requestId, callerType);
   return jsonResponse(200, { ok: true, updated: pullResult.updated }, requestId);

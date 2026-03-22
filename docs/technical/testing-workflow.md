@@ -36,7 +36,7 @@ curl -sS -H "x-admin-token: dev-admin-token" http://localhost:8100/admin/memory/
 > **Common pitfalls (already fixed in code/scripts):**
 > - Memory config must use `http://host.docker.internal:11434` for Ollama (not `localhost`, not `ollama:11434`) — Ollama runs on host, not in compose
 > - Embedding model dimensions must match config: `nomic-embed-text` = 768, `qwen3-embedding:0.6b` = 1024
-> - `ADMIN_TOKEN` in `secrets.env` must be `dev-admin-token` to match test expectations
+> - `ADMIN_TOKEN` in `vault/stack/stack.env` must be `dev-admin-token` to match test expectations
 > - Stack tests hit the admin container directly (`http://localhost:8100`), not the Playwright preview server
 > - If you want **zero skipped E2E tests**, run with both `RUN_DOCKER_STACK_TESTS=1` and `RUN_LLM_TESTS=1`
 >
@@ -179,7 +179,7 @@ This is the "nuclear option" — tests everything from a completely clean slate.
 6. Verifies fresh state (setup NOT complete)
 7. Runs setup wizard via API (POST `/admin/setup`)
 8. Waits for all 6 services to become healthy
-9. Validates `secrets.env` values, container env vars, file ownership
+9. Validates `stack.env` values, container env vars, file ownership
 10. Verifies OpenMemory user provisioned
 11. Tests assistant memory tools end-to-end (add + search)
 12. Reports pass/fail summary

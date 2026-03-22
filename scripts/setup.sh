@@ -37,7 +37,7 @@ case "${OS}-${ARCH}" in
 esac
 
 # ── Version resolution ─────────────────────────────────────────────────
-REQUESTED_VERSION="${OPENPALM_VERSION:-}"
+REQUESTED_VERSION="${OP_VERSION:-}"
 PASSTHROUGH_ARGS=()
 
 while [ "$#" -gt 0 ]; do
@@ -72,7 +72,7 @@ if [ -z "${VERSION}" ]; then
 fi
 
 # ── Download ──────────────────────────────────────────────────────────
-INSTALL_DIR="${OPENPALM_INSTALL_DIR:-${HOME}/.local/bin}"
+INSTALL_DIR="${OP_INSTALL_DIR:-${HOME}/.local/bin}"
 DEST="${INSTALL_DIR}/openpalm"
 
 info "Downloading openpalm ${VERSION} for ${OS}/${ARCH}..."

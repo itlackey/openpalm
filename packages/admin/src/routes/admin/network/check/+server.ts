@@ -1,12 +1,12 @@
 import {
   getRequestId,
   jsonResponse,
-  requireAdmin,
+  requireAuth,
   getActor,
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { appendAudit } from "$lib/server/control-plane.js";
+import { appendAudit } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 type ServiceCheckResult = {
@@ -20,7 +20,6 @@ const SERVICES: { name: string; url: string }[] = [
   { name: "guardian", url: "http://guardian:8080/health" },
   { name: "memory", url: "http://memory:8765/health" },
   { name: "assistant", url: "http://assistant:4096" },
-  { name: "caddy", url: "http://caddy:8080" }
 ];
 
 async function checkService(url: string): Promise<ServiceCheckResult> {
@@ -41,7 +40,7 @@ async function checkService(url: string): Promise<ServiceCheckResult> {
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authError = requireAdmin(event, requestId);
+  const authError = requireAuth(event, requestId);
   if (authError) return authError;
 
   const state = getState();

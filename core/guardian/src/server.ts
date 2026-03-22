@@ -25,10 +25,10 @@ const logger = createLogger("guardian");
 // ── Config ──────────────────────────────────────────────────────────────
 
 const PORT = Number(Bun.env.PORT ?? 8080);
-const ASSISTANT_URL = Bun.env.OPENPALM_ASSISTANT_URL ?? "http://assistant:4096";
+const ASSISTANT_URL = Bun.env.OP_ASSISTANT_URL ?? "http://assistant:4096";
 const AUDIT_PATH = Bun.env.GUARDIAN_AUDIT_PATH ?? "/app/audit/guardian-audit.log";
 const SECRETS_PATH = Bun.env.GUARDIAN_SECRETS_PATH;
-const ADMIN_TOKEN = Bun.env.OPENPALM_ADMIN_TOKEN;
+const ADMIN_TOKEN = Bun.env.OP_ADMIN_TOKEN;
 
 // ── Uptime & request counters ───────────────────────────────────────────
 

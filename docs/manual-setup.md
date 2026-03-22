@@ -1,365 +1,172 @@
 # Manual Setup
 
-Step-by-step guide for configuring an OpenPalm host by hand, without using the installer scripts or CLI. This is useful for understanding what the automation does under the hood, for air-gapped environments, or for custom deployments.
+This is the plain Docker Compose path. No installer is required.
 
-For the automated path, see [setup-guide.md](setup-guide.md). For the developer quick-start, see [CONTRIBUTING.md](CONTRIBUTING.md).
+OpenPalm ships a working `.openpalm/` asset bundle in the repo. Copy that bundle to `~/.openpalm/`, fill in the env files, and start the stack with `docker compose`.
+
+For the convenience-oriented version of the same flow, see [setup-guide.md](setup-guide.md).
+
+---
+
+## What is authoritative
+
+- The live stack is defined only by compose files under `~/.openpalm/stack/`.
+- Enabled addons come from the compose command you run, for example extra `-f addons/<name>/compose.yml` flags.
+- `~/.openpalm/config/stack.yaml` is optional metadata for helper tooling. It is not deployment truth.
+- See the [Manual Compose Runbook](operations/manual-compose-runbook.md) for the full compose command reference.
 
 ---
 
 ## Prerequisites
 
-- Docker Engine 24+ with Compose V2 (`docker compose` subcommand)
-- `openssl` (for generating secrets)
-- The `assets/` files from this repository (or download them from a GitHub release)
+- Docker Engine or Docker Desktop with Compose V2
+- `git` or another way to copy files from this repo
+- `openssl` if you want to generate fresh secrets locally
 
 ---
 
-## 1. Choose your paths
+## 1. Copy the bundle
 
-OpenPalm uses three host directories following the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/). Pick paths that work for your system:
-
-| Tier | Default | Purpose |
-|------|---------|---------|
-| **CONFIG_HOME** | `~/.config/openpalm` | User-editable: secrets, channels, OpenCode extensions |
-| **DATA_HOME** | `~/.local/share/openpalm` | Admin/service-managed data (memory, stack.env, caddy, assistant home, etc.) |
-| **STATE_HOME** | `~/.local/state/openpalm` | Assembled runtime artifacts, audit logs |
-| **WORK_DIR** | `~/openpalm` | Assistant working directory |
-
-`CONFIG_HOME` is the user-owned persistent source of truth. Allowed writers are:
-user direct edits, explicit admin UI/API config actions, and assistant actions
-through authenticated/allowlisted admin APIs on user request. Automatic
-lifecycle operations are non-destructive for existing user config files and
-only seed missing defaults. See [core-principles.md](technical/core-principles.md) for
-the full filesystem contract.
-
-The rest of this guide uses the defaults. Substitute your own paths if needed.
-
-See [directory-structure.md](technical/directory-structure.md) for the full tree and rationale.
-
----
-
-## 2. Create the directory tree
+Clone the repo, then copy `.openpalm/` into your home directory:
 
 ```bash
-# CONFIG_HOME
-mkdir -p ~/.config/openpalm/channels
-mkdir -p ~/.config/openpalm/automations
-mkdir -p ~/.config/openpalm/assistant/{tools,plugins,skills}
-
-# DATA_HOME
-mkdir -p ~/.local/share/openpalm/admin
-mkdir -p ~/.local/share/openpalm/memory
-mkdir -p ~/.local/share/openpalm/assistant
-mkdir -p ~/.local/share/openpalm/guardian
-mkdir -p ~/.local/share/openpalm/caddy/{data,config}
-mkdir -p ~/.local/share/openpalm/automations
-
-# STATE_HOME
-mkdir -p ~/.local/state/openpalm/artifacts/channels
-mkdir -p ~/.local/state/openpalm/automations
-mkdir -p ~/.local/state/openpalm/audit
-
-# Working directory
-mkdir -p ~/openpalm
+git clone https://github.com/itlackey/openpalm.git
+cp -R openpalm/.openpalm "$HOME/.openpalm"
 ```
 
+If you already have a `~/.openpalm/` with data you want to keep, do not delete it. Copy only the files you need from the repo bundle instead.
+
 ---
 
-## 3. Place the core assets
+## 2. Review the layout
 
-Two files from `assets/` are needed: the Docker Compose definition and the Caddyfile.
+After copying, the important paths are:
 
-Copy them to DATA_HOME (source of truth) **and** stage them to STATE_HOME (runtime):
+| Path | Purpose |
+|---|---|
+| `~/.openpalm/stack/` | Base compose file and addon compose files |
+| `~/.openpalm/vault/stack/stack.env` | System values used by compose |
+| `~/.openpalm/vault/user/user.env` | User secrets like provider API keys |
+| `~/.openpalm/config/` | User-editable config and automations |
+| `~/.openpalm/data/` | Durable service data |
+| `~/.openpalm/logs/` | Logs and audit output |
 
-```bash
-# Source of truth (DATA_HOME)
-cp assets/docker-compose.yml ~/.local/share/openpalm/docker-compose.yml
-cp assets/Caddyfile           ~/.local/share/openpalm/caddy/Caddyfile
+---
 
-# Staged for runtime (STATE_HOME)
-cp assets/docker-compose.yml ~/.local/state/openpalm/artifacts/docker-compose.yml
-cp assets/Caddyfile           ~/.local/state/openpalm/artifacts/Caddyfile
+## 3. Fill in env files
+
+Edit the copied env files before first start.
+
+### `~/.openpalm/vault/user/user.env`
+
+Set at least one model provider key or endpoint your assistant can use.
+
+Example:
+
+```dotenv
+OPENAI_API_KEY=your-key-here
 ```
 
-If you don't have a local clone, download them from GitHub:
+### `~/.openpalm/vault/stack/stack.env`
+
+Review host-specific values such as paths, ports, image tags, and tokens.
+
+If you want a fresh admin token or signing secret, generate values locally and paste them into the file:
 
 ```bash
-BASE_URL="https://raw.githubusercontent.com/itlackey/openpalm/main/assets"
-curl -fsSL "$BASE_URL/docker-compose.yml" -o ~/.local/share/openpalm/docker-compose.yml
-curl -fsSL "$BASE_URL/Caddyfile"           -o ~/.local/share/openpalm/caddy/Caddyfile
-
-cp ~/.local/share/openpalm/docker-compose.yml ~/.local/state/openpalm/artifacts/docker-compose.yml
-cp ~/.local/share/openpalm/caddy/Caddyfile    ~/.local/state/openpalm/artifacts/Caddyfile
+openssl rand -hex 24
 ```
 
 ---
 
-## 4. Create secrets.env
+## 4. Start the core stack
 
-This file holds your admin token and LLM provider keys. Copy the template from `assets/secrets.env` and fill in the values:
+Run Docker Compose directly from `~/.openpalm/stack/`. Always run the preflight
+check first to catch misconfiguration before containers are affected.
 
-```bash
-cp assets/secrets.env ~/.config/openpalm/secrets.env
-```
+For the full compose command reference (preflight, start, stop, logs, and more), see the [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
-Or create it manually:
-
-```bash
-cat > ~/.config/openpalm/secrets.env << 'EOF'
-# Required — change this before exposing the stack
-ADMIN_TOKEN=change-me-to-a-strong-token
-
-# At least one LLM key recommended
-OPENAI_API_KEY=
-# ANTHROPIC_API_KEY=
-# GROQ_API_KEY=
-# MISTRAL_API_KEY=
-# GOOGLE_API_KEY=
-
-MEMORY_USER_ID=default_user
-EOF
-```
-
-Set `ADMIN_TOKEN` to a strong random value:
-
-```bash
-# Generate a token and write it in place
-TOKEN=$(openssl rand -hex 24)
-sed -i "s/ADMIN_TOKEN=.*/ADMIN_TOKEN=$TOKEN/" ~/.config/openpalm/secrets.env
-echo "Your admin token: $TOKEN"
-```
-
-Stage it to STATE_HOME for compose:
-
-```bash
-cp ~/.config/openpalm/secrets.env ~/.local/state/openpalm/artifacts/secrets.env
-```
+That starts the foundation services only.
 
 ---
 
-## 5. Create stack.env
+## 5. Add addons explicitly
 
-`stack.env` holds system-managed infrastructure config. The admin regenerates this on every apply, but it must exist before the first start.
+Add an addon by including its compose file in the command. Run preflight before
+starting to confirm the merged file set is valid.
 
-```bash
-cat > ~/.local/share/openpalm/stack.env << EOF
-# OpenPalm Stack Configuration — system-managed
-# Overwritten by admin on each apply.
+For compose command syntax with addons, see the [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
-# ── XDG Paths ──────────────────────────────────────────────────────
-OPENPALM_CONFIG_HOME=$HOME/.config/openpalm
-OPENPALM_DATA_HOME=$HOME/.local/share/openpalm
-OPENPALM_STATE_HOME=$HOME/.local/state/openpalm
-OPENPALM_WORK_DIR=$HOME/openpalm
+Common addon files:
 
-# ── User/Group ──────────────────────────────────────────────────────
-OPENPALM_UID=$(id -u)
-OPENPALM_GID=$(id -g)
+| Addon | Compose file |
+|---|---|
+| `admin` | `addons/admin/compose.yml` |
+| `chat` | `addons/chat/compose.yml` |
+| `api` | `addons/api/compose.yml` |
+| `discord` | `addons/discord/compose.yml` |
+| `slack` | `addons/slack/compose.yml` |
+| `voice` | `addons/voice/compose.yml` |
+| `ollama` | `addons/ollama/compose.yml` |
+| `openviking` | `addons/openviking/compose.yml` |
 
-# ── Docker Socket ───────────────────────────────────────────────────
-OPENPALM_DOCKER_SOCK=/var/run/docker.sock
-
-# ── Images ──────────────────────────────────────────────────────────
-OPENPALM_IMAGE_NAMESPACE=openpalm
-OPENPALM_IMAGE_TAG=latest
-
-# ── Networking ──────────────────────────────────────────────────────
-OPENPALM_INGRESS_BIND_ADDRESS=127.0.0.1
-OPENPALM_INGRESS_PORT=8080
-
-# ── Memory ──────────────────────────────────────────────────────
-MEMORY_DASHBOARD_API_URL=http://localhost:8765
-MEMORY_USER_ID=default_user
-
-EOF
-```
-
-**Docker socket detection:** If you use OrbStack, Colima, or Rancher Desktop, the socket may not be at `/var/run/docker.sock`. Detect it with:
-
-```bash
-docker context inspect --format '{{.Endpoints.docker.Host}}'
-# Example output: unix:///Users/you/.colima/default/docker.sock
-```
-
-Set `OPENPALM_DOCKER_SOCK` to the path after `unix://`.
-
-Stage it to STATE_HOME:
-
-```bash
-cp ~/.local/share/openpalm/stack.env ~/.local/state/openpalm/artifacts/stack.env
-```
+Each addon directory may also contain an `.env.schema` file that documents extra variables you need to set.
 
 ---
 
-## 6. Seed Memory config (optional)
+## 6. Optional `config/stack.yaml`
 
-Memory needs a default config file if you want memory features:
+`~/.openpalm/config/stack.yaml` can list preferred addons or other metadata for scripts and tooling.
 
-```bash
-cat > ~/.local/share/openpalm/memory/default_config.json << 'EOF'
-{
-  "mem0": {
-    "llm": {
-      "provider": "openai",
-      "config": {
-        "model": "gpt-4o-mini",
-        "temperature": 0.1,
-        "max_tokens": 2000,
-        "api_key": "env:OPENAI_API_KEY"
-      }
-    },
-    "embedder": {
-      "provider": "openai",
-      "config": {
-        "model": "text-embedding-3-small",
-        "api_key": "env:OPENAI_API_KEY"
-      }
-    },
-    "vector_store": {
-      "provider": "qdrant",
-      "config": {
-        "collection_name": "memory",
-        "path": "/data/qdrant",
-        "embedding_model_dims": 1536
-      }
-    }
-  },
-  "memory": {
-    "custom_instructions": ""
-  }
-}
-EOF
-```
+Important: changing `stack.yaml` alone does not change the running stack unless the tool you use reads it and turns it into a compose command. Docker Compose still only sees the files you pass with `-f`.
 
 ---
 
-## 7. Set file ownership
+## 7. Verify
 
-Ensure your user owns everything:
+Check container status using the `ps` command from the [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
-```bash
-chown -R "$(id -u):$(id -g)" \
-  ~/.config/openpalm \
-  ~/.local/share/openpalm \
-  ~/.local/state/openpalm \
-  ~/openpalm
-```
+If you started the `admin` addon, open `http://localhost:3880/`.
+
+If you started the `chat` addon, follow its exposed URL or port from `docker compose ps`.
 
 ---
 
-## 8. Start the stack
+## Updating
 
-```bash
-docker compose \
-  -f ~/.local/state/openpalm/artifacts/docker-compose.yml \
-  --env-file ~/.local/state/openpalm/artifacts/stack.env \
-  --env-file ~/.local/state/openpalm/artifacts/secrets.env \
-  --project-name openpalm \
-  up -d
-```
+To update the live definition, replace files in `~/.openpalm/stack/` with newer versions from the repo bundle, review env changes, then run the same compose command again.
 
-The admin starts first and runs an apply on startup, which re-stages config and starts the remaining services.
+Because the deployment truth is the compose file set itself, updates stay simple:
+
+- refresh the copied bundle files you want
+- keep your env files and data
+- rerun `docker compose ... up -d`
 
 ---
 
-## 9. Verify
+## Troubleshooting
 
-```bash
-# Check all containers are running
-docker compose --project-name openpalm ps
+**Compose file works differently than expected**
 
-# Test admin health
-curl -s http://localhost:8080/admin/health | head
-```
+Make sure you are passing every addon you intend to enable. If a file is not included with `-f`, it is not part of the deployment.
 
-The admin UI is available at `http://localhost:8080/admin/` (through Caddy) or directly at `http://localhost:8100/` (bypassing proxy). Both require the `x-admin-token` header for API calls.
+**`stack.yaml` changes did nothing**
 
----
+That is expected unless you used a helper that reads `config/stack.yaml`. Docker Compose does not read it directly.
 
-## What the admin does on startup
+**An addon fails to start**
 
-When the admin container starts, it automatically runs an **apply** that:
+Check its `.env.schema` file and container logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
 
-1. Reads `CONFIG_HOME/channels/` and `CONFIG_HOME/automations/`
-2. Stages compose overlays, Caddy routes, and automation files into `STATE_HOME`
-3. Merges infrastructure config into `stack.env`
-4. Runs `docker compose up -d` against staged files
-5. Reloads Caddy with staged routes
+**Need to stop everything**
 
-This startup apply does not overwrite existing user files in `CONFIG_HOME`; it
-only seeds missing defaults and restages runtime artifacts.
-
-After the first apply, the admin manages `stack.env` and `STATE_HOME` — you only need to edit files in `CONFIG_HOME` and restart the admin (or call the apply API) to pick up changes. See [directory-structure.md](technical/directory-structure.md) for the full staging flow.
-
----
-
-## Adding a channel manually
-
-Channels are compose overlays placed in CONFIG_HOME. Example for the built-in chat channel:
-
-1. Copy the channel definition into CONFIG_HOME:
-   ```bash
-   cp registry/channels/chat/chat.yml ~/.config/openpalm/channels/chat.yml
-   # If it has a Caddy route:
-   cp registry/channels/chat/chat.caddy ~/.config/openpalm/channels/chat.caddy
-   ```
-
-2. Restart the admin (or call `POST /admin/apply`) to stage and activate:
-   ```bash
-   docker compose --project-name openpalm restart admin
-   ```
-
-The admin auto-generates HMAC secrets for new channels and writes them to `stack.env`. See [managing-openpalm.md](managing-openpalm.md) for details.
-
----
-
-## File summary
-
-After completing all steps, your host should have:
-
-```
-~/.config/openpalm/                  # CONFIG_HOME
-├── secrets.env                      # ADMIN_TOKEN + LLM keys
-├── channels/                        # Channel overlays (.yml + .caddy)
-├── automations/                     # User automation definitions
-└── assistant/                       # OpenCode extensions
-    ├── opencode.json
-    ├── tools/
-    ├── plugins/
-    └── skills/
-
-~/.local/share/openpalm/             # DATA_HOME
-├── stack.env                        # System config (source of truth)
-├── docker-compose.yml               # Core compose (source of truth)
-├── memory/
-│   └── default_config.json
-├── assistant/
-├── guardian/
-├── automations/
-└── caddy/
-    ├── Caddyfile                    # Core Caddy config (source of truth)
-    ├── data/
-    └── config/
-
-~/.local/state/openpalm/             # STATE_HOME
-├── artifacts/
-│   ├── docker-compose.yml           # Staged compose
-│   ├── stack.env                    # Staged stack config
-│   ├── secrets.env                  # Staged secrets
-│   ├── Caddyfile                    # Staged Caddy config
-│   └── channels/                    # Staged channel routes
-├── automations/                     # Staged automation files
-└── audit/                           # Audit logs
-
-~/openpalm/                          # WORK_DIR (assistant workspace)
-```
+Run the same file set with `down` instead of `up`. See the [Manual Compose Runbook](operations/manual-compose-runbook.md) for the full command.
 
 ---
 
 ## Further reading
 
-- [directory-structure.md](technical/directory-structure.md) — Full tree, volume mounts, networks
-- [environment-and-mounts.md](technical/environment-and-mounts.md) — Every env var and mount point
-- [core-principles.md](technical/core-principles.md) — Security invariants and architectural rules
-- [managing-openpalm.md](managing-openpalm.md) — Channels, secrets, access control, automations
-- [setup-guide.md](setup-guide.md) — Automated installer reference
+- [setup-guide.md](setup-guide.md) - Convenience path and optional tooling
+- [.openpalm/stack/README.md](../.openpalm/stack/README.md) - Compose file and addon reference
+- [technical/core-principles.md](technical/core-principles.md) - Security and filesystem rules
+- [managing-openpalm.md](managing-openpalm.md) - Day-to-day operations

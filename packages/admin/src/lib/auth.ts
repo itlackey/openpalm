@@ -17,7 +17,7 @@ export async function validateToken(
   token: string
 ): Promise<{ ok: boolean; allowed: boolean; error?: string }> {
   try {
-    const res = await fetch('/admin/access-scope', {
+    const res = await fetch('/admin/connections/status', {
       headers: {
         'x-admin-token': token,
         'x-requested-by': 'ui',

@@ -19,15 +19,15 @@
 #   3. Seed some user state:
 #      - Add a memory via the assistant or memory API
 #      - Install a channel
-#      - Note the ADMIN_TOKEN and MEMORY_USER_ID in secrets.env
+#      - Note the ADMIN_TOKEN and MEMORY_USER_ID in vault/user/user.env
 #
 #   4. Upgrade to the target version:
 #        curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh \
 #          | bash -s -- --force --version <target>
 #
 #   5. Verify:
-#      - secrets.env is NOT overwritten (ADMIN_TOKEN, custom keys preserved)
-#      - stack.env is NOT overwritten (paths, UID/GID preserved)
+#      - vault/user/user.env is NOT overwritten (ADMIN_TOKEN, custom keys preserved)
+#      - vault/stack/stack.env is NOT overwritten (paths, UID/GID preserved)
 #      - Memory database still exists and responds
 #      - All services come back healthy
 #      - Admin token still authenticates
@@ -46,10 +46,7 @@
 #   -h, --help            Show this help
 #
 # Environment overrides:
-#   OPENPALM_CONFIG_HOME  Config directory (default: .upgrade-test/config)
-#   OPENPALM_DATA_HOME    Data directory   (default: .upgrade-test/data)
-#   OPENPALM_STATE_HOME   State directory  (default: .upgrade-test/state)
-#   OPENPALM_WORK_DIR     Work directory   (default: .upgrade-test/work)
+#   OP_HOME         Home directory (default: .upgrade-test)
 #
 set -euo pipefail
 
@@ -94,16 +91,17 @@ cd "$ROOT_DIR"
 # Use a separate directory tree so this test doesn't interfere with .dev/
 
 TEST_ROOT="${ROOT_DIR}/.upgrade-test"
-export OPENPALM_CONFIG_HOME="${OPENPALM_CONFIG_HOME:-${TEST_ROOT}/config}"
-export OPENPALM_DATA_HOME="${OPENPALM_DATA_HOME:-${TEST_ROOT}/data}"
-export OPENPALM_STATE_HOME="${OPENPALM_STATE_HOME:-${TEST_ROOT}/state}"
-export OPENPALM_WORK_DIR="${OPENPALM_WORK_DIR:-${TEST_ROOT}/work}"
+export OP_HOME="${OP_HOME:-${TEST_ROOT}}"
+OP_CONFIG_HOME="${OP_HOME}/config"
+OP_DATA_HOME="${OP_HOME}/data"
+OP_LOGS_HOME="${OP_HOME}/logs"
+OP_STACK_HOME="${OP_HOME}/stack"
 
 PROJECT_NAME="openpalm-upgrade-test"
 ADMIN_PORT=8101
 ADMIN_URL="http://127.0.0.1:${ADMIN_PORT}"
 MEMORY_PORT=8766
-ADMIN_TOKEN="upgrade-test-token"
+OP_ADMIN_TOKEN="upgrade-test-token"
 
 # ── Colors / Output ──────────────────────────────────────────────────
 
@@ -146,9 +144,9 @@ trap cleanup EXIT
 compose_cmd() {
   docker compose \
     --project-name "$PROJECT_NAME" \
-    -f "${OPENPALM_STATE_HOME}/artifacts/docker-compose.yml" \
-    --env-file "${OPENPALM_CONFIG_HOME}/secrets.env" \
-    --env-file "${OPENPALM_STATE_HOME}/artifacts/stack.env" \
+    -f "${OP_STACK_HOME}/core.compose.yml" \
+    --env-file "${VAULT_HOME}/user/user.env" \
+    --env-file "${VAULT_HOME}/stack/stack.env" \
     "$@"
 }
 
@@ -208,24 +206,20 @@ rm -rf "${TEST_ROOT}" 2>/dev/null || true
 
 # ── 1b: Create directory structure ───────────────────────────────────
 
+VAULT_HOME="${TEST_ROOT}/vault"
+
 mkdir -p \
-  "${OPENPALM_CONFIG_HOME}/channels" \
-  "${OPENPALM_CONFIG_HOME}/assistant/tools" \
-  "${OPENPALM_CONFIG_HOME}/assistant/plugins" \
-  "${OPENPALM_CONFIG_HOME}/assistant/skills" \
-  "${OPENPALM_CONFIG_HOME}/automations" \
-  "${OPENPALM_CONFIG_HOME}/stash" \
-  "${OPENPALM_DATA_HOME}/memory" \
-  "${OPENPALM_DATA_HOME}/assistant" \
-  "${OPENPALM_DATA_HOME}/guardian" \
-  "${OPENPALM_DATA_HOME}/caddy/data" \
-  "${OPENPALM_DATA_HOME}/caddy/config" \
-  "${OPENPALM_DATA_HOME}/automations" \
-  "${OPENPALM_STATE_HOME}/artifacts/channels/public" \
-  "${OPENPALM_STATE_HOME}/artifacts/channels/lan" \
-  "${OPENPALM_STATE_HOME}/audit" \
-  "${OPENPALM_STATE_HOME}/automations" \
-  "${OPENPALM_WORK_DIR}"
+  "${OP_STACK_HOME}" \
+  "${OP_CONFIG_HOME}/assistant/tools" \
+  "${OP_CONFIG_HOME}/assistant/plugins" \
+  "${OP_CONFIG_HOME}/assistant/skills" \
+  "${OP_CONFIG_HOME}/automations" \
+  "${VAULT_HOME}/user" "${VAULT_HOME}/stack" \
+  "${OP_DATA_HOME}/memory" \
+  "${OP_DATA_HOME}/assistant" \
+  "${OP_DATA_HOME}/guardian" \
+  "${OP_DATA_HOME}/stash" \
+  "${OP_LOGS_HOME}"
 
 # ── 1c: Seed config files ───────────────────────────────────────────
 
@@ -237,10 +231,10 @@ if host_url="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/d
   esac
 fi
 
-# Seed secrets.env with a known admin token
-cat >"${OPENPALM_CONFIG_HOME}/secrets.env" <<EOF
+# Seed user.env with a known admin token
+cat >"${VAULT_HOME}/user/user.env" <<EOF
 # Upgrade test secrets
-ADMIN_TOKEN=${ADMIN_TOKEN}
+OP_ADMIN_TOKEN=${OP_ADMIN_TOKEN}
 OPENAI_API_KEY=
 OPENAI_BASE_URL=
 MEMORY_USER_ID=upgrade-test-user
@@ -248,35 +242,24 @@ MEMORY_USER_ID=upgrade-test-user
 MY_CUSTOM_KEY=my-custom-value-12345
 EOF
 
-# Seed stack.env
-cat >"${OPENPALM_DATA_HOME}/stack.env" <<EOF
-OPENPALM_CONFIG_HOME=${OPENPALM_CONFIG_HOME}
-OPENPALM_DATA_HOME=${OPENPALM_DATA_HOME}
-OPENPALM_STATE_HOME=${OPENPALM_STATE_HOME}
-OPENPALM_WORK_DIR=${OPENPALM_WORK_DIR}
-OPENPALM_UID=$(id -u)
-OPENPALM_GID=$(id -g)
-OPENPALM_DOCKER_SOCK=${docker_sock}
-OPENPALM_IMAGE_NAMESPACE=openpalm
-OPENPALM_IMAGE_TAG=dev
-OPENPALM_INGRESS_BIND_ADDRESS=127.0.0.1
-OPENPALM_INGRESS_PORT=8180
+# Seed system.env
+cat >"${VAULT_HOME}/stack/stack.env" <<EOF
+OP_HOME=${OP_HOME}
+OP_UID=$(id -u)
+OP_GID=$(id -g)
+OP_DOCKER_SOCK=${docker_sock}
+OP_IMAGE_NAMESPACE=openpalm
+OP_IMAGE_TAG=dev
+OP_INGRESS_BIND_ADDRESS=127.0.0.1
+OP_INGRESS_PORT=8180
 EOF
 
-# Seed compose and Caddyfile to DATA_HOME (source of truth)
-cp "${ROOT_DIR}/assets/docker-compose.yml" "${OPENPALM_DATA_HOME}/docker-compose.yml"
-cp "${ROOT_DIR}/assets/Caddyfile" "${OPENPALM_DATA_HOME}/caddy/Caddyfile"
-
-# Stage artifacts for compose
-cp "${OPENPALM_DATA_HOME}/docker-compose.yml" "${OPENPALM_STATE_HOME}/artifacts/docker-compose.yml"
-cp "${OPENPALM_DATA_HOME}/caddy/Caddyfile" "${OPENPALM_STATE_HOME}/artifacts/Caddyfile"
-cp "${OPENPALM_DATA_HOME}/stack.env" "${OPENPALM_STATE_HOME}/artifacts/stack.env"
-cp "${OPENPALM_CONFIG_HOME}/secrets.env" "${OPENPALM_STATE_HOME}/artifacts/secrets.env"
+# Seed compose to stack/ (source of truth)
+cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_STACK_HOME}/core.compose.yml"
 
 # Override ports so we don't conflict with a running dev stack.
-# The compose file uses OPENPALM_INGRESS_PORT for Caddy (8180) and hardcodes
-# admin to 127.0.0.1:8100. We override admin's port via a compose override.
-cat >"${OPENPALM_STATE_HOME}/artifacts/compose-port-override.yml" <<EOF
+# We override admin's port via a compose override.
+cat >"${OP_STACK_HOME}/compose-port-override.yml" <<EOF
 services:
   admin:
     ports:
@@ -287,14 +270,14 @@ services:
 EOF
 
 # Seed opencode config
-cat >"${OPENPALM_CONFIG_HOME}/assistant/opencode.json" <<'EOF'
+cat >"${OP_CONFIG_HOME}/assistant/opencode.json" <<'EOF'
 {
   "$schema": "https://opencode.ai/config.json"
 }
 EOF
 
 # Seed memory config
-cat >"${OPENPALM_DATA_HOME}/memory/default_config.json" <<'MEMCFG'
+cat >"${OP_DATA_HOME}/memory/default_config.json" <<'MEMCFG'
 {
   "mem0": {
     "llm": {
@@ -338,10 +321,10 @@ if [[ $SKIP_BUILD -eq 0 && -z "$FROM_VERSION" ]]; then
   header "Building images from source"
   npm run admin:build 2>&1 | tail -3
   docker compose --project-directory "$ROOT_DIR" \
-    -f "${OPENPALM_STATE_HOME}/artifacts/docker-compose.yml" \
+    -f "${OP_STACK_HOME}/core.compose.yml" \
     -f compose.dev.yaml \
-    --env-file "${OPENPALM_STATE_HOME}/artifacts/stack.env" \
-    --env-file "${OPENPALM_STATE_HOME}/artifacts/secrets.env" \
+    --env-file "${VAULT_HOME}/stack/stack.env" \
+    --env-file "${VAULT_HOME}/user/user.env" \
     --project-name "$PROJECT_NAME" build 2>&1 | tail -5
   pass "Images built from source"
 fi
@@ -349,12 +332,10 @@ fi
 # If --from-version is specified, pull that version's images
 if [[ -n "$FROM_VERSION" ]]; then
   header "Pulling images for from-version: ${FROM_VERSION}"
-  OPENPALM_IMAGE_TAG="$FROM_VERSION"
-  # Update stack.env with the from-version tag
-  sed -i "s/^OPENPALM_IMAGE_TAG=.*/OPENPALM_IMAGE_TAG=${FROM_VERSION}/" \
-    "${OPENPALM_DATA_HOME}/stack.env"
-  sed -i "s/^OPENPALM_IMAGE_TAG=.*/OPENPALM_IMAGE_TAG=${FROM_VERSION}/" \
-    "${OPENPALM_STATE_HOME}/artifacts/stack.env"
+  OP_IMAGE_TAG="$FROM_VERSION"
+  # Update system.env with the from-version tag
+  sed -i "s/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=${FROM_VERSION}/" \
+    "${VAULT_HOME}/stack/stack.env"
   compose_cmd pull 2>&1 | tail -5
   pass "Images pulled for ${FROM_VERSION}"
 fi
@@ -364,10 +345,10 @@ fi
 compose_cmd() {
   docker compose \
     --project-name "$PROJECT_NAME" \
-    -f "${OPENPALM_STATE_HOME}/artifacts/docker-compose.yml" \
-    -f "${OPENPALM_STATE_HOME}/artifacts/compose-port-override.yml" \
-    --env-file "${OPENPALM_CONFIG_HOME}/secrets.env" \
-    --env-file "${OPENPALM_STATE_HOME}/artifacts/stack.env" \
+    -f "${OP_STACK_HOME}/core.compose.yml" \
+    -f "${OP_STACK_HOME}/compose-port-override.yml" \
+    --env-file "${VAULT_HOME}/user/user.env" \
+    --env-file "${VAULT_HOME}/stack/stack.env" \
     "$@"
 }
 
@@ -397,7 +378,7 @@ header "Phase 2: Seed test data"
 
 echo "  Calling admin install endpoint..."
 INSTALL_RESULT=$(curl -sf -X POST "${ADMIN_URL}/admin/install" \
-  -H "x-admin-token: ${ADMIN_TOKEN}" \
+  -H "x-admin-token: ${OP_ADMIN_TOKEN}" \
   -H "content-type: application/json" \
   -d '{}' 2>&1 || echo '{"ok":false}')
 
@@ -443,10 +424,10 @@ else
   echo "  (Memory seeding may fail if Ollama models are not available — this is ok for config-only tests)"
 fi
 
-# ── 2c: Write a custom user file in CONFIG_HOME ─────────────────────
+# ── 2c: Write a custom user file in stack/ ───────────────────────────
 
-echo "# My custom channel config" > "${OPENPALM_CONFIG_HOME}/channels/my-custom-channel.yml"
-pass "Custom user file written to CONFIG_HOME/channels/"
+echo "# My custom channel config" > "${OP_STACK_HOME}/my-custom-channel.yml"
+pass "Custom user file written to stack/"
 
 # ══════════════════════════════════════════════════════════════════════
 # PHASE 3: Record pre-upgrade state
@@ -454,18 +435,18 @@ pass "Custom user file written to CONFIG_HOME/channels/"
 
 header "Phase 3: Record pre-upgrade state"
 
-# Checksum secrets.env
-SECRETS_CHECKSUM_BEFORE=$(sha256sum "${OPENPALM_CONFIG_HOME}/secrets.env" | awk '{print $1}')
-echo "  secrets.env checksum: ${SECRETS_CHECKSUM_BEFORE}"
+# Checksum user.env
+SECRETS_CHECKSUM_BEFORE=$(sha256sum "${VAULT_HOME}/user/user.env" | awk '{print $1}')
+echo "  user.env checksum:    ${SECRETS_CHECKSUM_BEFORE}"
 
-# Checksum stack.env
-STACK_ENV_CHECKSUM_BEFORE=$(sha256sum "${OPENPALM_DATA_HOME}/stack.env" | awk '{print $1}')
-echo "  stack.env checksum:   ${STACK_ENV_CHECKSUM_BEFORE}"
+# Checksum system.env
+STACK_ENV_CHECKSUM_BEFORE=$(sha256sum "${VAULT_HOME}/stack/stack.env" | awk '{print $1}')
+echo "  system.env checksum:  ${STACK_ENV_CHECKSUM_BEFORE}"
 
 # Memory database size (if it exists)
 MEMORY_DB_SIZE_BEFORE=0
-if [[ -f "${OPENPALM_DATA_HOME}/memory/memory.db" ]]; then
-  MEMORY_DB_SIZE_BEFORE=$(stat --printf='%s' "${OPENPALM_DATA_HOME}/memory/memory.db" 2>/dev/null || echo "0")
+if [[ -f "${OP_DATA_HOME}/memory/memory.db" ]]; then
+  MEMORY_DB_SIZE_BEFORE=$(stat --printf='%s' "${OP_DATA_HOME}/memory/memory.db" 2>/dev/null || echo "0")
 fi
 echo "  memory.db size:       ${MEMORY_DB_SIZE_BEFORE} bytes"
 
@@ -474,13 +455,13 @@ SERVICES_BEFORE=$(compose_cmd ps --format '{{.Service}}' 2>/dev/null | sort | tr
 echo "  Running services:     ${SERVICES_BEFORE}"
 
 # Custom user file checksum
-CUSTOM_FILE_CHECKSUM=$(sha256sum "${OPENPALM_CONFIG_HOME}/channels/my-custom-channel.yml" | awk '{print $1}')
+CUSTOM_FILE_CHECKSUM=$(sha256sum "${OP_STACK_HOME}/my-custom-channel.yml" | awk '{print $1}')
 echo "  Custom file checksum: ${CUSTOM_FILE_CHECKSUM}"
 
 # Record admin token works
 AUTH_CHECK_BEFORE=$(curl -sf -o /dev/null -w '%{http_code}' \
   "${ADMIN_URL}/admin/containers/list" \
-  -H "x-admin-token: ${ADMIN_TOKEN}" 2>/dev/null || echo "error")
+  -H "x-admin-token: ${OP_ADMIN_TOKEN}" 2>/dev/null || echo "error")
 echo "  Admin auth status:    ${AUTH_CHECK_BEFORE}"
 
 pass "Pre-upgrade state recorded"
@@ -492,62 +473,51 @@ pass "Pre-upgrade state recorded"
 header "Phase 4: Simulate upgrade"
 
 # The upgrade simulation mirrors what setup.sh does on re-run:
-#   1. Detects existing install (secrets.env exists)
+#   1. Detects existing install (vault/user/user.env exists)
 #   2. Re-creates directory tree (mkdir -p, idempotent)
-#   3. Downloads fresh assets (compose, Caddyfile) to DATA_HOME
-#   4. Copies assets to STATE_HOME staging
-#   5. Does NOT overwrite secrets.env or stack.env
-#   6. Starts services with compose up
+#   3. Downloads fresh compose to stack/
+#   4. Does NOT overwrite vault/user/user.env or vault/stack/stack.env
+#   5. Starts services with compose up
 
 echo "  Simulating setup.sh re-run..."
 
 # Step 1: Directory creation (idempotent, same as setup.sh)
 mkdir -p \
-  "${OPENPALM_CONFIG_HOME}" "${OPENPALM_CONFIG_HOME}/channels" \
-  "${OPENPALM_CONFIG_HOME}/assistant" \
-  "${OPENPALM_CONFIG_HOME}/automations" "${OPENPALM_CONFIG_HOME}/stash" \
-  "${OPENPALM_DATA_HOME}" "${OPENPALM_DATA_HOME}/memory" \
-  "${OPENPALM_DATA_HOME}/assistant" \
-  "${OPENPALM_DATA_HOME}/guardian" "${OPENPALM_DATA_HOME}/caddy/data" \
-  "${OPENPALM_DATA_HOME}/caddy/config" \
-  "${OPENPALM_DATA_HOME}/automations" \
-  "${OPENPALM_STATE_HOME}" "${OPENPALM_STATE_HOME}/artifacts" \
-  "${OPENPALM_STATE_HOME}/audit" \
-  "${OPENPALM_STATE_HOME}/artifacts/channels" \
-  "${OPENPALM_WORK_DIR}"
+  "${OP_CONFIG_HOME}" "${OP_STACK_HOME}" \
+  "${OP_CONFIG_HOME}/assistant" \
+  "${OP_CONFIG_HOME}/automations" \
+  "${VAULT_HOME}/user" "${VAULT_HOME}/stack" \
+  "${OP_DATA_HOME}" "${OP_DATA_HOME}/memory" \
+  "${OP_DATA_HOME}/assistant" \
+  "${OP_DATA_HOME}/guardian" \
+  "${OP_DATA_HOME}/stash" \
+  "${OP_LOGS_HOME}"
 
 # Step 2: Re-download assets (simulate by copying from source)
 # In a real upgrade, setup.sh downloads from GitHub. We copy from local assets.
-cp "${ROOT_DIR}/assets/docker-compose.yml" "${OPENPALM_DATA_HOME}/docker-compose.yml"
-cp "${ROOT_DIR}/assets/Caddyfile" "${OPENPALM_DATA_HOME}/caddy/Caddyfile"
+cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_STACK_HOME}/core.compose.yml"
 
-# Step 3: Stage artifacts (same as setup.sh)
-cp "${OPENPALM_DATA_HOME}/docker-compose.yml" "${OPENPALM_STATE_HOME}/artifacts/docker-compose.yml"
-cp "${OPENPALM_DATA_HOME}/caddy/Caddyfile" "${OPENPALM_STATE_HOME}/artifacts/Caddyfile"
-
-# Step 4: secrets.env — setup.sh checks if it exists and skips if so
-if [[ -f "${OPENPALM_CONFIG_HOME}/secrets.env" ]]; then
-  echo "  secrets.env exists -- NOT overwriting (same as setup.sh)"
+# Step 3: vault/user/user.env — setup.sh checks if it exists and skips if so
+if [[ -f "${VAULT_HOME}/user/user.env" ]]; then
+  echo "  vault/user/user.env exists -- NOT overwriting (same as setup.sh)"
 else
-  echo "  BUG: secrets.env was deleted during upgrade simulation!"
-  fail "secrets.env should still exist"
+  echo "  BUG: vault/user/user.env was deleted during upgrade simulation!"
+  fail "vault/user/user.env should still exist"
 fi
 
-# Step 5: stack.env — setup.sh checks if it exists and skips if so
-if [[ -f "${OPENPALM_DATA_HOME}/stack.env" ]]; then
-  echo "  stack.env exists -- NOT overwriting (same as setup.sh)"
+# Step 4: vault/stack/stack.env — setup.sh checks if it exists and skips if so
+if [[ -f "${VAULT_HOME}/stack/stack.env" ]]; then
+  echo "  vault/stack/stack.env exists -- NOT overwriting (same as setup.sh)"
 else
-  echo "  BUG: stack.env was deleted during upgrade simulation!"
-  fail "stack.env should still exist"
+  echo "  BUG: vault/stack/stack.env was deleted during upgrade simulation!"
+  fail "vault/stack/stack.env should still exist"
 fi
 
 # Step 6: If --to-version specified, update image tag
 if [[ -n "$TO_VERSION" ]]; then
   echo "  Updating image tag to ${TO_VERSION}..."
-  sed -i "s/^OPENPALM_IMAGE_TAG=.*/OPENPALM_IMAGE_TAG=${TO_VERSION}/" \
-    "${OPENPALM_DATA_HOME}/stack.env"
-  sed -i "s/^OPENPALM_IMAGE_TAG=.*/OPENPALM_IMAGE_TAG=${TO_VERSION}/" \
-    "${OPENPALM_STATE_HOME}/artifacts/stack.env"
+  sed -i "s/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=${TO_VERSION}/" \
+    "${VAULT_HOME}/stack/stack.env"
   compose_cmd pull 2>&1 | tail -5
 fi
 
@@ -580,52 +550,52 @@ fi
 
 header "Phase 5: Verification"
 
-# ── 5a: secrets.env unchanged ────────────────────────────────────────
+# ── 5a: vault/user/user.env unchanged ─────────────────────────────────────
 echo ""
-echo "=== 5a: secrets.env preservation ==="
+echo "=== 5a: vault/user/user.env preservation ==="
 
-SECRETS_CHECKSUM_AFTER=$(sha256sum "${OPENPALM_CONFIG_HOME}/secrets.env" | awk '{print $1}')
+SECRETS_CHECKSUM_AFTER=$(sha256sum "${VAULT_HOME}/user/user.env" | awk '{print $1}')
 if [[ "$SECRETS_CHECKSUM_BEFORE" == "$SECRETS_CHECKSUM_AFTER" ]]; then
-  pass "secrets.env checksum unchanged"
+  pass "user.env checksum unchanged"
 else
-  fail "secrets.env was modified during upgrade (before: ${SECRETS_CHECKSUM_BEFORE}, after: ${SECRETS_CHECKSUM_AFTER})"
+  fail "user.env was modified during upgrade (before: ${SECRETS_CHECKSUM_BEFORE}, after: ${SECRETS_CHECKSUM_AFTER})"
 fi
 
-# Verify specific values in secrets.env
-ADMIN_TOKEN_VALUE=$(grep "^ADMIN_TOKEN=" "${OPENPALM_CONFIG_HOME}/secrets.env" | head -1 | cut -d= -f2-)
-if [[ "$ADMIN_TOKEN_VALUE" == "$ADMIN_TOKEN" ]]; then
-  pass "ADMIN_TOKEN preserved in secrets.env"
+# Verify specific values in user.env
+OP_ADMIN_TOKEN_VALUE=$(grep "^OP_ADMIN_TOKEN=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
+if [[ "$OP_ADMIN_TOKEN_VALUE" == "$OP_ADMIN_TOKEN" ]]; then
+  pass "OP_ADMIN_TOKEN preserved in user.env"
 else
-  fail "ADMIN_TOKEN changed (expected '${ADMIN_TOKEN}', got '${ADMIN_TOKEN_VALUE}')"
+  fail "OP_ADMIN_TOKEN changed (expected '${OP_ADMIN_TOKEN}', got '${ADMIN_TOKEN_VALUE}')"
 fi
 
-CUSTOM_KEY_VALUE=$(grep "^MY_CUSTOM_KEY=" "${OPENPALM_CONFIG_HOME}/secrets.env" | head -1 | cut -d= -f2-)
+CUSTOM_KEY_VALUE=$(grep "^MY_CUSTOM_KEY=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
 if [[ "$CUSTOM_KEY_VALUE" == "my-custom-value-12345" ]]; then
-  pass "Custom user key preserved in secrets.env"
+  pass "Custom user key preserved in user.env"
 else
   fail "Custom user key lost (expected 'my-custom-value-12345', got '${CUSTOM_KEY_VALUE}')"
 fi
 
-MEMORY_USER_VALUE=$(grep "^MEMORY_USER_ID=" "${OPENPALM_CONFIG_HOME}/secrets.env" | head -1 | cut -d= -f2-)
+MEMORY_USER_VALUE=$(grep "^MEMORY_USER_ID=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
 if [[ "$MEMORY_USER_VALUE" == "upgrade-test-user" ]]; then
-  pass "MEMORY_USER_ID preserved in secrets.env"
+  pass "MEMORY_USER_ID preserved in user.env"
 else
   fail "MEMORY_USER_ID changed (expected 'upgrade-test-user', got '${MEMORY_USER_VALUE}')"
 fi
 
-# ── 5b: stack.env unchanged ──────────────────────────────────────────
+# ── 5b: vault/stack/stack.env unchanged ───────────────────────────────────
 echo ""
-echo "=== 5b: stack.env preservation ==="
+echo "=== 5b: vault/stack/stack.env preservation ==="
 
-STACK_ENV_CHECKSUM_AFTER=$(sha256sum "${OPENPALM_DATA_HOME}/stack.env" | awk '{print $1}')
+STACK_ENV_CHECKSUM_AFTER=$(sha256sum "${VAULT_HOME}/stack/stack.env" | awk '{print $1}')
 if [[ "$STACK_ENV_CHECKSUM_BEFORE" == "$STACK_ENV_CHECKSUM_AFTER" ]]; then
-  pass "stack.env checksum unchanged"
+  pass "system.env checksum unchanged"
 else
-  # If --to-version was used, stack.env will change (image tag update). That's expected.
+  # If --to-version was used, system.env will change (image tag update). That's expected.
   if [[ -n "$TO_VERSION" ]]; then
-    pass "stack.env changed (expected: image tag updated to ${TO_VERSION})"
+    pass "system.env changed (expected: image tag updated to ${TO_VERSION})"
   else
-    fail "stack.env was modified during upgrade (before: ${STACK_ENV_CHECKSUM_BEFORE}, after: ${STACK_ENV_CHECKSUM_AFTER})"
+    fail "system.env was modified during upgrade (before: ${STACK_ENV_CHECKSUM_BEFORE}, after: ${STACK_ENV_CHECKSUM_AFTER})"
   fi
 fi
 
@@ -633,8 +603,8 @@ fi
 echo ""
 echo "=== 5c: Memory data preservation ==="
 
-if [[ -f "${OPENPALM_DATA_HOME}/memory/memory.db" ]]; then
-  MEMORY_DB_SIZE_AFTER=$(stat --printf='%s' "${OPENPALM_DATA_HOME}/memory/memory.db" 2>/dev/null || echo "0")
+if [[ -f "${OP_DATA_HOME}/memory/memory.db" ]]; then
+  MEMORY_DB_SIZE_AFTER=$(stat --printf='%s' "${OP_DATA_HOME}/memory/memory.db" 2>/dev/null || echo "0")
   if [[ "$MEMORY_DB_SIZE_AFTER" -ge "$MEMORY_DB_SIZE_BEFORE" && "$MEMORY_DB_SIZE_AFTER" -gt 0 ]]; then
     pass "memory.db preserved (${MEMORY_DB_SIZE_BEFORE} -> ${MEMORY_DB_SIZE_AFTER} bytes)"
   elif [[ "$MEMORY_DB_SIZE_BEFORE" -eq 0 && "$MEMORY_DB_SIZE_AFTER" -eq 0 ]]; then
@@ -670,8 +640,8 @@ fi
 echo ""
 echo "=== 5d: User file preservation ==="
 
-if [[ -f "${OPENPALM_CONFIG_HOME}/channels/my-custom-channel.yml" ]]; then
-  CUSTOM_FILE_CHECKSUM_AFTER=$(sha256sum "${OPENPALM_CONFIG_HOME}/channels/my-custom-channel.yml" | awk '{print $1}')
+if [[ -f "${OP_STACK_HOME}/my-custom-channel.yml" ]]; then
+  CUSTOM_FILE_CHECKSUM_AFTER=$(sha256sum "${OP_STACK_HOME}/my-custom-channel.yml" | awk '{print $1}')
   if [[ "$CUSTOM_FILE_CHECKSUM" == "$CUSTOM_FILE_CHECKSUM_AFTER" ]]; then
     pass "Custom channel file preserved and unchanged"
   else
@@ -695,14 +665,6 @@ for svc in $HEALTHCHECK_SVCS; do
   fi
 done
 
-# Caddy doesn't have a healthcheck — check if running
-caddy_status=$(docker inspect --format '{{.State.Status}}' "${PROJECT_NAME}-caddy-1" 2>/dev/null || echo "missing")
-if [[ "$caddy_status" == "running" ]]; then
-  pass "caddy is running"
-else
-  fail "caddy status: ${caddy_status}"
-fi
-
 # Optional services (may not be healthy without Ollama)
 OPTIONAL_SVCS="memory assistant guardian"
 for svc in $OPTIONAL_SVCS; do
@@ -720,7 +682,7 @@ echo "=== 5f: Admin authentication ==="
 
 AUTH_CHECK_AFTER=$(curl -sf -o /dev/null -w '%{http_code}' \
   "${ADMIN_URL}/admin/containers/list" \
-  -H "x-admin-token: ${ADMIN_TOKEN}" 2>/dev/null || echo "error")
+  -H "x-admin-token: ${OP_ADMIN_TOKEN}" 2>/dev/null || echo "error")
 
 if [[ "$AUTH_CHECK_AFTER" == "200" ]]; then
   pass "Admin token still authenticates (HTTP 200)"
@@ -754,7 +716,7 @@ fi
 
 # Check for container restarts (CrashLoopBackOff indicator)
 RESTART_COUNT=0
-for svc in admin memory assistant guardian docker-socket-proxy caddy; do
+for svc in admin memory assistant guardian docker-socket-proxy; do
   restarts=$(docker inspect --format '{{.RestartCount}}' "${PROJECT_NAME}-${svc}-1" 2>/dev/null || echo "0")
   if [[ "$restarts" -gt 2 ]]; then
     fail "${svc} restarted ${restarts} times (possible crash loop)"

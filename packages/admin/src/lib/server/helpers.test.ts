@@ -16,11 +16,12 @@ import {
   errorResponse,
   getRequestId,
   requireAdmin,
+  requireAuth,
+  identifyCallerByToken,
   getActor,
   getCallerType,
   parseJsonBody,
-  parseCanonicalConnectionProfile,
-  parseCapabilityAssignments,
+  validateExternalUrl,
 } from "./helpers.js";
 import { resetState } from "./state.js";
 
@@ -188,6 +189,12 @@ describe("getActor", () => {
     expect(getActor(event as never)).toBe("admin");
   });
 
+  test("returns 'assistant' when x-admin-token matches assistant token", () => {
+    const state = resetState("test-admin-token-12345");
+    const event = makeEvent({ "x-admin-token": state.assistantToken });
+    expect(getActor(event as never)).toBe("assistant");
+  });
+
   test("returns 'unauthenticated' when x-admin-token is wrong", () => {
     const event = makeEvent({ "x-admin-token": "wrong-token" });
     expect(getActor(event as never)).toBe("unauthenticated");
@@ -202,6 +209,44 @@ describe("getActor", () => {
     // Even if x-requested-by claims "admin", actor is based on token verification
     const event = makeEvent({ "x-requested-by": "admin" });
     expect(getActor(event as never)).toBe("unauthenticated");
+  });
+});
+
+describe("identifyCallerByToken / requireAuth", () => {
+  beforeEach(() => {
+    resetState("test-admin-token-12345");
+  });
+
+  test("identifyCallerByToken returns admin for admin token", () => {
+    const event = makeEvent({ "x-admin-token": "test-admin-token-12345" });
+    expect(identifyCallerByToken(event as never)).toBe("admin");
+  });
+
+  test("identifyCallerByToken returns assistant for assistant token", () => {
+    const state = resetState("test-admin-token-12345");
+    const event = makeEvent({ "x-admin-token": state.assistantToken });
+    expect(identifyCallerByToken(event as never)).toBe("assistant");
+  });
+
+  test("requireAuth passes for assistant token", () => {
+    const state = resetState("test-admin-token-12345");
+    const event = makeEvent({ "x-admin-token": state.assistantToken });
+    expect(requireAuth(event as never, "req-assistant")).toBeNull();
+  });
+
+  test("requireAuth rejects unknown token", async () => {
+    const event = makeEvent({ "x-admin-token": "nope" });
+    const result = requireAuth(event as never, "req-bad");
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe(401);
+    const body = await result!.json();
+    expect(body.requestId).toBe("req-bad");
+  });
+});
+
+describe('validateExternalUrl', () => {
+  test('blocks localhost loopback targets', () => {
+    expect(validateExternalUrl('http://localhost:11434')).toBe('Blocked address: localhost');
   });
 });
 
@@ -258,91 +303,3 @@ describe("parseJsonBody", () => {
   });
 });
 
-describe("parseCanonicalConnectionProfile", () => {
-  test("parses a valid canonical profile", () => {
-    const result = parseCanonicalConnectionProfile({
-      id: "conn_local_1",
-      name: "LM Studio local",
-      kind: "openai_compatible_local",
-      provider: 'lmstudio',
-      baseUrl: "http://localhost:1234/v1",
-      auth: { mode: "none" },
-    });
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value.kind).toBe("openai_compatible_local");
-      expect(result.value.auth.mode).toBe("none");
-    }
-  });
-
-  test("rejects profile with unsupported kind", () => {
-    const result = parseCanonicalConnectionProfile({
-      id: "conn_1",
-      name: "legacy",
-      kind: "ollama_native",
-      provider: 'ollama',
-      auth: { mode: "none" },
-    });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.message).toContain("kind is invalid");
-    }
-  });
-
-  test("requires apiKeySecretRef when auth mode is api_key", () => {
-    const result = parseCanonicalConnectionProfile({
-      id: "conn_1",
-      name: "remote",
-      kind: "openai_compatible_remote",
-      provider: 'openai',
-      auth: { mode: "api_key" },
-    });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.message).toContain("apiKeySecretRef is required");
-    }
-  });
-});
-
-describe("parseCapabilityAssignments", () => {
-  test("parses required assignment blocks", () => {
-    const result = parseCapabilityAssignments({
-      llm: { connectionId: "conn_remote", model: "gpt-4.1-mini" },
-      embeddings: {
-        connectionId: "conn_local",
-        model: "nomic-embed-text",
-        embeddingDims: 768,
-      },
-    });
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value.llm.connectionId).toBe("conn_remote");
-      expect(result.value.embeddings.embeddingDims).toBe(768);
-    }
-  });
-
-  test("rejects missing required embeddings block", () => {
-    const result = parseCapabilityAssignments({
-      llm: { connectionId: "conn_remote", model: "gpt-4.1-mini" },
-    });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.message).toContain("assignments.embeddings is required");
-    }
-  });
-
-  test("rejects non-positive embedding dimensions", () => {
-    const result = parseCapabilityAssignments({
-      llm: { connectionId: "conn_remote", model: "gpt-4.1-mini" },
-      embeddings: {
-        connectionId: "conn_local",
-        model: "nomic-embed-text",
-        embeddingDims: 0,
-      },
-    });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.message).toContain("embeddingDims must be a positive integer");
-    }
-  });
-});

@@ -4,7 +4,7 @@
  * Initialized once on server start. All API endpoints operate on this
  * shared state instance.
  */
-import { createState, type ControlPlaneState } from "./control-plane.js";
+import { createState, type ControlPlaneState } from "@openpalm/lib";
 
 let _state: ControlPlaneState | null = null;
 

@@ -5,14 +5,14 @@
 #
 # Manual equivalent (from project root):
 #   docker compose --project-directory . \
-#     -f assets/docker-compose.yml \
+#     -f .openpalm/stack/core.compose.yml \
 #     -f compose.dev.yaml \
-#     --env-file .dev/state/artifacts/stack.env \
-#     --env-file .dev/state/artifacts/secrets.env \
+#     --env-file .dev/vault/stack/stack.env \
+#     --env-file .dev/vault/user/user.env \
 #     up --build -d
 #
 # The --project-directory . flag is REQUIRED when the core compose file lives
-# in a different directory (assets/ or .dev/state/artifacts/). Without it,
+# in a different directory (.openpalm/stack/ or .dev/stack/). Without it,
 # Docker Compose resolves build contexts relative to the first -f file's
 # directory, which breaks builds.
 
@@ -21,55 +21,77 @@ services:
     build:
       context: .
       dockerfile: core/admin/Dockerfile
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/admin:${OP_IMAGE_TAG:-latest}
 
   guardian:
     build:
       context: .
       dockerfile: core/guardian/Dockerfile
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/guardian:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_IMAGE_TAG:-latest}
+    # Dev override: publish guardian to host for integration tests.
+    # Uses OP_GUARDIAN_PORT (default 8180) to avoid conflict with the legacy
+    # ingress port 8080 (which tests expect to be ECONNREFUSED).
+    ports:
+      - "${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-8180}:8080"
+    # Mount stack.env so guardian can re-read channel secrets dynamically
+    # (tests append CHANNEL_*_SECRET vars without restarting the container).
+    volumes:
+      - ${OP_HOME}/vault/stack/stack.env:/app/secrets/stack.env:ro
+    environment:
+      GUARDIAN_SECRETS_PATH: /app/secrets/stack.env
 
   assistant:
     build:
       context: .
       dockerfile: core/assistant/Dockerfile
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/assistant:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_IMAGE_TAG:-latest}
     # Dev override: use host env API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY).
     # OpenCode picks the default model based on available keys.
     environment:
       GROQ_API_KEY: ""
       MISTRAL_API_KEY: ""
       GOOGLE_API_KEY: ""
-      LMSTUDIO_API_KEY: ""
-      LMSTUDIO_BASE_URL: ""
+      # Dev: lmstudio provider with socat proxy to Ollama on host.
+      # LMSTUDIO_API_KEY must be non-empty for OpenCode to activate the provider.
+      # LMSTUDIO_BASE_URL tells entrypoint.sh socat proxy where to forward.
+      LMSTUDIO_API_KEY: "ollama"
+      LMSTUDIO_BASE_URL: "http://host.docker.internal:11434/v1"
 
   channel:
     build:
       context: .
       dockerfile: core/channel/Dockerfile
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
 
   scheduler:
     build:
       context: .
       dockerfile: core/scheduler/Dockerfile
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/scheduler:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/scheduler:${OP_IMAGE_TAG:-latest}
 
   memory:
     build:
       context: .
       dockerfile: core/memory/Dockerfile
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/memory:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/memory:${OP_IMAGE_TAG:-latest}
 
   # Voice channel dev override: mount local source instead of npm install.
   # Requires voice.yml overlay loaded before this file (-f channels/voice.yml -f compose.dev.yaml).
   channel-voice:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
     ports:
       - "8186:8186"
+    env_file:
+      - path: ${OP_HOME}/vault/stack/stack.env
+        required: false
+      - path: ${OP_HOME}/vault/user/user.env
+        required: false
     volumes:
       - ./packages/channel-voice:/app/channel-voice:ro
     environment:
+      PORT: "8186"
+      CHANNEL_NAME: "Voice"
+      GUARDIAN_URL: http://guardian:8080
       CHANNEL_PACKAGE: ""
       CHANNEL_FILE: /app/channel-voice/src/index.ts
       # Dev: no cloud TTS/STT — use browser fallback
@@ -78,3 +100,7 @@ services:
       STT_BASE_URL: ""
       TTS_BASE_URL: ""
       OPENAI_API_KEY: ""
+    networks: [channel_lan]
+    depends_on:
+      guardian:
+        condition: service_healthy

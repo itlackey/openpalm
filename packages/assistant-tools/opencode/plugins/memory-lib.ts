@@ -64,21 +64,22 @@ type ListOptions = {
   timeoutMs?: number;
 } & MemoryIdentity;
 
-type ResolvedMemoryIdentity = {
-  userId: string;
-  agentId: string;
-  appId: string;
-  runId?: string;
-};
-
-type ResolvedRetrievalIdentity = {
+type ResolvedIdentity = {
   userId: string;
   agentId?: string;
   appId?: string;
   runId?: string;
 };
 
-export async function pluginMemoryFetch(
+function identityBody(id: ResolvedIdentity): Record<string, string> {
+  const body: Record<string, string> = { user_id: id.userId };
+  if (id.agentId) body.agent_id = id.agentId;
+  if (id.appId) body.app_id = id.appId;
+  if (id.runId) body.run_id = id.runId;
+  return body;
+}
+
+async function pluginMemoryFetch(
   path: string,
   options?: RequestInit & { timeoutMs?: number },
 ): Promise<unknown | null> {
@@ -100,53 +101,28 @@ export async function searchMemories(
   query: string,
   opts?: SearchOptions,
 ): Promise<MemoryItem[]> {
-  const fetchSize = opts?.category ? (opts.size ?? 10) * 2 : (opts?.size ?? 10);
-  const identity = resolveRetrievalIdentity(opts);
-  const commonSearchBody = {
-    user_id: identity.userId,
-    ...(identity.agentId ? { agent_id: identity.agentId } : {}),
-    ...(identity.appId ? { app_id: identity.appId } : {}),
-    ...(identity.runId ? { run_id: identity.runId } : {}),
-    search_query: query,
-    page: 1,
-    size: fetchSize,
-  };
+  const size = opts?.category ? (opts.size ?? 10) * 2 : (opts?.size ?? 10);
+  const base = { ...identityBody(resolveRetrievalIdentity(opts)), search_query: query, page: 1, size };
 
   const v2data = await pluginMemoryFetch('/api/v2/memories/search', {
-    method: 'POST',
-    timeoutMs: opts?.timeoutMs,
-    body: JSON.stringify({
-      ...commonSearchBody,
-      query,
-      filters: opts?.category ? { category: opts.category } : {},
-    }),
+    method: 'POST', timeoutMs: opts?.timeoutMs,
+    body: JSON.stringify({ ...base, query, filters: opts?.category ? { category: opts.category } : {} }),
   });
   const v2items = readItems(v2data);
-  if (v2items) {
-    return postFilterMemories(v2items, opts);
-  }
+  if (v2items) return postFilterMemories(v2items, opts);
 
-  const v1data = await pluginMemoryFetch('/api/v1/memories/filter', {
-    method: 'POST',
-    timeoutMs: opts?.timeoutMs,
-    body: JSON.stringify(commonSearchBody),
-  });
-  const v1items = readItems(v1data) ?? [];
+  const v1items = readItems(await pluginMemoryFetch('/api/v1/memories/filter', {
+    method: 'POST', timeoutMs: opts?.timeoutMs, body: JSON.stringify(base),
+  })) ?? [];
   return postFilterMemories(v1items, opts);
 }
 
 export async function listMemories(opts?: ListOptions): Promise<MemoryItem[]> {
-  const identity = resolveRetrievalIdentity(opts);
   const data = await pluginMemoryFetch('/api/v1/memories/filter', {
-    method: 'POST',
-    timeoutMs: opts?.timeoutMs,
+    method: 'POST', timeoutMs: opts?.timeoutMs,
     body: JSON.stringify({
-      user_id: identity.userId,
-      ...(identity.agentId ? { agent_id: identity.agentId } : {}),
-      ...(identity.appId ? { app_id: identity.appId } : {}),
-      ...(identity.runId ? { run_id: identity.runId } : {}),
-      page: opts?.page ?? 1,
-      size: opts?.size ?? 50,
+      ...identityBody(resolveRetrievalIdentity(opts)),
+      page: opts?.page ?? 1, size: opts?.size ?? 50,
       search_query: opts?.search_query ?? null,
       sort_column: opts?.sort_column ?? 'created_at',
       sort_direction: opts?.sort_direction ?? 'desc',
@@ -155,7 +131,7 @@ export async function listMemories(opts?: ListOptions): Promise<MemoryItem[]> {
   return readItems(data) ?? [];
 }
 
-export async function addMemory(
+async function addMemory(
   text: string,
   meta?: Partial<MemoryMetadata>,
   identityInput?: MemoryIdentity,
@@ -172,22 +148,10 @@ export async function addMemory(
   };
 
   const data = await pluginMemoryFetch('/api/v1/memories/', {
-    method: 'POST',
-    timeoutMs: 10_000,
-    body: JSON.stringify({
-      user_id: identity.userId,
-      agent_id: identity.agentId,
-      app_id: identity.appId,
-      ...(identity.runId ? { run_id: identity.runId } : {}),
-      text,
-      app: APP_NAME,
-      metadata,
-      infer: true,
-    }),
+    method: 'POST', timeoutMs: 10_000,
+    body: JSON.stringify({ ...identityBody(identity), text, app: APP_NAME, metadata, infer: true }),
   });
-
-  const dataRecord = asRecord(data);
-  const id = dataRecord?.id;
+  const id = asRecord(data)?.id;
   return typeof id === 'string' ? id : null;
 }
 
@@ -213,32 +177,25 @@ export async function addMemoryIfNovel(
   return addMemory(text, meta, identityInput);
 }
 
-export async function deleteMemories(
-  memoryIds: string[],
-  identityInput?: MemoryIdentity,
-): Promise<boolean> {
+export async function deleteMemories(memoryIds: string[], identityInput?: MemoryIdentity): Promise<boolean> {
   if (memoryIds.length === 0) return true;
-  const identity = resolveMemoryIdentity(identityInput);
-  const response = await pluginMemoryFetch('/api/v1/memories/', {
-    method: 'DELETE',
-    timeoutMs: 8_000,
-    body: JSON.stringify({ memory_ids: memoryIds, user_id: identity.userId }),
-  });
-  return response !== null;
-}
-
-export async function getMemoryStats(timeoutMs = 3_000): Promise<{
-  total_memories: number;
-  total_apps: number;
-} | null> {
-  return getMemoryStatsWithIdentity(timeoutMs);
+  return (await pluginMemoryFetch('/api/v1/memories/', {
+    method: 'DELETE', timeoutMs: 8_000,
+    body: JSON.stringify({ memory_ids: memoryIds, user_id: resolveMemoryIdentity(identityInput).userId }),
+  })) !== null;
 }
 
 export async function isMemoryAvailable(
   timeoutMs?: number,
-  identity?: MemoryIdentity,
+  identityInput?: MemoryIdentity,
 ): Promise<boolean> {
-  return (await getMemoryStatsWithIdentity(timeoutMs, identity)) !== null;
+  const identity = resolveMemoryIdentity(identityInput);
+  const stats = await pluginMemoryFetch(
+    `/api/v1/stats/?user_id=${encodeURIComponent(identity.userId)}`,
+    { timeoutMs: timeoutMs ?? 3_000 },
+  );
+  const s = asRecord(stats);
+  return s !== null && typeof s.total_memories === 'number' && typeof s.total_apps === 'number';
 }
 
 export async function sendMemoryFeedback(
@@ -248,85 +205,16 @@ export async function sendMemoryFeedback(
   identityInput?: MemoryIdentity,
 ): Promise<boolean> {
   const identity = resolveMemoryIdentity(identityInput);
-  const feedback = {
-    memory_id: memoryId,
-    user_id: identity.userId,
-    agent_id: identity.agentId,
-    app_id: identity.appId,
-    ...(identity.runId ? { run_id: identity.runId } : {}),
-    value: positive ? 1 : -1,
-    reason,
-  };
+  const body = JSON.stringify({
+    memory_id: memoryId, user_id: identity.userId, agent_id: identity.agentId,
+    app_id: identity.appId, ...(identity.runId ? { run_id: identity.runId } : {}),
+    value: positive ? 1 : -1, reason,
+  });
+  const opts = { method: 'POST', timeoutMs: 3_000, body } as const;
 
-  const endpoints = [
-    `/api/v1/memories/${encodeURIComponent(memoryId)}/feedback`,
-    '/api/v1/feedback',
-    '/api/v2/feedback',
-  ];
-  for (const endpoint of endpoints) {
-    const result = await pluginMemoryFetch(endpoint, {
-      method: 'POST',
-      timeoutMs: 3_000,
-      body: JSON.stringify(feedback),
-    });
-    if (result) return true;
-  }
-  return false;
-}
-
-export async function createMemoryExport(
-  identityInput?: MemoryIdentity,
-): Promise<Record<string, unknown> | null> {
-  const identity = resolveMemoryIdentity(identityInput);
-  const payload = {
-    user_id: identity.userId,
-    agent_id: identity.agentId,
-    app_id: identity.appId,
-    ...(identity.runId ? { run_id: identity.runId } : {}),
-  };
-  const endpoints = ['/api/v1/exports', '/api/v2/exports'];
-  for (const endpoint of endpoints) {
-    const result = await pluginMemoryFetch(endpoint, {
-      method: 'POST',
-      timeoutMs: 10_000,
-      body: JSON.stringify(payload),
-    });
-    const resultRecord = asRecord(result);
-    if (resultRecord) return resultRecord;
-  }
-  return null;
-}
-
-export async function getMemoryExport(
-  exportId: string,
-  identityInput?: MemoryIdentity,
-): Promise<Record<string, unknown> | null> {
-  const identity = resolveMemoryIdentity(identityInput);
-  const endpoints = ['/api/v1/exports', '/api/v2/exports'];
-  for (const endpoint of endpoints) {
-    const result = await pluginMemoryFetch(
-      `${endpoint}/${encodeURIComponent(exportId)}?user_id=${encodeURIComponent(identity.userId)}`,
-      { timeoutMs: 5_000 },
-    );
-    const resultRecord = asRecord(result);
-    if (resultRecord) return resultRecord;
-  }
-  return null;
-}
-
-export async function getMemoryEvent(
-  eventId: string,
-): Promise<Record<string, unknown> | null> {
-  const endpoints = ['/api/v1/events', '/api/v2/events'];
-  for (const endpoint of endpoints) {
-    const result = await pluginMemoryFetch(
-      `${endpoint}/${encodeURIComponent(eventId)}`,
-      { timeoutMs: 5_000 },
-    );
-    const resultRecord = asRecord(result);
-    if (resultRecord) return resultRecord;
-  }
-  return null;
+  return (await pluginMemoryFetch(`/api/v1/memories/${encodeURIComponent(memoryId)}/feedback`, opts)) !== null
+    || (await pluginMemoryFetch('/api/v1/feedback', opts)) !== null
+    || (await pluginMemoryFetch('/api/v2/feedback', opts)) !== null;
 }
 
 export function formatMemoriesForContext(memories: MemoryItem[], heading?: string): string {
@@ -351,7 +239,7 @@ export function normalizeMemoryText(content: string): string {
     .slice(0, 220);
 }
 
-export function resolveMemoryIdentity(identityInput?: MemoryIdentity): ResolvedMemoryIdentity {
+function resolveMemoryIdentity(identityInput?: MemoryIdentity): ResolvedIdentity {
   return {
     userId: identityInput?.userId ?? resolveScopeUserId(identityInput?.scope),
     agentId: identityInput?.agentId ?? DEFAULT_AGENT_ID,
@@ -360,7 +248,7 @@ export function resolveMemoryIdentity(identityInput?: MemoryIdentity): ResolvedM
   };
 }
 
-function resolveRetrievalIdentity(identityInput?: MemoryIdentity): ResolvedRetrievalIdentity {
+function resolveRetrievalIdentity(identityInput?: MemoryIdentity): ResolvedIdentity {
   return {
     userId: identityInput?.userId ?? resolveScopeUserId(identityInput?.scope),
     agentId: identityInput?.agentId?.trim() || undefined,
@@ -386,75 +274,37 @@ function resolveScopeUserId(scope: MemoryScope = 'personal'): string {
 }
 
 function postFilterMemories(memories: MemoryItem[], opts?: SearchOptions): MemoryItem[] {
-  let items = memories;
-  if (opts?.category) {
-    items = items.filter((memory) => memory.metadata?.category === opts.category);
-  }
-  if (opts?.highSignalOnly) {
-    items = items.filter((memory) => isHighSignalMemory(memory.metadata));
-  }
-  return items.slice(0, opts?.size ?? 10);
+  return memories
+    .filter((item) => (!opts?.category || item.metadata?.category === opts.category)
+      && (!opts?.highSignalOnly || isHighSignal(item.metadata)))
+    .slice(0, opts?.size ?? 10);
 }
 
-function isHighSignalMemory(metadata: Record<string, unknown> | undefined): boolean {
-  if (!metadata) return false;
-  if (metadata.pinned === true || metadata.immutable === true) return true;
-  if (typeof metadata.confidence === 'number' && metadata.confidence >= 0.85) {
-    return true;
-  }
-  if (typeof metadata.feedback_score === 'number' && metadata.feedback_score > 0) {
-    return true;
-  }
-  if (
-    typeof metadata.positive_feedback_count === 'number' &&
-    typeof metadata.negative_feedback_count === 'number'
-  ) {
-    return metadata.positive_feedback_count > metadata.negative_feedback_count;
-  }
-  return false;
+function isHighSignal(m: Record<string, unknown> | undefined): boolean {
+  if (!m) return false;
+  return !!(m.pinned || m.immutable
+    || (typeof m.confidence === 'number' && m.confidence >= 0.85)
+    || (typeof m.feedback_score === 'number' && m.feedback_score > 0)
+    || (typeof m.positive_feedback_count === 'number' && typeof m.negative_feedback_count === 'number'
+      && (m.positive_feedback_count as number) > (m.negative_feedback_count as number)));
 }
 
-async function getMemoryStatsWithIdentity(
-  timeoutMs = 3_000,
-  identityInput?: MemoryIdentity,
-): Promise<{ total_memories: number; total_apps: number } | null> {
-  const identity = resolveMemoryIdentity(identityInput);
-  const stats = await pluginMemoryFetch(
-    `/api/v1/stats/?user_id=${encodeURIComponent(identity.userId)}`,
-    { timeoutMs },
-  );
-  const statsRecord = asRecord(stats);
-  if (
-    statsRecord &&
-    typeof statsRecord.total_memories === 'number' &&
-    typeof statsRecord.total_apps === 'number'
-  ) {
-    return {
-      total_memories: statsRecord.total_memories,
-      total_apps: statsRecord.total_apps,
-    };
-  }
-  return null;
-}
 
 function readItems(data: unknown): MemoryItem[] | undefined {
-  const record = asRecord(data);
-  if (!record) return undefined;
-  const items = record.items ?? record.results;
+  const r = asRecord(data);
+  if (!r) return undefined;
+  const items = r.items ?? r.results;
   if (!Array.isArray(items)) return undefined;
-  return items.flatMap((item) => toMemoryItem(item));
-}
-
-function toMemoryItem(item: unknown): MemoryItem[] {
-  if (!item || typeof item !== 'object') return [];
-  const maybeItem = item as Record<string, unknown>;
-  const id = maybeItem.id;
-  const content = maybeItem.content ?? maybeItem.memory;
-  if (typeof id !== 'string' || typeof content !== 'string') return [];
-  const metadata = asRecord(maybeItem.metadata) ?? undefined;
-  const createdAt = typeof maybeItem.created_at === 'string' ? maybeItem.created_at : undefined;
-  const appName = typeof maybeItem.app_name === 'string' ? maybeItem.app_name : undefined;
-  return [{ id, content, metadata, created_at: createdAt, app_name: appName }];
+  return items.reduce<MemoryItem[]>((acc, raw) => {
+    const m = raw as Record<string, unknown>;
+    const id = m?.id, content = m?.content ?? m?.memory;
+    if (typeof id === 'string' && typeof content === 'string') {
+      acc.push({ id, content, metadata: asRecord(m.metadata) ?? undefined,
+        created_at: typeof m.created_at === 'string' ? m.created_at : undefined,
+        app_name: typeof m.app_name === 'string' ? m.app_name : undefined });
+    }
+    return acc;
+  }, []);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

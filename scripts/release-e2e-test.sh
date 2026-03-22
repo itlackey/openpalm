@@ -8,7 +8,7 @@
 #   1. Production setup.sh (asset download, dir creation, secrets seeding)
 #   2. Admin container health (image pull, startup, HTTP 200)
 #   3. Setup wizard API (GET status, POST complete, deploy-status polling)
-#   4. All-service health checks (admin, memory, assistant, guardian, caddy)
+#   4. All-service health checks (admin, memory, assistant, guardian)
 #   5. Chat channel message round-trip (if installed)
 #   6. Cleanup (or --keep to leave stack running)
 #
@@ -26,12 +26,9 @@
 #   EMBED_DIMS          Embedding dimensions (default: 768)
 #
 # Optional environment variables:
-#   OPENPALM_IMAGE_TAG         Image tag to test (default: latest)
-#   OPENPALM_IMAGE_NAMESPACE   Image namespace (default: openpalm)
-#   OPENPALM_CONFIG_HOME       Override config dir (default: temp dir)
-#   OPENPALM_DATA_HOME         Override data dir (default: temp dir)
-#   OPENPALM_STATE_HOME        Override state dir (default: temp dir)
-#   OPENPALM_WORK_DIR          Override work dir (default: temp dir)
+#   OP_IMAGE_TAG         Image tag to test (default: latest)
+#   OP_IMAGE_NAMESPACE   Image namespace (default: openpalm)
+#   OP_HOME              Override home dir (default: temp dir)
 #
 # Usage:
 #   ./scripts/release-e2e-test.sh [OPTIONS]
@@ -103,22 +100,18 @@ USE_TEMP_DIRS=0
 TEMP_ROOT=""
 
 if [ "$SKIP_INSTALL" -eq 0 ]; then
-  # Use temp dirs unless explicitly overridden — ensures clean-machine simulation
-  if [ -z "${OPENPALM_CONFIG_HOME:-}" ] && [ -z "${OPENPALM_DATA_HOME:-}" ] && \
-     [ -z "${OPENPALM_STATE_HOME:-}" ] && [ -z "${OPENPALM_WORK_DIR:-}" ]; then
+  # Use temp dir unless explicitly overridden — ensures clean-machine simulation
+  if [ -z "${OP_HOME:-}" ]; then
     USE_TEMP_DIRS=1
     TEMP_ROOT="$(mktemp -d -t openpalm-release-test-XXXXXX)"
-    export OPENPALM_CONFIG_HOME="$TEMP_ROOT/config"
-    export OPENPALM_DATA_HOME="$TEMP_ROOT/data"
-    export OPENPALM_STATE_HOME="$TEMP_ROOT/state"
-    export OPENPALM_WORK_DIR="$TEMP_ROOT/work"
+    export OP_HOME="$TEMP_ROOT"
     echo "Using temp dirs under: $TEMP_ROOT"
   fi
 fi
 
-CONFIG_HOME="${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}"
-DATA_HOME="${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}"
-STATE_HOME="${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}"
+OP_HOME="${OP_HOME:-${HOME}/.openpalm}"
+CONFIG_HOME="${OP_HOME}/config"
+DATA_HOME="${OP_HOME}/data"
 
 # ── Cleanup handler ──────────────────────────────────────────────────
 
@@ -126,9 +119,7 @@ cleanup() {
   if [ "$KEEP" -eq 1 ]; then
     echo ""
     echo "  --keep flag set. Stack is still running."
-    echo "  Config: ${CONFIG_HOME}"
-    echo "  Data:   ${DATA_HOME}"
-    echo "  State:  ${STATE_HOME}"
+    echo "  OP_HOME: ${OP_HOME}"
     return
   fi
 
@@ -254,7 +245,7 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
   fi
 
   # Verify directory structure was created
-  for dir in "$CONFIG_HOME" "$DATA_HOME" "$STATE_HOME"; do
+  for dir in "$CONFIG_HOME" "$DATA_HOME" "${OP_HOME}/vault"; do
     if [ -d "$dir" ]; then
       pass "Directory created: $dir"
     else
@@ -262,20 +253,19 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
     fi
   done
 
-  # Verify key files were downloaded
-  for file in "$STATE_HOME/artifacts/docker-compose.yml" "$STATE_HOME/artifacts/Caddyfile"; do
-    if [ -f "$file" ] && [ -s "$file" ]; then
-      pass "Asset present: $(basename "$file")"
-    else
-      fail "Asset missing or empty: $file"
-    fi
-  done
-
-  # Verify secrets.env was seeded
-  if [ -f "$CONFIG_HOME/secrets.env" ]; then
-    pass "secrets.env created"
+  # Verify key files were created
+  if [ -f "$CONFIG_HOME/stack/core.compose.yml" ] && [ -s "$CONFIG_HOME/stack/core.compose.yml" ]; then
+    pass "Asset present: stack/core.compose.yml"
   else
-    fail "secrets.env not created"
+    fail "Asset missing or empty: $CONFIG_HOME/stack/core.compose.yml"
+  fi
+
+  # Verify vault/user/user.env was seeded
+  VAULT_HOME="${OP_HOME}/vault"
+  if [ -f "$VAULT_HOME/user/user.env" ]; then
+    pass "vault/user/user.env created"
+  else
+    fail "vault/user/user.env not created"
   fi
 else
   step "Skipping install (--skip-install)"
@@ -439,7 +429,7 @@ PAYLOAD
   if [ "$SETUP_OK" = "True" ] || [ "$SETUP_OK" = "true" ]; then
     pass "Setup wizard completed (async deploy started)"
   else
-    # The setup POST may drop the connection when Caddy restarts.
+    # The setup POST may drop the connection during deploy.
     # Wait and re-check the status.
     sleep 10
     RETRY_RESPONSE=$(curl -sf "$ADMIN_URL/admin/setup" \
@@ -506,12 +496,6 @@ while [ $elapsed -lt "$MAX_WAIT" ]; do
       break
     fi
   done
-  # Also check caddy is running (no healthcheck defined)
-  caddy_status=$(docker inspect --format '{{.State.Status}}' "openpalm-caddy-1" 2>/dev/null || echo "missing")
-  if [ "$caddy_status" != "running" ]; then
-    ALL_UP=false
-    WAIT_MSG="caddy is $caddy_status"
-  fi
   if [ "$ALL_UP" = "true" ]; then
     break
   fi
@@ -536,15 +520,6 @@ for svc in $HEALTHCHECK_SVCS; do
   fi
 done
 
-# Caddy - check running status
-caddy_status=$(docker inspect --format '{{.State.Status}}' "openpalm-caddy-1" 2>/dev/null || echo "missing")
-if [ "$caddy_status" = "running" ]; then
-  pass "caddy is running"
-else
-  fail "caddy status: $caddy_status"
-  ALL_HEALTHY=false
-fi
-
 # ── Step 8: Verify setup marked complete ──────────────────────────────
 
 step "Verify setup is marked complete"
@@ -559,28 +534,29 @@ else
   fail "Setup is NOT marked complete: $FINAL_COMPLETE"
 fi
 
-# ── Step 9: Verify secrets.env has expected values ────────────────────
+# ── Step 9: Verify vault/user/user.env has expected values ─────────────────
 
 if [ "$SKIP_INSTALL" -eq 0 ]; then
-  step "Verify secrets.env"
+  step "Verify vault/user/user.env"
 
-  secrets="$CONFIG_HOME/secrets.env"
+  VAULT_HOME="${VAULT_HOME:-${OP_HOME}/vault}"
+  secrets="$VAULT_HOME/user/user.env"
 
   check_env_key() {
     local key="$1"
     local actual
-    actual=$(grep "^${key}=" "$secrets" 2>/dev/null | head -1 | cut -d= -f2-)
+    actual=$(grep -E "^(export )?${key}=" "$secrets" 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
     if [ -n "$actual" ]; then
-      pass "$key is set in secrets.env"
+      pass "$key is set in user.env"
     else
-      fail "$key is empty or missing in secrets.env"
+      fail "$key is empty or missing in user.env"
     fi
   }
 
   check_env_val() {
     local key="$1" expected="$2"
     local actual
-    actual=$(grep "^${key}=" "$secrets" 2>/dev/null | head -1 | cut -d= -f2-)
+    actual=$(grep -E "^(export )?${key}=" "$secrets" 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
     if [ "$actual" = "$expected" ]; then
       pass "$key=$expected"
     else
@@ -593,7 +569,7 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
   check_env_key "SYSTEM_LLM_PROVIDER"
   check_env_key "SYSTEM_LLM_MODEL"
 else
-  step "Skipping secrets.env check (--skip-install)"
+  step "Skipping user.env check (--skip-install)"
 fi
 
 # ── Step 10: Verify admin API with token ──────────────────────────────
@@ -674,25 +650,11 @@ check_container_env() {
   fi
 }
 
-check_container_env "openpalm-assistant-1" "OPENPALM_ADMIN_TOKEN" "equals" "$ADMIN_TOKEN"
+check_container_env "openpalm-assistant-1" "OP_ADMIN_TOKEN" "equals" "$ADMIN_TOKEN"
 check_container_env "openpalm-assistant-1" "MEMORY_USER_ID" "nonempty"
 check_container_env "openpalm-assistant-1" "OPENAI_BASE_URL" "endswith" "/v1"
 
-# ── Step 13: Verify Caddy proxy ───────────────────────────────────────
-
-step "Verify Caddy reverse proxy"
-
-CADDY_PORT="${OPENPALM_INGRESS_PORT:-8080}"
-CADDY_URL="http://127.0.0.1:$CADDY_PORT"
-
-CADDY_STATUS=$(curl -sf -o /dev/null -w '%{http_code}' "$CADDY_URL/" 2>/dev/null || echo "error")
-if [ "$CADDY_STATUS" = "200" ] || [ "$CADDY_STATUS" = "302" ]; then
-  pass "Caddy proxy responds on port $CADDY_PORT (HTTP $CADDY_STATUS)"
-else
-  fail "Caddy proxy returned HTTP $CADDY_STATUS on port $CADDY_PORT"
-fi
-
-# ── Step 14: Test chat channel (if installed) ─────────────────────────
+# ── Step 13: Test chat channel (if installed) ─────────────────────────
 
 step "Check for chat channel"
 

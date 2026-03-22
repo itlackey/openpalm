@@ -1,0 +1,32 @@
+# Addon: Discord — gateway-based Discord bot adapter
+# Connects outbound to Discord via WebSocket (no public URL needed).
+# Requires Message Content Intent enabled in Discord Developer Portal.
+services:
+  discord:
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file:
+      - path: ${OP_HOME}/vault/stack/stack.env
+        required: false
+      - path: ${OP_HOME}/vault/user/user.env
+        required: false
+    environment:
+      PORT: "8184"
+      GUARDIAN_URL: http://guardian:8080
+      CHANNEL_NAME: "Discord Bot"
+      CHANNEL_PACKAGE: "@openpalm/channel-discord"
+    networks: [channel_lan]
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8184' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      openpalm.name: Discord
+      openpalm.description: Discord bot channel adapter via WebSocket gateway
+      openpalm.icon: message-circle
+      openpalm.category: messaging
+      openpalm.healthcheck: http://discord:8184/health

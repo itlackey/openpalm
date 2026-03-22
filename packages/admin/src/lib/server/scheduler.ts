@@ -1,5 +1,9 @@
 /**
  * Automation scheduler — re-exported from @openpalm/lib.
+ *
+ * Lifecycle functions (startScheduler, stopScheduler, reloadScheduler,
+ * getSchedulerStatus, getExecutionLog, getAllExecutionLogs) live in
+ * packages/scheduler/src/scheduler.ts — they are not part of lib.
  */
 export type {
   ActionType,
@@ -14,10 +18,4 @@ export {
   parseAutomationYaml,
   loadAutomations,
   executeAction,
-  startScheduler,
-  stopScheduler,
-  reloadScheduler,
-  getSchedulerStatus,
-  getExecutionLog,
-  getAllExecutionLogs,
 } from "@openpalm/lib";

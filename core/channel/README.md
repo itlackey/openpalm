@@ -21,12 +21,12 @@ Docker image used by all registry-backed channel adapters. It bundles the `@open
 
 ## Registry usage
 
-Each channel in `registry/channels/` uses this image:
+Each channel in `registry/components/` uses this image:
 
 ```yaml
 services:
   channel-chat:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
     environment:
       CHANNEL_PACKAGE: "@openpalm/channel-chat"
 ```

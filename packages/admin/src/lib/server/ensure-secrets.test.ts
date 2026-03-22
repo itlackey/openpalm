@@ -1,9 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, statSync, existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureSecrets, type ControlPlaneState } from "./control-plane.js";
+import { ensureSecrets, type ControlPlaneState } from "@openpalm/lib";
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `openpalm-test-${randomBytes(4).toString("hex")}`);
@@ -11,27 +11,51 @@ function makeTempDir(): string {
   return dir;
 }
 
-let configDir: string;
+let rootDir: string;
 
 beforeEach(() => {
-  configDir = makeTempDir();
+  rootDir = makeTempDir();
 });
 
 afterEach(() => {
-  rmSync(configDir, { recursive: true, force: true });
+  rmSync(rootDir, { recursive: true, force: true });
 });
 
 describe("ensureSecrets", () => {
-  test("seeds secrets.env with empty ADMIN_TOKEN on first run", () => {
+  test("seeds vault env files with default keys on first run", () => {
+    const vaultDir = join(rootDir, "vault");
+    mkdirSync(vaultDir, { recursive: true });
+
     const state = {
-      configDir,
+      configDir: join(rootDir, "config"),
+      vaultDir,
       adminToken: "preconfigured-token"
     } as ControlPlaneState;
 
     ensureSecrets(state);
 
-    const secrets = readFileSync(join(configDir, "secrets.env"), "utf-8");
-    expect(secrets).toContain("ADMIN_TOKEN=\n");
-    expect(secrets).not.toContain("ADMIN_TOKEN=preconfigured-token");
+    const userEnv = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    const systemEnv = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    expect(userEnv).toContain("OPENAI_API_KEY=");
+    expect(userEnv).toContain("OWNER_NAME=");
+    expect(systemEnv).toContain("OP_ADMIN_TOKEN=");
+    expect(systemEnv).toContain("OP_ASSISTANT_TOKEN=");
+    expect(systemEnv).toContain("OP_MEMORY_TOKEN=");
+    expect(existsSync(join(vaultDir, "stack", "stack.env"))).toBe(true);
+  });
+
+  test("applies strict permissions to vault files", () => {
+    const vaultDir = join(rootDir, "vault");
+    const state = {
+      configDir: join(rootDir, "config"),
+      vaultDir,
+      adminToken: "preconfigured-token"
+    } as ControlPlaneState;
+
+    ensureSecrets(state);
+
+    expect(statSync(vaultDir).mode & 0o777).toBe(0o700);
+    expect(statSync(join(vaultDir, "user", "user.env")).mode & 0o777).toBe(0o600);
+    expect(statSync(join(vaultDir, "stack", "stack.env")).mode & 0o777).toBe(0o600);
   });
 });

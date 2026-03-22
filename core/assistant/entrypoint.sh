@@ -3,8 +3,8 @@ set -euo pipefail
 
 PORT="${OPENCODE_PORT:-4096}"
 ENABLE_SSH="${OPENCODE_ENABLE_SSH:-0}"
-TARGET_UID="${OPENPALM_UID:-1000}"
-TARGET_GID="${OPENPALM_GID:-1000}"
+TARGET_UID="${OP_UID:-1000}"
+TARGET_GID="${OP_GID:-1000}"
 TARGET_USER="opencode"
 TARGET_GROUP="opencode"
 
@@ -57,11 +57,6 @@ ensure_home_layout() {
 }
 
 maybe_set_memory_user_id() {
-  # Legacy fallback: accept OPENMEMORY_USER_ID from older installs
-  if [ -z "${MEMORY_USER_ID:-}" ] && [ -n "${OPENMEMORY_USER_ID:-}" ]; then
-    export MEMORY_USER_ID="$OPENMEMORY_USER_ID"
-  fi
-
   if [ -n "${MEMORY_USER_ID:-}" ] && [ "${MEMORY_USER_ID}" != "default_user" ]; then
     return 0
   fi

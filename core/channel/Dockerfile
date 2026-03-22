@@ -42,7 +42,7 @@ COPY core/channel/start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
-COPY assets/redact.env.schema /app/.env.schema
+COPY .openpalm/vault/redact.env.schema /app/.env.schema
 
 RUN mkdir -p /home/bun \
     && chown -R bun:bun /app /home/bun

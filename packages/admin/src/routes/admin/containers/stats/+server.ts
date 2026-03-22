@@ -2,18 +2,18 @@ import {
   getRequestId,
   jsonResponse,
   errorResponse,
-  requireAdmin,
+  requireAuth,
   getActor,
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { appendAudit, buildComposeFileList, buildEnvFiles } from "$lib/server/control-plane.js";
+import { appendAudit, buildComposeFileList, buildEnvFiles } from "@openpalm/lib";
 import { composeStats, checkDocker } from "$lib/server/docker.js";
 import type { RequestHandler } from "./$types";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authError = requireAdmin(event, requestId);
+  const authError = requireAuth(event, requestId);
   if (authError) return authError;
 
   const state = getState();
@@ -26,7 +26,7 @@ export const GET: RequestHandler = async (event) => {
     return errorResponse(503, "docker_unavailable", "Docker is not available", {}, requestId);
   }
 
-  const result = await composeStats(state.stateDir, {
+  const result = await composeStats({
     files: buildComposeFileList(state),
     envFiles: buildEnvFiles(state)
   });

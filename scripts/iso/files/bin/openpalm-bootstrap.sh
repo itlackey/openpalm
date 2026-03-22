@@ -1,37 +1,48 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OPENPALM_HOME='/opt/openpalm'
-export OPENPALM_CONFIG_HOME='/var/lib/openpalm/config'
-export OPENPALM_STATE_HOME='/var/lib/openpalm/state'
-export OPENPALM_DATA_HOME='/var/lib/openpalm/data'
-export OPENPALM_WORK_DIR='/var/lib/openpalm/work'
+# ISO bootstrap — single OP_HOME layout, no split roots.
+# All state lives under /var/lib/openpalm/ with the standard subdirectory
+# structure: config/, vault/, data/, logs/, stack/.
 
-mkdir -p "$OPENPALM_CONFIG_HOME" "$OPENPALM_STATE_HOME" "$OPENPALM_DATA_HOME" "$OPENPALM_WORK_DIR"
-mkdir -p "$OPENPALM_CONFIG_HOME/stash"
-mkdir -p "$OPENPALM_DATA_HOME/admin"
+export OP_HOME='/var/lib/openpalm'
+INSTALL_HOME='/opt/openpalm'
 
-if [[ ! -f "$OPENPALM_CONFIG_HOME/secrets.env" ]]; then
-	cp "$OPENPALM_HOME/assets/secrets.env" "$OPENPALM_CONFIG_HOME/secrets.env"
-	chmod 600 "$OPENPALM_CONFIG_HOME/secrets.env"
+mkdir -p \
+	"$OP_HOME/config/stash" \
+	"$OP_HOME/config/automations" \
+	"$OP_HOME/config/assistant" \
+	"$OP_HOME/vault/stack" \
+	"$OP_HOME/vault/user" \
+	"$OP_HOME/data/admin" \
+	"$OP_HOME/data/memory" \
+	"$OP_HOME/data/assistant" \
+	"$OP_HOME/data/guardian" \
+	"$OP_HOME/logs" \
+	"$OP_HOME/stack"
+
+if [[ ! -f "$OP_HOME/vault/user/user.env" ]]; then
+	touch "$OP_HOME/vault/user/user.env"
+	chmod 600 "$OP_HOME/vault/user/user.env"
 fi
 
-if [[ ! -f "$OPENPALM_CONFIG_HOME/Caddyfile" ]]; then
-	cp "$OPENPALM_HOME/assets/Caddyfile" "$OPENPALM_CONFIG_HOME/Caddyfile"
+if [[ ! -f "$OP_HOME/vault/stack/stack.env" ]]; then
+	touch "$OP_HOME/vault/stack/stack.env"
+	chmod 600 "$OP_HOME/vault/stack/stack.env"
 fi
 
-if [[ ! -f "$OPENPALM_STATE_HOME/docker-compose.yml" ]]; then
-	cp "$OPENPALM_HOME/assets/docker-compose.yml" "$OPENPALM_STATE_HOME/docker-compose.yml"
+# Seed core compose into stack/ (source of truth for compose)
+if [[ ! -f "$OP_HOME/stack/core.compose.yml" ]]; then
+	cp "$INSTALL_HOME/.openpalm/stack/core.compose.yml" "$OP_HOME/stack/core.compose.yml"
 fi
 
-if [[ ! -d "$OPENPALM_CONFIG_HOME/channels" ]]; then
-	mkdir -p "$OPENPALM_CONFIG_HOME/channels"
+if [[ -f "$INSTALL_HOME/image-cache/openpalm-images.tar.zst" && ! -f "$OP_HOME/.images-loaded" ]]; then
+	zstd -dc "$INSTALL_HOME/image-cache/openpalm-images.tar.zst" | docker load
+	touch "$OP_HOME/.images-loaded"
 fi
 
-if [[ -f "$OPENPALM_HOME/image-cache/openpalm-images.tar.zst" && ! -f /var/lib/openpalm/.images-loaded ]]; then
-	zstd -dc "$OPENPALM_HOME/image-cache/openpalm-images.tar.zst" | docker load
-	touch /var/lib/openpalm/.images-loaded
-fi
-
-cd "$OPENPALM_STATE_HOME"
-docker compose --env-file "$OPENPALM_CONFIG_HOME/secrets.env" -f "$OPENPALM_STATE_HOME/docker-compose.yml" up -d
+docker compose \
+	--project-name openpalm \
+	--env-file "$OP_HOME/vault/stack/stack.env" \
+	--env-file "$OP_HOME/vault/user/user.env" \
+	-f "$OP_HOME/stack/core.compose.yml" up -d

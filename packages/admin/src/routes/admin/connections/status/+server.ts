@@ -1,9 +1,8 @@
 /**
- * GET /admin/connections/status — Check if the system LLM connection is configured.
+ * GET /admin/connections/status — Check if capabilities are configured.
  *
  * Returns { complete: boolean, missing: string[] }.
- * "complete" is true when a provider and system model are set.
- * API key is never required (optional for all providers).
+ * "complete" is true when capabilities.llm and capabilities.embeddings are set.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -16,8 +15,9 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
-  readSecretsEnvFile
-} from "$lib/server/control-plane.js";
+  readStackSpec,
+} from "@openpalm/lib";
+
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const authErr = requireAdmin(event, requestId);
@@ -27,18 +27,18 @@ export const GET: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
-  const raw = readSecretsEnvFile(state.configDir);
   const missing: string[] = [];
+  const spec = readStackSpec(state.configDir);
 
-  const provider = (raw.SYSTEM_LLM_PROVIDER ?? "").trim();
-  const systemModel = (raw.SYSTEM_LLM_MODEL ?? "").trim();
-
-  if (!provider) {
-    missing.push("System LLM provider");
-  }
-
-  if (!systemModel) {
-    missing.push("System model");
+  if (!spec) {
+    missing.push("Stack configuration (stack.yaml)");
+  } else {
+    if (typeof spec.capabilities.llm !== 'string' || !spec.capabilities.llm.trim()) {
+      missing.push("System LLM (capabilities.llm)");
+    }
+    if (!spec.capabilities.embeddings?.provider?.trim() || !spec.capabilities.embeddings?.model?.trim()) {
+      missing.push("Embedding model (capabilities.embeddings)");
+    }
   }
 
   const complete = missing.length === 0;

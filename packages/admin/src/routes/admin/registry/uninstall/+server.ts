@@ -1,9 +1,11 @@
 /**
- * POST /admin/registry/uninstall — Uninstall a registry item (channel or automation).
+ * POST /admin/registry/uninstall — Uninstall a registry item (automation only).
  *
- * For channels: delegates to the existing channel uninstall flow.
- * For automations: removes the .yml from CONFIG_HOME/automations/,
- * re-stages artifacts, and reloads the scheduler.
+ * Channel addons are managed via POST /admin/addons/:name.
+ * This endpoint only handles automations.
+ *
+ * Removes the .yml from CONFIG_HOME/automations/,
+ * refreshes runtime files, and reloads the scheduler.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -18,14 +20,10 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
-  uninstallChannel,
   uninstallAutomation,
-  persistArtifacts,
-  stageArtifacts,
-  buildComposeFileList,
-  buildEnvFiles
-} from "$lib/server/control-plane.js";
-import { composeStop, checkDocker } from "$lib/server/docker.js";
+  writeRuntimeFiles,
+  resolveRuntimeFiles,
+} from "@openpalm/lib";
 
 
 export const POST: RequestHandler = async (event) => {
@@ -46,42 +44,13 @@ export const POST: RequestHandler = async (event) => {
   if (!name || typeof name !== "string") {
     return errorResponse(400, "invalid_input", "name is required", {}, requestId);
   }
-  if (type !== "channel" && type !== "automation") {
-    return errorResponse(400, "invalid_input", "type must be 'channel' or 'automation'", {}, requestId);
-  }
 
   if (type === "channel") {
-    const serviceName = `channel-${name}`;
-    const result = uninstallChannel(name, state.configDir);
-    if (!result.ok) {
-      appendAudit(state, actor, "registry.uninstall", { name, type, error: result.error }, false, requestId, callerType);
-      return errorResponse(400, "invalid_input", result.error, {}, requestId);
-    }
+    return errorResponse(400, "invalid_input", "Channel addons are managed via POST /admin/addons/:name. Use the addon system.", {}, requestId);
+  }
 
-    delete state.channelSecrets[name];
-    delete state.services[serviceName];
-
-    state.artifacts = stageArtifacts(state);
-    persistArtifacts(state);
-    // Scheduler sidecar auto-reloads via file watching
-
-    const dockerCheck = await checkDocker();
-    let dockerResult = null;
-    if (dockerCheck.ok) {
-      dockerResult = await composeStop(state.stateDir, [serviceName], {
-        files: buildComposeFileList(state),
-        envFiles: buildEnvFiles(state)
-      });
-    }
-
-    appendAudit(state, actor, "registry.uninstall", { name, type }, true, requestId, callerType);
-    return jsonResponse(200, {
-      ok: true,
-      name,
-      type,
-      dockerAvailable: dockerCheck.ok,
-      composeResult: dockerResult ? { ok: dockerResult.ok, stderr: dockerResult.stderr } : null
-    }, requestId);
+  if (type !== "automation") {
+    return errorResponse(400, "invalid_input", "type must be 'automation'", {}, requestId);
   }
 
   // type === "automation"
@@ -91,8 +60,8 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_input", result.error, {}, requestId);
   }
 
-  state.artifacts = stageArtifacts(state);
-  persistArtifacts(state);
+  state.artifacts = resolveRuntimeFiles(state);
+  writeRuntimeFiles(state);
   // Scheduler sidecar auto-reloads via file watching
 
   appendAudit(state, actor, "registry.uninstall", { name, type }, true, requestId, callerType);

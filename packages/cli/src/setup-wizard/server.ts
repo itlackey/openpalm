@@ -8,17 +8,14 @@
  * Uses Bun.serve() with a fetch handler for routing.
  */
 import {
-  type SetupConfig,
+  type SetupSpec,
   type SetupResult,
-  type CoreAssetProvider,
-  performSetupFromConfig,
-  detectProviders,
+  performSetup,
+  detectLocalProviders,
   isSetupComplete,
   fetchProviderModels,
-  resolveConfigHome,
-  resolveStateHome,
-  FilesystemAssetProvider,
-  resolveDataHome,
+  resolveConfigDir,
+  resolveVaultDir,
 } from "@openpalm/lib";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -95,17 +92,15 @@ export type SetupServer = {
  * Create and start the setup wizard HTTP server.
  *
  * @param port - Port to listen on (default 8100)
- * @param opts - Optional overrides for asset provider and config dir
+ * @param opts - Optional overrides for config dir
  */
 export function createSetupServer(
   port: number = 8100,
   opts?: {
-    assetProvider?: CoreAssetProvider;
     configDir?: string;
   }
 ): SetupServer {
-  const configDir = opts?.configDir ?? resolveConfigHome();
-  const assetProvider = opts?.assetProvider ?? new FilesystemAssetProvider(resolveDataHome());
+  const configDir = opts?.configDir ?? resolveConfigDir();
 
   // Mutable server state
   const state: SetupServerState = {
@@ -154,8 +149,8 @@ export function createSetupServer(
     // ── API: Setup Status ────────────────────────────────────────────
 
     if (method === "GET" && path === "/api/setup/status") {
-      const stateDir = resolveStateHome();
-      const complete = isSetupComplete(stateDir, configDir);
+      const vaultDir = resolveVaultDir();
+      const complete = isSetupComplete(vaultDir);
       return jsonResponse(200, {
         ok: true,
         setupComplete: complete || state.setupComplete,
@@ -166,7 +161,7 @@ export function createSetupServer(
 
     if (method === "GET" && path === "/api/setup/detect-providers") {
       try {
-        const providers = await detectProviders();
+        const providers = await detectLocalProviders();
         return jsonResponse(200, { ok: true, providers });
       } catch (err) {
         return errorResponse(500, "detection_failed", String(err));
@@ -216,10 +211,10 @@ export function createSetupServer(
         return errorResponse(400, "invalid_json", "Request body must be valid JSON");
       }
 
-      const config = body as SetupConfig;
+      const setupSpec = body as SetupSpec;
       let result: SetupResult;
       try {
-        result = await performSetupFromConfig(config, assetProvider);
+        result = await performSetup(setupSpec);
       } catch (err) {
         return errorResponse(500, "setup_failed", String(err));
       }
@@ -279,26 +274,6 @@ export function createSetupServer(
       }
     },
   };
-}
-
-// ── Convenience: Wait for Setup Complete ─────────────────────────────────
-
-/**
- * High-level helper: starts the server, waits for setup to complete, then stops.
- */
-export async function waitForSetupComplete(
-  port: number = 8100,
-  opts?: {
-    assetProvider?: CoreAssetProvider;
-    configDir?: string;
-  }
-): Promise<SetupResult> {
-  const { server, waitForComplete, stop } = createSetupServer(port, opts);
-  try {
-    return await waitForComplete();
-  } finally {
-    stop();
-  }
 }
 
 // ── Static Assets (wizard UI from task 2.1) ─────────────────────────────

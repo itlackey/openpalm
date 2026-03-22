@@ -13,7 +13,7 @@ Containerized [OpenCode](https://opencode.ai) instance that is the AI brain of O
 
 The assistant is deliberately isolated:
 - No Docker socket mount
-- No host filesystem access beyond designated mounts (`DATA_HOME/assistant`, `CONFIG_HOME/assistant`, `DATA_HOME/opencode`, `STATE_HOME/opencode`, `OPENPALM_WORK_DIR`)
+- No host filesystem access beyond designated mounts (`DATA_HOME/assistant`, `CONFIG_HOME/assistant`, `DATA_HOME/opencode`, `STATE_HOME/opencode`, `OP_WORK_DIR`)
 - Admin API calls are HMAC-authenticated and allowlisted
 
 ## Plugin Architecture
@@ -34,8 +34,8 @@ Plugins are installed by Bun at container startup and cached ephemerally. The fi
 | Location | Source | Purpose |
 |---|---|---|
 | `packages/assistant-tools/` | Git repo | Plugin source: tools, plugins, skills, AGENTS.md |
-| `assets/opencode.jsonc` | Git repo | System config (model + plugins) — seeded to DATA_HOME/assistant/ |
-| `assets/AGENTS.md` | Git repo | Assistant persona — seeded to DATA_HOME/assistant/ |
+| `core/assistant/opencode/opencode.jsonc` | Git repo | System config (model + plugins) — seeded to `DATA_HOME/assistant/opencode.jsonc` |
+| `core/assistant/opencode/AGENTS.md` | Git repo | Assistant persona — seeded to `DATA_HOME/assistant/AGENTS.md` |
 | `DATA_HOME/assistant/` | Runtime mount | System config mounted at `/etc/opencode` |
 | `CONFIG_HOME/assistant/` | Runtime mount | User extensions mounted at `~/.config/opencode` |
 | `~/.cache/opencode/node_modules/` | Container ephemeral | Plugins auto-installed from config on startup |
@@ -52,6 +52,6 @@ See [`packages/assistant-tools/AGENTS.md`](../../packages/assistant-tools/AGENTS
 
 | Variable | Purpose |
 |---|---|
-| `OPENPALM_ADMIN_URL` | Admin API base URL |
-| `OPENPALM_ADMIN_TOKEN` | Token for Admin API authentication |
+| `OP_ADMIN_URL` | Admin API base URL |
+| `OP_ASSISTANT_TOKEN` | Assistant token for Admin API authentication |
 | `OPENCODE_CONFIG_DIR` | System config directory (maps to `DATA_HOME/assistant`, mounted at `/etc/opencode`) |

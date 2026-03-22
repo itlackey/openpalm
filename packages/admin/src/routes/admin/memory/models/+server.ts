@@ -9,7 +9,7 @@ import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
   errorResponse,
-  requireAdmin,
+  requireAuth,
   getRequestId,
   getActor,
   getCallerType,
@@ -20,13 +20,13 @@ import {
   fetchProviderModels,
   LLM_PROVIDERS,
   EMBED_PROVIDERS
-} from "$lib/server/control-plane.js";
+} from "@openpalm/lib";
 
 const VALID_PROVIDERS = new Set<string>([...LLM_PROVIDERS, ...EMBED_PROVIDERS]);
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authErr = requireAdmin(event, requestId);
+  const authErr = requireAuth(event, requestId);
   if (authErr) return authErr;
 
   const state = getState();

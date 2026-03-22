@@ -13,8 +13,7 @@ import {
   resolveApiKey,
   resolveConfigForPush,
   fetchProviderModels,
-  checkQdrantDimensions,
-  resetQdrantCollection,
+  checkVectorDimensions,
   resetVectorStore,
   provisionMemoryUser,
   LLM_PROVIDERS,
@@ -524,16 +523,16 @@ describe("resolveConfigForPush", () => {
   });
 });
 
-// ── checkQdrantDimensions ─────────────────────────────────────────────
+// ── checkVectorDimensions ─────────────────────────────────────────────
 
-describe("checkQdrantDimensions", () => {
+describe("checkVectorDimensions", () => {
   test("returns match=true when dimensions agree", () => {
     const dataDir = trackDir(makeTempDir());
     const persisted = getDefaultConfig();
     writeMemoryConfig(dataDir, persisted);
 
     const newConfig = getDefaultConfig();
-    const result = checkQdrantDimensions(dataDir, newConfig);
+    const result = checkVectorDimensions(dataDir, newConfig);
     expect(result.match).toBe(true);
     expect(result.currentDims).toBe(1536);
     expect(result.expectedDims).toBe(1536);
@@ -546,7 +545,7 @@ describe("checkQdrantDimensions", () => {
 
     const newConfig = getDefaultConfig();
     newConfig.mem0.vector_store.config.embedding_model_dims = 3072;
-    const result = checkQdrantDimensions(dataDir, newConfig);
+    const result = checkVectorDimensions(dataDir, newConfig);
     expect(result.match).toBe(false);
     expect(result.currentDims).toBe(1536);
     expect(result.expectedDims).toBe(3072);
@@ -555,27 +554,27 @@ describe("checkQdrantDimensions", () => {
   test("returns match=true when no persisted config exists (uses defaults)", () => {
     const dataDir = trackDir(makeTempDir());
     const newConfig = getDefaultConfig();
-    const result = checkQdrantDimensions(dataDir, newConfig);
+    const result = checkVectorDimensions(dataDir, newConfig);
     expect(result.match).toBe(true);
   });
 });
 
-// ── resetQdrantCollection ─────────────────────────────────────────────
+// ── resetVectorStore ─────────────────────────────────────────────
 
-describe("resetQdrantCollection", () => {
+describe("resetVectorStore", () => {
   test("returns ok=true when qdrant directory exists", () => {
     const dataDir = trackDir(makeTempDir());
     const { mkdirSync } = require("node:fs");
     mkdirSync(join(dataDir, "memory", "qdrant", "collections"), { recursive: true });
 
-    const result = resetQdrantCollection(dataDir);
+    const result = resetVectorStore(dataDir);
     expect(result.ok).toBe(true);
     expect(existsSync(join(dataDir, "memory", "qdrant"))).toBe(false);
   });
 
   test("returns ok=true when qdrant directory does not exist", () => {
     const dataDir = trackDir(makeTempDir());
-    const result = resetQdrantCollection(dataDir);
+    const result = resetVectorStore(dataDir);
     expect(result.ok).toBe(true);
   });
 
@@ -586,7 +585,7 @@ describe("resetQdrantCollection", () => {
     mkdirSync(join(qdrantDir, "collections", "memory"), { recursive: true });
     writeFileSync(join(qdrantDir, "collections", "memory", "data.bin"), "test");
 
-    const result = resetQdrantCollection(dataDir);
+    const result = resetVectorStore(dataDir);
     expect(result.ok).toBe(true);
     expect(existsSync(qdrantDir)).toBe(false);
   });

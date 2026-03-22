@@ -291,7 +291,7 @@ The XDG base directory specification is designed for multi-application desktop s
 
 **Caveats:**
 1. The proposal must explicitly document that `~/.openpalm/` is a departure from XDG, and why.
-2. Environment variables (`OPENPALM_CONFIG_HOME`, `OPENPALM_DATA_HOME`, `OPENPALM_STATE_HOME`) must be replaced with a single `OPENPALM_HOME` variable (the proposal implies this with `OPENPALM_HOME` in `vault/system.env`). The old variables should be checked and produce a clear error or migration message if present.
+2. Environment variables (`OP_CONFIG_HOME`, `OP_DATA_HOME`, `OP_STATE_HOME`) must be replaced with a single `OP_HOME` variable (the proposal implies this with `OP_HOME` in `vault/system.env`). The old variables should be checked and produce a clear error or migration message if present.
 3. The `config/` and `vault/` subdirectories must maintain the ownership/permission semantics that CONFIG_HOME had: user-editable, never overwritten by lifecycle operations. The proposal states this, but it should be formalized as a rule in the updated core-principles.md.
 
 ### Staging Tier Elimination Assessment
@@ -344,7 +344,7 @@ The `vault/` directory as the secrets boundary is a clear improvement over the c
 ### Plan Compatibility
 
 **Components plan (`openpalm-components-plan.md`):**
-- The components plan references `${OPENPALM_DATA}/components/` for instance directories and `${OPENPALM_STATE}/components/` for runtime state. Under the refactor, these would become `~/.openpalm/data/components/` (instances) — but the refactor's `config/components/` directory holds compose overlays (e.g., `core.yml`, `admin.yml`, `channel-slack.yml`), which is a different concept than the components plan's instance directories.
+- The components plan references `${OP_DATA}/components/` for instance directories and `${OP_STATE}/components/` for runtime state. Under the refactor, these would become `~/.openpalm/data/components/` (instances) — but the refactor's `config/components/` directory holds compose overlays (e.g., `core.yml`, `admin.yml`, `channel-slack.yml`), which is a different concept than the components plan's instance directories.
 - **Conflict:** The components plan puts component instances in DATA_HOME with full instance directories (compose.yml + .env.schema + .env + data/). The refactor puts compose overlays in `config/components/`. These are two different things: the refactor's `config/components/core.yml` is the base stack definition, while the components plan's `DATA_HOME/components/discord-main/` is an instance with runtime data. The refactor needs to reconcile: where do component instance directories live? The refactor's `data/` directory is the natural location, which aligns with the components plan's `DATA_HOME/components/`.
 - **Missing from refactor:** The refactor does not mention `enabled.json`, instance directories, per-instance `.env` files, or the component lifecycle at all. It describes a simpler model where compose overlays are dropped into `config/components/` and listed in `openpalm.yml`. The components plan's richer instance model must be integrated.
 
@@ -376,12 +376,12 @@ The `user.env` hot-reload via file watcher is an elegant UX improvement but intr
 
 1. **`docs/technical/core-principles.md`** — Major rewrite required. All three filesystem tier definitions, the volume-mount contract (sections A through F), and the operational behavior section must be updated. The three-tier model is deeply embedded in this document.
 2. **`review-decisions.md`** — Q2 must be explicitly reversed with rationale. Q9 (ov.conf in DATA_HOME) needs reassessment if vault is the new location.
-3. **`openpalm-components-plan.md`** — Must reconcile `config/components/` (compose overlays) with `data/components/` (instance directories). The Directory Summary section near the end currently shows `${OPENPALM_CONFIG}/`, `${OPENPALM_DATA}/components/`, and `${OPENPALM_STATE}/components/` — all three tiers would need updating.
+3. **`openpalm-components-plan.md`** — Must reconcile `config/components/` (compose overlays) with `data/components/` (instance directories). The Directory Summary section near the end currently shows `${OP_CONFIG}/`, `${OP_DATA}/components/`, and `${OP_STATE}/components/` — all three tiers would need updating.
 4. **`openpalm-pass-impl-v3.md`** — `PlaintextBackend` must be updated to understand the two-file model (`user.env` vs `system.env`). Phase 0 references to `stageSecretsEnv()` become irrelevant. The `CONFIG_HOME contract note` section needs rewriting.
 5. **`packages/lib/src/control-plane/paths.ts`** — `resolveConfigHome()`, `resolveDataHome()`, `resolveStateHome()` collapse into `resolveOpenPalmHome()` plus subdirectory accessors.
 6. **`packages/lib/src/control-plane/staging.ts`** — Entire file is replaced. `persistArtifacts()`, `stageArtifacts()`, all stage functions, and the manifest system are eliminated. A new validation + snapshot + apply pipeline takes their place.
 7. **`packages/lib/src/control-plane/setup.ts`** — `ensureXdgDirs()` is rewritten to create the `~/.openpalm/` tree.
-8. **`assets/docker-compose.yml`** and `assets/admin.yml`** — All volume mount paths change from `${OPENPALM_DATA_HOME:-...}` / `${OPENPALM_STATE_HOME:-...}` / `${OPENPALM_CONFIG_HOME:-...}` to `${OPENPALM_HOME:-...}/data/`, `${OPENPALM_HOME:-...}/vault/`, `${OPENPALM_HOME:-...}/config/`. The `env_file:` directives change. Guardian loses its bind mount to artifacts.
+8. **`assets/docker-compose.yml`** and `assets/admin.yml`** — All volume mount paths change from `${OP_DATA_HOME:-...}` / `${OP_STATE_HOME:-...}` / `${OP_CONFIG_HOME:-...}` to `${OP_HOME:-...}/data/`, `${OP_HOME:-...}/vault/`, `${OP_HOME:-...}/config/`. The `env_file:` directives change. Guardian loses its bind mount to artifacts.
 9. **`packages/cli/src/lib/staging.ts`** — `fullComposeArgs()` must be rewritten to use the new overlay chain from `config/components/` and `openpalm.yml`.
 10. **`CLAUDE.md`** — XDG Directory Model table, Architecture Rules summary, Build & Dev Commands, and any references to CONFIG_HOME/DATA_HOME/STATE_HOME need updating.
 11. **`scripts/dev-setup.sh`** — Must create `~/.openpalm/` structure instead of `.dev/config`, `.dev/data`, `.dev/state`.
@@ -403,7 +403,7 @@ The `user.env` hot-reload via file watcher is an elegant UX improvement but intr
 
 7. **UPDATE** the hot-reload implementation to: (a) apply env var changes atomically (parse full file, then swap all values); (b) verify OpenCode re-reads `process.env` per-request rather than caching provider config at startup; (c) derive the `ALLOWED_KEYS` set from the `user.env.schema` rather than hardcoding it; (d) add a polling fallback for platforms where `fs.watch` is unreliable.
 
-8. **ADD** a migration section to the refactor proposal for the 0.9.x to 0.10.0 transition. Users currently have files in `~/.config/openpalm/`, `~/.local/share/openpalm/`, and `~/.local/state/openpalm/`. The upgrade must detect these, move them to the new layout, and handle the `OPENPALM_CONFIG_HOME` / `OPENPALM_DATA_HOME` / `OPENPALM_STATE_HOME` environment variables (error if set, with migration guidance).
+8. **ADD** a migration section to the refactor proposal for the 0.9.x to 0.10.0 transition. Users currently have files in `~/.config/openpalm/`, `~/.local/share/openpalm/`, and `~/.local/state/openpalm/`. The upgrade must detect these, move them to the new layout, and handle the `OP_CONFIG_HOME` / `OP_DATA_HOME` / `OP_STATE_HOME` environment variables (error if set, with migration guidance).
 
 9. **UPDATE** the assistant mount list to justify mounting `config/` at `/etc/openpalm` (read-only). The current core-principles.md restricts assistant mounts to specific subdirectories. Mounting all of `config/` gives the assistant read access to compose overlays and `openpalm.yml`. While these should not contain secrets (vault is separate), this is a broader read surface than the current model. If the assistant does not need compose overlays, mount only `config/assistant/` and `config/automations/` (if needed).
 

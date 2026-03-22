@@ -1,73 +1,66 @@
 # Backup & Restore
 
-OpenPalm stores all persistent data on the host filesystem using the XDG
-three-tier directory model. This makes backup and restore straightforward:
-archive the right directories, restore them, and restart the stack.
+OpenPalm keeps its persistent state under one home directory,
+`~/.openpalm/` by default. That makes backup simple: preserve that directory,
+restore it, and then start the same compose stack again.
 
 ---
 
 ## What to back up
 
-| Directory | Default path | Contains | Back up? |
-|-----------|-------------|----------|----------|
-| **CONFIG_HOME** | `~/.config/openpalm` | secrets.env, channels, automations, assistant extensions | Yes |
-| **DATA_HOME** | `~/.local/share/openpalm` | stack.env, memory (SQLite), assistant config, guardian data, Caddy certs | Yes |
-| **STATE_HOME** | `~/.local/state/openpalm` | Staged artifacts, audit logs | No -- regenerated on next apply |
+Backing up the entire `~/.openpalm/` tree is the safest option.
 
-STATE_HOME is assembled from CONFIG_HOME and DATA_HOME by the admin on every
-startup. It does not need to be backed up. Audit logs in
-`STATE_HOME/audit/` are the one exception -- archive those separately if
-you need an audit trail.
+If you use the optional `pass` backend for secrets, also back up the host GPG
+material it depends on, typically `${GNUPGHOME:-~/.gnupg}`.
+
+| Path | Contains | Back up? |
+|---|---|---|
+| `~/.openpalm/vault/` | `vault/user/user.env`, `vault/stack/stack.env`, schemas | Yes |
+| `~/.openpalm/config/` | assistant config, automations, optional `stack.yaml` | Yes |
+| `~/.openpalm/stack/` | live compose files and helper scripts | Yes |
+| `~/.openpalm/data/` | durable service data, workspace, stash | Yes |
+| `~/.openpalm/logs/` | logs and audit files | Optional |
 
 ---
 
-## Stop the stack before backup
+## Stop the stack first
 
-SQLite databases (memory service) can produce corrupt backups if written to
-during archiving. Stop the stack first for a consistent snapshot:
+For the most consistent backup, stop the running stack first using the same file
+set you normally use.
+
+Example:
 
 ```bash
-docker compose down
+cd "$HOME/.openpalm/stack"
+docker compose \
+  --project-name openpalm \
+  -f core.compose.yml \
+  -f addons/admin/compose.yml \
+  -f addons/chat/compose.yml \
+  --env-file ../vault/stack/stack.env \
+  --env-file ../vault/user/user.env \
+  down
 ```
 
-If downtime is not acceptable, the memory SQLite database supports WAL mode
-and a hot backup is unlikely to corrupt, but stopping is the only guarantee.
+See the [Manual Compose Runbook](operations/manual-compose-runbook.md) for the full command reference.
 
 ---
 
 ## Backup
 
-Archive CONFIG_HOME and DATA_HOME into a single tarball:
-
 ```bash
-tar czf openpalm-backup-$(date +%Y%m%d).tar.gz \
-  ~/.config/openpalm \
-  ~/.local/share/openpalm
+tar czf openpalm-backup-$(date +%Y%m%d).tar.gz ~/.openpalm
 ```
 
-For custom XDG paths, substitute the actual directories:
-
-```bash
-tar czf openpalm-backup-$(date +%Y%m%d).tar.gz \
-  "$OPENPALM_CONFIG_HOME" \
-  "$OPENPALM_DATA_HOME"
-```
-
-Restart the stack after backup:
-
-```bash
-docker compose up -d
-```
+If `OP_HOME` points elsewhere, archive that directory instead.
 
 ---
 
 ## Restore
 
-### 1. Stop the stack
+### 1. Stop any running stack
 
-```bash
-docker compose down
-```
+Use the same compose file set you normally run (see the [runbook](operations/manual-compose-runbook.md)).
 
 ### 2. Extract the backup
 
@@ -75,80 +68,55 @@ docker compose down
 tar xzf openpalm-backup-YYYYMMDD.tar.gz -C /
 ```
 
-This restores files to their original absolute paths. If restoring to a
-different user or machine, extract to a staging directory first and move
-files to the correct locations.
-
-### 3. Fix ownership
-
-Container processes run as `OPENPALM_UID:OPENPALM_GID` (default 1000:1000).
-After restoring from a backup taken on a different machine or by a different
-user, fix file ownership:
+### 3. Fix ownership if needed
 
 ```bash
-sudo chown -R $(id -u):$(id -g) \
-  ~/.config/openpalm \
-  ~/.local/share/openpalm \
-  ~/.local/state/openpalm
+sudo chown -R $(id -u):$(id -g) ~/.openpalm
 ```
 
-### 4. Restart the stack
+This is especially important when moving between machines or users.
 
-The admin's startup apply regenerates STATE_HOME from the restored
-CONFIG_HOME and DATA_HOME:
+### 4. Start the stack again
 
 ```bash
-docker compose up -d
+cd "$HOME/.openpalm/stack"
+docker compose \
+  -f core.compose.yml \
+  -f addons/admin/compose.yml \
+  -f addons/chat/compose.yml \
+  --env-file ../vault/stack/stack.env \
+  --env-file ../vault/user/user.env \
+  up -d
 ```
 
-Run `docker compose` from the directory containing the compose file, or
-pass `-f` with the path to `STATE_HOME/artifacts/docker-compose.yml`.
+Use the same addon file set you used before the backup.
 
 ---
 
 ## Migration to a new machine
 
-1. On the old machine, stop the stack and create a backup (see above).
-2. Transfer the tarball to the new machine.
-3. Install Docker on the new machine.
-4. Download the installer without starting the stack:
+1. Back up the old machine's `~/.openpalm/`.
+2. Install Docker on the new machine.
+3. Restore the backup into the new user's home directory.
+4. Fix ownership.
+5. Start the stack from `~/.openpalm/stack/` with the same compose file set.
 
-   ```bash
-   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.sh \
-     -o setup.sh
-   bash setup.sh --no-start
-   ```
-
-   Do not pipe directly to `bash` if you need to pass `--no-start`.
-
-5. Extract the backup over the freshly seeded directories:
-
-   ```bash
-   tar xzf openpalm-backup-YYYYMMDD.tar.gz -C /
-   ```
-
-6. Fix ownership (see step 3 above).
-7. Start the stack:
-
-   ```bash
-   docker compose up -d
-   ```
-
-The admin will detect the existing configuration and skip the setup wizard.
+There is no separate staging/artifacts/config-components reconstruction step in
+the current model.
 
 ---
 
 ## Key files reference
 
-| File | Location | Purpose |
-|------|----------|---------|
-| `secrets.env` | CONFIG_HOME | Admin token, LLM provider API keys |
-| `channels/*.yml` | CONFIG_HOME | Installed channel compose overlays |
-| `channels/*.caddy` | CONFIG_HOME | Channel Caddy routes |
-| `automations/*.yml` | CONFIG_HOME | User-defined scheduled automations |
-| `assistant/` | CONFIG_HOME | User OpenCode extensions (tools, plugins, skills) |
-| `stack.env` | DATA_HOME | Host-detected infrastructure config, channel HMAC secrets |
-| `memory/` | DATA_HOME | Memory SQLite database and vector index |
-| `assistant/` | DATA_HOME | System-managed OpenCode config |
-| `caddy/` | DATA_HOME | TLS certificates and Caddy runtime config |
-| `connections/profiles.json` | CONFIG_HOME | LLM connection profiles and role assignments |
+| File or directory | Purpose |
+|---|---|
+| `~/.openpalm/vault/user/user.env` | User secrets and model settings |
+| `~/.openpalm/vault/stack/stack.env` | Stack tokens, ports, paths, image tags |
+| `~/.openpalm/stack/core.compose.yml` | Base stack definition |
+| `~/.openpalm/stack/addons/<name>/compose.yml` | Addon overlays |
+| `~/.openpalm/config/assistant/` | User OpenCode config |
+| `~/.openpalm/config/automations/` | Scheduled automation files |
+| `~/.openpalm/config/stack.yaml` | Optional tooling metadata |
+| `~/.openpalm/data/memory/` | Memory database |
+| `~/.openpalm/data/workspace/` | Shared workspace |
+| `~/.openpalm/logs/` | Logs and audit files |

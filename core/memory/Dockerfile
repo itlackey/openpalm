@@ -49,7 +49,7 @@ RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.pars
     && bun install --production
 
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
-COPY assets/redact.env.schema /app/.env.schema
+COPY .openpalm/vault/redact.env.schema /app/.env.schema
 
 RUN mkdir -p /home/bun \
     && chown -R bun:bun /app /home/bun

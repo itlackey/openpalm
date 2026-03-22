@@ -2,10 +2,10 @@
  * Tests for opencode/client.server.ts — OpenCode REST API client.
  *
  * Verifies:
- * 1. getOpenCodeProviders returns parsed array on success
+ * 1. getOpenCodeProviders calls /provider (singular) and parses { all: [...] } shape
  * 2. Returns empty array on HTTP error
  * 3. Returns empty array on network failure (graceful degradation)
- * 4. Handles { providers: [...] } wrapper shape
+ * 4. Falls back to bare array shape
  * 5. Handles unexpected response shapes gracefully
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
@@ -20,23 +20,27 @@ describe("getOpenCodeProviders", () => {
     fetchMock.mockReset();
   });
 
-  test("returns array when API returns an array directly", async () => {
+  test("calls /provider (singular) and returns providers from { all: [...] } shape", async () => {
     const providers = [{ id: "openai", name: "OpenAI" }, { id: "anthropic", name: "Anthropic" }];
     fetchMock.mockResolvedValue({
       ok: true,
-      json: async () => providers
+      json: async () => ({ all: providers })
     });
 
     const { getOpenCodeProviders } = await import("./client.server.js");
     const result = await getOpenCodeProviders();
     expect(result).toEqual(providers);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/provider$/),
+      expect.any(Object)
+    );
   });
 
-  test("returns providers from wrapped { providers: [...] } shape", async () => {
+  test("falls back to bare array shape when { all } is absent", async () => {
     const providers = [{ id: "openai" }];
     fetchMock.mockResolvedValue({
       ok: true,
-      json: async () => ({ providers })
+      json: async () => providers
     });
 
     const { getOpenCodeProviders } = await import("./client.server.js");

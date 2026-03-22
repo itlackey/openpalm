@@ -1,175 +1,142 @@
-import { describe, expect, test, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { join } from 'node:path';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
+import { stringify as yamlStringify, parse as yamlParse } from 'yaml';
 import { getState, resetState } from '$lib/server/state.js';
-import { writeConnectionsDocument } from '$lib/server/connection-profiles.js';
-import { GET, POST } from './+server.js';
+import { POST } from './+server.js';
 
 function makeTempDir(): string {
-  const dir = join(tmpdir(), `openpalm-test-${randomBytes(4).toString('hex')}`);
+  const dir = join(tmpdir(), `openpalm-assignments-${randomBytes(4).toString('hex')}`);
   mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-let rootDir = '';
-let originalConfigHome: string | undefined;
-let originalStateHome: string | undefined;
-let originalDataHome: string | undefined;
-
-beforeEach(() => {
-  rootDir = makeTempDir();
-  originalConfigHome = process.env.OPENPALM_CONFIG_HOME;
-  originalStateHome = process.env.OPENPALM_STATE_HOME;
-  originalDataHome = process.env.OPENPALM_DATA_HOME;
-  process.env.OPENPALM_CONFIG_HOME = join(rootDir, 'config');
-  process.env.OPENPALM_STATE_HOME = join(rootDir, 'state');
-  process.env.OPENPALM_DATA_HOME = join(rootDir, 'data');
-  resetState('admin-token');
-
+function seedStackYaml(): void {
   const state = getState();
   mkdirSync(state.configDir, { recursive: true });
-  writeFileSync(
-    join(state.configDir, 'secrets.env'),
-    'OPENAI_API_KEY=sk-test\nSYSTEM_LLM_PROVIDER=openai\nSYSTEM_LLM_MODEL=gpt-4.1-mini\nEMBEDDING_MODEL=text-embedding-3-small\nEMBEDDING_DIMS=1536\n'
-  );
-
-  // Seed profiles.json so readConnectionProfilesDocument doesn't throw
-  writeConnectionsDocument(state.configDir, {
-    profiles: [{
-      id: 'primary',
-      name: 'OpenAI',
-      provider: 'openai',
-      baseUrl: '',
-      hasApiKey: true,
-      apiKeyEnvVar: 'OPENAI_API_KEY',
-    }],
-    assignments: {
-      llm: { connectionId: 'primary', model: 'gpt-4.1-mini' },
-      embeddings: { connectionId: 'primary', model: 'text-embedding-3-small', embeddingDims: 1536 },
+  writeFileSync(join(state.configDir, 'stack.yaml'), yamlStringify({
+    version: 2,
+    capabilities: {
+      llm: 'openai/gpt-4o',
+      embeddings: {
+        provider: 'openai',
+        model: 'text-embedding-3-small',
+        dims: 1536,
+      },
+      memory: {
+        userId: 'default_user',
+      },
     },
-  });
-});
+    addons: {},
+  }));
+}
 
-afterEach(() => {
-  process.env.OPENPALM_CONFIG_HOME = originalConfigHome;
-  process.env.OPENPALM_STATE_HOME = originalStateHome;
-  process.env.OPENPALM_DATA_HOME = originalDataHome;
-  rmSync(rootDir, { recursive: true, force: true });
-});
-
-function makeEvent(method: string, body?: unknown, token = 'admin-token'): Parameters<typeof GET>[0] {
+function makeEvent(body: unknown, token = 'admin-token'): Parameters<typeof POST>[0] {
   return {
     request: new Request('http://localhost/admin/connections/assignments', {
-      method,
+      method: 'POST',
       headers: {
         'content-type': 'application/json',
         'x-admin-token': token,
-        'x-request-id': 'req-1',
+        'x-request-id': 'req-assignments',
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: JSON.stringify(body),
     }),
-  } as Parameters<typeof GET>[0];
+  } as Parameters<typeof POST>[0];
 }
+
+let rootDir = '';
+let originalHome: string | undefined;
+
+beforeEach(() => {
+  rootDir = makeTempDir();
+  originalHome = process.env.OP_HOME;
+  process.env.OP_HOME = rootDir;
+  resetState('admin-token');
+  seedStackYaml();
+});
+
+afterEach(() => {
+  process.env.OP_HOME = originalHome;
+  rmSync(rootDir, { recursive: true, force: true });
+});
 
 describe('/admin/connections/assignments route', () => {
   test('requires admin token', async () => {
-    const res = await GET(makeEvent('GET', undefined, 'bad-token'));
+    const res = await POST(makeEvent({ llm: 'openai/gpt-4.1-mini' }, 'bad-token'));
     expect(res.status).toBe(401);
   });
 
-  test('returns assignments and enforces connection id conflict checks', async () => {
-    const current = await GET(makeEvent('GET'));
-    expect(current.status).toBe(200);
-
-    const invalid = await POST(makeEvent('POST', {
-      assignments: {
-        llm: { connectionId: 'missing', model: 'gpt-4.1-mini' },
-        embeddings: { connectionId: 'primary', model: 'text-embedding-3-small', embeddingDims: 1536 },
+  test('rejects malformed capability payloads', async () => {
+    const res = await POST(makeEvent({
+      capabilities: {
+        embeddings: {
+          provider: 'openai',
+          model: 'text-embedding-3-small',
+          dims: '1536',
+        },
       },
     }));
-    expect(invalid.status).toBe(409);
 
-    const valid = await POST(makeEvent('POST', {
-      assignments: {
-        llm: { connectionId: 'primary', model: 'gpt-4.1-mini' },
-        embeddings: { connectionId: 'primary', model: 'text-embedding-3-small', embeddingDims: 1536 },
-      },
-    }));
-    expect(valid.status).toBe(200);
-  });
-
-  test('GET returns empty-default assignments when profiles.json does not exist', async () => {
-    const state = getState();
-    const profilesPath = join(state.configDir, 'connections', 'profiles.json');
-    rmSync(profilesPath, { force: true });
-
-    const res = await GET(makeEvent('GET'));
-    expect(res.status).toBe(200);
-
-    const body = await res.json() as {
-      assignments: {
-        llm: { connectionId: string; model: string };
-        embeddings: { connectionId: string; model: string };
-      };
-    };
-    expect(body.assignments.llm.connectionId).toBe('');
-    expect(body.assignments.embeddings.connectionId).toBe('');
-  });
-
-  test('POST returns 400 when assignments body is missing', async () => {
-    const res = await POST(makeEvent('POST', {}));
     expect(res.status).toBe(400);
+    const body = await res.json() as { message: string };
+    expect(body.message).toContain('embeddings.dims must be a positive integer');
   });
 
-  test('POST returns 409 when embeddings connectionId references unknown profile', async () => {
-    const res = await POST(makeEvent('POST', {
-      assignments: {
-        llm: { connectionId: 'primary', model: 'gpt-4.1-mini' },
-        embeddings: { connectionId: 'does-not-exist', model: 'text-embedding-3-small', embeddingDims: 1536 },
+  test('rejects unsupported capability keys', async () => {
+    const res = await POST(makeEvent({
+      capabilities: {
+        llm: 'openai/gpt-4.1-mini',
+        unexpected: true,
       },
     }));
-    expect(res.status).toBe(409);
+
+    expect(res.status).toBe(400);
+    const body = await res.json() as { message: string };
+    expect(body.message).toContain('unsupported key "unexpected"');
   });
 
-  test('POST saves valid assignments and responds 200 with persisted data', async () => {
-    const res = await POST(makeEvent('POST', {
-      assignments: {
-        llm: { connectionId: 'primary', model: 'gpt-4.1-mini' },
-        embeddings: { connectionId: 'primary', model: 'text-embedding-3-small', embeddingDims: 1536 },
+  test('persists validated assignments and regenerates managed env', async () => {
+    const res = await POST(makeEvent({
+      capabilities: {
+        llm: 'anthropic/claude-sonnet-4',
+        embeddings: {
+          provider: 'google',
+          model: 'text-embedding-004',
+          dims: 768,
+        },
+        memory: {
+          userId: 'owner',
+          customInstructions: 'Keep it concise.',
+        },
       },
     }));
+
     expect(res.status).toBe(200);
 
-    const body = await res.json() as {
-      ok: boolean;
-      assignments: {
-        llm: { connectionId: string; model: string };
-        embeddings: { connectionId: string; model: string; embeddingDims: number };
+    const state = getState();
+    const spec = yamlParse(readFileSync(join(state.configDir, 'stack.yaml'), 'utf-8')) as {
+      capabilities: {
+        llm: string;
+        embeddings: { provider: string; model: string; dims: number };
+        memory: { userId: string; customInstructions?: string };
       };
     };
-    expect(body.ok).toBe(true);
-    expect(body.assignments.llm.connectionId).toBe('primary');
-    expect(body.assignments.llm.model).toBe('gpt-4.1-mini');
-    expect(body.assignments.embeddings.embeddingDims).toBe(1536);
-  });
+    expect(spec.capabilities.llm).toBe('anthropic/claude-sonnet-4');
+    expect(spec.capabilities.embeddings).toEqual({
+      provider: 'google',
+      model: 'text-embedding-004',
+      dims: 768,
+    });
+    expect(spec.capabilities.memory).toEqual({
+      userId: 'owner',
+      customInstructions: 'Keep it concise.',
+    });
 
-  test('POST persists to disk — subsequent GET reflects saved model', async () => {
-    await POST(makeEvent('POST', {
-      assignments: {
-        llm: { connectionId: 'primary', model: 'gpt-4-turbo' },
-        embeddings: { connectionId: 'primary', model: 'text-embedding-ada-002', embeddingDims: 1536 },
-      },
-    }));
-
-    const getRes = await GET(makeEvent('GET'));
-    expect(getRes.status).toBe(200);
-
-    const body = await getRes.json() as {
-      assignments: { llm: { model: string }; embeddings: { model: string } };
-    };
-    expect(body.assignments.llm.model).toBe('gpt-4-turbo');
-    expect(body.assignments.embeddings.model).toBe('text-embedding-ada-002');
+    const managedEnv = readFileSync(join(state.vaultDir, 'stack', 'services', 'memory', 'managed.env'), 'utf-8');
+    expect(managedEnv).toContain('SYSTEM_LLM_PROVIDER=anthropic');
+    expect(managedEnv).toContain('EMBEDDING_MODEL=text-embedding-004');
   });
 });
