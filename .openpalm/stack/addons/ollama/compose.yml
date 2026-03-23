@@ -1,12 +1,17 @@
 # Addon: Ollama — Local LLM inference server
+# Runs as host UID/GID so model files under OP_HOME are user-owned.
+# OLLAMA_MODELS redirects model storage into the bind mount.
 services:
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
     ports:
       - "${OP_OLLAMA_BIND_ADDRESS:-127.0.0.1}:11434:11434"
+    environment:
+      OLLAMA_MODELS: /data/models
     volumes:
-      - ${OP_HOME:-${HOME}/.openpalm}/data/ollama:/root/.ollama
+      - ${OP_HOME}/data/ollama:/data
     networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]

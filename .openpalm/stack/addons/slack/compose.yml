@@ -5,6 +5,7 @@ services:
   slack:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
       PORT: "8185"
       GUARDIAN_URL: http://guardian:8080

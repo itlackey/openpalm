@@ -3,6 +3,7 @@ services:
   voice:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
     ports:
       - "${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT:-3810}:8186"
     environment:

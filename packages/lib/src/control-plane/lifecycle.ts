@@ -104,6 +104,16 @@ async function reconcileCore(
   ensureMemoryDir(state.dataDir);
   ensureCoreAutomations(state.configDir);
 
+  // Pre-create data directories for enabled addons so Docker doesn't
+  // create missing bind-mount source paths as root.
+  const spec = readStackSpec(state.configDir);
+  if (spec?.addons) {
+    for (const [addonName, addon] of Object.entries(spec.addons)) {
+      if (addon === false) continue;
+      mkdirSync(`${state.dataDir}/${addonName}`, { recursive: true });
+    }
+  }
+
   const active: string[] = [];
   for (const [name, status] of Object.entries(state.services)) {
     if (status === "running") active.push(name);

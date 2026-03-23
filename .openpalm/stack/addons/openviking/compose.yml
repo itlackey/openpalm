@@ -4,6 +4,7 @@ services:
     # Image tag configurable via .env for operator upgrades
     image: ghcr.io/itlackey/openviking:${OPENVIKING_IMAGE_TAG:-0.4.2}
     restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
       OPENVIKING_CONFIG_FILE: /app/ov.conf
     extra_hosts:
