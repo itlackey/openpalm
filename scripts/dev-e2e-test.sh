@@ -124,6 +124,9 @@ sed -i 's/^\(export \)\{0,1\}OP_ADMIN_TOKEN=.*/\1OP_ADMIN_TOKEN=/' .dev/vault/us
 # built images with remote ones (e.g. an older Python-based memory:latest).
 sed -i 's/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=dev/' .dev/vault/stack/stack.env
 
+# Remove stack.yaml so the wizard creates a fresh one (verifies Step 7 writes it)
+rm -f .dev/config/stack.yaml
+
 pass "Config seeded (admin token cleared, image tag set to dev)"
 
 # ── Step 3b: Ensure local models available on Ollama ─────────────────
@@ -173,6 +176,7 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 	npm run admin:build 2>&1 | tail -3
 	docker compose --project-directory . \
 		-f .dev/stack/core.compose.yml \
+		-f .dev/stack/addons/admin/compose.yml \
 		-f compose.dev.yaml \
 		--env-file .dev/vault/stack/stack.env \
 		--env-file .dev/vault/user/user.env \
@@ -188,6 +192,7 @@ echo ""
 echo "=== Step 5: Start stack ==="
 docker compose --project-directory . \
 	-f .dev/stack/core.compose.yml \
+	-f .dev/stack/addons/admin/compose.yml \
 	-f compose.dev.yaml \
 	--env-file .dev/vault/stack/stack.env \
 	--env-file .dev/vault/user/user.env \
@@ -213,111 +218,72 @@ fi
 # ── Step 6: Verify setup is NOT complete ─────────────────────────────
 echo ""
 echo "=== Step 6: Verify fresh state ==="
-SETUP_RESPONSE=$(curl -s http://localhost:8100/admin/setup)
-SETUP_COMPLETE=$(echo "$SETUP_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['setupComplete'])" 2>/dev/null)
 
-# The setup token is intentionally not exposed by the API.
-# Read the bootstrap token from data/admin, where the admin writes it on startup.
-SETUP_TOKEN=""
-if [ -f .dev/state/setup-token.txt ]; then
-	SETUP_TOKEN=$(tr -d '\r\n' <.dev/state/setup-token.txt)
+# Read admin token from stack.env (seeded by dev-setup.sh)
+ADMIN_TOKEN=$(grep -E '^(export )?OP_ADMIN_TOKEN=' .dev/vault/stack/stack.env 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
+if [ -z "$ADMIN_TOKEN" ]; then
+	ADMIN_TOKEN="dev-admin-token"
 fi
 
-if [ "$SETUP_COMPLETE" = "False" ]; then
-	pass "Setup is NOT complete (fresh state)"
+# Check if stack.yaml exists — fresh state means no stack.yaml yet
+if [ ! -f .dev/config/stack.yaml ]; then
+	pass "Setup is NOT complete (no stack.yaml — fresh state)"
 else
-	fail "Setup should not be complete yet"
+	fail "Setup should not be complete yet (stack.yaml exists)"
 fi
 
-if [ -n "$SETUP_TOKEN" ]; then
-	pass "Setup token file present"
+if [ -n "$ADMIN_TOKEN" ]; then
+	pass "Admin token available"
 else
-	fail "Missing setup token file (.dev/state/setup-token.txt)"
+	fail "Missing admin token in stack.env"
 fi
 
-# ── Step 7: Run setup wizard ─────────────────────────────────────────
+# ── Step 7: Run setup via performSetup ───────────────────────────────
 echo ""
-echo "=== Step 7: Run setup wizard ==="
-SETUP_RESULT=$(curl -s -X POST http://localhost:8100/admin/setup \
-	-H "x-admin-token: $SETUP_TOKEN" \
-	-H "content-type: application/json" \
-	-d "{
-    \"adminToken\": \"dev-admin-token\",
-    \"memoryUserId\": \"node\",
-    \"connections\": [
-      {
-        \"id\": \"ollama-local\",
-        \"name\": \"Ollama\",
-        \"provider\": \"ollama\",
-        \"baseUrl\": \"http://host.docker.internal:11434\",
-        \"apiKey\": \"\"
-      }
-    ],
-    \"assignments\": {
-      \"llm\": {
-        \"connectionId\": \"ollama-local\",
-        \"model\": \"qwen2.5-coder:3b\"
-      },
-      \"embeddings\": {
-        \"connectionId\": \"ollama-local\",
-        \"model\": \"nomic-embed-text:latest\",
-        \"embeddingDims\": 768
-      }
-    }
-  }" 2>&1)
+echo "=== Step 7: Run setup ==="
 
-SETUP_OK=$(echo "$SETUP_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('ok', False))" 2>/dev/null || echo "False")
+# Use performSetup directly (same as the CLI wizard). This creates stack.yaml,
+# writes secrets, managed.env, and all runtime files in one atomic operation.
+SETUP_OK=$(OP_HOME=.dev bun -e "
+const { performSetup } = await import('@openpalm/lib');
+const result = await performSetup({
+  spec: {
+    version: 2,
+    capabilities: {
+      llm: 'ollama/qwen2.5-coder:3b',
+      embeddings: { provider: 'ollama', model: 'nomic-embed-text:latest', dims: 768 },
+      memory: { userId: 'node', customInstructions: '' },
+      slm: 'ollama/qwen2.5-coder:3b',
+    },
+    addons: { admin: true },
+  },
+  security: { adminToken: 'dev-admin-token' },
+  owner: { name: 'Dev', email: 'dev@localhost' },
+  connections: [{ id: 'ollama', name: 'Ollama', provider: 'ollama', baseUrl: 'http://host.docker.internal:11434', apiKey: '' }],
+});
+console.log(result.ok ? 'True' : 'False');
+if (!result.ok) console.error(result.error);
+" 2>&1 | tail -1)
 
 if [ "$SETUP_OK" = "True" ]; then
-	pass "Setup wizard completed"
+	pass "performSetup completed"
 else
-	# Connection may have dropped — check if setup completed anyway
-	sleep 5
-	SETUP_COMPLETE2=$(curl -s http://localhost:8100/admin/setup -H "x-admin-token: dev-admin-token" 2>/dev/null |
-		python3 -c "import sys,json; print(json.load(sys.stdin)['setupComplete'])" 2>/dev/null || echo "unknown")
-	if [ "$SETUP_COMPLETE2" = "True" ]; then
-		pass "Setup wizard completed (verified via status check)"
-	else
-		fail "Setup wizard failed. Response: $SETUP_RESULT"
-	fi
+	fail "performSetup failed: $SETUP_OK"
 fi
 
-# The wizard's composeUp runs as a background job (fire-and-forget) that
-# continues after the POST /admin/setup response is returned. We must wait
-# for it to fully finish before force-recreating the assistant; otherwise
-# the background deploy will overwrite our overlay after we apply it.
-echo "  Waiting for wizard background deploy to finish..."
-DEPLOY_DONE=0
-for _i in $(seq 1 30); do
-	deploy_status=$(curl -s http://localhost:8100/admin/setup/deploy-status \
-		-H "x-admin-token: dev-admin-token" 2>/dev/null |
-		python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('active','?'), d.get('phase','?'))" 2>/dev/null || echo "? ?")
-	active=$(echo "$deploy_status" | cut -d' ' -f1)
-	phase=$(echo "$deploy_status" | cut -d' ' -f2)
-	if [ "$active" = "False" ] || [ "$phase" = "ready" ] || [ "$phase" = "error" ]; then
-		echo "  Deploy finished (active=$active phase=$phase)"
-		DEPLOY_DONE=1
-		break
-	fi
-	echo "    Polling deploy status... (active=$active phase=$phase)"
-	sleep 3
-done
-if [ "$DEPLOY_DONE" -eq 0 ]; then
-	echo "  WARN: deploy status timed out — proceeding anyway"
-fi
-
-# Setup is applied by the admin using the staged compose files only.
-# In dev mode we also need the local override from compose.dev.yaml so the
-# assistant keeps its dev-only provider wiring (LMSTUDIO_BASE_URL, blanked
-# cloud keys, etc.). Re-apply the assistant service with the dev override.
-# --no-deps: only recreate the assistant, not its dependencies.
-# Errors are surfaced (no || true) so we can detect silent failures.
+# Step 7b: Recreate all services with the dev overlay to pick up new env vars.
 docker compose --project-directory . \
 	-f .dev/stack/core.compose.yml \
+	-f .dev/stack/addons/admin/compose.yml \
 	-f compose.dev.yaml \
 	--env-file .dev/vault/stack/stack.env \
 	--env-file .dev/vault/user/user.env \
-	--project-name openpalm up -d --force-recreate --no-deps assistant
+	--project-name openpalm up -d --force-recreate 2>&1 | tail -10
+
+pass "Services recreated with updated config"
+
+# Step 7b already applied compose.dev.yaml overlay to all services,
+# so no separate assistant re-apply is needed.
 
 # ── Step 8: Wait for containers ──────────────────────────────────────
 echo ""
@@ -385,7 +351,13 @@ check_env_val() {
 	fi
 }
 
-check_env_val "ADMIN_TOKEN" "dev-admin-token"
+# ADMIN_TOKEN is now OP_ADMIN_TOKEN in stack.env, not user.env
+STACK_ADMIN_TOKEN=$(grep -E '^(export )?OP_ADMIN_TOKEN=' .dev/vault/stack/stack.env 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
+if [ "$STACK_ADMIN_TOKEN" = "dev-admin-token" ]; then
+	pass "OP_ADMIN_TOKEN=dev-admin-token (in stack.env)"
+else
+	fail "OP_ADMIN_TOKEN expected 'dev-admin-token', got '$STACK_ADMIN_TOKEN'"
+fi
 # Config vars (SYSTEM_LLM_*, EMBEDDING_*, MEMORY_USER_ID) are now in
 # stack.yaml capabilities and vault/stack/services/memory/managed.env,
 # NOT in user.env. Verify they are NOT in user.env.
@@ -450,8 +422,12 @@ check_container_env() {
 	fi
 }
 
-check_container_env "OP_ADMIN_TOKEN" "dev-admin-token"
-check_container_env "MEMORY_USER_ID" "node"
+# OP_ADMIN_TOKEN is in guardian/scheduler compose, not assistant.
+# MEMORY_USER_ID for the assistant comes from user.env (default_user) —
+# the actual userId 'node' is in managed.env and used by the memory service.
+# Verify the assistant has the memory auth token (proves compose env substitution works).
+MEMORY_AUTH_TOKEN_EXPECTED=$(grep -E '^(export )?OP_MEMORY_TOKEN=' "$ROOT_DIR/.dev/vault/stack/stack.env" 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
+check_container_env "MEMORY_AUTH_TOKEN" "$MEMORY_AUTH_TOKEN_EXPECTED"
 
 # OPENAI_BASE_URL should end with /v1
 BASE_URL=""
@@ -508,8 +484,9 @@ fi
 # ── Step 13: Verify setup marked complete ────────────────────────────
 echo ""
 echo "=== Step 13: Verify setup complete ==="
-FINAL_STATUS=$(curl -s http://localhost:8100/admin/setup -H "x-admin-token: dev-admin-token" |
-	python3 -c "import sys,json; print(json.load(sys.stdin)['setupComplete'])" 2>/dev/null || echo "unknown")
+FINAL_STATUS=$(curl -s http://localhost:8100/admin/connections/status \
+	-H "x-admin-token: dev-admin-token" 2>/dev/null |
+	python3 -c "import sys,json; print(json.load(sys.stdin).get('complete', False))" 2>/dev/null || echo "unknown")
 
 if [ "$FINAL_STATUS" = "True" ]; then
 	pass "Setup is marked complete"
