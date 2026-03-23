@@ -2033,18 +2033,31 @@
     hide($("deploy-error-actions"));
     show($("deploy-done"));
 
-    $("deploy-title").textContent = "Setup Complete";
-    $("deploy-subtitle").textContent = "All services are up and running.";
-    $("deploy-progress-value").textContent = "100%";
-    $("deploy-progress-fill").style.width = "100%";
+    var services = data.deployStatus || [];
+    var deployed = services.length > 0;
 
+    $("deploy-title").textContent = "Setup Complete";
+    $("deploy-progress-value").textContent = deployed ? "100%" : "";
+    $("deploy-progress-fill").style.width = deployed ? "100%" : "0%";
+
+    var subtitle = $("deploy-done").querySelector(".done-subtitle");
+    var consoleLink = $("deploy-done").querySelector(".btn-primary");
     var list = $("deploy-service-list");
     list.innerHTML = "";
-    (data.deployStatus || []).forEach(function (svc) {
-      var li = document.createElement("li");
-      li.textContent = svc.service || svc.label || "";
-      list.appendChild(li);
-    });
+
+    if (deployed) {
+      if (subtitle) subtitle.textContent = "Your OpenPalm stack is up and running.";
+      if (consoleLink) show(consoleLink);
+      services.forEach(function (svc) {
+        var li = document.createElement("li");
+        li.textContent = svc.service || svc.label || "";
+        list.appendChild(li);
+      });
+    } else {
+      // --no-start mode: config saved but services not started
+      if (subtitle) subtitle.textContent = "Configuration saved. Run 'openpalm start' to start services.";
+      if (consoleLink) hide(consoleLink);
+    }
   }
 
   function showDeployError(error) {
