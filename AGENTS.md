@@ -3,6 +3,7 @@
 > **CRITICAL:** All work must comply with [`docs/technical/core-principles.md`](docs/technical/core-principles.md).
 > That document is the **authoritative source of architectural rules** for this project.
 > No implementation may violate its Core Goals, Security Invariants, or Filesystem Contract.
+> **IT IS VERY IMPORTANT THAT YOU AVOID AND/OR REMOVE ALL COMPLEXITY THAT YOU CANNOT PROPERLY JUSTIFY. ALWAYS CALLOUT ANY COMPLEXITY THAT YOU FIND AND CANNOT JUSTIFY**
 
 ---
 

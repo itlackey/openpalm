@@ -61,10 +61,15 @@
   var STEP_LABELS = ["Welcome", "Providers", "Models", "Voice", "Options", "Review"];
   var TOTAL_STEPS = 6;
 
-  /** Whether OpenCode provider discovery is available */
+  /** OpenCode provider discovery state */
   var opencodeAvailable = false;
-  /** Checked once on first Step 1 visit */
   var opencodeChecked = false;
+  /** OpenCode providers: [{ id, name, env[], models{}, authMethods[] }] */
+  var opencodeProviders = [];
+  /** OpenCode auth map: { providerId: [{type, label}] } */
+  var opencodeAuth = {};
+  /** Provider filter query for OpenCode mode */
+  var ocFilterQuery = "";
 
   /* =========================================================================
      Voice / TTS / STT Options
@@ -287,12 +292,16 @@
      ========================================================================= */
 
   function initStep1() {
-    // Check OpenCode availability on first visit
     if (!opencodeChecked) {
       opencodeChecked = true;
       checkOpenCodeAndInit();
+    } else if (opencodeAvailable) {
+      renderOpenCodeProviderGrid();
     } else {
       renderProviderGrid();
+      if (detectedProviders.length === 0 && getVerifiedCount() === 0) {
+        detectProviders();
+      }
     }
   }
 
@@ -304,85 +313,412 @@
         if (data.available) {
           opencodeAvailable = true;
           await loadOpenCodeProviders();
+          renderOpenCodeProviderGrid();
+          // Also detect local providers for base URL info
+          detectProviders();
+          return;
         }
       }
     } catch (e) {
-      // OpenCode not available — fall back to hardcoded providers
+      // fall back
     }
+    // Fallback: hardcoded provider grid
     renderProviderGrid();
-    // Auto-detect local providers on first visit
     if (detectedProviders.length === 0 && getVerifiedCount() === 0) {
       detectProviders();
     }
   }
 
+  /** Local runtimes that aren't in OpenCode's cloud registry but run on the host */
+  var LOCAL_PROVIDERS = [
+    { id: "ollama", name: "Ollama", env: [], models: {}, localUrl: "http://localhost:11434" },
+    { id: "model-runner", name: "Docker Model Runner", env: [], models: {}, localUrl: "http://localhost:12434" },
+    { id: "lmstudio", name: "LM Studio", env: [], models: {}, localUrl: "http://localhost:1234" },
+  ];
+
   async function loadOpenCodeProviders() {
-    try {
-      var res = await fetch("/api/setup/opencode/providers");
-      if (!res.ok) return;
-      var data = await res.json();
-      if (!data.available || !Array.isArray(data.providers)) return;
+    var res = await fetch("/api/setup/opencode/providers");
+    if (!res.ok) return;
+    var data = await res.json();
+    if (!data.available || !Array.isArray(data.providers)) return;
+    opencodeProviders = data.providers;
+    opencodeAuth = data.auth || {};
 
-      // Merge OpenCode providers into PROVIDERS array where missing
-      var existingIds = {};
-      PROVIDERS.forEach(function (p) { existingIds[p.id] = true; });
+    // Ensure local providers are in the list (they aren't in OpenCode's cloud registry)
+    var existingIds = {};
+    opencodeProviders.forEach(function (p) { existingIds[p.id] = true; });
+    LOCAL_PROVIDERS.forEach(function (lp) {
+      if (!existingIds[lp.id]) opencodeProviders.push(lp);
+    });
 
-      data.providers.forEach(function (ocp) {
-        if (existingIds[ocp.id]) return; // Already in hardcoded list
-        // Add dynamically discovered provider
-        PROVIDERS.push({
-          id: ocp.id,
-          name: ocp.name || ocp.id,
-          kind: "cloud",
-          group: "advanced",
-          order: 99,
-          icon: "\uD83D\uDD17", // link emoji
-          desc: ocp.id + " (via OpenCode)",
-          needsKey: true,
-          placeholder: "API key",
-          baseUrl: "",
-          llmModel: "",
-          embModel: "",
-          embDims: 0,
-        });
-        // Init state for new provider
+    // Initialize providerState for each provider
+    opencodeProviders.forEach(function (ocp) {
+      if (!providerState[ocp.id]) {
         providerState[ocp.id] = {
-          selected: false,
-          verified: false,
-          verifying: false,
-          error: false,
-          apiKey: "",
-          baseUrl: "",
-          models: [],
-          ollamaMode: null,
+          selected: false, verified: false, verifying: false, error: false,
+          apiKey: "", baseUrl: ocp.localUrl || "", models: [], ollamaMode: null,
         };
-      });
-
-      // Mark providers that are already authenticated in OpenCode
-      var auth = data.auth || {};
-      for (var providerId in auth) {
-        if (auth[providerId] && auth[providerId].length > 0) {
-          var st = providerState[providerId];
-          if (st && !st.verified) {
-            // Provider has auth methods configured — mark for UI hint
-            st.opencodeAuthed = true;
-          }
-        }
       }
+      // Pre-populate model list from OpenCode provider data
+      var modelIds = Object.keys(ocp.models || {});
+      if (modelIds.length > 0 && providerState[ocp.id].models.length === 0) {
+        providerState[ocp.id].models = modelIds;
+      }
+    });
+  }
+
+  /* ── OpenCode Provider Grid (replaces hardcoded grid when available) ── */
+
+  function renderOpenCodeProviderGrid() {
+    var grid = $("provider-grid");
+    var query = ocFilterQuery.toLowerCase().trim();
+
+    // Filter providers by search query
+    var filtered = opencodeProviders;
+    if (query) {
+      filtered = opencodeProviders.filter(function (p) {
+        return p.name.toLowerCase().indexOf(query) >= 0 || p.id.toLowerCase().indexOf(query) >= 0;
+      });
+    }
+
+    // Sort: connected first, then by name
+    filtered.sort(function (a, b) {
+      var aConn = providerState[a.id] && providerState[a.id].verified ? 1 : 0;
+      var bConn = providerState[b.id] && providerState[b.id].verified ? 1 : 0;
+      if (aConn !== bConn) return bConn - aConn;
+      return a.name.localeCompare(b.name);
+    });
+
+    var html = '';
+
+    // Search filter
+    html += '<div class="model-filter-row" style="margin-bottom:12px">';
+    html += '<input type="text" class="model-filter-input" id="oc-provider-filter" placeholder="Search ' + opencodeProviders.length + ' providers\u2026" value="' + esc(ocFilterQuery) + '" autocomplete="off">';
+    html += '</div>';
+
+    // Provider cards
+    filtered.forEach(function (ocp) {
+      var st = providerState[ocp.id] || {};
+      var modelCount = Object.keys(ocp.models || {}).length;
+      var authMethods = opencodeAuth[ocp.id] || [];
+      var envVars = ocp.env || [];
+      var isExpanded = expandedProvider === ocp.id;
+
+      var cls = "pcard";
+      if (st.verified) cls += " selected verified";
+      else if (isExpanded) cls += " selected";
+      if (isExpanded) cls += " wide";
+
+      html += '<div class="' + cls + '" data-provider="' + esc(ocp.id) + '">';
+
+      // Header
+      html += '<div class="pcard-header" data-toggle-provider="' + esc(ocp.id) + '">';
+      html += '<div class="pcard-info">';
+      html += '<div class="pcard-name">' + esc(ocp.name);
+      if (st.verified) html += ' <span class="vs vs-ok">\u2713</span>';
+      else if (st.verifying) html += ' <span class="vs vs-wait">\u27F3</span>';
+      else if (st.error) html += ' <span class="vs vs-err">\u2717</span>';
+      html += '</div>';
+      html += '<div class="pcard-desc">' + modelCount + ' model' + (modelCount !== 1 ? 's' : '');
+      if (authMethods.length > 0) html += ' \u00B7 ' + authMethods.length + ' auth method' + (authMethods.length !== 1 ? 's' : '');
+      html += '</div>';
+      html += '</div>';
+      html += '<div class="pcard-check">' + (st.verified ? '\u2713' : '') + '</div>';
+      html += '</div>';
+
+      // Expanded auth panel
+      if (isExpanded) {
+        html += renderOpenCodeAuth(ocp, authMethods, envVars);
+      }
+
+      html += '</div>';
+    });
+
+    if (filtered.length === 0 && query) {
+      html += '<div style="text-align:center;padding:24px;color:var(--color-text-secondary)">No providers match "' + esc(query) + '"</div>';
+    }
+
+    grid.innerHTML = html;
+
+    // Update nav
+    var vc = getVerifiedCount();
+    var info = $("provider-count-info");
+    if (vc > 0) {
+      info.innerHTML = '<b>' + vc + '</b> provider' + (vc > 1 ? 's' : '') + ' ready';
+    } else {
+      info.textContent = 'Connect at least one';
+    }
+    $("btn-step1-next").disabled = vc === 0;
+
+    // Bind events
+    bindOpenCodeProviderEvents();
+  }
+
+  function renderOpenCodeAuth(ocp, authMethods, envVars) {
+    var st = providerState[ocp.id] || {};
+    var html = '<div class="pcard-auth">';
+
+    if (st.verified) {
+      html += '<div class="auth-feedback auth-feedback-ok">Connected</div>';
+      html += '</div>';
+      return html;
+    }
+
+    if (st.error) {
+      var errMsg = st.errorMessage || 'Connection failed';
+      html += '<div class="auth-feedback auth-feedback-err">' + esc(errMsg) + '</div>';
+    }
+
+    // Show auth methods if available
+    if (authMethods.length > 0) {
+      authMethods.forEach(function (method, idx) {
+        if (method.type === "api") {
+          html += '<div class="auth-row" style="margin-bottom:6px">';
+          html += '<input type="password" placeholder="API key" value="' + esc(st.apiKey || '') + '" data-auth-key="' + esc(ocp.id) + '" onclick="event.stopPropagation()">';
+          html += '<button class="auth-btn auth-btn-verify" data-oc-auth-api="' + esc(ocp.id) + '" onclick="event.stopPropagation()" ' + (st.verifying ? 'disabled' : '') + '>';
+          html += st.verifying ? 'Connecting...' : esc(method.label);
+          html += '</button></div>';
+        } else if (method.type === "oauth") {
+          html += '<div class="auth-row" style="margin-bottom:6px">';
+          html += '<button class="auth-btn auth-btn-detect" data-oc-auth-oauth="' + esc(ocp.id) + ':' + idx + '" onclick="event.stopPropagation()" style="width:100%" ' + (st.verifying ? 'disabled' : '') + '>';
+          html += st.verifying ? 'Waiting...' : esc(method.label);
+          html += '</button></div>';
+        }
+      });
+    } else if (envVars.length > 0) {
+      // No auth methods — show env var API key input
+      html += '<div class="auth-row">';
+      html += '<input type="password" placeholder="' + esc(envVars[0]) + '" value="' + esc(st.apiKey || '') + '" data-auth-key="' + esc(ocp.id) + '" onclick="event.stopPropagation()">';
+      html += '<button class="auth-btn auth-btn-verify" data-oc-auth-api="' + esc(ocp.id) + '" onclick="event.stopPropagation()" ' + (st.verifying ? 'disabled' : '') + '>';
+      html += st.verifying ? 'Connecting...' : 'Connect';
+      html += '</button></div>';
+    } else {
+      html += '<div style="padding:4px 0;color:var(--color-text-secondary);font-size:var(--text-xs)">No authentication required</div>';
+      html += '<button class="auth-btn auth-btn-detect" data-oc-auth-none="' + esc(ocp.id) + '" onclick="event.stopPropagation()">Mark as ready</button>';
+    }
+
+    // OAuth polling status
+    if (st.oauthPolling) {
+      html += '<div style="text-align:center;padding:8px">';
+      if (st.oauthUrl) {
+        html += '<p style="margin-bottom:6px"><a href="' + esc(st.oauthUrl) + '" target="_blank" rel="noopener" style="color:var(--color-accent)">Open authorization page \u2192</a></p>';
+      }
+      if (st.oauthInstructions) {
+        html += '<p style="margin-bottom:6px;white-space:pre-wrap;font-size:var(--text-xs)">' + esc(st.oauthInstructions) + '</p>';
+      }
+      html += '<p><span class="spinner"></span> Waiting for authorization...</p>';
+      html += '<button class="auth-btn" data-oc-auth-cancel="' + esc(ocp.id) + '" onclick="event.stopPropagation()" style="margin-top:6px">Cancel</button>';
+      html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  function bindOpenCodeProviderEvents() {
+    // Filter input
+    var filterInput = $("oc-provider-filter");
+    if (filterInput) {
+      filterInput.addEventListener("input", function () {
+        ocFilterQuery = filterInput.value;
+        renderOpenCodeProviderGrid();
+        // Re-focus the filter input after re-render
+        var newInput = $("oc-provider-filter");
+        if (newInput) { newInput.focus(); newInput.selectionStart = newInput.selectionEnd = newInput.value.length; }
+      });
+    }
+
+    // Card header toggle
+    document.querySelectorAll("[data-toggle-provider]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var id = el.dataset.toggleProvider;
+        expandedProvider = expandedProvider === id ? null : id;
+        renderOpenCodeProviderGrid();
+      });
+    });
+
+    // Check icon: deselect
+    document.querySelectorAll(".pcard-check").forEach(function (el) {
+      el.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var card = el.closest("[data-provider]");
+        if (!card) return;
+        var id = card.dataset.provider;
+        var st = providerState[id];
+        if (st && st.verified) {
+          st.verified = false;
+          st.error = false;
+          st.apiKey = "";
+          if (expandedProvider === id) expandedProvider = null;
+          renderOpenCodeProviderGrid();
+        }
+      });
+    });
+
+    // API key inputs
+    document.querySelectorAll("[data-auth-key]").forEach(function (el) {
+      el.addEventListener("input", function () {
+        var id = el.dataset.authKey;
+        if (providerState[id]) providerState[id].apiKey = el.value;
+      });
+    });
+
+    // API key auth buttons
+    document.querySelectorAll("[data-oc-auth-api]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        connectOpenCodeApiKey(el.dataset.ocAuthApi);
+      });
+    });
+
+    // OAuth buttons
+    document.querySelectorAll("[data-oc-auth-oauth]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var parts = el.dataset.ocAuthOauth.split(":");
+        startOpenCodeOAuth(parts[0], parseInt(parts[1], 10));
+      });
+    });
+
+    // Cancel OAuth polling
+    document.querySelectorAll("[data-oc-auth-cancel]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var st = providerState[el.dataset.ocAuthCancel];
+        if (st) { st.oauthPolling = false; st.verifying = false; }
+        renderOpenCodeProviderGrid();
+      });
+    });
+
+    // No-auth "mark ready" button
+    document.querySelectorAll("[data-oc-auth-none]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var id = el.dataset.ocAuthNone;
+        var st = providerState[id];
+        if (st) { st.verified = true; st.error = false; }
+        renderOpenCodeProviderGrid();
+      });
+    });
+  }
+
+  async function connectOpenCodeApiKey(providerId) {
+    var st = providerState[providerId];
+    if (!st || !st.apiKey) return;
+
+    st.verifying = true;
+    st.error = false;
+    renderOpenCodeProviderGrid();
+
+    try {
+      var res = await fetch("/api/setup/opencode/auth/" + encodeURIComponent(providerId), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "api", key: st.apiKey }),
+      });
+      if (!res.ok) {
+        var data = await res.json().catch(function () { return {}; });
+        throw new Error(data.message || "Failed to connect (HTTP " + res.status + ")");
+      }
+      st.verified = true;
+      st.error = false;
     } catch (e) {
-      // non-fatal
+      st.verified = false;
+      st.error = true;
+      st.errorMessage = e.message || "Connection failed";
+    }
+
+    st.verifying = false;
+    renderOpenCodeProviderGrid();
+  }
+
+  async function startOpenCodeOAuth(providerId, methodIndex) {
+    var st = providerState[providerId];
+    if (!st) return;
+
+    st.verifying = true;
+    st.error = false;
+    renderOpenCodeProviderGrid();
+
+    try {
+      var res = await fetch("/api/setup/opencode/provider/" + encodeURIComponent(providerId) + "/oauth/authorize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ method: methodIndex }),
+      });
+      var data = await res.json();
+      if (!res.ok) throw new Error(data.message || "OAuth failed");
+
+      st.oauthPolling = true;
+      st.oauthUrl = data.url || "";
+      st.oauthInstructions = data.instructions || "";
+      renderOpenCodeProviderGrid();
+
+      // Open auth URL automatically
+      if (data.url && data.method === "auto") {
+        window.open(data.url, "_blank");
+      }
+
+      // Poll for completion
+      await pollOpenCodeOAuth(providerId, methodIndex);
+    } catch (e) {
+      st.verifying = false;
+      st.error = true;
+      st.errorMessage = e.message || "OAuth failed";
+      st.oauthPolling = false;
+      renderOpenCodeProviderGrid();
+    }
+  }
+
+  async function pollOpenCodeOAuth(providerId, methodIndex) {
+    var st = providerState[providerId];
+    for (var i = 0; i < 120 && st.oauthPolling; i++) {
+      await new Promise(function (r) { setTimeout(r, 5000); });
+      if (!st.oauthPolling) break;
+
+      try {
+        var res = await fetch("/api/setup/opencode/provider/" + encodeURIComponent(providerId) + "/oauth/callback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ method: methodIndex }),
+        });
+        var data = await res.json().catch(function () { return null; });
+        if (res.ok && data) {
+          // OAuth complete — provider is now authed
+          st.verified = true;
+          st.error = false;
+          st.oauthPolling = false;
+          st.verifying = false;
+          renderOpenCodeProviderGrid();
+          return;
+        }
+      } catch (e) {
+        // retry
+      }
+    }
+
+    if (st.oauthPolling) {
+      st.oauthPolling = false;
+      st.verifying = false;
+      st.error = true;
+      st.errorMessage = "Authorization timed out";
+      renderOpenCodeProviderGrid();
     }
   }
 
   function getVerifiedCount() {
     var count = 0;
-    PROVIDERS.forEach(function (p) {
-      if (providerState[p.id].verified) count++;
+    var ids = opencodeAvailable
+      ? opencodeProviders.map(function (p) { return p.id; })
+      : PROVIDERS.map(function (p) { return p.id; });
+    ids.forEach(function (id) {
+      if (providerState[id] && providerState[id].verified) count++;
     });
     return count;
   }
 
   function renderProviderGrid() {
+    if (opencodeAvailable) { renderOpenCodeProviderGrid(); return; }
+    renderFallbackProviderGrid();
+  }
+
+  function renderFallbackProviderGrid() {
     var grid = $("provider-grid");
     var html = "";
 
@@ -634,15 +970,6 @@
       st.verified = true;
       st.error = false;
       st.models = result.models || [];
-
-      // Write API key to OpenCode (auth.json) if available — non-blocking
-      if (opencodeAvailable && apiKey) {
-        fetch("/api/setup/opencode/providers/" + encodeURIComponent(id) + "/auth", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ apiKey: apiKey }),
-        }).catch(function () { /* non-critical */ });
-      }
     } catch (e) {
       if (verifyGeneration[id] !== gen) return;
       st.verified = false;
@@ -664,6 +991,24 @@
   }
 
   function getVerifiedProviders() {
+    if (opencodeAvailable) {
+      return opencodeProviders
+        .filter(function (p) { return providerState[p.id] && providerState[p.id].verified; })
+        .map(function (p) {
+          // Normalize to the shape the rest of the wizard expects
+          var st = providerState[p.id];
+          return {
+            id: p.id,
+            name: p.name || p.id,
+            kind: "cloud",
+            icon: "",
+            baseUrl: st.baseUrl || "",
+            llmModel: "",
+            embModel: "",
+            embDims: 0,
+          };
+        });
+    }
     return PROVIDERS.filter(function (p) { return providerState[p.id].verified; });
   }
 
@@ -1725,21 +2070,24 @@
         var data = await res.json();
         detectedProviders = data.providers || [];
 
-        // Auto-select and pre-verify detected providers
         detectedProviders.forEach(function (dp) {
           if (!dp.available) return;
           var st = providerState[dp.provider];
           if (st) {
             st.baseUrl = dp.url;
-            // Auto-select detected providers
-            if (!st.selected) {
-              st.selected = true;
-              if (dp.provider === "ollama") {
-                st.ollamaMode = "running";
+            if (opencodeAvailable) {
+              // In OpenCode mode: mark local providers as verified directly
+              // (they don't need API keys — just a reachable URL)
+              st.verified = true;
+              st.error = false;
+            } else {
+              // Fallback mode: auto-select and verify via model fetch
+              if (!st.selected) {
+                st.selected = true;
+                if (dp.provider === "ollama") st.ollamaMode = "running";
               }
+              verifyProvider(dp.provider);
             }
-            // Auto-verify by fetching models
-            verifyProvider(dp.provider);
           }
         });
       }

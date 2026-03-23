@@ -92,7 +92,8 @@ export function createOpenCodeClient(opts: OpenCodeClientOpts) {
   }
 
   async function isAvailable(): Promise<boolean> {
-    const result = await proxy('/health');
+    // OpenCode has no /health endpoint — check /provider instead
+    const result = await proxy('/provider');
     return result.ok;
   }
 

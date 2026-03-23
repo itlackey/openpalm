@@ -246,7 +246,7 @@ export function createSetupServer(
       });
     }
 
-    // ── API: OpenCode Provider Status ───────────────────────────────
+    // ── API: OpenCode Status ────────────────────────────────────────
 
     if (method === "GET" && path === "/api/setup/opencode/status") {
       if (!ocClient) return jsonResponse(200, { ok: true, available: false });
@@ -254,7 +254,7 @@ export function createSetupServer(
       return jsonResponse(200, { ok: true, available });
     }
 
-    // ── API: OpenCode Providers ──────────────────────────────────────
+    // ── API: OpenCode Providers (merged providers + auth) ────────────
 
     if (method === "GET" && path === "/api/setup/opencode/providers") {
       if (!ocClient) return jsonResponse(200, { ok: true, available: false, providers: [] });
@@ -265,28 +265,21 @@ export function createSetupServer(
       return jsonResponse(200, { ok: true, available: true, providers, auth });
     }
 
-    // ── API: OpenCode Provider Auth ──────────────────────────────────
+    // ── API: OpenCode Proxy (all other /api/setup/opencode/* paths) ──
+    // Strips /api/setup/opencode prefix and forwards to the OpenCode subprocess.
+    // This handles auth (PUT /auth/:id), OAuth flows, config, etc.
 
-    const ocAuthMatch = matchRoute(path, "/api/setup/opencode/providers/:id/auth");
-    if (method === "POST" && ocAuthMatch) {
-      if (!ocClient) return errorResponse(503, "opencode_unavailable", "OpenCode subprocess not available");
-      const providerId = ocAuthMatch.id;
-
-      let reqBody: Record<string, unknown> = {};
-      try {
-        reqBody = (await req.json()) as Record<string, unknown>;
-      } catch {
-        return errorResponse(400, "invalid_json", "Request body must be valid JSON");
+    if (path.startsWith("/api/setup/opencode/") && path !== "/api/setup/opencode/status" && path !== "/api/setup/opencode/providers") {
+      if (!ocClient) return errorResponse(503, "opencode_unavailable", "OpenCode not available");
+      const ocPath = path.replace("/api/setup/opencode", "");
+      const proxyOpts: RequestInit = { method };
+      if (method !== "GET" && method !== "HEAD") {
+        try { proxyOpts.body = await req.text(); } catch { /* empty body */ }
+        proxyOpts.headers = { "Content-Type": req.headers.get("Content-Type") || "application/json" };
       }
-
-      const apiKey = typeof reqBody.apiKey === "string" ? reqBody.apiKey.trim() : "";
-      if (!apiKey) return errorResponse(400, "bad_request", "apiKey is required");
-
-      const result = await ocClient.setProviderApiKey(providerId, apiKey);
-      if (!result.ok) {
-        return jsonResponse(result.status, { ok: false, error: result.code, message: result.message });
-      }
-      return jsonResponse(200, { ok: true });
+      const result = await ocClient.proxy(ocPath, proxyOpts);
+      if (!result.ok) return jsonResponse(result.status, { ok: false, error: result.code, message: result.message });
+      return jsonResponse(200, result.data);
     }
 
     // ── 404 ──────────────────────────────────────────────────────────

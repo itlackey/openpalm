@@ -86,7 +86,8 @@ export async function startOpenCodeSubprocess(opts: {
       const deadline = Date.now() + READY_TIMEOUT_MS;
       while (Date.now() < deadline) {
         try {
-          const res = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(2000) });
+          // OpenCode has no /health endpoint — check /provider instead
+          const res = await fetch(`${baseUrl}/provider`, { signal: AbortSignal.timeout(2000) });
           if (res.ok) return true;
         } catch {
           // not ready yet

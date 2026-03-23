@@ -184,22 +184,23 @@ async function prepareInstallFiles(
 
   try { ensureOpenCodeConfig(); ensureOpenCodeSystemConfig(); } catch { /* non-fatal */ }
 
-  console.log('Validating configuration...');
   try {
     await Promise.race([
       runVarlockValidation(dataDir, vaultDir),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('varlock validation timed out')), 15_000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5_000)),
     ]);
-  } catch { /* non-fatal */ }
+    console.log('Configuration validated.');
+  } catch { /* non-fatal, skip silently */ }
 }
 
 async function runWizardInstall(configDir: string, noOpen: boolean, noStart = false): Promise<void> {
   console.log('Starting setup wizard...');
 
-  // Start OpenCode subprocess (non-fatal if binary missing)
+  // Start OpenCode subprocess for provider discovery (non-fatal if unavailable)
   let openCodeSub: OpenCodeSubprocess | null = null;
   let openCodeClient: ReturnType<typeof createOpenCodeClient> | undefined;
   try {
+    console.log('Starting provider discovery...');
     openCodeSub = await startOpenCodeSubprocess({
       homeDir: resolveOpenPalmHome(),
       configDir: resolveConfigDir(),
@@ -209,14 +210,13 @@ async function runWizardInstall(configDir: string, noOpen: boolean, noStart = fa
     const ready = await openCodeSub.waitForReady();
     if (ready) {
       openCodeClient = createOpenCodeClient({ baseUrl: openCodeSub.baseUrl });
-      console.log('OpenCode provider discovery available.');
     } else {
-      console.warn('Warning: OpenCode subprocess did not become ready. Using built-in providers.');
+      console.log('Provider discovery unavailable. Using built-in provider list.');
       await openCodeSub.stop();
       openCodeSub = null;
     }
   } catch {
-    console.warn('Warning: OpenCode not found on PATH. Using built-in providers.');
+    console.log('Provider discovery unavailable. Using built-in provider list.');
     openCodeSub = null;
   }
 
