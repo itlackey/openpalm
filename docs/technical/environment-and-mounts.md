@@ -300,10 +300,10 @@ Key env:
 | `voice` | `${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT:-3810}` | `8186` | `channel_lan` | Voice interface |
 | `discord` | none | service-specific | `channel_lan` | No host port exposure |
 | `slack` | none | service-specific | `channel_lan` | No host port exposure |
-| `ollama` | `${OP_OLLAMA_BIND_ADDRESS:-127.0.0.1}:11434` | `11434` | `assistant_net` | Mounts `$OP_HOME/data/ollama:/root/.ollama` |
-| `openviking` | none | service-specific | `assistant_net` | Mounts `$OP_HOME/data/openviking:/workspace` |
+| `ollama` | `${OP_OLLAMA_BIND_ADDRESS:-127.0.0.1}:11434` | `11434` | `assistant_net` | Mounts `$OP_HOME/data/ollama:/data`, `user: ${OP_UID}:${OP_GID}`, `OLLAMA_MODELS=/data/models` |
+| `openviking` | none | service-specific | `assistant_net` | Mounts `$OP_HOME/data/openviking:/workspace`, `user: ${OP_UID}:${OP_GID}` |
 
-All shipped channel overlays depend on guardian and receive only their own HMAC secret via `${VAR}` substitution from `vault/stack/guardian.env` (passed as a compose `--env-file`).
+All addon and channel services use `user: "${OP_UID:-1000}:${OP_GID:-1000}"` to ensure bind-mounted files are owned by the host user. All shipped channel overlays depend on guardian and receive only their own HMAC secret via `${VAR}` substitution from `vault/stack/guardian.env` (passed as a compose `--env-file`).
 
 ---
 

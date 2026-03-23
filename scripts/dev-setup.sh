@@ -55,7 +55,7 @@ mkdir -p \
 	"$DATA_DIR/memory" "$DATA_DIR/assistant/.config/opencode" \
 	"$DATA_DIR/admin/.varlock" \
 	"$DATA_DIR/guardian" \
-	"$DATA_DIR/automations" "$DATA_DIR/models" "$DATA_DIR/stash" "$DATA_DIR/workspace" \
+	"$DATA_DIR/automations" "$DATA_DIR/ollama" "$DATA_DIR/stash" "$DATA_DIR/workspace" \
 	"$LOGS_DIR/opencode" \
 	"$DEV_ROOT/work"
 
