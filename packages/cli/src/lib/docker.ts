@@ -1,5 +1,5 @@
-import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { join, dirname, relative } from 'node:path';
 import { resolveCacheHome } from '@openpalm/lib';
 
 const REPO_OWNER = 'itlackey';
@@ -127,6 +127,100 @@ export async function runDockerComposeCapture(args: string[]): Promise<string> {
 
 // ensureOpenCodeConfig and ensureOpenCodeSystemConfig are imported from @openpalm/lib.
 // See packages/lib/src/control-plane/secrets.ts and core-assets.ts.
+
+/**
+ * Downloads the .openpalm/ directory from GitHub and seeds it into homeDir.
+ *
+ * Mapping:
+ *   .openpalm/stack/   → homeDir/stack/
+ *   .openpalm/config/  → homeDir/config/  (seed only, don't overwrite user files)
+ *   .openpalm/vault/   → homeDir/vault/   (schemas only)
+ *
+ * Also seeds assistant config files from core/assistant/opencode/.
+ */
+export async function seedOpenPalmDir(
+  repoRef: string,
+  homeDir: string,
+  configDir: string,
+  vaultDir: string,
+  dataDir: string,
+): Promise<void> {
+  const tarballUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/archive/${repoRef}.tar.gz`;
+  const tmpDir = join(homeDir, '.seed-tmp');
+  const tmpTar = join(tmpDir, 'repo.tar.gz');
+
+  try {
+    await mkdir(tmpDir, { recursive: true });
+
+    const res = await fetch(tarballUrl, { signal: AbortSignal.timeout(60_000) });
+    if (!res.ok) throw new Error(`Failed to download tarball (HTTP ${res.status})`);
+    await Bun.write(tmpTar, res);
+
+    // Extract just .openpalm/ and core/assistant/opencode/ from the tarball
+    const extractProc = Bun.spawn(
+      ['tar', 'xzf', tmpTar, '--strip-components=1', '--wildcards',
+        '*/.openpalm/*', '*/core/assistant/opencode/*'],
+      { cwd: tmpDir, stdout: 'ignore', stderr: 'pipe' },
+    );
+    await extractProc.exited;
+
+    // Seed stack/ → homeDir/stack/ (always overwrite — system-managed)
+    const srcStack = join(tmpDir, '.openpalm', 'stack');
+    if (await Bun.file(join(srcStack, 'core.compose.yml')).exists()) {
+      await copyTree(srcStack, join(homeDir, 'stack'));
+    }
+
+    // Seed config/automations/ → configDir/automations/ (only missing files)
+    // Don't seed stack.yaml or other root config templates — the wizard creates those.
+    const srcAutomations = join(tmpDir, '.openpalm', 'config', 'automations');
+    if (await dirExists(srcAutomations)) {
+      await copyTree(srcAutomations, join(configDir, 'automations'), { skipExisting: true });
+    }
+
+    // Seed vault schemas → vaultDir (only .schema files)
+    const srcVault = join(tmpDir, '.openpalm', 'vault');
+    if (await dirExists(srcVault)) {
+      await copyTree(srcVault, vaultDir, { onlyPattern: /\.schema$/ });
+    }
+
+    // Seed assistant config
+    const srcAssistant = join(tmpDir, 'core', 'assistant', 'opencode');
+    if (await dirExists(srcAssistant)) {
+      await copyTree(srcAssistant, join(dataDir, 'assistant'));
+    }
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function dirExists(path: string): Promise<boolean> {
+  try {
+    const stat = await Bun.file(join(path, '.')).exists();
+    // Bun.file().exists() doesn't work for dirs, use a different check
+    const proc = Bun.spawn(['test', '-d', path], { stdout: 'ignore', stderr: 'ignore' });
+    return (await proc.exited) === 0;
+  } catch { return false; }
+}
+
+async function copyTree(
+  src: string,
+  dest: string,
+  opts?: { skipExisting?: boolean; onlyPattern?: RegExp },
+): Promise<void> {
+  const proc = Bun.spawn(['find', src, '-type', 'f'], { stdout: 'pipe' });
+  const output = await new Response(proc.stdout).text();
+  await proc.exited;
+
+  for (const srcFile of output.trim().split('\n').filter(Boolean)) {
+    const rel = relative(src, srcFile);
+    if (opts?.onlyPattern && !opts.onlyPattern.test(rel)) continue;
+    const destFile = join(dest, rel);
+    if (opts?.skipExisting && await Bun.file(destFile).exists()) continue;
+    await mkdir(dirname(destFile), { recursive: true });
+    const content = await Bun.file(srcFile).arrayBuffer();
+    await writeFile(destFile, new Uint8Array(content));
+  }
+}
 
 /**
  * Opens a URL in the user's default browser. Best-effort, never throws.

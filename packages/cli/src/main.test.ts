@@ -230,11 +230,11 @@ describe('cli main', () => {
     try {
       await main(['install', '--no-start', '--force', '--no-open']);
 
-      // Verify that assets were fetched using the version-pinned ref, not 'main'
-      const composeUrl = fetchedUrls.find((u) => u.includes('/core.compose.yml'));
-      expect(composeUrl).toBeDefined();
-      expect(composeUrl).toContain(expectedRef);
-      expect(composeUrl).not.toContain('/main/');
+      // Verify that the tarball was fetched using the version-pinned ref, not 'main'
+      const tarballUrl = fetchedUrls.find((u) => u.includes('/archive/'));
+      expect(tarballUrl).toBeDefined();
+      expect(tarballUrl).toContain(expectedRef);
+      expect(tarballUrl).not.toContain('/main.');
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
