@@ -121,8 +121,8 @@ describe("createOpenCodeClient", () => {
     expect(receivedBody).toEqual({ type: "api", key: "sk-test-123" });
   });
 
-  test("isAvailable returns true when /health responds 200", async () => {
-    startMockServer(() => new Response(JSON.stringify({ ok: true }), {
+  test("isAvailable returns true when /provider responds 200", async () => {
+    startMockServer(() => new Response(JSON.stringify({ all: [] }), {
       headers: { "Content-Type": "application/json" },
     }));
 
