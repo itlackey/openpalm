@@ -38,3 +38,6 @@ packages/channel-voice/test-results/.last-run.json
 .openpalm/workspace/*/
 !.openpalm/workspace/README.md
 packages/admin-tools/dist/index.js
+.dev-tmp/
+.dev-tmp*
+.dev-tmp2/

@@ -111,6 +111,7 @@ async function parseConfigFile(filePath: string, raw: string): Promise<Record<st
 }
 
 export async function bootstrapInstall(options: InstallOptions): Promise<void> {
+  console.log('Checking Docker...');
   await requireDocker();
 
   const homeDir = resolveOpenPalmHome();
@@ -124,11 +125,13 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     throw new Error('OpenPalm appears to already be installed. Re-run install with --force to continue.');
   }
 
+  console.log('Preparing directories...');
   await ensureDirectoryTree(homeDir, configDir, vaultDir, dataDir, workDir);
 
   try { await Bun.write(join(dataDir, 'host.json'), JSON.stringify(await detectHostInfo(), null, 2) + '\n'); }
   catch { /* non-fatal */ }
 
+  console.log('Downloading assets...');
   await Bun.write(
     join(homeDir, 'stack', 'core.compose.yml'),
     await fetchAsset(options.version, '.openpalm/stack/core.compose.yml'),
@@ -150,13 +153,27 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     catch { /* non-fatal */ }
   }));
 
+  console.log('Configuring secrets...');
   await ensureSecrets(vaultDir);
   await ensureStackEnv(homeDir, vaultDir, workDir, options.version, resolveRequestedImageTag(options.version) ?? undefined);
 
+  // Ensure guardian.env exists as a file (not directory) before compose runs.
+  // Docker bind mounts create a directory when the source path is missing.
+  const guardianEnvPath = join(vaultDir, 'stack', 'guardian.env');
+  const guardianStat = await Bun.file(guardianEnvPath).exists();
+  if (!guardianStat) {
+    await Bun.write(guardianEnvPath, '# Guardian channel HMAC secrets — managed by openpalm\n');
+  }
+
   try { ensureOpenCodeConfig(); ensureOpenCodeSystemConfig(); } catch { /* non-fatal on first install */ }
 
-  // Non-fatal varlock validation
-  try { await runVarlockValidation(dataDir, vaultDir); } catch { /* non-fatal */ }
+  // Non-fatal varlock validation (with 15s timeout to avoid blocking the wizard)
+  try {
+    await Promise.race([
+      runVarlockValidation(dataDir, vaultDir),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('varlock validation timed out')), 15_000)),
+    ]);
+  } catch { /* non-fatal */ }
 
   if (options.noStart && !options.file) {
     console.log('OpenPalm files prepared. Run `openpalm start` to start services.');

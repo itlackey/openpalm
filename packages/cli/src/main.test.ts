@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
-import { existsSync, mkdirSync, writeFileSync, chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -136,6 +136,11 @@ describe('cli main', () => {
       await main(['install', '--no-start', '--force', '--no-open']);
       // Bootstrap runs directly, creating directories
       expect(existsSync(join(dataHome, 'admin'))).toBe(true);
+      // guardian.env must be a file (not directory) — Docker creates a directory
+      // when bind-mounting a non-existent source path, breaking compose up.
+      const guardianEnv = join(base, 'vault', 'stack', 'guardian.env');
+      expect(existsSync(guardianEnv)).toBe(true);
+      expect(statSync(guardianEnv).isFile()).toBe(true);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
@@ -500,6 +505,31 @@ describe('install image tag pinning', () => {
       'OP_IMAGE_TAG=v1.0.0\n',
     );
   });
+});
+
+describe('cli entrypoint (subprocess)', () => {
+  it('produces output when run as a subprocess (catches missing top-level await)', async () => {
+    const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-entry-'));
+    const workDir = join(tempHome, 'work');
+    mkdirSync(workDir, { recursive: true });
+    const mainPath = join(fileURLToPath(new URL('./', import.meta.url)), 'main.ts');
+    try {
+      // Run install --no-start --no-open as a real subprocess with mocked docker/fetch.
+      // This exercises the import.meta.main code path that in-process tests skip.
+      const proc = Bun.spawn(['bun', mainPath, 'install', '--no-start', '--no-open', '--force'], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, OP_HOME: tempHome, OP_WORK_DIR: workDir },
+      });
+      const stdout = await new Response(proc.stdout).text();
+      const stderr = await new Response(proc.stderr).text();
+      const code = await proc.exited;
+      // The process must produce output — silent exit 0 was the bug
+      expect(stdout.length + stderr.length).toBeGreaterThan(0);
+    } finally {
+      rmSync(tempHome, { recursive: true, force: true });
+    }
+  }, 60_000);
 });
 
 describe('secrets.env generation', () => {
