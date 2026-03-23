@@ -68,10 +68,12 @@ export {
 // ── Audit ───────────────────────────────────────────────────────────────
 export { appendAudit } from "./control-plane/audit.js";
 
+// ── OpenCode Client ─────────────────────────────────────────────────────
+export { createOpenCodeClient } from "./control-plane/opencode-client.js";
+export type { OpenCodeClientOpts, ProxyResult, OpenCodeProvider } from "./control-plane/opencode-client.js";
+
 // ── Secrets ─────────────────────────────────────────────────────────────
 export {
-  ALLOWED_CONNECTION_KEYS,
-  REQUIRED_LLM_PROVIDER_KEYS,
   PLAIN_CONFIG_KEYS,
   ensureSecrets,
   updateSecretsEnv,

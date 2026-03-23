@@ -9,6 +9,7 @@ import { ensureDirectoryTree, seedOpenPalmDir, openBrowser } from '../lib/docker
 import {
   ensureOpenCodeConfig, ensureOpenCodeSystemConfig,
   performSetup,
+  createOpenCodeClient,
   type SetupSpec,
 } from '@openpalm/lib';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
@@ -17,8 +18,9 @@ import { ensureValidState } from '../lib/cli-state.ts';
 import { buildManagedServiceNames, runComposeWithPreflight } from '../lib/cli-compose.ts';
 import { createSetupServer } from '../setup-wizard/server.ts';
 import { buildDeployStatusEntries } from './install-services.ts';
+import { startOpenCodeSubprocess, type OpenCodeSubprocess } from '../lib/opencode-subprocess.ts';
 
-const SETUP_WIZARD_PORT = Number(process.env.OP_SETUP_PORT) || 8190;
+const SETUP_WIZARD_PORT = Number(process.env.OP_SETUP_PORT) || 0; // 0 = random available port
 
 async function resolveDefaultInstallRef(): Promise<string> {
   try {
@@ -61,14 +63,19 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    const version = args.version || await resolveDefaultInstallRef();
-    await bootstrapInstall({
-      force: args.force,
-      version,
-      noStart: !args.start,
-      noOpen: !args.open,
-      file: args.file,
-    });
+    try {
+      const version = args.version || await resolveDefaultInstallRef();
+      await bootstrapInstall({
+        force: args.force,
+        version,
+        noStart: !args.start,
+        noOpen: !args.open,
+        file: args.file,
+      });
+    } catch (err) {
+      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
   },
 });
 
@@ -111,20 +118,46 @@ async function parseConfigFile(filePath: string, raw: string): Promise<Record<st
 }
 
 export async function bootstrapInstall(options: InstallOptions): Promise<void> {
-  console.log('Checking Docker...');
-  await requireDocker();
-
   const homeDir = resolveOpenPalmHome();
   const configDir = resolveConfigDir();
   const vaultDir = resolveVaultDir();
   const dataDir = resolveDataDir();
   const workDir = defaultWorkDir();
 
-  const updateMode = await Bun.file(join(vaultDir, 'user', 'user.env')).exists();
-  if (updateMode && !options.force) {
+  const alreadyInstalled = await Bun.file(join(vaultDir, 'user', 'user.env')).exists();
+  if (alreadyInstalled && !options.force) {
     throw new Error('OpenPalm appears to already be installed. Re-run install with --force to continue.');
   }
 
+  // ── Bootstrap files ────────────────────────────────────────────────────
+  await prepareInstallFiles(homeDir, configDir, vaultDir, dataDir, workDir, options.version);
+
+  // ── Configure ──────────────────────────────────────────────────────────
+  // File-based install: read config, run performSetup, optionally deploy
+  if (options.file) {
+    await runFileInstall(options.file, options.noStart);
+    return;
+  }
+
+  // Interactive wizard: --force always runs wizard, otherwise only on first install
+  const needsWizard = !alreadyInstalled || options.force;
+  if (needsWizard) {
+    await runWizardInstall(configDir, options.noOpen, options.noStart);
+    return;
+  }
+
+  // Update mode (already installed, no --force): just redeploy
+  if (options.noStart) {
+    console.log('Config updated. Run `openpalm start` to start services.');
+    return;
+  }
+  await requireDocker();
+  await deployServices('update', false);
+}
+
+async function prepareInstallFiles(
+  homeDir: string, configDir: string, vaultDir: string, dataDir: string, workDir: string, version: string,
+): Promise<void> {
   console.log('Preparing directories...');
   await ensureDirectoryTree(homeDir, configDir, vaultDir, dataDir, workDir);
 
@@ -133,16 +166,15 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
   console.log('Downloading assets...');
   try {
-    await seedOpenPalmDir(options.version, homeDir, configDir, vaultDir, dataDir);
+    await seedOpenPalmDir(version, homeDir, configDir, vaultDir, dataDir);
   } catch (err) {
     console.warn(`Warning: failed to download assets — ${err instanceof Error ? err.message : String(err)}`);
   }
 
   console.log('Configuring secrets...');
   await ensureSecrets(vaultDir);
-  await ensureStackEnv(homeDir, vaultDir, workDir, options.version, resolveRequestedImageTag(options.version) ?? undefined);
+  await ensureStackEnv(homeDir, vaultDir, workDir, version, resolveRequestedImageTag(version) ?? undefined);
 
-  // Seed file-based volume mount targets so Docker doesn't create them as root-owned directories.
   for (const [path, content] of [
     [join(vaultDir, 'stack', 'guardian.env'), '# Guardian channel HMAC secrets — managed by openpalm\n'],
     [join(vaultDir, 'stack', 'auth.json'), '{}\n'],
@@ -150,53 +182,45 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     if (!(await Bun.file(path).exists())) await Bun.write(path, content);
   }
 
-  // Pre-create all volume mount targets from compose files.
-  // Docker creates missing bind mount paths as root-owned directories,
-  // which causes EACCES failures inside containers running as non-root.
-  await ensureVolumeMountTargets(homeDir, vaultDir);
+  try { ensureOpenCodeConfig(); ensureOpenCodeSystemConfig(); } catch { /* non-fatal */ }
 
-  try { ensureOpenCodeConfig(); ensureOpenCodeSystemConfig(); } catch { /* non-fatal on first install */ }
-
-  // Non-fatal varlock validation (15s timeout to avoid blocking the wizard)
+  console.log('Validating configuration...');
   try {
     await Promise.race([
       runVarlockValidation(dataDir, vaultDir),
       new Promise((_, reject) => setTimeout(() => reject(new Error('varlock validation timed out')), 15_000)),
     ]);
   } catch { /* non-fatal */ }
-
-  if (options.noStart && !options.file) {
-    console.log('OpenPalm files prepared. Run `openpalm start` to start services.');
-    return;
-  }
-
-  // ── File-based install (--file / -f) ──────────────────────────────────
-  if (options.file) {
-    await runFileInstall(options.file, options.noStart);
-    return;
-  }
-
-  // ── Setup Wizard (first install) ──────────────────────────────────────
-  if (!updateMode) {
-    await runWizardInstall(configDir, options.noOpen);
-    return;
-  }
-
-  // ── Update mode (no wizard) ───────────────────────────────────────────
-  await deployServices('update', false);
 }
 
-async function runWizardInstall(configDir: string, noOpen: boolean): Promise<void> {
+async function runWizardInstall(configDir: string, noOpen: boolean, noStart = false): Promise<void> {
   console.log('Starting setup wizard...');
-  let wizard;
+
+  // Start OpenCode subprocess (non-fatal if binary missing)
+  let openCodeSub: OpenCodeSubprocess | null = null;
+  let openCodeClient: ReturnType<typeof createOpenCodeClient> | undefined;
   try {
-    wizard = createSetupServer(SETUP_WIZARD_PORT, { configDir });
-  } catch (err) {
-    const msg = String(err);
-    throw msg.includes('EADDRINUSE') || msg.includes('address already in use') || msg.includes('Failed to start')
-      ? new Error(`Port ${SETUP_WIZARD_PORT} is in use. Stop the conflicting process or set OP_SETUP_PORT=<port>.`)
-      : err;
+    openCodeSub = await startOpenCodeSubprocess({
+      homeDir: resolveOpenPalmHome(),
+      configDir: resolveConfigDir(),
+      vaultDir: resolveVaultDir(),
+      dataDir: resolveDataDir(),
+    });
+    const ready = await openCodeSub.waitForReady();
+    if (ready) {
+      openCodeClient = createOpenCodeClient({ baseUrl: openCodeSub.baseUrl });
+      console.log('OpenCode provider discovery available.');
+    } else {
+      console.warn('Warning: OpenCode subprocess did not become ready. Using built-in providers.');
+      await openCodeSub.stop();
+      openCodeSub = null;
+    }
+  } catch {
+    console.warn('Warning: OpenCode not found on PATH. Using built-in providers.');
+    openCodeSub = null;
   }
+
+  const wizard = createSetupServer(SETUP_WIZARD_PORT, { configDir, openCodeClient });
   const wizardUrl = `http://localhost:${wizard.server.port}/setup`;
   console.log(`Setup wizard running at ${wizardUrl}`);
   if (!noOpen) await openBrowser(wizardUrl);
@@ -204,7 +228,17 @@ async function runWizardInstall(configDir: string, noOpen: boolean): Promise<voi
   const result = await wizard.waitForComplete();
   if (!result.ok) { wizard.stop(); throw new Error(`Setup failed: ${result.error ?? 'unknown error'}`); }
 
-  console.log('Setup complete. Starting services...');
+  if (noStart) {
+    console.log('Setup complete. Config written. Run `openpalm start` to start services.');
+    wizard.stop();
+    if (openCodeSub) await openCodeSub.stop().catch(() => {});
+    return;
+  }
+
+  console.log('Setup complete. Checking Docker...');
+  await requireDocker();
+
+  console.log('Starting services...');
   const homeDir = resolveOpenPalmHome();
   const vaultDir = resolveVaultDir();
   await ensureVolumeMountTargets(homeDir, vaultDir);
@@ -226,7 +260,10 @@ async function runWizardInstall(configDir: string, noOpen: boolean): Promise<voi
     wizard.setDeployError(String(err));
     await new Promise(resolve => setTimeout(resolve, 10000));
     throw err;
-  } finally { wizard.stop(); }
+  } finally {
+    wizard.stop();
+    if (openCodeSub) await openCodeSub.stop().catch(() => {});
+  }
 }
 
 async function runFileInstall(filePath: string, noStart: boolean): Promise<void> {
@@ -242,6 +279,7 @@ async function runFileInstall(filePath: string, noStart: boolean): Promise<void>
   if (!result.ok) throw new Error(`Setup failed: ${result.error}`);
   console.log('Setup complete.');
   if (noStart) { console.log('Config written. Run `openpalm start` to start services.'); return; }
+  await requireDocker();
   await deployServices('install');
 }
 

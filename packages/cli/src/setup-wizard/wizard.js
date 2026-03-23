@@ -61,6 +61,11 @@
   var STEP_LABELS = ["Welcome", "Providers", "Models", "Voice", "Options", "Review"];
   var TOTAL_STEPS = 6;
 
+  /** Whether OpenCode provider discovery is available */
+  var opencodeAvailable = false;
+  /** Checked once on first Step 1 visit */
+  var opencodeChecked = false;
+
   /* =========================================================================
      Voice / TTS / STT Options
      ========================================================================= */
@@ -282,10 +287,90 @@
      ========================================================================= */
 
   function initStep1() {
+    // Check OpenCode availability on first visit
+    if (!opencodeChecked) {
+      opencodeChecked = true;
+      checkOpenCodeAndInit();
+    } else {
+      renderProviderGrid();
+    }
+  }
+
+  async function checkOpenCodeAndInit() {
+    try {
+      var res = await fetch("/api/setup/opencode/status");
+      if (res.ok) {
+        var data = await res.json();
+        if (data.available) {
+          opencodeAvailable = true;
+          await loadOpenCodeProviders();
+        }
+      }
+    } catch (e) {
+      // OpenCode not available — fall back to hardcoded providers
+    }
     renderProviderGrid();
-    // Auto-detect on first visit
+    // Auto-detect local providers on first visit
     if (detectedProviders.length === 0 && getVerifiedCount() === 0) {
       detectProviders();
+    }
+  }
+
+  async function loadOpenCodeProviders() {
+    try {
+      var res = await fetch("/api/setup/opencode/providers");
+      if (!res.ok) return;
+      var data = await res.json();
+      if (!data.available || !Array.isArray(data.providers)) return;
+
+      // Merge OpenCode providers into PROVIDERS array where missing
+      var existingIds = {};
+      PROVIDERS.forEach(function (p) { existingIds[p.id] = true; });
+
+      data.providers.forEach(function (ocp) {
+        if (existingIds[ocp.id]) return; // Already in hardcoded list
+        // Add dynamically discovered provider
+        PROVIDERS.push({
+          id: ocp.id,
+          name: ocp.name || ocp.id,
+          kind: "cloud",
+          group: "advanced",
+          order: 99,
+          icon: "\uD83D\uDD17", // link emoji
+          desc: ocp.id + " (via OpenCode)",
+          needsKey: true,
+          placeholder: "API key",
+          baseUrl: "",
+          llmModel: "",
+          embModel: "",
+          embDims: 0,
+        });
+        // Init state for new provider
+        providerState[ocp.id] = {
+          selected: false,
+          verified: false,
+          verifying: false,
+          error: false,
+          apiKey: "",
+          baseUrl: "",
+          models: [],
+          ollamaMode: null,
+        };
+      });
+
+      // Mark providers that are already authenticated in OpenCode
+      var auth = data.auth || {};
+      for (var providerId in auth) {
+        if (auth[providerId] && auth[providerId].length > 0) {
+          var st = providerState[providerId];
+          if (st && !st.verified) {
+            // Provider has auth methods configured — mark for UI hint
+            st.opencodeAuthed = true;
+          }
+        }
+      }
+    } catch (e) {
+      // non-fatal
     }
   }
 
@@ -549,6 +634,15 @@
       st.verified = true;
       st.error = false;
       st.models = result.models || [];
+
+      // Write API key to OpenCode (auth.json) if available — non-blocking
+      if (opencodeAvailable && apiKey) {
+        fetch("/api/setup/opencode/providers/" + encodeURIComponent(id) + "/auth", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ apiKey: apiKey }),
+        }).catch(function () { /* non-critical */ });
+      }
     } catch (e) {
       if (verifyGeneration[id] !== gen) return;
       st.verified = false;
@@ -1354,17 +1448,26 @@
     var emb = modelSelection.embedding;
     var small = modelSelection.small;
 
-    // Build connections from verified providers
-    var connections = getVerifiedProviders().map(function (p) {
-      var st = providerState[p.id];
-      return {
-        id: p.id,
-        name: p.name,
-        provider: p.id,
-        baseUrl: st.baseUrl || p.baseUrl,
-        apiKey: st.apiKey || "",
-      };
-    });
+    // Build connections: only include providers needed for system capabilities
+    // (LLM, embedding, SLM). Other provider keys were already written to
+    // auth.json via OpenCode during Step 1 verification.
+    var capabilityProviderIds = {};
+    if (llm) capabilityProviderIds[llm.connId] = true;
+    if (emb) capabilityProviderIds[emb.connId] = true;
+    if (small && small.model) capabilityProviderIds[small.connId] = true;
+
+    var connections = getVerifiedProviders()
+      .filter(function (p) { return capabilityProviderIds[p.id]; })
+      .map(function (p) {
+        var st = providerState[p.id];
+        return {
+          id: p.id,
+          name: p.name,
+          provider: p.id,
+          baseUrl: st.baseUrl || p.baseUrl,
+          apiKey: st.apiKey || "",
+        };
+      });
 
     // Resolve LLM and embeddings connection providers
     var llmConnId = llm ? llm.connId : "";

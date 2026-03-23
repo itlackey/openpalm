@@ -2,10 +2,8 @@
  * Validation logic for SetupSpec inputs.
  * Extracted from setup.ts to reduce per-file complexity.
  */
-import { LLM_PROVIDERS } from "../provider-constants.js";
 
 const CONNECTION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
-const ACCEPTED_PROVIDERS = new Set([...LLM_PROVIDERS, "ollama-instack"]);
 
 function requireObj(val: unknown, msg: string, errors: string[]): Record<string, unknown> | null {
   if (typeof val !== "object" || val === null) { errors.push(msg); return null; }
@@ -71,8 +69,8 @@ function validateSpecCapabilities(body: Record<string, unknown>, errors: string[
 }
 
 function validateConnectionsArray(connections: unknown, errors: string[]): void {
-  if (!Array.isArray(connections) || connections.length === 0) {
-    errors.push("connections array is required and must be non-empty");
+  if (!Array.isArray(connections)) {
+    errors.push("connections must be an array");
     return;
   }
   const seenIds = new Set<string>();
@@ -91,6 +89,5 @@ function validateConnectionsArray(connections: unknown, errors: string[]): void 
 
     if (!name) errors.push(`connections[${i}].name is required`);
     if (!provider) errors.push(`connections[${i}].provider is required`);
-    else if (!ACCEPTED_PROVIDERS.has(provider)) errors.push(`connections[${i}].provider "${provider}" is outside wizard scope`);
   }
 }

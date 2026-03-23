@@ -17,7 +17,6 @@ import { getState } from '$lib/server/state.js';
 import {
   appendAudit,
   patchSecretsEnvFile,
-  ALLOWED_CONNECTION_KEYS,
 } from '@openpalm/lib';
 import { PROVIDER_KEY_MAP } from '$lib/provider-constants.js';
 import { createLogger } from '$lib/server/logger.js';
@@ -149,23 +148,15 @@ export const POST: RequestHandler = async (event) => {
       return errorResponse(400, 'bad_request', keyError, {}, requestId);
     }
 
+    // Write to user.env if provider has a known env var mapping
     const envVarName = PROVIDER_KEY_MAP[providerId];
-    if (!envVarName || !ALLOWED_CONNECTION_KEYS.has(envVarName)) {
-      appendAudit(state, actor, 'opencode.auth.api_key', { providerId, error: 'unsupported_provider' }, false, requestId, callerType);
-      return errorResponse(
-        400,
-        'bad_request',
-        'This provider cannot be persisted to the OpenPalm vault yet. Use a supported provider mapping or OAuth.',
-        {},
-        requestId,
-      );
-    }
-
-    try {
-      patchSecretsEnvFile(state.vaultDir, { [envVarName]: apiKey });
-    } catch {
-      appendAudit(state, actor, 'opencode.auth.api_key', { providerId, error: 'vault_write_failed' }, false, requestId, callerType);
-      return errorResponse(500, 'internal_error', 'Failed to write API key to vault', {}, requestId);
+    if (envVarName) {
+      try {
+        patchSecretsEnvFile(state.vaultDir, { [envVarName]: apiKey });
+      } catch {
+        appendAudit(state, actor, 'opencode.auth.api_key', { providerId, error: 'vault_write_failed' }, false, requestId, callerType);
+        return errorResponse(500, 'internal_error', 'Failed to write API key to vault', {}, requestId);
+      }
     }
 
     // Also register with OpenCode (non-critical)

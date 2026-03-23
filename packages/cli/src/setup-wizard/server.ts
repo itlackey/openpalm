@@ -16,6 +16,7 @@ import {
   fetchProviderModels,
   resolveConfigDir,
   resolveVaultDir,
+  createOpenCodeClient,
 } from "@openpalm/lib";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -98,9 +99,11 @@ export function createSetupServer(
   port: number = 8100,
   opts?: {
     configDir?: string;
+    openCodeClient?: ReturnType<typeof createOpenCodeClient>;
   }
 ): SetupServer {
   const configDir = opts?.configDir ?? resolveConfigDir();
+  const ocClient = opts?.openCodeClient ?? null;
 
   // Mutable server state
   const state: SetupServerState = {
@@ -241,6 +244,49 @@ export function createSetupServer(
         deployStatus: state.deployStatus,
         deployError: state.deployError,
       });
+    }
+
+    // ── API: OpenCode Provider Status ───────────────────────────────
+
+    if (method === "GET" && path === "/api/setup/opencode/status") {
+      if (!ocClient) return jsonResponse(200, { ok: true, available: false });
+      const available = await ocClient.isAvailable();
+      return jsonResponse(200, { ok: true, available });
+    }
+
+    // ── API: OpenCode Providers ──────────────────────────────────────
+
+    if (method === "GET" && path === "/api/setup/opencode/providers") {
+      if (!ocClient) return jsonResponse(200, { ok: true, available: false, providers: [] });
+      const [providers, auth] = await Promise.all([
+        ocClient.getProviders(),
+        ocClient.getProviderAuth(),
+      ]);
+      return jsonResponse(200, { ok: true, available: true, providers, auth });
+    }
+
+    // ── API: OpenCode Provider Auth ──────────────────────────────────
+
+    const ocAuthMatch = matchRoute(path, "/api/setup/opencode/providers/:id/auth");
+    if (method === "POST" && ocAuthMatch) {
+      if (!ocClient) return errorResponse(503, "opencode_unavailable", "OpenCode subprocess not available");
+      const providerId = ocAuthMatch.id;
+
+      let reqBody: Record<string, unknown> = {};
+      try {
+        reqBody = (await req.json()) as Record<string, unknown>;
+      } catch {
+        return errorResponse(400, "invalid_json", "Request body must be valid JSON");
+      }
+
+      const apiKey = typeof reqBody.apiKey === "string" ? reqBody.apiKey.trim() : "";
+      if (!apiKey) return errorResponse(400, "bad_request", "apiKey is required");
+
+      const result = await ocClient.setProviderApiKey(providerId, apiKey);
+      if (!result.ok) {
+        return jsonResponse(result.status, { ok: false, error: result.code, message: result.message });
+      }
+      return jsonResponse(200, { ok: true });
     }
 
     // ── 404 ──────────────────────────────────────────────────────────

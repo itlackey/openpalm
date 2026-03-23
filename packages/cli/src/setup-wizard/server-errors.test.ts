@@ -138,7 +138,7 @@ describe("setup wizard server error scenarios", () => {
     }
   });
 
-  it("returns 400 when connections array is empty", async () => {
+  it("returns 400 when connections array is not an array", async () => {
     const { stop } = createSetupServer(serverPort, {
       configDir,
     });
@@ -158,7 +158,7 @@ describe("setup wizard server error scenarios", () => {
             addons: {},
           },
           security: { adminToken: "valid-token-12345" },
-          connections: [],
+          connections: "not-an-array",
         }),
       });
       expect(res.status).toBe(400);
@@ -194,7 +194,7 @@ describe("setup wizard server error scenarios", () => {
     }
   });
 
-  it("returns 400 when connection has invalid provider", async () => {
+  it("returns 400 when connection provider does not match embeddings provider", async () => {
     const { stop } = createSetupServer(serverPort, {
       configDir,
     });
@@ -220,7 +220,8 @@ describe("setup wizard server error scenarios", () => {
       expect(res.status).toBe(400);
       const data = (await res.json()) as { ok: boolean; error: string };
       expect(data.ok).toBe(false);
-      expect(data.error).toContain("outside wizard scope");
+      // performSetup fails because no connection matches embeddings provider "openai"
+      expect(data.error).toContain("embeddings provider");
     } finally {
       stop();
     }

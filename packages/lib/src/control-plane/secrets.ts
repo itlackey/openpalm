@@ -10,30 +10,7 @@ const OPENCODE_STARTER_CONFIG = JSON.stringify({ $schema: "https://opencode.ai/c
 const logger = createLogger("secrets");
 
 
-export const ALLOWED_CONNECTION_KEYS = new Set([
-  "OPENAI_API_KEY",
-  "OPENVIKING_API_KEY",
-  "ANTHROPIC_API_KEY",
-  "GROQ_API_KEY",
-  "MISTRAL_API_KEY",
-  "GOOGLE_API_KEY",
-  "MCP_API_KEY",
-  "EMBEDDING_API_KEY",
-  "OPENAI_BASE_URL",
-  "OWNER_NAME",
-  "OWNER_EMAIL",
-]);
-
-export const REQUIRED_LLM_PROVIDER_KEYS = [
-  "OPENAI_API_KEY",
-  "ANTHROPIC_API_KEY",
-  "GROQ_API_KEY",
-  "MISTRAL_API_KEY",
-  "GOOGLE_API_KEY",
-  "MCP_API_KEY",
-  "EMBEDDING_API_KEY",
-];
-
+/** Keys whose values are shown unmasked in the UI (not secrets). */
 export const PLAIN_CONFIG_KEYS = new Set([
   "OPENAI_BASE_URL",
   "OWNER_NAME",
@@ -211,25 +188,14 @@ export function updateSystemSecretsEnv(
 }
 
 export function readSecretsEnvFile(vaultDir: string): Record<string, string> {
-  const parsed = parseEnvFile(`${vaultDir}/user/user.env`);
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(parsed)) {
-    if (ALLOWED_CONNECTION_KEYS.has(key)) result[key] = value;
-  }
-  return result;
+  return parseEnvFile(`${vaultDir}/user/user.env`);
 }
 
 export function patchSecretsEnvFile(
   vaultDir: string,
   patches: Record<string, string>
 ): void {
-  const allowed: Record<string, string> = {};
-  for (const [key, value] of Object.entries(patches)) {
-    if (ALLOWED_CONNECTION_KEYS.has(key)) {
-      allowed[key] = value;
-    }
-  }
-  if (Object.keys(allowed).length === 0) return;
+  if (Object.keys(patches).length === 0) return;
 
   const userEnvPath = `${vaultDir}/user/user.env`;
   enforceVaultDirMode(vaultDir);
@@ -244,7 +210,7 @@ export function patchSecretsEnvFile(
     // start fresh
   }
 
-  let result = mergeEnvContent(existingContent, allowed);
+  let result = mergeEnvContent(existingContent, patches);
   if (!result.endsWith("\n")) result += "\n";
   writeVaultFile(userEnvPath, result);
 }

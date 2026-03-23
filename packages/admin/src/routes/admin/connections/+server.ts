@@ -21,7 +21,6 @@ import {
   writeStackSpec,
   writeManagedEnvFiles,
   formatCapabilityString,
-  ALLOWED_CONNECTION_KEYS,
   maskConnectionValue,
   readMemoryConfig,
   type CallerType,
@@ -33,9 +32,6 @@ import {
   mem0BaseUrlConfig
 } from "$lib/provider-constants.js";
 import { createLogger } from "$lib/server/logger.js";
-import {
-  isWizardProviderInScope,
-} from '$lib/wizard-scope.js';
 
 const logger = createLogger("connections");
 
@@ -51,8 +47,7 @@ export const GET: RequestHandler = async (event) => {
   // Read secrets (masked)
   const raw = readSecretsEnvFile(state.vaultDir);
   const secrets: Record<string, string> = {};
-  for (const key of ALLOWED_CONNECTION_KEYS) {
-    const value = raw[key] ?? "";
+  for (const [key, value] of Object.entries(raw)) {
     secrets[key] = maskConnectionValue(key, value);
   }
 
@@ -93,10 +88,6 @@ export const POST: RequestHandler = async (event) => {
 
   if (!provider) {
     return errorResponse(400, "bad_request", "provider is required", {}, requestId);
-  }
-
-  if (!isWizardProviderInScope(provider)) {
-    return errorResponse(400, 'bad_request', `Provider "${provider}" is outside setup wizard v1 scope`, {}, requestId);
   }
 
   // 1. Write API key to user.env (secrets only)

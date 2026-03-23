@@ -104,11 +104,10 @@ describe("validateSetupSpec", () => {
     expect(result.errors.some((e) => e.includes("at least 8"))).toBe(true);
   });
 
-  it("rejects empty connections array", () => {
+  it("accepts empty connections array", () => {
     const spec = makeValidSpec({ connections: [] });
     const result = validateSetupSpec(spec);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("connections"))).toBe(true);
+    expect(result.valid).toBe(true);
   });
 
   it("rejects duplicate connection IDs", () => {
@@ -125,15 +124,14 @@ describe("validateSetupSpec", () => {
     expect(result.errors.some((e) => e.includes("Duplicate"))).toBe(true);
   });
 
-  it("rejects unsupported provider", () => {
+  it("accepts any provider string", () => {
     const spec = makeValidSpec({
       connections: [
-        { id: "bad", name: "Bad", provider: "unsupported-provider", baseUrl: "", apiKey: "" },
+        { id: "custom", name: "Custom", provider: "any-provider", baseUrl: "", apiKey: "" },
       ],
     });
     const result = validateSetupSpec(spec);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("outside wizard scope"))).toBe(true);
+    expect(result.valid).toBe(true);
   });
 
   it("rejects invalid connection ID pattern", () => {
