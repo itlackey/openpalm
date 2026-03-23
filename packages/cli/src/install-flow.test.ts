@@ -338,9 +338,12 @@ describe('install flow — tier 1 (file validation)', () => {
       '--env-file', stackEnv,
       '--env-file', join(homeDir, 'vault/user/user.env'),
       'config', '--quiet',
-    ], { stdout: 'pipe', stderr: 'pipe' });
+    ], { stdout: 'pipe', stderr: 'pipe', env: { ...process.env, OP_HOME: homeDir } });
 
     const stderr = new TextDecoder().decode(proc.stderr);
+    if (proc.exitCode !== 0) {
+      throw new Error(`docker compose config failed (exit ${proc.exitCode}):\n${stderr}`);
+    }
     expect(proc.exitCode).toBe(0);
   }, 30_000);
 
@@ -377,11 +380,13 @@ describe('install flow — tier 1 (file validation)', () => {
 // ── Tier 2: Container Validation ──────────────────────────────────────────
 
 describe('install flow — tier 2 (container validation)', () => {
-  const RUN_TIER2 = process.env.RUN_INSTALL_TIER2_TESTS === '1';
+  const hasDevSetup = existsSync(join(resolve(import.meta.dir, '../../..'), '.dev/vault/stack/stack.env'));
+  const hasDocker = Bun.spawnSync(['docker', 'info'], { stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
+  const RUN_TIER2 = hasDevSetup && hasDocker && process.env.RUN_DOCKER_STACK_TESTS === '1';
 
   it.skipIf(!RUN_TIER2)('builds from source and starts all services healthy', async () => {
     // Uses .dev/ directory and compose.dev.yaml to build from source.
-    // Requires: Docker running, local source code, .dev/ seeded.
+    // Requires: Docker running, local source code, .dev/ seeded, RUN_DOCKER_STACK_TESTS=1.
     const devHome = join(REPO_ROOT, '.dev');
     if (!existsSync(join(devHome, 'vault/stack/stack.env'))) {
       throw new Error('.dev/ not seeded. Run: bun run dev:setup');
