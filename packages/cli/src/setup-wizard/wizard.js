@@ -63,7 +63,6 @@
 
   /** OpenCode provider discovery state */
   var opencodeAvailable = false;
-  var opencodeChecked = false;
   /** OpenCode providers: [{ id, name, env[], models{}, authMethods[] }] */
   var opencodeProviders = [];
   /** OpenCode auth map: { providerId: [{type, label}] } */
@@ -292,17 +291,7 @@
      ========================================================================= */
 
   function initStep1() {
-    if (!opencodeChecked) {
-      opencodeChecked = true;
-      checkOpenCodeAndInit();
-    } else if (opencodeAvailable) {
-      renderOpenCodeProviderGrid();
-    } else {
-      renderProviderGrid();
-      if (detectedProviders.length === 0 && getVerifiedCount() === 0) {
-        detectProviders();
-      }
-    }
+    renderProviderGrid();
   }
 
   async function checkOpenCodeAndInit() {
@@ -313,20 +302,12 @@
         if (data.available) {
           opencodeAvailable = true;
           await loadOpenCodeProviders();
-          renderOpenCodeProviderGrid();
-          // Also detect local providers for base URL info
-          detectProviders();
-          return;
         }
       }
     } catch (e) {
-      // fall back
+      // fall back to hardcoded providers
     }
-    // Fallback: hardcoded provider grid
     renderProviderGrid();
-    if (detectedProviders.length === 0 && getVerifiedCount() === 0) {
-      detectProviders();
-    }
   }
 
   /** Local runtimes that aren't in OpenCode's cloud registry but run on the host */
@@ -399,7 +380,8 @@
     // Provider cards
     filtered.forEach(function (ocp) {
       var st = providerState[ocp.id] || {};
-      var modelCount = Object.keys(ocp.models || {}).length;
+      // Use providerState models (populated by verifyProvider) if available, otherwise OpenCode's model map
+      var modelCount = (st.models && st.models.length > 0) ? st.models.length : Object.keys(ocp.models || {}).length;
       var authMethods = opencodeAuth[ocp.id] || [];
       var envVars = ocp.env || [];
       var isExpanded = expandedProvider === ocp.id;
@@ -2075,19 +2057,15 @@
           var st = providerState[dp.provider];
           if (st) {
             st.baseUrl = dp.url;
-            if (opencodeAvailable) {
-              // In OpenCode mode: mark local providers as verified directly
-              // (they don't need API keys — just a reachable URL)
-              st.verified = true;
-              st.error = false;
-            } else {
-              // Fallback mode: auto-select and verify via model fetch
+            if (!opencodeAvailable) {
+              // Fallback mode: auto-select
               if (!st.selected) {
                 st.selected = true;
                 if (dp.provider === "ollama") st.ollamaMode = "running";
               }
-              verifyProvider(dp.provider);
             }
+            // Always fetch models for detected providers (both modes need them)
+            verifyProvider(dp.provider);
           }
         });
       }
@@ -2139,6 +2117,11 @@
         }
       })
       .catch(function () { /* ignore */ });
+
+    // Start provider discovery + local detection early (don't wait for step 1)
+    checkOpenCodeAndInit().then(function () {
+      detectProviders();
+    });
 
     // ── Step 0: Welcome ──
     $("btn-get-started").addEventListener("click", function () {

@@ -60,7 +60,7 @@ describe("createOpenCodeClient", () => {
   });
 
   test("proxy returns unavailable on network error", async () => {
-    const client = createOpenCodeClient({ baseUrl: "http://127.0.0.1:1", timeoutMs: 500 });
+    const client = createOpenCodeClient({ baseUrl: "http://127.0.0.1:1", /* unreachable port */ });
     const result = await client.proxy("/test");
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -131,7 +131,7 @@ describe("createOpenCodeClient", () => {
   });
 
   test("isAvailable returns false when unreachable", async () => {
-    const client = createOpenCodeClient({ baseUrl: "http://127.0.0.1:1", timeoutMs: 500 });
+    const client = createOpenCodeClient({ baseUrl: "http://127.0.0.1:1", /* unreachable port */ });
     expect(await client.isAvailable()).toBe(false);
   });
 

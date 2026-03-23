@@ -8,7 +8,6 @@
 
 export type OpenCodeClientOpts = {
   baseUrl: string;
-  timeoutMs?: number;
 };
 
 export type ProxyResult =
@@ -22,14 +21,11 @@ export type OpenCodeProvider = {
 };
 
 export function createOpenCodeClient(opts: OpenCodeClientOpts) {
-  const { baseUrl, timeoutMs = 5000 } = opts;
+  const { baseUrl } = opts;
 
   async function proxy(path: string, options?: RequestInit): Promise<ProxyResult> {
     try {
-      const res = await fetch(`${baseUrl}${path}`, {
-        ...options,
-        signal: AbortSignal.timeout(timeoutMs),
-      });
+      const res = await fetch(`${baseUrl}${path}`, options);
       if (!res.ok) {
         const body = await res.json().catch(() => ({} as Record<string, unknown>));
         const message = typeof (body as Record<string, unknown>).message === 'string'

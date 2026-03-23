@@ -267,7 +267,6 @@ export function createSetupServer(
 
     // ── API: OpenCode Proxy (all other /api/setup/opencode/* paths) ──
     // Strips /api/setup/opencode prefix and forwards to the OpenCode subprocess.
-    // This handles auth (PUT /auth/:id), OAuth flows, config, etc.
 
     if (path.startsWith("/api/setup/opencode/") && path !== "/api/setup/opencode/status" && path !== "/api/setup/opencode/providers") {
       if (!ocClient) return errorResponse(503, "opencode_unavailable", "OpenCode not available");
