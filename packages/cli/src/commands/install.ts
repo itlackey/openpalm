@@ -5,17 +5,20 @@ import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
 import { resolveOpenPalmHome, resolveConfigDir, resolveVaultDir, resolveDataDir } from '@openpalm/lib';
 import { ensureSecrets, ensureStackEnv, resolveRequestedImageTag } from '../lib/env.ts';
-import { ensureDirectoryTree, seedOpenPalmDir, openBrowser } from '../lib/docker.ts';
+import { ensureDirectoryTree, seedOpenPalmDir, openBrowser, runDockerCompose } from '../lib/docker.ts';
 import {
   ensureOpenCodeConfig, ensureOpenCodeSystemConfig,
   performSetup,
+  applyInstall,
+  buildManagedServices,
+  seedEmbeddedAssets,
   createOpenCodeClient,
   type SetupSpec,
 } from '@openpalm/lib';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
 import { ensureValidState } from '../lib/cli-state.ts';
-import { buildManagedServiceNames, runComposeWithPreflight } from '../lib/cli-compose.ts';
+import { fullComposeArgs } from '../lib/cli-compose.ts';
 import { createSetupServer } from '../setup-wizard/server.ts';
 import { buildDeployStatusEntries } from './install-services.ts';
 import { startOpenCodeSubprocess, type OpenCodeSubprocess } from '../lib/opencode-subprocess.ts';
@@ -99,9 +102,11 @@ async function requireDocker(): Promise<void> {
 
 async function deployServices(mode: string, pull = true): Promise<string[]> {
   const state = await ensureValidState();
-  const managedServices = await buildManagedServiceNames(state);
-  if (pull) await runComposeWithPreflight(state, ['pull', ...managedServices]).catch(() => console.warn('Warning: image pull failed.'));
-  await runComposeWithPreflight(state, ['up', '-d', ...managedServices]);
+  await applyInstall(state);
+  const managedServices = await buildManagedServices(state);
+  const composeArgs = fullComposeArgs(state);
+  if (pull) await runDockerCompose([...composeArgs, 'pull', ...managedServices]).catch(() => console.warn('Warning: image pull failed.'));
+  await runDockerCompose([...composeArgs, 'up', '-d', ...managedServices]);
   console.log(JSON.stringify({ ok: true, mode, services: managedServices }, null, 2));
   return managedServices;
 }
@@ -164,11 +169,14 @@ async function prepareInstallFiles(
   try { await Bun.write(join(dataDir, 'host.json'), JSON.stringify(await detectHostInfo(), null, 2) + '\n'); }
   catch { /* non-fatal */ }
 
-  console.log('Downloading assets...');
+  // Seed core files from embedded assets (always available, even offline)
+  seedEmbeddedAssets(homeDir);
+
+  // Try to fetch latest assets from GitHub (non-fatal — embedded assets are sufficient)
   try {
     await seedOpenPalmDir(version, homeDir, configDir, vaultDir, dataDir);
-  } catch (err) {
-    console.warn(`Warning: failed to download assets — ${err instanceof Error ? err.message : String(err)}`);
+  } catch {
+    // Embedded assets already seeded — GitHub download is optional
   }
 
   console.log('Configuring secrets...');
@@ -243,15 +251,16 @@ async function runWizardInstall(configDir: string, noOpen: boolean, noStart = fa
   const vaultDir = resolveVaultDir();
   await ensureVolumeMountTargets(homeDir, vaultDir);
   const state = await ensureValidState();
-  const managedServices = await buildManagedServiceNames(state);
-  const allServices = managedServices;
+  await applyInstall(state);
+  const allServices = await buildManagedServices(state);
+  const composeArgs = fullComposeArgs(state);
   try {
     wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Waiting...'));
-    await runComposeWithPreflight(state, ['pull', ...allServices]).catch(() => {
+    await runDockerCompose([...composeArgs, 'pull', ...allServices]).catch(() => {
       console.warn('Warning: image pull failed — if this is your first install, check your network connection.');
     });
     wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Starting...'));
-    await runComposeWithPreflight(state, ['up', '-d', ...allServices]);
+    await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
     wizard.markAllRunning();
     console.log(JSON.stringify({ ok: true, mode: 'install', services: allServices }, null, 2));
     await new Promise(resolve => setTimeout(resolve, 3000));

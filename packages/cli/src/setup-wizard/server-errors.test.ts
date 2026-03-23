@@ -158,6 +158,7 @@ describe("setup wizard server error scenarios", () => {
             addons: {},
           },
           security: { adminToken: "valid-token-12345" },
+          owner: { name: "Test User", email: "test@example.com" },
           connections: "not-an-array",
         }),
       });
@@ -181,6 +182,7 @@ describe("setup wizard server error scenarios", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           security: { adminToken: "valid-token-12345" },
+          owner: { name: "Test User", email: "test@example.com" },
           connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
           // no spec
         }),
@@ -214,6 +216,7 @@ describe("setup wizard server error scenarios", () => {
             addons: {},
           },
           security: { adminToken: "valid-token-12345" },
+          owner: { name: "Test User", email: "test@example.com" },
           connections: [{ id: "c1", name: "C1", provider: "fakeprovider", baseUrl: "", apiKey: "sk-test" }],
         }),
       });
@@ -247,6 +250,7 @@ describe("setup wizard server error scenarios", () => {
             addons: {},
           },
           security: { adminToken: "valid-token-12345" },
+          owner: { name: "Test User", email: "test@example.com" },
           connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
         }),
       });

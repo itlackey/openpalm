@@ -5,8 +5,9 @@
  * so the wizard can query provider information and set API keys via the
  * OpenCode REST API.
  */
-import { mkdirSync, symlinkSync, existsSync, copyFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync, existsSync, copyFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 export type OpenCodeSubprocess = {
   process: ReturnType<typeof Bun.spawn>;
@@ -42,7 +43,7 @@ export async function startOpenCodeSubprocess(opts: {
   }
 
   const port = opts.port ?? (Number(process.env.OP_OPENCODE_WIZARD_PORT) || DEFAULT_PORT);
-  const wizardHome = join(opts.dataDir, "assistant-wizard");
+  const wizardHome = mkdtempSync(join(tmpdir(), "openpalm-wizard-"));
 
   // Build HOME directory structure for OpenCode
   const ocShareDir = join(wizardHome, ".local", "share", "opencode");
@@ -107,6 +108,8 @@ export async function startOpenCodeSubprocess(opts: {
       if (!proc.killed) {
         proc.kill("SIGKILL");
       }
+      // Clean up temp HOME directory
+      try { rmSync(wizardHome, { recursive: true, force: true }); } catch { /* best effort */ }
     },
   };
 }

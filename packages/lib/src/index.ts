@@ -169,6 +169,7 @@ export {
   ensureOpenCodeSystemConfig,
   ensureCoreAutomations,
   refreshCoreAssets,
+  seedEmbeddedAssets,
 } from "./control-plane/core-assets.js";
 
 // ── Configuration Persistence ────────────────────────────────────────────
@@ -301,7 +302,6 @@ export type {
 export {
   validateSetupSpec,
   buildSecretsFromSetup,
-  buildConnectionEnvVarMap,
   performSetup,
   buildSystemSecretsFromSetup,
 } from "./control-plane/setup.js";

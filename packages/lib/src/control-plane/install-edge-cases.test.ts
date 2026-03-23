@@ -25,7 +25,6 @@ import {
   performSetup,
   buildSecretsFromSetup,
   buildSystemSecretsFromSetup,
-  buildConnectionEnvVarMap,
 } from "./setup.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
 import type { ControlPlaneState } from "./types.js";
@@ -667,36 +666,28 @@ describe("Setup Input Variations", () => {
     expect(spec!.addons.ollama).toBe(true);
   });
 
-  // Scenario 21: Multiple providers each get own env var key
-  it("multiple providers each get their own env var key (no collision)", () => {
+  // Scenario 21: Multiple providers map to correct env vars
+  it("multiple providers each write their API key to the correct env var", () => {
     const connections: SetupConnection[] = [
-      {
-        id: "openai-1",
-        name: "OpenAI",
-        provider: "openai",
-        baseUrl: "",
-        apiKey: "sk-openai",
-      },
-      {
-        id: "groq-1",
-        name: "Groq",
-        provider: "groq",
-        baseUrl: "",
-        apiKey: "gsk-groq",
-      },
-      {
-        id: "anthropic-1",
-        name: "Anthropic",
-        provider: "anthropic",
-        baseUrl: "",
-        apiKey: "sk-ant-api03",
-      },
+      { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-openai" },
+      { id: "groq-1", name: "Groq", provider: "groq", baseUrl: "", apiKey: "gsk-groq" },
+      { id: "anthropic-1", name: "Anthropic", provider: "anthropic", baseUrl: "", apiKey: "sk-ant-api03" },
     ];
+    const secrets = buildSecretsFromSetup(connections);
+    expect(secrets.OPENAI_API_KEY).toBe("sk-openai");
+    expect(secrets.GROQ_API_KEY).toBe("gsk-groq");
+    expect(secrets.ANTHROPIC_API_KEY).toBe("sk-ant-api03");
+  });
 
-    const map = buildConnectionEnvVarMap(connections);
-    expect(map.get("openai-1")).toBe("OPENAI_API_KEY");
-    expect(map.get("groq-1")).toBe("GROQ_API_KEY");
-    expect(map.get("anthropic-1")).toBe("ANTHROPIC_API_KEY");
+  // Scenario 21b: OAuth providers (no API key) are silently skipped
+  it("skips connections without API keys (OAuth providers)", () => {
+    const connections: SetupConnection[] = [
+      { id: "github-copilot", name: "GitHub Copilot", provider: "github-copilot", baseUrl: "", apiKey: "" },
+      { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-test" },
+    ];
+    const secrets = buildSecretsFromSetup(connections);
+    expect(secrets.OPENAI_API_KEY).toBe("sk-test");
+    expect(Object.keys(secrets)).not.toContain("GITHUB_COPILOT_API_KEY");
   });
 
   // Scenario 22: buildSecretsFromSetup only writes API keys and owner info

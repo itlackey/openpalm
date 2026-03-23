@@ -6,7 +6,6 @@ import {
   validateSetupSpec,
   buildSecretsFromSetup,
   buildSystemSecretsFromSetup,
-  buildConnectionEnvVarMap,
   performSetup,
 } from "./setup.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
@@ -312,57 +311,6 @@ describe("buildSystemSecretsFromSetup", () => {
     expect(typeof secrets.OP_ASSISTANT_TOKEN).toBe("string");
     expect(secrets.OP_ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
     expect(typeof secrets.OP_MEMORY_TOKEN).toBe("string");
-  });
-});
-
-// ── Tests: buildConnectionEnvVarMap ──────────────────────────────────────
-
-describe("buildConnectionEnvVarMap", () => {
-  it("maps a single OpenAI connection", () => {
-    const connections: SetupConnection[] = [
-      { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-abc" },
-    ];
-    const map = buildConnectionEnvVarMap(connections);
-    expect(map.get("openai-1")).toBe("OPENAI_API_KEY");
-  });
-
-  it("namespaces duplicate provider env vars with safe IDs", () => {
-    const connections: SetupConnection[] = [
-      { id: "openai_1", name: "OpenAI Primary", provider: "openai", baseUrl: "", apiKey: "sk-abc" },
-      { id: "openai_2", name: "OpenAI Secondary", provider: "openai", baseUrl: "", apiKey: "sk-def" },
-    ];
-    const map = buildConnectionEnvVarMap(connections);
-    expect(map.get("openai_1")).toBe("OPENAI_API_KEY");
-    expect(map.get("openai_2")).toBe("OPENAI_API_KEY_OPENAI_2");
-  });
-
-  it("skips connections with unsafe env var keys (hyphen in ID)", () => {
-    const connections: SetupConnection[] = [
-      { id: "openai-1", name: "OpenAI Primary", provider: "openai", baseUrl: "", apiKey: "sk-abc" },
-      { id: "openai-2", name: "OpenAI Secondary", provider: "openai", baseUrl: "", apiKey: "sk-def" },
-    ];
-    const map = buildConnectionEnvVarMap(connections);
-    expect(map.get("openai-1")).toBe("OPENAI_API_KEY");
-    // openai-2 generates OPENAI_API_KEY_OPENAI-2 which fails the SAFE_ENV_KEY_RE (hyphen)
-    expect(map.has("openai-2")).toBe(false);
-  });
-
-  it("maps different providers to their canonical env vars", () => {
-    const connections: SetupConnection[] = [
-      { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-abc" },
-      { id: "groq-1", name: "Groq", provider: "groq", baseUrl: "", apiKey: "gsk-abc" },
-    ];
-    const map = buildConnectionEnvVarMap(connections);
-    expect(map.get("openai-1")).toBe("OPENAI_API_KEY");
-    expect(map.get("groq-1")).toBe("GROQ_API_KEY");
-  });
-
-  it("uses OPENAI_API_KEY fallback for unmapped providers", () => {
-    const connections: SetupConnection[] = [
-      { id: "ollama-1", name: "Ollama", provider: "ollama", baseUrl: "", apiKey: "" },
-    ];
-    const map = buildConnectionEnvVarMap(connections);
-    expect(map.get("ollama-1")).toBe("OPENAI_API_KEY");
   });
 });
 

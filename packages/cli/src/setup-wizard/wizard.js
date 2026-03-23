@@ -283,6 +283,16 @@
       showError(errEl, "Admin token must be at least 8 characters.");
       return false;
     }
+    var name = ($("owner-name").value || "").trim();
+    if (!name) {
+      showError(errEl, "Your name is required.");
+      return false;
+    }
+    var email = ($("owner-email").value || "").trim();
+    if (!email) {
+      showError(errEl, "Email is required.");
+      return false;
+    }
     return true;
   }
 
@@ -1347,11 +1357,11 @@
       hide(addon);
     }
 
-    // Memory user ID default
+    // Memory user ID default — derived from owner name
     var memInput = $("memory-user-id");
     if (!memInput.value) {
-      var email = ($("owner-email").value || "").trim();
-      memInput.value = email || "default_user";
+      var name = ($("owner-name").value || "").trim();
+      memInput.value = name ? name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") : "default_user";
     }
 
     // Render channels and services
@@ -1854,9 +1864,9 @@
       connections: connections,
     };
 
-    // Add optional slm capability
+    // Add optional slm capability (uses its own provider, not the LLM provider)
     if (small && small.model) {
-      payload.spec.capabilities.slm = llmProvider + "/" + small.model;
+      payload.spec.capabilities.slm = small.connId + "/" + small.model;
     }
 
     // Add owner if provided
@@ -1921,11 +1931,14 @@
     if (deployTimer) { clearInterval(deployTimer); deployTimer = null; }
   }
 
+  var deployPollErrors = 0;
+
   async function pollDeployStatus() {
     try {
       var res = await fetch("/api/setup/deploy-status");
       if (!res.ok) return;
       var data = await res.json();
+      deployPollErrors = 0;
 
       updateDeployUI(data);
 
@@ -1938,9 +1951,18 @@
           stopDeployPolling();
           showDeployDone(data);
         }
+      } else if (data.setupComplete && (!data.deployStatus || data.deployStatus.length === 0)) {
+        // Setup complete but no deployment started (--no-start mode)
+        stopDeployPolling();
+        showDeployDone({ deployStatus: [] });
       }
     } catch (e) {
-      // silently retry
+      deployPollErrors++;
+      if (deployPollErrors >= 3) {
+        // Server is gone — setup completed without deployment (--no-start)
+        stopDeployPolling();
+        showDeployDone({ deployStatus: [] });
+      }
     }
   }
 
