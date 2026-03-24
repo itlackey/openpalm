@@ -20,7 +20,6 @@ import {
   writeMemoryConfig,
   pushConfigToMemory,
   fetchConfigFromMemory,
-  resolveConfigForPush,
   checkVectorDimensions,
   LLM_PROVIDERS,
   EMBED_PROVIDERS,
@@ -86,9 +85,7 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(500, "internal_error", "Failed to write config file", {}, requestId);
   }
 
-  // Resolve env: references before pushing to container
-  const resolved = resolveConfigForPush(config, state.configDir);
-  const pushResult = await pushConfigToMemory(resolved);
+  const pushResult = await pushConfigToMemory(config);
 
   appendAudit(
     state, actor, "memory.config.set",

@@ -2,12 +2,11 @@
  * Tests for provider-constants.ts — shared LLM provider constants.
  *
  * Verifies:
- * 1. mem0ProviderName maps local providers to their memory-package adapters
- * 2. PROVIDER_LABELS has an entry for every provider in LLM_PROVIDERS
- * 3. LOCAL_PROVIDER_HELP has help text for all local providers
- * 4. PROVIDER_DEFAULT_URLS has entries for model-runner and lmstudio
- * 5. PROVIDER_KEY_MAP maps known cloud providers to env var names
- * 6. EMBEDDING_DIMS has well-known embedding dimension entries
+ * 1. PROVIDER_LABELS has an entry for every provider in LLM_PROVIDERS
+ * 2. LOCAL_PROVIDER_HELP has help text for all local providers
+ * 3. PROVIDER_DEFAULT_URLS has entries for model-runner and lmstudio
+ * 4. PROVIDER_KEY_MAP maps known cloud providers to env var names
+ * 5. EMBEDDING_DIMS has well-known embedding dimension entries
  */
 import { describe, test, expect } from "vitest";
 import {
@@ -17,68 +16,7 @@ import {
   PROVIDER_LABELS,
   LOCAL_PROVIDER_HELP,
   EMBEDDING_DIMS,
-  mem0ProviderName,
-  mem0BaseUrlConfig,
 } from '$lib/provider-constants.js';
-
-// ── mem0ProviderName ──────────────────────────────────────────────────────
-
-describe("mem0ProviderName", () => {
-  test("maps 'model-runner' to 'openai'", () => {
-    expect(mem0ProviderName('model-runner')).toBe('openai');
-  });
-
-  test("maps 'lmstudio' to 'lmstudio' (dedicated adapter, no response_format)", () => {
-    expect(mem0ProviderName('lmstudio')).toBe('lmstudio');
-  });
-
-  test("passes 'openai' through unchanged", () => {
-    expect(mem0ProviderName('openai')).toBe('openai');
-  });
-
-  test("maps 'ollama' to 'ollama' (dedicated adapter)", () => {
-    expect(mem0ProviderName('ollama')).toBe('ollama');
-  });
-
-  test("passes 'anthropic' through unchanged", () => {
-    expect(mem0ProviderName('anthropic')).toBe('anthropic');
-  });
-
-  test("passes unknown provider names through unchanged", () => {
-    expect(mem0ProviderName('some-future-provider')).toBe('some-future-provider');
-  });
-});
-
-describe("mem0BaseUrlConfig", () => {
-  test("uses openai_base_url for ollama with /v1 suffix", () => {
-    expect(mem0BaseUrlConfig('ollama', 'http://localhost:11434/')).toEqual({
-      key: 'openai_base_url',
-      value: 'http://localhost:11434/v1',
-    });
-  });
-
-  test("uses openai_base_url for openai-compatible providers with /v1 suffix", () => {
-    expect(mem0BaseUrlConfig('model-runner', 'http://model-runner.docker.internal/engines')).toEqual({
-      key: 'openai_base_url',
-      value: 'http://model-runner.docker.internal/engines/v1',
-    });
-  });
-
-  test("returns null for empty base url, maps any non-empty provider", () => {
-    expect(mem0BaseUrlConfig('anthropic', '')).toBeNull();
-    expect(mem0BaseUrlConfig('anthropic', 'https://api.anthropic.com')).toEqual({
-      key: 'openai_base_url',
-      value: 'https://api.anthropic.com/v1',
-    });
-  });
-
-  test('does not double-append /v1 when the base URL already includes it', () => {
-    expect(mem0BaseUrlConfig('openai', 'https://api.openai.com/v1')).toEqual({
-      key: 'openai_base_url',
-      value: 'https://api.openai.com/v1',
-    });
-  });
-});
 
 // ── PROVIDER_LABELS coverage ──────────────────────────────────────────────
 

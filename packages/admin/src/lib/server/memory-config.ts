@@ -19,7 +19,6 @@ export {
   readMemoryConfig,
   writeMemoryConfig,
   ensureMemoryConfig,
-  resolveConfigForPush,
   checkVectorDimensions,
   resetVectorStore,
   pushConfigToMemory,

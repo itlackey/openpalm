@@ -19,7 +19,7 @@ import {
   patchSecretsEnvFile,
   readStackSpec,
   writeStackSpec,
-  writeManagedEnvFiles,
+  writeCapabilityVars,
   formatCapabilityString,
   maskConnectionValue,
   readMemoryConfig,
@@ -29,7 +29,6 @@ import {
 import {
   PROVIDER_KEY_MAP,
   EMBEDDING_DIMS,
-  mem0BaseUrlConfig
 } from "$lib/provider-constants.js";
 import { createLogger } from "$lib/server/logger.js";
 
@@ -79,7 +78,6 @@ export const POST: RequestHandler = async (event) => {
   // ── Capabilities + secrets save ─────────────────────────────────────
   const provider = typeof body.provider === "string" ? body.provider : "";
   const apiKey = typeof body.apiKey === "string" ? body.apiKey : "";
-  const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl : "";
   const systemModel = typeof body.systemModel === "string" ? body.systemModel : "";
   const embeddingModel = typeof body.embeddingModel === "string" ? body.embeddingModel : "";
   const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
@@ -96,13 +94,6 @@ export const POST: RequestHandler = async (event) => {
     const envVarName = PROVIDER_KEY_MAP[provider] ?? "OPENAI_API_KEY";
     secretPatches[envVarName] = apiKey;
   }
-  if (baseUrl) {
-    const mem0Url = mem0BaseUrlConfig(provider, baseUrl);
-    if (mem0Url?.key === "openai_base_url") {
-      secretPatches.OPENAI_BASE_URL = mem0Url.value;
-    }
-  }
-
   if (Object.keys(secretPatches).length > 0) {
     try {
       patchSecretsEnvFile(state.vaultDir, secretPatches);
@@ -135,7 +126,7 @@ export const POST: RequestHandler = async (event) => {
 
   try {
     writeStackSpec(state.configDir, spec);
-    writeManagedEnvFiles(spec, state.vaultDir);
+    writeCapabilityVars(spec, state.vaultDir);
   } catch (err) {
     appendAudit(state, actor, "connections.save", { provider, error: String(err) }, false, requestId, callerType);
     return errorResponse(500, "internal_error", "Failed to update stack.yaml", {}, requestId);

@@ -26,7 +26,7 @@ import { ensureOpenCodeSystemConfig, ensureMemoryDir } from "./core-assets.js";
 import { createState, writeSetupTokenFile } from "./lifecycle.js";
 import { writeStackSpec, hasAddon } from "./stack-spec.js";
 import type { StackSpec } from "./stack-spec.js";
-import { writeManagedEnvFiles } from "./spec-to-env.js";
+import { writeCapabilityVars } from "./spec-to-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
 export { validateSetupSpec } from "./setup-validation.js";
@@ -190,5 +190,5 @@ function writeMemoryAndStackConfigs(spec: StackSpec, state: ControlPlaneState): 
     capabilities: { ...spec.capabilities, embeddings: { ...spec.capabilities.embeddings, dims: resolvedDims } },
   };
   writeStackSpec(state.configDir, specToWrite);
-  writeManagedEnvFiles(specToWrite, state.vaultDir);
+  writeCapabilityVars(specToWrite, state.vaultDir);
 }

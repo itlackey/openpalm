@@ -36,13 +36,9 @@ Ephemeral cache lives under `~/.cache/openpalm/`.
 
 The standard startup path uses:
 
-- `vault/stack/stack.env`
-- `vault/user/user.env`
-- `vault/stack/guardian.env`
-
-Individual services may additionally load service-specific managed env files under `vault/stack/services/<service-name>/`. For example, the `memory` service may load:
-
-- `vault/stack/services/memory/managed.env`
+- `vault/stack/stack.env` — primary: all config, secrets, and resolved capabilities (OP_CAP_*)
+- `vault/user/user.env` — extension: optional user additions, loaded alongside stack.env
+- `vault/stack/guardian.env` — guardian-specific: channel HMAC secrets
 
 ### Security boundaries
 
@@ -76,8 +72,7 @@ Role:
 Env sources:
 
 - `stack.env` (via compose ${VAR} substitution)
-- `user.env` (selected values via compose ${VAR} substitution: OPENAI_API_KEY, OPENAI_BASE_URL, etc.)
-- optional `vault/stack/services/memory/managed.env`
+- `user.env` (optional user additions via compose ${VAR} substitution)
 
 Key env:
 
@@ -110,7 +105,7 @@ Role:
 Env sources:
 
 - direct compose `environment:` block
-- `user.env` also bind-mounted into the container for runtime access
+- `user.env` bind-mounted into the container (optional user additions)
 - selected values from `stack.env` (via compose `${VAR}` substitution)
 
 Key env:

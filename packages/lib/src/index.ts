@@ -13,8 +13,6 @@ export {
   PROVIDER_KEY_MAP,
   EMBEDDING_DIMS,
   PROVIDER_LABELS,
-  mem0ProviderName,
-  mem0BaseUrlConfig,
   OLLAMA_DEFAULT_MODELS,
   OLLAMA_INSTACK_URL,
   LOCAL_PROVIDER_HELP,
@@ -127,15 +125,6 @@ export {
   uninstallAutomation,
 } from "./control-plane/channels.js";
 
-// ── Connection Mapping ──────────────────────────────────────────────────
-export {
-  buildMem0Mapping,
-} from "./control-plane/connection-mapping.js";
-export type {
-  Mem0ConnectionMappingInput,
-  Mem0ConnectionMapping,
-} from "./control-plane/connection-mapping.js";
-
 // ── Memory Config ───────────────────────────────────────────────────────
 export type {
   MemoryConfig,
@@ -151,7 +140,6 @@ export {
   readMemoryConfig,
   writeMemoryConfig,
   ensureMemoryConfig,
-  resolveConfigForPush,
   checkVectorDimensions,
   resetVectorStore,
   pushConfigToMemory,
@@ -283,9 +271,7 @@ export {
 // ── Spec-to-Env Derivation ──────────────────────────────────────────────
 export {
   deriveSystemEnvFromSpec,
-  deriveMemoryEnv,
-  deriveAddonEnv,
-  writeManagedEnvFiles,
+  writeCapabilityVars,
 } from "./control-plane/spec-to-env.js";
 
 // ── Spec Validation ─────────────────────────────────────────────────────
@@ -306,14 +292,3 @@ export {
   buildSystemSecretsFromSetup,
 } from "./control-plane/setup.js";
 
-// ── Viking Config ───────────────────────────────────────────────────────
-export { assembleVikingConfig, validateVikingConfigOpts } from "./control-plane/viking-config.js";
-export type { VikingConfigOpts } from "./control-plane/viking-config.js";
-
-// ── Voice Env Bridge ─────────────────────────────────────────────────────
-export {
-  buildVoiceEnvVars,
-  applyVoiceEnvVars,
-  isVoiceChannelInstalled,
-} from "./control-plane/voice-env-bridge.js";
-export type { VoiceEnvVars } from "./control-plane/voice-env-bridge.js";

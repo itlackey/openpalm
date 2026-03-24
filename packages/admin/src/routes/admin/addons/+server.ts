@@ -17,7 +17,7 @@ import {
   appendAudit,
   readStackSpec,
   writeStackSpec,
-  writeManagedEnvFiles,
+  writeCapabilityVars,
   writeSystemEnv,
   hasAddon,
   addonNames,
@@ -131,7 +131,7 @@ export const POST: RequestHandler = async (event) => {
 
   try {
     writeStackSpec(state.configDir, spec);
-    writeManagedEnvFiles(spec, state.vaultDir);
+    writeCapabilityVars(spec, state.vaultDir);
   } catch (err) {
     appendAudit(state, actor, "addons.post", { name, error: String(err) }, false, requestId, callerType);
     return errorResponse(500, "internal_error", "Failed to update stack.yaml", {}, requestId);

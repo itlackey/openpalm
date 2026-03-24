@@ -69,20 +69,33 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
   }
 
   if (!existsSync(systemEnvPath)) {
-    // Seed the header, then use mergeEnvContent to write values safely
-    // (quoteEnvValue handles special chars like newlines, quotes, #).
     const header = [
-      "# OpenPalm — System Secrets",
-      "# Managed by the CLI/admin. Do not edit manually unless you understand",
-      "# the control-plane contract.",
+      "# OpenPalm — Stack Configuration",
+      "# All secrets and configuration live here. Advanced users may edit directly.",
       "",
-      "# Authentication",
+      "# ── Authentication ──────────────────────────────────────────────────",
       "OP_ADMIN_TOKEN=",
       "OP_ASSISTANT_TOKEN=",
       "",
-      "# Service auth",
+      "# ── Service Auth ─────────────────────────────────────────────────────",
       "OP_MEMORY_TOKEN=",
       "OP_OPENCODE_PASSWORD=",
+      "",
+      "# ── Provider API Keys ────────────────────────────────────────────────",
+      "OPENAI_API_KEY=",
+      "OPENAI_BASE_URL=",
+      "ANTHROPIC_API_KEY=",
+      "GROQ_API_KEY=",
+      "MISTRAL_API_KEY=",
+      "GOOGLE_API_KEY=",
+      "OPENVIKING_API_KEY=",
+      "MCP_API_KEY=",
+      "EMBEDDING_API_KEY=",
+      "LMSTUDIO_API_KEY=",
+      "",
+      "# ── Owner ────────────────────────────────────────────────────────────",
+      `OWNER_NAME=${process.env.OWNER_NAME ?? ""}`,
+      `OWNER_EMAIL=${process.env.OWNER_EMAIL ?? ""}`,
       "",
     ].join("\n");
     const content = mergeEnvContent(header, updates);
@@ -97,38 +110,17 @@ export function ensureSecrets(state: ControlPlaneState): void {
   enforceVaultDirMode(state.vaultDir);
   mkdirSync(`${state.vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
   mkdirSync(`${state.vaultDir}/user`, { recursive: true, mode: VAULT_DIR_MODE });
+
+  // user.env is an empty placeholder — users can add custom vars here.
+  // All standard config lives in stack.env.
   const userEnvPath = `${state.vaultDir}/user/user.env`;
   if (!existsSync(userEnvPath)) {
-    const lines: string[] = [
-      "# OpenPalm — User Secrets",
-      "# API keys and owner info only. LLM/embedding config is in stack.yaml.",
+    writeVaultFile(userEnvPath, [
+      "# OpenPalm — User Extensions",
+      "# Add any custom environment variables here.",
+      "# These are loaded by compose alongside stack.env.",
       "",
-      "# LLM provider API keys",
-      "OPENAI_API_KEY=",
-      "OPENVIKING_API_KEY=",
-      "OPENAI_BASE_URL=",
-      "ANTHROPIC_API_KEY=",
-      "GROQ_API_KEY=",
-      "MISTRAL_API_KEY=",
-      "GOOGLE_API_KEY=",
-      "MCP_API_KEY=",
-      "EMBEDDING_API_KEY=",
-      "",
-      "# Owner",
-      `OWNER_NAME=${process.env.OWNER_NAME ?? ""}`,
-      `OWNER_EMAIL=${process.env.OWNER_EMAIL ?? ""}`,
-      "",
-    ];
-    writeVaultFile(userEnvPath, lines.join("\n"));
-  } else {
-    try {
-      chmodSync(userEnvPath, VAULT_FILE_MODE);
-    } catch (error) {
-      logger.warn("failed to enforce vault file permissions", {
-        path: userEnvPath,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+    ].join("\n"));
   }
 
   ensureSystemSecrets(state);
@@ -163,12 +155,12 @@ export function updateSecretsEnv(
   state: ControlPlaneState,
   updates: Record<string, string>
 ): void {
-  const userEnvPath = `${state.vaultDir}/user/user.env`;
-  if (!existsSync(userEnvPath)) {
-    throw new Error("vault/user/user.env does not exist — run setup first");
+  const stackEnvPath = `${state.vaultDir}/stack/stack.env`;
+  if (!existsSync(stackEnvPath)) {
+    throw new Error("vault/stack/stack.env does not exist — run setup first");
   }
 
-  mergeVaultEnvFile(userEnvPath, updates, true);
+  mergeVaultEnvFile(stackEnvPath, updates, true);
 }
 
 export function readSystemSecretsEnvFile(vaultDir: string): Record<string, string> {
@@ -188,7 +180,7 @@ export function updateSystemSecretsEnv(
 }
 
 export function readSecretsEnvFile(vaultDir: string): Record<string, string> {
-  return parseEnvFile(`${vaultDir}/user/user.env`);
+  return parseEnvFile(`${vaultDir}/stack/stack.env`);
 }
 
 export function patchSecretsEnvFile(
@@ -197,14 +189,14 @@ export function patchSecretsEnvFile(
 ): void {
   if (Object.keys(patches).length === 0) return;
 
-  const userEnvPath = `${vaultDir}/user/user.env`;
+  const stackEnvPath = `${vaultDir}/stack/stack.env`;
   enforceVaultDirMode(vaultDir);
-  mkdirSync(`${vaultDir}/user`, { recursive: true, mode: VAULT_DIR_MODE });
+  mkdirSync(`${vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
 
   let existingContent = "";
   try {
-    if (existsSync(userEnvPath)) {
-      existingContent = readFileSync(userEnvPath, "utf-8");
+    if (existsSync(stackEnvPath)) {
+      existingContent = readFileSync(stackEnvPath, "utf-8");
     }
   } catch {
     // start fresh
@@ -212,7 +204,7 @@ export function patchSecretsEnvFile(
 
   let result = mergeEnvContent(existingContent, patches);
   if (!result.endsWith("\n")) result += "\n";
-  writeVaultFile(userEnvPath, result);
+  writeVaultFile(stackEnvPath, result);
 }
 
 
@@ -225,7 +217,7 @@ export function maskConnectionValue(key: string, value: string): string {
 
 export function loadSecretsEnvFile(vaultDir?: string): Record<string, string> {
   const base = vaultDir ?? resolveVaultDir();
-  const parsed = parseEnvFile(`${base}/user/user.env`);
+  const parsed = parseEnvFile(`${base}/stack/stack.env`);
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed)) {
     if (/^[A-Z0-9_]+$/.test(key)) result[key] = value;

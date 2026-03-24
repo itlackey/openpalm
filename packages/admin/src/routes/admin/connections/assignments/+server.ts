@@ -15,7 +15,7 @@ import {
   appendAudit,
   readStackSpec,
   writeStackSpec,
-  writeManagedEnvFiles,
+  writeCapabilityVars,
 } from '@openpalm/lib';
 import {
   errorResponse,
@@ -227,7 +227,7 @@ export const POST: RequestHandler = async (event) => {
 
   try {
     writeStackSpec(state.configDir, spec);
-    writeManagedEnvFiles(spec, state.vaultDir);
+    writeCapabilityVars(spec, state.vaultDir);
   } catch (e) {
     appendAudit(state, actor, 'connections.assignments.save', { error: String(e) }, false, requestId, callerType);
     return errorResponse(500, 'internal_error', 'Failed to persist capabilities', {}, requestId);

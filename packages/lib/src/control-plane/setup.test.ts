@@ -358,25 +358,30 @@ describe("performSetup", () => {
     // Create stub stack.env so isSetupComplete doesn't crash
     mkdirSync(join(vaultDir, "stack"), { recursive: true });
     mkdirSync(join(vaultDir, "user"), { recursive: true });
-    writeFileSync(join(vaultDir, "stack", "stack.env"), "OP_SETUP_COMPLETE=false\n");
+    writeFileSync(
+      join(vaultDir, "stack", "stack.env"),
+      [
+        "OP_SETUP_COMPLETE=false",
+        "OP_ADMIN_TOKEN=",
+        "OPENAI_API_KEY=",
+        "OPENAI_BASE_URL=",
+        "ANTHROPIC_API_KEY=",
+        "GROQ_API_KEY=",
+        "MISTRAL_API_KEY=",
+        "GOOGLE_API_KEY=",
+        "OWNER_NAME=",
+        "OWNER_EMAIL=",
+        "",
+      ].join("\n")
+    );
 
-    // Seed a user.env file to avoid ensureSecrets() file-not-found
+    // Seed a user.env placeholder
     writeFileSync(
       join(vaultDir, "user", "user.env"),
       [
-        "# OpenPalm Secrets",
-        "export OP_ADMIN_TOKEN=",
-        "export ADMIN_TOKEN=",
-        "export OPENAI_API_KEY=",
-        "export OPENAI_BASE_URL=",
-        "export ANTHROPIC_API_KEY=",
-        "export GROQ_API_KEY=",
-        "export MISTRAL_API_KEY=",
-        "export GOOGLE_API_KEY=",
-        "export MEMORY_USER_ID=default_user",
-        "export OP_MEMORY_TOKEN=abc123",
-        "export OWNER_NAME=",
-        "export OWNER_EMAIL=",
+        "# OpenPalm — User Extensions",
+        "# Add any custom environment variables here.",
+        "# These are loaded by compose alongside stack.env.",
         "",
       ].join("\n")
     );
@@ -410,16 +415,13 @@ describe("performSetup", () => {
     expect(secretsContent).toContain("test-admin-token-12345");
   });
 
-  it("writes managed.env for memory service", async () => {
+  it("writes OP_CAP_* vars to stack.env for capabilities", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
-    const managedEnvPath = join(vaultDir, "stack", "services", "memory", "managed.env");
-    expect(existsSync(managedEnvPath)).toBe(true);
-
-    const content = readFileSync(managedEnvPath, "utf-8");
-    expect(content).toContain("SYSTEM_LLM_MODEL=gpt-4o");
-    expect(content).toContain("EMBEDDING_MODEL=text-embedding-3-small");
+    const stackEnvContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    expect(stackEnvContent).toContain("OP_CAP_LLM_MODEL=gpt-4o");
+    expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_MODEL=text-embedding-3-small");
   });
 
   it("writes capabilities to stack.yaml v2", async () => {
@@ -515,10 +517,9 @@ describe("performSetup", () => {
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    // nomic-embed-text is 768 dims per EMBEDDING_DIMS — verify via managed.env
-    const managedEnvPath = join(vaultDir, "stack", "services", "memory", "managed.env");
-    const content = readFileSync(managedEnvPath, "utf-8");
-    expect(content).toContain("EMBEDDING_DIMS=768");
+    // nomic-embed-text is 768 dims per EMBEDDING_DIMS — verify via stack.env OP_CAP_EMBEDDINGS_DIMS
+    const stackEnvContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_DIMS=768");
   });
 
   it("writes stack.yaml with correct v2 structure", async () => {
@@ -556,7 +557,7 @@ describe("performSetup", () => {
     expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
   });
 
-  it("writes channel credentials to user.env when channelCredentials provided", async () => {
+  it("writes channel credentials to stack.env when channelCredentials provided", async () => {
     const input = makeValidSpec({
       channelCredentials: {
         discord: {
@@ -585,9 +586,9 @@ describe("performSetup", () => {
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    const secretsContent = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
-    expect(secretsContent).toContain("discord-bot-token-xyz");
-    expect(secretsContent).toContain("discord-app-id-123");
+    const stackEnvContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    expect(stackEnvContent).toContain("discord-bot-token-xyz");
+    expect(stackEnvContent).toContain("discord-app-id-123");
   });
 });
 

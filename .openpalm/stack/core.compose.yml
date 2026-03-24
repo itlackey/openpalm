@@ -3,7 +3,9 @@
 # This file defines the core infrastructure. Addon services are added
 # via compose overlays in stack/addons/.
 #
-# Docker Compose reads variable values via --env-file vault/stack/stack.env --env-file vault/user/user.env --env-file vault/stack/guardian.env.
+# Docker Compose reads variable values via --env-file vault/stack/stack.env.
+# All config (system, API keys, OP_CAP_* capabilities) lives in stack.env.
+# vault/user/user.env is an optional extension file for custom user vars.
 #
 # Directory model (v0.10.0):
 #   ~/.openpalm/config/       — user-editable, non-secret configuration
@@ -26,16 +28,18 @@ services:
       HOME: /data
       MEM0_DIR: /data/.mem0
       MEMORY_AUTH_TOKEN: ${OP_MEMORY_TOKEN:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
-      SYSTEM_LLM_BASE_URL: ${SYSTEM_LLM_BASE_URL:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      MEMORY_USER_ID: ${MEMORY_USER_ID:-default_user}
+      SYSTEM_LLM_PROVIDER: ${OP_CAP_LLM_PROVIDER:-}
+      SYSTEM_LLM_MODEL: ${OP_CAP_LLM_MODEL:-}
+      SYSTEM_LLM_BASE_URL: ${OP_CAP_LLM_BASE_URL:-}
+      SYSTEM_LLM_API_KEY: ${OP_CAP_LLM_API_KEY:-}
+      EMBEDDING_PROVIDER: ${OP_CAP_EMBEDDINGS_PROVIDER:-}
+      EMBEDDING_MODEL: ${OP_CAP_EMBEDDINGS_MODEL:-}
+      EMBEDDING_BASE_URL: ${OP_CAP_EMBEDDINGS_BASE_URL:-}
+      EMBEDDING_API_KEY: ${OP_CAP_EMBEDDINGS_API_KEY:-}
+      EMBEDDING_DIMS: ${OP_CAP_EMBEDDINGS_DIMS:-}
     ports:
       - "${OP_MEMORY_BIND_ADDRESS:-127.0.0.1}:${OP_MEMORY_PORT:-3898}:8765"
-    env_file:
-      - path: ${OP_HOME}/vault/stack/services/memory/managed.env
-        required: false
     volumes:
       - ${OP_HOME}/data/memory:/data
     networks: [ assistant_net ]
@@ -68,6 +72,15 @@ services:
       MEMORY_USER_ID: ${MEMORY_USER_ID:-default_user}
       OP_UID: ${OP_UID:-1000}
       OP_GID: ${OP_GID:-1000}
+      # Provider API keys (resolved from stack.env)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      LMSTUDIO_API_KEY: ${LMSTUDIO_API_KEY:-}
+      SYSTEM_LLM_PROVIDER: ${OP_CAP_LLM_PROVIDER:-}
     ports:
       - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
       - "${OP_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_SSH_PORT:-2222}:22"
@@ -80,9 +93,6 @@ services:
       - ${OP_HOME}/data/stash:/home/opencode/.akm
       - ${OP_HOME}/data/workspace:/work
       - ${OP_HOME}/logs/opencode:/home/opencode/.local/state/opencode
-    env_file:
-      - path: ${OP_HOME}/vault/user/user.env
-        required: false
     working_dir: /work
     networks: [ assistant_net ]
     depends_on:

@@ -11,7 +11,7 @@ import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { isChannelAddon } from "./channels.js";
 import { readStackSpec, hasAddon, addonNames } from "./stack-spec.js";
-import { writeManagedEnvFiles } from "./spec-to-env.js";
+import { writeCapabilityVars } from "./spec-to-env.js";
 
 import { generateRedactSchema } from "./redact-schema.js";
 import { readSystemSecretsEnvFile } from "./secrets.js";
@@ -67,9 +67,8 @@ function resolveCompose(_state: ControlPlaneState): string {
  * These are the live vault env files.
  */
 export function buildEnvFiles(state: ControlPlaneState): string[] {
-  // managed.env is NOT included here — it's loaded at service level in
-  // core.compose.yml (memory service only). Global --env-file would leak
-  // memory-specific vars to all services.
+  // All config (system, API keys, OP_CAP_* capabilities) lives in stack.env.
+  // user.env is an optional extension file for custom user vars.
   return [
     `${state.vaultDir}/stack/stack.env`,
     `${state.vaultDir}/user/user.env`,
@@ -252,7 +251,7 @@ export function writeRuntimeFiles(
   // Write managed.env files derived from stack spec
   const specForEnv = spec ?? readStackSpec(state.configDir);
   if (specForEnv) {
-    writeManagedEnvFiles(specForEnv, state.vaultDir);
+    writeCapabilityVars(specForEnv, state.vaultDir);
   }
 
   // Generate redact.env.schema from canonical mappings

@@ -60,22 +60,28 @@ function makeSetupDirs(): void {
 
   mkdirSync(join(vaultDir, "stack"), { recursive: true });
   mkdirSync(join(vaultDir, "user"), { recursive: true });
-  writeFileSync(join(vaultDir, "stack", "stack.env"), "OP_SETUP_COMPLETE=false\n");
+  writeFileSync(
+    join(vaultDir, "stack", "stack.env"),
+    [
+      "OP_SETUP_COMPLETE=false",
+      "OP_ADMIN_TOKEN=",
+      "OPENAI_API_KEY=",
+      "OPENAI_BASE_URL=",
+      "ANTHROPIC_API_KEY=",
+      "GROQ_API_KEY=",
+      "MISTRAL_API_KEY=",
+      "GOOGLE_API_KEY=",
+      "OWNER_NAME=",
+      "OWNER_EMAIL=",
+      "",
+    ].join("\n")
+  );
   writeFileSync(
     join(vaultDir, "user", "user.env"),
     [
-      "# OpenPalm Secrets",
-      "export OP_ADMIN_TOKEN=",
-
-      "export OPENAI_API_KEY=",
-      "export OPENAI_BASE_URL=",
-      "export ANTHROPIC_API_KEY=",
-      "export GROQ_API_KEY=",
-      "export MISTRAL_API_KEY=",
-      "export GOOGLE_API_KEY=",
-      "export MEMORY_USER_ID=default_user",
-      "export OWNER_NAME=",
-      "export OWNER_EMAIL=",
+      "# OpenPalm — User Extensions",
+      "# Add any custom environment variables here.",
+      "# These are loaded by compose alongside stack.env.",
       "",
     ].join("\n")
   );
@@ -196,7 +202,7 @@ describe("setup wizard server error scenarios", () => {
     }
   });
 
-  it("returns 400 when connection provider does not match embeddings provider", async () => {
+  it("succeeds even when connection provider does not match embeddings provider", async () => {
     const { stop } = createSetupServer(serverPort, {
       configDir,
     });
@@ -220,17 +226,16 @@ describe("setup wizard server error scenarios", () => {
           connections: [{ id: "c1", name: "C1", provider: "fakeprovider", baseUrl: "", apiKey: "sk-test" }],
         }),
       });
-      expect(res.status).toBe(400);
-      const data = (await res.json()) as { ok: boolean; error: string };
-      expect(data.ok).toBe(false);
-      // performSetup fails because no connection matches embeddings provider "openai"
-      expect(data.error).toContain("embeddings provider");
+      // Connection-provider matching is no longer validated; setup succeeds
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ok: boolean };
+      expect(data.ok).toBe(true);
     } finally {
       stop();
     }
   });
 
-  it("returns 400 when no connection matches LLM provider", async () => {
+  it("succeeds even when no connection matches LLM provider", async () => {
     const { stop } = createSetupServer(serverPort, {
       configDir,
     });
@@ -254,10 +259,10 @@ describe("setup wizard server error scenarios", () => {
           connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
         }),
       });
-      expect(res.status).toBe(400);
-      const data = (await res.json()) as { ok: boolean; error: string };
-      expect(data.ok).toBe(false);
-      expect(data.error).toContain("No connection found for LLM provider");
+      // Connection-provider matching is no longer validated; setup succeeds
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ok: boolean };
+      expect(data.ok).toBe(true);
     } finally {
       stop();
     }

@@ -213,30 +213,6 @@ export function ensureMemoryConfig(dataDir: string): void {
 }
 
 
-export function resolveConfigForPush(
-  config: MemoryConfig,
-  configDir: string
-): MemoryConfig {
-  const resolved = structuredClone(config);
-
-  if (typeof resolved.mem0.llm.config.api_key === "string") {
-    resolved.mem0.llm.config.api_key = resolveApiKey(
-      resolved.mem0.llm.config.api_key as string,
-      configDir
-    );
-  }
-
-  if (typeof resolved.mem0.embedder.config.api_key === "string") {
-    resolved.mem0.embedder.config.api_key = resolveApiKey(
-      resolved.mem0.embedder.config.api_key as string,
-      configDir
-    );
-  }
-
-  return resolved;
-}
-
-
 export type VectorDimensionResult = {
   match: boolean;
   currentDims?: number;
