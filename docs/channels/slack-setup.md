@@ -1,7 +1,7 @@
 # Slack Bot Setup
 
 This guide connects a Slack bot to OpenPalm's Slack addon.
-OpenPalm is compose-first: add the Slack overlay to your compose file set, put Slack tokens in `user.env`, and restart the stack.
+OpenPalm is compose-first: add the Slack overlay to your compose file set, put Slack tokens in `stack.env`, and restart the stack.
 
 ## Prerequisites
 
@@ -35,9 +35,9 @@ OpenPalm is compose-first: add the Slack overlay to your compose file set, put S
    - `message.im`
 6. Install the app to the workspace and copy the bot token as `SLACK_BOT_TOKEN`.
 
-## 2. Add Slack secrets to `user.env`
+## 2. Add Slack secrets to `stack.env`
 
-Edit `~/.openpalm/vault/user/user.env`:
+Edit `~/.openpalm/vault/stack/stack.env`:
 
 ```dotenv
 SLACK_BOT_TOKEN=xoxb-your-bot-token

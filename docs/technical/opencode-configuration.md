@@ -17,7 +17,8 @@ Primary runtime sources:
 - The running assistant is defined by `.openpalm/stack/core.compose.yml`.
 - The optional admin-side OpenCode runtime is defined by `.openpalm/stack/addons/admin/compose.yml`.
 - `~/.openpalm/config/assistant/` is the user-editable OpenCode extension surface.
-- `~/.openpalm/vault/user/user.env` and `~/.openpalm/vault/stack/stack.env` provide runtime env values.
+- `~/.openpalm/vault/stack/stack.env` provides runtime provider keys and capability env values.
+- `~/.openpalm/vault/user/user.env` is an optional user extension env file.
 - Project-local OpenCode config inside `/work` still works per normal OpenCode behavior, but OpenPalm's container wiring is controlled by Compose.
 
 ---
@@ -32,7 +33,7 @@ Primary runtime sources:
 | `~/.openpalm/config/assistant/` | `/home/opencode/.config/opencode` | User tools, plugins, skills, commands |
 | `~/.openpalm/config/` | `/etc/openpalm` | OpenPalm config tree |
 | `~/.openpalm/vault/stack/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | OpenCode auth state |
-| `~/.openpalm/vault/user/user.env` | `/etc/openpalm-vault/user.env` | Read-only user secrets file |
+| `~/.openpalm/vault/user/` | `/etc/vault/` | User extension vault directory mount |
 | `~/.openpalm/data/assistant/` | `/home/opencode` | Assistant home |
 | `~/.openpalm/data/stash/` | `/home/opencode/.akm` | AKM stash |
 | `~/.openpalm/data/workspace/` | `/work` | Shared workspace |
@@ -57,7 +58,7 @@ Primary runtime sources:
 
 - The assistant starts in `/work`.
 - The assistant has no Docker socket mount.
-- The assistant mounts only `vault/user/user.env` from the vault boundary, not the full directory.
+- The assistant mounts only `vault/user/` from the vault boundary, not the full `vault/` tree.
 - The entrypoint normalizes permissions, optionally enables SSH, then drops privileges to `OP_UID:OP_GID`.
 
 ---
@@ -106,7 +107,7 @@ Compose remains the source of truth for that contract.
 ## Security Boundary
 
 - The assistant has no Docker socket.
-- The assistant receives only `vault/user/user.env` as a read-only file mount from the vault boundary.
+- The assistant receives only `vault/user/` as a mount from the vault boundary.
 - Stack-level secrets such as `OP_ADMIN_TOKEN` and channel HMAC secrets remain in `vault/stack/stack.env` and are not mounted as files into the assistant.
 - Admin-side Docker access is mediated by `docker-socket-proxy` on the isolated `admin_docker_net` network.
 
@@ -115,6 +116,6 @@ Compose remains the source of truth for that contract.
 ## Day-To-Day Changes
 
 - Add tools, plugins, commands, or skills under `~/.openpalm/config/assistant/`.
-- Update provider keys and model-related env in `~/.openpalm/vault/user/user.env`.
+- Update provider keys and model-related env in `~/.openpalm/vault/stack/stack.env`.
 - Change service wiring by editing the compose file set in `~/.openpalm/stack/`.
 - Verify the exact runtime by reading `~/.openpalm/stack/core.compose.yml` and any addon overlays used for startup.

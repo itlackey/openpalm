@@ -10,7 +10,7 @@ It focuses on three things only:
 - filesystem and mount boundaries
 - Docker network boundaries
 
-For the full architectural rule set, see `docs/technical/core-principles.md`. The security boundaries listed here are a summary; `core-principles.md` defines additional invariants (e.g., "host only by default") not repeated here.
+For the full architectural rule set, see `docs/technical/authoritative/core-principles.md`. The security boundaries listed here are a summary; `core-principles.md` defines additional invariants (e.g., "host only by default") not repeated here.
 
 ---
 

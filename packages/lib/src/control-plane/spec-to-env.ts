@@ -80,9 +80,22 @@ export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
     return keyVar ? (stackEnv[keyVar] || "") : "";
   };
 
+  /** Providers that do NOT use an OpenAI-compatible /v1 path prefix. */
+  const NO_V1_SUFFIX = new Set(["ollama", "model-runner", "google"]);
+
+  const ensureV1 = (url: string, provider: string): string => {
+    if (!url || NO_V1_SUFFIX.has(provider)) return url;
+    return url.endsWith("/v1") ? url : `${url.replace(/\/+$/, "")}/v1`;
+  };
+
   const resolveUrl = (provider: string): string => {
     if (provider === "ollama" && hasAddon(spec, "ollama")) return OLLAMA_INSTACK_URL;
-    return PROVIDER_DEFAULT_URLS[provider] || "";
+    // Check stack.env for a user-configured base URL override (openai provider)
+    if (provider === "openai" && stackEnv.OPENAI_BASE_URL) {
+      return ensureV1(stackEnv.OPENAI_BASE_URL, provider);
+    }
+    const defaultUrl = PROVIDER_DEFAULT_URLS[provider] || "";
+    return ensureV1(defaultUrl, provider);
   };
 
   const caps: Record<string, string> = {};

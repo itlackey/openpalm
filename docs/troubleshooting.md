@@ -125,13 +125,13 @@ reading it.
 **Fix:**
 
 1. check the assistant container status and logs
-2. verify at least one provider is configured in `~/.openpalm/vault/user/user.env`
+2. verify at least one provider is configured in `~/.openpalm/vault/stack/stack.env`
 3. confirm the provider endpoint is reachable from Docker if you use a local model server
 
 Useful checks:
 
 ```bash
-grep -E 'API_KEY|BASE_URL|SYSTEM_LLM_' ~/.openpalm/vault/user/user.env
+grep -E 'API_KEY|BASE_URL|OP_CAP_LLM_' ~/.openpalm/vault/stack/stack.env
 ```
 
 ```bash

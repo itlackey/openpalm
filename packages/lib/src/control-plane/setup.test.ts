@@ -264,7 +264,12 @@ describe("buildSecretsFromSetup", () => {
     expect(secrets.SYSTEM_LLM_PROVIDER).toBeUndefined();
     expect(secrets.SYSTEM_LLM_MODEL).toBeUndefined();
     expect(secrets.SYSTEM_LLM_BASE_URL).toBeUndefined();
-    expect(secrets.OPENAI_BASE_URL).toBeUndefined();
+  });
+
+  it("persists OPENAI_BASE_URL from openai connection", () => {
+    const spec = makeValidSpec();
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
+    expect(secrets.OPENAI_BASE_URL).toBe("https://api.openai.com");
   });
 
   it("does not include MEMORY_USER_ID in user secrets (lives in stack.env via OP_CAP_*)", () => {

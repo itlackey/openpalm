@@ -70,9 +70,14 @@ export function buildSecretsFromSetup(
   if (ownerEmail) updates.OWNER_EMAIL = ownerEmail;
 
   for (const conn of connections) {
-    if (!conn.apiKey) continue;
-    const envVar = PROVIDER_KEY_MAP[conn.provider];
-    if (envVar) updates[envVar] = conn.apiKey;
+    if (conn.apiKey) {
+      const envVar = PROVIDER_KEY_MAP[conn.provider];
+      if (envVar) updates[envVar] = conn.apiKey;
+    }
+    // Persist user-configured base URL so writeCapabilityVars can read it
+    if (conn.baseUrl && conn.provider === "openai") {
+      updates.OPENAI_BASE_URL = conn.baseUrl;
+    }
   }
   return updates;
 }

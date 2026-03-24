@@ -15,7 +15,7 @@ material it depends on, typically `${GNUPGHOME:-~/.gnupg}`.
 
 | Path | Contains | Back up? |
 |---|---|---|
-| `~/.openpalm/vault/` | `vault/user/user.env`, `vault/stack/stack.env`, schemas | Yes |
+| `~/.openpalm/vault/` | `vault/stack/stack.env`, `vault/stack/guardian.env`, `vault/user/user.env`, schemas | Yes |
 | `~/.openpalm/config/` | assistant config, automations, optional `stack.yaml` | Yes |
 | `~/.openpalm/stack/` | live compose files and helper scripts | Yes |
 | `~/.openpalm/data/` | durable service data, workspace, stash | Yes |
@@ -110,8 +110,9 @@ the current model.
 
 | File or directory | Purpose |
 |---|---|
-| `~/.openpalm/vault/user/user.env` | User secrets and model settings |
+| `~/.openpalm/vault/user/user.env` | Optional user extension env |
 | `~/.openpalm/vault/stack/stack.env` | Stack tokens, ports, paths, image tags |
+| `~/.openpalm/vault/stack/guardian.env` | Channel HMAC secrets for guardian/channel verification |
 | `~/.openpalm/stack/core.compose.yml` | Base stack definition |
 | `~/.openpalm/stack/addons/<name>/compose.yml` | Addon overlays |
 | `~/.openpalm/config/assistant/` | User OpenCode config |

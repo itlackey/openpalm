@@ -1,8 +1,8 @@
 # Password & Secret Management
 
 OpenPalm keeps secrets inside one vault boundary under `~/.openpalm/vault/`.
-The current model is simple: one user env file, one stack env file, and Docker
-Compose reads both directly.
+The current model is simple: one optional user extension env, one stack env,
+and one guardian secret env.
 
 ---
 
@@ -12,14 +12,16 @@ Compose reads both directly.
 ~/.openpalm/vault/
   stack/
     stack.env
+    guardian.env
     stack.env.schema
   user/
     user.env
     user.env.schema
 ```
 
-- `vault/user/user.env` is user-managed.
-- `vault/stack/stack.env` is system-managed.
+- `vault/user/user.env` is an optional user-extension env file.
+- `vault/stack/stack.env` is system-managed runtime env + secrets.
+- `vault/stack/guardian.env` holds channel HMAC secrets.
 - Compose is run with both files, usually as:
   `--env-file ../vault/stack/stack.env --env-file ../vault/user/user.env`.
 
@@ -27,7 +29,7 @@ Compose reads both directly.
 
 ## `vault/user/user.env`
 
-This file is for user-managed settings.
+This file is for optional user-managed extension settings.
 
 Common keys include:
 
@@ -39,7 +41,7 @@ Common keys include:
 Behavior:
 
 - safe to edit directly on the host
-- mounted into the assistant as a single read-only file
+- mounted into the assistant via the `vault/user/` directory mount
 - also passed as container environment via Compose
 - not overwritten by normal lifecycle operations
 
@@ -95,7 +97,7 @@ Behavior:
 | Container | Vault access | Notes |
 |---|---|---|
 | `admin` addon | full `~/.openpalm/` bind mount | Only service with broad vault visibility |
-| `assistant` | `vault/user/user.env` only | Read-only file mount plus env injection |
+| `assistant` | `vault/user/` only | Directory mount plus env injection |
 | `guardian` | no vault mount | Reads needed values from Compose env |
 | `memory` | no vault mount | Reads needed values from Compose env |
 | `scheduler` | no vault mount | Reads needed values from Compose env |
@@ -142,7 +144,7 @@ source of truth.
 
 - Edit `~/.openpalm/vault/stack/stack.env` when changing API keys, provider
   settings, ports, paths, or stack-level tokens.
-- Edit `~/.openpalm/vault/user/user.env` for user-managed settings like owner
+- Edit `~/.openpalm/vault/user/user.env` for user-managed extension settings like owner
   name and email.
 - Back up the whole `~/.openpalm/vault/` tree.
 - Never commit real env values from either vault file.

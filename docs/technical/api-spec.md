@@ -321,7 +321,7 @@ Body:
 { "name": "chat", "enabled": true, "env": {} }
 ```
 
-- `name` (required) -- Addon name (must be a known addon from the registry).
+- `name` (required) -- Addon name (must exist under `stack/addons/<name>/compose.yml`).
 - `enabled` (optional) -- Set to `true` or `false` to enable/disable.
 - `env` (optional) -- Key-value pairs to merge into the addon's env config.
 
@@ -334,7 +334,7 @@ Response:
 Error responses:
 
 - `400 bad_request` -- `name` is missing.
-- `404 not_found` -- Addon name is not available in the registry.
+- `404 not_found` -- Addon name is not available on disk in `stack/addons/`.
 - `500 internal_error` -- Failed to update `stack.yaml`.
 
 ### `GET /admin/addons/:name`
@@ -349,7 +349,7 @@ Response:
 
 Error responses:
 
-- `404 not_found` -- Addon name is not available in the registry.
+- `404 not_found` -- Addon name is not available on disk in `stack/addons/`.
 
 ### `POST /admin/addons/:name`
 
@@ -375,12 +375,12 @@ Response:
 
 Error responses:
 
-- `404 not_found` -- Addon name is not available in the registry.
+- `404 not_found` -- Addon name is not available on disk in `stack/addons/`.
 - `500 internal_error` -- Failed to update `stack.yaml`.
 
 ## Registry
 
-Unified registry for channels and automations. Add-on definitions live in `.openpalm/stack/addons/` and automations in `.openpalm/config/automations/`. These are bundled into the admin image at build time.
+Unified registry for automations. Channel/addon management is handled by `/admin/addons` endpoints against on-disk addon overlays under `.openpalm/stack/addons/`.
 
 ### `GET /admin/registry`
 
@@ -432,7 +432,7 @@ Error responses:
 
 ### `POST /admin/registry/refresh`
 
-Refreshes the registry index from bundled stack assets.
+Refreshes the registry index from the configured registry source.
 
 Response:
 
@@ -739,8 +739,7 @@ Changes are persisted to disk.
 
 ### `GET /admin/memory/config`
 
-Returns the persisted config, the live runtime config (if reachable), provider
-lists, and known embedding dimension mappings.
+Returns the persisted config, provider lists, and known embedding dimension mappings.
 
 Response:
 
@@ -754,7 +753,6 @@ Response:
     },
     "memory": { "custom_instructions": "" }
   },
-  "runtimeConfig": null,
   "providers": {
     "llm": ["openai", "anthropic", "ollama", "groq", "together", "mistral", "deepseek", "xai", "lmstudio", "model-runner"],
     "embed": ["openai", "ollama", "huggingface", "lmstudio"]
@@ -768,7 +766,7 @@ Response:
 
 ### `POST /admin/memory/config`
 
-Saves a full Memory config to disk and pushes it to the running container.
+Saves a full Memory config to disk.
 
 Body: A complete `MemoryConfig` object (same shape as `config` in the GET response).
 
@@ -778,8 +776,6 @@ Response:
 {
   "ok": true,
   "persisted": true,
-  "pushed": true,
-  "pushError": null,
   "dimensionWarning": null,
   "dimensionMismatch": false
 }
@@ -810,7 +806,7 @@ Body:
 
 - `provider` (required) -- Must be a recognized LLM or embedding provider name.
 - `apiKeyRef` -- Raw API key or `env:VAR_NAME` reference resolved from
-  `process.env` then `vault/user/user.env`.
+  `process.env` then `vault/stack/stack.env`.
 - `baseUrl` -- Provider API base URL. Falls back to provider defaults when empty.
 
 Provider API conventions:

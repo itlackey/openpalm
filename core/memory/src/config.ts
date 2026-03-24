@@ -6,6 +6,24 @@ import type { MemoryConfig } from '@openpalm/memory';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
+/**
+ * Map an OpenPalm provider name to a @openpalm/memory adapter name.
+ * Memory only supports: openai, ollama, lmstudio.
+ * All OpenAI-compatible cloud providers (groq, mistral, deepseek, etc.)
+ * work through the openai adapter since the base URL and API key are
+ * already resolved by the control plane.
+ */
+function memoryProviderName(provider: string): string {
+  switch (provider) {
+    case 'ollama':
+      return 'ollama';
+    case 'lmstudio':
+      return 'lmstudio';
+    default:
+      return 'openai';
+  }
+}
+
 export function buildConfigFromEnv(
   env: Record<string, string | undefined> = process.env as Record<string, string | undefined>,
   dataDir?: string,
@@ -29,7 +47,7 @@ export function buildConfigFromEnv(
 
   return {
     llm: {
-      provider,
+      provider: memoryProviderName(provider),
       config: {
         model: env.SYSTEM_LLM_MODEL || undefined,
         apiKey: env.SYSTEM_LLM_API_KEY || undefined,
@@ -37,7 +55,7 @@ export function buildConfigFromEnv(
       },
     },
     embedder: {
-      provider: env.EMBEDDING_PROVIDER || provider,
+      provider: memoryProviderName(env.EMBEDDING_PROVIDER || provider),
       config: {
         model: env.EMBEDDING_MODEL || undefined,
         apiKey: env.EMBEDDING_API_KEY || undefined,

@@ -5,6 +5,13 @@ set -euo pipefail
 # The control plane resolves OP_CAP_* capabilities and maps them to
 # OV_* env vars in the compose environment block.
 
+# Validate/default numeric values
+OV_EMBEDDING_DIMS="${OV_EMBEDDING_DIMS:-768}"
+if ! [[ "$OV_EMBEDDING_DIMS" =~ ^[0-9]+$ ]]; then
+  echo "WARNING: OV_EMBEDDING_DIMS='$OV_EMBEDDING_DIMS' is not numeric, defaulting to 768"
+  OV_EMBEDDING_DIMS=768
+fi
+
 cat > /app/ov.conf <<EOF
 {
   "storage": {

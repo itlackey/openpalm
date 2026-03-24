@@ -392,7 +392,6 @@ directly — extract and start.
 |---|---|
 | [installation.md](../installation.md) | Initial setup and home layout |
 | [troubleshooting.md](../troubleshooting.md) | Common problems and fixes |
-| [core-principles.md](../technical/core-principles.md) | Architectural rules and filesystem contract |
+| [core-principles.md](../technical/authoritative/core-principles.md) | Architectural rules and filesystem contract |
 | [environment-and-mounts.md](../technical/environment-and-mounts.md) | Per-service mount and env details |
 | `.openpalm/stack/README.md` | Stack directory quick reference |
-

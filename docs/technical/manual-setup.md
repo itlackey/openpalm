@@ -45,8 +45,8 @@ After copying, the important paths are:
 | Path | Purpose |
 |---|---|
 | `~/.openpalm/stack/` | Base compose file and addon compose files |
-| `~/.openpalm/vault/stack/stack.env` | System values used by compose |
-| `~/.openpalm/vault/user/user.env` | User-managed settings (owner info, custom preferences) |
+| `~/.openpalm/vault/stack/stack.env` | All secrets, API keys, owner info, OP_CAP_* capabilities |
+| `~/.openpalm/vault/user/user.env` | Empty placeholder for custom user extensions |
 | `~/.openpalm/config/` | User-editable config and automations |
 | `~/.openpalm/data/` | Durable service data |
 | `~/.openpalm/logs/` | Logs and audit output |
@@ -59,24 +59,25 @@ Edit the copied env files before first start.
 
 ### `~/.openpalm/vault/stack/stack.env`
 
-Review host-specific values such as paths, ports, image tags, and tokens.
-Set at least one model provider key or endpoint your assistant can use.
+Contains all secrets, API keys, owner info (`OWNER_NAME`, `OWNER_EMAIL`), `OP_CAP_*` capability mappings, tokens, and host-specific values such as paths, ports, and image tags. Set at least one model provider key or endpoint your assistant can use.
 
 Example:
 
 ```dotenv
 OPENAI_API_KEY=your-key-here
+OWNER_NAME=Your Name
+OWNER_EMAIL=you@example.com
 ```
-
-### `~/.openpalm/vault/user/user.env`
-
-Optional user-managed settings such as owner name and email.
 
 If you want a fresh admin token or signing secret, generate values locally and paste them into the file:
 
 ```bash
 openssl rand -hex 24
 ```
+
+### `~/.openpalm/vault/user/user.env`
+
+Empty placeholder for custom user extensions. No values are required here for normal operation.
 
 ---
 
@@ -169,5 +170,5 @@ Run the same file set with `down` instead of `up`. See the [Manual Compose Runbo
 
 - [setup-guide.md](setup-guide.md) - Convenience path and optional tooling
 - [.openpalm/stack/README.md](../.openpalm/stack/README.md) - Compose file and addon reference
-- [technical/core-principles.md](technical/core-principles.md) - Security and filesystem rules
+- [technical/authoritative/core-principles.md](technical/authoritative/core-principles.md) - Security and filesystem rules
 - [managing-openpalm.md](managing-openpalm.md) - Day-to-day operations
