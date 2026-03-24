@@ -23,7 +23,7 @@ Top priorities:
 1. Fix guardian/channel secret wiring consistency (`guardian.env` vs `stack.env`) and channel env variable naming.
 2. Remove guardian bypass behavior in voice channel fallback.
 3. Enforce mount/data ownership boundaries for scheduler and reduce over-broad mounts.
-4. Eliminate split orchestration/assembly logic paths and centralize them in `@openpalm/lib`.
+4. Eliminate split orchestration/assembly logic paths by deleting `.openpalm/stack/start.sh` and centralizing execution in `@openpalm/lib` consumers.
 
 ## What Is Working Well
 
@@ -110,8 +110,8 @@ Significant orchestration logic remains duplicated in admin/CLI.
 Evidence:
 
 - Registry clone/pull/discovery implemented in admin-only module `packages/admin/src/lib/server/registry-sync.ts:1`.
-- Compose startup and preflight wrapper in shell script `.openpalm/stack/start.sh:196` with independent behavior.
-- Addon parsing and stack yaml handling in shell script `.openpalm/stack/start.sh:39` diverges from typed parser in `packages/lib/src/control-plane/stack-spec.ts:144`.
+- Legacy compose startup and preflight wrapper in shell script `.openpalm/stack/start.sh` duplicates control-plane behavior.
+- Legacy addon parsing and stack yaml handling in shell script `.openpalm/stack/start.sh` diverges from typed parser in `packages/lib/src/control-plane/stack-spec.ts:144`.
 
 Impact:
 
@@ -122,12 +122,12 @@ Impact:
 
 Severity: High
 
-`@openpalm/lib` enforces v2 spec parsing, while `start.sh` implements ad-hoc top-level list parsing.
+`@openpalm/lib` enforces v2 spec parsing, while legacy `start.sh` implements ad-hoc top-level list parsing.
 
 Evidence:
 
 - Strict v2 check in `packages/lib/src/control-plane/stack-spec.ts:156`.
-- Manual list extraction logic in `.openpalm/stack/start.sh:49` and `.openpalm/stack/start.sh:75`.
+- Manual list extraction logic in `.openpalm/stack/start.sh`.
 
 Impact:
 
@@ -182,7 +182,7 @@ Observed repo alignment:
 
 Gaps to address:
 
-- Multiple orchestration paths compose different env-file sets (`guardian.env` omitted in default start script) at `.openpalm/stack/start.sh:8`.
+- Multiple orchestration paths compose different env-file sets (`guardian.env` omitted in legacy start script).
 - This undermines deterministic compose model resolution.
 
 ### Varlock docs alignment highlights
@@ -206,10 +206,11 @@ Potential improvement:
 
 1. Create a single lib-owned channel secret backend API.
 2. Standardize compose arg/env-file construction in `@openpalm/lib` and reuse everywhere.
-3. Refactor guardian server into focused modules (`auth`, `replay`, `rate-limit`, `forwarding`, `audit`).
-4. Remove direct-LLM fallback from channel voice and return explicit guardian-unavailable errors.
-5. Move admin registry sync/discovery into shared lib.
-6. Narrow scheduler mounts to minimum required directories.
+3. Delete `.openpalm/stack/start.sh` and route all compose orchestration through lib-backed CLI/admin paths.
+4. Refactor guardian server into focused modules (`auth`, `replay`, `rate-limit`, `forwarding`, `audit`).
+5. Remove direct-LLM fallback from channel voice and return explicit guardian-unavailable errors.
+6. Move admin registry sync/discovery into shared lib.
+7. Narrow scheduler mounts to minimum required directories.
 
 ## Recommended Remediation Plan
 
@@ -224,10 +225,11 @@ Potential improvement:
 - Implement a unified secret write/read/rotation path for channel secrets.
 - Enforce single-orchestrator lock for mutating operations.
 - Restrict scheduler mounts to ownership-scoped paths.
+- Delete `.openpalm/stack/start.sh` to remove duplicate orchestration and parser drift.
 
 ### Phase 2 (Complexity reduction)
 
-- Consolidate start/apply/preflight behaviors into shared lib APIs.
+- Consolidate all remaining apply/preflight behaviors into shared lib APIs.
 - Decompose `core/guardian/src/server.ts`.
 - Reduce setup-wizard complexity and split by concerns.
 
@@ -254,7 +256,6 @@ Potential improvement:
 - `docs/technical/authoritative/core-principles.md`
 - `docs/technical/environment-and-mounts.md`
 - `.openpalm/stack/core.compose.yml`
-- `.openpalm/stack/start.sh`
 - `.openpalm/stack/addons/chat/compose.yml`
 - `.openpalm/stack/addons/api/compose.yml`
 - `.openpalm/stack/addons/discord/compose.yml`

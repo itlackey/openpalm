@@ -30,7 +30,6 @@ files here.
 
   stack/              Docker Compose runtime assets
     core.compose.yml    Core services
-    start.sh            Convenience compose wrapper (see manual-compose-runbook.md)
     addons/             Optional service overlays
 
   logs/               Audit and debug logs

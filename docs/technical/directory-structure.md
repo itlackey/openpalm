@@ -46,7 +46,6 @@ existing user files.
 │   └── stack.yaml
 ├── stack/
 │   ├── core.compose.yml
-│   ├── start.sh
 │   └── addons/
 │       ├── admin/
 │       ├── api/
@@ -166,7 +165,7 @@ To change the running stack:
 1. Edit files under `config/`, `vault/`, or `stack/`.
 2. Rerun `docker compose` with `stack/core.compose.yml` plus any addon overlays (see [Manual Compose Runbook](../operations/manual-compose-runbook.md)).
 
-The wrapper always includes:
+Supported compose invocation paths always include:
 
 - `vault/stack/stack.env`
 - `vault/user/user.env`
