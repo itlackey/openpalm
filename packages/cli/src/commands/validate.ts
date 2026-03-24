@@ -1,7 +1,7 @@
 import { defineCommand } from 'citty';
 import { join } from 'node:path';
 import { rm } from 'node:fs/promises';
-import { resolveVaultDir, resolveDataDir } from '@openpalm/lib';
+import { resolveVaultDir } from '@openpalm/lib';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 
 export default defineCommand({
@@ -11,7 +11,6 @@ export default defineCommand({
   },
   async run() {
     const vaultDir = resolveVaultDir();
-    const dataDir = resolveDataDir();
 
     const primarySchema = join(vaultDir, 'user', 'user.env.schema');
     const envPath = join(vaultDir, 'user', 'user.env');
@@ -30,7 +29,7 @@ export default defineCommand({
       process.exit(1);
     }
 
-    const varlockBin = await ensureVarlock(dataDir);
+    const varlockBin = await ensureVarlock();
     const tmpDir = await prepareVarlockDir(primarySchema, envPath);
     let exitCode = 1;
     try {

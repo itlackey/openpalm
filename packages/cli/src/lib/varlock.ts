@@ -48,7 +48,7 @@ export async function prepareVarlockDir(schemaPath: string, envPath: string): Pr
  * Downloads varlock binary and caches it in ~/.cache/openpalm/bin/.
  * Skips download if binary already exists.
  */
-export async function ensureVarlock(dataDir: string): Promise<string> {
+export async function ensureVarlock(): Promise<string> {
   const { resolveCacheHome } = await import('@openpalm/lib');
   const binDir = join(resolveCacheHome(), 'bin');
   const varlockBin = join(binDir, 'varlock');

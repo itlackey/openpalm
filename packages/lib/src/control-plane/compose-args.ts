@@ -27,6 +27,9 @@ export type ComposeOptions = {
 /**
  * Build the compose file and env file lists for a given state.
  * Returns the resolved files and env files for use with docker.ts functions.
+ *
+ * Note: env files are already filtered to only existing paths by
+ * `buildEnvFiles()` in config-persistence.ts.
  */
 export function buildComposeOptions(state: ControlPlaneState): ComposeOptions {
   return {

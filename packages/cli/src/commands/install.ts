@@ -368,8 +368,8 @@ async function ensureVolumeMountTargets(homeDir: string, vaultDir: string): Prom
   }
 }
 
-async function runVarlockValidation(dataDir: string, vaultDir: string): Promise<void> {
-  const varlockBin = await ensureVarlock(dataDir);
+async function runVarlockValidation(_dataDir: string, vaultDir: string): Promise<void> {
+  const varlockBin = await ensureVarlock();
   const schemaPath = join(vaultDir, 'user', 'user.env.schema');
   if (!(await Bun.file(schemaPath).exists())) return;
   const tmpDir = await prepareVarlockDir(schemaPath, join(vaultDir, 'user', 'user.env'));

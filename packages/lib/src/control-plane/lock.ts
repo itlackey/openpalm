@@ -89,8 +89,11 @@ export function acquireLock(opHome: string, operation: string): LockHandle {
   try {
     // Atomic exclusive create — fails if file already exists
     const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o644);
-    writeSync(fd, content);
-    closeSync(fd);
+    try {
+      writeSync(fd, content);
+    } finally {
+      closeSync(fd);
+    }
     return { path, info };
   } catch (err: unknown) {
     // File already exists — check if it's stale
@@ -107,8 +110,11 @@ export function acquireLock(opHome: string, operation: string): LockHandle {
         // Retry acquisition
         try {
           const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o644);
-          writeSync(fd, content);
-          closeSync(fd);
+          try {
+            writeSync(fd, content);
+          } finally {
+            closeSync(fd);
+          }
           return { path, info };
         } catch (retryErr: unknown) {
           if ((retryErr as NodeJS.ErrnoException).code === "EEXIST") {
@@ -135,8 +141,11 @@ export function acquireLock(opHome: string, operation: string): LockHandle {
       }
       try {
         const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o644);
-        writeSync(fd, content);
-        closeSync(fd);
+        try {
+          writeSync(fd, content);
+        } finally {
+          closeSync(fd);
+        }
         return { path, info };
       } catch (retryErr: unknown) {
         if ((retryErr as NodeJS.ErrnoException).code === "EEXIST") {

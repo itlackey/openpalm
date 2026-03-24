@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
 # Generate ov.conf from environment variables injected by compose.
 # The control plane resolves OP_CAP_* capabilities and maps them to
@@ -7,10 +7,12 @@ set -euo pipefail
 
 # Validate/default numeric values
 OV_EMBEDDING_DIMS="${OV_EMBEDDING_DIMS:-768}"
-if ! [[ "$OV_EMBEDDING_DIMS" =~ ^[0-9]+$ ]]; then
-  echo "WARNING: OV_EMBEDDING_DIMS='$OV_EMBEDDING_DIMS' is not numeric, defaulting to 768"
-  OV_EMBEDDING_DIMS=768
-fi
+case "$OV_EMBEDDING_DIMS" in
+  *[!0-9]* | '')
+    echo "WARNING: OV_EMBEDDING_DIMS='$OV_EMBEDDING_DIMS' is not numeric, defaulting to 768"
+    OV_EMBEDDING_DIMS=768
+    ;;
+esac
 
 cat > /app/ov.conf <<EOF
 {

@@ -11,8 +11,8 @@
 #   2 — Non-admin unit tests (lib, cli, guardian, channels, scheduler)
 #   3 — Admin unit tests (vitest)
 #   4 — Mocked browser E2E (Playwright, no stack needed)
-#   5 — Integration E2E (needs running stack)
-#   6 — Full stack E2E incl. LLM pipeline (needs stack + Ollama)
+#   5 — Integration E2E (needs running stack — rebuilds containers)
+#   6 — Full stack E2E incl. LLM pipeline (needs stack + Ollama — no-skip enforced)
 #
 set -euo pipefail
 
@@ -27,8 +27,8 @@ Tiers:
   2  Non-admin unit tests (lib, cli, guardian, channels, scheduler)
   3  Admin unit tests (vitest)
   4  Mocked browser E2E (Playwright, no stack needed)
-  5  Integration E2E (needs running stack)
-  6  Full stack E2E incl. LLM pipeline (needs stack + Ollama)
+  5  Integration E2E (rebuilds and starts stack)
+  6  Full stack E2E incl. LLM pipeline (rebuilds stack, enforces no skips)
 EOF
 	exit 0
 fi
@@ -61,19 +61,16 @@ load_memory_token() {
 	export MEMORY_AUTH_TOKEN
 }
 
-ensure_stack_running() {
-	# Check if the stack is already running and healthy
-	local admin_healthy
-	admin_healthy=$(docker inspect --format '{{.State.Health.Status}}' openpalm-admin-1 2>/dev/null || echo "missing")
-	if [[ "$admin_healthy" == "healthy" ]]; then
-		return 0
-	fi
-
-	echo "Stack not running. Setting up and starting..."
+rebuild_stack() {
+	# Always rebuild and recreate containers from source to ensure
+	# compose config changes (env_file paths, mounts, env vars) are
+	# picked up. Docker restart does NOT re-read compose config.
 	ensure_dev_setup
 
-	# Build and start with admin addon overlay using .dev as OP_HOME
+	echo "Building admin..."
 	bun run admin:build
+
+	echo "Rebuilding and recreating stack from source..."
 	docker compose --project-directory . \
 		-f .dev/stack/core.compose.yml \
 		-f .openpalm/stack/addons/admin/compose.yml \
@@ -81,7 +78,7 @@ ensure_stack_running() {
 		--env-file .dev/vault/stack/stack.env \
 		--env-file .dev/vault/user/user.env \
 		--env-file .dev/vault/stack/guardian.env \
-		--project-name openpalm up --build -d
+		--project-name openpalm up --build --force-recreate -d
 
 	# Wait for all services to be healthy
 	echo "Waiting for all services to be healthy..."
@@ -97,6 +94,17 @@ ensure_stack_running() {
 		done
 		if [[ "$all_healthy" == "true" ]]; then
 			echo "All services healthy."
+			# Wait for admin OpenCode subprocess to start (health check only
+			# verifies the admin HTTP server, not its internal OpenCode process)
+			echo "Waiting for admin OpenCode subprocess..."
+			for j in $(seq 1 12); do
+				if curl -sS -o /dev/null -w '' http://localhost:3881/ 2>/dev/null; then
+					echo "Admin OpenCode ready."
+					return 0
+				fi
+				sleep 5
+			done
+			echo "WARNING: Admin OpenCode not reachable on :3881 after 60s (tests may fail)"
 			return 0
 		fi
 		sleep 10
@@ -127,20 +135,15 @@ case "$TIER" in
 	;;
 5)
 	echo "=== Tier 5: Integration E2E (stack-dependent) ==="
-	ensure_stack_running
+	rebuild_stack
 	load_memory_token
-	export RUN_DOCKER_STACK_TESTS=1
-	export ADMIN_TOKEN=dev-admin-token
-	bun run admin:test:e2e
+	bun run admin:test:stack
 	;;
 6)
 	echo "=== Tier 6: Full stack E2E incl. LLM pipeline ==="
-	ensure_stack_running
+	rebuild_stack
 	load_memory_token
-	export RUN_DOCKER_STACK_TESTS=1
-	export RUN_LLM_TESTS=1
-	export ADMIN_TOKEN=dev-admin-token
-	bun run admin:test:e2e
+	bun run admin:test:llm
 	;;
 *)
 	echo "Unknown tier: $TIER (valid: 1-6)" >&2

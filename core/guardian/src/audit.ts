@@ -9,7 +9,8 @@ const AUDIT_PATH = Bun.env.GUARDIAN_AUDIT_PATH ?? "/app/audit/guardian-audit.log
 
 // Ensure audit directory exists
 import { mkdirSync } from "node:fs";
-const auditDir = AUDIT_PATH.slice(0, AUDIT_PATH.lastIndexOf("/"));
+import { dirname } from "node:path";
+const auditDir = dirname(AUDIT_PATH);
 if (auditDir) {
   try { mkdirSync(auditDir, { recursive: true }); } catch {
     console.error("Failed to create audit directory:", auditDir);

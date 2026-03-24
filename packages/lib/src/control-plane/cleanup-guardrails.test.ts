@@ -220,7 +220,7 @@ describe("guardrail: no secrets.env references", () => {
   });
 });
 
-// ── Guardrail 9: .openpalm/stack/start.sh does not exist ─────────────
+// ── Guardrail 8: .openpalm/stack/start.sh does not exist ─────────────
 
 describe("guardrail: .openpalm/stack/start.sh is absent", () => {
   test(".openpalm/stack/start.sh does not exist in repo", () => {
@@ -261,7 +261,7 @@ describe("guardrail: .openpalm/stack/start.sh is absent", () => {
   });
 });
 
-// ── Guardrail 8: component/instance system removed ──────────────────
+// ── Guardrail 9: component/instance system removed ──────────────────
 
 describe("guardrail: component/instance system removed", () => {
   test("components.ts no longer exists", () => {

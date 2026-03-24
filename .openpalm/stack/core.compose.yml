@@ -3,9 +3,10 @@
 # This file defines the core infrastructure. Addon services are added
 # via compose overlays in stack/addons/.
 #
-# Docker Compose reads variable values via --env-file vault/stack/stack.env.
-# All config (system, API keys, OP_CAP_* capabilities) lives in stack.env.
-# vault/user/user.env is an optional extension file for custom user vars.
+# Docker Compose reads variable values via --env-file for three env files:
+#   vault/stack/stack.env    — system config, API keys, OP_CAP_* capabilities
+#   vault/user/user.env      — optional user-managed custom vars
+#   vault/stack/guardian.env  — channel HMAC secrets (loaded by guardian)
 #
 # Directory model (v0.10.0):
 #   ~/.openpalm/config/       — user-editable, non-secret configuration

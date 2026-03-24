@@ -32,7 +32,7 @@ describe("getOpenCodeProviders", () => {
     expect(result).toEqual(providers);
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/\/provider$/),
-      undefined,
+      expect.objectContaining({ signal: expect.anything() }),
     );
   });
 
