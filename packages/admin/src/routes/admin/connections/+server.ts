@@ -1,6 +1,6 @@
 /**
  * GET  /admin/connections — Return current capabilities and masked secrets.
- * POST /admin/connections — Update capabilities in stack.yaml and/or secrets in user.env.
+ * POST /admin/connections — Update capabilities in stack.yaml and/or secrets in stack.env.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -88,7 +88,7 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "bad_request", "provider is required", {}, requestId);
   }
 
-  // 1. Write API key to user.env (secrets only)
+  // 1. Write API key to stack.env (secrets only)
   const secretPatches: Record<string, string> = {};
   if (apiKey) {
     const envVarName = PROVIDER_KEY_MAP[provider] ?? "OPENAI_API_KEY";
@@ -99,7 +99,7 @@ export const POST: RequestHandler = async (event) => {
       patchSecretsEnvFile(state.vaultDir, secretPatches);
     } catch (err) {
       appendAudit(state, actor, "connections.save", { provider, error: String(err) }, false, requestId, callerType);
-      return errorResponse(500, "internal_error", "Failed to update vault/user/user.env", {}, requestId);
+      return errorResponse(500, "internal_error", "Failed to update vault/stack/stack.env", {}, requestId);
     }
   }
 

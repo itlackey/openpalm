@@ -142,8 +142,6 @@ export {
   ensureMemoryConfig,
   checkVectorDimensions,
   resetVectorStore,
-  pushConfigToMemory,
-  fetchConfigFromMemory,
   provisionMemoryUser,
 } from "./control-plane/memory-config.js";
 

@@ -12,9 +12,6 @@ vault/
       stack.env           System-managed runtime env and secrets
       stack.env.schema    Varlock validation schema for stack.env
       auth.json           OpenCode auth state mounted into assistant
-      services/
-        memory/
-          managed.env     Optional memory-only managed env overrides
   user/
     user.env            User-managed secrets (LLM API keys, owner info)
     user.env.schema     Varlock validation schema for user.env
@@ -27,7 +24,6 @@ vault/
 |------|-------|------------|-----------|
 | `stack/stack.env` | System | CLI install, admin API | Docker Compose and service env wiring |
 | `stack/auth.json` | System-managed runtime auth | CLI/admin | Assistant file mount |
-| `stack/services/memory/managed.env` | System | CLI/admin | Memory service only |
 | `user/user.env` | User | User directly, admin UI/API | Docker Compose, assistant (read-only mount) |
 | `*.env.schema` | System | CLI install, admin upgrade | Varlock (validation + redaction) |
 

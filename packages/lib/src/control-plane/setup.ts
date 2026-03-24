@@ -164,7 +164,7 @@ export async function performSetup(
   state.assistantToken = readSystemSecretsEnvFile(state.vaultDir).OP_ASSISTANT_TOKEN ?? state.assistantToken;
   writeSetupTokenFile(state);
 
-  // Write stack.yaml and managed.env from capabilities
+  // Write stack.yaml and OP_CAP_* capability vars to stack.env
   writeMemoryAndStackConfigs(spec, state);
 
   ensureOpenCodeConfig();
@@ -180,7 +180,7 @@ export async function performSetup(
   return { ok: true };
 }
 
-/** Write stack.yaml and managed.env from the spec's capabilities. */
+/** Write stack.yaml and OP_CAP_* capability vars to stack.env from the spec's capabilities. */
 function writeMemoryAndStackConfigs(spec: StackSpec, state: ControlPlaneState): void {
   const { provider: embProvider, model: embModel } = spec.capabilities.embeddings;
   const resolvedDims = spec.capabilities.embeddings.dims || EMBEDDING_DIMS[`${embProvider}/${embModel}`] || 1536;

@@ -46,7 +46,7 @@ After copying, the important paths are:
 |---|---|
 | `~/.openpalm/stack/` | Base compose file and addon compose files |
 | `~/.openpalm/vault/stack/stack.env` | System values used by compose |
-| `~/.openpalm/vault/user/user.env` | User secrets like provider API keys |
+| `~/.openpalm/vault/user/user.env` | User-managed settings (owner info, custom preferences) |
 | `~/.openpalm/config/` | User-editable config and automations |
 | `~/.openpalm/data/` | Durable service data |
 | `~/.openpalm/logs/` | Logs and audit output |
@@ -57,8 +57,9 @@ After copying, the important paths are:
 
 Edit the copied env files before first start.
 
-### `~/.openpalm/vault/user/user.env`
+### `~/.openpalm/vault/stack/stack.env`
 
+Review host-specific values such as paths, ports, image tags, and tokens.
 Set at least one model provider key or endpoint your assistant can use.
 
 Example:
@@ -67,9 +68,9 @@ Example:
 OPENAI_API_KEY=your-key-here
 ```
 
-### `~/.openpalm/vault/stack/stack.env`
+### `~/.openpalm/vault/user/user.env`
 
-Review host-specific values such as paths, ports, image tags, and tokens.
+Optional user-managed settings such as owner name and email.
 
 If you want a fresh admin token or signing secret, generate values locally and paste them into the file:
 

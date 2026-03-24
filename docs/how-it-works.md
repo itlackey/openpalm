@@ -182,8 +182,7 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
 
 Docker reads compose files and env files directly from their final locations.
 There is no intermediate staging step. The standard wrapper includes
-`vault/stack/stack.env` and `vault/user/user.env`; the memory service may also
-load its own managed env file from `vault/stack/services/memory/managed.env`.
+`vault/stack/stack.env` and `vault/user/user.env`.
 
 ---
 

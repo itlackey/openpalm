@@ -41,13 +41,13 @@ describe("deriveSystemEnvFromSpec", () => {
     expect(result.OP_MEMORY_PORT).toBe("3898");
   });
 
-  test("does not include LLM provider in system env (now in deriveMemoryEnv)", () => {
+  test("does not include LLM provider in system env (lives in OP_CAP_* vars in stack.env)", () => {
     const result = deriveSystemEnvFromSpec(makeSpec(), "/home/op");
     expect(result.SYSTEM_LLM_PROVIDER).toBeUndefined();
     expect(result.SYSTEM_LLM_MODEL).toBeUndefined();
   });
 
-  test("does not include embedding config in system env (now in deriveMemoryEnv)", () => {
+  test("does not include embedding config in system env (lives in OP_CAP_* vars in stack.env)", () => {
     const result = deriveSystemEnvFromSpec(makeSpec(), "/home/op");
     expect(result.EMBEDDING_MODEL).toBeUndefined();
     expect(result.EMBEDDING_DIMS).toBeUndefined();

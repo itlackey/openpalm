@@ -248,7 +248,7 @@ export function writeRuntimeFiles(
   ensureUserEnvSchema();
   ensureSystemEnvSchema();
 
-  // Write managed.env files derived from stack spec
+  // Write OP_CAP_* capability vars to stack.env from stack spec
   const specForEnv = spec ?? readStackSpec(state.configDir);
   if (specForEnv) {
     writeCapabilityVars(specForEnv, state.vaultDir);

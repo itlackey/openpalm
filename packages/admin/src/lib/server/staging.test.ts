@@ -4,7 +4,7 @@
  * Verifies that:
  * 1. Stack compose overlays live in stack/ (not config/components/)
  * 2. Compose file list uses stack/ paths
- * 3. User secrets live in vault/user/user.env
+ * 3. User extensions live in vault/user/user.env (secrets live in vault/stack/stack.env)
  * 4. Runtime validation checks the stack spec for channels
  * 5. Configuration persistence is idempotent
  */
@@ -120,7 +120,7 @@ describe("Stack overlay discovery — stack/ layout", () => {
   });
 });
 
-describe("User secrets in vault/user/user.env", () => {
+describe("User extensions in vault/user/user.env (secrets in vault/stack/stack.env)", () => {
   test("user.env is read from vault/user/", () => {
     const state = makeState(baseDir);
     const secretsContent = "ADMIN_TOKEN=test-token\n";

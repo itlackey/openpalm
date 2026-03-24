@@ -69,7 +69,6 @@ export type MemoryConfig = {
 
 export type MemoryConfigResponse = {
   config: MemoryConfig;
-  runtimeConfig: MemoryConfig | null;
   providers: { llm: string[]; embed: string[] };
   embeddingDims: Record<string, number>;
 };

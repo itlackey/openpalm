@@ -502,13 +502,13 @@ Response:
 ## Connections
 
 Manage LLM provider credentials and related configuration stored in
-`vault/user/user.env`. Values are patched in-place by `patchSecretsEnvFile`
+`vault/stack/stack.env`. Values are patched in-place by `patchSecretsEnvFile`
 -- existing keys not in the allowed set are never removed or overwritten.
 
 ### `GET /admin/connections`
 
 Returns the current capability assignments from `stack.yaml` and masked secret
-values from `vault/user/user.env`.
+values from `vault/stack/stack.env`.
 
 Response:
 
@@ -538,8 +538,8 @@ Response:
 
 ### `POST /admin/connections`
 
-Saves provider credentials to `vault/user/user.env`, updates `stack.yaml`
-capabilities, and writes `managed.env` for the memory service.
+Saves provider credentials to `vault/stack/stack.env`, updates `stack.yaml`
+capabilities.
 
 Body:
 
@@ -557,7 +557,7 @@ Body:
 ```
 
 - `provider` (required) -- Must be a supported provider name.
-- `apiKey` -- API key to write to `vault/user/user.env`.
+- `apiKey` -- API key to write to `vault/stack/stack.env`.
 - `baseUrl` -- Provider base URL.
 - `systemModel` -- Model name for the LLM capability.
 - `embeddingModel` -- Model name for the embeddings capability.
@@ -578,7 +578,7 @@ Response:
 Error responses:
 
 - `400 bad_request` -- `provider` is missing or not in scope.
-- `500 internal_error` -- Failed to write `vault/user/user.env` or `stack.yaml`.
+- `500 internal_error` -- Failed to write `vault/stack/stack.env` or `stack.yaml`.
 
 ### `GET /admin/connections/status`
 
@@ -661,8 +661,7 @@ Returns the current `stack.yaml` capability assignments:
 
 ### `POST /admin/connections/assignments`
 
-Saves validated capability updates back to `stack.yaml` and regenerates any
-derived managed env files. The request body may either be the capabilities
+Saves validated capability updates back to `stack.yaml`. The request body may either be the capabilities
 object directly or `{ "capabilities": ... }`.
 
 Supported top-level keys are `llm`, `slm`, `embeddings`, `memory`, `tts`,
@@ -736,8 +735,7 @@ Manage the Memory service LLM and embedding provider configuration stored at
 mem0-shaped JSON schema for compatibility, but the running service is the
 OpenPalm Bun-based memory API backed by SQLite and `sqlite-vec`.
 
-Changes are persisted to disk and pushed to the running Memory container via
-its REST API (`PUT /api/v1/config/`).
+Changes are persisted to disk.
 
 ### `GET /admin/memory/config`
 
@@ -894,7 +892,7 @@ When using Ollama as the LLM or embedding provider with Memory:
 
 ### `GET /admin/config/validate`
 
-Run varlock environment validation against `vault/user/user.env` using the
+Run varlock environment validation against `vault/stack/stack.env` using the
 bundled schema. Always returns 200; validation failures
 are non-fatal and are logged to the audit trail.
 

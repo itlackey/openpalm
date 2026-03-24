@@ -41,7 +41,7 @@ OpenPalm uses one home directory: `~/.openpalm/` by default.
 |---|---|
 | `~/.openpalm/stack/` | Live compose files and helper scripts |
 | `~/.openpalm/vault/stack/stack.env` | System-managed stack values and tokens |
-| `~/.openpalm/vault/user/user.env` | User-managed provider keys and model settings |
+| `~/.openpalm/vault/user/user.env` | User-managed settings (owner info, custom preferences) |
 | `~/.openpalm/config/` | User-editable config, automations, assistant extensions |
 | `~/.openpalm/data/` | Durable service data |
 | `~/.openpalm/logs/` | Logs and audit output |
@@ -53,11 +53,9 @@ deployment truth.
 
 ## Important env files
 
-### `~/.openpalm/vault/user/user.env`
+### `~/.openpalm/vault/stack/stack.env`
 
-Set the provider keys and model settings your assistant should use.
-
-Common values include:
+This file holds system-managed values and provider API keys:
 
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`
@@ -66,9 +64,7 @@ Common values include:
 - `SYSTEM_LLM_MODEL`
 - `MEMORY_USER_ID`
 
-### `~/.openpalm/vault/stack/stack.env`
-
-This file holds system-managed values such as:
+It also includes system-managed values such as:
 
 - `OP_ADMIN_TOKEN`
 - `OP_ASSISTANT_TOKEN`
@@ -78,6 +74,10 @@ This file holds system-managed values such as:
 
 Review it before first start, especially if you need different host ports or
 paths.
+
+### `~/.openpalm/vault/user/user.env`
+
+Optional user-managed settings such as owner name and email.
 
 ---
 

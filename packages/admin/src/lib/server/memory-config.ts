@@ -21,7 +21,5 @@ export {
   ensureMemoryConfig,
   checkVectorDimensions,
   resetVectorStore,
-  pushConfigToMemory,
-  fetchConfigFromMemory,
   provisionMemoryUser,
 } from "@openpalm/lib";

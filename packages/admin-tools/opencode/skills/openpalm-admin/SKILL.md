@@ -44,9 +44,9 @@ Inspect the generated configuration files:
 - `compose` = docker-compose.yml
 
 ### `admin-connections` (get, set, status)
-View and manage external API connections (secrets stored in `vault/user/user.env`):
+View and manage external API connections (secrets stored in `vault/stack/stack.env`):
 - **get** (`GET /admin/connections`) = return all known connection keys with their values masked (e.g., `sk-...****`). Use this to see which keys are configured without exposing the actual values.
-- **set** (`POST /admin/connections`) = patch `vault/user/user.env` with new API key values. Accepts a map of key/value pairs. Use this when the user needs to add or rotate an API key.
+- **set** (`POST /admin/connections`) = patch `vault/stack/stack.env` with new API key values. Accepts a map of key/value pairs. Use this when the user needs to add or rotate an API key.
 - **status** (`GET /admin/connections/status`) = returns `{ complete: boolean, missing: string[] }`. Use this to quickly check whether all required connection keys are present before starting operations that depend on them.
 
 ### `admin-audit`

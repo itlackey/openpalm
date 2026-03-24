@@ -29,7 +29,7 @@ variable). The relevant files for running the stack are:
 | `~/.openpalm/stack/core.compose.yml` | Core services: assistant, guardian, memory, scheduler |
 | `~/.openpalm/stack/addons/<name>/compose.yml` | One file per enabled addon (admin, chat, api, etc.) |
 | `~/.openpalm/vault/stack/stack.env` | System-managed values: tokens, ports, UID/GID, image tags |
-| `~/.openpalm/vault/user/user.env` | User-managed values: LLM provider keys, model settings |
+| `~/.openpalm/vault/user/user.env` | User-managed settings: owner info, custom preferences |
 | `~/.openpalm/config/stack.yaml` | Optional tooling metadata (helper scripts read this; it is not deployment truth) |
 
 The project name defaults to `openpalm` and can be overridden with the
@@ -329,20 +329,11 @@ file that contains the `extends` directive.
 
 ## Secret Rotation
 
-### LLM provider keys (`vault/user/user.env`)
+### LLM provider keys and system secrets (`vault/stack/stack.env`)
 
-The assistant watches `user.env` via a file watcher and hot-reloads changes
-within seconds. No container restart is needed:
-
-```bash
-$EDITOR ~/.openpalm/vault/user/user.env
-# Changes are picked up automatically by the running assistant
-```
-
-### System secrets (`vault/stack/stack.env`)
-
-System secrets — admin token, HMAC secrets, service auth tokens — require a
-full container recreate to take effect:
+API keys, provider config, admin token, HMAC secrets, and service auth tokens
+all live in `stack.env`. Changes require a full container recreate to take
+effect:
 
 ```bash
 $EDITOR ~/.openpalm/vault/stack/stack.env

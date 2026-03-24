@@ -281,41 +281,6 @@ async function callMemoryApi(path: string, init?: RequestInit): Promise<Response
   throw lastError ?? new Error("Memory API request failed");
 }
 
-export async function pushConfigToMemory(
-  config: MemoryConfig
-): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const res = await callMemoryApi("/api/v1/config/", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(config),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      return { ok: false, error: `HTTP ${res.status}: ${text}` };
-    }
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: String(err) };
-  }
-}
-
-export async function fetchConfigFromMemory(): Promise<MemoryConfig | null> {
-  try {
-    const res = await callMemoryApi("/api/v1/config/");
-    if (!res.ok) return null;
-    const data = (await res.json()) as Record<string, unknown>;
-    // The memory container returns { source, file, env } when env vars are configured.
-    // Unwrap to return the file-based config for backward compatibility.
-    if (data.file && typeof data.file === "object") {
-      return data.file as MemoryConfig;
-    }
-    return data as MemoryConfig;
-  } catch {
-    return null;
-  }
-}
-
 export async function provisionMemoryUser(
   userId: string,
 ): Promise<{ ok: boolean; error?: string }> {

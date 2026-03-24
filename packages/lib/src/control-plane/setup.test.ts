@@ -258,7 +258,7 @@ describe("buildSecretsFromSetup", () => {
     expect(secrets.ADMIN_TOKEN).toBeUndefined();
   });
 
-  it("does not include SYSTEM_LLM_* in user secrets (now in capabilities)", () => {
+  it("does not include SYSTEM_LLM_* in user secrets (lives in stack.env via OP_CAP_*)", () => {
     const spec = makeValidSpec();
     const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.SYSTEM_LLM_PROVIDER).toBeUndefined();
@@ -267,7 +267,7 @@ describe("buildSecretsFromSetup", () => {
     expect(secrets.OPENAI_BASE_URL).toBeUndefined();
   });
 
-  it("does not include MEMORY_USER_ID in user secrets (now in capabilities)", () => {
+  it("does not include MEMORY_USER_ID in user secrets (lives in stack.env via OP_CAP_*)", () => {
     const spec = makeValidSpec();
     const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.MEMORY_USER_ID).toBeUndefined();
@@ -293,12 +293,12 @@ describe("buildSecretsFromSetup", () => {
     expect(secrets.OPENAI_API_KEY).toBe("sk-test-key-123");
   });
 
-  it("does not include Ollama base URL in user secrets when ollamaEnabled (now in capabilities)", () => {
+  it("does not include Ollama base URL in user secrets when ollamaEnabled (lives in stack.env via OP_CAP_*)", () => {
     const connections: SetupConnection[] = [
       { id: "ollama-1", name: "Ollama", provider: "ollama", baseUrl: "http://localhost:11434", apiKey: "" },
     ];
     const secrets = buildSecretsFromSetup(connections);
-    // These are no longer written to user.env — they live in capabilities/managed.env
+    // These are no longer written to user.env — they live in stack.env via OP_CAP_* vars
     expect(secrets.SYSTEM_LLM_BASE_URL).toBeUndefined();
     expect(secrets.OPENAI_BASE_URL).toBeUndefined();
   });

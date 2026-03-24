@@ -27,25 +27,12 @@ Compose reads both directly.
 
 ## `vault/user/user.env`
 
-This file is for provider keys, model settings, and user-level configuration.
+This file is for user-managed settings.
 
 Common keys include:
 
 | Key | Notes |
 |---|---|
-| `OPENAI_API_KEY` | OpenAI-compatible provider key |
-| `OPENAI_BASE_URL` | Alternate OpenAI-compatible endpoint |
-| `ANTHROPIC_API_KEY` | Anthropic key |
-| `GROQ_API_KEY` | Groq key |
-| `MISTRAL_API_KEY` | Mistral key |
-| `GOOGLE_API_KEY` | Google AI key |
-| `EMBEDDING_API_KEY` | Embedding provider key |
-| `SYSTEM_LLM_PROVIDER` | Default provider selection |
-| `SYSTEM_LLM_BASE_URL` | Default provider base URL |
-| `SYSTEM_LLM_MODEL` | Default model |
-| `EMBEDDING_MODEL` | Embedding model |
-| `EMBEDDING_DIMS` | Embedding dimensions |
-| `MEMORY_USER_ID` | Default memory identity |
 | `OWNER_NAME` | Operator display name |
 | `OWNER_EMAIL` | Operator email |
 
@@ -60,8 +47,8 @@ Behavior:
 
 ## `vault/stack/stack.env`
 
-This file is for stack-level tokens, host paths, ports, and other runtime
-settings used by Compose.
+This file is for stack-level tokens, host paths, ports, API keys, provider
+configuration, and other runtime settings used by Compose.
 
 Important keys include:
 
@@ -81,6 +68,19 @@ Important keys include:
 | `OP_API_PORT` | API addon host port, default `3821` |
 | `OP_VOICE_PORT` | Voice addon host port, default `3810` |
 | `OP_ASSISTANT_SSH_PORT` | Optional assistant SSH port, default `2222` |
+| `OPENAI_API_KEY` | OpenAI-compatible provider key |
+| `OPENAI_BASE_URL` | Alternate OpenAI-compatible endpoint |
+| `ANTHROPIC_API_KEY` | Anthropic key |
+| `GROQ_API_KEY` | Groq key |
+| `MISTRAL_API_KEY` | Mistral key |
+| `GOOGLE_API_KEY` | Google AI key |
+| `EMBEDDING_API_KEY` | Embedding provider key |
+| `SYSTEM_LLM_PROVIDER` | Default provider selection |
+| `SYSTEM_LLM_BASE_URL` | Default provider base URL |
+| `SYSTEM_LLM_MODEL` | Default model |
+| `EMBEDDING_MODEL` | Embedding model |
+| `EMBEDDING_DIMS` | Embedding dimensions |
+| `MEMORY_USER_ID` | Default memory identity |
 
 Behavior:
 
@@ -140,8 +140,9 @@ source of truth.
 
 ## Practical guidance
 
-- Edit `~/.openpalm/vault/user/user.env` when changing model keys or provider settings.
-- Edit `~/.openpalm/vault/stack/stack.env` only when you need to change ports,
-  paths, or stack-level tokens.
+- Edit `~/.openpalm/vault/stack/stack.env` when changing API keys, provider
+  settings, ports, paths, or stack-level tokens.
+- Edit `~/.openpalm/vault/user/user.env` for user-managed settings like owner
+  name and email.
 - Back up the whole `~/.openpalm/vault/` tree.
 - Never commit real env values from either vault file.

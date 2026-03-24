@@ -20,8 +20,8 @@ OpenPalm stores runtime state under `OP_HOME`, which defaults to `~/.openpalm`.
 |---|---|
 | `~/.openpalm/config/` | User-editable, non-secret config |
 | `~/.openpalm/stack/` | Live compose assembly and addon overlays |
-| `~/.openpalm/vault/user/` | User-managed secrets (`user.env`) |
-| `~/.openpalm/vault/stack/` | System-managed secrets and runtime env (`stack.env`, service env files, auth.json) |
+| `~/.openpalm/vault/user/` | User-managed settings (`user.env`) |
+| `~/.openpalm/vault/stack/` | System-managed secrets and runtime env (`stack.env`, API keys, auth.json) |
 | `~/.openpalm/data/` | Durable service data |
 | `~/.openpalm/logs/` | Audit and debug logs |
 | `~/.cache/openpalm/` | Ephemeral cache and rollback snapshots |
@@ -47,18 +47,11 @@ Docker Compose is invoked with these env files (see [Manual Compose Runbook](../
 --env-file "$OP_HOME/vault/stack/guardian.env"
 ```
 
-In addition, the `memory` service optionally loads:
-
-```text
-$OP_HOME/vault/stack/services/memory/managed.env
-```
-
 That means the effective env model is:
 
-- `vault/stack/stack.env` - system-managed runtime env and secrets (admin token, paths, UID/GID, image tags, bind ports)
-- `vault/user/user.env` - user-managed provider keys and user-supplied settings (LLM keys, provider URLs)
+- `vault/stack/stack.env` - system-managed runtime env and secrets (admin token, paths, UID/GID, image tags, bind ports, API keys, provider config)
+- `vault/user/user.env` - user-managed settings (owner info, custom preferences)
 - `vault/stack/guardian.env` - channel HMAC secrets (loaded by guardian as env_file and via GUARDIAN_SECRETS_PATH)
-- `vault/stack/services/memory/managed.env` - optional memory-only managed overrides
 
 ---
 
@@ -90,8 +83,8 @@ Key env:
 | `HOME` | `/data` | Writable home |
 | `MEM0_DIR` | `/data/.mem0` | mem0 compatibility directory |
 | `MEMORY_AUTH_TOKEN` | `stack.env` via `${VAR}` | Memory API auth |
-| `OPENAI_API_KEY` | `user.env` via `${VAR}` | Embeddings / model provider |
-| `OPENAI_BASE_URL` | `user.env` via `${VAR}` | Optional provider override |
+| `OPENAI_API_KEY` | `stack.env` via `${VAR}` | Embeddings / model provider |
+| `OPENAI_BASE_URL` | `stack.env` via `${VAR}` | Optional provider override |
 
 Notes:
 
@@ -350,12 +343,13 @@ These variables are consumed by Compose and service env blocks.
 
 Typical user-managed variables:
 
-- `OPENAI_API_KEY`
-- `OPENAI_BASE_URL`
-- `ANTHROPIC_API_KEY`
-- `GROQ_API_KEY`
-- `MISTRAL_API_KEY`
-- `GOOGLE_API_KEY`
-- provider/model selections used by assistant and memory integrations
+- `OWNER_NAME`
+- `OWNER_EMAIL`
+- custom user preferences
 
-These are passed into containers through compose `${VAR}` substitution in service `environment:` blocks. Memory receives `OPENAI_API_KEY`, `OPENAI_BASE_URL`, etc. this way. Channels receive only their own HMAC secret via `${VAR}` substitution from `guardian.env`.
+API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, etc.) and
+provider/model selections now live in `stack.env`. They are passed into
+containers through compose `${VAR}` substitution in service `environment:`
+blocks. Memory receives `OPENAI_API_KEY`, `OPENAI_BASE_URL`, etc. this way.
+Channels receive only their own HMAC secret via `${VAR}` substitution from
+`guardian.env`.

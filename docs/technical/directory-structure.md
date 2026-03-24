@@ -61,10 +61,7 @@ existing user files.
 │   │   ├── stack.env
 │   │   ├── guardian.env
 │   │   ├── auth.json
-│   │   ├── addons/            per-addon managed.env files
-│   │   └── services/
-│   │       └── memory/
-│   │           └── managed.env # Optional convention defined in overlay
+│   │   └── addons/            per-addon env files
 │   └── user/
 │       └── user.env
 ├── data/
@@ -175,4 +172,4 @@ The wrapper always includes:
 - `vault/user/user.env`
 - `vault/stack/guardian.env`
 
-The `memory` service may also load `vault/stack/services/memory/managed.env`.
+All API keys and provider configuration are stored in `vault/stack/stack.env`.
