@@ -4,7 +4,7 @@
  * Uses mocked fetch to avoid real network calls and timeouts.
  */
 import { describe, test, expect, vi, afterEach } from "vitest";
-import { detectLocalProviders, type LocalProviderDetection } from "./model-runner.js";
+import { detectLocalProviders, type LocalProviderDetection } from "@openpalm/lib";
 
 afterEach(() => {
   vi.restoreAllMocks();

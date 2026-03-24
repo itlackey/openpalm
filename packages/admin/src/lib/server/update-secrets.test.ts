@@ -20,7 +20,7 @@ import {
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mergeEnvContent } from './env.js';
+import { mergeEnvContent } from '@openpalm/lib';
 
 // ── Inline implementation (mirrors control-plane.ts) ────────────────────
 // Uses mergeEnvContent from the shared env utility. We keep the file I/O

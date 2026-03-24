@@ -6,15 +6,15 @@ import { tmpdir } from 'node:os';
 import { getState, resetState } from '$lib/server/state.js';
 import { POST } from './+server.js';
 
-vi.mock('$lib/server/memory-config.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/server/memory-config.js')>();
+vi.mock('@openpalm/lib', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@openpalm/lib')>();
   return {
     ...actual,
     fetchProviderModels: vi.fn(),
   };
 });
 
-import { fetchProviderModels } from '$lib/server/memory-config.js';
+import { fetchProviderModels } from '@openpalm/lib';
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `openpalm-test-${randomBytes(4).toString('hex')}`);

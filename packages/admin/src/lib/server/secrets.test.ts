@@ -18,7 +18,7 @@ import {
   maskConnectionValue,
   ensureOpenCodeConfig,
   PLAIN_CONFIG_KEYS
-} from "./secrets.js";
+} from "@openpalm/lib";
 import type { ControlPlaneState } from "./types.js";
 import { makeTempDir, trackDir, registerCleanup, seedSecretsEnv } from "./test-helpers.js";
 

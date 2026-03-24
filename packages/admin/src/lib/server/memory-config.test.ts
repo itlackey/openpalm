@@ -19,7 +19,7 @@ import {
   EMBED_PROVIDERS,
   EMBEDDING_DIMS,
   type MemoryConfig,
-} from "./memory-config.js";
+} from "@openpalm/lib";
 import { makeTempDir, trackDir, seedSecretsEnv, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();

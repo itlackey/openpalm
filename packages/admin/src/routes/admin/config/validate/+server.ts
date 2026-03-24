@@ -14,8 +14,7 @@ import {
   getActor,
   getCallerType
 } from "$lib/server/helpers.js";
-import { appendAudit } from "$lib/server/audit.js";
-import { validateProposedState } from "@openpalm/lib";
+import { appendAudit, validateProposedState } from "@openpalm/lib";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

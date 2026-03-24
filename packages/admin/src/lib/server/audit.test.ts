@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
-import { appendAudit } from "./audit.js";
+import { appendAudit } from "@openpalm/lib";
 import type { ControlPlaneState } from "./types.js";
 import { makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 

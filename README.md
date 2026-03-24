@@ -74,7 +74,7 @@ That example starts the core stack plus the `admin` and `chat` addons. Review th
 
 `config/stack.yaml` is optional metadata for tooling. It is not the deployment truth. The running stack is always the compose file set you pass to Docker Compose.
 
-See the [manual setup guide](docs/manual-setup.md) for the raw flow and the [setup guide](docs/setup-guide.md) for the convenience path.
+See the [manual setup guide](docs/technical/manual-setup.md) for the raw flow and the [setup guide](docs/setup-guide.md) for the convenience path.
 
 ## How it works
 
@@ -115,12 +115,12 @@ See [`docs/how-it-works.md`](docs/how-it-works.md) for the full walkthrough and 
 | Guide | What's inside |
 |---|---|
 | [Setup Guide](docs/setup-guide.md) | Manual-first install, convenience tooling, updates, and troubleshooting |
-| [Manual Setup](docs/manual-setup.md) | Raw `docker compose` workflow using the copied `.openpalm/` bundle |
+| [Manual Setup](docs/technical/manual-setup.md) | Raw `docker compose` workflow using the copied `.openpalm/` bundle |
 | [How It Works](docs/how-it-works.md) | Architecture overview and data flow |
 | [Managing OpenPalm](docs/managing-openpalm.md) | Configuration, addons, secrets, access control |
 | [Core Principles](docs/technical/authoritative/core-principles.md) | Security invariants and architectural rules |
 | [Directory Structure](docs/technical/directory-structure.md) | Host paths, stack layout, volume design |
-| [Community Channels](docs/community-channels.md) | Building custom adapters |
+| [Community Channels](docs/channels/community-channels.md) | Building custom adapters |
 | [API Spec](docs/technical/api-spec.md) | Admin API endpoint contract |
 
 ### Component READMEs
@@ -137,9 +137,7 @@ See [`docs/how-it-works.md`](docs/how-it-works.md) for the full walkthrough and 
 | Assistant tools | [packages/assistant-tools/README.md](packages/assistant-tools/README.md) |
 | CLI | [packages/cli/README.md](packages/cli/README.md) |
 | Channel: API | [packages/channel-api/README.md](packages/channel-api/README.md) |
-| Channel: Chat | [packages/channel-chat/README.md](packages/channel-chat/README.md) |
 | Channel: Discord | [packages/channel-discord/README.md](packages/channel-discord/README.md) |
-| Registry | [registry/README.md](registry/README.md) |
 | Scripts | [scripts/README.md](scripts/README.md) |
 | Docs index | [docs/README.md](docs/README.md) |
 

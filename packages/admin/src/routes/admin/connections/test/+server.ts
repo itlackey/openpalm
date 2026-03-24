@@ -8,7 +8,7 @@ import {
   requireAdmin,
   validateExternalUrl,
 } from '$lib/server/helpers.js';
-import { fetchProviderModels } from '$lib/server/memory-config.js';
+import { fetchProviderModels } from '@openpalm/lib';
 import { createLogger } from '$lib/server/logger.js';
 import { mapDiscoveryResultToErrorCode } from '$lib/model-discovery.js';
 

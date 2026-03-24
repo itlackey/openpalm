@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseEnvContent, parseEnvFile, mergeEnvContent } from './env.js';
+import { parseEnvContent, parseEnvFile, mergeEnvContent } from '@openpalm/lib';
 
 describe('parseEnvContent', () => {
   test('parses simple KEY=value lines', () => {
