@@ -157,7 +157,6 @@ export {
   ensureOpenCodeSystemConfig,
   ensureCoreAutomations,
   refreshCoreAssets,
-  seedEmbeddedAssets,
 } from "./control-plane/core-assets.js";
 
 // ── Configuration Persistence ────────────────────────────────────────────

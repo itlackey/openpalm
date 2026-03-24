@@ -3,7 +3,7 @@
  *
  * Addon management is handled via /admin/addons.
  * This endpoint returns installable automations only.
- * Tries the cloned registry repo first; falls back to build-time bundled assets.
+ * Tries the cloned registry repo first; falls back to on-disk config/automations/.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -16,14 +16,10 @@ import {
 } from "$lib/server/helpers.js";
 import { appendAudit } from "@openpalm/lib";
 import {
-  REGISTRY_AUTOMATION_YML,
-  REGISTRY_AUTOMATION_NAMES,
-} from "$lib/server/vite-registry-provider.js";
-import {
   ensureRegistryClone,
   discoverRegistryAutomations
 } from "$lib/server/registry-sync.js";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { parse as parseYaml } from "yaml";
 
 export const GET: RequestHandler = async (event) => {
@@ -37,13 +33,13 @@ export const GET: RequestHandler = async (event) => {
 
   // Try cloned registry first
   let remoteAutomations: ReturnType<typeof discoverRegistryAutomations> = [];
-  let source: "remote" | "bundled" = "bundled";
+  let source: "remote" | "local" = "local";
 
   try {
     ensureRegistryClone();
     remoteAutomations = discoverRegistryAutomations();
   } catch {
-    // Clone failed — will fall back to bundled
+    // Clone failed — will fall back to local disk
   }
 
   if (remoteAutomations.length > 0) {
@@ -64,13 +60,19 @@ export const GET: RequestHandler = async (event) => {
     return jsonResponse(200, { automations, source }, requestId);
   }
 
-  // Fallback: use bundled registry assets
-  const automations = REGISTRY_AUTOMATION_NAMES.map((name) => {
-    const installedPath = `${state.configDir}/automations/${name}.yml`;
+  // Fallback: read automations from config directory on disk
+  const automationsDir = `${state.configDir}/automations`;
+  const ymlFiles = existsSync(automationsDir)
+    ? readdirSync(automationsDir).filter((f) => f.endsWith(".yml"))
+    : [];
+
+  const automations = ymlFiles.map((file) => {
+    const name = file.replace(/\.yml$/, "");
     let description = "";
     let schedule = "";
     try {
-      const parsed = parseYaml(REGISTRY_AUTOMATION_YML[name]);
+      const content = readFileSync(`${automationsDir}/${file}`, "utf-8");
+      const parsed = parseYaml(content);
       if (parsed && typeof parsed === "object") {
         description = parsed.description ?? "";
         schedule = parsed.schedule ?? "";
@@ -81,7 +83,7 @@ export const GET: RequestHandler = async (event) => {
     return {
       name,
       type: "automation" as const,
-      installed: existsSync(installedPath),
+      installed: true,
       description,
       schedule
     };

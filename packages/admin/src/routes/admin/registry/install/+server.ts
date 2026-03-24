@@ -4,7 +4,7 @@
  * Channel addons are managed via POST /admin/addons/:name.
  * This endpoint only handles automations from the registry.
  *
- * Tries the cloned registry repo first, falls back to bundled assets.
+ * Tries the cloned registry repo first, falls back to on-disk automations.
  * Delegates filesystem operations to installAutomationFromRegistry() from lib.
  */
 import type { RequestHandler } from "./$types";
@@ -25,10 +25,11 @@ import {
   resolveRuntimeFiles,
 } from "@openpalm/lib";
 import type { RegistryProvider } from "@openpalm/lib";
-import { viteRegistry } from "$lib/server/vite-registry-provider.js";
 import {
   discoverRegistryAutomations,
+  discoverRegistryComponents,
 } from "$lib/server/registry-sync.js";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 
 
 export const POST: RequestHandler = async (event) => {
@@ -58,8 +59,8 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_input", "type must be 'automation'", {}, requestId);
   }
 
-  // Build a merged registry: remote (cloned repo) automations take precedence over bundled (Vite)
-  const registry = buildMergedAutomationRegistry();
+  // Build a merged registry: remote (cloned repo) automations take precedence over local disk
+  const registry = buildMergedAutomationRegistry(state.homeDir, state.configDir);
 
   const result = installAutomationFromRegistry(name, state.configDir, registry);
   if (!result.ok) {
@@ -75,23 +76,48 @@ export const POST: RequestHandler = async (event) => {
   return jsonResponse(200, { ok: true, name, type }, requestId);
 };
 
+/** Read automation YAML files from config/automations/ on disk. */
+function readLocalAutomations(configDir: string): Record<string, string> {
+  const dir = `${configDir}/automations`;
+  if (!existsSync(dir)) return {};
+  const result: Record<string, string> = {};
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".yml"))) {
+    const name = file.replace(/\.yml$/, "");
+    result[name] = readFileSync(`${dir}/${file}`, "utf-8");
+  }
+  return result;
+}
+
+/** List addon component IDs from stack/addons/ on disk. */
+function listAddonIds(homeDir: string): string[] {
+  const addonsDir = `${homeDir}/stack/addons`;
+  if (!existsSync(addonsDir)) return [];
+  return readdirSync(addonsDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name);
+}
+
 /**
  * Build a RegistryProvider that merges remote (cloned git repo) automations
- * with bundled (Vite) automations. Remote entries take precedence.
+ * with on-disk automations. Remote entries take precedence.
  */
-function buildMergedAutomationRegistry(): RegistryProvider {
-  const bundled = viteRegistry.automations();
+function buildMergedAutomationRegistry(homeDir: string, configDir: string): RegistryProvider {
+  const local = readLocalAutomations(configDir);
 
-  // Merge remote automations over bundled ones (remote takes precedence)
+  // Merge remote automations over local ones (remote takes precedence)
   const remoteEntries = discoverRegistryAutomations();
-  const merged: Record<string, string> = { ...bundled };
+  const merged: Record<string, string> = { ...local };
   for (const entry of remoteEntries) {
     merged[entry.name] = entry.ymlContent;
   }
 
+  const remoteComponents = discoverRegistryComponents();
+
   return {
-    components: () => viteRegistry.components(),
-    componentIds: () => viteRegistry.componentIds(),
+    components: () => remoteComponents,
+    componentIds: () => Object.keys(remoteComponents).length > 0
+      ? Object.keys(remoteComponents)
+      : listAddonIds(homeDir),
     automations: () => merged,
     automationNames: () => Object.keys(merged),
   };

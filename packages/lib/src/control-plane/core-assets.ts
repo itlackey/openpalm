@@ -92,23 +92,6 @@ export function ensureCoreAutomations(configDir?: string): void {
   mkdirSync(dir, { recursive: true });
 }
 
-// ── Embedded Asset Seeding ───────────────────────────────────────────
-
-import { EMBEDDED_ASSETS } from "../embedded-assets.js";
-
-/**
- * Seed critical assets from embedded content (compiled into the binary).
- * Only writes files that don't already exist — never overwrites user edits.
- */
-export function seedEmbeddedAssets(homeDir: string): void {
-  for (const [relPath, content] of Object.entries(EMBEDDED_ASSETS)) {
-    const targetPath = join(homeDir, relPath);
-    if (existsSync(targetPath)) continue;
-    mkdirSync(dirname(targetPath), { recursive: true });
-    writeFileSync(targetPath, content);
-  }
-}
-
 // ── Asset Refresh (GitHub download) ──────────────────────────────────
 
 const REPO = "itlackey/openpalm";

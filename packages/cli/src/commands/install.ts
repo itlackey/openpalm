@@ -11,10 +11,10 @@ import {
   performSetup,
   applyInstall,
   buildManagedServices,
-  seedEmbeddedAssets,
   createOpenCodeClient,
   type SetupSpec,
 } from '@openpalm/lib';
+import { seedEmbeddedAssets } from '../lib/embedded-assets.ts';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
 import { ensureValidState } from '../lib/cli-state.ts';

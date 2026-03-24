@@ -135,8 +135,8 @@ describe('/admin/connections/assignments route', () => {
       customInstructions: 'Keep it concise.',
     });
 
-    const managedEnv = readFileSync(join(state.vaultDir, 'stack', 'services', 'memory', 'managed.env'), 'utf-8');
-    expect(managedEnv).toContain('SYSTEM_LLM_PROVIDER=anthropic');
-    expect(managedEnv).toContain('EMBEDDING_MODEL=text-embedding-004');
+    const stackEnv = readFileSync(join(state.vaultDir, 'stack', 'stack.env'), 'utf-8');
+    expect(stackEnv).toContain('OP_CAP_LLM_PROVIDER=anthropic');
+    expect(stackEnv).toContain('OP_CAP_EMBEDDINGS_MODEL=text-embedding-004');
   });
 });

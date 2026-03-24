@@ -104,8 +104,8 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
     const text = await res.text();
     expect(text).not.toContain('sk-test-secret');
 
-    const userEnvPath = join(getState().vaultDir, 'user', 'user.env');
-    expect(readFileSync(userEnvPath, 'utf-8')).toContain('OPENAI_API_KEY=sk-test-secret');
+    const stackEnvPath = join(getState().vaultDir, 'stack', 'stack.env');
+    expect(readFileSync(stackEnvPath, 'utf-8')).toContain('OPENAI_API_KEY=sk-test-secret');
   });
 
   test('rejects API keys with invalid characters', async () => {
