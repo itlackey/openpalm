@@ -13,7 +13,7 @@ vault/
       stack.env.schema    Varlock validation schema for stack.env
       auth.json           OpenCode auth state mounted into assistant
   user/
-    user.env            User-managed secrets (LLM API keys, owner info)
+    user.env            User extension file (empty placeholder for custom vars)
     user.env.schema     Varlock validation schema for user.env
   redact.env.schema     Log redaction rules (used by varlock in containers)
 ```
@@ -24,7 +24,7 @@ vault/
 |------|-------|------------|-----------|
 | `stack/stack.env` | System | CLI install, admin API | Docker Compose and service env wiring |
 | `stack/auth.json` | System-managed runtime auth | CLI/admin | Assistant file mount |
-| `user/user.env` | User | User directly, admin UI/API | Docker Compose, assistant (read-only mount) |
+| `user/user.env` | User | User directly (custom extensions only) | Docker Compose, assistant (read-only mount) |
 | `*.env.schema` | System | CLI install, admin upgrade | Varlock (validation + redaction) |
 
 ## Security rules

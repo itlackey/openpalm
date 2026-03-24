@@ -306,7 +306,7 @@ The standard compose invocation now uses three `--env-file` flags. This should b
 > "Compose is normally invoked with `vault/stack/stack.env` (system-managed) and `vault/user/user.env` (user-managed)"
 
 **Required change:**
-> "Compose is normally invoked with `vault/stack/stack.env` (system-managed: admin token, paths, UID/GID, image tags, bind ports), `vault/user/user.env` (user-managed: LLM keys, provider URLs), and `vault/stack/guardian.env` (channel HMAC secrets)."
+> "Compose is normally invoked with `vault/stack/stack.env` (system-managed: admin token, paths, UID/GID, image tags, bind ports, API keys, provider URLs), `vault/user/user.env` (empty placeholder for custom user extensions), and `vault/stack/guardian.env` (channel HMAC secrets)."
 
 **Also update** the Compose env sources section in `foundations.md` (lines 36-43):
 ```

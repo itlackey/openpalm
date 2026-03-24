@@ -6,7 +6,7 @@
 # runs the setup wizard, and verifies:
 #   1. All containers are healthy
 #   2. No root-owned files in .dev/
-#   3. user.env has correct values
+#   3. stack.env has correct values
 #   4. Assistant container has correct env vars
 #   5. Memory user is provisioned
 #   6. Setup is marked complete
@@ -69,7 +69,7 @@ echo "=== Step 2: Clean .dev/ state ==="
 
 # Vault — reset secrets
 mkdir -p .dev/vault/user .dev/vault/stack
-echo "# OpenPalm secrets" >.dev/vault/user/user.env
+echo "# User extension file (empty placeholder for custom vars)" >.dev/vault/user/user.env
 
 # Data — remove everything except models (HF cache)
 rm -f .dev/data/memory/default_config.json
@@ -116,9 +116,9 @@ echo "=== Step 3: Seed config ==="
 
 # Clear admin tokens from seeded secrets so admin starts in first-boot state.
 # dev-setup seeds them for convenience, but the e2e test needs to verify the wizard sets them.
-# The user.env uses `export ` prefix, so match both with and without.
-sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/vault/user/user.env
-sed -i 's/^\(export \)\{0,1\}OP_ADMIN_TOKEN=.*/\1OP_ADMIN_TOKEN=/' .dev/vault/user/user.env
+# The stack.env uses `export ` prefix, so match both with and without.
+sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/vault/stack/stack.env
+sed -i 's/^\(export \)\{0,1\}OP_ADMIN_TOKEN=.*/\1OP_ADMIN_TOKEN=/' .dev/vault/stack/stack.env
 
 # Use a dev-only image tag so the wizard's pull step doesn't overwrite locally
 # built images with remote ones (e.g. an older Python-based memory:latest).
@@ -243,7 +243,7 @@ echo ""
 echo "=== Step 7: Run setup ==="
 
 # Use performSetup directly (same as the CLI wizard). This creates stack.yaml,
-# writes secrets, managed.env, and all runtime files in one atomic operation.
+# writes secrets and all runtime files in one atomic operation.
 SETUP_OK=$(OP_HOME=.dev bun -e "
 const { performSetup } = await import('@openpalm/lib');
 const result = await performSetup({
@@ -334,10 +334,10 @@ else
 	echo "$root_files" | while read -r f; do echo "    $f"; done
 fi
 
-# ── Step 10: Verify user.env ─────────────────────────────────────────
+# ── Step 10: Verify stack.env ─────────────────────────────────────────
 echo ""
-echo "=== Step 10: Verify user.env ==="
-secrets=".dev/vault/user/user.env"
+echo "=== Step 10: Verify stack.env ==="
+secrets=".dev/vault/stack/stack.env"
 
 check_env_val() {
 	local key="$1" expected="$2"
@@ -361,7 +361,7 @@ fi
 # Config vars (SYSTEM_LLM_*, EMBEDDING_*, MEMORY_USER_ID) are now in
 # stack.yaml capabilities and vault/stack/services/memory/managed.env,
 # NOT in user.env. Verify they are NOT in user.env.
-if grep -qE 'SYSTEM_LLM_PROVIDER=' "$secrets" 2>/dev/null; then
+if grep -qE 'SYSTEM_LLM_PROVIDER=' .dev/vault/user/user.env 2>/dev/null; then
 	fail "SYSTEM_LLM_PROVIDER should NOT be in user.env (lives in stack.yaml now)"
 else
 	pass "Config vars correctly absent from user.env"
