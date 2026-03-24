@@ -38,10 +38,10 @@ function validateSecurity(body: Record<string, unknown>, errors: string[]): void
 }
 
 function validateOwner(body: Record<string, unknown>, errors: string[]): void {
-  const owner = requireObj(body.owner, "owner is required (name and email)", errors);
-  if (!owner) return;
-  requireStr(owner, "name", "owner.name is required", errors);
-  requireStr(owner, "email", "owner.email is required", errors);
+  const owner = body.owner as Record<string, unknown> | undefined;
+  if (!owner) return; // owner is optional
+  if (owner.name !== undefined && typeof owner.name !== "string") errors.push("owner.name must be a string");
+  if (owner.email !== undefined && typeof owner.email !== "string") errors.push("owner.email must be a string");
 }
 
 function validateSpecCapabilities(body: Record<string, unknown>, errors: string[]): void {

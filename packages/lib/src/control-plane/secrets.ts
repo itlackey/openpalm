@@ -121,6 +121,8 @@ export function ensureSecrets(state: ControlPlaneState): void {
       "# These are loaded by compose alongside stack.env.",
       "",
     ].join("\n"));
+  } else {
+    try { chmodSync(userEnvPath, VAULT_FILE_MODE); } catch { /* best-effort */ }
   }
 
   ensureSystemSecrets(state);

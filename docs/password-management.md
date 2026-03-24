@@ -29,14 +29,8 @@ and one guardian secret env.
 
 ## `vault/user/user.env`
 
-This file is for optional user-managed extension settings.
-
-Common keys include:
-
-| Key | Notes |
-|---|---|
-| `OWNER_NAME` | Operator display name |
-| `OWNER_EMAIL` | Operator email |
+This file is for optional user-managed extension settings. It starts empty and
+can be used for custom preferences that are not part of the core stack.
 
 Behavior:
 
@@ -70,6 +64,8 @@ Important keys include:
 | `OP_API_PORT` | API addon host port, default `3821` |
 | `OP_VOICE_PORT` | Voice addon host port, default `3810` |
 | `OP_ASSISTANT_SSH_PORT` | Optional assistant SSH port, default `2222` |
+| `OWNER_NAME` | Operator display name |
+| `OWNER_EMAIL` | Operator email |
 | `OPENAI_API_KEY` | OpenAI-compatible provider key |
 | `OPENAI_BASE_URL` | Alternate OpenAI-compatible endpoint |
 | `ANTHROPIC_API_KEY` | Anthropic key |
@@ -144,7 +140,7 @@ source of truth.
 
 - Edit `~/.openpalm/vault/stack/stack.env` when changing API keys, provider
   settings, ports, paths, or stack-level tokens.
-- Edit `~/.openpalm/vault/user/user.env` for user-managed extension settings like owner
-  name and email.
+- Edit `~/.openpalm/vault/user/user.env` for optional user-managed extension
+  settings and custom preferences.
 - Back up the whole `~/.openpalm/vault/` tree.
 - Never commit real env values from either vault file.

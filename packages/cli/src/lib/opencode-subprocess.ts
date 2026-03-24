@@ -58,9 +58,7 @@ export async function startOpenCodeSubprocess(opts: {
   const authJsonSrc = join(opts.vaultDir, "stack", "auth.json");
   const authJsonDst = join(ocShareDir, "auth.json");
   if (!existsSync(authJsonDst)) {
-    if (existsSync(authJsonSrc)) {
-      symlinkSync(authJsonSrc, authJsonDst);
-    }
+    symlinkSync(authJsonSrc, authJsonDst);
   }
 
   // Copy opencode.json config (not symlink — OpenCode may modify it)

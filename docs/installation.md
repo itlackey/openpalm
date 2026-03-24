@@ -41,7 +41,7 @@ OpenPalm uses one home directory: `~/.openpalm/` by default.
 |---|---|
 | `~/.openpalm/stack/` | Live compose files and helper scripts |
 | `~/.openpalm/vault/stack/stack.env` | System-managed stack values and tokens |
-| `~/.openpalm/vault/user/user.env` | User-managed settings (owner info, custom preferences) |
+| `~/.openpalm/vault/user/user.env` | Optional user-managed extension settings |
 | `~/.openpalm/config/` | User-editable config, automations, assistant extensions |
 | `~/.openpalm/data/` | Durable service data |
 | `~/.openpalm/logs/` | Logs and audit output |
@@ -55,7 +55,7 @@ deployment truth.
 
 ### `~/.openpalm/vault/stack/stack.env`
 
-This file holds system-managed values and provider API keys:
+This file holds system-managed values, provider API keys, and owner identity:
 
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`
@@ -63,6 +63,8 @@ This file holds system-managed values and provider API keys:
 - `SYSTEM_LLM_PROVIDER`
 - `SYSTEM_LLM_MODEL`
 - `MEMORY_USER_ID`
+- `OWNER_NAME`
+- `OWNER_EMAIL`
 
 It also includes system-managed values such as:
 
@@ -77,7 +79,8 @@ paths.
 
 ### `~/.openpalm/vault/user/user.env`
 
-Optional user-managed settings such as owner name and email.
+Optional user-managed extension settings. Starts empty; use for custom
+preferences. Owner name and email live in `stack.env`.
 
 ---
 

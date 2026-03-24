@@ -49,8 +49,8 @@ Docker Compose is invoked with these env files (see [Manual Compose Runbook](../
 
 That means the effective env model is:
 
-- `vault/stack/stack.env` - system-managed runtime env and secrets (admin token, paths, UID/GID, image tags, bind ports, API keys, provider config)
-- `vault/user/user.env` - user-managed settings (owner info, custom preferences)
+- `vault/stack/stack.env` - system-managed runtime env and secrets (admin token, paths, UID/GID, image tags, bind ports, API keys, provider config, owner identity)
+- `vault/user/user.env` - optional user-managed extension settings (custom preferences)
 - `vault/stack/guardian.env` - channel HMAC secrets (loaded by guardian as env_file and via GUARDIAN_SECRETS_PATH)
 
 ---
@@ -335,17 +335,17 @@ These variables are consumed by Compose and service env blocks.
 | `OP_MEMORY_TOKEN` | Memory API auth token |
 | `OP_OPENCODE_PASSWORD` | OpenCode server password |
 | `MEMORY_USER_ID` | Default memory identity |
+| `OWNER_NAME` | Operator display name |
+| `OWNER_EMAIL` | Operator email |
 | `CHANNEL_<NAME>_SECRET` | Guardian / channel HMAC secrets |
 
 ---
 
 ## User Variables From `user.env`
 
-Typical user-managed variables:
-
-- `OWNER_NAME`
-- `OWNER_EMAIL`
-- custom user preferences
+This file is an optional user-managed extension env. It starts empty and can
+hold custom preferences. `OWNER_NAME` and `OWNER_EMAIL` live in `stack.env`
+(see above).
 
 API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, etc.) and
 provider/model selections now live in `stack.env`. They are passed into
