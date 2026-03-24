@@ -27,7 +27,7 @@ function anthropicError(message: string, type = "invalid_request_error") {
 // ── Channel ──────────────────────────────────────────────────────────────
 
 export default class ApiChannel extends BaseChannel {
-  name = "api";
+  name = Bun.env.CHANNEL_ID ?? "api";
 
   /** API key for Bearer / x-api-key auth. Empty = no auth required. */
   get apiKey(): string {

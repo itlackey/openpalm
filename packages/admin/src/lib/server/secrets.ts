@@ -5,9 +5,8 @@ export {
   PLAIN_CONFIG_KEYS,
   ensureSecrets,
   updateSecretsEnv,
-  readSecretsEnvFile,
+  readStackEnv,
   patchSecretsEnvFile,
   maskConnectionValue,
-  loadSecretsEnvFile,
   ensureOpenCodeConfig,
 } from "@openpalm/lib";

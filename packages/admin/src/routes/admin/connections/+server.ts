@@ -15,7 +15,7 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
-  readSecretsEnvFile,
+  readStackEnv,
   patchSecretsEnvFile,
   readStackSpec,
   writeStackSpec,
@@ -44,7 +44,7 @@ export const GET: RequestHandler = async (event) => {
   const callerType = getCallerType(event);
 
   // Read secrets (masked)
-  const raw = readSecretsEnvFile(state.vaultDir);
+  const raw = readStackEnv(state.vaultDir);
   const secrets: Record<string, string> = {};
   for (const [key, value] of Object.entries(raw)) {
     secrets[key] = maskConnectionValue(key, value);

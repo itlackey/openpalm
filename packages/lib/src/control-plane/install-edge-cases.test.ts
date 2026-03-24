@@ -17,7 +17,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseEnvContent, parseEnvFile, mergeEnvContent } from "./env.js";
-import { ensureSecrets, loadSecretsEnvFile } from "./secrets.js";
+import { ensureSecrets, readStackEnv } from "./secrets.js";
 import { isSetupComplete } from "./setup-status.js";
 import {
   performSetup,

@@ -13,7 +13,7 @@ import { join } from "node:path";
 import {
   ensureSecrets,
   updateSecretsEnv,
-  readSecretsEnvFile,
+  readStackEnv,
   patchSecretsEnvFile,
   maskConnectionValue,
   ensureOpenCodeConfig,
@@ -137,7 +137,7 @@ describe("updateSecretsEnv", () => {
 
 // ── Connection Key Management ───────────────────────────────────────────
 
-describe("readSecretsEnvFile", () => {
+describe("readStackEnv", () => {
   let vaultDir: string;
 
   beforeEach(() => {
@@ -145,7 +145,7 @@ describe("readSecretsEnvFile", () => {
   });
 
   test("returns empty object when file does not exist", () => {
-    expect(readSecretsEnvFile(vaultDir)).toEqual({});
+    expect(readStackEnv(vaultDir)).toEqual({});
   });
 
   test("reads all keys from stack.env", () => {
@@ -154,7 +154,7 @@ describe("readSecretsEnvFile", () => {
       "ADMIN_TOKEN=secret\nOPENAI_API_KEY=sk-test\nCUSTOM_KEY=val\n"
     );
 
-    const result = readSecretsEnvFile(vaultDir);
+    const result = readStackEnv(vaultDir);
     expect(result.OPENAI_API_KEY).toBe("sk-test");
     expect(result.ADMIN_TOKEN).toBe("secret");
     expect(result.CUSTOM_KEY).toBe("val");
@@ -162,13 +162,13 @@ describe("readSecretsEnvFile", () => {
 
   test("skips comments and blank lines", () => {
     seedSecretsEnv(vaultDir, "# A comment\n\nOPENAI_API_KEY=sk-test\n# another\n");
-    const result = readSecretsEnvFile(vaultDir);
+    const result = readStackEnv(vaultDir);
     expect(result.OPENAI_API_KEY).toBe("sk-test");
   });
 
   test("strips inline comments from values", () => {
     seedSecretsEnv(vaultDir, "OPENAI_API_KEY=sk-test # my key\n");
-    const result = readSecretsEnvFile(vaultDir);
+    const result = readStackEnv(vaultDir);
     expect(result.OPENAI_API_KEY).toBe("sk-test");
   });
 
@@ -177,14 +177,14 @@ describe("readSecretsEnvFile", () => {
       vaultDir,
       'OPENAI_API_KEY="sk-double"\nGROQ_API_KEY=\'sk-single\'\n'
     );
-    const result = readSecretsEnvFile(vaultDir);
+    const result = readStackEnv(vaultDir);
     expect(result.OPENAI_API_KEY).toBe("sk-double");
     expect(result.GROQ_API_KEY).toBe("sk-single");
   });
 
   test("returns empty string for keys with no value", () => {
     seedSecretsEnv(vaultDir, "OPENAI_API_KEY=\n");
-    const result = readSecretsEnvFile(vaultDir);
+    const result = readStackEnv(vaultDir);
     expect(result.OPENAI_API_KEY).toBe("");
   });
 });

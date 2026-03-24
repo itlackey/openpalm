@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "openpalm",
@@ -83,16 +82,6 @@
         "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
       },
     },
-    "packages/channel-chat": {
-      "name": "@openpalm/channel-chat",
-      "version": "0.9.0",
-      "devDependencies": {
-        "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
-      },
-      "peerDependencies": {
-        "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
-      },
-    },
     "packages/channel-discord": {
       "name": "@openpalm/channel-discord",
       "version": "0.9.1",
@@ -143,6 +132,7 @@
       "dependencies": {
         "@openpalm/lib": ">=0.9.8 <1.0.0",
         "citty": "^0.2.1",
+        "yaml": "^2.8.0",
       },
     },
     "packages/lib": {
@@ -300,8 +290,6 @@
     "@openpalm/assistant-tools": ["@openpalm/assistant-tools@workspace:packages/assistant-tools"],
 
     "@openpalm/channel-api": ["@openpalm/channel-api@workspace:packages/channel-api"],
-
-    "@openpalm/channel-chat": ["@openpalm/channel-chat@workspace:packages/channel-chat"],
 
     "@openpalm/channel-discord": ["@openpalm/channel-discord@workspace:packages/channel-discord"],
 

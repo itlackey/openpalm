@@ -11,7 +11,7 @@ import {
   resolveLogsDir,
   resolveCacheHome,
 } from "./home.js";
-import { ensureSecrets, loadSecretsEnvFile, readSystemSecretsEnvFile, updateSystemSecretsEnv } from "./secrets.js";
+import { ensureSecrets, readStackEnv, updateSystemSecretsEnv } from "./secrets.js";
 import {
   resolveRuntimeFiles,
   writeRuntimeFiles,
@@ -63,17 +63,15 @@ export function createState(
 
   ensureSecrets(bootstrapState);
 
-  const fileEnv = loadSecretsEnvFile(vaultDir);
-  const systemEnv = readSystemSecretsEnvFile(vaultDir);
-  // Precedence: explicit parameter > system.env > user.env > process.env.
+  const stackEnv = readStackEnv(vaultDir);
+  // Precedence: explicit parameter > stack.env > process.env.
   bootstrapState.adminToken =
     adminToken
-      ?? systemEnv.OP_ADMIN_TOKEN
-      ?? fileEnv.OP_ADMIN_TOKEN
+      ?? stackEnv.OP_ADMIN_TOKEN
       ?? process.env.OP_ADMIN_TOKEN
       ?? "";
   bootstrapState.assistantToken =
-    systemEnv.OP_ASSISTANT_TOKEN
+    stackEnv.OP_ASSISTANT_TOKEN
       ?? process.env.OP_ASSISTANT_TOKEN
       ?? "";
 

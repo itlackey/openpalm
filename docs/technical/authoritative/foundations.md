@@ -254,6 +254,8 @@ Mounts:
 
 - `$OP_HOME/config -> /openpalm/config:ro`
 
+Design note — scheduler access scope: The scheduler receives `OP_ADMIN_TOKEN` and mounts `config/` because it must execute automations that call the admin API (e.g., triggering lifecycle operations, managing addons) and read automation definitions from config. This is a deliberate design choice, not an accidental over-grant. The scheduler is an internal-only service on `assistant_net` with no ingress exposure, and its access is bounded to what automations require: config (read-only), admin API (token-authenticated), assistant API, and memory API.
+
 Ports and network:
 
 - host: none
@@ -318,6 +320,8 @@ Mounts:
 - `$OP_HOME/data/workspace -> /work`
 - `${HOME}/.cache/openpalm/registry -> /cache/registry`
 - `${GNUPGHOME:-${HOME}/.gnupg} -> /home/node/.gnupg:ro`
+
+Design note — admin mounts all of `OP_HOME`: The admin service mounts the full `$OP_HOME` directory because it is the web-based orchestrator responsible for managing config, vault, stack assembly, data, and logs. Mounting individual subdirectories would be fragile and would break whenever new paths are introduced. The blast radius is already constrained: the admin reaches Docker only through docker-socket-proxy (filtered API), all admin API endpoints require `ADMIN_TOKEN` authentication, and the service binds to localhost by default. Narrowing the mount would add complexity without meaningful security improvement given these existing controls.
 
 Ports and network:
 

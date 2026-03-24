@@ -20,7 +20,7 @@ import {
   updateSecretsEnv,
   updateSystemSecretsEnv,
   ensureOpenCodeConfig,
-  readSystemSecretsEnvFile,
+  readStackEnv,
 } from "./secrets.js";
 import { ensureOpenCodeSystemConfig, ensureMemoryDir } from "./core-assets.js";
 import { createState, writeSetupTokenFile } from "./lifecycle.js";
@@ -155,7 +155,7 @@ export async function performSetup(
   try {
     ensureHomeDirs();
     ensureSecrets(state);
-    const existingSystemEnv = readSystemSecretsEnvFile(state.vaultDir);
+    const existingSystemEnv = readStackEnv(state.vaultDir);
     if (channelCredentials) Object.assign(updates, buildChannelCredentialEnvVars(channelCredentials));
     updateSecretsEnv(state, updates);
     updateSystemSecretsEnv(state, buildSystemSecretsFromSetup(security.adminToken, existingSystemEnv));
@@ -166,7 +166,7 @@ export async function performSetup(
   }
 
   state.adminToken = security.adminToken;
-  state.assistantToken = readSystemSecretsEnvFile(state.vaultDir).OP_ASSISTANT_TOKEN ?? state.assistantToken;
+  state.assistantToken = readStackEnv(state.vaultDir).OP_ASSISTANT_TOKEN ?? state.assistantToken;
   writeSetupTokenFile(state);
 
   // Write stack.yaml and OP_CAP_* capability vars to stack.env

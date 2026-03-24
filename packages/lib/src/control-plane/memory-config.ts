@@ -1,6 +1,6 @@
 /** Memory LLM & Embedding configuration management. */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
-import { loadSecretsEnvFile } from "./secrets.js";
+import { readStackEnv } from "./secrets.js";
 import { EMBEDDING_DIMS, PROVIDER_DEFAULT_URLS } from "../provider-constants.js";
 
 
@@ -45,7 +45,7 @@ export function resolveApiKey(apiKeyRef: string, configDir: string): string {
   const varName = apiKeyRef.slice(4);
   if (process.env[varName]) return process.env[varName]!;
 
-  const secrets = loadSecretsEnvFile(configDir);
+  const secrets = readStackEnv(configDir);
   return secrets[varName] ?? "";
 }
 

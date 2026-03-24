@@ -324,7 +324,6 @@ jobs:
             via per-package publish workflows.
 
             - [@openpalm/channels-sdk](https://www.npmjs.com/package/@openpalm/channels-sdk)
-            - [@openpalm/channel-chat](https://www.npmjs.com/package/@openpalm/channel-chat)
             - [@openpalm/channel-api](https://www.npmjs.com/package/@openpalm/channel-api)
             - [@openpalm/channel-discord](https://www.npmjs.com/package/@openpalm/channel-discord)
             - [@openpalm/channel-slack](https://www.npmjs.com/package/@openpalm/channel-slack)

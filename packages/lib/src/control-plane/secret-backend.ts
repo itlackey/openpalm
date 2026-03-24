@@ -17,8 +17,7 @@ import {
 } from './secret-mappings.js';
 import { readSecretProviderConfig } from './provider-config.js';
 import {
-  loadSecretsEnvFile,
-  readSystemSecretsEnvFile,
+  readStackEnv,
   updateSecretsEnv,
   updateSystemSecretsEnv,
 } from './secrets.js';
@@ -74,7 +73,7 @@ function generateSecretValue(length = 32): string {
 }
 
 function resolvePlaintextTarget(state: ControlPlaneState, key: string): ResolvedSecretTarget {
-  const systemEnv = readSystemSecretsEnvFile(state.vaultDir);
+  const systemEnv = readStackEnv(state.vaultDir);
   const coreMapping = findCoreSecretByKey(key, systemEnv);
   if (coreMapping) {
     return { key, scope: coreMapping.scope, envKey: coreMapping.envKey };
@@ -87,8 +86,8 @@ function resolvePlaintextTarget(state: ControlPlaneState, key: string): Resolved
 function currentValueForTarget(state: ControlPlaneState, target: ResolvedSecretTarget): string {
   if (!target.envKey) return '';
   const env = target.scope === 'system'
-    ? readSystemSecretsEnvFile(state.vaultDir)
-    : loadSecretsEnvFile(state.vaultDir);
+    ? readStackEnv(state.vaultDir)
+    : readStackEnv(state.vaultDir);
   return env[target.envKey] ?? '';
 }
 
@@ -99,8 +98,8 @@ export class PlaintextBackend implements SecretBackend {
   constructor(private readonly state: ControlPlaneState) {}
 
   async list(prefix = 'openpalm/'): Promise<SecretEntryMetadata[]> {
-    const userEnv = loadSecretsEnvFile(this.state.vaultDir);
-    const systemEnv = readSystemSecretsEnvFile(this.state.vaultDir);
+    const userEnv = readStackEnv(this.state.vaultDir);
+    const systemEnv = readStackEnv(this.state.vaultDir);
     const index = readPlaintextSecretIndex(this.state);
     const entries: SecretEntryMetadata[] = [];
 
@@ -170,7 +169,7 @@ export class PlaintextBackend implements SecretBackend {
         updateSecretsEnv(this.state, { [target.envKey]: '' });
       }
     }
-    if (!findCoreSecretByKey(key, readSystemSecretsEnvFile(this.state.vaultDir))) {
+    if (!findCoreSecretByKey(key, readStackEnv(this.state.vaultDir))) {
       removePlaintextSecretEntry(this.state, key);
     }
   }

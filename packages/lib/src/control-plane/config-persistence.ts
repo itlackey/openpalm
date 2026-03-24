@@ -14,7 +14,7 @@ import { readStackSpec, hasAddon, addonNames } from "./stack-spec.js";
 import { writeCapabilityVars } from "./spec-to-env.js";
 
 import { generateRedactSchema } from "./redact-schema.js";
-import { readSystemSecretsEnvFile } from "./secrets.js";
+import { readStackEnv } from "./secrets.js";
 import {
   readCoreCompose,
   ensureUserEnvSchema,
@@ -346,7 +346,7 @@ export function writeRuntimeFiles(
   }
 
   // Generate redact.env.schema from canonical mappings
-  const systemEnv = readSystemSecretsEnvFile(state.vaultDir);
+  const systemEnv = readStackEnv(state.vaultDir);
   const redactDir = `${state.dataDir}/secrets`;
   mkdirSync(redactDir, { recursive: true });
   writeFileSync(`${redactDir}/redact.env.schema`, generateRedactSchema(systemEnv));

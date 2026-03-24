@@ -36,7 +36,7 @@ It captures why the system is shaped the way it is and what must remain true as 
 - Host CLI or admin orchestrates Compose operations; Docker socket exposure is tightly constrained.
 - Guardian is the only ingress path from channel networks to the assistant.
 - Assistant is isolated: no Docker socket, bounded mounts, and stack-management access mediated through authenticated admin APIs when admin is present.
-- Host-only by default: interfaces are local unless the user explicitly opts into broader exposure.
+- Host-only by default: interfaces are local unless the user explicitly opts into broader exposure. The LAN-first threat model is a deliberate architectural choice — admin token storage (localStorage), admin filesystem access (full `OP_HOME` mount), and scheduler API access (`OP_ADMIN_TOKEN`) are all scoped for a localhost/LAN deployment where the network perimeter itself is the primary trust boundary.
 - Secret handling follows least privilege by container and by scope.
 
 ## Extensibility intent

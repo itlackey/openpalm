@@ -658,7 +658,7 @@ check_container_env "openpalm-assistant-1" "OPENAI_BASE_URL" "endswith" "/v1"
 
 step "Check for chat channel"
 
-CHAT_CONTAINER=$(docker ps --format '{{.Names}}' | grep "openpalm-channel-chat" || true)
+CHAT_CONTAINER=$(docker ps --format '{{.Names}}' | grep "openpalm-chat" || true)
 if [ -n "$CHAT_CONTAINER" ]; then
   pass "Chat channel container is running: $CHAT_CONTAINER"
 

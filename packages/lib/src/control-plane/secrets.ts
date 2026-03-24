@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState } from "./types.js";
-import { resolveVaultDir, resolveConfigDir } from "./home.js";
+import { resolveConfigDir } from "./home.js";
 
 const OPENCODE_STARTER_CONFIG = JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2) + "\n";
 const logger = createLogger("secrets");
@@ -185,7 +185,8 @@ export function updateSecretsEnv(
   mergeVaultEnvFile(stackEnvPath, updates, true);
 }
 
-export function readSystemSecretsEnvFile(vaultDir: string): Record<string, string> {
+/** Read and parse vault/stack/stack.env. Returns {} if the file does not exist. */
+export function readStackEnv(vaultDir: string): Record<string, string> {
   return parseEnvFile(`${vaultDir}/stack/stack.env`);
 }
 
@@ -199,10 +200,6 @@ export function updateSystemSecretsEnv(
     ensureSystemSecrets(state);
   }
   mergeVaultEnvFile(systemEnvPath, updates, true);
-}
-
-export function readSecretsEnvFile(vaultDir: string): Record<string, string> {
-  return parseEnvFile(`${vaultDir}/stack/stack.env`);
 }
 
 export function patchSecretsEnvFile(
@@ -235,16 +232,6 @@ export function maskConnectionValue(key: string, value: string): string {
   if (PLAIN_CONFIG_KEYS.has(key)) return value;
   if (value.length <= 4) return "****";
   return "*".repeat(value.length - 4) + value.slice(-4);
-}
-
-export function loadSecretsEnvFile(vaultDir?: string): Record<string, string> {
-  const base = vaultDir ?? resolveVaultDir();
-  const parsed = parseEnvFile(`${base}/stack/stack.env`);
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(parsed)) {
-    if (/^[A-Z0-9_]+$/.test(key)) result[key] = value;
-  }
-  return result;
 }
 
 
