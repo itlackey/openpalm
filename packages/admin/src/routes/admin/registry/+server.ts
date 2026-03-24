@@ -14,11 +14,11 @@ import {
   getActor,
   getCallerType
 } from "$lib/server/helpers.js";
-import { appendAudit } from "@openpalm/lib";
 import {
+  appendAudit,
   ensureRegistryClone,
   discoverRegistryAutomations
-} from "$lib/server/registry-sync.js";
+} from "@openpalm/lib";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { parse as parseYaml } from "yaml";
 

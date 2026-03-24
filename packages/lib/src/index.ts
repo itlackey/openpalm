@@ -40,6 +40,24 @@ export {
 // ── Interfaces ──────────────────────────────────────────────────────────
 export type { RegistryProvider, RegistryComponentEntry } from "./control-plane/registry-provider.js";
 
+// ── Registry Sync ────────────────────────────────────────────────────────
+export type { RegistryConfig, RegistryAutomationEntry } from "./control-plane/registry.js";
+export {
+  validateBranch,
+  validateRegistryUrl,
+  isValidComponentName,
+  getRegistryConfig,
+  registryRoot,
+  ensureRegistryClone,
+  pullRegistry,
+  discoverRegistryComponents,
+  discoverRegistryAutomations,
+  getRegistryAutomation,
+  readLocalAutomations,
+  listLocalAddonIds,
+  buildMergedRegistry,
+} from "./control-plane/registry.js";
+
 // ── Home Layout (v0.10.0) ───────────────────────────────────────────────
 export {
   resolveOpenPalmHome,
@@ -167,6 +185,9 @@ export {
   buildRuntimeFileMeta,
   writeRuntimeFiles,
   writeSystemEnv,
+  readChannelSecrets,
+  writeChannelSecrets,
+  migrateLegacyChannelSecrets,
   isOllamaEnabled,
   isAdminEnabled,
 } from "./control-plane/config-persistence.js";
@@ -244,6 +265,18 @@ export {
 export type { LocalProviderDetection } from "./control-plane/model-runner.js";
 export { detectLocalProviders } from "./control-plane/model-runner.js";
 
+// ── Compose Arguments ────────────────────────────────────────────────────
+export type { ComposeOptions } from "./control-plane/compose-args.js";
+export {
+  COMPOSE_PROJECT_NAME,
+  buildComposeOptions,
+  buildComposeCliArgs,
+} from "./control-plane/compose-args.js";
+
+// ── Orchestrator Lock ────────────────────────────────────────────────────
+export type { LockHandle, LockInfo } from "./control-plane/lock.js";
+export { LockAcquisitionError, acquireLock, releaseLock } from "./control-plane/lock.js";
+
 // ── Stack Spec (v2) ──────────────────────────────────────────────────────
 export type {
   StackSpec,
@@ -256,6 +289,8 @@ export type {
   StackSpecAddonValue,
 } from "./control-plane/stack-spec.js";
 export {
+  STACK_SPEC_FILENAME,
+  stackSpecPath,
   writeStackSpec,
   readStackSpec,
   updateCapability,

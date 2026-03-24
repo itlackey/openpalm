@@ -337,7 +337,7 @@ These variables are consumed by Compose and service env blocks.
 | `MEMORY_USER_ID` | Default memory identity |
 | `OWNER_NAME` | Operator display name |
 | `OWNER_EMAIL` | Operator email |
-| `CHANNEL_<NAME>_SECRET` | Guardian / channel HMAC secrets |
+| `CHANNEL_<NAME>_SECRET` | Guardian / channel HMAC secrets (lives in `guardian.env`, not `stack.env`) |
 
 ---
 

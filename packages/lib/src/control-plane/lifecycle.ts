@@ -23,6 +23,7 @@ import { refreshCoreAssets, ensureMemoryDir, ensureCoreAutomations } from "./cor
 import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composeConfigServices, resolveComposeProjectName } from "./docker.js";
+import { acquireLock, releaseLock } from "./lock.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
@@ -162,15 +163,30 @@ async function reconcileCore(
 }
 
 export async function applyInstall(state: ControlPlaneState): Promise<void> {
-  await reconcileCore(state, { activateServices: true });
+  const lock = acquireLock(state.homeDir, "install");
+  try {
+    await reconcileCore(state, { activateServices: true });
+  } finally {
+    releaseLock(lock);
+  }
 }
 
 export async function applyUpdate(state: ControlPlaneState): Promise<{ restarted: string[] }> {
-  return { restarted: await reconcileCore(state, {}) };
+  const lock = acquireLock(state.homeDir, "update");
+  try {
+    return { restarted: await reconcileCore(state, {}) };
+  } finally {
+    releaseLock(lock);
+  }
 }
 
 export async function applyUninstall(state: ControlPlaneState): Promise<{ stopped: string[] }> {
-  return { stopped: await reconcileCore(state, { deactivateServices: true }) };
+  const lock = acquireLock(state.homeDir, "uninstall");
+  try {
+    return { stopped: await reconcileCore(state, { deactivateServices: true }) };
+  } finally {
+    releaseLock(lock);
+  }
 }
 
 type DockerTagEntry = { name?: unknown };
@@ -236,9 +252,14 @@ export async function applyUpgrade(
   updated: string[];
   restarted: string[];
 }> {
-  const { backupDir, updated } = await refreshCoreAssets();
-  const restarted = await reconcileCore(state, {});
-  return { backupDir, updated, restarted };
+  const lock = acquireLock(state.homeDir, "upgrade");
+  try {
+    const { backupDir, updated } = await refreshCoreAssets();
+    const restarted = await reconcileCore(state, {});
+    return { backupDir, updated, restarted };
+  } finally {
+    releaseLock(lock);
+  }
 }
 
 export function buildComposeFileList(state: ControlPlaneState): string[] {

@@ -108,7 +108,7 @@ Compose remains the source of truth for that contract.
 
 - The assistant has no Docker socket.
 - The assistant receives only `vault/user/` as a mount from the vault boundary.
-- Stack-level secrets such as `OP_ADMIN_TOKEN` and channel HMAC secrets remain in `vault/stack/stack.env` and are not mounted as files into the assistant.
+- Stack-level secrets such as `OP_ADMIN_TOKEN` remain in `vault/stack/stack.env`. Channel HMAC secrets live in `vault/stack/guardian.env`. Neither is mounted as a file into the assistant.
 - Admin-side Docker access is mediated by `docker-socket-proxy` on the isolated `admin_docker_net` network.
 
 ---

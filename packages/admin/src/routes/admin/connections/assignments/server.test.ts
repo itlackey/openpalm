@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { join } from 'node:path';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { stringify as yamlStringify, parse as yamlParse } from 'yaml';
 import { getState, resetState } from '$lib/server/state.js';
 import { POST } from './+server.js';
+import { readStackSpec, writeStackSpec, type StackSpec } from '@openpalm/lib';
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `openpalm-assignments-${randomBytes(4).toString('hex')}`);
@@ -15,22 +15,16 @@ function makeTempDir(): string {
 
 function seedStackYaml(): void {
   const state = getState();
-  mkdirSync(state.configDir, { recursive: true });
-  writeFileSync(join(state.configDir, 'stack.yaml'), yamlStringify({
+  const spec: StackSpec = {
     version: 2,
     capabilities: {
       llm: 'openai/gpt-4o',
-      embeddings: {
-        provider: 'openai',
-        model: 'text-embedding-3-small',
-        dims: 1536,
-      },
-      memory: {
-        userId: 'default_user',
-      },
+      embeddings: { provider: 'openai', model: 'text-embedding-3-small', dims: 1536 },
+      memory: { userId: 'default_user' },
     },
     addons: {},
-  }));
+  };
+  writeStackSpec(state.configDir, spec);
 }
 
 function makeEvent(body: unknown, token = 'admin-token'): Parameters<typeof POST>[0] {
@@ -117,20 +111,15 @@ describe('/admin/connections/assignments route', () => {
     expect(res.status).toBe(200);
 
     const state = getState();
-    const spec = yamlParse(readFileSync(join(state.configDir, 'stack.yaml'), 'utf-8')) as {
-      capabilities: {
-        llm: string;
-        embeddings: { provider: string; model: string; dims: number };
-        memory: { userId: string; customInstructions?: string };
-      };
-    };
-    expect(spec.capabilities.llm).toBe('anthropic/claude-sonnet-4');
-    expect(spec.capabilities.embeddings).toEqual({
+    const spec = readStackSpec(state.configDir);
+    expect(spec).not.toBeNull();
+    expect(spec!.capabilities.llm).toBe('anthropic/claude-sonnet-4');
+    expect(spec!.capabilities.embeddings).toEqual({
       provider: 'google',
       model: 'text-embedding-004',
       dims: 768,
     });
-    expect(spec.capabilities.memory).toEqual({
+    expect(spec!.capabilities.memory).toEqual({
       userId: 'owner',
       customInstructions: 'Keep it concise.',
     });

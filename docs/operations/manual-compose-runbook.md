@@ -56,6 +56,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   -f "$OP_HOME/stack/addons/chat/compose.yml" \
@@ -79,6 +80,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   config --quiet
@@ -88,6 +90,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   config --services
@@ -115,6 +118,7 @@ BASE="docker compose \
   --project-name $PROJECT_NAME \
   --env-file $OP_HOME/vault/stack/stack.env \
   --env-file $OP_HOME/vault/user/user.env \
+  --env-file $OP_HOME/vault/stack/guardian.env \
   -f $OP_HOME/stack/core.compose.yml \
   -f $OP_HOME/stack/addons/admin/compose.yml \
   -f $OP_HOME/stack/addons/chat/compose.yml"
@@ -127,6 +131,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   -f "$OP_HOME/stack/addons/chat/compose.yml" \
@@ -140,6 +145,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   -f "$OP_HOME/stack/addons/chat/compose.yml" \
@@ -153,6 +159,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   ps
@@ -165,6 +172,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   logs --tail 100
@@ -177,6 +185,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   logs -f assistant
 ```
@@ -188,6 +197,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   restart guardian
 ```
@@ -199,6 +209,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   -f "$OP_HOME/stack/addons/chat/compose.yml" \
@@ -245,6 +256,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   up -d --remove-orphans
@@ -343,6 +355,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   up -d --force-recreate

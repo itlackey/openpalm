@@ -107,4 +107,4 @@ Conversation notes:
 | `DISCORD_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `DISCORD_BLOCKED_USERS` | no | Comma-separated user blocklist |
 | `DISCORD_CUSTOM_COMMANDS` | no | JSON array of custom slash commands |
-| `CHANNEL_DISCORD_SECRET` | system-managed | Guardian HMAC secret from `vault/stack/stack.env` |
+| `CHANNEL_DISCORD_SECRET` | system-managed | Guardian HMAC secret from `vault/stack/guardian.env` |

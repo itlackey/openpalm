@@ -316,7 +316,19 @@ export function createSetupServer(
 
 // ── Static Assets (wizard UI from task 2.1) ─────────────────────────────
 // Embedded at build time via Bun text imports from sibling files.
+// The wizard JS is split into four files for maintainability, then
+// concatenated into a single IIFE at import time.
 
 import WIZARD_HTML from "./index.html" with { type: "text" };
-import WIZARD_JS from "./wizard.js" with { type: "text" };
+import WIZARD_STATE_JS from "./wizard-state.js" with { type: "text" };
+import WIZARD_VALIDATORS_JS from "./wizard-validators.js" with { type: "text" };
+import WIZARD_RENDERERS_JS from "./wizard-renderers.js" with { type: "text" };
+import WIZARD_ENTRY_JS from "./wizard.js" with { type: "text" };
 import WIZARD_CSS from "./wizard.css" with { type: "text" };
+
+const WIZARD_JS = `(function(){"use strict";
+${WIZARD_STATE_JS}
+${WIZARD_VALIDATORS_JS}
+${WIZARD_RENDERERS_JS}
+${WIZARD_ENTRY_JS}
+})();`;

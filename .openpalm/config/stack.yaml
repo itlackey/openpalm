@@ -1,43 +1,16 @@
-version: 1
-connections:
-  - id: openai
-    name: OpenAI
-    kind: openai_compatible_remote
-    provider: openai
-    baseUrl: https://api.openai.com
-    auth:
-      mode: api_key
-      apiKeySecretRef: "env:OPENAI_API_KEY"
-  - id: ollama
-    name: Ollama
-    kind: ollama_stack
-    provider: ollama
-    baseUrl: http://ollama:11434
-assignments:
-  llm:
-    connectionId: openai
-    model: gpt-4o
+# OpenPalm stack specification (v2).
+#
+# This seed file is overwritten by the setup wizard with your actual
+# configuration. It exists so that install-time seeding always has a
+# valid v2 reference. See docs/technical/core-principles.md for the
+# authoritative format.
+version: 2
+capabilities:
+  llm: openai/gpt-4o
   embeddings:
-    connectionId: openai
+    provider: openai
     model: text-embedding-3-small
-    embeddingDims: 1536
+    dims: 1536
   memory:
-    llm:
-      connectionId: openai
-      model: gpt-4o
-      temperature: 0.1
-      maxTokens: 2000
-    embeddings:
-      connectionId: openai
-      model: text-embedding-3-small
-    vectorStore:
-      provider: sqlite-vec
-      collectionName: memory
-      dbPath: /data/memory.db
-    customInstructions: ""
-addons:
-  - discord
-  - admin
-  - voice
-  - slack
-  - ollama
+    userId: default_user
+addons: {}

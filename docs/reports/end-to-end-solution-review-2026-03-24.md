@@ -110,8 +110,8 @@ Significant orchestration logic remains duplicated in admin/CLI.
 Evidence:
 
 - Registry clone/pull/discovery implemented in admin-only module `packages/admin/src/lib/server/registry-sync.ts:1`.
-- Legacy compose startup and preflight wrapper in shell script `.openpalm/stack/start.sh` duplicates control-plane behavior.
-- Legacy addon parsing and stack yaml handling in shell script `.openpalm/stack/start.sh` diverges from typed parser in `packages/lib/src/control-plane/stack-spec.ts:144`.
+- Legacy compose startup and preflight wrapper in shell script `.openpalm/stack/start.sh` duplicates control-plane behavior. **Resolved (P1-5, 2026-03-24): `.openpalm/stack/start.sh` deleted; all orchestration goes through `@openpalm/lib`.**
+- Legacy addon parsing and stack yaml handling in shell script `.openpalm/stack/start.sh` diverges from typed parser in `packages/lib/src/control-plane/stack-spec.ts:144`. **Resolved (P1-5, 2026-03-24): script deleted.**
 
 Impact:
 
@@ -127,11 +127,11 @@ Severity: High
 Evidence:
 
 - Strict v2 check in `packages/lib/src/control-plane/stack-spec.ts:156`.
-- Manual list extraction logic in `.openpalm/stack/start.sh`.
+- Manual list extraction logic in `.openpalm/stack/start.sh`. **Resolved (P1-5, 2026-03-24): script deleted.**
 
 Impact:
 
-- Different addon selection behavior across entrypoints.
+- Different addon selection behavior across entrypoints. **Resolved (P1-5, 2026-03-24).**
 
 ### 7) Assistant-token authorization is broad without explicit endpoint allowlist
 
@@ -206,7 +206,7 @@ Potential improvement:
 
 1. Create a single lib-owned channel secret backend API.
 2. Standardize compose arg/env-file construction in `@openpalm/lib` and reuse everywhere.
-3. Delete `.openpalm/stack/start.sh` and route all compose orchestration through lib-backed CLI/admin paths.
+3. ~~Delete `.openpalm/stack/start.sh` and route all compose orchestration through lib-backed CLI/admin paths.~~ **Completed (P1-5, 2026-03-24).**
 4. Refactor guardian server into focused modules (`auth`, `replay`, `rate-limit`, `forwarding`, `audit`).
 5. Remove direct-LLM fallback from channel voice and return explicit guardian-unavailable errors.
 6. Move admin registry sync/discovery into shared lib.
@@ -225,7 +225,7 @@ Potential improvement:
 - Implement a unified secret write/read/rotation path for channel secrets.
 - Enforce single-orchestrator lock for mutating operations.
 - Restrict scheduler mounts to ownership-scoped paths.
-- Delete `.openpalm/stack/start.sh` to remove duplicate orchestration and parser drift.
+- ~~Delete `.openpalm/stack/start.sh` to remove duplicate orchestration and parser drift.~~ **Completed (P1-5, 2026-03-24).**
 
 ### Phase 2 (Complexity reduction)
 

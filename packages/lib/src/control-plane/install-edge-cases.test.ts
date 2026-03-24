@@ -16,8 +16,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parse as yamlParse } from "yaml";
-
 import { parseEnvContent, parseEnvFile, mergeEnvContent } from "./env.js";
 import { ensureSecrets, loadSecretsEnvFile } from "./secrets.js";
 import { isSetupComplete } from "./setup-status.js";

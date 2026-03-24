@@ -111,4 +111,4 @@ Conversation notes:
 | `SLACK_ALLOWED_CHANNELS` | no | Comma-separated channel allowlist |
 | `SLACK_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `SLACK_BLOCKED_USERS` | no | Comma-separated user blocklist |
-| `CHANNEL_SLACK_SECRET` | system-managed | Guardian HMAC secret from `vault/stack/stack.env` |
+| `CHANNEL_SLACK_SECRET` | system-managed | Guardian HMAC secret from `vault/stack/guardian.env` |

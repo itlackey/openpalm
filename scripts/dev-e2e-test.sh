@@ -180,6 +180,7 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 		-f compose.dev.yaml \
 		--env-file .dev/vault/stack/stack.env \
 		--env-file .dev/vault/user/user.env \
+		--env-file .dev/vault/stack/guardian.env \
 		--project-name openpalm build 2>&1 | tail -5
 	pass "All images built"
 else
@@ -196,6 +197,7 @@ docker compose --project-directory . \
 	-f compose.dev.yaml \
 	--env-file .dev/vault/stack/stack.env \
 	--env-file .dev/vault/user/user.env \
+	--env-file .dev/vault/stack/guardian.env \
 	--project-name openpalm up -d 2>&1 | tail -10
 
 # Wait for admin to be healthy
@@ -278,6 +280,7 @@ docker compose --project-directory . \
 	-f compose.dev.yaml \
 	--env-file .dev/vault/stack/stack.env \
 	--env-file .dev/vault/user/user.env \
+	--env-file .dev/vault/stack/guardian.env \
 	--project-name openpalm up -d --force-recreate 2>&1 | tail -10
 
 pass "Services recreated with updated config"

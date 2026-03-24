@@ -17,9 +17,9 @@ import {
 import {
   appendAudit,
   resolveRuntimeFiles,
-  writeRuntimeFiles
+  writeRuntimeFiles,
+  pullRegistry
 } from "@openpalm/lib";
-import { pullRegistry } from "$lib/server/registry-sync.js";
 
 
 export const POST: RequestHandler = async (event) => {

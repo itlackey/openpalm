@@ -70,58 +70,6 @@ Acceptance criteria:
 
 ---
 
-### P0-3: Remove guardian bypass in voice channel
-
-Priority: P0  
-Risk: Critical
-
-Problem:
-
-- Voice channel falls back to direct LLM if guardian fails, violating guardian-only ingress.
-
-Primary files:
-
-- `packages/channel-voice/src/index.ts`
-
-Implementation tasks:
-
-1. Remove direct fallback path to `chatCompletion()` on guardian errors.
-2. Return explicit guardian-unavailable responses with actionable error code.
-3. Add regression tests proving no direct path exists when guardian is down.
-
-Acceptance criteria:
-
-- Voice channel requests never bypass guardian.
-- Failure mode is explicit and auditable.
-
----
-
-### P0-4: Restrict scheduler mounts to least privilege
-
-Priority: P0  
-Risk: Critical
-
-Problem:
-
-- Scheduler currently mounts broad writable `logs` and full `data` paths.
-
-Primary files:
-
-- `.openpalm/stack/core.compose.yml`
-- `docs/technical/environment-and-mounts.md`
-- Scheduler runtime code under `packages/scheduler/src`
-
-Implementation tasks:
-
-1. Remove full `data` and broad `logs` mounts from scheduler service.
-2. Mount only minimum required scheduler-specific directories.
-3. Adjust scheduler code paths to use narrowed mounts.
-4. Update docs to match runtime after narrowing.
-
-Acceptance criteria:
-
-- Scheduler cannot write to other services' data.
-- Scheduler functionality remains green on health and automation tests.
 
 ## P1 (Stabilize Platform Behavior)
 
@@ -214,8 +162,9 @@ Acceptance criteria:
 
 ### P1-5: Delete `.openpalm/stack/start.sh` and clean drift surface
 
-Priority: P1  
+Priority: P1
 Risk: High
+Status: **Completed** (2026-03-24)
 
 Problem:
 
@@ -223,46 +172,23 @@ Problem:
 
 Primary files:
 
-- `.openpalm/stack/start.sh`
+- `.openpalm/stack/start.sh` (deleted)
 - Docs and runbooks that reference it
 
 Implementation tasks:
 
-1. Remove `.openpalm/stack/start.sh` from repository.
-2. Remove references in docs/scripts/tests.
-3. Ensure supported operator workflows use CLI/admin/lib-backed commands only.
+1. ~~Remove `.openpalm/stack/start.sh` from repository.~~ Done — file is absent.
+2. ~~Remove references in docs/scripts/tests.~~ Done — no active operator docs or source files reference deleted path.
+3. ~~Ensure supported operator workflows use CLI/admin/lib-backed commands only.~~ Done — all compose orchestration goes through `@openpalm/lib` backed CLI/admin paths.
 
 Acceptance criteria:
 
-- `start.sh` no longer exists.
-- No docs direct users to deleted script.
-- CI/tests pass without script-based path.
+- `start.sh` no longer exists. ✓
+- No docs direct users to deleted script. ✓
+- CI/tests pass without script-based path. ✓ (guardrail test + CI assertion added)
 
 ---
 
-### P1-4: Add assistant endpoint allowlist policy enforcement
-
-Priority: P1  
-Risk: Medium-High
-
-Problem:
-
-- Assistant token is broadly accepted without explicit per-endpoint policy matrix.
-
-Primary files:
-
-- `packages/admin/src/lib/server/helpers.ts`
-- Admin routes under `packages/admin/src/routes/admin`
-
-Implementation tasks:
-
-1. Add policy matrix for caller type (`admin`, `assistant`) by route/action.
-2. Enforce centrally in helper middleware/guard.
-3. Add tests for blocked and allowed assistant routes.
-
-Acceptance criteria:
-
-- Assistant token can only call explicitly allowlisted operations.
 
 ## P2 (Complexity Reduction and Maintainability)
 
@@ -339,10 +265,9 @@ Acceptance criteria:
 ## Suggested Execution Order
 
 1. P0-1 and P0-2 together (same secret contract surface).
-2. P0-3 and P0-4 (security boundary correctness).
-3. P1-1, P1-2, P1-3 as a control-plane consistency tranche.
-4. P1-4 and P1-5 policy and drift hardening.
-5. P2 maintainability work.
+2. P1-1, P1-2, P1-3 as a control-plane consistency tranche.
+3. P1-5 policy and drift hardening.
+4. P2 maintainability work.
 
 ## Verification Checklist Per Batch
 

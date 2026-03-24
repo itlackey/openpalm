@@ -19,7 +19,7 @@ mic -> STT -> assistant -> TTS -> speaker
 - Compose overlay: `~/.openpalm/stack/addons/voice/compose.yml`
 - Default host URL: `http://localhost:3810`
 - Container port: `8186`
-- System-managed HMAC secret: `CHANNEL_VOICE_SECRET` in `~/.openpalm/vault/stack/stack.env`
+- System-managed HMAC secret: `CHANNEL_VOICE_SECRET` in `~/.openpalm/vault/stack/guardian.env`
 
 Manual start example:
 

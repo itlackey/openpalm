@@ -11,7 +11,7 @@ services:
       GUARDIAN_URL: http://guardian:8080
       CHANNEL_NAME: "Slack Bot"
       CHANNEL_PACKAGE: "@openpalm/channel-slack"
-      CHANNEL_SECRET: ${CHANNEL_SLACK_SECRET:-}
+      CHANNEL_SLACK_SECRET: ${CHANNEL_SLACK_SECRET:-}
     networks: [channel_lan]
     depends_on:
       guardian:

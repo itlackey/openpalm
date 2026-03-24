@@ -19,7 +19,7 @@ Streaming is not supported.
 - Compose overlay: `~/.openpalm/stack/addons/chat/compose.yml`
 - Default host URL: `http://localhost:3820`
 - Container port: `8181`
-- System-managed HMAC secret: `CHANNEL_CHAT_SECRET` in `~/.openpalm/vault/stack/stack.env`
+- System-managed HMAC secret: `CHANNEL_CHAT_SECRET` in `~/.openpalm/vault/stack/guardian.env`
 
 Manual start example:
 

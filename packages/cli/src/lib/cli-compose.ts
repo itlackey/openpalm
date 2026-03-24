@@ -1,17 +1,15 @@
 /**
  * CLI Docker Compose orchestration.
  *
- * Builds compose CLI arguments and runs compose commands with
- * optional preflight validation. Delegates to @openpalm/lib
- * for compose file resolution and preflight checks.
+ * Delegates to @openpalm/lib for compose file resolution,
+ * CLI argument construction, and preflight checks.
  */
-import { existsSync } from 'node:fs';
 import {
-  buildComposeFileList,
   buildManagedServices,
-  buildEnvFiles,
-  resolveComposeProjectName,
+  buildComposeCliArgs,
+  buildComposeOptions,
   composePreflight,
+  resolveComposeProjectName,
 } from '@openpalm/lib';
 import type { ControlPlaneState } from '@openpalm/lib';
 import { runDockerCompose } from './docker.ts';
@@ -22,15 +20,7 @@ import { runDockerCompose } from './docker.ts';
  * Returns: ['--project-name', 'openpalm', '-f', '...', '--env-file', '...']
  */
 export function fullComposeArgs(state: ControlPlaneState): string[] {
-  const files = buildComposeFileList(state);
-  const envFiles = buildEnvFiles(state);
-
-  return [
-    '--project-name',
-    resolveComposeProjectName(),
-    ...files.flatMap((f) => ['-f', f]),
-    ...envFiles.filter((f) => existsSync(f)).flatMap((f) => ['--env-file', f]),
-  ];
+  return buildComposeCliArgs(state);
 }
 
 /**
@@ -64,8 +54,7 @@ export async function runComposeWithPreflight(
   state: ControlPlaneState,
   composeSubArgs: string[],
 ): Promise<void> {
-  const files = buildComposeFileList(state);
-  const envFiles = buildEnvFiles(state);
+  const { files, envFiles } = buildComposeOptions(state);
 
   // Preflight: validate compose merge before mutation
   if (files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
@@ -73,7 +62,7 @@ export async function runComposeWithPreflight(
     if (!preflight.ok) {
       const projectName = resolveComposeProjectName();
       const fileArgs = files.map(f => `-f ${f}`).join(' ');
-      const envArgs = envFiles.filter(f => existsSync(f)).map(f => `--env-file ${f}`).join(' ');
+      const envArgs = envFiles.map(f => `--env-file ${f}`).join(' ');
       throw new Error(
         `Compose preflight failed: ${preflight.stderr}\n` +
         `Resolved command: docker compose ${fileArgs} --project-name ${projectName} ${envArgs} config --quiet\n` +

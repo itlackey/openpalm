@@ -100,6 +100,7 @@ existing user files.
 
 - `$OP_HOME/data/guardian -> /app/data`
 - `$OP_HOME/logs -> /app/audit`
+- `$OP_HOME/vault/stack/guardian.env -> /app/secrets/guardian.env:ro`
 
 ### Scheduler
 

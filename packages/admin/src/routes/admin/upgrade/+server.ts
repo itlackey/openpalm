@@ -15,8 +15,7 @@ import {
   ensureOpenCodeSystemConfig,
   ensureMemoryDir,
   ensureSecrets,
-  buildComposeFileList,
-  buildEnvFiles,
+  buildComposeOptions,
   buildManagedServices,
   ensureHomeDirs,
 } from "@openpalm/lib";
@@ -44,8 +43,7 @@ export const POST: RequestHandler = async (event) => {
   ensureSecrets(state);
 
   // 1. Preflight: validate compose merge BEFORE any mutation
-  const files = buildComposeFileList(state);
-  const envFiles = buildEnvFiles(state);
+  const { files, envFiles } = buildComposeOptions(state);
 
   const dockerCheck = await checkDocker();
   if (!dockerCheck.ok) {

@@ -11,7 +11,7 @@ import {
   getActor,
   getCallerType
 } from "$lib/server/helpers.js";
-import { appendAudit, buildComposeFileList, buildEnvFiles, isAllowedService } from "@openpalm/lib";
+import { appendAudit, buildComposeOptions, isAllowedService } from "@openpalm/lib";
 import { composeLogs, checkDocker } from "$lib/server/docker.js";
 
 export const GET: RequestHandler = async (event) => {
@@ -64,8 +64,7 @@ export const GET: RequestHandler = async (event) => {
   }
 
   const result = await composeLogs(services, tail, {
-    files: buildComposeFileList(state),
-    envFiles: buildEnvFiles(state),
+    ...buildComposeOptions(state),
     since: sinceParam ?? undefined
   });
 

@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { join } from 'node:path';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { stringify as yamlStringify } from 'yaml';
 import { getState, resetState } from '$lib/server/state.js';
 import { GET } from './+server.js';
+import { writeStackSpec, type StackSpec } from '@openpalm/lib';
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `openpalm-mem0-export-${randomBytes(4).toString('hex')}`);
@@ -15,22 +15,16 @@ function makeTempDir(): string {
 
 function seedStackYaml(): void {
   const state = getState();
-  mkdirSync(state.configDir, { recursive: true });
-  writeFileSync(join(state.configDir, 'stack.yaml'), yamlStringify({
+  const spec: StackSpec = {
     version: 2,
     capabilities: {
       llm: 'openai/gpt-4o',
-      embeddings: {
-        provider: 'google',
-        model: 'text-embedding-004',
-        dims: 768,
-      },
-      memory: {
-        userId: 'default_user',
-      },
+      embeddings: { provider: 'google', model: 'text-embedding-004', dims: 768 },
+      memory: { userId: 'default_user' },
     },
     addons: {},
-  }));
+  };
+  writeStackSpec(state.configDir, spec);
 }
 
 function makeEvent(token = 'admin-token'): Parameters<typeof GET>[0] {

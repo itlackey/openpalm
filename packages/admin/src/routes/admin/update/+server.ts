@@ -6,7 +6,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { applyUpdate, appendAudit, ensureSecrets, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureMemoryDir, buildComposeFileList, buildEnvFiles, buildManagedServices, ensureHomeDirs } from "@openpalm/lib";
+import { applyUpdate, appendAudit, ensureSecrets, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureMemoryDir, buildComposeOptions, buildManagedServices, ensureHomeDirs } from "@openpalm/lib";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
@@ -36,8 +36,7 @@ export const POST: RequestHandler = async (event) => {
   let dockerResult = null;
   if (dockerCheck.ok) {
     dockerResult = await composeUp({
-      files: buildComposeFileList(state),
-      envFiles: buildEnvFiles(state),
+      ...buildComposeOptions(state),
       services: await buildManagedServices(state)
     });
   }

@@ -33,12 +33,9 @@ services:
     # ingress port 8080 (which tests expect to be ECONNREFUSED).
     ports:
       - "${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-8180}:8080"
-    # Mount stack.env so guardian can re-read channel secrets dynamically
+    # Mount guardian.env so guardian can re-read channel secrets dynamically
     # (tests append CHANNEL_*_SECRET vars without restarting the container).
-    volumes:
-      - ${OP_HOME}/vault/stack/stack.env:/app/secrets/stack.env:ro
-    environment:
-      GUARDIAN_SECRETS_PATH: /app/secrets/stack.env
+    # Channel HMAC secrets live exclusively in guardian.env (not stack.env).
 
   assistant:
     build:
@@ -85,6 +82,8 @@ services:
       - path: ${OP_HOME}/vault/stack/stack.env
         required: false
       - path: ${OP_HOME}/vault/user/user.env
+        required: false
+      - path: ${OP_HOME}/vault/stack/guardian.env
         required: false
     volumes:
       - ./packages/channel-voice:/app/channel-voice:ro

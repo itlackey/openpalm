@@ -12,6 +12,7 @@ docker compose \
   --project-name openpalm \
   --env-file ../vault/stack/stack.env \
   --env-file ../vault/user/user.env \
+  --env-file ../vault/stack/guardian.env \
   -f core.compose.yml \
   up -d
 
@@ -20,6 +21,7 @@ docker compose \
   --project-name openpalm \
   --env-file ../vault/stack/stack.env \
   --env-file ../vault/user/user.env \
+  --env-file ../vault/stack/guardian.env \
   -f core.compose.yml \
   -f addons/chat/compose.yml \
   -f addons/admin/compose.yml \

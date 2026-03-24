@@ -20,6 +20,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parse as yamlParse } from 'yaml';
+import { readStackSpec } from '@openpalm/lib';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -195,13 +196,13 @@ describe('install flow — tier 1 (file validation)', () => {
     const result = await performSetup(spec as any);
     expect(result.ok).toBe(true);
 
-    // ── Validate stack.yaml ──────────────────────────────────────────
-    const stackYaml = join(homeDir, 'config/stack.yaml');
-    expect(existsSync(stackYaml)).toBe(true);
-    const stackSpec = yamlParse(readFileSync(stackYaml, 'utf-8'));
-    expect(stackSpec.version).toBe(2);
-    expect(stackSpec.addons).toEqual({ admin: true, chat: true });
-    expect(stackSpec.capabilities.llm).toBe('ollama/qwen2.5-coder:3b');
+    // ── Validate stack.yaml via lib parser ─────────────────────────
+    const configDir = join(homeDir, 'config');
+    const stackSpec = readStackSpec(configDir);
+    expect(stackSpec).not.toBeNull();
+    expect(stackSpec!.version).toBe(2);
+    expect(stackSpec!.addons).toEqual({ admin: true, chat: true });
+    expect(stackSpec!.capabilities.llm).toBe('ollama/qwen2.5-coder:3b');
 
     // ── Validate compose files exist ─────────────────────────────────
     expect(existsSync(join(homeDir, 'stack/core.compose.yml'))).toBe(true);
@@ -358,9 +359,9 @@ describe('install flow — tier 1 (file validation)', () => {
     const result = await performSetup(makeSetupSpec({}) as any);
     expect(result.ok).toBe(true);
 
-    const stackYaml = join(homeDir, 'config/stack.yaml');
-    const stackSpec = yamlParse(readFileSync(stackYaml, 'utf-8'));
-    expect(stackSpec.addons).toEqual({});
+    const noAddonSpec = readStackSpec(join(homeDir, 'config'));
+    expect(noAddonSpec).not.toBeNull();
+    expect(noAddonSpec!.addons).toEqual({});
 
     // Core compose only, no addon files in the compose list
     const stackEnv = join(homeDir, 'vault/stack/stack.env');

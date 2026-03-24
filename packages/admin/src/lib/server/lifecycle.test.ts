@@ -20,8 +20,10 @@ import {
   buildComposeFileList,
   normalizeCaller,
   randomHex,
+  writeStackSpec,
   CORE_SERVICES,
   OPTIONAL_SERVICES,
+  type StackSpec,
 } from "@openpalm/lib";
 import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
@@ -106,10 +108,13 @@ describe("buildComposeFileList", () => {
     mkdirSync(stackDir, { recursive: true });
     writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
 
-    // Seed stack.yaml with chat addon enabled (version + capabilities required by readStackSpec)
-    const configDir = join(state.homeDir, "config");
-    mkdirSync(configDir, { recursive: true });
-    writeFileSync(join(configDir, "stack.yaml"), "version: 2\ncapabilities: {}\naddons:\n  chat: true\n");
+    // Seed stack.yaml with chat addon enabled via lib's writeStackSpec
+    const chatSpec: StackSpec = {
+      version: 2,
+      capabilities: { llm: "test/model", embeddings: { provider: "test", model: "test", dims: 768 }, memory: { userId: "test" } },
+      addons: { chat: true },
+    };
+    writeStackSpec(join(state.homeDir, "config"), chatSpec);
 
     // Create the addon compose file
     mkdirSync(join(addonsDir, "chat"), { recursive: true });

@@ -15,7 +15,7 @@ It normally runs via `addons/slack/compose.yml` and connects outbound to Slack, 
 
 - Compose overlay: `~/.openpalm/stack/addons/slack/compose.yml`
 - User-managed values: `~/.openpalm/vault/user/user.env`
-- System-managed HMAC secret: `CHANNEL_SLACK_SECRET` in `~/.openpalm/vault/stack/stack.env`
+- System-managed HMAC secret: `CHANNEL_SLACK_SECRET` in `~/.openpalm/vault/stack/guardian.env`
 
 Manual start example:
 

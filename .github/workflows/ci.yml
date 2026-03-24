@@ -91,6 +91,16 @@ jobs:
           mkdir -p "${OP_HOME}/vault/stack" "${OP_HOME}/vault/user" "${OP_HOME}/data" "${OP_HOME}/config" "${OP_HOME}/logs" "${OP_HOME}/stack"
           docker compose -f .openpalm/stack/core.compose.yml -f compose.dev.yaml config -q
 
+      - name: Assert deleted scripts are absent
+        run: |
+          set -euo pipefail
+          # start.sh was deleted in P1-5 (0.10.0 cleanup). Prevent reintroduction.
+          if [ -f ".openpalm/stack/start.sh" ]; then
+            echo "::error file=.openpalm/stack/start.sh::.openpalm/stack/start.sh must not exist — deleted in P1-5 cleanup"
+            exit 1
+          fi
+          echo "Deleted script assertion passed"
+
       - name: Validate stack addons and catalog
         run: |
           set -euo pipefail

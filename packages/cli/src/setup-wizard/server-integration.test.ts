@@ -14,6 +14,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSetupServer } from "./server.ts";
+import { STACK_SPEC_FILENAME } from "@openpalm/lib";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -274,8 +275,8 @@ describe("setup wizard server integration", () => {
       expect(systemEnvContent).toContain("OP_CAP_EMBEDDINGS_MODEL=nomic-embed-text");
       expect(systemEnvContent).toContain("OP_CAP_EMBEDDINGS_DIMS=768");
 
-      // Verify stack.yaml was written with connections
-      const specPath = join(configDir, "stack.yaml");
+      // Verify stack spec was written
+      const specPath = join(configDir, STACK_SPEC_FILENAME);
       expect(existsSync(specPath)).toBe(true);
 
       // Verify core compose artifact exists in stack/

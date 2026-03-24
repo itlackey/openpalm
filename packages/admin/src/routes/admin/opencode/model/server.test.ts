@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { join } from 'node:path';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { getState, resetState } from '$lib/server/state.js';
 import { GET, POST } from './+server.js';
-import { stringify as yamlStringify } from 'yaml';
+import { writeStackSpec, type StackSpec } from '@openpalm/lib';
 
 vi.mock('$lib/opencode/client.server.js', () => ({
   getOpenCodeConfig: vi.fn(),
@@ -25,8 +25,7 @@ let originalHome: string | undefined;
 
 function seedStackYaml(): void {
   const state = getState();
-  mkdirSync(state.configDir, { recursive: true });
-  const spec = {
+  const spec: StackSpec = {
     version: 2,
     capabilities: {
       llm: 'openai/gpt-4o',
@@ -35,7 +34,7 @@ function seedStackYaml(): void {
     },
     addons: {},
   };
-  writeFileSync(join(state.configDir, 'stack.yaml'), yamlStringify(spec));
+  writeStackSpec(state.configDir, spec);
 }
 
 function makeEvent(method: string, body?: unknown, token = 'admin-token'): Parameters<typeof GET>[0] {

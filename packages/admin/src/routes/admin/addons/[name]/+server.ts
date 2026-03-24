@@ -18,7 +18,7 @@ import {
   readStackSpec,
   writeStackSpec,
   writeCapabilityVars,
-  writeSystemEnv,
+  writeChannelSecrets,
   hasAddon,
   isChannelAddon,
   randomHex,
@@ -26,7 +26,7 @@ import {
 } from "@openpalm/lib";
 import { composeDown, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
-import { buildComposeFileList, buildEnvFiles } from "@openpalm/lib";
+import { buildComposeOptions } from "@openpalm/lib";
 import { existsSync, readdirSync } from "node:fs";
 
 /** List addon IDs by scanning the stack/addons/ directory on disk. */
@@ -133,7 +133,7 @@ export const POST: RequestHandler = async (event) => {
     const composePath = `${state.homeDir}/stack/addons/${name}/compose.yml`;
     if (isChannelAddon(composePath)) {
       try {
-        writeSystemEnv(state, { [name]: randomHex(16) });
+        writeChannelSecrets(state.vaultDir, { [name]: randomHex(16) });
         logger.info("generated HMAC secret for channel addon", { name, requestId });
       } catch (err) {
         logger.warn("failed to generate HMAC secret for channel addon", { name, error: String(err), requestId });
@@ -146,7 +146,7 @@ export const POST: RequestHandler = async (event) => {
     const dockerCheck = await checkDocker();
     if (dockerCheck.ok) {
       try {
-        await composeDown({ files: buildComposeFileList(state), envFiles: buildEnvFiles(state) });
+        await composeDown(buildComposeOptions(state));
         logger.info("compose down after addon disable", { name, requestId });
       } catch (err) {
         logger.warn("compose down failed after addon disable", { name, error: String(err), requestId });

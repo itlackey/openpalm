@@ -142,13 +142,6 @@ USEREOF
 
 		assistant_token=$(openssl rand -hex 32)
 
-		# Generate HMAC secrets for each known channel addon
-		channel_chat_secret=$(openssl rand -hex 16)
-		channel_api_secret=$(openssl rand -hex 16)
-		channel_voice_secret=$(openssl rand -hex 16)
-		channel_discord_secret=$(openssl rand -hex 16)
-		channel_slack_secret=$(openssl rand -hex 16)
-
 		cat >"$system_env" <<EOF
 # OpenPalm System Environment — system-managed, do not edit
 
@@ -175,19 +168,31 @@ OP_ASSISTANT_PORT=4096
 OP_MEMORY_PORT=8765
 OP_ADMIN_PORT=8100
 OP_GUARDIAN_PORT=8180
-
-# Channel HMAC secrets (auto-generated for dev)
-CHANNEL_CHAT_SECRET=${channel_chat_secret}
-CHANNEL_API_SECRET=${channel_api_secret}
-CHANNEL_VOICE_SECRET=${channel_voice_secret}
-CHANNEL_DISCORD_SECRET=${channel_discord_secret}
-CHANNEL_SLACK_SECRET=${channel_slack_secret}
 EOF
 	fi
 fi
 
 # Ensure vault env files exist (compose needs them even if empty)
 touch "$VAULT_DIR/user/user.env" "$VAULT_DIR/stack/stack.env"
+
+# Generate channel HMAC secrets in guardian.env (the canonical location)
+guardian_env="$VAULT_DIR/stack/guardian.env"
+if [[ ! -f "$guardian_env" || $force -eq 1 ]]; then
+	channel_chat_secret=$(openssl rand -hex 16)
+	channel_api_secret=$(openssl rand -hex 16)
+	channel_voice_secret=$(openssl rand -hex 16)
+	channel_discord_secret=$(openssl rand -hex 16)
+	channel_slack_secret=$(openssl rand -hex 16)
+
+	cat >"$guardian_env" <<EOF
+# Guardian channel HMAC secrets — managed by openpalm
+CHANNEL_CHAT_SECRET=${channel_chat_secret}
+CHANNEL_API_SECRET=${channel_api_secret}
+CHANNEL_VOICE_SECRET=${channel_voice_secret}
+CHANNEL_DISCORD_SECRET=${channel_discord_secret}
+CHANNEL_SLACK_SECRET=${channel_slack_secret}
+EOF
+fi
 
 # ── Seed OpenCode user config (Ollama for dev) ──────────────────
 # OpenCode has two config files:

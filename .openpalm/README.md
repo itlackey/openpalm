@@ -56,6 +56,7 @@ docker compose \
   --project-name openpalm \
   --env-file ~/.openpalm/vault/stack/stack.env \
   --env-file ~/.openpalm/vault/user/user.env \
+  --env-file ~/.openpalm/vault/stack/guardian.env \
   -f ~/.openpalm/stack/core.compose.yml \
   -f ~/.openpalm/stack/addons/chat/compose.yml \
   -f ~/.openpalm/stack/addons/admin/compose.yml \

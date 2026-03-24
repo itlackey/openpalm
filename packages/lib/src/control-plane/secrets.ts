@@ -126,7 +126,27 @@ export function ensureSecrets(state: ControlPlaneState): void {
   }
 
   ensureSystemSecrets(state);
+  ensureGuardianEnv(state.vaultDir);
   ensureAuthJson(state.vaultDir);
+}
+
+/**
+ * Ensure vault/stack/guardian.env exists.
+ * Channel HMAC secrets (CHANNEL_<NAME>_SECRET) live here exclusively.
+ * This file is loaded by the guardian as an env_file and via GUARDIAN_SECRETS_PATH.
+ */
+function ensureGuardianEnv(vaultDir: string): void {
+  const guardianEnvPath = `${vaultDir}/stack/guardian.env`;
+  mkdirSync(`${vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
+  if (!existsSync(guardianEnvPath)) {
+    writeVaultFile(guardianEnvPath, [
+      "# Guardian channel HMAC secrets — managed by openpalm",
+      "# Each enabled channel gets a CHANNEL_<NAME>_SECRET entry.",
+      "",
+    ].join("\n"));
+  } else {
+    try { chmodSync(guardianEnvPath, VAULT_FILE_MODE); } catch { /* best-effort */ }
+  }
 }
 
 function ensureAuthJson(vaultDir: string): void {

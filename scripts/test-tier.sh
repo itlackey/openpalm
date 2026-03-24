@@ -80,6 +80,7 @@ ensure_stack_running() {
 		-f compose.dev.yaml \
 		--env-file .dev/vault/stack/stack.env \
 		--env-file .dev/vault/user/user.env \
+		--env-file .dev/vault/stack/guardian.env \
 		--project-name openpalm up --build -d
 
 	# Wait for all services to be healthy

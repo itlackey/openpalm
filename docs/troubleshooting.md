@@ -168,7 +168,7 @@ Then recreate any services that depend on that value.
 **Fix:**
 
 - verify the channel addon is part of the compose file set you started
-- check `~/.openpalm/vault/stack/stack.env` for the relevant `CHANNEL_*_SECRET`
+- check `~/.openpalm/vault/stack/guardian.env` for the relevant `CHANNEL_*_SECRET`
 - recreate the affected channel and guardian services after changing secrets
 
 There is no separate staging/artifacts file to inspect in the current model; the

@@ -338,7 +338,7 @@ Shipped channel-style addons follow the same basic pattern:
 - depend on `guardian`
 - send signed traffic to guardian, not directly to assistant
 
-Channel secret distribution: when a channel addon is installed, a shared HMAC secret is generated and written to both the channel's addon env and the guardian's secrets store (either `stack.env` as a `CHANNEL_<n>_SECRET` entry or the file at `GUARDIAN_SECRETS_PATH`). The channel SDK uses this secret to sign outbound requests; the guardian uses it to verify inbound requests. See the Guardian section above for hot-reload details.
+Channel secret distribution: when a channel addon is installed, a shared HMAC secret is generated and written to both the channel's addon env and `vault/stack/guardian.env` as a `CHANNEL_<n>_SECRET` entry. This file is loaded by the guardian as a compose `env_file` and bind-mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload. The channel SDK uses this secret to sign outbound requests; the guardian uses it to verify inbound requests. See the Guardian section above for hot-reload details.
 
 Default host binds for shipped HTTP-ish edges:
 

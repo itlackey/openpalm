@@ -18,7 +18,7 @@ import {
   readStackSpec,
   writeStackSpec,
   writeCapabilityVars,
-  writeSystemEnv,
+  writeChannelSecrets,
   hasAddon,
   addonNames,
   isChannelAddon,
@@ -150,7 +150,7 @@ export const POST: RequestHandler = async (event) => {
     const composePath = `${state.homeDir}/stack/addons/${name}/compose.yml`;
     if (isChannelAddon(composePath)) {
       try {
-        writeSystemEnv(state, { [name]: randomHex(16) });
+        writeChannelSecrets(state.vaultDir, { [name]: randomHex(16) });
         logger.info("generated HMAC secret for channel addon", { name, requestId });
       } catch (err) {
         logger.warn("failed to generate HMAC secret for channel addon", { name, error: String(err), requestId });

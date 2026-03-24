@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { join } from 'node:path';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { stringify as yamlStringify } from 'yaml';
 import { getState, resetState } from '$lib/server/state.js';
 import { GET } from './+server.js';
+import { writeStackSpec, type StackSpec } from '@openpalm/lib';
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `openpalm-status-${randomBytes(4).toString('hex')}`);
@@ -15,12 +15,8 @@ function makeTempDir(): string {
 
 function seedStackYaml(capabilities: Record<string, unknown>): void {
   const state = getState();
-  mkdirSync(state.configDir, { recursive: true });
-  writeFileSync(join(state.configDir, 'stack.yaml'), yamlStringify({
-    version: 2,
-    capabilities,
-    addons: {},
-  }));
+  const spec: StackSpec = { version: 2, capabilities: capabilities as StackSpec['capabilities'], addons: {} };
+  writeStackSpec(state.configDir, spec);
 }
 
 function makeEvent(token = 'admin-token'): Parameters<typeof GET>[0] {
