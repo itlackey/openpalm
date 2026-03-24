@@ -21,30 +21,27 @@ services:
     build:
       context: .
       dockerfile: core/admin/Dockerfile
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/admin:${OP_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/admin:dev
 
   guardian:
     build:
       context: .
       dockerfile: core/guardian/Dockerfile
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:dev
     # Dev override: publish guardian to host for integration tests.
     # Uses OP_GUARDIAN_PORT (default 8180) to avoid conflict with the legacy
     # ingress port 8080 (which tests expect to be ECONNREFUSED).
     ports:
       - "${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-8180}:8080"
-    # Mount stack.env so guardian can re-read channel secrets dynamically
+    # Mount guardian.env so guardian can re-read channel secrets dynamically
     # (tests append CHANNEL_*_SECRET vars without restarting the container).
-    volumes:
-      - ${OP_HOME}/vault/stack/stack.env:/app/secrets/stack.env:ro
-    environment:
-      GUARDIAN_SECRETS_PATH: /app/secrets/stack.env
+    # Channel HMAC secrets live exclusively in guardian.env (not stack.env).
 
   assistant:
     build:
       context: .
       dockerfile: core/assistant/Dockerfile
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev
     # Dev override: use host env API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY).
     # OpenCode picks the default model based on available keys.
     environment:
@@ -61,30 +58,32 @@ services:
     build:
       context: .
       dockerfile: core/channel/Dockerfile
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:dev
 
   scheduler:
     build:
       context: .
       dockerfile: core/scheduler/Dockerfile
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/scheduler:${OP_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/scheduler:dev
 
   memory:
     build:
       context: .
       dockerfile: core/memory/Dockerfile
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/memory:${OP_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/memory:dev
 
   # Voice channel dev override: mount local source instead of npm install.
   # Requires voice.yml overlay loaded before this file (-f channels/voice.yml -f compose.dev.yaml).
   channel-voice:
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:dev
     ports:
       - "8186:8186"
     env_file:
       - path: ${OP_HOME}/vault/stack/stack.env
         required: false
       - path: ${OP_HOME}/vault/user/user.env
+        required: false
+      - path: ${OP_HOME}/vault/stack/guardian.env
         required: false
     volumes:
       - ./packages/channel-voice:/app/channel-voice:ro

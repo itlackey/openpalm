@@ -10,13 +10,11 @@ are passed to Docker Compose via `--env-file` flags. The separation between
 vault/
     stack/
       stack.env           System-managed runtime env and secrets
+      guardian.env        Channel HMAC secrets (loaded by guardian)
       stack.env.schema    Varlock validation schema for stack.env
       auth.json           OpenCode auth state mounted into assistant
-      services/
-        memory/
-          managed.env     Optional memory-only managed env overrides
   user/
-    user.env            User-managed secrets (LLM API keys, owner info)
+    user.env            User extension file (empty placeholder for custom vars)
     user.env.schema     Varlock validation schema for user.env
   redact.env.schema     Log redaction rules (used by varlock in containers)
 ```
@@ -26,9 +24,9 @@ vault/
 | File | Owner | Who writes | Who reads |
 |------|-------|------------|-----------|
 | `stack/stack.env` | System | CLI install, admin API | Docker Compose and service env wiring |
+| `stack/guardian.env` | System | CLI install, admin API (channel add/remove) | Guardian (env_file + GUARDIAN_SECRETS_PATH), Docker Compose |
 | `stack/auth.json` | System-managed runtime auth | CLI/admin | Assistant file mount |
-| `stack/services/memory/managed.env` | System | CLI/admin | Memory service only |
-| `user/user.env` | User | User directly, admin UI/API | Docker Compose, assistant (read-only mount) |
+| `user/user.env` | User | User directly (custom extensions only) | Docker Compose, assistant (read-only mount) |
 | `*.env.schema` | System | CLI install, admin upgrade | Varlock (validation + redaction) |
 
 ## Security rules

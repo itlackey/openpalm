@@ -1,8 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { deriveSystemEnvFromSpec, deriveMemoryEnv, deriveAddonEnv, writeManagedEnvFiles } from "./spec-to-env.js";
+import { deriveSystemEnvFromSpec, writeCapabilityVars } from "./spec-to-env.js";
 import type { StackSpec } from "./stack-spec.js";
 
 function makeSpec(overrides?: Partial<StackSpec>): StackSpec {
@@ -41,13 +41,13 @@ describe("deriveSystemEnvFromSpec", () => {
     expect(result.OP_MEMORY_PORT).toBe("3898");
   });
 
-  test("does not include LLM provider in system env (now in deriveMemoryEnv)", () => {
+  test("does not include LLM provider in system env (lives in OP_CAP_* vars in stack.env)", () => {
     const result = deriveSystemEnvFromSpec(makeSpec(), "/home/op");
     expect(result.SYSTEM_LLM_PROVIDER).toBeUndefined();
     expect(result.SYSTEM_LLM_MODEL).toBeUndefined();
   });
 
-  test("does not include embedding config in system env (now in deriveMemoryEnv)", () => {
+  test("does not include embedding config in system env (lives in OP_CAP_* vars in stack.env)", () => {
     const result = deriveSystemEnvFromSpec(makeSpec(), "/home/op");
     expect(result.EMBEDDING_MODEL).toBeUndefined();
     expect(result.EMBEDDING_DIMS).toBeUndefined();
@@ -61,90 +61,41 @@ describe("deriveSystemEnvFromSpec", () => {
   });
 });
 
-describe("deriveMemoryEnv", () => {
-  test("derives LLM provider from capabilities", () => {
-    const result = deriveMemoryEnv(makeSpec());
-    expect(result.SYSTEM_LLM_PROVIDER).toBe("openai");
-    expect(result.SYSTEM_LLM_MODEL).toBe("gpt-4o");
-  });
-
-  test("derives embedding config from capabilities", () => {
-    const result = deriveMemoryEnv(makeSpec());
-    expect(result.EMBEDDING_MODEL).toBe("text-embedding-3-small");
-    expect(result.EMBEDDING_DIMS).toBe("1536");
-  });
-
-  test("derives MEMORY_USER_ID from capabilities", () => {
-    const result = deriveMemoryEnv(makeSpec());
-    expect(result.MEMORY_USER_ID).toBe("default_user");
-  });
-
-  test("defaults MEMORY_USER_ID when empty", () => {
+describe("writeCapabilityVars", () => {
+  test("writes OP_CAP_* vars to stack.env", () => {
     const spec = makeSpec({
       capabilities: {
         llm: "openai/gpt-4o",
         embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
-        memory: { userId: "" },
+        memory: { userId: "default_user" },
       },
     });
-    const result = deriveMemoryEnv(spec);
-    expect(result.MEMORY_USER_ID).toBe("default_user");
+
+    // Seed stack.env so writeCapabilityVars can read/merge it
+    const vaultDir = join(tempDir, "vault");
+    mkdirSync(join(vaultDir, "stack"), { recursive: true });
+    writeFileSync(join(vaultDir, "stack", "stack.env"), "# stack env\n");
+
+    writeCapabilityVars(spec, vaultDir);
+
+    const stackEnvContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    expect(stackEnvContent).toContain("OP_CAP_LLM_PROVIDER=openai");
+    expect(stackEnvContent).toContain("OP_CAP_LLM_MODEL=gpt-4o");
+    expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_MODEL=text-embedding-3-small");
+    expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_DIMS=1536");
+    expect(stackEnvContent).toContain("MEMORY_USER_ID=default_user");
   });
-});
 
-describe("deriveAddonEnv", () => {
-  test("coerces non-string addon env values to strings from malformed stack specs", () => {
-    const spec = makeSpec({
-      addons: {
-        memory: {
-          env: {
-            GOOD: "@secret:OPENAI_API_KEY",
-            BAD_NUMBER: 123 as unknown as string,
-            BAD_NULL: null as unknown as string,
-          },
-        },
-      },
-    });
+  test("does not create managed.env files", () => {
+    const spec = makeSpec();
 
-    expect(deriveAddonEnv(spec, "memory")).toEqual({
-      GOOD: "${OPENAI_API_KEY}",
-      BAD_NUMBER: "123",
-      BAD_NULL: "",
-    });
-  });
-});
+    const vaultDir = join(tempDir, "vault");
+    mkdirSync(join(vaultDir, "stack"), { recursive: true });
+    writeFileSync(join(vaultDir, "stack", "stack.env"), "# stack env\n");
 
-describe("writeManagedEnvFiles", () => {
-  test("quotes special characters and writes secure managed env files", () => {
-    const spec = makeSpec({
-      capabilities: {
-        llm: "openai/gpt-4o",
-        embeddings: { provider: "openai", model: "text embedding #1", dims: 1536 },
-        memory: { userId: "default user" },
-      },
-      addons: {
-        demo: {
-          env: {
-            SECRET_REF: "@secret:OPENAI_API_KEY",
-            PLAIN: "value with spaces #comment",
-          },
-        },
-      },
-    });
+    writeCapabilityVars(spec, vaultDir);
 
-    writeManagedEnvFiles(spec, join(tempDir, "vault"));
-
-    const memoryPath = join(tempDir, "vault", "stack", "services", "memory", "managed.env");
-    const addonPath = join(tempDir, "vault", "stack", "addons", "demo", "managed.env");
-
-    const memoryContent = readFileSync(memoryPath, "utf-8");
-    const addonContent = readFileSync(addonPath, "utf-8");
-
-    expect(memoryContent).toContain("EMBEDDING_MODEL='text embedding #1'");
-    expect(memoryContent).toContain("MEMORY_USER_ID=default user");
-    expect(addonContent).toContain("SECRET_REF='${OPENAI_API_KEY}'");
-    expect(addonContent).toContain("PLAIN='value with spaces #comment'");
-    expect(statSync(memoryPath).mode & 0o777).toBe(0o600);
-    expect(statSync(addonPath).mode & 0o777).toBe(0o600);
+    const managedEnvPath = join(vaultDir, "stack", "services", "memory", "managed.env");
+    expect(() => readFileSync(managedEnvPath)).toThrow();
   });
 });

@@ -81,15 +81,16 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
     expect(res.status).toBe(401);
   });
 
-  test('rejects unsupported providers for vault persistence', async () => {
+  test('accepts unknown providers — skips user.env, writes to OpenCode only', async () => {
+    vi.mocked(setProviderApiKey).mockResolvedValueOnce({ ok: true, data: true });
+
     const res = await POST(makeEvent('POST', {
       providerId: 'custom-provider',
       body: { mode: 'api_key', apiKey: 'sk-test' },
     }));
 
-    expect(res.status).toBe(400);
-    const body = await res.json() as { message: string };
-    expect(body.message).toMatch(/cannot be persisted/i);
+    expect(res.status).toBe(200);
+    expect(vi.mocked(setProviderApiKey)).toHaveBeenCalledWith('custom-provider', 'sk-test');
   });
 
   test('validates API keys before writing and never echoes secrets', async () => {
@@ -103,8 +104,8 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
     const text = await res.text();
     expect(text).not.toContain('sk-test-secret');
 
-    const userEnvPath = join(getState().vaultDir, 'user', 'user.env');
-    expect(readFileSync(userEnvPath, 'utf-8')).toContain('OPENAI_API_KEY=sk-test-secret');
+    const stackEnvPath = join(getState().vaultDir, 'stack', 'stack.env');
+    expect(readFileSync(stackEnvPath, 'utf-8')).toContain('OPENAI_API_KEY=sk-test-secret');
   });
 
   test('rejects API keys with invalid characters', async () => {

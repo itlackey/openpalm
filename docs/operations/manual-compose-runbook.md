@@ -29,7 +29,7 @@ variable). The relevant files for running the stack are:
 | `~/.openpalm/stack/core.compose.yml` | Core services: assistant, guardian, memory, scheduler |
 | `~/.openpalm/stack/addons/<name>/compose.yml` | One file per enabled addon (admin, chat, api, etc.) |
 | `~/.openpalm/vault/stack/stack.env` | System-managed values: tokens, ports, UID/GID, image tags |
-| `~/.openpalm/vault/user/user.env` | User-managed values: LLM provider keys, model settings |
+| `~/.openpalm/vault/user/user.env` | User-managed settings: owner info, custom preferences |
 | `~/.openpalm/config/stack.yaml` | Optional tooling metadata (helper scripts read this; it is not deployment truth) |
 
 The project name defaults to `openpalm` and can be overridden with the
@@ -56,6 +56,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   -f "$OP_HOME/stack/addons/chat/compose.yml" \
@@ -79,6 +80,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   config --quiet
@@ -88,6 +90,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   config --services
@@ -115,6 +118,7 @@ BASE="docker compose \
   --project-name $PROJECT_NAME \
   --env-file $OP_HOME/vault/stack/stack.env \
   --env-file $OP_HOME/vault/user/user.env \
+  --env-file $OP_HOME/vault/stack/guardian.env \
   -f $OP_HOME/stack/core.compose.yml \
   -f $OP_HOME/stack/addons/admin/compose.yml \
   -f $OP_HOME/stack/addons/chat/compose.yml"
@@ -127,6 +131,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   -f "$OP_HOME/stack/addons/chat/compose.yml" \
@@ -140,6 +145,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   -f "$OP_HOME/stack/addons/chat/compose.yml" \
@@ -153,6 +159,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   ps
@@ -165,6 +172,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   logs --tail 100
@@ -177,6 +185,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   logs -f assistant
 ```
@@ -188,6 +197,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   restart guardian
 ```
@@ -199,6 +209,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   -f "$OP_HOME/stack/addons/chat/compose.yml" \
@@ -245,6 +256,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   up -d --remove-orphans
@@ -329,20 +341,11 @@ file that contains the `extends` directive.
 
 ## Secret Rotation
 
-### LLM provider keys (`vault/user/user.env`)
+### LLM provider keys and system secrets (`vault/stack/stack.env`)
 
-The assistant watches `user.env` via a file watcher and hot-reloads changes
-within seconds. No container restart is needed:
-
-```bash
-$EDITOR ~/.openpalm/vault/user/user.env
-# Changes are picked up automatically by the running assistant
-```
-
-### System secrets (`vault/stack/stack.env`)
-
-System secrets — admin token, HMAC secrets, service auth tokens — require a
-full container recreate to take effect:
+API keys, provider config, admin token, HMAC secrets, and service auth tokens
+all live in `stack.env`. Changes require a full container recreate to take
+effect:
 
 ```bash
 $EDITOR ~/.openpalm/vault/stack/stack.env
@@ -352,6 +355,7 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/vault/stack/guardian.env" \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   up -d --force-recreate
@@ -401,7 +405,6 @@ directly — extract and start.
 |---|---|
 | [installation.md](../installation.md) | Initial setup and home layout |
 | [troubleshooting.md](../troubleshooting.md) | Common problems and fixes |
-| [core-principles.md](../technical/core-principles.md) | Architectural rules and filesystem contract |
+| [core-principles.md](../technical/authoritative/core-principles.md) | Architectural rules and filesystem contract |
 | [environment-and-mounts.md](../technical/environment-and-mounts.md) | Per-service mount and env details |
 | `.openpalm/stack/README.md` | Stack directory quick reference |
-

@@ -10,7 +10,7 @@ It focuses on three things only:
 - filesystem and mount boundaries
 - Docker network boundaries
 
-For the full architectural rule set, see `docs/technical/core-principles.md`. The security boundaries listed here are a summary; `core-principles.md` defines additional invariants (e.g., "host only by default") not repeated here.
+For the full architectural rule set, see `docs/technical/authoritative/core-principles.md`. The security boundaries listed here are a summary; `core-principles.md` defines additional invariants (e.g., "host only by default") not repeated here.
 
 ---
 
@@ -36,13 +36,9 @@ Ephemeral cache lives under `~/.cache/openpalm/`.
 
 The standard startup path uses:
 
-- `vault/stack/stack.env`
-- `vault/user/user.env`
-- `vault/stack/guardian.env`
-
-Individual services may additionally load service-specific managed env files under `vault/stack/services/<service-name>/`. For example, the `memory` service may load:
-
-- `vault/stack/services/memory/managed.env`
+- `vault/stack/stack.env` — primary: all config, secrets, and resolved capabilities (OP_CAP_*)
+- `vault/user/user.env` — extension: optional user additions, loaded alongside stack.env
+- `vault/stack/guardian.env` — guardian-specific: channel HMAC secrets
 
 ### Security boundaries
 
@@ -76,8 +72,7 @@ Role:
 Env sources:
 
 - `stack.env` (via compose ${VAR} substitution)
-- `user.env` (selected values via compose ${VAR} substitution: OPENAI_API_KEY, OPENAI_BASE_URL, etc.)
-- optional `vault/stack/services/memory/managed.env`
+- `user.env` (optional user additions via compose ${VAR} substitution)
 
 Key env:
 
@@ -110,7 +105,7 @@ Role:
 Env sources:
 
 - direct compose `environment:` block
-- `user.env` also bind-mounted into the container for runtime access
+- `user.env` bind-mounted into the container (optional user additions)
 - selected values from `stack.env` (via compose `${VAR}` substitution)
 
 Key env:
@@ -343,7 +338,7 @@ Shipped channel-style addons follow the same basic pattern:
 - depend on `guardian`
 - send signed traffic to guardian, not directly to assistant
 
-Channel secret distribution: when a channel addon is installed, a shared HMAC secret is generated and written to both the channel's addon env and the guardian's secrets store (either `stack.env` as a `CHANNEL_<n>_SECRET` entry or the file at `GUARDIAN_SECRETS_PATH`). The channel SDK uses this secret to sign outbound requests; the guardian uses it to verify inbound requests. See the Guardian section above for hot-reload details.
+Channel secret distribution: when a channel addon is installed, a shared HMAC secret is generated and written to both the channel's addon env and `vault/stack/guardian.env` as a `CHANNEL_<n>_SECRET` entry. This file is loaded by the guardian as a compose `env_file` and bind-mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload. The channel SDK uses this secret to sign outbound requests; the guardian uses it to verify inbound requests. See the Guardian section above for hot-reload details.
 
 Default host binds for shipped HTTP-ish edges:
 

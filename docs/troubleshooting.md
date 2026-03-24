@@ -125,13 +125,13 @@ reading it.
 **Fix:**
 
 1. check the assistant container status and logs
-2. verify at least one provider is configured in `~/.openpalm/vault/user/user.env`
+2. verify at least one provider is configured in `~/.openpalm/vault/stack/stack.env`
 3. confirm the provider endpoint is reachable from Docker if you use a local model server
 
 Useful checks:
 
 ```bash
-grep -E 'API_KEY|BASE_URL|SYSTEM_LLM_' ~/.openpalm/vault/user/user.env
+grep -E 'API_KEY|BASE_URL|OP_CAP_LLM_' ~/.openpalm/vault/stack/stack.env
 ```
 
 ```bash
@@ -168,7 +168,7 @@ Then recreate any services that depend on that value.
 **Fix:**
 
 - verify the channel addon is part of the compose file set you started
-- check `~/.openpalm/vault/stack/stack.env` for the relevant `CHANNEL_*_SECRET`
+- check `~/.openpalm/vault/stack/guardian.env` for the relevant `CHANNEL_*_SECRET`
 - recreate the affected channel and guardian services after changing secrets
 
 There is no separate staging/artifacts file to inspect in the current model; the

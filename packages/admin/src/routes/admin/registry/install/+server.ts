@@ -4,7 +4,7 @@
  * Channel addons are managed via POST /admin/addons/:name.
  * This endpoint only handles automations from the registry.
  *
- * Tries the cloned registry repo first, falls back to bundled assets.
+ * Tries the cloned registry repo first, falls back to on-disk automations.
  * Delegates filesystem operations to installAutomationFromRegistry() from lib.
  */
 import type { RequestHandler } from "./$types";
@@ -23,12 +23,8 @@ import {
   installAutomationFromRegistry,
   writeRuntimeFiles,
   resolveRuntimeFiles,
+  buildMergedRegistry,
 } from "@openpalm/lib";
-import type { RegistryProvider } from "@openpalm/lib";
-import { viteRegistry } from "$lib/server/vite-registry-provider.js";
-import {
-  discoverRegistryAutomations,
-} from "$lib/server/registry-sync.js";
 
 
 export const POST: RequestHandler = async (event) => {
@@ -58,8 +54,8 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_input", "type must be 'automation'", {}, requestId);
   }
 
-  // Build a merged registry: remote (cloned repo) automations take precedence over bundled (Vite)
-  const registry = buildMergedAutomationRegistry();
+  // Build a merged registry: remote (cloned repo) automations take precedence over local disk
+  const registry = buildMergedRegistry(state.homeDir, state.configDir);
 
   const result = installAutomationFromRegistry(name, state.configDir, registry);
   if (!result.ok) {
@@ -74,25 +70,3 @@ export const POST: RequestHandler = async (event) => {
   appendAudit(state, actor, "registry.install", { name, type }, true, requestId, callerType);
   return jsonResponse(200, { ok: true, name, type }, requestId);
 };
-
-/**
- * Build a RegistryProvider that merges remote (cloned git repo) automations
- * with bundled (Vite) automations. Remote entries take precedence.
- */
-function buildMergedAutomationRegistry(): RegistryProvider {
-  const bundled = viteRegistry.automations();
-
-  // Merge remote automations over bundled ones (remote takes precedence)
-  const remoteEntries = discoverRegistryAutomations();
-  const merged: Record<string, string> = { ...bundled };
-  for (const entry of remoteEntries) {
-    merged[entry.name] = entry.ymlContent;
-  }
-
-  return {
-    components: () => viteRegistry.components(),
-    componentIds: () => viteRegistry.componentIds(),
-    automations: () => merged,
-    automationNames: () => Object.keys(merged),
-  };
-}

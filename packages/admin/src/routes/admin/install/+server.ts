@@ -13,8 +13,7 @@ import {
   ensureOpenCodeSystemConfig,
   ensureMemoryDir,
   ensureSecrets,
-  buildComposeFileList,
-  buildEnvFiles,
+  buildComposeOptions,
   buildManagedServices,
   CORE_SERVICES,
   ensureHomeDirs,
@@ -58,8 +57,7 @@ export const POST: RequestHandler = async (event) => {
   if (dockerCheck.ok) {
     logger.info("starting compose up", { requestId, services: managedServices });
     dockerResult = await composeUp({
-      files: buildComposeFileList(state),
-      envFiles: buildEnvFiles(state),
+      ...buildComposeOptions(state),
       services: managedServices
     });
   }

@@ -1,8 +1,8 @@
 # Password & Secret Management
 
 OpenPalm keeps secrets inside one vault boundary under `~/.openpalm/vault/`.
-The current model is simple: one user env file, one stack env file, and Docker
-Compose reads both directly.
+The current model is simple: one optional user extension env, one stack env,
+and one guardian secret env.
 
 ---
 
@@ -12,14 +12,16 @@ Compose reads both directly.
 ~/.openpalm/vault/
   stack/
     stack.env
+    guardian.env
     stack.env.schema
   user/
     user.env
     user.env.schema
 ```
 
-- `vault/user/user.env` is user-managed.
-- `vault/stack/stack.env` is system-managed.
+- `vault/user/user.env` is an optional user-extension env file.
+- `vault/stack/stack.env` is system-managed runtime env + secrets.
+- `vault/stack/guardian.env` holds channel HMAC secrets.
 - Compose is run with both files, usually as:
   `--env-file ../vault/stack/stack.env --env-file ../vault/user/user.env`.
 
@@ -27,32 +29,13 @@ Compose reads both directly.
 
 ## `vault/user/user.env`
 
-This file is for provider keys, model settings, and user-level configuration.
-
-Common keys include:
-
-| Key | Notes |
-|---|---|
-| `OPENAI_API_KEY` | OpenAI-compatible provider key |
-| `OPENAI_BASE_URL` | Alternate OpenAI-compatible endpoint |
-| `ANTHROPIC_API_KEY` | Anthropic key |
-| `GROQ_API_KEY` | Groq key |
-| `MISTRAL_API_KEY` | Mistral key |
-| `GOOGLE_API_KEY` | Google AI key |
-| `EMBEDDING_API_KEY` | Embedding provider key |
-| `SYSTEM_LLM_PROVIDER` | Default provider selection |
-| `SYSTEM_LLM_BASE_URL` | Default provider base URL |
-| `SYSTEM_LLM_MODEL` | Default model |
-| `EMBEDDING_MODEL` | Embedding model |
-| `EMBEDDING_DIMS` | Embedding dimensions |
-| `MEMORY_USER_ID` | Default memory identity |
-| `OWNER_NAME` | Operator display name |
-| `OWNER_EMAIL` | Operator email |
+This file is for optional user-managed extension settings. It starts empty and
+can be used for custom preferences that are not part of the core stack.
 
 Behavior:
 
 - safe to edit directly on the host
-- mounted into the assistant as a single read-only file
+- mounted into the assistant via the `vault/user/` directory mount
 - also passed as container environment via Compose
 - not overwritten by normal lifecycle operations
 
@@ -60,8 +43,8 @@ Behavior:
 
 ## `vault/stack/stack.env`
 
-This file is for stack-level tokens, host paths, ports, and other runtime
-settings used by Compose.
+This file is for stack-level tokens, host paths, ports, API keys, provider
+configuration, and other runtime settings used by Compose.
 
 Important keys include:
 
@@ -81,6 +64,21 @@ Important keys include:
 | `OP_API_PORT` | API addon host port, default `3821` |
 | `OP_VOICE_PORT` | Voice addon host port, default `3810` |
 | `OP_ASSISTANT_SSH_PORT` | Optional assistant SSH port, default `2222` |
+| `OWNER_NAME` | Operator display name |
+| `OWNER_EMAIL` | Operator email |
+| `OPENAI_API_KEY` | OpenAI-compatible provider key |
+| `OPENAI_BASE_URL` | Alternate OpenAI-compatible endpoint |
+| `ANTHROPIC_API_KEY` | Anthropic key |
+| `GROQ_API_KEY` | Groq key |
+| `MISTRAL_API_KEY` | Mistral key |
+| `GOOGLE_API_KEY` | Google AI key |
+| `EMBEDDING_API_KEY` | Embedding provider key |
+| `SYSTEM_LLM_PROVIDER` | Default provider selection |
+| `SYSTEM_LLM_BASE_URL` | Default provider base URL |
+| `SYSTEM_LLM_MODEL` | Default model |
+| `EMBEDDING_MODEL` | Embedding model |
+| `EMBEDDING_DIMS` | Embedding dimensions |
+| `MEMORY_USER_ID` | Default memory identity |
 
 Behavior:
 
@@ -95,7 +93,7 @@ Behavior:
 | Container | Vault access | Notes |
 |---|---|---|
 | `admin` addon | full `~/.openpalm/` bind mount | Only service with broad vault visibility |
-| `assistant` | `vault/user/user.env` only | Read-only file mount plus env injection |
+| `assistant` | `vault/user/` only | Directory mount plus env injection |
 | `guardian` | no vault mount | Reads needed values from Compose env |
 | `memory` | no vault mount | Reads needed values from Compose env |
 | `scheduler` | no vault mount | Reads needed values from Compose env |
@@ -140,8 +138,9 @@ source of truth.
 
 ## Practical guidance
 
-- Edit `~/.openpalm/vault/user/user.env` when changing model keys or provider settings.
-- Edit `~/.openpalm/vault/stack/stack.env` only when you need to change ports,
-  paths, or stack-level tokens.
+- Edit `~/.openpalm/vault/stack/stack.env` when changing API keys, provider
+  settings, ports, paths, or stack-level tokens.
+- Edit `~/.openpalm/vault/user/user.env` for optional user-managed extension
+  settings and custom preferences.
 - Back up the whole `~/.openpalm/vault/` tree.
 - Never commit real env values from either vault file.

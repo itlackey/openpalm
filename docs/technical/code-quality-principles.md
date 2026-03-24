@@ -72,5 +72,5 @@ These are hard constraints for implementation quality:
 
 * **Type correctness:** `npm run check` passes for UI code.
 * **Behavior correctness:** `bun test` covers security-critical branches in guardian/channel code.
-* **Contract correctness:** filesystem, guardian ingress, and assistant-isolation rules from `docs/core-principles.md` remain intact.
+* **Contract correctness:** filesystem, guardian ingress, and assistant-isolation rules from `docs/technical/authoritative/core-principles.md` remain intact.
 * **Change clarity:** each PR explains intent, risk, and rollback approach in plain language.

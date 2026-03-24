@@ -1,6 +1,6 @@
 /**
- * GET  /admin/memory/config — Return persisted + runtime memory config.
- * POST /admin/memory/config — Save config to file and push to runtime API.
+ * GET  /admin/memory/config — Return persisted memory config.
+ * POST /admin/memory/config — Save memory config to file.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -18,9 +18,6 @@ import {
   appendAudit,
   readMemoryConfig,
   writeMemoryConfig,
-  pushConfigToMemory,
-  fetchConfigFromMemory,
-  resolveConfigForPush,
   checkVectorDimensions,
   LLM_PROVIDERS,
   EMBED_PROVIDERS,
@@ -38,13 +35,11 @@ export const GET: RequestHandler = async (event) => {
   const callerType = getCallerType(event);
 
   const config = readMemoryConfig(state.dataDir);
-  const runtimeConfig = await fetchConfigFromMemory();
 
   appendAudit(state, actor, "memory.config.get", {}, true, requestId, callerType);
 
   return jsonResponse(200, {
     config,
-    runtimeConfig,
     providers: { llm: LLM_PROVIDERS, embed: EMBED_PROVIDERS },
     embeddingDims: EMBEDDING_DIMS,
   }, requestId);
@@ -86,20 +81,14 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(500, "internal_error", "Failed to write config file", {}, requestId);
   }
 
-  // Resolve env: references before pushing to container
-  const resolved = resolveConfigForPush(config, state.configDir);
-  const pushResult = await pushConfigToMemory(resolved);
-
   appendAudit(
     state, actor, "memory.config.set",
-    { pushed: pushResult.ok, dimensionMismatch }, true, requestId, callerType
+    { dimensionMismatch }, true, requestId, callerType
   );
 
   return jsonResponse(200, {
     ok: true,
     persisted: true,
-    pushed: pushResult.ok,
-    pushError: pushResult.error,
     dimensionWarning,
     dimensionMismatch,
   }, requestId);

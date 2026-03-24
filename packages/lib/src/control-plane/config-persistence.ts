@@ -5,13 +5,13 @@
  * Files are validated in-place before writing; rollback is handled by
  * the rollback module (snapshot to ~/.cache/openpalm/rollback/).
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, chmodSync } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { isChannelAddon } from "./channels.js";
 import { readStackSpec, hasAddon, addonNames } from "./stack-spec.js";
-import { writeManagedEnvFiles } from "./spec-to-env.js";
+import { writeCapabilityVars } from "./spec-to-env.js";
 
 import { generateRedactSchema } from "./redact-schema.js";
 import { readSystemSecretsEnvFile } from "./secrets.js";
@@ -65,21 +65,26 @@ function resolveCompose(_state: ControlPlaneState): string {
 /**
  * Return the env files used for docker compose --env-file args.
  * These are the live vault env files.
+ *
+ * Order: stack.env -> user.env -> guardian.env
+ * guardian.env is last so channel HMAC secrets from guardian.env
+ * take precedence over any stale entries in stack.env during migration.
  */
 export function buildEnvFiles(state: ControlPlaneState): string[] {
-  // managed.env is NOT included here — it's loaded at service level in
-  // core.compose.yml (memory service only). Global --env-file would leak
-  // memory-specific vars to all services.
   return [
     `${state.vaultDir}/stack/stack.env`,
     `${state.vaultDir}/user/user.env`,
+    `${state.vaultDir}/stack/guardian.env`,
   ].filter(existsSync);
 }
 
 /**
  * Write system-managed values to vault/stack/stack.env.
+ *
+ * Channel HMAC secrets are NOT written here — they belong in guardian.env.
+ * Use writeChannelSecrets() for channel secrets.
  */
-export function writeSystemEnv(state: ControlPlaneState, channelSecrets: Record<string, string> = {}): void {
+export function writeSystemEnv(state: ControlPlaneState): void {
   mkdirSync(`${state.vaultDir}/stack`, { recursive: true });
 
   const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
@@ -97,9 +102,6 @@ export function writeSystemEnv(state: ControlPlaneState, channelSecrets: Record<
   const adminManaged: Record<string, string> = {
     OP_SETUP_COMPLETE: alreadyComplete ? "true" : "false"
   };
-  for (const [ch, secret] of Object.entries(channelSecrets)) {
-    adminManaged[`CHANNEL_${ch.toUpperCase()}_SECRET`] = secret;
-  }
 
   const content = mergeEnvContent(base, adminManaged, {
     sectionHeader: "# ── Admin-managed ──────────────────────────────────────────────────"
@@ -146,8 +148,6 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "# ── Networking ──────────────────────────────────────────────────────",
     "# SECURITY: Bind addresses default to 127.0.0.1. Changing to 0.0.0.0 exposes services publicly.",
     `OP_INGRESS_BIND_ADDRESS=${process.env.OP_INGRESS_BIND_ADDRESS ?? "127.0.0.1"}`,
-    "",
-    "# ── Channel HMAC Secrets ────────────────────────────────────────────",
     ""
   ].join("\n");
 }
@@ -205,16 +205,107 @@ export function buildRuntimeFileMeta(artifacts: {
 }
 
 // ── Channel Secrets ────────────────────────────────────────────────────
+// Channel HMAC secrets live exclusively in vault/stack/guardian.env.
+// Legacy stack.env entries are migrated on first writeRuntimeFiles() call.
 
-/** Load persisted CHANNEL_*_SECRET entries from vault/stack/stack.env. */
-function loadPersistedChannelSecrets(vaultDir: string): Record<string, string> {
-  const parsed = parseEnvFile(`${vaultDir}/stack/stack.env`);
+const CHANNEL_SECRET_RE = /^CHANNEL_([A-Z0-9_]+)_SECRET$/;
+
+/** Extract channel secrets from parsed env entries. */
+function extractChannelSecrets(parsed: Record<string, string>): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed)) {
-    const match = key.match(/^CHANNEL_([A-Z0-9_]+)_SECRET$/);
+    const match = key.match(CHANNEL_SECRET_RE);
     if (match?.[1] && value) result[match[1].toLowerCase()] = value;
   }
   return result;
+}
+
+/**
+ * Read channel HMAC secrets from vault/stack/guardian.env.
+ * Falls back to vault/stack/stack.env for pre-migration installs.
+ */
+export function readChannelSecrets(vaultDir: string): Record<string, string> {
+  const guardianPath = `${vaultDir}/stack/guardian.env`;
+  const guardianSecrets = extractChannelSecrets(parseEnvFile(guardianPath));
+  if (Object.keys(guardianSecrets).length > 0) return guardianSecrets;
+
+  // Fallback: read from stack.env for pre-migration installs
+  return extractChannelSecrets(parseEnvFile(`${vaultDir}/stack/stack.env`));
+}
+
+/**
+ * Write channel HMAC secrets to vault/stack/guardian.env.
+ * Merges with existing content; does not overwrite unrelated entries.
+ */
+export function writeChannelSecrets(vaultDir: string, secrets: Record<string, string>): void {
+  const guardianPath = `${vaultDir}/stack/guardian.env`;
+  mkdirSync(`${vaultDir}/stack`, { recursive: true });
+
+  let base = "";
+  if (existsSync(guardianPath)) {
+    base = readFileSync(guardianPath, "utf-8");
+  } else {
+    base = "# Guardian channel HMAC secrets — managed by openpalm\n";
+  }
+
+  const updates: Record<string, string> = {};
+  for (const [ch, secret] of Object.entries(secrets)) {
+    updates[`CHANNEL_${ch.toUpperCase()}_SECRET`] = secret;
+  }
+
+  const content = mergeEnvContent(base, updates);
+  writeFileSync(guardianPath, content, { mode: 0o600 });
+  // Ensure correct permissions even if file already existed with wrong mode
+  chmodSync(guardianPath, 0o600);
+}
+
+/**
+ * Idempotent migration: move CHANNEL_*_SECRET entries from stack.env to guardian.env.
+ * guardian.env wins on conflict (existing guardian.env entries are never overwritten).
+ * Migrated entries are removed from stack.env.
+ *
+ * Returns the count of migrated and skipped entries.
+ */
+export function migrateLegacyChannelSecrets(vaultDir: string): { migrated: number; skipped: number } {
+  const stackPath = `${vaultDir}/stack/stack.env`;
+  if (!existsSync(stackPath)) return { migrated: 0, skipped: 0 };
+
+  const stackContent = readFileSync(stackPath, "utf-8");
+  const stackParsed = parseEnvFile(stackPath);
+  const legacySecrets = extractChannelSecrets(stackParsed);
+  if (Object.keys(legacySecrets).length === 0) return { migrated: 0, skipped: 0 };
+
+  // Read existing guardian secrets
+  const guardianPath = `${vaultDir}/stack/guardian.env`;
+  const guardianSecrets = extractChannelSecrets(parseEnvFile(guardianPath));
+
+  const toMigrate: Record<string, string> = {};
+  let skipped = 0;
+  for (const [ch, secret] of Object.entries(legacySecrets)) {
+    if (guardianSecrets[ch]) {
+      skipped++;
+    } else {
+      toMigrate[ch] = secret;
+    }
+  }
+
+  // Write migrated secrets to guardian.env
+  if (Object.keys(toMigrate).length > 0) {
+    writeChannelSecrets(vaultDir, toMigrate);
+  }
+
+  // Remove CHANNEL_*_SECRET lines from stack.env
+  const cleanedLines = stackContent.split("\n").filter(line => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("#")) return true;
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) return true;
+    const key = trimmed.slice(0, eq).trim();
+    return !CHANNEL_SECRET_RE.test(key);
+  });
+  writeFileSync(stackPath, cleanedLines.join("\n"));
+
+  return { migrated: Object.keys(toMigrate).length, skipped };
 }
 
 // ── Persistence (direct-write to live paths) ────────────────────────
@@ -227,32 +318,37 @@ export function writeRuntimeFiles(
   mkdirSync(stackDir, { recursive: true });
   writeFileSync(`${stackDir}/core.compose.yml`, state.artifacts.compose);
 
-  // Load persisted channel HMAC secrets, generate new ones for new channels.
-  // Only generate secrets for addons that are enabled in stack.yaml AND are
-  // channel addons (have CHANNEL_NAME/GUARDIAN_URL in their compose).
-  const channelSecrets = loadPersistedChannelSecrets(state.vaultDir);
+  // Migrate legacy channel secrets from stack.env to guardian.env (idempotent).
+  migrateLegacyChannelSecrets(state.vaultDir);
+
+  // Load persisted channel HMAC secrets from guardian.env (with stack.env fallback),
+  // then generate new ones for new channel addons.
+  const channelSecrets = readChannelSecrets(state.vaultDir);
   const spec = readStackSpec(state.configDir);
   if (spec) {
-    const stackDir = `${state.homeDir}/stack`;
+    const addonStackDir = `${state.homeDir}/stack`;
     for (const addon of addonNames(spec)) {
-      const composePath = `${stackDir}/addons/${addon}/compose.yml`;
+      const composePath = `${addonStackDir}/addons/${addon}/compose.yml`;
       if (isChannelAddon(composePath) && !channelSecrets[addon]) {
         channelSecrets[addon] = randomHex(16);
       }
     }
   }
 
-  // Write system.env with channel secrets and system values
-  writeSystemEnv(state, channelSecrets);
+  // Write channel secrets to guardian.env (the canonical source)
+  writeChannelSecrets(state.vaultDir, channelSecrets);
+
+  // Write system.env (no channel secrets — those live in guardian.env)
+  writeSystemEnv(state);
 
   // Ensure env schema directories exist
   ensureUserEnvSchema();
   ensureSystemEnvSchema();
 
-  // Write managed.env files derived from stack spec
+  // Write OP_CAP_* capability vars to stack.env from stack spec
   const specForEnv = spec ?? readStackSpec(state.configDir);
   if (specForEnv) {
-    writeManagedEnvFiles(specForEnv, state.vaultDir);
+    writeCapabilityVars(specForEnv, state.vaultDir);
   }
 
   // Generate redact.env.schema from canonical mappings

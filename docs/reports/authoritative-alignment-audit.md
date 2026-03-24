@@ -219,21 +219,12 @@ Env sources:
 **Current text** (`foundations.md:74-77`):
 ```
 Env sources:
-- `stack.env`
-- optional `vault/stack/services/memory/managed.env`
+- `stack.env` (via compose ${VAR} substitution — includes OP_CAP_* resolved capabilities and raw API keys)
 ```
 
-The memory compose has `OPENAI_API_KEY: ${OPENAI_API_KEY:-}`, `OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}`, etc. These values come from `user.env` via compose `--env-file` at compose-up time.
+The memory compose maps `OP_CAP_LLM_*` and `OP_CAP_EMBEDDINGS_*` vars from `stack.env` to service-specific env var names via compose `environment:` block substitution.
 
-**Owner decision:** Acknowledge this in the spec.
-
-**Required change:**
-```
-Env sources:
-- `stack.env` (via compose ${VAR} substitution)
-- `user.env` (selected values via compose ${VAR} substitution: OPENAI_API_KEY, OPENAI_BASE_URL, etc.)
-- optional `vault/stack/services/memory/managed.env`
-```
+**Status:** Resolved — all config consolidated in stack.env.
 
 ---
 
@@ -315,7 +306,7 @@ The standard compose invocation now uses three `--env-file` flags. This should b
 > "Compose is normally invoked with `vault/stack/stack.env` (system-managed) and `vault/user/user.env` (user-managed)"
 
 **Required change:**
-> "Compose is normally invoked with `vault/stack/stack.env` (system-managed: admin token, paths, UID/GID, image tags, bind ports), `vault/user/user.env` (user-managed: LLM keys, provider URLs), and `vault/stack/guardian.env` (channel HMAC secrets)."
+> "Compose is normally invoked with `vault/stack/stack.env` (system-managed: admin token, paths, UID/GID, image tags, bind ports, API keys, provider URLs), `vault/user/user.env` (empty placeholder for custom user extensions), and `vault/stack/guardian.env` (channel HMAC secrets)."
 
 **Also update** the Compose env sources section in `foundations.md` (lines 36-43):
 ```

@@ -4,7 +4,7 @@ This is the plain Docker Compose path. No installer is required.
 
 OpenPalm ships a working `.openpalm/` asset bundle in the repo. Copy that bundle to `~/.openpalm/`, fill in the env files, and start the stack with `docker compose`.
 
-For the convenience-oriented version of the same flow, see [setup-guide.md](setup-guide.md).
+For the convenience-oriented version of the same flow, see [setup-guide.md](../setup-guide.md).
 
 ---
 
@@ -13,7 +13,7 @@ For the convenience-oriented version of the same flow, see [setup-guide.md](setu
 - The live stack is defined only by compose files under `~/.openpalm/stack/`.
 - Enabled addons come from the compose command you run, for example extra `-f addons/<name>/compose.yml` flags.
 - `~/.openpalm/config/stack.yaml` is optional metadata for helper tooling. It is not deployment truth.
-- See the [Manual Compose Runbook](operations/manual-compose-runbook.md) for the full compose command reference.
+- See the [Manual Compose Runbook](../operations/manual-compose-runbook.md) for the full compose command reference.
 
 ---
 
@@ -45,8 +45,8 @@ After copying, the important paths are:
 | Path | Purpose |
 |---|---|
 | `~/.openpalm/stack/` | Base compose file and addon compose files |
-| `~/.openpalm/vault/stack/stack.env` | System values used by compose |
-| `~/.openpalm/vault/user/user.env` | User secrets like provider API keys |
+| `~/.openpalm/vault/stack/stack.env` | All secrets, API keys, owner info, OP_CAP_* capabilities |
+| `~/.openpalm/vault/user/user.env` | Empty placeholder for custom user extensions |
 | `~/.openpalm/config/` | User-editable config and automations |
 | `~/.openpalm/data/` | Durable service data |
 | `~/.openpalm/logs/` | Logs and audit output |
@@ -57,25 +57,27 @@ After copying, the important paths are:
 
 Edit the copied env files before first start.
 
-### `~/.openpalm/vault/user/user.env`
+### `~/.openpalm/vault/stack/stack.env`
 
-Set at least one model provider key or endpoint your assistant can use.
+Contains all secrets, API keys, owner info (`OWNER_NAME`, `OWNER_EMAIL`), `OP_CAP_*` capability mappings, tokens, and host-specific values such as paths, ports, and image tags. Set at least one model provider key or endpoint your assistant can use.
 
 Example:
 
 ```dotenv
 OPENAI_API_KEY=your-key-here
+OWNER_NAME=Your Name
+OWNER_EMAIL=you@example.com
 ```
-
-### `~/.openpalm/vault/stack/stack.env`
-
-Review host-specific values such as paths, ports, image tags, and tokens.
 
 If you want a fresh admin token or signing secret, generate values locally and paste them into the file:
 
 ```bash
 openssl rand -hex 24
 ```
+
+### `~/.openpalm/vault/user/user.env`
+
+Empty placeholder for custom user extensions. No values are required here for normal operation.
 
 ---
 
@@ -84,7 +86,7 @@ openssl rand -hex 24
 Run Docker Compose directly from `~/.openpalm/stack/`. Always run the preflight
 check first to catch misconfiguration before containers are affected.
 
-For the full compose command reference (preflight, start, stop, logs, and more), see the [Manual Compose Runbook](operations/manual-compose-runbook.md).
+For the full compose command reference (preflight, start, stop, logs, and more), see the [Manual Compose Runbook](../operations/manual-compose-runbook.md).
 
 That starts the foundation services only.
 
@@ -95,7 +97,7 @@ That starts the foundation services only.
 Add an addon by including its compose file in the command. Run preflight before
 starting to confirm the merged file set is valid.
 
-For compose command syntax with addons, see the [Manual Compose Runbook](operations/manual-compose-runbook.md).
+For compose command syntax with addons, see the [Manual Compose Runbook](../operations/manual-compose-runbook.md).
 
 Common addon files:
 
@@ -124,7 +126,7 @@ Important: changing `stack.yaml` alone does not change the running stack unless 
 
 ## 7. Verify
 
-Check container status using the `ps` command from the [Manual Compose Runbook](operations/manual-compose-runbook.md).
+Check container status using the `ps` command from the [Manual Compose Runbook](../operations/manual-compose-runbook.md).
 
 If you started the `admin` addon, open `http://localhost:3880/`.
 
@@ -156,17 +158,17 @@ That is expected unless you used a helper that reads `config/stack.yaml`. Docker
 
 **An addon fails to start**
 
-Check its `.env.schema` file and container logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
+Check its `.env.schema` file and container logs (see [Manual Compose Runbook](../operations/manual-compose-runbook.md) for log commands).
 
 **Need to stop everything**
 
-Run the same file set with `down` instead of `up`. See the [Manual Compose Runbook](operations/manual-compose-runbook.md) for the full command.
+Run the same file set with `down` instead of `up`. See the [Manual Compose Runbook](../operations/manual-compose-runbook.md) for the full command.
 
 ---
 
 ## Further reading
 
-- [setup-guide.md](setup-guide.md) - Convenience path and optional tooling
+- [setup-guide.md](../setup-guide.md) - Convenience path and optional tooling
 - [.openpalm/stack/README.md](../.openpalm/stack/README.md) - Compose file and addon reference
-- [technical/core-principles.md](technical/core-principles.md) - Security and filesystem rules
-- [managing-openpalm.md](managing-openpalm.md) - Day-to-day operations
+- [technical/authoritative/core-principles.md](authoritative/core-principles.md) - Security and filesystem rules
+- [managing-openpalm.md](../managing-openpalm.md) - Day-to-day operations

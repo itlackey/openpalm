@@ -6,7 +6,6 @@ import {
   validateSetupSpec,
   buildSecretsFromSetup,
   buildSystemSecretsFromSetup,
-  buildConnectionEnvVarMap,
   performSetup,
 } from "./setup.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
@@ -104,11 +103,10 @@ describe("validateSetupSpec", () => {
     expect(result.errors.some((e) => e.includes("at least 8"))).toBe(true);
   });
 
-  it("rejects empty connections array", () => {
+  it("accepts empty connections array", () => {
     const spec = makeValidSpec({ connections: [] });
     const result = validateSetupSpec(spec);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("connections"))).toBe(true);
+    expect(result.valid).toBe(true);
   });
 
   it("rejects duplicate connection IDs", () => {
@@ -125,15 +123,14 @@ describe("validateSetupSpec", () => {
     expect(result.errors.some((e) => e.includes("Duplicate"))).toBe(true);
   });
 
-  it("rejects unsupported provider", () => {
+  it("accepts any provider string", () => {
     const spec = makeValidSpec({
       connections: [
-        { id: "bad", name: "Bad", provider: "unsupported-provider", baseUrl: "", apiKey: "" },
+        { id: "custom", name: "Custom", provider: "any-provider", baseUrl: "", apiKey: "" },
       ],
     });
     const result = validateSetupSpec(spec);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("outside wizard scope"))).toBe(true);
+    expect(result.valid).toBe(true);
   });
 
   it("rejects invalid connection ID pattern", () => {
@@ -261,16 +258,21 @@ describe("buildSecretsFromSetup", () => {
     expect(secrets.ADMIN_TOKEN).toBeUndefined();
   });
 
-  it("does not include SYSTEM_LLM_* in user secrets (now in capabilities)", () => {
+  it("does not include SYSTEM_LLM_* in user secrets (lives in stack.env via OP_CAP_*)", () => {
     const spec = makeValidSpec();
     const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.SYSTEM_LLM_PROVIDER).toBeUndefined();
     expect(secrets.SYSTEM_LLM_MODEL).toBeUndefined();
     expect(secrets.SYSTEM_LLM_BASE_URL).toBeUndefined();
-    expect(secrets.OPENAI_BASE_URL).toBeUndefined();
   });
 
-  it("does not include MEMORY_USER_ID in user secrets (now in capabilities)", () => {
+  it("persists OPENAI_BASE_URL from openai connection", () => {
+    const spec = makeValidSpec();
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
+    expect(secrets.OPENAI_BASE_URL).toBe("https://api.openai.com");
+  });
+
+  it("does not include MEMORY_USER_ID in user secrets (lives in stack.env via OP_CAP_*)", () => {
     const spec = makeValidSpec();
     const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.MEMORY_USER_ID).toBeUndefined();
@@ -296,12 +298,12 @@ describe("buildSecretsFromSetup", () => {
     expect(secrets.OPENAI_API_KEY).toBe("sk-test-key-123");
   });
 
-  it("does not include Ollama base URL in user secrets when ollamaEnabled (now in capabilities)", () => {
+  it("does not include Ollama base URL in user secrets when ollamaEnabled (lives in stack.env via OP_CAP_*)", () => {
     const connections: SetupConnection[] = [
       { id: "ollama-1", name: "Ollama", provider: "ollama", baseUrl: "http://localhost:11434", apiKey: "" },
     ];
     const secrets = buildSecretsFromSetup(connections);
-    // These are no longer written to user.env — they live in capabilities/managed.env
+    // These are no longer written to user.env — they live in stack.env via OP_CAP_* vars
     expect(secrets.SYSTEM_LLM_BASE_URL).toBeUndefined();
     expect(secrets.OPENAI_BASE_URL).toBeUndefined();
   });
@@ -314,57 +316,6 @@ describe("buildSystemSecretsFromSetup", () => {
     expect(typeof secrets.OP_ASSISTANT_TOKEN).toBe("string");
     expect(secrets.OP_ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
     expect(typeof secrets.OP_MEMORY_TOKEN).toBe("string");
-  });
-});
-
-// ── Tests: buildConnectionEnvVarMap ──────────────────────────────────────
-
-describe("buildConnectionEnvVarMap", () => {
-  it("maps a single OpenAI connection", () => {
-    const connections: SetupConnection[] = [
-      { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-abc" },
-    ];
-    const map = buildConnectionEnvVarMap(connections);
-    expect(map.get("openai-1")).toBe("OPENAI_API_KEY");
-  });
-
-  it("namespaces duplicate provider env vars with safe IDs", () => {
-    const connections: SetupConnection[] = [
-      { id: "openai_1", name: "OpenAI Primary", provider: "openai", baseUrl: "", apiKey: "sk-abc" },
-      { id: "openai_2", name: "OpenAI Secondary", provider: "openai", baseUrl: "", apiKey: "sk-def" },
-    ];
-    const map = buildConnectionEnvVarMap(connections);
-    expect(map.get("openai_1")).toBe("OPENAI_API_KEY");
-    expect(map.get("openai_2")).toBe("OPENAI_API_KEY_OPENAI_2");
-  });
-
-  it("skips connections with unsafe env var keys (hyphen in ID)", () => {
-    const connections: SetupConnection[] = [
-      { id: "openai-1", name: "OpenAI Primary", provider: "openai", baseUrl: "", apiKey: "sk-abc" },
-      { id: "openai-2", name: "OpenAI Secondary", provider: "openai", baseUrl: "", apiKey: "sk-def" },
-    ];
-    const map = buildConnectionEnvVarMap(connections);
-    expect(map.get("openai-1")).toBe("OPENAI_API_KEY");
-    // openai-2 generates OPENAI_API_KEY_OPENAI-2 which fails the SAFE_ENV_KEY_RE (hyphen)
-    expect(map.has("openai-2")).toBe(false);
-  });
-
-  it("maps different providers to their canonical env vars", () => {
-    const connections: SetupConnection[] = [
-      { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-abc" },
-      { id: "groq-1", name: "Groq", provider: "groq", baseUrl: "", apiKey: "gsk-abc" },
-    ];
-    const map = buildConnectionEnvVarMap(connections);
-    expect(map.get("openai-1")).toBe("OPENAI_API_KEY");
-    expect(map.get("groq-1")).toBe("GROQ_API_KEY");
-  });
-
-  it("uses OPENAI_API_KEY fallback for unmapped providers", () => {
-    const connections: SetupConnection[] = [
-      { id: "ollama-1", name: "Ollama", provider: "ollama", baseUrl: "", apiKey: "" },
-    ];
-    const map = buildConnectionEnvVarMap(connections);
-    expect(map.get("ollama-1")).toBe("OPENAI_API_KEY");
   });
 });
 
@@ -412,25 +363,30 @@ describe("performSetup", () => {
     // Create stub stack.env so isSetupComplete doesn't crash
     mkdirSync(join(vaultDir, "stack"), { recursive: true });
     mkdirSync(join(vaultDir, "user"), { recursive: true });
-    writeFileSync(join(vaultDir, "stack", "stack.env"), "OP_SETUP_COMPLETE=false\n");
+    writeFileSync(
+      join(vaultDir, "stack", "stack.env"),
+      [
+        "OP_SETUP_COMPLETE=false",
+        "OP_ADMIN_TOKEN=",
+        "OPENAI_API_KEY=",
+        "OPENAI_BASE_URL=",
+        "ANTHROPIC_API_KEY=",
+        "GROQ_API_KEY=",
+        "MISTRAL_API_KEY=",
+        "GOOGLE_API_KEY=",
+        "OWNER_NAME=",
+        "OWNER_EMAIL=",
+        "",
+      ].join("\n")
+    );
 
-    // Seed a user.env file to avoid ensureSecrets() file-not-found
+    // Seed a user.env placeholder
     writeFileSync(
       join(vaultDir, "user", "user.env"),
       [
-        "# OpenPalm Secrets",
-        "export OP_ADMIN_TOKEN=",
-        "export ADMIN_TOKEN=",
-        "export OPENAI_API_KEY=",
-        "export OPENAI_BASE_URL=",
-        "export ANTHROPIC_API_KEY=",
-        "export GROQ_API_KEY=",
-        "export MISTRAL_API_KEY=",
-        "export GOOGLE_API_KEY=",
-        "export MEMORY_USER_ID=default_user",
-        "export OP_MEMORY_TOKEN=abc123",
-        "export OWNER_NAME=",
-        "export OWNER_EMAIL=",
+        "# OpenPalm — User Extensions",
+        "# Add any custom environment variables here.",
+        "# These are loaded by compose alongside stack.env.",
         "",
       ].join("\n")
     );
@@ -464,16 +420,13 @@ describe("performSetup", () => {
     expect(secretsContent).toContain("test-admin-token-12345");
   });
 
-  it("writes managed.env for memory service", async () => {
+  it("writes OP_CAP_* vars to stack.env for capabilities", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
-    const managedEnvPath = join(vaultDir, "stack", "services", "memory", "managed.env");
-    expect(existsSync(managedEnvPath)).toBe(true);
-
-    const content = readFileSync(managedEnvPath, "utf-8");
-    expect(content).toContain("SYSTEM_LLM_MODEL=gpt-4o");
-    expect(content).toContain("EMBEDDING_MODEL=text-embedding-3-small");
+    const stackEnvContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    expect(stackEnvContent).toContain("OP_CAP_LLM_MODEL=gpt-4o");
+    expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_MODEL=text-embedding-3-small");
   });
 
   it("writes capabilities to stack.yaml v2", async () => {
@@ -569,10 +522,9 @@ describe("performSetup", () => {
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    // nomic-embed-text is 768 dims per EMBEDDING_DIMS — verify via managed.env
-    const managedEnvPath = join(vaultDir, "stack", "services", "memory", "managed.env");
-    const content = readFileSync(managedEnvPath, "utf-8");
-    expect(content).toContain("EMBEDDING_DIMS=768");
+    // nomic-embed-text is 768 dims per EMBEDDING_DIMS — verify via stack.env OP_CAP_EMBEDDINGS_DIMS
+    const stackEnvContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_DIMS=768");
   });
 
   it("writes stack.yaml with correct v2 structure", async () => {
@@ -610,7 +562,7 @@ describe("performSetup", () => {
     expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
   });
 
-  it("writes channel credentials to user.env when channelCredentials provided", async () => {
+  it("writes channel credentials to stack.env when channelCredentials provided", async () => {
     const input = makeValidSpec({
       channelCredentials: {
         discord: {
@@ -639,9 +591,9 @@ describe("performSetup", () => {
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    const secretsContent = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
-    expect(secretsContent).toContain("discord-bot-token-xyz");
-    expect(secretsContent).toContain("discord-app-id-123");
+    const stackEnvContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    expect(stackEnvContent).toContain("discord-bot-token-xyz");
+    expect(stackEnvContent).toContain("discord-app-id-123");
   });
 });
 

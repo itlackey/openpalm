@@ -6,7 +6,14 @@ services:
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
-      OPENVIKING_CONFIG_FILE: /app/ov.conf
+      # Embedding capabilities (resolved from stack.yaml via OP_CAP_*)
+      OV_EMBEDDING_PROVIDER: ${OP_CAP_EMBEDDINGS_PROVIDER:-openai}
+      OV_EMBEDDING_MODEL: ${OP_CAP_EMBEDDINGS_MODEL:-}
+      OV_EMBEDDING_API_KEY: ${OP_CAP_EMBEDDINGS_API_KEY:-}
+      OV_EMBEDDING_BASE_URL: ${OP_CAP_EMBEDDINGS_BASE_URL:-}
+      OV_EMBEDDING_DIMS: ${OP_CAP_EMBEDDINGS_DIMS:-768}
+      OV_ROOT_API_KEY: ${OPENVIKING_API_KEY:-}
+    entrypoint: ["/app/entrypoint.sh"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

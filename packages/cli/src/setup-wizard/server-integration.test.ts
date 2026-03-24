@@ -14,6 +14,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSetupServer } from "./server.ts";
+import { STACK_SPEC_FILENAME } from "@openpalm/lib";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -71,22 +72,28 @@ function makeSetupDirs(): void {
 
   mkdirSync(join(vaultDir, "stack"), { recursive: true });
   mkdirSync(join(vaultDir, "user"), { recursive: true });
-  writeFileSync(join(vaultDir, "stack", "stack.env"), "OP_SETUP_COMPLETE=false\n");
+  writeFileSync(
+    join(vaultDir, "stack", "stack.env"),
+    [
+      "OP_SETUP_COMPLETE=false",
+      "OP_ADMIN_TOKEN=",
+      "OPENAI_API_KEY=",
+      "OPENAI_BASE_URL=",
+      "ANTHROPIC_API_KEY=",
+      "GROQ_API_KEY=",
+      "MISTRAL_API_KEY=",
+      "GOOGLE_API_KEY=",
+      "OWNER_NAME=",
+      "OWNER_EMAIL=",
+      "",
+    ].join("\n")
+  );
   writeFileSync(
     join(vaultDir, "user", "user.env"),
     [
-      "# OpenPalm Secrets",
-      "export OP_ADMIN_TOKEN=",
-
-      "export OPENAI_API_KEY=",
-      "export OPENAI_BASE_URL=",
-      "export ANTHROPIC_API_KEY=",
-      "export GROQ_API_KEY=",
-      "export MISTRAL_API_KEY=",
-      "export GOOGLE_API_KEY=",
-      "export MEMORY_USER_ID=default_user",
-      "export OWNER_NAME=",
-      "export OWNER_EMAIL=",
+      "# OpenPalm — User Extensions",
+      "# Add any custom environment variables here.",
+      "# These are loaded by compose alongside stack.env.",
       "",
     ].join("\n")
   );
@@ -260,20 +267,16 @@ describe("setup wizard server integration", () => {
       const systemEnvContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
       expect(systemEnvContent).toContain("integration-test-token-123");
 
-      // Verify vault/user/user.env was written with owner info
-      const userEnvContent = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
-      expect(userEnvContent).toContain("OWNER_NAME=Integration Test");
+      // Verify vault/stack/stack.env was written with owner info (now in stack.env, not user.env)
+      expect(systemEnvContent).toContain("OWNER_NAME=Integration Test");
 
-      // Verify managed.env was written with correct memory service config
-      const managedEnvPath = join(vaultDir, "stack", "services", "memory", "managed.env");
-      expect(existsSync(managedEnvPath)).toBe(true);
-      const managedEnvContent = readFileSync(managedEnvPath, "utf-8");
-      expect(managedEnvContent).toContain("SYSTEM_LLM_MODEL=qwen2.5-coder:3b");
-      expect(managedEnvContent).toContain("EMBEDDING_MODEL=nomic-embed-text");
-      expect(managedEnvContent).toContain("EMBEDDING_DIMS=768");
+      // Verify OP_CAP_* vars were written to stack.env (replaces managed.env)
+      expect(systemEnvContent).toContain("OP_CAP_LLM_MODEL=qwen2.5-coder:3b");
+      expect(systemEnvContent).toContain("OP_CAP_EMBEDDINGS_MODEL=nomic-embed-text");
+      expect(systemEnvContent).toContain("OP_CAP_EMBEDDINGS_DIMS=768");
 
-      // Verify stack.yaml was written with connections
-      const specPath = join(configDir, "stack.yaml");
+      // Verify stack spec was written
+      const specPath = join(configDir, STACK_SPEC_FILENAME);
       expect(existsSync(specPath)).toBe(true);
 
       // Verify core compose artifact exists in stack/
@@ -316,6 +319,7 @@ describe("setup wizard server integration", () => {
           addons: {},
         },
         security: { adminToken: "status-test-token-123" },
+        owner: { name: "Status Test", email: "status@test.local" },
         connections: [
           {
             id: "openai-test",
@@ -444,6 +448,7 @@ describe("setup wizard server integration", () => {
           addons: {},
         },
         security: { adminToken: "retry-test-token-123" },
+        owner: { name: "Retry Test", email: "retry@test.local" },
         connections: [
           {
             id: "openai-retry",

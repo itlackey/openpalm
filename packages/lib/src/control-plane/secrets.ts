@@ -10,30 +10,7 @@ const OPENCODE_STARTER_CONFIG = JSON.stringify({ $schema: "https://opencode.ai/c
 const logger = createLogger("secrets");
 
 
-export const ALLOWED_CONNECTION_KEYS = new Set([
-  "OPENAI_API_KEY",
-  "OPENVIKING_API_KEY",
-  "ANTHROPIC_API_KEY",
-  "GROQ_API_KEY",
-  "MISTRAL_API_KEY",
-  "GOOGLE_API_KEY",
-  "MCP_API_KEY",
-  "EMBEDDING_API_KEY",
-  "OPENAI_BASE_URL",
-  "OWNER_NAME",
-  "OWNER_EMAIL",
-]);
-
-export const REQUIRED_LLM_PROVIDER_KEYS = [
-  "OPENAI_API_KEY",
-  "ANTHROPIC_API_KEY",
-  "GROQ_API_KEY",
-  "MISTRAL_API_KEY",
-  "GOOGLE_API_KEY",
-  "MCP_API_KEY",
-  "EMBEDDING_API_KEY",
-];
-
+/** Keys whose values are shown unmasked in the UI (not secrets). */
 export const PLAIN_CONFIG_KEYS = new Set([
   "OPENAI_BASE_URL",
   "OWNER_NAME",
@@ -92,20 +69,33 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
   }
 
   if (!existsSync(systemEnvPath)) {
-    // Seed the header, then use mergeEnvContent to write values safely
-    // (quoteEnvValue handles special chars like newlines, quotes, #).
     const header = [
-      "# OpenPalm — System Secrets",
-      "# Managed by the CLI/admin. Do not edit manually unless you understand",
-      "# the control-plane contract.",
+      "# OpenPalm — Stack Configuration",
+      "# All secrets and configuration live here. Advanced users may edit directly.",
       "",
-      "# Authentication",
+      "# ── Authentication ──────────────────────────────────────────────────",
       "OP_ADMIN_TOKEN=",
       "OP_ASSISTANT_TOKEN=",
       "",
-      "# Service auth",
+      "# ── Service Auth ─────────────────────────────────────────────────────",
       "OP_MEMORY_TOKEN=",
       "OP_OPENCODE_PASSWORD=",
+      "",
+      "# ── Provider API Keys ────────────────────────────────────────────────",
+      "OPENAI_API_KEY=",
+      "OPENAI_BASE_URL=",
+      "ANTHROPIC_API_KEY=",
+      "GROQ_API_KEY=",
+      "MISTRAL_API_KEY=",
+      "GOOGLE_API_KEY=",
+      "OPENVIKING_API_KEY=",
+      "MCP_API_KEY=",
+      "EMBEDDING_API_KEY=",
+      "LMSTUDIO_API_KEY=",
+      "",
+      "# ── Owner ────────────────────────────────────────────────────────────",
+      `OWNER_NAME=${process.env.OWNER_NAME ?? ""}`,
+      `OWNER_EMAIL=${process.env.OWNER_EMAIL ?? ""}`,
       "",
     ].join("\n");
     const content = mergeEnvContent(header, updates);
@@ -120,42 +110,43 @@ export function ensureSecrets(state: ControlPlaneState): void {
   enforceVaultDirMode(state.vaultDir);
   mkdirSync(`${state.vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
   mkdirSync(`${state.vaultDir}/user`, { recursive: true, mode: VAULT_DIR_MODE });
+
+  // user.env is an empty placeholder — users can add custom vars here.
+  // All standard config lives in stack.env.
   const userEnvPath = `${state.vaultDir}/user/user.env`;
   if (!existsSync(userEnvPath)) {
-    const lines: string[] = [
-      "# OpenPalm — User Secrets",
-      "# API keys and owner info only. LLM/embedding config is in stack.yaml.",
+    writeVaultFile(userEnvPath, [
+      "# OpenPalm — User Extensions",
+      "# Add any custom environment variables here.",
+      "# These are loaded by compose alongside stack.env.",
       "",
-      "# LLM provider API keys",
-      "OPENAI_API_KEY=",
-      "OPENVIKING_API_KEY=",
-      "OPENAI_BASE_URL=",
-      "ANTHROPIC_API_KEY=",
-      "GROQ_API_KEY=",
-      "MISTRAL_API_KEY=",
-      "GOOGLE_API_KEY=",
-      "MCP_API_KEY=",
-      "EMBEDDING_API_KEY=",
-      "",
-      "# Owner",
-      `OWNER_NAME=${process.env.OWNER_NAME ?? ""}`,
-      `OWNER_EMAIL=${process.env.OWNER_EMAIL ?? ""}`,
-      "",
-    ];
-    writeVaultFile(userEnvPath, lines.join("\n"));
+    ].join("\n"));
   } else {
-    try {
-      chmodSync(userEnvPath, VAULT_FILE_MODE);
-    } catch (error) {
-      logger.warn("failed to enforce vault file permissions", {
-        path: userEnvPath,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+    try { chmodSync(userEnvPath, VAULT_FILE_MODE); } catch { /* best-effort */ }
   }
 
   ensureSystemSecrets(state);
+  ensureGuardianEnv(state.vaultDir);
   ensureAuthJson(state.vaultDir);
+}
+
+/**
+ * Ensure vault/stack/guardian.env exists.
+ * Channel HMAC secrets (CHANNEL_<NAME>_SECRET) live here exclusively.
+ * This file is loaded by the guardian as an env_file and via GUARDIAN_SECRETS_PATH.
+ */
+function ensureGuardianEnv(vaultDir: string): void {
+  const guardianEnvPath = `${vaultDir}/stack/guardian.env`;
+  mkdirSync(`${vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
+  if (!existsSync(guardianEnvPath)) {
+    writeVaultFile(guardianEnvPath, [
+      "# Guardian channel HMAC secrets — managed by openpalm",
+      "# Each enabled channel gets a CHANNEL_<NAME>_SECRET entry.",
+      "",
+    ].join("\n"));
+  } else {
+    try { chmodSync(guardianEnvPath, VAULT_FILE_MODE); } catch { /* best-effort */ }
+  }
 }
 
 function ensureAuthJson(vaultDir: string): void {
@@ -186,12 +177,12 @@ export function updateSecretsEnv(
   state: ControlPlaneState,
   updates: Record<string, string>
 ): void {
-  const userEnvPath = `${state.vaultDir}/user/user.env`;
-  if (!existsSync(userEnvPath)) {
-    throw new Error("vault/user/user.env does not exist — run setup first");
+  const stackEnvPath = `${state.vaultDir}/stack/stack.env`;
+  if (!existsSync(stackEnvPath)) {
+    throw new Error("vault/stack/stack.env does not exist — run setup first");
   }
 
-  mergeVaultEnvFile(userEnvPath, updates, true);
+  mergeVaultEnvFile(stackEnvPath, updates, true);
 }
 
 export function readSystemSecretsEnvFile(vaultDir: string): Record<string, string> {
@@ -211,42 +202,31 @@ export function updateSystemSecretsEnv(
 }
 
 export function readSecretsEnvFile(vaultDir: string): Record<string, string> {
-  const parsed = parseEnvFile(`${vaultDir}/user/user.env`);
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(parsed)) {
-    if (ALLOWED_CONNECTION_KEYS.has(key)) result[key] = value;
-  }
-  return result;
+  return parseEnvFile(`${vaultDir}/stack/stack.env`);
 }
 
 export function patchSecretsEnvFile(
   vaultDir: string,
   patches: Record<string, string>
 ): void {
-  const allowed: Record<string, string> = {};
-  for (const [key, value] of Object.entries(patches)) {
-    if (ALLOWED_CONNECTION_KEYS.has(key)) {
-      allowed[key] = value;
-    }
-  }
-  if (Object.keys(allowed).length === 0) return;
+  if (Object.keys(patches).length === 0) return;
 
-  const userEnvPath = `${vaultDir}/user/user.env`;
+  const stackEnvPath = `${vaultDir}/stack/stack.env`;
   enforceVaultDirMode(vaultDir);
-  mkdirSync(`${vaultDir}/user`, { recursive: true, mode: VAULT_DIR_MODE });
+  mkdirSync(`${vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
 
   let existingContent = "";
   try {
-    if (existsSync(userEnvPath)) {
-      existingContent = readFileSync(userEnvPath, "utf-8");
+    if (existsSync(stackEnvPath)) {
+      existingContent = readFileSync(stackEnvPath, "utf-8");
     }
   } catch {
     // start fresh
   }
 
-  let result = mergeEnvContent(existingContent, allowed);
+  let result = mergeEnvContent(existingContent, patches);
   if (!result.endsWith("\n")) result += "\n";
-  writeVaultFile(userEnvPath, result);
+  writeVaultFile(stackEnvPath, result);
 }
 
 
@@ -259,7 +239,7 @@ export function maskConnectionValue(key: string, value: string): string {
 
 export function loadSecretsEnvFile(vaultDir?: string): Record<string, string> {
   const base = vaultDir ?? resolveVaultDir();
-  const parsed = parseEnvFile(`${base}/user/user.env`);
+  const parsed = parseEnvFile(`${base}/stack/stack.env`);
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed)) {
     if (/^[A-Z0-9_]+$/.test(key)) result[key] = value;

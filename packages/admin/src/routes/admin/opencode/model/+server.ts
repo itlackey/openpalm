@@ -7,7 +7,7 @@ import {
   formatCapabilityString,
   parseCapabilityString,
   readStackSpec,
-  writeManagedEnvFiles,
+  writeCapabilityVars,
 } from '@openpalm/lib';
 
 export const GET: RequestHandler = async (event) => {
@@ -55,7 +55,7 @@ export const POST: RequestHandler = async (event) => {
     // Regenerate managed env files
     const updatedSpec = readStackSpec(state.configDir);
     if (updatedSpec) {
-      writeManagedEnvFiles(updatedSpec, state.vaultDir);
+      writeCapabilityVars(updatedSpec, state.vaultDir);
     }
   } catch {
     return errorResponse(500, 'internal_error', 'Failed to persist model selection', {}, requestId);

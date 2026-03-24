@@ -23,10 +23,10 @@ import {
   readSystemSecretsEnvFile,
 } from "./secrets.js";
 import { ensureOpenCodeSystemConfig, ensureMemoryDir } from "./core-assets.js";
-import { applyInstall, createState, writeSetupTokenFile } from "./lifecycle.js";
-import { writeStackSpec, parseCapabilityString, hasAddon } from "./stack-spec.js";
+import { createState, writeSetupTokenFile } from "./lifecycle.js";
+import { writeStackSpec, hasAddon } from "./stack-spec.js";
 import type { StackSpec } from "./stack-spec.js";
-import { writeManagedEnvFiles } from "./spec-to-env.js";
+import { writeCapabilityVars } from "./spec-to-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
 export { validateSetupSpec } from "./setup-validation.js";
@@ -57,8 +57,6 @@ export type SetupSpec = {
   channelCredentials?: Record<string, Record<string, string>>;
 };
 
-const SAFE_ENV_KEY_RE = /^[A-Z][A-Z0-9_]*$/;
-
 // ── Secrets Builder ──────────────────────────────────────────────────────
 
 export function buildSecretsFromSetup(
@@ -71,11 +69,15 @@ export function buildSecretsFromSetup(
   if (ownerName) updates.OWNER_NAME = ownerName;
   if (ownerEmail) updates.OWNER_EMAIL = ownerEmail;
 
-  const connEnvVarMap = buildConnectionEnvVarMap(connections);
   for (const conn of connections) {
-    if (!conn.apiKey) continue;
-    const envVar = connEnvVarMap.get(conn.id);
-    if (envVar) updates[envVar] = conn.apiKey;
+    if (conn.apiKey) {
+      const envVar = PROVIDER_KEY_MAP[conn.provider];
+      if (envVar) updates[envVar] = conn.apiKey;
+    }
+    // Persist user-configured base URL so writeCapabilityVars can read it
+    if (conn.baseUrl && conn.provider === "openai") {
+      updates.OPENAI_BASE_URL = conn.baseUrl;
+    }
   }
   return updates;
 }
@@ -89,24 +91,6 @@ export function buildSystemSecretsFromSetup(
     OP_ASSISTANT_TOKEN: existingSystemEnv.OP_ASSISTANT_TOKEN || randomBytes(32).toString("hex"),
     OP_MEMORY_TOKEN: existingSystemEnv.OP_MEMORY_TOKEN || randomBytes(32).toString("hex"),
   };
-}
-
-export function buildConnectionEnvVarMap(connections: SetupConnection[]): Map<string, string> {
-  const result = new Map<string, string>();
-  const claimed = new Set<string>();
-
-  for (const conn of connections) {
-    let envVarName = PROVIDER_KEY_MAP[conn.provider] ?? "OPENAI_API_KEY";
-    if (claimed.has(envVarName)) envVarName = `${envVarName}_${conn.id}`;
-    const upperKey = envVarName.toUpperCase();
-    if (!SAFE_ENV_KEY_RE.test(upperKey)) {
-      logger.warn("skipping connection with unsafe env var key", { connectionId: conn.id, envVarName });
-      continue;
-    }
-    claimed.add(upperKey);
-    result.set(conn.id, upperKey);
-  }
-  return result;
 }
 
 // ── Channel Credential Env Var Mapping ───────────────────────────────────
@@ -165,7 +149,6 @@ export async function performSetup(
   const effectiveConnections = ollamaEnabled
     ? connections.map((c) => c.provider === "ollama" ? { ...c, baseUrl: OLLAMA_INSTACK_URL } : c)
     : connections;
-  const connEnvVarMap = buildConnectionEnvVarMap(effectiveConnections);
   const updates = buildSecretsFromSetup(effectiveConnections, owner);
 
   // Persist vault env files
@@ -186,50 +169,31 @@ export async function performSetup(
   state.assistantToken = readSystemSecretsEnvFile(state.vaultDir).OP_ASSISTANT_TOKEN ?? state.assistantToken;
   writeSetupTokenFile(state);
 
-  // Resolve connection details from capabilities
-  const memErr = writeMemoryAndStackConfigs(spec, effectiveConnections, connEnvVarMap, state);
-  if (memErr) return memErr;
+  // Write stack.yaml and OP_CAP_* capability vars to stack.env
+  writeMemoryAndStackConfigs(spec, state);
 
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
   ensureMemoryDir();
 
-  // Mark setup complete
-  const dataStackEnv = `${state.dataDir}/stack.env`;
-  mkdirSync(state.dataDir, { recursive: true });
-  const stackBase = existsSync(dataStackEnv) ? readFileSync(dataStackEnv, "utf-8") : "";
-  writeFileSync(dataStackEnv, mergeEnvContent(stackBase, { OP_SETUP_COMPLETE: "true" }));
-
-  await applyInstall(state);
+  // Mark setup complete in vault/stack/stack.env (where isSetupComplete reads it)
+  const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
+  const systemBase = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
+  writeFileSync(systemEnvPath, mergeEnvContent(systemBase, { OP_SETUP_COMPLETE: "true" }), { mode: 0o600 });
 
   logger.info("setup complete", { connectionCount: connections.length });
   return { ok: true };
 }
 
-/** Resolve capabilities, write stack.yaml and managed.env. Returns error result or null. */
-function writeMemoryAndStackConfigs(
-  spec: StackSpec, connections: SetupConnection[], connEnvVarMap: Map<string, string>, state: ControlPlaneState
-): SetupResult | null {
-  const { provider: llmProvider } = parseCapabilityString(spec.capabilities.llm);
+/** Write stack.yaml and OP_CAP_* capability vars to stack.env from the spec's capabilities. */
+function writeMemoryAndStackConfigs(spec: StackSpec, state: ControlPlaneState): void {
   const { provider: embProvider, model: embModel } = spec.capabilities.embeddings;
   const resolvedDims = spec.capabilities.embeddings.dims || EMBEDDING_DIMS[`${embProvider}/${embModel}`] || 1536;
-
-  const llmConn = connections.find((c) => c.provider === llmProvider);
-  if (!llmConn) return { ok: false, error: `No connection found for LLM provider "${llmProvider}"` };
-  const embConn = connections.find((c) => c.provider === embProvider);
-  if (!embConn) return { ok: false, error: `No connection found for embeddings provider "${embProvider}"` };
-
-  const llmEnvVar = connEnvVarMap.get(llmConn.id);
-  if (!llmEnvVar) return { ok: false, error: `No env var mapping found for LLM connection "${llmConn.id}"` };
-  const embEnvVar = connEnvVarMap.get(embConn.id);
-  if (!embEnvVar) return { ok: false, error: `No env var mapping found for embeddings connection "${embConn.id}"` };
 
   const specToWrite: StackSpec = {
     ...spec,
     capabilities: { ...spec.capabilities, embeddings: { ...spec.capabilities.embeddings, dims: resolvedDims } },
   };
   writeStackSpec(state.configDir, specToWrite);
-  writeManagedEnvFiles(specToWrite, state.vaultDir);
-
-  return null;
+  writeCapabilityVars(specToWrite, state.vaultDir);
 }

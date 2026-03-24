@@ -18,9 +18,9 @@ Compose files are the source of truth; the admin UI/API is optional convenience.
 3. In **Bot**, create or reset the bot token and copy it as `DISCORD_BOT_TOKEN`.
 4. Enable **Message Content Intent** under **Privileged Gateway Intents**.
 
-## 2. Add Discord secrets to `user.env`
+## 2. Add Discord secrets to `stack.env`
 
-Edit `~/.openpalm/vault/user/user.env`:
+Edit `~/.openpalm/vault/stack/stack.env`:
 
 ```dotenv
 DISCORD_BOT_TOKEN=your-bot-token
@@ -107,4 +107,4 @@ Conversation notes:
 | `DISCORD_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `DISCORD_BLOCKED_USERS` | no | Comma-separated user blocklist |
 | `DISCORD_CUSTOM_COMMANDS` | no | JSON array of custom slash commands |
-| `CHANNEL_DISCORD_SECRET` | system-managed | Guardian HMAC secret from `vault/stack/stack.env` |
+| `CHANNEL_DISCORD_SECRET` | system-managed | Guardian HMAC secret from `vault/stack/guardian.env` |

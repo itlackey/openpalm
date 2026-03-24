@@ -1,6 +1,6 @@
 /**
  * GET  /admin/connections — Return current capabilities and masked secrets.
- * POST /admin/connections — Update capabilities in stack.yaml and/or secrets in user.env.
+ * POST /admin/connections — Update capabilities in stack.yaml and/or secrets in stack.env.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -19,9 +19,8 @@ import {
   patchSecretsEnvFile,
   readStackSpec,
   writeStackSpec,
-  writeManagedEnvFiles,
+  writeCapabilityVars,
   formatCapabilityString,
-  ALLOWED_CONNECTION_KEYS,
   maskConnectionValue,
   readMemoryConfig,
   type CallerType,
@@ -30,12 +29,8 @@ import {
 import {
   PROVIDER_KEY_MAP,
   EMBEDDING_DIMS,
-  mem0BaseUrlConfig
 } from "$lib/provider-constants.js";
 import { createLogger } from "$lib/server/logger.js";
-import {
-  isWizardProviderInScope,
-} from '$lib/wizard-scope.js';
 
 const logger = createLogger("connections");
 
@@ -51,8 +46,7 @@ export const GET: RequestHandler = async (event) => {
   // Read secrets (masked)
   const raw = readSecretsEnvFile(state.vaultDir);
   const secrets: Record<string, string> = {};
-  for (const key of ALLOWED_CONNECTION_KEYS) {
-    const value = raw[key] ?? "";
+  for (const [key, value] of Object.entries(raw)) {
     secrets[key] = maskConnectionValue(key, value);
   }
 
@@ -84,7 +78,6 @@ export const POST: RequestHandler = async (event) => {
   // ── Capabilities + secrets save ─────────────────────────────────────
   const provider = typeof body.provider === "string" ? body.provider : "";
   const apiKey = typeof body.apiKey === "string" ? body.apiKey : "";
-  const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl : "";
   const systemModel = typeof body.systemModel === "string" ? body.systemModel : "";
   const embeddingModel = typeof body.embeddingModel === "string" ? body.embeddingModel : "";
   const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
@@ -95,29 +88,18 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "bad_request", "provider is required", {}, requestId);
   }
 
-  if (!isWizardProviderInScope(provider)) {
-    return errorResponse(400, 'bad_request', `Provider "${provider}" is outside setup wizard v1 scope`, {}, requestId);
-  }
-
-  // 1. Write API key to user.env (secrets only)
+  // 1. Write API key to stack.env (secrets only)
   const secretPatches: Record<string, string> = {};
   if (apiKey) {
     const envVarName = PROVIDER_KEY_MAP[provider] ?? "OPENAI_API_KEY";
     secretPatches[envVarName] = apiKey;
   }
-  if (baseUrl) {
-    const mem0Url = mem0BaseUrlConfig(provider, baseUrl);
-    if (mem0Url?.key === "openai_base_url") {
-      secretPatches.OPENAI_BASE_URL = mem0Url.value;
-    }
-  }
-
   if (Object.keys(secretPatches).length > 0) {
     try {
       patchSecretsEnvFile(state.vaultDir, secretPatches);
     } catch (err) {
       appendAudit(state, actor, "connections.save", { provider, error: String(err) }, false, requestId, callerType);
-      return errorResponse(500, "internal_error", "Failed to update vault/user/user.env", {}, requestId);
+      return errorResponse(500, "internal_error", "Failed to update vault/stack/stack.env", {}, requestId);
     }
   }
 
@@ -144,7 +126,7 @@ export const POST: RequestHandler = async (event) => {
 
   try {
     writeStackSpec(state.configDir, spec);
-    writeManagedEnvFiles(spec, state.vaultDir);
+    writeCapabilityVars(spec, state.vaultDir);
   } catch (err) {
     appendAudit(state, actor, "connections.save", { provider, error: String(err) }, false, requestId, callerType);
     return errorResponse(500, "internal_error", "Failed to update stack.yaml", {}, requestId);

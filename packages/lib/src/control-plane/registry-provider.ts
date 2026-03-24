@@ -1,8 +1,7 @@
 /**
  * RegistryProvider interface -- dependency injection for registry catalog.
  *
- * Admin implements this with Vite import.meta.glob (ViteRegistryProvider).
- * CLI/lib implements this by reading from registry/ directory (FilesystemRegistryProvider).
+ * Consumers construct inline implementations that read from the filesystem.
  */
 
 /**
@@ -15,7 +14,6 @@ export interface RegistryComponentEntry {
 
 /**
  * Abstraction for accessing the registry catalog.
- * Two implementations: FilesystemRegistryProvider (CLI) and ViteRegistryProvider (admin).
  */
 export interface RegistryProvider {
   /** All available component definitions, keyed by component ID. */

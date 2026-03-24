@@ -2,7 +2,7 @@
 
 This document covers day-to-day administration: configuration, channels, secrets,
 access control, and extensions. For architecture rationale see
-[core-principles.md](./technical/core-principles.md).
+[core-principles.md](./technical/authoritative/core-principles.md).
 
 ---
 
@@ -37,7 +37,7 @@ under `~/.openpalm/stack/`.
 │
 ├── vault/
 │   ├── user/
-│   │   └── user.env                  # User-managed secrets: LLM provider keys
+│   │   └── user.env                  # Optional user extension env
 │   └── stack/
 │       └── stack.env                 # System-managed secrets: admin token, HMAC keys, ports
 │
@@ -67,12 +67,12 @@ under `~/.openpalm/stack/`.
 
 Secrets are split into two files under `~/.openpalm/vault/`:
 
-- **`user/user.env`** -- User-managed secrets: LLM provider API keys and user-supplied integration credentials. Editable directly or via the admin UI/API.
-- **`stack/stack.env`** -- System-managed secrets: admin token, HMAC keys, bind addresses, and infrastructure vars. Generated and maintained by the admin.
+- **`user/user.env`** -- Optional user-extension env file for custom values.
+- **`stack/stack.env`** -- System-managed runtime env and secrets: admin/assistant/memory auth tokens, provider API keys, capability vars, ports, and other infrastructure values.
 
 ```env
-# ~/.openpalm/vault/user/user.env
-# LLM provider keys (assistant uses these — at least one required)
+# ~/.openpalm/vault/stack/stack.env
+# LLM provider keys and capability values
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 GROQ_API_KEY=gsk_...
@@ -91,7 +91,7 @@ consume the changed values. The standard wrapper includes both
 
 LLM provider keys and related connection settings can also be managed via the
 Connections API or the Connections settings page in the admin UI -- no manual
-file editing required. The API patches `vault/user/user.env` in-place, preserving all
+file editing required. The API patches `vault/stack/stack.env` in-place, preserving all
 other keys.
 
 ```bash
@@ -103,7 +103,7 @@ curl http://localhost:3880/admin/connections \
 curl -X POST http://localhost:3880/admin/connections \
   -H "x-admin-token: $OP_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"OPENAI_API_KEY": "sk-..."}'
+  -d '{"provider":"openai","apiKey":"sk-...","systemModel":"gpt-4o","embeddingModel":"text-embedding-3-small","embeddingDims":1536,"memoryUserId":"default_user"}'
 
 # Check whether stack.yaml has non-empty LLM and embedding assignments
 curl http://localhost:3880/admin/connections/status \
@@ -122,19 +122,18 @@ Current shipped network model:
 - guardian bridges addon ingress to `assistant_net`
 - public exposure only happens when an overlay intentionally joins `channel_public` or changes its host bind policy
 
-### Install an addon from the registry
+### Enable/disable an addon
 
-Available addons can be installed via the admin API:
+Addons are managed via `/admin/addons` routes. Example:
 
 ```bash
-curl -X POST http://localhost:3880/admin/registry/install \
+curl -X POST http://localhost:3880/admin/addons/chat \
   -H "x-admin-token: $OP_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name":"chat","type":"channel"}'
+  -d '{"enabled":true}'
 ```
 
-This copies the addon files from the registry to `~/.openpalm/stack/addons/`,
-generates an HMAC secret, and starts the service.
+This updates `config/stack.yaml` and writes capability/env changes used by the compose flow.
 
 ### Add an addon manually
 
@@ -328,11 +327,11 @@ All ports are `127.0.0.1`-bound by default.
 ## Common Tasks
 
 **Change an LLM API key:**
-1. Edit `~/.openpalm/vault/user/user.env`
+1. Edit `~/.openpalm/vault/stack/stack.env`
 2. Restart the services that use it, such as `assistant`: `docker compose restart assistant`
 
 **Add a new LLM provider:**
-1. Add the API key to `~/.openpalm/vault/user/user.env`
+1. Add the API key to `~/.openpalm/vault/stack/stack.env`
 2. Edit `~/.openpalm/config/assistant/opencode.json` to configure the provider
 3. Restart assistant: `docker compose restart assistant`
 

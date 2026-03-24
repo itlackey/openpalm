@@ -31,6 +31,11 @@ if [[ ! -f "$OP_HOME/vault/stack/stack.env" ]]; then
 	chmod 600 "$OP_HOME/vault/stack/stack.env"
 fi
 
+if [[ ! -f "$OP_HOME/vault/stack/guardian.env" ]]; then
+	touch "$OP_HOME/vault/stack/guardian.env"
+	chmod 600 "$OP_HOME/vault/stack/guardian.env"
+fi
+
 # Seed core compose into stack/ (source of truth for compose)
 if [[ ! -f "$OP_HOME/stack/core.compose.yml" ]]; then
 	cp "$INSTALL_HOME/.openpalm/stack/core.compose.yml" "$OP_HOME/stack/core.compose.yml"
@@ -45,4 +50,5 @@ docker compose \
 	--project-name openpalm \
 	--env-file "$OP_HOME/vault/stack/stack.env" \
 	--env-file "$OP_HOME/vault/user/user.env" \
+	--env-file "$OP_HOME/vault/stack/guardian.env" \
 	-f "$OP_HOME/stack/core.compose.yml" up -d

@@ -69,36 +69,6 @@ export const PROVIDER_LABELS: Record<string, string> = {
   huggingface: "Hugging Face",
 };
 
-/**
- * Map provider name → memory-package-compatible provider name.
- * The memory package (@openpalm/memory) has native adapters for openai,
- * ollama, and lmstudio. model-runner speaks OpenAI protocol so it maps
- * to "openai". Ollama has its own adapter. LM Studio has its own adapter
- * that avoids response_format (which LM Studio doesn't reliably support).
- */
-export function mem0ProviderName(provider: string): string {
-  if (provider === "model-runner") return "openai";
-  if (provider === "ollama") return "ollama";
-  if (provider === "lmstudio") return "lmstudio";
-  return provider;
-}
-
-/**
- * Map provider/base URL input to the mem0 config key/value pair.
- * All local providers (Ollama, Model Runner, LM Studio) use the OpenAI-compatible
- * endpoint, so we always set openai_base_url with a /v1 suffix.
- */
-export function mem0BaseUrlConfig(
-  _provider: string,
-  baseUrl: string
-): { key: "openai_base_url"; value: string } | null {
-  const trimmed = baseUrl.trim();
-  if (!trimmed) return null;
-
-  const normalized = trimmed.replace(/\/+$/, "").replace(/\/v1$/, "");
-  return { key: "openai_base_url", value: `${normalized}/v1` };
-}
-
 /** Default models to pull when enabling Ollama from the wizard. */
 export const OLLAMA_DEFAULT_MODELS = {
   chat: "llama3.2:latest",

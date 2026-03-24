@@ -16,6 +16,7 @@ import {
   fetchProviderModels,
   resolveConfigDir,
   resolveVaultDir,
+  createOpenCodeClient,
 } from "@openpalm/lib";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -98,9 +99,11 @@ export function createSetupServer(
   port: number = 8100,
   opts?: {
     configDir?: string;
+    openCodeClient?: ReturnType<typeof createOpenCodeClient>;
   }
 ): SetupServer {
   const configDir = opts?.configDir ?? resolveConfigDir();
+  const ocClient = opts?.openCodeClient ?? null;
 
   // Mutable server state
   const state: SetupServerState = {
@@ -243,6 +246,41 @@ export function createSetupServer(
       });
     }
 
+    // ── API: OpenCode Status ────────────────────────────────────────
+
+    if (method === "GET" && path === "/api/setup/opencode/status") {
+      if (!ocClient) return jsonResponse(200, { ok: true, available: false });
+      const available = await ocClient.isAvailable();
+      return jsonResponse(200, { ok: true, available });
+    }
+
+    // ── API: OpenCode Providers (merged providers + auth) ────────────
+
+    if (method === "GET" && path === "/api/setup/opencode/providers") {
+      if (!ocClient) return jsonResponse(200, { ok: true, available: false, providers: [] });
+      const [providers, auth] = await Promise.all([
+        ocClient.getProviders(),
+        ocClient.getProviderAuth(),
+      ]);
+      return jsonResponse(200, { ok: true, available: true, providers, auth });
+    }
+
+    // ── API: OpenCode Proxy (all other /api/setup/opencode/* paths) ──
+    // Strips /api/setup/opencode prefix and forwards to the OpenCode subprocess.
+
+    if (path.startsWith("/api/setup/opencode/") && path !== "/api/setup/opencode/status" && path !== "/api/setup/opencode/providers") {
+      if (!ocClient) return errorResponse(503, "opencode_unavailable", "OpenCode not available");
+      const ocPath = path.replace("/api/setup/opencode", "");
+      const proxyOpts: RequestInit = { method };
+      if (method !== "GET" && method !== "HEAD") {
+        try { proxyOpts.body = await req.text(); } catch { /* empty body */ }
+        proxyOpts.headers = { "Content-Type": req.headers.get("Content-Type") || "application/json" };
+      }
+      const result = await ocClient.proxy(ocPath, proxyOpts);
+      if (!result.ok) return jsonResponse(result.status, { ok: false, error: result.code, message: result.message });
+      return jsonResponse(200, result.data);
+    }
+
     // ── 404 ──────────────────────────────────────────────────────────
 
     return errorResponse(404, "not_found", `Route not found: ${method} ${path}`);
@@ -278,7 +316,19 @@ export function createSetupServer(
 
 // ── Static Assets (wizard UI from task 2.1) ─────────────────────────────
 // Embedded at build time via Bun text imports from sibling files.
+// The wizard JS is split into four files for maintainability, then
+// concatenated into a single IIFE at import time.
 
 import WIZARD_HTML from "./index.html" with { type: "text" };
-import WIZARD_JS from "./wizard.js" with { type: "text" };
+import WIZARD_STATE_JS from "./wizard-state.js" with { type: "text" };
+import WIZARD_VALIDATORS_JS from "./wizard-validators.js" with { type: "text" };
+import WIZARD_RENDERERS_JS from "./wizard-renderers.js" with { type: "text" };
+import WIZARD_ENTRY_JS from "./wizard.js" with { type: "text" };
 import WIZARD_CSS from "./wizard.css" with { type: "text" };
+
+const WIZARD_JS = `(function(){"use strict";
+${WIZARD_STATE_JS}
+${WIZARD_VALIDATORS_JS}
+${WIZARD_RENDERERS_JS}
+${WIZARD_ENTRY_JS}
+})();`;

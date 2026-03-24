@@ -29,7 +29,7 @@ The memory API is exposed on `http://localhost:3898` by default and listens on c
 - Raw transcripts when inference mode extracts facts instead
 - Model weights
 
-Secrets such as `OPENAI_API_KEY` live in `~/.openpalm/vault/user/user.env`.
+Secrets such as `OPENAI_API_KEY` live in `~/.openpalm/vault/stack/stack.env`.
 Service auth such as `OP_MEMORY_TOKEN` lives in `~/.openpalm/vault/stack/stack.env` (exposed to the container as `MEMORY_AUTH_TOKEN`).
 
 ## External service calls
@@ -56,9 +56,6 @@ curl -X POST http://localhost:3898/api/v2/memories/search \
   -H "Authorization: Bearer $MEMORY_AUTH_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"user_id":"default_user","query":"programming preferences"}'
-
-curl http://localhost:3898/api/v1/config/ \
-  -H "Authorization: Bearer $MEMORY_AUTH_TOKEN"
 ```
 
 The assistant can also access memory through its built-in memory tools.

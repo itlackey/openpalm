@@ -181,7 +181,6 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
   min-height: 0;
 }
 
@@ -236,6 +235,10 @@ body {
   display: flex;
   flex-direction: column;
   flex: 1;
+  /* Make step-content the scroll container so sticky step-actions works.
+     wizard-body provides the flex layout; step-content scrolls internally. */
+  overflow-y: auto;
+  min-height: 0;
   animation: fadeIn 0.25s ease;
 }
 

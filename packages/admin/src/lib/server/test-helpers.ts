@@ -18,8 +18,8 @@ export function makeTempDir(): string {
 }
 
 export function seedSecretsEnv(vaultDir: string, content: string): void {
-  mkdirSync(join(vaultDir, "user"), { recursive: true });
-  writeFileSync(join(vaultDir, "user", "user.env"), content);
+  mkdirSync(join(vaultDir, "stack"), { recursive: true });
+  writeFileSync(join(vaultDir, "stack", "stack.env"), content);
 }
 
 export function makeTestState(overrides: Partial<ControlPlaneState> = {}): ControlPlaneState {

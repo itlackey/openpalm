@@ -17,17 +17,26 @@ import {
   appendAudit,
   readStackSpec,
   writeStackSpec,
-  writeManagedEnvFiles,
-  writeSystemEnv,
+  writeCapabilityVars,
+  writeChannelSecrets,
   hasAddon,
   isChannelAddon,
   randomHex,
   type StackSpecAddonValue,
 } from "@openpalm/lib";
-import { viteRegistry } from "$lib/server/vite-registry-provider.js";
 import { composeDown, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
-import { buildComposeFileList, buildEnvFiles } from "@openpalm/lib";
+import { buildComposeOptions } from "@openpalm/lib";
+import { existsSync, readdirSync } from "node:fs";
+
+/** List addon IDs by scanning the stack/addons/ directory on disk. */
+function listAddonIds(homeDir: string): string[] {
+  const addonsDir = `${homeDir}/stack/addons`;
+  if (!existsSync(addonsDir)) return [];
+  return readdirSync(addonsDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name);
+}
 
 const logger = createLogger("addons.name");
 
@@ -49,7 +58,7 @@ export const GET: RequestHandler = async (event) => {
   const name = event.params.name;
 
   // Validate name is a known addon
-  const availableIds = viteRegistry.componentIds();
+  const availableIds = listAddonIds(state.homeDir);
   if (!availableIds.includes(name)) {
     return errorResponse(404, "not_found", `Addon "${name}" is not available`, { name }, requestId);
   }
@@ -73,7 +82,7 @@ export const POST: RequestHandler = async (event) => {
   const name = event.params.name;
 
   // Validate name is a known addon
-  const availableIds = viteRegistry.componentIds();
+  const availableIds = listAddonIds(state.homeDir);
   if (!availableIds.includes(name)) {
     return errorResponse(404, "not_found", `Addon "${name}" is not available`, { name }, requestId);
   }
@@ -113,7 +122,7 @@ export const POST: RequestHandler = async (event) => {
 
   try {
     writeStackSpec(state.configDir, spec);
-    writeManagedEnvFiles(spec, state.vaultDir);
+    writeCapabilityVars(spec, state.vaultDir);
   } catch (err) {
     appendAudit(state, actor, "addons.name.post", { name, error: String(err) }, false, requestId, callerType);
     return errorResponse(500, "internal_error", "Failed to update stack.yaml", {}, requestId);
@@ -124,7 +133,7 @@ export const POST: RequestHandler = async (event) => {
     const composePath = `${state.homeDir}/stack/addons/${name}/compose.yml`;
     if (isChannelAddon(composePath)) {
       try {
-        writeSystemEnv(state, { [name]: randomHex(16) });
+        writeChannelSecrets(state.vaultDir, { [name]: randomHex(16) });
         logger.info("generated HMAC secret for channel addon", { name, requestId });
       } catch (err) {
         logger.warn("failed to generate HMAC secret for channel addon", { name, error: String(err), requestId });
@@ -137,7 +146,7 @@ export const POST: RequestHandler = async (event) => {
     const dockerCheck = await checkDocker();
     if (dockerCheck.ok) {
       try {
-        await composeDown({ files: buildComposeFileList(state), envFiles: buildEnvFiles(state) });
+        await composeDown(buildComposeOptions(state));
         logger.info("compose down after addon disable", { name, requestId });
       } catch (err) {
         logger.warn("compose down failed after addon disable", { name, error: String(err), requestId });

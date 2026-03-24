@@ -11,7 +11,6 @@ import {
   writeMemoryConfig,
   ensureMemoryConfig,
   resolveApiKey,
-  resolveConfigForPush,
   fetchProviderModels,
   checkVectorDimensions,
   resetVectorStore,
@@ -440,86 +439,6 @@ describe("fetchProviderModels", () => {
     const callArgs = mockFetch.mock.calls[0];
     const headers = (callArgs[1] as RequestInit).headers as Record<string, string>;
     expect(headers["Authorization"]).toBeUndefined();
-  });
-});
-
-// ── resolveConfigForPush ──────────────────────────────────────────────
-
-describe("resolveConfigForPush", () => {
-  const originalEnv = { ...process.env };
-
-  afterEach(() => {
-    for (const key of Object.keys(process.env)) {
-      if (!(key in originalEnv)) delete process.env[key];
-    }
-    Object.assign(process.env, originalEnv);
-  });
-
-  test("resolves env: references in llm api_key", () => {
-    const configDir = trackDir(makeTempDir());
-    process.env.OPENAI_API_KEY = "sk-resolved-key";
-
-    const config = getDefaultConfig();
-    config.mem0.llm.config.api_key = "env:OPENAI_API_KEY";
-
-    const resolved = resolveConfigForPush(config, configDir);
-    expect(resolved.mem0.llm.config.api_key).toBe("sk-resolved-key");
-  });
-
-  test("resolves env: references in embedder api_key", () => {
-    const configDir = trackDir(makeTempDir());
-    process.env.OPENAI_API_KEY = "sk-embed-key";
-
-    const config = getDefaultConfig();
-    config.mem0.embedder.config.api_key = "env:OPENAI_API_KEY";
-
-    const resolved = resolveConfigForPush(config, configDir);
-    expect(resolved.mem0.embedder.config.api_key).toBe("sk-embed-key");
-  });
-
-  test("passes through raw API keys unchanged", () => {
-    const configDir = trackDir(makeTempDir());
-
-    const config = getDefaultConfig();
-    config.mem0.llm.config.api_key = "sk-raw-key-12345";
-
-    const resolved = resolveConfigForPush(config, configDir);
-    expect(resolved.mem0.llm.config.api_key).toBe("sk-raw-key-12345");
-  });
-
-  test("does not mutate the original config", () => {
-    const configDir = trackDir(makeTempDir());
-    process.env.OPENAI_API_KEY = "resolved";
-
-    const config = getDefaultConfig();
-    const originalApiKey = config.mem0.llm.config.api_key;
-
-    resolveConfigForPush(config, configDir);
-    expect(config.mem0.llm.config.api_key).toBe(originalApiKey);
-  });
-
-  test("falls back to secrets.env for env: refs not in process.env", () => {
-    const configDir = trackDir(makeTempDir());
-    delete process.env.MY_CUSTOM_KEY;
-    seedSecretsEnv(configDir, "MY_CUSTOM_KEY=from-secrets\n");
-
-    const config = getDefaultConfig();
-    config.mem0.llm.config.api_key = "env:MY_CUSTOM_KEY";
-
-    const resolved = resolveConfigForPush(config, configDir);
-    expect(resolved.mem0.llm.config.api_key).toBe("from-secrets");
-  });
-
-  test("handles config without api_key fields", () => {
-    const configDir = trackDir(makeTempDir());
-
-    const config = getDefaultConfig();
-    delete (config.mem0.llm.config as Record<string, unknown>).api_key;
-    delete (config.mem0.embedder.config as Record<string, unknown>).api_key;
-
-    const resolved = resolveConfigForPush(config, configDir);
-    expect(resolved.mem0.llm.config.api_key).toBeUndefined();
-    expect(resolved.mem0.embedder.config.api_key).toBeUndefined();
   });
 });
 

@@ -16,8 +16,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parse as yamlParse } from "yaml";
-
 import { parseEnvContent, parseEnvFile, mergeEnvContent } from "./env.js";
 import { ensureSecrets, loadSecretsEnvFile } from "./secrets.js";
 import { isSetupComplete } from "./setup-status.js";
@@ -25,7 +23,6 @@ import {
   performSetup,
   buildSecretsFromSetup,
   buildSystemSecretsFromSetup,
-  buildConnectionEnvVarMap,
 } from "./setup.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
 import type { ControlPlaneState } from "./types.js";
@@ -147,26 +144,30 @@ function seedMinimalEnvFiles(): void {
   writeFileSync(
     join(vaultDir, "user", "user.env"),
     [
-      "# OpenPalm Secrets",
-      "export OP_ADMIN_TOKEN=",
-      "export ADMIN_TOKEN=",
-      "export OPENAI_API_KEY=",
-      "export OPENAI_BASE_URL=",
-      "export ANTHROPIC_API_KEY=",
-      "export GROQ_API_KEY=",
-      "export MISTRAL_API_KEY=",
-      "export GOOGLE_API_KEY=",
-      "export MEMORY_USER_ID=default_user",
-      "export OP_MEMORY_TOKEN=abc123",
-      "export OWNER_NAME=",
-      "export OWNER_EMAIL=",
+      "# OpenPalm — User Extensions",
+      "# Add any custom environment variables here.",
+      "# These are loaded by compose alongside stack.env.",
       "",
     ].join("\n")
   );
 
   writeFileSync(
     join(vaultDir, "stack", "stack.env"),
-    "# OpenPalm System Configuration\n"
+    [
+      "# OpenPalm — Stack Configuration",
+      "OP_ADMIN_TOKEN=",
+      "OP_ASSISTANT_TOKEN=",
+      "OP_MEMORY_TOKEN=",
+      "OPENAI_API_KEY=",
+      "OPENAI_BASE_URL=",
+      "ANTHROPIC_API_KEY=",
+      "GROQ_API_KEY=",
+      "MISTRAL_API_KEY=",
+      "GOOGLE_API_KEY=",
+      "OWNER_NAME=",
+      "OWNER_EMAIL=",
+      "",
+    ].join("\n")
   );
 }
 
@@ -187,10 +188,11 @@ describe("Fresh Install", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  // Scenario 1: ensureSecrets creates user.env with all required keys
-  it("ensureSecrets creates user.env with required keys when file does not exist", () => {
+  // Scenario 1: ensureSecrets creates user.env as placeholder and stack.env with required keys
+  it("ensureSecrets creates user.env as placeholder and stack.env with required keys when files do not exist", () => {
     const state: ControlPlaneState = {
       adminToken: "",
+      assistantToken: "",
       setupToken: "",
       homeDir,
       configDir,
@@ -209,9 +211,14 @@ describe("Fresh Install", () => {
 
     ensureSecrets(state);
 
-    const content = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
-    expect(content).toContain("OPENAI_API_KEY=");
-    expect(content).toContain("OWNER_NAME=");
+    // user.env is now a minimal placeholder
+    const userContent = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    expect(userContent).toContain("User Extensions");
+
+    // API keys and owner info are seeded in stack.env
+    const stackContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    expect(stackContent).toContain("OPENAI_API_KEY=");
+    expect(stackContent).toContain("OWNER_NAME=");
   });
 
   // Scenario 2: isSetupComplete returns false before setup
@@ -239,13 +246,13 @@ describe("Fresh Install", () => {
     expect(result.ok).toBe(true);
   });
 
-  // Scenario 4: performSetup marks setup complete in data/stack.env
-  it("performSetup marks OP_SETUP_COMPLETE=true in data stack.env", async () => {
+  // Scenario 4: performSetup marks setup complete in vault/stack/stack.env
+  it("performSetup marks OP_SETUP_COMPLETE=true in vault stack.env", async () => {
     seedMinimalEnvFiles();
 
     await performSetup(makeValidSpec());
 
-    const stackEnv = readFileSync(join(dataDir, "stack.env"), "utf-8");
+    const stackEnv = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     const parsed = parseEnvContent(stackEnv);
     expect(parsed.OP_SETUP_COMPLETE).toBe("true");
   });
@@ -276,6 +283,7 @@ describe("Existing Install", () => {
 
     const state: ControlPlaneState = {
       adminToken: "",
+      assistantToken: "",
       setupToken: "",
       homeDir,
       configDir,
@@ -301,7 +309,7 @@ describe("Existing Install", () => {
     await performSetup(makeValidSpec());
 
     const secretsAfterFirst = readFileSync(
-      join(vaultDir, "user", "user.env"),
+      join(vaultDir, "stack", "stack.env"),
       "utf-8"
     );
     const firstMatch = secretsAfterFirst.match(
@@ -326,23 +334,23 @@ describe("Existing Install", () => {
     );
 
     const secretsAfterSecond = readFileSync(
-      join(vaultDir, "user", "user.env"),
+      join(vaultDir, "stack", "stack.env"),
       "utf-8"
     );
     const secondMatch = secretsAfterSecond.match(
       /OP_MEMORY_TOKEN=([a-f0-9]+)/
     );
     expect(secondMatch).not.toBeNull();
-    // OP_MEMORY_TOKEN should be preserved (buildSecretsFromSetup does not overwrite it)
+    // OP_MEMORY_TOKEN should be preserved (buildSystemSecretsFromSetup does not overwrite it)
     expect(secondMatch![1]).toBe(firstToken);
   });
 
-  // Scenario 7: performSetup marks OP_SETUP_COMPLETE=true in dataDir/stack.env
-  it("performSetup marks OP_SETUP_COMPLETE=true in data stack.env", async () => {
+  // Scenario 7: performSetup marks OP_SETUP_COMPLETE=true in vault/stack/stack.env
+  it("performSetup marks OP_SETUP_COMPLETE=true in vault stack.env", async () => {
     await performSetup(makeValidSpec());
 
     const stackEnv = readFileSync(
-      join(dataDir, "stack.env"),
+      join(vaultDir, "stack", "stack.env"),
       "utf-8"
     );
     const parsed = parseEnvContent(stackEnv);
@@ -393,8 +401,8 @@ describe("Existing Install", () => {
     expect(specAfterSecond).not.toBeNull();
     expect(specAfterSecond!.capabilities.llm).toBe("groq/llama3-70b-8192");
 
-    // user.env should retain both keys
-    const secrets = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    // stack.env should retain both keys
+    const secrets = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     expect(secrets).toContain("GROQ_API_KEY");
   });
 });
@@ -421,6 +429,7 @@ describe("Broken/Corrupt State", () => {
 
     const state: ControlPlaneState = {
       adminToken: "",
+      assistantToken: "",
       setupToken: "",
       homeDir,
       configDir,
@@ -667,36 +676,28 @@ describe("Setup Input Variations", () => {
     expect(spec!.addons.ollama).toBe(true);
   });
 
-  // Scenario 21: Multiple providers each get own env var key
-  it("multiple providers each get their own env var key (no collision)", () => {
+  // Scenario 21: Multiple providers map to correct env vars
+  it("multiple providers each write their API key to the correct env var", () => {
     const connections: SetupConnection[] = [
-      {
-        id: "openai-1",
-        name: "OpenAI",
-        provider: "openai",
-        baseUrl: "",
-        apiKey: "sk-openai",
-      },
-      {
-        id: "groq-1",
-        name: "Groq",
-        provider: "groq",
-        baseUrl: "",
-        apiKey: "gsk-groq",
-      },
-      {
-        id: "anthropic-1",
-        name: "Anthropic",
-        provider: "anthropic",
-        baseUrl: "",
-        apiKey: "sk-ant-api03",
-      },
+      { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-openai" },
+      { id: "groq-1", name: "Groq", provider: "groq", baseUrl: "", apiKey: "gsk-groq" },
+      { id: "anthropic-1", name: "Anthropic", provider: "anthropic", baseUrl: "", apiKey: "sk-ant-api03" },
     ];
+    const secrets = buildSecretsFromSetup(connections);
+    expect(secrets.OPENAI_API_KEY).toBe("sk-openai");
+    expect(secrets.GROQ_API_KEY).toBe("gsk-groq");
+    expect(secrets.ANTHROPIC_API_KEY).toBe("sk-ant-api03");
+  });
 
-    const map = buildConnectionEnvVarMap(connections);
-    expect(map.get("openai-1")).toBe("OPENAI_API_KEY");
-    expect(map.get("groq-1")).toBe("GROQ_API_KEY");
-    expect(map.get("anthropic-1")).toBe("ANTHROPIC_API_KEY");
+  // Scenario 21b: OAuth providers (no API key) are silently skipped
+  it("skips connections without API keys (OAuth providers)", () => {
+    const connections: SetupConnection[] = [
+      { id: "github-copilot", name: "GitHub Copilot", provider: "github-copilot", baseUrl: "", apiKey: "" },
+      { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-test" },
+    ];
+    const secrets = buildSecretsFromSetup(connections);
+    expect(secrets.OPENAI_API_KEY).toBe("sk-test");
+    expect(Object.keys(secrets)).not.toContain("GITHUB_COPILOT_API_KEY");
   });
 
   // Scenario 22: buildSecretsFromSetup only writes API keys and owner info
@@ -740,7 +741,7 @@ describe("performSetup end-to-end artifacts", () => {
     expect(spec!.capabilities.embeddings.model).toBe("text-embedding-3-small");
   });
 
-  it("writes managed.env with correct embedding dims from lookup", async () => {
+  it("writes OP_CAP_EMBEDDINGS_DIMS with correct embedding dims from lookup", async () => {
     const input = makeValidSpec({
       spec: {
         version: 2,
@@ -771,10 +772,9 @@ describe("performSetup end-to-end artifacts", () => {
 
     await performSetup(input);
 
-    // nomic-embed-text is 768 dims per EMBEDDING_DIMS constant — verify via managed.env
-    const managedEnvPath = join(vaultDir, "stack", "services", "memory", "managed.env");
-    const content = readFileSync(managedEnvPath, "utf-8");
-    expect(content).toContain("EMBEDDING_DIMS=768");
+    // nomic-embed-text is 768 dims per EMBEDDING_DIMS constant — verify via stack.env
+    const stackEnvContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_DIMS=768");
   });
 
   it("writes core.compose.yml to stack/", async () => {
@@ -794,15 +794,13 @@ describe("performSetup end-to-end artifacts", () => {
     expect(secrets.OP_ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
   });
 
-  it("writes managed.env files from capabilities", async () => {
+  it("writes OP_CAP_* vars from capabilities to stack.env", async () => {
     await performSetup(makeValidSpec());
 
-    const managedEnvPath = join(vaultDir, "stack", "services", "memory", "managed.env");
-    expect(existsSync(managedEnvPath)).toBe(true);
-    const managedEnv = parseEnvFile(managedEnvPath);
-    expect(managedEnv.SYSTEM_LLM_PROVIDER).toBe("openai");
-    expect(managedEnv.SYSTEM_LLM_MODEL).toBe("gpt-4o");
-    expect(managedEnv.EMBEDDING_MODEL).toBe("text-embedding-3-small");
+    const stackEnv = parseEnvFile(join(vaultDir, "stack", "stack.env"));
+    expect(stackEnv.OP_CAP_LLM_PROVIDER).toBe("openai");
+    expect(stackEnv.OP_CAP_LLM_MODEL).toBe("gpt-4o");
+    expect(stackEnv.OP_CAP_EMBEDDINGS_MODEL).toBe("text-embedding-3-small");
   });
 });
 

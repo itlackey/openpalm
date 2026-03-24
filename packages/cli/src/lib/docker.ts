@@ -138,6 +138,10 @@ export async function runDockerComposeCapture(args: string[]): Promise<string> {
  *
  * Also seeds assistant config files from core/assistant/opencode/.
  */
+/**
+ * Download latest assets from GitHub. Optional — embedded assets in lib
+ * provide the baseline. This upgrades to the latest release versions.
+ */
 export async function seedOpenPalmDir(
   repoRef: string,
   homeDir: string,
@@ -156,7 +160,6 @@ export async function seedOpenPalmDir(
     if (!res.ok) throw new Error(`Failed to download tarball (HTTP ${res.status})`);
     await Bun.write(tmpTar, res);
 
-    // Extract just .openpalm/ and core/assistant/opencode/ from the tarball
     const extractProc = Bun.spawn(
       ['tar', 'xzf', tmpTar, '--strip-components=1', '--wildcards',
         '*/.openpalm/*', '*/core/assistant/opencode/*'],
@@ -164,26 +167,22 @@ export async function seedOpenPalmDir(
     );
     await extractProc.exited;
 
-    // Seed stack/ → homeDir/stack/ (always overwrite — system-managed)
     const srcStack = join(tmpDir, '.openpalm', 'stack');
-    if (await Bun.file(join(srcStack, 'core.compose.yml')).exists()) {
-      await copyTree(srcStack, join(homeDir, 'stack'));
+    if (!await Bun.file(join(srcStack, 'core.compose.yml')).exists()) {
+      throw new Error('core.compose.yml not found in downloaded assets');
     }
+    await copyTree(srcStack, join(homeDir, 'stack'));
 
-    // Seed config/automations/ → configDir/automations/ (only missing files)
-    // Don't seed stack.yaml or other root config templates — the wizard creates those.
     const srcAutomations = join(tmpDir, '.openpalm', 'config', 'automations');
     if (await dirExists(srcAutomations)) {
       await copyTree(srcAutomations, join(configDir, 'automations'), { skipExisting: true });
     }
 
-    // Seed vault schemas → vaultDir (only .schema files)
     const srcVault = join(tmpDir, '.openpalm', 'vault');
     if (await dirExists(srcVault)) {
       await copyTree(srcVault, vaultDir, { onlyPattern: /\.schema$/ });
     }
 
-    // Seed assistant config
     const srcAssistant = join(tmpDir, 'core', 'assistant', 'opencode');
     if (await dirExists(srcAssistant)) {
       await copyTree(srcAssistant, join(dataDir, 'assistant'));

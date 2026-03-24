@@ -15,7 +15,7 @@ Repo layout convention:
 | [setup-guide.md](setup-guide.md) | Installation, updating, troubleshooting |
 | [setup-walkthrough.md](setup-walkthrough.md) | Visual walkthrough of every setup wizard screen |
 | [troubleshooting.md](troubleshooting.md) | Top 10 common problems and solutions |
-| [manual-setup.md](manual-setup.md) | Step-by-step manual host configuration (no scripts) |
+| [manual-setup.md](technical/manual-setup.md) | Step-by-step manual host configuration (no scripts) |
 | [how-it-works.md](how-it-works.md) | Architecture overview and data flow |
 | [managing-openpalm.md](managing-openpalm.md) | Configuration, channels, secrets, access control, automations |
 | [discord-setup.md](discord-setup.md) | Discord bot setup — create app, install channel, invite bot |

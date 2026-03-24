@@ -220,7 +220,48 @@ describe("guardrail: no secrets.env references", () => {
   });
 });
 
-// ── Guardrail 8: component/instance system removed ──────────────────
+// ── Guardrail 8: .openpalm/stack/start.sh does not exist ─────────────
+
+describe("guardrail: .openpalm/stack/start.sh is absent", () => {
+  test(".openpalm/stack/start.sh does not exist in repo", () => {
+    // start.sh was deleted as part of P1-5 (0.10.0 cleanup).
+    // All compose orchestration goes through @openpalm/lib backed CLI/admin paths.
+    // This test prevents accidental reintroduction.
+    const repoRoot = join(import.meta.dir, "../../../../..");
+    const legacyScript = join(repoRoot, ".openpalm/stack/start.sh");
+    let exists = false;
+    try {
+      readFileSync(legacyScript);
+      exists = true;
+    } catch {
+      // expected: file does not exist
+    }
+    expect(exists).toBe(false);
+  });
+
+  test("control-plane source files do not reference .openpalm/stack/start.sh", () => {
+    const files = readSourceFiles();
+    const violations: string[] = [];
+
+    for (const { path, content } of files) {
+      const filename = path.split("/").pop()!;
+      if (filename === "cleanup-guardrails.test.ts") continue;
+
+      const lines = content.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.trim().startsWith("//") || line.trim().startsWith("*")) continue;
+        if (line.includes(".openpalm/stack/start.sh") || line.includes("openpalm/stack/start.sh")) {
+          violations.push(`${filename}:${i + 1}: ${line.trim()}`);
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+});
+
+// ── Guardrail 9: component/instance system removed ──────────────────
 
 describe("guardrail: component/instance system removed", () => {
   test("components.ts no longer exists", () => {

@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../..');
-const STACK_ENV_PATH = resolve(REPO_ROOT, '.dev/vault/stack/stack.env');
+const GUARDIAN_ENV_PATH = resolve(REPO_ROOT, '.dev/vault/stack/guardian.env');
 
 /**
  * Guardian URL: In dev mode, guardian is published directly on OP_GUARDIAN_PORT
@@ -62,32 +62,32 @@ function makePayload(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-// ── Stack.env secret management ─────────────────────────────────────────
+// ── Guardian.env secret management ──────────────────────────────────────
 
-let originalStackEnv: string | null = null;
+let originalGuardianEnv: string | null = null;
 
 /**
- * Seeds CHANNEL_E2ETEST_SECRET into stack.env so the guardian can verify
+ * Seeds CHANNEL_E2ETEST_SECRET into guardian.env so the guardian can verify
  * our test messages. The guardian re-reads the file on each request
  * (via GUARDIAN_SECRETS_PATH), so no container restart is needed.
  *
  * IMPORTANT: Uses appendFileSync (not writeFileSync) to preserve the
  * same inode. Docker bind mounts track the inode — if the admin container
- * did an atomic write (temp+rename) to stack.env, a writeFileSync here
+ * did an atomic write (temp+rename) to guardian.env, a writeFileSync here
  * would create yet another inode, invisible to the guardian container.
  * Appending modifies the existing file in-place, keeping the inode.
  */
 function seedTestSecret(): boolean {
 	try {
-		originalStackEnv = readFileSync(STACK_ENV_PATH, 'utf8');
+		originalGuardianEnv = readFileSync(GUARDIAN_ENV_PATH, 'utf8');
 		const secretLine = `CHANNEL_E2ETEST_SECRET=${TEST_SECRET}`;
-		if (originalStackEnv.includes('CHANNEL_E2ETEST_SECRET=')) {
+		if (originalGuardianEnv.includes('CHANNEL_E2ETEST_SECRET=')) {
 			// Replace existing — truncate+write to keep inode (Docker bind mount)
-			const updated = originalStackEnv.replace(
+			const updated = originalGuardianEnv.replace(
 				/^CHANNEL_E2ETEST_SECRET=.*$/m,
 				secretLine
 			);
-			const fd = openSync(STACK_ENV_PATH, 'r+');
+			const fd = openSync(GUARDIAN_ENV_PATH, 'r+');
 			try {
 				ftruncateSync(fd, 0);
 				writeSync(fd, updated, 0);
@@ -96,7 +96,7 @@ function seedTestSecret(): boolean {
 			}
 		} else {
 			// Append in-place — preserves inode
-			appendFileSync(STACK_ENV_PATH, '\n' + secretLine + '\n');
+			appendFileSync(GUARDIAN_ENV_PATH, '\n' + secretLine + '\n');
 		}
 		return true;
 	} catch {
@@ -104,14 +104,14 @@ function seedTestSecret(): boolean {
 	}
 }
 
-function restoreStackEnv(): void {
-	if (originalStackEnv !== null) {
+function restoreGuardianEnv(): void {
+	if (originalGuardianEnv !== null) {
 		try {
 			// Truncate+write to preserve inode (Docker bind mount compatibility)
-			const fd = openSync(STACK_ENV_PATH, 'r+');
+			const fd = openSync(GUARDIAN_ENV_PATH, 'r+');
 			try {
 				ftruncateSync(fd, 0);
-				writeSync(fd, originalStackEnv, 0);
+				writeSync(fd, originalGuardianEnv, 0);
 			} finally {
 				closeSync(fd);
 			}
@@ -134,7 +134,7 @@ test.describe('Channel -> Guardian -> Assistant Pipeline', () => {
 	});
 
 	test.afterAll(() => {
-		restoreStackEnv();
+		restoreGuardianEnv();
 	});
 
 	// ── Group 1: Guardian reachability (no LLM needed) ──────────────
@@ -147,7 +147,7 @@ test.describe('Channel -> Guardian -> Assistant Pipeline', () => {
 		expect(body.service).toBe('guardian');
 	});
 
-	test('test channel secret is seeded in stack.env', () => {
+	test('test channel secret is seeded in guardian.env', () => {
 		expect(secretSeeded).toBe(true);
 	});
 

@@ -46,7 +46,6 @@ existing user files.
 │   └── stack.yaml
 ├── stack/
 │   ├── core.compose.yml
-│   ├── start.sh
 │   └── addons/
 │       ├── admin/
 │       ├── api/
@@ -61,10 +60,7 @@ existing user files.
 │   │   ├── stack.env
 │   │   ├── guardian.env
 │   │   ├── auth.json
-│   │   ├── addons/            per-addon managed.env files
-│   │   └── services/
-│   │       └── memory/
-│   │           └── managed.env # Optional convention defined in overlay
+│   │   └── addons/            per-addon env files
 │   └── user/
 │       └── user.env
 ├── data/
@@ -104,6 +100,7 @@ existing user files.
 
 - `$OP_HOME/data/guardian -> /app/data`
 - `$OP_HOME/logs -> /app/audit`
+- `$OP_HOME/vault/stack/guardian.env -> /app/secrets/guardian.env:ro`
 
 ### Scheduler
 
@@ -169,10 +166,10 @@ To change the running stack:
 1. Edit files under `config/`, `vault/`, or `stack/`.
 2. Rerun `docker compose` with `stack/core.compose.yml` plus any addon overlays (see [Manual Compose Runbook](../operations/manual-compose-runbook.md)).
 
-The wrapper always includes:
+Supported compose invocation paths always include:
 
 - `vault/stack/stack.env`
 - `vault/user/user.env`
 - `vault/stack/guardian.env`
 
-The `memory` service may also load `vault/stack/services/memory/managed.env`.
+All API keys and provider configuration are stored in `vault/stack/stack.env`.

@@ -3,15 +3,14 @@
  *
  * Reads a StackSpec v2 and deterministically produces:
  * 1. System env vars for stack.env (non-secret infrastructure config)
- * 2. Managed env files for services (memory, addons) derived from capabilities
+ * 2. Resolved capability vars (OP_CAP_*) written to stack.env
  */
 
 import type { StackSpec } from "./stack-spec.js";
 import { SPEC_DEFAULTS, hasAddon, parseCapabilityString } from "./stack-spec.js";
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
-import { mergeEnvContent } from "./env.js";
-
-const MANAGED_ENV_FILE_MODE = 0o600;
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mergeEnvContent, parseEnvContent } from "./env.js";
+import { PROVIDER_DEFAULT_URLS, PROVIDER_KEY_MAP, OLLAMA_INSTACK_URL } from "../provider-constants.js";
 
 /**
  * Derive the system.env key-value pairs from the StackSpec.
@@ -60,74 +59,139 @@ export function deriveSystemEnvFromSpec(
   return result;
 }
 
-/**
- * Derive memory service env vars from capabilities.
- */
-export function deriveMemoryEnv(spec: StackSpec): Record<string, string> {
-  const { llm, embeddings, memory } = spec.capabilities;
-  const { provider: llmProvider, model: llmModel } = parseCapabilityString(llm);
+// ── Capability Resolution ────────────────────────────────────────────────
 
-  return {
-    SYSTEM_LLM_PROVIDER: llmProvider,
-    SYSTEM_LLM_MODEL: llmModel,
-    EMBEDDING_MODEL: embeddings.model,
-    EMBEDDING_DIMS: String(embeddings.dims),
-    MEMORY_USER_ID: memory.userId || "default_user",
+/**
+ * Resolve all capabilities from stack.yaml and write OP_CAP_* vars into stack.env.
+ *
+ * Reads raw API keys from the current stack.env, resolves provider → base URL → API key
+ * for each capability, and merges the OP_CAP_* section into stack.env.
+ *
+ * Services consume these via compose ${VAR} substitution in their environment blocks.
+ */
+export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
+  const stackEnvPath = `${vaultDir}/stack/stack.env`;
+  const stackEnv = existsSync(stackEnvPath)
+    ? parseEnvContent(readFileSync(stackEnvPath, "utf-8"))
+    : {};
+
+  const resolveKey = (provider: string): string => {
+    const keyVar = PROVIDER_KEY_MAP[provider];
+    return keyVar ? (stackEnv[keyVar] || "") : "";
   };
-}
 
-/**
- * Resolve addon env vars. `@secret:KEY` references become `${KEY}` for compose substitution.
- */
-export function deriveAddonEnv(spec: StackSpec, addonName: string): Record<string, string> {
-  const addon = spec.addons[addonName];
-  if (!addon || typeof addon === "boolean") return {};
-  const env = addon.env ?? {};
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(env)) {
-    const strValue = typeof value === "string" ? value : String(value ?? "");
-    result[key] = strValue.startsWith("@secret:") ? `\${${strValue.slice(8)}}` : strValue;
+  /** Providers that do NOT use an OpenAI-compatible /v1 path prefix. */
+  const NO_V1_SUFFIX = new Set(["ollama", "google"]);
+
+  const ensureV1 = (url: string, provider: string): string => {
+    if (!url || NO_V1_SUFFIX.has(provider)) return url;
+    return url.endsWith("/v1") ? url : `${url.replace(/\/+$/, "")}/v1`;
+  };
+
+  const resolveUrl = (provider: string): string => {
+    if (provider === "ollama" && hasAddon(spec, "ollama")) return OLLAMA_INSTACK_URL;
+    // Check stack.env for a user-configured base URL override (openai provider)
+    if (provider === "openai" && stackEnv.OPENAI_BASE_URL) {
+      return ensureV1(stackEnv.OPENAI_BASE_URL, provider);
+    }
+    const defaultUrl = PROVIDER_DEFAULT_URLS[provider] || "";
+    return ensureV1(defaultUrl, provider);
+  };
+
+  const caps: Record<string, string> = {};
+
+  // ── LLM ──
+  const { provider: llmP, model: llmM } = parseCapabilityString(spec.capabilities.llm);
+  caps.OP_CAP_LLM_PROVIDER = llmP;
+  caps.OP_CAP_LLM_MODEL = llmM;
+  caps.OP_CAP_LLM_BASE_URL = resolveUrl(llmP);
+  caps.OP_CAP_LLM_API_KEY = resolveKey(llmP);
+
+  // ── SLM ──
+  if (spec.capabilities.slm) {
+    const { provider: slmP, model: slmM } = parseCapabilityString(spec.capabilities.slm);
+    caps.OP_CAP_SLM_PROVIDER = slmP;
+    caps.OP_CAP_SLM_MODEL = slmM;
+    caps.OP_CAP_SLM_BASE_URL = resolveUrl(slmP);
+    caps.OP_CAP_SLM_API_KEY = resolveKey(slmP);
+  } else {
+    caps.OP_CAP_SLM_PROVIDER = "";
+    caps.OP_CAP_SLM_MODEL = "";
+    caps.OP_CAP_SLM_BASE_URL = "";
+    caps.OP_CAP_SLM_API_KEY = "";
   }
-  return result;
-}
 
-/**
- * Format a Record as .env file content.
- */
-function formatEnv(vars: Record<string, string>): string {
-  const template = Object.keys(vars)
-    .map((key) => `${key}=`)
-    .join("\n");
-  const content = mergeEnvContent(template, vars);
-  return content.endsWith("\n") ? content : `${content}\n`;
-}
+  // ── Embeddings ──
+  const emb = spec.capabilities.embeddings;
+  caps.OP_CAP_EMBEDDINGS_PROVIDER = emb.provider;
+  caps.OP_CAP_EMBEDDINGS_MODEL = emb.model;
+  caps.OP_CAP_EMBEDDINGS_BASE_URL = resolveUrl(emb.provider);
+  caps.OP_CAP_EMBEDDINGS_API_KEY = resolveKey(emb.provider);
+  caps.OP_CAP_EMBEDDINGS_DIMS = String(emb.dims);
 
-function writeManagedEnvFile(path: string, vars: Record<string, string>): void {
-  const content = formatEnv(vars);
-  writeFileSync(path, content, { mode: MANAGED_ENV_FILE_MODE });
-  try {
-    chmodSync(path, MANAGED_ENV_FILE_MODE);
-  } catch {
-    // best-effort permission fixup
+  // ── TTS ──
+  const tts = spec.capabilities.tts;
+  if (tts?.enabled) {
+    const p = tts.provider || llmP;
+    caps.OP_CAP_TTS_PROVIDER = p;
+    caps.OP_CAP_TTS_MODEL = tts.model || "";
+    caps.OP_CAP_TTS_BASE_URL = resolveUrl(p);
+    caps.OP_CAP_TTS_API_KEY = resolveKey(p);
+    caps.OP_CAP_TTS_VOICE = tts.voice || "";
+    caps.OP_CAP_TTS_FORMAT = tts.format || "";
+  } else {
+    caps.OP_CAP_TTS_PROVIDER = "";
+    caps.OP_CAP_TTS_MODEL = "";
+    caps.OP_CAP_TTS_BASE_URL = "";
+    caps.OP_CAP_TTS_API_KEY = "";
+    caps.OP_CAP_TTS_VOICE = "";
+    caps.OP_CAP_TTS_FORMAT = "";
   }
-}
 
-/**
- * Write managed.env files derived from the spec.
- * These are loaded by compose via env_file directives.
- */
-export function writeManagedEnvFiles(spec: StackSpec, vaultDir: string): void {
-  // Memory service managed env
-  const memoryEnvDir = `${vaultDir}/stack/services/memory`;
-  mkdirSync(memoryEnvDir, { recursive: true });
-  writeManagedEnvFile(`${memoryEnvDir}/managed.env`, deriveMemoryEnv(spec));
-
-  // Addon managed env files
-  for (const addonName of Object.keys(spec.addons)) {
-    const addonEnv = deriveAddonEnv(spec, addonName);
-    if (Object.keys(addonEnv).length === 0) continue;
-    const addonEnvDir = `${vaultDir}/stack/addons/${addonName}`;
-    mkdirSync(addonEnvDir, { recursive: true });
-    writeManagedEnvFile(`${addonEnvDir}/managed.env`, addonEnv);
+  // ── STT ──
+  const stt = spec.capabilities.stt;
+  if (stt?.enabled) {
+    const p = stt.provider || llmP;
+    caps.OP_CAP_STT_PROVIDER = p;
+    caps.OP_CAP_STT_MODEL = stt.model || "";
+    caps.OP_CAP_STT_BASE_URL = resolveUrl(p);
+    caps.OP_CAP_STT_API_KEY = resolveKey(p);
+    caps.OP_CAP_STT_LANGUAGE = stt.language || "";
+  } else {
+    caps.OP_CAP_STT_PROVIDER = "";
+    caps.OP_CAP_STT_MODEL = "";
+    caps.OP_CAP_STT_BASE_URL = "";
+    caps.OP_CAP_STT_API_KEY = "";
+    caps.OP_CAP_STT_LANGUAGE = "";
   }
+
+  // ── Reranking ──
+  const rr = spec.capabilities.reranking;
+  if (rr?.enabled) {
+    const p = rr.provider || llmP;
+    caps.OP_CAP_RERANKING_PROVIDER = p;
+    caps.OP_CAP_RERANKING_MODEL = rr.model || "";
+    caps.OP_CAP_RERANKING_BASE_URL = resolveUrl(p);
+    caps.OP_CAP_RERANKING_API_KEY = resolveKey(p);
+    caps.OP_CAP_RERANKING_TOP_K = rr.topK ? String(rr.topK) : "";
+    caps.OP_CAP_RERANKING_TOP_N = rr.topN ? String(rr.topN) : "";
+  } else {
+    caps.OP_CAP_RERANKING_PROVIDER = "";
+    caps.OP_CAP_RERANKING_MODEL = "";
+    caps.OP_CAP_RERANKING_BASE_URL = "";
+    caps.OP_CAP_RERANKING_API_KEY = "";
+    caps.OP_CAP_RERANKING_TOP_K = "";
+    caps.OP_CAP_RERANKING_TOP_N = "";
+  }
+
+  // ── Memory ──
+  caps.MEMORY_USER_ID = spec.capabilities.memory.userId || "default_user";
+
+  // Merge into stack.env
+  const base = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
+  let content = mergeEnvContent(base, caps, {
+    sectionHeader: "# ── Resolved Capabilities (from stack.yaml) ─────────────────────────",
+  });
+  if (!content.endsWith("\n")) content += "\n";
+  writeFileSync(stackEnvPath, content, { mode: 0o600 });
 }

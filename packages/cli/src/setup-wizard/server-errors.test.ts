@@ -60,22 +60,28 @@ function makeSetupDirs(): void {
 
   mkdirSync(join(vaultDir, "stack"), { recursive: true });
   mkdirSync(join(vaultDir, "user"), { recursive: true });
-  writeFileSync(join(vaultDir, "stack", "stack.env"), "OP_SETUP_COMPLETE=false\n");
+  writeFileSync(
+    join(vaultDir, "stack", "stack.env"),
+    [
+      "OP_SETUP_COMPLETE=false",
+      "OP_ADMIN_TOKEN=",
+      "OPENAI_API_KEY=",
+      "OPENAI_BASE_URL=",
+      "ANTHROPIC_API_KEY=",
+      "GROQ_API_KEY=",
+      "MISTRAL_API_KEY=",
+      "GOOGLE_API_KEY=",
+      "OWNER_NAME=",
+      "OWNER_EMAIL=",
+      "",
+    ].join("\n")
+  );
   writeFileSync(
     join(vaultDir, "user", "user.env"),
     [
-      "# OpenPalm Secrets",
-      "export OP_ADMIN_TOKEN=",
-
-      "export OPENAI_API_KEY=",
-      "export OPENAI_BASE_URL=",
-      "export ANTHROPIC_API_KEY=",
-      "export GROQ_API_KEY=",
-      "export MISTRAL_API_KEY=",
-      "export GOOGLE_API_KEY=",
-      "export MEMORY_USER_ID=default_user",
-      "export OWNER_NAME=",
-      "export OWNER_EMAIL=",
+      "# OpenPalm — User Extensions",
+      "# Add any custom environment variables here.",
+      "# These are loaded by compose alongside stack.env.",
       "",
     ].join("\n")
   );
@@ -138,7 +144,7 @@ describe("setup wizard server error scenarios", () => {
     }
   });
 
-  it("returns 400 when connections array is empty", async () => {
+  it("returns 400 when connections array is not an array", async () => {
     const { stop } = createSetupServer(serverPort, {
       configDir,
     });
@@ -158,7 +164,8 @@ describe("setup wizard server error scenarios", () => {
             addons: {},
           },
           security: { adminToken: "valid-token-12345" },
-          connections: [],
+          owner: { name: "Test User", email: "test@example.com" },
+          connections: "not-an-array",
         }),
       });
       expect(res.status).toBe(400);
@@ -181,6 +188,7 @@ describe("setup wizard server error scenarios", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           security: { adminToken: "valid-token-12345" },
+          owner: { name: "Test User", email: "test@example.com" },
           connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
           // no spec
         }),
@@ -194,7 +202,7 @@ describe("setup wizard server error scenarios", () => {
     }
   });
 
-  it("returns 400 when connection has invalid provider", async () => {
+  it("succeeds even when connection provider does not match embeddings provider", async () => {
     const { stop } = createSetupServer(serverPort, {
       configDir,
     });
@@ -214,19 +222,20 @@ describe("setup wizard server error scenarios", () => {
             addons: {},
           },
           security: { adminToken: "valid-token-12345" },
+          owner: { name: "Test User", email: "test@example.com" },
           connections: [{ id: "c1", name: "C1", provider: "fakeprovider", baseUrl: "", apiKey: "sk-test" }],
         }),
       });
-      expect(res.status).toBe(400);
-      const data = (await res.json()) as { ok: boolean; error: string };
-      expect(data.ok).toBe(false);
-      expect(data.error).toContain("outside wizard scope");
+      // Connection-provider matching is no longer validated; setup succeeds
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ok: boolean };
+      expect(data.ok).toBe(true);
     } finally {
       stop();
     }
   });
 
-  it("returns 400 when no connection matches LLM provider", async () => {
+  it("succeeds even when no connection matches LLM provider", async () => {
     const { stop } = createSetupServer(serverPort, {
       configDir,
     });
@@ -246,13 +255,14 @@ describe("setup wizard server error scenarios", () => {
             addons: {},
           },
           security: { adminToken: "valid-token-12345" },
+          owner: { name: "Test User", email: "test@example.com" },
           connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
         }),
       });
-      expect(res.status).toBe(400);
-      const data = (await res.json()) as { ok: boolean; error: string };
-      expect(data.ok).toBe(false);
-      expect(data.error).toContain("No connection found for LLM provider");
+      // Connection-provider matching is no longer validated; setup succeeds
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ok: boolean };
+      expect(data.ok).toBe(true);
     } finally {
       stop();
     }

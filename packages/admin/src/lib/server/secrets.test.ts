@@ -17,8 +17,6 @@ import {
   patchSecretsEnvFile,
   maskConnectionValue,
   ensureOpenCodeConfig,
-  ALLOWED_CONNECTION_KEYS,
-  REQUIRED_LLM_PROVIDER_KEYS,
   PLAIN_CONFIG_KEYS
 } from "./secrets.js";
 import type { ControlPlaneState } from "./types.js";
@@ -35,32 +33,32 @@ describe("ensureSecrets", () => {
     vaultDir = trackDir(makeTempDir());
   });
 
-  test("seeds user.env with empty ADMIN_TOKEN on first run", () => {
+  test("seeds stack.env with API key placeholders on first run", () => {
     const state = { vaultDir, adminToken: "preconfigured-token" } as ControlPlaneState;
 
     ensureSecrets(state);
 
-    const secrets = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    const secrets = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     expect(secrets).toContain("OPENAI_API_KEY=");
-    expect(secrets).not.toContain("preconfigured-token");
+    expect(secrets).toContain("OP_ADMIN_TOKEN=");
   });
 
-  test("is idempotent — does not overwrite existing user.env", () => {
+  test("is idempotent — does not overwrite existing stack.env", () => {
     const state = { vaultDir } as ControlPlaneState;
-    const existingContent = "ADMIN_TOKEN=my-token\nOPENAI_API_KEY=sk-test\n";
+    const existingContent = "OP_ADMIN_TOKEN=my-token\nOPENAI_API_KEY=sk-test\nOP_ASSISTANT_TOKEN=ast\nOP_MEMORY_TOKEN=mem\n";
     seedSecretsEnv(vaultDir, existingContent);
 
     ensureSecrets(state);
 
-    const result = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    const result = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     expect(result).toBe(existingContent);
   });
 
-  test("includes LLM provider key placeholders", () => {
+  test("includes LLM provider key placeholders in stack.env", () => {
     const state = { vaultDir } as ControlPlaneState;
     ensureSecrets(state);
 
-    const secrets = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    const secrets = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     expect(secrets).toContain("OPENAI_API_KEY=");
     expect(secrets).toContain("GROQ_API_KEY=");
     expect(secrets).toContain("MISTRAL_API_KEY=");
@@ -73,6 +71,7 @@ describe("ensureSecrets", () => {
 
     ensureSecrets(state);
 
+    expect(existsSync(join(nestedDir, "stack", "stack.env"))).toBe(true);
     expect(existsSync(join(nestedDir, "user", "user.env"))).toBe(true);
   });
 });
@@ -84,10 +83,10 @@ describe("updateSecretsEnv", () => {
     vaultDir = trackDir(makeTempDir());
   });
 
-  test("throws when user.env does not exist", () => {
+  test("throws when stack.env does not exist", () => {
     const state = { vaultDir } as ControlPlaneState;
     expect(() => updateSecretsEnv(state, { KEY: "val" })).toThrow(
-      "user.env does not exist"
+      "stack.env does not exist"
     );
   });
 
@@ -97,7 +96,7 @@ describe("updateSecretsEnv", () => {
 
     updateSecretsEnv(state, { OPENAI_API_KEY: "sk-new" });
 
-    const result = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    const result = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     expect(result).toContain("OPENAI_API_KEY=sk-new");
     expect(result).not.toContain("old");
     expect(result).toContain("ADMIN_TOKEN=token");
@@ -109,7 +108,7 @@ describe("updateSecretsEnv", () => {
 
     updateSecretsEnv(state, { OPENAI_API_KEY: "sk-uncommented" });
 
-    const result = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    const result = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     expect(result).toContain("OPENAI_API_KEY=sk-uncommented");
     expect(result).not.toContain("# OPENAI_API_KEY");
   });
@@ -120,7 +119,7 @@ describe("updateSecretsEnv", () => {
 
     updateSecretsEnv(state, { NEW_KEY: "new-value" });
 
-    const result = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    const result = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     expect(result).toContain("NEW_KEY=new-value");
     expect(result).toContain("ADMIN_TOKEN=token");
   });
@@ -132,7 +131,7 @@ describe("updateSecretsEnv", () => {
 
     updateSecretsEnv(state, {});
 
-    expect(readFileSync(join(vaultDir, "user", "user.env"), "utf-8")).toBe(original);
+    expect(readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8")).toBe(original);
   });
 });
 
@@ -149,16 +148,16 @@ describe("readSecretsEnvFile", () => {
     expect(readSecretsEnvFile(vaultDir)).toEqual({});
   });
 
-  test("reads only ALLOWED_CONNECTION_KEYS", () => {
+  test("reads all keys from stack.env", () => {
     seedSecretsEnv(
       vaultDir,
-      "ADMIN_TOKEN=secret\nOPENAI_API_KEY=sk-test\nRANDOM_KEY=val\n"
+      "ADMIN_TOKEN=secret\nOPENAI_API_KEY=sk-test\nCUSTOM_KEY=val\n"
     );
 
     const result = readSecretsEnvFile(vaultDir);
     expect(result.OPENAI_API_KEY).toBe("sk-test");
-    expect(result.ADMIN_TOKEN).toBeUndefined(); // ADMIN_TOKEN is not in ALLOWED_CONNECTION_KEYS
-    expect(result.RANDOM_KEY).toBeUndefined();
+    expect(result.ADMIN_TOKEN).toBe("secret");
+    expect(result.CUSTOM_KEY).toBe("val");
   });
 
   test("skips comments and blank lines", () => {
@@ -197,51 +196,50 @@ describe("patchSecretsEnvFile", () => {
     vaultDir = trackDir(makeTempDir());
   });
 
-  test("only patches ALLOWED_CONNECTION_KEYS", () => {
+  test("patches any key passed to it", () => {
     seedSecretsEnv(vaultDir, "ADMIN_TOKEN=token\nOPENAI_API_KEY=old\n");
     patchSecretsEnvFile(vaultDir, {
       OPENAI_API_KEY: "sk-new",
-      ADMIN_TOKEN: "hacked", // NOT in ALLOWED_CONNECTION_KEYS
-      RANDOM_KEY: "injected" // NOT in ALLOWED_CONNECTION_KEYS
+      ADMIN_TOKEN: "updated",
+      CUSTOM_KEY: "injected"
     });
 
-    const result = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    const result = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     expect(result).toContain("OPENAI_API_KEY=sk-new");
-    expect(result).toContain("ADMIN_TOKEN=token"); // unchanged
-    expect(result).not.toContain("RANDOM_KEY");
-    expect(result).not.toContain("hacked");
+    expect(result).toContain("ADMIN_TOKEN=updated");
+    expect(result).toContain("CUSTOM_KEY=injected");
   });
 
-  test("appends new allowed keys when not in file", () => {
+  test("appends new keys when not in file", () => {
     seedSecretsEnv(vaultDir, "OPENAI_API_KEY=existing\n");
     patchSecretsEnvFile(vaultDir, { GROQ_API_KEY: "gsk-new" });
 
-    const result = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    const result = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     expect(result).toContain("OPENAI_API_KEY=existing");
     expect(result).toContain("GROQ_API_KEY=gsk-new");
   });
 
   test("creates file if it does not exist", () => {
     patchSecretsEnvFile(vaultDir, { OPENAI_API_KEY: "sk-created" });
-    const result = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    const result = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     expect(result).toContain("OPENAI_API_KEY=sk-created");
   });
 
-  test("no-op when patches contain only disallowed keys", () => {
+  test("no-op when patches is empty", () => {
     const original = "ADMIN_TOKEN=keep\n";
     seedSecretsEnv(vaultDir, original);
-    patchSecretsEnvFile(vaultDir, { ADMIN_TOKEN: "nope", RANDOM: "nope" });
-    expect(readFileSync(join(vaultDir, "user", "user.env"), "utf-8")).toBe(original);
+    patchSecretsEnvFile(vaultDir, {});
+    expect(readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8")).toBe(original);
   });
 
-  test("preserves comments and non-allowed keys", () => {
+  test("preserves comments and existing keys", () => {
     seedSecretsEnv(
       vaultDir,
       "# Config\nADMIN_TOKEN=secret\nOPENAI_API_KEY=old\nCUSTOM=val\n"
     );
     patchSecretsEnvFile(vaultDir, { OPENAI_API_KEY: "sk-updated" });
 
-    const result = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
+    const result = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     expect(result).toContain("# Config");
     expect(result).toContain("ADMIN_TOKEN=secret");
     expect(result).toContain("CUSTOM=val");
@@ -275,57 +273,6 @@ describe("maskConnectionValue", () => {
     expect(maskConnectionValue("OWNER_NAME", "Test User")).toBe("Test User");
   });
 
-});
-
-// ── Connection Key Sets ─────────────────────────────────────────────────
-
-describe("ALLOWED_CONNECTION_KEYS", () => {
-  test("includes all standard connection keys", () => {
-    const expectedKeys = [
-      "OPENAI_API_KEY",
-      "ANTHROPIC_API_KEY",
-      "GROQ_API_KEY",
-      "MISTRAL_API_KEY",
-      "GOOGLE_API_KEY",
-      "OPENAI_BASE_URL",
-      "OWNER_NAME",
-      "OWNER_EMAIL",
-    ];
-    for (const key of expectedKeys) {
-      expect(ALLOWED_CONNECTION_KEYS.has(key)).toBe(true);
-    }
-  });
-
-  test("does not include removed legacy keys", () => {
-    expect(ALLOWED_CONNECTION_KEYS.has("GUARDIAN_LLM_PROVIDER")).toBe(false);
-    expect(ALLOWED_CONNECTION_KEYS.has("GUARDIAN_LLM_MODEL")).toBe(false);
-    expect(ALLOWED_CONNECTION_KEYS.has("MEMORY_LLM_MODEL")).toBe(false);
-  });
-
-  test("does not include obsolete MEMORY_OPENAI_* keys (superseded by JSON config)", () => {
-    expect(ALLOWED_CONNECTION_KEYS.has("MEMORY_OPENAI_BASE_URL")).toBe(false);
-    expect(ALLOWED_CONNECTION_KEYS.has("MEMORY_OPENAI_API_KEY")).toBe(false);
-  });
-
-  test("does not include ADMIN_TOKEN (security: separate from connection keys)", () => {
-    expect(ALLOWED_CONNECTION_KEYS.has("ADMIN_TOKEN")).toBe(false);
-  });
-});
-
-describe("REQUIRED_LLM_PROVIDER_KEYS", () => {
-  test("includes all LLM provider API key names from api-spec.md", () => {
-    expect(REQUIRED_LLM_PROVIDER_KEYS).toContain("OPENAI_API_KEY");
-    expect(REQUIRED_LLM_PROVIDER_KEYS).toContain("ANTHROPIC_API_KEY");
-    expect(REQUIRED_LLM_PROVIDER_KEYS).toContain("GROQ_API_KEY");
-    expect(REQUIRED_LLM_PROVIDER_KEYS).toContain("MISTRAL_API_KEY");
-    expect(REQUIRED_LLM_PROVIDER_KEYS).toContain("GOOGLE_API_KEY");
-  });
-
-  test("all required keys are subset of allowed connection keys", () => {
-    for (const key of REQUIRED_LLM_PROVIDER_KEYS) {
-      expect(ALLOWED_CONNECTION_KEYS.has(key)).toBe(true);
-    }
-  });
 });
 
 // ── OpenCode Config ─────────────────────────────────────────────────────

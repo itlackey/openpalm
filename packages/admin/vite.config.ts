@@ -31,12 +31,6 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [sveltekit(), devtoolsJson()],
     envDir: rootDir,
-    resolve: {
-      alias: {
-        "$stack": resolve(__dirname, "../../.openpalm/stack"),
-        "$config": resolve(__dirname, "../../.openpalm/config"),
-      }
-    },
     test: {
       expect: { requireAssertions: true },
       projects: [

@@ -6,13 +6,10 @@
  */
 import { Memory } from '@openpalm/memory';
 import type { MemoryConfig } from '@openpalm/memory';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
 import { buildConfigFromEnv } from './config';
 
 // ── Config ────────────────────────────────────────────────────────────
 
-const CONFIG_PATH = process.env.MEMORY_CONFIG_PATH ?? '/app/default_config.json';
 const DATA_DIR = process.env.MEMORY_DATA_DIR ?? '/data';
 const PORT = parseInt(process.env.MEMORY_PORT ?? '8765', 10);
 
@@ -21,8 +18,6 @@ let _memoryInit: Promise<Memory> | null = null;
 // Serialize memory operations so a config-driven reset cannot close the
 // sqlite-backed Memory instance while another request is still using it.
 let _memoryQueue: Promise<void> = Promise.resolve();
-// When true, skip env-var config and use file config (set after PUT /api/v1/config/)
-let _useFileConfig = false;
 
 function withMemoryLock<T>(operation: () => Promise<T>): Promise<T> {
   const run = _memoryQueue.then(operation, operation);
@@ -30,99 +25,14 @@ function withMemoryLock<T>(operation: () => Promise<T>): Promise<T> {
   return run;
 }
 
-function loadConfig(): Record<string, unknown> {
-  if (!existsSync(CONFIG_PATH)) return {};
-  try {
-    return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
-  } catch {
-    return {};
-  }
-}
-
-function resolveEnvKeys(config: Record<string, unknown>): Record<string, unknown> {
-  const resolved = structuredClone(config);
-  for (const section of ['llm', 'embedder']) {
-    const sectionObj = (resolved as any)?.mem0?.[section]?.config ?? (resolved as any)?.[section]?.config;
-    if (sectionObj && typeof sectionObj.api_key === 'string' && sectionObj.api_key.startsWith('env:')) {
-      const varName = sectionObj.api_key.slice(4);
-      sectionObj.api_key = process.env[varName] ?? '';
-    }
-    // Also handle apiKey (camelCase variant)
-    if (sectionObj && typeof sectionObj.apiKey === 'string' && sectionObj.apiKey.startsWith('env:')) {
-      const varName = sectionObj.apiKey.slice(4);
-      sectionObj.apiKey = process.env[varName] ?? '';
-    }
-  }
-  return resolved;
-}
-
-function configToMemoryConfig(raw: Record<string, unknown>): MemoryConfig {
-  const mem0 = (raw.mem0 ?? raw) as Record<string, unknown>;
-
-  const llm = mem0.llm as { provider?: string; config?: Record<string, unknown> } | undefined;
-  const embedder = mem0.embedder as { provider?: string; config?: Record<string, unknown> } | undefined;
-  const vectorStore = mem0.vector_store as { provider?: string; config?: Record<string, unknown> } | undefined;
-
-  const dbPath = (vectorStore?.config?.db_path as string) ??
-    (vectorStore?.config?.path ? join(String(vectorStore.config.path), 'memory.db') : undefined) ??
-    join(DATA_DIR, 'memory.db');
-
-  // Ensure parent directory exists (e.g. /data/qdrant/) so SQLite can create the file
-  mkdirSync(dirname(dbPath), { recursive: true });
-
-  const dimensions = (vectorStore?.config?.embedding_model_dims as number) ??
-    (vectorStore?.config?.dimensions as number) ??
-    1536;
-
-  return {
-    llm: llm ? {
-      provider: llm.provider ?? 'openai',
-      config: {
-        model: llm.config?.model as string,
-        apiKey: (llm.config?.api_key ?? llm.config?.apiKey) as string,
-        baseUrl: (llm.config?.openai_base_url ?? llm.config?.base_url ?? llm.config?.baseUrl) as string,
-        temperature: llm.config?.temperature as number,
-        maxTokens: (llm.config?.max_tokens ?? llm.config?.maxTokens) as number,
-      },
-    } : undefined,
-    embedder: embedder ? {
-      provider: embedder.provider ?? 'openai',
-      config: {
-        model: embedder.config?.model as string,
-        apiKey: (embedder.config?.api_key ?? embedder.config?.apiKey) as string,
-        baseUrl: (embedder.config?.openai_base_url ?? embedder.config?.base_url ?? embedder.config?.baseUrl) as string,
-        dimensions,
-      },
-    } : undefined,
-    vectorStore: {
-      provider: 'sqlite-vec',
-      config: {
-        dbPath,
-        collectionName: (vectorStore?.config?.collection_name as string) ?? 'memory',
-        dimensions,
-      },
-    },
-    historyDbPath: (mem0.history_db_path as string) ?? null,
-    customPrompt: ((raw.memory as Record<string, unknown>)?.custom_instructions as string) || undefined,
-  };
-}
-
 async function getMemory(): Promise<Memory> {
   if (_memory) return _memory;
   if (_memoryInit) return _memoryInit;
   _memoryInit = (async () => {
     try {
-      // 1. Try env-based config (from managed.env + compose environment)
-      //    Skip if _useFileConfig is set (after PUT /api/v1/config/)
-      let memConfig: MemoryConfig | null = null;
-      if (!_useFileConfig) {
-        memConfig = buildConfigFromEnv(process.env as Record<string, string | undefined>, DATA_DIR);
-      }
-      // 2. Fall back to file config (default_config.json) + env key resolution
+      const memConfig = buildConfigFromEnv(process.env as Record<string, string | undefined>, DATA_DIR);
       if (!memConfig) {
-        const rawConfig = resolveEnvKeys(loadConfig());
-        memConfig = configToMemoryConfig(rawConfig);
-        console.log('[config] Using file-based config from', CONFIG_PATH);
+        throw new Error('SYSTEM_LLM_PROVIDER not set — memory service requires capability configuration');
       }
       const m = new Memory(memConfig);
       await m.initialize();
@@ -400,32 +310,6 @@ async function handleRequest(req: Request): Promise<Response> {
           max_sampled: limit,
           capped: count >= limit,
         });
-      }
-
-      // GET /api/v1/config/
-      if (path === '/api/v1/config/' && method === 'GET') {
-        const fileConfig = existsSync(CONFIG_PATH)
-          ? JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'))
-          : {};
-        const envConfig = buildConfigFromEnv(process.env as Record<string, string | undefined>, DATA_DIR);
-        return json({
-          source: _useFileConfig ? 'file' : (envConfig ? 'env' : 'file'),
-          file: redactApiKeys(fileConfig),
-          ...(envConfig ? { env: redactApiKeys(envConfig) } : {}),
-        });
-      }
-
-      // PUT /api/v1/config/
-      if (path === '/api/v1/config/' && method === 'PUT') {
-        const body = await readBody(req);
-        const validated = validateConfigStructure(body);
-        mkdirSync(dirname(CONFIG_PATH), { recursive: true });
-        writeFileSync(CONFIG_PATH, JSON.stringify(validated, null, 2) + '\n');
-        // After explicit config write, use file config instead of env vars
-        // (resets on container restart since this is in-memory state)
-        _useFileConfig = true;
-        await resetMemory();
-        return json({ status: 'ok' });
       }
 
       // POST /api/v1/users

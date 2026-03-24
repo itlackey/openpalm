@@ -8,7 +8,7 @@ OpenPalm now uses a manual-first setup model:
 
 Helper scripts still exist, but they are optional.
 
-For the fully explicit path, see [manual-setup.md](manual-setup.md).
+For the fully explicit path, see [technical/manual-setup.md](technical/manual-setup.md).
 
 ---
 
@@ -74,7 +74,7 @@ For all common compose operations (start, stop, status, pull, logs, restart), se
 
 **Change model keys**
 
-Edit `~/.openpalm/vault/user/user.env`, then restart any service that needs the new values.
+Edit `~/.openpalm/vault/stack/stack.env`, then recreate services that need the new values.
 
 ---
 
@@ -86,7 +86,7 @@ The copied bundle gives you a predictable host layout:
 |---|---|
 | `~/.openpalm/stack/` | Compose files |
 | `~/.openpalm/vault/stack/stack.env` | Stack-level env values |
-| `~/.openpalm/vault/user/user.env` | User secrets |
+| `~/.openpalm/vault/user/user.env` | Optional user extensions |
 | `~/.openpalm/config/` | User-managed config |
 | `~/.openpalm/data/` | Persistent container data |
 | `~/.openpalm/logs/` | Logs |
@@ -127,8 +127,8 @@ Stop the stack, remove `~/.openpalm/` if you truly want a clean reset, then copy
 
 | Guide | What's inside |
 |---|---|
-| [manual-setup.md](manual-setup.md) | Fully explicit compose workflow |
+| [technical/manual-setup.md](technical/manual-setup.md) | Fully explicit compose workflow |
 | [managing-openpalm.md](managing-openpalm.md) | Day-to-day operations |
 | [how-it-works.md](how-it-works.md) | Architecture overview |
 | [technical/directory-structure.md](technical/directory-structure.md) | Host paths and mounts |
-| [technical/core-principles.md](technical/core-principles.md) | Security and architecture rules |
+| [technical/authoritative/core-principles.md](technical/authoritative/core-principles.md) | Security and architecture rules |

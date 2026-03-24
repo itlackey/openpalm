@@ -73,8 +73,8 @@ describe('admin secrets routes', () => {
     expect(body.value).toBeUndefined();
 
     const state = getState();
-    const userEnv = readFileSync(join(state.vaultDir, 'user', 'user.env'), 'utf-8');
-    expect(userEnv).toContain('super-secret-value');
+    const stackEnv = readFileSync(join(state.vaultDir, 'stack', 'stack.env'), 'utf-8');
+    expect(stackEnv).toContain('super-secret-value');
   });
 
   test('POST /generate creates a secret without returning plaintext', async () => {

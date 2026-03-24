@@ -336,3 +336,193 @@ describe("setup wizard server", () => {
     }
   });
 });
+
+// ── OpenCode Provider Routes ──────────────────────────────────────────────
+
+describe("setup wizard OpenCode routes", () => {
+  let serverPort: number;
+
+  beforeEach(() => {
+    makeSetupDirs();
+    savedEnv.OP_HOME = process.env.OP_HOME;
+    process.env.OP_HOME = homeDir;
+    serverPort = nextPort++;
+  });
+
+  afterEach(() => {
+    process.env.OP_HOME = savedEnv.OP_HOME;
+    if (tempBase) rmSync(tempBase, { recursive: true, force: true });
+  });
+
+  it("returns available:false when no openCodeClient provided", async () => {
+    const { stop } = createSetupServer(serverPort, { configDir });
+    try {
+      const res = await fetch(`http://localhost:${serverPort}/api/setup/opencode/status`);
+      expect(res.status).toBe(200);
+      const data = await res.json() as { ok: boolean; available: boolean };
+      expect(data.available).toBe(false);
+    } finally {
+      stop();
+    }
+  });
+
+  it("returns empty providers when no openCodeClient provided", async () => {
+    const { stop } = createSetupServer(serverPort, { configDir });
+    try {
+      const res = await fetch(`http://localhost:${serverPort}/api/setup/opencode/providers`);
+      expect(res.status).toBe(200);
+      const data = await res.json() as { ok: boolean; available: boolean; providers: unknown[] };
+      expect(data.available).toBe(false);
+      expect(data.providers).toEqual([]);
+    } finally {
+      stop();
+    }
+  });
+
+  it("returns 503 for proxy routes when no openCodeClient provided", async () => {
+    const { stop } = createSetupServer(serverPort, { configDir });
+    try {
+      const res = await fetch(`http://localhost:${serverPort}/api/setup/opencode/auth/openai`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "api", key: "sk-test" }),
+      });
+      expect(res.status).toBe(503);
+    } finally {
+      stop();
+    }
+  });
+
+  it("returns available:true when openCodeClient is provided and reachable", async () => {
+    // Start a mock OpenCode server
+    const mockOC = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname === "/provider") {
+          return new Response(JSON.stringify({ all: [{ id: "openai", name: "OpenAI" }] }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (url.pathname === "/provider/auth") {
+          return new Response(JSON.stringify({ openai: [{ type: "api", label: "API Key" }] }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    });
+
+    const { createOpenCodeClient } = await import("@openpalm/lib");
+    const ocClient = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${mockOC.port}` });
+    const { stop } = createSetupServer(serverPort, { configDir, openCodeClient: ocClient });
+
+    try {
+      // Status should report available
+      const statusRes = await fetch(`http://localhost:${serverPort}/api/setup/opencode/status`);
+      const statusData = await statusRes.json() as { ok: boolean; available: boolean };
+      expect(statusData.available).toBe(true);
+
+      // Providers should return data
+      const provRes = await fetch(`http://localhost:${serverPort}/api/setup/opencode/providers`);
+      const provData = await provRes.json() as { ok: boolean; available: boolean; providers: unknown[]; auth: Record<string, unknown> };
+      expect(provData.available).toBe(true);
+      expect(provData.providers.length).toBeGreaterThan(0);
+      expect(provData.auth).toBeDefined();
+
+      // Proxy should forward to mock OpenCode
+      const proxyRes = await fetch(`http://localhost:${serverPort}/api/setup/opencode/auth/openai`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "api", key: "sk-test" }),
+      });
+      expect(proxyRes.status).toBe(200);
+    } finally {
+      stop();
+      mockOC.stop(true);
+    }
+  });
+
+  it("proxies OAuth callback without timeout (blocks until auth completes)", async () => {
+    // Simulate OpenCode's OAuth flow:
+    // 1. POST /provider/:id/oauth/authorize → returns URL + instructions
+    // 2. POST /provider/:id/oauth/callback → blocks until auth completes, then returns true
+    let authComplete = false;
+
+    const mockOC = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      async fetch(req) {
+        const url = new URL(req.url);
+
+        if (url.pathname === "/provider") {
+          return new Response(JSON.stringify({ all: [{ id: "test-provider", name: "Test" }] }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        if (url.pathname === "/provider/test-provider/oauth/authorize") {
+          return new Response(JSON.stringify({
+            url: "https://example.com/auth",
+            method: "manual",
+            instructions: "Enter code: TEST-1234",
+          }), { headers: { "Content-Type": "application/json" } });
+        }
+
+        if (url.pathname === "/provider/test-provider/oauth/callback") {
+          // Block until auth is "completed" (simulates device code exchange)
+          while (!authComplete) {
+            await new Promise(r => setTimeout(r, 100));
+          }
+          return new Response(JSON.stringify(true), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    });
+
+    const { createOpenCodeClient } = await import("@openpalm/lib");
+    const ocClient = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${mockOC.port}` });
+    const { stop } = createSetupServer(serverPort, { configDir, openCodeClient: ocClient });
+
+    try {
+      // Step 1: Authorize
+      const authRes = await fetch(`http://localhost:${serverPort}/api/setup/opencode/provider/test-provider/oauth/authorize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ method: 0 }),
+      });
+      expect(authRes.status).toBe(200);
+      const authData = await authRes.json() as { url: string; instructions: string };
+      expect(authData.url).toBe("https://example.com/auth");
+      expect(authData.instructions).toContain("TEST-1234");
+
+      // Step 2: Start callback request (will block until auth completes)
+      const callbackPromise = fetch(`http://localhost:${serverPort}/api/setup/opencode/provider/test-provider/oauth/callback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ method: 0 }),
+      });
+
+      // Simulate user completing auth after 500ms
+      setTimeout(() => { authComplete = true; }, 500);
+
+      // The callback should complete after auth is done (not timeout at 5s)
+      const callbackRes = await callbackPromise;
+      expect(callbackRes.status).toBe(200);
+      const callbackData = await callbackRes.json();
+      expect(callbackData).toBe(true);
+    } finally {
+      authComplete = true; // ensure mock server unblocks
+      stop();
+      mockOC.stop(true);
+    }
+  });
+});

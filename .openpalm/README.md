@@ -18,9 +18,6 @@ files here.
     stack/              System-managed env and auth files
       stack.env
       auth.json
-      services/
-        memory/
-          managed.env
     user/               User-managed secrets (API keys, provider settings)
 
   data/               Durable service-managed data
@@ -33,7 +30,6 @@ files here.
 
   stack/              Docker Compose runtime assets
     core.compose.yml    Core services
-    start.sh            Convenience compose wrapper (see manual-compose-runbook.md)
     addons/             Optional service overlays
 
   logs/               Audit and debug logs
@@ -60,6 +56,7 @@ docker compose \
   --project-name openpalm \
   --env-file ~/.openpalm/vault/stack/stack.env \
   --env-file ~/.openpalm/vault/user/user.env \
+  --env-file ~/.openpalm/vault/stack/guardian.env \
   -f ~/.openpalm/stack/core.compose.yml \
   -f ~/.openpalm/stack/addons/chat/compose.yml \
   -f ~/.openpalm/stack/addons/admin/compose.yml \
@@ -86,6 +83,5 @@ it does not replace Compose as the runtime source of truth.
 ## Runtime notes
 
 - Docker Compose global env files: `vault/stack/stack.env` and `vault/user/user.env`.
-- Service-specific env files (e.g., `vault/stack/services/memory/managed.env`) are loaded at the service level in compose, not globally.
 - The assistant workspace is `data/workspace/`, mounted at `/work`.
 - The admin addon mounts the full OpenPalm home at `/openpalm` and reaches Docker only through `docker-socket-proxy`.

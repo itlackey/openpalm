@@ -7,7 +7,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { appendAudit, buildComposeFileList, buildEnvFiles, buildManagedServices } from "@openpalm/lib";
+import { appendAudit, buildComposeOptions, buildManagedServices } from "@openpalm/lib";
 import { composePull, composeUp, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
@@ -30,11 +30,10 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(503, "docker_unavailable", "Docker is not available", { stderr: dockerCheck.stderr }, requestId);
   }
 
-  const files = buildComposeFileList(state);
-  const envFiles = buildEnvFiles(state);
+  const composeOpts = buildComposeOptions(state);
 
   logger.info("pulling images", { requestId });
-  const pullResult = await composePull({ files, envFiles });
+  const pullResult = await composePull(composeOpts);
   if (!pullResult.ok) {
     logger.error("image pull failed", { requestId, stderr: pullResult.stderr });
     appendAudit(state, actor, "containers.pull", { result: "error", reason: "pull_failed", stderr: pullResult.stderr }, false, requestId, callerType);
@@ -43,7 +42,7 @@ export const POST: RequestHandler = async (event) => {
 
   logger.info("recreating containers", { requestId });
   const managedServices = await buildManagedServices(state);
-  const upResult = await composeUp({ files, envFiles, services: managedServices });
+  const upResult = await composeUp({ ...composeOpts, services: managedServices });
   if (!upResult.ok) {
     logger.error("compose up failed after pull", { requestId, stderr: upResult.stderr });
     appendAudit(state, actor, "containers.pull", { result: "error", reason: "up_failed", stderr: upResult.stderr }, false, requestId, callerType);

@@ -41,7 +41,7 @@ OpenPalm uses one home directory: `~/.openpalm/` by default.
 |---|---|
 | `~/.openpalm/stack/` | Live compose files and helper scripts |
 | `~/.openpalm/vault/stack/stack.env` | System-managed stack values and tokens |
-| `~/.openpalm/vault/user/user.env` | User-managed provider keys and model settings |
+| `~/.openpalm/vault/user/user.env` | Optional user-managed extension settings |
 | `~/.openpalm/config/` | User-editable config, automations, assistant extensions |
 | `~/.openpalm/data/` | Durable service data |
 | `~/.openpalm/logs/` | Logs and audit output |
@@ -53,11 +53,9 @@ deployment truth.
 
 ## Important env files
 
-### `~/.openpalm/vault/user/user.env`
+### `~/.openpalm/vault/stack/stack.env`
 
-Set the provider keys and model settings your assistant should use.
-
-Common values include:
+This file holds system-managed values, provider API keys, and owner identity:
 
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`
@@ -65,10 +63,10 @@ Common values include:
 - `SYSTEM_LLM_PROVIDER`
 - `SYSTEM_LLM_MODEL`
 - `MEMORY_USER_ID`
+- `OWNER_NAME`
+- `OWNER_EMAIL`
 
-### `~/.openpalm/vault/stack/stack.env`
-
-This file holds system-managed values such as:
+It also includes system-managed values such as:
 
 - `OP_ADMIN_TOKEN`
 - `OP_ASSISTANT_TOKEN`
@@ -78,6 +76,11 @@ This file holds system-managed values such as:
 
 Review it before first start, especially if you need different host ports or
 paths.
+
+### `~/.openpalm/vault/user/user.env`
+
+Optional user-managed extension settings. Starts empty; use for custom
+preferences. Owner name and email live in `stack.env`.
 
 ---
 
@@ -129,7 +132,7 @@ Default host ports are documented in [system-requirements.md](system-requirement
 
 | Guide | Description |
 |---|---|
-| [manual-setup.md](manual-setup.md) | Fully explicit compose workflow |
+| [technical/manual-setup.md](technical/manual-setup.md) | Fully explicit compose workflow |
 | [setup-guide.md](setup-guide.md) | Convenience-oriented setup flow |
 | [password-management.md](password-management.md) | Secret layout and token handling |
 | [troubleshooting.md](troubleshooting.md) | Common problems and fixes |

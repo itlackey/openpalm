@@ -1,8 +1,9 @@
 # AGENTS.md — OpenPalm MVP
 
-> **CRITICAL:** All work must comply with [`docs/technical/core-principles.md`](docs/technical/core-principles.md).
+> **CRITICAL:** All work must comply with [`docs/technical/authoritative/core-principles.md`](docs/technical/authoritative/core-principles.md).
 > That document is the **authoritative source of architectural rules** for this project.
 > No implementation may violate its Core Goals, Security Invariants, or Filesystem Contract.
+> **IT IS VERY IMPORTANT THAT YOU AVOID AND/OR REMOVE ALL COMPLEXITY THAT YOU CANNOT PROPERLY JUSTIFY. ALWAYS CALLOUT ANY COMPLEXITY THAT YOU FIND AND CANNOT JUSTIFY**
 
 ---
 
@@ -15,7 +16,7 @@ Repo layout convention:
 - `packages/*` contains app/package source workspaces.
 - `core/*` contains container/runtime assembly assets and image build contexts.
 
-See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for the filesystem/volume-mount contract.
+See [`docs/technical/authoritative/core-principles.md`](docs/technical/authoritative/core-principles.md) for the filesystem/volume-mount contract.
 
 ---
 
@@ -83,7 +84,7 @@ Read these before making significant changes. They are the authoritative sources
 
 | Document | Scope |
 |---|---|
-| [`docs/technical/core-principles.md`](docs/technical/core-principles.md) | Architectural rules, security invariants, filesystem contract |
+| [`docs/technical/authoritative/core-principles.md`](docs/technical/authoritative/core-principles.md) | Architectural rules, security invariants, filesystem contract |
 | [`docs/technical/code-quality-principles.md`](docs/technical/code-quality-principles.md) | Engineering invariants, Bun and SvelteKit quality contracts, delivery checklist |
 | [`docs/technical/bunjs-rules.md`](docs/technical/bunjs-rules.md) | Bun-specific implementation rules, built-in API preference list |
 | [`docs/technical/sveltekit-rules.md`](docs/technical/sveltekit-rules.md) | SvelteKit-specific rules, server/client boundaries, routing, UX |
@@ -168,7 +169,7 @@ No Prettier or ESLint configured. Match the existing file style:
 
 ---
 
-## Architecture Rules (summary — full detail in `docs/technical/core-principles.md`)
+## Architecture Rules (summary — full detail in `docs/technical/authoritative/core-principles.md`)
 
 - **File assembly, not rendering.** Copy whole files between tiers; no string interpolation or template generation.
 - **CONFIG_HOME policy.** `CONFIG_HOME` is the user-owned persistent source of truth.
@@ -191,7 +192,7 @@ Before submitting any change:
 - [ ] `cd packages/admin && npm run check` passes (UI type correctness)
 - [ ] `cd core/guardian && bun test` passes (security-critical branches covered)
 - [ ] No new dependency duplicates a built-in Bun/platform capability
-- [ ] Filesystem, guardian ingress, and assistant-isolation rules in `docs/technical/core-principles.md` remain intact
+- [ ] Filesystem, guardian ingress, and assistant-isolation rules in `docs/technical/authoritative/core-principles.md` remain intact
 - [ ] Errors and logs are structured and include request identifiers where available
 - [ ] No secrets leak through client bundles or logs
 
@@ -201,7 +202,7 @@ Before submitting any change:
 
 | Path | Purpose |
 |---|---|
-| `docs/technical/core-principles.md` | **Authoritative architectural rules** |
+| `docs/technical/authoritative/core-principles.md` | **Authoritative architectural rules** |
 | `docs/technical/code-quality-principles.md` | Engineering invariants and quality contracts |
 | `docs/technical/bunjs-rules.md` | Bun built-in API rules |
 | `docs/technical/sveltekit-rules.md` | SvelteKit-specific implementation rules |

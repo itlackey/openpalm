@@ -34,14 +34,13 @@ describe("ensureSecrets", () => {
 
     ensureSecrets(state);
 
-    const userEnv = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
-    const systemEnv = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
-    expect(userEnv).toContain("OPENAI_API_KEY=");
-    expect(userEnv).toContain("OWNER_NAME=");
-    expect(systemEnv).toContain("OP_ADMIN_TOKEN=");
-    expect(systemEnv).toContain("OP_ASSISTANT_TOKEN=");
-    expect(systemEnv).toContain("OP_MEMORY_TOKEN=");
-    expect(existsSync(join(vaultDir, "stack", "stack.env"))).toBe(true);
+    const stackEnv = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    expect(stackEnv).toContain("OPENAI_API_KEY=");
+    expect(stackEnv).toContain("OWNER_NAME=");
+    expect(stackEnv).toContain("OP_ADMIN_TOKEN=");
+    expect(stackEnv).toContain("OP_ASSISTANT_TOKEN=");
+    expect(stackEnv).toContain("OP_MEMORY_TOKEN=");
+    expect(existsSync(join(vaultDir, "user", "user.env"))).toBe(true);
   });
 
   test("applies strict permissions to vault files", () => {

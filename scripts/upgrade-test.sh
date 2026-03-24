@@ -147,6 +147,7 @@ compose_cmd() {
     -f "${OP_STACK_HOME}/core.compose.yml" \
     --env-file "${VAULT_HOME}/user/user.env" \
     --env-file "${VAULT_HOME}/stack/stack.env" \
+    --env-file "${VAULT_HOME}/stack/guardian.env" \
     "$@"
 }
 
@@ -254,6 +255,10 @@ OP_INGRESS_BIND_ADDRESS=127.0.0.1
 OP_INGRESS_PORT=8180
 EOF
 
+# Seed guardian.env (channel HMAC secrets)
+touch "${VAULT_HOME}/stack/guardian.env"
+chmod 600 "${VAULT_HOME}/stack/guardian.env"
+
 # Seed compose to stack/ (source of truth)
 cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_STACK_HOME}/core.compose.yml"
 
@@ -325,6 +330,7 @@ if [[ $SKIP_BUILD -eq 0 && -z "$FROM_VERSION" ]]; then
     -f compose.dev.yaml \
     --env-file "${VAULT_HOME}/stack/stack.env" \
     --env-file "${VAULT_HOME}/user/user.env" \
+    --env-file "${VAULT_HOME}/stack/guardian.env" \
     --project-name "$PROJECT_NAME" build 2>&1 | tail -5
   pass "Images built from source"
 fi
@@ -349,6 +355,7 @@ compose_cmd() {
     -f "${OP_STACK_HOME}/compose-port-override.yml" \
     --env-file "${VAULT_HOME}/user/user.env" \
     --env-file "${VAULT_HOME}/stack/stack.env" \
+    --env-file "${VAULT_HOME}/stack/guardian.env" \
     "$@"
 }
 

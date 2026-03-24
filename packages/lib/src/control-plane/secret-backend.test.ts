@@ -77,8 +77,9 @@ describe('secret backend', () => {
     expect(entry.scope).toBe('user');
     expect(await backend.exists('openpalm/custom/example')).toBe(true);
 
-    const userEnv = readFileSync(join(state.vaultDir, 'user', 'user.env'), 'utf-8');
-    expect(userEnv).toContain('very-secret');
+    // Custom secrets are now written to stack.env (all secrets consolidated there)
+    const stackEnv = readFileSync(join(state.vaultDir, 'stack', 'stack.env'), 'utf-8');
+    expect(stackEnv).toContain('very-secret');
   });
 
   test('validatePassEntryName rejects traversal and invalid characters', () => {

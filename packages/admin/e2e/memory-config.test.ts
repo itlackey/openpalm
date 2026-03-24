@@ -96,7 +96,6 @@ async function setupConsoleMocks(page: import('@playwright/test').Page) {
 						},
 						memory: { custom_instructions: '' }
 					},
-					runtimeConfig: null,
 					providers: {
 						llm: ['openai', 'anthropic', 'ollama', 'groq', 'together', 'mistral', 'deepseek', 'xai', 'lmstudio', 'model-runner'],
 						embed: ['openai', 'ollama', 'huggingface', 'lmstudio']
@@ -306,7 +305,7 @@ test.describe('Memory Config API', () => {
 		const data = await response.json();
 		expect(data.ok).toBe(true);
 		expect(data.persisted).toBe(true);
-		expect(data).toHaveProperty('pushed');
+		expect(data).toHaveProperty('persisted');
 	});
 
 	test('GET /admin/memory/config requires auth', async ({ request }) => {
@@ -603,12 +602,6 @@ test.describe('Memory Ollama Integration', () => {
 		expect(readData.config.mem0.embedder.config.model).toBe('nomic-embed-text');
 		expect(readData.config.mem0.vector_store.config.embedding_model_dims).toBe(768);
 
-		if (saveData.pushed) {
-			expect(readData.runtimeConfig).toBeDefined();
-			if (readData.runtimeConfig) {
-				expect(readData.runtimeConfig.mem0.llm.provider).toBe('ollama');
-			}
-		}
 	});
 
 	test('memory health check passes with configured provider', async ({ request }) => {

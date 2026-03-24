@@ -73,8 +73,9 @@ unauthorized.
 The assistant uses baked-in core config inside the image at `/etc/opencode`,
 mounts user extensions from `~/.openpalm/config/assistant/` into
 `/home/opencode/.config/opencode`, mounts `~/.openpalm/vault/stack/auth.json`
-for OpenCode auth state, and mounts `~/.openpalm/vault/user/user.env`
-read-only for user-managed provider keys. Its durable home is
+for OpenCode auth state, and mounts `~/.openpalm/vault/user/` at `/etc/vault/`
+for optional user extension files. Provider keys are injected from
+`~/.openpalm/vault/stack/stack.env` via compose `${VAR}` substitution. Its durable home is
 `~/.openpalm/data/assistant/`, and its shared workspace is
 `~/.openpalm/data/workspace/` mounted at `/work`.
 
@@ -176,14 +177,13 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
 ```
 ~/.openpalm/stack/core.compose.yml         -> base compose definition
 ~/.openpalm/stack/addons/chat/compose.yml  -> addon overlay
-~/.openpalm/vault/user/user.env            -> passed via --env-file
 ~/.openpalm/vault/stack/stack.env          -> passed via --env-file
+~/.openpalm/vault/user/user.env            -> optional extension env-file
 ```
 
 Docker reads compose files and env files directly from their final locations.
 There is no intermediate staging step. The standard wrapper includes
-`vault/stack/stack.env` and `vault/user/user.env`; the memory service may also
-load its own managed env file from `vault/stack/services/memory/managed.env`.
+`vault/stack/stack.env`, `vault/user/user.env`, and `vault/stack/guardian.env`.
 
 ---
 
@@ -207,9 +207,8 @@ is rejected at the door.
 
 The admin keeps an explicit allowlist of:
 - **Legal service names** -- core services + any installed addon service such as `chat`, `api`, or `voice`
-- **Legal actions** -- `install`, `update`, `uninstall`, `containers.*`,
-  `channels.list`, `channels.install`, `channels.uninstall`, `artifacts.*`,
-  `audit.list`
+- **Legal actions** -- lifecycle/config endpoints, `containers.*`, `addons.*`,
+  `registry.*` (automations), `artifacts.*`, and `audit.*` routes implemented by admin
 
 Anything not on the list is rejected with `400 invalid_service` or
 `400 invalid_action`.
