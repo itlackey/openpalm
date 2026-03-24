@@ -5,6 +5,38 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { detectHostInfo, main, reconcileStackEnvImageTag, resolveRequestedImageTag, upsertEnvValue } from './main.ts';
 
+/** Write a minimal SetupSpec YAML file that satisfies validation, allowing --file installs to skip the wizard. */
+function writeMinimalSetupSpec(dir: string): string {
+  const specPath = join(dir, 'setup-spec.yaml');
+  const yaml = [
+    'spec:',
+    '  version: 2',
+    '  capabilities:',
+    '    llm: openai/gpt-4o',
+    '    embeddings:',
+    '      provider: openai',
+    '      model: text-embedding-3-small',
+    '      dims: 1536',
+    '    memory:',
+    '      userId: test_user',
+    '  addons: {}',
+    'security:',
+    '  adminToken: test-admin-token-12345',
+    'owner:',
+    '  name: Test User',
+    '  email: test@example.com',
+    'connections:',
+    '  - id: openai',
+    '    name: OpenAI',
+    '    provider: openai',
+    '    baseUrl: https://api.openai.com/v1',
+    '    apiKey: sk-test-key',
+    '',
+  ].join('\n');
+  writeFileSync(specPath, yaml);
+  return specPath;
+}
+
 const TAR_BLOCK_SIZE = 512;
 
 async function gunzipBytes(data: Uint8Array): Promise<Uint8Array> {
@@ -106,6 +138,8 @@ describe('cli main', () => {
     writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
     chmodSync(join(binDir, 'varlock'), 0o755);
 
+    const specFile = writeMinimalSetupSpec(base);
+
     process.env.OP_HOME = base;
     process.env.OP_WORK_DIR = workDir;
     delete process.env.OP_ADMIN_TOKEN;
@@ -133,7 +167,7 @@ describe('cli main', () => {
     console.warn = mock(() => {}) as typeof console.warn;
 
     try {
-      await main(['install', '--no-start', '--force', '--no-open']);
+      await main(['install', '--no-start', '--file', specFile]);
       // Bootstrap runs directly, creating directories
       expect(existsSync(join(dataHome, 'admin'))).toBe(true);
       // guardian.env must be a file (not directory) — Docker creates a directory
@@ -155,6 +189,8 @@ describe('cli main', () => {
     mkdirSync(binDir, { recursive: true });
     writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
     chmodSync(join(binDir, 'varlock'), 0o755);
+
+    const specFile = writeMinimalSetupSpec(base);
 
     process.env.OP_HOME = base;
     process.env.OP_WORK_DIR = workDir;
@@ -179,7 +215,7 @@ describe('cli main', () => {
     console.log = mock(() => {}) as typeof console.log;
 
     try {
-      await main(['install', '--no-start', '--force', '--no-open']);
+      await main(['install', '--no-start', '--file', specFile]);
       expect(existsSync(join(dataHome, 'admin'))).toBe(true);
     } finally {
       rmSync(base, { recursive: true, force: true });
@@ -195,6 +231,8 @@ describe('cli main', () => {
     mkdirSync(binDir, { recursive: true });
     writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
     chmodSync(join(binDir, 'varlock'), 0o755);
+
+    const specFile = writeMinimalSetupSpec(base);
 
     process.env.OP_HOME = base;
     process.env.OP_WORK_DIR = workDir;
@@ -228,7 +266,7 @@ describe('cli main', () => {
     console.warn = mock(() => {}) as typeof console.warn;
 
     try {
-      await main(['install', '--no-start', '--force', '--no-open']);
+      await main(['install', '--no-start', '--file', specFile]);
 
       // Verify that the tarball was fetched using the version-pinned ref, not 'main'
       const tarballUrl = fetchedUrls.find((u) => u.includes('/archive/'));
@@ -334,16 +372,23 @@ describe('validate command', () => {
 describe('scan command', () => {
   it('is a recognized command (does not throw Unknown command)', async () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const binDir = join(tempHome, 'data', 'bin');
     const artifactsDir = join(tempHome, 'data', 'artifacts');
     const vaultDir = join(tempHome, 'vault');
-    mkdirSync(binDir, { recursive: true });
     mkdirSync(artifactsDir, { recursive: true });
     mkdirSync(vaultDir, { recursive: true });
 
-    const fakeVarlock = join(binDir, 'varlock');
-    writeFileSync(fakeVarlock, '#!/bin/sh\nexit 0\n');
-    chmodSync(fakeVarlock, 0o755);
+    // ensureVarlock() checks $HOME/.cache/openpalm/bin/varlock (homedir() is
+    // cached by Bun and cannot be overridden via process.env.HOME at runtime).
+    // Place a no-op varlock there if it doesn't already exist, and clean up after.
+    const { homedir } = await import('node:os');
+    const realCacheVarlockDir = join(homedir(), '.cache', 'openpalm', 'bin');
+    const realCacheVarlock = join(realCacheVarlockDir, 'varlock');
+    const varlockExisted = existsSync(realCacheVarlock);
+    if (!varlockExisted) {
+      mkdirSync(realCacheVarlockDir, { recursive: true });
+      writeFileSync(realCacheVarlock, '#!/bin/sh\nexit 0\n');
+      chmodSync(realCacheVarlock, 0o755);
+    }
 
     mkdirSync(join(vaultDir, 'user'), { recursive: true });
     writeFileSync(join(vaultDir, 'user', 'user.env.schema'), 'ADMIN_TOKEN\n');
@@ -362,6 +407,7 @@ describe('scan command', () => {
     } finally {
       process.exit = originalExit;
       process.env.OP_HOME = originalHome;
+      if (!varlockExisted) rmSync(realCacheVarlock, { force: true });
       rmSync(tempHome, { recursive: true, force: true });
     }
   });
@@ -512,11 +558,13 @@ describe('cli entrypoint (subprocess)', () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-entry-'));
     const workDir = join(tempHome, 'work');
     mkdirSync(workDir, { recursive: true });
+    const specFile = writeMinimalSetupSpec(tempHome);
     const mainPath = join(fileURLToPath(new URL('./', import.meta.url)), 'main.ts');
     try {
-      // Run install --no-start --no-open as a real subprocess with mocked docker/fetch.
+      // Run install --no-start --file as a real subprocess.
       // This exercises the import.meta.main code path that in-process tests skip.
-      const proc = Bun.spawn(['bun', mainPath, 'install', '--no-start', '--no-open', '--force'], {
+      // Uses --file to skip the interactive wizard that would block indefinitely.
+      const proc = Bun.spawn(['bun', mainPath, 'install', '--no-start', '--file', specFile], {
         stdout: 'pipe',
         stderr: 'pipe',
         env: { ...process.env, OP_HOME: tempHome, OP_WORK_DIR: workDir },
