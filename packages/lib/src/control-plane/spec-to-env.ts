@@ -81,7 +81,7 @@ export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
   };
 
   /** Providers that do NOT use an OpenAI-compatible /v1 path prefix. */
-  const NO_V1_SUFFIX = new Set(["ollama", "model-runner", "google"]);
+  const NO_V1_SUFFIX = new Set(["ollama", "google"]);
 
   const ensureV1 = (url: string, provider: string): string => {
     if (!url || NO_V1_SUFFIX.has(provider)) return url;
@@ -193,5 +193,5 @@ export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
     sectionHeader: "# ── Resolved Capabilities (from stack.yaml) ─────────────────────────",
   });
   if (!content.endsWith("\n")) content += "\n";
-  writeFileSync(stackEnvPath, content);
+  writeFileSync(stackEnvPath, content, { mode: 0o600 });
 }

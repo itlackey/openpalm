@@ -179,7 +179,7 @@ export async function performSetup(
   // Mark setup complete in vault/stack/stack.env (where isSetupComplete reads it)
   const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
   const systemBase = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
-  writeFileSync(systemEnvPath, mergeEnvContent(systemBase, { OP_SETUP_COMPLETE: "true" }));
+  writeFileSync(systemEnvPath, mergeEnvContent(systemBase, { OP_SETUP_COMPLETE: "true" }), { mode: 0o600 });
 
   logger.info("setup complete", { connectionCount: connections.length });
   return { ok: true };
