@@ -1,5 +1,6 @@
 {
   "name": "@openpalm/admin",
+  "description": "SvelteKit admin UI and API for OpenPalm stack management",
   "version": "0.9.3",
   "private": true,
   "license": "MPL-2.0",

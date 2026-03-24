@@ -39,7 +39,7 @@ function runStartupApply(): void {
     ensureCoreAutomations();
     ensureUserEnvSchema();
     ensureSystemEnvSchema();
-    state.artifacts = resolveRuntimeFiles(state);
+    state.artifacts = resolveRuntimeFiles();
     writeRuntimeFiles(state);
 
     appendAudit(

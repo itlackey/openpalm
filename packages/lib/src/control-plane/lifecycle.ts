@@ -155,7 +155,7 @@ async function reconcileCore(
   snapshotCurrentState(state);
 
   // Resolve and write runtime files to live paths
-  state.artifacts = resolveRuntimeFiles(state);
+  state.artifacts = resolveRuntimeFiles();
   writeRuntimeFiles(state);
   return active;
 }

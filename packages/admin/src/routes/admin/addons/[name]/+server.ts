@@ -12,6 +12,7 @@ import {
   getActor,
   getCallerType,
   parseJsonBody,
+  jsonBodyError,
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
@@ -87,10 +88,9 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(404, "not_found", `Addon "${name}" is not available`, { name }, requestId);
   }
 
-  const body = await parseJsonBody(event.request);
-  if (!body) {
-    return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
-  }
+  const result = await parseJsonBody(event.request);
+  if ('error' in result) return jsonBodyError(result, requestId);
+  const body = result.data;
 
   const spec = readStackSpec(state.configDir);
   if (!spec) {

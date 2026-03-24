@@ -39,7 +39,7 @@ export const POST: RequestHandler = async (event) => {
   }
 
   // Refresh runtime files (scheduler sidecar auto-reloads via file watching)
-  state.artifacts = resolveRuntimeFiles(state);
+  state.artifacts = resolveRuntimeFiles();
   writeRuntimeFiles(state);
 
   appendAudit(state, actor, "registry.refresh", { updated: pullResult.updated }, true, requestId, callerType);

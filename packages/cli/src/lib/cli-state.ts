@@ -21,6 +21,6 @@ import type { ControlPlaneState } from '@openpalm/lib';
  */
 export async function ensureValidState(): Promise<ControlPlaneState> {
   const state = createState();
-  state.artifacts = resolveRuntimeFiles(state);
+  state.artifacts = resolveRuntimeFiles();
   return state;
 }

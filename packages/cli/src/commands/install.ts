@@ -12,6 +12,7 @@ import {
   applyInstall,
   buildManagedServices,
   createOpenCodeClient,
+  createLogger,
   type SetupSpec,
 } from '@openpalm/lib';
 import { seedEmbeddedAssets } from '../lib/embedded-assets.ts';
@@ -23,6 +24,7 @@ import { createSetupServer } from '../setup-wizard/server.ts';
 import { buildDeployStatusEntries } from './install-services.ts';
 import { startOpenCodeSubprocess, type OpenCodeSubprocess } from '../lib/opencode-subprocess.ts';
 
+const logger = createLogger('cli:install');
 const SETUP_WIZARD_PORT = Number(process.env.OP_SETUP_PORT) || 0; // 0 = random available port
 
 async function resolveDefaultInstallRef(): Promise<string> {
@@ -167,7 +169,7 @@ async function prepareInstallFiles(
   await ensureDirectoryTree(homeDir, configDir, vaultDir, dataDir, workDir);
 
   try { await Bun.write(join(dataDir, 'host.json'), JSON.stringify(await detectHostInfo(), null, 2) + '\n'); }
-  catch { /* non-fatal */ }
+  catch (err) { logger.debug('failed to write host.json', { error: String(err) }); }
 
   // Seed core files from embedded assets (always available, even offline)
   seedEmbeddedAssets(homeDir);
@@ -175,8 +177,8 @@ async function prepareInstallFiles(
   // Try to fetch latest assets from GitHub (non-fatal — embedded assets are sufficient)
   try {
     await seedOpenPalmDir(version, homeDir, configDir, vaultDir, dataDir);
-  } catch {
-    // Embedded assets already seeded — GitHub download is optional
+  } catch (err) {
+    logger.debug('seedOpenPalmDir failed (embedded assets already seeded)', { error: String(err) });
   }
 
   console.log('Configuring secrets...');
@@ -190,7 +192,7 @@ async function prepareInstallFiles(
     if (!(await Bun.file(path).exists())) await Bun.write(path, content);
   }
 
-  try { ensureOpenCodeConfig(); ensureOpenCodeSystemConfig(); } catch { /* non-fatal */ }
+  try { ensureOpenCodeConfig(); ensureOpenCodeSystemConfig(); } catch (err) { logger.debug('failed to ensure OpenCode config', { error: String(err) }); }
 
   try {
     await Promise.race([
@@ -198,7 +200,7 @@ async function prepareInstallFiles(
       new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5_000)),
     ]);
     console.log('Configuration validated.');
-  } catch { /* non-fatal, skip silently */ }
+  } catch (err) { logger.debug('varlock validation skipped', { error: String(err) }); }
 }
 
 async function runWizardInstall(configDir: string, noOpen: boolean, noStart = false): Promise<void> {
@@ -336,19 +338,22 @@ async function ensureVolumeMountTargets(homeDir: string, vaultDir: string): Prom
 
   // Extract volume mount sources from all compose files
   for (const file of composeFiles) {
-    let doc: any;
-    try { doc = yamlParse(readFileSync(file, 'utf-8')); } catch { continue; }
+    let doc: Record<string, unknown>;
+    try { doc = yamlParse(readFileSync(file, 'utf-8')) as Record<string, unknown>; } catch { continue; }
     const services = doc?.services;
-    if (!services) continue;
+    if (!services || typeof services !== 'object') continue;
 
-    for (const svc of Object.values(services) as any[]) {
-      if (!Array.isArray(svc?.volumes)) continue;
-      for (const vol of svc.volumes) {
-        const raw = typeof vol === 'string' ? vol : vol?.source ?? vol?.target;
+    for (const svc of Object.values(services as Record<string, unknown>)) {
+      if (!svc || typeof svc !== 'object') continue;
+      const svcRecord = svc as Record<string, unknown>;
+      if (!Array.isArray(svcRecord.volumes)) continue;
+      for (const vol of svcRecord.volumes as unknown[]) {
+        const volRecord = typeof vol === 'object' && vol !== null ? vol as Record<string, unknown> : null;
+        const raw = typeof vol === 'string' ? vol : String(volRecord?.source ?? volRecord?.target ?? '');
         if (!raw || typeof raw !== 'string') continue;
 
         // Parse "source:target[:opts]" format
-        const hostPath = resolveEnvVar(typeof vol === 'string' ? vol.split(':')[0] : (vol.source ?? ''));
+        const hostPath = resolveEnvVar(typeof vol === 'string' ? vol.split(':')[0] : String(volRecord?.source ?? ''));
         if (!hostPath || !hostPath.startsWith('/')) continue;
 
         // Determine if this is a file mount (has extension) or directory mount

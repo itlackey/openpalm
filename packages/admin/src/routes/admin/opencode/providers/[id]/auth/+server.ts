@@ -7,6 +7,7 @@ import {
   getActor,
   getCallerType,
   parseJsonBody,
+  jsonBodyError,
 } from '$lib/server/helpers.js';
 import {
   setProviderApiKey,
@@ -118,10 +119,9 @@ export const POST: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  const body = await parseJsonBody(event.request);
-  if (!body) {
-    return errorResponse(400, 'invalid_input', 'Request body must be valid JSON', {}, requestId);
-  }
+  const result = await parseJsonBody(event.request);
+  if ('error' in result) return jsonBodyError(result, requestId);
+  const body = result.data;
 
   const state = getState();
   const actor = getActor(event);

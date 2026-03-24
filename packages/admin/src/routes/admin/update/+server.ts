@@ -6,7 +6,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { applyUpdate, appendAudit, ensureSecrets, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureMemoryDir, buildComposeOptions, buildManagedServices, ensureHomeDirs } from "@openpalm/lib";
+import { applyUpdate, appendAudit, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, buildComposeOptions, buildManagedServices, ensureHomeDirs } from "@openpalm/lib";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
@@ -26,8 +26,6 @@ export const POST: RequestHandler = async (event) => {
   ensureHomeDirs();
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
-  ensureMemoryDir();
-  ensureSecrets(state);
   const result = await applyUpdate(state);
   logger.info("update applied, re-running compose", { requestId, restarted: result.restarted });
 

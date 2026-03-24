@@ -5,7 +5,8 @@ import {
   requireAdmin,
   getActor,
   getCallerType,
-  parseJsonBody
+  parseJsonBody,
+  jsonBodyError
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import { isAllowedService, appendAudit, buildComposeOptions } from "@openpalm/lib";
@@ -24,10 +25,9 @@ export const POST: RequestHandler = async (event) => {
   const state = getState();
   const actor = getActor(event);
   const callerType = getCallerType(event);
-  const body = await parseJsonBody(event.request);
-  if (!body) {
-    return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
-  }
+  const result = await parseJsonBody(event.request);
+  if ('error' in result) return jsonBodyError(result, requestId);
+  const body = result.data;
   const service = typeof body.service === "string" ? body.service : "";
 
   if (!isAllowedService(service, state.configDir)) {

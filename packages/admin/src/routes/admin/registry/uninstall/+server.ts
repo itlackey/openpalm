@@ -16,7 +16,8 @@ import {
   getRequestId,
   getActor,
   getCallerType,
-  parseJsonBody
+  parseJsonBody,
+  jsonBodyError
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
@@ -34,10 +35,9 @@ export const POST: RequestHandler = async (event) => {
   const state = getState();
   const actor = getActor(event);
   const callerType = getCallerType(event);
-  const body = await parseJsonBody(event.request);
-  if (!body) {
-    return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
-  }
+  const parsed = await parseJsonBody(event.request);
+  if ('error' in parsed) return jsonBodyError(parsed, requestId);
+  const body = parsed.data;
   const name = body.name as string | undefined;
   const type = body.type as string | undefined;
 
@@ -60,7 +60,7 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_input", result.error, {}, requestId);
   }
 
-  state.artifacts = resolveRuntimeFiles(state);
+  state.artifacts = resolveRuntimeFiles();
   writeRuntimeFiles(state);
   // Scheduler sidecar auto-reloads via file watching
 

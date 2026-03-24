@@ -11,17 +11,12 @@
  * the CLI install command (which downloads assets before calling setup).
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { resolveDataDir, resolveConfigDir, resolveVaultDir, resolveOpenPalmHome, resolveBackupsDir } from "./home.js";
 import { createLogger } from "../logger.js";
+import { sha256 } from "./crypto.js";
 
 const logger = createLogger("core-assets");
-
-/** SHA-256 hex digest of a string. */
-function sha256(content: string): string {
-  return createHash("sha256").update(content).digest("hex");
-}
 
 // ── Env Schema Files (vault/) ────────────────────────────────────────
 

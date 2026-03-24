@@ -83,11 +83,20 @@ Key env:
 | `HOME` | `/data` | Writable home |
 | `MEM0_DIR` | `/data/.mem0` | mem0 compatibility directory |
 | `MEMORY_AUTH_TOKEN` | `stack.env` via `${VAR}` | Memory API auth |
-| `OPENAI_API_KEY` | `stack.env` via `${VAR}` | Embeddings / model provider |
-| `OPENAI_BASE_URL` | `stack.env` via `${VAR}` | Optional provider override |
+| `MEMORY_USER_ID` | `stack.env` via `${VAR}` | Default memory identity |
+| `SYSTEM_LLM_PROVIDER` | `${OP_CAP_LLM_PROVIDER}` | LLM provider name for fact extraction |
+| `SYSTEM_LLM_MODEL` | `${OP_CAP_LLM_MODEL}` | LLM model for fact extraction |
+| `SYSTEM_LLM_BASE_URL` | `${OP_CAP_LLM_BASE_URL}` | LLM endpoint URL |
+| `SYSTEM_LLM_API_KEY` | `${OP_CAP_LLM_API_KEY}` | LLM API key |
+| `EMBEDDING_PROVIDER` | `${OP_CAP_EMBEDDINGS_PROVIDER}` | Embedding provider name |
+| `EMBEDDING_MODEL` | `${OP_CAP_EMBEDDINGS_MODEL}` | Embedding model identifier |
+| `EMBEDDING_BASE_URL` | `${OP_CAP_EMBEDDINGS_BASE_URL}` | Embedding endpoint URL |
+| `EMBEDDING_API_KEY` | `${OP_CAP_EMBEDDINGS_API_KEY}` | Embedding API key |
+| `EMBEDDING_DIMS` | `${OP_CAP_EMBEDDINGS_DIMS}` | Embedding vector dimensions |
 
 Notes:
 
+- Memory env vars are resolved from `OP_CAP_*` capability variables in `stack.env`. See [`capability-injection.md`](capability-injection.md) for the full resolution pipeline.
 - The shipped compose file does not mount `default_config.json` separately.
 - The memory service persists everything through `/data`.
 
@@ -336,6 +345,12 @@ These variables are consumed by Compose and service env blocks.
 | `MEMORY_USER_ID` | Default memory identity |
 | `OWNER_NAME` | Operator display name |
 | `OWNER_EMAIL` | Operator email |
+| `OP_CAP_LLM_*` | Resolved LLM capability (provider, model, base URL, API key) |
+| `OP_CAP_SLM_*` | Resolved small/fast LLM capability |
+| `OP_CAP_EMBEDDINGS_*` | Resolved embedding capability (provider, model, base URL, API key, dims) |
+| `OP_CAP_TTS_*` | Resolved text-to-speech capability (provider, model, base URL, API key, voice, format) |
+| `OP_CAP_STT_*` | Resolved speech-to-text capability (provider, model, base URL, API key, language) |
+| `OP_CAP_RERANKING_*` | Resolved reranking capability (provider, model, base URL, API key, topK, topN) |
 | `CHANNEL_<NAME>_SECRET` | Guardian / channel HMAC secrets (lives in `guardian.env`, not `stack.env`) |
 
 ---
@@ -347,8 +362,10 @@ hold custom preferences. `OWNER_NAME` and `OWNER_EMAIL` live in `stack.env`
 (see above).
 
 API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, etc.) and
-provider/model selections now live in `stack.env`. They are passed into
-containers through compose `${VAR}` substitution in service `environment:`
-blocks. Memory receives `OPENAI_API_KEY`, `OPENAI_BASE_URL`, etc. this way.
+provider/model selections live in `stack.env`. The control plane resolves
+these into `OP_CAP_*` capability variables (see [`capability-injection.md`](capability-injection.md)),
+which services consume via compose `${VAR}` substitution in their `environment:`
+blocks. Memory receives `OP_CAP_LLM_*` and `OP_CAP_EMBEDDINGS_*` vars this way.
+The assistant receives raw provider API keys directly for OpenCode compatibility.
 Channels receive only their own HMAC secret via `${VAR}` substitution from
 `guardian.env`.

@@ -58,7 +58,7 @@ existing user files.
 ├── vault/
 │   ├── stack/
 │   │   ├── stack.env
-│   │   ├── guardian.env
+│   │   ├── guardian.env        (not shipped; created by CLI installer)
 │   │   ├── auth.json
 │   │   └── addons/            per-addon env files
 │   └── user/
@@ -105,6 +105,8 @@ existing user files.
 ### Scheduler
 
 - `$OP_HOME/config -> /openpalm/config:ro`
+- `$OP_HOME/logs -> /openpalm/logs`
+- `$OP_HOME/data -> /openpalm/data`
 
 ### Admin addon
 
@@ -170,6 +172,6 @@ Supported compose invocation paths always include:
 
 - `vault/stack/stack.env`
 - `vault/user/user.env`
-- `vault/stack/guardian.env`
+- `vault/stack/guardian.env` (created by CLI installer; compose marks it `required: false`)
 
 All API keys and provider configuration are stored in `vault/stack/stack.env`.

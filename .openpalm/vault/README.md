@@ -24,7 +24,7 @@ vault/
 | File | Owner | Who writes | Who reads |
 |------|-------|------------|-----------|
 | `stack/stack.env` | System | CLI install, admin API | Docker Compose and service env wiring |
-| `stack/guardian.env` | System | CLI install, admin API (channel add/remove) | Guardian (env_file + GUARDIAN_SECRETS_PATH), Docker Compose |
+| `stack/guardian.env` | System | CLI install, admin API (channel add/remove) | Guardian (env_file + GUARDIAN_SECRETS_PATH), Docker Compose. Not shipped in the bundle; created by the CLI installer when the first channel is installed. Compose marks it `required: false`. |
 | `stack/auth.json` | System-managed runtime auth | CLI/admin | Assistant file mount |
 | `user/user.env` | User | User directly (custom extensions only) | Docker Compose, assistant (read-only mount) |
 | `*.env.schema` | System | CLI install, admin upgrade | Varlock (validation + redaction) |
@@ -33,7 +33,7 @@ vault/
 
 - **Only admin mounts full `vault/` (read-write).** This is required for the
   admin API to manage stack secrets and channel HMAC keys.
-- **Assistant mounts only `vault/user/user.env` (read-only).** The assistant
+- **Assistant mounts `vault/user/` (the directory, rw).** The assistant
   never sees stack secrets like admin tokens or HMAC keys.
 - **No other container mounts vault.** Guardian, scheduler, and memory receive
   secrets via Compose env loading and service environment blocks.

@@ -5,6 +5,7 @@ import {
   errorResponse,
   getRequestId,
   parseJsonBody,
+  jsonBodyError,
   requireAdmin,
   validateExternalUrl,
 } from '$lib/server/helpers.js';
@@ -19,10 +20,9 @@ export const POST: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  const body = await parseJsonBody(event.request);
-  if (!body) {
-    return errorResponse(400, 'invalid_input', 'Request body must be valid JSON', {}, requestId);
-  }
+  const parsed = await parseJsonBody(event.request);
+  if ('error' in parsed) return jsonBodyError(parsed, requestId);
+  const body = parsed.data;
 
   const baseUrl = typeof body.baseUrl === 'string' ? body.baseUrl.trim() : '';
   const apiKey  = typeof body.apiKey  === 'string' ? body.apiKey  : '';

@@ -38,7 +38,7 @@ The standard startup path uses:
 
 - `vault/stack/stack.env` — primary: all config, secrets, and resolved capabilities (OP_CAP_*)
 - `vault/user/user.env` — extension: optional user additions, loaded alongside stack.env
-- `vault/stack/guardian.env` — guardian-specific: channel HMAC secrets
+- `vault/stack/guardian.env` — guardian-specific: channel HMAC secrets. Not shipped in the bundle; created by the CLI installer when the first channel is installed. Compose marks it `required: false`.
 
 ### Security boundaries
 
@@ -170,7 +170,7 @@ Role:
 Env sources:
 
 - direct compose `environment:` block (non-secret config via ${VAR} substitution)
-- `vault/stack/guardian.env` as compose `env_file` (channel HMAC secrets)
+- `vault/stack/guardian.env` as compose `env_file` (channel HMAC secrets). This file is not shipped; it is created by the CLI installer when the first channel is installed. Compose marks it `required: false`, so the guardian starts without it.
 - same file mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload
 
 Key env:
@@ -186,6 +186,7 @@ Mounts:
 
 - `$OP_HOME/data/guardian -> /app/data`
 - `$OP_HOME/logs -> /app/audit`
+- `$OP_HOME/vault/stack/guardian.env -> /app/secrets/guardian.env:ro` (created by CLI installer; absent until first channel install)
 
 Ports and network:
 
@@ -253,8 +254,10 @@ Key env:
 Mounts:
 
 - `$OP_HOME/config -> /openpalm/config:ro`
+- `$OP_HOME/logs -> /openpalm/logs`
+- `$OP_HOME/data -> /openpalm/data`
 
-Design note — scheduler access scope: The scheduler receives `OP_ADMIN_TOKEN` and mounts `config/` because it must execute automations that call the admin API (e.g., triggering lifecycle operations, managing addons) and read automation definitions from config. This is a deliberate design choice, not an accidental over-grant. The scheduler is an internal-only service on `assistant_net` with no ingress exposure, and its access is bounded to what automations require: config (read-only), admin API (token-authenticated), assistant API, and memory API.
+Design note — scheduler access scope: The scheduler receives `OP_ADMIN_TOKEN` and mounts `config/` (read-only), `logs/`, and `data/` because it must execute automations that call the admin API (e.g., triggering lifecycle operations, managing addons), read automation definitions from config, write automation logs, and access data for automation state. This is a deliberate design choice, not an accidental over-grant. The scheduler is an internal-only service on `assistant_net` with no ingress exposure, and its access is bounded to what automations require: config (read-only), logs (read-write), data (read-write), admin API (token-authenticated), assistant API, and memory API.
 
 Ports and network:
 

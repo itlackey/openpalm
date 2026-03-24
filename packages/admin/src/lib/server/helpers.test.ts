@@ -8,7 +8,7 @@
  * 4. requireAdmin enforces timing-safe token comparison (security invariant)
  * 5. getActor derives actor from auth state, not caller-controlled headers
  * 6. getCallerType normalizes x-requested-by header
- * 7. parseJsonBody returns parsed JSON or null on failure
+ * 7. parseJsonBody returns discriminated result with data or error type
  */
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import {
@@ -280,26 +280,36 @@ describe("parseJsonBody", () => {
       headers: { "content-type": "application/json" }
     });
     const result = await parseJsonBody(req);
-    expect(result).toEqual({ key: "value" });
+    expect(result).toEqual({ data: { key: "value" } });
   });
 
-  test("returns null for invalid JSON", async () => {
+  test("returns invalid_json error for invalid JSON", async () => {
     const req = new Request("http://localhost", {
       method: "POST",
       body: "not json",
       headers: { "content-type": "text/plain" }
     });
     const result = await parseJsonBody(req);
-    expect(result).toBeNull();
+    expect(result).toEqual({ error: "invalid_json" });
   });
 
-  test("returns null for empty body", async () => {
+  test("returns invalid_json error for empty body", async () => {
     const req = new Request("http://localhost", {
       method: "POST",
       body: ""
     });
     const result = await parseJsonBody(req);
-    expect(result).toBeNull();
+    expect(result).toEqual({ error: "invalid_json" });
+  });
+
+  test("returns too_large error when content-length exceeds maxBytes", async () => {
+    const req = new Request("http://localhost", {
+      method: "POST",
+      body: JSON.stringify({ key: "value" }),
+      headers: { "content-type": "application/json", "content-length": "2000000" }
+    });
+    const result = await parseJsonBody(req);
+    expect(result).toEqual({ error: "too_large" });
   });
 });
 

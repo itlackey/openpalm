@@ -90,6 +90,11 @@ export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
 
   const caps: Record<string, string> = {};
 
+  /** Set a list of capability env vars to empty string (disabled capability). */
+  const clearCapVars = (prefix: string, fields: string[]): void => {
+    for (const f of fields) caps[`${prefix}_${f}`] = "";
+  };
+
   // ── LLM ──
   const { provider: llmP, model: llmM } = parseCapabilityString(spec.capabilities.llm);
   caps.OP_CAP_LLM_PROVIDER = llmP;
@@ -105,10 +110,7 @@ export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
     caps.OP_CAP_SLM_BASE_URL = resolveUrl(slmP);
     caps.OP_CAP_SLM_API_KEY = resolveKey(slmP);
   } else {
-    caps.OP_CAP_SLM_PROVIDER = "";
-    caps.OP_CAP_SLM_MODEL = "";
-    caps.OP_CAP_SLM_BASE_URL = "";
-    caps.OP_CAP_SLM_API_KEY = "";
+    clearCapVars("OP_CAP_SLM", ["PROVIDER", "MODEL", "BASE_URL", "API_KEY"]);
   }
 
   // ── Embeddings ──
@@ -130,12 +132,7 @@ export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
     caps.OP_CAP_TTS_VOICE = tts.voice || "";
     caps.OP_CAP_TTS_FORMAT = tts.format || "";
   } else {
-    caps.OP_CAP_TTS_PROVIDER = "";
-    caps.OP_CAP_TTS_MODEL = "";
-    caps.OP_CAP_TTS_BASE_URL = "";
-    caps.OP_CAP_TTS_API_KEY = "";
-    caps.OP_CAP_TTS_VOICE = "";
-    caps.OP_CAP_TTS_FORMAT = "";
+    clearCapVars("OP_CAP_TTS", ["PROVIDER", "MODEL", "BASE_URL", "API_KEY", "VOICE", "FORMAT"]);
   }
 
   // ── STT ──
@@ -148,11 +145,7 @@ export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
     caps.OP_CAP_STT_API_KEY = resolveKey(p);
     caps.OP_CAP_STT_LANGUAGE = stt.language || "";
   } else {
-    caps.OP_CAP_STT_PROVIDER = "";
-    caps.OP_CAP_STT_MODEL = "";
-    caps.OP_CAP_STT_BASE_URL = "";
-    caps.OP_CAP_STT_API_KEY = "";
-    caps.OP_CAP_STT_LANGUAGE = "";
+    clearCapVars("OP_CAP_STT", ["PROVIDER", "MODEL", "BASE_URL", "API_KEY", "LANGUAGE"]);
   }
 
   // ── Reranking ──
@@ -166,12 +159,7 @@ export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
     caps.OP_CAP_RERANKING_TOP_K = rr.topK ? String(rr.topK) : "";
     caps.OP_CAP_RERANKING_TOP_N = rr.topN ? String(rr.topN) : "";
   } else {
-    caps.OP_CAP_RERANKING_PROVIDER = "";
-    caps.OP_CAP_RERANKING_MODEL = "";
-    caps.OP_CAP_RERANKING_BASE_URL = "";
-    caps.OP_CAP_RERANKING_API_KEY = "";
-    caps.OP_CAP_RERANKING_TOP_K = "";
-    caps.OP_CAP_RERANKING_TOP_N = "";
+    clearCapVars("OP_CAP_RERANKING", ["PROVIDER", "MODEL", "BASE_URL", "API_KEY", "TOP_K", "TOP_N"]);
   }
 
   // ── Memory ──

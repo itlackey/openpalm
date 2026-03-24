@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types';
-import { requireAdmin, jsonResponse, errorResponse, getRequestId, parseJsonBody } from '$lib/server/helpers.js';
+import { requireAdmin, jsonResponse, errorResponse, getRequestId, parseJsonBody, jsonBodyError } from '$lib/server/helpers.js';
 import { getOpenCodeConfig, proxyToOpenCode } from '$lib/opencode/client.server.js';
 import { getState } from '$lib/server/state.js';
 import {
@@ -30,10 +30,9 @@ export const POST: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  const body = await parseJsonBody(event.request);
-  if (!body) {
-    return errorResponse(400, 'invalid_input', 'Request body must be valid JSON', {}, requestId);
-  }
+  const result = await parseJsonBody(event.request);
+  if ('error' in result) return jsonBodyError(result, requestId);
+  const body = result.data;
 
   const model = typeof body.model === 'string' ? body.model.trim() : '';
   if (!model) {

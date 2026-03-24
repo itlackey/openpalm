@@ -6,7 +6,6 @@
  * the rollback module (snapshot to ~/.cache/openpalm/rollback/).
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, chmodSync } from "node:fs";
-import { createHash, randomBytes } from "node:crypto";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { isChannelAddon } from "./channels.js";
@@ -20,19 +19,10 @@ import {
   ensureUserEnvSchema,
   ensureSystemEnvSchema,
 } from "./core-assets.js";
+export { sha256, randomHex } from "./crypto.js";
+import { sha256, randomHex } from "./crypto.js";
 
 const DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
-
-// ── Crypto Utilities ──────────────────────────────────────────────────
-
-export function sha256(content: string): string {
-  return createHash("sha256").update(content).digest("hex");
-}
-
-/** Generate a hex string using Node's crypto.randomBytes (CSPRNG). */
-export function randomHex(bytes: number): string {
-  return randomBytes(bytes).toString("hex");
-}
 
 // ── Stack Config (stack.yaml) ─────────────────────────────────────
 
@@ -52,12 +42,6 @@ export function isAdminEnabled(state: ControlPlaneState): boolean {
   const spec = readStackSpec(state.configDir);
   if (spec) return hasAddon(spec, "admin");
   return false;
-}
-
-// ── Compose Content ──────────────────────────────────────────────────
-
-function resolveCompose(_state: ControlPlaneState): string {
-  return readCoreCompose();
 }
 
 // ── Env File Management ──────────────────────────────────────────────
@@ -174,13 +158,11 @@ export function discoverStackOverlays(stackDir: string): string[] {
 
 // ── Top-Level Operations ─────────────────────────────────────────────
 
-export function resolveRuntimeFiles(
-  state: ControlPlaneState
-): {
+export function resolveRuntimeFiles(): {
   compose: string;
 } {
   return {
-    compose: resolveCompose(state),
+    compose: readCoreCompose(),
   };
 }
 
@@ -340,9 +322,8 @@ export function writeRuntimeFiles(
   ensureSystemEnvSchema();
 
   // Write OP_CAP_* capability vars to stack.env from stack spec
-  const specForEnv = spec ?? readStackSpec(state.configDir);
-  if (specForEnv) {
-    writeCapabilityVars(specForEnv, state.vaultDir);
+  if (spec) {
+    writeCapabilityVars(spec, state.vaultDir);
   }
 
   // Generate redact.env.schema from canonical mappings

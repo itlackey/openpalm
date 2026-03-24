@@ -13,7 +13,8 @@ import {
   getRequestId,
   getActor,
   getCallerType,
-  parseJsonBody
+  parseJsonBody,
+  jsonBodyError
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
@@ -33,10 +34,9 @@ export const POST: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
-  const body = await parseJsonBody(event.request);
-  if (!body) {
-    return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
-  }
+  const parsed = await parseJsonBody(event.request);
+  if ('error' in parsed) return jsonBodyError(parsed, requestId);
+  const body = parsed.data;
   const provider = body.provider as string | undefined;
   const apiKeyRef = body.apiKeyRef as string | undefined;
   const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl : "";

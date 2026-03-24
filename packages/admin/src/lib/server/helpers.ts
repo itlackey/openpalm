@@ -212,20 +212,32 @@ function isDangerousIp(hostname: string): boolean {
   return false;
 }
 
-/** Parse JSON body safely — returns null on parse failure or if body exceeds maxBytes */
+/** Discriminated result from parseJsonBody */
+export type ParseJsonBodyError = { error: "too_large" | "invalid_json" };
+export type ParseJsonBodyResult = { data: Record<string, unknown> } | ParseJsonBodyError;
+
+/** Parse JSON body safely — returns discriminated result with error type */
 export async function parseJsonBody(
   request: Request,
   maxBytes = 1_048_576
-): Promise<Record<string, unknown> | null> {
+): Promise<ParseJsonBodyResult> {
   try {
     const contentLength = request.headers.get('content-length');
     if (contentLength && parseInt(contentLength, 10) > maxBytes) {
-      return null;
+      return { error: "too_large" };
     }
-    return (await request.json()) as Record<string, unknown>;
+    return { data: (await request.json()) as Record<string, unknown> };
   } catch {
-    return null;
+    return { error: "invalid_json" };
   }
+}
+
+/** Convert a ParseJsonBodyError to an appropriate HTTP error response */
+export function jsonBodyError(err: ParseJsonBodyError, requestId: string): Response {
+  if (err.error === "too_large") {
+    return errorResponse(413, "too_large", "Request body too large", {}, requestId);
+  }
+  return errorResponse(400, "invalid_json", "Request body must be valid JSON", {}, requestId);
 }
 
 

@@ -118,33 +118,34 @@ function handleRequest(req: Request): Response | Promise<Response> {
   }
 
   // GET /automations/:name/log (authenticated — exposes execution details)
-  if (method === "GET" && path.startsWith("/automations/") && path.endsWith("/log")) {
-    if (!requireAuth(req)) {
-      return json(401, { error: "unauthorized" });
-    }
-    const name = path.slice("/automations/".length, -"/log".length);
-    if (!name) {
-      return json(400, { error: "missing automation name" });
-    }
-    const logs = getExecutionLog(name);
-    return json(200, { fileName: name, logs });
-  }
-
   // POST /automations/:name/run (authenticated)
-  if (method === "POST" && path.startsWith("/automations/") && path.endsWith("/run")) {
-    if (!requireAuth(req)) {
-      return json(401, { error: "unauthorized" });
-    }
-    const name = path.slice("/automations/".length, -"/run".length);
-    if (!name) {
-      return json(400, { error: "missing automation name" });
-    }
-    return triggerAutomation(name, ADMIN_TOKEN).then((result) => {
-      if (result.ok) {
-        return json(200, { ok: true, fileName: name });
+  if (path.startsWith("/automations/")) {
+    const segments = path.split("/").filter(Boolean); // ["automations", ...name parts..., action]
+    // Expect at least 3 segments: "automations", <name>, <action>
+    if (segments.length >= 3) {
+      const action = segments[segments.length - 1]; // last segment is the action
+      const name = segments.slice(1, -1).join("/"); // everything between "automations" and action
+
+      if (method === "GET" && action === "log" && name) {
+        if (!requireAuth(req)) {
+          return json(401, { error: "unauthorized" });
+        }
+        const logs = getExecutionLog(name);
+        return json(200, { fileName: name, logs });
       }
-      return json(404, { ok: false, error: result.error });
-    });
+
+      if (method === "POST" && action === "run" && name) {
+        if (!requireAuth(req)) {
+          return json(401, { error: "unauthorized" });
+        }
+        return triggerAutomation(name, ADMIN_TOKEN).then((result) => {
+          if (result.ok) {
+            return json(200, { ok: true, fileName: name });
+          }
+          return json(404, { ok: false, error: result.error });
+        });
+      }
+    }
   }
 
   return json(404, { error: "not found" });

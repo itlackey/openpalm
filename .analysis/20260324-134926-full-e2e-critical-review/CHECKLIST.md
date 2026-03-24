@@ -38,7 +38,7 @@ These are actively broken or security-vulnerable. Each is a quick fix.
 - [x] **H5. Delete dead before-navigate.png** `[HIGH]` `[cleanup]`
   `before-navigate.png` at repo root: git-tracked screenshot with zero references anywhere in the codebase. `git rm before-navigate.png`.
 
-- [ ] _(in progress)_ **H7. Fix root README broken links** `[HIGH]` `[docs]`
+- [x] **H7. Fix root README broken links** `[HIGH]` `[docs]`
   `README.md` has 4 broken links: `docs/technical/core-principles.md` (should be `authoritative/`), `docs/manual-setup.md` (should be `docs/technical/manual-setup.md`), `docs/community-channels.md` (should be `docs/channels/community-channels.md`), `registry/README.md` (directory removed entirely).
 
 ---
@@ -59,9 +59,6 @@ These are actively broken or security-vulnerable. Each is a quick fix.
 - [ ] **H5. Add varlock to scheduler Dockerfile** `[HIGH]` `[security]`
   `core/scheduler/Dockerfile`: only Dockerfile without varlock. Scheduler has `OP_ADMIN_TOKEN`, `OP_MEMORY_TOKEN`, and `OP_OPENCODE_PASSWORD` in its environment but none are redacted from logs. Add the varlock-fetch stage matching the other 5 Dockerfiles.
 
-- [ ] **H6. Restrict admin OP_HOME volume mount** `[HIGH]` `[security]`
-  `.openpalm/stack/addons/admin/compose.yml` line 62: admin has `${OP_HOME}:/openpalm` mounted rw, giving access to entire OpenPalm home including vault, config, data, logs, stack files. Mount only the specific subdirectories admin needs with appropriate read/write modes.
-
 - [ ] **H8. Add admin unit tests to CI** `[HIGH]` `[devops]`
   `.github/workflows/ci.yml`: 592 admin unit tests exist but are not verified in CI. CI runs `bun run test` (SDK, guardian, channels, CLI) but does not run `bun run admin:test:unit`. Add it to the CI pipeline.
 
@@ -79,14 +76,8 @@ These are actively broken or security-vulnerable. Each is a quick fix.
 
 ### Medium Severity -- Security
 
-- [ ] **M1. Set `internal: true` on `assistant_net` network** `[MEDIUM]` `[security]`
-  `.openpalm/stack/core.compose.yml` lines 181-184: Docker Compose networks have no isolation configuration. At minimum, set `internal: true` on `assistant_net` so containers on that network cannot reach the internet directly.
-
 - [ ] **M2. Fix assistant Dockerfile `pip --break-system-packages`** `[MEDIUM]` `[security]` `[devops]`
   `core/assistant/Dockerfile` line 67: modifies system-level Python packages with `--break-system-packages`. Use `uv` (already installed in same Dockerfile) or a venv instead.
-
-- [ ] **M3. Fix assistant Dockerfile multiple `curl | bash` installs** `[MEDIUM]` `[security]`
-  `core/assistant/Dockerfile` lines 71, 84, 92, 101: four separate `curl | bash` installations (OpenCode, Bun, uv, agentikit) without integrity verification. Where possible, download binaries directly and verify checksums.
 
 ---
 
@@ -94,43 +85,43 @@ These are actively broken or security-vulnerable. Each is a quick fix.
 
 ### High Severity
 
-- [ ] **H-DOC1. Update environment-and-mounts.md for OP_CAP_* capability vars** `[HIGH]` `[docs]`
+- [x] **H-DOC1. Update environment-and-mounts.md for OP_CAP_* capability vars** `[HIGH]` `[docs]`
   `docs/technical/environment-and-mounts.md` lines 80-88: lists `OPENAI_API_KEY` and `OPENAI_BASE_URL` as memory env vars, but compose now uses `OP_CAP_*` capability variables (`OP_CAP_LLM_PROVIDER`, `OP_CAP_LLM_MODEL`, etc.) as the primary configuration mechanism.
 
-- [ ] _(in progress)_ **H-DOC2. Regenerate architecture SVG to remove Caddy** `[HIGH]` `[docs]`
+- [X] **H-DOC2. Regenerate architecture SVG to remove Caddy** `[HIGH]` `[docs]`
   `docs/technical/architecture.svg`: still shows Caddy as reverse proxy with container boxes and routing arrows. Caddy was retired. Regenerate reflecting current guardian-based architecture.
 
-- [ ] **H-DOC3. Fix vault/README.md assistant mount claim** `[HIGH]` `[docs]`
+- [x] **H-DOC3. Fix vault/README.md assistant mount claim** `[HIGH]` `[docs]`
   `.openpalm/vault/README.md` line 37: states "Assistant mounts only `vault/user/user.env` (read-only)." Wrong on two counts: compose mounts entire `vault/user/` directory (not just user.env), and no `:ro` flag (rw, not read-only). Contradicts core-principles.md.
 
-- [ ] **H-DOC4. Fix CLAUDE.md Docker Compose dev command** `[HIGH]` `[docs]`
+- [x] **H-DOC4. Fix CLAUDE.md Docker Compose dev command** `[HIGH]` `[docs]`
   `CLAUDE.md` lines 61-68: manual compose command missing admin overlay (`-f .openpalm/stack/addons/admin/compose.yml`) and memory managed env file (`--env-file .dev/vault/stack/services/memory/managed.env`). Running the CLAUDE.md version produces stack without admin.
 
-- [ ] **H-DOC5. Add package.json descriptions to 9 packages** `[HIGH]` `[docs]`
-  Missing `description` field: `@openpalm/admin`, `@openpalm/scheduler`, `@openpalm/channels-sdk`, `@openpalm/channel-chat`, `@openpalm/channel-api`, `@openpalm/channel-discord`, `@openpalm/channel-slack`, `@openpalm/channel-voice`, `@openpalm/guardian`.
+- [x] **H-DOC5. Add package.json descriptions to 8 packages** `[HIGH]` `[docs]`
+  Added descriptions to 8 packages (channel-chat was already deleted). All descriptions derived from actual source code.
 
-- [ ] **H-DOC6. Update scheduler mount documentation** `[HIGH]` `[docs]`
+- [x] **H-DOC6. Update scheduler mount documentation** `[HIGH]` `[docs]`
   `docs/technical/directory-structure.md` and `docs/technical/authoritative/foundations.md`: both claim scheduler mounts only `config:ro`. Actual compose shows scheduler also mounts `logs/` and `data/` rw. Significant underdocumentation of scheduler filesystem access.
 
 ### Medium Severity -- Documentation
 
-- [ ] **M-DOC1. Remove stale CLAUDE.md architecture claims** `[MEDIUM]` `[docs]`
-  `CLAUDE.md` references `CoreAssetProvider`, `ViteAssetProvider`, `getSetupManager()`, `getStackManager()` -- all removed or nonexistent. Also stale: `$stack` alias, "Lazy init" section.
+- [x] **M-DOC1. Remove stale CLAUDE.md architecture claims** `[MEDIUM]` `[docs]`
+  Removed references to `CoreAssetProvider`, `ViteAssetProvider`, `getSetupManager()`, `getStackManager()`, `$stack` alias. Replaced with accurate descriptions.
 
-- [ ] **M-DOC2. Clean MEMORY.md stale entries** `[MEDIUM]` `[docs]`
-  7 stale entries: "Stack Spec v3 (openpalm.yaml)", `ensureStackSpec()`, `packages/lib/assets/channels/*.yaml`, `packages/lib/assets/templates/`, `core-automations.yaml` path, `snippet.import` command, `writeOpenCodeProviderConfig()`.
+- [x] **M-DOC2. Clean MEMORY.md stale entries** `[MEDIUM]` `[docs]`
+  Fixed 7 stale entries plus 8 additional (Caddy refs, old paths, wrong ports, removed env vars).
 
-- [ ] **M-DOC3. Document the OP_CAP_* capability injection system** `[MEDIUM]` `[docs]`
-  The `OP_CAP_*` env vars are the primary configuration mechanism for memory and assistant services. Referenced in MEMORY.md as "Declarative Capability Injection (v0.11.0)" but no technical doc in `docs/` explains how capabilities are resolved, what OP_CAP_* prefix means, or how providers map to capabilities.
+- [x] **M-DOC3. Document the OP_CAP_* capability injection system** `[MEDIUM]` `[docs]`
+  Created `docs/technical/capability-injection.md` covering all 6 capability slots, resolution pipeline, and service consumption matrix.
 
-- [ ] **M-DOC4. Document the registry system** `[MEDIUM]` `[docs]`
-  Admin API has full `/admin/registry/*` endpoint set and registry.ts is 287 lines. But `registry/README.md` link in README is broken (directory removed). No user-facing documentation explaining what the registry is, how it works, or how to use it.
+- [x] **M-DOC4. Document the registry system** `[MEDIUM]` `[docs]`
+  Created `docs/technical/registry.md` covering all 6 API endpoints, addon structure, sync flow, and configuration.
 
 - [ ] **M-DOC5. Fix wizard:dev command description** `[LOW]` `[docs]`
   `CLAUDE.md` line 56: says `wizard:dev` runs "install --no-start --force with OP_HOME=.dev". Actual: OP_HOME is `/tmp/openpalm/.dev`, no `--force` flag, and script cleans the directory first.
 
-- [ ] **M-DOC6. Fix CLAUDE.md duplicate Key Files tables** `[LOW]` `[docs]`
-  `CLAUDE.md` has two "Key Files" sections (lines 135-147 and 206-235). Second is superset of first. Merge into one.
+- [x] **M-DOC6. Fix CLAUDE.md duplicate Key Files tables** `[LOW]` `[docs]`
+  Merged two Key Files sections into one comprehensive table.
 
 - [ ] **M-DOC7. Fix assistant-tools AGENTS.md broken doc path** `[LOW]` `[docs]`
   `packages/assistant-tools/AGENTS.md` line 60: references `docs/technical/docker-dependency-resolution.md` (correct path is `docs/technical/authoritative/docker-dependency-resolution.md`).
@@ -138,11 +129,11 @@ These are actively broken or security-vulnerable. Each is a quick fix.
 - [ ] **M-DOC8. Document undocumented memory tools in core/assistant AGENTS.md** `[LOW]` `[docs]`
   `core/assistant/opencode/AGENTS.md` line 20: references `memory-feedback`, `memory-exports_*`, and `memory-events_get` tools but provides no documentation on what these do or what arguments they take.
 
-- [ ] **M-DOC9. Update docs for services/ subdirectory** `[MEDIUM]` `[docs]`
-  `docs/technical/authoritative/core-principles.md` line 109 references `vault/stack/services/<service-name>/` but this directory does not exist in the shipped `.openpalm/` bundle. Created by dev-setup.sh at runtime. Documentation should clarify this.
+- [x] **M-DOC9. Update docs for services/ subdirectory** `[MEDIUM]` `[docs]`
+  Added clarifying note in core-principles.md that `vault/stack/services/` is runtime-created, not shipped.
 
-- [ ] **M-DOC10. Note guardian.env creation in manual setup docs** `[MEDIUM]` `[docs]`
-  Every technical doc describes `vault/stack/guardian.env` as required, but it does not exist in the shipped bundle. Compose marks it `required: false`. Docs should clarify it is created by the CLI installer, not shipped.
+- [x] **M-DOC10. Note guardian.env creation in manual setup docs** `[MEDIUM]` `[docs]`
+  Clarified across 4 files that guardian.env is runtime-created by CLI installer, not shipped. Compose marks it `required: false`.
 
 ---
 
@@ -150,41 +141,41 @@ These are actively broken or security-vulnerable. Each is a quick fix.
 
 ### Medium Severity
 
-- [ ] _(in progress)_ **M-CQ1. Fix guardian rate limiter memory leak** `[HIGH]` `[code-quality]`
-  `core/guardian/src/rate-limit.ts:25-35`: rate limiter only prunes entries when map exceeds 10,000. Expired entries for unique keys accumulate indefinitely. Nonce cache has periodic pruning via `setInterval`, but rate limiter does not. Add periodic eviction timer matching the nonce cache pattern.
+- [x] **M-CQ1. Fix guardian rate limiter memory leak** `[HIGH]` `[code-quality]`
+  Added `setInterval` pruning every 60s matching nonce cache pattern. Extracted `pruneRateLimitBuckets()` and `MAX_BUCKETS` constant.
 
-- [ ] _(in progress)_ **M-CQ2. Remove pure passthrough re-exports in admin** `[MEDIUM]` `[code-quality]`
-  5 files in `packages/admin/src/lib/server/` exist solely to re-export from `@openpalm/lib` with no logic, no preflight, no added safety: `env.ts`, `audit.ts`, `secrets.ts`, `memory-config.ts`, `model-runner.ts`. Only `docker.ts` and `state.ts` add real value. Consider importing directly from `@openpalm/lib` in route handlers.
+- [x] **M-CQ2. Remove pure passthrough re-exports in admin** `[MEDIUM]` `[code-quality]`
+  Deleted 5 wrapper files, updated 9 importers to use `@openpalm/lib` directly.
 
-- [ ] **M-CQ3. Remove dead `_state` parameter from resolveCompose** `[MEDIUM]` `[code-quality]`
-  `packages/lib/src/control-plane/config-persistence.ts:59-61`: `_state` parameter is unused (underscore-prefixed). Wrapper function adds no value over calling `readCoreCompose()` directly.
+- [x] **M-CQ3. Remove dead `_state` parameter from resolveCompose** `[MEDIUM]` `[code-quality]`
+  Removed `resolveCompose` wrapper entirely; `resolveRuntimeFiles()` now calls `readCoreCompose()` directly. Updated 6 callers.
 
-- [ ] **M-CQ4. Remove redundant readStackSpec call in writeRuntimeFiles** `[MEDIUM]` `[code-quality]`
-  `packages/lib/src/control-plane/config-persistence.ts:349`: `specForEnv = spec ?? readStackSpec(state.configDir)` is dead fallback -- if `spec` (line 327) is null, the second call returns null from the same file.
+- [x] **M-CQ4. Remove redundant readStackSpec call in writeRuntimeFiles** `[MEDIUM]` `[code-quality]`
+  Replaced dead `spec ?? readStackSpec()` fallback with direct `if (spec)` check.
 
-- [ ] **M-CQ5. Extract capability-clearing boilerplate in spec-to-env.ts** `[MEDIUM]` `[code-quality]`
-  `packages/lib/src/control-plane/spec-to-env.ts:117-185`: pattern of setting empty string for disabled capabilities repeated 6 times with 4-6 identical lines each. A helper like `clearCapabilityVars(caps, prefix, fields)` would reduce ~35 lines to ~6.
+- [x] **M-CQ5. Extract capability-clearing boilerplate in spec-to-env.ts** `[MEDIUM]` `[code-quality]`
+  Added `clearCapVars` helper; 21 repetitive lines reduced to 4 one-liner calls.
 
-- [ ] **M-CQ6. Deduplicate sha256 function** `[LOW]` `[code-quality]`
-  `packages/lib/src/control-plane/config-persistence.ts:28-30` and `packages/lib/src/control-plane/core-assets.ts:22-24`: identical `sha256` function in two files. `core-assets.ts` should import from `config-persistence.ts`.
+- [x] **M-CQ6. Deduplicate sha256 function** `[LOW]` `[code-quality]`
+  Extracted shared `sha256` and `randomHex` to `crypto.ts`; both files import from there (avoids circular dep).
 
-- [ ] **M-CQ7. Make parseJsonBody return discriminated error types** `[MEDIUM]` `[code-quality]`
-  `packages/admin/src/lib/server/helpers.ts:216-229`: returns `null` for both "body too large" (413) and "invalid JSON" (400). Callers cannot distinguish between the two. Return discriminated union or error code.
+- [x] **M-CQ7. Make parseJsonBody return discriminated error types** `[MEDIUM]` `[code-quality]`
+  Returns `ParseJsonBodyResult` discriminated union; added `jsonBodyError()` helper. Updated all 16 callers.
 
-- [ ] **M-CQ8. Add debug logging for silent error catches in CLI install** `[MEDIUM]` `[code-quality]`
-  `packages/cli/src/commands/install.ts:169-201`: four separate silent `catch {}` blocks for non-critical operations (host.json write, seedOpenPalmDir, OpenCode config, varlock validation). At minimum, emit debug-level log of what failed.
+- [x] **M-CQ8. Add debug logging for silent error catches in CLI install** `[MEDIUM]` `[code-quality]`
+  Added structured debug-level logging to all 4 silent catch blocks using `createLogger('cli:install')`.
 
-- [ ] **M-CQ9. Fix admin route double-calls** `[MEDIUM]` `[code-quality]`
-  `packages/admin/src/routes/admin/update/+server.ts`: calls `ensureMemoryDir()` and others before `applyUpdate()`, but `applyUpdate()` internally calls `reconcileCore()` which also calls `ensureMemoryDir()` and `ensureCoreAutomations()`. Some calls are redundant.
+- [x] **M-CQ9. Fix admin route double-calls** `[MEDIUM]` `[code-quality]`
+  Removed redundant `ensureMemoryDir()` and `ensureSecrets()` calls from update route (already called by `reconcileCore`/`createState`).
 
-- [ ] **M-CQ10. Fix scheduler route parsing fragility** `[MEDIUM]` `[code-quality]`
-  `packages/scheduler/src/server.ts:109-136`: manual string slicing for route params is brittle. Automation named "log" or "run" causes incorrect parsing (e.g., `/automations/my-log/log` extracts `my-` as name).
+- [x] **M-CQ10. Fix scheduler route parsing fragility** `[MEDIUM]` `[code-quality]`
+  Replaced brittle `path.endsWith`/`slice` with segment-based routing. Correctly handles names containing "log" or "run".
 
-- [ ] **M-CQ11. Add proper TypeScript types for Web Speech API** `[MEDIUM]` `[code-quality]`
-  `packages/admin/src/lib/voice/voice-state.svelte.ts:20-30,64,71`: 4 `any` instances for Web Speech API. Add `@types/dom-speech-recognition` or local type declaration file instead of `window as any` and untyped event handlers.
+- [x] **M-CQ11. Add proper TypeScript types for Web Speech API** `[MEDIUM]` `[code-quality]`
+  Created local `speech-recognition.d.ts` type declarations. Eliminated all 4 `any` usages.
 
-- [ ] **M-CQ12. Type YAML parsing in CLI install** `[MEDIUM]` `[code-quality]`
-  `packages/cli/src/commands/install.ts:339,344`: `let doc: any` and `Object.values(services) as any[]` for compose YAML parsing. Type as `Record<string, unknown>` with proper narrowing.
+- [x] **M-CQ12. Type YAML parsing in CLI install** `[MEDIUM]` `[code-quality]`
+  Replaced `any` with `Record<string, unknown>` and proper type guards for YAML parsing.
 
 ### Low Severity
 
@@ -208,9 +199,6 @@ These are actively broken or security-vulnerable. Each is a quick fix.
 
 - [ ] **L-CQ7. Extract forwardToGuardian into BaseChannel/SDK** `[LOW]` `[code-quality]`
   `packages/channel-discord/src/index.ts:568-585` and `packages/channel-slack/src/index.ts:485-502`: identical `forwardToGuardian` methods. Only difference is userId prefix (`discord:` vs `slack:`). Extract into BaseChannel as `forwardAndExtractAnswer()`.
-
-- [ ] **L-CQ8. Extract thread tracking into SDK utility** `[LOW]` `[code-quality]`
-  Both Discord and Slack implement nearly identical thread tracking: `activeThreads: Map`, `threadTtlMs`, `isThreadActive()`, `touchThread()`, pruning at 100 entries. Extract to `ThreadTracker` utility in channels-sdk.
 
 - [ ] **L-CQ9. Move MAX_AUDIT_MEMORY to audit.ts** `[LOW]` `[code-quality]`
   `packages/lib/src/control-plane/types.ts:73`: exported but only imported by `audit.ts` within same package. Not re-exported from `index.ts`. Make a non-exported constant in `audit.ts`.
@@ -256,9 +244,6 @@ These are actively broken or security-vulnerable. Each is a quick fix.
 
 ### Low Severity
 
-- [ ] **L-DO1. Pin Ollama addon image version** `[LOW]` `[devops]`
-  `.openpalm/stack/addons/ollama/compose.yml`: uses `ollama/ollama:latest` without digest pinning. Other images properly use `${OP_IMAGE_TAG}`.
-
 - [ ] **L-DO2. Add CLI binary checksum verification to setup script** `[LOW]` `[devops]`
   `scripts/setup.sh`: downloads CLI binary but does not verify SHA-256 checksum. Release workflow generates `checksums-sha256.txt` but setup script does not use it.
 
@@ -268,11 +253,8 @@ These are actively broken or security-vulnerable. Each is a quick fix.
 - [ ] **L-DO4. Remove channel-voice .env from git tracking** `[LOW]` `[devops]`
   `packages/channel-voice/.env` tracked in repo. Contains no actual secrets but `.env` files should generally not be tracked. `.env.example` convention already followed.
 
-- [ ] **L-DO5. Add base image digest pinning** `[LOW]` `[devops]`
-  Only docker-socket-proxy uses `@sha256:` digest pinning. All other base images use floating tags. Add digest pinning for production reproducibility.
-
 - [ ] **L-DO6. Pin Node.js base image version** `[LOW]` `[devops]`
-  `node:lts-trixie` and `node:lts-trixie-slim` are floating tags. Pin to specific version (e.g., `node:22-trixie-slim`).
+  `node:lts-trixie` and `node:lts-trixie-slim` are floating tags. Pin to specific version (e.g., `node:24-trixie`).
 
 - [ ] **L-DO7. Remove OP_SCHEDULER_PORT dead env var** `[LOW]` `[devops]`
   Generated in `spec-to-env.ts` but scheduler is internal-only with no host port. Scheduler reads hardcoded `"8090"` from compose.
@@ -295,8 +277,6 @@ These are actively broken or security-vulnerable. Each is a quick fix.
 - [ ] **M-FO2. Move or remove orphaned channel-discord/docs/plan.md** `[LOW]` `[files]`
   `packages/channel-discord/docs/plan.md`: only channel with its own docs directory. Orphaned planning material. Move to `.github/roadmap/` or delete.
 
-- [ ] **M-FO3. Consider moving .github/roadmap/ planning files** `[MEDIUM]` `[files]`
-  `.github/roadmap/` contains 41 planning files. Not GitHub-specific content (workflows, templates). Could live in `docs/roadmap/` to keep `.github/` focused on CI/CD.
 
 ---
 

@@ -17,18 +17,15 @@ class VoiceState {
 	ttsSupported = $state(false);
 	errorMessage = $state('');
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Web Speech API instance; accessed by module-level functions
-	recognition: any = null;
+	recognition: SpeechRecognitionInstance | null = $state(null);
 }
 
 export const voiceState = new VoiceState();
 
 /** Resolve the SpeechRecognition constructor (Chrome prefixes it). */
-function getSpeechRecognitionCtor(): (new () => any) | undefined {
+function getSpeechRecognitionCtor(): SpeechRecognitionConstructor | undefined {
 	if (typeof window === 'undefined') return undefined;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const w = window as any;
-	return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
+	return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? undefined;
 }
 
 /**
@@ -61,14 +58,14 @@ export function startListening(onResult: (transcript: string) => void): void {
 	instance.maxAlternatives = 1;
 	instance.continuous = false;
 
-	instance.onresult = (event: any) => {
+	instance.onresult = (event: SpeechRecognitionEvent) => {
 		const transcript: string = event.results?.[0]?.[0]?.transcript ?? '';
 		if (transcript) {
 			onResult(transcript);
 		}
 	};
 
-	instance.onerror = (event: any) => {
+	instance.onerror = (event: SpeechRecognitionErrorEvent) => {
 		if (voiceState.recognition !== instance) return;
 		const error: string = event.error ?? '';
 		if (error === 'no-speech' || error === 'aborted') {
