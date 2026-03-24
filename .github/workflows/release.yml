@@ -281,10 +281,9 @@ jobs:
         run: |
           mkdir -p dist
           tar -czf dist/openpalm-${{ needs.prepare-tag.outputs.version }}-deploy-bundle.tar.gz \
-            assets \
+            .openpalm \
             core \
             packages \
-            registry \
             scripts \
             README.md
 

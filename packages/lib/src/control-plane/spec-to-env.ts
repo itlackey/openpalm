@@ -24,7 +24,6 @@ export function deriveSystemEnvFromSpec(
   const gid = typeof process.getgid === "function" ? (process.getgid() ?? 1000) : 1000;
 
   const ports = SPEC_DEFAULTS.ports;
-  const network = SPEC_DEFAULTS.network;
   const image = SPEC_DEFAULTS.image;
 
   const result: Record<string, string> = {};
@@ -40,21 +39,12 @@ export function deriveSystemEnvFromSpec(
   result["OP_IMAGE_TAG"] = image.tag;
 
   // Ports
-  result["OP_INGRESS_PORT"] = String(ports.ingress);
   result["OP_ASSISTANT_PORT"] = String(ports.assistant);
   result["OP_ADMIN_PORT"] = String(ports.admin);
   result["OP_ADMIN_OPENCODE_PORT"] = String(ports.adminOpencode);
-  result["OP_SCHEDULER_PORT"] = String(ports.scheduler);
   result["OP_MEMORY_PORT"] = String(ports.memory);
   result["OP_GUARDIAN_PORT"] = String(ports.guardian);
   result["OP_ASSISTANT_SSH_PORT"] = String(ports.assistantSsh);
-
-  // Network
-  result["OP_INGRESS_BIND_ADDRESS"] = network.bindAddress;
-
-  // Feature flags (derived from addons)
-  result["OP_OLLAMA_ENABLED"] = hasAddon(spec, "ollama") ? "true" : "false";
-  result["OP_ADMIN_ENABLED"] = hasAddon(spec, "admin") ? "true" : "false";
 
   return result;
 }

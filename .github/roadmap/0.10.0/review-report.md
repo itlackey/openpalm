@@ -7,7 +7,7 @@
 > historical context but the specific path references are outdated.
 
 Three review agents analyzed the 0.10.0 plan documents against each other and
-against `docs/technical/core-principles.md`. This report consolidates all
+against `docs/technical/authoritative/core-principles.md`. This report consolidates all
 findings by severity.
 
 ---

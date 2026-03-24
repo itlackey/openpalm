@@ -160,9 +160,6 @@ OP_DOCKER_SOCK=$docker_sock
 OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=latest
 
-OP_INGRESS_BIND_ADDRESS=127.0.0.1
-OP_INGRESS_PORT=8080
-
 # Dev override: map host ports to match internal ports so tests can use hardcoded URLs
 OP_ASSISTANT_PORT=4096
 OP_MEMORY_PORT=8765

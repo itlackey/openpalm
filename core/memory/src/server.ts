@@ -4,6 +4,7 @@
  * Exposes the same REST endpoints as the previous Python FastAPI service.
  * Uses Bun.serve() on port 8765.
  */
+import { timingSafeEqual, createHash } from 'node:crypto';
 import { Memory } from '@openpalm/memory';
 import type { MemoryConfig } from '@openpalm/memory';
 import { buildConfigFromEnv } from './config';
@@ -134,6 +135,16 @@ function redactApiKeys(obj: unknown): unknown {
   return obj;
 }
 
+// ── Timing-safe token comparison ──────────────────────────────────────
+
+function safeTokenCompare(a: string, b: string): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (!a || !b) return false;
+  const hashA = createHash('sha256').update(a).digest();
+  const hashB = createHash('sha256').update(b).digest();
+  return timingSafeEqual(hashA, hashB);
+}
+
 // ── Auth middleware ────────────────────────────────────────────────────
 
 const MEMORY_AUTH_TOKEN = process.env.MEMORY_AUTH_TOKEN ?? '';
@@ -147,7 +158,7 @@ function checkAuth(req: Request): Response | null {
     ? authHeader.slice(7)
     : '';
 
-  if (token !== MEMORY_AUTH_TOKEN) {
+  if (!safeTokenCompare(token, MEMORY_AUTH_TOKEN)) {
     return errorResponse(401, 'Unauthorized');
   }
   return null;

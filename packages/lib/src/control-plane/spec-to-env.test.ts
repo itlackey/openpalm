@@ -36,9 +36,9 @@ describe("deriveSystemEnvFromSpec", () => {
 
   test("produces default port values", () => {
     const result = deriveSystemEnvFromSpec(makeSpec(), "/home/op");
-    expect(result.OP_INGRESS_PORT).toBe("3080");
     expect(result.OP_ASSISTANT_PORT).toBe("3800");
     expect(result.OP_MEMORY_PORT).toBe("3898");
+    expect(result.OP_GUARDIAN_PORT).toBe("3899");
   });
 
   test("does not include LLM provider in system env (lives in OP_CAP_* vars in stack.env)", () => {
@@ -53,11 +53,11 @@ describe("deriveSystemEnvFromSpec", () => {
     expect(result.EMBEDDING_DIMS).toBeUndefined();
   });
 
-  test("derives feature flags from addons", () => {
+  test("does not include removed feature flags", () => {
     const spec = makeSpec({ addons: { ollama: true } });
     const result = deriveSystemEnvFromSpec(spec, "/home/op");
-    expect(result.OP_OLLAMA_ENABLED).toBe("true");
-    expect(result.OP_ADMIN_ENABLED).toBe("false");
+    expect(result.OP_OLLAMA_ENABLED).toBeUndefined();
+    expect(result.OP_ADMIN_ENABLED).toBeUndefined();
   });
 });
 

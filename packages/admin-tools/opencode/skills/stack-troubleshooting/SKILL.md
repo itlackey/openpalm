@@ -273,7 +273,6 @@ Key environment variables that affect diagnostics:
 | `GUARDIAN_AUDIT_PATH` | guardian | Audit log file location |
 | `GUARDIAN_SECRETS_PATH` | guardian | Channel secrets file path |
 | `OPENCODE_TIMEOUT_MS` | guardian | Message forwarding timeout (default: 120000ms) |
-| `OP_INGRESS_PORT` | guardian | External ingress port (default: 3080) |
 | `OP_DOCKER_SOCK` | docker-socket-proxy | Docker socket path |
 | `SYSTEM_LLM_PROVIDER` | assistant | LLM provider configuration |
 | `SYSTEM_LLM_MODEL` | assistant | LLM model selection |

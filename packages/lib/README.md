@@ -40,4 +40,4 @@ Compose files in `stack/` and env files in `vault/` are the live runtime inputs.
 - Admin: optional UI/API wrapper
 - Scheduler: automation runner without Docker socket access
 
-See `docs/technical/core-principles.md` for the authoritative filesystem contract and security rules.
+See `docs/technical/authoritative/core-principles.md` for the authoritative filesystem contract and security rules.

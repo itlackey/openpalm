@@ -21,7 +21,7 @@ The following are required outcomes for this cleanup:
 3. support Compose `extends` as an optional pattern and document safe usage, without making it the common/default addon pattern
 4. remove aliases, shims, backward-compatibility paths, and legacy support code
 
-These directives must be implemented without violating `docs/technical/core-principles.md` or `docs/technical/code-quality-principles.md`.
+These directives must be implemented without violating `docs/technical/authoritative/core-principles.md` or `docs/technical/code-quality-principles.md`.
 
 ---
 

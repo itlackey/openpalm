@@ -14,6 +14,7 @@
  *   6. Forward to assistant and return response
  */
 
+import { timingSafeEqual, createHash } from "node:crypto";
 import { ERROR_CODES, validatePayload } from "@openpalm/channels-sdk/channel";
 import { verifySignature } from "@openpalm/channels-sdk/crypto";
 import { createLogger } from "@openpalm/channels-sdk/logger";
@@ -44,6 +45,16 @@ const logger = createLogger("guardian");
 
 const PORT = Number(Bun.env.PORT ?? 8080);
 const ADMIN_TOKEN = Bun.env.OP_ADMIN_TOKEN;
+
+// ── Timing-safe token comparison ────────────────────────────────────────
+
+function safeTokenCompare(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  if (!a || !b) return false;
+  const hashA = createHash("sha256").update(a).digest();
+  const hashB = createHash("sha256").update(b).digest();
+  return timingSafeEqual(hashA, hashB);
+}
 
 // ── Uptime & request counters ───────────────────────────────────────────
 
@@ -81,8 +92,8 @@ Bun.serve({
     if (url.pathname === "/stats" && req.method === "GET") {
       // Auth: require admin token if configured, otherwise allow (dev/LAN)
       if (ADMIN_TOKEN) {
-        const token = req.headers.get("x-admin-token");
-        if (token !== ADMIN_TOKEN) {
+        const token = req.headers.get("x-admin-token") ?? "";
+        if (!safeTokenCompare(token, ADMIN_TOKEN)) {
           return json(401, { error: "unauthorized" });
         }
       }

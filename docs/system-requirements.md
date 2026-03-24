@@ -124,7 +124,6 @@ unless you intentionally change bind addresses in `vault/stack/stack.env`.
 | `3821` | API addon | `OP_API_PORT` |
 | `3880` | Admin UI/API addon | `OP_ADMIN_PORT` |
 | `3881` | Admin-side OpenCode addon | `OP_ADMIN_OPENCODE_PORT` |
-| `3897` | Scheduler API (optional host bind in current compose) | `OP_SCHEDULER_PORT` |
 | `3898` | Memory API | `OP_MEMORY_PORT` |
 | `2222` | Assistant SSH (optional) | `OP_ASSISTANT_SSH_PORT` |
 

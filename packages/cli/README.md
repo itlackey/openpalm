@@ -62,7 +62,7 @@ On first install, the CLI serves a setup wizard on port `8100` via `Bun.serve()`
 2. **Running stack** -- commands refresh files in `~/.openpalm/` when needed, then execute Docker Compose directly.
 3. **Admin absent** -- all commands work identically. Admin is never required for any operation.
 
-Follows the file-assembly principle: copies whole files, never renders templates. See [`core-principles.md`](../../docs/technical/core-principles.md).
+Follows the file-assembly principle: copies whole files, never renders templates. See [`core-principles.md`](../../docs/technical/authoritative/core-principles.md).
 
 ## Building
 

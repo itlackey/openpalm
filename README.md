@@ -100,7 +100,7 @@ See the [manual setup guide](docs/manual-setup.md) for the raw flow and the [set
 - The assistant has no Docker socket and limited mounts.
 - LAN-first defaults stay in place unless you opt into broader exposure.
 
-See [`docs/how-it-works.md`](docs/how-it-works.md) for the full walkthrough and [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for security invariants.
+See [`docs/how-it-works.md`](docs/how-it-works.md) for the full walkthrough and [`docs/technical/authoritative/core-principles.md`](docs/technical/authoritative/core-principles.md) for security invariants.
 
 ## Make it yours
 
@@ -118,7 +118,7 @@ See [`docs/how-it-works.md`](docs/how-it-works.md) for the full walkthrough and 
 | [Manual Setup](docs/manual-setup.md) | Raw `docker compose` workflow using the copied `.openpalm/` bundle |
 | [How It Works](docs/how-it-works.md) | Architecture overview and data flow |
 | [Managing OpenPalm](docs/managing-openpalm.md) | Configuration, addons, secrets, access control |
-| [Core Principles](docs/technical/core-principles.md) | Security invariants and architectural rules |
+| [Core Principles](docs/technical/authoritative/core-principles.md) | Security invariants and architectural rules |
 | [Directory Structure](docs/technical/directory-structure.md) | Host paths, stack layout, volume design |
 | [Community Channels](docs/community-channels.md) | Building custom adapters |
 | [API Spec](docs/technical/api-spec.md) | Admin API endpoint contract |

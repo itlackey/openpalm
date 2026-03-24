@@ -29,18 +29,32 @@ type CoreSecretMapping = {
 };
 
 const STATIC_CORE_MAPPINGS: CoreSecretMapping[] = [
+  // Core authentication tokens
   { secretKey: 'openpalm/admin-token', envKey: 'OP_ADMIN_TOKEN', scope: 'system' },
   { secretKey: 'openpalm/assistant-token', envKey: 'OP_ASSISTANT_TOKEN', scope: 'system' },
   { secretKey: 'openpalm/memory/auth-token', envKey: 'OP_MEMORY_TOKEN', scope: 'system' },
   { secretKey: 'openpalm/opencode/server-password', envKey: 'OP_OPENCODE_PASSWORD', scope: 'system' },
+  // LLM provider API keys
   { secretKey: 'openpalm/openai/api-key', envKey: 'OPENAI_API_KEY', scope: 'user' },
-  { secretKey: 'openpalm/openviking/api-key', envKey: 'OPENVIKING_API_KEY', scope: 'user' },
   { secretKey: 'openpalm/anthropic/api-key', envKey: 'ANTHROPIC_API_KEY', scope: 'user' },
   { secretKey: 'openpalm/groq/api-key', envKey: 'GROQ_API_KEY', scope: 'user' },
   { secretKey: 'openpalm/mistral/api-key', envKey: 'MISTRAL_API_KEY', scope: 'user' },
   { secretKey: 'openpalm/google/api-key', envKey: 'GOOGLE_API_KEY', scope: 'user' },
+  { secretKey: 'openpalm/together/api-key', envKey: 'TOGETHER_API_KEY', scope: 'user' },
+  { secretKey: 'openpalm/deepseek/api-key', envKey: 'DEEPSEEK_API_KEY', scope: 'user' },
+  { secretKey: 'openpalm/xai/api-key', envKey: 'XAI_API_KEY', scope: 'user' },
+  { secretKey: 'openpalm/huggingface/token', envKey: 'HF_TOKEN', scope: 'user' },
   { secretKey: 'openpalm/mcp/api-key', envKey: 'MCP_API_KEY', scope: 'user' },
   { secretKey: 'openpalm/embedding/api-key', envKey: 'EMBEDDING_API_KEY', scope: 'user' },
+  { secretKey: 'openpalm/lmstudio/api-key', envKey: 'LMSTUDIO_API_KEY', scope: 'user' },
+  { secretKey: 'openpalm/openviking/api-key', envKey: 'OPENVIKING_API_KEY', scope: 'user' },
+  { secretKey: 'openpalm/openviking/vlm-api-key', envKey: 'VLM_API_KEY', scope: 'user' },
+  // Channel-specific credentials
+  { secretKey: 'openpalm/discord/bot-token', envKey: 'DISCORD_BOT_TOKEN', scope: 'user' },
+  { secretKey: 'openpalm/slack/bot-token', envKey: 'SLACK_BOT_TOKEN', scope: 'user' },
+  { secretKey: 'openpalm/slack/app-token', envKey: 'SLACK_APP_TOKEN', scope: 'user' },
+  { secretKey: 'openpalm/voice/stt-api-key', envKey: 'STT_API_KEY', scope: 'user' },
+  { secretKey: 'openpalm/voice/tts-api-key', envKey: 'TTS_API_KEY', scope: 'user' },
 ];
 
 // 128 bits of the SHA-256 digest keeps collision risk negligible while

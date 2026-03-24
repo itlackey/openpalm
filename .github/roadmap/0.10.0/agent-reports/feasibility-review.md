@@ -355,7 +355,7 @@ The FS refactor proposal (`fs-mounts-refactor.md`) collapses the three-tier XDG 
 - **Estimate: 1 day**
 
 **Documentation — 17+ docs files with hardcoded XDG paths:**
-- `docs/technical/directory-structure.md`, `docs/technical/environment-and-mounts.md`, `docs/technical/core-principles.md`, `docs/backup-restore.md`, `docs/manual-setup.md`, `docs/managing-openpalm.md`, `CLAUDE.md`, etc.
+- `docs/technical/directory-structure.md`, `docs/technical/environment-and-mounts.md`, `docs/technical/authoritative/core-principles.md`, `docs/backup-restore.md`, `docs/manual-setup.md`, `docs/managing-openpalm.md`, `CLAUDE.md`, etc.
 - **Estimate: 1-2 days**
 
 **New code (validate-in-place + rollback + hot-reload):**

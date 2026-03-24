@@ -159,7 +159,7 @@ See [docs/technical/directory-structure.md](../docs/technical/directory-structur
 
 ## Before submitting a PR
 
-1. **Read the rules.** [docs/technical/core-principles.md](../docs/technical/core-principles.md) is the authoritative source for architectural and security invariants. All changes must comply.
+1. **Read the rules.** [docs/technical/authoritative/core-principles.md](../docs/technical/authoritative/core-principles.md) is the authoritative source for architectural and security invariants. All changes must comply.
 2. **Run the delivery checklist:**
 
    ```bash
@@ -167,7 +167,7 @@ See [docs/technical/directory-structure.md](../docs/technical/directory-structur
    bun run guardian:test            # Guardian security tests
    ```
 
-3. **Docker builds** must follow the patterns in [docs/technical/docker-dependency-resolution.md](../docs/technical/docker-dependency-resolution.md) (no Bun in admin Docker, no symlink-based node_modules).
+3. **Docker builds** must follow the patterns in [docs/technical/authoritative/docker-dependency-resolution.md](../docs/technical/authoritative/docker-dependency-resolution.md) (no Bun in admin Docker, no symlink-based node_modules).
 4. **No secrets** in client bundles or logs.
 5. **No new dependencies** that duplicate a built-in Bun or platform capability.
 
@@ -179,9 +179,9 @@ OpenPalm publishes npm packages on an independent release cycle from Docker imag
 
 | Document | What you'll find |
 |----------|-----------------|
-| [docs/technical/core-principles.md](../docs/technical/core-principles.md) | **Must-read.** Security invariants, filesystem contract, architectural rules |
+| [docs/technical/authoritative/core-principles.md](../docs/technical/authoritative/core-principles.md) | **Must-read.** Security invariants, filesystem contract, architectural rules |
 | [docs/technical/code-quality-principles.md](../docs/technical/code-quality-principles.md) | TypeScript strictness, module design, error handling |
-| [docs/technical/docker-dependency-resolution.md](../docs/technical/docker-dependency-resolution.md) | **Mandatory.** How Docker builds resolve deps across the monorepo |
+| [docs/technical/authoritative/docker-dependency-resolution.md](../docs/technical/authoritative/docker-dependency-resolution.md) | **Mandatory.** How Docker builds resolve deps across the monorepo |
 | [docs/technical/directory-structure.md](../docs/technical/directory-structure.md) | XDG tiers, volume mounts, dev vs. production paths |
 | [docs/technical/api-spec.md](../docs/technical/api-spec.md) | Admin API endpoint contract |
 | [docs/technical/bunjs-rules.md](../docs/technical/bunjs-rules.md) | Bun-specific patterns (guardian, channels, SDK) |

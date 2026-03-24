@@ -140,14 +140,8 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     `OP_ASSISTANT_PORT=3800`,
     `OP_ADMIN_PORT=3880`,
     `OP_ADMIN_OPENCODE_PORT=3881`,
-    `OP_SCHEDULER_PORT=3897`,
     `OP_MEMORY_PORT=3898`,
     `OP_GUARDIAN_PORT=3899`,
-    `OP_INGRESS_PORT=3080`,
-    "",
-    "# ── Networking ──────────────────────────────────────────────────────",
-    "# SECURITY: Bind addresses default to 127.0.0.1. Changing to 0.0.0.0 exposes services publicly.",
-    `OP_INGRESS_BIND_ADDRESS=${process.env.OP_INGRESS_BIND_ADDRESS ?? "127.0.0.1"}`,
     ""
   ].join("\n");
 }

@@ -251,8 +251,6 @@ OP_GID=$(id -g)
 OP_DOCKER_SOCK=${docker_sock}
 OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=dev
-OP_INGRESS_BIND_ADDRESS=127.0.0.1
-OP_INGRESS_PORT=8180
 EOF
 
 # Seed guardian.env (channel HMAC secrets)

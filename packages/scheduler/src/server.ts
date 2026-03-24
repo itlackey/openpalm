@@ -7,6 +7,7 @@
  *
  * Port: 8090 (configurable via PORT env)
  */
+import { timingSafeEqual, createHash } from "node:crypto";
 import { createLogger } from "@openpalm/lib";
 import { loadAutomations } from "@openpalm/lib";
 import {
@@ -37,14 +38,25 @@ if (!ADMIN_TOKEN) {
   logger.warn("OP_ADMIN_TOKEN is not set — authenticated endpoints will reject all requests");
 }
 
+// ── Timing-safe token comparison ─────────────────────────────────────
+
+function safeTokenCompare(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  if (!a || !b) return false;
+  const hashA = createHash("sha256").update(a).digest();
+  const hashB = createHash("sha256").update(b).digest();
+  return timingSafeEqual(hashA, hashB);
+}
+
 // ── Auth Helper ──────────────────────────────────────────────────────
 
 function requireAuth(req: Request): boolean {
   if (!ADMIN_TOKEN) return false; // No token configured = fail closed
   const token =
     req.headers.get("x-admin-token") ??
-    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  return token === ADMIN_TOKEN;
+    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+    "";
+  return safeTokenCompare(token, ADMIN_TOKEN);
 }
 
 // ── JSON Response Helper ──────────────────────────────────────────────

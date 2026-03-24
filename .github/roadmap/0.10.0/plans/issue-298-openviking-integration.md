@@ -176,9 +176,9 @@
 - `.github/roadmap/0.10.0/knowledge-system-roadmap.md:52` - detailed OpenViking implementation breakdown for the 0.10.0 priority.
 - `.github/roadmap/0.10.0/knowledge-system-roadmap.md:89` - proposed component layout, `ov.conf` handling, assistant tools, session hooks, and token-budget work.
 - `.github/roadmap/0.10.0/plans/issue-301-unified-component-system.md` - addon overlay design and extension points for issue #301.
-- `docs/technical/core-principles.md:30` - whole-file assembly, single-root filesystem, and shared-lib control-plane requirements.
-- `docs/technical/core-principles.md:50` - vault boundary and assistant/admin write-access rules relevant to `ov.conf` and secrets.
-- `docs/technical/core-principles.md:128` - authoritative shared control-plane library rule.
+- `docs/technical/authoritative/core-principles.md:30` - whole-file assembly, single-root filesystem, and shared-lib control-plane requirements.
+- `docs/technical/authoritative/core-principles.md:50` - vault boundary and assistant/admin write-access rules relevant to `ov.conf` and secrets.
+- `docs/technical/authoritative/core-principles.md:128` - authoritative shared control-plane library rule.
 - `packages/assistant-tools/opencode/plugins/memory-context.ts:99` - current session lifecycle hooks to extend for Viking-aware retrieval and commit.
 - `packages/assistant-tools/opencode/tools/lib.ts:44` - existing fetch/helper pattern to mirror for `vikingFetch()`.
 - `packages/assistant-tools/tests/memory-context.integration.test.ts:78` - existing plugin integration coverage to expand for Viking-enabled and fallback modes.

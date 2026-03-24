@@ -326,7 +326,6 @@ These variables are consumed by Compose and service env blocks.
 | `OP_ASSISTANT_BIND_ADDRESS`, `OP_ASSISTANT_PORT` | Assistant host bind |
 | `OP_ASSISTANT_SSH_BIND_ADDRESS`, `OP_ASSISTANT_SSH_PORT` | Assistant SSH host bind |
 | `OP_MEMORY_BIND_ADDRESS`, `OP_MEMORY_PORT` | Memory host bind |
-| `OP_SCHEDULER_PORT` | Scheduler host bind port |
 | `OP_CHAT_BIND_ADDRESS`, `OP_CHAT_PORT` | Chat addon host bind |
 | `OP_API_BIND_ADDRESS`, `OP_API_PORT` | API addon host bind |
 | `OP_VOICE_BIND_ADDRESS`, `OP_VOICE_PORT` | Voice addon host bind |

@@ -80,17 +80,12 @@ export const STACK_SPEC_FILENAME = "stack.yaml";
 
 export const SPEC_DEFAULTS = {
   ports: {
-    ingress: 3080,
     assistant: 3800,
     admin: 3880,
     adminOpencode: 3881,
-    scheduler: 3897,
     memory: 3898,
     guardian: 3899,
     assistantSsh: 2222,
-  },
-  network: {
-    bindAddress: "127.0.0.1",
   },
   image: {
     namespace: "openpalm",

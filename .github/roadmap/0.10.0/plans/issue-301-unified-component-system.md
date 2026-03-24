@@ -10,7 +10,7 @@
 - The roadmap places two shared prerequisites on the critical path before the main #301 feature work: the filesystem refactor to `~/.openpalm/` and 38XX port standardization. Those changes are required for #301 to land cleanly, but they are broader platform work and should be tracked as shared prerequisite work even when implemented in the same branch/release train.
 - Control-plane logic for both prerequisite work and #301 must live in `packages/lib/` first. CLI and admin stay thin wrappers over `@openpalm/lib`; no new lifecycle/discovery/configuration logic should be added directly to `packages/cli/` or `packages/admin/`.
 - #301 also depends on concurrent secrets/auth changes from roadmap issue #300 where addon config touches `@sensitive` fields, token splits, and the nested vault model (`vault/user/user.env` plus `vault/stack/stack.env`). The addon plan should define clean handoff points rather than duplicating that implementation.
-- Keep the ownership split from `docs/technical/core-principles.md` explicit: `config/openpalm.yml` remains the user-editable stack config, `.openpalm/stack/core.compose.yml` and `.openpalm/stack/addons/*/compose.yml` remain the system-managed runtime assembly, and any `data/components/` instance copies or `data/components/enabled.json` state are service-managed runtime artifacts rather than a second user-facing config authority.
+- Keep the ownership split from `docs/technical/authoritative/core-principles.md` explicit: `config/openpalm.yml` remains the user-editable stack config, `.openpalm/stack/core.compose.yml` and `.openpalm/stack/addons/*/compose.yml` remain the system-managed runtime assembly, and any `data/components/` instance copies or `data/components/enabled.json` state are service-managed runtime artifacts rather than a second user-facing config authority.
 
 ## Delivery boundaries
 
@@ -185,7 +185,7 @@
 
 ## Relevant files
 
-- `docs/technical/core-principles.md:30` - authoritative filesystem contract, lib-first control-plane rule, and service-port assignments.
+- `docs/technical/authoritative/core-principles.md:30` - authoritative filesystem contract, lib-first control-plane rule, and service-port assignments.
 - `.github/roadmap/0.10.0/README.md:21` - roadmap scope for #301; `.github/roadmap/0.10.0/README.md:65` and `.github/roadmap/0.10.0/README.md:169` - embedded filesystem and port prerequisite work.
 - `.github/roadmap/0.10.0/README.md:21` - roadmap scope for #301 and addon terminology; `.github/roadmap/0.10.0/README.md:221` - shared-lib rule.
 - `.github/roadmap/0.10.0/fs-mounts-refactor.md:94` - target filesystem layout; `.github/roadmap/0.10.0/fs-mounts-refactor.md:358` - validate/rollback flow; `.github/roadmap/0.10.0/fs-mounts-refactor.md:677` - clean-break direction.
