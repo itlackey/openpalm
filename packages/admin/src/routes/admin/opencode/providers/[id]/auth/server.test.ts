@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { getState, resetState } from '$lib/server/state.js';
+import { getState } from '$lib/server/state.js';
+import { resetState } from '$lib/server/test-helpers.js';
 import { GET, POST } from './+server.js';
 
 vi.mock('$lib/opencode/client.server.js', () => ({

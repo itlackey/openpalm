@@ -69,5 +69,3 @@ export const OPTIONAL_SERVICES: OptionalServiceName[] = [
   "admin",
   "docker-socket-proxy",
 ];
-
-export const MAX_AUDIT_MEMORY = 1000;

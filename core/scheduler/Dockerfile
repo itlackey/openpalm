@@ -28,6 +28,11 @@ RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.pars
     && rm -f bun.lock bun.lockb \
     && bun install --production
 
+# Copy varlock binary from shared build image (see .docker/varlock.Dockerfile).
+# Compose injects the image via additional_contexts: varlock=docker-image://...
+COPY --from=varlock /usr/local/bin/varlock /usr/local/bin/varlock
+COPY .openpalm/vault/redact.env.schema /app/.env.schema
+
 RUN mkdir -p /app/automations /app/artifacts && chown -R bun:bun /app
 USER bun
 
@@ -37,4 +42,4 @@ EXPOSE 8090
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -sf http://localhost:8090/health || exit 1
 
-CMD ["bun", "run", "src/server.ts"]
+CMD ["varlock", "run", "--path", "/app/", "--", "bun", "run", "src/server.ts"]

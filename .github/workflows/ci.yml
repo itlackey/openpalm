@@ -124,3 +124,55 @@ jobs:
             exit 1
           fi
           echo "All stack files validated successfully"
+
+  admin-unit-tests:
+    name: Admin unit tests (Vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Bun workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browsers (for Vitest browser mode)
+        run: npx playwright install --with-deps chromium
+
+      - name: Run admin unit tests
+        run: bun run admin:test:unit
+
+  admin-e2e-mocked:
+    name: Admin mocked E2E tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Bun workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run mocked Playwright E2E tests
+        run: bun run admin:test:e2e:mocked

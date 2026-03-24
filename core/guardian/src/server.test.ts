@@ -434,8 +434,9 @@ describe("Guardian security contract", () => {
     expect(typeof data.requests.by_channel).toBe("object");
   });
 
-  it("GET /stats with valid admin token → 200", async () => {
-    // No OP_ADMIN_TOKEN is set in test env, so any request should succeed
+  it("GET /stats with extra headers still succeeds (no auth required)", async () => {
+    // Stats endpoint is unauthenticated — guardian is on internal Docker
+    // networks only and stats contain no secrets.
     const resp = await fetch(`${guardianUrl}/stats`, {
       headers: { "x-admin-token": "any-value" },
     });

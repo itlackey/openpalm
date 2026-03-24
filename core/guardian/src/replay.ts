@@ -44,5 +44,5 @@ export function nonceCacheSize(): number {
 }
 
 /** Expose constants for the /stats endpoint. */
-export const NONCE_CLOCK_SKEW = CLOCK_SKEW;
+export const NONCE_WINDOW_MS = CLOCK_SKEW;
 export const NONCE_MAX_SIZE = 50_000;

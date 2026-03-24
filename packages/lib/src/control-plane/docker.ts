@@ -2,6 +2,9 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { parseEnvFile } from "./env.js";
+import { createLogger } from "../logger.js";
+
+const logger = createLogger("lib:docker");
 
 export type DockerResult = {
   ok: boolean;
@@ -327,10 +330,10 @@ export function selfRecreateAdmin(
       env: { ...process.env, ...collectEnvOverrides(options.envFiles) }
     });
     child.on("error", (err) => {
-      console.error("[selfRecreateAdmin] spawn error:", err.message);
+      logger.error("selfRecreateAdmin spawn error", { error: err.message });
     });
     child.unref();
   } catch (err) {
-    console.error("[selfRecreateAdmin] failed to spawn:", err instanceof Error ? err.message : err);
+    logger.error("selfRecreateAdmin failed to spawn", { error: err instanceof Error ? err.message : String(err) });
   }
 }

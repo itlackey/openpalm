@@ -479,28 +479,6 @@ export default class SlackChannel extends BaseChannel {
     }
   }
 
-  // ── Guardian Forwarding ───────────────────────────────────────────────
-
-  /** Forward to guardian via HMAC-signed request. Throws on non-OK response. */
-  private async forwardToGuardian(
-    userId: string,
-    text: string,
-    metadata: Record<string, unknown>,
-  ): Promise<string> {
-    const resp = await this.forward({
-      userId: `slack:${userId}`,
-      text,
-      metadata,
-    });
-
-    if (!resp.ok) {
-      throw new Error(`Guardian returned status ${resp.status}`);
-    }
-
-    const result = (await resp.json()) as { answer?: string };
-    return result.answer ?? "No response received.";
-  }
-
   // ── Utilities ─────────────────────────────────────────────────────────
 
   private stripMention(text: string): string {

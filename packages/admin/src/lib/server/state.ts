@@ -15,8 +15,10 @@ export function getState(): ControlPlaneState {
   return _state;
 }
 
-/** Reset state (used in tests) */
-export function resetState(token?: string): ControlPlaneState {
-  _state = createState(token);
-  return _state;
+/**
+ * Replace the singleton state. Exposed for test-helpers only — do not
+ * call from production code.
+ */
+export function _replaceState(s: ControlPlaneState): void {
+  _state = s;
 }

@@ -23,7 +23,7 @@ import {
   parseJsonBody,
   validateExternalUrl,
 } from "./helpers.js";
-import { resetState } from "./state.js";
+import { resetState } from "./test-helpers.js";
 
 // ── Mock RequestEvent ───────────────────────────────────────────────────
 

@@ -8,6 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rmSync } from "node:fs";
 import type { ControlPlaneState } from "./types.js";
+import { createState } from "@openpalm/lib";
+import { _replaceState, getState } from "./state.js";
 
 let tempDirs: string[] = [];
 
@@ -62,4 +64,14 @@ export function registerCleanup(): void {
   afterEach(() => {
     cleanupTempDirs();
   });
+}
+
+/**
+ * Reset the singleton control-plane state for testing.
+ * Creates a fresh state with the given admin token.
+ */
+export function resetState(token?: string): ControlPlaneState {
+  const state = createState(token);
+  _replaceState(state);
+  return state;
 }

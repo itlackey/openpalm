@@ -63,13 +63,15 @@ services:
       - ${OP_HOME}/data/admin:/home/node
       - ${OP_HOME}/data/workspace:/work
       - ${HOME}/.cache/openpalm/registry:/cache/registry
-      # GPG agent socket for pass backend (read-only; only needed when pass is active)
+      # GPG agent socket for pass backend (read-only; only needed when pass is active).
+      # create_host_path is false to avoid creating ~/.gnupg on hosts without GPG.
+      # If the source directory does not exist, Docker will skip this mount silently.
       - type: bind
         source: ${GNUPGHOME:-${HOME}/.gnupg}
         target: /home/node/.gnupg
         read_only: true
         bind:
-          create_host_path: true
+          create_host_path: false
     networks: [assistant_net, admin_docker_net]
     depends_on:
       docker-socket-proxy:

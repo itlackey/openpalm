@@ -123,9 +123,9 @@ The guardian's job is HMAC verification and rate limiting -- it should not need 
 **Agents:** Config-DevOps
 **File:** `core/assistant/Dockerfile` lines 75, 85
 
-The assistant container runs as root (`USER root` with no final `USER` directive). The entrypoint uses `gosu` to drop privileges, but if gosu fails, the container runs as root. The home directory uses `chmod 777` (world-writable). The base image is `node:lts-trixie` (full, ~1GB) instead of the slim variant used by admin.
+The assistant container runs as root (`USER root` with no final `USER` directive). The entrypoint uses `gosu` to drop privileges, but if gosu fails, the container runs as root. The home directory uses `chmod 777` (world-writable).
 
-**Fix:** Add a final `USER` directive. Change `chmod 777` to `chmod 755` or `700`. Switch to `node:lts-trixie-slim` and install only required packages.
+**Fix:** Add a final `USER` directive. Change `chmod 777` to `chmod 755` or `700`.
 
 ---
 

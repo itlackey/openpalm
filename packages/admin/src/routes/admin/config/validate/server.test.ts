@@ -16,7 +16,8 @@ vi.mock("@openpalm/lib", async (importOriginal) => {
   };
 });
 
-import { getState, resetState } from "$lib/server/state.js";
+import { getState } from "$lib/server/state.js";
+import { resetState } from "$lib/server/test-helpers.js";
 import { validateProposedState } from "@openpalm/lib";
 import { GET } from "./+server.js";
 

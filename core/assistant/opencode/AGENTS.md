@@ -17,7 +17,9 @@ You can still use memory tools directly for targeted operations the auto-extract
 - Use `memory-search` with descriptive natural-language queries for deeper context
 - Use `memory-add` with metadata to store specific learnings: `{"category":"semantic|episodic|procedural"}`
 - Use `memory-update` when facts change and `memory-delete` for incorrect information
-- Use `memory-feedback`, `memory-exports_*`, and `memory-events_get` for quality signals and export/event workflows
+- Use `memory-feedback` to submit positive/negative outcome feedback on a memory (reinforces useful memories, demotes noisy ones)
+- Use `memory-exports_create` to start a memory export job (snapshots for audits/curation) and `memory-exports_get` to check export status by ID
+- Use `memory-events_get` to poll a memory API event by ID for async ingestion/export pipeline completion
 
 ### Memory Categories
 

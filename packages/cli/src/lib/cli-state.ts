@@ -19,7 +19,7 @@ import type { ControlPlaneState } from '@openpalm/lib';
  *
  * Returns a ControlPlaneState usable with fullComposeArgs().
  */
-export async function ensureValidState(): Promise<ControlPlaneState> {
+export function ensureValidState(): ControlPlaneState {
   const state = createState();
   state.artifacts = resolveRuntimeFiles();
   return state;

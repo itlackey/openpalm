@@ -128,7 +128,6 @@ services:
       PORT: "8080"
       OP_ASSISTANT_URL: http://assistant:4096
       OPENCODE_TIMEOUT_MS: "0"
-      OP_ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
       GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
       GUARDIAN_SECRETS_PATH: /app/secrets/guardian.env
     volumes:

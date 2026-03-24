@@ -78,6 +78,22 @@ DEST="${INSTALL_DIR}/openpalm"
 info "Downloading openpalm ${VERSION} for ${OS}/${ARCH}..."
 mkdir -p "${INSTALL_DIR}"
 curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/itlackey/openpalm/releases/download/${VERSION}/${BINARY}" -o "${DEST}"
+
+# Verify SHA-256 checksum against the release-published checksums file
+CHECKSUMS_URL="https://github.com/itlackey/openpalm/releases/download/${VERSION}/checksums-sha256.txt"
+info "Verifying SHA-256 checksum..."
+CHECKSUMS="$(curl -fsSL --retry 3 --retry-delay 3 --retry-all-errors "${CHECKSUMS_URL}")" \
+  || die "Failed to download checksums from ${CHECKSUMS_URL}"
+EXPECTED="$(echo "${CHECKSUMS}" | grep "${BINARY}" | awk '{print $1}')"
+[ -n "${EXPECTED}" ] || die "No checksum found for ${BINARY} in checksums-sha256.txt"
+if command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL="$(sha256sum "${DEST}" | awk '{print $1}')"
+else
+  ACTUAL="$(shasum -a 256 "${DEST}" | awk '{print $1}')"
+fi
+[ "${ACTUAL}" = "${EXPECTED}" ] || die "Checksum mismatch for ${BINARY}: expected ${EXPECTED}, got ${ACTUAL}"
+ok "Checksum verified"
+
 chmod +x "${DEST}"
 
 # macOS: clear quarantine flag and ad-hoc codesign so Gatekeeper does not kill the binary

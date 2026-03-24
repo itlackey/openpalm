@@ -3,7 +3,7 @@
 # Built with npm + Vite, runs on Node.js (adapter-node).
 # ──────────────────────────────────────────────────────────────────────────────
 
-FROM node:lts-trixie-slim AS build
+FROM node:22-trixie-slim AS build
 WORKDIR /workspace
 
 # Install admin deps at workspace root so node_modules lands at /workspace/.
@@ -33,34 +33,8 @@ WORKDIR /workspace/packages/admin
 ENV PATH="/workspace/node_modules/.bin:$PATH"
 RUN npm run build
 
-# ── Varlock Fetch ─────────────────────────────────────────────────────────────
-# Isolated stage so the download layer is cached independently of the app build.
-# Pinned version; bump ARG to upgrade. Uses --retry-all-errors to handle
-# transient GitHub CDN failures (502/503).
-FROM debian:trixie-slim AS varlock-fetch
-ARG TARGETARCH
-ARG VARLOCK_VERSION=0.4.0
-ARG VARLOCK_SHA256_AMD64=820295b271cece2679b2b9701b5285ce39354fc2f35797365fa36c70125f51ab
-ARG VARLOCK_SHA256_ARM64=e830baaa901b6389ecf281bdd2449bfaf7586e91fd3a7a038ec06f78e6fa92f8
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
-RUN set -e; \
-  if [ "$TARGETARCH" = "arm64" ]; then \
-    VARLOCK_ARCH=arm64; VARLOCK_SHA256="$VARLOCK_SHA256_ARM64"; \
-  else \
-    VARLOCK_ARCH=x64; VARLOCK_SHA256="$VARLOCK_SHA256_AMD64"; \
-  fi \
-  && curl -fsSL \
-       --retry 5 --retry-delay 10 --retry-all-errors \
-       "https://github.com/dmno-dev/varlock/releases/download/varlock%40${VARLOCK_VERSION}/varlock-linux-${VARLOCK_ARCH}.tar.gz" \
-       -o /tmp/varlock.tar.gz \
-  && echo "${VARLOCK_SHA256}  /tmp/varlock.tar.gz" | sha256sum -c - \
-  && tar xzf /tmp/varlock.tar.gz --strip-components=1 -C /usr/local/bin/ \
-  && chmod +x /usr/local/bin/varlock \
-  && rm /tmp/varlock.tar.gz
-
 # ── Runtime ───────────────────────────────────────────────────────────────────
-FROM node:lts-trixie-slim
+FROM node:22-trixie-slim
 
 # ── Pinned installer versions ────────────────────────────────────────────────
 ARG OPENCODE_VERSION=1.2.24
@@ -82,9 +56,9 @@ ENV PATH="/usr/local/.opencode/bin:$PATH"
 # Install Bun (required for OpenCode plugins)
 ENV BUN_INSTALL=/usr/local
 RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
-ENV BUN_INSTALL=/tmp/.bun
-ENV BUN_INSTALL_CACHE_DIR=/tmp/.cache/bun/install
-ENV PATH="/tmp/.bun/bin:/usr/local/bin:$PATH"
+ENV BUN_INSTALL=/home/node/.bun
+ENV BUN_INSTALL_CACHE_DIR=/home/node/.cache/bun/install
+ENV PATH="/home/node/.bun/bin:/usr/local/bin:$PATH"
 
 WORKDIR /app
 COPY --from=build /workspace/packages/admin/build ./build
@@ -99,8 +73,9 @@ RUN node -e "\
 
 RUN mkdir -p /state /data && chown node:node /state /data
 
-# Copy varlock binary from fetch stage — no Bun required (standalone ELF binary)
-COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
+# Copy varlock binary from shared build image (see .docker/varlock.Dockerfile).
+# Compose injects the image via additional_contexts: varlock=docker-image://...
+COPY --from=varlock /usr/local/bin/varlock /usr/local/bin/varlock
 COPY .openpalm/vault/redact.env.schema /app/.env.schema
 
 # Bake admin OpenCode config into the image — seeded at runtime if overridden

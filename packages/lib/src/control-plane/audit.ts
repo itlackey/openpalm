@@ -3,7 +3,8 @@
  */
 import { mkdirSync, appendFileSync } from "node:fs";
 import type { ControlPlaneState, AuditEntry, CallerType } from "./types.js";
-import { MAX_AUDIT_MEMORY } from "./types.js";
+
+const MAX_AUDIT_MEMORY = 1000;
 
 export function appendAudit(
   state: ControlPlaneState,

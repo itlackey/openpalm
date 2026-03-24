@@ -8,7 +8,8 @@
  * 4. resetState accepts optional admin token
  */
 import { describe, test, expect } from "vitest";
-import { getState, resetState } from "./state.js";
+import { getState } from "./state.js";
+import { resetState } from "./test-helpers.js";
 
 describe("getState", () => {
   test("returns a ControlPlaneState with expected shape", () => {

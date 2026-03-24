@@ -35,6 +35,40 @@ done
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# ── Check Ollama prerequisites (warning only) ────────────────────
+# Dev defaults assume a local Ollama instance. Warn if it appears
+# unreachable or required models are not pulled.
+if command -v ollama &>/dev/null; then
+	if ! ollama list &>/dev/null 2>&1; then
+		echo "WARNING: 'ollama' CLI found but 'ollama list' failed." >&2
+		echo "  Is the Ollama server running? Start it with: ollama serve" >&2
+		echo ""
+	else
+		missing_models=()
+		for model in "qwen2.5-coder:3b" "nomic-embed-text:latest"; do
+			# ollama list outputs "NAME  ID  SIZE  MODIFIED" — match model name prefix
+			if ! ollama list 2>/dev/null | grep -qiF "$model"; then
+				missing_models+=("$model")
+			fi
+		done
+		if [[ ${#missing_models[@]} -gt 0 ]]; then
+			echo "WARNING: The following Ollama models are not pulled:" >&2
+			for m in "${missing_models[@]}"; do
+				echo "  - $m    (pull with: ollama pull $m)" >&2
+			done
+			echo "  Dev defaults require these models for the assistant and memory service." >&2
+			echo ""
+		fi
+	fi
+else
+	echo "WARNING: 'ollama' command not found." >&2
+	echo "  Dev defaults assume a local Ollama instance for LLM and embeddings." >&2
+	echo "  Install Ollama from https://ollama.ai and pull required models:" >&2
+	echo "    ollama pull qwen2.5-coder:3b" >&2
+	echo "    ollama pull nomic-embed-text" >&2
+	echo ""
+fi
+
 # ── Init submodules ──────────────────────────────────────────────
 if [ -f "$ROOT_DIR/.gitmodules" ]; then
 	git -C "$ROOT_DIR" submodule update --init --depth 1

@@ -8,8 +8,7 @@
  * Port: 8090 (configurable via PORT env)
  */
 import { timingSafeEqual, createHash } from "node:crypto";
-import { createLogger } from "@openpalm/lib";
-import { loadAutomations } from "@openpalm/lib";
+import { createLogger, loadAutomations } from "@openpalm/lib";
 import {
   startScheduler,
   stopScheduler,

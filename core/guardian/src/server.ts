@@ -14,13 +14,12 @@
  *   6. Forward to assistant and return response
  */
 
-import { timingSafeEqual, createHash } from "node:crypto";
 import { ERROR_CODES, validatePayload } from "@openpalm/channels-sdk/channel";
 import { verifySignature } from "@openpalm/channels-sdk/crypto";
 import { createLogger } from "@openpalm/channels-sdk/logger";
 
 import { loadChannelSecrets } from "./signature";
-import { checkNonce, nonceCacheSize, NONCE_CLOCK_SKEW, NONCE_MAX_SIZE } from "./replay";
+import { checkNonce, nonceCacheSize, NONCE_WINDOW_MS, NONCE_MAX_SIZE } from "./replay";
 import {
   allow,
   activeRateLimiters,
@@ -44,17 +43,6 @@ const logger = createLogger("guardian");
 // ── Config ──────────────────────────────────────────────────────────────
 
 const PORT = Number(Bun.env.PORT ?? 8080);
-const ADMIN_TOKEN = Bun.env.OP_ADMIN_TOKEN;
-
-// ── Timing-safe token comparison ────────────────────────────────────────
-
-function safeTokenCompare(a: string, b: string): boolean {
-  if (typeof a !== "string" || typeof b !== "string") return false;
-  if (!a || !b) return false;
-  const hashA = createHash("sha256").update(a).digest();
-  const hashB = createHash("sha256").update(b).digest();
-  return timingSafeEqual(hashA, hashB);
-}
 
 // ── Uptime & request counters ───────────────────────────────────────────
 
@@ -90,14 +78,9 @@ Bun.serve({
     }
 
     if (url.pathname === "/stats" && req.method === "GET") {
-      // Auth: require admin token if configured, otherwise allow (dev/LAN)
-      if (ADMIN_TOKEN) {
-        const token = req.headers.get("x-admin-token") ?? "";
-        if (!safeTokenCompare(token, ADMIN_TOKEN)) {
-          return json(401, { error: "unauthorized" });
-        }
-      }
-
+      // No auth: guardian is on internal Docker networks only and stats
+      // contain only operational counters (no secrets). Admin-tools and
+      // stack-diagnostics call this endpoint from within the compose network.
       const { activeUserLimiters, activeChannelLimiters } = activeRateLimiters();
 
       return json(200, {
@@ -113,7 +96,7 @@ Bun.serve({
         nonce_cache: {
           size: nonceCacheSize(),
           max_size: NONCE_MAX_SIZE,
-          window_ms: NONCE_CLOCK_SKEW,
+          window_ms: NONCE_WINDOW_MS,
         },
         sessions: {
           active: sessionCacheSize(),
