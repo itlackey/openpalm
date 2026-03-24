@@ -434,6 +434,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 			// Step 0
 			await page.click("#btn-get-started");
 			await page.fill("#admin-token", TEST_ADMIN_TOKEN);
+			await page.fill("#owner-name", TEST_OWNER_NAME);
 			await page.fill("#owner-email", TEST_OWNER_EMAIL);
 			await page.click("#btn-step0-next");
 			// Step 1
@@ -474,6 +475,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 			// Step 0
 			await page.click("#btn-get-started");
 			await page.fill("#admin-token", TEST_ADMIN_TOKEN);
+			await page.fill("#owner-name", TEST_OWNER_NAME);
 			await page.fill("#owner-email", TEST_OWNER_EMAIL);
 			await page.click("#btn-step0-next");
 			// Step 1
@@ -493,9 +495,11 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await expect(page.locator("#ollama-enabled")).toBeVisible();
 		});
 
-		test("Memory User ID defaults from email", async ({ page }) => {
+		test("Memory User ID defaults from owner name", async ({ page }) => {
 			await goToStep4(page);
-			await expect(page.locator("#memory-user-id")).toHaveValue(TEST_OWNER_EMAIL);
+			// Wizard derives memory user ID from owner name: lowercased, spaces → underscores
+			const expected = TEST_OWNER_NAME.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+			await expect(page.locator("#memory-user-id")).toHaveValue(expected);
 		});
 
 		test("Memory User ID can be overridden", async ({ page }) => {
@@ -683,6 +687,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await page.click("#btn-get-started");
 			await page.fill("#admin-token", TEST_ADMIN_TOKEN);
 			await page.fill("#owner-name", TEST_OWNER_NAME);
+			await page.fill("#owner-email", TEST_OWNER_EMAIL);
 			await page.click("#btn-step0-next");
 
 			await addOllamaProvider(page);
@@ -751,6 +756,8 @@ test.describe("@mocked Setup Wizard UI", () => {
 			// Quick walk through
 			await page.click("#btn-get-started");
 			await page.fill("#admin-token", TEST_ADMIN_TOKEN);
+			await page.fill("#owner-name", TEST_OWNER_NAME);
+			await page.fill("#owner-email", TEST_OWNER_EMAIL);
 			await page.click("#btn-step0-next");
 
 			await addOllamaProvider(page);
@@ -924,6 +931,8 @@ test.describe("Setup Wizard with Real Ollama", () => {
 		await page.goto(`${WIZARD_URL}/setup`);
 		await page.click("#btn-get-started");
 		await page.fill("#admin-token", TEST_ADMIN_TOKEN);
+		await page.fill("#owner-name", TEST_OWNER_NAME);
+		await page.fill("#owner-email", TEST_OWNER_EMAIL);
 		await page.click("#btn-step0-next");
 
 		// Wait for provider detection to complete and Ollama to show as verified
@@ -943,6 +952,8 @@ test.describe("Setup Wizard with Real Ollama", () => {
 		await page.goto(`${WIZARD_URL}/setup`);
 		await page.click("#btn-get-started");
 		await page.fill("#admin-token", TEST_ADMIN_TOKEN);
+		await page.fill("#owner-name", TEST_OWNER_NAME);
+		await page.fill("#owner-email", TEST_OWNER_EMAIL);
 		await page.click("#btn-step0-next");
 
 		// Wait for auto-detection and verification
