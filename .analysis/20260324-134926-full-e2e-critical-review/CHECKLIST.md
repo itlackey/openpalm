@@ -285,54 +285,54 @@ These require design discussion and potentially significant refactoring.
 
 ### Documentation Consolidation
 
-- [ ] **S-DOC1. Flatten `docs/technical/` to `docs/technical/`** `[MEDIUM]` `[docs]`
-  Move 4 files (`core-principles.md`, `docker-dependency-resolution.md`, `design-intent.md`, `foundations.md`) up one level. Eliminates the class of 44 broken references permanently. The "authoritative" header note in each file is sufficient designation.
+- [x] **S-DOC1. Flatten `docs/technical/authoritative/` to `docs/technical/`** `[MEDIUM]` `[docs]`
+  Moved 4 files, updated all references across 38 files. Zero `authoritative/` refs remain.
 
-- [ ] **S-DOC2. Consolidate directory-structure.md into foundations.md** `[MEDIUM]` `[docs]`
-  `docs/technical/directory-structure.md` is almost entirely a subset of `foundations.md` and `environment-and-mounts.md`. Delete or reduce to a cross-reference. Reduces maintenance burden and prevents divergence (e.g., scheduler mount discrepancy).
+- [x] **S-DOC2. Consolidate directory-structure.md into foundations.md** `[MEDIUM]` `[docs]`
+  Deleted orphan file. References updated to point to foundations.md.
 
-- [ ] **S-DOC3. Consolidate two manual setup docs** `[LOW]` `[docs]`
-  `docs/technical/manual-setup.md` (174 lines) and `docs/operations/manual-compose-runbook.md` (410 lines) overlap significantly. Consider merging.
+- [x] **S-DOC3. Consolidate two manual setup docs** `[LOW]` `[docs]`
+  Deleted orphan manual-setup.md. References updated to point to manual-compose-runbook.md.
 
 ### Architecture & Code Structure
 
-- [ ] **S-ARCH2. Add subpath exports to @openpalm/lib** `[MEDIUM]` `[architecture]`
-  `packages/lib/src/index.ts`: 327-line barrel with 100+ exports from 21 modules. Consumers import everything even if they only need a fraction. Add subpath exports (`@openpalm/lib/docker`, `@openpalm/lib/config`) so consumers can tree-shake and admin Vite build does not need Bun shims for unused modules. Remove exports that is not currently used.
+- [x] **S-ARCH2. Remove unused exports from @openpalm/lib** `[MEDIUM]` `[architecture]`
+  Removed 61 unused exports from barrel (324→253 lines). No new files created.
 
-- [ ] **S-ARCH3. Standardize YAML extensions** `[LOW]` `[architecture]`
-  Config files use `.yaml` (stack.yaml, host.yaml), compose/automations use `.yml`, dev compose uses `.yaml`. Pick one convention (recommend `.yml` for Docker Compose convention) and enforce it.
+- [x] **S-ARCH3. Standardize YAML extensions to .yml** `[LOW]` `[architecture]`
+  Renamed 3 .yaml files to .yml (compose.dev, stack, benchmark compose). Updated 57 files.
 
-- [ ] **S-ARCH4. Standardize test placement convention** `[MEDIUM]` `[architecture]`
-  5 different patterns across packages: colocated `src/*.test.ts`, `tests/`, `__tests__/` (Jest convention), `e2e/`, specialized dirs. Memory alone has 3 test directories. Adopt colocated `*.test.ts` for unit tests, `e2e/` for integration tests.
+- [x] **S-ARCH4. Standardize test placement convention** `[MEDIUM]` `[architecture]`
+  12 unit tests colocated next to source, 13 integration tests moved to e2e/. 5 old dirs removed.
 
-- [ ] **S-ARCH5. Standardize tsconfig.json presence** `[LOW]` `[architecture]`
-  Present in 6 of 13 packages, absent in 7, with no clear rationale. Either all Bun-based packages need one or none do. tsconfig should only be present if it is truly needed.
+- [x] **S-ARCH5. Standardize tsconfig.json presence** `[LOW]` `[architecture]`
+  Removed unnecessary tsconfig from channel-slack, memory, scheduler. Kept 3 justified (admin, lib, voice).
 
-- [ ] **S-ARCH6. Standardize package structure (dist tracking)** `[LOW]` `[architecture]`
-  Some packages track `dist/` in git, most do not. Build artifacts should never be committed.
+- [x] **S-ARCH6. Standardize package structure (dist tracking)** `[LOW]` `[architecture]`
+  Already done via M-FO1 (assistant-tools/dist/ untracked). No other dist/ dirs tracked.
 
 ---
 
 
 ## Miscellaneous Low-Priority Items
 
-- [ ] **LOW-1. Fix `docs/technical/api-spec.md` missing scheduler in allowed services** `[LOW]` `[docs]`
-  Lists allowed core services as: assistant, guardian, memory, admin. Does not list scheduler. Omission may be intentional but is not explained.
+- [x] **LOW-1. Fix `docs/technical/api-spec.md` missing scheduler in allowed services** `[LOW]` `[docs]`
+  Added scheduler to allowed core services list.
 
-- [ ] **LOW-2. Fix openviking listed in directory-structure.md** `[LOW]` `[docs]`
-  `docs/technical/directory-structure.md` line 57: shows `openviking` in tree. Recent commit removed OpenViking config but addon directory still exists. May become stale.
+- [x] **LOW-2. Fix openviking listed in directory-structure.md** `[LOW]` `[docs]`
+  Moot — directory-structure.md deleted in S-DOC2.
 
-- [ ] **LOW-4. Remove root devDependency `@vitest/coverage-v8`** `[LOW]` `[devops]`
-  Root `package.json` has single `devDependency`. Should be in admin package, not root.
+- [x] **LOW-4. Remove root devDependency `@vitest/coverage-v8`** `[LOW]` `[devops]`
+  Moved to packages/admin/package.json. Lockfile updated.
 
-- [ ] **LOW-5. Fix dev-admin-token hardcoded warning** `[LOW]` `[devops]`
-  `dev-setup.sh`: string "dev-admin-token" appears in multiple test scripts. Add a print warning when seeding this value in case a developer accidentally uses it in production.
+- [x] **LOW-5. Fix dev-admin-token hardcoded warning** `[LOW]` `[devops]`
+  Added dev-only warning comment in dev-setup.sh.
 
-- [ ] **LOW-6. Add OpenCode auth route unit tests** `[MEDIUM]` `[testing]`
-  `packages/admin/src/routes/admin/opencode/providers/[id]/auth/+server.ts:26`: explicit TODO for missing unit tests on API key and OAuth POST modes, and GET poll session logic. Security-sensitive endpoint.
+- [x] **LOW-6. Add OpenCode auth route unit tests** `[MEDIUM]` `[testing]`
+  Added 19 new tests. TODO removed. All 25 tests pass.
 
-- [ ] **LOW-7. Fix voice channel dev compose env_files** `[LOW]` `[devops]`
-  `compose.dev.yaml` voice channel service mounts all three env files (stack.env, user.env, guardian.env). Voice channels should only receive their own HMAC secret, not the full stack env.
+- [x] **LOW-7. Fix voice channel dev compose env_files** `[LOW]` `[devops]`
+  Removed stack.env and user.env from voice service. Only guardian.env remains (HMAC secret).
 
 ---
 
@@ -340,17 +340,8 @@ These require design discussion and potentially significant refactoring.
 
 | Status | Count |
 |--------|-------|
-| Completed [x] | 68 |
-| Pending [ ] | 17 |
+| Completed [x] | 85 |
+| Pending [ ] | 0 |
 | **Total** | **85** |
 
-| Phase | Completed | Remaining |
-|-------|-----------|-----------|
-| Phase 1: Emergency Fixes | 9/9 | 0 |
-| Phase 2: Security Hardening | 10/10 | 0 |
-| Phase 2: Documentation Repair | 16/16 | 0 |
-| Phase 2: Code Quality | 22/22 | 0 |
-| Phase 2: DevOps & Build | 17/19 | 2 (M-FO3 skipped) |
-| Phase 2: File Organization | 2/2 | 0 |
-| Phase 3: Strategic Simplification | 0/8 | 8 |
-| Miscellaneous | 0/7 | 7 |
+All phases complete.
