@@ -20,7 +20,7 @@ const LIB_CONTROL_PLANE_DIR = join(import.meta.dir);
 function readSourceFiles(): { path: string; content: string }[] {
   const files = readdirSync(LIB_CONTROL_PLANE_DIR);
   return files
-    .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith(".d.ts"))
+    .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith(".vitest.ts") && !f.endsWith(".d.ts"))
     .map((f) => ({
       path: join(LIB_CONTROL_PLANE_DIR, f),
       content: readFileSync(join(LIB_CONTROL_PLANE_DIR, f), "utf-8"),

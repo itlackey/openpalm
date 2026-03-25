@@ -1,7 +1,7 @@
 /**
  * Tests for configuration persistence — artifact metadata, env files, and runtime file writing.
  *
- * Core-asset tests (compose, access scope) live in core-assets.test.ts.
+ * Core-asset tests (compose, access scope) live in core-assets.vitest.ts.
  */
 import { describe, test, expect, beforeEach } from "vitest";
 import {
@@ -368,4 +368,3 @@ describe("writeChannelSecrets", () => {
     expect(content).toContain("CHANNEL_API_SECRET=new-secret");
   });
 });
-

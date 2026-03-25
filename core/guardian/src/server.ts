@@ -144,7 +144,7 @@ Bun.serve({
       // C1: Use dummy secret for unknown channels to prevent channel name enumeration.
       // Both unknown channels and bad signatures return invalid_signature.
       const channelSecrets = await loadChannelSecrets();
-      const secret = channelSecrets[payload.channel] ?? "";
+      const secret = channelSecrets[payload.channel.toLowerCase()] ?? "";
 
       const sig = req.headers.get("x-channel-signature") ?? "";
       // Always run HMAC verification (even for unknown channels) to prevent timing side-channel.

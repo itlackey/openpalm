@@ -271,33 +271,12 @@ CHANNEL_SLACK_SECRET=${channel_slack_secret}
 EOF
 fi
 
-# ── Seed OpenCode user config (Ollama for dev) ──────────────────
-# OpenCode has two config files:
-#   - Project config (data/assistant/opencode.jsonc) — $schema + plugin ONLY.
-#     Seeded by admin's ensureOpenCodeSystemConfig(). Does NOT accept providers,
-#     model, or smallModel keys (causes ConfigInvalidError).
-#   - User config (config/assistant/opencode.json) — $schema + model ONLY.
-#     v1.2.24 rejects providers, smallModel, and any other unrecognized keys
-#     with a fatal ConfigInvalidError.
-#
-# OpenCode's "lmstudio" provider uses the Chat Completions API
-# (/v1/chat/completions) which Ollama supports. However, the provider
-# has a hardcoded base URL of http://127.0.0.1:1234/v1 and a static
-# model catalog. The entrypoint.sh uses socat to proxy port 1234
-# to the actual LLM provider when LMSTUDIO_BASE_URL is set.
-#
-# The model name must match one of lmstudio's catalog entries:
-#   - qwen/qwen3-30b-a3b-2507, qwen/qwen3-coder-30b, openai/gpt-oss-20b
-# For Ollama, create a model alias: ollama cp <your-model> qwen/qwen3-coder-30b
-
+# ── Seed OpenCode user config ─────────────────────────────────────
+# Copy from repo source. OpenCode uses its own default provider/model
+# when no model key is present.
 OC_CONFIG="$CONFIG_DIR/assistant/opencode.json"
 if [[ ! -f "$OC_CONFIG" || $force -eq 1 ]]; then
-	cat >"$OC_CONFIG" <<'OCEOF'
-{
-  "$schema": "https://opencode.ai/config.json",
-  "model": "lmstudio/qwen/qwen3-coder-30b"
-}
-OCEOF
+	cp "$ROOT_DIR/.openpalm/config/assistant/opencode.json" "$OC_CONFIG"
 fi
 
 # ── Seed Memory default config ───────────────────────────────────
