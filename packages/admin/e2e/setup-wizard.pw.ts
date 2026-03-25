@@ -599,17 +599,16 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await expect(summary).toContainText(TEST_OWNER_EMAIL);
 		});
 
-		test("legacy review-grid is populated for backward compat", async ({ page }) => {
+		test("review summary renders all sections", async ({ page }) => {
 			await goToStep5(page);
-			const grid = page.locator("#review-grid");
-			// Hidden but populated
-			await expect(grid).toContainText("Account");
-			await expect(grid).toContainText("Providers");
-			await expect(grid).toContainText("Models");
-			await expect(grid).toContainText("Voice");
-			await expect(grid).toContainText("Channels");
-			await expect(grid).toContainText("Services");
-			await expect(grid).toContainText("Options");
+			const summary = page.locator("#review-summary");
+			await expect(summary).toContainText("Account");
+			await expect(summary).toContainText("Providers");
+			await expect(summary).toContainText("Models");
+			await expect(summary).toContainText("Voice");
+			await expect(summary).toContainText("Channels");
+			await expect(summary).toContainText("Services");
+			await expect(summary).toContainText("Options");
 		});
 
 		test("Edit buttons navigate back to correct steps", async ({ page }) => {
@@ -711,7 +710,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 
 			// Verify the payload sent to /api/setup/complete (SetupSpec v2)
 			expect(setupPayload).not.toBeNull();
-			const payload = setupPayload as Record<string, unknown>;
+			const payload = setupPayload as unknown as Record<string, unknown>;
 			expect((payload.security as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
 			const spec = payload.spec as Record<string, unknown>;
 			expect(spec.version).toBe(2);
@@ -880,7 +879,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 
 			// Validate the captured payload (SetupSpec v2 format)
 			expect(capturedPayload).not.toBeNull();
-			const payload = capturedPayload as Record<string, unknown>;
+			const payload = capturedPayload as unknown as Record<string, unknown>;
 			expect((payload.security as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
 			expect((payload.owner as Record<string, unknown>).name).toBe(TEST_OWNER_NAME);
 			expect((payload.owner as Record<string, unknown>).email).toBe(TEST_OWNER_EMAIL);
@@ -1037,7 +1036,7 @@ test.describe("Setup Wizard with Real Ollama", () => {
 
 		// Verify payload (SetupSpec v2)
 		expect(setupPayload).not.toBeNull();
-		const payload = setupPayload as Record<string, unknown>;
+		const payload = setupPayload as unknown as Record<string, unknown>;
 		expect((payload.security as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
 		const spec = payload.spec as Record<string, unknown>;
 		expect(spec.version).toBe(2);
