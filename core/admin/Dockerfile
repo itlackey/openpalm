@@ -35,6 +35,18 @@ WORKDIR /workspace/packages/admin
 ENV PATH="/workspace/node_modules/.bin:$PATH"
 RUN npm run build
 
+# ── Varlock fetch ─────────────────────────────────────────────────────────────
+FROM debian:trixie-slim AS varlock-fetch
+ARG TARGETARCH
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN set -e; \
+  if [ "$TARGETARCH" = "arm64" ]; then ARCH=arm64; SHA256=e830baaa901b6389ecf281bdd2449bfaf7586e91fd3a7a038ec06f78e6fa92f8; \
+  else ARCH=x64; SHA256=820295b271cece2679b2b9701b5285ce39354fc2f35797365fa36c70125f51ab; fi \
+  && curl -fsSL "https://github.com/dmno-dev/varlock/releases/download/varlock%400.4.0/varlock-linux-${ARCH}.tar.gz" -o /tmp/varlock.tar.gz \
+  && echo "${SHA256}  /tmp/varlock.tar.gz" | sha256sum -c - \
+  && tar xzf /tmp/varlock.tar.gz --strip-components=1 -C /usr/local/bin/ \
+  && chmod +x /usr/local/bin/varlock && rm /tmp/varlock.tar.gz
+
 # ── Runtime ───────────────────────────────────────────────────────────────────
 FROM node:22-trixie-slim
 
@@ -75,9 +87,7 @@ RUN node -e "\
 
 RUN mkdir -p /state /data && chown node:node /state /data
 
-# Copy varlock binary from shared build image (see .docker/varlock.Dockerfile).
-# Compose injects the image via additional_contexts: varlock=docker-image://...
-COPY --from=varlock /usr/local/bin/varlock /usr/local/bin/varlock
+COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
 COPY .openpalm/vault/redact.env.schema /app/.env.schema
 
 # Bake admin OpenCode config into the image — seeded at runtime if overridden

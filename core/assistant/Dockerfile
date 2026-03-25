@@ -3,6 +3,17 @@
 # Config, plugins, and persona are mounted at runtime — not baked into the image.
 # ──────────────────────────────────────────────────────────────────────────────
 
+FROM debian:trixie-slim AS varlock-fetch
+ARG TARGETARCH
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN set -e; \
+  if [ "$TARGETARCH" = "arm64" ]; then ARCH=arm64; SHA256=e830baaa901b6389ecf281bdd2449bfaf7586e91fd3a7a038ec06f78e6fa92f8; \
+  else ARCH=x64; SHA256=820295b271cece2679b2b9701b5285ce39354fc2f35797365fa36c70125f51ab; fi \
+  && curl -fsSL "https://github.com/dmno-dev/varlock/releases/download/varlock%400.4.0/varlock-linux-${ARCH}.tar.gz" -o /tmp/varlock.tar.gz \
+  && echo "${SHA256}  /tmp/varlock.tar.gz" | sha256sum -c - \
+  && tar xzf /tmp/varlock.tar.gz --strip-components=1 -C /usr/local/bin/ \
+  && chmod +x /usr/local/bin/varlock && rm /tmp/varlock.tar.gz
+
 FROM node:22-trixie-slim
 
 # ── Pinned installer versions ────────────────────────────────────────────────
@@ -84,10 +95,7 @@ ENV PATH="/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:$PATH
 RUN curl -fsSL https://raw.githubusercontent.com/itlackey/agentikit/"$AGENTIKIT_VERSION"/install.sh | bash -s -- "$AGENTIKIT_VERSION" \
     && chmod 755 /usr/local/bin/akm
 
-# ── Varlock binary + redaction schema for runtime secret redaction ────────────
-# Copied from shared build image (see .docker/varlock.Dockerfile).
-# Compose injects the image via additional_contexts: varlock=docker-image://...
-COPY --from=varlock /usr/local/bin/varlock /usr/local/bin/varlock
+COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
 RUN mkdir -p /usr/local/etc/varlock && mkdir -p /etc/opencode
 COPY .openpalm/vault/redact.env.schema /usr/local/etc/varlock/.env.schema
 COPY core/assistant/opencode /etc/opencode

@@ -15,39 +15,18 @@
 # in a different directory (.openpalm/stack/ or .dev/stack/). Without it,
 # Docker Compose resolves build contexts relative to the first -f file's
 # directory, which breaks builds.
-#
-# Varlock: the varlock binary is built once via the varlock service below.
-# All services that need it reference the built image via additional_contexts.
-# Build order: `docker compose build varlock` first, then everything else.
-# `docker compose build` (no args) handles this automatically when varlock
-# is already cached.
 
 services:
-  # ── Varlock (build-only) ──────────────────────────────────────────────
-  # Shared build stage for the varlock secret-redaction binary.
-  # Not a runtime service — only exists to produce the image that other
-  # Dockerfiles COPY the binary from. See .docker/varlock.Dockerfile.
-  varlock:
-    build:
-      context: .
-      dockerfile: .docker/varlock.Dockerfile
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/varlock:${OP_IMAGE_TAG:-dev}
-    profiles: ["build"]
-
   admin:
     build:
       context: .
       dockerfile: core/admin/Dockerfile
-      additional_contexts:
-        - varlock=docker-image://${OP_IMAGE_NAMESPACE:-openpalm}/varlock:${OP_IMAGE_TAG:-dev}
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/admin:dev
 
   guardian:
     build:
       context: .
       dockerfile: core/guardian/Dockerfile
-      additional_contexts:
-        - varlock=docker-image://${OP_IMAGE_NAMESPACE:-openpalm}/varlock:${OP_IMAGE_TAG:-dev}
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:dev
     # Dev override: publish guardian to host for integration tests.
     # Uses OP_GUARDIAN_PORT (default 8180) to avoid conflict with the legacy
@@ -62,8 +41,6 @@ services:
     build:
       context: .
       dockerfile: core/assistant/Dockerfile
-      additional_contexts:
-        - varlock=docker-image://${OP_IMAGE_NAMESPACE:-openpalm}/varlock:${OP_IMAGE_TAG:-dev}
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev
     # Dev override: use host env API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY).
     # OpenCode picks the default model based on available keys.
@@ -81,24 +58,18 @@ services:
     build:
       context: .
       dockerfile: core/channel/Dockerfile
-      additional_contexts:
-        - varlock=docker-image://${OP_IMAGE_NAMESPACE:-openpalm}/varlock:${OP_IMAGE_TAG:-dev}
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:dev
 
   scheduler:
     build:
       context: .
       dockerfile: core/scheduler/Dockerfile
-      additional_contexts:
-        - varlock=docker-image://${OP_IMAGE_NAMESPACE:-openpalm}/varlock:${OP_IMAGE_TAG:-dev}
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/scheduler:dev
 
   memory:
     build:
       context: .
       dockerfile: core/memory/Dockerfile
-      additional_contexts:
-        - varlock=docker-image://${OP_IMAGE_NAMESPACE:-openpalm}/varlock:${OP_IMAGE_TAG:-dev}
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/memory:dev
 
   # Voice channel dev override: mount local source instead of npm install.
