@@ -31,7 +31,7 @@ export {
   OPTIONAL_SERVICES,
 } from "./control-plane/types.js";
 
-// ── Registry Sync ────────────────────────────────────────────────────────
+// ── Registry Catalog ─────────────────────────────────────────────────────
 export type { RegistryAutomationEntry, RegistryComponentEntry } from "./control-plane/registry.js";
 export {
   materializeRegistryCatalog,

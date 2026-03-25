@@ -41,6 +41,18 @@ PASS=0
 FAIL=0
 TESTS=0
 
+dev_compose() {
+	docker compose --project-directory . \
+		-f .dev/stack/core.compose.yml \
+		-f .dev/stack/addons/admin/compose.yml \
+		-f compose.dev.yml \
+		--env-file .dev/vault/stack/stack.env \
+		--env-file .dev/vault/stack/services/memory/managed.env \
+		--env-file .dev/vault/user/user.env \
+		--env-file .dev/vault/stack/guardian.env \
+		--project-name openpalm "$@"
+}
+
 pass() {
 	PASS=$((PASS + 1))
 	TESTS=$((TESTS + 1))
@@ -55,7 +67,8 @@ fail() {
 # ── Step 1: Stop everything ──────────────────────────────────────────
 echo ""
 echo "=== Step 1: Stop all containers ==="
-docker compose --project-name openpalm down 2>/dev/null || true
+./scripts/dev-setup.sh --seed-env --enable-addon admin >/dev/null 2>&1 || true
+dev_compose down --remove-orphans 2>/dev/null || true
 remaining=$(docker ps --format '{{.Names}}' | grep openpalm || true)
 if [ -z "$remaining" ]; then
 	pass "All containers stopped"
@@ -129,6 +142,8 @@ sed -i 's/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=dev/' .dev/vault/stack/stack.env
 # Remove stack.yml so the wizard creates a fresh one (verifies Step 7 writes it)
 rm -f .dev/config/stack.yml
 
+./scripts/dev-setup.sh --enable-addon admin >/dev/null 2>&1
+
 pass "Config seeded (admin token cleared, image tag set to dev)"
 
 # ── Step 3b: Ensure local models available on Ollama ─────────────────
@@ -177,14 +192,7 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 	echo "=== Step 4: Build all images from source ==="
 	npm run admin:build 2>&1 | tail -3
 	./scripts/dev-setup.sh --enable-addon admin
-	docker compose --project-directory . \
-		-f .dev/stack/core.compose.yml \
-		-f .dev/stack/addons/admin/compose.yml \
-		-f compose.dev.yml \
-		--env-file .dev/vault/stack/stack.env \
-		--env-file .dev/vault/user/user.env \
-		--env-file .dev/vault/stack/guardian.env \
-		--project-name openpalm build 2>&1 | tail -5
+	dev_compose build 2>&1 | tail -5
 	pass "All images built"
 else
 	echo ""
@@ -194,14 +202,7 @@ fi
 # ── Step 5: Start stack ─────────────────────────────────────────────
 echo ""
 echo "=== Step 5: Start stack ==="
-docker compose --project-directory . \
-	-f .dev/stack/core.compose.yml \
-	-f .dev/stack/addons/admin/compose.yml \
-	-f compose.dev.yml \
-	--env-file .dev/vault/stack/stack.env \
-	--env-file .dev/vault/user/user.env \
-	--env-file .dev/vault/stack/guardian.env \
-	--project-name openpalm up -d 2>&1 | tail -10
+dev_compose up -d 2>&1 | tail -10
 
 # Wait for admin to be healthy
 echo "  Waiting for admin health..."
@@ -276,14 +277,7 @@ else
 fi
 
 # Step 7b: Recreate all services with the dev overlay to pick up new env vars.
-docker compose --project-directory . \
-	-f .dev/stack/core.compose.yml \
-	-f .dev/stack/addons/admin/compose.yml \
-	-f compose.dev.yml \
-	--env-file .dev/vault/stack/stack.env \
-	--env-file .dev/vault/user/user.env \
-	--env-file .dev/vault/stack/guardian.env \
-	--project-name openpalm up -d --force-recreate 2>&1 | tail -10
+dev_compose up -d --force-recreate 2>&1 | tail -10
 
 pass "Services recreated with updated config"
 

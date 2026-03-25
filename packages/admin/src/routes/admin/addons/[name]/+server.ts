@@ -24,7 +24,7 @@ import {
   isChannelAddon,
   randomHex,
 } from "@openpalm/lib";
-import { composeDown, checkDocker } from "$lib/server/docker.js";
+import { composeStop, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 import { buildComposeOptions } from "@openpalm/lib";
 import { readFileSync } from "node:fs";
@@ -117,15 +117,15 @@ export const POST: RequestHandler = async (event) => {
     }
   }
 
-  // On disable: optionally compose down the addon services
+  // On disable: stop only the disabled addon's services (not the whole stack)
   if (!newEnabled && wasEnabled) {
     const dockerCheck = await checkDocker();
     if (dockerCheck.ok) {
       try {
-        await composeDown(buildComposeOptions(state));
-        logger.info("compose down after addon disable", { name, requestId });
+        await composeStop([name], buildComposeOptions(state));
+        logger.info("stopped addon service after disable", { name, requestId });
       } catch (err) {
-        logger.warn("compose down failed after addon disable", { name, error: String(err), requestId });
+        logger.warn("failed to stop addon service after disable", { name, error: String(err), requestId });
       }
     }
   }

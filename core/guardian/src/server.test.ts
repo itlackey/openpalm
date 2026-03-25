@@ -8,6 +8,7 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { signPayload } from "@openpalm/channels-sdk/crypto";
 import type { Subprocess } from "bun";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -54,6 +55,8 @@ let guardianUrl: string;
 let tmpDir: string;
 let sessionCreateCount = 0;
 let messageCount = 0;
+let guardianPort = 0;
+let assistantPort = 0;
 const assistantSessions = new Map<string, { title: string }>();
 
 function resetAssistantCounters(): void {
@@ -62,11 +65,31 @@ function resetAssistantCounters(): void {
   assistantSessions.clear();
 }
 
-// Pick random ports to avoid conflicts
-const guardianPort = 19000 + Math.floor(Math.random() * 1000);
-const assistantPort = 19000 + Math.floor(Math.random() * 1000) + 1000;
+function getAvailablePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.unref();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close();
+        reject(new Error("Failed to resolve test port"));
+        return;
+      }
+      const { port } = address;
+      server.close((err) => {
+        if (err) reject(err);
+        else resolve(port);
+      });
+    });
+  });
+}
 
 beforeAll(async () => {
+  assistantPort = await getAvailablePort();
+  guardianPort = await getAvailablePort();
+
   // Create temp secrets file
   tmpDir = mkdtempSync(join(tmpdir(), "guardian-test-"));
   const secretsPath = join(tmpDir, "secrets.env");
@@ -77,6 +100,7 @@ beforeAll(async () => {
   // Start mock assistant
   mockAssistantServer = Bun.serve({
     port: assistantPort,
+    hostname: "127.0.0.1",
     async fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === "/session" && req.method === "POST") {
@@ -126,24 +150,38 @@ beforeAll(async () => {
       ...process.env,
       PORT: String(guardianPort),
       GUARDIAN_SECRETS_PATH: secretsPath,
-      OP_ASSISTANT_URL: `http://localhost:${assistantPort}`,
+      OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: auditPath,
     },
     stdout: "pipe",
     stderr: "pipe",
   });
 
-  guardianUrl = `http://localhost:${guardianPort}`;
+  guardianUrl = `http://127.0.0.1:${guardianPort}`;
 
   // Wait for guardian to be ready
+  let ready = false;
   for (let i = 0; i < 50; i++) {
+    if (guardianProc.exitCode !== null) {
+      throw new Error(`guardian exited before ready with code ${guardianProc.exitCode}`);
+    }
     try {
       const resp = await fetch(`${guardianUrl}/health`);
-      if (resp.ok) break;
+      if (resp.ok) {
+        const data = await resp.json().catch(() => null) as { ok?: boolean; service?: string } | null;
+        if (data?.ok === true && data.service === "guardian") {
+          ready = true;
+          break;
+        }
+      }
     } catch {
       // not ready yet
     }
     await Bun.sleep(100);
+  }
+
+  if (!ready) {
+    throw new Error(`guardian did not become ready on ${guardianUrl}`);
   }
 });
 
