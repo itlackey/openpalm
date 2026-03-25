@@ -8,7 +8,7 @@
  *   - Validates compose config with `docker compose config --quiet`
  *
  * Tier 2: Container validation (needs Docker, builds from source).
- *   - Builds images from local source via compose.dev.yaml
+ *   - Builds images from local source via compose.dev.yml
  *   - Starts the stack
  *   - Validates every expected container is running and healthy
  */
@@ -196,7 +196,7 @@ describe('install flow — tier 1 (file validation)', () => {
     const result = await performSetup(spec as any);
     expect(result.ok).toBe(true);
 
-    // ── Validate stack.yaml via lib parser ─────────────────────────
+    // ── Validate stack.yml via lib parser ─────────────────────────
     const configDir = join(homeDir, 'config');
     const stackSpec = readStackSpec(configDir);
     expect(stackSpec).not.toBeNull();

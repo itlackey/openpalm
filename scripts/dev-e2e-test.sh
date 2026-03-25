@@ -98,8 +98,8 @@ rm -f .dev/vault/stack/auth.json
 rm -rf .dev/vault/stack/services
 rm -rf .dev/vault/stack/addons
 
-# Config — remove stack.yaml so the wizard writes a fresh one
-rm -f .dev/config/stack.yaml
+# Config — remove stack.yml so the wizard writes a fresh one
+rm -f .dev/config/stack.yml
 
 # State — remove setup markers and audit logs
 rm -f .dev/state/setup-complete
@@ -124,8 +124,8 @@ sed -i 's/^\(export \)\{0,1\}OP_ADMIN_TOKEN=.*/\1OP_ADMIN_TOKEN=/' .dev/vault/st
 # built images with remote ones (e.g. an older Python-based memory:latest).
 sed -i 's/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=dev/' .dev/vault/stack/stack.env
 
-# Remove stack.yaml so the wizard creates a fresh one (verifies Step 7 writes it)
-rm -f .dev/config/stack.yaml
+# Remove stack.yml so the wizard creates a fresh one (verifies Step 7 writes it)
+rm -f .dev/config/stack.yml
 
 pass "Config seeded (admin token cleared, image tag set to dev)"
 
@@ -177,7 +177,7 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 	docker compose --project-directory . \
 		-f .dev/stack/core.compose.yml \
 		-f .dev/stack/addons/admin/compose.yml \
-		-f compose.dev.yaml \
+		-f compose.dev.yml \
 		--env-file .dev/vault/stack/stack.env \
 		--env-file .dev/vault/user/user.env \
 		--env-file .dev/vault/stack/guardian.env \
@@ -194,7 +194,7 @@ echo "=== Step 5: Start stack ==="
 docker compose --project-directory . \
 	-f .dev/stack/core.compose.yml \
 	-f .dev/stack/addons/admin/compose.yml \
-	-f compose.dev.yaml \
+	-f compose.dev.yml \
 	--env-file .dev/vault/stack/stack.env \
 	--env-file .dev/vault/user/user.env \
 	--env-file .dev/vault/stack/guardian.env \
@@ -227,11 +227,11 @@ if [ -z "$ADMIN_TOKEN" ]; then
 	ADMIN_TOKEN="dev-admin-token"
 fi
 
-# Check if stack.yaml exists — fresh state means no stack.yaml yet
-if [ ! -f .dev/config/stack.yaml ]; then
-	pass "Setup is NOT complete (no stack.yaml — fresh state)"
+# Check if stack.yml exists — fresh state means no stack.yml yet
+if [ ! -f .dev/config/stack.yml ]; then
+	pass "Setup is NOT complete (no stack.yml — fresh state)"
 else
-	fail "Setup should not be complete yet (stack.yaml exists)"
+	fail "Setup should not be complete yet (stack.yml exists)"
 fi
 
 if [ -n "$ADMIN_TOKEN" ]; then
@@ -244,7 +244,7 @@ fi
 echo ""
 echo "=== Step 7: Run setup ==="
 
-# Use performSetup directly (same as the CLI wizard). This creates stack.yaml,
+# Use performSetup directly (same as the CLI wizard). This creates stack.yml,
 # writes secrets and all runtime files in one atomic operation.
 SETUP_OK=$(OP_HOME=.dev bun -e "
 const { performSetup } = await import('@openpalm/lib');
@@ -277,7 +277,7 @@ fi
 docker compose --project-directory . \
 	-f .dev/stack/core.compose.yml \
 	-f .dev/stack/addons/admin/compose.yml \
-	-f compose.dev.yaml \
+	-f compose.dev.yml \
 	--env-file .dev/vault/stack/stack.env \
 	--env-file .dev/vault/user/user.env \
 	--env-file .dev/vault/stack/guardian.env \
@@ -285,7 +285,7 @@ docker compose --project-directory . \
 
 pass "Services recreated with updated config"
 
-# Step 7b already applied compose.dev.yaml overlay to all services,
+# Step 7b already applied compose.dev.yml overlay to all services,
 # so no separate assistant re-apply is needed.
 
 # ── Step 8: Wait for containers ──────────────────────────────────────
@@ -362,24 +362,24 @@ else
 	fail "OP_ADMIN_TOKEN expected 'dev-admin-token', got '$STACK_ADMIN_TOKEN'"
 fi
 # Config vars (SYSTEM_LLM_*, EMBEDDING_*, MEMORY_USER_ID) are now in
-# stack.yaml capabilities and vault/stack/services/memory/managed.env,
+# stack.yml capabilities and vault/stack/services/memory/managed.env,
 # NOT in user.env. Verify they are NOT in user.env.
 if grep -qE 'SYSTEM_LLM_PROVIDER=' .dev/vault/user/user.env 2>/dev/null; then
-	fail "SYSTEM_LLM_PROVIDER should NOT be in user.env (lives in stack.yaml now)"
+	fail "SYSTEM_LLM_PROVIDER should NOT be in user.env (lives in stack.yml now)"
 else
 	pass "Config vars correctly absent from user.env"
 fi
 
-# Verify stack.yaml has correct capabilities
-STACK_YAML=".dev/config/stack.yaml"
+# Verify stack.yml has correct capabilities
+STACK_YAML=".dev/config/stack.yml"
 if [ -f "$STACK_YAML" ]; then
 	if grep -q "llm: ollama/" "$STACK_YAML"; then
-		pass "stack.yaml has capabilities.llm with ollama provider"
+		pass "stack.yml has capabilities.llm with ollama provider"
 	else
-		fail "stack.yaml capabilities.llm missing or wrong provider"
+		fail "stack.yml capabilities.llm missing or wrong provider"
 	fi
 else
-	fail "stack.yaml not found"
+	fail "stack.yml not found"
 fi
 
 # Verify managed.env exists with correct values
@@ -448,13 +448,13 @@ else
 	fail "assistant OPENAI_BASE_URL should end with /v1, got: $BASE_URL"
 fi
 
-# LMSTUDIO_BASE_URL must be set (from compose.dev.yaml overlay) so the socat
+# LMSTUDIO_BASE_URL must be set (from compose.dev.yml overlay) so the socat
 # proxy can forward lmstudio provider requests to Ollama.
 LMSTUDIO_URL=$(docker exec openpalm-assistant-1 printenv LMSTUDIO_BASE_URL 2>/dev/null || echo "")
 if [ -n "$LMSTUDIO_URL" ]; then
 	pass "assistant LMSTUDIO_BASE_URL=$LMSTUDIO_URL"
 else
-	fail "assistant LMSTUDIO_BASE_URL is not set — compose.dev.yaml overlay may not have been applied"
+	fail "assistant LMSTUDIO_BASE_URL is not set — compose.dev.yml overlay may not have been applied"
 fi
 
 # ── Step 12: Verify Memory user provisioned ──────────────────────

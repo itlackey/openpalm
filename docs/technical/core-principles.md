@@ -79,7 +79,7 @@ Subtrees:
 
 - `automations/` — automation YAML files (mounted to scheduler)
 - `assistant/` — user OpenCode extensions (tools, plugins, skills)
-- `stack.yaml` — tooling metadata such as preferred addons and higher-level settings
+- `stack.yml` — tooling metadata such as preferred addons and higher-level settings
 
 **Rule:** allowed writers are: user direct edits; explicit admin UI/API config actions; assistant calls through authenticated/allowlisted admin APIs on user request. Automatic lifecycle operations (install/update/startup apply/setup reruns/upgrades) are non-destructive for existing user files and only seed missing defaults or making targeted updates.
 

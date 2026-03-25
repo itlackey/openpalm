@@ -101,8 +101,8 @@ COMPOSE_DEST="$DEV_ROOT/stack/core.compose.yml"
 # Seed addon overlays from repo template
 cp -r "$ROOT_DIR/.openpalm/stack/addons/"* "$DEV_ROOT/stack/addons/" 2>/dev/null || true
 
-# Seed stack.yaml v2 (capabilities-based config)
-STACK_YAML="$CONFIG_DIR/stack.yaml"
+# Seed stack.yml v2 (capabilities-based config)
+STACK_YAML="$CONFIG_DIR/stack.yml"
 if [[ ! -f "$STACK_YAML" || $force -eq 1 ]]; then
 	cat >"$STACK_YAML" <<'SYEOF'
 version: 2

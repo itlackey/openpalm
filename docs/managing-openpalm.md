@@ -105,7 +105,7 @@ curl -X POST http://localhost:3880/admin/connections \
   -H "Content-Type: application/json" \
   -d '{"provider":"openai","apiKey":"sk-...","systemModel":"gpt-4o","embeddingModel":"text-embedding-3-small","embeddingDims":1536,"memoryUserId":"default_user"}'
 
-# Check whether stack.yaml has non-empty LLM and embedding assignments
+# Check whether stack.yml has non-empty LLM and embedding assignments
 curl http://localhost:3880/admin/connections/status \
   -H "x-admin-token: $OP_ADMIN_TOKEN"
 ```
@@ -133,7 +133,7 @@ curl -X POST http://localhost:3880/admin/addons/chat \
   -d '{"enabled":true}'
 ```
 
-This updates `config/stack.yaml` and writes capability/env changes used by the compose flow.
+This updates `config/stack.yml` and writes capability/env changes used by the compose flow.
 
 ### Add an addon manually
 

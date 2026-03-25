@@ -3,7 +3,7 @@
 Snapshot backups created during stack upgrades and configuration changes.
 
 When the CLI or admin performs an upgrade, it snapshots the current state
-of critical files (compose overlays, env schemas, stack.yaml) before
+of critical files (compose overlays, env schemas, stack.yml) before
 applying changes. If something goes wrong, the snapshot can be used to
 restore the previous working state.
 

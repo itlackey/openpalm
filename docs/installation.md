@@ -46,7 +46,7 @@ OpenPalm uses one home directory: `~/.openpalm/` by default.
 | `~/.openpalm/data/` | Durable service data |
 | `~/.openpalm/logs/` | Logs and audit output |
 
-`~/.openpalm/config/stack.yaml` is optional tooling metadata. It is not the
+`~/.openpalm/config/stack.yml` is optional tooling metadata. It is not the
 deployment truth.
 
 ---

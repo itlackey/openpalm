@@ -72,7 +72,7 @@ docker compose \
 
 That example starts the core stack plus the `admin` and `chat` addons. Review the copied env files before first boot, then change the `-f addons/<name>/compose.yml` list to choose a different stack. See the [Manual Compose Runbook](docs/operations/manual-compose-runbook.md) for the full command reference.
 
-`config/stack.yaml` is optional metadata for tooling. It is not the deployment truth. The running stack is always the compose file set you pass to Docker Compose.
+`config/stack.yml` is optional metadata for tooling. It is not the deployment truth. The running stack is always the compose file set you pass to Docker Compose.
 
 See the [setup guide](docs/setup-guide.md) for the convenience path.
 

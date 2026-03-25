@@ -45,7 +45,7 @@ bun run test             # all non-admin tests (sdk, guardian, channels, cli)
 bun run check            # admin:check + sdk:test
 ```
 
-`dev:stack` pulls pre-built images from the registry — use it for quick starts and testing admin apply flows. `dev:build` compiles all images from local source using `compose.dev.yaml` — use it when developing services or testing Dockerfile changes.
+`dev:stack` pulls pre-built images from the registry — use it for quick starts and testing admin apply flows. `dev:build` compiles all images from local source using `compose.dev.yml` — use it when developing services or testing Dockerfile changes.
 
 `dev-setup.sh --seed-env` seeds `.dev/vault/user/user.env` and `.dev/vault/stack/stack.env` and sets the `OP_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
 
@@ -80,7 +80,7 @@ Two options depending on what you're working on:
 | Script | What it does |
 |--------|--------------|
 | `bun run dev:stack` | Pulls pre-built images from the registry. Fast start for testing admin workflows. |
-| `bun run dev:build` | Builds all images from local source via [`compose.dev.yaml`](../compose.dev.yaml). Use when developing services or testing Dockerfile changes. |
+| `bun run dev:build` | Builds all images from local source via [`compose.dev.yml`](../compose.dev.yml). Use when developing services or testing Dockerfile changes. |
 
 Both scripts read env files from `.dev/state/artifacts/`.
 

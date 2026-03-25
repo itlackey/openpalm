@@ -365,7 +365,7 @@ Addon compose files use `openpalm.*` Docker labels for discovery and UI metadata
 - `openpalm.category` (optional) — `messaging`, `ai`, `integration`, `management`
 - `openpalm.healthcheck` (optional) — internal health check URL
 
-The `openpalm.name` and `openpalm.description` labels are validated by the registry test suite (`scripts/validate-registry.sh`). The admin UI reads addon state from `stack.yaml`, not from Docker labels at runtime.
+The `openpalm.name` and `openpalm.description` labels are validated by the registry test suite (`scripts/validate-registry.sh`). The admin UI reads addon state from `stack.yml`, not from Docker labels at runtime.
 
 ---
 

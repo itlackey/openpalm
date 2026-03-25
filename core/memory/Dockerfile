@@ -1,6 +1,6 @@
 # OpenPalm Memory API — Bun.js wrapper around @openpalm/memory
 #
-# Build context must be the repo root (context: .) so compose.dev.yaml paths work.
+# Build context must be the repo root (context: .) so compose.dev.yml paths work.
 
 FROM oven/bun:1.3-debian
 

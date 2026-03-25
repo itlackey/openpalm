@@ -18,7 +18,7 @@ OpenPalm runs as a Docker Compose stack with 4 core services plus optional addon
 | **guardian** | Message routing with HMAC verification |
 | **scheduler** | Lightweight automation sidecar: cron jobs, http/shell/assistant/api actions |
 
-Optional addons (enabled via stack.yaml):
+Optional addons (enabled via stack.yml):
 | **admin** | Control plane API (protects Docker socket) |
 | **chat** | OpenAI-compatible chat channel |
 
@@ -32,9 +32,9 @@ View and modify the network access scope.
 - **Access scope**: `host` = localhost only, `lan` = local network access
 
 ### `admin-addons` (list, enable, disable)
-List, enable, or disable addons via `stack.yaml`.
+List, enable, or disable addons via `stack.yml`.
 - Shows all addons from `stack/addons/` with their enabled state
-- Enable/disable toggles `stack.yaml addons` and manages HMAC secrets for channels
+- Enable/disable toggles `stack.yml addons` and manages HMAC secrets for channels
 
 ### `admin-automations` (list)
 List configured automations (name, schedule, enabled, action type). For live scheduler status and execution logs, query the scheduler sidecar at `http://scheduler:8090/automations`.

@@ -44,7 +44,7 @@ status, logs, and all other operations.
 ## Addons
 
 Each addon is a compose overlay in `addons/<name>/compose.yml`. Compose file
-selection is the deployment model. `config/stack.yaml` is optional tooling
+selection is the deployment model. `config/stack.yml` is optional tooling
 metadata that can help choose addons, but it does not replace these files.
 
 | Addon | Host port | Purpose |

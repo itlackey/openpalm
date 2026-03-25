@@ -133,7 +133,7 @@ bun run dev:stack
 # Manual equivalent with channel overlay:
 docker compose --project-directory . \
   -f .openpalm/stack/core.compose.yml \
-  -f compose.dev.yaml \
+  -f compose.dev.yml \
   --env-file .dev/vault/stack/stack.env \
   --env-file .dev/vault/user/user.env \
   up --build -d
@@ -253,7 +253,7 @@ All state lives under `~/.openpalm/` (configurable via `OP_HOME`):
 
 | Directory | Owner | Purpose |
 |-----------|-------|---------|
-| `config/` | User | Non-secret config: stack.yaml, automations, assistant extensions |
+| `config/` | User | Non-secret config: stack.yml, automations, assistant extensions |
 | `vault/user/` | User | User-managed secrets: `user.env` (LLM keys, owner info) |
 | `vault/stack/` | Admin | System-managed secrets: `stack.env` (admin token, HMAC, paths) |
 | `stack/` | System | Live Docker Compose assembly: `core.compose.yml` + addon overlays |

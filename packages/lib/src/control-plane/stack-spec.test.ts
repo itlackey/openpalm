@@ -233,19 +233,19 @@ describe("updateCapability", () => {
   });
 
   it("throws when spec is missing", () => {
-    expect(() => updateCapability(configDir, "llm", "test")).toThrow("stack.yaml not found or invalid");
+    expect(() => updateCapability(configDir, "llm", "test")).toThrow("stack.yml not found or invalid");
   });
 });
 
 // ── stackSpecPath / STACK_SPEC_FILENAME ──────────────────────────────────
 
 describe("stackSpecPath", () => {
-  it("returns configDir/stack.yaml", () => {
-    expect(stackSpecPath("/foo/config")).toBe("/foo/config/stack.yaml");
+  it("returns configDir/stack.yml", () => {
+    expect(stackSpecPath("/foo/config")).toBe("/foo/config/stack.yml");
   });
 
   it("uses STACK_SPEC_FILENAME constant", () => {
-    expect(STACK_SPEC_FILENAME).toBe("stack.yaml");
+    expect(STACK_SPEC_FILENAME).toBe("stack.yml");
     expect(stackSpecPath(configDir)).toBe(`${configDir}/${STACK_SPEC_FILENAME}`);
   });
 });

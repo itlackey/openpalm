@@ -89,7 +89,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${OP_HOME}/vault/stack" "${OP_HOME}/vault/user" "${OP_HOME}/data" "${OP_HOME}/config" "${OP_HOME}/logs" "${OP_HOME}/stack"
-          docker compose -f .openpalm/stack/core.compose.yml -f compose.dev.yaml config -q
+          docker compose -f .openpalm/stack/core.compose.yml -f compose.dev.yml config -q
 
       - name: Assert deleted scripts are absent
         run: |

@@ -94,7 +94,7 @@ export const POST: RequestHandler = async (event) => {
 
   const spec = readStackSpec(state.configDir);
   if (!spec) {
-    return errorResponse(500, "internal_error", "stack.yaml not found or invalid", {}, requestId);
+    return errorResponse(500, "internal_error", "stack.yml not found or invalid", {}, requestId);
   }
 
   const enabled: boolean | undefined =
@@ -125,7 +125,7 @@ export const POST: RequestHandler = async (event) => {
     writeCapabilityVars(spec, state.vaultDir);
   } catch (err) {
     appendAudit(state, actor, "addons.name.post", { name, error: String(err) }, false, requestId, callerType);
-    return errorResponse(500, "internal_error", "Failed to update stack.yaml", {}, requestId);
+    return errorResponse(500, "internal_error", "Failed to update stack.yml", {}, requestId);
   }
 
   // Generate HMAC secret for newly-enabled channel addons

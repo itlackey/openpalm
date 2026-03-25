@@ -294,7 +294,7 @@ export async function buildManagedServices(state: ControlPlaneState): Promise<st
     }
   }
 
-  // Fallback: static inference from CORE_SERVICES + stack.yaml addons
+  // Fallback: static inference from CORE_SERVICES + stack.yml addons
   const services: string[] = [...CORE_SERVICES];
   const spec = readStackSpec(state.configDir);
   if (spec) {

@@ -19,7 +19,7 @@ It captures why the system is shaped the way it is and what must remain true as 
   - compose files (`stack/` core + addon overlays),
   - environment files (`vault/`),
   - service configuration files (`config/`).
-- `stack.yaml` is a metadata and coordination artifact for tooling, not a replacement for Compose or env files.
+- `stack.yml` is a metadata and coordination artifact for tooling, not a replacement for Compose or env files.
 - All control-plane logic is implemented once in `@openpalm/lib`; CLI, admin, and scheduler are thin consumers.
 
 ## Filesystem and ownership model

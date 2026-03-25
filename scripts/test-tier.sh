@@ -74,7 +74,7 @@ rebuild_stack() {
 	docker compose --project-directory . \
 		-f .dev/stack/core.compose.yml \
 		-f .openpalm/stack/addons/admin/compose.yml \
-		-f compose.dev.yaml \
+		-f compose.dev.yml \
 		--env-file .dev/vault/stack/stack.env \
 		--env-file .dev/vault/user/user.env \
 		--env-file .dev/vault/stack/guardian.env \

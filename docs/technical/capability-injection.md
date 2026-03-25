@@ -17,7 +17,7 @@ Primary sources:
 
 Services need provider credentials (API keys, base URLs, model names) but
 should not know how those credentials were configured. The user picks a
-provider and model in `stack.yaml`; the control plane resolves those choices
+provider and model in `stack.yml`; the control plane resolves those choices
 into a flat set of `OP_CAP_*` env vars written to `stack.env`. Compose
 files reference these vars via `${OP_CAP_*}` substitution, mapping them to
 each service's own env var names.
@@ -31,7 +31,7 @@ to which provider is backing a capability.
 ## Resolution Pipeline
 
 ```
-stack.yaml capabilities
+stack.yml capabilities
         |
         v
 writeCapabilityVars()          (packages/lib/src/control-plane/spec-to-env.ts)
@@ -52,7 +52,7 @@ service-local env vars          (SYSTEM_LLM_*, EMBEDDING_*, TTS_*, etc.)
 
 ### Step by step
 
-1. **User configures capabilities** in `config/stack.yaml`:
+1. **User configures capabilities** in `config/stack.yml`:
    ```yaml
    capabilities:
      llm: "anthropic/claude-sonnet-4-20250514"
@@ -91,7 +91,7 @@ Each capability slot produces a set of `OP_CAP_<SLOT>_<FIELD>` variables.
 
 ### LLM (required)
 
-Configured as `capabilities.llm: "provider/model"` in stack.yaml.
+Configured as `capabilities.llm: "provider/model"` in stack.yml.
 
 | Variable | Content |
 |---|---|
@@ -114,7 +114,7 @@ with `SLM` prefix. Empty strings when not configured.
 
 ### Embeddings (required)
 
-Configured as a structured object in stack.yaml.
+Configured as a structured object in stack.yml.
 
 | Variable | Content |
 |---|---|
@@ -199,7 +199,7 @@ the capability system is passed through, used for provider detection logic.
 default API endpoint. Two special cases:
 
 - **Ollama with in-stack addon**: When the `ollama` addon is enabled in
-  stack.yaml, the URL resolves to `http://ollama:11434` (Docker network)
+  stack.yml, the URL resolves to `http://ollama:11434` (Docker network)
   instead of `http://host.docker.internal:11434`.
 - **OpenAI base URL override**: If `OPENAI_BASE_URL` exists in stack.env,
   it takes precedence over the default.

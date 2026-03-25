@@ -335,7 +335,7 @@ Error responses:
 
 - `400 bad_request` -- `name` is missing.
 - `404 not_found` -- Addon name is not available on disk in `stack/addons/`.
-- `500 internal_error` -- Failed to update `stack.yaml`.
+- `500 internal_error` -- Failed to update `stack.yml`.
 
 ### `GET /admin/addons/:name`
 
@@ -376,7 +376,7 @@ Response:
 Error responses:
 
 - `404 not_found` -- Addon name is not available on disk in `stack/addons/`.
-- `500 internal_error` -- Failed to update `stack.yaml`.
+- `500 internal_error` -- Failed to update `stack.yml`.
 
 ## Registry
 
@@ -507,7 +507,7 @@ Manage LLM provider credentials and related configuration stored in
 
 ### `GET /admin/connections`
 
-Returns the current capability assignments from `stack.yaml` and masked secret
+Returns the current capability assignments from `stack.yml` and masked secret
 values from `vault/stack/stack.env`.
 
 Response:
@@ -538,7 +538,7 @@ Response:
 
 ### `POST /admin/connections`
 
-Saves provider credentials to `vault/stack/stack.env`, updates `stack.yaml`
+Saves provider credentials to `vault/stack/stack.env`, updates `stack.yml`
 capabilities.
 
 Body:
@@ -578,11 +578,11 @@ Response:
 Error responses:
 
 - `400 bad_request` -- `provider` is missing or not in scope.
-- `500 internal_error` -- Failed to write `vault/stack/stack.env` or `stack.yaml`.
+- `500 internal_error` -- Failed to write `vault/stack/stack.env` or `stack.yml`.
 
 ### `GET /admin/connections/status`
 
-Checks whether `stack.yaml` has non-empty capability assignments for the
+Checks whether `stack.yml` has non-empty capability assignments for the
 system LLM and embeddings provider/model. Leading and trailing whitespace is
 ignored during the completeness check. API keys are not required here.
 
@@ -640,7 +640,7 @@ On failure:
 
 ### `GET /admin/connections/assignments`
 
-Returns the current `stack.yaml` capability assignments:
+Returns the current `stack.yml` capability assignments:
 
 ```json
 {
@@ -661,7 +661,7 @@ Returns the current `stack.yaml` capability assignments:
 
 ### `POST /admin/connections/assignments`
 
-Saves validated capability updates back to `stack.yaml`. The request body may either be the capabilities
+Saves validated capability updates back to `stack.yml`. The request body may either be the capabilities
 object directly or `{ "capabilities": ... }`.
 
 Supported top-level keys are `llm`, `slm`, `embeddings`, `memory`, `tts`,
@@ -695,12 +695,12 @@ Response:
 Error responses:
 
 - `400 bad_request` -- malformed capability payload, unknown keys, or invalid field types.
-- `500 internal_error` -- `stack.yaml` could not be written.
+- `500 internal_error` -- `stack.yml` could not be written.
 
 ### `GET /admin/connections/export/mem0`
 
 Exports the compatibility-formatted memory config derived from current
-`stack.yaml` capabilities. The route name remains `export/mem0`
+`stack.yml` capabilities. The route name remains `export/mem0`
 for backward compatibility, but the generated file configures OpenPalm's
 Bun-based memory service.
 
@@ -1132,7 +1132,7 @@ Error responses:
 
 ### `POST /admin/opencode/model`
 
-Update the active model. Persists to `stack.yaml` and attempts live-apply
+Update the active model. Persists to `stack.yml` and attempts live-apply
 via OpenCode's config API. If live-apply fails, the model is still persisted
 and a container restart will pick it up.
 
@@ -1159,7 +1159,7 @@ Response (persisted only):
 Error responses:
 
 - `400 bad_request` -- `model` is missing or empty.
-- `500 internal_error` -- `stack.yaml` not found or write failed.
+- `500 internal_error` -- `stack.yml` not found or write failed.
 
 ### `GET /admin/opencode/providers`
 

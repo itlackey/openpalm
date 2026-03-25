@@ -1,6 +1,6 @@
 /**
- * GET  /admin/connections/assignments — Return current capabilities from stack.yaml.
- * POST /admin/connections/assignments — Update capabilities in stack.yaml.
+ * GET  /admin/connections/assignments — Return current capabilities from stack.yml.
+ * POST /admin/connections/assignments — Update capabilities in stack.yml.
  */
 import type { RequestHandler } from './$types';
 import type {
@@ -180,7 +180,7 @@ export const POST: RequestHandler = async (event) => {
   if (unknownKey) return errorResponse(400, 'bad_request', unknownKey, {}, requestId);
 
   const spec = readStackSpec(state.configDir);
-  if (!spec) return errorResponse(500, 'internal_error', 'stack.yaml not found', {}, requestId);
+  if (!spec) return errorResponse(500, 'internal_error', 'stack.yml not found', {}, requestId);
 
   // LLM (required string, never deletable)
   if ('llm' in capabilities) {

@@ -6,7 +6,7 @@
 # Manual equivalent (from project root):
 #   docker compose --project-directory . \
 #     -f .openpalm/stack/core.compose.yml \
-#     -f compose.dev.yaml \
+#     -f compose.dev.yml \
 #     --env-file .dev/vault/stack/stack.env \
 #     --env-file .dev/vault/user/user.env \
 #     up --build -d
@@ -102,7 +102,7 @@ services:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/memory:dev
 
   # Voice channel dev override: mount local source instead of npm install.
-  # Requires voice.yml overlay loaded before this file (-f channels/voice.yml -f compose.dev.yaml).
+  # Requires voice.yml overlay loaded before this file (-f channels/voice.yml -f compose.dev.yml).
   channel-voice:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:dev
     ports:

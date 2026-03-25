@@ -45,7 +45,7 @@ export const POST: RequestHandler = async (event) => {
     // Read current LLM capability to preserve provider
     const spec = readStackSpec(state.configDir);
     if (!spec) {
-      return errorResponse(500, 'internal_error', 'stack.yaml not found', {}, requestId);
+      return errorResponse(500, 'internal_error', 'stack.yml not found', {}, requestId);
     }
 
     const { provider } = parseCapabilityString(spec.capabilities.llm);

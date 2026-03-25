@@ -429,7 +429,7 @@ describe("performSetup", () => {
     expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_MODEL=text-embedding-3-small");
   });
 
-  it("writes capabilities to stack.yaml v2", async () => {
+  it("writes capabilities to stack.yml v2", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
@@ -527,7 +527,7 @@ describe("performSetup", () => {
     expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_DIMS=768");
   });
 
-  it("writes stack.yaml with correct v2 structure", async () => {
+  it("writes stack.yml with correct v2 structure", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 

@@ -30,7 +30,7 @@ variable). The relevant files for running the stack are:
 | `~/.openpalm/stack/addons/<name>/compose.yml` | One file per enabled addon (admin, chat, api, etc.) |
 | `~/.openpalm/vault/stack/stack.env` | System-managed values: tokens, ports, UID/GID, image tags |
 | `~/.openpalm/vault/user/user.env` | User-managed settings: owner info, custom preferences |
-| `~/.openpalm/config/stack.yaml` | Optional tooling metadata (helper scripts read this; it is not deployment truth) |
+| `~/.openpalm/config/stack.yml` | Optional tooling metadata (helper scripts read this; it is not deployment truth) |
 
 The project name defaults to `openpalm` and can be overridden with the
 `OP_PROJECT_NAME` environment variable.

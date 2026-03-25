@@ -24,10 +24,10 @@ import { sha256, randomHex } from "./crypto.js";
 
 const DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
 
-// ── Stack Config (stack.yaml) ─────────────────────────────────────
+// ── Stack Config (stack.yml) ─────────────────────────────────────
 
 /**
- * Check whether Ollama is enabled via stack.yaml addons list.
+ * Check whether Ollama is enabled via stack.yml addons list.
  */
 export function isOllamaEnabled(state: ControlPlaneState): boolean {
   const spec = readStackSpec(state.configDir);
@@ -36,7 +36,7 @@ export function isOllamaEnabled(state: ControlPlaneState): boolean {
 }
 
 /**
- * Check whether admin is enabled via stack.yaml addons list.
+ * Check whether admin is enabled via stack.yml addons list.
  */
 export function isAdminEnabled(state: ControlPlaneState): boolean {
   const spec = readStackSpec(state.configDir);

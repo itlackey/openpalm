@@ -1,5 +1,5 @@
 /**
- * Stack specification file (stack.yaml) management.
+ * Stack specification file (stack.yml) management.
  *
  * The stack spec is a YAML document that captures the high-level
  * configuration of an OpenPalm installation: capabilities, addons,
@@ -76,7 +76,7 @@ export type StackSpec = {
 
 // ── Constants ───────────────────────────────────────────────────────────
 
-export const STACK_SPEC_FILENAME = "stack.yaml";
+export const STACK_SPEC_FILENAME = "stack.yml";
 
 export const SPEC_DEFAULTS = {
   ports: {
@@ -159,7 +159,7 @@ export function readStackSpec(configDir: string): StackSpec | null {
  */
 export function updateCapability(configDir: string, key: string, value: unknown): void {
   const spec = readStackSpec(configDir);
-  if (!spec) throw new Error("stack.yaml not found or invalid");
+  if (!spec) throw new Error("stack.yml not found or invalid");
   (spec.capabilities as Record<string, unknown>)[key] = value;
   writeStackSpec(configDir, spec);
 }

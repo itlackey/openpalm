@@ -108,7 +108,7 @@ describe("buildComposeFileList", () => {
     mkdirSync(stackDir, { recursive: true });
     writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
 
-    // Seed stack.yaml with chat addon enabled via lib's writeStackSpec
+    // Seed stack.yml with chat addon enabled via lib's writeStackSpec
     const chatSpec: StackSpec = {
       version: 2,
       capabilities: { llm: "test/model", embeddings: { provider: "test", model: "test", dims: 768 }, memory: { userId: "test" } },

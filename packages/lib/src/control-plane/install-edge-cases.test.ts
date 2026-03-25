@@ -357,8 +357,8 @@ describe("Existing Install", () => {
     expect(parsed.OP_SETUP_COMPLETE).toBe("true");
   });
 
-  // Scenario 8: Re-setup with different provider updates stack.yaml capabilities
-  it("re-setup with different provider updates capabilities in stack.yaml", async () => {
+  // Scenario 8: Re-setup with different provider updates stack.yml capabilities
+  it("re-setup with different provider updates capabilities in stack.yml", async () => {
     // First setup with OpenAI
     await performSetup(makeValidSpec());
 
@@ -518,8 +518,8 @@ describe("Broken/Corrupt State", () => {
     }
   });
 
-  // Scenario 13: Missing stack.yaml returns null
-  it("readStackSpec returns null when stack.yaml missing", () => {
+  // Scenario 13: Missing stack.yml returns null
+  it("readStackSpec returns null when stack.yml missing", () => {
     const spec = readStackSpec(configDir);
     expect(spec).toBeNull();
   });
@@ -669,7 +669,7 @@ describe("Setup Input Variations", () => {
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    // stack.yaml should have ollama capabilities
+    // stack.yml should have ollama capabilities
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
     expect(spec!.capabilities.llm).toBe("ollama/llama3.2");
@@ -731,7 +731,7 @@ describe("performSetup end-to-end artifacts", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  it("writes stack.yaml and readStackSpec returns v2", async () => {
+  it("writes stack.yml and readStackSpec returns v2", async () => {
     await performSetup(makeValidSpec());
 
     const spec = readStackSpec(configDir);

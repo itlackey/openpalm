@@ -113,7 +113,7 @@ docker compose \
   up -d
 ```
 
-`~/.openpalm/config/stack.yaml` does nothing by itself unless a helper script is
+`~/.openpalm/config/stack.yml` does nothing by itself unless a helper script is
 reading it.
 
 ---

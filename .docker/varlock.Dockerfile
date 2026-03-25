@@ -11,7 +11,7 @@
 #   COPY --from=varlock /usr/local/bin/varlock /usr/local/bin/varlock
 #
 # Build:
-#   docker compose build varlock   (via compose.dev.yaml)
+#   docker compose build varlock   (via compose.dev.yml)
 
 FROM debian:trixie-slim
 ARG TARGETARCH

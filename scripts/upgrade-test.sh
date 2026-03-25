@@ -325,7 +325,7 @@ if [[ $SKIP_BUILD -eq 0 && -z "$FROM_VERSION" ]]; then
   npm run admin:build 2>&1 | tail -3
   docker compose --project-directory "$ROOT_DIR" \
     -f "${OP_STACK_HOME}/core.compose.yml" \
-    -f compose.dev.yaml \
+    -f compose.dev.yml \
     --env-file "${VAULT_HOME}/stack/stack.env" \
     --env-file "${VAULT_HOME}/user/user.env" \
     --env-file "${VAULT_HOME}/stack/guardian.env" \

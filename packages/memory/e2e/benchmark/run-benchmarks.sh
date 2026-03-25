@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-COMPOSE_FILE="$SCRIPT_DIR/compose.benchmark.yaml"
+COMPOSE_FILE="$SCRIPT_DIR/compose.benchmark.yml"
 # Use path within the project tree — snap-installed Docker cannot bind-mount
 # files from /tmp (snap confinement silently creates directories instead).
 BENCHMARK_DIR="$SCRIPT_DIR/.benchmark-data"

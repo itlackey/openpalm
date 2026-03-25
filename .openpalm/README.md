@@ -9,7 +9,7 @@ files here.
 ```text
 ~/.openpalm/
   config/             User-editable configuration (non-secret)
-    stack.yaml          Optional addon/tooling metadata
+    stack.yml          Optional addon/tooling metadata
     host.yaml           Optional host metadata written by setup tooling
     assistant/          OpenCode user tools, plugins, skills, commands
     automations/        Scheduler automation definitions
@@ -66,7 +66,7 @@ docker compose \
 See [Manual Compose Runbook](../docs/operations/manual-compose-runbook.md) for the full reference.
 
 The live stack is defined by `stack/core.compose.yml` plus whichever addon
-compose files you include. `config/stack.yaml` is helper metadata for wrappers;
+compose files you include. `config/stack.yml` is helper metadata for wrappers;
 it does not replace Compose as the runtime source of truth.
 
 ## Ownership rules

@@ -46,7 +46,7 @@ The running deployment is always the exact compose file list you pass to Docker 
 - `~/.openpalm/stack/` is the only deployment foundation.
 - Base services come from `~/.openpalm/stack/core.compose.yml`.
 - Addons come from `~/.openpalm/stack/addons/<name>/compose.yml`.
-- `~/.openpalm/config/stack.yaml` is optional metadata for tools or wrappers. It is not deployment truth.
+- `~/.openpalm/config/stack.yml` is optional metadata for tools or wrappers. It is not deployment truth.
 
 This keeps the live system understandable: if a compose file is not in the command, it is not part of the stack.
 
@@ -64,7 +64,7 @@ For the full compose command reference including convenience shortcuts, see the
 
 Repo setup scripts can still help bootstrap files on a fresh machine, but they should be understood as convenience tooling that prepares the same `~/.openpalm/` layout. They do not replace the compose-first model.
 
-If you use helper tooling that reads `config/stack.yaml`, treat that file as input to the tool - not as the thing Docker Compose deploys.
+If you use helper tooling that reads `config/stack.yml`, treat that file as input to the tool - not as the thing Docker Compose deploys.
 
 ---
 
@@ -109,7 +109,7 @@ docker info
 
 Re-check the exact compose file list in your command. Docker Compose only deploys the files you pass.
 
-### `config/stack.yaml` had no effect
+### `config/stack.yml` had no effect
 
 That file is optional metadata. It only matters when a helper tool reads it.
 

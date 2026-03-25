@@ -885,7 +885,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 			expect((payload.owner as Record<string, unknown>).name).toBe(TEST_OWNER_NAME);
 			expect((payload.owner as Record<string, unknown>).email).toBe(TEST_OWNER_EMAIL);
 
-			// Spec (stack.yaml content)
+			// Spec (stack.yml content)
 			const spec = payload.spec as Record<string, unknown>;
 			expect(spec.version).toBe(2);
 			const caps = spec.capabilities as Record<string, unknown>;

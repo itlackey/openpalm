@@ -26,7 +26,7 @@ import {
 } from "@openpalm/lib";
 import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
-/** Seed channel addon files in stack/addons/<name>/compose.yml and enable them in stack.yaml. */
+/** Seed channel addon files in stack/addons/<name>/compose.yml and enable them in stack.yml. */
 function seedChannelAddons(
   homeDir: string,
   channels: { name: string; yml: string }[]
@@ -36,7 +36,7 @@ function seedChannelAddons(
     mkdirSync(addonDir, { recursive: true });
     writeFileSync(join(addonDir, "compose.yml"), ch.yml);
   }
-  // Enable the addons in stack.yaml via lib's writeStackSpec
+  // Enable the addons in stack.yml via lib's writeStackSpec
   const configDir = join(homeDir, "config");
   const addons: Record<string, boolean> = {};
   for (const ch of channels) addons[ch.name] = true;

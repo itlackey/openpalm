@@ -25,7 +25,7 @@ The OpenPalm stack runs 4 core services:
 | **guardian** | HMAC-verified message ingress, rate limiting, replay detection | http://localhost:3899/health |
 | **scheduler** | Lightweight automation sidecar (cron jobs) | http://localhost:3897/health |
 
-Optional addons (enabled via stack.yaml):
+Optional addons (enabled via stack.yml):
 | **admin** | Control plane API (Docker socket access via docker-socket-proxy) | http://localhost:3880/ |
 
 ### Service Communication
@@ -103,7 +103,7 @@ Networks:
    - Connection errors -> check the channel's configuration and environment variables.
    - Auth errors -> verify the channel's API token or credentials.
 
-6. **Check channel addon:** Verify the channel addon is enabled in `stack.yaml` and its compose overlay exists in `stack/addons/<name>/`.
+6. **Check channel addon:** Verify the channel addon is enabled in `stack.yml` and its compose overlay exists in `stack/addons/<name>/`.
    - Not enabled -> enable the addon via `admin-addons` or the admin UI.
 
 ---

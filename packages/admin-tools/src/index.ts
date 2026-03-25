@@ -64,7 +64,7 @@ export const plugin: Plugin = async () => {
       "admin-connections-set": adminConnections.set,
       "admin-connections-status": adminConnections.status,
 
-      // admin-addons (addon management via stack.yaml)
+      // admin-addons (addon management via stack.yml)
       "admin-addons-list": adminAddons.list,
       "admin-addons-enable": adminAddons.install,
       "admin-addons-disable": adminAddons.uninstall,

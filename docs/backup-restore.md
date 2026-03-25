@@ -16,7 +16,7 @@ material it depends on, typically `${GNUPGHOME:-~/.gnupg}`.
 | Path | Contains | Back up? |
 |---|---|---|
 | `~/.openpalm/vault/` | `vault/stack/stack.env`, `vault/stack/guardian.env`, `vault/user/user.env`, schemas | Yes |
-| `~/.openpalm/config/` | assistant config, automations, optional `stack.yaml` | Yes |
+| `~/.openpalm/config/` | assistant config, automations, optional `stack.yml` | Yes |
 | `~/.openpalm/stack/` | live compose files and helper scripts | Yes |
 | `~/.openpalm/data/` | durable service data, workspace, stash | Yes |
 | `~/.openpalm/logs/` | logs and audit files | Optional |
@@ -119,7 +119,7 @@ the current model.
 | `~/.openpalm/stack/addons/<name>/compose.yml` | Addon overlays |
 | `~/.openpalm/config/assistant/` | User OpenCode config |
 | `~/.openpalm/config/automations/` | Scheduled automation files |
-| `~/.openpalm/config/stack.yaml` | Optional tooling metadata |
+| `~/.openpalm/config/stack.yml` | Optional tooling metadata |
 | `~/.openpalm/data/memory/` | Memory database |
 | `~/.openpalm/data/workspace/` | Shared workspace |
 | `~/.openpalm/logs/` | Logs and audit files |

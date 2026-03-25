@@ -52,7 +52,7 @@ export function deriveSystemEnvFromSpec(
 // ── Capability Resolution ────────────────────────────────────────────────
 
 /**
- * Resolve all capabilities from stack.yaml and write OP_CAP_* vars into stack.env.
+ * Resolve all capabilities from stack.yml and write OP_CAP_* vars into stack.env.
  *
  * Reads raw API keys from the current stack.env, resolves provider → base URL → API key
  * for each capability, and merges the OP_CAP_* section into stack.env.
@@ -168,7 +168,7 @@ export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
   // Merge into stack.env
   const base = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
   let content = mergeEnvContent(base, caps, {
-    sectionHeader: "# ── Resolved Capabilities (from stack.yaml) ─────────────────────────",
+    sectionHeader: "# ── Resolved Capabilities (from stack.yml) ─────────────────────────",
   });
   if (!content.endsWith("\n")) content += "\n";
   writeFileSync(stackEnvPath, content, { mode: 0o600 });

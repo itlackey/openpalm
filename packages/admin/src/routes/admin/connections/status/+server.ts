@@ -31,7 +31,7 @@ export const GET: RequestHandler = async (event) => {
   const spec = readStackSpec(state.configDir);
 
   if (!spec) {
-    missing.push("Stack configuration (stack.yaml)");
+    missing.push("Stack configuration (stack.yml)");
   } else {
     if (typeof spec.capabilities.llm !== 'string' || !spec.capabilities.llm.trim()) {
       missing.push("System LLM (capabilities.llm)");

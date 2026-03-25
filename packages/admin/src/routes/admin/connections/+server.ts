@@ -1,6 +1,6 @@
 /**
  * GET  /admin/connections — Return current capabilities and masked secrets.
- * POST /admin/connections — Update capabilities in stack.yaml and/or secrets in stack.env.
+ * POST /admin/connections — Update capabilities in stack.yml and/or secrets in stack.env.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -51,7 +51,7 @@ export const GET: RequestHandler = async (event) => {
     secrets[key] = maskConnectionValue(key, value);
   }
 
-  // Read capabilities from stack.yaml
+  // Read capabilities from stack.yml
   const spec = readStackSpec(state.configDir);
   const capabilities = spec?.capabilities ?? null;
 
@@ -103,13 +103,13 @@ export const POST: RequestHandler = async (event) => {
     }
   }
 
-  // 2. Update stack.yaml capabilities
+  // 2. Update stack.yml capabilities
   const lookupKey = `${provider}/${embeddingModel}`;
   const resolvedDims = embeddingDims || EMBEDDING_DIMS[lookupKey] || 1536;
 
   const spec = readStackSpec(state.configDir);
   if (!spec) {
-    return errorResponse(500, "internal_error", "stack.yaml not found or invalid", {}, requestId);
+    return errorResponse(500, "internal_error", "stack.yml not found or invalid", {}, requestId);
   }
 
   spec.capabilities.llm = formatCapabilityString(provider, systemModel);
@@ -129,7 +129,7 @@ export const POST: RequestHandler = async (event) => {
     writeCapabilityVars(spec, state.vaultDir);
   } catch (err) {
     appendAudit(state, actor, "connections.save", { provider, error: String(err) }, false, requestId, callerType);
-    return errorResponse(500, "internal_error", "Failed to update stack.yaml", {}, requestId);
+    return errorResponse(500, "internal_error", "Failed to update stack.yml", {}, requestId);
   }
 
   // 3. Check embedding dimension mismatch against persisted config

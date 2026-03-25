@@ -8,7 +8,7 @@ overwrite existing user files.
 
 | File | Purpose |
 |------|---------|
-| `stack.yaml` | Optional tooling metadata. Connections, model assignments, and preferred addons for helper tooling. |
+| `stack.yml` | Optional tooling metadata. Connections, model assignments, and preferred addons for helper tooling. |
 | `host.yaml` | Host environment snapshot (platform, Docker status, local LLM availability). Written at install time by the CLI. Not committed to the repo. |
 
 ## Subdirectories
@@ -19,11 +19,11 @@ overwrite existing user files.
 | `automations/` | Scheduler automation definitions (YAML). Core automations (cleanup, validation) are seeded at install; optional ones can be added from the catalog or written by hand. |
 | `guardian/` | Guardian-specific configuration. |
 
-## stack.yaml
+## stack.yml
 
 This file is optional. It can help tooling choose addons and describe preferred
 settings, but the runtime stack is still defined by the compose files in
-`~/.openpalm/stack/`. If `stack.yaml` disagrees with an explicit compose
+`~/.openpalm/stack/`. If `stack.yml` disagrees with an explicit compose
 command, the explicit compose command wins.
 
 ```yaml

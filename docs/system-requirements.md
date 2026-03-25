@@ -134,5 +134,5 @@ unless you intentionally change bind addresses in `vault/stack/stack.env`.
 ## Operational note
 
 The compose file set under `~/.openpalm/stack/` is the live deployment truth.
-`~/.openpalm/config/stack.yaml` is optional metadata for tooling and does not
+`~/.openpalm/config/stack.yml` is optional metadata for tooling and does not
 change Docker's requirements on its own.
