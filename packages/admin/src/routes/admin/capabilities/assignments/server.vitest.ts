@@ -29,7 +29,7 @@ function seedStackYaml(): void {
 
 function makeEvent(body: unknown, token = 'admin-token'): Parameters<typeof POST>[0] {
   return {
-    request: new Request('http://localhost/admin/connections/assignments', {
+    request: new Request('http://localhost/admin/capabilities/assignments', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -57,7 +57,7 @@ afterEach(() => {
   rmSync(rootDir, { recursive: true, force: true });
 });
 
-describe('/admin/connections/assignments route', () => {
+describe('/admin/capabilities/assignments route', () => {
   test('requires admin token', async () => {
     const res = await POST(makeEvent({ llm: 'openai/gpt-4.1-mini' }, 'bad-token'));
     expect(res.status).toBe(401);

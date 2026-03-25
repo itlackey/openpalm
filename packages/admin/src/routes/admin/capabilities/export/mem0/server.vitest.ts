@@ -9,23 +9,30 @@ import { GET } from './+server.js';
 import { writeStackSpec, type StackSpec } from '@openpalm/lib';
 
 function makeTempDir(): string {
-  const dir = join(tmpdir(), `openpalm-status-${randomBytes(4).toString('hex')}`);
+  const dir = join(tmpdir(), `openpalm-mem0-export-${randomBytes(4).toString('hex')}`);
   mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-function seedStackYaml(capabilities: Record<string, unknown>): void {
+function seedStackYaml(): void {
   const state = getState();
-  const spec: StackSpec = { version: 2, capabilities: capabilities as StackSpec['capabilities'] };
+  const spec: StackSpec = {
+    version: 2,
+    capabilities: {
+      llm: 'openai/gpt-4o',
+      embeddings: { provider: 'google', model: 'text-embedding-004', dims: 768 },
+      memory: { userId: 'default_user' },
+    },
+  };
   writeStackSpec(state.configDir, spec);
 }
 
 function makeEvent(token = 'admin-token'): Parameters<typeof GET>[0] {
   return {
-    request: new Request('http://localhost/admin/connections/status', {
+    request: new Request('http://localhost/admin/capabilities/export/mem0', {
       headers: {
         'x-admin-token': token,
-        'x-request-id': 'req-status',
+        'x-request-id': 'req-mem0-export',
       },
     }),
   } as Parameters<typeof GET>[0];
@@ -39,6 +46,7 @@ beforeEach(() => {
   originalHome = process.env.OP_HOME;
   process.env.OP_HOME = rootDir;
   resetState('admin-token');
+  seedStackYaml();
 });
 
 afterEach(() => {
@@ -46,31 +54,24 @@ afterEach(() => {
   rmSync(rootDir, { recursive: true, force: true });
 });
 
-describe('/admin/connections/status route', () => {
+describe('/admin/capabilities/export/mem0 route', () => {
   test('requires admin token', async () => {
     const res = await GET(makeEvent('bad-token'));
     expect(res.status).toBe(401);
   });
 
-  test('treats whitespace-only capability values as missing', async () => {
-    seedStackYaml({
-      llm: '   ',
-      embeddings: {
-        provider: '   ',
-        model: '   ',
-        dims: 1536,
-      },
-      memory: {
-        userId: 'default_user',
-      },
-    });
-
+  test('uses the embedding provider key mapping for embedder api keys', async () => {
     const res = await GET(makeEvent());
     expect(res.status).toBe(200);
 
-    const body = await res.json() as { complete: boolean; missing: string[] };
-    expect(body.complete).toBe(false);
-    expect(body.missing).toContain('System LLM (capabilities.llm)');
-    expect(body.missing).toContain('Embedding model (capabilities.embeddings)');
+    const body = JSON.parse(await res.text()) as {
+      mem0: {
+        llm: { config: { api_key: string } };
+        embedder: { config: { api_key: string } };
+      };
+    };
+
+    expect(body.mem0.llm.config.api_key).toBe('env:OPENAI_API_KEY');
+    expect(body.mem0.embedder.config.api_key).toBe('env:GOOGLE_API_KEY');
   });
 });

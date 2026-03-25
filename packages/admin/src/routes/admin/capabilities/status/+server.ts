@@ -1,5 +1,5 @@
 /**
- * GET /admin/connections/status — Check if capabilities are configured.
+ * GET /admin/capabilities/status — Check if capabilities are configured.
  *
  * Returns { complete: boolean, missing: string[] }.
  * "complete" is true when capabilities.llm and capabilities.embeddings are set.
@@ -44,7 +44,7 @@ export const GET: RequestHandler = async (event) => {
   const complete = missing.length === 0;
 
   appendAudit(
-    state, actor, "connections.status",
+    state, actor, "capabilities.status",
     { complete, missing },
     true, requestId, callerType
   );

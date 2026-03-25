@@ -1,6 +1,6 @@
 /**
- * GET  /admin/connections — Return current capabilities and masked secrets.
- * POST /admin/connections — Update capabilities in stack.yml and/or secrets in stack.env.
+ * GET  /admin/capabilities — Return current capabilities and masked secrets.
+ * POST /admin/capabilities — Update capabilities in stack.yml and/or secrets in stack.env.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -22,7 +22,7 @@ import {
   writeStackSpec,
   writeCapabilityVars,
   formatCapabilityString,
-  maskConnectionValue,
+  maskSecretValue,
   readMemoryConfig,
   type CallerType,
   type StackSpec,
@@ -33,7 +33,7 @@ import {
 } from "$lib/provider-constants.js";
 import { createLogger } from "$lib/server/logger.js";
 
-const logger = createLogger("connections");
+const logger = createLogger("capabilities");
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -48,14 +48,14 @@ export const GET: RequestHandler = async (event) => {
   const raw = readStackEnv(state.vaultDir);
   const secrets: Record<string, string> = {};
   for (const [key, value] of Object.entries(raw)) {
-    secrets[key] = maskConnectionValue(key, value);
+    secrets[key] = maskSecretValue(key, value);
   }
 
   // Read capabilities from stack.yml
   const spec = readStackSpec(state.configDir);
   const capabilities = spec?.capabilities ?? null;
 
-  appendAudit(state, actor, "connections.get", {}, true, requestId, callerType);
+  appendAudit(state, actor, "capabilities.get", {}, true, requestId, callerType);
   return jsonResponse(200, {
     capabilities,
     secrets,
@@ -98,7 +98,7 @@ export const POST: RequestHandler = async (event) => {
     try {
       patchSecretsEnvFile(state.vaultDir, secretPatches);
     } catch (err) {
-      appendAudit(state, actor, "connections.save", { provider, error: String(err) }, false, requestId, callerType);
+      appendAudit(state, actor, "capabilities.save", { provider, error: String(err) }, false, requestId, callerType);
       return errorResponse(500, "internal_error", "Failed to update vault/stack/stack.env", {}, requestId);
     }
   }
@@ -128,7 +128,7 @@ export const POST: RequestHandler = async (event) => {
     writeStackSpec(state.configDir, spec);
     writeCapabilityVars(spec, state.vaultDir);
   } catch (err) {
-    appendAudit(state, actor, "connections.save", { provider, error: String(err) }, false, requestId, callerType);
+    appendAudit(state, actor, "capabilities.save", { provider, error: String(err) }, false, requestId, callerType);
     return errorResponse(500, "internal_error", "Failed to update stack.yml", {}, requestId);
   }
 
@@ -142,8 +142,8 @@ export const POST: RequestHandler = async (event) => {
     dimensionWarning = `Embedding dimensions changed: current ${currentDims}, config expects ${resolvedDims}. Reset the memory collection to apply.`;
   }
 
-  appendAudit(state, actor, "connections.save", { provider, dimensionMismatch }, true, requestId, callerType);
-  logger.info("connections save", { provider, dimensionMismatch, requestId });
+  appendAudit(state, actor, "capabilities.save", { provider, dimensionMismatch }, true, requestId, callerType);
+  logger.info("capabilities save", { provider, dimensionMismatch, requestId });
 
   return jsonResponse(200, {
     ok: true,

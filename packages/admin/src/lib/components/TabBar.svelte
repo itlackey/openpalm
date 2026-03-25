@@ -1,5 +1,5 @@
 <script lang="ts">
-	type TabId = 'overview' | 'addons' | 'containers' | 'artifacts' | 'automations' | 'connections';
+	type TabId = 'overview' | 'addons' | 'containers' | 'artifacts' | 'automations' | 'capabilities';
 
 	interface Props {
 		active: TabId;
@@ -102,9 +102,9 @@
 	<button
 		class="tab"
 		role="tab"
-		aria-selected={active === 'connections'}
-		class:tab-active={active === 'connections'}
-		onclick={() => onSelect('connections')}
+		aria-selected={active === 'capabilities'}
+		class:tab-active={active === 'capabilities'}
+		onclick={() => onSelect('capabilities')}
 		onkeydown={handleTabKeydown}
 	>
 		<svg

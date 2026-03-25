@@ -89,7 +89,7 @@ export {
   updateSecretsEnv,
   readStackEnv,
   patchSecretsEnvFile,
-  maskConnectionValue,
+  maskSecretValue,
   ensureOpenCodeConfig,
 } from "./control-plane/secrets.js";
 export {
@@ -149,7 +149,6 @@ export {
   writeSystemEnv,
   readChannelSecrets,
   writeChannelSecrets,
-  migrateLegacyChannelSecrets,
 } from "./control-plane/config-persistence.js";
 
 // ── Rollback ─────────────────────────────────────────────────────────────

@@ -24,7 +24,7 @@ function writeMinimalSetupSpec(dir: string): string {
     'owner:',
     '  name: Test User',
     '  email: test@example.com',
-    'connections:',
+    'capabilities:',
     '  - id: openai',
     '    name: OpenAI',
     '    provider: openai',

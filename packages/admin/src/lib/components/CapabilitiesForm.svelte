@@ -1,6 +1,6 @@
 <script lang="ts">
   /** Shape accepted by the form for pre-populating edit mode. */
-  type ConnectionFormInitial = {
+  type CapabilitiesFormInitial = {
     id: string;
     name: string;
     kind: string;
@@ -10,7 +10,7 @@
   };
 
   /** Shape emitted when the form is saved. */
-  type ConnectionFormPayload = {
+  type CapabilitiesFormPayload = {
     id: string;
     name: string;
     kind: 'openai_compatible_remote' | 'openai_compatible_local';
@@ -22,20 +22,20 @@
 
   interface Props {
     /** Populate for edit mode; omit (or pass null) for create mode. */
-    initial: ConnectionFormInitial | null;
-    /** Whether a "Test connection" operation is in flight. */
+    initial: CapabilitiesFormInitial | null;
+    /** Whether a "Test provider" operation is in flight. */
     testLoading: boolean;
     /** Model list populated after a successful test. */
     modelList: string[];
     /** Error string from the last test attempt; empty string = no error. */
     testError: string;
     /** Whether the last test succeeded. */
-    connectionTested: boolean;
+    capabilityTested: boolean;
     /** Emitted when the user submits the form (create or save). */
-    onSave: (payload: ConnectionFormPayload) => void;
+    onSave: (payload: CapabilitiesFormPayload) => void;
     /** Emitted when the user clicks "Cancel". */
     onCancel: () => void;
-    /** Emitted when the user clicks "Test connection". */
+    /** Emitted when the user clicks "Test provider". */
     onTest: (draft: { baseUrl: string; apiKey: string; kind: string }) => void;
   }
 
@@ -44,7 +44,7 @@
     testLoading,
     modelList,
     testError,
-    connectionTested,
+    capabilityTested,
     onSave,
     onCancel,
     onTest,
@@ -114,11 +114,11 @@
     const existingSecretRef = initial?.auth.mode === 'api_key'
       ? initial.auth.apiKeySecretRef
       : undefined;
-    nameError = name.trim() ? '' : 'Connection name is required.';
+    nameError = name.trim() ? '' : 'Provider name is required.';
     baseUrlError =
       baseUrl.trim() === '' || isValidHttpUrl(baseUrl) ? '' : 'Enter a valid URL.';
     apiKeyError = requiresKey && !trimmedApiKey && !existingSecretRef
-      ? 'API key is required for keyed connections.'
+      ? 'API key is required for keyed providers.'
       : '';
     return !nameError && !baseUrlError && !apiKeyError;
   }
@@ -131,7 +131,7 @@
     const existingSecretRef = initial?.auth.mode === 'api_key'
       ? initial.auth.apiKeySecretRef
       : undefined;
-    const payload: ConnectionFormPayload = {
+    const payload: CapabilitiesFormPayload = {
       id: id || crypto.randomUUID().slice(0, 8),
       name: name.trim(),
       kind,
@@ -153,9 +153,9 @@
 </script>
 
 <form onsubmit={handleSubmit} novalidate class="conn-form">
-  <!-- Connection name -->
+  <!-- Provider name -->
   <div class="form-field">
-    <label for="cf-name" class="form-label">Connection name</label>
+    <label for="cf-name" class="form-label">Provider name</label>
     <input
       id="cf-name"
       type="text"
@@ -233,8 +233,8 @@
     {/if}
   </div>
 
-  <!-- Test connection row -->
-  <div class="test-connection-row">
+  <!-- Test provider row -->
+  <div class="test-capability-row">
     <button
       class="btn btn-outline"
       type="button"
@@ -245,11 +245,11 @@
         <span class="spinner"></span>
         Testing...
       {:else}
-        Test connection
+        Test provider
       {/if}
     </button>
-    {#if connectionTested}
-      <span class="connection-success" role="status">
+    {#if capabilityTested}
+      <span class="capability-success" role="status">
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
           <polyline points="22 4 12 14.01 9 11.01" />
@@ -265,7 +265,7 @@
   <!-- Form actions -->
   <div class="form-actions">
     <button class="btn btn-primary" type="submit">
-      Save connection
+      Save capabilities
     </button>
     <button class="btn btn-ghost" type="button" onclick={onCancel}>
       Cancel
@@ -347,14 +347,14 @@
 
   /* ── Test Connection ─────────────────────────────────────────── */
 
-  .test-connection-row {
+  .test-capability-row {
     display: flex;
     align-items: center;
     gap: var(--space-3);
     flex-wrap: wrap;
   }
 
-  .connection-success {
+  .capability-success {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);

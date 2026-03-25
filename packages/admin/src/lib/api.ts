@@ -4,9 +4,9 @@ import type {
   ContainerListResponse,
   AutomationsResponse,
   MemoryConfigResponse,
-  SystemConnectionSaveResult,
-  ConnectionsResponseDto,
-  SaveConnectionsPayload,
+  CapabilitySaveResult,
+  CapabilitiesResponseDto,
+  SaveCapabilitiesPayload,
 } from './types.js';
 
 const apiBase = '';
@@ -141,49 +141,49 @@ export async function fetchAutomations(token: string): Promise<AutomationsRespon
   return (await res.json()) as AutomationsResponse;
 }
 
-// ── Connections ─────────────────────────────────────────────────────────
+// ── Capabilities ────────────────────────────────────────────────────────
 
-export async function fetchConnectionStatus(
+export async function fetchCapabilityStatus(
   token: string
 ): Promise<{ complete: boolean; missing: string[] }> {
-  const res = await request('GET', '/admin/connections/status', token);
+  const res = await request('GET', '/admin/capabilities/status', token);
   if (!res.ok) return { complete: true, missing: [] };
   return (await res.json()) as { complete: boolean; missing: string[] };
 }
 
-export async function fetchConnections(
+export async function fetchCapabilities(
   token: string
 ): Promise<Record<string, string>> {
-  const dto = await fetchConnectionsDto(token);
+  const dto = await fetchCapabilitiesDto(token);
   return dto.secrets;
 }
 
-export async function fetchConnectionsDto(
+export async function fetchCapabilitiesDto(
   token: string
-): Promise<ConnectionsResponseDto> {
-  const res = await request('GET', '/admin/connections', token);
+): Promise<CapabilitiesResponseDto> {
+  const res = await request('GET', '/admin/capabilities', token);
   if (res.status === 401) {
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }
   if (!res.ok) return { capabilities: null, secrets: {} };
-  return (await res.json()) as ConnectionsResponseDto;
+  return (await res.json()) as CapabilitiesResponseDto;
 }
 
-export async function saveConnections(
+export async function saveCapabilities(
   token: string,
-  payload: SaveConnectionsPayload
-): Promise<SystemConnectionSaveResult> {
-  const res = await requireOk(await request('POST', '/admin/connections', token, payload));
-  return (await res.json()) as SystemConnectionSaveResult;
+  payload: SaveCapabilitiesPayload
+): Promise<CapabilitySaveResult> {
+  const res = await requireOk(await request('POST', '/admin/capabilities', token, payload));
+  return (await res.json()) as CapabilitySaveResult;
 }
 
-export async function testConnection(
+export async function testCapability(
   token: string,
   draft: { baseUrl: string; apiKey: string; kind: string }
 ): Promise<{ ok: boolean; models?: string[]; error?: string; errorCode?: string }> {
   const res = await requireOk(
-    await request('POST', '/admin/connections/test', token, draft),
-    `Connection test failed`
+    await request('POST', '/admin/capabilities/test', token, draft),
+    `Capability test failed`
   );
   return (await res.json()) as { ok: boolean; models?: string[]; error?: string; errorCode?: string };
 }

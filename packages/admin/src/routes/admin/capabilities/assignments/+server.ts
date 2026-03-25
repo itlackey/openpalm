@@ -1,6 +1,6 @@
 /**
- * GET  /admin/connections/assignments — Return current capabilities from stack.yml.
- * POST /admin/connections/assignments — Update capabilities in stack.yml.
+ * GET  /admin/capabilities/assignments — Return current capabilities from stack.yml.
+ * POST /admin/capabilities/assignments — Update capabilities in stack.yml.
  */
 import type { RequestHandler } from './$types';
 import type {
@@ -155,7 +155,7 @@ export const GET: RequestHandler = async (event) => {
 
   const state = getState();
   const spec = readStackSpec(state.configDir);
-  appendAudit(state, getActor(event), 'connections.assignments.get', {}, true, requestId, getCallerType(event));
+  appendAudit(state, getActor(event), 'capabilities.assignments.get', {}, true, requestId, getCallerType(event));
   return jsonResponse(200, { capabilities: spec?.capabilities ?? null }, requestId);
 };
 
@@ -231,10 +231,10 @@ export const POST: RequestHandler = async (event) => {
     writeStackSpec(state.configDir, spec);
     writeCapabilityVars(spec, state.vaultDir);
   } catch (e) {
-    appendAudit(state, actor, 'connections.assignments.save', { error: String(e) }, false, requestId, callerType);
+    appendAudit(state, actor, 'capabilities.assignments.save', { error: String(e) }, false, requestId, callerType);
     return errorResponse(500, 'internal_error', 'Failed to persist capabilities', {}, requestId);
   }
 
-  appendAudit(state, actor, 'connections.assignments.save', {}, true, requestId, callerType);
+  appendAudit(state, actor, 'capabilities.assignments.save', {}, true, requestId, callerType);
   return jsonResponse(200, { ok: true, capabilities: spec.capabilities }, requestId);
 };

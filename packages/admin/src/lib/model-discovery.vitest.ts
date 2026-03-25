@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
-  mapConnectionTestError,
+  mapCapabilityTestError,
   mapModelDiscoveryError,
   mapDiscoveryResultToErrorCode,
 } from './model-discovery.js';
@@ -65,39 +65,39 @@ describe('mapDiscoveryResultToErrorCode', () => {
   });
 });
 
-describe('mapConnectionTestError', () => {
+describe('mapCapabilityTestError', () => {
   test('maps unauthorized errors', () => {
-    expect(mapConnectionTestError({ errorCode: 'unauthorized' })).toBe(
+    expect(mapCapabilityTestError({ errorCode: 'unauthorized' })).toBe(
       'Invalid API key. The provider rejected the credentials — double-check the key and try again.'
     );
   });
 
   test('maps not found errors', () => {
-    expect(mapConnectionTestError({ errorCode: 'not_found' })).toBe(
+    expect(mapCapabilityTestError({ errorCode: 'not_found' })).toBe(
       'Endpoint not found. Verify the Base URL is correct (most providers need a /v1 path).'
     );
   });
 
   test('maps timeout errors', () => {
-    expect(mapConnectionTestError({ errorCode: 'timeout' })).toBe(
+    expect(mapCapabilityTestError({ errorCode: 'timeout' })).toBe(
       "Couldn't reach the server — it may be down or the URL may be wrong. Confirm it's running and accessible."
     );
   });
 
   test('maps missing base URL errors', () => {
-    expect(mapConnectionTestError({ errorCode: 'missing_base_url' })).toBe(
+    expect(mapCapabilityTestError({ errorCode: 'missing_base_url' })).toBe(
       'Base URL is required for this provider.'
     );
   });
 
   test('falls back to the provided error message', () => {
-    expect(mapConnectionTestError({ errorCode: 'unknown', error: 'Bad gateway' })).toBe(
+    expect(mapCapabilityTestError({ errorCode: 'unknown', error: 'Bad gateway' })).toBe(
       'Bad gateway'
     );
   });
 
   test('falls back to generic copy when no error message is present', () => {
-    expect(mapConnectionTestError({ errorCode: 'unknown' })).toBe(
+    expect(mapCapabilityTestError({ errorCode: 'unknown' })).toBe(
       'Connection failed. Check the Base URL and API key.'
     );
   });

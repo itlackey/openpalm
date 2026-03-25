@@ -24,7 +24,7 @@ import {
   buildSecretsFromSetup,
   buildSystemSecretsFromSetup,
 } from "./setup.js";
-import type { SetupSpec, SetupConnection } from "./setup.js";
+import type { SetupSpec, SetupCapability } from "./setup.js";
 import type { ControlPlaneState } from "./types.js";
 import { STACK_SPEC_FILENAME, readStackSpec } from "./stack-spec.js";
 
@@ -49,7 +49,7 @@ function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
     },
     security: { adminToken: "test-admin-token-12345" },
     owner: { name: "Test User", email: "test@example.com" },
-    connections: [
+    capabilities: [
       {
         id: "openai-main",
         name: "OpenAI",
@@ -111,7 +111,6 @@ function createFullDirTree(): void {
     configDir,
     join(configDir, "automations"),
     join(configDir, "channels"),
-    join(configDir, "connections"),
     join(configDir, "assistant"),
     join(configDir, "stash"),
     join(homeDir, "stack"),
@@ -320,7 +319,7 @@ describe("Existing Install", () => {
     // Second setup (re-run with different API key)
     await performSetup(
       makeValidSpec({
-        connections: [
+        capabilities: [
           {
             id: "openai-main",
             name: "OpenAI",
@@ -383,7 +382,7 @@ describe("Existing Install", () => {
             },
           },
         },
-        connections: [
+        capabilities: [
           {
             id: "groq-main",
             name: "Groq",
@@ -652,7 +651,7 @@ describe("Setup Input Variations", () => {
           },
         },
       },
-      connections: [
+      capabilities: [
         {
           id: "ollama-local",
           name: "Ollama",
@@ -674,24 +673,24 @@ describe("Setup Input Variations", () => {
 
   // Scenario 21: Multiple providers map to correct env vars
   it("multiple providers each write their API key to the correct env var", () => {
-    const connections: SetupConnection[] = [
+    const caps: SetupCapability[] = [
       { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-openai" },
       { id: "groq-1", name: "Groq", provider: "groq", baseUrl: "", apiKey: "gsk-groq" },
       { id: "anthropic-1", name: "Anthropic", provider: "anthropic", baseUrl: "", apiKey: "sk-ant-api03" },
     ];
-    const secrets = buildSecretsFromSetup(connections);
+    const secrets = buildSecretsFromSetup(caps);
     expect(secrets.OPENAI_API_KEY).toBe("sk-openai");
     expect(secrets.GROQ_API_KEY).toBe("gsk-groq");
     expect(secrets.ANTHROPIC_API_KEY).toBe("sk-ant-api03");
   });
 
   // Scenario 21b: OAuth providers (no API key) are silently skipped
-  it("skips connections without API keys (OAuth providers)", () => {
-    const connections: SetupConnection[] = [
+  it("skips capabilities without API keys (OAuth providers)", () => {
+    const caps: SetupCapability[] = [
       { id: "github-copilot", name: "GitHub Copilot", provider: "github-copilot", baseUrl: "", apiKey: "" },
       { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-test" },
     ];
-    const secrets = buildSecretsFromSetup(connections);
+    const secrets = buildSecretsFromSetup(caps);
     expect(secrets.OPENAI_API_KEY).toBe("sk-test");
     expect(Object.keys(secrets)).not.toContain("GITHUB_COPILOT_API_KEY");
   });
@@ -699,7 +698,7 @@ describe("Setup Input Variations", () => {
   // Scenario 22: buildSecretsFromSetup only writes API keys and owner info
   it("buildSecretsFromSetup writes API keys but not config vars", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
+    const secrets = buildSecretsFromSetup(spec.capabilities, spec.owner);
 
     // API key should be written
     expect(secrets.OPENAI_API_KEY).toBe("sk-test-key-123");
@@ -754,7 +753,7 @@ describe("performSetup end-to-end artifacts", () => {
           },
         },
       },
-      connections: [
+      capabilities: [
         {
           id: "ollama-1",
           name: "Ollama",

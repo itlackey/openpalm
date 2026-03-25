@@ -1,5 +1,5 @@
 /**
- * GET /admin/connections/export/mem0 — Export current memory config as JSON.
+ * GET /admin/capabilities/export/mem0 — Export current memory config as JSON.
  */
 import type { RequestHandler } from './$types';
 import { getState } from '$lib/server/state.js';

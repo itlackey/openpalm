@@ -1075,7 +1075,7 @@ function renderReviewLegacy() {
   var ownerEmail = ($("owner-email").value || "").trim();
   if (ownerEmail) grid.appendChild(reviewItem("Email", ownerEmail));
 
-  grid.appendChild(reviewHeader("Connections", 1));
+  grid.appendChild(reviewHeader("Providers", 1));
   getVerifiedProviders().forEach(function (p) {
     var st = providerState[p.id];
     grid.appendChild(reviewItem(p.name, p.kind + " -- " + (st.baseUrl || p.baseUrl), true));

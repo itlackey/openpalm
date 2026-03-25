@@ -13,7 +13,7 @@ import { fetchProviderModels } from '@openpalm/lib';
 import { createLogger } from '$lib/server/logger.js';
 import { mapDiscoveryResultToErrorCode } from '$lib/model-discovery.js';
 
-const logger = createLogger('connections-test');
+const logger = createLogger('capabilities-test');
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -41,7 +41,7 @@ export const POST: RequestHandler = async (event) => {
 
   // Derive minimal provider hint for fetchProviderModels
   const derivedProvider = deriveProvider(baseUrl);
-  logger.info('connection test', { requestId, derivedProvider, kind });
+  logger.info('capability test', { requestId, derivedProvider, kind });
 
   const result = await fetchProviderModels(derivedProvider, apiKey, baseUrl, state.configDir);
   const ok = result.status === 'ok';

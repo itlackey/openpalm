@@ -41,7 +41,7 @@ function makeSetupDirs(): void {
   for (const dir of [
     configDir,
     join(configDir, "components"),
-    join(configDir, "connections"),
+    join(configDir, "capabilities"),
     join(configDir, "assistant"),
     join(configDir, "automations"),
     vaultDir,
@@ -264,7 +264,7 @@ describe("setup wizard server", () => {
         },
         security: { adminToken: "test-admin-token-12345" },
         owner: { name: "Test", email: "test@example.com" },
-        connections: [
+        capabilities: [
           {
             id: "openai-main",
             name: "OpenAI",

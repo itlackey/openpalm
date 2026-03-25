@@ -125,7 +125,7 @@ function makeSetupSpec(): Record<string, unknown> {
     },
     security: { adminToken: 'test-admin-token-12345' },
     owner: { name: 'Test', email: 'test@test.com' },
-    connections: [{
+    capabilities: [{
       id: 'ollama',
       name: 'Ollama',
       provider: 'ollama',

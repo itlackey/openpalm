@@ -48,7 +48,7 @@ afterEach(() => {
 
 function makeEvent(body?: unknown, token = 'admin-token'): Parameters<typeof POST>[0] {
   return {
-    request: new Request('http://localhost/admin/connections/test', {
+    request: new Request('http://localhost/admin/capabilities/test', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -60,7 +60,7 @@ function makeEvent(body?: unknown, token = 'admin-token'): Parameters<typeof POS
   } as Parameters<typeof POST>[0];
 }
 
-describe('POST /admin/connections/test', () => {
+describe('POST /admin/capabilities/test', () => {
   test('returns 401 when no valid token provided', async () => {
     const res = await POST(makeEvent({ baseUrl: 'https://api.openai.com/v1' }, 'bad-token'));
     expect(res.status).toBe(401);

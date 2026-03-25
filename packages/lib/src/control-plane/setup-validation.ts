@@ -3,7 +3,7 @@
  * Extracted from setup.ts to reduce per-file complexity.
  */
 
-const CONNECTION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+const CAPABILITY_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
 function requireObj(val: unknown, msg: string, errors: string[]): Record<string, unknown> | null {
   if (typeof val !== "object" || val === null) { errors.push(msg); return null; }
@@ -22,7 +22,7 @@ export function validateSetupSpec(input: unknown): { valid: boolean; errors: str
 
   validateSecurity(body, errors);
   validateOwner(body, errors);
-  validateConnectionsArray(body.connections, errors);
+  validateCapabilitiesArray(body.capabilities, errors);
   validateSpecCapabilities(body, errors);
   if (body.channelCredentials !== undefined && (typeof body.channelCredentials !== "object" || body.channelCredentials === null)) {
     errors.push("channelCredentials must be an object if provided");
@@ -67,26 +67,26 @@ function validateSpecCapabilities(body: Record<string, unknown>, errors: string[
   }
 }
 
-function validateConnectionsArray(connections: unknown, errors: string[]): void {
-  if (!Array.isArray(connections)) {
-    errors.push("connections must be an array");
+function validateCapabilitiesArray(capabilities: unknown, errors: string[]): void {
+  if (!Array.isArray(capabilities)) {
+    errors.push("capabilities must be an array");
     return;
   }
   const seenIds = new Set<string>();
-  for (let i = 0; i < connections.length; i++) {
-    const c = connections[i];
-    if (typeof c !== "object" || c === null) { errors.push(`connections[${i}] must be an object`); continue; }
-    const conn = c as Record<string, unknown>;
-    const id = typeof conn.id === "string" ? conn.id.trim() : "";
-    const provider = typeof conn.provider === "string" ? conn.provider.trim() : "";
-    const name = typeof conn.name === "string" ? conn.name.trim() : "";
+  for (let i = 0; i < capabilities.length; i++) {
+    const c = capabilities[i];
+    if (typeof c !== "object" || c === null) { errors.push(`capabilities[${i}] must be an object`); continue; }
+    const cap = c as Record<string, unknown>;
+    const id = typeof cap.id === "string" ? cap.id.trim() : "";
+    const provider = typeof cap.provider === "string" ? cap.provider.trim() : "";
+    const name = typeof cap.name === "string" ? cap.name.trim() : "";
 
-    if (!id) errors.push(`connections[${i}].id is required`);
-    else if (!CONNECTION_ID_RE.test(id)) errors.push(`connections[${i}].id must start with a letter or digit (allowed: A-Z, a-z, 0-9, _, -)`);
-    else if (seenIds.has(id)) errors.push(`Duplicate connection ID: ${id}`);
+    if (!id) errors.push(`capabilities[${i}].id is required`);
+    else if (!CAPABILITY_ID_RE.test(id)) errors.push(`capabilities[${i}].id must start with a letter or digit (allowed: A-Z, a-z, 0-9, _, -)`);
+    else if (seenIds.has(id)) errors.push(`Duplicate capability ID: ${id}`);
     else seenIds.add(id);
 
-    if (!name) errors.push(`connections[${i}].name is required`);
-    if (!provider) errors.push(`connections[${i}].provider is required`);
+    if (!name) errors.push(`capabilities[${i}].name is required`);
+    if (!provider) errors.push(`capabilities[${i}].provider is required`);
   }
 }

@@ -1,5 +1,5 @@
 /**
- * Tests for secrets.ts — secrets/connections CRUD, masking, OpenCode config.
+ * Tests for secrets.ts — secrets/capabilities CRUD, masking, OpenCode config.
  */
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import {
@@ -15,7 +15,7 @@ import {
   updateSecretsEnv,
   readStackEnv,
   patchSecretsEnvFile,
-  maskConnectionValue,
+  maskSecretValue,
   ensureOpenCodeConfig,
   PLAIN_CONFIG_KEYS
 } from "@openpalm/lib";
@@ -247,30 +247,30 @@ describe("patchSecretsEnvFile", () => {
   });
 });
 
-describe("maskConnectionValue", () => {
+describe("maskSecretValue", () => {
   test("returns empty string for empty value", () => {
-    expect(maskConnectionValue("OPENAI_API_KEY", "")).toBe("");
+    expect(maskSecretValue("OPENAI_API_KEY", "")).toBe("");
   });
 
   test("masks secret keys, showing last 4 chars", () => {
-    expect(maskConnectionValue("OPENAI_API_KEY", "sk-test-1234abcd")).toBe(
+    expect(maskSecretValue("OPENAI_API_KEY", "sk-test-1234abcd")).toBe(
       "*".repeat("sk-test-1234abcd".length - 4) + "abcd"
     );
   });
 
   test("fully masks short values (<=4 chars)", () => {
-    expect(maskConnectionValue("OPENAI_API_KEY", "abcd")).toBe("****");
-    expect(maskConnectionValue("OPENAI_API_KEY", "ab")).toBe("****");
+    expect(maskSecretValue("OPENAI_API_KEY", "abcd")).toBe("****");
+    expect(maskSecretValue("OPENAI_API_KEY", "ab")).toBe("****");
   });
 
   test("returns plain config keys unmasked (per api-spec.md)", () => {
     for (const key of PLAIN_CONFIG_KEYS) {
-      expect(maskConnectionValue(key, "some-value")).toBe("some-value");
+      expect(maskSecretValue(key, "some-value")).toBe("some-value");
     }
   });
 
   test("OWNER_NAME is returned unmasked", () => {
-    expect(maskConnectionValue("OWNER_NAME", "Test User")).toBe("Test User");
+    expect(maskSecretValue("OWNER_NAME", "Test User")).toBe("Test User");
   });
 
 });

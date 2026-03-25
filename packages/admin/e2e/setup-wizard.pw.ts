@@ -232,7 +232,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await page.fill("#owner-email", TEST_OWNER_EMAIL);
 			await page.click("#btn-step0-next");
 
-			await expect(page.locator('[data-testid="step-connections"]')).toBeVisible();
+			await expect(page.locator('[data-testid="step-capabilities"]')).toBeVisible();
 		});
 
 		test("progress bar shows first segment active", async ({ page }) => {
@@ -251,7 +251,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await setupWizardMocks(page);
 			await page.goto(`${WIZARD_URL}/setup`);
 			await completeStep0(page);
-			await expect(page.locator('[data-testid="step-connections"]')).toBeVisible();
+			await expect(page.locator('[data-testid="step-capabilities"]')).toBeVisible();
 		}
 
 		test("shows provider card grid", async ({ page }) => {
@@ -415,7 +415,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 		test("Back button returns to Step 1", async ({ page }) => {
 			await goToStep2(page);
 			await page.click("#btn-step2-back");
-			await expect(page.locator('[data-testid="step-connections"]')).toBeVisible();
+			await expect(page.locator('[data-testid="step-capabilities"]')).toBeVisible();
 		});
 
 		test("navigates to Step 3 (Voice) with valid models", async ({ page }) => {
@@ -489,7 +489,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await expect(page.locator('[data-testid="step-options"]')).toBeVisible();
 		}
 
-		test("shows Ollama in-stack toggle for Ollama connections", async ({ page }) => {
+		test("shows Ollama in-stack toggle for Ollama capabilities", async ({ page }) => {
 			await goToStep4(page);
 			await expect(page.locator("#ollama-addon")).toBeVisible();
 			await expect(page.locator("#ollama-enabled")).toBeVisible();
@@ -604,7 +604,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 			const grid = page.locator("#review-grid");
 			// Hidden but populated
 			await expect(grid).toContainText("Account");
-			await expect(grid).toContainText("Connections");
+			await expect(grid).toContainText("Providers");
 			await expect(grid).toContainText("Models");
 			await expect(grid).toContainText("Voice");
 			await expect(grid).toContainText("Channels");
@@ -716,9 +716,9 @@ test.describe("@mocked Setup Wizard UI", () => {
 			const spec = payload.spec as Record<string, unknown>;
 			expect(spec.version).toBe(2);
 			expect(((spec.capabilities as Record<string, unknown>).memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
-			const conns = payload.connections;
-			expect(Array.isArray(conns)).toBe(true);
-			expect((conns as Array<Record<string, string>>)[0].provider).toBe("ollama");
+			const caps = payload.capabilities;
+			expect(Array.isArray(caps)).toBe(true);
+			expect((caps as Array<Record<string, string>>)[0].provider).toBe("ollama");
 
 			// Wait for deploy to complete (mocked to complete on 3rd poll)
 			await expect(page.locator("#deploy-done")).toBeVisible({ timeout: 15_000 });
@@ -792,7 +792,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 
 			// Go to Step 1
 			await completeStep0(page);
-			await expect(page.locator('[data-testid="step-connections"]')).toBeVisible();
+			await expect(page.locator('[data-testid="step-capabilities"]')).toBeVisible();
 
 			// Welcome label should be clickable
 			const welcomeLabel = page.locator('[data-prog-step="0"]');
@@ -892,12 +892,12 @@ test.describe("@mocked Setup Wizard UI", () => {
 			expect(typeof caps.llm).toBe("string");
 			expect((caps.memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
 
-			// Connections
-			const conns = payload.connections as Array<Record<string, string>>;
-			expect(conns).toHaveLength(1);
-			expect(conns[0].provider).toBe("ollama");
-			expect(conns[0].baseUrl).toBe(OLLAMA_URL);
-			expect(conns[0].name).toBe("Ollama");
+			// Capabilities
+			const caps = payload.capabilities as Array<Record<string, string>>;
+			expect(caps).toHaveLength(1);
+			expect(caps[0].provider).toBe("ollama");
+			expect(caps[0].baseUrl).toBe(OLLAMA_URL);
+			expect(caps[0].name).toBe("Ollama");
 		});
 	});
 });

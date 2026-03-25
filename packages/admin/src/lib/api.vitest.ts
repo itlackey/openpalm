@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  fetchConnections,
-  fetchConnectionsDto,
-  saveConnections,
-  testConnection,
+  fetchCapabilities,
+  fetchCapabilitiesDto,
+  saveCapabilities,
+  testCapability,
 } from './api.js';
 
 const randomUuidSpy = vi.spyOn(globalThis.crypto, 'randomUUID');
 
-describe('api connections DTO adapter', () => {
+describe('api capabilities DTO adapter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     randomUuidSpy.mockReturnValue('123e4567-e89b-42d3-a456-426614174000');
@@ -35,7 +35,7 @@ describe('api connections DTO adapter', () => {
         ),
       );
 
-    const data = await fetchConnectionsDto('admin-token');
+    const data = await fetchCapabilitiesDto('admin-token');
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(data.capabilities?.llm).toBe('openai/gpt-4o-mini');
@@ -43,7 +43,7 @@ describe('api connections DTO adapter', () => {
     expect(data.secrets.OPENAI_API_KEY).toBe('sk-****1234');
   });
 
-  it('keeps fetchConnections compatibility by returning secrets map', async () => {
+  it('keeps fetchCapabilities compatibility by returning secrets map', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -61,12 +61,12 @@ describe('api connections DTO adapter', () => {
       ),
     );
 
-    const connections = await fetchConnections('admin-token');
+    const capabilities = await fetchCapabilities('admin-token');
 
-    expect(connections.OPENAI_API_KEY).toBe('sk-****1234');
+    expect(capabilities.OPENAI_API_KEY).toBe('sk-****1234');
   });
 
-  it('posts flat payload for saveConnections (legacy saveSystemConnection)', async () => {
+  it('posts flat payload for saveCapabilities (legacy save)', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(
@@ -76,7 +76,7 @@ describe('api connections DTO adapter', () => {
         }),
       );
 
-    await saveConnections('admin-token', {
+    await saveCapabilities('admin-token', {
       provider: 'openai',
       apiKey: 'sk-test',
       baseUrl: 'https://api.openai.com',
@@ -102,7 +102,7 @@ describe('api connections DTO adapter', () => {
     expect(body.embeddingDims).toBe(1536);
   });
 
-  it('posts flat payload for saveConnections', async () => {
+  it('posts flat payload for saveCapabilities', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(
@@ -112,7 +112,7 @@ describe('api connections DTO adapter', () => {
         }),
       );
 
-    await saveConnections('admin-token', {
+    await saveCapabilities('admin-token', {
       provider: 'openai',
       apiKey: 'sk-test',
       systemModel: 'gpt-4o',
@@ -133,7 +133,7 @@ describe('api connections DTO adapter', () => {
     expect(body.memoryUserId).toBe('test_user');
   });
 
-  it('uses the structured connection test endpoint', async () => {
+  it('uses the structured capability test endpoint', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -147,7 +147,7 @@ describe('api connections DTO adapter', () => {
       ),
     );
 
-    const result = await testConnection('admin-token', {
+    const result = await testCapability('admin-token', {
       baseUrl: 'http://localhost:11434',
       apiKey: '',
       kind: 'openai_compatible_local',
@@ -156,7 +156,7 @@ describe('api connections DTO adapter', () => {
     expect(result.ok).toBe(true);
     expect(result.models).toEqual(['gpt-4.1-mini']);
     expect(fetchMock).toHaveBeenCalledWith(
-      '/admin/connections/test',
+      '/admin/capabilities/test',
       expect.objectContaining({
         method: 'POST',
       }),
@@ -168,12 +168,12 @@ describe('api connections DTO adapter', () => {
       new Response('', { status: 500 }),
     );
 
-    const dto = await fetchConnectionsDto('admin-token');
+    const dto = await fetchCapabilitiesDto('admin-token');
     expect(dto.capabilities).toBeNull();
     expect(dto.secrets).toEqual({});
   });
 
-  it('surfaces JSON error messages from saveConnections failures', async () => {
+  it('surfaces JSON error messages from saveCapabilities failures', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -188,7 +188,7 @@ describe('api connections DTO adapter', () => {
     );
 
     await expect(
-      saveConnections('admin-token', { provider: '' }),
+      saveCapabilities('admin-token', { provider: '' }),
     ).rejects.toThrow('provider is required');
   });
 });

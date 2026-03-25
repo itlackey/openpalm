@@ -4,7 +4,7 @@ const TOKEN_KEY = 'openpalm.adminToken';
 
 /** Standard set of mocks for navigating to the authenticated console. */
 async function setupConsoleMocks(page: import('@playwright/test').Page) {
-	await page.route('**/admin/connections/status', (route) =>
+	await page.route('**/admin/capabilities/status', (route) =>
 		route.fulfill({
 			status: 200,
 			contentType: 'application/json',
@@ -46,7 +46,7 @@ async function setupConsoleMocks(page: import('@playwright/test').Page) {
 			body: JSON.stringify({ addons: [] })
 		})
 	);
-	await page.route('**/admin/connections/status', (route) =>
+	await page.route('**/admin/capabilities/status', (route) =>
 		route.fulfill({
 			status: 200,
 			contentType: 'application/json',
@@ -60,8 +60,8 @@ async function setupConsoleMocks(page: import('@playwright/test').Page) {
 			body: JSON.stringify({ status: 'unavailable', url: '' })
 		})
 	);
-	// GET /admin/connections: capabilities + secrets
-	await page.route('**/admin/connections', (route) => {
+	// GET /admin/capabilities: capabilities + secrets
+	await page.route('**/admin/capabilities', (route) => {
 		if (route.request().method() === 'GET') {
 			return route.fulfill({
 				status: 200,
@@ -108,34 +108,34 @@ async function setupConsoleMocks(page: import('@playwright/test').Page) {
 	});
 }
 
-/** Navigate to the connections tab with auth. */
-async function navigateToConnections(page: import('@playwright/test').Page) {
+/** Navigate to the capabilities tab with auth. */
+async function navigateToCapabilities(page: import('@playwright/test').Page) {
 	await page.goto('/');
 	await page.evaluate((key) => localStorage.setItem(key, 'test-token'), TOKEN_KEY);
 	await page.reload();
 	await page.waitForSelector('nav', { timeout: 10000 });
-	await page.getByRole('tab', { name: /connections/i }).click();
-	// Wait for the connections tab h2 heading
-	await expect(page.locator('h2:has-text("Connections")')).toBeVisible({ timeout: 10000 });
+	await page.getByRole('tab', { name: /capabilities/i }).click();
+	// Wait for the capabilities tab h2 heading
+	await expect(page.locator('h2:has-text("Capabilities")')).toBeVisible({ timeout: 10000 });
 }
 
-/** Open the "Add connection" form within the Connections tab. */
-async function openAddConnectionForm(page: import('@playwright/test').Page) {
-	await page.getByRole('button', { name: 'Add connection' }).click();
+/** Open the "Add provider" form within the Capabilities tab. */
+async function openAddProviderForm(page: import('@playwright/test').Page) {
+	await page.getByRole('button', { name: 'Add provider' }).click();
 	// Wait for the form heading to appear
-	await expect(page.locator('h3:has-text("Add connection")')).toBeVisible({ timeout: 5000 });
+	await expect(page.locator('h3:has-text("Add provider")')).toBeVisible({ timeout: 5000 });
 }
 
-test.describe('@mocked Connections Tab UI', () => {
-	test('connections tab shows Connections list and Memory Settings sections', async ({ page }) => {
+test.describe('@mocked Capabilities Tab UI', () => {
+	test('capabilities tab shows Capabilities list and Memory Settings sections', async ({ page }) => {
 		await setupConsoleMocks(page);
-		await navigateToConnections(page);
+		await navigateToCapabilities(page);
 
-		// Verify the top-level Connections heading is visible
-		await expect(page.locator('h2:has-text("Connections")')).toBeVisible();
+		// Verify the top-level Capabilities heading is visible
+		await expect(page.locator('h2:has-text("Capabilities")')).toBeVisible();
 
-		// Verify the Connections panel heading
-		await expect(page.locator('h3:has-text("Connections")')).toBeVisible();
+		// Verify the Capabilities panel heading
+		await expect(page.locator('h3:has-text("Capabilities")')).toBeVisible();
 
 		// Memory settings are now behind a "Memory" tab in the settings panel
 		await page.getByRole('tab', { name: 'Memory' }).click();
@@ -143,13 +143,13 @@ test.describe('@mocked Connections Tab UI', () => {
 		// Verify Memory User ID field is present (the one remaining persisted field)
 		await expect(page.locator('#conn-memory-user-id')).toBeVisible();
 
-		// Verify loaded Memory User ID from mocked connections
+		// Verify loaded Memory User ID from mocked capabilities
 		await expect(page.locator('#conn-memory-user-id')).toHaveValue('default_user', { timeout: 5000 });
 
-		// Verify the Add connection button is present
-		await expect(page.getByRole('button', { name: 'Add connection' })).toBeVisible();
+		// Verify the Add provider button is present
+		await expect(page.getByRole('button', { name: 'Add provider' })).toBeVisible();
 
-		// Verify the connection display name (derived from provider) is shown
+		// Verify the provider display name (derived from provider) is shown
 		await expect(page.locator('.conn-name', { hasText: 'Openai' }).first()).toBeVisible({ timeout: 5000 });
 	});
 
@@ -158,8 +158,8 @@ test.describe('@mocked Connections Tab UI', () => {
 
 		await setupConsoleMocks(page);
 
-		// Override POST /admin/connections to capture the payload
-		await page.route('**/admin/connections', (route) => {
+		// Override POST /admin/capabilities to capture the payload
+		await page.route('**/admin/capabilities', (route) => {
 			if (route.request().method() === 'POST') {
 				savedPayload = JSON.parse(route.request().postData() ?? '{}');
 				return route.fulfill({
@@ -189,7 +189,7 @@ test.describe('@mocked Connections Tab UI', () => {
 			return route.continue();
 		});
 
-		await navigateToConnections(page);
+		await navigateToCapabilities(page);
 
 		// Switch to the Memory tab in the settings panel
 		await page.getByRole('tab', { name: 'Memory' }).click();
@@ -208,7 +208,7 @@ test.describe('@mocked Connections Tab UI', () => {
 		// Verify the posted payload has the flat format
 		expect(savedPayload).not.toBeNull();
 		if (!savedPayload) {
-			throw new Error('Expected /admin/connections payload to be captured');
+			throw new Error('Expected /admin/capabilities payload to be captured');
 		}
 		const payload = savedPayload as {
 			provider?: string;
@@ -422,10 +422,10 @@ test.describe('Memory Models API', () => {
 });
 
 test.describe('@mocked Connection Test & Model Selection UI', () => {
-	test('Add connection form shows provider and base URL fields', async ({ page }) => {
+	test('Add provider form shows provider and base URL fields', async ({ page }) => {
 		// Previously "Test Connection button fetches models from provider" — the test was checking
 		// that #conn-provider had value 'openai'. In the refactored UI the provider field lives
-		// inside the ConnectionForm panel, which is only shown after clicking "Add connection".
+		// inside the CapabilitiesForm panel, which is only shown after clicking "Add provider".
 		await setupConsoleMocks(page);
 
 		// Mock the models endpoint (may be called on test)
@@ -437,8 +437,8 @@ test.describe('@mocked Connection Test & Model Selection UI', () => {
 			})
 		);
 
-		await navigateToConnections(page);
-		await openAddConnectionForm(page);
+		await navigateToCapabilities(page);
+		await openAddProviderForm(page);
 
 		// The provider field (#cf-provider) should default to 'openai'
 		await expect(page.locator('#cf-provider')).toBeVisible();
@@ -447,11 +447,11 @@ test.describe('@mocked Connection Test & Model Selection UI', () => {
 		// Base URL field should be visible
 		await expect(page.locator('#cf-base-url')).toBeVisible();
 
-		// The "Test connection" button is present (disabled until URL is filled)
-		await expect(page.getByRole('button', { name: /test connection/i })).toBeVisible();
+		// The "Test provider" button is present (disabled until URL is filled)
+		await expect(page.getByRole('button', { name: /test provider/i })).toBeVisible();
 	});
 
-	test('Test connection shows error when provider is unreachable', async ({ page }) => {
+	test('Test provider shows error when provider is unreachable', async ({ page }) => {
 		await setupConsoleMocks(page);
 
 		await page.route('**/admin/memory/models', (route) =>
@@ -462,14 +462,14 @@ test.describe('@mocked Connection Test & Model Selection UI', () => {
 			})
 		);
 
-		await navigateToConnections(page);
-		await openAddConnectionForm(page);
+		await navigateToCapabilities(page);
+		await openAddProviderForm(page);
 
-		// Fill in a base URL to enable the Test connection button
+		// Fill in a base URL to enable the Test provider button
 		await page.locator('#cf-base-url').fill('http://localhost:11434/v1');
 
-		// Click Test connection
-		await page.getByRole('button', { name: /test connection/i }).click();
+		// Click Test provider
+		await page.getByRole('button', { name: /test provider/i }).click();
 
 		// Wait for error to appear — mapModelDiscoveryError converts the empty-models+error
 		// response into a human-readable string; network errors surface as 'Network error…'
@@ -478,12 +478,12 @@ test.describe('@mocked Connection Test & Model Selection UI', () => {
 		).toBeVisible({ timeout: 5000 });
 	});
 
-	test('Test connection populates Connected status', async ({ page }) => {
+	test('Test provider populates connected status', async ({ page }) => {
 		let modelCallCount = 0;
 
 		await setupConsoleMocks(page);
 
-		await page.route('**/admin/connections/test', (route) => {
+		await page.route('**/admin/capabilities/test', (route) => {
 			modelCallCount++;
 			return route.fulfill({
 				status: 200,
@@ -492,21 +492,21 @@ test.describe('@mocked Connection Test & Model Selection UI', () => {
 			});
 		});
 
-		await navigateToConnections(page);
-		await openAddConnectionForm(page);
+		await navigateToCapabilities(page);
+		await openAddProviderForm(page);
 
-		// Connections tab now requires API key when the key toggle is enabled.
+		// Capabilities tab now requires API key when the key toggle is enabled.
 		// Keep the flow realistic by enabling it and providing a value.
 		await page.getByRole('checkbox', { name: /requires an api key/i }).check();
 		await page.getByPlaceholder('Paste API key').fill('sk-test');
 
-		// Fill in a base URL to enable the Test connection button
+		// Fill in a base URL to enable the Test provider button
 		await page.locator('#cf-base-url').fill('https://api.openai.com/v1');
 
-		// Click Test connection
-		await page.getByRole('button', { name: /test connection/i }).click();
+		// Click Test provider
+		await page.getByRole('button', { name: /test provider/i }).click();
 
-		// Wait for connection success — the ConnectionForm renders a role="status" span
+		// Wait for capability success — the CapabilitiesForm renders a role="status" span
 		await expect(page.locator('[role="status"]')).toBeVisible({ timeout: 5000 });
 		await expect(page.getByText(/connected/i)).toBeVisible();
 
@@ -611,11 +611,11 @@ test.describe('Memory Ollama Integration', () => {
 		}
 	});
 
-	test('connection test endpoint succeeds against host Ollama without browser route mocks', async ({ request }) => {
+	test('capability test endpoint succeeds against host Ollama without browser route mocks', async ({ request }) => {
 		const adminToken = process.env.ADMIN_TOKEN ?? '';
 		test.skip(!adminToken, 'Requires ADMIN_TOKEN for authenticated admin API calls');
 
-		const response = await request.post('http://localhost:8100/admin/connections/test', {
+		const response = await request.post('http://localhost:8100/admin/capabilities/test', {
 			data: {
 				baseUrl: 'http://host.docker.internal:11434',
 				kind: 'local',

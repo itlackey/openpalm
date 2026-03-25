@@ -1,16 +1,16 @@
 <script lang="ts">
   import { getAdminToken } from '$lib/auth.js';
   import {
-    fetchConnectionsDto,
+    fetchCapabilitiesDto,
     fetchMemoryConfig,
-    saveConnections,
-    testConnection,
+    saveCapabilities,
+    testCapability,
     resetMemoryCollection,
   } from '$lib/api.js';
   import { EMBEDDING_DIMS, PROVIDER_KEY_MAP } from '$lib/provider-constants.js';
-  import { mapConnectionTestError } from '$lib/model-discovery.js';
-  import type { ConnectionsCapabilities, SaveConnectionsPayload } from '$lib/types.js';
-  import ConnectionForm from './ConnectionForm.svelte';
+  import { mapCapabilityTestError } from '$lib/model-discovery.js';
+  import type { CapabilitiesSummary, SaveCapabilitiesPayload } from '$lib/types.js';
+  import CapabilitiesForm from './CapabilitiesForm.svelte';
   import ManageModelsSheet from './opencode/ManageModelsSheet.svelte';
   import ConnectProviderSheet from './opencode/ConnectProviderSheet.svelte';
 
@@ -22,7 +22,7 @@
   let { loading, onRefresh }: Props = $props();
 
   // ── Capabilities + secrets state ───────────────────────────────────
-  let capabilities = $state<ConnectionsCapabilities | null>(null);
+  let capabilities = $state<CapabilitiesSummary | null>(null);
   let secrets = $state<Record<string, string>>({});
   let listLoading = $state(false);
   let listError = $state('');
@@ -30,11 +30,11 @@
   // ── Form panel state ─────────────────────────────────────────────
   let formMode = $state<'hidden' | 'create'>('hidden');
 
-  // ── Inline test state (lifted from ConnectionForm) ────────────────
+  // ── Inline test state (lifted from CapabilitiesForm) ────────────────
   let testLoading = $state(false);
   let testError = $state('');
   let testModelList = $state<string[]>([]);
-  let connectionTested = $state(false);
+  let capabilityTested = $state(false);
 
   // ── Action feedback ───────────────────────────────────────────────
   let actionError = $state('');
@@ -106,7 +106,7 @@
     listLoading = true;
     listError = '';
     try {
-      const dto = await fetchConnectionsDto(token);
+      const dto = await fetchCapabilitiesDto(token);
       capabilities = dto.capabilities;
       secrets = dto.secrets;
 
@@ -128,7 +128,7 @@
         // Memory config may not exist yet
       }
     } catch {
-      listError = 'Failed to load connections.';
+      listError = 'Failed to load capabilities.';
     } finally {
       listLoading = false;
     }
@@ -146,7 +146,7 @@
     resetSuccess = false;
 
     try {
-      const payload: SaveConnectionsPayload = {
+      const payload: SaveCapabilitiesPayload = {
         provider: currentProvider,
         systemModel: currentModel,
         embeddingModel,
@@ -154,7 +154,7 @@
         memoryUserId,
         customInstructions,
       };
-      const result = await saveConnections(token, payload);
+      const result = await saveCapabilities(token, payload);
 
       if (result.ok) {
         memorySaveSuccess = true;
@@ -189,7 +189,7 @@
     if (!token) return;
     actionError = '';
     try {
-      await saveConnections(token, {
+      await saveCapabilities(token, {
         provider: payload.provider,
         apiKey: payload.apiKey,
         baseUrl: payload.baseUrl,
@@ -215,15 +215,15 @@
     testLoading = true;
     testError = '';
     testModelList = [];
-    connectionTested = false;
+    capabilityTested = false;
     try {
-      const result = await testConnection(token, draft);
+      const result = await testCapability(token, draft);
       if (!result.ok) {
-        testError = mapConnectionTestError(result);
+        testError = mapCapabilityTestError(result);
         return;
       }
       testModelList = result.models ?? [];
-      connectionTested = true;
+      capabilityTested = true;
     } catch (e) {
       testError = e instanceof Error ? e.message : 'Network error — unable to reach admin API.';
     } finally {
@@ -240,7 +240,7 @@
     testLoading = false;
     testError = '';
     testModelList = [];
-    connectionTested = false;
+    capabilityTested = false;
   }
 
   async function handleResetCollection(): Promise<void> {
@@ -265,10 +265,10 @@
   }
 </script>
 
-<section class="connections-tab" aria-label="Connections configuration">
+<section class="capabilities-tab" aria-label="Capabilities configuration">
   <div class="tab-header">
     <div class="tab-header-text">
-      <h2>Connections</h2>
+      <h2>Capabilities</h2>
       <p class="tab-subtitle">
         Connections let you reuse the same endpoint (and credentials) across different
         model types. You can mix local and remote hosts.
@@ -279,7 +279,7 @@
       type="button"
       disabled={loading}
       onclick={onRefresh}
-      aria-label="Refresh connections"
+      aria-label="Refresh capabilities"
     >
       <svg class:spin={loading} aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
@@ -365,9 +365,9 @@
   {/if}
 
   <!-- ── Connections list ────────────────────────────────────────── -->
-  <section class="panel connections-section">
+  <section class="panel capabilities-section">
     <div class="panel-header">
-      <h3>Connections</h3>
+      <h3>Capabilities</h3>
       {#if !listLoading}
         <button class="btn btn-sm btn-ghost" type="button" onclick={() => showModelsSheet = true}>
           Manage Models
@@ -376,7 +376,7 @@
           Connect Provider
         </button>
         <button class="btn btn-sm btn-outline" type="button" onclick={handleAddNew}>
-          Add connection
+          Add provider
         </button>
       {/if}
     </div>
@@ -385,7 +385,7 @@
       {#if listLoading}
         <div class="loading-state">
           <span class="spinner"></span>
-          <span>Loading connections...</span>
+          <span>Loading capabilities...</span>
         </div>
       {:else if listError}
         <div class="list-error">
@@ -396,7 +396,7 @@
         </div>
       {:else if !capabilities}
         <div class="empty-state">
-          <p class="empty-headline">No connections yet</p>
+          <p class="empty-headline">No capabilities configured</p>
           <p class="empty-body">
             Add a connection to a local server (like LM Studio) or a remote
             OpenAI-compatible endpoint.
@@ -424,19 +424,19 @@
     </div>
   </section>
 
-  <!-- ── ConnectionForm panel (create) ────────────────────────── -->
+  <!-- ── CapabilitiesForm panel (create) ────────────────────────── -->
   {#if formMode !== 'hidden'}
-    <section class="panel connections-section">
+    <section class="panel capabilities-section">
       <div class="panel-header">
-        <h3>Add connection</h3>
+        <h3>Add provider</h3>
       </div>
       <div class="panel-body">
-        <ConnectionForm
+        <CapabilitiesForm
           initial={null}
           {testLoading}
           modelList={testModelList}
           {testError}
-          {connectionTested}
+          {capabilityTested}
           onSave={(payload) => void handleFormSave({ provider: payload.provider, baseUrl: payload.baseUrl, apiKey: payload.apiKey, name: payload.name })}
           onCancel={handleFormCancel}
           onTest={(draft) => void handleTest(draft)}
@@ -446,7 +446,7 @@
   {/if}
 
   <!-- ── Settings (tabbed: Models / Memory) ────────────────────── -->
-  <section class="panel connections-section">
+  <section class="panel capabilities-section">
     <div class="panel-header">
       <div class="settings-tabs" role="tablist">
         <button
@@ -569,7 +569,7 @@
 </section>
 
 <style>
-  .connections-tab {
+  .capabilities-tab {
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
@@ -696,7 +696,7 @@
     padding: var(--space-5);
   }
 
-  .connections-section {
+  .capabilities-section {
     margin-bottom: var(--space-4);
   }
 

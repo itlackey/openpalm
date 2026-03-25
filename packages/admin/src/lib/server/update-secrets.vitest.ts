@@ -1,5 +1,5 @@
 /**
- * Tests for updateSecretsEnv — user.env patching utility used by the connections API.
+ * Tests for updateSecretsEnv — user.env patching utility used by the capabilities API.
  *
  * Verifies:
  * 1. All provided keys are written

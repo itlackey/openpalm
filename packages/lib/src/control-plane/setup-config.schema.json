@@ -4,7 +4,7 @@
   "title": "OpenPalm SetupConfig",
   "description": "Structured configuration for the OpenPalm setup wizard. Defines connections, model assignments, channels, services, and security settings needed for first-time installation or reconfiguration.",
   "type": "object",
-  "required": ["version", "security", "connections", "assignments"],
+  "required": ["version", "security", "capabilities", "assignments"],
   "additionalProperties": false,
   "properties": {
     "version": {
@@ -40,12 +40,12 @@
         }
       }
     },
-    "connections": {
+    "capabilities": {
       "type": "array",
-      "description": "LLM provider connections available to the instance. Must contain at least one entry.",
+      "description": "LLM provider capabilities available to the instance. Must contain at least one entry.",
       "minItems": 1,
       "items": {
-        "$ref": "#/$defs/SetupConnection"
+        "$ref": "#/$defs/SetupCapability"
       }
     },
     "assignments": {
@@ -95,25 +95,25 @@
     }
   },
   "$defs": {
-    "SetupConnection": {
+    "SetupCapability": {
       "type": "object",
-      "description": "An LLM provider connection with endpoint and credentials.",
+      "description": "An LLM provider capability with endpoint and credentials.",
       "required": ["id", "name", "provider", "baseUrl"],
       "additionalProperties": false,
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique connection identifier. Must start with a letter or digit; allows A-Z, a-z, 0-9, underscore, and hyphen.",
+          "description": "Unique capability identifier. Must start with a letter or digit; allows A-Z, a-z, 0-9, underscore, and hyphen.",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
         },
         "name": {
           "type": "string",
-          "description": "Human-readable display name for this connection.",
+          "description": "Human-readable display name for this capability.",
           "minLength": 1
         },
         "provider": {
           "type": "string",
-          "description": "Provider identifier. Must be a recognized provider from the wizard scope. 'ollama-instack' is an internal alias used by the CLI to route Ollama connections to the in-stack Ollama service container.",
+          "description": "Provider identifier. Must be a recognized provider from the wizard scope. 'ollama-instack' is an internal alias used by the CLI to route Ollama capabilities to the in-stack Ollama service container.",
           "enum": [
             "openai",
             "anthropic",
@@ -149,12 +149,12 @@
         "llm": {
           "type": "object",
           "description": "Primary LLM assignment for the system.",
-          "required": ["connectionId", "model"],
+          "required": ["capabilityId", "model"],
           "additionalProperties": false,
           "properties": {
-            "connectionId": {
+            "capabilityId": {
               "type": "string",
-              "description": "ID of the connection to use for LLM inference. Must reference a connection in the connections array."
+              "description": "ID of the connection to use for LLM inference. Must reference a capability in the capabilities array."
             },
             "model": {
               "type": "string",
@@ -169,12 +169,12 @@
         "embeddings": {
           "type": "object",
           "description": "Embedding model assignment for the memory subsystem.",
-          "required": ["connectionId", "model"],
+          "required": ["capabilityId", "model"],
           "additionalProperties": false,
           "properties": {
-            "connectionId": {
+            "capabilityId": {
               "type": "string",
-              "description": "ID of the connection to use for embeddings. Must reference a connection in the connections array."
+              "description": "ID of the connection to use for embeddings. Must reference a capability in the capabilities array."
             },
             "model": {
               "type": "string",
@@ -229,9 +229,9 @@
           "type": "string",
           "description": "Voice engine identifier."
         },
-        "connectionId": {
+        "capabilityId": {
           "type": "string",
-          "description": "Optional connection ID if the engine requires an API connection."
+          "description": "Optional capability ID if the engine requires an API provider."
         },
         "model": {
           "type": "string",
