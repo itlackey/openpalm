@@ -22,7 +22,7 @@ This package is separate from `@openpalm/assistant-tools`, which contains memory
 - `admin-memory-models` -- List available embedding models
 
 ### Addons
-- `admin-addons-list` / `-enable` / `-disable` -- Addon management via stack.yml
+- `admin-addons-list` / `-enable` / `-disable` -- Addon management via registry catalog + `stack/addons/`
 
 ### Lifecycle
 - `admin-lifecycle-install` / `-update` / `-uninstall` / `-upgrade` / `-installed` -- Stack lifecycle

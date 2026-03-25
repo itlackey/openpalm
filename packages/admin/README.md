@@ -8,14 +8,14 @@ OpenPalm remains compose-first and manual-first; the admin addon is a convenienc
 - Web UI for stack status, addons, connections, automations, and memory settings
 - Authenticated `/admin/*` API used by the UI and assistant tools
 - Thin control-plane consumer built on `@openpalm/lib`
-- Reads addon catalog from `registry/addons/` and active overlays from `stack/addons/`
+- Reads the shipped addon catalog from `registry/addons/` and enabled runtime overlays from `stack/addons/`
 - Exposes addon schema details and points operators to `vault/user/user.env` for values
 
 ## Notes on internals
 
 - Some module names still use historical terms like `staging`
 - The current runtime model is direct write + Docker Compose over `~/.openpalm/`
-- `registry/` is catalog only; `stack/addons/` and `config/automations/` are active-only
+- `registry/` is the shipped catalog source; `stack/addons/` and `config/automations/` are active runtime state
 - Compose overlays under `stack/addons/` are deployment truth; admin does not replace that model
 
 ## Structure

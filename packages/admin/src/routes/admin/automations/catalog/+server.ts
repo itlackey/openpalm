@@ -1,10 +1,10 @@
 /**
- * GET /admin/registry — List available registry automations.
+ * GET /admin/automations/catalog — List available catalog automations.
  *
  * Addon management is handled via /admin/addons.
  * This endpoint returns installable automations only.
  */
-import type { RequestHandler } from "./$types";
+import type { RequestHandler } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
@@ -36,6 +36,6 @@ export const GET: RequestHandler = async (event) => {
     schedule: auto.schedule,
   }));
 
-  appendAudit(state, actor, "registry.list", { source: 'registry' }, true, requestId, callerType);
+  appendAudit(state, actor, "automations.catalog.list", { source: 'registry' }, true, requestId, callerType);
   return jsonResponse(200, { automations, source: 'registry' }, requestId);
 };

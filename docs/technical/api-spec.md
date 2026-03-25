@@ -321,7 +321,7 @@ Body:
 { "name": "chat", "enabled": true }
 ```
 
-- `name` (required) -- Addon name (must exist under `registry/addons/<name>/compose.yml`).
+- `name` (required) -- Addon name (must exist under `~/.openpalm/registry/addons/<name>/compose.yml`).
 - `enabled` (optional) -- Set to `true` or `false` to enable/disable.
 
 Response:
@@ -333,7 +333,7 @@ Response:
 Error responses:
 
 - `400 bad_request` -- `name` is missing.
-- `404 not_found` -- Addon name is not available in `registry/addons/`.
+- `404 not_found` -- Addon name is not available in `~/.openpalm/registry/addons/`.
 - `500 internal_error` -- Failed to update addon state on disk.
 
 ### `GET /admin/addons/:name`
@@ -356,7 +356,7 @@ Response:
 
 Error responses:
 
-- `404 not_found` -- Addon name is not available in `registry/addons/`.
+- `404 not_found` -- Addon name is not available in `~/.openpalm/registry/addons/`.
 
 ### `POST /admin/addons/:name`
 
@@ -381,14 +381,14 @@ Response:
 
 Error responses:
 
-- `404 not_found` -- Addon name is not available in `registry/addons/`.
+- `404 not_found` -- Addon name is not available in `~/.openpalm/registry/addons/`.
 - `500 internal_error` -- Failed to update addon state on disk.
 
 ## Registry
 
-Unified registry for automations. Channel/addon management is handled by `/admin/addons` endpoints against `registry/addons/` and active `stack/addons/`.
+Runtime catalog endpoints for automations. Channel/addon management is handled by `/admin/addons` endpoints against `~/.openpalm/registry/addons/` and active `~/.openpalm/stack/addons/`.
 
-### `GET /admin/registry`
+### `GET /admin/automations/catalog`
 
 Lists available registry automations with install status. Channel addons are
 managed via `/admin/addons`. Reads from `~/.openpalm/registry/automations/`.
@@ -407,7 +407,7 @@ Response:
 `source` is `"remote"` when loaded from a cloned registry repo, `"bundled"`
 when using build-time bundled stack assets.
 
-### `POST /admin/registry/install`
+### `POST /admin/automations/catalog/install`
 
 Install a registry automation. Channel addons are managed via
 `POST /admin/addons/:name`.
@@ -421,7 +421,7 @@ Body:
 - `name` (required) -- Must match `^[a-z0-9][a-z0-9-]{0,62}$`.
 - `type` (required) -- Must be `"automation"`. Passing `"channel"` returns 400.
 
-Copies the `.yml` into `config/automations/`.
+Copies the `.yml` into `~/.openpalm/config/automations/`.
 The scheduler sidecar auto-reloads via file watching.
 
 Response:
@@ -435,7 +435,7 @@ Error responses:
 - `400 invalid_input` -- Invalid name, type is not `"automation"`, item not
   found in registry, or item already installed.
 
-### `POST /admin/registry/refresh`
+### `POST /admin/automations/catalog/refresh`
 
 Refreshes the registry index from the configured registry source.
 
@@ -449,7 +449,7 @@ Error responses:
 
 - `500 registry_sync_error` — Refresh failed.
 
-### `POST /admin/registry/uninstall`
+### `POST /admin/automations/catalog/uninstall`
 
 Uninstall a registry automation. Channel addons are managed via
 `POST /admin/addons/:name`.
@@ -463,7 +463,7 @@ Body:
 - `name` (required) -- Automation name.
 - `type` (required) -- Must be `"automation"`. Passing `"channel"` returns 400.
 
-Removes the `.yml` from `config/automations/`.
+Removes the `.yml` from `~/.openpalm/config/automations/`.
 The scheduler sidecar auto-reloads via file watching.
 
 Response:
@@ -476,7 +476,7 @@ Response:
 
 ### `GET /admin/automations`
 
-Lists all automation configs from `config/automations/`.
+Lists all automation configs from `~/.openpalm/config/automations/`.
 
 Response:
 

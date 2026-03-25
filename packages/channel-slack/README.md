@@ -13,7 +13,8 @@ It normally runs via `addons/slack/compose.yml` and connects outbound to Slack, 
 
 ## Deployment model
 
-- Compose overlay: `~/.openpalm/stack/addons/slack/compose.yml`
+- Shipped addon source: `.openpalm/registry/addons/slack/compose.yml`
+- Enabled runtime overlay: `~/.openpalm/stack/addons/slack/compose.yml`
 - User-managed values: `~/.openpalm/vault/user/user.env`
 - System-managed HMAC secret: `CHANNEL_SLACK_SECRET` in `~/.openpalm/vault/stack/guardian.env`
 

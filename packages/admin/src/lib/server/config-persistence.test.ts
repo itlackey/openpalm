@@ -24,7 +24,7 @@ import {
 } from "@openpalm/lib";
 import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
-/** Seed channel addon files in stack/addons/<name>/compose.yml. */
+/** Seed enabled addon overlay files in stack/addons/<name>/compose.yml. */
 function seedChannelAddons(
   homeDir: string,
   channels: { name: string; yml: string }[]

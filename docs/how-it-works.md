@@ -151,12 +151,12 @@ Returns result
 openpalm install   ->   writes files into ~/.openpalm/
                               |
                               v
-                    Install seeds registry/ and base stack files
-                              |
-                              v
+                    Install seeds the registry catalog and base stack files
+                               |
+                               v
                     You / CLI enable addons into stack/addons/:
-                       core.compose.yml
-                       + zero or more addon overlays
+                        core.compose.yml
+                        + zero or more addon overlays
                               |
                               v
                     docker compose -f <compose files> up -d
@@ -222,8 +222,8 @@ Anything not on the list is rejected with `400 invalid_service` or
 
 ## Adding a Channel (the whole process)
 
-1. Install from the registry via admin API or admin UI
-2. Or manually: copy `~/.openpalm/registry/addons/<name>/` into `~/.openpalm/stack/addons/<name>/`
+1. Browse the available catalog entry in `~/.openpalm/registry/addons/<name>/` via admin API, admin UI, or direct file inspection
+2. Enable it by copying `~/.openpalm/registry/addons/<name>/` into `~/.openpalm/stack/addons/<name>/`
 3. Or hand-author `~/.openpalm/stack/addons/<name>/` for a custom or multi-instance setup
 4. Rerun `docker compose` with that addon included
 5. If admin tooling is involved, it may also ensure/generate the channel HMAC secret first

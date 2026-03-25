@@ -42,7 +42,7 @@ describe("ensureHomeDirs", () => {
     // vault/ subtrees
     expect(existsSync(vaultDir)).toBe(true);
     expect(existsSync(join(vaultDir, "stack"))).toBe(true);
-    expect(existsSync(join(vaultDir, "stack", "addons"))).toBe(true);
+    expect(existsSync(join(vaultDir, "stack", "addons"))).toBe(false);
     expect(existsSync(join(vaultDir, "user"))).toBe(true);
 
     // data/ subtrees

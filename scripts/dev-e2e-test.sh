@@ -96,7 +96,9 @@ docker run --rm -v "$ROOT_DIR/.dev/config/assistant:/c" alpine sh -c \
 rm -f .dev/vault/stack/stack.env
 rm -f .dev/vault/stack/auth.json
 rm -rf .dev/vault/stack/services
-rm -rf .dev/vault/stack/addons
+
+# Runtime addons — clear enabled overlays only
+rm -rf .dev/stack/addons
 
 # Config — remove stack.yml so the wizard writes a fresh one
 rm -f .dev/config/stack.yml
@@ -174,7 +176,7 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 	echo ""
 	echo "=== Step 4: Build all images from source ==="
 	npm run admin:build 2>&1 | tail -3
-	cp -r .dev/registry/addons/admin .dev/stack/addons/admin 2>/dev/null || true
+	./scripts/dev-setup.sh --enable-addon admin
 	docker compose --project-directory . \
 		-f .dev/stack/core.compose.yml \
 		-f .dev/stack/addons/admin/compose.yml \

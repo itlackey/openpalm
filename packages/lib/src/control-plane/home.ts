@@ -95,7 +95,6 @@ export function ensureHomeDirs(): void {
     // vault/ — secrets boundary
     `${home}/vault`,
     `${home}/vault/stack`,
-    `${home}/vault/stack/addons`,
     `${home}/vault/user`,
 
     // data/ — service-managed persistent data

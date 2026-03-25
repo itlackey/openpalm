@@ -17,6 +17,7 @@ import {
   writeRuntimeFiles,
   randomHex,
   buildEnvFiles,
+  discoverStackOverlays,
 } from "./config-persistence.js";
 import { readStackSpec } from "./stack-spec.js";
 import { refreshCoreAssets, ensureMemoryDir } from "./core-assets.js";
@@ -255,20 +256,7 @@ export async function applyUpgrade(
 }
 
 export function buildComposeFileList(state: ControlPlaneState): string[] {
-  const stackDir = `${state.homeDir}/stack`;
-  const coreYml = `${stackDir}/core.compose.yml`;
-  const files: string[] = [];
-
-  if (existsSync(coreYml)) {
-    files.push(coreYml);
-  }
-
-  for (const addonName of listEnabledAddonIds(state.homeDir)) {
-    const addonYml = `${stackDir}/addons/${addonName}/compose.yml`;
-    if (existsSync(addonYml)) files.push(addonYml);
-  }
-
-  return files;
+  return discoverStackOverlays(`${state.homeDir}/stack`);
 }
 
 export async function buildManagedServices(state: ControlPlaneState): Promise<string[]> {

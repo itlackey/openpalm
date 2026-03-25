@@ -16,6 +16,10 @@ import {
   discoverRegistryComponents,
   discoverRegistryAutomations,
   getRegistryAutomation,
+  enableAddon,
+  disableAddonByName,
+  installAutomationFromRegistry,
+  uninstallAutomation,
 } from "./registry.js";
 
 // ── Validation Tests ─────────────────────────────────────────────────
@@ -236,5 +240,47 @@ describe("materialized registry catalog", () => {
     mkdirSync(join(sourceRoot, '.openpalm', 'registry', 'automations'), { recursive: true });
 
     expect(() => materializeRegistryCatalog(sourceRoot)).toThrow('Registry catalog is incomplete');
+  });
+
+  it("enables and disables addons through the runtime stack directory", () => {
+    const sourceRoot = join(tmpDir, 'repo');
+    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+
+    mkdirSync(addonDir, { recursive: true });
+    mkdirSync(automationsDir, { recursive: true });
+    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
+    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
+    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+
+    materializeRegistryCatalog(sourceRoot);
+
+    expect(enableAddon(process.env.OP_HOME!, 'chat')).toEqual({ ok: true });
+    expect(existsSync(join(process.env.OP_HOME!, 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
+
+    expect(disableAddonByName(process.env.OP_HOME!, 'chat')).toEqual({ ok: true });
+    expect(existsSync(join(process.env.OP_HOME!, 'stack', 'addons', 'chat'))).toBe(false);
+  });
+
+  it("installs and uninstalls automations through config/automations", () => {
+    const sourceRoot = join(tmpDir, 'repo');
+    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+    const configDir = join(process.env.OP_HOME!, 'config');
+
+    mkdirSync(addonDir, { recursive: true });
+    mkdirSync(automationsDir, { recursive: true });
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
+    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
+    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+
+    materializeRegistryCatalog(sourceRoot);
+
+    expect(installAutomationFromRegistry('cleanup', configDir)).toEqual({ ok: true });
+    expect(readFileSync(join(configDir, 'automations', 'cleanup.yml'), 'utf-8')).toContain('Cleanup');
+
+    expect(uninstallAutomation('cleanup', configDir)).toEqual({ ok: true });
+    expect(existsSync(join(configDir, 'automations', 'cleanup.yml'))).toBe(false);
   });
 });

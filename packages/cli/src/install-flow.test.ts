@@ -45,11 +45,11 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
   mkdirSync(join(homeDir, 'stack'), { recursive: true });
   Bun.spawnSync(['cp', join(OPENPALM_SRC, 'stack', 'core.compose.yml'), join(homeDir, 'stack', 'core.compose.yml')]);
 
-  // registry/ — full shipped catalog
+  // registry/ — shipped catalog source
   cpTree(join(OPENPALM_SRC, 'registry', 'addons'), join(homeDir, 'registry', 'addons'));
   cpTree(join(OPENPALM_SRC, 'registry', 'automations'), join(homeDir, 'registry', 'automations'));
 
-  // stack/addons/ — enabled only
+  // stack/addons/ — enabled runtime overlays only
   for (const addon of enabledAddons) {
     cpTree(join(OPENPALM_SRC, 'registry', 'addons', addon), join(homeDir, 'stack', 'addons', addon));
   }

@@ -1,6 +1,6 @@
 # @openpalm/scheduler
 
-Lightweight Bun service that loads automation YAML from `config/automations/`, schedules jobs with Croner, and watches for file changes.
+Lightweight Bun service that loads enabled automation YAML from `config/automations/`, schedules jobs with Croner, and watches for file changes.
 In the full stack it runs as a core service on host port `3897` and container port `8090`.
 
 ## Runtime model
@@ -31,7 +31,7 @@ All endpoints except `/health` require the configured auth token.
 
 ## Automation format
 
-Store `.yml` files in `config/automations/`:
+Store enabled `.yml` files in `config/automations/`:
 
 ```yaml
 name: cleanup-logs

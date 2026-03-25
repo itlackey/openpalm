@@ -1,5 +1,5 @@
 /**
- * POST /admin/registry/uninstall — Uninstall a registry item (automation only).
+ * POST /admin/automations/catalog/uninstall — Uninstall a catalog automation.
  *
  * Channel addons are managed via POST /admin/addons/:name.
  * This endpoint only handles automations.
@@ -7,7 +7,7 @@
  * Removes the .yml from CONFIG_HOME/automations/,
  * refreshes runtime files, and reloads the scheduler.
  */
-import type { RequestHandler } from "./$types";
+import type { RequestHandler } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
@@ -56,7 +56,7 @@ export const POST: RequestHandler = async (event) => {
   // type === "automation"
   const result = uninstallAutomation(name, state.configDir);
   if (!result.ok) {
-    appendAudit(state, actor, "registry.uninstall", { name, type, error: result.error }, false, requestId, callerType);
+    appendAudit(state, actor, "automations.catalog.uninstall", { name, type, error: result.error }, false, requestId, callerType);
     return errorResponse(400, "invalid_input", result.error, {}, requestId);
   }
 
@@ -64,6 +64,6 @@ export const POST: RequestHandler = async (event) => {
   writeRuntimeFiles(state);
   // Scheduler sidecar auto-reloads via file watching
 
-  appendAudit(state, actor, "registry.uninstall", { name, type }, true, requestId, callerType);
+  appendAudit(state, actor, "automations.catalog.uninstall", { name, type }, true, requestId, callerType);
   return jsonResponse(200, { ok: true, name, type }, requestId);
 };

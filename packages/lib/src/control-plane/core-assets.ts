@@ -1,10 +1,12 @@
 /**
- * Core asset management for the OpenPalm control plane.
+ * Core runtime asset management for the OpenPalm control plane.
  *
  * Manages source-of-truth files for the ~/.openpalm/ layout:
  *   stack/              — compose runtime assets (core.compose.yml)
  *   vault/              — env schemas
  *
+ * This module manages runtime-owned core files only.
+ * Registry catalog refresh is handled separately in registry.ts.
  * All ensure* functions verify that the expected files exist at OP_HOME.
  * They create directories as needed but do NOT write file content — that
  * is the responsibility of `refreshCoreAssets()` (GitHub download) or

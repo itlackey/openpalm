@@ -34,7 +34,6 @@ export {
 // ── Registry Sync ────────────────────────────────────────────────────────
 export type { RegistryAutomationEntry, RegistryComponentEntry } from "./control-plane/registry.js";
 export {
-  registryRoot,
   materializeRegistryCatalog,
   refreshRegistryCatalog,
   discoverRegistryComponents,
@@ -42,8 +41,10 @@ export {
   getRegistryAutomation,
   listAvailableAddonIds,
   listEnabledAddonIds,
-  enableAddonFromRegistry,
-  disableAddon,
+  enableAddon,
+  disableAddonByName,
+  installAutomationFromRegistry,
+  uninstallAutomation,
 } from "./control-plane/registry.js";
 
 // ── Home Layout (v0.10.0) ───────────────────────────────────────────────
@@ -99,11 +100,6 @@ export {
   isAllowedService,
   isValidChannel,
   isChannelAddon,
-  installAutomationFromRegistry,
-  installAutomationFromCatalog,
-  uninstallAutomation,
-  enableAddon,
-  disableAddonByName,
 } from "./control-plane/channels.js";
 
 // ── Memory Config ───────────────────────────────────────────────────────

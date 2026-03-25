@@ -101,7 +101,7 @@ jobs:
           fi
           echo "Deleted script assertion passed"
 
-      - name: Validate stack addons and catalog
+      - name: Validate shipped addon catalog and automations
         run: |
           set -euo pipefail
 

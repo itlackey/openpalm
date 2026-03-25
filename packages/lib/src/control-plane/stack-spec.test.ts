@@ -137,32 +137,6 @@ describe("stackSpecPath", () => {
   });
 });
 
-// ── Round-trip with services field ───────────────────────────────────────
-
-describe("services field round-trip", () => {
-  it("preserves services in round-trip", () => {
-    const spec: StackSpec = {
-      ...makeSpec(),
-      services: {
-        "custom-svc": { env: { PORT: "9090" } },
-      },
-    };
-    writeStackSpec(configDir, spec);
-    const read = readStackSpec(configDir);
-    expect(read).not.toBeNull();
-    expect(read!.services).toBeDefined();
-    expect(read!.services!["custom-svc"]).toEqual({ env: { PORT: "9090" } });
-  });
-
-  it("services field is optional (undefined when not set)", () => {
-    writeStackSpec(configDir, makeSpec());
-    const read = readStackSpec(configDir);
-    expect(read).not.toBeNull();
-    // services not set in makeSpec, so it should be undefined
-    expect(read!.services).toBeUndefined();
-  });
-});
-
 // ── writeStackSpec creates directory ─────────────────────────────────────
 
 describe("writeStackSpec", () => {

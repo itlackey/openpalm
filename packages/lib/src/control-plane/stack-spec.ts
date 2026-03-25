@@ -2,8 +2,8 @@
  * Stack specification file (stack.yml) management.
  *
  * The stack spec is a YAML document that captures the high-level
- * configuration of an OpenPalm installation: capabilities
- * and optional services. It lives in CONFIG_HOME.
+ * configuration of an OpenPalm installation: capabilities only.
+ * It lives in CONFIG_HOME.
  *
  * v2: Capabilities-based schema. No connections array — capabilities
  *     carry their own provider info.
@@ -60,16 +60,11 @@ export type StackSpecCapabilities = {
   reranking?: StackSpecReranker;
 };
 
-// ── Service Types ───────────────────────────────────────────────────────
-
-export type StackSpecServiceValue = { env?: Record<string, string> };
-
 // ── StackSpec v2 ────────────────────────────────────────────────────────
 
 export type StackSpec = {
   version: 2;
   capabilities: StackSpecCapabilities;
-  services?: Record<string, StackSpecServiceValue>;
 };
 
 // ── Constants ───────────────────────────────────────────────────────────

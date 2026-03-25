@@ -1,5 +1,7 @@
 # OpenPalm 0.10.0 - Assets and Registry Cleanup Plan
 
+> Historical archive note: references below to `registry/components/`, `registry-provider.ts`, `fs-registry-provider.ts`, and `vite-registry-provider.ts` describe a superseded intermediate design, not the current repo layout.
+
 ## Summary
 
 This plan cleans up the repo-level `assets/` and `registry/` directories so they match the 0.10.0 component model and the current filesystem contract.

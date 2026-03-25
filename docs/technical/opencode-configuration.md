@@ -6,7 +6,7 @@ containers today.
 Primary runtime sources:
 
 - `.openpalm/stack/core.compose.yml`
-- `.openpalm/stack/addons/admin/compose.yml`
+- `.openpalm/registry/addons/admin/compose.yml` materialized into `~/.openpalm/stack/addons/admin/compose.yml` when enabled
 - `core/assistant/entrypoint.sh`
 - `core/admin/entrypoint.sh`
 
@@ -15,9 +15,9 @@ Primary runtime sources:
 ## What Is Authoritative
 
 - The running assistant is defined by `.openpalm/stack/core.compose.yml`.
-- The optional admin-side OpenCode runtime is defined by `.openpalm/stack/addons/admin/compose.yml`.
+- The optional admin-side OpenCode runtime is defined by `~/.openpalm/stack/addons/admin/compose.yml` when the `admin` addon is enabled.
 - `~/.openpalm/config/assistant/` is the user-editable OpenCode extension surface.
-- `~/.openpalm/vault/stack/stack.env` provides runtime provider keys and capability env values.
+- `~/.openpalm/vault/stack/stack.env` provides runtime provider keys and resolved capability env values.
 - `~/.openpalm/vault/user/user.env` is the recommended place for addon overrides and operator-managed values.
 - Project-local OpenCode config inside `/work` still works per normal OpenCode behavior, but OpenPalm's container wiring is controlled by Compose.
 

@@ -4,6 +4,7 @@ OpenPalm now uses a manual-first setup model:
 
 - copy the repo's `.openpalm/` bundle to `~/.openpalm/`
 - edit the env files you need
+- copy any addons you want from `~/.openpalm/registry/addons/` into `~/.openpalm/stack/addons/`
 - run `docker compose` against files in `~/.openpalm/stack/`
 
 Helper scripts still exist, but they are optional.
@@ -45,8 +46,9 @@ The running deployment is always the exact compose file list you pass to Docker 
 
 - `~/.openpalm/stack/` is the only deployment foundation.
 - Base services come from `~/.openpalm/stack/core.compose.yml`.
-- Addons come from `~/.openpalm/stack/addons/<name>/compose.yml`.
-- `~/.openpalm/config/stack.yml` is optional metadata for tools or wrappers. It is not deployment truth.
+- Addons come from enabled overlays in `~/.openpalm/stack/addons/<name>/compose.yml`.
+- Available addons live in `~/.openpalm/registry/addons/<name>/` until you enable them.
+- `~/.openpalm/config/stack.yml` stores capabilities only. It is not deployment truth.
 
 This keeps the live system understandable: if a compose file is not in the command, it is not part of the stack.
 
@@ -115,7 +117,7 @@ That file is optional metadata. It only matters when a helper tool reads it.
 
 ### An addon fails to start
 
-Review its `.env.schema` file under `~/.openpalm/stack/addons/<name>/` and then inspect logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
+Review its `.env.schema` file in `~/.openpalm/registry/addons/<name>/` and then inspect logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
 
 ### Start over
 

@@ -19,6 +19,12 @@ All three paths are valid ways to write files in `~/.openpalm/config/`. In
 normal operation you do not edit `data/` directly, and stack runtime files live
 under `~/.openpalm/stack/`.
 
+Keep this split in mind:
+- `~/.openpalm/registry/` is the available catalog
+- `~/.openpalm/stack/addons/` contains enabled addons only
+- `~/.openpalm/config/automations/` contains enabled automations only
+- `~/.openpalm/config/stack.yml` stores capabilities only
+
 ---
 
 ## Directory Map
@@ -119,7 +125,11 @@ curl http://localhost:3880/admin/connections/status \
 
 ## Addons (Channels, Services, Integrations)
 
-An addon is an available catalog entry under `~/.openpalm/registry/addons/<name>/` and an enabled runtime overlay under `~/.openpalm/stack/addons/<name>/compose.yml`. Channels, services, and integrations are all addons.
+An addon has two states:
+- available in the catalog at `~/.openpalm/registry/addons/<name>/`
+- enabled at runtime under `~/.openpalm/stack/addons/<name>/compose.yml`
+
+Channels, services, and integrations are all addons.
 
 Current shipped network model:
 
@@ -138,7 +148,7 @@ curl -X POST http://localhost:3880/admin/addons/chat \
   -d '{"enabled":true}'
 ```
 
-This copies the addon from `registry/addons/` into active `stack/addons/`. `config/stack.yml` does not store addon state.
+This copies the addon from the catalog into the active runtime overlays. `config/stack.yml` does not store addon state.
 
 ### Configure an addon
 
@@ -190,7 +200,7 @@ action:
   timeout: 300000
 ```
 
-OpenPalm ships several ready-to-use examples in `registry/automations/` — install them
+OpenPalm ships several ready-to-use examples in `~/.openpalm/registry/automations/` — install them
 from the Registry tab in the admin console, or copy any of them into `~/.openpalm/config/automations/` to activate:
 
 | File | What it does |

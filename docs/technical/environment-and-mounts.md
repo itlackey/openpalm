@@ -1,11 +1,12 @@
 # Environment Variables, Mounts, and Network Wiring
 
-This document mirrors the current shipped runtime under `.openpalm/stack/`.
+This document mirrors the current shipped runtime: repo assets under `.openpalm/`
+and runtime files under `OP_HOME`.
 
 Primary sources:
 
 - `.openpalm/stack/core.compose.yml`
-- `.openpalm/stack/addons/*/compose.yml`
+- `.openpalm/registry/addons/*/compose.yml`
 - `core/*/entrypoint.sh` and service source where runtime defaults matter
 
 When this document conflicts with older prose elsewhere, the compose files win.
@@ -19,7 +20,8 @@ OpenPalm stores runtime state under `OP_HOME`, which defaults to `~/.openpalm`.
 | Host path | Purpose |
 |---|---|
 | `~/.openpalm/config/` | User-editable, non-secret config |
-| `~/.openpalm/stack/` | Live compose assembly and addon overlays |
+| `~/.openpalm/registry/` | Available addon and automation catalog |
+| `~/.openpalm/stack/` | Live compose assembly; `stack/addons/` contains enabled addon overlays only |
 | `~/.openpalm/vault/user/` | User-managed settings (`user.env`) |
 | `~/.openpalm/vault/stack/` | System-managed secrets and runtime env (`stack.env`, API keys, auth.json) |
 | `~/.openpalm/data/` | Durable service data |
@@ -229,7 +231,7 @@ Notes:
 
 ## Admin Addon
 
-Compose source: `.openpalm/stack/addons/admin/compose.yml`
+Compose source: runtime `~/.openpalm/stack/addons/admin/compose.yml` seeded from `.openpalm/registry/addons/admin/compose.yml`
 
 ### Docker Socket Proxy
 

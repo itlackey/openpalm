@@ -1,14 +1,14 @@
 # Registry
 
-The registry is the addon and automation discovery system for OpenPalm. It provides a catalog of installable components (channel addons, service addons) and automations that operators can browse, install, and manage through the admin API.
+The registry is the addon and automation discovery system for OpenPalm. It provides the available catalog of installable components and sample automations. Runtime state lives elsewhere.
 
 ## How it works
 
-The runtime registry catalog lives at `~/.openpalm/registry/`. Install seeds that directory from bundled assets. Manual refresh replaces it from the remote Git repository.
+Repo source assets live under `.openpalm/registry/`. The runtime catalog lives at `~/.openpalm/registry/`. Install seeds that directory from bundled assets. Manual refresh replaces it from the remote Git repository.
 
 **Sync flow:**
 
-1. Install seeds `~/.openpalm/registry/` from bundled `.openpalm` assets.
+1. Install seeds `~/.openpalm/registry/` from repo assets under `.openpalm/registry/`.
 2. `refreshRegistryCatalog()` performs a shallow sparse clone of `.openpalm/` into a temporary directory.
 3. `materializeRegistryCatalog()` validates the cloned catalog and replaces `~/.openpalm/registry/`.
 4. Discovery functions scan `~/.openpalm/registry/addons/` and `~/.openpalm/registry/automations/`.
@@ -28,7 +28,7 @@ Two environment variables control the registry source:
 
 ### Addon components
 
-Addons live in `.openpalm/stack/addons/<name>/`. Each addon directory must contain:
+Repo catalog addons live in `.openpalm/registry/addons/<name>/`. Runtime available addons live in `~/.openpalm/registry/addons/<name>/`. Enabled addons live in `~/.openpalm/stack/addons/<name>/`. Each addon directory must contain:
 
 | File | Purpose |
 |---|---|
@@ -39,7 +39,7 @@ Current addons in the registry: `admin`, `api`, `chat`, `discord`, `ollama`, `op
 
 ### Automations
 
-Registry automations live in `.openpalm/config/automations/<name>.yml` in the repo source and are materialized into `~/.openpalm/registry/automations/<name>.yml` on install or refresh. They become active only after being copied into `~/.openpalm/config/automations/`.
+Registry automations live in `.openpalm/registry/automations/<name>.yml` in the repo source and are materialized into `~/.openpalm/registry/automations/<name>.yml` on install or refresh. They become active only after being copied into `~/.openpalm/config/automations/`.
 
 ## Addon structure
 
@@ -101,7 +101,7 @@ Schema conventions:
 
 All endpoints require authentication via `x-admin-token` header.
 
-### `GET /admin/registry`
+### `GET /admin/automations/catalog`
 
 List available automations from `~/.openpalm/registry/automations/`.
 
@@ -122,9 +122,9 @@ Response:
 }
 ```
 
-### `POST /admin/registry/install`
+### `POST /admin/automations/catalog/install`
 
-Install an automation from the registry into `config/automations/`.
+Install an automation from the runtime registry into `config/automations/`.
 
 Request body:
 
@@ -132,11 +132,11 @@ Request body:
 { "name": "health-check", "type": "automation" }
 ```
 
-Copies the automation YAML from the registry into `config/automations/<name>.yml`. Fails if the automation is already installed or not found in the registry. The scheduler auto-reloads via file watching.
+Copies the automation YAML from `~/.openpalm/registry/automations/` into `~/.openpalm/config/automations/<name>.yml`. Fails if the automation is already installed or not found in the registry. The scheduler auto-reloads via file watching.
 
 Channel addons are not installed through this endpoint. Use `POST /admin/addons` instead.
 
-### `POST /admin/registry/uninstall`
+### `POST /admin/automations/catalog/uninstall`
 
 Remove an installed automation.
 
@@ -148,7 +148,7 @@ Request body:
 
 Deletes `config/automations/<name>.yml` from disk. The scheduler auto-reloads.
 
-### `POST /admin/registry/refresh`
+### `POST /admin/automations/catalog/refresh`
 
 Refresh the registry catalog from the remote Git repo.
 
@@ -160,11 +160,11 @@ Response:
 
 ### `GET /admin/addons`
 
-List all available addons from `registry/addons/` with enabled state from `stack/addons/`.
+List all available addons from `~/.openpalm/registry/addons/` with enabled state from `~/.openpalm/stack/addons/`.
 
 ### `POST /admin/addons`
 
-Enable or disable an addon by copying or removing its directory under `stack/addons/`. When enabling a channel addon, an HMAC secret is auto-generated.
+Enable or disable an addon by copying or removing its directory under `~/.openpalm/stack/addons/`. When enabling a channel addon, an HMAC secret is auto-generated.
 
 ### `GET /admin/addons/:name` / `POST /admin/addons/:name`
 

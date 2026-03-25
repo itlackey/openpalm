@@ -16,7 +16,8 @@ material it depends on, typically `${GNUPGHOME:-~/.gnupg}`.
 | Path | Contains | Back up? |
 |---|---|---|
 | `~/.openpalm/vault/` | `vault/stack/stack.env`, `vault/stack/guardian.env`, `vault/user/user.env`, schemas | Yes |
-| `~/.openpalm/config/` | assistant config, automations, optional `stack.yml` | Yes |
+| `~/.openpalm/config/` | assistant config, enabled automations, `stack.yml` capabilities | Yes |
+| `~/.openpalm/registry/` | available addon and automation catalog | Yes |
 | `~/.openpalm/stack/` | live compose files and helper scripts | Yes |
 | `~/.openpalm/data/` | durable service data, workspace, stash | Yes |
 | `~/.openpalm/logs/` | logs and audit files | Optional |
@@ -115,11 +116,13 @@ the current model.
 | `~/.openpalm/vault/user/user.env` | Optional user extension env |
 | `~/.openpalm/vault/stack/stack.env` | Stack tokens, ports, paths, image tags |
 | `~/.openpalm/vault/stack/guardian.env` | Channel HMAC secrets for guardian/channel verification |
+| `~/.openpalm/registry/addons/<name>/` | Available addon catalog entries |
+| `~/.openpalm/registry/automations/` | Available automation catalog entries |
 | `~/.openpalm/stack/core.compose.yml` | Base stack definition |
 | `~/.openpalm/stack/addons/<name>/compose.yml` | Addon overlays |
 | `~/.openpalm/config/assistant/` | User OpenCode config |
 | `~/.openpalm/config/automations/` | Scheduled automation files |
-| `~/.openpalm/config/stack.yml` | Optional tooling metadata |
+| `~/.openpalm/config/stack.yml` | Capabilities only |
 | `~/.openpalm/data/memory/` | Memory database |
 | `~/.openpalm/data/workspace/` | Shared workspace |
 | `~/.openpalm/logs/` | Logs and audit files |

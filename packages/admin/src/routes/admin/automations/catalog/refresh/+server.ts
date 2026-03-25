@@ -1,7 +1,7 @@
 /**
- * POST /admin/registry/refresh — Refresh the registry catalog from GitHub.
+ * POST /admin/automations/catalog/refresh — Refresh the runtime catalog from GitHub.
  */
-import type { RequestHandler } from "./$types";
+import type { RequestHandler } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
@@ -28,11 +28,11 @@ export const POST: RequestHandler = async (event) => {
 
   try {
     const result = refreshRegistryCatalog();
-    appendAudit(state, actor, "registry.refresh", { root: result.root }, true, requestId, callerType);
+    appendAudit(state, actor, "automations.catalog.refresh", { root: result.root }, true, requestId, callerType);
     return jsonResponse(200, { ok: true, root: result.root }, requestId);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    appendAudit(state, actor, "registry.refresh", { error: message }, false, requestId, callerType);
+    appendAudit(state, actor, "automations.catalog.refresh", { error: message }, false, requestId, callerType);
     return errorResponse(500, "registry_sync_error", message, {}, requestId);
   }
 };

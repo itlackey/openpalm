@@ -69,7 +69,7 @@ rebuild_stack() {
 
 	echo "Building admin..."
 	bun run admin:build
-	cp -r .dev/registry/addons/admin .dev/stack/addons/admin 2>/dev/null || true
+	./scripts/dev-setup.sh --enable-addon admin
 
 	echo "Rebuilding and recreating stack from source..."
 	docker compose --project-directory . \

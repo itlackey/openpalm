@@ -1,5 +1,7 @@
 # Issue #348 — Assets & Registry Cleanup Implementation Plan
 
+> Historical archive note: this plan references deleted `registry/components/` and registry-provider abstractions that were not carried into the shipped addon model.
+
 ## Pre-Implementation Decisions (LOCKED)
 
 1. **`admin.yml` stays in `assets/` as a system-managed overlay.** It is not user-installable; it is controlled by a feature flag and seeded during install/upgrade. Moving it to registry would break the bootstrap contract.

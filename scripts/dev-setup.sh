@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/dev-setup.sh [--seed-env] [--force] [--pass [--gpg-id <key>]]
+Usage: scripts/dev-setup.sh [--seed-env] [--force] [--enable-addon <name>] [--pass [--gpg-id <key>]]
 
 Creates local .dev directories and seeds dev config files.
 
@@ -11,6 +11,8 @@ Options:
   --seed-env          Seed .dev/vault/user/user.env from the user.env.schema template
                       (if missing) and generate vault/stack/stack.env with auto-detected values.
   --force             Overwrite seeded files even if they already exist.
+  --enable-addon <n>  Copy .dev/registry/addons/<n>/ into .dev/stack/addons/<n>/.
+                      Repeat to enable multiple dev addons.
   --pass              Initialize a pass backend for secret storage (requires GPG key).
   --gpg-id <key>      GPG key ID for the pass backend (required with --pass).
   -h, --help          Show this help
@@ -21,6 +23,7 @@ seed_env=0
 force=0
 use_pass=0
 gpg_id=""
+enabled_addons=()
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -31,6 +34,14 @@ while [[ $# -gt 0 ]]; do
 	--force)
 		force=1
 		shift
+		;;
+	--enable-addon)
+		if [[ -z "${2:-}" ]]; then
+			echo "Error: --enable-addon requires a name" >&2
+			exit 1
+		fi
+		enabled_addons+=("$2")
+		shift 2
 		;;
 	--pass)
 		use_pass=1
@@ -103,8 +114,8 @@ mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
 	"$CONFIG_DIR/automations" "$CONFIG_DIR/stash" \
 	"$DEV_ROOT/registry/addons" "$DEV_ROOT/registry/automations" \
-	"$DEV_ROOT/stack" \
-	"$VAULT_DIR" "$VAULT_DIR/stack" "$VAULT_DIR/stack/addons" "$VAULT_DIR/user" \
+	"$DEV_ROOT/stack" "$DEV_ROOT/stack/addons" \
+	"$VAULT_DIR" "$VAULT_DIR/stack" "$VAULT_DIR/user" \
 	"$VAULT_DIR/stack/services/memory" \
 	"$DATA_DIR/memory" "$DATA_DIR/assistant/.config/opencode" \
 	"$DATA_DIR/admin/.varlock" \
@@ -122,7 +133,22 @@ COMPOSE_DEST="$DEV_ROOT/stack/core.compose.yml"
 cp -r "$ROOT_DIR/.openpalm/registry/addons/"* "$DEV_ROOT/registry/addons/" 2>/dev/null || true
 cp -r "$ROOT_DIR/.openpalm/registry/automations/"* "$DEV_ROOT/registry/automations/" 2>/dev/null || true
 
-# Seed stack.yml v2 (capabilities-based config)
+# Enable requested addons in the dev runtime
+for addon in "${enabled_addons[@]}"; do
+	src_dir="$DEV_ROOT/registry/addons/$addon"
+	dest_dir="$DEV_ROOT/stack/addons/$addon"
+	if [[ ! -d "$src_dir" ]]; then
+		echo "Error: dev registry addon not found: $addon" >&2
+		exit 1
+	fi
+	if [[ -d "$dest_dir" && $force -ne 1 ]]; then
+		continue
+	fi
+	rm -rf "$dest_dir"
+	cp -r "$src_dir" "$dest_dir"
+done
+
+# Seed stack.yml (capabilities only)
 STACK_YAML="$CONFIG_DIR/stack.yml"
 if [[ ! -f "$STACK_YAML" || $force -eq 1 ]]; then
 	cat >"$STACK_YAML" <<'SYEOF'

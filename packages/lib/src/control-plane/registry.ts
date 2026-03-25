@@ -4,7 +4,7 @@
  * `OP_HOME/registry` is the only persistent catalog location.
  * Install seeds it once; refresh replaces it explicitly.
  */
-import { cpSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -65,9 +65,7 @@ export type RegistryComponentEntry = {
   schema: string;
 };
 
-export function registryRoot(): string {
-  return resolveRegistryDir();
-}
+export type MutationResult = { ok: true } | { ok: false; error: string };
 
 function validateMaterializedCatalog(rootDir: string): void {
   const addonsDir = join(rootDir, 'addons');
@@ -217,7 +215,7 @@ export function listEnabledAddonIds(homeDir: string): string[] {
     .sort();
 }
 
-export function enableAddonFromRegistry(homeDir: string, name: string): void {
+function copyAddonFromRegistry(homeDir: string, name: string): void {
   if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
 
   const sourceDir = join(resolveRegistryAddonsDir(), name);
@@ -231,7 +229,61 @@ export function enableAddonFromRegistry(homeDir: string, name: string): void {
   cpSync(sourceDir, targetDir, { recursive: true });
 }
 
-export function disableAddon(homeDir: string, name: string): void {
+function removeEnabledAddon(homeDir: string, name: string): void {
   if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
   rmSync(join(homeDir, 'stack', 'addons', name), { recursive: true, force: true });
+}
+
+export function enableAddon(homeDir: string, name: string): MutationResult {
+  try {
+    copyAddonFromRegistry(homeDir, name);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export function disableAddonByName(homeDir: string, name: string): MutationResult {
+  try {
+    removeEnabledAddon(homeDir, name);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export function installAutomationFromRegistry(name: string, configDir: string): MutationResult {
+  if (!VALID_NAME_RE.test(name)) {
+    return { ok: false, error: `Invalid automation name: ${name}` };
+  }
+
+  const automationYml = getRegistryAutomation(name);
+  if (!automationYml) {
+    return { ok: false, error: `Automation "${name}" not found in registry` };
+  }
+
+  const automationsDir = join(configDir, 'automations');
+  mkdirSync(automationsDir, { recursive: true });
+
+  const ymlPath = join(automationsDir, `${name}.yml`);
+  if (existsSync(ymlPath)) {
+    return { ok: false, error: `Automation "${name}" is already installed` };
+  }
+
+  writeFileSync(ymlPath, automationYml);
+  return { ok: true };
+}
+
+export function uninstallAutomation(name: string, configDir: string): MutationResult {
+  if (!VALID_NAME_RE.test(name)) {
+    return { ok: false, error: `Invalid automation name: ${name}` };
+  }
+
+  const ymlPath = join(configDir, 'automations', `${name}.yml`);
+  if (!existsSync(ymlPath)) {
+    return { ok: false, error: `Automation "${name}" is not installed` };
+  }
+
+  rmSync(ymlPath, { force: true });
+  return { ok: true };
 }

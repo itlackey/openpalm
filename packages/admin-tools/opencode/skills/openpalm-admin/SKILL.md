@@ -18,7 +18,7 @@ OpenPalm runs as a Docker Compose stack with 4 core services plus optional addon
 | **guardian** | Message routing with HMAC verification |
 | **scheduler** | Lightweight automation sidecar: cron jobs, http/shell/assistant/api actions |
 
-Optional addons (enabled via stack.yml):
+Optional addons (enabled by copying from the registry catalog into `stack/addons/`):
 | **admin** | Control plane API (protects Docker socket) |
 | **chat** | OpenAI-compatible chat channel |
 
@@ -111,6 +111,6 @@ Trace a request through the pipeline by its request ID. Searches both guardian a
 4. **Never restart the admin service** unless the user explicitly asks — it's the control plane.
 5. **Be careful with lifecycle operations.** `uninstall` stops everything. `install` is idempotent but heavyweight.
 6. **Access scope changes affect security.** Switching from `host` to `lan` exposes services to the local network. Always confirm with the user.
-7. **Channel routing is addon-based.** Channels are installed as addons with a compose overlay in `stack/addons/<name>/`. Network access is controlled by the compose overlay's network configuration.
+7. **Channel routing is addon-based.** Channels are installed from the shipped registry catalog and run as compose overlays in `stack/addons/<name>/`. Network access is controlled by the overlay's network configuration.
 8. **Check connections status before operations that need external APIs.** Use `admin-connections-status` to confirm all required keys are present. Use `admin-connections-get` to see which keys are configured. Never log or expose unmasked secret values.
 9. **Use `admin-lifecycle-upgrade` to apply upstream updates** without reinstalling. This downloads fresh assets, pulls latest images, and recreates containers in place.
