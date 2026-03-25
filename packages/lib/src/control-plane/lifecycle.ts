@@ -19,7 +19,7 @@ import {
   buildEnvFiles,
 } from "./config-persistence.js";
 import { readStackSpec } from "./stack-spec.js";
-import { refreshCoreAssets, ensureMemoryDir, ensureCoreAutomations } from "./core-assets.js";
+import { refreshCoreAssets, ensureMemoryDir } from "./core-assets.js";
 import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composeConfigServices, resolveComposeProjectName } from "./docker.js";
@@ -102,7 +102,6 @@ async function reconcileCore(
     for (const s of CORE_SERVICES) state.services[s] = "running";
   }
   ensureMemoryDir(state.dataDir);
-  ensureCoreAutomations(state.configDir);
 
   for (const addonName of listEnabledAddonIds(state.homeDir)) {
     mkdirSync(`${state.dataDir}/${addonName}`, { recursive: true });

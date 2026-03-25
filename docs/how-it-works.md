@@ -45,7 +45,8 @@ Responsibilities:
 - Runs `docker compose` for all lifecycle operations (install, update, up, down,
   restart)
 - Exposes an authenticated API used by the browser UI and the assistant
-- Applies explicit config mutations to `config/` and addon changes to
+- Applies explicit config mutations to `config/`, reads addon catalog data from
+  `~/.openpalm/registry/`, and manages enabled addon overlays in
   `~/.openpalm/stack/addons/` when requested through authorized UI/API actions
 - Writes the audit log
 - Helps manage addons and other host-side files through an authenticated API
@@ -148,13 +149,16 @@ Returns result
 
 ```
 openpalm install   ->   writes files into ~/.openpalm/
-                             |
-                             v
-                    You / CLI choose compose files:
-                      core.compose.yml
-                      + zero or more addon overlays
-                             |
-                             v
+                              |
+                              v
+                    Install seeds registry/ and base stack files
+                              |
+                              v
+                    You / CLI enable addons into stack/addons/:
+                       core.compose.yml
+                       + zero or more addon overlays
+                              |
+                              v
                     docker compose -f <compose files> up -d
 ```
 
@@ -177,6 +181,7 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
 ```
 ~/.openpalm/stack/core.compose.yml         -> base compose definition
 ~/.openpalm/stack/addons/chat/compose.yml  -> addon overlay
+~/.openpalm/registry/addons/chat/.env.schema -> addon config contract
 ~/.openpalm/vault/stack/stack.env          -> passed via --env-file
 ~/.openpalm/vault/user/user.env            -> optional extension env-file
 ```
@@ -218,8 +223,9 @@ Anything not on the list is rejected with `400 invalid_service` or
 ## Adding a Channel (the whole process)
 
 1. Install from the registry via admin API or admin UI
-2. Or manually: add `~/.openpalm/stack/addons/<name>/compose.yml`
-3. Rerun `docker compose` with that addon included
-4. If admin tooling is involved, it may also ensure/generate the channel HMAC secret first
+2. Or manually: copy `~/.openpalm/registry/addons/<name>/` into `~/.openpalm/stack/addons/<name>/`
+3. Or hand-author `~/.openpalm/stack/addons/<name>/` for a custom or multi-instance setup
+4. Rerun `docker compose` with that addon included
+5. If admin tooling is involved, it may also ensure/generate the channel HMAC secret first
 
 No code changes. No image rebuild. The channel is live.

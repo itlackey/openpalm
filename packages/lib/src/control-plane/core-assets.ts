@@ -2,7 +2,8 @@
  * Core asset management for the OpenPalm control plane.
  *
  * Manages source-of-truth files for the ~/.openpalm/ layout:
- *   stack/              — compose overlays (core.compose.yml, addons/{name}/compose.yml)
+ *   stack/              — compose overlays (core.compose.yml)
+ *   registry/           — catalog automations refreshed from repo assets
  *   vault/              — env schemas
  *
  * All ensure* functions verify that the expected files exist at OP_HOME.
@@ -12,7 +13,7 @@
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { resolveDataDir, resolveConfigDir, resolveVaultDir, resolveOpenPalmHome, resolveBackupsDir } from "./home.js";
+import { resolveDataDir, resolveVaultDir, resolveOpenPalmHome, resolveBackupsDir } from "./home.js";
 import { createLogger } from "../logger.js";
 import { sha256 } from "./crypto.js";
 
@@ -79,14 +80,6 @@ export function ensureOpenCodeSystemConfig(): void {
   mkdirSync(dir, { recursive: true });
 }
 
-// ── Core Automations (config/automations/) ──────────────────────────
-
-export function ensureCoreAutomations(configDir?: string): void {
-  const resolved = configDir ?? resolveConfigDir();
-  const dir = `${resolved}/automations`;
-  mkdirSync(dir, { recursive: true });
-}
-
 // ── Asset Refresh (GitHub download) ──────────────────────────────────
 
 const REPO = "itlackey/openpalm";
@@ -98,9 +91,9 @@ const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
   { relPath: "data/assistant/AGENTS.md", githubFilename: "core/assistant/opencode/AGENTS.md" },
   { relPath: "vault/user/user.env.schema", githubFilename: ".openpalm/vault/user/user.env.schema" },
   { relPath: "vault/stack/stack.env.schema", githubFilename: ".openpalm/vault/stack/stack.env.schema" },
-  { relPath: "config/automations/cleanup-logs.yml", githubFilename: ".openpalm/config/automations/cleanup-logs.yml" },
-  { relPath: "config/automations/cleanup-data.yml", githubFilename: ".openpalm/config/automations/cleanup-data.yml" },
-  { relPath: "config/automations/validate-config.yml", githubFilename: ".openpalm/config/automations/validate-config.yml" },
+  { relPath: "registry/automations/cleanup-logs.yml", githubFilename: ".openpalm/config/automations/cleanup-logs.yml" },
+  { relPath: "registry/automations/cleanup-data.yml", githubFilename: ".openpalm/config/automations/cleanup-data.yml" },
+  { relPath: "registry/automations/validate-config.yml", githubFilename: ".openpalm/config/automations/validate-config.yml" },
 ];
 
 async function downloadAsset(filename: string): Promise<string> {

@@ -179,9 +179,9 @@ describe("refreshCoreAssets", () => {
     expect(result.updated).toContain("data/assistant/AGENTS.md");
     expect(result.updated).toContain("vault/user/user.env.schema");
     expect(result.updated).toContain("vault/stack/stack.env.schema");
-    expect(result.updated).toContain("config/automations/cleanup-logs.yml");
-    expect(result.updated).toContain("config/automations/cleanup-data.yml");
-    expect(result.updated).toContain("config/automations/validate-config.yml");
+    expect(result.updated).toContain("registry/automations/cleanup-logs.yml");
+    expect(result.updated).toContain("registry/automations/cleanup-data.yml");
+    expect(result.updated).toContain("registry/automations/validate-config.yml");
     expect(result.backupDir).toBeNull(); // no existing files to back up
 
     expect(existsSync(join(homeDir, "stack/core.compose.yml"))).toBe(true);
@@ -189,7 +189,7 @@ describe("refreshCoreAssets", () => {
     expect(existsSync(join(homeDir, "data/assistant/AGENTS.md"))).toBe(true);
     expect(existsSync(join(homeDir, "vault/user/user.env.schema"))).toBe(true);
     expect(existsSync(join(homeDir, "vault/stack/stack.env.schema"))).toBe(true);
-    expect(existsSync(join(homeDir, "config/automations/cleanup-logs.yml"))).toBe(true);
+    expect(existsSync(join(homeDir, "registry/automations/cleanup-logs.yml"))).toBe(true);
   });
 
   test("backs up changed files before overwriting", async () => {
@@ -231,10 +231,10 @@ describe("refreshCoreAssets", () => {
     mkdirSync(join(homeDir, "vault/stack"), { recursive: true });
     writeFileSync(join(homeDir, "vault/user/user.env.schema"), content);
     writeFileSync(join(homeDir, "vault/stack/stack.env.schema"), content);
-    mkdirSync(join(homeDir, "config/automations"), { recursive: true });
-    writeFileSync(join(homeDir, "config/automations/cleanup-logs.yml"), content);
-    writeFileSync(join(homeDir, "config/automations/cleanup-data.yml"), content);
-    writeFileSync(join(homeDir, "config/automations/validate-config.yml"), content);
+    mkdirSync(join(homeDir, "registry/automations"), { recursive: true });
+    writeFileSync(join(homeDir, "registry/automations/cleanup-logs.yml"), content);
+    writeFileSync(join(homeDir, "registry/automations/cleanup-data.yml"), content);
+    writeFileSync(join(homeDir, "registry/automations/validate-config.yml"), content);
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       return new Response(content, { status: 200 });

@@ -343,7 +343,15 @@ Returns detail for a single addon.
 Response:
 
 ```json
-{ "name": "chat", "enabled": true }
+{
+  "name": "chat",
+  "enabled": true,
+  "config": {
+    "schemaPath": "registry/addons/chat/.env.schema",
+    "userEnvPath": "vault/user/user.env",
+    "envSchema": "# ..."
+  }
+}
 ```
 
 Error responses:
@@ -413,7 +421,7 @@ Body:
 - `name` (required) -- Must match `^[a-z0-9][a-z0-9-]{0,62}$`.
 - `type` (required) -- Must be `"automation"`. Passing `"channel"` returns 400.
 
-Copies the `.yml` into `config/automations/` and refreshes runtime files.
+Copies the `.yml` into `config/automations/`.
 The scheduler sidecar auto-reloads via file watching.
 
 Response:
@@ -455,7 +463,7 @@ Body:
 - `name` (required) -- Automation name.
 - `type` (required) -- Must be `"automation"`. Passing `"channel"` returns 400.
 
-Removes the `.yml` from `config/automations/` and refreshes runtime files.
+Removes the `.yml` from `config/automations/`.
 The scheduler sidecar auto-reloads via file watching.
 
 Response:

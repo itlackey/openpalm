@@ -31,11 +31,8 @@ export {
   OPTIONAL_SERVICES,
 } from "./control-plane/types.js";
 
-// ── Interfaces ──────────────────────────────────────────────────────────
-export type { RegistryComponentEntry } from "./control-plane/registry-provider.js";
-
 // ── Registry Sync ────────────────────────────────────────────────────────
-export type { RegistryAutomationEntry } from "./control-plane/registry.js";
+export type { RegistryAutomationEntry, RegistryComponentEntry } from "./control-plane/registry.js";
 export {
   registryRoot,
   materializeRegistryCatalog,
@@ -43,7 +40,6 @@ export {
   discoverRegistryComponents,
   discoverRegistryAutomations,
   getRegistryAutomation,
-  buildRegistryProvider,
   listAvailableAddonIds,
   listEnabledAddonIds,
   enableAddonFromRegistry,
@@ -135,7 +131,6 @@ export {
   ensureCoreCompose,
   readCoreCompose,
   ensureOpenCodeSystemConfig,
-  ensureCoreAutomations,
   refreshCoreAssets,
 } from "./control-plane/core-assets.js";
 

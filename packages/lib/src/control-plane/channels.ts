@@ -6,11 +6,10 @@ import { dirname } from "node:path";
 import { parse as yamlParse } from "yaml";
 import type { ChannelInfo } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
-import type { RegistryProvider } from "./registry-provider.js";
 import {
-  buildRegistryProvider,
   disableAddon,
   enableAddonFromRegistry,
+  getRegistryAutomation,
 } from "./registry.js";
 
 // ── Channel Name Validation ───────────────────────────────────────────
@@ -147,13 +146,12 @@ const AUTOMATION_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 export function installAutomationFromRegistry(
   name: string,
   configDir: string,
-  registry: RegistryProvider
 ): { ok: true } | { ok: false; error: string } {
   if (!AUTOMATION_NAME_RE.test(name)) {
     return { ok: false, error: `Invalid automation name: ${name}` };
   }
-  const automationYml = registry.automations();
-  if (!(name in automationYml)) {
+  const automationYml = getRegistryAutomation(name);
+  if (!automationYml) {
     return { ok: false, error: `Automation "${name}" not found in registry` };
   }
   const automationsDir = `${configDir}/automations`;
@@ -164,7 +162,7 @@ export function installAutomationFromRegistry(
     return { ok: false, error: `Automation "${name}" is already installed` };
   }
 
-  writeFileSync(ymlPath, automationYml[name]);
+  writeFileSync(ymlPath, automationYml);
   return { ok: true };
 }
 
@@ -207,5 +205,5 @@ export function disableAddonByName(homeDir: string, name: string): { ok: true } 
 }
 
 export function installAutomationFromCatalog(name: string, configDir: string): { ok: true } | { ok: false; error: string } {
-  return installAutomationFromRegistry(name, configDir, buildRegistryProvider());
+  return installAutomationFromRegistry(name, configDir);
 }

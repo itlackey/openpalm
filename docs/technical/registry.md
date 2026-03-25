@@ -39,7 +39,7 @@ Current addons in the registry: `admin`, `api`, `chat`, `discord`, `ollama`, `op
 
 ### Automations
 
-Automations live in `.openpalm/config/automations/<name>.yml`. Each is a YAML file with fields like `name`, `description`, `schedule`, `enabled`, and `action`. The scheduler sidecar picks these up via file watching.
+Registry automations live in `.openpalm/config/automations/<name>.yml` in the repo source and are materialized into `~/.openpalm/registry/automations/<name>.yml` on install or refresh. They become active only after being copied into `~/.openpalm/config/automations/`.
 
 ## Addon structure
 
@@ -160,15 +160,15 @@ Response:
 
 ### `GET /admin/addons`
 
-List all available addons with their enabled/disabled status and env configuration. Scans `stack/addons/` on disk.
+List all available addons from `registry/addons/` with enabled state from `stack/addons/`.
 
 ### `POST /admin/addons`
 
-Enable or disable an addon and optionally update its env config. When enabling a channel addon, an HMAC secret is auto-generated.
+Enable or disable an addon by copying or removing its directory under `stack/addons/`. When enabling a channel addon, an HMAC secret is auto-generated.
 
 ### `GET /admin/addons/:name` / `POST /admin/addons/:name`
 
-Get or update a specific addon's configuration.
+Get or update a specific addon. Detail responses include the raw `.env.schema` and point operators at `vault/user/user.env` for values.
 
 ## Name validation
 

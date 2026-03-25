@@ -2,7 +2,7 @@
 
 This document covers day-to-day administration: configuration, channels, secrets,
 access control, and extensions. For architecture rationale see
-[core-principles.md](./technical/authoritative/core-principles.md).
+[core-principles.md](./technical/core-principles.md).
 
 ---
 
@@ -25,15 +25,20 @@ under `~/.openpalm/stack/`.
 
 ```
 ~/.openpalm/                          ← YOUR OPENPALM HOME
+├── registry/
+│   ├── addons/                       # Available addon catalog
+│   │   ├── chat/
+│   │   │   ├── compose.yml
+│   │   │   └── .env.schema
+│   │   └── api/
+│   └── automations/                  # Available automation catalog
+│       └── health-check.yml
+│
 ├── stack/
 │   ├── core.compose.yml              # Base compose file used for the runtime stack
 │   └── addons/
-│       ├── chat/
-│       │   └── compose.yml
-│       ├── api/
-│       │   └── compose.yml
-│       └── voice/
-│           └── compose.yml
+│       └── chat/
+│           └── compose.yml           # Enabled addons only
 │
 ├── vault/
 │   ├── user/
@@ -67,7 +72,7 @@ under `~/.openpalm/stack/`.
 
 Secrets are split into two files under `~/.openpalm/vault/`:
 
-- **`user/user.env`** -- Optional user-extension env file for custom values.
+- **`user/user.env`** -- Recommended location for addon/operator overrides and custom values.
 - **`stack/stack.env`** -- System-managed runtime env and secrets: admin/assistant/memory auth tokens, provider API keys, capability vars, ports, and other infrastructure values.
 
 ```env
@@ -114,7 +119,7 @@ curl http://localhost:3880/admin/connections/status \
 
 ## Addons (Channels, Services, Integrations)
 
-An addon is a compose overlay under `~/.openpalm/stack/addons/<name>/compose.yml`. Channels, services, and integrations are all addons.
+An addon is an available catalog entry under `~/.openpalm/registry/addons/<name>/` and an enabled runtime overlay under `~/.openpalm/stack/addons/<name>/compose.yml`. Channels, services, and integrations are all addons.
 
 Current shipped network model:
 
@@ -133,12 +138,20 @@ curl -X POST http://localhost:3880/admin/addons/chat \
   -d '{"enabled":true}'
 ```
 
-This updates `config/stack.yml` and writes capability/env changes used by the compose flow.
+This copies the addon from `registry/addons/` into active `stack/addons/`. `config/stack.yml` does not store addon state.
+
+### Configure an addon
+
+- Read the addon's schema at `~/.openpalm/registry/addons/<name>/.env.schema`
+- Put values in `~/.openpalm/vault/user/user.env`
+- Rerun your compose command or restart affected services
+
+Addon config is schema-driven and file-based. There is no addon config block in `stack.yml`.
 
 ### Add an addon manually
 
-1. Create `~/.openpalm/stack/addons/<name>/`
-2. Add a `compose.yml`
+1. Copy `~/.openpalm/registry/addons/<name>/` into `~/.openpalm/stack/addons/<name>/`
+2. Or author `~/.openpalm/stack/addons/<name>/` manually if you want a custom or multi-instance layout
 3. Run preflight to confirm the merge is clean, then rerun `docker compose` with that addon included
 
 ### Uninstall an addon
@@ -249,9 +262,7 @@ docker compose restart scheduler
 
 ### Overriding system automations
 
-OpenPalm may ship system-managed automations in `~/.openpalm/data/automations/`.
-If you create a user file with the **same name**, your version takes priority.
-You don't need to edit system files directly.
+Shipped examples live in `~/.openpalm/registry/automations/`. They are inactive until copied into `~/.openpalm/config/automations/`.
 
 ---
 

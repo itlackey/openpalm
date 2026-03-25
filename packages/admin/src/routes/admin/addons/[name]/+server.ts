@@ -27,9 +27,22 @@ import {
 import { composeDown, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 import { buildComposeOptions } from "@openpalm/lib";
-import { existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 
 const logger = createLogger("addons.name");
+
+function readAddonConfig(homeDir: string, name: string): {
+  schemaPath: string;
+  userEnvPath: string;
+  envSchema: string;
+} {
+  const schemaPath = `registry/addons/${name}/.env.schema`;
+  return {
+    schemaPath,
+    userEnvPath: 'vault/user/user.env',
+    envSchema: readFileSync(`${homeDir}/${schemaPath}`, 'utf-8'),
+  };
+}
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -48,9 +61,16 @@ export const GET: RequestHandler = async (event) => {
   }
 
   const enabled = listEnabledAddonIds(state.homeDir).includes(name);
+  let config;
+  try {
+    config = readAddonConfig(state.homeDir, name);
+  } catch (error) {
+    logger.error("failed to read addon schema", { name, error: String(error), requestId });
+    return errorResponse(500, "internal_error", `Addon \"${name}\" schema is unavailable`, {}, requestId);
+  }
 
   appendAudit(state, actor, "addons.name.get", { name }, true, requestId, callerType);
-  return jsonResponse(200, { name, enabled }, requestId);
+  return jsonResponse(200, { name, enabled, config }, requestId);
 };
 
 export const POST: RequestHandler = async (event) => {

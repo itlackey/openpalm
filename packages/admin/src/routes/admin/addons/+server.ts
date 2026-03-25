@@ -28,8 +28,6 @@ import { createLogger } from "$lib/server/logger.js";
 
 const logger = createLogger("addons");
 
-import { existsSync } from "node:fs";
-
 type AddonItem = {
   name: string;
   enabled: boolean;

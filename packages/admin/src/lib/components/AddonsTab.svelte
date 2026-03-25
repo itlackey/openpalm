@@ -52,7 +52,10 @@
 
 <div class="space-y-4">
   <div class="flex items-center justify-between">
-    <h2 class="text-lg font-semibold">Addons</h2>
+    <div>
+      <h2 class="text-lg font-semibold">Addons</h2>
+      <p class="text-sm text-gray-500">Catalog lives in <code>registry/addons/</code>. Put addon values in <code>vault/user/user.env</code>.</p>
+    </div>
     <button class="text-sm text-blue-600 hover:underline" onclick={() => loadAddons()}>
       Refresh
     </button>

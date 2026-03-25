@@ -12,7 +12,6 @@ export {
   discoverRegistryComponents,
   discoverRegistryAutomations,
   getRegistryAutomation,
-  buildRegistryProvider,
 } from "@openpalm/lib";
 export type {
   RegistryAutomationEntry,

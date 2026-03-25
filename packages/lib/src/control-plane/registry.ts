@@ -9,7 +9,6 @@ import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parse as parseYaml } from 'yaml';
-import type { RegistryComponentEntry, RegistryProvider } from './registry-provider.js';
 import {
   resolveRegistryAddonsDir,
   resolveRegistryAutomationsDir,
@@ -59,6 +58,11 @@ export type RegistryAutomationEntry = {
   description: string;
   schedule: string;
   ymlContent: string;
+};
+
+export type RegistryComponentEntry = {
+  compose: string;
+  schema: string;
 };
 
 export function registryRoot(): string {
@@ -197,19 +201,6 @@ export function getRegistryAutomation(name: string): string | null {
   const ymlPath = join(resolveRegistryAutomationsDir(), `${name}.yml`);
   if (!existsSync(ymlPath)) return null;
   return readFileSync(ymlPath, 'utf-8');
-}
-
-function registryAutomationsMap(): Record<string, string> {
-  return Object.fromEntries(discoverRegistryAutomations().map((entry) => [entry.name, entry.ymlContent]));
-}
-
-export function buildRegistryProvider(): RegistryProvider {
-  return {
-    components: () => discoverRegistryComponents(),
-    componentIds: () => Object.keys(discoverRegistryComponents()),
-    automations: () => registryAutomationsMap(),
-    automationNames: () => Object.keys(registryAutomationsMap()),
-  };
 }
 
 export function listAvailableAddonIds(): string[] {
