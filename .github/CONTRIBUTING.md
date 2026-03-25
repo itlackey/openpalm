@@ -63,7 +63,7 @@ bun run dev:setup      # Creates .dev/ dirs, seeds vault env files
 - Creates the `.dev/config`, `.dev/vault`, `.dev/data`, and `.dev/state` directories
 - Seeds `.dev/vault/user/user.env` and `.dev/vault/stack/stack.env` with dev-safe defaults
 
-After setup, edit `.dev/vault/user.env` to add your LLM provider keys.
+After setup, edit `.dev/vault/user/user.env` to add your LLM provider keys.
 
 ## 2. Run the admin UI (no Docker needed)
 

@@ -40,6 +40,7 @@ services:
       CHANNEL_PACKAGE: '@your-scope/openpalm-channel-my-channel'
     env_file:
       - ${OP_HOME}/vault/stack/stack.env
+      - ${OP_HOME}/vault/stack/guardian.env
       - ${OP_HOME}/vault/user/user.env
     networks: [channel_lan]
 ```

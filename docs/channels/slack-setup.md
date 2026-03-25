@@ -61,6 +61,7 @@ cd "$HOME/.openpalm/stack"
 docker compose \
   --project-name openpalm \
   --env-file ../vault/stack/stack.env \
+  --env-file ../vault/stack/guardian.env \
   --env-file ../vault/user/user.env \
   -f core.compose.yml \
   -f addons/slack/compose.yml \

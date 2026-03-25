@@ -23,8 +23,10 @@ function pruneNonceCache(): void {
   }
 }
 
-// Periodic pruning every 60 seconds regardless of map size
-setInterval(pruneNonceCache, 60_000);
+// Periodic pruning every 60 seconds regardless of map size.
+// unref() so the timer doesn't keep the event loop alive (cleaner testing + shutdown).
+const pruneTimer = setInterval(pruneNonceCache, 60_000);
+pruneTimer.unref();
 
 export function checkNonce(nonce: string, ts: number): boolean {
   if (Math.abs(Date.now() - ts) > CLOCK_SKEW) return false;

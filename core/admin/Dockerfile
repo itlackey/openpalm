@@ -25,7 +25,9 @@ COPY packages/lib/ node_modules/@openpalm/lib/
 # Copy source into monorepo layout
 COPY packages/admin/ packages/admin/
 COPY .openpalm/stack/ .openpalm/stack/
-COPY .openpalm/vault/ .openpalm/vault/
+COPY .openpalm/vault/redact.env.schema .openpalm/vault/
+COPY .openpalm/vault/stack/*.schema .openpalm/vault/stack/
+COPY .openpalm/vault/user/*.schema .openpalm/vault/user/
 COPY .openpalm/config/ .openpalm/config/
 
 # Build SvelteKit (adapter-node produces self-contained build/)

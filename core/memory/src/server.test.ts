@@ -335,7 +335,7 @@ describe('buildConfigFromEnv', () => {
     const config = buildConfigFromEnv({
       SYSTEM_LLM_PROVIDER: 'openai',
       SYSTEM_LLM_MODEL: 'gpt-4o-mini',
-      OPENAI_API_KEY: 'sk-test123',
+      SYSTEM_LLM_API_KEY: 'sk-test123',
       EMBEDDING_MODEL: 'text-embedding-3-small',
       EMBEDDING_DIMS: '1536',
     });
@@ -348,11 +348,13 @@ describe('buildConfigFromEnv', () => {
     expect(config!.embedder!.config.dimensions).toBe(1536);
   });
 
-  test('builds ollama config with default base URL', () => {
+  test('builds ollama config with pre-resolved base URL', () => {
     const config = buildConfigFromEnv({
       SYSTEM_LLM_PROVIDER: 'ollama',
       SYSTEM_LLM_MODEL: 'qwen2.5-coder:3b',
+      SYSTEM_LLM_BASE_URL: 'http://host.docker.internal:11434',
       EMBEDDING_MODEL: 'nomic-embed-text',
+      EMBEDDING_BASE_URL: 'http://host.docker.internal:11434',
       EMBEDDING_DIMS: '768',
     });
     expect(config).not.toBeNull();
@@ -368,46 +370,45 @@ describe('buildConfigFromEnv', () => {
       SYSTEM_LLM_PROVIDER: 'openai',
       SYSTEM_LLM_MODEL: 'gpt-4o',
       SYSTEM_LLM_BASE_URL: 'https://custom.api.example.com/v1',
-      OPENAI_API_KEY: 'sk-custom',
+      SYSTEM_LLM_API_KEY: 'sk-custom',
     });
     expect(config!.llm!.config.baseUrl).toBe('https://custom.api.example.com/v1');
   });
 
-  test('falls back to OPENAI_BASE_URL for non-ollama providers', () => {
+  test('baseUrl is undefined when SYSTEM_LLM_BASE_URL is not set', () => {
     const config = buildConfigFromEnv({
       SYSTEM_LLM_PROVIDER: 'openai',
       SYSTEM_LLM_MODEL: 'gpt-4o',
-      OPENAI_BASE_URL: 'https://proxy.example.com/v1',
-      OPENAI_API_KEY: 'sk-proxy',
+      SYSTEM_LLM_API_KEY: 'sk-test',
     });
-    expect(config!.llm!.config.baseUrl).toBe('https://proxy.example.com/v1');
+    expect(config!.llm!.config.baseUrl).toBeUndefined();
   });
 
-  test('uses provider-specific API key over OPENAI_API_KEY', () => {
+  test('uses SYSTEM_LLM_API_KEY for any provider', () => {
     const config = buildConfigFromEnv({
       SYSTEM_LLM_PROVIDER: 'anthropic',
       SYSTEM_LLM_MODEL: 'claude-3-haiku-20240307',
-      ANTHROPIC_API_KEY: 'sk-ant-specific',
-      OPENAI_API_KEY: 'sk-openai-fallback',
+      SYSTEM_LLM_API_KEY: 'sk-ant-specific',
     });
     expect(config!.llm!.config.apiKey).toBe('sk-ant-specific');
   });
 
-  test('falls back to OPENAI_API_KEY when provider key not set', () => {
+  test('apiKey is undefined when SYSTEM_LLM_API_KEY is not set', () => {
     const config = buildConfigFromEnv({
       SYSTEM_LLM_PROVIDER: 'groq',
       SYSTEM_LLM_MODEL: 'llama-3.1-8b-instant',
-      OPENAI_API_KEY: 'sk-openai-fallback',
     });
-    expect(config!.llm!.config.apiKey).toBe('sk-openai-fallback');
+    expect(config!.llm!.config.apiKey).toBeUndefined();
   });
 
-  test('nomic embedding model selects ollama as embedder provider', () => {
+  test('EMBEDDING_PROVIDER selects embedder provider independently from LLM', () => {
     const config = buildConfigFromEnv({
       SYSTEM_LLM_PROVIDER: 'openai',
       SYSTEM_LLM_MODEL: 'gpt-4o-mini',
-      OPENAI_API_KEY: 'sk-test',
+      SYSTEM_LLM_API_KEY: 'sk-test',
+      EMBEDDING_PROVIDER: 'ollama',
       EMBEDDING_MODEL: 'nomic-embed-text',
+      EMBEDDING_BASE_URL: 'http://host.docker.internal:11434',
       EMBEDDING_DIMS: '768',
     });
     expect(config!.llm!.provider).toBe('openai');

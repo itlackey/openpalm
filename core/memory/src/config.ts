@@ -43,7 +43,10 @@ export function buildConfigFromEnv(
     vectorStoreConfig.dbPath = dbPath;
   }
 
-  console.log(`[config] Using env-based config: provider=${provider}, model=${env.SYSTEM_LLM_MODEL ?? 'default'}, embedder=${env.EMBEDDING_PROVIDER ?? provider}/${env.EMBEDDING_MODEL ?? 'default'}`);
+  const debugLogging = env.MEMORY_DEBUG === '1' || env.MEMORY_DEBUG === 'true';
+  if (debugLogging) {
+    console.log(`[config] Using env-based config: provider=${provider}, model=${env.SYSTEM_LLM_MODEL ?? 'default'}, embedder=${env.EMBEDDING_PROVIDER ?? provider}/${env.EMBEDDING_MODEL ?? 'default'}`);
+  }
 
   return {
     llm: {

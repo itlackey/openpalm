@@ -18,7 +18,8 @@ Repo layout convention:
 | [manual-compose-runbook.md](operations/manual-compose-runbook.md) | Step-by-step manual host configuration (no scripts) |
 | [how-it-works.md](how-it-works.md) | Architecture overview and data flow |
 | [managing-openpalm.md](managing-openpalm.md) | Configuration, channels, secrets, access control, automations |
-| [discord-setup.md](discord-setup.md) | Discord bot setup — create app, install channel, invite bot |
+| [discord-setup.md](channels/discord-setup.md) | Discord bot setup — create app, install channel, invite bot |
+| [slack-setup.md](channels/slack-setup.md) | Slack bot setup — create app, install channel, configure Socket Mode |
 
 ## Architecture (must-read for contributors)
 

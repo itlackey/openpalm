@@ -38,6 +38,7 @@ docker compose \
   -f addons/admin/compose.yml \
   -f addons/chat/compose.yml \
   --env-file ../vault/stack/stack.env \
+  --env-file ../vault/stack/guardian.env \
   --env-file ../vault/user/user.env \
   down
 ```
@@ -85,6 +86,7 @@ docker compose \
   -f addons/admin/compose.yml \
   -f addons/chat/compose.yml \
   --env-file ../vault/stack/stack.env \
+  --env-file ../vault/stack/guardian.env \
   --env-file ../vault/user/user.env \
   up -d
 ```

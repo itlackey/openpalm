@@ -26,3 +26,9 @@ docs/
 !core/**/*.md
 !packages/**/*.md
 !.openpalm/**/*.md
+# Vault secrets — never send to Docker build context
+.openpalm/vault/**/stack.env
+.openpalm/vault/**/guardian.env
+.openpalm/vault/**/user.env
+.openpalm/vault/**/auth.json
+.openpalm/vault/**/managed.env
