@@ -2,10 +2,10 @@
  * Audit logging — append-only structured log for security events.
  *
  * Writes JSON-lines to the configured audit path. Creates the audit
- * directory at module load time (startup). Events are collected in
- * memory and flushed periodically (every 5 seconds) to avoid the
- * throughput cost of per-event flush. Best-effort: a crash may lose
- * up to 5 seconds of buffered events.
+ * directory at module load time (startup). Each event is written
+ * immediately to the Bun writer's internal buffer; an explicit flush
+ * to disk runs every 5 seconds. Best-effort: a crash may lose only
+ * unflushed writes from the OS buffer.
  */
 
 import { createLogger } from "@openpalm/channels-sdk/logger";

@@ -60,7 +60,7 @@ bun run dev:setup      # Creates .dev/ dirs, seeds vault env files
 
 `dev:setup` runs [`scripts/dev-setup.sh --seed-env`](../scripts/dev-setup.sh), which:
 
-- Creates the `.dev/config`, `.dev/vault`, `.dev/data`, and `.dev/state` directories
+- Creates the `.dev/config`, `.dev/vault`, `.dev/data`, and `.dev/logs` directories
 - Seeds `.dev/vault/user/user.env` and `.dev/vault/stack/stack.env` with dev-safe defaults
 
 After setup, edit `.dev/vault/user/user.env` to add your LLM provider keys.
@@ -82,7 +82,7 @@ Two options depending on what you're working on:
 | `bun run dev:stack` | Pulls pre-built images from the configured container registries. Fast start for testing admin workflows. |
 | `bun run dev:build` | Builds all images from local source via [`compose.dev.yml`](../compose.dev.yml). Use when developing services or testing Dockerfile changes. |
 
-Both scripts read env files from `.dev/state/artifacts/`.
+Both scripts read env files from `.dev/vault/`.
 
 ## 4. Run tests and checks
 
@@ -149,10 +149,10 @@ Dev mode mirrors the production [filesystem contract](../docs/technical/foundati
 
 ```
 .dev/
-├── config/          # CONFIG_HOME — components/, automations/, assistant/
-├── vault/           # VAULT — user.env, system.env
-├── data/            # DATA_HOME  — memory, assistant, guardian data
-└── state/           # STATE_HOME — assembled runtime artifacts
+├── config/          # User-editable, non-secret configuration
+├── vault/           # Secrets: vault/user/user.env, vault/stack/stack.env
+├── data/            # Service-managed persistent data
+└── logs/            # Consolidated audit/debug output
 ```
 
 See [docs/technical/foundations.md](../docs/technical/foundations.md) for the full filesystem contract.

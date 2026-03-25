@@ -4,7 +4,7 @@
  * Covers: timestamp skew acceptance/rejection, nonce reuse detection,
  * and pruning/eviction at the size cap.
  */
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect } from "bun:test";
 import { checkNonce, nonceCacheSize, NONCE_WINDOW_MS, NONCE_MAX_SIZE } from "./replay";
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -72,6 +72,10 @@ describe("Replay detection (checkNonce)", () => {
     expect(checkNonce(nonce, ts + 1_000)).toBe(false);
   });
 
+  it("rejects an empty nonce", () => {
+    expect(checkNonce('', Date.now())).toBe(false);
+  });
+
   it("accepts different nonces with the same timestamp", () => {
     const ts = Date.now();
     expect(checkNonce(uniqueNonce(), ts)).toBe(true);
@@ -79,24 +83,20 @@ describe("Replay detection (checkNonce)", () => {
     expect(checkNonce(uniqueNonce(), ts)).toBe(true);
   });
 
-  it("prunes expired entries when cache exceeds pruning threshold", () => {
-    // Insert entries with expired timestamps (outside the window).
-    // These should be pruned once cache exceeds the 10,000 threshold.
-    const expiredTs = Date.now() - NONCE_WINDOW_MS - 60_000;
-
-    // Fill past the pruning trigger (10,000+)
+  it("evicts entries via hard cap when cache exceeds pruning threshold", () => {
+    // Fill past the pruning trigger (10,000+). All nonces use Date.now()
+    // so none are expired — this tests the hard-cap eviction path, not
+    // expiry-based pruning.
     for (let i = 0; i < 10_500; i++) {
-      // Use a valid timestamp so entries are accepted, then they'll age out
       checkNonce(`prune-test-${i}`, Date.now());
     }
 
     // Now insert with a valid timestamp — pruning should trigger and
-    // the cache should not grow unbounded
-    const sizeBeforeNew = nonceCacheSize();
+    // the hard cap ensures the cache does not grow unbounded
     checkNonce(uniqueNonce(), Date.now());
     const sizeAfter = nonceCacheSize();
 
-    // Cache should still be bounded (pruning ran)
+    // Cache should still be bounded (hard-cap eviction ran)
     expect(sizeAfter).toBeLessThanOrEqual(NONCE_MAX_SIZE);
     expect(sizeAfter).toBeGreaterThan(0);
   });

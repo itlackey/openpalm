@@ -29,6 +29,7 @@ const pruneTimer = setInterval(pruneNonceCache, 60_000);
 pruneTimer.unref();
 
 export function checkNonce(nonce: string, ts: number): boolean {
+  if (!nonce) return false;
   if (Math.abs(Date.now() - ts) > CLOCK_SKEW) return false;
   if (seen.has(nonce)) return false;
   seen.set(nonce, ts);
