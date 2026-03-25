@@ -888,9 +888,9 @@ test.describe("@mocked Setup Wizard UI", () => {
 			// Spec (stack.yml content)
 			const spec = payload.spec as Record<string, unknown>;
 			expect(spec.version).toBe(2);
-			const caps = spec.capabilities as Record<string, unknown>;
-			expect(typeof caps.llm).toBe("string");
-			expect((caps.memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
+			const specCaps = spec.capabilities as Record<string, unknown>;
+			expect(typeof specCaps.llm).toBe("string");
+			expect((specCaps.memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
 
 			// Capabilities
 			const caps = payload.capabilities as Array<Record<string, string>>;

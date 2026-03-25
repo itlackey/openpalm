@@ -421,7 +421,7 @@ test.describe('Memory Models API', () => {
 	});
 });
 
-test.describe('@mocked Connection Test & Model Selection UI', () => {
+test.describe('@mocked Capability Test & Model Selection UI', () => {
 	test('Add provider form shows provider and base URL fields', async ({ page }) => {
 		// Previously "Test Connection button fetches models from provider" — the test was checking
 		// that #conn-provider had value 'openai'. In the refactored UI the provider field lives
