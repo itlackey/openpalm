@@ -1,6 +1,6 @@
 /**
- * GET  /admin/addons/:name — Return addon detail: enabled state, env overrides.
- * POST /admin/addons/:name — Enable/disable addon and/or update its env config.
+ * GET  /admin/addons/:name — Return addon detail.
+ * POST /admin/addons/:name — Enable or disable an addon.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -16,37 +16,20 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
-  readStackSpec,
-  writeStackSpec,
-  writeCapabilityVars,
+  listAvailableAddonIds,
+  listEnabledAddonIds,
+  getRegistryAddonConfig,
+  enableAddon,
+  disableAddonByName,
   writeChannelSecrets,
-  hasAddon,
   isChannelAddon,
   randomHex,
-  type StackSpecAddonValue,
 } from "@openpalm/lib";
-import { composeDown, checkDocker } from "$lib/server/docker.js";
+import { composeStop, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 import { buildComposeOptions } from "@openpalm/lib";
-import { existsSync, readdirSync } from "node:fs";
-
-/** List addon IDs by scanning the stack/addons/ directory on disk. */
-function listAddonIds(homeDir: string): string[] {
-  const addonsDir = `${homeDir}/stack/addons`;
-  if (!existsSync(addonsDir)) return [];
-  return readdirSync(addonsDir, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => d.name);
-}
 
 const logger = createLogger("addons.name");
-
-function extractEnv(value: StackSpecAddonValue | undefined): Record<string, string> {
-  if (value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value)) {
-    return value.env ?? {};
-  }
-  return {};
-}
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -59,17 +42,22 @@ export const GET: RequestHandler = async (event) => {
   const name = event.params.name;
 
   // Validate name is a known addon
-  const availableIds = listAddonIds(state.homeDir);
+  const availableIds = listAvailableAddonIds();
   if (!availableIds.includes(name)) {
     return errorResponse(404, "not_found", `Addon "${name}" is not available`, { name }, requestId);
   }
 
-  const spec = readStackSpec(state.configDir);
-  const enabled = spec ? hasAddon(spec, name) : false;
-  const env = spec ? extractEnv(spec.addons[name]) : {};
+  const enabled = listEnabledAddonIds(state.homeDir).includes(name);
+  let config;
+  try {
+    config = getRegistryAddonConfig(state.homeDir, name);
+  } catch (error) {
+    logger.error("failed to read addon schema", { name, error: String(error), requestId });
+    return errorResponse(500, "internal_error", `Addon \"${name}\" schema is unavailable`, {}, requestId);
+  }
 
   appendAudit(state, actor, "addons.name.get", { name }, true, requestId, callerType);
-  return jsonResponse(200, { name, enabled, env }, requestId);
+  return jsonResponse(200, { name, enabled, config }, requestId);
 };
 
 export const POST: RequestHandler = async (event) => {
@@ -83,7 +71,7 @@ export const POST: RequestHandler = async (event) => {
   const name = event.params.name;
 
   // Validate name is a known addon
-  const availableIds = listAddonIds(state.homeDir);
+  const availableIds = listAvailableAddonIds();
   if (!availableIds.includes(name)) {
     return errorResponse(404, "not_found", `Addon "${name}" is not available`, { name }, requestId);
   }
@@ -92,40 +80,15 @@ export const POST: RequestHandler = async (event) => {
   if ('error' in result) return jsonBodyError(result, requestId);
   const body = result.data;
 
-  const spec = readStackSpec(state.configDir);
-  if (!spec) {
-    return errorResponse(500, "internal_error", "stack.yml not found or invalid", {}, requestId);
-  }
-
   const enabled: boolean | undefined =
     typeof body.enabled === "boolean" ? body.enabled : undefined;
-  const envPatch: Record<string, string> | undefined =
-    body.env !== null && body.env !== undefined && typeof body.env === "object" && !Array.isArray(body.env)
-      ? (body.env as Record<string, string>)
-      : undefined;
-
-  const wasEnabled = hasAddon(spec, name);
-  const existingEnv = extractEnv(spec.addons[name]);
-
+  const wasEnabled = listEnabledAddonIds(state.homeDir).includes(name);
   const newEnabled = enabled !== undefined ? enabled : wasEnabled;
-  const newEnv = envPatch !== undefined ? { ...existingEnv, ...envPatch } : existingEnv;
 
-  // Build the addon value: object with env if env is non-empty, otherwise boolean
-  let newValue: StackSpecAddonValue;
-  if (Object.keys(newEnv).length > 0) {
-    newValue = { env: newEnv };
-  } else {
-    newValue = newEnabled;
-  }
-
-  spec.addons[name] = newValue;
-
-  try {
-    writeStackSpec(state.configDir, spec);
-    writeCapabilityVars(spec, state.vaultDir);
-  } catch (err) {
-    appendAudit(state, actor, "addons.name.post", { name, error: String(err) }, false, requestId, callerType);
-    return errorResponse(500, "internal_error", "Failed to update stack.yml", {}, requestId);
+  const mutation = newEnabled ? enableAddon(state.homeDir, name) : disableAddonByName(state.homeDir, name);
+  if (!mutation.ok) {
+    appendAudit(state, actor, "addons.name.post", { name, error: mutation.error }, false, requestId, callerType);
+    return errorResponse(500, "internal_error", mutation.error, {}, requestId);
   }
 
   // Generate HMAC secret for newly-enabled channel addons
@@ -141,22 +104,21 @@ export const POST: RequestHandler = async (event) => {
     }
   }
 
-  // On disable: optionally compose down the addon services
+  // On disable: stop only the disabled addon's services (not the whole stack)
   if (!newEnabled && wasEnabled) {
     const dockerCheck = await checkDocker();
     if (dockerCheck.ok) {
       try {
-        await composeDown(buildComposeOptions(state));
-        logger.info("compose down after addon disable", { name, requestId });
+        await composeStop([name], buildComposeOptions(state));
+        logger.info("stopped addon service after disable", { name, requestId });
       } catch (err) {
-        logger.warn("compose down failed after addon disable", { name, error: String(err), requestId });
+        logger.warn("failed to stop addon service after disable", { name, error: String(err), requestId });
       }
     }
   }
 
   const changed = newEnabled !== wasEnabled;
-  const resultEnabled = hasAddon(spec, name);
-  const resultEnv = extractEnv(spec.addons[name]);
+  const resultEnabled = listEnabledAddonIds(state.homeDir).includes(name);
 
   appendAudit(state, actor, "addons.name.post", { name, enabled: resultEnabled, changed }, true, requestId, callerType);
   logger.info("addon updated", { name, enabled: resultEnabled, changed, requestId });

@@ -24,6 +24,7 @@ import * as adminConnections from "../opencode/tools/admin-connections.ts";
 import * as adminAddons from "../opencode/tools/admin-addons.ts";
 import * as adminLifecycle from "../opencode/tools/admin-lifecycle.ts";
 import * as adminAutomations from "../opencode/tools/admin-automations.ts";
+import * as adminAutomationsCatalog from "../opencode/tools/admin-automations-catalog.ts";
 
 export const plugin: Plugin = async () => {
   return {
@@ -64,7 +65,7 @@ export const plugin: Plugin = async () => {
       "admin-connections-set": adminConnections.set,
       "admin-connections-status": adminConnections.status,
 
-      // admin-addons (addon management via stack.yml)
+      // admin-addons (addon management via registry → stack/addons)
       "admin-addons-list": adminAddons.list,
       "admin-addons-enable": adminAddons.install,
       "admin-addons-disable": adminAddons.uninstall,
@@ -76,10 +77,16 @@ export const plugin: Plugin = async () => {
       "admin-lifecycle-installed": adminLifecycle.installed,
       "admin-lifecycle-upgrade": adminLifecycle.upgrade,
 
-      // admin-automations
+      // admin-automations (enabled in config/automations/)
       "admin-automations-list": adminAutomations.list,
       "admin-automations-trigger": adminAutomations.trigger,
       "admin-automations-log": adminAutomations.log,
+
+      // admin-automations-catalog (available in registry/automations/)
+      "admin-automations-catalog-list": adminAutomationsCatalog.list,
+      "admin-automations-catalog-install": adminAutomationsCatalog.install,
+      "admin-automations-catalog-uninstall": adminAutomationsCatalog.uninstall,
+      "admin-automations-catalog-refresh": adminAutomationsCatalog.refresh,
     },
   };
 };

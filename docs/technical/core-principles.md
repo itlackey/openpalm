@@ -79,7 +79,7 @@ Subtrees:
 
 - `automations/` — automation YAML files (mounted to scheduler)
 - `assistant/` — user OpenCode extensions (tools, plugins, skills)
-- `stack.yml` — tooling metadata such as preferred addons and higher-level settings
+- `stack.yml` — higher-level capability settings only
 
 **Rule:** allowed writers are: user direct edits; explicit admin UI/API config actions; assistant calls through authenticated/allowlisted admin APIs on user request. Automatic lifecycle operations (install/update/startup apply/setup reruns/upgrades) are non-destructive for existing user files and only seed missing defaults or making targeted updates.
 
@@ -92,6 +92,16 @@ Subtrees:
 
 - `core.compose.yml` — base compose definition for core services
 - `addons/<n>/compose.yml` — addon overlays such as `chat`, `api`, `voice`, `admin`
+
+### 1c) Registry (system-managed catalog)
+
+**Location:** `~/.openpalm/registry/`
+**Purpose:** available addon and automation catalog materialized on the host.
+
+Subtrees:
+
+- `addons/<n>/` — available addon directories with `compose.yml`, `.env.schema`, and optional support files
+- `automations/<n>.yml` — available automation YAML files
 
 **Rule:** the CLI/admin may write and update files here as part of lifecycle operations and explicit addon install/uninstall actions. Users may inspect or edit them directly, but this tree is system-assembled runtime state rather than the primary user config surface.
 

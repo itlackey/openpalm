@@ -308,7 +308,7 @@ function buildPayload() {
   var emb = modelSelection.embedding;
   var small = modelSelection.small;
 
-  // Build connections: only include providers needed for system capabilities
+  // Build capabilities: only include providers needed for system capabilities
   // (LLM, embedding, SLM). Other provider keys were already written to
   // auth.json via OpenCode during Step 1 verification.
   var capabilityProviderIds = {};
@@ -316,7 +316,7 @@ function buildPayload() {
   if (emb) capabilityProviderIds[emb.connId] = true;
   if (small && small.model) capabilityProviderIds[small.connId] = true;
 
-  var connections = getVerifiedProviders()
+  var capabilities = getVerifiedProviders()
     .filter(function (p) { return capabilityProviderIds[p.id]; })
     .map(function (p) {
       var st = providerState[p.id];
@@ -329,13 +329,13 @@ function buildPayload() {
       };
     });
 
-  // Resolve LLM and embeddings connection providers
+  // Resolve LLM and embeddings capability providers
   var llmConnId = llm ? llm.connId : "";
   var embConnId = emb ? emb.connId : "";
-  var llmConn = connections.find(function (c) { return c.id === llmConnId; });
-  var embConn = connections.find(function (c) { return c.id === embConnId; });
-  var llmProvider = llmConn ? llmConn.provider : "";
-  var embProvider = embConn ? embConn.provider : "";
+  var llmCap = capabilities.find(function (c) { return c.id === llmConnId; });
+  var embCap = capabilities.find(function (c) { return c.id === embConnId; });
+  var llmProvider = llmCap ? llmCap.provider : "";
+  var embProvider = embCap ? embCap.provider : "";
 
   // Build addons from channels and services
   var addons = {};
@@ -384,7 +384,7 @@ function buildPayload() {
       addons: addons,
     },
     security: { adminToken: adminToken },
-    connections: connections,
+    capabilities: capabilities,
   };
 
   // Add optional slm capability (uses its own provider, not the LLM provider)

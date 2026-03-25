@@ -12,14 +12,15 @@ function validateAddonName(name: string): string | null {
 }
 
 export const list = tool({
-  description: "List all available addons with their enabled status and compose availability",
+  description: "List catalog addons from registry/addons with their enabled state from stack/addons",
+  args: {},
   async execute() {
     return adminFetch("/admin/addons");
   },
 });
 
 export const install = tool({
-  description: "Enable an addon in the stack. Updates stack.yml, generates HMAC secret for channel addons, and optionally starts the service. Requires the addon name (e.g. 'chat', 'discord').",
+  description: "Enable an addon by copying it from registry/addons into stack/addons. Generates HMAC secrets for channel addons.",
   args: {
     addon: tool.schema.string().describe("The addon name to enable (e.g. 'chat', 'discord', 'ollama')"),
   },
@@ -35,7 +36,7 @@ export const install = tool({
 });
 
 export const uninstall = tool({
-  description: "Disable an addon in the stack. Updates stack.yml and optionally stops the service container. WARNING: This will stop the addon service.",
+  description: "Disable an addon by removing it from stack/addons. WARNING: This stops the addon service.",
   args: {
     addon: tool.schema.string().describe("The addon name to disable (e.g. 'chat', 'discord', 'ollama')"),
   },

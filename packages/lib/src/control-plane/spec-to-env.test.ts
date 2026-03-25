@@ -13,7 +13,6 @@ function makeSpec(overrides?: Partial<StackSpec>): StackSpec {
       embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
       memory: { userId: "default_user" },
     },
-    addons: {},
     ...overrides,
   };
 }
@@ -54,7 +53,7 @@ describe("deriveSystemEnvFromSpec", () => {
   });
 
   test("does not include removed feature flags", () => {
-    const spec = makeSpec({ addons: { ollama: true } });
+    const spec = makeSpec();
     const result = deriveSystemEnvFromSpec(spec, "/home/op");
     expect(result.OP_OLLAMA_ENABLED).toBeUndefined();
     expect(result.OP_ADMIN_ENABLED).toBeUndefined();

@@ -41,6 +41,18 @@ PASS=0
 FAIL=0
 TESTS=0
 
+dev_compose() {
+	docker compose --project-directory . \
+		-f .dev/stack/core.compose.yml \
+		-f .dev/stack/addons/admin/compose.yml \
+		-f compose.dev.yml \
+		--env-file .dev/vault/stack/stack.env \
+		--env-file .dev/vault/stack/services/memory/managed.env \
+		--env-file .dev/vault/user/user.env \
+		--env-file .dev/vault/stack/guardian.env \
+		--project-name openpalm "$@"
+}
+
 pass() {
 	PASS=$((PASS + 1))
 	TESTS=$((TESTS + 1))
@@ -55,7 +67,8 @@ fail() {
 # ── Step 1: Stop everything ──────────────────────────────────────────
 echo ""
 echo "=== Step 1: Stop all containers ==="
-docker compose --project-name openpalm down 2>/dev/null || true
+./scripts/dev-setup.sh --seed-env --enable-addon admin >/dev/null 2>&1 || true
+dev_compose down --remove-orphans 2>/dev/null || true
 remaining=$(docker ps --format '{{.Names}}' | grep openpalm || true)
 if [ -z "$remaining" ]; then
 	pass "All containers stopped"
@@ -96,7 +109,9 @@ docker run --rm -v "$ROOT_DIR/.dev/config/assistant:/c" alpine sh -c \
 rm -f .dev/vault/stack/stack.env
 rm -f .dev/vault/stack/auth.json
 rm -rf .dev/vault/stack/services
-rm -rf .dev/vault/stack/addons
+
+# Runtime addons — clear enabled overlays only
+rm -rf .dev/stack/addons
 
 # Config — remove stack.yml so the wizard writes a fresh one
 rm -f .dev/config/stack.yml
@@ -126,6 +141,8 @@ sed -i 's/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=dev/' .dev/vault/stack/stack.env
 
 # Remove stack.yml so the wizard creates a fresh one (verifies Step 7 writes it)
 rm -f .dev/config/stack.yml
+
+./scripts/dev-setup.sh --enable-addon admin >/dev/null 2>&1
 
 pass "Config seeded (admin token cleared, image tag set to dev)"
 
@@ -174,14 +191,8 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 	echo ""
 	echo "=== Step 4: Build all images from source ==="
 	npm run admin:build 2>&1 | tail -3
-	docker compose --project-directory . \
-		-f .dev/stack/core.compose.yml \
-		-f .dev/stack/addons/admin/compose.yml \
-		-f compose.dev.yml \
-		--env-file .dev/vault/stack/stack.env \
-		--env-file .dev/vault/user/user.env \
-		--env-file .dev/vault/stack/guardian.env \
-		--project-name openpalm build 2>&1 | tail -5
+	./scripts/dev-setup.sh --enable-addon admin
+	dev_compose build 2>&1 | tail -5
 	pass "All images built"
 else
 	echo ""
@@ -191,14 +202,7 @@ fi
 # ── Step 5: Start stack ─────────────────────────────────────────────
 echo ""
 echo "=== Step 5: Start stack ==="
-docker compose --project-directory . \
-	-f .dev/stack/core.compose.yml \
-	-f .dev/stack/addons/admin/compose.yml \
-	-f compose.dev.yml \
-	--env-file .dev/vault/stack/stack.env \
-	--env-file .dev/vault/user/user.env \
-	--env-file .dev/vault/stack/guardian.env \
-	--project-name openpalm up -d 2>&1 | tail -10
+dev_compose up -d 2>&1 | tail -10
 
 # Wait for admin to be healthy
 echo "  Waiting for admin health..."
@@ -257,7 +261,6 @@ const result = await performSetup({
       memory: { userId: 'node', customInstructions: '' },
       slm: 'ollama/qwen2.5-coder:3b',
     },
-    addons: { admin: true },
   },
   security: { adminToken: 'dev-admin-token' },
   owner: { name: 'Dev', email: 'dev@localhost' },
@@ -274,14 +277,7 @@ else
 fi
 
 # Step 7b: Recreate all services with the dev overlay to pick up new env vars.
-docker compose --project-directory . \
-	-f .dev/stack/core.compose.yml \
-	-f .dev/stack/addons/admin/compose.yml \
-	-f compose.dev.yml \
-	--env-file .dev/vault/stack/stack.env \
-	--env-file .dev/vault/user/user.env \
-	--env-file .dev/vault/stack/guardian.env \
-	--project-name openpalm up -d --force-recreate 2>&1 | tail -10
+dev_compose up -d --force-recreate 2>&1 | tail -10
 
 pass "Services recreated with updated config"
 
@@ -448,13 +444,13 @@ else
 	fail "assistant OPENAI_BASE_URL should end with /v1, got: $BASE_URL"
 fi
 
-# LMSTUDIO_BASE_URL must be set (from compose.dev.yml overlay) so the socat
-# proxy can forward lmstudio provider requests to Ollama.
+# LMSTUDIO_BASE_URL should be blank (no longer forced in dev).
+# OpenCode uses its own provider detection.
 LMSTUDIO_URL=$(docker exec openpalm-assistant-1 printenv LMSTUDIO_BASE_URL 2>/dev/null || echo "")
-if [ -n "$LMSTUDIO_URL" ]; then
-	pass "assistant LMSTUDIO_BASE_URL=$LMSTUDIO_URL"
+if [ -z "$LMSTUDIO_URL" ]; then
+	pass "assistant LMSTUDIO_BASE_URL is blank (OpenCode uses own defaults)"
 else
-	fail "assistant LMSTUDIO_BASE_URL is not set — compose.dev.yml overlay may not have been applied"
+	pass "assistant LMSTUDIO_BASE_URL=$LMSTUDIO_URL (user-configured)"
 fi
 
 # ── Step 12: Verify Memory user provisioned ──────────────────────

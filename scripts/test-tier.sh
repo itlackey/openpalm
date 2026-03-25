@@ -38,6 +38,18 @@ cd "$ROOT_DIR"
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 
+dev_compose() {
+	docker compose --project-directory . \
+		-f .dev/stack/core.compose.yml \
+		-f .dev/stack/addons/admin/compose.yml \
+		-f compose.dev.yml \
+		--env-file .dev/vault/stack/stack.env \
+		--env-file .dev/vault/stack/services/memory/managed.env \
+		--env-file .dev/vault/user/user.env \
+		--env-file .dev/vault/stack/guardian.env \
+		--project-name openpalm "$@"
+}
+
 ensure_dev_setup() {
 	if [[ ! -f .dev/vault/stack/stack.env ]]; then
 		echo "Seeding dev environment..."
@@ -69,16 +81,13 @@ rebuild_stack() {
 
 	echo "Building admin..."
 	bun run admin:build
+	./scripts/dev-setup.sh --enable-addon admin
+
+	echo "Stopping previous stack containers..."
+	dev_compose down --remove-orphans 2>/dev/null || true
 
 	echo "Rebuilding and recreating stack from source..."
-	docker compose --project-directory . \
-		-f .dev/stack/core.compose.yml \
-		-f .openpalm/stack/addons/admin/compose.yml \
-		-f compose.dev.yml \
-		--env-file .dev/vault/stack/stack.env \
-		--env-file .dev/vault/user/user.env \
-		--env-file .dev/vault/stack/guardian.env \
-		--project-name openpalm up --build --force-recreate -d
+	dev_compose up --build --force-recreate -d
 
 	# Wait for all services to be healthy
 	echo "Waiting for all services to be healthy..."

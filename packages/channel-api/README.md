@@ -17,7 +17,8 @@ Streaming is not supported.
 
 ## Deployment model
 
-- Compose overlay: `~/.openpalm/stack/addons/api/compose.yml`
+- Shipped addon source: `.openpalm/registry/addons/api/compose.yml`
+- Enabled runtime overlay: `~/.openpalm/stack/addons/api/compose.yml`
 - Default host URL: `http://localhost:3821`
 - Container port: `8182`
 - System-managed HMAC secret: `CHANNEL_API_SECRET` in `~/.openpalm/vault/stack/guardian.env`

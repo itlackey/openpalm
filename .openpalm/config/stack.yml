@@ -13,4 +13,3 @@ capabilities:
     dims: 1536
   memory:
     userId: default_user
-addons: {}

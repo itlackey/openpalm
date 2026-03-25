@@ -21,6 +21,7 @@ mkdirSync(`${tmpBase}/config`, { recursive: true });
 mkdirSync(`${tmpBase}/config/automations`, { recursive: true });
 mkdirSync(`${tmpBase}/data`, { recursive: true });
 mkdirSync(`${tmpBase}/data/assistant`, { recursive: true });
+mkdirSync(`${tmpBase}/registry/automations`, { recursive: true });
 mkdirSync(`${tmpBase}/stack`, { recursive: true });
 mkdirSync(`${tmpBase}/vault/stack`, { recursive: true });
 mkdirSync(`${tmpBase}/vault/user`, { recursive: true });
@@ -34,9 +35,9 @@ writeFileSync(`${tmpBase}/data/assistant/opencode.jsonc`, '{"$schema":"https://o
 writeFileSync(`${tmpBase}/data/assistant/AGENTS.md`, "# Agents\n");
 writeFileSync(`${tmpBase}/vault/user/user.env.schema`, "OP_ADMIN_TOKEN=string\n");
 writeFileSync(`${tmpBase}/vault/stack/stack.env.schema`, "OP_IMAGE_TAG=string\n");
-writeFileSync(`${tmpBase}/config/automations/cleanup-logs.yml`, "name: cleanup-logs\nschedule: daily\n");
-writeFileSync(`${tmpBase}/config/automations/cleanup-data.yml`, "name: cleanup-data\nschedule: weekly\n");
-writeFileSync(`${tmpBase}/config/automations/validate-config.yml`, "name: validate-config\nschedule: hourly\n");
+writeFileSync(`${tmpBase}/registry/automations/cleanup-logs.yml`, "name: cleanup-logs\nschedule: daily\n");
+writeFileSync(`${tmpBase}/registry/automations/cleanup-data.yml`, "name: cleanup-data\nschedule: weekly\n");
+writeFileSync(`${tmpBase}/registry/automations/validate-config.yml`, "name: validate-config\nschedule: hourly\n");
 
 // Override state/config home so the server doesn't touch real dirs.
 process.env.OP_HOME = tmpBase;

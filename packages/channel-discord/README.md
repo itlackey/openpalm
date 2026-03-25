@@ -13,7 +13,8 @@ It runs behind guardian and is normally deployed by including `addons/discord/co
 
 ## Deployment model
 
-- Compose overlay: `~/.openpalm/stack/addons/discord/compose.yml`
+- Shipped addon source: `.openpalm/registry/addons/discord/compose.yml`
+- Enabled runtime overlay: `~/.openpalm/stack/addons/discord/compose.yml`
 - User-managed values: `~/.openpalm/vault/user/user.env`
 - System-managed HMAC secret: `CHANNEL_DISCORD_SECRET` in `~/.openpalm/vault/stack/guardian.env`
 

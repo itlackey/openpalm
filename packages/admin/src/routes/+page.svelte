@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import ConnectionBanner from '$lib/components/ConnectionBanner.svelte';
+  import CapabilitiesBanner from '$lib/components/CapabilitiesBanner.svelte';
   import MigrationBanner from '$lib/components/MigrationBanner.svelte';
   import Navbar from '$lib/components/Navbar.svelte';
   import AuthGate from '$lib/components/AuthGate.svelte';
@@ -10,7 +10,7 @@
   import ContainersTab from '$lib/components/ContainersTab.svelte';
   import ArtifactsTab from '$lib/components/ArtifactsTab.svelte';
   import AutomationsTab from '$lib/components/AutomationsTab.svelte';
-  import ConnectionsTab from '$lib/components/ConnectionsTab.svelte';
+  import CapabilitiesTab from '$lib/components/CapabilitiesTab.svelte';
 
   import { getAdminToken, clearToken, storeToken, validateToken } from '$lib/auth.js';
   import {
@@ -22,8 +22,8 @@
     applyChanges,
     upgradeStack,
     containerAction,
-    fetchConnectionStatus,
-    fetchConnections,
+    fetchCapabilityStatus,
+    fetchCapabilities,
   } from '$lib/api.js';
   import type { HealthPayload, ContainerListResponse, AutomationsResponse } from '$lib/types.js';
 
@@ -39,7 +39,7 @@
   let adminOpenCodeStatus = $state<'checking' | 'ready' | 'unavailable'>('checking');
   let adminOpenCodeUrl = $state('http://localhost:3881/');
   let adminStatus = $state('');
-  let connectionsMissing = $state<string[]>([]);
+  let capabilitiesMissing = $state<string[]>([]);
 
   // ── Loading flags ───────────────────────────────────────────────────────────
   let healthLoading = $state(false);
@@ -60,13 +60,13 @@
   let automationsData: AutomationsResponse | null = $state(null);
   let automationsError = $state('');
   let selectedContainerId: string | null = $state(null);
-  let connectionsData: Record<string, string> = $state({});
-  let connectionsLoading = $state(false);
+  let capabilitiesData: Record<string, string> = $state({});
+  let capabilitiesLoading = $state(false);
   // ── Migration ───────────────────────────────────────────────────────────────
   let legacyInstallDetected = $state(false);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: 'overview' | 'addons' | 'containers' | 'artifacts' | 'automations' | 'connections' = $state('overview');
+  let activeTab: 'overview' | 'addons' | 'containers' | 'artifacts' | 'automations' | 'capabilities' = $state('overview');
 
   // ── Container polling ──────────────────────────────────────────────────────
   const POLL_INTERVAL_MS = 10_000;
@@ -148,7 +148,7 @@
       await loadHealth();
       void loadContainers();
       void loadAutomations();
-      void checkConnectionStatus();
+      void checkCapabilityStatus();
       return true;
     } catch {
       authError = 'Unable to reach admin API.';
@@ -158,12 +158,12 @@
     }
   }
 
-  async function checkConnectionStatus(): Promise<void> {
+  async function checkCapabilityStatus(): Promise<void> {
     const token = getAdminToken();
     if (!token) return;
     try {
-      const data = await fetchConnectionStatus(token);
-      connectionsMissing = data.complete ? [] : data.missing;
+      const data = await fetchCapabilityStatus(token);
+      capabilitiesMissing = data.complete ? [] : data.missing;
     } catch {
       // best-effort — don't disrupt auth flow on failure
     }
@@ -291,27 +291,27 @@
     automationsLoading = false;
   }
 
-  async function loadConnections(): Promise<void> {
+  async function loadCapabilities(): Promise<void> {
     const token = getAdminToken();
     tokenStored = Boolean(token);
     if (!token) {
       authLocked = true;
       authError = 'Admin token required.';
       adminStatus = '';
-      connectionsData = {};
+      capabilitiesData = {};
       return;
     }
-    connectionsLoading = true;
+    capabilitiesLoading = true;
     try {
-      connectionsData = await fetchConnections(token);
+      capabilitiesData = await fetchCapabilities(token);
     } catch (e) {
-      connectionsData = {};
+      capabilitiesData = {};
       const err = e as { status?: number; message?: string };
       if (err.status === 401) {
         applyInvalidTokenState();
       }
     }
-    connectionsLoading = false;
+    capabilitiesLoading = false;
   }
 
   // ── Actions ──────────────────────────────────────────────────────────────────
@@ -392,7 +392,7 @@
     selectedContainerId = selectedContainerId === id ? null : id;
   }
 
-  function handleTabSelect(tab: 'overview' | 'addons' | 'containers' | 'artifacts' | 'automations' | 'connections'): void {
+  function handleTabSelect(tab: 'overview' | 'addons' | 'containers' | 'artifacts' | 'automations' | 'capabilities'): void {
     activeTab = tab;
     if (tab === 'containers' && !containerData) {
       void loadContainers();
@@ -400,8 +400,8 @@
     if (tab === 'automations' && !automationsData) {
       void loadAutomations();
     }
-    if (tab === 'connections' && Object.keys(connectionsData).length === 0) {
-      void loadConnections();
+    if (tab === 'capabilities' && Object.keys(capabilitiesData).length === 0) {
+      void loadCapabilities();
     }
   }
 
@@ -438,7 +438,7 @@
         void loadHealth();
         void loadContainers();
         void loadAutomations();
-        void checkConnectionStatus();
+        void checkCapabilityStatus();
       } catch {
         authLocked = true;
         authError = 'Unable to reach admin API.';
@@ -460,7 +460,7 @@
 
   <main>
     <MigrationBanner visible={legacyInstallDetected} />
-    <ConnectionBanner missing={connectionsMissing} onNavigate={() => handleTabSelect('connections')} />
+    <CapabilitiesBanner missing={capabilitiesMissing} onNavigate={() => handleTabSelect('capabilities')} />
 
     <TabBar active={activeTab} onSelect={handleTabSelect} />
 
@@ -520,10 +520,10 @@
         {tokenStored}
         onRefresh={loadAutomations}
       />
-    {:else if activeTab === 'connections'}
-      <ConnectionsTab
-        loading={connectionsLoading}
-        onRefresh={loadConnections}
+    {:else if activeTab === 'capabilities'}
+      <CapabilitiesTab
+        loading={capabilitiesLoading}
+        onRefresh={loadCapabilities}
       />
     {/if}
   </main>

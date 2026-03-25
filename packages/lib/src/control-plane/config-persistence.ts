@@ -9,8 +9,9 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, chmodS
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { isChannelAddon } from "./channels.js";
-import { readStackSpec, hasAddon, addonNames } from "./stack-spec.js";
+import { readStackSpec } from "./stack-spec.js";
 import { writeCapabilityVars } from "./spec-to-env.js";
+import { listEnabledAddonIds } from "./registry.js";
 
 import { generateRedactSchema } from "./redact-schema.js";
 import { readStackEnv } from "./secrets.js";
@@ -27,21 +28,17 @@ const DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
 // ── Stack Config (stack.yml) ─────────────────────────────────────
 
 /**
- * Check whether Ollama is enabled via stack.yml addons list.
+ * Check whether Ollama is enabled via active stack/addons/ overlay.
  */
 export function isOllamaEnabled(state: ControlPlaneState): boolean {
-  const spec = readStackSpec(state.configDir);
-  if (spec) return hasAddon(spec, "ollama");
-  return false;
+  return listEnabledAddonIds(state.homeDir).includes("ollama");
 }
 
 /**
- * Check whether admin is enabled via stack.yml addons list.
+ * Check whether admin is enabled via active stack/addons/ overlay.
  */
 export function isAdminEnabled(state: ControlPlaneState): boolean {
-  const spec = readStackSpec(state.configDir);
-  if (spec) return hasAddon(spec, "admin");
-  return false;
+  return listEnabledAddonIds(state.homeDir).includes("admin");
 }
 
 // ── Env File Management ──────────────────────────────────────────────
@@ -51,8 +48,6 @@ export function isAdminEnabled(state: ControlPlaneState): boolean {
  * These are the live vault env files.
  *
  * Order: stack.env -> user.env -> guardian.env
- * guardian.env is last so channel HMAC secrets from guardian.env
- * take precedence over any stale entries in stack.env during migration.
  */
 export function buildEnvFiles(state: ControlPlaneState): string[] {
   return [
@@ -182,7 +177,6 @@ export function buildRuntimeFileMeta(artifacts: {
 
 // ── Channel Secrets ────────────────────────────────────────────────────
 // Channel HMAC secrets live exclusively in vault/stack/guardian.env.
-// Legacy stack.env entries are migrated on first writeRuntimeFiles() call.
 
 const CHANNEL_SECRET_RE = /^CHANNEL_([A-Z0-9_]+)_SECRET$/;
 
@@ -198,15 +192,9 @@ function extractChannelSecrets(parsed: Record<string, string>): Record<string, s
 
 /**
  * Read channel HMAC secrets from vault/stack/guardian.env.
- * Falls back to vault/stack/stack.env for pre-migration installs.
  */
 export function readChannelSecrets(vaultDir: string): Record<string, string> {
-  const guardianPath = `${vaultDir}/stack/guardian.env`;
-  const guardianSecrets = extractChannelSecrets(parseEnvFile(guardianPath));
-  if (Object.keys(guardianSecrets).length > 0) return guardianSecrets;
-
-  // Fallback: read from stack.env for pre-migration installs
-  return extractChannelSecrets(parseEnvFile(`${vaultDir}/stack/stack.env`));
+  return extractChannelSecrets(parseEnvFile(`${vaultDir}/stack/guardian.env`));
 }
 
 /**
@@ -235,55 +223,6 @@ export function writeChannelSecrets(vaultDir: string, secrets: Record<string, st
   chmodSync(guardianPath, 0o600);
 }
 
-/**
- * Idempotent migration: move CHANNEL_*_SECRET entries from stack.env to guardian.env.
- * guardian.env wins on conflict (existing guardian.env entries are never overwritten).
- * Migrated entries are removed from stack.env.
- *
- * Returns the count of migrated and skipped entries.
- */
-export function migrateLegacyChannelSecrets(vaultDir: string): { migrated: number; skipped: number } {
-  const stackPath = `${vaultDir}/stack/stack.env`;
-  if (!existsSync(stackPath)) return { migrated: 0, skipped: 0 };
-
-  const stackContent = readFileSync(stackPath, "utf-8");
-  const stackParsed = parseEnvFile(stackPath);
-  const legacySecrets = extractChannelSecrets(stackParsed);
-  if (Object.keys(legacySecrets).length === 0) return { migrated: 0, skipped: 0 };
-
-  // Read existing guardian secrets
-  const guardianPath = `${vaultDir}/stack/guardian.env`;
-  const guardianSecrets = extractChannelSecrets(parseEnvFile(guardianPath));
-
-  const toMigrate: Record<string, string> = {};
-  let skipped = 0;
-  for (const [ch, secret] of Object.entries(legacySecrets)) {
-    if (guardianSecrets[ch]) {
-      skipped++;
-    } else {
-      toMigrate[ch] = secret;
-    }
-  }
-
-  // Write migrated secrets to guardian.env
-  if (Object.keys(toMigrate).length > 0) {
-    writeChannelSecrets(vaultDir, toMigrate);
-  }
-
-  // Remove CHANNEL_*_SECRET lines from stack.env
-  const cleanedLines = stackContent.split("\n").filter(line => {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("#")) return true;
-    const eq = trimmed.indexOf("=");
-    if (eq <= 0) return true;
-    const key = trimmed.slice(0, eq).trim();
-    return !CHANNEL_SECRET_RE.test(key);
-  });
-  writeFileSync(stackPath, cleanedLines.join("\n"));
-
-  return { migrated: Object.keys(toMigrate).length, skipped };
-}
-
 // ── Persistence (direct-write to live paths) ────────────────────────
 
 export function writeRuntimeFiles(
@@ -294,20 +233,14 @@ export function writeRuntimeFiles(
   mkdirSync(stackDir, { recursive: true });
   writeFileSync(`${stackDir}/core.compose.yml`, state.artifacts.compose);
 
-  // Migrate legacy channel secrets from stack.env to guardian.env (idempotent).
-  migrateLegacyChannelSecrets(state.vaultDir);
-
-  // Load persisted channel HMAC secrets from guardian.env (with stack.env fallback),
+  // Load persisted channel HMAC secrets from guardian.env,
   // then generate new ones for new channel addons.
   const channelSecrets = readChannelSecrets(state.vaultDir);
-  const spec = readStackSpec(state.configDir);
-  if (spec) {
-    const addonStackDir = `${state.homeDir}/stack`;
-    for (const addon of addonNames(spec)) {
-      const composePath = `${addonStackDir}/addons/${addon}/compose.yml`;
-      if (isChannelAddon(composePath) && !channelSecrets[addon]) {
-        channelSecrets[addon] = randomHex(16);
-      }
+  const addonStackDir = `${state.homeDir}/stack`;
+  for (const addon of listEnabledAddonIds(state.homeDir)) {
+    const composePath = `${addonStackDir}/addons/${addon}/compose.yml`;
+    if (isChannelAddon(composePath) && !channelSecrets[addon]) {
+      channelSecrets[addon] = randomHex(16);
     }
   }
 
@@ -321,6 +254,7 @@ export function writeRuntimeFiles(
   ensureUserEnvSchema();
   ensureSystemEnvSchema();
 
+  const spec = readStackSpec(state.configDir);
   // Write OP_CAP_* capability vars to stack.env from stack spec
   if (spec) {
     writeCapabilityVars(spec, state.vaultDir);

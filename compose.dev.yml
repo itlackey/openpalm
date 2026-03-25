@@ -42,17 +42,14 @@ services:
       context: .
       dockerfile: core/assistant/Dockerfile
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev
-    # Dev override: use host env API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY).
-    # OpenCode picks the default model based on available keys.
+    # Dev override: blank cloud keys to prevent host env leakage.
+    # OpenCode uses its own provider detection and auth store.
     environment:
       GROQ_API_KEY: ""
       MISTRAL_API_KEY: ""
       GOOGLE_API_KEY: ""
-      # Dev: lmstudio provider with socat proxy to Ollama on host.
-      # LMSTUDIO_API_KEY must be non-empty for OpenCode to activate the provider.
-      # LMSTUDIO_BASE_URL tells entrypoint.sh socat proxy where to forward.
-      LMSTUDIO_API_KEY: "ollama"
-      LMSTUDIO_BASE_URL: "http://host.docker.internal:11434/v1"
+      LMSTUDIO_API_KEY: ""
+      LMSTUDIO_BASE_URL: ""
 
   channel:
     build:
@@ -72,33 +69,14 @@ services:
       dockerfile: core/memory/Dockerfile
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/memory:dev
 
-  # Voice channel dev override: mount local source instead of npm install.
-  # Requires voice.yml overlay loaded before this file (-f channels/voice.yml -f compose.dev.yml).
+  # Voice channel dev override: standalone static file server (no channel SDK entrypoint).
   channel-voice:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:dev
     ports:
       - "${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT:-8186}:8186"
-    env_file:
-      # Voice channel only needs its own HMAC secret from guardian.env.
-      # Do NOT add stack.env or user.env — channels must not receive
-      # admin tokens, assistant tokens, or other stack-wide secrets.
-      - path: ${OP_HOME}/vault/stack/guardian.env
-        required: false
     volumes:
       - ./packages/channel-voice:/app/channel-voice:ro
     environment:
       PORT: "8186"
-      CHANNEL_NAME: "Voice"
-      GUARDIAN_URL: http://guardian:8080
-      CHANNEL_PACKAGE: ""
-      CHANNEL_FILE: /app/channel-voice/src/index.ts
-      # Dev: no cloud TTS/STT — use browser fallback
-      STT_API_KEY: ""
-      TTS_API_KEY: ""
-      STT_BASE_URL: ""
-      TTS_BASE_URL: ""
-      OPENAI_API_KEY: ""
+    command: ["bun", "run", "/app/channel-voice/src/index.ts"]
     networks: [channel_lan]
-    depends_on:
-      guardian:
-        condition: service_healthy

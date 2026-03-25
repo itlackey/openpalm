@@ -321,7 +321,6 @@ Mounts:
 - `$OP_HOME -> /openpalm`
 - `$OP_HOME/data/admin -> /home/node`
 - `$OP_HOME/data/workspace -> /work`
-- `${HOME}/.cache/openpalm/registry -> /cache/registry`
 - `${GNUPGHOME:-${HOME}/.gnupg} -> /home/node/.gnupg:ro`
 
 Design note — admin mounts all of `OP_HOME`: The admin service mounts the full `$OP_HOME` directory because it is the web-based orchestrator responsible for managing config, vault, stack assembly, data, and logs. Mounting individual subdirectories would be fragile and would break whenever new paths are introduced. The blast radius is already constrained: the admin reaches Docker only through docker-socket-proxy (filtered API), all admin API endpoints require `ADMIN_TOKEN` authentication, and the service binds to localhost by default. Narrowing the mount would add complexity without meaningful security improvement given these existing controls.
@@ -365,7 +364,7 @@ Addon compose files use `openpalm.*` Docker labels for discovery and UI metadata
 - `openpalm.category` (optional) — `messaging`, `ai`, `integration`, `management`
 - `openpalm.healthcheck` (optional) — internal health check URL
 
-The `openpalm.name` and `openpalm.description` labels are validated by the registry test suite (`scripts/validate-registry.sh`). The admin UI reads addon state from `stack.yml`, not from Docker labels at runtime.
+The `openpalm.name` and `openpalm.description` labels are validated by the registry test suite (`scripts/validate-registry.sh`). The admin UI reads addon availability from `registry/addons/` and active state from `stack/addons/`, not from Docker labels.
 
 ---
 

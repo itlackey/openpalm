@@ -73,19 +73,19 @@ export type MemoryConfigResponse = {
   embeddingDims: Record<string, number>;
 };
 
-export type ConnectionsCapabilities = {
+export type CapabilitiesSummary = {
   llm: string;
   slm?: string;
   embeddings: { provider: string; model: string; dims: number };
   memory: { userId: string; customInstructions?: string };
 };
 
-export type ConnectionsResponseDto = {
-  capabilities: ConnectionsCapabilities | null;
+export type CapabilitiesResponseDto = {
+  capabilities: CapabilitiesSummary | null;
   secrets: Record<string, string>;
 };
 
-export type SaveConnectionsPayload = {
+export type SaveCapabilitiesPayload = {
   provider: string;
   apiKey?: string;
   baseUrl?: string;
@@ -96,7 +96,7 @@ export type SaveConnectionsPayload = {
   customInstructions?: string;
 };
 
-export type SystemConnectionSaveResult = {
+export type CapabilitySaveResult = {
   ok: boolean;
   dimensionWarning?: string;
   dimensionMismatch?: boolean;

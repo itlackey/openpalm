@@ -35,13 +35,13 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 - **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic.
 - **Assistant** (`core/assistant/`) — OpenCode runtime with tools/skills. No Docker socket. When admin is present, calls Admin API for stack operations.
 - **Memory** (`packages/memory/`, `core/memory/`) — Bun-based memory service with sqlite-vec. Provides vector-backed agentic memory.
-- **Scheduler** (`packages/scheduler/`) — Lightweight Bun sidecar: sole automation engine. Runs cron jobs (http, shell, assistant, api actions). Reads from `config/automations/`.
+- **Scheduler** (`packages/scheduler/`) — Lightweight Bun sidecar: sole automation engine. Runs cron jobs (http, shell, assistant, api actions). Reads enabled automation files from `config/automations/`.
 - **Channel runtime** (`core/channel/`) — Unified `channel` image build and startup entrypoint.
 - **Channel adapters** (`packages/channel-chat/`, `packages/channel-api/`, `packages/channel-discord/`, `packages/channel-slack/`, `packages/channel-voice/`) — Translate external protocols into signed guardian messages.
 - **Channels SDK** (`packages/channels-sdk/`) — Shared SDK for channel adapters: signing, assistant client, base classes.
 - **Assistant-tools** (`packages/assistant-tools/`) — Memory tools and session hooks for the assistant. No admin dependency.
 - **Admin-tools** (`packages/admin-tools/`) — Admin API tools for the assistant. Only loaded when admin is present.
-- **Stack** (`.openpalm/stack/`) — Self-contained Docker Compose foundation. Core compose, addons, automations, schemas. Consumed by CLI (from `data/`) and admin (from Vite bundle).
+- **Stack** (`.openpalm/stack/`) — Repo-shipped Docker Compose foundation. Contains the core compose file only. Runtime enabled addons live under `~/.openpalm/stack/addons/`.
 
 ---
 
@@ -253,14 +253,14 @@ All state lives under `~/.openpalm/` (configurable via `OP_HOME`):
 
 | Directory | Owner | Purpose |
 |-----------|-------|---------|
-| `config/` | User | Non-secret config: stack.yml, automations, assistant extensions |
+| `config/` | User | Non-secret config: `stack.yml` capabilities, enabled automations, assistant extensions |
 | `vault/user/` | User | User-managed secrets: `user.env` (LLM keys, owner info) |
 | `vault/stack/` | Admin | System-managed secrets: `stack.env` (admin token, HMAC, paths) |
 | `stack/` | System | Live Docker Compose assembly: `core.compose.yml` + addon overlays |
 | `data/` | Services | Persistent data: assistant, admin, memory, guardian |
 | `logs/` | Services | Audit and debug logs |
 | `backups/` | System | Durable upgrade backup snapshots |
-| `~/.cache/openpalm/` | System | Ephemeral: registry cache, rollback snapshots |
+| `~/.cache/openpalm/` | System | Ephemeral: rollback snapshots |
 
 Dev mode uses `.dev/` with the same subdirectory structure.
 
@@ -305,7 +305,7 @@ Before submitting any change:
 | `core/guardian/src/server.ts` | HMAC-signed message guardian |
 | `packages/channels-sdk/src/logger.ts` | Shared logger (createLogger factory) |
 | `.openpalm/stack/core.compose.yml` | Core service definitions (4 services) |
-| `.openpalm/stack/addons/` | Optional add-on compose overlays (admin, chat, discord, etc.) |
+| `.openpalm/registry/` | Repo catalog for available addons and automations |
 | `packages/assistant-tools/AGENTS.md` | Assistant persona and operational guidelines |
 | `packages/assistant-tools/src/index.ts` | Memory tools plugin |
 | `packages/admin-tools/src/index.ts` | Admin tools plugin |

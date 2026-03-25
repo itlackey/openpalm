@@ -8,7 +8,7 @@ import {
   buildSystemSecretsFromSetup,
   performSetup,
 } from "./setup.js";
-import type { SetupSpec, SetupConnection } from "./setup.js";
+import type { SetupSpec, SetupCapability } from "./setup.js";
 import { STACK_SPEC_FILENAME, readStackSpec } from "./stack-spec.js";
 import type { StackSpec } from "./stack-spec.js";
 
@@ -30,11 +30,10 @@ function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
           customInstructions: "",
         },
       },
-      addons: {},
     },
     security: { adminToken: "test-admin-token-12345" },
     owner: { name: "Test User", email: "test@example.com" },
-    connections: [
+    capabilities: [
       {
         id: "openai-main",
         name: "OpenAI",
@@ -103,21 +102,21 @@ describe("validateSetupSpec", () => {
     expect(result.errors.some((e) => e.includes("at least 8"))).toBe(true);
   });
 
-  it("accepts empty connections array", () => {
-    const spec = makeValidSpec({ connections: [] });
+  it("accepts empty capabilities array", () => {
+    const spec = makeValidSpec({ capabilities: [] });
     const result = validateSetupSpec(spec);
     expect(result.valid).toBe(true);
   });
 
-  it("rejects duplicate connection IDs", () => {
-    const conn: SetupConnection = {
+  it("rejects duplicate capability IDs", () => {
+    const conn: SetupCapability = {
       id: "dup",
       name: "Dup",
       provider: "openai",
       baseUrl: "",
       apiKey: "",
     };
-    const spec = makeValidSpec({ connections: [conn, conn] });
+    const spec = makeValidSpec({ capabilities: [conn, conn] });
     const result = validateSetupSpec(spec);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes("Duplicate"))).toBe(true);
@@ -125,7 +124,7 @@ describe("validateSetupSpec", () => {
 
   it("accepts any provider string", () => {
     const spec = makeValidSpec({
-      connections: [
+      capabilities: [
         { id: "custom", name: "Custom", provider: "any-provider", baseUrl: "", apiKey: "" },
       ],
     });
@@ -133,9 +132,9 @@ describe("validateSetupSpec", () => {
     expect(result.valid).toBe(true);
   });
 
-  it("rejects invalid connection ID pattern", () => {
+  it("rejects invalid capability ID pattern", () => {
     const spec = makeValidSpec({
-      connections: [
+      capabilities: [
         { id: "-invalid", name: "Bad", provider: "openai", baseUrl: "", apiKey: "" },
       ],
     });
@@ -192,9 +191,9 @@ describe("validateSetupSpec", () => {
     expect(result.errors.some((e) => e.includes("dims must be a positive integer"))).toBe(true);  // or 0 (auto-resolve)
   });
 
-  it("accepts multiple connections with different IDs", () => {
+  it("accepts multiple capabilities with different IDs", () => {
     const spec = makeValidSpec({
-      connections: [
+      capabilities: [
         { id: "openai-main", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-abc" },
         { id: "ollama-local", name: "Ollama", provider: "ollama", baseUrl: "http://localhost:11434", apiKey: "" },
       ],
@@ -253,14 +252,14 @@ describe("validateSetupSpec", () => {
 describe("buildSecretsFromSetup", () => {
   it("does not include admin token in user secrets", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
+    const secrets = buildSecretsFromSetup(spec.capabilities, spec.owner);
     expect(secrets.OP_ADMIN_TOKEN).toBeUndefined();
     expect(secrets.ADMIN_TOKEN).toBeUndefined();
   });
 
   it("does not include SYSTEM_LLM_* in user secrets (lives in stack.env via OP_CAP_*)", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
+    const secrets = buildSecretsFromSetup(spec.capabilities, spec.owner);
     expect(secrets.SYSTEM_LLM_PROVIDER).toBeUndefined();
     expect(secrets.SYSTEM_LLM_MODEL).toBeUndefined();
     expect(secrets.SYSTEM_LLM_BASE_URL).toBeUndefined();
@@ -268,41 +267,41 @@ describe("buildSecretsFromSetup", () => {
 
   it("persists OPENAI_BASE_URL from openai connection", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
+    const secrets = buildSecretsFromSetup(spec.capabilities, spec.owner);
     expect(secrets.OPENAI_BASE_URL).toBe("https://api.openai.com");
   });
 
   it("does not include MEMORY_USER_ID in user secrets (lives in stack.env via OP_CAP_*)", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
+    const secrets = buildSecretsFromSetup(spec.capabilities, spec.owner);
     expect(secrets.MEMORY_USER_ID).toBeUndefined();
   });
 
   it("sets owner info when provided", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
+    const secrets = buildSecretsFromSetup(spec.capabilities, spec.owner);
     expect(secrets.OWNER_NAME).toBe("Test User");
     expect(secrets.OWNER_EMAIL).toBe("test@example.com");
   });
 
   it("omits owner info when empty", () => {
     const spec = makeValidSpec({ owner: { name: "", email: "" } });
-    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
+    const secrets = buildSecretsFromSetup(spec.capabilities, spec.owner);
     expect(secrets.OWNER_NAME).toBeUndefined();
     expect(secrets.OWNER_EMAIL).toBeUndefined();
   });
 
   it("maps API key to correct env var", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
+    const secrets = buildSecretsFromSetup(spec.capabilities, spec.owner);
     expect(secrets.OPENAI_API_KEY).toBe("sk-test-key-123");
   });
 
   it("does not include Ollama base URL in user secrets when ollamaEnabled (lives in stack.env via OP_CAP_*)", () => {
-    const connections: SetupConnection[] = [
+    const caps: SetupCapability[] = [
       { id: "ollama-1", name: "Ollama", provider: "ollama", baseUrl: "http://localhost:11434", apiKey: "" },
     ];
-    const secrets = buildSecretsFromSetup(connections);
+    const secrets = buildSecretsFromSetup(caps);
     // These are no longer written to user.env — they live in stack.env via OP_CAP_* vars
     expect(secrets.SYSTEM_LLM_BASE_URL).toBeUndefined();
     expect(secrets.OPENAI_BASE_URL).toBeUndefined();
@@ -343,7 +342,6 @@ describe("performSetup", () => {
       configDir,
       join(configDir, "automations"),
       join(configDir, "channels"),
-      join(configDir, "connections"),
       join(configDir, "assistant"),
       join(configDir, "stash"),
       vaultDir,
@@ -450,7 +448,7 @@ describe("performSetup", () => {
     expect(existsSync(stagedCompose)).toBe(true);
   });
 
-  it("writes ollama addon when ollama is in spec.addons", async () => {
+  it("writes ollama capabilities without addon metadata in stack.yml", async () => {
     const input = makeValidSpec({
       spec: {
         version: 2,
@@ -466,9 +464,8 @@ describe("performSetup", () => {
             customInstructions: "",
           },
         },
-        addons: { ollama: true },
       },
-      connections: [
+      capabilities: [
         {
           id: "ollama-local",
           name: "Ollama",
@@ -482,11 +479,10 @@ describe("performSetup", () => {
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    // v2 spec should have ollama addon enabled and correct capabilities
+    // v2 spec should have correct capabilities without addon metadata
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
     expect(spec!.version).toBe(2);
-    expect(spec!.addons.ollama).toBe(true);
     expect(spec!.capabilities.llm).toBe("ollama/llama3.2");
   });
 
@@ -506,9 +502,8 @@ describe("performSetup", () => {
             customInstructions: "",
           },
         },
-        addons: {},
       },
-      connections: [
+      capabilities: [
         {
           id: "ollama-local",
           name: "Ollama",
@@ -541,12 +536,11 @@ describe("performSetup", () => {
     expect(spec!.capabilities.embeddings.provider).toBe("openai");
     expect(spec!.capabilities.embeddings.model).toBe("text-embedding-3-small");
     expect(spec!.capabilities.memory.userId).toBe("test_user");
-    expect(Object.keys(spec!.addons)).toHaveLength(0);
   });
 
-  it("completes setup even when duplicate connection ID with hyphen is skipped by env var map", async () => {
+  it("completes setup even when duplicate capability ID with hyphen is skipped by env var map", async () => {
     const input = makeValidSpec({
-      connections: [
+      capabilities: [
         { id: "openai_primary", name: "OpenAI Primary", provider: "openai", baseUrl: "https://api.openai.com", apiKey: "sk-primary" },
         { id: "openai-secondary", name: "OpenAI Secondary", provider: "openai", baseUrl: "https://api.openai.com", apiKey: "sk-secondary" },
       ],
@@ -584,7 +578,6 @@ describe("performSetup", () => {
             customInstructions: "",
           },
         },
-        addons: { discord: true },
       },
     });
 
@@ -596,4 +589,3 @@ describe("performSetup", () => {
     expect(stackEnvContent).toContain("discord-app-id-123");
   });
 });
-

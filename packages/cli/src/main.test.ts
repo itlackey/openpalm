@@ -19,13 +19,12 @@ function writeMinimalSetupSpec(dir: string): string {
     '      dims: 1536',
     '    memory:',
     '      userId: test_user',
-    '  addons: {}',
     'security:',
     '  adminToken: test-admin-token-12345',
     'owner:',
     '  name: Test User',
     '  email: test@example.com',
-    'connections:',
+    'capabilities:',
     '  - id: openai',
     '    name: OpenAI',
     '    provider: openai',
@@ -170,6 +169,8 @@ describe('cli main', () => {
       await main(['install', '--no-start', '--file', specFile]);
       // Bootstrap runs directly, creating directories
       expect(existsSync(join(dataHome, 'admin'))).toBe(true);
+      expect(existsSync(join(base, 'registry', 'addons', 'chat', 'compose.yml'))).toBe(true);
+      expect(existsSync(join(base, 'registry', 'automations', 'cleanup-logs.yml'))).toBe(true);
       // guardian.env must be a file (not directory) — Docker creates a directory
       // when bind-mounting a non-existent source path, breaking compose up.
       const guardianEnv = join(base, 'vault', 'stack', 'guardian.env');

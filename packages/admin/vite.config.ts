@@ -43,7 +43,7 @@ export default defineConfig(({ mode }) => {
               provider: playwright(),
               instances: [{ browser: "chromium", name: "chromium", headless: true }]
             },
-            include: ["src/**/*.svelte.{test,spec}.{js,ts}"],
+            include: ["src/**/*.svelte.vitest.{js,ts}"],
             exclude: ["src/lib/server/**"]
           }
         },
@@ -53,8 +53,8 @@ export default defineConfig(({ mode }) => {
           test: {
             name: "server",
             environment: "node",
-            include: ["src/**/*.{test,spec}.{js,ts}"],
-            exclude: ["src/**/*.svelte.{test,spec}.{js,ts}"]
+            include: ["src/**/*.vitest.{js,ts}"],
+            exclude: ["src/**/*.svelte.vitest.{js,ts}"]
           }
         }
       ]

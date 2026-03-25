@@ -1,6 +1,6 @@
 # Issue #304 — Admin OpenCode instance inside the admin container
 
-> Current repo alignment: this is no longer a brokered-runtime plan. The shipped direction is a directly exposed, host-only admin OpenCode instance running inside the admin container, with compose assets under `.openpalm/stack/addons/admin/compose.yml` and seeded config owned by the shared lib.
+> Current repo alignment: this is no longer a brokered-runtime plan. The shipped direction is a directly exposed, host-only admin OpenCode instance running inside the admin container, with the shipped addon source under `.openpalm/registry/addons/admin/compose.yml`, the enabled runtime overlay under `~/.openpalm/stack/addons/admin/compose.yml`, and seeded config owned by the shared lib.
 
 ## Design (simplified 2026-03-20)
 
@@ -16,7 +16,7 @@ The admin container runs a second OpenCode instance alongside SvelteKit. The use
 |-----------|--------|----------|
 | **Dockerfile** | ✅ Done | `core/admin/Dockerfile:65-86` — OpenCode v1.2.24 + Bun installed at runtime |
 | **Entrypoint auto-start** | ✅ Done | `core/admin/entrypoint.sh:60` — `start_opencode` runs automatically |
-| **Compose port binding** | ✅ Done | `.openpalm/stack/addons/admin/compose.yml:34` — `127.0.0.1:${OP_ADMIN_OPENCODE_PORT:-3881}:3881` (host-only) |
+| **Compose port binding** | ✅ Done | `.openpalm/registry/addons/admin/compose.yml:34` — `127.0.0.1:${OP_ADMIN_OPENCODE_PORT:-3881}:3881` (host-only shipped source; enabled installs copy it into `~/.openpalm/stack/addons/admin/compose.yml`) |
 | **Config seeding** | ✅ Done | `packages/lib/src/control-plane/core-assets.ts:246` — `ensureAdminOpenCodeConfig()` |
 | **Admin-tools plugin** | ✅ Done | `core/admin/opencode.jsonc` loads the admin-side OpenCode config baked into the image |
 | **Auth (token split)** | ✅ Done | `packages/admin/src/lib/server/helpers.ts` — `ADMIN_TOKEN` / `ASSISTANT_TOKEN` distinct |
@@ -65,7 +65,7 @@ Add a link or status card in the admin dashboard that:
 
 - `core/admin/Dockerfile` — runtime image with OpenCode + Bun
 - `core/admin/entrypoint.sh` — auto-starts SvelteKit + admin OpenCode on `OPENCODE_PORT` (default `3881`)
-- `.openpalm/stack/addons/admin/compose.yml` — compose overlay with host-only admin UI and admin OpenCode port binds
+- `.openpalm/registry/addons/admin/compose.yml` — shipped addon source for the admin overlay; enabled installs copy it into `~/.openpalm/stack/addons/admin/compose.yml`
 - `core/admin/opencode.jsonc` — baked admin OpenCode config
 - `packages/lib/src/control-plane/core-assets.ts` — config seeding function
 - `packages/admin/src/lib/opencode/client.server.ts` — admin-side proxy client for the assistant OpenCode instance at `http://localhost:4096`

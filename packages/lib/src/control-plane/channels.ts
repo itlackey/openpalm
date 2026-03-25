@@ -1,12 +1,11 @@
 /**
  * Channel validation, discovery, and allowlist checks for the OpenPalm control plane.
  */
-import { existsSync, readdirSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { parse as yamlParse } from "yaml";
 import type { ChannelInfo } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
-import type { RegistryProvider } from "./registry-provider.js";
 
 // ── Channel Name Validation ───────────────────────────────────────────
 
@@ -129,56 +128,4 @@ export function isValidChannel(value: string, configDir?: string): boolean {
     return existsSync(`${homeDir}/stack/addons/${value}/compose.yml`);
   }
   return false;
-}
-
-// ── Automation Install / Uninstall ──────────────────────────────────────
-
-/** Strict automation name: same rules as channel names */
-const AUTOMATION_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
-
-/**
- * Install an automation from the registry catalog into config/automations/.
- */
-export function installAutomationFromRegistry(
-  name: string,
-  configDir: string,
-  registry: RegistryProvider
-): { ok: true } | { ok: false; error: string } {
-  if (!AUTOMATION_NAME_RE.test(name)) {
-    return { ok: false, error: `Invalid automation name: ${name}` };
-  }
-  const automationYml = registry.automations();
-  if (!(name in automationYml)) {
-    return { ok: false, error: `Automation "${name}" not found in registry` };
-  }
-  const automationsDir = `${configDir}/automations`;
-  mkdirSync(automationsDir, { recursive: true });
-
-  const ymlPath = `${automationsDir}/${name}.yml`;
-  if (existsSync(ymlPath)) {
-    return { ok: false, error: `Automation "${name}" is already installed` };
-  }
-
-  writeFileSync(ymlPath, automationYml[name]);
-  return { ok: true };
-}
-
-/**
- * Uninstall an automation by removing its .yml from config/automations/.
- */
-export function uninstallAutomation(
-  name: string,
-  configDir: string
-): { ok: true } | { ok: false; error: string } {
-  if (!AUTOMATION_NAME_RE.test(name)) {
-    return { ok: false, error: `Invalid automation name: ${name}` };
-  }
-  const automationsDir = `${configDir}/automations`;
-  const ymlPath = `${automationsDir}/${name}.yml`;
-  if (!existsSync(ymlPath)) {
-    return { ok: false, error: `Automation "${name}" is not installed` };
-  }
-
-  rmSync(ymlPath, { force: true });
-  return { ok: true };
 }

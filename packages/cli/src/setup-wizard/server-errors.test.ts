@@ -41,7 +41,7 @@ function makeSetupDirs(): void {
   for (const dir of [
     configDir,
     join(configDir, "components"),
-    join(configDir, "connections"),
+    join(configDir, "capabilities"),
     join(configDir, "assistant"),
     join(configDir, "automations"),
     vaultDir,
@@ -130,9 +130,8 @@ describe("setup wizard server error scenarios", () => {
               embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
               memory: { userId: "user1", customInstructions: "" },
             },
-            addons: {},
           },
-          connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
+          capabilities: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
         }),
       });
       expect(res.status).toBe(400);
@@ -144,7 +143,7 @@ describe("setup wizard server error scenarios", () => {
     }
   });
 
-  it("returns 400 when connections array is not an array", async () => {
+  it("returns 400 when capabilities array is not an array", async () => {
     const { stop } = createSetupServer(serverPort, {
       configDir,
     });
@@ -161,17 +160,16 @@ describe("setup wizard server error scenarios", () => {
               embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
               memory: { userId: "user1", customInstructions: "" },
             },
-            addons: {},
           },
           security: { adminToken: "valid-token-12345" },
           owner: { name: "Test User", email: "test@example.com" },
-          connections: "not-an-array",
+          capabilities: "not-an-array",
         }),
       });
       expect(res.status).toBe(400);
       const data = (await res.json()) as { ok: boolean; error: string };
       expect(data.ok).toBe(false);
-      expect(data.error).toContain("connections");
+      expect(data.error).toContain("capabilities");
     } finally {
       stop();
     }
@@ -189,7 +187,7 @@ describe("setup wizard server error scenarios", () => {
         body: JSON.stringify({
           security: { adminToken: "valid-token-12345" },
           owner: { name: "Test User", email: "test@example.com" },
-          connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
+          capabilities: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
           // no spec
         }),
       });
@@ -202,7 +200,7 @@ describe("setup wizard server error scenarios", () => {
     }
   });
 
-  it("succeeds even when connection provider does not match embeddings provider", async () => {
+  it("succeeds even when capability provider does not match embeddings provider", async () => {
     const { stop } = createSetupServer(serverPort, {
       configDir,
     });
@@ -219,11 +217,10 @@ describe("setup wizard server error scenarios", () => {
               embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
               memory: { userId: "user1", customInstructions: "" },
             },
-            addons: {},
           },
           security: { adminToken: "valid-token-12345" },
           owner: { name: "Test User", email: "test@example.com" },
-          connections: [{ id: "c1", name: "C1", provider: "fakeprovider", baseUrl: "", apiKey: "sk-test" }],
+          capabilities: [{ id: "c1", name: "C1", provider: "fakeprovider", baseUrl: "", apiKey: "sk-test" }],
         }),
       });
       // Connection-provider matching is no longer validated; setup succeeds
@@ -235,7 +232,7 @@ describe("setup wizard server error scenarios", () => {
     }
   });
 
-  it("succeeds even when no connection matches LLM provider", async () => {
+  it("succeeds even when no capability matches LLM provider", async () => {
     const { stop } = createSetupServer(serverPort, {
       configDir,
     });
@@ -248,18 +245,17 @@ describe("setup wizard server error scenarios", () => {
           spec: {
             version: 2,
             capabilities: {
-              llm: "anthropic/claude-3-opus", // No anthropic connection provided
+              llm: "anthropic/claude-3-opus", // No anthropic capability provided
               embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
               memory: { userId: "user1", customInstructions: "" },
             },
-            addons: {},
           },
           security: { adminToken: "valid-token-12345" },
           owner: { name: "Test User", email: "test@example.com" },
-          connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
+          capabilities: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
         }),
       });
-      // Connection-provider matching is no longer validated; setup succeeds
+      // Provider matching is no longer validated; setup succeeds
       expect(res.status).toBe(200);
       const data = (await res.json()) as { ok: boolean };
       expect(data.ok).toBe(true);

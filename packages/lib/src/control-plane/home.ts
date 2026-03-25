@@ -9,7 +9,7 @@
  *
  * Cache and rollback data live in ~/.cache/openpalm/ (ephemeral).
  */
-import { mkdirSync, existsSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { resolve as resolvePath } from "node:path";
 
@@ -52,8 +52,16 @@ export function resolveRollbackDir(): string {
   return `${resolveCacheHome()}/rollback`;
 }
 
-export function resolveRegistryCacheDir(): string {
-  return `${resolveCacheHome()}/registry`;
+export function resolveRegistryDir(): string {
+  return `${resolveOpenPalmHome()}/registry`;
+}
+
+export function resolveRegistryAddonsDir(): string {
+  return `${resolveRegistryDir()}/addons`;
+}
+
+export function resolveRegistryAutomationsDir(): string {
+  return `${resolveRegistryDir()}/automations`;
 }
 
 export function resolveStackDir(): string {
@@ -87,7 +95,6 @@ export function ensureHomeDirs(): void {
     // vault/ — secrets boundary
     `${home}/vault`,
     `${home}/vault/stack`,
-    `${home}/vault/stack/addons`,
     `${home}/vault/user`,
 
     // data/ — service-managed persistent data
@@ -102,6 +109,11 @@ export function ensureHomeDirs(): void {
     `${home}/stack`,
     `${home}/stack/addons`,
 
+    // registry/ — available catalog
+    `${home}/registry`,
+    `${home}/registry/addons`,
+    `${home}/registry/automations`,
+
     // backups/ — user backups
     `${home}/backups`,
 
@@ -114,10 +126,8 @@ export function ensureHomeDirs(): void {
 
     // cache/ — ephemeral, regenerable
     cache,
-    `${cache}/registry`,
     `${cache}/rollback`,
   ]) {
     mkdirSync(dir, { recursive: true });
   }
 }
-

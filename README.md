@@ -13,8 +13,8 @@ AI assistants should not be someone else's product. They should be something you
 ## What makes the core strong
 
 - **Defense in depth** - Every message passes through HMAC-signed verification, replay detection, and rate limiting before reaching the assistant. The assistant has no Docker socket and no host access beyond its mounts.
-- **Manual-first stack** - The live stack is just Docker Compose files under `~/.openpalm/stack/`. You can inspect them, run them directly, and add addons with normal Compose flags.
-- **Working asset bundle** - The repo ships a `.openpalm/` bundle meant to be copied to `~/.openpalm/`. It includes stack files, env templates, defaults, and helper scripts.
+- **Manual-first stack** - The live stack is just Docker Compose files under `~/.openpalm/stack/`. You can inspect them, run them directly, and enable addons with normal Compose flags.
+- **Working asset bundle** - The repo ships a `.openpalm/` bundle that seeds the installed home. It provides the source assets for the registry catalog, the core compose file, env schemas, defaults, and helper scripts.
 - **Optional tooling** - Raw `docker compose` is the source of truth. Setup scripts and future tooling are convenience layers on top.
 - **Memory that persists** - Data stays on the host under `~/.openpalm/` for backup, restore, and direct editing.
 
@@ -53,11 +53,12 @@ You need Docker with Compose V2.
 | **Mac** | Docker Desktop or OrbStack | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) / [orbstack.dev](https://orbstack.dev/download) |
 | **Linux** | Docker Engine | Run `curl -fsSL https://get.docker.com | sh` |
 
-Then use the manual-first flow:
+Then use the manual-first flow after `~/.openpalm/` has been installed or seeded:
 
 ```bash
 git clone https://github.com/itlackey/openpalm.git
-cp -R openpalm/.openpalm "$HOME/.openpalm"
+cp -R "$HOME/.openpalm/registry/addons/admin" "$HOME/.openpalm/stack/addons/admin"
+cp -R "$HOME/.openpalm/registry/addons/chat" "$HOME/.openpalm/stack/addons/chat"
 $EDITOR "$HOME/.openpalm/vault/stack/stack.env"
 $EDITOR "$HOME/.openpalm/vault/user/user.env"
 cd "$HOME/.openpalm/stack"
@@ -70,9 +71,9 @@ docker compose \
   up -d
 ```
 
-That example starts the core stack plus the `admin` and `chat` addons. Review the copied env files before first boot, then change the `-f addons/<name>/compose.yml` list to choose a different stack. See the [Manual Compose Runbook](docs/operations/manual-compose-runbook.md) for the full command reference.
+That example enables `admin` and `chat` by copying them from the runtime catalog at `~/.openpalm/registry/addons/` into the enabled runtime overlays at `~/.openpalm/stack/addons/`, then starts the core stack plus those overlays. Review the env files before first boot, then change the copied addon directories and `-f addons/<name>/compose.yml` list to choose a different stack. Multiple instances remain a manual-only pattern.
 
-`config/stack.yml` is optional metadata for tooling. It is not the deployment truth. The running stack is always the compose file set you pass to Docker Compose.
+`config/stack.yml` is capabilities only. It is not addon state and it is not the deployment truth. The running stack is always the compose file set you pass to Docker Compose.
 
 See the [setup guide](docs/setup-guide.md) for the convenience path.
 
@@ -90,7 +91,7 @@ See the [setup guide](docs/setup-guide.md) for the convenience path.
 | **Admin** (`packages/admin/`) | Optional SvelteKit UI + API for operators and assistant-driven management. |
 | **Guardian** (`core/guardian/`) | Bun HTTP server for HMAC verification, replay detection, and rate limiting. |
 | **Assistant** (`core/assistant/`) | OpenCode runtime with tools and skills, isolated from Docker. |
-| **Channel runtime** (`core/channel/`) | Unified image entrypoint for registry channel overlays. |
+| **Channel runtime** (`core/channel/`) | Unified image entrypoint for addon-backed channel containers. |
 | **Channel packages** (`packages/channel-*/`) | Adapters that translate external protocols into signed guardian messages. |
 | **Channels SDK** (`packages/channels-sdk/`) | Shared crypto, logger, payload types, and base classes for adapters. |
 
@@ -104,7 +105,7 @@ See [`docs/how-it-works.md`](docs/how-it-works.md) for the full walkthrough and 
 
 ## Make it yours
 
-- **Add an addon** - Include another compose file from `~/.openpalm/stack/addons/<name>/compose.yml` in your compose command.
+- **Add an addon** - Copy it from the catalog at `~/.openpalm/registry/addons/<name>/` into `~/.openpalm/stack/addons/<name>/`, then include its compose file.
 - **Add assistant tools** - Put OpenCode assets under `~/.openpalm/config/assistant/`.
 - **Customize memory** - Edit the memory defaults and provider secrets in the copied bundle.
 - **Schedule automations** - Add YAML files under `~/.openpalm/config/automations/`.

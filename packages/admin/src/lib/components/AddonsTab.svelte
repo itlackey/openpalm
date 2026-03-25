@@ -8,7 +8,7 @@
 
   let { onAuthError }: Props = $props();
 
-  type AddonEntry = { name: string; enabled: boolean; hasCompose: boolean };
+  type AddonEntry = { name: string; enabled: boolean; available: boolean };
 
   let addons = $state<AddonEntry[]>([]);
   let loading = $state(false);
@@ -52,7 +52,10 @@
 
 <div class="space-y-4">
   <div class="flex items-center justify-between">
-    <h2 class="text-lg font-semibold">Addons</h2>
+    <div>
+      <h2 class="text-lg font-semibold">Addons</h2>
+      <p class="text-sm text-gray-500">Catalog lives in <code>registry/addons/</code>. Put addon values in <code>vault/user/user.env</code>.</p>
+    </div>
     <button class="text-sm text-blue-600 hover:underline" onclick={() => loadAddons()}>
       Refresh
     </button>
@@ -63,26 +66,23 @@
   {:else if error}
     <p class="text-sm text-red-600">{error}</p>
   {:else if addons.length === 0}
-    <p class="text-sm text-gray-500">No addons found in stack/addons/.</p>
+    <p class="text-sm text-gray-500">No addons found in registry/addons/.</p>
   {:else}
     <div class="divide-y rounded border">
       {#each addons as addon}
         <div class="flex items-center justify-between p-3">
           <div>
             <span class="font-medium">{addon.name}</span>
-            {#if !addon.hasCompose}
-              <span class="ml-2 text-xs text-amber-600">(missing compose.yml)</span>
-            {/if}
           </div>
           <div class="flex items-center gap-2">
-            <span class="text-xs {addon.enabled ? 'text-green-600' : 'text-gray-400'}">
-              {addon.enabled ? 'enabled' : 'disabled'}
-            </span>
-            <button
-              class="rounded px-3 py-1 text-sm {addon.enabled ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}"
-              disabled={actionLoading === addon.name || !addon.hasCompose}
-              onclick={() => toggle(addon.name, !addon.enabled)}
-            >
+              <span class="text-xs {addon.enabled ? 'text-green-600' : 'text-gray-400'}">
+                {addon.enabled ? 'enabled' : 'disabled'}
+              </span>
+              <button
+                class="rounded px-3 py-1 text-sm {addon.enabled ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}"
+                disabled={actionLoading === addon.name || !addon.available}
+                onclick={() => toggle(addon.name, !addon.enabled)}
+              >
               {#if actionLoading === addon.name}
                 ...
               {:else}

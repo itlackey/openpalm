@@ -944,9 +944,6 @@ function renderServices() {
 
 function initStep5() {
   renderReview();
-  // TODO: Remove renderReviewLegacy() once e2e tests (setup-wizard.test.ts)
-  // are updated to use the new #review-summary selectors instead of #review-grid.
-  renderReviewLegacy();
 }
 
 function renderReview() {
@@ -1061,75 +1058,6 @@ function renderReview() {
       goToStep(parseInt(btn.dataset.reviewEdit, 10));
     });
   });
-}
-
-function renderReviewLegacy() {
-  // Keep the old review-grid populated for test backward compat
-  var grid = $("review-grid");
-  grid.innerHTML = "";
-
-  grid.appendChild(reviewHeader("Account", 0));
-  grid.appendChild(reviewItem("Admin Token", maskToken($("admin-token").value)));
-  var ownerName = ($("owner-name").value || "").trim();
-  if (ownerName) grid.appendChild(reviewItem("Name", ownerName));
-  var ownerEmail = ($("owner-email").value || "").trim();
-  if (ownerEmail) grid.appendChild(reviewItem("Email", ownerEmail));
-
-  grid.appendChild(reviewHeader("Connections", 1));
-  getVerifiedProviders().forEach(function (p) {
-    var st = providerState[p.id];
-    grid.appendChild(reviewItem(p.name, p.kind + " -- " + (st.baseUrl || p.baseUrl), true));
-  });
-
-  grid.appendChild(reviewHeader("Models", 2));
-  var llm = modelSelection.llm;
-  var small = modelSelection.small;
-  var emb = modelSelection.embedding;
-  var llmProv = llm ? PROVIDERS.find(function (pp) { return pp.id === llm.connId; }) : null;
-  var embProv = emb ? PROVIDERS.find(function (pp) { return pp.id === emb.connId; }) : null;
-  if (llm) grid.appendChild(reviewItem("Chat Model", llm.model + " (" + (llmProv ? llmProv.name : "?") + ")", true));
-  if (small && small.model) grid.appendChild(reviewItem("Small Model", small.model + " (" + (llmProv ? llmProv.name : "?") + ")", true));
-  if (emb) {
-    grid.appendChild(reviewItem("Embedding Model", emb.model + " (" + (embProv ? embProv.name : "?") + ")", true));
-    grid.appendChild(reviewItem("Embedding Dims", String(emb.dims || 1536), true));
-  }
-
-  grid.appendChild(reviewHeader("Voice", 3));
-  var ttsOpt = TTS_OPTIONS.find(function (o) { return o.id === activeTts(); });
-  var sttOpt = STT_OPTIONS.find(function (o) { return o.id === activeStt(); });
-  grid.appendChild(reviewItem("TTS", ttsOpt ? ttsOpt.name : "Disabled"));
-  grid.appendChild(reviewItem("STT", sttOpt ? sttOpt.name : "Disabled"));
-
-  grid.appendChild(reviewHeader("Channels", 4));
-  CHANNELS.forEach(function (ch) {
-    if (isChannelEnabled(ch)) {
-      grid.appendChild(reviewItem(ch.name, "Enabled"));
-      // Show masked credentials in legacy review
-      if (ch.credentials) {
-        var sel = channelSelection[ch.id];
-        if (typeof sel === "object" && sel !== null && sel.enabled) {
-          ch.credentials.forEach(function (cred) {
-            var val = sel[cred.key] || "";
-            if (val) {
-              grid.appendChild(reviewItem("  " + cred.label, maskToken(val)));
-            }
-          });
-        }
-      }
-    }
-  });
-
-  grid.appendChild(reviewHeader("Services", 4));
-  SERVICES.forEach(function (svc) {
-    if (serviceSelection[svc.id]) {
-      grid.appendChild(reviewItem(svc.name, "Enabled"));
-    }
-  });
-
-  grid.appendChild(reviewHeader("Options", 4));
-  var ollamaEnabled = $("ollama-enabled") && $("ollama-enabled").checked;
-  if (ollamaEnabled) grid.appendChild(reviewItem("Ollama In-Stack", "Enabled"));
-  grid.appendChild(reviewItem("Memory User ID", $("memory-user-id").value || "default_user"));
 }
 
 function reviewHeader(label, editStep) {

@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/dev-setup.sh [--seed-env] [--force] [--pass [--gpg-id <key>]]
+Usage: scripts/dev-setup.sh [--seed-env] [--force] [--enable-addon <name>] [--pass [--gpg-id <key>]]
 
 Creates local .dev directories and seeds dev config files.
 
@@ -11,6 +11,8 @@ Options:
   --seed-env          Seed .dev/vault/user/user.env from the user.env.schema template
                       (if missing) and generate vault/stack/stack.env with auto-detected values.
   --force             Overwrite seeded files even if they already exist.
+  --enable-addon <n>  Copy .dev/registry/addons/<n>/ into .dev/stack/addons/<n>/.
+                      Repeat to enable multiple dev addons.
   --pass              Initialize a pass backend for secret storage (requires GPG key).
   --gpg-id <key>      GPG key ID for the pass backend (required with --pass).
   -h, --help          Show this help
@@ -21,15 +23,43 @@ seed_env=0
 force=0
 use_pass=0
 gpg_id=""
+enabled_addons=()
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
-	--seed-env) seed_env=1; shift ;;
-	--force) force=1; shift ;;
-	--pass) use_pass=1; shift ;;
-	--gpg-id) gpg_id="${2:-}"; shift 2 ;;
-	-h | --help) usage; exit 0 ;;
-	*) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+	--seed-env)
+		seed_env=1
+		shift
+		;;
+	--force)
+		force=1
+		shift
+		;;
+	--enable-addon)
+		if [[ -z "${2:-}" ]]; then
+			echo "Error: --enable-addon requires a name" >&2
+			exit 1
+		fi
+		enabled_addons+=("$2")
+		shift 2
+		;;
+	--pass)
+		use_pass=1
+		shift
+		;;
+	--gpg-id)
+		gpg_id="${2:-}"
+		shift 2
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		echo "Unknown option: $1" >&2
+		usage >&2
+		exit 1
+		;;
 	esac
 done
 
@@ -83,8 +113,9 @@ LOGS_DIR="$DEV_ROOT/logs"
 mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
 	"$CONFIG_DIR/automations" "$CONFIG_DIR/stash" \
-	"$DEV_ROOT/stack" \
-	"$VAULT_DIR" "$VAULT_DIR/stack" "$VAULT_DIR/stack/addons" "$VAULT_DIR/user" \
+	"$DEV_ROOT/registry/addons" "$DEV_ROOT/registry/automations" \
+	"$DEV_ROOT/stack" "$DEV_ROOT/stack/addons" \
+	"$VAULT_DIR" "$VAULT_DIR/stack" "$VAULT_DIR/user" \
 	"$VAULT_DIR/stack/services/memory" \
 	"$DATA_DIR/memory" "$DATA_DIR/assistant/.config/opencode" \
 	"$DATA_DIR/admin/.varlock" \
@@ -98,10 +129,26 @@ COMPOSE_DEST="$DEV_ROOT/stack/core.compose.yml"
 
 [[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/.openpalm/stack/core.compose.yml" "$COMPOSE_DEST"
 
-# Seed addon overlays from repo template
-cp -r "$ROOT_DIR/.openpalm/stack/addons/"* "$DEV_ROOT/stack/addons/" 2>/dev/null || true
+# Seed registry catalog from repo template
+cp -r "$ROOT_DIR/.openpalm/registry/addons/"* "$DEV_ROOT/registry/addons/" 2>/dev/null || true
+cp -r "$ROOT_DIR/.openpalm/registry/automations/"* "$DEV_ROOT/registry/automations/" 2>/dev/null || true
 
-# Seed stack.yml v2 (capabilities-based config)
+# Enable requested addons in the dev runtime
+for addon in "${enabled_addons[@]}"; do
+	src_dir="$DEV_ROOT/registry/addons/$addon"
+	dest_dir="$DEV_ROOT/stack/addons/$addon"
+	if [[ ! -d "$src_dir" ]]; then
+		echo "Error: dev registry addon not found: $addon" >&2
+		exit 1
+	fi
+	if [[ -d "$dest_dir" && $force -ne 1 ]]; then
+		continue
+	fi
+	rm -rf "$dest_dir"
+	cp -r "$src_dir" "$dest_dir"
+done
+
+# Seed stack.yml (capabilities only)
 STACK_YAML="$CONFIG_DIR/stack.yml"
 if [[ ! -f "$STACK_YAML" || $force -eq 1 ]]; then
 	cat >"$STACK_YAML" <<'SYEOF'
@@ -115,9 +162,6 @@ capabilities:
   memory:
     userId: default_user
     customInstructions: ""
-addons:
-  admin: true
-  ollama: true
 SYEOF
 fi
 
@@ -227,33 +271,12 @@ CHANNEL_SLACK_SECRET=${channel_slack_secret}
 EOF
 fi
 
-# ── Seed OpenCode user config (Ollama for dev) ──────────────────
-# OpenCode has two config files:
-#   - Project config (data/assistant/opencode.jsonc) — $schema + plugin ONLY.
-#     Seeded by admin's ensureOpenCodeSystemConfig(). Does NOT accept providers,
-#     model, or smallModel keys (causes ConfigInvalidError).
-#   - User config (config/assistant/opencode.json) — $schema + model ONLY.
-#     v1.2.24 rejects providers, smallModel, and any other unrecognized keys
-#     with a fatal ConfigInvalidError.
-#
-# OpenCode's "lmstudio" provider uses the Chat Completions API
-# (/v1/chat/completions) which Ollama supports. However, the provider
-# has a hardcoded base URL of http://127.0.0.1:1234/v1 and a static
-# model catalog. The entrypoint.sh uses socat to proxy port 1234
-# to the actual LLM provider when LMSTUDIO_BASE_URL is set.
-#
-# The model name must match one of lmstudio's catalog entries:
-#   - qwen/qwen3-30b-a3b-2507, qwen/qwen3-coder-30b, openai/gpt-oss-20b
-# For Ollama, create a model alias: ollama cp <your-model> qwen/qwen3-coder-30b
-
+# ── Seed OpenCode user config ─────────────────────────────────────
+# Copy from repo source. OpenCode uses its own default provider/model
+# when no model key is present.
 OC_CONFIG="$CONFIG_DIR/assistant/opencode.json"
 if [[ ! -f "$OC_CONFIG" || $force -eq 1 ]]; then
-	cat >"$OC_CONFIG" <<'OCEOF'
-{
-  "$schema": "https://opencode.ai/config.json",
-  "model": "lmstudio/qwen/qwen3-coder-30b"
-}
-OCEOF
+	cp "$ROOT_DIR/.openpalm/config/assistant/opencode.json" "$OC_CONFIG"
 fi
 
 # ── Seed Memory default config ───────────────────────────────────

@@ -297,33 +297,32 @@ Response:
 
 ### `GET /admin/addons`
 
-Returns all available addons with enabled status and env config.
+Returns all available addons with enabled status.
 
 Response:
 
 ```json
 {
   "addons": [
-    { "name": "chat", "enabled": true, "env": {}, "hasCompose": true },
-    { "name": "discord", "enabled": false, "env": {}, "hasCompose": true },
-    { "name": "admin", "enabled": true, "env": {}, "hasCompose": true }
+    { "name": "chat", "enabled": true, "available": true },
+    { "name": "discord", "enabled": false, "available": true },
+    { "name": "admin", "enabled": true, "available": true }
   ]
 }
 ```
 
 ### `POST /admin/addons`
 
-Enable/disable an addon and/or update its env config.
+Enable or disable an addon.
 
 Body:
 
 ```json
-{ "name": "chat", "enabled": true, "env": {} }
+{ "name": "chat", "enabled": true }
 ```
 
-- `name` (required) -- Addon name (must exist under `stack/addons/<name>/compose.yml`).
+- `name` (required) -- Addon name (must exist under `~/.openpalm/registry/addons/<name>/compose.yml`).
 - `enabled` (optional) -- Set to `true` or `false` to enable/disable.
-- `env` (optional) -- Key-value pairs to merge into the addon's env config.
 
 Response:
 
@@ -334,35 +333,42 @@ Response:
 Error responses:
 
 - `400 bad_request` -- `name` is missing.
-- `404 not_found` -- Addon name is not available on disk in `stack/addons/`.
-- `500 internal_error` -- Failed to update `stack.yml`.
+- `404 not_found` -- Addon name is not available in `~/.openpalm/registry/addons/`.
+- `500 internal_error` -- Failed to update addon state on disk.
 
 ### `GET /admin/addons/:name`
 
-Returns detail for a single addon: enabled state and env overrides.
+Returns detail for a single addon.
 
 Response:
 
 ```json
-{ "name": "chat", "enabled": true, "env": {} }
+{
+  "name": "chat",
+  "enabled": true,
+  "config": {
+    "schemaPath": "registry/addons/chat/.env.schema",
+    "userEnvPath": "vault/user/user.env",
+    "envSchema": "# ..."
+  }
+}
 ```
 
 Error responses:
 
-- `404 not_found` -- Addon name is not available on disk in `stack/addons/`.
+- `404 not_found` -- Addon name is not available in `~/.openpalm/registry/addons/`.
 
 ### `POST /admin/addons/:name`
 
-Enable/disable a specific addon and/or update its env config.
+Enable or disable a specific addon.
 
 Body:
 
 ```json
-{ "enabled": true, "env": { "SOME_VAR": "value" } }
+{ "enabled": true }
 ```
 
 - `enabled` (optional) -- Set to `true` or `false`.
-- `env` (optional) -- Key-value pairs to merge into the addon's env config.
 
 When disabling, runs compose down for affected services.
 When enabling a channel addon, generates an HMAC secret.
@@ -375,18 +381,17 @@ Response:
 
 Error responses:
 
-- `404 not_found` -- Addon name is not available on disk in `stack/addons/`.
-- `500 internal_error` -- Failed to update `stack.yml`.
+- `404 not_found` -- Addon name is not available in `~/.openpalm/registry/addons/`.
+- `500 internal_error` -- Failed to update addon state on disk.
 
 ## Registry
 
-Unified registry for automations. Channel/addon management is handled by `/admin/addons` endpoints against on-disk addon overlays under `.openpalm/stack/addons/`.
+Runtime catalog endpoints for automations. Channel/addon management is handled by `/admin/addons` endpoints against `~/.openpalm/registry/addons/` and active `~/.openpalm/stack/addons/`.
 
-### `GET /admin/registry`
+### `GET /admin/automations/catalog`
 
 Lists available registry automations with install status. Channel addons are
-managed via `/admin/addons`. Tries the cloned registry repo first; falls back
-to build-time bundled assets.
+managed via `/admin/addons`. Reads from `~/.openpalm/registry/automations/`.
 
 Response:
 
@@ -395,14 +400,14 @@ Response:
   "automations": [
     { "name": "health-check", "type": "automation", "installed": true, "description": "...", "schedule": "0 */5 * * *" }
   ],
-  "source": "bundled"
+  "source": "registry"
 }
 ```
 
 `source` is `"remote"` when loaded from a cloned registry repo, `"bundled"`
 when using build-time bundled stack assets.
 
-### `POST /admin/registry/install`
+### `POST /admin/automations/catalog/install`
 
 Install a registry automation. Channel addons are managed via
 `POST /admin/addons/:name`.
@@ -416,7 +421,7 @@ Body:
 - `name` (required) -- Must match `^[a-z0-9][a-z0-9-]{0,62}$`.
 - `type` (required) -- Must be `"automation"`. Passing `"channel"` returns 400.
 
-Copies the `.yml` into `config/automations/` and refreshes runtime files.
+Copies the `.yml` into `~/.openpalm/config/automations/`.
 The scheduler sidecar auto-reloads via file watching.
 
 Response:
@@ -430,7 +435,7 @@ Error responses:
 - `400 invalid_input` -- Invalid name, type is not `"automation"`, item not
   found in registry, or item already installed.
 
-### `POST /admin/registry/refresh`
+### `POST /admin/automations/catalog/refresh`
 
 Refreshes the registry index from the configured registry source.
 
@@ -444,7 +449,7 @@ Error responses:
 
 - `500 registry_sync_error` — Refresh failed.
 
-### `POST /admin/registry/uninstall`
+### `POST /admin/automations/catalog/uninstall`
 
 Uninstall a registry automation. Channel addons are managed via
 `POST /admin/addons/:name`.
@@ -458,7 +463,7 @@ Body:
 - `name` (required) -- Automation name.
 - `type` (required) -- Must be `"automation"`. Passing `"channel"` returns 400.
 
-Removes the `.yml` from `config/automations/` and refreshes runtime files.
+Removes the `.yml` from `~/.openpalm/config/automations/`.
 The scheduler sidecar auto-reloads via file watching.
 
 Response:
@@ -471,7 +476,7 @@ Response:
 
 ### `GET /admin/automations`
 
-Lists all automation configs from `config/automations/`.
+Lists all automation configs from `~/.openpalm/config/automations/`.
 
 Response:
 

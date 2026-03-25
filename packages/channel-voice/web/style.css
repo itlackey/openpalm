@@ -1,0 +1,575 @@
+/* ─── Voice Chat MVP — Style ────────────────────────────── */
+/* Design: Dark atmospheric with warm amber accent.         */
+/* Typography: Syne (display) + IBM Plex Sans (body)        */
+
+:root {
+  /* Palette */
+  --bg-deep:    #0a0a0c;
+  --bg-surface: #131318;
+  --bg-raised:  #1a1a22;
+  --bg-hover:   #22222e;
+  --border:     #2a2a36;
+  --border-dim: #1e1e28;
+
+  --text:       #e8e6f0;
+  --text-dim:   #8a889a;
+  --text-muted: #5c5a6a;
+
+  --accent:     #f5a623;
+  --accent-dim: #c4841a;
+  --accent-glow: rgba(245, 166, 35, 0.25);
+  --accent-soft: rgba(245, 166, 35, 0.08);
+
+  --danger:     #ef4444;
+  --success:    #22c55e;
+
+  /* Typography */
+  --font-display: 'Syne', system-ui, sans-serif;
+  --font-body:    'IBM Plex Sans', system-ui, sans-serif;
+
+  /* Spacing */
+  --radius-sm:  6px;
+  --radius-md:  10px;
+  --radius-lg:  16px;
+  --radius-xl:  24px;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ─── Reset ───────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { height: 100%; -webkit-font-smoothing: antialiased; }
+body {
+  height: 100%;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--bg-deep);
+  overflow: hidden;
+}
+button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+select, input, textarea { font: inherit; color: inherit; }
+a { color: var(--accent); text-decoration: none; }
+
+/* ─── App Shell ───────────────────────────────────────── */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-width: 640px;
+  margin: 0 auto;
+  position: relative;
+}
+
+/* ─── Ambient Background ──────────────────────────────── */
+
+.ambient-bg {
+  display: none;
+}
+
+/* ─── Header ──────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  flex-shrink: 0;
+}
+.header-left { display: flex; align-items: center; gap: 14px; }
+.logo {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.logo-accent { color: var(--accent); }
+.provider-summary {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* ─── Status Bar ──────────────────────────────────────── */
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px 12px;
+  flex-shrink: 0;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.status-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+  transition: color 0.3s;
+}
+
+/* Status states */
+.app[data-status="idle"] .status-dot     { background: var(--text-muted); }
+.app[data-status="listening"] .status-dot { background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+.app[data-status="transcribing"] .status-dot { background: var(--accent-dim); animation: pulse-dot 1s ease infinite; }
+.app[data-status="thinking"] .status-dot  { background: #8b5cf6; animation: pulse-dot 1s ease infinite; }
+.app[data-status="speaking"] .status-dot  { background: #8b5cf6; box-shadow: 0 0 8px rgba(139, 92, 246, 0.3); }
+.app[data-status="error"] .status-dot     { background: var(--danger); }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+/* ─── Conversation ────────────────────────────────────── */
+
+.conversation {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 20px;
+  scroll-behavior: smooth;
+}
+.conversation.hidden { display: none; }
+
+.conversation-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 16px;
+  min-height: 100%;
+}
+
+/* Empty state */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex: 1;
+  min-height: 200px;
+  color: var(--text-muted);
+}
+.empty-icon { opacity: 0.3; }
+.empty-state p {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Message bubbles */
+.message {
+  max-width: 88%;
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  font-size: 14.5px;
+  line-height: 1.55;
+  animation: msg-in 0.35s var(--ease-spring) both;
+  word-wrap: break-word;
+}
+.message-user {
+  align-self: flex-end;
+  background: var(--accent-soft);
+  border: 1px solid rgba(245, 166, 35, 0.15);
+  color: var(--text);
+  border-bottom-right-radius: var(--radius-sm);
+}
+.message-assistant {
+  align-self: flex-start;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-dim);
+  color: var(--text);
+  border-bottom-left-radius: var(--radius-sm);
+}
+.message-interim {
+  align-self: flex-end;
+  background: transparent;
+  border: 1px dashed rgba(245, 166, 35, 0.2);
+  color: var(--text-dim);
+  font-style: italic;
+  border-bottom-right-radius: var(--radius-sm);
+}
+.message-error {
+  align-self: center;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  font-size: 13px;
+  text-align: center;
+  max-width: 100%;
+}
+
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ─── Controls ────────────────────────────────────────── */
+
+.controls {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px 28px;
+  background: linear-gradient(to top, var(--bg-deep) 60%, transparent);
+}
+
+.controls-secondary {
+  display: flex;
+  gap: 8px;
+}
+
+/* Pill buttons */
+.btn-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-full);
+  transition: all 0.2s var(--ease-out);
+}
+.btn-pill:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+.btn-pill.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: rgba(245, 166, 35, 0.2);
+}
+
+/* Mic button */
+.controls-primary { position: relative; }
+
+.mic-btn {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s var(--ease-spring);
+}
+.mic-btn:hover { transform: scale(1.05); }
+.mic-btn:active { transform: scale(0.95); }
+
+.mic-btn-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  transition: all 0.3s var(--ease-out);
+}
+
+.mic-btn-inner {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  transition: all 0.3s var(--ease-out);
+  position: relative;
+  z-index: 1;
+}
+
+.mic-btn .stop-icon { display: none; }
+
+/* Mic listening state */
+.app[data-status="listening"] .mic-btn-ring {
+  border-color: var(--accent);
+  box-shadow: 0 0 20px var(--accent-glow), 0 0 40px rgba(245, 166, 35, 0.1);
+  animation: mic-ring-pulse 1.5s ease-in-out infinite;
+}
+.app[data-status="listening"] .mic-btn-inner {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-deep);
+}
+.app[data-status="listening"] .mic-btn .mic-icon { display: none; }
+.app[data-status="listening"] .mic-btn .stop-icon { display: block; }
+
+/* Processing states — show pulsing ring */
+.app[data-status="transcribing"] .mic-btn-ring,
+.app[data-status="thinking"] .mic-btn-ring {
+  border-color: #8b5cf6;
+  animation: mic-ring-pulse 1s ease-in-out infinite;
+}
+.app[data-status="transcribing"] .mic-btn-inner,
+.app[data-status="thinking"] .mic-btn-inner {
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+/* Speaking state */
+.app[data-status="speaking"] .mic-btn-ring {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
+}
+
+/* Disabled state during processing */
+.mic-btn:disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+@keyframes mic-ring-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: 0.7; }
+}
+
+/* ─── Cancel Button ───────────────────────────────────── */
+
+.btn-cancel {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-full);
+  transition: all 0.2s var(--ease-out);
+  animation: fade-in 0.2s ease;
+  white-space: nowrap;
+}
+.btn-cancel:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+.btn-cancel[hidden] { display: none; }
+
+/* ─── Buttons ─────────────────────────────────────────── */
+
+.btn { display: inline-flex; align-items: center; gap: 6px; }
+
+.btn-ghost {
+  padding: 8px;
+  border-radius: var(--radius-md);
+  color: var(--text-dim);
+  transition: color 0.2s, background 0.2s;
+}
+.btn-ghost:hover { color: var(--text); background: var(--bg-hover); }
+
+.btn-primary {
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--bg-deep);
+  transition: background 0.2s, transform 0.15s;
+}
+.btn-primary:hover { background: var(--accent-dim); }
+.btn-primary:active { transform: scale(0.97); }
+
+/* ─── Modal ───────────────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fade-in 0.2s ease;
+}
+.modal-overlay[hidden] { display: none; }
+
+.modal {
+  width: 100%;
+  max-width: 520px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  animation: modal-in 0.35s var(--ease-spring);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 0;
+}
+.modal-header h2 {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-dim);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ─── Settings Sections ───────────────────────────────── */
+
+.settings-section {
+  padding-bottom: 4px;
+}
+.settings-section + .settings-section {
+  border-top: 1px solid var(--border-dim);
+  padding-top: 20px;
+}
+
+.section-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.required-badge {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+}
+
+/* ─── Form Fields ─────────────────────────────────────── */
+
+.field {
+  margin-bottom: 12px;
+}
+.field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 5px;
+  letter-spacing: 0.02em;
+}
+
+.field select,
+.field input,
+.field textarea {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  transition: border-color 0.2s, box-shadow 0.2s;
+  outline: none;
+}
+.field select:focus,
+.field input:focus,
+.field textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.field textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+.field select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%238a889a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+.field input::placeholder,
+.field textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.dynamic-fields {
+  display: flex;
+  flex-direction: column;
+}
+
+.field-error {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--danger);
+  min-height: 16px;
+  margin-top: 4px;
+}
+
+/* ─── Scrollbar ───────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ─── Responsive ──────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .app { max-width: 100%; }
+  .header { padding: 12px 16px 8px; }
+  .conversation { padding: 0 16px; }
+  .controls { padding: 12px 16px 20px; }
+  .modal { border-radius: var(--radius-lg); }
+  .modal-body { padding: 16px 20px; }
+}

@@ -13,9 +13,13 @@
   "exclude_filenames": [
     "*.test.{ts,tsx}",
     "*.spec.{ts,tsx}",
+    "*.vitest.{ts,tsx}",
+    "*.pw.{ts,tsx}",
     "*.test.{js,jsx}",
     "*.spec.{js,jsx}",
-    "*.svelte.test.ts",
+    "*.vitest.{js,jsx}",
+    "*.pw.{js,jsx}",
+    "*.svelte.vitest.ts",
     "*.d.ts"
   ],
   "include_comments": false,

@@ -53,7 +53,7 @@ function makeSetupDirs(): void {
   for (const dir of [
     configDir,
     join(configDir, "components"),
-    join(configDir, "connections"),
+    join(configDir, "capabilities"),
     join(configDir, "assistant"),
     join(configDir, "automations"),
     vaultDir,
@@ -234,11 +234,10 @@ describe("setup wizard server integration", () => {
               customInstructions: "",
             },
           },
-          addons: {},
         },
         security: { adminToken: "integration-test-token-123" },
         owner: { name: "Integration Test", email: "integ@test.local" },
-        connections: [
+        capabilities: [
           {
             id: "ollama-local",
             name: "Ollama Local",
@@ -316,11 +315,10 @@ describe("setup wizard server integration", () => {
               customInstructions: "",
             },
           },
-          addons: {},
         },
         security: { adminToken: "status-test-token-123" },
         owner: { name: "Status Test", email: "status@test.local" },
-        connections: [
+        capabilities: [
           {
             id: "openai-test",
             name: "OpenAI",
@@ -445,11 +443,10 @@ describe("setup wizard server integration", () => {
               customInstructions: "",
             },
           },
-          addons: {},
         },
         security: { adminToken: "retry-test-token-123" },
         owner: { name: "Retry Test", email: "retry@test.local" },
-        connections: [
+        capabilities: [
           {
             id: "openai-retry",
             name: "OpenAI",

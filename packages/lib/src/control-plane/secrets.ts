@@ -1,4 +1,4 @@
-/** Secrets and connection key management. */
+/** Secrets and capability key management. */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSync, rmSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createLogger } from "../logger.js";
@@ -227,7 +227,7 @@ export function patchSecretsEnvFile(
 }
 
 
-export function maskConnectionValue(key: string, value: string): string {
+export function maskSecretValue(key: string, value: string): string {
   if (!value) return "";
   if (PLAIN_CONFIG_KEYS.has(key)) return value;
   if (value.length <= 4) return "****";

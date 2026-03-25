@@ -24,18 +24,19 @@ import {
 } from "./secrets.js";
 import { ensureOpenCodeSystemConfig, ensureMemoryDir } from "./core-assets.js";
 import { createState, writeSetupTokenFile } from "./lifecycle.js";
-import { writeStackSpec, hasAddon } from "./stack-spec.js";
+import { writeStackSpec } from "./stack-spec.js";
 import type { StackSpec } from "./stack-spec.js";
 import { writeCapabilityVars } from "./spec-to-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
+import { listEnabledAddonIds } from "./registry.js";
 export { validateSetupSpec } from "./setup-validation.js";
 
 const logger = createLogger("setup");
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-export type SetupConnection = {
+export type SetupCapability = {
   id: string;
   name: string;
   provider: string;
@@ -53,14 +54,14 @@ export type SetupSpec = {
   spec: StackSpec;
   security: { adminToken: string };
   owner?: { name?: string; email?: string };
-  connections: SetupConnection[];
+  capabilities: SetupCapability[];
   channelCredentials?: Record<string, Record<string, string>>;
 };
 
 // ── Secrets Builder ──────────────────────────────────────────────────────
 
 export function buildSecretsFromSetup(
-  connections: SetupConnection[],
+  capabilities: SetupCapability[],
   owner?: { name?: string; email?: string },
 ): Record<string, string> {
   const updates: Record<string, string> = {};
@@ -69,14 +70,14 @@ export function buildSecretsFromSetup(
   if (ownerName) updates.OWNER_NAME = ownerName;
   if (ownerEmail) updates.OWNER_EMAIL = ownerEmail;
 
-  for (const conn of connections) {
-    if (conn.apiKey) {
-      const envVar = PROVIDER_KEY_MAP[conn.provider];
-      if (envVar) updates[envVar] = conn.apiKey;
+  for (const cap of capabilities) {
+    if (cap.apiKey) {
+      const envVar = PROVIDER_KEY_MAP[cap.provider];
+      if (envVar) updates[envVar] = cap.apiKey;
     }
     // Persist user-configured base URL so writeCapabilityVars can read it
-    if (conn.baseUrl && conn.provider === "openai") {
-      updates.OPENAI_BASE_URL = conn.baseUrl;
+    if (cap.baseUrl && cap.provider === "openai") {
+      updates.OPENAI_BASE_URL = cap.baseUrl;
     }
   }
   return updates;
@@ -138,18 +139,17 @@ export async function performSetup(
   const validation = validateSetupSpec(input);
   if (!validation.valid) return { ok: false, error: validation.errors.join("; ") };
 
-  const { spec, security, owner, connections, channelCredentials } = input;
-  const ollamaEnabled = hasAddon(spec, "ollama");
-
-  logger.info("performing setup", { connectionCount: connections.length, ollamaEnabled });
-
+  const { spec, security, owner, capabilities, channelCredentials } = input;
   const state = opts?.state ?? createState(security.adminToken);
+  const ollamaEnabled = listEnabledAddonIds(state.homeDir).includes("ollama");
+
+  logger.info("performing setup", { capabilityCount: capabilities.length, ollamaEnabled });
 
   // Apply Ollama in-stack URL override when addon is enabled
-  const effectiveConnections = ollamaEnabled
-    ? connections.map((c) => c.provider === "ollama" ? { ...c, baseUrl: OLLAMA_INSTACK_URL } : c)
-    : connections;
-  const updates = buildSecretsFromSetup(effectiveConnections, owner);
+  const effectiveCapabilities = ollamaEnabled
+    ? capabilities.map((c) => c.provider === "ollama" ? { ...c, baseUrl: OLLAMA_INSTACK_URL } : c)
+    : capabilities;
+  const updates = buildSecretsFromSetup(effectiveCapabilities, owner);
 
   // Persist vault env files
   try {
@@ -181,7 +181,7 @@ export async function performSetup(
   const systemBase = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
   writeFileSync(systemEnvPath, mergeEnvContent(systemBase, { OP_SETUP_COMPLETE: "true" }), { mode: 0o600 });
 
-  logger.info("setup complete", { connectionCount: connections.length });
+  logger.info("setup complete", { capabilityCount: capabilities.length });
   return { ok: true };
 }
 

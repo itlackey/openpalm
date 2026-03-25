@@ -101,7 +101,7 @@ jobs:
           fi
           echo "Deleted script assertion passed"
 
-      - name: Validate stack addons and catalog
+      - name: Validate shipped addon catalog and automations
         run: |
           set -euo pipefail
 
@@ -111,7 +111,7 @@ jobs:
           # Also validate catalog automation YAML files are well-formed
           pip install --quiet PyYAML
           errors=0
-          for f in .openpalm/config/automations/*.yml; do
+          for f in .openpalm/registry/automations/*.yml; do
             if [ ! -f "$f" ]; then continue; fi
             if ! python3 -c "import yaml, sys; yaml.safe_load(open(sys.argv[1]))" "$f" 2>/dev/null; then
               echo "::error file=$f::Invalid YAML: $f"

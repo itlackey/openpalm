@@ -1,13 +1,10 @@
 /**
  * Tests for registry sync functions.
  *
- * Tests validation, discovery, and merged registry building.
- * Git operations are not tested here (they require network); these
- * tests focus on the pure logic: validation, discovery from filesystem,
- * and registry merging.
+ * Tests validation, discovery, and materialization.
  */
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -15,8 +12,17 @@ import {
   validateRegistryUrl,
   isValidComponentName,
   getRegistryConfig,
-  readLocalAutomations,
-  listLocalAddonIds,
+  materializeRegistryCatalog,
+  verifyRegistryCatalog,
+  discoverRegistryComponents,
+  discoverRegistryAutomations,
+  getRegistryAutomation,
+  getRegistryAddonConfig,
+  listAvailableAddonIds,
+  enableAddon,
+  disableAddonByName,
+  installAutomationFromRegistry,
+  uninstallAutomation,
 } from "./registry.js";
 
 // ── Validation Tests ─────────────────────────────────────────────────
@@ -66,6 +72,10 @@ describe("validateRegistryUrl", () => {
     expect(validateRegistryUrl("git@github.com:org/repo.git")).toBe(
       "git@github.com:org/repo.git"
     );
+  });
+
+  it("accepts absolute local paths", () => {
+    expect(validateRegistryUrl("/tmp/openpalm-registry")).toBe("/tmp/openpalm-registry");
   });
 
   it("rejects http:// URLs", () => {
@@ -167,81 +177,157 @@ describe("getRegistryConfig", () => {
   });
 });
 
-// ── Filesystem Discovery Tests ───────────────────────────────────────
+// ── Materialized Catalog Tests ───────────────────────────────────────
 
-describe("readLocalAutomations", () => {
+describe("materialized registry catalog", () => {
   let tmpDir: string;
+  let originalHome: string | undefined;
 
   beforeEach(() => {
     tmpDir = join(tmpdir(), `registry-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(tmpDir, { recursive: true });
+    originalHome = process.env.OP_HOME;
+    process.env.OP_HOME = join(tmpDir, 'home');
   });
 
   afterEach(() => {
+    if (originalHome === undefined) delete process.env.OP_HOME;
+    else process.env.OP_HOME = originalHome;
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("returns empty object when automations dir does not exist", () => {
-    const result = readLocalAutomations(tmpDir);
-    expect(result).toEqual({});
+  it("materializes addons and automations into OP_HOME/registry", () => {
+    const sourceRoot = join(tmpDir, 'repo');
+    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+
+    mkdirSync(addonDir, { recursive: true });
+    mkdirSync(automationsDir, { recursive: true });
+    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
+    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
+    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+
+    const root = materializeRegistryCatalog(sourceRoot);
+
+    expect(root).toBe(join(process.env.OP_HOME!, 'registry'));
+    expect(existsSync(join(root, 'addons', 'chat', 'compose.yml'))).toBe(true);
+    expect(existsSync(join(root, 'addons', 'chat', '.env.schema'))).toBe(true);
+    expect(readFileSync(join(root, 'automations', 'cleanup.yml'), 'utf-8')).toContain('Cleanup');
   });
 
-  it("discovers .yml files in automations dir", () => {
-    const autoDir = join(tmpDir, "automations");
-    mkdirSync(autoDir, { recursive: true });
-    writeFileSync(join(autoDir, "daily-backup.yml"), "schedule: daily\ndescription: Backup");
-    writeFileSync(join(autoDir, "weekly-report.yml"), "schedule: weekly\ndescription: Report");
+  it("discovers materialized registry entries", () => {
+    const sourceRoot = join(tmpDir, 'repo');
+    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
 
-    const result = readLocalAutomations(tmpDir);
-    expect(Object.keys(result).sort()).toEqual(["daily-backup", "weekly-report"]);
-    expect(result["daily-backup"]).toContain("schedule: daily");
+    mkdirSync(addonDir, { recursive: true });
+    mkdirSync(automationsDir, { recursive: true });
+    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
+    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
+    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+
+    materializeRegistryCatalog(sourceRoot);
+
+    const components = discoverRegistryComponents();
+    const automations = discoverRegistryAutomations();
+
+    expect(Object.keys(components)).toEqual(['chat']);
+    expect(components.chat?.schema).toContain('CHANNEL_CHAT_SECRET');
+    expect(automations.map((entry) => entry.name)).toEqual(['cleanup']);
+    expect(getRegistryAutomation('cleanup')).toContain('schedule: daily');
   });
 
-  it("ignores non-yml files", () => {
-    const autoDir = join(tmpDir, "automations");
-    mkdirSync(autoDir, { recursive: true });
-    writeFileSync(join(autoDir, "valid.yml"), "schedule: daily");
-    writeFileSync(join(autoDir, "readme.md"), "not an automation");
-    writeFileSync(join(autoDir, "data.json"), "{}");
+  it("returns addon config metadata from the materialized registry", () => {
+    const sourceRoot = join(tmpDir, 'repo');
+    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
 
-    const result = readLocalAutomations(tmpDir);
-    expect(Object.keys(result)).toEqual(["valid"]);
-  });
-});
+    mkdirSync(addonDir, { recursive: true });
+    mkdirSync(automationsDir, { recursive: true });
+    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
+    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
+    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
 
-describe("listLocalAddonIds", () => {
-  let tmpDir: string;
+    materializeRegistryCatalog(sourceRoot);
 
-  beforeEach(() => {
-    tmpDir = join(tmpdir(), `registry-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    mkdirSync(tmpDir, { recursive: true });
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+    expect(getRegistryAddonConfig(process.env.OP_HOME!, 'chat')).toEqual({
+      schemaPath: 'registry/addons/chat/.env.schema',
+      userEnvPath: 'vault/user/user.env',
+      envSchema: 'CHANNEL_CHAT_SECRET=\n',
+    });
   });
 
-  it("returns empty array when stack/addons does not exist", () => {
-    const result = listLocalAddonIds(tmpDir);
-    expect(result).toEqual([]);
+  it("verifies the materialized registry and returns counts", () => {
+    const sourceRoot = join(tmpDir, 'repo');
+    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+
+    mkdirSync(addonDir, { recursive: true });
+    mkdirSync(automationsDir, { recursive: true });
+    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
+    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
+    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+
+    const root = materializeRegistryCatalog(sourceRoot);
+
+    expect(verifyRegistryCatalog(root)).toEqual({
+      root,
+      addonCount: 1,
+      automationCount: 1,
+    });
   });
 
-  it("lists addon directories", () => {
-    const addonsDir = join(tmpDir, "stack", "addons");
-    mkdirSync(join(addonsDir, "chat"), { recursive: true });
-    mkdirSync(join(addonsDir, "discord"), { recursive: true });
-
-    const result = listLocalAddonIds(tmpDir);
-    expect(result.sort()).toEqual(["chat", "discord"]);
+  it("returns no available addons when the registry addons directory is missing", () => {
+    expect(listAvailableAddonIds()).toEqual([]);
   });
 
-  it("ignores files (only lists directories)", () => {
-    const addonsDir = join(tmpDir, "stack", "addons");
-    mkdirSync(join(addonsDir, "chat"), { recursive: true });
-    mkdirSync(addonsDir, { recursive: true });
-    writeFileSync(join(addonsDir, "readme.md"), "not an addon");
+  it("fails when source catalog is incomplete", () => {
+    const sourceRoot = join(tmpDir, 'repo');
+    mkdirSync(join(sourceRoot, '.openpalm', 'registry', 'addons'), { recursive: true });
+    mkdirSync(join(sourceRoot, '.openpalm', 'registry', 'automations'), { recursive: true });
 
-    const result = listLocalAddonIds(tmpDir);
-    expect(result).toEqual(["chat"]);
+    expect(() => materializeRegistryCatalog(sourceRoot)).toThrow('Registry catalog is incomplete');
+  });
+
+  it("enables and disables addons through the runtime stack directory", () => {
+    const sourceRoot = join(tmpDir, 'repo');
+    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+
+    mkdirSync(addonDir, { recursive: true });
+    mkdirSync(automationsDir, { recursive: true });
+    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
+    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
+    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+
+    materializeRegistryCatalog(sourceRoot);
+
+    expect(enableAddon(process.env.OP_HOME!, 'chat')).toEqual({ ok: true });
+    expect(existsSync(join(process.env.OP_HOME!, 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
+
+    expect(disableAddonByName(process.env.OP_HOME!, 'chat')).toEqual({ ok: true });
+    expect(existsSync(join(process.env.OP_HOME!, 'stack', 'addons', 'chat'))).toBe(false);
+  });
+
+  it("installs and uninstalls automations through config/automations", () => {
+    const sourceRoot = join(tmpDir, 'repo');
+    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+    const configDir = join(process.env.OP_HOME!, 'config');
+
+    mkdirSync(addonDir, { recursive: true });
+    mkdirSync(automationsDir, { recursive: true });
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
+    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
+    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+
+    materializeRegistryCatalog(sourceRoot);
+
+    expect(installAutomationFromRegistry('cleanup', configDir)).toEqual({ ok: true });
+    expect(readFileSync(join(configDir, 'automations', 'cleanup.yml'), 'utf-8')).toContain('Cleanup');
+
+    expect(uninstallAutomation('cleanup', configDir)).toEqual({ ok: true });
+    expect(existsSync(join(configDir, 'automations', 'cleanup.yml'))).toBe(false);
   });
 });

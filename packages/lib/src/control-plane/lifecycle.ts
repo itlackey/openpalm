@@ -17,13 +17,15 @@ import {
   writeRuntimeFiles,
   randomHex,
   buildEnvFiles,
+  discoverStackOverlays,
 } from "./config-persistence.js";
-import { readStackSpec, addonNames } from "./stack-spec.js";
-import { refreshCoreAssets, ensureMemoryDir, ensureCoreAutomations } from "./core-assets.js";
+import { readStackSpec } from "./stack-spec.js";
+import { refreshCoreAssets, ensureMemoryDir } from "./core-assets.js";
 import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composeConfigServices, resolveComposeProjectName } from "./docker.js";
 import { acquireLock, releaseLock } from "./lock.js";
+import { listEnabledAddonIds } from "./registry.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
@@ -101,16 +103,9 @@ async function reconcileCore(
     for (const s of CORE_SERVICES) state.services[s] = "running";
   }
   ensureMemoryDir(state.dataDir);
-  ensureCoreAutomations(state.configDir);
 
-  // Pre-create data directories for enabled addons so Docker doesn't
-  // create missing bind-mount source paths as root.
-  const spec = readStackSpec(state.configDir);
-  if (spec?.addons) {
-    for (const [addonName, addon] of Object.entries(spec.addons)) {
-      if (addon === false) continue;
-      mkdirSync(`${state.dataDir}/${addonName}`, { recursive: true });
-    }
+  for (const addonName of listEnabledAddonIds(state.homeDir)) {
+    mkdirSync(`${state.dataDir}/${addonName}`, { recursive: true });
   }
 
   const active: string[] = [];
@@ -261,25 +256,7 @@ export async function applyUpgrade(
 }
 
 export function buildComposeFileList(state: ControlPlaneState): string[] {
-  const stackDir = `${state.homeDir}/stack`;
-  const coreYml = `${stackDir}/core.compose.yml`;
-  const files: string[] = [];
-
-  if (existsSync(coreYml)) {
-    files.push(coreYml);
-  }
-
-  // Add addon overlays for enabled addons
-  const spec = readStackSpec(state.configDir);
-  if (spec?.addons) {
-    for (const [addonName, addon] of Object.entries(spec.addons)) {
-      if (addon === false) continue;
-      const addonYml = `${stackDir}/addons/${addonName}/compose.yml`;
-      if (existsSync(addonYml)) files.push(addonYml);
-    }
-  }
-
-  return files;
+  return discoverStackOverlays(`${state.homeDir}/stack`);
 }
 
 export async function buildManagedServices(state: ControlPlaneState): Promise<string[]> {
@@ -294,12 +271,9 @@ export async function buildManagedServices(state: ControlPlaneState): Promise<st
     }
   }
 
-  // Fallback: static inference from CORE_SERVICES + stack.yml addons
+  // Fallback: static inference from CORE_SERVICES + active addon overlays
   const services: string[] = [...CORE_SERVICES];
-  const spec = readStackSpec(state.configDir);
-  if (spec) {
-    services.push(...addonNames(spec));
-  }
+  services.push(...listEnabledAddonIds(state.homeDir));
   return services;
 }
 
@@ -316,4 +290,3 @@ export function normalizeCaller(headerValue: string | null): CallerType {
   const v = (headerValue ?? "").trim().toLowerCase() as CallerType;
   return VALID_CALLERS.has(v) ? v : "unknown";
 }
-

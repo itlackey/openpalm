@@ -31,21 +31,27 @@ export {
   OPTIONAL_SERVICES,
 } from "./control-plane/types.js";
 
-// ── Interfaces ──────────────────────────────────────────────────────────
-export type { RegistryComponentEntry } from "./control-plane/registry-provider.js";
-
-// ── Registry Sync ────────────────────────────────────────────────────────
-export type { RegistryAutomationEntry } from "./control-plane/registry.js";
+// ── Registry Catalog ─────────────────────────────────────────────────────
+export type {
+  RegistryAutomationEntry,
+  RegistryComponentEntry,
+  RegistryAddonConfig,
+  RegistryCatalogVerification,
+} from "./control-plane/registry.js";
 export {
-  registryRoot,
-  ensureRegistryClone,
-  pullRegistry,
+  materializeRegistryCatalog,
+  refreshRegistryCatalog,
+  verifyRegistryCatalog,
   discoverRegistryComponents,
   discoverRegistryAutomations,
   getRegistryAutomation,
-  readLocalAutomations,
-  listLocalAddonIds,
-  buildMergedRegistry,
+  getRegistryAddonConfig,
+  listAvailableAddonIds,
+  listEnabledAddonIds,
+  enableAddon,
+  disableAddonByName,
+  installAutomationFromRegistry,
+  uninstallAutomation,
 } from "./control-plane/registry.js";
 
 // ── Home Layout (v0.10.0) ───────────────────────────────────────────────
@@ -56,6 +62,9 @@ export {
   resolveDataDir,
   resolveLogsDir,
   resolveCacheHome,
+  resolveRegistryDir,
+  resolveRegistryAddonsDir,
+  resolveRegistryAutomationsDir,
   ensureHomeDirs,
 } from "./control-plane/home.js";
 
@@ -80,7 +89,7 @@ export {
   updateSecretsEnv,
   readStackEnv,
   patchSecretsEnvFile,
-  maskConnectionValue,
+  maskSecretValue,
   ensureOpenCodeConfig,
 } from "./control-plane/secrets.js";
 export {
@@ -98,8 +107,6 @@ export {
   isAllowedService,
   isValidChannel,
   isChannelAddon,
-  installAutomationFromRegistry,
-  uninstallAutomation,
 } from "./control-plane/channels.js";
 
 // ── Memory Config ───────────────────────────────────────────────────────
@@ -127,7 +134,6 @@ export {
   ensureCoreCompose,
   readCoreCompose,
   ensureOpenCodeSystemConfig,
-  ensureCoreAutomations,
   refreshCoreAssets,
 } from "./control-plane/core-assets.js";
 
@@ -143,7 +149,6 @@ export {
   writeSystemEnv,
   readChannelSecrets,
   writeChannelSecrets,
-  migrateLegacyChannelSecrets,
 } from "./control-plane/config-persistence.js";
 
 // ── Rollback ─────────────────────────────────────────────────────────────
@@ -225,15 +230,12 @@ export type {
   StackSpecTts,
   StackSpecStt,
   StackSpecReranker,
-  StackSpecAddonValue,
 } from "./control-plane/stack-spec.js";
 export {
   STACK_SPEC_FILENAME,
   writeStackSpec,
   readStackSpec,
   updateCapability,
-  hasAddon,
-  addonNames,
   parseCapabilityString,
   formatCapabilityString,
 } from "./control-plane/stack-spec.js";

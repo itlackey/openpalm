@@ -2,11 +2,11 @@
  * Stack specification file (stack.yml) management.
  *
  * The stack spec is a YAML document that captures the high-level
- * configuration of an OpenPalm installation: capabilities, addons,
- * and optional services. It lives in CONFIG_HOME.
+ * configuration of an OpenPalm installation: capabilities only.
+ * It lives in CONFIG_HOME.
  *
  * v2: Capabilities-based schema. No connections array — capabilities
- *     carry their own provider info. Addons are a Record, not an array.
+ *     carry their own provider info.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { stringify as yamlStringify, parse as yamlParse } from "yaml";
@@ -60,18 +60,11 @@ export type StackSpecCapabilities = {
   reranking?: StackSpecReranker;
 };
 
-// ── Addon / Service Types ───────────────────────────────────────────────
-
-export type StackSpecAddonValue = boolean | { env?: Record<string, string> };
-export type StackSpecServiceValue = { env?: Record<string, string> };
-
 // ── StackSpec v2 ────────────────────────────────────────────────────────
 
 export type StackSpec = {
   version: 2;
   capabilities: StackSpecCapabilities;
-  addons: Record<string, StackSpecAddonValue>;
-  services?: Record<string, StackSpecServiceValue>;
 };
 
 // ── Constants ───────────────────────────────────────────────────────────
@@ -92,20 +85,6 @@ export const SPEC_DEFAULTS = {
     tag: "latest",
   },
 } as const;
-
-// ── Addon Helpers ───────────────────────────────────────────────────────
-
-/** Check if an addon is enabled by name */
-export function hasAddon(spec: StackSpec, name: string): boolean {
-  const value = spec.addons[name];
-  if (value === undefined || value === false) return false;
-  return true;
-}
-
-/** Get the list of enabled addon names */
-export function addonNames(spec: StackSpec): string[] {
-  return Object.keys(spec.addons).filter((k) => hasAddon(spec, k));
-}
 
 // ── Capability Helpers ──────────────────────────────────────────────────
 
@@ -150,7 +129,6 @@ export function readStackSpec(configDir: string): StackSpec | null {
   const obj = raw as Record<string, unknown>;
   if (obj.version !== 2) return null;
   if (typeof obj.capabilities !== "object" || obj.capabilities === null) return null;
-  if (typeof obj.addons !== "object" || obj.addons === null) obj.addons = {};
   return obj as unknown as StackSpec;
 }
 

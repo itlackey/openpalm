@@ -1,6 +1,6 @@
 /**
- * GET  /admin/addons — Return all available addons with enabled status and env config.
- * POST /admin/addons — Enable/disable an addon and/or update its env config.
+ * GET  /admin/addons — Return available addons with enabled status.
+ * POST /admin/addons — Enable or disable an addon.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -16,53 +16,31 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
-  readStackSpec,
-  writeStackSpec,
-  writeCapabilityVars,
+  listAvailableAddonIds,
+  listEnabledAddonIds,
+  enableAddon,
+  disableAddonByName,
   writeChannelSecrets,
-  hasAddon,
-  addonNames,
   isChannelAddon,
   randomHex,
-  type StackSpec,
-  type StackSpecAddonValue,
 } from "@openpalm/lib";
 import { createLogger } from "$lib/server/logger.js";
 
 const logger = createLogger("addons");
 
-import { existsSync, readdirSync } from "node:fs";
-
-/** List addon IDs by scanning the stack/addons/ directory on disk. */
-function listAddonIds(homeDir: string): string[] {
-  const addonsDir = `${homeDir}/stack/addons`;
-  if (!existsSync(addonsDir)) return [];
-  return readdirSync(addonsDir, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => d.name);
-}
-
 type AddonItem = {
   name: string;
   enabled: boolean;
-  hasCompose: boolean;
-  env: Record<string, string>;
+  available: boolean;
 };
 
-function buildAddonList(spec: StackSpec | null, availableIds: string[], homeDir: string): AddonItem[] {
-  return availableIds.map((name) => {
-    const hasCompose = existsSync(`${homeDir}/stack/addons/${name}/compose.yml`);
-    if (!spec) {
-      return { name, enabled: false, hasCompose, env: {} };
-    }
-    const enabled = hasAddon(spec, name);
-    const value: StackSpecAddonValue | undefined = spec.addons[name];
-    const env =
-      value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value)
-        ? (value.env ?? {})
-        : {};
-    return { name, enabled, hasCompose, env };
-  });
+function buildAddonList(availableIds: string[], enabledIds: string[]): AddonItem[] {
+  const enabledSet = new Set(enabledIds);
+  return availableIds.map((name) => ({
+    name,
+    enabled: enabledSet.has(name),
+    available: true,
+  }));
 }
 
 export const GET: RequestHandler = async (event) => {
@@ -74,9 +52,8 @@ export const GET: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
-  const spec = readStackSpec(state.configDir);
-  const availableIds = listAddonIds(state.homeDir);
-  const addons = buildAddonList(spec, availableIds, state.homeDir);
+  const availableIds = listAvailableAddonIds();
+  const addons = buildAddonList(availableIds, listEnabledAddonIds(state.homeDir));
 
   appendAudit(state, actor, "addons.get", {}, true, requestId, callerType);
   return jsonResponse(200, { addons }, requestId);
@@ -101,52 +78,24 @@ export const POST: RequestHandler = async (event) => {
   }
 
   // Validate name is a known addon
-  const availableIds = listAddonIds(state.homeDir);
+  const availableIds = listAvailableAddonIds();
   if (!availableIds.includes(name)) {
     return errorResponse(404, "not_found", `Addon "${name}" is not available`, { name }, requestId);
   }
 
-  const spec = readStackSpec(state.configDir);
-  if (!spec) {
-    return errorResponse(500, "internal_error", "stack.yml not found or invalid", {}, requestId);
-  }
-
   const enabled: boolean | undefined =
     typeof body.enabled === "boolean" ? body.enabled : undefined;
-  const envPatch: Record<string, string> | undefined =
-    body.env !== null && body.env !== undefined && typeof body.env === "object" && !Array.isArray(body.env)
-      ? (body.env as Record<string, string>)
-      : undefined;
+  const wasEnabled = listEnabledAddonIds(state.homeDir).includes(name);
+  const nextEnabled = enabled !== undefined ? enabled : wasEnabled;
 
-  // Determine the new value for this addon
-  const existing: StackSpecAddonValue | undefined = spec.addons[name];
-  const existingEnv: Record<string, string> =
-    existing !== null && existing !== undefined && typeof existing === "object" && !Array.isArray(existing)
-      ? (existing.env ?? {})
-      : {};
-
-  const newEnabled = enabled !== undefined ? enabled : hasAddon(spec, name);
-  const newEnv = envPatch !== undefined ? { ...existingEnv, ...envPatch } : existingEnv;
-
-  let newValue: StackSpecAddonValue;
-  if (Object.keys(newEnv).length > 0) {
-    newValue = { env: newEnv };
-  } else {
-    newValue = newEnabled;
-  }
-
-  spec.addons[name] = newValue;
-
-  try {
-    writeStackSpec(state.configDir, spec);
-    writeCapabilityVars(spec, state.vaultDir);
-  } catch (err) {
-    appendAudit(state, actor, "addons.post", { name, error: String(err) }, false, requestId, callerType);
-    return errorResponse(500, "internal_error", "Failed to update stack.yml", {}, requestId);
+  const mutation = nextEnabled ? enableAddon(state.homeDir, name) : disableAddonByName(state.homeDir, name);
+  if (!mutation.ok) {
+    appendAudit(state, actor, "addons.post", { name, error: mutation.error }, false, requestId, callerType);
+    return errorResponse(500, "internal_error", mutation.error, {}, requestId);
   }
 
   // Generate HMAC secret for newly-enabled channel addons
-  if (newEnabled) {
+  if (nextEnabled && !wasEnabled) {
     const composePath = `${state.homeDir}/stack/addons/${name}/compose.yml`;
     if (isChannelAddon(composePath)) {
       try {
@@ -158,12 +107,7 @@ export const POST: RequestHandler = async (event) => {
     }
   }
 
-  const resultEnabled = hasAddon(spec, name);
-  const resultValue: StackSpecAddonValue | undefined = spec.addons[name];
-  const resultEnv: Record<string, string> =
-    resultValue !== null && resultValue !== undefined && typeof resultValue === "object" && !Array.isArray(resultValue)
-      ? (resultValue.env ?? {})
-      : {};
+  const resultEnabled = listEnabledAddonIds(state.homeDir).includes(name);
 
   appendAudit(state, actor, "addons.post", { name, enabled: resultEnabled }, true, requestId, callerType);
   logger.info("addon updated", { name, enabled: resultEnabled, requestId });

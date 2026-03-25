@@ -1,38 +1,43 @@
 # ~/.openpalm
 
 This bundle is the shipped OpenPalm home directory skeleton. Copy it to
-`~/.openpalm/` (or another location via `OP_HOME`) and run the stack from the
-files here.
+`~/.openpalm/` (or another location via `OP_HOME`). The repo bundle is the
+source asset set; the copied directory becomes the runtime home.
 
 ## Directory layout
 
 ```text
 ~/.openpalm/
-  config/             User-editable configuration (non-secret)
-    stack.yml          Optional addon/tooling metadata
-    host.yaml           Optional host metadata written by setup tooling
-    assistant/          OpenCode user tools, plugins, skills, commands
-    automations/        Scheduler automation definitions
+  config/
+    stack.yml          Capabilities only
+    host.yaml          Optional host metadata written by setup tooling
+    assistant/         OpenCode user tools, plugins, skills, commands
+    automations/       Enabled automation definitions only
 
-  vault/              Secrets boundary
-    stack/              System-managed env and auth files
+  registry/
+    addons/            Shipped addon catalog
+    automations/       Shipped automation catalog
+
+  vault/
+    stack/             System-managed env and auth files
       stack.env
+      guardian.env
       auth.json
-    user/               User-managed secrets (API keys, provider settings)
+    user/              User-managed secrets and overrides
 
-  data/               Durable service-managed data
-    admin/              Admin home
-    assistant/          Assistant home
-    guardian/           Guardian runtime state
-    memory/             Memory database and related files
-    stash/              AKM stash
-    workspace/          Shared /work mount
+  data/
+    admin/             Admin home
+    assistant/         Assistant home
+    guardian/          Guardian runtime state
+    memory/            Memory database and related files
+    stash/             AKM stash
+    workspace/         Shared /work mount
 
-  stack/              Docker Compose runtime assets
-    core.compose.yml    Core services
-    addons/             Optional service overlays
+  stack/
+    core.compose.yml   Core services
+    addons/            Enabled addon overlays only
 
-  logs/               Audit and debug logs
+  logs/
     admin-audit.jsonl
     guardian-audit.log
     opencode/
@@ -63,11 +68,20 @@ docker compose \
   up -d
 ```
 
+Before running that command, enable each addon you want by copying it from the
+catalog into the runtime stack, for example:
+
+```bash
+cp -r ~/.openpalm/registry/addons/chat ~/.openpalm/stack/addons/chat
+cp -r ~/.openpalm/registry/addons/admin ~/.openpalm/stack/addons/admin
+```
+
 See [Manual Compose Runbook](../docs/operations/manual-compose-runbook.md) for the full reference.
 
-The live stack is defined by `stack/core.compose.yml` plus whichever addon
-compose files you include. `config/stack.yml` is helper metadata for wrappers;
-it does not replace Compose as the runtime source of truth.
+The live stack is defined by `stack/core.compose.yml` plus whichever enabled
+addon compose files you include from `stack/addons/`. `config/stack.yml`
+stores capabilities only; it does not replace Compose as the runtime source of
+truth.
 
 ## Ownership rules
 

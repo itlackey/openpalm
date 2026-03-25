@@ -19,7 +19,7 @@ Compose files in `stack/` and env files in `vault/` are the live runtime inputs.
 ## Important context
 
 - Some filenames still use legacy names like `staging`; those modules now support the direct-write compose model
-- `config/` is user-owned, `vault/stack/stack.env` is system-managed, and `stack/addons/` contains runtime compose overlays
+- `config/` is user-owned, `vault/stack/stack.env` is system-managed, `registry/` is catalog-only, and `stack/addons/` contains enabled runtime overlays
 - New reusable control-plane logic belongs here, not duplicated in consumers
 
 ## Main module areas

@@ -10,7 +10,7 @@ The CLI operates directly against Docker Compose without requiring an admin cont
 - **All lifecycle commands** -- refresh files in `~/.openpalm/` when needed, then run Docker Compose directly
 - **Admin delegation** -- the `install` command checks for a running admin and delegates if reachable. Other commands operate directly via Docker Compose.
 
-The admin container is optional. Use `--with-admin` to include the admin addon compose files.
+The admin container is optional. Use `--with-admin` to enable the admin addon overlay in the compose file set.
 
 ## Commands
 
@@ -58,7 +58,7 @@ On first install, the CLI serves a setup wizard on port `8100` via `Bun.serve()`
 
 ## How It Works
 
-1. **Bootstrap** (first install) -- creates the `~/.openpalm/` tree, downloads core assets from GitHub, seeds `vault/user/user.env` and `vault/stack/stack.env`, serves the setup wizard, writes `stack/core.compose.yml` plus addon overlays via `@openpalm/lib`, and starts core services via `docker compose up`
+1. **Bootstrap** (first install) -- creates the `~/.openpalm/` tree, downloads core assets from GitHub, seeds `vault/user/user.env` and `vault/stack/stack.env`, materializes the runtime registry catalog under `registry/`, serves the setup wizard, writes `stack/core.compose.yml`, enables requested addons under `stack/addons/`, and starts core services via `docker compose up`
 2. **Running stack** -- commands refresh files in `~/.openpalm/` when needed, then execute Docker Compose directly.
 3. **Admin absent** -- all commands work identically. Admin is never required for any operation.
 

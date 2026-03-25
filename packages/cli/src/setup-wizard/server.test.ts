@@ -41,7 +41,7 @@ function makeSetupDirs(): void {
   for (const dir of [
     configDir,
     join(configDir, "components"),
-    join(configDir, "connections"),
+    join(configDir, "capabilities"),
     join(configDir, "assistant"),
     join(configDir, "automations"),
     vaultDir,
@@ -84,22 +84,28 @@ function makeSetupDirs(): void {
   seedRequiredAssets(homeDir);
 }
 
+function startTestServer(
+  opts?: Parameters<typeof createSetupServer>[1]
+): ReturnType<typeof createSetupServer> & { baseUrl: string } {
+  const setupServer = createSetupServer(0, {
+    configDir,
+    ...opts,
+  });
+
+  return {
+    ...setupServer,
+    baseUrl: `http://127.0.0.1:${setupServer.server.port}`,
+  };
+}
+
 // ── Test Suites ──────────────────────────────────────────────────────────
 
-// Incrementing port counter to ensure no port conflicts between tests
-let nextPort = 19100;
-
 describe("setup wizard server", () => {
-  let serverPort: number;
-
   beforeEach(() => {
     makeSetupDirs();
 
     savedEnv.OP_HOME = process.env.OP_HOME;
     process.env.OP_HOME = homeDir;
-
-    // Use incrementing ports to avoid conflicts between sequential tests
-    serverPort = nextPort++;
   });
 
   afterEach(() => {
@@ -108,12 +114,10 @@ describe("setup wizard server", () => {
   });
 
   it("serves the wizard HTML at GET /setup", async () => {
-    const { server, stop } = createSetupServer(serverPort, {
-      configDir,
-    });
+    const { baseUrl, stop } = startTestServer();
 
     try {
-      const res = await fetch(`http://localhost:${serverPort}/setup`);
+      const res = await fetch(`${baseUrl}/setup`);
       expect(res.status).toBe(200);
       expect(res.headers.get("content-type")).toContain("text/html");
       const body = await res.text();
@@ -124,12 +128,10 @@ describe("setup wizard server", () => {
   });
 
   it("serves wizard.js at GET /setup/wizard.js", async () => {
-    const { server, stop } = createSetupServer(serverPort, {
-      configDir,
-    });
+    const { baseUrl, stop } = startTestServer();
 
     try {
-      const res = await fetch(`http://localhost:${serverPort}/setup/wizard.js`);
+      const res = await fetch(`${baseUrl}/setup/wizard.js`);
       expect(res.status).toBe(200);
       expect(res.headers.get("content-type")).toContain("application/javascript");
     } finally {
@@ -138,12 +140,10 @@ describe("setup wizard server", () => {
   });
 
   it("serves wizard.css at GET /setup/wizard.css", async () => {
-    const { server, stop } = createSetupServer(serverPort, {
-      configDir,
-    });
+    const { baseUrl, stop } = startTestServer();
 
     try {
-      const res = await fetch(`http://localhost:${serverPort}/setup/wizard.css`);
+      const res = await fetch(`${baseUrl}/setup/wizard.css`);
       expect(res.status).toBe(200);
       expect(res.headers.get("content-type")).toContain("text/css");
     } finally {
@@ -152,12 +152,10 @@ describe("setup wizard server", () => {
   });
 
   it("returns setup status at GET /api/setup/status", async () => {
-    const { server, stop } = createSetupServer(serverPort, {
-      configDir,
-    });
+    const { baseUrl, stop } = startTestServer();
 
     try {
-      const res = await fetch(`http://localhost:${serverPort}/api/setup/status`);
+      const res = await fetch(`${baseUrl}/api/setup/status`);
       expect(res.status).toBe(200);
       const data = (await res.json()) as { ok: boolean; setupComplete: boolean };
       expect(data.ok).toBe(true);
@@ -168,16 +166,14 @@ describe("setup wizard server", () => {
   });
 
   it("returns provider detection at GET /api/setup/detect-providers", async () => {
-    const { server, stop } = createSetupServer(serverPort, {
-      configDir,
-    });
+    const { baseUrl, stop } = startTestServer();
 
     try {
       // detectLocalProviders probes real network endpoints with 3s timeouts each,
       // so we allow a generous timeout for this test.
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 15000);
-      const res = await fetch(`http://localhost:${serverPort}/api/setup/detect-providers`, {
+      const res = await fetch(`${baseUrl}/api/setup/detect-providers`, {
         signal: controller.signal,
       });
       clearTimeout(timer);
@@ -191,12 +187,10 @@ describe("setup wizard server", () => {
   }, 20000); // Extended test timeout for network probing
 
   it("returns 404 for unknown routes", async () => {
-    const { server, stop } = createSetupServer(serverPort, {
-      configDir,
-    });
+    const { baseUrl, stop } = startTestServer();
 
     try {
-      const res = await fetch(`http://localhost:${serverPort}/nonexistent`);
+      const res = await fetch(`${baseUrl}/nonexistent`);
       expect(res.status).toBe(404);
       const data = (await res.json()) as { ok: boolean; error: string };
       expect(data.ok).toBe(false);
@@ -207,9 +201,7 @@ describe("setup wizard server", () => {
   });
 
   it("returns deploy status at GET /api/setup/deploy-status", async () => {
-    const { server, stop, updateDeployStatus } = createSetupServer(serverPort, {
-      configDir,
-    });
+    const { baseUrl, stop, updateDeployStatus } = startTestServer();
 
     try {
       updateDeployStatus([
@@ -217,7 +209,7 @@ describe("setup wizard server", () => {
         { service: "assistant", status: "pulling", label: "Assistant" },
       ]);
 
-      const res = await fetch(`http://localhost:${serverPort}/api/setup/deploy-status`);
+      const res = await fetch(`${baseUrl}/api/setup/deploy-status`);
       expect(res.status).toBe(200);
       const data = (await res.json()) as {
         ok: boolean;
@@ -233,12 +225,10 @@ describe("setup wizard server", () => {
   });
 
   it("rejects invalid JSON on POST /api/setup/complete", async () => {
-    const { server, stop } = createSetupServer(serverPort, {
-      configDir,
-    });
+    const { baseUrl, stop } = startTestServer();
 
     try {
-      const res = await fetch(`http://localhost:${serverPort}/api/setup/complete`, {
+      const res = await fetch(`${baseUrl}/api/setup/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "not-json",
@@ -253,9 +243,7 @@ describe("setup wizard server", () => {
   });
 
   it("completes setup and resolves waitForComplete", async () => {
-    const { server, stop, waitForComplete } = createSetupServer(serverPort, {
-      configDir,
-    });
+    const { baseUrl, stop, waitForComplete } = startTestServer();
 
     try {
       const body = {
@@ -273,11 +261,10 @@ describe("setup wizard server", () => {
               customInstructions: "",
             },
           },
-          addons: {},
         },
         security: { adminToken: "test-admin-token-12345" },
         owner: { name: "Test", email: "test@example.com" },
-        connections: [
+        capabilities: [
           {
             id: "openai-main",
             name: "OpenAI",
@@ -290,7 +277,7 @@ describe("setup wizard server", () => {
 
       // Fire POST and await both the response and the completion signal
       const [res, result] = await Promise.all([
-        fetch(`http://localhost:${serverPort}/api/setup/complete`, {
+        fetch(`${baseUrl}/api/setup/complete`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -304,7 +291,7 @@ describe("setup wizard server", () => {
       expect(result.ok).toBe(true);
 
       // Subsequent POST should return "already complete"
-      const res2 = await fetch(`http://localhost:${serverPort}/api/setup/complete`, {
+      const res2 = await fetch(`${baseUrl}/api/setup/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -318,12 +305,10 @@ describe("setup wizard server", () => {
   });
 
   it("returns 400 for invalid setup input on POST /api/setup/complete", async () => {
-    const { server, stop } = createSetupServer(serverPort, {
-      configDir,
-    });
+    const { baseUrl, stop } = startTestServer();
 
     try {
-      const res = await fetch(`http://localhost:${serverPort}/api/setup/complete`, {
+      const res = await fetch(`${baseUrl}/api/setup/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ security: { adminToken: "short" } }),
@@ -340,13 +325,10 @@ describe("setup wizard server", () => {
 // ── OpenCode Provider Routes ──────────────────────────────────────────────
 
 describe("setup wizard OpenCode routes", () => {
-  let serverPort: number;
-
   beforeEach(() => {
     makeSetupDirs();
     savedEnv.OP_HOME = process.env.OP_HOME;
     process.env.OP_HOME = homeDir;
-    serverPort = nextPort++;
   });
 
   afterEach(() => {
@@ -355,9 +337,9 @@ describe("setup wizard OpenCode routes", () => {
   });
 
   it("returns available:false when no openCodeClient provided", async () => {
-    const { stop } = createSetupServer(serverPort, { configDir });
+    const { baseUrl, stop } = startTestServer();
     try {
-      const res = await fetch(`http://localhost:${serverPort}/api/setup/opencode/status`);
+      const res = await fetch(`${baseUrl}/api/setup/opencode/status`);
       expect(res.status).toBe(200);
       const data = await res.json() as { ok: boolean; available: boolean };
       expect(data.available).toBe(false);
@@ -367,9 +349,9 @@ describe("setup wizard OpenCode routes", () => {
   });
 
   it("returns empty providers when no openCodeClient provided", async () => {
-    const { stop } = createSetupServer(serverPort, { configDir });
+    const { baseUrl, stop } = startTestServer();
     try {
-      const res = await fetch(`http://localhost:${serverPort}/api/setup/opencode/providers`);
+      const res = await fetch(`${baseUrl}/api/setup/opencode/providers`);
       expect(res.status).toBe(200);
       const data = await res.json() as { ok: boolean; available: boolean; providers: unknown[] };
       expect(data.available).toBe(false);
@@ -380,9 +362,9 @@ describe("setup wizard OpenCode routes", () => {
   });
 
   it("returns 503 for proxy routes when no openCodeClient provided", async () => {
-    const { stop } = createSetupServer(serverPort, { configDir });
+    const { baseUrl, stop } = startTestServer();
     try {
-      const res = await fetch(`http://localhost:${serverPort}/api/setup/opencode/auth/openai`, {
+      const res = await fetch(`${baseUrl}/api/setup/opencode/auth/openai`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "api", key: "sk-test" }),
@@ -418,23 +400,23 @@ describe("setup wizard OpenCode routes", () => {
 
     const { createOpenCodeClient } = await import("@openpalm/lib");
     const ocClient = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${mockOC.port}` });
-    const { stop } = createSetupServer(serverPort, { configDir, openCodeClient: ocClient });
+    const { baseUrl, stop } = startTestServer({ openCodeClient: ocClient });
 
     try {
       // Status should report available
-      const statusRes = await fetch(`http://localhost:${serverPort}/api/setup/opencode/status`);
+      const statusRes = await fetch(`${baseUrl}/api/setup/opencode/status`);
       const statusData = await statusRes.json() as { ok: boolean; available: boolean };
       expect(statusData.available).toBe(true);
 
       // Providers should return data
-      const provRes = await fetch(`http://localhost:${serverPort}/api/setup/opencode/providers`);
+      const provRes = await fetch(`${baseUrl}/api/setup/opencode/providers`);
       const provData = await provRes.json() as { ok: boolean; available: boolean; providers: unknown[]; auth: Record<string, unknown> };
       expect(provData.available).toBe(true);
       expect(provData.providers.length).toBeGreaterThan(0);
       expect(provData.auth).toBeDefined();
 
       // Proxy should forward to mock OpenCode
-      const proxyRes = await fetch(`http://localhost:${serverPort}/api/setup/opencode/auth/openai`, {
+      const proxyRes = await fetch(`${baseUrl}/api/setup/opencode/auth/openai`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "api", key: "sk-test" }),
@@ -490,11 +472,11 @@ describe("setup wizard OpenCode routes", () => {
 
     const { createOpenCodeClient } = await import("@openpalm/lib");
     const ocClient = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${mockOC.port}` });
-    const { stop } = createSetupServer(serverPort, { configDir, openCodeClient: ocClient });
+    const { baseUrl, stop } = startTestServer({ openCodeClient: ocClient });
 
     try {
       // Step 1: Authorize
-      const authRes = await fetch(`http://localhost:${serverPort}/api/setup/opencode/provider/test-provider/oauth/authorize`, {
+      const authRes = await fetch(`${baseUrl}/api/setup/opencode/provider/test-provider/oauth/authorize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ method: 0 }),
@@ -505,7 +487,7 @@ describe("setup wizard OpenCode routes", () => {
       expect(authData.instructions).toContain("TEST-1234");
 
       // Step 2: Start callback request (will block until auth completes)
-      const callbackPromise = fetch(`http://localhost:${serverPort}/api/setup/opencode/provider/test-provider/oauth/callback`, {
+      const callbackPromise = fetch(`${baseUrl}/api/setup/opencode/provider/test-provider/oauth/callback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ method: 0 }),

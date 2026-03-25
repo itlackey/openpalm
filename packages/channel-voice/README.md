@@ -16,7 +16,8 @@ mic -> STT -> assistant -> TTS -> speaker
 
 ## Deployment model
 
-- Compose overlay: `~/.openpalm/stack/addons/voice/compose.yml`
+- Shipped addon source: `.openpalm/registry/addons/voice/compose.yml`
+- Enabled runtime overlay: `~/.openpalm/stack/addons/voice/compose.yml`
 - Default host URL: `http://localhost:3810`
 - Container port: `8186`
 - System-managed HMAC secret: `CHANNEL_VOICE_SECRET` in `~/.openpalm/vault/stack/guardian.env`

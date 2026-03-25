@@ -1,11 +1,12 @@
 # Environment Variables, Mounts, and Network Wiring
 
-This document mirrors the current shipped runtime under `.openpalm/stack/`.
+This document mirrors the current shipped runtime: repo assets under `.openpalm/`
+and runtime files under `OP_HOME`.
 
 Primary sources:
 
 - `.openpalm/stack/core.compose.yml`
-- `.openpalm/stack/addons/*/compose.yml`
+- `.openpalm/registry/addons/*/compose.yml`
 - `core/*/entrypoint.sh` and service source where runtime defaults matter
 
 When this document conflicts with older prose elsewhere, the compose files win.
@@ -19,7 +20,8 @@ OpenPalm stores runtime state under `OP_HOME`, which defaults to `~/.openpalm`.
 | Host path | Purpose |
 |---|---|
 | `~/.openpalm/config/` | User-editable, non-secret config |
-| `~/.openpalm/stack/` | Live compose assembly and addon overlays |
+| `~/.openpalm/registry/` | Available addon and automation catalog |
+| `~/.openpalm/stack/` | Live compose assembly; `stack/addons/` contains enabled addon overlays only |
 | `~/.openpalm/vault/user/` | User-managed settings (`user.env`) |
 | `~/.openpalm/vault/stack/` | System-managed secrets and runtime env (`stack.env`, API keys, auth.json) |
 | `~/.openpalm/data/` | Durable service data |
@@ -50,7 +52,7 @@ Docker Compose is invoked with these env files (see [Manual Compose Runbook](../
 That means the effective env model is:
 
 - `vault/stack/stack.env` - system-managed runtime env and secrets (admin token, paths, UID/GID, image tags, bind ports, API keys, provider config, owner identity)
-- `vault/user/user.env` - optional user-managed extension settings (custom preferences)
+- `vault/user/user.env` - recommended user-managed addon overrides and operator settings
 - `vault/stack/guardian.env` - channel HMAC secrets (loaded by guardian as env_file and via GUARDIAN_SECRETS_PATH)
 
 ---
@@ -229,7 +231,7 @@ Notes:
 
 ## Admin Addon
 
-Compose source: `.openpalm/stack/addons/admin/compose.yml`
+Compose source: runtime `~/.openpalm/stack/addons/admin/compose.yml` seeded from `.openpalm/registry/addons/admin/compose.yml`
 
 ### Docker Socket Proxy
 
@@ -258,7 +260,6 @@ Mounts:
 | `$OP_HOME` | `/openpalm` | rw | Full OpenPalm home for control-plane management |
 | `$OP_HOME/data/admin` | `/home/node` | rw | Admin home directory |
 | `$OP_HOME/data/workspace` | `/work` | rw | Workspace access |
-| `${HOME}/.cache/openpalm/registry` | `/cache/registry` | rw | Registry cache |
 | `${GNUPGHOME:-${HOME}/.gnupg}` | `/home/node/.gnupg` | ro | Optional pass/GPG integration |
 
 Ports and networks:
