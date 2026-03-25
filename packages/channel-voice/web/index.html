@@ -1,85 +1,141 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#ff9d00">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="description" content="Voice-driven AI assistant">
-  <title>OpenPalm Voice</title>
-  <link rel="stylesheet" href="/styles.css">
-  <link rel="manifest" href="/manifest.webmanifest">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voice Chat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app">
+  <div class="app" id="app">
+    <!-- Ambient background -->
+    <div class="ambient-bg" id="ambientBg"></div>
+
+    <!-- Header -->
     <header class="header">
-      <div class="header-brand">
-        <span class="brand-slash">/</span><span class="brand-name">voice</span>
+      <div class="header-left">
+        <h1 class="logo">voice<span class="logo-accent">.</span></h1>
+        <span class="provider-summary" id="providerSummary">No agent configured</span>
       </div>
       <div class="header-right">
-        <span id="status" class="status-indicator" aria-label="Status: ready">ready</span>
-        <button id="settings-btn" class="icon-btn" aria-label="Open settings">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" stroke="currentColor" stroke-width="1.5"/>
-            <path d="M16.2 12.2a1.4 1.4 0 00.28 1.54l.05.05a1.7 1.7 0 11-2.4 2.4l-.05-.05a1.4 1.4 0 00-1.54-.28 1.4 1.4 0 00-.85 1.28v.15a1.7 1.7 0 11-3.4 0v-.08a1.4 1.4 0 00-.91-1.28 1.4 1.4 0 00-1.54.28l-.05.05a1.7 1.7 0 11-2.4-2.4l.05-.05a1.4 1.4 0 00.28-1.54 1.4 1.4 0 00-1.28-.85H2.3a1.7 1.7 0 110-3.4h.08a1.4 1.4 0 001.28-.91 1.4 1.4 0 00-.28-1.54l-.05-.05a1.7 1.7 0 112.4-2.4l.05.05a1.4 1.4 0 001.54.28h.07a1.4 1.4 0 00.85-1.28V2.3a1.7 1.7 0 113.4 0v.08a1.4 1.4 0 00.85 1.28 1.4 1.4 0 001.54-.28l.05-.05a1.7 1.7 0 112.4 2.4l-.05.05a1.4 1.4 0 00-.28 1.54v.07a1.4 1.4 0 001.28.85h.15a1.7 1.7 0 110 3.4h-.08a1.4 1.4 0 00-1.28.85z" stroke="currentColor" stroke-width="1.5"/>
-          </svg>
+        <button class="btn btn-ghost" id="btnSettings" title="Settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
       </div>
     </header>
 
-    <main id="log" class="log" role="log" aria-label="Conversation log"></main>
-
-    <div class="controls">
-      <button id="record-btn" class="record-btn" data-state="idle" aria-label="Start recording">
-        <svg class="mic-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" fill="currentColor"/>
-          <path d="M19 10v2a7 7 0 01-14 0v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          <line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        </svg>
-        <span class="spinner" aria-hidden="true"></span>
-      </button>
-      <button id="continuous-btn" class="continuous-btn" aria-label="Enable continuous listening" aria-pressed="false">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M1 4v6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
+    <!-- Status bar -->
+    <div class="status-bar" id="statusBar">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-text" id="statusText">Ready</span>
     </div>
 
-    <footer class="footer">
-      <p>mic &rarr; STT &rarr; LLM &rarr; TTS &rarr; speaker</p>
+    <!-- Conversation area -->
+    <main class="conversation" id="conversation">
+      <div class="conversation-inner" id="conversationInner">
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+          </div>
+          <p>Press the mic to start talking</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- Controls -->
+    <footer class="controls">
+      <div class="controls-secondary">
+        <button class="btn btn-pill" id="btnNewConvo" title="New Conversation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+          <span>New</span>
+        </button>
+        <button class="btn btn-pill" id="btnToggleConvo" title="Show/Hide Conversation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span>Chat</span>
+        </button>
+        <button class="btn btn-pill" id="btnContinuous" title="Continuous Listening">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/></svg>
+          <span>Loop</span>
+        </button>
+      </div>
+      <div class="controls-primary">
+        <button class="mic-btn" id="btnMic" title="Start/Stop Microphone">
+          <div class="mic-btn-ring"></div>
+          <div class="mic-btn-inner">
+            <svg class="mic-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+            <svg class="stop-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+          </div>
+        </button>
+        <button class="btn btn-cancel" id="btnCancel" hidden title="Cancel">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <span>Cancel</span>
+        </button>
+      </div>
     </footer>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="modalOverlay" hidden>
+      <div class="modal" id="settingsModal">
+        <div class="modal-header">
+          <h2>Settings</h2>
+          <button class="btn btn-ghost modal-close" id="btnCloseSettings">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <!-- Agent Section -->
+          <section class="settings-section">
+            <h3 class="section-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+              Agent <span class="required-badge">required</span>
+            </h3>
+            <div class="field">
+              <label for="agentProvider">Provider</label>
+              <select id="agentProvider"></select>
+            </div>
+            <div class="dynamic-fields" id="agentFields"></div>
+            <div class="field-error" id="agentError"></div>
+          </section>
+
+          <!-- STT Section -->
+          <section class="settings-section">
+            <h3 class="section-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+              Speech-to-Text
+            </h3>
+            <div class="field">
+              <label for="sttProvider">Provider</label>
+              <select id="sttProvider"></select>
+            </div>
+            <div class="dynamic-fields" id="sttFields"></div>
+            <div class="field-error" id="sttError"></div>
+          </section>
+
+          <!-- TTS Section -->
+          <section class="settings-section">
+            <h3 class="section-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+              Text-to-Speech
+            </h3>
+            <div class="field">
+              <label for="ttsProvider">Provider</label>
+              <select id="ttsProvider"></select>
+            </div>
+            <div class="dynamic-fields" id="ttsFields"></div>
+            <div class="field-error" id="ttsError"></div>
+          </section>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" id="btnCancelSettings">Cancel</button>
+          <button class="btn btn-primary" id="btnSaveSettings">Save Settings</button>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <dialog id="settings-dialog" class="settings-dialog" aria-label="Settings">
-    <h2>Settings</h2>
-    <form method="dialog" id="settings-form">
-      <label class="field">
-        <span class="field-label">TTS voice</span>
-        <input type="text" id="setting-voice" class="field-input" placeholder="default">
-      </label>
-      <label class="field checkbox-field">
-        <input type="checkbox" id="setting-haptic">
-        <span class="field-label">Haptic feedback</span>
-      </label>
-      <label class="field checkbox-field">
-        <input type="checkbox" id="setting-wakelock">
-        <span class="field-label">Keep screen on while recording</span>
-      </label>
-      <label class="field checkbox-field">
-        <input type="checkbox" id="setting-continuous">
-        <span class="field-label">Continuous listening (auto-restart after response)</span>
-      </label>
-      <div class="dialog-actions">
-        <button type="submit" class="btn btn-primary">Done</button>
-      </div>
-    </form>
-  </dialog>
-
-  <div id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
-
-  <script src="/app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

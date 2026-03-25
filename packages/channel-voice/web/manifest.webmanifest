@@ -1,9 +1,0 @@
-{
-  "name": "OpenPalm Voice",
-  "short_name": "Voice",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#ff9d00",
-  "description": "Voice-driven AI assistant"
-}

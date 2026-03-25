@@ -1,4 +1,6 @@
-# Addon: Voice — voice-driven conversational interface (STT -> LLM -> TTS)
+# Addon: Voice — voice chat web UI
+# Serves a static web app that talks directly to OpenCode's session API.
+# Provider selection (agent, STT, TTS) is configured in the browser UI.
 services:
   voice:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
@@ -8,26 +10,9 @@ services:
       - "${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT:-3810}:8186"
     environment:
       PORT: "8186"
-      CHANNEL_NAME: "Voice"
-      GUARDIAN_URL: http://guardian:8080
       CHANNEL_PACKAGE: "@openpalm/channel-voice"
-      CHANNEL_VOICE_SECRET: ${CHANNEL_VOICE_SECRET:-}
-      # TTS/STT capabilities (resolved from stack.yml via OP_CAP_*)
-      TTS_BASE_URL: ${OP_CAP_TTS_BASE_URL:-}
-      TTS_API_KEY: ${OP_CAP_TTS_API_KEY:-}
-      TTS_MODEL: ${OP_CAP_TTS_MODEL:-}
-      TTS_VOICE: ${OP_CAP_TTS_VOICE:-}
-      STT_BASE_URL: ${OP_CAP_STT_BASE_URL:-}
-      STT_API_KEY: ${OP_CAP_STT_API_KEY:-}
-      STT_MODEL: ${OP_CAP_STT_MODEL:-}
-      # Voice LLM (uses SLM capability for lightweight inference)
-      LLM_BASE_URL: ${OP_CAP_SLM_BASE_URL:-}
-      LLM_API_KEY: ${OP_CAP_SLM_API_KEY:-}
-      LLM_MODEL: ${OP_CAP_SLM_MODEL:-}
+    command: ["bun", "run", "node_modules/@openpalm/channel-voice/src/index.ts"]
     networks: [channel_lan]
-    depends_on:
-      guardian:
-        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8186' || exit 1"]
       interval: 10s
@@ -35,7 +20,7 @@ services:
       retries: 3
     labels:
       openpalm.name: Voice
-      openpalm.description: Voice-driven conversational interface with speech-to-text and text-to-speech
+      openpalm.description: Voice chat web UI with configurable agent, STT, and TTS providers
       openpalm.icon: mic
       openpalm.category: messaging
       openpalm.healthcheck: http://voice:8186/health

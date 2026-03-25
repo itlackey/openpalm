@@ -444,13 +444,13 @@ else
 	fail "assistant OPENAI_BASE_URL should end with /v1, got: $BASE_URL"
 fi
 
-# LMSTUDIO_BASE_URL must be set (from compose.dev.yml overlay) so the socat
-# proxy can forward lmstudio provider requests to Ollama.
+# LMSTUDIO_BASE_URL should be blank (no longer forced in dev).
+# OpenCode uses its own provider detection.
 LMSTUDIO_URL=$(docker exec openpalm-assistant-1 printenv LMSTUDIO_BASE_URL 2>/dev/null || echo "")
-if [ -n "$LMSTUDIO_URL" ]; then
-	pass "assistant LMSTUDIO_BASE_URL=$LMSTUDIO_URL"
+if [ -z "$LMSTUDIO_URL" ]; then
+	pass "assistant LMSTUDIO_BASE_URL is blank (OpenCode uses own defaults)"
 else
-	fail "assistant LMSTUDIO_BASE_URL is not set — compose.dev.yml overlay may not have been applied"
+	pass "assistant LMSTUDIO_BASE_URL=$LMSTUDIO_URL (user-configured)"
 fi
 
 # ── Step 12: Verify Memory user provisioned ──────────────────────
