@@ -7,11 +7,10 @@ import {
   type ControlPlaneState,
   ensureSecrets,
   validatePassEntryName,
-  PlaintextBackend,
-  PassBackend,
-  generateRedactSchema,
-  getCoreSecretMappings,
 } from '../index.js';
+import { PlaintextBackend, PassBackend } from './secret-backend.js';
+import { generateRedactSchema } from './redact-schema.js';
+import { getCoreSecretMappings } from './secret-mappings.js';
 import { writeSecretProviderConfig } from './provider-config.js';
 
 let rootDir = '';

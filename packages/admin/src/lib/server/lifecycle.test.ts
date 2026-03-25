@@ -225,6 +225,7 @@ describe("applyInstall", () => {
   test("marks all core services as running", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
+    process.env.OP_HOME = state.homeDir;
 
     // Initialize services as stopped
     for (const service of CORE_SERVICES) {
@@ -247,6 +248,7 @@ describe("applyUpdate", () => {
   test("returns list of running services that were restarted", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
+    process.env.OP_HOME = state.homeDir;
     state.services = { admin: "running", guardian: "running", memory: "stopped" };
 
     mkdirSync(join(state.homeDir, "stack"), { recursive: true });
@@ -263,6 +265,7 @@ describe("applyUninstall", () => {
   test("stops all services", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
+    process.env.OP_HOME = state.homeDir;
     state.services = { admin: "running", guardian: "running" };
 
     mkdirSync(join(state.homeDir, "stack"), { recursive: true });
