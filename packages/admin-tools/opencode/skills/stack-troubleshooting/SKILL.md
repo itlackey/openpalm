@@ -103,7 +103,7 @@ Networks:
    - Connection errors -> check the channel's configuration and environment variables.
    - Auth errors -> verify the channel's API token or credentials.
 
-6. **Check channel addon:** Verify the channel addon is enabled in `stack.yml` and its compose overlay exists in `stack/addons/<name>/`.
+6. **Check channel addon:** Verify the channel addon exists under `stack/addons/<name>/`.
    - Not enabled -> enable the addon via `admin-addons` or the admin UI.
 
 ---

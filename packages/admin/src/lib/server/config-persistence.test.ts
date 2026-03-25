@@ -21,35 +21,19 @@ import {
   readChannelSecrets,
   writeChannelSecrets,
   migrateLegacyChannelSecrets,
-  writeStackSpec,
-  type StackSpec,
 } from "@openpalm/lib";
 import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
-/** Seed channel addon files in stack/addons/<name>/compose.yml and enable them in stack.yml. */
+/** Seed channel addon files in stack/addons/<name>/compose.yml. */
 function seedChannelAddons(
   homeDir: string,
   channels: { name: string; yml: string }[]
 ): void {
   for (const ch of channels) {
-    const addonDir = join(homeDir, "stack", "addons", ch.name);
-    mkdirSync(addonDir, { recursive: true });
-    writeFileSync(join(addonDir, "compose.yml"), ch.yml);
-  }
-  // Enable the addons in stack.yml via lib's writeStackSpec
-  const configDir = join(homeDir, "config");
-  const addons: Record<string, boolean> = {};
-  for (const ch of channels) addons[ch.name] = true;
-  const spec: StackSpec = {
-    version: 2,
-    capabilities: {
-      llm: "openai/gpt-4.1-mini",
-      embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
-      memory: { userId: "test-user" },
-    },
-    addons,
-  };
-  writeStackSpec(configDir, spec);
+      const addonDir = join(homeDir, "stack", "addons", ch.name);
+      mkdirSync(addonDir, { recursive: true });
+      writeFileSync(join(addonDir, "compose.yml"), ch.yml);
+    }
 }
 
 registerCleanup();

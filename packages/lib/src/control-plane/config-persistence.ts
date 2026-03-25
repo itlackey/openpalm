@@ -9,8 +9,9 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, chmodS
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { isChannelAddon } from "./channels.js";
-import { readStackSpec, hasAddon, addonNames } from "./stack-spec.js";
+import { readStackSpec } from "./stack-spec.js";
 import { writeCapabilityVars } from "./spec-to-env.js";
+import { listEnabledAddonIds } from "./registry.js";
 
 import { generateRedactSchema } from "./redact-schema.js";
 import { readStackEnv } from "./secrets.js";
@@ -27,21 +28,17 @@ const DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
 // ── Stack Config (stack.yml) ─────────────────────────────────────
 
 /**
- * Check whether Ollama is enabled via stack.yml addons list.
+ * Check whether Ollama is enabled via active stack/addons/ overlay.
  */
 export function isOllamaEnabled(state: ControlPlaneState): boolean {
-  const spec = readStackSpec(state.configDir);
-  if (spec) return hasAddon(spec, "ollama");
-  return false;
+  return listEnabledAddonIds(state.homeDir).includes("ollama");
 }
 
 /**
- * Check whether admin is enabled via stack.yml addons list.
+ * Check whether admin is enabled via active stack/addons/ overlay.
  */
 export function isAdminEnabled(state: ControlPlaneState): boolean {
-  const spec = readStackSpec(state.configDir);
-  if (spec) return hasAddon(spec, "admin");
-  return false;
+  return listEnabledAddonIds(state.homeDir).includes("admin");
 }
 
 // ── Env File Management ──────────────────────────────────────────────
@@ -300,14 +297,11 @@ export function writeRuntimeFiles(
   // Load persisted channel HMAC secrets from guardian.env (with stack.env fallback),
   // then generate new ones for new channel addons.
   const channelSecrets = readChannelSecrets(state.vaultDir);
-  const spec = readStackSpec(state.configDir);
-  if (spec) {
-    const addonStackDir = `${state.homeDir}/stack`;
-    for (const addon of addonNames(spec)) {
-      const composePath = `${addonStackDir}/addons/${addon}/compose.yml`;
-      if (isChannelAddon(composePath) && !channelSecrets[addon]) {
-        channelSecrets[addon] = randomHex(16);
-      }
+  const addonStackDir = `${state.homeDir}/stack`;
+  for (const addon of listEnabledAddonIds(state.homeDir)) {
+    const composePath = `${addonStackDir}/addons/${addon}/compose.yml`;
+    if (isChannelAddon(composePath) && !channelSecrets[addon]) {
+      channelSecrets[addon] = randomHex(16);
     }
   }
 
@@ -321,6 +315,7 @@ export function writeRuntimeFiles(
   ensureUserEnvSchema();
   ensureSystemEnvSchema();
 
+  const spec = readStackSpec(state.configDir);
   // Write OP_CAP_* capability vars to stack.env from stack spec
   if (spec) {
     writeCapabilityVars(spec, state.vaultDir);

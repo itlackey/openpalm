@@ -39,12 +39,14 @@ export async function ensureDirectoryTree(
     join(dataDir, 'stash'),
     join(homeDir, 'stack'),
     join(homeDir, 'stack', 'addons'),
+    join(homeDir, 'registry'),
+    join(homeDir, 'registry', 'addons'),
+    join(homeDir, 'registry', 'automations'),
     join(homeDir, 'stack', 'addons', 'ollama'),
     join(homeDir, 'backups'),
     join(homeDir, 'logs'),
     join(homeDir, 'logs', 'opencode'),
     cacheDir,
-    join(cacheDir, 'registry'),
     join(cacheDir, 'rollback'),
     workDir,
   ]) {
@@ -134,6 +136,7 @@ export async function runDockerComposeCapture(args: string[]): Promise<string> {
  * Mapping:
  *   .openpalm/stack/   → homeDir/stack/
  *   .openpalm/config/  → homeDir/config/  (seed only, don't overwrite user files)
+ *   registry catalog   → homeDir/registry/
  *   .openpalm/vault/   → homeDir/vault/   (schemas only)
  *
  * Also seeds assistant config files from core/assistant/opencode/.
@@ -176,6 +179,12 @@ export async function seedOpenPalmDir(
     const srcAutomations = join(tmpDir, '.openpalm', 'config', 'automations');
     if (await dirExists(srcAutomations)) {
       await copyTree(srcAutomations, join(configDir, 'automations'), { skipExisting: true });
+      await copyTree(srcAutomations, join(homeDir, 'registry', 'automations'));
+    }
+
+    const srcRegistryAddons = join(tmpDir, '.openpalm', 'stack', 'addons');
+    if (await dirExists(srcRegistryAddons)) {
+      await copyTree(srcRegistryAddons, join(homeDir, 'registry', 'addons'));
     }
 
     const srcVault = join(tmpDir, '.openpalm', 'vault');

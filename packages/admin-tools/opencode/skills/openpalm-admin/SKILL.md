@@ -32,9 +32,9 @@ View and modify the network access scope.
 - **Access scope**: `host` = localhost only, `lan` = local network access
 
 ### `admin-addons` (list, enable, disable)
-List, enable, or disable addons via `stack.yml`.
-- Shows all addons from `stack/addons/` with their enabled state
-- Enable/disable toggles `stack.yml addons` and manages HMAC secrets for channels
+List, enable, or disable addons via the registry/stack addon directories.
+- Shows all addons from `registry/addons/` with their enabled state from `stack/addons/`
+- Enable/disable copies/removes addon directories and manages HMAC secrets for channels
 
 ### `admin-automations` (list)
 List configured automations (name, schedule, enabled, action type). For live scheduler status and execution logs, query the scheduler sidecar at `http://scheduler:8090/automations`.

@@ -24,11 +24,12 @@ import {
 } from "./secrets.js";
 import { ensureOpenCodeSystemConfig, ensureMemoryDir } from "./core-assets.js";
 import { createState, writeSetupTokenFile } from "./lifecycle.js";
-import { writeStackSpec, hasAddon } from "./stack-spec.js";
+import { writeStackSpec } from "./stack-spec.js";
 import type { StackSpec } from "./stack-spec.js";
 import { writeCapabilityVars } from "./spec-to-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
+import { listEnabledAddonIds } from "./registry.js";
 export { validateSetupSpec } from "./setup-validation.js";
 
 const logger = createLogger("setup");
@@ -139,11 +140,10 @@ export async function performSetup(
   if (!validation.valid) return { ok: false, error: validation.errors.join("; ") };
 
   const { spec, security, owner, connections, channelCredentials } = input;
-  const ollamaEnabled = hasAddon(spec, "ollama");
+  const state = opts?.state ?? createState(security.adminToken);
+  const ollamaEnabled = listEnabledAddonIds(state.homeDir).includes("ollama");
 
   logger.info("performing setup", { connectionCount: connections.length, ollamaEnabled });
-
-  const state = opts?.state ?? createState(security.adminToken);
 
   // Apply Ollama in-stack URL override when addon is enabled
   const effectiveConnections = ollamaEnabled

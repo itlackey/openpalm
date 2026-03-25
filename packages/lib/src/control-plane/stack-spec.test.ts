@@ -11,8 +11,6 @@ import { tmpdir } from "node:os";
 import {
   readStackSpec,
   writeStackSpec,
-  hasAddon,
-  addonNames,
   STACK_SPEC_FILENAME,
   stackSpecPath,
   parseCapabilityString,
@@ -33,7 +31,7 @@ afterEach(() => {
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
-function makeSpec(addons: Record<string, boolean | { env?: Record<string, string> }> = {}): StackSpec {
+function makeSpec(): StackSpec {
   return {
     version: 2,
     capabilities: {
@@ -41,41 +39,19 @@ function makeSpec(addons: Record<string, boolean | { env?: Record<string, string
       embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
       memory: { userId: "test-user" },
     },
-    addons,
   };
 }
 
 // ── readStackSpec / writeStackSpec round-trip ────────────────────────────
 
 describe("readStackSpec / writeStackSpec round-trip", () => {
-  it("round-trips a spec with no addons", () => {
+  it("round-trips a spec with capabilities only", () => {
     const spec = makeSpec();
     writeStackSpec(configDir, spec);
     const read = readStackSpec(configDir);
     expect(read).not.toBeNull();
     expect(read!.version).toBe(2);
-    expect(read!.addons).toEqual({});
     expect(read!.capabilities.llm).toBe("openai/gpt-4o");
-  });
-
-  it("round-trips a spec with boolean addons", () => {
-    const spec = makeSpec({ admin: true, chat: true, discord: false });
-    writeStackSpec(configDir, spec);
-    const read = readStackSpec(configDir);
-    expect(read).not.toBeNull();
-    expect(read!.addons.admin).toBe(true);
-    expect(read!.addons.chat).toBe(true);
-    expect(read!.addons.discord).toBe(false);
-  });
-
-  it("round-trips a spec with env-carrying addons", () => {
-    const spec = makeSpec({ discord: { env: { DISCORD_TOKEN: "abc" } } });
-    writeStackSpec(configDir, spec);
-    const read = readStackSpec(configDir);
-    expect(read).not.toBeNull();
-    const discordVal = read!.addons.discord;
-    expect(typeof discordVal).toBe("object");
-    expect((discordVal as { env: Record<string, string> }).env.DISCORD_TOKEN).toBe("abc");
   });
 
   it("writes to the canonical filename", () => {
@@ -105,97 +81,8 @@ describe("readStackSpec edge cases", () => {
   });
 
   it("returns null when capabilities is missing", () => {
-    writeFileSync(join(configDir, STACK_SPEC_FILENAME), "version: 2\naddons: {}\n");
+    writeFileSync(join(configDir, STACK_SPEC_FILENAME), "version: 2\n");
     expect(readStackSpec(configDir)).toBeNull();
-  });
-
-  it("defaults addons to empty object when missing", () => {
-    writeFileSync(
-      join(configDir, STACK_SPEC_FILENAME),
-      "version: 2\ncapabilities:\n  llm: openai/gpt-4o\n  embeddings:\n    provider: openai\n    model: test\n    dims: 768\n  memory:\n    userId: test\n"
-    );
-    const spec = readStackSpec(configDir);
-    expect(spec).not.toBeNull();
-    expect(spec!.addons).toEqual({});
-  });
-});
-
-// ── Addon helpers ───────────────────────────────────────────────────────
-
-describe("hasAddon", () => {
-  it("returns true for enabled boolean addon", () => {
-    expect(hasAddon(makeSpec({ chat: true }), "chat")).toBe(true);
-  });
-
-  it("returns false for disabled boolean addon", () => {
-    expect(hasAddon(makeSpec({ chat: false }), "chat")).toBe(false);
-  });
-
-  it("returns false for missing addon", () => {
-    expect(hasAddon(makeSpec({}), "chat")).toBe(false);
-  });
-
-  it("returns true for addon with env config", () => {
-    expect(hasAddon(makeSpec({ discord: { env: { TOKEN: "abc" } } }), "discord")).toBe(true);
-  });
-});
-
-describe("addonNames", () => {
-  it("returns only enabled addon names", () => {
-    const spec = makeSpec({ admin: true, chat: true, discord: false, voice: { env: { KEY: "val" } } });
-    const names = addonNames(spec);
-    expect(names.sort()).toEqual(["admin", "chat", "voice"]);
-  });
-
-  it("returns empty array for no addons", () => {
-    expect(addonNames(makeSpec())).toEqual([]);
-  });
-});
-
-// ── Addon parsing consistency ───────────────────────────────────────────
-
-describe("addon parsing consistency", () => {
-  it("writeStackSpec + readStackSpec produces same addon set as addonNames", () => {
-    const input: Record<string, boolean | { env?: Record<string, string> }> = {
-      admin: true,
-      chat: true,
-      discord: false,
-      voice: { env: { TTS_KEY: "secret" } },
-      ollama: true,
-    };
-    writeStackSpec(configDir, makeSpec(input));
-    const read = readStackSpec(configDir);
-    expect(read).not.toBeNull();
-
-    const expected = ["admin", "chat", "ollama", "voice"];
-    expect(addonNames(read!).sort()).toEqual(expected);
-
-    // Same result from hasAddon individually
-    for (const name of expected) {
-      expect(hasAddon(read!, name)).toBe(true);
-    }
-    expect(hasAddon(read!, "discord")).toBe(false);
-    expect(hasAddon(read!, "slack")).toBe(false);
-  });
-
-  it("buildComposeFileList and addonNames agree (via readStackSpec)", () => {
-    // Simulate what lifecycle.ts buildComposeFileList does internally:
-    // it reads the spec, iterates spec.addons, and checks addon !== false.
-    const spec = makeSpec({ admin: true, chat: true, api: false });
-    writeStackSpec(configDir, spec);
-    const read = readStackSpec(configDir);
-    expect(read).not.toBeNull();
-
-    // addonNames filters out disabled
-    const enabledFromHelper = addonNames(read!);
-    // Manual iteration (same logic as buildComposeFileList)
-    const enabledFromManual: string[] = [];
-    for (const [name, value] of Object.entries(read!.addons)) {
-      if (value !== false) enabledFromManual.push(name);
-    }
-
-    expect(enabledFromHelper.sort()).toEqual(enabledFromManual.sort());
-    expect(enabledFromHelper.sort()).toEqual(["admin", "chat"]);
   });
 });
 

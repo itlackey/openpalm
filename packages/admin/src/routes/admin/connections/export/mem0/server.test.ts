@@ -23,7 +23,6 @@ function seedStackYaml(): void {
       embeddings: { provider: 'google', model: 'text-embedding-004', dims: 768 },
       memory: { userId: 'default_user' },
     },
-    addons: {},
   };
   writeStackSpec(state.configDir, spec);
 }

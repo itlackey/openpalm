@@ -36,16 +36,26 @@ function cpTree(src: string, dest: string): void {
 }
 
 /** Seed the OP_HOME directory from the local repo (no network). */
-function seedFromLocal(homeDir: string): void {
+function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
   const configDir = join(homeDir, 'config');
   const vaultDir = join(homeDir, 'vault');
   const dataDir = join(homeDir, 'data');
 
-  // stack/ — full copy (system-managed)
-  cpTree(join(OPENPALM_SRC, 'stack'), join(homeDir, 'stack'));
+  // stack/ — seed core compose only
+  mkdirSync(join(homeDir, 'stack'), { recursive: true });
+  Bun.spawnSync(['cp', join(OPENPALM_SRC, 'stack', 'core.compose.yml'), join(homeDir, 'stack', 'core.compose.yml')]);
 
-  // config/automations/ — seed only
-  cpTree(join(OPENPALM_SRC, 'config/automations'), join(configDir, 'automations'));
+  // registry/ — full shipped catalog
+  cpTree(join(OPENPALM_SRC, 'stack', 'addons'), join(homeDir, 'registry', 'addons'));
+  cpTree(join(OPENPALM_SRC, 'config', 'automations'), join(homeDir, 'registry', 'automations'));
+
+  // stack/addons/ — enabled only
+  for (const addon of enabledAddons) {
+    cpTree(join(OPENPALM_SRC, 'stack', 'addons', addon), join(homeDir, 'stack', 'addons', addon));
+  }
+
+  // config/automations/ — enabled only (start empty)
+  mkdirSync(join(configDir, 'automations'), { recursive: true });
 
   // vault/ — schemas only
   for (const sub of ['user', 'stack']) {
@@ -102,7 +112,7 @@ function seedFromLocal(homeDir: string): void {
   }
 }
 
-function makeSetupSpec(addons: Record<string, boolean>): Record<string, unknown> {
+function makeSetupSpec(): Record<string, unknown> {
   return {
     spec: {
       version: 2,
@@ -112,7 +122,6 @@ function makeSetupSpec(addons: Record<string, boolean>): Record<string, unknown>
         memory: { userId: 'testuser', customInstructions: '' },
         slm: 'ollama/qwen2.5-coder:3b',
       },
-      addons,
     },
     security: { adminToken: 'test-admin-token-12345' },
     owner: { name: 'Test', email: 'test@test.com' },
@@ -188,11 +197,11 @@ describe('install flow — tier 1 (file validation)', () => {
     process.env.OP_WORK_DIR = join(homeDir, 'data/workspace');
 
     // Step 1: Seed from local .openpalm/
-    seedFromLocal(homeDir);
+    seedFromLocal(homeDir, ['admin', 'chat']);
 
     // Step 2: Run performSetup
     const { performSetup } = await import('@openpalm/lib');
-    const spec = makeSetupSpec({ admin: true, chat: true });
+    const spec = makeSetupSpec();
     const result = await performSetup(spec as any);
     expect(result.ok).toBe(true);
 
@@ -201,7 +210,6 @@ describe('install flow — tier 1 (file validation)', () => {
     const stackSpec = readStackSpec(configDir);
     expect(stackSpec).not.toBeNull();
     expect(stackSpec!.version).toBe(2);
-    expect(stackSpec!.addons).toEqual({ admin: true, chat: true });
     expect(stackSpec!.capabilities.llm).toBe('ollama/qwen2.5-coder:3b');
 
     // ── Validate compose files exist ─────────────────────────────────
@@ -209,11 +217,9 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(existsSync(join(homeDir, 'stack/addons/admin/compose.yml'))).toBe(true);
     expect(existsSync(join(homeDir, 'stack/addons/chat/compose.yml'))).toBe(true);
 
-    // All addon compose files should be present (seeded from local)
-    for (const addon of ['admin', 'api', 'chat', 'discord', 'ollama', 'voice', 'slack']) {
-      const addonCompose = join(homeDir, `stack/addons/${addon}/compose.yml`);
-      expect(existsSync(addonCompose)).toBe(true);
-    }
+    expect(existsSync(join(homeDir, 'registry/addons/admin/compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'registry/addons/chat/compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'registry/automations/cleanup-logs.yml'))).toBe(true);
 
     // ── Validate vault files are regular files (not directories) ─────
     for (const relPath of [
@@ -293,10 +299,10 @@ describe('install flow — tier 1 (file validation)', () => {
       expect(existsSync(join(homeDir, `data/${dir}`))).toBe(true);
     }
 
-    // ── Validate automations seeded ──────────────────────────────────
+    // ── Validate active automations dir exists but catalog is separate ──
     expect(existsSync(join(homeDir, 'config/automations'))).toBe(true);
     const automations = readdirSync(join(homeDir, 'config/automations'));
-    expect(automations.length).toBeGreaterThan(0);
+    expect(automations.length).toBe(0);
   }, 30_000);
 
   it('compose config validates with selected addons', async () => {
@@ -304,10 +310,10 @@ describe('install flow — tier 1 (file validation)', () => {
     process.env.OP_HOME = homeDir;
     process.env.OP_WORK_DIR = join(homeDir, 'data/workspace');
 
-    seedFromLocal(homeDir);
+    seedFromLocal(homeDir, ['admin', 'chat']);
 
     const { performSetup } = await import('@openpalm/lib');
-    const result = await performSetup(makeSetupSpec({ admin: true, chat: true }) as any);
+    const result = await performSetup(makeSetupSpec() as any);
     expect(result.ok).toBe(true);
 
     // Ensure all volume mount targets exist so compose doesn't complain
@@ -356,12 +362,11 @@ describe('install flow — tier 1 (file validation)', () => {
     seedFromLocal(homeDir);
 
     const { performSetup } = await import('@openpalm/lib');
-    const result = await performSetup(makeSetupSpec({}) as any);
+    const result = await performSetup(makeSetupSpec() as any);
     expect(result.ok).toBe(true);
 
     const noAddonSpec = readStackSpec(join(homeDir, 'config'));
     expect(noAddonSpec).not.toBeNull();
-    expect(noAddonSpec!.addons).toEqual({});
 
     // Core compose only, no addon files in the compose list
     const stackEnv = join(homeDir, 'vault/stack/stack.env');

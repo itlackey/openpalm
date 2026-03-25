@@ -7,10 +7,12 @@
  */
 
 import type { StackSpec } from "./stack-spec.js";
-import { SPEC_DEFAULTS, hasAddon, parseCapabilityString } from "./stack-spec.js";
+import { SPEC_DEFAULTS, parseCapabilityString } from "./stack-spec.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { mergeEnvContent, parseEnvContent } from "./env.js";
 import { PROVIDER_DEFAULT_URLS, PROVIDER_KEY_MAP, OLLAMA_INSTACK_URL } from "../provider-constants.js";
+import { listEnabledAddonIds } from "./registry.js";
 
 /**
  * Derive the system.env key-value pairs from the StackSpec.
@@ -79,7 +81,7 @@ export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
   };
 
   const resolveUrl = (provider: string): string => {
-    if (provider === "ollama" && hasAddon(spec, "ollama")) return OLLAMA_INSTACK_URL;
+    if (provider === "ollama" && listEnabledAddonIds(dirname(vaultDir)).includes("ollama")) return OLLAMA_INSTACK_URL;
     // Check stack.env for a user-configured base URL override (openai provider)
     if (provider === "openai" && stackEnv.OPENAI_BASE_URL) {
       return ensureV1(stackEnv.OPENAI_BASE_URL, provider);

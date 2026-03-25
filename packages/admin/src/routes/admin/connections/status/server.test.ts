@@ -16,7 +16,7 @@ function makeTempDir(): string {
 
 function seedStackYaml(capabilities: Record<string, unknown>): void {
   const state = getState();
-  const spec: StackSpec = { version: 2, capabilities: capabilities as StackSpec['capabilities'], addons: {} };
+  const spec: StackSpec = { version: 2, capabilities: capabilities as StackSpec['capabilities'] };
   writeStackSpec(state.configDir, spec);
 }
 

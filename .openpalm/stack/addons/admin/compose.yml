@@ -64,7 +64,6 @@ services:
       - ${OP_HOME}:/openpalm
       - ${OP_HOME}/data/admin:/home/node
       - ${OP_HOME}/data/workspace:/work
-      - ${HOME}/.cache/openpalm/registry:/cache/registry
       # GPG agent socket for pass backend (read-only; only needed when pass is active).
       # create_host_path is false to avoid creating ~/.gnupg on hosts without GPG.
       # If the source directory does not exist, Docker will skip this mount silently.

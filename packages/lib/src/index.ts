@@ -38,14 +38,16 @@ export type { RegistryComponentEntry } from "./control-plane/registry-provider.j
 export type { RegistryAutomationEntry } from "./control-plane/registry.js";
 export {
   registryRoot,
-  ensureRegistryClone,
-  pullRegistry,
+  materializeRegistryCatalog,
+  refreshRegistryCatalog,
   discoverRegistryComponents,
   discoverRegistryAutomations,
   getRegistryAutomation,
-  readLocalAutomations,
-  listLocalAddonIds,
-  buildMergedRegistry,
+  buildRegistryProvider,
+  listAvailableAddonIds,
+  listEnabledAddonIds,
+  enableAddonFromRegistry,
+  disableAddon,
 } from "./control-plane/registry.js";
 
 // ── Home Layout (v0.10.0) ───────────────────────────────────────────────
@@ -56,6 +58,9 @@ export {
   resolveDataDir,
   resolveLogsDir,
   resolveCacheHome,
+  resolveRegistryDir,
+  resolveRegistryAddonsDir,
+  resolveRegistryAutomationsDir,
   ensureHomeDirs,
 } from "./control-plane/home.js";
 
@@ -99,7 +104,10 @@ export {
   isValidChannel,
   isChannelAddon,
   installAutomationFromRegistry,
+  installAutomationFromCatalog,
   uninstallAutomation,
+  enableAddon,
+  disableAddonByName,
 } from "./control-plane/channels.js";
 
 // ── Memory Config ───────────────────────────────────────────────────────
@@ -225,15 +233,12 @@ export type {
   StackSpecTts,
   StackSpecStt,
   StackSpecReranker,
-  StackSpecAddonValue,
 } from "./control-plane/stack-spec.js";
 export {
   STACK_SPEC_FILENAME,
   writeStackSpec,
   readStackSpec,
   updateCapability,
-  hasAddon,
-  addonNames,
   parseCapabilityString,
   formatCapabilityString,
 } from "./control-plane/stack-spec.js";

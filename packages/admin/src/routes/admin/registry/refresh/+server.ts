@@ -1,8 +1,5 @@
 /**
- * POST /admin/registry/refresh — Pull latest registry from GitHub and re-stage.
- *
- * Runs `git pull` on the cloned registry repo in the cache directory to fetch any
- * new or updated registry items from the remote repository.
+ * POST /admin/registry/refresh — Refresh the registry catalog from GitHub.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -16,9 +13,7 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
-  resolveRuntimeFiles,
-  writeRuntimeFiles,
-  pullRegistry
+  refreshRegistryCatalog
 } from "@openpalm/lib";
 
 
@@ -31,17 +26,13 @@ export const POST: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
-  // Pull latest from GitHub
-  const pullResult = pullRegistry();
-  if (pullResult.error) {
-    appendAudit(state, actor, "registry.refresh", { error: pullResult.error }, false, requestId, callerType);
-    return errorResponse(500, "registry_sync_error", pullResult.error, {}, requestId);
+  try {
+    const result = refreshRegistryCatalog();
+    appendAudit(state, actor, "registry.refresh", { root: result.root }, true, requestId, callerType);
+    return jsonResponse(200, { ok: true, root: result.root }, requestId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    appendAudit(state, actor, "registry.refresh", { error: message }, false, requestId, callerType);
+    return errorResponse(500, "registry_sync_error", message, {}, requestId);
   }
-
-  // Refresh runtime files (scheduler sidecar auto-reloads via file watching)
-  state.artifacts = resolveRuntimeFiles();
-  writeRuntimeFiles(state);
-
-  appendAudit(state, actor, "registry.refresh", { updated: pullResult.updated }, true, requestId, callerType);
-  return jsonResponse(200, { ok: true, updated: pullResult.updated }, requestId);
 };

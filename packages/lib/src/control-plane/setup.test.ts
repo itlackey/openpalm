@@ -30,7 +30,6 @@ function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
           customInstructions: "",
         },
       },
-      addons: {},
     },
     security: { adminToken: "test-admin-token-12345" },
     owner: { name: "Test User", email: "test@example.com" },
@@ -450,7 +449,7 @@ describe("performSetup", () => {
     expect(existsSync(stagedCompose)).toBe(true);
   });
 
-  it("writes ollama addon when ollama is in spec.addons", async () => {
+  it("writes ollama capabilities without addon metadata in stack.yml", async () => {
     const input = makeValidSpec({
       spec: {
         version: 2,
@@ -466,7 +465,6 @@ describe("performSetup", () => {
             customInstructions: "",
           },
         },
-        addons: { ollama: true },
       },
       connections: [
         {
@@ -482,11 +480,10 @@ describe("performSetup", () => {
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    // v2 spec should have ollama addon enabled and correct capabilities
+    // v2 spec should have correct capabilities without addon metadata
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
     expect(spec!.version).toBe(2);
-    expect(spec!.addons.ollama).toBe(true);
     expect(spec!.capabilities.llm).toBe("ollama/llama3.2");
   });
 
@@ -506,7 +503,6 @@ describe("performSetup", () => {
             customInstructions: "",
           },
         },
-        addons: {},
       },
       connections: [
         {
@@ -541,7 +537,6 @@ describe("performSetup", () => {
     expect(spec!.capabilities.embeddings.provider).toBe("openai");
     expect(spec!.capabilities.embeddings.model).toBe("text-embedding-3-small");
     expect(spec!.capabilities.memory.userId).toBe("test_user");
-    expect(Object.keys(spec!.addons)).toHaveLength(0);
   });
 
   it("completes setup even when duplicate connection ID with hyphen is skipped by env var map", async () => {
@@ -584,7 +579,6 @@ describe("performSetup", () => {
             customInstructions: "",
           },
         },
-        addons: { discord: true },
       },
     });
 
@@ -596,4 +590,3 @@ describe("performSetup", () => {
     expect(stackEnvContent).toContain("discord-app-id-123");
   });
 });
-

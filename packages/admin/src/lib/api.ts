@@ -203,9 +203,9 @@ export async function resetMemoryCollection(token: string): Promise<void> {
 
 // ── Addon Management ────────────────────────────────────────────────────
 
-export async function fetchAddons(token: string): Promise<{ name: string; enabled: boolean; hasCompose: boolean }[]> {
+export async function fetchAddons(token: string): Promise<{ name: string; enabled: boolean; available: boolean }[]> {
   const res = await requireOk(await request('GET', '/admin/addons', token));
-  const data = (await res.json()) as { addons: { name: string; enabled: boolean; hasCompose: boolean }[] };
+  const data = (await res.json()) as { addons: { name: string; enabled: boolean; available: boolean }[] };
   return data.addons;
 }
 

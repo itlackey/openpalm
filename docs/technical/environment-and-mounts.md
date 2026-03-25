@@ -258,7 +258,6 @@ Mounts:
 | `$OP_HOME` | `/openpalm` | rw | Full OpenPalm home for control-plane management |
 | `$OP_HOME/data/admin` | `/home/node` | rw | Admin home directory |
 | `$OP_HOME/data/workspace` | `/work` | rw | Workspace access |
-| `${HOME}/.cache/openpalm/registry` | `/cache/registry` | rw | Registry cache |
 | `${GNUPGHOME:-${HOME}/.gnupg}` | `/home/node/.gnupg` | ro | Optional pass/GPG integration |
 
 Ports and networks:

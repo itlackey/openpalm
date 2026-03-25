@@ -7,6 +7,11 @@ import { parse as yamlParse } from "yaml";
 import type { ChannelInfo } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
 import type { RegistryProvider } from "./registry-provider.js";
+import {
+  buildRegistryProvider,
+  disableAddon,
+  enableAddonFromRegistry,
+} from "./registry.js";
 
 // ── Channel Name Validation ───────────────────────────────────────────
 
@@ -181,4 +186,26 @@ export function uninstallAutomation(
 
   rmSync(ymlPath, { force: true });
   return { ok: true };
+}
+
+export function enableAddon(homeDir: string, name: string): { ok: true } | { ok: false; error: string } {
+  try {
+    enableAddonFromRegistry(homeDir, name);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export function disableAddonByName(homeDir: string, name: string): { ok: true } | { ok: false; error: string } {
+  try {
+    disableAddon(homeDir, name);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export function installAutomationFromCatalog(name: string, configDir: string): { ok: true } | { ok: false; error: string } {
+  return installAutomationFromRegistry(name, configDir, buildRegistryProvider());
 }

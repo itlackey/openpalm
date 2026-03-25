@@ -7,12 +7,16 @@ files here.
 ## Directory layout
 
 ```text
-~/.openpalm/
-  config/             User-editable configuration (non-secret)
-    stack.yml          Optional addon/tooling metadata
+  ~/.openpalm/
+    config/             User-editable configuration (non-secret)
+    stack.yml          Optional capability/tooling metadata
     host.yaml           Optional host metadata written by setup tooling
     assistant/          OpenCode user tools, plugins, skills, commands
     automations/        Scheduler automation definitions
+
+  registry/           Available addon and automation catalog
+    addons/            Available addon directories
+    automations/       Available automation YAML files
 
   vault/              Secrets boundary
     stack/              System-managed env and auth files

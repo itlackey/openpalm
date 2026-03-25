@@ -57,6 +57,11 @@ describe("ensureHomeDirs", () => {
     expect(existsSync(join(home, "stack"))).toBe(true);
     expect(existsSync(join(home, "stack", "addons"))).toBe(true);
 
+    // registry/ subtrees
+    expect(existsSync(join(home, "registry"))).toBe(true);
+    expect(existsSync(join(home, "registry", "addons"))).toBe(true);
+    expect(existsSync(join(home, "registry", "automations"))).toBe(true);
+
     // backups/
     expect(existsSync(join(home, "backups"))).toBe(true);
 

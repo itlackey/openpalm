@@ -273,7 +273,6 @@ describe("setup wizard server", () => {
               customInstructions: "",
             },
           },
-          addons: {},
         },
         security: { adminToken: "test-admin-token-12345" },
         owner: { name: "Test", email: "test@example.com" },

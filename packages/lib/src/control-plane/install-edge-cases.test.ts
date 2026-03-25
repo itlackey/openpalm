@@ -46,7 +46,6 @@ function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
           customInstructions: "",
         },
       },
-      addons: {},
     },
     security: { adminToken: "test-admin-token-12345" },
     owner: { name: "Test User", email: "test@example.com" },
@@ -383,7 +382,6 @@ describe("Existing Install", () => {
               customInstructions: "",
             },
           },
-          addons: {},
         },
         connections: [
           {
@@ -653,7 +651,6 @@ describe("Setup Input Variations", () => {
             customInstructions: "",
           },
         },
-        addons: { ollama: true },
       },
       connections: [
         {
@@ -673,7 +670,6 @@ describe("Setup Input Variations", () => {
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
     expect(spec!.capabilities.llm).toBe("ollama/llama3.2");
-    expect(spec!.addons.ollama).toBe(true);
   });
 
   // Scenario 21: Multiple providers map to correct env vars
@@ -757,7 +753,6 @@ describe("performSetup end-to-end artifacts", () => {
             customInstructions: "",
           },
         },
-        addons: {},
       },
       connections: [
         {

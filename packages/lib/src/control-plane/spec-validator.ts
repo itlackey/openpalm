@@ -53,17 +53,6 @@ export function validateStackSpec(input: unknown): ValidationError[] {
     validateCapabilities(spec.capabilities as StackSpecCapabilities, errors);
   }
 
-  // Addons
-  if (spec.addons !== undefined) {
-    if (typeof spec.addons !== "object" || spec.addons === null || Array.isArray(spec.addons)) {
-      errors.push({
-        code: "OP-CFG-002",
-        message: "addons must be an object (Record<string, boolean | { env }>)",
-        path: "addons",
-      });
-    }
-  }
-
   // Image
   if (spec.image && typeof spec.image === "object") {
     const img = spec.image as Record<string, unknown>;

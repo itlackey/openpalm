@@ -10,9 +10,7 @@ import {
   buildComposeOptions,
   buildComposeCliArgs,
 } from "./compose-args.js";
-import { writeStackSpec } from "./stack-spec.js";
 import type { ControlPlaneState } from "./types.js";
-import type { StackSpec } from "./stack-spec.js";
 
 let tempDir: string;
 
@@ -89,21 +87,9 @@ describe("buildComposeOptions", () => {
     expect(opts.files[0]).toContain("core.compose.yml");
   });
 
-  it("includes addon overlays when enabled in stack spec", () => {
+  it("includes addon overlays when compose files are present in stack/addons", () => {
     seedCoreCompose();
     seedAddon("chat");
-
-    const spec: StackSpec = {
-      version: 2,
-      capabilities: {
-        llm: "openai/gpt-4o",
-        embeddings: { provider: "openai", model: "test", dims: 768 },
-        memory: { userId: "test" },
-      },
-      addons: { chat: true },
-    };
-    mkdirSync(join(tempDir, "config"), { recursive: true });
-    writeStackSpec(join(tempDir, "config"), spec);
 
     const state = makeState();
     const opts = buildComposeOptions(state);
@@ -171,18 +157,6 @@ describe("buildComposeCliArgs", () => {
   it("includes addon overlays in -f flags", () => {
     seedCoreCompose();
     seedAddon("chat");
-
-    const spec: StackSpec = {
-      version: 2,
-      capabilities: {
-        llm: "openai/gpt-4o",
-        embeddings: { provider: "openai", model: "test", dims: 768 },
-        memory: { userId: "test" },
-      },
-      addons: { chat: true },
-    };
-    mkdirSync(join(tempDir, "config"), { recursive: true });
-    writeStackSpec(join(tempDir, "config"), spec);
 
     const state = makeState();
     const args = buildComposeCliArgs(state);

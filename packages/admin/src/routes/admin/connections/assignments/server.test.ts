@@ -23,7 +23,6 @@ function seedStackYaml(): void {
       embeddings: { provider: 'openai', model: 'text-embedding-3-small', dims: 1536 },
       memory: { userId: 'default_user' },
     },
-    addons: {},
   };
   writeStackSpec(state.configDir, spec);
 }

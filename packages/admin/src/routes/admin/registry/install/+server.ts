@@ -2,10 +2,7 @@
  * POST /admin/registry/install — Install a registry item (automation only).
  *
  * Channel addons are managed via POST /admin/addons/:name.
- * This endpoint only handles automations from the registry.
- *
- * Tries the cloned registry repo first, falls back to on-disk automations.
- * Delegates filesystem operations to installAutomationFromRegistry() from lib.
+ * This endpoint only handles automations from the registry catalog.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -21,10 +18,9 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
-  installAutomationFromRegistry,
+  installAutomationFromCatalog,
   writeRuntimeFiles,
   resolveRuntimeFiles,
-  buildMergedRegistry,
 } from "@openpalm/lib";
 
 
@@ -54,10 +50,7 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_input", "type must be 'automation'", {}, requestId);
   }
 
-  // Build a merged registry: remote (cloned repo) automations take precedence over local disk
-  const registry = buildMergedRegistry(state.homeDir, state.configDir);
-
-  const result = installAutomationFromRegistry(name, state.configDir, registry);
+  const result = installAutomationFromCatalog(name, state.configDir);
   if (!result.ok) {
     appendAudit(state, actor, "registry.install", { name, type, error: result.error }, false, requestId, callerType);
     return errorResponse(400, "invalid_input", result.error, {}, requestId);
