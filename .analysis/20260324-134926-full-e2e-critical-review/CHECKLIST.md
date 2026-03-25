@@ -16,7 +16,7 @@ These are actively broken or security-vulnerable. Each is a quick fix.
   `.github/workflows/release.yml` lines 283-289: deploy bundle `tar` references removed `assets/` and `registry/` directories. Replace `assets` with `.openpalm` and remove `registry`. Release pipeline is broken until fixed.
 
 - [x] **C2. Fix CLAUDE.md broken doc paths (44 files total)** `[CRITICAL]` `[docs]`
-  `CLAUDE.md` references `docs/technical/core-principles.md` (4 occurrences) and `docs/technical/docker-dependency-resolution.md` (3 occurrences) -- neither exists at those paths. Actual location is `docs/technical/authoritative/`. 25 files fixed; remaining files addressed by flattening `authoritative/` in Phase 3.
+  `CLAUDE.md` references `docs/technical/core-principles.md` (4 occurrences) and `docs/technical/docker-dependency-resolution.md` (3 occurrences) -- neither exists at those paths. Actual location is `docs/technical/`. 25 files fixed; remaining files addressed by flattening `authoritative/` in Phase 3.
 
 - [x] **C3. Add missing tokens to varlock redaction schema** `[CRITICAL]` `[security]`
   `.openpalm/vault/redact.env.schema` missing: `DISCORD_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `STT_API_KEY`, `TTS_API_KEY`, `VLM_API_KEY`, and others. These credentials appear in plaintext in container logs if logged. 16 entries added.
@@ -101,7 +101,7 @@ These are actively broken or security-vulnerable. Each is a quick fix.
   Added descriptions to 8 packages (channel-chat was already deleted). All descriptions derived from actual source code.
 
 - [x] **H-DOC6. Update scheduler mount documentation** `[HIGH]` `[docs]`
-  `docs/technical/directory-structure.md` and `docs/technical/authoritative/foundations.md`: both claim scheduler mounts only `config:ro`. Actual compose shows scheduler also mounts `logs/` and `data/` rw. Significant underdocumentation of scheduler filesystem access.
+  `docs/technical/directory-structure.md` and `docs/technical/foundations.md`: both claim scheduler mounts only `config:ro`. Actual compose shows scheduler also mounts `logs/` and `data/` rw. Significant underdocumentation of scheduler filesystem access.
 
 ### Medium Severity -- Documentation
 
@@ -285,7 +285,7 @@ These require design discussion and potentially significant refactoring.
 
 ### Documentation Consolidation
 
-- [ ] **S-DOC1. Flatten `docs/technical/authoritative/` to `docs/technical/`** `[MEDIUM]` `[docs]`
+- [ ] **S-DOC1. Flatten `docs/technical/` to `docs/technical/`** `[MEDIUM]` `[docs]`
   Move 4 files (`core-principles.md`, `docker-dependency-resolution.md`, `design-intent.md`, `foundations.md`) up one level. Eliminates the class of 44 broken references permanently. The "authoritative" header note in each file is sufficient designation.
 
 - [ ] **S-DOC2. Consolidate directory-structure.md into foundations.md** `[MEDIUM]` `[docs]`
@@ -321,9 +321,6 @@ These require design discussion and potentially significant refactoring.
 
 - [ ] **LOW-2. Fix openviking listed in directory-structure.md** `[LOW]` `[docs]`
   `docs/technical/directory-structure.md` line 57: shows `openviking` in tree. Recent commit removed OpenViking config but addon directory still exists. May become stale.
-
-- [ ] **LOW-3. Remove fta.json from root** `[LOW]` `[files]`
-  FTA file complexity analysis config at repo root. Niche tool, adds clutter. Move to `.config/` or remove.
 
 - [ ] **LOW-4. Remove root devDependency `@vitest/coverage-v8`** `[LOW]` `[devops]`
   Root `package.json` has single `devDependency`. Should be in admin package, not root.

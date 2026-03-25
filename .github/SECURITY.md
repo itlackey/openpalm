@@ -33,7 +33,7 @@ Once v1.0.0 ships, this table will be updated with a formal support window.
 
 ## Security Architecture
 
-OpenPalm uses defense-in-depth with multiple independent layers. For the full breakdown, see [docs/core-principles.md](../docs/technical/authoritative/core-principles.md) and the "How It Works" section of the [README](../README.md).
+OpenPalm uses defense-in-depth with multiple independent layers. For the full breakdown, see [docs/core-principles.md](../docs/technical/core-principles.md) and the "How It Works" section of the [README](../README.md).
 
 Key boundaries:
 

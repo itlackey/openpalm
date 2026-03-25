@@ -24,7 +24,7 @@ The documentation system has serious structural problems. The most damaging issu
 **File:** `/CLAUDE.md` lines 10, 165, 192, 210
 **Also:** `/README.md` lines 103, 121
 
-CLAUDE.md references `docs/technical/core-principles.md` (4 occurrences) and the root README references it twice. This file does not exist at that path. The actual location is `docs/technical/authoritative/core-principles.md`. This is the single most important document in the project according to CLAUDE.md itself ("authoritative source of architectural rules"). 44 files across the repo use this broken path, while only 12 use the correct one.
+CLAUDE.md references `docs/technical/core-principles.md` (4 occurrences) and the root README references it twice. This file does not exist at that path. The actual location is `docs/technical/core-principles.md`. This is the single most important document in the project according to CLAUDE.md itself ("authoritative source of architectural rules"). 44 files across the repo use this broken path, while only 12 use the correct one.
 
 **Impact:** Every AI agent and contributor following CLAUDE.md is directed to a non-existent file for the project's foundational rules.
 
@@ -32,7 +32,7 @@ CLAUDE.md references `docs/technical/core-principles.md` (4 occurrences) and the
 
 **File:** `/CLAUDE.md` lines 181, 195, 211
 
-CLAUDE.md references `docs/technical/docker-dependency-resolution.md` in three places. This file does not exist at that path. The actual location is `docs/technical/authoritative/docker-dependency-resolution.md`.
+CLAUDE.md references `docs/technical/docker-dependency-resolution.md` in three places. This file does not exist at that path. The actual location is `docs/technical/docker-dependency-resolution.md`.
 
 ### 1.3 Docker Compose Manual Command is Wrong -- HIGH
 
@@ -75,7 +75,7 @@ Three inaccuracies: (1) `OP_HOME` is `/tmp/openpalm/.dev`, not `.dev`; (2) there
 
 ### 1.5 Memory Environment Variables in Foundations Doc are Outdated -- MEDIUM
 
-**File:** `/docs/technical/authoritative/foundations.md` lines 79-85
+**File:** `/docs/technical/foundations.md` lines 79-85
 
 `foundations.md` lists memory key env as `OPENAI_API_KEY` and `OPENAI_BASE_URL`. The actual compose file now uses `OP_CAP_*` capability variables (`OP_CAP_LLM_PROVIDER`, `OP_CAP_LLM_MODEL`, `OP_CAP_LLM_BASE_URL`, `OP_CAP_LLM_API_KEY`, `OP_CAP_EMBEDDINGS_*`). The `OPENAI_*` vars are also still present in compose but the documentation fails to mention the `OP_CAP_*` variables at all, which are the primary configuration mechanism.
 
@@ -95,7 +95,7 @@ There are two "Key Files" sections (lines 135-147 and lines 206-235). The second
 
 | Link text | Referenced path | Actual path |
 |---|---|---|
-| Core Principles (line 121) | `docs/technical/core-principles.md` | `docs/technical/authoritative/core-principles.md` |
+| Core Principles (line 121) | `docs/technical/core-principles.md` | `docs/technical/core-principles.md` |
 | Manual Setup (line 118) | `docs/manual-setup.md` | `docs/technical/manual-setup.md` |
 | Community Channels (line 123) | `docs/community-channels.md` | `docs/channels/community-channels.md` |
 | Registry (line 142) | `registry/README.md` | Directory does not exist |
@@ -159,7 +159,7 @@ The vault README contradicts both the compose file and the authoritative core-pr
 
 ### 4.3 Scheduler Mounts Underdocumented -- MEDIUM
 
-**Files:** `docs/technical/directory-structure.md` line 107, `docs/technical/authoritative/foundations.md` lines 253-255
+**Files:** `docs/technical/directory-structure.md` line 107, `docs/technical/foundations.md` lines 253-255
 
 Both documents claim the scheduler mounts only `$OP_HOME/config -> /openpalm/config:ro`. The actual compose file (lines 164-167) shows the scheduler also mounts:
 - `${OP_HOME}/logs:/openpalm/logs`
@@ -169,7 +169,7 @@ The scheduler has read-write access to the entire `logs/` and `data/` trees. Thi
 
 ### 4.4 services/ Subdirectory Referenced but Missing -- MEDIUM
 
-**File:** `docs/technical/authoritative/core-principles.md` line 109
+**File:** `docs/technical/core-principles.md` line 109
 
 Core principles states: "Guardian, scheduler, and memory receive secrets exclusively through ${VAR} substitution...and optional service-specific managed env files located under `vault/stack/services/<service-name>/`."
 
@@ -184,9 +184,9 @@ The `vault/stack/services/` directory does not exist in the shipped `.openpalm/`
 The following documents all describe the same mounts, environment variables, directory layout, and network topology with varying levels of detail and accuracy:
 
 1. `docs/technical/directory-structure.md` (175 lines)
-2. `docs/technical/authoritative/foundations.md` (367 lines)
+2. `docs/technical/foundations.md` (367 lines)
 3. `docs/technical/environment-and-mounts.md` (355 lines)
-4. `docs/technical/authoritative/core-principles.md` (291 lines, partial overlap)
+4. `docs/technical/core-principles.md` (291 lines, partial overlap)
 5. `docs/technical/opencode-configuration.md` (122 lines, partial overlap)
 6. `.openpalm/stack/README.md` (69 lines, partial overlap)
 
@@ -202,7 +202,7 @@ The `manual-setup.md` file references the runbook extensively and defers all act
 
 ### 5.3 Authoritative Directory Adds Unnecessary Hierarchy -- MEDIUM
 
-The `docs/technical/authoritative/` subdirectory contains 4 files (`core-principles.md`, `docker-dependency-resolution.md`, `design-intent.md`, `foundations.md`). The `authoritative/` nesting creates path confusion since 44 files across the repo reference the wrong path (`docs/technical/core-principles.md` instead of `docs/technical/authoritative/core-principles.md`). The "authoritative" designation is handled by a header note in each file, making the subdirectory redundant.
+The `docs/technical/` subdirectory contains 4 files (`core-principles.md`, `docker-dependency-resolution.md`, `design-intent.md`, `foundations.md`). The `authoritative/` nesting creates path confusion since 44 files across the repo reference the wrong path (`docs/technical/core-principles.md` instead of `docs/technical/core-principles.md`). The "authoritative" designation is handled by a header note in each file, making the subdirectory redundant.
 
 ---
 
@@ -264,7 +264,7 @@ Already covered above. The root `AGENTS.md` is the worst documentation artifact 
 
 **File:** `packages/assistant-tools/AGENTS.md` line 60
 
-References `docs/technical/docker-dependency-resolution.md` which does not exist. The correct path is `docs/technical/authoritative/docker-dependency-resolution.md`.
+References `docs/technical/docker-dependency-resolution.md` which does not exist. The correct path is `docs/technical/docker-dependency-resolution.md`.
 
 ### 8.3 core/assistant/opencode/AGENTS.md Mentions Tools Not Described -- LOW
 
@@ -305,8 +305,8 @@ The root README links to `registry/README.md` (which does not exist; the `regist
 | Assistant vault mount | `vault/README.md`: "mounts `vault/user/user.env` (read-only)" | `core-principles.md`: "mounts `vault/user/` (the directory, rw)" | Mount target (file vs directory) and mode (ro vs rw) both differ |
 | Scheduler mounts | `directory-structure.md`: config:ro only | `core.compose.yml`: config:ro + logs + data | Missing 2 mounts in docs |
 | Memory env vars | `foundations.md`: OPENAI_API_KEY, OPENAI_BASE_URL | `core.compose.yml`: OP_CAP_* + OPENAI_* | Primary config mechanism undocumented |
-| Core principles path | CLAUDE.md: `docs/technical/core-principles.md` | Filesystem: `docs/technical/authoritative/core-principles.md` | Path mismatch in 44 files |
-| Docker dep path | CLAUDE.md: `docs/technical/docker-dependency-resolution.md` | Filesystem: `docs/technical/authoritative/docker-dependency-resolution.md` | Path mismatch |
+| Core principles path | CLAUDE.md: `docs/technical/core-principles.md` | Filesystem: `docs/technical/core-principles.md` | Path mismatch in 44 files |
+| Docker dep path | CLAUDE.md: `docs/technical/docker-dependency-resolution.md` | Filesystem: `docs/technical/docker-dependency-resolution.md` | Path mismatch |
 | guardian.env existence | All docs: assume it exists | `.openpalm/vault/stack/`: not shipped | File missing from bundle |
 
 ---
@@ -315,7 +315,7 @@ The root README links to `registry/README.md` (which does not exist; the `regist
 
 ### Immediate (blocks contributors)
 
-1. **Fix CLAUDE.md core-principles path** -- Change all 4 references from `docs/technical/core-principles.md` to `docs/technical/authoritative/core-principles.md`. Do the same for the docker-dependency-resolution path. Fix the same in README.md (2 references).
+1. **Fix CLAUDE.md core-principles path** -- Change all 4 references from `docs/technical/core-principles.md` to `docs/technical/core-principles.md`. Do the same for the docker-dependency-resolution path. Fix the same in README.md (2 references).
 
 2. **Rewrite or delete root AGENTS.md** -- It references Caddy (retired), `channels/` (removed), `assets/` (removed), `control-plane.ts` (removed), claims no tests exist (hundreds exist), and describes stale architecture. Either rewrite it to match CLAUDE.md's content or delete it and let CLAUDE.md serve as the authoritative project-level instruction file.
 
@@ -335,7 +335,7 @@ The root README links to `registry/README.md` (which does not exist; the `regist
 
 8. **Consolidate duplicate docs** -- `directory-structure.md` should be deleted or reduced to a cross-reference, since `foundations.md` and `environment-and-mounts.md` are strict supersets.
 
-9. **Consider flattening `authoritative/`** -- Move the 4 files from `docs/technical/authoritative/` up to `docs/technical/` to eliminate the path confusion causing 44 broken references. The "authoritative" header note in each file is sufficient.
+9. **Consider flattening `authoritative/`** -- Move the 4 files from `docs/technical/` up to `docs/technical/` to eliminate the path confusion causing 44 broken references. The "authoritative" header note in each file is sufficient.
 
 10. **Document the OP_CAP_* capability system** -- Add a section to `environment-and-mounts.md` or a new doc explaining how capabilities map from provider selections to OP_CAP_* env vars.
 
@@ -347,8 +347,8 @@ The root README links to `registry/README.md` (which does not exist; the `regist
 
 | Referenced path | Status | Correct path |
 |---|---|---|
-| `docs/technical/core-principles.md` | MISSING | `docs/technical/authoritative/core-principles.md` |
-| `docs/technical/docker-dependency-resolution.md` | MISSING | `docs/technical/authoritative/docker-dependency-resolution.md` |
+| `docs/technical/core-principles.md` | MISSING | `docs/technical/core-principles.md` |
+| `docs/technical/docker-dependency-resolution.md` | MISSING | `docs/technical/docker-dependency-resolution.md` |
 | `docs/manual-setup.md` | MISSING | `docs/technical/manual-setup.md` |
 | `docs/community-channels.md` | MISSING | `docs/channels/community-channels.md` |
 | `registry/README.md` | MISSING | Directory removed |

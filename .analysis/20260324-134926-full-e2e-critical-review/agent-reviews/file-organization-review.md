@@ -271,13 +271,13 @@ docs/
 
 **Problem 1: CLAUDE.md references are broken.**
 
-`CLAUDE.md` references `docs/technical/core-principles.md` and `docs/technical/docker-dependency-resolution.md` multiple times, but these files actually live at `docs/technical/authoritative/core-principles.md` and `docs/technical/authoritative/docker-dependency-resolution.md`. This means every agent instruction pointing to these "authoritative" documents is a dead link. This is especially ironic given that `CLAUDE.md` calls `core-principles.md` "the authoritative source of architectural rules."
+`CLAUDE.md` references `docs/technical/core-principles.md` and `docs/technical/docker-dependency-resolution.md` multiple times, but these files actually live at `docs/technical/core-principles.md` and `docs/technical/docker-dependency-resolution.md`. This means every agent instruction pointing to these "authoritative" documents is a dead link. This is especially ironic given that `CLAUDE.md` calls `core-principles.md` "the authoritative source of architectural rules."
 
 `AGENTS.md` correctly references the `authoritative/` subdirectory path, making the inconsistency between the two agent instruction files even more confusing.
 
 **Problem 2: The `authoritative/` subdirectory creates confusion.**
 
-Having `docs/technical/code-quality-principles.md` (non-authoritative) alongside `docs/technical/authoritative/core-principles.md` (authoritative) implies a hierarchy of trust that is not clearly explained. Why are some technical docs authoritative and others not? Who decides? If `core-principles.md` and `docker-dependency-resolution.md` are the only truly binding documents, they should be more prominent, not buried one level deeper.
+Having `docs/technical/code-quality-principles.md` (non-authoritative) alongside `docs/technical/core-principles.md` (authoritative) implies a hierarchy of trust that is not clearly explained. Why are some technical docs authoritative and others not? Who decides? If `core-principles.md` and `docker-dependency-resolution.md` are the only truly binding documents, they should be more prominent, not buried one level deeper.
 
 **Problem 3: `.github/roadmap/` contains 41 planning files.**
 
@@ -347,7 +347,7 @@ Both files serve as agent instructions. They should be consistent.
 
 | Aspect | CLAUDE.md | AGENTS.md |
 |--------|-----------|-----------|
-| Core principles path | `docs/technical/core-principles.md` (WRONG) | `docs/technical/authoritative/core-principles.md` (CORRECT) |
+| Core principles path | `docs/technical/core-principles.md` (WRONG) | `docs/technical/core-principles.md` (CORRECT) |
 | Repo layout | Detailed directory tables | Brief one-liner |
 | Channel references | `channels/chat/` (old path?) | Matches current structure |
 
@@ -359,14 +359,14 @@ Both files serve as agent instructions. They should be consistent.
 
 ### HIGH
 1. **`packages/` vs `core/` split is inconsistent** -- guardian and memory-server have source code in `core/` despite convention saying `core/` is for Docker contexts only. Three name collisions between the two directories.
-2. **CLAUDE.md contains broken references** to `docs/technical/core-principles.md` and `docs/technical/docker-dependency-resolution.md` -- these files live in `docs/technical/authoritative/`.
+2. **CLAUDE.md contains broken references** to `docs/technical/core-principles.md` and `docs/technical/docker-dependency-resolution.md` -- these files live in `docs/technical/`.
 3. **`before-navigate.png` is a dead, git-tracked file** at the repo root.
 4. **Package structure is inconsistent** -- tsconfig presence, test directory placement, and dist tracking all vary without justification.
 
 ### MEDIUM
 5. **Root clutter** -- `fta.json`, stray screenshot, test-results directory.
 6. **YAML extension inconsistency** -- `.yml` for compose/automations, `.yaml` for config files, `.yaml` for the dev compose override.
-7. **`docs/technical/authoritative/` creates confusion** about which docs matter.
+7. **`docs/technical/` creates confusion** about which docs matter.
 8. **`.github/roadmap/` has 41 planning files** that are not GitHub-specific.
 9. **Test organization** uses five different patterns across packages.
 
@@ -380,7 +380,7 @@ Both files serve as agent instructions. They should be consistent.
 
 ## Top 5 Concrete Actions
 
-1. **Fix CLAUDE.md references.** Update all occurrences of `docs/technical/core-principles.md` to `docs/technical/authoritative/core-principles.md` (and same for `docker-dependency-resolution.md`). This is the highest-impact, lowest-effort fix.
+1. **Fix CLAUDE.md references.** Update all occurrences of `docs/technical/core-principles.md` to `docs/technical/core-principles.md` (and same for `docker-dependency-resolution.md`). This is the highest-impact, lowest-effort fix.
 
 2. **Delete `before-navigate.png` from git.** `git rm before-navigate.png && git commit`.
 

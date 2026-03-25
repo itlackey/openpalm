@@ -55,9 +55,9 @@ The release workflow's deploy bundle `tar` command references `assets/` and `reg
 **Agents:** Documentation, File-Organization, Implementation-Gaps
 **Files:** `CLAUDE.md` (7 occurrences), `README.md` (2 occurrences), 44 files total
 
-The project's primary instruction file references `docs/technical/core-principles.md` and `docs/technical/docker-dependency-resolution.md` -- neither file exists at those paths. The actual locations are under `docs/technical/authoritative/`. This is the single most important document in the repository, described by CLAUDE.md itself as "the authoritative source of architectural rules." Every AI agent and contributor following CLAUDE.md is directed to nonexistent files.
+The project's primary instruction file references `docs/technical/core-principles.md` and `docs/technical/docker-dependency-resolution.md` -- neither file exists at those paths. The actual locations are under `docs/technical/`. This is the single most important document in the repository, described by CLAUDE.md itself as "the authoritative source of architectural rules." Every AI agent and contributor following CLAUDE.md is directed to nonexistent files.
 
-**Fix:** Update all 44 broken references, or move the 4 files from `docs/technical/authoritative/` up to `docs/technical/` (eliminating the path confusion entirely).
+**Fix:** Update all 44 broken references, or move the 4 files from `docs/technical/` up to `docs/technical/` (eliminating the path confusion entirely).
 
 ---
 
@@ -158,7 +158,7 @@ The admin container has `${OP_HOME}:/openpalm` mounted read-write, giving it acc
 
 | Link | Status | Correct Path |
 |------|--------|-------------|
-| `docs/technical/core-principles.md` | BROKEN | `docs/technical/authoritative/core-principles.md` |
+| `docs/technical/core-principles.md` | BROKEN | `docs/technical/core-principles.md` |
 | `docs/manual-setup.md` | BROKEN | `docs/technical/manual-setup.md` |
 | `docs/community-channels.md` | BROKEN | `docs/channels/community-channels.md` |
 | `registry/README.md` | BROKEN | Directory removed entirely |
@@ -385,7 +385,7 @@ Genuine strengths that should be preserved and built upon:
 
 The documentation has two structural problems: broken references and content duplication.
 
-**Broken references** are the most urgent issue. 44 files reference `docs/technical/core-principles.md` instead of the actual `docs/technical/authoritative/core-principles.md`. The `authoritative/` subdirectory was created to elevate important docs but instead created path confusion. The simplest fix is to flatten it -- move the 4 files up one level, which eliminates the broken paths without requiring 44 file edits.
+**Broken references** are the most urgent issue. 44 files reference `docs/technical/core-principles.md` instead of the actual `docs/technical/core-principles.md`. The `authoritative/` subdirectory was created to elevate important docs but instead created path confusion. The simplest fix is to flatten it -- move the 4 files up one level, which eliminates the broken paths without requiring 44 file edits.
 
 **Content duplication** across `directory-structure.md`, `foundations.md`, `environment-and-mounts.md`, `core-principles.md`, and `stack/README.md` means mount/env/directory information diverges. The scheduler mount discrepancy (docs say config-only, compose mounts data + logs too) and vault mount contradiction (README says file read-only, compose mounts directory read-write) are symptoms. `directory-structure.md` should be deleted (it is a strict subset of `foundations.md`).
 
@@ -565,7 +565,7 @@ These require design discussion and potentially significant refactoring.
 
 | # | Action | Effort | Impact |
 |---|--------|--------|--------|
-| 23 | Flatten `docs/technical/authoritative/` to `docs/technical/` | 2 hrs | Eliminates 44 broken ref class permanently |
+| 23 | Flatten `docs/technical/` to `docs/technical/` | 2 hrs | Eliminates 44 broken ref class permanently |
 | 24 | Consolidate `directory-structure.md` into `foundations.md` | 1 hr | Reduces doc duplication |
 | 25 | Document OP_CAP_* capability injection system | 2 hrs | Fills largest doc gap |
 | 26 | Standardize `packages/` vs `core/` split | 4 hrs | Eliminates naming confusion |
@@ -620,7 +620,7 @@ These require design discussion and potentially significant refactoring.
 | 36 | Code duplication between channel-chat and channel-api | Medium | Code | 3 | 3 | 1.8 |
 | 37 | 5 different test placement patterns | Medium | Files | 3 | 2 | 1.2 |
 | 38 | YAML extension inconsistency (.yml vs .yaml) | Medium | Files | 2 | 4 | 1.6 |
-| 39 | docs/technical/authoritative/ creates path confusion | Medium | Docs, Files | 3 | 3 | 1.8 |
+| 39 | docs/technical/ creates path confusion | Medium | Docs, Files | 3 | 3 | 1.8 |
 | 40 | Scheduler mount docs omit data/ and logs/ | Medium | Docs | 3 | 5 | 3.0 |
 | 41 | OP_CAP_* system undocumented | Medium | Docs | 4 | 2 | 1.6 |
 | 42 | No documentation for registry system | Medium | Docs | 3 | 2 | 1.2 |

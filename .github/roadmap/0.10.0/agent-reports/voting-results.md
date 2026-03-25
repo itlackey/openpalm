@@ -175,7 +175,7 @@ Notes:
 | R62 | **UPDATE `scripts/dev-setup.sh`** -- create `~/.openpalm/` structure instead of `.dev/config`, `.dev/data`, `.dev/state` | YES | -- | -- | -- | YES | **2/5 FAIL** |
 | R63 | **UPDATE all existing tests referencing XDG paths** -- paths.test.ts, staging tests, install edge case tests (~3,400 lines across 12 test files) | YES | -- | -- | -- | YES | **2/5 FAIL** |
 | R64 | **ADD migration section to the refactor proposal** for 0.9.x to 0.10.0 transition -- detect old dirs, move files, handle old env vars | YES | YES | YES | YES | YES | **5/5 PASS** |
-| R65 | **UPDATE `docs/technical/authoritative/core-principles.md`** -- rewrite filesystem contract for vault boundary model and security invariants for per-container scoped mounts | -- | YES | -- | YES | YES | **3/5 PASS** |
+| R65 | **UPDATE `docs/technical/core-principles.md`** -- rewrite filesystem contract for vault boundary model and security invariants for per-container scoped mounts | -- | YES | -- | YES | YES | **3/5 PASS** |
 
 ---
 

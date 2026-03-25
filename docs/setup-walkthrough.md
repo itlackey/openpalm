@@ -134,6 +134,6 @@ Notes:
 ## Related Docs
 
 - [Setup Guide](setup-guide.md)
-- [Manual Setup](technical/manual-setup.md)
+- [Manual Compose Runbook](operations/manual-compose-runbook.md)
 - [Manual Compose Runbook](operations/manual-compose-runbook.md)
 - [Managing OpenPalm](managing-openpalm.md)

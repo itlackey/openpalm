@@ -11,7 +11,7 @@
 
 ## Dependencies and sequencing
 
-- Depends on the nested vault contract already established in the repo: `~/.openpalm/vault/user/user.env` + `~/.openpalm/vault/stack/stack.env` and the mount contract from `docs/technical/authoritative/core-principles.md`.
+- Depends on the nested vault contract already established in the repo: `~/.openpalm/vault/user/user.env` + `~/.openpalm/vault/stack/stack.env` and the mount contract from `docs/technical/core-principles.md`.
 - Unblocks issue #304 because the admin OpenCode instance uses `ADMIN_TOKEN`, while the assistant continues to use `ASSISTANT_TOKEN`.
 - Should follow the direction in `.github/roadmap/0.10.0/openpalm-pass-impl-v3.md`, but implementation details must be normalized to the current repo layout and the lib-first rule.
 - Some older planning text still centers on XDG paths, `secrets.env`, `stack.env`, and admin-only auth assumptions, but the current repo has already moved substantially beyond that. Remaining work is now normalization and follow-up refactoring rather than a first landing of the vault model.
@@ -70,7 +70,7 @@
 
 - Add admin-only routes for `GET/POST/DELETE /admin/secrets` and `POST /admin/secrets/generate`, backed by shared lib backend detection and validation helpers.
 - Ensure API responses expose metadata only: entry names, provider, capabilities, scope, and operation status. They must never return decrypted secret values.
-- Extend audit coverage for secrets operations using the shared append path in `packages/lib/src/control-plane/audit.ts:8`, but store logs in the new `logs/admin-audit.jsonl` location mandated by `docs/technical/authoritative/core-principles.md:75` rather than the current `stateDir/audit` path.
+- Extend audit coverage for secrets operations using the shared append path in `packages/lib/src/control-plane/audit.ts:8`, but store logs in the new `logs/admin-audit.jsonl` location mandated by `docs/technical/core-principles.md:75` rather than the current `stateDir/audit` path.
 - Include deterministic actor/caller attribution in audit events so admin-token requests, assistant-token requests, CLI calls, and startup/migration tasks are distinguishable.
 - Integrate secret lifecycle into component or instance operations:
   - register `@sensitive` fields from component `.env.schema` files,
@@ -155,8 +155,8 @@
 
 - `.github/roadmap/0.10.0/README.md:45` - roadmap scope, deliverables, dependency on #304, and shared-library rule.
 - `.github/roadmap/0.10.0/openpalm-pass-impl-v3.md:34` - detailed secrets architecture and phased design reference.
-- `docs/technical/authoritative/core-principles.md:50` - vault boundary, mount contract, and writer rules.
-- `docs/technical/authoritative/core-principles.md:128` - control-plane logic must live in `packages/lib/`.
+- `docs/technical/core-principles.md:50` - vault boundary, mount contract, and writer rules.
+- `docs/technical/core-principles.md:128` - control-plane logic must live in `packages/lib/`.
 - `packages/lib/src/control-plane/secrets.ts` - current nested-vault secret seeding and direct plaintext mutation helpers.
 - `packages/lib/src/control-plane/lifecycle.ts:46` - current state creation and env loading path.
 - `packages/lib/src/control-plane/validate.ts` and `packages/lib/src/control-plane/secret-backend.ts` - remaining helpers to normalize around the nested vault schema layout.

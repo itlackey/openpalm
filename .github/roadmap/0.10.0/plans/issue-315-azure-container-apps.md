@@ -7,7 +7,7 @@ Add a documented Azure Container Apps (ACA) deployment path for OpenPalm that ru
 ## Dependency summary
 
 - Roadmap position: independent parallel track in v0.10.0, explicitly described as additive with no required core product changes (`.github/roadmap/0.10.0/README.md:128`).
-- Architectural constraints still apply: guardian-only ingress, assistant isolation, host-or-admin orchestration model replaced here by Azure operator automation, and file-assembly/no-template-rendering rules where repo-managed files are involved (`docs/technical/authoritative/core-principles.md:21`, `docs/technical/authoritative/core-principles.md:30`, `docs/technical/authoritative/core-principles.md:193`).
+- Architectural constraints still apply: guardian-only ingress, assistant isolation, host-or-admin orchestration model replaced here by Azure operator automation, and file-assembly/no-template-rendering rules where repo-managed files are involved (`docs/technical/core-principles.md:21`, `docs/technical/core-principles.md:30`, `docs/technical/core-principles.md:193`).
 - Existing runtime already supports the needed separation: admin tool calls fail closed to error JSON when Admin is absent (`packages/admin-tools/opencode/tools/lib.ts:1`).
 - ACA docs should target the 0.10.0 self-hosted filesystem contract (`~/.openpalm/`, vault boundary, data/logs split) and explicitly describe where the cloud deployment intentionally diverges rather than repeating older XDG-era assumptions (`assets/docker-compose.yml:9`, `docs/technical/environment-and-mounts.md:144`).
 
@@ -161,9 +161,9 @@ The following are intentionally out of scope for #315 and should not be smuggled
 ## Relevant files
 
 - `.github/roadmap/0.10.0/README.md:128` - roadmap entry for #315, including additive/no-core-change expectation.
-- `docs/technical/authoritative/core-principles.md:21` - security invariants that the ACA deployment must preserve conceptually.
-- `docs/technical/authoritative/core-principles.md:30` - file-assembly and shared-control-plane rules; useful for defining what ACA does not reuse.
-- `docs/technical/authoritative/core-principles.md:193` - operational model for adding components and apply behavior in the self-hosted path.
+- `docs/technical/core-principles.md:21` - security invariants that the ACA deployment must preserve conceptually.
+- `docs/technical/core-principles.md:30` - file-assembly and shared-control-plane rules; useful for defining what ACA does not reuse.
+- `docs/technical/core-principles.md:193` - operational model for adding components and apply behavior in the self-hosted path.
 - `assets/docker-compose.yml:14` - current service inventory, env vars, ports, and mount expectations to translate into ACA definitions.
 - `docs/technical/environment-and-mounts.md:144` - current staged env-file model that ACA intentionally diverges from.
 - `packages/lib/src/control-plane/paths.ts:1` - current XDG directory assumptions that should remain untouched for this issue.

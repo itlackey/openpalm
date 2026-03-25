@@ -374,7 +374,7 @@ The `user.env` hot-reload via file watcher is an elegant UX improvement but intr
 
 ### Cascade: What Changes If This Proposal Is Adopted
 
-1. **`docs/technical/authoritative/core-principles.md`** — Major rewrite required. All three filesystem tier definitions, the volume-mount contract (sections A through F), and the operational behavior section must be updated. The three-tier model is deeply embedded in this document.
+1. **`docs/technical/core-principles.md`** — Major rewrite required. All three filesystem tier definitions, the volume-mount contract (sections A through F), and the operational behavior section must be updated. The three-tier model is deeply embedded in this document.
 2. **`review-decisions.md`** — Q2 must be explicitly reversed with rationale. Q9 (ov.conf in DATA_HOME) needs reassessment if vault is the new location.
 3. **`openpalm-components-plan.md`** — Must reconcile `config/components/` (compose overlays) with `data/components/` (instance directories). The Directory Summary section near the end currently shows `${OP_CONFIG}/`, `${OP_DATA}/components/`, and `${OP_STATE}/components/` — all three tiers would need updating.
 4. **`openpalm-pass-impl-v3.md`** — `PlaintextBackend` must be updated to understand the two-file model (`user.env` vs `system.env`). Phase 0 references to `stageSecretsEnv()` become irrelevant. The `CONFIG_HOME contract note` section needs rewriting.

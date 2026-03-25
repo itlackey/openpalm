@@ -153,8 +153,8 @@ These are MEMORY.md entries only (agent memory, not code), but they could mislea
 
 | CLAUDE.md Claim | Reality | Severity |
 |-----------------|---------|----------|
-| `docs/technical/core-principles.md` (referenced 4 times) | File is at `docs/technical/authoritative/core-principles.md` | HIGH -- Broken reference in the project's primary instruction file |
-| `docs/technical/docker-dependency-resolution.md` (referenced 3 times) | File is at `docs/technical/authoritative/docker-dependency-resolution.md` | HIGH -- Broken reference |
+| `docs/technical/core-principles.md` (referenced 4 times) | File is at `docs/technical/core-principles.md` | HIGH -- Broken reference in the project's primary instruction file |
+| `docs/technical/docker-dependency-resolution.md` (referenced 3 times) | File is at `docs/technical/docker-dependency-resolution.md` | HIGH -- Broken reference |
 | "Lazy init: `getSetupManager()` / `getStackManager()` are async" | Neither function exists. State management uses `getState()` from `$lib/server/state.ts` | MEDIUM -- Stale claim |
 | "Both use the same `CoreAssetProvider` interface from `@openpalm/lib`" | `CoreAssetProvider` has been removed. Test file confirms: "After the CoreAssetProvider removal..." | MEDIUM -- Stale architecture description |
 | "Stack files consumed via Vite's `$stack` alias (`ViteAssetProvider`)" | `ViteAssetProvider` does not exist. Stack files are consumed via standard imports. | MEDIUM -- Stale |
@@ -224,8 +224,8 @@ These guardrails are passing, confirming the migration is complete. The guardrai
 
 | Claimed Path | Status |
 |--------------|--------|
-| `docs/technical/core-principles.md` | MISSING -- Moved to `docs/technical/authoritative/core-principles.md` |
-| `docs/technical/docker-dependency-resolution.md` | MISSING -- Moved to `docs/technical/authoritative/docker-dependency-resolution.md` |
+| `docs/technical/core-principles.md` | MISSING -- Moved to `docs/technical/core-principles.md` |
+| `docs/technical/docker-dependency-resolution.md` | MISSING -- Moved to `docs/technical/docker-dependency-resolution.md` |
 | `packages/lib/src/index.ts` | EXISTS |
 | `packages/lib/src/control-plane/lifecycle.ts` | EXISTS |
 | `packages/lib/src/control-plane/config-persistence.ts` | EXISTS |
@@ -331,7 +331,7 @@ The assistant tools (`packages/assistant-tools/`) and admin tools (`packages/adm
 
 ### HIGH (3)
 
-1. **CLAUDE.md references `docs/technical/core-principles.md` (4 times) and `docs/technical/docker-dependency-resolution.md` (3 times) -- both paths are broken.** Actual paths are under `docs/technical/authoritative/`. This is the project's primary instruction file giving wrong paths to its most critical documents.
+1. **CLAUDE.md references `docs/technical/core-principles.md` (4 times) and `docs/technical/docker-dependency-resolution.md` (3 times) -- both paths are broken.** Actual paths are under `docs/technical/`. This is the project's primary instruction file giving wrong paths to its most critical documents.
 
 2. **`docs/technical/environment-and-mounts.md` memory environment section is stale.** Lists `OPENAI_API_KEY`/`OPENAI_BASE_URL` but compose uses `OP_CAP_*` capability variables.
 

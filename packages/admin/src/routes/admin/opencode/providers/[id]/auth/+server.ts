@@ -24,8 +24,6 @@ import { createLogger } from '$lib/server/logger.js';
 
 const logger = createLogger('opencode.auth');
 
-// TODO: Add unit tests for api_key and oauth POST modes, and for GET poll session logic.
-
 // ── API key validation ────────────────────────────────────────────────
 const MAX_API_KEY_LENGTH = 512;
 const API_KEY_PATTERN = /^[\x20-\x7E]+$/; // printable ASCII only

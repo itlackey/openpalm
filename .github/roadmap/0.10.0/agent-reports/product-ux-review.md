@@ -364,7 +364,7 @@ The documentation rewrite scope is substantial. Every reference to the XDG layou
 
 | Document | Impact |
 |----------|--------|
-| `docs/technical/authoritative/core-principles.md` | **Full rewrite** of Sections 1-3 (filesystem contract). The three-tier model, tier boundaries, and volume-mount contract all change. |
+| `docs/technical/core-principles.md` | **Full rewrite** of Sections 1-3 (filesystem contract). The three-tier model, tier boundaries, and volume-mount contract all change. |
 | `CLAUDE.md` | **Full rewrite** of XDG Directory Model table, Architecture Rules summary, Key Files paths |
 | `packages/lib/src/control-plane/paths.ts` | **Code rewrite** -- `resolveConfigHome()`, `resolveDataHome()`, `resolveStateHome()` all change, `ensureXdgDirs()` creates different directories |
 | `packages/lib/src/control-plane/staging.ts` | **Major refactor or removal** -- staging pipeline is eliminated; validation-in-place and rollback replace it |

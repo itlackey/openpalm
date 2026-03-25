@@ -214,7 +214,7 @@ Body:
 Rules:
 
 - Allowed core services:
-  `assistant`, `guardian`, `memory`, `admin`
+  `assistant`, `guardian`, `memory`, `scheduler`, `admin`
 - Allowed addon services: installed addon service names such as `chat`, `api`,
   `voice`, `discord`, or `slack` when a matching overlay exists in `stack/addons/`.
 

@@ -287,4 +287,4 @@ vault/ov.conf), M8 (secrets.env contract — replaced by two-file vault model), 
 (staged permissions — staging eliminated entirely).
 
 **See:** `fs-mounts-refactor.md` for full proposal, `fs-layout.md` for directory tree
-reference, `docs/technical/authoritative/core-principles.md` for the updated architectural rules.
+reference, `docs/technical/core-principles.md` for the updated architectural rules.

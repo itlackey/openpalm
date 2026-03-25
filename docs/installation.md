@@ -132,7 +132,7 @@ Default host ports are documented in [system-requirements.md](system-requirement
 
 | Guide | Description |
 |---|---|
-| [technical/manual-setup.md](technical/manual-setup.md) | Fully explicit compose workflow |
+| [operations/manual-compose-runbook.md](operations/manual-compose-runbook.md) | Fully explicit compose workflow |
 | [setup-guide.md](setup-guide.md) | Convenience-oriented setup flow |
 | [password-management.md](password-management.md) | Secret layout and token handling |
 | [troubleshooting.md](troubleshooting.md) | Common problems and fixes |

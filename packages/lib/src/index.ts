@@ -9,13 +9,7 @@
 // ── Provider Constants ──────────────────────────────────────────────────
 export {
   LLM_PROVIDERS,
-  PROVIDER_DEFAULT_URLS,
-  PROVIDER_KEY_MAP,
   EMBEDDING_DIMS,
-  PROVIDER_LABELS,
-  OLLAMA_DEFAULT_MODELS,
-  OLLAMA_INSTACK_URL,
-  LOCAL_PROVIDER_HELP,
 } from "./provider-constants.js";
 
 // ── Logger ──────────────────────────────────────────────────────────────
@@ -38,15 +32,11 @@ export {
 } from "./control-plane/types.js";
 
 // ── Interfaces ──────────────────────────────────────────────────────────
-export type { RegistryProvider, RegistryComponentEntry } from "./control-plane/registry-provider.js";
+export type { RegistryComponentEntry } from "./control-plane/registry-provider.js";
 
 // ── Registry Sync ────────────────────────────────────────────────────────
-export type { RegistryConfig, RegistryAutomationEntry } from "./control-plane/registry.js";
+export type { RegistryAutomationEntry } from "./control-plane/registry.js";
 export {
-  validateBranch,
-  validateRegistryUrl,
-  isValidComponentName,
-  getRegistryConfig,
   registryRoot,
   ensureRegistryClone,
   pullRegistry,
@@ -66,11 +56,6 @@ export {
   resolveDataDir,
   resolveLogsDir,
   resolveCacheHome,
-  resolveRollbackDir,
-  resolveRegistryCacheDir,
-  resolveStackDir,
-  resolveBackupsDir,
-  resolveWorkspaceDir,
   ensureHomeDirs,
 } from "./control-plane/home.js";
 
@@ -86,14 +71,13 @@ export { appendAudit } from "./control-plane/audit.js";
 
 // ── OpenCode Client ─────────────────────────────────────────────────────
 export { createOpenCodeClient } from "./control-plane/opencode-client.js";
-export type { OpenCodeClientOpts, ProxyResult, OpenCodeProvider } from "./control-plane/opencode-client.js";
+export type { ProxyResult, OpenCodeProvider } from "./control-plane/opencode-client.js";
 
 // ── Secrets ─────────────────────────────────────────────────────────────
 export {
   PLAIN_CONFIG_KEYS,
   ensureSecrets,
   updateSecretsEnv,
-  updateSystemSecretsEnv,
   readStackEnv,
   patchSecretsEnvFile,
   maskConnectionValue,
@@ -101,33 +85,10 @@ export {
 } from "./control-plane/secrets.js";
 export {
   detectSecretBackend,
-  PlaintextBackend,
-  PassBackend,
   validatePassEntryName,
 } from "./control-plane/secret-backend.js";
-export type {
-  SecretBackend,
-  SecretBackendCapabilities,
-} from "./control-plane/secret-backend.js";
-export type {
-  SecretScope,
-  SecretKind,
-  SecretEntryMetadata,
-} from "./control-plane/secret-mappings.js";
-export {
-  getCoreSecretMappings,
-} from "./control-plane/secret-mappings.js";
-export {
-  readSecretProviderConfig,
-  writeSecretProviderConfig,
-} from "./control-plane/provider-config.js";
-export {
-  generateRedactSchema,
-} from "./control-plane/redact-schema.js";
 // ── Setup Status ────────────────────────────────────────────────────────
 export {
-  readSecretsKeys,
-  detectUserId,
   isSetupComplete,
 } from "./control-plane/setup-status.js";
 
@@ -144,9 +105,6 @@ export {
 // ── Memory Config ───────────────────────────────────────────────────────
 export type {
   MemoryConfig,
-  ModelDiscoveryReason,
-  ProviderModelsResult,
-  VectorDimensionResult,
 } from "./control-plane/memory-config.js";
 export {
   EMBED_PROVIDERS,
@@ -186,13 +144,10 @@ export {
   readChannelSecrets,
   writeChannelSecrets,
   migrateLegacyChannelSecrets,
-  isOllamaEnabled,
-  isAdminEnabled,
 } from "./control-plane/config-persistence.js";
 
 // ── Rollback ─────────────────────────────────────────────────────────────
 export {
-  snapshotCurrentState,
   restoreSnapshot,
   hasSnapshot,
   snapshotTimestamp,
@@ -206,7 +161,6 @@ export {
 // ── Lifecycle ───────────────────────────────────────────────────────────
 export {
   createState,
-  writeSetupTokenFile,
   applyInstall,
   applyUpdate,
   applyUninstall,
@@ -224,7 +178,6 @@ export {
   checkDockerCompose,
   resolveComposeProjectName,
   composePreflight,
-  composeConfigServices,
   composeUp,
   composeDown,
   composeRestart,
@@ -248,15 +201,10 @@ export type {
 } from "./control-plane/scheduler.js";
 export {
   SCHEDULE_PRESETS,
-  SAFE_PATH_RE,
   resolveSchedule,
   parseAutomationYaml,
   loadAutomations,
   executeAction,
-  executeApiAction,
-  executeHttpAction,
-  executeShellAction,
-  executeAssistantAction,
 } from "./control-plane/scheduler.js";
 
 // ── Model Runner (local provider detection) ─────────────────────────────
@@ -264,21 +212,14 @@ export type { LocalProviderDetection } from "./control-plane/model-runner.js";
 export { detectLocalProviders } from "./control-plane/model-runner.js";
 
 // ── Compose Arguments ────────────────────────────────────────────────────
-export type { ComposeOptions } from "./control-plane/compose-args.js";
 export {
-  COMPOSE_PROJECT_NAME,
   buildComposeOptions,
   buildComposeCliArgs,
 } from "./control-plane/compose-args.js";
 
-// ── Orchestrator Lock ────────────────────────────────────────────────────
-export type { LockHandle, LockInfo } from "./control-plane/lock.js";
-export { LockAcquisitionError, acquireLock, releaseLock } from "./control-plane/lock.js";
-
 // ── Stack Spec (v2) ──────────────────────────────────────────────────────
 export type {
   StackSpec,
-  StackSpecCapabilities,
   StackSpecEmbeddings,
   StackSpecMemory,
   StackSpecTts,
@@ -288,7 +229,6 @@ export type {
 } from "./control-plane/stack-spec.js";
 export {
   STACK_SPEC_FILENAME,
-  stackSpecPath,
   writeStackSpec,
   readStackSpec,
   updateCapability,
@@ -300,25 +240,14 @@ export {
 
 // ── Spec-to-Env Derivation ──────────────────────────────────────────────
 export {
-  deriveSystemEnvFromSpec,
   writeCapabilityVars,
 } from "./control-plane/spec-to-env.js";
 
-// ── Spec Validation ─────────────────────────────────────────────────────
-export type { ValidationError } from "./control-plane/spec-validator.js";
-export { validateStackSpec } from "./control-plane/spec-validator.js";
-
-
 // ── Setup ────────────────────────────────────────────────────────────────
 export type {
-  SetupConnection,
   SetupSpec,
   SetupResult,
 } from "./control-plane/setup.js";
 export {
-  validateSetupSpec,
-  buildSecretsFromSetup,
   performSetup,
-  buildSystemSecretsFromSetup,
 } from "./control-plane/setup.js";
-

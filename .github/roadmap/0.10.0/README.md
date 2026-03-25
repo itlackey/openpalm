@@ -226,7 +226,7 @@ All control-plane logic MUST live in `packages/lib/` (`@openpalm/lib`). This is 
 
 **Rule:** When implementing any feature from this roadmap, place the logic in `@openpalm/lib` first. CLI and admin are thin consumers that call lib functions — CLI calls them directly, admin calls them from API route handlers. No independent control-plane logic in consumers.
 
-See `docs/technical/authoritative/core-principles.md` § "Shared control-plane library" for the full rule.
+See `docs/technical/core-principles.md` § "Shared control-plane library" for the full rule.
 
 ---
 

@@ -16,7 +16,7 @@
 
 - `.github/roadmap/0.10.0/README.md:169` - roadmap Phase 0 scope and port standardization tasks.
 - `.plans/issue-301-unified-component-system.md:13` - original shared-prerequisite split from #301.
-- `docs/technical/authoritative/core-principles.md:30` - authoritative filesystem, vault, and rollback contract.
+- `docs/technical/core-principles.md:30` - authoritative filesystem, vault, and rollback contract.
 - `packages/lib/src/control-plane/paths.ts:1` - current XDG path helper entry point to replace.
 - `packages/lib/src/control-plane/staging.ts:1` - current staging implementation to retire.
 - `assets/docker-compose.yml:1` - core asset rewrite entry point for paths, mounts, and ports.

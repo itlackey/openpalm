@@ -33,7 +33,7 @@ Add a link or status card in the admin dashboard that:
 
 ### 2. Documentation updates
 
-- ✅ `docs/technical/authoritative/core-principles.md:153` — port table updated (removed "Brokered")
+- ✅ `docs/technical/core-principles.md:153` — port table updated (removed "Brokered")
 - ✅ `.github/roadmap/0.10.0/README.md:108` — scope simplified
 - ✅ `.github/roadmap/0.10.0/review-decisions.md:81` — Q4 updated to reflect direct access
 - ✅ `.github/roadmap/0.10.0/openpalm-pass-impl-v3.md:156` — token matrix updated

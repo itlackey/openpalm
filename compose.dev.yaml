@@ -108,10 +108,9 @@ services:
     ports:
       - "${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT:-8186}:8186"
     env_file:
-      - path: ${OP_HOME}/vault/stack/stack.env
-        required: false
-      - path: ${OP_HOME}/vault/user/user.env
-        required: false
+      # Voice channel only needs its own HMAC secret from guardian.env.
+      # Do NOT add stack.env or user.env — channels must not receive
+      # admin tokens, assistant tokens, or other stack-wide secrets.
       - path: ${OP_HOME}/vault/stack/guardian.env
         required: false
     volumes:

@@ -34,4 +34,4 @@ bun build src/index.ts --outdir dist --format esm --target node
 
 `@opencode-ai/plugin` — OpenCode plugin interface. Memory tools call the memory API via standard `fetch`; no admin dependency.
 
-See [`AGENTS.md`](AGENTS.md) for the assistant persona, [`docs/core-principles.md`](../../docs/technical/authoritative/core-principles.md) for architectural rules.
+See [`AGENTS.md`](AGENTS.md) for the assistant persona, [`docs/core-principles.md`](../../docs/technical/core-principles.md) for architectural rules.

@@ -408,7 +408,7 @@ This is a clean improvement but requires:
 
 23. **ADD** -- The clean break from legacy channels needs prominent documentation in release notes. The upgrade path (uninstall old channels -> upgrade to 0.10.0 -> reinstall as components) must be step-by-step with specific commands.
 
-24. **UPDATE** -- `docs/technical/authoritative/core-principles.md` needs updates for:
+24. **UPDATE** -- `docs/technical/core-principles.md` needs updates for:
     - Component system replacing channel file-drop model (Goal 1)
     - New `DATA_HOME/components/` directory in the filesystem contract
     - Updated operational behavior section (component install replaces channel file-drop)
@@ -675,4 +675,4 @@ The `assets/ollama.yml` also needs updating (1 mount: `DATA_HOME/ollama` -> `OP_
 
 13. **ADD** -- The `config/openpalm.yml` file is a new single source of truth for enabled components and feature flags. This replaces the current implicit discovery (scan for staged files, check env flags). The `openpalm.yml` schema must be defined and validated -- a Zod schema in `@openpalm/lib` would be appropriate, consistent with the existing pattern of schema validation in the setup module. This file also needs a JSON Schema for IDE autocompletion.
 
-14. **UPDATE** -- `docs/technical/authoritative/core-principles.md` requires significant revisions: the XDG directory model table (Goal 3 / filesystem contract) must be rewritten for the new `~/.openpalm/` layout, the CONFIG_HOME policy becomes a `config/` policy, the STATE_HOME tier disappears, and the volume-mount contract changes completely. The security invariants section needs updating for the vault boundary model. This is a documentation-only change but is architecturally critical since CLAUDE.md declares `core-principles.md` as the authoritative source.
+14. **UPDATE** -- `docs/technical/core-principles.md` requires significant revisions: the XDG directory model table (Goal 3 / filesystem contract) must be rewritten for the new `~/.openpalm/` layout, the CONFIG_HOME policy becomes a `config/` policy, the STATE_HOME tier disappears, and the volume-mount contract changes completely. The security invariants section needs updating for the vault boundary model. This is a documentation-only change but is architecturally critical since CLAUDE.md declares `core-principles.md` as the authoritative source.

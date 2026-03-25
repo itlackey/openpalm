@@ -7,7 +7,7 @@ This document is the consensus outcome after reviewing:
 - `.github/roadmap/0.10.0/cleanup/01.md`
 - `.github/roadmap/0.10.0/cleanup/02.md`
 - `.github/roadmap/0.10.0/cleanup/03.md`
-- `docs/technical/authoritative/core-principles.md`
+- `docs/technical/core-principles.md`
 - `docs/technical/code-quality-principles.md`
 - current implementation under `.openpalm/stack/` and `packages/lib/src/control-plane/`
 

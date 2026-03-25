@@ -179,6 +179,8 @@ USEREOF
 		cat >"$system_env" <<EOF
 # OpenPalm System Environment — system-managed, do not edit
 
+# WARNING: dev-admin-token is for local development only.
+# NEVER use this value in production — generate a strong random token instead.
 OP_ADMIN_TOKEN=dev-admin-token
 OP_ASSISTANT_TOKEN=${assistant_token}
 OP_MEMORY_TOKEN=${mem_token}

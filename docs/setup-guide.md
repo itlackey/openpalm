@@ -8,7 +8,7 @@ OpenPalm now uses a manual-first setup model:
 
 Helper scripts still exist, but they are optional.
 
-For the fully explicit path, see [technical/manual-setup.md](technical/manual-setup.md).
+For the fully explicit path, see the [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
 ---
 
@@ -127,8 +127,8 @@ Stop the stack, remove `~/.openpalm/` if you truly want a clean reset, then copy
 
 | Guide | What's inside |
 |---|---|
-| [technical/manual-setup.md](technical/manual-setup.md) | Fully explicit compose workflow |
+| [operations/manual-compose-runbook.md](operations/manual-compose-runbook.md) | Fully explicit compose workflow |
 | [managing-openpalm.md](managing-openpalm.md) | Day-to-day operations |
 | [how-it-works.md](how-it-works.md) | Architecture overview |
-| [technical/directory-structure.md](technical/directory-structure.md) | Host paths and mounts |
-| [technical/authoritative/core-principles.md](technical/authoritative/core-principles.md) | Security and architecture rules |
+| [technical/foundations.md](technical/foundations.md) | Host paths, mounts, and runtime contract |
+| [technical/core-principles.md](technical/core-principles.md) | Security and architecture rules |

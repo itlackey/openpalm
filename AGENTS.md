@@ -1,6 +1,6 @@
 # AGENTS.md — OpenPalm
 
-> **CRITICAL:** All work must comply with [`docs/technical/authoritative/core-principles.md`](docs/technical/authoritative/core-principles.md).
+> **CRITICAL:** All work must comply with [`docs/technical/core-principles.md`](docs/technical/core-principles.md).
 > That document is the **authoritative source of architectural rules** for this project.
 > No implementation may violate its Core Goals, Security Invariants, or Filesystem Contract.
 > **IT IS VERY IMPORTANT THAT YOU AVOID AND/OR REMOVE ALL COMPLEXITY THAT YOU CANNOT PROPERLY JUSTIFY. ALWAYS CALLOUT ANY COMPLEXITY THAT YOU FIND AND CANNOT JUSTIFY**
@@ -23,7 +23,7 @@ Admin UI / Assistant  ->  Admin API  ->  Docker Compose  <- optional web orchest
 External clients      ->  Channel    ->  Guardian (HMAC/validate)  ->  Assistant
 ```
 
-See [`docs/technical/authoritative/core-principles.md`](docs/technical/authoritative/core-principles.md) for the filesystem/volume-mount contract.
+See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for the filesystem/volume-mount contract.
 
 ---
 
@@ -147,13 +147,12 @@ Read these before making significant changes. They are the authoritative sources
 
 | Document | Scope |
 |---|---|
-| [`docs/technical/authoritative/core-principles.md`](docs/technical/authoritative/core-principles.md) | Architectural rules, security invariants, filesystem contract |
-| [`docs/technical/authoritative/docker-dependency-resolution.md`](docs/technical/authoritative/docker-dependency-resolution.md) | Docker build dependency patterns (must follow) |
+| [`docs/technical/core-principles.md`](docs/technical/core-principles.md) | Architectural rules, security invariants, filesystem contract |
+| [`docs/technical/docker-dependency-resolution.md`](docs/technical/docker-dependency-resolution.md) | Docker build dependency patterns (must follow) |
 | [`docs/technical/code-quality-principles.md`](docs/technical/code-quality-principles.md) | Engineering invariants, quality contracts |
 | [`docs/technical/bunjs-rules.md`](docs/technical/bunjs-rules.md) | Bun-specific implementation rules, built-in API preference list |
 | [`docs/technical/sveltekit-rules.md`](docs/technical/sveltekit-rules.md) | SvelteKit-specific rules, server/client boundaries, routing |
 | [`docs/technical/api-spec.md`](docs/technical/api-spec.md) | Full Admin API spec, endpoint contracts, error shapes |
-| [`docs/technical/directory-structure.md`](docs/technical/directory-structure.md) | XDG three-tier layout, volume mounts, network topology |
 | [`docs/technical/environment-and-mounts.md`](docs/technical/environment-and-mounts.md) | Every env var and mount point per service |
 | [`docs/technical/opencode-configuration.md`](docs/technical/opencode-configuration.md) | OpenCode integration, tools, plugins, startup flow |
 | [`docs/technical/package-management.md`](docs/technical/package-management.md) | Single lock file policy and dependency workflow |
@@ -232,7 +231,7 @@ No Prettier or ESLint configured. Match the existing file style:
 
 ## Architecture Rules (summary)
 
-Full detail in [`docs/technical/authoritative/core-principles.md`](docs/technical/authoritative/core-principles.md).
+Full detail in [`docs/technical/core-principles.md`](docs/technical/core-principles.md).
 
 - **File assembly, not rendering.** Write whole files; no string interpolation or template generation.
 - **`config/` is user-owned.** Automatic lifecycle operations are non-destructive for existing user files and only seed missing defaults. Allowed writers: user direct edits, explicit admin UI/API config actions, assistant calls through authenticated admin APIs on user request.
@@ -244,7 +243,7 @@ Full detail in [`docs/technical/authoritative/core-principles.md`](docs/technica
 - **LAN-first by default.** Nothing is publicly exposed without explicit user opt-in.
 - **Add a channel** by installing from the registry or dropping an addon compose file into `stack/addons/<name>/` — no code changes.
 - **No shell interpolation.** Docker commands use `execFile` with argument arrays, never shell strings.
-- **Docker dependency resolution pattern is mandatory.** Admin uses plain `npm install` (no Bun in Docker). Guardian and channel Dockerfiles install `packages/channels-sdk` deps with `bun install --production` after copying sdk source. See [`docs/technical/authoritative/docker-dependency-resolution.md`](docs/technical/authoritative/docker-dependency-resolution.md).
+- **Docker dependency resolution pattern is mandatory.** Admin uses plain `npm install` (no Bun in Docker). Guardian and channel Dockerfiles install `packages/channels-sdk` deps with `bun install --production` after copying sdk source. See [`docs/technical/docker-dependency-resolution.md`](docs/technical/docker-dependency-resolution.md).
 
 ---
 
@@ -274,10 +273,10 @@ Before submitting any change:
 - [ ] `cd packages/admin && npm run check` passes (UI type correctness)
 - [ ] `cd core/guardian && bun test` passes (security-critical branches covered)
 - [ ] No new dependency duplicates a built-in Bun/platform capability
-- [ ] Filesystem, guardian ingress, and assistant-isolation rules in `docs/technical/authoritative/core-principles.md` remain intact
+- [ ] Filesystem, guardian ingress, and assistant-isolation rules in `docs/technical/core-principles.md` remain intact
 - [ ] Errors and logs are structured and include request identifiers where available
 - [ ] No secrets leak through client bundles or logs
-- [ ] Docker builds follow the dependency resolution pattern in `docs/technical/authoritative/docker-dependency-resolution.md`
+- [ ] Docker builds follow the dependency resolution pattern in `docs/technical/docker-dependency-resolution.md`
 - [ ] Control-plane logic lives in `packages/lib/`, not duplicated in CLI or admin
 
 ---
@@ -286,8 +285,8 @@ Before submitting any change:
 
 | Path | Purpose |
 |---|---|
-| `docs/technical/authoritative/core-principles.md` | **Authoritative architectural rules** |
-| `docs/technical/authoritative/docker-dependency-resolution.md` | **Docker build dependency patterns** |
+| `docs/technical/core-principles.md` | **Authoritative architectural rules** |
+| `docs/technical/docker-dependency-resolution.md` | **Docker build dependency patterns** |
 | `docs/technical/code-quality-principles.md` | Engineering invariants and quality contracts |
 | `docs/technical/bunjs-rules.md` | Bun built-in API rules |
 | `docs/technical/sveltekit-rules.md` | SvelteKit-specific implementation rules |

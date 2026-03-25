@@ -53,13 +53,13 @@
     "dev:stack": "docker compose -f .dev/stack/core.compose.yml -f .openpalm/stack/addons/admin/compose.yml --env-file .dev/vault/stack/stack.env --env-file .dev/vault/stack/services/memory/managed.env --env-file .dev/vault/user/user.env up -d",
     "dev:build": "docker compose --project-directory . -f .openpalm/stack/core.compose.yml -f .openpalm/stack/addons/admin/compose.yml -f compose.dev.yaml --env-file .dev/vault/stack/stack.env --env-file .dev/vault/stack/services/memory/managed.env --env-file .dev/vault/user/user.env up --build -d",
     "test": "bun test packages/channels-sdk packages/channel-api packages/channel-discord packages/channel-slack packages/cli packages/lib packages/scheduler packages/assistant-tools packages/admin-tools core/guardian/",
-    "test:parity": "bun test packages/memory/parity-tests/",
-    "test:benchmark": "./packages/memory/benchmark-tests/run-benchmarks.sh",
-    "test:benchmark:perf": "./packages/memory/benchmark-tests/run-benchmarks.sh perf",
-    "test:benchmark:quality": "./packages/memory/benchmark-tests/run-benchmarks.sh quality",
-    "test:benchmark:ts-only": "./packages/memory/benchmark-tests/run-benchmarks.sh --no-python",
-    "analysis:fta": "npx -y fta-cli . --json | python3 -c \"import json,sys;d=sorted(json.load(sys.stdin),key=lambda x:x['fta_score'],reverse=True);c={};[c.__setitem__(f['assessment'],c.get(f['assessment'],0)+1) for f in d];s=[f['fta_score'] for f in d];print(f'\\n=== FTA Code Complexity Report ({len(d)} files) ===');print(f'Mean: {sum(s)/len(s):.1f} | Median: {sorted(s)[len(s)//2]:.1f} | Max: {max(s):.1f}');print();[print(f'  {a}: {n}') for a,n in sorted(c.items(),key=lambda x:-x[1])];print(f'\\n=== Top 20 Most Complex Files ===');print(f\\\"{'Score':>7}  {'Cyclo':>5}  {'Lines':>5}  {'Assessment':<20}  File\\\");print('-'*100);[print(f\\\"{f['fta_score']:7.1f}  {f['cyclo']:5d}  {f['line_count']:5d}  {f['assessment']:<20}  {f['file_name']}\\\") for f in d[:20]];ni=[f for f in d if f['fta_score']>60];print(f'\\n=== Needs Improvement ({len(ni)} files) ===');[print(f\\\"  {f['fta_score']:6.1f}  {f['file_name']}\\\") for f in ni]\"",
-    "analysis:fta:json": "npx -y fta-cli . --json",
+    "test:parity": "bun test packages/memory/e2e/parity/",
+    "test:benchmark": "./packages/memory/e2e/benchmark/run-benchmarks.sh",
+    "test:benchmark:perf": "./packages/memory/e2e/benchmark/run-benchmarks.sh perf",
+    "test:benchmark:quality": "./packages/memory/e2e/benchmark/run-benchmarks.sh quality",
+    "test:benchmark:ts-only": "./packages/memory/e2e/benchmark/run-benchmarks.sh --no-python",
+    "analysis:fta": "npx -y fta-cli . -c .config/fta.json --json | python3 -c \"import json,sys;d=sorted(json.load(sys.stdin),key=lambda x:x['fta_score'],reverse=True);c={};[c.__setitem__(f['assessment'],c.get(f['assessment'],0)+1) for f in d];s=[f['fta_score'] for f in d];print(f'\\n=== FTA Code Complexity Report ({len(d)} files) ===');print(f'Mean: {sum(s)/len(s):.1f} | Median: {sorted(s)[len(s)//2]:.1f} | Max: {max(s):.1f}');print();[print(f'  {a}: {n}') for a,n in sorted(c.items(),key=lambda x:-x[1])];print(f'\\n=== Top 20 Most Complex Files ===');print(f\\\"{'Score':>7}  {'Cyclo':>5}  {'Lines':>5}  {'Assessment':<20}  File\\\");print('-'*100);[print(f\\\"{f['fta_score']:7.1f}  {f['cyclo']:5d}  {f['line_count']:5d}  {f['assessment']:<20}  {f['file_name']}\\\") for f in d[:20]];ni=[f for f in d if f['fta_score']>60];print(f'\\n=== Needs Improvement ({len(ni)} files) ===');[print(f\\\"  {f['fta_score']:6.1f}  {f['file_name']}\\\") for f in ni]\"",
+    "analysis:fta:json": "npx -y fta-cli . -c .config/fta.json --json",
     "check": "bun run admin:check && bun run sdk:test",
     "test:t1": "./scripts/test-tier.sh 1",
     "test:t2": "./scripts/test-tier.sh 2",
@@ -68,7 +68,5 @@
     "test:t5": "./scripts/test-tier.sh 5",
     "test:t6": "./scripts/test-tier.sh 6"
   },
-  "devDependencies": {
-    "@vitest/coverage-v8": "^4.0.18"
-  }
+  "devDependencies": {}
 }

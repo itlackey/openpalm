@@ -22,7 +22,7 @@ The target outcome is:
 The current repo conflicts with the accepted 0.10.0 direction in several places:
 
 - the roadmap says the registry is moving from `registry/channels/` to `registry/components/` (`.github/roadmap/0.10.0/README.md:190`), but admin and lib code still read `registry/channels/` directly.
-- the core principles say user config lives in `config/components/` and component composition is file-drop based (`docs/technical/authoritative/core-principles.md:43`, `docs/technical/authoritative/core-principles.md:96`), but older docs and APIs still describe `CONFIG_HOME/channels/` and flat channel overlays.
+- the core principles say user config lives in `config/components/` and component composition is file-drop based (`docs/technical/core-principles.md:43`, `docs/technical/core-principles.md:96`), but older docs and APIs still describe `CONFIG_HOME/channels/` and flat channel overlays.
 - `assets/README.md` still documents XDG-era staging, `secrets.env`, and channel installation from `registry/*.yml` (`assets/README.md:3`).
 - `registry/README.md` documents the new component model but also keeps `registry/channels/` as a live legacy format (`registry/README.md:148`).
 
@@ -42,7 +42,7 @@ Three independent review passes converged on the same core recommendations:
 - `registry/` must own optional and discoverable installables only.
 - one artifact class gets one canonical repo location.
 - no string templating or generated compose fragments; keep whole-file assembly and Compose-native merge behavior.
-- all control-plane logic changes must land in `packages/lib/` first (`docs/technical/authoritative/core-principles.md:128`).
+- all control-plane logic changes must land in `packages/lib/` first (`docs/technical/core-principles.md:128`).
 - no repo cleanup is complete until docs, tests, scripts, and API/UI code all reflect the same ownership model.
 
 ## Proposed target directory structure
@@ -276,9 +276,9 @@ The work is large enough that implementation should likely be broken into depend
 
 ## Key references
 
-- `docs/technical/authoritative/core-principles.md:38` - config ownership and component-based stack config
-- `docs/technical/authoritative/core-principles.md:95` - Compose multi-file component model
-- `docs/technical/authoritative/core-principles.md:128` - lib-first control-plane rule
+- `docs/technical/core-principles.md:38` - config ownership and component-based stack config
+- `docs/technical/core-principles.md:95` - Compose multi-file component model
+- `docs/technical/core-principles.md:128` - lib-first control-plane rule
 - `.github/roadmap/0.10.0/README.md:25` - component directory contract
 - `.github/roadmap/0.10.0/README.md:190` - registry migration to `registry/components/`
 - `assets/README.md:3` - current outdated role description for `assets/`

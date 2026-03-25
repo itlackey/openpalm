@@ -6,7 +6,7 @@ Bun-based utilities. It does **not** apply to the admin service (`packages/admin
 which is a SvelteKit/Node.js app and follows Node.js and SvelteKit conventions
 (see `docs/technical/sveltekit-rules.md`).
 
-It complements `docs/technical/authoritative/core-principles.md` and `docs/technical/code-quality-principles.md`.
+It complements `docs/technical/core-principles.md` and `docs/technical/code-quality-principles.md`.
 
 ### 1) Core Bun design rules
 
@@ -110,4 +110,4 @@ go to `stderr`; `info` and `debug` go to `stdout`.
 * No new dependency duplicates built-in Bun/platform capabilities listed above.
 * All operational log events use `createLogger` (not bare `console.log`).
 * Errors and logs are structured and include request identifiers where available.
-* No behavior violates `docs/technical/authoritative/core-principles.md` security and architecture constraints.
+* No behavior violates `docs/technical/core-principles.md` security and architecture constraints.
