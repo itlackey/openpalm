@@ -232,9 +232,10 @@ describe("applyInstall", () => {
       state.services[service] = "stopped";
     }
 
-    // Create required dirs for writeRuntimeFiles
+    // Create required dirs and seed core compose for writeRuntimeFiles
     mkdirSync(join(state.homeDir, "stack"), { recursive: true });
     mkdirSync(join(state.vaultDir), { recursive: true });
+    writeFileSync(join(state.homeDir, "stack", "core.compose.yml"), "services: {}");
 
     await applyInstall(state);
 
@@ -253,6 +254,7 @@ describe("applyUpdate", () => {
 
     mkdirSync(join(state.homeDir, "stack"), { recursive: true });
     mkdirSync(join(state.vaultDir), { recursive: true });
+    writeFileSync(join(state.homeDir, "stack", "core.compose.yml"), "services: {}");
 
     const result = await applyUpdate(state);
     expect(result.restarted).toContain("admin");
@@ -270,6 +272,7 @@ describe("applyUninstall", () => {
 
     mkdirSync(join(state.homeDir, "stack"), { recursive: true });
     mkdirSync(join(state.vaultDir), { recursive: true });
+    writeFileSync(join(state.homeDir, "stack", "core.compose.yml"), "services: {}");
 
     const result = await applyUninstall(state);
     expect(result.stopped).toContain("admin");
