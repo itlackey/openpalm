@@ -32,13 +32,20 @@ export {
 } from "./control-plane/types.js";
 
 // ── Registry Catalog ─────────────────────────────────────────────────────
-export type { RegistryAutomationEntry, RegistryComponentEntry } from "./control-plane/registry.js";
+export type {
+  RegistryAutomationEntry,
+  RegistryComponentEntry,
+  RegistryAddonConfig,
+  RegistryCatalogVerification,
+} from "./control-plane/registry.js";
 export {
   materializeRegistryCatalog,
   refreshRegistryCatalog,
+  verifyRegistryCatalog,
   discoverRegistryComponents,
   discoverRegistryAutomations,
   getRegistryAutomation,
+  getRegistryAddonConfig,
   listAvailableAddonIds,
   listEnabledAddonIds,
   enableAddon,

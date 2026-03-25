@@ -18,6 +18,7 @@ import {
   appendAudit,
   listAvailableAddonIds,
   listEnabledAddonIds,
+  getRegistryAddonConfig,
   enableAddon,
   disableAddonByName,
   writeChannelSecrets,
@@ -27,22 +28,8 @@ import {
 import { composeStop, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 import { buildComposeOptions } from "@openpalm/lib";
-import { readFileSync } from "node:fs";
 
 const logger = createLogger("addons.name");
-
-function readAddonConfig(homeDir: string, name: string): {
-  schemaPath: string;
-  userEnvPath: string;
-  envSchema: string;
-} {
-  const schemaPath = `registry/addons/${name}/.env.schema`;
-  return {
-    schemaPath,
-    userEnvPath: 'vault/user/user.env',
-    envSchema: readFileSync(`${homeDir}/${schemaPath}`, 'utf-8'),
-  };
-}
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -63,7 +50,7 @@ export const GET: RequestHandler = async (event) => {
   const enabled = listEnabledAddonIds(state.homeDir).includes(name);
   let config;
   try {
-    config = readAddonConfig(state.homeDir, name);
+    config = getRegistryAddonConfig(state.homeDir, name);
   } catch (error) {
     logger.error("failed to read addon schema", { name, error: String(error), requestId });
     return errorResponse(500, "internal_error", `Addon \"${name}\" schema is unavailable`, {}, requestId);

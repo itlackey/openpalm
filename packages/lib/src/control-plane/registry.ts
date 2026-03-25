@@ -9,6 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parse as parseYaml } from 'yaml';
+import { createLogger } from '../logger.js';
 import {
   resolveRegistryAddonsDir,
   resolveRegistryAutomationsDir,
@@ -18,6 +19,9 @@ import {
 const BRANCH_RE = /^[a-zA-Z0-9._\/-]+$/;
 const URL_RE = /^(https:\/\/|git@)/;
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const logger = createLogger('registry');
+
+let warnedMissingRegistryAddonsDir = false;
 
 export function validateBranch(branch: string): string {
   const normalized = branch.trim();
@@ -65,25 +69,51 @@ export type RegistryComponentEntry = {
   schema: string;
 };
 
+export type RegistryAddonConfig = {
+  schemaPath: string;
+  userEnvPath: string;
+  envSchema: string;
+};
+
+export type RegistryCatalogVerification = {
+  root: string;
+  addonCount: number;
+  automationCount: number;
+};
+
 export type MutationResult = { ok: true } | { ok: false; error: string };
 
-function validateMaterializedCatalog(rootDir: string): void {
+function countValidAddons(rootDir: string): number {
   const addonsDir = join(rootDir, 'addons');
-  const automationsDir = join(rootDir, 'automations');
-
-  const hasAddon = existsSync(addonsDir) && readdirSync(addonsDir, { withFileTypes: true }).some((entry) => {
+  if (!existsSync(addonsDir)) return 0;
+  return readdirSync(addonsDir, { withFileTypes: true }).filter((entry) => {
     if (!entry.isDirectory() || !isValidComponentName(entry.name)) return false;
     const addonDir = join(addonsDir, entry.name);
     return existsSync(join(addonDir, 'compose.yml')) && existsSync(join(addonDir, '.env.schema'));
-  });
+  }).length;
+}
 
-  const hasAutomation = existsSync(automationsDir) && readdirSync(automationsDir).some((file) => {
+function countValidAutomations(rootDir: string): number {
+  const automationsDir = join(rootDir, 'automations');
+  if (!existsSync(automationsDir)) return 0;
+  return readdirSync(automationsDir).filter((file) => {
     if (!file.endsWith('.yml')) return false;
     return isValidComponentName(file.replace(/\.yml$/, ''));
-  });
+  }).length;
+}
 
-  if (!hasAddon) throw new Error('Registry catalog is incomplete: missing valid addons');
-  if (!hasAutomation) throw new Error('Registry catalog is incomplete: missing valid automations');
+export function verifyRegistryCatalog(rootDir = resolveRegistryDir()): RegistryCatalogVerification {
+  const addonCount = countValidAddons(rootDir);
+  const automationCount = countValidAutomations(rootDir);
+
+  if (addonCount === 0) throw new Error('Registry catalog is incomplete: missing valid addons');
+  if (automationCount === 0) throw new Error('Registry catalog is incomplete: missing valid automations');
+
+  return {
+    root: rootDir,
+    addonCount,
+    automationCount,
+  };
 }
 
 export function materializeRegistryCatalog(sourceRoot: string): string {
@@ -100,7 +130,7 @@ export function materializeRegistryCatalog(sourceRoot: string): string {
     if (existsSync(sourceAddonsDir)) cpSync(sourceAddonsDir, tempAddonsDir, { recursive: true });
     if (existsSync(sourceAutomationsDir)) cpSync(sourceAutomationsDir, tempAutomationsDir, { recursive: true });
 
-    validateMaterializedCatalog(tempRoot);
+    verifyRegistryCatalog(tempRoot);
 
     rmSync(resolveRegistryDir(), { recursive: true, force: true });
     mkdirSync(resolveRegistryDir(), { recursive: true });
@@ -112,7 +142,7 @@ export function materializeRegistryCatalog(sourceRoot: string): string {
   }
 }
 
-export function refreshRegistryCatalog(config?: RegistryConfig): { root: string } {
+export function refreshRegistryCatalog(config?: RegistryConfig): RegistryCatalogVerification {
   const raw = config ?? getRegistryConfig();
   const repoUrl = validateRegistryUrl(raw.repoUrl);
   const branch = validateBranch(raw.branch);
@@ -129,7 +159,8 @@ export function refreshRegistryCatalog(config?: RegistryConfig): { root: string 
       stdio: 'pipe',
       timeout: 30_000,
     });
-    return { root: materializeRegistryCatalog(cloneDir) };
+    const root = materializeRegistryCatalog(cloneDir);
+    return verifyRegistryCatalog(root);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to refresh registry from ${repoUrl}: ${msg}`);
@@ -201,7 +232,25 @@ export function getRegistryAutomation(name: string): string | null {
   return readFileSync(ymlPath, 'utf-8');
 }
 
+export function getRegistryAddonConfig(homeDir: string, name: string): RegistryAddonConfig {
+  if (!VALID_NAME_RE.test(name)) {
+    throw new Error(`Invalid addon name: ${name}`);
+  }
+
+  const schemaPath = `registry/addons/${name}/.env.schema`;
+  return {
+    schemaPath,
+    userEnvPath: 'vault/user/user.env',
+    envSchema: readFileSync(join(homeDir, schemaPath), 'utf-8'),
+  };
+}
+
 export function listAvailableAddonIds(): string[] {
+  const addonsDir = resolveRegistryAddonsDir();
+  if (!existsSync(addonsDir) && !warnedMissingRegistryAddonsDir) {
+    warnedMissingRegistryAddonsDir = true;
+    logger.warn('registry addons directory is missing', { addonsDir });
+  }
   return Object.keys(discoverRegistryComponents()).sort();
 }
 

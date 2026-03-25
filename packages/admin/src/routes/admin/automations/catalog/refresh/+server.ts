@@ -28,8 +28,25 @@ export const POST: RequestHandler = async (event) => {
 
   try {
     const result = refreshRegistryCatalog();
-    appendAudit(state, actor, "automations.catalog.refresh", { root: result.root }, true, requestId, callerType);
-    return jsonResponse(200, { ok: true, root: result.root }, requestId);
+    appendAudit(
+      state,
+      actor,
+      "automations.catalog.refresh",
+      { root: result.root, addonCount: result.addonCount, automationCount: result.automationCount },
+      true,
+      requestId,
+      callerType,
+    );
+    return jsonResponse(
+      200,
+      {
+        ok: true,
+        root: result.root,
+        addonCount: result.addonCount,
+        automationCount: result.automationCount,
+      },
+      requestId,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     appendAudit(state, actor, "automations.catalog.refresh", { error: message }, false, requestId, callerType);

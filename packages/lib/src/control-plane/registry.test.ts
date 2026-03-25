@@ -13,9 +13,12 @@ import {
   isValidComponentName,
   getRegistryConfig,
   materializeRegistryCatalog,
+  verifyRegistryCatalog,
   discoverRegistryComponents,
   discoverRegistryAutomations,
   getRegistryAutomation,
+  getRegistryAddonConfig,
+  listAvailableAddonIds,
   enableAddon,
   disableAddonByName,
   installAutomationFromRegistry,
@@ -232,6 +235,50 @@ describe("materialized registry catalog", () => {
     expect(components.chat?.schema).toContain('CHANNEL_CHAT_SECRET');
     expect(automations.map((entry) => entry.name)).toEqual(['cleanup']);
     expect(getRegistryAutomation('cleanup')).toContain('schedule: daily');
+  });
+
+  it("returns addon config metadata from the materialized registry", () => {
+    const sourceRoot = join(tmpDir, 'repo');
+    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+
+    mkdirSync(addonDir, { recursive: true });
+    mkdirSync(automationsDir, { recursive: true });
+    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
+    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
+    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+
+    materializeRegistryCatalog(sourceRoot);
+
+    expect(getRegistryAddonConfig(process.env.OP_HOME!, 'chat')).toEqual({
+      schemaPath: 'registry/addons/chat/.env.schema',
+      userEnvPath: 'vault/user/user.env',
+      envSchema: 'CHANNEL_CHAT_SECRET=\n',
+    });
+  });
+
+  it("verifies the materialized registry and returns counts", () => {
+    const sourceRoot = join(tmpDir, 'repo');
+    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+
+    mkdirSync(addonDir, { recursive: true });
+    mkdirSync(automationsDir, { recursive: true });
+    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
+    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
+    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+
+    const root = materializeRegistryCatalog(sourceRoot);
+
+    expect(verifyRegistryCatalog(root)).toEqual({
+      root,
+      addonCount: 1,
+      automationCount: 1,
+    });
+  });
+
+  it("returns no available addons when the registry addons directory is missing", () => {
+    expect(listAvailableAddonIds()).toEqual([]);
   });
 
   it("fails when source catalog is incomplete", () => {

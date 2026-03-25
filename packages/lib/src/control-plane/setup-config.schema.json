@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/itlackey/openpalm/main/assets/setup-config.schema.json",
+  "$id": "https://raw.githubusercontent.com/itlackey/openpalm/main/packages/lib/src/control-plane/setup-config.schema.json",
   "title": "OpenPalm SetupConfig",
   "description": "Structured configuration for the OpenPalm setup wizard. Defines connections, model assignments, channels, services, and security settings needed for first-time installation or reconfiguration.",
   "type": "object",
