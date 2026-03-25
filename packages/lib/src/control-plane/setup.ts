@@ -36,6 +36,9 @@ const logger = createLogger("setup");
 
 // ── Types ────────────────────────────────────────────────────────────────
 
+// TODO: Rename this in a future refactor for clarity. It is setup-only provider
+// configuration, but the current name still overlaps with the broader runtime
+// "connections" concept.
 export type SetupConnection = {
   id: string;
   name: string;
