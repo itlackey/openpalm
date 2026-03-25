@@ -38,7 +38,9 @@ function pruneRateLimitBuckets(): void {
 }
 
 // Periodic pruning every 60 seconds regardless of map size
-setInterval(pruneRateLimitBuckets, 60_000);
+// unref() so the timer doesn't keep the event loop alive (cleaner testing + shutdown).
+const pruneTimer = setInterval(pruneRateLimitBuckets, 60_000);
+pruneTimer.unref();
 
 export function allow(key: string, limit: number, windowMs: number): boolean {
   const now = Date.now();

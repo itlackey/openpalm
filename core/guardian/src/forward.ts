@@ -28,7 +28,8 @@ const sessionCache = new Map<string, { sessionId: string; lastUsed: number }>();
 const sessionLocks = new Map<string, Promise<unknown>>();
 
 // Periodic cleanup of expired sessions + hard cap at 10,000
-setInterval(() => {
+// unref() so the timer doesn't keep the event loop alive (cleaner testing + shutdown).
+const pruneSessionTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of sessionCache) {
     if (now - entry.lastUsed > SESSION_TTL_MS) sessionCache.delete(key);
@@ -41,6 +42,7 @@ setInterval(() => {
     for (const [k] of toRemove) sessionCache.delete(k);
   }
 }, 5 * 60_000);
+pruneSessionTimer.unref();
 
 // ── Session title cache (for reattaching to existing assistant sessions) ──
 
@@ -95,6 +97,8 @@ export async function askAssistant(
         return { answer, sessionId: cached.sessionId };
       } catch {
         sessionCache.delete(cacheKey);
+        sessionTitleCache.delete(sessionTarget.title);
+        sessionListCacheLastLoaded = 0;
       }
     }
 
@@ -107,6 +111,8 @@ export async function askAssistant(
         return { answer, sessionId: existingSessionId };
       } catch {
         sessionCache.delete(cacheKey);
+        sessionTitleCache.delete(sessionTarget.title);
+        sessionListCacheLastLoaded = 0;
       }
     }
 

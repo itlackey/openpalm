@@ -48,6 +48,8 @@ services:
       # OpenCode instance for admin AI assistant with admin-tools plugin
       OPENCODE_CONFIG_DIR: /etc/opencode
       OPENCODE_PORT: "3881"
+      # Auth disabled: admin OpenCode is only reachable on assistant_net
+      # and the host port defaults to 127.0.0.1 (loopback-only).
       OPENCODE_AUTH: "false"
       # LLM provider keys — admin's OpenCode reads from vault mount
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

@@ -112,7 +112,7 @@ Key env:
 
 - `OPENCODE_CONFIG_DIR=/etc/opencode`
 - `OPENCODE_PORT=4096`
-- `OPENCODE_AUTH=false`
+- `OPENCODE_AUTH=false` (safe because host bind defaults to 127.0.0.1; see § Security invariants #4 in core-principles.md)
 - `OPENCODE_ENABLE_SSH`
 - `OP_ADMIN_API_URL`
 - `OP_ASSISTANT_TOKEN`

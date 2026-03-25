@@ -61,6 +61,12 @@ services:
     environment:
       OPENCODE_CONFIG_DIR: /etc/opencode
       OPENCODE_PORT: "4096"
+      # Auth is disabled because the assistant is only reachable via the
+      # internal assistant_net Docker network and the host port binding
+      # defaults to 127.0.0.1 (loopback-only). Guardian and scheduler
+      # communicate with the assistant over assistant_net without credentials.
+      # If you change OP_ASSISTANT_BIND_ADDRESS to 0.0.0.0, you MUST set
+      # OP_OPENCODE_PASSWORD in stack.env and set OPENCODE_AUTH to "true".
       OPENCODE_AUTH: "false"
       OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
       TERM: xterm-256color
