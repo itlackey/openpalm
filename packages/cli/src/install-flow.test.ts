@@ -46,12 +46,12 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
   Bun.spawnSync(['cp', join(OPENPALM_SRC, 'stack', 'core.compose.yml'), join(homeDir, 'stack', 'core.compose.yml')]);
 
   // registry/ — full shipped catalog
-  cpTree(join(OPENPALM_SRC, 'stack', 'addons'), join(homeDir, 'registry', 'addons'));
-  cpTree(join(OPENPALM_SRC, 'config', 'automations'), join(homeDir, 'registry', 'automations'));
+  cpTree(join(OPENPALM_SRC, 'registry', 'addons'), join(homeDir, 'registry', 'addons'));
+  cpTree(join(OPENPALM_SRC, 'registry', 'automations'), join(homeDir, 'registry', 'automations'));
 
   // stack/addons/ — enabled only
   for (const addon of enabledAddons) {
-    cpTree(join(OPENPALM_SRC, 'stack', 'addons', addon), join(homeDir, 'stack', 'addons', addon));
+    cpTree(join(OPENPALM_SRC, 'registry', 'addons', addon), join(homeDir, 'stack', 'addons', addon));
   }
 
   // config/automations/ — enabled only (start empty)

@@ -15,55 +15,55 @@ import stackEnvSchema from "../../../../.openpalm/vault/stack/stack.env.schema" 
 
 // Addon compose files
 // @ts-ignore — Bun text import
-import adminCompose from "../../../../.openpalm/stack/addons/admin/compose.yml" with { type: "text" };
+import adminCompose from "../../../../.openpalm/registry/addons/admin/compose.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import adminSchema from "../../../../.openpalm/stack/addons/admin/.env.schema" with { type: "text" };
+import adminSchema from "../../../../.openpalm/registry/addons/admin/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import chatCompose from "../../../../.openpalm/stack/addons/chat/compose.yml" with { type: "text" };
+import chatCompose from "../../../../.openpalm/registry/addons/chat/compose.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import chatSchema from "../../../../.openpalm/stack/addons/chat/.env.schema" with { type: "text" };
+import chatSchema from "../../../../.openpalm/registry/addons/chat/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import apiCompose from "../../../../.openpalm/stack/addons/api/compose.yml" with { type: "text" };
+import apiCompose from "../../../../.openpalm/registry/addons/api/compose.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import apiSchema from "../../../../.openpalm/stack/addons/api/.env.schema" with { type: "text" };
+import apiSchema from "../../../../.openpalm/registry/addons/api/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import discordCompose from "../../../../.openpalm/stack/addons/discord/compose.yml" with { type: "text" };
+import discordCompose from "../../../../.openpalm/registry/addons/discord/compose.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import discordSchema from "../../../../.openpalm/stack/addons/discord/.env.schema" with { type: "text" };
+import discordSchema from "../../../../.openpalm/registry/addons/discord/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import slackCompose from "../../../../.openpalm/stack/addons/slack/compose.yml" with { type: "text" };
+import slackCompose from "../../../../.openpalm/registry/addons/slack/compose.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import slackSchema from "../../../../.openpalm/stack/addons/slack/.env.schema" with { type: "text" };
+import slackSchema from "../../../../.openpalm/registry/addons/slack/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import ollamaCompose from "../../../../.openpalm/stack/addons/ollama/compose.yml" with { type: "text" };
+import ollamaCompose from "../../../../.openpalm/registry/addons/ollama/compose.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import ollamaSchema from "../../../../.openpalm/stack/addons/ollama/.env.schema" with { type: "text" };
+import ollamaSchema from "../../../../.openpalm/registry/addons/ollama/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import voiceCompose from "../../../../.openpalm/stack/addons/voice/compose.yml" with { type: "text" };
+import voiceCompose from "../../../../.openpalm/registry/addons/voice/compose.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import voiceSchema from "../../../../.openpalm/stack/addons/voice/.env.schema" with { type: "text" };
+import voiceSchema from "../../../../.openpalm/registry/addons/voice/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import openvikingCompose from "../../../../.openpalm/stack/addons/openviking/compose.yml" with { type: "text" };
+import openvikingCompose from "../../../../.openpalm/registry/addons/openviking/compose.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import openvikingSchema from "../../../../.openpalm/stack/addons/openviking/.env.schema" with { type: "text" };
+import openvikingSchema from "../../../../.openpalm/registry/addons/openviking/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import openvikingEntrypoint from "../../../../.openpalm/stack/addons/openviking/entrypoint.sh" with { type: "text" };
+import openvikingEntrypoint from "../../../../.openpalm/registry/addons/openviking/entrypoint.sh" with { type: "text" };
 // @ts-ignore — Bun text import
-import openvikingConfig from "../../../../.openpalm/stack/addons/openviking/config/ov.conf" with { type: "text" };
+import openvikingConfig from "../../../../.openpalm/registry/addons/openviking/config/ov.conf" with { type: "text" };
 // @ts-ignore — Bun text import
-import cleanupLogsAutomation from "../../../../.openpalm/config/automations/cleanup-logs.yml" with { type: "text" };
+import cleanupLogsAutomation from "../../../../.openpalm/registry/automations/cleanup-logs.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import cleanupDataAutomation from "../../../../.openpalm/config/automations/cleanup-data.yml" with { type: "text" };
+import cleanupDataAutomation from "../../../../.openpalm/registry/automations/cleanup-data.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import validateConfigAutomation from "../../../../.openpalm/config/automations/validate-config.yml" with { type: "text" };
+import validateConfigAutomation from "../../../../.openpalm/registry/automations/validate-config.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import healthCheckAutomation from "../../../../.openpalm/config/automations/health-check.yml" with { type: "text" };
+import healthCheckAutomation from "../../../../.openpalm/registry/automations/health-check.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import promptAssistantAutomation from "../../../../.openpalm/config/automations/prompt-assistant.yml" with { type: "text" };
+import promptAssistantAutomation from "../../../../.openpalm/registry/automations/prompt-assistant.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import updateContainersAutomation from "../../../../.openpalm/config/automations/update-containers.yml" with { type: "text" };
+import updateContainersAutomation from "../../../../.openpalm/registry/automations/update-containers.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import assistantDailyBriefingAutomation from "../../../../.openpalm/config/automations/assistant-daily-briefing.yml" with { type: "text" };
+import assistantDailyBriefingAutomation from "../../../../.openpalm/registry/automations/assistant-daily-briefing.yml" with { type: "text" };
 
 export const EMBEDDED_ASSETS: Record<string, string> = {
   "stack/core.compose.yml": coreCompose,

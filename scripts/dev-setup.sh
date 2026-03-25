@@ -24,12 +24,31 @@ gpg_id=""
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
-	--seed-env) seed_env=1; shift ;;
-	--force) force=1; shift ;;
-	--pass) use_pass=1; shift ;;
-	--gpg-id) gpg_id="${2:-}"; shift 2 ;;
-	-h | --help) usage; exit 0 ;;
-	*) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+	--seed-env)
+		seed_env=1
+		shift
+		;;
+	--force)
+		force=1
+		shift
+		;;
+	--pass)
+		use_pass=1
+		shift
+		;;
+	--gpg-id)
+		gpg_id="${2:-}"
+		shift 2
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		echo "Unknown option: $1" >&2
+		usage >&2
+		exit 1
+		;;
 	esac
 done
 
@@ -83,6 +102,7 @@ LOGS_DIR="$DEV_ROOT/logs"
 mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
 	"$CONFIG_DIR/automations" "$CONFIG_DIR/stash" \
+	"$DEV_ROOT/registry/addons" "$DEV_ROOT/registry/automations" \
 	"$DEV_ROOT/stack" \
 	"$VAULT_DIR" "$VAULT_DIR/stack" "$VAULT_DIR/stack/addons" "$VAULT_DIR/user" \
 	"$VAULT_DIR/stack/services/memory" \
@@ -98,8 +118,9 @@ COMPOSE_DEST="$DEV_ROOT/stack/core.compose.yml"
 
 [[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/.openpalm/stack/core.compose.yml" "$COMPOSE_DEST"
 
-# Seed addon overlays from repo template
-cp -r "$ROOT_DIR/.openpalm/stack/addons/"* "$DEV_ROOT/stack/addons/" 2>/dev/null || true
+# Seed registry catalog from repo template
+cp -r "$ROOT_DIR/.openpalm/registry/addons/"* "$DEV_ROOT/registry/addons/" 2>/dev/null || true
+cp -r "$ROOT_DIR/.openpalm/registry/automations/"* "$DEV_ROOT/registry/automations/" 2>/dev/null || true
 
 # Seed stack.yml v2 (capabilities-based config)
 STACK_YAML="$CONFIG_DIR/stack.yml"
@@ -115,9 +136,6 @@ capabilities:
   memory:
     userId: default_user
     customInstructions: ""
-addons:
-  admin: true
-  ollama: true
 SYEOF
 fi
 

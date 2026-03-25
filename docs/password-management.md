@@ -1,7 +1,7 @@
 # Password & Secret Management
 
 OpenPalm keeps secrets inside one vault boundary under `~/.openpalm/vault/`.
-The current model is simple: one optional user extension env, one stack env,
+The current model is simple: one user-managed override env, one stack env,
 and one guardian secret env.
 
 ---
@@ -19,7 +19,7 @@ and one guardian secret env.
     user.env.schema
 ```
 
-- `vault/user/user.env` is an optional user-extension env file.
+- `vault/user/user.env` is the recommended user-managed override file for addon and operator values.
 - `vault/stack/stack.env` is system-managed runtime env + secrets.
 - `vault/stack/guardian.env` holds channel HMAC secrets.
 - Compose is run with both files, usually as:
@@ -29,8 +29,8 @@ and one guardian secret env.
 
 ## `vault/user/user.env`
 
-This file is for optional user-managed extension settings. It starts empty and
-can be used for custom preferences that are not part of the core stack.
+This file is for user-managed addon overrides, operator values, and custom preferences.
+It starts empty and is never overwritten by normal lifecycle operations.
 
 Behavior:
 

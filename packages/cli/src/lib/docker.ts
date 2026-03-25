@@ -42,7 +42,6 @@ export async function ensureDirectoryTree(
     join(homeDir, 'registry'),
     join(homeDir, 'registry', 'addons'),
     join(homeDir, 'registry', 'automations'),
-    join(homeDir, 'stack', 'addons', 'ollama'),
     join(homeDir, 'backups'),
     join(homeDir, 'logs'),
     join(homeDir, 'logs', 'opencode'),
@@ -134,9 +133,8 @@ export async function runDockerComposeCapture(args: string[]): Promise<string> {
  * Downloads the .openpalm/ directory from GitHub and seeds it into homeDir.
  *
  * Mapping:
- *   .openpalm/stack/   → homeDir/stack/
- *   .openpalm/config/  → homeDir/config/  (seed only, don't overwrite user files)
- *   registry catalog   → homeDir/registry/
+ *   .openpalm/stack/core.compose.yml → homeDir/stack/core.compose.yml
+ *   .openpalm/registry/              → homeDir/registry/
  *   .openpalm/vault/   → homeDir/vault/   (schemas only)
  *
  * Also seeds assistant config files from core/assistant/opencode/.
@@ -165,26 +163,21 @@ export async function seedOpenPalmDir(
 
     const extractProc = Bun.spawn(
       ['tar', 'xzf', tmpTar, '--strip-components=1', '--wildcards',
-        '*/.openpalm/*', '*/core/assistant/opencode/*'],
+        '*/.openpalm/stack/core.compose.yml', '*/.openpalm/registry/*', '*/.openpalm/vault/*', '*/core/assistant/opencode/*'],
       { cwd: tmpDir, stdout: 'ignore', stderr: 'pipe' },
     );
     await extractProc.exited;
 
-    const srcStack = join(tmpDir, '.openpalm', 'stack');
-    if (!await Bun.file(join(srcStack, 'core.compose.yml')).exists()) {
+    const srcCoreCompose = join(tmpDir, '.openpalm', 'stack', 'core.compose.yml');
+    if (!await Bun.file(srcCoreCompose).exists()) {
       throw new Error('core.compose.yml not found in downloaded assets');
     }
-    await copyTree(srcStack, join(homeDir, 'stack'));
+    await mkdir(join(homeDir, 'stack'), { recursive: true });
+    await writeFile(join(homeDir, 'stack', 'core.compose.yml'), new Uint8Array(await Bun.file(srcCoreCompose).arrayBuffer()));
 
-    const srcAutomations = join(tmpDir, '.openpalm', 'config', 'automations');
-    if (await dirExists(srcAutomations)) {
-      await copyTree(srcAutomations, join(configDir, 'automations'), { skipExisting: true });
-      await copyTree(srcAutomations, join(homeDir, 'registry', 'automations'));
-    }
-
-    const srcRegistryAddons = join(tmpDir, '.openpalm', 'stack', 'addons');
-    if (await dirExists(srcRegistryAddons)) {
-      await copyTree(srcRegistryAddons, join(homeDir, 'registry', 'addons'));
+    const srcRegistry = join(tmpDir, '.openpalm', 'registry');
+    if (await dirExists(srcRegistry)) {
+      await copyTree(srcRegistry, join(homeDir, 'registry'));
     }
 
     const srcVault = join(tmpDir, '.openpalm', 'vault');

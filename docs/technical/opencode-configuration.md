@@ -18,7 +18,7 @@ Primary runtime sources:
 - The optional admin-side OpenCode runtime is defined by `.openpalm/stack/addons/admin/compose.yml`.
 - `~/.openpalm/config/assistant/` is the user-editable OpenCode extension surface.
 - `~/.openpalm/vault/stack/stack.env` provides runtime provider keys and capability env values.
-- `~/.openpalm/vault/user/user.env` is an optional user extension env file.
+- `~/.openpalm/vault/user/user.env` is the recommended place for addon overrides and operator-managed values.
 - Project-local OpenCode config inside `/work` still works per normal OpenCode behavior, but OpenPalm's container wiring is controlled by Compose.
 
 ---

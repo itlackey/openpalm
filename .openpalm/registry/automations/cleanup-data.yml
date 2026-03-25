@@ -4,9 +4,9 @@
 # VACUUM on the memory database to reclaim disk space after deletions,
 # and removes temporary files that may accumulate in DATA_HOME.
 #
-# This is a core automation — installed by default. To customize, copy this
+# This is a shipped catalog automation. To activate or customize it, copy this
 # file to ~/.openpalm/config/automations/cleanup-data.yml and edit there.
-# User copies in CONFIG_HOME override the system version.
+# Registry copies stay inactive until installed into config/automations/.
 
 name: Cleanup Data
 description: Compact memory database and remove stale temporary files

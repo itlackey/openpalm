@@ -4,9 +4,9 @@
 # vault/user/user.env against the schema. Failures are logged to
 # the audit trail but never block services.
 #
-# This is a core automation — installed by default. To customize, copy this
+# This is a shipped catalog automation. To activate or customize it, copy this
 # file to ~/.openpalm/config/automations/validate-config.yml and edit there.
-# User copies in config/ override the system version.
+# Registry copies stay inactive until installed into config/automations/.
 
 name: Validate Configuration
 description: Periodic check of environment configuration against the schema

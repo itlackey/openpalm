@@ -3,9 +3,9 @@
 # Runs every Sunday at 4 AM UTC. Keeps only the last 10,000 lines of each
 # audit log file to prevent unbounded disk growth.
 #
-# This is a core automation — installed by default. To customize, copy this
+# This is a shipped catalog automation. To activate or customize it, copy this
 # file to ~/.openpalm/config/automations/cleanup-logs.yml and edit there.
-# User copies in CONFIG_HOME override the system version.
+# Registry copies stay inactive until installed into config/automations/.
 
 name: Cleanup Logs
 description: Trim old audit log entries to prevent unbounded disk growth

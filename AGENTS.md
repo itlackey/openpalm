@@ -260,7 +260,7 @@ All state lives under `~/.openpalm/` (configurable via `OP_HOME`):
 | `data/` | Services | Persistent data: assistant, admin, memory, guardian |
 | `logs/` | Services | Audit and debug logs |
 | `backups/` | System | Durable upgrade backup snapshots |
-| `~/.cache/openpalm/` | System | Ephemeral: registry cache, rollback snapshots |
+| `~/.cache/openpalm/` | System | Ephemeral: rollback snapshots |
 
 Dev mode uses `.dev/` with the same subdirectory structure.
 

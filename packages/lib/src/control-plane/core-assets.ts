@@ -2,8 +2,7 @@
  * Core asset management for the OpenPalm control plane.
  *
  * Manages source-of-truth files for the ~/.openpalm/ layout:
- *   stack/              — compose overlays (core.compose.yml)
- *   registry/           — catalog automations refreshed from repo assets
+ *   stack/              — compose runtime assets (core.compose.yml)
  *   vault/              — env schemas
  *
  * All ensure* functions verify that the expected files exist at OP_HOME.
@@ -91,9 +90,6 @@ const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
   { relPath: "data/assistant/AGENTS.md", githubFilename: "core/assistant/opencode/AGENTS.md" },
   { relPath: "vault/user/user.env.schema", githubFilename: ".openpalm/vault/user/user.env.schema" },
   { relPath: "vault/stack/stack.env.schema", githubFilename: ".openpalm/vault/stack/stack.env.schema" },
-  { relPath: "registry/automations/cleanup-logs.yml", githubFilename: ".openpalm/config/automations/cleanup-logs.yml" },
-  { relPath: "registry/automations/cleanup-data.yml", githubFilename: ".openpalm/config/automations/cleanup-data.yml" },
-  { relPath: "registry/automations/validate-config.yml", githubFilename: ".openpalm/config/automations/validate-config.yml" },
 ];
 
 async function downloadAsset(filename: string): Promise<string> {

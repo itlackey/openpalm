@@ -50,7 +50,7 @@ Docker Compose is invoked with these env files (see [Manual Compose Runbook](../
 That means the effective env model is:
 
 - `vault/stack/stack.env` - system-managed runtime env and secrets (admin token, paths, UID/GID, image tags, bind ports, API keys, provider config, owner identity)
-- `vault/user/user.env` - optional user-managed extension settings (custom preferences)
+- `vault/user/user.env` - recommended user-managed addon overrides and operator settings
 - `vault/stack/guardian.env` - channel HMAC secrets (loaded by guardian as env_file and via GUARDIAN_SECRETS_PATH)
 
 ---

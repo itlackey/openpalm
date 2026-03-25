@@ -174,6 +174,7 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 	echo ""
 	echo "=== Step 4: Build all images from source ==="
 	npm run admin:build 2>&1 | tail -3
+	cp -r .dev/registry/addons/admin .dev/stack/addons/admin 2>/dev/null || true
 	docker compose --project-directory . \
 		-f .dev/stack/core.compose.yml \
 		-f .dev/stack/addons/admin/compose.yml \
@@ -257,7 +258,6 @@ const result = await performSetup({
       memory: { userId: 'node', customInstructions: '' },
       slm: 'ollama/qwen2.5-coder:3b',
     },
-    addons: { admin: true },
   },
   security: { adminToken: 'dev-admin-token' },
   owner: { name: 'Dev', email: 'dev@localhost' },

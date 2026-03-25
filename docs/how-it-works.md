@@ -183,7 +183,7 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
 ~/.openpalm/stack/addons/chat/compose.yml  -> addon overlay
 ~/.openpalm/registry/addons/chat/.env.schema -> addon config contract
 ~/.openpalm/vault/stack/stack.env          -> passed via --env-file
-~/.openpalm/vault/user/user.env            -> optional extension env-file
+~/.openpalm/vault/user/user.env            -> recommended addon/operator overrides
 ```
 
 Docker reads compose files and env files directly from their final locations.

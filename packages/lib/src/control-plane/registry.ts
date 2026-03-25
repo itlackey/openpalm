@@ -89,8 +89,8 @@ function validateMaterializedCatalog(rootDir: string): void {
 }
 
 export function materializeRegistryCatalog(sourceRoot: string): string {
-  const sourceAddonsDir = join(sourceRoot, '.openpalm', 'stack', 'addons');
-  const sourceAutomationsDir = join(sourceRoot, '.openpalm', 'config', 'automations');
+  const sourceAddonsDir = join(sourceRoot, '.openpalm', 'registry', 'addons');
+  const sourceAutomationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
   const tempRoot = mkdtempSync(join(tmpdir(), 'openpalm-registry-materialize-'));
 
   try {

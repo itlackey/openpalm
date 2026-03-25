@@ -62,8 +62,9 @@ docker compose \
   --env-file ~/.openpalm/vault/user/user.env \
   --env-file ~/.openpalm/vault/stack/guardian.env \
   -f ~/.openpalm/stack/core.compose.yml \
-  -f ~/.openpalm/stack/addons/chat/compose.yml \
-  -f ~/.openpalm/stack/addons/admin/compose.yml \
+  -f ~/.openpalm/registry/addons/chat/compose.yml \
+  -f ~/.openpalm/registry/addons/admin/compose.yml \
+  # or copy addons into ~/.openpalm/stack/addons/ first if you want enabled-only runtime overlays
   up -d
 ```
 

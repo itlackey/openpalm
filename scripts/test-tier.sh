@@ -69,11 +69,12 @@ rebuild_stack() {
 
 	echo "Building admin..."
 	bun run admin:build
+	cp -r .dev/registry/addons/admin .dev/stack/addons/admin 2>/dev/null || true
 
 	echo "Rebuilding and recreating stack from source..."
 	docker compose --project-directory . \
 		-f .dev/stack/core.compose.yml \
-		-f .openpalm/stack/addons/admin/compose.yml \
+		-f .dev/stack/addons/admin/compose.yml \
 		-f compose.dev.yml \
 		--env-file .dev/vault/stack/stack.env \
 		--env-file .dev/vault/user/user.env \
