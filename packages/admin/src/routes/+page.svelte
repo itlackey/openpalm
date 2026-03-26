@@ -154,6 +154,7 @@
       void loadContainers();
       void loadAutomations();
       void checkCapabilityStatus();
+      void loadCapabilities();
       return true;
     } catch {
       authError = 'Unable to reach admin API.';
@@ -563,12 +564,15 @@
         {tokenStored}
         onRefresh={loadAutomations}
       />
-    {:else if activeTab === 'capabilities'}
+    {/if}
+    <div hidden={activeTab !== 'capabilities'}>
       <CapabilitiesTab
         loading={capabilitiesLoading}
         onRefresh={loadCapabilities}
+        openCodeStatus={adminOpenCodeStatus}
       />
-    {:else if activeTab === 'logs'}
+    </div>
+    {#if activeTab === 'logs'}
       <LogsTab
         {tokenStored}
         services={serviceNames}
