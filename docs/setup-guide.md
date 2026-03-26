@@ -59,8 +59,17 @@ This keeps the live system understandable: if a compose file is not in the comma
 The primary workflow is always raw `docker compose` as shown above. The options
 below are typing shortcuts only.
 
-For the full compose command reference including convenience shortcuts, see the
-[Manual Compose Runbook](operations/manual-compose-runbook.md).
+### `op` helper function
+
+The [Manual Compose Runbook](operations/manual-compose-runbook.md) defines an
+`op` shell function that auto-discovers enabled addons and builds the full
+`docker compose` command for you. After adding it to your shell profile:
+
+```bash
+op up -d        # start the stack
+op ps           # list containers
+op logs -f      # follow all logs
+```
 
 ### Setup scripts
 

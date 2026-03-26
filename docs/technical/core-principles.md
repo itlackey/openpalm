@@ -43,7 +43,7 @@ For (9), OpenCode supports a custom config directory via `OPENCODE_CONFIG_DIR`; 
   - Way to manage addons by copying the compose file to the stack if needed and providing an easy way to provide values or assign secrets to the addons required environment variables.
   - Editor for automation configuration files, simple yaml editor/form and copy from registry function.
   - Editor the memory configuration file.
-  - Editor to manage global connections
+  - Editor to manage global capabilities
   - Editor to manage account/assistant details
     - Assistant name, email, persona
     - Admin and assistant tokens
@@ -212,7 +212,7 @@ Host-exposed OpenPalm services default to a small localhost-friendly port set. C
 | **Admin** | 8100 | `127.0.0.1:3880` | Admin UI + API |
 | **Admin OpenCode** | 3881 | `127.0.0.1:3881` | Admin-side OpenCode runtime |
 | **Guardian** | 8080 | (internal only) | HMAC verification + rate limiting |
-| **Scheduler** | 8090 | `127.0.0.1:3897` | Automation scheduler |
+| **Scheduler** | 8090 | (internal only) | Automation scheduler |
 | **Memory** | 8765 | `127.0.0.1:3898` | Memory service API |
 | **Chat addon** | 8181 | `127.0.0.1:3820` | OpenAI-compatible chat edge |
 | **API addon** | 8182 | `127.0.0.1:3821` | OpenAI/Anthropic-compatible API edge |

@@ -30,6 +30,7 @@ variable). The relevant files for running the stack are:
 | `~/.openpalm/stack/addons/<name>/compose.yml` | One file per enabled addon (admin, chat, api, etc.) |
 | `~/.openpalm/vault/stack/stack.env` | System-managed values: tokens, ports, UID/GID, image tags |
 | `~/.openpalm/vault/user/user.env` | User-managed settings: owner info, custom preferences |
+| `~/.openpalm/vault/stack/guardian.env` | Channel HMAC secrets (loaded by guardian; compose marks it `required: false`) |
 | `~/.openpalm/config/stack.yml` | Optional tooling metadata (helper scripts read this; it is not deployment truth) |
 
 The project name defaults to `openpalm` and can be overridden with the
@@ -48,6 +49,49 @@ ls ~/.openpalm/stack/addons/
 Construct the full `docker compose` command by naming every file you want active.
 Only files passed with `-f` are part of the running stack.
 
+### Helper: `op` shell function
+
+Typing the full command every time is tedious. Add this shell function to your
+`~/.bashrc` or `~/.zshrc` to auto-discover enabled addons:
+
+```bash
+op() {
+  local OP_HOME="${OP_HOME:-$HOME/.openpalm}"
+  local PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
+
+  local addon_files=""
+  for f in "$OP_HOME"/stack/addons/*/compose.yml; do
+    [ -f "$f" ] && addon_files="$addon_files -f $f"
+  done
+
+  docker compose \
+    --project-name "$PROJECT_NAME" \
+    --env-file "$OP_HOME/vault/stack/stack.env" \
+    --env-file "$OP_HOME/vault/user/user.env" \
+    --env-file "$OP_HOME/vault/stack/guardian.env" \
+    -f "$OP_HOME/stack/core.compose.yml" \
+    $addon_files \
+    "$@"
+}
+```
+
+After sourcing, every compose operation becomes:
+
+```bash
+op up -d
+op down
+op ps
+op logs -f assistant
+```
+
+The function discovers all `compose.yml` files under `stack/addons/` and passes
+them as `-f` arguments automatically. Only addons you have enabled (i.e.,
+directories present under `stack/addons/`) are included.
+
+### Manual command (without the helper)
+
+If you prefer not to use the helper, construct the command explicitly:
+
 ```bash
 OP_HOME="${OP_HOME:-$HOME/.openpalm}"
 PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
@@ -63,9 +107,8 @@ docker compose \
   <command>
 ```
 
-Include only the `-f` flags for addons that are actually installed (i.e.,
-directories present under `stack/addons/`). Referencing a file that does not
-exist will cause Compose to fail with a clear error.
+Include only the `-f` flags for addons that are actually installed. Referencing
+a file that does not exist will cause Compose to fail with a clear error.
 
 ---
 
@@ -76,6 +119,16 @@ misconfiguration early — before containers are affected.
 
 ```bash
 # Validate compose merge and variable substitution (exits non-zero on error)
+op config --quiet
+
+# List resolved service names
+op config --services
+```
+
+<details>
+<summary>Without the helper function</summary>
+
+```bash
 docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/vault/stack/stack.env" \
@@ -84,17 +137,9 @@ docker compose \
   -f "$OP_HOME/stack/core.compose.yml" \
   -f "$OP_HOME/stack/addons/admin/compose.yml" \
   config --quiet
-
-# List resolved service names
-docker compose \
-  --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/vault/stack/stack.env" \
-  --env-file "$OP_HOME/vault/user/user.env" \
-  --env-file "$OP_HOME/vault/stack/guardian.env" \
-  -f "$OP_HOME/stack/core.compose.yml" \
-  -f "$OP_HOME/stack/addons/admin/compose.yml" \
-  config --services
 ```
+
+</details>
 
 `config --quiet` is the authoritative check that confirms:
 - All compose files merge without conflict
@@ -107,113 +152,49 @@ If this command fails, fix the reported issue before proceeding.
 
 ## Common Operations
 
-The examples below show a core + admin + chat setup. Adjust the `-f` list to
-match the addons you have installed.
-
-```bash
-OP_HOME="${OP_HOME:-$HOME/.openpalm}"
-PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
-
-BASE="docker compose \
-  --project-name $PROJECT_NAME \
-  --env-file $OP_HOME/vault/stack/stack.env \
-  --env-file $OP_HOME/vault/user/user.env \
-  --env-file $OP_HOME/vault/stack/guardian.env \
-  -f $OP_HOME/stack/core.compose.yml \
-  -f $OP_HOME/stack/addons/admin/compose.yml \
-  -f $OP_HOME/stack/addons/chat/compose.yml"
-```
+All examples below use the `op` helper function. If you are not using the
+helper, substitute the full `docker compose ...` command (see above).
 
 ### Start the stack
 
 ```bash
-docker compose \
-  --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/vault/stack/stack.env" \
-  --env-file "$OP_HOME/vault/user/user.env" \
-  --env-file "$OP_HOME/vault/stack/guardian.env" \
-  -f "$OP_HOME/stack/core.compose.yml" \
-  -f "$OP_HOME/stack/addons/admin/compose.yml" \
-  -f "$OP_HOME/stack/addons/chat/compose.yml" \
-  up -d
+op up -d
 ```
 
 ### Stop and remove containers
 
 ```bash
-docker compose \
-  --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/vault/stack/stack.env" \
-  --env-file "$OP_HOME/vault/user/user.env" \
-  --env-file "$OP_HOME/vault/stack/guardian.env" \
-  -f "$OP_HOME/stack/core.compose.yml" \
-  -f "$OP_HOME/stack/addons/admin/compose.yml" \
-  -f "$OP_HOME/stack/addons/chat/compose.yml" \
-  down
+op down
 ```
 
 ### List container status
 
 ```bash
-docker compose \
-  --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/vault/stack/stack.env" \
-  --env-file "$OP_HOME/vault/user/user.env" \
-  --env-file "$OP_HOME/vault/stack/guardian.env" \
-  -f "$OP_HOME/stack/core.compose.yml" \
-  -f "$OP_HOME/stack/addons/admin/compose.yml" \
-  ps
+op ps
 ```
 
 ### View recent logs
 
 ```bash
-docker compose \
-  --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/vault/stack/stack.env" \
-  --env-file "$OP_HOME/vault/user/user.env" \
-  --env-file "$OP_HOME/vault/stack/guardian.env" \
-  -f "$OP_HOME/stack/core.compose.yml" \
-  -f "$OP_HOME/stack/addons/admin/compose.yml" \
-  logs --tail 100
+op logs --tail 100
 ```
 
 ### Follow logs for a specific service
 
 ```bash
-docker compose \
-  --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/vault/stack/stack.env" \
-  --env-file "$OP_HOME/vault/user/user.env" \
-  --env-file "$OP_HOME/vault/stack/guardian.env" \
-  -f "$OP_HOME/stack/core.compose.yml" \
-  logs -f assistant
+op logs -f assistant
 ```
 
 ### Restart a specific service
 
 ```bash
-docker compose \
-  --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/vault/stack/stack.env" \
-  --env-file "$OP_HOME/vault/user/user.env" \
-  --env-file "$OP_HOME/vault/stack/guardian.env" \
-  -f "$OP_HOME/stack/core.compose.yml" \
-  restart guardian
+op restart guardian
 ```
 
 ### Pull latest images
 
 ```bash
-docker compose \
-  --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/vault/stack/stack.env" \
-  --env-file "$OP_HOME/vault/user/user.env" \
-  --env-file "$OP_HOME/vault/stack/guardian.env" \
-  -f "$OP_HOME/stack/core.compose.yml" \
-  -f "$OP_HOME/stack/addons/admin/compose.yml" \
-  -f "$OP_HOME/stack/addons/chat/compose.yml" \
-  pull
+op pull
 ```
 
 ---
@@ -222,44 +203,43 @@ docker compose \
 
 ### Adding an addon
 
-1. Verify the addon compose file exists:
+1. Verify the addon is available in the registry:
    ```bash
-   ls ~/.openpalm/stack/addons/
+   ls ~/.openpalm/registry/addons/
    ```
-2. If installing from the registry, copy the addon directory into
-   `~/.openpalm/stack/addons/<name>/`.
+2. Copy the addon directory into the active stack:
+   ```bash
+   cp -R ~/.openpalm/registry/addons/<name> ~/.openpalm/stack/addons/<name>
+   ```
 3. Run preflight to confirm the merge is clean:
    ```bash
-   docker compose ... -f "$OP_HOME/stack/addons/<name>/compose.yml" config --quiet
+   op config --quiet
    ```
-4. Start or recreate with the new addon included:
+4. Start or recreate (the helper auto-discovers the new addon):
    ```bash
-   docker compose ... -f "$OP_HOME/stack/addons/<name>/compose.yml" up -d
+   op up -d
    ```
 
 ### Removing an addon
 
-1. Run `down` (or `up -d --remove-orphans` to avoid full teardown) using the
-   same file set that was used for `up`, including the addon you are removing.
-   This allows Compose to track which containers belong to the project.
-2. Remove the addon directory:
+1. Remove the addon directory:
    ```bash
    rm -rf ~/.openpalm/stack/addons/<name>
    ```
-3. On next `up -d`, omit the `-f` flag for that addon.
+2. Recreate the stack (the helper automatically excludes the removed addon):
+   ```bash
+   op up -d --remove-orphans
+   ```
+
+The `--remove-orphans` flag stops and removes containers from addons no longer
+in the file list. If you are not using the helper, omit the removed addon's
+`-f` flag from your manual command.
 
 Using `--remove-orphans` on `up -d` is the least-disruptive approach when you
 want to drop an addon without restarting everything:
 
 ```bash
-docker compose \
-  --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/vault/stack/stack.env" \
-  --env-file "$OP_HOME/vault/user/user.env" \
-  --env-file "$OP_HOME/vault/stack/guardian.env" \
-  -f "$OP_HOME/stack/core.compose.yml" \
-  -f "$OP_HOME/stack/addons/admin/compose.yml" \
-  up -d --remove-orphans
+op up -d --remove-orphans
 ```
 
 Containers from addons no longer in the file list are stopped and removed.
@@ -351,14 +331,7 @@ effect:
 $EDITOR ~/.openpalm/vault/stack/stack.env
 
 # Recreate all containers to pick up new values
-docker compose \
-  --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/vault/stack/stack.env" \
-  --env-file "$OP_HOME/vault/user/user.env" \
-  --env-file "$OP_HOME/vault/stack/guardian.env" \
-  -f "$OP_HOME/stack/core.compose.yml" \
-  -f "$OP_HOME/stack/addons/admin/compose.yml" \
-  up -d --force-recreate
+op up -d --force-recreate
 ```
 
 Note: `docker compose restart` does NOT re-read `--env-file` values. You must
@@ -384,14 +357,8 @@ all persistent service data.
 # Extract backup
 tar xzf openpalm-backup-20240101.tar.gz -C ~/
 
-# Start the stack with the same file set used previously
-docker compose \
-  --project-name "$PROJECT_NAME" \
-  --env-file "$HOME/.openpalm/vault/stack/stack.env" \
-  --env-file "$HOME/.openpalm/vault/user/user.env" \
-  -f "$HOME/.openpalm/stack/core.compose.yml" \
-  -f "$HOME/.openpalm/stack/addons/admin/compose.yml" \
-  up -d
+# Start the stack
+op up -d
 ```
 
 There is no staging tier to reconstruct. The backup contains the live state
@@ -405,6 +372,6 @@ directly — extract and start.
 |---|---|
 | [installation.md](../installation.md) | Initial setup and home layout |
 | [troubleshooting.md](../troubleshooting.md) | Common problems and fixes |
-| [core-principles.md](../technical/authoritative/core-principles.md) | Architectural rules and filesystem contract |
+| [core-principles.md](../technical/core-principles.md) | Architectural rules and filesystem contract |
 | [environment-and-mounts.md](../technical/environment-and-mounts.md) | Per-service mount and env details |
 | `.openpalm/stack/README.md` | Stack directory quick reference |

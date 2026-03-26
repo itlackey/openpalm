@@ -90,7 +90,7 @@ Policy for this section:
 - `POST /admin/install`, `POST /admin/update`, and startup auto-apply are
   automatic lifecycle operations: non-destructive for existing user config files
   in `config/`; they only seed missing defaults.
-- Explicit mutation endpoints (`POST /admin/connections`,
+- Explicit mutation endpoints (`POST /admin/capabilities`,
   `POST /admin/addons`, `POST /admin/addons/:name`,
   `POST /admin/setup`) are the allowed write path
   for requested config changes.
@@ -504,13 +504,13 @@ Response:
 }
 ```
 
-## Connections
+## Capabilities
 
 Manage LLM provider credentials and related configuration stored in
 `vault/stack/stack.env`. Values are patched in-place by `patchSecretsEnvFile`
 -- existing keys not in the allowed set are never removed or overwritten.
 
-### `GET /admin/connections`
+### `GET /admin/capabilities`
 
 Returns the current capability assignments from `stack.yml` and masked secret
 values from `vault/stack/stack.env`.
@@ -541,7 +541,7 @@ Response:
 }
 ```
 
-### `POST /admin/connections`
+### `POST /admin/capabilities`
 
 Saves provider credentials to `vault/stack/stack.env`, updates `stack.yml`
 capabilities.
@@ -585,7 +585,7 @@ Error responses:
 - `400 bad_request` -- `provider` is missing or not in scope.
 - `500 internal_error` -- Failed to write `vault/stack/stack.env` or `stack.yml`.
 
-### `GET /admin/connections/status`
+### `GET /admin/capabilities/status`
 
 Checks whether `stack.yml` has non-empty capability assignments for the
 system LLM and embeddings provider/model. Leading and trailing whitespace is
@@ -600,9 +600,9 @@ Response:
 `complete` is `true` when `capabilities.llm` and `capabilities.embeddings.provider/model`
 are non-empty strings after trimming; otherwise `missing` lists what is absent.
 
-### `POST /admin/connections/test`
+### `POST /admin/capabilities/test`
 
-Tests a connection endpoint by fetching models from the given base URL. Derives
+Tests a capability endpoint by fetching models from the given base URL. Derives
 the provider type from the URL (Ollama for URLs containing `ollama` or `:11434`,
 otherwise OpenAI-compatible).
 
@@ -620,7 +620,7 @@ Body:
 
 - `baseUrl` (required) -- The endpoint to test.
 - `apiKey` -- Optional API key for authentication.
-- `kind` -- Connection kind hint (informational).
+- `kind` -- Capability kind hint (informational).
 
 Response:
 
@@ -643,7 +643,7 @@ On failure:
 }
 ```
 
-### `GET /admin/connections/assignments`
+### `GET /admin/capabilities/assignments`
 
 Returns the current `stack.yml` capability assignments:
 
@@ -664,7 +664,7 @@ Returns the current `stack.yml` capability assignments:
 }
 ```
 
-### `POST /admin/connections/assignments`
+### `POST /admin/capabilities/assignments`
 
 Saves validated capability updates back to `stack.yml`. The request body may either be the capabilities
 object directly or `{ "capabilities": ... }`.
@@ -702,7 +702,7 @@ Error responses:
 - `400 bad_request` -- malformed capability payload, unknown keys, or invalid field types.
 - `500 internal_error` -- `stack.yml` could not be written.
 
-### `GET /admin/connections/export/mem0`
+### `GET /admin/capabilities/export/mem0`
 
 Exports the compatibility-formatted memory config derived from current
 `stack.yml` capabilities. The route name remains `export/mem0`
@@ -719,7 +719,7 @@ Error responses:
 
 - `404 not_found` -- No stack configuration found.
 
-### `GET /admin/connections/export/opencode`
+### `GET /admin/capabilities/export/opencode`
 
 Exports the generated `opencode.json` config from `config/assistant/opencode.json`.
 Returns the config as a downloadable JSON file with `_nextSteps` guidance.

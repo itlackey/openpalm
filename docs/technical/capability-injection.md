@@ -1,6 +1,6 @@
 # Capability Injection (OP_CAP_* Variables)
 
-This document describes how OpenPalm resolves provider connections into
+This document describes how OpenPalm resolves provider capabilities into
 environment variables that services consume at runtime.
 
 Primary sources:
