@@ -146,7 +146,7 @@ describe('POST /admin/capabilities/test', () => {
   test('allows localhost probes (SSRF blocking removed)', async () => {
     vi.mocked(fetchProviderModels).mockResolvedValueOnce({
       models: [],
-      status: 'error',
+      status: 'recoverable_error',
       reason: 'network',
       error: 'Connection refused',
     });
