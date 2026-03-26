@@ -1,5 +1,7 @@
 <script lang="ts">
-  import type { AutomationsResponse } from '$lib/types.js';
+  import type { AutomationsResponse, CatalogAutomation } from '$lib/types.js';
+  import { getAdminToken } from '$lib/auth.js';
+  import { fetchAutomationCatalog, installAutomation, uninstallAutomation } from '$lib/api.js';
 
   interface Props {
     data: AutomationsResponse | null;
@@ -15,7 +17,15 @@
     data !== null && Array.isArray(data.automations) && data.automations.length > 0
   );
 
-  /** Reverse map: cron expression → friendly label */
+  // ── Catalog state ─────────────────────────────────────────────
+  let showCatalog = $state(false);
+  let catalog = $state<CatalogAutomation[]>([]);
+  let catalogLoading = $state(false);
+  let catalogError = $state('');
+  let actionLoading = $state<string | null>(null);
+  let actionSuccess = $state('');
+
+  /** Reverse map: cron expression -> friendly label */
   const CRON_TO_LABEL: Record<string, string> = {
     '* * * * *': 'Every minute',
     '*/5 * * * *': 'Every 5 minutes',
@@ -33,18 +43,182 @@
     if (friendly) return { label: friendly, cron };
     return null;
   }
+
+  async function loadCatalog(): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+    catalogLoading = true;
+    catalogError = '';
+    try {
+      const result = await fetchAutomationCatalog(token);
+      catalog = result.automations;
+    } catch (e) {
+      catalogError = e instanceof Error ? e.message : 'Failed to load catalog.';
+    } finally {
+      catalogLoading = false;
+    }
+  }
+
+  function handleToggleCatalog(): void {
+    showCatalog = !showCatalog;
+    if (showCatalog && catalog.length === 0) {
+      void loadCatalog();
+    }
+  }
+
+  async function handleInstall(name: string): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+    actionLoading = name;
+    actionSuccess = '';
+    try {
+      await installAutomation(token, name);
+      actionSuccess = `Installed "${name}".`;
+      await loadCatalog();
+      onRefresh();
+    } catch (e) {
+      catalogError = e instanceof Error ? e.message : 'Install failed.';
+    } finally {
+      actionLoading = null;
+    }
+  }
+
+  async function handleUninstall(name: string): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+    actionLoading = name;
+    actionSuccess = '';
+    try {
+      await uninstallAutomation(token, name);
+      actionSuccess = `Uninstalled "${name}".`;
+      await loadCatalog();
+      onRefresh();
+    } catch (e) {
+      catalogError = e instanceof Error ? e.message : 'Uninstall failed.';
+    } finally {
+      actionLoading = null;
+    }
+  }
 </script>
 
 <div class="panel" role="tabpanel">
   <div class="panel-header">
     <h2>Automations</h2>
-    <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
-      {#if loading}
-        <span class="spinner"></span>
-      {/if}
-      Refresh
-    </button>
+    <div class="panel-header-actions">
+      <button class="btn btn-secondary btn-sm" onclick={handleToggleCatalog} disabled={!tokenStored}>
+        {showCatalog ? 'Hide Catalog' : 'Browse Catalog'}
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
+        {#if loading}
+          <span class="spinner"></span>
+        {/if}
+        Refresh
+      </button>
+    </div>
   </div>
+
+  <!-- ── Catalog Section ──────────────────────────────────────── -->
+  {#if showCatalog}
+    <div class="catalog-section">
+      <div class="catalog-header">
+        <h3>Available Automations</h3>
+        <button class="btn btn-ghost btn-sm" onclick={() => void loadCatalog()} disabled={catalogLoading}>
+          {#if catalogLoading}<span class="spinner"></span>{/if}
+          Refresh Catalog
+        </button>
+      </div>
+
+      {#if actionSuccess}
+        <div class="feedback feedback--success" role="status" aria-live="polite">
+          <span>{actionSuccess}</span>
+          <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => actionSuccess = ''}>
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      {/if}
+
+      {#if catalogError}
+        <div class="feedback feedback--error" role="alert">
+          <span>{catalogError}</span>
+          <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => catalogError = ''}>
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      {/if}
+
+      {#if catalogLoading && catalog.length === 0}
+        <div class="loading-state">
+          <span class="spinner"></span>
+          <span>Loading catalog...</span>
+        </div>
+      {:else if catalog.length === 0 && !catalogLoading}
+        <div class="catalog-empty">
+          <p>No automations available in the registry.</p>
+        </div>
+      {:else}
+        <div class="catalog-list">
+          {#each catalog as item (item.name)}
+            <div class="catalog-card">
+              <div class="catalog-card-main">
+                <div class="catalog-card-name">
+                  {item.name}
+                  {#if item.installed}
+                    <span class="badge badge-enabled">installed</span>
+                  {/if}
+                </div>
+                {#if item.description}
+                  <div class="catalog-card-desc">{item.description}</div>
+                {/if}
+                {#if item.schedule}
+                  {@const preset = formatSchedule(item.schedule)}
+                  <div class="catalog-card-schedule">
+                    {#if preset}
+                      {preset.label}
+                    {:else}
+                      <code>{item.schedule}</code>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+              <div class="catalog-card-action">
+                {#if item.installed}
+                  <button
+                    class="btn btn-sm btn-danger"
+                    disabled={actionLoading === item.name}
+                    onclick={() => void handleUninstall(item.name)}
+                  >
+                    {#if actionLoading === item.name}
+                      <span class="spinner"></span>
+                    {:else}
+                      Uninstall
+                    {/if}
+                  </button>
+                {:else}
+                  <button
+                    class="btn btn-sm btn-outline"
+                    disabled={actionLoading === item.name}
+                    onclick={() => void handleInstall(item.name)}
+                  >
+                    {#if actionLoading === item.name}
+                      <span class="spinner"></span>
+                    {:else}
+                      Install
+                    {/if}
+                  </button>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
+
+  <!-- ── Installed Automations ────────────────────────────────── -->
   <div class="panel-body">
     {#if hasAutomations && data}
       <div class="automation-list">
@@ -91,8 +265,8 @@
           <p class="text-danger">{error}</p>
           <button class="btn btn-secondary btn-sm" onclick={onRefresh}>Try Again</button>
         {:else}
-          <p>No automations configured. Drop .yml files into <code>~/.openpalm/config/automations/</code> to get started.</p>
-          <p class="empty-state-hint">Automations run on a cron schedule and can execute API calls, scripts, or compose commands.</p>
+          <p>No automations configured.</p>
+          <p class="empty-state-hint">Use the catalog above to install automations, or drop .yml files into <code>~/.openpalm/config/automations/</code>.</p>
         {/if}
       </div>
     {/if}
@@ -121,9 +295,154 @@
     color: var(--color-text);
   }
 
+  .panel-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
   .panel-body {
     padding: var(--space-5);
   }
+
+  /* ── Catalog Section ──────────────────────────────────────────── */
+
+  .catalog-section {
+    border-bottom: 1px solid var(--color-border);
+    padding: var(--space-4) var(--space-5);
+    background: var(--color-bg-secondary);
+  }
+
+  .catalog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+  }
+
+  .catalog-header h3 {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+  }
+
+  .catalog-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .catalog-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  .catalog-card-main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .catalog-card-name {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-text);
+    flex-wrap: wrap;
+  }
+
+  .catalog-card-desc {
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+    margin-top: var(--space-1);
+  }
+
+  .catalog-card-schedule {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    margin-top: var(--space-1);
+  }
+
+  .catalog-card-schedule code {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    background: var(--color-bg-tertiary);
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+  }
+
+  .catalog-card-action {
+    flex-shrink: 0;
+  }
+
+  .catalog-empty {
+    padding: var(--space-4);
+    text-align: center;
+    color: var(--color-text-tertiary);
+    font-size: var(--text-sm);
+  }
+
+  .loading-state {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+  }
+
+  /* ── Feedback ─────────────────────────────────────────────────── */
+
+  .feedback {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-3);
+  }
+
+  .feedback span { flex: 1; }
+
+  .feedback--success {
+    background: var(--color-success-bg);
+    border: 1px solid var(--color-success-border);
+    color: var(--color-text);
+  }
+
+  .feedback--error {
+    background: var(--color-danger-bg);
+    border: 1px solid var(--color-danger-border, rgba(255, 107, 107, 0.25));
+    color: var(--color-text);
+  }
+
+  .btn-dismiss {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.6;
+    border-radius: var(--radius-sm);
+  }
+
+  .btn-dismiss:hover {
+    opacity: 1;
+    background: rgba(128, 128, 128, 0.1);
+  }
+
+  /* ── Installed Automations ────────────────────────────────────── */
 
   .automation-list {
     display: flex;
@@ -222,8 +541,6 @@
     color: var(--color-text-secondary);
   }
 
-  /* ── Footer ──────────────────────────────────────────────────────── */
-
   .automation-footer {
     display: flex;
     align-items: center;
@@ -239,7 +556,7 @@
     color: var(--color-text-tertiary);
   }
 
-  /* ── Shared ────────────────────────────────────────────────────────── */
+  /* ── Empty State ──────────────────────────────────────────────── */
 
   .empty-state {
     display: flex;
@@ -278,6 +595,8 @@
     color: var(--color-danger);
   }
 
+  /* ── Buttons ──────────────────────────────────────────────────── */
+
   .btn {
     display: inline-flex;
     align-items: center;
@@ -308,6 +627,40 @@
   .btn-secondary:hover:not(:disabled) {
     background: var(--color-surface-hover);
     border-color: var(--color-border-hover);
+  }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+  }
+
+  .btn-outline:hover:not(:disabled) {
+    background: var(--color-primary-subtle);
+  }
+
+  .btn-ghost {
+    background: none;
+    border: none;
+    color: var(--color-text-secondary);
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    color: var(--color-text);
+    background: var(--color-bg-secondary);
+  }
+
+  .btn-danger {
+    background: var(--color-danger);
+    color: #fff;
+    border-color: var(--color-danger);
+  }
+
+  .btn-danger:hover:not(:disabled) {
+    opacity: 0.9;
   }
 
   .btn-sm {
@@ -342,6 +695,10 @@
       gap: var(--space-3);
     }
 
+    .catalog-card {
+      flex-direction: column;
+      align-items: flex-start;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -13,7 +13,9 @@
     onStop: (id: string) => void;
     onRestart: (id: string) => void;
     onRefresh: () => void;
+    onPullImages: () => void;
     lastUpdated: string | null;
+    pullLoading: boolean;
   }
 
   let {
@@ -27,7 +29,9 @@
     onStop,
     onRestart,
     onRefresh,
-    lastUpdated
+    onPullImages,
+    lastUpdated,
+    pullLoading
   }: Props = $props();
 
   /** Merge both data sources into a unified ServiceEntry list */
@@ -80,6 +84,12 @@
       {#if lastUpdated}
         <span class="last-updated">Updated {lastUpdated}</span>
       {/if}
+      <button class="btn btn-secondary btn-sm" onclick={onPullImages} disabled={pullLoading || !tokenStored}>
+        {#if pullLoading}
+          <span class="spinner"></span>
+        {/if}
+        Pull Images
+      </button>
       <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
         {#if loading}
           <span class="spinner"></span>

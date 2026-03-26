@@ -11,6 +11,9 @@
   import ArtifactsTab from '$lib/components/ArtifactsTab.svelte';
   import AutomationsTab from '$lib/components/AutomationsTab.svelte';
   import CapabilitiesTab from '$lib/components/CapabilitiesTab.svelte';
+  import LogsTab from '$lib/components/LogsTab.svelte';
+  import AuditTab from '$lib/components/AuditTab.svelte';
+  import SecretsTab from '$lib/components/SecretsTab.svelte';
 
   import { getAdminToken, clearToken, storeToken, validateToken } from '$lib/auth.js';
   import {
@@ -24,6 +27,7 @@
     containerAction,
     fetchCapabilityStatus,
     fetchCapabilities,
+    pullImages,
   } from '$lib/api.js';
   import type { HealthPayload, ContainerListResponse, AutomationsResponse } from '$lib/types.js';
 
@@ -66,7 +70,8 @@
   let legacyInstallDetected = $state(false);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: 'overview' | 'addons' | 'containers' | 'artifacts' | 'automations' | 'capabilities' = $state('overview');
+  let activeTab: 'overview' | 'addons' | 'containers' | 'artifacts' | 'automations' | 'capabilities' | 'logs' | 'audit' | 'secrets' = $state('overview');
+  let pullLoading = $state(false);
 
   // ── Container polling ──────────────────────────────────────────────────────
   const POLL_INTERVAL_MS = 10_000;
@@ -392,7 +397,43 @@
     selectedContainerId = selectedContainerId === id ? null : id;
   }
 
-  function handleTabSelect(tab: 'overview' | 'addons' | 'containers' | 'artifacts' | 'automations' | 'capabilities'): void {
+  /** Derive service names from container data for the logs tab */
+  let serviceNames = $derived.by((): string[] => {
+    if (!containerData) return [];
+    const names = new Set<string>();
+    if (containerData.containers) {
+      for (const name of Object.keys(containerData.containers)) {
+        names.add(name);
+      }
+    }
+    if (containerData.dockerContainers) {
+      for (const c of containerData.dockerContainers) {
+        if (c.Service) names.add(c.Service);
+      }
+    }
+    return [...names].sort();
+  });
+
+  async function handlePullImages(): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+    pullLoading = true;
+    try {
+      await pullImages(token);
+      await loadContainers();
+    } catch (e) {
+      const err = e as { status?: number; message?: string };
+      if (err.status === 401) {
+        applyInvalidTokenState();
+      } else {
+        containerError = `Pull failed: ${err.message ?? e}`;
+      }
+    } finally {
+      pullLoading = false;
+    }
+  }
+
+  function handleTabSelect(tab: 'overview' | 'addons' | 'containers' | 'artifacts' | 'automations' | 'capabilities' | 'logs' | 'audit' | 'secrets'): void {
     activeTab = tab;
     if (tab === 'containers' && !containerData) {
       void loadContainers();
@@ -501,7 +542,9 @@
         onStop={(id) => handleContainerAction('stop', id)}
         onRestart={(id) => handleContainerAction('restart', id)}
         onRefresh={loadContainers}
+        onPullImages={handlePullImages}
         lastUpdated={containersLastUpdated}
+        {pullLoading}
       />
     {:else if activeTab === 'artifacts'}
       <ArtifactsTab
@@ -525,6 +568,15 @@
         loading={capabilitiesLoading}
         onRefresh={loadCapabilities}
       />
+    {:else if activeTab === 'logs'}
+      <LogsTab
+        {tokenStored}
+        services={serviceNames}
+      />
+    {:else if activeTab === 'audit'}
+      <AuditTab {tokenStored} />
+    {:else if activeTab === 'secrets'}
+      <SecretsTab {tokenStored} />
     {/if}
   </main>
 {/if}

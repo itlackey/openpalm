@@ -28,7 +28,7 @@
   let listError = $state('');
 
   // ── Form panel state ─────────────────────────────────────────────
-  let formMode = $state<'hidden' | 'create'>('hidden');
+  let formMode = $state<'hidden' | 'create' | 'edit'>('hidden');
 
   // ── Inline test state (lifted from CapabilitiesForm) ────────────────
   let testLoading = $state(false);
@@ -178,8 +178,30 @@
 
   // ── Form action handlers ──────────────────────────────────────────
 
+  /** Derive initial values for the form in edit mode. */
+  let editInitial = $derived.by(() => {
+    if (!capabilities || !currentProvider) return null;
+    const keyField = PROVIDER_KEY_MAP[currentProvider];
+    return {
+      id: currentProvider,
+      name: connDisplayName,
+      kind: 'openai_compatible_remote' as const,
+      provider: currentProvider,
+      baseUrl: '',
+      auth: hasApiKey
+        ? { mode: 'api_key' as const, apiKeySecretRef: keyField }
+        : { mode: 'none' as const },
+    };
+  });
+
   function handleAddNew(): void {
     formMode = 'create';
+    clearFeedback();
+    resetTestState();
+  }
+
+  function handleEditCurrent(): void {
+    formMode = 'edit';
     clearFeedback();
     resetTestState();
   }
@@ -194,7 +216,9 @@
         apiKey: payload.apiKey,
         baseUrl: payload.baseUrl,
       });
-      actionSuccess = `Connection "${payload.name}" added.`;
+      actionSuccess = formMode === 'edit'
+        ? `Connection "${payload.name}" updated.`
+        : `Connection "${payload.name}" added.`;
       formMode = 'hidden';
       resetTestState();
       await loadConnections();
@@ -369,6 +393,11 @@
     <div class="panel-header">
       <h3>Capabilities</h3>
       {#if !listLoading}
+        {#if capabilities}
+          <button class="btn btn-sm btn-ghost" type="button" onclick={handleEditCurrent}>
+            Edit
+          </button>
+        {/if}
         <button class="btn btn-sm btn-ghost" type="button" onclick={() => showModelsSheet = true}>
           Manage Models
         </button>
@@ -424,15 +453,15 @@
     </div>
   </section>
 
-  <!-- ── CapabilitiesForm panel (create) ────────────────────────── -->
+  <!-- ── CapabilitiesForm panel (create/edit) ──────────────────── -->
   {#if formMode !== 'hidden'}
     <section class="panel capabilities-section">
       <div class="panel-header">
-        <h3>Add provider</h3>
+        <h3>{formMode === 'edit' ? 'Edit provider' : 'Add provider'}</h3>
       </div>
       <div class="panel-body">
         <CapabilitiesForm
-          initial={null}
+          initial={formMode === 'edit' ? editInitial : null}
           {testLoading}
           modelList={testModelList}
           {testError}

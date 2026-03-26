@@ -141,6 +141,50 @@ export async function fetchAutomations(token: string): Promise<AutomationsRespon
   return (await res.json()) as AutomationsResponse;
 }
 
+// ── Automation Catalog ──────────────────────────────────────────
+
+export async function fetchAutomationCatalog(
+  token: string
+): Promise<{ automations: import('./types.js').CatalogAutomation[]; source: string }> {
+  const res = await requireOk(await request('GET', '/admin/automations/catalog', token));
+  return (await res.json()) as { automations: import('./types.js').CatalogAutomation[]; source: string };
+}
+
+export async function installAutomation(
+  token: string,
+  name: string
+): Promise<{ ok: boolean }> {
+  const res = await requireOk(
+    await request('POST', '/admin/automations/catalog/install', token, { name, type: 'automation' })
+  );
+  return (await res.json()) as { ok: boolean };
+}
+
+export async function uninstallAutomation(
+  token: string,
+  name: string
+): Promise<{ ok: boolean }> {
+  const res = await requireOk(
+    await request('POST', '/admin/automations/catalog/uninstall', token, { name, type: 'automation' })
+  );
+  return (await res.json()) as { ok: boolean };
+}
+
+// ── Service Logs ────────────────────────────────────────────────
+
+export async function fetchServiceLogs(
+  token: string,
+  options?: { service?: string; tail?: number; since?: string }
+): Promise<{ ok: boolean; logs: string; error?: string }> {
+  const params = new URLSearchParams();
+  if (options?.service) params.set('service', options.service);
+  if (options?.tail) params.set('tail', String(options.tail));
+  if (options?.since) params.set('since', options.since);
+  const qs = params.toString();
+  const res = await requireOk(await request('GET', `/admin/logs${qs ? `?${qs}` : ''}`, token));
+  return (await res.json()) as { ok: boolean; logs: string; error?: string };
+}
+
 // ── Capabilities ────────────────────────────────────────────────────────
 
 export async function fetchCapabilityStatus(
@@ -219,4 +263,67 @@ export async function toggleAddon(
   if (env) body.env = env;
   const res = await requireOk(await request('POST', `/admin/addons/${encodeURIComponent(name)}`, token, body));
   return (await res.json()) as { ok: boolean; changed: boolean };
+}
+
+// ── Audit Log ───────────────────────────────────────────────────────
+
+export async function fetchAuditLog(
+  token: string,
+  options?: { source?: 'admin' | 'guardian' | 'all'; limit?: number }
+): Promise<{ audit: Record<string, unknown>[] }> {
+  const params = new URLSearchParams();
+  if (options?.source) params.set('source', options.source);
+  if (options?.limit) params.set('limit', String(options.limit));
+  const qs = params.toString();
+  const res = await requireOk(await request('GET', `/admin/audit${qs ? `?${qs}` : ''}`, token));
+  return (await res.json()) as { audit: Record<string, unknown>[] };
+}
+
+// ── Secrets Management ──────────────────────────────────────────────
+
+export type SecretEntry = { key: string; scope?: string; kind?: string };
+
+export async function fetchSecrets(
+  token: string,
+  prefix?: string
+): Promise<{ provider: string; capabilities: Record<string, boolean>; entries: SecretEntry[] }> {
+  const params = new URLSearchParams();
+  if (prefix) params.set('prefix', prefix);
+  const qs = params.toString();
+  const res = await requireOk(await request('GET', `/admin/secrets${qs ? `?${qs}` : ''}`, token));
+  return (await res.json()) as { provider: string; capabilities: Record<string, boolean>; entries: SecretEntry[] };
+}
+
+export async function writeSecret(
+  token: string,
+  key: string,
+  value: string
+): Promise<{ ok: boolean }> {
+  const res = await requireOk(await request('POST', '/admin/secrets', token, { key, value }));
+  return (await res.json()) as { ok: boolean };
+}
+
+export async function deleteSecret(
+  token: string,
+  key: string
+): Promise<{ ok: boolean }> {
+  const res = await requireOk(
+    await request('DELETE', `/admin/secrets?key=${encodeURIComponent(key)}`, token)
+  );
+  return (await res.json()) as { ok: boolean };
+}
+
+export async function generateSecret(
+  token: string,
+  key: string,
+  length: number = 32
+): Promise<{ ok: boolean }> {
+  const res = await requireOk(await request('POST', '/admin/secrets/generate', token, { key, length }));
+  return (await res.json()) as { ok: boolean };
+}
+
+// ── Docker Pull ─────────────────────────────────────────────────────
+
+export async function pullImages(token: string): Promise<void> {
+  await requireOk(await request('POST', '/admin/containers/pull', token, {}));
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-	type TabId = 'overview' | 'addons' | 'containers' | 'artifacts' | 'automations' | 'capabilities';
+	type TabId = 'overview' | 'addons' | 'containers' | 'artifacts' | 'automations' | 'capabilities' | 'logs' | 'audit' | 'secrets';
 
 	interface Props {
 		active: TabId;
@@ -153,6 +153,76 @@
 			<line x1="6" y1="6" x2="6.01" y2="6" /><line x1="6" y1="18" x2="6.01" y2="18" />
 		</svg>
 		Containers
+	</button>
+	<button
+		class="tab"
+		role="tab"
+		aria-selected={active === 'logs'}
+		class:tab-active={active === 'logs'}
+		onclick={() => onSelect('logs')}
+		onkeydown={handleTabKeydown}
+	>
+		<svg
+			aria-hidden="true"
+			width="15"
+			height="15"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+		>
+			<polyline points="4 17 10 11 4 5" />
+			<line x1="12" y1="19" x2="20" y2="19" />
+		</svg>
+		Logs
+	</button>
+	<button
+		class="tab"
+		role="tab"
+		aria-selected={active === 'audit'}
+		class:tab-active={active === 'audit'}
+		onclick={() => onSelect('audit')}
+		onkeydown={handleTabKeydown}
+	>
+		<svg
+			aria-hidden="true"
+			width="15"
+			height="15"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+		>
+			<path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+		</svg>
+		Audit
+	</button>
+	<button
+		class="tab"
+		role="tab"
+		aria-selected={active === 'secrets'}
+		class:tab-active={active === 'secrets'}
+		onclick={() => onSelect('secrets')}
+		onkeydown={handleTabKeydown}
+	>
+		<svg
+			aria-hidden="true"
+			width="15"
+			height="15"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+		>
+			<rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+		</svg>
+		Secrets
 	</button>
 	<button
 		class="tab"

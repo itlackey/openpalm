@@ -50,6 +50,14 @@ export type AutomationsResponse = {
   automations: AutomationInfo[];
 };
 
+export type CatalogAutomation = {
+  name: string;
+  type: 'automation';
+  installed: boolean;
+  description: string;
+  schedule: string;
+};
+
 export type MemoryConfig = {
   mem0: {
     llm: { provider: string; config: Record<string, unknown> };
