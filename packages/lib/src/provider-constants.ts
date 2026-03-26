@@ -67,6 +67,7 @@ export const PROVIDER_LABELS: Record<string, string> = {
   "model-runner": "Docker Model Runner",
   google: "Google AI",
   huggingface: "Hugging Face",
+  "openai-compatible": "Custom (OpenAI-compatible)",
 };
 
 /** Default models to pull when enabling Ollama from the wizard. */
