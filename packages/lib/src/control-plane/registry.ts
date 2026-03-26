@@ -286,6 +286,8 @@ function removeEnabledAddon(homeDir: string, name: string): void {
 export function enableAddon(homeDir: string, name: string): MutationResult {
   try {
     copyAddonFromRegistry(homeDir, name);
+    // Pre-create the addon data directory so Docker doesn't create it as root
+    mkdirSync(join(homeDir, 'data', name), { recursive: true });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };

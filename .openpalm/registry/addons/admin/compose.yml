@@ -75,6 +75,8 @@ services:
           create_host_path: false
     networks: [assistant_net, admin_docker_net]
     depends_on:
+      init:
+        condition: service_completed_successfully
       docker-socket-proxy:
         condition: service_healthy
     healthcheck:

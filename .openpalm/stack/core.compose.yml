@@ -16,6 +16,22 @@
 #   ~/.openpalm/logs/          — consolidated audit/debug output
 
 services:
+  # ── Init (pre-create data directories with correct ownership) ──────
+  # Ensures all data/ and logs/ subdirectories exist before services
+  # start, preventing Docker from creating them as root.
+  # Core dirs are listed explicitly; addon dirs are discovered
+  # dynamically from stack/addons/.
+  init:
+    image: busybox:latest
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    restart: "no"
+    command: ["sh", "-c",
+      "mkdir -p /data/memory /data/assistant /data/guardian /data/stash /data/workspace /logs/opencode && ls /addons 2>/dev/null | xargs -I{} mkdir -p /data/{}"]
+    volumes:
+      - ${OP_HOME}/data:/data
+      - ${OP_HOME}/logs:/logs
+      - ${OP_HOME}/stack/addons:/addons:ro
+
   # ── Memory ─────────────────────────────────────────────────────────
   # Lightweight Bun.js wrapper around @openpalm/memory with sqlite-vec.
   memory:
@@ -44,6 +60,9 @@ services:
     volumes:
       - ${OP_HOME}/data/memory:/data
     networks: [ assistant_net ]
+    depends_on:
+      init:
+        condition: service_completed_successfully
     healthcheck:
       test: [ "CMD-SHELL", "bun -e \"const r=await fetch('http://localhost:8765/health');if(!r.ok)process.exit(1)\" || exit 1" ]
       interval: 15s

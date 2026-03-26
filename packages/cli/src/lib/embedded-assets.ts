@@ -47,8 +47,6 @@ import openvikingCompose from "../../../../.openpalm/registry/addons/openviking/
 // @ts-ignore — Bun text import
 import openvikingSchema from "../../../../.openpalm/registry/addons/openviking/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import openvikingEntrypoint from "../../../../.openpalm/registry/addons/openviking/entrypoint.sh" with { type: "text" };
-// @ts-ignore — Bun text import
 import openvikingConfig from "../../../../.openpalm/registry/addons/openviking/config/ov.conf" with { type: "text" };
 // @ts-ignore — Bun text import
 import cleanupLogsAutomation from "../../../../.openpalm/registry/automations/cleanup-logs.yml" with { type: "text" };
@@ -83,7 +81,6 @@ export const EMBEDDED_ASSETS: Record<string, string> = {
   "registry/addons/voice/.env.schema": voiceSchema,
   "registry/addons/openviking/compose.yml": openvikingCompose,
   "registry/addons/openviking/.env.schema": openvikingSchema,
-  "registry/addons/openviking/entrypoint.sh": openvikingEntrypoint,
   "registry/addons/openviking/config/ov.conf": openvikingConfig,
   "registry/automations/cleanup-logs.yml": cleanupLogsAutomation,
   "registry/automations/cleanup-data.yml": cleanupDataAutomation,

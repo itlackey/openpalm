@@ -120,6 +120,7 @@ mkdir -p \
 	"$DATA_DIR/memory" "$DATA_DIR/assistant/.config/opencode" \
 	"$DATA_DIR/admin/.varlock" \
 	"$DATA_DIR/guardian" \
+	"$DATA_DIR/openviking" \
 	"$DATA_DIR/automations" "$DATA_DIR/ollama" "$DATA_DIR/stash" "$DATA_DIR/workspace" \
 	"$LOGS_DIR/opencode" \
 	"$DEV_ROOT/work"
@@ -129,8 +130,14 @@ COMPOSE_DEST="$DEV_ROOT/stack/core.compose.yml"
 
 [[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/.openpalm/stack/core.compose.yml" "$COMPOSE_DEST"
 
-# Seed registry catalog from repo template
-cp -r "$ROOT_DIR/.openpalm/registry/addons/"* "$DEV_ROOT/registry/addons/" 2>/dev/null || true
+# Seed registry catalog from repo template.
+# Replace shipped addon directories wholesale so removed support files do not linger.
+for src_dir in "$ROOT_DIR/.openpalm/registry/addons/"*; do
+	[[ -d "$src_dir" ]] || continue
+	addon_name="$(basename "$src_dir")"
+	rm -rf "$DEV_ROOT/registry/addons/$addon_name"
+	cp -r "$src_dir" "$DEV_ROOT/registry/addons/$addon_name"
+done
 cp -r "$ROOT_DIR/.openpalm/registry/automations/"* "$DEV_ROOT/registry/automations/" 2>/dev/null || true
 
 # Enable requested addons in the dev runtime
@@ -140,9 +147,6 @@ for addon in "${enabled_addons[@]}"; do
 	if [[ ! -d "$src_dir" ]]; then
 		echo "Error: dev registry addon not found: $addon" >&2
 		exit 1
-	fi
-	if [[ -d "$dest_dir" && $force -ne 1 ]]; then
-		continue
 	fi
 	rm -rf "$dest_dir"
 	cp -r "$src_dir" "$dest_dir"

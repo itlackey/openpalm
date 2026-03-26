@@ -13,6 +13,9 @@ services:
     volumes:
       - ${OP_HOME}/data/ollama:/data
     networks: [assistant_net]
+    depends_on:
+      init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
       interval: 15s
