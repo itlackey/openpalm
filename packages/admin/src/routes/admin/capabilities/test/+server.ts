@@ -7,7 +7,6 @@ import {
   parseJsonBody,
   jsonBodyError,
   requireAdmin,
-  validateExternalUrl,
 } from '$lib/server/helpers.js';
 import { fetchProviderModels } from '@openpalm/lib';
 import { createLogger } from '$lib/server/logger.js';
@@ -32,15 +31,11 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, 'invalid_input', 'baseUrl is required', {}, requestId);
   }
 
-  const ssrfError = validateExternalUrl(baseUrl);
-  if (ssrfError) {
-    return errorResponse(400, 'blocked_url', ssrfError, {}, requestId);
-  }
-
   const state = getState();
 
-  // Derive minimal provider hint for fetchProviderModels
-  const derivedProvider = deriveProvider(baseUrl);
+  // Accept explicit provider from client, fall back to URL heuristic
+  const explicitProvider = typeof body.provider === 'string' ? body.provider.trim() : '';
+  const derivedProvider = explicitProvider || deriveProvider(baseUrl);
   logger.info('capability test', { requestId, derivedProvider, kind });
 
   const result = await fetchProviderModels(derivedProvider, apiKey, baseUrl, state.configDir);

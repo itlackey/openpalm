@@ -223,7 +223,7 @@ export async function saveCapabilities(
 
 export async function testCapability(
   token: string,
-  draft: { baseUrl: string; apiKey: string; kind: string }
+  draft: { baseUrl: string; apiKey: string; kind: string; provider?: string }
 ): Promise<{ ok: boolean; models?: string[]; error?: string; errorCode?: string }> {
   const res = await requireOk(
     await request('POST', '/admin/capabilities/test', token, draft),
@@ -322,8 +322,34 @@ export async function generateSecret(
   return (await res.json()) as { ok: boolean };
 }
 
+// ── Capabilities Assignments (direct stack.yml editor) ──────────────
+
+export async function fetchAssignments(
+  token: string
+): Promise<{ capabilities: Record<string, unknown> | null }> {
+  const res = await requireOk(await request('GET', '/admin/capabilities/assignments', token));
+  return (await res.json()) as { capabilities: Record<string, unknown> | null };
+}
+
+export async function saveAssignments(
+  token: string,
+  capabilities: Record<string, unknown>
+): Promise<{ ok: boolean; capabilities: Record<string, unknown> }> {
+  const res = await requireOk(await request('POST', '/admin/capabilities/assignments', token, { capabilities }));
+  return (await res.json()) as { ok: boolean; capabilities: Record<string, unknown> };
+}
+
 // ── Docker Pull ─────────────────────────────────────────────────────
 
 export async function pullImages(token: string): Promise<void> {
   await requireOk(await request('POST', '/admin/containers/pull', token, {}));
+}
+
+// ── Local Provider Detection ────────────────────────────────────────
+
+export async function detectLocalProviders(
+  token: string
+): Promise<{ providers: Array<{ provider: string; url: string; available: boolean }> }> {
+  const res = await requireOk(await request('GET', '/admin/providers/local', token));
+  return (await res.json()) as { providers: Array<{ provider: string; url: string; available: boolean }> };
 }
