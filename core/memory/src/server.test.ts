@@ -322,8 +322,46 @@ describe('error response safety', () => {
   });
 });
 
-// ── buildConfigFromEnv logic (imported from config.ts) ──────────────
-import { buildConfigFromEnv } from './config';
+// ── expandEnvVars and buildConfigFromEnv logic ──────────────────────
+import { expandEnvVars, buildConfigFromEnv } from './config';
+
+describe('expandEnvVars', () => {
+  test('expands simple ${VAR} placeholders', () => {
+    const result = expandEnvVars('Hello ${NAME}!', { NAME: 'World' });
+    expect(result).toBe('Hello World!');
+  });
+
+  test('expands multiple placeholders', () => {
+    const result = expandEnvVars('${A} and ${B}', { A: 'one', B: 'two' });
+    expect(result).toBe('one and two');
+  });
+
+  test('replaces unset variables with empty string', () => {
+    const result = expandEnvVars('prefix-${MISSING}-suffix', {});
+    expect(result).toBe('prefix--suffix');
+  });
+
+  test('supports ${VAR:-default} syntax', () => {
+    const result = expandEnvVars('${PORT:-8080}', {});
+    expect(result).toBe('8080');
+  });
+
+  test('uses env value over default when set', () => {
+    const result = expandEnvVars('${PORT:-8080}', { PORT: '3000' });
+    expect(result).toBe('3000');
+  });
+
+  test('handles empty env value by using default', () => {
+    const result = expandEnvVars('${PORT:-8080}', { PORT: '' });
+    expect(result).toBe('8080');
+  });
+
+  test('works with JSON template strings', () => {
+    const template = '{"provider": "${LLM_PROVIDER}", "dims": ${DIMS}}';
+    const result = expandEnvVars(template, { LLM_PROVIDER: 'openai', DIMS: '1536' });
+    expect(result).toBe('{"provider": "openai", "dims": 1536}');
+  });
+});
 
 describe('buildConfigFromEnv', () => {
   test('returns null when SYSTEM_LLM_PROVIDER is not set', () => {

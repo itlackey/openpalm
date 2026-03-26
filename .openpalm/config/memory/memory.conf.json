@@ -1,0 +1,36 @@
+{
+  "llm": {
+    "provider": "${SYSTEM_LLM_PROVIDER}",
+    "config": {
+      "model": "${SYSTEM_LLM_MODEL}",
+      "apiKey": "${SYSTEM_LLM_API_KEY}",
+      "baseUrl": "${SYSTEM_LLM_BASE_URL}"
+    }
+  },
+  "embedder": {
+    "provider": "${EMBEDDING_PROVIDER}",
+    "config": {
+      "model": "${EMBEDDING_MODEL}",
+      "apiKey": "${EMBEDDING_API_KEY}",
+      "baseUrl": "${EMBEDDING_BASE_URL}",
+      "dimensions": ${EMBEDDING_DIMS}
+    }
+  },
+  "vectorStore": {
+    "provider": "sqlite-vec",
+    "config": {
+      "collectionName": "memory",
+      "dbPath": "/data/memory.db",
+      "dimensions": ${EMBEDDING_DIMS}
+    }
+  },
+  "reranking": {
+    "enabled": ${RERANKING_ENABLED},
+    "provider": "${RERANKING_PROVIDER}",
+    "model": "${RERANKING_MODEL}",
+    "apiKey": "${RERANKING_API_KEY}",
+    "baseUrl": "${RERANKING_BASE_URL}",
+    "topK": ${RERANKING_TOP_K},
+    "topN": ${RERANKING_TOP_N}
+  }
+}
