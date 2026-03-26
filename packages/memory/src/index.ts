@@ -19,6 +19,7 @@ export type {
   MemoryConfig,
   MemoryItem,
   MemoryOperation,
+  RerankingConfig,
   SearchFilters,
   VectorStoreResult,
   LLMResponse,

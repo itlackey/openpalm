@@ -45,10 +45,22 @@ export type VectorStoreProviderConfig = {
   };
 };
 
+export type RerankingConfig = {
+  enabled: boolean;
+  provider?: string;
+  mode?: 'llm' | 'dedicated';
+  model?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  topK?: number;
+  topN?: number;
+};
+
 export type MemoryConfig = {
   llm?: LLMProviderConfig;
   embedder?: EmbedderProviderConfig;
   vectorStore?: VectorStoreProviderConfig;
+  reranking?: RerankingConfig;
   historyDbPath?: string | null;
   customPrompt?: string;
   disableHistory?: boolean;

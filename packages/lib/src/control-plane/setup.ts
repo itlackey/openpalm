@@ -60,6 +60,26 @@ export type SetupSpec = {
 
 // ── Secrets Builder ──────────────────────────────────────────────────────
 
+/**
+ * Map provider id → env var for a custom base URL override.
+ * Allows writeCapabilityVars to resolve non-default endpoints.
+ */
+const PROVIDER_BASE_URL_ENV: Record<string, string> = {
+  openai: "OPENAI_BASE_URL",
+  anthropic: "ANTHROPIC_BASE_URL",
+  groq: "GROQ_BASE_URL",
+  mistral: "MISTRAL_BASE_URL",
+  together: "TOGETHER_BASE_URL",
+  deepseek: "DEEPSEEK_BASE_URL",
+  xai: "XAI_BASE_URL",
+  google: "GOOGLE_BASE_URL",
+  huggingface: "HF_BASE_URL",
+  ollama: "OLLAMA_BASE_URL",
+  lmstudio: "LMSTUDIO_BASE_URL",
+  "model-runner": "MODEL_RUNNER_BASE_URL",
+  "openai-compatible": "OPENAI_COMPATIBLE_BASE_URL",
+};
+
 export function buildSecretsFromSetup(
   capabilities: SetupCapability[],
   owner?: { name?: string; email?: string },
@@ -75,12 +95,42 @@ export function buildSecretsFromSetup(
       const envVar = PROVIDER_KEY_MAP[cap.provider];
       if (envVar) updates[envVar] = cap.apiKey;
     }
-    // Persist user-configured base URL so writeCapabilityVars can read it
-    if (cap.baseUrl && cap.provider === "openai") {
-      updates.OPENAI_BASE_URL = cap.baseUrl;
+    // Persist user-configured base URL for any provider so writeCapabilityVars can resolve it
+    if (cap.baseUrl) {
+      const urlEnv = PROVIDER_BASE_URL_ENV[cap.provider];
+      if (urlEnv) updates[urlEnv] = cap.baseUrl;
     }
   }
   return updates;
+}
+
+/**
+ * Read auth.json and extract API keys for OAuth-authenticated providers.
+ * This fills the gap where OAuth auth writes tokens to auth.json but
+ * not to stack.env — the memory service needs them as env vars.
+ */
+export function extractAuthJsonKeys(vaultDir: string): Record<string, string> {
+  const authJsonPath = `${vaultDir}/stack/auth.json`;
+  if (!existsSync(authJsonPath)) return {};
+  try {
+    const raw = readFileSync(authJsonPath, "utf-8").trim();
+    if (!raw || raw === "{}") return {};
+    const auth = JSON.parse(raw) as Record<string, unknown>;
+    const updates: Record<string, string> = {};
+    for (const [provider, entry] of Object.entries(auth)) {
+      if (!entry || typeof entry !== "object") continue;
+      const record = entry as Record<string, unknown>;
+      // OpenCode stores API keys as { token: "..." } or { apiKey: "..." }
+      const token = (record.token ?? record.apiKey ?? record.api_key ?? record.key) as string | undefined;
+      if (token && typeof token === "string") {
+        const envVar = PROVIDER_KEY_MAP[provider];
+        if (envVar) updates[envVar] = token;
+      }
+    }
+    return updates;
+  } catch {
+    return {};
+  }
 }
 
 export function buildSystemSecretsFromSetup(
@@ -150,6 +200,14 @@ export async function performSetup(
     ? capabilities.map((c) => c.provider === "ollama" ? { ...c, baseUrl: OLLAMA_INSTACK_URL } : c)
     : capabilities;
   const updates = buildSecretsFromSetup(effectiveCapabilities, owner);
+
+  // Merge OAuth-authenticated provider keys from auth.json
+  // (OAuth flows store tokens in auth.json, not in the setup payload)
+  const oauthKeys = extractAuthJsonKeys(state.vaultDir);
+  for (const [key, value] of Object.entries(oauthKeys)) {
+    // Only fill in keys that weren't already provided via API key entry
+    if (!updates[key]) updates[key] = value;
+  }
 
   // Persist vault env files
   try {

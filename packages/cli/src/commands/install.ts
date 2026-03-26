@@ -264,7 +264,15 @@ async function runWizardInstall(configDir: string, noOpen: boolean, noStart = fa
     wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Starting...'));
     await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
     wizard.markAllRunning();
-    console.log(JSON.stringify({ ok: true, mode: 'install', services: allServices }, null, 2));
+    console.log('\n✓ All services are running:');
+    for (const svc of allServices) {
+      console.log(`  • ${svc}`);
+    }
+    console.log(`\n  Assistant:  http://localhost:${3800}`);
+    console.log(`  Admin:      http://localhost:${3880}`);
+    console.log(`  Memory API: http://localhost:${3898}`);
+    console.log(`  Guardian:   http://localhost:${3899}`);
+    console.log('');
     await new Promise(resolve => setTimeout(resolve, 3000));
   } catch (err) {
     wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'error', String(err)));

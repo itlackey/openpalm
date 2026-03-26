@@ -9,7 +9,7 @@
 export const LLM_PROVIDERS = [
   "openai", "anthropic", "ollama", "groq", "together",
   "mistral", "deepseek", "xai", "lmstudio", "model-runner",
-  "google", "huggingface"
+  "google", "huggingface", "openai-compatible",
 ] as const;
 
 /** Default base URLs per provider. */

@@ -10,8 +10,8 @@ import { dirname, join } from 'node:path';
  * Map an OpenPalm provider name to a @openpalm/memory adapter name.
  * Memory only supports: openai, ollama, lmstudio.
  * All OpenAI-compatible cloud providers (groq, mistral, deepseek, etc.)
- * work through the openai adapter since the base URL and API key are
- * already resolved by the control plane.
+ * and custom/local providers work through the openai adapter since
+ * the base URL and API key are already resolved by the control plane.
  */
 function memoryProviderName(provider: string): string {
   switch (provider) {
@@ -19,6 +19,8 @@ function memoryProviderName(provider: string): string {
       return 'ollama';
     case 'lmstudio':
       return 'lmstudio';
+    case 'openai-compatible':
+      return 'openai';
     default:
       return 'openai';
   }
@@ -48,7 +50,7 @@ export function buildConfigFromEnv(
     console.log(`[config] Using env-based config: provider=${provider}, model=${env.SYSTEM_LLM_MODEL ?? 'default'}, embedder=${env.EMBEDDING_PROVIDER ?? provider}/${env.EMBEDDING_MODEL ?? 'default'}`);
   }
 
-  return {
+  const config: MemoryConfig = {
     llm: {
       provider: memoryProviderName(provider),
       config: {
@@ -72,4 +74,19 @@ export function buildConfigFromEnv(
     },
     historyDbPath: null,
   };
+
+  // Add reranking config if enabled
+  if (env.RERANKING_ENABLED === 'true' && env.RERANKING_PROVIDER) {
+    config.reranking = {
+      enabled: true,
+      provider: env.RERANKING_PROVIDER,
+      model: env.RERANKING_MODEL || undefined,
+      apiKey: env.RERANKING_API_KEY || undefined,
+      baseUrl: env.RERANKING_BASE_URL || undefined,
+      topK: env.RERANKING_TOP_K ? parseInt(env.RERANKING_TOP_K, 10) : undefined,
+      topN: env.RERANKING_TOP_N ? parseInt(env.RERANKING_TOP_N, 10) : undefined,
+    };
+  }
+
+  return config;
 }
