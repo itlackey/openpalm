@@ -178,6 +178,7 @@ services:
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
       PORT: "8090"
+      HOME: /openpalm
       OP_HOME: /openpalm
       OP_ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
       OP_ADMIN_API_URL: ${OP_ADMIN_API_URL:-}

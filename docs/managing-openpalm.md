@@ -50,7 +50,8 @@ Keep this split in mind:
 │   ├── user/
 │   │   └── user.env                  # Optional user extension env
 │   └── stack/
-│       └── stack.env                 # System-managed secrets: admin token, HMAC keys, ports
+│       ├── stack.env                 # System-managed secrets: admin token, ports, API keys
+│       └── guardian.env              # Channel HMAC secrets (compose marks required: false)
 │
 ├── config/
 │   ├── automations/                  # Scheduled automations (drop files here)
@@ -100,24 +101,24 @@ normally edit them manually.
 consume the changed values. The standard wrapper includes both
 `vault/stack/stack.env` and `vault/user/user.env` automatically.
 
-LLM provider keys and related connection settings can also be managed via the
-Connections API or the Connections settings page in the admin UI -- no manual
+LLM provider keys and related capability settings can also be managed via the
+Capabilities API or the Capabilities settings page in the admin UI -- no manual
 file editing required. The API patches `vault/stack/stack.env` in-place, preserving all
 other keys.
 
 ```bash
-# View current connection settings (keys are masked in the response)
-curl http://localhost:3880/admin/connections \
+# View current capability settings (keys are masked in the response)
+curl http://localhost:3880/admin/capabilities \
   -H "x-admin-token: $OP_ADMIN_TOKEN"
 
 # Update one or more keys
-curl -X POST http://localhost:3880/admin/connections \
+curl -X POST http://localhost:3880/admin/capabilities \
   -H "x-admin-token: $OP_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"provider":"openai","apiKey":"sk-...","systemModel":"gpt-4o","embeddingModel":"text-embedding-3-small","embeddingDims":1536,"memoryUserId":"default_user"}'
 
 # Check whether stack.yml has non-empty LLM and embedding assignments
-curl http://localhost:3880/admin/connections/status \
+curl http://localhost:3880/admin/capabilities/status \
   -H "x-admin-token: $OP_ADMIN_TOKEN"
 ```
 
@@ -307,9 +308,11 @@ write to the same config files.
 The running stack is whatever compose file set you launch. To change it:
 
 1. Edit files under `~/.openpalm/config/`, `~/.openpalm/vault/`, or `~/.openpalm/stack/`
-2. Rerun `docker compose` with the desired `-f` list
+2. Rerun compose: `op up -d` (or the full `docker compose` command)
 
-For the full compose command reference, see the [Manual Compose Runbook](operations/manual-compose-runbook.md).
+The `op` helper function auto-discovers enabled addons under `stack/addons/`.
+For the full compose command reference and helper setup, see the
+[Manual Compose Runbook](operations/manual-compose-runbook.md).
 
 Lifecycle operations remain non-destructive for existing user files in `config/`.
 

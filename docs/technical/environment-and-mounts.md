@@ -200,13 +200,15 @@ Mounts:
 | Host path | Container path | Mode | Purpose |
 |---|---|---|---|
 | `$OP_HOME/config` | `/openpalm/config` | ro | Automation definitions and config |
+| `$OP_HOME/logs` | `/openpalm/logs` | rw | Automation and service logs |
+| `$OP_HOME/data` | `/openpalm/data` | rw | Automation state and service data |
 
 Ports and networks:
 
 | Item | Value |
 |---|---|
 | Container port | `8090` |
-| Host bind | none |
+| Host bind | none (internal only on `assistant_net`) |
 | Networks | `assistant_net` |
 
 Key env:
