@@ -114,43 +114,45 @@ async function navigateToCapabilities(page: import('@playwright/test').Page) {
 	await page.evaluate((key) => localStorage.setItem(key, 'test-token'), TOKEN_KEY);
 	await page.reload();
 	await page.waitForSelector('nav', { timeout: 10000 });
-	await page.getByRole('tab', { name: /capabilities/i }).click();
-	// Wait for the capabilities tab h2 heading
-	await expect(page.locator('h2:has-text("Capabilities")')).toBeVisible({ timeout: 10000 });
+	await page.getByRole('tab', { name: /capabilities/i }).first().click();
+	// Wait for the sub-tab pills to appear (Providers, Capabilities, Voice, Memory)
+	await expect(page.getByRole('tab', { name: 'Capabilities' }).last()).toBeVisible({ timeout: 10000 });
 }
 
-/** Open the "Add provider" form within the Capabilities tab. */
-async function openAddProviderForm(page: import('@playwright/test').Page) {
-	await page.getByRole('button', { name: 'Add provider' }).click();
-	// Wait for the form heading to appear
-	await expect(page.locator('h3:has-text("Add provider")')).toBeVisible({ timeout: 5000 });
+/** Navigate to the Capabilities sub-tab within the capabilities main tab. */
+async function navigateToCapabilitiesSubTab(page: import('@playwright/test').Page) {
+	await navigateToCapabilities(page);
+	await page.getByRole('tab', { name: 'Capabilities' }).last().click();
+}
+
+/** Navigate to the Providers sub-tab and click Custom Endpoint. */
+async function openCustomEndpointForm(page: import('@playwright/test').Page) {
+	await navigateToCapabilities(page);
+	await page.getByRole('tab', { name: 'Providers' }).click();
+	await page.getByRole('button', { name: /custom endpoint/i }).click();
 }
 
 test.describe('@mocked Capabilities Tab UI', () => {
-	test('capabilities tab shows Capabilities list and Memory Settings sections', async ({ page }) => {
+	test('capabilities tab shows sub-tabs and model assignments', async ({ page }) => {
 		await setupConsoleMocks(page);
 		await navigateToCapabilities(page);
 
-		// Verify the top-level Capabilities heading is visible
-		await expect(page.locator('h2:has-text("Capabilities")')).toBeVisible();
+		// Verify sub-tab pills are visible
+		await expect(page.getByRole('tab', { name: 'Providers' })).toBeVisible();
+		await expect(page.getByRole('tab', { name: 'Memory' })).toBeVisible();
 
-		// Verify the Capabilities panel heading
-		await expect(page.locator('h3:has-text("Capabilities")')).toBeVisible();
+		// Switch to Capabilities sub-tab — verify it renders (may show empty state or form)
+		await page.getByRole('tab', { name: 'Capabilities' }).last().click();
+		await expect(page.locator('.sub-panel')).toBeVisible({ timeout: 5000 });
 
-		// Memory settings are now behind a "Memory" tab in the settings panel
+		// Switch to Memory sub-tab
 		await page.getByRole('tab', { name: 'Memory' }).click();
 
-		// Verify Memory User ID field is present (the one remaining persisted field)
-		await expect(page.locator('#conn-memory-user-id')).toBeVisible();
+		// Verify Memory User ID field is present
+		await expect(page.locator('#mem-u')).toBeVisible();
 
 		// Verify loaded Memory User ID from mocked capabilities
-		await expect(page.locator('#conn-memory-user-id')).toHaveValue('default_user', { timeout: 5000 });
-
-		// Verify the Add provider button is present
-		await expect(page.getByRole('button', { name: 'Add provider' })).toBeVisible();
-
-		// Verify the provider display name (derived from provider) is shown
-		await expect(page.locator('.conn-name', { hasText: 'Openai' }).first()).toBeVisible({ timeout: 5000 });
+		await expect(page.locator('#mem-u')).toHaveValue('default_user', { timeout: 5000 });
 	});
 
 	test('saving memory settings sends correct data', async ({ page }) => {
@@ -158,14 +160,14 @@ test.describe('@mocked Capabilities Tab UI', () => {
 
 		await setupConsoleMocks(page);
 
-		// Override POST /admin/capabilities to capture the payload
-		await page.route('**/admin/capabilities', (route) => {
+		// Override capabilities endpoints to capture the save payload
+		await page.route('**/admin/capabilities/assignments', (route) => {
 			if (route.request().method() === 'POST') {
 				savedPayload = JSON.parse(route.request().postData() ?? '{}');
 				return route.fulfill({
 					status: 200,
 					contentType: 'application/json',
-					body: JSON.stringify({ ok: true, pushed: true })
+					body: JSON.stringify({ ok: true, capabilities: savedPayload.capabilities ?? {} })
 				});
 			}
 			if (route.request().method() === 'GET') {
@@ -177,12 +179,24 @@ test.describe('@mocked Capabilities Tab UI', () => {
 							llm: 'openai/gpt-4o-mini',
 							embeddings: { provider: 'openai', model: 'text-embedding-3-small', dims: 1536 },
 							memory: { userId: 'default_user', customInstructions: '' }
-						},
-						secrets: {
-							OPENAI_API_KEY: 'sk-****1234',
-							OWNER_NAME: '',
-							OWNER_EMAIL: ''
 						}
+					})
+				});
+			}
+			return route.continue();
+		});
+		await page.route('**/admin/capabilities', (route) => {
+			if (route.request().method() === 'GET') {
+				return route.fulfill({
+					status: 200,
+					contentType: 'application/json',
+					body: JSON.stringify({
+						capabilities: {
+							llm: 'openai/gpt-4o-mini',
+							embeddings: { provider: 'openai', model: 'text-embedding-3-small', dims: 1536 },
+							memory: { userId: 'default_user', customInstructions: '' }
+						},
+						secrets: { OPENAI_API_KEY: 'sk-****1234' }
 					})
 				});
 			}
@@ -191,35 +205,28 @@ test.describe('@mocked Capabilities Tab UI', () => {
 
 		await navigateToCapabilities(page);
 
-		// Switch to the Memory tab in the settings panel
+		// Switch to the Memory sub-tab
 		await page.getByRole('tab', { name: 'Memory' }).click();
 
 		// Update the Memory User ID field
-		const userIdField = page.locator('#conn-memory-user-id');
+		const userIdField = page.locator('#mem-u');
 		await userIdField.clear();
 		await userIdField.fill('test_user');
 
-		// Save via the Save button in the panel header (visible when Memory tab is active)
-		await page.locator('.panel-header-actions').getByRole('button', { name: 'Save' }).click();
+		// Save via the Save Changes button
+		await page.getByRole('button', { name: 'Save Changes' }).click();
 
-		// Verify success indicator (header shows "Saved" status)
-		await expect(page.locator('.header-save-status--success')).toBeVisible({ timeout: 5000 });
+		// Verify success indicator
+		await expect(page.locator('.feedback--success')).toBeVisible({ timeout: 5000 });
 
-		// Verify the posted payload has the flat format
+		// Verify the posted payload uses the assignments format
 		expect(savedPayload).not.toBeNull();
 		if (!savedPayload) {
-			throw new Error('Expected /admin/capabilities payload to be captured');
+			throw new Error('Expected /admin/capabilities/assignments payload to be captured');
 		}
-		const payload = savedPayload as {
-			provider?: string;
-			memoryUserId?: string;
-			systemModel?: string;
-		};
-		// The flat payload includes provider derived from capabilities
-		expect(typeof payload.provider).toBe('string');
-		expect(payload.provider).toBe('openai');
-		// memoryUserId should reflect what was typed
-		expect(payload.memoryUserId).toBe('test_user');
+		const payload = savedPayload as { capabilities?: { memory?: { userId?: string } } };
+		// memory.userId should reflect what was typed
+		expect(payload.capabilities?.memory?.userId).toBe('test_user');
 	});
 
 });
@@ -422,96 +429,64 @@ test.describe('Memory Models API', () => {
 });
 
 test.describe('@mocked Capability Test & Model Selection UI', () => {
-	test('Add provider form shows provider and base URL fields', async ({ page }) => {
-		// Previously "Test Connection button fetches models from provider" — the test was checking
-		// that #conn-provider had value 'openai'. In the refactored UI the provider field lives
-		// inside the CapabilitiesForm panel, which is only shown after clicking "Add provider".
+	test('Custom endpoint form shows URL and API key fields', async ({ page }) => {
+		await setupConsoleMocks(page);
+		await openCustomEndpointForm(page);
+
+		// URL field should be visible
+		await expect(page.locator('#custom-url')).toBeVisible();
+
+		// API key field should be visible
+		await expect(page.locator('#custom-key')).toBeVisible();
+
+		// The "Test Connection" button is present
+		await expect(page.getByRole('button', { name: /test connection/i })).toBeVisible();
+	});
+
+	test('Test connection shows error when endpoint is unreachable', async ({ page }) => {
 		await setupConsoleMocks(page);
 
-		// Mock the models endpoint (may be called on test)
-		await page.route('**/admin/memory/models', (route) =>
+		await page.route('**/admin/capabilities/test', (route) =>
 			route.fulfill({
 				status: 200,
 				contentType: 'application/json',
-				body: JSON.stringify({ models: ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'] })
+				body: JSON.stringify({ ok: false, error: 'Connection refused' })
 			})
 		);
 
-		await navigateToCapabilities(page);
-		await openAddProviderForm(page);
+		await openCustomEndpointForm(page);
 
-		// The provider field (#cf-provider) should default to 'openai'
-		await expect(page.locator('#cf-provider')).toBeVisible();
-		await expect(page.locator('#cf-provider')).toHaveValue('openai');
+		// Fill in a base URL
+		await page.locator('#custom-url').fill('http://localhost:11434/v1');
 
-		// Base URL field should be visible
-		await expect(page.locator('#cf-base-url')).toBeVisible();
+		// Click Test Connection
+		await page.getByRole('button', { name: /test connection/i }).click();
 
-		// The "Test provider" button is present (disabled until URL is filled)
-		await expect(page.getByRole('button', { name: /test provider/i })).toBeVisible();
+		// Wait for error to appear
+		await expect(page.locator('.field-error')).toBeVisible({ timeout: 5000 });
 	});
 
-	test('Test provider shows error when provider is unreachable', async ({ page }) => {
+	test('Test connection shows success and Save button', async ({ page }) => {
 		await setupConsoleMocks(page);
 
-		await page.route('**/admin/memory/models', (route) =>
+		await page.route('**/admin/capabilities/test', (route) =>
 			route.fulfill({
-				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({ models: [], status: 'recoverable_error', reason: 'network', error: 'Connection refused' })
-			})
-		);
-
-		await navigateToCapabilities(page);
-		await openAddProviderForm(page);
-
-		// Fill in a base URL to enable the Test provider button
-		await page.locator('#cf-base-url').fill('http://localhost:11434/v1');
-
-		// Click Test provider
-		await page.getByRole('button', { name: /test provider/i }).click();
-
-		// Wait for error to appear — mapModelDiscoveryError converts the empty-models+error
-		// response into a human-readable string; network errors surface as 'Network error…'
-		await expect(
-			page.locator('.field-error').or(page.getByText(/network error|connection refused|unable to reach/i)).first()
-		).toBeVisible({ timeout: 5000 });
-	});
-
-	test('Test provider populates connected status', async ({ page }) => {
-		let modelCallCount = 0;
-
-		await setupConsoleMocks(page);
-
-		await page.route('**/admin/capabilities/test', (route) => {
-			modelCallCount++;
-			return route.fulfill({
 				status: 200,
 				contentType: 'application/json',
 				body: JSON.stringify({ ok: true, models: ['gpt-4o', 'gpt-4o-mini'] })
-			});
-		});
+			})
+		);
 
-		await navigateToCapabilities(page);
-		await openAddProviderForm(page);
+		await openCustomEndpointForm(page);
 
-		// Capabilities tab now requires API key when the key toggle is enabled.
-		// Keep the flow realistic by enabling it and providing a value.
-		await page.getByRole('checkbox', { name: /requires an api key/i }).check();
-		await page.getByPlaceholder('Paste API key').fill('sk-test');
+		// Fill in a base URL
+		await page.locator('#custom-url').fill('https://api.openai.com/v1');
 
-		// Fill in a base URL to enable the Test provider button
-		await page.locator('#cf-base-url').fill('https://api.openai.com/v1');
+		// Click Test Connection
+		await page.getByRole('button', { name: /test connection/i }).click();
 
-		// Click Test provider
-		await page.getByRole('button', { name: /test provider/i }).click();
-
-		// Wait for capability success — the CapabilitiesForm renders a role="status" span
-		await expect(page.locator('[role="status"]')).toBeVisible({ timeout: 5000 });
-		await expect(page.getByText(/connected/i)).toBeVisible();
-
-		// Verify a model call was made
-		expect(modelCallCount).toBeGreaterThan(0);
+		// Save button should appear after successful test
+		await expect(page.getByRole('button', { name: 'Save' })).toBeVisible({ timeout: 5000 });
 	});
 });
 

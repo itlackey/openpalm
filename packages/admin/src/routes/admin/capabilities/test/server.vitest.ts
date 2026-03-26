@@ -140,25 +140,20 @@ describe('POST /admin/capabilities/test', () => {
     );
   });
 
-  test('blocks cloud metadata IPs (SSRF protection)', async () => {
-    const res = await POST(makeEvent({ baseUrl: 'http://169.254.169.254/latest/meta-data' }));
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toBe('blocked_url');
-  });
+  // SSRF blocking was intentionally removed to allow localhost probes for local providers.
+  // See: "SSRF removed from /admin/capabilities/test/+server.ts"
 
-  test('blocks loopback IPs (wrong target inside Docker)', async () => {
+  test('allows localhost probes (SSRF blocking removed)', async () => {
+    vi.mocked(fetchProviderModels).mockResolvedValueOnce({
+      models: [],
+      status: 'error',
+      reason: 'network',
+      error: 'Connection refused',
+    });
     const res = await POST(makeEvent({ baseUrl: 'http://127.0.0.1:1234/v1' }));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.error).toBe('blocked_url');
-  });
-
-  test('blocks Docker service names (SSRF protection)', async () => {
-    const res = await POST(makeEvent({ baseUrl: 'http://memory:8765' }));
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toBe('blocked_url');
+    expect(body.ok).toBe(false);
   });
 
   test('allows host.docker.internal (host services)', async () => {
