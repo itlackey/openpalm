@@ -166,6 +166,7 @@ services:
       OPENCODE_SERVER_PASSWORD: ${OP_OPENCODE_PASSWORD:-}
       MEMORY_API_URL: http://memory:8765
       MEMORY_AUTH_TOKEN: ${OP_MEMORY_TOKEN:-}
+      MEMORY_USER_ID: ${MEMORY_USER_ID:-default_user}
     volumes:
       - ${OP_HOME}/config:/openpalm/config:ro
       - ${OP_HOME}/logs:/openpalm/logs
