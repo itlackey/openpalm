@@ -167,10 +167,51 @@
             </div>
           </div>
 
-          <div class="field-group">
-            <label for="memory-user-id">Memory User ID</label>
-            <input id="memory-user-id" type="text" placeholder="default_user">
-            <p class="field-hint">Identifies the memory owner. Defaults to your email or "default_user".</p>
+          <!-- Memory Settings -->
+          <div class="options-section">
+            <h3 class="options-section-title">Memory</h3>
+            <p class="options-section-desc">Configure how your assistant remembers context.</p>
+
+            <div class="field-group">
+              <label for="memory-user-id">Memory User ID</label>
+              <input id="memory-user-id" type="text" placeholder="default_user">
+              <p class="field-hint">Identifies the memory owner. Defaults to your name or "default_user".</p>
+            </div>
+
+            <div class="addon-toggle-row">
+              <label class="addon-toggle-label">
+                <input type="checkbox" id="reranking-enabled">
+                <span class="addon-label-text">Enable memory reranking</span>
+              </label>
+              <span class="addon-help">Improves memory recall by reranking search results using an LLM. Uses the chat model by default.</span>
+            </div>
+
+            <div class="reranking-options hidden" id="reranking-options">
+              <div class="field-group">
+                <label for="reranking-mode">Reranking Mode</label>
+                <select id="reranking-mode" class="field-select">
+                  <option value="llm" selected>LLM-based (use chat model)</option>
+                  <option value="dedicated">Dedicated reranker model</option>
+                </select>
+              </div>
+              <div class="field-group hidden" id="reranking-model-group">
+                <label for="reranking-model">Reranking Model</label>
+                <input id="reranking-model" type="text" placeholder="e.g. BAAI/bge-reranker-v2-m3">
+                <p class="field-hint">Model name for the dedicated reranker.</p>
+              </div>
+              <div class="field-row">
+                <div class="field-group field-group-half">
+                  <label for="reranking-top-k">Top K (candidates)</label>
+                  <input id="reranking-top-k" type="number" min="1" max="100" value="20" placeholder="20">
+                  <p class="field-hint">Number of candidates to rerank.</p>
+                </div>
+                <div class="field-group field-group-half">
+                  <label for="reranking-top-n">Top N (results)</label>
+                  <input id="reranking-top-n" type="number" min="1" max="50" value="5" placeholder="5">
+                  <p class="field-hint">Final results returned after reranking.</p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div id="step4-error" class="field-error hidden" role="alert"></div>
@@ -261,7 +302,7 @@
             <h2>Setup Complete</h2>
             <p class="done-subtitle">Your OpenPalm stack is up and running.</p>
             <ul class="service-list" id="deploy-service-list"></ul>
-            <a href="http://localhost:4096" class="btn btn-primary">Open Console</a>
+            <a href="http://localhost:3800" class="btn btn-primary" target="_blank" rel="noopener">Open Console</a>
           </div>
 
           <!-- Deploy error actions -->

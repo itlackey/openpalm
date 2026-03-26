@@ -49,6 +49,8 @@ import openvikingSchema from "../../../../.openpalm/registry/addons/openviking/.
 // @ts-ignore — Bun text import
 import openvikingConfig from "../../../../.openpalm/registry/addons/openviking/config/ov.conf" with { type: "text" };
 // @ts-ignore — Bun text import
+import memoryConfigTemplate from "../../../../.openpalm/config/memory/memory.conf.json" with { type: "text" };
+// @ts-ignore — Bun text import
 import cleanupLogsAutomation from "../../../../.openpalm/registry/automations/cleanup-logs.yml" with { type: "text" };
 // @ts-ignore — Bun text import
 import cleanupDataAutomation from "../../../../.openpalm/registry/automations/cleanup-data.yml" with { type: "text" };
@@ -82,6 +84,7 @@ export const EMBEDDED_ASSETS: Record<string, string> = {
   "registry/addons/openviking/compose.yml": openvikingCompose,
   "registry/addons/openviking/.env.schema": openvikingSchema,
   "registry/addons/openviking/config/ov.conf": openvikingConfig,
+  "config/memory/memory.conf.json": memoryConfigTemplate,
   "registry/automations/cleanup-logs.yml": cleanupLogsAutomation,
   "registry/automations/cleanup-data.yml": cleanupDataAutomation,
   "registry/automations/validate-config.yml": validateConfigAutomation,

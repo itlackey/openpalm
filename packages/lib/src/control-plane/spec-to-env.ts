@@ -80,11 +80,29 @@ export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
     return url.endsWith("/v1") ? url : `${url.replace(/\/+$/, "")}/v1`;
   };
 
+  /** Map provider → env var for user-configured base URL overrides. */
+  const BASE_URL_ENV_MAP: Record<string, string> = {
+    openai: "OPENAI_BASE_URL",
+    anthropic: "ANTHROPIC_BASE_URL",
+    groq: "GROQ_BASE_URL",
+    mistral: "MISTRAL_BASE_URL",
+    together: "TOGETHER_BASE_URL",
+    deepseek: "DEEPSEEK_BASE_URL",
+    xai: "XAI_BASE_URL",
+    google: "GOOGLE_BASE_URL",
+    huggingface: "HF_BASE_URL",
+    ollama: "OLLAMA_BASE_URL",
+    lmstudio: "LMSTUDIO_BASE_URL",
+    "model-runner": "MODEL_RUNNER_BASE_URL",
+    "openai-compatible": "OPENAI_COMPATIBLE_BASE_URL",
+  };
+
   const resolveUrl = (provider: string): string => {
     if (provider === "ollama" && listEnabledAddonIds(dirname(vaultDir)).includes("ollama")) return OLLAMA_INSTACK_URL;
-    // Check stack.env for a user-configured base URL override (openai provider)
-    if (provider === "openai" && stackEnv.OPENAI_BASE_URL) {
-      return ensureV1(stackEnv.OPENAI_BASE_URL, provider);
+    // Check stack.env for a user-configured base URL override for any provider
+    const urlEnvKey = BASE_URL_ENV_MAP[provider];
+    if (urlEnvKey && stackEnv[urlEnvKey]) {
+      return ensureV1(stackEnv[urlEnvKey], provider);
     }
     const defaultUrl = PROVIDER_DEFAULT_URLS[provider] || "";
     return ensureV1(defaultUrl, provider);

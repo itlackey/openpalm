@@ -1,12 +1,13 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "openpalm",
     },
     "core/guardian": {
       "name": "@openpalm/guardian",
-      "version": "0.9.3",
+      "version": "0.10.0-rc1",
       "dependencies": {
         "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
         "dotenv": "^16.4.7",
@@ -22,7 +23,7 @@
     },
     "packages/admin": {
       "name": "@openpalm/admin",
-      "version": "0.9.3",
+      "version": "0.10.0-rc1",
       "dependencies": {
         "@openpalm/lib": "workspace:*",
         "croner": "^9.0.0",

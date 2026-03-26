@@ -392,6 +392,22 @@ function buildPayload() {
     payload.spec.capabilities.slm = small.connId + "/" + small.model;
   }
 
+  // Add reranking configuration if enabled
+  var rerankEnabled = $("reranking-enabled") && $("reranking-enabled").checked;
+  if (rerankEnabled) {
+    var rerankMode = $("reranking-mode") ? $("reranking-mode").value : "llm";
+    var rerankModel = $("reranking-model") ? ($("reranking-model").value || "").trim() : "";
+    var topK = $("reranking-top-k") ? parseInt($("reranking-top-k").value, 10) : 20;
+    var topN = $("reranking-top-n") ? parseInt($("reranking-top-n").value, 10) : 5;
+    payload.spec.capabilities.reranking = {
+      enabled: true,
+      mode: rerankMode,
+      model: rerankMode === "dedicated" ? rerankModel : "",
+      topK: topK || 20,
+      topN: topN || 5,
+    };
+  }
+
   // Add owner if provided
   if (ownerName || ownerEmail) {
     payload.owner = { name: ownerName || undefined, email: ownerEmail || undefined };

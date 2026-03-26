@@ -10,6 +10,7 @@ import type {
   MemoryItem,
   MemoryOperation,
   Message,
+  RerankingConfig,
   SearchFilters,
 } from './types.js';
 import type { LLM } from './llms/base.js';
@@ -54,6 +55,8 @@ export class Memory {
   private vectorStore: VectorStore;
   private historyManager: HistoryManager | null;
   private customPrompt?: string;
+  private rerankingConfig?: RerankingConfig;
+  private rerankLlm?: LLM;
   private initialized = false;
 
   constructor(config: MemoryConfig = {}) {
@@ -63,6 +66,24 @@ export class Memory {
     this.embedder = createEmbedder(resolved.embedder);
     this.vectorStore = createVectorStore(resolved.vectorStore);
     this.customPrompt = resolved.customPrompt;
+
+    // Set up reranking if configured
+    if (config.reranking?.enabled) {
+      this.rerankingConfig = config.reranking;
+      // For LLM-based reranking, use a dedicated LLM instance or the main one
+      if (config.reranking.mode === 'dedicated' && config.reranking.model) {
+        this.rerankLlm = createLLM({
+          provider: config.reranking.provider || resolved.llm.provider,
+          config: {
+            model: config.reranking.model,
+            apiKey: config.reranking.apiKey || resolved.llm.config?.apiKey,
+            baseUrl: config.reranking.baseUrl || resolved.llm.config?.baseUrl,
+            temperature: 0,
+            maxTokens: 500,
+          },
+        });
+      }
+    }
 
     // History shares the vector store's DB when using sqlite-vec + no explicit path
     if (resolved.disableHistory) {
@@ -219,14 +240,74 @@ export class Memory {
     await this.initialize();
     const { userId, agentId, runId, limit = 10 } = opts;
 
+    // When reranking is enabled, fetch more candidates (topK) then rerank to topN
+    const fetchLimit = this.rerankingConfig?.enabled
+      ? (this.rerankingConfig.topK ?? Math.max(limit * 4, 20))
+      : limit;
+
     const embedding = await this.embedder.embed(query);
-    const results = await this.vectorStore.search(embedding, limit, {
+    const results = await this.vectorStore.search(embedding, fetchLimit, {
       userId,
       agentId,
       runId,
     });
 
-    return results.map(vectorResultToMemoryItem);
+    let items = results.map(vectorResultToMemoryItem);
+
+    // Apply LLM-based reranking if enabled
+    if (this.rerankingConfig?.enabled && items.length > 0) {
+      const topN = this.rerankingConfig.topN ?? limit;
+      items = await this.rerankResults(query, items, topN);
+    }
+
+    return items.slice(0, limit);
+  }
+
+  /**
+   * Rerank memory search results using the LLM to score relevance.
+   * Sends the query and candidate memories to the LLM, which returns
+   * ranked indices. Falls back to the original order on errors.
+   */
+  private async rerankResults(
+    query: string,
+    candidates: MemoryItem[],
+    topN: number,
+  ): Promise<MemoryItem[]> {
+    const llm = this.rerankLlm ?? this.llm;
+    try {
+      const numbered = candidates
+        .map((item, idx) => `[${idx}] ${item.content}`)
+        .join('\n');
+
+      const response = await llm.generateResponse([
+        {
+          role: 'system',
+          content: `You are a relevance ranker. Given a query and numbered text passages, return ONLY a JSON array of passage indices ordered by relevance to the query (most relevant first). Return at most ${topN} indices. Example: [2, 0, 5]`,
+        },
+        {
+          role: 'user',
+          content: `Query: ${query}\n\nPassages:\n${numbered}`,
+        },
+      ]);
+
+      const match = response.content.match(/\[[\d,\s]+\]/);
+      if (!match) return candidates.slice(0, topN);
+
+      const indices: number[] = JSON.parse(match[0]);
+      const reranked: MemoryItem[] = [];
+      const seen = new Set<number>();
+      for (const idx of indices) {
+        if (idx >= 0 && idx < candidates.length && !seen.has(idx)) {
+          reranked.push(candidates[idx]);
+          seen.add(idx);
+          if (reranked.length >= topN) break;
+        }
+      }
+      return reranked.length > 0 ? reranked : candidates.slice(0, topN);
+    } catch {
+      // Fallback: return original order truncated to topN
+      return candidates.slice(0, topN);
+    }
   }
 
   /** Get a single memory by ID. */

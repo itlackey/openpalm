@@ -34,6 +34,8 @@ services:
 
   # ── Memory ─────────────────────────────────────────────────────────
   # Lightweight Bun.js wrapper around @openpalm/memory with sqlite-vec.
+  # Configuration uses ${VAR} placeholders in memory.conf.json, expanded
+  # at startup from the environment variables below (same pattern as OpenViking).
   memory:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/memory:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
@@ -42,6 +44,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       MEMORY_DATA_DIR: /data
+      MEMORY_CONFIG_PATH: /etc/memory/memory.conf.json
       HOME: /data
       MEM0_DIR: /data/.mem0
       MEMORY_AUTH_TOKEN: ${OP_MEMORY_TOKEN:-}
@@ -55,10 +58,18 @@ services:
       EMBEDDING_BASE_URL: ${OP_CAP_EMBEDDINGS_BASE_URL:-}
       EMBEDDING_API_KEY: ${OP_CAP_EMBEDDINGS_API_KEY:-}
       EMBEDDING_DIMS: ${OP_CAP_EMBEDDINGS_DIMS:-}
+      RERANKING_ENABLED: ${OP_CAP_RERANKING_PROVIDER:+true}
+      RERANKING_PROVIDER: ${OP_CAP_RERANKING_PROVIDER:-}
+      RERANKING_MODEL: ${OP_CAP_RERANKING_MODEL:-}
+      RERANKING_BASE_URL: ${OP_CAP_RERANKING_BASE_URL:-}
+      RERANKING_API_KEY: ${OP_CAP_RERANKING_API_KEY:-}
+      RERANKING_TOP_K: ${OP_CAP_RERANKING_TOP_K:-}
+      RERANKING_TOP_N: ${OP_CAP_RERANKING_TOP_N:-}
     ports:
       - "${OP_MEMORY_BIND_ADDRESS:-127.0.0.1}:${OP_MEMORY_PORT:-3898}:8765"
     volumes:
       - ${OP_HOME}/data/memory:/data
+      - ${OP_HOME}/config/memory/memory.conf.json:/etc/memory/memory.conf.json:ro
     networks: [ assistant_net ]
     depends_on:
       init:

@@ -182,11 +182,12 @@ var opencodeAuth = {};
 /** Provider filter query for OpenCode mode */
 var ocFilterQuery = "";
 
-/** Local runtimes that aren't in OpenCode's cloud registry but run on the host */
+/** Local runtimes and custom providers that aren't in OpenCode's cloud registry */
 var LOCAL_PROVIDERS = [
   { id: "ollama", name: "Ollama", env: [], models: {}, localUrl: "http://localhost:11434" },
   { id: "model-runner", name: "Docker Model Runner", env: [], models: {}, localUrl: "http://localhost:12434" },
   { id: "lmstudio", name: "LM Studio", env: [], models: {}, localUrl: "http://localhost:1234" },
+  { id: "openai-compatible", name: "Custom (OpenAI-compatible)", env: [], models: {}, localUrl: "" },
 ];
 
 /** Max visible models before filter is shown */

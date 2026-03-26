@@ -164,6 +164,18 @@ function renderOpenCodeAuth(ocp, authMethods, envVars) {
     html += '<button class="auth-btn auth-btn-verify" data-oc-auth-api="' + esc(ocp.id) + '" onclick="event.stopPropagation()" ' + (st.verifying ? 'disabled' : '') + '>';
     html += st.verifying ? 'Connecting...' : 'Connect';
     html += '</button></div>';
+  } else if (ocp.id === "openai-compatible") {
+    // Custom OpenAI-compatible endpoint: URL (required) + optional API key
+    html += '<div class="auth-row" style="margin-bottom:6px">';
+    html += '<input type="url" placeholder="https://your-server.example/v1" value="' + esc(st.baseUrl || '') + '" data-auth-url="' + esc(ocp.id) + '" onclick="event.stopPropagation()">';
+    html += '</div>';
+    html += '<div class="auth-row" style="margin-bottom:6px">';
+    html += '<input type="password" placeholder="API key (optional)" value="' + esc(st.apiKey || '') + '" data-auth-key="' + esc(ocp.id) + '" onclick="event.stopPropagation()">';
+    html += '</div>';
+    html += '<div class="auth-row">';
+    html += '<button class="auth-btn auth-btn-verify" data-oc-custom-verify="' + esc(ocp.id) + '" onclick="event.stopPropagation()" ' + (st.verifying ? 'disabled' : '') + '>';
+    html += st.verifying ? 'Checking...' : 'Connect';
+    html += '</button></div>';
   } else {
     html += '<div style="padding:4px 0;color:var(--color-text-secondary);font-size:var(--text-xs)">No authentication required</div>';
     html += '<button class="auth-btn auth-btn-detect" data-oc-auth-none="' + esc(ocp.id) + '" onclick="event.stopPropagation()">Mark as ready</button>';
@@ -266,6 +278,23 @@ function bindOpenCodeProviderEvents() {
       var st = providerState[id];
       if (st) { st.verified = true; st.error = false; }
       renderOpenCodeProviderGrid();
+    });
+  });
+
+  // URL inputs for custom/local providers in OpenCode mode
+  document.querySelectorAll("[data-auth-url]").forEach(function (el) {
+    el.addEventListener("input", function () {
+      var id = el.dataset.authUrl;
+      if (providerState[id]) providerState[id].baseUrl = el.value;
+    });
+    el.addEventListener("click", function (e) { e.stopPropagation(); });
+  });
+
+  // Custom provider verify button (uses fallback model fetch)
+  document.querySelectorAll("[data-oc-custom-verify]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      var id = el.dataset.ocCustomVerify;
+      verifyProvider(id);
     });
   });
 }
@@ -816,6 +845,30 @@ function initStep4() {
     memInput.value = name ? name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") : "default_user";
   }
 
+  // Reranking toggle
+  var rerankCb = $("reranking-enabled");
+  var rerankOpts = $("reranking-options");
+  var rerankMode = $("reranking-mode");
+  var rerankModelGroup = $("reranking-model-group");
+
+  if (rerankCb) {
+    rerankCb.addEventListener("change", function () {
+      if (rerankCb.checked) show(rerankOpts);
+      else hide(rerankOpts);
+    });
+    // Restore state
+    if (rerankCb.checked) show(rerankOpts);
+  }
+
+  if (rerankMode) {
+    rerankMode.addEventListener("change", function () {
+      if (rerankMode.value === "dedicated") show(rerankModelGroup);
+      else hide(rerankModelGroup);
+    });
+    // Restore state
+    if (rerankMode.value === "dedicated") show(rerankModelGroup);
+  }
+
   // Render channels and services
   renderChannels();
   renderServices();
@@ -1044,6 +1097,22 @@ function renderReview() {
     html += '<div class="review-row"><span class="review-row-label">Ollama In-Stack</span><span class="review-row-value">Enabled</span></div>';
   }
   html += '<div class="review-row"><span class="review-row-label">Memory User ID</span><span class="review-row-value">' + esc(memUserId) + '</span></div>';
+
+  // Reranking review
+  var rerankEnabled = $("reranking-enabled") && $("reranking-enabled").checked;
+  if (rerankEnabled) {
+    var rerankMode = $("reranking-mode") ? $("reranking-mode").value : "llm";
+    var rerankModel = $("reranking-model") ? ($("reranking-model").value || "").trim() : "";
+    var topK = $("reranking-top-k") ? $("reranking-top-k").value : "20";
+    var topN = $("reranking-top-n") ? $("reranking-top-n").value : "5";
+    html += '<div class="review-row"><span class="review-row-label">Memory Reranking</span><span class="review-row-value">Enabled (' + esc(rerankMode) + ')</span></div>';
+    if (rerankMode === "dedicated" && rerankModel) {
+      html += '<div class="review-row"><span class="review-row-label">Reranking Model</span><span class="review-row-value">' + esc(rerankModel) + '</span></div>';
+    }
+    html += '<div class="review-row"><span class="review-row-label">Reranking Top K / N</span><span class="review-row-value">' + esc(topK) + ' / ' + esc(topN) + '</span></div>';
+  } else {
+    html += '<div class="review-row"><span class="review-row-label">Memory Reranking</span><span class="review-row-value">Disabled</span></div>';
+  }
   html += '</div>';
 
   container.innerHTML = html;
@@ -1172,12 +1241,34 @@ function showDeployDone(data) {
   var list = $("deploy-service-list");
   list.innerHTML = "";
 
+  // Known service -> host port + label mapping
+  var SERVICE_LINKS = {
+    assistant: { port: 3800, label: "Assistant (Chat)", path: "" },
+    admin: { port: 3880, label: "Admin Dashboard", path: "" },
+    memory: { port: 3898, label: "Memory API", path: "/health" },
+    guardian: { port: 3899, label: "Guardian", path: "/health" },
+  };
+
   if (deployed) {
     if (subtitle) subtitle.textContent = "Your OpenPalm stack is up and running.";
-    if (consoleLink) show(consoleLink);
+    // Update the primary console link to the assistant host port
+    if (consoleLink) {
+      consoleLink.href = "http://localhost:3800";
+      show(consoleLink);
+    }
     services.forEach(function (svc) {
+      var name = svc.service || svc.label || "";
       var li = document.createElement("li");
-      li.textContent = svc.service || svc.label || "";
+      var linkInfo = SERVICE_LINKS[name];
+      if (linkInfo) {
+        var url = "http://localhost:" + linkInfo.port + linkInfo.path;
+        li.innerHTML = '<span class="deploy-svc-name">' + esc(linkInfo.label) + '</span> '
+          + '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="deploy-svc-link">' + esc(url) + '</a>'
+          + ' <span class="deploy-svc-status">\u2713 Running</span>';
+      } else {
+        li.innerHTML = '<span class="deploy-svc-name">' + esc(name) + '</span>'
+          + ' <span class="deploy-svc-status">\u2713 Running</span>';
+      }
       list.appendChild(li);
     });
   } else {

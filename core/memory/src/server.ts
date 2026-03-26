@@ -12,6 +12,7 @@ import { buildConfigFromEnv } from './config';
 // ── Config ────────────────────────────────────────────────────────────
 
 const DATA_DIR = process.env.MEMORY_DATA_DIR ?? '/data';
+const CONFIG_PATH = process.env.MEMORY_CONFIG_PATH ?? '';
 const PORT = parseInt(process.env.MEMORY_PORT ?? '8765', 10);
 
 let _memory: Memory | null = null;
@@ -31,7 +32,7 @@ async function getMemory(): Promise<Memory> {
   if (_memoryInit) return _memoryInit;
   _memoryInit = (async () => {
     try {
-      const memConfig = buildConfigFromEnv(process.env as Record<string, string | undefined>, DATA_DIR);
+      const memConfig = buildConfigFromEnv(process.env as Record<string, string | undefined>, DATA_DIR, CONFIG_PATH || undefined);
       if (!memConfig) {
         throw new Error('SYSTEM_LLM_PROVIDER not set — memory service requires capability configuration');
       }
