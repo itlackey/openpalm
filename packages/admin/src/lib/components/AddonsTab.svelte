@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { fetchAddons, toggleAddon } from '$lib/api.js';
   import { getAdminToken } from '$lib/auth.js';
 
@@ -47,7 +48,7 @@
     }
   }
 
-  $effect(() => { loadAddons(); });
+  onMount(() => { void loadAddons(); });
 </script>
 
 <div class="panel" role="tabpanel">

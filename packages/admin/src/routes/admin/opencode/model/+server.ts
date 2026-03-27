@@ -56,7 +56,8 @@ export const POST: RequestHandler = async (event) => {
     if (updatedSpec) {
       writeCapabilityVars(updatedSpec, state.vaultDir);
     }
-  } catch {
+  } catch (e) {
+    console.warn('[opencode.model] Failed to persist model selection', e);
     return errorResponse(500, 'internal_error', 'Failed to persist model selection', {}, requestId);
   }
 
@@ -89,7 +90,8 @@ export const POST: RequestHandler = async (event) => {
       restartRequired: false,
       message: 'Model updated successfully',
     }, requestId);
-  } catch {
+  } catch (e) {
+    console.warn('[opencode.model] Failed to proxy model change to OpenCode', e);
     return jsonResponse(200, {
       ok: true,
       liveApplied: false,

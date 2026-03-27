@@ -152,7 +152,8 @@ export function validateExternalUrl(url: string): string | null {
   let parsed: URL;
   try {
     parsed = new URL(url);
-  } catch {
+  } catch (e) {
+    console.warn('[helpers] Invalid URL provided to validateExternalUrl', e);
     return "Invalid URL";
   }
 
@@ -227,7 +228,8 @@ export async function parseJsonBody(
       return { error: "too_large" };
     }
     return { data: (await request.json()) as Record<string, unknown> };
-  } catch {
+  } catch (e) {
+    console.warn('[helpers] Failed to parse JSON request body', e);
     return { error: "invalid_json" };
   }
 }

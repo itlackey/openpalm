@@ -34,7 +34,8 @@
     if (!ts) return '';
     try {
       return new Date(ts).toLocaleString();
-    } catch {
+    } catch (e) {
+      console.warn('[AuditTab] Failed to parse timestamp', e);
       return ts;
     }
   }

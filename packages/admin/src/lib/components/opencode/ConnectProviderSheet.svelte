@@ -41,7 +41,8 @@
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       providers = data.providers ?? [];
-    } catch {
+    } catch (e) {
+      console.warn('[ConnectProviderSheet] Failed to load providers:', e);
       error = 'Failed to load providers. Is the assistant running?';
     } finally {
       loading = false;

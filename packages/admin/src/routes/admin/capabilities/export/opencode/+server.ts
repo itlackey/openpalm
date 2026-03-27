@@ -28,7 +28,8 @@ export const GET: RequestHandler = async (event) => {
   let config: unknown;
   try {
     config = JSON.parse(readFileSync(configPath, 'utf-8'));
-  } catch {
+  } catch (e) {
+    console.warn('[capabilities.export.opencode] Failed to read opencode.json', e);
     return errorResponse(500, 'internal_error', 'Failed to read opencode.json', {}, requestId);
   }
 

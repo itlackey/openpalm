@@ -41,7 +41,8 @@ export const GET: RequestHandler = async (event) => {
         .split("\n")
         .filter((l) => l.startsWith("{"))
         .map((l) => JSON.parse(l));
-    } catch {
+    } catch (e) {
+      console.warn('[containers.stats] Failed to parse Docker stats output', e);
       appendAudit(state, actor, "containers.stats", { error: "Failed to parse stats output" }, false, requestId, callerType);
       return errorResponse(500, "parse_error", "Failed to parse Docker stats output", {}, requestId);
     }

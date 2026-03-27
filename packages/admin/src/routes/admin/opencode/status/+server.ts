@@ -31,7 +31,8 @@ export const GET: RequestHandler = async (event) => {
       },
       requestId
     );
-  } catch {
+  } catch (e) {
+    console.warn('[opencode/status] OpenCode probe failed:', e);
     return jsonResponse(
       200,
       {

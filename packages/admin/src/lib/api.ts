@@ -43,11 +43,17 @@ async function readErrorMessage(
 ): Promise<string> {
   const contentType = res.headers.get('content-type') ?? '';
   if (contentType.includes('application/json')) {
-    const data = (await res.clone().json().catch(() => null)) as Record<string, unknown> | null;
+    const data = (await res.clone().json().catch((e: unknown) => {
+      console.warn('[api] Failed to parse JSON error response:', e);
+      return null;
+    })) as Record<string, unknown> | null;
     if (data && typeof data.message === 'string' && data.message.length > 0) return data.message;
     if (data && typeof data.error === 'string' && data.error.length > 0) return data.error;
   }
-  const text = await res.text().catch(() => '');
+  const text = await res.text().catch((e: unknown) => {
+    console.warn('[api] Failed to read error response text:', e);
+    return '';
+  });
   return text || fallback;
 }
 
@@ -70,14 +76,18 @@ export async function fetchHealth(): Promise<{
 }> {
   const [adminRes, guardianRes] = await Promise.all([
     request('GET', '/health'),
-    request('GET', '/guardian/health').catch(() => null)
+    request('GET', '/guardian/health').catch((e: unknown) => {
+      console.warn('[api] Guardian health check failed:', e);
+      return null;
+    })
   ]);
   const admin = (await adminRes.json()) as HealthPayload;
   let guardian: HealthPayload | null = null;
   if (guardianRes) {
     try {
       guardian = (await guardianRes.json()) as HealthPayload;
-    } catch {
+    } catch (e) {
+      console.warn('[api] Failed to parse guardian health response:', e);
       guardian = { status: 'unavailable', service: 'guardian' };
     }
   }

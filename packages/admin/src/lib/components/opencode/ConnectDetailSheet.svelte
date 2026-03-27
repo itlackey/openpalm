@@ -129,7 +129,10 @@
           { headers: { 'x-admin-token': token, 'x-request-id': crypto.randomUUID(), 'x-requested-by': 'ui' } }
         );
         consecutiveErrors = 0;
-        const data = await res.json().catch(() => null) as { status?: string; message?: string } | null;
+        const data = await res.json().catch((e: unknown) => {
+          console.warn('[ConnectDetailSheet] Failed to parse poll response:', e);
+          return null;
+        }) as { status?: string; message?: string } | null;
         if (!res.ok) {
           error = data?.message || `Authorization failed (HTTP ${res.status})`;
           polling = false;
@@ -151,7 +154,8 @@
           polling = false;
           return;
         }
-      } catch {
+      } catch (e) {
+        console.warn('[ConnectDetailSheet] OAuth poll error:', e);
         consecutiveErrors += 1;
         if (consecutiveErrors >= 5) {
           error = 'Unable to reach the server. Please check your connection and try again.';

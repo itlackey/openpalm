@@ -32,7 +32,8 @@ export const GET: RequestHandler = async (event) => {
           .split("\n")
           .filter((l) => l.startsWith("{"))
           .map((l) => JSON.parse(l));
-      } catch {
+      } catch (e) {
+        console.warn('[containers.list] Failed to parse docker compose ps output', e);
         dockerContainers = null;
       }
     }
