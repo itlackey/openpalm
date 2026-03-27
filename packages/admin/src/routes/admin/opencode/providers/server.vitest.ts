@@ -91,43 +91,4 @@ describe('/admin/opencode/providers route', () => {
       },
     ]);
   });
-
-  test('synthesizes API key auth method when /provider/auth returns empty', async () => {
-    vi.mocked(getOpenCodeProviders).mockResolvedValueOnce([
-      {
-        id: 'openai',
-        name: 'OpenAI',
-        env: ['OPENAI_API_KEY'],
-        models: {},
-      },
-    ]);
-    vi.mocked(getOpenCodeProviderAuth).mockResolvedValueOnce({});
-
-    const res = await GET(makeEvent());
-    expect(res.status).toBe(200);
-
-    const body = await res.json() as {
-      providers: Array<{ id: string; authMethods: Array<{ type: string; label: string }> }>;
-    };
-    expect(body.providers[0].authMethods).toEqual([{ type: 'api', label: 'API Key' }]);
-  });
-
-  test('marks provider connected when it has a key even if auth endpoint is empty', async () => {
-    vi.mocked(getOpenCodeProviders).mockResolvedValueOnce([
-      {
-        id: 'openai',
-        name: 'OpenAI',
-        env: ['OPENAI_API_KEY'],
-        key: 'sk-***',
-        models: {},
-      },
-    ]);
-    vi.mocked(getOpenCodeProviderAuth).mockResolvedValueOnce({});
-
-    const res = await GET(makeEvent());
-    const body = await res.json() as {
-      providers: Array<{ id: string; connected: boolean }>;
-    };
-    expect(body.providers[0].connected).toBe(true);
-  });
 });

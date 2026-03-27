@@ -61,20 +61,7 @@ export function createOpenCodeClient(opts: OpenCodeClientOpts) {
   async function getProviderAuth(): Promise<Record<string, Array<{ type: string; label: string }>>> {
     const result = await proxy('/provider/auth');
     if (!result.ok) return {};
-    // Handle both direct map and wrapped response shapes (e.g. { all: { ... } })
-    const data = result.data as Record<string, unknown>;
-    if (data && typeof data === 'object' && !Array.isArray(data)) {
-      // If the response has an 'all' wrapper, unwrap it
-      if (data.all && typeof data.all === 'object' && !Array.isArray(data.all)) {
-        return data.all as Record<string, Array<{ type: string; label: string }>>;
-      }
-      // Check if the data itself looks like a provider auth map (values are arrays)
-      const firstValue = Object.values(data)[0];
-      if (firstValue === undefined || Array.isArray(firstValue)) {
-        return data as Record<string, Array<{ type: string; label: string }>>;
-      }
-    }
-    return {};
+    return result.data as Record<string, Array<{ type: string; label: string }>>;
   }
 
   async function setProviderApiKey(providerID: string, apiKey: string): Promise<ProxyResult> {
