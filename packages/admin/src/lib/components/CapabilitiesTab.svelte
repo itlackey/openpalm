@@ -204,28 +204,8 @@
 			// Show UI immediately, load providers and models in background
 			pageLoading = false;
 
-			// Background: OpenCode providers + model probing (doesn't block UI)
+			// Background: model probing (doesn't block UI)
 			const bgTasks: Promise<void>[] = [];
-			if (openCodeAvailable) {
-				bgTasks.push((async () => {
-					try {
-						const res = await fetch('/admin/opencode/providers', {
-							headers: { 'x-admin-token': token, 'x-request-id': crypto.randomUUID(), 'x-requested-by': 'ui' },
-						});
-						if (res.ok) {
-							const data = await res.json();
-							ocProviders = data.providers ?? [];
-							const pm = { ...providerModels };
-							for (const p of ocProviders) {
-								if (p.connected && p.models?.length) {
-									pm[p.id] = p.models.map((m) => m.id).sort((a, b) => a.localeCompare(b));
-								}
-							}
-							providerModels = pm;
-						}
-					} catch {}
-				})());
-			}
 			if (llmProvider) bgTasks.push(probeModels(llmProvider));
 			if (embProvider && embProvider !== llmProvider) bgTasks.push(probeModels(embProvider));
 			await Promise.all(bgTasks);
@@ -235,6 +215,36 @@
 		}
 	}
 	$effect(() => { void loadAll(); });
+
+	// ── Load OpenCode providers when status becomes ready ────────────
+	async function loadOpenCodeProviders(): Promise<void> {
+		const token = getAdminToken();
+		if (!token) return;
+		try {
+			const res = await fetch('/admin/opencode/providers', {
+				headers: { 'x-admin-token': token, 'x-request-id': crypto.randomUUID(), 'x-requested-by': 'ui' },
+			});
+			if (res.ok) {
+				const data = await res.json();
+				ocProviders = data.providers ?? [];
+				const pm = { ...providerModels };
+				for (const p of ocProviders) {
+					if (p.connected && p.models?.length) {
+						pm[p.id] = p.models.map((m) => m.id).sort((a, b) => a.localeCompare(b));
+					}
+				}
+				providerModels = pm;
+			}
+		} catch (e) {
+			console.warn('[CapabilitiesTab] Failed to load OpenCode providers:', e);
+		}
+	}
+
+	// Synchronous read of openCodeAvailable ensures this effect re-runs
+	// when openCodeStatus changes (e.g. from 'checking' -> 'ready').
+	$effect(() => {
+		if (openCodeAvailable) void loadOpenCodeProviders();
+	});
 
 	// ── Probe models for a provider ─────────────────────────────────
 	async function probeModels(id: string): Promise<void> {
