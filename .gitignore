@@ -41,3 +41,4 @@ packages/assistant-tools/dist/
 packages/admin-tools/dist/index.js
 .dev-tmp/
 .dev-tmp*
+scripts/azure/.generated/prod.generated.bicepparam
