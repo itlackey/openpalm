@@ -33,12 +33,13 @@ async function readGuardianAudit(logsDir: string): Promise<GuardianAuditEntry[]>
       if (!trimmed) continue;
       try {
         entries.push(JSON.parse(trimmed) as GuardianAuditEntry);
-      } catch {
-        // Skip malformed lines
+      } catch (e) {
+        console.warn('[audit] Skipping malformed audit log line', e);
       }
     }
     return entries;
-  } catch {
+  } catch (e) {
+    console.warn('[audit] Failed to read audit log file', e);
     // File doesn't exist yet or is unreadable — return empty
     return [];
   }

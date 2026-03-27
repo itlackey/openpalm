@@ -85,7 +85,8 @@
         currentModel = cData.model ?? '';
         selectedModel = currentModel;
       }
-    } catch {
+    } catch (e) {
+      console.warn('[ManageModelsSheet] Failed to load models:', e);
       error = 'Failed to load models. Is the assistant running?';
     } finally {
       loading = false;
@@ -128,7 +129,8 @@
       let data: Record<string, unknown>;
       try {
         data = await res.json();
-      } catch {
+      } catch (e) {
+        console.warn('[ManageModelsSheet] Failed to parse model save response', e);
         throw new Error(`${res.status} ${res.statusText}`);
       }
       if (!res.ok) throw new Error((data.message as string) || 'Failed to save');

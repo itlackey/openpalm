@@ -151,14 +151,17 @@ export const POST: RequestHandler = async (event) => {
     if (envVarName) {
       try {
         patchSecretsEnvFile(state.vaultDir, { [envVarName]: apiKey });
-      } catch {
+      } catch (e) {
+        logger.warn('Failed to write API key to vault', { providerId, requestId, error: String(e) });
         appendAudit(state, actor, 'opencode.auth.api_key', { providerId, error: 'vault_write_failed' }, false, requestId, callerType);
         return errorResponse(500, 'internal_error', 'Failed to write API key to vault', {}, requestId);
       }
     }
 
     // Also register with OpenCode (non-critical)
-    await setProviderApiKey(providerId, apiKey).catch(() => {});
+    await setProviderApiKey(providerId, apiKey).catch((e) => {
+      logger.warn('Failed to register API key with OpenCode', { providerId, requestId, error: String(e) });
+    });
 
     // L1 fix: audit log for security-sensitive operations
     appendAudit(state, actor, 'opencode.auth.api_key', { providerId }, true, requestId, callerType);

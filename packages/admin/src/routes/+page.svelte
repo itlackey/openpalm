@@ -156,7 +156,8 @@
       void checkCapabilityStatus();
       void loadCapabilities();
       return true;
-    } catch {
+    } catch (e) {
+      console.warn('[page] Auth failed:', e);
       authError = 'Unable to reach admin API.';
       return false;
     } finally {
@@ -170,8 +171,8 @@
     try {
       const data = await fetchCapabilityStatus(token);
       capabilitiesMissing = data.complete ? [] : data.missing;
-    } catch {
-      // best-effort — don't disrupt auth flow on failure
+    } catch (e) {
+      console.warn('[page] Capability status check failed (non-critical):', e);
     }
   }
 
@@ -191,7 +192,8 @@
       const health = await fetchHealth();
       adminHealth = health.admin;
       guardianHealth = health.guardian;
-    } catch {
+    } catch (e) {
+      console.warn('[page] Health check failed:', e);
       adminHealth = { status: 'error', service: 'admin' };
       guardianHealth = { status: 'error', service: 'guardian' };
     }
@@ -481,7 +483,8 @@
         void loadContainers();
         void loadAutomations();
         void checkCapabilityStatus();
-      } catch {
+      } catch (e) {
+        console.warn('[page] Token validation on mount failed:', e);
         authLocked = true;
         authError = 'Unable to reach admin API.';
       } finally {
@@ -569,7 +572,6 @@
       <CapabilitiesTab
         loading={capabilitiesLoading}
         onRefresh={loadCapabilities}
-        openCodeStatus={adminOpenCodeStatus}
       />
     </div>
     {#if activeTab === 'logs'}

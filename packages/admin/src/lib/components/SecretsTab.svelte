@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { getAdminToken } from '$lib/auth.js';
   import { fetchSecrets, writeSecret, deleteSecret, generateSecret, type SecretEntry } from '$lib/api.js';
 
@@ -102,7 +103,7 @@
     }
   }
 
-  $effect(() => {
+  onMount(() => {
     if (tokenStored) void loadSecrets();
   });
 </script>

@@ -5,7 +5,10 @@ import {
 } from "$lib/server/helpers.js";
 import type { RequestHandler } from "./$types";
 
-const ADMIN_OPENCODE_CONTAINER_PORT = process.env.OPENCODE_PORT ?? '3881';
+/** Internal URL used by the admin server to reach OpenCode (same as client.server.ts). */
+const OPENCODE_BASE_URL = process.env.OP_OPENCODE_URL ?? "http://localhost:4096";
+
+/** Host-facing URL shown to the browser so it can reach OpenCode directly. */
 const ADMIN_OPENCODE_HOST_PORT = process.env.OP_ADMIN_OPENCODE_PORT ?? '3881';
 const ADMIN_OPENCODE_PUBLIC_URL = `http://localhost:${ADMIN_OPENCODE_HOST_PORT}/`;
 
@@ -15,7 +18,8 @@ export const GET: RequestHandler = async (event) => {
   if (authError) return authError;
 
   try {
-    const response = await fetch(`http://127.0.0.1:${ADMIN_OPENCODE_CONTAINER_PORT}`, {
+    // Probe the same /provider endpoint the shared client uses for availability
+    const response = await fetch(`${OPENCODE_BASE_URL}/provider`, {
       signal: AbortSignal.timeout(3000),
     });
 
@@ -27,7 +31,8 @@ export const GET: RequestHandler = async (event) => {
       },
       requestId
     );
-  } catch {
+  } catch (e) {
+    console.warn('[opencode/status] OpenCode probe failed:', e);
     return jsonResponse(
       200,
       {

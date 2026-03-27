@@ -30,7 +30,10 @@ export function createOpenCodeClient(opts: OpenCodeClientOpts) {
       const signal = options?.signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
       const res = await fetch(`${baseUrl}${path}`, { ...options, signal });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({} as Record<string, unknown>));
+        const body = await res.json().catch((e: unknown) => {
+          console.warn('[opencode-client] Failed to parse error response:', e);
+          return {} as Record<string, unknown>;
+        });
         const message = typeof (body as Record<string, unknown>).message === 'string'
           ? (body as Record<string, unknown>).message as string
           : `OpenCode returned ${res.status}`;
@@ -40,7 +43,8 @@ export function createOpenCodeClient(opts: OpenCodeClientOpts) {
         return { ok: false, status: res.status >= 500 ? 502 : res.status, code: 'opencode_error', message };
       }
       return { ok: true, data: await res.json() };
-    } catch {
+    } catch (e) {
+      console.warn('[opencode-client] OpenCode request failed:', path, e);
       return { ok: false, status: 503, code: 'opencode_unavailable', message: 'OpenCode is not reachable' };
     }
   }

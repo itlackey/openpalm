@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { getAdminToken } from '$lib/auth.js';
 	import type { OpenCodeProviderSummary, OpenCodeAuthMethod } from '$lib/types.js';
 	import {
@@ -16,8 +17,8 @@
 	import ConnectDetailSheet from './opencode/ConnectDetailSheet.svelte';
 	import ModalSheet from './opencode/ModalSheet.svelte';
 
-	interface Props { loading: boolean; onRefresh: () => void; openCodeStatus?: 'checking' | 'ready' | 'unavailable'; }
-	let { loading, onRefresh, openCodeStatus = 'checking' }: Props = $props();
+	interface Props { loading: boolean; onRefresh: () => void; }
+	let { loading, onRefresh }: Props = $props();
 
 	// ── Sub-tab state ───────────────────────────────────────────────
 	let activeSubTab = $state<'providers' | 'capabilities' | 'voice' | 'memory'>('providers');
@@ -27,7 +28,6 @@
 	let loadError = $state('');
 
 	// ── OpenCode state ──────────────────────────────────────────────
-	let openCodeAvailable = $derived(openCodeStatus === 'ready');
 	type ProviderEntry = OpenCodeProviderSummary & { authMethods: OpenCodeAuthMethod[] };
 	let ocProviders = $state<ProviderEntry[]>([]);
 
@@ -43,12 +43,8 @@
 	// ── Connect flow ────────────────────────────────────────────────
 	let connectProvider = $state<ProviderEntry | null>(null);
 
-	// ── Provider search + expand ────────────────────────────────────
+	// ── Provider search ─────────────────────────────────────────────
 	let providerSearch = $state('');
-	let showAllProviders = $state(false);
-
-	// Well-known provider IDs to show by default (before "Show all")
-	const FEATURED_IDS = new Set(['openai', 'anthropic', 'google', 'groq', 'mistral', 'together', 'deepseek', 'xai', 'huggingface']);
 
 	// ── Custom endpoint form ────────────────────────────────────────
 	let customFormOpen = $state(false);
@@ -100,8 +96,8 @@
 				result.push({ id: p.id, name: p.name });
 			}
 		}
-		// Fallback: cloud connections from secrets (when OpenCode unavailable)
-		if (!openCodeAvailable) {
+		// Fallback: cloud connections from secrets (when OpenCode data hasn't loaded)
+		if (ocProviders.length === 0) {
 			for (const provDef of PROVIDERS.filter((p) => p.needsKey)) {
 				const envKey = PROVIDER_KEY_MAP[provDef.id];
 				if (envKey && secrets[envKey] && !result.some((r) => r.id === provDef.id)) {
@@ -126,7 +122,7 @@
 				result.push({ id: p.id, name: p.name, kind: 'cloud', detail: `${p.modelCount} models`, models: p.modelCount });
 			}
 		}
-		if (!openCodeAvailable) {
+		if (ocProviders.length === 0) {
 			for (const provDef of PROVIDERS.filter((pd) => pd.needsKey)) {
 				const envKey = PROVIDER_KEY_MAP[provDef.id];
 				if (envKey && secrets[envKey] && !result.some((r) => r.id === provDef.id)) {
@@ -140,27 +136,18 @@
 	// ── Derived: available (not connected) providers to show ────────
 	let availableProviders = $derived.by(() => {
 		const connectedIds = new Set(activeProviders.map((p) => p.id));
-		if (openCodeAvailable) {
+		if (ocProviders.length > 0) {
 			let list = ocProviders.filter((p) => !p.connected && !connectedIds.has(p.id));
 			if (providerSearch) {
 				const q = providerSearch.toLowerCase();
 				list = list.filter((p) => p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q));
 			}
-			if (!showAllProviders && !providerSearch) {
-				list = list.filter((p) => FEATURED_IDS.has(p.id));
-			}
 			return list;
 		}
-		// Fallback: show PROVIDERS registry entries that don't have keys
+		// Fallback: show PROVIDERS registry entries when OpenCode data hasn't loaded yet
 		return PROVIDERS.filter((p) => p.needsKey && !connectedIds.has(p.id)).map((p) => ({
 			id: p.id, name: p.name, connected: false, env: [], modelCount: 0, authMethods: [{ type: 'api' as const, label: 'API Key' }],
 		}));
-	});
-
-	let hiddenCount = $derived.by(() => {
-		if (!openCodeAvailable || showAllProviders || providerSearch) return 0;
-		const connectedIds = new Set(activeProviders.map((p) => p.id));
-		return ocProviders.filter((p) => !p.connected && !connectedIds.has(p.id) && !FEATURED_IDS.has(p.id)).length;
 	});
 
 	// ── Load all data ───────────────────────────────────────────────
@@ -174,8 +161,14 @@
 			const [dto, assign, localResult, memConfig] = await Promise.all([
 				fetchCapabilitiesDto(token),
 				fetchAssignments(token),
-				detectLocalProviders(token).catch(() => ({ providers: [] })),
-				fetchMemoryConfig(token).catch(() => null),
+				detectLocalProviders(token).catch((e) => {
+					console.warn('[CapabilitiesTab] Failed to detect local providers:', e);
+					return { providers: [] };
+				}),
+				fetchMemoryConfig(token).catch((e) => {
+					console.warn('[CapabilitiesTab] Failed to load memory config:', e);
+					return null;
+				}),
 			]);
 
 			secrets = dto.secrets ?? {};
@@ -219,26 +212,7 @@
 
 			// Background: OpenCode providers + model probing (doesn't block UI)
 			const bgTasks: Promise<void>[] = [];
-			if (openCodeAvailable) {
-				bgTasks.push((async () => {
-					try {
-						const res = await fetch('/admin/opencode/providers', {
-							headers: { 'x-admin-token': token, 'x-request-id': crypto.randomUUID(), 'x-requested-by': 'ui' },
-						});
-						if (res.ok) {
-							const data = await res.json();
-							ocProviders = data.providers ?? [];
-							const pm = { ...providerModels };
-							for (const p of ocProviders) {
-								if (p.connected && p.models?.length) {
-									pm[p.id] = p.models.map((m) => m.id).sort((a, b) => a.localeCompare(b));
-								}
-							}
-							providerModels = pm;
-						}
-					} catch {}
-				})());
-			}
+			bgTasks.push(loadOpenCodeProviders(token));
 			if (llmProvider) bgTasks.push(probeModels(llmProvider));
 			if (embProvider && embProvider !== llmProvider) bgTasks.push(probeModels(embProvider));
 			await Promise.all(bgTasks);
@@ -247,7 +221,31 @@
 			pageLoading = false;
 		}
 	}
-	$effect(() => { void loadAll(); });
+	onMount(() => { void loadAll(); });
+
+	// ── Load OpenCode providers ─────────────────────────────────────
+	async function loadOpenCodeProviders(token: string): Promise<void> {
+		try {
+			const res = await fetch('/admin/opencode/providers', {
+				headers: { 'x-admin-token': token, 'x-request-id': crypto.randomUUID(), 'x-requested-by': 'ui' },
+			});
+			if (!res.ok) {
+				console.warn('[CapabilitiesTab] Provider fetch returned HTTP', res.status);
+				return;
+			}
+			const data = await res.json();
+			ocProviders = data.providers ?? [];
+			const pm = { ...providerModels };
+			for (const p of ocProviders) {
+				if (p.connected && p.models?.length) {
+					pm[p.id] = p.models.map((m) => m.id).sort((a, b) => a.localeCompare(b));
+				}
+			}
+			providerModels = pm;
+		} catch (e) {
+			console.warn('[CapabilitiesTab] Failed to load OpenCode providers:', e);
+		}
+	}
 
 	// ── Probe models for a provider ─────────────────────────────────
 	async function probeModels(id: string): Promise<void> {
@@ -269,7 +267,9 @@
 			const kind = (def?.kind === 'local') ? 'openai_compatible_local' : 'openai_compatible_remote';
 			const r = await testCapability(token, { baseUrl, apiKey, kind, provider: id });
 			if (r.ok && r.models?.length) providerModels = { ...providerModels, [id]: [...r.models].sort((a, b) => a.localeCompare(b)) };
-		} catch {}
+		} catch (e) {
+			console.warn(`[CapabilitiesTab] Failed to probe models for ${id}:`, e);
+		}
 	}
 
 	function lookupEmbDims(model: string): number {
@@ -447,17 +447,6 @@
 				<span class="provider-card-detail">OpenAI-compatible URL</span>
 			</button>
 		</div>
-
-		{#if hiddenCount > 0}
-			<button class="btn btn-ghost btn-sm show-all-btn" type="button" onclick={() => showAllProviders = true}>
-				Show {hiddenCount} more providers
-			</button>
-		{/if}
-		{#if showAllProviders && !providerSearch}
-			<button class="btn btn-ghost btn-sm show-all-btn" type="button" onclick={() => showAllProviders = false}>
-				Show fewer
-			</button>
-		{/if}
 
 		{#if availableProviders.length === 0 && providerSearch}
 			<p class="section-empty">No providers match "{providerSearch}".</p>
@@ -823,7 +812,6 @@
 	.provider-card-name { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); }
 	.provider-card-detail { font-size: var(--text-xs); color: var(--color-text-tertiary); }
 
-	.show-all-btn { margin-top: var(--space-3); }
 
 	/* ── Custom form ────────────────────────────────────────────── */
 	.custom-form { margin-top: var(--space-4); padding: var(--space-4); background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
