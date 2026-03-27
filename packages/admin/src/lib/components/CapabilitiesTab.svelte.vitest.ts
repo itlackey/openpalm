@@ -66,7 +66,7 @@ describe('CapabilitiesTab provider list', () => {
     });
 
     await expect.element(page.getByRole('heading', { level: 3, name: 'Connect a Provider' })).toBeInTheDocument();
-    await expect.element(page.getByRole('button', { name: 'OpenAI' })).toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: 'OpenAI', exact: true })).toBeInTheDocument();
     await expect.element(page.getByRole('button', { name: /Custom Provider/ })).toBeInTheDocument();
     await expect.element(page.getByText(/Show \d+ more providers/)).not.toBeInTheDocument();
 
