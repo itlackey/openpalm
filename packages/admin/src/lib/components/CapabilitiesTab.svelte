@@ -43,12 +43,8 @@
 	// ── Connect flow ────────────────────────────────────────────────
 	let connectProvider = $state<ProviderEntry | null>(null);
 
-	// ── Provider search + expand ────────────────────────────────────
+	// ── Provider search ─────────────────────────────────────────────
 	let providerSearch = $state('');
-	let showAllProviders = $state(false);
-
-	// Well-known provider IDs to show by default (before "Show all")
-	const FEATURED_IDS = new Set(['openai', 'anthropic', 'google', 'groq', 'mistral', 'together', 'deepseek', 'xai', 'huggingface']);
 
 	// ── Custom endpoint form ────────────────────────────────────────
 	let customFormOpen = $state(false);
@@ -146,21 +142,12 @@
 				const q = providerSearch.toLowerCase();
 				list = list.filter((p) => p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q));
 			}
-			if (!showAllProviders && !providerSearch) {
-				list = list.filter((p) => FEATURED_IDS.has(p.id));
-			}
 			return list;
 		}
 		// Fallback: show PROVIDERS registry entries that don't have keys
 		return PROVIDERS.filter((p) => p.needsKey && !connectedIds.has(p.id)).map((p) => ({
 			id: p.id, name: p.name, connected: false, env: [], modelCount: 0, authMethods: [{ type: 'api' as const, label: 'API Key' }],
 		}));
-	});
-
-	let hiddenCount = $derived.by(() => {
-		if (!openCodeAvailable || showAllProviders || providerSearch) return 0;
-		const connectedIds = new Set(activeProviders.map((p) => p.id));
-		return ocProviders.filter((p) => !p.connected && !connectedIds.has(p.id) && !FEATURED_IDS.has(p.id)).length;
 	});
 
 	// ── Load all data ───────────────────────────────────────────────
@@ -447,17 +434,6 @@
 				<span class="provider-card-detail">OpenAI-compatible URL</span>
 			</button>
 		</div>
-
-		{#if hiddenCount > 0}
-			<button class="btn btn-ghost btn-sm show-all-btn" type="button" onclick={() => showAllProviders = true}>
-				Show {hiddenCount} more providers
-			</button>
-		{/if}
-		{#if showAllProviders && !providerSearch}
-			<button class="btn btn-ghost btn-sm show-all-btn" type="button" onclick={() => showAllProviders = false}>
-				Show fewer
-			</button>
-		{/if}
 
 		{#if availableProviders.length === 0 && providerSearch}
 			<p class="section-empty">No providers match "{providerSearch}".</p>
@@ -823,7 +799,6 @@
 	.provider-card-name { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); }
 	.provider-card-detail { font-size: var(--text-xs); color: var(--color-text-tertiary); }
 
-	.show-all-btn { margin-top: var(--space-3); }
 
 	/* ── Custom form ────────────────────────────────────────────── */
 	.custom-form { margin-top: var(--space-4); padding: var(--space-4); background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); }

@@ -21,6 +21,13 @@ Repo layout convention:
 | [discord-setup.md](channels/discord-setup.md) | Discord bot setup — create app, install channel, invite bot |
 | [slack-setup.md](channels/slack-setup.md) | Slack bot setup — create app, install channel, configure Socket Mode |
 
+## Operations
+
+| Document | Description |
+|---|---|
+| [manual-compose-runbook.md](operations/manual-compose-runbook.md) | Step-by-step manual host configuration (no scripts) |
+| [diagnostic-playbook.md](operations/diagnostic-playbook.md) | Layer-by-layer debugging workflow for UI, admin API, OpenCode, and container/config issues |
+
 ## Architecture (must-read for contributors)
 
 | Document | Description |
