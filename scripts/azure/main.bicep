@@ -663,7 +663,36 @@ resource memoryApp 'Microsoft.App/containerApps@2025-01-01' = {
     }
     template: {
       volumes: [
-        { name: 'memory-data', storageType: 'AzureFile', storageName: storageShares.memoryData }
+        { name: 'memory-data', storageType: 'EmptyDir' }
+        { name: 'memory-config', storageType: 'EmptyDir' }
+      ]
+      initContainers: [
+        {
+          name: 'seed-memory-config'
+          image: 'docker.io/${imageNamespace}/memory:${imageTag}'
+          command: ['/bin/sh', '-c']
+          args: ['mkdir -p /etc/memory && printf \'{"llm":{"provider":"%s","config":{"model":"%s","apiKey":"%s","baseUrl":"%s"}},"embedder":{"provider":"%s","config":{"model":"%s","apiKey":"%s","baseUrl":"%s","dimensions":%s}},"vectorStore":{"provider":"sqlite-vec","config":{"collectionName":"memory","dbPath":"/data/memory.db","dimensions":%s}}}\' "$SYSTEM_LLM_PROVIDER" "$SYSTEM_LLM_MODEL" "$SYSTEM_LLM_API_KEY" "$SYSTEM_LLM_BASE_URL" "$EMBEDDING_PROVIDER" "$EMBEDDING_MODEL" "$EMBEDDING_API_KEY" "$EMBEDDING_BASE_URL" "$EMBEDDING_DIMS" "$EMBEDDING_DIMS" > /etc/memory/memory.conf.json && echo "Config seeded"']
+          env: concat(
+            [
+              { name: 'SYSTEM_LLM_PROVIDER', value: capLlmProvider }
+              { name: 'SYSTEM_LLM_MODEL', value: capLlmModel }
+              { name: 'SYSTEM_LLM_BASE_URL', value: capLlmBaseUrl }
+              { name: 'EMBEDDING_PROVIDER', value: embeddingsProvider }
+              { name: 'EMBEDDING_MODEL', value: embeddingsModel }
+              { name: 'EMBEDDING_BASE_URL', value: embeddingsBaseUrl }
+              { name: 'EMBEDDING_DIMS', value: embeddingsDims }
+            ],
+            empty(capLlmApiKeySecretUri) ? [] : [{ name: 'SYSTEM_LLM_API_KEY', secretRef: 'cap-llm-api-key' }],
+            empty(embeddingsApiKeySecretUri) ? [] : [{ name: 'EMBEDDING_API_KEY', secretRef: 'embeddings-api-key' }]
+          )
+          volumeMounts: [
+            { volumeName: 'memory-config', mountPath: '/etc/memory' }
+          ]
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+        }
       ]
       containers: [
         {
@@ -672,6 +701,7 @@ resource memoryApp 'Microsoft.App/containerApps@2025-01-01' = {
           env: concat(
             [
               { name: 'MEMORY_DATA_DIR', value: '/data' }
+              { name: 'MEMORY_CONFIG_PATH', value: '/etc/memory/memory.conf.json' }
               { name: 'HOME', value: '/data' }
               { name: 'MEMORY_AUTH_TOKEN', secretRef: 'memory-token' }
               { name: 'MEMORY_USER_ID', value: 'default_user' }
@@ -688,6 +718,7 @@ resource memoryApp 'Microsoft.App/containerApps@2025-01-01' = {
           )
           volumeMounts: [
             { volumeName: 'memory-data', mountPath: '/data' }
+            { volumeName: 'memory-config', mountPath: '/etc/memory' }
           ]
           resources: {
             cpu: json('0.5')
@@ -733,7 +764,7 @@ resource assistantApp 'Microsoft.App/containerApps@2025-01-01' = {
     configuration: {
       activeRevisionsMode: 'Single'
       ingress: {
-        external: false
+        external: true
         targetPort: 4096
         transport: 'auto'
         allowInsecure: true
@@ -742,12 +773,27 @@ resource assistantApp 'Microsoft.App/containerApps@2025-01-01' = {
     }
     template: {
       volumes: [
-        { name: 'assistant-home', storageType: 'AzureFile', storageName: storageShares.assistantHome }
+        { name: 'assistant-home', storageType: 'EmptyDir' }
         { name: 'assistant-config', storageType: 'AzureFile', storageName: storageShares.assistantConfig }
         { name: 'vault-user', storageType: 'AzureFile', storageName: storageShares.vaultUser }
         { name: 'stash', storageType: 'AzureFile', storageName: storageShares.stash }
         { name: 'workspace', storageType: 'AzureFile', storageName: storageShares.workspace }
         { name: 'logs', storageType: 'AzureFile', storageName: storageShares.logs }
+      ]
+      initContainers: [
+        {
+          name: 'seed-config'
+          image: 'docker.io/${imageNamespace}/assistant:${imageTag}'
+          command: ['/bin/bash', '-c']
+          args: ['if [ ! -f /home/opencode/.config/opencode/opencode.json ]; then echo \'{"plugin":["@openpalm/assistant-tools","akm-opencode@0.2.0","opencode-varlock@0.0.10"]}\' > /home/opencode/.config/opencode/opencode.json; echo "Seeded user config with plugin declarations"; else echo "User config already exists, skipping"; fi']
+          volumeMounts: [
+            { volumeName: 'assistant-config', mountPath: '/home/opencode/.config/opencode' }
+          ]
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+        }
       ]
       containers: [
         {
@@ -764,7 +810,7 @@ resource assistantApp 'Microsoft.App/containerApps@2025-01-01' = {
               { name: 'AKM_STASH_DIR', value: '/home/opencode/.akm' }
               { name: 'OP_ADMIN_API_URL', value: '' }
               { name: 'OP_ASSISTANT_TOKEN', secretRef: 'assistant-token' }
-              { name: 'MEMORY_API_URL', value: 'http://${appNames.memory}:8765' }
+              { name: 'MEMORY_API_URL', value: 'http://${appNames.memory}' }
               { name: 'MEMORY_AUTH_TOKEN', secretRef: 'memory-token' }
               { name: 'MEMORY_USER_ID', value: 'default_user' }
               { name: 'OP_UID', value: '1000' }
@@ -776,7 +822,7 @@ resource assistantApp 'Microsoft.App/containerApps@2025-01-01' = {
           )
           volumeMounts: [
             { volumeName: 'assistant-home', mountPath: '/home/opencode' }
-            { volumeName: 'assistant-config', mountPath: '/etc/openpalm' }
+            { volumeName: 'assistant-config', mountPath: '/home/opencode/.config/opencode' }
             { volumeName: 'vault-user', mountPath: '/etc/vault' }
             { volumeName: 'stash', mountPath: '/home/opencode/.akm' }
             { volumeName: 'workspace', mountPath: '/work' }
@@ -852,7 +898,7 @@ resource guardianApp 'Microsoft.App/containerApps@2025-01-01' = {
             [
               { name: 'HOME', value: '/app/data' }
               { name: 'PORT', value: '8080' }
-              { name: 'OP_ASSISTANT_URL', value: 'http://${appNames.assistant}:4096' }
+              { name: 'OP_ASSISTANT_URL', value: 'http://${appNames.assistant}' }
               { name: 'OPENCODE_TIMEOUT_MS', value: '0' }
               { name: 'GUARDIAN_AUDIT_PATH', value: '/app/audit/guardian-audit.log' }
             ],
@@ -950,9 +996,9 @@ resource schedulerApp 'Microsoft.App/containerApps@2025-01-01' = {
             { name: 'OP_HOME', value: '/openpalm' }
             { name: 'OP_ADMIN_TOKEN', secretRef: 'admin-token' }
             { name: 'OP_ADMIN_API_URL', value: '' }
-            { name: 'OPENCODE_API_URL', value: 'http://${appNames.assistant}:4096' }
+            { name: 'OPENCODE_API_URL', value: 'http://${appNames.assistant}' }
             { name: 'OPENCODE_SERVER_PASSWORD', secretRef: 'opencode-password' }
-            { name: 'MEMORY_API_URL', value: 'http://${appNames.memory}:8765' }
+            { name: 'MEMORY_API_URL', value: 'http://${appNames.memory}' }
             { name: 'MEMORY_AUTH_TOKEN', secretRef: 'memory-token' }
             { name: 'MEMORY_USER_ID', value: 'default_user' }
           ]
