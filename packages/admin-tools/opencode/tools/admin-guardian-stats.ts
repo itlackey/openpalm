@@ -1,6 +1,8 @@
 import { tool } from "@opencode-ai/plugin";
 import { buildAdminHeaders } from "./lib.ts";
 
+const GUARDIAN_URL = (process.env.GUARDIAN_URL || "http://guardian:8080").replace(/\/+$/, '');
+
 const MISSING_ASSISTANT_TOKEN = JSON.stringify({
   error: true,
   message: 'Missing OP_ASSISTANT_TOKEN. Admin-token fallback is disabled for assistant/admin-tools contexts.',
@@ -14,7 +16,7 @@ export default tool({
     if (!headers) return MISSING_ASSISTANT_TOKEN;
 
     try {
-      const res = await fetch("http://guardian:8080/stats", {
+      const res = await fetch(`${GUARDIAN_URL}/stats`, {
         headers,
         signal: AbortSignal.timeout(5_000),
       });

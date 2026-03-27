@@ -810,6 +810,7 @@ resource assistantApp 'Microsoft.App/containerApps@2025-01-01' = {
               { name: 'AKM_STASH_DIR', value: '/home/opencode/.akm' }
               { name: 'OP_ADMIN_API_URL', value: '' }
               { name: 'OP_ASSISTANT_TOKEN', secretRef: 'assistant-token' }
+              { name: 'GUARDIAN_URL', value: 'http://${appNames.guardian}' }
               { name: 'MEMORY_API_URL', value: 'http://${appNames.memory}' }
               { name: 'MEMORY_AUTH_TOKEN', secretRef: 'memory-token' }
               { name: 'MEMORY_USER_ID', value: 'default_user' }

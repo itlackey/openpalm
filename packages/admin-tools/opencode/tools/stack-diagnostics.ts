@@ -1,6 +1,10 @@
 import { tool } from "@opencode-ai/plugin";
 import { adminFetch, buildAdminHeaders } from "./lib.ts";
 
+const GUARDIAN_URL = (process.env.GUARDIAN_URL || "http://guardian:8080").replace(/\/+$/, '');
+const MEMORY_URL = (process.env.MEMORY_API_URL || "http://memory:8765").replace(/\/+$/, '');
+const ADMIN_URL = (process.env.OP_ADMIN_API_URL || "http://admin:8100").replace(/\/+$/, '');
+
 interface ServiceHealth {
   status: string;
   latencyMs?: number;
@@ -159,15 +163,15 @@ export default tool({
       adminAuditRaw,
       guardianStats,
     ] = await Promise.all([
-      fetchServiceHealth("guardian", "http://guardian:8080/health"),
-      fetchServiceHealth("memory", "http://memory:8765/health"),
-      fetchServiceHealth("admin", "http://admin:8100/health"),
+      fetchServiceHealth("guardian", `${GUARDIAN_URL}/health`),
+      fetchServiceHealth("memory", `${MEMORY_URL}/health`),
+      fetchServiceHealth("admin", `${ADMIN_URL}/health`),
       safeAdminFetch("/admin/containers/list"),
       safeAdminFetch("/admin/config/validate"),
       safeAdminFetch("/admin/connections/status"),
       safeAdminFetch("/admin/audit?source=guardian&limit=20"),
       safeAdminFetch("/admin/audit?limit=20"),
-      safeJsonFetch("http://guardian:8080/stats"),
+      safeJsonFetch(`${GUARDIAN_URL}/stats`),
     ]);
 
     const report: DiagnosticReport = {
