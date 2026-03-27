@@ -101,14 +101,27 @@ async function main() {
     console.warn('Could not auto-assign Key Vault Secrets Officer. Ensure the deployer has permission to write secrets.');
   }
 
-  for (const [name, value] of Object.entries({ ...internalSecrets, ...optionalSecrets })) {
-    if (!value) continue;
-    const tmpFile = join(outDir, `.secret-${name}.tmp`);
-    writeFileSync(tmpFile, value);
+  const allSecrets = Object.entries({ ...internalSecrets, ...optionalSecrets }).filter(([, v]) => !!v);
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      await az('keyvault', 'secret', 'set', '--vault-name', keyVaultName, '--name', name, '--file', tmpFile, '--encoding', 'utf-8');
-    } finally {
-      try { unlinkSync(tmpFile); } catch {}
+      for (const [name, value] of allSecrets) {
+        const tmpFile = join(outDir, `.secret-${name}.tmp`);
+        writeFileSync(tmpFile, value);
+        try {
+          await az('keyvault', 'secret', 'set', '--vault-name', keyVaultName, '--name', name, '--file', tmpFile, '--encoding', 'utf-8');
+        } finally {
+          try { unlinkSync(tmpFile); } catch {}
+        }
+      }
+      break;
+    } catch (err) {
+      if (attempt < 3 && String(err).includes('Forbidden')) {
+        const delaySec = attempt * 30;
+        console.log(`RBAC not yet propagated, retrying in ${delaySec}s (attempt ${attempt}/3)...`);
+        await new Promise(r => setTimeout(r, delaySec * 1000));
+      } else {
+        throw err;
+      }
     }
   }
 
