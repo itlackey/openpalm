@@ -145,6 +145,9 @@ function buildParams(args: { keyVaultName: string; storageAccountName: string })
     text = text.split(from).join(to);
   }
 
+  // Fix the using path — generated file lives in .generated/ subdirectory
+  text = text.replace("using './main.bicep'", "using '../main.bicep'");
+
   return text;
 }
 

@@ -22,7 +22,7 @@ param acaSubnetPrefix string = '10.42.0.0/23'
 param privateEndpointSubnetPrefix string = '10.42.10.0/24'
 
 @description('Whether the ACA environment should be internal only.')
-param internalOnly bool = true
+param internalOnly bool = false
 
 @description('Enable private endpoints and private DNS zones for Key Vault and Storage.')
 param enablePrivateEndpoints bool = true
@@ -633,11 +633,11 @@ var memorySecrets = concat(
 )
 
 var guardianSecrets = concat(
-  empty(channelDiscordSecretUri) ? [] : [{ name: 'channel-discord-secret'; keyVaultUrl: channelDiscordSecretUri; identity: sharedIdentity.id }],
-  empty(channelSlackSecretUri) ? [] : [{ name: 'channel-slack-secret'; keyVaultUrl: channelSlackSecretUri; identity: sharedIdentity.id }],
-  empty(channelApiSecretUri) ? [] : [{ name: 'channel-api-secret'; keyVaultUrl: channelApiSecretUri; identity: sharedIdentity.id }],
-  empty(channelChatSecretUri) ? [] : [{ name: 'channel-chat-secret'; keyVaultUrl: channelChatSecretUri; identity: sharedIdentity.id }],
-  empty(channelVoiceSecretUri) ? [] : [{ name: 'channel-voice-secret'; keyVaultUrl: channelVoiceSecretUri; identity: sharedIdentity.id }]
+  empty(channelDiscordSecretUri) ? [] : [{ name: 'channel-discord-secret', keyVaultUrl: channelDiscordSecretUri, identity: sharedIdentity.id }],
+  empty(channelSlackSecretUri) ? [] : [{ name: 'channel-slack-secret', keyVaultUrl: channelSlackSecretUri, identity: sharedIdentity.id }],
+  empty(channelApiSecretUri) ? [] : [{ name: 'channel-api-secret', keyVaultUrl: channelApiSecretUri, identity: sharedIdentity.id }],
+  empty(channelChatSecretUri) ? [] : [{ name: 'channel-chat-secret', keyVaultUrl: channelChatSecretUri, identity: sharedIdentity.id }],
+  empty(channelVoiceSecretUri) ? [] : [{ name: 'channel-voice-secret', keyVaultUrl: channelVoiceSecretUri, identity: sharedIdentity.id }]
 )
 
 resource memoryApp 'Microsoft.App/containerApps@2025-01-01' = {
@@ -663,7 +663,7 @@ resource memoryApp 'Microsoft.App/containerApps@2025-01-01' = {
     }
     template: {
       volumes: [
-        { name: 'memory-data'; storageType: 'AzureFile'; storageName: storageShares.memoryData }
+        { name: 'memory-data', storageType: 'AzureFile', storageName: storageShares.memoryData }
       ]
       containers: [
         {
@@ -671,23 +671,23 @@ resource memoryApp 'Microsoft.App/containerApps@2025-01-01' = {
           image: 'docker.io/${imageNamespace}/memory:${imageTag}'
           env: concat(
             [
-              { name: 'MEMORY_DATA_DIR'; value: '/data' }
-              { name: 'HOME'; value: '/data' }
-              { name: 'MEMORY_AUTH_TOKEN'; secretRef: 'memory-token' }
-              { name: 'MEMORY_USER_ID'; value: 'default_user' }
-              { name: 'SYSTEM_LLM_PROVIDER'; value: capLlmProvider }
-              { name: 'SYSTEM_LLM_MODEL'; value: capLlmModel }
-              { name: 'SYSTEM_LLM_BASE_URL'; value: capLlmBaseUrl }
-              { name: 'EMBEDDING_PROVIDER'; value: embeddingsProvider }
-              { name: 'EMBEDDING_MODEL'; value: embeddingsModel }
-              { name: 'EMBEDDING_BASE_URL'; value: embeddingsBaseUrl }
-              { name: 'EMBEDDING_DIMS'; value: embeddingsDims }
+              { name: 'MEMORY_DATA_DIR', value: '/data' }
+              { name: 'HOME', value: '/data' }
+              { name: 'MEMORY_AUTH_TOKEN', secretRef: 'memory-token' }
+              { name: 'MEMORY_USER_ID', value: 'default_user' }
+              { name: 'SYSTEM_LLM_PROVIDER', value: capLlmProvider }
+              { name: 'SYSTEM_LLM_MODEL', value: capLlmModel }
+              { name: 'SYSTEM_LLM_BASE_URL', value: capLlmBaseUrl }
+              { name: 'EMBEDDING_PROVIDER', value: embeddingsProvider }
+              { name: 'EMBEDDING_MODEL', value: embeddingsModel }
+              { name: 'EMBEDDING_BASE_URL', value: embeddingsBaseUrl }
+              { name: 'EMBEDDING_DIMS', value: embeddingsDims }
             ],
-            empty(capLlmApiKeySecretUri) ? [] : [{ name: 'SYSTEM_LLM_API_KEY'; secretRef: 'cap-llm-api-key' }],
-            empty(embeddingsApiKeySecretUri) ? [] : [{ name: 'EMBEDDING_API_KEY'; secretRef: 'embeddings-api-key' }]
+            empty(capLlmApiKeySecretUri) ? [] : [{ name: 'SYSTEM_LLM_API_KEY', secretRef: 'cap-llm-api-key' }],
+            empty(embeddingsApiKeySecretUri) ? [] : [{ name: 'EMBEDDING_API_KEY', secretRef: 'embeddings-api-key' }]
           )
           volumeMounts: [
-            { volumeName: 'memory-data'; mountPath: '/data' }
+            { volumeName: 'memory-data', mountPath: '/data' }
           ]
           resources: {
             cpu: json('0.5')
@@ -742,12 +742,12 @@ resource assistantApp 'Microsoft.App/containerApps@2025-01-01' = {
     }
     template: {
       volumes: [
-        { name: 'assistant-home'; storageType: 'AzureFile'; storageName: storageShares.assistantHome }
-        { name: 'assistant-config'; storageType: 'AzureFile'; storageName: storageShares.assistantConfig }
-        { name: 'vault-user'; storageType: 'AzureFile'; storageName: storageShares.vaultUser }
-        { name: 'stash'; storageType: 'AzureFile'; storageName: storageShares.stash }
-        { name: 'workspace'; storageType: 'AzureFile'; storageName: storageShares.workspace }
-        { name: 'logs'; storageType: 'AzureFile'; storageName: storageShares.logs }
+        { name: 'assistant-home', storageType: 'AzureFile', storageName: storageShares.assistantHome }
+        { name: 'assistant-config', storageType: 'AzureFile', storageName: storageShares.assistantConfig }
+        { name: 'vault-user', storageType: 'AzureFile', storageName: storageShares.vaultUser }
+        { name: 'stash', storageType: 'AzureFile', storageName: storageShares.stash }
+        { name: 'workspace', storageType: 'AzureFile', storageName: storageShares.workspace }
+        { name: 'logs', storageType: 'AzureFile', storageName: storageShares.logs }
       ]
       containers: [
         {
@@ -755,32 +755,32 @@ resource assistantApp 'Microsoft.App/containerApps@2025-01-01' = {
           image: 'docker.io/${imageNamespace}/assistant:${imageTag}'
           env: concat(
             [
-              { name: 'OPENCODE_CONFIG_DIR'; value: '/etc/opencode' }
-              { name: 'OPENCODE_PORT'; value: '4096' }
-              { name: 'OPENCODE_AUTH'; value: 'false' }
-              { name: 'OPENCODE_ENABLE_SSH'; value: '0' }
-              { name: 'TERM'; value: 'xterm-256color' }
-              { name: 'HOME'; value: '/home/opencode' }
-              { name: 'AKM_STASH_DIR'; value: '/home/opencode/.akm' }
-              { name: 'OP_ADMIN_API_URL'; value: '' }
-              { name: 'OP_ASSISTANT_TOKEN'; secretRef: 'assistant-token' }
-              { name: 'MEMORY_API_URL'; value: 'http://${appNames.memory}:8765' }
-              { name: 'MEMORY_AUTH_TOKEN'; secretRef: 'memory-token' }
-              { name: 'MEMORY_USER_ID'; value: 'default_user' }
-              { name: 'OP_UID'; value: '1000' }
-              { name: 'OP_GID'; value: '1000' }
-              { name: 'OPENAI_BASE_URL'; value: openAiBaseUrl }
-              { name: 'SYSTEM_LLM_PROVIDER'; value: capLlmProvider }
+              { name: 'OPENCODE_CONFIG_DIR', value: '/etc/opencode' }
+              { name: 'OPENCODE_PORT', value: '4096' }
+              { name: 'OPENCODE_AUTH', value: 'false' }
+              { name: 'OPENCODE_ENABLE_SSH', value: '0' }
+              { name: 'TERM', value: 'xterm-256color' }
+              { name: 'HOME', value: '/home/opencode' }
+              { name: 'AKM_STASH_DIR', value: '/home/opencode/.akm' }
+              { name: 'OP_ADMIN_API_URL', value: '' }
+              { name: 'OP_ASSISTANT_TOKEN', secretRef: 'assistant-token' }
+              { name: 'MEMORY_API_URL', value: 'http://${appNames.memory}:8765' }
+              { name: 'MEMORY_AUTH_TOKEN', secretRef: 'memory-token' }
+              { name: 'MEMORY_USER_ID', value: 'default_user' }
+              { name: 'OP_UID', value: '1000' }
+              { name: 'OP_GID', value: '1000' }
+              { name: 'OPENAI_BASE_URL', value: openAiBaseUrl }
+              { name: 'SYSTEM_LLM_PROVIDER', value: capLlmProvider }
             ],
-            empty(openAiApiKeySecretUri) ? [] : [{ name: 'OPENAI_API_KEY'; secretRef: 'openai-api-key' }]
+            empty(openAiApiKeySecretUri) ? [] : [{ name: 'OPENAI_API_KEY', secretRef: 'openai-api-key' }]
           )
           volumeMounts: [
-            { volumeName: 'assistant-home'; mountPath: '/home/opencode' }
-            { volumeName: 'assistant-config'; mountPath: '/etc/openpalm' }
-            { volumeName: 'vault-user'; mountPath: '/etc/vault' }
-            { volumeName: 'stash'; mountPath: '/home/opencode/.akm' }
-            { volumeName: 'workspace'; mountPath: '/work' }
-            { volumeName: 'logs'; mountPath: '/home/opencode/.local/state/opencode' }
+            { volumeName: 'assistant-home', mountPath: '/home/opencode' }
+            { volumeName: 'assistant-config', mountPath: '/etc/openpalm' }
+            { volumeName: 'vault-user', mountPath: '/etc/vault' }
+            { volumeName: 'stash', mountPath: '/home/opencode/.akm' }
+            { volumeName: 'workspace', mountPath: '/work' }
+            { volumeName: 'logs', mountPath: '/home/opencode/.local/state/opencode' }
           ]
           resources: {
             cpu: 2
@@ -841,8 +841,8 @@ resource guardianApp 'Microsoft.App/containerApps@2025-01-01' = {
     }
     template: {
       volumes: [
-        { name: 'guardian-data'; storageType: 'AzureFile'; storageName: storageShares.guardianData }
-        { name: 'logs'; storageType: 'AzureFile'; storageName: storageShares.logs }
+        { name: 'guardian-data', storageType: 'AzureFile', storageName: storageShares.guardianData }
+        { name: 'logs', storageType: 'AzureFile', storageName: storageShares.logs }
       ]
       containers: [
         {
@@ -850,21 +850,21 @@ resource guardianApp 'Microsoft.App/containerApps@2025-01-01' = {
           image: 'docker.io/${imageNamespace}/guardian:${imageTag}'
           env: concat(
             [
-              { name: 'HOME'; value: '/app/data' }
-              { name: 'PORT'; value: '8080' }
-              { name: 'OP_ASSISTANT_URL'; value: 'http://${appNames.assistant}:4096' }
-              { name: 'OPENCODE_TIMEOUT_MS'; value: '0' }
-              { name: 'GUARDIAN_AUDIT_PATH'; value: '/app/audit/guardian-audit.log' }
+              { name: 'HOME', value: '/app/data' }
+              { name: 'PORT', value: '8080' }
+              { name: 'OP_ASSISTANT_URL', value: 'http://${appNames.assistant}:4096' }
+              { name: 'OPENCODE_TIMEOUT_MS', value: '0' }
+              { name: 'GUARDIAN_AUDIT_PATH', value: '/app/audit/guardian-audit.log' }
             ],
-            empty(channelDiscordSecretUri) ? [] : [{ name: 'CHANNEL_DISCORD_SECRET'; secretRef: 'channel-discord-secret' }],
-            empty(channelSlackSecretUri) ? [] : [{ name: 'CHANNEL_SLACK_SECRET'; secretRef: 'channel-slack-secret' }],
-            empty(channelApiSecretUri) ? [] : [{ name: 'CHANNEL_API_SECRET'; secretRef: 'channel-api-secret' }],
-            empty(channelChatSecretUri) ? [] : [{ name: 'CHANNEL_CHAT_SECRET'; secretRef: 'channel-chat-secret' }],
-            empty(channelVoiceSecretUri) ? [] : [{ name: 'CHANNEL_VOICE_SECRET'; secretRef: 'channel-voice-secret' }]
+            empty(channelDiscordSecretUri) ? [] : [{ name: 'CHANNEL_DISCORD_SECRET', secretRef: 'channel-discord-secret' }],
+            empty(channelSlackSecretUri) ? [] : [{ name: 'CHANNEL_SLACK_SECRET', secretRef: 'channel-slack-secret' }],
+            empty(channelApiSecretUri) ? [] : [{ name: 'CHANNEL_API_SECRET', secretRef: 'channel-api-secret' }],
+            empty(channelChatSecretUri) ? [] : [{ name: 'CHANNEL_CHAT_SECRET', secretRef: 'channel-chat-secret' }],
+            empty(channelVoiceSecretUri) ? [] : [{ name: 'CHANNEL_VOICE_SECRET', secretRef: 'channel-voice-secret' }]
           )
           volumeMounts: [
-            { volumeName: 'guardian-data'; mountPath: '/app/data' }
-            { volumeName: 'logs'; mountPath: '/app/audit' }
+            { volumeName: 'guardian-data', mountPath: '/app/data' }
+            { volumeName: 'logs', mountPath: '/app/audit' }
           ]
           resources: {
             cpu: json('0.5')
@@ -937,29 +937,29 @@ resource schedulerApp 'Microsoft.App/containerApps@2025-01-01' = {
     }
     template: {
       volumes: [
-        { name: 'config'; storageType: 'AzureFile'; storageName: storageShares.config }
-        { name: 'logs'; storageType: 'AzureFile'; storageName: storageShares.logs }
-        { name: 'data'; storageType: 'AzureFile'; storageName: storageShares.data }
+        { name: 'config', storageType: 'AzureFile', storageName: storageShares.config }
+        { name: 'logs', storageType: 'AzureFile', storageName: storageShares.logs }
+        { name: 'data', storageType: 'AzureFile', storageName: storageShares.data }
       ]
       containers: [
         {
           name: 'scheduler'
           image: 'docker.io/${imageNamespace}/scheduler:${imageTag}'
           env: [
-            { name: 'PORT'; value: '8090' }
-            { name: 'OP_HOME'; value: '/openpalm' }
-            { name: 'OP_ADMIN_TOKEN'; secretRef: 'admin-token' }
-            { name: 'OP_ADMIN_API_URL'; value: '' }
-            { name: 'OPENCODE_API_URL'; value: 'http://${appNames.assistant}:4096' }
-            { name: 'OPENCODE_SERVER_PASSWORD'; secretRef: 'opencode-password' }
-            { name: 'MEMORY_API_URL'; value: 'http://${appNames.memory}:8765' }
-            { name: 'MEMORY_AUTH_TOKEN'; secretRef: 'memory-token' }
-            { name: 'MEMORY_USER_ID'; value: 'default_user' }
+            { name: 'PORT', value: '8090' }
+            { name: 'OP_HOME', value: '/openpalm' }
+            { name: 'OP_ADMIN_TOKEN', secretRef: 'admin-token' }
+            { name: 'OP_ADMIN_API_URL', value: '' }
+            { name: 'OPENCODE_API_URL', value: 'http://${appNames.assistant}:4096' }
+            { name: 'OPENCODE_SERVER_PASSWORD', secretRef: 'opencode-password' }
+            { name: 'MEMORY_API_URL', value: 'http://${appNames.memory}:8765' }
+            { name: 'MEMORY_AUTH_TOKEN', secretRef: 'memory-token' }
+            { name: 'MEMORY_USER_ID', value: 'default_user' }
           ]
           volumeMounts: [
-            { volumeName: 'config'; mountPath: '/openpalm/config' }
-            { volumeName: 'logs'; mountPath: '/openpalm/logs' }
-            { volumeName: 'data'; mountPath: '/openpalm/data' }
+            { volumeName: 'config', mountPath: '/openpalm/config' }
+            { volumeName: 'logs', mountPath: '/openpalm/logs' }
+            { volumeName: 'data', mountPath: '/openpalm/data' }
           ]
           resources: {
             cpu: json('0.5')
