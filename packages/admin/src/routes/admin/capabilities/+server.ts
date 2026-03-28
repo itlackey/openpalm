@@ -19,18 +19,15 @@ import {
   readStackEnv,
   patchSecretsEnvFile,
   readStackSpec,
-  writeStackSpec,
-  writeCapabilityVars,
   formatCapabilityString,
   maskSecretValue,
   readMemoryConfig,
-  type CallerType,
-  type StackSpec,
 } from "@openpalm/lib";
+import { updateAndPersistCapabilities } from "$lib/server/capabilities.js";
 import {
   PROVIDER_KEY_MAP,
   EMBEDDING_DIMS,
-} from "$lib/provider-constants.js";
+} from "@openpalm/lib/provider-constants";
 import { createLogger } from "$lib/server/logger.js";
 
 const logger = createLogger("capabilities");
@@ -107,26 +104,20 @@ export const POST: RequestHandler = async (event) => {
   const lookupKey = `${provider}/${embeddingModel}`;
   const resolvedDims = embeddingDims || EMBEDDING_DIMS[lookupKey] || 1536;
 
-  const spec = readStackSpec(state.configDir);
-  if (!spec) {
-    return errorResponse(500, "internal_error", "stack.yml not found or invalid", {}, requestId);
-  }
-
-  spec.capabilities.llm = formatCapabilityString(provider, systemModel);
-  spec.capabilities.embeddings = {
-    provider,
-    model: embeddingModel || "text-embedding-3-small",
-    dims: resolvedDims,
-  };
-  spec.capabilities.memory = {
-    ...spec.capabilities.memory,
-    userId: memoryUserId,
-    customInstructions,
-  };
-
   try {
-    writeStackSpec(state.configDir, spec);
-    writeCapabilityVars(spec, state.vaultDir);
+    updateAndPersistCapabilities(state.configDir, state.vaultDir, (spec) => {
+      spec.capabilities.llm = formatCapabilityString(provider, systemModel);
+      spec.capabilities.embeddings = {
+        provider,
+        model: embeddingModel || "text-embedding-3-small",
+        dims: resolvedDims,
+      };
+      spec.capabilities.memory = {
+        ...spec.capabilities.memory,
+        userId: memoryUserId,
+        customInstructions,
+      };
+    });
   } catch (err) {
     appendAudit(state, actor, "capabilities.save", { provider, error: String(err) }, false, requestId, callerType);
     return errorResponse(500, "internal_error", "Failed to update stack.yml", {}, requestId);

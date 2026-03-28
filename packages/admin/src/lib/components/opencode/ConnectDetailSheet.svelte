@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getAdminToken } from '$lib/auth.js';
+  import { buildHeaders } from '$lib/api.js';
   import type { OpenCodeProviderSummary, OpenCodeAuthMethod } from '$lib/types.js';
   import ModalSheet from './ModalSheet.svelte';
 
@@ -63,9 +64,7 @@
 
     const token = getAdminToken() ?? '';
     const headers: HeadersInit = {
-      'x-admin-token': token,
-      'x-request-id': crypto.randomUUID(),
-      'x-requested-by': 'ui',
+      ...buildHeaders(token),
       'Content-Type': 'application/json',
     };
 
@@ -126,7 +125,7 @@
       try {
         const res = await fetch(
           `/admin/opencode/providers/${encodeURIComponent(provider.id)}/auth?pollToken=${encodeURIComponent(pollToken)}`,
-          { headers: { 'x-admin-token': token, 'x-request-id': crypto.randomUUID(), 'x-requested-by': 'ui' } }
+          { headers: buildHeaders(token) }
         );
         consecutiveErrors = 0;
         const data = await res.json().catch((e: unknown) => {

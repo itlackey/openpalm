@@ -11,7 +11,7 @@ import type {
 
 const apiBase = '';
 
-function buildHeaders(token?: string): HeadersInit {
+export function buildHeaders(token?: string): HeadersInit {
   const headers: HeadersInit = { 'x-request-id': crypto.randomUUID() };
   if (token) {
     headers['x-admin-token'] = token;
