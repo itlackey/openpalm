@@ -170,11 +170,13 @@ export {
   applyUpdate,
   applyUninstall,
   applyUpgrade,
+  performUpgrade,
   updateStackEnvToLatestImageTag,
   buildComposeFileList,
   buildManagedServices,
   normalizeCaller,
 } from "./control-plane/lifecycle.js";
+export type { UpgradeResult } from "./control-plane/lifecycle.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
 export type { DockerResult } from "./control-plane/docker.js";

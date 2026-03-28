@@ -6,11 +6,11 @@ import {
 import type { RequestHandler } from "./$types";
 
 /** Internal URL used by the admin server to reach OpenCode (same as client.server.ts). */
-const OPENCODE_BASE_URL = process.env.OP_OPENCODE_URL ?? "http://localhost:4096";
+const OPENCODE_BASE_URL = process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL ?? "http://localhost:4096";
 
 /** Host-facing URL shown to the browser so it can reach OpenCode directly. */
 const ADMIN_OPENCODE_HOST_PORT = process.env.OP_ADMIN_OPENCODE_PORT ?? '3881';
-const ADMIN_OPENCODE_PUBLIC_URL = `http://localhost:${ADMIN_OPENCODE_HOST_PORT}/`;
+const ADMIN_OPENCODE_PUBLIC_URL = process.env.OP_ADMIN_OPENCODE_URL ?? `http://localhost:${ADMIN_OPENCODE_HOST_PORT}/`;
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

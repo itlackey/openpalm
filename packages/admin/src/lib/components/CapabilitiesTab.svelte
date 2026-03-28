@@ -17,8 +17,8 @@
 	import ConnectDetailSheet from './opencode/ConnectDetailSheet.svelte';
 	import ModalSheet from './opencode/ModalSheet.svelte';
 
-	interface Props { loading: boolean; onRefresh: () => void; }
-	let { loading, onRefresh }: Props = $props();
+	interface Props { loading: boolean; onRefresh: () => void; openCodeStatus?: 'checking' | 'ready' | 'unavailable'; }
+	let { loading, onRefresh, openCodeStatus = 'checking' }: Props = $props();
 
 	// ── Sub-tab state ───────────────────────────────────────────────
 	let activeSubTab = $state<'providers' | 'capabilities' | 'voice' | 'memory'>('providers');
@@ -28,6 +28,7 @@
 	let loadError = $state('');
 
 	// ── OpenCode state ──────────────────────────────────────────────
+	let openCodeAvailable = $derived(openCodeStatus === 'ready');
 	type ProviderEntry = OpenCodeProviderSummary & { authMethods: OpenCodeAuthMethod[] };
 	let ocProviders = $state<ProviderEntry[]>([]);
 
@@ -96,8 +97,8 @@
 				result.push({ id: p.id, name: p.name });
 			}
 		}
-		// Fallback: cloud connections from secrets (when OpenCode data hasn't loaded)
-		if (ocProviders.length === 0) {
+		// Fallback: cloud connections from secrets (when OpenCode unavailable)
+		if (!openCodeAvailable) {
 			for (const provDef of PROVIDERS.filter((p) => p.needsKey)) {
 				const envKey = PROVIDER_KEY_MAP[provDef.id];
 				if (envKey && secrets[envKey] && !result.some((r) => r.id === provDef.id)) {
@@ -122,7 +123,7 @@
 				result.push({ id: p.id, name: p.name, kind: 'cloud', detail: `${p.modelCount} models`, models: p.modelCount });
 			}
 		}
-		if (ocProviders.length === 0) {
+		if (!openCodeAvailable) {
 			for (const provDef of PROVIDERS.filter((pd) => pd.needsKey)) {
 				const envKey = PROVIDER_KEY_MAP[provDef.id];
 				if (envKey && secrets[envKey] && !result.some((r) => r.id === provDef.id)) {
@@ -136,7 +137,7 @@
 	// ── Derived: available (not connected) providers to show ────────
 	let availableProviders = $derived.by(() => {
 		const connectedIds = new Set(activeProviders.map((p) => p.id));
-		if (ocProviders.length > 0) {
+		if (openCodeAvailable && ocProviders.length > 0) {
 			let list = ocProviders.filter((p) => !p.connected && !connectedIds.has(p.id));
 			if (providerSearch) {
 				const q = providerSearch.toLowerCase();
@@ -144,7 +145,7 @@
 			}
 			return list;
 		}
-		// Fallback: show PROVIDERS registry entries when OpenCode data hasn't loaded yet
+		// Fallback: show PROVIDERS registry entries when OpenCode unavailable
 		return PROVIDERS.filter((p) => p.needsKey && !connectedIds.has(p.id)).map((p) => ({
 			id: p.id, name: p.name, connected: false, env: [], modelCount: 0, authMethods: [{ type: 'api' as const, label: 'API Key' }],
 		}));
@@ -210,9 +211,8 @@
 			// Show UI immediately, load providers and models in background
 			pageLoading = false;
 
-			// Background: OpenCode providers + model probing (doesn't block UI)
+			// Background: model probing (doesn't block UI)
 			const bgTasks: Promise<void>[] = [];
-			bgTasks.push(loadOpenCodeProviders(token));
 			if (llmProvider) bgTasks.push(probeModels(llmProvider));
 			if (embProvider && embProvider !== llmProvider) bgTasks.push(probeModels(embProvider));
 			await Promise.all(bgTasks);
@@ -223,8 +223,16 @@
 	}
 	onMount(() => { void loadAll(); });
 
+	// Synchronous read of openCodeAvailable ensures this effect re-runs
+	// when openCodeStatus changes (e.g. from 'checking' -> 'ready').
+	$effect(() => {
+		if (openCodeAvailable) void loadOpenCodeProviders();
+	});
+
 	// ── Load OpenCode providers ─────────────────────────────────────
-	async function loadOpenCodeProviders(token: string): Promise<void> {
+	async function loadOpenCodeProviders(): Promise<void> {
+		const token = getAdminToken();
+		if (!token) return;
 		try {
 			const res = await fetch('/admin/opencode/providers', {
 				headers: { 'x-admin-token': token, 'x-request-id': crypto.randomUUID(), 'x-requested-by': 'ui' },

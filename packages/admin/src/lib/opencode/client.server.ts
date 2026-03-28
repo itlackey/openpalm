@@ -6,7 +6,7 @@
  */
 import { createOpenCodeClient } from '@openpalm/lib';
 
-const OPENCODE_BASE_URL = process.env.OP_OPENCODE_URL ?? "http://localhost:4096";
+const OPENCODE_BASE_URL = process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL ?? "http://localhost:4096";
 const client = createOpenCodeClient({ baseUrl: OPENCODE_BASE_URL });
 
 export const proxyToOpenCode = client.proxy;

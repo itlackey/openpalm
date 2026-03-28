@@ -23,7 +23,7 @@ import { readStackSpec } from "./stack-spec.js";
 import { refreshCoreAssets, ensureMemoryDir } from "./core-assets.js";
 import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
-import { checkDocker, composePreflight, composeConfigServices, resolveComposeProjectName } from "./docker.js";
+import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName } from "./docker.js";
 import { acquireLock, releaseLock } from "./lock.js";
 import { listEnabledAddonIds } from "./registry.js";
 
@@ -253,6 +253,78 @@ export async function applyUpgrade(
   } finally {
     releaseLock(lock);
   }
+}
+
+export type UpgradeResult = {
+  imageTag: string;
+  namespace: string;
+  backupDir: string | null;
+  assetsUpdated: string[];
+  restarted: string[];
+};
+
+/**
+ * Full upgrade: resolve latest image tag, refresh assets, pull images,
+ * and recreate containers. Used by both the admin endpoint and CLI.
+ *
+ * Callers handle their own audit logging and admin self-recreation.
+ */
+export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeResult> {
+  const files = buildComposeFileList(state);
+  const envFiles = buildEnvFiles(state);
+
+  // 1. Preflight: validate compose merge before any mutation
+  if (files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
+    const preflight = await composePreflight({ files, envFiles });
+    if (!preflight.ok) {
+      throw new Error(`Compose preflight failed: ${preflight.stderr}`);
+    }
+  }
+
+  // 2. Snapshot stack.env for rollback on failure
+  const stackEnvPath = `${state.vaultDir}/stack/stack.env`;
+  let originalStackEnv: string | null = null;
+  try {
+    originalStackEnv = readFileSync(stackEnvPath, "utf-8");
+  } catch { /* stack.env may not exist yet */ }
+
+  // 3. Update image tag + refresh core assets
+  let imageTag: string;
+  let namespace: string;
+  let upgradeResult: { backupDir: string | null; updated: string[]; restarted: string[] };
+  try {
+    const tagResult = await updateStackEnvToLatestImageTag(state);
+    imageTag = tagResult.tag;
+    namespace = tagResult.namespace;
+    upgradeResult = await applyUpgrade(state);
+  } catch (e) {
+    // Restore stack.env on failure
+    if (originalStackEnv !== null) {
+      try { writeFileSync(stackEnvPath, originalStackEnv); } catch { /* best effort */ }
+    }
+    throw e;
+  }
+
+  // 4. Pull images
+  const pullResult = await composePull({ files, envFiles });
+  if (!pullResult.ok) {
+    throw new Error(`Failed to pull images: ${pullResult.stderr}`);
+  }
+
+  // 5. Recreate containers
+  const services = await buildManagedServices(state);
+  const upResult = await composeUp({ files, envFiles, services, removeOrphans: true });
+  if (!upResult.ok) {
+    throw new Error(`Images pulled but failed to recreate containers: ${upResult.stderr}`);
+  }
+
+  return {
+    imageTag,
+    namespace,
+    backupDir: upgradeResult.backupDir,
+    assetsUpdated: upgradeResult.updated,
+    restarted: upgradeResult.restarted,
+  };
 }
 
 export function buildComposeFileList(state: ControlPlaneState): string[] {

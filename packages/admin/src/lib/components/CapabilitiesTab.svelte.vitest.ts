@@ -62,6 +62,7 @@ describe('CapabilitiesTab provider list', () => {
       props: {
         loading: false,
         onRefresh: () => {},
+        openCodeStatus: 'ready' as const,
       },
     });
 
