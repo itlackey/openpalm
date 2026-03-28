@@ -23,7 +23,7 @@ ARG BUN_VERSION=bun-v1.3.10
 ARG AGENTIKIT_VERSION=v0.2.0
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu socat unzip \
+    && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu sudo socat unzip \
         python3 python3-pip python3-venv \
         jq ripgrep \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -33,6 +33,18 @@ RUN apt-get update \
     && apt-get update \
     && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
+
+# ── opencode user (rename the base image's node user to opencode) ────────
+# The node:22-trixie-slim base ships a "node" user at UID 1000. Rename it
+# so the container has a purpose-named user. Passwordless sudo lets OpenCode
+# agents run root operations (apt install, pip install, etc.) while the
+# entrypoint's gosu drop keeps normal file I/O at the host user's UID.
+RUN usermod -l opencode -d /home/opencode node \
+    && groupmod -n opencode node \
+    && mkdir -p /home/opencode \
+    && chown opencode:opencode /home/opencode \
+    && echo "opencode ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/opencode \
+    && chmod 0440 /etc/sudoers.d/opencode
 
 # ── CLI tools (yq, ast-grep, uv, azure-cli, huggingface-cli) ──────────────
 # yq — YAML processor (mikefarah/yq)
@@ -63,7 +75,7 @@ ENV PATH="/home/opencode/.local/bin:/usr/local/.opencode/bin:$PATH"
 
 RUN mkdir -p /home/opencode/.cache /work /home/opencode/.akm \
     && chmod 755 /home/opencode /home/opencode/.cache /home/opencode/.akm \
-    && chown node:node /home/opencode /home/opencode/.cache /work /home/opencode/.akm \
+    && chown opencode:opencode /home/opencode /home/opencode/.cache /work /home/opencode/.akm \
     && sed -i 's@^#\?PasswordAuthentication .*@PasswordAuthentication no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
@@ -73,10 +85,10 @@ COPY core/assistant/varlock-shell.sh /usr/local/bin/varlock-shell
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh /usr/local/bin/varlock-shell
 
 # NOTE: No final USER directive — container starts as root intentionally.
-# The entrypoint uses gosu to drop privileges to an unprivileged user
-# (OP_UID/OP_GID, default 1000:1000) after performing root-only setup:
-# user/group creation, ownership fixup, sshd startup, and socat proxy.
-# See entrypoint.sh start_opencode() for the gosu privilege drop.
+# The entrypoint uses gosu to drop to the "opencode" user (UID/GID from
+# OP_UID/OP_GID, default 1000:1000) after root-only setup (sshd, socat).
+# Agents get root access via passwordless sudo; normal file I/O runs as
+# the unprivileged user so bind-mounted files keep the host user's ownership.
 WORKDIR /work
 
 # Install Bun binary to /usr/local so it's on PATH for all users.
