@@ -19,7 +19,7 @@ import {
   appendAudit,
   patchSecretsEnvFile,
 } from '@openpalm/lib';
-import { PROVIDER_KEY_MAP } from '$lib/provider-constants.js';
+import { PROVIDER_KEY_MAP } from '@openpalm/lib/provider-constants';
 import { createLogger } from '$lib/server/logger.js';
 
 const logger = createLogger('opencode.auth');
@@ -28,7 +28,6 @@ const logger = createLogger('opencode.auth');
 const MAX_API_KEY_LENGTH = 512;
 const API_KEY_PATTERN = /^[\x20-\x7E]+$/; // printable ASCII only
 const OAUTH_SESSION_TTL_MS = 600_000;
-const MAX_OAUTH_SESSIONS = 1_000;
 const MAX_PROVIDER_ID_LENGTH = 128;
 const PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_.-]+$/;
 
@@ -53,23 +52,6 @@ function purgeExpiredSessions(): void {
     }
   }
 }
-
-function trimOAuthSessions(): void {
-  if (oauthSessions.size <= MAX_OAUTH_SESSIONS) {
-    return;
-  }
-
-  const sessions = Array.from(oauthSessions.entries()).sort((a, b) => a[1].createdAt - b[1].createdAt);
-  const excess = oauthSessions.size - MAX_OAUTH_SESSIONS;
-  for (let index = 0; index < excess; index += 1) {
-    const token = sessions[index][0];
-    oauthSessions.delete(token);
-  }
-}
-
-// Periodic cleanup every 5 minutes to prevent unbounded growth if
-// requests stop arriving (purgeExpiredSessions only runs on demand).
-setInterval(purgeExpiredSessions, 300_000).unref?.();
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -189,7 +171,6 @@ export const POST: RequestHandler = async (event) => {
       methodIndex,
       createdAt: Date.now(),
     });
-    trimOAuthSessions();
 
     // L1 fix: audit log for OAuth initiation
     appendAudit(state, actor, 'opencode.auth.oauth.start', { providerId, methodIndex }, true, requestId, callerType);

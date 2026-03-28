@@ -16,7 +16,7 @@ import {
   PROVIDER_LABELS,
   LOCAL_PROVIDER_HELP,
   EMBEDDING_DIMS,
-} from '$lib/provider-constants.js';
+} from '@openpalm/lib/provider-constants';
 
 // ── PROVIDER_LABELS coverage ──────────────────────────────────────────────
 

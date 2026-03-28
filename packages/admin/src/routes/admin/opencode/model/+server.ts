@@ -3,12 +3,11 @@ import { requireAdmin, jsonResponse, errorResponse, getRequestId, parseJsonBody,
 import { getOpenCodeConfig, proxyToOpenCode } from '$lib/opencode/client.server.js';
 import { getState } from '$lib/server/state.js';
 import {
-  updateCapability,
   formatCapabilityString,
   parseCapabilityString,
   readStackSpec,
-  writeCapabilityVars,
 } from '@openpalm/lib';
+import { updateAndPersistCapabilities } from '$lib/server/capabilities.js';
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -42,20 +41,16 @@ export const POST: RequestHandler = async (event) => {
   const state = getState();
 
   try {
-    // Read current LLM capability to preserve provider
-    const spec = readStackSpec(state.configDir);
-    if (!spec) {
+    // Read current LLM capability to preserve provider, then update and persist
+    const currentSpec = readStackSpec(state.configDir);
+    if (!currentSpec) {
       return errorResponse(500, 'internal_error', 'stack.yml not found', {}, requestId);
     }
+    const { provider } = parseCapabilityString(currentSpec.capabilities.llm);
 
-    const { provider } = parseCapabilityString(spec.capabilities.llm);
-    updateCapability(state.configDir, 'llm', formatCapabilityString(provider, model));
-
-    // Regenerate managed env files
-    const updatedSpec = readStackSpec(state.configDir);
-    if (updatedSpec) {
-      writeCapabilityVars(updatedSpec, state.vaultDir);
-    }
+    updateAndPersistCapabilities(state.configDir, state.vaultDir, (spec) => {
+      spec.capabilities.llm = formatCapabilityString(provider, model);
+    });
   } catch (e) {
     console.warn('[opencode.model] Failed to persist model selection', e);
     return errorResponse(500, 'internal_error', 'Failed to persist model selection', {}, requestId);

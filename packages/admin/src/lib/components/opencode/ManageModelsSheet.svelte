@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getAdminToken } from '$lib/auth.js';
-  import type { OpenCodeProviderSummary } from '$lib/types.js';
+  import { buildHeaders } from '$lib/api.js';
   import ModalSheet from './ModalSheet.svelte';
 
   interface Props {
@@ -57,12 +57,9 @@
     loading = true;
     error = '';
     const token = getAdminToken() ?? '';
-    const headers: HeadersInit = { 'x-admin-token': token, 'x-request-id': crypto.randomUUID(), 'x-requested-by': 'ui' };
+    const headers = buildHeaders(token);
 
     try {
-      // TODO: N+1 optimization — if the providers endpoint does not return inline models,
-      // this will require a separate fetch per provider. Consider a batch endpoint that
-      // returns all providers with their models in a single round-trip.
       const [providersRes, configRes] = await Promise.all([
         fetch('/admin/opencode/providers', { headers }),
         fetch('/admin/opencode/model', { headers }),
@@ -119,9 +116,7 @@
       const res = await fetch('/admin/opencode/model', {
         method: 'POST',
         headers: {
-          'x-admin-token': token,
-          'x-request-id': crypto.randomUUID(),
-          'x-requested-by': 'ui',
+          ...buildHeaders(token),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ model: selectedModel }),

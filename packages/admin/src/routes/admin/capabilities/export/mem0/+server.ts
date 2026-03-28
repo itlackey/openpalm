@@ -12,7 +12,7 @@ import {
   readStackSpec,
   parseCapabilityString,
 } from '@openpalm/lib';
-import { PROVIDER_KEY_MAP } from '$lib/provider-constants.js';
+import { PROVIDER_KEY_MAP } from '@openpalm/lib/provider-constants';
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
