@@ -67,7 +67,7 @@
 
       if (providersRes.ok) {
         const pData = await providersRes.json();
-        const rawProviders = (pData.providers ?? []) as Array<OpenCodeProviderSummary & { models?: ModelEntry[] }>;
+        const rawProviders = (pData.providers ?? []) as Array<{ id: string; name: string; models?: ModelEntry[] }>;
         providers = rawProviders
           .map((provider) => ({
             id: provider.id,

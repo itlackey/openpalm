@@ -47,7 +47,13 @@ function mergeCapability(
   for (const [k, v] of Object.entries(input)) {
     const expected = schema[k];
     if (!expected) return errorResponse(400, 'bad_request', `${label} contains unsupported key "${k}"`, {}, requestId);
-    if (typeof v !== expected) return errorResponse(400, 'bad_request', `${label}.${k} must be a ${expected}`, {}, requestId);
+    if (expected === 'number') {
+      if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) {
+        return errorResponse(400, 'bad_request', `${label}.${k} must be a positive integer`, {}, requestId);
+      }
+    } else if (typeof v !== expected) {
+      return errorResponse(400, 'bad_request', `${label}.${k} must be a ${expected}`, {}, requestId);
+    }
     result[k] = v;
   }
   return result;
