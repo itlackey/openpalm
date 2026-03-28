@@ -27,7 +27,7 @@ export const GET: RequestHandler = async (event) => {
       connected: Boolean(authMethods[p.id as string]?.length),
       modelCount: models.length,
       models,
-      authMethods: authMethods[p.id as string] ?? [],
+      authMethods: authMethods[p.id as string] ?? (Array.isArray(p.env) && p.env.length > 0 ? [{ type: 'api', label: 'API Key' }] : []),
     };
   });
 

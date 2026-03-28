@@ -82,73 +82,20 @@
 	let saveSuccess = $state(false);
 
 	// ── Derived: connected providers for capability dropdowns ───────
-	let connectedProviders = $derived.by(() => {
-		const result: Array<{ id: string; name: string }> = [];
-		// Local detected
-		for (const d of detectedLocal) {
-			if (d.available) {
-				const def = PROVIDERS.find((p) => p.id === d.provider);
-				if (def) result.push({ id: def.id, name: def.name });
-			}
-		}
-		// OpenCode connected
-		for (const p of ocProviders) {
-			if (p.connected && !result.some((r) => r.id === p.id)) {
-				result.push({ id: p.id, name: p.name });
-			}
-		}
-		// Fallback: cloud connections from secrets (when OpenCode unavailable)
-		if (!openCodeAvailable) {
-			for (const provDef of PROVIDERS.filter((p) => p.needsKey)) {
-				const envKey = PROVIDER_KEY_MAP[provDef.id];
-				if (envKey && secrets[envKey] && !result.some((r) => r.id === provDef.id)) {
-					result.push({ id: provDef.id, name: provDef.name });
-				}
-			}
-		}
-		return result;
-	});
+	let connectedProviders = $derived(
+		ocProviders.filter((p) => p.connected).map((p) => ({ id: p.id, name: p.name }))
+	);
 
-	// ── Derived: connected providers list (local + cloud) ───────────
-	let activeProviders = $derived.by(() => {
-		const result: Array<{ id: string; name: string; kind: 'local' | 'cloud'; detail: string; models: number }> = [];
-		for (const d of detectedLocal) {
-			if (d.available) {
-				const def = PROVIDERS.find((p) => p.id === d.provider);
-				result.push({ id: d.provider, name: def?.name ?? d.provider, kind: 'local', detail: d.url, models: (providerModels[d.provider] ?? []).length });
-			}
-		}
-		for (const p of ocProviders) {
-			if (p.connected && !result.some((r) => r.id === p.id)) {
-				result.push({ id: p.id, name: p.name, kind: 'cloud', detail: `${p.modelCount} models`, models: p.modelCount });
-			}
-		}
-		if (!openCodeAvailable) {
-			for (const provDef of PROVIDERS.filter((pd) => pd.needsKey)) {
-				const envKey = PROVIDER_KEY_MAP[provDef.id];
-				if (envKey && secrets[envKey] && !result.some((r) => r.id === provDef.id)) {
-					result.push({ id: provDef.id, name: provDef.name, kind: 'cloud', detail: 'API key stored', models: 0 });
-				}
-			}
-		}
-		return result;
-	});
+	// ── Derived: providers for the providers sub-tab ────────────────
+	let myProviders = $derived(ocProviders.filter((p) => p.connected));
 
-	// ── Derived: available (not connected) providers to show ────────
 	let availableProviders = $derived.by(() => {
-		const connectedIds = new Set(activeProviders.map((p) => p.id));
-		if (openCodeAvailable && ocProviders.length > 0) {
-			let list = ocProviders.filter((p) => !p.connected && !connectedIds.has(p.id));
-			if (providerSearch) {
-				const q = providerSearch.toLowerCase();
-				list = list.filter((p) => p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q));
-			}
-			return list;
+		let list = ocProviders.filter((p) => !p.connected);
+		if (providerSearch) {
+			const q = providerSearch.toLowerCase();
+			list = list.filter((p) => p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q));
 		}
-		// Fallback: show PROVIDERS registry entries when OpenCode unavailable
-		return PROVIDERS.filter((p) => p.needsKey && !connectedIds.has(p.id)).map((p) => ({
-			id: p.id, name: p.name, connected: false, env: [], modelCount: 0, authMethods: [{ type: 'api' as const, label: 'API Key' }],
-		}));
+		return list;
 	});
 
 	// ── Load all data ───────────────────────────────────────────────
@@ -414,21 +361,20 @@
 	<!-- Your connected providers -->
 	<div class="section-block">
 		<h3 class="section-heading">Your Providers</h3>
-		{#if activeProviders.length > 0}
+		{#if myProviders.length > 0}
 			<div class="provider-list">
-				{#each activeProviders as p}
-					<div class="provider-row">
+				{#each myProviders as p (p.id)}
+					<button class="provider-row provider-row--clickable" type="button" onclick={() => connectProvider = p}>
 						<span class="provider-dot provider-dot--ok"></span>
 						<span class="provider-row-name">{p.name}</span>
-						<span class="provider-row-detail">{p.detail}</span>
-						<span class="provider-badge" class:provider-badge--local={p.kind === 'local'} class:provider-badge--cloud={p.kind === 'cloud'}>
-							{p.kind === 'local' ? 'Local' : 'Cloud'}
-						</span>
-					</div>
+						<span class="provider-row-detail">{p.modelCount} models</span>
+					</button>
 				{/each}
 			</div>
-		{:else}
+		{:else if ocProviders.length > 0}
 			<p class="section-empty">No providers connected yet. Connect one below to get started.</p>
+		{:else}
+			<p class="section-empty">Loading providers...</p>
 		{/if}
 	</div>
 
@@ -788,21 +734,17 @@
 
 	/* ── Connected provider list ────────────────────────────────── */
 	.provider-list { border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; }
-	.provider-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--color-bg-tertiary); font-size: var(--text-sm); }
+	.provider-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--color-bg-tertiary); font-size: var(--text-sm); width: 100%; background: none; border-left: none; border-right: none; border-top: none; font-family: inherit; text-align: left; }
+	.provider-row:first-child { border-top: none; }
 	.provider-row:last-child { border-bottom: none; }
+	.provider-row--clickable { cursor: pointer; transition: background var(--transition-fast); }
+	.provider-row--clickable:hover { background: var(--color-primary-subtle); }
 	.provider-row-name { font-weight: var(--font-medium); color: var(--color-text); }
 	.provider-row-detail { font-size: var(--text-xs); color: var(--color-text-tertiary); flex: 1; }
 
 	.provider-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 	.provider-dot--ok { background: var(--color-success); }
 
-	.provider-badge {
-		font-size: 10px; font-weight: var(--font-semibold); padding: 1px 6px;
-		border-radius: var(--radius-full); text-transform: uppercase; letter-spacing: 0.03em;
-		background: var(--color-bg-tertiary); color: var(--color-text-tertiary);
-	}
-	.provider-badge--local { background: rgba(64, 192, 87, 0.1); color: var(--color-success); }
-	.provider-badge--cloud { background: var(--color-info-bg); color: var(--color-info); }
 
 	/* ── Provider grid (available to connect) ───────────────────── */
 	.provider-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-2); }
