@@ -91,4 +91,34 @@ describe('/admin/opencode/providers route', () => {
       },
     ]);
   });
+
+  test('synthesizes API Key auth when /provider/auth has no entry for a provider with env vars', async () => {
+    vi.mocked(getOpenCodeProviders).mockResolvedValueOnce([
+      { id: 'openai', name: 'OpenAI', env: ['OPENAI_API_KEY'], models: {} },
+    ]);
+    vi.mocked(getOpenCodeProviderAuth).mockResolvedValueOnce({});
+
+    const res = await GET(makeEvent());
+    expect(res.status).toBe(200);
+
+    const body = await res.json() as {
+      providers: Array<{ id: string; authMethods: Array<{ type: string; label: string }> }>;
+    };
+    expect(body.providers[0].authMethods).toEqual([{ type: 'api', label: 'API Key' }]);
+  });
+
+  test('uses auth methods from /provider/auth when available', async () => {
+    vi.mocked(getOpenCodeProviders).mockResolvedValueOnce([
+      { id: 'github-copilot', name: 'GitHub Copilot', env: [], models: {} },
+    ]);
+    vi.mocked(getOpenCodeProviderAuth).mockResolvedValueOnce({
+      'github-copilot': [{ type: 'oauth', label: 'GitHub OAuth' }],
+    });
+
+    const res = await GET(makeEvent());
+    const body = await res.json() as {
+      providers: Array<{ id: string; authMethods: Array<{ type: string; label: string }> }>;
+    };
+    expect(body.providers[0].authMethods).toEqual([{ type: 'oauth', label: 'GitHub OAuth' }]);
+  });
 });

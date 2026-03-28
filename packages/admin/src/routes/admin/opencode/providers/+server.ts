@@ -18,16 +18,21 @@ export const GET: RequestHandler = async (event) => {
 
   const result = providers.map((p) => {
     const models = sanitizeOpenCodeModels(p.models, p.id);
+    const env = Array.isArray(p.env) ? p.env : [];
+    const methods = authMethods[p.id as string] ?? [];
     return {
       id: p.id,
       name: p.name ?? p.id,
-      env: Array.isArray(p.env) ? p.env : [],
-      // Provider is "connected" if it has auth methods configured for it
-      // Never reference p.key directly — it may contain a resolved secret
-      connected: Boolean(authMethods[p.id as string]?.length),
+      env,
+      connected: Boolean(methods.length) || Boolean(p.key),
       modelCount: models.length,
       models,
-      authMethods: authMethods[p.id as string] ?? [],
+      // OpenCode's /provider/auth only covers providers with auth plugins
+      // (e.g. github-copilot, gitlab). Standard providers (openai, anthropic,
+      // etc.) need API key auth but have no plugin — synthesize the default.
+      authMethods: methods.length > 0 ? methods
+        : env.length > 0 ? [{ type: 'api', label: 'API Key' }]
+        : [],
     };
   });
 
