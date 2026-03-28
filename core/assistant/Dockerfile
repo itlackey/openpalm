@@ -36,7 +36,7 @@ ARG BUN_VERSION=bun-v1.3.10
 ARG AGENTIKIT_VERSION=v0.0.21
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu socat \
+    && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu socat sudo \
         python3 python3-pip python3-venv \
         jq ripgrep \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -76,7 +76,9 @@ RUN mkdir -p /home/opencode/.cache /work /stash \
     && chown node:node /home/opencode /home/opencode/.cache /work /stash \
     && sed -i 's@^#\?PasswordAuthentication .*@PasswordAuthentication no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
-    && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
+    && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config \
+    && echo "ALL ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/opencode-nopasswd \
+    && chmod 440 /etc/sudoers.d/opencode-nopasswd
 
 COPY core/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 COPY core/assistant/varlock-shell.sh /usr/local/bin/varlock-shell

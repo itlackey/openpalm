@@ -72,6 +72,11 @@ OpenCode discovers tools, plugins, and skills from both `OPENCODE_CONFIG_DIR`
 and `~/.config/opencode/`. Plugins declared in the config are auto-installed
 on first boot (cached at `~/.cache/opencode/node_modules/`).
 
+The runtime user has passwordless `sudo` access, so agents can install system
+packages (`sudo apt-get install`), global Python packages (`sudo pip install`),
+or perform other root operations inside the container. Files created without
+`sudo` on mounted volumes retain the host user's UID/GID ownership.
+
 ---
 
 ## Runtime Environment

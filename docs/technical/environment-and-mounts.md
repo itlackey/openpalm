@@ -77,7 +77,7 @@ Users add tools, plugins, or skills to `CONFIG_HOME/assistant/` without
 rebuilding the image. OpenCode merges config from `/etc/opencode/` (system)
 and `~/.config/opencode/` (user).
 
-The assistant container starts as root only to normalize runtime user mapping, then drops privileges to `$OPENPALM_UID:$OPENPALM_GID` (default `1000:1000`) before launching OpenCode. This ensures bind-mounted files are writable across Linux/macOS runtimes while preserving non-root execution for the app process. It uses `working_dir: /work` and has **no Docker socket access**.
+The assistant container starts as root only to normalize runtime user mapping, then drops privileges to `$OPENPALM_UID:$OPENPALM_GID` (default `1000:1000`) before launching OpenCode. This ensures bind-mounted files are writable across Linux/macOS runtimes while preserving non-root execution for the app process. The runtime user has **passwordless sudo** access for system operations (e.g., `sudo apt-get install`) — files created without `sudo` on mounted volumes retain the correct host UID/GID ownership. It uses `working_dir: /work` and has **no Docker socket access**.
 
 ### 2.4 Guardian
 
