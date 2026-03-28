@@ -572,6 +572,7 @@
       <CapabilitiesTab
         loading={capabilitiesLoading}
         onRefresh={loadCapabilities}
+        openCodeStatus={adminOpenCodeStatus}
       />
     </div>
     {#if activeTab === 'logs'}
