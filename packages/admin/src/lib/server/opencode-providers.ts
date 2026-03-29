@@ -89,12 +89,21 @@ export async function opencodeFetch<T>(
 
 export async function loadProviderPage(): Promise<ProviderPageState> {
 	try {
-		const [catalog, auth, config, configured] = await Promise.all([
+		const [catalog, auth, ocConfig, configured] = await Promise.all([
 			opencodeFetch<RawProviderCatalog>('/provider'),
 			opencodeFetch<Record<string, RawAuthMethod[]>>('/provider/auth'),
 			opencodeFetch<RawConfig>('/config'),
 			opencodeFetch<RawConfiguredProviders>('/config/providers')
 		]);
+
+		// Merge disk config (has custom providers) with OpenCode's in-memory config
+		const diskConfig = await getCurrentConfig();
+		const config: RawConfig = {
+			...ocConfig,
+			provider: { ...(ocConfig.provider ?? {}), ...(diskConfig.provider ?? {}) },
+			disabled_providers: diskConfig.disabled_providers ?? ocConfig.disabled_providers,
+			enabled_providers: diskConfig.enabled_providers ?? ocConfig.enabled_providers,
+		};
 
 		const views = buildProviderViews(catalog, auth, config, configured);
 
@@ -126,15 +135,50 @@ export async function loadProviderPage(): Promise<ProviderPageState> {
 	}
 }
 
-export async function getCurrentConfig() {
-	return opencodeFetch<RawConfig>('/config');
+export async function getCurrentConfig(): Promise<RawConfig> {
+	// Read from disk — OpenCode's in-memory config may not reflect disk changes
+	const { readFileSync } = await import('node:fs');
+	const { join } = await import('node:path');
+	const opHome = process.env.OP_HOME ?? '';
+	const configPath = join(opHome, 'config', 'assistant', 'opencode.json');
+	try {
+		return JSON.parse(readFileSync(configPath, 'utf-8')) as RawConfig;
+	} catch {
+		// Fallback to OpenCode API if disk read fails
+		return opencodeFetch<RawConfig>('/config');
+	}
 }
 
 export async function patchConfig(config: RawConfig) {
-	return opencodeFetch<RawConfig>('/config', {
+	// Write directly to the host config file — OpenCode's PATCH /config
+	// doesn't persist in Docker because the container config is read-only.
+	const { readFileSync, writeFileSync } = await import('node:fs');
+	const { join } = await import('node:path');
+	const opHome = process.env.OP_HOME ?? '';
+	const configPath = join(opHome, 'config', 'assistant', 'opencode.json');
+
+	let existing: Record<string, unknown> = {};
+	try {
+		existing = JSON.parse(readFileSync(configPath, 'utf-8'));
+	} catch {
+		// file missing or invalid — start fresh
+	}
+
+	// Merge provider config into existing
+	const merged = { ...existing, ...config };
+	if (config.provider) {
+		(merged as Record<string, unknown>).provider = { ...(existing.provider as Record<string, unknown> ?? {}), ...(config.provider as Record<string, unknown>) };
+	}
+
+	writeFileSync(configPath, JSON.stringify(merged, null, 2) + '\n');
+
+	// Also notify OpenCode to reload (best-effort)
+	await opencodeFetch<RawConfig>('/config', {
 		method: 'PATCH',
 		body: JSON.stringify(config)
-	});
+	}).catch(() => {});
+
+	return merged as RawConfig;
 }
 
 export async function startOauthFlowAtBase(

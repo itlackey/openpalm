@@ -4,9 +4,7 @@ import type {
   ContainerListResponse,
   AutomationsResponse,
   MemoryConfigResponse,
-  CapabilitySaveResult,
   CapabilitiesResponseDto,
-  SaveCapabilitiesPayload,
 } from './types.js';
 
 const apiBase = '';
@@ -208,39 +206,15 @@ export async function fetchCapabilityStatus(
 export async function fetchCapabilities(
   token: string
 ): Promise<Record<string, string>> {
-  const dto = await fetchCapabilitiesDto(token);
-  return dto.secrets;
-}
-
-export async function fetchCapabilitiesDto(
-  token: string
-): Promise<CapabilitiesResponseDto> {
   const res = await request('GET', '/admin/capabilities', token);
   if (res.status === 401) {
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }
-  if (!res.ok) return { capabilities: null, secrets: {} };
-  return (await res.json()) as CapabilitiesResponseDto;
+  if (!res.ok) return {};
+  const dto = (await res.json()) as CapabilitiesResponseDto;
+  return dto.secrets;
 }
 
-export async function saveCapabilities(
-  token: string,
-  payload: SaveCapabilitiesPayload
-): Promise<CapabilitySaveResult> {
-  const res = await requireOk(await request('POST', '/admin/capabilities', token, payload));
-  return (await res.json()) as CapabilitySaveResult;
-}
-
-export async function testCapability(
-  token: string,
-  draft: { baseUrl: string; apiKey: string; kind: string; provider?: string }
-): Promise<{ ok: boolean; models?: string[]; error?: string; errorCode?: string }> {
-  const res = await requireOk(
-    await request('POST', '/admin/capabilities/test', token, draft),
-    `Capability test failed`
-  );
-  return (await res.json()) as { ok: boolean; models?: string[]; error?: string; errorCode?: string };
-}
 
 // ── Memory Config ───────────────────────────────────────────────────────
 

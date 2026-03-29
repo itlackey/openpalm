@@ -62,8 +62,6 @@
 </script>
 
 <div class="providers-panel">
-	<CustomProviderForm onaction={handleAction} />
-
 	{#if !pageState.available}
 		<section class="offline-state">
 			<h3 class="section-heading">OpenCode server unavailable</h3>
@@ -121,6 +119,8 @@
 			</div>
 		</section>
 	{/if}
+
+	<CustomProviderForm onaction={handleAction} />
 </div>
 
 <style>
@@ -171,7 +171,8 @@
 	}
 
 	.catalog-column {
-		display: grid;
+		display: flex;
+		flex-direction: column;
 		gap: var(--space-3);
 		position: sticky;
 		top: var(--space-3);
@@ -179,6 +180,7 @@
 		border-radius: var(--radius-lg);
 		border: 1px solid var(--color-border);
 		background: var(--color-surface);
+		max-height: calc(100vh - var(--nav-height, 56px) - var(--space-8));
 	}
 
 	.editor-column {
@@ -209,8 +211,9 @@
 	.card-list {
 		display: grid;
 		gap: var(--space-2);
-		max-height: calc(100vh - 20rem);
-		overflow: auto;
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
 		padding-right: 2px;
 	}
 
@@ -228,9 +231,6 @@
 
 		.catalog-column {
 			position: static;
-		}
-
-		.card-list {
 			max-height: none;
 		}
 	}

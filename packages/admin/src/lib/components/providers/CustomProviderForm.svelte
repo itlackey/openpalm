@@ -97,6 +97,9 @@
 
 			const result = (await response.json()) as ProviderActionResult;
 			feedback = { ok: result.ok === true, message: result.message ?? '' };
+			if (result.ok === true) {
+				setTimeout(() => { if (feedback?.ok === true) feedback = undefined; }, 4000);
+			}
 			onaction?.(result);
 		} catch (err) {
 			feedback = { ok: false, message: err instanceof Error ? err.message : 'Request failed.' };
@@ -118,7 +121,7 @@
 	{#if feedback?.message}
 		<div class="feedback" class:feedback--success={feedback.ok} class:feedback--error={!feedback.ok}>
 			<span>{feedback.message}</span>
-			<button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => { feedback = undefined; }}>x</button>
+			<button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => { feedback = undefined; }}>&#x2715;</button>
 		</div>
 	{/if}
 
@@ -232,6 +235,25 @@
 		display: none;
 	}
 
+	.custom-summary::after {
+		content: '';
+		display: inline-block;
+		width: 10px;
+		height: 10px;
+		margin-left: auto;
+		flex-shrink: 0;
+		border-right: 2px solid var(--color-text-tertiary);
+		border-bottom: 2px solid var(--color-text-tertiary);
+		transform: rotate(45deg);
+		transition: transform var(--transition-fast);
+		align-self: center;
+	}
+
+	details[open] .custom-summary::after {
+		transform: rotate(225deg);
+		margin-top: 4px;
+	}
+
 	.custom-eyebrow {
 		font-size: var(--text-xs);
 		letter-spacing: 0.05em;
@@ -266,6 +288,7 @@
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: var(--space-3);
+		align-items: start;
 	}
 
 	.form-field,
@@ -339,14 +362,21 @@
 	.feedback--error { background: var(--color-danger-bg); color: var(--color-text); }
 
 	.btn-dismiss {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 32px;
+		min-height: 32px;
 		background: none;
 		border: none;
+		border-radius: var(--radius-sm);
 		color: inherit;
 		cursor: pointer;
 		opacity: 0.6;
-		font-size: var(--text-sm);
+		font-size: var(--text-base);
+		flex-shrink: 0;
 	}
-	.btn-dismiss:hover { opacity: 1; }
+	.btn-dismiss:hover { opacity: 1; background: rgba(0, 0, 0, 0.06); }
 
 	@media (max-width: 860px) {
 		.custom-summary,

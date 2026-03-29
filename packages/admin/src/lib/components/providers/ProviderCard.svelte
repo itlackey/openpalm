@@ -12,7 +12,7 @@
 	} = $props();
 </script>
 
-<button class="provider-card" class:provider-card--selected={selected} type="button" onclick={onselect}>
+<button class="provider-card" class:provider-card--selected={selected} class:provider-card--connected={provider.connected} type="button" onclick={onselect}>
 	<div class="card-title-row">
 		<div>
 			<span class="card-name">{provider.name}</span>
@@ -65,6 +65,10 @@
 		font: inherit;
 		cursor: pointer;
 		transition: border-color var(--transition-fast), background var(--transition-fast);
+	}
+
+	.provider-card--connected {
+		border-left: 3px solid var(--color-success);
 	}
 
 	.provider-card:hover,

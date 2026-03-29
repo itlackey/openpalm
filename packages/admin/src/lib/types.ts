@@ -93,24 +93,7 @@ export type CapabilitiesResponseDto = {
   secrets: Record<string, string>;
 };
 
-export type SaveCapabilitiesPayload = {
-  provider: string;
-  apiKey?: string;
-  baseUrl?: string;
-  systemModel?: string;
-  embeddingModel?: string;
-  embeddingDims?: number;
-  memoryUserId?: string;
-  customInstructions?: string;
-};
-
-export type CapabilitySaveResult = {
-  ok: boolean;
-  dimensionWarning?: string;
-  dimensionMismatch?: boolean;
-};
-
-// ── OpenCode Provider/Model Types (Issue #350) ────────────────────────
+// ── OpenCode Provider/Model Types ──────────────────────────────────────
 
 export type OpenCodeProviderSummary = {
   id: string;
@@ -135,16 +118,4 @@ export type OpenCodeAuthMethod = {
   label: string;
 };
 
-export type DeviceAuthStartResponse = {
-  pollToken: string;
-  userCode: string;
-  verificationUri: string;
-  instructions?: string;
-  method: 'auto' | 'code';
-};
-
-export type DeviceAuthPollEvent = {
-  status: 'pending' | 'complete' | 'error';
-  message: string;
-};
 

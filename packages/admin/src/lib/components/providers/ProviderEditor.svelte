@@ -93,6 +93,9 @@
 
 			const result = (await response.json()) as ProviderActionResult;
 			actionResult = result;
+			if (result.ok === true) {
+				setTimeout(() => { if (actionResult?.ok === true) actionResult = undefined; }, 4000);
+			}
 
 			if (result.oauth?.mode === 'auto') {
 				startAutoCallback(result.oauth.providerId, result.oauth.methodIndex, result.oauth.url);
@@ -151,7 +154,7 @@
 	{#if actionResult?.message}
 		<div class="feedback" class:feedback--success={actionResult.ok === true} class:feedback--error={actionResult.ok === false}>
 			<span>{actionResult.message}</span>
-			<button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => { actionResult = undefined; }}>x</button>
+			<button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => { actionResult = undefined; }}>&#x2715;</button>
 		</div>
 	{/if}
 
@@ -167,7 +170,14 @@
 				<form autocomplete="off" onsubmit={(e) => handleFormSubmit('toggleProvider', e)}>
 					<input type="hidden" name="providerId" value={provider.id} />
 					<input type="hidden" name="enabled" value={provider.disabled ? 'true' : 'false'} />
-					<button class="btn btn-outline btn-sm" type="submit" disabled={submitting}>
+					<button
+						class="btn btn-sm"
+						class:btn-outline={provider.disabled}
+						class:btn-ghost={!provider.disabled}
+						style={!provider.disabled ? 'color: var(--color-danger);' : ''}
+						type="submit"
+						disabled={submitting}
+					>
 						{provider.disabled ? 'Enable provider' : 'Disable provider'}
 					</button>
 				</form>
@@ -220,7 +230,7 @@
 						{/each}
 					</select>
 				</div>
-				<button class="btn btn-outline btn-sm" type="submit" disabled={submitting}>Use for quick tasks</button>
+				<button class="btn btn-outline btn-sm" type="submit" disabled={submitting}>Set as small model</button>
 			</form>
 		</section>
 	</div>
@@ -486,6 +496,7 @@
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: var(--space-3);
+		align-items: start;
 	}
 
 	.form-field {
@@ -521,6 +532,12 @@
 		display: flex;
 		align-items: flex-end;
 		gap: var(--space-3);
+	}
+
+	.model-form + .model-form {
+		padding-top: var(--space-3);
+		border-top: 1px solid var(--color-border);
+		margin-top: var(--space-1);
 	}
 
 	.method-list {
@@ -568,14 +585,21 @@
 	.feedback--error { background: var(--color-danger-bg); color: var(--color-text); }
 
 	.btn-dismiss {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 32px;
+		min-height: 32px;
 		background: none;
 		border: none;
+		border-radius: var(--radius-sm);
 		color: inherit;
 		cursor: pointer;
 		opacity: 0.6;
-		font-size: var(--text-sm);
+		font-size: var(--text-base);
+		flex-shrink: 0;
 	}
-	.btn-dismiss:hover { opacity: 1; }
+	.btn-dismiss:hover { opacity: 1; background: rgba(0, 0, 0, 0.06); }
 
 	.text-link {
 		color: var(--color-primary);

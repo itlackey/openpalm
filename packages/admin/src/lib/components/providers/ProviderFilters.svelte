@@ -32,6 +32,7 @@
 				type="button"
 				class="chip"
 				class:chip--active={filter === option.value}
+				class:chip--zero={counts[option.value] === 0}
 				onclick={() => { filter = option.value; }}
 			>
 				<span>{option.label}</span>
@@ -91,5 +92,15 @@
 	.chip--active {
 		background: var(--color-primary-subtle);
 		border-color: var(--color-primary);
+	}
+
+	.chip:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 2px;
+	}
+
+	.chip--zero:not(.chip--active) {
+		opacity: 0.45;
+		pointer-events: none;
 	}
 </style>
