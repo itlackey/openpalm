@@ -1,6 +1,6 @@
 using './main.bicep'
 
-param location = 'eastus2'
+param location = 'centralus'
 param prefix = 'openpalm-prod'
 param imageTag = 'latest'
 param imageNamespace = 'openpalm'
@@ -24,11 +24,9 @@ param channelApiSecretUri = 'https://openpalmprod-kv-REPLACE.vault.azure.net/sec
 param channelChatSecretUri = 'https://openpalmprod-kv-REPLACE.vault.azure.net/secrets/channel-chat-secret'
 param channelVoiceSecretUri = ''
 
-// Assistant provider wiring.
-param openAiApiKeySecretUri = 'https://openpalmprod-kv-REPLACE.vault.azure.net/secrets/openai-api-key'
-param openAiBaseUrl = 'https://api.openai.com/v1'
-
 // Memory capability / embedding configuration.
+// AI Foundry serves memory summarization and embeddings ONLY — not the assistant.
+// The assistant uses OpenCode's default built-in provider (no OPENAI_* env vars).
 // When deployAiFoundry is true, capLlmApiKeySecretUri and embeddingsApiKeySecretUri
 // can be left blank — the template will fall back to the AI Foundry key automatically.
 param capLlmProvider = 'openai'
@@ -45,9 +43,8 @@ param embeddingsDims = '3072'
 param deployBackupJob = false
 
 // Azure AI Foundry – deploys an AI Services account with GPT 4.1, GPT 4.1 Mini,
-// and text-embedding-3-large. When enabled, the assistant container's OPENAI_BASE_URL
-// and OPENAI_API_KEY are automatically wired to the Foundry endpoint and Key Vault secret.
-// Memory and OpenViking embedding config also falls back to AI Foundry credentials.
+// and text-embedding-3-large. Used by memory (summarization) and OpenViking (embeddings).
+// NOT used by the assistant — see LESSONS-LEARNED.md for details.
 param deployAiFoundry = true
 param aiFoundryAccountName = 'ai-openpalm-prod'
 param aiFoundrySku = 'S0'

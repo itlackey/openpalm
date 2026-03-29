@@ -72,11 +72,8 @@ param channelChatSecretUri string = ''
 @description('Key Vault secret versionless URI for CHANNEL_VOICE_SECRET.')
 param channelVoiceSecretUri string = ''
 
-@description('Key Vault secret versionless URI for OPENAI_API_KEY. Leave blank if unused.')
-param openAiApiKeySecretUri string = ''
-
-@description('Optional non-secret base URL for the OpenAI-compatible provider used by the assistant.')
-param openAiBaseUrl string = ''
+// openAiApiKeySecretUri and openAiBaseUrl removed — assistant uses default OpenCode provider.
+// AI Foundry key is used by memory and OpenViking via effectiveCapLlm/EmbeddingsApiKeySecretUri.
 
 @description('Capability provider for memory summarization / planning.')
 param capLlmProvider string = ''
@@ -496,10 +493,10 @@ resource aiFoundry 'Microsoft.CognitiveServices/accounts@2024-10-01' = if (deplo
   }
   properties: {
     customSubDomainName: aiFoundryAccountName
-    publicNetworkAccess: enablePrivateEndpoints && lockDownPublicAccess ? 'Disabled' : 'Enabled'
-    networkAcls: {
-      defaultAction: enablePrivateEndpoints && lockDownPublicAccess ? 'Deny' : 'Allow'
-    }
+    // Do NOT toggle publicNetworkAccess on AI Foundry — changing it puts the account into
+    // 'Accepted' state for 30-60s, which causes subsequent Bicep deployments to fail with
+    // AccountProvisioningStateInvalid. The private endpoint provides network security.
+    // See LESSONS-LEARNED.md #3.
     disableLocalAuth: false
   }
 }
@@ -781,11 +778,10 @@ resource envStorageGuardianData 'Microsoft.App/managedEnvironments/storages@2025
   }
 }
 
-// Determine the effective API key secret URI: prefer AI Foundry when deployed, fall back to manually provided.
-var effectiveOpenAiApiKeySecretUri = deployAiFoundry ? aiFoundryKeyVaultSecretUri : openAiApiKeySecretUri
-// Determine the effective base URL: prefer AI Foundry endpoint when deployed.
-var effectiveOpenAiBaseUrl = deployAiFoundry ? aiFoundryEndpoint : openAiBaseUrl
+// AI Foundry key and endpoint are used by memory and OpenViking only (not the assistant).
 
+// Assistant uses the default OpenCode built-in provider — no OPENAI_* or AZURE_OPENAI_* env vars.
+// AI Foundry is only wired to memory and OpenViking (for embeddings/summarization).
 var assistantSecrets = concat(
   [
     {
@@ -796,13 +792,6 @@ var assistantSecrets = concat(
     {
       name: 'assistant-token'
       keyVaultUrl: assistantTokenSecretUri
-      identity: sharedIdentity.id
-    }
-  ],
-  empty(effectiveOpenAiApiKeySecretUri) ? [] : [
-    {
-      name: 'openai-api-key'
-      keyVaultUrl: effectiveOpenAiApiKeySecretUri
       identity: sharedIdentity.id
     }
   ],
@@ -975,7 +964,7 @@ resource assistantApp 'Microsoft.App/containerApps@2025-01-01' = {
     configuration: {
       activeRevisionsMode: 'Single'
       ingress: {
-        external: true
+        external: false
         targetPort: 4096
         transport: 'auto'
         allowInsecure: true
@@ -1021,17 +1010,16 @@ resource assistantApp 'Microsoft.App/containerApps@2025-01-01' = {
               { name: 'AKM_STASH_DIR', value: '/home/opencode/.akm' }
               { name: 'OP_ADMIN_API_URL', value: '' }
               { name: 'OP_ASSISTANT_TOKEN', secretRef: 'assistant-token' }
-              { name: 'GUARDIAN_URL', value: 'http://${appNames.guardian}' }
-              { name: 'MEMORY_API_URL', value: 'http://${appNames.memory}' }
+              { name: 'GUARDIAN_URL', value: 'http://${appNames.guardian}.internal.${managedEnvironment.properties.defaultDomain}' }
+              { name: 'MEMORY_API_URL', value: 'http://${appNames.memory}.internal.${managedEnvironment.properties.defaultDomain}' }
               { name: 'MEMORY_AUTH_TOKEN', secretRef: 'memory-token' }
               { name: 'MEMORY_USER_ID', value: 'default_user' }
               { name: 'OP_UID', value: '1000' }
               { name: 'OP_GID', value: '1000' }
-              { name: 'OPENAI_BASE_URL', value: effectiveOpenAiBaseUrl }
-              { name: 'SYSTEM_LLM_PROVIDER', value: capLlmProvider }
             ],
-            empty(effectiveOpenAiApiKeySecretUri) ? [] : [{ name: 'OPENAI_API_KEY', secretRef: 'openai-api-key' }],
-            !deployOpenViking ? [] : [{ name: 'OPENVIKING_URL', value: 'http://${appNames.openviking}' }],
+            // No OPENAI_* or AZURE_OPENAI_* — assistant uses default OpenCode built-in provider.
+            // AI Foundry is for memory/OpenViking only. See LESSONS-LEARNED.md #15, #18.
+            !deployOpenViking ? [] : [{ name: 'OPENVIKING_URL', value: 'http://${appNames.openviking}.internal.${managedEnvironment.properties.defaultDomain}' }],
             empty(openVikingApiKeySecretUri) ? [] : [{ name: 'OPENVIKING_API_KEY', secretRef: 'openviking-api-key' }]
           )
           volumeMounts: [
@@ -1097,7 +1085,13 @@ resource guardianApp 'Microsoft.App/containerApps@2025-01-01' = {
         transport: 'auto'
         allowInsecure: true
       }
-      secrets: guardianSecrets
+      secrets: concat(guardianSecrets, [
+        {
+          name: 'opencode-password'
+          keyVaultUrl: opencodePasswordSecretUri
+          identity: sharedIdentity.id
+        }
+      ])
     }
     template: {
       volumes: [
@@ -1112,8 +1106,9 @@ resource guardianApp 'Microsoft.App/containerApps@2025-01-01' = {
             [
               { name: 'HOME', value: '/app/data' }
               { name: 'PORT', value: '8080' }
-              { name: 'OP_ASSISTANT_URL', value: 'http://${appNames.assistant}' }
+              { name: 'OP_ASSISTANT_URL', value: 'http://${appNames.assistant}.internal.${managedEnvironment.properties.defaultDomain}' }
               { name: 'OPENCODE_TIMEOUT_MS', value: '0' }
+              { name: 'OPENCODE_SERVER_PASSWORD', secretRef: 'opencode-password' }
               { name: 'GUARDIAN_AUDIT_PATH', value: '/app/audit/guardian-audit.log' }
             ],
             empty(channelDiscordSecretUri) ? [] : [{ name: 'CHANNEL_DISCORD_SECRET', secretRef: 'channel-discord-secret' }],
@@ -1208,7 +1203,7 @@ resource slackApp 'Microsoft.App/containerApps@2025-01-01' = if (!empty(channelS
           env: concat(
             [
               { name: 'PORT', value: '8185' }
-              { name: 'GUARDIAN_URL', value: 'http://${appNames.guardian}' }
+              { name: 'GUARDIAN_URL', value: 'http://${appNames.guardian}.internal.${managedEnvironment.properties.defaultDomain}' }
               { name: 'CHANNEL_NAME', value: 'Slack Bot' }
               { name: 'CHANNEL_PACKAGE', value: '@openpalm/channel-slack' }
               { name: 'CHANNEL_SLACK_SECRET', secretRef: 'channel-slack-secret' }
@@ -1417,9 +1412,9 @@ resource schedulerApp 'Microsoft.App/containerApps@2025-01-01' = {
             { name: 'OP_HOME', value: '/openpalm' }
             { name: 'OP_ADMIN_TOKEN', secretRef: 'admin-token' }
             { name: 'OP_ADMIN_API_URL', value: '' }
-            { name: 'OPENCODE_API_URL', value: 'http://${appNames.assistant}' }
+            { name: 'OPENCODE_API_URL', value: 'http://${appNames.assistant}.internal.${managedEnvironment.properties.defaultDomain}' }
             { name: 'OPENCODE_SERVER_PASSWORD', secretRef: 'opencode-password' }
-            { name: 'MEMORY_API_URL', value: 'http://${appNames.memory}' }
+            { name: 'MEMORY_API_URL', value: 'http://${appNames.memory}.internal.${managedEnvironment.properties.defaultDomain}' }
             { name: 'MEMORY_AUTH_TOKEN', secretRef: 'memory-token' }
             { name: 'MEMORY_USER_ID', value: 'default_user' }
           ]

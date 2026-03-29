@@ -39,23 +39,30 @@ const cfg = {
   deployOpenViking: (process.env.DEPLOY_OPENVIKING || 'false').toLowerCase() === 'true',
 };
 
-const internalSecrets: Dict = {
-  'op-memory-token': process.env.OP_MEMORY_TOKEN || rand(32),
-  'op-assistant-token': process.env.OP_ASSISTANT_TOKEN || rand(32),
-  'op-admin-token': process.env.OP_ADMIN_TOKEN || rand(32),
-  'op-opencode-password': process.env.OP_OPENCODE_PASSWORD || rand(24),
-  'channel-api-secret': process.env.CHANNEL_API_SECRET || rand(32),
-  'channel-chat-secret': process.env.CHANNEL_CHAT_SECRET || rand(32),
-  ...(cfg.deployOpenViking ? { 'openviking-api-key': process.env.OPENVIKING_API_KEY || rand(32) } : {}),
+// Internal secrets are generated once and reused across deployments.
+// They are only written to KV if they don't already exist (or if an env var override is provided).
+// This prevents desync between running containers that cached the old secret value
+// and newly created revisions that would get a different random value.
+const internalSecretDefaults: Dict = {
+  'op-memory-token': process.env.OP_MEMORY_TOKEN || '',
+  'op-assistant-token': process.env.OP_ASSISTANT_TOKEN || '',
+  'op-admin-token': process.env.OP_ADMIN_TOKEN || '',
+  'op-opencode-password': process.env.OP_OPENCODE_PASSWORD || '',
+  'channel-api-secret': process.env.CHANNEL_API_SECRET || '',
+  'channel-chat-secret': process.env.CHANNEL_CHAT_SECRET || '',
+  ...(cfg.deployOpenViking ? { 'openviking-api-key': process.env.OPENVIKING_API_KEY || '' } : {}),
 };
 
+// No openai-api-key — assistant uses default OpenCode provider, not AI Foundry.
+// AI Foundry key is managed by Bicep (aiFoundryApiKeySecret) for memory/OpenViking.
 const optionalSecrets: Dict = compact({
   'channel-discord-secret': process.env.CHANNEL_DISCORD_SECRET || '',
   'channel-slack-secret': process.env.CHANNEL_SLACK_SECRET || '',
   'channel-voice-secret': process.env.CHANNEL_VOICE_SECRET || '',
-  'openai-api-key': process.env.OPENAI_API_KEY || '',
-  'op-cap-llm-api-key': process.env.OP_CAP_LLM_API_KEY || process.env.OPENAI_API_KEY || '',
-  'op-cap-embeddings-api-key': process.env.OP_CAP_EMBEDDINGS_API_KEY || process.env.OPENAI_API_KEY || '',
+  'op-cap-llm-api-key': process.env.OP_CAP_LLM_API_KEY || '',
+  'op-cap-embeddings-api-key': process.env.OP_CAP_EMBEDDINGS_API_KEY || '',
+  'slack-bot-token': process.env.SLACK_BOT_TOKEN || process.env.TPI_SLACK_BOT_TOKEN || '',
+  'slack-app-token': process.env.SLACK_APP_TOKEN || process.env.TPI_SLACK_APP_TOKEN || '',
 });
 
 async function main() {
@@ -90,6 +97,25 @@ async function main() {
     );
   }
 
+  // Unlock Key Vault and Storage if they were locked down by a previous Bicep deployment.
+  // Bicep sets lockDownPublicAccess which disables public access. We need to re-enable it
+  // temporarily so deploy.ts can write secrets and Bicep can manage file shares.
+  // Bicep will re-lock them at the end of the deployment.
+  if (kvExists) {
+    console.log('Unlocking Key Vault public access for secret writes...');
+    try {
+      await az('keyvault', 'update', '-n', keyVaultName, '--public-network-access', 'Enabled', '--bypass', 'AzureServices', '--default-action', 'Allow');
+    } catch {
+      console.warn('Could not unlock Key Vault — it may already be open or you lack permissions.');
+    }
+  }
+  try {
+    console.log('Unlocking Storage public access for Bicep file share management...');
+    await az('storage', 'account', 'update', '-n', storageAccountName, '-g', cfg.resourceGroup, '--public-network-access', 'Enabled', '--default-action', 'Allow');
+  } catch {
+    console.warn('Could not unlock Storage — it may not exist yet (first deploy) or you lack permissions.');
+  }
+
   // Assign Key Vault Secrets Officer to the deployer so secret writes succeed
   const kvScope = `/subscriptions/${cfg.subscriptionId}/resourceGroups/${cfg.resourceGroup}/providers/Microsoft.KeyVault/vaults/${keyVaultName}`;
   try {
@@ -103,6 +129,25 @@ async function main() {
     );
   } catch {
     console.warn('Could not auto-assign Key Vault Secrets Officer. Ensure the deployer has permission to write secrets.');
+  }
+
+  // Resolve internal secrets: use env var if provided, otherwise check KV, otherwise generate.
+  const internalSecrets: Dict = {};
+  for (const [name, envValue] of Object.entries(internalSecretDefaults)) {
+    if (envValue) {
+      internalSecrets[name] = envValue;
+    } else {
+      try {
+        const existing = await run('az', ['keyvault', 'secret', 'show', '--vault-name', keyVaultName, '--name', name, '--query', 'value', '-o', 'tsv']);
+        if (existing.stdout.trim()) {
+          console.log(`Secret ${name} already exists in Key Vault, keeping existing value.`);
+          continue; // Don't overwrite
+        }
+      } catch {
+        // Secret doesn't exist yet — generate a new one
+      }
+      internalSecrets[name] = rand(name === 'op-opencode-password' ? 24 : 32);
+    }
   }
 
   const allSecrets = Object.entries({ ...internalSecrets, ...optionalSecrets }).filter(([, v]) => !!v);
