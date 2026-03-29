@@ -130,8 +130,14 @@ services:
       CLOUDSDK_CONFIG: /etc/vault/.gcloud
       # Microsoft Graph CLI credential config
       MGC_CONFIG_DIR: /etc/vault/.mgc
+      # Google Workspace CLI (gws) — config dir persists OAuth tokens across restarts.
+      # Only set CONFIG_DIR here. Do NOT set CREDENTIALS_FILE — if it points to a
+      # missing plaintext JSON, gws fails even when encrypted creds exist in the
+      # config dir. Letting gws discover creds via CONFIG_DIR works for all methods.
+      GOOGLE_WORKSPACE_CLI_CONFIG_DIR: /etc/vault/.gws
+      GOOGLE_WORKSPACE_PROJECT_ID: ${GOOGLE_WORKSPACE_PROJECT_ID:-}
       # Apprise notification config
-      APPRISE_CONFIG: /etc/vault/apprise.conf
+      APPRISE_CONFIG: /etc/vault/apprise.yml
     ports:
       - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
       - "${OP_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_SSH_PORT:-2222}:22"

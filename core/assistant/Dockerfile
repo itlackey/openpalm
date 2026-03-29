@@ -18,9 +18,9 @@ FROM node:22-trixie-slim
 
 # ── Pinned installer versions ────────────────────────────────────────────────
 # Bump these ARGs when upgrading; keeps curl|bash installs reproducible.
-ARG OPENCODE_VERSION=1.2.24
+ARG OPENCODE_VERSION=1.3.3
 ARG BUN_VERSION=bun-v1.3.10
-ARG AGENTIKIT_VERSION=v0.2.0
+ARG AGENTIKIT_VERSION=v0.2.2
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu sudo socat unzip \
@@ -82,9 +82,9 @@ ENV PATH="/opt/google-cloud-sdk/bin:$PATH"
 
 # Google Workspace CLI (https://github.com/googleworkspace/cli)
 RUN set -e; \
-    if [ "$(dpkg --print-architecture)" = "arm64" ]; then GWS_ARCH=arm64; else GWS_ARCH=amd64; fi \
-    && curl -fsSL "https://github.com/googleworkspace/cli/releases/latest/download/gws_linux_${GWS_ARCH}" \
-         -o /usr/local/bin/gws \
+    if [ "$(dpkg --print-architecture)" = "arm64" ]; then GWS_TRIPLE=aarch64-unknown-linux-gnu; else GWS_TRIPLE=x86_64-unknown-linux-gnu; fi \
+    && curl -fsSL "https://github.com/googleworkspace/cli/releases/latest/download/google-workspace-cli-${GWS_TRIPLE}.tar.gz" \
+         | tar xz --strip-components=1 -C /usr/local/bin "google-workspace-cli-${GWS_TRIPLE}/gws" \
     && chmod +x /usr/local/bin/gws
 
 # Microsoft Graph CLI (https://github.com/microsoftgraph/msgraph-cli)
