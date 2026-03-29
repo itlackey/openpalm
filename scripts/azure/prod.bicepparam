@@ -27,18 +27,31 @@ param openAiApiKeySecretUri = 'https://openpalmprod-kv-REPLACE.vault.azure.net/s
 param openAiBaseUrl = 'https://api.openai.com/v1'
 
 // Memory capability / embedding configuration.
+// When deployAiFoundry is true, capLlmApiKeySecretUri and embeddingsApiKeySecretUri
+// can be left blank — the template will fall back to the AI Foundry key automatically.
 param capLlmProvider = 'openai'
-param capLlmModel = 'gpt-4.1-mini'
-param capLlmBaseUrl = 'https://api.openai.com/v1'
-param capLlmApiKeySecretUri = 'https://openpalmprod-kv-REPLACE.vault.azure.net/secrets/op-cap-llm-api-key'
+param capLlmModel = 'gpt-54-mini'
+param capLlmBaseUrl = 'https://ai-openpalm-prod.openai.azure.com/'
+param capLlmApiKeySecretUri = ''
 
 param embeddingsProvider = 'openai'
 param embeddingsModel = 'text-embedding-3-large'
-param embeddingsBaseUrl = 'https://api.openai.com/v1'
-param embeddingsApiKeySecretUri = 'https://openpalmprod-kv-REPLACE.vault.azure.net/secrets/op-cap-embeddings-api-key'
+param embeddingsBaseUrl = 'https://ai-openpalm-prod.openai.azure.com/'
+param embeddingsApiKeySecretUri = ''
 param embeddingsDims = '3072'
 
 param deployBackupJob = false
+
+// Azure AI Foundry – deploys an AI Services account with GPT 5.4 and GPT 5.4 Mini.
+// When enabled, the assistant container's OPENAI_BASE_URL and OPENAI_API_KEY are
+// automatically wired to the Foundry endpoint and Key Vault secret.
+param deployAiFoundry = true
+param aiFoundryAccountName = 'ai-openpalm-prod'
+param aiFoundrySku = 'S0'
+param gpt54DeploymentName = 'gpt-54'
+param gpt54Capacity = 10
+param gpt54MiniDeploymentName = 'gpt-54-mini'
+param gpt54MiniCapacity = 30
 
 param enablePrivateEndpoints = true
 param lockDownPublicAccess = true
