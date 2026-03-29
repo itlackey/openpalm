@@ -36,9 +36,14 @@ ensure_home_layout() {
     /home/opencode/.local/bin \
     /home/opencode/.local/state/opencode \
     /home/opencode/.local/share/opencode \
-    /work \
-    /etc/opencode \
-    /var/run/sshd
+    /work
+
+  # Root-owned directories — only create when running as root.
+  # These are also created in the Dockerfile, so they exist in fresh images;
+  # this handles the case where volumes shadow the image layers.
+  if [ "$(id -u)" = "0" ]; then
+    mkdir -p /etc/opencode /var/run/sshd
+  fi
 }
 
 maybe_set_memory_user_id() {

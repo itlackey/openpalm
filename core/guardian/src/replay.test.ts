@@ -5,7 +5,7 @@
  * and pruning/eviction at the size cap.
  */
 import { describe, it, expect } from "bun:test";
-import { checkNonce, nonceCacheSize, NONCE_WINDOW_MS, NONCE_MAX_SIZE } from "./replay";
+import { checkNonce, nonceCacheSize, NONCE_WINDOW_MS, NONCE_MAX_SIZE, _setMaxSizeForTest } from "./replay";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -83,22 +83,29 @@ describe("Replay detection (checkNonce)", () => {
     expect(checkNonce(uniqueNonce(), ts)).toBe(true);
   });
 
-  it("evicts entries via hard cap when cache exceeds pruning threshold", () => {
-    // Fill past the pruning trigger (10,000+). All nonces use Date.now()
-    // so none are expired — this tests the hard-cap eviction path, not
-    // expiry-based pruning.
-    for (let i = 0; i < 10_500; i++) {
-      checkNonce(`prune-test-${i}`, Date.now());
+  it("evicts entries via hard cap when cache exceeds max size", () => {
+    // Lower the hard cap to 5,000. Pruning triggers inside checkNonce when
+    // seen.size > 10,000, so we insert 16,000 entries to trigger the hard-cap
+    // eviction path at least twice. After the final prune, entries added
+    // between the last prune and the end of the loop remain (up to ~5,000).
+    const testMax = 5_000;
+    const insertCount = 16_000;
+    _setMaxSizeForTest(testMax);
+
+    try {
+      for (let i = 0; i < insertCount; i++) {
+        checkNonce(`evict-test-${i}`, Date.now());
+      }
+
+      const sizeAfter = nonceCacheSize();
+      // Hard-cap eviction ran: size is far below total inserted.
+      // The tail after the last prune adds up to ~5,000 entries on top of maxSize.
+      expect(sizeAfter).toBeLessThan(insertCount);
+      expect(sizeAfter).toBeLessThanOrEqual(testMax + 5_100);
+      expect(sizeAfter).toBeGreaterThan(0);
+    } finally {
+      _setMaxSizeForTest(); // restore default
     }
-
-    // Now insert with a valid timestamp — pruning should trigger and
-    // the hard cap ensures the cache does not grow unbounded
-    checkNonce(uniqueNonce(), Date.now());
-    const sizeAfter = nonceCacheSize();
-
-    // Cache should still be bounded (hard-cap eviction ran)
-    expect(sizeAfter).toBeLessThanOrEqual(NONCE_MAX_SIZE);
-    expect(sizeAfter).toBeGreaterThan(0);
   });
 
   it("exports the expected constants", () => {

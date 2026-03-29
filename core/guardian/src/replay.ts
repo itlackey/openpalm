@@ -7,6 +7,7 @@
  */
 
 const CLOCK_SKEW = 300_000;
+let maxSize = 50_000;
 const seen = new Map<string, number>();
 
 function pruneNonceCache(): void {
@@ -15,10 +16,10 @@ function pruneNonceCache(): void {
     if (v < cutoff) seen.delete(k);
   }
 
-  // Hard cap: if still over 50,000 after pruning expired, delete oldest entries first
-  if (seen.size > 50_000) {
+  // Hard cap: if still over maxSize after pruning expired, delete oldest entries first
+  if (seen.size > maxSize) {
     const sorted = [...seen.entries()].sort((a, b) => a[1] - b[1]);
-    const toRemove = sorted.slice(0, sorted.length - 50_000);
+    const toRemove = sorted.slice(0, sorted.length - maxSize);
     for (const [k] of toRemove) seen.delete(k);
   }
 }
@@ -49,3 +50,8 @@ export function nonceCacheSize(): number {
 /** Expose constants for the /stats endpoint. */
 export const NONCE_WINDOW_MS = CLOCK_SKEW;
 export const NONCE_MAX_SIZE = 50_000;
+
+/** Override max size for testing hard-cap eviction. Resets to 50,000 when called with no args. */
+export function _setMaxSizeForTest(n: number = 50_000): void {
+  maxSize = n;
+}

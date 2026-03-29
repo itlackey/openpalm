@@ -1,5 +1,5 @@
 ---
-description: Send notifications with config-file based destinations and tag-based routing.
+description: Send notifications to various destinations such as Discord, Telegram, Slack, Microsoft Teams, and email.
 ---
 
 # Notify
@@ -22,23 +22,6 @@ Install the Apprise CLI before using this skill if it is not already available i
 ```bash
 pip install apprise
 ```
-
-## Config Model
-
-This skill expects an Apprise config file in text or YAML format.
-
-Simple text example:
-
-```text
-discord=discord://webhook_id/webhook_token
-alerts,critical=discord://another_webhook_id/another_webhook_token
-email=mailtos://user:password@smtp.example.com?to=team@example.com&from=bot@example.com
-```
-
-Tag behavior follows Apprise rules:
-
-- repeated `--tag` values use OR logic
-- comma-separated tags inside one value use AND logic
 
 ## Script
 
@@ -113,44 +96,24 @@ export APPRISE_NOTIFY_CONFIG="$HOME/.config/apprise/apprise.conf"
 
 See `examples/apprise.conf` and `examples/apprise.yaml` for starter configs, including Telegram, Slack, and Microsoft Teams examples.
 
-## Quick Usage
 
-```bash
-# Send to the tag named "ops"
-bash scripts/notify.sh --channel ops --subject "Task Complete" --body "The build finished successfully"
+## Config Model
 
-# Read body from stdin
-bun test 2>&1 | bash scripts/notify.sh --channel ops --subject "Test Results" --stdin
+This skill expects an Apprise config file in text or YAML format.
 
-# Use an explicit config file
-bash scripts/notify.sh --channel alerts --config ~/.config/apprise/apprise.conf --subject "Alert" --body "Something happened"
+Simple text example:
+
+```text
+discord=discord://webhook_id/webhook_token
+alerts,critical=discord://another_webhook_id/another_webhook_token
+email=mailtos://user:password@smtp.example.com?to=team@example.com&from=bot@example.com
 ```
 
-## Examples
+Tag behavior follows Apprise rules:
 
-### Notify on task completion
+- repeated `--tag` values use OR logic
+- comma-separated tags inside one value use AND logic
 
-```bash
-bash scripts/notify.sh -c ops -s "Agent Task Complete" -b "Successfully processed 12 issues"
-```
-
-### Send build results
-
-```bash
-bun test 2>&1 | bash scripts/notify.sh -c ops -s "Test Results" --stdin
-```
-
-### Alert on error
-
-```bash
-journalctl -u my-service -n 50 | bash scripts/notify.sh -c alerts -s "ERROR: Service Failed" --stdin
-```
-
-### Notify multiple audiences
-
-```bash
-bash scripts/notify.sh --tag ops --tag email --subject "Deploy finished" --body "Production is updated"
-```
 
 ## Operating Notes
 

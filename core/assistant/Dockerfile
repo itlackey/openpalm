@@ -5,11 +5,14 @@
 
 FROM debian:trixie-slim AS varlock-fetch
 ARG TARGETARCH
+ARG VARLOCK_VERSION=0.4.0
+ARG VARLOCK_SHA256_ARM64=e830baaa901b6389ecf281bdd2449bfaf7586e91fd3a7a038ec06f78e6fa92f8
+ARG VARLOCK_SHA256_X64=820295b271cece2679b2b9701b5285ce39354fc2f35797365fa36c70125f51ab
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN set -e; \
-  if [ "$TARGETARCH" = "arm64" ]; then ARCH=arm64; SHA256=e830baaa901b6389ecf281bdd2449bfaf7586e91fd3a7a038ec06f78e6fa92f8; \
-  else ARCH=x64; SHA256=820295b271cece2679b2b9701b5285ce39354fc2f35797365fa36c70125f51ab; fi \
-  && curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/dmno-dev/varlock/releases/download/varlock%400.4.0/varlock-linux-${ARCH}.tar.gz" -o /tmp/varlock.tar.gz \
+  if [ "$TARGETARCH" = "arm64" ]; then ARCH=arm64; SHA256=$VARLOCK_SHA256_ARM64; \
+  else ARCH=x64; SHA256=$VARLOCK_SHA256_X64; fi \
+  && curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/dmno-dev/varlock/releases/download/varlock%40${VARLOCK_VERSION}/varlock-linux-${ARCH}.tar.gz" -o /tmp/varlock.tar.gz \
   && echo "${SHA256}  /tmp/varlock.tar.gz" | sha256sum -c - \
   && tar xzf /tmp/varlock.tar.gz --strip-components=1 -C /usr/local/bin/ \
   && chmod +x /usr/local/bin/varlock && rm /tmp/varlock.tar.gz
@@ -81,9 +84,10 @@ RUN curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google
 ENV PATH="/opt/google-cloud-sdk/bin:$PATH"
 
 # Google Workspace CLI (https://github.com/googleworkspace/cli)
+ARG GWS_VERSION=0.22.3
 RUN set -e; \
     if [ "$(dpkg --print-architecture)" = "arm64" ]; then GWS_TRIPLE=aarch64-unknown-linux-gnu; else GWS_TRIPLE=x86_64-unknown-linux-gnu; fi \
-    && curl -fsSL "https://github.com/googleworkspace/cli/releases/latest/download/google-workspace-cli-${GWS_TRIPLE}.tar.gz" \
+    && curl -fsSL "https://github.com/googleworkspace/cli/releases/download/v${GWS_VERSION}/google-workspace-cli-${GWS_TRIPLE}.tar.gz" \
          | tar xz --strip-components=1 -C /usr/local/bin "google-workspace-cli-${GWS_TRIPLE}/gws" \
     && chmod +x /usr/local/bin/gws
 

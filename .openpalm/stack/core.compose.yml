@@ -136,8 +136,6 @@ services:
       # config dir. Letting gws discover creds via CONFIG_DIR works for all methods.
       GOOGLE_WORKSPACE_CLI_CONFIG_DIR: /etc/vault/.gws
       GOOGLE_WORKSPACE_PROJECT_ID: ${GOOGLE_WORKSPACE_PROJECT_ID:-}
-      # Apprise notification config
-      APPRISE_CONFIG: /etc/vault/apprise.yml
     ports:
       - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
       - "${OP_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_SSH_PORT:-2222}:22"
@@ -146,6 +144,7 @@ services:
       - ${OP_HOME}/config/assistant:/home/opencode/.config/opencode
       - ${OP_HOME}/vault/stack/auth.json:/home/opencode/.local/share/opencode/auth.json
       - ${OP_HOME}/vault/user:/etc/vault
+      - ${OP_HOME}/vault/user/apprise.yml:/etc/apprise/apprise.yml
       - ${OP_HOME}/data/assistant:/home/opencode
       - ${OP_HOME}/data/stash:/home/opencode/.akm
       - ${OP_HOME}/data/workspace:/work
