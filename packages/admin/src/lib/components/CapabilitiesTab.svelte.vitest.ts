@@ -13,7 +13,7 @@ function createJsonResponse(body: JsonResponse): Response {
   });
 }
 
-describe('CapabilitiesTab provider list', () => {
+describe('CapabilitiesTab', () => {
   let guard: ConsoleGuard;
 
   afterEach(() => {
@@ -22,36 +22,34 @@ describe('CapabilitiesTab provider list', () => {
     vi.unstubAllGlobals();
   });
 
-  it('shows all OpenCode providers returned by the admin API', async () => {
+  it('shows capability sub-tabs and assignment form', async () => {
     guard = useConsoleGuard();
     localStorage.setItem('openpalm.adminToken', 'test-admin-token');
 
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
 
-      if (url === '/admin/capabilities') return createJsonResponse({ capabilities: null, secrets: {} });
-      if (url === '/admin/capabilities/assignments') return createJsonResponse({ capabilities: null });
-      if (url === '/admin/providers/local') return createJsonResponse({ providers: [] });
-      if (url === '/admin/memory/config') {
+      if (url === '/admin/capabilities/assignments') {
         return createJsonResponse({
-          config: {
-            mem0: {
-              llm: { provider: 'openai', config: {} },
-              embedder: { provider: 'openai', config: {} },
-              vector_store: { provider: 'sqlite-vec', config: { collection_name: 'test', embedding_model_dims: 1536 } },
-            },
-            memory: { custom_instructions: '' },
+          capabilities: {
+            llm: 'openai/gpt-4o',
+            embeddings: { provider: 'openai', model: 'text-embedding-3-small', dims: 1536 },
+            memory: { userId: 'default_user', customInstructions: '' },
           },
-          providers: { llm: ['openai'], embed: ['openai'] },
-          embeddingDims: {},
         });
       }
       if (url === '/admin/opencode/providers') {
         return createJsonResponse({
           providers: [
-            { id: 'openai', name: 'OpenAI', connected: false, env: [], modelCount: 0, authMethods: [{ type: 'api', label: 'API Key' }] },
-            { id: 'custom-provider', name: 'Custom Provider', connected: false, env: [], modelCount: 2, authMethods: [{ type: 'api', label: 'API Key' }] },
+            { id: 'openai', name: 'OpenAI', connected: true, env: [], modelCount: 2, authMethods: [{ type: 'api', label: 'API Key' }] },
           ],
+        });
+      }
+      if (url === '/admin/memory/config') {
+        return createJsonResponse({
+          config: { memory: { custom_instructions: '' } },
+          providers: { llm: ['openai'], embed: ['openai'] },
+          embeddingDims: {},
         });
       }
 
@@ -66,10 +64,13 @@ describe('CapabilitiesTab provider list', () => {
       },
     });
 
-    await expect.element(page.getByRole('heading', { level: 3, name: 'Connect a Provider' })).toBeInTheDocument();
-    await expect.element(page.getByRole('button', { name: 'OpenAI', exact: true })).toBeInTheDocument();
-    await expect.element(page.getByRole('button', { name: /Custom Provider/ })).toBeInTheDocument();
-    await expect.element(page.getByText(/Show \d+ more providers/)).not.toBeInTheDocument();
+    // Sub-tab pills (no Providers — moved to Connections tab)
+    await expect.element(page.getByRole('tab', { name: 'Capabilities' })).toBeInTheDocument();
+    await expect.element(page.getByRole('tab', { name: 'Voice' })).toBeInTheDocument();
+    await expect.element(page.getByRole('tab', { name: 'Memory' })).toBeInTheDocument();
+
+    // Save button should be present
+    await expect.element(page.getByRole('button', { name: 'Save Changes' })).toBeInTheDocument();
 
     guard.expectNoErrors();
   });

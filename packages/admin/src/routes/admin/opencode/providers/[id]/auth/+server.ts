@@ -15,11 +15,7 @@ import {
   completeProviderOAuth,
 } from '$lib/opencode/client.server.js';
 import { getState } from '$lib/server/state.js';
-import {
-  appendAudit,
-  patchSecretsEnvFile,
-} from '@openpalm/lib';
-import { PROVIDER_KEY_MAP } from '@openpalm/lib/provider-constants';
+import { appendAudit, patchSecretsEnvFile } from '@openpalm/lib';
 import { createLogger } from '$lib/server/logger.js';
 
 const logger = createLogger('opencode.auth');
@@ -27,6 +23,7 @@ const logger = createLogger('opencode.auth');
 // ── API key validation ────────────────────────────────────────────────
 const MAX_API_KEY_LENGTH = 512;
 const API_KEY_PATTERN = /^[\x20-\x7E]+$/; // printable ASCII only
+const ENV_VAR_PATTERN = /^[A-Z][A-Z0-9_]{0,127}$/;
 const OAUTH_SESSION_TTL_MS = 600_000;
 const MAX_PROVIDER_ID_LENGTH = 128;
 const PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_.-]+$/;
@@ -122,21 +119,20 @@ export const POST: RequestHandler = async (event) => {
       return errorResponse(400, 'bad_request', 'apiKey is required for api_key mode', {}, requestId);
     }
 
-    // H1 fix: validate API key format before writing to vault
     const keyError = validateApiKey(apiKey);
     if (keyError) {
       return errorResponse(400, 'bad_request', keyError, {}, requestId);
     }
 
-    // Write to user.env if provider has a known env var mapping
-    const envVarName = PROVIDER_KEY_MAP[providerId];
-    if (envVarName) {
+    // Write to stack.env using the env var name from the provider
+    const envVar = typeof body.envVar === 'string' ? body.envVar : '';
+    if (envVar && ENV_VAR_PATTERN.test(envVar)) {
       try {
-        patchSecretsEnvFile(state.vaultDir, { [envVarName]: apiKey });
+        patchSecretsEnvFile(state.vaultDir, { [envVar]: apiKey });
       } catch (e) {
-        logger.warn('Failed to write API key to vault', { providerId, requestId, error: String(e) });
+        logger.warn('Failed to write API key to vault', { providerId, envVar, requestId, error: String(e) });
         appendAudit(state, actor, 'opencode.auth.api_key', { providerId, error: 'vault_write_failed' }, false, requestId, callerType);
-        return errorResponse(500, 'internal_error', 'Failed to write API key to vault', {}, requestId);
+        return errorResponse(500, 'internal_error', 'Failed to save API key', {}, requestId);
       }
     }
 
@@ -145,7 +141,6 @@ export const POST: RequestHandler = async (event) => {
       logger.warn('Failed to register API key with OpenCode', { providerId, requestId, error: String(e) });
     });
 
-    // L1 fix: audit log for security-sensitive operations
     appendAudit(state, actor, 'opencode.auth.api_key', { providerId }, true, requestId, callerType);
     logger.info('provider API key saved', { providerId, requestId });
 

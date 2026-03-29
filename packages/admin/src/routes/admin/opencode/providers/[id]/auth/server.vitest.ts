@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { join } from 'node:path';
-import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { getState } from '$lib/server/state.js';
 import { resetState } from '$lib/server/test-helpers.js';
 import { GET, POST } from './+server.js';
 
@@ -84,19 +83,19 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
   });
 
   // ── API key POST mode ──────────────────────────────────────────────
-  test('accepts unknown providers — skips user.env, writes to OpenCode only', async () => {
+  test('sends API key to OpenCode', async () => {
     vi.mocked(setProviderApiKey).mockResolvedValueOnce({ ok: true, data: true });
 
     const res = await POST(makeEvent('POST', {
-      providerId: 'custom-provider',
-      body: { mode: 'api_key', apiKey: 'sk-test' },
+      providerId: 'groq',
+      body: { mode: 'api_key', apiKey: 'gsk-test-key' },
     }));
 
     expect(res.status).toBe(200);
-    expect(vi.mocked(setProviderApiKey)).toHaveBeenCalledWith('custom-provider', 'sk-test');
+    expect(vi.mocked(setProviderApiKey)).toHaveBeenCalledWith('groq', 'gsk-test-key');
   });
 
-  test('validates API keys before writing and never echoes secrets', async () => {
+  test('never echoes secrets in response', async () => {
     vi.mocked(setProviderApiKey).mockResolvedValueOnce({ ok: true, data: true });
 
     const res = await POST(makeEvent('POST', {
@@ -106,9 +105,6 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).not.toContain('sk-test-secret');
-
-    const stackEnvPath = join(getState().vaultDir, 'stack', 'stack.env');
-    expect(readFileSync(stackEnvPath, 'utf-8')).toContain('OPENAI_API_KEY=sk-test-secret');
   });
 
   test('rejects API keys with invalid characters', async () => {
@@ -148,19 +144,6 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
     expect(body.message).toContain('maximum length');
   });
 
-  test('writes known provider key to vault stack.env', async () => {
-    vi.mocked(setProviderApiKey).mockResolvedValueOnce({ ok: true, data: true });
-
-    const res = await POST(makeEvent('POST', {
-      providerId: 'anthropic',
-      body: { mode: 'api_key', apiKey: 'sk-ant-test-key' },
-    }));
-
-    expect(res.status).toBe(200);
-    const stackEnvPath = join(getState().vaultDir, 'stack', 'stack.env');
-    expect(readFileSync(stackEnvPath, 'utf-8')).toContain('ANTHROPIC_API_KEY=sk-ant-test-key');
-  });
-
   test('api_key POST returns ok:true and mode in response', async () => {
     vi.mocked(setProviderApiKey).mockResolvedValueOnce({ ok: true, data: true });
 
@@ -174,17 +157,30 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
     expect(body.mode).toBe('api_key');
   });
 
-  test('continues even if OpenCode setProviderApiKey rejects', async () => {
+  test('succeeds even if OpenCode rejects — vault write is primary', async () => {
     vi.mocked(setProviderApiKey).mockRejectedValueOnce(new Error('OpenCode down'));
 
     const res = await POST(makeEvent('POST', {
-      body: { mode: 'api_key', apiKey: 'sk-still-saves' },
+      body: { mode: 'api_key', apiKey: 'sk-still-saves', envVar: 'GROQ_API_KEY' },
     }));
 
-    // Should succeed — OpenCode registration is non-critical
     expect(res.status).toBe(200);
+  });
+
+  test('writes env var to vault/stack/stack.env', async () => {
+    vi.mocked(setProviderApiKey).mockResolvedValueOnce({ ok: true, data: true });
+
+    const res = await POST(makeEvent('POST', {
+      providerId: 'groq',
+      body: { mode: 'api_key', apiKey: 'gsk-test-key', envVar: 'GROQ_API_KEY' },
+    }));
+
+    expect(res.status).toBe(200);
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { getState } = await import('$lib/server/state.js');
     const stackEnvPath = join(getState().vaultDir, 'stack', 'stack.env');
-    expect(readFileSync(stackEnvPath, 'utf-8')).toContain('OPENAI_API_KEY=sk-still-saves');
+    expect(readFileSync(stackEnvPath, 'utf-8')).toContain('GROQ_API_KEY=gsk-test-key');
   });
 
   // ── Invalid mode ───────────────────────────────────────────────────

@@ -11,6 +11,7 @@
   import ArtifactsTab from '$lib/components/ArtifactsTab.svelte';
   import AutomationsTab from '$lib/components/AutomationsTab.svelte';
   import CapabilitiesTab from '$lib/components/CapabilitiesTab.svelte';
+  import ConnectionsTab from '$lib/components/ConnectionsTab.svelte';
   import LogsTab from '$lib/components/LogsTab.svelte';
   import AuditTab from '$lib/components/AuditTab.svelte';
   import SecretsTab from '$lib/components/SecretsTab.svelte';
@@ -70,7 +71,7 @@
   let legacyInstallDetected = $state(false);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: 'overview' | 'addons' | 'containers' | 'artifacts' | 'automations' | 'capabilities' | 'logs' | 'audit' | 'secrets' = $state('overview');
+  let activeTab: 'overview' | 'addons' | 'automations' | 'connections' | 'capabilities' | 'containers' | 'logs' | 'audit' | 'secrets' | 'artifacts' = $state('overview');
   let pullLoading = $state(false);
 
   // ── Container polling ──────────────────────────────────────────────────────
@@ -436,7 +437,7 @@
     }
   }
 
-  function handleTabSelect(tab: 'overview' | 'addons' | 'containers' | 'artifacts' | 'automations' | 'capabilities' | 'logs' | 'audit' | 'secrets'): void {
+  function handleTabSelect(tab: typeof activeTab): void {
     activeTab = tab;
     if (tab === 'containers' && !containerData) {
       void loadContainers();
@@ -567,6 +568,8 @@
         {tokenStored}
         onRefresh={loadAutomations}
       />
+    {:else if activeTab === 'connections'}
+      <ConnectionsTab />
     {/if}
     <div hidden={activeTab !== 'capabilities'}>
       <CapabilitiesTab

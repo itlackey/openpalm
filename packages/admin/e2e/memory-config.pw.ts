@@ -60,6 +60,28 @@ async function setupConsoleMocks(page: import('@playwright/test').Page) {
 			body: JSON.stringify({ status: 'unavailable', url: '' })
 		})
 	);
+	// GET /admin/providers: full provider page state
+	await page.route('**/admin/providers', (route) => {
+		if (route.request().method() === 'GET') {
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					available: true,
+					providers: [
+						{ id: 'openai', name: 'OpenAI', env: ['OPENAI_API_KEY'], connected: true, configured: true, disabled: false, supportsOauth: true, activeMainModel: true, activeSmallModel: false, models: [{ id: 'gpt-4o', name: 'GPT-4o' }], authMethods: [{ type: 'api', label: 'API Key' }], options: {}, source: 'catalog' },
+						{ id: 'anthropic', name: 'Anthropic', env: ['ANTHROPIC_API_KEY'], connected: true, configured: false, disabled: false, supportsOauth: true, activeMainModel: false, activeSmallModel: false, models: [], authMethods: [{ type: 'api', label: 'API Key' }], options: {}, source: 'catalog' },
+					],
+					defaultModels: {},
+					allowlistActive: false,
+					providerCountLabel: '2 providers',
+					currentModel: 'openai/gpt-4o-mini',
+					stats: { total: 2, connected: 2, configured: 1, disabled: 0 }
+				})
+			});
+		}
+		return route.continue();
+	});
 	// GET /admin/capabilities: capabilities + secrets
 	await page.route('**/admin/capabilities', (route) => {
 		if (route.request().method() === 'GET') {
@@ -125,11 +147,17 @@ async function navigateToCapabilitiesSubTab(page: import('@playwright/test').Pag
 	await page.getByRole('tab', { name: 'Capabilities' }).last().click();
 }
 
-/** Navigate to the Providers sub-tab and click Custom Endpoint. */
+/** Navigate to the Connections tab and open the custom provider form. */
 async function openCustomEndpointForm(page: import('@playwright/test').Page) {
-	await navigateToCapabilities(page);
-	await page.getByRole('tab', { name: 'Providers' }).click();
-	await page.getByRole('button', { name: /custom endpoint/i }).click();
+	await page.goto('/');
+	await page.evaluate((key) => localStorage.setItem(key, 'test-token'), TOKEN_KEY);
+	await page.reload();
+	await page.waitForSelector('nav', { timeout: 10000 });
+	await page.getByRole('tab', { name: /connections/i }).first().click();
+	// Wait for the custom provider details element
+	const summary = page.locator('summary', { hasText: /custom provider/i });
+	await expect(summary).toBeVisible({ timeout: 10000 });
+	await summary.click();
 }
 
 test.describe('@mocked Capabilities Tab UI', () => {
@@ -137,11 +165,10 @@ test.describe('@mocked Capabilities Tab UI', () => {
 		await setupConsoleMocks(page);
 		await navigateToCapabilities(page);
 
-		// Verify sub-tab pills are visible
-		await expect(page.getByRole('tab', { name: 'Providers' })).toBeVisible();
+		// Verify sub-tab pills are visible (Capabilities, Voice, Memory — no Providers, moved to Connections tab)
 		await expect(page.getByRole('tab', { name: 'Memory' })).toBeVisible();
 
-		// Switch to Capabilities sub-tab — verify it renders (may show empty state or form)
+		// Capabilities sub-tab should be active by default
 		await page.getByRole('tab', { name: 'Capabilities' }).last().click();
 		await expect(page.locator('.sub-panel')).toBeVisible({ timeout: 5000 });
 
@@ -428,65 +455,30 @@ test.describe('Memory Models API', () => {
 	});
 });
 
-test.describe('@mocked Capability Test & Model Selection UI', () => {
-	test('Custom endpoint form shows URL and API key fields', async ({ page }) => {
+test.describe('@mocked Custom Provider Form UI', () => {
+	test('Custom provider form shows required fields', async ({ page }) => {
 		await setupConsoleMocks(page);
 		await openCustomEndpointForm(page);
 
-		// URL field should be visible
-		await expect(page.locator('#custom-url')).toBeVisible();
-
-		// API key field should be visible
-		await expect(page.locator('#custom-key')).toBeVisible();
-
-		// The "Test Connection" button is present
-		await expect(page.getByRole('button', { name: /test connection/i })).toBeVisible();
+		// Required fields should be visible
+		await expect(page.locator('#custom-providerId')).toBeVisible();
+		await expect(page.locator('#custom-displayName')).toBeVisible();
+		await expect(page.locator('#custom-baseURL')).toBeVisible();
+		await expect(page.locator('#custom-apiKey')).toBeVisible();
 	});
 
-	test('Test connection shows error when endpoint is unreachable', async ({ page }) => {
+	test('Custom provider form has Add Model button', async ({ page }) => {
 		await setupConsoleMocks(page);
-
-		await page.route('**/admin/capabilities/test', (route) =>
-			route.fulfill({
-				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({ ok: false, error: 'Connection refused' })
-			})
-		);
-
 		await openCustomEndpointForm(page);
 
-		// Fill in a base URL
-		await page.locator('#custom-url').fill('http://localhost:11434/v1');
-
-		// Click Test Connection
-		await page.getByRole('button', { name: /test connection/i }).click();
-
-		// Wait for error to appear
-		await expect(page.locator('.field-error')).toBeVisible({ timeout: 5000 });
+		await expect(page.getByRole('button', { name: /add model/i })).toBeVisible();
 	});
 
-	test('Test connection shows success and Save button', async ({ page }) => {
+	test('Custom provider form has Create button', async ({ page }) => {
 		await setupConsoleMocks(page);
-
-		await page.route('**/admin/capabilities/test', (route) =>
-			route.fulfill({
-				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({ ok: true, models: ['gpt-4o', 'gpt-4o-mini'] })
-			})
-		);
-
 		await openCustomEndpointForm(page);
 
-		// Fill in a base URL
-		await page.locator('#custom-url').fill('https://api.openai.com/v1');
-
-		// Click Test Connection
-		await page.getByRole('button', { name: /test connection/i }).click();
-
-		// Save button should appear after successful test
-		await expect(page.getByRole('button', { name: 'Save' })).toBeVisible({ timeout: 5000 });
+		await expect(page.getByRole('button', { name: /create custom provider/i })).toBeVisible();
 	});
 });
 
