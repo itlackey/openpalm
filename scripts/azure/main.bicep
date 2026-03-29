@@ -57,6 +57,12 @@ param channelDiscordSecretUri string = ''
 @description('Key Vault secret versionless URI for CHANNEL_SLACK_SECRET.')
 param channelSlackSecretUri string = ''
 
+@description('Key Vault secret versionless URI for SLACK_BOT_TOKEN.')
+param slackBotTokenSecretUri string = ''
+
+@description('Key Vault secret versionless URI for SLACK_APP_TOKEN.')
+param slackAppTokenSecretUri string = ''
+
 @description('Key Vault secret versionless URI for CHANNEL_API_SECRET.')
 param channelApiSecretUri string = ''
 
@@ -123,6 +129,21 @@ param gpt54MiniDeploymentName string = 'gpt-54-mini'
 @description('Capacity (in thousands of tokens-per-minute) for the GPT 5.4 Mini deployment.')
 param gpt54MiniCapacity int = 30
 
+@description('Deployment name for the text-embedding-3-large model.')
+param embeddingDeploymentName string = 'text-embedding-3-large'
+
+@description('Capacity (in thousands of tokens-per-minute) for the embedding deployment.')
+param embeddingDeploymentCapacity int = 30
+
+@description('Whether to deploy the OpenViking knowledge management container.')
+param deployOpenViking bool = false
+
+@description('OpenViking image (GHCR).')
+param openVikingImage string = 'ghcr.io/volcengine/openviking:v0.2.12'
+
+@description('Key Vault secret versionless URI for OPENVIKING_API_KEY.')
+param openVikingApiKeySecretUri string = ''
+
 var suffix = toLower(uniqueString(subscription().id, resourceGroup().id, prefix))
 var managedEnvironmentName = 'acae-${prefix}'
 var logAnalyticsName = 'log-${prefix}'
@@ -140,6 +161,8 @@ var appNames = {
   assistant: 'op-assistant'
   guardian: 'op-guardian'
   scheduler: 'op-scheduler'
+  slack: 'op-slack'
+  openviking: 'op-openviking'
   backupJob: 'op-memory-backup'
 }
 
@@ -261,6 +284,9 @@ resource shareMemoryData 'Microsoft.Storage/storageAccounts/fileServices/shares@
 resource shareGuardianData 'Microsoft.Storage/storageAccounts/fileServices/shares@2024-01-01' = {
   name: '${storage.name}/default/${storageShares.guardianData}'
 }
+
+// OpenViking uses EmptyDir for SQLite (no SMB locking issues).
+// Backup handled by a separate background process.
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: keyVaultName
@@ -482,14 +508,14 @@ resource gpt54Deployment 'Microsoft.CognitiveServices/accounts/deployments@2024-
   parent: aiFoundry
   name: gpt54DeploymentName
   sku: {
-    name: 'Standard'
+    name: 'GlobalStandard'
     capacity: gpt54Capacity
   }
   properties: {
     model: {
       format: 'OpenAI'
-      name: 'gpt-5.4'
-      version: '2025-03-01'
+      name: 'gpt-4.1'
+      version: '2025-04-14'
     }
     raiPolicyName: 'Microsoft.DefaultV2'
   }
@@ -499,19 +525,39 @@ resource gpt54MiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
   parent: aiFoundry
   name: gpt54MiniDeploymentName
   sku: {
-    name: 'Standard'
+    name: 'GlobalStandard'
     capacity: gpt54MiniCapacity
   }
   properties: {
     model: {
       format: 'OpenAI'
-      name: 'gpt-5.4-mini'
-      version: '2025-03-01'
+      name: 'gpt-4.1-mini'
+      version: '2025-04-14'
     }
     raiPolicyName: 'Microsoft.DefaultV2'
   }
   dependsOn: [
     gpt54Deployment
+  ]
+}
+
+resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = if (deployAiFoundry) {
+  parent: aiFoundry
+  name: embeddingDeploymentName
+  sku: {
+    name: 'GlobalStandard'
+    capacity: embeddingDeploymentCapacity
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'text-embedding-3-large'
+      version: '1'
+    }
+    raiPolicyName: 'Microsoft.DefaultV2'
+  }
+  dependsOn: [
+    gpt54MiniDeployment
   ]
 }
 
@@ -759,6 +805,13 @@ var assistantSecrets = concat(
       keyVaultUrl: effectiveOpenAiApiKeySecretUri
       identity: sharedIdentity.id
     }
+  ],
+  empty(openVikingApiKeySecretUri) ? [] : [
+    {
+      name: 'openviking-api-key'
+      keyVaultUrl: openVikingApiKeySecretUri
+      identity: sharedIdentity.id
+    }
   ]
 )
 
@@ -977,7 +1030,9 @@ resource assistantApp 'Microsoft.App/containerApps@2025-01-01' = {
               { name: 'OPENAI_BASE_URL', value: effectiveOpenAiBaseUrl }
               { name: 'SYSTEM_LLM_PROVIDER', value: capLlmProvider }
             ],
-            empty(effectiveOpenAiApiKeySecretUri) ? [] : [{ name: 'OPENAI_API_KEY', secretRef: 'openai-api-key' }]
+            empty(effectiveOpenAiApiKeySecretUri) ? [] : [{ name: 'OPENAI_API_KEY', secretRef: 'openai-api-key' }],
+            !deployOpenViking ? [] : [{ name: 'OPENVIKING_URL', value: 'http://${appNames.openviking}' }],
+            empty(openVikingApiKeySecretUri) ? [] : [{ name: 'OPENVIKING_API_KEY', secretRef: 'openviking-api-key' }]
           )
           volumeMounts: [
             { volumeName: 'assistant-home', mountPath: '/home/opencode' }
@@ -1100,6 +1155,213 @@ resource guardianApp 'Microsoft.App/containerApps@2025-01-01' = {
     envStorageLogs
     keyVaultSecretsUserRole
     assistantApp
+  ]
+}
+
+// ---------------------------------------------------------------------------
+// Slack channel adapter — Socket Mode (outbound WebSocket, no public URL)
+// Only deployed when channelSlackSecretUri is provided.
+// ---------------------------------------------------------------------------
+
+resource slackApp 'Microsoft.App/containerApps@2025-01-01' = if (!empty(channelSlackSecretUri)) {
+  name: appNames.slack
+  location: location
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${sharedIdentity.id}': {}
+    }
+  }
+  properties: {
+    managedEnvironmentId: managedEnvironment.id
+    configuration: {
+      activeRevisionsMode: 'Single'
+      secrets: concat(
+        [
+          {
+            name: 'channel-slack-secret'
+            keyVaultUrl: channelSlackSecretUri
+            identity: sharedIdentity.id
+          }
+        ],
+        empty(slackBotTokenSecretUri) ? [] : [
+          {
+            name: 'slack-bot-token'
+            keyVaultUrl: slackBotTokenSecretUri
+            identity: sharedIdentity.id
+          }
+        ],
+        empty(slackAppTokenSecretUri) ? [] : [
+          {
+            name: 'slack-app-token'
+            keyVaultUrl: slackAppTokenSecretUri
+            identity: sharedIdentity.id
+          }
+        ]
+      )
+    }
+    template: {
+      containers: [
+        {
+          name: 'slack'
+          image: 'docker.io/${imageNamespace}/channel:${imageTag}'
+          env: concat(
+            [
+              { name: 'PORT', value: '8185' }
+              { name: 'GUARDIAN_URL', value: 'http://${appNames.guardian}' }
+              { name: 'CHANNEL_NAME', value: 'Slack Bot' }
+              { name: 'CHANNEL_PACKAGE', value: '@openpalm/channel-slack' }
+              { name: 'CHANNEL_SLACK_SECRET', secretRef: 'channel-slack-secret' }
+            ],
+            empty(slackBotTokenSecretUri) ? [] : [{ name: 'SLACK_BOT_TOKEN', secretRef: 'slack-bot-token' }],
+            empty(slackAppTokenSecretUri) ? [] : [{ name: 'SLACK_APP_TOKEN', secretRef: 'slack-app-token' }]
+          )
+          resources: {
+            cpu: json('0.5')
+            memory: '1Gi'
+          }
+          probes: [
+            {
+              type: 'Liveness'
+              tcpSocket: {
+                port: 8185
+              }
+              initialDelaySeconds: 15
+              periodSeconds: 30
+              failureThreshold: 3
+            }
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: 1
+        maxReplicas: 1
+      }
+    }
+  }
+  dependsOn: [
+    keyVaultSecretsUserRole
+    guardianApp
+  ]
+}
+
+// ---------------------------------------------------------------------------
+// OpenViking — knowledge management and semantic search engine
+// ---------------------------------------------------------------------------
+
+var openvikingSecrets = concat(
+  empty(openVikingApiKeySecretUri) ? [] : [
+    {
+      name: 'openviking-api-key'
+      keyVaultUrl: openVikingApiKeySecretUri
+      identity: sharedIdentity.id
+    }
+  ],
+  empty(effectiveEmbeddingsApiKeySecretUri) ? [] : [
+    {
+      name: 'embeddings-api-key'
+      keyVaultUrl: effectiveEmbeddingsApiKeySecretUri
+      identity: sharedIdentity.id
+    }
+  ]
+)
+
+resource openvikingApp 'Microsoft.App/containerApps@2025-01-01' = if (deployOpenViking) {
+  name: appNames.openviking
+  location: location
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${sharedIdentity.id}': {}
+    }
+  }
+  properties: {
+    managedEnvironmentId: managedEnvironment.id
+    configuration: {
+      activeRevisionsMode: 'Single'
+      ingress: {
+        external: false
+        targetPort: 1933
+        transport: 'auto'
+        allowInsecure: true
+      }
+      secrets: openvikingSecrets
+    }
+    template: {
+      volumes: [
+        { name: 'openviking-data', storageType: 'EmptyDir' }
+        { name: 'openviking-config', storageType: 'EmptyDir' }
+      ]
+      initContainers: [
+        {
+          name: 'seed-openviking-config'
+          image: openVikingImage
+          command: ['/bin/sh', '-c']
+          args: ['printf \'{"storage":{"workspace":"/workspace","vectordb":{"dimension":%s,"distance_metric":"cosine"}},"embedding":{"dense":{"provider":"%s","model":"%s","api_key":"%s","api_base":"%s","dimension":%s}},"server":{"host":"0.0.0.0","port":1933,"root_api_key":"%s"},"auto_generate_l0":true,"auto_generate_l1":true}\' "$OV_EMBEDDING_DIMS" "$OV_EMBEDDING_PROVIDER" "$OV_EMBEDDING_MODEL" "$OV_EMBEDDING_API_KEY" "$OV_EMBEDDING_BASE_URL" "$OV_EMBEDDING_DIMS" "$OPENVIKING_API_KEY" > /etc/openviking/ov.conf && echo "OpenViking config seeded"']
+          env: concat(
+            [
+              { name: 'OV_EMBEDDING_PROVIDER', value: embeddingsProvider }
+              { name: 'OV_EMBEDDING_MODEL', value: embeddingsModel }
+              { name: 'OV_EMBEDDING_BASE_URL', value: embeddingsBaseUrl }
+              { name: 'OV_EMBEDDING_DIMS', value: embeddingsDims }
+            ],
+            empty(openVikingApiKeySecretUri) ? [] : [{ name: 'OPENVIKING_API_KEY', secretRef: 'openviking-api-key' }],
+            empty(effectiveEmbeddingsApiKeySecretUri) ? [] : [{ name: 'OV_EMBEDDING_API_KEY', secretRef: 'embeddings-api-key' }]
+          )
+          volumeMounts: [
+            { volumeName: 'openviking-config', mountPath: '/etc/openviking' }
+          ]
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+        }
+      ]
+      containers: [
+        {
+          name: 'openviking'
+          image: openVikingImage
+          command: ['openviking-server', '--config', '/etc/openviking/ov.conf']
+          env: concat(
+            [
+              { name: 'OV_EMBEDDING_PROVIDER', value: embeddingsProvider }
+              { name: 'OV_EMBEDDING_MODEL', value: embeddingsModel }
+              { name: 'OV_EMBEDDING_BASE_URL', value: embeddingsBaseUrl }
+              { name: 'OV_EMBEDDING_DIMS', value: embeddingsDims }
+            ],
+            empty(openVikingApiKeySecretUri) ? [] : [{ name: 'OPENVIKING_API_KEY', secretRef: 'openviking-api-key' }],
+            empty(effectiveEmbeddingsApiKeySecretUri) ? [] : [{ name: 'OV_EMBEDDING_API_KEY', secretRef: 'embeddings-api-key' }]
+          )
+          volumeMounts: [
+            { volumeName: 'openviking-data', mountPath: '/workspace' }
+            { volumeName: 'openviking-config', mountPath: '/etc/openviking' }
+          ]
+          resources: {
+            cpu: json('0.5')
+            memory: '1Gi'
+          }
+          probes: [
+            {
+              type: 'Liveness'
+              httpGet: {
+                path: '/health'
+                port: 1933
+              }
+              initialDelaySeconds: 15
+              periodSeconds: 30
+              failureThreshold: 3
+            }
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: 1
+        maxReplicas: 1
+      }
+    }
+  }
+  dependsOn: [
+    keyVaultSecretsUserRole
   ]
 }
 
@@ -1253,7 +1515,7 @@ output appNames object = appNames
 output privateDnsZoneNames object = privateDnsZones
 output aiFoundryEndpoint string = deployAiFoundry ? aiFoundry.properties.endpoint : ''
 output aiFoundryAccountName string = deployAiFoundry ? aiFoundry.name : ''
-output aiFoundryModelDeployments array = deployAiFoundry ? [gpt54DeploymentName, gpt54MiniDeploymentName] : []
+output aiFoundryModelDeployments array = deployAiFoundry ? [gpt54DeploymentName, gpt54MiniDeploymentName, embeddingDeploymentName] : []
 output keyVaultPrivateEndpointId string = enablePrivateEndpoints ? keyVaultPrivateEndpoint.id : ''
 output storageFilePrivateEndpointId string = enablePrivateEndpoints ? storageFilePrivateEndpoint.id : ''
 output storageBlobPrivateEndpointId string = enablePrivateEndpoints ? storageBlobPrivateEndpoint.id : ''

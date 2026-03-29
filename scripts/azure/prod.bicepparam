@@ -17,7 +17,9 @@ param opencodePasswordSecretUri = 'https://openpalmprod-kv-REPLACE.vault.azure.n
 
 // Guardian channel secrets. Leave blank if the channel is not enabled yet.
 param channelDiscordSecretUri = ''
-param channelSlackSecretUri = ''
+param channelSlackSecretUri = 'https://openpalmprod-kv-REPLACE.vault.azure.net/secrets/channel-slack-secret'
+param slackBotTokenSecretUri = 'https://openpalmprod-kv-REPLACE.vault.azure.net/secrets/slack-bot-token'
+param slackAppTokenSecretUri = 'https://openpalmprod-kv-REPLACE.vault.azure.net/secrets/slack-app-token'
 param channelApiSecretUri = 'https://openpalmprod-kv-REPLACE.vault.azure.net/secrets/channel-api-secret'
 param channelChatSecretUri = 'https://openpalmprod-kv-REPLACE.vault.azure.net/secrets/channel-chat-secret'
 param channelVoiceSecretUri = ''
@@ -30,7 +32,7 @@ param openAiBaseUrl = 'https://api.openai.com/v1'
 // When deployAiFoundry is true, capLlmApiKeySecretUri and embeddingsApiKeySecretUri
 // can be left blank — the template will fall back to the AI Foundry key automatically.
 param capLlmProvider = 'openai'
-param capLlmModel = 'gpt-54-mini'
+param capLlmModel = 'gpt-41-mini'
 param capLlmBaseUrl = 'https://ai-openpalm-prod.openai.azure.com/'
 param capLlmApiKeySecretUri = ''
 
@@ -42,16 +44,24 @@ param embeddingsDims = '3072'
 
 param deployBackupJob = false
 
-// Azure AI Foundry – deploys an AI Services account with GPT 5.4 and GPT 5.4 Mini.
-// When enabled, the assistant container's OPENAI_BASE_URL and OPENAI_API_KEY are
-// automatically wired to the Foundry endpoint and Key Vault secret.
+// Azure AI Foundry – deploys an AI Services account with GPT 4.1, GPT 4.1 Mini,
+// and text-embedding-3-large. When enabled, the assistant container's OPENAI_BASE_URL
+// and OPENAI_API_KEY are automatically wired to the Foundry endpoint and Key Vault secret.
+// Memory and OpenViking embedding config also falls back to AI Foundry credentials.
 param deployAiFoundry = true
 param aiFoundryAccountName = 'ai-openpalm-prod'
 param aiFoundrySku = 'S0'
-param gpt54DeploymentName = 'gpt-54'
+param gpt54DeploymentName = 'gpt-41'
 param gpt54Capacity = 10
-param gpt54MiniDeploymentName = 'gpt-54-mini'
+param gpt54MiniDeploymentName = 'gpt-41-mini'
 param gpt54MiniCapacity = 30
+param embeddingDeploymentName = 'text-embedding-3-large'
+param embeddingDeploymentCapacity = 30
+
+// OpenViking — knowledge management and semantic search.
+// Uses the same embedding config as memory (AI Foundry text-embedding-3-large).
+param deployOpenViking = true
+param openVikingApiKeySecretUri = 'https://openpalmprod-kv-REPLACE.vault.azure.net/secrets/openviking-api-key'
 
 param enablePrivateEndpoints = true
 param lockDownPublicAccess = true

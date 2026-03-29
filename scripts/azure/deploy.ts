@@ -36,6 +36,7 @@ const cfg = {
   prefix: process.env.PREFIX || 'openpalm-prod',
   aiFoundryAccountName: process.env.AI_FOUNDRY_ACCOUNT_NAME || '',
   deployAiFoundry: (process.env.DEPLOY_AI_FOUNDRY || 'false').toLowerCase() === 'true',
+  deployOpenViking: (process.env.DEPLOY_OPENVIKING || 'false').toLowerCase() === 'true',
 };
 
 const internalSecrets: Dict = {
@@ -45,6 +46,7 @@ const internalSecrets: Dict = {
   'op-opencode-password': process.env.OP_OPENCODE_PASSWORD || rand(24),
   'channel-api-secret': process.env.CHANNEL_API_SECRET || rand(32),
   'channel-chat-secret': process.env.CHANNEL_CHAT_SECRET || rand(32),
+  ...(cfg.deployOpenViking ? { 'openviking-api-key': process.env.OPENVIKING_API_KEY || rand(32) } : {}),
 };
 
 const optionalSecrets: Dict = compact({
@@ -144,6 +146,9 @@ async function main() {
       deployArgs.push('-p', `aiFoundryAccountName=${cfg.aiFoundryAccountName}`);
     }
   }
+  if (cfg.deployOpenViking) {
+    deployArgs.push('-p', `deployOpenViking=true`);
+  }
   deployArgs.push('--query', 'properties.outputs', '-o', 'jsonc');
 
   await az(...deployArgs);
@@ -156,6 +161,12 @@ async function main() {
     const aiName = cfg.aiFoundryAccountName || `ai-${cfg.prefix}`;
     console.log(`AI Foundry account:  ${aiName}`);
     console.log(`AI Foundry endpoint: https://${aiName}.openai.azure.com/`);
+  }
+  if (cfg.deployOpenViking) {
+    console.log(`OpenViking:          enabled`);
+  }
+  if (optionalSecrets['channel-slack-secret']) {
+    console.log(`Slack channel:       enabled`);
   }
   console.log(`Generated params:    ${generatedParams}`);
   console.log(`Resource group id:   ${rgId}`);

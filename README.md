@@ -1,145 +1,86 @@
 <img src="packages/admin/static/banner.png" alt="OpenPalm" width="500" />
 
 <p>
-  <strong>A foundation for building your own AI assistant - private, extensible, and yours to keep.</strong>
+  <strong>Your own AI assistant. Private, self-hosted, no hype required.</strong>
 </p>
 
 ---
 
-## You deserve your own assistant
+## What is this?
 
-AI assistants should not be someone else's product. They should be something you own, shape, and trust. OpenPalm is a starter kit for that: a self-hosted foundation you can run on your own hardware, inspect as plain files, and extend without fighting hidden orchestration.
+OpenPalm started as a hobby project — a weekend experiment to see if a useful AI assistant could be built on boring, standard tools instead of whatever the VC-funded flavor of the month is. Turns out it can. It's now a daily driver, and it keeps getting better.
 
-## What makes the core strong
+The idea is simple: you run your own assistant on your own hardware, using Docker Compose and plain files you can actually read. No proprietary orchestration layer, no magic runtime, no lock-in. Just containers, env files, and compose overlays. If you can run `docker compose up`, you can run OpenPalm.
 
-- **Defense in depth** - Every message passes through HMAC-signed verification, replay detection, and rate limiting before reaching the assistant. The assistant has no Docker socket and no host access beyond its mounts.
-- **Manual-first stack** - The live stack is just Docker Compose files under `~/.openpalm/stack/`. You can inspect them, run them directly, and enable addons with normal Compose flags.
-- **Working asset bundle** - The repo ships a `.openpalm/` bundle that seeds the installed home. It provides the source assets for the registry catalog, the core compose file, env schemas, defaults, and helper scripts.
-- **Optional tooling** - Raw `docker compose` is the source of truth. Setup scripts and future tooling are convenience layers on top.
-- **Memory that persists** - Data stays on the host under `~/.openpalm/` for backup, restore, and direct editing.
+This is the anti-hype alternative. No "autonomous agent swarms." No "AGI-powered workflows." Just a well-structured assistant that stays on your LAN, remembers what you tell it, and does what you ask — built on standards that will still work next year.
 
-## Extend it with integrations
+## Where things stand
 
-OpenPalm is built to integrate, not lock you in.
+OpenPalm is in active development. It works — I use it every day — but there's a lot of rough edges being sanded down right now:
 
-### Varlock - secret protection at every layer
+- **Stabilizing the core** — The assistant, guardian, and memory services are solid, but the install and upgrade lifecycle is still getting hardened.
+- **Improving setup** — The setup wizard works, but the goal is a one-command install that just does the right thing on any Docker host.
+- **Extending the assistant** — More built-in tools, better memory integration, and first-class support for plugins and automations.
 
-[Varlock](https://varlock.dev) is an open-source secret management and redaction tool integrated throughout the stack:
 
-- **Validation** - Environment files are checked against schemas before the stack starts.
-- **Leak scanning** - Pre-commit hooks and CLI commands can catch accidentally committed keys.
-- **Runtime redaction** - Assistant bash output can be filtered before secrets enter the model context.
+## What you get
 
-If Varlock is not installed, OpenPalm still runs. You just lose that extra protection layer.
-
-### AKM - agent knowledge management
-
-[AKM](https://github.com/itlackey/akm) extends the assistant with structured knowledge capabilities. It installs alongside OpenPalm's assistant tools and can be customized by adding your own knowledge, skills, and tools to the stash directory.
-
-### Bring your own everything
-
-- **Models** - Connect any OpenAI-compatible endpoint, local or remote.
-- **Channels** - Start with built-in addons like chat, API, Discord, Slack, or voice.
-- **Tools and skills** - The assistant runs on OpenCode, so OpenCode plugins work naturally.
-- **Automations** - Add recurring tasks by editing files in `~/.openpalm/config/automations/`.
+- **An AI assistant that's yours** — Runs on [OpenCode](https://opencode.ai), talks to any OpenAI-compatible model (local or remote), and remembers things between sessions.
+- **Channels** — Talk to your assistant through a web chat, an API, Discord, Slack, or build your own adapter.
+- **Security by default** — Every message passes through HMAC-signed verification, replay detection, and rate limiting before it reaches the assistant. The assistant itself has no Docker socket access.
+- **Plain files all the way down** — The stack is Docker Compose files. Config is env files. Addons are compose overlays. No database for state, no hidden config, nothing you can't `cat`.
+- **LAN-first** — Nothing is exposed to the internet unless you explicitly choose to expose it.
 
 ## Get started
 
-You need Docker with Compose V2.
+You need Docker with Compose V2 — that's it.
 
-| Your computer | What to install | Link |
-|---|---|---|
-| **Windows** | Docker Desktop | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) |
-| **Mac** | Docker Desktop or OrbStack | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) / [orbstack.dev](https://orbstack.dev/download) |
-| **Linux** | Docker Engine | Run `curl -fsSL https://get.docker.com | sh` |
+| Platform | Install |
+|---|---|
+| **Windows** | [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
+| **Mac** | [Docker Desktop](https://www.docker.com/products/docker-desktop/) or [OrbStack](https://orbstack.dev/download) |
+| **Linux** | `curl -fsSL https://get.docker.com \| sh` |
 
-Then use the manual-first flow after `~/.openpalm/` has been installed or seeded:
+Then run the install script:
 
 ```bash
-git clone https://github.com/itlackey/openpalm.git
-cp -R "$HOME/.openpalm/registry/addons/admin" "$HOME/.openpalm/stack/addons/admin"
-cp -R "$HOME/.openpalm/registry/addons/chat" "$HOME/.openpalm/stack/addons/chat"
-$EDITOR "$HOME/.openpalm/vault/stack/stack.env"
-$EDITOR "$HOME/.openpalm/vault/user/user.env"
-cd "$HOME/.openpalm/stack"
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  -f addons/chat/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  up -d
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
 
-That example enables `admin` and `chat` by copying them from the runtime catalog at `~/.openpalm/registry/addons/` into the enabled runtime overlays at `~/.openpalm/stack/addons/`, then starts the core stack plus those overlays. Review the env files before first boot, then change the copied addon directories and `-f addons/<name>/compose.yml` list to choose a different stack. Multiple instances remain a manual-only pattern.
+This downloads the CLI binary for your platform, seeds your `~/.openpalm/` directory, walks you through a setup wizard, and starts the stack. No cloning, no runtime dependencies beyond Docker.
 
-`config/stack.yml` is capabilities only. It is not addon state and it is not the deployment truth. The running stack is always the compose file set you pass to Docker Compose.
+If you'd rather set things up by hand with raw `docker compose`, see the [setup guide](docs/setup-guide.md).
 
-See the [setup guide](docs/setup-guide.md) for the convenience path.
+## Make it yours
+
+- **Swap models** — Point it at OpenAI, Anthropic, Groq, Ollama, LMStudio, or anything OpenAI-compatible.
+- **Add channels** — Enable Discord, Slack, API, or web chat by copying an addon into your stack.
+- **Extend the assistant** — Drop in OpenCode plugins, custom tools, or let the assistant find what they need with built-in [AKM](https://github.com/itlackey/akm) support.
+- **Schedule automations** — Add YAML files to run recurring tasks on a cron schedule.
+- **Protect your secrets** — [Varlock](https://varlock.dev) optionally scans for leaks, validates env files, and redacts secrets from assistant output.
 
 ## How it works
 
 <div>
 <img src="packages/admin/static/fu-128.png" alt="OpenPalm" width="90" style="float: right; shape-margin: 0.25rem;" />
-<p>OpenPalm keeps the live system understandable: host-owned files define the stack, guardian protects ingress, and the assistant stays isolated from Docker and the broader host.</p>
+<p>Clients talk to channels. Channels sign messages and send them through the guardian. The guardian validates everything and forwards to the assistant. The assistant does the work. That's it.</p>
 </div>
 
 ![Architecture](docs/technical/architecture.svg)
 
-| Component | Role |
-|---|---|
-| **Admin** (`packages/admin/`) | Optional SvelteKit UI + API for operators and assistant-driven management. |
-| **Guardian** (`core/guardian/`) | Bun HTTP server for HMAC verification, replay detection, and rate limiting. |
-| **Assistant** (`core/assistant/`) | OpenCode runtime with tools and skills, isolated from Docker. |
-| **Channel runtime** (`core/channel/`) | Unified image entrypoint for addon-backed channel containers. |
-| **Channel packages** (`packages/channel-*/`) | Adapters that translate external protocols into signed guardian messages. |
-| **Channels SDK** (`packages/channels-sdk/`) | Shared crypto, logger, payload types, and base classes for adapters. |
-
-**Architectural invariants:**
-- The host-side compose command is authoritative.
-- The guardian is the sole ingress for channel traffic.
-- The assistant has no Docker socket and limited mounts.
-- LAN-first defaults stay in place unless you opt into broader exposure.
-
-See [`docs/how-it-works.md`](docs/how-it-works.md) for the full walkthrough and [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for security invariants.
-
-## Make it yours
-
-- **Add an addon** - Copy it from the catalog at `~/.openpalm/registry/addons/<name>/` into `~/.openpalm/stack/addons/<name>/`, then include its compose file.
-- **Add assistant tools** - Put OpenCode assets under `~/.openpalm/config/assistant/`.
-- **Customize memory** - Edit the memory defaults and provider secrets in the copied bundle.
-- **Schedule automations** - Add YAML files under `~/.openpalm/config/automations/`.
-- **Swap models** - Change values in `~/.openpalm/vault/user/user.env`.
+For the full walkthrough, see [How It Works](docs/how-it-works.md). For security invariants and architectural rules, see [Core Principles](docs/technical/core-principles.md).
 
 ## Documentation
 
 | Guide | What's inside |
 |---|---|
-| [Setup Guide](docs/setup-guide.md) | Manual-first install, convenience tooling, updates, and troubleshooting |
-| [How It Works](docs/how-it-works.md) | Architecture overview and data flow |
-| [Managing OpenPalm](docs/managing-openpalm.md) | Configuration, addons, secrets, access control |
-| [Core Principles](docs/technical/core-principles.md) | Security invariants and architectural rules |
-| [Community Channels](docs/channels/community-channels.md) | Building custom adapters |
-| [API Spec](docs/technical/api-spec.md) | Admin API endpoint contract |
+| [Setup Guide](docs/setup-guide.md) | Install, update, and troubleshoot |
+| [How It Works](docs/how-it-works.md) | Architecture and data flow |
+| [Managing OpenPalm](docs/managing-openpalm.md) | Config, addons, secrets, automations |
+| [Core Principles](docs/technical/core-principles.md) | Security invariants and design rules |
+| [Community Channels](docs/channels/community-channels.md) | Build your own channel adapter |
+| [Full docs index](docs/README.md) | Everything else |
 
-### Component READMEs
+## Contributing
 
-| Component | README |
-|---|---|
-| Stack (compose, addons) | [.openpalm/stack/README.md](.openpalm/stack/README.md) |
-| Vault (env schemas, examples) | [.openpalm/vault/README.md](.openpalm/vault/README.md) |
-| Admin (UI + API) | [packages/admin/README.md](packages/admin/README.md) |
-| Guardian | [core/guardian/README.md](core/guardian/README.md) |
-| Assistant | [core/assistant/README.md](core/assistant/README.md) |
-| Channel runtime | [core/channel/README.md](core/channel/README.md) |
-| Channels SDK | [packages/channels-sdk/README.md](packages/channels-sdk/README.md) |
-| Assistant tools | [packages/assistant-tools/README.md](packages/assistant-tools/README.md) |
-| CLI | [packages/cli/README.md](packages/cli/README.md) |
-| Channel: API | [packages/channel-api/README.md](packages/channel-api/README.md) |
-| Channel: Discord | [packages/channel-discord/README.md](packages/channel-discord/README.md) |
-| Scripts | [scripts/README.md](scripts/README.md) |
-| Docs index | [docs/README.md](docs/README.md) |
-
-## License
-
-See [MPL-2.0](LICENSE).
+OpenPalm is open source under [MPL-2.0](LICENSE). Contributions are welcome — just know that things move fast right now and the architecture is still settling. Check out the [docs index](docs/README.md) to get oriented, and don't hesitate to open an issue if something breaks or doesn't make sense.
