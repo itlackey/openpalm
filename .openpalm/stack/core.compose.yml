@@ -130,6 +130,9 @@ services:
       CLOUDSDK_CONFIG: /etc/vault/.gcloud
       # Apprise notification config
       APPRISE_CONFIG: /etc/vault/apprise.conf
+      # Microsoft 365 CLI credentials (https://pnp.github.io/cli-microsoft365/)
+      CLIMICROSOFT365_ENTRAAPPID: ${CLIMICROSOFT365_ENTRAAPPID:-}
+      CLIMICROSOFT365_TENANT: ${CLIMICROSOFT365_TENANT:-}
     ports:
       - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
       - "${OP_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_SSH_PORT:-2222}:22"

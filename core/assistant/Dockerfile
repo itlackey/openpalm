@@ -86,6 +86,11 @@ RUN set -e; \
          -o /usr/local/bin/gws \
     && chmod +x /usr/local/bin/gws
 
+# CLI for Microsoft 365 (https://pnp.github.io/cli-microsoft365/)
+RUN npm install -g @pnp/cli-microsoft365
+ENV CLIMICROSOFT365_ENTRAAPPID=""
+ENV CLIMICROSOFT365_TENANT=""
+
 
 # Install opencode to /usr/local/.opencode/bin (set HOME so installer puts it there)
 RUN HOME=/usr/local curl -fsSL https://opencode.ai/install | HOME=/usr/local bash -s -- --no-modify-path --version "$OPENCODE_VERSION"
