@@ -67,6 +67,24 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 
 RUN uv venv /opt/assistant-tools \
     && uv pip install --python /opt/assistant-tools/bin/python azure-cli huggingface-hub[cli] apprise
 ENV PATH="/opt/assistant-tools/bin:$PATH"
+ENV APPRISE_CONFIG="/etc/vault/apprise.conf"
+ENV GOOGLE_APPLICATION_CREDENTIALS="/etc/vault/gcloud-credentials.json"
+ENV CLOUDSDK_CONFIG="/etc/vault/.gcloud"
+
+# gcloud CLI — Google Cloud SDK
+RUN curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-$(uname -m | sed 's/aarch64/arm/' | sed 's/x86_64/x86_64/').tar.gz \
+      -o /tmp/gcloud.tar.gz \
+    && tar xzf /tmp/gcloud.tar.gz -C /opt/ \
+    && /opt/google-cloud-sdk/install.sh --quiet --usage-reporting false --path-update false \
+    && rm /tmp/gcloud.tar.gz
+ENV PATH="/opt/google-cloud-sdk/bin:$PATH"
+
+# Google Workspace CLI (https://github.com/googleworkspace/cli)
+RUN set -e; \
+    if [ "$(dpkg --print-architecture)" = "arm64" ]; then GWS_ARCH=arm64; else GWS_ARCH=amd64; fi \
+    && curl -fsSL "https://github.com/googleworkspace/cli/releases/latest/download/gws_linux_${GWS_ARCH}" \
+         -o /usr/local/bin/gws \
+    && chmod +x /usr/local/bin/gws
 
 
 # Install opencode to /usr/local/.opencode/bin (set HOME so installer puts it there)

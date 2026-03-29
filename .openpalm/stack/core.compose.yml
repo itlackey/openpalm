@@ -125,6 +125,11 @@ services:
       MCP_API_KEY: ${MCP_API_KEY:-}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       SYSTEM_LLM_PROVIDER: ${OP_CAP_LLM_PROVIDER:-}
+      # Google Cloud credentials (file lives in vault/user, mounted at /etc/vault)
+      GOOGLE_APPLICATION_CREDENTIALS: /etc/vault/gcloud-credentials.json
+      CLOUDSDK_CONFIG: /etc/vault/.gcloud
+      # Apprise notification config
+      APPRISE_CONFIG: /etc/vault/apprise.conf
     ports:
       - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
       - "${OP_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_SSH_PORT:-2222}:22"
