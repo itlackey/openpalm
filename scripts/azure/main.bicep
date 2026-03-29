@@ -102,6 +102,27 @@ param embeddingsDims string = ''
 @description('Whether to deploy the scheduled SQLite backup job scaffold. The job image and command are placeholders until you add the backup image or script.')
 param deployBackupJob bool = false
 
+@description('Whether to deploy an Azure AI Foundry (Cognitive Services) account with GPT model deployments.')
+param deployAiFoundry bool = false
+
+@description('Name for the Azure AI Services account. Must be globally unique.')
+param aiFoundryAccountName string = 'ai-${prefix}'
+
+@description('SKU for the Azure AI Services account.')
+param aiFoundrySku string = 'S0'
+
+@description('Deployment name for the GPT 5.4 model.')
+param gpt54DeploymentName string = 'gpt-54'
+
+@description('Capacity (in thousands of tokens-per-minute) for the GPT 5.4 deployment.')
+param gpt54Capacity int = 10
+
+@description('Deployment name for the GPT 5.4 Mini model.')
+param gpt54MiniDeploymentName string = 'gpt-54-mini'
+
+@description('Capacity (in thousands of tokens-per-minute) for the GPT 5.4 Mini deployment.')
+param gpt54MiniCapacity int = 30
+
 var suffix = toLower(uniqueString(subscription().id, resourceGroup().id, prefix))
 var managedEnvironmentName = 'acae-${prefix}'
 var logAnalyticsName = 'log-${prefix}'
@@ -112,6 +133,7 @@ var privateDnsZones = {
   keyVault: 'privatelink.vaultcore.azure.net'
   file: 'privatelink.file.core.windows.net'
   blob: 'privatelink.blob.core.windows.net'
+  cognitiveServices: 'privatelink.cognitiveservices.azure.com'
 }
 var appNames = {
   memory: 'op-memory'
@@ -432,6 +454,133 @@ resource keyVaultSecretsUserRole 'Microsoft.Authorization/roleAssignments@2022-0
   }
 }
 
+// ---------------------------------------------------------------------------
+// Azure AI Foundry – Cognitive Services account + GPT model deployments
+// ---------------------------------------------------------------------------
+
+resource aiFoundry 'Microsoft.CognitiveServices/accounts@2024-10-01' = if (deployAiFoundry) {
+  name: aiFoundryAccountName
+  location: location
+  kind: 'AIServices'
+  sku: {
+    name: aiFoundrySku
+  }
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {
+    customSubDomainName: aiFoundryAccountName
+    publicNetworkAccess: enablePrivateEndpoints && lockDownPublicAccess ? 'Disabled' : 'Enabled'
+    networkAcls: {
+      defaultAction: enablePrivateEndpoints && lockDownPublicAccess ? 'Deny' : 'Allow'
+    }
+    disableLocalAuth: false
+  }
+}
+
+resource gpt54Deployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = if (deployAiFoundry) {
+  parent: aiFoundry
+  name: gpt54DeploymentName
+  sku: {
+    name: 'Standard'
+    capacity: gpt54Capacity
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'gpt-5.4'
+      version: '2025-03-01'
+    }
+    raiPolicyName: 'Microsoft.DefaultV2'
+  }
+}
+
+resource gpt54MiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = if (deployAiFoundry) {
+  parent: aiFoundry
+  name: gpt54MiniDeploymentName
+  sku: {
+    name: 'Standard'
+    capacity: gpt54MiniCapacity
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'gpt-5.4-mini'
+      version: '2025-03-01'
+    }
+    raiPolicyName: 'Microsoft.DefaultV2'
+  }
+  dependsOn: [
+    gpt54Deployment
+  ]
+}
+
+// Store AI Foundry API key in Key Vault so containers can reference it.
+resource aiFoundryApiKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployAiFoundry) {
+  parent: keyVault
+  name: 'azure-ai-foundry-api-key'
+  properties: {
+    value: deployAiFoundry ? aiFoundry.listKeys().key1 : 'placeholder'
+  }
+}
+
+var aiFoundryKeyVaultSecretUri = deployAiFoundry ? 'https://${keyVaultName}${environment().suffixes.keyvaultDns}/secrets/azure-ai-foundry-api-key' : ''
+var aiFoundryEndpoint = deployAiFoundry ? 'https://${aiFoundryAccountName}.openai.azure.com/' : ''
+
+// Private endpoint for AI Foundry
+resource cognitiveServicesPrivateDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = if (enablePrivateEndpoints && deployAiFoundry) {
+  name: privateDnsZones.cognitiveServices
+  location: 'global'
+}
+
+resource cognitiveServicesDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = if (enablePrivateEndpoints && deployAiFoundry) {
+  parent: cognitiveServicesPrivateDnsZone
+  name: '${vnetName}-link'
+  location: 'global'
+  properties: {
+    virtualNetwork: {
+      id: vnet.id
+    }
+    registrationEnabled: false
+  }
+}
+
+resource aiFoundryPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = if (enablePrivateEndpoints && deployAiFoundry) {
+  name: 'pe-${aiFoundryAccountName}'
+  location: location
+  properties: {
+    subnet: {
+      id: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, peSubnetName)
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'cognitiveservices'
+        properties: {
+          privateLinkServiceId: aiFoundry.id
+          groupIds: [
+            'account'
+          ]
+        }
+      }
+    ]
+  }
+}
+
+resource aiFoundryPrivateEndpointDns 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = if (enablePrivateEndpoints && deployAiFoundry) {
+  parent: aiFoundryPrivateEndpoint
+  name: 'default'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'cognitiveservices'
+        properties: {
+          privateDnsZoneId: cognitiveServicesPrivateDnsZone.id
+        }
+      }
+    ]
+  }
+}
+
 resource managedEnvironment 'Microsoft.App/managedEnvironments@2025-01-01' = {
   name: managedEnvironmentName
   location: location
@@ -586,6 +735,11 @@ resource envStorageGuardianData 'Microsoft.App/managedEnvironments/storages@2025
   }
 }
 
+// Determine the effective API key secret URI: prefer AI Foundry when deployed, fall back to manually provided.
+var effectiveOpenAiApiKeySecretUri = deployAiFoundry ? aiFoundryKeyVaultSecretUri : openAiApiKeySecretUri
+// Determine the effective base URL: prefer AI Foundry endpoint when deployed.
+var effectiveOpenAiBaseUrl = deployAiFoundry ? aiFoundryEndpoint : openAiBaseUrl
+
 var assistantSecrets = concat(
   [
     {
@@ -599,14 +753,18 @@ var assistantSecrets = concat(
       identity: sharedIdentity.id
     }
   ],
-  empty(openAiApiKeySecretUri) ? [] : [
+  empty(effectiveOpenAiApiKeySecretUri) ? [] : [
     {
       name: 'openai-api-key'
-      keyVaultUrl: openAiApiKeySecretUri
+      keyVaultUrl: effectiveOpenAiApiKeySecretUri
       identity: sharedIdentity.id
     }
   ]
 )
+
+// For memory capability keys, fall back to AI Foundry key when explicit keys are not provided.
+var effectiveCapLlmApiKeySecretUri = !empty(capLlmApiKeySecretUri) ? capLlmApiKeySecretUri : aiFoundryKeyVaultSecretUri
+var effectiveEmbeddingsApiKeySecretUri = !empty(embeddingsApiKeySecretUri) ? embeddingsApiKeySecretUri : aiFoundryKeyVaultSecretUri
 
 var memorySecrets = concat(
   [
@@ -616,17 +774,17 @@ var memorySecrets = concat(
       identity: sharedIdentity.id
     }
   ],
-  empty(capLlmApiKeySecretUri) ? [] : [
+  empty(effectiveCapLlmApiKeySecretUri) ? [] : [
     {
       name: 'cap-llm-api-key'
-      keyVaultUrl: capLlmApiKeySecretUri
+      keyVaultUrl: effectiveCapLlmApiKeySecretUri
       identity: sharedIdentity.id
     }
   ],
-  empty(embeddingsApiKeySecretUri) ? [] : [
+  empty(effectiveEmbeddingsApiKeySecretUri) ? [] : [
     {
       name: 'embeddings-api-key'
-      keyVaultUrl: embeddingsApiKeySecretUri
+      keyVaultUrl: effectiveEmbeddingsApiKeySecretUri
       identity: sharedIdentity.id
     }
   ]
@@ -816,10 +974,10 @@ resource assistantApp 'Microsoft.App/containerApps@2025-01-01' = {
               { name: 'MEMORY_USER_ID', value: 'default_user' }
               { name: 'OP_UID', value: '1000' }
               { name: 'OP_GID', value: '1000' }
-              { name: 'OPENAI_BASE_URL', value: openAiBaseUrl }
+              { name: 'OPENAI_BASE_URL', value: effectiveOpenAiBaseUrl }
               { name: 'SYSTEM_LLM_PROVIDER', value: capLlmProvider }
             ],
-            empty(openAiApiKeySecretUri) ? [] : [{ name: 'OPENAI_API_KEY', secretRef: 'openai-api-key' }]
+            empty(effectiveOpenAiApiKeySecretUri) ? [] : [{ name: 'OPENAI_API_KEY', secretRef: 'openai-api-key' }]
           )
           volumeMounts: [
             { volumeName: 'assistant-home', mountPath: '/home/opencode' }
@@ -1093,6 +1251,9 @@ output sharedIdentityId string = sharedIdentity.id
 output storageAccountResourceId string = storage.id
 output appNames object = appNames
 output privateDnsZoneNames object = privateDnsZones
+output aiFoundryEndpoint string = deployAiFoundry ? aiFoundry.properties.endpoint : ''
+output aiFoundryAccountName string = deployAiFoundry ? aiFoundry.name : ''
+output aiFoundryModelDeployments array = deployAiFoundry ? [gpt54DeploymentName, gpt54MiniDeploymentName] : []
 output keyVaultPrivateEndpointId string = enablePrivateEndpoints ? keyVaultPrivateEndpoint.id : ''
 output storageFilePrivateEndpointId string = enablePrivateEndpoints ? storageFilePrivateEndpoint.id : ''
 output storageBlobPrivateEndpointId string = enablePrivateEndpoints ? storageBlobPrivateEndpoint.id : ''

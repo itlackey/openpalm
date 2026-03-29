@@ -34,6 +34,8 @@ const cfg = {
   keyVaultName: process.env.KEYVAULT_NAME || '',
   storageAccountName: process.env.STORAGE_ACCOUNT_NAME || '',
   prefix: process.env.PREFIX || 'openpalm-prod',
+  aiFoundryAccountName: process.env.AI_FOUNDRY_ACCOUNT_NAME || '',
+  deployAiFoundry: (process.env.DEPLOY_AI_FOUNDRY || 'false').toLowerCase() === 'true',
 };
 
 const internalSecrets: Dict = {
@@ -128,30 +130,44 @@ async function main() {
   const paramText = buildParams({ keyVaultName, storageAccountName });
   writeFileSync(generatedParams, paramText);
 
-  await az(
+  const deployArgs = [
     'deployment', 'group', 'create',
     '-g', cfg.resourceGroup,
     '-f', mainBicep,
     '-p', generatedParams,
     '-p', `location=${cfg.location}`,
     '-p', `prefix=${cfg.prefix}`,
-    '--query', 'properties.outputs',
-    '-o', 'jsonc'
-  );
+  ];
+  if (cfg.deployAiFoundry) {
+    deployArgs.push('-p', `deployAiFoundry=true`);
+    if (cfg.aiFoundryAccountName) {
+      deployArgs.push('-p', `aiFoundryAccountName=${cfg.aiFoundryAccountName}`);
+    }
+  }
+  deployArgs.push('--query', 'properties.outputs', '-o', 'jsonc');
+
+  await az(...deployArgs);
 
   console.log('Deployment complete.');
   console.log(`Resource group:      ${cfg.resourceGroup}`);
   console.log(`Key Vault:           ${keyVaultName}`);
   console.log(`Storage account:     ${storageAccountName}`);
+  if (cfg.deployAiFoundry) {
+    const aiName = cfg.aiFoundryAccountName || `ai-${cfg.prefix}`;
+    console.log(`AI Foundry account:  ${aiName}`);
+    console.log(`AI Foundry endpoint: https://${aiName}.openai.azure.com/`);
+  }
   console.log(`Generated params:    ${generatedParams}`);
   console.log(`Resource group id:   ${rgId}`);
 }
 
 function buildParams(args: { keyVaultName: string; storageAccountName: string }) {
   let text = readFileSync(baseParams, 'utf8');
+  const aiFoundryName = cfg.aiFoundryAccountName || `ai-${cfg.prefix}`;
   const replacements: Dict = {
     'openpalmprod-kv-REPLACE': args.keyVaultName,
     'openpalmprodstREPL': args.storageAccountName,
+    'ai-openpalm-prod': aiFoundryName,
   };
 
   for (const [from, to] of Object.entries(replacements)) {
