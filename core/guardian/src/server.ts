@@ -116,6 +116,7 @@ Bun.serve({
       const contentLength = req.headers.get("content-length");
       if (contentLength && Number(contentLength) > 102_400) {
         countRequest(ERROR_CODES.PAYLOAD_TOO_LARGE);
+        logger.warn("payload_too_large", { requestId: rid, contentLength: Number(contentLength) });
         return json(413, { error: ERROR_CODES.PAYLOAD_TOO_LARGE, requestId: rid });
       }
 
@@ -123,6 +124,7 @@ Bun.serve({
 
       if (raw.length > 102_400) {
         countRequest(ERROR_CODES.PAYLOAD_TOO_LARGE);
+        logger.warn("payload_too_large", { requestId: rid, bodyLength: raw.length });
         return json(413, { error: ERROR_CODES.PAYLOAD_TOO_LARGE, requestId: rid });
       }
 
@@ -131,12 +133,14 @@ Bun.serve({
         parsed = JSON.parse(raw);
       } catch {
         countRequest(ERROR_CODES.INVALID_JSON);
+        logger.debug("invalid_json", { requestId: rid });
         return json(400, { error: ERROR_CODES.INVALID_JSON, requestId: rid });
       }
 
       const validation = validatePayload(parsed);
       if (!validation.ok) {
         countRequest(validation.error);
+        logger.debug("invalid_payload", { requestId: rid, reason: validation.error });
         return json(400, { error: validation.error, requestId: rid });
       }
       const payload = validation.payload;
@@ -154,10 +158,12 @@ Bun.serve({
       if (!secret) {
         verifySignature("dummy-secret-for-timing-parity", raw, sig);
         countRequest(ERROR_CODES.INVALID_SIGNATURE, payload.channel);
+        logger.warn("unknown_channel", { requestId: rid, channel: payload.channel });
         return json(403, { error: ERROR_CODES.INVALID_SIGNATURE, requestId: rid });
       }
       if (!verifySignature(secret, raw, sig)) {
         countRequest(ERROR_CODES.INVALID_SIGNATURE, payload.channel);
+        logger.warn("invalid_signature", { requestId: rid, channel: payload.channel, userId: payload.userId });
         return json(403, { error: ERROR_CODES.INVALID_SIGNATURE, requestId: rid });
       }
 
@@ -165,11 +171,13 @@ Bun.serve({
       if (!allow(payload.userId, USER_RATE_LIMIT, USER_RATE_WINDOW_MS) || !allow(`ch:${payload.channel}`, CHANNEL_RATE_LIMIT, CHANNEL_RATE_WINDOW_MS)) {
         countRequest(ERROR_CODES.RATE_LIMITED, payload.channel);
         audit({ requestId: rid, action: "inbound", status: "denied", reason: ERROR_CODES.RATE_LIMITED, channel: payload.channel });
+        logger.warn("rate_limited", { requestId: rid, channel: payload.channel, userId: payload.userId });
         return json(429, { error: ERROR_CODES.RATE_LIMITED, requestId: rid });
       }
 
       if (!checkNonce(payload.nonce, payload.timestamp)) {
         countRequest(ERROR_CODES.REPLAY_DETECTED, payload.channel);
+        logger.warn("replay_detected", { requestId: rid, channel: payload.channel, userId: payload.userId, nonce: payload.nonce });
         return json(409, { error: ERROR_CODES.REPLAY_DETECTED, requestId: rid });
       }
 
@@ -181,6 +189,7 @@ Bun.serve({
         } catch (err) {
           countRequest(ERROR_CODES.ASSISTANT_UNAVAILABLE, payload.channel);
           audit({ requestId: rid, action: "clear_session", status: "error", error: String(err) });
+          logger.error("clear_session failed", { error: String(err), channel: payload.channel, userId: payload.userId, requestId: rid });
           return json(502, { error: ERROR_CODES.ASSISTANT_UNAVAILABLE, requestId: rid });
         }
         audit({
@@ -191,6 +200,7 @@ Bun.serve({
           userId: payload.userId,
           sessionKey: sessionTarget.sessionKey,
         });
+        logger.info("session_cleared", { requestId: rid, channel: payload.channel, userId: payload.userId, sessionKey: sessionTarget.sessionKey });
         return json(200, {
           requestId: rid,
           cleared: true,
@@ -210,16 +220,30 @@ Bun.serve({
           userId: payload.userId,
           sessionKey: sessionTarget.sessionKey,
         });
+        logger.info("forwarded", { channel: payload.channel, userId: payload.userId, sessionId, requestId: rid });
         return json(200, { requestId: rid, sessionId, answer, userId: payload.userId });
       } catch (err) {
         countRequest(ERROR_CODES.ASSISTANT_UNAVAILABLE, payload.channel);
         audit({ requestId: rid, action: "forward", status: "error", error: String(err) });
+        logger.error("forward failed", { error: String(err), channel: payload.channel, userId: payload.userId, requestId: rid });
         return json(502, { error: ERROR_CODES.ASSISTANT_UNAVAILABLE, requestId: rid });
       }
     }
 
+    logger.debug("not_found", { requestId: rid, method: req.method, path: url.pathname });
     return json(404, { error: ERROR_CODES.NOT_FOUND });
   },
 });
 
-logger.info("started", { port: PORT });
+logger.info("started", {
+  port: PORT,
+  rateLimits: {
+    userMax: USER_RATE_LIMIT,
+    userWindowMs: USER_RATE_WINDOW_MS,
+    channelMax: CHANNEL_RATE_LIMIT,
+    channelWindowMs: CHANNEL_RATE_WINDOW_MS,
+  },
+  nonceWindowMs: NONCE_WINDOW_MS,
+  nonceMaxSize: NONCE_MAX_SIZE,
+  sessionTtlMs: SESSION_TTL_MS,
+});
