@@ -70,6 +70,7 @@ ENV PATH="/opt/assistant-tools/bin:$PATH"
 ENV APPRISE_CONFIG="/etc/vault/apprise.conf"
 ENV GOOGLE_APPLICATION_CREDENTIALS="/etc/vault/gcloud-credentials.json"
 ENV CLOUDSDK_CONFIG="/etc/vault/.gcloud"
+ENV MGC_CONFIG_DIR="/etc/vault/.mgc"
 
 # gcloud CLI — Google Cloud SDK
 RUN curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-$(uname -m | sed 's/aarch64/arm/' | sed 's/x86_64/x86_64/').tar.gz \
@@ -85,6 +86,20 @@ RUN set -e; \
     && curl -fsSL "https://github.com/googleworkspace/cli/releases/latest/download/gws_linux_${GWS_ARCH}" \
          -o /usr/local/bin/gws \
     && chmod +x /usr/local/bin/gws
+
+# Microsoft Graph CLI (https://github.com/microsoftgraph/msgraph-cli)
+# Only linux-x64 binaries are published; skip on arm64.
+ARG MGC_VERSION=1.9.0
+RUN set -e; \
+    if [ "$(dpkg --print-architecture)" = "arm64" ]; then \
+      echo "mgc: skipping — no linux-arm64 binary available"; \
+    else \
+      apt-get update \
+      && apt-get install -y --no-install-recommends dbus gnome-keyring libsecret-1-0 \
+      && rm -rf /var/lib/apt/lists/* \
+      && curl -fsSL "https://github.com/microsoftgraph/msgraph-cli/releases/download/v${MGC_VERSION}/msgraph-cli-linux-x64-${MGC_VERSION}.tar.gz" \
+           | tar xz -C /usr/local/bin; \
+    fi
 
 
 # Install opencode to /usr/local/.opencode/bin (set HOME so installer puts it there)
