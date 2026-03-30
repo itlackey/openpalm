@@ -18,8 +18,6 @@ users:
     groups: [sudo]
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL
-    ssh_authorized_keys:
-      - __TEMPLATE_SSH_PUBLIC_KEY__
 
 write_files:
   - path: /var/lib/openpalm/setup-spec.b64
