@@ -1,0 +1,52 @@
+# OpenPalm setup file for CLI-driven install.
+# The current release CLI requires a v2-style document with a top-level `spec` field.
+# Fill in values to match your final setup schema before deploying.
+# This template reflects the current schema direction discussed for OpenPalm setup.
+
+version: 2
+spec:
+  owner:
+    name: Your Name
+    email: you@example.com
+
+  security:
+    adminToken: change-me-to-a-long-random-secret
+    assistantToken: change-me-to-a-long-random-secret
+    accessScope: local
+
+  connections:
+    - id: azure-openai
+      name: Azure OpenAI / Foundry
+      provider: openai
+      baseUrl: https://YOUR-RESOURCE.openai.azure.com/openai/v1
+      apiKey: YOUR_API_KEY
+      managed: false
+
+  assignments:
+    llm:
+      connectionId: azure-openai
+      model: gpt-4o
+    embeddings:
+      connectionId: azure-openai
+      model: text-embedding-3-large
+
+  memory:
+    enabled: true
+
+  channels:
+    api:
+      enabled: true
+    discord:
+      enabled: false
+    slack:
+      enabled: false
+    voice:
+      enabled: false
+
+  services:
+    admin:
+      enabled: true
+    guardian:
+      enabled: true
+    scheduler:
+      enabled: true

@@ -318,21 +318,12 @@ jobs:
             | [openpalm/memory](https://hub.docker.com/r/openpalm/memory) | `docker pull openpalm/memory:v${{ needs.prepare-tag.outputs.version }}` |
             | [openpalm/scheduler](https://hub.docker.com/r/openpalm/scheduler) | `docker pull openpalm/scheduler:v${{ needs.prepare-tag.outputs.version }}` |
 
-            ## npm CLI
+            ## npm Packages
 
             ```bash
-            npm install -g openpalm@${{ needs.prepare-tag.outputs.version }}
+            bun install -g openpalm@${{ needs.prepare-tag.outputs.version }}
+            bun add @openpalm/channels-sdk@${{ needs.prepare-tag.outputs.version }}
             ```
-
-            ## Channel Packages
-
-            Channel packages are versioned and published independently.
-
-            - [@openpalm/channels-sdk](https://www.npmjs.com/package/@openpalm/channels-sdk)
-            - [@openpalm/channel-api](https://www.npmjs.com/package/@openpalm/channel-api)
-            - [@openpalm/channel-discord](https://www.npmjs.com/package/@openpalm/channel-discord)
-            - [@openpalm/channel-slack](https://www.npmjs.com/package/@openpalm/channel-slack)
-            - [@openpalm/channel-voice](https://www.npmjs.com/package/@openpalm/channel-voice)
 
             ## Quick Install
 
