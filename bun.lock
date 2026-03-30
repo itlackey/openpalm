@@ -1,13 +1,12 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "openpalm",
     },
     "core/guardian": {
       "name": "@openpalm/guardian",
-      "version": "0.10.0-rc1",
+      "version": "0.10.0-rc9",
       "dependencies": {
         "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
         "dotenv": "^16.4.7",
@@ -23,7 +22,7 @@
     },
     "packages/admin": {
       "name": "@openpalm/admin",
-      "version": "0.10.0-rc1",
+      "version": "0.10.0-rc9",
       "dependencies": {
         "@openpalm/lib": "workspace:*",
         "croner": "^9.0.0",
@@ -120,11 +119,11 @@
     },
     "packages/channels-sdk": {
       "name": "@openpalm/channels-sdk",
-      "version": "0.9.2",
+      "version": "0.10.0-rc9",
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.9.9",
+      "version": "0.10.0-rc9",
       "bin": {
         "openpalm": "./bin/openpalm.js",
       },
@@ -1043,6 +1042,12 @@
     "@eslint/eslintrc/globals": ["globals@14.0.0", "", {}, "sha512-oahGvuMGQlPw/ivIYBjVSrWAfWLBeku5tpPE2fOPLi+WHffIWbuh2tCjhyQhTBPMf5E9jDEH4FOmTYgYwbKwtQ=="],
 
     "@eslint/plugin-kit/@eslint/core": ["@eslint/core@0.17.0", "", { "dependencies": { "@types/json-schema": "^7.0.15" } }, "sha512-yL/sLrpmtDaFEiUj1osRP4TI2MDz1AddJL+jZ7KSqvBuliN4xqYY54IfdN8qD8Toa6g1iloph1fxQNkjOxrrpQ=="],
+
+    "@openpalm/channel-api/@openpalm/channels-sdk": ["@openpalm/channels-sdk@0.9.2", "", {}, "sha512-biJkfTmnNcR6Vnvqbac+f+VrG0CQuBcoXvYQ+8p8Fei6/BIzdQR9jecc/4v4UgtR3ab7sob6HycqxXtDrcvpdQ=="],
+
+    "@openpalm/channel-voice/@openpalm/channels-sdk": ["@openpalm/channels-sdk@0.9.2", "", {}, "sha512-biJkfTmnNcR6Vnvqbac+f+VrG0CQuBcoXvYQ+8p8Fei6/BIzdQR9jecc/4v4UgtR3ab7sob6HycqxXtDrcvpdQ=="],
+
+    "@openpalm/guardian/@openpalm/channels-sdk": ["@openpalm/channels-sdk@0.9.2", "", {}, "sha512-biJkfTmnNcR6Vnvqbac+f+VrG0CQuBcoXvYQ+8p8Fei6/BIzdQR9jecc/4v4UgtR3ab7sob6HycqxXtDrcvpdQ=="],
 
     "@rollup/plugin-commonjs/is-reference": ["is-reference@1.2.1", "", { "dependencies": { "@types/estree": "*" } }, "sha512-U82MsXXiFIrjCK4otLT+o2NA2Cd2g5MLoOVXUZjIOhLurrRxpEXzI8O0KZHr3IjLvlAH1kTPYSuqer5T9ZVBKQ=="],
 
