@@ -9,14 +9,27 @@ set -euo pipefail
 # boot time using its managed identity — secrets never touch customData.
 #
 # Usage:
-#   export AZURE_SUBSCRIPTION_ID=...
-#   export SETUP_SPEC_FILE=./my-setup.yaml
+#   cp setup.env.example setup.env   # fill in your values
 #   ./deploy.sh
+#
+# Or with env vars:  AZURE_SUBSCRIPTION_ID=... SETUP_SPEC_FILE=... ./deploy.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-: "${AZURE_SUBSCRIPTION_ID:?Set AZURE_SUBSCRIPTION_ID}"
-: "${SETUP_SPEC_FILE:?Set SETUP_SPEC_FILE}"
+# Load setup.env if present (env vars already set in the shell take precedence)
+SETUP_ENV="${SETUP_ENV:-${SCRIPT_DIR}/setup.env}"
+if [[ -f "$SETUP_ENV" ]]; then
+  while IFS='=' read -r key value; do
+    key="${key%%[[:space:]]*}"                    # trim trailing whitespace from key
+    value="${value#[[:space:]]}"                  # trim leading whitespace from value
+    [[ -z "$key" || "$key" == \#* ]] && continue  # skip blanks and comments
+    [[ -n "${!key+x}" ]] && continue              # don't overwrite existing env vars
+    export "$key=$value"
+  done < "$SETUP_ENV"
+fi
+
+: "${AZURE_SUBSCRIPTION_ID:?Set AZURE_SUBSCRIPTION_ID (in setup.env or environment)}"
+: "${SETUP_SPEC_FILE:?Set SETUP_SPEC_FILE (in setup.env or environment)}"
 
 LOCATION="${LOCATION:-eastus}"
 RESOURCE_GROUP="${RESOURCE_GROUP:-rg-openpalm-vm}"

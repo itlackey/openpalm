@@ -42,3 +42,4 @@ packages/admin-tools/dist/index.js
 .dev-tmp/
 .dev-tmp*
 scripts/azure/.generated/prod.generated.bicepparam
+scripts/azure/vm-declarative/setup.env
