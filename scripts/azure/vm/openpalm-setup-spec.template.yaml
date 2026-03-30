@@ -7,9 +7,11 @@
 # The API key can be found in the Azure Portal under your resource's Keys section.
 #
 # Secrets (adminToken, assistantToken, Slack tokens) are pulled from Azure
-# Key Vault at first boot by the cloud-init bootstrap script.  The placeholder
-# values below are overwritten with the real Key Vault secrets before
-# `openpalm install` runs.
+# Key Vault at first boot.  The bootstrap script patches this file with real
+# values using structured YAML editing before `openpalm install` runs.
+#
+# Slack: the channel is enabled automatically when SLACK_BOT_TOKEN and
+# SLACK_APP_TOKEN are provided at deploy time.  Otherwise it stays disabled.
 
 version: 2
 spec:
@@ -47,14 +49,9 @@ spec:
     discord:
       enabled: false
     slack:
-      enabled: true
+      enabled: false
     voice:
       enabled: false
-
-  channelCredentials:
-    slack:
-      slackBotToken: PLACEHOLDER_FROM_KEYVAULT
-      slackAppToken: PLACEHOLDER_FROM_KEYVAULT
 
   services:
     admin:

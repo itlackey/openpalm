@@ -11,6 +11,7 @@ packages:
   - bash
   - openssl
   - python3
+  - python3-yaml
   - apt-transport-https
   - gnupg
   - lsb-release
@@ -29,6 +30,51 @@ write_files:
     owner: root:root
     encoding: text/plain
     content: __TEMPLATE_SETUP_SPEC_B64__
+
+  - path: /usr/local/bin/openpalm-patch-spec.py
+    permissions: '0755'
+    owner: root:root
+    content: |
+      #!/usr/bin/env python3
+      """Patch the setup spec YAML with Key Vault secrets.
+
+      Usage:
+        openpalm-patch-spec.py <spec-file> <key>=<value> [<key>=<value> ...]
+
+      Keys use dotted paths into the YAML structure, e.g.:
+        spec.security.adminToken=secret123
+        spec.channelCredentials.slack.slackBotToken=xoxb-...
+        spec.channels.slack.enabled=true
+
+      Values of 'true'/'false' are coerced to booleans.
+      """
+      import sys, yaml
+      from pathlib import Path
+
+      def set_nested(obj, dotted_key, value):
+          parts = dotted_key.split(".")
+          for part in parts[:-1]:
+              if part not in obj or not isinstance(obj[part], dict):
+                  obj[part] = {}
+              obj = obj[part]
+          # coerce booleans
+          if isinstance(value, str):
+              if value.lower() == "true":
+                  value = True
+              elif value.lower() == "false":
+                  value = False
+          obj[parts[-1]] = value
+
+      spec_path = Path(sys.argv[1])
+      doc = yaml.safe_load(spec_path.read_text())
+      for arg in sys.argv[2:]:
+          key, _, val = arg.partition("=")
+          if not key or not _:
+              print(f"Skipping malformed argument: {arg}", file=sys.stderr)
+              continue
+          set_nested(doc, key, val)
+
+      spec_path.write_text(yaml.dump(doc, default_flow_style=False, sort_keys=False))
 
   - path: /usr/local/bin/openpalm-backup.sh
     permissions: '0755'
@@ -108,6 +154,7 @@ write_files:
       OP_HOME="__TEMPLATE_OPENPALM_HOME__"
       SETUP_FILE="/var/lib/openpalm/setup-spec.yaml"
       KV_NAME="__TEMPLATE_KV_NAME__"
+      SETUP_REF="__TEMPLATE_SETUP_REF__"
 
       # ── Wait for dpkg/apt locks (cloud-init may still be installing packages) ──
       echo "[openpalm] waiting for apt/dpkg lock release"
@@ -158,35 +205,39 @@ write_files:
       base64 -d /var/lib/openpalm/setup-spec.b64 > "$SETUP_FILE"
       rm -f /var/lib/openpalm/setup-spec.b64
 
-      # Inject Key Vault secrets into the setup spec (replace placeholder values)
-      if [[ -n "$KV_ADMIN_TOKEN" ]]; then
-        sed -i "s|adminToken:.*|adminToken: ${KV_ADMIN_TOKEN}|" "$SETUP_FILE"
+      # ── Patch the setup spec with Key Vault secrets (structured YAML edit) ─
+      PATCH_ARGS=()
+      [[ -n "$KV_ADMIN_TOKEN" ]]    && PATCH_ARGS+=("spec.security.adminToken=${KV_ADMIN_TOKEN}")
+      [[ -n "$KV_ASSISTANT_TOKEN" ]] && PATCH_ARGS+=("spec.security.assistantToken=${KV_ASSISTANT_TOKEN}")
+
+      if [[ -n "$KV_SLACK_BOT_TOKEN" && -n "$KV_SLACK_APP_TOKEN" ]]; then
+        echo "[openpalm] Slack tokens found in Key Vault — enabling Slack channel"
+        PATCH_ARGS+=("spec.channels.slack.enabled=true")
+        PATCH_ARGS+=("spec.channelCredentials.slack.slackBotToken=${KV_SLACK_BOT_TOKEN}")
+        PATCH_ARGS+=("spec.channelCredentials.slack.slackAppToken=${KV_SLACK_APP_TOKEN}")
+      else
+        echo "[openpalm] No Slack tokens in Key Vault — disabling Slack channel"
+        PATCH_ARGS+=("spec.channels.slack.enabled=false")
       fi
-      if [[ -n "$KV_ASSISTANT_TOKEN" ]]; then
-        sed -i "s|assistantToken:.*|assistantToken: ${KV_ASSISTANT_TOKEN}|" "$SETUP_FILE"
+
+      if [[ ${#PATCH_ARGS[@]} -gt 0 ]]; then
+        python3 /usr/local/bin/openpalm-patch-spec.py "$SETUP_FILE" "${PATCH_ARGS[@]}"
       fi
 
       chown "$ADMIN_USER":"$ADMIN_USER" /var/lib/openpalm
       chown "$ADMIN_USER":"$ADMIN_USER" "$SETUP_FILE"
       chmod 600 "$SETUP_FILE"
 
-      # ── Build Slack env vars for the install if tokens exist ───────────────
-      SLACK_ENV=""
-      if [[ -n "$KV_SLACK_BOT_TOKEN" && -n "$KV_SLACK_APP_TOKEN" ]]; then
-        echo "[openpalm] Slack tokens found in Key Vault — Slack channel will be enabled"
-        SLACK_ENV="SLACK_BOT_TOKEN=${KV_SLACK_BOT_TOKEN} SLACK_APP_TOKEN=${KV_SLACK_APP_TOKEN}"
-      fi
-
       # ── Install OpenPalm CLI ───────────────────────────────────────────────
       mkdir -p "$OP_INSTALL_DIR"
       chown -R "$ADMIN_USER":"$ADMIN_USER" "$(dirname "$OP_INSTALL_DIR")"
 
-      echo "[openpalm] installing OpenPalm CLI ${OP_VERSION} and applying setup spec"
+      SETUP_URL="https://raw.githubusercontent.com/itlackey/openpalm/${SETUP_REF}/scripts/setup.sh"
+      echo "[openpalm] installing OpenPalm CLI ${OP_VERSION} from ref ${SETUP_REF}"
       sudo -u "$ADMIN_USER" -H env \
         OP_INSTALL_DIR="$OP_INSTALL_DIR" \
         OP_HOME="$OP_HOME" \
-        ${SLACK_ENV} \
-        bash -c "curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash -s -- --version ${OP_VERSION} --force --no-open --file ${SETUP_FILE}"
+        bash -c "curl -fsSL ${SETUP_URL} | bash -s -- --version ${OP_VERSION} --force --no-open --file ${SETUP_FILE}"
 
       # ── Enable daily backup cron ───────────────────────────────────────────
       echo "[openpalm] enabling daily backup cron"

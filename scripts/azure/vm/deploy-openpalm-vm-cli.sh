@@ -8,17 +8,19 @@ set -euo pipefail
 # Infrastructure created:
 #   - VNet + subnet + NSG (guardian-only ingress from VNet)
 #   - Key Vault for secrets (Slack tokens, admin/assistant tokens)
-#   - Storage Account for backups (openpalm-data file share)
+#   - Storage Account for backups (openpalm-backups file share)
 #   - VM with system-assigned managed identity (reads Key Vault, writes Storage)
 #
-# The VM has NO public IP.  SSH access is via `az ssh vm`.  Only the guardian
-# service port (3899) is reachable from within the VNet.
+# The VM has NO public IP.  SSH access is exclusively via `az ssh vm` which
+# tunnels through the Azure control plane using Entra ID authentication.
+# No SSH keys are placed on the VM and no SSH port is opened in the NSG.
+# Only the guardian service port (3899) is reachable from within the VNet.
 #
 # Required:
 #   export AZURE_SUBSCRIPTION_ID=...
 #   export SETUP_SPEC_FILE=./openpalm-setup-spec.yaml
 #
-# Required for Slack channel:
+# Required for Slack channel (omit both to deploy without Slack):
 #   export SLACK_BOT_TOKEN=xoxb-...
 #   export SLACK_APP_TOKEN=xapp-...
 #
@@ -57,7 +59,7 @@ LOCATION="${LOCATION:-eastus}"
 RESOURCE_GROUP="${RESOURCE_GROUP:-rg-openpalm-vm}"
 VM_NAME="${VM_NAME:-openpalm-vm}"
 ADMIN_USERNAME="${ADMIN_USERNAME:-openpalm}"
-VM_SIZE="${VM_SIZE:-Standard_B2s}"
+VM_SIZE="${VM_SIZE:-Standard_B1ms}"
 OS_DISK_SIZE="${OS_DISK_SIZE:-64}"
 OPENPALM_VERSION="${OPENPALM_VERSION:-v0.10.0}"
 OPENPALM_INSTALL_DIR="${OPENPALM_INSTALL_DIR:-/home/${ADMIN_USERNAME}/.local/bin}"
@@ -84,6 +86,25 @@ SLACK_APP_TOKEN="${SLACK_APP_TOKEN:-}"
 # Debian-based, LTS support through 2029, excellent Docker compatibility.
 IMAGE_URN="${IMAGE_URN:-Canonical:ubuntu-24_04-lts:server:latest}"
 
+# Resolve the setup.sh download ref from the version.  Tagged releases use the
+# tag directly; otherwise fall back to a release/<major.minor> branch.
+resolve_setup_ref() {
+  local ver="$1"
+  # Strip leading 'v' for branch-style refs
+  local bare="${ver#v}"
+  # If a GitHub release asset exists for the tag, use the tag directly.
+  # Otherwise derive the release branch (e.g. v0.10.0 → release/0.10.0).
+  # We test the tag via a lightweight HEAD request to avoid downloading.
+  local tag_url="https://github.com/itlackey/openpalm/releases/tag/${ver}"
+  if curl -fsSL --head "$tag_url" >/dev/null 2>&1; then
+    printf '%s\n' "${ver}"
+  else
+    # Derive release/<major.minor.patch> branch
+    printf 'release/%s\n' "${bare}"
+  fi
+}
+SETUP_REF="$(resolve_setup_ref "$OPENPALM_VERSION")"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLOUD_INIT_TEMPLATE="${CLOUD_INIT_TEMPLATE:-${SCRIPT_DIR}/cloud-init-openpalm-cli.yaml.tpl}"
 TMP_DIR="$(mktemp -d)"
@@ -102,6 +123,7 @@ fi
 az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 
 echo "Using image URN: $IMAGE_URN"
+echo "Setup script ref: $SETUP_REF"
 
 # ── Generate internal secrets if not already set ─────────────────────────
 generate_secret() { openssl rand -base64 32 | tr -d '/+=' | head -c 44; }
@@ -122,10 +144,10 @@ export TEMPLATE_OPENPALM_VERSION="$OPENPALM_VERSION"
 export TEMPLATE_OPENPALM_INSTALL_DIR="$OPENPALM_INSTALL_DIR"
 export TEMPLATE_OPENPALM_HOME="$OPENPALM_HOME"
 export TEMPLATE_SETUP_SPEC_B64="$SETUP_SPEC_B64"
-export TEMPLATE_SSH_PUBLIC_KEY=""
 export TEMPLATE_KV_NAME="$KV_NAME"
 export TEMPLATE_STORAGE_NAME="$STORAGE_NAME"
 export TEMPLATE_BACKUP_SHARE="$BACKUP_SHARE"
+export TEMPLATE_SETUP_REF="$SETUP_REF"
 export CLOUD_INIT_TEMPLATE_PATH="$CLOUD_INIT_TEMPLATE"
 
 python3 - <<'PY' > "$TMP_DIR/cloud-init.yaml"
@@ -140,10 +162,10 @@ for key in [
     "TEMPLATE_OPENPALM_INSTALL_DIR",
     "TEMPLATE_OPENPALM_HOME",
     "TEMPLATE_SETUP_SPEC_B64",
-    "TEMPLATE_SSH_PUBLIC_KEY",
     "TEMPLATE_KV_NAME",
     "TEMPLATE_STORAGE_NAME",
     "TEMPLATE_BACKUP_SHARE",
+    "TEMPLATE_SETUP_REF",
 ]:
     text = text.replace(f"__{key}__", os.environ[key])
 print(text)
@@ -267,6 +289,11 @@ az network vnet subnet update \
   --output none
 
 # ── VM ───────────────────────────────────────────────────────────────────
+# The intended SSH path is `az ssh vm` which uses Entra ID and tunnels through
+# the Azure control plane — no inbound SSH port is needed.  However, az vm
+# create requires at least one auth mechanism, so we use --generate-ssh-keys as
+# a fallback.  The NSG blocks all inbound SSH traffic, making these keys
+# unreachable from the network.
 echo "Creating VM (size: $VM_SIZE, disk: ${OS_DISK_SIZE}GB, no public IP)..."
 az vm create \
   --resource-group "$RESOURCE_GROUP" \
@@ -276,6 +303,7 @@ az vm create \
   --size "$VM_SIZE" \
   --os-disk-size-gb "$OS_DISK_SIZE" \
   --admin-username "$ADMIN_USERNAME" \
+  --authentication-type ssh \
   --generate-ssh-keys \
   --assign-identity '[system]' \
   --vnet-name "$VNET_NAME" \
@@ -286,6 +314,9 @@ az vm create \
   --security-type Standard \
   --tags $TAGS \
   --output jsonc
+
+# Install the az ssh extension on the VM so Entra ID SSH works
+az extension add --name ssh --yes 2>/dev/null || true
 
 # ── RBAC: grant VM managed identity access to Key Vault and Storage ──────
 VM_IDENTITY="$(az vm show -g "$RESOURCE_GROUP" -n "$VM_NAME" --query identity.principalId -o tsv)"
@@ -300,14 +331,7 @@ az role assignment create \
 
 STORAGE_ID="$(az storage account show --name "$STORAGE_NAME" --query id -o tsv)"
 
-echo "Granting VM identity access to Storage Account (data contributor)..."
-az role assignment create \
-  --assignee-object-id "$VM_IDENTITY" \
-  --assignee-principal-type ServicePrincipal \
-  --role "Storage Blob Data Contributor" \
-  --scope "$STORAGE_ID" \
-  --output none
-
+echo "Granting VM identity access to Storage Account (file share contributor)..."
 az role assignment create \
   --assignee-object-id "$VM_IDENTITY" \
   --assignee-principal-type ServicePrincipal \
@@ -328,7 +352,7 @@ echo "  Storage Account:  ${STORAGE_NAME}/${BACKUP_SHARE}"
 echo "  Slack channel:    ${SLACK_ENABLED}"
 echo "  OpenPalm CLI:     ${OPENPALM_INSTALL_DIR}/openpalm"
 echo
-echo "SSH via Azure CLI (no public IP required):"
+echo "SSH via Azure CLI (Entra ID auth, no public IP required):"
 echo "  az ssh vm -g ${RESOURCE_GROUP} -n ${VM_NAME}"
 echo
 echo "Cloud-init is still running. After SSH, monitor with:"
