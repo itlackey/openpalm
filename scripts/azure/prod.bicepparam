@@ -30,6 +30,7 @@ param channelVoiceSecretUri = ''
 // When aiFoundryApiKeySecretUri is set, capLlmApiKeySecretUri and embeddingsApiKeySecretUri
 // can be left blank — the template will fall back to the AI Foundry key automatically.
 param capLlmProvider = 'azure_openai'
+// When using azure_openai provider, this must be the DEPLOYMENT NAME (not model name).
 param capLlmModel = 'gpt-41-mini'
 param capLlmBaseUrl = 'https://ai-openpalm-prod.openai.azure.com/'
 param capLlmApiKeySecretUri = ''
