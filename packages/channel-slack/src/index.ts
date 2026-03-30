@@ -150,6 +150,10 @@ export default class SlackChannel extends BaseChannel {
     // Respond to DMs and messages in threads the bot is already participating in
     if (!isDM && !inTrackedThread) return;
 
+    // Skip @mentions in tracked threads — onAppMention handles these.
+    // Processing both causes duplicate responses.
+    if (inTrackedThread && this.botUserId && event.text.includes(`<@${this.botUserId}>`)) return;
+
     const userInfo = await this.extractUserInfo(event, client);
     const permResult = checkPermissions(this.permissions, userInfo);
     if (!permResult.allowed) {
