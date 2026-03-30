@@ -1,9 +1,8 @@
 /**
- * Automation scheduler — loads automations from STATE_HOME/automations/,
+ * Automation scheduler — loads automations from config/automations/,
  * schedules them with Croner, watches for filesystem changes.
  *
- * Re-uses parsing and loading logic from @openpalm/lib. Action execution
- * is handled by the sidecar's own action executors (with configurable URLs).
+ * Re-uses parsing, loading, and action execution logic from @openpalm/lib.
  */
 import { Cron } from "croner";
 import { watch, type FSWatcher } from "node:fs";
@@ -12,10 +11,10 @@ import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import {
   loadAutomations,
   createLogger,
+  executeAction,
   type AutomationConfig,
   type ExecutionLogEntry,
 } from "@openpalm/lib";
-import { executeAction } from "./actions/index.js";
 
 const logger = createLogger("scheduler");
 
@@ -41,6 +40,11 @@ export function getExecutionLog(fileName: string): ExecutionLogEntry[] {
   return [...(executionLogs.get(fileName) ?? [])].reverse();
 }
 
+/** Clear all execution logs (for testing). */
+export function clearExecutionLogs(): void {
+  executionLogs.clear();
+}
+
 /** Return all execution logs keyed by fileName. */
 export function getAllExecutionLogs(): Record<string, ExecutionLogEntry[]> {
   const result: Record<string, ExecutionLogEntry[]> = {};
@@ -64,8 +68,8 @@ let reloadTimer: ReturnType<typeof setTimeout> | null = null;
 // ── Scheduler Lifecycle ──────────────────────────────────────────────
 
 /** Start the scheduler. Reads automations and creates Croner jobs. */
-export function startScheduler(stateDir: string, adminToken: string): void {
-  const configs = loadAutomations(stateDir);
+export function startScheduler(configDir: string, adminToken: string): void {
+  const configs = loadAutomations(configDir);
   const enabled = configs.filter((c) => c.enabled);
 
   for (const config of enabled) {
@@ -127,16 +131,15 @@ export function stopScheduler(): void {
   }
   const count = activeJobs.length;
   activeJobs = [];
-  executionLogs.clear();
   if (count > 0) {
     logger.info(`scheduler stopped (${count} job(s) cleared)`);
   }
 }
 
 /** Reload: stop all jobs, then start fresh from disk. */
-export function reloadScheduler(stateDir: string, adminToken: string): void {
+export function reloadScheduler(configDir: string, adminToken: string): void {
   stopScheduler();
-  startScheduler(stateDir, adminToken);
+  startScheduler(configDir, adminToken);
 }
 
 /** Return current scheduler status. */
@@ -208,11 +211,11 @@ export async function triggerAutomation(
 // ── File Watching ────────────────────────────────────────────────────
 
 /**
- * Start watching STATE_HOME/automations/ for changes.
+ * Start watching config/automations/ for changes.
  * Debounces reloads to avoid thrashing on rapid writes.
  */
-export function startWatching(stateDir: string, adminToken: string): void {
-  const dir = join(stateDir, "automations");
+export function startWatching(configDir: string, adminToken: string): void {
+  const dir = join(configDir, "automations");
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
@@ -225,7 +228,7 @@ export function startWatching(stateDir: string, adminToken: string): void {
       if (reloadTimer) clearTimeout(reloadTimer);
       reloadTimer = setTimeout(() => {
         logger.info("automation files changed, reloading", { trigger: filename });
-        reloadScheduler(stateDir, adminToken);
+        reloadScheduler(configDir, adminToken);
         reloadTimer = null;
       }, 500);
     });
@@ -235,7 +238,7 @@ export function startWatching(stateDir: string, adminToken: string): void {
     logger.warn("file watching not available, using polling fallback", {
       error: String(err),
     });
-    startPolling(stateDir, adminToken);
+    startPolling(configDir, adminToken);
   }
 }
 
@@ -243,8 +246,8 @@ export function startWatching(stateDir: string, adminToken: string): void {
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 let lastFileList = "";
 
-function startPolling(stateDir: string, adminToken: string): void {
-  const dir = join(stateDir, "automations");
+function startPolling(configDir: string, adminToken: string): void {
+  const dir = join(configDir, "automations");
   const POLL_INTERVAL_MS = 10_000;
 
   pollInterval = setInterval(() => {
@@ -254,7 +257,7 @@ function startPolling(stateDir: string, adminToken: string): void {
       if (files !== lastFileList) {
         lastFileList = files;
         logger.info("automation files changed (poll), reloading");
-        reloadScheduler(stateDir, adminToken);
+        reloadScheduler(configDir, adminToken);
       }
     } catch {
       // Ignore polling errors

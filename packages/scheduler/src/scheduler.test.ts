@@ -10,6 +10,7 @@ import {
   getLoadedAutomations,
   getExecutionLog,
   getAllExecutionLogs,
+  clearExecutionLogs,
   triggerAutomation,
   startWatching,
   stopWatching,
@@ -65,6 +66,7 @@ function cleanupDir(): void {
 describe("scheduler", () => {
   beforeEach(() => {
     stopScheduler();
+    clearExecutionLogs();
     setupDir();
   });
 

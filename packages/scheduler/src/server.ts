@@ -1,14 +1,14 @@
 /**
  * OpenPalm Scheduler Sidecar — lightweight Bun HTTP server.
  *
- * Reads automations from STATE_HOME/automations/ and runs them on
+ * Reads automations from config/automations/ and runs them on
  * cron schedules. Provides a REST API for health checks, automation
  * listing, execution logs, and manual triggers.
  *
  * Port: 8090 (configurable via PORT env)
  */
-import { createLogger } from "@openpalm/lib";
-import { loadAutomations } from "@openpalm/lib";
+import { timingSafeEqual, createHash } from "node:crypto";
+import { createLogger, loadAutomations } from "@openpalm/lib";
 import {
   startScheduler,
   stopScheduler,
@@ -24,16 +24,27 @@ import {
 const logger = createLogger("scheduler:server");
 
 const PORT = parseInt(process.env.PORT ?? "8090", 10);
-const STATE_DIR = process.env.OPENPALM_STATE_HOME ?? process.env.STATE_HOME ?? "";
-const ADMIN_TOKEN = process.env.OPENPALM_ADMIN_TOKEN ?? process.env.ADMIN_TOKEN ?? "";
+const OP_HOME = process.env.OP_HOME ?? "";
+const CONFIG_DIR = OP_HOME ? `${OP_HOME}/config` : "";
+const ADMIN_TOKEN = process.env.OP_ADMIN_TOKEN ?? "";
 
-if (!STATE_DIR) {
-  logger.error("OPENPALM_STATE_HOME is required");
+if (!CONFIG_DIR) {
+  logger.error("OP_HOME is required");
   process.exit(1);
 }
 
 if (!ADMIN_TOKEN) {
-  logger.warn("OPENPALM_ADMIN_TOKEN is not set — authenticated endpoints will reject all requests");
+  logger.warn("OP_ADMIN_TOKEN is not set — authenticated endpoints will reject all requests");
+}
+
+// ── Timing-safe token comparison ─────────────────────────────────────
+
+function safeTokenCompare(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  if (!a || !b) return false;
+  const hashA = createHash("sha256").update(a).digest();
+  const hashB = createHash("sha256").update(b).digest();
+  return timingSafeEqual(hashA, hashB);
 }
 
 // ── Auth Helper ──────────────────────────────────────────────────────
@@ -42,8 +53,9 @@ function requireAuth(req: Request): boolean {
   if (!ADMIN_TOKEN) return false; // No token configured = fail closed
   const token =
     req.headers.get("x-admin-token") ??
-    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  return token === ADMIN_TOKEN;
+    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+    "";
+  return safeTokenCompare(token, ADMIN_TOKEN);
 }
 
 // ── JSON Response Helper ──────────────────────────────────────────────
@@ -80,7 +92,7 @@ function handleRequest(req: Request): Response | Promise<Response> {
     }
     const status = getSchedulerStatus();
     const allLogs = getAllExecutionLogs();
-    const automations = loadAutomations(STATE_DIR).map((c) => ({
+    const automations = loadAutomations(CONFIG_DIR).map((c) => ({
       name: c.name,
       description: c.description,
       schedule: c.schedule,
@@ -105,33 +117,34 @@ function handleRequest(req: Request): Response | Promise<Response> {
   }
 
   // GET /automations/:name/log (authenticated — exposes execution details)
-  if (method === "GET" && path.startsWith("/automations/") && path.endsWith("/log")) {
-    if (!requireAuth(req)) {
-      return json(401, { error: "unauthorized" });
-    }
-    const name = path.slice("/automations/".length, -"/log".length);
-    if (!name) {
-      return json(400, { error: "missing automation name" });
-    }
-    const logs = getExecutionLog(name);
-    return json(200, { fileName: name, logs });
-  }
-
   // POST /automations/:name/run (authenticated)
-  if (method === "POST" && path.startsWith("/automations/") && path.endsWith("/run")) {
-    if (!requireAuth(req)) {
-      return json(401, { error: "unauthorized" });
-    }
-    const name = path.slice("/automations/".length, -"/run".length);
-    if (!name) {
-      return json(400, { error: "missing automation name" });
-    }
-    return triggerAutomation(name, ADMIN_TOKEN).then((result) => {
-      if (result.ok) {
-        return json(200, { ok: true, fileName: name });
+  if (path.startsWith("/automations/")) {
+    const segments = path.split("/").filter(Boolean); // ["automations", ...name parts..., action]
+    // Expect at least 3 segments: "automations", <name>, <action>
+    if (segments.length >= 3) {
+      const action = segments[segments.length - 1]; // last segment is the action
+      const name = segments.slice(1, -1).join("/"); // everything between "automations" and action
+
+      if (method === "GET" && action === "log" && name) {
+        if (!requireAuth(req)) {
+          return json(401, { error: "unauthorized" });
+        }
+        const logs = getExecutionLog(name);
+        return json(200, { fileName: name, logs });
       }
-      return json(404, { ok: false, error: result.error });
-    });
+
+      if (method === "POST" && action === "run" && name) {
+        if (!requireAuth(req)) {
+          return json(401, { error: "unauthorized" });
+        }
+        return triggerAutomation(name, ADMIN_TOKEN).then((result) => {
+          if (result.ok) {
+            return json(200, { ok: true, fileName: name });
+          }
+          return json(404, { ok: false, error: result.error });
+        });
+      }
+    }
   }
 
   return json(404, { error: "not found" });
@@ -141,14 +154,14 @@ function handleRequest(req: Request): Response | Promise<Response> {
 
 logger.info("starting scheduler sidecar", {
   port: PORT,
-  stateDir: STATE_DIR,
+  configDir: CONFIG_DIR,
 });
 
 // Start the automation scheduler
-startScheduler(STATE_DIR, ADMIN_TOKEN);
+startScheduler(CONFIG_DIR, ADMIN_TOKEN);
 
 // Watch for automation file changes (no restart required)
-startWatching(STATE_DIR, ADMIN_TOKEN);
+startWatching(CONFIG_DIR, ADMIN_TOKEN);
 
 // Start HTTP server
 const server = Bun.serve({

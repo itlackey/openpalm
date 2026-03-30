@@ -8,17 +8,15 @@
  * Uses Bun.serve() with a fetch handler for routing.
  */
 import {
-  type SetupConfig,
+  type SetupSpec,
   type SetupResult,
-  type CoreAssetProvider,
-  performSetupFromConfig,
-  detectProviders,
+  performSetup,
+  detectLocalProviders,
   isSetupComplete,
   fetchProviderModels,
-  resolveConfigHome,
-  resolveStateHome,
-  FilesystemAssetProvider,
-  resolveDataHome,
+  resolveConfigDir,
+  resolveVaultDir,
+  createOpenCodeClient,
 } from "@openpalm/lib";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -95,17 +93,17 @@ export type SetupServer = {
  * Create and start the setup wizard HTTP server.
  *
  * @param port - Port to listen on (default 8100)
- * @param opts - Optional overrides for asset provider and config dir
+ * @param opts - Optional overrides for config dir
  */
 export function createSetupServer(
   port: number = 8100,
   opts?: {
-    assetProvider?: CoreAssetProvider;
     configDir?: string;
+    openCodeClient?: ReturnType<typeof createOpenCodeClient>;
   }
 ): SetupServer {
-  const configDir = opts?.configDir ?? resolveConfigHome();
-  const assetProvider = opts?.assetProvider ?? new FilesystemAssetProvider(resolveDataHome());
+  const configDir = opts?.configDir ?? resolveConfigDir();
+  const ocClient = opts?.openCodeClient ?? null;
 
   // Mutable server state
   const state: SetupServerState = {
@@ -154,8 +152,8 @@ export function createSetupServer(
     // ── API: Setup Status ────────────────────────────────────────────
 
     if (method === "GET" && path === "/api/setup/status") {
-      const stateDir = resolveStateHome();
-      const complete = isSetupComplete(stateDir, configDir);
+      const vaultDir = resolveVaultDir();
+      const complete = isSetupComplete(vaultDir);
       return jsonResponse(200, {
         ok: true,
         setupComplete: complete || state.setupComplete,
@@ -166,7 +164,7 @@ export function createSetupServer(
 
     if (method === "GET" && path === "/api/setup/detect-providers") {
       try {
-        const providers = await detectProviders();
+        const providers = await detectLocalProviders();
         return jsonResponse(200, { ok: true, providers });
       } catch (err) {
         return errorResponse(500, "detection_failed", String(err));
@@ -216,10 +214,10 @@ export function createSetupServer(
         return errorResponse(400, "invalid_json", "Request body must be valid JSON");
       }
 
-      const config = body as SetupConfig;
+      const setupSpec = body as SetupSpec;
       let result: SetupResult;
       try {
-        result = await performSetupFromConfig(config, assetProvider);
+        result = await performSetup(setupSpec);
       } catch (err) {
         return errorResponse(500, "setup_failed", String(err));
       }
@@ -246,6 +244,41 @@ export function createSetupServer(
         deployStatus: state.deployStatus,
         deployError: state.deployError,
       });
+    }
+
+    // ── API: OpenCode Status ────────────────────────────────────────
+
+    if (method === "GET" && path === "/api/setup/opencode/status") {
+      if (!ocClient) return jsonResponse(200, { ok: true, available: false });
+      const available = await ocClient.isAvailable();
+      return jsonResponse(200, { ok: true, available });
+    }
+
+    // ── API: OpenCode Providers (merged providers + auth) ────────────
+
+    if (method === "GET" && path === "/api/setup/opencode/providers") {
+      if (!ocClient) return jsonResponse(200, { ok: true, available: false, providers: [] });
+      const [providers, auth] = await Promise.all([
+        ocClient.getProviders(),
+        ocClient.getProviderAuth(),
+      ]);
+      return jsonResponse(200, { ok: true, available: true, providers, auth });
+    }
+
+    // ── API: OpenCode Proxy (all other /api/setup/opencode/* paths) ──
+    // Strips /api/setup/opencode prefix and forwards to the OpenCode subprocess.
+
+    if (path.startsWith("/api/setup/opencode/") && path !== "/api/setup/opencode/status" && path !== "/api/setup/opencode/providers") {
+      if (!ocClient) return errorResponse(503, "opencode_unavailable", "OpenCode not available");
+      const ocPath = path.replace("/api/setup/opencode", "");
+      const proxyOpts: RequestInit = { method };
+      if (method !== "GET" && method !== "HEAD") {
+        try { proxyOpts.body = await req.text(); } catch { /* empty body */ }
+        proxyOpts.headers = { "Content-Type": req.headers.get("Content-Type") || "application/json" };
+      }
+      const result = await ocClient.proxy(ocPath, proxyOpts);
+      if (!result.ok) return jsonResponse(result.status, { ok: false, error: result.code, message: result.message });
+      return jsonResponse(200, result.data);
     }
 
     // ── 404 ──────────────────────────────────────────────────────────
@@ -281,29 +314,21 @@ export function createSetupServer(
   };
 }
 
-// ── Convenience: Wait for Setup Complete ─────────────────────────────────
-
-/**
- * High-level helper: starts the server, waits for setup to complete, then stops.
- */
-export async function waitForSetupComplete(
-  port: number = 8100,
-  opts?: {
-    assetProvider?: CoreAssetProvider;
-    configDir?: string;
-  }
-): Promise<SetupResult> {
-  const { server, waitForComplete, stop } = createSetupServer(port, opts);
-  try {
-    return await waitForComplete();
-  } finally {
-    stop();
-  }
-}
-
 // ── Static Assets (wizard UI from task 2.1) ─────────────────────────────
 // Embedded at build time via Bun text imports from sibling files.
+// The wizard JS is split into four files for maintainability, then
+// concatenated into a single IIFE at import time.
 
 import WIZARD_HTML from "./index.html" with { type: "text" };
-import WIZARD_JS from "./wizard.js" with { type: "text" };
+import WIZARD_STATE_JS from "./wizard-state.js" with { type: "text" };
+import WIZARD_VALIDATORS_JS from "./wizard-validators.js" with { type: "text" };
+import WIZARD_RENDERERS_JS from "./wizard-renderers.js" with { type: "text" };
+import WIZARD_ENTRY_JS from "./wizard.js" with { type: "text" };
 import WIZARD_CSS from "./wizard.css" with { type: "text" };
+
+const WIZARD_JS = `(function(){"use strict";
+${WIZARD_STATE_JS}
+${WIZARD_VALIDATORS_JS}
+${WIZARD_RENDERERS_JS}
+${WIZARD_ENTRY_JS}
+})();`;

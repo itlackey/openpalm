@@ -3,40 +3,32 @@ set -euo pipefail
 
 PORT="${OPENCODE_PORT:-4096}"
 ENABLE_SSH="${OPENCODE_ENABLE_SSH:-0}"
-TARGET_UID="${OPENPALM_UID:-1000}"
-TARGET_GID="${OPENPALM_GID:-1000}"
-TARGET_USER="opencode"
-TARGET_GROUP="opencode"
+TARGET_UID="${OP_UID:-1000}"
+TARGET_GID="${OP_GID:-1000}"
 
-ensure_user_mapping() {
-  if ! command -v getent >/dev/null 2>&1; then
+maybe_adjust_uid_gid() {
+  # The Dockerfile creates the "opencode" user at 1000:1000. If the host
+  # user has a different UID/GID (passed via OP_UID/OP_GID), adjust here.
+  if [ "$(id -u)" != "0" ]; then
     return 0
   fi
 
-  local existing_group
-  existing_group="$(getent group "$TARGET_GID" | cut -d: -f1 || true)"
-  if [ -n "$existing_group" ]; then
-    TARGET_GROUP="$existing_group"
-  elif [ "$(id -u)" = "0" ]; then
-    groupadd --gid "$TARGET_GID" "$TARGET_GROUP" >/dev/null 2>&1 || true
-  fi
+  local current_uid current_gid
+  current_uid="$(id -u opencode 2>/dev/null || echo 1000)"
+  current_gid="$(id -g opencode 2>/dev/null || echo 1000)"
 
-  local existing_user
-  existing_user="$(getent passwd "$TARGET_UID" | cut -d: -f1 || true)"
-  if [ -n "$existing_user" ]; then
-    TARGET_USER="$existing_user"
-  elif [ "$(id -u)" = "0" ]; then
-    useradd \
-      --uid "$TARGET_UID" \
-      --gid "$TARGET_GID" \
-      --home-dir /home/opencode \
-      --shell /bin/bash \
-      --no-create-home \
-      "$TARGET_USER" >/dev/null 2>&1 || true
+  if [ "$current_gid" != "$TARGET_GID" ]; then
+    groupmod -g "$TARGET_GID" opencode 2>/dev/null || true
+  fi
+  if [ "$current_uid" != "$TARGET_UID" ]; then
+    usermod -u "$TARGET_UID" -g "$TARGET_GID" opencode 2>/dev/null || true
   fi
 }
 
 ensure_home_layout() {
+  # Create directories that may not exist on first run. Bind-mounted paths
+  # (/home/opencode, /work) already have correct host ownership from the
+  # init service — no recursive chown needed.
   mkdir -p \
     /home/opencode \
     /home/opencode/.cache \
@@ -44,24 +36,17 @@ ensure_home_layout() {
     /home/opencode/.local/bin \
     /home/opencode/.local/state/opencode \
     /home/opencode/.local/share/opencode \
-    /work \
-    /etc/opencode
+    /work
 
+  # Root-owned directories — only create when running as root.
+  # These are also created in the Dockerfile, so they exist in fresh images;
+  # this handles the case where volumes shadow the image layers.
   if [ "$(id -u)" = "0" ]; then
-    chown -R "$TARGET_UID:$TARGET_GID" \
-      /home/opencode \
-      /work \
-      /etc/opencode \
-      /var/run/sshd 2>/dev/null || true
+    mkdir -p /etc/opencode /var/run/sshd
   fi
 }
 
 maybe_set_memory_user_id() {
-  # Legacy fallback: accept OPENMEMORY_USER_ID from older installs
-  if [ -z "${MEMORY_USER_ID:-}" ] && [ -n "${OPENMEMORY_USER_ID:-}" ]; then
-    export MEMORY_USER_ID="$OPENMEMORY_USER_ID"
-  fi
-
   if [ -n "${MEMORY_USER_ID:-}" ] && [ "${MEMORY_USER_ID}" != "default_user" ]; then
     return 0
   fi
@@ -105,7 +90,7 @@ maybe_enable_ssh() {
   fi
 
   if command -v openssl >/dev/null 2>&1; then
-    usermod -p "$(openssl passwd -6 "$(openssl rand -hex 16)")" "$TARGET_USER" 2>/dev/null || true
+    usermod -p "$(openssl passwd -6 "$(openssl rand -hex 16)")" opencode 2>/dev/null || true
   fi
 
   if [ ! -f /etc/ssh/ssh_host_ed25519_key ]; then
@@ -189,11 +174,6 @@ start_opencode() {
   # Ensure bun's user-writable directories exist (set via Dockerfile ENV).
   mkdir -p "${BUN_INSTALL:-/home/opencode/.bun}/bin" \
            "${BUN_INSTALL_CACHE_DIR:-/home/opencode/.cache/bun/install}"
-  if [ "$(id -u)" = "0" ]; then
-    chown -R "$TARGET_UID:$TARGET_GID" \
-      "${BUN_INSTALL:-/home/opencode/.bun}" \
-      "${BUN_INSTALL_CACHE_DIR:-/home/opencode/.cache/bun/install}"
-  fi
 
   # Resolve varlock for runtime secret redaction.
   # The redaction schema (.env.schema) is baked into the image at
@@ -217,18 +197,18 @@ start_opencode() {
       echo "ERROR: gosu not found — cannot drop privileges. Install gosu in the Dockerfile." >&2
       exit 1
     fi
-    # gosu resets HOME from /etc/passwd (UID 1000 → /home/node in node:lts).
-    # OpenCode resolves user config via HOME, so we must preserve it.
-    # SHELL must also be forwarded for the varlock-shell wrapper (Layer 1).
+    # Drop to the opencode user. gosu resets HOME from /etc/passwd, so we
+    # must forward HOME and SHELL explicitly. The user has passwordless sudo
+    # for root operations; normal file I/O preserves host UID ownership.
     export HOME=/home/opencode
-    exec gosu "$TARGET_UID:$TARGET_GID" env HOME=/home/opencode SHELL="$SHELL" \
+    exec gosu opencode env HOME=/home/opencode SHELL="$SHELL" \
       "${VARLOCK_CMD[@]}" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
   fi
 
   exec "${VARLOCK_CMD[@]}" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
 }
 
-ensure_user_mapping
+maybe_adjust_uid_gid
 ensure_home_layout
 maybe_set_memory_user_id
 maybe_enable_ssh

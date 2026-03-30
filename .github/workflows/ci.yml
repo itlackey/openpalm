@@ -85,27 +85,34 @@ jobs:
       - name: Validate Docker Compose manifests
         env:
           ADMIN_TOKEN: ci-placeholder
-        run: docker compose -f assets/docker-compose.yml -f compose.dev.yaml config -q
-
-      - name: Validate registry YAML files
+          OP_HOME: ${{ github.workspace }}/.op-home
         run: |
           set -euo pipefail
+          mkdir -p "${OP_HOME}/vault/stack" "${OP_HOME}/vault/user" "${OP_HOME}/data" "${OP_HOME}/config" "${OP_HOME}/logs" "${OP_HOME}/stack"
+          docker compose -f .openpalm/stack/core.compose.yml -f compose.dev.yml config -q
+
+      - name: Assert deleted scripts are absent
+        run: |
+          set -euo pipefail
+          # start.sh was deleted in P1-5 (0.10.0 cleanup). Prevent reintroduction.
+          if [ -f ".openpalm/stack/start.sh" ]; then
+            echo "::error file=.openpalm/stack/start.sh::.openpalm/stack/start.sh must not exist — deleted in P1-5 cleanup"
+            exit 1
+          fi
+          echo "Deleted script assertion passed"
+
+      - name: Validate shipped addon catalog and automations
+        run: |
+          set -euo pipefail
+
+          # Full addon validation (compose.yml + .env.schema + conventions)
+          ./scripts/validate-registry.sh
+
+          # Also validate catalog automation YAML files are well-formed
           pip install --quiet PyYAML
           errors=0
-
-          # Validate all registry channel YAML files
-          for f in registry/channels/*.yml; do
+          for f in .openpalm/registry/automations/*.yml; do
             if [ ! -f "$f" ]; then continue; fi
-            if ! docker compose -f assets/docker-compose.yml -f "$f" config -q 2>/dev/null; then
-              echo "::error file=$f::Invalid compose overlay: $f"
-              errors=$((errors + 1))
-            fi
-          done
-
-          # Validate all registry automation YAML files are well-formed
-          for f in registry/automations/*.yml; do
-            if [ ! -f "$f" ]; then continue; fi
-            # Automations are plain YAML — validate with a quick parse
             if ! python3 -c "import yaml, sys; yaml.safe_load(open(sys.argv[1]))" "$f" 2>/dev/null; then
               echo "::error file=$f::Invalid YAML: $f"
               errors=$((errors + 1))
@@ -113,7 +120,93 @@ jobs:
           done
 
           if [ "$errors" -gt 0 ]; then
-            echo "::error::$errors registry file(s) failed validation"
+            echo "::error::$errors catalog file(s) failed validation"
             exit 1
           fi
-          echo "All registry files validated successfully"
+          echo "All stack files validated successfully"
+
+      - name: Validate platform version sync
+        run: |
+          set -euo pipefail
+          ROOT_VERSION=$(jq -r .version package.json)
+          PLATFORM_MANIFESTS="packages/admin/package.json core/guardian/package.json packages/cli/package.json packages/channels-sdk/package.json"
+          errors=0
+
+          for pkg in ${PLATFORM_MANIFESTS}; do
+            PKG_VERSION=$(jq -r .version "${pkg}")
+            if [ "${PKG_VERSION}" != "${ROOT_VERSION}" ]; then
+              echo "::error file=${pkg}::${pkg} version ${PKG_VERSION} does not match root ${ROOT_VERSION}"
+              errors=$((errors + 1))
+            fi
+          done
+
+          # Validate setup script versions match
+          SCRIPT_VERSION=$(grep -oP '^SCRIPT_VERSION="\K[^"]+' scripts/setup.sh || true)
+          if [ -n "${SCRIPT_VERSION}" ] && [ "${SCRIPT_VERSION}" != "${ROOT_VERSION}" ]; then
+            echo "::error file=scripts/setup.sh::setup.sh SCRIPT_VERSION ${SCRIPT_VERSION} does not match root ${ROOT_VERSION}"
+            errors=$((errors + 1))
+          fi
+
+          PS1_VERSION=$(grep -oP "^\\\$ScriptVersion = '\K[^']+" scripts/setup.ps1 || true)
+          if [ -n "${PS1_VERSION}" ] && [ "${PS1_VERSION}" != "${ROOT_VERSION}" ]; then
+            echo "::error file=scripts/setup.ps1::setup.ps1 ScriptVersion ${PS1_VERSION} does not match root ${ROOT_VERSION}"
+            errors=$((errors + 1))
+          fi
+
+          if [ "$errors" -gt 0 ]; then
+            echo "::error::${errors} platform version(s) out of sync with root ${ROOT_VERSION}"
+            exit 1
+          fi
+          echo "All platform versions match: ${ROOT_VERSION}"
+
+  admin-unit-tests:
+    name: Admin unit tests (Vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Bun workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browsers (for Vitest browser mode)
+        run: npx playwright install --with-deps chromium
+
+      - name: Run admin unit tests
+        run: bun run admin:test:unit
+
+  admin-e2e-mocked:
+    name: Admin mocked E2E tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Bun workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run mocked Playwright E2E tests
+        run: bun run admin:test:e2e:mocked

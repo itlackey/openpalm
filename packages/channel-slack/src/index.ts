@@ -150,6 +150,10 @@ export default class SlackChannel extends BaseChannel {
     // Respond to DMs and messages in threads the bot is already participating in
     if (!isDM && !inTrackedThread) return;
 
+    // Skip @mentions in tracked threads — onAppMention handles these.
+    // Processing both causes duplicate responses.
+    if (inTrackedThread && this.botUserId && event.text.includes(`<@${this.botUserId}>`)) return;
+
     const userInfo = await this.extractUserInfo(event, client);
     const permResult = checkPermissions(this.permissions, userInfo);
     if (!permResult.allowed) {
@@ -477,28 +481,6 @@ export default class SlackChannel extends BaseChannel {
       }
       await client.chat.postMessage({ channel, text: `Error: ${errMsg}`, thread_ts: threadTs });
     }
-  }
-
-  // ── Guardian Forwarding ───────────────────────────────────────────────
-
-  /** Forward to guardian via HMAC-signed request. Throws on non-OK response. */
-  private async forwardToGuardian(
-    userId: string,
-    text: string,
-    metadata: Record<string, unknown>,
-  ): Promise<string> {
-    const resp = await this.forward({
-      userId: `slack:${userId}`,
-      text,
-      metadata,
-    });
-
-    if (!resp.ok) {
-      throw new Error(`Guardian returned status ${resp.status}`);
-    }
-
-    const result = (await resp.json()) as { answer?: string };
-    return result.answer ?? "No response received.";
   }
 
   // ── Utilities ─────────────────────────────────────────────────────────

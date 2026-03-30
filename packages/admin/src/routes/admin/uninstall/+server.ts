@@ -6,7 +6,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { applyUninstall, appendAudit, buildComposeFileList, buildEnvFiles } from "$lib/server/control-plane.js";
+import { applyUninstall, appendAudit, buildComposeOptions } from "@openpalm/lib";
 import { composeDown, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
@@ -27,11 +27,11 @@ export const POST: RequestHandler = async (event) => {
   const dockerCheck = await checkDocker();
   let dockerResult = null;
   if (dockerCheck.ok) {
-    dockerResult = await composeDown(state.stateDir, { files: buildComposeFileList(state), envFiles: buildEnvFiles(state), profiles: ['admin'] });
+    dockerResult = await composeDown({ ...buildComposeOptions(state), profiles: ['admin'] });
   }
 
   logger.info("stopping containers and applying uninstall", { requestId, dockerAvailable: dockerCheck.ok });
-  const result = applyUninstall(state);
+  const result = await applyUninstall(state);
   logger.info("uninstall completed", { requestId, stopped: result.stopped });
 
   appendAudit(

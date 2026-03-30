@@ -4,12 +4,9 @@
 import type { RequestEvent } from "@sveltejs/kit";
 import { timingSafeEqual, createHash } from "node:crypto";
 import { getState } from "./state.js";
-import { normalizeCaller } from "./lifecycle.js";
+import { normalizeCaller } from "@openpalm/lib";
 import {
-  CONNECTION_KINDS,
   type CallerType,
-  type CanonicalConnectionProfile,
-  type CapabilityAssignments,
 } from "./types.js";
 
 export function safeTokenCompare(a: string, b: string): boolean {
@@ -56,9 +53,9 @@ export function getRequestId(event: RequestEvent): string {
 }
 
 /** Guard: returns 503 if admin token has not been configured yet. */
-export function requireNonEmptyAdminToken(state: { adminToken: string }): Response | null {
+export function requireNonEmptyAdminToken(state: { adminToken: string }, requestId: string): Response | null {
   if (!state.adminToken) {
-    return jsonResponse(503, { error: 'admin_not_configured', message: 'Admin token has not been set. Complete setup first.' });
+    return errorResponse(503, 'admin_not_configured', 'Admin token has not been set. Complete setup first.', {}, requestId);
   }
   return null;
 }
@@ -66,7 +63,7 @@ export function requireNonEmptyAdminToken(state: { adminToken: string }): Respon
 /** Check admin token — returns error Response or null if OK */
 export function requireAdmin(event: RequestEvent, requestId: string): Response | null {
   const state = getState();
-  const notConfigured = requireNonEmptyAdminToken(state);
+  const notConfigured = requireNonEmptyAdminToken(state, requestId);
   if (notConfigured) return notConfigured;
   const token = event.request.headers.get("x-admin-token");
   if (!safeTokenCompare(token ?? "", state.adminToken)) {
@@ -81,12 +78,38 @@ export function requireAdmin(event: RequestEvent, requestId: string): Response |
   return null;
 }
 
+/** Identify caller by presented token. */
+export function identifyCallerByToken(event: RequestEvent): "admin" | "assistant" | null {
+  const state = getState();
+  const token = event.request.headers.get("x-admin-token") ?? "";
+  if (state.adminToken && safeTokenCompare(token, state.adminToken)) return "admin";
+  if (state.assistantToken && safeTokenCompare(token, state.assistantToken)) return "assistant";
+  return null;
+}
+
+/** Check for either admin or assistant token — returns error Response or null if OK. */
+export function requireAuth(event: RequestEvent, requestId: string): Response | null {
+  const state = getState();
+  if (!state.adminToken && !state.assistantToken) {
+    return errorResponse(503, 'admin_not_configured', 'Authentication tokens have not been set. Complete setup first.', {}, requestId);
+  }
+
+  if (identifyCallerByToken(event)) {
+    return null;
+  }
+
+  return errorResponse(
+    401,
+    "unauthorized",
+    "Missing or invalid x-admin-token (admin or assistant token accepted)",
+    {},
+    requestId
+  );
+}
+
 /** Extract actor from request — derived from auth state, not caller-controlled. */
 export function getActor(event: RequestEvent): string {
-  const token = event.request.headers.get("x-admin-token");
-  if (!token) return "unauthenticated";
-  const state = getState();
-  return safeTokenCompare(token, state.adminToken) ? "admin" : "unauthenticated";
+  return identifyCallerByToken(event) ?? "unauthenticated";
 }
 
 /** Extract caller type from request */
@@ -97,12 +120,11 @@ export function getCallerType(event: RequestEvent): CallerType {
 // ── SSRF Protection ────────────────────────────────────────────────────
 
 /**
- * Known Docker Compose service names from assets/docker-compose.yml.
+ * Known Docker Compose service names from stack/core.compose.yml.
  * These are the internal service hostnames that must never be probed
  * via user-supplied connection URLs.
  */
 const DOCKER_SERVICE_NAMES = new Set([
-  "caddy",
   "memory",
   "assistant",
   "guardian",
@@ -116,7 +138,7 @@ const DOCKER_SERVICE_NAMES = new Set([
  * Blocks:
  * - Cloud metadata IPs (169.254.x.x link-local range)
  * - Loopback addresses (127.x, ::1) — wrong target from inside Docker
- * - Known Docker Compose service names (memory, caddy, etc.)
+ * - Known Docker Compose service names (memory, admin, etc.)
  * - Non-http(s) schemes
  *
  * Allows:
@@ -130,7 +152,8 @@ export function validateExternalUrl(url: string): string | null {
   let parsed: URL;
   try {
     parsed = new URL(url);
-  } catch {
+  } catch (e) {
+    console.warn('[helpers] Invalid URL provided to validateExternalUrl', e);
     return "Invalid URL";
   }
 
@@ -144,6 +167,11 @@ export function validateExternalUrl(url: string): string | null {
   // Block known Docker service names
   if (DOCKER_SERVICE_NAMES.has(hostname)) {
     return `Blocked internal service: ${hostname}`;
+  }
+
+  // Block localhost (resolves to loopback)
+  if (hostname === 'localhost') {
+    return `Blocked address: ${hostname}`;
   }
 
   // Block loopback and dangerous IPs (but allow LAN IPs)
@@ -185,201 +213,33 @@ function isDangerousIp(hostname: string): boolean {
   return false;
 }
 
-/** Parse JSON body safely — returns null on parse failure or if body exceeds maxBytes */
+/** Discriminated result from parseJsonBody */
+export type ParseJsonBodyError = { error: "too_large" | "invalid_json" };
+export type ParseJsonBodyResult = { data: Record<string, unknown> } | ParseJsonBodyError;
+
+/** Parse JSON body safely — returns discriminated result with error type */
 export async function parseJsonBody(
   request: Request,
   maxBytes = 1_048_576
-): Promise<Record<string, unknown> | null> {
+): Promise<ParseJsonBodyResult> {
   try {
     const contentLength = request.headers.get('content-length');
     if (contentLength && parseInt(contentLength, 10) > maxBytes) {
-      return null;
+      return { error: "too_large" };
     }
-    return (await request.json()) as Record<string, unknown>;
-  } catch {
-    return null;
+    return { data: (await request.json()) as Record<string, unknown> };
+  } catch (e) {
+    console.warn('[helpers] Failed to parse JSON request body', e);
+    return { error: "invalid_json" };
   }
 }
 
-type ParseResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; message: string };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+/** Convert a ParseJsonBodyError to an appropriate HTTP error response */
+export function jsonBodyError(err: ParseJsonBodyError, requestId: string): Response {
+  if (err.error === "too_large") {
+    return errorResponse(413, "too_large", "Request body too large", {}, requestId);
+  }
+  return errorResponse(400, "invalid_json", "Request body must be valid JSON", {}, requestId);
 }
 
-function asNonEmptyString(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
 
-function asOptionalString(value: unknown): string | undefined {
-  if (value === undefined) return undefined;
-  return typeof value === "string" ? value : undefined;
-}
-
-function asPositiveInteger(value: unknown): number | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) return undefined;
-  return value;
-}
-
-function isConnectionKind(value: unknown): value is CanonicalConnectionProfile["kind"] {
-  return typeof value === "string" && CONNECTION_KINDS.includes(value as CanonicalConnectionProfile["kind"]);
-}
-
-/** Parse and narrow a canonical connection profile payload. */
-export function parseCanonicalConnectionProfile(input: unknown): ParseResult<CanonicalConnectionProfile> {
-  if (!isRecord(input)) {
-    return { ok: false, message: "connection profile must be an object" };
-  }
-  if (!isConnectionKind(input.kind)) {
-    return { ok: false, message: "connection profile kind is invalid" };
-  }
-
-  const id = asNonEmptyString(input.id);
-  if (!id) return { ok: false, message: "connection profile id is required" };
-
-  const name = asNonEmptyString(input.name);
-  if (!name) return { ok: false, message: "connection profile name is required" };
-
-  const provider = asNonEmptyString(input.provider);
-  if (!provider) return { ok: false, message: "connection profile provider is required" };
-
-  const baseUrl = typeof input.baseUrl === "string" ? input.baseUrl : "";
-
-  const auth = input.auth;
-  if (!isRecord(auth)) {
-    return { ok: false, message: "connection profile auth is required" };
-  }
-
-  const mode = auth.mode;
-  if (mode !== "api_key" && mode !== "none") {
-    return { ok: false, message: "connection profile auth mode must be api_key or none" };
-  }
-
-  const apiKeySecretRef = asOptionalString(auth.apiKeySecretRef);
-  if (mode === "api_key" && !asNonEmptyString(apiKeySecretRef)) {
-    return {
-      ok: false,
-      message: "connection profile auth apiKeySecretRef is required when mode is api_key",
-    };
-  }
-
-  const profile: CanonicalConnectionProfile = {
-    id,
-    name,
-    kind: input.kind,
-    provider,
-    baseUrl,
-    auth: {
-      mode,
-      ...(apiKeySecretRef ? { apiKeySecretRef } : {}),
-    },
-  };
-
-  return { ok: true, value: profile };
-}
-
-/** Parse and narrow capability assignments payload. */
-export function parseCapabilityAssignments(input: unknown): ParseResult<CapabilityAssignments> {
-  if (!isRecord(input)) {
-    return { ok: false, message: "assignments must be an object" };
-  }
-
-  const llm = input.llm;
-  const embeddings = input.embeddings;
-  if (!isRecord(llm)) {
-    return { ok: false, message: "assignments.llm is required" };
-  }
-  if (!isRecord(embeddings)) {
-    return { ok: false, message: "assignments.embeddings is required" };
-  }
-
-  const llmConnectionId = asNonEmptyString(llm.connectionId);
-  const llmModel = asNonEmptyString(llm.model);
-  const embeddingsConnectionId = asNonEmptyString(embeddings.connectionId);
-  const embeddingsModel = asNonEmptyString(embeddings.model);
-
-  if (!llmConnectionId || !llmModel) {
-    return { ok: false, message: "assignments.llm requires connectionId and model" };
-  }
-  if (!embeddingsConnectionId || !embeddingsModel) {
-    return { ok: false, message: "assignments.embeddings requires connectionId and model" };
-  }
-
-  const embeddingDims = asPositiveInteger(embeddings.embeddingDims);
-  if (embeddings.embeddingDims !== undefined && embeddingDims === undefined) {
-    return { ok: false, message: "assignments.embeddings.embeddingDims must be a positive integer" };
-  }
-
-  const reranking = input.reranking;
-  if (reranking !== undefined && !isRecord(reranking)) {
-    return { ok: false, message: "assignments.reranking must be an object when provided" };
-  }
-
-  const tts = input.tts;
-  if (tts !== undefined && !isRecord(tts)) {
-    return { ok: false, message: "assignments.tts must be an object when provided" };
-  }
-
-  const stt = input.stt;
-  if (stt !== undefined && !isRecord(stt)) {
-    return { ok: false, message: "assignments.stt must be an object when provided" };
-  }
-
-  return {
-    ok: true,
-    value: {
-      llm: {
-        connectionId: llmConnectionId,
-        model: llmModel,
-        ...(asOptionalString(llm.smallModel) ? { smallModel: asOptionalString(llm.smallModel) } : {}),
-      },
-      embeddings: {
-        connectionId: embeddingsConnectionId,
-        model: embeddingsModel,
-        ...(embeddingDims ? { embeddingDims } : {}),
-      },
-      ...(reranking && typeof reranking.enabled === "boolean"
-        ? {
-            reranking: {
-              enabled: reranking.enabled,
-              ...(asOptionalString(reranking.connectionId)
-                ? { connectionId: asOptionalString(reranking.connectionId) }
-                : {}),
-              ...(reranking.mode === "llm" || reranking.mode === "dedicated"
-                ? { mode: reranking.mode }
-                : {}),
-              ...(asOptionalString(reranking.model) ? { model: asOptionalString(reranking.model) } : {}),
-              ...(asPositiveInteger(reranking.topK) ? { topK: asPositiveInteger(reranking.topK) } : {}),
-              ...(asPositiveInteger(reranking.topN) ? { topN: asPositiveInteger(reranking.topN) } : {}),
-            },
-          }
-        : {}),
-      ...(tts && typeof tts.enabled === "boolean"
-        ? {
-            tts: {
-              enabled: tts.enabled,
-              ...(asOptionalString(tts.connectionId) ? { connectionId: asOptionalString(tts.connectionId) } : {}),
-              ...(asOptionalString(tts.model) ? { model: asOptionalString(tts.model) } : {}),
-              ...(asOptionalString(tts.voice) ? { voice: asOptionalString(tts.voice) } : {}),
-              ...(asOptionalString(tts.format) ? { format: asOptionalString(tts.format) } : {}),
-            },
-          }
-        : {}),
-      ...(stt && typeof stt.enabled === "boolean"
-        ? {
-            stt: {
-              enabled: stt.enabled,
-              ...(asOptionalString(stt.connectionId) ? { connectionId: asOptionalString(stt.connectionId) } : {}),
-              ...(asOptionalString(stt.model) ? { model: asOptionalString(stt.model) } : {}),
-              ...(asOptionalString(stt.language) ? { language: asOptionalString(stt.language) } : {}),
-            },
-          }
-        : {}),
-    },
-  };
-}

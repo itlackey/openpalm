@@ -17,7 +17,7 @@ export async function validateToken(
   token: string
 ): Promise<{ ok: boolean; allowed: boolean; error?: string }> {
   try {
-    const res = await fetch('/admin/access-scope', {
+    const res = await fetch('/admin/capabilities/status', {
       headers: {
         'x-admin-token': token,
         'x-requested-by': 'ui',
@@ -31,7 +31,8 @@ export async function validateToken(
       return { ok: false, allowed: false, error: 'Invalid admin token.' };
     }
     return { ok: false, allowed: false, error: `Unexpected status: ${res.status}` };
-  } catch {
+  } catch (e) {
+    console.warn('[auth] Unable to reach admin API', e);
     return { ok: false, allowed: false, error: 'Unable to reach admin API.' };
   }
 }

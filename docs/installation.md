@@ -1,147 +1,141 @@
 # Installation
 
-Install OpenPalm using the one-liner installer for your platform. The script downloads a standalone Bun-compiled binary — no Bun, Node.js, or other runtime needs to be present on the host.
+OpenPalm now documents the compose-first, manual-first setup as the primary
+path. The running stack is the exact Docker Compose file set you launch from
+`~/.openpalm/stack/`.
+
+If you prefer convenience tooling, the CLI can still help bootstrap the same
+layout, but it is not the source of truth.
 
 ---
 
 ## Prerequisites
 
-Docker Engine (Linux) or Docker Desktop (macOS / Windows) must be installed and running before you start. See [system-requirements.md](system-requirements.md) for minimum versions and hardware specs.
+- Docker Engine or Docker Desktop with Compose V2
+- `git` or another way to copy files from this repo
+- `curl` only if you plan to use the installer scripts
+
+See [system-requirements.md](system-requirements.md) for version and hardware
+details.
 
 ---
 
-## One-liner Install
-
-### Linux and macOS
+## Recommended install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+git clone https://github.com/itlackey/openpalm.git
+cp -R openpalm/.openpalm "$HOME/.openpalm"
+cp -R "$HOME/.openpalm/registry/addons/admin" "$HOME/.openpalm/stack/addons/admin"
+$EDITOR "$HOME/.openpalm/vault/stack/stack.env"
+$EDITOR "$HOME/.openpalm/vault/user/user.env"
 ```
 
-The script detects your platform and architecture, downloads the correct `openpalm` binary from the GitHub release, places it in `~/.local/bin/openpalm`, and runs `openpalm install`.
-
-### Windows (PowerShell)
-
-```powershell
-irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
-```
-
-The script downloads the matching Windows CLI binary from the GitHub release and places it in `%LOCALAPPDATA%\openpalm\bin\openpalm.exe`, then runs `openpalm install`.
+Then start the stack using the compose commands in the [Manual Compose Runbook](operations/manual-compose-runbook.md). That example starts the core stack plus any addons you choose (e.g., `admin` and `chat`).
 
 ---
 
-## Environment Variables
+## Home layout
 
-These variables are read by the setup scripts before downloading the binary.
+OpenPalm uses one home directory: `~/.openpalm/` by default.
 
-| Variable | Default | Description |
-|---|---|---|
-| `OPENPALM_VERSION` | latest release | Pin a specific release tag, e.g. `v0.9.0-rc11`. |
-| `OPENPALM_INSTALL_DIR` | `~/.local/bin` (Linux/macOS) or `%LOCALAPPDATA%\openpalm\bin` (Windows) | Directory where the `openpalm` binary is placed. Must be on `PATH` for the CLI to work without a full path. |
-
-Example — pin a specific version:
-
-```bash
-OPENPALM_VERSION=v0.9.0-rc11 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
-```
-
-Example — custom install location:
-
-```bash
-OPENPALM_INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
-```
-
----
-
-## What Happens During Install
-
-`openpalm install` performs the following steps in order:
-
-1. Creates the XDG directory tree (`CONFIG_HOME`, `DATA_HOME`, `STATE_HOME`).
-2. Probes the host environment and writes `DATA_HOME/host.json` (see below).
-3. Downloads core assets (compose file, Caddyfile, schema files) to `STATE_HOME/artifacts/`.
-4. Seeds missing default config files in `CONFIG_HOME` (never overwrites existing user files).
-5. Generates an admin token and writes it to `CONFIG_HOME/secrets.env` if one is not already set.
-6. Validates `CONFIG_HOME/secrets.env` against the schema (non-fatal on first install).
-7. Opens the setup wizard in your browser.
-
-The setup wizard walks you through connecting an AI provider, configuring channel credentials (Discord, Slack), and enabling services. When you finish, the full stack starts automatically.
-
-Alternatively, use `openpalm install -f config.yaml` to install from a SetupConfig file (JSON or YAML) without the interactive wizard. See `assets/setup-config.schema.json` for the schema.
-
----
-
-## host.json
-
-During install, `detectHostInfo()` probes the local environment and writes a JSON file to `DATA_HOME/host.json`. This file is read by the admin setup wizard to determine which model runner options to present.
-
-| Field | Description |
+| Path | Purpose |
 |---|---|
-| `platform` | Operating system (e.g. `linux`, `darwin`, `win32`) |
-| `arch` | CPU architecture (e.g. `x64`, `arm64`) |
-| `docker.available` | Whether the `docker` binary was found on `PATH` |
-| `docker.running` | Whether `docker info` succeeded (daemon is reachable) |
-| `ollama.running` | Whether Ollama is listening at `http://localhost:11434` |
-| `lmstudio.running` | Whether LM Studio is listening at `http://localhost:1234` |
-| `llamacpp.running` | Whether llama.cpp is listening at `http://localhost:8080` |
-| `timestamp` | ISO 8601 timestamp of when detection ran |
+| `~/.openpalm/stack/` | Live compose files and helper scripts |
+| `~/.openpalm/registry/` | Available addon and automation catalog |
+| `~/.openpalm/vault/stack/stack.env` | System-managed stack values and tokens |
+| `~/.openpalm/vault/user/user.env` | Optional user-managed extension settings |
+| `~/.openpalm/config/` | User-editable config, automations, assistant extensions |
+| `~/.openpalm/data/` | Durable service data |
+| `~/.openpalm/logs/` | Logs and audit output |
 
-The file is overwritten on every install and update — it reflects the current state of the host at install time.
-
----
-
-## Validating Configuration
-
-The `openpalm validate` command checks `CONFIG_HOME/secrets.env` against the schema at `assets/secrets.env.schema`. It downloads the `varlock` binary on first use and caches it in `STATE_HOME/bin/`.
-
-```bash
-openpalm validate
-```
-
-Output is human-readable. The command exits `0` when all required variables are present and valid, and exits non-zero when there are validation errors. Warnings are printed but do not affect the exit code.
+`~/.openpalm/config/stack.yml` stores capabilities only. It is not the
+deployment truth.
 
 ---
 
-## CLI Command Reference
+## Important env files
 
-| Command | Description |
+### `~/.openpalm/vault/stack/stack.env`
+
+This file holds system-managed values, provider API keys, and owner identity:
+
+- `OPENAI_API_KEY`
+- `OPENAI_BASE_URL`
+- `ANTHROPIC_API_KEY`
+- `SYSTEM_LLM_PROVIDER`
+- `SYSTEM_LLM_MODEL`
+- `MEMORY_USER_ID`
+- `OWNER_NAME`
+- `OWNER_EMAIL`
+
+It also includes system-managed values such as:
+
+- `OP_ADMIN_TOKEN`
+- `OP_ASSISTANT_TOKEN`
+- `OP_MEMORY_TOKEN`
+- `OP_HOME`, `OP_UID`, `OP_GID`
+- `OP_ASSISTANT_PORT`, `OP_ADMIN_PORT`, `OP_MEMORY_PORT`, `OP_CHAT_PORT`
+
+Review it before first start, especially if you need different host ports or
+paths.
+
+### `~/.openpalm/vault/user/user.env`
+
+Optional user-managed extension settings. Starts empty; use for custom
+preferences. Owner name and email live in `stack.env`.
+
+---
+
+## Addons
+
+Addons are available in `~/.openpalm/registry/addons/` and become active when
+copied into `~/.openpalm/stack/addons/`.
+
+| Addon | Compose file |
 |---|---|
-| `openpalm install` | Full install or update: creates directories, downloads assets, starts the stack |
-| `openpalm install -f <file>` | Install from a SetupConfig file (JSON or YAML) without the interactive wizard |
-| `openpalm validate` | Validates `CONFIG_HOME/secrets.env` against the schema |
-| `openpalm start` | Start all stack services |
-| `openpalm stop` | Stop all stack services |
-| `openpalm restart` | Restart all stack services |
-| `openpalm logs [service]` | Stream container logs (all services, or a specific one) |
-| `openpalm status` | Show running container status |
-| `openpalm update` | Pull latest images and restart services |
-| `openpalm uninstall` | Stop services and remove containers (preserves config and data) |
-| `openpalm uninstall --purge` | Stop services, remove containers, volumes, and all XDG directories |
-| `openpalm service` | Manage individual services (start, stop, restart a single container) |
+| `admin` | `addons/admin/compose.yml` |
+| `chat` | `addons/chat/compose.yml` |
+| `api` | `addons/api/compose.yml` |
+| `discord` | `addons/discord/compose.yml` |
+| `slack` | `addons/slack/compose.yml` |
+| `voice` | `addons/voice/compose.yml` |
+| `ollama` | `addons/ollama/compose.yml` |
+| `openviking` | `addons/openviking/compose.yml` |
 
-Run `openpalm --help` or `openpalm <command> --help` for flags and options.
+If a compose file is not included with `-f`, it is not part of the running
+stack.
 
 ---
 
-## XDG Path Defaults
+## Optional convenience paths
 
-| Variable | Default (Linux/macOS) | Purpose |
-|---|---|---|
-| `OPENPALM_CONFIG_HOME` | `~/.config/openpalm` | User-owned persistent config (secrets, channels, assistant config) |
-| `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` | Service data (memory DB, Caddy certs, `host.json`) |
-| `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | Generated runtime artifacts (compose files, Caddyfile, audit logs) |
+The primary workflow is always raw `docker compose` as shown above. The
+shortcuts below are provided for convenience but are not the canonical form.
 
-On Windows the defaults follow `%APPDATA%` / `%LOCALAPPDATA%` conventions.
+For the full compose command reference including convenience shortcuts, see the
+[Manual Compose Runbook](operations/manual-compose-runbook.md).
 
-Automatic lifecycle operations (install, update, setup reruns) are non-destructive for existing files in `CONFIG_HOME` — they only seed missing defaults.
+### Installer scripts and CLI
+
+If you want a bootstrap shortcut, you can still use the repo setup scripts or
+the `openpalm` CLI. They prepare the same `~/.openpalm/` layout and ultimately
+run Docker Compose against files in `~/.openpalm/stack/`.
 
 ---
 
-## Next Steps
+## Verify
+
+Check container status using the `ps` command from the [Manual Compose Runbook](operations/manual-compose-runbook.md).
+
+Default host ports are documented in [system-requirements.md](system-requirements.md).
+
+---
+
+## Next steps
 
 | Guide | Description |
 |---|---|
-| [setup-walkthrough.md](setup-walkthrough.md) | Screen-by-screen walkthrough of the setup wizard |
-| [system-requirements.md](system-requirements.md) | CPU, RAM, disk, and network requirements |
-| [managing-openpalm.md](managing-openpalm.md) | Day-to-day administration: secrets, channels, access control |
-| [troubleshooting.md](troubleshooting.md) | Common problems and solutions |
+| [operations/manual-compose-runbook.md](operations/manual-compose-runbook.md) | Fully explicit compose workflow |
+| [setup-guide.md](setup-guide.md) | Convenience-oriented setup flow |
+| [password-management.md](password-management.md) | Secret layout and token handling |
+| [troubleshooting.md](troubleshooting.md) | Common problems and fixes |

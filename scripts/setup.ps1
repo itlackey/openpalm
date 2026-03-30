@@ -12,7 +12,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 
 $Repo = 'itlackey/openpalm'
 $Binary = 'openpalm-cli-windows-x64.exe'
-$ScriptVersion = '0.9.3'
+$ScriptVersion = '0.10.0-rc9'
 
 function Normalize-Version {
     param(
@@ -28,7 +28,7 @@ function Normalize-Version {
 }
 
 # Version resolution
-$RequestedVersion = $env:OPENPALM_VERSION
+$RequestedVersion = $env:OP_VERSION
 $PassthroughArgs = @()
 
 for ($i = 0; $i -lt $args.Count; $i++) {
@@ -64,7 +64,7 @@ if (-not $Version) {
 }
 
 # Install directory
-$InstallDir = if ($env:OPENPALM_INSTALL_DIR) { $env:OPENPALM_INSTALL_DIR } else { "$env:LOCALAPPDATA\openpalm\bin" }
+$InstallDir = if ($env:OP_INSTALL_DIR) { $env:OP_INSTALL_DIR } else { "$env:LOCALAPPDATA\openpalm\bin" }
 $Dest = Join-Path $InstallDir 'openpalm.exe'
 
 Write-Host "▸ Downloading openpalm $Version for Windows x64..." -ForegroundColor Blue

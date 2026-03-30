@@ -231,7 +231,7 @@ export default class DiscordChannel extends BaseChannel {
     const stopTyping = await this.sendTypingLoop(thread);
 
     try {
-      const answer = await this.forwardToGuardian(userInfo.userId, text, metadata);
+      const answer = await this.forwardToGuardian(userInfo.userId, text, metadata, this.forwardTimeoutMs || undefined);
       stopTyping();
       await this.sendSplitMessage(thread, answer);
       log.info("message_completed", {
@@ -473,7 +473,7 @@ export default class DiscordChannel extends BaseChannel {
             command: commandName,
             channelId: interaction.channelId,
             sessionKey,
-          });
+          }, this.forwardTimeoutMs || undefined);
 
           const chunks = splitMessage(answer, MAX_MESSAGE_LENGTH);
           const firstChunk = chunks[0] ?? "No response received.";
@@ -561,27 +561,6 @@ export default class DiscordChannel extends BaseChannel {
       });
       await interaction.editReply("Could not clear this conversation right now.");
     }
-  }
-
-  // ── Guardian Forwarding ─────────────────────────────────────────────────
-
-  private async forwardToGuardian(
-    userId: string,
-    text: string,
-    metadata: Record<string, unknown>,
-  ): Promise<string> {
-    const resp = await this.forward(
-      { userId: `discord:${userId}`, text, metadata },
-      undefined,
-      this.forwardTimeoutMs || undefined,
-    );
-
-    if (!resp.ok) {
-      throw new Error(`Guardian returned status ${resp.status}`);
-    }
-
-    const result = (await resp.json()) as { answer?: string };
-    return result.answer ?? "No response received.";
   }
 
   // ── Discord Message Utilities ───────────────────────────────────────────

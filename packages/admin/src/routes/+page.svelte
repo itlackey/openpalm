@@ -1,36 +1,36 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import ConnectionBanner from '$lib/components/ConnectionBanner.svelte';
+  import CapabilitiesBanner from '$lib/components/CapabilitiesBanner.svelte';
+  import MigrationBanner from '$lib/components/MigrationBanner.svelte';
   import Navbar from '$lib/components/Navbar.svelte';
   import AuthGate from '$lib/components/AuthGate.svelte';
   import TabBar from '$lib/components/TabBar.svelte';
   import OverviewTab from '$lib/components/OverviewTab.svelte';
+  import AddonsTab from '$lib/components/AddonsTab.svelte';
   import ContainersTab from '$lib/components/ContainersTab.svelte';
   import ArtifactsTab from '$lib/components/ArtifactsTab.svelte';
   import AutomationsTab from '$lib/components/AutomationsTab.svelte';
+  import CapabilitiesTab from '$lib/components/CapabilitiesTab.svelte';
   import ConnectionsTab from '$lib/components/ConnectionsTab.svelte';
-  import RegistryTab from '$lib/components/RegistryTab.svelte';
+  import LogsTab from '$lib/components/LogsTab.svelte';
+  import AuditTab from '$lib/components/AuditTab.svelte';
+  import SecretsTab from '$lib/components/SecretsTab.svelte';
 
   import { getAdminToken, clearToken, storeToken, validateToken } from '$lib/auth.js';
   import {
     fetchHealth,
     fetchAdminOpenCodeStatus,
-    fetchAccessScope,
     fetchContainers,
     fetchArtifacts,
     fetchAutomations,
     applyChanges,
     upgradeStack,
     containerAction,
-    fetchConnectionStatus,
-    fetchConnections,
-    fetchChannels,
-    fetchRegistry,
-    registryInstall,
-    registryUninstall,
-    registryRefresh
+    fetchCapabilityStatus,
+    fetchCapabilities,
+    pullImages,
   } from '$lib/api.js';
-  import type { HealthPayload, ContainerListResponse, AutomationsResponse, ChannelsResponse, RegistryResponse } from '$lib/types.js';
+  import type { HealthPayload, ContainerListResponse, AutomationsResponse } from '$lib/types.js';
 
   // ── Auth state ──────────────────────────────────────────────────────────────
   let authLocked = $state(true);
@@ -43,9 +43,8 @@
   let guardianHealth = $state<HealthPayload | null>(null);
   let adminOpenCodeStatus = $state<'checking' | 'ready' | 'unavailable'>('checking');
   let adminOpenCodeUrl = $state('http://localhost:3881/');
-  let channelAccess: 'host' | 'lan' | 'custom' = $state('lan');
   let adminStatus = $state('');
-  let connectionsMissing = $state<string[]>([]);
+  let capabilitiesMissing = $state<string[]>([]);
 
   // ── Loading flags ───────────────────────────────────────────────────────────
   let healthLoading = $state(false);
@@ -59,23 +58,21 @@
   let operationResult = $state('');
   let operationResultType: 'success' | 'error' | 'info' = $state('info');
   let artifacts = $state('');
-  let artifactType: 'compose' | 'caddyfile' | null = $state(null);
+  let artifactType: 'compose' | null = $state(null);
   let containerData: ContainerListResponse | null = $state(null);
   let containerError = $state('');
   let containersLastUpdated: string | null = $state(null);
   let automationsData: AutomationsResponse | null = $state(null);
   let automationsError = $state('');
   let selectedContainerId: string | null = $state(null);
-  let connectionsData: Record<string, string> = $state({});
-  let connectionsLoading = $state(false);
-  let channelsData: ChannelsResponse | null = $state(null);
-  let registryData: RegistryResponse | null = $state(null);
-  let registryLoading = $state(false);
-  let registryError = $state('');
-  let registryActionLoading: string | null = $state(null);
+  let capabilitiesData: Record<string, string> = $state({});
+  let capabilitiesLoading = $state(false);
+  // ── Migration ───────────────────────────────────────────────────────────────
+  let legacyInstallDetected = $state(false);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: 'overview' | 'containers' | 'artifacts' | 'automations' | 'connections' | 'registry' = $state('overview');
+  let activeTab: 'overview' | 'addons' | 'automations' | 'connections' | 'capabilities' | 'containers' | 'logs' | 'audit' | 'secrets' | 'artifacts' = $state('overview');
+  let pullLoading = $state(false);
 
   // ── Container polling ──────────────────────────────────────────────────────
   const POLL_INTERVAL_MS = 10_000;
@@ -157,10 +154,11 @@
       await loadHealth();
       void loadContainers();
       void loadAutomations();
-      void loadChannels();
-      void checkConnectionStatus();
+      void checkCapabilityStatus();
+      void loadCapabilities();
       return true;
-    } catch {
+    } catch (e) {
+      console.warn('[page] Auth failed:', e);
       authError = 'Unable to reach admin API.';
       return false;
     } finally {
@@ -168,14 +166,14 @@
     }
   }
 
-  async function checkConnectionStatus(): Promise<void> {
+  async function checkCapabilityStatus(): Promise<void> {
     const token = getAdminToken();
     if (!token) return;
     try {
-      const data = await fetchConnectionStatus(token);
-      connectionsMissing = data.complete ? [] : data.missing;
-    } catch {
-      // best-effort — don't disrupt auth flow on failure
+      const data = await fetchCapabilityStatus(token);
+      capabilitiesMissing = data.complete ? [] : data.missing;
+    } catch (e) {
+      console.warn('[page] Capability status check failed (non-critical):', e);
     }
   }
 
@@ -195,7 +193,8 @@
       const health = await fetchHealth();
       adminHealth = health.admin;
       guardianHealth = health.guardian;
-    } catch {
+    } catch (e) {
+      console.warn('[page] Health check failed:', e);
       adminHealth = { status: 'error', service: 'admin' };
       guardianHealth = { status: 'error', service: 'guardian' };
     }
@@ -211,20 +210,6 @@
       if (err.status === 401) {
         applyInvalidTokenState();
       }
-    }
-
-    try {
-      const scope = await fetchAccessScope(token);
-      if (scope.ok) {
-        if (scope.accessScope === 'host' || scope.accessScope === 'lan' || scope.accessScope === 'custom') {
-          channelAccess = scope.accessScope;
-        }
-        adminStatus = '';
-      } else if (scope.status === 401) {
-        applyInvalidTokenState();
-      }
-    } catch {
-      // best-effort — don't disrupt health display if access scope fails
     }
 
     healthLoading = false;
@@ -261,7 +246,7 @@
     }
   }
 
-  async function loadArtifacts(type: 'compose' | 'caddyfile'): Promise<void> {
+  async function loadArtifacts(type: 'compose'): Promise<void> {
     const token = getAdminToken();
     tokenStored = Boolean(token);
     if (!token) {
@@ -315,113 +300,27 @@
     automationsLoading = false;
   }
 
-  async function loadConnections(): Promise<void> {
+  async function loadCapabilities(): Promise<void> {
     const token = getAdminToken();
     tokenStored = Boolean(token);
     if (!token) {
       authLocked = true;
       authError = 'Admin token required.';
       adminStatus = '';
-      connectionsData = {};
+      capabilitiesData = {};
       return;
     }
-    connectionsLoading = true;
+    capabilitiesLoading = true;
     try {
-      connectionsData = await fetchConnections(token);
+      capabilitiesData = await fetchCapabilities(token);
     } catch (e) {
-      connectionsData = {};
+      capabilitiesData = {};
       const err = e as { status?: number; message?: string };
       if (err.status === 401) {
         applyInvalidTokenState();
       }
     }
-    connectionsLoading = false;
-  }
-
-  async function loadChannels(): Promise<void> {
-    const token = getAdminToken();
-    if (!token) return;
-    try {
-      channelsData = await fetchChannels(token);
-    } catch {
-      // best-effort — don't disrupt auth flow on failure
-    }
-  }
-
-  async function loadRegistry(): Promise<void> {
-    const token = getAdminToken();
-    tokenStored = Boolean(token);
-    if (!token) {
-      authLocked = true;
-      authError = 'Admin token required.';
-      adminStatus = '';
-      registryError = 'Admin token required for protected actions.';
-      registryData = null;
-      return;
-    }
-    registryLoading = true;
-    registryError = '';
-    try {
-      registryData = await fetchRegistry(token);
-    } catch (e) {
-      registryData = null;
-      const err = e as { status?: number; message?: string };
-      if (err.status === 401) {
-        registryError = 'Invalid admin token.';
-        applyInvalidTokenState();
-      } else {
-        registryError = `Failed to load registry: ${err.message ?? e}`;
-      }
-    }
-    registryLoading = false;
-  }
-
-  async function handleRegistryRefresh(): Promise<void> {
-    const token = getAdminToken();
-    if (!token) return;
-    registryLoading = true;
-    try {
-      await registryRefresh(token);
-    } catch {
-      // best-effort
-    }
-    await loadRegistry();
-  }
-
-  async function handleRegistryInstall(name: string, type: 'channel' | 'automation'): Promise<void> {
-    const token = getAdminToken();
-    if (!token) return;
-    registryActionLoading = `${type}:${name}`;
-    try {
-      await registryInstall(token, name, type);
-      await loadRegistry();
-    } catch (e) {
-      const err = e as { status?: number; message?: string };
-      if (err.status === 401) {
-        applyInvalidTokenState();
-      } else {
-        registryError = `Install failed: ${err.message ?? e}`;
-      }
-    }
-    registryActionLoading = null;
-  }
-
-  async function handleRegistryUninstall(name: string, type: 'channel' | 'automation'): Promise<void> {
-    const token = getAdminToken();
-    if (!token) return;
-    registryActionLoading = `${type}:${name}`;
-    try {
-      await registryUninstall(token, name, type);
-      await loadRegistry();
-    } catch (e) {
-      const err = e as { status?: number; message?: string };
-      if (err.status === 401) {
-        applyInvalidTokenState();
-      } else {
-        registryError = `Uninstall failed: ${err.message ?? e}`;
-      }
-    }
-    registryActionLoading = null;
+    capabilitiesLoading = false;
   }
 
   // ── Actions ──────────────────────────────────────────────────────────────────
@@ -502,7 +401,43 @@
     selectedContainerId = selectedContainerId === id ? null : id;
   }
 
-  function handleTabSelect(tab: 'overview' | 'containers' | 'artifacts' | 'automations' | 'connections' | 'registry'): void {
+  /** Derive service names from container data for the logs tab */
+  let serviceNames = $derived.by((): string[] => {
+    if (!containerData) return [];
+    const names = new Set<string>();
+    if (containerData.containers) {
+      for (const name of Object.keys(containerData.containers)) {
+        names.add(name);
+      }
+    }
+    if (containerData.dockerContainers) {
+      for (const c of containerData.dockerContainers) {
+        if (c.Service) names.add(c.Service);
+      }
+    }
+    return [...names].sort();
+  });
+
+  async function handlePullImages(): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+    pullLoading = true;
+    try {
+      await pullImages(token);
+      await loadContainers();
+    } catch (e) {
+      const err = e as { status?: number; message?: string };
+      if (err.status === 401) {
+        applyInvalidTokenState();
+      } else {
+        containerError = `Pull failed: ${err.message ?? e}`;
+      }
+    } finally {
+      pullLoading = false;
+    }
+  }
+
+  function handleTabSelect(tab: typeof activeTab): void {
     activeTab = tab;
     if (tab === 'containers' && !containerData) {
       void loadContainers();
@@ -510,12 +445,13 @@
     if (tab === 'automations' && !automationsData) {
       void loadAutomations();
     }
-    if (tab === 'connections' && Object.keys(connectionsData).length === 0) {
-      void loadConnections();
+    if (tab === 'capabilities' && Object.keys(capabilitiesData).length === 0) {
+      void loadCapabilities();
     }
-    if (tab === 'registry' && !registryData) {
-      void loadRegistry();
-    }
+  }
+
+  function handleComponentsAuthError(): void {
+    applyInvalidTokenState();
   }
 
   // ── Mount ────────────────────────────────────────────────────────────────────
@@ -547,9 +483,9 @@
         void loadHealth();
         void loadContainers();
         void loadAutomations();
-        void loadChannels();
-        void checkConnectionStatus();
-      } catch {
+        void checkCapabilityStatus();
+      } catch (e) {
+        console.warn('[page] Token validation on mount failed:', e);
         authLocked = true;
         authError = 'Unable to reach admin API.';
       } finally {
@@ -569,7 +505,8 @@
   <Navbar onLogout={handleLogout} />
 
   <main>
-    <ConnectionBanner missing={connectionsMissing} onNavigate={() => handleTabSelect('connections')} />
+    <MigrationBanner visible={legacyInstallDetected} />
+    <CapabilitiesBanner missing={capabilitiesMissing} onNavigate={() => handleTabSelect('capabilities')} />
 
     <TabBar active={activeTab} onSelect={handleTabSelect} />
 
@@ -579,7 +516,6 @@
         {adminHealth}
         {adminOpenCodeStatus}
         {adminOpenCodeUrl}
-        {channelAccess}
         {operationResult}
         {operationResultType}
         {adminStatus}
@@ -590,11 +526,14 @@
         {anyDangerousLoading}
         {automationsData}
         {containerData}
-        {channelsData}
         onCheckHealth={loadHealth}
         onApplyChanges={handleApplyChanges}
         onUpgradeStack={handleUpgradeStack}
         onDismissResult={() => { operationResult = ''; operationResultType = 'info'; }}
+      />
+    {:else if activeTab === 'addons'}
+      <AddonsTab
+        onAuthError={handleComponentsAuthError}
       />
     {:else if activeTab === 'containers'}
       <ContainersTab
@@ -608,7 +547,9 @@
         onStop={(id) => handleContainerAction('stop', id)}
         onRestart={(id) => handleContainerAction('restart', id)}
         onRefresh={loadContainers}
+        onPullImages={handlePullImages}
         lastUpdated={containersLastUpdated}
+        {pullLoading}
       />
     {:else if activeTab === 'artifacts'}
       <ArtifactsTab
@@ -627,22 +568,25 @@
         {tokenStored}
         onRefresh={loadAutomations}
       />
-    {:else if activeTab === 'registry'}
-      <RegistryTab
-        data={registryData}
-        loading={registryLoading}
-        error={registryError}
-        {tokenStored}
-        actionLoading={registryActionLoading}
-        onRefresh={handleRegistryRefresh}
-        onInstall={handleRegistryInstall}
-        onUninstall={handleRegistryUninstall}
-      />
     {:else if activeTab === 'connections'}
-      <ConnectionsTab
-        loading={connectionsLoading}
-        onRefresh={loadConnections}
+      <ConnectionsTab />
+    {/if}
+    <div hidden={activeTab !== 'capabilities'}>
+      <CapabilitiesTab
+        loading={capabilitiesLoading}
+        onRefresh={loadCapabilities}
+        openCodeStatus={adminOpenCodeStatus}
       />
+    </div>
+    {#if activeTab === 'logs'}
+      <LogsTab
+        {tokenStored}
+        services={serviceNames}
+      />
+    {:else if activeTab === 'audit'}
+      <AuditTab {tokenStored} />
+    {:else if activeTab === 'secrets'}
+      <SecretsTab {tokenStored} />
     {/if}
   </main>
 {/if}

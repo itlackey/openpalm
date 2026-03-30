@@ -26,6 +26,7 @@ export const mainCommand = defineCommand({
     service: () => import('./commands/service.ts').then((m) => m.default),
     validate: () => import('./commands/validate.ts').then((m) => m.default),
     scan: () => import('./commands/scan.ts').then((m) => m.default),
+    rollback: () => import('./commands/rollback.ts').then((m) => m.default),
   },
 });
 
@@ -39,6 +40,5 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
 }
 
 if (import.meta.main) {
-  // Let citty handle process.argv natively
-  runMain(mainCommand);
+  await runMain(mainCommand);
 }

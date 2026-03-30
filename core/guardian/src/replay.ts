@@ -1,0 +1,57 @@
+/**
+ * Replay detection via timestamp + nonce checking.
+ *
+ * Rejects messages with timestamps outside a 5-minute clock skew window
+ * and tracks seen nonces to prevent replay attacks. Periodically prunes
+ * expired entries and enforces a hard cap of 50,000 nonces.
+ */
+
+const CLOCK_SKEW = 300_000;
+let maxSize = 50_000;
+const seen = new Map<string, number>();
+
+function pruneNonceCache(): void {
+  const cutoff = Date.now() - CLOCK_SKEW;
+  for (const [k, v] of seen) {
+    if (v < cutoff) seen.delete(k);
+  }
+
+  // Hard cap: if still over maxSize after pruning expired, delete oldest entries first
+  if (seen.size > maxSize) {
+    const sorted = [...seen.entries()].sort((a, b) => a[1] - b[1]);
+    const toRemove = sorted.slice(0, sorted.length - maxSize);
+    for (const [k] of toRemove) seen.delete(k);
+  }
+}
+
+// Periodic pruning every 60 seconds regardless of map size.
+// unref() so the timer doesn't keep the event loop alive (cleaner testing + shutdown).
+const pruneTimer = setInterval(pruneNonceCache, 60_000);
+pruneTimer.unref();
+
+export function checkNonce(nonce: string, ts: number): boolean {
+  if (!nonce) return false;
+  if (Math.abs(Date.now() - ts) > CLOCK_SKEW) return false;
+  if (seen.has(nonce)) return false;
+  seen.set(nonce, ts);
+
+  // Time-based pruning: clean expired entries when map grows large
+  if (seen.size > 10_000) {
+    pruneNonceCache();
+  }
+  return true;
+}
+
+/** Expose nonce cache size for the /stats endpoint. */
+export function nonceCacheSize(): number {
+  return seen.size;
+}
+
+/** Expose constants for the /stats endpoint. */
+export const NONCE_WINDOW_MS = CLOCK_SKEW;
+export const NONCE_MAX_SIZE = 50_000;
+
+/** Override max size for testing hard-cap eviction. Resets to 50,000 when called with no args. */
+export function _setMaxSizeForTest(n: number = 50_000): void {
+  maxSize = n;
+}

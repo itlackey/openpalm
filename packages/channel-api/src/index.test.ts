@@ -52,6 +52,46 @@ describe("api channel health", () => {
   });
 });
 
+// ── CHANNEL_ID override ──────────────────────────────────────────────────
+
+describe("api channel CHANNEL_ID override", () => {
+  it("uses CHANNEL_ID env var for channel name", async () => {
+    const origId = Bun.env.CHANNEL_ID;
+    try {
+      Bun.env.CHANNEL_ID = "chat";
+      const channel = new ApiChannel();
+      Object.defineProperty(channel, "secret", { get: () => "test-secret" });
+      expect(channel.name).toBe("chat");
+
+      const handler = channel.createFetch(mockGuardianFetch());
+      const resp = await handler(new Request("http://chat/health"));
+      expect(resp.status).toBe(200);
+      const body = await resp.json() as Record<string, unknown>;
+      expect(body.service).toBe("channel-chat");
+    } finally {
+      if (origId === undefined) delete Bun.env.CHANNEL_ID;
+      else Bun.env.CHANNEL_ID = origId;
+    }
+  });
+
+  it("forwards correct channel name in guardian payload when CHANNEL_ID is set", async () => {
+    const origId = Bun.env.CHANNEL_ID;
+    try {
+      Bun.env.CHANNEL_ID = "chat";
+      const { handler, captured } = createHandlerWithCapture();
+      await handler(new Request("http://chat/v1/chat/completions", {
+        method: "POST",
+        body: JSON.stringify({ model: "gpt-4", messages: [{ role: "user", content: "hello" }] }),
+      }));
+      const parsed = JSON.parse(captured().body) as Record<string, unknown>;
+      expect(parsed.channel).toBe("chat");
+    } finally {
+      if (origId === undefined) delete Bun.env.CHANNEL_ID;
+      else Bun.env.CHANNEL_ID = origId;
+    }
+  });
+});
+
 // ── GET /v1/models ───────────────────────────────────────────────────────
 
 describe("api channel models", () => {

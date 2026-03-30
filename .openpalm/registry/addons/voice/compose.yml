@@ -1,0 +1,26 @@
+# Addon: Voice — voice chat web UI
+# Serves a static web app that talks directly to OpenCode's session API.
+# Provider selection (agent, STT, TTS) is configured in the browser UI.
+services:
+  voice:
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    ports:
+      - "${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT:-3810}:8186"
+    environment:
+      PORT: "8186"
+      CHANNEL_PACKAGE: "@openpalm/channel-voice"
+    command: ["bun", "run", "node_modules/@openpalm/channel-voice/src/index.ts"]
+    networks: [channel_lan]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8186' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      openpalm.name: Voice
+      openpalm.description: Voice chat web UI with configurable agent, STT, and TTS providers
+      openpalm.icon: mic
+      openpalm.category: messaging
+      openpalm.healthcheck: http://voice:8186/health

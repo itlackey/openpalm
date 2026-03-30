@@ -1,24 +1,24 @@
-# OpenPalm: Unified Component Registry
+# OpenPalm: Unified Addon Registry
 
 **Status:** Proposal
-**Depends on:** Component system (see [openpalm-components-plan.md](openpalm-components-plan.md))
-**Scope:** Replace the curated gallery, community registry, and npm search with a single component registry. The registry contains component directories — each with a `compose.yml` and `.env.schema`. That's all it handles. Plugins, agents, and skills are managed by OpenCode directly and are out of scope for the registry.
+**Depends on:** Addon system (see [plans/issue-301-unified-component-system.md](plans/issue-301-unified-component-system.md))
+**Scope:** Replace the curated gallery, community registry, and npm search with a single addon registry. The registry contains addon directories — each with a `compose.yml` and `.env.schema`. That's all it handles. Plugins, agents, and skills are managed by OpenCode directly and are out of scope for the registry.
 
-> **Note:** This plan has been incorporated into the [Components Plan](openpalm-components-plan.md) and serves as additional detail on the registry aspect — specifically the discovery, install/uninstall flow, admin API, and admin UI for browsing and managing the component catalog. The components plan is the authoritative source for the instance lifecycle and compose overlay mechanics.
+> **Note:** This plan is supplemental to [plans/issue-301-unified-component-system.md](plans/issue-301-unified-component-system.md) and focuses on registry discovery, install/uninstall flow, admin API, and admin UI for browsing and managing the addon catalog. The issue #301 plan is the authoritative source for addon lifecycle and compose overlay mechanics.
 >
-> **Filesystem context:** This plan uses the `~/.openpalm/` single-root layout defined in [fs-mounts-refactor.md](fs-mounts-refactor.md). All `~/.openpalm/` paths below follow that layout. The old `${OPENPALM_DATA}`, `${OPENPALM_STATE}`, `${OPENPALM_CONFIG}`, `CONFIG_HOME`, `DATA_HOME`, and `STATE_HOME` references from the three-tier XDG model are replaced by subdirectories under `~/.openpalm/`.
+> **Filesystem context:** This plan uses the `~/.openpalm/` single-root layout defined in [fs-mounts-refactor.md](fs-mounts-refactor.md). All `~/.openpalm/` paths below follow that layout. The old `${OP_DATA}`, `${OP_STATE}`, `${OP_CONFIG}`, `CONFIG_HOME`, `DATA_HOME`, and `STATE_HOME` references from the three-tier XDG model are replaced by subdirectories under `~/.openpalm/`.
 
 ---
 
 ## Problem
 
-The current extension system has three discovery layers (curated gallery, community registry, npm search), each with its own API endpoints, data model, UI section, and install path. With the component system, we already have a clean model: a component is a `compose.yml` + `.env.schema`. The registry should match that model exactly — nothing more.
+The current extension system has three discovery layers (curated gallery, community registry, npm search), each with its own API endpoints, data model, UI section, and install path. With the addon model, we already have a clean model: an addon is a `compose.yml` + `.env.schema`. The registry should match that model exactly — nothing more.
 
 ### Scope Boundaries
 
-**Automations are explicitly out of scope.** Automations remain a separate registry mechanism (`registry/automations/`). The unified registry covers components only. Components are containers managed by Docker Compose; automations are scheduled tasks with fundamentally different lifecycle concerns (cron schedules, shell actions, trigger conditions). Different concerns, different registries. There is no plan to merge them.
+**Automations are explicitly out of scope.** Automations remain a separate registry mechanism (`registry/automations/`). The unified registry covers addons only. Addons are containers managed by Docker Compose; automations are scheduled tasks with fundamentally different lifecycle concerns (cron schedules, shell actions, trigger conditions). Different concerns, different registries. There is no plan to merge them.
 
-**Legacy channel format is replaced entirely.** The registry replaces the legacy `~/.config/openpalm/channels/*.yml` channel format (from the old XDG layout) with a clean break for 0.10.0. There is no coexistence and no dual-format staging pipeline. Users upgrading from 0.9.x run `openpalm migrate`, which handles the filesystem relocation and channel-to-component transition (see [fs-mounts-refactor.md Part 8](fs-mounts-refactor.md#part-8-migration-09x--0100)). Users with custom channels must reinstall them as components. This is a deliberate choice — the component model is strictly better, and maintaining backward compatibility with the old format would add complexity with no long-term benefit.
+**Legacy channel format is replaced entirely.** The registry replaces the legacy `~/.config/openpalm/channels/*.yml` channel format (from the old XDG layout) with a clean break for 0.10.0. There is no coexistence, no dual-format staging pipeline, and no automated migration path. Users with existing channels must reinstall them as addons in the new layout. This is a deliberate choice — the addon model is strictly better, and maintaining backward compatibility with the old format would add complexity with no long-term benefit.
 
 ---
 
@@ -156,7 +156,7 @@ These replace all legacy gallery and extension endpoints (none of which exist in
 Two tabs work together:
 
 - **Components** — shows enabled instances, manage what's running (from the component plan).
-- **Extensions** — browse the registry, install new components. This is the existing Extensions tab, rewired to pull from the component registry instead of the gallery/community/npm systems.
+- **Extensions** — browse the registry, install new addons. This is the existing Extensions tab, rewired to pull from the addon registry instead of the gallery/community/npm systems.
 
 ### Extensions tab
 
@@ -179,7 +179,7 @@ Two tabs work together:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-Clicking **Install** downloads the component to the catalog and prompts to create an instance. Clicking a component name shows its README. **[Installed]** badge links to the instance in the Components tab.
+Clicking **Install** downloads the addon to the catalog and prompts to create an instance. Clicking an addon name shows its README. **[Installed]** badge links to the instance in the Addons tab.
 
 ---
 
@@ -205,7 +205,7 @@ That's the entire contribution process. No special schemas to learn beyond stand
 - ~~`admin/src/extensions/installer.ts`~~ — plugin list management (already removed)
 - All `/admin/gallery/*` API endpoints (already removed)
 
-The Extensions tab stays but is rewired to use the `/api/registry` endpoints. Any remaining legacy extension/channel code in `packages/admin/src/` that conflicts with the component model should be identified and removed during implementation.
+The Extensions tab stays but is rewired to use the `/api/registry` endpoints. Any remaining legacy extension/channel code in `packages/admin/src/` that conflicts with the addon model should be identified and removed during implementation.
 
 ---
 
@@ -220,5 +220,5 @@ The Extensions tab stays but is rewired to use the `/api/registry` endpoints. An
 - [ ] Admin API: `/api/registry` endpoints
 - [ ] Admin UI: Rewire Extensions tab to use `/api/registry` endpoints
 - [ ] Remove gallery, community, npm-search code and old API endpoints
-- [ ] Remove any remaining legacy channel support (clean break — legacy `~/.config/openpalm/channels/*.yml` format is dropped; migration handled by `openpalm migrate`)
+- [ ] Remove any remaining legacy channel support (clean break — legacy `~/.config/openpalm/channels/*.yml` format is dropped with no migration path)
 - [ ] Update docs

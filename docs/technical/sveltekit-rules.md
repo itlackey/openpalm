@@ -1,6 +1,6 @@
 ## SvelteKit implementation rules
 
-This document is a short SvelteKit-specific quality guide aligned with current Svelte/SvelteKit best practices and this repo's architecture contract in `docs/core-principles.md`.
+This document is a short SvelteKit-specific quality guide aligned with current Svelte/SvelteKit best practices and this repo's architecture contract in `docs/technical/core-principles.md`.
 
 **VERY IMPORTANT** The use of the $effect rune should be avoided and replaced with event handlers unless there is a solid justification to use $effect and approval to do so. Any instance of $effect should be treated as a bug to fix.
 
@@ -38,4 +38,4 @@ This document is a short SvelteKit-specific quality guide aligned with current S
 
 * `npm run check` passes for UI/type correctness.
 * Changed routes and server helpers are covered by focused tests where available.
-* No change violates filesystem/security/ingress rules in `docs/core-principles.md`.
+* No change violates filesystem/security/ingress rules in `docs/technical/core-principles.md`.

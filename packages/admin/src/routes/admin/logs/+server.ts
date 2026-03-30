@@ -6,25 +6,17 @@ import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
   errorResponse,
-  requireAdmin,
+  requireAuth,
   getRequestId,
   getActor,
   getCallerType
 } from "$lib/server/helpers.js";
-import { appendAudit, buildComposeFileList, buildEnvFiles } from "$lib/server/control-plane.js";
+import { appendAudit, buildComposeOptions, isAllowedService } from "@openpalm/lib";
 import { composeLogs, checkDocker } from "$lib/server/docker.js";
-import { CORE_SERVICES } from "$lib/server/types.js";
-
-/** Validate a service name against known services. */
-function isValidServiceName(name: string): boolean {
-  if ((CORE_SERVICES as readonly string[]).includes(name)) return true;
-  if (/^channel-[a-z0-9-]+$/.test(name)) return true;
-  return false;
-}
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authError = requireAdmin(event, requestId);
+  const authError = requireAuth(event, requestId);
   if (authError) return authError;
 
   const state = getState();
@@ -47,7 +39,7 @@ export const GET: RequestHandler = async (event) => {
   let services: string[] | undefined;
   if (serviceParam) {
     services = serviceParam.split(",").map((s) => s.trim()).filter(Boolean);
-    const invalid = services.filter((s) => !isValidServiceName(s));
+    const invalid = services.filter((s) => !isAllowedService(s, state.configDir));
     if (invalid.length > 0) {
       return errorResponse(
         400,
@@ -71,9 +63,8 @@ export const GET: RequestHandler = async (event) => {
     return errorResponse(503, "docker_unavailable", "Docker is not available", {}, requestId);
   }
 
-  const result = await composeLogs(state.stateDir, services, tail, {
-    files: buildComposeFileList(state),
-    envFiles: buildEnvFiles(state),
+  const result = await composeLogs(services, tail, {
+    ...buildComposeOptions(state),
     since: sinceParam ?? undefined
   });
 

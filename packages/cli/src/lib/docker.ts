@@ -1,26 +1,52 @@
-import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
-import { ensureXdgDirs } from '@openpalm/lib';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { join, dirname, relative } from 'node:path';
+import { resolveCacheHome } from '@openpalm/lib';
 
 const REPO_OWNER = 'itlackey';
 const REPO_NAME = 'openpalm';
 
 /**
- * Creates the full XDG directory tree required by the stack.
- * Delegates to @openpalm/lib for core dirs, then adds CLI-specific extras.
+ * Creates the full directory tree required by the stack.
+ * Uses the caller-provided directory roots, then adds CLI-specific extras.
  */
 export async function ensureDirectoryTree(
-  _configHome: string,
-  _dataHome: string,
-  stateHome: string,
+  homeDir: string,
+  configDir: string,
+  vaultDir: string,
+  dataDir: string,
   workDir: string,
 ): Promise<void> {
-  // Core XDG dirs (CONFIG_HOME, DATA_HOME, STATE_HOME subtrees)
-  ensureXdgDirs();
+  const cacheDir = resolveCacheHome();
 
-  // CLI-specific extras not in lib
   for (const dir of [
-    join(stateHome, 'bin'),
+    homeDir,
+    configDir,
+    join(configDir, 'automations'),
+    join(configDir, 'assistant'),
+    join(configDir, 'assistant', 'tools'),
+    join(configDir, 'assistant', 'plugins'),
+    join(configDir, 'assistant', 'skills'),
+    join(configDir, 'guardian'),
+    vaultDir,
+    join(vaultDir, 'user'),
+    join(vaultDir, 'stack'),
+    join(vaultDir, 'stack', 'addons'),
+    dataDir,
+    join(dataDir, 'assistant'),
+    join(dataDir, 'admin'),
+    join(dataDir, 'memory'),
+    join(dataDir, 'guardian'),
+    join(dataDir, 'stash'),
+    join(homeDir, 'stack'),
+    join(homeDir, 'stack', 'addons'),
+    join(homeDir, 'registry'),
+    join(homeDir, 'registry', 'addons'),
+    join(homeDir, 'registry', 'automations'),
+    join(homeDir, 'backups'),
+    join(homeDir, 'logs'),
+    join(homeDir, 'logs', 'opencode'),
+    cacheDir,
+    join(cacheDir, 'rollback'),
     workDir,
   ]) {
     await mkdir(dir, { recursive: true });
@@ -49,7 +75,7 @@ async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
  */
 export async function fetchAsset(repoRef: string, filename: string): Promise<string> {
   const releaseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${repoRef}/${filename}`;
-  const rawUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${repoRef}/assets/${filename}`;
+  const rawUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${repoRef}/${filename}`;
 
   try {
     const releaseResponse = await fetchWithRetry(releaseUrl);
@@ -97,11 +123,105 @@ export async function runDockerComposeCapture(args: string[]): Promise<string> {
   return output;
 }
 
-// composeProjectArgs() removed — use fullComposeArgs(state) from staging.ts instead.
-// That function builds the correct file list including channel overlays and staged env files.
+// composeProjectArgs() removed — use fullComposeArgs(state) from cli-compose.ts instead.
+// That function builds the correct file list including channel overlays and env files.
 
 // ensureOpenCodeConfig and ensureOpenCodeSystemConfig are imported from @openpalm/lib.
 // See packages/lib/src/control-plane/secrets.ts and core-assets.ts.
+
+/**
+ * Downloads the .openpalm/ directory from GitHub and seeds it into homeDir.
+ *
+ * Mapping:
+ *   .openpalm/stack/core.compose.yml → homeDir/stack/core.compose.yml
+ *   .openpalm/registry/              → homeDir/registry/
+ *   .openpalm/vault/   → homeDir/vault/   (schemas only)
+ *
+ * Also seeds assistant config files from core/assistant/opencode/.
+ */
+/**
+ * Download latest assets from GitHub. Optional — embedded assets in lib
+ * provide the baseline. This upgrades to the latest release versions.
+ */
+export async function seedOpenPalmDir(
+  repoRef: string,
+  homeDir: string,
+  configDir: string,
+  vaultDir: string,
+  dataDir: string,
+): Promise<void> {
+  const tarballUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/archive/${repoRef}.tar.gz`;
+  const tmpDir = join(homeDir, '.seed-tmp');
+  const tmpTar = join(tmpDir, 'repo.tar.gz');
+
+  try {
+    await mkdir(tmpDir, { recursive: true });
+
+    const res = await fetch(tarballUrl, { signal: AbortSignal.timeout(60_000) });
+    if (!res.ok) throw new Error(`Failed to download tarball (HTTP ${res.status})`);
+    await Bun.write(tmpTar, res);
+
+    const extractProc = Bun.spawn(
+      ['tar', 'xzf', tmpTar, '--strip-components=1', '--wildcards',
+        '*/.openpalm/stack/core.compose.yml', '*/.openpalm/registry/*', '*/.openpalm/vault/*', '*/core/assistant/opencode/*'],
+      { cwd: tmpDir, stdout: 'ignore', stderr: 'pipe' },
+    );
+    await extractProc.exited;
+
+    const srcCoreCompose = join(tmpDir, '.openpalm', 'stack', 'core.compose.yml');
+    if (!await Bun.file(srcCoreCompose).exists()) {
+      throw new Error('core.compose.yml not found in downloaded assets');
+    }
+    await mkdir(join(homeDir, 'stack'), { recursive: true });
+    await writeFile(join(homeDir, 'stack', 'core.compose.yml'), new Uint8Array(await Bun.file(srcCoreCompose).arrayBuffer()));
+
+    const srcRegistry = join(tmpDir, '.openpalm', 'registry');
+    if (await dirExists(srcRegistry)) {
+      await copyTree(srcRegistry, join(homeDir, 'registry'));
+    }
+
+    const srcVault = join(tmpDir, '.openpalm', 'vault');
+    if (await dirExists(srcVault)) {
+      await copyTree(srcVault, vaultDir, { onlyPattern: /\.schema$/ });
+    }
+
+    const srcAssistant = join(tmpDir, 'core', 'assistant', 'opencode');
+    if (await dirExists(srcAssistant)) {
+      await copyTree(srcAssistant, join(dataDir, 'assistant'));
+    }
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function dirExists(path: string): Promise<boolean> {
+  try {
+    const stat = await Bun.file(join(path, '.')).exists();
+    // Bun.file().exists() doesn't work for dirs, use a different check
+    const proc = Bun.spawn(['test', '-d', path], { stdout: 'ignore', stderr: 'ignore' });
+    return (await proc.exited) === 0;
+  } catch { return false; }
+}
+
+async function copyTree(
+  src: string,
+  dest: string,
+  opts?: { skipExisting?: boolean; onlyPattern?: RegExp },
+): Promise<void> {
+  const proc = Bun.spawn(['find', src, '-type', 'f'], { stdout: 'pipe' });
+  const output = await new Response(proc.stdout).text();
+  await proc.exited;
+
+  for (const srcFile of output.trim().split('\n').filter(Boolean)) {
+    const rel = relative(src, srcFile);
+    if (opts?.onlyPattern && !opts.onlyPattern.test(rel)) continue;
+    const destFile = join(dest, rel);
+    if (opts?.skipExisting && await Bun.file(destFile).exists()) continue;
+    await mkdir(dirname(destFile), { recursive: true });
+    const content = await Bun.file(srcFile).arrayBuffer();
+    await writeFile(destFile, new Uint8Array(content));
+  }
+}
 
 /**
  * Opens a URL in the user's default browser. Best-effort, never throws.

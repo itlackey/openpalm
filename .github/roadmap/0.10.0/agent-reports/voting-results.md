@@ -116,7 +116,7 @@ Notes:
 | R10 | **UPDATE: Specify atomic writes (temp + fsync + rename) for all config/vault file mutations** -- staging provided implicit atomicity; validate-in-place does not | YES | -- | -- | -- | YES | **2/5 FAIL** |
 | R11 | **UPDATE: Reconcile `config/components/` (compose overlays) with component plan's `data/components/` (instance directories)** -- these are two unconnected concepts that must be integrated | YES | -- | -- | -- | -- | **1/5 FAIL** |
 | R12 | **ADD: Automated migration tool (`openpalm migrate`)** for XDG-to-`~/.openpalm/` transition, including env file splitting, directory relocation, and validation | YES | YES | YES | YES | YES | **5/5 PASS** |
-| R13 | **ADD: Migration must handle legacy `OPENPALM_CONFIG_HOME`/`OPENPALM_DATA_HOME`/`OPENPALM_STATE_HOME` env vars** -- error or migration message if present | YES | -- | -- | -- | YES | **2/5 FAIL** |
+| R13 | **ADD: Migration must handle legacy `OP_CONFIG_HOME`/`OP_DATA_HOME`/`OP_STATE_HOME` env vars** -- error or migration message if present | YES | -- | -- | -- | YES | **2/5 FAIL** |
 | R14 | **UPDATE: PlaintextBackend in pass plan must handle two-file model** (`user.env` vs `system.env`) with file-routing layer for each secret key | YES | YES | -- | -- | -- | **2/5 FAIL** |
 | R15 | **UPDATE: Hot-reload must apply env var changes atomically** (parse full file, then swap all values, not key-by-key) | YES | -- | -- | -- | YES | **2/5 FAIL** |
 | R16 | **UPDATE: Hot-reload must verify OpenCode re-reads `process.env` per-request** rather than caching provider config at startup | YES | -- | -- | -- | -- | **1/5 FAIL** |
@@ -129,7 +129,7 @@ Notes:
 | R23 | **ADD: Rollback directory permissions** -- `0o700` for directory, `0o600` for env files within it | -- | YES | -- | -- | -- | **1/5 FAIL** |
 | R24 | **ADD: Stale secret cleanup in rollback** -- delete snapshot after successful deploy or redact secret values | -- | YES | -- | -- | -- | **1/5 FAIL** |
 | R25 | **ADD: Hot-reload watcher hardening** -- size check (reject > 64KB), debounce (500ms), audit logging of key updates | -- | YES | -- | -- | YES | **2/5 FAIL** |
-| R26 | **ADD: Compose overlay variable reference validation** -- reject component environment blocks referencing system-secret vars like `OPENPALM_ADMIN_TOKEN` via `${VAR}` | -- | YES | -- | -- | -- | **1/5 FAIL** |
+| R26 | **ADD: Compose overlay variable reference validation** -- reject component environment blocks referencing system-secret vars like `OP_ADMIN_TOKEN` via `${VAR}` | -- | YES | -- | -- | -- | **1/5 FAIL** |
 | R27 | **UPDATE: Varlock schema split** -- `secrets.env.schema` becomes `user.env.schema` + `system.env.schema` with separate `@plugin` declarations | -- | YES | -- | -- | -- | **1/5 FAIL** |
 | R28 | **ADD: Document vault/ directory permissions** -- `vault/` at `0o700`, env files at `0o600`, schema files at `0o644` | -- | YES | -- | -- | -- | **1/5 FAIL** |
 | R29 | **DEFER hot-reload to 0.10.1** -- convenience feature, not structural; adds testing complexity (fs.watch platform behavior, race conditions, SDK caching) | -- | -- | YES | -- | -- | **1/5 FAIL** |
@@ -164,9 +164,9 @@ Notes:
 |---|---------------|---|---|---|---|---|--------|
 | R52 | **UPDATE `core-principles.md`** -- major rewrite of filesystem contract (all three tiers), volume-mount contract (sections A-F), and operational behavior; preserve invariant numbering structure | YES | -- | -- | YES | YES | **3/5 PASS** |
 | R53 | **UPDATE `review-decisions.md`** -- explicitly reverse Q2 with full rationale | YES | -- | -- | YES | -- | **2/5 FAIL** |
-| R54 | **UPDATE `openpalm-components-plan.md`** -- reconcile with new `~/.openpalm/` paths; replace `${OPENPALM_CONFIG}`/`${OPENPALM_DATA}`/`${OPENPALM_STATE}` references | YES | -- | YES | -- | -- | **2/5 FAIL** |
+| R54 | **UPDATE `openpalm-components-plan.md`** -- reconcile with new `~/.openpalm/` paths; replace `${OP_CONFIG}`/`${OP_DATA}`/`${OP_STATE}` references | YES | -- | YES | -- | -- | **2/5 FAIL** |
 | R55 | **UPDATE `openpalm-pass-impl-v3.md`** -- PlaintextBackend handles two files; Phase 0 `stageSecretsEnv()` refs become irrelevant; CONFIG_HOME contract section rewrite | YES | YES | -- | -- | -- | **2/5 FAIL** |
-| R56 | **UPDATE all compose files** (`docker-compose.yml`, `admin.yml`, `ollama.yml`) -- all bind mount paths change to `OPENPALM_HOME`-relative; guardian loses artifacts mount; env_file directives change | YES | -- | -- | -- | YES | **2/5 FAIL** |
+| R56 | **UPDATE all compose files** (`docker-compose.yml`, `admin.yml`, `ollama.yml`) -- all bind mount paths change to `OP_HOME`-relative; guardian loses artifacts mount; env_file directives change | YES | -- | -- | -- | YES | **2/5 FAIL** |
 | R57 | **UPDATE `CLAUDE.md`** -- XDG Directory Model table, Architecture Rules, Build & Dev Commands, all CONFIG_HOME/DATA_HOME/STATE_HOME references | YES | -- | -- | YES | YES | **3/5 PASS** |
 | R58 | **UPDATE `packages/lib/src/control-plane/paths.ts`** -- collapse three resolve functions into `resolveOpenPalmHome()` + subdirectory accessors | YES | -- | -- | -- | YES | **2/5 FAIL** |
 | R59 | **UPDATE `packages/lib/src/control-plane/staging.ts`** -- entire file replaced by validation + snapshot + apply pipeline | YES | -- | -- | -- | YES | **2/5 FAIL** |

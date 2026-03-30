@@ -45,11 +45,12 @@ export async function prepareVarlockDir(schemaPath: string, envPath: string): Pr
 }
 
 /**
- * Downloads varlock binary and caches it in STATE_HOME/bin/.
+ * Downloads varlock binary and caches it in ~/.cache/openpalm/bin/.
  * Skips download if binary already exists.
  */
-export async function ensureVarlock(stateHome: string): Promise<string> {
-  const binDir = join(stateHome, 'bin');
+export async function ensureVarlock(): Promise<string> {
+  const { resolveCacheHome } = await import('@openpalm/lib');
+  const binDir = join(resolveCacheHome(), 'bin');
   const varlockBin = join(binDir, 'varlock');
 
   if (await Bun.file(varlockBin).exists()) {
@@ -70,18 +71,11 @@ export async function ensureVarlock(stateHome: string): Promise<string> {
   const tarballUrl = `https://github.com/dmno-dev/varlock/releases/download/varlock%40${VARLOCK_VERSION}/${artifact}`;
   const tarballPath = join(binDir, 'varlock.tar.gz');
 
-  const downloadProc = Bun.spawn(
-    ['curl', '-fsSL', '--retry', '5', '--retry-delay', '10', '--retry-all-errors', tarballUrl, '-o', tarballPath],
-    {
-      env: { ...process.env, HOME: process.env.HOME ?? '' },
-      stdout: 'inherit',
-      stderr: 'inherit',
-    },
-  );
-  const downloadCode = await downloadProc.exited;
-  if (downloadCode !== 0) {
-    throw new Error(`Failed to download varlock tarball (curl exited with code ${downloadCode})`);
+  const response = await fetch(tarballUrl, { signal: AbortSignal.timeout(60_000) });
+  if (!response.ok) {
+    throw new Error(`Failed to download varlock tarball (HTTP ${response.status} ${response.statusText})`);
   }
+  await Bun.write(tarballPath, response);
 
   const hasher = new Bun.CryptoHasher('sha256');
   hasher.update(await Bun.file(tarballPath).arrayBuffer());

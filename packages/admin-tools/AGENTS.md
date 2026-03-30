@@ -9,7 +9,7 @@ When admin-tools is loaded, you can manage the full OpenPalm stack:
 - Check the health and status of all platform services
 - Start, stop, and restart individual containers
 - View and update configuration
-- Inspect generated artifacts (docker-compose.yml, Caddy config, environment)
+- Inspect generated artifacts (docker-compose.yml, environment)
 - Review the audit log to understand what has changed
 - List installed and available channels and their routing status
 - Install and uninstall channels from the registry

@@ -1,0 +1,387 @@
+/**
+ * Install flow validation tests.
+ *
+ * Tier 1: File structure validation (no Docker containers, fast).
+ *   - Seeds from LOCAL .openpalm/ directory (no GitHub fetch)
+ *   - Runs performSetup with a realistic SetupSpec
+ *   - Validates every file, directory, and permission the install should produce
+ *   - Validates compose config with `docker compose config --quiet`
+ *
+ * Tier 2: Container validation (needs Docker, builds from source).
+ *   - Builds images from local source via compose.dev.yml
+ *   - Starts the stack
+ *   - Validates every expected container is running and healthy
+ */
+import { describe, expect, it, afterEach } from 'bun:test';
+import {
+  existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync,
+  readFileSync, statSync, readdirSync, lstatSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { parse as yamlParse } from 'yaml';
+import { readStackSpec } from '@openpalm/lib';
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+const REPO_ROOT = resolve(import.meta.dir, '../../..');
+const OPENPALM_SRC = join(REPO_ROOT, '.openpalm');
+const ASSISTANT_SRC = join(REPO_ROOT, 'core/assistant/opencode');
+
+/** Copy a directory tree using cp -a (preserves structure, fast). */
+function cpTree(src: string, dest: string): void {
+  mkdirSync(dest, { recursive: true });
+  const proc = Bun.spawnSync(['cp', '-a', `${src}/.`, dest]);
+  if (proc.exitCode !== 0) throw new Error(`cp -a failed: ${src} → ${dest}`);
+}
+
+/** Seed the OP_HOME directory from the local repo (no network). */
+function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
+  const configDir = join(homeDir, 'config');
+  const vaultDir = join(homeDir, 'vault');
+  const dataDir = join(homeDir, 'data');
+
+  // stack/ — seed core compose only
+  mkdirSync(join(homeDir, 'stack'), { recursive: true });
+  Bun.spawnSync(['cp', join(OPENPALM_SRC, 'stack', 'core.compose.yml'), join(homeDir, 'stack', 'core.compose.yml')]);
+
+  // registry/ — shipped catalog source
+  cpTree(join(OPENPALM_SRC, 'registry', 'addons'), join(homeDir, 'registry', 'addons'));
+  cpTree(join(OPENPALM_SRC, 'registry', 'automations'), join(homeDir, 'registry', 'automations'));
+
+  // stack/addons/ — enabled runtime overlays only
+  for (const addon of enabledAddons) {
+    cpTree(join(OPENPALM_SRC, 'registry', 'addons', addon), join(homeDir, 'stack', 'addons', addon));
+  }
+
+  // config/automations/ — enabled only (start empty)
+  mkdirSync(join(configDir, 'automations'), { recursive: true });
+
+  // vault/ — schemas only
+  for (const sub of ['user', 'stack']) {
+    const srcDir = join(OPENPALM_SRC, 'vault', sub);
+    const destDir = join(vaultDir, sub);
+    mkdirSync(destDir, { recursive: true });
+    if (existsSync(srcDir)) {
+      for (const f of readdirSync(srcDir)) {
+        if (f.endsWith('.schema')) {
+          const content = readFileSync(join(srcDir, f));
+          Bun.spawnSync(['cp', join(srcDir, f), join(destDir, f)]);
+        }
+      }
+    }
+  }
+
+  // data/assistant/ — opencode config
+  const assistantDir = join(dataDir, 'assistant');
+  mkdirSync(assistantDir, { recursive: true });
+  if (existsSync(ASSISTANT_SRC)) {
+    for (const f of readdirSync(ASSISTANT_SRC)) {
+      Bun.spawnSync(['cp', '-a', join(ASSISTANT_SRC, f), join(assistantDir, f)]);
+    }
+  }
+
+  // Seed file-based volume mount targets (CLI bootstrapInstall does this)
+  const stackVault = join(vaultDir, 'stack');
+  mkdirSync(stackVault, { recursive: true });
+  if (!existsSync(join(stackVault, 'guardian.env'))) {
+    Bun.spawnSync(['touch', join(stackVault, 'guardian.env')]);
+  }
+  if (!existsSync(join(stackVault, 'auth.json'))) {
+    writeFileSync(join(stackVault, 'auth.json'), '{}\n');
+  }
+
+  // Create required directories
+  for (const dir of [
+    configDir,
+    join(configDir, 'assistant'),
+    join(configDir, 'guardian'),
+    join(vaultDir, 'user'),
+    join(vaultDir, 'stack'),
+    dataDir,
+    join(dataDir, 'admin'),
+    join(dataDir, 'memory'),
+    join(dataDir, 'guardian'),
+    join(dataDir, 'stash'),
+    join(dataDir, 'workspace'),
+    join(homeDir, 'logs'),
+    join(homeDir, 'logs/opencode'),
+    join(homeDir, 'backups'),
+  ]) {
+    mkdirSync(dir, { recursive: true });
+  }
+}
+
+function makeSetupSpec(): Record<string, unknown> {
+  return {
+    spec: {
+      version: 2,
+      capabilities: {
+        llm: 'ollama/qwen2.5-coder:3b',
+        embeddings: { provider: 'ollama', model: 'nomic-embed-text:latest', dims: 768 },
+        memory: { userId: 'testuser', customInstructions: '' },
+        slm: 'ollama/qwen2.5-coder:3b',
+      },
+    },
+    security: { adminToken: 'test-admin-token-12345' },
+    owner: { name: 'Test', email: 'test@test.com' },
+    capabilities: [{
+      id: 'ollama',
+      name: 'Ollama',
+      provider: 'ollama',
+      baseUrl: 'http://host.docker.internal:11434',
+      apiKey: '',
+    }],
+  };
+}
+
+/** Parse env vars from stack.env for compose variable substitution. */
+function parseEnvFile(path: string): Record<string, string> {
+  const vars: Record<string, string> = {};
+  if (!existsSync(path)) return vars;
+  for (const line of readFileSync(path, 'utf-8').split('\n')) {
+    const m = line.match(/^(?:export\s+)?([A-Z_][A-Z0-9_]*)=(.*)$/);
+    if (m) vars[m[1]] = m[2];
+  }
+  return vars;
+}
+
+/** Resolve ${VAR:-default} patterns in a string. */
+function resolveVars(str: string, vars: Record<string, string>): string {
+  return str.replace(/\$\{([^}:]+)(?::-([^}]*))?\}/g, (_, name, def) => vars[name] ?? def ?? '');
+}
+
+/** Extract all host-side volume mount paths from compose files. */
+function extractVolumeMountPaths(
+  composeFiles: string[],
+  vars: Record<string, string>,
+): { path: string; isFile: boolean }[] {
+  const results: { path: string; isFile: boolean }[] = [];
+  for (const file of composeFiles) {
+    if (!existsSync(file)) continue;
+    let doc: any;
+    try { doc = yamlParse(readFileSync(file, 'utf-8')); } catch { continue; }
+    if (!doc?.services) continue;
+    for (const svc of Object.values(doc.services) as any[]) {
+      if (!Array.isArray(svc?.volumes)) continue;
+      for (const vol of svc.volumes) {
+        const raw = typeof vol === 'string' ? vol.split(':')[0] : (vol?.source ?? '');
+        if (!raw || typeof raw !== 'string') continue;
+        const resolved = resolveVars(raw, vars);
+        if (!resolved.startsWith('/')) continue;
+        const basename = resolved.split('/').pop() ?? '';
+        const isFile = basename.includes('.') && !basename.startsWith('.');
+        results.push({ path: resolved, isFile });
+      }
+    }
+  }
+  return results;
+}
+
+// ── Tier 1: File Structure Validation ─────────────────────────────────────
+
+describe('install flow — tier 1 (file validation)', () => {
+  let homeDir: string;
+  const originalHome = process.env.OP_HOME;
+  const originalWorkDir = process.env.OP_WORK_DIR;
+
+  afterEach(() => {
+    process.env.OP_HOME = originalHome;
+    process.env.OP_WORK_DIR = originalWorkDir;
+    if (homeDir) rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  it('seed + performSetup produces complete file structure for admin+chat', async () => {
+    homeDir = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
+    process.env.OP_HOME = homeDir;
+    process.env.OP_WORK_DIR = join(homeDir, 'data/workspace');
+
+    // Step 1: Seed from local .openpalm/
+    seedFromLocal(homeDir, ['admin', 'chat']);
+
+    // Step 2: Run performSetup
+    const { performSetup } = await import('@openpalm/lib');
+    const spec = makeSetupSpec();
+    const result = await performSetup(spec as any);
+    expect(result.ok).toBe(true);
+
+    // ── Validate stack.yml via lib parser ─────────────────────────
+    const configDir = join(homeDir, 'config');
+    const stackSpec = readStackSpec(configDir);
+    expect(stackSpec).not.toBeNull();
+    expect(stackSpec!.version).toBe(2);
+    expect(stackSpec!.capabilities.llm).toBe('ollama/qwen2.5-coder:3b');
+
+    // ── Validate compose files exist ─────────────────────────────────
+    expect(existsSync(join(homeDir, 'stack/core.compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'stack/addons/admin/compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'stack/addons/chat/compose.yml'))).toBe(true);
+
+    expect(existsSync(join(homeDir, 'registry/addons/admin/compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'registry/addons/chat/compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'registry/automations/cleanup-logs.yml'))).toBe(true);
+
+    // ── Validate vault files are regular files (not directories) ─────
+    for (const relPath of [
+      'vault/stack/stack.env',
+      'vault/stack/guardian.env',
+      'vault/stack/auth.json',
+      'vault/user/user.env',
+    ]) {
+      const fullPath = join(homeDir, relPath);
+      expect(existsSync(fullPath)).toBe(true);
+      expect(statSync(fullPath).isFile()).toBe(true);
+    }
+
+    // ── Validate vault schemas ───────────────────────────────────────
+    for (const relPath of [
+      'vault/user/user.env.schema',
+      'vault/stack/stack.env.schema',
+    ]) {
+      const fullPath = join(homeDir, relPath);
+      expect(existsSync(fullPath)).toBe(true);
+      expect(statSync(fullPath).isFile()).toBe(true);
+      expect(readFileSync(fullPath, 'utf-8').length).toBeGreaterThan(0);
+    }
+
+    // ── Validate all volume mount targets exist as user-owned ────────
+    const stackEnvVars = {
+      ...parseEnvFile(join(homeDir, 'vault/stack/stack.env')),
+      ...process.env as Record<string, string>,
+    };
+    // OP_HOME must resolve to absolute path
+    stackEnvVars.OP_HOME = homeDir;
+
+    const allComposeFiles = [
+      join(homeDir, 'stack/core.compose.yml'),
+      join(homeDir, 'stack/addons/admin/compose.yml'),
+      join(homeDir, 'stack/addons/chat/compose.yml'),
+    ];
+    const mounts = extractVolumeMountPaths(allComposeFiles, stackEnvVars);
+    expect(mounts.length).toBeGreaterThan(0);
+
+    // Ensure they all exist first (this is what ensureVolumeMountTargets does)
+    const { ensureVolumeMountTargets } = await import('./commands/install.ts') as any;
+    // Can't import private function, so replicate the check
+    // Only check mounts inside homeDir (ignore Docker socket, etc.)
+    const homeMounts = mounts.filter(m => m.path.startsWith(homeDir));
+
+    for (const mount of homeMounts) {
+      if (!existsSync(mount.path)) {
+        if (mount.isFile) {
+          mkdirSync(join(mount.path, '..'), { recursive: true });
+          Bun.spawnSync(['touch', mount.path]);
+        } else {
+          mkdirSync(mount.path, { recursive: true });
+        }
+      }
+    }
+
+    for (const mount of homeMounts) {
+      expect(existsSync(mount.path)).toBe(true);
+      const stat = lstatSync(mount.path);
+      if (mount.isFile) {
+        expect(stat.isFile()).toBe(true);
+      } else {
+        expect(stat.isDirectory()).toBe(true);
+      }
+      // Must be owned by current user, not root
+      expect(stat.uid).toBe(process.getuid!());
+    }
+
+    // ── Validate no root-owned files ─────────────────────────────────
+    const rootOwned = Bun.spawnSync(['find', homeDir, '-user', 'root'], { stdout: 'pipe' });
+    const rootFiles = new TextDecoder().decode(rootOwned.stdout).trim();
+    expect(rootFiles).toBe('');
+
+    // ── Validate data directories ────────────────────────────────────
+    for (const dir of ['admin', 'assistant', 'memory', 'guardian', 'stash', 'workspace']) {
+      expect(existsSync(join(homeDir, `data/${dir}`))).toBe(true);
+    }
+
+    // ── Validate active automations dir exists but catalog is separate ──
+    expect(existsSync(join(homeDir, 'config/automations'))).toBe(true);
+    const automations = readdirSync(join(homeDir, 'config/automations'));
+    expect(automations.length).toBe(0);
+  }, 30_000);
+
+  it('compose config validates with selected addons', async () => {
+    homeDir = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
+    process.env.OP_HOME = homeDir;
+    process.env.OP_WORK_DIR = join(homeDir, 'data/workspace');
+
+    seedFromLocal(homeDir, ['admin', 'chat']);
+
+    const { performSetup } = await import('@openpalm/lib');
+    const result = await performSetup(makeSetupSpec() as any);
+    expect(result.ok).toBe(true);
+
+    // Ensure all volume mount targets exist so compose doesn't complain
+    const stackEnv = join(homeDir, 'vault/stack/stack.env');
+    const vars = { ...parseEnvFile(stackEnv), OP_HOME: homeDir };
+    const composeFiles = [
+      join(homeDir, 'stack/core.compose.yml'),
+      join(homeDir, 'stack/addons/admin/compose.yml'),
+      join(homeDir, 'stack/addons/chat/compose.yml'),
+    ];
+    for (const mount of extractVolumeMountPaths(composeFiles, vars)) {
+      if (!mount.path.startsWith(homeDir)) continue; // skip Docker socket etc.
+      if (!existsSync(mount.path)) {
+        if (mount.isFile) {
+          mkdirSync(join(mount.path, '..'), { recursive: true });
+          Bun.spawnSync(['touch', mount.path]);
+        } else {
+          mkdirSync(mount.path, { recursive: true });
+        }
+      }
+    }
+
+    // Run docker compose config --quiet
+    const proc = Bun.spawnSync([
+      'docker', 'compose', '--project-name', 'openpalm-test',
+      '-f', composeFiles[0],
+      '-f', composeFiles[1],
+      '-f', composeFiles[2],
+      '--env-file', stackEnv,
+      '--env-file', join(homeDir, 'vault/user/user.env'),
+      'config', '--quiet',
+    ], { stdout: 'pipe', stderr: 'pipe', env: { ...process.env, OP_HOME: homeDir } });
+
+    const stderr = new TextDecoder().decode(proc.stderr);
+    if (proc.exitCode !== 0) {
+      throw new Error(`docker compose config failed (exit ${proc.exitCode}):\n${stderr}`);
+    }
+    expect(proc.exitCode).toBe(0);
+  }, 30_000);
+
+  it('performSetup with no addons produces only core services', async () => {
+    homeDir = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
+    process.env.OP_HOME = homeDir;
+    process.env.OP_WORK_DIR = join(homeDir, 'data/workspace');
+
+    seedFromLocal(homeDir);
+
+    const { performSetup } = await import('@openpalm/lib');
+    const result = await performSetup(makeSetupSpec() as any);
+    expect(result.ok).toBe(true);
+
+    const noAddonSpec = readStackSpec(join(homeDir, 'config'));
+    expect(noAddonSpec).not.toBeNull();
+
+    // Core compose only, no addon files in the compose list
+    const stackEnv = join(homeDir, 'vault/stack/stack.env');
+    const proc = Bun.spawnSync([
+      'docker', 'compose', '--project-name', 'openpalm-test',
+      '-f', join(homeDir, 'stack/core.compose.yml'),
+      '--env-file', stackEnv,
+      '--env-file', join(homeDir, 'vault/user/user.env'),
+      'config', '--services',
+    ], { stdout: 'pipe', stderr: 'pipe' });
+
+    const services = new TextDecoder().decode(proc.stdout).trim().split('\n').sort();
+    expect(services).toEqual(['assistant', 'guardian', 'init', 'memory', 'scheduler']);
+  }, 30_000);
+});
+
+// Container validation (builds from source, starts services, verifies health)
+// is covered by Tier 6: ./scripts/dev-e2e-test.sh

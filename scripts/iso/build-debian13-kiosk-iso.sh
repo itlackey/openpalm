@@ -19,14 +19,14 @@ DEBIAN_MIRROR="${DEBIAN_MIRROR:-http://deb.debian.org/debian}"
 DEBIAN_SECURITY_MIRROR="${DEBIAN_SECURITY_MIRROR:-http://security.debian.org/debian-security}"
 DEBIAN_SUITE="${DEBIAN_SUITE:-trixie}"
 DEBIAN_ARCH="${DEBIAN_ARCH:-arm64}"
-ISO_VOLUME="${ISO_VOLUME:-OPENPALM_KIOSK}"
+ISO_VOLUME="${ISO_VOLUME:-OP_KIOSK}"
 
 SUPPORTED_ARCHES=('arm64' 'amd64')
 
 KIOSK_USER="${KIOSK_USER:-operator}"
 KIOSK_PASSWORD="${KIOSK_PASSWORD:-ChangeMeNow123!}"
-OPENPALM_ADMIN_URL="${OPENPALM_ADMIN_URL:-http://127.0.0.1:8100}"
-OPENPALM_IMAGES_TAR="${OPENPALM_IMAGES_TAR:-$REPO_ROOT/.build/image-cache/openpalm-images.tar.zst}"
+OP_ADMIN_URL="${OP_ADMIN_URL:-http://127.0.0.1:8100}"
+OP_IMAGES_TAR="${OP_IMAGES_TAR:-$REPO_ROOT/.build/image-cache/openpalm-images.tar.zst}"
 
 required_cmds=(lb docker zstd rsync)
 
@@ -58,7 +58,7 @@ render_template() {
   sed \
     -e "s|__KIOSK_USER__|$KIOSK_USER|g" \
     -e "s|__KIOSK_PASSWORD__|$KIOSK_PASSWORD|g" \
-    -e "s|__OPENPALM_ADMIN_URL__|$OPENPALM_ADMIN_URL|g" \
+    -e "s|__OP_ADMIN_URL__|$OP_ADMIN_URL|g" \
     "$src" > "$dst"
 }
 
@@ -80,7 +80,7 @@ render_livebuild_tree() {
   cp "$FILES_DIR/xsessions/openpalm-kiosk.desktop" \
     "$BUILD_ROOT/config/includes.chroot/usr/share/xsessions/openpalm-kiosk.desktop"
 
-  # --- Kiosk session launcher (templated: OPENPALM_ADMIN_URL) ---
+  # --- Kiosk session launcher (templated: OP_ADMIN_URL) ---
   render_template "$FILES_DIR/bin/openpalm-kiosk-session.sh" \
     "$BUILD_ROOT/config/includes.chroot/usr/local/bin/openpalm-kiosk-session.sh"
 
@@ -98,13 +98,14 @@ render_livebuild_tree() {
   cp "$FILES_DIR/systemd/openpalm-stack.timer" \
     "$BUILD_ROOT/config/includes.chroot/etc/systemd/system/openpalm-stack.timer"
 
-  # --- Repository assets ---
-  rsync -a "$REPO_ROOT/assets/" "$BUILD_ROOT/config/includes.chroot/opt/openpalm/assets/"
+  # --- Repository stack and vault ---
+  rsync -a "$REPO_ROOT/stack/" "$BUILD_ROOT/config/includes.chroot/opt/openpalm/stack/"
+  rsync -a "$REPO_ROOT/vault/" "$BUILD_ROOT/config/includes.chroot/opt/openpalm/vault/"
 
   # --- Pre-built Docker image cache (optional) ---
-  if [[ -f "$OPENPALM_IMAGES_TAR" ]]; then
+  if [[ -f "$OP_IMAGES_TAR" ]]; then
     mkdir -p "$BUILD_ROOT/config/includes.chroot/opt/openpalm/image-cache"
-    cp "$OPENPALM_IMAGES_TAR" "$BUILD_ROOT/config/includes.chroot/opt/openpalm/image-cache/openpalm-images.tar.zst"
+    cp "$OP_IMAGES_TAR" "$BUILD_ROOT/config/includes.chroot/opt/openpalm/image-cache/openpalm-images.tar.zst"
   fi
 
   # --- Chroot configuration hook (templated: KIOSK_USER, KIOSK_PASSWORD) ---
@@ -115,17 +116,16 @@ render_livebuild_tree() {
 
 build_image_cache() {
   local cache_dir
-  cache_dir="$(dirname -- "$OPENPALM_IMAGES_TAR")"
+  cache_dir="$(dirname -- "$OP_IMAGES_TAR")"
 
   mkdir -p "$cache_dir"
 
-  if [[ -f "$OPENPALM_IMAGES_TAR" ]]; then
-    echo "Using existing image cache at $OPENPALM_IMAGES_TAR"
+  if [[ -f "$OP_IMAGES_TAR" ]]; then
+    echo "Using existing image cache at $OP_IMAGES_TAR"
     return
   fi
 
   local images=(
-    'docker.io/library/caddy:2'
     'docker.io/itlackey/openpalm-memory:latest'
     'ghcr.io/sst/opencode:latest'
     'docker.io/itlackey/openpalm-guardian:latest'
@@ -141,7 +141,7 @@ build_image_cache() {
   done
 
   docker save -o "$tmp_tar" "${images[@]}"
-  zstd -19 -T0 "$tmp_tar" -o "$OPENPALM_IMAGES_TAR"
+  zstd -19 -T0 "$tmp_tar" -o "$OP_IMAGES_TAR"
   rm -f "$tmp_tar"
 }
 

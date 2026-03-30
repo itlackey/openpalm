@@ -1,16 +1,4 @@
-/**
- * In-process automation scheduler — replaces system cron.
- *
- * Uses Croner for cron job scheduling within the Node.js process.
- * Automations are .yml files in STATE_HOME/automations/ with four
- * action types: api (admin API call), http (any URL), shell (execFile),
- * assistant (OpenCode session message).
- *
- * Security: shell actions use execFile with argument arrays — no shell
- * interpolation. API actions auto-inject the admin token. Assistant
- * actions validate the session ID before URL interpolation.
- */
-import { Cron } from "croner";
+/** Automation scheduler — types, parsing, and action execution. */
 import { parse as parseYaml } from "yaml";
 import { execFile } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -19,7 +7,6 @@ import { createLogger } from "../logger.js";
 
 const logger = createLogger("scheduler");
 
-// ── Types ─────────────────────────────────────────────────────────────
 
 export type ActionType = "api" | "http" | "shell" | "assistant";
 
@@ -32,11 +19,7 @@ export type AutomationAction = {
   headers?: Record<string, string>;
   command?: string[];
   timeout?: number;
-  /** The prompt text to send to the assistant (assistant action only). */
   content?: string;
-  /** OpenCode agent label for the session (assistant action only, optional).
-   *  Currently used in the session title for identification/audit purposes.
-   *  Will be forwarded as an API parameter when OpenCode adds agent selection support. */
   agent?: string;
 };
 
@@ -51,13 +34,6 @@ export type AutomationConfig = {
   fileName: string;
 };
 
-type ActiveJob = {
-  cron: Cron;
-  config: AutomationConfig;
-};
-
-// ── Execution Log ─────────────────────────────────────────────────────
-
 export type ExecutionLogEntry = {
   at: string;
   ok: boolean;
@@ -65,36 +41,6 @@ export type ExecutionLogEntry = {
   error?: string;
 };
 
-const MAX_LOG_ENTRIES = 50;
-const executionLogs = new Map<string, ExecutionLogEntry[]>();
-
-function recordExecution(fileName: string, entry: ExecutionLogEntry): void {
-  let entries = executionLogs.get(fileName);
-  if (!entries) {
-    entries = [];
-    executionLogs.set(fileName, entries);
-  }
-  entries.push(entry);
-  if (entries.length > MAX_LOG_ENTRIES) {
-    executionLogs.set(fileName, entries.slice(-MAX_LOG_ENTRIES));
-  }
-}
-
-/** Return recent execution log entries for an automation (newest first). */
-export function getExecutionLog(fileName: string): ExecutionLogEntry[] {
-  return [...(executionLogs.get(fileName) ?? [])].reverse();
-}
-
-/** Return all execution logs keyed by fileName. */
-export function getAllExecutionLogs(): Record<string, ExecutionLogEntry[]> {
-  const result: Record<string, ExecutionLogEntry[]> = {};
-  for (const [fileName, entries] of executionLogs) {
-    result[fileName] = [...entries].reverse();
-  }
-  return result;
-}
-
-// ── Schedule Presets ──────────────────────────────────────────────────
 
 export const SCHEDULE_PRESETS: Record<string, string> = {
   "every-minute": "* * * * *",
@@ -108,20 +54,11 @@ export const SCHEDULE_PRESETS: Record<string, string> = {
   "weekly-sunday-4am": "0 4 * * 0"
 };
 
-/**
- * Resolve a schedule string: if it matches a preset name, return the
- * cron expression; otherwise pass through as-is (assumed cron syntax).
- */
+/** Resolve a preset name to cron expression, or pass through raw cron. */
 export function resolveSchedule(schedule: string): string {
   return SCHEDULE_PRESETS[schedule] ?? schedule;
 }
 
-// ── YAML Parsing ──────────────────────────────────────────────────────
-
-/**
- * Parse and validate a YAML automation file.
- * Returns null if the content is invalid (with a warning logged).
- */
 export function parseAutomationYaml(
   content: string,
   fileName: string
@@ -139,14 +76,12 @@ export function parseAutomationYaml(
     return null;
   }
 
-  // schedule is required
   const rawSchedule = doc.schedule;
   if (typeof rawSchedule !== "string" || !rawSchedule.trim()) {
     logger.warn("automation missing or empty 'schedule'", { fileName });
     return null;
   }
 
-  // action is required and must be an object with a valid type
   const action = doc.action;
   if (!action || typeof action !== "object") {
     logger.warn("automation missing or invalid 'action'", { fileName });
@@ -163,7 +98,6 @@ export function parseAutomationYaml(
     return null;
   }
 
-  // Validate action-specific required fields
   if (actionType === "api" && typeof actionObj.path !== "string") {
     logger.warn("api action missing 'path'", { fileName });
     return null;
@@ -199,7 +133,9 @@ export function parseAutomationYaml(
       path: typeof actionObj.path === "string" ? actionObj.path : undefined,
       url: typeof actionObj.url === "string" ? actionObj.url : undefined,
       body: actionObj.body,
-      headers: isStringRecord(actionObj.headers) ? actionObj.headers : undefined,
+      headers: (actionObj.headers && typeof actionObj.headers === "object" && !Array.isArray(actionObj.headers) &&
+        Object.values(actionObj.headers as Record<string, unknown>).every((v) => typeof v === "string"))
+        ? (actionObj.headers as Record<string, string>) : undefined,
       command: Array.isArray(actionObj.command)
         ? actionObj.command.map(String)
         : undefined,
@@ -216,20 +152,8 @@ export function parseAutomationYaml(
   };
 }
 
-function isStringRecord(v: unknown): v is Record<string, string> {
-  if (!v || typeof v !== "object") return false;
-  return Object.values(v as Record<string, unknown>).every(
-    (val) => typeof val === "string"
-  );
-}
-
-// ── Load Automations ──────────────────────────────────────────────────
-
-/**
- * Read and parse all .yml automation files from STATE_HOME/automations/.
- */
-export function loadAutomations(stateDir: string): AutomationConfig[] {
-  const dir = join(stateDir, "automations");
+export function loadAutomations(configDir: string): AutomationConfig[] {
+  const dir = join(configDir, "automations");
   if (!existsSync(dir)) return [];
 
   const files = readdirSync(dir, { withFileTypes: true });
@@ -253,12 +177,10 @@ export function loadAutomations(stateDir: string): AutomationConfig[] {
   return configs;
 }
 
-// ── Action Execution ──────────────────────────────────────────────────
 
 export const SAFE_PATH_RE = /^\/admin\/[a-zA-Z0-9/._-]+$/;
 
-/** Execute an API action — auto-injects admin token and base URL. */
-async function executeApiAction(
+export async function executeApiAction(
   action: AutomationAction,
   adminToken: string
 ): Promise<void> {
@@ -266,7 +188,7 @@ async function executeApiAction(
     logger.warn(`Scheduler: rejecting unsafe action path: ${action.path}`);
     return;
   }
-  const adminUrl = process.env.OPENPALM_ADMIN_API_URL || "http://admin:8100";
+  const adminUrl = process.env.OP_ADMIN_API_URL || "http://admin:8100";
   const url = `${adminUrl}${action.path}`;
   const { "x-admin-token": _dropped, "authorization": _dropped2, ...safeHeaders } = action.headers ?? {};
   const headers: Record<string, string> = {
@@ -294,8 +216,8 @@ async function executeApiAction(
   }
 }
 
-/** Execute an HTTP action — no auto-auth. */
-async function executeHttpAction(action: AutomationAction): Promise<void> {
+export async function executeHttpAction(action: AutomationAction): Promise<void> {
+  if (!action.url) throw new Error("http action requires a url");
   const headers: Record<string, string> = { ...action.headers };
   if (action.body) {
     headers["content-type"] = headers["content-type"] ?? "application/json";
@@ -303,7 +225,7 @@ async function executeHttpAction(action: AutomationAction): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), action.timeout ?? 30_000);
   try {
-    const resp = await fetch(action.url!, {
+    const resp = await fetch(action.url, {
       method: action.method ?? "GET",
       headers,
       body: action.body ? JSON.stringify(action.body) : undefined,
@@ -317,17 +239,15 @@ async function executeHttpAction(action: AutomationAction): Promise<void> {
   }
 }
 
-/** Safe env vars allowlisted for shell automation actions. */
 const SHELL_SAFE_ENV_KEYS = [
   "PATH", "HOME", "LANG", "LC_ALL", "TZ", "NODE_ENV",
-  "OPENPALM_CONFIG_HOME", "OPENPALM_STATE_HOME", "OPENPALM_DATA_HOME",
+  "OP_HOME",
 ];
 
-/** Execute a shell action — uses execFile with argument array (no shell interpolation). */
-function executeShellAction(action: AutomationAction): Promise<void> {
-  const cmd = action.command!;
+export function executeShellAction(action: AutomationAction): Promise<void> {
+  if (!action.command?.length) throw new Error("shell action requires a non-empty command array");
+  const cmd = action.command;
 
-  // Build a minimal env from the allowlist — never leak secrets to shell commands
   const safeEnv: Record<string, string> = {};
   for (const key of SHELL_SAFE_ENV_KEYS) {
     if (process.env[key]) safeEnv[key] = process.env[key]!;
@@ -349,23 +269,18 @@ function executeShellAction(action: AutomationAction): Promise<void> {
   });
 }
 
-/**
- * Execute an assistant action — creates an OpenCode session and sends the
- * prompt directly via the OpenCode REST API (no guardian needed).
- */
-async function executeAssistantAction(action: AutomationAction): Promise<void> {
+export async function executeAssistantAction(action: AutomationAction): Promise<void> {
   if (!action.content) {
     throw new Error("assistant action requires a non-empty 'content' field");
   }
 
-  const baseUrl = process.env.OPENCODE_API_URL ?? "http://localhost:4096";
+  const baseUrl = process.env.OPENCODE_API_URL ?? "http://assistant:4096";
   const password = process.env.OPENCODE_SERVER_PASSWORD;
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (password) {
     headers["authorization"] = `Basic ${Buffer.from(`opencode:${password}`, "utf8").toString("base64")}`;
   }
 
-  // Create session
   const sessionRes = await fetch(`${baseUrl}/session`, {
     method: "POST",
     headers,
@@ -381,7 +296,6 @@ async function executeAssistantAction(action: AutomationAction): Promise<void> {
     throw new Error("Invalid session ID from assistant");
   }
 
-  // Send message
   const msgRes = await fetch(`${baseUrl}/session/${sessionId}/message`, {
     method: "POST",
     headers,
@@ -395,7 +309,6 @@ async function executeAssistantAction(action: AutomationAction): Promise<void> {
   logger.info("assistant action completed");
 }
 
-/** Dispatch to the correct action executor. */
 export async function executeAction(
   action: AutomationAction,
   adminToken: string
@@ -410,89 +323,4 @@ export async function executeAction(
     case "assistant":
       return executeAssistantAction(action);
   }
-}
-
-// ── Scheduler Lifecycle ───────────────────────────────────────────────
-
-let activeJobs: ActiveJob[] = [];
-
-/**
- * Start the in-process scheduler. Reads automations from STATE_HOME,
- * creates Croner jobs for each enabled one.
- */
-export function startScheduler(stateDir: string, adminToken: string): void {
-  const configs = loadAutomations(stateDir);
-  const enabled = configs.filter((c) => c.enabled);
-
-  for (const config of enabled) {
-    try {
-      const cron = new Cron(config.schedule, {
-        timezone: config.timezone,
-        protect: true // over-run protection
-      }, async () => {
-        const start = Date.now();
-        try {
-          await executeAction(config.action, adminToken);
-          const durationMs = Date.now() - start;
-          recordExecution(config.fileName, { at: new Date().toISOString(), ok: true, durationMs });
-          logger.info("automation executed", { name: config.name, fileName: config.fileName, durationMs });
-        } catch (err) {
-          const durationMs = Date.now() - start;
-          const errorMsg = String(err);
-          recordExecution(config.fileName, { at: new Date().toISOString(), ok: false, durationMs, error: errorMsg });
-          logger.error("automation failed", {
-            name: config.name,
-            fileName: config.fileName,
-            error: errorMsg
-          });
-        }
-      });
-
-      activeJobs.push({ cron, config });
-    } catch (err) {
-      logger.error("failed to schedule automation", {
-        name: config.name,
-        fileName: config.fileName,
-        schedule: config.schedule,
-        error: String(err)
-      });
-    }
-  }
-
-  logger.info(`scheduler started with ${activeJobs.length} automation(s)`);
-}
-
-/** Stop all active Croner jobs. */
-export function stopScheduler(): void {
-  for (const job of activeJobs) {
-    job.cron.stop();
-  }
-  const count = activeJobs.length;
-  activeJobs = [];
-  executionLogs.clear();
-  if (count > 0) {
-    logger.info(`scheduler stopped (${count} job(s) cleared)`);
-  }
-}
-
-/** Reload: stop all jobs, then start fresh. */
-export function reloadScheduler(stateDir: string, adminToken: string): void {
-  stopScheduler();
-  startScheduler(stateDir, adminToken);
-}
-
-/** Return current scheduler status for debugging. */
-export function getSchedulerStatus(): {
-  jobCount: number;
-  jobs: { name: string; fileName: string; schedule: string; running: boolean }[];
-} {
-  return {
-    jobCount: activeJobs.length,
-    jobs: activeJobs.map((j) => ({
-      name: j.config.name,
-      fileName: j.config.fileName,
-      schedule: j.config.schedule,
-      running: j.cron.isRunning()
-    }))
-  };
 }

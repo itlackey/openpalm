@@ -21,9 +21,10 @@ import * as adminConfig from "../opencode/tools/admin-config.ts";
 import * as adminContainers from "../opencode/tools/admin-containers.ts";
 import * as adminArtifacts from "../opencode/tools/admin-artifacts.ts";
 import * as adminConnections from "../opencode/tools/admin-connections.ts";
-import * as adminChannels from "../opencode/tools/admin-channels.ts";
+import * as adminAddons from "../opencode/tools/admin-addons.ts";
 import * as adminLifecycle from "../opencode/tools/admin-lifecycle.ts";
 import * as adminAutomations from "../opencode/tools/admin-automations.ts";
+import * as adminAutomationsCatalog from "../opencode/tools/admin-automations-catalog.ts";
 
 export const plugin: Plugin = async () => {
   return {
@@ -32,52 +33,60 @@ export const plugin: Plugin = async () => {
       "admin-health-check": healthCheck,
       "admin-audit": adminAudit,
       "admin-logs": adminLogs,
-      "admin-guardian_audit": adminGuardianAudit,
-      "admin-config_validate": adminConfigValidate,
-      "admin-connections_test": adminConnectionsTest,
-      "admin-providers_local": adminProvidersLocal,
-      "admin-memory_models": adminMemoryModels,
-      "admin-containers_inspect": adminContainersInspect,
-      "admin-containers_events": adminContainersEvents,
-      "admin-guardian_stats": adminGuardianStats,
-      "admin-network_check": adminNetworkCheck,
+      "admin-guardian-audit": adminGuardianAudit,
+      "admin-config-validate": adminConfigValidate,
+      "admin-connections-test": adminConnectionsTest,
+      "admin-providers-local": adminProvidersLocal,
+      "admin-memory-models": adminMemoryModels,
+      "admin-containers-inspect": adminContainersInspect,
+      "admin-containers-events": adminContainersEvents,
+      "admin-guardian-stats": adminGuardianStats,
+      "admin-network-check": adminNetworkCheck,
       "stack-diagnostics": stackDiagnostics,
       "message-trace": messageTrace,
 
       // admin-config
-      "admin-config_get_access_scope": adminConfig.get_access_scope,
-      "admin-config_set_access_scope": adminConfig.set_access_scope,
+      "admin-config-get-access-scope": adminConfig.get_access_scope,
+      "admin-config-set-access-scope": adminConfig.set_access_scope,
 
       // admin-containers
-      "admin-containers_list": adminContainers.list,
-      "admin-containers_up": adminContainers.up,
-      "admin-containers_down": adminContainers.down,
-      "admin-containers_restart": adminContainers.restart,
+      "admin-containers-list": adminContainers.list,
+      "admin-containers-up": adminContainers.up,
+      "admin-containers-down": adminContainers.down,
+      "admin-containers-restart": adminContainers.restart,
 
       // admin-artifacts
-      "admin-artifacts_list": adminArtifacts.list,
-      "admin-artifacts_manifest": adminArtifacts.manifest,
-      "admin-artifacts_get": adminArtifacts.get,
+      "admin-artifacts-list": adminArtifacts.list,
+      "admin-artifacts-manifest": adminArtifacts.manifest,
+      "admin-artifacts-get": adminArtifacts.get,
 
       // admin-connections
-      "admin-connections_get": adminConnections.get,
-      "admin-connections_set": adminConnections.set,
-      "admin-connections_status": adminConnections.status,
+      "admin-connections-get": adminConnections.get,
+      "admin-connections-set": adminConnections.set,
+      "admin-connections-status": adminConnections.status,
 
-      // admin-channels
-      "admin-channels_list": adminChannels.list,
-      "admin-channels_install": adminChannels.install,
-      "admin-channels_uninstall": adminChannels.uninstall,
+      // admin-addons (addon management via registry → stack/addons)
+      "admin-addons-list": adminAddons.list,
+      "admin-addons-enable": adminAddons.install,
+      "admin-addons-disable": adminAddons.uninstall,
 
       // admin-lifecycle
-      "admin-lifecycle_install": adminLifecycle.install,
-      "admin-lifecycle_update": adminLifecycle.update,
-      "admin-lifecycle_uninstall": adminLifecycle.uninstall,
-      "admin-lifecycle_installed": adminLifecycle.installed,
-      "admin-lifecycle_upgrade": adminLifecycle.upgrade,
+      "admin-lifecycle-install": adminLifecycle.install,
+      "admin-lifecycle-update": adminLifecycle.update,
+      "admin-lifecycle-uninstall": adminLifecycle.uninstall,
+      "admin-lifecycle-installed": adminLifecycle.installed,
+      "admin-lifecycle-upgrade": adminLifecycle.upgrade,
 
-      // admin-automations
-      "admin-automations_list": adminAutomations.list,
+      // admin-automations (enabled in config/automations/)
+      "admin-automations-list": adminAutomations.list,
+      "admin-automations-trigger": adminAutomations.trigger,
+      "admin-automations-log": adminAutomations.log,
+
+      // admin-automations-catalog (available in registry/automations/)
+      "admin-automations-catalog-list": adminAutomationsCatalog.list,
+      "admin-automations-catalog-install": adminAutomationsCatalog.install,
+      "admin-automations-catalog-uninstall": adminAutomationsCatalog.uninstall,
+      "admin-automations-catalog-refresh": adminAutomationsCatalog.refresh,
     },
   };
 };

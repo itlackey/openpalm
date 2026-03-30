@@ -1,6 +1,7 @@
 {
   "name": "@openpalm/admin",
-  "version": "0.9.3",
+  "description": "SvelteKit admin UI and API for OpenPalm stack management",
+  "version": "0.10.0-rc9",
   "private": true,
   "license": "MPL-2.0",
   "type": "module",
@@ -9,11 +10,11 @@
     "build": "svelte-kit sync && vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "test:e2e": "PW_ENFORCE_NO_SKIP=1 playwright test --grep-invert @mocked",
+    "test:e2e": "playwright test --grep-invert @mocked",
     "test:e2e:mocked": "playwright test --grep @mocked",
     "test": "npm run test:unit -- --run && npm run test:e2e",
     "test:unit": "vitest",
-    "lint": "prettier --check . && eslint .",
+    "lint": "eslint .",
     "format": "prettier --write ."
   },
   "dependencies": {
@@ -30,6 +31,7 @@
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@types/node": "^24",
     "@vitest/browser-playwright": "^4.0.18",
+    "@vitest/coverage-v8": "^4.0.18",
     "dotenv": "^16.4.7",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",

@@ -2,21 +2,18 @@ import { tool } from "@opencode-ai/plugin";
 import { adminFetch } from "./lib.ts";
 
 export const get_access_scope = tool({
-  description: "Get the current access scope (host-only or LAN)",
+  description: "Get the current connection status and configuration",
   async execute() {
-    return adminFetch("/admin/access-scope");
+    return adminFetch("/admin/connections/status");
   },
 });
 
 export const set_access_scope = tool({
-  description: "Set the access scope to control who can reach OpenPalm services. 'host' restricts to localhost only, 'lan' allows local network access.",
+  description: "Network scope configuration has been removed. Bind addresses are managed via stack.env variables (OP_*_BIND_ADDRESS). Use the admin UI or edit vault/stack/stack.env directly.",
   args: {
-    scope: tool.schema.enum(["host", "lan"]).describe("The access scope to set: host or lan"),
+    scope: tool.schema.enum(["host", "lan"]).describe("The access scope: host or lan"),
   },
-  async execute(args) {
-    return adminFetch("/admin/access-scope", {
-      method: "POST",
-      body: JSON.stringify({ scope: args.scope }),
-    });
+  async execute(_args) {
+    return { ok: false, error: "Access scope is now managed via OP_*_BIND_ADDRESS variables in vault/stack/stack.env. Edit the env file directly or use the admin UI." };
   },
 });

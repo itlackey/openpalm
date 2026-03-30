@@ -9,34 +9,34 @@ import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
   errorResponse,
-  requireAdmin,
+  requireAuth,
   getRequestId,
   getActor,
   getCallerType,
-  parseJsonBody
+  parseJsonBody,
+  jsonBodyError
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
   fetchProviderModels,
   LLM_PROVIDERS,
   EMBED_PROVIDERS
-} from "$lib/server/control-plane.js";
+} from "@openpalm/lib";
 
 const VALID_PROVIDERS = new Set<string>([...LLM_PROVIDERS, ...EMBED_PROVIDERS]);
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authErr = requireAdmin(event, requestId);
+  const authErr = requireAuth(event, requestId);
   if (authErr) return authErr;
 
   const state = getState();
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
-  const body = await parseJsonBody(event.request);
-  if (!body) {
-    return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
-  }
+  const parsed = await parseJsonBody(event.request);
+  if ('error' in parsed) return jsonBodyError(parsed, requestId);
+  const body = parsed.data;
   const provider = body.provider as string | undefined;
   const apiKeyRef = body.apiKeyRef as string | undefined;
   const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl : "";

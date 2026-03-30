@@ -321,3 +321,152 @@ describe('error response safety', () => {
     expect(safeMessage).not.toContain('handleRequest');
   });
 });
+
+// ── expandEnvVars and buildConfigFromEnv logic ──────────────────────
+import { expandEnvVars, buildConfigFromEnv } from './config';
+
+describe('expandEnvVars', () => {
+  test('expands simple ${VAR} placeholders', () => {
+    const result = expandEnvVars('Hello ${NAME}!', { NAME: 'World' });
+    expect(result).toBe('Hello World!');
+  });
+
+  test('expands multiple placeholders', () => {
+    const result = expandEnvVars('${A} and ${B}', { A: 'one', B: 'two' });
+    expect(result).toBe('one and two');
+  });
+
+  test('replaces unset variables with empty string', () => {
+    const result = expandEnvVars('prefix-${MISSING}-suffix', {});
+    expect(result).toBe('prefix--suffix');
+  });
+
+  test('supports ${VAR:-default} syntax', () => {
+    const result = expandEnvVars('${PORT:-8080}', {});
+    expect(result).toBe('8080');
+  });
+
+  test('uses env value over default when set', () => {
+    const result = expandEnvVars('${PORT:-8080}', { PORT: '3000' });
+    expect(result).toBe('3000');
+  });
+
+  test('handles empty env value by using default', () => {
+    const result = expandEnvVars('${PORT:-8080}', { PORT: '' });
+    expect(result).toBe('8080');
+  });
+
+  test('works with JSON template strings', () => {
+    const template = '{"provider": "${LLM_PROVIDER}", "dims": ${DIMS}}';
+    const result = expandEnvVars(template, { LLM_PROVIDER: 'openai', DIMS: '1536' });
+    expect(result).toBe('{"provider": "openai", "dims": 1536}');
+  });
+});
+
+describe('buildConfigFromEnv', () => {
+  test('returns null when SYSTEM_LLM_PROVIDER is not set', () => {
+    expect(buildConfigFromEnv({})).toBeNull();
+    expect(buildConfigFromEnv({ SYSTEM_LLM_MODEL: 'gpt-4o' })).toBeNull();
+  });
+
+  test('builds openai config from env vars', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'openai',
+      SYSTEM_LLM_MODEL: 'gpt-4o-mini',
+      SYSTEM_LLM_API_KEY: 'sk-test123',
+      EMBEDDING_MODEL: 'text-embedding-3-small',
+      EMBEDDING_DIMS: '1536',
+    });
+    expect(config).not.toBeNull();
+    expect(config!.llm!.provider).toBe('openai');
+    expect(config!.llm!.config.model).toBe('gpt-4o-mini');
+    expect(config!.llm!.config.apiKey).toBe('sk-test123');
+    expect(config!.embedder!.provider).toBe('openai');
+    expect(config!.embedder!.config.model).toBe('text-embedding-3-small');
+    expect(config!.embedder!.config.dimensions).toBe(1536);
+  });
+
+  test('builds ollama config with pre-resolved base URL', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'ollama',
+      SYSTEM_LLM_MODEL: 'qwen2.5-coder:3b',
+      SYSTEM_LLM_BASE_URL: 'http://host.docker.internal:11434',
+      EMBEDDING_MODEL: 'nomic-embed-text',
+      EMBEDDING_BASE_URL: 'http://host.docker.internal:11434',
+      EMBEDDING_DIMS: '768',
+    });
+    expect(config).not.toBeNull();
+    expect(config!.llm!.provider).toBe('ollama');
+    expect(config!.llm!.config.baseUrl).toBe('http://host.docker.internal:11434');
+    expect(config!.embedder!.provider).toBe('ollama');
+    expect(config!.embedder!.config.baseUrl).toBe('http://host.docker.internal:11434');
+    expect(config!.embedder!.config.dimensions).toBe(768);
+  });
+
+  test('uses SYSTEM_LLM_BASE_URL when set', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'openai',
+      SYSTEM_LLM_MODEL: 'gpt-4o',
+      SYSTEM_LLM_BASE_URL: 'https://custom.api.example.com/v1',
+      SYSTEM_LLM_API_KEY: 'sk-custom',
+    });
+    expect(config!.llm!.config.baseUrl).toBe('https://custom.api.example.com/v1');
+  });
+
+  test('baseUrl is undefined when SYSTEM_LLM_BASE_URL is not set', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'openai',
+      SYSTEM_LLM_MODEL: 'gpt-4o',
+      SYSTEM_LLM_API_KEY: 'sk-test',
+    });
+    expect(config!.llm!.config.baseUrl).toBeUndefined();
+  });
+
+  test('uses SYSTEM_LLM_API_KEY for any provider', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'anthropic',
+      SYSTEM_LLM_MODEL: 'claude-3-haiku-20240307',
+      SYSTEM_LLM_API_KEY: 'sk-ant-specific',
+    });
+    expect(config!.llm!.config.apiKey).toBe('sk-ant-specific');
+  });
+
+  test('apiKey is undefined when SYSTEM_LLM_API_KEY is not set', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'groq',
+      SYSTEM_LLM_MODEL: 'llama-3.1-8b-instant',
+    });
+    expect(config!.llm!.config.apiKey).toBeUndefined();
+  });
+
+  test('EMBEDDING_PROVIDER selects embedder provider independently from LLM', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'openai',
+      SYSTEM_LLM_MODEL: 'gpt-4o-mini',
+      SYSTEM_LLM_API_KEY: 'sk-test',
+      EMBEDDING_PROVIDER: 'ollama',
+      EMBEDDING_MODEL: 'nomic-embed-text',
+      EMBEDDING_BASE_URL: 'http://host.docker.internal:11434',
+      EMBEDDING_DIMS: '768',
+    });
+    expect(config!.llm!.provider).toBe('openai');
+    expect(config!.embedder!.provider).toBe('ollama');
+    expect(config!.embedder!.config.baseUrl).toBe('http://host.docker.internal:11434');
+  });
+
+  test('defaults embedding dims to 1536 when not set', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'openai',
+    });
+    expect(config!.embedder!.config.dimensions).toBe(1536);
+    expect(config!.vectorStore!.config.dimensions).toBe(1536);
+  });
+
+  test('vectorStore is always sqlite-vec', () => {
+    const config = buildConfigFromEnv({
+      SYSTEM_LLM_PROVIDER: 'openai',
+    });
+    expect(config!.vectorStore!.provider).toBe('sqlite-vec');
+    expect(config!.vectorStore!.config.collectionName).toBe('memory');
+  });
+});
