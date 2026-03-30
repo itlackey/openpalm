@@ -3,31 +3,29 @@ set -euo pipefail
 
 # deploy.sh — Deploy an OpenPalm VM to Azure.
 #
-# setup.env    — deployment config (subscription, location, etc.)
-# secrets.env  — secret values referenced as ${VAR} in the spec
-# spec file    — instance config with ${VAR} refs (no raw secrets)
+# deploy.env  — all config: Azure settings + secrets (API keys, tokens)
+# spec file   — instance config (no secrets — embedded in cloud-init)
 #
-# The spec template goes in cloud-init (safe — no secrets).
-# Only secrets.env is stored in Key Vault.
-# The VM resolves ${VAR} references at boot via envsubst.
+# Secrets from deploy.env are extracted and stored in Key Vault.
+# The VM fetches them at boot via managed identity.
 #
 # Usage:
-#   cp setup.env.example setup.env && cp secrets.env.example secrets.env
+#   cp deploy.env.example deploy.env
+#   cp example.spec.yaml deploy.spec.yaml
+#   # Edit both, then:
 #   ./deploy.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── Load config ───────────────────────────────────────────────────────
 
-SETUP_ENV="${SETUP_ENV:-${SCRIPT_DIR}/setup.env}"
-SECRETS_ENV="${SECRETS_ENV:-${SCRIPT_DIR}/secrets.env}"
-[[ -f "$SETUP_ENV" ]] || { echo "Not found: $SETUP_ENV (copy setup.env.example)" >&2; exit 1; }
-[[ -f "$SECRETS_ENV" ]] || { echo "Not found: $SECRETS_ENV (copy secrets.env.example)" >&2; exit 1; }
+DEPLOY_ENV="${DEPLOY_ENV:-${SCRIPT_DIR}/deploy.env}"
+[[ -f "$DEPLOY_ENV" ]] || { echo "Not found: $DEPLOY_ENV (copy deploy.env.example)" >&2; exit 1; }
 # shellcheck source=/dev/null
-set -a; source "$SETUP_ENV"; source "$SECRETS_ENV"; set +a
+set -a; source "$DEPLOY_ENV"; set +a
 
-: "${AZURE_SUBSCRIPTION_ID:?Set AZURE_SUBSCRIPTION_ID in setup.env}"
-: "${SETUP_SPEC_FILE:?Set SETUP_SPEC_FILE in setup.env}"
+: "${AZURE_SUBSCRIPTION_ID:?Set AZURE_SUBSCRIPTION_ID in deploy.env}"
+: "${SETUP_SPEC_FILE:?Set SETUP_SPEC_FILE in deploy.env}"
 LOCATION="${LOCATION:-eastus}"
 RESOURCE_GROUP="${RESOURCE_GROUP:-rg-openpalm-vm}"
 ADMIN_USERNAME="${ADMIN_USERNAME:-openpalm}"
@@ -42,19 +40,26 @@ command -v az >/dev/null || { echo "az CLI required" >&2; exit 1; }
 
 az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 
-# ── Build cloud-init ──────────────────────────────────────────────────
+# ── Extract secrets for Key Vault ─────────────────────────────────────
+# Secret vars are any line in deploy.env that isn't Azure deployment config.
 
 TMP="$(mktemp -d)" && trap 'rm -rf "$TMP"' EXIT
 
+grep -E '^(OP_ADMIN_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|GROQ_API_KEY|MISTRAL_API_KEY|GOOGLE_API_KEY|DEEPSEEK_API_KEY|TOGETHER_API_KEY|XAI_API_KEY|HF_TOKEN|SLACK_BOT_TOKEN|SLACK_APP_TOKEN|DISCORD_BOT_TOKEN|DISCORD_APPLICATION_ID)=' "$DEPLOY_ENV" \
+  > "${TMP}/secrets.env" 2>/dev/null || true
+[[ -s "${TMP}/secrets.env" ]] || { echo "No secrets found in $DEPLOY_ENV (need at least OP_ADMIN_TOKEN)" >&2; exit 1; }
+
+# ── Build cloud-init ──────────────────────────────────────────────────
+
 SPEC_B64="$(base64 -w0 "$SETUP_SPEC_FILE")"
-FIRST_BOOT="$(cat "${SCRIPT_DIR}/first-boot.sh")"
-BACKUP="$(cat "${SCRIPT_DIR}/backup.sh")"
+FIRST_BOOT="$(cat "${SCRIPT_DIR}/vm/first-boot.sh")"
+BACKUP="$(cat "${SCRIPT_DIR}/vm/backup.sh")"
 
 cat > "${TMP}/cloud-init.yaml" <<CLOUD_INIT
 #cloud-config
 package_update: true
 package_upgrade: true
-packages: [ca-certificates, curl, git, jq, sudo, unzip, openssl, cron, gettext-base]
+packages: [ca-certificates, curl, git, jq, sudo, unzip, openssl, cron]
 
 users:
   - default
@@ -102,15 +107,9 @@ ssh-keygen -t ed25519 -f "${TMP}/key" -N "" -q
 echo "Deploying to ${LOCATION}..."
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
 
-echo "Creating Key Vault: ${KV_NAME}..."
-az keyvault create --name "$KV_NAME" -g "$RESOURCE_GROUP" -l "$LOCATION" --output none
-az keyvault secret set --vault-name "$KV_NAME" -n "secrets" \
-  --file "$SECRETS_ENV" --output none
-
 az deployment group create \
   --resource-group "$RESOURCE_GROUP" \
   --template-file "${SCRIPT_DIR}/main.bicep" \
-  --parameters "${SCRIPT_DIR}/main.bicepparam" \
   --parameters \
     location="$LOCATION" \
     storageAccountName="$STORAGE_NAME" \
@@ -119,6 +118,10 @@ az deployment group create \
     customData="$CUSTOM_DATA" \
     keyVaultName="$KV_NAME" \
   --output none
+
+# Upload secrets after KV is created by Bicep
+az keyvault secret set --vault-name "$KV_NAME" -n "secrets" \
+  --file "${TMP}/secrets.env" --output none
 
 az extension add --name ssh --yes 2>/dev/null || true
 
