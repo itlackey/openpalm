@@ -20,9 +20,27 @@ systemctl enable --now docker
 usermod -aG docker "$ADMIN_USER"
 for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 2; done
 
-# Decode spec and install
-base64 -d /var/lib/openpalm/setup-spec.b64 > /var/lib/openpalm/setup-spec.yaml
-rm -f /var/lib/openpalm/setup-spec.b64
+# Fetch setup spec from Key Vault via managed identity (retries until access policy propagates)
+mkdir -p /var/lib/openpalm
+echo "[openpalm] fetching setup spec from Key Vault: ${VAULT_NAME}"
+for attempt in $(seq 1 30); do
+  TOKEN="$(curl -sf \
+    'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net' \
+    -H 'Metadata: true' | jq -r '.access_token')" || true
+  if [[ -n "${TOKEN:-}" && "$TOKEN" != "null" ]]; then
+    SPEC="$(curl -sf \
+      "https://${VAULT_NAME}.vault.azure.net/secrets/setup-spec?api-version=7.4" \
+      -H "Authorization: Bearer ${TOKEN}" | jq -r '.value')" || true
+    if [[ -n "${SPEC:-}" && "$SPEC" != "null" ]]; then
+      printf '%s' "$SPEC" > /var/lib/openpalm/setup-spec.yaml
+      echo "[openpalm] setup spec retrieved"
+      break
+    fi
+  fi
+  echo "[openpalm] waiting for Key Vault access (attempt ${attempt}/30)..."
+  sleep 10
+done
+[[ -f /var/lib/openpalm/setup-spec.yaml ]] || { echo "[openpalm] FATAL: could not fetch setup spec from Key Vault" >&2; exit 1; }
 chown "$ADMIN_USER":"$ADMIN_USER" /var/lib/openpalm /var/lib/openpalm/setup-spec.yaml
 chmod 600 /var/lib/openpalm/setup-spec.yaml
 

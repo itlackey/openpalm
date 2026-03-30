@@ -40,9 +40,11 @@ param osDiskSizeGB int = 64
 @description('SSH public key. NSG blocks inbound SSH — access is via az ssh vm.')
 param sshPublicKey string
 
-@description('Base64-encoded cloud-init custom data.')
-@secure()
+@description('Base64-encoded cloud-init custom data (no secrets — spec is in Key Vault).')
 param customData string
+
+@description('Name of the existing Key Vault holding the setup-spec secret.')
+param keyVaultName string
 
 // ── Variables ───────────────────────────────────────────────────────────
 
@@ -201,6 +203,26 @@ resource storageRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
     principalId: vm.identity.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageFileContributorRoleId)
+  }
+}
+
+// ── Key Vault: grant VM read access ─────────────────────────────────
+
+resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
+  name: keyVaultName
+}
+
+resource kvAccessPolicy 'Microsoft.KeyVault/vaults/accessPolicies@2023-07-01' = {
+  parent: keyVault
+  name: 'add'
+  properties: {
+    accessPolicies: [
+      {
+        tenantId: subscription().tenantId
+        objectId: vm.identity.principalId
+        permissions: { secrets: ['get'] }
+      }
+    ]
   }
 }
 

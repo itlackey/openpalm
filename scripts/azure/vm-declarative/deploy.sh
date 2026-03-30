@@ -4,8 +4,9 @@ set -euo pipefail
 # deploy.sh — Deploy an OpenPalm VM to Azure.
 #
 # You provide your setup spec (with your real secrets in it).
-# This script base64-encodes it, embeds it in cloud-init alongside the
-# bootstrap scripts, and deploys everything via Bicep.
+# This script stores the spec in Azure Key Vault, then deploys
+# infrastructure via Bicep. The VM fetches the spec from KV at
+# boot time using its managed identity — secrets never touch customData.
 #
 # Usage:
 #   export AZURE_SUBSCRIPTION_ID=...
@@ -24,6 +25,7 @@ OPENPALM_VERSION="${OPENPALM_VERSION:-v0.10.0}"
 STORAGE_NAME="${STORAGE_NAME:-stopenpalm}"
 BACKUP_SHARE="${BACKUP_SHARE:-openpalm-backups}"
 SETUP_REF="${SETUP_REF:-release/${OPENPALM_VERSION#v}}"
+KV_NAME="${KV_NAME:-kv-openpalm}"
 
 [[ -f "$SETUP_SPEC_FILE" ]] || { echo "Not found: $SETUP_SPEC_FILE" >&2; exit 1; }
 command -v az >/dev/null || { echo "az CLI required" >&2; exit 1; }
@@ -34,7 +36,6 @@ az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 
 TMP="$(mktemp -d)" && trap 'rm -rf "$TMP"' EXIT
 
-SPEC_B64="$(base64 -w0 "$SETUP_SPEC_FILE")"
 FIRST_BOOT="$(cat "${SCRIPT_DIR}/first-boot.sh")"
 BACKUP="$(cat "${SCRIPT_DIR}/backup.sh")"
 
@@ -62,10 +63,7 @@ write_files:
       SETUP_REF=${SETUP_REF}
       STORAGE_NAME=${STORAGE_NAME}
       BACKUP_SHARE=${BACKUP_SHARE}
-
-  - path: /var/lib/openpalm/setup-spec.b64
-    permissions: '0600'
-    content: ${SPEC_B64}
+      VAULT_NAME=${KV_NAME}
 
   - path: /usr/local/bin/openpalm-first-boot.sh
     permissions: '0755'
@@ -89,6 +87,13 @@ ssh-keygen -t ed25519 -f "${TMP}/key" -N "" -q
 echo "Deploying to ${LOCATION}..."
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
 
+# ── Store setup spec in Key Vault ─────────────────────────────────────
+
+echo "Creating Key Vault: ${KV_NAME}..."
+az keyvault create --name "$KV_NAME" -g "$RESOURCE_GROUP" -l "$LOCATION" --output none
+az keyvault secret set --vault-name "$KV_NAME" -n "setup-spec" \
+  --file "$SETUP_SPEC_FILE" --output none
+
 az deployment group create \
   --resource-group "$RESOURCE_GROUP" \
   --template-file "${SCRIPT_DIR}/main.bicep" \
@@ -99,6 +104,7 @@ az deployment group create \
     adminUsername="$ADMIN_USERNAME" \
     sshPublicKey="$(cat "${TMP}/key.pub")" \
     customData="$CUSTOM_DATA" \
+    keyVaultName="$KV_NAME" \
   --output none
 
 az extension add --name ssh --yes 2>/dev/null || true
@@ -112,7 +118,7 @@ VM="$(az deployment group show -g "$RESOURCE_GROUP" -n main \
 
 cat <<DONE
 
-Deployed.  Private IP: ${PRIVATE_IP}
+Deployed.  Private IP: ${PRIVATE_IP}  Key Vault: ${KV_NAME}
 
   az ssh vm -g ${RESOURCE_GROUP} -n ${VM}
   sudo tail -f /var/log/openpalm-bootstrap.log
