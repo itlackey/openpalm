@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# deploy.sh — Thin orchestrator for the Bicep-based VM deployment.
+# deploy.sh — Deploy an OpenPalm VM to Azure.
 #
-# This script handles the three things Bicep cannot:
-#   1. Writing secrets to Key Vault (values come from env vars / generation)
-#   2. Rendering the cloud-init YAML from files/
-#   3. Passing the rendered cloud-init + SSH key into the Bicep deployment
-#
-# All Azure resource definitions live in main.bicep.
+# Bicep (main.bicep) defines all Azure resources declaratively.
+# This script handles what Bicep cannot: rendering cloud-init and writing
+# secrets to Key Vault.
 #
 # Usage:
 #   export AZURE_SUBSCRIPTION_ID=...
@@ -18,38 +15,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ── Helpers ──────────────────────────────────────────────────────────────
-
-info()  { printf '  → %s\n' "$*"; }
-error() { printf '  ✗ %s\n' "$*" >&2; }
-
-require() {
-  command -v "$1" >/dev/null 2>&1 || { error "Missing required command: $1"; exit 1; }
-}
-
-generate_secret() { openssl rand -base64 32 | tr -d '/+=' | head -c 44; }
-
-resolve_setup_ref() {
-  local ver="$1" bare="${ver#v}"
-  local tag_url="https://github.com/itlackey/openpalm/releases/tag/${ver}"
-  if curl -fsSL --head "$tag_url" >/dev/null 2>&1; then
-    printf '%s\n' "$ver"
-  else
-    printf 'release/%s\n' "$bare"
-  fi
-}
-
-require az
-require python3
-require base64
-require openssl
-
-# ── Configuration ────────────────────────────────────────────────────────
-# All infra tunables live in main.bicepparam.  This script only needs the
-# values that feed into secrets and cloud-init rendering.
+# ── Config ───────────────────────────────────────────────────────────────
 
 : "${AZURE_SUBSCRIPTION_ID:?Set AZURE_SUBSCRIPTION_ID}"
-: "${SETUP_SPEC_FILE:?Set SETUP_SPEC_FILE to a local OpenPalm setup YAML/JSON file}"
+: "${SETUP_SPEC_FILE:?Set SETUP_SPEC_FILE to a local setup YAML}"
 
 LOCATION="${LOCATION:-eastus}"
 RESOURCE_GROUP="${RESOURCE_GROUP:-rg-openpalm-vm}"
@@ -61,17 +30,85 @@ BACKUP_SHARE="${BACKUP_SHARE:-openpalm-backups}"
 SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN:-}"
 SLACK_APP_TOKEN="${SLACK_APP_TOKEN:-}"
 
-OPENPALM_INSTALL_DIR="/home/${ADMIN_USERNAME}/.local/bin"
-OPENPALM_HOME="/home/${ADMIN_USERNAME}/.openpalm"
+[[ -f "$SETUP_SPEC_FILE" ]] || { echo "File not found: $SETUP_SPEC_FILE" >&2; exit 1; }
 
-[[ -f "$SETUP_SPEC_FILE" ]] || { error "SETUP_SPEC_FILE not found: $SETUP_SPEC_FILE"; exit 1; }
+# ── Helpers ──────────────────────────────────────────────────────────────
+
+generate_secret() { openssl rand -base64 32 | tr -d '/+=' | head -c 44; }
+
+resolve_setup_ref() {
+  local ver="$1"
+  if curl -fsSL --head "https://github.com/itlackey/openpalm/releases/tag/${ver}" >/dev/null 2>&1; then
+    echo "$ver"
+  else
+    echo "release/${ver#v}"
+  fi
+}
+
+render_cloud_init() {
+  # Reads first-boot.sh and backup.sh from disk, embeds them in a cloud-init
+  # YAML along with the config values and setup spec.  No templating engine
+  # needed — just a heredoc.
+  local config_content="$1" setup_b64="$2"
+  local first_boot backup
+  first_boot="$(cat "${SCRIPT_DIR}/first-boot.sh")"
+  backup="$(cat "${SCRIPT_DIR}/backup.sh")"
+
+  cat <<CLOUD_INIT
+#cloud-config
+package_update: true
+package_upgrade: true
+packages:
+  - ca-certificates
+  - curl
+  - git
+  - jq
+  - sudo
+  - unzip
+  - openssl
+  - python3
+  - python3-yaml
+  - cron
+
+users:
+  - default
+  - name: ${ADMIN_USERNAME}
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+
+write_files:
+  - path: /etc/openpalm/config
+    permissions: '0600'
+    content: |
+$(echo "$config_content" | sed 's/^/      /')
+
+  - path: /var/lib/openpalm/setup-spec.b64
+    permissions: '0600'
+    content: ${setup_b64}
+
+  - path: /usr/local/bin/openpalm-first-boot.sh
+    permissions: '0755'
+    content: |
+$(echo "$first_boot" | sed 's/^/      /')
+
+  - path: /usr/local/bin/openpalm-backup.sh
+    permissions: '0755'
+    content: |
+$(echo "$backup" | sed 's/^/      /')
+
+runcmd:
+  - [bash, -lc, /usr/local/bin/openpalm-first-boot.sh]
+CLOUD_INIT
+}
+
+# ── Resolve inputs ───────────────────────────────────────────────────────
 
 az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 
 SETUP_REF="$(resolve_setup_ref "$OPENPALM_VERSION")"
-echo "Version:    $OPENPALM_VERSION (ref: $SETUP_REF)"
-
-# ── Secrets ──────────────────────────────────────────────────────────────
+INSTALL_DIR="/home/${ADMIN_USERNAME}/.local/bin"
+OP_HOME="/home/${ADMIN_USERNAME}/.openpalm"
 
 ADMIN_TOKEN="${ADMIN_TOKEN:-$(generate_secret)}"
 ASSISTANT_TOKEN="${ASSISTANT_TOKEN:-$(generate_secret)}"
@@ -80,46 +117,38 @@ CHANNEL_SLACK_SECRET="$(generate_secret)"
 SLACK_ENABLED="false"
 [[ -n "$SLACK_BOT_TOKEN" && -n "$SLACK_APP_TOKEN" ]] && SLACK_ENABLED="true"
 
+SETUP_SPEC_B64="$(base64 -w0 "$SETUP_SPEC_FILE")"
+
+# Single config file — sourced by both first-boot.sh and backup.sh on the VM.
+CONFIG_CONTENT="ADMIN_USER=${ADMIN_USERNAME}
+OP_VERSION=${OPENPALM_VERSION}
+OP_INSTALL_DIR=${INSTALL_DIR}
+OP_HOME=${OP_HOME}
+KV_NAME=${KV_NAME}
+SETUP_REF=${SETUP_REF}
+STORAGE_NAME=${STORAGE_NAME}
+BACKUP_SHARE=${BACKUP_SHARE}"
+
 # ── Render cloud-init ────────────────────────────────────────────────────
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-SETUP_SPEC_B64="$(base64 -w0 "$SETUP_SPEC_FILE")"
-
-python3 "${SCRIPT_DIR}/render-cloud-init.py" <<EOF > "${TMP_DIR}/cloud-init.yaml"
-{
-  "admin_username":      "${ADMIN_USERNAME}",
-  "openpalm_version":    "${OPENPALM_VERSION}",
-  "openpalm_install_dir":"${OPENPALM_INSTALL_DIR}",
-  "openpalm_home":       "${OPENPALM_HOME}",
-  "setup_spec_b64":      "${SETUP_SPEC_B64}",
-  "kv_name":             "${KV_NAME}",
-  "storage_name":        "${STORAGE_NAME}",
-  "backup_share":        "${BACKUP_SHARE}",
-  "setup_ref":           "${SETUP_REF}"
-}
-EOF
-
+render_cloud_init "$CONFIG_CONTENT" "$SETUP_SPEC_B64" > "${TMP_DIR}/cloud-init.yaml"
 CUSTOM_DATA_B64="$(base64 -w0 "${TMP_DIR}/cloud-init.yaml")"
 
-# Generate a throwaway SSH key for the Bicep deployment requirement.
-# The NSG blocks inbound SSH; access is exclusively via `az ssh vm`.
-ssh-keygen -t ed25519 -f "${TMP_DIR}/deploy_key" -N "" -q
-SSH_PUB="$(cat "${TMP_DIR}/deploy_key.pub")"
+ssh-keygen -t ed25519 -f "${TMP_DIR}/key" -N "" -q
+SSH_PUB="$(cat "${TMP_DIR}/key.pub")"
 
-# ═════════════════════════════════════════════════════════════════════════
-# Phase 1 — Resource Group
-# ═════════════════════════════════════════════════════════════════════════
+echo "Version:  ${OPENPALM_VERSION} (ref: ${SETUP_REF})"
+echo "Slack:    ${SLACK_ENABLED}"
+
+# ── Deploy ───────────────────────────────────────────────────────────────
 
 echo "Creating resource group..."
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
 
-# ═════════════════════════════════════════════════════════════════════════
-# Phase 2 — Bicep deployment (all infrastructure)
-# ═════════════════════════════════════════════════════════════════════════
-
-echo "Deploying infrastructure via Bicep..."
+echo "Deploying infrastructure (Bicep)..."
 az deployment group create \
   --resource-group "$RESOURCE_GROUP" \
   --template-file "${SCRIPT_DIR}/main.bicep" \
@@ -133,69 +162,42 @@ az deployment group create \
     customData="$CUSTOM_DATA_B64" \
   --output none
 
-# Read outputs
-PRIVATE_IP="$(az deployment group show \
-  --resource-group "$RESOURCE_GROUP" \
-  --name main \
-  --query properties.outputs.privateIp.value -o tsv)"
+# ── Write secrets to Key Vault ───────────────────────────────────────────
 
-VM_NAME="$(az deployment group show \
-  --resource-group "$RESOURCE_GROUP" \
-  --name main \
-  --query properties.outputs.vmResourceId.value -o tsv | rev | cut -d/ -f1 | rev)"
-
-# ═════════════════════════════════════════════════════════════════════════
-# Phase 3 — Key Vault secrets (cannot be in Bicep — values are sensitive)
-# ═════════════════════════════════════════════════════════════════════════
-
-# Grant deployer write access
 DEPLOYER_OID="$(az ad signed-in-user show --query id -o tsv)"
 KV_ID="$(az keyvault show --name "$KV_NAME" --query id -o tsv)"
 
 az role assignment create \
-  --assignee-object-id "$DEPLOYER_OID" \
-  --assignee-principal-type User \
-  --role "Key Vault Secrets Officer" \
-  --scope "$KV_ID" \
+  --assignee-object-id "$DEPLOYER_OID" --assignee-principal-type User \
+  --role "Key Vault Secrets Officer" --scope "$KV_ID" \
   --output none 2>/dev/null || true
 
-info "Waiting for RBAC propagation..."
-sleep 10
+sleep 10  # RBAC propagation
 
 echo "Writing secrets to Key Vault..."
-kv_set() { az keyvault secret set --vault-name "$KV_NAME" --name "$1" --value "$2" --output none; }
-
-kv_set "op-admin-token"      "$ADMIN_TOKEN"
-kv_set "op-assistant-token"  "$ASSISTANT_TOKEN"
-kv_set "channel-slack-secret" "$CHANNEL_SLACK_SECRET"
-
+kv() { az keyvault secret set --vault-name "$KV_NAME" --name "$1" --value "$2" --output none; }
+kv "op-admin-token"       "$ADMIN_TOKEN"
+kv "op-assistant-token"   "$ASSISTANT_TOKEN"
+kv "channel-slack-secret" "$CHANNEL_SLACK_SECRET"
 if [[ "$SLACK_ENABLED" == "true" ]]; then
-  kv_set "slack-bot-token" "$SLACK_BOT_TOKEN"
-  kv_set "slack-app-token" "$SLACK_APP_TOKEN"
-  info "Slack tokens stored."
+  kv "slack-bot-token" "$SLACK_BOT_TOKEN"
+  kv "slack-app-token" "$SLACK_APP_TOKEN"
 fi
 
-# Ensure az ssh extension is available locally
 az extension add --name ssh --yes 2>/dev/null || true
 
-# ═════════════════════════════════════════════════════════════════════════
-# Done
-# ═════════════════════════════════════════════════════════════════════════
+# ── Output ───────────────────────────────────────────────────────────────
 
-cat <<SUMMARY
+PRIVATE_IP="$(az deployment group show \
+  --resource-group "$RESOURCE_GROUP" --name main \
+  --query properties.outputs.privateIp.value -o tsv)"
 
-VM deployment complete (VNet-only, no public IP).
+cat <<DONE
 
-  Private IP:       ${PRIVATE_IP}
-  Key Vault:        ${KV_NAME}
-  Storage Account:  ${STORAGE_NAME}/${BACKUP_SHARE}
-  Slack channel:    ${SLACK_ENABLED}
+Deployed.  Private IP: ${PRIVATE_IP}
 
-SSH via Azure CLI (Entra ID auth, no public IP required):
-  az ssh vm -g ${RESOURCE_GROUP} -n ${VM_NAME}
+  az ssh vm -g ${RESOURCE_GROUP} -n ${ADMIN_USERNAME}-vm
 
-Cloud-init is still running. After SSH, monitor with:
-  sudo tail -f /var/log/cloud-init-output.log
   sudo tail -f /var/log/openpalm-bootstrap.log
 
-SUMMARY
+DONE
