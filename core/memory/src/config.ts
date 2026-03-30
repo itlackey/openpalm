@@ -24,6 +24,8 @@ function memoryProviderName(provider: string): string {
       return 'ollama';
     case 'lmstudio':
       return 'lmstudio';
+    case 'azure_openai':
+      return 'azure_openai';
     case 'openai-compatible':
       return 'openai';
     default:

@@ -43,6 +43,7 @@ async function getMemory(): Promise<Memory> {
       return m;
     } catch (err) {
       _memoryInit = null;
+      console.error('[memory] Failed to initialize:', err);
       throw err;
     }
   })();

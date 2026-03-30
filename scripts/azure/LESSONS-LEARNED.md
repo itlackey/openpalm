@@ -132,3 +132,35 @@ docker push <name>.azurecr.io/<repo>:<tag>
 az containerapp registry set -g <rg> -n <app> --server <name>.azurecr.io --username <name> --password <key>
 az containerapp update -g <rg> -n <app> --image <name>.azurecr.io/<repo>:<tag>
 ```
+
+## 20. ACA Secret KV URI Fallback Trap
+
+The Bicep template had fallback logic: `effectiveCapLlmApiKeySecretUri = !empty(capLlmApiKeySecretUri) ? capLlmApiKeySecretUri : aiFoundryKeyVaultSecretUri`. When `capLlmApiKeySecretUri` was left blank (intending to use AI Foundry), the ACA secret `cap-llm-api-key` pointed to the `azure-ai-foundry-api-key` KV secret. After switching memory to use the standard OpenAI API (`api.openai.com/v1`), the container was still sending the AI Foundry key to OpenAI, causing `invalid_api_key`.
+
+**Fix:** Use `az containerapp secret set` to point the ACA secret to the correct KV secret (`op-cap-llm-api-key`), then create a new revision.
+
+## 21. Init Container Env Vars Are Separate From Main Container
+
+`az containerapp update --set-env-vars` only updates the main container. The init container has its own env vars that must be updated via YAML (`az containerapp update --yaml`). Since the init container generates the memory config file, failing to update its env vars means the config file has stale values even after updating the main container.
+
+## 22. Docker Hub Authenticated Pulls
+
+Anonymous Docker Hub pulls from ACA are rate-limited (100 pulls/6hr per IP). After hitting the limit, no new revisions can be created.
+
+**Fix:**
+
+```bash
+az containerapp registry set -g <rg> -n <app> --server docker.io --username <user> --password <pat>
+```
+
+Set this on **all** container apps that pull from Docker Hub. Store the PAT securely.
+
+## 23. Memory Service Error Logging
+
+The memory service catches errors in request handlers and returns generic `{"detail":"Internal server error"}` without logging the actual error to stdout. Added `console.error('[memory] Failed to initialize:', err)` to the `getMemory()` catch block so initialization failures (sqlite-vec, embedding, LLM config) are visible in `az containerapp logs`.
+
+## 24. Azure OpenAI Requires Dedicated Provider
+
+The existing `openai` memory provider appends `/chat/completions` to a base URL. Azure OpenAI requires `/openai/deployments/{name}/chat/completions?api-version=2024-10-21` with an `api-key` header instead of `Authorization: Bearer`. These are fundamentally incompatible URL patterns.
+
+**Solution:** Created `azure_openai` provider (LLM + Embedder) that handles deployment-based routing natively. Set `capLlmProvider = 'azure_openai'` in Bicep params to use it. For now, memory uses the standard OpenAI API (`api.openai.com/v1`) which works with the existing `openai` provider and no code changes.
