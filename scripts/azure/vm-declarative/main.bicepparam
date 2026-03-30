@@ -3,7 +3,6 @@ using './main.bicep'
 param storageAccountName = 'stopenpalm'
 param sshPublicKey = '__SSH_PUBLIC_KEY__'
 param customData = '__CUSTOM_DATA__'
-param keyVaultName = '__KEY_VAULT_NAME__'
 
 // Override any defaults here:
 // param prefix = 'openpalm'

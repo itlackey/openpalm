@@ -1,56 +1,45 @@
-# Example OpenPalm setup spec.
-# Copy this file, fill in your real values, and pass it as SETUP_SPEC_FILE.
-# The CLI reads this directly — put your actual secrets here.
+# Example OpenPalm setup spec for file-based install.
+#
+# Secrets (API keys, admin token) are NOT stored here.
+# They come from environment variables at install time.
+#
+# Local usage:
+#   export OP_ADMIN_TOKEN=your-admin-token
+#   export OPENAI_API_KEY=sk-...
+#   openpalm install --file setup-spec.yaml
+#
+# Azure VM deployment:
+#   Secrets go in secrets.env (stored in Key Vault).
+#   first-boot.sh sources them before running install.
 
 version: 2
-spec:
-  owner:
-    name: Your Name
-    email: you@example.com
-
-  security:
-    adminToken: change-me-to-a-long-random-secret
-    accessScope: local
-
-  connections:
-    - id: azure-openai
-      name: Azure OpenAI
-      provider: openai
-      baseUrl: https://YOUR-RESOURCE.openai.azure.com/openai/v1
-      apiKey: YOUR_API_KEY
-      managed: false
-
-  assignments:
-    llm:
-      connectionId: azure-openai
-      model: gpt-4o
-    embeddings:
-      connectionId: azure-openai
-      model: text-embedding-3-large
-
+capabilities:
+  llm: openai/gpt-4o
+  embeddings:
+    provider: openai
+    model: text-embedding-3-large
+    dims: 0
   memory:
-    enabled: true
+    userId: default_user
 
-  channels:
-    api:
-      enabled: true
-    slack:
-      enabled: true
-    discord:
-      enabled: false
-    voice:
-      enabled: false
+# adminToken resolved from OP_ADMIN_TOKEN env var
+security: {}
 
-  # Slack tokens — only needed if channels.slack.enabled is true.
-  channelCredentials:
-    slack:
-      slackBotToken: xoxb-YOUR-BOT-TOKEN
-      slackAppToken: xapp-YOUR-APP-TOKEN
+owner:
+  name: Your Name
+  email: you@example.com
 
-  services:
-    admin:
-      enabled: true
-    guardian:
-      enabled: true
-    scheduler:
-      enabled: true
+# Provider connections.
+# apiKey is optional — resolved from standard env vars (OPENAI_API_KEY, etc.)
+connections:
+  - id: openai-main
+    name: OpenAI
+    provider: openai
+    baseUrl: ""
+    apiKey: ""
+
+# Channel credentials resolved from env vars (SLACK_BOT_TOKEN, etc.)
+# channelCredentials:
+#   slack:
+#     slackBotToken: ""
+#     slackAppToken: ""

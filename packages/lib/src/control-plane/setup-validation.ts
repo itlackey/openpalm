@@ -22,7 +22,7 @@ export function validateSetupSpec(input: unknown): { valid: boolean; errors: str
 
   validateSecurity(body, errors);
   validateOwner(body, errors);
-  validateCapabilitiesArray(body.capabilities, errors);
+  validateConnectionsArray(body.connections, errors);
   validateSpecCapabilities(body, errors);
   if (body.channelCredentials !== undefined && (typeof body.channelCredentials !== "object" || body.channelCredentials === null)) {
     errors.push("channelCredentials must be an object if provided");
@@ -45,48 +45,46 @@ function validateOwner(body: Record<string, unknown>, errors: string[]): void {
 }
 
 function validateSpecCapabilities(body: Record<string, unknown>, errors: string[]): void {
-  const spec = requireObj(body.spec, "spec object is required", errors);
-  if (!spec) return;
-  if (spec.version !== 2) errors.push("spec.version must be 2");
-  const caps = requireObj(spec.capabilities, "spec.capabilities is required", errors);
+  if (body.version !== 2) errors.push("version must be 2");
+  const caps = requireObj(body.capabilities, "capabilities is required", errors);
   if (!caps) return;
-  requireStr(caps, "llm", "spec.capabilities.llm is required (format: 'provider/model')", errors);
-  const emb = requireObj(caps.embeddings, "spec.capabilities.embeddings is required", errors);
+  requireStr(caps, "llm", "capabilities.llm is required (format: 'provider/model')", errors);
+  const emb = requireObj(caps.embeddings, "capabilities.embeddings is required", errors);
   if (emb) {
-    requireStr(emb, "provider", "spec.capabilities.embeddings.provider is required", errors);
-    requireStr(emb, "model", "spec.capabilities.embeddings.model is required", errors);
+    requireStr(emb, "provider", "capabilities.embeddings.provider is required", errors);
+    requireStr(emb, "model", "capabilities.embeddings.model is required", errors);
     if (emb.dims !== undefined && emb.dims !== 0 && (typeof emb.dims !== "number" || !Number.isInteger(emb.dims) || emb.dims < 1)) {
-      errors.push("spec.capabilities.embeddings.dims must be a positive integer or 0 (auto-resolve)");
+      errors.push("capabilities.embeddings.dims must be a positive integer or 0 (auto-resolve)");
     }
   }
-  const mem = requireObj(caps.memory, "spec.capabilities.memory is required", errors);
+  const mem = requireObj(caps.memory, "capabilities.memory is required", errors);
   if (!mem) return;
-  if (mem.userId !== undefined && typeof mem.userId !== "string") errors.push("spec.capabilities.memory.userId must be a string if provided");
+  if (mem.userId !== undefined && typeof mem.userId !== "string") errors.push("capabilities.memory.userId must be a string if provided");
   if (typeof mem.userId === "string" && mem.userId && !/^[A-Za-z0-9_]+$/.test(mem.userId)) {
-    errors.push("spec.capabilities.memory.userId contains invalid characters (alphanumeric and underscores only)");
+    errors.push("capabilities.memory.userId contains invalid characters (alphanumeric and underscores only)");
   }
 }
 
-function validateCapabilitiesArray(capabilities: unknown, errors: string[]): void {
-  if (!Array.isArray(capabilities)) {
-    errors.push("capabilities must be an array");
+function validateConnectionsArray(connections: unknown, errors: string[]): void {
+  if (!Array.isArray(connections)) {
+    errors.push("connections must be an array");
     return;
   }
   const seenIds = new Set<string>();
-  for (let i = 0; i < capabilities.length; i++) {
-    const c = capabilities[i];
-    if (typeof c !== "object" || c === null) { errors.push(`capabilities[${i}] must be an object`); continue; }
+  for (let i = 0; i < connections.length; i++) {
+    const c = connections[i];
+    if (typeof c !== "object" || c === null) { errors.push(`connections[${i}] must be an object`); continue; }
     const cap = c as Record<string, unknown>;
     const id = typeof cap.id === "string" ? cap.id.trim() : "";
     const provider = typeof cap.provider === "string" ? cap.provider.trim() : "";
     const name = typeof cap.name === "string" ? cap.name.trim() : "";
 
-    if (!id) errors.push(`capabilities[${i}].id is required`);
-    else if (!CAPABILITY_ID_RE.test(id)) errors.push(`capabilities[${i}].id must start with a letter or digit (allowed: A-Z, a-z, 0-9, _, -)`);
+    if (!id) errors.push(`connections[${i}].id is required`);
+    else if (!CAPABILITY_ID_RE.test(id)) errors.push(`connections[${i}].id must start with a letter or digit (allowed: A-Z, a-z, 0-9, _, -)`);
     else if (seenIds.has(id)) errors.push(`Duplicate capability ID: ${id}`);
     else seenIds.add(id);
 
-    if (!name) errors.push(`capabilities[${i}].name is required`);
-    if (!provider) errors.push(`capabilities[${i}].provider is required`);
+    if (!name) errors.push(`connections[${i}].name is required`);
+    if (!provider) errors.push(`connections[${i}].provider is required`);
   }
 }

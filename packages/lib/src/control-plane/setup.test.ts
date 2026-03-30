@@ -8,7 +8,7 @@ import {
   buildSystemSecretsFromSetup,
   performSetup,
 } from "./setup.js";
-import type { SetupSpec, SetupCapability } from "./setup.js";
+import type { SetupSpec, SetupConnection } from "./setup.js";
 import { STACK_SPEC_FILENAME, readStackSpec } from "./stack-spec.js";
 import type { StackSpec } from "./stack-spec.js";
 
@@ -16,24 +16,22 @@ import type { StackSpec } from "./stack-spec.js";
 
 function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
   return {
-    spec: {
-      version: 2,
-      capabilities: {
-        llm: "openai/gpt-4o",
-        embeddings: {
-          provider: "openai",
-          model: "text-embedding-3-small",
-          dims: 1536,
-        },
-        memory: {
-          userId: "test_user",
-          customInstructions: "",
-        },
+    version: 2,
+    capabilities: {
+      llm: "openai/gpt-4o",
+      embeddings: {
+        provider: "openai",
+        model: "text-embedding-3-small",
+        dims: 1536,
+      },
+      memory: {
+        userId: "test_user",
+        customInstructions: "",
       },
     },
     security: { adminToken: "test-admin-token-12345" },
     owner: { name: "Test User", email: "test@example.com" },
-    capabilities: [
+    connections: [
       {
         id: "openai-main",
         name: "OpenAI",
@@ -102,21 +100,21 @@ describe("validateSetupSpec", () => {
     expect(result.errors.some((e) => e.includes("at least 8"))).toBe(true);
   });
 
-  it("accepts empty capabilities array", () => {
-    const spec = makeValidSpec({ capabilities: [] });
+  it("accepts empty connections array", () => {
+    const spec = makeValidSpec({ connections: [] });
     const result = validateSetupSpec(spec);
     expect(result.valid).toBe(true);
   });
 
-  it("rejects duplicate capability IDs", () => {
-    const conn: SetupCapability = {
+  it("rejects duplicate connection IDs", () => {
+    const conn: SetupConnection = {
       id: "dup",
       name: "Dup",
       provider: "openai",
       baseUrl: "",
       apiKey: "",
     };
-    const spec = makeValidSpec({ capabilities: [conn, conn] });
+    const spec = makeValidSpec({ connections: [conn, conn] });
     const result = validateSetupSpec(spec);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes("Duplicate"))).toBe(true);
@@ -124,7 +122,7 @@ describe("validateSetupSpec", () => {
 
   it("accepts any provider string", () => {
     const spec = makeValidSpec({
-      capabilities: [
+      connections: [
         { id: "custom", name: "Custom", provider: "any-provider", baseUrl: "", apiKey: "" },
       ],
     });
@@ -132,9 +130,9 @@ describe("validateSetupSpec", () => {
     expect(result.valid).toBe(true);
   });
 
-  it("rejects invalid capability ID pattern", () => {
+  it("rejects invalid connection ID pattern", () => {
     const spec = makeValidSpec({
-      capabilities: [
+      connections: [
         { id: "-invalid", name: "Bad", provider: "openai", baseUrl: "", apiKey: "" },
       ],
     });
@@ -143,57 +141,49 @@ describe("validateSetupSpec", () => {
     expect(result.errors.some((e) => e.includes("must start with a letter or digit"))).toBe(true);
   });
 
-  it("rejects missing spec object", () => {
+  it("rejects wrong version", () => {
     const input = makeValidSpec();
-    (input as Record<string, unknown>).spec = null;
+    (input as Record<string, unknown>).version = 1;
     const result = validateSetupSpec(input);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("spec object is required"))).toBe(true);
-  });
-
-  it("rejects wrong spec version", () => {
-    const input = makeValidSpec();
-    (input.spec as Record<string, unknown>).version = 1;
-    const result = validateSetupSpec(input);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("spec.version must be 2"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("version must be 2"))).toBe(true);
   });
 
   it("rejects missing capabilities.llm", () => {
     const input = makeValidSpec();
-    (input.spec.capabilities as Record<string, unknown>).llm = "";
+    (input.capabilities as Record<string, unknown>).llm = "";
     const result = validateSetupSpec(input);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("spec.capabilities.llm"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("capabilities.llm"))).toBe(true);
   });
 
   it("rejects missing capabilities.embeddings", () => {
     const input = makeValidSpec();
-    (input.spec.capabilities as Record<string, unknown>).embeddings = null;
+    (input.capabilities as Record<string, unknown>).embeddings = null;
     const result = validateSetupSpec(input);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("spec.capabilities.embeddings"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("capabilities.embeddings"))).toBe(true);
   });
 
   it("rejects missing capabilities.memory", () => {
     const input = makeValidSpec();
-    (input.spec.capabilities as Record<string, unknown>).memory = null;
+    (input.capabilities as Record<string, unknown>).memory = null;
     const result = validateSetupSpec(input);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("spec.capabilities.memory"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("capabilities.memory"))).toBe(true);
   });
 
   it("rejects non-integer embeddings.dims", () => {
     const input = makeValidSpec();
-    input.spec.capabilities.embeddings.dims = 1.5;
+    input.capabilities.embeddings.dims = 1.5;
     const result = validateSetupSpec(input);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes("dims must be a positive integer"))).toBe(true);  // or 0 (auto-resolve)
   });
 
-  it("accepts multiple capabilities with different IDs", () => {
+  it("accepts multiple connections with different IDs", () => {
     const spec = makeValidSpec({
-      capabilities: [
+      connections: [
         { id: "openai-main", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-abc" },
         { id: "ollama-local", name: "Ollama", provider: "ollama", baseUrl: "http://localhost:11434", apiKey: "" },
       ],
@@ -204,7 +194,7 @@ describe("validateSetupSpec", () => {
 
   it("rejects memory.userId with dots", () => {
     const input = makeValidSpec();
-    input.spec.capabilities.memory.userId = "user.name";
+    input.capabilities.memory.userId = "user.name";
     const result = validateSetupSpec(input);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes("alphanumeric and underscores only"))).toBe(true);
@@ -212,7 +202,7 @@ describe("validateSetupSpec", () => {
 
   it("rejects memory.userId with hyphens", () => {
     const input = makeValidSpec();
-    input.spec.capabilities.memory.userId = "user-name";
+    input.capabilities.memory.userId = "user-name";
     const result = validateSetupSpec(input);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes("alphanumeric and underscores only"))).toBe(true);
@@ -220,7 +210,7 @@ describe("validateSetupSpec", () => {
 
   it("accepts memory.userId with underscores", () => {
     const input = makeValidSpec();
-    input.spec.capabilities.memory.userId = "user_name_123";
+    input.capabilities.memory.userId = "user_name_123";
     const result = validateSetupSpec(input);
     expect(result.valid).toBe(true);
   });
@@ -241,7 +231,7 @@ describe("validateSetupSpec", () => {
 
   it("accepts valid memory section", () => {
     const spec = makeValidSpec();
-    spec.spec.capabilities.memory.userId = "my_user";
+    spec.capabilities.memory.userId = "my_user";
     const result = validateSetupSpec(spec);
     expect(result.valid).toBe(true);
   });
@@ -252,14 +242,14 @@ describe("validateSetupSpec", () => {
 describe("buildSecretsFromSetup", () => {
   it("does not include admin token in user secrets", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.capabilities, spec.owner);
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.OP_ADMIN_TOKEN).toBeUndefined();
     expect(secrets.ADMIN_TOKEN).toBeUndefined();
   });
 
   it("does not include SYSTEM_LLM_* in user secrets (lives in stack.env via OP_CAP_*)", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.capabilities, spec.owner);
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.SYSTEM_LLM_PROVIDER).toBeUndefined();
     expect(secrets.SYSTEM_LLM_MODEL).toBeUndefined();
     expect(secrets.SYSTEM_LLM_BASE_URL).toBeUndefined();
@@ -267,38 +257,68 @@ describe("buildSecretsFromSetup", () => {
 
   it("persists OPENAI_BASE_URL from openai connection", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.capabilities, spec.owner);
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.OPENAI_BASE_URL).toBe("https://api.openai.com");
   });
 
   it("does not include MEMORY_USER_ID in user secrets (lives in stack.env via OP_CAP_*)", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.capabilities, spec.owner);
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.MEMORY_USER_ID).toBeUndefined();
   });
 
   it("sets owner info when provided", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.capabilities, spec.owner);
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.OWNER_NAME).toBe("Test User");
     expect(secrets.OWNER_EMAIL).toBe("test@example.com");
   });
 
   it("omits owner info when empty", () => {
     const spec = makeValidSpec({ owner: { name: "", email: "" } });
-    const secrets = buildSecretsFromSetup(spec.capabilities, spec.owner);
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.OWNER_NAME).toBeUndefined();
     expect(secrets.OWNER_EMAIL).toBeUndefined();
   });
 
   it("maps API key to correct env var", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.capabilities, spec.owner);
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.OPENAI_API_KEY).toBe("sk-test-key-123");
   });
 
+  it("falls back to process.env when apiKey is empty", () => {
+    const saved = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "sk-from-env";
+    try {
+      const caps: SetupConnection[] = [
+        { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "" },
+      ];
+      const secrets = buildSecretsFromSetup(caps);
+      expect(secrets.OPENAI_API_KEY).toBe("sk-from-env");
+    } finally {
+      if (saved !== undefined) process.env.OPENAI_API_KEY = saved;
+      else delete process.env.OPENAI_API_KEY;
+    }
+  });
+
+  it("spec apiKey takes precedence over process.env", () => {
+    const saved = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "sk-from-env";
+    try {
+      const caps: SetupConnection[] = [
+        { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-from-spec" },
+      ];
+      const secrets = buildSecretsFromSetup(caps);
+      expect(secrets.OPENAI_API_KEY).toBe("sk-from-spec");
+    } finally {
+      if (saved !== undefined) process.env.OPENAI_API_KEY = saved;
+      else delete process.env.OPENAI_API_KEY;
+    }
+  });
+
   it("does not include Ollama base URL in user secrets when ollamaEnabled (lives in stack.env via OP_CAP_*)", () => {
-    const caps: SetupCapability[] = [
+    const caps: SetupConnection[] = [
       { id: "ollama-1", name: "Ollama", provider: "ollama", baseUrl: "http://localhost:11434", apiKey: "" },
     ];
     const secrets = buildSecretsFromSetup(caps);
@@ -450,22 +470,19 @@ describe("performSetup", () => {
 
   it("writes ollama capabilities without addon metadata in stack.yml", async () => {
     const input = makeValidSpec({
-      spec: {
-        version: 2,
-        capabilities: {
-          llm: "ollama/llama3.2",
-          embeddings: {
-            provider: "ollama",
-            model: "nomic-embed-text",
-            dims: 768,
-          },
-          memory: {
-            userId: "test_user",
-            customInstructions: "",
-          },
+      capabilities: {
+        llm: "ollama/llama3.2",
+        embeddings: {
+          provider: "ollama",
+          model: "nomic-embed-text",
+          dims: 768,
+        },
+        memory: {
+          userId: "test_user",
+          customInstructions: "",
         },
       },
-      capabilities: [
+      connections: [
         {
           id: "ollama-local",
           name: "Ollama",
@@ -488,22 +505,19 @@ describe("performSetup", () => {
 
   it("resolves embedding dims from EMBEDDING_DIMS lookup", async () => {
     const input = makeValidSpec({
-      spec: {
-        version: 2,
-        capabilities: {
-          llm: "ollama/llama3.2",
-          embeddings: {
-            provider: "ollama",
-            model: "nomic-embed-text",
-            dims: 0, // Should be resolved from lookup
-          },
-          memory: {
-            userId: "test_user",
-            customInstructions: "",
-          },
+      capabilities: {
+        llm: "ollama/llama3.2",
+        embeddings: {
+          provider: "ollama",
+          model: "nomic-embed-text",
+          dims: 0, // Should be resolved from lookup
+        },
+        memory: {
+          userId: "test_user",
+          customInstructions: "",
         },
       },
-      capabilities: [
+      connections: [
         {
           id: "ollama-local",
           name: "Ollama",
@@ -538,9 +552,9 @@ describe("performSetup", () => {
     expect(spec!.capabilities.memory.userId).toBe("test_user");
   });
 
-  it("completes setup even when duplicate capability ID with hyphen is skipped by env var map", async () => {
+  it("completes setup even when duplicate connection ID with hyphen is skipped by env var map", async () => {
     const input = makeValidSpec({
-      capabilities: [
+      connections: [
         { id: "openai_primary", name: "OpenAI Primary", provider: "openai", baseUrl: "https://api.openai.com", apiKey: "sk-primary" },
         { id: "openai-secondary", name: "OpenAI Secondary", provider: "openai", baseUrl: "https://api.openai.com", apiKey: "sk-secondary" },
       ],
@@ -564,19 +578,16 @@ describe("performSetup", () => {
           applicationId: "discord-app-id-123",
         },
       },
-      spec: {
-        version: 2,
-        capabilities: {
-          llm: "openai/gpt-4o",
-          embeddings: {
-            provider: "openai",
-            model: "text-embedding-3-small",
-            dims: 1536,
-          },
-          memory: {
-            userId: "test_user",
-            customInstructions: "",
-          },
+      capabilities: {
+        llm: "openai/gpt-4o",
+        embeddings: {
+          provider: "openai",
+          model: "text-embedding-3-small",
+          dims: 1536,
+        },
+        memory: {
+          userId: "test_user",
+          customInstructions: "",
         },
       },
     });

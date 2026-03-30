@@ -20,36 +20,47 @@ systemctl enable --now docker
 usermod -aG docker "$ADMIN_USER"
 for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 2; done
 
-# Fetch setup spec from Key Vault via managed identity (retries until access policy propagates)
+# Decode setup spec from cloud-init (no secrets — safe in cloud-init)
 mkdir -p /var/lib/openpalm
-echo "[openpalm] fetching setup spec from Key Vault: ${VAULT_NAME}"
+base64 -d /var/lib/openpalm/setup-spec.b64 > /var/lib/openpalm/setup-spec.yaml
+rm -f /var/lib/openpalm/setup-spec.b64
+echo "[openpalm] setup spec decoded"
+
+# Fetch secrets from Key Vault via managed identity
+echo "[openpalm] fetching secrets from Key Vault: ${VAULT_NAME}"
+SECRETS_FILE=/var/lib/openpalm/secrets.env
 for attempt in $(seq 1 30); do
   TOKEN="$(curl -sf \
     'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net' \
     -H 'Metadata: true' | jq -r '.access_token')" || true
   if [[ -n "${TOKEN:-}" && "$TOKEN" != "null" ]]; then
-    SPEC="$(curl -sf \
-      "https://${VAULT_NAME}.vault.azure.net/secrets/setup-spec?api-version=7.4" \
+    SECRETS="$(curl -sf \
+      "https://${VAULT_NAME}.vault.azure.net/secrets/secrets?api-version=7.4" \
       -H "Authorization: Bearer ${TOKEN}" | jq -r '.value')" || true
-    if [[ -n "${SPEC:-}" && "$SPEC" != "null" ]]; then
-      printf '%s' "$SPEC" > /var/lib/openpalm/setup-spec.yaml
-      echo "[openpalm] setup spec retrieved"
+    if [[ -n "${SECRETS:-}" && "$SECRETS" != "null" ]]; then
+      printf '%s\n' "$SECRETS" > "$SECRETS_FILE"
+      chmod 600 "$SECRETS_FILE"
+      echo "[openpalm] secrets fetched"
       break
     fi
   fi
   echo "[openpalm] waiting for Key Vault access (attempt ${attempt}/30)..."
   sleep 10
 done
-[[ -f /var/lib/openpalm/setup-spec.yaml ]] || { echo "[openpalm] FATAL: could not fetch setup spec from Key Vault" >&2; exit 1; }
-chown "$ADMIN_USER":"$ADMIN_USER" /var/lib/openpalm /var/lib/openpalm/setup-spec.yaml
-chmod 600 /var/lib/openpalm/setup-spec.yaml
+[[ -f "$SECRETS_FILE" ]] || { echo "[openpalm] FATAL: could not fetch secrets from Key Vault" >&2; exit 1; }
+chown "$ADMIN_USER":"$ADMIN_USER" /var/lib/openpalm /var/lib/openpalm/setup-spec.yaml "$SECRETS_FILE"
 
 SETUP_URL="https://raw.githubusercontent.com/itlackey/openpalm/${SETUP_REF}/scripts/setup.sh"
 mkdir -p "$OP_INSTALL_DIR"
 chown -R "$ADMIN_USER":"$ADMIN_USER" "$(dirname "$OP_INSTALL_DIR")"
 
-sudo -u "$ADMIN_USER" -H env OP_INSTALL_DIR="$OP_INSTALL_DIR" OP_HOME="$OP_HOME" \
-  bash -c "curl -fsSL ${SETUP_URL} | bash -s -- --version ${OP_VERSION} --force --no-open --file /var/lib/openpalm/setup-spec.yaml"
+# Secrets are sourced into env — install resolves them from env vars (no envsubst)
+sudo -u "$ADMIN_USER" -H bash -c "
+  set -a; source ${SECRETS_FILE}; set +a
+  export OP_INSTALL_DIR='${OP_INSTALL_DIR}' OP_HOME='${OP_HOME}'
+  curl -fsSL ${SETUP_URL} | bash -s -- --version ${OP_VERSION} --force --no-open --file /var/lib/openpalm/setup-spec.yaml
+"
+rm -f "$SECRETS_FILE"
 
 # Install Azure CLI (for backup cron, not critical path)
 curl -sL https://aka.ms/InstallAzureCLIDeb | bash

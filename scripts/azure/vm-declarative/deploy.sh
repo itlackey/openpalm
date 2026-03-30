@@ -3,34 +3,31 @@ set -euo pipefail
 
 # deploy.sh — Deploy an OpenPalm VM to Azure.
 #
-# You provide your setup spec (with your real secrets in it).
-# This script stores the spec in Azure Key Vault, then deploys
-# infrastructure via Bicep. The VM fetches the spec from KV at
-# boot time using its managed identity — secrets never touch customData.
+# setup.env    — deployment config (subscription, location, etc.)
+# secrets.env  — secret values referenced as ${VAR} in the spec
+# spec file    — instance config with ${VAR} refs (no raw secrets)
+#
+# The spec template goes in cloud-init (safe — no secrets).
+# Only secrets.env is stored in Key Vault.
+# The VM resolves ${VAR} references at boot via envsubst.
 #
 # Usage:
-#   cp setup.env.example setup.env   # fill in your values
+#   cp setup.env.example setup.env && cp secrets.env.example secrets.env
 #   ./deploy.sh
-#
-# Or with env vars:  AZURE_SUBSCRIPTION_ID=... SETUP_SPEC_FILE=... ./deploy.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Load setup.env if present (env vars already set in the shell take precedence)
+# ── Load config ───────────────────────────────────────────────────────
+
 SETUP_ENV="${SETUP_ENV:-${SCRIPT_DIR}/setup.env}"
-if [[ -f "$SETUP_ENV" ]]; then
-  while IFS='=' read -r key value; do
-    key="${key%%[[:space:]]*}"                    # trim trailing whitespace from key
-    value="${value#[[:space:]]}"                  # trim leading whitespace from value
-    [[ -z "$key" || "$key" == \#* ]] && continue  # skip blanks and comments
-    [[ -n "${!key+x}" ]] && continue              # don't overwrite existing env vars
-    export "$key=$value"
-  done < "$SETUP_ENV"
-fi
+SECRETS_ENV="${SECRETS_ENV:-${SCRIPT_DIR}/secrets.env}"
+[[ -f "$SETUP_ENV" ]] || { echo "Not found: $SETUP_ENV (copy setup.env.example)" >&2; exit 1; }
+[[ -f "$SECRETS_ENV" ]] || { echo "Not found: $SECRETS_ENV (copy secrets.env.example)" >&2; exit 1; }
+# shellcheck source=/dev/null
+set -a; source "$SETUP_ENV"; source "$SECRETS_ENV"; set +a
 
-: "${AZURE_SUBSCRIPTION_ID:?Set AZURE_SUBSCRIPTION_ID (in setup.env or environment)}"
-: "${SETUP_SPEC_FILE:?Set SETUP_SPEC_FILE (in setup.env or environment)}"
-
+: "${AZURE_SUBSCRIPTION_ID:?Set AZURE_SUBSCRIPTION_ID in setup.env}"
+: "${SETUP_SPEC_FILE:?Set SETUP_SPEC_FILE in setup.env}"
 LOCATION="${LOCATION:-eastus}"
 RESOURCE_GROUP="${RESOURCE_GROUP:-rg-openpalm-vm}"
 ADMIN_USERNAME="${ADMIN_USERNAME:-openpalm}"
@@ -45,10 +42,11 @@ command -v az >/dev/null || { echo "az CLI required" >&2; exit 1; }
 
 az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 
-# ── Build cloud-init ────────────────────────────────────────────────────
+# ── Build cloud-init ──────────────────────────────────────────────────
 
 TMP="$(mktemp -d)" && trap 'rm -rf "$TMP"' EXIT
 
+SPEC_B64="$(base64 -w0 "$SETUP_SPEC_FILE")"
 FIRST_BOOT="$(cat "${SCRIPT_DIR}/first-boot.sh")"
 BACKUP="$(cat "${SCRIPT_DIR}/backup.sh")"
 
@@ -56,7 +54,7 @@ cat > "${TMP}/cloud-init.yaml" <<CLOUD_INIT
 #cloud-config
 package_update: true
 package_upgrade: true
-packages: [ca-certificates, curl, git, jq, sudo, unzip, openssl, cron]
+packages: [ca-certificates, curl, git, jq, sudo, unzip, openssl, cron, gettext-base]
 
 users:
   - default
@@ -78,6 +76,10 @@ write_files:
       BACKUP_SHARE=${BACKUP_SHARE}
       VAULT_NAME=${KV_NAME}
 
+  - path: /var/lib/openpalm/setup-spec.b64
+    permissions: '0600'
+    content: ${SPEC_B64}
+
   - path: /usr/local/bin/openpalm-first-boot.sh
     permissions: '0755'
     content: |
@@ -95,17 +97,15 @@ CLOUD_INIT
 CUSTOM_DATA="$(base64 -w0 "${TMP}/cloud-init.yaml")"
 ssh-keygen -t ed25519 -f "${TMP}/key" -N "" -q
 
-# ── Deploy ───────────────────────────────────────────────────────────────
+# ── Deploy ────────────────────────────────────────────────────────────
 
 echo "Deploying to ${LOCATION}..."
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
 
-# ── Store setup spec in Key Vault ─────────────────────────────────────
-
 echo "Creating Key Vault: ${KV_NAME}..."
 az keyvault create --name "$KV_NAME" -g "$RESOURCE_GROUP" -l "$LOCATION" --output none
-az keyvault secret set --vault-name "$KV_NAME" -n "setup-spec" \
-  --file "$SETUP_SPEC_FILE" --output none
+az keyvault secret set --vault-name "$KV_NAME" -n "secrets" \
+  --file "$SECRETS_ENV" --output none
 
 az deployment group create \
   --resource-group "$RESOURCE_GROUP" \
@@ -122,7 +122,7 @@ az deployment group create \
 
 az extension add --name ssh --yes 2>/dev/null || true
 
-# ── Done ─────────────────────────────────────────────────────────────────
+# ── Done ──────────────────────────────────────────────────────────────
 
 PRIVATE_IP="$(az deployment group show -g "$RESOURCE_GROUP" -n main \
   --query properties.outputs.privateIp.value -o tsv)"

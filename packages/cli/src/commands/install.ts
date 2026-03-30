@@ -291,8 +291,15 @@ async function runFileInstall(filePath: string, noStart: boolean): Promise<void>
     throw new Error(`Setup config file not found: ${filePath}. Check the --file path and try again.`);
   }
   const config = await parseConfigFile(filePath, await Bun.file(filePath).text());
-  if (config.version === 1) throw new Error('v1 setup config format is no longer supported. Use the v2 SetupSpec format (with a "spec" field).');
-  if (!config.spec) throw new Error('Setup config must contain a "spec" field with the v2 StackSpec.');
+  if (config.version !== 2) throw new Error('Setup config must be version 2. See setup-spec.example.yaml for the format.');
+  if (!config.capabilities) throw new Error('Setup config must contain a "capabilities" field.');
+
+  // Resolve security.adminToken from environment when not in spec
+  const security = (config.security ?? {}) as Record<string, unknown>;
+  if (!security.adminToken && process.env.OP_ADMIN_TOKEN) {
+    security.adminToken = process.env.OP_ADMIN_TOKEN;
+    config.security = security;
+  }
 
   const result = await performSetup(config as unknown as SetupSpec);
   if (!result.ok) throw new Error(`Setup failed: ${result.error}`);

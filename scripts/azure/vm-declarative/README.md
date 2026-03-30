@@ -1,117 +1,95 @@
 # Azure VM Deployment (Declarative)
 
-Deploy OpenPalm to a single Azure VM with one command. The script provisions
-all infrastructure via Bicep and bootstraps the stack automatically on first boot.
+Deploy OpenPalm to a single Azure VM with one command.
 
 ## What gets created
 
 | Resource | Purpose |
 |----------|---------|
 | Resource Group | Container for all resources |
-| Key Vault | Stores your setup spec (API keys, tokens) |
-| VNet + Subnet + NSG | Private network; only guardian port 3899 open within VNet |
-| Storage Account + File Share | Daily encrypted backups |
+| Key Vault | Stores secrets (API keys, tokens) |
+| VNet + Subnet + NSG | Private network; only guardian port 3899 within VNet |
+| Storage Account + File Share | Daily backups |
 | Ubuntu 24.04 VM | Runs the OpenPalm Docker Compose stack |
 
-The VM has no public IP. SSH access is via `az ssh vm` (Entra ID authentication).
+No public IP. SSH via `az ssh vm` (Entra ID).
 
 ## Prerequisites
 
-- [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) (`az`) installed and logged in
-- An Azure subscription with permission to create resources
-- A setup spec file with your configuration (see `setup-spec.example.yaml`)
+- [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) logged in
+- An Azure subscription
+- A setup spec (see `setup-spec.example.yaml`)
 
 ## Quick start
 
 ```bash
-# 1. Create your config files
 cp setup.env.example setup.env
+cp secrets.env.example secrets.env
 cp setup-spec.example.yaml my-setup.yaml
 
-# 2. Edit both files with your real values
-#    - setup.env: subscription ID, file path, optional overrides
-#    - my-setup.yaml: LLM connections, API keys, channel tokens
-
-# 3. Deploy
+# Edit all three, then:
 ./deploy.sh
 ```
 
 ## Configuration
 
-### setup.env
-
-All variables for `deploy.sh` can be set in a `setup.env` file (ignored by git).
-Environment variables already set in your shell take precedence over the file.
+### setup.env — deployment config
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `AZURE_SUBSCRIPTION_ID` | Yes | | Azure subscription to deploy into |
-| `SETUP_SPEC_FILE` | Yes | | Path to your setup spec YAML |
+| `AZURE_SUBSCRIPTION_ID` | Yes | | Azure subscription |
+| `SETUP_SPEC_FILE` | Yes | | Path to setup spec YAML |
 | `LOCATION` | No | `eastus` | Azure region |
 | `RESOURCE_GROUP` | No | `rg-openpalm-vm` | Resource group name |
 | `ADMIN_USERNAME` | No | `openpalm` | VM admin user |
-| `OPENPALM_VERSION` | No | `v0.10.0` | OpenPalm release to install |
-| `STORAGE_NAME` | No | `stopenpalm` | Storage account name (globally unique) |
+| `OPENPALM_VERSION` | No | `v0.10.0` | OpenPalm release |
+| `STORAGE_NAME` | No | `stopenpalm` | Storage account (globally unique) |
 | `BACKUP_SHARE` | No | `openpalm-backups` | Azure Files share name |
 | `KV_NAME` | No | `kv-openpalm` | Key Vault name (globally unique) |
 
-> `KV_NAME` and `STORAGE_NAME` must be globally unique in Azure. Override them
-> if deploying multiple instances or if the defaults are taken.
+### secrets.env — secret values
 
-### Setup spec
+Contains actual secret values (`OP_ADMIN_TOKEN`, `OPENAI_API_KEY`, etc.).
+Env var names match `PROVIDER_KEY_MAP`. Stored in Key Vault.
+Fetched by the VM at boot and sourced into the install environment.
 
-The setup spec (`setup-spec.example.yaml`) defines your OpenPalm instance:
-connections, API keys, channels, memory settings, etc. See the example file
-for the full schema.
+### setup spec — instance config (v2 SetupSpec)
 
-This file contains secrets. It is stored in Azure Key Vault at deploy time
-and fetched by the VM via managed identity at boot. It never appears in
-cloud-init customData, IMDS, or deployment logs.
+Defines capabilities, owner, and provider connections. Contains NO secrets.
+The spec goes in cloud-init (safe). At boot, `first-boot.sh` sources
+secrets from Key Vault into env vars, then runs `openpalm install --file`.
+The install command resolves API keys and tokens from the environment.
 
-## What happens during deployment
+## How it works
 
-1. **deploy.sh** creates the resource group, Key Vault, and stores your setup spec as a secret
-2. **Bicep** (`main.bicep`) provisions the VNet, NSG, storage, NIC, and VM
-3. **Bicep** adds a Key Vault access policy granting the VM's managed identity read access
-4. **cloud-init** runs on first boot: installs packages, writes config and scripts
-5. **first-boot.sh** installs Docker, fetches the setup spec from Key Vault, and runs `openpalm install`
-6. **backup.sh** is installed as a daily cron job (3 AM UTC) backing up to Azure Files
+1. `deploy.sh` stores `secrets.env` in Key Vault, embeds the spec (no secrets) in cloud-init, deploys Bicep
+2. Bicep provisions infra + grants VM managed identity read access to Key Vault
+3. `first-boot.sh` installs Docker, fetches secrets from KV into env, runs `openpalm install --file`
+4. `backup.sh` runs daily at 3 AM UTC via cron
 
 ## After deployment
 
 ```bash
-# SSH into the VM (no public IP — uses Entra ID via Azure CLI)
 az ssh vm -g rg-openpalm-vm -n openpalm-vm
-
-# Watch bootstrap progress
 sudo tail -f /var/log/openpalm-bootstrap.log
-
-# Check the stack
-docker compose ls
-docker compose ps
 ```
 
 ## Tear down
 
 ```bash
 az group delete --name rg-openpalm-vm --yes --no-wait
-```
-
-This deletes all resources including the Key Vault (soft-deleted for 90 days).
-To permanently purge the Key Vault name for reuse:
-
-```bash
-az keyvault purge --name kv-openpalm
+az keyvault purge --name kv-openpalm   # free up the globally-unique name
 ```
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `deploy.sh` | Entry point: builds cloud-init, creates KV, deploys Bicep |
-| `setup.env.example` | Template for deployment variables |
-| `setup-spec.example.yaml` | Template for OpenPalm instance configuration |
-| `main.bicep` | Azure infrastructure (VNet, NSG, storage, VM, RBAC) |
+| `deploy.sh` | Entry point |
+| `setup.env.example` | Deployment config template |
+| `secrets.env.example` | Secret values template (stored in KV) |
+| `setup-spec.example.yaml` | v2 SetupSpec (no secrets — API keys come from env) |
+| `main.bicep` | Azure infrastructure |
 | `main.bicepparam` | Bicep parameter defaults |
-| `first-boot.sh` | VM bootstrap: Docker install, KV fetch, `openpalm install` |
-| `backup.sh` | Daily backup script (cron, managed identity, Azure Files) |
+| `first-boot.sh` | VM bootstrap: Docker, KV secrets into env, install |
+| `backup.sh` | Daily backup to Azure Files |

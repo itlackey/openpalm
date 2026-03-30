@@ -220,24 +220,22 @@ describe("setup wizard server integration", () => {
 
     try {
       const body = {
-        spec: {
-          version: 2,
-          capabilities: {
-            llm: "ollama/qwen2.5-coder:3b",
-            embeddings: {
-              provider: "ollama",
-              model: "nomic-embed-text",
-              dims: 768,
-            },
-            memory: {
-              userId: "integ_user",
-              customInstructions: "",
-            },
+        version: 2,
+        capabilities: {
+          llm: "ollama/qwen2.5-coder:3b",
+          embeddings: {
+            provider: "ollama",
+            model: "nomic-embed-text",
+            dims: 768,
+          },
+          memory: {
+            userId: "integ_user",
+            customInstructions: "",
           },
         },
         security: { adminToken: "integration-test-token-123" },
         owner: { name: "Integration Test", email: "integ@test.local" },
-        capabilities: [
+        connections: [
           {
             id: "ollama-local",
             name: "Ollama Local",
@@ -301,24 +299,22 @@ describe("setup wizard server integration", () => {
 
       // Complete setup
       const body = {
-        spec: {
-          version: 2,
-          capabilities: {
-            llm: "openai/gpt-4o",
-            embeddings: {
-              provider: "openai",
-              model: "text-embedding-3-small",
-              dims: 1536,
-            },
-            memory: {
-              userId: "status_user",
-              customInstructions: "",
-            },
+        version: 2,
+        capabilities: {
+          llm: "openai/gpt-4o",
+          embeddings: {
+            provider: "openai",
+            model: "text-embedding-3-small",
+            dims: 1536,
+          },
+          memory: {
+            userId: "status_user",
+            customInstructions: "",
           },
         },
         security: { adminToken: "status-test-token-123" },
         owner: { name: "Status Test", email: "status@test.local" },
-        capabilities: [
+        connections: [
           {
             id: "openai-test",
             name: "OpenAI",
@@ -429,24 +425,22 @@ describe("setup wizard server integration", () => {
 
     try {
       const body = {
-        spec: {
-          version: 2,
-          capabilities: {
-            llm: "openai/gpt-4o",
-            embeddings: {
-              provider: "openai",
-              model: "text-embedding-3-small",
-              dims: 1536,
-            },
-            memory: {
-              userId: "retry_user",
-              customInstructions: "",
-            },
+        version: 2,
+        capabilities: {
+          llm: "openai/gpt-4o",
+          embeddings: {
+            provider: "openai",
+            model: "text-embedding-3-small",
+            dims: 1536,
+          },
+          memory: {
+            userId: "retry_user",
+            customInstructions: "",
           },
         },
         security: { adminToken: "retry-test-token-123" },
         owner: { name: "Retry Test", email: "retry@test.local" },
-        capabilities: [
+        connections: [
           {
             id: "openai-retry",
             name: "OpenAI",
