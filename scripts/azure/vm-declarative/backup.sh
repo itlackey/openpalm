@@ -8,6 +8,7 @@ exec >> /var/log/openpalm-backup.log 2>&1
 echo "[backup] started at $(date -u)"
 
 source /etc/openpalm/config
+az login --identity --output none
 
 OP_HOME="/home/${ADMIN_USER}/.openpalm"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"

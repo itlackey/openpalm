@@ -1,45 +1,30 @@
-// main.bicep — All Azure infrastructure for an OpenPalm VM deployment.
+// main.bicep — Azure infrastructure for an OpenPalm VM deployment.
 //
-// Creates:
-//   - Virtual Network + Subnet
-//   - Network Security Group (guardian-only ingress from VNet)
-//   - Key Vault (RBAC-enabled, stores secrets)
-//   - Storage Account + File Share (backups)
-//   - Ubuntu 24.04 LTS VM with system-assigned managed identity
-//   - RBAC role assignments (VM → Key Vault, VM → Storage)
-//
-// Usage:
-//   az deployment group create -g <rg> -f main.bicep -p main.bicepparam
+// Creates: VNet + Subnet + NSG, Storage Account + File Share, VM.
+// The VM has no public IP. SSH is via `az ssh vm` (Entra ID).
+// Only guardian port 3899 is reachable, and only from within the VNet.
 
-// ── Parameters ──────────────────────────────────────────────────────────
-
-@description('Azure region for all resources.')
+@description('Azure region.')
 param location string = resourceGroup().location
 
-@description('Short prefix used in resource names (e.g. "openpalm").')
+@description('Naming prefix for resources.')
 param prefix string = 'openpalm'
 
-// Key Vault & Storage names must be globally unique.
-@description('Key Vault name (globally unique, 3-24 chars, alphanumeric + hyphens).')
-param keyVaultName string
-
-@description('Storage Account name (globally unique, 3-24 chars, lowercase alphanumeric).')
+@description('Storage Account name (globally unique).')
 param storageAccountName string
 
-@description('Name of the Azure Files share for backups.')
+@description('Backup file share name.')
 param backupShareName string = 'openpalm-backups'
 
 @description('Backup share quota in GB.')
 param backupShareQuota int = 50
 
-// Networking
 @description('VNet address space.')
 param vnetAddressPrefix string = '10.0.0.0/16'
 
-@description('VM subnet CIDR.')
+@description('Subnet CIDR.')
 param subnetPrefix string = '10.0.1.0/24'
 
-// VM
 @description('VM name.')
 param vmName string = '${prefix}-vm'
 
@@ -52,27 +37,12 @@ param vmSize string = 'Standard_B1ms'
 @description('OS disk size in GB.')
 param osDiskSizeGB int = 64
 
-@description('VM image publisher.')
-param imagePublisher string = 'Canonical'
-
-@description('VM image offer.')
-param imageOffer string = 'ubuntu-24_04-lts'
-
-@description('VM image SKU.')
-param imageSku string = 'server'
-
-@description('VM image version.')
-param imageVersion string = 'latest'
-
-@description('SSH public key for the VM admin user. Required by Azure but the NSG blocks inbound SSH — access is via `az ssh vm` (Entra ID).')
+@description('SSH public key. NSG blocks inbound SSH — access is via az ssh vm.')
 param sshPublicKey string
 
 @description('Base64-encoded cloud-init custom data.')
 @secure()
 param customData string
-
-@description('Guardian port allowed from VNet.')
-param guardianPort int = 3899
 
 // ── Variables ───────────────────────────────────────────────────────────
 
@@ -80,7 +50,7 @@ var vnetName = 'vnet-${prefix}'
 var subnetName = 'snet-${prefix}-vm'
 var nsgName = 'nsg-${prefix}-vm'
 
-// ── Network Security Group ──────────────────────────────────────────────
+// ── NSG ─────────────────────────────────────────────────────────────────
 
 resource nsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   name: nsgName
@@ -97,7 +67,7 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
           sourceAddressPrefix: 'VirtualNetwork'
           destinationAddressPrefix: '*'
           sourcePortRange: '*'
-          destinationPortRange: string(guardianPort)
+          destinationPortRange: '3899'
         }
       }
       {
@@ -117,57 +87,33 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   }
 }
 
-// ── Virtual Network ─────────────────────────────────────────────────────
+// ── VNet ────────────────────────────────────────────────────────────────
 
 resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
   name: vnetName
   location: location
   properties: {
-    addressSpace: {
-      addressPrefixes: [vnetAddressPrefix]
-    }
+    addressSpace: { addressPrefixes: [vnetAddressPrefix] }
     subnets: [
       {
         name: subnetName
         properties: {
           addressPrefix: subnetPrefix
-          networkSecurityGroup: {
-            id: nsg.id
-          }
+          networkSecurityGroup: { id: nsg.id }
         }
       }
     ]
   }
 }
 
-// ── Key Vault ───────────────────────────────────────────────────────────
-
-resource keyVault 'Microsoft.KeyVault/vaults@2024-04-01-preview' = {
-  name: keyVaultName
-  location: location
-  properties: {
-    tenantId: subscription().tenantId
-    sku: {
-      family: 'A'
-      name: 'standard'
-    }
-    enableRbacAuthorization: true
-    enableSoftDelete: true
-    softDeleteRetentionInDays: 7
-  }
-}
-
 // ── Storage Account ─────────────────────────────────────────────────────
 
-resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: storageAccountName
   location: location
-  sku: {
-    name: 'Standard_LRS'
-  }
+  sku: { name: 'Standard_LRS' }
   kind: 'StorageV2'
   properties: {
-    accessTier: 'Hot'
     minimumTlsVersion: 'TLS1_2'
     supportsHttpsTrafficOnly: true
     allowBlobPublicAccess: false
@@ -175,19 +121,17 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
 }
 
 resource fileServices 'Microsoft.Storage/storageAccounts/fileServices@2023-05-01' = {
-  parent: storageAccount
+  parent: storage
   name: 'default'
 }
 
 resource backupShare 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-05-01' = {
   parent: fileServices
   name: backupShareName
-  properties: {
-    shareQuota: backupShareQuota
-  }
+  properties: { shareQuota: backupShareQuota }
 }
 
-// ── VM NIC (no public IP) ───────────────────────────────────────────────
+// ── NIC ─────────────────────────────────────────────────────────────────
 
 resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
   name: '${vmName}-nic'
@@ -198,27 +142,21 @@ resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
         name: 'ipconfig1'
         properties: {
           privateIPAllocationMethod: 'Dynamic'
-          subnet: {
-            id: vnet.properties.subnets[0].id
-          }
+          subnet: { id: vnet.properties.subnets[0].id }
         }
       }
     ]
   }
 }
 
-// ── Virtual Machine ─────────────────────────────────────────────────────
+// ── VM ──────────────────────────────────────────────────────────────────
 
 resource vm 'Microsoft.Compute/virtualMachines@2024-07-01' = {
   name: vmName
   location: location
-  identity: {
-    type: 'SystemAssigned'
-  }
+  identity: { type: 'SystemAssigned' }
   properties: {
-    hardwareProfile: {
-      vmSize: vmSize
-    }
+    hardwareProfile: { vmSize: vmSize }
     osProfile: {
       computerName: vmName
       adminUsername: adminUsername
@@ -237,52 +175,28 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-07-01' = {
     }
     storageProfile: {
       imageReference: {
-        publisher: imagePublisher
-        offer: imageOffer
-        sku: imageSku
-        version: imageVersion
+        publisher: 'Canonical'
+        offer: 'ubuntu-24_04-lts'
+        sku: 'server'
+        version: 'latest'
       }
       osDisk: {
         createOption: 'FromImage'
         diskSizeGB: osDiskSizeGB
-        managedDisk: {
-          storageAccountType: 'Standard_LRS'
-        }
+        managedDisk: { storageAccountType: 'Standard_LRS' }
       }
     }
-    networkProfile: {
-      networkInterfaces: [
-        {
-          id: nic.id
-        }
-      ]
-    }
+    networkProfile: { networkInterfaces: [{ id: nic.id }] }
   }
 }
 
-// ── RBAC: VM identity → Key Vault Secrets User ──────────────────────────
+// ── RBAC: VM → Storage (for backup.sh) ──────────────────────────────────
 
-// Built-in role: Key Vault Secrets User
-var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
-
-resource kvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVault.id, vm.id, keyVaultSecretsUserRoleId)
-  scope: keyVault
-  properties: {
-    principalId: vm.identity.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultSecretsUserRoleId)
-  }
-}
-
-// ── RBAC: VM identity → Storage File Data Privileged Contributor ────────
-
-// Built-in role: Storage File Data Privileged Contributor
 var storageFileContributorRoleId = '69566ab7-960f-475b-8e7c-b3118f30c6bd'
 
-resource storageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storageAccount.id, vm.id, storageFileContributorRoleId)
-  scope: storageAccount
+resource storageRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storage.id, vm.id, storageFileContributorRoleId)
+  scope: storage
   properties: {
     principalId: vm.identity.principalId
     principalType: 'ServicePrincipal'
@@ -292,26 +206,5 @@ resource storageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-
 
 // ── Outputs ─────────────────────────────────────────────────────────────
 
-@description('Private IP address of the VM.')
 output privateIp string = nic.properties.ipConfigurations[0].properties.privateIPAddress
-
-@description('VM resource ID.')
-output vmResourceId string = vm.id
-
-@description('VM system-assigned identity principal ID.')
-output vmPrincipalId string = vm.identity.principalId
-
-@description('Key Vault resource ID.')
-output keyVaultId string = keyVault.id
-
-@description('Key Vault URI.')
-output keyVaultUri string = keyVault.properties.vaultUri
-
-@description('Storage Account resource ID.')
-output storageAccountId string = storageAccount.id
-
-@description('VNet name.')
-output vnetName string = vnet.name
-
-@description('Subnet name.')
-output subnetName string = vnet.properties.subnets[0].name
+output vmName string = vm.name
