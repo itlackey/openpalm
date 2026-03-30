@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Deploy a Debian 13 Azure VM, install Docker + OpenPalm CLI, and run
+# Deploy an Ubuntu 24.04 LTS Azure VM, install Docker + OpenPalm CLI, and run
 # `openpalm install --file ...` on first boot via cloud-init.
 #
 # Required:
@@ -16,13 +16,8 @@ set -euo pipefail
 #   export SSH_PUBLIC_KEY_FILE="$HOME/.ssh/id_ed25519.pub"
 #   export OPENPALM_VERSION=v0.10.0
 #
-# Optional image overrides if the inferred Debian 13 Marketplace values differ
-# in your region/subscription:
-#   export IMAGE_PUBLISHER=supportedimagesllc1615494954880
-#   export IMAGE_OFFER=debian-13
-#   export IMAGE_SKU=debian-13
-#   export IMAGE_VERSION=latest
-#   export IMAGE_URN="publisher:offer:sku:version"
+# Optional image override (must be a Debian-based image):
+#   export IMAGE_URN="Canonical:ubuntu-24_04-lts:server:latest"
 
 require() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -42,18 +37,17 @@ LOCATION="${LOCATION:-eastus}"
 RESOURCE_GROUP="${RESOURCE_GROUP:-rg-openpalm-vm}"
 VM_NAME="${VM_NAME:-openpalm-vm}"
 ADMIN_USERNAME="${ADMIN_USERNAME:-openpalm}"
-VM_SIZE="${VM_SIZE:-Standard_B1s}"
+VM_SIZE="${VM_SIZE:-Standard_B2s}"
+OS_DISK_SIZE="${OS_DISK_SIZE:-64}"
 SSH_PUBLIC_KEY_FILE="${SSH_PUBLIC_KEY_FILE:-$HOME/.ssh/id_ed25519.pub}"
 OPENPALM_VERSION="${OPENPALM_VERSION:-v0.10.0}"
 OPENPALM_INSTALL_DIR="${OPENPALM_INSTALL_DIR:-/home/${ADMIN_USERNAME}/.local/bin}"
 OPENPALM_HOME="${OPENPALM_HOME:-/home/${ADMIN_USERNAME}/.openpalm}"
 TAGS="${TAGS:-app=openpalm env=dev managed-by=azure-cli}"
 
-IMAGE_PUBLISHER="${IMAGE_PUBLISHER:-supportedimagesllc1615494954880}"
-IMAGE_OFFER="${IMAGE_OFFER:-debian-13}"
-IMAGE_SKU="${IMAGE_SKU:-debian-13}"
-IMAGE_VERSION="${IMAGE_VERSION:-latest}"
-IMAGE_URN="${IMAGE_URN:-}"
+# Ubuntu 24.04 LTS — first-party Canonical image, no marketplace terms needed,
+# Debian-based, LTS support through 2029, excellent Docker compatibility.
+IMAGE_URN="${IMAGE_URN:-Canonical:ubuntu-24_04-lts:server:latest}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLOUD_INIT_TEMPLATE="${CLOUD_INIT_TEMPLATE:-${SCRIPT_DIR}/cloud-init-openpalm-cli.yaml.tpl}"
@@ -77,17 +71,7 @@ fi
 
 az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 
-if [[ -z "$IMAGE_URN" ]]; then
-  IMAGE_URN="${IMAGE_PUBLISHER}:${IMAGE_OFFER}:${IMAGE_SKU}:${IMAGE_VERSION}"
-fi
-
 echo "Using image URN: $IMAGE_URN"
-
-echo "Checking Azure Marketplace terms for image..."
-if ! az vm image terms accept --urn "$IMAGE_URN" >/dev/null 2>&1; then
-  echo "Warning: failed to auto-accept image terms for $IMAGE_URN." >&2
-  echo "If VM creation fails, verify the image URN for your region and accept terms manually." >&2
-fi
 
 SETUP_SPEC_B64="$(base64 -w0 "$SETUP_SPEC_FILE")"
 SSH_PUBLIC_KEY_CONTENT="$(cat "$SSH_PUBLIC_KEY_FILE")"
@@ -121,13 +105,14 @@ PY
 echo "Creating resource group..."
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --tags $TAGS >/dev/null
 
-echo "Creating VM..."
+echo "Creating VM (size: $VM_SIZE, disk: ${OS_DISK_SIZE}GB)..."
 az vm create \
   --resource-group "$RESOURCE_GROUP" \
   --name "$VM_NAME" \
   --location "$LOCATION" \
   --image "$IMAGE_URN" \
   --size "$VM_SIZE" \
+  --os-disk-size-gb "$OS_DISK_SIZE" \
   --admin-username "$ADMIN_USERNAME" \
   --ssh-key-values "$SSH_PUBLIC_KEY_FILE" \
   --custom-data "$TMP_DIR/cloud-init.yaml" \
@@ -136,13 +121,23 @@ az vm create \
   --tags $TAGS \
   --output jsonc
 
+echo "Opening firewall ports for OpenPalm services..."
+az vm open-port \
+  --resource-group "$RESOURCE_GROUP" \
+  --name "$VM_NAME" \
+  --port 3800,3880 \
+  --priority 1010 >/dev/null
+
 PUBLIC_IP="$(az vm show -d -g "$RESOURCE_GROUP" -n "$VM_NAME" --query publicIps -o tsv)"
 
 echo
-
 echo "VM deployment complete."
-echo "SSH: ssh ${ADMIN_USERNAME}@${PUBLIC_IP}"
-echo "OpenPalm CLI path: ${OPENPALM_INSTALL_DIR}/openpalm"
-echo "Cloud-init log: sudo tail -f /var/log/cloud-init-output.log"
-echo "First-boot OpenPalm install log: sudo tail -f /var/log/openpalm-bootstrap.log"
+echo "  SSH:              ssh ${ADMIN_USERNAME}@${PUBLIC_IP}"
+echo "  Assistant API:    http://${PUBLIC_IP}:3800"
+echo "  Admin UI:         http://${PUBLIC_IP}:3880"
+echo "  OpenPalm CLI:     ${OPENPALM_INSTALL_DIR}/openpalm"
+echo
+echo "Cloud-init is still running. Monitor progress with:"
+echo "  sudo tail -f /var/log/cloud-init-output.log"
+echo "  sudo tail -f /var/log/openpalm-bootstrap.log"
 echo

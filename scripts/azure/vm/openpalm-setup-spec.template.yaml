@@ -1,7 +1,10 @@
 # OpenPalm setup file for CLI-driven install.
 # The current release CLI requires a v2-style document with a top-level `spec` field.
-# Fill in values to match your final setup schema before deploying.
-# This template reflects the current schema direction discussed for OpenPalm setup.
+# Fill in values to match your environment before deploying.
+#
+# Azure OpenAI base URL format:
+#   https://<RESOURCE_NAME>.openai.azure.com/openai/v1
+# The API key can be found in the Azure Portal under your resource's Keys section.
 
 version: 2
 spec:
