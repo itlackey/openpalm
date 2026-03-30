@@ -5,12 +5,22 @@ set -euo pipefail
 # OpenPalm CLI, and run `openpalm install --file ...` on first boot via
 # cloud-init.
 #
+# Infrastructure created:
+#   - VNet + subnet + NSG (guardian-only ingress from VNet)
+#   - Key Vault for secrets (Slack tokens, admin/assistant tokens)
+#   - Storage Account for backups (openpalm-data file share)
+#   - VM with system-assigned managed identity (reads Key Vault, writes Storage)
+#
 # The VM has NO public IP.  SSH access is via `az ssh vm`.  Only the guardian
 # service port (3899) is reachable from within the VNet.
 #
 # Required:
 #   export AZURE_SUBSCRIPTION_ID=...
 #   export SETUP_SPEC_FILE=./openpalm-setup-spec.yaml
+#
+# Required for Slack channel:
+#   export SLACK_BOT_TOKEN=xoxb-...
+#   export SLACK_APP_TOKEN=xapp-...
 #
 # Recommended:
 #   export LOCATION=eastus
@@ -20,10 +30,12 @@ set -euo pipefail
 #   export OPENPALM_VERSION=v0.10.0
 #
 # Optional:
-#   export VNET_NAME=vnet-openpalm          # name of the VNet to create
-#   export VNET_PREFIX=10.0.0.0/16          # VNet address space
-#   export SUBNET_NAME=snet-openpalm-vm     # subnet for the VM
-#   export SUBNET_PREFIX=10.0.1.0/24        # subnet CIDR
+#   export VNET_NAME=vnet-openpalm
+#   export VNET_PREFIX=10.0.0.0/16
+#   export SUBNET_NAME=snet-openpalm-vm
+#   export SUBNET_PREFIX=10.0.1.0/24
+#   export KV_NAME=kv-openpalm-vm          # Key Vault name (globally unique)
+#   export STORAGE_NAME=stopenpalm          # Storage Account name (globally unique)
 #   export IMAGE_URN="Canonical:ubuntu-24_04-lts:server:latest"
 
 require() {
@@ -36,6 +48,7 @@ require() {
 require az
 require python3
 require base64
+require openssl
 
 : "${AZURE_SUBSCRIPTION_ID:?Set AZURE_SUBSCRIPTION_ID}"
 : "${SETUP_SPEC_FILE:?Set SETUP_SPEC_FILE to a local OpenPalm setup YAML/JSON file}"
@@ -57,6 +70,15 @@ VNET_PREFIX="${VNET_PREFIX:-10.0.0.0/16}"
 SUBNET_NAME="${SUBNET_NAME:-snet-openpalm-vm}"
 SUBNET_PREFIX="${SUBNET_PREFIX:-10.0.1.0/24}"
 NSG_NAME="${NSG_NAME:-nsg-openpalm-vm}"
+
+# Key Vault & Storage (names must be globally unique — override as needed)
+KV_NAME="${KV_NAME:-kv-openpalm-vm}"
+STORAGE_NAME="${STORAGE_NAME:-stopenpalm}"
+BACKUP_SHARE="${BACKUP_SHARE:-openpalm-backups}"
+
+# Slack tokens (optional — Slack channel is enabled only when both are set)
+SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN:-}"
+SLACK_APP_TOKEN="${SLACK_APP_TOKEN:-}"
 
 # Ubuntu 24.04 LTS — first-party Canonical image, no marketplace terms needed,
 # Debian-based, LTS support through 2029, excellent Docker compatibility.
@@ -81,7 +103,19 @@ az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 
 echo "Using image URN: $IMAGE_URN"
 
+# ── Generate internal secrets if not already set ─────────────────────────
+generate_secret() { openssl rand -base64 32 | tr -d '/+=' | head -c 44; }
+
+ADMIN_TOKEN="${ADMIN_TOKEN:-$(generate_secret)}"
+ASSISTANT_TOKEN="${ASSISTANT_TOKEN:-$(generate_secret)}"
+CHANNEL_SLACK_SECRET="$(generate_secret)"
+
 SETUP_SPEC_B64="$(base64 -w0 "$SETUP_SPEC_FILE")"
+
+SLACK_ENABLED="false"
+if [[ -n "$SLACK_BOT_TOKEN" && -n "$SLACK_APP_TOKEN" ]]; then
+  SLACK_ENABLED="true"
+fi
 
 export TEMPLATE_ADMIN_USERNAME="$ADMIN_USERNAME"
 export TEMPLATE_OPENPALM_VERSION="$OPENPALM_VERSION"
@@ -89,6 +123,9 @@ export TEMPLATE_OPENPALM_INSTALL_DIR="$OPENPALM_INSTALL_DIR"
 export TEMPLATE_OPENPALM_HOME="$OPENPALM_HOME"
 export TEMPLATE_SETUP_SPEC_B64="$SETUP_SPEC_B64"
 export TEMPLATE_SSH_PUBLIC_KEY=""
+export TEMPLATE_KV_NAME="$KV_NAME"
+export TEMPLATE_STORAGE_NAME="$STORAGE_NAME"
+export TEMPLATE_BACKUP_SHARE="$BACKUP_SHARE"
 export CLOUD_INIT_TEMPLATE_PATH="$CLOUD_INIT_TEMPLATE"
 
 python3 - <<'PY' > "$TMP_DIR/cloud-init.yaml"
@@ -104,6 +141,9 @@ for key in [
     "TEMPLATE_OPENPALM_HOME",
     "TEMPLATE_SETUP_SPEC_B64",
     "TEMPLATE_SSH_PUBLIC_KEY",
+    "TEMPLATE_KV_NAME",
+    "TEMPLATE_STORAGE_NAME",
+    "TEMPLATE_BACKUP_SHARE",
 ]:
     text = text.replace(f"__{key}__", os.environ[key])
 print(text)
@@ -111,6 +151,63 @@ PY
 
 echo "Creating resource group..."
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --tags $TAGS >/dev/null
+
+# ── Key Vault ────────────────────────────────────────────────────────────
+echo "Creating Key Vault..."
+az keyvault create \
+  --resource-group "$RESOURCE_GROUP" \
+  --name "$KV_NAME" \
+  --location "$LOCATION" \
+  --enable-rbac-authorization true \
+  --tags $TAGS \
+  --output none
+
+# Grant the current deployer "Key Vault Secrets Officer" so we can write secrets
+DEPLOYER_OID="$(az ad signed-in-user show --query id -o tsv)"
+KV_ID="$(az keyvault show --name "$KV_NAME" --query id -o tsv)"
+
+az role assignment create \
+  --assignee-object-id "$DEPLOYER_OID" \
+  --assignee-principal-type User \
+  --role "Key Vault Secrets Officer" \
+  --scope "$KV_ID" \
+  --output none 2>/dev/null || true
+
+# Brief wait for RBAC propagation
+sleep 10
+
+echo "Writing secrets to Key Vault..."
+set_secret() { az keyvault secret set --vault-name "$KV_NAME" --name "$1" --value "$2" --output none; }
+set_secret "op-admin-token" "$ADMIN_TOKEN"
+set_secret "op-assistant-token" "$ASSISTANT_TOKEN"
+set_secret "channel-slack-secret" "$CHANNEL_SLACK_SECRET"
+if [[ "$SLACK_ENABLED" == "true" ]]; then
+  set_secret "slack-bot-token" "$SLACK_BOT_TOKEN"
+  set_secret "slack-app-token" "$SLACK_APP_TOKEN"
+  echo "  Slack tokens stored in Key Vault."
+fi
+
+# ── Storage Account (backups) ────────────────────────────────────────────
+echo "Creating Storage Account for backups..."
+az storage account create \
+  --resource-group "$RESOURCE_GROUP" \
+  --name "$STORAGE_NAME" \
+  --location "$LOCATION" \
+  --sku Standard_LRS \
+  --kind StorageV2 \
+  --min-tls-version TLS1_2 \
+  --allow-blob-public-access false \
+  --tags $TAGS \
+  --output none
+
+STORAGE_KEY="$(az storage account keys list --resource-group "$RESOURCE_GROUP" --account-name "$STORAGE_NAME" --query '[0].value' -o tsv)"
+
+az storage share create \
+  --account-name "$STORAGE_NAME" \
+  --account-key "$STORAGE_KEY" \
+  --name "$BACKUP_SHARE" \
+  --quota 50 \
+  --output none
 
 # ── Networking: VNet + Subnet + NSG ──────────────────────────────────────
 echo "Creating VNet and subnet..."
@@ -180,6 +277,7 @@ az vm create \
   --os-disk-size-gb "$OS_DISK_SIZE" \
   --admin-username "$ADMIN_USERNAME" \
   --generate-ssh-keys \
+  --assign-identity '[system]' \
   --vnet-name "$VNET_NAME" \
   --subnet "$SUBNET_NAME" \
   --public-ip-address "" \
@@ -189,6 +287,34 @@ az vm create \
   --tags $TAGS \
   --output jsonc
 
+# ── RBAC: grant VM managed identity access to Key Vault and Storage ──────
+VM_IDENTITY="$(az vm show -g "$RESOURCE_GROUP" -n "$VM_NAME" --query identity.principalId -o tsv)"
+
+echo "Granting VM identity access to Key Vault (secrets read)..."
+az role assignment create \
+  --assignee-object-id "$VM_IDENTITY" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Key Vault Secrets User" \
+  --scope "$KV_ID" \
+  --output none
+
+STORAGE_ID="$(az storage account show --name "$STORAGE_NAME" --query id -o tsv)"
+
+echo "Granting VM identity access to Storage Account (data contributor)..."
+az role assignment create \
+  --assignee-object-id "$VM_IDENTITY" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Storage Blob Data Contributor" \
+  --scope "$STORAGE_ID" \
+  --output none
+
+az role assignment create \
+  --assignee-object-id "$VM_IDENTITY" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Storage File Data Privileged Contributor" \
+  --scope "$STORAGE_ID" \
+  --output none
+
 PRIVATE_IP="$(az vm show -d -g "$RESOURCE_GROUP" -n "$VM_NAME" --query privateIps -o tsv)"
 
 echo
@@ -197,6 +323,9 @@ echo
 echo "  Private IP:       ${PRIVATE_IP}"
 echo "  VNet/Subnet:      ${VNET_NAME}/${SUBNET_NAME}"
 echo "  Guardian (VNet):  http://${PRIVATE_IP}:3899"
+echo "  Key Vault:        ${KV_NAME}"
+echo "  Storage Account:  ${STORAGE_NAME}/${BACKUP_SHARE}"
+echo "  Slack channel:    ${SLACK_ENABLED}"
 echo "  OpenPalm CLI:     ${OPENPALM_INSTALL_DIR}/openpalm"
 echo
 echo "SSH via Azure CLI (no public IP required):"

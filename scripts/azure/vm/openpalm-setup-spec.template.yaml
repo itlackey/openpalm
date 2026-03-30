@@ -5,6 +5,11 @@
 # Azure OpenAI base URL format:
 #   https://<RESOURCE_NAME>.openai.azure.com/openai/v1
 # The API key can be found in the Azure Portal under your resource's Keys section.
+#
+# Secrets (adminToken, assistantToken, Slack tokens) are pulled from Azure
+# Key Vault at first boot by the cloud-init bootstrap script.  The placeholder
+# values below are overwritten with the real Key Vault secrets before
+# `openpalm install` runs.
 
 version: 2
 spec:
@@ -13,8 +18,8 @@ spec:
     email: you@example.com
 
   security:
-    adminToken: change-me-to-a-long-random-secret
-    assistantToken: change-me-to-a-long-random-secret
+    adminToken: PLACEHOLDER_FROM_KEYVAULT
+    assistantToken: PLACEHOLDER_FROM_KEYVAULT
     accessScope: local
 
   connections:
@@ -42,9 +47,14 @@ spec:
     discord:
       enabled: false
     slack:
-      enabled: false
+      enabled: true
     voice:
       enabled: false
+
+  channelCredentials:
+    slack:
+      slackBotToken: PLACEHOLDER_FROM_KEYVAULT
+      slackAppToken: PLACEHOLDER_FROM_KEYVAULT
 
   services:
     admin:
