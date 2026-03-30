@@ -27,14 +27,14 @@ param channelVoiceSecretUri = ''
 // Memory capability / embedding configuration.
 // AI Foundry serves memory summarization and embeddings ONLY — not the assistant.
 // The assistant uses OpenCode's default built-in provider (no OPENAI_* env vars).
-// When deployAiFoundry is true, capLlmApiKeySecretUri and embeddingsApiKeySecretUri
+// When aiFoundryApiKeySecretUri is set, capLlmApiKeySecretUri and embeddingsApiKeySecretUri
 // can be left blank — the template will fall back to the AI Foundry key automatically.
-param capLlmProvider = 'openai'
+param capLlmProvider = 'azure_openai'
 param capLlmModel = 'gpt-41-mini'
 param capLlmBaseUrl = 'https://ai-openpalm-prod.openai.azure.com/'
 param capLlmApiKeySecretUri = ''
 
-param embeddingsProvider = 'openai'
+param embeddingsProvider = 'azure_openai'
 param embeddingsModel = 'text-embedding-3-large'
 param embeddingsBaseUrl = 'https://ai-openpalm-prod.openai.azure.com/'
 param embeddingsApiKeySecretUri = ''
@@ -42,18 +42,9 @@ param embeddingsDims = '3072'
 
 param deployBackupJob = false
 
-// Azure AI Foundry – deploys an AI Services account with GPT 4.1, GPT 4.1 Mini,
-// and text-embedding-3-large. Used by memory (summarization) and OpenViking (embeddings).
-// NOT used by the assistant — see LESSONS-LEARNED.md for details.
-param deployAiFoundry = true
-param aiFoundryAccountName = 'ai-openpalm-prod'
-param aiFoundrySku = 'S0'
-param gpt54DeploymentName = 'gpt-41'
-param gpt54Capacity = 10
-param gpt54MiniDeploymentName = 'gpt-41-mini'
-param gpt54MiniCapacity = 30
-param embeddingDeploymentName = 'text-embedding-3-large'
-param embeddingDeploymentCapacity = 30
+// AI Foundry is deployed separately via ai-foundry.bicep to avoid the provisioning race
+// condition (LESSONS-LEARNED.md #3). Pass the Key Vault secret URI produced by that deployment.
+param aiFoundryApiKeySecretUri = 'https://openpalmprod-kv-REPLACE.vault.azure.net/secrets/azure-ai-foundry-api-key'
 
 // OpenViking — knowledge management and semantic search.
 // Uses the same embedding config as memory (AI Foundry text-embedding-3-large).

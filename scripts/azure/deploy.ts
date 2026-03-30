@@ -34,9 +34,10 @@ const cfg = {
   keyVaultName: process.env.KEYVAULT_NAME || '',
   storageAccountName: process.env.STORAGE_ACCOUNT_NAME || '',
   prefix: process.env.PREFIX || 'openpalm-prod',
-  aiFoundryAccountName: process.env.AI_FOUNDRY_ACCOUNT_NAME || '',
-  deployAiFoundry: (process.env.DEPLOY_AI_FOUNDRY || 'false').toLowerCase() === 'true',
   deployOpenViking: (process.env.DEPLOY_OPENVIKING || 'false').toLowerCase() === 'true',
+  // AI Foundry is deployed separately via ai-foundry.bicep to avoid the provisioning
+  // race condition (LESSONS-LEARNED.md #3). Run that deployment first, then deploy
+  // the main stack. The AI Foundry API key secret URI is baked into prod.bicepparam.
 };
 
 // Internal secrets are generated once and reused across deployments.
@@ -54,7 +55,7 @@ const internalSecretDefaults: Dict = {
 };
 
 // No openai-api-key — assistant uses default OpenCode provider, not AI Foundry.
-// AI Foundry key is managed by Bicep (aiFoundryApiKeySecret) for memory/OpenViking.
+// AI Foundry key is managed by ai-foundry.bicep (separate deployment) for memory/OpenViking.
 const optionalSecrets: Dict = compact({
   'channel-discord-secret': process.env.CHANNEL_DISCORD_SECRET || '',
   'channel-slack-secret': process.env.CHANNEL_SLACK_SECRET || '',
@@ -185,12 +186,6 @@ async function main() {
     '-p', `location=${cfg.location}`,
     '-p', `prefix=${cfg.prefix}`,
   ];
-  if (cfg.deployAiFoundry) {
-    deployArgs.push('-p', `deployAiFoundry=true`);
-    if (cfg.aiFoundryAccountName) {
-      deployArgs.push('-p', `aiFoundryAccountName=${cfg.aiFoundryAccountName}`);
-    }
-  }
   if (cfg.deployOpenViking) {
     deployArgs.push('-p', `deployOpenViking=true`);
   }
@@ -202,11 +197,6 @@ async function main() {
   console.log(`Resource group:      ${cfg.resourceGroup}`);
   console.log(`Key Vault:           ${keyVaultName}`);
   console.log(`Storage account:     ${storageAccountName}`);
-  if (cfg.deployAiFoundry) {
-    const aiName = cfg.aiFoundryAccountName || `ai-${cfg.prefix}`;
-    console.log(`AI Foundry account:  ${aiName}`);
-    console.log(`AI Foundry endpoint: https://${aiName}.openai.azure.com/`);
-  }
   if (cfg.deployOpenViking) {
     console.log(`OpenViking:          enabled`);
   }
@@ -219,11 +209,9 @@ async function main() {
 
 function buildParams(args: { keyVaultName: string; storageAccountName: string }) {
   let text = readFileSync(baseParams, 'utf8');
-  const aiFoundryName = cfg.aiFoundryAccountName || `ai-${cfg.prefix}`;
   const replacements: Dict = {
     'openpalmprod-kv-REPLACE': args.keyVaultName,
     'openpalmprodstREPL': args.storageAccountName,
-    'ai-openpalm-prod': aiFoundryName,
   };
 
   for (const [from, to] of Object.entries(replacements)) {
