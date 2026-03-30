@@ -81,7 +81,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          PLATFORM_MANIFESTS="package.json packages/admin/package.json core/guardian/package.json"
+          PLATFORM_MANIFESTS="package.json packages/admin/package.json core/guardian/package.json packages/cli/package.json"
 
           if [ "${EVENT_NAME}" = 'workflow_dispatch' ]; then
             BRANCH="${GITHUB_REF_NAME}"
@@ -95,17 +95,17 @@ jobs:
               echo "Set ${pkg} to ${VERSION}"
             done
 
-            # Stamp install scripts to the platform release tag; CLI package version stays independent.
+            # Stamp install scripts to the platform release tag.
             sed -i "s/^SCRIPT_VERSION=\".*\"/SCRIPT_VERSION=\"${VERSION}\"/" scripts/setup.sh
             sed -i "s/^\\\$ScriptVersion = '.*'/\$ScriptVersion = '${VERSION}'/" scripts/setup.ps1
             echo "Stamped SCRIPT_VERSION=${VERSION} into setup scripts"
 
-            if git diff --quiet -- package.json packages/admin/package.json core/guardian/package.json scripts/setup.sh scripts/setup.ps1; then
+            if git diff --quiet -- package.json packages/admin/package.json core/guardian/package.json packages/cli/package.json scripts/setup.sh scripts/setup.ps1; then
               echo "Release files already match ${VERSION}, skipping commit."
               exit 0
             fi
 
-            git add package.json packages/admin/package.json core/guardian/package.json scripts/setup.sh scripts/setup.ps1
+            git add package.json packages/admin/package.json core/guardian/package.json packages/cli/package.json scripts/setup.sh scripts/setup.ps1
             git commit -m "chore: bump platform version to ${VERSION}"
             git push origin "${BRANCH}"
             exit 0
@@ -318,19 +318,21 @@ jobs:
             | [openpalm/memory](https://hub.docker.com/r/openpalm/memory) | `docker pull openpalm/memory:v${{ needs.prepare-tag.outputs.version }}` |
             | [openpalm/scheduler](https://hub.docker.com/r/openpalm/scheduler) | `docker pull openpalm/scheduler:v${{ needs.prepare-tag.outputs.version }}` |
 
-            ## npm Packages
+            ## npm CLI
 
-            npm packages are versioned and published on an independent release cycle
-            via per-package publish workflows.
+            ```bash
+            npm install -g openpalm@${{ needs.prepare-tag.outputs.version }}
+            ```
+
+            ## Channel Packages
+
+            Channel packages are versioned and published independently.
 
             - [@openpalm/channels-sdk](https://www.npmjs.com/package/@openpalm/channels-sdk)
             - [@openpalm/channel-api](https://www.npmjs.com/package/@openpalm/channel-api)
             - [@openpalm/channel-discord](https://www.npmjs.com/package/@openpalm/channel-discord)
             - [@openpalm/channel-slack](https://www.npmjs.com/package/@openpalm/channel-slack)
-            - [openpalm](https://www.npmjs.com/package/openpalm)
-            - [@openpalm/assistant-tools](https://www.npmjs.com/package/@openpalm/assistant-tools)
-            - [@openpalm/admin-tools](https://www.npmjs.com/package/@openpalm/admin-tools)
-            - [@openpalm/lib](https://www.npmjs.com/package/@openpalm/lib)
+            - [@openpalm/channel-voice](https://www.npmjs.com/package/@openpalm/channel-voice)
 
             ## Quick Install
 
@@ -347,3 +349,62 @@ jobs:
             dist/openpalm-cli-darwin-x64
             dist/openpalm-cli-darwin-arm64
             dist/openpalm-cli-windows-x64.exe
+
+  publish-cli-npm:
+    name: Publish CLI to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - prepare-tag
+      - release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-tag.outputs.tag }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Pack CLI
+        working-directory: packages/cli
+        run: |
+          PACK_DIR="$(mktemp -d)"
+          bun pm pack --destination "${PACK_DIR}" --quiet
+          mapfile -t TARBALLS < <(find "${PACK_DIR}" -maxdepth 1 -name '*.tgz')
+          if [ "${#TARBALLS[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one tarball, found ${#TARBALLS[@]}"
+            exit 1
+          fi
+          echo "TARBALL=${TARBALLS[0]}" >> "$GITHUB_ENV"
+          echo "Packed: ${TARBALLS[0]}"
+
+      - name: Publish to npm
+        working-directory: packages/cli
+        run: |
+          VERSION="${{ needs.prepare-tag.outputs.version }}"
+          TAG_ARGS=""
+          if [ "${{ needs.prepare-tag.outputs.prerelease }}" = "true" ]; then
+            TAG_ARGS="--tag next"
+          fi
+          npm publish "${TARBALL}" --provenance --access public ${TAG_ARGS} || {
+            EXIT_CODE=$?
+            if npm view "openpalm@${VERSION}" version 2>/dev/null; then
+              echo "::warning::Version ${VERSION} already published — skipping"
+            else
+              exit $EXIT_CODE
+            fi
+          }

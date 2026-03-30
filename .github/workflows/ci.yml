@@ -125,6 +125,40 @@ jobs:
           fi
           echo "All stack files validated successfully"
 
+      - name: Validate platform version sync
+        run: |
+          set -euo pipefail
+          ROOT_VERSION=$(jq -r .version package.json)
+          PLATFORM_MANIFESTS="packages/admin/package.json core/guardian/package.json packages/cli/package.json"
+          errors=0
+
+          for pkg in ${PLATFORM_MANIFESTS}; do
+            PKG_VERSION=$(jq -r .version "${pkg}")
+            if [ "${PKG_VERSION}" != "${ROOT_VERSION}" ]; then
+              echo "::error file=${pkg}::${pkg} version ${PKG_VERSION} does not match root ${ROOT_VERSION}"
+              errors=$((errors + 1))
+            fi
+          done
+
+          # Validate setup script versions match
+          SCRIPT_VERSION=$(grep -oP '^SCRIPT_VERSION="\K[^"]+' scripts/setup.sh || true)
+          if [ -n "${SCRIPT_VERSION}" ] && [ "${SCRIPT_VERSION}" != "${ROOT_VERSION}" ]; then
+            echo "::error file=scripts/setup.sh::setup.sh SCRIPT_VERSION ${SCRIPT_VERSION} does not match root ${ROOT_VERSION}"
+            errors=$((errors + 1))
+          fi
+
+          PS1_VERSION=$(grep -oP "^\\\$ScriptVersion = '\K[^']+" scripts/setup.ps1 || true)
+          if [ -n "${PS1_VERSION}" ] && [ "${PS1_VERSION}" != "${ROOT_VERSION}" ]; then
+            echo "::error file=scripts/setup.ps1::setup.ps1 ScriptVersion ${PS1_VERSION} does not match root ${ROOT_VERSION}"
+            errors=$((errors + 1))
+          fi
+
+          if [ "$errors" -gt 0 ]; then
+            echo "::error::${errors} platform version(s) out of sync with root ${ROOT_VERSION}"
+            exit 1
+          fi
+          echo "All platform versions match: ${ROOT_VERSION}"
+
   admin-unit-tests:
     name: Admin unit tests (Vitest)
     runs-on: ubuntu-latest
