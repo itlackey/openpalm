@@ -372,6 +372,24 @@ describe("materialized registry catalog", () => {
     expect(existsSync(join(backupDir!, 'backups'))).toBe(false);
   });
 
+  it("writes backups under the provided homeDir even when OP_HOME points elsewhere", () => {
+    const actualHome = join(tmpDir, 'actual-home');
+    const otherHome = join(tmpDir, 'other-home');
+
+    mkdirSync(join(actualHome, 'config'), { recursive: true });
+    mkdirSync(join(otherHome, 'backups'), { recursive: true });
+    writeFileSync(join(actualHome, 'config', 'stack.yml'), 'llm: local\n');
+
+    process.env.OP_HOME = otherHome;
+
+    const backupDir = backupOpenPalmHome(actualHome);
+
+    expect(backupDir).not.toBeNull();
+    expect(backupDir!.startsWith(join(actualHome, 'backups'))).toBe(true);
+    expect(existsSync(join(backupDir!, 'config', 'stack.yml'))).toBe(true);
+    expect(existsSync(join(otherHome, 'backups', 'config', 'stack.yml'))).toBe(false);
+  });
+
   it("installs and uninstalls automations through config/automations", () => {
     const sourceRoot = join(tmpDir, 'repo');
     const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');

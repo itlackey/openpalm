@@ -1,6 +1,5 @@
 import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { resolveBackupsDir } from "./home.js";
 
 function timestampDirName(now = new Date()): string {
   return now.toISOString().replace(/[:.]/g, "-");
@@ -15,7 +14,7 @@ function timestampDirName(now = new Date()): string {
 export function backupOpenPalmHome(homeDir: string): string | null {
   if (!existsSync(homeDir)) return null;
 
-  const backupDir = join(resolveBackupsDir(), timestampDirName());
+  const backupDir = join(homeDir, "backups", timestampDirName());
   mkdirSync(backupDir, { recursive: true });
 
   let copiedAny = false;
