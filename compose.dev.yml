@@ -41,12 +41,12 @@ services:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev
     # Dev override: blank cloud keys to prevent host env leakage.
     # OpenCode uses its own provider detection and auth store.
+    # LMSTUDIO vars are NOT blanked — lmstudio is the Ollama-compatible provider
+    # used for local models (socat proxy in entrypoint.sh forwards 127.0.0.1:1234 → Ollama).
     environment:
       GROQ_API_KEY: ""
       MISTRAL_API_KEY: ""
       GOOGLE_API_KEY: ""
-      LMSTUDIO_API_KEY: ""
-      LMSTUDIO_BASE_URL: ""
 
   channel:
     build:

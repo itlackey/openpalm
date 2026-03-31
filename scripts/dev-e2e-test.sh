@@ -97,12 +97,14 @@ rm -f .dev/config/assistant/opencode.json
 # Config — remove generated compose so dev-setup seeds a fresh one
 rm -f .dev/stack/core.compose.yml
 
-# Root-owned data from containers (qdrant, opencode logs)
+# Root-owned data from containers (qdrant, opencode logs, apprise)
 docker run --rm -v "$ROOT_DIR/.dev/data/memory:/c" alpine sh -c \
 	"rm -rf /c/qdrant" 2>/dev/null || true
 docker run --rm -v "$ROOT_DIR/.dev/data/opencode:/c" alpine sh -c \
 	"find /c -user root -delete" 2>/dev/null || true
 docker run --rm -v "$ROOT_DIR/.dev/config/assistant:/c" alpine sh -c \
+	"find /c -user root -delete" 2>/dev/null || true
+docker run --rm -v "$ROOT_DIR/.dev/vault/user:/c" alpine sh -c \
 	"find /c -user root -delete" 2>/dev/null || true
 
 # Vault — reset system env and managed files
@@ -143,6 +145,9 @@ sed -i 's/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=dev/' .dev/vault/stack/stack.env
 rm -f .dev/config/stack.yml
 
 ./scripts/dev-setup.sh --enable-addon admin >/dev/null 2>&1
+
+# Remove stack.yml AFTER dev-setup.sh (which recreates it) so Step 6 sees fresh state
+rm -f .dev/config/stack.yml
 
 pass "Config seeded (admin token cleared, image tag set to dev)"
 
@@ -185,6 +190,19 @@ if echo "$AVAILABLE_MODELS" | grep -q "nomic-embed-text"; then
 else
 	fail "Embedding model not found in Ollama. Available: $AVAILABLE_MODELS"
 fi
+
+# Create Ollama alias matching OpenCode lmstudio catalog model name.
+# OpenCode's lmstudio provider has a static model catalog — the Ollama model
+# must be aliased to a name that appears in that catalog.
+LMSTUDIO_MODEL="qwen/qwen3-coder-30b"
+alias_exists=$(curl -sf "$OLLAMA_URL/api/tags" | python3 -c "import sys,json; d=json.load(sys.stdin); print('yes' if any(m['name']=='$LMSTUDIO_MODEL:latest' for m in d.get('models',[])) else 'no')" 2>/dev/null || echo "no")
+if [ "$alias_exists" = "yes" ]; then
+	echo "  LMStudio alias already exists: $LMSTUDIO_MODEL"
+else
+	echo "  Creating Ollama alias: $SYSTEM_MODEL → $LMSTUDIO_MODEL"
+	curl -sf "$OLLAMA_URL/api/copy" -d "{\"source\":\"$SYSTEM_MODEL\",\"destination\":\"$LMSTUDIO_MODEL\"}" >/dev/null 2>&1
+fi
+pass "LMStudio model alias ready"
 
 # ── Step 4: Build all images from source ──────────────────────────
 if [ "$SKIP_BUILD" -eq 0 ]; then
@@ -253,14 +271,12 @@ echo "=== Step 7: Run setup ==="
 SETUP_OK=$(OP_HOME=.dev bun -e "
 const { performSetup } = await import('@openpalm/lib');
 const result = await performSetup({
-  spec: {
-    version: 2,
-    capabilities: {
-      llm: 'ollama/qwen2.5-coder:3b',
-      embeddings: { provider: 'ollama', model: 'nomic-embed-text:latest', dims: 768 },
-      memory: { userId: 'node', customInstructions: '' },
-      slm: 'ollama/qwen2.5-coder:3b',
-    },
+  version: 2,
+  capabilities: {
+    llm: 'ollama/qwen2.5-coder:3b',
+    embeddings: { provider: 'ollama', model: 'nomic-embed-text:latest', dims: 768 },
+    memory: { userId: 'node', customInstructions: '' },
+    slm: 'ollama/qwen2.5-coder:3b',
   },
   security: { adminToken: 'dev-admin-token' },
   owner: { name: 'Dev', email: 'dev@localhost' },
@@ -275,6 +291,22 @@ if [ "$SETUP_OK" = "True" ]; then
 else
 	fail "performSetup failed: $SETUP_OK"
 fi
+
+# Step 7a: Configure OpenCode to use lmstudio provider (Ollama-compatible).
+# OpenCode's lmstudio provider uses @ai-sdk/openai-compatible (Chat Completions API)
+# with hardcoded base URL 127.0.0.1:1234. The entrypoint.sh socat proxy forwards
+# that to LMSTUDIO_BASE_URL (the real Ollama endpoint).
+echo "LMSTUDIO_BASE_URL=http://host.docker.internal:11434" >> .dev/vault/stack/stack.env
+echo "LMSTUDIO_API_KEY=not-needed" >> .dev/vault/stack/stack.env
+
+# Write model to OpenCode user config so OpenCode uses lmstudio/qwen/qwen3-coder-30b
+cat > .dev/config/assistant/opencode.json <<'OCEOF'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "lmstudio/qwen/qwen3-coder-30b"
+}
+OCEOF
+pass "OpenCode configured for lmstudio/Ollama"
 
 # Step 7b: Recreate all services with the dev overlay to pick up new env vars.
 dev_compose up -d --force-recreate 2>&1 | tail -10
@@ -444,13 +476,12 @@ else
 	fail "assistant OPENAI_BASE_URL should end with /v1, got: $BASE_URL"
 fi
 
-# LMSTUDIO_BASE_URL should be blank (no longer forced in dev).
-# OpenCode uses its own provider detection.
+# LMSTUDIO_BASE_URL should point to Ollama (for socat proxy in entrypoint).
 LMSTUDIO_URL=$(docker exec openpalm-assistant-1 printenv LMSTUDIO_BASE_URL 2>/dev/null || echo "")
-if [ -z "$LMSTUDIO_URL" ]; then
-	pass "assistant LMSTUDIO_BASE_URL is blank (OpenCode uses own defaults)"
+if [ -n "$LMSTUDIO_URL" ]; then
+	pass "assistant LMSTUDIO_BASE_URL=$LMSTUDIO_URL"
 else
-	pass "assistant LMSTUDIO_BASE_URL=$LMSTUDIO_URL (user-configured)"
+	fail "assistant LMSTUDIO_BASE_URL is empty (needed for lmstudio/Ollama proxy)"
 fi
 
 # ── Step 12: Verify Memory user provisioned ──────────────────────
@@ -483,7 +514,7 @@ fi
 # ── Step 13: Verify setup marked complete ────────────────────────────
 echo ""
 echo "=== Step 13: Verify setup complete ==="
-FINAL_STATUS=$(curl -s http://localhost:8100/admin/connections/status \
+FINAL_STATUS=$(curl -s http://localhost:8100/admin/capabilities/status \
 	-H "x-admin-token: dev-admin-token" 2>/dev/null |
 	python3 -c "import sys,json; print(json.load(sys.stdin).get('complete', False))" 2>/dev/null || echo "unknown")
 
@@ -517,14 +548,14 @@ else
 	fail "Assistant message pipeline did not return the expected response"
 fi
 
-# ── Step 15: Verify memory OPENAI_BASE_URL env ───────────────────
+# ── Step 15: Verify memory SYSTEM_LLM_BASE_URL env ───────────────────
 echo ""
 echo "=== Step 15: Verify memory container env ==="
-OM_BASE_URL=$(docker exec openpalm-memory-1 printenv OPENAI_BASE_URL 2>/dev/null || echo "")
+OM_BASE_URL=$(docker exec openpalm-memory-1 printenv SYSTEM_LLM_BASE_URL 2>/dev/null || echo "")
 if [ -n "$OM_BASE_URL" ]; then
-	pass "memory OPENAI_BASE_URL=$OM_BASE_URL"
+	pass "memory SYSTEM_LLM_BASE_URL=$OM_BASE_URL"
 else
-	fail "memory OPENAI_BASE_URL is empty"
+	fail "memory SYSTEM_LLM_BASE_URL is empty"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────
