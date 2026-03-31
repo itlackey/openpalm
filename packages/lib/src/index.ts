@@ -227,6 +227,7 @@ export {
 // ── Stack Spec (v2) ──────────────────────────────────────────────────────
 export type {
   StackSpec,
+  StackSpecCapabilities,
   StackSpecEmbeddings,
   StackSpecMemory,
   StackSpecTts,
@@ -250,6 +251,7 @@ export {
 // ── Setup ────────────────────────────────────────────────────────────────
 export type {
   SetupSpec,
+  SetupConnection,
   SetupResult,
 } from "./control-plane/setup.js";
 export {

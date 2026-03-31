@@ -712,12 +712,11 @@ test.describe("@mocked Setup Wizard UI", () => {
 			expect(setupPayload).not.toBeNull();
 			const payload = setupPayload as unknown as Record<string, unknown>;
 			expect((payload.security as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
-			const spec = payload.spec as Record<string, unknown>;
-			expect(spec.version).toBe(2);
-			expect(((spec.capabilities as Record<string, unknown>).memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
-			const caps = payload.capabilities;
-			expect(Array.isArray(caps)).toBe(true);
-			expect((caps as Array<Record<string, string>>)[0].provider).toBe("ollama");
+			expect(payload.version).toBe(2);
+			expect(((payload.capabilities as Record<string, unknown>).memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
+			const conns = payload.connections;
+			expect(Array.isArray(conns)).toBe(true);
+			expect((conns as Array<Record<string, string>>)[0].provider).toBe("ollama");
 
 			// Wait for deploy to complete (mocked to complete on 3rd poll)
 			await expect(page.locator("#deploy-done")).toBeVisible({ timeout: 15_000 });
@@ -884,19 +883,18 @@ test.describe("@mocked Setup Wizard UI", () => {
 			expect((payload.owner as Record<string, unknown>).name).toBe(TEST_OWNER_NAME);
 			expect((payload.owner as Record<string, unknown>).email).toBe(TEST_OWNER_EMAIL);
 
-			// Spec (stack.yml content)
-			const spec = payload.spec as Record<string, unknown>;
-			expect(spec.version).toBe(2);
-			const specCaps = spec.capabilities as Record<string, unknown>;
+			// Capabilities (stack.yml content)
+			expect(payload.version).toBe(2);
+			const specCaps = payload.capabilities as Record<string, unknown>;
 			expect(typeof specCaps.llm).toBe("string");
 			expect((specCaps.memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
 
-			// Capabilities
-			const caps = payload.capabilities as Array<Record<string, string>>;
-			expect(caps).toHaveLength(1);
-			expect(caps[0].provider).toBe("ollama");
-			expect(caps[0].baseUrl).toBe(OLLAMA_URL);
-			expect(caps[0].name).toBe("Ollama");
+			// Connections
+			const conns = payload.connections as Array<Record<string, string>>;
+			expect(conns).toHaveLength(1);
+			expect(conns[0].provider).toBe("ollama");
+			expect(conns[0].baseUrl).toBe(OLLAMA_URL);
+			expect(conns[0].name).toBe("Ollama");
 		});
 	});
 });
@@ -1038,9 +1036,8 @@ test.describe("Setup Wizard with Real Ollama", () => {
 		expect(setupPayload).not.toBeNull();
 		const payload = setupPayload as unknown as Record<string, unknown>;
 		expect((payload.security as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
-		const spec = payload.spec as Record<string, unknown>;
-		expect(spec.version).toBe(2);
-		const caps = spec.capabilities as Record<string, unknown>;
+		expect(payload.version).toBe(2);
+		const caps = payload.capabilities as Record<string, unknown>;
 		expect(typeof caps.llm).toBe("string");
 		expect((caps.llm as string)).toContain("ollama/");
 	});

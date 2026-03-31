@@ -123,15 +123,13 @@ describe("setup wizard server error scenarios", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           // no security.adminToken
-          spec: {
-            version: 2,
-            capabilities: {
-              llm: "openai/gpt-4o",
-              embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
-              memory: { userId: "user1", customInstructions: "" },
-            },
+          version: 2,
+          capabilities: {
+            llm: "openai/gpt-4o",
+            embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
+            memory: { userId: "user1", customInstructions: "" },
           },
-          capabilities: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
+          connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
         }),
       });
       expect(res.status).toBe(400);
@@ -143,7 +141,7 @@ describe("setup wizard server error scenarios", () => {
     }
   });
 
-  it("returns 400 when capabilities array is not an array", async () => {
+  it("returns 400 when connections array is not an array", async () => {
     const { stop } = createSetupServer(serverPort, {
       configDir,
     });
@@ -153,48 +151,47 @@ describe("setup wizard server error scenarios", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          spec: {
-            version: 2,
-            capabilities: {
-              llm: "openai/gpt-4o",
-              embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
-              memory: { userId: "user1", customInstructions: "" },
-            },
+          version: 2,
+          capabilities: {
+            llm: "openai/gpt-4o",
+            embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
+            memory: { userId: "user1", customInstructions: "" },
           },
           security: { adminToken: "valid-token-12345" },
           owner: { name: "Test User", email: "test@example.com" },
-          capabilities: "not-an-array",
+          connections: "not-an-array",
+        }),
+      });
+      expect(res.status).toBe(400);
+      const data = (await res.json()) as { ok: boolean; error: string };
+      expect(data.ok).toBe(false);
+      expect(data.error).toContain("connections");
+    } finally {
+      stop();
+    }
+  });
+
+  it("returns 400 when capabilities config is missing", async () => {
+    const { stop } = createSetupServer(serverPort, {
+      configDir,
+    });
+
+    try {
+      const res = await fetch(`http://localhost:${serverPort}/api/setup/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          version: 2,
+          security: { adminToken: "valid-token-12345" },
+          owner: { name: "Test User", email: "test@example.com" },
+          connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
+          // no capabilities
         }),
       });
       expect(res.status).toBe(400);
       const data = (await res.json()) as { ok: boolean; error: string };
       expect(data.ok).toBe(false);
       expect(data.error).toContain("capabilities");
-    } finally {
-      stop();
-    }
-  });
-
-  it("returns 400 when spec is missing", async () => {
-    const { stop } = createSetupServer(serverPort, {
-      configDir,
-    });
-
-    try {
-      const res = await fetch(`http://localhost:${serverPort}/api/setup/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          security: { adminToken: "valid-token-12345" },
-          owner: { name: "Test User", email: "test@example.com" },
-          capabilities: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
-          // no spec
-        }),
-      });
-      expect(res.status).toBe(400);
-      const data = (await res.json()) as { ok: boolean; error: string };
-      expect(data.ok).toBe(false);
-      expect(data.error).toContain("spec");
     } finally {
       stop();
     }
@@ -210,17 +207,15 @@ describe("setup wizard server error scenarios", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          spec: {
-            version: 2,
-            capabilities: {
-              llm: "fakeprovider/gpt-4o",
-              embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
-              memory: { userId: "user1", customInstructions: "" },
-            },
+          version: 2,
+          capabilities: {
+            llm: "fakeprovider/gpt-4o",
+            embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
+            memory: { userId: "user1", customInstructions: "" },
           },
           security: { adminToken: "valid-token-12345" },
           owner: { name: "Test User", email: "test@example.com" },
-          capabilities: [{ id: "c1", name: "C1", provider: "fakeprovider", baseUrl: "", apiKey: "sk-test" }],
+          connections: [{ id: "c1", name: "C1", provider: "fakeprovider", baseUrl: "", apiKey: "sk-test" }],
         }),
       });
       // Connection-provider matching is no longer validated; setup succeeds
@@ -242,17 +237,15 @@ describe("setup wizard server error scenarios", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          spec: {
-            version: 2,
-            capabilities: {
-              llm: "anthropic/claude-3-opus", // No anthropic capability provided
-              embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
-              memory: { userId: "user1", customInstructions: "" },
-            },
+          version: 2,
+          capabilities: {
+            llm: "anthropic/claude-3-opus", // No anthropic connection provided
+            embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
+            memory: { userId: "user1", customInstructions: "" },
           },
           security: { adminToken: "valid-token-12345" },
           owner: { name: "Test User", email: "test@example.com" },
-          capabilities: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
+          connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
         }),
       });
       // Provider matching is no longer validated; setup succeeds

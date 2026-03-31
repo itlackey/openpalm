@@ -25,7 +25,7 @@ import {
 import { ensureOpenCodeSystemConfig, ensureMemoryDir } from "./core-assets.js";
 import { createState, writeSetupTokenFile } from "./lifecycle.js";
 import { writeStackSpec } from "./stack-spec.js";
-import type { StackSpec } from "./stack-spec.js";
+import type { StackSpec, StackSpecCapabilities } from "./stack-spec.js";
 import { writeCapabilityVars } from "./spec-to-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
@@ -36,7 +36,7 @@ const logger = createLogger("setup");
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-export type SetupCapability = {
+export type SetupConnection = {
   id: string;
   name: string;
   provider: string;
@@ -51,10 +51,11 @@ export type SetupResult = {
 };
 
 export type SetupSpec = {
-  spec: StackSpec;
+  version: 2;
+  capabilities: StackSpecCapabilities;
   security: { adminToken: string };
   owner?: { name?: string; email?: string };
-  capabilities: SetupCapability[];
+  connections: SetupConnection[];
   channelCredentials?: Record<string, Record<string, string>>;
 };
 
@@ -81,7 +82,7 @@ const PROVIDER_BASE_URL_ENV: Record<string, string> = {
 };
 
 export function buildSecretsFromSetup(
-  capabilities: SetupCapability[],
+  connections: SetupConnection[],
   owner?: { name?: string; email?: string },
 ): Record<string, string> {
   const updates: Record<string, string> = {};
@@ -90,10 +91,12 @@ export function buildSecretsFromSetup(
   if (ownerName) updates.OWNER_NAME = ownerName;
   if (ownerEmail) updates.OWNER_EMAIL = ownerEmail;
 
-  for (const cap of capabilities) {
-    if (cap.apiKey) {
-      const envVar = PROVIDER_KEY_MAP[cap.provider];
-      if (envVar) updates[envVar] = cap.apiKey;
+  for (const cap of connections) {
+    // API key: spec value takes precedence, then fall back to environment
+    const envVar = PROVIDER_KEY_MAP[cap.provider];
+    if (envVar) {
+      const key = cap.apiKey || process.env[envVar] || "";
+      if (key) updates[envVar] = key;
     }
     // Persist user-configured base URL for any provider so writeCapabilityVars can resolve it
     if (cap.baseUrl) {
@@ -189,17 +192,17 @@ export async function performSetup(
   const validation = validateSetupSpec(input);
   if (!validation.valid) return { ok: false, error: validation.errors.join("; ") };
 
-  const { spec, security, owner, capabilities, channelCredentials } = input;
+  const { capabilities, security, owner, connections, channelCredentials } = input;
   const state = opts?.state ?? createState(security.adminToken);
   const ollamaEnabled = listEnabledAddonIds(state.homeDir).includes("ollama");
 
-  logger.info("performing setup", { capabilityCount: capabilities.length, ollamaEnabled });
+  logger.info("performing setup", { capabilityCount: connections.length, ollamaEnabled });
 
   // Apply Ollama in-stack URL override when addon is enabled
-  const effectiveCapabilities = ollamaEnabled
-    ? capabilities.map((c) => c.provider === "ollama" ? { ...c, baseUrl: OLLAMA_INSTACK_URL } : c)
-    : capabilities;
-  const updates = buildSecretsFromSetup(effectiveCapabilities, owner);
+  const effectiveConnections = ollamaEnabled
+    ? connections.map((c) => c.provider === "ollama" ? { ...c, baseUrl: OLLAMA_INSTACK_URL } : c)
+    : connections;
+  const updates = buildSecretsFromSetup(effectiveConnections, owner);
 
   // Merge OAuth-authenticated provider keys from auth.json
   // (OAuth flows store tokens in auth.json, not in the setup payload)
@@ -215,6 +218,12 @@ export async function performSetup(
     ensureSecrets(state);
     const existingSystemEnv = readStackEnv(state.vaultDir);
     if (channelCredentials) Object.assign(updates, buildChannelCredentialEnvVars(channelCredentials));
+    // Pick up channel credential env vars not already provided in the spec
+    for (const mapping of Object.values(CHANNEL_CREDENTIAL_ENV_MAP)) {
+      for (const envKey of Object.values(mapping)) {
+        if (!updates[envKey] && process.env[envKey]) updates[envKey] = process.env[envKey];
+      }
+    }
     updateSecretsEnv(state, updates);
     updateSystemSecretsEnv(state, buildSystemSecretsFromSetup(security.adminToken, existingSystemEnv));
   } catch (err) {
@@ -228,7 +237,7 @@ export async function performSetup(
   writeSetupTokenFile(state);
 
   // Write stack.yml and OP_CAP_* capability vars to stack.env
-  writeMemoryAndStackConfigs(spec, state);
+  writeMemoryAndStackConfigs({ version: 2, capabilities }, state);
 
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
@@ -239,7 +248,7 @@ export async function performSetup(
   const systemBase = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
   writeFileSync(systemEnvPath, mergeEnvContent(systemBase, { OP_SETUP_COMPLETE: "true" }), { mode: 0o600 });
 
-  logger.info("setup complete", { capabilityCount: capabilities.length });
+  logger.info("setup complete", { capabilityCount: connections.length });
   return { ok: true };
 }
 

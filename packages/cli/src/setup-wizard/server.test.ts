@@ -247,24 +247,22 @@ describe("setup wizard server", () => {
 
     try {
       const body = {
-        spec: {
-          version: 2,
-          capabilities: {
-            llm: "openai/gpt-4o",
-            embeddings: {
-              provider: "openai",
-              model: "text-embedding-3-small",
-              dims: 1536,
-            },
-            memory: {
-              userId: "test_user",
-              customInstructions: "",
-            },
+        version: 2,
+        capabilities: {
+          llm: "openai/gpt-4o",
+          embeddings: {
+            provider: "openai",
+            model: "text-embedding-3-small",
+            dims: 1536,
+          },
+          memory: {
+            userId: "test_user",
+            customInstructions: "",
           },
         },
         security: { adminToken: "test-admin-token-12345" },
         owner: { name: "Test", email: "test@example.com" },
-        capabilities: [
+        connections: [
           {
             id: "openai-main",
             name: "OpenAI",

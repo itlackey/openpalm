@@ -9,22 +9,21 @@ import { detectHostInfo, main, reconcileStackEnvImageTag, resolveRequestedImageT
 function writeMinimalSetupSpec(dir: string): string {
   const specPath = join(dir, 'setup-spec.yaml');
   const yaml = [
-    'spec:',
-    '  version: 2',
-    '  capabilities:',
-    '    llm: openai/gpt-4o',
-    '    embeddings:',
-    '      provider: openai',
-    '      model: text-embedding-3-small',
-    '      dims: 1536',
-    '    memory:',
-    '      userId: test_user',
+    'version: 2',
+    'capabilities:',
+    '  llm: openai/gpt-4o',
+    '  embeddings:',
+    '    provider: openai',
+    '    model: text-embedding-3-small',
+    '    dims: 1536',
+    '  memory:',
+    '    userId: test_user',
     'security:',
     '  adminToken: test-admin-token-12345',
     'owner:',
     '  name: Test User',
     '  email: test@example.com',
-    'capabilities:',
+    'connections:',
     '  - id: openai',
     '    name: OpenAI',
     '    provider: openai',
@@ -582,7 +581,7 @@ describe('cli entrypoint (subprocess)', () => {
 });
 
 describe('secrets.env generation', () => {
-  it('generates user.env with export prefix and user-managed keys', async () => {
+  it('generates user.env as empty placeholder (no API key placeholders)', async () => {
     const { ensureSecrets } = await import('./lib/env.ts');
     const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-secrets-'));
     const vaultDir = join(tempDir, 'vault');
@@ -591,11 +590,12 @@ describe('secrets.env generation', () => {
     try {
       await ensureSecrets(vaultDir);
       const content = await Bun.file(join(vaultDir, 'user', 'user.env')).text();
-      expect(content).toContain('export OPENAI_API_KEY=');
-      expect(content).toContain('export MEMORY_USER_ID=');
-      // System secrets (OP_ADMIN_TOKEN, OP_MEMORY_TOKEN) belong in stack.env, not user.env
+      // user.env is for user-added custom vars only — no API key placeholders
+      // (empty values would override real keys in stack.env via compose env-file precedence)
+      expect(content).not.toContain('OPENAI_API_KEY');
       expect(content).not.toContain('OP_ADMIN_TOKEN');
       expect(content).not.toContain('OP_MEMORY_TOKEN');
+      expect(content).toContain('User Extensions');
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

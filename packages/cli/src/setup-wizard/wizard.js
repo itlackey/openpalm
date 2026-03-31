@@ -367,29 +367,27 @@ function buildPayload() {
 
   // Build SetupSpec payload
   var payload = {
-    spec: {
-      version: 2,
-      capabilities: {
-        llm: llmProvider + "/" + (llm ? llm.model : ""),
-        embeddings: {
-          provider: embProvider,
-          model: emb ? emb.model : "",
-          dims: emb ? (emb.dims || 1536) : 1536,
-        },
-        memory: {
-          userId: memoryUserId,
-          customInstructions: "",
-        },
+    version: 2,
+    capabilities: {
+      llm: llmProvider + "/" + (llm ? llm.model : ""),
+      embeddings: {
+        provider: embProvider,
+        model: emb ? emb.model : "",
+        dims: emb ? (emb.dims || 1536) : 1536,
       },
-      addons: addons,
+      memory: {
+        userId: memoryUserId,
+        customInstructions: "",
+      },
     },
+    addons: addons,
     security: { adminToken: adminToken },
-    capabilities: capabilities,
+    connections: capabilities,
   };
 
   // Add optional slm capability (uses its own provider, not the LLM provider)
   if (small && small.model) {
-    payload.spec.capabilities.slm = small.connId + "/" + small.model;
+    payload.capabilities.slm = small.connId + "/" + small.model;
   }
 
   // Add reranking configuration if enabled
@@ -399,7 +397,7 @@ function buildPayload() {
     var rerankModel = $("reranking-model") ? ($("reranking-model").value || "").trim() : "";
     var topK = $("reranking-top-k") ? parseInt($("reranking-top-k").value, 10) : 20;
     var topN = $("reranking-top-n") ? parseInt($("reranking-top-n").value, 10) : 5;
-    payload.spec.capabilities.reranking = {
+    payload.capabilities.reranking = {
       enabled: true,
       mode: rerankMode,
       model: rerankMode === "dedicated" ? rerankModel : "",

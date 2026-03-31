@@ -114,18 +114,16 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
 
 function makeSetupSpec(): Record<string, unknown> {
   return {
-    spec: {
-      version: 2,
-      capabilities: {
-        llm: 'ollama/qwen2.5-coder:3b',
-        embeddings: { provider: 'ollama', model: 'nomic-embed-text:latest', dims: 768 },
-        memory: { userId: 'testuser', customInstructions: '' },
-        slm: 'ollama/qwen2.5-coder:3b',
-      },
+    version: 2,
+    capabilities: {
+      llm: 'ollama/qwen2.5-coder:3b',
+      embeddings: { provider: 'ollama', model: 'nomic-embed-text:latest', dims: 768 },
+      memory: { userId: 'testuser', customInstructions: '' },
+      slm: 'ollama/qwen2.5-coder:3b',
     },
     security: { adminToken: 'test-admin-token-12345' },
     owner: { name: 'Test', email: 'test@test.com' },
-    capabilities: [{
+    connections: [{
       id: 'ollama',
       name: 'Ollama',
       provider: 'ollama',

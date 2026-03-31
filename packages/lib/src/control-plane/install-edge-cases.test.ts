@@ -24,7 +24,7 @@ import {
   buildSecretsFromSetup,
   buildSystemSecretsFromSetup,
 } from "./setup.js";
-import type { SetupSpec, SetupCapability } from "./setup.js";
+import type { SetupSpec, SetupConnection } from "./setup.js";
 import type { ControlPlaneState } from "./types.js";
 import { STACK_SPEC_FILENAME, readStackSpec } from "./stack-spec.js";
 
@@ -32,24 +32,22 @@ import { STACK_SPEC_FILENAME, readStackSpec } from "./stack-spec.js";
 
 function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
   return {
-    spec: {
-      version: 2,
-      capabilities: {
-        llm: "openai/gpt-4o",
-        embeddings: {
-          provider: "openai",
-          model: "text-embedding-3-small",
-          dims: 1536,
-        },
-        memory: {
-          userId: "test_user",
-          customInstructions: "",
-        },
+    version: 2,
+    capabilities: {
+      llm: "openai/gpt-4o",
+      embeddings: {
+        provider: "openai",
+        model: "text-embedding-3-small",
+        dims: 1536,
+      },
+      memory: {
+        userId: "test_user",
+        customInstructions: "",
       },
     },
     security: { adminToken: "test-admin-token-12345" },
     owner: { name: "Test User", email: "test@example.com" },
-    capabilities: [
+    connections: [
       {
         id: "openai-main",
         name: "OpenAI",
@@ -319,7 +317,7 @@ describe("Existing Install", () => {
     // Second setup (re-run with different API key)
     await performSetup(
       makeValidSpec({
-        capabilities: [
+        connections: [
           {
             id: "openai-main",
             name: "OpenAI",
@@ -367,22 +365,19 @@ describe("Existing Install", () => {
     // Second setup with Groq
     await performSetup(
       makeValidSpec({
-        spec: {
-          version: 2,
-          capabilities: {
-            llm: "groq/llama3-70b-8192",
-            embeddings: {
-              provider: "groq",
-              model: "text-embedding-3-small",
-              dims: 1536,
-            },
-            memory: {
-              userId: "test_user",
-              customInstructions: "",
-            },
+        capabilities: {
+          llm: "groq/llama3-70b-8192",
+          embeddings: {
+            provider: "groq",
+            model: "text-embedding-3-small",
+            dims: 1536,
+          },
+          memory: {
+            userId: "test_user",
+            customInstructions: "",
           },
         },
-        capabilities: [
+        connections: [
           {
             id: "groq-main",
             name: "Groq",
@@ -636,22 +631,19 @@ describe("Setup Input Variations", () => {
   // Scenario 20: Ollama in-stack setup
   it("Ollama in-stack setup overrides localhost URL to docker-internal", async () => {
     const input = makeValidSpec({
-      spec: {
-        version: 2,
-        capabilities: {
-          llm: "ollama/llama3.2",
-          embeddings: {
-            provider: "ollama",
-            model: "nomic-embed-text",
-            dims: 768,
-          },
-          memory: {
-            userId: "test_user",
-            customInstructions: "",
-          },
+      capabilities: {
+        llm: "ollama/llama3.2",
+        embeddings: {
+          provider: "ollama",
+          model: "nomic-embed-text",
+          dims: 768,
+        },
+        memory: {
+          userId: "test_user",
+          customInstructions: "",
         },
       },
-      capabilities: [
+      connections: [
         {
           id: "ollama-local",
           name: "Ollama",
@@ -673,24 +665,24 @@ describe("Setup Input Variations", () => {
 
   // Scenario 21: Multiple providers map to correct env vars
   it("multiple providers each write their API key to the correct env var", () => {
-    const caps: SetupCapability[] = [
+    const conns: SetupConnection[] = [
       { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-openai" },
       { id: "groq-1", name: "Groq", provider: "groq", baseUrl: "", apiKey: "gsk-groq" },
       { id: "anthropic-1", name: "Anthropic", provider: "anthropic", baseUrl: "", apiKey: "sk-ant-api03" },
     ];
-    const secrets = buildSecretsFromSetup(caps);
+    const secrets = buildSecretsFromSetup(conns);
     expect(secrets.OPENAI_API_KEY).toBe("sk-openai");
     expect(secrets.GROQ_API_KEY).toBe("gsk-groq");
     expect(secrets.ANTHROPIC_API_KEY).toBe("sk-ant-api03");
   });
 
   // Scenario 21b: OAuth providers (no API key) are silently skipped
-  it("skips capabilities without API keys (OAuth providers)", () => {
-    const caps: SetupCapability[] = [
+  it("skips connections without API keys (OAuth providers)", () => {
+    const conns: SetupConnection[] = [
       { id: "github-copilot", name: "GitHub Copilot", provider: "github-copilot", baseUrl: "", apiKey: "" },
       { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-test" },
     ];
-    const secrets = buildSecretsFromSetup(caps);
+    const secrets = buildSecretsFromSetup(conns);
     expect(secrets.OPENAI_API_KEY).toBe("sk-test");
     expect(Object.keys(secrets)).not.toContain("GITHUB_COPILOT_API_KEY");
   });
@@ -698,7 +690,7 @@ describe("Setup Input Variations", () => {
   // Scenario 22: buildSecretsFromSetup only writes API keys and owner info
   it("buildSecretsFromSetup writes API keys but not config vars", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.capabilities, spec.owner);
+    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
 
     // API key should be written
     expect(secrets.OPENAI_API_KEY).toBe("sk-test-key-123");
@@ -738,22 +730,19 @@ describe("performSetup end-to-end artifacts", () => {
 
   it("writes OP_CAP_EMBEDDINGS_DIMS with correct embedding dims from lookup", async () => {
     const input = makeValidSpec({
-      spec: {
-        version: 2,
-        capabilities: {
-          llm: "ollama/llama3.2",
-          embeddings: {
-            provider: "ollama",
-            model: "nomic-embed-text",
-            dims: 0, // Resolved from lookup
-          },
-          memory: {
-            userId: "test_user",
-            customInstructions: "",
-          },
+      capabilities: {
+        llm: "ollama/llama3.2",
+        embeddings: {
+          provider: "ollama",
+          model: "nomic-embed-text",
+          dims: 0, // Resolved from lookup
+        },
+        memory: {
+          userId: "test_user",
+          customInstructions: "",
         },
       },
-      capabilities: [
+      connections: [
         {
           id: "ollama-1",
           name: "Ollama",
