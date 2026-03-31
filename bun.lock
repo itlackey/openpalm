@@ -1044,12 +1044,6 @@
 
     "@eslint/plugin-kit/@eslint/core": ["@eslint/core@0.17.0", "", { "dependencies": { "@types/json-schema": "^7.0.15" } }, "sha512-yL/sLrpmtDaFEiUj1osRP4TI2MDz1AddJL+jZ7KSqvBuliN4xqYY54IfdN8qD8Toa6g1iloph1fxQNkjOxrrpQ=="],
 
-    "@openpalm/channel-api/@openpalm/channels-sdk": ["@openpalm/channels-sdk@0.9.2", "", {}, "sha512-biJkfTmnNcR6Vnvqbac+f+VrG0CQuBcoXvYQ+8p8Fei6/BIzdQR9jecc/4v4UgtR3ab7sob6HycqxXtDrcvpdQ=="],
-
-    "@openpalm/channel-voice/@openpalm/channels-sdk": ["@openpalm/channels-sdk@0.9.2", "", {}, "sha512-biJkfTmnNcR6Vnvqbac+f+VrG0CQuBcoXvYQ+8p8Fei6/BIzdQR9jecc/4v4UgtR3ab7sob6HycqxXtDrcvpdQ=="],
-
-    "@openpalm/guardian/@openpalm/channels-sdk": ["@openpalm/channels-sdk@0.9.2", "", {}, "sha512-biJkfTmnNcR6Vnvqbac+f+VrG0CQuBcoXvYQ+8p8Fei6/BIzdQR9jecc/4v4UgtR3ab7sob6HycqxXtDrcvpdQ=="],
-
     "@rollup/plugin-commonjs/is-reference": ["is-reference@1.2.1", "", { "dependencies": { "@types/estree": "*" } }, "sha512-U82MsXXiFIrjCK4otLT+o2NA2Cd2g5MLoOVXUZjIOhLurrRxpEXzI8O0KZHr3IjLvlAH1kTPYSuqer5T9ZVBKQ=="],
 
     "@typescript-eslint/eslint-plugin/ignore": ["ignore@7.0.5", "", {}, "sha512-Hs59xBNfUIunMFgWAbGX5cq6893IbWg4KnrjbYwX3tx0ztorVgTDA6B2sxf8ejHJ4wz8BqGUMYlnzNBer5NvGg=="],
