@@ -7,7 +7,7 @@
     },
     "core/guardian": {
       "name": "@openpalm/guardian",
-      "version": "0.10.0-rc9",
+      "version": "0.10.0",
       "dependencies": {
         "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
         "dotenv": "^16.4.7",
@@ -23,7 +23,7 @@
     },
     "packages/admin": {
       "name": "@openpalm/admin",
-      "version": "0.10.0-rc9",
+      "version": "0.10.0",
       "dependencies": {
         "@openpalm/lib": "workspace:*",
         "croner": "^9.0.0",
@@ -120,11 +120,11 @@
     },
     "packages/channels-sdk": {
       "name": "@openpalm/channels-sdk",
-      "version": "0.10.0-rc9",
+      "version": "0.10.0",
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.10.0-rc9",
+      "version": "0.10.0",
       "bin": {
         "openpalm": "./bin/openpalm.js",
       },
