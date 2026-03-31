@@ -195,8 +195,11 @@ async function prepareInstallFiles(
   try { ensureOpenCodeConfig(); ensureOpenCodeSystemConfig(); } catch (err) { logger.debug('failed to ensure OpenCode config', { error: String(err) }); }
 
   try {
+    // Download varlock binary first (can be slow on first install) — keep
+    // outside the validation timeout so the network fetch isn't time-boxed.
+    const varlockBin = await ensureVarlock();
     await Promise.race([
-      runVarlockValidation(dataDir, vaultDir),
+      runVarlockValidation(varlockBin, vaultDir),
       new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5_000)),
     ]);
     console.log('Configuration validated.');
@@ -403,8 +406,7 @@ async function ensureVolumeMountTargets(homeDir: string, vaultDir: string): Prom
   }
 }
 
-async function runVarlockValidation(_dataDir: string, vaultDir: string): Promise<void> {
-  const varlockBin = await ensureVarlock();
+async function runVarlockValidation(varlockBin: string, vaultDir: string): Promise<void> {
   const schemaPath = join(vaultDir, 'user', 'user.env.schema');
   if (!(await Bun.file(schemaPath).exists())) return;
   const tmpDir = await prepareVarlockDir(schemaPath, join(vaultDir, 'user', 'user.env'));
