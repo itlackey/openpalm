@@ -311,7 +311,7 @@ export function getAddonServiceNames(homeDir: string, name: string): string[] {
 
   const composeCandidates = [
     join(homeDir, "stack", "addons", name, "compose.yml"),
-    join(resolveRegistryAddonsDir(), name, "compose.yml"),
+    join(homeDir, "registry", "addons", name, "compose.yml"),
   ];
 
   for (const composePath of composeCandidates) {
