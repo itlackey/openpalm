@@ -19,6 +19,10 @@ The admin container is optional. Use `--with-admin` to enable the admin addon ov
 | `openpalm install` | Bootstrap `~/.openpalm/`, download assets, run setup wizard, start core services |
 | `openpalm uninstall` | Stop and remove the stack (preserves config and data) |
 | `openpalm update` | Pull latest images and recreate containers |
+| `openpalm upgrade` | Alias for `update` |
+| `openpalm self-update` | Replace the installed CLI binary with the latest release build |
+| `openpalm addon <enable|disable|list>` | Manage registry addons directly from the CLI |
+| `openpalm admin <enable|disable|status>` | Manage the admin addon directly from the CLI |
 | `openpalm start [svc...]` | Start all or named services |
 | `openpalm start --with-admin` | Start all services including admin UI and docker-socket-proxy |
 | `openpalm stop [svc...]` | Stop all or named services |
@@ -31,16 +35,19 @@ The admin container is optional. Use `--with-admin` to enable the admin addon ov
 
 ### Install options
 
-`--force` skip "already installed" check, `--version TAG` install a specific ref (default: current CLI version), `--no-start` prepare files only, `--no-open` skip browser launch.
+`--force` skip "already installed" check and create a backup of the current `OP_HOME`, `--version TAG` install a specific ref (default: current CLI version), `--no-start` prepare files only, `--no-open` skip browser launch.
 
 ### Admin addon
 
 Admin and docker-socket-proxy start only when explicitly requested:
 
 ```bash
-openpalm start --with-admin     # Start core + admin profile
-openpalm start admin            # Start admin service specifically
-openpalm stop admin             # Stop admin service specifically
+openpalm admin enable           # Enable the admin addon and start its services
+openpalm admin disable          # Stop and disable the admin addon
+openpalm admin status           # Show whether the admin addon is enabled
+openpalm addon enable chat      # Enable a registry addon and start its services
+openpalm addon disable chat     # Stop and disable a registry addon
+openpalm addon list             # Show available addons and whether they are enabled
 ```
 
 ## Setup Wizard
@@ -79,4 +86,4 @@ bun run start -- install --no-start
 bun test
 ```
 
-See also: [`scripts/setup.sh`](../../scripts/setup.sh) (shell-based installer).
+See also: [`scripts/setup.sh`](../../scripts/setup.sh) and [`scripts/setup.ps1`](../../scripts/setup.ps1). Both installers support `--cli-only` when you only want to install or refresh the CLI binary without touching the stack or `OP_HOME`.

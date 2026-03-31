@@ -30,6 +30,7 @@ function Normalize-Version {
 # Version resolution
 $RequestedVersion = $env:OP_VERSION
 $PassthroughArgs = @()
+$CliOnly = $false
 
 for ($i = 0; $i -lt $args.Count; $i++) {
     $arg = $args[$i]
@@ -46,6 +47,11 @@ for ($i = 0; $i -lt $args.Count; $i++) {
 
     if ($arg.StartsWith('--version=')) {
         $RequestedVersion = $arg.Substring('--version='.Length)
+        continue
+    }
+
+    if ($arg -eq '--cli-only') {
+        $CliOnly = $true
         continue
     }
 
@@ -66,15 +72,22 @@ if (-not $Version) {
 # Install directory
 $InstallDir = if ($env:OP_INSTALL_DIR) { $env:OP_INSTALL_DIR } else { "$env:LOCALAPPDATA\openpalm\bin" }
 $Dest = Join-Path $InstallDir 'openpalm.exe'
+$TempDest = "$Dest.tmp"
 
 Write-Host "▸ Downloading openpalm $Version for Windows x64..." -ForegroundColor Blue
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 $DownloadUrl = "https://github.com/$Repo/releases/download/$Version/$Binary"
-Invoke-WebRequest -Uri $DownloadUrl -OutFile $Dest -MaximumRetryCount 5 -RetryIntervalSec 5
+Invoke-WebRequest -Uri $DownloadUrl -OutFile $TempDest -MaximumRetryCount 5 -RetryIntervalSec 5
+Move-Item -Force $TempDest $Dest
 Write-Host "✓ Installed openpalm to $Dest" -ForegroundColor Green
 
 # Add to PATH for this session
 $env:PATH = "$InstallDir;$env:PATH"
+
+if ($CliOnly) {
+    Write-Host "✓ CLI install complete. Skipped stack and OP_HOME updates because --cli-only was requested." -ForegroundColor Green
+    exit 0
+}
 
 # Run install
 & $Dest install --version $Version @PassthroughArgs

@@ -7,6 +7,7 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test";
 import { existsSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { backupOpenPalmHome } from "./backup.js";
 import {
   validateBranch,
   validateRegistryUrl,
@@ -19,8 +20,10 @@ import {
   getRegistryAutomation,
   getRegistryAddonConfig,
   listAvailableAddonIds,
+  getAddonServiceNames,
   enableAddon,
   disableAddonByName,
+  setAddonEnabled,
   installAutomationFromRegistry,
   uninstallAutomation,
 } from "./registry.js";
@@ -307,6 +310,66 @@ describe("materialized registry catalog", () => {
 
     expect(disableAddonByName(process.env.OP_HOME!, 'chat')).toEqual({ ok: true });
     expect(existsSync(join(process.env.OP_HOME!, 'stack', 'addons', 'chat'))).toBe(false);
+  });
+
+  it("returns addon service names from stack or registry compose files", () => {
+    const sourceRoot = join(tmpDir, 'repo');
+    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'admin');
+    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+
+    mkdirSync(addonDir, { recursive: true });
+    mkdirSync(automationsDir, { recursive: true });
+    writeFileSync(join(addonDir, 'compose.yml'), 'services:\n  docker-socket-proxy:\n    image: proxy\n  admin:\n    image: admin\n');
+    writeFileSync(join(addonDir, '.env.schema'), 'OP_ADMIN_TOKEN=\n');
+    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+
+    materializeRegistryCatalog(sourceRoot);
+
+    expect(getAddonServiceNames(process.env.OP_HOME!, 'admin')).toEqual(['docker-socket-proxy', 'admin']);
+  });
+
+  it("toggles addons and generates channel secrets when enabling channel addons", () => {
+    const sourceRoot = join(tmpDir, 'repo');
+    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+
+    mkdirSync(addonDir, { recursive: true });
+    mkdirSync(automationsDir, { recursive: true });
+    writeFileSync(join(addonDir, 'compose.yml'), 'services:\n  chat:\n    image: test\n    environment:\n      CHANNEL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
+    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
+    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+
+    materializeRegistryCatalog(sourceRoot);
+
+    expect(setAddonEnabled(process.env.OP_HOME!, join(process.env.OP_HOME!, 'vault'), 'chat', true)).toEqual({
+      ok: true,
+      enabled: true,
+      changed: true,
+      services: ['chat'],
+    });
+    expect(existsSync(join(process.env.OP_HOME!, 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
+    expect(readFileSync(join(process.env.OP_HOME!, 'vault', 'stack', 'guardian.env'), 'utf-8')).toMatch(/CHANNEL_CHAT_SECRET=/);
+
+    expect(setAddonEnabled(process.env.OP_HOME!, join(process.env.OP_HOME!, 'vault'), 'chat', false)).toEqual({
+      ok: true,
+      enabled: false,
+      changed: true,
+      services: ['chat'],
+    });
+    expect(existsSync(join(process.env.OP_HOME!, 'stack', 'addons', 'chat'))).toBe(false);
+  });
+
+  it("backs up OP_HOME without recursively copying backups", () => {
+    mkdirSync(join(process.env.OP_HOME!, 'config'), { recursive: true });
+    mkdirSync(join(process.env.OP_HOME!, 'backups', 'old-backup'), { recursive: true });
+    writeFileSync(join(process.env.OP_HOME!, 'config', 'stack.yml'), 'llm: test\n');
+    writeFileSync(join(process.env.OP_HOME!, 'backups', 'old-backup', 'marker.txt'), 'old\n');
+
+    const backupDir = backupOpenPalmHome(process.env.OP_HOME!);
+
+    expect(backupDir).not.toBeNull();
+    expect(existsSync(join(backupDir!, 'config', 'stack.yml'))).toBe(true);
+    expect(existsSync(join(backupDir!, 'backups'))).toBe(false);
   });
 
   it("installs and uninstalls automations through config/automations", () => {

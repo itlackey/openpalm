@@ -7,6 +7,7 @@ import { resolveOpenPalmHome, resolveConfigDir, resolveVaultDir, resolveDataDir 
 import { ensureSecrets, ensureStackEnv, resolveRequestedImageTag } from '../lib/env.ts';
 import { ensureDirectoryTree, seedOpenPalmDir, openBrowser, runDockerCompose, runDockerComposeCapture } from '../lib/docker.ts';
 import {
+  backupOpenPalmHome,
   ensureOpenCodeConfig, ensureOpenCodeSystemConfig,
   performSetup,
   applyInstall,
@@ -134,6 +135,13 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const alreadyInstalled = await Bun.file(join(vaultDir, 'user', 'user.env')).exists();
   if (alreadyInstalled && !options.force) {
     throw new Error('OpenPalm appears to already be installed. Re-run install with --force to continue.');
+  }
+
+  if (alreadyInstalled && options.force) {
+    const backupDir = backupOpenPalmHome(homeDir);
+    if (backupDir) {
+      console.log(`Backed up existing OP_HOME to ${backupDir}`);
+    }
   }
 
   // ── Bootstrap files ────────────────────────────────────────────────────
