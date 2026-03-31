@@ -195,12 +195,15 @@ async function prepareInstallFiles(
   try { ensureOpenCodeConfig(); ensureOpenCodeSystemConfig(); } catch (err) { logger.debug('failed to ensure OpenCode config', { error: String(err) }); }
 
   try {
-    // Download varlock binary first (can be slow on first install) — keep
-    // outside the validation timeout so the network fetch isn't time-boxed.
-    const varlockBin = await ensureVarlock();
+    // Download + validate wrapped in a single timeout. The download can be
+    // slow on first install (binary fetch from GitHub) but must not block
+    // the install indefinitely — 30s is generous enough for most connections.
     await Promise.race([
-      runVarlockValidation(varlockBin, vaultDir),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5_000)),
+      (async () => {
+        const varlockBin = await ensureVarlock();
+        await runVarlockValidation(varlockBin, vaultDir);
+      })(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30_000)),
     ]);
     console.log('Configuration validated.');
   } catch (err) { logger.debug('varlock validation skipped', { error: String(err) }); }
