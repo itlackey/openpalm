@@ -101,6 +101,9 @@ CLOUD_INIT
 
 CUSTOM_DATA="$(base64 -w0 "${TMP}/cloud-init.yaml")"
 ssh-keygen -t ed25519 -f "${TMP}/key" -N "" -q
+SSH_KEY="${SCRIPT_DIR}/deploy.key"
+cp "${TMP}/key" "$SSH_KEY"
+chmod 600 "$SSH_KEY"
 
 # ── Deploy ────────────────────────────────────────────────────────────
 
@@ -164,7 +167,17 @@ cat <<DONE
 
 Deployed.  Private IP: ${PRIVATE_IP}  Key Vault: ${KV_NAME}
 
-  az ssh vm -g ${RESOURCE_GROUP} -n ${VM}
-  sudo tail -f /var/log/openpalm-bootstrap.log
+  # Run commands on the VM (no VPN/Bastion needed):
+  az vm run-command invoke -g ${RESOURCE_GROUP} -n ${VM} \\
+    --command-id RunShellScript --scripts "COMMAND" \\
+    --query value[0].message -o tsv
+
+  # Check bootstrap progress:
+  ... --scripts "tail -20 /var/log/openpalm-bootstrap.log"
+
+  # Check stack health:
+  ... --scripts "sudo -u ${ADMIN_USERNAME} docker ps"
+
+  # SSH key saved to ${SSH_KEY} (for use with VPN/Bastion if added later)
 
 DONE

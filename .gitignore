@@ -44,3 +44,4 @@ packages/admin-tools/dist/index.js
 scripts/azure/.generated/prod.generated.bicepparam
 scripts/azure/vm-declarative/deploy.env
 scripts/azure/vm-declarative/deploy.spec.yaml
+scripts/azure/vm-declarative/deploy.key
