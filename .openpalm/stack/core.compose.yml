@@ -26,7 +26,7 @@ services:
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     restart: "no"
     command: ["sh", "-c",
-      "mkdir -p /data/memory /data/assistant /data/guardian /data/stash /data/workspace /logs/opencode && ls /addons 2>/dev/null | xargs -I{} mkdir -p /data/{}"]
+      "mkdir -p /data/memory /data/assistant /data/guardian /data/scheduler /data/stash /data/workspace /logs/opencode && ls /addons 2>/dev/null | xargs -I{} mkdir -p /data/{}"]
     volumes:
       - ${OP_HOME}/data:/data
       - ${OP_HOME}/logs:/logs
@@ -201,7 +201,7 @@ services:
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
       PORT: "8090"
-      HOME: /app
+      HOME: /openpalm/data/scheduler
       OP_HOME: /openpalm
       OP_ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
       OP_ADMIN_API_URL: ${OP_ADMIN_API_URL:-}

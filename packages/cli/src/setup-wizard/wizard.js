@@ -497,8 +497,8 @@ async function pollDeployStatus() {
         stopDeployPolling();
         showDeployDone(data);
       }
-    } else if (data.setupComplete && (!data.deployStatus || data.deployStatus.length === 0)) {
-      // Setup complete but no deployment started (--no-start mode)
+    } else if (data.setupComplete && !data.deploying && (!data.deployStatus || data.deployStatus.length === 0)) {
+      // Setup complete and not deploying (--no-start mode)
       stopDeployPolling();
       showDeployDone({ deployStatus: [] });
     }

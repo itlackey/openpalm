@@ -252,6 +252,7 @@ async function runWizardInstall(configDir: string, noOpen: boolean, noStart = fa
   }
 
   console.log('Setup complete. Checking Docker...');
+  wizard.setDeploying(true);
   await requireDocker();
 
   console.log('Starting services...');
