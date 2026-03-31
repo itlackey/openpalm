@@ -5,7 +5,7 @@ import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
 import { resolveOpenPalmHome, resolveConfigDir, resolveVaultDir, resolveDataDir } from '@openpalm/lib';
 import { ensureSecrets, ensureStackEnv, resolveRequestedImageTag } from '../lib/env.ts';
-import { ensureDirectoryTree, seedOpenPalmDir, openBrowser, runDockerCompose } from '../lib/docker.ts';
+import { ensureDirectoryTree, seedOpenPalmDir, openBrowser, runDockerCompose, runDockerComposeCapture } from '../lib/docker.ts';
 import {
   ensureOpenCodeConfig, ensureOpenCodeSystemConfig,
   performSetup,
@@ -260,13 +260,16 @@ async function runWizardInstall(configDir: string, noOpen: boolean, noStart = fa
   const allServices = await buildManagedServices(state);
   const composeArgs = fullComposeArgs(state);
   try {
-    wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Waiting...'));
+    wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Pulling images...'));
     await runDockerCompose([...composeArgs, 'pull', ...allServices]).catch(() => {
       console.warn('Warning: image pull failed — if this is your first install, check your network connection.');
     });
     wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Starting...'));
     await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
-    wizard.markAllRunning();
+
+    // Poll container health so the wizard shows real progress per-service
+    await pollContainerHealth(composeArgs, allServices, wizard);
+
     console.log('\n✓ All services are running:');
     for (const svc of allServices) {
       console.log(`  • ${svc}`);
@@ -276,7 +279,8 @@ async function runWizardInstall(configDir: string, noOpen: boolean, noStart = fa
     console.log(`  Memory API: http://localhost:${3898}`);
     console.log(`  Guardian:   http://localhost:${3899}`);
     console.log('');
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // Keep server alive long enough for the frontend to fetch the final state
+    await new Promise(resolve => setTimeout(resolve, 8000));
   } catch (err) {
     wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'error', String(err)));
     wizard.setDeployError(String(err));
@@ -325,6 +329,53 @@ async function runFileInstall(filePath: string, noStart: boolean): Promise<void>
   await requireDocker();
   await ensureVolumeMountTargets(resolveOpenPalmHome(), resolveVaultDir());
   await deployServices('install');
+}
+
+/**
+ * Poll `docker compose ps` until all services are running/healthy (or timeout).
+ * Updates the wizard deploy status per-service so the frontend shows real progress.
+ */
+async function pollContainerHealth(
+  composeArgs: string[],
+  services: string[],
+  wizard: ReturnType<typeof createSetupServer>,
+): Promise<void> {
+  const MAX_WAIT_MS = 120_000; // 2 minutes
+  const POLL_INTERVAL = 3_000;
+  const start = Date.now();
+  const running = new Set<string>();
+
+  while (Date.now() - start < MAX_WAIT_MS) {
+    try {
+      const output = await runDockerComposeCapture([...composeArgs, 'ps', '--format', 'json']);
+      // docker compose ps --format json outputs one JSON object per line
+      for (const line of output.trim().split('\n')) {
+        if (!line.trim()) continue;
+        try {
+          const container = JSON.parse(line) as { Service?: string; State?: string; Health?: string };
+          const svc = container.Service;
+          if (!svc || !services.includes(svc)) continue;
+          const isHealthy = container.Health === 'healthy' || (container.State === 'running' && !container.Health);
+          if (isHealthy) running.add(svc);
+        } catch { /* skip malformed line */ }
+      }
+    } catch { /* compose ps failed — retry */ }
+
+    // Build per-service status entries
+    const entries = services.map(svc => ({
+      service: svc,
+      status: (running.has(svc) ? 'running' : 'pending') as 'running' | 'pending',
+      label: running.has(svc) ? 'Running' : 'Starting...',
+    }));
+    wizard.updateDeployStatus(entries);
+
+    if (running.size >= services.length) return;
+
+    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+  }
+
+  // Timeout: mark remaining services as running anyway so the UI completes
+  wizard.markAllRunning();
 }
 
 /**

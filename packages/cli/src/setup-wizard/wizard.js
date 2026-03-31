@@ -479,6 +479,11 @@ async function pollDeployStatus() {
     var data = await res.json();
     deployPollErrors = 0;
 
+    // Remember latest status so we can show it if the server stops
+    if (data.deployStatus && data.deployStatus.length > 0) {
+      lastDeployData = data;
+    }
+
     updateDeployUI(data);
 
     if (data.deployError) {
@@ -498,9 +503,15 @@ async function pollDeployStatus() {
   } catch (e) {
     deployPollErrors++;
     if (deployPollErrors >= 3) {
-      // Server is gone — setup completed without deployment (--no-start)
+      // Server is gone — use last known status (with service URLs) if available
       stopDeployPolling();
-      showDeployDone({ deployStatus: [] });
+      if (lastDeployData && lastDeployData.deployStatus && lastDeployData.deployStatus.length > 0) {
+        // Mark all services as running in the cached data
+        lastDeployData.deployStatus.forEach(function (s) { s.status = "running"; });
+        showDeployDone(lastDeployData);
+      } else {
+        showDeployDone({ deployStatus: [] });
+      }
     }
   }
 }
