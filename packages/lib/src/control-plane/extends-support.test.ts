@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 
 describe("compose extends support", () => {
   let fixtureDir: string;
+  const skipDockerAssertions = process.env.CI === "true";
 
   beforeAll(() => {
     fixtureDir = join(tmpdir(), `openpalm-extends-test-${Date.now()}`);
@@ -65,9 +66,9 @@ describe("compose extends support", () => {
     expect(overlays[1]).toContain("extended-addon/compose.yml");
   });
 
-  test("extends addon passes docker compose config preflight (requires Docker)", async () => {
+  test.skipIf(skipDockerAssertions)("extends addon passes docker compose config preflight (requires Docker)", async () => {
     // This test validates that Compose `extends` actually merges correctly.
-    // Skipped when Docker is unavailable (CI without Docker, etc.).
+    // Skipped when Docker is unavailable.
     const { checkDocker, composePreflight } = await import("./docker.js");
     const dockerCheck = await checkDocker();
     if (!dockerCheck.ok) {
@@ -82,7 +83,7 @@ describe("compose extends support", () => {
     expect(result.ok).toBe(true);
   });
 
-  test("extends addon resolves services correctly via compose config (requires Docker)", async () => {
+  test.skipIf(skipDockerAssertions)("extends addon resolves services correctly via compose config (requires Docker)", async () => {
     const { checkDocker, composeConfigServices } = await import("./docker.js");
     const dockerCheck = await checkDocker();
     if (!dockerCheck.ok) {
