@@ -279,7 +279,9 @@ async function runWizardInstall(configDir: string, noOpen: boolean, noStart = fa
     console.log(`  Memory API: http://localhost:${3898}`);
     console.log(`  Guardian:   http://localhost:${3899}`);
     console.log('');
-    // Keep server alive long enough for the frontend to fetch the final state
+    // pollContainerHealth returns as soon as all services are healthy, but
+    // the frontend polls every 2.5s — keep the server alive long enough for
+    // at least 2-3 polls to fetch the final "all running" state with URLs.
     await new Promise(resolve => setTimeout(resolve, 8000));
   } catch (err) {
     wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'error', String(err)));
@@ -344,11 +346,12 @@ async function pollContainerHealth(
   const POLL_INTERVAL = 3_000;
   const start = Date.now();
   const running = new Set<string>();
+  const psArgs = [...composeArgs, 'ps', '--format', 'json'];
+  let prevRunningCount = 0;
 
   while (Date.now() - start < MAX_WAIT_MS) {
     try {
-      const output = await runDockerComposeCapture([...composeArgs, 'ps', '--format', 'json']);
-      // docker compose ps --format json outputs one JSON object per line
+      const output = await runDockerComposeCapture(psArgs);
       for (const line of output.trim().split('\n')) {
         if (!line.trim()) continue;
         try {
@@ -357,24 +360,28 @@ async function pollContainerHealth(
           if (!svc || !services.includes(svc)) continue;
           const isHealthy = container.Health === 'healthy' || (container.State === 'running' && !container.Health);
           if (isHealthy) running.add(svc);
-        } catch { /* skip malformed line */ }
+        } catch { /* skip malformed JSON line */ }
       }
-    } catch { /* compose ps failed — retry */ }
+    } catch { /* compose ps failed — retry next tick */ }
 
-    // Build per-service status entries
-    const entries = services.map(svc => ({
-      service: svc,
-      status: (running.has(svc) ? 'running' : 'pending') as 'running' | 'pending',
-      label: running.has(svc) ? 'Running' : 'Starting...',
-    }));
-    wizard.updateDeployStatus(entries);
+    if (running.size !== prevRunningCount) {
+      prevRunningCount = running.size;
+      const entries = services.map(svc => ({
+        service: svc,
+        status: (running.has(svc) ? 'running' : 'pending') as 'running' | 'pending',
+        label: running.has(svc) ? 'Running' : 'Starting...',
+      }));
+      wizard.updateDeployStatus(entries);
+    }
 
     if (running.size >= services.length) return;
 
     await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
   }
 
-  // Timeout: mark remaining services as running anyway so the UI completes
+  // Timeout: mark remaining as running so the UI completes, but warn
+  const pending = services.filter(s => !running.has(s));
+  console.warn(`Warning: health check timed out for: ${pending.join(', ')}. They may still be starting.`);
   wizard.markAllRunning();
 }
 

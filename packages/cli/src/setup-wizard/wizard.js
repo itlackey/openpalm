@@ -479,9 +479,11 @@ async function pollDeployStatus() {
     var data = await res.json();
     deployPollErrors = 0;
 
-    // Remember latest status so we can show it if the server stops
+    // Remember latest service list so we can show URLs if the server stops
     if (data.deployStatus && data.deployStatus.length > 0) {
-      lastDeployData = data;
+      lastDeployData = data.deployStatus.map(function (s) {
+        return { service: s.service, status: s.status, label: s.label };
+      });
     }
 
     updateDeployUI(data);
@@ -503,12 +505,13 @@ async function pollDeployStatus() {
   } catch (e) {
     deployPollErrors++;
     if (deployPollErrors >= 3) {
-      // Server is gone — use last known status (with service URLs) if available
+      // Server is gone — use last known service list if available
       stopDeployPolling();
-      if (lastDeployData && lastDeployData.deployStatus && lastDeployData.deployStatus.length > 0) {
-        // Mark all services as running in the cached data
-        lastDeployData.deployStatus.forEach(function (s) { s.status = "running"; });
-        showDeployDone(lastDeployData);
+      if (lastDeployData && lastDeployData.length > 0) {
+        var doneEntries = lastDeployData.map(function (s) {
+          return { service: s.service, status: "running", label: s.label };
+        });
+        showDeployDone({ deployStatus: doneEntries });
       } else {
         showDeployDone({ deployStatus: [] });
       }

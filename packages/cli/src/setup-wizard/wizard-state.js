@@ -199,7 +199,7 @@ var verifyGeneration = {};
 /** Deploy poll error counter */
 var deployPollErrors = 0;
 
-/** Last successfully fetched deploy status (used as fallback when server stops) */
+/** Last known deploy service entries — used as fallback when server stops */
 var lastDeployData = null;
 
 // Initialize provider states
