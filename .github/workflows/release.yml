@@ -359,7 +359,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Upgrade npm for trusted publishing
@@ -419,7 +419,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Upgrade npm for trusted publishing
@@ -430,6 +430,14 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Verify lib version is available on npm
+        run: |
+          VERSION="${{ needs.prepare-tag.outputs.version }}"
+          if ! npm view "@openpalm/lib@${VERSION}" version >/dev/null 2>&1; then
+            echo "::error::Expected @openpalm/lib@${VERSION} to be available before publishing CLI."
+            exit 1
+          fi
 
       - name: Pack CLI
         working-directory: packages/cli
@@ -478,7 +486,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Upgrade npm for trusted publishing

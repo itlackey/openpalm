@@ -34,18 +34,23 @@ This plan fixes the immediate breakage and removes policy drift between scripts,
      - local `scripts/bump-platform.sh`
 4. **Align docs/comments to current behavior.**
    - Update package-management guidance and workflow comments to match actual release strategy.
+5. **Standardize GitHub Actions Node runtime on Node 24.**
+   - Update all `actions/setup-node` steps in release/CI/publish workflows from Node 22 to Node 24 for consistency with current runtime baseline.
+
+## Next phase (implemented)
+
+1. **Release preflight package availability check for CLI dependency**
+   - Added an explicit preflight check before CLI publish to verify `@openpalm/lib@${VERSION}` is resolvable from npm.
+   - This provides a fail-fast guard even if publish ordering or manual reruns drift.
 
 ## Medium-priority follow-ups
 
-1. **Add release preflight package availability checks**
-   - Before publishing CLI, verify `npm view @openpalm/lib@${VERSION}` succeeds.
-   - Before publishing channel packages, verify `@openpalm/channels-sdk` compatibility constraints are satisfiable.
-2. **Unify package-group metadata**
+1. **Unify package-group metadata**
    - Introduce a single source of truth (JSON/TS config) for:
      - platform-synced packages
      - independently published packages
    - Reuse it from CI and release scripts to avoid list drift.
-3. **Clarify assistant-tools/admin-tools strategy**
+2. **Clarify assistant-tools/admin-tools strategy**
    - Decide whether they are platform-coupled or independently versioned.
    - Add explicit workflow(s) and matching docs once decided.
 
@@ -71,4 +76,6 @@ This plan fixes the immediate breakage and removes policy drift between scripts,
 3. Release version stamping/checking lists include `packages/lib/package.json`.
 4. CI platform sync check includes `packages/lib/package.json`.
 5. `scripts/bump-platform.sh` updates `packages/lib/package.json`.
-6. Docs/comments no longer contradict workflow behavior for lib/CLI/channels-sdk publication.
+6. `actions/setup-node` is set to Node 24 across release/CI/publish workflows.
+7. CLI publish includes an npm preflight check for `@openpalm/lib@${VERSION}` availability.
+8. Docs/comments no longer contradict workflow behavior for lib/CLI/channels-sdk publication.
