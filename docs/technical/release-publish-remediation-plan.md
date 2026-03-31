@@ -37,7 +37,7 @@ This plan fixes the immediate breakage and removes policy drift between scripts,
 5. **Standardize GitHub Actions Node runtime on Node 24.**
    - Update all `actions/setup-node` steps in release/CI/publish workflows from Node 22 to Node 24 for consistency with current runtime baseline.
 
-## Next phase (implemented)
+## Additional changes implemented
 
 1. **Release preflight package availability check for CLI dependency**
    - Added an explicit preflight check before CLI publish to verify `@openpalm/lib@${VERSION}` is resolvable from npm.

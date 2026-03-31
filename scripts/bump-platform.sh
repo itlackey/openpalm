@@ -17,18 +17,23 @@ fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "Error: jq is required." >&2
-  exit 1
-fi
-
 GROUPS_JSON="${ROOT}/.github/release-package-groups.json"
 if [ ! -f "${GROUPS_JSON}" ]; then
   echo "Error: missing ${GROUPS_JSON}" >&2
   exit 1
 fi
 
-mapfile -t MANIFESTS < <(jq -r '.platformManifests[]' "${GROUPS_JSON}")
+mapfile -t MANIFESTS < <(
+  node -e "
+    const fs = require('node:fs');
+    const groups = JSON.parse(fs.readFileSync(process.argv[1], 'utf-8'));
+    if (!Array.isArray(groups.platformManifests)) {
+      console.error('Error: platformManifests must be an array.');
+      process.exit(1);
+    }
+    process.stdout.write(groups.platformManifests.join('\n'));
+  " "${GROUPS_JSON}"
+)
 
 for manifest in "${MANIFESTS[@]}"; do
   file="${ROOT}/${manifest}"
