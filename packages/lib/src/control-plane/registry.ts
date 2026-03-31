@@ -297,7 +297,11 @@ function readAddonServiceNames(composePath: string): string[] {
     const services = parsed && typeof parsed === "object" ? (parsed as { services?: unknown }).services : undefined;
     if (!services || typeof services !== "object" || Array.isArray(services)) return [];
     return Object.keys(services as Record<string, unknown>);
-  } catch {
+  } catch (error) {
+    logger.warn("failed to parse addon compose services", {
+      composePath,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return [];
   }
 }

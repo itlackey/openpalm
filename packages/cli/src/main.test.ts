@@ -381,6 +381,10 @@ describe('self-update helpers', () => {
     expect(resolveCliArtifactName('darwin', 'arm64')).toBe('openpalm-cli-darwin-arm64');
   });
 
+  it('rejects unsupported platforms', () => {
+    expect(() => resolveCliArtifactName('freebsd', 'mips64')).toThrow('Unsupported platform for self-update');
+  });
+
   it('only allows replacing standalone executables', () => {
     expect(canReplaceCurrentExecutable('/usr/local/bin/openpalm')).toBe(true);
     expect(canReplaceCurrentExecutable('/home/runner/.bun/bin/bun')).toBe(false);

@@ -56,7 +56,7 @@ function parseExpectedChecksum(checksums: string, artifact: string): string {
   return checksum;
 }
 
-function shellQuote(value: string): string {
+function posixShellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
@@ -93,11 +93,11 @@ async function schedulePosixReplacement(sourcePath: string, targetPath: string):
     '#!/usr/bin/env sh',
     'set -eu',
     'sleep 1',
-    `tmp=${shellQuote(sourcePath)}`,
-    `dest=${shellQuote(targetPath)}`,
+    `tmp=${posixShellQuote(sourcePath)}`,
+    `dest=${posixShellQuote(targetPath)}`,
     'chmod +x "$tmp"',
     'mv "$tmp" "$dest"',
-    `rm -rf ${shellQuote(scriptDir)}`,
+    `rm -rf ${posixShellQuote(scriptDir)}`,
   ].join('\n') + '\n';
 
   await Bun.write(scriptPath, script);
@@ -123,7 +123,7 @@ export default defineCommand({
   },
   async run({ args }) {
     if (process.platform === 'win32') {
-      throw new Error('Self-update is not supported on Windows yet. Re-run setup.ps1 with --cli-only instead.');
+      throw new Error('Self-update is not supported on Windows yet because running executables cannot be replaced reliably while they are in use. Download and run setup.ps1 with --cli-only to refresh only the CLI binary.');
     }
 
     if (!canReplaceCurrentExecutable()) {

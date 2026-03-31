@@ -79,7 +79,7 @@ fi
 # ── Download ──────────────────────────────────────────────────────────
 INSTALL_DIR="${OP_INSTALL_DIR:-${HOME}/.local/bin}"
 DEST="${INSTALL_DIR}/openpalm"
-TMP_DEST="${DEST}.tmp.$$"
+TMP_DEST="$(mktemp "${DEST}.tmp.XXXXXX")"
 
 info "Downloading openpalm ${VERSION} for ${OS}/${ARCH}..."
 mkdir -p "${INSTALL_DIR}"

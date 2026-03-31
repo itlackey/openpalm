@@ -11,8 +11,9 @@ import { runDockerCompose } from '../lib/docker.ts';
 
 function requireKnownAddon(name: string): void {
   const available = listAvailableAddonIds();
+  const hint = available.length > 0 ? ` Run \`openpalm addon list\` to see the available addons.` : '';
   if (!available.includes(name)) {
-    throw new Error(`Addon "${name}" is not available. Known addons: ${available.join(', ') || '(none)'}`);
+    throw new Error(`Addon "${name}" is not available. Known addons: ${available.join(', ') || '(none)'}.${hint}`);
   }
 }
 
@@ -92,7 +93,7 @@ const enableCmd = defineCommand({
   },
   async run({ args }) {
     const name = String(args._?.[0] ?? '').trim();
-    if (!name) throw new Error('Addon name is required.');
+    if (!name) throw new Error('Addon name is required. Run `openpalm addon list` to see the available addons.');
     await runAddonEnableAction(name);
   },
 });
@@ -104,7 +105,7 @@ const disableCmd = defineCommand({
   },
   async run({ args }) {
     const name = String(args._?.[0] ?? '').trim();
-    if (!name) throw new Error('Addon name is required.');
+    if (!name) throw new Error('Addon name is required. Run `openpalm addon list` to see the available addons.');
     await runAddonDisableAction(name);
   },
 });

@@ -82,16 +82,16 @@ export const POST: RequestHandler = async (event) => {
     typeof body.enabled === "boolean" ? body.enabled : undefined;
   const wasEnabled = listEnabledAddonIds(state.homeDir).includes(name);
   const newEnabled = enabled !== undefined ? enabled : wasEnabled;
-  const servicesToStop = !newEnabled && wasEnabled ? getAddonServiceNames(state.homeDir, name) : [];
+  const serviceNames = !newEnabled && wasEnabled ? getAddonServiceNames(state.homeDir, name) : [];
 
-  if (servicesToStop.length > 0) {
+  if (serviceNames.length > 0) {
     const dockerCheck = await checkDocker();
     if (dockerCheck.ok) {
       try {
-        await composeStop(servicesToStop, buildComposeOptions(state));
-        logger.info("stopped addon services before disable", { name, services: servicesToStop, requestId });
+        await composeStop(serviceNames, buildComposeOptions(state));
+        logger.info("stopped addon services before disable", { name, services: serviceNames, requestId });
       } catch (err) {
-        logger.warn("failed to stop addon services before disable", { name, services: servicesToStop, error: String(err), requestId });
+        logger.warn("failed to stop addon services before disable", { name, services: serviceNames, error: String(err), requestId });
       }
     }
   }
