@@ -23,7 +23,10 @@ if [ ! -f "${GROUPS_JSON}" ]; then
   exit 1
 fi
 
-mapfile -t MANIFESTS < <(
+MANIFESTS=""
+while IFS= read -r line; do
+  MANIFESTS="${MANIFESTS}${MANIFESTS:+ }${line}"
+done < <(
   node -e "
     const fs = require('node:fs');
     const groups = JSON.parse(fs.readFileSync(process.argv[1], 'utf-8'));
@@ -35,7 +38,7 @@ mapfile -t MANIFESTS < <(
   " "${GROUPS_JSON}"
 )
 
-for manifest in "${MANIFESTS[@]}"; do
+for manifest in ${MANIFESTS}; do
   file="${ROOT}/${manifest}"
   if [ ! -f "${file}" ]; then
     echo "skip (not found): ${manifest}"

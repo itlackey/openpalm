@@ -21,8 +21,8 @@
     },
 
     "external_directory": {
-      "/tmp/**": "allow",
-      "/home/opencode/**": "allow"
+      "/tmp": "allow",
+      "/home/opencode": "allow"
     }
   }
 }
