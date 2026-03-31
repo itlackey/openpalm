@@ -1,318 +1,234 @@
 # Troubleshooting
 
-Common problems and their solutions. For setup-specific issues, see
-also the troubleshooting section of [setup-guide.md](setup-guide.md).
+Common problems and their fixes for the current compose-first OpenPalm model.
+
+When in doubt, inspect the exact compose file set you started from
+`~/.openpalm/stack/` and rerun that same file set explicitly.
 
 ---
 
-## 1. Docker not found
+## 1. Docker not found or daemon unavailable
 
-**Symptoms:** Installer exits with "docker: command not found" or
-"Cannot connect to the Docker daemon."
+**Symptoms:** `docker: command not found`, `Cannot connect to the Docker daemon`,
+or Compose commands fail immediately.
 
-**Cause:** Docker Engine (Linux) or Docker Desktop (Mac/Windows) is not
-installed or not running.
-
-**Solution:**
+**Fix:**
 
 ```bash
-# Verify Docker is running
 docker info
-
-# Linux: install Docker Engine
-curl -fsSL https://get.docker.com | sh
-
-# Linux: fix permission denied
-sudo usermod -aG docker $USER
-# Log out and back in for group change to take effect
 ```
 
-On Mac/Windows, open Docker Desktop and wait for the green "Running" indicator
-before retrying.
+If that fails:
+
+- install Docker Engine or Docker Desktop
+- start the Docker daemon/Desktop app
+- on Linux, add your user to the `docker` group if needed
+
+```bash
+sudo usermod -aG docker $USER
+```
+
+Then log out and back in.
 
 ---
 
 ## 2. Port conflicts
 
-**Symptoms:** Container exits immediately or `docker compose up` reports
-"address already in use." Common ports: 8080 (Caddy ingress), 8100 (admin),
-8765 (memory), 4096 (assistant).
+**Symptoms:** Compose reports `address already in use`.
 
-**Cause:** Another process is already bound to the port.
+Common defaults:
 
-**Solution:**
+- `3800` assistant
+- `3880` admin
+- `3881` admin OpenCode
+- `3898` memory
+- `3820` chat addon
+- `3821` API addon
+- `3810` voice addon
+
+**Fix:** find the conflicting process:
 
 ```bash
-# Find what is using the port (example: 8080)
-lsof -i :8080
-# or
-ss -tlnp | grep 8080
+lsof -i :3880
 ```
 
-Either stop the conflicting process, or change the OpenPalm bind port by
-editing `DATA_HOME/stack.env`:
+Then either stop that process or change the matching `OP_*_PORT` value in
+`~/.openpalm/vault/stack/stack.env`, then recreate the stack with the same
+compose file set.
+
+---
+
+## 3. Admin UI will not load
+
+**Symptoms:** `http://localhost:3880/` refuses the connection.
+
+**Common causes:**
+
+- you did not include `addons/admin/compose.yml`
+- the admin container is still starting
+- `OP_ADMIN_PORT` was changed in `stack.env`
+
+**Fix:**
+
+```bash
+cd "$HOME/.openpalm/stack"
+docker compose \
+  -f core.compose.yml \
+  -f addons/admin/compose.yml \
+  --env-file ../vault/stack/stack.env \
+  --env-file ../vault/user/user.env \
+  ps
+```
+
+Then inspect logs if needed:
+
+```bash
+docker compose \
+  -f core.compose.yml \
+  -f addons/admin/compose.yml \
+  --env-file ../vault/stack/stack.env \
+  --env-file ../vault/user/user.env \
+  logs admin
+```
+
+---
+
+## 4. Wrong services started
+
+**Symptoms:** an expected addon is missing, or an unexpected stack shape is
+running.
+
+**Cause:** Docker Compose only deploys the files you pass with `-f`.
+
+**Fix:** rerun the exact file set you want. Example:
+
+```bash
+cd "$HOME/.openpalm/stack"
+docker compose \
+  -f core.compose.yml \
+  -f addons/admin/compose.yml \
+  -f addons/chat/compose.yml \
+  --env-file ../vault/stack/stack.env \
+  --env-file ../vault/user/user.env \
+  up -d
+```
+
+`~/.openpalm/config/stack.yml` does nothing by itself unless a helper script is
+reading it.
+
+---
+
+## 5. Assistant not responding
+
+**Symptoms:** channels accept requests, but no reply comes back.
+
+**Fix:**
+
+1. check the assistant container status and logs
+2. verify at least one provider is configured in `~/.openpalm/vault/stack/stack.env`
+3. confirm the provider endpoint is reachable from Docker if you use a local model server
+
+Useful checks:
+
+```bash
+grep -E 'API_KEY|BASE_URL|OP_CAP_LLM_' ~/.openpalm/vault/stack/stack.env
+```
+
+```bash
+cd "$HOME/.openpalm/stack"
+docker compose \
+  -f core.compose.yml \
+  --env-file ../vault/stack/stack.env \
+  --env-file ../vault/user/user.env \
+  logs assistant
+```
+
+---
+
+## 6. Ollama or another local model endpoint is not reachable
+
+**Symptoms:** the host service works locally, but containers cannot reach it.
+
+**Cause:** containers cannot use the host's `localhost`.
+
+**Fix:** use `host.docker.internal` from inside containers. Example:
 
 ```env
-OPENPALM_INGRESS_PORT=9090
+OPENAI_BASE_URL=http://host.docker.internal:11434/v1
 ```
 
-Then restart the stack:
+Then recreate any services that depend on that value.
+
+---
+
+## 7. Channel HMAC or auth errors
+
+**Symptoms:** channel containers return `401`, `403`, or guardian verification errors.
+
+**Fix:**
+
+- verify the channel addon is part of the compose file set you started
+- check `~/.openpalm/vault/stack/guardian.env` for the relevant `CHANNEL_*_SECRET`
+- recreate the affected channel and guardian services after changing secrets
+
+There is no separate staging/artifacts file to inspect in the current model; the
+live values come straight from `vault/stack/stack.env`.
+
+---
+
+## 8. Permission denied on mounted files
+
+**Symptoms:** containers cannot write to `~/.openpalm/`, or files end up owned by
+the wrong user.
+
+**Fix:** verify ownership and the UID/GID values in
+`~/.openpalm/vault/stack/stack.env`:
 
 ```bash
-docker compose down && docker compose up -d
+grep -E 'OP_UID|OP_GID' ~/.openpalm/vault/stack/stack.env
+id -u
+id -g
+sudo chown -R $(id -u):$(id -g) ~/.openpalm
 ```
 
-The default Caddy ingress port is `8080` (see `OPENPALM_INGRESS_PORT` in
-`docker-compose.yml`).
+Then recreate containers.
 
 ---
 
-## 3. Setup wizard won't load
+## 9. Services will not start after updating bundle files
 
-**Symptoms:** Browser shows connection refused or a blank page at
-`http://localhost:8080/` after install.
+**Symptoms:** after copying newer `.openpalm/` files, Compose fails or services
+restart-loop.
 
-**Cause:** The admin container is still starting (pulling images on first
-boot can take several minutes) or the admin healthcheck hasn't passed yet.
+**Fix:**
 
-**Solution:**
+- compare your current `~/.openpalm/vault/stack/stack.env` with the newer schema
+- make sure any newly required variables are present
+- rerun `docker compose pull` and then `docker compose up -d` with the same file set
 
-1. Check admin container status:
-   ```bash
-   docker logs openpalm-admin-1 --tail 50
-   ```
-2. If the admin is healthy but Caddy isn't routing, access the admin directly
-   at `http://localhost:8100/setup`.
-3. Wait up to 60 seconds on first boot for image pulls and healthcheck
-   stabilization.
-
----
-
-## 4. Memory service failures
-
-**Symptoms:** Memory API returns 500 errors, assistant reports "memory
-unavailable," or the memory container restart-loops.
-
-**Cause:** Usually one of: sqlite-vec native module load failure, incorrect
-Ollama URL, or embedding dimension mismatch.
-
-**Solution:**
-
-Check memory container logs:
-
-```bash
-docker logs openpalm-memory-1 --tail 50
-```
-
-Common fixes:
-
-- **sqlite-vec load error:** The memory image requires glibc (it uses
-  `oven/bun:1-debian`, not Alpine). If you are building locally, verify the
-  base image.
-
-- **Ollama URL:** When Ollama runs on the host (not in Docker), containers
-  must reach it at `http://host.docker.internal:11434`, not `localhost`. Set
-  this in `DATA_HOME/memory/default_config.json`:
-  ```json
-  {
-    "llm": { "config": { "ollama_base_url": "http://host.docker.internal:11434" } },
-    "embedder": { "config": { "ollama_base_url": "http://host.docker.internal:11434" } }
-  }
-  ```
-
-- **Embedding dimension mismatch:** The configured `embedding_model_dims`
-  must match the model. `nomic-embed-text` uses 768 dimensions. Mismatched
-  dims cause silent vector storage failures.
-
----
-
-## 5. Ollama not detected
-
-**Symptoms:** Setup wizard or connection test reports "Ollama not available"
-despite Ollama running on the host.
-
-**Cause:** Containers cannot reach `localhost` on the host. Docker requires
-the special hostname `host.docker.internal`.
-
-**Solution:**
-
-1. Verify Ollama is running on the host:
-   ```bash
-   curl http://localhost:11434/api/tags
-   ```
-2. Verify the container can reach it:
-   ```bash
-   docker exec openpalm-admin-1 curl http://host.docker.internal:11434/api/tags
-   ```
-3. Set the Ollama base URL to `http://host.docker.internal:11434` in the
-   admin UI Connections page, or in `secrets.env`:
-   ```env
-   OPENAI_BASE_URL=http://host.docker.internal:11434/v1
-   ```
-
-The compose file includes `extra_hosts: host.docker.internal:host-gateway`
-on relevant services.
-
----
-
-## 6. Channel not connecting (HMAC errors)
-
-**Symptoms:** Channel container logs show "401 Unauthorized" or "HMAC
-verification failed" when sending messages to the guardian.
-
-**Cause:** The channel's HMAC secret does not match what the guardian expects.
-Secrets are auto-generated during channel install and stored in
-`DATA_HOME/stack.env`.
-
-**Solution:**
-
-1. Verify the channel secret exists in `DATA_HOME/stack.env`:
-   ```bash
-   grep CHANNEL_ ~/.local/share/openpalm/stack.env
-   ```
-2. If missing, reinstall the channel via the admin API:
-   ```bash
-   curl -X POST http://localhost:8100/admin/channels/install \
-     -H "x-admin-token: $ADMIN_TOKEN" \
-     -H "Content-Type: application/json" \
-     -d '{"name": "chat"}'
-   ```
-3. After install, the admin runs an apply step that stages secrets to
-   `STATE_HOME/artifacts/stack.env`. Verify the guardian can read the
-   staged file:
-   ```bash
-   docker exec openpalm-guardian-1 cat /app/secrets/stack.env | grep CHANNEL_
-   ```
-
----
-
-## 7. Assistant not responding
-
-**Symptoms:** Messages sent through a channel never receive a reply. The
-guardian logs show the request was forwarded, but the assistant does not
-respond.
-
-**Cause:** The assistant container may be unhealthy, missing an LLM API key,
-or unable to reach the configured provider.
-
-**Solution:**
-
-1. Check assistant health:
-   ```bash
-   docker inspect openpalm-assistant-1 --format '{{.State.Health.Status}}'
-   ```
-2. Check assistant logs:
-   ```bash
-   docker logs openpalm-assistant-1 --tail 50
-   ```
-3. Verify at least one LLM provider key is set in `CONFIG_HOME/secrets.env`:
-   ```bash
-   grep -E 'API_KEY|BASE_URL' ~/.config/openpalm/secrets.env
-   ```
-4. If using Ollama, confirm the model is pulled:
-   ```bash
-   curl http://localhost:11434/api/tags
-   ```
-
----
-
-## 8. Permission denied errors
-
-**Symptoms:** Containers fail to start with "permission denied" on volume
-mounts, or files created by containers are owned by root and cannot be
-edited.
-
-**Cause:** UID/GID mismatch between the host user and the container user.
-Containers run as `OPENPALM_UID:OPENPALM_GID` (default 1000:1000).
-
-**Solution:**
-
-1. Fix ownership of OpenPalm directories:
-   ```bash
-   sudo chown -R $(id -u):$(id -g) \
-     ~/.config/openpalm \
-     ~/.local/share/openpalm \
-     ~/.local/state/openpalm
-   ```
-2. Verify UID/GID in `DATA_HOME/stack.env` matches your host user:
-   ```bash
-   grep OPENPALM_UID ~/.local/share/openpalm/stack.env
-   id -u
-   ```
-3. After fixing ownership, recreate containers (do NOT use `docker restart`
-   -- it does not re-read env_file changes):
-   ```bash
-   docker compose up -d --force-recreate
-   ```
-
----
-
-## 9. Services won't start after update
-
-**Symptoms:** After running the installer to update, containers fail to
-start or enter a restart loop.
-
-**Cause:** Stale staged artifacts in STATE_HOME, or a compose file version
-mismatch between the new admin image and the old staged files.
-
-**Solution:**
-
-1. Check container logs for the specific error:
-   ```bash
-   docker compose logs --tail 20
-   ```
-2. Re-run the apply step by restarting the admin container (apply runs on
-   startup):
-   ```bash
-   docker compose up -d --force-recreate admin
-   ```
-3. If the admin itself won't start, clear and re-stage artifacts manually:
-   ```bash
-   rm -rf ~/.local/state/openpalm/artifacts
-   # Re-run the installer
-   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.sh | bash
-   ```
-4. Pull the latest images explicitly:
-   ```bash
-   docker compose pull
-   docker compose up -d
-   ```
+There is no XDG staging or artifacts directory to clear. The live deployment is
+the compose files under `~/.openpalm/stack/` plus the two vault env files.
 
 ---
 
 ## 10. Factory reset
 
-**Symptoms:** Nothing else works, or you want a clean slate.
-
-**Cause:** Corrupted state, incompatible config from a previous version, or
-experimental changes that need reverting.
-
-**Solution:**
-
-Stop and remove all containers and volumes, then delete all OpenPalm
-directories:
+**Warning:** destructive.
 
 ```bash
-# Stop the stack and remove volumes
-docker compose down -v
+cd "$HOME/.openpalm/stack"
+docker compose \
+  -f core.compose.yml \
+  -f addons/admin/compose.yml \
+  -f addons/chat/compose.yml \
+  --env-file ../vault/stack/stack.env \
+  --env-file ../vault/user/user.env \
+  down -v
 
-# Remove all OpenPalm data (DESTRUCTIVE)
-rm -rf ~/.config/openpalm ~/.local/share/openpalm ~/.local/state/openpalm
-
-# Re-run the installer
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.sh | bash
+rm -rf "$HOME/.openpalm"
 ```
 
-On Windows (PowerShell):
+Then copy a fresh `.openpalm/` bundle and start again.
 
-```powershell
-docker compose down -v
-Remove-Item -Recurse -Force "$env:USERPROFILE\.config\openpalm", `
-  "$env:USERPROFILE\.local\share\openpalm", `
-  "$env:USERPROFILE\.local\state\openpalm"
-irm https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.ps1 | iex
-```
-
-This removes all configuration, data, and state. Back up CONFIG_HOME and
-DATA_HOME first if you have data worth preserving. See
-[backup-restore.md](backup-restore.md) for backup procedures.
+If you are not sure which addons were running, prefer backing up `~/.openpalm/`
+first and then removing it. See [backup-restore.md](backup-restore.md).

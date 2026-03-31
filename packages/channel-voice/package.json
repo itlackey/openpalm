@@ -1,5 +1,6 @@
 {
   "name": "@openpalm/channel-voice",
+  "description": "Voice channel adapter with STT/TTS pipeline for OpenPalm",
   "version": "0.9.0",
   "type": "module",
   "license": "MPL-2.0",

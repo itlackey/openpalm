@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty';
-import { runDockerCompose } from '../lib/docker.ts';
-import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
+import { ensureValidState } from '../lib/cli-state.ts';
+import { buildManagedServiceNames, runComposeWithPreflight } from '../lib/cli-compose.ts';
 
 export default defineCommand({
   meta: {
@@ -23,16 +23,14 @@ export default defineCommand({
 export async function runRestartAction(services: string[]): Promise<void> {
   if (services.length === 0) {
     // Restart all managed services (admin included if enabled)
-    const state = await ensureStagedState();
-    const managedServices = buildManagedServiceNames(state);
-    await runDockerCompose([...fullComposeArgs(state), 'restart', ...managedServices]);
+    const state = await ensureValidState();
+    const managedServices = await buildManagedServiceNames(state);
+    await runComposeWithPreflight(state, ['restart', ...managedServices]);
     return;
   }
 
-  // Restart specific services
+  const state = await ensureValidState();
   for (const service of services) {
-    const state = await ensureStagedState();
-    const composeArgs = fullComposeArgs(state);
-    await runDockerCompose([...composeArgs, 'restart', service]);
+    await runComposeWithPreflight(state, ['restart', service]);
   }
 }

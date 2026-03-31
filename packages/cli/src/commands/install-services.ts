@@ -1,8 +1,4 @@
-export type DeployStatusState = 'pending' | 'pulling';
-
-export function buildInstallServiceNames(managedServices: string[]): string[] {
-  return [...managedServices];
-}
+export type DeployStatusState = 'pending' | 'pulling' | 'error';
 
 export function buildDeployStatusEntries(
   services: string[],

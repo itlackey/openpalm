@@ -1,377 +1,374 @@
-# Environment Variables & Container Mount Points
+# Environment Variables, Mounts, and Network Wiring
 
-This document describes every environment variable and volume mount used by the
-OpenPalm stack. The `assets/docker-compose.yml` is the source of truth —
-this document mirrors its content for reference.
+This document mirrors the current shipped runtime: repo assets under `.openpalm/`
+and runtime files under `OP_HOME`.
 
-**Canonical sources:** Volume mounts and directory layout are also described in
-[directory-structure.md](./directory-structure.md). LLM provider keys are also
-listed in [api-spec.md](./api-spec.md) (connections API) and
-[opencode-configuration.md](./opencode-configuration.md). Security invariants
-are defined in [core-principles.md](./core-principles.md). When in doubt, the
-compose file and `core-principles.md` are authoritative.
+Primary sources:
 
----
+- `.openpalm/stack/core.compose.yml`
+- `.openpalm/registry/addons/*/compose.yml`
+- `core/*/entrypoint.sh` and service source where runtime defaults matter
 
-## 1. Host-Level Path Variables
-
-These variables control where OpenPalm stores data on the **host** filesystem.
-They follow the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/).
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `OPENPALM_CONFIG_HOME` | `~/.config/openpalm` | User-editable: secrets.env, channels/, opencode extensions |
-| `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` | Admin/service-managed data (memory, stack.env, caddy, assistant home, etc.) |
-| `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | Assembled runtime, audit logs |
-| `OPENPALM_WORK_DIR` | `$HOME/openpalm` | Assistant working directory mounted at /work |
-
-CONFIG_HOME is the user-owned persistent source of truth. See
-[directory-structure.md](./directory-structure.md) for the full allowed-writers
-policy and tier layout. See [core-principles.md](./core-principles.md) for the
-authoritative filesystem contract.
+When this document conflicts with older prose elsewhere, the compose files win.
 
 ---
 
-## 2. Container Mount Points
+## Host-Level Layout
 
-All mounts are **bind mounts** from the host filesystem. There are no named
-Docker volumes or tmpfs mounts in the stack.
+OpenPalm stores runtime state under `OP_HOME`, which defaults to `~/.openpalm`.
 
-### 2.1 Caddy (Reverse Proxy)
-
-| Host Path | Container Path | Mode | Purpose |
-|---|---|---|---|
-| `$STATE_HOME/artifacts/Caddyfile` | `/etc/caddy/Caddyfile` | **ro** | Staged Caddy config |
-| `$STATE_HOME/artifacts/channels` | `/etc/caddy/channels` | **ro** | Staged channel `.caddy` route files |
-| `$DATA_HOME/caddy/data` | `/data/caddy` | rw | Caddy TLS certificates and state |
-| `$DATA_HOME/caddy/config` | `/config/caddy` | rw | Caddy runtime config |
-
-The Caddyfile includes `import channels/public/*.caddy` and
-`import channels/lan/*.caddy` to auto-discover staged channel routes from
-STATE_HOME.
-
-The source-of-truth core Caddyfile is system-managed at
-`$DATA_HOME/caddy/Caddyfile` and staged to `$STATE_HOME/artifacts/Caddyfile` during apply.
-
-### 2.2 Memory
-
-| Host Path | Container Path | Mode | Purpose |
-|---|---|---|---|
-| `$DATA_HOME/memory` | `/data` | rw | Memory service persistent data |
-| `$DATA_HOME/memory/default_config.json` | `/app/default_config.json` | ro | Memory service LLM/embedder config |
-
-Memory is a Bun.js service (`@openpalm/memory`) using sqlite-vec for vector
-storage — all data is stored within `$DATA_HOME/memory/`.
-
-### 2.3 Assistant (OpenCode Runtime)
-
-| Host Path | Container Path | Mode | Purpose |
-|---|---|---|---|
-| `$DATA_HOME/assistant` | `/etc/opencode` | rw | System config (`OPENCODE_CONFIG_DIR`) — model, plugins, persona |
-| `$CONFIG_HOME/assistant` | `/home/opencode/.config/opencode` | rw | User extensions — custom tools, plugins, skills |
-| `$STATE_HOME/opencode` | `/home/opencode/.local/state/opencode` | rw | Logs and session state |
-| `$DATA_HOME/opencode` | `/home/opencode/.local/share/opencode` | rw | OpenCode data directory |
-| `$OPENPALM_WORK_DIR` | `/work` | rw | Working directory for user projects |
-
-Users add tools, plugins, or skills to `CONFIG_HOME/assistant/` without
-rebuilding the image. OpenCode merges config from `/etc/opencode/` (system)
-and `~/.config/opencode/` (user).
-
-The assistant container starts as root only to normalize runtime user mapping, then drops privileges to `$OPENPALM_UID:$OPENPALM_GID` (default `1000:1000`) before launching OpenCode. This ensures bind-mounted files are writable across Linux/macOS runtimes while preserving non-root execution for the app process. It uses `working_dir: /work` and has **no Docker socket access**.
-
-### 2.4 Guardian
-
-| Host Path | Container Path | Mode | Purpose |
-|---|---|---|---|
-| `$DATA_HOME/guardian` | `/app/data` | rw | Guardian runtime data |
-| `$STATE_HOME/audit` | `/app/audit` | rw | Guardian audit log (guardian-audit.log) |
-| `$STATE_HOME/artifacts/stack.env` | `/app/secrets/stack.env` | ro | Channel HMAC secrets (file-based discovery) |
-
-The guardian runs as `$OPENPALM_UID:$OPENPALM_GID` (default `1000:1000`).
-Channel HMAC secrets are injected via the staged `STATE_HOME/artifacts/stack.env`
-(loaded by the guardian's `env_file:` directive and bind-mounted for runtime
-re-reads via `GUARDIAN_SECRETS_PATH`). Secrets are system-generated by the
-admin and never appear in user-editable files.
-
-### 2.5 Docker Socket Proxy
-
-| Host Path | Container Path | Mode | Purpose |
-|---|---|---|---|
-| `$OPENPALM_DOCKER_SOCK` | `/var/run/docker.sock` | **ro** | Docker daemon socket (proxy only) |
-
-The `docker-socket-proxy` (Tecnativa) is the **only** container that mounts
-the Docker socket. It exposes a filtered HTTP API on port 2375 within the
-isolated `admin_docker_net` network — a dedicated network shared only with the
-admin service. No other service can reach the proxy. The admin connects via
-`DOCKER_HOST=tcp://docker-socket-proxy:2375`.
-
-This eliminates Docker socket permission/GID issues across runtimes (Docker
-Desktop, OrbStack, Colima, Podman). The admin never mounts the socket directly
-and runs as a non-root user.
-
-**`OPENPALM_DOCKER_SOCK`** is auto-detected by the setup scripts via
-`docker context inspect` and written to `STATE_HOME/artifacts/stack.env`.
-This supports Docker runtimes whose socket is not at the default
-`/var/run/docker.sock` (e.g. OrbStack, Colima, Rancher Desktop).
-If not set, it defaults to `/var/run/docker.sock`.
-
-### 2.6 Admin
-
-| Host Path | Container Path | Mode | Purpose |
-|---|---|---|---|
-| `$CONFIG_HOME` | `$CONFIG_HOME` (same path) | rw | Channel source files, secrets, extensions |
-| `$DATA_HOME` | `$DATA_HOME` (same path) | rw | Manage system-policy files (stack.env, caddy/Caddyfile, automations/), pre-create subdirs |
-| `$STATE_HOME` | `$STATE_HOME` (same path) | rw | Assembled runtime, audit logs |
-
-The CLI is the primary host-side orchestrator, managing Docker Compose directly.
-The admin (optional, behind the `admin` compose profile) connects to Docker via
-the socket proxy (HTTP over the internal network) and mounts CONFIG_HOME,
-DATA_HOME, and STATE_HOME. Both CLI and admin manage system-policy files
-(`stack.env`, `caddy/Caddyfile`, `automations/`), pre-create subdirectories
-with correct ownership, and seed missing defaults before other services start.
-
-The admin container starts as root for scheduled automation setup, then
-drops privileges to the target UID/GID (`$OPENPALM_UID:$OPENPALM_GID`,
-default `1000:1000`) via gosu before running the SvelteKit app. Staged
-automation files from `STATE_HOME/automations/` are installed on startup.
-See [directory-structure.md](./directory-structure.md) for format and
-configuration details.
-
----
-
-## 3. Secrets
-
-Runtime configuration is split into two staged files in `STATE_HOME/artifacts/`:
-
-- **`stack.env`** — ALL system-managed config. Source of truth is `DATA_HOME/stack.env` (seeded by setup.sh). Contains:
-  - Infrastructure: paths, UID/GID, Docker socket, image namespace/tag, networking, Memory URLs
-  - Channel HMAC keys: `CHANNEL_<NAME>_SECRET` (generated per channel, persisted in `DATA_HOME/stack.env`)
-- **`secrets.env`** — a staged copy of `CONFIG_HOME/secrets.env`. By convention contains `ADMIN_TOKEN` and LLM provider keys; copied as-is.
-
-Docker compose is invoked with both: `--env-file stack.env --env-file secrets.env`.
-
-Channel HMAC secrets are persisted in `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/stack.env` on every apply. Users typically only need to edit `CONFIG_HOME/secrets.env` for tokens and LLM keys.
-
-Configuration changes are activated only through an explicit **apply** action:
-the admin stages user config + system assets into STATE_HOME, then runs
-compose operations and service reload/restarts from STATE_HOME. The admin also
-runs apply automatically on application startup, so restarting the admin
-container syncs latest configuration into runtime state when the app starts.
-
-This automatic apply path is lifecycle sync, not config mutation: it does
-not overwrite existing user configuration files in CONFIG_HOME. CONFIG_HOME
-writes occur only through explicit user-intent actions (see
-[core-principles.md](./core-principles.md) for the allowed-writers rule).
-
-**User-managed** (`CONFIG_HOME/secrets.env` → staged to `STATE_HOME/artifacts/secrets.env`):
-
-| Secret | Consumed By | Purpose |
-|---|---|---|
-| `ADMIN_TOKEN` | admin, guardian, assistant | Admin API authentication |
-| `OPENAI_API_KEY` | assistant, memory | OpenAI API key (optional) |
-| `ANTHROPIC_API_KEY` | assistant | Anthropic API key (optional) |
-| `GROQ_API_KEY` | assistant | Groq API key (optional) |
-| `MISTRAL_API_KEY` | assistant | Mistral API key (optional) |
-| `GOOGLE_API_KEY` | assistant | Google API key (optional) |
-
-**System-managed** (persisted in `DATA_HOME/stack.env`, staged to `STATE_HOME/artifacts/stack.env`):
-
-| Secret | Consumed By | Purpose |
-|---|---|---|
-| `CHANNEL_<NAME>_SECRET` | guardian, channel-\<name\> | HMAC signing key — generated per channel, never user-edited |
-
-Channel HMAC secrets are generated when a channel is installed and reused on subsequent restarts.
-They are written into `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/stack.env` on each apply.
-
----
-
-## 4. Environment Variables by Service
-
-### 4.1 Admin Service
-
-| Variable | Value | Purpose |
-|---|---|---|
-| `PORT` | `8100` | HTTP server listen port |
-| `ADMIN_TOKEN` | from secrets.env | Bearer token for Admin API |
-| `GUARDIAN_URL` | `http://guardian:8080` | Internal URL to guardian |
-| `OPENPALM_ASSISTANT_URL` | `http://assistant:4096` | Internal URL to assistant |
-| `HOME` | `${OPENPALM_DATA_HOME}/admin` | Writable home directory for varlock runtime state (`~/.varlock`) |
-| `OPENPALM_CONFIG_HOME` | Same as host path | In-container path to CONFIG_HOME (same-path mount) |
-| `OPENPALM_DATA_HOME` | Same as host path | In-container path to DATA_HOME (same-path mount) |
-| `OPENPALM_STATE_HOME` | Same as host path | In-container path to STATE_HOME (same-path mount) |
-| `OPENPALM_UID` | `${OPENPALM_UID:-1000}` | Target UID for privilege drop (gosu) |
-| `OPENPALM_GID` | `${OPENPALM_GID:-1000}` | Target GID for privilege drop (gosu) |
-
-### 4.2 Guardian Service
-
-| Variable | Value | Purpose |
-|---|---|---|
-| `PORT` | `8080` | HTTP server listen port |
-| `OPENPALM_ASSISTANT_URL` | `http://assistant:4096` | Internal URL for message forwarding |
-| `GUARDIAN_AUDIT_PATH` | `/app/audit/guardian-audit.log` | Audit log path; compose sets this to write into STATE_HOME/audit |
-| `OPENCODE_TIMEOUT_MS` | `120000` | Timeout (ms) for assistant message response (LLM inference can be slow; code default 120s) |
-| `ADMIN_TOKEN` | from secrets.env | Admin API token |
-| `GUARDIAN_SECRETS_PATH` | `/app/secrets/stack.env` | Path to bind-mounted stack.env for runtime secret re-reads |
-| `CHANNEL_*_SECRET` | system-generated (injected into staged stack.env) | HMAC keys for channel signature verification |
-
-### 4.3 Assistant Service (OpenCode Runtime)
-
-| Variable | Value | Purpose |
-|---|---|---|
-| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Built-in config, tools, plugins, skills |
-| `OPENCODE_PORT` | `4096` | Web-server listen port |
-| `OPENCODE_AUTH` | `false` | Disabled — host-only binding (127.0.0.1) provides the security boundary |
-| `OPENCODE_ENABLE_SSH` | `0` (default) | SSH server toggle |
-| `HOME` | `/home/opencode` | User home directory |
-| `OPENPALM_ADMIN_API_URL` | `http://admin:8100` | Admin API URL for admin tools |
-| `OPENPALM_ADMIN_TOKEN` | from secrets.env | Bearer token for Admin API |
-| `MEMORY_API_URL` | `http://memory:8765` | Memory service URL |
-| `MEMORY_USER_ID` | `default_user` | User identifier for memory (entrypoint auto-falls back to runtime username when left as default) |
-| `OPENPALM_UID` | `${OPENPALM_UID:-1000}` | Target runtime UID used by assistant entrypoint before dropping privileges |
-| `OPENPALM_GID` | `${OPENPALM_GID:-1000}` | Target runtime GID used by assistant entrypoint before dropping privileges |
-| `OPENAI_API_KEY` | pass-through | OpenAI provider key |
-| `ANTHROPIC_API_KEY` | pass-through | Anthropic provider key |
-| `GROQ_API_KEY` | pass-through | Groq provider key |
-| `MISTRAL_API_KEY` | pass-through | Mistral provider key |
-| `GOOGLE_API_KEY` | pass-through | Google AI provider key |
-
-### 4.4 Memory
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `MEMORY_DATA_DIR` | `/data` | Base directory for memory database and related files |
-| `HOME` | `/data` | Writable home directory inside the memory container |
-| `MEM0_DIR` | `/data/.mem0` | Compatibility directory retained for config/runtime interoperability |
-| `OPENAI_API_KEY` | pass-through | Required for embedding generation |
-| `OPENAI_BASE_URL` | pass-through | Custom OpenAI-compatible base URL |
-
-Memory uses the `@openpalm/memory` Bun.js package with sqlite-vec for vector
-storage (configured via `default_config.json`). No external database servers
-needed.
-
----
-
-## 5. Stack-Level Configuration Variables
-
-These variables are consumed by `docker compose` via `STATE_HOME/artifacts/stack.env`.
-They are **system-managed** — the admin auto-detects and writes them on every apply.
-You never set these in `CONFIG_HOME/secrets.env`.
-
-| Variable | Default | Source |
-|---|---|---|
-| `OPENPALM_CONFIG_HOME` | `~/.config/openpalm` | admin process env |
-| `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` | admin process env |
-| `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | admin process env |
-| `OPENPALM_WORK_DIR` | `$HOME/openpalm` | admin process env |
-| `OPENPALM_UID` | current user UID | `process.getuid()` |
-| `OPENPALM_GID` | current group GID | `process.getgid()` |
-| `OPENPALM_IMAGE_NAMESPACE` | `openpalm` | admin process env (overridable) |
-| `OPENPALM_IMAGE_TAG` | `latest` | admin process env (overridable) |
-| `OPENPALM_INGRESS_BIND_ADDRESS` | `127.0.0.1` | admin process env (overridable) |
-| `OPENPALM_INGRESS_PORT` | `8080` | admin process env (overridable) |
-| `OPENPALM_ASSISTANT_BIND_ADDRESS` | `127.0.0.1` | compose default |
-| `OPENPALM_ASSISTANT_SSH_BIND_ADDRESS` | `127.0.0.1` | compose default |
-| `OPENPALM_ASSISTANT_SSH_PORT` | `2222` | compose default |
-| `OPENPALM_MEMORY_BIND_ADDRESS` | `127.0.0.1` | compose default |
-| `MEMORY_USER_ID` | `default_user` | admin process env (overridable) |
-
-Overridable values can be customized by setting the variable in the admin container's
-environment before startup (e.g. via docker-compose.yml `environment:` override).
-
----
-
-## 6. LLM Provider Keys (Pass-Through)
-
-Read from the host environment and passed into containers that need them.
-Never generated or defaulted by OpenPalm.
-
-| Variable | Consumed By | Purpose |
-|---|---|---|
-| `OPENAI_API_KEY` | assistant, memory | OpenAI API (also used for embeddings) |
-| `ANTHROPIC_API_KEY` | assistant | Anthropic LLM provider |
-| `GROQ_API_KEY` | assistant | Groq LLM provider |
-| `MISTRAL_API_KEY` | assistant | Mistral LLM provider |
-| `GOOGLE_API_KEY` | assistant | Google AI provider |
-
----
-
-## 7. Docker Networks
-
-| Network | Services | Purpose |
-|---|---|---|
-| `assistant_net` | caddy, memory, assistant, guardian, admin | Internal service mesh |
-| `channel_lan` | caddy, guardian, channel services | LAN-restricted channel access |
-| `channel_public` | caddy, guardian, channel services | Publicly accessible channels |
-
----
-
-## 8. Port Mappings
-
-| Service | Container Port | Host Binding | Default Host Port |
-|---|---|---|---|
-| Caddy | 80 | `$OPENPALM_INGRESS_BIND_ADDRESS` | 8080 |
-| Admin | 8100 | `127.0.0.1` (fixed) | 8100 |
-| Assistant | 4096 | `$OPENPALM_ASSISTANT_BIND_ADDRESS` | 4096 |
-| Assistant SSH | 22 | `$OPENPALM_ASSISTANT_SSH_BIND_ADDRESS` | 2222 |
-| Memory API | 8765 | `$OPENPALM_MEMORY_BIND_ADDRESS` | 8765 |
-
----
-
-## 9. Schema Reference
-
-The two `.env.schema` files in `assets/` provide machine-parseable documentation for every
-environment variable. They are safe to commit — they contain no secret values.
-
-| File | Documents |
+| Host path | Purpose |
 |---|---|
-| [`assets/secrets.env.schema`](../../assets/secrets.env.schema) | All variables in `CONFIG_HOME/secrets.env` (user-managed) |
-| [`assets/stack.env.schema`](../../assets/stack.env.schema) | All variables in `DATA_HOME/stack.env` (system-managed) |
+| `~/.openpalm/config/` | User-editable, non-secret config |
+| `~/.openpalm/registry/` | Available addon and automation catalog |
+| `~/.openpalm/stack/` | Live compose assembly; `stack/addons/` contains enabled addon overlays only |
+| `~/.openpalm/vault/user/` | User-managed settings (`user.env`) |
+| `~/.openpalm/vault/stack/` | System-managed secrets and runtime env (`stack.env`, API keys, auth.json) |
+| `~/.openpalm/data/` | Durable service data |
+| `~/.openpalm/logs/` | Audit and debug logs |
+| `~/.cache/openpalm/` | Ephemeral cache and rollback snapshots |
 
-### Varlock decorator syntax
+Current durable data subdirectories used by the shipped stack:
 
-Each variable entry uses decorator comments to declare its type, sensitivity, and
-whether it is required:
-
-| Decorator | Meaning | Example |
-|---|---|---|
-| `@type=<spec>` | Value type and constraints | `@type=string(minLength=16)`, `@type=url`, `@type=integer(min=0,max=65534)` |
-| `@sensitive` / `@sensitive=false` | Whether the value is a secret (controls masking in logs and UI) | `@sensitive`, `@sensitive=false` |
-| `@required` / `@required=infer` | Whether the variable must be set before the stack can start | `@required`, `@defaultRequired=infer` |
-
-File-level header decorators (`@defaultSensitive`, `@defaultRequired`) set the
-default for all variables in the file unless overridden per-variable.
-
-`secrets.env.schema` uses `@defaultSensitive=true` (all values are secrets unless
-explicitly marked `@sensitive=false`) and `@defaultRequired=infer` (required status
-is inferred from whether the variable has a default value).
-
-`stack.env.schema` uses `@defaultSensitive=false` (path and identity vars are not
-secrets) and `@defaultRequired=true` (all system-managed vars are always present).
-
-The schema files are used by the [Varlock](https://varlock.dev) CLI for validation
-(`varlock load --path <dir>/`) and secret-leak scanning
-(`varlock scan --path <dir>/`). In practice, the schema (`.env.schema`) and its
-corresponding `.env` file are copied into a temporary directory, and varlock is
-invoked with `--path <tmpDir>/` so it discovers both files together.
+- `data/admin`
+- `data/assistant`
+- `data/guardian`
+- `data/memory`
+- `data/stash`
+- `data/workspace`
 
 ---
 
-## 10. Security Notes
+## Compose Env Files
 
-- **Docker socket** — Only the `docker-socket-proxy` container mounts the
-  Docker socket (read-only). The proxy lives on an isolated `admin_docker_net`
-  network shared only with the admin — no other service can reach it. The
-  proxy allowlists only the Docker API categories needed for compose operations.
-- **Caddy config** — Caddyfile and channel routes mounted read-only (`:ro`).
-- **ADMIN_TOKEN** — Required at startup (`${ADMIN_TOKEN:?...}`). The compose
-  file will fail if unset in `secrets.env`.
-- **Bind addresses** — All service ports default to `127.0.0.1` (localhost only).
-- **UID/GID mapping** — The assistant, guardian, and admin run with the host
-  user's UID/GID for correct file ownership on bind-mounted volumes.
-- **Secrets isolation** — Most containers receive only the secrets they
-  explicitly declare in their `environment:` block. The guardian loads the
-  staged `stack.env` via `env_file` and reads all `CHANNEL_*_SECRET`
-  variables at startup (and re-reads them at runtime from the bind-mounted
-  file via `GUARDIAN_SECRETS_PATH`). Channel HMAC secrets are system-generated
-  by the admin and stored in `DATA_HOME/stack.env`; they
-  are never present in user-editable files.
+Docker Compose is invoked with these env files (see [Manual Compose Runbook](../operations/manual-compose-runbook.md)):
+
+```bash
+--env-file "$OP_HOME/vault/stack/stack.env"
+--env-file "$OP_HOME/vault/user/user.env"
+--env-file "$OP_HOME/vault/stack/guardian.env"
+```
+
+That means the effective env model is:
+
+- `vault/stack/stack.env` - system-managed runtime env and secrets (admin token, paths, UID/GID, image tags, bind ports, API keys, provider config, owner identity)
+- `vault/user/user.env` - recommended user-managed addon overrides and operator settings
+- `vault/stack/guardian.env` - channel HMAC secrets (loaded by guardian as env_file and via GUARDIAN_SECRETS_PATH)
+
+---
+
+## Core Services
+
+### Memory
+
+Compose source: `.openpalm/stack/core.compose.yml`
+
+Mounts:
+
+| Host path | Container path | Mode | Purpose |
+|---|---|---|---|
+| `$OP_HOME/data/memory` | `/data` | rw | Memory database, mem0 compatibility data, generated config |
+
+Ports and networks:
+
+| Item | Value |
+|---|---|
+| Container port | `8765` |
+| Host bind | `${OP_MEMORY_BIND_ADDRESS:-127.0.0.1}:${OP_MEMORY_PORT:-3898}` |
+| Networks | `assistant_net` |
+
+Key env:
+
+| Variable | Value / source | Purpose |
+|---|---|---|
+| `MEMORY_DATA_DIR` | `/data` | Persistent data root |
+| `HOME` | `/data` | Writable home |
+| `MEM0_DIR` | `/data/.mem0` | mem0 compatibility directory |
+| `MEMORY_AUTH_TOKEN` | `stack.env` via `${VAR}` | Memory API auth |
+| `MEMORY_USER_ID` | `stack.env` via `${VAR}` | Default memory identity |
+| `SYSTEM_LLM_PROVIDER` | `${OP_CAP_LLM_PROVIDER}` | LLM provider name for fact extraction |
+| `SYSTEM_LLM_MODEL` | `${OP_CAP_LLM_MODEL}` | LLM model for fact extraction |
+| `SYSTEM_LLM_BASE_URL` | `${OP_CAP_LLM_BASE_URL}` | LLM endpoint URL |
+| `SYSTEM_LLM_API_KEY` | `${OP_CAP_LLM_API_KEY}` | LLM API key |
+| `EMBEDDING_PROVIDER` | `${OP_CAP_EMBEDDINGS_PROVIDER}` | Embedding provider name |
+| `EMBEDDING_MODEL` | `${OP_CAP_EMBEDDINGS_MODEL}` | Embedding model identifier |
+| `EMBEDDING_BASE_URL` | `${OP_CAP_EMBEDDINGS_BASE_URL}` | Embedding endpoint URL |
+| `EMBEDDING_API_KEY` | `${OP_CAP_EMBEDDINGS_API_KEY}` | Embedding API key |
+| `EMBEDDING_DIMS` | `${OP_CAP_EMBEDDINGS_DIMS}` | Embedding vector dimensions |
+
+Notes:
+
+- Memory env vars are resolved from `OP_CAP_*` capability variables in `stack.env`. See [`capability-injection.md`](capability-injection.md) for the full resolution pipeline.
+- The shipped compose file does not mount `default_config.json` separately.
+- The memory service persists everything through `/data`.
+
+### Assistant
+
+Compose source: `.openpalm/stack/core.compose.yml`
+
+Mounts:
+
+| Host path | Container path | Mode | Purpose |
+|---|---|---|---|
+| baked into image | `/etc/opencode` | image content | Core OpenCode config and built-in extensions |
+| `$OP_HOME/config` | `/etc/openpalm` | rw | OpenPalm config tree available inside container |
+| `$OP_HOME/config/assistant` | `/home/opencode/.config/opencode` | rw | User OpenCode tools, plugins, skills, commands |
+| `$OP_HOME/vault/stack/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | OpenCode auth state |
+| `$OP_HOME/vault/user/` | `/etc/vault/` | rw | User secrets directory |
+| `$OP_HOME/data/assistant` | `/home/opencode/` | rw | Assistant persistent data |
+| `$OP_HOME/data/stash` | `/home/opencode/.akm` | rw | AKM stash |
+| `$OP_HOME/data/workspace` | `/work` | rw | Shared workspace |
+| `$OP_HOME/logs/opencode` | `/home/opencode/.local/state/opencode` | rw | OpenCode logs and local state |
+
+Ports and networks:
+
+| Item | Value |
+|---|---|
+| Container port | `4096` |
+| Host bind | `${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}` |
+| SSH container port | `22` |
+| SSH host bind | `${OP_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_SSH_PORT:-2222}` |
+| Networks | `assistant_net` |
+
+Key env:
+
+| Variable | Value / source | Purpose |
+|---|---|---|
+| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Core OpenCode config root |
+| `OPENCODE_PORT` | `4096` | OpenCode web server listen port |
+| `OPENCODE_AUTH` | `false` | Auth disabled because host binding is loopback-only by default |
+| `OPENCODE_ENABLE_SSH` | `stack.env` | Optional SSH enablement |
+| `HOME` | `/home/opencode` | Runtime home |
+| `AKM_STASH_DIR` | `/home/opencode/.akm` | AKM stash location hint |
+| `OP_ADMIN_API_URL` | `stack.env` / addon wiring | Admin API URL when admin is present |
+| `OP_ASSISTANT_TOKEN` | `OP_ASSISTANT_TOKEN` from `stack.env` | Assistant-scoped auth token |
+| `MEMORY_API_URL` | `http://memory:8765` | Memory service URL |
+| `MEMORY_AUTH_TOKEN` | `stack.env` | Memory auth token |
+| `MEMORY_USER_ID` | `stack.env` or default | Default memory identity |
+| `OP_UID` / `OP_GID` | `stack.env` | Entrypoint privilege drop target |
+
+Notes:
+
+- The assistant has no Docker socket mount.
+- The assistant mounts `vault/user/` directory (rw) to `/etc/vault/`, not the full `vault/` tree.
+- The entrypoint starts as root only long enough to normalize permissions and optional SSH setup, then drops privileges.
+
+### Guardian
+
+Compose source: `.openpalm/stack/core.compose.yml`
+
+Mounts:
+
+| Host path | Container path | Mode | Purpose |
+|---|---|---|---|
+| `$OP_HOME/data/guardian` | `/app/data` | rw | Runtime nonce / rate-limit state |
+| `$OP_HOME/logs` | `/app/audit` | rw | Guardian audit log directory |
+
+Ports and networks:
+
+| Item | Value |
+|---|---|
+| Container port | `8080` |
+| Host bind | none |
+| Networks | `channel_lan`, `channel_public`, `assistant_net` |
+
+Key env:
+
+| Variable | Value / source | Purpose |
+|---|---|---|
+| `HOME` | `/app/data` | Writable runtime home |
+| `PORT` | `8080` | HTTP listen port |
+| `OP_ASSISTANT_URL` | `http://assistant:4096` | Assistant forward target |
+| `OPENCODE_TIMEOUT_MS` | `0` | Guardian-side timeout override |
+| `ADMIN_TOKEN` | `${OP_ADMIN_TOKEN:-}` | Admin token forwarded from stack env |
+| `GUARDIAN_AUDIT_PATH` | `/app/audit/guardian-audit.log` | Audit log path |
+| `GUARDIAN_SECRETS_PATH` | `/app/secrets/guardian.env` | Path to mounted guardian secrets for hot-reload |
+| `CHANNEL_<NAME>_SECRET` | `vault/stack/guardian.env` (via env_file) | Channel HMAC verification secrets |
+
+Notes:
+
+- Guardian is internal-only from the host perspective.
+- It is the only bridge between addon ingress networks and `assistant_net`.
+- Guardian loads `vault/stack/guardian.env` as a compose `env_file` for channel HMAC secrets. The same file is bind-mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload. Non-secret config (`OP_ADMIN_TOKEN`) is passed via `${VAR}` substitution in the compose `environment:` block.
+
+### Scheduler
+
+Compose source: `.openpalm/stack/core.compose.yml`
+
+Mounts:
+
+| Host path | Container path | Mode | Purpose |
+|---|---|---|---|
+| `$OP_HOME/config` | `/openpalm/config` | ro | Automation definitions and config |
+| `$OP_HOME/logs` | `/openpalm/logs` | rw | Automation and service logs |
+| `$OP_HOME/data` | `/openpalm/data` | rw | Automation state and service data |
+
+Ports and networks:
+
+| Item | Value |
+|---|---|
+| Container port | `8090` |
+| Host bind | none (internal only on `assistant_net`) |
+| Networks | `assistant_net` |
+
+Key env:
+
+| Variable | Value / source | Purpose |
+|---|---|---|
+| `PORT` | `8090` | HTTP listen port |
+| `OP_HOME` | `/openpalm` | Runtime root used by scheduler code |
+| `OP_ADMIN_TOKEN` | `${OP_ADMIN_TOKEN:-}` | Scheduler admin token |
+| `OP_ADMIN_API_URL` | `stack.env` / addon wiring | Admin API base URL |
+| `OPENCODE_API_URL` | `http://assistant:4096` | Assistant API URL |
+| `OPENCODE_SERVER_PASSWORD` | `${OP_OPENCODE_PASSWORD:-}` | Optional assistant auth wiring |
+| `MEMORY_API_URL` | `http://memory:8765` | Memory URL |
+| `MEMORY_AUTH_TOKEN` | `${OP_MEMORY_TOKEN:-}` | Memory API auth token |
+
+Notes:
+
+- Scheduler does not mount the Docker socket.
+- Scheduler has no host port; it is internal-only on `assistant_net`.
+
+---
+
+## Admin Addon
+
+Compose source: runtime `~/.openpalm/stack/addons/admin/compose.yml` seeded from `.openpalm/registry/addons/admin/compose.yml`
+
+### Docker Socket Proxy
+
+Mounts:
+
+| Host path | Container path | Mode | Purpose |
+|---|---|---|---|
+| `${OP_DOCKER_SOCK:-/var/run/docker.sock}` | `/var/run/docker.sock` | ro | Filtered Docker API source |
+
+Networks and behavior:
+
+| Item | Value |
+|---|---|
+| Networks | `admin_docker_net` |
+| Internal port | `2375` |
+| Allowed API areas | `CONTAINERS`, `IMAGES`, `NETWORKS`, `VOLUMES`, `POST`, `INFO` |
+
+This is the only shipped container that mounts the Docker socket.
+
+### Admin
+
+Mounts:
+
+| Host path | Container path | Mode | Purpose |
+|---|---|---|---|
+| `$OP_HOME` | `/openpalm` | rw | Full OpenPalm home for control-plane management |
+| `$OP_HOME/data/admin` | `/home/node` | rw | Admin home directory |
+| `$OP_HOME/data/workspace` | `/work` | rw | Workspace access |
+| `${GNUPGHOME:-${HOME}/.gnupg}` | `/home/node/.gnupg` | ro | Optional pass/GPG integration |
+
+Ports and networks:
+
+| Item | Value |
+|---|---|
+| Container port | `8100` |
+| Host bind | `${OP_ADMIN_BIND_ADDRESS:-127.0.0.1}:${OP_ADMIN_PORT:-3880}` |
+| Admin OpenCode container port | `3881` |
+| Host bind | `${OP_ADMIN_OPENCODE_BIND_ADDRESS:-127.0.0.1}:${OP_ADMIN_OPENCODE_PORT:-3881}` |
+| Networks | `assistant_net`, `admin_docker_net` |
+
+Key env:
+
+| Variable | Value / source | Purpose |
+|---|---|---|
+| `PORT` | `8100` | Admin HTTP port |
+| `HOME` | `/home/node` | Writable home |
+| `OP_HOME` | `/openpalm` | In-container OpenPalm root |
+| `ADMIN_TOKEN` | `${OP_ADMIN_TOKEN:-}` | Admin API auth token |
+| `MEMORY_AUTH_TOKEN` | `stack.env` | Memory auth token |
+| `MEMORY_API_URL` | `http://memory:8765` | Memory URL |
+| `MEMORY_USER_ID` | `stack.env` / default | Memory identity |
+| `GUARDIAN_URL` | `http://guardian:8080` | Guardian API URL |
+| `OP_ASSISTANT_URL` | `http://assistant:4096` | Assistant URL |
+| `OP_ADMIN_API_URL` | `http://localhost:8100` | Admin self-URL |
+| `OP_ADMIN_OPENCODE_PORT` | `${OP_ADMIN_OPENCODE_PORT:-3881}` | Admin OpenCode port |
+| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Built-in admin OpenCode config |
+| `OPENCODE_PORT` | `3881` | Admin OpenCode listen port |
+| `OPENCODE_AUTH` | `false` | Loopback-only by default |
+| `DOCKER_HOST` | `tcp://docker-socket-proxy:2375` | Docker API via proxy |
+
+---
+
+## Addon Overlays Shipped In The Repo
+
+| Addon | Host bind | Internal port | Network(s) | Notes |
+|---|---|---:|---|---|
+| `chat` | `${OP_CHAT_BIND_ADDRESS:-127.0.0.1}:${OP_CHAT_PORT:-3820}` | `8181` | `channel_lan` | Guardian-facing chat edge |
+| `api` | `${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}` | `8182` | `channel_lan` | OpenAI/Anthropic-compatible edge |
+| `voice` | `${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT:-3810}` | `8186` | `channel_lan` | Voice interface |
+| `discord` | none | service-specific | `channel_lan` | No host port exposure |
+| `slack` | none | service-specific | `channel_lan` | No host port exposure |
+| `ollama` | `${OP_OLLAMA_BIND_ADDRESS:-127.0.0.1}:11434` | `11434` | `assistant_net` | Mounts `$OP_HOME/data/ollama:/data`, `user: ${OP_UID}:${OP_GID}`, `OLLAMA_MODELS=/data/models` |
+| `openviking` | none | service-specific | `assistant_net` | Mounts `$OP_HOME/data/openviking:/workspace`, `user: ${OP_UID}:${OP_GID}` |
+
+All addon and channel services use `user: "${OP_UID:-1000}:${OP_GID:-1000}"` to ensure bind-mounted files are owned by the host user. All shipped channel overlays depend on guardian and receive only their own HMAC secret via `${VAR}` substitution from `vault/stack/guardian.env` (passed as a compose `--env-file`).
+
+---
+
+## Docker Networks
+
+| Network | Connected services | Purpose |
+|---|---|---|
+| `assistant_net` | `memory`, `assistant`, `guardian`, `scheduler`, and `admin` when enabled | Core internal service mesh |
+| `channel_lan` | `guardian` and LAN-facing channel/addon edges | Default channel ingress network |
+| `channel_public` | `guardian` only in core; public-facing overlays can join it intentionally | Public ingress isolation |
+| `admin_docker_net` | `admin`, `docker-socket-proxy` | Isolated Docker control-plane network |
+
+---
+
+## Core Stack Variables From `stack.env`
+
+These variables are consumed by Compose and service env blocks.
+
+| Variable | Purpose |
+|---|---|
+| `OP_HOME` | Host OpenPalm root used in bind mounts |
+| `OP_UID`, `OP_GID` | Runtime UID/GID for bind-mounted file ownership |
+| `OP_IMAGE_NAMESPACE`, `OP_IMAGE_TAG` | Image selection |
+| `OP_DOCKER_SOCK` | Docker socket path for the proxy |
+| `OP_ADMIN_BIND_ADDRESS`, `OP_ADMIN_PORT` | Admin host bind |
+| `OP_ADMIN_OPENCODE_BIND_ADDRESS`, `OP_ADMIN_OPENCODE_PORT` | Admin OpenCode host bind |
+| `OP_ASSISTANT_BIND_ADDRESS`, `OP_ASSISTANT_PORT` | Assistant host bind |
+| `OP_ASSISTANT_SSH_BIND_ADDRESS`, `OP_ASSISTANT_SSH_PORT` | Assistant SSH host bind |
+| `OP_MEMORY_BIND_ADDRESS`, `OP_MEMORY_PORT` | Memory host bind |
+| `OP_CHAT_BIND_ADDRESS`, `OP_CHAT_PORT` | Chat addon host bind |
+| `OP_API_BIND_ADDRESS`, `OP_API_PORT` | API addon host bind |
+| `OP_VOICE_BIND_ADDRESS`, `OP_VOICE_PORT` | Voice addon host bind |
+| `OP_ADMIN_TOKEN` | Admin auth token |
+| `OP_ASSISTANT_TOKEN` | Assistant and scheduler auth token |
+| `OP_MEMORY_TOKEN` | Memory API auth token |
+| `OP_OPENCODE_PASSWORD` | OpenCode server password |
+| `MEMORY_USER_ID` | Default memory identity |
+| `OWNER_NAME` | Operator display name |
+| `OWNER_EMAIL` | Operator email |
+| `OP_CAP_LLM_*` | Resolved LLM capability (provider, model, base URL, API key) |
+| `OP_CAP_SLM_*` | Resolved small/fast LLM capability |
+| `OP_CAP_EMBEDDINGS_*` | Resolved embedding capability (provider, model, base URL, API key, dims) |
+| `OP_CAP_TTS_*` | Resolved text-to-speech capability (provider, model, base URL, API key, voice, format) |
+| `OP_CAP_STT_*` | Resolved speech-to-text capability (provider, model, base URL, API key, language) |
+| `OP_CAP_RERANKING_*` | Resolved reranking capability (provider, model, base URL, API key, topK, topN) |
+| `CHANNEL_<NAME>_SECRET` | Guardian / channel HMAC secrets (lives in `guardian.env`, not `stack.env`) |
+
+---
+
+## User Variables From `user.env`
+
+This file is an optional user-managed extension env. It starts empty and can
+hold custom preferences. `OWNER_NAME` and `OWNER_EMAIL` live in `stack.env`
+(see above).
+
+API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, etc.) and
+provider/model selections live in `stack.env`. The control plane resolves
+these into `OP_CAP_*` capability variables (see [`capability-injection.md`](capability-injection.md)),
+which services consume via compose `${VAR}` substitution in their `environment:`
+blocks. Memory receives `OP_CAP_LLM_*` and `OP_CAP_EMBEDDINGS_*` vars this way.
+The assistant receives raw provider API keys directly for OpenCode compatibility.
+Channels receive only their own HMAC secret via `${VAR}` substitution from
+`guardian.env`.

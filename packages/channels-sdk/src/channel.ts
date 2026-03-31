@@ -89,5 +89,15 @@ export function validatePayload(body: unknown): ValidationResult {
     return { ok: false, error: ERROR_CODES.INVALID_PAYLOAD };
   }
 
-  return { ok: true, payload: o as unknown as ChannelPayload };
+  return {
+    ok: true,
+    payload: {
+      userId: o.userId as string,
+      channel: o.channel as string,
+      text: o.text as string,
+      nonce: o.nonce as string,
+      timestamp: o.timestamp as number,
+      ...(o.metadata !== undefined ? { metadata: o.metadata as Record<string, unknown> } : {}),
+    },
+  };
 }

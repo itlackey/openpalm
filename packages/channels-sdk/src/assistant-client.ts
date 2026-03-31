@@ -233,18 +233,28 @@ export async function sendMessage(
     // OpenCode may return an empty body (Content-Length: 0) when the LLM
     // provider is unreachable. Guard against null/undefined from json().
     const raw = await resp.text();
-    if (!raw) return "(no response)";
+    if (!raw) {
+      console.error("[assistant-client] sendMessage: empty response body");
+      return "(no response)";
+    }
 
     const data = JSON.parse(raw) as MessageResponse | null;
-    if (!data) return "(no response)";
+    if (!data) {
+      console.error("[assistant-client] sendMessage: parsed data is null");
+      return "(no response)";
+    }
 
     const texts: string[] = [];
     for (const part of data.parts ?? []) {
       if (part.type === "text" && part.text) {
         texts.push(part.text);
+      }
     }
+    const result = texts.join("\n") || "(no response)";
+    if (result === "(no response)") {
+      console.error("[assistant-client] sendMessage: no text parts found. parts count:", (data.parts ?? []).length, "types:", (data.parts ?? []).map(p => p.type).join(","), "raw length:", raw.length);
     }
-    return texts.join("\n") || "(no response)";
+    return result;
   } finally {
     if (timer) clearTimeout(timer);
   }

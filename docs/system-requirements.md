@@ -1,129 +1,138 @@
 # System Requirements
 
-Hardware, software, and network requirements for running OpenPalm.
+Hardware, software, and network requirements for the current compose-first
+OpenPalm stack.
 
 ---
 
-## Software Prerequisites
+## Software prerequisites
 
-| Requirement | Minimum Version | Notes |
+| Requirement | Minimum | Notes |
 |---|---|---|
-| Docker Engine or Docker Desktop | 24.0+ | Must include Compose V2 (`docker compose`) |
-| Docker Compose | V2 (2.20+) | Bundled with Docker Desktop and modern Docker Engine |
-| curl | any | Used by the installer script |
-| openssl | any | Used by the installer to generate admin tokens |
+| Docker Engine or Docker Desktop | 24.0+ | Must include Compose V2 |
+| Docker Compose | 2.20+ | Usually bundled with Docker |
+| `git` | any | Needed if you clone the repo to copy `.openpalm/` |
+| `curl` | any | Only needed for optional installer scripts |
 
-### Supported Operating Systems
+### Supported operating systems
 
 | OS | Runtime | Notes |
 |---|---|---|
-| **Linux** (x86_64, arm64) | Docker Engine | Recommended. Native performance, no VM overhead |
-| **macOS** (Apple Silicon or Intel) | Docker Desktop or OrbStack | OrbStack offers lower resource overhead |
-| **Windows** (x86_64) | Docker Desktop with WSL2 | WSL2 backend required; Hyper-V backend is not supported |
+| Linux (`x86_64`, `arm64`) | Docker Engine | Best-supported path |
+| macOS (Intel, Apple Silicon) | Docker Desktop or OrbStack | Uses a VM under the hood |
+| Windows (`x86_64`) | Docker Desktop with WSL2 | WSL2 backend recommended |
 
 ---
 
-## Hardware Requirements
+## Hardware requirements
 
-### Minimum (core stack only, no channels)
+### Minimum
 
-The core stack runs 6 containers: caddy, memory, assistant, guardian, docker-socket-proxy, and admin.
+For the core compose stack using a remote LLM provider:
 
 | Resource | Minimum |
 |---|---|
 | CPU | 2 cores |
 | RAM | 4 GB |
-| Disk | 5 GB free (Docker images + runtime data) |
+| Disk | 10 GB free |
 
-This assumes you are using a **remote LLM provider** (OpenAI, Anthropic, etc.) and not running local models.
+The core compose file includes these always-on services:
 
-### Recommended (core + 1-2 channels + Ollama)
+- `assistant`
+- `memory`
+- `guardian`
+- `scheduler`
 
-Running local models via Ollama significantly increases resource needs because models must be loaded into RAM (or VRAM).
+If you add the `admin` addon, you also run `admin` and `docker-socket-proxy`.
+
+### Recommended
+
+For the core stack plus admin, one or two addons, and local model usage:
 
 | Resource | Recommended |
 |---|---|
 | CPU | 4+ cores |
-| RAM | 16 GB (8 GB for stack + 8 GB for Ollama models) |
-| Disk | 20 GB+ free (images + model weights) |
-| GPU | Optional but beneficial — any CUDA-capable NVIDIA GPU or Apple Silicon with Metal |
+| RAM | 16 GB |
+| Disk | 25 GB+ free |
+| GPU | Optional but helpful for local models |
 
-For larger models (13B+ parameters), 32 GB RAM or a GPU with 8+ GB VRAM is recommended.
-
----
-
-## Per-Service Resource Profile
-
-The core compose file (`assets/docker-compose.yml`) does not currently define `deploy.resources.limits`, so containers are unconstrained by default. The table below shows typical observed usage under light workloads.
-
-| Service | Base Image | Runtime | Typical Idle RAM | Typical Active RAM | Purpose |
-|---|---|---|---|---|---|
-| **caddy** | `caddy:2-alpine` | Go binary | ~15 MB | ~30 MB | Reverse proxy, TLS termination |
-| **memory** | `oven/bun:1-debian` | Bun + sqlite-vec | ~60 MB | ~150 MB | Vector memory store (embeddings + search) |
-| **assistant** | `node:lts-trixie` | Node.js + OpenCode + Bun | ~200 MB | ~500 MB | AI runtime, tool execution, SSH server |
-| **guardian** | `oven/bun:1.3-slim` | Bun | ~30 MB | ~60 MB | HMAC verification, rate limiting |
-| **docker-socket-proxy** | `tecnativa/docker-socket-proxy` | HAProxy | ~10 MB | ~15 MB | Filtered Docker API proxy |
-| **admin** | `node:lts-trixie-slim` | Node.js (SvelteKit) + Bun | ~80 MB | ~150 MB | Control plane, operator UI |
-| **channel** (each) | `oven/bun:1.3-slim` | Bun | ~30 MB | ~60 MB | Protocol adapter (chat, API, Discord, etc.) |
-
-**Total core stack (idle):** ~400 MB RAM
-**Total core stack (active):** ~900 MB RAM
-**Each added channel:** ~30-60 MB RAM
+If you run Ollama or another local model server, model weights usually dominate
+RAM and disk requirements.
 
 ---
 
-## Disk Space Breakdown
+## Typical resource profile
 
-| Category | Approximate Size | Notes |
+These are rough expectations, not hard limits:
+
+| Service | Typical idle RAM | Notes |
 |---|---|---|
-| Docker images (core stack) | ~2-3 GB | 6 images; `node:lts-trixie` (assistant) is the largest at ~1 GB |
-| Docker images (per channel) | ~100-200 MB | Shares the `oven/bun:1.3-slim` base layer with guardian |
-| Config directory (`CONFIG_HOME`) | < 10 MB | User-editable YAML, secrets, channel configs |
-| State directory (`STATE_HOME`) | < 50 MB | Generated compose files, Caddyfile, audit logs |
-| Data directory (`DATA_HOME`) | Varies | Memory database grows with usage; starts < 1 MB |
-| Ollama models (if local) | 2-8 GB per model | `qwen2.5-coder:3b` ~ 2 GB, `nomic-embed-text` ~ 270 MB |
-
-### XDG Directory Locations
-
-| Tier | Default Path | Purpose |
-|---|---|---|
-| `CONFIG_HOME` | `~/.config/openpalm` | User-owned config (channels, secrets, assistant config) |
-| `DATA_HOME` | `~/.local/share/openpalm` | Service data (memory DB, Caddy certs, assistant state) |
-| `STATE_HOME` | `~/.local/state/openpalm` | Generated runtime artifacts (compose files, audit logs) |
+| `memory` | ~60 MB | Bun + sqlite-backed memory service |
+| `assistant` | ~200 MB | OpenCode runtime |
+| `guardian` | ~30 MB | Request verification and routing |
+| `scheduler` | ~40 MB | Automation runner |
+| `admin` addon | ~80 MB | SvelteKit admin UI/API |
+| `docker-socket-proxy` addon | ~10 MB | Docker API filter |
+| each channel addon | ~30-60 MB | Chat/API/voice/Discord/Slack edge |
 
 ---
 
-## Network Requirements
+## Disk layout
 
-### Outbound Access
+OpenPalm uses one host home directory: `~/.openpalm/`.
 
-| Destination | When Needed |
+| Path | Purpose |
 |---|---|
-| LLM provider APIs (api.openai.com, api.anthropic.com, etc.) | When using remote models |
-| Docker Hub / GitHub Container Registry | Image pulls during install and updates |
-| Ollama on host (`host.docker.internal:11434`) | When using local models via Ollama on the host |
+| `~/.openpalm/stack/` | Live compose files and helper scripts |
+| `~/.openpalm/vault/` | Env files and schemas |
+| `~/.openpalm/config/` | User-editable config |
+| `~/.openpalm/data/` | Durable service data |
+| `~/.openpalm/logs/` | Logs and audit files |
 
-### Inbound Ports
+Approximate storage use:
 
-OpenPalm is **LAN-first by default**. No inbound ports need to be opened on your firewall unless you explicitly expose services.
+| Category | Approximate size | Notes |
+|---|---|---|
+| Docker images (core) | ~2-3 GB | Depends on pulled tags |
+| Docker images (per addon) | ~100-200 MB | Many share layers |
+| `~/.openpalm/config/` + `vault/` | small | Usually measured in MB |
+| `~/.openpalm/data/` | variable | Memory store and workspace can grow |
+| local model weights | 2-8+ GB per model | If using Ollama or similar |
 
-| Port | Binding | Service | Notes |
-|---|---|---|---|
-| 8080 | `127.0.0.1` (default) | Caddy ingress | Configurable via `OPENPALM_INGRESS_BIND_ADDRESS` and `OPENPALM_INGRESS_PORT` |
-| 8100 | `127.0.0.1` | Admin API (direct) | Always localhost-only |
-| 4096 | `127.0.0.1` | Assistant (OpenCode) | Host-only access; no auth required (bind address is the security boundary) |
-| 8765 | `127.0.0.1` | Memory API | Direct access; normally accessed by assistant internally |
-| 2222 | `127.0.0.1` | Assistant SSH | Optional SSH access to OpenCode; disabled by default |
+---
 
-To expose the Caddy ingress on all interfaces (e.g., for LAN access), set `OPENPALM_INGRESS_BIND_ADDRESS=0.0.0.0` in your stack configuration. Public exposure requires additional Caddy TLS configuration.
+## Network requirements
 
-### Internal Networks
+### Outbound access
 
-Docker Compose creates four isolated networks. No host configuration is needed:
-
-| Network | Purpose |
+| Destination | When needed |
 |---|---|
-| `assistant_net` | Core services (admin, assistant, memory, guardian) |
-| `admin_docker_net` | Admin to docker-socket-proxy only |
-| `channel_lan` | LAN-restricted channel containers |
-| `channel_public` | Publicly accessible channel containers |
+| LLM provider APIs | When using remote models |
+| Docker Hub / GHCR | Pulling or updating images |
+| `host.docker.internal` targets | When containers need host-run services |
+
+### Default inbound ports
+
+OpenPalm is localhost/LAN-first by default. Most services bind to `127.0.0.1`
+unless you intentionally change bind addresses in `vault/stack/stack.env`.
+
+| Host port | Service | Variable |
+|---|---|---|
+| `3800` | Assistant | `OP_ASSISTANT_PORT` |
+| `3810` | Voice addon | `OP_VOICE_PORT` |
+| `3820` | Chat addon | `OP_CHAT_PORT` |
+| `3821` | API addon | `OP_API_PORT` |
+| `3880` | Admin UI/API addon | `OP_ADMIN_PORT` |
+| `3881` | Admin-side OpenCode addon | `OP_ADMIN_OPENCODE_PORT` |
+| `3898` | Memory API | `OP_MEMORY_PORT` |
+| `2222` | Assistant SSH (optional) | `OP_ASSISTANT_SSH_PORT` |
+
+`guardian` stays internal to Docker networks by default.
+
+---
+
+## Operational note
+
+The compose file set under `~/.openpalm/stack/` is the live deployment truth.
+`~/.openpalm/config/stack.yml` is optional metadata for tooling and does not
+change Docker's requirements on its own.

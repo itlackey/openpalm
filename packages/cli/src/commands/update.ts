@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty';
-import { runDockerCompose } from '../lib/docker.ts';
-import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
+import { performUpgrade } from '@openpalm/lib';
+import { ensureValidState } from '../lib/cli-state.ts';
 
 export default defineCommand({
   meta: {
@@ -8,16 +8,14 @@ export default defineCommand({
     description: 'Pull latest images and recreate containers',
   },
   async run() {
-    const state = await ensureStagedState();
-    const composeArgs = fullComposeArgs(state);
-    const managedServices = buildManagedServiceNames(state);
+    const state = await ensureValidState();
 
-    console.log('Pulling latest images...');
-    await runDockerCompose([...composeArgs, 'pull', ...managedServices]);
-
-    console.log('Recreating containers...');
-    await runDockerCompose([...composeArgs, 'up', '-d', '--force-recreate', ...managedServices]);
-
+    console.log('Upgrading stack...');
+    const result = await performUpgrade(state);
+    console.log(`Image tag: ${result.namespace}/*:${result.imageTag}`);
+    if (result.assetsUpdated.length > 0) {
+      console.log(`Assets updated: ${result.assetsUpdated.join(', ')}`);
+    }
     console.log('Update complete.');
   },
 });

@@ -1,198 +1,135 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 720" font-family="'Segoe UI', system-ui, -apple-system, sans-serif" font-size="13">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 390" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13">
   <defs>
-    <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-      <path d="M0,0 L8,3 L0,6 Z" fill="#555"/>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#64748b"/>
     </marker>
-    <marker id="arrow-blue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-      <path d="M0,0 L8,3 L0,6 Z" fill="#3b82f6"/>
-    </marker>
-    <marker id="arrow-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+    <marker id="arr-grn" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
       <path d="M0,0 L8,3 L0,6 Z" fill="#22c55e"/>
     </marker>
-    <marker id="arrow-orange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-      <path d="M0,0 L8,3 L0,6 Z" fill="#f97316"/>
-    </marker>
-    <marker id="arrow-red" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-      <path d="M0,0 L8,3 L0,6 Z" fill="#ef4444"/>
+    <marker id="arr-blu" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#3b82f6"/>
     </marker>
   </defs>
 
   <!-- Background -->
-  <rect width="1020" height="720" rx="8" fill="#fafafa"/>
+  <rect width="860" height="390" rx="6" fill="#fafafa"/>
 
   <!-- Title -->
-  <text x="510" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#1e293b">OpenPalm Container Topology</text>
+  <text x="430" y="30" text-anchor="middle" font-size="17" font-weight="700" fill="#0f172a">How OpenPalm Works</text>
 
-  <!-- ═══════════════════════════════════════════════════════════════ -->
-  <!-- NETWORK BOUNDARIES (dashed rectangles)                        -->
-  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- ── Network zone backgrounds ── -->
 
-  <!-- channel_public network -->
-  <rect x="30" y="130" width="310" height="295" rx="10" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="7,4"/>
-  <text x="45" y="152" font-size="11" fill="#ef4444" font-weight="600">channel_public</text>
+  <!-- channel_lan zone (extends to guardian overlap) -->
+  <rect x="135" y="55" width="240" height="225" rx="10" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+  <text x="148" y="74" font-size="10" fill="#86efac" font-weight="600">channel_lan</text>
 
-  <!-- channel_lan network -->
-  <rect x="20" y="120" width="490" height="315" rx="12" fill="none" stroke="#f97316" stroke-width="1.5" stroke-dasharray="7,4"/>
-  <text x="355" y="142" font-size="11" fill="#f97316" font-weight="600">channel_lan</text>
+  <!-- assistant_net zone (starts at guardian overlap) -->
+  <rect x="350" y="55" width="495" height="225" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
+  <text x="770" y="74" font-size="10" fill="#93c5fd" font-weight="600">assistant_net</text>
 
-  <!-- assistant_net network -->
-  <rect x="350" y="110" width="650" height="470" rx="12" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="7,4"/>
-  <text x="830" y="132" font-size="11" fill="#3b82f6" font-weight="600">assistant_net</text>
+  <!-- ── External: Clients ── -->
+  <rect x="20" y="148" width="90" height="44" rx="8" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="65" y="175" text-anchor="middle" font-size="12" font-weight="600" fill="#334155">Clients</text>
 
-  <!-- admin_docker_net network -->
-  <rect x="530" y="465" width="460" height="120" rx="10" fill="none" stroke="#8b5cf6" stroke-width="1.5" stroke-dasharray="7,4"/>
-  <text x="545" y="487" font-size="11" fill="#8b5cf6" font-weight="600">admin_docker_net</text>
+  <!-- ── Channels ── -->
+  <rect x="152" y="95" width="146" height="32" rx="7" fill="#dcfce7" stroke="#86efac" stroke-width="1.2"/>
+  <text x="225" y="116" text-anchor="middle" font-size="12" font-weight="600" fill="#166534">chat</text>
 
-  <!-- ═══════════════════════════════════════════════════════════════ -->
-  <!-- EXTERNAL ACTORS                                                -->
-  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <rect x="152" y="135" width="146" height="32" rx="7" fill="#dcfce7" stroke="#86efac" stroke-width="1.2"/>
+  <text x="225" y="156" text-anchor="middle" font-size="12" font-weight="600" fill="#166534">api</text>
 
-  <!-- User browser -->
-  <rect x="40" y="52" width="130" height="40" rx="8" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.2"/>
-  <text x="105" y="77" text-anchor="middle" font-size="12" fill="#334155" font-weight="600">User Browser</text>
+  <rect x="152" y="175" width="146" height="32" rx="7" fill="#dcfce7" stroke="#86efac" stroke-width="1.2"/>
+  <text x="225" y="196" text-anchor="middle" font-size="12" font-weight="600" fill="#166534">discord</text>
 
-  <!-- External clients -->
-  <rect x="220" y="52" width="150" height="40" rx="8" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.2"/>
-  <text x="295" y="77" text-anchor="middle" font-size="12" fill="#334155" font-weight="600">External Clients</text>
+  <rect x="152" y="215" width="146" height="32" rx="7" fill="#dcfce7" stroke="#86efac" stroke-width="1.2" stroke-dasharray="4,3"/>
+  <text x="225" y="236" text-anchor="middle" font-size="11" fill="#86efac" font-style="italic">slack, voice, ...</text>
 
-  <!-- ═══════════════════════════════════════════════════════════════ -->
-  <!-- CONTAINERS                                                     -->
-  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- ── Guardian (bridges both networks) ── -->
+  <rect x="355" y="120" width="130" height="80" rx="10" fill="#fffbeb" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="420" y="150" text-anchor="middle" font-size="14" font-weight="700" fill="#92400e">Guardian</text>
+  <text x="420" y="167" text-anchor="middle" font-size="10" fill="#b45309">HMAC · replay</text>
+  <text x="420" y="181" text-anchor="middle" font-size="10" fill="#b45309">rate limit</text>
 
-  <!-- Caddy (infrastructure / gray-blue) -->
-  <rect x="50" y="168" width="160" height="56" rx="10" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.5"/>
-  <text x="130" y="192" text-anchor="middle" font-size="14" font-weight="700" fill="#3730a3">Caddy</text>
-  <text x="130" y="213" text-anchor="middle" font-size="10" fill="#6366f1">reverse proxy :80</text>
+  <!-- ── Assistant ── -->
+  <rect x="530" y="108" width="140" height="65" rx="10" fill="#dbeafe" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="600" y="136" text-anchor="middle" font-size="14" font-weight="700" fill="#1e40af">Assistant</text>
+  <text x="600" y="153" text-anchor="middle" font-size="10" fill="#3b82f6">OpenCode runtime</text>
+  <text x="600" y="166" text-anchor="middle" font-size="9" fill="#60a5fa">no Docker socket</text>
 
-  <!-- Guardian (core / blue) -->
-  <rect x="370" y="245" width="160" height="70" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
-  <text x="450" y="271" text-anchor="middle" font-size="14" font-weight="700" fill="#1e40af">Guardian</text>
-  <text x="450" y="288" text-anchor="middle" font-size="10" fill="#3b82f6">HMAC verify :8080</text>
-  <text x="450" y="304" text-anchor="middle" font-size="10" fill="#3b82f6">replay + rate limit</text>
+  <!-- ── Memory ── -->
+  <rect x="720" y="118" width="110" height="50" rx="10" fill="#dbeafe" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="775" y="141" text-anchor="middle" font-size="13" font-weight="700" fill="#1e40af">Memory</text>
+  <text x="775" y="157" text-anchor="middle" font-size="10" fill="#3b82f6">sqlite-vec</text>
 
-  <!-- Channel: Chat (green) -->
-  <rect x="60" y="265" width="145" height="50" rx="10" fill="#dcfce7" stroke="#22c55e" stroke-width="1.5"/>
-  <text x="132" y="288" text-anchor="middle" font-size="13" font-weight="600" fill="#166534">channel-chat</text>
-  <text x="132" y="304" text-anchor="middle" font-size="10" fill="#22c55e">:8181</text>
+  <!-- ── Scheduler ── -->
+  <rect x="530" y="210" width="140" height="45" rx="10" fill="#dbeafe" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="600" y="234" text-anchor="middle" font-size="13" font-weight="700" fill="#1e40af">Scheduler</text>
+  <text x="600" y="248" text-anchor="middle" font-size="10" fill="#3b82f6">cron automations</text>
 
-  <!-- Channel: API (green) -->
-  <rect x="60" y="330" width="145" height="50" rx="10" fill="#dcfce7" stroke="#22c55e" stroke-width="1.5"/>
-  <text x="132" y="353" text-anchor="middle" font-size="13" font-weight="600" fill="#166534">channel-api</text>
-  <text x="132" y="369" text-anchor="middle" font-size="10" fill="#22c55e">:8282</text>
+  <!-- ── Admin (optional) ── -->
+  <rect x="720" y="210" width="110" height="50" rx="10" fill="#f5f3ff" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="5,3"/>
+  <text x="775" y="234" text-anchor="middle" font-size="13" font-weight="600" fill="#6d28d9">Admin</text>
+  <text x="775" y="248" text-anchor="middle" font-size="10" fill="#8b5cf6" font-style="italic">optional</text>
 
-  <!-- Channel: Discord (green) -->
-  <rect x="230" y="330" width="145" height="50" rx="10" fill="#dcfce7" stroke="#22c55e" stroke-width="1.5"/>
-  <text x="302" y="353" text-anchor="middle" font-size="13" font-weight="600" fill="#166534">channel-discord</text>
-  <text x="302" y="369" text-anchor="middle" font-size="10" fill="#22c55e">:8383</text>
+  <!-- ═══════════════════════════════ -->
+  <!-- ARROWS                          -->
+  <!-- ═══════════════════════════════ -->
 
-  <!-- Assistant (core / blue) -->
-  <rect x="620" y="245" width="180" height="70" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
-  <text x="710" y="271" text-anchor="middle" font-size="14" font-weight="700" fill="#1e40af">Assistant</text>
-  <text x="710" y="288" text-anchor="middle" font-size="10" fill="#3b82f6">OpenCode :4096</text>
-  <text x="710" y="304" text-anchor="middle" font-size="10" fill="#3b82f6">no Docker socket</text>
+  <!-- Clients → channel area -->
+  <line x1="110" y1="170" x2="149" y2="153" stroke="#64748b" stroke-width="1.3" marker-end="url(#arr)"/>
 
-  <!-- Memory (core / blue) -->
-  <rect x="830" y="245" width="150" height="56" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
-  <text x="905" y="271" text-anchor="middle" font-size="14" font-weight="700" fill="#1e40af">Memory</text>
-  <text x="905" y="289" text-anchor="middle" font-size="10" fill="#3b82f6">sqlite-vec :8765</text>
+  <!-- Channels → Guardian (HMAC signed) -->
+  <path d="M 298 111 Q 320 125, 353 140" fill="none" stroke="#22c55e" stroke-width="1.3" marker-end="url(#arr-grn)"/>
+  <line x1="298" y1="151" x2="353" y2="155" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arr-grn)"/>
+  <path d="M 298 191 Q 320 180, 353 170" fill="none" stroke="#22c55e" stroke-width="1.3" marker-end="url(#arr-grn)"/>
+  <text x="302" y="102" font-size="9" fill="#16a34a" font-weight="600">HMAC signed</text>
 
-  <!-- Admin (core / blue) -->
-  <rect x="550" y="390" width="180" height="70" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
-  <text x="640" y="416" text-anchor="middle" font-size="14" font-weight="700" fill="#1e40af">Admin</text>
-  <text x="640" y="433" text-anchor="middle" font-size="10" fill="#3b82f6">SvelteKit :8100</text>
-  <text x="640" y="449" text-anchor="middle" font-size="10" fill="#3b82f6">control plane</text>
+  <!-- Guardian → Assistant (validated) -->
+  <line x1="485" y1="155" x2="528" y2="145" stroke="#3b82f6" stroke-width="1.8" marker-end="url(#arr-blu)"/>
+  <text x="488" y="140" font-size="9" fill="#3b82f6" font-weight="600">validated</text>
 
-  <!-- Docker Socket Proxy (infrastructure / gray) -->
-  <rect x="800" y="497" width="175" height="70" rx="10" fill="#f3f4f6" stroke="#6b7280" stroke-width="1.5"/>
-  <text x="887" y="520" text-anchor="middle" font-size="12" font-weight="700" fill="#374151">Docker Socket</text>
-  <text x="887" y="536" text-anchor="middle" font-size="12" font-weight="700" fill="#374151">Proxy</text>
-  <text x="887" y="554" text-anchor="middle" font-size="10" fill="#6b7280">filtered :2375</text>
+  <!-- Assistant ↔ Memory -->
+  <line x1="670" y1="140" x2="718" y2="143" stroke="#3b82f6" stroke-width="1.3" marker-end="url(#arr-blu)"/>
 
-  <!-- Docker Daemon (external) -->
-  <rect x="810" y="620" width="155" height="42" rx="8" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.2"/>
-  <text x="887" y="645" text-anchor="middle" font-size="12" fill="#334155" font-weight="600">Docker Daemon</text>
+  <!-- Scheduler → Assistant (cron) -->
+  <line x1="600" y1="210" x2="600" y2="175" stroke="#3b82f6" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr-blu)"/>
+  <text x="607" y="198" font-size="9" fill="#3b82f6" font-style="italic">cron</text>
 
-  <!-- ═══════════════════════════════════════════════════════════════ -->
-  <!-- MESSAGE FLOW ARROWS                                            -->
-  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- Admin → Assistant (optional API) -->
+  <path d="M 720 230 L 672 160" fill="none" stroke="#8b5cf6" stroke-width="1" stroke-dasharray="4,3"/>
 
-  <!-- User browser -> Caddy -->
-  <line x1="105" y1="92" x2="120" y2="165" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <!-- ═══════════════════════════════ -->
+  <!-- LEGEND                          -->
+  <!-- ═══════════════════════════════ -->
 
-  <!-- External clients -> Caddy (via channels) -->
-  <line x1="270" y1="92" x2="145" y2="165" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="25" y="305" width="810" height="75" rx="8" fill="#fff" stroke="#e2e8f0" stroke-width="1"/>
 
-  <!-- Caddy -> Admin (UI/API route) -->
-  <path d="M 180 224 Q 250 320, 548 420" fill="none" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
-  <text x="300" y="330" font-size="10" fill="#3b82f6" font-style="italic">/admin/*</text>
+  <!-- Row 1: box types -->
+  <rect x="40" y="320" width="14" height="10" rx="3" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="60" y="329" font-size="10" fill="#334155">Channel adapter</text>
 
-  <!-- Caddy -> channel-chat -->
-  <line x1="115" y1="224" x2="122" y2="262" stroke="#555" stroke-width="1.2" marker-end="url(#arrow)"/>
+  <rect x="175" y="320" width="14" height="10" rx="3" fill="#fffbeb" stroke="#fbbf24" stroke-width="1"/>
+  <text x="195" y="329" font-size="10" fill="#334155">Security gateway</text>
 
-  <!-- Caddy -> Guardian route -->
-  <path d="M 210 210 Q 290 230, 368 270" fill="none" stroke="#f97316" stroke-width="1.3" marker-end="url(#arrow-orange)"/>
-  <text x="265" y="228" font-size="10" fill="#f97316" font-style="italic">/guardian/*</text>
+  <rect x="320" y="320" width="14" height="10" rx="3" fill="#dbeafe" stroke="#60a5fa" stroke-width="1"/>
+  <text x="340" y="329" font-size="10" fill="#334155">Core service</text>
 
-  <!-- channel-chat -> Guardian (HMAC signed) -->
-  <path d="M 205 280 L 367 275" fill="none" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrow-green)"/>
-  <text x="270" y="267" font-size="10" fill="#22c55e" font-weight="600">HMAC signed</text>
+  <rect x="435" y="320" width="14" height="10" rx="3" fill="#f5f3ff" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3,2"/>
+  <text x="455" y="329" font-size="10" fill="#334155">Optional</text>
 
-  <!-- channel-api -> Guardian -->
-  <path d="M 205 352 Q 300 330, 375 300" fill="none" stroke="#22c55e" stroke-width="1.3" marker-end="url(#arrow-green)"/>
+  <rect x="530" y="320" width="14" height="10" rx="3" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="550" y="329" font-size="10" fill="#334155">External</text>
 
-  <!-- channel-discord -> Guardian -->
-  <path d="M 375 348 Q 400 330, 420 318" fill="none" stroke="#22c55e" stroke-width="1.3" marker-end="url(#arrow-green)"/>
+  <rect x="635" y="316" width="38" height="16" rx="4" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+  <text x="680" y="329" font-size="10" fill="#334155">Network zone</text>
 
-  <!-- Guardian -> Assistant (validated message) -->
-  <line x1="530" y1="280" x2="617" y2="280" stroke="#3b82f6" stroke-width="1.8" marker-end="url(#arrow-blue)"/>
-  <text x="555" y="270" font-size="10" fill="#3b82f6" font-weight="600">validated</text>
+  <!-- Row 2: arrow types -->
+  <line x1="40" y1="355" x2="65" y2="355" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arr-grn)"/>
+  <text x="72" y="359" font-size="10" fill="#334155">HMAC-signed message</text>
 
-  <!-- Assistant -> Memory -->
-  <line x1="800" y1="273" x2="828" y2="273" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+  <line x1="225" y1="355" x2="250" y2="355" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arr-blu)"/>
+  <text x="257" y="359" font-size="10" fill="#334155">Validated / internal</text>
 
-  <!-- Assistant -> Admin API (stack ops) -->
-  <path d="M 680 315 L 660 388" fill="none" stroke="#3b82f6" stroke-width="1.3" stroke-dasharray="5,3" marker-end="url(#arrow-blue)"/>
-  <text x="685" y="355" font-size="10" fill="#3b82f6" font-style="italic">API calls</text>
-
-  <!-- Admin -> Docker Socket Proxy -->
-  <path d="M 730 440 L 798 515" fill="none" stroke="#8b5cf6" stroke-width="1.5" marker-end="url(#arrow)"/>
-  <text x="740" y="480" font-size="10" fill="#8b5cf6" font-style="italic">DOCKER_HOST</text>
-
-  <!-- Docker Socket Proxy -> Docker Daemon -->
-  <line x1="887" y1="567" x2="887" y2="617" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
-  <text x="905" y="598" font-size="10" fill="#6b7280" font-style="italic">/var/run/docker.sock</text>
-
-  <!-- ═══════════════════════════════════════════════════════════════ -->
-  <!-- LEGEND                                                         -->
-  <!-- ═══════════════════════════════════════════════════════════════ -->
-
-  <rect x="30" y="640" width="500" height="70" rx="8" fill="#fff" stroke="#e2e8f0" stroke-width="1"/>
-
-  <!-- Core services -->
-  <rect x="45" y="653" width="16" height="12" rx="3" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
-  <text x="67" y="664" font-size="11" fill="#334155">Core service</text>
-
-  <!-- Channel adapters -->
-  <rect x="160" y="653" width="16" height="12" rx="3" fill="#dcfce7" stroke="#22c55e" stroke-width="1"/>
-  <text x="182" y="664" font-size="11" fill="#334155">Channel adapter</text>
-
-  <!-- Infrastructure -->
-  <rect x="300" y="653" width="16" height="12" rx="3" fill="#f3f4f6" stroke="#6b7280" stroke-width="1"/>
-  <text x="322" y="664" font-size="11" fill="#334155">Infrastructure</text>
-
-  <!-- External -->
-  <rect x="418" y="653" width="16" height="12" rx="3" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1"/>
-  <text x="440" y="664" font-size="11" fill="#334155">External</text>
-
-  <!-- Network boundary -->
-  <line x1="45" y1="685" x2="80" y2="685" stroke="#555" stroke-width="1.2" stroke-dasharray="6,3"/>
-  <text x="86" y="689" font-size="11" fill="#334155">Network boundary</text>
-
-  <!-- Message flow -->
-  <line x1="210" y1="685" x2="240" y2="685" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
-  <text x="247" y="689" font-size="11" fill="#334155">Message flow</text>
-
-  <!-- API call -->
-  <line x1="345" y1="685" x2="375" y2="685" stroke="#555" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow)"/>
-  <text x="382" y="689" font-size="11" fill="#334155">Internal API call</text>
+  <line x1="395" y1="355" x2="420" y2="355" stroke="#64748b" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+  <text x="427" y="359" font-size="10" fill="#334155">Optional path</text>
 </svg>

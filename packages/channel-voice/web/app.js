@@ -1,520 +1,528 @@
-/* ================================================================
-   OpenPalm Voice — App
-   State machine: idle → recording → processing → idle
-   Falls back to browser Speech APIs when server STT/TTS unavailable.
-   ================================================================ */
+// app.js — State, rendering, event handlers, settings persistence, voice chat orchestration
 
-;(function () {
-  'use strict'
+import {
+  agentProviders, sttProviders, ttsProviders,
+  recordAudio, stopRecording, cancelTTS, cancelSTT, cancelAgentRequest,
+} from './providers.js';
 
-  // --- DOM refs ---
-  var recordBtn = document.getElementById('record-btn')
-  var log = document.getElementById('log')
-  var statusEl = document.getElementById('status')
-  var settingsBtn = document.getElementById('settings-btn')
-  var settingsDialog = document.getElementById('settings-dialog')
-  var settingsForm = document.getElementById('settings-form')
-  var announcer = document.getElementById('announcer')
-  var inputVoice = document.getElementById('setting-voice')
-  var inputHaptic = document.getElementById('setting-haptic')
-  var inputWakelock = document.getElementById('setting-wakelock')
-  var inputContinuous = document.getElementById('setting-continuous')
-  var continuousBtn = document.getElementById('continuous-btn')
+// ─── Default Settings ────────────────────────────────────
 
-  // --- State ---
-  var state = 'idle'
-  var continuous = false
-  var recorder = null
-  var chunks = []
-  var wakeLock = null
-  var audioCtx = null
+const DEFAULT_SETTINGS = {
+  agent: { provider: 'openai', url: '', apiKey: '', model: '', personaPrompt: '' },
+  stt:   { provider: 'browser', url: '', apiKey: '', model: '', language: '' },
+  tts:   { provider: 'browser', url: '', apiKey: '', model: '', voice: '' },
+  app:   { continuousListening: false, showConversation: true },
+};
 
-  // --- Capabilities (populated on init from /api/health) ---
-  var caps = {
-    serverStt: false,
-    serverTts: false,
-    browserStt: !!(window.SpeechRecognition || window.webkitSpeechRecognition),
-    browserTts: 'speechSynthesis' in window
-  }
+// ─── App State ───────────────────────────────────────────
 
-  // --- Settings ---
-  function loadSettings() {
-    try {
-      var s = JSON.parse(localStorage.getItem('voice-settings') || '{}')
-      inputVoice.value = s.voice || ''
-      inputHaptic.checked = s.haptic !== false
-      inputWakelock.checked = s.wakelock !== false
-      inputContinuous.checked = !!s.continuous
-    } catch (_) {
-      inputHaptic.checked = true
-      inputWakelock.checked = true
-      inputContinuous.checked = false
+const state = {
+  status: 'idle',        // idle | listening | transcribing | thinking | speaking | error
+  isListening: false,
+  isSpeaking: false,
+  conversationVisible: true,
+  messages: [],          // { role: 'user'|'assistant', content: string }
+  interimText: '',
+};
+
+// ─── Settings Persistence ────────────────────────────────
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem('voicechat_settings');
+    if (raw) {
+      const saved = JSON.parse(raw);
+      // Merge with defaults to ensure all keys exist
+      return {
+        agent: { ...DEFAULT_SETTINGS.agent, ...saved.agent },
+        stt:   { ...DEFAULT_SETTINGS.stt,   ...saved.stt },
+        tts:   { ...DEFAULT_SETTINGS.tts,   ...saved.tts },
+        app:   { ...DEFAULT_SETTINGS.app,   ...saved.app },
+      };
     }
+  } catch {}
+  return structuredClone(DEFAULT_SETTINGS);
+}
+
+function saveSettings(settings) {
+  localStorage.setItem('voicechat_settings', JSON.stringify(settings));
+}
+
+let settings = loadSettings();
+
+// ─── DOM References ──────────────────────────────────────
+
+const $ = (sel) => document.querySelector(sel);
+const app            = $('#app');
+const statusText     = $('#statusText');
+const providerSummary = $('#providerSummary');
+const conversation   = $('#conversation');
+const conversationInner = $('#conversationInner');
+const emptyState     = $('#emptyState');
+
+// Buttons
+const btnSettings    = $('#btnSettings');
+const btnNewConvo    = $('#btnNewConvo');
+const btnToggleConvo = $('#btnToggleConvo');
+const btnContinuous  = $('#btnContinuous');
+const btnMic         = $('#btnMic');
+const btnCancel      = $('#btnCancel');
+
+// Modal
+const modalOverlay   = $('#modalOverlay');
+const btnCloseSettings = $('#btnCloseSettings');
+const btnCancelSettings = $('#btnCancelSettings');
+const btnSaveSettings = $('#btnSaveSettings');
+
+// Settings dropdowns
+const agentProviderSelect = $('#agentProvider');
+const sttProviderSelect   = $('#sttProvider');
+const ttsProviderSelect   = $('#ttsProvider');
+
+// Dynamic field containers
+const agentFieldsDiv = $('#agentFields');
+const sttFieldsDiv   = $('#sttFields');
+const ttsFieldsDiv   = $('#ttsFields');
+
+// Error displays
+const agentError = $('#agentError');
+const sttError   = $('#sttError');
+const ttsError   = $('#ttsError');
+
+// ─── Rendering ───────────────────────────────────────────
+
+function setStatus(status, text) {
+  state.status = status;
+  app.setAttribute('data-status', status);
+  statusText.textContent = text || capitalize(status);
+}
+
+function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+function updateProviderSummary() {
+  const agentLabel = agentProviders[settings.agent.provider]?.label || settings.agent.provider;
+  const sttLabel = sttProviders[settings.stt.provider]?.label || settings.stt.provider;
+  const ttsLabel = ttsProviders[settings.tts.provider]?.label || settings.tts.provider;
+  providerSummary.textContent = `${agentLabel}`;
+}
+
+function renderConversation() {
+  // Remove all messages (keep empty state)
+  const existing = conversationInner.querySelectorAll('.message');
+  existing.forEach(el => el.remove());
+
+  if (state.messages.length === 0 && !state.interimText) {
+    emptyState.style.display = '';
+    return;
+  }
+  emptyState.style.display = 'none';
+
+  for (const msg of state.messages) {
+    const div = document.createElement('div');
+    div.className = `message message-${msg.role === 'user' ? 'user' : msg.role === 'error' ? 'error' : 'assistant'}`;
+    div.textContent = msg.content;
+    conversationInner.appendChild(div);
   }
 
-  function saveSettings() {
-    localStorage.setItem('voice-settings', JSON.stringify({
-      voice: inputVoice.value,
-      haptic: inputHaptic.checked,
-      wakelock: inputWakelock.checked,
-      continuous: inputContinuous.checked
-    }))
-    setContinuous(inputContinuous.checked)
+  // Show interim text
+  if (state.interimText) {
+    const div = document.createElement('div');
+    div.className = 'message message-interim';
+    div.textContent = state.interimText;
+    conversationInner.appendChild(div);
   }
 
-  function getSetting(key) {
-    try {
-      var s = JSON.parse(localStorage.getItem('voice-settings') || '{}')
-      if (key === 'haptic') return s.haptic !== false
-      if (key === 'wakelock') return s.wakelock !== false
-      if (key === 'continuous') return !!s.continuous
-      return s[key] || ''
-    } catch (_) {
-      return key === 'voice' ? '' : (key === 'continuous' ? false : true)
-    }
+  // Scroll to bottom
+  conversation.scrollTop = conversation.scrollHeight;
+}
+
+function updateUI() {
+  // Conversation visibility
+  if (state.conversationVisible) {
+    conversation.classList.remove('hidden');
+    btnToggleConvo.classList.add('active');
+  } else {
+    conversation.classList.add('hidden');
+    btnToggleConvo.classList.remove('active');
   }
 
-  function setContinuous(enabled) {
-    continuous = enabled
-    continuousBtn.setAttribute('aria-pressed', String(enabled))
-    if (enabled && state === 'idle') {
-      startRecording()
-    }
+  // Continuous listening
+  if (settings.app.continuousListening) {
+    btnContinuous.classList.add('active');
+  } else {
+    btnContinuous.classList.remove('active');
   }
 
-  // --- Utilities ---
-  function escapeHtml(text) {
-    var el = document.createElement('span')
-    el.textContent = text
-    return el.innerHTML
+  // Mic button disabled during processing (but not during listening)
+  const processing = ['transcribing', 'thinking', 'speaking'].includes(state.status);
+  btnMic.disabled = processing;
+
+  // Show cancel button during processing states
+  btnCancel.hidden = !processing;
+}
+
+// ─── Settings Modal ──────────────────────────────────────
+
+let tempSettings = null;
+
+function openSettings() {
+  tempSettings = structuredClone(settings);
+  populateProviderDropdowns();
+  renderProviderFields();
+  clearErrors();
+  modalOverlay.hidden = false;
+}
+
+function closeSettings() {
+  modalOverlay.hidden = true;
+  tempSettings = null;
+}
+
+function populateProviderDropdowns() {
+  // Agent
+  agentProviderSelect.innerHTML = '';
+  for (const [key, p] of Object.entries(agentProviders)) {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = p.label;
+    if (key === tempSettings.agent.provider) opt.selected = true;
+    agentProviderSelect.appendChild(opt);
   }
 
-  function announce(msg) {
-    announcer.textContent = msg
+  // STT
+  sttProviderSelect.innerHTML = '';
+  for (const [key, p] of Object.entries(sttProviders)) {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = p.label;
+    if (key === tempSettings.stt.provider) opt.selected = true;
+    sttProviderSelect.appendChild(opt);
   }
 
-  function pickMimeType() {
-    var types = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']
-    for (var i = 0; i < types.length; i++) {
-      if (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(types[i])) {
-        return types[i]
-      }
-    }
-    return ''
+  // TTS
+  ttsProviderSelect.innerHTML = '';
+  for (const [key, p] of Object.entries(ttsProviders)) {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = p.label;
+    if (key === tempSettings.tts.provider) opt.selected = true;
+    ttsProviderSelect.appendChild(opt);
   }
+}
 
-  function haptic(pattern) {
-    if (getSetting('haptic') && navigator.vibrate) {
-      navigator.vibrate(pattern)
-    }
-  }
+function renderProviderFields() {
+  renderFieldsFor('agent', agentProviders, tempSettings.agent, agentFieldsDiv);
+  renderFieldsFor('stt', sttProviders, tempSettings.stt, sttFieldsDiv);
+  renderFieldsFor('tts', ttsProviders, tempSettings.tts, ttsFieldsDiv);
+}
 
-  // --- UI Updates ---
-  function setState(newState, statusMsg) {
-    state = newState
-    recordBtn.setAttribute('data-state', newState)
-    statusEl.textContent = statusMsg || newState
-    statusEl.setAttribute('aria-label', 'Status: ' + (statusMsg || newState))
-    announce(statusMsg || newState)
+function renderFieldsFor(section, providers, sectionSettings, container) {
+  container.innerHTML = '';
+  const provider = providers[sectionSettings.provider];
+  if (!provider) return;
 
-    if (newState === 'idle') {
-      recordBtn.setAttribute('aria-label', 'Start recording')
-    } else if (newState === 'recording') {
-      recordBtn.setAttribute('aria-label', 'Stop recording')
-    } else if (newState === 'processing') {
-      recordBtn.setAttribute('aria-label', 'Processing, please wait')
-    }
-  }
+  for (const field of provider.fields) {
+    const div = document.createElement('div');
+    div.className = 'field';
 
-  // --- Simple markdown rendering (bold, italic, code, code blocks, lists) ---
-  function renderMarkdown(text) {
-    var escaped = escapeHtml(text)
-    // Code blocks: ```...```
-    escaped = escaped.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-    // Inline code: `...`
-    escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>')
-    // Bold: **...**
-    escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    // Italic: *...*
-    escaped = escaped.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
-    // Line breaks
-    escaped = escaped.replace(/\n/g, '<br>')
-    return escaped
-  }
+    const label = document.createElement('label');
+    label.textContent = field.label + (field.required ? ' *' : '');
+    label.setAttribute('for', `${section}_${field.key}`);
+    div.appendChild(label);
 
-  function addLog(level, message) {
-    var entry = document.createElement('div')
-    entry.className = 'log-entry'
-    entry.setAttribute('data-level', level)
-    var rendered = (level === 'AI') ? renderMarkdown(message) : escapeHtml(message)
-    entry.innerHTML = '<span class="log-label">' + escapeHtml(level) + '</span>' + rendered
-    log.appendChild(entry)
-    log.scrollTop = log.scrollHeight
-  }
-
-  // --- Wake Lock ---
-  async function acquireWakeLock() {
-    if (!getSetting('wakelock') || !('wakeLock' in navigator)) return
-    try {
-      wakeLock = await navigator.wakeLock.request('screen')
-    } catch (_) {
-      // Wake lock not available
-    }
-  }
-
-  function releaseWakeLock() {
-    if (wakeLock) {
-      wakeLock.release().catch(function () {})
-      wakeLock = null
-    }
-  }
-
-  // --- Audio Playback ---
-  function playBase64Audio(base64) {
-    return new Promise(function (resolve, reject) {
-      try {
-        var binary = atob(base64)
-        var bytes = new Uint8Array(binary.length)
-        for (var i = 0; i < binary.length; i++) {
-          bytes[i] = binary.charCodeAt(i)
-        }
-        if (!audioCtx) {
-          audioCtx = new (window.AudioContext || window.webkitAudioContext)()
-        }
-        audioCtx.decodeAudioData(bytes.buffer, function (buffer) {
-          var source = audioCtx.createBufferSource()
-          source.buffer = buffer
-          source.connect(audioCtx.destination)
-          source.onended = resolve
-          source.start(0)
-        }, function (err) {
-          reject(err)
-        })
-      } catch (err) {
-        reject(err)
-      }
-    })
-  }
-
-  // --- Strip markdown for TTS ---
-  function stripMarkdownForSpeech(text) {
-    return text
-      .replace(/```[\s\S]*?```/g, '')
-      .replace(/`([^`]+)`/g, '$1')
-      .replace(/\*\*([^*]+)\*\*/g, '$1')
-      .replace(/\*([^*]+)\*/g, '$1')
-      .replace(/^#{1,6}\s+/gm, '')
-      .replace(/^\s*[-*+]\s+/gm, '')
-      .replace(/^\s*\d+\.\s+/gm, '')
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim()
-  }
-
-  // --- Browser TTS fallback ---
-  function speakWithBrowser(text) {
-    return new Promise(function (resolve) {
-      if (!caps.browserTts) { resolve(); return }
-      var utterance = new SpeechSynthesisUtterance(stripMarkdownForSpeech(text))
-      var voice = getSetting('voice')
-      if (voice) {
-        var voices = speechSynthesis.getVoices()
-        var match = voices.find(function (v) {
-          return v.name.toLowerCase().indexOf(voice.toLowerCase()) !== -1
-        })
-        if (match) utterance.voice = match
-      }
-      utterance.onend = resolve
-      utterance.onerror = resolve
-      speechSynthesis.speak(utterance)
-    })
-  }
-
-  // --- Browser STT ---
-  function transcribeWithBrowser() {
-    return new Promise(function (resolve, reject) {
-      var SR = window.SpeechRecognition || window.webkitSpeechRecognition
-      if (!SR) { reject(new Error('Browser speech recognition not supported')); return }
-      var recognition = new SR()
-      recognition.lang = navigator.language || 'en-US'
-      recognition.interimResults = false
-      recognition.maxAlternatives = 1
-      var gotResult = false
-      recognition.onresult = function (event) {
-        gotResult = true
-        var text = event.results[0][0].transcript
-        resolve(text)
-      }
-      recognition.onerror = function (event) {
-        // no-speech and aborted are normal in continuous mode — treat as empty
-        if (event.error === 'no-speech' || event.error === 'aborted') {
-          resolve('')
-        } else {
-          reject(new Error('Speech recognition error: ' + event.error))
-        }
-      }
-      recognition.onend = function () {
-        if (!gotResult) resolve('')
-      }
-      recognition.start()
-    })
-  }
-
-  // --- Recording (server STT path) ---
-  async function startRecordingAudio() {
-    try {
-      var stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      chunks = []
-      var mimeType = pickMimeType()
-      recorder = new MediaRecorder(stream, mimeType ? { mimeType: mimeType } : undefined)
-
-      recorder.ondataavailable = function (e) {
-        if (e.data.size > 0) chunks.push(e.data)
-      }
-
-      recorder.start()
-      setState('recording', 'recording')
-      haptic(50)
-      await acquireWakeLock()
-    } catch (err) {
-      addLog('ERR', 'Microphone access denied: ' + err.message)
-      setState('idle', 'ready')
-    }
-  }
-
-  async function stopRecordingAndSendAudio() {
-    setState('processing', 'transcribing')
-    haptic([30, 50, 30])
-    releaseWakeLock()
-
-    await new Promise(function (resolve) {
-      recorder.onstop = function () {
-        recorder.stream.getTracks().forEach(function (t) { t.stop() })
-        resolve()
-      }
-      recorder.stop()
-    })
-
-    if (chunks.length === 0) {
-      addLog('ERR', 'No audio recorded')
-      setState('idle', 'ready')
-      return
-    }
-
-    var detectedMime = pickMimeType()
-    var blob = new Blob(chunks, { type: detectedMime || 'audio/webm' })
-    chunks = []
-    recorder = null
-
-    var ext = detectedMime.indexOf('mp4') !== -1 ? 'm4a' : 'webm'
-    var form = new FormData()
-    form.append('audio', blob, 'recording.' + ext)
-    await sendToServer(form)
-  }
-
-  // --- Recording (browser STT path) ---
-  async function startBrowserSTT() {
-    setState('recording', 'listening')
-    haptic(50)
-    await acquireWakeLock()
-
-    try {
-      var text = await transcribeWithBrowser()
-      releaseWakeLock()
-
-      if (!text || !text.trim()) {
-        if (continuous) {
-          setState('idle', 'listening...')
-          setTimeout(function () { startRecording() }, 300)
-        } else {
-          addLog('SYS', 'No speech detected')
-          setState('idle', 'ready')
-        }
-        return
-      }
-
-      setState('processing', 'processing')
-      haptic([30, 50, 30])
-
-      var form = new FormData()
-      form.append('text', text.trim())
-      await sendToServer(form)
-    } catch (err) {
-      releaseWakeLock()
-      addLog('ERR', err.message)
-      setState('idle', 'ready')
-    }
-  }
-
-  // --- Send to server and handle response ---
-  async function sendToServer(form) {
-    try {
-      addLog('TX', 'sending...')
-      var response = await fetch('/api/pipeline', {
-        method: 'POST',
-        body: form
-      })
-
-      if (!response.ok) {
-        var errBody = null
-        try { errBody = await response.json() } catch (_) {}
-        var errMsg = (errBody && errBody.error) || ('Server error ' + response.status)
-
-        // If server STT failed for any reason, switch to browser STT for future recordings
-        if (errBody && (errBody.code === 'stt_not_configured' || errBody.code === 'stt_error')) {
-          caps.serverStt = false
-          if (caps.browserStt) {
-            addLog('SYS', 'Server STT unavailable, switching to browser speech recognition')
-            addLog('SYS', 'Tap the microphone again to retry')
-          } else {
-            addLog('ERR', 'Server STT failed and browser speech recognition not available')
-          }
-          setState('idle', 'ready')
-          return
-        }
-
-        addLog('ERR', errMsg)
-        setState('idle', 'error')
-        return
-      }
-
-      var data = await response.json()
-
-      if (data.transcript) {
-        addLog('YOU', data.transcript)
-      }
-      if (data.response) {
-        addLog('AI', data.response)
-      }
-
-      // Play audio: server TTS if available, otherwise browser TTS
-      if (data.audio) {
-        try {
-          await playBase64Audio(data.audio)
-        } catch (err) {
-          addLog('SYS', 'Audio decode failed, using browser voice')
-          if (data.response) await speakWithBrowser(data.response)
-        }
-      } else if (data.response && caps.browserTts) {
-        await speakWithBrowser(data.response)
-      }
-
-      setState('idle', 'ready')
-      haptic(30)
-
-      // Auto-restart if continuous listening is on
-      if (continuous) {
-        setTimeout(function () { startRecording() }, 300)
-      }
-    } catch (err) {
-      addLog('ERR', 'Request failed: ' + err.message)
-      setState('idle', 'offline')
-    }
-  }
-
-  // --- Toggle recording ---
-  function startRecording() {
-    if (state !== 'idle') return
-    if (caps.serverStt) {
-      startRecordingAudio()
-    } else if (caps.browserStt) {
-      startBrowserSTT()
+    if (field.type === 'textarea') {
+      const textarea = document.createElement('textarea');
+      textarea.id = `${section}_${field.key}`;
+      textarea.placeholder = field.placeholder || '';
+      textarea.value = sectionSettings[field.key] || '';
+      textarea.addEventListener('input', () => {
+        sectionSettings[field.key] = textarea.value;
+      });
+      div.appendChild(textarea);
     } else {
-      addLog('ERR', 'No speech recognition available (server STT not configured, browser API not supported)')
+      const input = document.createElement('input');
+      input.id = `${section}_${field.key}`;
+      input.type = field.type || 'text';
+      input.placeholder = field.placeholder || '';
+      input.value = sectionSettings[field.key] || '';
+      input.addEventListener('input', () => {
+        sectionSettings[field.key] = input.value;
+      });
+      div.appendChild(input);
     }
+
+    container.appendChild(div);
+  }
+}
+
+function clearErrors() {
+  agentError.textContent = '';
+  sttError.textContent = '';
+  ttsError.textContent = '';
+}
+
+function trySaveSettings() {
+  clearErrors();
+  let valid = true;
+
+  // Validate agent (required)
+  const agentProvider = agentProviders[tempSettings.agent.provider];
+  if (agentProvider) {
+    const err = agentProvider.validate(tempSettings);
+    if (err) { agentError.textContent = err; valid = false; }
+  } else {
+    agentError.textContent = 'Invalid agent provider';
+    valid = false;
   }
 
-  function stopRecording() {
-    if (state !== 'recording') return
-    // If user manually stops, also turn off continuous
-    if (continuous) setContinuous(false)
-    if (recorder) {
-      stopRecordingAndSendAudio()
+  // Validate STT
+  const sttProvider = sttProviders[tempSettings.stt.provider];
+  if (sttProvider) {
+    const err = sttProvider.validate(tempSettings);
+    if (err) { sttError.textContent = err; valid = false; }
+  }
+
+  // Validate TTS
+  const ttsProvider = ttsProviders[tempSettings.tts.provider];
+  if (ttsProvider) {
+    const err = ttsProvider.validate(tempSettings);
+    if (err) { ttsError.textContent = err; valid = false; }
+  }
+
+  if (!valid) return;
+
+  settings = structuredClone(tempSettings);
+  settings.app = { ...settings.app }; // keep app settings from temp
+  saveSettings(settings);
+  updateProviderSummary();
+  closeSettings();
+}
+
+// Settings provider change handlers
+agentProviderSelect.addEventListener('change', () => {
+  if (!tempSettings) return;
+  tempSettings.agent.provider = agentProviderSelect.value;
+  renderFieldsFor('agent', agentProviders, tempSettings.agent, agentFieldsDiv);
+  agentError.textContent = '';
+});
+sttProviderSelect.addEventListener('change', () => {
+  if (!tempSettings) return;
+  tempSettings.stt.provider = sttProviderSelect.value;
+  renderFieldsFor('stt', sttProviders, tempSettings.stt, sttFieldsDiv);
+  sttError.textContent = '';
+});
+ttsProviderSelect.addEventListener('change', () => {
+  if (!tempSettings) return;
+  tempSettings.tts.provider = ttsProviderSelect.value;
+  renderFieldsFor('tts', ttsProviders, tempSettings.tts, ttsFieldsDiv);
+  ttsError.textContent = '';
+});
+
+// ─── Voice Chat Orchestration ────────────────────────────
+
+async function startVoiceTurn() {
+  if (state.status !== 'idle') return;
+
+  const agentProvider = agentProviders[settings.agent.provider];
+  if (!agentProvider || agentProvider.validate(settings)) {
+    setStatus('error', 'Agent not configured');
+    addErrorMessage('Please configure the agent in Settings first.');
+    setTimeout(() => setStatus('idle', 'Ready'), 3000);
+    return;
+  }
+
+  try {
+    // 1. Capture speech
+    setStatus('listening', 'Listening...');
+    state.isListening = true;
+    state.interimText = '';
+    updateUI();
+
+    const sttProvider = sttProviders[settings.stt.provider];
+    let transcript = '';
+
+    if (sttProvider.mode === 'browser') {
+      // Browser STT — no network, direct recognition
+      transcript = await sttProvider.transcribe({
+        settings,
+        onInterim: (text) => {
+          state.interimText = text;
+          renderConversation();
+        },
+      });
+    } else if (sttProvider.mode === 'http') {
+      // HTTP STT — record audio first, then upload
+      const audioPromise = recordAudio();
+
+      // Wait for user to stop (they click mic again, handled by stopListening)
+      // For now, we need a way to wait. The mic button click will call stopRecording().
+      // We resolve when recording stops.
+      const audioBlob = await audioPromise;
+
+      setStatus('transcribing', 'Transcribing...');
+      transcript = await sttProvider.transcribe({ settings, audioBlob });
+    } else if (sttProvider.mode === 'bridge') {
+      // Tauri bridge
+      transcript = await sttProvider.transcribe({ settings });
     }
-    // Browser STT stops on its own (no manual stop needed)
-  }
 
-  function toggleRecording() {
-    if (state === 'idle') {
-      startRecording()
-    } else if (state === 'recording') {
-      stopRecording()
+    state.isListening = false;
+    state.interimText = '';
+
+    if (!transcript?.trim()) {
+      setStatus('idle', 'Ready');
+      updateUI();
+      renderConversation();
+      return;
     }
-  }
 
-  // --- Event Handlers ---
-  recordBtn.addEventListener('click', toggleRecording)
+    // 2. Add user message
+    state.messages.push({ role: 'user', content: transcript.trim() });
+    renderConversation();
 
-  document.addEventListener('keydown', function (e) {
-    if (e.code === 'Space' && e.target === document.body) {
-      e.preventDefault()
-      toggleRecording()
+    // 3. Send to agent
+    setStatus('thinking', 'Thinking...');
+    updateUI();
+
+    const reply = await agentProvider.reply({
+      settings,
+      messages: state.messages.slice(0, -1).filter(m => m.role !== 'error'),
+      inputText: transcript.trim(),
+    });
+
+    // 4. Add assistant message
+    state.messages.push({ role: 'assistant', content: reply });
+    renderConversation();
+
+    // 5. Speak the reply
+    if (reply.trim()) {
+      setStatus('speaking', 'Speaking...');
+      state.isSpeaking = true;
+      updateUI();
+
+      const ttsProvider = ttsProviders[settings.tts.provider];
+      await ttsProvider.speak({ settings, text: reply });
+
+      state.isSpeaking = false;
     }
-  })
 
-  continuousBtn.addEventListener('click', function () {
-    setContinuous(!continuous)
-    // Persist to settings
-    try {
-      var s = JSON.parse(localStorage.getItem('voice-settings') || '{}')
-      s.continuous = continuous
-      localStorage.setItem('voice-settings', JSON.stringify(s))
-    } catch (_) {}
-  })
+    // 6. Return to idle
+    setStatus('idle', 'Ready');
+    updateUI();
 
-  settingsBtn.addEventListener('click', function () {
-    loadSettings()
-    settingsDialog.showModal()
-  })
+    // 7. Continuous listening
+    if (settings.app.continuousListening) {
+      // Small delay to avoid capturing echo
+      await new Promise(r => setTimeout(r, 300));
+      startVoiceTurn();
+    }
 
-  settingsForm.addEventListener('submit', function () {
-    saveSettings()
-  })
-
-  // --- Online / Offline ---
-  window.addEventListener('online', function () {
-    if (state === 'idle') setState('idle', 'ready')
-    addLog('SYS', 'Connection restored')
-    checkCapabilities()
-  })
-
-  window.addEventListener('offline', function () {
-    setState('idle', 'offline')
-    addLog('SYS', 'Connection lost')
-  })
-
-  // --- Check server capabilities ---
-  function checkCapabilities() {
-    fetch('/api/health').then(function (res) {
-      return res.json()
-    }).then(function (data) {
-      caps.serverStt = !!(data.stt && data.stt.configured)
-      caps.serverTts = !!(data.tts && data.tts.configured)
-
-      var sttSource = caps.serverStt ? 'server (' + data.stt.model + ')' : (caps.browserStt ? 'browser' : 'none')
-      var ttsSource = caps.serverTts ? 'server (' + data.tts.model + ')' : (caps.browserTts ? 'browser' : 'none')
-      addLog('SYS', 'STT: ' + sttSource + ' | TTS: ' + ttsSource)
-
-      if (!caps.serverStt && !caps.browserStt) {
-        addLog('ERR', 'No speech recognition available')
-      }
-    }).catch(function () {
-      addLog('SYS', 'Server unreachable, using browser APIs')
-      caps.serverStt = false
-      caps.serverTts = false
-    })
+  } catch (err) {
+    // AbortError means user cancelled — not a real error
+    if (err.name === 'AbortError') return;
+    console.error('Voice turn error:', err);
+    cancelTTS();
+    cancelSTT();
+    state.isListening = false;
+    state.isSpeaking = false;
+    state.interimText = '';
+    setStatus('error', 'Error');
+    addErrorMessage(err.message || 'Something went wrong');
+    renderConversation();
+    updateUI();
+    setTimeout(() => {
+      if (state.status === 'error') setStatus('idle', 'Ready');
+    }, 4000);
   }
+}
 
-  // --- Service Worker ---
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(function () {})
+function stopListening() {
+  // For browser STT
+  if (window.__activeRecognition) {
+    window.__activeRecognition.stop();
+    window.__activeRecognition = null;
   }
+  // For HTTP STT (MediaRecorder)
+  stopRecording();
+  state.isListening = false;
+}
 
-  // --- Init ---
-  loadSettings()
-  continuous = getSetting('continuous')
-  continuousBtn.setAttribute('aria-pressed', String(continuous))
-  setState('idle', navigator.onLine ? 'ready' : 'offline')
-  addLog('SYS', 'Voice channel ready. Tap the microphone or press Space to begin.')
-  checkCapabilities()
-})()
+function addErrorMessage(text) {
+  state.messages.push({ role: 'error', content: text });
+}
+
+// ─── Event Handlers ──────────────────────────────────────
+
+btnSettings.addEventListener('click', openSettings);
+btnCloseSettings.addEventListener('click', closeSettings);
+btnCancelSettings.addEventListener('click', closeSettings);
+btnSaveSettings.addEventListener('click', trySaveSettings);
+
+// Close modal on Escape only
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !modalOverlay.hidden) closeSettings();
+});
+
+btnNewConvo.addEventListener('click', () => {
+  state.messages = [];
+  state.interimText = '';
+  // Reset OpenCode session so a new one is created on next turn
+  if (agentProviders.opencode._sessionId) {
+    agentProviders.opencode._sessionId = null;
+  }
+  renderConversation();
+});
+
+btnToggleConvo.addEventListener('click', () => {
+  state.conversationVisible = !state.conversationVisible;
+  settings.app.showConversation = state.conversationVisible;
+  saveSettings(settings);
+  updateUI();
+});
+
+btnContinuous.addEventListener('click', () => {
+  settings.app.continuousListening = !settings.app.continuousListening;
+  saveSettings(settings);
+  updateUI();
+});
+
+btnMic.addEventListener('click', () => {
+  if (state.isListening) {
+    stopListening();
+  } else {
+    startVoiceTurn();
+  }
+});
+
+btnCancel.addEventListener('click', () => {
+  cancelAgentRequest();
+  cancelTTS();
+  cancelSTT();
+  state.isListening = false;
+  state.isSpeaking = false;
+  state.interimText = '';
+  setStatus('idle', 'Cancelled');
+  updateUI();
+  renderConversation();
+  setTimeout(() => {
+    if (state.status === 'idle') setStatus('idle', 'Ready');
+  }, 1500);
+});
+
+// ─── Init ────────────────────────────────────────────────
+
+function init() {
+  state.conversationVisible = settings.app.showConversation;
+  setStatus('idle', 'Ready');
+  updateProviderSummary();
+  updateUI();
+  renderConversation();
+
+  // Pre-load voices for browser TTS
+  if ('speechSynthesis' in window) {
+    speechSynthesis.getVoices();
+    speechSynthesis.addEventListener('voiceschanged', () => speechSynthesis.getVoices());
+  }
+}
+
+init();

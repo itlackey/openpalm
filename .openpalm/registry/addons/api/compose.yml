@@ -1,0 +1,29 @@
+# Addon: API — full OpenAI + Anthropic compatible API facade
+services:
+  api:
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    ports:
+      - "${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182"
+    environment:
+      PORT: "8182"
+      GUARDIAN_URL: http://guardian:8080
+      CHANNEL_NAME: "API"
+      CHANNEL_PACKAGE: "@openpalm/channel-api"
+      CHANNEL_API_SECRET: ${CHANNEL_API_SECRET:-}
+    networks: [channel_lan]
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8182' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      openpalm.name: API Gateway
+      openpalm.description: OpenAI and Anthropic compatible API facade
+      openpalm.icon: code
+      openpalm.category: integration
+      openpalm.healthcheck: http://api:8182/health

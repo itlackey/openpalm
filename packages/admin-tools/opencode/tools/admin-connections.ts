@@ -3,17 +3,16 @@ import { adminFetch } from "./lib.ts";
 
 const ALLOWED_KEYS = new Set([
   "OPENAI_API_KEY",
+  "OPENVIKING_API_KEY",
   "ANTHROPIC_API_KEY",
   "GROQ_API_KEY",
   "MISTRAL_API_KEY",
   "GOOGLE_API_KEY",
-  "SYSTEM_LLM_PROVIDER",
-  "SYSTEM_LLM_BASE_URL",
-  "SYSTEM_LLM_MODEL",
+  "MCP_API_KEY",
+  "EMBEDDING_API_KEY",
   "OPENAI_BASE_URL",
-  "EMBEDDING_MODEL",
-  "EMBEDDING_DIMS",
-  "MEMORY_USER_ID",
+  "OWNER_NAME",
+  "OWNER_EMAIL",
 ]);
 
 export const get = tool({
@@ -24,9 +23,9 @@ export const get = tool({
 });
 
 export const set = tool({
-  description: "Update one or more LLM provider connection keys in secrets.env. Only allowed keys are accepted: OPENAI_API_KEY, ANTHROPIC_API_KEY, GROQ_API_KEY, MISTRAL_API_KEY, GOOGLE_API_KEY, SYSTEM_LLM_PROVIDER, SYSTEM_LLM_BASE_URL, SYSTEM_LLM_MODEL, OPENAI_BASE_URL, EMBEDDING_MODEL, EMBEDDING_DIMS, MEMORY_USER_ID. Never log or echo the actual key values.",
+  description: "Update one or more LLM provider connection keys in vault/stack/stack.env. Only allowed keys are accepted: OPENAI_API_KEY, OPENVIKING_API_KEY, ANTHROPIC_API_KEY, GROQ_API_KEY, MISTRAL_API_KEY, GOOGLE_API_KEY, MCP_API_KEY, EMBEDDING_API_KEY, OPENAI_BASE_URL, OWNER_NAME, OWNER_EMAIL. Never log or echo the actual key values.",
   args: {
-    patches: tool.schema.string().describe("JSON object of key-value pairs to update, e.g. '{\"OPENAI_API_KEY\":\"sk-...\",\"SYSTEM_LLM_PROVIDER\":\"anthropic\"}'"),
+    patches: tool.schema.string().describe("JSON object of key-value pairs to update, e.g. '{\"OPENAI_API_KEY\":\"sk-...\",\"OWNER_NAME\":\"Alice\"}'"),
   },
   async execute(args) {
     let body: Record<string, string>;

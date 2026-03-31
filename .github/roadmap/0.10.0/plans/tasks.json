@@ -1,0 +1,966 @@
+[
+  {
+    "issue": "#332",
+    "title": "Phase 0 prerequisites",
+    "description": "Land the shared v0.10.0 prerequisite work before the main component system: the `~/.openpalm/` home layout, validate-in-place rollback flow, vault-aware asset rewrites, and 38XX port standardization.",
+    "status": "pending",
+    "plan_file": ".plans/issue-332-phase-0-prerequisites.md",
+    "references": [
+      {
+        "path": ".plans/issue-332-phase-0-prerequisites.md",
+        "line": 1
+      },
+      {
+        "path": ".github/roadmap/0.10.0/README.md",
+        "line": 169
+      },
+      {
+        "path": "packages/lib/src/control-plane/paths.ts",
+        "line": 1
+      }
+    ],
+    "subtasks": [
+      {
+        "description": "Replace XDG path helpers with an OP_HOME-based home layout API in packages/lib and add legacy-layout detection for CLI and admin consumers.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-332-phase-0-prerequisites.md",
+            "line": 10
+          },
+          {
+            "path": ".github/roadmap/0.10.0/README.md",
+            "line": 171
+          },
+          {
+            "path": "packages/lib/src/control-plane/paths.ts",
+            "line": 1
+          }
+        ]
+      },
+      {
+        "description": "Remove the permanent staging pipeline, add validate-in-place with rollback snapshots, and expose a rollback command path through lib and CLI.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-332-phase-0-prerequisites.md",
+            "line": 11
+          },
+          {
+            "path": ".github/roadmap/0.10.0/README.md",
+            "line": 174
+          },
+          {
+            "path": "packages/lib/src/control-plane/staging.ts",
+            "line": 1
+          }
+        ]
+      },
+      {
+        "description": "Rewrite core compose, Caddy, env templates, and setup assets for the ~/.openpalm layout, vault boundary, and 38XX port standardization.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-332-phase-0-prerequisites.md",
+            "line": 12
+          },
+          {
+            "path": ".github/roadmap/0.10.0/README.md",
+            "line": 177
+          },
+          {
+            "path": "assets/docker-compose.yml",
+            "line": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "issue": "#301",
+    "title": "Unified component system",
+    "description": "Deliver the 0.10.0 component model after the shared Phase 0 prerequisites land, with lib-owned lifecycle logic, migration tooling, and consumer updates across admin, CLI, registry, and docs.",
+    "status": "pending",
+    "plan_file": ".plans/issue-301-unified-component-system.md",
+    "references": [
+      {
+        "path": ".plans/issue-301-unified-component-system.md",
+        "line": 5
+      },
+      {
+        "path": ".github/roadmap/0.10.0/README.md",
+        "line": 21
+      },
+      {
+        "path": ".github/roadmap/0.10.0/openpalm-components-plan.md",
+        "line": 33
+      },
+      {
+        "path": "packages/lib/src/control-plane/channels.ts",
+        "line": 22
+      }
+    ],
+    "subtasks": [
+      {
+        "description": "Add lib-owned component types, discovery, label parsing, overlay validation, and cross-component environment injection collision checks.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-301-unified-component-system.md",
+            "line": 47
+          },
+          {
+            "path": ".github/roadmap/0.10.0/openpalm-components-plan.md",
+            "line": 671
+          },
+          {
+            "path": "packages/lib/src/control-plane/channels.ts",
+            "line": 22
+          }
+        ]
+      },
+      {
+        "description": "Implement enabled instance persistence and compose overlay assembly so `data/components/enabled.json` remains a system-managed runtime index, `config/openpalm.yml` stays the user-facing stack config, and vault plus instance env files are ordered correctly at deploy time.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-301-unified-component-system.md",
+            "line": 56
+          },
+          {
+            "path": ".github/roadmap/0.10.0/openpalm-components-plan.md",
+            "line": 266
+          },
+          {
+            "path": "packages/lib/src/control-plane/lifecycle.ts",
+            "line": 222
+          }
+        ]
+      },
+      {
+        "description": "Implement instance lifecycle operations in packages/lib, including instance directory creation, schema default seeding, secret-backed sensitive fields, Caddy snippet management, delete/archive cleanup, and start-stop compose rebuilds.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-301-unified-component-system.md",
+            "line": 65
+          },
+          {
+            "path": ".github/roadmap/0.10.0/openpalm-components-plan.md",
+            "line": 308
+          },
+          {
+            "path": "packages/lib/src/control-plane/channels.ts",
+            "line": 22
+          }
+        ]
+      },
+      {
+        "description": "Replace channel-era admin APIs and DTOs with component and instance endpoints while keeping route handlers transport-only and delegating lifecycle logic to packages/lib.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-301-unified-component-system.md",
+            "line": 82
+          },
+          {
+            "path": ".github/roadmap/0.10.0/openpalm-components-plan.md",
+            "line": 285
+          },
+          {
+            "path": "packages/admin/src/lib/types.ts",
+            "line": 48
+          }
+        ]
+      },
+      {
+        "description": "Add CLI component commands and a full openpalm migrate flow that handles legacy XDG roots, env splitting, port updates, and channel-to-component conversion.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-301-unified-component-system.md",
+            "line": 97
+          },
+          {
+            "path": ".github/roadmap/0.10.0/openpalm-components-plan.md",
+            "line": 726
+          },
+          {
+            "path": "packages/cli/src/main.ts",
+            "line": 11
+          }
+        ]
+      },
+      {
+        "description": "Replace the admin UI Containers and Registry views with a unified Components experience, schema-driven config forms, and migration guidance in setup and status flows.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-301-unified-component-system.md",
+            "line": 113
+          },
+          {
+            "path": ".github/roadmap/0.10.0/openpalm-components-plan.md",
+            "line": 340
+          },
+          {
+            "path": "packages/admin/src/routes/+page.svelte",
+            "line": 7
+          }
+        ]
+      },
+      {
+        "description": "Migrate the registry to registry/components, add CI validation for component directories and overlay safety, and update docs, fixtures, tests, and release readiness materials for the breaking change.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-301-unified-component-system.md",
+            "line": 128
+          },
+          {
+            "path": ".plans/issue-301-unified-component-system.md",
+            "line": 142
+          },
+          {
+            "path": ".github/roadmap/0.10.0/openpalm-components-plan.md",
+            "line": 529
+          },
+          {
+            "path": "registry/README.md",
+            "line": 3
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "issue": "#300",
+    "title": "Password manager",
+    "description": "Implement the 0.10.0 secrets backend, vault hardening, token split, plaintext and pass backends, admin secrets APIs, and migration-safe auth and secret handling.",
+    "status": "pending",
+    "plan_file": ".plans/issue-300-password-manager.md",
+    "references": [
+      {
+        "path": ".plans/issue-300-password-manager.md",
+        "line": 5
+      },
+      {
+        "path": ".github/roadmap/0.10.0/README.md",
+        "line": 45
+      },
+      {
+        "path": "packages/lib/src/control-plane/secrets.ts",
+        "line": 55
+      }
+    ],
+    "subtasks": [
+      {
+        "description": "Replace legacy secrets.env and stack.env assumptions with vault-aware helpers, strict file-permission creation, two-file seeding, and generated redact schema inputs.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-300-password-manager.md",
+            "line": 18
+          },
+          {
+            "path": ".github/roadmap/0.10.0/README.md",
+            "line": 53
+          },
+          {
+            "path": "packages/lib/src/control-plane/secrets.ts",
+            "line": 55
+          }
+        ]
+      },
+      {
+        "description": "Extend shared control-plane state and startup flows to persist distinct admin and assistant credentials, including any needed `OP_ADMIN_TOKEN` compatibility handling and upgrade-time `ASSISTANT_TOKEN` backfill for existing installs.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-300-password-manager.md",
+            "line": 26
+          },
+          {
+            "path": ".github/roadmap/0.10.0/README.md",
+            "line": 54
+          },
+          {
+            "path": "packages/lib/src/control-plane/types.ts",
+            "line": 116
+          }
+        ]
+      },
+      {
+        "description": "Refactor admin auth helpers and route classification so admin-only operations keep requireAdmin while operational endpoints move to token-aware requireAuth semantics.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-300-password-manager.md",
+            "line": 30
+          },
+          {
+            "path": ".plans/issue-300-password-manager.md",
+            "line": 88
+          },
+          {
+            "path": "packages/admin/src/lib/server/helpers.ts",
+            "line": 66
+          }
+        ]
+      },
+      {
+        "description": "Add packages/lib secret backend contracts, backend detection, canonical secret mappings, and a default PlaintextBackend that routes writes between vault/user.env and vault/system.env without exposing values.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-300-password-manager.md",
+            "line": 38
+          },
+          {
+            "path": ".github/roadmap/0.10.0/README.md",
+            "line": 55
+          },
+          {
+            "path": "packages/lib/src/control-plane/secrets.ts",
+            "line": 90
+          }
+        ]
+      },
+      {
+        "description": "Implement the pass backend, provider config, validated pass entry naming, admin image dependencies, and pass-init and dev-setup script support for encrypted installs.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-300-password-manager.md",
+            "line": 54
+          },
+          {
+            "path": ".github/roadmap/0.10.0/README.md",
+            "line": 56
+          },
+          {
+            "path": "core/admin/Dockerfile",
+            "line": 68
+          }
+        ]
+      },
+      {
+        "description": "Add admin-only secrets API routes, metadata-only response shapes, and audit logging that records actor attribution while storing logs in the new logs/admin-audit.jsonl location.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-300-password-manager.md",
+            "line": 66
+          },
+          {
+            "path": ".github/roadmap/0.10.0/README.md",
+            "line": 57
+          },
+          {
+            "path": "packages/lib/src/control-plane/audit.ts",
+            "line": 8
+          }
+        ]
+      },
+      {
+        "description": "Integrate component-sensitive field registration, provisioning, and cleanup into the shared secret backend so #301 lifecycle flows can manage secrets without duplicating backend logic.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-300-password-manager.md",
+            "line": 72
+          },
+          {
+            "path": ".plans/issue-300-password-manager.md",
+            "line": 140
+          },
+          {
+            "path": "packages/admin/src/routes/admin/audit/+server.ts",
+            "line": 47
+          }
+        ]
+      },
+      {
+        "description": "Update compose mounts, startup ordering, scripts, docs, and automated coverage so the vault model, token split, secret APIs, backend behavior, and migration cases are verified end to end.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-300-password-manager.md",
+            "line": 94
+          },
+          {
+            "path": ".plans/issue-300-password-manager.md",
+            "line": 106
+          },
+          {
+            "path": ".plans/issue-300-password-manager.md",
+            "line": 117
+          },
+          {
+            "path": "assets/docker-compose.yml",
+            "line": 43
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "issue": "#298",
+    "title": "OpenViking integration",
+    "description": "Add OpenViking as an optional 0.10.0 component with lib-owned config assembly, assistant tool wrappers, dual-mode memory plugin integration, and token-budget-aware context assembly.",
+    "status": "pending",
+    "plan_file": ".plans/issue-298-openviking-integration.md",
+    "references": [
+      {
+        "path": ".plans/issue-298-openviking-integration.md",
+        "line": 5
+      },
+      {
+        "path": ".github/roadmap/0.10.0/README.md",
+        "line": 88
+      },
+      {
+        "path": ".github/roadmap/0.10.0/knowledge-system-roadmap.md",
+        "line": 52
+      },
+      {
+        "path": "packages/assistant-tools/opencode/plugins/memory-context.ts",
+        "line": 99
+      }
+    ],
+    "subtasks": [
+      {
+        "description": "Create the registry/components/openviking directory with compose.yml and .env.schema, including a pinned Viking service, healthcheck, workspace and vault mounts, and additive assistant env injection only.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-298-openviking-integration.md",
+            "line": 19
+          },
+          {
+            "path": ".github/roadmap/0.10.0/knowledge-system-roadmap.md",
+            "line": 89
+          },
+          {
+            "path": "registry/channels/chat.yml",
+            "line": 1
+          }
+        ]
+      },
+      {
+        "description": "Add packages/lib control-plane helpers that validate Viking settings, assemble ov.conf as a whole file, and write it into the vault only through explicit control-plane flows.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-298-openviking-integration.md",
+            "line": 37
+          },
+          {
+            "path": ".github/roadmap/0.10.0/knowledge-system-roadmap.md",
+            "line": 140
+          },
+          {
+            "path": "packages/lib/src/control-plane/paths.ts",
+            "line": 1
+          }
+        ]
+      },
+      {
+        "description": "Extend component validation and lifecycle coverage so the component system accepts Viking's assistant env injection, secret-backed schema fields, and vault config requirements.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-298-openviking-integration.md",
+            "line": 41
+          },
+          {
+            "path": ".github/roadmap/0.10.0/openpalm-components-plan.md",
+            "line": 707
+          },
+          {
+            "path": "packages/assistant-tools/tests/memory-context.integration.test.ts",
+            "line": 78
+          }
+        ]
+      },
+      {
+        "description": "Add a shared vikingFetch helper in assistant tools with API key injection, timeout and error normalization, and graceful disabled responses when Viking env vars are missing.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-298-openviking-integration.md",
+            "line": 43
+          },
+          {
+            "path": ".github/roadmap/0.10.0/README.md",
+            "line": 97
+          },
+          {
+            "path": "packages/assistant-tools/opencode/tools/lib.ts",
+            "line": 44
+          }
+        ]
+      },
+      {
+        "description": "Implement the initial Viking tool surface for resource ingestion, search, read, browse, session-memory append, and session-memory discovery, with argument validation and stable output formatting.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-298-openviking-integration.md",
+            "line": 50
+          },
+          {
+            "path": ".github/roadmap/0.10.0/knowledge-system-roadmap.md",
+            "line": 65
+          },
+          {
+            "path": "packages/assistant-tools/opencode/tools/memory-search.ts",
+            "line": 1
+          }
+        ]
+      },
+      {
+        "description": "Extend MemoryContextPlugin session-created and tool-executed hooks to create or reuse Viking sessions, retrieve cheap context in parallel with memory, and log tool outcomes without regressing memory-only behavior.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-298-openviking-integration.md",
+            "line": 65
+          },
+          {
+            "path": ".plans/issue-298-openviking-integration.md",
+            "line": 73
+          },
+          {
+            "path": "packages/assistant-tools/opencode/plugins/memory-context.ts",
+            "line": 99
+          }
+        ]
+      },
+      {
+        "description": "Add idle, delete, and compaction handling that commits Viking sessions safely, prefers summaries over full payloads, and tracks session-local Viking identifiers for idempotent correlation.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-298-openviking-integration.md",
+            "line": 76
+          },
+          {
+            "path": ".plans/issue-298-openviking-integration.md",
+            "line": 80
+          },
+          {
+            "path": "packages/assistant-tools/opencode/plugins/memory-context.ts",
+            "line": 99
+          }
+        ]
+      },
+      {
+        "description": "Add shared token-budget estimation and fit helpers plus a single assembleContext-style path that prefers Viking when present and falls back cleanly to memory-only retrieval.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-298-openviking-integration.md",
+            "line": 88
+          },
+          {
+            "path": ".github/roadmap/0.10.0/knowledge-system-roadmap.md",
+            "line": 42
+          },
+          {
+            "path": "packages/assistant-tools/opencode/plugins/memory-lib.ts",
+            "line": 1
+          }
+        ]
+      },
+      {
+        "description": "Update operator docs and add focused lib and assistant-tools tests for ov.conf generation, Viking fetch and tool wrappers, token budgets, and dual-mode plugin behavior.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-298-openviking-integration.md",
+            "line": 129
+          },
+          {
+            "path": ".plans/issue-298-openviking-integration.md",
+            "line": 138
+          },
+          {
+            "path": "packages/assistant-tools/tests/memory-context.integration.test.ts",
+            "line": 78
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "issue": "#304",
+    "title": "Admin OpenCode instance",
+    "description": "Admin-authorized OpenCode instance inside the admin container, auto-started by entrypoint, accessed directly via localhost:3881. No broker, no intermediary — same pattern as assistant at localhost:3800.",
+    "status": "pending",
+    "plan_file": ".plans/issue-304-brokered-admin-opencode.md",
+    "references": [
+      {
+        "path": ".plans/issue-304-brokered-admin-opencode.md",
+        "line": 5
+      },
+      {
+        "path": ".github/roadmap/0.10.0/README.md",
+        "line": 108
+      },
+      {
+        "path": "assets/admin-opencode.jsonc",
+        "line": 1
+      }
+    ],
+    "subtasks": [
+      {
+        "description": "Add packages/lib helpers for admin OpenCode paths, runtime status types, session metadata DTOs, and dedicated seeded config locations that stay separate from normal assistant assets.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-304-brokered-admin-opencode.md",
+            "line": 24
+          },
+          {
+            "path": ".plans/issue-304-brokered-admin-opencode.md",
+            "line": 47
+          },
+          {
+            "path": "packages/lib/src/control-plane/core-assets.ts",
+            "line": 232
+          }
+        ]
+      },
+      {
+        "description": "Replace the current background-process startup pattern with a supervisor or broker boundary that can start, stop, restart, and report health for the admin OpenCode child process deterministically.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-304-brokered-admin-opencode.md",
+            "line": 36
+          },
+          {
+            "path": ".github/roadmap/0.10.0/README.md",
+            "line": 116
+          },
+          {
+            "path": "core/admin/entrypoint.sh",
+            "line": 4
+          }
+        ]
+      },
+      {
+        "description": "Update the admin Dockerfile, launcher, and compose wiring for the 38XX port layout, local-only runtime binding, and runtime-only OpenCode and Bun dependencies without exposing a new public route.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-304-brokered-admin-opencode.md",
+            "line": 41
+          },
+          {
+            "path": ".plans/issue-304-brokered-admin-opencode.md",
+            "line": 95
+          },
+          {
+            "path": "core/admin/Dockerfile",
+            "line": 61
+          }
+        ]
+      },
+      {
+        "description": "Ship phase-1 status and start endpoints with admin auth, request IDs, idempotent semantics, and audit events for broker lifecycle operations.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-304-brokered-admin-opencode.md",
+            "line": 52
+          },
+          {
+            "path": ".github/roadmap/0.10.0/README.md",
+            "line": 116
+          },
+          {
+            "path": "packages/admin/src/lib/server/helpers.ts",
+            "line": 67
+          }
+        ]
+      },
+      {
+        "description": "Extend auth handling for elevated endpoints so admin-token requests and explicitly allowlisted assistant-token requests are distinguished correctly after the #300 token split.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-304-brokered-admin-opencode.md",
+            "line": 64
+          },
+          {
+            "path": ".plans/issue-304-brokered-admin-opencode.md",
+            "line": 123
+          },
+          {
+            "path": "packages/admin/src/lib/server/helpers.ts",
+            "line": 67
+          }
+        ]
+      },
+      {
+        "description": "Implement brokered elevated session creation and message proxy endpoints with strict payload and session ID validation, initiator metadata tagging, and admin-brokered downstream authorization.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-304-brokered-admin-opencode.md",
+            "line": 57
+          },
+          {
+            "path": ".plans/issue-304-brokered-admin-opencode.md",
+            "line": 70
+          },
+          {
+            "path": "packages/admin/src/lib/opencode/client.server.ts",
+            "line": 9
+          }
+        ]
+      },
+      {
+        "description": "Add structured audit events, caller and initiator attribution, sensitive-payload redaction, and broker failure classification for lifecycle and proxied session traffic.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-304-brokered-admin-opencode.md",
+            "line": 78
+          },
+          {
+            "path": ".plans/issue-304-brokered-admin-opencode.md",
+            "line": 88
+          },
+          {
+            "path": "packages/admin/src/routes/admin/audit/+server.ts",
+            "line": 47
+          }
+        ]
+      },
+      {
+        "description": "Add an admin diagnostics UI touchpoint for runtime status and controlled elevated help entry without introducing a separate OpenCode UI route through Caddy.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-304-brokered-admin-opencode.md",
+            "line": 83
+          },
+          {
+            "path": ".github/roadmap/0.10.0/README.md",
+            "line": 117
+          },
+          {
+            "path": "packages/admin/src/routes/+page.svelte",
+            "line": 7
+          }
+        ]
+      },
+      {
+        "description": "Add lib, server, and integration coverage plus architecture docs updates to verify broker authz, proxy behavior, failure handling, port changes, and the absence of any new public elevated runtime route.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-304-brokered-admin-opencode.md",
+            "line": 135
+          },
+          {
+            "path": ".plans/issue-304-brokered-admin-opencode.md",
+            "line": 142
+          },
+          {
+            "path": "packages/admin/e2e/opencode-ui.test.ts",
+            "line": 17
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "issue": "#315",
+    "title": "Azure Container Apps deployment",
+    "description": "Add an Azure Container Apps deployment path with operator automation, Key Vault-backed secrets, Azure Files mounts, channel add flows, and supporting documentation without introducing a new cloud control plane.",
+    "status": "pending",
+    "plan_file": ".plans/issue-315-azure-container-apps.md",
+    "references": [
+      {
+        "path": ".plans/issue-315-azure-container-apps.md",
+        "line": 5
+      },
+      {
+        "path": ".github/roadmap/0.10.0/README.md",
+        "line": 128
+      },
+      {
+        "path": "assets/docker-compose.yml",
+        "line": 14
+      }
+    ],
+    "subtasks": [
+      {
+        "description": "Add deploy/azure/deploy-aca.sh with setup, deploy, all, add-channel, status, and teardown subcommands and make resource creation idempotent where practical.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-315-azure-container-apps.md",
+            "line": 36
+          },
+          {
+            "path": ".github/roadmap/0.10.0/README.md",
+            "line": 136
+          },
+          {
+            "path": "README.md",
+            "line": 109
+          }
+        ]
+      },
+      {
+        "description": "Check in a consistent ACA infrastructure definition set under deploy/azure that provisions the resource group, ACA environment, storage, file shares, Key Vault, managed identity, and per-service app settings.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-315-azure-container-apps.md",
+            "line": 45
+          },
+          {
+            "path": ".plans/issue-315-azure-container-apps.md",
+            "line": 180
+          },
+          {
+            "path": "assets/docker-compose.yml",
+            "line": 14
+          }
+        ]
+      },
+      {
+        "description": "Create Key Vault first, wire all operator-supplied and generated secrets through managed identity references, and keep per-app secret scope aligned with guardian, assistant, memory, and channel needs.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-315-azure-container-apps.md",
+            "line": 62
+          },
+          {
+            "path": ".plans/issue-315-azure-container-apps.md",
+            "line": 72
+          },
+          {
+            "path": "core/guardian/src/server.ts",
+            "line": 27
+          }
+        ]
+      },
+      {
+        "description": "Map Azure Files shares for config, data, and work storage, seed the required directory layout during setup, and precreate the memory config file expected by the memory service.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-315-azure-container-apps.md",
+            "line": 80
+          },
+          {
+            "path": ".plans/issue-315-azure-container-apps.md",
+            "line": 88
+          },
+          {
+            "path": "packages/lib/src/control-plane/memory-config.ts",
+            "line": 224
+          }
+        ]
+      },
+      {
+        "description": "Deploy memory, assistant, guardian, and channel-chat as separate ACA apps in dependency order with correct ingress modes, internal FQDN wiring, probes, scaling, and public exposure limited to the channel edge.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-315-azure-container-apps.md",
+            "line": 42
+          },
+          {
+            "path": ".plans/issue-315-azure-container-apps.md",
+            "line": 58
+          },
+          {
+            "path": "docs/how-it-works.md",
+            "line": 116
+          }
+        ]
+      },
+      {
+        "description": "Implement the add-channel deployment flow so a new channel app can be provisioned with its own Key Vault secret, guardian wiring, mounts, probes, and optional external ingress.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-315-azure-container-apps.md",
+            "line": 91
+          },
+          {
+            "path": ".github/roadmap/0.10.0/README.md",
+            "line": 138
+          },
+          {
+            "path": "registry/channels/chat.yml",
+            "line": 1
+          }
+        ]
+      },
+      {
+        "description": "Add deploy/azure/README.md documenting prerequisites, roles, topology, Key Vault and ingress behavior, operational differences from self-hosted mode, troubleshooting, and a regression smoke-test checklist.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-315-azure-container-apps.md",
+            "line": 106
+          },
+          {
+            "path": ".plans/issue-315-azure-container-apps.md",
+            "line": 118
+          },
+          {
+            "path": "README.md",
+            "line": 109
+          }
+        ]
+      },
+      {
+        "description": "Update the root README and changelog to position ACA as an additive deployment target with no Admin UI or self-hosted control plane parity.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-315-azure-container-apps.md",
+            "line": 134
+          },
+          {
+            "path": ".github/roadmap/0.10.0/README.md",
+            "line": 141
+          },
+          {
+            "path": "CHANGELOG.md",
+            "line": 8
+          }
+        ]
+      },
+      {
+        "description": "Validate the deployment automation with bash syntax checks, shellcheck when available, and a real Azure smoke test that covers deploy, request flow, persistence, add-channel, teardown, and secret exposure checks.",
+        "status": "pending",
+        "references": [
+          {
+            "path": ".plans/issue-315-azure-container-apps.md",
+            "line": 118
+          },
+          {
+            "path": ".plans/issue-315-azure-container-apps.md",
+            "line": 140
+          },
+          {
+            "path": "packages/admin-tools/opencode/tools/lib.ts",
+            "line": 1
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,297 @@
+#!/usr/bin/env bun
+/**
+ * Minimal bootstrap for the Bicep deployment.
+ *
+ * What it does:
+ * 1. Creates/updates the resource group.
+ * 2. Creates Key Vault early so secrets can be written first.
+ * 3. Generates missing internal secrets.
+ * 4. Writes external provider secrets from env vars when present.
+ * 5. Generates a temporary bicepparam file with concrete Key Vault URIs.
+ * 6. Runs az deployment group create.
+ *
+ * This script intentionally does NOT recreate all Azure infrastructure imperatively.
+ * Bicep is the source of truth.
+ */
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
+
+type Dict = Record<string, string>;
+
+const root = process.cwd();
+const templateDir = process.env.TEMPLATE_DIR || root;
+const mainBicep = join(templateDir, 'main.bicep');
+const baseParams = join(templateDir, 'prod.bicepparam');
+const outDir = join(templateDir, '.generated');
+const generatedParams = join(outDir, 'prod.generated.bicepparam');
+
+const cfg = {
+  subscriptionId: process.env.AZURE_SUBSCRIPTION_ID || '',
+  resourceGroup: process.env.RESOURCE_GROUP || 'rg-openpalm-prod',
+  location: process.env.LOCATION || 'eastus2',
+  keyVaultName: process.env.KEYVAULT_NAME || '',
+  storageAccountName: process.env.STORAGE_ACCOUNT_NAME || '',
+  prefix: process.env.PREFIX || 'openpalm-prod',
+  deployOpenViking: (process.env.DEPLOY_OPENVIKING || 'false').toLowerCase() === 'true',
+  // AI Foundry is deployed separately via ai-foundry.bicep to avoid the provisioning
+  // race condition (LESSONS-LEARNED.md #3). Run that deployment first, then deploy
+  // the main stack. The AI Foundry API key secret URI is baked into prod.bicepparam.
+};
+
+// Internal secrets are generated once and reused across deployments.
+// They are only written to KV if they don't already exist (or if an env var override is provided).
+// This prevents desync between running containers that cached the old secret value
+// and newly created revisions that would get a different random value.
+const internalSecretDefaults: Dict = {
+  'op-memory-token': process.env.OP_MEMORY_TOKEN || '',
+  'op-assistant-token': process.env.OP_ASSISTANT_TOKEN || '',
+  'op-admin-token': process.env.OP_ADMIN_TOKEN || '',
+  'op-opencode-password': process.env.OP_OPENCODE_PASSWORD || '',
+  'channel-api-secret': process.env.CHANNEL_API_SECRET || '',
+  'channel-chat-secret': process.env.CHANNEL_CHAT_SECRET || '',
+  ...(cfg.deployOpenViking ? { 'openviking-api-key': process.env.OPENVIKING_API_KEY || '' } : {}),
+};
+
+// No openai-api-key — assistant uses default OpenCode provider, not AI Foundry.
+// AI Foundry key is managed by ai-foundry.bicep (separate deployment) for memory/OpenViking.
+const optionalSecrets: Dict = compact({
+  'channel-discord-secret': process.env.CHANNEL_DISCORD_SECRET || '',
+  'channel-slack-secret': process.env.CHANNEL_SLACK_SECRET || '',
+  'channel-voice-secret': process.env.CHANNEL_VOICE_SECRET || '',
+  'op-cap-llm-api-key': process.env.OP_CAP_LLM_API_KEY || '',
+  'op-cap-embeddings-api-key': process.env.OP_CAP_EMBEDDINGS_API_KEY || '',
+  'slack-bot-token': process.env.SLACK_BOT_TOKEN || process.env.TPI_SLACK_BOT_TOKEN || '',
+  'slack-app-token': process.env.SLACK_APP_TOKEN || process.env.TPI_SLACK_APP_TOKEN || '',
+});
+
+async function main() {
+  ensureDir(outDir);
+
+  if (!existsSync(mainBicep)) {
+    throw new Error(`Missing ${mainBicep}`);
+  }
+  if (!existsSync(baseParams)) {
+    throw new Error(`Missing ${baseParams}`);
+  }
+
+  await az('version');
+  await az('extension', 'add', '--name', 'containerapp', '--upgrade', '--yes');
+
+  await setSubscriptionIfNeeded();
+
+  const keyVaultName = cfg.keyVaultName || uniqueName('openpalmkv', 20);
+  const storageAccountName = cfg.storageAccountName || uniqueName('openpalmst', 22);
+
+  await az('group', 'create', '-n', cfg.resourceGroup, '-l', cfg.location);
+
+  const rgId = (await azJson('group', 'show', '-n', cfg.resourceGroup)).id as string;
+  const kvExists = await existsKeyVault(keyVaultName);
+  if (!kvExists) {
+    await az(
+      'keyvault', 'create',
+      '-g', cfg.resourceGroup,
+      '-n', keyVaultName,
+      '-l', cfg.location,
+      '--enable-rbac-authorization', 'true'
+    );
+  }
+
+  // Unlock Key Vault and Storage if they were locked down by a previous Bicep deployment.
+  // Bicep sets lockDownPublicAccess which disables public access. We need to re-enable it
+  // temporarily so deploy.ts can write secrets and Bicep can manage file shares.
+  // Bicep will re-lock them at the end of the deployment.
+  if (kvExists) {
+    console.log('Unlocking Key Vault public access for secret writes...');
+    try {
+      await az('keyvault', 'update', '-n', keyVaultName, '--public-network-access', 'Enabled', '--bypass', 'AzureServices', '--default-action', 'Allow');
+    } catch {
+      console.warn('Could not unlock Key Vault — it may already be open or you lack permissions.');
+    }
+  }
+  try {
+    console.log('Unlocking Storage public access for Bicep file share management...');
+    await az('storage', 'account', 'update', '-n', storageAccountName, '-g', cfg.resourceGroup, '--public-network-access', 'Enabled', '--default-action', 'Allow');
+  } catch {
+    console.warn('Could not unlock Storage — it may not exist yet (first deploy) or you lack permissions.');
+  }
+
+  // Assign Key Vault Secrets Officer to the deployer so secret writes succeed
+  const kvScope = `/subscriptions/${cfg.subscriptionId}/resourceGroups/${cfg.resourceGroup}/providers/Microsoft.KeyVault/vaults/${keyVaultName}`;
+  try {
+    const signedIn = await azJson('ad', 'signed-in-user', 'show');
+    await az(
+      'role', 'assignment', 'create',
+      '--assignee-object-id', signedIn.id,
+      '--assignee-principal-type', 'User',
+      '--role', 'Key Vault Secrets Officer',
+      '--scope', kvScope
+    );
+  } catch {
+    console.warn('Could not auto-assign Key Vault Secrets Officer. Ensure the deployer has permission to write secrets.');
+  }
+
+  // Resolve internal secrets: use env var if provided, otherwise check KV, otherwise generate.
+  const internalSecrets: Dict = {};
+  for (const [name, envValue] of Object.entries(internalSecretDefaults)) {
+    if (envValue) {
+      internalSecrets[name] = envValue;
+    } else {
+      try {
+        const existing = await run('az', ['keyvault', 'secret', 'show', '--vault-name', keyVaultName, '--name', name, '--query', 'value', '-o', 'tsv']);
+        if (existing.stdout.trim()) {
+          console.log(`Secret ${name} already exists in Key Vault, keeping existing value.`);
+          continue; // Don't overwrite
+        }
+      } catch {
+        // Secret doesn't exist yet — generate a new one
+      }
+      internalSecrets[name] = rand(name === 'op-opencode-password' ? 24 : 32);
+    }
+  }
+
+  const allSecrets = Object.entries({ ...internalSecrets, ...optionalSecrets }).filter(([, v]) => !!v);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      for (const [name, value] of allSecrets) {
+        const tmpFile = join(outDir, `.secret-${name}.tmp`);
+        writeFileSync(tmpFile, value);
+        try {
+          await az('keyvault', 'secret', 'set', '--vault-name', keyVaultName, '--name', name, '--file', tmpFile, '--encoding', 'utf-8');
+        } finally {
+          try { unlinkSync(tmpFile); } catch {}
+        }
+      }
+      break;
+    } catch (err) {
+      if (attempt < 3 && String(err).includes('Forbidden')) {
+        const delaySec = attempt * 30;
+        console.log(`RBAC not yet propagated, retrying in ${delaySec}s (attempt ${attempt}/3)...`);
+        await new Promise(r => setTimeout(r, delaySec * 1000));
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  const paramText = buildParams({ keyVaultName, storageAccountName });
+  writeFileSync(generatedParams, paramText);
+
+  const deployArgs = [
+    'deployment', 'group', 'create',
+    '-g', cfg.resourceGroup,
+    '-f', mainBicep,
+    '-p', generatedParams,
+    '-p', `location=${cfg.location}`,
+    '-p', `prefix=${cfg.prefix}`,
+  ];
+  if (cfg.deployOpenViking) {
+    deployArgs.push('-p', `deployOpenViking=true`);
+  }
+  deployArgs.push('--query', 'properties.outputs', '-o', 'jsonc');
+
+  await az(...deployArgs);
+
+  console.log('Deployment complete.');
+  console.log(`Resource group:      ${cfg.resourceGroup}`);
+  console.log(`Key Vault:           ${keyVaultName}`);
+  console.log(`Storage account:     ${storageAccountName}`);
+  if (cfg.deployOpenViking) {
+    console.log(`OpenViking:          enabled`);
+  }
+  if (optionalSecrets['channel-slack-secret']) {
+    console.log(`Slack channel:       enabled`);
+  }
+  console.log(`Generated params:    ${generatedParams}`);
+  console.log(`Resource group id:   ${rgId}`);
+}
+
+function buildParams(args: { keyVaultName: string; storageAccountName: string }) {
+  let text = readFileSync(baseParams, 'utf8');
+  const replacements: Dict = {
+    'openpalmprod-kv-REPLACE': args.keyVaultName,
+    'openpalmprodstREPL': args.storageAccountName,
+  };
+
+  for (const [from, to] of Object.entries(replacements)) {
+    text = text.split(from).join(to);
+  }
+
+  // Fix the using path — generated file lives in .generated/ subdirectory
+  text = text.replace("using './main.bicep'", "using '../main.bicep'");
+
+  return text;
+}
+
+async function existsKeyVault(name: string) {
+  try {
+    await az('keyvault', 'show', '-n', name);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function setSubscriptionIfNeeded() {
+  if (cfg.subscriptionId) {
+    await az('account', 'set', '--subscription', cfg.subscriptionId);
+    return;
+  }
+  const account = await azJson('account', 'show');
+  cfg.subscriptionId = account.id as string;
+}
+
+async function azJson(...args: string[]) {
+  const result = await run('az', [...args, '-o', 'json']);
+  return JSON.parse(result.stdout);
+}
+
+async function az(...args: string[]) {
+  return run('az', args);
+}
+
+async function run(cmd: string, args: string[]) {
+  const proc = Bun.spawn({
+    cmd: [cmd, ...args],
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  if (code !== 0) {
+    throw new Error(`Command failed: ${cmd} ${args.join(' ')}\n${stderr || stdout}`);
+  }
+
+  if (stdout.trim()) console.log(stdout.trim());
+  if (stderr.trim()) console.error(stderr.trim());
+  return { stdout, stderr, code };
+}
+
+function ensureDir(path: string) {
+  if (!existsSync(path)) mkdirSync(path, { recursive: true });
+}
+
+function rand(bytes = 24) {
+  return randomBytes(bytes).toString('base64url');
+}
+
+function uniqueName(prefix: string, maxLen: number) {
+  const suffix = randomBytes(4).toString('hex');
+  const base = prefix.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return `${base}${suffix}`.slice(0, maxLen);
+}
+
+function compact(obj: Dict) {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => !!v));
+}
+
+main().catch((err) => {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});

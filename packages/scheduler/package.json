@@ -1,5 +1,6 @@
 {
   "name": "@openpalm/scheduler",
+  "description": "Lightweight cron scheduler sidecar for OpenPalm automations",
   "version": "0.9.4",
   "private": true,
   "license": "MPL-2.0",

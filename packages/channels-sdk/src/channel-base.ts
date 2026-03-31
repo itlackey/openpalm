@@ -188,6 +188,35 @@ export abstract class BaseChannel {
     };
   }
 
+  /**
+   * Forward a message to the guardian with channel-prefixed userId.
+   * Throws on non-OK response. Returns the assistant's answer text.
+   *
+   * @param userId - Raw user ID (will be prefixed with "{channel}:")
+   * @param text - Message text to forward
+   * @param metadata - Additional metadata for the request
+   * @param timeoutMs - Optional request timeout in milliseconds
+   */
+  protected async forwardToGuardian(
+    userId: string,
+    text: string,
+    metadata: Record<string, unknown>,
+    timeoutMs?: number,
+  ): Promise<string> {
+    const resp = await this.forward(
+      { userId: `${this.name}:${userId}`, text, metadata },
+      undefined,
+      timeoutMs,
+    );
+
+    if (!resp.ok) {
+      throw new Error(`Guardian returned status ${resp.status}`);
+    }
+
+    const result = (await resp.json()) as { answer?: string };
+    return result.answer ?? "No response received.";
+  }
+
   /** Start the Bun HTTP server. Called by the entrypoint loader. */
   start(): void {
     if (!this.secret) {

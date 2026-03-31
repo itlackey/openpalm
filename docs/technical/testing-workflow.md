@@ -6,59 +6,45 @@ Testing is organized into 6 tiers, from fastest/simplest to most thorough. Run t
 
 ## Prerequisites
 
-Before running any stack tests (Tiers 4+), ensure:
+Before running any stack tests (Tiers 5+), ensure:
 
 1. **Dev environment is seeded:** `./scripts/dev-setup.sh --seed-env` (seeds `ADMIN_TOKEN=dev-admin-token`, correct Ollama URLs)
 2. **Ollama running on host** with `nomic-embed-text` model pulled (768-dim embeddings)
-3. **Stack built and running:** `bun run dev:build`
+3. **Docker running** — T5/T6 rebuild and recreate containers automatically
 
-### Local no-skip rule (authoritative)
-
-When running E2E locally, use `bun run admin:test:e2e`.
-That script is intentionally configured to run the full integration suite with:
-- `RUN_DOCKER_STACK_TESTS=1`
-- `RUN_LLM_TESTS=1`
-- `ADMIN_TOKEN=dev-admin-token`
-- `PW_ENFORCE_NO_SKIP=1` (fails the run if any integration test is skipped)
-
-If you run Playwright directly (or from `packages/admin`), you may get skipped groups due to missing env flags.
-
-Quick preflight checks (recommended):
+### Test tier commands
 
 ```bash
-# Verify host Ollama is reachable and models are present
-curl -sS http://localhost:11434/api/tags
-
-# Verify admin runtime memory config points at host Ollama
-curl -sS -H "x-admin-token: dev-admin-token" http://localhost:8100/admin/memory/config
+bun run test:t1   # Type check (svelte-check + SDK)
+bun run test:t2   # Non-admin unit tests
+bun run test:t3   # Admin unit tests (vitest)
+bun run test:t4   # Mocked browser E2E (Playwright)
+bun run test:t5   # Integration E2E (rebuilds stack)
+bun run test:t6   # Full stack E2E + LLM pipeline (rebuilds stack, no-skip enforced)
 ```
 
-> **Common pitfalls (already fixed in code/scripts):**
-> - Memory config must use `http://host.docker.internal:11434` for Ollama (not `localhost`, not `ollama:11434`) — Ollama runs on host, not in compose
-> - Embedding model dimensions must match config: `nomic-embed-text` = 768, `qwen3-embedding:0.6b` = 1024
-> - `ADMIN_TOKEN` in `secrets.env` must be `dev-admin-token` to match test expectations
-> - Stack tests hit the admin container directly (`http://localhost:8100`), not the Playwright preview server
-> - If you want **zero skipped E2E tests**, run with both `RUN_DOCKER_STACK_TESTS=1` and `RUN_LLM_TESTS=1`
->
-> **OpenCode config system (critical for LLM tests — v1.2.24):**
-> - OpenCode has TWO config files: **project config** (`DATA_HOME/assistant/opencode.jsonc`) and **user config** (`CONFIG_HOME/assistant/opencode.json`)
-> - **Project config** accepts ONLY: `$schema`, `plugin`. Putting `providers`, `model`, or `smallModel` here causes `ConfigInvalidError: Unrecognized key`
-> - **User config** accepts ONLY: `$schema`, `model`, `agent`, `mode`, `plugin`, `command`, `username`. Both `providers` and `smallModel` cause fatal `ConfigInvalidError`
-> - OpenCode's `openai` provider uses `@ai-sdk/openai` (**Responses API** `/v1/responses`) — Ollama doesn't support this
-> - OpenCode's `lmstudio` provider uses `@ai-sdk/openai-compatible` (**Chat Completions API** `/v1/chat/completions`) — Ollama supports this
-> - lmstudio provider has **hardcoded base URL** `http://127.0.0.1:1234/v1` per-model — NOT configurable via env vars or config files
-> - lmstudio has a **static model catalog**: `qwen/qwen3-30b-a3b-2507`, `qwen/qwen3-coder-30b`, `openai/gpt-oss-20b`
-> - **Workaround**: `entrypoint.sh` runs `socat` to proxy `127.0.0.1:1234` → `LMSTUDIO_BASE_URL` (parsed from compose env)
-> - **Ollama model alias required**: `ollama cp qwen2.5-coder:3b qwen/qwen3-coder-30b` to match lmstudio catalog
-> - User config sets `model: "lmstudio/qwen/qwen3-coder-30b"` — the Ollama alias served via proxy
-> - Admin's `ensureOpenCodeSystemConfig()` seeds/updates the project config from bundled asset (plugins only)
-> - `dev-setup.sh` seeds user config with model only (no providers — they're invalid in v1.2.24)
->
-> **Docker Compose env precedence:**
-> - Host shell env vars override `--env-file` values, which override compose `environment:` defaults
-> - If host has `GROQ_API_KEY` set, `${GROQ_API_KEY:-}` in compose resolves to the host value even if `--env-file` says otherwise
-> - `compose.dev.yaml` explicitly blanks cloud LLM keys (`ANTHROPIC_API_KEY: ""` etc.) to prevent host key leakage
-> - `docker restart` does NOT re-read `env_file` changes — must use `docker compose up -d --force-recreate`
+### T5 vs T6
+
+| | T5 (Integration) | T6 (Full + LLM) |
+|---|---|---|
+| Stack rebuild | Yes (--build --force-recreate) | Yes (--build --force-recreate) |
+| `RUN_DOCKER_STACK_TESTS` | Yes | Yes |
+| `RUN_LLM_TESTS` | No | Yes |
+| `PW_ENFORCE_NO_SKIP` | No (LLM tests skip gracefully) | Yes (all tests must run) |
+| Script | `bun run admin:test:stack` | `bun run admin:test:llm` |
+
+### Standalone E2E commands
+
+| Command | `STACK` | `LLM` | `NO_SKIP` | Use case |
+|---|---|---|---|---|
+| `bun run admin:test:stack` | 1 | - | - | Stack integration only (LLM tests skip) |
+| `bun run admin:test:llm` | 1 | 1 | 1 | Full suite, no skips |
+| `bun run admin:test:e2e` | 1 | 1 | 1 | Alias — same as llm |
+| `bun run admin:test:e2e:mocked` | - | - | - | Browser contract tests only |
+
+### Why T5/T6 always rebuild containers
+
+Docker `restart` does NOT re-read compose config changes (env_file paths, mount points, environment variables). Only `docker compose up --force-recreate` picks up changes. Since test code changes frequently modify compose configs, env files, and mount paths, the test workflow always rebuilds to avoid stale-container failures.
 
 ---
 
@@ -74,30 +60,31 @@ Validates type correctness across all SvelteKit admin code and channels-sdk.
 
 ---
 
-## Tier 2: Unit Tests
+## Tier 2: Non-Admin Unit Tests
 
-**Time:** ~30s | **Prerequisites:** None
+**Time:** ~25s | **Prerequisites:** None
 
 ```bash
-# All non-admin packages (channels-sdk, guardian, channel-*, cli)
 bun run test
-
-# Admin unit tests (Vitest — server + browser)
-bun run admin:test:unit
-
-# Or run individually:
-bun run sdk:test          # packages/channels-sdk (3 test files)
-bun run guardian:test     # core/guardian security tests (1 file)
-bun run cli:test          # packages/cli (1 file)
 ```
 
-**What it validates:** SDK contracts, guardian HMAC/replay/rate-limiting, channel adapters, CLI parsing, admin server logic (docker wrapper, helpers, secrets, env management), admin client components.
-
-**Test count:** ~572 admin unit tests + ~112 guardian/sdk/channel/cli tests.
+Runs all non-admin unit tests: lib, cli, guardian, channels-sdk, channel adapters, scheduler, assistant-tools, admin-tools.
 
 ---
 
-## Tier 3: Browser Contract Tests (Mocked)
+## Tier 3: Admin Unit Tests
+
+**Time:** ~5s | **Prerequisites:** None
+
+```bash
+bun run admin:test:unit
+```
+
+Runs Vitest server + browser component tests for the admin SvelteKit app.
+
+---
+
+## Tier 4: Mocked Browser E2E
 
 **Time:** ~2min | **Prerequisites:** Admin build (`bun run admin:build`)
 
@@ -105,121 +92,77 @@ bun run cli:test          # packages/cli (1 file)
 bun run admin:test:e2e:mocked
 ```
 
-Runs Playwright against a built admin app with mocked API endpoints. Tests setup wizard and UI contracts without depending on live backend services.
-
-Use `bun run admin:test` to run both unit + e2e together (builds automatically).
+Runs Playwright against a built admin app with mocked API endpoints. Tests setup wizard UI and browser contracts without live backend services.
 
 ---
 
-## Tier 4: Stack Integration Tests
+## Tier 5: Integration E2E
 
-**Time:** ~1min | **Prerequisites:** Running compose stack
+**Time:** ~5min (includes rebuild) | **Prerequisites:** Docker, dev env seeded
 
 ```bash
-# 1. Start the dev stack
-bun run dev:build          # to rebuild images
-
-# 2. Run integration Playwright tests (no browser route mocks)
-bun run admin:test:e2e
+bun run test:t5
 ```
 
+Rebuilds and recreates the entire compose stack, then runs integration Playwright tests. LLM-dependent tests are skipped (no `RUN_LLM_TESTS`).
+
 **What it validates:**
-- OpenCode web UI accessible on `:4096`
-- OpenMemory CRUD operations via `:8765`
+- OpenCode web UI accessible
+- OpenMemory CRUD operations
 - OpenCode API session management
-- Memory Ollama integration (config read/write via admin API)
-
-**Tests gated by:** `RUN_DOCKER_STACK_TESTS=1` env var (stack-only groups are skipped otherwise).
-
-**Important:** Always use `bun run admin:test:e2e` (not `npx playwright test` directly) to avoid Playwright version conflicts between root and admin `node_modules`.
-
-**Files:** `e2e/opencode-ui.test.ts`, `e2e/memory-config.test.ts`, `e2e/assistant-pipeline.test.ts`
+- Memory Ollama integration
+- Guardian HMAC pipeline (channel→guardian→assistant)
+- Scheduler automations API
 
 ---
 
-## Tier 5: LLM Pipeline Tests
+## Tier 6: Full Stack E2E + LLM Pipeline
 
-**Time:** ~1min | **Prerequisites:** Running stack + LLM provider (Ollama or Model Runner)
+**Time:** ~5min (includes rebuild) | **Prerequisites:** Docker, dev env seeded, Ollama with models
 
 ```bash
-bun run admin:test:e2e
+bun run test:t6
 ```
 
-**What it validates:**
+Same as T5 but additionally enables LLM tests and enforces no-skip policy. Every test must run — any skip is a failure.
+
+**Additional validation over T5:**
 - Full assistant message pipeline (send message → LLM inference → response)
-- Memory integration end-to-end (assistant adds memory via `memory-add` tool, recalls via `memory-search`)
-- Embedding pipeline
+- Memory integration end-to-end (assistant adds memory via tool, recalls via search)
+- Channel→Guardian→Assistant→LLM full chain with real inference
 
-**Model prerequisites:** Ollama with models available, or Docker Model Runner with packaged GGUF models:
-- Qwen3.5-4B or equivalent (system LLM)
-- nomic-embed-text or bge-base-en-v1.5 (embeddings, 768 dims)
-
-**Files:** `e2e/assistant-pipeline.test.ts` (groups 5-6)
-
-**No-skip expectation:** `bun run admin:test:e2e` sets `RUN_DOCKER_STACK_TESTS=1` and `RUN_LLM_TESTS=1` by default and should run only integration tests with no browser-route mocks.
-
----
-
-## Tier 6: Full Dev E2E Script
-
-**Time:** 20-60min | **Prerequisites:** Docker, internet (for GGUF downloads on first run)
-
-```bash
-./scripts/dev-e2e-test.sh            # Full build + fresh environment
-./scripts/dev-e2e-test.sh --skip-build  # Reuse existing admin image
-```
-
-This is the "nuclear option" — tests everything from a completely clean slate. It runs 30 verification steps:
-
-1. Stops all containers, cleans `.dev/` state completely
-2. Seeds fresh config via `dev-setup.sh --seed-env --force`
-3. Downloads & packages GGUF models into Docker Model Runner
-4. Builds admin image from source
-5. Starts compose stack
-6. Verifies fresh state (setup NOT complete)
-7. Runs setup wizard via API (POST `/admin/setup`)
-8. Waits for all 6 services to become healthy
-9. Validates `secrets.env` values, container env vars, file ownership
-10. Verifies OpenMemory user provisioned
-11. Tests assistant memory tools end-to-end (add + search)
-12. Reports pass/fail summary
+**Model prerequisites:** Ollama with:
+- `qwen2.5-coder:3b` or equivalent (system LLM)
+- `nomic-embed-text` (embeddings, 768 dims)
 
 ---
 
 ## Quick Reference
 
-| Speed | Command | Coverage |
-|-------|---------|----------|
-| Fastest (~30s) | `bun run check && bun run test && bun run admin:test:unit` | Types + all unit tests |
-| Medium (~5min) | Above + `bun run admin:test` | + integration Playwright tests |
-| Thorough (~1min extra) | Above + stack tests (Tier 4) | + live service integration |
-| Full (~1min extra) | Above + LLM tests (Tier 5) | + real LLM inference |
-| Mocked UI contracts (~2min) | `bun run admin:test:e2e:mocked` | Browser route-mocked wizard/UI contracts |
-| No-skip integration E2E (~1min) | `bun run admin:test:e2e` | Full integration Playwright suite with no mocked browser routes |
-| Nuclear (~60min) | `./scripts/dev-e2e-test.sh` | Everything from clean slate |
+| Tier | Time | Command | Coverage |
+|------|------|---------|----------|
+| T1 | ~10s | `bun run test:t1` | Types + SDK |
+| T2 | ~25s | `bun run test:t2` | All non-admin unit tests |
+| T3 | ~5s | `bun run test:t3` | Admin unit tests |
+| T4 | ~2min | `bun run test:t4` | Mocked browser E2E |
+| T5 | ~5min | `bun run test:t5` | Integration E2E (stack rebuild) |
+| T6 | ~5min | `bun run test:t6` | Full E2E + LLM (no skips) |
 
 ## Recommended Local Workflow
 
 ```bash
-# 1. Quick validation (always run before committing)
+# 1. Quick validation (always before committing)
 bun run check && bun run test && bun run admin:test:unit
 
-# 2. Full offline tests (run before pushing)
-bun run admin:test    # includes build + unit + integration e2e
-
-# Optional: mocked browser contract coverage
+# 2. Mocked browser contracts (before pushing UI changes)
 bun run admin:test:e2e:mocked
 
-# 3. Integration validation (run for stack-touching changes)
-bun run dev:build
-bun run admin:test:e2e
+# 3. Stack integration (before pushing stack/compose changes)
+bun run test:t5
 
-# 4. Full pipeline validation (run for LLM/memory changes)
-bun run admin:test:e2e
+# 4. Full validation (before releases or LLM-touching changes)
+bun run test:t6
 
-# Optional: one-command consolidated Tier 1-5 pass (halts on first failure)
-bun run check && bun run test && bun run admin:test:unit && bun run admin:test:e2e
-
-# 5. Clean-slate validation (run before releases)
+# 5. Clean-slate validation (before releases)
 ./scripts/dev-e2e-test.sh
 ```

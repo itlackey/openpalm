@@ -3,7 +3,7 @@
 # Built with npm + Vite, runs on Node.js (adapter-node).
 # ──────────────────────────────────────────────────────────────────────────────
 
-FROM node:lts-trixie-slim AS build
+FROM node:22-trixie-slim AS build
 WORKDIR /workspace
 
 # Install admin deps at workspace root so node_modules lands at /workspace/.
@@ -24,49 +24,41 @@ COPY packages/lib/ node_modules/@openpalm/lib/
 
 # Copy source into monorepo layout
 COPY packages/admin/ packages/admin/
-COPY assets/ assets/
-COPY registry/ registry/ registry/
+COPY .openpalm/stack/ .openpalm/stack/
+COPY .openpalm/vault/redact.env.schema .openpalm/vault/
+COPY .openpalm/vault/stack/*.schema .openpalm/vault/stack/
+COPY .openpalm/vault/user/*.schema .openpalm/vault/user/
+COPY .openpalm/config/ .openpalm/config/
 
 # Build SvelteKit (adapter-node produces self-contained build/)
 WORKDIR /workspace/packages/admin
 ENV PATH="/workspace/node_modules/.bin:$PATH"
 RUN npm run build
 
-# ── Varlock Fetch ─────────────────────────────────────────────────────────────
-# Isolated stage so the download layer is cached independently of the app build.
-# Pinned version; bump ARG to upgrade. Uses --retry-all-errors to handle
-# transient GitHub CDN failures (502/503).
+# ── Varlock fetch ─────────────────────────────────────────────────────────────
 FROM debian:trixie-slim AS varlock-fetch
 ARG TARGETARCH
 ARG VARLOCK_VERSION=0.4.0
-ARG VARLOCK_SHA256_AMD64=820295b271cece2679b2b9701b5285ce39354fc2f35797365fa36c70125f51ab
 ARG VARLOCK_SHA256_ARM64=e830baaa901b6389ecf281bdd2449bfaf7586e91fd3a7a038ec06f78e6fa92f8
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+ARG VARLOCK_SHA256_X64=820295b271cece2679b2b9701b5285ce39354fc2f35797365fa36c70125f51ab
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN set -e; \
-  if [ "$TARGETARCH" = "arm64" ]; then \
-    VARLOCK_ARCH=arm64; VARLOCK_SHA256="$VARLOCK_SHA256_ARM64"; \
-  else \
-    VARLOCK_ARCH=x64; VARLOCK_SHA256="$VARLOCK_SHA256_AMD64"; \
-  fi \
-  && curl -fsSL \
-       --retry 5 --retry-delay 10 --retry-all-errors \
-       "https://github.com/dmno-dev/varlock/releases/download/varlock%40${VARLOCK_VERSION}/varlock-linux-${VARLOCK_ARCH}.tar.gz" \
-       -o /tmp/varlock.tar.gz \
-  && echo "${VARLOCK_SHA256}  /tmp/varlock.tar.gz" | sha256sum -c - \
+  if [ "$TARGETARCH" = "arm64" ]; then ARCH=arm64; SHA256=$VARLOCK_SHA256_ARM64; \
+  else ARCH=x64; SHA256=$VARLOCK_SHA256_X64; fi \
+  && curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/dmno-dev/varlock/releases/download/varlock%40${VARLOCK_VERSION}/varlock-linux-${ARCH}.tar.gz" -o /tmp/varlock.tar.gz \
+  && echo "${SHA256}  /tmp/varlock.tar.gz" | sha256sum -c - \
   && tar xzf /tmp/varlock.tar.gz --strip-components=1 -C /usr/local/bin/ \
-  && chmod +x /usr/local/bin/varlock \
-  && rm /tmp/varlock.tar.gz
+  && chmod +x /usr/local/bin/varlock && rm /tmp/varlock.tar.gz
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
-FROM node:lts-trixie-slim
+FROM node:22-trixie-slim
 
 # ── Pinned installer versions ────────────────────────────────────────────────
 ARG OPENCODE_VERSION=1.2.24
 ARG BUN_VERSION=bun-v1.3.10
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends curl ca-certificates gnupg git unzip bash \
+  && apt-get install -y --no-install-recommends curl ca-certificates gnupg git unzip bash pass \
   && install -m 0755 -d /etc/apt/keyrings \
   && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list \
@@ -81,9 +73,9 @@ ENV PATH="/usr/local/.opencode/bin:$PATH"
 # Install Bun (required for OpenCode plugins)
 ENV BUN_INSTALL=/usr/local
 RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
-ENV BUN_INSTALL=/tmp/.bun
-ENV BUN_INSTALL_CACHE_DIR=/tmp/.cache/bun/install
-ENV PATH="/tmp/.bun/bin:/usr/local/bin:$PATH"
+ENV BUN_INSTALL=/home/node/.bun
+ENV BUN_INSTALL_CACHE_DIR=/home/node/.cache/bun/install
+ENV PATH="/home/node/.bun/bin:/usr/local/bin:$PATH"
 
 WORKDIR /app
 COPY --from=build /workspace/packages/admin/build ./build
@@ -98,9 +90,12 @@ RUN node -e "\
 
 RUN mkdir -p /state /data && chown node:node /state /data
 
-# Copy varlock binary from fetch stage — no Bun required (standalone ELF binary)
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
-COPY assets/redact.env.schema /app/.env.schema
+COPY .openpalm/vault/redact.env.schema /app/.env.schema
+
+# Bake admin OpenCode config into the image — seeded at runtime if overridden
+COPY core/admin/opencode/opencode.jsonc /app/opencode.jsonc
+COPY core/admin/opencode /etc/opencode
 
 # Admin entrypoint — starts SvelteKit + OpenCode
 COPY core/admin/entrypoint.sh /usr/local/bin/admin-entrypoint.sh
@@ -112,7 +107,7 @@ USER node
 # so varlock writes into a user-writable bind mount at runtime.
 ENV HOME=/tmp
 ENV PORT=8100
-EXPOSE 8100 4097
+EXPOSE 8100 3881
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
   CMD curl -sf http://localhost:8100/health || exit 1

@@ -18,7 +18,7 @@ export function mapModelDiscoveryError(result: ModelDiscoveryLike): string {
   return 'Network error — unable to reach the provider. Verify the base URL and that the service is running.';
 }
 
-export type ConnectionTestErrorCode =
+export type CapabilityTestErrorCode =
   | 'unauthorized'
   | 'not_found'
   | 'timeout'
@@ -26,9 +26,9 @@ export type ConnectionTestErrorCode =
   | 'missing_base_url'
   | 'unknown';
 
-export function mapConnectionTestError(result: {
+export function mapCapabilityTestError(result: {
   error?: string;
-  errorCode?: ConnectionTestErrorCode | string;
+  errorCode?: CapabilityTestErrorCode | string;
 }): string {
   switch (result.errorCode) {
     case 'unauthorized':
@@ -48,7 +48,7 @@ export function mapConnectionTestError(result: {
 
 export function mapDiscoveryResultToErrorCode(
   result: Pick<ModelDiscoveryLike, 'reason' | 'error'>
-): ConnectionTestErrorCode {
+): CapabilityTestErrorCode {
   switch (result.reason) {
     case 'timeout':          return 'timeout';
     case 'missing_base_url': return 'missing_base_url';

@@ -2,18 +2,18 @@ import {
   getRequestId,
   jsonResponse,
   errorResponse,
-  requireAdmin,
+  requireAuth,
   getActor,
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { appendAudit } from "$lib/server/control-plane.js";
+import { appendAudit } from "@openpalm/lib";
 import { getDockerEvents, checkDocker } from "$lib/server/docker.js";
 import type { RequestHandler } from "./$types";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authError = requireAdmin(event, requestId);
+  const authError = requireAuth(event, requestId);
   if (authError) return authError;
 
   const state = getState();
@@ -43,7 +43,8 @@ export const GET: RequestHandler = async (event) => {
         .split("\n")
         .filter((l) => l.startsWith("{"))
         .map((l) => JSON.parse(l));
-    } catch {
+    } catch (e) {
+      console.warn('[containers.events] Failed to parse Docker events output', e);
       appendAudit(state, actor, "containers.events", { since, error: "Failed to parse events output" }, false, requestId, callerType);
       return errorResponse(500, "parse_error", "Failed to parse Docker events output", {}, requestId);
     }

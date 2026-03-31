@@ -452,7 +452,7 @@ The following code and data structures become dead with staging elimination:
 **State factory and lifecycle (`packages/lib/src/control-plane/lifecycle.ts`):**
 - `loadPersistedChannelSecrets()` -- reads `CHANNEL_*_SECRET` from `DATA_HOME/stack.env`. Dead: channel secrets live in `vault/system.env` (no separate `stack.env`).
 - `reconcileCore()` -- calls `stageArtifacts()` and `persistArtifacts()`. Must be rewritten to validate-in-place + snapshot + write.
-- `buildComposeFileList()` -- reads from `STATE_HOME/artifacts/`. Must be rewritten to read from `config/components/` and `OPENPALM_HOME`.
+- `buildComposeFileList()` -- reads from `STATE_HOME/artifacts/`. Must be rewritten to read from `config/components/` and `OP_HOME`.
 - `buildManagedServices()` -- calls `discoverStagedChannelYmls()`. Must be rewritten to discover from live `config/components/`.
 - `isOllamaEnabled()` and `isAdminEnabled()` (in `staging.ts`) -- read from `DATA_HOME/stack.env`. Must be rewritten to read from `vault/system.env` or `config/openpalm.yml`.
 - `validateEnvironment()` -- reads schema from `DATA_HOME/secrets.env.schema` and env from `STATE_HOME/artifacts/stack.env`. Must be rewritten for `vault/` paths.
@@ -477,10 +477,10 @@ The following code and data structures become dead with staging elimination:
 **Paths module (`packages/lib/src/control-plane/paths.ts`):**
 - `resolveConfigHome()`, `resolveStateHome()`, `resolveDataHome()` -- all three functions are dead. Replaced by a single `resolveOpenPalmHome()` returning `~/.openpalm/` with subdirectory accessors (`configDir()`, `vaultDir()`, `dataDir()`, `logsDir()`, `cacheDir()`).
 - `ensureXdgDirs()` -- pre-creates 31 dirs across 3 trees. Replaced by a simpler `ensureDirs()` creating ~10 dirs under one root.
-- `OPENPALM_CONFIG_HOME`, `OPENPALM_STATE_HOME`, `OPENPALM_DATA_HOME` env vars -- all dead. Replaced by `OPENPALM_HOME`.
+- `OP_CONFIG_HOME`, `OP_STATE_HOME`, `OP_DATA_HOME` env vars -- all dead. Replaced by `OP_HOME`.
 
 **Core assets (`packages/lib/src/control-plane/core-assets.ts`):**
-- All `resolveDataHome()`-based path resolution -- must change to `OPENPALM_HOME/data/`.
+- All `resolveDataHome()`-based path resolution -- must change to `OP_HOME/data/`.
 - `coreCaddyfilePath()`, `coreComposePath()`, `ollamaComposePath()`, `adminComposePath()` -- all internal path helpers must be updated.
 - `refreshCoreAssets()` -- writes to `DATA_HOME`. Must target new paths.
 - `ensureSecretsSchema()` and `ensureStackSchema()` -- write schemas to `DATA_HOME/`. Must target `vault/`.
@@ -497,7 +497,7 @@ The following code and data structures become dead with staging elimination:
 - Guardian `env_file:` referencing `STATE_HOME/artifacts/stack.env` -- dead. Guardian gets secrets via `${VAR}` only.
 - Guardian `volumes:` mount of `STATE_HOME/artifacts:/app/secrets:ro` -- dead. No bind-mounted secrets file.
 - Admin `env_file:` referencing both staged env files -- dead. Admin mounts `vault/` directly.
-- All `OPENPALM_CONFIG_HOME`, `OPENPALM_STATE_HOME`, `OPENPALM_DATA_HOME` variable references in compose -- dead, replaced by `OPENPALM_HOME`.
+- All `OP_CONFIG_HOME`, `OP_STATE_HOME`, `OP_DATA_HOME` variable references in compose -- dead, replaced by `OP_HOME`.
 
 **Setup module (`packages/lib/src/control-plane/setup.ts`):**
 - `buildSecretsFromSetup()` -- writes all secrets into a single `secrets.env`. Must be split: user-facing keys to `vault/user.env`, system tokens to `vault/system.env`.
@@ -575,9 +575,9 @@ The current `reconcileCore()` + `applyInstall()` + `applyUpdate()` + `applyUnins
 | `packages/scheduler/` | 4 | `server.ts`, `scheduler.ts`, `shell.ts`, `shell.test.ts` |
 | `packages/admin-tools/` | 1 | `README.md` (documentation reference only) |
 
-Additionally, **10 files in `assets/`** reference `OPENPALM_CONFIG_HOME`, `OPENPALM_STATE_HOME`, or `OPENPALM_DATA_HOME`: the 4 compose files (`docker-compose.yml`, `admin.yml`, `ollama.yml`, `validate-config.yml`), `secrets.env`, 2 schema files, 2 cleanup automation YAMLs, and `README.md`.
+Additionally, **10 files in `assets/`** reference `OP_CONFIG_HOME`, `OP_STATE_HOME`, or `OP_DATA_HOME`: the 4 compose files (`docker-compose.yml`, `admin.yml`, `ollama.yml`, `validate-config.yml`), `secrets.env`, 2 schema files, 2 cleanup automation YAMLs, and `README.md`.
 
-The env var rename from `OPENPALM_CONFIG_HOME`/`OPENPALM_DATA_HOME`/`OPENPALM_STATE_HOME` to `OPENPALM_HOME` is the highest-risk change because it is a user-visible API break. Existing installations have these vars in their `stack.env` files. The migration path must either (a) support both old and new vars with precedence rules during a transition period, or (b) rewrite the env files as part of the upgrade.
+The env var rename from `OP_CONFIG_HOME`/`OP_DATA_HOME`/`OP_STATE_HOME` to `OP_HOME` is the highest-risk change because it is a user-visible API break. Existing installations have these vars in their `stack.env` files. The migration path must either (a) support both old and new vars with precedence rules during a transition period, or (b) rewrite the env files as part of the upgrade.
 
 ### Compose File Changes
 
@@ -598,11 +598,11 @@ The env var rename from `OPENPALM_CONFIG_HOME`/`OPENPALM_DATA_HOME`/`OPENPALM_ST
 
 **Proposed mount changes (from fs-mounts-refactor.md):**
 
-All `OPENPALM_CONFIG_HOME`, `OPENPALM_STATE_HOME`, `OPENPALM_DATA_HOME` variable references become `OPENPALM_HOME`-relative paths. Every bind mount path changes. Specifically:
+All `OP_CONFIG_HOME`, `OP_STATE_HOME`, `OP_DATA_HOME` variable references become `OP_HOME`-relative paths. Every bind mount path changes. Specifically:
 
 | Service | Mounts that change | Nature of change |
 |---------|-------------------|-----------------|
-| memory | 2 | `DATA_HOME/memory` -> `OPENPALM_HOME/data/memory` |
+| memory | 2 | `DATA_HOME/memory` -> `OP_HOME/data/memory` |
 | assistant | 6 -> 8 | Adds `vault/user.env` (ro) mount and `logs/opencode/` mount; removes STATE_HOME/opencode; changes all DATA_HOME and CONFIG_HOME refs |
 | guardian | 3 -> 2 | Removes `STATE_HOME/artifacts` mount entirely (no bind-mounted secrets); removes `env_file`; changes audit from STATE_HOME to `logs/` |
 | scheduler | 2 -> 1 | Removes `STATE_HOME/artifacts` mount; reads automations from `config/automations/` instead of `STATE_HOME/automations/` |
@@ -612,7 +612,7 @@ All `OPENPALM_CONFIG_HOME`, `OPENPALM_STATE_HOME`, `OPENPALM_DATA_HOME` variable
 
 **Net: 20 mounts + 3 env_file -> 21 mounts + 0 env_file.** The total count is similar, but the security isolation is strictly better (guardian and scheduler lose access to secrets file mounts).
 
-The `assets/ollama.yml` also needs updating (1 mount: `DATA_HOME/ollama` -> `OPENPALM_HOME/data/ollama`).
+The `assets/ollama.yml` also needs updating (1 mount: `DATA_HOME/ollama` -> `OP_HOME/data/ollama`).
 
 ### Test Impact
 
@@ -642,7 +642,7 @@ The `assets/ollama.yml` also needs updating (1 mount: `DATA_HOME/ollama` -> `OPE
 3. **File watcher tests** -- key allowlist enforcement, debouncing, malformed input handling. (~100 lines, in assistant container test suite)
 4. **`openpalm.yml` reader tests** -- valid/invalid/missing config, default values, enabled component discovery. (~100 lines)
 5. **Apply orchestrator tests** -- validate -> snapshot -> write -> deploy flow, automated rollback on health check failure, partial write recovery. (~200-300 lines)
-6. **Path migration tests** -- verify `OPENPALM_HOME` resolution with and without env override, subdirectory accessor correctness. (~50 lines)
+6. **Path migration tests** -- verify `OP_HOME` resolution with and without env override, subdirectory accessor correctness. (~50 lines)
 7. **Env file split tests** -- verify `buildSecretsFromSetup()` correctly splits user-facing keys (to `user.env`) from system-managed tokens (to `system.env`). (~100-150 lines)
 
 **Estimated new test code:** ~800-1,100 lines across 7 test areas. This is less than the ~3,400 lines being removed/rewritten because the new code is structurally simpler (no staging indirection).
@@ -651,7 +651,7 @@ The `assets/ollama.yml` also needs updating (1 mount: `DATA_HOME/ollama` -> `OPE
 
 1. **UPDATE** -- Sequence the filesystem refactor as Phase 0 of 0.10.0, before the component system. The component system's `config/components/` directory, `enabled.json` (or `openpalm.yml`), and per-instance `.env` files all depend on the new path model. Building the component system on the old XDG model and then rewriting it for the new model doubles the work. Ship the path refactor first, update all tests, then layer the component system on top.
 
-2. **ADD** -- Create a `packages/lib/src/control-plane/home.ts` module (replacing `paths.ts`) with a single `resolveOpenPalmHome(): string` function and subdirectory accessors (`configDir()`, `vaultDir()`, `dataDir()`, `logsDir()`, `cacheDir()`). This module should support both `OPENPALM_HOME` (new) and the legacy `OPENPALM_CONFIG_HOME` + `OPENPALM_DATA_HOME` + `OPENPALM_STATE_HOME` (old) with a deprecation warning, to allow a smooth upgrade path for existing installations.
+2. **ADD** -- Create a `packages/lib/src/control-plane/home.ts` module (replacing `paths.ts`) with a single `resolveOpenPalmHome(): string` function and subdirectory accessors (`configDir()`, `vaultDir()`, `dataDir()`, `logsDir()`, `cacheDir()`). This module should support both `OP_HOME` (new) and the legacy `OP_CONFIG_HOME` + `OP_DATA_HOME` + `OP_STATE_HOME` (old) with a deprecation warning, to allow a smooth upgrade path for existing installations.
 
 3. **ADD** -- Create a one-time migration function `migrateFromXdgLayout()` that detects the old XDG directory structure and moves files to the new `~/.openpalm/` layout. This should: (a) detect if `~/.config/openpalm` exists, (b) create `~/.openpalm/`, (c) move `config/` content, (d) move `data/` content from `~/.local/share/openpalm`, (e) merge `secrets.env` + `stack.env` into `vault/user.env` + `vault/system.env`, (f) skip `STATE_HOME` entirely (it is regenerable). This migration function must be tested against both fresh installs and existing XDG layouts.
 
@@ -661,9 +661,9 @@ The `assets/ollama.yml` also needs updating (1 mount: `DATA_HOME/ollama` -> `OPE
 
 6. **UPDATE** -- The `ControlPlaneState` type needs a redesign. The current type carries `stateDir`, `artifacts`, `artifactMeta`, and `channelSecrets` -- all of which die. The new type should carry `homeDir: string` (the single root) and derive `configDir`, `vaultDir`, `dataDir`, `logsDir` from it. The `services` field stays. The `adminToken` and `setupToken` fields stay but should read from `vault/system.env` instead of `CONFIG_HOME/secrets.env`.
 
-7. **UPDATE** -- The admin container's volume mount strategy changes fundamentally. Currently it mounts all 3 XDG trees with identity-mapped paths so that the container's `OPENPALM_CONFIG_HOME` env var equals the host path. The new layout uses clean container-internal paths (`/etc/openpalm`, `/etc/openpalm/vault`), which is a strict improvement but means the admin can no longer assume host path === container path. Any admin code that constructs paths using host-side env vars for in-container filesystem access must be audited. Key files: `packages/admin/src/hooks.server.ts` (reads `OPENPALM_CONFIG_HOME` etc. from env to set path context).
+7. **UPDATE** -- The admin container's volume mount strategy changes fundamentally. Currently it mounts all 3 XDG trees with identity-mapped paths so that the container's `OP_CONFIG_HOME` env var equals the host path. The new layout uses clean container-internal paths (`/etc/openpalm`, `/etc/openpalm/vault`), which is a strict improvement but means the admin can no longer assume host path === container path. Any admin code that constructs paths using host-side env vars for in-container filesystem access must be audited. Key files: `packages/admin/src/hooks.server.ts` (reads `OP_CONFIG_HOME` etc. from env to set path context).
 
-8. **UPDATE** -- The `OPENPALM_HOME` env var unification is a **user-visible breaking change**. The `stack.env.schema` currently defines `OPENPALM_CONFIG_HOME`, `OPENPALM_DATA_HOME`, and `OPENPALM_STATE_HOME` as separate fields. The migration must handle existing installations that set custom values for these. Recommendation: the migration function reads all three legacy vars and verifies they are all under the same parent before collapsing to `OPENPALM_HOME`. If they diverge (user explicitly split them), the migration should warn and require manual resolution rather than silently losing the custom layout.
+8. **UPDATE** -- The `OP_HOME` env var unification is a **user-visible breaking change**. The `stack.env.schema` currently defines `OP_CONFIG_HOME`, `OP_DATA_HOME`, and `OP_STATE_HOME` as separate fields. The migration must handle existing installations that set custom values for these. Recommendation: the migration function reads all three legacy vars and verifies they are all under the same parent before collapsing to `OP_HOME`. If they diverge (user explicitly split them), the migration should warn and require manual resolution rather than silently losing the custom layout.
 
 9. **ADD** -- The hot-reload file watcher needs an explicit design for the race condition where `user.env` is being written (by the admin container via vault mount) while the assistant is reading it. The proposal shows `fs.watch()` + `readFileSync()`, but there is no atomicity guarantee. The admin should write to a temp file and `rename()` it into place (atomic on Linux), and the watcher should use a short debounce (200-500ms) to avoid reading a partially-written file.
 

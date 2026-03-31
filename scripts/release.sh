@@ -32,6 +32,31 @@ if git rev-parse "${TAG}" >/dev/null 2>&1; then
   exit 1
 fi
 
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [[ "${CURRENT_BRANCH}" != "main" ]]; then
+  echo ""
+  echo "WARNING: You are on branch '${CURRENT_BRANCH}', not 'main'." >&2
+  echo "This script will push directly to 'main'. If branch protection" >&2
+  echo "is enabled, the push may fail unless you have bypass permissions." >&2
+  echo ""
+  read -r -p "Continue anyway? [y/N] " confirm
+  if [[ "${confirm}" != "y" && "${confirm}" != "Y" ]]; then
+    echo "Aborted." >&2
+    exit 1
+  fi
+else
+  echo ""
+  echo "WARNING: This will push directly to 'main'." >&2
+  echo "Ensure branch protection rules allow direct pushes for your account," >&2
+  echo "or use a release branch and PR workflow instead." >&2
+  echo ""
+  read -r -p "Continue? [y/N] " confirm
+  if [[ "${confirm}" != "y" && "${confirm}" != "Y" ]]; then
+    echo "Aborted." >&2
+    exit 1
+  fi
+fi
+
 # --- Bump platform versions ---
 echo "Bumping platform packages to ${VERSION}..."
 ./scripts/bump-platform.sh "${VERSION}"

@@ -1,35 +1,20 @@
 /**
- * OpenCode REST API client wrapper.
+ * OpenCode REST API client — thin wrapper over @openpalm/lib.
  *
- * Provides typed access to the OpenCode server running alongside the admin.
- * All functions handle connectivity errors gracefully, returning empty/default
- * values when OpenCode is not available rather than throwing.
+ * Configures the shared client with the admin's OpenCode URL and
+ * re-exports the same function names so existing admin routes are unchanged.
  */
+import { createOpenCodeClient } from '@openpalm/lib';
 
-const OPENCODE_BASE_URL =
-  process.env.OPENPALM_OPENCODE_URL ?? "http://localhost:4096";
+const OPENCODE_BASE_URL = process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL ?? "http://localhost:4096";
+const client = createOpenCodeClient({ baseUrl: OPENCODE_BASE_URL });
 
-export type OpenCodeProvider = {
-  id: string;
-  name?: string;
-  [key: string]: unknown;
-};
+export const proxyToOpenCode = client.proxy;
+export const getOpenCodeProviders = client.getProviders;
+export const getOpenCodeProviderAuth = client.getProviderAuth;
+export const setProviderApiKey = client.setProviderApiKey;
+export const startProviderOAuth = client.startProviderOAuth;
+export const completeProviderOAuth = client.completeProviderOAuth;
+export const getOpenCodeConfig = client.getConfig;
 
-/**
- * Fetch the list of configured providers from the OpenCode REST API.
- * Returns an empty array if OpenCode is unreachable or returns an error.
- */
-export async function getOpenCodeProviders(): Promise<OpenCodeProvider[]> {
-  try {
-    const res = await fetch(`${OPENCODE_BASE_URL}/providers`, {
-      signal: AbortSignal.timeout(3000)
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    if (Array.isArray(data)) return data as OpenCodeProvider[];
-    if (data && Array.isArray(data.providers)) return data.providers as OpenCodeProvider[];
-    return [];
-  } catch {
-    return [];
-  }
-}
+export type { OpenCodeProvider, ProxyResult } from '@openpalm/lib';

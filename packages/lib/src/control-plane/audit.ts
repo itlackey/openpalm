@@ -3,7 +3,8 @@
  */
 import { mkdirSync, appendFileSync } from "node:fs";
 import type { ControlPlaneState, AuditEntry, CallerType } from "./types.js";
-import { MAX_AUDIT_MEMORY } from "./types.js";
+
+const MAX_AUDIT_MEMORY = 1000;
 
 export function appendAudit(
   state: ControlPlaneState,
@@ -28,10 +29,9 @@ export function appendAudit(
     state.audit = state.audit.slice(-MAX_AUDIT_MEMORY);
   }
   try {
-    const auditDir = `${state.stateDir}/audit`;
-    mkdirSync(auditDir, { recursive: true });
+    mkdirSync(state.logsDir, { recursive: true });
     appendFileSync(
-      `${auditDir}/admin-audit.jsonl`,
+      `${state.logsDir}/admin-audit.jsonl`,
       JSON.stringify(entry) + "\n"
     );
   } catch {

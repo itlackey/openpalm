@@ -13,7 +13,7 @@ The 0.10.0 milestone introduces significant new attack surface through the compo
 **Concerns:**
 - The ACA deployment exposes `channel-chat` with external ingress (scaling 0-5 replicas). Guardian remains internal-only, which is correct, but the plan does not specify whether ACA's built-in TLS termination provides equivalent protection to the Caddy LAN-first default. In ACA, the channel endpoint is publicly routable by default.
 - The deployment script stores secrets as ACA secrets before the Key Vault migration step. During this interim window, secrets are visible via `az containerapp show`. The script should create Key Vault first, then deploy containers — never use inline secrets as an intermediate step.
-- The `ADMIN_TOKEN` is injected into guardian and assistant. In the self-hosted model, only the admin container needs `ADMIN_TOKEN`. The ACA deployment gives `ADMIN_TOKEN` to the assistant (line: "ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN}"), which violates the planned ADMIN_TOKEN/ASSISTANT_TOKEN split from the pass plan.
+- The `ADMIN_TOKEN` is injected into guardian and assistant. In the self-hosted model, only the admin container needs `ADMIN_TOKEN`. The ACA deployment gives `ADMIN_TOKEN` to the assistant (line: "ADMIN_TOKEN: ${OP_ADMIN_TOKEN}"), which violates the planned ADMIN_TOKEN/ASSISTANT_TOKEN split from the pass plan.
 
 **Recommendation: KEEP with modifications.** Fix the token assignment to use ASSISTANT_TOKEN for the assistant container. Eliminate the inline-secrets interim step. Document that ACA deployments are publicly accessible by default (not LAN-first).
 
@@ -155,7 +155,7 @@ The current assistant isolation is well-maintained:
 
 The 0.10.0 changes preserve this isolation. The assistant cannot directly access secrets (ASSISTANT_TOKEN is rejected by `/admin/secrets`). The assistant can request actions through the brokered instance, but this is mediated by the admin API.
 
-**Risk:** The assistant currently receives `OPENPALM_ADMIN_TOKEN` (line 59 in docker-compose.yml: `OPENPALM_ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-${ADMIN_TOKEN:-}}`). After the Phase 1 auth refactor, this changes to `OPENPALM_ASSISTANT_TOKEN`. This migration must be atomic — if only the admin side is updated but the compose file still passes `ADMIN_TOKEN` to the assistant, the assistant retains admin-level access.
+**Risk:** The assistant currently receives `OP_ADMIN_TOKEN` (line 59 in docker-compose.yml: `OP_ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-${ADMIN_TOKEN:-}}`). After the Phase 1 auth refactor, this changes to `OP_ASSISTANT_TOKEN`. This migration must be atomic — if only the admin side is updated but the compose file still passes `ADMIN_TOKEN` to the assistant, the assistant retains admin-level access.
 
 ### Component Isolation
 
@@ -177,13 +177,13 @@ Components run as Docker containers on user-specified networks. The compose over
 
 3. **Component `.env` file as secret sink.** The component plan proposes that `@sensitive` fields are managed through the unified secret manager. But the resolution path (how secrets get from the backend into the running container's environment) is under-specified. If the staging pipeline writes resolved secrets into the component's `.env` file on disk, those secrets are in plaintext at `DATA_HOME/components/{instance}/.env`.
 
-4. **MCP server as credential relay.** The MCP component receives `OPENPALM_ADMIN_TOKEN` in its environment. Any MCP client that connects can invoke admin-level operations through the MCP tools. The `MCP_API_KEY` provides authentication for the MCP endpoint, but if it is compromised, the attacker gains admin API access.
+4. **MCP server as credential relay.** The MCP component receives `OP_ADMIN_TOKEN` in its environment. Any MCP client that connects can invoke admin-level operations through the MCP tools. The `MCP_API_KEY` provides authentication for the MCP endpoint, but if it is compromised, the attacker gains admin API access.
 
 5. **OpenViking SSRF.** The `viking-add-resource` tool allows the assistant to ingest URLs. If OpenViking's resource ingestion follows redirects or resolves DNS internally, an attacker could use this to probe internal services on the Docker network.
 
 6. **GPG agent socket exposure.** The admin container mounts the host's GPG agent socket. A vulnerability in the admin container (e.g., an SSRF or RCE in the SvelteKit app) could be used to decrypt arbitrary GPG-encrypted content.
 
-7. **Scheduler shell action type.** The knowledge roadmap proposes eval and maintenance scripts executed via the `shell` automation action type. The scheduler container has `OPENPALM_ADMIN_TOKEN` in its environment. If an attacker can write to the automations directory (STATE_HOME/automations), they can execute arbitrary shell commands with admin token access.
+7. **Scheduler shell action type.** The knowledge roadmap proposes eval and maintenance scripts executed via the `shell` automation action type. The scheduler container has `OP_ADMIN_TOKEN` in its environment. If an attacker can write to the automations directory (STATE_HOME/automations), they can execute arbitrary shell commands with admin token access.
 
 8. **Port 4097 without authentication.** The admin OpenCode instance on port 4097 has `OPENCODE_AUTH: "false"`. While bound to `127.0.0.1`, any process on the host or any container that can reach the admin container can send messages to the admin-privileged OpenCode instance.
 
@@ -251,20 +251,20 @@ The `vault/` directory model is a meaningful and substantial security improvemen
 
 | Container | Secret access mechanism | What it receives |
 |-----------|----------------------|------------------|
-| guardian | `${VAR}` substitution only, no file mounts | OPENPALM_ADMIN_TOKEN, CHANNEL_*_SECRET only. No access to LLM keys, no mounted secrets files |
+| guardian | `${VAR}` substitution only, no file mounts | OP_ADMIN_TOKEN, CHANNEL_*_SECRET only. No access to LLM keys, no mounted secrets files |
 | admin | `vault/` mount (rw) + `${VAR}` substitution | Full vault access — this is appropriate since admin is the secret manager |
 | assistant | `vault/user.env` mount (ro) + `${VAR}` substitution for MEMORY_AUTH_TOKEN | LLM keys via mounted file, MEMORY_AUTH_TOKEN via env. No access to system.env, ADMIN_TOKEN, HMAC secrets |
 | memory | `${VAR}` substitution only | MEMORY_AUTH_TOKEN, OPENAI_API_KEY, OPENAI_BASE_URL only |
-| scheduler | `${VAR}` substitution only | OPENPALM_ADMIN_TOKEN only |
+| scheduler | `${VAR}` substitution only | OP_ADMIN_TOKEN only |
 | caddy | nothing | No secrets at all |
 
 **Assessment:** The vault model eliminates three specific weaknesses in the current design:
 
 1. **Guardian no longer receives LLM API keys.** Currently, `env_file: stack.env` combined with the `artifacts/` bind mount gives the guardian access to `secrets.env` (which contains ADMIN_TOKEN and LLM keys) even though guardian never uses these values. The proposed model eliminates this entirely — guardian gets only HMAC secrets and ADMIN_TOKEN via `${VAR}` substitution.
 
-2. **Scheduler no longer has filesystem access to secrets files.** Currently, the scheduler mounts `artifacts/:ro` which includes `stack.env` and `secrets.env`. The proposed model gives it only `OPENPALM_ADMIN_TOKEN` via substitution and removes the artifacts mount.
+2. **Scheduler no longer has filesystem access to secrets files.** Currently, the scheduler mounts `artifacts/:ro` which includes `stack.env` and `secrets.env`. The proposed model gives it only `OP_ADMIN_TOKEN` via substitution and removes the artifacts mount.
 
-3. **Assistant loses access to ADMIN_TOKEN.** Currently, the assistant receives `OPENPALM_ADMIN_TOKEN` (line 59 of docker-compose.yml). The proposed model gives the assistant only `user.env` (LLM keys) and `MEMORY_AUTH_TOKEN`. This aligns with the Phase 1 auth refactor (ADMIN_TOKEN/ASSISTANT_TOKEN split) from the pass plan.
+3. **Assistant loses access to ADMIN_TOKEN.** Currently, the assistant receives `OP_ADMIN_TOKEN` (line 59 of docker-compose.yml). The proposed model gives the assistant only `user.env` (LLM keys) and `MEMORY_AUTH_TOKEN`. This aligns with the Phase 1 auth refactor (ADMIN_TOKEN/ASSISTANT_TOKEN split) from the pass plan.
 
 **One concern:** The admin mounts `vault/` at `/etc/openpalm/vault/` read-write, and also mounts `config/` at `/etc/openpalm` read-write. Since `vault/` is a subdirectory of the host's `~/.openpalm/` but is mounted at a separate container path (`/etc/openpalm/vault/`), these are independent mounts. This is correct. However, the proposal should explicitly state that `config/` and `vault/` are separate host-to-container mount points and that the `config/` mount does NOT include `vault/` (since `vault/` is a sibling of `config/` in the host filesystem, not a child). This is already implicit in the layout but should be documented as a security-critical invariant.
 
@@ -316,7 +316,7 @@ function loadUserEnv() {
 The rollback directory at `~/.cache/openpalm/rollback/` stores previous known-good copies of configuration files, including `system.env`.
 
 **What `system.env` contains:**
-- `OPENPALM_ADMIN_TOKEN` — the admin authentication credential
+- `OP_ADMIN_TOKEN` — the admin authentication credential
 - `MEMORY_AUTH_TOKEN` — memory service authentication
 - `OPENCODE_SERVER_PASSWORD` — OpenCode server authentication
 - `CHANNEL_*_SECRET` — HMAC secrets for all installed channels
@@ -341,8 +341,8 @@ The rollback directory at `~/.cache/openpalm/rollback/` stores previous known-go
 A per-container comparison of secret exposure between current and proposed designs:
 
 **Guardian:**
-- Current: Receives ALL of `stack.env` via `env_file:` (includes CHANNEL_*_SECRET, but also all OPENPALM_* infrastructure vars). Bind-mounts the full `artifacts/` directory read-only, which contains both `stack.env` AND `secrets.env` (LLM keys, ADMIN_TOKEN). Also gets `ADMIN_TOKEN` via explicit `environment:` block.
-- Proposed: Receives only `OPENPALM_ADMIN_TOKEN` and `CHANNEL_*_SECRET` via `${VAR}` substitution. No file mounts of any secrets file. No access to LLM keys.
+- Current: Receives ALL of `stack.env` via `env_file:` (includes CHANNEL_*_SECRET, but also all OP_* infrastructure vars). Bind-mounts the full `artifacts/` directory read-only, which contains both `stack.env` AND `secrets.env` (LLM keys, ADMIN_TOKEN). Also gets `ADMIN_TOKEN` via explicit `environment:` block.
+- Proposed: Receives only `OP_ADMIN_TOKEN` and `CHANNEL_*_SECRET` via `${VAR}` substitution. No file mounts of any secrets file. No access to LLM keys.
 - **Improvement: Significant.** Guardian's access reduced from "everything" to "only what it needs."
 
 **Admin:**
@@ -351,9 +351,9 @@ A per-container comparison of secret exposure between current and proposed desig
 - **Improvement: Marginal but cleaner.** Admin is inherently the most privileged container and needs broad access. The proposed model makes the access explicit and scoped to `vault/` rather than three full XDG trees.
 
 **Assistant:**
-- Current: `OPENPALM_ADMIN_TOKEN` (line 59), `MEMORY_AUTH_TOKEN`, all 5 LLM API keys via explicit `environment:` block. No secrets file mounts but has the token that grants admin-level API access.
+- Current: `OP_ADMIN_TOKEN` (line 59), `MEMORY_AUTH_TOKEN`, all 5 LLM API keys via explicit `environment:` block. No secrets file mounts but has the token that grants admin-level API access.
 - Proposed: `vault/user.env` mounted read-only (LLM keys only), `MEMORY_AUTH_TOKEN` via `${VAR}` substitution. No ADMIN_TOKEN. No access to system.env.
-- **Improvement: Significant.** The most important change is removing `OPENPALM_ADMIN_TOKEN` from the assistant. This aligns with the Phase 1 auth refactor and eliminates the assistant's ability to call admin-only endpoints directly.
+- **Improvement: Significant.** The most important change is removing `OP_ADMIN_TOKEN` from the assistant. This aligns with the Phase 1 auth refactor and eliminates the assistant's ability to call admin-only endpoints directly.
 
 **Memory:**
 - Current: `MEMORY_AUTH_TOKEN`, `OPENAI_API_KEY`, `OPENAI_BASE_URL` via `environment:` block. Two volume mounts (data directory + config file).
@@ -361,8 +361,8 @@ A per-container comparison of secret exposure between current and proposed desig
 - **Improvement: Minor.** Same secret access, slightly cleaner mount structure.
 
 **Scheduler:**
-- Current: `OPENPALM_ADMIN_TOKEN`, `OPENCODE_SERVER_PASSWORD` via `environment:` block. Read-only mount of `artifacts/` directory (which contains `stack.env` and `secrets.env`).
-- Proposed: `OPENPALM_ADMIN_TOKEN` via `${VAR}` substitution only. No file mounts of secrets. No `artifacts/` mount.
+- Current: `OP_ADMIN_TOKEN`, `OPENCODE_SERVER_PASSWORD` via `environment:` block. Read-only mount of `artifacts/` directory (which contains `stack.env` and `secrets.env`).
+- Proposed: `OP_ADMIN_TOKEN` via `${VAR}` substitution only. No file mounts of secrets. No `artifacts/` mount.
 - **Improvement: Moderate.** Scheduler loses filesystem access to the staged secrets files. It still needs ADMIN_TOKEN to call the admin API, which is appropriate.
 
 **Caddy:**
@@ -372,7 +372,7 @@ A per-container comparison of secret exposure between current and proposed desig
 
 **Overall assessment: The proposed model is strictly better for secret isolation.** The most impactful changes are: (1) guardian loses access to all secrets files and LLM keys, (2) assistant loses ADMIN_TOKEN, and (3) scheduler loses filesystem access to secrets files. No container loses access to secrets it legitimately needs.
 
-**One gap to address:** The proposal table (Section 3.2) shows memory receiving `OPENAI_API_KEY` and `OPENAI_BASE_URL` via `${VAR}` from `user.env`. Docker Compose `--env-file` reads the file host-side for variable substitution, so ALL variables in both `user.env` and `system.env` are available for `${VAR}` resolution in compose files. This means a component compose overlay could reference `${OPENPALM_ADMIN_TOKEN}` and it would be resolved from `system.env`, injecting the admin token into an arbitrary container. The per-container allowlist is enforced by the compose `environment:` block (only listed variables are injected), but component overlays write their own `environment:` blocks. The compose overlay validator (recommendation #1 from the initial review) must also validate that component `environment:` blocks do not reference system-secret variables (`OPENPALM_ADMIN_TOKEN`, `MEMORY_AUTH_TOKEN`, `OPENCODE_SERVER_PASSWORD`, `CHANNEL_*_SECRET`).
+**One gap to address:** The proposal table (Section 3.2) shows memory receiving `OPENAI_API_KEY` and `OPENAI_BASE_URL` via `${VAR}` from `user.env`. Docker Compose `--env-file` reads the file host-side for variable substitution, so ALL variables in both `user.env` and `system.env` are available for `${VAR}` resolution in compose files. This means a component compose overlay could reference `${OP_ADMIN_TOKEN}` and it would be resolved from `system.env`, injecting the admin token into an arbitrary container. The per-container allowlist is enforced by the compose `environment:` block (only listed variables are injected), but component overlays write their own `environment:` blocks. The compose overlay validator (recommendation #1 from the initial review) must also validate that component `environment:` blocks do not reference system-secret variables (`OP_ADMIN_TOKEN`, `MEMORY_AUTH_TOKEN`, `OPENCODE_SERVER_PASSWORD`, `CHANNEL_*_SECRET`).
 
 ### Pass Plan Impact
 
@@ -422,7 +422,7 @@ The proposal removes the guardian's bind mount of the secrets file and relies ex
 
 22. **UPDATE: PlaintextBackend for two-file model.** The `PlaintextBackend` implementation from the pass plan must be updated to handle two separate files (`user.env` and `system.env`). Add a file-routing layer that maps each secret key to its target file based on whether it is a user-facing or system-managed secret. The `CORE_ENV_TO_SECRET_KEY` map should include a `targetFile: 'user' | 'system'` attribute.
 
-23. **ADD: Compose overlay variable reference validation.** Extend the compose overlay validator (recommendation #1 from initial review) to reject component `environment:` blocks that reference system-secret variables via `${VAR}` substitution. Specifically, block references to `OPENPALM_ADMIN_TOKEN`, `ASSISTANT_TOKEN`, `MEMORY_AUTH_TOKEN`, `OPENCODE_SERVER_PASSWORD`, and `CHANNEL_*_SECRET` in component overlays. These variables are available for substitution (because Docker Compose reads both env files host-side) but should not be exposed to arbitrary components.
+23. **ADD: Compose overlay variable reference validation.** Extend the compose overlay validator (recommendation #1 from initial review) to reject component `environment:` blocks that reference system-secret variables via `${VAR}` substitution. Specifically, block references to `OP_ADMIN_TOKEN`, `ASSISTANT_TOKEN`, `MEMORY_AUTH_TOKEN`, `OPENCODE_SERVER_PASSWORD`, and `CHANNEL_*_SECRET` in component overlays. These variables are available for substitution (because Docker Compose reads both env files host-side) but should not be exposed to arbitrary components.
 
 24. **UPDATE: Varlock schema split for pass backend.** The pass plan's Phase 3 schema (`secrets.env.schema`) must be split into `user.env.schema` and `system.env.schema`, each with their own `@plugin` declaration. Document the Varlock invocation pattern for containers that need both schemas (admin) versus containers that need only one (assistant: `user.env.schema` only).
 

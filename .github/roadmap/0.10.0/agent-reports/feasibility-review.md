@@ -343,7 +343,7 @@ The FS refactor proposal (`fs-mounts-refactor.md`) collapses the three-tier XDG 
 - **Estimate: 1-2 days**
 
 **Asset files:**
-- `assets/docker-compose.yml` — all 16 bind mount paths change (e.g., `${OPENPALM_DATA_HOME:-...}/memory:/data` becomes `${OPENPALM_HOME:-...}/data/memory:/data`)
+- `assets/docker-compose.yml` — all 16 bind mount paths change (e.g., `${OP_DATA_HOME:-...}/memory:/data` becomes `${OP_HOME:-...}/data/memory:/data`)
 - `assets/admin.yml` — all 14 bind mount paths change; admin's clever "mount same host path" pattern must be redesigned since the admin no longer needs to mount 3 separate XDG trees
 - `compose.dev.yaml` — env file paths change
 - `assets/Caddyfile` — channel import paths change
@@ -398,7 +398,7 @@ My previous revised scope was 30-44 days. Adding the FS refactor makes it 38-56 
 Positive synergy:
 1. **Single rewrite of staging pipeline.** The component system eliminates channel-specific staging (`stageChannelYmlFiles`, `stageChannelCaddyfiles`). The FS refactor eliminates the staging tier itself (`persistArtifacts` writing to `STATE_HOME/artifacts/`). Doing both means `staging.ts` is rewritten once with a clear new model: components live in `config/components/`, validation happens in-place, and rollback uses `~/.cache/openpalm/rollback/`.
 
-2. **Component compose overlays align with new directory layout.** The component plan has instances at `${OPENPALM_DATA}/components/`. The FS refactor puts everything under `~/.openpalm/`. The compose invocation in the FS refactor (`-f ~/.openpalm/config/components/core.yml -f ~/.openpalm/config/components/channel-slack.yml --env-file ~/.openpalm/vault/system.env --env-file ~/.openpalm/vault/user.env`) is cleaner than mixing XDG paths with component data paths.
+2. **Component compose overlays align with new directory layout.** The component plan has instances at `${OP_DATA}/components/`. The FS refactor puts everything under `~/.openpalm/`. The compose invocation in the FS refactor (`-f ~/.openpalm/config/components/core.yml -f ~/.openpalm/config/components/channel-slack.yml --env-file ~/.openpalm/vault/system.env --env-file ~/.openpalm/vault/user.env`) is cleaner than mixing XDG paths with component data paths.
 
 3. **`ControlPlaneState` type only changes once.** Currently `{ stateDir, configDir, dataDir }`. The component system would add component-related fields. The FS refactor would replace the three dirs with a single root. Doing both means the type changes once.
 
@@ -409,7 +409,7 @@ Negative synergy:
 
 2. **Debugging difficulty.** During development, when something breaks, it is harder to determine whether the issue is from the component model change or the directory layout change. Isolating bugs in a dual-rewrite is significantly harder than in a single-rewrite.
 
-3. **The component plan already uses XDG paths.** The `openpalm-components-plan.md` explicitly says "Preserve three-tier XDG model" and references `${OPENPALM_CONFIG}`, `${OPENPALM_DATA}`, `${OPENPALM_STATE}` throughout. The FS refactor contradicts this. The component plan would need to be revised to use the new layout, adding coordination overhead.
+3. **The component plan already uses XDG paths.** The `openpalm-components-plan.md` explicitly says "Preserve three-tier XDG model" and references `${OP_CONFIG}`, `${OP_DATA}`, `${OP_STATE}` throughout. The FS refactor contradicts this. The component plan would need to be revised to use the new layout, adding coordination overhead.
 
 ### Migration Complexity
 
@@ -473,7 +473,7 @@ The proposal adds a `fs.watch()` call in the assistant entrypoint that modifies 
 
 14. **ADD the FS refactor to 0.10.0 scope, but ONLY if the component system rewrite is committed.** The FS refactor makes most sense when done alongside #301 because both rewrite the same code. Doing the FS refactor alone (without #301) or after #301 (as a separate release) doubles the rewrite effort on `staging.ts`, `lifecycle.ts`, and the test suite. The natural pairing is: "0.10.0 is the big infrastructure overhaul — new extension model, new directory layout, clean break." This is a legitimate "rip off the bandaid" moment.
 
-15. **UPDATE the component plan (`openpalm-components-plan.md`) to use `~/.openpalm/` paths.** The current plan references `${OPENPALM_CONFIG}`, `${OPENPALM_DATA}`, `${OPENPALM_STATE}` and explicitly says "Preserve three-tier XDG model." If the FS refactor is adopted, the component plan must be revised. Component instances would live at `~/.openpalm/data/components/` (not `${OPENPALM_DATA}/components/`), and `enabled.json` would move accordingly.
+15. **UPDATE the component plan (`openpalm-components-plan.md`) to use `~/.openpalm/` paths.** The current plan references `${OP_CONFIG}`, `${OP_DATA}`, `${OP_STATE}` and explicitly says "Preserve three-tier XDG model." If the FS refactor is adopted, the component plan must be revised. Component instances would live at `~/.openpalm/data/components/` (not `${OP_DATA}/components/`), and `enabled.json` would move accordingly.
 
 16. **ADD a unified migration tool to the scope.** A `openpalm migrate` command that handles both the XDG-to-openpalm-home relocation and the channel-to-component transition in a single atomic operation. **Estimate: 3-4 days** (includes the env file splitting logic, directory relocation, and validation). This is non-negotiable if both breaking changes ship in the same release.
 

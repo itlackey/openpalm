@@ -9,15 +9,13 @@ const rootDir = resolve(__dirname, "../..");
 
 /** Keys whose values are filesystem paths and must be resolved relative to rootDir */
 const PATH_KEYS = new Set([
-  "OPENPALM_CONFIG_HOME",
-  "OPENPALM_DATA_HOME",
-  "OPENPALM_STATE_HOME",
-  "OPENPALM_WORK_DIR"
+  "OP_HOME",
+  "OP_WORK_DIR"
 ]);
 
 export default defineConfig(({ mode }) => {
   // Load .env from repo root and populate process.env for server-side code.
-  // Path values (OPENPALM_*_HOME) are resolved relative to rootDir so that
+  // Path values (OP_*_HOME) are resolved relative to rootDir so that
   // the same relative paths used by Docker Compose (e.g. "../.dev/config")
   // work correctly for the Vite dev server regardless of CWD.
   const env = loadEnv(mode, rootDir, "");
@@ -33,12 +31,6 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [sveltekit(), devtoolsJson()],
     envDir: rootDir,
-    resolve: {
-      alias: {
-        "$assets": resolve(__dirname, "../../assets"),
-        "$registry": resolve(__dirname, "../../registry")
-      }
-    },
     test: {
       expect: { requireAssertions: true },
       projects: [
@@ -49,9 +41,9 @@ export default defineConfig(({ mode }) => {
             browser: {
               enabled: true,
               provider: playwright(),
-              instances: [{ browser: "chromium", headless: true }]
+              instances: [{ browser: "chromium", name: "chromium", headless: true }]
             },
-            include: ["src/**/*.svelte.{test,spec}.{js,ts}"],
+            include: ["src/**/*.svelte.vitest.{js,ts}"],
             exclude: ["src/lib/server/**"]
           }
         },
@@ -61,8 +53,8 @@ export default defineConfig(({ mode }) => {
           test: {
             name: "server",
             environment: "node",
-            include: ["src/**/*.{test,spec}.{js,ts}"],
-            exclude: ["src/**/*.svelte.{test,spec}.{js,ts}"]
+            include: ["src/**/*.vitest.{js,ts}"],
+            exclude: ["src/**/*.svelte.vitest.{js,ts}"]
           }
         }
       ]

@@ -15,17 +15,26 @@ Repo layout convention:
 | [setup-guide.md](setup-guide.md) | Installation, updating, troubleshooting |
 | [setup-walkthrough.md](setup-walkthrough.md) | Visual walkthrough of every setup wizard screen |
 | [troubleshooting.md](troubleshooting.md) | Top 10 common problems and solutions |
-| [manual-setup.md](manual-setup.md) | Step-by-step manual host configuration (no scripts) |
+| [manual-compose-runbook.md](operations/manual-compose-runbook.md) | Step-by-step manual host configuration (no scripts) |
 | [how-it-works.md](how-it-works.md) | Architecture overview and data flow |
 | [managing-openpalm.md](managing-openpalm.md) | Configuration, channels, secrets, access control, automations |
-| [discord-setup.md](discord-setup.md) | Discord bot setup — create app, install channel, invite bot |
+| [discord-setup.md](channels/discord-setup.md) | Discord bot setup — create app, install channel, invite bot |
+| [slack-setup.md](channels/slack-setup.md) | Slack bot setup — create app, install channel, configure Socket Mode |
+
+## Operations
+
+| Document | Description |
+|---|---|
+| [manual-compose-runbook.md](operations/manual-compose-runbook.md) | Step-by-step manual host configuration (no scripts) |
+| [diagnostic-playbook.md](operations/diagnostic-playbook.md) | Layer-by-layer debugging workflow for UI, admin API, OpenCode, and container/config issues |
 
 ## Architecture (must-read for contributors)
 
 | Document | Description |
 |---|---|
-| [core-principles.md](technical/core-principles.md) | **Authoritative.** 9 core goals, 4 security invariants, filesystem + volume-mount contracts |
-| [directory-structure.md](technical/directory-structure.md) | XDG three-tier layout (CONFIG / DATA / STATE) |
+| [core-principles.md](technical/core-principles.md) | **Authoritative.** Core goals, security invariants, filesystem + volume-mount contracts |
+| [foundations.md](technical/foundations.md) | Stripped-down runtime contract for env, filesystem, mounts, and networks |
+| [undocumented-details.md](technical/undocumented-details.md) | Source-backed inventory of important runtime details not yet covered in the primary docs |
 | [docker-dependency-resolution.md](technical/docker-dependency-resolution.md) | **Mandatory.** Docker build patterns — no Bun in admin, no symlinks |
 
 ## Implementation rules

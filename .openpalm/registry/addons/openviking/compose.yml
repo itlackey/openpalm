@@ -1,0 +1,44 @@
+# Addon: OpenViking — knowledge management and semantic search engine
+services:
+  openviking:
+    # Image tag configurable via .env for operator upgrades
+    image: ghcr.io/volcengine/openviking:${OPENVIKING_IMAGE_TAG:-v0.2.12}
+    restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    environment:
+      # OpenViking expands these placeholders from /app/ov.conf at runtime.
+      OV_EMBEDDING_PROVIDER: ${OP_CAP_EMBEDDINGS_PROVIDER:-openai}
+      OV_EMBEDDING_MODEL: ${OP_CAP_EMBEDDINGS_MODEL:-}
+      OV_EMBEDDING_API_KEY: ${OP_CAP_EMBEDDINGS_API_KEY:-}
+      OV_EMBEDDING_BASE_URL: ${OP_CAP_EMBEDDINGS_BASE_URL:-}
+      OV_EMBEDDING_DIMS: ${OP_CAP_EMBEDDINGS_DIMS:-768}
+      OPENVIKING_API_KEY: ${OPENVIKING_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["openviking-server", "--config", "/app/ov.conf"]
+    volumes:
+      - ${OP_HOME}/data/openviking:/workspace
+      - ${OP_HOME}/stack/addons/openviking/config/ov.conf:/app/ov.conf:ro
+    networks: [assistant_net]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      # curl is available in the OpenViking image (Python 3.13 + Debian)
+      test: ["CMD", "curl", "-sf", "http://localhost:1933/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    labels:
+      openpalm.name: OpenViking
+      openpalm.description: Knowledge management and semantic search engine
+      openpalm.icon: brain
+      openpalm.category: ai
+      openpalm.healthcheck: http://openviking:1933/health
+
+  # Extend the existing assistant service with Viking env vars (additive only)
+  assistant:
+    environment:
+      OPENVIKING_URL: http://openviking:1933
+      OPENVIKING_API_KEY: ${OPENVIKING_API_KEY:-}

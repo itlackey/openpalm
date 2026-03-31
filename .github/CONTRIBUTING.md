@@ -45,9 +45,9 @@ bun run test             # all non-admin tests (sdk, guardian, channels, cli)
 bun run check            # admin:check + sdk:test
 ```
 
-`dev:stack` pulls pre-built images from the registry — use it for quick starts and testing admin apply flows. `dev:build` compiles all images from local source using `compose.dev.yaml` — use it when developing services or testing Dockerfile changes.
+`dev:stack` pulls pre-built images from the configured container registries — use it for quick starts and testing admin apply flows. `dev:build` compiles all images from local source using `compose.dev.yml` — use it when developing services or testing Dockerfile changes.
 
-`dev-setup.sh --seed-env` seeds `.dev/config/secrets.env` from `assets/secrets.env` and sets the `OPENPALM_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
+`dev-setup.sh --seed-env` seeds `.dev/vault/user/user.env` and `.dev/vault/stack/stack.env` and sets the `OP_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
 
 ## 1. Clone and bootstrap
 
@@ -55,16 +55,15 @@ bun run check            # admin:check + sdk:test
 git clone https://github.com/itlackey/openpalm.git
 cd openpalm
 bun install            # Installs all workspace dependencies
-bun run dev:setup      # Creates .dev/ dirs, seeds secrets.env and stack.env
+bun run dev:setup      # Creates .dev/ dirs, seeds vault env files
 ```
 
 `dev:setup` runs [`scripts/dev-setup.sh --seed-env`](../scripts/dev-setup.sh), which:
 
-- Creates the `.dev/config`, `.dev/data`, and `.dev/state` directories
-- Seeds `.dev/config/secrets.env` from [`assets/secrets.env`](../assets/secrets.env)
-- Generates `.dev/state/artifacts/stack.env` with auto-detected host values
+- Creates the `.dev/config`, `.dev/vault`, `.dev/data`, and `.dev/logs` directories
+- Seeds `.dev/vault/user/user.env` and `.dev/vault/stack/stack.env` with dev-safe defaults
 
-After setup, edit `.dev/config/secrets.env` to add your `ADMIN_TOKEN` and any LLM provider keys.
+After setup, edit `.dev/vault/user/user.env` to add your LLM provider keys.
 
 ## 2. Run the admin UI (no Docker needed)
 
@@ -80,10 +79,10 @@ Two options depending on what you're working on:
 
 | Script | What it does |
 |--------|--------------|
-| `bun run dev:stack` | Pulls pre-built images from the registry. Fast start for testing admin workflows. |
-| `bun run dev:build` | Builds all images from local source via [`compose.dev.yaml`](../compose.dev.yaml). Use when developing services or testing Dockerfile changes. |
+| `bun run dev:stack` | Pulls pre-built images from the configured container registries. Fast start for testing admin workflows. |
+| `bun run dev:build` | Builds all images from local source via [`compose.dev.yml`](../compose.dev.yml). Use when developing services or testing Dockerfile changes. |
 
-Both scripts read env files from `.dev/state/artifacts/`.
+Both scripts read env files from `.dev/vault/`.
 
 ## 4. Run tests and checks
 
@@ -146,17 +145,17 @@ All scripts are defined in the root [`package.json`](../package.json):
 
 ## Dev directory layout
 
-Dev mode mirrors the production [XDG three-tier layout](../docs/technical/directory-structure.md) under `.dev/`:
+Dev mode mirrors the production [filesystem contract](../docs/technical/foundations.md) under `.dev/`:
 
 ```
 .dev/
-├── config/          # CONFIG_HOME — secrets.env, channels/, assistant/
-├── data/            # DATA_HOME  — memory, assistant, guardian data
-└── state/           # STATE_HOME — assembled runtime artifacts
-    └── artifacts/   # stack.env, secrets.env, docker-compose.yml
+├── config/          # User-editable, non-secret configuration
+├── vault/           # Secrets: vault/user/user.env, vault/stack/stack.env
+├── data/            # Service-managed persistent data
+└── logs/            # Consolidated audit/debug output
 ```
 
-See [docs/technical/directory-structure.md](../docs/technical/directory-structure.md) for the full tree.
+See [docs/technical/foundations.md](../docs/technical/foundations.md) for the full filesystem contract.
 
 ## Before submitting a PR
 
@@ -183,7 +182,6 @@ OpenPalm publishes npm packages on an independent release cycle from Docker imag
 | [docs/technical/core-principles.md](../docs/technical/core-principles.md) | **Must-read.** Security invariants, filesystem contract, architectural rules |
 | [docs/technical/code-quality-principles.md](../docs/technical/code-quality-principles.md) | TypeScript strictness, module design, error handling |
 | [docs/technical/docker-dependency-resolution.md](../docs/technical/docker-dependency-resolution.md) | **Mandatory.** How Docker builds resolve deps across the monorepo |
-| [docs/technical/directory-structure.md](../docs/technical/directory-structure.md) | XDG tiers, volume mounts, dev vs. production paths |
 | [docs/technical/api-spec.md](../docs/technical/api-spec.md) | Admin API endpoint contract |
 | [docs/technical/bunjs-rules.md](../docs/technical/bunjs-rules.md) | Bun-specific patterns (guardian, channels, SDK) |
 | [docs/technical/sveltekit-rules.md](../docs/technical/sveltekit-rules.md) | SvelteKit patterns (admin UI) |

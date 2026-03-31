@@ -1,0 +1,27 @@
+{
+  "score_cap": 1000,
+  "exclude_directories": [
+    "node_modules",
+    "__fixtures__",
+    ".svelte-kit",
+    ".dev",
+    ".openpalm",
+    "dist",
+    "build",
+    ".github"
+  ],
+  "exclude_filenames": [
+    "*.test.{ts,tsx}",
+    "*.spec.{ts,tsx}",
+    "*.vitest.{ts,tsx}",
+    "*.pw.{ts,tsx}",
+    "*.test.{js,jsx}",
+    "*.spec.{js,jsx}",
+    "*.vitest.{js,jsx}",
+    "*.pw.{js,jsx}",
+    "*.svelte.vitest.ts",
+    "*.d.ts"
+  ],
+  "include_comments": false,
+  "exclude_under": 10
+}

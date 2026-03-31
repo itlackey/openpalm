@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
  */
 
 const TEST_DIR = join(tmpdir(), `scheduler-server-test-${Date.now()}`);
-const AUTOMATIONS_DIR = join(TEST_DIR, "automations");
+const AUTOMATIONS_DIR = join(TEST_DIR, "config", "automations");
 const PORT = 18090 + Math.floor(Math.random() * 1000);
 const BASE_URL = `http://localhost:${PORT}`;
 const ADMIN_TOKEN = "test-server-token";
@@ -53,8 +53,8 @@ beforeAll(async () => {
     env: {
       ...process.env,
       PORT: String(PORT),
-      OPENPALM_STATE_HOME: TEST_DIR,
-      OPENPALM_ADMIN_TOKEN: ADMIN_TOKEN,
+      OP_HOME: TEST_DIR,
+      OP_ADMIN_TOKEN: ADMIN_TOKEN,
     },
     stdout: "pipe",
     stderr: "pipe",

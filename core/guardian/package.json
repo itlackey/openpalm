@@ -1,6 +1,7 @@
 {
   "name": "@openpalm/guardian",
-  "version": "0.9.3",
+  "description": "HMAC-verified message gateway with replay detection and rate limiting",
+  "version": "0.10.0-rc13",
   "private": true,
   "license": "MPL-2.0",
   "type": "module",

@@ -1,13 +1,11 @@
 /**
- * Channel validation, discovery, install, and uninstall for the OpenPalm control plane.
- *
- * Install/uninstall functions accept a RegistryProvider for catalog access,
- * decoupling from Vite-specific imports.
+ * Channel validation, discovery, and allowlist checks for the OpenPalm control plane.
  */
-import { mkdirSync, writeFileSync, existsSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { parse as yamlParse } from "yaml";
 import type { ChannelInfo } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
-import type { RegistryProvider } from "./registry-provider.js";
 
 // ── Channel Name Validation ───────────────────────────────────────────
 
@@ -21,32 +19,61 @@ function isValidChannelName(name: string): boolean {
 // ── Channel Discovery ─────────────────────────────────────────────────
 
 /**
- * Discover installed channels by scanning CONFIG_HOME/channels/.
+ * Check if a compose file defines a channel service (has CHANNEL_NAME or GUARDIAN_URL).
+ * This is compose-derived: we parse the actual compose content rather than
+ * relying on filename patterns or directory naming conventions.
+ */
+export function isChannelAddon(composePath: string): boolean {
+  try {
+    const content = readFileSync(composePath, "utf-8");
+    const doc = yamlParse(content);
+    if (typeof doc !== "object" || doc === null) return false;
+    const services = (doc as Record<string, unknown>).services;
+    if (typeof services !== "object" || services === null) return false;
+
+    for (const svcDef of Object.values(services as Record<string, unknown>)) {
+      if (typeof svcDef !== "object" || svcDef === null) continue;
+      const env = (svcDef as Record<string, unknown>).environment;
+      if (typeof env === "object" && env !== null) {
+        if (Array.isArray(env)) {
+          if (env.some((e: unknown) => typeof e === "string" && (e.startsWith("CHANNEL_NAME=") || e.startsWith("GUARDIAN_URL=")))) return true;
+        } else {
+          if ("CHANNEL_NAME" in (env as Record<string, unknown>) || "GUARDIAN_URL" in (env as Record<string, unknown>)) return true;
+        }
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Discover installed channels by scanning stack/addons/ for channel addons.
+ * A channel addon is identified by compose-derived truth: its compose.yml
+ * defines services with CHANNEL_NAME or GUARDIAN_URL environment variables.
  *
- * A channel is any .yml file in the channels directory.
- * A .caddy file is optional — if present, the channel gets Caddy HTTP routing.
- * If absent, the channel is only accessible on the Docker network (host + containers).
+ * Non-channel addons (admin, ollama, etc.) are excluded.
+ *
+ * @param configDir - The config directory (~/.openpalm/config). The stack
+ *   directory is derived from the parent (homeDir).
  */
 export function discoverChannels(configDir: string): ChannelInfo[] {
-  const channelsDir = `${configDir}/channels`;
-  if (!existsSync(channelsDir)) return [];
+  const homeDir = dirname(configDir);
+  const addonsDir = `${homeDir}/stack/addons`;
+  if (!existsSync(addonsDir)) return [];
 
-  const files = readdirSync(channelsDir);
-  const ymlFiles = files.filter((f) => f.endsWith(".yml"));
-  const caddyFiles = new Set(files.filter((f) => f.endsWith(".caddy")));
-
-  return ymlFiles
-    .map((ymlFile) => {
-      const name = ymlFile.replace(/\.yml$/, "");
-      const caddyFile = `${name}.caddy`;
-      const hasCaddy = caddyFiles.has(caddyFile);
-      return {
-        name,
-        hasRoute: hasCaddy,
-        ymlPath: `${channelsDir}/${ymlFile}`,
-        caddyPath: hasCaddy ? `${channelsDir}/${caddyFile}` : null
-      };
+  const entries = readdirSync(addonsDir, { withFileTypes: true });
+  return entries
+    .filter((entry) => {
+      if (!entry.isDirectory()) return false;
+      const composePath = `${addonsDir}/${entry.name}/compose.yml`;
+      return existsSync(composePath) && isChannelAddon(composePath);
     })
+    .map((entry) => ({
+      name: entry.name,
+      ymlPath: `${addonsDir}/${entry.name}/compose.yml`,
+    }))
     .filter((ch) => isValidChannelName(ch.name));
 }
 
@@ -54,146 +81,51 @@ export function discoverChannels(configDir: string): ChannelInfo[] {
 
 /**
  * Check if a service name is allowed. Core services are always allowed.
- * Ollama is allowed when its compose overlay is staged.
- * Channel services (channel-*) are allowed if a corresponding staged .yml exists
- * in STATE_HOME/artifacts/channels/.
+ * Addon services are allowed if they appear as a compose service defined in
+ * any addon compose file under stack/addons/. This is compose-derived: the
+ * actual compose content is checked, not directory naming conventions.
  */
-export function isAllowedService(value: string, stateDir?: string): boolean {
+export function isAllowedService(value: string, configDir?: string): boolean {
   if (!value || !value.trim() || value !== value.toLowerCase()) return false;
   if ((CORE_SERVICES as string[]).includes(value)) return true;
-  if (value === "ollama" && stateDir) {
-    return existsSync(`${stateDir}/artifacts/ollama.yml`);
-  }
-  if ((value === "admin" || value === "caddy" || value === "docker-socket-proxy") && stateDir) {
-    return existsSync(`${stateDir}/artifacts/admin.yml`);
-  }
-  if (value.startsWith("channel-")) {
-    const ch = value.slice("channel-".length);
-    if (!isValidChannelName(ch)) return false;
-    if (stateDir) {
-      return existsSync(`${stateDir}/artifacts/channels/${ch}.yml`);
+
+  if (configDir) {
+    const homeDir = dirname(configDir);
+    const addonsDir = `${homeDir}/stack/addons`;
+    if (!existsSync(addonsDir)) return false;
+
+    // Check if any addon compose.yml defines this service name (YAML-parsed)
+    for (const entry of readdirSync(addonsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const composePath = `${addonsDir}/${entry.name}/compose.yml`;
+      if (!existsSync(composePath)) continue;
+      try {
+        const content = readFileSync(composePath, "utf-8");
+        const doc = yamlParse(content);
+        if (typeof doc === "object" && doc !== null) {
+          const services = (doc as Record<string, unknown>).services;
+          if (typeof services === "object" && services !== null && value in (services as Record<string, unknown>)) {
+            return true;
+          }
+        }
+      } catch {
+        continue;
+      }
     }
   }
   return false;
 }
 
 /**
- * Check if a channel name is valid. Accepts any channel with a staged
- * .yml file in STATE_HOME/artifacts/channels/.
+ * Check if a channel name is valid and installed.
+ * Accepts any channel with a compose.yml in stack/addons/<name>/.
  */
-export function isValidChannel(value: string, stateDir?: string): boolean {
+export function isValidChannel(value: string, configDir?: string): boolean {
   if (!value || !value.trim()) return false;
   if (!isValidChannelName(value)) return false;
-  if (stateDir) {
-    return existsSync(`${stateDir}/artifacts/channels/${value}.yml`);
+  if (configDir) {
+    const homeDir = dirname(configDir);
+    return existsSync(`${homeDir}/stack/addons/${value}/compose.yml`);
   }
   return false;
-}
-
-// ── Channel Install / Uninstall ─────────────────────────────────────────
-
-/**
- * Install a channel from the registry catalog into CONFIG_HOME/channels/.
- * Copies the .yml (and optional .caddy) from the registry provider.
- * Refuses if the channel is already installed (files already exist).
- */
-export function installChannelFromRegistry(
-  name: string,
-  configDir: string,
-  registry: RegistryProvider
-): { ok: true } | { ok: false; error: string } {
-  if (!isValidChannelName(name)) {
-    return { ok: false, error: `Invalid channel name: ${name}` };
-  }
-  const channelYml = registry.channelYml();
-  if (!(name in channelYml)) {
-    return { ok: false, error: `Channel "${name}" not found in registry` };
-  }
-  const channelsDir = `${configDir}/channels`;
-  mkdirSync(channelsDir, { recursive: true });
-
-  const ymlPath = `${channelsDir}/${name}.yml`;
-  if (existsSync(ymlPath)) {
-    return { ok: false, error: `Channel "${name}" is already installed` };
-  }
-
-  writeFileSync(ymlPath, channelYml[name]);
-  const channelCaddy = registry.channelCaddy();
-  if (name in channelCaddy) {
-    writeFileSync(`${channelsDir}/${name}.caddy`, channelCaddy[name]);
-  }
-  return { ok: true };
-}
-
-/**
- * Uninstall a channel by removing its .yml (and .caddy) from CONFIG_HOME/channels/.
- */
-export function uninstallChannel(
-  name: string,
-  configDir: string
-): { ok: true } | { ok: false; error: string } {
-  if (!isValidChannelName(name)) {
-    return { ok: false, error: `Invalid channel name: ${name}` };
-  }
-  const channelsDir = `${configDir}/channels`;
-  const ymlPath = `${channelsDir}/${name}.yml`;
-  if (!existsSync(ymlPath)) {
-    return { ok: false, error: `Channel "${name}" is not installed` };
-  }
-
-  rmSync(ymlPath, { force: true });
-  rmSync(`${channelsDir}/${name}.caddy`, { force: true });
-  return { ok: true };
-}
-
-// ── Automation Install / Uninstall ──────────────────────────────────────
-
-/** Strict automation name: same rules as channel names */
-const AUTOMATION_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
-
-/**
- * Install an automation from the registry catalog into CONFIG_HOME/automations/.
- */
-export function installAutomationFromRegistry(
-  name: string,
-  configDir: string,
-  registry: RegistryProvider
-): { ok: true } | { ok: false; error: string } {
-  if (!AUTOMATION_NAME_RE.test(name)) {
-    return { ok: false, error: `Invalid automation name: ${name}` };
-  }
-  const automationYml = registry.automationYml();
-  if (!(name in automationYml)) {
-    return { ok: false, error: `Automation "${name}" not found in registry` };
-  }
-  const automationsDir = `${configDir}/automations`;
-  mkdirSync(automationsDir, { recursive: true });
-
-  const ymlPath = `${automationsDir}/${name}.yml`;
-  if (existsSync(ymlPath)) {
-    return { ok: false, error: `Automation "${name}" is already installed` };
-  }
-
-  writeFileSync(ymlPath, automationYml[name]);
-  return { ok: true };
-}
-
-/**
- * Uninstall an automation by removing its .yml from CONFIG_HOME/automations/.
- */
-export function uninstallAutomation(
-  name: string,
-  configDir: string
-): { ok: true } | { ok: false; error: string } {
-  if (!AUTOMATION_NAME_RE.test(name)) {
-    return { ok: false, error: `Invalid automation name: ${name}` };
-  }
-  const automationsDir = `${configDir}/automations`;
-  const ymlPath = `${automationsDir}/${name}.yml`;
-  if (!existsSync(ymlPath)) {
-    return { ok: false, error: `Automation "${name}" is not installed` };
-  }
-
-  rmSync(ymlPath, { force: true });
-  return { ok: true };
 }

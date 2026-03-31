@@ -2,18 +2,18 @@ import {
   getRequestId,
   jsonResponse,
   errorResponse,
-  requireAdmin,
+  requireAuth,
   getActor,
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { appendAudit, buildComposeFileList, buildEnvFiles } from "$lib/server/control-plane.js";
+import { appendAudit, buildComposeOptions } from "@openpalm/lib";
 import { composeStats, checkDocker } from "$lib/server/docker.js";
 import type { RequestHandler } from "./$types";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authError = requireAdmin(event, requestId);
+  const authError = requireAuth(event, requestId);
   if (authError) return authError;
 
   const state = getState();
@@ -26,10 +26,7 @@ export const GET: RequestHandler = async (event) => {
     return errorResponse(503, "docker_unavailable", "Docker is not available", {}, requestId);
   }
 
-  const result = await composeStats(state.stateDir, {
-    files: buildComposeFileList(state),
-    envFiles: buildEnvFiles(state)
-  });
+  const result = await composeStats(buildComposeOptions(state));
 
   if (!result.ok) {
     appendAudit(state, actor, "containers.stats", { error: result.stderr }, false, requestId, callerType);
@@ -44,7 +41,8 @@ export const GET: RequestHandler = async (event) => {
         .split("\n")
         .filter((l) => l.startsWith("{"))
         .map((l) => JSON.parse(l));
-    } catch {
+    } catch (e) {
+      console.warn('[containers.stats] Failed to parse Docker stats output', e);
       appendAudit(state, actor, "containers.stats", { error: "Failed to parse stats output" }, false, requestId, callerType);
       return errorResponse(500, "parse_error", "Failed to parse Docker stats output", {}, requestId);
     }

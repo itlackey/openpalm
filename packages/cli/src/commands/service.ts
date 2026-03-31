@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty';
-import { runDockerCompose } from '../lib/docker.ts';
-import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
+import { ensureValidState } from '../lib/cli-state.ts';
+import { buildManagedServiceNames, runComposeWithPreflight, runComposeReadOnly } from '../lib/cli-compose.ts';
 import { runLogsAction } from './logs.ts';
 import { runStartAction } from './start.ts';
 import { runStopAction } from './stop.ts';
@@ -41,13 +41,12 @@ const logsCmd = defineCommand({
 const updateCmd = defineCommand({
   meta: { name: 'update', description: 'Pull latest images' },
   async run() {
-    const state = await ensureStagedState();
-    const composeArgs = fullComposeArgs(state);
-    const managedServices = buildManagedServiceNames(state);
+    const state = await ensureValidState();
+    const managedServices = await buildManagedServiceNames(state);
     console.log('Pulling latest images...');
-    await runDockerCompose([...composeArgs, 'pull', ...managedServices]);
+    await runComposeWithPreflight(state, ['pull', ...managedServices]);
     console.log('Recreating containers...');
-    await runDockerCompose([...composeArgs, 'up', '-d', '--force-recreate', ...managedServices]);
+    await runComposeWithPreflight(state, ['up', '-d', '--force-recreate', ...managedServices]);
     console.log('Update complete.');
   },
 });
@@ -55,8 +54,8 @@ const updateCmd = defineCommand({
 const statusCmd = defineCommand({
   meta: { name: 'status', description: 'Show container status' },
   async run() {
-    const state = await ensureStagedState();
-    await runDockerCompose([...fullComposeArgs(state), 'ps', '--format', 'table']);
+    const state = await ensureValidState();
+    await runComposeReadOnly(state, ['ps', '--format', 'table']);
   },
 });
 
