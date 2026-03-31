@@ -3,6 +3,7 @@ import { MemoryContextPlugin } from "../opencode/plugins/memory-context.ts";
 import { isVikingConfigured } from "../opencode/tools/viking-lib.ts";
 
 // Default-export tools (single tool per file)
+import loadVault from "../opencode/tools/load_vault.ts";
 import healthCheck from "../opencode/tools/health-check.ts";
 import memorySearch from "../opencode/tools/memory-search.ts";
 import memoryAdd from "../opencode/tools/memory-add.ts";
@@ -32,6 +33,7 @@ export const plugin: Plugin = async (input) => {
   // Build tool map — Viking tools only when configured
   const tools: Record<string, unknown> = {
     // Single tools
+    "load_vault": loadVault,
     "health-check": healthCheck,
     "memory-search": memorySearch,
     "memory-add": memoryAdd,

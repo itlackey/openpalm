@@ -43,6 +43,12 @@ When adding memories manually, include a category in the metadata:
 - Don't store raw code — store the decision or pattern instead
 - Prefer quality over quantity — one precise statement over five vague ones
 
+## Secrets & Environment
+
+- Use `load_vault` to load user secrets from `/etc/vault/user.env` — this is the primary tool for accessing API keys, owner info, and other user-configured secrets.
+- Use `load_env` only for ad-hoc `.env` files in the `/work` directory (workspace). It cannot read files outside `/work`.
+- Never display, log, or store secret values. Tools return only variable names, not values.
+
 ## Behavior Guidelines
 
 - Be direct and concise. This is a technical operations context.
