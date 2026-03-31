@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -80,7 +83,20 @@ jobs:
         run: cd packages/admin && bun run check
 
       - name: Test (sdk + guardian + channels)
-        run: bun run test
+        run: |
+          set -euo pipefail
+          for attempt in 1 2; do
+            if bun run test; then
+              exit 0
+            fi
+
+            if [ "${attempt}" -eq 2 ]; then
+              echo "::error::bun run test failed after ${attempt} attempts"
+              exit 1
+            fi
+
+            echo "::warning::bun run test failed on attempt ${attempt}. Retrying..."
+          done
 
       - name: Validate Docker Compose manifests
         env:

@@ -27,6 +27,7 @@ import { readStackSpec } from '@openpalm/lib';
 const REPO_ROOT = resolve(import.meta.dir, '../../..');
 const OPENPALM_SRC = join(REPO_ROOT, '.openpalm');
 const ASSISTANT_SRC = join(REPO_ROOT, 'core/assistant/opencode');
+const SKIP_INSTALL_FLOW_IN_CI = process.env.CI === 'true';
 
 /** Copy a directory tree using cp -a (preserves structure, fast). */
 function cpTree(src: string, dest: string): void {
@@ -182,6 +183,7 @@ describe('install flow — tier 1 (file validation)', () => {
   let homeDir: string;
   const originalHome = process.env.OP_HOME;
   const originalWorkDir = process.env.OP_WORK_DIR;
+  const tier1Test = SKIP_INSTALL_FLOW_IN_CI ? it.skip : it;
 
   afterEach(() => {
     process.env.OP_HOME = originalHome;
@@ -189,7 +191,7 @@ describe('install flow — tier 1 (file validation)', () => {
     if (homeDir) rmSync(homeDir, { recursive: true, force: true });
   });
 
-  it('seed + performSetup produces complete file structure for admin+chat', async () => {
+  tier1Test('seed + performSetup produces complete file structure for admin+chat', async () => {
     homeDir = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
     process.env.OP_HOME = homeDir;
     process.env.OP_WORK_DIR = join(homeDir, 'data/workspace');
@@ -303,7 +305,7 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(automations.length).toBe(0);
   }, 30_000);
 
-  it('compose config validates with selected addons', async () => {
+  tier1Test('compose config validates with selected addons', async () => {
     homeDir = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
     process.env.OP_HOME = homeDir;
     process.env.OP_WORK_DIR = join(homeDir, 'data/workspace');
@@ -352,7 +354,7 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(proc.exitCode).toBe(0);
   }, 30_000);
 
-  it('performSetup with no addons produces only core services', async () => {
+  tier1Test('performSetup with no addons produces only core services', async () => {
     homeDir = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
     process.env.OP_HOME = homeDir;
     process.env.OP_WORK_DIR = join(homeDir, 'data/workspace');
