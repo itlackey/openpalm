@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Bump the "version" field in platform package.json files only.
-# Platform packages = root, packages/admin, core/guardian, packages/cli.
-# npm packages (channels-sdk, channel-*, assistant-tools) are versioned
-# independently via their own publish workflows.
+# Platform package manifests are sourced from
+# .github/release-package-groups.json -> platformManifests.
+# Independent npm packages (channel-*, assistant-tools, admin-tools) are
+# published by their own workflows.
 #
 # Usage: ./scripts/bump-platform.sh 0.8.0
 set -euo pipefail
@@ -16,16 +17,28 @@ fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# Platform manifests — these ship as Docker images or CLI binaries and
-# share a single coordinated version number.
-MANIFESTS=(
-  package.json
-  packages/admin/package.json
-  core/guardian/package.json
-  packages/cli/package.json
+GROUPS_JSON="${ROOT}/.github/release-package-groups.json"
+if [ ! -f "${GROUPS_JSON}" ]; then
+  echo "Error: missing ${GROUPS_JSON}" >&2
+  exit 1
+fi
+
+MANIFESTS=""
+while IFS= read -r line; do
+  MANIFESTS="${MANIFESTS}${MANIFESTS:+ }${line}"
+done < <(
+  node -e "
+    const fs = require('node:fs');
+    const groups = JSON.parse(fs.readFileSync(process.argv[1], 'utf-8'));
+    if (!Array.isArray(groups.platformManifests)) {
+      console.error('Error: platformManifests must be an array.');
+      process.exit(1);
+    }
+    process.stdout.write(groups.platformManifests.join('\n'));
+  " "${GROUPS_JSON}"
 )
 
-for manifest in "${MANIFESTS[@]}"; do
+for manifest in ${MANIFESTS}; do
   file="${ROOT}/${manifest}"
   if [ ! -f "${file}" ]; then
     echo "skip (not found): ${manifest}"

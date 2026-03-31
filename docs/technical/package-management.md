@@ -40,7 +40,7 @@ All `@openpalm/*` cross-references in `dependencies`, `devDependencies`, and `pe
 
 ### Keeping ranges in sync
 
-Platform packages (root, `packages/admin`, `core/guardian`, `packages/cli`) share a coordinated version bumped by `scripts/bump-platform.sh`. npm packages (`packages/channels-sdk`, `packages/channel-*`, `packages/assistant-tools`) are versioned independently via per-package publish workflows. Cross-references between the two groups use real semver ranges and are updated manually when a dependency's API changes.
+Platform packages (root, `packages/lib`, `packages/admin`, `core/guardian`, `packages/cli`, `packages/channels-sdk`) share a coordinated version bumped by `scripts/bump-platform.sh` and published from the release workflow. Independent npm packages (`packages/channel-*`, `packages/assistant-tools`, `packages/admin-tools`) are versioned via per-package publish workflows. Cross-references between groups use real semver ranges and are updated manually when a dependency's API changes.
 
 ### Why Docker builds don't use lock files
 

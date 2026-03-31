@@ -74,7 +74,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Install Bun workspace dependencies
         run: bun install --frozen-lockfile
@@ -145,7 +145,8 @@ jobs:
         run: |
           set -euo pipefail
           ROOT_VERSION=$(jq -r .version package.json)
-          PLATFORM_MANIFESTS="packages/admin/package.json core/guardian/package.json packages/cli/package.json packages/channels-sdk/package.json"
+          mapfile -t PLATFORM_MANIFESTS_ARR < <(jq -r '.platformManifests[]' .github/release-package-groups.json)
+          PLATFORM_MANIFESTS="${PLATFORM_MANIFESTS_ARR[*]}"
           errors=0
 
           for pkg in ${PLATFORM_MANIFESTS}; do
@@ -190,7 +191,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Install Bun workspace dependencies
         run: bun install --frozen-lockfile
@@ -216,7 +217,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Install Bun workspace dependencies
         run: bun install --frozen-lockfile

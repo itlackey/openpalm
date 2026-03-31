@@ -1,0 +1,18 @@
+{
+  "platformManifests": [
+    "package.json",
+    "packages/lib/package.json",
+    "packages/admin/package.json",
+    "core/guardian/package.json",
+    "packages/cli/package.json",
+    "packages/channels-sdk/package.json"
+  ],
+  "independentNpmPackages": [
+    "packages/channel-api",
+    "packages/channel-discord",
+    "packages/channel-slack",
+    "packages/channel-voice",
+    "packages/assistant-tools",
+    "packages/admin-tools"
+  ]
+}

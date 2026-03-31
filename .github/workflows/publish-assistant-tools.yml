@@ -1,0 +1,28 @@
+name: Publish @openpalm/assistant-tools
+on:
+  push:
+    branches: [main]
+    paths: ['packages/assistant-tools/**']
+  workflow_dispatch:
+
+# Prevent publish loop: the reusable workflow commits a version bump which
+# re-matches the paths filter. Skip runs triggered by the bot's own commits.
+
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 1.2.0, minor, prerelease). Leave empty for auto patch bump.'
+        required: false
+        type: string
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    if: github.actor != 'github-actions[bot]'
+    uses: ./.github/workflows/publish-npm-package.yml
+    with:
+      package-dir: packages/assistant-tools
+      package-name: '@openpalm/assistant-tools'
+      needs-build: true
+      version: ${{ inputs.version || '' }}
