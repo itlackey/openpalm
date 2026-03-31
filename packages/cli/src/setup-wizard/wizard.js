@@ -479,6 +479,13 @@ async function pollDeployStatus() {
     var data = await res.json();
     deployPollErrors = 0;
 
+    // Remember latest service list so we can show URLs if the server stops
+    if (data.deployStatus && data.deployStatus.length > 0) {
+      lastDeployData = data.deployStatus.map(function (s) {
+        return { service: s.service, status: s.status, label: s.label };
+      });
+    }
+
     updateDeployUI(data);
 
     if (data.deployError) {
@@ -498,9 +505,16 @@ async function pollDeployStatus() {
   } catch (e) {
     deployPollErrors++;
     if (deployPollErrors >= 3) {
-      // Server is gone — setup completed without deployment (--no-start)
+      // Server is gone — use last known service list if available
       stopDeployPolling();
-      showDeployDone({ deployStatus: [] });
+      if (lastDeployData && lastDeployData.length > 0) {
+        var doneEntries = lastDeployData.map(function (s) {
+          return { service: s.service, status: "running", label: s.label };
+        });
+        showDeployDone({ deployStatus: doneEntries });
+      } else {
+        showDeployDone({ deployStatus: [] });
+      }
     }
   }
 }

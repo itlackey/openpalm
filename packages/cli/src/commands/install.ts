@@ -5,7 +5,7 @@ import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
 import { resolveOpenPalmHome, resolveConfigDir, resolveVaultDir, resolveDataDir } from '@openpalm/lib';
 import { ensureSecrets, ensureStackEnv, resolveRequestedImageTag } from '../lib/env.ts';
-import { ensureDirectoryTree, seedOpenPalmDir, openBrowser, runDockerCompose } from '../lib/docker.ts';
+import { ensureDirectoryTree, seedOpenPalmDir, openBrowser, runDockerCompose, runDockerComposeCapture } from '../lib/docker.ts';
 import {
   ensureOpenCodeConfig, ensureOpenCodeSystemConfig,
   performSetup,
@@ -195,9 +195,15 @@ async function prepareInstallFiles(
   try { ensureOpenCodeConfig(); ensureOpenCodeSystemConfig(); } catch (err) { logger.debug('failed to ensure OpenCode config', { error: String(err) }); }
 
   try {
+    // Download + validate wrapped in a single timeout. The download can be
+    // slow on first install (binary fetch from GitHub) but must not block
+    // the install indefinitely — 30s is generous enough for most connections.
     await Promise.race([
-      runVarlockValidation(dataDir, vaultDir),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5_000)),
+      (async () => {
+        const varlockBin = await ensureVarlock();
+        await runVarlockValidation(varlockBin, vaultDir);
+      })(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30_000)),
     ]);
     console.log('Configuration validated.');
   } catch (err) { logger.debug('varlock validation skipped', { error: String(err) }); }
@@ -257,13 +263,16 @@ async function runWizardInstall(configDir: string, noOpen: boolean, noStart = fa
   const allServices = await buildManagedServices(state);
   const composeArgs = fullComposeArgs(state);
   try {
-    wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Waiting...'));
+    wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Pulling images...'));
     await runDockerCompose([...composeArgs, 'pull', ...allServices]).catch(() => {
       console.warn('Warning: image pull failed — if this is your first install, check your network connection.');
     });
     wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Starting...'));
     await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
-    wizard.markAllRunning();
+
+    // Poll container health so the wizard shows real progress per-service
+    await pollContainerHealth(composeArgs, allServices, wizard);
+
     console.log('\n✓ All services are running:');
     for (const svc of allServices) {
       console.log(`  • ${svc}`);
@@ -273,7 +282,10 @@ async function runWizardInstall(configDir: string, noOpen: boolean, noStart = fa
     console.log(`  Memory API: http://localhost:${3898}`);
     console.log(`  Guardian:   http://localhost:${3899}`);
     console.log('');
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // pollContainerHealth returns as soon as all services are healthy, but
+    // the frontend polls every 2.5s — keep the server alive long enough for
+    // at least 2-3 polls to fetch the final "all running" state with URLs.
+    await new Promise(resolve => setTimeout(resolve, 8000));
   } catch (err) {
     wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'error', String(err)));
     wizard.setDeployError(String(err));
@@ -322,6 +334,58 @@ async function runFileInstall(filePath: string, noStart: boolean): Promise<void>
   await requireDocker();
   await ensureVolumeMountTargets(resolveOpenPalmHome(), resolveVaultDir());
   await deployServices('install');
+}
+
+/**
+ * Poll `docker compose ps` until all services are running/healthy (or timeout).
+ * Updates the wizard deploy status per-service so the frontend shows real progress.
+ */
+async function pollContainerHealth(
+  composeArgs: string[],
+  services: string[],
+  wizard: ReturnType<typeof createSetupServer>,
+): Promise<void> {
+  const MAX_WAIT_MS = 120_000; // 2 minutes
+  const POLL_INTERVAL = 3_000;
+  const start = Date.now();
+  const running = new Set<string>();
+  const psArgs = [...composeArgs, 'ps', '--format', 'json'];
+  let prevRunningCount = 0;
+
+  while (Date.now() - start < MAX_WAIT_MS) {
+    try {
+      const output = await runDockerComposeCapture(psArgs);
+      for (const line of output.trim().split('\n')) {
+        if (!line.trim()) continue;
+        try {
+          const container = JSON.parse(line) as { Service?: string; State?: string; Health?: string };
+          const svc = container.Service;
+          if (!svc || !services.includes(svc)) continue;
+          const isHealthy = container.Health === 'healthy' || (container.State === 'running' && !container.Health);
+          if (isHealthy) running.add(svc);
+        } catch { /* skip malformed JSON line */ }
+      }
+    } catch { /* compose ps failed — retry next tick */ }
+
+    if (running.size !== prevRunningCount) {
+      prevRunningCount = running.size;
+      const entries = services.map(svc => ({
+        service: svc,
+        status: (running.has(svc) ? 'running' : 'pending') as 'running' | 'pending',
+        label: running.has(svc) ? 'Running' : 'Starting...',
+      }));
+      wizard.updateDeployStatus(entries);
+    }
+
+    if (running.size >= services.length) return;
+
+    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+  }
+
+  // Timeout: mark remaining as running so the UI completes, but warn
+  const pending = services.filter(s => !running.has(s));
+  console.warn(`Warning: health check timed out for: ${pending.join(', ')}. They may still be starting.`);
+  wizard.markAllRunning();
 }
 
 /**
@@ -403,8 +467,7 @@ async function ensureVolumeMountTargets(homeDir: string, vaultDir: string): Prom
   }
 }
 
-async function runVarlockValidation(_dataDir: string, vaultDir: string): Promise<void> {
-  const varlockBin = await ensureVarlock();
+async function runVarlockValidation(varlockBin: string, vaultDir: string): Promise<void> {
   const schemaPath = join(vaultDir, 'user', 'user.env.schema');
   if (!(await Bun.file(schemaPath).exists())) return;
   const tmpDir = await prepareVarlockDir(schemaPath, join(vaultDir, 'user', 'user.env'));

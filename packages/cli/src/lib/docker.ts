@@ -161,12 +161,16 @@ export async function seedOpenPalmDir(
     if (!res.ok) throw new Error(`Failed to download tarball (HTTP ${res.status})`);
     await Bun.write(tmpTar, res);
 
+    // Extract full tarball — avoid --wildcards which is GNU tar-only and
+    // breaks on macOS (BSD tar), causing silent extraction failure.
     const extractProc = Bun.spawn(
-      ['tar', 'xzf', tmpTar, '--strip-components=1', '--wildcards',
-        '*/.openpalm/stack/core.compose.yml', '*/.openpalm/registry/*', '*/.openpalm/vault/*', '*/core/assistant/opencode/*'],
+      ['tar', 'xzf', tmpTar, '--strip-components=1'],
       { cwd: tmpDir, stdout: 'ignore', stderr: 'pipe' },
     );
-    await extractProc.exited;
+    const extractCode = await extractProc.exited;
+    if (extractCode !== 0) {
+      throw new Error(`tar extraction failed (exit code ${extractCode})`);
+    }
 
     const srcCoreCompose = join(tmpDir, '.openpalm', 'stack', 'core.compose.yml');
     if (!await Bun.file(srcCoreCompose).exists()) {
