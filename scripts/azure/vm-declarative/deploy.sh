@@ -29,7 +29,7 @@ set -a; source "$DEPLOY_ENV"; set +a
 LOCATION="${LOCATION:-eastus}"
 RESOURCE_GROUP="${RESOURCE_GROUP:-rg-openpalm-vm}"
 ADMIN_USERNAME="${ADMIN_USERNAME:-openpalm}"
-OPENPALM_VERSION="${OPENPALM_VERSION:-v0.10.0}"
+OPENPALM_VERSION="${OPENPALM_VERSION:-v0.10.0-rc13}"
 STORAGE_NAME="${STORAGE_NAME:-stopenpalm}"
 BACKUP_SHARE="${BACKUP_SHARE:-openpalm-backups}"
 SETUP_REF="${SETUP_REF:-main}"
@@ -59,7 +59,7 @@ cat > "${TMP}/cloud-init.yaml" <<CLOUD_INIT
 #cloud-config
 package_update: true
 package_upgrade: true
-packages: [ca-certificates, curl, git, jq, sudo, unzip, openssl, cron, gettext-base]
+packages: [ca-certificates, curl, git, jq, sudo, unzip, openssl, cron]
 
 users:
   - default

@@ -1,35 +1,35 @@
 # OpenPalm setup spec — defines what to deploy.
 #
 # Copy to deploy.spec.yaml and edit.
-# Secret fields use ${VAR} references resolved from deploy.env at boot.
+# Secrets (API keys, admin token) come from environment variables.
 
-spec:
-  version: 2
-  capabilities:
-    llm: openai/gpt-4o
-    embeddings:
-      provider: openai
-      model: text-embedding-3-large
-      dims: 0
-    memory:
-      userId: default_user
+version: 2
+capabilities:
+  llm: openai/gpt-4o
+  embeddings:
+    provider: openai
+    model: text-embedding-3-large
+    dims: 0
+  memory:
+    userId: default_user
 
-security:
-  adminToken: ${OP_ADMIN_TOKEN}
+# adminToken resolved from OP_ADMIN_TOKEN env var
+security: {}
 
 owner:
   name: Your Name
   email: you@example.com
 
-capabilities:
+# Provider connections — apiKey resolved from env (OPENAI_API_KEY, etc.)
+connections:
   - id: openai-main
     name: OpenAI
     provider: openai
     baseUrl: ""
-    apiKey: ${OPENAI_API_KEY}
+    apiKey: ""
 
-# Uncomment to enable Slack channel:
+# Channel credentials resolved from env (SLACK_BOT_TOKEN, etc.)
 # channelCredentials:
 #   slack:
-#     slackBotToken: ${SLACK_BOT_TOKEN}
-#     slackAppToken: ${SLACK_APP_TOKEN}
+#     slackBotToken: ""
+#     slackAppToken: ""

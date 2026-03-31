@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # first-boot.sh — Runs once via cloud-init.
-# Installs Docker, decodes the setup spec, runs `openpalm install`.
+# Installs Docker, fetches secrets from Key Vault, runs `openpalm install`.
 
 set -euo pipefail
 exec > >(tee -a /var/log/openpalm-bootstrap.log) 2>&1
@@ -20,9 +20,9 @@ systemctl enable --now docker
 usermod -aG docker "$ADMIN_USER"
 for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 2; done
 
-# Decode setup spec template from cloud-init
+# Decode setup spec from cloud-init (no secrets in spec)
 mkdir -p /var/lib/openpalm
-base64 -d /var/lib/openpalm/setup-spec.b64 > /var/lib/openpalm/setup-spec.tpl
+base64 -d /var/lib/openpalm/setup-spec.b64 > /var/lib/openpalm/setup-spec.yaml
 rm -f /var/lib/openpalm/setup-spec.b64
 echo "[openpalm] setup spec decoded"
 
@@ -49,10 +49,6 @@ for attempt in $(seq 1 30); do
 done
 [[ -f "$SECRETS_FILE" ]] || { echo "[openpalm] FATAL: could not fetch secrets from Key Vault" >&2; exit 1; }
 
-# Resolve secrets into spec and source into env for the install
-set -a; source "$SECRETS_FILE"; set +a
-envsubst < /var/lib/openpalm/setup-spec.tpl > /var/lib/openpalm/setup-spec.yaml
-rm -f /var/lib/openpalm/setup-spec.tpl
 chown "$ADMIN_USER":"$ADMIN_USER" /var/lib/openpalm /var/lib/openpalm/setup-spec.yaml "$SECRETS_FILE"
 
 SETUP_URL="https://raw.githubusercontent.com/itlackey/openpalm/${SETUP_REF}/scripts/setup.sh"
@@ -67,21 +63,27 @@ for d in data/assistant/.cache data/assistant/.config data/assistant/.local data
 done
 chown -R "$ADMIN_USER":"$ADMIN_USER" "${OP_HOME}"
 
+# Install with --no-start: sets up config, pulls images, but doesn't start containers.
+# We need to fix volume mount ownership before starting.
 sudo -u "$ADMIN_USER" -H bash -c "
   set -a; source ${SECRETS_FILE}; set +a
   export OP_INSTALL_DIR='${OP_INSTALL_DIR}' OP_HOME='${OP_HOME}'
-  curl -fsSL ${SETUP_URL} | bash -s -- --version ${OP_VERSION} --force --no-open --file /var/lib/openpalm/setup-spec.yaml
+  curl -fsSL ${SETUP_URL} | bash -s -- --version ${OP_VERSION} --force --no-open --no-start --file /var/lib/openpalm/setup-spec.yaml
 "
 rm -f "$SECRETS_FILE"
 
-# Fix: released CLI writes API key placeholders to user.env which override
-# real values in stack.env. Remove them so compose picks up stack.env values.
-USER_ENV="${OP_HOME}/vault/user/user.env"
-if [[ -f "$USER_ENV" ]] && grep -q '^export OPENAI_API_KEY=$' "$USER_ENV"; then
-  echo "[openpalm] cleaning user.env API key placeholders"
-  sed -i '/^export [A-Z_]*_API_KEY=$/d; /^export OPENAI_BASE_URL=$/d; /^export MEMORY_USER_ID=/d' "$USER_ENV"
-  chown "$ADMIN_USER":"$ADMIN_USER" "$USER_ENV"
-fi
+# Start the stack via compose. First run may fail because the init container
+# creates volume mount subdirs as root, and the assistant (UID 1000) can't write.
+# Fix ownership and retry.
+COMPOSE_ARGS="-f ${OP_HOME}/stack/core.compose.yml --project-name openpalm"
+ENV_ARGS="--env-file ${OP_HOME}/vault/stack/stack.env --env-file ${OP_HOME}/vault/user/user.env --env-file ${OP_HOME}/vault/stack/guardian.env"
+
+sudo -u "$ADMIN_USER" docker compose $COMPOSE_ARGS $ENV_ARGS pull
+sudo -u "$ADMIN_USER" docker compose $COMPOSE_ARGS $ENV_ARGS up -d || true
+
+chown -R "$ADMIN_USER":"$ADMIN_USER" "${OP_HOME}/data"
+
+sudo -u "$ADMIN_USER" docker compose $COMPOSE_ARGS $ENV_ARGS up -d
 
 # Install Azure CLI (for backup cron, not critical path)
 curl -sL https://aka.ms/InstallAzureCLIDeb | bash
