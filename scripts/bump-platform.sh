@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Bump the "version" field in platform package.json files only.
-# Platform packages = root, packages/lib, packages/admin, core/guardian, packages/cli, packages/channels-sdk.
-# npm packages (channel-*, assistant-tools) are versioned
-# independently via their own publish workflows.
+# Platform package manifests are sourced from
+# .github/release-package-groups.json -> platformManifests.
+# Independent npm packages (channel-*, assistant-tools, admin-tools) are
+# published by their own workflows.
 #
 # Usage: ./scripts/bump-platform.sh 0.8.0
 set -euo pipefail
@@ -16,16 +17,18 @@ fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# Platform manifests — these ship as Docker images or CLI binaries and
-# share a single coordinated version number.
-MANIFESTS=(
-  package.json
-  packages/lib/package.json
-  packages/admin/package.json
-  core/guardian/package.json
-  packages/cli/package.json
-  packages/channels-sdk/package.json
-)
+if ! command -v jq >/dev/null 2>&1; then
+  echo "Error: jq is required." >&2
+  exit 1
+fi
+
+GROUPS_JSON="${ROOT}/.github/release-package-groups.json"
+if [ ! -f "${GROUPS_JSON}" ]; then
+  echo "Error: missing ${GROUPS_JSON}" >&2
+  exit 1
+fi
+
+mapfile -t MANIFESTS < <(jq -r '.platformManifests[]' "${GROUPS_JSON}")
 
 for manifest in "${MANIFESTS[@]}"; do
   file="${ROOT}/${manifest}"

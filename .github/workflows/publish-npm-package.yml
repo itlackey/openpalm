@@ -1,6 +1,7 @@
 name: Publish npm package
-# Reusable workflow for independently versioned channel packages
-# (channel-api, channel-discord, channel-slack, channel-voice).
+# Reusable workflow for independently versioned npm packages
+# (channel-api, channel-discord, channel-slack, channel-voice,
+# assistant-tools, admin-tools).
 # Platform-coupled packages (lib, CLI, channels-sdk) ship via release.yml.
 
 on:

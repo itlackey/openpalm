@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Bump platform versions, commit, push, and tag a release.
-# Platform packages (lib, admin, guardian, CLI, channels-sdk, Docker images)
-# share a single coordinated version. channel npm packages are versioned
-# independently via their own publish workflows.
+# Platform packages (defined in .github/release-package-groups.json plus Docker
+# images) share a single coordinated version. Independent npm packages (channel
+# adapters, assistant-tools, admin-tools) are versioned via publish workflows.
 #
 # The tag triggers the Release workflow (Docker images, CLI binaries, GitHub release).
 #

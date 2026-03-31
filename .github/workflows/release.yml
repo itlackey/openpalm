@@ -81,7 +81,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          PLATFORM_MANIFESTS="package.json packages/lib/package.json packages/admin/package.json core/guardian/package.json packages/cli/package.json packages/channels-sdk/package.json"
+          mapfile -t PLATFORM_MANIFESTS_ARR < <(jq -r '.platformManifests[]' .github/release-package-groups.json)
+          PLATFORM_MANIFESTS="${PLATFORM_MANIFESTS_ARR[*]}"
 
           if [ "${EVENT_NAME}" = 'workflow_dispatch' ]; then
             BRANCH="${GITHUB_REF_NAME}"
@@ -100,12 +101,12 @@ jobs:
             sed -i "s/^\\\$ScriptVersion = '.*'/\$ScriptVersion = '${VERSION}'/" scripts/setup.ps1
             echo "Stamped SCRIPT_VERSION=${VERSION} into setup scripts"
 
-            if git diff --quiet -- package.json packages/lib/package.json packages/admin/package.json core/guardian/package.json packages/cli/package.json packages/channels-sdk/package.json scripts/setup.sh scripts/setup.ps1; then
+            if git diff --quiet -- ${PLATFORM_MANIFESTS} scripts/setup.sh scripts/setup.ps1; then
               echo "Release files already match ${VERSION}, skipping commit."
               exit 0
             fi
 
-            git add package.json packages/lib/package.json packages/admin/package.json core/guardian/package.json packages/cli/package.json packages/channels-sdk/package.json scripts/setup.sh scripts/setup.ps1
+            git add ${PLATFORM_MANIFESTS} scripts/setup.sh scripts/setup.ps1
             git commit -m "chore: bump platform version to ${VERSION}"
             git push origin "${BRANCH}"
             exit 0
@@ -468,6 +469,14 @@ jobs:
               exit $EXIT_CODE
             fi
           }
+
+      - name: Smoke test published CLI installability
+        run: |
+          VERSION="${{ needs.prepare-tag.outputs.version }}"
+          TMP_DIR="$(mktemp -d)"
+          cd "${TMP_DIR}"
+          npm init -y >/dev/null 2>&1
+          npm install "openpalm@${VERSION}" --dry-run
 
   publish-channels-sdk-npm:
     name: Publish channels-sdk to npm

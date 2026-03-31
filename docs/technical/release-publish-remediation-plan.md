@@ -42,26 +42,20 @@ This plan fixes the immediate breakage and removes policy drift between scripts,
 1. **Release preflight package availability check for CLI dependency**
    - Added an explicit preflight check before CLI publish to verify `@openpalm/lib@${VERSION}` is resolvable from npm.
    - This provides a fail-fast guard even if publish ordering or manual reruns drift.
+2. **Unify package-group metadata**
+   - Added `.github/release-package-groups.json` as a shared source of truth for platform manifest lists.
+   - Updated release workflow, CI version sync, and `scripts/bump-platform.sh` to read platform manifests from that file.
+3. **Clarify assistant-tools/admin-tools strategy**
+   - Standardized both as independently published npm packages.
+   - Added dedicated workflows for `@openpalm/assistant-tools` and `@openpalm/admin-tools`.
+4. **Add smoke test for published CLI installability**
+   - Added a release workflow step after CLI publish to run `npm install openpalm@${VERSION} --dry-run` in a temporary directory.
 
-## Medium-priority follow-ups
+## Remaining follow-ups
 
-1. **Unify package-group metadata**
-   - Introduce a single source of truth (JSON/TS config) for:
-     - platform-synced packages
-     - independently published packages
-   - Reuse it from CI and release scripts to avoid list drift.
-2. **Clarify assistant-tools/admin-tools strategy**
-   - Decide whether they are platform-coupled or independently versioned.
-   - Add explicit workflow(s) and matching docs once decided.
-
-## Low-priority follow-ups
-
-1. **Add smoke test for published CLI installability**
-   - In release workflow, create temp project and run `npm install openpalm@${VERSION} --dry-run`.
-   - Fail fast on dependency resolution errors.
-2. **Consolidate publish job definitions**
-   - Optionally migrate repetitive publish job bodies in `release.yml` to a reusable local workflow/composite action if repetition grows.
-   - Keep complexity budget in check; avoid abstraction until duplication is materially painful.
+1. **Optional publish-job body consolidation**
+   - Keep current explicit jobs for readability.
+   - Revisit only if duplication materially increases.
 
 ## Risk assessment
 
@@ -78,4 +72,7 @@ This plan fixes the immediate breakage and removes policy drift between scripts,
 5. `scripts/bump-platform.sh` updates `packages/lib/package.json`.
 6. `actions/setup-node` is set to Node 24 across release/CI/publish workflows.
 7. CLI publish includes an npm preflight check for `@openpalm/lib@${VERSION}` availability.
-8. Docs/comments no longer contradict workflow behavior for lib/CLI/channels-sdk publication.
+8. Platform manifest lists come from `.github/release-package-groups.json`.
+9. Independent workflows exist for `@openpalm/assistant-tools` and `@openpalm/admin-tools`.
+10. Release workflow includes a CLI installability smoke test.
+11. Docs/comments no longer contradict workflow behavior for platform vs independent npm packages.
