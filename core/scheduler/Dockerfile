@@ -45,9 +45,10 @@ RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.pars
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
 COPY .openpalm/vault/redact.env.schema /app/.env.schema
 
-RUN mkdir -p /app/automations /app/artifacts && chown -R bun:bun /app
+RUN mkdir -p /app/automations /app/artifacts /app/.varlock && chown -R bun:bun /app
 USER bun
 
+ENV HOME=/app
 ENV PORT=8090
 EXPOSE 8090
 
