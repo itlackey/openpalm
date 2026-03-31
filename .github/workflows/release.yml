@@ -494,7 +494,17 @@ jobs:
           TMP_DIR="$(mktemp -d)"
           cd "${TMP_DIR}"
           npm init -y >/dev/null 2>&1
-          npm install "openpalm@${VERSION}" --dry-run
+          # Retry with backoff — npm registry needs time to propagate new versions
+          for attempt in 1 2 3 4 5; do
+            if npm install "openpalm@${VERSION}" --dry-run 2>/dev/null; then
+              echo "Smoke test passed (attempt $attempt)"
+              exit 0
+            fi
+            echo "Attempt $attempt: version not yet available, waiting ${attempt}0s..."
+            sleep $((attempt * 10))
+          done
+          echo "::error::openpalm@${VERSION} not installable after 5 attempts"
+          exit 1
 
   publish-channels-sdk-npm:
     name: Publish channels-sdk to npm
