@@ -32,6 +32,8 @@ type SetupServerState = {
   setupResult: SetupResult | null;
   deployStatus: DeployStatusEntry[];
   deployError: string | null;
+  /** True while services are being started (distinguishes from --no-start). */
+  deploying: boolean;
 };
 
 // ── JSON Response Helpers ────────────────────────────────────────────────
@@ -86,6 +88,7 @@ export type SetupServer = {
   /** Update deploy status for a service (for progress tracking). */
   updateDeployStatus: (entries: DeployStatusEntry[]) => void;
   setDeployError: (error: string) => void;
+  setDeploying: (value: boolean) => void;
   markAllRunning: () => void;
 };
 
@@ -111,6 +114,7 @@ export function createSetupServer(
     setupResult: null,
     deployStatus: [],
     deployError: null,
+    deploying: false,
   };
 
   // Completion signal: resolves when setup POST succeeds
@@ -243,6 +247,7 @@ export function createSetupServer(
         setupComplete: state.setupComplete,
         deployStatus: state.deployStatus,
         deployError: state.deployError,
+        deploying: state.deploying,
       });
     }
 
@@ -303,6 +308,9 @@ export function createSetupServer(
     },
     setDeployError: (error: string) => {
       state.deployError = error;
+    },
+    setDeploying: (value: boolean) => {
+      state.deploying = value;
     },
     markAllRunning: () => {
       for (const entry of state.deployStatus) {
