@@ -39,6 +39,7 @@ esac
 # ── Version resolution ─────────────────────────────────────────────────
 REQUESTED_VERSION="${OP_VERSION:-}"
 PASSTHROUGH_ARGS=()
+CLI_ONLY=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -49,6 +50,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --version=*)
       REQUESTED_VERSION="${1#--version=}"
+      shift
+      ;;
+    --cli-only)
+      CLI_ONLY=1
       shift
       ;;
     *)
@@ -74,10 +79,12 @@ fi
 # ── Download ──────────────────────────────────────────────────────────
 INSTALL_DIR="${OP_INSTALL_DIR:-${HOME}/.local/bin}"
 DEST="${INSTALL_DIR}/openpalm"
+TMP_DEST="$(mktemp "${DEST}.tmp.XXXXXX")"
 
 info "Downloading openpalm ${VERSION} for ${OS}/${ARCH}..."
 mkdir -p "${INSTALL_DIR}"
-curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/itlackey/openpalm/releases/download/${VERSION}/${BINARY}" -o "${DEST}"
+trap 'rm -f "${TMP_DEST}"' EXIT
+curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/itlackey/openpalm/releases/download/${VERSION}/${BINARY}" -o "${TMP_DEST}"
 
 # Verify SHA-256 checksum against the release-published checksums file
 CHECKSUMS_URL="https://github.com/itlackey/openpalm/releases/download/${VERSION}/checksums-sha256.txt"
@@ -87,14 +94,16 @@ CHECKSUMS="$(curl -fsSL --retry 3 --retry-delay 3 --retry-all-errors "${CHECKSUM
 EXPECTED="$(echo "${CHECKSUMS}" | grep "${BINARY}" | awk '{print $1}')"
 [ -n "${EXPECTED}" ] || die "No checksum found for ${BINARY} in checksums-sha256.txt"
 if command -v sha256sum >/dev/null 2>&1; then
-  ACTUAL="$(sha256sum "${DEST}" | awk '{print $1}')"
+  ACTUAL="$(sha256sum "${TMP_DEST}" | awk '{print $1}')"
 else
-  ACTUAL="$(shasum -a 256 "${DEST}" | awk '{print $1}')"
+  ACTUAL="$(shasum -a 256 "${TMP_DEST}" | awk '{print $1}')"
 fi
 [ "${ACTUAL}" = "${EXPECTED}" ] || die "Checksum mismatch for ${BINARY}: expected ${EXPECTED}, got ${ACTUAL}"
 ok "Checksum verified"
 
-chmod +x "${DEST}"
+chmod +x "${TMP_DEST}"
+mv "${TMP_DEST}" "${DEST}"
+trap - EXIT
 
 # macOS: clear quarantine flag and ad-hoc codesign so Gatekeeper does not kill the binary
 if [ "${OS}" = "Darwin" ]; then
@@ -181,6 +190,11 @@ fi
 
 if [ "${add_to_path_needed}" = true ]; then
   info "Run 'source ${SHELL_PROFILE}' or open a new terminal for changes to take effect."
+fi
+
+if [ "${CLI_ONLY}" = "1" ]; then
+  ok "CLI install complete. Skipped stack and OP_HOME updates because --cli-only was requested."
+  exit 0
 fi
 
 # ── Run install ───────────────────────────────────────────────────────

@@ -16,18 +16,16 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
+  getAddonServiceNames,
   listAvailableAddonIds,
   listEnabledAddonIds,
   getRegistryAddonConfig,
-  enableAddon,
-  disableAddonByName,
-  writeChannelSecrets,
-  isChannelAddon,
-  randomHex,
+  setAddonEnabled,
+  composeStop,
+  buildComposeOptions,
 } from "@openpalm/lib";
-import { composeStop, checkDocker } from "$lib/server/docker.js";
+import { checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
-import { buildComposeOptions } from "@openpalm/lib";
 
 const logger = createLogger("addons.name");
 
@@ -84,37 +82,24 @@ export const POST: RequestHandler = async (event) => {
     typeof body.enabled === "boolean" ? body.enabled : undefined;
   const wasEnabled = listEnabledAddonIds(state.homeDir).includes(name);
   const newEnabled = enabled !== undefined ? enabled : wasEnabled;
+  const serviceNames = !newEnabled && wasEnabled ? getAddonServiceNames(state.homeDir, name) : [];
 
-  const mutation = newEnabled ? enableAddon(state.homeDir, name) : disableAddonByName(state.homeDir, name);
-  if (!mutation.ok) {
-    appendAudit(state, actor, "addons.name.post", { name, error: mutation.error }, false, requestId, callerType);
-    return errorResponse(500, "internal_error", mutation.error, {}, requestId);
-  }
-
-  // Generate HMAC secret for newly-enabled channel addons
-  if (newEnabled && !wasEnabled) {
-    const composePath = `${state.homeDir}/stack/addons/${name}/compose.yml`;
-    if (isChannelAddon(composePath)) {
-      try {
-        writeChannelSecrets(state.vaultDir, { [name]: randomHex(16) });
-        logger.info("generated HMAC secret for channel addon", { name, requestId });
-      } catch (err) {
-        logger.warn("failed to generate HMAC secret for channel addon", { name, error: String(err), requestId });
-      }
-    }
-  }
-
-  // On disable: stop only the disabled addon's services (not the whole stack)
-  if (!newEnabled && wasEnabled) {
+  if (serviceNames.length > 0) {
     const dockerCheck = await checkDocker();
     if (dockerCheck.ok) {
       try {
-        await composeStop([name], buildComposeOptions(state));
-        logger.info("stopped addon service after disable", { name, requestId });
+        await composeStop(serviceNames, buildComposeOptions(state));
+        logger.info("stopped addon services before disable", { name, services: serviceNames, requestId });
       } catch (err) {
-        logger.warn("failed to stop addon service after disable", { name, error: String(err), requestId });
+        logger.warn("failed to stop addon services before disable", { name, services: serviceNames, error: String(err), requestId });
       }
     }
+  }
+
+  const mutation = setAddonEnabled(state.homeDir, state.vaultDir, name, newEnabled);
+  if (!mutation.ok) {
+    appendAudit(state, actor, "addons.name.post", { name, error: mutation.error }, false, requestId, callerType);
+    return errorResponse(500, "internal_error", mutation.error, {}, requestId);
   }
 
   const changed = newEnabled !== wasEnabled;

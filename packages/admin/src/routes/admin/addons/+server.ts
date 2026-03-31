@@ -16,15 +16,15 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
+  getAddonServiceNames,
   listAvailableAddonIds,
   listEnabledAddonIds,
-  enableAddon,
-  disableAddonByName,
-  writeChannelSecrets,
-  isChannelAddon,
-  randomHex,
+  setAddonEnabled,
+  composeStop,
+  buildComposeOptions,
 } from "@openpalm/lib";
 import { createLogger } from "$lib/server/logger.js";
+import { checkDocker } from "$lib/server/docker.js";
 
 const logger = createLogger("addons");
 
@@ -87,30 +87,30 @@ export const POST: RequestHandler = async (event) => {
     typeof body.enabled === "boolean" ? body.enabled : undefined;
   const wasEnabled = listEnabledAddonIds(state.homeDir).includes(name);
   const nextEnabled = enabled !== undefined ? enabled : wasEnabled;
+  const serviceNames = !nextEnabled && wasEnabled ? getAddonServiceNames(state.homeDir, name) : [];
 
-  const mutation = nextEnabled ? enableAddon(state.homeDir, name) : disableAddonByName(state.homeDir, name);
+  if (serviceNames.length > 0) {
+    const dockerCheck = await checkDocker();
+    if (dockerCheck.ok) {
+      try {
+        await composeStop(serviceNames, buildComposeOptions(state));
+        logger.info("stopped addon services before disable", { name, services: serviceNames, requestId });
+      } catch (err) {
+        logger.warn("failed to stop addon services before disable", { name, services: serviceNames, error: String(err), requestId });
+      }
+    }
+  }
+
+  const mutation = setAddonEnabled(state.homeDir, state.vaultDir, name, nextEnabled);
   if (!mutation.ok) {
     appendAudit(state, actor, "addons.post", { name, error: mutation.error }, false, requestId, callerType);
     return errorResponse(500, "internal_error", mutation.error, {}, requestId);
   }
 
-  // Generate HMAC secret for newly-enabled channel addons
-  if (nextEnabled && !wasEnabled) {
-    const composePath = `${state.homeDir}/stack/addons/${name}/compose.yml`;
-    if (isChannelAddon(composePath)) {
-      try {
-        writeChannelSecrets(state.vaultDir, { [name]: randomHex(16) });
-        logger.info("generated HMAC secret for channel addon", { name, requestId });
-      } catch (err) {
-        logger.warn("failed to generate HMAC secret for channel addon", { name, error: String(err), requestId });
-      }
-    }
-  }
-
   const resultEnabled = listEnabledAddonIds(state.homeDir).includes(name);
 
-  appendAudit(state, actor, "addons.post", { name, enabled: resultEnabled }, true, requestId, callerType);
-  logger.info("addon updated", { name, enabled: resultEnabled, requestId });
+  appendAudit(state, actor, "addons.post", { name, enabled: resultEnabled, changed: mutation.changed }, true, requestId, callerType);
+  logger.info("addon updated", { name, enabled: resultEnabled, changed: mutation.changed, requestId });
 
-  return jsonResponse(200, { ok: true, addon: name, enabled: resultEnabled, changed: true }, requestId);
+  return jsonResponse(200, { ok: true, addon: name, enabled: resultEnabled, changed: mutation.changed }, requestId);
 };

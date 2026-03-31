@@ -31,8 +31,14 @@ export {
   OPTIONAL_SERVICES,
 } from "./control-plane/types.js";
 
+// ── Backups ───────────────────────────────────────────────────────────────
+export {
+  backupOpenPalmHome,
+} from "./control-plane/backup.js";
+
 // ── Registry Catalog ─────────────────────────────────────────────────────
 export type {
+  AddonMutationResult,
   RegistryAutomationEntry,
   RegistryComponentEntry,
   RegistryAddonConfig,
@@ -46,10 +52,12 @@ export {
   discoverRegistryAutomations,
   getRegistryAutomation,
   getRegistryAddonConfig,
+  getAddonServiceNames,
   listAvailableAddonIds,
   listEnabledAddonIds,
   enableAddon,
   disableAddonByName,
+  setAddonEnabled,
   installAutomationFromRegistry,
   uninstallAutomation,
 } from "./control-plane/registry.js";

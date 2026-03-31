@@ -10,6 +10,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parse as parseYaml } from 'yaml';
 import { createLogger } from '../logger.js';
+import { isChannelAddon } from './channels.js';
+import { randomHex, writeChannelSecrets } from './config-persistence.js';
 import {
   resolveRegistryAddonsDir,
   resolveRegistryAutomationsDir,
@@ -82,6 +84,10 @@ export type RegistryCatalogVerification = {
 };
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
+export type AddonMutationResult = (
+  | { ok: true; enabled: boolean; changed: boolean; services: string[] }
+  | { ok: false; error: string }
+);
 
 function countValidAddons(rootDir: string): number {
   const addonsDir = join(rootDir, 'addons');
@@ -283,6 +289,39 @@ function removeEnabledAddon(homeDir: string, name: string): void {
   rmSync(join(homeDir, 'stack', 'addons', name), { recursive: true, force: true });
 }
 
+function readAddonServiceNames(composePath: string): string[] {
+  if (!existsSync(composePath)) return [];
+
+  try {
+    const parsed = parseYaml(readFileSync(composePath, "utf-8"));
+    const services = parsed && typeof parsed === "object" ? (parsed as { services?: unknown }).services : undefined;
+    if (!services || typeof services !== "object" || Array.isArray(services)) return [];
+    return Object.keys(services as Record<string, unknown>);
+  } catch (error) {
+    logger.warn("failed to parse addon compose services", {
+      composePath,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+}
+
+export function getAddonServiceNames(homeDir: string, name: string): string[] {
+  if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
+
+  const composeCandidates = [
+    join(homeDir, "stack", "addons", name, "compose.yml"),
+    join(homeDir, "registry", "addons", name, "compose.yml"),
+  ];
+
+  for (const composePath of composeCandidates) {
+    const services = readAddonServiceNames(composePath);
+    if (services.length > 0) return services;
+  }
+
+  return [];
+}
+
 export function enableAddon(homeDir: string, name: string): MutationResult {
   try {
     copyAddonFromRegistry(homeDir, name);
@@ -301,6 +340,45 @@ export function disableAddonByName(homeDir: string, name: string): MutationResul
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+export function setAddonEnabled(homeDir: string, vaultDir: string, name: string, enabled: boolean): AddonMutationResult {
+  if (!VALID_NAME_RE.test(name)) {
+    return { ok: false, error: `Invalid addon name: ${name}` };
+  }
+
+  if (!listAvailableAddonIds().includes(name)) {
+    return { ok: false, error: `Addon "${name}" not found in registry` };
+  }
+
+  const wasEnabled = listEnabledAddonIds(homeDir).includes(name);
+  const services = getAddonServiceNames(homeDir, name);
+
+  if (wasEnabled === enabled) {
+    return {
+      ok: true,
+      enabled: wasEnabled,
+      changed: false,
+      services,
+    };
+  }
+
+  const mutation = enabled ? enableAddon(homeDir, name) : disableAddonByName(homeDir, name);
+  if (!mutation.ok) return mutation;
+
+  if (enabled) {
+    const composePath = join(homeDir, "stack", "addons", name, "compose.yml");
+    if (isChannelAddon(composePath)) {
+      writeChannelSecrets(vaultDir, { [name]: randomHex(16) });
+    }
+  }
+
+  return {
+    ok: true,
+    enabled,
+    changed: true,
+    services,
+  };
 }
 
 export function installAutomationFromRegistry(name: string, configDir: string): MutationResult {

@@ -9,6 +9,8 @@ The platform model is compose-first and manual-first; these scripts help seed or
 
 Convenience installers for users who want a guided bootstrap instead of copying the repo's `.openpalm/` bundle by hand.
 
+Both scripts support `--cli-only` to install or refresh just the CLI binary without running `openpalm install` or touching the existing stack files under `OP_HOME`.
+
 ### `release.sh`
 
 Bumps platform versions, runs release checks, and creates a tagged release.

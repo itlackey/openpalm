@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { detectHostInfo, main, reconcileStackEnvImageTag, resolveRequestedImageTag, upsertEnvValue } from './main.ts';
+import { canReplaceCurrentExecutable, resolveCliArtifactName } from './commands/self-update.ts';
 
 /** Write a minimal SetupSpec YAML file that satisfies validation, allowing --file installs to skip the wizard. */
 function writeMinimalSetupSpec(dir: string): string {
@@ -276,6 +277,117 @@ describe('cli main', () => {
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
+  });
+
+  it('backs up the current OP_HOME before install --force rewrites assets', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'openpalm-install-force-'));
+    const workDir = join(base, 'work');
+    const binDir = join(base, 'data', 'bin');
+    const userEnv = join(base, 'vault', 'user', 'user.env');
+    const stackConfig = join(base, 'config', 'stack.yml');
+    const specFile = writeMinimalSetupSpec(base);
+
+    mkdirSync(binDir, { recursive: true });
+    mkdirSync(join(base, 'vault', 'user'), { recursive: true });
+    mkdirSync(join(base, 'config'), { recursive: true });
+    writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
+    chmodSync(join(binDir, 'varlock'), 0o755);
+    writeFileSync(userEnv, 'EXISTING=1\n');
+    writeFileSync(stackConfig, 'llm: old\n');
+
+    process.env.OP_HOME = base;
+    process.env.OP_WORK_DIR = workDir;
+
+    mockDockerCli();
+    globalThis.fetch = mock(async (input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/health')) throw new TypeError('fetch failed');
+      if (url.includes('/core.compose.yml') || url.includes('/compose.yml')) {
+        return new Response('services: {}\n', { status: 200 });
+      }
+      if (url.includes('.env.schema')) return new Response('KEY=string\n', { status: 200 });
+      if (url.includes('/AGENTS.md')) return new Response('# Agents\n', { status: 200 });
+      if (url.includes('/opencode.jsonc')) return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
+      if (url.endsWith('.yml')) return new Response('name: test\nschedule: daily\n', { status: 200 });
+      return new Response('', { status: 503 });
+    }) as unknown as typeof fetch;
+    console.log = mock(() => {}) as typeof console.log;
+    console.warn = mock(() => {}) as typeof console.warn;
+
+    try {
+      await main(['install', '--force', '--no-start', '--file', specFile]);
+
+      const backupsDir = join(base, 'backups');
+      const backups = readdirSync(backupsDir);
+      expect(backups.length).toBeGreaterThan(0);
+      expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack.yml'), 'utf8')).toContain('llm: old');
+      expect(readFileSync(join(backupsDir, backups[0], 'vault', 'user', 'user.env'), 'utf8')).toContain('EXISTING=1');
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('supports addon and admin commands for enabling and disabling addons', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'openpalm-addon-cli-'));
+    const coreCompose = join(base, 'stack', 'core.compose.yml');
+    const adminAddonDir = join(base, 'registry', 'addons', 'admin');
+    const chatAddonDir = join(base, 'registry', 'addons', 'chat');
+    const guardianEnv = join(base, 'vault', 'stack', 'guardian.env');
+    const logs: string[] = [];
+
+    mkdirSync(join(base, 'stack'), { recursive: true });
+    mkdirSync(join(base, 'vault', 'stack'), { recursive: true });
+    mkdirSync(adminAddonDir, { recursive: true });
+    mkdirSync(chatAddonDir, { recursive: true });
+    writeFileSync(coreCompose, 'services:\n  assistant:\n    image: test\n');
+    writeFileSync(join(adminAddonDir, 'compose.yml'), 'services:\n  docker-socket-proxy:\n    image: proxy\n  admin:\n    image: admin\n');
+    writeFileSync(join(adminAddonDir, '.env.schema'), 'OP_ADMIN_TOKEN=\n');
+    writeFileSync(join(chatAddonDir, 'compose.yml'), 'services:\n  chat:\n    image: chat\n    environment:\n      CHANNEL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
+    writeFileSync(join(chatAddonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
+    writeFileSync(guardianEnv, '# Guardian channel HMAC secrets — managed by openpalm\n');
+
+    process.env.OP_HOME = base;
+    process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
+    mockDockerCli();
+    console.log = mock((message?: unknown) => { logs.push(String(message ?? '')); }) as typeof console.log;
+    console.warn = mock((message?: unknown) => { logs.push(String(message ?? '')); }) as typeof console.warn;
+
+    try {
+      await main(['addon', 'enable', 'chat']);
+      expect(existsSync(join(base, 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
+      expect(readFileSync(guardianEnv, 'utf8')).toMatch(/CHANNEL_CHAT_SECRET=/);
+
+      await main(['admin', 'enable']);
+      expect(existsSync(join(base, 'stack', 'addons', 'admin', 'compose.yml'))).toBe(true);
+
+      await main(['admin', 'status']);
+      expect(logs.some((line) => line.includes('Admin addon is enabled.'))).toBe(true);
+
+      await main(['addon', 'disable', 'chat']);
+      expect(existsSync(join(base, 'stack', 'addons', 'chat'))).toBe(false);
+
+      await main(['admin', 'disable']);
+      expect(existsSync(join(base, 'stack', 'addons', 'admin'))).toBe(false);
+    } finally {
+      delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('self-update helpers', () => {
+  it('maps supported platforms to release artifacts', () => {
+    expect(resolveCliArtifactName('linux', 'x64')).toBe('openpalm-cli-linux-x64');
+    expect(resolveCliArtifactName('darwin', 'arm64')).toBe('openpalm-cli-darwin-arm64');
+  });
+
+  it('rejects unsupported platforms', () => {
+    expect(() => resolveCliArtifactName('freebsd', 'mips64')).toThrow('Unsupported platform for self-update');
+  });
+
+  it('only allows replacing standalone executables', () => {
+    expect(canReplaceCurrentExecutable('/usr/local/bin/openpalm')).toBe(true);
+    expect(canReplaceCurrentExecutable('/home/runner/.bun/bin/bun')).toBe(false);
   });
 });
 
