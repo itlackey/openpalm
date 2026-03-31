@@ -1,7 +1,7 @@
 {
   "name": "@openpalm/channels-sdk",
   "description": "SDK for building OpenPalm channel adapters with HMAC signing and message forwarding",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "type": "module",
   "license": "MPL-2.0",
   "repository": {
