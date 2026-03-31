@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bump the "version" field in platform package.json files only.
-# Platform packages = root, packages/admin, core/guardian, packages/cli.
-# npm packages (channels-sdk, channel-*, assistant-tools) are versioned
+# Platform packages = root, packages/lib, packages/admin, core/guardian, packages/cli, packages/channels-sdk.
+# npm packages (channel-*, assistant-tools) are versioned
 # independently via their own publish workflows.
 #
 # Usage: ./scripts/bump-platform.sh 0.8.0
@@ -20,9 +20,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # share a single coordinated version number.
 MANIFESTS=(
   package.json
+  packages/lib/package.json
   packages/admin/package.json
   core/guardian/package.json
   packages/cli/package.json
+  packages/channels-sdk/package.json
 )
 
 for manifest in "${MANIFESTS[@]}"; do

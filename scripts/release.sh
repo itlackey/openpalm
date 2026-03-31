@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Bump platform versions, commit, push, and tag a release.
-# Platform packages (admin, guardian, CLI, Docker images) share a single
-# coordinated version. npm packages are versioned independently via their
-# own publish workflows.
+# Platform packages (lib, admin, guardian, CLI, channels-sdk, Docker images)
+# share a single coordinated version. channel npm packages are versioned
+# independently via their own publish workflows.
 #
 # The tag triggers the Release workflow (Docker images, CLI binaries, GitHub release).
 #
@@ -87,5 +87,5 @@ git push origin "${TAG}"
 echo ""
 echo "Release ${VERSION} initiated."
 echo "  Docker + CLI:   triggered by tag ${TAG}"
-echo "  npm packages:   versioned independently (use publish workflows)"
+echo "  npm packages:   platform packages via release workflow; channel packages via publish workflows"
 echo "  Monitor:        gh run list --limit 10"

@@ -145,7 +145,7 @@ jobs:
         run: |
           set -euo pipefail
           ROOT_VERSION=$(jq -r .version package.json)
-          PLATFORM_MANIFESTS="packages/admin/package.json core/guardian/package.json packages/cli/package.json packages/channels-sdk/package.json"
+          PLATFORM_MANIFESTS="packages/lib/package.json packages/admin/package.json core/guardian/package.json packages/cli/package.json packages/channels-sdk/package.json"
           errors=0
 
           for pkg in ${PLATFORM_MANIFESTS}; do
