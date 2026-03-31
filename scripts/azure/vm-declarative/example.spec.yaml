@@ -1,45 +1,35 @@
-# Example OpenPalm setup spec for file-based install.
+# OpenPalm setup spec — defines what to deploy.
 #
-# Secrets (API keys, admin token) are NOT stored here.
-# They come from environment variables at install time.
-#
-# Local usage:
-#   export OP_ADMIN_TOKEN=your-admin-token
-#   export OPENAI_API_KEY=sk-...
-#   openpalm install --file setup-spec.yaml
-#
-# Azure VM deployment:
-#   Secrets go in secrets.env (stored in Key Vault).
-#   first-boot.sh sources them before running install.
+# Copy to deploy.spec.yaml and edit.
+# Secret fields use ${VAR} references resolved from deploy.env at boot.
 
-version: 2
-capabilities:
-  llm: openai/gpt-4o
-  embeddings:
-    provider: openai
-    model: text-embedding-3-large
-    dims: 0
-  memory:
-    userId: default_user
+spec:
+  version: 2
+  capabilities:
+    llm: openai/gpt-4o
+    embeddings:
+      provider: openai
+      model: text-embedding-3-large
+      dims: 0
+    memory:
+      userId: default_user
 
-# adminToken resolved from OP_ADMIN_TOKEN env var
-security: {}
+security:
+  adminToken: ${OP_ADMIN_TOKEN}
 
 owner:
   name: Your Name
   email: you@example.com
 
-# Provider connections.
-# apiKey is optional — resolved from standard env vars (OPENAI_API_KEY, etc.)
-connections:
+capabilities:
   - id: openai-main
     name: OpenAI
     provider: openai
     baseUrl: ""
-    apiKey: ""
+    apiKey: ${OPENAI_API_KEY}
 
-# Channel credentials resolved from env vars (SLACK_BOT_TOKEN, etc.)
+# Uncomment to enable Slack channel:
 # channelCredentials:
 #   slack:
-#     slackBotToken: ""
-#     slackAppToken: ""
+#     slackBotToken: ${SLACK_BOT_TOKEN}
+#     slackAppToken: ${SLACK_APP_TOKEN}

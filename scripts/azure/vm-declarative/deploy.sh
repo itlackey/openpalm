@@ -32,7 +32,7 @@ ADMIN_USERNAME="${ADMIN_USERNAME:-openpalm}"
 OPENPALM_VERSION="${OPENPALM_VERSION:-v0.10.0}"
 STORAGE_NAME="${STORAGE_NAME:-stopenpalm}"
 BACKUP_SHARE="${BACKUP_SHARE:-openpalm-backups}"
-SETUP_REF="${SETUP_REF:-release/${OPENPALM_VERSION#v}}"
+SETUP_REF="${SETUP_REF:-main}"
 KV_NAME="${KV_NAME:-kv-openpalm}"
 
 [[ -f "$SETUP_SPEC_FILE" ]] || { echo "Not found: $SETUP_SPEC_FILE" >&2; exit 1; }
@@ -59,7 +59,7 @@ cat > "${TMP}/cloud-init.yaml" <<CLOUD_INIT
 #cloud-config
 package_update: true
 package_upgrade: true
-packages: [ca-certificates, curl, git, jq, sudo, unzip, openssl, cron]
+packages: [ca-certificates, curl, git, jq, sudo, unzip, openssl, cron, gettext-base]
 
 users:
   - default
@@ -107,6 +107,17 @@ ssh-keygen -t ed25519 -f "${TMP}/key" -N "" -q
 echo "Deploying to ${LOCATION}..."
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
 
+# Purge soft-deleted KV if it exists (blocks reuse of the same name)
+if az keyvault list-deleted --query "[?name=='${KV_NAME}'].name" -o tsv 2>/dev/null | grep -q "$KV_NAME"; then
+  echo "Purging soft-deleted Key Vault: ${KV_NAME}..."
+  az keyvault purge --name "$KV_NAME" 2>/dev/null || true
+  # Wait for purge to complete
+  for _ in $(seq 1 30); do
+    az keyvault list-deleted --query "[?name=='${KV_NAME}'].name" -o tsv 2>/dev/null | grep -q "$KV_NAME" || break
+    sleep 5
+  done
+fi
+
 az deployment group create \
   --resource-group "$RESOURCE_GROUP" \
   --template-file "${SCRIPT_DIR}/main.bicep" \
@@ -119,9 +130,26 @@ az deployment group create \
     keyVaultName="$KV_NAME" \
   --output none
 
-# Upload secrets after KV is created by Bicep
-az keyvault secret set --vault-name "$KV_NAME" -n "secrets" \
-  --file "${TMP}/secrets.env" --output none
+# Grant deployer write access to KV, then upload secrets
+echo "Uploading secrets to Key Vault..."
+DEPLOYER_OID="$(az ad signed-in-user show --query id -o tsv)"
+KV_ID="$(az keyvault show --name "$KV_NAME" -g "$RESOURCE_GROUP" --query id -o tsv)"
+az role assignment create \
+  --assignee "$DEPLOYER_OID" \
+  --role "Key Vault Secrets Officer" \
+  --scope "$KV_ID" \
+  --output none
+# RBAC propagation can take up to 30s
+UPLOADED=false
+for attempt in $(seq 1 8); do
+  if az keyvault secret set --vault-name "$KV_NAME" -n "secrets" \
+    --file "${TMP}/secrets.env" --output none 2>/dev/null; then
+    UPLOADED=true; break
+  fi
+  echo "  waiting for KV RBAC propagation (attempt ${attempt}/8)..."
+  sleep 5
+done
+$UPLOADED || { echo "FATAL: failed to upload secrets to Key Vault after 40s" >&2; exit 1; }
 
 az extension add --name ssh --yes 2>/dev/null || true
 

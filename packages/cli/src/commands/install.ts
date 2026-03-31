@@ -291,8 +291,22 @@ async function runFileInstall(filePath: string, noStart: boolean): Promise<void>
     throw new Error(`Setup config file not found: ${filePath}. Check the --file path and try again.`);
   }
   const config = await parseConfigFile(filePath, await Bun.file(filePath).text());
-  if (config.version !== 2) throw new Error('Setup config must be version 2. See setup-spec.example.yaml for the format.');
-  if (!config.capabilities) throw new Error('Setup config must contain a "capabilities" field.');
+
+  // Normalize old wrapped format: { spec: { version, capabilities }, capabilities: [...] }
+  // into flat format:              { version, capabilities: {...}, connections: [...] }
+  if (config.spec && typeof config.spec === 'object') {
+    const spec = config.spec as Record<string, unknown>;
+    // Old format had connections array as top-level "capabilities"
+    if (Array.isArray(config.capabilities)) config.connections = config.capabilities;
+    config.version = spec.version;
+    config.capabilities = spec.capabilities;
+    delete config.spec;
+  }
+
+  if (config.version !== 2) throw new Error('Setup config must be version 2. See example.spec.yaml for the format.');
+  if (!config.capabilities || typeof config.capabilities !== 'object' || Array.isArray(config.capabilities)) {
+    throw new Error('Setup config must contain a "capabilities" object (llm, embeddings, memory).');
+  }
 
   // Resolve security.adminToken from environment when not in spec
   const security = (config.security ?? {}) as Record<string, unknown>;
@@ -306,6 +320,7 @@ async function runFileInstall(filePath: string, noStart: boolean): Promise<void>
   console.log('Setup complete.');
   if (noStart) { console.log('Config written. Run `openpalm start` to start services.'); return; }
   await requireDocker();
+  await ensureVolumeMountTargets(resolveOpenPalmHome(), resolveVaultDir());
   await deployServices('install');
 }
 
