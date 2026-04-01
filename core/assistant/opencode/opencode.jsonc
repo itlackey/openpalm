@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-
+  "instructions": ["openpalm.md"],
   "plugin": [
     "@openpalm/assistant-tools@latest",
     "akm-opencode@latest",
