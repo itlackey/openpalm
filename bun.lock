@@ -124,19 +124,19 @@
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.10.0",
+      "version": "0.10.1",
       "bin": {
         "openpalm": "./bin/openpalm.js",
       },
       "dependencies": {
-        "@openpalm/lib": ">=0.10.0 <1.0.0",
+        "@openpalm/lib": ">=0.10.1 <1.0.0",
         "citty": "^0.2.1",
         "yaml": "^2.8.0",
       },
     },
     "packages/lib": {
       "name": "@openpalm/lib",
-      "version": "0.10.0",
+      "version": "0.10.1",
       "dependencies": {
         "croner": "^9.0.0",
         "dotenv": "^16.4.7",
