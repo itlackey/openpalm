@@ -1,8 +1,8 @@
 // main.bicep — Azure infrastructure for an OpenPalm VM deployment.
 //
-// Creates: VNet + Subnet + NSG, Storage Account + File Share, VM.
-// The VM has no public IP. SSH is via `az ssh vm` (Entra ID).
-// Only guardian port 3899 is reachable, and only from within the VNet.
+// Creates: VNet + Subnet + NSG, Public IP, Storage Account + File Share, VM.
+// Caddy reverse-proxy handles HTTPS (Let's Encrypt) for configured FQDNs.
+// Ports 80/443 are open to the internet; all other inbound traffic is denied.
 
 @description('Azure region.')
 param location string = resourceGroup().location
@@ -59,6 +59,32 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   location: location
   properties: {
     securityRules: [
+      {
+        name: 'AllowHttp'
+        properties: {
+          priority: 900
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourceAddressPrefix: 'Internet'
+          destinationAddressPrefix: '*'
+          sourcePortRange: '*'
+          destinationPortRange: '80'
+        }
+      }
+      {
+        name: 'AllowHttps'
+        properties: {
+          priority: 910
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourceAddressPrefix: 'Internet'
+          destinationAddressPrefix: '*'
+          sourcePortRange: '*'
+          destinationPortRange: '443'
+        }
+      }
       {
         name: 'AllowGuardianFromVNet'
         properties: {
@@ -133,6 +159,17 @@ resource backupShare 'Microsoft.Storage/storageAccounts/fileServices/shares@2023
   properties: { shareQuota: backupShareQuota }
 }
 
+// ── Public IP ───────────────────────────────────────────────────────────
+
+resource publicIp 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
+  name: '${vmName}-pip'
+  location: location
+  sku: { name: 'Standard' }
+  properties: {
+    publicIPAllocationMethod: 'Static'
+  }
+}
+
 // ── NIC ─────────────────────────────────────────────────────────────────
 
 resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
@@ -145,6 +182,7 @@ resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
         properties: {
           privateIPAllocationMethod: 'Dynamic'
           subnet: { id: vnet.properties.subnets[0].id }
+          publicIPAddress: { id: publicIp.id }
         }
       }
     ]
@@ -235,4 +273,5 @@ resource kvRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 // ── Outputs ─────────────────────────────────────────────────────────────
 
 output privateIp string = nic.properties.ipConfigurations[0].properties.privateIPAddress
+output publicIp string = publicIp.properties.ipAddress
 output vmName string = vm.name

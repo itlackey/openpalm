@@ -80,6 +80,10 @@ write_files:
       STORAGE_NAME=${STORAGE_NAME}
       BACKUP_SHARE=${BACKUP_SHARE}
       VAULT_NAME=${KV_NAME}
+      CADDY_GUARDIAN_FQDN=${CADDY_GUARDIAN_FQDN:-}
+      CADDY_ADMIN_FQDN=${CADDY_ADMIN_FQDN:-}
+      CADDY_ASSISTANT_FQDN=${CADDY_ASSISTANT_FQDN:-}
+      CADDY_EMAIL=${CADDY_EMAIL:-}
 
   - path: /var/lib/openpalm/setup-spec.b64
     permissions: '0600'
@@ -160,12 +164,14 @@ az extension add --name ssh --yes 2>/dev/null || true
 
 PRIVATE_IP="$(az deployment group show -g "$RESOURCE_GROUP" -n main \
   --query properties.outputs.privateIp.value -o tsv)"
+PUBLIC_IP="$(az deployment group show -g "$RESOURCE_GROUP" -n main \
+  --query properties.outputs.publicIp.value -o tsv)"
 VM="$(az deployment group show -g "$RESOURCE_GROUP" -n main \
   --query properties.outputs.vmName.value -o tsv)"
 
 cat <<DONE
 
-Deployed.  Private IP: ${PRIVATE_IP}  Key Vault: ${KV_NAME}
+Deployed.  Public IP: ${PUBLIC_IP}  Private IP: ${PRIVATE_IP}  Key Vault: ${KV_NAME}
 
   # Run commands on the VM (no VPN/Bastion needed):
   az vm run-command invoke -g ${RESOURCE_GROUP} -n ${VM} \\
@@ -179,5 +185,23 @@ Deployed.  Private IP: ${PRIVATE_IP}  Key Vault: ${KV_NAME}
   ... --scripts "sudo -u ${ADMIN_USERNAME} docker ps"
 
   # SSH key saved to ${SSH_KEY} (for use with VPN/Bastion if added later)
-
 DONE
+
+# Print DNS reminder if any Caddy FQDNs are configured
+FQDNS=""
+[[ -n "${CADDY_GUARDIAN_FQDN:-}" ]] && FQDNS="${FQDNS}  ${CADDY_GUARDIAN_FQDN} → guardian\n"
+[[ -n "${CADDY_ADMIN_FQDN:-}" ]] && FQDNS="${FQDNS}  ${CADDY_ADMIN_FQDN} → admin\n"
+[[ -n "${CADDY_ASSISTANT_FQDN:-}" ]] && FQDNS="${FQDNS}  ${CADDY_ASSISTANT_FQDN} → assistant\n"
+if [[ -n "$FQDNS" ]]; then
+  cat <<DNS
+
+  ┌─ DNS required for HTTPS ────────────────────────────────────────
+  │ Create A records pointing to ${PUBLIC_IP}:
+  │
+$(printf '%s' "$FQDNS" | sed 's/^/  │ /')
+  │
+  │ Caddy will automatically obtain Let's Encrypt certificates
+  │ once DNS resolves and ports 80/443 are reachable.
+  └─────────────────────────────────────────────────────────────────
+DNS
+fi
