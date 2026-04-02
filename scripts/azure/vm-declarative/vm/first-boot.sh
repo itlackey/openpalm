@@ -167,10 +167,96 @@ else
   echo "[openpalm] no CADDY_*_FQDN set — skipping Caddy install"
 fi
 
-# Install Azure CLI (for backup cron, not critical path)
+# Install Azure CLI (for backup cron and foundry key fetch)
 curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
 echo "0 3 * * * root /usr/local/bin/openpalm-backup.sh" > /etc/cron.d/openpalm-backup
 chmod 644 /etc/cron.d/openpalm-backup
+
+# ── Azure AI Foundry configuration (optional) ───────────────────────
+# deploy.sh patches /etc/openpalm/config with FOUNDRY_ENDPOINT after the
+# Foundry Bicep deployment completes. Re-source to pick up the update.
+# If FOUNDRY_ENDPOINT is still empty, Foundry was not enabled.
+source /etc/openpalm/config
+
+if [[ -n "${FOUNDRY_ENDPOINT:-}" ]]; then
+  echo "[openpalm] configuring AI Foundry: ${FOUNDRY_ENDPOINT}"
+
+  # Fetch the Foundry API key from Key Vault
+  FOUNDRY_API_KEY=""
+  for attempt in $(seq 1 15); do
+    TOKEN="$(curl -sf \
+      'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net' \
+      -H 'Metadata: true' | jq -r '.access_token')" || true
+    if [[ -n "${TOKEN:-}" && "$TOKEN" != "null" ]]; then
+      FOUNDRY_API_KEY="$(curl -sf \
+        "https://${VAULT_NAME}.vault.azure.net/secrets/azure-ai-foundry-api-key?api-version=7.4" \
+        -H "Authorization: Bearer ${TOKEN}" | jq -r '.value')" || true
+      [[ -n "$FOUNDRY_API_KEY" && "$FOUNDRY_API_KEY" != "null" ]] && break
+    fi
+    echo "[openpalm] waiting for Foundry API key in KV (attempt ${attempt}/15)..."
+    sleep 10
+  done
+  [[ -n "$FOUNDRY_API_KEY" && "$FOUNDRY_API_KEY" != "null" ]] || {
+    echo "[openpalm] WARNING: could not fetch Foundry API key — skipping Foundry config" >&2
+    FOUNDRY_ENDPOINT=""
+  }
+fi
+
+if [[ -n "${FOUNDRY_ENDPOINT:-}" ]]; then
+  STACK_ENV="${OP_HOME}/vault/stack/stack.env"
+
+  # Patch stack.env with azure_openai OP_CAP_* values for the memory service.
+  # These override whatever the spec installer set (typically openai).
+  cat >> "$STACK_ENV" <<FOUNDRY_ENV
+
+# ── Azure AI Foundry (auto-configured by first-boot.sh) ──
+OP_CAP_LLM_PROVIDER=azure_openai
+OP_CAP_LLM_MODEL=${FOUNDRY_LLM_DEPLOYMENT}
+OP_CAP_LLM_BASE_URL=${FOUNDRY_ENDPOINT}
+OP_CAP_LLM_API_KEY=${FOUNDRY_API_KEY}
+OP_CAP_EMBEDDINGS_PROVIDER=azure_openai
+OP_CAP_EMBEDDINGS_MODEL=${FOUNDRY_EMBEDDING_DEPLOYMENT}
+OP_CAP_EMBEDDINGS_BASE_URL=${FOUNDRY_ENDPOINT}
+OP_CAP_EMBEDDINGS_API_KEY=${FOUNDRY_API_KEY}
+OP_CAP_EMBEDDINGS_DIMS=${FOUNDRY_EMBEDDING_DIMS}
+FOUNDRY_ENV
+
+  echo "[openpalm] stack.env patched with Foundry OP_CAP_* variables"
+
+  # Write an OpenCode custom provider so the assistant can use Foundry models.
+  # The provider appears in the admin UI as "Azure AI Foundry" with both models.
+  OPENCODE_CONFIG="${OP_HOME}/config/assistant/opencode.json"
+  OPENCODE_TMP="$(mktemp)"
+  jq --arg endpoint "$FOUNDRY_ENDPOINT" \
+     --arg apiKey "$FOUNDRY_API_KEY" \
+     --arg llm "$FOUNDRY_LLM_DEPLOYMENT" \
+     --arg slm "$FOUNDRY_SLM_DEPLOYMENT" \
+  '. + {
+    "provider": (.provider // {} | . + {
+      "azure-foundry": {
+        "name": "Azure AI Foundry",
+        "options": {
+          "apiKey": $apiKey,
+          "baseURL": ($endpoint + "openai"),
+          "headers": { "api-key": $apiKey }
+        },
+        "models": {
+          ($llm): { "name": ("GPT " + ($llm | gsub("-"; " "))) },
+          ($slm): { "name": ("GPT " + ($slm | gsub("-"; " "))) }
+        }
+      }
+    })
+  }' "$OPENCODE_CONFIG" > "$OPENCODE_TMP"
+  mv "$OPENCODE_TMP" "$OPENCODE_CONFIG"
+  chown "$ADMIN_USER":"$ADMIN_USER" "$OPENCODE_CONFIG"
+  echo "[openpalm] opencode.json patched with azure-foundry provider"
+
+  # Restart the stack so services pick up the new env vars
+  sudo -u "$ADMIN_USER" docker compose $COMPOSE_ARGS $ENV_ARGS up -d
+  echo "[openpalm] stack restarted with Foundry configuration"
+else
+  echo "[openpalm] no FOUNDRY_ENDPOINT set — skipping Foundry config"
+fi
 
 echo "[openpalm] done at $(date -u)"

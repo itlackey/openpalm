@@ -275,3 +275,4 @@ resource kvRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 output privateIp string = nic.properties.ipConfigurations[0].properties.privateIPAddress
 output publicIp string = publicIp.properties.ipAddress
 output vmName string = vm.name
+output vmPrincipalId string = vm.identity.principalId

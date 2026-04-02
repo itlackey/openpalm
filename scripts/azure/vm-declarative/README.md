@@ -52,6 +52,8 @@ cp example.spec.yaml deploy.spec.yaml
 | `CADDY_ADMIN_FQDN` | No | | FQDN for admin panel |
 | `CADDY_ASSISTANT_FQDN` | No | | FQDN for assistant API |
 | `CADDY_EMAIL` | No | | Email for Let's Encrypt notifications |
+| `ENABLE_FOUNDRY` | No | `false` | Deploy Azure AI Foundry (GPT + embeddings) |
+| `FOUNDRY_NAME` | If Foundry | | AI Services account name (globally unique) |
 
 Setting any `CADDY_*_FQDN` variable enables Caddy reverse proxy with
 automatic HTTPS via Let's Encrypt. Each FQDN gets its own TLS certificate.
@@ -73,9 +75,11 @@ See `example.spec.yaml`.
 
 1. `deploy.sh` extracts secrets from `deploy.env` into Key Vault, embeds the spec in cloud-init, deploys Bicep
 2. Bicep provisions infra (VM, VNet, Public IP, KV, Storage) + grants VM managed identity read access to Key Vault
-3. `vm/first-boot.sh` installs Docker, fetches secrets from KV into env, runs `openpalm install --file`
-4. If any `CADDY_*_FQDN` is set, installs Caddy and generates a Caddyfile with reverse proxy entries
-5. `vm/backup.sh` runs daily at 3 AM UTC via cron
+3. If `ENABLE_FOUNDRY=true`, deploys `foundry.bicep` (AI Services + model deployments) and patches VM config with the endpoint
+4. `vm/first-boot.sh` installs Docker, fetches secrets from KV into env, runs `openpalm install --file`
+5. If any `CADDY_*_FQDN` is set, installs Caddy and generates a Caddyfile with reverse proxy entries
+6. If Foundry endpoint is present, patches `stack.env` with `azure_openai` capabilities and adds an OpenCode provider
+7. `vm/backup.sh` runs daily at 3 AM UTC via cron
 
 ## After deployment
 
@@ -99,6 +103,34 @@ internet. The generated Caddyfile maps each FQDN to its service:
 | `CADDY_ADMIN_FQDN` | `127.0.0.1:3880` (admin panel) |
 | `CADDY_ASSISTANT_FQDN` | `127.0.0.1:3800` (assistant) |
 
+### Azure AI Foundry
+
+Set `ENABLE_FOUNDRY=true` and `FOUNDRY_NAME` (globally unique) to deploy an
+Azure AI Services account alongside the VM. Three model deployments are created:
+
+| Default deployment | Model | Purpose |
+|---|---|---|
+| `gpt-52` | GPT-5.2 | Primary LLM (`OP_CAP_LLM_MODEL`) |
+| `gpt-54-mini` | GPT-5.4 Mini | Small/fast model (OpenCode provider) |
+| `text-embedding-3-large` | text-embedding-3-large | Embeddings (`OP_CAP_EMBEDDINGS_MODEL`) |
+
+Deployment names and model versions can be overridden via `FOUNDRY_*` env vars
+(see `deploy.env.example`).
+
+**What gets configured automatically:**
+
+- **Memory service:** `OP_CAP_LLM_*` and `OP_CAP_EMBEDDINGS_*` in `stack.env`
+  are set to `azure_openai` provider pointing at the Foundry endpoint.
+- **Assistant (OpenCode):** A custom provider named "Azure AI Foundry" is added
+  to `opencode.json` with both GPT models available. Select it in the admin UI
+  or set `model: azure-foundry/gpt-52` in the OpenCode config.
+- **API key:** Stored in Key Vault as `azure-ai-foundry-api-key`, fetched by
+  the VM at boot via managed identity.
+
+The Foundry Bicep is deployed separately from `main.bicep` to avoid the
+provisioning race condition (AI Services accounts briefly enter "Accepted"
+state which blocks concurrent deployments).
+
 ## Tear down
 
 ```bash
@@ -113,7 +145,8 @@ deploy.sh               Entry point (run on your machine)
 deploy.env.example      All config: Azure settings + secrets
 example.spec.yaml       Template for deploy.spec.yaml (no secrets)
 main.bicep              Azure infrastructure (VM, VNet, KV, Storage, RBAC)
+foundry.bicep           Optional: Azure AI Foundry (GPT + embeddings)
 vm/
-  first-boot.sh         VM bootstrap: Docker, KV secrets, install
+  first-boot.sh         VM bootstrap: Docker, KV secrets, install, Caddy, Foundry config
   backup.sh             Daily backup to Azure Files
 ```

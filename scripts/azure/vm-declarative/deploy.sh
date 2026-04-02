@@ -35,6 +35,17 @@ BACKUP_SHARE="${BACKUP_SHARE:-openpalm-backups}"
 SETUP_REF="${SETUP_REF:-main}"
 KV_NAME="${KV_NAME:-kv-openpalm}"
 
+# Foundry (optional)
+ENABLE_FOUNDRY="${ENABLE_FOUNDRY:-false}"
+FOUNDRY_NAME="${FOUNDRY_NAME:-}"
+FOUNDRY_LLM_DEPLOYMENT="${FOUNDRY_LLM_DEPLOYMENT:-gpt-52}"
+FOUNDRY_SLM_DEPLOYMENT="${FOUNDRY_SLM_DEPLOYMENT:-gpt-54-mini}"
+FOUNDRY_EMBEDDING_DEPLOYMENT="${FOUNDRY_EMBEDDING_DEPLOYMENT:-text-embedding-3-large}"
+FOUNDRY_EMBEDDING_DIMS="${FOUNDRY_EMBEDDING_DIMS:-3072}"
+if [[ "$ENABLE_FOUNDRY" == "true" && -z "$FOUNDRY_NAME" ]]; then
+  echo "ENABLE_FOUNDRY=true but FOUNDRY_NAME is empty (must be globally unique)" >&2; exit 1
+fi
+
 [[ -f "$SETUP_SPEC_FILE" ]] || { echo "Not found: $SETUP_SPEC_FILE" >&2; exit 1; }
 command -v az >/dev/null || { echo "az CLI required" >&2; exit 1; }
 
@@ -84,6 +95,11 @@ write_files:
       CADDY_ADMIN_FQDN=${CADDY_ADMIN_FQDN:-}
       CADDY_ASSISTANT_FQDN=${CADDY_ASSISTANT_FQDN:-}
       CADDY_EMAIL=${CADDY_EMAIL:-}
+      FOUNDRY_ENDPOINT=
+      FOUNDRY_LLM_DEPLOYMENT=${FOUNDRY_LLM_DEPLOYMENT}
+      FOUNDRY_SLM_DEPLOYMENT=${FOUNDRY_SLM_DEPLOYMENT}
+      FOUNDRY_EMBEDDING_DEPLOYMENT=${FOUNDRY_EMBEDDING_DEPLOYMENT}
+      FOUNDRY_EMBEDDING_DIMS=${FOUNDRY_EMBEDDING_DIMS}
 
   - path: /var/lib/openpalm/setup-spec.b64
     permissions: '0600'
@@ -159,6 +175,51 @@ done
 $UPLOADED || { echo "FATAL: failed to upload secrets to Key Vault after 40s" >&2; exit 1; }
 
 az extension add --name ssh --yes 2>/dev/null || true
+
+# ── Optional: Azure AI Foundry ───────────────────────────────────────
+# Deployed as a separate Bicep to avoid the provisioning race condition
+# where the AI account entering "Accepted" state blocks the main deployment.
+
+if [[ "$ENABLE_FOUNDRY" == "true" ]]; then
+  echo "Deploying Azure AI Foundry: ${FOUNDRY_NAME}..."
+  VM_PRINCIPAL_ID="$(az deployment group show -g "$RESOURCE_GROUP" -n main \
+    --query properties.outputs.vmPrincipalId.value -o tsv)"
+
+  az deployment group create \
+    --resource-group "$RESOURCE_GROUP" \
+    --name foundry \
+    --template-file "${SCRIPT_DIR}/foundry.bicep" \
+    --parameters \
+      location="$LOCATION" \
+      foundryAccountName="$FOUNDRY_NAME" \
+      keyVaultName="$KV_NAME" \
+      vmPrincipalId="$VM_PRINCIPAL_ID" \
+      llmDeploymentName="$FOUNDRY_LLM_DEPLOYMENT" \
+      llmModelName="${FOUNDRY_LLM_MODEL:-gpt-5.2}" \
+      llmModelVersion="${FOUNDRY_LLM_VERSION:-2026-01-01}" \
+      slmDeploymentName="$FOUNDRY_SLM_DEPLOYMENT" \
+      slmModelName="${FOUNDRY_SLM_MODEL:-gpt-5.4-mini}" \
+      slmModelVersion="${FOUNDRY_SLM_VERSION:-2026-01-01}" \
+      embeddingDeploymentName="$FOUNDRY_EMBEDDING_DEPLOYMENT" \
+    --output none
+
+  FOUNDRY_ENDPOINT="$(az deployment group show -g "$RESOURCE_GROUP" -n foundry \
+    --query properties.outputs.foundryEndpoint.value -o tsv)"
+
+  # Patch the VM config with the Foundry endpoint via run-command.
+  # Cloud-init has already written /etc/openpalm/config with FOUNDRY_ENDPOINT=
+  # (empty). Overwrite it with the real value so first-boot.sh picks it up.
+  echo "Patching VM config with Foundry endpoint..."
+  VM_NAME="$(az deployment group show -g "$RESOURCE_GROUP" -n main \
+    --query properties.outputs.vmName.value -o tsv)"
+  az vm run-command invoke -g "$RESOURCE_GROUP" -n "$VM_NAME" \
+    --command-id RunShellScript \
+    --scripts "sed -i 's|^FOUNDRY_ENDPOINT=.*|FOUNDRY_ENDPOINT=${FOUNDRY_ENDPOINT}|' /etc/openpalm/config" \
+    --output none
+
+  echo "AI Foundry deployed: ${FOUNDRY_ENDPOINT}"
+  echo "  Models: ${FOUNDRY_LLM_DEPLOYMENT}, ${FOUNDRY_SLM_DEPLOYMENT}, ${FOUNDRY_EMBEDDING_DEPLOYMENT}"
+fi
 
 # ── Done ──────────────────────────────────────────────────────────────
 
