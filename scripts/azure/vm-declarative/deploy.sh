@@ -176,15 +176,19 @@ $UPLOADED || { echo "FATAL: failed to upload secrets to Key Vault after 40s" >&2
 
 az extension add --name ssh --yes 2>/dev/null || true
 
+# Read all main deployment outputs once
+MAIN_OUTPUTS="$(az deployment group show -g "$RESOURCE_GROUP" -n main \
+  --query 'properties.outputs.{pip:privateIp.value,pub:publicIp.value,vm:vmName.value,mid:vmPrincipalId.value}' -o json)"
+PRIVATE_IP="$(echo "$MAIN_OUTPUTS" | jq -r .pip)"
+PUBLIC_IP="$(echo "$MAIN_OUTPUTS" | jq -r .pub)"
+VM="$(echo "$MAIN_OUTPUTS" | jq -r .vm)"
+VM_PRINCIPAL_ID="$(echo "$MAIN_OUTPUTS" | jq -r .mid)"
+
 # ── Optional: Azure AI Foundry ───────────────────────────────────────
-# Deployed as a separate Bicep to avoid the provisioning race condition
-# where the AI account entering "Accepted" state blocks the main deployment.
+# Deployed separately to avoid the AI Services "Accepted" state race.
 
 if [[ "$ENABLE_FOUNDRY" == "true" ]]; then
   echo "Deploying Azure AI Foundry: ${FOUNDRY_NAME}..."
-  VM_PRINCIPAL_ID="$(az deployment group show -g "$RESOURCE_GROUP" -n main \
-    --query properties.outputs.vmPrincipalId.value -o tsv)"
-
   az deployment group create \
     --resource-group "$RESOURCE_GROUP" \
     --name foundry \
@@ -206,29 +210,16 @@ if [[ "$ENABLE_FOUNDRY" == "true" ]]; then
   FOUNDRY_ENDPOINT="$(az deployment group show -g "$RESOURCE_GROUP" -n foundry \
     --query properties.outputs.foundryEndpoint.value -o tsv)"
 
-  # Patch the VM config with the Foundry endpoint via run-command.
-  # Cloud-init has already written /etc/openpalm/config with FOUNDRY_ENDPOINT=
-  # (empty). Overwrite it with the real value so first-boot.sh picks it up.
   echo "Patching VM config with Foundry endpoint..."
-  VM_NAME="$(az deployment group show -g "$RESOURCE_GROUP" -n main \
-    --query properties.outputs.vmName.value -o tsv)"
-  az vm run-command invoke -g "$RESOURCE_GROUP" -n "$VM_NAME" \
+  az vm run-command invoke -g "$RESOURCE_GROUP" -n "$VM" \
     --command-id RunShellScript \
     --scripts "sed -i 's|^FOUNDRY_ENDPOINT=.*|FOUNDRY_ENDPOINT=${FOUNDRY_ENDPOINT}|' /etc/openpalm/config" \
     --output none
 
   echo "AI Foundry deployed: ${FOUNDRY_ENDPOINT}"
-  echo "  Models: ${FOUNDRY_LLM_DEPLOYMENT}, ${FOUNDRY_SLM_DEPLOYMENT}, ${FOUNDRY_EMBEDDING_DEPLOYMENT}"
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────
-
-PRIVATE_IP="$(az deployment group show -g "$RESOURCE_GROUP" -n main \
-  --query properties.outputs.privateIp.value -o tsv)"
-PUBLIC_IP="$(az deployment group show -g "$RESOURCE_GROUP" -n main \
-  --query properties.outputs.publicIp.value -o tsv)"
-VM="$(az deployment group show -g "$RESOURCE_GROUP" -n main \
-  --query properties.outputs.vmName.value -o tsv)"
 
 cat <<DONE
 
