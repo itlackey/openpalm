@@ -35,6 +35,17 @@ BACKUP_SHARE="${BACKUP_SHARE:-openpalm-backups}"
 SETUP_REF="${SETUP_REF:-main}"
 KV_NAME="${KV_NAME:-kv-openpalm}"
 
+# Foundry (optional)
+ENABLE_FOUNDRY="${ENABLE_FOUNDRY:-false}"
+FOUNDRY_NAME="${FOUNDRY_NAME:-}"
+FOUNDRY_LLM_DEPLOYMENT="${FOUNDRY_LLM_DEPLOYMENT:-gpt-52}"
+FOUNDRY_SLM_DEPLOYMENT="${FOUNDRY_SLM_DEPLOYMENT:-gpt-54-mini}"
+FOUNDRY_EMBEDDING_DEPLOYMENT="${FOUNDRY_EMBEDDING_DEPLOYMENT:-text-embedding-3-large}"
+FOUNDRY_EMBEDDING_DIMS="${FOUNDRY_EMBEDDING_DIMS:-3072}"
+if [[ "$ENABLE_FOUNDRY" == "true" && -z "$FOUNDRY_NAME" ]]; then
+  echo "ENABLE_FOUNDRY=true but FOUNDRY_NAME is empty (must be globally unique)" >&2; exit 1
+fi
+
 [[ -f "$SETUP_SPEC_FILE" ]] || { echo "Not found: $SETUP_SPEC_FILE" >&2; exit 1; }
 command -v az >/dev/null || { echo "az CLI required" >&2; exit 1; }
 
@@ -80,6 +91,15 @@ write_files:
       STORAGE_NAME=${STORAGE_NAME}
       BACKUP_SHARE=${BACKUP_SHARE}
       VAULT_NAME=${KV_NAME}
+      CADDY_GUARDIAN_FQDN=${CADDY_GUARDIAN_FQDN:-}
+      CADDY_ADMIN_FQDN=${CADDY_ADMIN_FQDN:-}
+      CADDY_ASSISTANT_FQDN=${CADDY_ASSISTANT_FQDN:-}
+      CADDY_EMAIL=${CADDY_EMAIL:-}
+      FOUNDRY_ENDPOINT=
+      FOUNDRY_LLM_DEPLOYMENT=${FOUNDRY_LLM_DEPLOYMENT}
+      FOUNDRY_SLM_DEPLOYMENT=${FOUNDRY_SLM_DEPLOYMENT}
+      FOUNDRY_EMBEDDING_DEPLOYMENT=${FOUNDRY_EMBEDDING_DEPLOYMENT}
+      FOUNDRY_EMBEDDING_DIMS=${FOUNDRY_EMBEDDING_DIMS}
 
   - path: /var/lib/openpalm/setup-spec.b64
     permissions: '0600'
@@ -156,16 +176,54 @@ $UPLOADED || { echo "FATAL: failed to upload secrets to Key Vault after 40s" >&2
 
 az extension add --name ssh --yes 2>/dev/null || true
 
-# ── Done ──────────────────────────────────────────────────────────────
+# Read all main deployment outputs once
+MAIN_OUTPUTS="$(az deployment group show -g "$RESOURCE_GROUP" -n main \
+  --query 'properties.outputs.{pip:privateIp.value,pub:publicIp.value,vm:vmName.value,mid:vmPrincipalId.value}' -o json)"
+PRIVATE_IP="$(echo "$MAIN_OUTPUTS" | jq -r .pip)"
+PUBLIC_IP="$(echo "$MAIN_OUTPUTS" | jq -r .pub)"
+VM="$(echo "$MAIN_OUTPUTS" | jq -r .vm)"
+VM_PRINCIPAL_ID="$(echo "$MAIN_OUTPUTS" | jq -r .mid)"
 
-PRIVATE_IP="$(az deployment group show -g "$RESOURCE_GROUP" -n main \
-  --query properties.outputs.privateIp.value -o tsv)"
-VM="$(az deployment group show -g "$RESOURCE_GROUP" -n main \
-  --query properties.outputs.vmName.value -o tsv)"
+# ── Optional: Azure AI Foundry ───────────────────────────────────────
+# Deployed separately to avoid the AI Services "Accepted" state race.
+
+if [[ "$ENABLE_FOUNDRY" == "true" ]]; then
+  echo "Deploying Azure AI Foundry: ${FOUNDRY_NAME}..."
+  az deployment group create \
+    --resource-group "$RESOURCE_GROUP" \
+    --name foundry \
+    --template-file "${SCRIPT_DIR}/foundry.bicep" \
+    --parameters \
+      location="$LOCATION" \
+      foundryAccountName="$FOUNDRY_NAME" \
+      keyVaultName="$KV_NAME" \
+      vmPrincipalId="$VM_PRINCIPAL_ID" \
+      llmDeploymentName="$FOUNDRY_LLM_DEPLOYMENT" \
+      llmModelName="${FOUNDRY_LLM_MODEL:-gpt-5.2}" \
+      llmModelVersion="${FOUNDRY_LLM_VERSION:-2026-01-01}" \
+      slmDeploymentName="$FOUNDRY_SLM_DEPLOYMENT" \
+      slmModelName="${FOUNDRY_SLM_MODEL:-gpt-5.4-mini}" \
+      slmModelVersion="${FOUNDRY_SLM_VERSION:-2026-01-01}" \
+      embeddingDeploymentName="$FOUNDRY_EMBEDDING_DEPLOYMENT" \
+    --output none
+
+  FOUNDRY_ENDPOINT="$(az deployment group show -g "$RESOURCE_GROUP" -n foundry \
+    --query properties.outputs.foundryEndpoint.value -o tsv)"
+
+  echo "Patching VM config with Foundry endpoint..."
+  az vm run-command invoke -g "$RESOURCE_GROUP" -n "$VM" \
+    --command-id RunShellScript \
+    --scripts "sed -i 's|^FOUNDRY_ENDPOINT=.*|FOUNDRY_ENDPOINT=${FOUNDRY_ENDPOINT}|' /etc/openpalm/config" \
+    --output none
+
+  echo "AI Foundry deployed: ${FOUNDRY_ENDPOINT}"
+fi
+
+# ── Done ──────────────────────────────────────────────────────────────
 
 cat <<DONE
 
-Deployed.  Private IP: ${PRIVATE_IP}  Key Vault: ${KV_NAME}
+Deployed.  Public IP: ${PUBLIC_IP}  Private IP: ${PRIVATE_IP}  Key Vault: ${KV_NAME}
 
   # Run commands on the VM (no VPN/Bastion needed):
   az vm run-command invoke -g ${RESOURCE_GROUP} -n ${VM} \\
@@ -179,5 +237,23 @@ Deployed.  Private IP: ${PRIVATE_IP}  Key Vault: ${KV_NAME}
   ... --scripts "sudo -u ${ADMIN_USERNAME} docker ps"
 
   # SSH key saved to ${SSH_KEY} (for use with VPN/Bastion if added later)
-
 DONE
+
+# Print DNS reminder if any Caddy FQDNs are configured
+FQDNS=""
+[[ -n "${CADDY_GUARDIAN_FQDN:-}" ]] && FQDNS="${FQDNS}  ${CADDY_GUARDIAN_FQDN} → guardian\n"
+[[ -n "${CADDY_ADMIN_FQDN:-}" ]] && FQDNS="${FQDNS}  ${CADDY_ADMIN_FQDN} → admin\n"
+[[ -n "${CADDY_ASSISTANT_FQDN:-}" ]] && FQDNS="${FQDNS}  ${CADDY_ASSISTANT_FQDN} → assistant\n"
+if [[ -n "$FQDNS" ]]; then
+  cat <<DNS
+
+  ┌─ DNS required for HTTPS ────────────────────────────────────────
+  │ Create A records pointing to ${PUBLIC_IP}:
+  │
+$(printf '%s' "$FQDNS" | sed 's/^/  │ /')
+  │
+  │ Caddy will automatically obtain Let's Encrypt certificates
+  │ once DNS resolves and ports 80/443 are reachable.
+  └─────────────────────────────────────────────────────────────────
+DNS
+fi
