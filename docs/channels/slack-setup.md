@@ -1,7 +1,7 @@
 # Slack Bot Setup
 
 This guide connects a Slack bot to OpenPalm's Slack addon.
-OpenPalm is compose-first: add the Slack overlay to your compose file set, put Slack tokens in `stack.env`, and restart the stack.
+OpenPalm is compose-first: add the Slack overlay to your compose file set, put Slack tokens in `user.env`, and restart the stack.
 
 ## Prerequisites
 
@@ -21,23 +21,29 @@ OpenPalm is compose-first: add the Slack overlay to your compose file set, put S
 |---|---|
 | `app_mentions:read` | Read @mentions |
 | `chat:write` | Reply in channels and DMs |
-| `im:history` | Read DM history |
-| `im:read` | Access DM conversations |
+| `im:history` | Receive/respond to DM message events |
 | `channels:history` | Read public channel history |
 | `groups:history` | Read private channel history |
-| `reactions:write` | Thinking indicator |
-| `reactions:read` | Reaction cleanup |
 | `users:read` | Display-name lookup |
 | `commands` | Slash commands |
 
 5. In **Event Subscriptions**, enable events and subscribe to:
    - `app_mention`
    - `message.im`
-6. Install the app to the workspace and copy the bot token as `SLACK_BOT_TOKEN`.
+   - `message.channels`
+   - `message.groups`
+   - `app_home_opened`
+6. In **Interactivity & Shortcuts**, enable interactivity.
+   - For Socket Mode, Request URL can be any placeholder (for example `https://example.com/placeholder`).
+7. Add shortcuts:
+   - Global shortcut: `Ask OpenPalm`, callback ID `ask_openpalm`
+   - Message shortcut: `Ask OpenPalm about this message`, callback ID `ask_openpalm_message`
+8. In **App Home**, enable the Home tab.
+9. Install the app to the workspace and copy the bot token as `SLACK_BOT_TOKEN`.
 
-## 2. Add Slack secrets to `stack.env`
+## 2. Add Slack tokens to `user.env`
 
-Edit `~/.openpalm/vault/stack/stack.env`:
+Edit `~/.openpalm/vault/user/user.env`:
 
 ```dotenv
 SLACK_BOT_TOKEN=xoxb-your-bot-token
@@ -51,6 +57,8 @@ SLACK_ALLOWED_CHANNELS=C01ABCDEF23
 SLACK_ALLOWED_USERS=U01ABCDEF23
 SLACK_BLOCKED_USERS=U09ZZZZZZ99
 ```
+
+`CHANNEL_SLACK_SECRET` is system-managed and stays in `~/.openpalm/vault/stack/guardian.env`.
 
 ## 3. Start the addon
 
@@ -86,6 +94,9 @@ For Socket Mode, the Request URL can be any placeholder value.
 - DM the bot
 - Mention the bot in a channel and confirm it replies in a thread
 - Run `/ask`, `/help`, and `/clear`
+- Open App Home and confirm onboarding text renders
+- Run global shortcut `Ask OpenPalm` and submit a prompt
+- Run message shortcut `Ask OpenPalm about this message` from a channel message
 - Check logs with `docker compose logs slack`
 
 Conversation notes:
@@ -93,13 +104,16 @@ Conversation notes:
 - DMs are per-user sessions
 - Channel mentions reply in threads
 - Follow-ups sent while a request is running are queued per session
-- The adapter uses an hourglass reaction or processing message as a thinking indicator
+- The adapter posts a processing message as a thinking indicator
 
 ## Troubleshooting
 
-- No replies: verify `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, Socket Mode, and subscribed events
-- DMs fail: verify `im:history`, `im:read`, and `message.im`
+- No replies: verify `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` in `~/.openpalm/vault/user/user.env`, Socket Mode, and subscribed events
+- DMs fail: verify `im:history` and `message.im`
+- Channel thread follow-ups fail: verify `channels:history` + `message.channels` (public) and `groups:history` + `message.groups` (private)
 - Slash commands missing: add `commands`, create the commands in Slack, then reinstall the app
+- Shortcuts or modals missing: verify Interactivity is enabled and callback IDs match `ask_openpalm` and `ask_openpalm_message`
+- App Home not rendering: verify `app_home_opened` event subscription and Home tab is enabled
 - `not_allowed_token_type`: `SLACK_APP_TOKEN` must be an app-level `xapp-...` token with `connections:write`
 - Forwarding issues: inspect `docker compose logs guardian slack`
 

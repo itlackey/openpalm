@@ -32,8 +32,10 @@ ADMIN_USERNAME="${ADMIN_USERNAME:-openpalm}"
 OPENPALM_VERSION="${OPENPALM_VERSION:-v0.10.0-rc13}"
 STORAGE_NAME="${STORAGE_NAME:-stopenpalm}"
 BACKUP_SHARE="${BACKUP_SHARE:-openpalm-backups}"
+DATA_SHARE="${DATA_SHARE:-openpalm}"
 SETUP_REF="${SETUP_REF:-main}"
 KV_NAME="${KV_NAME:-kv-openpalm}"
+AZURE_RESOURCE_NAME="${AZURE_RESOURCE_NAME:-}"
 
 [[ -f "$SETUP_SPEC_FILE" ]] || { echo "Not found: $SETUP_SPEC_FILE" >&2; exit 1; }
 command -v az >/dev/null || { echo "az CLI required" >&2; exit 1; }
@@ -45,7 +47,7 @@ az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 
 TMP="$(mktemp -d)" && trap 'rm -rf "$TMP"' EXIT
 
-grep -E '^(OP_ADMIN_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|GROQ_API_KEY|MISTRAL_API_KEY|GOOGLE_API_KEY|DEEPSEEK_API_KEY|TOGETHER_API_KEY|XAI_API_KEY|HF_TOKEN|SLACK_BOT_TOKEN|SLACK_APP_TOKEN|DISCORD_BOT_TOKEN|DISCORD_APPLICATION_ID)=' "$DEPLOY_ENV" \
+grep -E '^(OP_ADMIN_TOKEN|OPENAI_API_KEY|AZURE_OPENAI_API_KEY|AZURE_RESOURCE_NAME|ANTHROPIC_API_KEY|GROQ_API_KEY|MISTRAL_API_KEY|GOOGLE_API_KEY|DEEPSEEK_API_KEY|TOGETHER_API_KEY|XAI_API_KEY|HF_TOKEN|SLACK_BOT_TOKEN|SLACK_APP_TOKEN|DISCORD_BOT_TOKEN|DISCORD_APPLICATION_ID)=' "$DEPLOY_ENV" \
   > "${TMP}/secrets.env" 2>/dev/null || true
 [[ -s "${TMP}/secrets.env" ]] || { echo "No secrets found in $DEPLOY_ENV (need at least OP_ADMIN_TOKEN)" >&2; exit 1; }
 
@@ -79,7 +81,9 @@ write_files:
       SETUP_REF=${SETUP_REF}
       STORAGE_NAME=${STORAGE_NAME}
       BACKUP_SHARE=${BACKUP_SHARE}
+      DATA_SHARE=${DATA_SHARE}
       VAULT_NAME=${KV_NAME}
+      AZURE_RESOURCE=${AZURE_RESOURCE_NAME}
 
   - path: /var/lib/openpalm/setup-spec.b64
     permissions: '0600'
@@ -131,6 +135,7 @@ az deployment group create \
     sshPublicKey="$(cat "${TMP}/key.pub")" \
     customData="$CUSTOM_DATA" \
     keyVaultName="$KV_NAME" \
+    dataShareName="$DATA_SHARE" \
   --output none
 
 # Grant deployer write access to KV, then upload secrets

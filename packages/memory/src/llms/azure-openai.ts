@@ -38,7 +38,7 @@ export class AzureOpenAILLM implements LLM {
     const body: Record<string, unknown> = {
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
       temperature: this.temperature,
-      max_tokens: this.maxTokens,
+      max_completion_tokens: this.maxTokens,
     };
 
     if (responseFormat) {

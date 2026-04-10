@@ -2,14 +2,27 @@
 #
 # Copy to deploy.spec.yaml and edit.
 # Secrets (API keys, admin token) come from environment variables.
+#
+# Azure AI Foundry: set AZURE_OPENAI_API_KEY and AZURE_RESOURCE_NAME
+# in deploy.env. The OP_CAP variables are resolved from this spec by
+# the installer and written to stack.env.
 
 version: 2
 capabilities:
-  llm: openai/gpt-4o
+  # LLM for the assistant (OpenCode config is separate — see first-boot.sh)
+  # Memory LLM uses this model via OP_CAP_LLM_MODEL.
+  # Use a model that accepts max_tokens (gpt-4.1-mini) until the memory
+  # service azure-openai adapter is updated to use max_completion_tokens.
+  llm:
+    provider: azure_openai
+    model: gpt-41-mini
+  slm:
+    provider: azure_openai
+    model: gpt-54-mini
   embeddings:
-    provider: openai
+    provider: azure_openai
     model: text-embedding-3-large
-    dims: 0
+    dims: 3072
   memory:
     userId: default_user
 
@@ -20,11 +33,13 @@ owner:
   name: Your Name
   email: you@example.com
 
-# Provider connections — apiKey resolved from env (OPENAI_API_KEY, etc.)
+# Provider connections — apiKey resolved from env
+# For Azure AI Foundry, use the azure_openai provider with your
+# resource endpoint as baseUrl.
 connections:
-  - id: openai-main
-    name: OpenAI
-    provider: openai
+  - id: azure-main
+    name: Azure AI Foundry
+    provider: azure_openai
     baseUrl: ""
     apiKey: ""
 

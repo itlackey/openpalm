@@ -19,6 +19,12 @@ param backupShareName string = 'openpalm-backups'
 @description('Backup share quota in GB.')
 param backupShareQuota int = 50
 
+@description('Data file share name (mounted on VM at /mnt/openpalm).')
+param dataShareName string = 'openpalm'
+
+@description('Data share quota in GB.')
+param dataShareQuota int = 100
+
 @description('VNet address space.')
 param vnetAddressPrefix string = '10.0.0.0/16'
 
@@ -133,6 +139,12 @@ resource backupShare 'Microsoft.Storage/storageAccounts/fileServices/shares@2023
   properties: { shareQuota: backupShareQuota }
 }
 
+resource dataShare 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-05-01' = {
+  parent: fileServices
+  name: dataShareName
+  properties: { shareQuota: dataShareQuota }
+}
+
 // ── NIC ─────────────────────────────────────────────────────────────────
 
 resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
@@ -236,3 +248,5 @@ resource kvRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 
 output privateIp string = nic.properties.ipConfigurations[0].properties.privateIPAddress
 output vmName string = vm.name
+output storageAccountName string = storage.name
+output dataShareName string = dataShare.name

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import SlackChannel, { splitMessage } from "./index.ts";
+import SlackChannel, { DEFAULT_FORWARD_TIMEOUT_MS, parseForwardTimeoutMs, splitMessage } from "./index.ts";
 import { checkPermissions, loadPermissionConfig, parseIdList } from "./permissions.ts";
 import {
   buildChannelUserSessionKey,
@@ -43,8 +43,15 @@ type MockClient = {
     postMessage: ReturnType<typeof mock>;
     update: ReturnType<typeof mock>;
   };
+  conversations: {
+    open: ReturnType<typeof mock>;
+  };
   users: {
     info: ReturnType<typeof mock>;
+  };
+  views: {
+    open: ReturnType<typeof mock>;
+    publish: ReturnType<typeof mock>;
   };
 };
 
@@ -54,8 +61,15 @@ function createMockClient(): MockClient {
       postMessage: mock(async () => ({ ts: "1234567890.123456" })),
       update: mock(async () => ({})),
     },
+    conversations: {
+      open: mock(async () => ({ channel: { id: "D123" } })),
+    },
     users: {
       info: mock(async ({ user }: { user: string }) => ({ user: { name: user } })),
+    },
+    views: {
+      open: mock(async () => ({})),
+      publish: mock(async () => ({})),
     },
   };
 }
@@ -65,6 +79,28 @@ type MockSay = ReturnType<typeof mock>;
 function createMockSay(): MockSay {
   return mock(async () => ({}));
 }
+
+beforeEach(() => {
+  delete Bun.env.SLACK_FORWARD_TIMEOUT_MS;
+});
+
+// ── Forward timeout parsing ──────────────────────────────────────────────────
+
+describe("parseForwardTimeoutMs", () => {
+  it("uses default when value is missing", () => {
+    expect(parseForwardTimeoutMs(undefined)).toBe(DEFAULT_FORWARD_TIMEOUT_MS);
+  });
+
+  it("uses default when value is invalid, zero, or negative", () => {
+    expect(parseForwardTimeoutMs("nope")).toBe(DEFAULT_FORWARD_TIMEOUT_MS);
+    expect(parseForwardTimeoutMs("0")).toBe(DEFAULT_FORWARD_TIMEOUT_MS);
+    expect(parseForwardTimeoutMs("-1")).toBe(DEFAULT_FORWARD_TIMEOUT_MS);
+  });
+
+  it("uses the configured positive value", () => {
+    expect(parseForwardTimeoutMs("12345")).toBe(12345);
+  });
+});
 
 // ── parseIdList ─────────────────────────────────────────────────────────────
 
@@ -1058,6 +1094,7 @@ describe("/clear command", () => {
         clearSession: true,
       },
     });
+    expect(forward.mock.calls[0]?.[2]).toBe(DEFAULT_FORWARD_TIMEOUT_MS);
     expect(say).toHaveBeenCalledWith({ text: "Conversation cleared." });
   });
 
@@ -1207,6 +1244,29 @@ describe("/ask command", () => {
         username: "tester",
       },
     });
+    expect(forward.mock.calls[0]?.[2]).toBe(DEFAULT_FORWARD_TIMEOUT_MS);
+  });
+
+  it("uses configured SLACK_FORWARD_TIMEOUT_MS for guardian forwarding", async () => {
+    Bun.env.SLACK_FORWARD_TIMEOUT_MS = "4321";
+    const channel = new SlackChannel();
+    const forward = mock(async () =>
+      new Response(JSON.stringify({ answer: "Here is my answer" }), { status: 200 }),
+    );
+    Object.assign(channel, { forward });
+
+    const say = createMockSay();
+    const client = createMockClient();
+
+    await (channel as unknown as {
+      onAskCommand: (cmd: Record<string, string>, say: MockSay, client: MockClient) => Promise<void>;
+    }).onAskCommand(
+      { user_id: "U123", user_name: "tester", team_id: "T1", channel_id: "C456", text: "what is AI?" },
+      say,
+      client,
+    );
+
+    expect(forward.mock.calls[0]?.[2]).toBe(4321);
   });
 
   it("updates thinking message with error on guardian failure", async () => {
@@ -1304,6 +1364,163 @@ describe("/help command", () => {
   });
 });
 
+// ── Shortcuts, modal submissions, and App Home ─────────────────────────────
+
+describe("shortcut and modal handlers", () => {
+  it("opens Ask OpenPalm modal from global shortcut", async () => {
+    const channel = new SlackChannel();
+    const client = createMockClient();
+
+    await (channel as unknown as {
+      onGlobalShortcut: (shortcut: Record<string, unknown>, client: MockClient) => Promise<void>;
+    }).onGlobalShortcut(
+      {
+        trigger_id: "trigger-1",
+        user: { id: "U123" },
+        team: { id: "T1" },
+      },
+      client,
+    );
+
+    expect(client.views.open).toHaveBeenCalledTimes(1);
+    const args = client.views.open.mock.calls[0]?.[0];
+    expect(args.trigger_id).toBe("trigger-1");
+    expect(args.view.callback_id).toBe("ask_openpalm_modal");
+  });
+
+  it("opens prefilled modal from message shortcut", async () => {
+    const channel = new SlackChannel();
+    const client = createMockClient();
+
+    await (channel as unknown as {
+      onMessageShortcut: (shortcut: Record<string, unknown>, client: MockClient) => Promise<void>;
+    }).onMessageShortcut(
+      {
+        trigger_id: "trigger-2",
+        user: { id: "U123" },
+        team: { id: "T1" },
+        channel: { id: "C456" },
+        message: { ts: "1710000000.000001", text: "Please summarize this" },
+      },
+      client,
+    );
+
+    const args = client.views.open.mock.calls[0]?.[0];
+    expect(args.view.blocks[0].element.initial_value).toContain("Please summarize this");
+    expect(args.view.private_metadata).toContain("message-shortcut");
+    expect(args.view.private_metadata).toContain("C456");
+  });
+
+  it("handles modal submission from message shortcut using thread session", async () => {
+    const channel = new SlackChannel();
+    const forward = mock(async () =>
+      new Response(JSON.stringify({ answer: "modal answer" }), { status: 200 }),
+    );
+    Object.assign(channel, { forward });
+    const client = createMockClient();
+
+    await (channel as unknown as {
+      onAskModalSubmission: (
+        body: Record<string, unknown>,
+        view: Record<string, unknown>,
+        client: MockClient,
+      ) => Promise<void>;
+    }).onAskModalSubmission(
+      {
+        user: { id: "U123", username: "tester" },
+        team: { id: "T1" },
+      },
+      {
+        private_metadata: JSON.stringify({
+          source: "message-shortcut",
+          channelId: "C456",
+          threadTs: "1710000000.000001",
+          teamId: "T1",
+        }),
+        state: {
+          values: {
+            ask_openpalm_prompt_block: {
+              ask_openpalm_prompt_action: {
+                value: "use this context",
+              },
+            },
+          },
+        },
+      },
+      client,
+    );
+
+    expect(forward).toHaveBeenCalledTimes(1);
+    expect(forward.mock.calls[0]?.[0]).toMatchObject({
+      userId: "slack:U123",
+      text: "use this context",
+    });
+    expect(forward.mock.calls[0]?.[0].metadata.sessionKey).toBe("slack:thread:C456:1710000000.000001");
+    expect(client.chat.postMessage.mock.calls[0]?.[0]).toMatchObject({
+      channel: "C456",
+      thread_ts: "1710000000.000001",
+    });
+  });
+
+  it("handles modal submission from global shortcut via DM channel", async () => {
+    const channel = new SlackChannel();
+    const forward = mock(async () =>
+      new Response(JSON.stringify({ answer: "dm modal answer" }), { status: 200 }),
+    );
+    Object.assign(channel, { forward });
+    const client = createMockClient();
+
+    await (channel as unknown as {
+      onAskModalSubmission: (
+        body: Record<string, unknown>,
+        view: Record<string, unknown>,
+        client: MockClient,
+      ) => Promise<void>;
+    }).onAskModalSubmission(
+      {
+        user: { id: "U999", username: "tester" },
+        team: { id: "T1" },
+      },
+      {
+        private_metadata: JSON.stringify({ source: "global-shortcut", teamId: "T1" }),
+        state: {
+          values: {
+            ask_openpalm_prompt_block: {
+              ask_openpalm_prompt_action: {
+                value: "question from modal",
+              },
+            },
+          },
+        },
+      },
+      client,
+    );
+
+    expect(client.conversations.open).toHaveBeenCalledWith({ users: "U999" });
+    expect(forward).toHaveBeenCalledTimes(1);
+    expect(forward.mock.calls[0]?.[0].metadata.sessionKey).toBe("slack:dm:U999");
+  });
+});
+
+describe("app home", () => {
+  it("publishes Home tab content on app_home_opened", async () => {
+    const channel = new SlackChannel();
+    const client = createMockClient();
+
+    await (channel as unknown as {
+      onAppHomeOpened: (event: Record<string, unknown>, client: MockClient) => Promise<void>;
+    }).onAppHomeOpened(
+      { user: "U123" },
+      client,
+    );
+
+    expect(client.views.publish).toHaveBeenCalledTimes(1);
+    const payload = client.views.publish.mock.calls[0]?.[0];
+    expect(payload.user_id).toBe("U123");
+    expect(payload.view.type).toBe("home");
+  });
+});
+
 // ── Conversation runner ─────────────────────────────────────────────────────
 
 describe("runConversation", () => {
@@ -1335,6 +1552,7 @@ describe("runConversation", () => {
       ts: "1234567890.123456",
       text: "done",
     });
+    expect(forward.mock.calls[0]?.[2]).toBe(DEFAULT_FORWARD_TIMEOUT_MS);
   });
 
   it("updates thinking message with error on failure", async () => {

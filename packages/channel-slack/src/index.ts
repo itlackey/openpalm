@@ -7,6 +7,20 @@ import type { PermissionConfig, UserInfo } from "./types.ts";
 const log = createLogger("channel-slack");
 
 const MAX_MESSAGE_LENGTH = 4000;
+const DEFAULT_FORWARD_TIMEOUT_MS = 1_800_000;
+const ASK_MODAL_CALLBACK_ID = "ask_openpalm_modal";
+const ASK_MODAL_INPUT_BLOCK_ID = "ask_openpalm_prompt_block";
+const ASK_MODAL_INPUT_ACTION_ID = "ask_openpalm_prompt_action";
+const ASK_GLOBAL_SHORTCUT_ID = "ask_openpalm";
+const ASK_MESSAGE_SHORTCUT_ID = "ask_openpalm_message";
+
+function parseForwardTimeoutMs(value: string | undefined): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_FORWARD_TIMEOUT_MS;
+  }
+  return Math.floor(parsed);
+}
 
 export default class SlackChannel extends BaseChannel {
   name = "slack";
@@ -27,6 +41,9 @@ export default class SlackChannel extends BaseChannel {
 
   /** Thread inactivity TTL in ms. Default: 24 hours. */
   private threadTtlMs = (Number(Bun.env.SLACK_THREAD_TTL_HOURS) || 24) * 3_600_000;
+
+  /** Forward timeout in ms. Default: 30 minutes. */
+  private forwardTimeoutMs = parseForwardTimeoutMs(Bun.env.SLACK_FORWARD_TIMEOUT_MS);
 
   get botToken(): string {
     return Bun.env.SLACK_BOT_TOKEN ?? "";
@@ -86,6 +103,34 @@ export default class SlackChannel extends BaseChannel {
     this.app.command("/help", async ({ command, ack, say }) => {
       await ack();
       await this.onHelpCommand(command, say);
+    });
+
+    this.app.shortcut(ASK_GLOBAL_SHORTCUT_ID, async ({ shortcut, ack, client }) => {
+      await ack();
+      await this.onGlobalShortcut(shortcut as GlobalShortcut, client as SlackClient);
+    });
+
+    this.app.shortcut(ASK_MESSAGE_SHORTCUT_ID, async ({ shortcut, ack, client }) => {
+      await ack();
+      await this.onMessageShortcut(shortcut as MessageShortcut, client as SlackClient);
+    });
+
+    this.app.view(ASK_MODAL_CALLBACK_ID, async ({ body, view, ack, client }) => {
+      await ack();
+      await this.onAskModalSubmission(
+        body as ViewSubmissionBody,
+        view as ModalView,
+        client as SlackClient,
+      );
+    });
+
+    this.app.event("app_home_opened", async ({ event, client }) => {
+      await this.onAppHomeOpened(event as AppHomeOpenedEvent, client as SlackClient);
+    });
+
+    this.app.error(async (error) => {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      log.error("bolt_app_error", { error: errMsg });
     });
 
     await this.app.start();
@@ -238,6 +283,291 @@ export default class SlackChannel extends BaseChannel {
 
   // ── Slash Commands ────────────────────────────────────────────────────
 
+  private buildAskModalView(initialPrompt: string, metadata: ModalMetadata): SlackViewDefinition {
+    return {
+      type: "modal",
+      callback_id: ASK_MODAL_CALLBACK_ID,
+      private_metadata: JSON.stringify(metadata),
+      title: {
+        type: "plain_text",
+        text: "Ask OpenPalm",
+      },
+      submit: {
+        type: "plain_text",
+        text: "Ask",
+      },
+      close: {
+        type: "plain_text",
+        text: "Cancel",
+      },
+      blocks: [
+        {
+          type: "input",
+          block_id: ASK_MODAL_INPUT_BLOCK_ID,
+          label: {
+            type: "plain_text",
+            text: "Prompt",
+          },
+          element: {
+            type: "plain_text_input",
+            action_id: ASK_MODAL_INPUT_ACTION_ID,
+            multiline: true,
+            initial_value: initialPrompt,
+          },
+        },
+      ],
+    };
+  }
+
+  private async onGlobalShortcut(shortcut: GlobalShortcut, client: SlackClient): Promise<void> {
+    const metadata: ModalMetadata = {
+      source: "global-shortcut",
+      teamId: shortcut.team?.id,
+    };
+
+    try {
+      await client.views.open({
+        trigger_id: shortcut.trigger_id,
+        view: this.buildAskModalView("", metadata),
+      });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      log.error("shortcut_modal_open_error", {
+        source: "global-shortcut",
+        userId: shortcut.user.id,
+        error: errMsg,
+      });
+    }
+  }
+
+  private async onMessageShortcut(shortcut: MessageShortcut, client: SlackClient): Promise<void> {
+    const messageText = shortcut.message.text?.trim() ?? "";
+    const initialPrompt = messageText
+      ? `Ask OpenPalm about this message:\n${messageText}\n\n`
+      : "Ask OpenPalm about this message:\n\n";
+
+    const metadata: ModalMetadata = {
+      source: "message-shortcut",
+      channelId: shortcut.channel.id,
+      threadTs: shortcut.message.ts,
+      teamId: shortcut.team?.id,
+    };
+
+    try {
+      await client.views.open({
+        trigger_id: shortcut.trigger_id,
+        view: this.buildAskModalView(initialPrompt, metadata),
+      });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      log.error("shortcut_modal_open_error", {
+        source: "message-shortcut",
+        userId: shortcut.user.id,
+        channelId: shortcut.channel.id,
+        error: errMsg,
+      });
+    }
+  }
+
+  private parseModalMetadata(raw: string | undefined): ModalMetadata {
+    if (!raw) return { source: "global-shortcut" };
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const source = parsed.source === "message-shortcut" ? "message-shortcut" : "global-shortcut";
+      return {
+        source,
+        channelId: typeof parsed.channelId === "string" ? parsed.channelId : undefined,
+        threadTs: typeof parsed.threadTs === "string" ? parsed.threadTs : undefined,
+        teamId: typeof parsed.teamId === "string" ? parsed.teamId : undefined,
+      };
+    } catch {
+      return { source: "global-shortcut" };
+    }
+  }
+
+  private getModalPrompt(view: ModalView): string {
+    const blockValues = view.state.values[ASK_MODAL_INPUT_BLOCK_ID];
+    if (!blockValues) return "";
+    const actionValues = blockValues[ASK_MODAL_INPUT_ACTION_ID];
+    return typeof actionValues?.value === "string" ? actionValues.value.trim() : "";
+  }
+
+  private async onAskModalSubmission(
+    body: ViewSubmissionBody,
+    view: ModalView,
+    client: SlackClient,
+  ): Promise<void> {
+    const text = this.getModalPrompt(view);
+    if (!text) {
+      log.warn("modal_submission_empty_prompt", { userId: body.user.id });
+      return;
+    }
+
+    const metadata = this.parseModalMetadata(view.private_metadata);
+
+    try {
+      let channelId = metadata.channelId;
+      if (!channelId) {
+        const openResult = await client.conversations.open({ users: body.user.id });
+        channelId = openResult.channel?.id;
+        if (!channelId) {
+          throw new Error("Could not resolve DM channel for modal response");
+        }
+      }
+
+      const userInfo: UserInfo = {
+        userId: body.user.id,
+        teamId: body.team?.id ?? metadata.teamId ?? "",
+        channelId,
+        username: body.user.username ?? body.user.name,
+      };
+
+      const permResult = checkPermissions(this.permissions, userInfo);
+      if (!permResult.allowed) {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: "You do not have permission to use this bot.",
+          thread_ts: metadata.threadTs,
+        });
+        return;
+      }
+
+      const sessionKey = resolveSessionKey({
+        channelId,
+        userId: userInfo.userId,
+        threadTs: metadata.threadTs,
+        isDM: channelId.startsWith("D"),
+      });
+
+      await this.conversationQueue.runOrQueue(sessionKey, {
+        onQueued: async () => {
+          await client.chat.postMessage({
+            channel: channelId,
+            text: "Queued. I will pick this up next.",
+            thread_ts: metadata.threadTs,
+          });
+        },
+        run: async () => {
+          if (metadata.threadTs) {
+            await this.runConversation(client, channelId, metadata.threadTs, userInfo, text, sessionKey);
+            return;
+          }
+
+          const thinkingResult = await client.chat.postMessage({
+            channel: channelId,
+            text: `:hourglass: Processing your request...`,
+          });
+          const thinkingTs = thinkingResult.ts;
+
+          try {
+            const answer = await this.forwardToGuardian(userInfo.userId, text, {
+              teamId: userInfo.teamId,
+              username: userInfo.username,
+              command: "ask_modal",
+              channelId,
+              sessionKey,
+            }, this.forwardTimeoutMs);
+
+            const chunks = splitMessage(answer, MAX_MESSAGE_LENGTH);
+            const firstChunk = chunks[0] ?? "No response received.";
+
+            if (thinkingTs) {
+              await client.chat.update({
+                channel: channelId,
+                ts: thinkingTs,
+                text: firstChunk,
+              });
+            }
+            for (let i = 1; i < chunks.length; i++) {
+              await client.chat.postMessage({
+                channel: channelId,
+                text: chunks[i],
+                thread_ts: thinkingTs,
+              });
+            }
+
+            log.info("modal_submission_completed", {
+              source: metadata.source,
+              userId: userInfo.userId,
+              channelId,
+              sessionKey,
+            });
+          } catch (error) {
+            const errMsg = error instanceof Error ? error.message : String(error);
+            log.error("modal_submission_error", {
+              source: metadata.source,
+              userId: userInfo.userId,
+              channelId,
+              sessionKey,
+              error: errMsg,
+            });
+            if (thinkingTs) {
+              await client.chat.update({
+                channel: channelId,
+                ts: thinkingTs,
+                text: `Error: ${errMsg}`,
+              });
+            }
+          }
+        },
+      });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      log.error("modal_submission_error", {
+        source: metadata.source,
+        userId: body.user.id,
+        error: errMsg,
+      });
+    }
+  }
+
+  private async onAppHomeOpened(event: AppHomeOpenedEvent, client: SlackClient): Promise<void> {
+    try {
+      await client.views.publish({
+        user_id: event.user,
+        view: {
+          type: "home",
+          blocks: [
+            {
+              type: "header",
+              text: {
+                type: "plain_text",
+                text: "OpenPalm on Slack",
+              },
+            },
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: "Ask questions from DMs, mentions, slash commands, or shortcuts.",
+              },
+            },
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: "*Quick commands*\n• `/ask <message>` ask a question\n• `/clear` reset your session\n• `/help` show usage info",
+              },
+            },
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: "*Shortcuts*\n• `Ask OpenPalm` (global shortcut)\n• `Ask OpenPalm about this message` (message shortcut)",
+              },
+            },
+          ],
+        },
+      });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      log.error("app_home_publish_error", {
+        userId: event.user,
+        error: errMsg,
+      });
+    }
+  }
+
   private async onAskCommand(
     command: SlashCommand,
     say: SayFn,
@@ -287,7 +617,7 @@ export default class SlackChannel extends BaseChannel {
             command: "ask",
             channelId: command.channel_id,
             sessionKey,
-          });
+          }, this.forwardTimeoutMs);
 
           // Replace thinking message with answer
           const chunks = splitMessage(answer, MAX_MESSAGE_LENGTH);
@@ -365,7 +695,7 @@ export default class SlackChannel extends BaseChannel {
           sessionKey,
           clearSession: true,
         },
-      });
+      }, undefined, this.forwardTimeoutMs);
 
       if (!resp.ok) {
         await say({ text: "Could not clear this conversation right now." });
@@ -439,7 +769,7 @@ export default class SlackChannel extends BaseChannel {
         username: userInfo.username,
         channelId: channel,
         sessionKey,
-      });
+      }, this.forwardTimeoutMs);
 
       // Replace thinking message with first chunk, post remaining as follow-ups
       const chunks = splitMessage(answer, MAX_MESSAGE_LENGTH);
@@ -522,6 +852,7 @@ export default class SlackChannel extends BaseChannel {
 
 // Re-export splitMessage for tests (avoids breaking existing test imports)
 export { splitMessage } from "@openpalm/channels-sdk";
+export { DEFAULT_FORWARD_TIMEOUT_MS, parseForwardTimeoutMs };
 
 // ── Type shorthands for Slack Bolt ────────────────────────────────────────
 // Minimal subsets of the Bolt WebClient — only the methods this adapter uses.
@@ -535,8 +866,15 @@ type SlackClient = {
     postMessage: (args: { channel: string; text: string; thread_ts?: string }) => Promise<{ ts?: string }>;
     update: (args: { channel: string; ts: string; text: string }) => Promise<unknown>;
   };
+  conversations: {
+    open: (args: { users: string }) => Promise<{ channel?: { id?: string } }>;
+  };
   users: {
     info: (args: { user: string }) => Promise<{ user?: { name?: string; real_name?: string } }>;
+  };
+  views: {
+    open: (args: { trigger_id: string; view: SlackViewDefinition }) => Promise<unknown>;
+    publish: (args: { user_id: string; view: HomeViewDefinition }) => Promise<unknown>;
   };
 };
 
@@ -546,4 +884,69 @@ type SlashCommand = {
   user_name: string;
   team_id: string;
   channel_id: string;
+};
+
+type GlobalShortcut = {
+  trigger_id: string;
+  user: { id: string; username?: string; name?: string };
+  team?: { id?: string };
+};
+
+type MessageShortcut = GlobalShortcut & {
+  channel: { id: string };
+  message: { ts: string; text?: string };
+};
+
+type ModalMetadata = {
+  source: "global-shortcut" | "message-shortcut";
+  channelId?: string;
+  threadTs?: string;
+  teamId?: string;
+};
+
+type ModalView = {
+  private_metadata?: string;
+  state: {
+    values: Record<string, Record<string, { value?: string }>>;
+  };
+};
+
+type ViewSubmissionBody = {
+  user: { id: string; username?: string; name?: string };
+  team?: { id?: string };
+};
+
+type SlackViewDefinition = {
+  type: "modal";
+  callback_id: string;
+  private_metadata: string;
+  title: { type: "plain_text"; text: string };
+  submit: { type: "plain_text"; text: string };
+  close: { type: "plain_text"; text: string };
+  blocks: Array<{
+    type: "input";
+    block_id: string;
+    label: { type: "plain_text"; text: string };
+    element: {
+      type: "plain_text_input";
+      action_id: string;
+      multiline: boolean;
+      initial_value: string;
+    };
+  }>;
+};
+
+type HomeViewDefinition = {
+  type: "home";
+  blocks: Array<{
+    type: "header" | "section";
+    text: {
+      type: "plain_text" | "mrkdwn";
+      text: string;
+    };
+  }>;
+};
+
+type AppHomeOpenedEvent = {
+  user: string;
 };

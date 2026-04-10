@@ -9,6 +9,9 @@ It normally runs via `addons/slack/compose.yml` and connects outbound to Slack, 
 - Direct messages and channel @mentions
 - Threaded replies for channel conversations
 - Slash commands: `/ask`, `/clear`, `/help`
+- Global shortcut: `Ask OpenPalm` modal entry point
+- Message shortcut: `Ask OpenPalm about this message` with prefilled context
+- App Home onboarding tab with quick usage guidance
 - Per-session request queueing and thinking indicators
 
 ## Deployment model
@@ -34,6 +37,8 @@ docker compose \
 The shipped addon overlay loads `vault/stack/stack.env` and `vault/user/user.env`
 with `env_file`, so Slack credentials placed in `user.env` are passed into the container.
 
+`CHANNEL_SLACK_SECRET` remains system-managed in `vault/stack/guardian.env`.
+
 See `docs/channels/slack-setup.md` for the full setup guide.
 
 ## Environment variables
@@ -46,6 +51,35 @@ See `docs/channels/slack-setup.md` for the full setup guide.
 | `SLACK_ALLOWED_CHANNELS` | no | Comma-separated channel allowlist |
 | `SLACK_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `SLACK_BLOCKED_USERS` | no | Comma-separated user blocklist |
+
+## Slack app configuration
+
+Required bot scopes:
+
+- `app_mentions:read`
+- `chat:write`
+- `im:history`
+- `channels:history`
+- `groups:history`
+- `users:read`
+- `commands`
+
+Required event subscriptions:
+
+- `app_mention`
+- `message.im`
+- `message.channels`
+- `message.groups`
+- `app_home_opened`
+
+Required Interactivity setup:
+
+- Enable **Interactivity & Shortcuts** in your Slack app
+- Add a global shortcut with callback ID `ask_openpalm`
+- Add a message shortcut with callback ID `ask_openpalm_message`
+- Socket Mode apps can use any placeholder Request URL for interactivity
+
+The adapter does not require reaction scopes.
 
 ## Conversation behavior
 
