@@ -87,7 +87,9 @@ if [[ -n "${DATA_SHARE:-}" && -n "${STORAGE_NAME:-}" ]]; then
     printf 'username=%s\npassword=%s\n' "$STORAGE_NAME" "$STORAGE_KEY" > "$CRED_FILE"
     chmod 600 "$CRED_FILE"
 
-    FSTAB_ENTRY="//${STORAGE_NAME}.file.core.windows.net/${DATA_SHARE} ${MOUNT_POINT} cifs nofail,credentials=${CRED_FILE},dir_mode=0777,file_mode=0777,serverino,nosharesock,actimeo=30"
+    OP_UID="$(id -u "$ADMIN_USER")"
+    OP_GID="$(id -g "$ADMIN_USER")"
+    FSTAB_ENTRY="//${STORAGE_NAME}.file.core.windows.net/${DATA_SHARE} ${MOUNT_POINT} cifs nofail,credentials=${CRED_FILE},dir_mode=0777,file_mode=0777,uid=${OP_UID},gid=${OP_GID},serverino,nosharesock,actimeo=30"
     grep -qF "${STORAGE_NAME}.file.core.windows.net/${DATA_SHARE}" /etc/fstab || echo "$FSTAB_ENTRY" >> /etc/fstab
     mount -a
     echo "[openpalm] file share mounted at ${MOUNT_POINT}"
