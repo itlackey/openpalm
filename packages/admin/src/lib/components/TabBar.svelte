@@ -1,5 +1,5 @@
 <script lang="ts">
-	type TabId = 'overview' | 'addons' | 'automations' | 'connections' | 'capabilities' | 'containers' | 'logs' | 'audit' | 'secrets' | 'artifacts';
+	type TabId = 'overview' | 'addons' | 'automations' | 'connections' | 'secrets' | 'capabilities' | 'containers' | 'logs' | 'audit' | 'artifacts';
 
 	interface Props {
 		active: TabId;
@@ -126,6 +126,29 @@
 	<button
 		class="tab"
 		role="tab"
+		aria-selected={active === 'secrets'}
+		class:tab-active={active === 'secrets'}
+		onclick={() => onSelect('secrets')}
+		onkeydown={handleTabKeydown}
+	>
+		<svg
+			aria-hidden="true"
+			width="15"
+			height="15"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+		>
+			<rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+		</svg>
+		Secrets
+	</button>
+	<button
+		class="tab"
+		role="tab"
 		aria-selected={active === 'capabilities'}
 		class:tab-active={active === 'capabilities'}
 		onclick={() => onSelect('capabilities')}
@@ -224,29 +247,6 @@
 			<path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
 		</svg>
 		Audit
-	</button>
-	<button
-		class="tab"
-		role="tab"
-		aria-selected={active === 'secrets'}
-		class:tab-active={active === 'secrets'}
-		onclick={() => onSelect('secrets')}
-		onkeydown={handleTabKeydown}
-	>
-		<svg
-			aria-hidden="true"
-			width="15"
-			height="15"
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="2"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-		>
-			<rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-		</svg>
-		Secrets
 	</button>
 	<button
 		class="tab"

@@ -18,6 +18,27 @@
   let actionError = $state('');
   let actionLoading = $state(false);
 
+  const namespaceConfigs = [
+    {
+      kind: 'core',
+      title: 'Core namespace',
+      prefix: 'openpalm/',
+      description: 'Built-in OpenPalm secrets such as tokens, provider keys, and channel credentials.',
+    },
+    {
+      kind: 'component',
+      title: 'Component namespace',
+      prefix: 'openpalm/component/',
+      description: 'Per-component secrets for installed services and addon instances.',
+    },
+    {
+      kind: 'custom',
+      title: 'Custom namespace',
+      prefix: 'openpalm/custom/',
+      description: 'User-defined secrets that do not map to a built-in OpenPalm capability.',
+    },
+  ] as const;
+
   // Write form
   let showWriteForm = $state(false);
   let writeKey = $state('');
@@ -27,6 +48,31 @@
   let showGenerateForm = $state(false);
   let genKey = $state('');
   let genLength = $state(32);
+
+  let availableActions = $derived.by(() => {
+    const actions = ['set'];
+    if (capabilities.generate) actions.push('generate');
+    if (capabilities.remove) actions.push('delete');
+    return actions.join(', ');
+  });
+
+  let namespaceSections = $derived.by(() =>
+    namespaceConfigs
+      .map((config) => ({
+        ...config,
+        entries: entries.filter((entry) => entry.kind === config.kind),
+      }))
+      .filter((section) => section.entries.length > 0)
+  );
+
+  function entryDisplayPath(entry: SecretEntry): string {
+    const prefix = entry.kind === 'component'
+      ? 'openpalm/component/'
+      : entry.kind === 'custom'
+        ? 'openpalm/custom/'
+        : 'openpalm/';
+    return entry.key.startsWith(prefix) ? entry.key.slice(prefix.length) : entry.key;
+  }
 
   async function loadSecrets(): Promise<void> {
     const token = getAdminToken();
@@ -113,7 +159,7 @@
     <div>
       <h2>Secrets</h2>
       {#if provider}
-        <span class="panel-subtitle">Backend: {provider}</span>
+        <span class="panel-subtitle">Backend: {provider} · Actions: {availableActions}</span>
       {/if}
     </div>
     <div class="panel-header-actions">
@@ -202,25 +248,45 @@
       <div class="error-banner"><span>{error}</span></div>
     {/if}
 
-    {#if entries.length > 0}
-      <div class="secret-table">
-        <div class="secret-table-header">
-          <span class="secret-col secret-col--key">Key</span>
-          <span class="secret-col secret-col--scope">Scope</span>
-          <span class="secret-col secret-col--kind">Kind</span>
-          <span class="secret-col secret-col--actions"></span>
-        </div>
-        {#each entries as entry (entry.key)}
-          <div class="secret-row">
-            <span class="secret-col secret-col--key secret-key">{entry.key}</span>
-            <span class="secret-col secret-col--scope">{entry.scope ?? ''}</span>
-            <span class="secret-col secret-col--kind">{entry.kind ?? ''}</span>
-            <span class="secret-col secret-col--actions">
-              <button class="btn btn-sm btn-danger" onclick={() => void handleDelete(entry.key)} disabled={actionLoading}>
-                Delete
-              </button>
-            </span>
-          </div>
+    {#if namespaceSections.length > 0}
+      <div class="namespace-list">
+        {#each namespaceSections as section (section.kind)}
+          <section class="namespace-section" aria-label={section.title}>
+            <div class="namespace-header">
+              <div>
+                <h3>{section.title}</h3>
+                <p>{section.description}</p>
+              </div>
+              <code>{section.prefix}</code>
+            </div>
+            <div class="secret-table">
+              <div class="secret-table-header">
+                <span class="secret-col secret-col--key">Path</span>
+                <span class="secret-col secret-col--scope">Scope</span>
+                <span class="secret-col secret-col--kind">Kind</span>
+                {#if capabilities.remove}
+                  <span class="secret-col secret-col--actions">Actions</span>
+                {/if}
+              </div>
+              {#each section.entries as entry (entry.key)}
+                <div class="secret-row">
+                  <span class="secret-col secret-col--key">
+                    <span class="secret-path-prefix">{section.prefix}</span>
+                    <span class="secret-key">{entryDisplayPath(entry)}</span>
+                  </span>
+                  <span class="secret-col secret-col--scope">{entry.scope ?? ''}</span>
+                  <span class="secret-col secret-col--kind">{entry.kind ?? ''}</span>
+                  {#if capabilities.remove}
+                    <span class="secret-col secret-col--actions">
+                      <button class="btn btn-sm btn-danger" onclick={() => void handleDelete(entry.key)} disabled={actionLoading}>
+                        Delete
+                      </button>
+                    </span>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          </section>
         {/each}
       </div>
     {:else if !loading}
@@ -251,6 +317,12 @@
   .form-input { width: 100%; height: 32px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0 var(--space-3); background: var(--color-bg); color: var(--color-text); font-size: var(--text-sm); font-family: inherit; }
   .form-input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-subtle); }
 
+  .namespace-list { display: flex; flex-direction: column; }
+  .namespace-section + .namespace-section { border-top: 1px solid var(--color-border); }
+  .namespace-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-5); background: var(--color-bg-secondary); border-bottom: 1px solid var(--color-border); }
+  .namespace-header h3 { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text); margin-bottom: var(--space-1); }
+  .namespace-header p { font-size: var(--text-xs); color: var(--color-text-secondary); max-width: 60ch; }
+  .namespace-header code { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: var(--radius-sm); background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text-secondary); font-size: var(--text-xs); font-family: var(--font-mono); white-space: nowrap; }
   .secret-table { display: flex; flex-direction: column; width: 100%; }
   .secret-table-header { display: flex; align-items: center; padding: var(--space-2) var(--space-5); background: var(--color-bg-tertiary); border-bottom: 1px solid var(--color-border); font-size: var(--text-xs); font-weight: var(--font-semibold); color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
   .secret-row { display: flex; align-items: center; padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--color-bg-tertiary); }
@@ -258,11 +330,12 @@
   .secret-row:hover { background: var(--color-surface-hover); }
 
   .secret-col { display: flex; align-items: center; }
-  .secret-col--key { flex: 3; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .secret-col--key { flex: 3; min-width: 0; overflow: hidden; }
   .secret-col--scope { flex: 1; min-width: 0; font-size: var(--text-xs); color: var(--color-text-secondary); }
   .secret-col--kind { flex: 1; min-width: 0; font-size: var(--text-xs); color: var(--color-text-secondary); }
   .secret-col--actions { flex: 0 0 auto; }
-  .secret-key { font-family: var(--font-mono); font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); }
+  .secret-path-prefix { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-tertiary); white-space: nowrap; }
+  .secret-key { font-family: var(--font-mono); font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .feedback { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-5); font-size: var(--text-sm); }
   .feedback span { flex: 1; }
@@ -288,6 +361,6 @@
   .btn-sm { padding: 5px 12px; font-size: var(--text-xs); }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  @media (max-width: 768px) { .secret-table-header { display: none; } .secret-row { flex-wrap: wrap; gap: var(--space-2); } .form-row { flex-direction: column; } .form-field { min-width: unset; } }
+  @media (max-width: 768px) { .secret-table-header { display: none; } .secret-row { flex-wrap: wrap; gap: var(--space-2); } .form-row { flex-direction: column; } .form-field { min-width: unset; } .namespace-header { flex-direction: column; } .secret-col--key { width: 100%; } }
   @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 </style>
