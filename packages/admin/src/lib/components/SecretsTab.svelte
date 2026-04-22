@@ -66,11 +66,7 @@
   );
 
   function entryDisplayPath(entry: SecretEntry): string {
-    const prefix = entry.kind === 'component'
-      ? 'openpalm/component/'
-      : entry.kind === 'custom'
-        ? 'openpalm/custom/'
-        : 'openpalm/';
+    const prefix = namespaceConfigs.find((config) => config.kind === entry.kind)?.prefix ?? '';
     return entry.key.startsWith(prefix) ? entry.key.slice(prefix.length) : entry.key;
   }
 
