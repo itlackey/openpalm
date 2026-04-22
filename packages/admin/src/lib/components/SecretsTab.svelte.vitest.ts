@@ -92,4 +92,37 @@ describe('SecretsTab', () => {
 
     guard.expectNoErrors();
   });
+
+  it('keeps secrets visible when kind metadata is missing or unknown', async () => {
+    guard = useConsoleGuard();
+    localStorage.setItem('openpalm.adminToken', 'test-admin-token');
+
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+      if (url === '/admin/secrets') {
+        return createJsonResponse({
+          provider: 'pass',
+          capabilities: { generate: true, remove: true, rename: false },
+          entries: [
+            { key: 'openpalm/custom/missing-kind', scope: 'user' },
+            { key: 'vendor/external/token', scope: 'system', kind: 'external' },
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    render(SecretsTab, {
+      props: { tokenStored: true },
+    });
+
+    await expect.element(page.getByText('Custom namespace')).toBeInTheDocument();
+    await expect.element(page.getByText('missing-kind')).toBeInTheDocument();
+    await expect.element(page.getByText('Uncategorized')).toBeInTheDocument();
+    await expect.element(page.getByText('vendor/external/token')).toBeInTheDocument();
+    await expect.element(page.getByText('No secrets found.')).not.toBeInTheDocument();
+
+    guard.expectNoErrors();
+  });
 });

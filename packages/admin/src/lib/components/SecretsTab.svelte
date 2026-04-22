@@ -38,6 +38,15 @@
       description: 'User-defined secrets that do not map to a built-in OpenPalm capability.',
     },
   ] as const;
+  type NamespaceSection = typeof namespaceConfigs[number] & { entries: SecretEntry[] };
+  const uncategorizedSection = {
+    kind: 'uncategorized',
+    title: 'Uncategorized',
+    prefix: '',
+    description: 'Secrets returned without a recognized namespace kind are shown here until the backend metadata is corrected.',
+  } as const;
+  type UncategorizedSection = typeof uncategorizedSection & { entries: SecretEntry[] };
+  const knownNamespaceKinds = new Set(namespaceConfigs.map((config) => config.kind));
 
   // Write form
   let showWriteForm = $state(false);
@@ -56,17 +65,36 @@
     return actions.join(', ');
   });
 
-  let namespaceSections = $derived.by(() =>
-    namespaceConfigs
+  function getSectionKind(entry: SecretEntry): typeof namespaceConfigs[number]['kind'] | typeof uncategorizedSection.kind {
+    if (entry.kind && knownNamespaceKinds.has(entry.kind as typeof namespaceConfigs[number]['kind'])) {
+      return entry.kind as typeof namespaceConfigs[number]['kind'];
+    }
+    if (entry.key.startsWith('openpalm/component/')) return 'component';
+    if (entry.key.startsWith('openpalm/custom/')) return 'custom';
+    if (entry.key.startsWith('openpalm/')) return 'core';
+    return 'uncategorized';
+  }
+
+  let namespaceSections = $derived.by(() => {
+    const sections: Array<NamespaceSection | UncategorizedSection> = namespaceConfigs
       .map((config) => ({
         ...config,
-        entries: entries.filter((entry) => entry.kind === config.kind),
+        entries: entries.filter((entry) => getSectionKind(entry) === config.kind),
       }))
-      .filter((section) => section.entries.length > 0)
-  );
+      .filter((section) => section.entries.length > 0);
 
-  function entryDisplayPath(entry: SecretEntry): string {
-    const prefix = namespaceConfigs.find((config) => config.kind === entry.kind)?.prefix ?? '';
+    const uncategorizedEntries = entries.filter((entry) => getSectionKind(entry) === 'uncategorized');
+    if (uncategorizedEntries.length > 0) {
+      sections.push({
+        ...uncategorizedSection,
+        entries: uncategorizedEntries,
+      });
+    }
+
+    return sections;
+  });
+
+  function entryDisplayPath(entry: SecretEntry, prefix: string): string {
     return entry.key.startsWith(prefix) ? entry.key.slice(prefix.length) : entry.key;
   }
 
@@ -268,10 +296,10 @@
                 <div class="secret-row">
                   <span class="secret-col secret-col--key">
                     <span class="secret-path-prefix">{section.prefix}</span>
-                    <span class="secret-key">{entryDisplayPath(entry)}</span>
+                    <span class="secret-key">{entryDisplayPath(entry, section.prefix)}</span>
                   </span>
                   <span class="secret-col secret-col--scope">{entry.scope ?? ''}</span>
-                  <span class="secret-col secret-col--kind">{entry.kind ?? ''}</span>
+                  <span class="secret-col secret-col--kind">{entry.kind ?? section.kind}</span>
                   {#if capabilities.remove}
                     <span class="secret-col secret-col--actions">
                       <button class="btn btn-sm btn-danger" onclick={() => void handleDelete(entry.key)} disabled={actionLoading}>
