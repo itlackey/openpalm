@@ -43,7 +43,7 @@
     kind: 'uncategorized',
     title: 'Uncategorized',
     prefix: '',
-    description: 'Secrets returned without a recognized namespace kind are shown here until the backend metadata is corrected.',
+    description: 'Secrets returned without a supported kind (core, component, or custom) are shown here instead of being hidden.',
   } as const;
   type UncategorizedSection = typeof uncategorizedSection & { entries: SecretEntry[] };
   const knownNamespaceKinds = new Set(namespaceConfigs.map((config) => config.kind));
@@ -65,10 +65,12 @@
     return actions.join(', ');
   });
 
+  function isNamespaceKind(kind: SecretEntry['kind']): kind is typeof namespaceConfigs[number]['kind'] {
+    return typeof kind === 'string' && namespaceConfigs.some((config) => config.kind === kind);
+  }
+
   function getSectionKind(entry: SecretEntry): typeof namespaceConfigs[number]['kind'] | typeof uncategorizedSection.kind {
-    if (entry.kind && knownNamespaceKinds.has(entry.kind as typeof namespaceConfigs[number]['kind'])) {
-      return entry.kind as typeof namespaceConfigs[number]['kind'];
-    }
+    if (isNamespaceKind(entry.kind)) return entry.kind;
     if (entry.key.startsWith('openpalm/component/')) return 'component';
     if (entry.key.startsWith('openpalm/custom/')) return 'custom';
     if (entry.key.startsWith('openpalm/')) return 'core';
