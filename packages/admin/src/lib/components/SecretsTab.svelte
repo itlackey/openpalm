@@ -46,6 +46,7 @@
     description: 'Secrets returned without a supported backend kind value are shown here instead of being hidden.',
   } as const;
   type UncategorizedSection = typeof uncategorizedSection & { entries: SecretEntry[] };
+  type Section = NamespaceSection | UncategorizedSection;
   const knownNamespaceKinds: ReadonlySet<string> = new Set(namespaceConfigs.map((config) => config.kind));
 
   // Write form
@@ -66,7 +67,7 @@
   });
 
   function isNamespaceKind(kind: SecretEntry['kind']): kind is typeof namespaceConfigs[number]['kind'] {
-    return typeof kind === 'string' && namespaceConfigs.some((config) => config.kind === kind);
+    return typeof kind === 'string' && knownNamespaceKinds.has(kind);
   }
 
   function getSectionKind(entry: SecretEntry): typeof namespaceConfigs[number]['kind'] | typeof uncategorizedSection.kind {
@@ -78,7 +79,7 @@
   }
 
   let namespaceSections = $derived.by(() => {
-    const sections: Array<NamespaceSection | UncategorizedSection> = namespaceConfigs
+    const sections: Section[] = namespaceConfigs
       .map((config) => ({
         ...config,
         entries: entries.filter((entry) => getSectionKind(entry) === config.kind),
