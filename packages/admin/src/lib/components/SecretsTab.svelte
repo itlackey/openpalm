@@ -43,10 +43,10 @@
     kind: 'uncategorized',
     title: 'Uncategorized',
     prefix: '',
-    description: 'Secrets returned without a supported kind (core, component, or custom) are shown here instead of being hidden.',
+    description: 'Secrets returned without a supported backend kind value are shown here instead of being hidden.',
   } as const;
   type UncategorizedSection = typeof uncategorizedSection & { entries: SecretEntry[] };
-  const knownNamespaceKinds = new Set(namespaceConfigs.map((config) => config.kind));
+  const knownNamespaceKinds: ReadonlySet<string> = new Set(namespaceConfigs.map((config) => config.kind));
 
   // Write form
   let showWriteForm = $state(false);
