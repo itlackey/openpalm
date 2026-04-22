@@ -106,6 +106,7 @@ describe('SecretsTab', () => {
           entries: [
             { key: 'openpalm/custom/missing-kind', scope: 'user' },
             { key: 'vendor/external/token', scope: 'system', kind: 'external' },
+            { key: 'vendor/missing-kind', scope: 'user' },
           ],
         });
       }
@@ -118,9 +119,11 @@ describe('SecretsTab', () => {
     });
 
     await expect.element(page.getByText('Custom namespace')).toBeInTheDocument();
-    await expect.element(page.getByText('missing-kind')).toBeInTheDocument();
+    await expect.element(page.getByText(/^missing-kind$/)).toBeInTheDocument();
     await expect.element(page.getByText('Uncategorized')).toBeInTheDocument();
     await expect.element(page.getByText('vendor/external/token')).toBeInTheDocument();
+    await expect.element(page.getByText('vendor/missing-kind')).toBeInTheDocument();
+    await expect.element(page.getByText('(missing)')).toBeInTheDocument();
     await expect.element(page.getByText('No secrets found.')).not.toBeInTheDocument();
 
     guard.expectNoErrors();

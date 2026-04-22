@@ -48,6 +48,7 @@
   type UncategorizedSection = typeof uncategorizedSection & { entries: SecretEntry[] };
   type Section = NamespaceSection | UncategorizedSection;
   const knownNamespaceKinds: ReadonlySet<string> = new Set(namespaceConfigs.map((config) => config.kind));
+  const namespacePrefixConfigs = [...namespaceConfigs].sort((a, b) => b.prefix.length - a.prefix.length);
 
   // Write form
   let showWriteForm = $state(false);
@@ -72,10 +73,12 @@
 
   function getSectionKind(entry: SecretEntry): typeof namespaceConfigs[number]['kind'] | typeof uncategorizedSection.kind {
     if (isNamespaceKind(entry.kind)) return entry.kind;
-    if (entry.key.startsWith('openpalm/component/')) return 'component';
-    if (entry.key.startsWith('openpalm/custom/')) return 'custom';
-    if (entry.key.startsWith('openpalm/')) return 'core';
-    return 'uncategorized';
+    return namespacePrefixConfigs.find((config) => entry.key.startsWith(config.prefix))?.kind ?? 'uncategorized';
+  }
+
+  function entryKindLabel(entry: SecretEntry, section: Section): string {
+    if (entry.kind) return entry.kind;
+    return section.kind === 'uncategorized' ? '(missing)' : section.kind;
   }
 
   let namespaceSections = $derived.by(() => {
@@ -302,7 +305,7 @@
                     <span class="secret-key">{entryDisplayPath(entry, section.prefix)}</span>
                   </span>
                   <span class="secret-col secret-col--scope">{entry.scope ?? ''}</span>
-                  <span class="secret-col secret-col--kind">{entry.kind ?? section.kind}</span>
+                  <span class="secret-col secret-col--kind">{entryKindLabel(entry, section)}</span>
                   {#if capabilities.remove}
                     <span class="secret-col secret-col--actions">
                       <button class="btn btn-sm btn-danger" onclick={() => void handleDelete(entry.key)} disabled={actionLoading}>
