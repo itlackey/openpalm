@@ -71,7 +71,7 @@
   let legacyInstallDetected = $state(false);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: 'overview' | 'addons' | 'automations' | 'connections' | 'capabilities' | 'containers' | 'logs' | 'audit' | 'secrets' | 'artifacts' = $state('overview');
+  let activeTab: 'overview' | 'addons' | 'automations' | 'connections' | 'secrets' | 'capabilities' | 'containers' | 'logs' | 'audit' | 'artifacts' = $state('overview');
   let pullLoading = $state(false);
 
   // ── Container polling ──────────────────────────────────────────────────────
@@ -570,6 +570,8 @@
       />
     {:else if activeTab === 'connections'}
       <ConnectionsTab />
+    {:else if activeTab === 'secrets'}
+      <SecretsTab {tokenStored} />
     {/if}
     <div hidden={activeTab !== 'capabilities'}>
       <CapabilitiesTab
@@ -585,8 +587,6 @@
       />
     {:else if activeTab === 'audit'}
       <AuditTab {tokenStored} />
-    {:else if activeTab === 'secrets'}
-      <SecretsTab {tokenStored} />
     {/if}
   </main>
 {/if}
