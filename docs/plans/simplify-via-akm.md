@@ -136,10 +136,99 @@ End-to-end checks from a clean `openpalm install` on the simplified stack:
 12. **Lifecycle.** `openpalm update` and `openpalm upgrade` succeed without referencing the deleted memory/scheduler/varlock assets.
 13. **Tests.** `bun test` in `packages/lib`, `packages/assistant-tools`, `packages/scheduler`, `packages/cli` passes; deleted suites are gone with their packages.
 
+## Recommended upstream enhancements
+
+The plan above closes every gap inside OpenPalm. Some of those shims are general-purpose and would benefit any akm user — they belong upstream rather than re-invented in every host. The list below splits them by where they should land: **`akm-cli`** for anything that does not require an agent harness, and **`akm-plugins`** (the `opencode/` and `claude/` subdirs of `itlackey/akm-plugins`) for anything that needs lifecycle hooks, tool registration, or prompt-transform APIs.
+
+Selection criteria:
+- **CLI candidates**: useful outside any specific host, runnable as a one-shot subprocess or daemon, no assumption about an agent loop.
+- **Plugin candidates**: only meaningful inside an agent harness because they hook into session lifecycle, tool execution, or system-prompt transforms.
+
+### akm-cli (general, no harness required)
+
+1. **`akm remember --infer` — LLM-driven fact extraction.**
+   - Today: `akm remember "<text>"` stores the input verbatim. Consumers that want atomic recall (OpenPalm, RAG pipelines, anyone summarising long inputs) build their own extraction loop.
+   - Proposal: an `--infer` flag that uses akm's already-configured optional LLM (the same one wired for indexing-time metadata enrichment) to split the input into atomic facts and store one memory per fact, with frontmatter `inferred: true` and a backref to the source.
+   - General value: replaces a recurring downstream pattern with one canonical implementation; turns `akm remember` into a credible substitute for mem0-style fact extractors.
+
+2. **First-class memory scoping (`--user`, `--agent`, `--run`, `--channel`).**
+   - Today: scoping is achievable only by setting a different `AKM_STASH_DIR` per scope or by writing custom frontmatter via a host wrapper.
+   - Proposal: native scope flags on `akm remember`, plus matching `--filter` / `--scope` options on `akm search` and `akm show`. Scopes persist as canonical frontmatter and the search index pre-filters by them.
+   - General value: any multi-user / multi-agent / multi-tenant deployment of akm needs this. Today every consumer invents its own scoping convention, which makes stashes non-portable.
+
+3. **`akm feedback` accepting `memory:` and `vault:` refs.**
+   - Today: `akm feedback` rejects `memory:` and `vault:` refs (the opencode plugin auto-skips them as a result), so relevance signal on memories has no upstream path.
+   - Proposal: allow feedback on every asset type — vault feedback can store an aggregated count without leaking values. Hybrid ranking already reads frontmatter for boosts, so the wiring is small.
+   - General value: closes the relevance-learning loop on the asset type users actually re-rank most.
+
+4. **`akm events` — read/tail asset-mutation events.**
+   - Today: there is no documented event stream; consumers have to scrape mtimes or build their own log.
+   - Proposal: an append-only `events.jsonl` written by the CLI on every add/update/delete/feedback, surfaced via `akm events list [--since ts]` and `akm events tail`.
+   - General value: foundational for any background processor (enrichment, sync, replication, audit) running outside the harness — including OpenPalm's enrichment job, but not specific to it.
+
+5. **`akm history` — surface the existing mutation history.**
+   - Today: akm writes mutation history internally; there is no first-class command to read it.
+   - Proposal: `akm history [--ref <ref>] [--since ts]` returning per-asset and stash-wide history.
+   - General value: trivially closes the audit-trail need that any compliance-conscious user has.
+
+6. **`akm serve` — local HTTP daemon over the stash.**
+   - Today: every consumer must shell out to `akm`. Per-call startup cost is real for high-frequency consumers (background workers, automations, cron jobs, remote integrations).
+   - Proposal: optional `akm serve --bind 127.0.0.1:8765` exposing the verb surface with the same JSON contract as the CLI. Concurrent stash access is already handled at the file/sqlite layer.
+   - General value: lets non-shell consumers integrate without spawning processes; enables remote stash access over the LAN. Not required by the in-container OpenPalm model in this plan, but a strict improvement for anyone running akm consumers across machine boundaries.
+
+7. **Pluggable secret backends and rotation for `akm vault`.**
+   - Today: vault is `.env`-style files only; no rotation, no remote secret-manager integration. Tracks upstream issue #190.
+   - Proposal: a backend interface with built-in adapters for the OS keychain and age-encrypted files, plus hooks for external managers (`pass`, 1Password CLI, AWS/GCP Secrets Manager, HashiCorp Vault). `akm vault rotate <key>` and `akm vault backend set <name>`.
+   - General value: makes `akm vault` a credible production secret store rather than a developer-laptop convenience.
+
+8. **`akm graph build|query` — optional entity/relation index.**
+   - Today: akm's hybrid search is purely document-level. Graph reasoning across memories is left to consumers.
+   - Proposal: opt-in `akm graph build` that uses the configured LLM to extract entities and relations from `memory:` and `knowledge:` assets, writing a queryable graph file under the stash; `akm graph query "<entity> -> ?"` for traversal; results feed back into search ranking.
+   - General value: covers the same gap that motivates separate graph-memory services in many stacks, in a form every akm user can opt into.
+
+9. **`akm workflow schedule` — cron-triggered workflows.**
+   - Today: workflows are stateful but invoked manually.
+   - Proposal: `akm workflow schedule <workflow-ref> "<cron>"` registering a schedule alongside the workflow definition; an `akm scheduler tick` (or daemon mode under `akm serve`) fires due workflows.
+   - General value: collapses the common "cron + script" pattern into akm's existing workflow primitive. Useful for any user who wants periodic background tasks without bringing in a separate scheduler.
+
+10. **Single configurable LLM block reused across enrichment verbs.**
+    - Today: the optional LLM is wired for indexing-time enrichment but not exposed as the engine for `--infer`, `graph build`, or future inference verbs.
+    - Proposal: one `akm.llm` config block, reused by every LLM-needing verb, with explicit per-verb opt-out.
+    - General value: one place to configure, consistent behaviour across enrichment, inference, and graph building.
+
+### akm-plugins (harness-coupled — `opencode/` and `claude/` subdirs)
+
+1. **`session.created` retrieval with token budget.**
+   - Today: akm-opencode injects context on `chat.message` (curate-on-message), not on session start. Cold sessions miss curated context until the user types.
+   - Proposal: subscribe to the harness's session-start hook, run `akm curate --limit N --for-agent` against the session's scope (using the new CLI scope flags above), and inject via the harness's system-prompt transform. Budget configurable via `AKM_CONTEXT_BUDGET_CHARS`.
+   - Why plugin, not CLI: requires harness lifecycle hooks and prompt-transform APIs that only exist inside the agent runtime.
+
+2. **Auto-attach scope from harness session metadata.**
+   - Proposal: when the harness exposes session metadata (channel, user id, agent id), the plugin transparently passes those through to the new CLI scope flags on every `akm_remember` / `akm_curate` call. No user action required.
+   - Why plugin: scope sources are harness-specific (OpenCode session ids, Claude Code thread ids, etc.).
+
+3. **Conversation-derived feedback.**
+   - Today: akm-opencode has `AKM_RETROSPECTIVE_FEEDBACK_PATTERN` matching positive cues. Could be extended to negative cues, multi-turn confirmation, and explicit "this was wrong" detection, then call the new `akm feedback memory:…` once the CLI accepts memory refs.
+   - Why plugin: needs access to the conversation transcript and the harness's tool-execution timeline.
+
+4. **Session-end consolidation via `akm remember --infer`.**
+   - Today: the plugin already flushes a session buffer into a memory artifact on `stop` / `session.idle` / `session.compacted` / `session.deleted`.
+   - Proposal: once `--infer` lands upstream, switch the consolidation step to `akm remember --infer` so the result is atomic facts rather than a single blob — without each plugin reinventing extraction.
+   - Why plugin: the trigger is the harness lifecycle event.
+
+5. **Per-thread / per-conversation stash overlays.**
+   - Proposal: optional plugin mode that points `AKM_STASH_DIR` at a per-thread overlay stash that inherits from the global stash (read-through, write-local) for the duration of a session, then merges back on session end.
+   - Why plugin: scope is the harness's thread/session boundary.
+
+6. **Cross-harness parity.**
+   - Proposal: keep feature parity between `opencode/` and `claude/` as new hooks land — the same scope-attach, session-start retrieval, and feedback-inference behaviours should ship in both.
+   - Why plugin: each harness has its own hook surface; parity has to be coded per-harness.
+
 ## Out of scope
 
 - Replacing the **guardian** HMAC boundary (akm has no equivalent).
 - Replacing the **assistant** runtime (OpenCode stays).
 - Replacing the **scheduler** logic with akm workflows (akm workflows are stateful task chains, not cron — different concept; the scheduler module stays, only its container packaging changes).
-- Building a real graph-memory service (the scheduled graph-build is a pragmatic stand-in).
+- Building a real graph-memory service (the scheduled graph-build is a pragmatic stand-in until the upstream `akm graph` proposal above lands).
 - Channel adapters — they keep their current contract (sign + POST to guardian); no akm, no stash mount.
+- Log-redaction inside akm — that is a host-app concern (handled in OpenPalm's `logger.ts`), not something akm should own.
