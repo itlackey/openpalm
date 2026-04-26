@@ -12,7 +12,7 @@ The goal is to collapse the stack onto **akm + the shared stash + the assistant 
 2. **Cancel OpenViking.** Replace it with akm wikis + knowledge.
 3. **Delete varlock.** Replace it with `akm vault` for user secrets and a small in-house redactor for stack secrets.
 4. **Fold the scheduler into the assistant container.** Run it as a co-process; no separate image, no separate service.
-5. **Install the `akm` CLI in every trusted container** (guardian, assistant, admin) and **bind-mount the stash from the host** so the three share state through the filesystem — no Unix sockets, no `akm serve`, no native-deps fragility on macOS (Linux-only inside containers).
+5. **Install the `akm` CLI in every trusted container** (guardian, assistant, admin) and **bind-mount stash directories from the host**: assistant and admin share one stash (the user's memory / knowledge / skills); guardian gets its own separate persisted stash for operator-only data. No Unix sockets, no `akm serve`, no native-deps fragility on macOS (Linux-only inside containers).
 
 Remaining capability gaps (LLM fact inference, multi-user scoping, feedback events, session-start retrieval, graph memory) are filled with **scheduled OpenPalm automations** and **assistant OpenCode plugin tools** rather than upstream akm changes.
 
@@ -32,18 +32,20 @@ Remaining capability gaps (LLM fact inference, multi-user scoping, feedback even
 - Admin currently calls `http://scheduler:8090`; rewire to `http://assistant:8090`. Update env/var defaults in `packages/admin/`. The assistant container exposes both `4096` and `8090` on `assistant_net`.
 - Keep `packages/scheduler/` (the package) — only the *service container* and Dockerfile go away. The package is consumed by the supervised subprocess.
 
-### 3. Install `akm` in the trusted containers and share the stash from the host
-Each trusted container — **guardian**, **assistant** (which now also runs scheduler), **admin** — gets:
-- `akm-cli` installed at a pinned version in its Dockerfile (`bun add -g akm-cli@<pin>` or equivalent).
-- A bind-mount of `${OP_HOME}/data/stash` to a consistent in-container path with `AKM_STASH_DIR` set accordingly:
+### 3. Install `akm` in the trusted containers; share a stash between admin and assistant; give guardian its own
+Each trusted container — **guardian**, **assistant** (which now also runs scheduler), **admin** — gets `akm-cli` installed at a pinned version in its Dockerfile (`bun add -g akm-cli@<pin>` or equivalent), plus a bind-mount of an appropriate stash with `AKM_STASH_DIR` set accordingly:
 
-| Container | Stash path | Mode |
-|---|---|---|
-| assistant (and embedded scheduler) | `/home/opencode/.akm` | `rw` (already exists) |
-| admin | `/akm` | `rw` (new) |
-| guardian | `/akm` | `ro` (new — guardian only reads policy/vault) |
+| Container | Host source | In-container path | Mode | Notes |
+|---|---|---|---|---|
+| assistant (+ scheduler subprocess) | `${OP_HOME}/data/stash` | `/home/opencode/.akm` | `rw` | already exists |
+| admin | `${OP_HOME}/data/stash` *(same as assistant)* | `/akm` | `rw` | new — admin and assistant share one stash so admin can browse/edit user memories, knowledge, skills, vaults, etc. |
+| guardian | `${OP_HOME}/data/guardian-stash` *(separate)* | `/akm` | `rw` | new — guardian's own persisted stash for operator-only artifacts (e.g., HMAC vault, channel policies). Guardian cannot read or write the user stash. |
 
-`${OP_HOME}/data/stash` is the **single source of truth** on the host. All three containers read it; assistant and admin write it; guardian is read-only.
+Two stashes, two trust scopes:
+- **`${OP_HOME}/data/stash`** is the user-facing stash — single source of truth for memory, knowledge, skills, commands, agents, workflows, user vault. Shared rw between assistant and admin.
+- **`${OP_HOME}/data/guardian-stash`** is the operator-facing stash for guardian. Holds channel HMAC secrets in `akm vault` form, channel policies, and any guardian-local audit it wants to persist. Not visible to assistant or admin.
+
+This split keeps guardian's blast radius small: a compromised assistant cannot tamper with channel secrets, and a compromised guardian cannot read user memories.
 
 ### 4. Drop overlapping assistant plugin tools
 - Remove `memory-*` and `viking-*` tool registrations from `packages/assistant-tools/src/index.ts`.
@@ -66,17 +68,18 @@ Every capability the deleted memory/scheduler/varlock layers offered is mapped t
 
 | Gap | Resolution | Where it lives |
 |---|---|---|
-| **LLM fact extraction** (`infer: true` extracted atomic facts from raw text). | **Scheduled enrichment automation.** `akm-opencode` writes raw memories with frontmatter `enriched: false`. A new automation runs every N minutes: scheduler invokes the assistant with a deterministic prompt → assistant reads `memories/` entries where `enriched: false`, asks its provider LLM to extract atomic facts, calls `akm remember` per fact with `enriched: true`, deletes the raw entries. | `${OP_HOME}/config/automations/memory-enrich.yml` (new) — `assistant`-action automation. Prompt + tool policy bundled as a stash `agent:memory-enricher`. |
+| **LLM fact extraction** (`infer: true` extracted atomic facts from raw text). | **Periodic `akm index` run.** Once enrichment is folded into akm's index process upstream (see Recommended upstream enhancements §1), OpenPalm just needs to run `akm index` on a cadence — akm picks up any memories pending inference and processes them according to its global config. No bespoke OpenPalm prompt or work queue. | `${OP_HOME}/config/automations/akm-index.yml` (new) — small `assistant`-action automation that shells `akm index`. Bundled config in the stash enables enrichment. |
 | **Multi-user / multi-agent / multi-run scoping.** | **Frontmatter-based scoping** written by an OpenCode plugin. Plugin attaches `user`, `agent`, `run`, `channel` to every `akm_remember` call as YAML frontmatter; search filters via `akm search --type memory --filter user=…`. | New `packages/assistant-tools/opencode/plugins/memory-scope.ts`. |
-| **Programmatic / REST API** for non-OpenCode callers. | **Not needed.** Channel adapters never called memory directly — they go through guardian → assistant. The (now in-container) scheduler runs enrichment by calling the assistant locally. Admin manages memories through the `akm` CLI inside its own container. | n/a — removed. |
-| **Memory feedback** (`memory-feedback` tool). | **Plugin tool** that writes a feedback record to the memory's frontmatter (`feedback: [{positive, note, ts}]`); akm hybrid ranking already reads frontmatter for boosting. | New `memory_feedback` tool in `packages/assistant-tools/src/index.ts`. |
-| **Memory events stream** (`memory-events` tool). | **Append-only events log file in the stash** (`events/memory.jsonl`). Same plugin appends an event line on every `akm_remember`/`memory_feedback`. Used as the work queue for the enrichment automation. | Stash convention; helpers in `packages/assistant-tools/src/lib/`. |
+| **Programmatic / REST API** for non-OpenCode callers. | **Not needed.** Channel adapters never called memory directly — they go through guardian → assistant. The (now in-container) scheduler runs enrichment by shelling `akm index` locally. Admin manages memories through the `akm` CLI inside its own container, against the shared stash. | n/a — removed. |
+| **Memory feedback** (`memory-feedback` tool). | **Direct call to `akm feedback`** once it accepts any valid ref upstream (Recommended upstream enhancements §3). The OpenCode plugin wraps it as `akm_feedback` — no custom frontmatter writing. | `akm-opencode` plugin (already loaded); thin call-site in `packages/assistant-tools`. |
+| **Memory events stream** (`memory-events` tool). | **Dropped.** With enrichment running inside `akm index`, OpenPalm no longer needs an event stream as a work queue. No equivalent surface is added. | n/a — removed. |
 | **Automatic session-start retrieval with token budget** (the old `memory-context.ts` plugin). | **Slim plugin** subscribed to `session.created` that runs `akm curate --limit N --for-agent` against the current session's scope and injects results via `experimental.chat.system.transform`. Budget controlled by `OP_CONTEXT_BUDGET_CHARS`. | New `packages/assistant-tools/opencode/plugins/session-start-context.ts` (replaces deleted `memory-context.ts`). |
-| **Entity-relation / graph memory.** | **Scheduled graph-build automation.** Periodic job invokes assistant to walk recent memories and write `memories/.graph/relations.json`; consumed by `session-start-context.ts` for ranking. Not first-class; can be promoted later. | `${OP_HOME}/config/automations/memory-graph.yml`. |
-| **Varlock validation/scan/redact.** | **Replaced by:** (a) `akm vault` enforces secret hygiene for user secrets at write time (mode-0600 files, never echoed); (b) a small log-redactor in `packages/lib/src/control-plane/logger.ts` masks values for env keys matching `_TOKEN|_SECRET|_KEY|_PASSWORD`; (c) `validate` and `scan` CLI commands either go away or become thin wrappers around `akm vault list` + a name-pattern check. | `packages/lib/src/control-plane/logger.ts` (new redactor); CLI commands edited or removed. |
-| **History / audit trail of mutations** (memory had `history.db`; varlock had schema-driven audits). | akm itself writes a history log when assets change via CLI; combined with the events log above this covers the audit need. Admin UI surfaces it via the `akm` CLI. | Stash convention. |
+| **Entity-relation / graph memory.** | **Periodic `akm index` run, same as enrichment.** Once graph building is folded into akm's index process upstream (Recommended upstream enhancements §7), the same scheduled `akm index` automation builds and refreshes the graph based on akm config. | Same `akm-index.yml` automation as enrichment. |
+| **Varlock validation/scan/redact.** | **Replaced by:** (a) `akm vault` enforces secret hygiene for user secrets at write time (mode-0600 files, never echoed); (b) a small log-redactor in `packages/lib/src/control-plane/logger.ts` masks values for env keys matching `_TOKEN`/`_SECRET`/`_KEY`/`_PASSWORD`; (c) `validate` and `scan` CLI commands either go away or become thin wrappers around `akm vault list` + a name-pattern check. | `packages/lib/src/control-plane/logger.ts` (new redactor); CLI commands edited or removed. |
+| **History / audit trail of mutations** (memory had `history.db`; varlock had schema-driven audits). | **Best-effort via stash filesystem + `akm save` git history.** When the user opts into a git-backed stash, `akm save` produces a per-asset commit history that admin can surface via plain `git log` inside the stash directory. No first-class CLI history is added upstream. | Stash convention; admin UI calls out to `git -C` inside the shared stash. |
 | **macOS sqlite-vec / varlock binary fragility.** | **Not an issue** — akm runs inside Linux containers on every host. Varlock is gone. | n/a. |
-| **History/scheduler triggers from outside** (admin used to POST to `scheduler:8090`). | Same HTTP API, served by the assistant container on port 8090. Admin updates its base URL. | `packages/admin/` env defaults; scheduler subprocess inside assistant container. |
+| **Scheduler triggers from outside** (admin used to POST to `scheduler:8090`). | Same HTTP API, served by the assistant container on port 8090. Admin updates its base URL. | `packages/admin/` env defaults; scheduler subprocess inside assistant container. |
+| **Guardian operator data** (HMAC channel secrets, policies). | **Guardian's own persisted stash** at `${OP_HOME}/data/guardian-stash`. Channel secrets live as an `akm vault` inside that stash, loaded at guardian startup; not readable by assistant or admin. | `${OP_HOME}/data/guardian-stash/` (new host directory); bind-mounted only into guardian. |
 
 ## Files to modify
 
@@ -92,7 +95,7 @@ Delete:
 - OpenViking roadmap PRDs at `.github/roadmap/0.10.0/openviking*` and `.github/roadmap/0.10.0/knowledge-system-roadmap.md` (mark superseded if not deleted).
 
 Modify:
-- `.openpalm/stack/core.compose.yml` — remove `memory` and `scheduler` services; add `/akm` bind-mount + `AKM_STASH_DIR` to guardian (`ro`), admin (`rw`); confirm assistant mount unchanged; expose `:8090` from assistant on `assistant_net`.
+- `.openpalm/stack/core.compose.yml` — remove `memory` and `scheduler` services; mount `${OP_HOME}/data/stash` (rw) into admin at `/akm` and confirm assistant mount unchanged; mount `${OP_HOME}/data/guardian-stash` (rw) into guardian at `/akm` as a *separate* host directory; set `AKM_STASH_DIR` accordingly in each container; expose `:8090` from assistant on `assistant_net`.
 - `core/guardian/Dockerfile`, `core/assistant/Dockerfile`, `core/admin/Dockerfile` — install pinned `akm-cli`. Assistant Dockerfile additionally pulls `packages/scheduler/` and adds the supervisor entrypoint.
 - `core/assistant/entrypoint.sh` (new) — supervises OpenCode + scheduler subprocess.
 - `packages/scheduler/src/server.ts` — accept `127.0.0.1` bind for in-container loopback; otherwise unchanged.
@@ -106,7 +109,8 @@ Modify:
 - `packages/assistant-tools/src/index.ts` — drop `memory-*` and `viking-*` tools; add `memory_feedback`.
 - `packages/assistant-tools/opencode/plugins/` — add `session-start-context.ts` and `memory-scope.ts`.
 - `core/assistant/opencode/system.md` — rewrite memory/knowledge guidance around `akm_*` tools.
-- `${OP_HOME}/config/automations/memory-enrich.yml`, `memory-graph.yml` — new, installed by setup.
+- `${OP_HOME}/config/automations/akm-index.yml` — new, installed by setup; runs `akm index` on a cadence so akm's enrichment + graph passes process pending memories.
+- `${OP_HOME}/data/guardian-stash/` — new host directory; seeded by setup with guardian's HMAC-secrets vault.
 - `vault/stack/stack.env` template — drop `MEMORY_API_URL`, `MEMORY_AUTH_TOKEN`, mem0/embedder vars; drop `OP_VARLOCK_*`.
 - `docs/technical/foundations.md`, `environment-and-mounts.md`, `opencode-configuration.md`, `api-spec.md`, `core-principles.md` — refresh mount/service tables; remove memory/scheduler/varlock sections; document `akm` presence in trusted containers.
 
@@ -124,13 +128,13 @@ End-to-end checks from a clean `openpalm install` on the simplified stack:
 
 1. **Service count.** `docker compose ps` shows two core services (guardian, assistant) plus addons; no `memory`, no `scheduler`.
 2. **akm presence.** `docker compose exec guardian akm --version`, `docker compose exec assistant akm --version`, `docker compose exec admin akm --version` all succeed and report the same pinned version.
-3. **Shared stash.** `docker compose exec assistant akm remember "verify-shared-stash"` then `docker compose exec admin akm search verify-shared-stash --type memory --format json` returns the same memory. Repeat write from admin, read from assistant.
-4. **Guardian RO mount.** `docker compose exec guardian sh -c 'akm remember nope || echo expected-failure'` produces a write error; reads succeed.
+3. **Shared admin/assistant stash.** `docker compose exec assistant akm remember "verify-shared-stash"` then `docker compose exec admin akm search verify-shared-stash --type memory --format json` returns the same memory. Repeat write from admin, read from assistant.
+4. **Guardian stash isolation.** `docker compose exec guardian akm search verify-shared-stash` returns no results (different stash). `docker compose exec guardian akm vault list` shows guardian's own HMAC entries. `docker compose exec assistant ls -la /home/opencode/.akm` does not include any guardian-only artifact.
 5. **Co-located scheduler.** Inside the assistant container, both `:4096` (OpenCode) and `:8090` (scheduler) are listening; admin can reach `http://assistant:8090/health`. If either subprocess dies, the supervisor restarts it.
 6. **Channel round-trip.** Send a chat message → guardian → assistant → assistant uses `akm_remember` → memory file appears in `${OP_HOME}/data/stash/memories/` with scope frontmatter set by `memory-scope.ts`.
-7. **Enrichment automation.** Drop a raw memory with `enriched: false` into the stash, manually trigger `memory-enrich` via the in-container scheduler API, observe atomic facts written with `enriched: true` and the raw entry removed.
+7. **Index automation.** With akm config enabling enrichment, drop a memory with `inferred: false` into the stash, manually trigger `akm-index` via the in-container scheduler API, observe atomic facts written with `inferred: true` (work done by `akm index`, not OpenPalm).
 8. **Session-start retrieval.** Start a fresh assistant session and inspect the system prompt transform — curated context appears without any user message yet, capped at `OP_CONTEXT_BUDGET_CHARS`.
-9. **Vault.** `akm vault list` from inside assistant/admin shows entries previously in `${OP_HOME}/vault/user/*.env`. `akm_vault load` populates env for a tool call. Guardian's HMAC secrets still come from `vault/stack/guardian.env`.
+9. **Vault.** `akm vault list` from inside assistant or admin shows entries previously in `${OP_HOME}/vault/user/*.env`. `akm_vault load` populates env for a tool call. Guardian's HMAC secrets are stored as an `akm vault` inside `${OP_HOME}/data/guardian-stash` and loaded at guardian startup; assistant and admin cannot list them.
 10. **No varlock.** `which varlock` fails inside every container; `~/.cache/openpalm/bin/varlock` is gone; `openpalm install` runs end-to-end without downloading any binary; logs containing values for `*_TOKEN`/`*_SECRET`/`*_KEY`/`*_PASSWORD` are masked by the in-house redactor.
 11. **Knowledge / wiki.** `akm wiki create test`, `akm_search --type knowledge` returns hits; old `viking_*` tools are gone (no missing-tool errors in assistant logs).
 12. **Lifecycle.** `openpalm update` and `openpalm upgrade` succeed without referencing the deleted memory/scheduler/varlock assets.
@@ -146,55 +150,44 @@ Selection criteria:
 
 ### akm-cli (general, no harness required)
 
-1. **`akm remember --infer` — LLM-driven fact extraction.**
-   - Today: `akm remember "<text>"` stores the input verbatim. Consumers that want atomic recall (OpenPalm, RAG pipelines, anyone summarising long inputs) build their own extraction loop.
-   - Proposal: an `--infer` flag that uses akm's already-configured optional LLM (the same one wired for indexing-time metadata enrichment) to split the input into atomic facts and store one memory per fact, with frontmatter `inferred: true` and a backref to the source.
-   - General value: replaces a recurring downstream pattern with one canonical implementation; turns `akm remember` into a credible substitute for mem0-style fact extractors.
+1. **Memory-inference as part of `akm index`, controlled by global config.**
+   - Today: `akm remember "<text>"` stores the input verbatim. Consumers that want atomic recall (RAG pipelines, anyone summarising long inputs) build their own extraction loop.
+   - Proposal: extend the existing index process to detect memories pending inference and run the configured LLM over them, splitting each into atomic memories with frontmatter `inferred: true` and a backref to the source. Toggle via `akm config set index.infer true|false`. When disabled, indexing leaves memories untouched. When enabled, every `akm index` run drains the pending queue.
+   - General value: one configuration switch turns `akm` into a credible substitute for mem0-style fact extractors. Folding the work into the existing indexing pipeline keeps the verb surface small (no new `--infer` flag) and lets users take advantage of it just by scheduling `akm index`.
 
 2. **First-class memory scoping (`--user`, `--agent`, `--run`, `--channel`).**
    - Today: scoping is achievable only by setting a different `AKM_STASH_DIR` per scope or by writing custom frontmatter via a host wrapper.
    - Proposal: native scope flags on `akm remember`, plus matching `--filter` / `--scope` options on `akm search` and `akm show`. Scopes persist as canonical frontmatter and the search index pre-filters by them.
    - General value: any multi-user / multi-agent / multi-tenant deployment of akm needs this. Today every consumer invents its own scoping convention, which makes stashes non-portable.
 
-3. **`akm feedback` accepting `memory:` and `vault:` refs.**
-   - Today: `akm feedback` rejects `memory:` and `vault:` refs (the opencode plugin auto-skips them as a result), so relevance signal on memories has no upstream path.
-   - Proposal: allow feedback on every asset type — vault feedback can store an aggregated count without leaking values. Hybrid ranking already reads frontmatter for boosts, so the wiring is small.
-   - General value: closes the relevance-learning loop on the asset type users actually re-rank most.
+3. **`akm feedback` accepting any valid ref.**
+   - Today: `akm feedback` rejects some ref types (notably `memory:` and `vault:`), and the opencode plugin auto-skips those refs as a result, so relevance signal on memories and vaults has no upstream path.
+   - Proposal: allow feedback on **any** valid ref. Vault feedback can store an aggregated count without leaking values. Hybrid ranking already reads frontmatter for boosts, so the wiring is small.
+   - General value: closes the relevance-learning loop uniformly across asset types instead of asking consumers to remember which refs are "feedback-eligible".
 
-4. **`akm events` — read/tail asset-mutation events.**
-   - Today: there is no documented event stream; consumers have to scrape mtimes or build their own log.
-   - Proposal: an append-only `events.jsonl` written by the CLI on every add/update/delete/feedback, surfaced via `akm events list [--since ts]` and `akm events tail`.
-   - General value: foundational for any background processor (enrichment, sync, replication, audit) running outside the harness — including OpenPalm's enrichment job, but not specific to it.
-
-5. **`akm history` — surface the existing mutation history.**
-   - Today: akm writes mutation history internally; there is no first-class command to read it.
-   - Proposal: `akm history [--ref <ref>] [--since ts]` returning per-asset and stash-wide history.
-   - General value: trivially closes the audit-trail need that any compliance-conscious user has.
-
-6. **`akm serve` — local HTTP daemon over the stash.**
-   - Today: every consumer must shell out to `akm`. Per-call startup cost is real for high-frequency consumers (background workers, automations, cron jobs, remote integrations).
-   - Proposal: optional `akm serve --bind 127.0.0.1:8765` exposing the verb surface with the same JSON contract as the CLI. Concurrent stash access is already handled at the file/sqlite layer.
-   - General value: lets non-shell consumers integrate without spawning processes; enables remote stash access over the LAN. Not required by the in-container OpenPalm model in this plan, but a strict improvement for anyone running akm consumers across machine boundaries.
-
-7. **Pluggable secret backends and rotation for `akm vault`.**
+4. **Pluggable secret backends and rotation for `akm vault`** *(future consideration, not confirmed).*
    - Today: vault is `.env`-style files only; no rotation, no remote secret-manager integration. Tracks upstream issue #190.
    - Proposal: a backend interface with built-in adapters for the OS keychain and age-encrypted files, plus hooks for external managers (`pass`, 1Password CLI, AWS/GCP Secrets Manager, HashiCorp Vault). `akm vault rotate <key>` and `akm vault backend set <name>`.
    - General value: makes `akm vault` a credible production secret store rather than a developer-laptop convenience.
+   - Status: deferred — flagged for evaluation in a future release; not part of the immediate roadmap.
 
-8. **`akm graph build|query` — optional entity/relation index.**
+5. **Graph-build as part of `akm index`, controlled by global config.**
    - Today: akm's hybrid search is purely document-level. Graph reasoning across memories is left to consumers.
-   - Proposal: opt-in `akm graph build` that uses the configured LLM to extract entities and relations from `memory:` and `knowledge:` assets, writing a queryable graph file under the stash; `akm graph query "<entity> -> ?"` for traversal; results feed back into search ranking.
-   - General value: covers the same gap that motivates separate graph-memory services in many stacks, in a form every akm user can opt into.
+   - Proposal: same shape as the inference change — extend the index process to optionally extract entities and relations from `memory:` and `knowledge:` assets and persist a queryable graph file under the stash. Toggle via `akm config set index.graph true|false`. Search ranking consults the graph when it exists.
+   - General value: covers the gap that motivates separate graph-memory services in many stacks. Folding it into indexing means users don't manage a separate `graph build` cadence — one `akm index` run keeps everything in sync.
 
-9. **`akm workflow schedule` — cron-triggered workflows.**
-   - Today: workflows are stateful but invoked manually.
-   - Proposal: `akm workflow schedule <workflow-ref> "<cron>"` registering a schedule alongside the workflow definition; an `akm scheduler tick` (or daemon mode under `akm serve`) fires due workflows.
-   - General value: collapses the common "cron + script" pattern into akm's existing workflow primitive. Useful for any user who wants periodic background tasks without bringing in a separate scheduler.
+6. **Single configurable LLM block reused across index passes.**
+   - Today: the optional LLM is wired for indexing-time metadata enrichment but is not exposed as the engine for the new inference / graph passes above.
+   - Proposal: one `akm.llm` config block, reused by every LLM-needing pass inside `akm index`, with explicit per-pass opt-out.
+   - General value: one place to configure, consistent behaviour across enrichment, inference, and graph building.
 
-10. **Single configurable LLM block reused across enrichment verbs.**
-    - Today: the optional LLM is wired for indexing-time enrichment but not exposed as the engine for `--infer`, `graph build`, or future inference verbs.
-    - Proposal: one `akm.llm` config block, reused by every LLM-needing verb, with explicit per-verb opt-out.
-    - General value: one place to configure, consistent behaviour across enrichment, inference, and graph building.
+### Explicitly **not** proposed for `akm-cli`
+
+These were considered and rejected (per maintainer direction). Documenting them so they aren't reproposed:
+- **`akm events`** — no asset-mutation event stream. Consumers should drive work via scheduled `akm index` runs, not event subscription.
+- **`akm history`** — no first-class history command. Users who want one can rely on `akm save`'s git-backed stash and read history with plain `git log`.
+- **`akm serve` / any HTTP daemon** — akm will not serve HTTP. The CLI is the only programmatic surface; consumers either embed it as a subprocess or share the stash directory.
+- **`akm workflow schedule` / cron triggers** — out of scope for akm. Scheduling stays in the host (cron, systemd, the host app's scheduler).
 
 ### akm-plugins (harness-coupled — `opencode/` and `claude/` subdirs)
 
@@ -208,20 +201,21 @@ Selection criteria:
    - Why plugin: scope sources are harness-specific (OpenCode session ids, Claude Code thread ids, etc.).
 
 3. **Conversation-derived feedback.**
-   - Today: akm-opencode has `AKM_RETROSPECTIVE_FEEDBACK_PATTERN` matching positive cues. Could be extended to negative cues, multi-turn confirmation, and explicit "this was wrong" detection, then call the new `akm feedback memory:…` once the CLI accepts memory refs.
+   - Today: akm-opencode has `AKM_RETROSPECTIVE_FEEDBACK_PATTERN` matching positive cues. Could be extended to negative cues, multi-turn confirmation, and explicit "this was wrong" detection, then call `akm feedback <ref>` against any harvested ref once the CLI accepts any valid ref (CLI §3).
    - Why plugin: needs access to the conversation transcript and the harness's tool-execution timeline.
 
-4. **Session-end consolidation via `akm remember --infer`.**
+4. **Session-end optional `akm index`.**
    - Today: the plugin already flushes a session buffer into a memory artifact on `stop` / `session.idle` / `session.compacted` / `session.deleted`.
-   - Proposal: once `--infer` lands upstream, switch the consolidation step to `akm remember --infer` so the result is atomic facts rather than a single blob — without each plugin reinventing extraction.
-   - Why plugin: the trigger is the harness lifecycle event.
+   - Proposal: after the flush, optionally invoke `akm index` (gated by an env toggle, e.g., `AKM_INDEX_ON_SESSION_END=1`). With the new index-pass config (CLI §1, §5), a single `akm index` run handles inference and graph building — no plugin-side extraction logic.
+   - Why plugin: the trigger is the harness lifecycle event; the work itself is now upstream.
 
-5. **Per-thread / per-conversation stash overlays.**
-   - Proposal: optional plugin mode that points `AKM_STASH_DIR` at a per-thread overlay stash that inherits from the global stash (read-through, write-local) for the duration of a session, then merges back on session end.
-   - Why plugin: scope is the harness's thread/session boundary.
+5. **Harness-provided LLM fallback for akm passes.**
+   - Today: if no LLM is configured for akm, the new index passes (inference, graph) cannot run.
+   - Proposal: when the harness already has provider credentials configured for the agent, the plugin offers them to akm as the LLM backend for index-time passes. Concretely, the plugin sets a CLI-side env / config (e.g., `AKM_LLM_PROXY_CMD` pointing at a tiny shim the plugin exposes) that akm consults when no native `akm.llm` is configured. The shim forwards prompts through the harness's existing connection.
+   - Why plugin: only the harness has the user-authenticated provider connection; akm itself stays harness-agnostic.
 
 6. **Cross-harness parity.**
-   - Proposal: keep feature parity between `opencode/` and `claude/` as new hooks land — the same scope-attach, session-start retrieval, and feedback-inference behaviours should ship in both.
+   - Proposal: keep feature parity between `opencode/` and `claude/` as new hooks land — the same scope-attach, session-start retrieval, feedback-inference, session-end-index, and harness-LLM-fallback behaviours should ship in both.
    - Why plugin: each harness has its own hook surface; parity has to be coded per-harness.
 
 ## Out of scope
@@ -229,6 +223,7 @@ Selection criteria:
 - Replacing the **guardian** HMAC boundary (akm has no equivalent).
 - Replacing the **assistant** runtime (OpenCode stays).
 - Replacing the **scheduler** logic with akm workflows (akm workflows are stateful task chains, not cron — different concept; the scheduler module stays, only its container packaging changes).
-- Building a real graph-memory service (the scheduled graph-build is a pragmatic stand-in until the upstream `akm graph` proposal above lands).
+- Building a real graph-memory service inside OpenPalm (the periodic `akm index` run is the canonical path once upstream index-time graph building lands).
 - Channel adapters — they keep their current contract (sign + POST to guardian); no akm, no stash mount.
 - Log-redaction inside akm — that is a host-app concern (handled in OpenPalm's `logger.ts`), not something akm should own.
+- Sharing a stash between guardian and the user-facing services — guardian's stash is intentionally isolated; do not collapse them.
