@@ -23,14 +23,16 @@ Remaining capability gaps (LLM fact inference, multi-user scoping, feedback even
 - **OpenViking.** Mark `.github/roadmap/0.10.0/openviking*` and `.github/roadmap/0.10.0/knowledge-system-roadmap.md` as superseded; remove any registry/addon scaffolding for it. Knowledge browsing is now `akm wiki` + `akm search --type knowledge`.
 - **Varlock.** Delete `packages/cli/src/lib/varlock.ts`, `packages/lib/src/control-plane/redact-schema.ts`, varlock-specific paths in `packages/lib/src/control-plane/secret-backend.ts` and `packages/lib/src/control-plane/validate.ts`, and the `cli` commands `validate` / `scan` (or rewrite them as no-ops / akm-vault-aware checks). Remove `.openpalm/vault/redact.env.schema`, the `VARLOCK_VERSION` constants, and the binary download/cache logic in `packages/cli/src/commands/install.ts`. Remove tests under `packages/lib/src/control-plane/env-schema-validation.test.ts` and `secret-backend.test.ts` for the deleted paths.
 
-### 2. Fold the scheduler into the assistant container
+### 2. Fold the scheduler into the assistant container; drop its HTTP API
 - Delete `core/scheduler/Dockerfile` and the `scheduler` service block from `.openpalm/stack/core.compose.yml`.
 - Add a tiny supervisor entrypoint to the assistant container (e.g., `core/assistant/entrypoint.sh` that uses `dumb-init` or a Bun supervisor script) that starts:
   1. The OpenCode runtime on `:4096`.
-  2. `bun packages/scheduler/src/server.ts` on `:8090`, bound only to the assistant container's loopback.
+  2. `bun packages/scheduler/src/server.ts` as a background process **with no exposed port** — the scheduler runs purely as a file-watching automation engine inside the assistant container.
 - Both processes share `${OP_HOME}/config`, `${OP_HOME}/data`, `${OP_HOME}/logs`, and the stash mount — already mounted into the assistant container today.
-- Admin currently calls `http://scheduler:8090`; rewire to `http://assistant:8090`. Update env/var defaults in `packages/admin/`. The assistant container exposes both `4096` and `8090` on `assistant_net`.
-- Keep `packages/scheduler/` (the package) — only the *service container* and Dockerfile go away. The package is consumed by the supervised subprocess.
+- **Admin no longer talks to the scheduler over HTTP.** Admin already mounts `${OP_HOME}/config` rw and now has direct write access to `${OP_HOME}/config/automations/*.yml`. The scheduler subprocess inside the assistant container watches that directory (already supported via the existing `startWatching` path in `packages/scheduler/src/scheduler.ts`) and picks up adds / edits / removes immediately. No API call, no token, no port mapping.
+- **Manual triggers and execution logs become file-based too.** Admin reads execution logs from the shared `${OP_HOME}/logs/` mount it already has. Manual triggers are expressed by writing a small "trigger" sentinel file (e.g., `${OP_HOME}/data/scheduler/triggers/<automation>.run`) that the scheduler watches; the scheduler executes the named automation and removes the sentinel. This keeps the entire admin → scheduler control plane on the filesystem.
+- The HTTP server in `packages/scheduler/src/server.ts` becomes a no-op (or is deleted): keep `getSchedulerStatus`, `getLoadedAutomations`, `getExecutionLog`, `triggerAutomation` as plain library calls used by the file-watcher and (optionally) the assistant via an OpenCode tool, but stop binding any port.
+- Keep `packages/scheduler/` (the package) — only the *service container*, the Dockerfile, and the HTTP layer go away. The package's croner loop and YAML parser are reused as the supervised subprocess.
 
 ### 3. Install `akm` in the trusted containers; share a stash between admin and assistant; give guardian its own
 Each trusted container — **guardian**, **assistant** (which now also runs scheduler), **admin** — gets `akm-cli` installed at a pinned version in its Dockerfile (`bun add -g akm-cli@<pin>` or equivalent), plus a bind-mount of an appropriate stash with `AKM_STASH_DIR` set accordingly:
@@ -70,15 +72,15 @@ Every capability the deleted memory/scheduler/varlock layers offered is mapped t
 |---|---|---|
 | **LLM fact extraction** (`infer: true` extracted atomic facts from raw text). | **Periodic `akm index` run.** Once enrichment is folded into akm's index process upstream (see Recommended upstream enhancements §1), OpenPalm just needs to run `akm index` on a cadence — akm picks up any memories pending inference and processes them according to its global config. No bespoke OpenPalm prompt or work queue. | `${OP_HOME}/config/automations/akm-index.yml` (new) — small `assistant`-action automation that shells `akm index`. Bundled config in the stash enables enrichment. |
 | **Multi-user / multi-agent / multi-run scoping.** | **Frontmatter-based scoping** written by an OpenCode plugin. Plugin attaches `user`, `agent`, `run`, `channel` to every `akm_remember` call as YAML frontmatter; search filters via `akm search --type memory --filter user=…`. | New `packages/assistant-tools/opencode/plugins/memory-scope.ts`. |
-| **Programmatic / REST API** for non-OpenCode callers. | **Not needed.** Channel adapters never called memory directly — they go through guardian → assistant. The (now in-container) scheduler runs enrichment by shelling `akm index` locally. Admin manages memories through the `akm` CLI inside its own container, against the shared stash. | n/a — removed. |
+| **Programmatic / REST API** for non-OpenCode callers. | **Not needed.** Channel adapters never called memory directly — they go through guardian → assistant. The (now in-container) scheduler runs enrichment by shelling `akm index` locally. Admin manages memories through the `akm` CLI inside its own container, against the shared stash. Admin → scheduler is filesystem-based (write YAML, scheduler watches), not HTTP. | n/a — removed. |
 | **Memory feedback** (`memory-feedback` tool). | **Direct call to `akm feedback`** once it accepts any valid ref upstream (Recommended upstream enhancements §3). The OpenCode plugin wraps it as `akm_feedback` — no custom frontmatter writing. | `akm-opencode` plugin (already loaded); thin call-site in `packages/assistant-tools`. |
 | **Memory events stream** (`memory-events` tool). | **Dropped.** With enrichment running inside `akm index`, OpenPalm no longer needs an event stream as a work queue. No equivalent surface is added. | n/a — removed. |
 | **Automatic session-start retrieval with token budget** (the old `memory-context.ts` plugin). | **Slim plugin** subscribed to `session.created` that runs `akm curate --limit N --for-agent` against the current session's scope and injects results via `experimental.chat.system.transform`. Budget controlled by `OP_CONTEXT_BUDGET_CHARS`. | New `packages/assistant-tools/opencode/plugins/session-start-context.ts` (replaces deleted `memory-context.ts`). |
 | **Entity-relation / graph memory.** | **Periodic `akm index` run, same as enrichment.** Once graph building is folded into akm's index process upstream (Recommended upstream enhancements §7), the same scheduled `akm index` automation builds and refreshes the graph based on akm config. | Same `akm-index.yml` automation as enrichment. |
 | **Varlock validation/scan/redact.** | **Replaced by:** (a) `akm vault` enforces secret hygiene for user secrets at write time (mode-0600 files, never echoed); (b) a small log-redactor in `packages/lib/src/control-plane/logger.ts` masks values for env keys matching `_TOKEN`/`_SECRET`/`_KEY`/`_PASSWORD`; (c) `validate` and `scan` CLI commands either go away or become thin wrappers around `akm vault list` + a name-pattern check. | `packages/lib/src/control-plane/logger.ts` (new redactor); CLI commands edited or removed. |
-| **History / audit trail of mutations** (memory had `history.db`; varlock had schema-driven audits). | **Best-effort via stash filesystem + `akm save` git history.** When the user opts into a git-backed stash, `akm save` produces a per-asset commit history that admin can surface via plain `git log` inside the stash directory. No first-class CLI history is added upstream. | Stash convention; admin UI calls out to `git -C` inside the shared stash. |
+| **History / audit trail of mutations** (memory had `history.db`; varlock had schema-driven audits). | **Direct call to `akm history`** once it lands upstream (Recommended upstream enhancements §5). Admin's history view shells `akm history --since <ts> --format json` against the shared stash. For real-time observers (e.g., notifications on new memories), `akm events tail` (Recommended upstream enhancements §4) is the natural fit. | Admin UI; no OpenPalm-side log to maintain. |
 | **macOS sqlite-vec / varlock binary fragility.** | **Not an issue** — akm runs inside Linux containers on every host. Varlock is gone. | n/a. |
-| **Scheduler triggers from outside** (admin used to POST to `scheduler:8090`). | Same HTTP API, served by the assistant container on port 8090. Admin updates its base URL. | `packages/admin/` env defaults; scheduler subprocess inside assistant container. |
+| **Scheduler triggers from outside** (admin used to POST to `scheduler:8090`). | **No HTTP at all.** Admin writes automation YAML to `${OP_HOME}/config/automations/`; scheduler watches the directory and reloads. Manual triggers happen by dropping a sentinel file in `${OP_HOME}/data/scheduler/triggers/`; execution logs are read from `${OP_HOME}/logs/`. Admin's existing rw mounts on `config/`, `data/`, and `logs/` are sufficient. | `packages/admin/` UI/services switch from HTTP client to filesystem ops; scheduler `startWatching` covers reload; small sentinel-file watcher added. |
 | **Guardian operator data** (HMAC channel secrets, policies). | **Guardian's own persisted stash** at `${OP_HOME}/data/guardian-stash`. Channel secrets live as an `akm vault` inside that stash, loaded at guardian startup; not readable by assistant or admin. | `${OP_HOME}/data/guardian-stash/` (new host directory); bind-mounted only into guardian. |
 
 ## Files to modify
@@ -95,11 +97,11 @@ Delete:
 - OpenViking roadmap PRDs at `.github/roadmap/0.10.0/openviking*` and `.github/roadmap/0.10.0/knowledge-system-roadmap.md` (mark superseded if not deleted).
 
 Modify:
-- `.openpalm/stack/core.compose.yml` — remove `memory` and `scheduler` services; mount `${OP_HOME}/data/stash` (rw) into admin at `/akm` and confirm assistant mount unchanged; mount `${OP_HOME}/data/guardian-stash` (rw) into guardian at `/akm` as a *separate* host directory; set `AKM_STASH_DIR` accordingly in each container; expose `:8090` from assistant on `assistant_net`.
+- `.openpalm/stack/core.compose.yml` — remove `memory` and `scheduler` services; mount `${OP_HOME}/data/stash` (rw) into admin at `/akm` and confirm assistant mount unchanged; mount `${OP_HOME}/data/guardian-stash` (rw) into guardian at `/akm` as a *separate* host directory; set `AKM_STASH_DIR` accordingly in each container. **No port 8090 exposure** — scheduler is purely in-process inside the assistant container.
 - `core/guardian/Dockerfile`, `core/assistant/Dockerfile`, `core/admin/Dockerfile` — install pinned `akm-cli`. Assistant Dockerfile additionally pulls `packages/scheduler/` and adds the supervisor entrypoint.
 - `core/assistant/entrypoint.sh` (new) — supervises OpenCode + scheduler subprocess.
-- `packages/scheduler/src/server.ts` — accept `127.0.0.1` bind for in-container loopback; otherwise unchanged.
-- `packages/admin/` — change scheduler base URL default from `http://scheduler:8090` to `http://assistant:8090`.
+- `packages/scheduler/src/server.ts` — strip the HTTP layer; keep the croner loop, YAML loader, and the file-watcher; add a sentinel-file watcher under `${OP_HOME}/data/scheduler/triggers/` for manual triggers.
+- `packages/admin/` — replace the scheduler HTTP client with filesystem operations: write/edit YAML in `${OP_HOME}/config/automations/`, drop sentinel files for triggers, read logs from `${OP_HOME}/logs/`. Drop the scheduler base URL and admin → scheduler auth token from config.
 - `packages/cli/src/commands/install.ts` — remove varlock download/install path.
 - `packages/cli/src/commands/validate.ts`, `packages/cli/src/commands/scan.ts` — rewrite as akm-vault checks or remove.
 - `packages/lib/src/control-plane/secret-backend.ts` — drop varlock provider; user secrets path runs through akm vault.
@@ -130,7 +132,7 @@ End-to-end checks from a clean `openpalm install` on the simplified stack:
 2. **akm presence.** `docker compose exec guardian akm --version`, `docker compose exec assistant akm --version`, `docker compose exec admin akm --version` all succeed and report the same pinned version.
 3. **Shared admin/assistant stash.** `docker compose exec assistant akm remember "verify-shared-stash"` then `docker compose exec admin akm search verify-shared-stash --type memory --format json` returns the same memory. Repeat write from admin, read from assistant.
 4. **Guardian stash isolation.** `docker compose exec guardian akm search verify-shared-stash` returns no results (different stash). `docker compose exec guardian akm vault list` shows guardian's own HMAC entries. `docker compose exec assistant ls -la /home/opencode/.akm` does not include any guardian-only artifact.
-5. **Co-located scheduler.** Inside the assistant container, both `:4096` (OpenCode) and `:8090` (scheduler) are listening; admin can reach `http://assistant:8090/health`. If either subprocess dies, the supervisor restarts it.
+5. **Co-located scheduler with no HTTP.** Inside the assistant container, only `:4096` (OpenCode) is listening; the scheduler subprocess is running but binds no port. If either subprocess dies, the supervisor restarts it. From admin, write a new YAML into `${OP_HOME}/config/automations/test.yml` and observe (within a couple of seconds) that the scheduler picks it up — visible in `${OP_HOME}/logs/scheduler.log` and in `getLoadedAutomations()`. Drop a sentinel file in `${OP_HOME}/data/scheduler/triggers/test.run` and observe the automation fires once and the sentinel is removed.
 6. **Channel round-trip.** Send a chat message → guardian → assistant → assistant uses `akm_remember` → memory file appears in `${OP_HOME}/data/stash/memories/` with scope frontmatter set by `memory-scope.ts`.
 7. **Index automation.** With akm config enabling enrichment, drop a memory with `inferred: false` into the stash, manually trigger `akm-index` via the in-container scheduler API, observe atomic facts written with `inferred: true` (work done by `akm index`, not OpenPalm).
 8. **Session-start retrieval.** Start a fresh assistant session and inspect the system prompt transform — curated context appears without any user message yet, capped at `OP_CONTEXT_BUDGET_CHARS`.
@@ -165,18 +167,28 @@ Selection criteria:
    - Proposal: allow feedback on **any** valid ref. Vault feedback can store an aggregated count without leaking values. Hybrid ranking already reads frontmatter for boosts, so the wiring is small.
    - General value: closes the relevance-learning loop uniformly across asset types instead of asking consumers to remember which refs are "feedback-eligible".
 
-4. **Pluggable secret backends and rotation for `akm vault`** *(future consideration, not confirmed).*
+4. **`akm events` — read/tail asset-mutation events.**
+   - Today: there is no documented event stream; consumers have to scrape mtimes or build their own log.
+   - Proposal: an append-only `events.jsonl` written by the CLI on every add / update / delete / feedback / index pass, surfaced via `akm events list [--since ts]` and `akm events tail`. Same JSON envelope conventions as the rest of the CLI.
+   - General value: foundational for any external observer (sync, replication, audit, dashboards) that needs to react to stash changes without polling. Pairs naturally with the periodic-`akm index` pattern for downstream consumers.
+
+5. **`akm history` — surface the existing mutation history.**
+   - Today: akm writes mutation history internally; there is no first-class command to read it.
+   - Proposal: `akm history [--ref <ref>] [--since ts]` returning per-asset and stash-wide history with the same JSON envelope.
+   - General value: closes the audit-trail need without forcing every downstream tool to build its own. Distinct from `akm events`: history is per-asset state changes; events is the realtime stream.
+
+6. **Pluggable secret backends and rotation for `akm vault`** *(future consideration, not confirmed).*
    - Today: vault is `.env`-style files only; no rotation, no remote secret-manager integration. Tracks upstream issue #190.
    - Proposal: a backend interface with built-in adapters for the OS keychain and age-encrypted files, plus hooks for external managers (`pass`, 1Password CLI, AWS/GCP Secrets Manager, HashiCorp Vault). `akm vault rotate <key>` and `akm vault backend set <name>`.
    - General value: makes `akm vault` a credible production secret store rather than a developer-laptop convenience.
    - Status: deferred — flagged for evaluation in a future release; not part of the immediate roadmap.
 
-5. **Graph-build as part of `akm index`, controlled by global config.**
+7. **Graph-build as part of `akm index`, controlled by global config.**
    - Today: akm's hybrid search is purely document-level. Graph reasoning across memories is left to consumers.
    - Proposal: same shape as the inference change — extend the index process to optionally extract entities and relations from `memory:` and `knowledge:` assets and persist a queryable graph file under the stash. Toggle via `akm config set index.graph true|false`. Search ranking consults the graph when it exists.
    - General value: covers the gap that motivates separate graph-memory services in many stacks. Folding it into indexing means users don't manage a separate `graph build` cadence — one `akm index` run keeps everything in sync.
 
-6. **Single configurable LLM block reused across index passes.**
+8. **Single configurable LLM block reused across index passes.**
    - Today: the optional LLM is wired for indexing-time metadata enrichment but is not exposed as the engine for the new inference / graph passes above.
    - Proposal: one `akm.llm` config block, reused by every LLM-needing pass inside `akm index`, with explicit per-pass opt-out.
    - General value: one place to configure, consistent behaviour across enrichment, inference, and graph building.
@@ -184,8 +196,6 @@ Selection criteria:
 ### Explicitly **not** proposed for `akm-cli`
 
 These were considered and rejected (per maintainer direction). Documenting them so they aren't reproposed:
-- **`akm events`** — no asset-mutation event stream. Consumers should drive work via scheduled `akm index` runs, not event subscription.
-- **`akm history`** — no first-class history command. Users who want one can rely on `akm save`'s git-backed stash and read history with plain `git log`.
 - **`akm serve` / any HTTP daemon** — akm will not serve HTTP. The CLI is the only programmatic surface; consumers either embed it as a subprocess or share the stash directory.
 - **`akm workflow schedule` / cron triggers** — out of scope for akm. Scheduling stays in the host (cron, systemd, the host app's scheduler).
 
