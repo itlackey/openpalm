@@ -2,158 +2,49 @@
 
 These are ready to paste into <https://github.com/itlackey/akm/issues/new>. Each block has a suggested **title**, a body, and suggested **labels**. Source plan: `docs/plans/simplify-via-akm.md`.
 
-Selection criteria for this repo: features useful outside any specific host, runnable as a one-shot subprocess, no assumption about an agent loop. Items that need lifecycle hooks live in the akm-plugins repo (see `akm-plugins-issues.md`).
+> **Reality-checked against akm-cli 0.7.4 on 2026-05-06.** Most earlier proposals (memory inference, graph extraction, `akm events`, `akm history`, `akm feedback` on `memory:`/`vault:`, scope flags on `akm remember`) **already shipped**. Only the items below remain.
+
+Selection criteria: features useful outside any specific host. Plugin-side asks live in `akm-plugins-issues.md`.
 
 ---
 
-## 1. Memory-inference as part of `akm index`, controlled by global config
+## 1. Harness-LLM passthrough hook for `akm index --enrich`
 
-**Title:** Inference pass inside `akm index`, toggled via global config
+**Title:** Pluggable LLM proxy hook so embedding hosts can lend their provider connection to akm
 
-**Labels:** `enhancement`, `memory`, `index`, `cli`
+**Labels:** `enhancement`, `llm`, `index`, `cli`
 
 **Body:**
 
 ### Summary
-Add an opt-in inference pass to `akm index` that uses the configured LLM to split memories pending inference into atomic facts.
+A documented hook that lets a wrapping process (an agent harness, a CI runner, anything) supply an LLM backend to akm without configuring `akm.llm` directly.
 
 ### Today
-`akm remember "<text>"` stores the input verbatim. Consumers that want atomic recall (RAG pipelines, anything summarising long inputs) build their own extraction loop.
+`akm index --enrich` requires an LLM configured at the akm config layer (`akm.llm`). If the host harness — opencode, Claude Code, anything else — already has provider credentials, akm has no way to borrow them. Users either configure providers twice (once for their agent, once for akm) or skip enrichment.
 
 ### Proposal
-Extend the existing index process to detect memories pending inference and run the configured LLM over them, splitting each into atomic memories with frontmatter `inferred: true` and a backref to the source.
+A documented hook akm consults when no native `akm.llm` is configured:
 
-- Toggle via `akm config set index.infer true|false`.
-- When disabled: indexing leaves memories untouched.
-- When enabled: every `akm index` run drains the pending queue.
-- No new flag on `akm remember` — the verb surface stays the same.
+- New env var `AKM_LLM_PROXY_CMD=<path-to-shim>` (and/or config key `akm.llm.proxy = "<path>"`).
+- akm spawns the shim once per LLM call, sending a JSON request on stdin (model, messages, temperature, etc.) and reading a JSON response from stdout.
+- Same JSON envelope conventions as the rest of akm.
+- The shim is the host's responsibility — akm just defines the contract.
 
-### Why this shape
-Folding the work into the existing indexing pipeline lets users adopt it just by scheduling `akm index`, with no new flags to remember. It also keeps the extraction logic in one place rather than scattering it across consumers.
+### Why CLI, not plugin
+The contract has to live in akm so any harness (opencode, Claude Code, anything new) can implement the shim half. Without it, every harness reinvents wiring.
 
 ### Acceptance
-- [ ] Pending memories are detected by indexer.
-- [ ] When `index.infer=true`, atomic memories are written with `inferred: true` and a `source:` backref.
-- [ ] Re-running indexing is idempotent.
-- [ ] Toggling off via config halts the pass without losing existing inferred memories.
+- [ ] Documented JSON request / response shape.
+- [ ] When `AKM_LLM_PROXY_CMD` is set and no `akm.llm` is configured, `akm index --enrich` uses the proxy.
+- [ ] Native `akm.llm` config takes precedence over the proxy when both are set.
+- [ ] Proxy failures surface clearly (don't silently degrade enrichment).
+
+### Pairs with
+A matching shim implementation in `itlackey/akm-plugins/opencode/` and `itlackey/akm-plugins/claude/` (filed as separate issues there).
 
 ---
 
-## 2. First-class memory scoping (`--user`, `--agent`, `--run`, `--channel`)
-
-**Title:** Native scoping flags on `akm remember` / `akm search` / `akm show`
-
-**Labels:** `enhancement`, `memory`, `cli`
-
-**Body:**
-
-### Summary
-Add canonical scope flags so multi-user / multi-agent deployments stop inventing their own conventions.
-
-### Today
-Scoping is achievable only by setting a different `AKM_STASH_DIR` per scope or by writing custom frontmatter via a host wrapper.
-
-### Proposal
-- `akm remember "<text>" --user <id> --agent <id> --run <id> --channel <name>` — persists the values as canonical frontmatter.
-- `akm search "<query>" --filter user=<id> --filter agent=<id> ...` — pre-filters via the search index.
-- `akm show memory:<ref> --scope user=<id>` — narrows resolution.
-
-### Why
-Any multi-user / multi-agent / multi-tenant deployment of akm needs this. Today every consumer (chatbots, shared dev teams, multi-tenant deployments) invents its own scoping convention, which makes stashes non-portable.
-
-### Acceptance
-- [ ] Scope flags persist as a stable frontmatter shape.
-- [ ] Search index respects the filters at query time.
-- [ ] Existing memories without scope still match unfiltered queries.
-
----
-
-## 3. `akm feedback` should accept any valid ref
-
-**Title:** Allow `akm feedback` on any valid ref (memory, vault, etc.)
-
-**Labels:** `enhancement`, `feedback`, `cli`
-
-**Body:**
-
-### Summary
-`akm feedback` currently rejects some ref types (notably `memory:` and `vault:`). The opencode plugin auto-skips those refs as a result, so relevance signal on memories and vaults has no upstream path.
-
-### Proposal
-Allow feedback on any valid ref. Vault feedback can store an aggregated count without leaking values (counts, not contents). Hybrid ranking already reads frontmatter for boosts, so the wiring is small.
-
-### Why
-Closes the relevance-learning loop uniformly across asset types instead of asking consumers to remember which refs are "feedback-eligible".
-
-### Acceptance
-- [ ] `akm feedback memory:<ref> --positive` succeeds and is reflected in subsequent ranking.
-- [ ] `akm feedback vault:<ref> --positive` succeeds without surfacing values.
-- [ ] No ref type silently rejects feedback.
-
----
-
-## 4. `akm events` — read / tail asset-mutation events
-
-**Title:** Append-only events stream + `akm events list|tail`
-
-**Labels:** `enhancement`, `observability`, `cli`
-
-**Body:**
-
-### Summary
-Add a documented event stream so external observers (sync, replication, audit, dashboards) can react to stash changes without polling.
-
-### Today
-There is no documented event stream; consumers have to scrape mtimes or build their own log.
-
-### Proposal
-- An append-only `events.jsonl` written by the CLI on every add / update / delete / feedback / index pass.
-- `akm events list [--since <ts>] [--type <event-type>] [--ref <ref>]` — paged history.
-- `akm events tail [--since <ts>]` — follow mode.
-- Same JSON envelope conventions as the rest of the CLI.
-
-### Why
-Foundational for any external observer that needs to react to stash changes without polling. Pairs naturally with the periodic-`akm index` pattern for downstream consumers, and is a clean primitive even when no harness is involved.
-
-### Acceptance
-- [ ] Every CLI verb that mutates state emits an event.
-- [ ] `--since` is monotonic and durable across processes.
-- [ ] `tail` keeps up with concurrent writers without losing events.
-
----
-
-## 5. `akm history` — surface the existing mutation history
-
-**Title:** First-class `akm history` command
-
-**Labels:** `enhancement`, `observability`, `cli`
-
-**Body:**
-
-### Summary
-Surface the mutation history akm already writes so downstream tools don't reinvent it.
-
-### Today
-akm writes mutation history internally; there is no first-class command to read it. Consumers wanting an audit trail either scrape filesystem mtimes or build a parallel log.
-
-### Proposal
-`akm history [--ref <ref>] [--since <ts>] [--format json|jsonl|text|yaml]` — returns per-asset and stash-wide history with the same JSON envelope as the rest of the CLI.
-
-Distinct from `akm events`:
-- **history** = per-asset state changes ("this memory was added then edited then deleted").
-- **events** = realtime stream of any mutation across the stash.
-
-### Why
-Closes the audit-trail need without forcing every downstream tool to build its own.
-
-### Acceptance
-- [ ] `akm history --ref memory:<id>` shows full lifecycle of a single asset.
-- [ ] `akm history` (no ref) shows stash-wide history.
-- [ ] JSON envelope matches existing CLI conventions.
-
----
-
-## 6. Pluggable secret backends and rotation for `akm vault` *(future consideration)*
+## 2. Pluggable secret backends and rotation for `akm vault` *(future consideration)*
 
 **Title:** Pluggable secret backends + rotation for `akm vault`
 
@@ -161,10 +52,10 @@ Closes the audit-trail need without forcing every downstream tool to build its o
 
 **Body:**
 
-> Status: deferred / future consideration. Filed so the design is captured; not a near-term commitment.
+> Status: deferred / future consideration. Filed so the design is captured; not a near-term commitment. Tracks #190.
 
 ### Summary
-Make `akm vault` a credible production secret store rather than a developer-laptop convenience. Tracks #190.
+Make `akm vault` a credible production secret store rather than a developer-laptop convenience.
 
 ### Today
 Vault is `.env`-style files only; no rotation, no remote secret-manager integration.
@@ -186,68 +77,59 @@ Production deployments need rotation and centralised secret management. Today us
 
 ---
 
-## 7. Graph-build as part of `akm index`, controlled by global config
+## 3. Bug: scope-flag inconsistency across `remember` / `search` / `show`
 
-**Title:** Graph-extraction pass inside `akm index`, toggled via global config
+**Title:** Scope flag shape differs between `akm remember` and `akm search` / `akm show`
 
-**Labels:** `enhancement`, `index`, `graph`, `cli`
-
-**Body:**
-
-### Summary
-Add an opt-in graph pass to `akm index` that extracts entities and relations from `memory:` and `knowledge:` assets.
-
-### Today
-akm's hybrid search is purely document-level. Graph reasoning across memories is left to consumers, which forces every stack with that need to bolt on a separate graph-memory service.
-
-### Proposal
-Same shape as the inference pass (#1):
-- Toggle via `akm config set index.graph true|false`.
-- When enabled, the index process extracts entities and relations using the configured LLM and persists a queryable graph file under the stash.
-- Search ranking consults the graph when it exists; otherwise behaves as today.
-
-### Why
-Folding graph building into indexing means users don't manage a separate `graph build` cadence — one `akm index` run keeps everything in sync. Same on/off-ramp as memory inference.
-
-### Acceptance
-- [ ] Graph file is written under the stash and refreshed on each index run when enabled.
-- [ ] Search ranking improvement is measurable for graph-eligible queries.
-- [ ] Toggling off doesn't remove the graph file (just stops refreshing it).
-
----
-
-## 8. Single configurable LLM block reused across index passes
-
-**Title:** Unify `akm.llm` config across all index-time passes
-
-**Labels:** `enhancement`, `config`, `cli`
+**Labels:** `bug`, `scoping`, `cli`, `dx`
 
 **Body:**
 
 ### Summary
-One `akm.llm` config block reused by every LLM-needing pass inside `akm index`.
+`akm remember` accepts direct scope flags (`--user`, `--agent`, `--run`, `--channel`); `akm search` requires `--filter <key>=<value>` and `akm show` requires `--scope <key>=<value>`. The asymmetry is undocumented and silently breaks integrations that assume a uniform shape.
 
-### Today
-The optional LLM is wired for indexing-time metadata enrichment, but additional passes (memory inference, graph extraction, future passes) would each need their own config wiring.
+### Repro
+```sh
+akm remember "test" --user alice                   # works
+akm search "test" --user alice                     # unknown flag (or silently ignored, depending on argv parser)
+akm show memory:<ref> --user alice                 # same
+akm search "test" --filter user=alice              # works
+akm show memory:<ref> --scope user=alice           # works
+```
 
-### Proposal
-- Single `akm.llm` block in config — provider, model, baseUrl, etc.
-- Every LLM-using pass inside `akm index` reads this block by default.
-- Per-pass opt-out via `index.<pass>.llm = false` for users who want enrichment but not graph (or vice versa).
+### Source pointers
+- `src/commands/remember.ts` — direct flags.
+- `src/commands/search.ts` — `parseScopeFilterFlags()` consuming `--filter <k>=<v>`.
+- `src/commands/show.ts` — `--scope <k>=<v>`.
 
-### Why
-One place to configure, consistent behaviour across enrichment, inference, and graph building. Avoids fan-out where each pass has its own provider settings.
+### Why this matters
+The `akm-opencode` plugin uses a single `buildScopedArgs()` helper that pushes `--user`, `--agent`, etc. into argv for `remember`, `search`, **and** `show`. As a result, scope filtering on plugin-issued `search` / `show` calls silently fails today. Fixing the CLI fixes the plugin without a plugin release.
+
+### Suggested fix
+Pick one of:
+- (a) Accept both shapes on all three verbs (probably easiest — direct flags translate internally to the filter shape).
+- (b) Standardise on direct flags everywhere (simpler to use, harder for users with existing `--filter` callers).
+- (c) Just document the asymmetry prominently; leave shapes alone.
 
 ### Acceptance
-- [ ] All index passes default to `akm.llm`.
-- [ ] Per-pass opt-out works.
-- [ ] No duplicate provider configuration paths.
+- [ ] All three verbs accept the same scope-flag shape, OR the asymmetry is called out in `docs/cli.md` with examples per verb.
+- [ ] The akm-opencode plugin's `buildScopedArgs()` helper works against `search` / `show` after the fix (this can be verified in CI by spawning the CLI).
 
 ---
 
-## Explicitly **not** proposed (documented as non-goals)
+## Already shipped — no longer proposed
 
-For maintainer reference, the following were considered and rejected so they don't get re-proposed:
+For maintainer reference, the following appeared in earlier drafts and have since landed:
 
-- **`akm serve` / any HTTP daemon** — akm will not serve HTTP. The CLI is the only programmatic surface; consumers either embed it as a subprocess or share the stash directory.
-- **`akm workflow schedule` / cron triggers** — out of scope for akm. Scheduling stays in the host (cron, systemd, the host app's scheduler).
+- **`akm index --enrich`** (0.7.3) — covers metadata enrichment, memory inference, graph extraction.
+- **`akm events list|tail`** (0.7.x) — durable `events.jsonl` with `--since`/`--type`/`--ref` and byte-offset cursors.
+- **`akm history --include-proposals`** (0.7.x) — per-asset and stash-wide history.
+- **`akm feedback`** accepting `memory:` and `vault:` refs (0.7.x).
+- **Scope flags on `akm remember`** (`--user`, `--agent`, `--run`, `--channel`).
+- **`akm proposal | reflect | propose | distill`** verbs (0.7.0) — write-staging queue and reflection workflow.
+- **`lesson` asset type** (0.7.0).
+
+## Explicitly **not** proposed
+
+- **`akm serve` / any HTTP daemon** — the CLI is the only programmatic surface.
+- **`akm workflow schedule` / cron triggers** — scheduling stays in the host.

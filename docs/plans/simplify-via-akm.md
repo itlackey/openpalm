@@ -4,7 +4,9 @@
 
 OpenPalm today ships a vector **memory** service (`core/memory` + `packages/memory`, sqlite-vec, mem0-style fact extraction), a planned **OpenViking** structured-knowledge addon, a **scheduler** sidecar service, and a **varlock**-backed secret-validation/redaction layer. Several of these predate the maturity of akm-cli.
 
-As of akm 0.5.0 / 0.6.0-rc1 and `akm-opencode` 0.5.x, akm covers exactly the memory/knowledge/skills/vault jobs as first-class asset types — `memory`, `knowledge`, `wiki`, `skill`, `command`, `agent`, `script`, `vault`, `workflow` — with hybrid search, opaque refs, frontmatter on memories, `akm remember`, `akm import`, `akm curate`, `akm wiki`, `akm vault`, and an opencode plugin that auto-harvests memory on `tool.execute.after` / `stop` / `session.idle`. OpenPalm already mounts `${OP_HOME}/data/stash` to `/home/opencode/.akm` and already loads `akm-opencode` as the second OpenCode plugin in the assistant and admin containers.
+As of akm-cli **0.7.4** and `akm-opencode` **0.7.3** (verified against the live repos on 2026-05-06), akm covers exactly the memory/knowledge/skills/vault jobs as first-class asset types — `memory`, `knowledge`, `wiki`, `skill`, `command`, `agent`, `script`, `vault`, `workflow`, `lesson` — with hybrid search, opaque refs, frontmatter on memories (shipped in 0.6.0), `akm remember`, `akm import`, `akm curate`, `akm wiki`, `akm vault`, `akm events list|tail`, `akm history`, and the new `akm proposal | reflect | propose | distill` verbs. The opencode plugin (now 20 tools, hooks `session.created` / `chat.message` / `experimental.chat.system.transform` / `tool.execute.before|after` / `experimental.session.compacting` / `shell.env` / `stop` / `session.idle` / `session.compacted` / `session.deleted` / `permission.ask` / `command.execute.before`) auto-harvests memory and supports `AKM_INDEX_ON_SESSION_END`, `AKM_CONTEXT_BUDGET_CHARS`, `AKM_SCOPE_KEYS`, and `AKM_RETROSPECTIVE_NEGATIVE_PATTERN`. OpenPalm already mounts `${OP_HOME}/data/stash` to `/home/opencode/.akm` and already loads `akm-opencode` as the second OpenCode plugin in the assistant and admin containers.
+
+Crucially: **`akm index --enrich` shipped in 0.7.3** and runs metadata enhancement, memory inference, and graph extraction inside one indexing pass. That single feature absorbs most of what previous revisions of this plan proposed as upstream work. The remaining upstream items are tightened to two real proposals (LLM-fallback hook and vault backends) plus two plugin bug fixes.
 
 The goal is to collapse the stack onto **akm + the shared stash + the assistant container** so OpenPalm carries less code and fewer moving parts:
 
@@ -35,7 +37,7 @@ Remaining capability gaps (LLM fact inference, multi-user scoping, feedback even
 - Keep `packages/scheduler/` (the package) — only the *service container*, the Dockerfile, and the HTTP layer go away. The package's croner loop and YAML parser are reused as the supervised subprocess.
 
 ### 3. Install `akm` in the trusted containers; share a stash between admin and assistant; give guardian its own
-Each trusted container — **guardian**, **assistant** (which now also runs scheduler), **admin** — gets `akm-cli` installed at a pinned version in its Dockerfile (`bun add -g akm-cli@<pin>` or equivalent), plus a bind-mount of an appropriate stash with `AKM_STASH_DIR` set accordingly:
+Each trusted container — **guardian**, **assistant** (which now also runs scheduler), **admin** — gets `akm-cli` installed at a pinned version (target **0.7.4 or newer**) in its Dockerfile (`bun add -g akm-cli@^0.7.4` or equivalent). The akm-opencode plugin no longer auto-installs the CLI as of 0.7.x — it expects `akm` on PATH and errors out with install instructions if missing — so an explicit Dockerfile install is required, not optional. Each container gets a bind-mount of an appropriate stash with `AKM_STASH_DIR` set accordingly:
 
 | Container | Host source | In-container path | Mode | Notes |
 |---|---|---|---|---|
@@ -70,13 +72,15 @@ Every capability the deleted memory/scheduler/varlock layers offered is mapped t
 
 | Gap | Resolution | Where it lives |
 |---|---|---|
-| **LLM fact extraction** (`infer: true` extracted atomic facts from raw text). | **Periodic `akm index` run.** Once enrichment is folded into akm's index process upstream (see Recommended upstream enhancements §1), OpenPalm just needs to run `akm index` on a cadence — akm picks up any memories pending inference and processes them according to its global config. No bespoke OpenPalm prompt or work queue. | `${OP_HOME}/config/automations/akm-index.yml` (new) — small `assistant`-action automation that shells `akm index`. Bundled config in the stash enables enrichment. |
-| **Multi-user / multi-agent / multi-run scoping.** | **Frontmatter-based scoping** written by an OpenCode plugin. Plugin attaches `user`, `agent`, `run`, `channel` to every `akm_remember` call as YAML frontmatter; search filters via `akm search --type memory --filter user=…`. | New `packages/assistant-tools/opencode/plugins/memory-scope.ts`. |
-| **Programmatic / REST API** for non-OpenCode callers. | **Not needed.** Channel adapters never called memory directly — they go through guardian → assistant. The (now in-container) scheduler runs enrichment by shelling `akm index` locally. Admin manages memories through the `akm` CLI inside its own container, against the shared stash. Admin → scheduler is filesystem-based (write YAML, scheduler watches), not HTTP. | n/a — removed. |
-| **Memory feedback** (`memory-feedback` tool). | **Direct call to `akm feedback`** once it accepts any valid ref upstream (Recommended upstream enhancements §3). The OpenCode plugin wraps it as `akm_feedback` — no custom frontmatter writing. | `akm-opencode` plugin (already loaded); thin call-site in `packages/assistant-tools`. |
-| **Memory events stream** (`memory-events` tool). | **Dropped.** With enrichment running inside `akm index`, OpenPalm no longer needs an event stream as a work queue. No equivalent surface is added. | n/a — removed. |
-| **Automatic session-start retrieval with token budget** (the old `memory-context.ts` plugin). | **Slim plugin** subscribed to `session.created` that runs `akm curate --limit N --for-agent` against the current session's scope and injects results via `experimental.chat.system.transform`. Budget controlled by `OP_CONTEXT_BUDGET_CHARS`. | New `packages/assistant-tools/opencode/plugins/session-start-context.ts` (replaces deleted `memory-context.ts`). |
-| **Entity-relation / graph memory.** | **Periodic `akm index` run, same as enrichment.** Once graph building is folded into akm's index process upstream (Recommended upstream enhancements §7), the same scheduled `akm index` automation builds and refreshes the graph based on akm config. | Same `akm-index.yml` automation as enrichment. |
+| **LLM fact extraction** (`infer: true` extracted atomic facts from raw text). | **Periodic `akm index --enrich` run** (already shipped in akm 0.7.3). One scheduled automation runs `akm index --enrich` on the shared stash; akm handles inference, metadata enrichment, and graph extraction in a single pass — no OpenPalm-side prompt or work queue. | `${OP_HOME}/config/automations/akm-index.yml` (new) — small `assistant`-action automation that shells `akm index --enrich`. Configure cadence via cron expression in the YAML. |
+| **Multi-user / multi-agent / multi-run scoping.** | **Direct CLI flags + plugin env config.** akm 0.7.x ships `--user`, `--agent`, `--run`, `--channel` on `akm remember`; `akm search --filter <key>=<value>` and `akm show --scope <key>=<value>` for query-side filtering. The plugin already auto-attaches scope via `AKM_SCOPE_KEYS=user,agent,run,channel`. OpenPalm sets `AKM_SCOPE_KEYS` accordingly and lets the plugin do the work. | Configure `AKM_SCOPE_KEYS` in `core.compose.yml` for assistant; no new code. *(See upstream issue: scope-flag inconsistency on `search`/`show` and the matching plugin bug.)* |
+| **Programmatic / REST API** for non-OpenCode callers. | **Not needed.** Channel adapters never called memory directly — they go through guardian → assistant. The (now in-container) scheduler runs enrichment by shelling `akm index --enrich` locally. Admin manages memories through the `akm` CLI inside its own container, against the shared stash. Admin → scheduler is filesystem-based (write YAML, scheduler watches), not HTTP. | n/a — removed. |
+| **Memory feedback** (`memory-feedback` tool). | **Direct call to `akm feedback memory:<ref>`** — already supported in akm 0.7.x. The plugin's `akm_feedback` tool exposes it; OpenPalm just removes its old `memory-feedback` tool. *(See upstream issue: the akm-opencode plugin still has a stale guard skipping `memory:`/`vault:` refs — that's the only thing blocking it today.)* | `akm-opencode` plugin (already loaded); no OpenPalm-side feedback code. |
+| **Memory events stream** (`memory-events` tool). | **Direct call to `akm events list|tail`** — already shipped in akm 0.7.x as a durable `events.jsonl` with `--since`/`--type`/`--ref` and byte-offset cursors. Admin reads it for activity views; the scheduler can subscribe via `akm events tail`. | No OpenPalm-side stream. Admin shells `akm events`. |
+| **Automatic session-start retrieval with token budget** (the old `memory-context.ts` plugin). | **`akm-opencode` plugin native behaviour.** The plugin already subscribes to `session.created` and respects `AKM_CONTEXT_BUDGET_CHARS` (verified in 0.7.3). OpenPalm sets the env var and the old plugin is deleted. | `core.compose.yml` env for assistant; remove `packages/assistant-tools/opencode/plugins/memory-context.ts`. No replacement plugin needed. |
+| **Entity-relation / graph memory.** | **Periodic `akm index --enrich` run, same as inference.** Graph extraction is part of the enrich pass — same automation, no extra work. | Same `akm-index.yml` automation. |
+| **Asset-mutation history / audit trail.** | **Direct call to `akm history --since <ts> --include-proposals`** — already shipped in akm 0.7.x. Admin's history view shells the CLI and renders the JSON envelope. | Admin UI; no OpenPalm-side log. |
+| **Agent-proposed changes review** *(new capability)*. | **`akm propose` from the assistant + `akm proposal list|show|diff|accept|reject` for admin.** Shipped in akm 0.7.0. The assistant proposes durable stash changes; admin reviews and accepts/rejects via the file-based admin → scheduler control plane (write a YAML, scheduler shells `akm proposal accept <id>`). | Optional follow-up: surface this in admin UI. |
 | **Varlock validation/scan/redact.** | **Replaced by:** (a) `akm vault` enforces secret hygiene for user secrets at write time (mode-0600 files, never echoed); (b) a small log-redactor in `packages/lib/src/control-plane/logger.ts` masks values for env keys matching `_TOKEN`/`_SECRET`/`_KEY`/`_PASSWORD`; (c) `validate` and `scan` CLI commands either go away or become thin wrappers around `akm vault list` + a name-pattern check. | `packages/lib/src/control-plane/logger.ts` (new redactor); CLI commands edited or removed. |
 | **History / audit trail of mutations** (memory had `history.db`; varlock had schema-driven audits). | **Direct call to `akm history`** once it lands upstream (Recommended upstream enhancements §5). Admin's history view shells `akm history --since <ts> --format json` against the shared stash. For real-time observers (e.g., notifications on new memories), `akm events tail` (Recommended upstream enhancements §4) is the natural fit. | Admin UI; no OpenPalm-side log to maintain. |
 | **macOS sqlite-vec / varlock binary fragility.** | **Not an issue** — akm runs inside Linux containers on every host. Varlock is gone. | n/a. |
@@ -134,7 +138,7 @@ End-to-end checks from a clean `openpalm install` on the simplified stack:
 4. **Guardian stash isolation.** `docker compose exec guardian akm search verify-shared-stash` returns no results (different stash). `docker compose exec guardian akm vault list` shows guardian's own HMAC entries. `docker compose exec assistant ls -la /home/opencode/.akm` does not include any guardian-only artifact.
 5. **Co-located scheduler with no HTTP.** Inside the assistant container, only `:4096` (OpenCode) is listening; the scheduler subprocess is running but binds no port. If either subprocess dies, the supervisor restarts it. From admin, write a new YAML into `${OP_HOME}/config/automations/test.yml` and observe (within a couple of seconds) that the scheduler picks it up — visible in `${OP_HOME}/logs/scheduler.log` and in `getLoadedAutomations()`. Drop a sentinel file in `${OP_HOME}/data/scheduler/triggers/test.run` and observe the automation fires once and the sentinel is removed.
 6. **Channel round-trip.** Send a chat message → guardian → assistant → assistant uses `akm_remember` → memory file appears in `${OP_HOME}/data/stash/memories/` with scope frontmatter set by `memory-scope.ts`.
-7. **Index automation.** With akm config enabling enrichment, drop a memory with `inferred: false` into the stash, manually trigger `akm-index` via the in-container scheduler API, observe atomic facts written with `inferred: true` (work done by `akm index`, not OpenPalm).
+7. **Index automation.** Drop a memory into the stash; trigger `akm-index` via the file-based scheduler control plane (sentinel file). Observe `akm index --enrich` runs and produces atomic facts plus graph entries — work done by akm, not OpenPalm. `akm events tail` from any container shows the corresponding events.
 8. **Session-start retrieval.** Start a fresh assistant session and inspect the system prompt transform — curated context appears without any user message yet, capped at `OP_CONTEXT_BUDGET_CHARS`.
 9. **Vault.** `akm vault list` from inside assistant or admin shows entries previously in `${OP_HOME}/vault/user/*.env`. `akm_vault load` populates env for a tool call. Guardian's HMAC secrets are stored as an `akm vault` inside `${OP_HOME}/data/guardian-stash` and loaded at guardian startup; assistant and admin cannot list them.
 10. **No varlock.** `which varlock` fails inside every container; `~/.cache/openpalm/bin/varlock` is gone; `openpalm install` runs end-to-end without downloading any binary; logs containing values for `*_TOKEN`/`*_SECRET`/`*_KEY`/`*_PASSWORD` are masked by the in-house redactor.
@@ -144,89 +148,63 @@ End-to-end checks from a clean `openpalm install` on the simplified stack:
 
 ## Recommended upstream enhancements
 
-The plan above closes every gap inside OpenPalm. Some of those shims are general-purpose and would benefit any akm user — they belong upstream rather than re-invented in every host. The list below splits them by where they should land: **`akm-cli`** for anything that does not require an agent harness, and **`akm-plugins`** (the `opencode/` and `claude/` subdirs of `itlackey/akm-plugins`) for anything that needs lifecycle hooks, tool registration, or prompt-transform APIs.
+After reviewing akm-cli **0.7.4** and akm-opencode **0.7.3** against the previous revision of this plan, **the majority of upstream proposals are already shipped**. What remains is a small focused set: two genuine feature requests, one deferred discussion, and two plugin bug fixes.
 
-Selection criteria:
-- **CLI candidates**: useful outside any specific host, runnable as a one-shot subprocess or daemon, no assumption about an agent loop.
-- **Plugin candidates**: only meaningful inside an agent harness because they hook into session lifecycle, tool execution, or system-prompt transforms.
+### Already shipped — no upstream work needed
 
-### akm-cli (general, no harness required)
+These were proposed in earlier revisions of this plan and have since landed. OpenPalm consumes them directly.
 
-1. **Memory-inference as part of `akm index`, controlled by global config.**
-   - Today: `akm remember "<text>"` stores the input verbatim. Consumers that want atomic recall (RAG pipelines, anyone summarising long inputs) build their own extraction loop.
-   - Proposal: extend the existing index process to detect memories pending inference and run the configured LLM over them, splitting each into atomic memories with frontmatter `inferred: true` and a backref to the source. Toggle via `akm config set index.infer true|false`. When disabled, indexing leaves memories untouched. When enabled, every `akm index` run drains the pending queue.
-   - General value: one configuration switch turns `akm` into a credible substitute for mem0-style fact extractors. Folding the work into the existing indexing pipeline keeps the verb surface small (no new `--infer` flag) and lets users take advantage of it just by scheduling `akm index`.
+| Was proposed | Now lives in |
+|---|---|
+| Memory inference as part of `akm index` | `akm index --enrich` (0.7.3) |
+| Graph-build as part of `akm index` | `akm index --enrich` (0.7.3) |
+| `akm events list|tail` | shipped in 0.7.x |
+| `akm history` | shipped in 0.7.x (`--include-proposals` flag) |
+| `akm feedback` accepting `memory:`/`vault:` refs | shipped in 0.7.x (CLI accepts; plugin still has stale guard — see Bugs §1) |
+| Scope flags on `akm remember` | shipped (`--user`, `--agent`, `--run`, `--channel`) |
+| Plugin `session.created` retrieval with budget | shipped (`AKM_CONTEXT_BUDGET_CHARS`) |
+| Plugin auto-attach scope from session metadata | shipped (`AKM_SCOPE_KEYS=user,agent,run,channel`) |
+| Plugin negative-cue feedback | shipped (`AKM_RETROSPECTIVE_NEGATIVE_PATTERN`) |
+| Plugin session-end `akm index` | shipped (`AKM_INDEX_ON_SESSION_END`) |
 
-2. **First-class memory scoping (`--user`, `--agent`, `--run`, `--channel`).**
-   - Today: scoping is achievable only by setting a different `AKM_STASH_DIR` per scope or by writing custom frontmatter via a host wrapper.
-   - Proposal: native scope flags on `akm remember`, plus matching `--filter` / `--scope` options on `akm search` and `akm show`. Scopes persist as canonical frontmatter and the search index pre-filters by them.
-   - General value: any multi-user / multi-agent / multi-tenant deployment of akm needs this. Today every consumer invents its own scoping convention, which makes stashes non-portable.
+### akm-cli — still proposed
 
-3. **`akm feedback` accepting any valid ref.**
-   - Today: `akm feedback` rejects some ref types (notably `memory:` and `vault:`), and the opencode plugin auto-skips those refs as a result, so relevance signal on memories and vaults has no upstream path.
-   - Proposal: allow feedback on **any** valid ref. Vault feedback can store an aggregated count without leaking values. Hybrid ranking already reads frontmatter for boosts, so the wiring is small.
-   - General value: closes the relevance-learning loop uniformly across asset types instead of asking consumers to remember which refs are "feedback-eligible".
+1. **Harness-LLM passthrough hook** *(see plugin §1 below for the matching plugin half).*
+   - Today: `akm index --enrich` requires an LLM configured at the akm config layer (`akm.llm`). If the host harness already has provider credentials, akm has no way to borrow them.
+   - Proposal: a documented hook — environment variable `AKM_LLM_PROXY_CMD` or config key `akm.llm.proxy` — that akm consults when no native `akm.llm` is configured. akm spawns the shim (stdio JSON in / out) and treats it as the LLM backend.
+   - Why CLI, not plugin: the contract has to live in akm so any harness (opencode, claude, anything new) can implement the shim half.
 
-4. **`akm events` — read/tail asset-mutation events.**
-   - Today: there is no documented event stream; consumers have to scrape mtimes or build their own log.
-   - Proposal: an append-only `events.jsonl` written by the CLI on every add / update / delete / feedback / index pass, surfaced via `akm events list [--since ts]` and `akm events tail`. Same JSON envelope conventions as the rest of the CLI.
-   - General value: foundational for any external observer (sync, replication, audit, dashboards) that needs to react to stash changes without polling. Pairs naturally with the periodic-`akm index` pattern for downstream consumers.
-
-5. **`akm history` — surface the existing mutation history.**
-   - Today: akm writes mutation history internally; there is no first-class command to read it.
-   - Proposal: `akm history [--ref <ref>] [--since ts]` returning per-asset and stash-wide history with the same JSON envelope.
-   - General value: closes the audit-trail need without forcing every downstream tool to build its own. Distinct from `akm events`: history is per-asset state changes; events is the realtime stream.
-
-6. **Pluggable secret backends and rotation for `akm vault`** *(future consideration, not confirmed).*
+2. **Pluggable secret backends and rotation for `akm vault`** *(future consideration, not confirmed).*
    - Today: vault is `.env`-style files only; no rotation, no remote secret-manager integration. Tracks upstream issue #190.
-   - Proposal: a backend interface with built-in adapters for the OS keychain and age-encrypted files, plus hooks for external managers (`pass`, 1Password CLI, AWS/GCP Secrets Manager, HashiCorp Vault). `akm vault rotate <key>` and `akm vault backend set <name>`.
-   - General value: makes `akm vault` a credible production secret store rather than a developer-laptop convenience.
-   - Status: deferred — flagged for evaluation in a future release; not part of the immediate roadmap.
+   - Proposal: a backend interface with built-in adapters (OS keychain, age-encrypted files) plus hooks for external managers (`pass`, 1Password CLI, AWS/GCP Secrets Manager, HashiCorp Vault); `akm vault rotate <key>`; `akm vault backend set <name>`.
+   - Status: deferred — flagged for evaluation in a future release.
 
-7. **Graph-build as part of `akm index`, controlled by global config.**
-   - Today: akm's hybrid search is purely document-level. Graph reasoning across memories is left to consumers.
-   - Proposal: same shape as the inference change — extend the index process to optionally extract entities and relations from `memory:` and `knowledge:` assets and persist a queryable graph file under the stash. Toggle via `akm config set index.graph true|false`. Search ranking consults the graph when it exists.
-   - General value: covers the gap that motivates separate graph-memory services in many stacks. Folding it into indexing means users don't manage a separate `graph build` cadence — one `akm index` run keeps everything in sync.
-
-8. **Single configurable LLM block reused across index passes.**
-   - Today: the optional LLM is wired for indexing-time metadata enrichment but is not exposed as the engine for the new inference / graph passes above.
-   - Proposal: one `akm.llm` config block, reused by every LLM-needing pass inside `akm index`, with explicit per-pass opt-out.
-   - General value: one place to configure, consistent behaviour across enrichment, inference, and graph building.
+3. **Bug fix: scope-flag inconsistency across `remember` / `search` / `show`.**
+   - Today: `akm remember --user X --agent Y` works, but `akm search --user X` is unrecognised — search expects `--filter user=X` and show expects `--scope user=X`.
+   - Proposal: pick one shape (probably accept both), or document the asymmetry prominently. Ground truth confirmed in `src/commands/search.ts` (`parseScopeFilterFlags()`) vs `src/commands/remember.ts` (direct flags).
+   - Why this matters: the akm-opencode plugin currently passes `--user`/`--agent` directly to all three verbs via a single `buildScopedArgs()` helper, which means scope filtering on plugin-issued `search` / `show` calls silently fails. Fixing the CLI fixes the plugin without a plugin release.
 
 ### Explicitly **not** proposed for `akm-cli`
 
-These were considered and rejected (per maintainer direction). Documenting them so they aren't reproposed:
-- **`akm serve` / any HTTP daemon** — akm will not serve HTTP. The CLI is the only programmatic surface; consumers either embed it as a subprocess or share the stash directory.
-- **`akm workflow schedule` / cron triggers** — out of scope for akm. Scheduling stays in the host (cron, systemd, the host app's scheduler).
+Documented so they aren't re-proposed:
+- **`akm serve` / any HTTP daemon** — akm will not serve HTTP. CLI subprocess or shared stash only.
+- **`akm workflow schedule` / cron triggers** — scheduling stays in the host.
 
-### akm-plugins (harness-coupled — `opencode/` and `claude/` subdirs)
+### akm-plugins — still proposed
 
-1. **`session.created` retrieval with token budget.**
-   - Today: akm-opencode injects context on `chat.message` (curate-on-message), not on session start. Cold sessions miss curated context until the user types.
-   - Proposal: subscribe to the harness's session-start hook, run `akm curate --limit N --for-agent` against the session's scope (using the new CLI scope flags above), and inject via the harness's system-prompt transform. Budget configurable via `AKM_CONTEXT_BUDGET_CHARS`.
-   - Why plugin, not CLI: requires harness lifecycle hooks and prompt-transform APIs that only exist inside the agent runtime.
+1. **Harness-LLM passthrough shim** *(opencode/ and claude/).*
+   - Pairs with the CLI hook above. When the harness has provider credentials and akm has no `akm.llm`, the plugin starts a tiny stdio shim, sets `AKM_LLM_PROXY_CMD=<shim path>`, and forwards prompts from akm through the harness's existing provider connection. Returns akm's JSON-shaped result.
+   - Why plugin: only the harness has the user-authenticated provider connection.
 
-2. **Auto-attach scope from harness session metadata.**
-   - Proposal: when the harness exposes session metadata (channel, user id, agent id), the plugin transparently passes those through to the new CLI scope flags on every `akm_remember` / `akm_curate` call. No user action required.
-   - Why plugin: scope sources are harness-specific (OpenCode session ids, Claude Code thread ids, etc.).
+2. **Bug fix: stale `feedback` guard skipping `memory:` / `vault:` refs.**
+   - Today: `akm-plugins/opencode/index.ts` contains `if (ref.startsWith("memory:") || ref.startsWith("vault:")) continue;` with a comment claiming "memories do not accept feedback." That comment is stale relative to akm 0.7.x — the CLI does accept those refs (verified in the CLI docs).
+   - Proposal: remove the guard. Mirror the change in `claude/`.
 
-3. **Conversation-derived feedback.**
-   - Today: akm-opencode has `AKM_RETROSPECTIVE_FEEDBACK_PATTERN` matching positive cues. Could be extended to negative cues, multi-turn confirmation, and explicit "this was wrong" detection, then call `akm feedback <ref>` against any harvested ref once the CLI accepts any valid ref (CLI §3).
-   - Why plugin: needs access to the conversation transcript and the harness's tool-execution timeline.
+3. **Bug fix (depends on CLI §3): plugin sends `--user`/`--agent` to `search`/`show`.**
+   - The `buildScopedArgs()` helper passes scope as direct flags to all verbs, but `search` expects `--filter <k>=<v>` and `show` expects `--scope <k>=<v>`. Either fix is sufficient: (a) wait for CLI §3 to accept both shapes, or (b) update `buildScopedArgs()` to emit the right shape per verb. Mirror in `claude/`.
 
-4. **Session-end optional `akm index`.**
-   - Today: the plugin already flushes a session buffer into a memory artifact on `stop` / `session.idle` / `session.compacted` / `session.deleted`.
-   - Proposal: after the flush, optionally invoke `akm index` (gated by an env toggle, e.g., `AKM_INDEX_ON_SESSION_END=1`). With the new index-pass config (CLI §1, §5), a single `akm index` run handles inference and graph building — no plugin-side extraction logic.
-   - Why plugin: the trigger is the harness lifecycle event; the work itself is now upstream.
-
-5. **Harness-provided LLM fallback for akm passes.**
-   - Today: if no LLM is configured for akm, the new index passes (inference, graph) cannot run.
-   - Proposal: when the harness already has provider credentials configured for the agent, the plugin offers them to akm as the LLM backend for index-time passes. Concretely, the plugin sets a CLI-side env / config (e.g., `AKM_LLM_PROXY_CMD` pointing at a tiny shim the plugin exposes) that akm consults when no native `akm.llm` is configured. The shim forwards prompts through the harness's existing connection.
-   - Why plugin: only the harness has the user-authenticated provider connection; akm itself stays harness-agnostic.
-
-6. **Cross-harness parity.**
-   - Proposal: keep feature parity between `opencode/` and `claude/` as new hooks land — the same scope-attach, session-start retrieval, feedback-inference, session-end-index, and harness-LLM-fallback behaviours should ship in both.
-   - Why plugin: each harness has its own hook surface; parity has to be coded per-harness.
+4. **Cross-harness parity (meta).**
+   - Keep parity between `opencode/` and `claude/` as the two bug fixes and the LLM-passthrough shim land.
 
 ## Out of scope
 
