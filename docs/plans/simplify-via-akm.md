@@ -118,7 +118,13 @@ Modify:
 - `${OP_HOME}/config/automations/akm-index.yml` — new, installed by setup; runs `akm index` on a cadence so akm's enrichment + graph passes process pending memories.
 - `${OP_HOME}/data/guardian-stash/` — new host directory; seeded by setup with guardian's HMAC-secrets vault.
 - `vault/stack/stack.env` template — drop `MEMORY_API_URL`, `MEMORY_AUTH_TOKEN`, mem0/embedder vars; drop `OP_VARLOCK_*`.
-- `docs/technical/foundations.md`, `environment-and-mounts.md`, `opencode-configuration.md`, `api-spec.md`, `core-principles.md` — refresh mount/service tables; remove memory/scheduler/varlock sections; document `akm` presence in trusted containers.
+- `docs/technical/foundations.md`, `environment-and-mounts.md`, `opencode-configuration.md`, `api-spec.md`, `core-principles.md` — refresh mount/service tables; remove memory/scheduler/varlock sections; document `akm` presence in trusted containers. *(Detailed rewrites and the `docs/technical/memory-privacy.md` deletion are covered in `docs/plans/configuration-simplification.md` §26–§34.)*
+- Top-level `package.json` workspaces — drop `core/memory` and `packages/memory` entries.
+- Test cleanup that follows from the deletions:
+  - Delete `packages/assistant-tools/opencode/viking-context.integration.test.ts`, `packages/assistant-tools/opencode/viking-tools.validation.test.ts`, `packages/assistant-tools/opencode/memory-context.integration.test.ts`.
+  - Delete `packages/admin/e2e/memory-config.pw.ts` and `packages/admin/e2e/openviking-smoke.pw.ts`.
+  - Rewrite `packages/admin/e2e/scheduler.pw.ts` to drive the file-based control plane (write YAML / drop sentinel / read logs) instead of the deleted HTTP API.
+- `.openpalm/vault/README.md` — drop the varlock and `redact.env.schema` mentions.
 
 ## Existing utilities to reuse (no new code)
 
@@ -215,3 +221,9 @@ Documented so they aren't re-proposed:
 - Channel adapters — they keep their current contract (sign + POST to guardian); no akm, no stash mount.
 - Log-redaction inside akm — that is a host-app concern (handled in OpenPalm's `logger.ts`), not something akm should own.
 - Sharing a stash between guardian and the user-facing services — guardian's stash is intentionally isolated; do not collapse them.
+
+## Companion documents
+
+- **`docs/plans/configuration-simplification.md`** — the next pass that targets the operator-facing surface (env vars, mounts, vault layout, schema files, init container, setup wizard, doc drift). Anything in §6 of this plan about user vault → `akm vault`, anything about removing `MEMORY_*` / `OP_CAP_*` env vars, and the doc-rewrite list are all expanded there with a phased execution order.
+- **`docs/plans/upstream-issues/akm-cli-issues.md`** — drafts for `itlackey/akm`. Reduced to three items after the live 0.7.x reality-check: the LLM-proxy hook, vault backends (deferred), and a scope-flag inconsistency bug.
+- **`docs/plans/upstream-issues/akm-plugins-issues.md`** — drafts for `itlackey/akm-plugins`. Four items: the plugin-side LLM proxy shim, two bug fixes, parity meta-issue.
