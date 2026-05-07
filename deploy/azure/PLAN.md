@@ -6,7 +6,7 @@
 - Keep only assistant and guardian.
 - Expose the assistant's OpenCode webserver as the default ACA ingress, restricted to an explicit IP allowlist.
 - Eliminate the VM entirely — deploy purely on Azure Container Apps.
-- Add an hourly AKM database backup job that syncs `/home/opencode/.akm` to an Azure File Share and retains 7 days of rolling copies.
+- Add an hourly AKM database backup that safely snapshots the SQLite database in `$HOME/.local/state` to an Azure File Share and retains 7 days of rolling copies. The backup runs as a sidecar container inside the assistant app so it has direct filesystem access and can use SQLite's online backup API without raw file copying.
 
 ## Architecture
 
@@ -23,10 +23,11 @@ openpalm-guardian  :8080  (internal-only ingress)
     HMAC validation, audit logging
     ↔ routes to openpalm-assistant:4096
 
-openpalm-akm-backup  (ACA Scheduled Job)
-    cron: 0 * * * *  (every hour)
-    mounts: openpalm-stash (ro) → openpalm-akm-backups (rw)
-    retains: 7 days of timestamped snapshots
+akm-backup  (sidecar in openpalm-assistant)
+    runs every hour inside the assistant app
+    reads $HOME/.local/state/*.db via shared home volume
+    writes to openpalm-akm-backups share
+    retains 7 days of timestamped snapshots
 ```
 
 Guardian has no external ingress in this deployment. It remains internal for any channel integrations added later. The OpenCode web server on the assistant is the only publicly reachable endpoint and is guarded by an ACA IP security restriction allowlist.
@@ -37,9 +38,8 @@ Guardian has no external ingress in this deployment. It remains internal for any
 |---|---|---|
 | `rg-openpalm` | Resource Group | All resources in one group for easy teardown |
 | `openpalm-env` | ACA Environment | Shared environment; enables internal DNS between apps |
-| `openpalm-assistant` | Container App | External ingress, IP-restricted, single replica |
+| `openpalm-assistant` | Container App | External ingress, IP-restricted, single replica; includes `akm-backup` sidecar |
 | `openpalm-guardian` | Container App | Internal ingress only |
-| `openpalm-akm-backup` | ACA Scheduled Job | Hourly cron, alpine/busybox image |
 | `openpalmstore<suffix>` | Storage Account | Azure Files backend for all shares |
 | `kv-openpalm-<suffix>` | Key Vault | All runtime secrets; no inline secrets in YAML |
 | `id-openpalm` | User-assigned Managed Identity | Grants apps Key Vault Secrets User role |
@@ -48,16 +48,18 @@ Guardian has no external ingress in this deployment. It remains internal for any
 
 | Share name | Mounted in | Container path | Access |
 |---|---|---|---|
-| `openpalm-assistant-home` | assistant | `/home/opencode` | rw |
-| `openpalm-config` | assistant | `/etc/openpalm` | ro |
-| `openpalm-work` | assistant | `/work` | rw |
-| `openpalm-logs` | assistant | `/home/opencode/.local/state/opencode` | rw |
-| `openpalm-stash` | assistant, akm-backup | `/home/opencode/.akm` (assistant, rw), `/source` (job, ro) | rw / ro |
+| `openpalm-assistant-home` | opencode (main), akm-backup (sidecar) | `/home/opencode` | rw (main), ro (sidecar) |
+| `openpalm-config` | opencode (main) | `/etc/openpalm` | ro |
+| `openpalm-work` | opencode (main) | `/work` | rw |
+| `openpalm-logs` | opencode (main) | `/home/opencode/.local/state/opencode` | rw |
+| `openpalm-stash` | opencode (main) | `/home/opencode/.akm` | rw |
 | `openpalm-guardian-data` | guardian | `/app/data` | rw |
 | `openpalm-guardian-logs` | guardian | `/app/audit` | rw |
-| `openpalm-akm-backups` | akm-backup | `/backup` | rw |
+| `openpalm-akm-backups` | akm-backup (sidecar) | `/backup` | rw |
 
-The `openpalm-stash` share is the live AKM database directory. The backup job mounts it read-only so it never interferes with the assistant's writes.
+The AKM SQLite database lives under `$HOME/.local/state/` inside the main opencode container, which is part of the `openpalm-assistant-home` share. The sidecar mounts that same share read-only so it can never write to or corrupt the live database. Backups are written to the separate `openpalm-akm-backups` share.
+
+The `openpalm-logs` share overlays a subdirectory of the home share (`/home/opencode/.local/state/opencode`). The AKM database is NOT inside that subdirectory; it sits directly under `.local/state/` and is therefore visible to the sidecar through the home share mount.
 
 ## Key Vault Secrets
 
@@ -174,75 +176,104 @@ scale:
   maxReplicas: 1
 ```
 
-## ACA Scheduled Job: akm-backup
+## Sidecar Container: akm-backup
 
-### Purpose
+### Why a sidecar, not a separate ACA job
 
-Every hour, copy the contents of the live AKM stash directory to a timestamped snapshot on the backup share, then prune snapshots older than 7 days.
+The AKM database is a live SQLite file inside the assistant container's filesystem. A separate ACA job can only see it via an Azure Files share mount, which means the job would be doing a raw file copy of a potentially open database — guaranteed to produce a corrupt snapshot if a write is in flight.
 
-### Schedule
+Running the backup as a sidecar container inside the same ACA app gives it two things a separate job cannot have:
 
-```
-0 * * * *
-```
+1. **SQLite's online backup API** — `sqlite3 source.db ".backup 'dest.db'"` uses the SQLite Online Backup API, which creates a consistent snapshot even under concurrent write activity, respects WAL mode checkpointing, and never requires an exclusive lock.
+2. **Shared volume mount** — the sidecar mounts `openpalm-assistant-home` read-only, giving it direct access to the live database path without any intermediate copy step.
 
 ### Image
 
-`busybox:latest` or `alpine:3` (no custom build needed).
+`alpine:3` with `apk add sqlite` added at build time, or any image that provides the `sqlite3` CLI. No custom image is required; a Dockerfile for the sidecar lives at `deploy/azure/sidecar/Dockerfile`.
 
-### Volume mounts
+### Volume mounts (sidecar only)
 
 | Share | Mount path | Mode |
 |---|---|---|
-| `openpalm-stash` | `/source` | ro |
+| `openpalm-assistant-home` | `/home/opencode` | ro |
 | `openpalm-akm-backups` | `/backup` | rw |
 
-### Job script
+### Backup script
 
 ```sh
 #!/bin/sh
 set -eu
 
-SNAPSHOT="snapshot-$(date -u +%Y%m%dT%H%M%SZ)"
-DEST="/backup/${SNAPSHOT}"
-STAGING="${DEST}.tmp"
+# Operator sets AKM_DB_PATH to the exact SQLite file path.
+# Default assumes a single db directly under .local/state/.
+AKM_DB_PATH="${AKM_DB_PATH:-/home/opencode/.local/state/akm.db}"
+BACKUP_ROOT="/backup"
+INTERVAL="${BACKUP_INTERVAL_SECONDS:-3600}"
 
-# Copy to a staging directory first, then rename to make the
-# snapshot appear atomically. SQLite WAL files are copied together
-# with the main db file to keep the snapshot consistent.
-cp -a /source/. "${STAGING}/"
-mv "${STAGING}" "${DEST}"
+run_backup() {
+  if [ ! -f "${AKM_DB_PATH}" ]; then
+    echo "AKM db not found at ${AKM_DB_PATH}, skipping"
+    return 0
+  fi
 
-# Prune snapshots older than 7 days. find with -mtime +7 matches
-# directories whose modification time is more than 7*24h ago.
-find /backup -maxdepth 1 -name 'snapshot-*' -type d -mtime +7 \
-  -exec rm -rf {} +
+  SNAPSHOT="${BACKUP_ROOT}/snapshot-$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "${SNAPSHOT}"
 
-echo "Backup complete: ${SNAPSHOT}"
-find /backup -maxdepth 1 -name 'snapshot-*' -type d | sort
+  # SQLite online backup API. Creates a consistent snapshot of a live,
+  # potentially write-active database without requiring an exclusive lock.
+  # Works correctly with WAL mode — the WAL is checkpointed into the copy.
+  sqlite3 "${AKM_DB_PATH}" ".backup '${SNAPSHOT}/akm.db'"
+
+  # Prune snapshots older than 7 days.
+  find "${BACKUP_ROOT}" -maxdepth 1 -name 'snapshot-*' -type d -mtime +7 \
+    -exec rm -rf {} +
+
+  echo "Backup complete: ${SNAPSHOT}"
+}
+
+# Run once immediately on startup, then every INTERVAL seconds.
+run_backup
+while true; do
+  sleep "${INTERVAL}"
+  run_backup
+done
 ```
 
-The staging-then-rename pattern avoids leaving a partial snapshot visible to any monitoring that reads the backup share. Note that because Azure Files does not support atomic rename across directories in all SMB configurations, the script uses a `.tmp` suffix convention; operators should treat any `*.tmp` directories as incomplete and safe to delete.
+`AKM_DB_PATH` is passed as an environment variable on the sidecar container so the path can be overridden without rebuilding the image. The operator should confirm the exact filename; if AKM creates multiple database files under `.local/state/`, extend the script to iterate over `*.db` files in that directory.
 
-### SQLite safety note
-
-If the AKM database uses WAL mode, the `.db`, `.db-wal`, and `.db-shm` files must all be present in the snapshot together. The `cp -a /source/.` command copies the entire directory, so all three files are captured in the same pass. A brief window of inconsistency is possible (e.g. a write commits between copying the main db and the WAL file). For the assistant-only deployment, this is acceptable: the backup is a recovery aid, not a transactional replica. Operators needing stronger consistency can use the `VACUUM INTO` SQLite command via the assistant before triggering a backup.
-
-### Retry policy
+### Sidecar container definition (within assistant.yaml)
 
 ```yaml
-retryPolicy:
-  maxRetries: 3
-  retryDelay: 30s
+containers:
+  - name: opencode
+    image: <registry>/assistant:<tag>
+    # ... main container config ...
+    volumeMounts:
+      - volumeName: assistant-home
+        mountPath: /home/opencode
+      # ... other mounts ...
+
+  - name: akm-backup
+    image: <registry>/akm-backup-sidecar:<tag>
+    env:
+      - name: AKM_DB_PATH
+        value: /home/opencode/.local/state/akm.db
+    volumeMounts:
+      - volumeName: assistant-home
+        mountPath: /home/opencode
+        readOnly: true
+      - volumeName: akm-backups
+        mountPath: /backup
+    resources:
+      cpu: 0.25
+      memory: 0.5Gi
 ```
 
-### Sizing
+Volumes are defined at the app level and shared across both containers; only the mount mode (readOnly) differs.
 
-```yaml
-resources:
-  cpu: 0.25
-  memory: 0.5Gi
-```
+### Sidecar lifecycle
+
+The sidecar starts and stops with the assistant app revision. If the sidecar crashes, ACA restarts only the sidecar container, not the main opencode process — this is the standard ACA multi-container behaviour. The sidecar has no liveness probe; a failed backup logs an error and retries on the next hourly cycle rather than killing the container.
 
 ## Deployment Script: deploy/azure/deploy-aca.sh
 
@@ -251,10 +282,10 @@ resources:
 | Subcommand | Action |
 |---|---|
 | `setup` | Provision resource group, storage account, file shares, Key Vault, managed identity; write all secrets to Key Vault; seed directory structure on shares |
-| `deploy` | Generate and apply ACA app YAML for assistant and guardian; create akm-backup scheduled job |
+| `deploy` | Generate and apply ACA app YAML for assistant (including akm-backup sidecar) and guardian |
 | `all` | `setup` then `deploy` |
 | `update-ips` | Update the IP allowlist on the assistant ingress without redeploying the full app |
-| `status` | Print running state of both apps and last backup job execution |
+| `status` | Print running state of both apps and last backup log from the akm-backup sidecar |
 | `teardown` | Delete the resource group and all contained resources |
 
 ### Required inputs (environment variables or flags)
@@ -287,10 +318,11 @@ deploy/azure/
 ├── README.md                      (operator guide)
 ├── deploy-aca.sh                  (main deployment script)
 ├── apps/
-│   ├── assistant.yaml             (ACA app template)
+│   ├── assistant.yaml             (ACA app template — includes akm-backup sidecar)
 │   └── guardian.yaml              (ACA app template)
-└── jobs/
-    └── akm-backup.yaml            (ACA scheduled job template)
+└── sidecar/
+    ├── Dockerfile                 (alpine + sqlite3 for akm-backup sidecar)
+    └── backup.sh                  (backup script baked into sidecar image)
 ```
 
 ## What This Removes vs. Issue #315
@@ -310,11 +342,11 @@ Guardian is retained as an internal service available for future channel additio
 | Self-hosted | ACA |
 |---|---|
 | `~/.openpalm/vault/stack/stack.env` | Key Vault secrets via managed identity |
-| `~/.openpalm/data/stash` | `openpalm-stash` Azure Files share |
+| `~/.openpalm/data/stash` | `openpalm-stash` Azure Files share (AKM stash artifacts, not the db) |
 | Init service creates data dirs | `setup` subcommand seeds shares before first deploy |
 | Guardian is LAN-only by network topology | Guardian has internal ACA ingress; no external route |
 | No inbound authentication on assistant (127.0.0.1 only) | `OPENCODE_AUTH=true` mandatory; IP allowlist on ACA ingress |
-| Memory service provides vector persistence | No memory service; AKM SQLite on Azure Files is sole persistence |
+| Memory service provides vector persistence | No memory service; AKM SQLite in `$HOME/.local/state` (on home share) is sole persistence |
 
 ## Risks and Mitigations
 
@@ -322,7 +354,8 @@ Guardian is retained as an internal service available for future channel additio
 |---|---|
 | OpenCode auth disabled by default | Plan mandates `OPENCODE_AUTH=true`; deploy script validates this and refuses to proceed without a password |
 | IP allowlist misconfiguration locks out operator | `update-ips` subcommand for safe updates; `setup` documents how to add the operator's current IP |
-| AKM snapshot inconsistency during write | Staging-then-rename pattern; operator guidance on `VACUUM INTO` for hard consistency |
-| Stale `.tmp` backup directories | Job README notes they are safe to delete; backup prune step only targets `snapshot-*` pattern |
-| Azure Files SMB lock contention | Assistant mounts stash rw; backup job mounts stash ro; reads on SMB don't block writes |
+| AKM db corruption during backup | SQLite `.backup` command uses the online backup API — no raw file copy, no exclusive lock required, WAL-safe |
+| Sidecar crashes and disrupts assistant | ACA restarts only the crashed sidecar container; the main opencode process is unaffected |
+| AKM_DB_PATH wrong at first deploy | Sidecar logs "db not found" and skips gracefully; operator corrects the env var and restarts the revision |
+| Azure Files SMB lock contention | Home share: main container rw, sidecar ro — SMB read-only mounts never block concurrent writes |
 | Single replica constraint | Documented explicitly; `maxReplicas: 1` enforced in YAML; scale-out requires session affinity work outside this plan's scope |
