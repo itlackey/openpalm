@@ -33,22 +33,67 @@ Azure Files uses SMB. SMB does not correctly implement POSIX advisory file locks
 
 **Solution:** use an ACA `emptyDir` volume for `/home/opencode/.local/state/`. An emptyDir is provisioned from the ACA host's local disk with full POSIX lock semantics. The emptyDir is cleared on container restart; durability comes from the backup/restore cycle baked into `entrypoint.sh`.
 
-## Why no sidecar
+## Why cron instead of a custom loop
 
-The backup can run as a background subshell started in `entrypoint.sh` before the `exec gosu opencode...` call. When `exec` replaces the shell process, the background subshell is orphaned to Tini (PID 1, already the container init). Tini adopts and reaps orphans correctly, so the backup loop runs for the full container lifetime with no second container needed.
+The scheduler container is dropped in this deployment, and the assistant will need cron for other scheduled tasks going forward. Installing the system cron daemon is the right primitive: it handles scheduling correctly, integrates cleanly with additional jobs added later, and avoids a hand-rolled sleep loop that can drift and swallow errors silently.
 
-This keeps the ACA app definition to a single container, removes the need to build and maintain a separate sidecar image, and avoids the shared-emptyDir complexity of multi-container apps.
+## Required Image Changes
 
-## Required Image Change
-
-`sqlite3` CLI is not in the assistant image. Add it to the existing `apt-get install` line in `core/assistant/Dockerfile`:
+Add `cron` and `sqlite3` to the existing `apt-get install` line, and copy the backup script and cron job file into the image:
 
 ```diff
 -    && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu sudo socat unzip \
-+    && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu sudo socat unzip sqlite3 \
++    && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu sudo socat unzip cron sqlite3 \
 ```
 
-No other image changes are required.
+```dockerfile
+COPY core/assistant/akm-backup.sh /usr/local/bin/akm-backup.sh
+COPY core/assistant/cron.d/akm-backup /etc/cron.d/akm-backup
+RUN chmod +x /usr/local/bin/akm-backup.sh \
+    && chmod 0644 /etc/cron.d/akm-backup
+```
+
+### core/assistant/akm-backup.sh
+
+```sh
+#!/bin/sh
+set -eu
+
+# Source the env file written by entrypoint.sh; cron does not inherit
+# the container's environment.
+[ -f /etc/cron-env ] && . /etc/cron-env
+
+AKM_DB_PATH="${AKM_DB_PATH:-}"
+BACKUP_ROOT="/mnt/akm-backups"
+
+if [ -z "${AKM_DB_PATH}" ] || [ ! -f "${AKM_DB_PATH}" ]; then
+  echo "akm-backup: db not found at '${AKM_DB_PATH}', skipping"
+  exit 0
+fi
+
+SNAPSHOT="${BACKUP_ROOT}/snapshot-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "${SNAPSHOT}"
+
+# SQLite Online Backup API: consistent copy under concurrent write activity,
+# WAL-aware, no exclusive lock required.
+sqlite3 "${AKM_DB_PATH}" ".backup '${SNAPSHOT}/akm.db'"
+
+# Prune snapshots older than 7 days.
+find "${BACKUP_ROOT}" -maxdepth 1 -name 'snapshot-*' -type d -mtime +7 \
+  -exec rm -rf {} +
+
+echo "akm-backup: complete — ${SNAPSHOT}"
+```
+
+### core/assistant/cron.d/akm-backup
+
+```cron
+# AKM database backup — runs at the top of every hour.
+# Adjust the schedule here; do not change the script path.
+0 * * * * root /usr/local/bin/akm-backup.sh >> /proc/1/fd/1 2>&1
+```
+
+Logging to `/proc/1/fd/1` redirects cron job output to the container's stdout, where it appears in ACA log streams alongside OpenCode output.
 
 ## Required Entrypoint Changes
 
@@ -85,43 +130,26 @@ maybe_restore_akm_db() {
 }
 ```
 
-### start_backup_loop
+### start_cron
 
-Starts a background subshell before the `exec`. The subshell is orphaned to Tini when `exec` replaces the shell; it then runs for the lifetime of the container.
+Writes the container's environment to `/etc/cron-env` (cron jobs do not inherit the container environment) then starts the system cron daemon. Cron daemonizes immediately; no backgrounding syntax is needed.
 
 ```sh
-start_backup_loop() {
-  local db_path="${AKM_DB_PATH:-}"
-  local backup_root="/mnt/akm-backups"
-  local interval="${BACKUP_INTERVAL_SECONDS:-3600}"
-
-  if [ -z "${db_path}" ] || ! command -v sqlite3 >/dev/null 2>&1; then
+start_cron() {
+  if ! command -v cron >/dev/null 2>&1; then
     return 0
   fi
 
-  (
-    # Wait for AKM to create the db (it may be created lazily after first use).
-    while [ ! -f "${db_path}" ]; do
-      sleep 10
-    done
+  # Write only the vars that scheduled scripts need.
+  # Do not write secrets — cron-env is root-readable only.
+  printf 'AKM_DB_PATH=%s\n' "${AKM_DB_PATH:-}" > /etc/cron-env
+  chmod 600 /etc/cron-env
 
-    while true; do
-      local snapshot="${backup_root}/snapshot-$(date -u +%Y%m%dT%H%M%SZ)"
-      mkdir -p "${snapshot}"
-
-      # SQLite Online Backup API: consistent copy under concurrent write activity,
-      # WAL-aware, no exclusive lock required.
-      sqlite3 "${db_path}" ".backup '${snapshot}/akm.db'"
-
-      # Prune snapshots older than 7 days.
-      find "${backup_root}" -maxdepth 1 -name 'snapshot-*' -type d -mtime +7 \
-        -exec rm -rf {} +
-
-      sleep "${interval}"
-    done
-  ) &
+  cron
 }
 ```
+
+Additional env vars needed by future cron jobs can be appended to the `printf` call here without touching the individual job scripts.
 
 ### Call order in entrypoint.sh
 
@@ -133,8 +161,8 @@ maybe_enable_ssh
 maybe_proxy_lmstudio
 maybe_unset_unused_provider_keys
 maybe_restore_akm_db    # new
-start_backup_loop       # new — must be before start_opencode
-start_opencode          # exec replaces shell; backup loop orphaned to tini
+start_cron              # new — starts cron daemon before exec
+start_opencode          # exec replaces shell
 ```
 
 ## Azure Resources
@@ -337,14 +365,19 @@ Unused provider keys are unset at startup by the existing `maybe_unset_unused_pr
 
 | File | Change |
 |---|---|
-| `core/assistant/Dockerfile` | Add `sqlite3` to the `apt-get install` line |
-| `core/assistant/entrypoint.sh` | Add `maybe_restore_akm_db` and `start_backup_loop` functions; call them before `start_opencode` |
+| `core/assistant/Dockerfile` | Add `cron` and `sqlite3` to `apt-get install`; copy backup script and cron job |
+| `core/assistant/entrypoint.sh` | Add `maybe_restore_akm_db` and `start_cron`; call them before `start_opencode` |
+| `core/assistant/akm-backup.sh` | New file — backup script (baked into image) |
+| `core/assistant/cron.d/akm-backup` | New file — cron job definition (baked into image) |
 
 ## Deliverables
 
 ```
-core/assistant/Dockerfile            (add sqlite3)
-core/assistant/entrypoint.sh        (add restore + backup loop)
+core/assistant/Dockerfile            (add cron + sqlite3; copy new files)
+core/assistant/entrypoint.sh        (add restore + start_cron)
+core/assistant/akm-backup.sh        (new — backup script)
+core/assistant/cron.d/
+└── akm-backup                       (new — cron job definition)
 
 deploy/azure/
 ├── PLAN.md                          (this file)
@@ -384,7 +417,7 @@ deploy/azure/
 | OpenCode auth disabled | Deploy script validates `OP_OPENCODE_PASSWORD` is set and refuses to proceed without it |
 | IP allowlist misconfiguration locks out operator | `update-ips` subcommand; README documents adding operator's current IP during setup |
 | AKM db corruption during backup | `sqlite3 .backup` uses the SQLite Online Backup API — no raw file copy, no exclusive lock, WAL-safe |
-| Backup loop dies silently | Loop runs in background; a crash does not affect OpenCode; next container restart triggers restore-on-start from the last successful snapshot |
+| Cron job fails silently | Output is redirected to `/proc/1/fd/1` so failures appear in ACA log streams; a failed run does not affect OpenCode; next hourly tick retries automatically |
 | `AKM_DB_PATH` not set or wrong | Both functions are no-ops when `AKM_DB_PATH` is empty; backup loop also skips if `sqlite3` is not in PATH |
 | Restore copies a corrupt snapshot | Add `sqlite3 "${db_path}" "PRAGMA integrity_check"` after the `cp` and abort startup if it fails, to avoid starting with a known-bad db |
 | emptyDir cleared on revision update | Expected; entrypoint restore runs automatically on every cold start |
