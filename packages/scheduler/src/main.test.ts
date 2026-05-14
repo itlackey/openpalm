@@ -57,7 +57,7 @@ beforeAll(async () => {
   mkdirSync(TRIGGERS_DIR, { recursive: true });
   writeFileSync(join(AUTOMATIONS_DIR, "server-test.yml"), SHELL_AUTOMATION);
 
-  serverProc = Bun.spawn(["bun", "run", join(__dirname, "server.ts")], {
+  serverProc = Bun.spawn(["bun", "run", join(__dirname, "main.ts")], {
     env: {
       ...process.env,
       OP_HOME: TEST_DIR,
@@ -183,7 +183,7 @@ on_failure: log
     // Spawn a fresh subprocess so the afterAll teardown still has the
     // primary subprocess available (and so this test is independent of
     // any prior state).
-    const proc = Bun.spawn(["bun", "run", join(__dirname, "server.ts")], {
+    const proc = Bun.spawn(["bun", "run", join(__dirname, "main.ts")], {
       env: {
         ...process.env,
         OP_HOME: TEST_DIR,

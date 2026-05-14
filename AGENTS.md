@@ -298,7 +298,7 @@ Before submitting any change:
 | `packages/admin/src/lib/api.ts` | API call functions |
 | `packages/cli/src/lib/cli-state.ts` | CLI state helpers (ensureValidState) |
 | `packages/cli/src/commands/install.ts` | CLI install (setup wizard + compose up) |
-| `packages/scheduler/src/server.ts` | Scheduler sidecar entry point |
+| `packages/scheduler/src/main.ts` | Scheduler co-process entry point |
 | `core/guardian/src/server.ts` | HMAC-signed message guardian |
 | `packages/channels-sdk/src/logger.ts` | Shared logger (createLogger factory) |
 | `.openpalm/stack/core.compose.yml` | Core service definitions (assistant + guardian) |

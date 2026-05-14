@@ -64,6 +64,5 @@ Repo addon sources live under `.openpalm/registry/addons/`. At runtime,
 | Network | Purpose |
 |---------|---------|
 | `channel_lan` | Internal/LAN-facing channel traffic |
-| `channel_public` | Public channel traffic when an addon opts in |
 | `assistant_net` | Internal core-service communication |
 | `admin_docker_net` | Isolated network for admin and docker-socket-proxy |

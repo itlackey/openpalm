@@ -1,12 +1,17 @@
 # ── Assistant Service ──────────────────────────────────────────────────────────
-# OpenCode AI runtime with OpenPalm extensions for memory, policy, and tools.
-# Config, plugins, and persona are mounted at runtime — not baked into the image.
+# OpenCode AI runtime with OpenPalm extensions for the akm stash, policy,
+# and tools. Config, plugins, and persona are mounted at runtime — not baked
+# into the image.
 # ──────────────────────────────────────────────────────────────────────────────
 
 FROM node:22-trixie-slim
 
 # ── Pinned installer versions ────────────────────────────────────────────────
 # Bump these ARGs when upgrading; keeps curl|bash installs reproducible.
+# Keep OPENCODE_VERSION in sync with core/admin/Dockerfile — admin and
+# assistant must run the same OpenCode build so plugin/config behaviour is
+# identical across both AI surfaces. TODO: extract Bun + akm-cli + OpenCode
+# into a shared core/base image so this version cannot drift again.
 ARG OPENCODE_VERSION=1.3.3
 ARG BUN_VERSION=bun-v1.3.10
 # akm-cli — Agent Kit Manager, installed globally via bun add -g.

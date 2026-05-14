@@ -87,11 +87,15 @@ maybe_enable_ssh() {
 }
 
 maybe_proxy_lmstudio() {
-  # OpenCode v1.2.24's lmstudio provider has hardcoded base URL 127.0.0.1:1234.
-  # The "providers" config key is not supported (causes ConfigInvalidError).
+  # OpenCode's lmstudio provider still ships a hardcoded base URL of
+  # http://127.0.0.1:1234/v1 (verified through OpenCode 1.3.3, the version
+  # pinned in this image). The "providers" config key remains unsupported
+  # there — setting it triggers ConfigInvalidError at startup.
   # Workaround: if LMSTUDIO_BASE_URL points to a remote host, start a TCP
   # proxy from 127.0.0.1:1234 to that host so lmstudio requests reach Ollama
   # or other local LLM providers running outside the container.
+  # TODO: drop this proxy (and `socat` from the apt-get install list in the
+  # Dockerfile) once OpenCode allows runtime baseURL overrides for lmstudio.
   local base_url="${LMSTUDIO_BASE_URL:-}"
   if [ -z "$base_url" ]; then
     return 0
@@ -141,7 +145,7 @@ start_scheduler_coprocess() {
   local triggers_dir="${op_home}/data/scheduler/triggers"
   local scheduler_log="${log_dir}/scheduler.log"
 
-  if [ ! -f "${scheduler_dir}/src/server.ts" ]; then
+  if [ ! -f "${scheduler_dir}/src/main.ts" ]; then
     echo "Scheduler co-process source not found at ${scheduler_dir}; skipping." >&2
     return 0
   fi
@@ -168,10 +172,10 @@ start_scheduler_coprocess() {
     gosu opencode env \
       HOME=/home/opencode \
       OP_HOME="${op_home}" \
-      bun run "${scheduler_dir}/src/server.ts" >>"${scheduler_log}" 2>&1 &
+      bun run "${scheduler_dir}/src/main.ts" >>"${scheduler_log}" 2>&1 &
   else
     env OP_HOME="${op_home}" \
-      bun run "${scheduler_dir}/src/server.ts" >>"${scheduler_log}" 2>&1 &
+      bun run "${scheduler_dir}/src/main.ts" >>"${scheduler_log}" 2>&1 &
   fi
   SCHED_PID=$!
 }

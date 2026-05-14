@@ -108,6 +108,13 @@ services:
       GOOGLE_WORKSPACE_PROJECT_ID: ${GOOGLE_WORKSPACE_PROJECT_ID:-}
     ports:
       - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
+      # KNOWN ISSUE (#409 follow-up): the SSH port is always published even
+      # when OPENCODE_ENABLE_SSH=0, so a port is held on the host with no
+      # listener inside the container. Defaults to 127.0.0.1:2222 → :22 so
+      # nothing is exposed beyond loopback. Compose has no per-port profile
+      # gate; the proper fix is a separate compose overlay (currently blocked
+      # by the registry-component validator that demands env.schema +
+      # healthcheck for everything under registry/addons/).
       - "${OP_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_SSH_PORT:-2222}:22"
     volumes:
       - ${OP_HOME}/config:/etc/openpalm
@@ -175,20 +182,19 @@ services:
       # Operator-only akm cache (isolated from the shared admin/assistant cache).
       - ${OP_HOME}/data/guardian-cache:/akm-cache
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
-    networks: [ channel_lan, channel_public, assistant_net ]
+    networks: [ channel_lan, assistant_net ]
     depends_on:
       assistant:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "bun -e \"const r=await fetch('http://localhost:8080/health');if(!r.ok)process.exit(1)\" || exit 1" ]
+      test: [ "CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1" ]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
 
-# Channel networks: services join channel_lan (LAN-restricted) or
-# channel_public (publicly accessible) to control access.
+# Channel networks: services join channel_lan (LAN-restricted) to reach
+# the guardian. Public exposure is opt-in per-service via host port bindings.
 networks:
   channel_lan:
-  channel_public:
   assistant_net:
