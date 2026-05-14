@@ -75,9 +75,46 @@ export function buildAkmEnv(state: ControlPlaneState): NodeJS.ProcessEnv {
   };
 }
 
+/**
+ * Per-invocation timeout (ms) for every akm subprocess we launch. The CLI is
+ * a local binary and these probes (`--version`, `vault create`, `vault path`)
+ * complete in well under a second on a healthy host; anything longer means
+ * akm is wedged or unreachable. Bounding the call keeps `mirrorUserVaultToAkm`
+ * truly best-effort: a stuck akm binary cannot block install/upgrade.
+ *
+ * Why a wall-clock race instead of execFile's built-in `timeout` option:
+ * node's `child_process.execFile` in Bun is implemented on top of `Bun.spawn`,
+ * and its `timeout` option only fires once stdout/stderr are wired up. Test
+ * suites that stub `Bun.spawn` (e.g. `packages/cli/src/main.test.ts`
+ * `mockDockerCli`) return a fake child whose stdout never closes, so neither
+ * the underlying promise nor the timeout option ever resolves. A simple
+ * `Promise.race` against an unref'd setTimeout converts that failure mode
+ * into a fast rejection that `akmAvailable` swallows as "akm not on PATH",
+ * without changing behaviour on real hosts.
+ */
+const AKM_EXEC_TIMEOUT_MS = 2_000;
+
+async function execAkm(args: string[], env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string }> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`akm ${args[0] ?? "?"} timed out after ${AKM_EXEC_TIMEOUT_MS}ms`)),
+      AKM_EXEC_TIMEOUT_MS,
+    );
+    // Don't keep the event loop alive solely for this timer — the process
+    // should be free to exit if every other handle is closed.
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([execFile("akm", args, { env }), timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function akmAvailable(env: NodeJS.ProcessEnv): Promise<boolean> {
   try {
-    await execFile("akm", ["--version"], { env });
+    await execAkm(["--version"], env);
     return true;
   } catch {
     return false;
@@ -93,7 +130,7 @@ export async function ensureAkmUserVault(state: ControlPlaneState): Promise<stri
   try {
     // `vault create` accepts only the ref on argv — no secret material crosses
     // the process boundary here.
-    await execFile("akm", ["vault", "create", AKM_USER_VAULT_REF], { env });
+    await execAkm(["vault", "create", AKM_USER_VAULT_REF], env);
   } catch (err) {
     // `create` is documented as a no-op when the vault already exists, but
     // some build channels emit a non-zero exit. Probe `path` to distinguish
@@ -104,7 +141,7 @@ export async function ensureAkmUserVault(state: ControlPlaneState): Promise<stri
     });
   }
   try {
-    const { stdout } = await execFile("akm", ["vault", "path", AKM_USER_VAULT_REF], { env });
+    const { stdout } = await execAkm(["vault", "path", AKM_USER_VAULT_REF], env);
     const path = stdout.trim();
     return path.length > 0 ? path : null;
   } catch (err) {

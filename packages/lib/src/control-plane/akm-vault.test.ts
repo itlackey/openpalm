@@ -150,6 +150,58 @@ describe("mirrorUserVaultToAkm", () => {
     expect(result.unchanged).toEqual(["KEY_A"]);
   });
 
+  it("returns a skipped result (does not hang) when the child process never resolves", async () => {
+    // Regression test for the install/upgrade hang reproduced on PR #404:
+    // `mirrorUserVaultToAkm` previously awaited promisified `execFile` without
+    // a wall-clock bound. In environments where the child process never
+    // resolves stdout (e.g. Bun test suites in `packages/cli/src/main.test.ts`
+    // that stub `Bun.spawn` and return a fake child whose stdout/exit never
+    // fire), the mirror would block the entire install flow until the
+    // surrounding test timed out. This test pins the contract: even with a
+    // permanently-pending child, the mirror must abort fast and report a
+    // skip rather than hang.
+    //
+    // We stub `Bun.spawn` (the actual primitive under `child_process.execFile`
+    // in the Bun runtime) the same way `packages/cli/src/main.test.ts`
+    // `mockDockerCli` does, to faithfully reproduce the original failure mode.
+    writeFileSync(
+      join(state.vaultDir, "user", "user.env"),
+      "STUCK_CHECK=value-1\n",
+    );
+
+    const originalSpawn = Bun.spawn;
+    (Bun as unknown as { spawn: typeof Bun.spawn }).spawn = (() => ({
+      pid: 0,
+      exited: new Promise<number>(() => { /* never resolves */ }),
+      exitCode: null,
+      signalCode: null,
+      killed: false,
+      stdin: null,
+      stdout: null,
+      stderr: null,
+      kill: () => {},
+      ref: () => {},
+      unref: () => {},
+      [Symbol.asyncDispose]: async () => {},
+      resourceUsage: () => undefined,
+    })) as unknown as typeof Bun.spawn;
+
+    try {
+      const start = Date.now();
+      const result = await mirrorUserVaultToAkm(state);
+      const elapsed = Date.now() - start;
+
+      // Mirror must abandon the akm probe and return — never block install.
+      // The internal AKM_EXEC_TIMEOUT_MS is 2s; allow generous CI headroom.
+      expect(elapsed).toBeLessThan(4_000);
+      // Timeout is treated as "akm not on PATH" — best-effort skip, never throw.
+      expect(result.ok).toBe(true);
+      expect(result.skipped).toBe(true);
+    } finally {
+      (Bun as unknown as { spawn: typeof Bun.spawn }).spawn = originalSpawn;
+    }
+  });
+
   it.skipIf(!AKM_AVAILABLE)("never passes secret values via execFile argv (no /proc/cmdline leak)", async () => {
     // This is the regression test for the security finding on PR #404.
     // Spy on execFile and assert no call contains the secret value.
