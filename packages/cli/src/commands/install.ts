@@ -1,6 +1,5 @@
 import { defineCommand } from 'citty';
 import { join } from 'node:path';
-import { rm } from 'node:fs/promises';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
 import { resolveOpenPalmHome, resolveConfigDir, resolveVaultDir, resolveDataDir } from '@openpalm/lib';
@@ -17,7 +16,6 @@ import {
   type SetupSpec,
 } from '@openpalm/lib';
 import { seedEmbeddedAssets } from '../lib/embedded-assets.ts';
-import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { fullComposeArgs } from '../lib/cli-compose.ts';
@@ -201,20 +199,6 @@ async function prepareInstallFiles(
   }
 
   try { ensureOpenCodeConfig(); ensureOpenCodeSystemConfig(); } catch (err) { logger.debug('failed to ensure OpenCode config', { error: String(err) }); }
-
-  try {
-    // Download + validate wrapped in a single timeout. The download can be
-    // slow on first install (binary fetch from GitHub) but must not block
-    // the install indefinitely — 30s is generous enough for most connections.
-    await Promise.race([
-      (async () => {
-        const varlockBin = await ensureVarlock();
-        await runVarlockValidation(varlockBin, vaultDir);
-      })(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30_000)),
-    ]);
-    console.log('Configuration validated.');
-  } catch (err) { logger.debug('varlock validation skipped', { error: String(err) }); }
 }
 
 async function runWizardInstall(configDir: string, noOpen: boolean, noStart = false): Promise<void> {
@@ -476,12 +460,3 @@ async function ensureVolumeMountTargets(homeDir: string, vaultDir: string): Prom
   }
 }
 
-async function runVarlockValidation(varlockBin: string, vaultDir: string): Promise<void> {
-  const schemaPath = join(vaultDir, 'user', 'user.env.schema');
-  if (!(await Bun.file(schemaPath).exists())) return;
-  const tmpDir = await prepareVarlockDir(schemaPath, join(vaultDir, 'user', 'user.env'));
-  try {
-    const code = await Bun.spawn([varlockBin, 'load', '--path', `${tmpDir}/`], { stdout: 'ignore', stderr: 'ignore' }).exited;
-    console.log(code === 0 ? 'Configuration validated.' : 'Configuration has validation warnings (non-fatal on first install).');
-  } finally { await rm(tmpDir, { recursive: true, force: true }); }
-}

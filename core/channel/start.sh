@@ -7,8 +7,7 @@ if [ -n "$CHANNEL_PACKAGE" ]; then
 	bun add "$CHANNEL_PACKAGE"
 fi
 
-# Run the channel entrypoint, wrapping with varlock for secret redaction if available
-if command -v varlock >/dev/null 2>&1 && [ -f /app/.env.schema ]; then
-  exec varlock run --path /app/ -- bun run node_modules/@openpalm/channels-sdk/src/channel-entrypoint.ts
-fi
+# Run the channel entrypoint. varlock-based runtime redaction was retired
+# in #391; secret hygiene now lives in the in-process logger redactor
+# (`@openpalm/lib/logger`) and the `akm vault` secret store.
 exec bun run node_modules/@openpalm/channels-sdk/src/channel-entrypoint.ts

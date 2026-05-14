@@ -11,8 +11,6 @@ import {
   ensureSecrets,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
-  ensureUserEnvSchema,
-  ensureSystemEnvSchema,
   resolveRuntimeFiles,
   writeRuntimeFiles,
   appendAudit,
@@ -33,8 +31,6 @@ function runStartupApply(): void {
     ensureSecrets(state);
     ensureOpenCodeConfig();
     ensureOpenCodeSystemConfig();
-    ensureUserEnvSchema();
-    ensureSystemEnvSchema();
     state.artifacts = resolveRuntimeFiles();
     writeRuntimeFiles(state);
 

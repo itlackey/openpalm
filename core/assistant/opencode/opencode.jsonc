@@ -3,8 +3,7 @@
   "instructions": ["openpalm.md"],
   "plugin": [
     "@openpalm/assistant-tools@latest",
-    "akm-opencode@latest",
-    "opencode-varlock@latest"
+    "akm-opencode@latest"
     // "openviking-opencode"
   ],
 

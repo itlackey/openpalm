@@ -1,47 +1,47 @@
 import { defineCommand } from 'citty';
 import { join } from 'node:path';
-import { rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { resolveVaultDir } from '@openpalm/lib';
-import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
+import { parseEnvFile, isSensitiveEnvKey } from '@openpalm/lib';
 
+/**
+ * `openpalm scan` — list sensitive env keys that carry a non-empty value
+ * in the live vault env files. Replaces the varlock-based scanner; the
+ * canonical inventory now lives in `akm vault` and the operator-managed
+ * `.env` files. Exits non-zero only on filesystem errors, never on the
+ * mere presence of secrets (that is the expected state).
+ */
 export default defineCommand({
   meta: {
     name: 'scan',
-    description: 'Scan codebase for leaked secrets (requires local user.env)',
+    description: 'List vault env keys whose name matches the secret pattern (_TOKEN/_SECRET/_KEY/_PASSWORD)',
   },
   async run() {
     const vaultDir = resolveVaultDir();
+    const targets = [
+      join(vaultDir, 'stack', 'stack.env'),
+      join(vaultDir, 'stack', 'guardian.env'),
+      join(vaultDir, 'user', 'user.env'),
+    ];
 
-    const schemaPath = join(vaultDir, 'user', 'user.env.schema');
-    const envPath = join(vaultDir, 'user', 'user.env');
-
-    if (!(await Bun.file(schemaPath).exists())) {
-      console.error(
-        `Error: vault/user/user.env.schema not found at ${schemaPath}.\nRun 'openpalm install' first.`,
-      );
-      process.exit(1);
+    let scanned = 0;
+    for (const path of targets) {
+      if (!existsSync(path)) continue;
+      const parsed = parseEnvFile(path);
+      const sensitive = Object.keys(parsed)
+        .filter((k) => isSensitiveEnvKey(k))
+        .sort();
+      if (sensitive.length === 0) continue;
+      scanned++;
+      console.log(`# ${path}`);
+      for (const key of sensitive) {
+        const set = parsed[key] && parsed[key].length > 0 ? 'set' : 'empty';
+        console.log(`  ${key}\t${set}`);
+      }
     }
-
-    if (!(await Bun.file(envPath).exists())) {
-      console.error(
-        `Error: user.env not found at ${envPath}.\nRun 'openpalm install' first.`,
-      );
-      process.exit(1);
+    if (scanned === 0) {
+      console.log('No vault env files found. Run `openpalm install` first.');
     }
-
-    const varlockBin = await ensureVarlock();
-
-    const tmpDir = await prepareVarlockDir(schemaPath, envPath);
-    let exitCode = 1;
-    try {
-      const proc = Bun.spawn([varlockBin, 'scan', '--path', `${tmpDir}/`], {
-        stdout: 'inherit',
-        stderr: 'inherit',
-      });
-      exitCode = await proc.exited;
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
-    }
-    process.exit(exitCode);
+    process.exit(0);
   },
 });

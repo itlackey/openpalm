@@ -231,15 +231,14 @@ describe('install flow — tier 1 (file validation)', () => {
       expect(statSync(fullPath).isFile()).toBe(true);
     }
 
-    // ── Validate vault schemas ───────────────────────────────────────
+    // ── No legacy .env.schema files (removed in #391) ───────────────
     for (const relPath of [
       'vault/user/user.env.schema',
       'vault/stack/stack.env.schema',
+      'vault/redact.env.schema',
     ]) {
       const fullPath = join(homeDir, relPath);
-      expect(existsSync(fullPath)).toBe(true);
-      expect(statSync(fullPath).isFile()).toBe(true);
-      expect(readFileSync(fullPath, 'utf-8').length).toBeGreaterThan(0);
+      expect(existsSync(fullPath)).toBe(false);
     }
 
     // ── Validate all volume mount targets exist as user-owned ────────

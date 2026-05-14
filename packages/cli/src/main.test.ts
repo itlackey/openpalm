@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
-import { existsSync, mkdirSync, writeFileSync, chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -129,11 +129,6 @@ describe('cli main', () => {
     const configHome = join(base, 'config');
     const dataHome = join(base, 'data');
     const workDir = join(base, 'work');
-    const binDir = join(base, 'data', 'bin');
-
-    mkdirSync(binDir, { recursive: true });
-    writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
-    chmodSync(join(binDir, 'varlock'), 0o755);
 
     const specFile = writeMinimalSetupSpec(base);
 
@@ -151,9 +146,6 @@ describe('cli main', () => {
       }
       if (url.includes('/core.compose.yml') || url.includes('/compose.yml')) {
         return new Response('services: {}\n', { status: 200 });
-      }
-      if (url.includes('.env.schema')) {
-        return new Response('KEY=string\n', { status: 200 });
       }
       if (url.includes('/AGENTS.md')) return new Response('# Agents\n', { status: 200 });
       if (url.includes('/opencode.jsonc')) return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
@@ -183,11 +175,6 @@ describe('cli main', () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-install-'));
     const dataHome = join(base, 'data');
     const workDir = join(base, 'work');
-    const binDir = join(base, 'data', 'bin');
-
-    mkdirSync(binDir, { recursive: true });
-    writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
-    chmodSync(join(binDir, 'varlock'), 0o755);
 
     const specFile = writeMinimalSetupSpec(base);
 
@@ -202,9 +189,6 @@ describe('cli main', () => {
       }
       if (url.includes('/core.compose.yml') || url.includes('/compose.yml')) {
         return new Response('services: {}\n', { status: 200 });
-      }
-      if (url.includes('.env.schema')) {
-        return new Response('KEY=string\n', { status: 200 });
       }
       if (url.includes('/AGENTS.md')) return new Response('# Agents\n', { status: 200 });
       if (url.includes('/opencode.jsonc')) return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
@@ -224,12 +208,7 @@ describe('cli main', () => {
   it('resolves version-pinned install ref (falls back to CLI package version)', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-install-'));
     const workDir = join(base, 'work');
-    const binDir = join(base, 'data', 'bin');
     const fetchedUrls: string[] = [];
-
-    mkdirSync(binDir, { recursive: true });
-    writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
-    chmodSync(join(binDir, 'varlock'), 0o755);
 
     const specFile = writeMinimalSetupSpec(base);
 
@@ -280,16 +259,12 @@ describe('cli main', () => {
   it('backs up the current OP_HOME before install --force rewrites assets', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-install-force-'));
     const workDir = join(base, 'work');
-    const binDir = join(base, 'data', 'bin');
     const userEnv = join(base, 'vault', 'user', 'user.env');
     const stackConfig = join(base, 'config', 'stack.yml');
     const specFile = writeMinimalSetupSpec(base);
 
-    mkdirSync(binDir, { recursive: true });
     mkdirSync(join(base, 'vault', 'user'), { recursive: true });
     mkdirSync(join(base, 'config'), { recursive: true });
-    writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
-    chmodSync(join(binDir, 'varlock'), 0o755);
     writeFileSync(userEnv, 'EXISTING=1\n');
     writeFileSync(stackConfig, 'llm: old\n');
 
@@ -451,16 +426,13 @@ describe('npm bin launcher', () => {
 });
 
 describe('validate command', () => {
-  it('is a recognized command (does not throw Unknown command)', async () => {
+  it('is a recognized command and exits 0 when stack.env carries the required tokens', async () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const binDir = join(tempHome, 'data', 'bin');
-    const artifactsDir = join(tempHome, 'data', 'artifacts');
-    mkdirSync(binDir, { recursive: true });
-    mkdirSync(artifactsDir, { recursive: true });
-
-    const fakeVarlock = join(binDir, 'varlock');
-    writeFileSync(fakeVarlock, '#!/bin/sh\nexit 1\n');
-    chmodSync(fakeVarlock, 0o755);
+    const vaultDir = join(tempHome, 'vault');
+    mkdirSync(join(vaultDir, 'stack'), { recursive: true });
+    mkdirSync(join(vaultDir, 'user'), { recursive: true });
+    writeFileSync(join(vaultDir, 'stack', 'stack.env'), 'OP_ADMIN_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n');
+    writeFileSync(join(vaultDir, 'user', 'user.env'), 'OPENAI_API_KEY=sk-test\n');
 
     const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
@@ -471,6 +443,7 @@ describe('validate command', () => {
       const err = await main(['validate']).catch((e: unknown) => e);
       const message = err instanceof Error ? err.message : String(err);
       expect(message).not.toContain('Unknown command');
+      expect(message).toBe('process.exit(0)');
     } finally {
       process.exit = originalExit;
       process.env.OP_HOME = originalHome;
@@ -480,29 +453,13 @@ describe('validate command', () => {
 });
 
 describe('scan command', () => {
-  it('is a recognized command (does not throw Unknown command)', async () => {
+  it('is a recognized command and exits 0 listing sensitive keys', async () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const artifactsDir = join(tempHome, 'data', 'artifacts');
     const vaultDir = join(tempHome, 'vault');
-    mkdirSync(artifactsDir, { recursive: true });
-    mkdirSync(vaultDir, { recursive: true });
-
-    // ensureVarlock() checks $HOME/.cache/openpalm/bin/varlock (homedir() is
-    // cached by Bun and cannot be overridden via process.env.HOME at runtime).
-    // Place a no-op varlock there if it doesn't already exist, and clean up after.
-    const { homedir } = await import('node:os');
-    const realCacheVarlockDir = join(homedir(), '.cache', 'openpalm', 'bin');
-    const realCacheVarlock = join(realCacheVarlockDir, 'varlock');
-    const varlockExisted = existsSync(realCacheVarlock);
-    if (!varlockExisted) {
-      mkdirSync(realCacheVarlockDir, { recursive: true });
-      writeFileSync(realCacheVarlock, '#!/bin/sh\nexit 0\n');
-      chmodSync(realCacheVarlock, 0o755);
-    }
-
     mkdirSync(join(vaultDir, 'user'), { recursive: true });
-    writeFileSync(join(vaultDir, 'user', 'user.env.schema'), 'ADMIN_TOKEN\n');
-    writeFileSync(join(vaultDir, 'user', 'user.env'), 'ADMIN_TOKEN=testtoken\n');
+    mkdirSync(join(vaultDir, 'stack'), { recursive: true });
+    writeFileSync(join(vaultDir, 'user', 'user.env'), 'OPENAI_API_KEY=sk-test\nOWNER_NAME=alice\n');
+    writeFileSync(join(vaultDir, 'stack', 'stack.env'), 'OP_ADMIN_TOKEN=abc\n');
 
     const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
@@ -516,38 +473,6 @@ describe('scan command', () => {
       expect(message).toBe('process.exit(0)');
     } finally {
       process.exit = originalExit;
-      process.env.OP_HOME = originalHome;
-      if (!varlockExisted) rmSync(realCacheVarlock, { force: true });
-      rmSync(tempHome, { recursive: true, force: true });
-    }
-  });
-
-  it('errors when user.env.schema is missing', async () => {
-    const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const artifactsDir = join(tempHome, 'data', 'artifacts');
-    const vaultDir = join(tempHome, 'vault');
-    mkdirSync(artifactsDir, { recursive: true });
-    mkdirSync(join(vaultDir, 'user'), { recursive: true });
-
-    writeFileSync(join(vaultDir, 'user', 'user.env'), 'ADMIN_TOKEN=testtoken\n');
-
-    const originalHome = process.env.OP_HOME;
-    const originalExit = process.exit;
-    const originalError = console.error;
-    const errorCalls: string[] = [];
-    process.env.OP_HOME = tempHome;
-    process.exit = mock((_code?: number) => { throw new Error(`process.exit(${_code})`); }) as typeof process.exit;
-    console.error = mock((...args: unknown[]) => { errorCalls.push(args.join(' ')); }) as typeof console.error;
-
-    try {
-      const err = await main(['scan']).catch((e: unknown) => e);
-      const message = err instanceof Error ? err.message : String(err);
-      expect(message).toBe('process.exit(1)');
-      expect(errorCalls.some(msg => msg.includes('user.env.schema not found'))).toBe(true);
-      expect(errorCalls.some(msg => msg.includes('openpalm install'))).toBe(true);
-    } finally {
-      process.exit = originalExit;
-      console.error = originalError;
       process.env.OP_HOME = originalHome;
       rmSync(tempHome, { recursive: true, force: true });
     }

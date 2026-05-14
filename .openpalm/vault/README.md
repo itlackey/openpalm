@@ -8,16 +8,20 @@ are passed to Docker Compose via `--env-file` flags. The separation between
 
 ```
 vault/
-    stack/
-      stack.env           System-managed runtime env and secrets
-      guardian.env        Channel HMAC secrets (loaded by guardian)
-      stack.env.schema    Varlock validation schema for stack.env
-      auth.json           OpenCode auth state mounted into assistant
+  stack/
+    stack.env       System-managed runtime env and secrets
+    guardian.env    Channel HMAC secrets (loaded by guardian)
+    auth.json       OpenCode auth state mounted into assistant
   user/
-    user.env            User extension file (empty placeholder for custom vars)
-    user.env.schema     Varlock validation schema for user.env
-  redact.env.schema     Log redaction rules (used by varlock in containers)
+    user.env        User extension file (custom vars, LLM provider keys)
 ```
+
+The four `.env.schema` files that used to live here (`stack.env.schema`,
+`guardian.env.schema`, `user.env.schema`, `redact.env.schema`) were retired
+in #391 along with the varlock binary. Secret hygiene now flows through
+`akm vault`; log redaction is enforced in-process by the shared logger
+(`packages/lib/src/logger.ts`), which masks any value whose key matches
+`_TOKEN | _SECRET | _KEY | _PASSWORD`.
 
 ## Ownership
 
@@ -27,7 +31,6 @@ vault/
 | `stack/guardian.env` | System | CLI install, admin API (channel add/remove) | Guardian (env_file + GUARDIAN_SECRETS_PATH), Docker Compose. Not shipped in the bundle; created by the CLI installer when the first channel is installed. Compose marks it `required: false`. |
 | `stack/auth.json` | System-managed runtime auth | CLI/admin | Assistant file mount |
 | `user/user.env` | User | User directly (custom extensions only) | Docker Compose, assistant (read-only mount) |
-| `*.env.schema` | System | CLI install, admin upgrade | Varlock (validation + redaction) |
 
 ## Security rules
 
@@ -40,19 +43,16 @@ vault/
   not a separate container — it runs as a co-process inside the assistant
   and inherits the assistant's environment posture.
 - **Never commit `stack.env` or `user.env` to version control.** The
-  `.gitignore` excludes them. Only the `.env.schema` files are tracked.
+  `.gitignore` excludes them.
 
-## Environment variable reference
+## Editing env files
 
-The `.env.schema` files document every supported variable with type
-annotations, defaults, and sensitivity flags. Use them as templates:
+The runtime `.env` files are operator-managed. Edit them directly:
 
 ```bash
-# Create env files from schemas
-cp vault/stack/stack.env.schema vault/stack/stack.env
-cp vault/user/user.env.schema  vault/user/user.env
-
-# Edit with your values
 $EDITOR vault/stack/stack.env
 $EDITOR vault/user/user.env
 ```
+
+For programmatic key/value storage that flows through the akm secret store,
+use `akm vault set <ref> <key>` (or the admin UI).

@@ -13,12 +13,8 @@ import { readStackSpec } from "./stack-spec.js";
 import { writeCapabilityVars } from "./spec-to-env.js";
 import { listEnabledAddonIds } from "./registry.js";
 
-import { generateRedactSchema } from "./redact-schema.js";
-import { readStackEnv } from "./secrets.js";
 import {
   readCoreCompose,
-  ensureUserEnvSchema,
-  ensureSystemEnvSchema,
 } from "./core-assets.js";
 export { sha256, randomHex } from "./crypto.js";
 import { sha256, randomHex } from "./crypto.js";
@@ -248,21 +244,16 @@ export function writeRuntimeFiles(
   // Write system.env (no channel secrets — those live in guardian.env)
   writeSystemEnv(state);
 
-  // Ensure env schema directories exist
-  ensureUserEnvSchema();
-  ensureSystemEnvSchema();
+  // Ensure vault directories exist (env files live under them; .env.schema
+  // files have been retired — secret hygiene now lives in `akm vault`).
+  mkdirSync(`${state.vaultDir}/user`, { recursive: true });
+  mkdirSync(`${state.vaultDir}/stack`, { recursive: true });
 
   const spec = readStackSpec(state.configDir);
   // Write OP_CAP_* capability vars to stack.env from stack spec
   if (spec) {
     writeCapabilityVars(spec, state.vaultDir);
   }
-
-  // Generate redact.env.schema from canonical mappings
-  const systemEnv = readStackEnv(state.vaultDir);
-  const redactDir = `${state.dataDir}/secrets`;
-  mkdirSync(redactDir, { recursive: true });
-  writeFileSync(`${redactDir}/redact.env.schema`, generateRedactSchema(systemEnv));
 
   state.artifactMeta = buildRuntimeFileMeta(state.artifacts);
 }

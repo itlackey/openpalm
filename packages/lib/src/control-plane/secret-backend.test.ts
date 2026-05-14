@@ -9,8 +9,6 @@ import {
   validatePassEntryName,
 } from '../index.js';
 import { PlaintextBackend, PassBackend } from './secret-backend.js';
-import { generateRedactSchema } from './redact-schema.js';
-import { getCoreSecretMappings } from './secret-mappings.js';
 import { writeSecretProviderConfig } from './provider-config.js';
 
 let rootDir = '';
@@ -282,19 +280,6 @@ describe('detectSecretBackend', () => {
     expect(backend).toBeInstanceOf(PassBackend);
   });
 
-  test('returns PassBackend when schema contains @varlock/pass-plugin', () => {
-    const state = createState();
-    mkdirSync(join(state.vaultDir, 'user'), { recursive: true });
-    writeFileSync(
-      join(state.vaultDir, 'user', 'user.env.schema'),
-      '# @plugin(@varlock/pass-plugin)\nOPENAI_API_KEY=pass("openpalm/openai/api-key")\n',
-    );
-
-    const backend = detectSecretBackend(state);
-    expect(backend.provider).toBe('pass');
-    expect(backend).toBeInstanceOf(PassBackend);
-  });
-
   test('returns PlaintextBackend when provider.json has provider: plaintext', () => {
     const state = createState();
     writeSecretProviderConfig(state, { provider: 'plaintext' });
@@ -304,55 +289,3 @@ describe('detectSecretBackend', () => {
     expect(backend).toBeInstanceOf(PlaintextBackend);
   });
 });
-
-describe('generateRedactSchema', () => {
-  test('output includes all mapped env keys', () => {
-    const systemEnv: Record<string, string> = {};
-    const schema = generateRedactSchema(systemEnv);
-
-    // All static core mappings should be present
-    expect(schema).toContain('OP_ADMIN_TOKEN=');
-    expect(schema).toContain('OP_ASSISTANT_TOKEN=');
-    expect(schema).toContain('OPENAI_API_KEY=');
-    expect(schema).toContain('ANTHROPIC_API_KEY=');
-    expect(schema).toContain('GROQ_API_KEY=');
-    expect(schema).toContain('MISTRAL_API_KEY=');
-    expect(schema).toContain('GOOGLE_API_KEY=');
-    expect(schema).toContain('MCP_API_KEY=');
-    expect(schema).toContain('EMBEDDING_API_KEY=');
-  });
-
-  test('includes legacy aliases', () => {
-    const schema = generateRedactSchema({});
-    expect(schema).toContain('ADMIN_TOKEN=');
-    expect(schema).toContain('OP_OPENCODE_PASSWORD=');
-  });
-
-  test('includes dynamic channel secrets', () => {
-    const systemEnv = {
-      CHANNEL_DISCORD_SECRET: 'abc123',
-      CHANNEL_SLACK_SECRET: 'def456',
-    };
-    const schema = generateRedactSchema(systemEnv);
-    expect(schema).toContain('CHANNEL_DISCORD_SECRET=');
-    expect(schema).toContain('CHANNEL_SLACK_SECRET=');
-  });
-
-  test('has correct header format', () => {
-    const schema = generateRedactSchema({});
-    expect(schema).toContain('@defaultSensitive=true');
-    expect(schema).toContain('@defaultRequired=false');
-  });
-
-  test('entries are sorted', () => {
-    const schema = generateRedactSchema({});
-    const lines = schema
-      .split('\n')
-      .filter((l) => l.match(/^[A-Z]/))
-      .map((l) => l.replace(/=.*$/, ''));
-
-    const sorted = [...lines].sort();
-    expect(lines).toEqual(sorted);
-  });
-});
-

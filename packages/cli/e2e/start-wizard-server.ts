@@ -33,8 +33,6 @@ writeFileSync(`${tmpBase}/vault/user/user.env`, "# test\n");
 writeFileSync(`${tmpBase}/stack/core.compose.yml`, "services:\n  admin:\n    image: admin:latest\n");
 writeFileSync(`${tmpBase}/data/assistant/opencode.jsonc`, '{"$schema":"https://opencode.ai/config.json"}\n');
 writeFileSync(`${tmpBase}/data/assistant/AGENTS.md`, "# Agents\n");
-writeFileSync(`${tmpBase}/vault/user/user.env.schema`, "OP_ADMIN_TOKEN=string\n");
-writeFileSync(`${tmpBase}/vault/stack/stack.env.schema`, "OP_IMAGE_TAG=string\n");
 writeFileSync(`${tmpBase}/registry/automations/cleanup-logs.yml`, "name: cleanup-logs\nschedule: daily\n");
 writeFileSync(`${tmpBase}/registry/automations/cleanup-data.yml`, "name: cleanup-data\nschedule: weekly\n");
 writeFileSync(`${tmpBase}/registry/automations/validate-config.yml`, "name: validate-config\nschedule: hourly\n");

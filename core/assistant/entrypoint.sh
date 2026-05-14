@@ -213,22 +213,12 @@ start_opencode() {
   mkdir -p "${BUN_INSTALL:-/home/opencode/.bun}/bin" \
            "${BUN_INSTALL_CACHE_DIR:-/home/opencode/.cache/bun/install}"
 
-  # Resolve varlock for runtime secret redaction.
-  # The redaction schema (.env.schema) is baked into the image at
-  # /usr/local/etc/varlock/ — varlock discovers it via --path.
-  VARLOCK_SCHEMA_DIR="/usr/local/etc/varlock"
-  VARLOCK_CMD=()
-  if command -v varlock >/dev/null 2>&1 && [ -f "$VARLOCK_SCHEMA_DIR/.env.schema" ]; then
-    VARLOCK_CMD=(varlock run --path "$VARLOCK_SCHEMA_DIR/" --)
-  fi
-
-  # Layer 1: Context window protection — set SHELL to the varlock-shell
-  # wrapper so OpenCode's bash tool runs all commands through varlock.
-  # This redacts secret values in tool output before they enter the LLM
-  # context window. Falls back to /bin/bash if varlock is unavailable.
-  if [ -x /usr/local/bin/varlock-shell ]; then
-    export SHELL=/usr/local/bin/varlock-shell
-  fi
+  # Note: varlock-based runtime redaction was retired in #391. Secret
+  # values now never reach the logger's structured `extra` payload thanks
+  # to the in-process redactor in `@openpalm/lib/logger`. Bash tool output
+  # still goes straight to stdout — OpenCode operators who want extra
+  # redaction in tool output should rely on the akm secret store rather
+  # than an LD_PRELOAD-style shell wrapper.
 
   # If the scheduler co-process is running we must NOT exec opencode —
   # exec replaces the bash process and discards the SIGTERM trap that
@@ -246,12 +236,12 @@ start_opencode() {
       exit 1
     fi
     # Drop to the opencode user. gosu resets HOME from /etc/passwd, so we
-    # must forward HOME and SHELL explicitly. The user has passwordless sudo
-    # for root operations; normal file I/O preserves host UID ownership.
+    # must forward HOME explicitly. The user has passwordless sudo for root
+    # operations; normal file I/O preserves host UID ownership.
     export HOME=/home/opencode
     if [ "$use_supervisor" = "1" ]; then
-      gosu opencode env HOME=/home/opencode SHELL="$SHELL" \
-        "${VARLOCK_CMD[@]}" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs &
+      gosu opencode env HOME=/home/opencode \
+        opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs &
       local oc_pid=$!
       trap 'forward_term_to_scheduler; kill -TERM "$oc_pid" 2>/dev/null || true' TERM INT
       wait "$oc_pid"
@@ -259,12 +249,12 @@ start_opencode() {
       forward_term_to_scheduler
       exit "$oc_status"
     fi
-    exec gosu opencode env HOME=/home/opencode SHELL="$SHELL" \
-      "${VARLOCK_CMD[@]}" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
+    exec gosu opencode env HOME=/home/opencode \
+      opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
   fi
 
   if [ "$use_supervisor" = "1" ]; then
-    "${VARLOCK_CMD[@]}" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs &
+    opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs &
     local oc_pid=$!
     trap 'forward_term_to_scheduler; kill -TERM "$oc_pid" 2>/dev/null || true' TERM INT
     wait "$oc_pid"
@@ -273,7 +263,7 @@ start_opencode() {
     exit "$oc_status"
   fi
 
-  exec "${VARLOCK_CMD[@]}" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
+  exec opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
 }
 
 maybe_adjust_uid_gid

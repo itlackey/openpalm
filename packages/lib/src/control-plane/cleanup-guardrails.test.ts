@@ -149,17 +149,16 @@ describe("guardrail: compose-derived service discovery", () => {
   });
 });
 
-// ── Guardrail 5: Env schema paths are correct ──────────────────────────
+// ── Guardrail 5: No varlock or .env.schema references in validate.ts ───
 
-describe("guardrail: env schema validation paths", () => {
-  test("validate.ts uses correct nested vault schema paths", () => {
+describe("guardrail: validate.ts is varlock-free", () => {
+  test("validate.ts does not import child_process or read .env.schema", () => {
     const validateTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "validate.ts"), "utf-8");
-    // Must use nested paths
-    expect(validateTs).toContain("vaultDir}/user/user.env.schema");
-    expect(validateTs).toContain("vaultDir}/stack/stack.env.schema");
-    // Must NOT use flat paths
-    expect(validateTs).not.toContain("vaultDir}/user.env.schema");
-    expect(validateTs).not.toContain("vaultDir}/system.env.schema");
+    // Post-#391: validation is key-presence only — no schema files, no binary.
+    expect(validateTs).not.toContain("node:child_process");
+    expect(validateTs).not.toContain("execFile");
+    expect(validateTs).not.toContain("VARLOCK_BIN");
+    expect(validateTs).not.toContain(".env.schema");
   });
 });
 

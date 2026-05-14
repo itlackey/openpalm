@@ -1,46 +1,28 @@
-import { defineCommand } from 'citty';
-import { join } from 'node:path';
-import { rm } from 'node:fs/promises';
-import { resolveVaultDir } from '@openpalm/lib';
-import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
+import { defineCommand } from "citty";
+import { createState, validateProposedState } from "@openpalm/lib";
 
 export default defineCommand({
   meta: {
-    name: 'validate',
-    description: 'Validate configuration against schema',
+    name: "validate",
+    description: "Validate environment configuration (key presence + non-empty required slots)",
   },
   async run() {
-    const vaultDir = resolveVaultDir();
+    // Use createState() directly — validateProposedState only needs vaultDir,
+    // not the resolved compose artifacts ensureValidState() would pull in.
+    const state = createState();
+    const result = await validateProposedState(state);
 
-    const primarySchema = join(vaultDir, 'user', 'user.env.schema');
-    const envPath = join(vaultDir, 'user', 'user.env');
-
-    if (!(await Bun.file(primarySchema).exists())) {
-      console.error(
-        `Error: vault/user/user.env.schema not found at ${primarySchema}.\nRun 'openpalm install' first.`,
-      );
-      process.exit(1);
+    for (const warning of result.warnings) {
+      console.warn(warning);
+    }
+    for (const err of result.errors) {
+      console.error(err);
     }
 
-    if (!(await Bun.file(envPath).exists())) {
-      console.error(
-        `Error: user.env not found at ${envPath}.\nRun 'openpalm install' first.`,
-      );
-      process.exit(1);
+    if (result.ok) {
+      console.log("Configuration OK.");
+      process.exit(0);
     }
-
-    const varlockBin = await ensureVarlock();
-    const tmpDir = await prepareVarlockDir(primarySchema, envPath);
-    let exitCode = 1;
-    try {
-      const proc = Bun.spawn(
-        [varlockBin, 'load', '--path', `${tmpDir}/`],
-        { stdout: 'inherit', stderr: 'inherit' },
-      );
-      exitCode = await proc.exited;
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
-    }
-    process.exit(exitCode);
+    process.exit(1);
   },
 });

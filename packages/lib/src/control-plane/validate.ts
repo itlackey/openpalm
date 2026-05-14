@@ -1,61 +1,35 @@
 /**
  * Runtime configuration validation for the OpenPalm control plane.
  *
- * Proposed changes are validated against temp copies before writing
- * to live paths.
+ * Validation is a presence check on the canonical env keys we expect in
+ * the live vault/stack/stack.env and vault/user/user.env files. The
+ * historical schema files and external validation binary were retired in
+ * #391; everything advisory is surfaced as a non-blocking warning. The
+ * function never shells out and never reads schemas.
  */
-import { existsSync, copyFileSync, mkdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { existsSync } from "node:fs";
+import { parseEnvFile } from "./env.js";
+import { readStackEnv } from "./secrets.js";
+import { getCoreSecretMappings } from "./secret-mappings.js";
 import type { ControlPlaneState } from "./types.js";
 
-const execFileAsync = promisify(execFile);
-
-/** Resolve the varlock binary path — honours VARLOCK_BIN for dev environments. */
-const envVarlockBin = process.env.VARLOCK_BIN;
-let VARLOCK_BIN = "varlock";
-if (envVarlockBin) {
-  if (envVarlockBin === "varlock" || envVarlockBin.startsWith("/")) {
-    VARLOCK_BIN = envVarlockBin;
-  }
-}
-
-function sanitizeVarlockMessage(msg: string): string {
-  return msg
-    .replace(/sk-[A-Za-z0-9]{20,}/g, "[REDACTED]")
-    .replace(/gsk_[A-Za-z0-9]{30,}/g, "[REDACTED]")
-    .replace(/AIza[A-Za-z0-9_\-]{35}/g, "[REDACTED]")
-    .replace(/[0-9a-f]{32,}/gi, "[REDACTED]")
-    .replace(/value '([^']*)'/g, "value '[REDACTED]'");
-}
-
-async function runVarlockLoad(
-  schemaFile: string,
-  envFile: string,
-): Promise<void> {
-  const tmpDir = mkdtempSync(join(tmpdir(), "varlock-"));
-  try {
-    copyFileSync(schemaFile, join(tmpDir, ".env.schema"));
-    copyFileSync(envFile, join(tmpDir, ".env"));
-    await execFileAsync(
-      VARLOCK_BIN,
-      ["load", "--path", `${tmpDir}/`],
-      { timeout: 10000 },
-    );
-  } finally {
-    rmSync(tmpDir, { recursive: true, force: true });
-  }
-}
+// Stack-scoped env keys that must always exist and carry a non-empty value
+// for the platform to boot. Keep this list small — anything optional
+// belongs in the warning bucket instead.
+const REQUIRED_STACK_KEYS = ["OP_ADMIN_TOKEN", "OP_ASSISTANT_TOKEN"] as const;
 
 /**
- * Validate the current live configuration files in place.
+ * Validate the live configuration files.
  *
  * Checks:
- * 1. vault/user/user.env against vault/user/user.env.schema
- * 2. vault/stack/stack.env against vault/stack/stack.env.schema
+ * 1. vault/stack/stack.env exists and carries every required key with a
+ *    non-empty value.
+ * 2. Every secret env key in getCoreSecretMappings() is present (key only
+ *    — blank values are warned about, never erred on, because operators
+ *    may opt out of providers they don't use).
+ *
+ * Errors fail the result. Warnings do not. The function never reads
+ * schema files and never spawns subprocesses.
  */
 export async function validateProposedState(state: ControlPlaneState): Promise<{
   ok: boolean;
@@ -64,44 +38,37 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
 }> {
   const errors: string[] = [];
   const warnings: string[] = [];
-  let anyFailed = false;
 
-  function collectOutput(stderr: string): void {
-    for (const line of stderr.split("\n")) {
-      const trimmed = sanitizeVarlockMessage(line.trim());
-      if (!trimmed) continue;
-      if (trimmed.includes("ERROR")) errors.push(trimmed);
-      else if (trimmed.includes("WARN")) warnings.push(trimmed);
+  const stackEnvPath = `${state.vaultDir}/stack/stack.env`;
+  const userEnvPath = `${state.vaultDir}/user/user.env`;
+
+  if (!existsSync(stackEnvPath)) {
+    errors.push(`ERROR: stack env file missing at ${stackEnvPath}`);
+    return { ok: false, errors, warnings };
+  }
+
+  const stackEnv = readStackEnv(state.vaultDir);
+  const userEnv = existsSync(userEnvPath) ? parseEnvFile(userEnvPath) : {};
+
+  for (const key of REQUIRED_STACK_KEYS) {
+    const value = stackEnv[key];
+    if (!value || value.trim().length === 0) {
+      errors.push(`ERROR: required key ${key} is missing or empty in vault/stack/stack.env`);
     }
   }
 
-  // Validate user.env
-  const userEnvSchema = `${state.vaultDir}/user/user.env.schema`;
-  const userEnv = `${state.vaultDir}/user/user.env`;
-  if (existsSync(userEnvSchema) && existsSync(userEnv)) {
-    try {
-      await runVarlockLoad(userEnvSchema, userEnv);
-    } catch (err: unknown) {
-      anyFailed = true;
-      if (err && typeof err === "object" && "stderr" in err) {
-        collectOutput(String((err as { stderr: string }).stderr));
-      }
+  // Every canonical secret should at least appear as a key somewhere in
+  // the env files so the operator sees the slot. Missing slots warn (not
+  // error) since not every provider is in use on every install.
+  for (const mapping of getCoreSecretMappings(stackEnv)) {
+    const inStack = Object.prototype.hasOwnProperty.call(stackEnv, mapping.envKey);
+    const inUser = Object.prototype.hasOwnProperty.call(userEnv, mapping.envKey);
+    if (!inStack && !inUser) {
+      warnings.push(
+        `WARN: ${mapping.envKey} (akm ${mapping.secretKey}) is not declared in vault/${mapping.scope === "system" ? "stack/stack" : "user/user"}.env`,
+      );
     }
   }
 
-  // Validate stack.env
-  const systemEnvSchema = `${state.vaultDir}/stack/stack.env.schema`;
-  const systemEnv = `${state.vaultDir}/stack/stack.env`;
-  if (existsSync(systemEnvSchema) && existsSync(systemEnv)) {
-    try {
-      await runVarlockLoad(systemEnvSchema, systemEnv);
-    } catch (err: unknown) {
-      anyFailed = true;
-      if (err && typeof err === "object" && "stderr" in err) {
-        collectOutput(String((err as { stderr: string }).stderr));
-      }
-    }
-  }
-
-  return { ok: !anyFailed && errors.length === 0, errors, warnings };
+  return { ok: errors.length === 0, errors, warnings };
 }

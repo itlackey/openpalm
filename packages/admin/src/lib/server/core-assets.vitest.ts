@@ -150,12 +150,6 @@ describe("refreshCoreAssets", () => {
       if (url.includes("AGENTS.md")) {
         return new Response("# OpenCode Agents\n", { status: 200 });
       }
-      if (url.includes("user.env.schema")) {
-        return new Response("# @defaultSensitive=true\n", { status: 200 });
-      }
-      if (url.includes("stack.env.schema")) {
-        return new Response("# @defaultSensitive=false\n", { status: 200 });
-      }
       return new Response("Not found", { status: 404 });
     });
   }
@@ -168,15 +162,16 @@ describe("refreshCoreAssets", () => {
     expect(result.updated).toContain("stack/core.compose.yml");
     expect(result.updated).toContain("data/assistant/opencode.jsonc");
     expect(result.updated).toContain("data/assistant/AGENTS.md");
-    expect(result.updated).toContain("vault/user/user.env.schema");
-    expect(result.updated).toContain("vault/stack/stack.env.schema");
+    // .env.schema files were retired in #391 — they MUST NOT come back.
+    expect(result.updated).not.toContain("vault/user/user.env.schema");
+    expect(result.updated).not.toContain("vault/stack/stack.env.schema");
     expect(result.backupDir).toBeNull(); // no existing files to back up
 
     expect(existsSync(join(homeDir, "stack/core.compose.yml"))).toBe(true);
     expect(existsSync(join(homeDir, "data/assistant/opencode.jsonc"))).toBe(true);
     expect(existsSync(join(homeDir, "data/assistant/AGENTS.md"))).toBe(true);
-    expect(existsSync(join(homeDir, "vault/user/user.env.schema"))).toBe(true);
-    expect(existsSync(join(homeDir, "vault/stack/stack.env.schema"))).toBe(true);
+    expect(existsSync(join(homeDir, "vault/user/user.env.schema"))).toBe(false);
+    expect(existsSync(join(homeDir, "vault/stack/stack.env.schema"))).toBe(false);
   });
 
   test("backs up changed files before overwriting", async () => {
@@ -214,10 +209,6 @@ describe("refreshCoreAssets", () => {
     mkdirSync(join(homeDir, "data/assistant"), { recursive: true });
     writeFileSync(join(homeDir, "data/assistant/opencode.jsonc"), content);
     writeFileSync(join(homeDir, "data/assistant/AGENTS.md"), content);
-    mkdirSync(join(homeDir, "vault/user"), { recursive: true });
-    mkdirSync(join(homeDir, "vault/stack"), { recursive: true });
-    writeFileSync(join(homeDir, "vault/user/user.env.schema"), content);
-    writeFileSync(join(homeDir, "vault/stack/stack.env.schema"), content);
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       return new Response(content, { status: 200 });
     });
