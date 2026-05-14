@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Admin entrypoint — starts SvelteKit (port 8100) and OpenCode.
-# SvelteKit is the main process; OpenCode runs in the background.
-# If either process exits unexpectedly, the container exits.
+# Admin entrypoint — supervises SvelteKit (port 8100) and OpenCode (port 3881).
+# Both run as background children of this bash supervisor so we can:
+#   1. Forward SIGTERM/SIGINT to both children for clean shutdown.
+#   2. Exit (and let Compose restart) when EITHER child dies, so a crashed
+#      OpenCode does not leave the container "healthy" from SvelteKit alone.
 
 SVELTEKIT_PORT="${PORT:-8100}"
 OPENCODE_PORT="${OPENCODE_PORT:-3881}"
@@ -20,6 +22,9 @@ fi
 # Note: varlock-based runtime redaction was retired in #391. Log redaction
 # is enforced in-process by @openpalm/lib's logger, which masks values for
 # keys matching `_TOKEN | _SECRET | _KEY | _PASSWORD`.
+
+OPENCODE_PID=""
+SVELTEKIT_PID=""
 
 # ── Start OpenCode in background ──────────────────────────────────────
 start_opencode() {
@@ -48,20 +53,38 @@ start_opencode() {
 	echo "Admin OpenCode started (PID ${OPENCODE_PID})"
 }
 
-# ── Start SvelteKit (foreground) ──────────────────────────────────────
+# ── Start SvelteKit in background ─────────────────────────────────────
 start_sveltekit() {
 	echo "Starting admin SvelteKit on port ${SVELTEKIT_PORT}..."
-	exec node build/index.js
+	node build/index.js &
+	SVELTEKIT_PID=$!
+	echo "Admin SvelteKit started (PID ${SVELTEKIT_PID})"
 }
 
 # ── Cleanup on exit ───────────────────────────────────────────────────
 cleanup() {
-	if [ -n "${OPENCODE_PID:-}" ]; then
-		kill "$OPENCODE_PID" 2>/dev/null || true
-		wait "$OPENCODE_PID" 2>/dev/null || true
+	if [ -n "${OPENCODE_PID:-}" ] && kill -0 "$OPENCODE_PID" 2>/dev/null; then
+		kill -TERM "$OPENCODE_PID" 2>/dev/null || true
 	fi
+	if [ -n "${SVELTEKIT_PID:-}" ] && kill -0 "$SVELTEKIT_PID" 2>/dev/null; then
+		kill -TERM "$SVELTEKIT_PID" 2>/dev/null || true
+	fi
+	wait 2>/dev/null || true
 }
-trap cleanup EXIT
+trap cleanup TERM INT EXIT
 
 start_opencode
 start_sveltekit
+
+# ── Supervisor: exit when either child dies ──────────────────────────
+# `wait -n` returns when ANY child exits, with that child's status. The
+# container then exits and Compose's `restart: unless-stopped` recreates
+# it, instead of pretending healthy with one crashed component.
+if [ -n "${OPENCODE_PID:-}" ]; then
+	wait -n "$OPENCODE_PID" "$SVELTEKIT_PID"
+else
+	wait -n "$SVELTEKIT_PID"
+fi
+exit_status=$?
+echo "Admin supervisor: a child process exited (status ${exit_status}); shutting down container." >&2
+exit "$exit_status"

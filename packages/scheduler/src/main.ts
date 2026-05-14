@@ -1,11 +1,6 @@
 /**
  * OpenPalm Scheduler — automation co-process.
  *
- * TODO: rename this file to `main.ts` (or `index.ts`) in a follow-up. The
- * `server.ts` name is misleading now that there is no HTTP server. Deferred
- * because the rename touches the assistant entrypoint and the build/test
- * scripts and is out of scope for this PR.
- *
  * Runs alongside the assistant (OpenCode) inside the assistant container.
  * Does NOT expose any network port. The control plane is purely filesystem-
  * driven:
