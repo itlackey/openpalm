@@ -81,6 +81,51 @@ export function ensureOpenCodeSystemConfig(): void {
   mkdirSync(dir, { recursive: true });
 }
 
+// ── Shared akm stash (skills / commands / agents) ────────────────────
+
+/**
+ * Relative paths (under `data/stash/`) of every stash asset that ships
+ * with OpenPalm. Source of truth lives in `.openpalm/stash-seeds/`.
+ *
+ * Enumerated in code (rather than discovered at runtime) so the seed set
+ * is reviewable and the CLI's embedded record cannot silently drift away
+ * from what `refreshCoreAssets()` would download.
+ */
+export const STASH_SEED_PATHS: { stashRelPath: string; githubFilename: string }[] = [
+  {
+    stashRelPath: "skills/config-diagnostics/SKILL.md",
+    githubFilename: ".openpalm/stash-seeds/skills/config-diagnostics/SKILL.md",
+  },
+];
+
+/**
+ * Seed the shared akm stash with built-in skills / commands / agents.
+ *
+ * Idempotent: **never overwrites** an existing file — user edits to a
+ * seeded asset always win, which preserves the same "config doesn't
+ * overwrite user edits" contract that governs the rest of OP_HOME.
+ *
+ * Returns the list of stash-relative paths that were actually written
+ * (empty on re-run when every seed already exists on disk).
+ *
+ * `seeds` is a map of stash-relative path → file content. The CLI
+ * embeds seeds at build time and passes the embedded record directly;
+ * the admin builds the same record from fetched content if it ever
+ * needs to re-seed at runtime.
+ */
+export function seedStashAssets(seeds: Record<string, string>): string[] {
+  const stashDir = `${resolveDataDir()}/stash`;
+  const written: string[] = [];
+  for (const [relPath, content] of Object.entries(seeds)) {
+    const targetPath = join(stashDir, relPath);
+    if (existsSync(targetPath)) continue;
+    mkdirSync(dirname(targetPath), { recursive: true });
+    writeFileSync(targetPath, content);
+    written.push(relPath);
+  }
+  return written;
+}
+
 // ── Asset Refresh (GitHub download) ──────────────────────────────────
 
 const REPO = "itlackey/openpalm";

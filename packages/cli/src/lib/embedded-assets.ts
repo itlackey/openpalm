@@ -59,6 +59,24 @@ import updateContainersAutomation from "../../../../.openpalm/registry/automatio
 // @ts-ignore — Bun text import
 import assistantDailyBriefingAutomation from "../../../../.openpalm/registry/automations/assistant-daily-briefing.yml" with { type: "text" };
 
+// ── Stash seeds (built-in skills / commands / agents) ────────────────
+// Each seed lives in .openpalm/stash-seeds/<type>/<...> and is copied
+// into ${OP_HOME}/data/stash/<type>/<...> on first install. Source of
+// truth for the path → file mapping is `STASH_SEED_PATHS` in
+// `@openpalm/lib`. Keep that constant and this block in sync.
+// @ts-ignore — Bun text import
+import configDiagnosticsSkill from "../../../../.openpalm/stash-seeds/skills/config-diagnostics/SKILL.md" with { type: "text" };
+
+/**
+ * Stash seeds keyed by their stash-relative path (relative to
+ * `${OP_HOME}/data/stash/`). Passed to `seedStashAssets()` from
+ * `@openpalm/lib`, which writes each entry exactly once and never
+ * overwrites an existing file.
+ */
+export const EMBEDDED_STASH_SEEDS: Record<string, string> = {
+  "skills/config-diagnostics/SKILL.md": configDiagnosticsSkill,
+};
+
 export const EMBEDDED_ASSETS: Record<string, string> = {
   "stack/core.compose.yml": coreCompose,
   "registry/addons/admin/compose.yml": adminCompose,
@@ -95,6 +113,7 @@ export const EMBEDDED_ASSETS: Record<string, string> = {
  */
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { seedStashAssets } from "@openpalm/lib";
 
 export function seedEmbeddedAssets(homeDir: string): void {
   for (const [relPath, content] of Object.entries(EMBEDDED_ASSETS)) {
@@ -103,4 +122,9 @@ export function seedEmbeddedAssets(homeDir: string): void {
     mkdirSync(dirname(targetPath), { recursive: true });
     writeFileSync(targetPath, content);
   }
+  // Seed the shared akm stash from embedded skills/commands/agents.
+  // `seedStashAssets` resolves the target via OP_HOME (which the caller
+  // has already set) and is idempotent — user edits to a previously
+  // seeded asset are preserved on re-install.
+  seedStashAssets(EMBEDDED_STASH_SEEDS);
 }

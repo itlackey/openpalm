@@ -24,3 +24,11 @@ For information about managing OpenPalm view @openpalm.md
 - Use `load_vault` to load user secrets from `/etc/vault/user.env` — this is the primary tool for accessing API keys, owner info, and other user-configured secrets.
 - Use `load_env` only for ad-hoc `.env` files in the `/work` directory (workspace). It cannot read files outside `/work`.
 - Never display, log, or store secret values.
+
+## Built-in Skills (resolved via akm)
+
+The OpenPalm stash seeds these assets on first install. Load them with `akm show <ref>`:
+
+- `skill:config-diagnostics` — diagnose configuration issues, missing API keys, and validation errors without exposing secrets. Load when the user reports connection problems or asks about config state.
+
+Discover more via `akm_search` / `akm search`.
