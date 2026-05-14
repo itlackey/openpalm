@@ -178,6 +178,72 @@ describe("scheduler", () => {
       expect(logs).toHaveLength(1);
       expect(logs[0].ok).toBe(true);
     });
+
+    it("forwards AKM_* env vars to shell subprocesses", async () => {
+      const outFile = join(TEST_DIR, "akm-env-out.txt");
+      const akmYaml = `
+name: akm-env-probe
+description: verify AKM_* forwarding
+schedule: "0 0 * * *"
+enabled: true
+action:
+  type: shell
+  command:
+    - sh
+    - -c
+    - "echo \\"$AKM_STASH_DIR|$AKM_CUSTOM_ARBITRARY\\" > ${outFile}"
+on_failure: log
+`;
+      writeFileSync(join(AUTOMATIONS_DIR, "akm-env-probe.yml"), akmYaml);
+
+      process.env.AKM_STASH_DIR = "/tmp/akm-test-stash";
+      process.env.AKM_CUSTOM_ARBITRARY = "future-akm-var";
+      try {
+        startScheduler(TEST_DIR, "test-token");
+        const result = await triggerAutomation("akm-env-probe.yml", "test-token");
+        expect(result.ok).toBe(true);
+
+        const { readFileSync: readFile } = await import("node:fs");
+        const contents = readFile(outFile, "utf-8").trim();
+        expect(contents).toBe("/tmp/akm-test-stash|future-akm-var");
+      } finally {
+        delete process.env.AKM_STASH_DIR;
+        delete process.env.AKM_CUSTOM_ARBITRARY;
+      }
+    });
+
+    it("records shell failure (non-zero exit) without crashing the scheduler", async () => {
+      const failingYaml = `
+name: failing-shell
+description: simulates akm improve failing (e.g. no LLM configured)
+schedule: "0 0 * * *"
+enabled: true
+action:
+  type: shell
+  command:
+    - sh
+    - -c
+    - "echo 'no LLM configured' >&2; exit 1"
+on_failure: log
+`;
+      writeFileSync(join(AUTOMATIONS_DIR, "failing-shell.yml"), failingYaml);
+      startScheduler(TEST_DIR, "test-token");
+
+      const result = await triggerAutomation("failing-shell.yml", "test-token");
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain("shell command failed");
+
+      // Scheduler is still alive and the job remains scheduled for the next run.
+      const status = getSchedulerStatus();
+      expect(status.jobCount).toBe(1);
+      expect(status.jobs[0].name).toBe("failing-shell");
+
+      // Execution was logged as a failure.
+      const logs = getExecutionLog("failing-shell.yml");
+      expect(logs).toHaveLength(1);
+      expect(logs[0].ok).toBe(false);
+      expect(logs[0].error).toBeTruthy();
+    });
   });
 
   describe("execution logs", () => {
