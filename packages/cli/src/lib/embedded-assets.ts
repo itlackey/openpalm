@@ -58,6 +58,8 @@ import promptAssistantAutomation from "../../../../.openpalm/registry/automation
 import updateContainersAutomation from "../../../../.openpalm/registry/automations/update-containers.yml" with { type: "text" };
 // @ts-ignore — Bun text import
 import assistantDailyBriefingAutomation from "../../../../.openpalm/registry/automations/assistant-daily-briefing.yml" with { type: "text" };
+// @ts-ignore — Bun text import
+import akmImproveAutomation from "../../../../.openpalm/registry/automations/akm-improve.yml" with { type: "text" };
 
 export const EMBEDDED_ASSETS: Record<string, string> = {
   "stack/core.compose.yml": coreCompose,
@@ -83,6 +85,7 @@ export const EMBEDDED_ASSETS: Record<string, string> = {
   "registry/automations/prompt-assistant.yml": promptAssistantAutomation,
   "registry/automations/update-containers.yml": updateContainersAutomation,
   "registry/automations/assistant-daily-briefing.yml": assistantDailyBriefingAutomation,
+  "registry/automations/akm-improve.yml": akmImproveAutomation,
   "vault/user/user.env.schema": userEnvSchema,
   "vault/stack/stack.env.schema": stackEnvSchema,
 };

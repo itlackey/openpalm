@@ -299,10 +299,27 @@ describe('install flow — tier 1 (file validation)', () => {
       expect(existsSync(join(homeDir, `data/${dir}`))).toBe(true);
     }
 
-    // ── Validate active automations dir exists but catalog is separate ──
+    // ── Validate active automations dir exists with seeded defaults ──
+    // performSetup seeds the akm-improve maintenance automation on first
+    // install; everything else stays in the registry catalog until enabled.
     expect(existsSync(join(homeDir, 'config/automations'))).toBe(true);
-    const automations = readdirSync(join(homeDir, 'config/automations'));
-    expect(automations.length).toBe(0);
+    const automations = readdirSync(join(homeDir, 'config/automations')).sort();
+    expect(automations).toEqual(['akm-improve.yml']);
+
+    const akmImprovePath = join(homeDir, 'config/automations/akm-improve.yml');
+    const akmImproveContent = readFileSync(akmImprovePath, 'utf-8');
+    expect(akmImproveContent).toContain('name: akm-improve');
+    expect(akmImproveContent).toContain('akm');
+    expect(akmImproveContent).toContain('improve');
+    // Confirm we're on the 0.8.0+ command, not the removed `index --enrich`.
+    expect(akmImproveContent).not.toMatch(/--enrich\b/);
+
+    // ── Re-run setup: user edits to akm-improve.yml must survive ─────
+    const userEdited = '# user customized\nname: akm-improve\nschedule: "0 9 * * *"\nenabled: false\naction:\n  type: shell\n  command: ["akm", "improve"]\n';
+    writeFileSync(akmImprovePath, userEdited);
+    const reSetup = await performSetup(spec as any);
+    expect(reSetup.ok).toBe(true);
+    expect(readFileSync(akmImprovePath, 'utf-8')).toBe(userEdited);
   }, 30_000);
 
   tier1Test('compose config validates with selected addons', async () => {

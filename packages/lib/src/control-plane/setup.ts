@@ -6,6 +6,7 @@
  * — those happen separately in the caller after setup completes.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { createLogger } from "../logger.js";
 import {
@@ -29,7 +30,7 @@ import type { StackSpec, StackSpecCapabilities } from "./stack-spec.js";
 import { writeCapabilityVars } from "./spec-to-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
-import { listEnabledAddonIds } from "./registry.js";
+import { listEnabledAddonIds, getRegistryAutomation } from "./registry.js";
 export { validateSetupSpec } from "./setup-validation.js";
 
 const logger = createLogger("setup");
@@ -242,6 +243,26 @@ export async function performSetup(
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
   ensureMemoryDir();
+
+  // Seed default automations from the registry catalog. Idempotent — existing
+  // files are left alone so user edits survive re-install and upgrade. Registry
+  // misses are logged and skipped; any other error (e.g. filesystem permission)
+  // propagates and fails setup loudly rather than silently leaving the install
+  // in a half-broken state.
+  const automationsDir = join(state.configDir, "automations");
+  mkdirSync(automationsDir, { recursive: true });
+  const akmImproveDest = join(automationsDir, "akm-improve.yml");
+  if (!existsSync(akmImproveDest)) {
+    const akmImproveYml = getRegistryAutomation("akm-improve");
+    if (akmImproveYml) {
+      writeFileSync(akmImproveDest, akmImproveYml);
+      logger.info("seeded default automation", { name: "akm-improve" });
+    } else {
+      logger.warn("default automation missing from registry; skipping seed", {
+        name: "akm-improve",
+      });
+    }
+  }
 
   // Mark setup complete in vault/stack/stack.env (where isSetupComplete reads it)
   const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
