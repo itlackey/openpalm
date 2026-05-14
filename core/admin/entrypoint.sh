@@ -7,7 +7,6 @@ set -euo pipefail
 
 SVELTEKIT_PORT="${PORT:-8100}"
 OPENCODE_PORT="${OPENCODE_PORT:-3881}"
-VARLOCK_SCHEMA_DIR="/app"
 
 # ── Seed admin OpenCode config if not already present ─────────────────
 OPENCODE_CFG="${OPENCODE_CONFIG_DIR:-/etc/opencode}/opencode.jsonc"
@@ -18,11 +17,9 @@ if [ ! -f "$OPENCODE_CFG" ]; then
 	fi
 fi
 
-# ── Varlock command prefix (runtime secret redaction) ─────────────────
-VARLOCK_CMD=()
-if command -v varlock >/dev/null 2>&1 && [ -f "$VARLOCK_SCHEMA_DIR/.env.schema" ]; then
-	VARLOCK_CMD=(varlock run --path "$VARLOCK_SCHEMA_DIR/" --)
-fi
+# Note: varlock-based runtime redaction was retired in #391. Log redaction
+# is enforced in-process by @openpalm/lib's logger, which masks values for
+# keys matching `_TOKEN | _SECRET | _KEY | _PASSWORD`.
 
 # ── Start OpenCode in background ──────────────────────────────────────
 start_opencode() {
@@ -54,7 +51,7 @@ start_opencode() {
 # ── Start SvelteKit (foreground) ──────────────────────────────────────
 start_sveltekit() {
 	echo "Starting admin SvelteKit on port ${SVELTEKIT_PORT}..."
-	exec "${VARLOCK_CMD[@]}" node build/index.js
+	exec node build/index.js
 }
 
 # ── Cleanup on exit ───────────────────────────────────────────────────

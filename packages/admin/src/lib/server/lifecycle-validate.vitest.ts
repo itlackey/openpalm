@@ -1,186 +1,73 @@
 /**
  * Tests for validateProposedState().
- * Mocks node:child_process to avoid requiring the varlock binary.
  *
- * validateProposedState() co-locates schema + env files in a temp directory
- * (varlock discovers .env.schema alongside --path), then makes two execFile
- * calls:
- *   1. user.env validation   (vault/user/user.env + vault/user/user.env.schema)
- *   2. stack.env validation  (vault/stack/stack.env + vault/stack/stack.env.schema)
+ * Post-#391 the validator no longer shells out to varlock. It reads the live
+ * `vault/stack/stack.env` and `vault/user/user.env` files directly and emits
+ * presence-based errors/warnings. These tests stub the on-disk files and
+ * assert the resulting shape.
  */
-import { describe, test, expect, afterEach, vi } from "vitest";
+import { describe, test, expect } from "vitest";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import * as childProcess from "node:child_process";
-
-vi.mock("node:child_process", () => ({
-  execFile: vi.fn()
-}));
 
 import { validateProposedState } from "@openpalm/lib";
 import { makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
 
-/** Seed the schema and env files that validateProposedState expects. */
-function seedValidationFiles(state: { vaultDir: string }): void {
-  mkdirSync(join(state.vaultDir, "user"), { recursive: true });
-  mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
-  writeFileSync(join(state.vaultDir, "user", "user.env.schema"), "# test schema\nADMIN_TOKEN=\n");
-  writeFileSync(join(state.vaultDir, "user", "user.env"), "ADMIN_TOKEN=test\n");
-  writeFileSync(join(state.vaultDir, "stack", "stack.env.schema"), "# test schema\nPORT=\n");
-  writeFileSync(join(state.vaultDir, "stack", "stack.env"), "PORT=8100\n");
+function seedStack(vaultDir: string, env: string): void {
+  mkdirSync(join(vaultDir, "stack"), { recursive: true });
+  writeFileSync(join(vaultDir, "stack", "stack.env"), env);
 }
 
-// Helper: mock all execFile calls to succeed.
-function mockExecFileSuccess(): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  vi.mocked(childProcess.execFile).mockImplementation((...args: any[]) => {
-    const cb = args[args.length - 1];
-    cb(null, "", "");
-    return {} as ReturnType<typeof childProcess.execFile>;
-  });
-}
-
-// Helper: mock first call to fail with the given stderr, second call to succeed.
-function mockExecFileFirstFails(stderr: string): void {
-  let callCount = 0;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  vi.mocked(childProcess.execFile).mockImplementation((...args: any[]) => {
-    const cb = args[args.length - 1];
-    callCount++;
-    if (callCount === 1) {
-      const err = Object.assign(new Error("validation failed"), { stderr });
-      cb(err, "", "");
-    } else {
-      cb(null, "", "");
-    }
-    return {} as ReturnType<typeof childProcess.execFile>;
-  });
-}
-
-// Helper: mock all execFile calls to fail with the given stderr.
-function mockExecFileAllFail(stderr: string): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  vi.mocked(childProcess.execFile).mockImplementation((...args: any[]) => {
-    const cb = args[args.length - 1];
-    const err = Object.assign(new Error("validation failed"), { stderr });
-    cb(err, "", "");
-    return {} as ReturnType<typeof childProcess.execFile>;
-  });
+function seedUser(vaultDir: string, env: string): void {
+  mkdirSync(join(vaultDir, "user"), { recursive: true });
+  writeFileSync(join(vaultDir, "user", "user.env"), env);
 }
 
 describe("validateProposedState", () => {
-  afterEach(() => {
-    vi.resetAllMocks();
-  });
-
-  test("returns { ok: true } when both varlock calls succeed", async () => {
-    mockExecFileSuccess();
-
+  test("ok=true when required keys are present", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    seedValidationFiles(state);
+    seedStack(state.vaultDir, "OP_ADMIN_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n");
+    seedUser(state.vaultDir, "OPENAI_API_KEY=sk-test\n");
 
     const result = await validateProposedState(state);
-    expect(result).toEqual({ ok: true, errors: [], warnings: [] });
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
   });
 
-  test("returns { ok: false } with parsed errors and warnings when user.env validation fails", async () => {
-    mockExecFileFirstFails("ERROR: ADMIN_TOKEN is required but not set\nWARN: OPENAI_BASE_URL is not a valid URL\n");
-
+  test("ok=false when stack.env is missing", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    seedValidationFiles(state);
+    // No stack.env at all
+    const result = await validateProposedState(state);
+    expect(result.ok).toBe(false);
+    expect(result.errors[0]).toContain("stack env file missing");
+  });
+
+  test("ok=false when OP_ADMIN_TOKEN is empty", async () => {
+    const state = makeTestState();
+    trackDir(state.homeDir);
+    seedStack(state.vaultDir, "OP_ADMIN_TOKEN=\nOP_ASSISTANT_TOKEN=def\n");
+    seedUser(state.vaultDir, "");
 
     const result = await validateProposedState(state);
     expect(result.ok).toBe(false);
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toContain("ERROR");
-    expect(result.warnings).toHaveLength(1);
-    expect(result.warnings[0]).toContain("WARN");
+    expect(result.errors.some((e) => e.includes("OP_ADMIN_TOKEN"))).toBe(true);
   });
 
-  test("handles validation failure with empty stderr", async () => {
-    mockExecFileAllFail("");
-
+  test("warns about missing optional canonical slots", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    seedValidationFiles(state);
+    seedStack(state.vaultDir, "OP_ADMIN_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n");
+    // user.env intentionally missing — every user-scoped mapping should warn
+    seedUser(state.vaultDir, "");
 
     const result = await validateProposedState(state);
-    expect(result.ok).toBe(false);
-    expect(result.errors).toHaveLength(0);
-    expect(result.warnings).toHaveLength(0);
-  });
-
-  test("uses --path with a temp directory for both validation calls", async () => {
-    const capturedArgs: string[][] = [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(childProcess.execFile).mockImplementation((...args: any[]) => {
-      const positionalArgs = args[1]; // second argument is the args array
-      capturedArgs.push([...positionalArgs]);
-      const cb = args[args.length - 1];
-      cb(null, "", "");
-      return {} as ReturnType<typeof childProcess.execFile>;
-    });
-
-    const state = makeTestState();
-    trackDir(state.homeDir);
-    seedValidationFiles(state);
-
-    await validateProposedState(state);
-
-    // Both calls should use "load" with "--path" pointing to a temp directory
-    expect(capturedArgs).toHaveLength(2);
-    for (const args of capturedArgs) {
-      expect(args[0]).toBe("load");
-      expect(args[1]).toBe("--path");
-      expect(args[2]).toMatch(/varlock-.*\/$/);
-    }
-  });
-
-  test("returns errors from both user.env and stack.env when both fail", async () => {
-    mockExecFileAllFail("ERROR: MISSING_KEY is required\n");
-
-    const state = makeTestState();
-    trackDir(state.homeDir);
-    seedValidationFiles(state);
-
-    const result = await validateProposedState(state);
-    expect(result.ok).toBe(false);
-    // Both calls failed, so errors from both should be present
-    expect(result.errors.length).toBeGreaterThanOrEqual(2);
-  });
-
-  test("collects multiple errors and warnings from a single validation call", async () => {
-    mockExecFileFirstFails(
-      "ERROR: ADMIN_TOKEN is required\nERROR: OPENAI_API_KEY is empty\nWARN: OPENAI_BASE_URL looks wrong\nWARN: GROQ_API_KEY is unused\n"
-    );
-
-    const state = makeTestState();
-    trackDir(state.homeDir);
-    seedValidationFiles(state);
-
-    const result = await validateProposedState(state);
-    expect(result.ok).toBe(false);
-    expect(result.errors).toHaveLength(2);
-    expect(result.warnings).toHaveLength(2);
-  });
-
-  test("sanitizes API key patterns in varlock error output", async () => {
-    // Uses a fake key that matches the sk-* pattern structurally but is clearly test data.
-    // NOTE: the pre-commit hook pattern-scan is intentionally excluded from test files.
-    const fakeKey = ["sk-", "FAKE".repeat(5), "0000"].join("");
-    const secretStderr = `ERROR: value '${fakeKey}' is invalid\n`;
-    mockExecFileFirstFails(secretStderr);
-
-    const state = makeTestState();
-    trackDir(state.homeDir);
-    seedValidationFiles(state);
-
-    const result = await validateProposedState(state);
-    expect(result.errors[0]).not.toContain(fakeKey);
-    expect(result.errors[0]).toContain("[REDACTED]");
+    expect(result.ok).toBe(true);
+    expect(result.warnings.length).toBeGreaterThan(0);
+    // Warning text includes the env key
+    expect(result.warnings.some((w) => w.includes("OPENAI_API_KEY"))).toBe(true);
   });
 });

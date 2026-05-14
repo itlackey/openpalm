@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { execFile as execFileCb, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { join, normalize, resolve } from 'node:path';
@@ -310,13 +310,8 @@ export function detectSecretBackend(state: ControlPlaneState): SecretBackend {
     return new PassBackend(state);
   }
 
-  for (const schemaPath of [`${state.vaultDir}/user/user.env.schema`, `${state.vaultDir}/stack/stack.env.schema`]) {
-    if (!existsSync(schemaPath)) continue;
-    const content = readFileSync(schemaPath, 'utf-8');
-    if (content.includes('@varlock/pass-plugin')) {
-      return new PassBackend(state);
-    }
-  }
-
+  // Historical fallback: pre-#391 we sniffed `.env.schema` files for a
+  // `@varlock/pass-plugin` marker. Schemas are gone; operators who want
+  // `pass` set `secret-provider.json` to `{ "provider": "pass" }`.
   return new PlaintextBackend(state);
 }

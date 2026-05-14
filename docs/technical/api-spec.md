@@ -934,9 +934,12 @@ When using Ollama as the LLM or embedding provider with Memory:
 
 ### `GET /admin/config/validate`
 
-Run varlock environment validation against `vault/stack/stack.env` using the
-bundled schema. Always returns 200; validation failures
-are non-fatal and are logged to the audit trail.
+Run the in-house key-presence check against the live vault env files
+(`vault/stack/stack.env`, `vault/stack/guardian.env`, `vault/user/user.env`).
+The validator confirms that the canonical secret slots are present and that
+every required token is non-empty — no varlock binary, no schema file. Always
+returns 200; validation failures are non-fatal and are logged to the audit
+trail.
 
 **Authentication:** Required (`x-admin-token`)
 

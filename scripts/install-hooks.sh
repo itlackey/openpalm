@@ -26,7 +26,8 @@ install_hook() {
 install_hook pre-commit
 
 echo ""
-echo "The hook uses varlock scan when available (catches any secret format)."
-echo "Run 'openpalm install' to set up varlock and required secrets files."
+echo "The pre-commit hook pattern-matches staged additions for common API key"
+echo "formats (OpenAI sk-, Groq gsk_, Google AIza, raw hex64). It is a best-"
+echo "effort guard — for full vault inspection, run 'openpalm scan'."
 echo ""
 echo "Done. Git hooks installed."

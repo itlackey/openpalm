@@ -3,20 +3,6 @@
 # Config, plugins, and persona are mounted at runtime — not baked into the image.
 # ──────────────────────────────────────────────────────────────────────────────
 
-FROM debian:trixie-slim AS varlock-fetch
-ARG TARGETARCH
-ARG VARLOCK_VERSION=0.4.0
-ARG VARLOCK_SHA256_ARM64=e830baaa901b6389ecf281bdd2449bfaf7586e91fd3a7a038ec06f78e6fa92f8
-ARG VARLOCK_SHA256_X64=820295b271cece2679b2b9701b5285ce39354fc2f35797365fa36c70125f51ab
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
-RUN set -e; \
-  if [ "$TARGETARCH" = "arm64" ]; then ARCH=arm64; SHA256=$VARLOCK_SHA256_ARM64; \
-  else ARCH=x64; SHA256=$VARLOCK_SHA256_X64; fi \
-  && curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/dmno-dev/varlock/releases/download/varlock%40${VARLOCK_VERSION}/varlock-linux-${ARCH}.tar.gz" -o /tmp/varlock.tar.gz \
-  && echo "${SHA256}  /tmp/varlock.tar.gz" | sha256sum -c - \
-  && tar xzf /tmp/varlock.tar.gz --strip-components=1 -C /usr/local/bin/ \
-  && chmod +x /usr/local/bin/varlock && rm /tmp/varlock.tar.gz
-
 FROM node:22-trixie-slim
 
 # ── Pinned installer versions ────────────────────────────────────────────────
@@ -119,8 +105,7 @@ RUN mkdir -p /home/opencode/.cache /work /akm \
     && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
 
 COPY core/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
-COPY core/assistant/varlock-shell.sh /usr/local/bin/varlock-shell
-RUN chmod +x /usr/local/bin/opencode-entrypoint.sh /usr/local/bin/varlock-shell
+RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
 
 # NOTE: No final USER directive — container starts as root intentionally.
 # The entrypoint uses gosu to drop to the "opencode" user (UID/GID from
@@ -148,9 +133,7 @@ RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
     && chmod 755 /usr/local/bin/akm \
     && akm --version
 
-COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
-RUN mkdir -p /usr/local/etc/varlock && mkdir -p /etc/opencode
-COPY .openpalm/vault/redact.env.schema /usr/local/etc/varlock/.env.schema
+RUN mkdir -p /etc/opencode
 # Persona / config only — opencode.jsonc, system.md, openpalm.md. Built-in
 # skills, commands, and agents now live in the shared akm stash
 # (bind-mounted at /akm), not in the image. See `.openpalm/stash-seeds/`

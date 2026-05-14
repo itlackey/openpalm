@@ -153,10 +153,10 @@ SSH (optional, gated by `OPENCODE_ENABLE_SSH=1`):
 - PAM disabled; strict modes enforced
 - Host keys auto-generated if missing (`ssh-keygen -A`)
 
-Secret redaction (varlock):
+Secret redaction (in-process logger):
 
-- Process-level: when varlock is available, the OpenCode process is launched via `varlock run --path <schema-dir> --` which redacts secret values from the process environment.
-- Shell-level: `SHELL` is set to `/usr/local/bin/varlock-shell`, a wrapper that runs all `bash -c` invocations (OpenCode's shell tool) through `varlock run`, redacting secrets from command output before they enter the LLM context window. Interactive PTY sessions fall back to plain `/bin/bash`.
+- The shared logger in `@openpalm/lib` (`createLogger`) walks every structured `extra` payload and replaces values whose keys match the sensitive-key pattern (`(^|_)(TOKEN|SECRET|KEY|PASSWORD|HMAC)(_|$)`, case-insensitive) with `***REDACTED***` before the line is written to stdout/stderr. This applies to all services that use the shared logger (admin, guardian, channels, scheduler, CLI).
+- Replaces the previous varlock-based process- and shell-level redaction, which was retired in #391 along with the schema files. Operators who want stronger guarantees should keep cloud secrets out of the assistant container by setting only the keys their selected provider needs; the assistant entrypoint already strips unused provider keys based on `SYSTEM_LLM_PROVIDER`.
 
 ### Guardian
 

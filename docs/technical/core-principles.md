@@ -19,7 +19,7 @@ The stack defines a special type of addon, referred to as a channel. These are s
 Golden rules:
 
 - **Convention over configuration** is a foundational principle in this repo. Simplicity and predictability are key features.
-- **Tooling is a thin wrapper over existing tech** and should be as simple and light weight as possible. The goal is for CLI, admin, setup wizard and other management tools to be additive convenience tools, not required infrastructure tooling. This means making the most of foundational dependencies like Docker compose, varlock, etc.
+- **Tooling is a thin wrapper over existing tech** and should be as simple and light weight as possible. The goal is for CLI, admin, setup wizard and other management tools to be additive convenience tools, not required infrastructure tooling. This means making the most of foundational dependencies like Docker compose, etc.
 - **Leverage Docker Compose and OpenCode configuration features** to avoid custom config/orchestration implementations.
 - **Manual management should be easy** for users familiar with Docker compose and opencode configuration. Tooling beyond docker compose (or compatible) should not be required.
 - **Add containers and routes by file-drop** into known host locations (no code changes required).

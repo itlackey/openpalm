@@ -25,30 +25,12 @@ COPY packages/lib/ node_modules/@openpalm/lib/
 # Copy source into monorepo layout
 COPY packages/admin/ packages/admin/
 COPY .openpalm/stack/ .openpalm/stack/
-COPY .openpalm/vault/redact.env.schema .openpalm/vault/
-COPY .openpalm/vault/stack/*.schema .openpalm/vault/stack/
-COPY .openpalm/vault/user/*.schema .openpalm/vault/user/
 COPY .openpalm/config/ .openpalm/config/
 
 # Build SvelteKit (adapter-node produces self-contained build/)
 WORKDIR /workspace/packages/admin
 ENV PATH="/workspace/node_modules/.bin:$PATH"
 RUN npm run build
-
-# ── Varlock fetch ─────────────────────────────────────────────────────────────
-FROM debian:trixie-slim AS varlock-fetch
-ARG TARGETARCH
-ARG VARLOCK_VERSION=0.4.0
-ARG VARLOCK_SHA256_ARM64=e830baaa901b6389ecf281bdd2449bfaf7586e91fd3a7a038ec06f78e6fa92f8
-ARG VARLOCK_SHA256_X64=820295b271cece2679b2b9701b5285ce39354fc2f35797365fa36c70125f51ab
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
-RUN set -e; \
-  if [ "$TARGETARCH" = "arm64" ]; then ARCH=arm64; SHA256=$VARLOCK_SHA256_ARM64; \
-  else ARCH=x64; SHA256=$VARLOCK_SHA256_X64; fi \
-  && curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/dmno-dev/varlock/releases/download/varlock%40${VARLOCK_VERSION}/varlock-linux-${ARCH}.tar.gz" -o /tmp/varlock.tar.gz \
-  && echo "${SHA256}  /tmp/varlock.tar.gz" | sha256sum -c - \
-  && tar xzf /tmp/varlock.tar.gz --strip-components=1 -C /usr/local/bin/ \
-  && chmod +x /usr/local/bin/varlock && rm /tmp/varlock.tar.gz
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
 FROM node:22-trixie-slim
@@ -101,9 +83,6 @@ RUN node -e "\
 
 RUN mkdir -p /state /data && chown node:node /state /data
 
-COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
-COPY .openpalm/vault/redact.env.schema /app/.env.schema
-
 # Bake admin OpenCode config into the image — seeded at runtime if overridden
 COPY core/admin/opencode/opencode.jsonc /app/opencode.jsonc
 COPY core/admin/opencode /etc/opencode
@@ -115,7 +94,7 @@ RUN chmod +x /usr/local/bin/admin-entrypoint.sh
 USER node
 
 # Fallback for direct `docker run`; Compose overrides HOME to DATA_HOME/admin
-# so varlock writes into a user-writable bind mount at runtime.
+# so admin's data lives on a user-writable bind mount at runtime.
 ENV HOME=/tmp
 ENV PORT=8100
 EXPOSE 8100 3881

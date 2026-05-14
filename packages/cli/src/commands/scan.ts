@@ -1,47 +1,82 @@
 import { defineCommand } from 'citty';
 import { join } from 'node:path';
-import { rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { resolveVaultDir } from '@openpalm/lib';
-import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
+import { parseEnvFile, isSensitiveEnvKey } from '@openpalm/lib';
 
+/**
+ * `openpalm scan` — list sensitive env keys that carry a non-empty value
+ * in the live vault env files. Replaces the varlock-based scanner; the
+ * canonical inventory now lives in `akm vault` and the operator-managed
+ * `.env` files. Exits non-zero only on filesystem errors, never on the
+ * mere presence of secrets (that is the expected state).
+ *
+ * Output formats:
+ *   --format json    (default) machine-readable JSON
+ *                    { "files": [{ "path": "...", "keys": [{ "name": "...", "set": true }] }] }
+ *   --format human   grouped, one line per key:
+ *                    # /path/to/file.env
+ *                      KEY_NAME    set
+ */
 export default defineCommand({
   meta: {
     name: 'scan',
-    description: 'Scan codebase for leaked secrets (requires local user.env)',
+    description: 'List vault env keys whose name matches the secret pattern (_TOKEN/_SECRET/_KEY/_PASSWORD/_HMAC)',
   },
-  async run() {
+  args: {
+    format: {
+      type: 'string',
+      description: 'Output format: json (default) or human',
+      default: 'json',
+    },
+  },
+  async run({ args }) {
+    const format = String(args.format ?? 'json').toLowerCase();
+    if (format !== 'json' && format !== 'human') {
+      console.error(`Unknown --format value: ${args.format}. Expected 'json' or 'human'.`);
+      process.exit(2);
+    }
+
     const vaultDir = resolveVaultDir();
+    const targets = [
+      join(vaultDir, 'stack', 'stack.env'),
+      join(vaultDir, 'stack', 'guardian.env'),
+      join(vaultDir, 'user', 'user.env'),
+    ];
 
-    const schemaPath = join(vaultDir, 'user', 'user.env.schema');
-    const envPath = join(vaultDir, 'user', 'user.env');
+    type FileResult = { path: string; keys: Array<{ name: string; set: boolean }> };
+    const results: FileResult[] = [];
 
-    if (!(await Bun.file(schemaPath).exists())) {
-      console.error(
-        `Error: vault/user/user.env.schema not found at ${schemaPath}.\nRun 'openpalm install' first.`,
-      );
-      process.exit(1);
-    }
-
-    if (!(await Bun.file(envPath).exists())) {
-      console.error(
-        `Error: user.env not found at ${envPath}.\nRun 'openpalm install' first.`,
-      );
-      process.exit(1);
-    }
-
-    const varlockBin = await ensureVarlock();
-
-    const tmpDir = await prepareVarlockDir(schemaPath, envPath);
-    let exitCode = 1;
-    try {
-      const proc = Bun.spawn([varlockBin, 'scan', '--path', `${tmpDir}/`], {
-        stdout: 'inherit',
-        stderr: 'inherit',
+    for (const path of targets) {
+      if (!existsSync(path)) continue;
+      const parsed = parseEnvFile(path);
+      const sensitive = Object.keys(parsed)
+        .filter((k) => isSensitiveEnvKey(k))
+        .sort();
+      if (sensitive.length === 0) continue;
+      results.push({
+        path,
+        keys: sensitive.map((name) => ({
+          name,
+          set: typeof parsed[name] === 'string' && parsed[name].length > 0,
+        })),
       });
-      exitCode = await proc.exited;
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
     }
-    process.exit(exitCode);
+
+    if (format === 'json') {
+      console.log(JSON.stringify({ files: results }));
+    } else {
+      if (results.length === 0) {
+        console.log('No vault env files found. Run `openpalm install` first.');
+      } else {
+        for (const file of results) {
+          console.log(`# ${file.path}`);
+          for (const key of file.keys) {
+            console.log(`  ${key.name}\t${key.set ? 'set' : 'empty'}`);
+          }
+        }
+      }
+    }
+    process.exit(0);
   },
 });

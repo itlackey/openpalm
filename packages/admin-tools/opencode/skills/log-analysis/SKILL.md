@@ -119,7 +119,7 @@ Each entry contains:
 | `"socat"` messages | LLM proxy setup (lmstudio workaround) | Normal for local model setups |
 | `"timeout"` | LLM response took too long | Check model performance; consider faster model |
 | `"OPENCODE"` | OpenCode runtime messages | Context-dependent; check for errors |
-| `"varlock"` | Secret redaction active in output | Normal security behavior |
+| `"***REDACTED***"` | In-process logger masked a sensitive value | Normal security behavior |
 | Connection errors to admin API | Cannot reach admin | Check OP_ADMIN_API_URL and admin container |
 
 ## Cross-Service Correlation

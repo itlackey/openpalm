@@ -13,7 +13,12 @@ export {
 } from "./provider-constants.js";
 
 // ── Logger ──────────────────────────────────────────────────────────────
-export { createLogger } from "./logger.js";
+export {
+  createLogger,
+  isSensitiveEnvKey,
+  redactValue,
+  redactExtra,
+} from "./logger.js";
 
 // ── Types ───────────────────────────────────────────────────────────────
 export type {
@@ -130,8 +135,6 @@ export {
 
 // ── Core Assets ─────────────────────────────────────────────────────────
 export {
-  ensureUserEnvSchema,
-  ensureSystemEnvSchema,
   ensureCoreCompose,
   readCoreCompose,
   ensureOpenCodeSystemConfig,

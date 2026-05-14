@@ -1,7 +1,9 @@
 /**
- * GET /admin/config/validate — Run varlock environment validation.
+ * GET /admin/config/validate — Run environment validation.
  *
- * Checks vault/user/user.env and vault/stack/stack.env against their schemas.
+ * Checks vault/user/user.env and vault/stack/stack.env for the presence of
+ * canonical secret slots and for non-empty required tokens. No varlock —
+ * the in-house validator in @openpalm/lib does the key-presence check.
  * Always returns 200; validation failures are logged to the audit trail.
  * Requires admin authentication.
  */

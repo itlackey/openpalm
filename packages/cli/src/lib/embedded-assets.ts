@@ -8,10 +8,6 @@
 
 // @ts-ignore — Bun text import
 import coreCompose from "../../../../.openpalm/stack/core.compose.yml" with { type: "text" };
-// @ts-ignore — Bun text import
-import userEnvSchema from "../../../../.openpalm/vault/user/user.env.schema" with { type: "text" };
-// @ts-ignore — Bun text import
-import stackEnvSchema from "../../../../.openpalm/vault/stack/stack.env.schema" with { type: "text" };
 
 // Addon compose files
 // @ts-ignore — Bun text import
@@ -101,8 +97,6 @@ export const EMBEDDED_ASSETS: Record<string, string> = {
   "registry/automations/update-containers.yml": updateContainersAutomation,
   "registry/automations/assistant-daily-briefing.yml": assistantDailyBriefingAutomation,
   "registry/automations/akm-improve.yml": akmImproveAutomation,
-  "vault/user/user.env.schema": userEnvSchema,
-  "vault/stack/stack.env.schema": stackEnvSchema,
 };
 
 /**

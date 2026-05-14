@@ -3,50 +3,19 @@
  *
  * Manages source-of-truth files for the ~/.openpalm/ layout:
  *   stack/              — compose runtime assets (core.compose.yml)
- *   vault/              — env schemas
  *
  * This module manages runtime-owned core files only.
  * Registry catalog refresh is handled separately in registry.ts.
- * All ensure* functions verify that the expected files exist at OP_HOME.
- * They create directories as needed but do NOT write file content — that
- * is the responsibility of `refreshCoreAssets()` (GitHub download) or
- * the CLI install command (which downloads assets before calling setup).
+ * Env validation has moved to `akm vault` + the in-house redactor — the
+ * historical `.env.schema` files (varlock format) were retired in #391.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
-import { resolveDataDir, resolveVaultDir, resolveOpenPalmHome, resolveBackupsDir } from "./home.js";
+import { resolveDataDir, resolveOpenPalmHome, resolveBackupsDir } from "./home.js";
 import { createLogger } from "../logger.js";
 import { sha256 } from "./crypto.js";
 
 const logger = createLogger("core-assets");
-
-// ── Env Schema Files (vault/) ────────────────────────────────────────
-
-/**
- * Ensure the user env schema directory exists and return the expected
- * schema file path. The file itself may not exist yet — it is written
- * by refreshCoreAssets() or the CLI install command.
- */
-export function ensureUserEnvSchema(): string {
-  const vaultDir = resolveVaultDir();
-  const dir = `${vaultDir}/user`;
-  mkdirSync(dir, { recursive: true });
-  const path = `${dir}/user.env.schema`;
-  return path;
-}
-
-/**
- * Ensure the system env schema directory exists and return the expected
- * schema file path. The file itself may not exist yet — it is written
- * by refreshCoreAssets() or the CLI install command.
- */
-export function ensureSystemEnvSchema(): string {
-  const vaultDir = resolveVaultDir();
-  const dir = `${vaultDir}/stack`;
-  mkdirSync(dir, { recursive: true });
-  const path = `${dir}/stack.env.schema`;
-  return path;
-}
 
 // ── Core Compose (stack/) ─────────────────────────────────────────────
 
@@ -124,8 +93,6 @@ const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
   { relPath: "stack/core.compose.yml", githubFilename: ".openpalm/stack/core.compose.yml" },
   { relPath: "data/assistant/opencode.jsonc", githubFilename: "core/assistant/opencode/opencode.jsonc" },
   { relPath: "data/assistant/AGENTS.md", githubFilename: "core/assistant/opencode/AGENTS.md" },
-  { relPath: "vault/user/user.env.schema", githubFilename: ".openpalm/vault/user/user.env.schema" },
-  { relPath: "vault/stack/stack.env.schema", githubFilename: ".openpalm/vault/stack/stack.env.schema" },
 ];
 
 async function downloadAsset(filename: string): Promise<string> {
