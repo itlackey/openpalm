@@ -14,7 +14,6 @@ This package is separate from `@openpalm/assistant-tools`, which contains memory
 - `admin-logs` -- Service log retrieval
 
 ### Configuration & Connections
-- `admin-config-get-access-scope` / `-set-access-scope` -- LAN/public access control
 - `admin-config-validate` -- Configuration validation
 - `admin-connections-get` / `-set` / `-status` -- Connection profile management
 - `admin-connections-test` -- Test provider connectivity

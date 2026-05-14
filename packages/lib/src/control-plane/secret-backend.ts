@@ -21,6 +21,17 @@ import {
   updateSecretsEnv,
   updateSystemSecretsEnv,
 } from './secrets.js';
+import { parseEnvFile } from './env.js';
+
+/**
+ * Read parsed key/value pairs from `vault/user/user.env`.
+ * Returns {} if the file does not exist. Used for user-scope secret reads
+ * so they consult the user-managed env file rather than the system stack
+ * env file.
+ */
+function readUserEnv(vaultDir: string): Record<string, string> {
+  return parseEnvFile(`${vaultDir}/user/user.env`);
+}
 
 const execFile = promisify(execFileCb);
 
@@ -85,10 +96,14 @@ function resolvePlaintextTarget(state: ControlPlaneState, key: string): Resolved
 
 function currentValueForTarget(state: ControlPlaneState, target: ResolvedSecretTarget): string {
   if (!target.envKey) return '';
-  const env = target.scope === 'system'
-    ? readStackEnv(state.vaultDir)
-    : readStackEnv(state.vaultDir);
-  return env[target.envKey] ?? '';
+  if (target.scope === 'system') {
+    return readStackEnv(state.vaultDir)[target.envKey] ?? '';
+  }
+  // User scope: user.env is the canonical user-managed env file. Fall back to
+  // stack.env for legacy/consolidated secrets so older layouts keep resolving.
+  const userEnv = readUserEnv(state.vaultDir);
+  if (target.envKey in userEnv) return userEnv[target.envKey];
+  return readStackEnv(state.vaultDir)[target.envKey] ?? '';
 }
 
 export class PlaintextBackend implements SecretBackend {
@@ -98,8 +113,11 @@ export class PlaintextBackend implements SecretBackend {
   constructor(private readonly state: ControlPlaneState) {}
 
   async list(prefix = 'openpalm/'): Promise<SecretEntryMetadata[]> {
-    const userEnv = readStackEnv(this.state.vaultDir);
     const systemEnv = readStackEnv(this.state.vaultDir);
+    const userEnvFile = readUserEnv(this.state.vaultDir);
+    // Legacy/consolidated secrets may live in stack.env even for user scope.
+    // Layer user.env on top so explicit user-managed values win.
+    const userEnv: Record<string, string> = { ...systemEnv, ...userEnvFile };
     const index = readPlaintextSecretIndex(this.state);
     const entries: SecretEntryMetadata[] = [];
 

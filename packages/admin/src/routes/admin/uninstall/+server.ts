@@ -6,9 +6,8 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { applyUninstall, appendAudit, buildComposeOptions } from "@openpalm/lib";
+import { applyUninstall, appendAudit, buildComposeOptions, createLogger } from "@openpalm/lib";
 import { composeDown, checkDocker } from "$lib/server/docker.js";
-import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("uninstall");

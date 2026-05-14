@@ -5,9 +5,9 @@
  * secrets and OpenCode config, resolves runtime files, and records
  * the outcome in the audit log.
  */
-import { createLogger } from "$lib/server/logger.js";
 import { getState } from "$lib/server/state.js";
 import {
+  createLogger,
   ensureSecrets,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,

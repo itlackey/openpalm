@@ -15,8 +15,7 @@ import {
   completeProviderOAuth,
 } from '$lib/opencode/client.server.js';
 import { getState } from '$lib/server/state.js';
-import { appendAudit, patchSecretsEnvFile } from '@openpalm/lib';
-import { createLogger } from '$lib/server/logger.js';
+import { appendAudit, createLogger, patchSecretsEnvFile } from '@openpalm/lib';
 
 const logger = createLogger('opencode.auth');
 

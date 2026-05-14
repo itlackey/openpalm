@@ -16,7 +16,6 @@ import stackDiagnostics from "../opencode/tools/stack-diagnostics.ts";
 import messageTrace from "../opencode/tools/message-trace.ts";
 
 // Named-export tools (multiple tools per file)
-import * as adminConfig from "../opencode/tools/admin-config.ts";
 import * as adminContainers from "../opencode/tools/admin-containers.ts";
 import * as adminArtifacts from "../opencode/tools/admin-artifacts.ts";
 import * as adminConnections from "../opencode/tools/admin-connections.ts";
@@ -42,10 +41,6 @@ export const plugin: Plugin = async () => {
       "admin-network-check": adminNetworkCheck,
       "stack-diagnostics": stackDiagnostics,
       "message-trace": messageTrace,
-
-      // admin-config
-      "admin-config-get-access-scope": adminConfig.get_access_scope,
-      "admin-config-set-access-scope": adminConfig.set_access_scope,
 
       // admin-containers
       "admin-containers-list": adminContainers.list,

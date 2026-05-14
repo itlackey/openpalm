@@ -16,6 +16,7 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
+  createLogger,
   getAddonServiceNames,
   listAvailableAddonIds,
   listEnabledAddonIds,
@@ -23,7 +24,6 @@ import {
   composeStop,
   buildComposeOptions,
 } from "@openpalm/lib";
-import { createLogger } from "$lib/server/logger.js";
 import { checkDocker } from "$lib/server/docker.js";
 
 const logger = createLogger("addons");

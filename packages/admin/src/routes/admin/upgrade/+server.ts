@@ -10,6 +10,7 @@ import { getState } from "$lib/server/state.js";
 import {
   performUpgrade,
   appendAudit,
+  createLogger,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
   ensureSecrets,
@@ -17,7 +18,6 @@ import {
   ensureHomeDirs,
 } from "@openpalm/lib";
 import { checkDocker, selfRecreateAdmin } from "$lib/server/docker.js";
-import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("upgrade");

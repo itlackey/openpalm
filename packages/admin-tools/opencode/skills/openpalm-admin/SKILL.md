@@ -27,10 +27,6 @@ Optional addons (enabled by copying from the registry catalog into `stack/addons
 ### `admin-containers` (list, up, down, restart)
 Manage individual service containers. Use `list` first to see current status before making changes.
 
-### `admin-config` (get_access_scope, set_access_scope)
-View and modify the network access scope.
-- **Access scope**: `host` = localhost only, `lan` = local network access
-
 ### `admin-addons` (list, enable, disable)
 List, enable, or disable addons via the registry/stack addon directories.
 - Shows all addons from `registry/addons/` with their enabled state from `stack/addons/`
