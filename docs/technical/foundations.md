@@ -53,7 +53,7 @@ The standard startup path uses:
 
 | Network | Purpose | Core members |
 |---|---|---|
-| `assistant_net` | Core internal mesh | `memory`, `assistant` (which also hosts the scheduler co-process), `guardian`, optional `admin` |
+| `assistant_net` | Core internal mesh | `assistant` (which also hosts the scheduler co-process), `guardian`, optional `admin` |
 | `channel_lan` | Default channel ingress (LAN-restricted) | `guardian` and LAN-facing channel addons |
 | `channel_public` | Reserved for internet-facing channel ingress | `guardian` and public-facing channel addons. Access semantics and membership rules are under design. |
 | `admin_docker_net` | Isolated Docker control plane | `admin`, `docker-socket-proxy`. Only exists when the admin addon is installed. |
@@ -62,44 +62,13 @@ The standard startup path uses:
 
 ## Core Containers
 
-### Memory
-
-Role:
-
-- persistent memory API
-- vector storage and embeddings support
-
-Env sources:
-
-- `stack.env` (via compose ${VAR} substitution)
-- `user.env` (optional user additions via compose ${VAR} substitution)
-
-Key env:
-
-- `MEMORY_DATA_DIR=/data`
-- `HOME=/data`
-- `MEM0_DIR=/data/.mem0`
-- `MEMORY_AUTH_TOKEN` (set from `OP_MEMORY_TOKEN` in stack.env)
-- `OPENAI_API_KEY`
-- `OPENAI_BASE_URL`
-
-Mounts:
-
-- `$OP_HOME/data/memory -> /data`
-
-Ports and network:
-
-- host: `${OP_MEMORY_BIND_ADDRESS:-127.0.0.1}:${OP_MEMORY_PORT:-3898}`
-- container: `8765`
-- network: `assistant_net`
-
 ### Assistant
 
 Role:
 
 - OpenCode runtime
 - user-facing AI interaction
-- memory client
+- memory, skills, and knowledge access via the akm CLI (shared akm stash)
 - admin API client when admin is present
 
 Env sources:
@@ -116,16 +85,15 @@ Key env:
 - `OPENCODE_ENABLE_SSH`
 - `OP_ADMIN_API_URL`
 - `OP_ASSISTANT_TOKEN`
-- `MEMORY_API_URL=http://memory:8765`
-- `MEMORY_AUTH_TOKEN` (set from `OP_MEMORY_TOKEN` in stack.env)
-- `MEMORY_USER_ID`
+- `AKM_STASH_DIR=/akm` (and matching `AKM_DATA_DIR`, `AKM_STATE_DIR`, `AKM_CONFIG_DIR`, `AKM_CACHE_DIR`)
 - `OP_UID`, `OP_GID`
 
 Mounts:
 
 - image-baked `/etc/opencode`
 - `$OP_HOME/data/assistant -> /home/opencode/`
-- `$OP_HOME/data/stash -> /home/opencode/.akm`
+- `$OP_HOME/data/stash -> /akm` (shared akm stash; also bind-mounted into the admin container)
+- `$OP_HOME/data/akm-cache -> /akm-cache` (regenerable registry artifacts)
 - `$OP_HOME/data/workspace -> /work`
 - `$OP_HOME/config -> /etc/openpalm`
 - `$OP_HOME/config/assistant -> /home/opencode/.config/opencode`
@@ -156,7 +124,7 @@ SSH (optional, gated by `OPENCODE_ENABLE_SSH=1`):
 Secret redaction (in-process logger):
 
 - The shared logger in `@openpalm/lib` (`createLogger`) walks every structured `extra` payload and replaces values whose keys match the sensitive-key pattern (`(^|_)(TOKEN|SECRET|KEY|PASSWORD|HMAC)(_|$)`, case-insensitive) with `***REDACTED***` before the line is written to stdout/stderr. This applies to all services that use the shared logger (admin, guardian, channels, scheduler, CLI).
-- Replaces the previous varlock-based process- and shell-level redaction, which was retired in #391 along with the schema files. Operators who want stronger guarantees should keep cloud secrets out of the assistant container by setting only the keys their selected provider needs; the assistant entrypoint already strips unused provider keys based on `SYSTEM_LLM_PROVIDER`.
+- Operators who want stronger guarantees should keep cloud secrets out of the assistant container by setting only the keys their selected provider needs; the assistant entrypoint already strips unused provider keys based on `SYSTEM_LLM_PROVIDER`.
 
 ### Guardian
 
@@ -231,7 +199,7 @@ Role:
 
 - scheduled automation execution
 - admin API caller (via the assistant token)
-- assistant and memory client
+- assistant client (calls the co-resident OpenCode runtime over `localhost`)
 
 The scheduler is a Bun co-process that runs **inside the assistant
 container** (started by `core/assistant/entrypoint.sh`). It has no
@@ -248,8 +216,6 @@ Env sources (inherits the assistant container's environment):
 - `OP_HOME=/openpalm`
 - `OP_ASSISTANT_TOKEN` — used as the admin API token for `api` actions
 - `OP_ADMIN_API_URL`
-- `MEMORY_API_URL=http://memory:8765`
-- `MEMORY_AUTH_TOKEN`
 - `OPENCODE_API_URL=http://localhost:4096` (co-resident OpenCode; auth disabled on this interface)
 
 Mounts (provided by the assistant service):
@@ -312,8 +278,7 @@ Key env:
 - `HOME=/home/node`
 - `OP_HOME=/openpalm`
 - `ADMIN_TOKEN`
-- `MEMORY_API_URL=http://memory:8765`
-- `MEMORY_AUTH_TOKEN`
+- `AKM_STASH_DIR=/akm` (and matching `AKM_DATA_DIR`, `AKM_STATE_DIR`, `AKM_CONFIG_DIR`, `AKM_CACHE_DIR`)
 - `GUARDIAN_URL=http://guardian:8080`
 - `OP_ASSISTANT_URL=http://assistant:4096`
 - `OP_ADMIN_API_URL=http://localhost:8100`
