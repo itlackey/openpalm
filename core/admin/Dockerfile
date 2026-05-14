@@ -39,7 +39,7 @@ FROM node:22-trixie-slim
 ARG OPENCODE_VERSION=1.2.24
 ARG BUN_VERSION=bun-v1.3.10
 # akm-cli — Agent Kit Manager, installed globally via bun add -g.
-ARG AKM_CLI_VERSION=^0.8.0-rc1
+ARG AKM_CLI_VERSION=^0.8.0-rc2
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends curl ca-certificates gnupg git unzip bash pass \
