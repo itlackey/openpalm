@@ -93,9 +93,7 @@ The runtime image for registry-backed adapters is the unified
 ### Supporting services
 - **Memory** -- Bun.js service (`@openpalm/memory`) with sqlite-vec vector
   storage; gives the assistant persistent memory across conversations
-- **Scheduler** -- automation service on container port `8090` (internal only,
-  no host port); reads `~/.openpalm/config/automations/` through the mounted
-  `config/` tree and calls the admin API using the assistant-scoped token
+- **Scheduler** -- automation co-process running inside the assistant container; no network port. Reads `~/.openpalm/config/automations/` through the mounted `config/` tree and calls the admin API using the assistant-scoped token.
 
 ---
 

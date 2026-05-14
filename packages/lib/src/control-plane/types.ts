@@ -7,8 +7,7 @@
 export type CoreServiceName =
   | "assistant"
   | "guardian"
-  | "memory"
-  | "scheduler";
+  | "memory";
 
 export type OptionalServiceName = "admin" | "docker-socket-proxy";
 
@@ -58,11 +57,12 @@ export type ControlPlaneState = {
 
 // ── Constants ──────────────────────────────────────────────────────────
 
+// Scheduler is no longer a separate service — it runs as a co-process inside
+// the assistant container. See core/assistant/entrypoint.sh.
 export const CORE_SERVICES: CoreServiceName[] = [
   "memory",
   "assistant",
   "guardian",
-  "scheduler",
 ];
 
 export const OPTIONAL_SERVICES: OptionalServiceName[] = [

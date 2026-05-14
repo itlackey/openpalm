@@ -176,14 +176,17 @@ Remove the addon directory from `~/.openpalm/stack/addons/`, then rerun `docker 
 You can schedule recurring tasks — like backups, cleanup scripts, or health checks —
 by dropping a `.yml` file into `~/.openpalm/config/automations/`.
 
-Automations are executed by the dedicated `scheduler` service using Croner (no
-system cron required).
+Automations are executed by a scheduler co-process that runs inside the
+assistant container (using Croner — no system cron required and no
+separate service to manage).
 
 ### How to add an automation
 
 1. Create a `.yml` file in `~/.openpalm/config/automations/`
 2. Define a schedule and action (see format below)
-3. Restart the scheduler to activate: `docker compose restart scheduler`
+3. The scheduler watches the directory and picks up changes within a few
+   seconds — no restart required. If you do need to restart it, recreate
+   the assistant container: `docker compose up -d --force-recreate assistant`
 
 **Example** — pull the latest container images every Sunday at 3 AM:
 
@@ -259,16 +262,17 @@ Or use standard cron syntax directly (e.g., `"0 2 * * *"` for daily at 2 AM).
 
 - **Filenames** must use `.yml` extension (e.g., `backup.yml`, `weekly-cleanup.yml`)
 - Filenames must be lowercase letters, numbers, and hyphens only (before the `.yml` extension)
-- Automations run on the dedicated `scheduler` service, which reads files from `~/.openpalm/config/automations/`
+- Automations run via the scheduler co-process inside the assistant container, which reads files from `~/.openpalm/config/automations/`
 - Shell actions use `execFile` with an argument array — no shell interpolation for security
 
 ### When do changes take effect?
 
-Automation files are picked up when the scheduler service starts. After adding
-or editing a file, restart the scheduler to activate:
+Automation files are picked up by the scheduler co-process within a few
+seconds of being written. If you need to force a reload (e.g. after
+editing assistant configuration), recreate the assistant container:
 
 ```bash
-docker compose restart scheduler
+docker compose up -d --force-recreate assistant
 ```
 
 ### Overriding system automations
@@ -365,7 +369,7 @@ All ports are `127.0.0.1`-bound by default.
 
 **Add an automation:**
 1. Create `~/.openpalm/config/automations/my-job.yml` with your schedule
-2. Restart the scheduler: `docker compose restart scheduler`
+2. The scheduler co-process inside the assistant container picks it up within seconds — no restart required.
 
 **View audit logs:**
 ```bash

@@ -37,9 +37,8 @@ status, logs, and all other operations.
 | Service | Host port | Purpose |
 |---------|-----------|---------|
 | `memory` | `3898 -> 8765` | Bun memory service with sqlite-vec vector store |
-| `assistant` | `3800 -> 4096` | OpenCode runtime without Docker socket |
+| `assistant` | `3800 -> 4096` | OpenCode runtime without Docker socket; also hosts the automation scheduler co-process (no port) |
 | `guardian` | none (`8080` internal) | Signed ingress and channel traffic gateway |
-| `scheduler` | `3897 -> 8090` | Automation engine for `config/automations/` |
 
 ## Addons
 

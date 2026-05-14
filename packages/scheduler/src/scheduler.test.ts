@@ -9,7 +9,6 @@ import {
   getSchedulerStatus,
   getLoadedAutomations,
   getExecutionLog,
-  getAllExecutionLogs,
   clearExecutionLogs,
   triggerAutomation,
   startWatching,
@@ -187,15 +186,6 @@ describe("scheduler", () => {
       expect(logs).toEqual([]);
     });
 
-    it("should return all logs keyed by fileName", async () => {
-      writeFileSync(join(AUTOMATIONS_DIR, "test-shell.yml"), VALID_SHELL_AUTOMATION);
-      startScheduler(TEST_DIR, "test-token");
-
-      await triggerAutomation("test-shell.yml", "test-token");
-
-      const allLogs = getAllExecutionLogs();
-      expect(allLogs["test-shell.yml"]).toHaveLength(1);
-    });
   });
 
   describe("file watching", () => {

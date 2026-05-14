@@ -20,7 +20,7 @@ It captures why the system is shaped the way it is and what must remain true as 
   - environment files (`vault/`),
   - service configuration files (`config/`).
 - `stack.yml` is a metadata and coordination artifact for tooling, not a replacement for Compose or env files.
-- All control-plane logic is implemented once in `@openpalm/lib`; CLI, admin, and scheduler are thin consumers.
+- All control-plane logic is implemented once in `@openpalm/lib`; CLI, admin, and the scheduler co-process are thin consumers.
 
 ## Filesystem and ownership model
 
@@ -36,7 +36,7 @@ It captures why the system is shaped the way it is and what must remain true as 
 - Host CLI or admin orchestrates Compose operations; Docker socket exposure is tightly constrained.
 - Guardian is the only ingress path from channel networks to the assistant.
 - Assistant is isolated: no Docker socket, bounded mounts, and stack-management access mediated through authenticated admin APIs when admin is present.
-- Host-only by default: interfaces are local unless the user explicitly opts into broader exposure. The LAN-first threat model is a deliberate architectural choice — admin token storage (localStorage), admin filesystem access (full `OP_HOME` mount), and scheduler API access (`OP_ADMIN_TOKEN`) are all scoped for a localhost/LAN deployment where the network perimeter itself is the primary trust boundary.
+- Host-only by default: interfaces are local unless the user explicitly opts into broader exposure. The LAN-first threat model is a deliberate architectural choice — admin token storage (localStorage), admin filesystem access (full `OP_HOME` mount), and the scheduler's filesystem-based control plane (sentinel files under `data/scheduler/triggers/`) are all scoped for a localhost/LAN deployment where the network perimeter itself is the primary trust boundary.
 - Secret handling follows least privilege by container and by scope.
 
 ## Extensibility intent
@@ -45,7 +45,7 @@ OpenPalm has three extension points:
 
 1. Addons: compose overlays that add optional services.
 2. Assistant extensions: standard OpenCode assets under user and core extension directories.
-3. Automations: scheduler-driven recurring workflows.
+3. Automations: recurring workflows driven by the scheduler co-process inside the assistant container.
 
 Channels are a specialized addon class that use the channel image and SDK pattern and must ingress through guardian.
 

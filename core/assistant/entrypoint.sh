@@ -148,6 +148,67 @@ maybe_proxy_lmstudio() {
   fi
 }
 
+SCHED_PID=""
+
+start_scheduler_coprocess() {
+  # Run the automation scheduler alongside OpenCode. The scheduler has no
+  # HTTP port — it watches /openpalm/config/automations for definitions and
+  # /openpalm/data/scheduler/triggers for manual-trigger sentinels. Logs
+  # stream to /openpalm/logs/scheduler.log.
+  #
+  # OP_HOME defaults to /openpalm and is set by compose; we fall back here
+  # for local Docker builds that omit it.
+  local op_home="${OP_HOME:-/openpalm}"
+  local scheduler_dir="/opt/scheduler"
+  local log_dir="${op_home}/logs"
+  local triggers_dir="${op_home}/data/scheduler/triggers"
+  local scheduler_log="${log_dir}/scheduler.log"
+
+  if [ ! -f "${scheduler_dir}/src/server.ts" ]; then
+    echo "Scheduler co-process source not found at ${scheduler_dir}; skipping." >&2
+    return 0
+  fi
+
+  if ! command -v bun >/dev/null 2>&1; then
+    echo "Scheduler co-process requires bun; skipping." >&2
+    return 0
+  fi
+
+  # Make sure the directories the scheduler depends on exist with the
+  # right ownership. These are bind-mounted from the host, so they may be
+  # empty on first boot.
+  mkdir -p "${log_dir}" "${triggers_dir}" || true
+  if [ "$(id -u)" = "0" ]; then
+    chown "$TARGET_UID:$TARGET_GID" "${log_dir}" "${triggers_dir}" 2>/dev/null || true
+  fi
+
+  echo "Starting scheduler co-process (OP_HOME=${op_home})"
+
+  # Keep the scheduler in the container's process group (no setsid) so the
+  # forward_term trap below can deliver SIGTERM to it on shutdown.
+  if [ "$(id -u)" = "0" ]; then
+    # Drop privileges to match the assistant's runtime UID/GID.
+    gosu opencode env \
+      HOME=/home/opencode \
+      OP_HOME="${op_home}" \
+      bun run "${scheduler_dir}/src/server.ts" >>"${scheduler_log}" 2>&1 &
+  else
+    env OP_HOME="${op_home}" \
+      bun run "${scheduler_dir}/src/server.ts" >>"${scheduler_log}" 2>&1 &
+  fi
+  SCHED_PID=$!
+}
+
+forward_term_to_scheduler() {
+  # Forward SIGTERM from this bash supervisor to the scheduler co-process
+  # and reap it. Bounded wait so a hung scheduler can't block container
+  # teardown — tini will SIGKILL anything still alive after its timeout.
+  if [ -n "${SCHED_PID}" ] && kill -0 "${SCHED_PID}" 2>/dev/null; then
+    kill -TERM "${SCHED_PID}" 2>/dev/null || true
+    wait "${SCHED_PID}" 2>/dev/null || true
+  fi
+}
+
 maybe_unset_unused_provider_keys() {
   # Unset LLM provider keys that are not needed for the configured provider.
   # This limits the blast radius if the assistant process is compromised —
@@ -192,6 +253,16 @@ start_opencode() {
     export SHELL=/usr/local/bin/varlock-shell
   fi
 
+  # If the scheduler co-process is running we must NOT exec opencode —
+  # exec replaces the bash process and discards the SIGTERM trap that
+  # forwards termination to the scheduler. Instead we spawn opencode as
+  # a foreground child, install the trap, and wait. tini still sees this
+  # bash process as PID 1's child and forwards SIGTERM to us.
+  local use_supervisor=0
+  if [ -n "${SCHED_PID}" ] && kill -0 "${SCHED_PID}" 2>/dev/null; then
+    use_supervisor=1
+  fi
+
   if [ "$(id -u)" = "0" ]; then
     if ! command -v gosu >/dev/null 2>&1; then
       echo "ERROR: gosu not found — cannot drop privileges. Install gosu in the Dockerfile." >&2
@@ -201,8 +272,28 @@ start_opencode() {
     # must forward HOME and SHELL explicitly. The user has passwordless sudo
     # for root operations; normal file I/O preserves host UID ownership.
     export HOME=/home/opencode
+    if [ "$use_supervisor" = "1" ]; then
+      gosu opencode env HOME=/home/opencode SHELL="$SHELL" \
+        "${VARLOCK_CMD[@]}" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs &
+      local oc_pid=$!
+      trap 'forward_term_to_scheduler; kill -TERM "$oc_pid" 2>/dev/null || true' TERM INT
+      wait "$oc_pid"
+      local oc_status=$?
+      forward_term_to_scheduler
+      exit "$oc_status"
+    fi
     exec gosu opencode env HOME=/home/opencode SHELL="$SHELL" \
       "${VARLOCK_CMD[@]}" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
+  fi
+
+  if [ "$use_supervisor" = "1" ]; then
+    "${VARLOCK_CMD[@]}" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs &
+    local oc_pid=$!
+    trap 'forward_term_to_scheduler; kill -TERM "$oc_pid" 2>/dev/null || true' TERM INT
+    wait "$oc_pid"
+    local oc_status=$?
+    forward_term_to_scheduler
+    exit "$oc_status"
   fi
 
   exec "${VARLOCK_CMD[@]}" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
@@ -214,4 +305,5 @@ maybe_set_memory_user_id
 maybe_enable_ssh
 maybe_proxy_lmstudio
 maybe_unset_unused_provider_keys
+start_scheduler_coprocess
 start_opencode

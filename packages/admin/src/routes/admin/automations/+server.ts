@@ -1,9 +1,10 @@
 /**
  * GET /admin/automations — List automation configs from config/automations/.
  *
- * Read-only endpoint. The scheduler sidecar is the sole automation engine;
- * admin does not run any background scheduler process. For execution logs
- * and live scheduler status, query the scheduler sidecar directly.
+ * Read-only endpoint. The scheduler co-process (inside the assistant
+ * container) is the sole automation engine; admin does not run any
+ * background scheduler process. For execution logs and manual triggers
+ * use `/admin/automations/:name/log` and `/admin/automations/:name/run`.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";

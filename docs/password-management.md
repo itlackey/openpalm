@@ -51,7 +51,7 @@ Important keys include:
 | Key | Notes |
 |---|---|
 | `OP_ADMIN_TOKEN` | Admin UI/API authentication token |
-| `OP_ASSISTANT_TOKEN` | Assistant/scheduler auth token for admin API access |
+| `OP_ASSISTANT_TOKEN` | Assistant auth token for admin API access (also used by the scheduler co-process inside the assistant container) |
 | `OP_MEMORY_TOKEN` | Memory API auth token |
 | `OP_HOME` | OpenPalm home directory |
 | `OP_UID` / `OP_GID` | Host user/group mapping |
@@ -96,7 +96,9 @@ Behavior:
 | `assistant` | `vault/user/` only | Directory mount plus env injection |
 | `guardian` | no vault mount | Reads needed values from Compose env |
 | `memory` | no vault mount | Reads needed values from Compose env |
-| `scheduler` | no vault mount | Reads needed values from Compose env |
+
+The scheduler is not a separate container — it runs as a co-process inside the
+assistant container and inherits the assistant's environment and mounts.
 
 The assistant does not mount the full `vault/` directory and does not get broad
 access to stack secrets by filesystem path.
@@ -113,9 +115,9 @@ access to stack secrets by filesystem path.
 
 ### `OP_ASSISTANT_TOKEN`
 
-- separate operational token for the assistant and scheduler
+- separate operational token for the assistant (and the scheduler co-process that runs inside it)
 - exposed inside the assistant as `OP_ASSISTANT_TOKEN`
-- also sent in the `x-admin-token` header when assistant tooling calls the admin API
+- also sent in the `x-admin-token` header when assistant tooling or the scheduler calls the admin API
 
 OpenPalm does not use `Authorization: Bearer` for these admin endpoints.
 

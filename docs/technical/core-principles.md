@@ -4,13 +4,13 @@
 
 The foundation of the OpenPalm stack is simply a set of conventions used to manage Docker compose overlay files, .env files, and configuration files related to specific services in the stack. That is it. That is what the entire stack is built upon.
 
-There are four core containers, the guardian, the assistant, the memory, and the scheduler. These container vary in complexity but are designed to do one thing each. The guardian and the assistant are OpenCode servers, the memory is the shared agentic memory server, and the scheduler is the stacks cron service that handles running automations.
+There are three core containers, the guardian, the assistant, and the memory. These containers vary in complexity but are designed to do one thing each. The guardian and the assistant are OpenCode servers, and the memory is the shared agentic memory server. Automation scheduling runs as a Bun co-process inside the assistant container (no separate service, no network port).
 
 The stack allows for three primary extension points.
 
 1. **Addons** are Docker compose overlay files to add services to the stack.
 2. **Assistant extensions** are standard OpenCode resources that are mounted into the assistant container.
-3. **Automations** that run on the scheduler and have access to the assistant to execute workflows on a recurring basis.
+3. **Automations** that run on the scheduler co-process inside the assistant container and have direct in-container access to the assistant to execute workflows on a recurring basis.
 
 The stack defines a special type of addon, referred to as a channel. These are services that use the openpalm/channel docker image with a know entry point that uses the openpalm/channels-sdk. These containers are meant to be the entry point to the stack, and provide services like Discord/Slack/Telegram bots, MCP/API servers, voice chat, etc. Addons that provide services/tools to the rest of the stack can also be added. These can be any container you have access to pull, ollama for example.
 
@@ -59,8 +59,8 @@ These are hard constraints that must never be violated during development. See a
 1. **Host CLI or admin is the orchestrator.** The host CLI manages Docker Compose directly on the host. The admin container, when present, provides a web UI and API for remote/assistant-driven stack operations via docker-socket-proxy. Only one orchestrator should manage compose operations at a time. The Docker socket is never exposed to any other container. The admin mounts all of `$OP_HOME` because it manages config, vault, stack assembly, data, and logs — mounting individual subdirectories would be fragile and break when new paths are added. Its blast radius is already constrained by docker-socket-proxy (filtered API), token-authenticated API endpoints, and localhost-only binding.
 2. **Guardian-only ingress.** All channel traffic enters through the guardian, which enforces HMAC verification, timestamp skew rejection, replay detection, and rate limiting. No channel may communicate directly with the assistant. Channel secrets are distributed during addon install (see § Addon secret lifecycle below).
 3. **Assistant isolation.** The assistant has no Docker socket and no broad host filesystem access beyond its designated mounts: `config/ -> /etc/openpalm`, `config/assistant/ -> /home/opencode/.config/opencode`, `vault/stack/auth.json`, `vault/user/ -> /etc/vault/` (directory, rw), `data/assistant/`, `data/stash/`, `data/workspace/`, and `logs/opencode/`. When the admin service is present, the assistant interacts with the stack through the admin API. When admin is absent, assistant stack-management tools are unavailable — the assistant operates with memory tools only.
-4. **Host only by default.** Admin interfaces, dashboards, and channels are host-restricted by default. Nothing is exposed to the network or internet without explicit user opt-in. The admin UI stores the admin token in localStorage; this is acceptable because the admin is LAN-first and never publicly exposed. The threat model for XSS-based token theft requires the attacker to already have network access to the host or LAN, at which point they likely have broader access. Session expiry and httpOnly cookies would add implementation complexity without meaningful security improvement under this threat model. **OpenCode auth (`OPENCODE_AUTH`) is disabled by default** because all host port bindings default to `127.0.0.1` (loopback-only) and internal services (guardian, scheduler) communicate with the assistant over Docker's `assistant_net` network without credentials. If a user changes `OP_ASSISTANT_BIND_ADDRESS` to `0.0.0.0`, they must also set `OP_OPENCODE_PASSWORD` in `stack.env` and enable `OPENCODE_AUTH` — the compose comments document this requirement.
-5. **Scheduler access is scoped to automation needs.** The scheduler receives `OP_ADMIN_TOKEN` and mounts `config/` (read-only), `logs/`, and `data/` because it executes automations that may call the admin API, must read automation definitions, and needs to write automation logs and access data for automation state. This is intentional — the scheduler is an internal-only service on `assistant_net` with no ingress exposure.
+4. **Host only by default.** Admin interfaces, dashboards, and channels are host-restricted by default. Nothing is exposed to the network or internet without explicit user opt-in. The admin UI stores the admin token in localStorage; this is acceptable because the admin is LAN-first and never publicly exposed. The threat model for XSS-based token theft requires the attacker to already have network access to the host or LAN, at which point they likely have broader access. Session expiry and httpOnly cookies would add implementation complexity without meaningful security improvement under this threat model. **OpenCode auth (`OPENCODE_AUTH`) is disabled by default** because all host port bindings default to `127.0.0.1` (loopback-only) and the guardian communicates with the assistant over Docker's `assistant_net` network without credentials. If a user changes `OP_ASSISTANT_BIND_ADDRESS` to `0.0.0.0`, they must also set `OP_OPENCODE_PASSWORD` in `stack.env` and enable `OPENCODE_AUTH` — the compose comments document this requirement.
+5. **Scheduler access is scoped to automation needs.** The scheduler co-process inherits the assistant container's environment (including `OP_ASSISTANT_TOKEN`) and mounts `config/` (read-only) and `data/scheduler/` (read-write, for trigger sentinels) plus the shared `logs/` volume. It calls the admin API with the assistant token for `api` actions and `http://localhost:4096` for `assistant` actions. There is no dedicated scheduler↔admin token anymore.
 
 ---
 
@@ -77,7 +77,7 @@ All OpenPalm state lives under a single root: **`~/.openpalm/`** (configurable v
 
 Subtrees:
 
-- `automations/` — automation YAML files (mounted to scheduler)
+- `automations/` — automation YAML files (read by the scheduler co-process inside the assistant container)
 - `assistant/` — user OpenCode extensions (tools, plugins, skills)
 - `stack.yml` — higher-level capability settings only
 
@@ -117,7 +117,7 @@ Subtrees:
 
 Env schemas and example files live in the repo at `vault/` (committed, no secret values).
 
-**Rule:** no container except admin may mount `vault/` as a directory. The assistant receives only a bind mount of `vault/user/` (the directory, rw). Guardian, scheduler, and memory receive secrets exclusively through `${VAR}` substitution at container creation time and optional service-specific managed env files located under `vault/stack/services/<service-name>/`. Note: the `vault/stack/services/` directory is not shipped in the `.openpalm/` bundle -- it is created at runtime by `dev-setup.sh` (dev) or the CLI installer (production) when service-specific managed env files are needed.
+**Rule:** no container except admin may mount `vault/` as a directory. The assistant receives only a bind mount of `vault/user/` (the directory, rw). Guardian and memory receive secrets exclusively through `${VAR}` substitution at container creation time and optional service-specific managed env files located under `vault/stack/services/<service-name>/`. The scheduler co-process inherits the assistant container's environment (and therefore the same vault posture). Note: the `vault/stack/services/` directory is not shipped in the `.openpalm/` bundle -- it is created at runtime by `dev-setup.sh` (dev) or the CLI installer (production) when service-specific managed env files are needed.
 
 ### 3) Data (service-managed, durable)
 
@@ -193,7 +193,7 @@ All portable control-plane logic — lifecycle management, addon operations, sec
 **Rules:**
 
 - New control-plane functionality MUST be implemented in `@openpalm/lib`, not in CLI or admin source directly.
-- The CLI calls lib functions directly. The admin calls them from API route handlers. The scheduler calls them for automation execution. All get identical behavior.
+- The CLI calls lib functions directly. The admin calls them from API route handlers. The scheduler co-process calls them for automation execution. All get identical behavior.
 - If a function exists in the admin that should be reusable (e.g., compose invocation, env file parsing, component discovery), it must be extracted to lib.
 - Test coverage for control-plane logic belongs in lib's test suite, not duplicated across consumer test suites.
 
@@ -212,7 +212,6 @@ Host-exposed OpenPalm services default to a small localhost-friendly port set. C
 | **Admin** | 8100 | `127.0.0.1:3880` | Admin UI + API |
 | **Admin OpenCode** | 3881 | `127.0.0.1:3881` | Admin-side OpenCode runtime |
 | **Guardian** | 8080 | (internal only) | HMAC verification + rate limiting |
-| **Scheduler** | 8090 | (internal only) | Automation scheduler |
 | **Memory** | 8765 | `127.0.0.1:3898` | Memory service API |
 | **Chat addon** | 8181 | `127.0.0.1:3820` | OpenAI-compatible chat edge |
 | **API addon** | 8182 | `127.0.0.1:3821` | OpenAI/Anthropic-compatible API edge |

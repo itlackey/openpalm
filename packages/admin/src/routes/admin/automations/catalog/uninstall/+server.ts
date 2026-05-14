@@ -4,8 +4,9 @@
  * Channel addons are managed via POST /admin/addons/:name.
  * This endpoint only handles automations.
  *
- * Removes the .yml from CONFIG_HOME/automations/,
- * refreshes runtime files, and reloads the scheduler.
+ * Removes the .yml from CONFIG_HOME/automations/ and refreshes runtime
+ * files. The scheduler co-process inside the assistant container auto-
+ * reloads via file watching.
  */
 import type { RequestHandler } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";

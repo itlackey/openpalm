@@ -35,8 +35,10 @@ vault/
   admin API to manage stack secrets and channel HMAC keys.
 - **Assistant mounts `vault/user/` (the directory, rw).** The assistant
   never sees stack secrets like admin tokens or HMAC keys.
-- **No other container mounts vault.** Guardian, scheduler, and memory receive
-  secrets via Compose env loading and service environment blocks.
+- **No other container mounts vault.** Guardian and memory receive secrets
+  via Compose env loading and service environment blocks. The scheduler is
+  not a separate container — it runs as a co-process inside the assistant
+  and inherits the assistant's environment posture.
 - **Never commit `stack.env` or `user.env` to version control.** The
   `.gitignore` excludes them. Only the `.env.schema` files are tracked.
 

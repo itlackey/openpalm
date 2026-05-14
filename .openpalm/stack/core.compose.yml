@@ -26,7 +26,7 @@ services:
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     restart: "no"
     command: ["sh", "-c",
-      "mkdir -p /data/memory /data/assistant /data/guardian /data/scheduler /data/stash /data/stash/.data /data/stash/.state /data/stash/.config /data/guardian-stash /data/guardian-stash/.data /data/guardian-stash/.state /data/guardian-stash/.config /data/akm-cache /data/guardian-cache /data/workspace /logs/opencode && chmod 700 /data/guardian-stash /data/guardian-cache && ls /addons 2>/dev/null | xargs -I{} mkdir -p /data/{}"]
+      "mkdir -p /data/memory /data/assistant /data/guardian /data/scheduler /data/scheduler/triggers /data/stash /data/stash/.data /data/stash/.state /data/stash/.config /data/guardian-stash /data/guardian-stash/.data /data/guardian-stash/.state /data/guardian-stash/.config /data/akm-cache /data/guardian-cache /data/workspace /logs/opencode && chmod 700 /data/guardian-stash /data/guardian-cache && ls /addons 2>/dev/null | xargs -I{} mkdir -p /data/{}"]
     volumes:
       - ${OP_HOME}/data:/data
       - ${OP_HOME}/logs:/logs
@@ -93,8 +93,10 @@ services:
       OPENCODE_PORT: "4096"
       # Auth is disabled because the assistant is only reachable via the
       # internal assistant_net Docker network and the host port binding
-      # defaults to 127.0.0.1 (loopback-only). Guardian and scheduler
-      # communicate with the assistant over assistant_net without credentials.
+      # defaults to 127.0.0.1 (loopback-only). Guardian communicates with
+      # the assistant over assistant_net without credentials, and the
+      # scheduler now runs as a co-process inside this container so it
+      # reaches OpenCode via http://localhost:4096.
       # If you change OP_ASSISTANT_BIND_ADDRESS to 0.0.0.0, you MUST set
       # OP_OPENCODE_PASSWORD in stack.env and set OPENCODE_AUTH to "true".
       OPENCODE_AUTH: "false"
@@ -121,6 +123,10 @@ services:
       MEMORY_USER_ID: ${MEMORY_USER_ID:-default_user}
       OP_UID: ${OP_UID:-1000}
       OP_GID: ${OP_GID:-1000}
+      # Scheduler co-process — runs inside this container, reads
+      # automations from /openpalm/config/automations and watches sentinels
+      # in /openpalm/data/scheduler/triggers. Uses OP_HOME from above.
+      OPENCODE_API_URL: http://localhost:4096
       # Provider API keys (resolved from stack.env)
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
@@ -166,6 +172,11 @@ services:
       - ${OP_HOME}/data/akm-cache:/akm-cache
       - ${OP_HOME}/data/workspace:/work
       - ${OP_HOME}/logs/opencode:/home/opencode/.local/state/opencode
+      # Scheduler co-process needs read-only access to automation
+      # definitions and read/write access to its trigger sentinels.
+      - ${OP_HOME}/config:/openpalm/config:ro
+      - ${OP_HOME}/data/scheduler:/openpalm/data/scheduler
+      - ${OP_HOME}/logs:/openpalm/logs
     working_dir: /work
     networks: [ assistant_net ]
     depends_on:
@@ -218,37 +229,6 @@ services:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "bun -e \"const r=await fetch('http://localhost:8080/health');if(!r.ok)process.exit(1)\" || exit 1" ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-
-  # ── Scheduler (automation engine — NO docker socket) ─────────────
-  scheduler:
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/scheduler:${OP_IMAGE_TAG:-latest}
-    restart: unless-stopped
-    user: "${OP_UID:-1000}:${OP_GID:-1000}"
-    environment:
-      PORT: "8090"
-      HOME: /openpalm/data/scheduler
-      OP_HOME: /openpalm
-      OP_ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
-      OP_ADMIN_API_URL: ${OP_ADMIN_API_URL:-}
-      OPENCODE_API_URL: http://assistant:4096
-      OPENCODE_SERVER_PASSWORD: ${OP_OPENCODE_PASSWORD:-}
-      MEMORY_API_URL: http://memory:8765
-      MEMORY_AUTH_TOKEN: ${OP_MEMORY_TOKEN:-}
-      MEMORY_USER_ID: ${MEMORY_USER_ID:-default_user}
-    volumes:
-      - ${OP_HOME}/config:/openpalm/config:ro
-      - ${OP_HOME}/logs:/openpalm/logs
-      - ${OP_HOME}/data:/openpalm/data
-    networks: [ assistant_net ]
-    depends_on:
-      assistant:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD-SHELL", "bun -e \"const r=await fetch('http://localhost:8090/health');if(!r.ok)process.exit(1)\" || exit 1" ]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -1,9 +1,10 @@
 # prompt-assistant.yml — Example scheduled prompt for the chat addon
 #
 # Sends a prompt through the optional chat addon's OpenAI-compatible API.
-# This example is disabled by default because the scheduler service cannot reach
-# the chat addon unless you intentionally extend the network topology and
-# replace the URL below with a reachable endpoint.
+# This example is disabled by default because the scheduler (which runs as a
+# co-process inside the assistant container) cannot reach the chat addon
+# unless you intentionally extend the network topology and replace the URL
+# below with a reachable endpoint.
 #
 # Customize the body to suit your needs.
 # Common uses: daily briefing, system report, recurring task reminders.

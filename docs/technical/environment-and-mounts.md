@@ -191,43 +191,46 @@ Notes:
 - It is the only bridge between addon ingress networks and `assistant_net`.
 - Guardian loads `vault/stack/guardian.env` as a compose `env_file` for channel HMAC secrets. The same file is bind-mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload. Non-secret config (`OP_ADMIN_TOKEN`) is passed via `${VAR}` substitution in the compose `environment:` block.
 
-### Scheduler
+### Scheduler co-process
 
-Compose source: `.openpalm/stack/core.compose.yml`
+The scheduler is no longer a separate compose service. It runs as a Bun
+co-process inside the `assistant` container, launched by
+`core/assistant/entrypoint.sh`.
 
-Mounts:
+Filesystem control plane (provided by the `assistant` service's mounts):
 
 | Host path | Container path | Mode | Purpose |
 |---|---|---|---|
-| `$OP_HOME/config` | `/openpalm/config` | ro | Automation definitions and config |
-| `$OP_HOME/logs` | `/openpalm/logs` | rw | Automation and service logs |
-| `$OP_HOME/data` | `/openpalm/data` | rw | Automation state and service data |
+| `$OP_HOME/config` | `/openpalm/config` | ro | Automation definitions |
+| `$OP_HOME/data/scheduler` | `/openpalm/data/scheduler` | rw | Trigger sentinels (`triggers/<name>.run`) |
+| `$OP_HOME/logs` | `/openpalm/logs` | rw | `scheduler.log` output |
 
 Ports and networks:
 
 | Item | Value |
 |---|---|
-| Container port | `8090` |
-| Host bind | none (internal only on `assistant_net`) |
-| Networks | `assistant_net` |
+| Container port | none — no HTTP listener |
+| Host bind | none |
+| Networks | inherits the assistant's `assistant_net` membership |
 
-Key env:
+Key env (inherited from the assistant container):
 
 | Variable | Value / source | Purpose |
 |---|---|---|
-| `PORT` | `8090` | HTTP listen port |
 | `OP_HOME` | `/openpalm` | Runtime root used by scheduler code |
-| `OP_ADMIN_TOKEN` | `${OP_ADMIN_TOKEN:-}` | Scheduler admin token |
+| `OP_ASSISTANT_TOKEN` | `${OP_ASSISTANT_TOKEN:-}` | Admin API token for `api` actions |
 | `OP_ADMIN_API_URL` | `stack.env` / addon wiring | Admin API base URL |
-| `OPENCODE_API_URL` | `http://assistant:4096` | Assistant API URL |
-| `OPENCODE_SERVER_PASSWORD` | `${OP_OPENCODE_PASSWORD:-}` | Optional assistant auth wiring |
+| `OPENCODE_API_URL` | `http://localhost:4096` | Co-resident OpenCode |
 | `MEMORY_API_URL` | `http://memory:8765` | Memory URL |
 | `MEMORY_AUTH_TOKEN` | `${OP_MEMORY_TOKEN:-}` | Memory API auth token |
 
 Notes:
 
-- Scheduler does not mount the Docker socket.
-- Scheduler has no host port; it is internal-only on `assistant_net`.
+- The scheduler does not mount the Docker socket and has no separate
+  network port.
+- Manual triggers: write any content into
+  `${OP_HOME}/data/scheduler/triggers/<fileName>.run` and the watcher
+  fires the matching automation, deleting the sentinel.
 
 ---
 
@@ -315,7 +318,7 @@ All addon and channel services use `user: "${OP_UID:-1000}:${OP_GID:-1000}"` to 
 
 | Network | Connected services | Purpose |
 |---|---|---|
-| `assistant_net` | `memory`, `assistant`, `guardian`, `scheduler`, and `admin` when enabled | Core internal service mesh |
+| `assistant_net` | `memory`, `assistant` (also hosts the scheduler co-process), `guardian`, and `admin` when enabled | Core internal service mesh |
 | `channel_lan` | `guardian` and LAN-facing channel/addon edges | Default channel ingress network |
 | `channel_public` | `guardian` only in core; public-facing overlays can join it intentionally | Public ingress isolation |
 | `admin_docker_net` | `admin`, `docker-socket-proxy` | Isolated Docker control-plane network |
@@ -341,7 +344,7 @@ These variables are consumed by Compose and service env blocks.
 | `OP_API_BIND_ADDRESS`, `OP_API_PORT` | API addon host bind |
 | `OP_VOICE_BIND_ADDRESS`, `OP_VOICE_PORT` | Voice addon host bind |
 | `OP_ADMIN_TOKEN` | Admin auth token |
-| `OP_ASSISTANT_TOKEN` | Assistant and scheduler auth token |
+| `OP_ASSISTANT_TOKEN` | Assistant operational token (also used by the scheduler co-process for admin API calls) |
 | `OP_MEMORY_TOKEN` | Memory API auth token |
 | `OP_OPENCODE_PASSWORD` | OpenCode server password |
 | `MEMORY_USER_ID` | Default memory identity |

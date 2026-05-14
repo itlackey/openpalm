@@ -191,7 +191,12 @@ describe("CORE_SERVICES", () => {
     expect(CORE_SERVICES).toContain("memory");
     expect(CORE_SERVICES).toContain("assistant");
     expect(CORE_SERVICES).toContain("guardian");
-    expect(CORE_SERVICES).toContain("scheduler");
+  });
+
+  test("scheduler is not a separate service (folded into assistant)", () => {
+    // Scheduler runs as a co-process inside the assistant container; it is
+    // not a separately addressable compose service.
+    expect(CORE_SERVICES).not.toContain("scheduler" as never);
   });
 
   test("admin is an optional service, not core", () => {
@@ -200,8 +205,8 @@ describe("CORE_SERVICES", () => {
     expect(OPTIONAL_SERVICES).toContain("docker-socket-proxy");
   });
 
-  test("has exactly 4 core services", () => {
-    expect(CORE_SERVICES).toHaveLength(4);
+  test("has exactly 3 core services", () => {
+    expect(CORE_SERVICES).toHaveLength(3);
   });
 
   test("has exactly 2 optional services", () => {

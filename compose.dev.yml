@@ -54,12 +54,6 @@ services:
       dockerfile: core/channel/Dockerfile
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:dev
 
-  scheduler:
-    build:
-      context: .
-      dockerfile: core/scheduler/Dockerfile
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/scheduler:dev
-
   memory:
     build:
       context: .

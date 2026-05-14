@@ -153,6 +153,25 @@ RUN mkdir -p /usr/local/etc/varlock && mkdir -p /etc/opencode
 COPY .openpalm/vault/redact.env.schema /usr/local/etc/varlock/.env.schema
 COPY core/assistant/opencode /etc/opencode
 
+# ── Scheduler co-process ─────────────────────────────────────────────────
+# The scheduler runs alongside OpenCode inside this container. It has no
+# HTTP port — automations are read from /openpalm/config/automations and
+# manual triggers come from sentinel files under /openpalm/data/scheduler/
+# triggers. See core/assistant/entrypoint.sh for the supervisor logic.
+#
+# Pattern matches the previous standalone scheduler image: copy
+# @openpalm/lib source into node_modules so the workspace:* dep resolves,
+# then install the scheduler's remaining deps with bun (already on PATH).
+COPY packages/lib /opt/scheduler/node_modules/@openpalm/lib
+RUN cd /opt/scheduler/node_modules/@openpalm/lib && bun install --production
+COPY packages/scheduler/package.json /opt/scheduler/package.json
+COPY packages/scheduler/src /opt/scheduler/src
+RUN cd /opt/scheduler \
+    && bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.parse(readFileSync('package.json','utf8'));delete p.dependencies['@openpalm/lib'];writeFileSync('package.json',JSON.stringify(p,null,2))" \
+    && rm -f bun.lock bun.lockb \
+    && bun install --production \
+    && chown -R opencode:opencode /opt/scheduler
+
 EXPOSE 4096 22
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \

@@ -453,7 +453,8 @@ check_container_env() {
 	fi
 }
 
-# OP_ADMIN_TOKEN is in guardian/scheduler compose, not assistant.
+# OP_ADMIN_TOKEN is in guardian compose, not assistant. (The scheduler
+# co-process inside the assistant uses OP_ASSISTANT_TOKEN, not OP_ADMIN_TOKEN.)
 # MEMORY_USER_ID for the assistant comes from user.env (default_user) —
 # the actual userId 'node' is in managed.env and used by the memory service.
 # Verify the assistant has the memory auth token (proves compose env substitution works).

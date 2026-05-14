@@ -26,7 +26,7 @@ variable). The relevant files for running the stack are:
 
 | Path | Purpose |
 |---|---|
-| `~/.openpalm/stack/core.compose.yml` | Core services: assistant, guardian, memory, scheduler |
+| `~/.openpalm/stack/core.compose.yml` | Core services: assistant (also runs the scheduler co-process), guardian, memory |
 | `~/.openpalm/stack/addons/<name>/compose.yml` | One file per enabled addon (admin, chat, api, etc.) |
 | `~/.openpalm/vault/stack/stack.env` | System-managed values: tokens, ports, UID/GID, image tags |
 | `~/.openpalm/vault/user/user.env` | User-managed settings: owner info, custom preferences |

@@ -110,9 +110,8 @@ After install starts, the wizard shows deployment progress from `/api/setup/depl
 Typical core services shown are compose-derived (for example):
 
 - memory
-- assistant
+- assistant (includes the automation scheduler co-process)
 - guardian
-- scheduler
 - plus enabled addons
 
 Notes:
