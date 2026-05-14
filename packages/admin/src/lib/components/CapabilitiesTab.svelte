@@ -7,22 +7,9 @@
 		fetchAssignments,
 		saveAssignments,
 	} from '$lib/api.js';
+	import { lookupEmbeddingDims } from '@openpalm/lib/provider-constants';
 
 	type ProviderEntry = OpenCodeProviderSummary & { authMethods: OpenCodeAuthMethod[] };
-
-	const KNOWN_EMB_DIMS: Record<string, number> = {
-		'text-embedding-3-small': 1536,
-		'text-embedding-3-large': 3072,
-		'text-embedding-ada-002': 1536,
-		'nomic-embed-text': 768,
-		'mxbai-embed-large': 1024,
-		'mxbai-embed-large-v1': 1024,
-		'ai/mxbai-embed-large-v1': 1024,
-		'mistral-embed': 1024,
-		'all-minilm': 384,
-		'snowflake-arctic-embed': 1024,
-		'intfloat/multilingual-e5-large': 1024,
-	};
 
 	interface Props { loading: boolean; onRefresh: () => void; openCodeStatus?: 'checking' | 'ready' | 'unavailable'; }
 	let { loading, onRefresh }: Props = $props();
@@ -135,9 +122,7 @@
 	onMount(() => { void loadAll(); });
 
 	function lookupEmbDims(model: string): number {
-		if (KNOWN_EMB_DIMS[model]) return KNOWN_EMB_DIMS[model];
-		const bare = model.includes(':') ? model.slice(0, model.lastIndexOf(':')) : model;
-		return KNOWN_EMB_DIMS[bare] ?? 0;
+		return lookupEmbeddingDims(caps.embeddings.provider, model);
 	}
 
 	// ── Capability change handlers ──────────────────────────────────

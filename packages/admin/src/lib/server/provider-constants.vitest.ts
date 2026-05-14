@@ -124,7 +124,7 @@ describe("EMBEDDING_DIMS", () => {
 
   test("keys follow provider/model naming convention", () => {
     for (const key of Object.keys(EMBEDDING_DIMS)) {
-      expect(key).toMatch(/^[a-z]+\/.+$/);
+      expect(key).toMatch(/^[a-z][a-z-]*\/.+$/);
     }
   });
 

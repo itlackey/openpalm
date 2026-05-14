@@ -1,5 +1,5 @@
 import { tool } from "@opencode-ai/plugin";
-import { adminFetch, buildAdminHeaders } from "./lib.ts";
+import { buildAdminHeaders } from "./lib.ts";
 
 const GUARDIAN_URL = (process.env.GUARDIAN_URL || "http://guardian:8080").replace(/\/+$/, '');
 const ADMIN_URL = (process.env.OP_ADMIN_API_URL || "http://admin:8100").replace(/\/+$/, '');
@@ -40,6 +40,13 @@ async function fetchServiceHealth(
   }
 }
 
+/**
+ * Fetch a URL with the assistant's admin token attached and parse the
+ * response as JSON. The URL is taken verbatim, so callers can address
+ * either the admin API or any other in-stack service (e.g. guardian).
+ * Errors are surfaced as `{ error }` so the diagnostic report can
+ * include them without throwing.
+ */
 async function safeJsonFetch(url: string, timeout = 5_000): Promise<unknown> {
   const headers = buildAdminHeaders();
   if (!headers) {
@@ -47,22 +54,10 @@ async function safeJsonFetch(url: string, timeout = 5_000): Promise<unknown> {
   }
 
   try {
-    const res = await fetch(url, {
-      headers,
-      signal: AbortSignal.timeout(timeout),
-    });
-    return res.json();
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(timeout) });
+    return await res.json();
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
-async function safeAdminFetch(path: string): Promise<unknown> {
-  try {
-    const raw = await adminFetch(path);
-    return JSON.parse(raw);
-  } catch {
-    return { error: "Failed to parse response" };
   }
 }
 
@@ -163,11 +158,11 @@ export default tool({
     ] = await Promise.all([
       fetchServiceHealth("guardian", `${GUARDIAN_URL}/health`),
       fetchServiceHealth("admin", `${ADMIN_URL}/health`),
-      safeAdminFetch("/admin/containers/list"),
-      safeAdminFetch("/admin/config/validate"),
-      safeAdminFetch("/admin/connections/status"),
-      safeAdminFetch("/admin/audit?source=guardian&limit=20"),
-      safeAdminFetch("/admin/audit?limit=20"),
+      safeJsonFetch(`${ADMIN_URL}/admin/containers/list`),
+      safeJsonFetch(`${ADMIN_URL}/admin/config/validate`),
+      safeJsonFetch(`${ADMIN_URL}/admin/connections/status`),
+      safeJsonFetch(`${ADMIN_URL}/admin/audit?source=guardian&limit=20`),
+      safeJsonFetch(`${ADMIN_URL}/admin/audit?limit=20`),
       safeJsonFetch(`${GUARDIAN_URL}/stats`),
     ]);
 

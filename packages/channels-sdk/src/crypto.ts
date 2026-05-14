@@ -6,6 +6,19 @@
  */
 
 /**
+ * Constant-time string comparison to prevent timing attacks.
+ * Used for API key, token, and HMAC signature validation.
+ */
+export function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+/**
  * Produces an HMAC-SHA256 hex digest of body using secret as the key.
  */
 export function signPayload(secret: string, body: string): string {
@@ -18,11 +31,5 @@ export function signPayload(secret: string, body: string): string {
  */
 export function verifySignature(secret: string, body: string, sig: string): boolean {
   if (!secret || !sig) return false;
-  const expected = signPayload(secret, body);
-  if (expected.length !== sig.length) return false;
-  let diff = 0;
-  for (let i = 0; i < expected.length; i++) {
-    diff |= expected.charCodeAt(i) ^ sig.charCodeAt(i);
-  }
-  return diff === 0;
+  return constantTimeEqual(signPayload(secret, body), sig);
 }

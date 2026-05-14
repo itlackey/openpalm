@@ -1,4 +1,5 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { resolveCacheHome } from '@openpalm/lib';
 
@@ -179,17 +180,17 @@ export async function seedOpenPalmDir(
     await writeFile(join(homeDir, 'stack', 'core.compose.yml'), new Uint8Array(await Bun.file(srcCoreCompose).arrayBuffer()));
 
     const srcRegistry = join(tmpDir, '.openpalm', 'registry');
-    if (await dirExists(srcRegistry)) {
+    if (dirExists(srcRegistry)) {
       await copyTree(srcRegistry, join(homeDir, 'registry'));
     }
 
     const srcVault = join(tmpDir, '.openpalm', 'vault');
-    if (await dirExists(srcVault)) {
+    if (dirExists(srcVault)) {
       await copyTree(srcVault, vaultDir, { onlyPattern: /\.schema$/ });
     }
 
     const srcAssistant = join(tmpDir, 'core', 'assistant', 'opencode');
-    if (await dirExists(srcAssistant)) {
+    if (dirExists(srcAssistant)) {
       await copyTree(srcAssistant, join(dataDir, 'assistant'));
     }
   } finally {
@@ -197,13 +198,12 @@ export async function seedOpenPalmDir(
   }
 }
 
-async function dirExists(path: string): Promise<boolean> {
+function dirExists(path: string): boolean {
   try {
-    const stat = await Bun.file(join(path, '.')).exists();
-    // Bun.file().exists() doesn't work for dirs, use a different check
-    const proc = Bun.spawn(['test', '-d', path], { stdout: 'ignore', stderr: 'ignore' });
-    return (await proc.exited) === 0;
-  } catch { return false; }
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 async function copyTree(

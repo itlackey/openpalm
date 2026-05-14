@@ -14,6 +14,8 @@ import {
   buildManagedServices,
   createOpenCodeClient,
   createLogger,
+  expandEnvVars,
+  parseEnvFile,
   type SetupSpec,
 } from '@openpalm/lib';
 import { seedEmbeddedAssets } from '../lib/embedded-assets.ts';
@@ -410,17 +412,13 @@ async function ensureVolumeMountTargets(homeDir: string, vaultDir: string): Prom
   }
 
   // Read env vars for variable substitution
-  const envVars: Record<string, string> = { ...process.env };
-  const stackEnv = join(vaultDir, 'stack', 'stack.env');
-  if (existsSync(stackEnv)) {
-    for (const line of readFileSync(stackEnv, 'utf-8').split('\n')) {
-      const m = line.match(/^(?:export\s+)?([A-Z_][A-Z0-9_]*)=(.*)$/);
-      if (m) envVars[m[1]] = m[2];
-    }
-  }
+  const envVars: Record<string, string> = {
+    ...(process.env as Record<string, string>),
+    ...parseEnvFile(join(vaultDir, 'stack', 'stack.env')),
+  };
 
   function resolveEnvVar(str: string): string {
-    return str.replace(/\$\{([^}:]+)(?::-([^}]*))?\}/g, (_, name, def) => envVars[name] ?? def ?? '');
+    return expandEnvVars(str, envVars);
   }
 
   // Extract volume mount sources from all compose files

@@ -8,11 +8,9 @@
  * no longer touches a memory service.
  */
 import type { Plugin } from '@opencode-ai/plugin';
-import { buildAdminHeaders } from '../tools/lib.ts';
+import { adminFetch } from '../tools/lib.ts';
 
 type HookIO = Record<string, unknown>;
-
-const ADMIN_URL = process.env.OP_ADMIN_API_URL || 'http://admin:8100';
 
 type AdminSessionState = {
   sessionId: string;
@@ -58,27 +56,28 @@ export const SystemHooksPlugin: Plugin = async () => {
   };
 };
 
-async function adminFetch(path: string): Promise<unknown | null> {
-  const headers = buildAdminHeaders();
-  if (!headers) return null;
-
+async function fetchAdminJson(path: string): Promise<unknown | null> {
+  const body = await adminFetch(path);
   try {
-    const res = await fetch(`${ADMIN_URL}${path}`, { headers, signal: AbortSignal.timeout(5_000) });
-    return res.ok ? await res.json() : null;
-  } catch { return null; }
+    const parsed = JSON.parse(body);
+    if (parsed && typeof parsed === 'object' && (parsed as HookIO).error) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 async function buildSystemContext(): Promise<string | null> {
   const lines: string[] = ['## System Session Context'];
 
-  const automations = await adminFetch('/admin/automations');
+  const automations = await fetchAdminJson('/admin/automations');
   if (automations) {
     lines.push('', '### Active Automations', `Automations data available: ${JSON.stringify(automations).slice(0, 200)}...`);
   } else {
     lines.push('', '### Automations: unavailable (admin API unreachable)');
   }
 
-  const containers = await adminFetch('/admin/containers/list') as unknown[] | null;
+  const containers = await fetchAdminJson('/admin/containers/list') as unknown[] | null;
   if (Array.isArray(containers)) {
     const running = containers.filter((c) => (c as HookIO).state === 'running').length;
     lines.push('', '### Stack Health', `Containers: ${running}/${containers.length} running`);
