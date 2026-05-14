@@ -326,7 +326,7 @@ async function runFileInstall(filePath: string, noStart: boolean): Promise<void>
 
   if (config.version !== 2) throw new Error('Setup config must be version 2. See example.spec.yaml for the format.');
   if (!config.capabilities || typeof config.capabilities !== 'object' || Array.isArray(config.capabilities)) {
-    throw new Error('Setup config must contain a "capabilities" object (llm, embeddings, memory).');
+    throw new Error('Setup config must contain a "capabilities" object (llm, embeddings).');
   }
 
   // Resolve security.adminToken from environment when not in spec

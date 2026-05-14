@@ -58,34 +58,10 @@ export type CatalogAutomation = {
   schedule: string;
 };
 
-export type MemoryConfig = {
-  mem0: {
-    llm: { provider: string; config: Record<string, unknown> };
-    embedder: { provider: string; config: Record<string, unknown> };
-    vector_store: {
-      provider: "sqlite-vec" | "qdrant";
-      config: {
-        collection_name: string;
-        db_path?: string;
-        path?: string;
-        embedding_model_dims: number;
-      };
-    };
-  };
-  memory: { custom_instructions: string };
-};
-
-export type MemoryConfigResponse = {
-  config: MemoryConfig;
-  providers: { llm: string[]; embed: string[] };
-  embeddingDims: Record<string, number>;
-};
-
 export type CapabilitiesSummary = {
   llm: string;
   slm?: string;
   embeddings: { provider: string; model: string; dims: number };
-  memory: { userId: string; customInstructions?: string };
 };
 
 export type CapabilitiesResponseDto = {

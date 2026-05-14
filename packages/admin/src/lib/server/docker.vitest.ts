@@ -295,7 +295,7 @@ describe("composeUp", () => {
     // Create a real env file on disk (existsSyncMock only controls docker.ts internal checks)
     const tmpEnvFile = `/tmp/docker-test-${Date.now()}.env`;
     const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
-    realFs.writeFileSync(tmpEnvFile, "ADMIN_TOKEN=fresh-token\nMEMORY_USER_ID=alice\n");
+    realFs.writeFileSync(tmpEnvFile, "ADMIN_TOKEN=fresh-token\nOWNER_NAME=alice\n");
 
     existsSyncMock.mockReturnValue(true);
     mockExecSuccess();
@@ -307,7 +307,7 @@ describe("composeUp", () => {
     const call = execFileMock.mock.calls[0];
     const opts = call[2] as { env: Record<string, string> };
     expect(opts.env.ADMIN_TOKEN).toBe("fresh-token");
-    expect(opts.env.MEMORY_USER_ID).toBe("alice");
+    expect(opts.env.OWNER_NAME).toBe("alice");
 
     realFs.unlinkSync(tmpEnvFile);
   });

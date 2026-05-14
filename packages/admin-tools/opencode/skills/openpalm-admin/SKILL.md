@@ -9,14 +9,14 @@ You have access to tools that call the OpenPalm admin API. All operations are au
 
 ## Architecture
 
-OpenPalm runs as a Docker Compose stack with 4 core services plus optional addons:
+OpenPalm runs as a Docker Compose stack with two core services plus optional addons:
 
 | Service | Role |
 |---------|------|
-| **memory** | Memory service - Bun-based OpenPalm memory API backed by SQLite and `sqlite-vec` |
-| **assistant** | This OpenCode instance (you) |
+| **assistant** | This OpenCode instance (you). Hosts the scheduler co-process and the shared akm stash. |
 | **guardian** | Message routing with HMAC verification |
-| **scheduler** | Lightweight automation sidecar: cron jobs, http/shell/assistant/api actions |
+
+Persistent memory, skills, commands, lessons, and workflows live in the shared akm stash that is bind-mounted into the assistant and admin containers — there is no longer a dedicated memory service.
 
 Optional addons (enabled by copying from the registry catalog into `stack/addons/`):
 | **admin** | Control plane API (protects Docker socket) |
@@ -63,7 +63,7 @@ Heavy operations that affect the entire stack:
 - `upgrade` = download fresh assets from upstream, back up changed files, pull latest Docker images, and recreate all containers. Use this to apply upstream updates without a full reinstall.
 
 ### `health-check`
-Quick health probe of core services (guardian, memory, admin).
+Quick health probe of core services (guardian, admin).
 
 ## Diagnostics
 
@@ -83,9 +83,6 @@ Test connectivity to an LLM provider endpoint. Verifies the URL is reachable and
 
 ### `admin-providers-local`
 Detect local LLM providers (Ollama, Docker Model Runner, LM Studio) on the host. Use during initial setup to discover what's available without manual configuration.
-
-### `admin-memory-models`
-Check the memory service embedding model configuration and availability. Use this when memory search returns unexpected results or embedding errors appear in logs.
 
 ### `admin-containers-inspect`
 Get container resource usage: CPU%, memory, network I/O, and PID count per container. Use to identify resource-hungry or leaking containers.

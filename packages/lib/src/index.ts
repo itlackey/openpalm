@@ -118,28 +118,20 @@ export {
   isChannelAddon,
 } from "./control-plane/channels.js";
 
-// ── Memory Config ───────────────────────────────────────────────────────
+// ── Provider Model Discovery ────────────────────────────────────────────
 export type {
-  MemoryConfig,
-} from "./control-plane/memory-config.js";
+  ProviderModelsResult,
+  ModelDiscoveryReason,
+} from "./control-plane/provider-models.js";
 export {
-  EMBED_PROVIDERS,
   resolveApiKey,
   fetchProviderModels,
-  getDefaultConfig,
-  readMemoryConfig,
-  writeMemoryConfig,
-  ensureMemoryConfig,
-  checkVectorDimensions,
-  resetVectorStore,
-  provisionMemoryUser,
-} from "./control-plane/memory-config.js";
+} from "./control-plane/provider-models.js";
 
 // ── Core Assets ─────────────────────────────────────────────────────────
 export {
   ensureUserEnvSchema,
   ensureSystemEnvSchema,
-  ensureMemoryDir,
   ensureCoreCompose,
   readCoreCompose,
   ensureOpenCodeSystemConfig,
@@ -239,7 +231,6 @@ export type {
   StackSpec,
   StackSpecCapabilities,
   StackSpecEmbeddings,
-  StackSpecMemory,
   StackSpecTts,
   StackSpecStt,
   StackSpecReranker,

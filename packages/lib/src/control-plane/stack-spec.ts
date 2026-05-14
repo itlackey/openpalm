@@ -19,11 +19,6 @@ export type StackSpecEmbeddings = {
   dims: number;
 };
 
-export type StackSpecMemory = {
-  userId: string;
-  customInstructions?: string;
-};
-
 export type StackSpecTts = {
   enabled: boolean;
   provider?: string;
@@ -54,7 +49,6 @@ export type StackSpecCapabilities = {
   /** Small/fast model: "provider/model" */
   slm?: string;
   embeddings: StackSpecEmbeddings;
-  memory: StackSpecMemory;
   tts?: StackSpecTts;
   stt?: StackSpecStt;
   reranking?: StackSpecReranker;
@@ -76,7 +70,6 @@ export const SPEC_DEFAULTS = {
     assistant: 3800,
     admin: 3880,
     adminOpencode: 3881,
-    memory: 3898,
     guardian: 3899,
     assistantSsh: 2222,
   },

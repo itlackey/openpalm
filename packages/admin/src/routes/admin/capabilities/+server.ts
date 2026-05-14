@@ -21,7 +21,6 @@ import {
   readStackSpec,
   formatCapabilityString,
   maskSecretValue,
-  readMemoryConfig,
 } from "@openpalm/lib";
 import { updateAndPersistCapabilities } from "$lib/server/capabilities.js";
 import {
@@ -78,8 +77,6 @@ export const POST: RequestHandler = async (event) => {
   const systemModel = typeof body.systemModel === "string" ? body.systemModel : "";
   const embeddingModel = typeof body.embeddingModel === "string" ? body.embeddingModel : "";
   const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
-  const memoryUserId = typeof body.memoryUserId === "string" ? body.memoryUserId : "default_user";
-  const customInstructions = typeof body.customInstructions === "string" ? body.customInstructions : "";
 
   if (!provider) {
     return errorResponse(400, "bad_request", "provider is required", {}, requestId);
@@ -112,33 +109,16 @@ export const POST: RequestHandler = async (event) => {
         model: embeddingModel || "text-embedding-3-small",
         dims: resolvedDims,
       };
-      spec.capabilities.memory = {
-        ...spec.capabilities.memory,
-        userId: memoryUserId,
-        customInstructions,
-      };
     });
   } catch (err) {
     appendAudit(state, actor, "capabilities.save", { provider, error: String(err) }, false, requestId, callerType);
     return errorResponse(500, "internal_error", "Failed to update stack.yml", {}, requestId);
   }
 
-  // 3. Check embedding dimension mismatch against persisted config
-  let dimensionWarning: string | undefined;
-  let dimensionMismatch = false;
-  const persisted = readMemoryConfig(state.dataDir);
-  const currentDims = persisted.mem0.vector_store.config.embedding_model_dims;
-  if (currentDims !== resolvedDims) {
-    dimensionMismatch = true;
-    dimensionWarning = `Embedding dimensions changed: current ${currentDims}, config expects ${resolvedDims}. Reset the memory collection to apply.`;
-  }
-
-  appendAudit(state, actor, "capabilities.save", { provider, dimensionMismatch }, true, requestId, callerType);
-  logger.info("capabilities save", { provider, dimensionMismatch, requestId });
+  appendAudit(state, actor, "capabilities.save", { provider }, true, requestId, callerType);
+  logger.info("capabilities save", { provider, requestId });
 
   return jsonResponse(200, {
     ok: true,
-    dimensionWarning,
-    dimensionMismatch,
   }, requestId);
 };

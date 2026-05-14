@@ -101,7 +101,6 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
     join(vaultDir, 'stack'),
     dataDir,
     join(dataDir, 'admin'),
-    join(dataDir, 'memory'),
     join(dataDir, 'guardian'),
     join(dataDir, 'stash'),
     join(dataDir, 'workspace'),
@@ -119,7 +118,6 @@ function makeSetupSpec(): Record<string, unknown> {
     capabilities: {
       llm: 'ollama/qwen2.5-coder:3b',
       embeddings: { provider: 'ollama', model: 'nomic-embed-text:latest', dims: 768 },
-      memory: { userId: 'testuser', customInstructions: '' },
       slm: 'ollama/qwen2.5-coder:3b',
     },
     security: { adminToken: 'test-admin-token-12345' },
@@ -295,7 +293,7 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(rootFiles).toBe('');
 
     // ── Validate data directories ────────────────────────────────────
-    for (const dir of ['admin', 'assistant', 'memory', 'guardian', 'stash', 'guardian-stash', 'akm-cache', 'guardian-cache', 'workspace']) {
+    for (const dir of ['admin', 'assistant', 'guardian', 'stash', 'guardian-stash', 'akm-cache', 'guardian-cache', 'workspace']) {
       expect(existsSync(join(homeDir, `data/${dir}`))).toBe(true);
     }
 
@@ -457,7 +455,7 @@ describe('install flow — tier 1 (file validation)', () => {
     ], { stdout: 'pipe', stderr: 'pipe' });
 
     const services = new TextDecoder().decode(proc.stdout).trim().split('\n').sort();
-    expect(services).toEqual(['assistant', 'guardian', 'init', 'memory']);
+    expect(services).toEqual(['assistant', 'guardian', 'init']);
   }, 30_000);
 });
 

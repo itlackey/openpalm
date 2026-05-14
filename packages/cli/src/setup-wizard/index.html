@@ -167,23 +167,17 @@
             </div>
           </div>
 
-          <!-- Memory Settings -->
+          <!-- Reranking Settings -->
           <div class="options-section">
-            <h3 class="options-section-title">Memory</h3>
-            <p class="options-section-desc">Configure how your assistant remembers context.</p>
-
-            <div class="field-group">
-              <label for="memory-user-id">Memory User ID</label>
-              <input id="memory-user-id" type="text" placeholder="default_user">
-              <p class="field-hint">Identifies the memory owner. Defaults to your name or "default_user".</p>
-            </div>
+            <h3 class="options-section-title">Search Reranking</h3>
+            <p class="options-section-desc">Optionally rerank search results returned from the akm stash before they reach the assistant.</p>
 
             <div class="addon-toggle-row">
               <label class="addon-toggle-label">
                 <input type="checkbox" id="reranking-enabled">
-                <span class="addon-label-text">Enable memory reranking</span>
+                <span class="addon-label-text">Enable reranking</span>
               </label>
-              <span class="addon-help">Improves memory recall by reranking search results using an LLM. Uses the chat model by default.</span>
+              <span class="addon-help">Improves recall by reranking search results using an LLM. Uses the chat model by default.</span>
             </div>
 
             <div class="reranking-options hidden" id="reranking-options">

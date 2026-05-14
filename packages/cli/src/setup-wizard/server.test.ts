@@ -47,7 +47,6 @@ function makeSetupDirs(): void {
     vaultDir,
     dataDir,
     join(dataDir, "admin"),
-    join(dataDir, "memory"),
     join(dataDir, "assistant"),
     join(dataDir, "guardian"),
     join(dataDir, "stash"),
@@ -73,7 +72,6 @@ function makeSetupDirs(): void {
       "export GROQ_API_KEY=",
       "export MISTRAL_API_KEY=",
       "export GOOGLE_API_KEY=",
-      "export MEMORY_USER_ID=default_user",
       "export OWNER_NAME=",
       "export OWNER_EMAIL=",
       "",
@@ -205,8 +203,8 @@ describe("setup wizard server", () => {
 
     try {
       updateDeployStatus([
-        { service: "memory", status: "pending", label: "Memory" },
         { service: "assistant", status: "pulling", label: "Assistant" },
+        { service: "guardian", status: "pending", label: "Guardian" },
       ]);
 
       const res = await fetch(`${baseUrl}/api/setup/deploy-status`);
@@ -218,7 +216,7 @@ describe("setup wizard server", () => {
       };
       expect(data.ok).toBe(true);
       expect(data.deployStatus).toHaveLength(2);
-      expect(data.deployStatus[0].service).toBe("memory");
+      expect(data.deployStatus[0].service).toBe("assistant");
     } finally {
       stop();
     }
@@ -254,10 +252,6 @@ describe("setup wizard server", () => {
             provider: "openai",
             model: "text-embedding-3-small",
             dims: 1536,
-          },
-          memory: {
-            userId: "test_user",
-            customInstructions: "",
           },
         },
         security: { adminToken: "test-admin-token-12345" },

@@ -64,9 +64,6 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
   if (!existing.OP_ASSISTANT_TOKEN) {
     updates.OP_ASSISTANT_TOKEN = randomBytes(32).toString("hex");
   }
-  if (!existing.OP_MEMORY_TOKEN) {
-    updates.OP_MEMORY_TOKEN = randomBytes(32).toString("hex");
-  }
 
   if (!existsSync(systemEnvPath)) {
     const header = [
@@ -78,7 +75,6 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
       "OP_ASSISTANT_TOKEN=",
       "",
       "# ── Service Auth ─────────────────────────────────────────────────────",
-      "OP_MEMORY_TOKEN=",
       "OP_OPENCODE_PASSWORD=",
       "",
       "# ── Provider API Keys ────────────────────────────────────────────────",

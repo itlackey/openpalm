@@ -535,8 +535,8 @@ function buildModelOptions() {
   // Define model roles
   var roles = [
     { id: "llm", label: "Chat Model (LLM)", tag: "required", desc: "Conversations, reasoning, and code" },
-    { id: "embedding", label: "Embedding Model", tag: "optional", desc: "Memory search and recall" },
-    { id: "small", label: "Small Model", tag: "optional", desc: "Lightweight tasks like memory extraction" },
+    { id: "embedding", label: "Embedding Model", tag: "optional", desc: "Stash search and recall" },
+    { id: "small", label: "Small Model", tag: "optional", desc: "Lightweight tasks like summarization" },
   ];
 
   var html = "";
@@ -838,13 +838,6 @@ function initStep4() {
     hide(addon);
   }
 
-  // Memory user ID default — derived from owner name
-  var memInput = $("memory-user-id");
-  if (!memInput.value) {
-    var name = ($("owner-name").value || "").trim();
-    memInput.value = name ? name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") : "default_user";
-  }
-
   // Reranking toggle
   var rerankCb = $("reranking-enabled");
   var rerankOpts = $("reranking-options");
@@ -1090,13 +1083,11 @@ function renderReview() {
 
   // Options section
   var ollamaEnabled = $("ollama-enabled") && $("ollama-enabled").checked;
-  var memUserId = ($("memory-user-id").value || "").trim() || "default_user";
   html += '<div class="review-card">';
   html += '<div class="review-card-title"><span>Options</span><button class="review-edit-btn" type="button" data-review-edit="4">Edit</button></div>';
   if (ollamaEnabled) {
     html += '<div class="review-row"><span class="review-row-label">Ollama In-Stack</span><span class="review-row-value">Enabled</span></div>';
   }
-  html += '<div class="review-row"><span class="review-row-label">Memory User ID</span><span class="review-row-value">' + esc(memUserId) + '</span></div>';
 
   // Reranking review
   var rerankEnabled = $("reranking-enabled") && $("reranking-enabled").checked;
@@ -1105,13 +1096,13 @@ function renderReview() {
     var rerankModel = $("reranking-model") ? ($("reranking-model").value || "").trim() : "";
     var topK = $("reranking-top-k") ? $("reranking-top-k").value : "20";
     var topN = $("reranking-top-n") ? $("reranking-top-n").value : "5";
-    html += '<div class="review-row"><span class="review-row-label">Memory Reranking</span><span class="review-row-value">Enabled (' + esc(rerankMode) + ')</span></div>';
+    html += '<div class="review-row"><span class="review-row-label">Reranking</span><span class="review-row-value">Enabled (' + esc(rerankMode) + ')</span></div>';
     if (rerankMode === "dedicated" && rerankModel) {
       html += '<div class="review-row"><span class="review-row-label">Reranking Model</span><span class="review-row-value">' + esc(rerankModel) + '</span></div>';
     }
     html += '<div class="review-row"><span class="review-row-label">Reranking Top K / N</span><span class="review-row-value">' + esc(topK) + ' / ' + esc(topN) + '</span></div>';
   } else {
-    html += '<div class="review-row"><span class="review-row-label">Memory Reranking</span><span class="review-row-value">Disabled</span></div>';
+    html += '<div class="review-row"><span class="review-row-label">Reranking</span><span class="review-row-value">Disabled</span></div>';
   }
   html += '</div>';
 
@@ -1245,7 +1236,6 @@ function showDeployDone(data) {
   var SERVICE_LINKS = {
     assistant: { port: 3800, label: "Assistant (Chat)", path: "" },
     admin: { port: 3880, label: "Admin Dashboard", path: "" },
-    memory: { port: 3898, label: "Memory API", path: "/health" },
     guardian: { port: 3899, label: "Guardian", path: "/health" },
   };
 

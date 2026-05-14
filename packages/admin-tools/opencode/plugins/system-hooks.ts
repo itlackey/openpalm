@@ -1,7 +1,11 @@
 /**
  * System-level session hooks for admin-tools.
- * Context injection and idle processing for scheduler-triggered sessions
- * and admin tool guidance retrieval from stack-scoped memory.
+ * Context injection for scheduler-triggered sessions and lightweight
+ * tracking of admin tool outcomes within the session.
+ *
+ * Procedural memory and learning are now handled by the akm stash
+ * via the `akm-opencode` plugin (loaded separately), so this plugin
+ * no longer touches a memory service.
  */
 import type { Plugin } from '@opencode-ai/plugin';
 import { buildAdminHeaders } from '../tools/lib.ts';
@@ -9,8 +13,6 @@ import { buildAdminHeaders } from '../tools/lib.ts';
 type HookIO = Record<string, unknown>;
 
 const ADMIN_URL = process.env.OP_ADMIN_API_URL || 'http://admin:8100';
-const MEMORY_URL = process.env.MEMORY_API_URL || 'http://memory:8765';
-const STACK_USER_ID = 'openpalm';
 
 type AdminSessionState = {
   sessionId: string;
@@ -37,16 +39,6 @@ export const SystemHooksPlugin: Plugin = async () => {
       }
     },
 
-    'tool.execute.before': async (input, output) => {
-      const inp = asRecord(input);
-      const toolName = (inp?.tool as HookIO)?.name as string | undefined;
-      if (!toolName || !isAdminTool(toolName)) return;
-      if (!adminSessions.has(getSessionId(inp))) return;
-
-      const guidance = await retrieveAdminToolGuidance(toolName);
-      if (guidance) ensureContext(asRecord(output)).push(guidance);
-    },
-
     'tool.execute.after': async (input, output) => {
       const inp = asRecord(input);
       const out = asRecord(output);
@@ -58,12 +50,6 @@ export const SystemHooksPlugin: Plugin = async () => {
 
       const failed = !!(inp?.error || out?.error) || isBadResult(out?.result ?? inp?.result);
       state.adminToolOutcomes.push({ toolName, ok: !failed });
-    },
-
-    'session.idle': async (input) => {
-      const state = adminSessions.get(getSessionId(asRecord(input)));
-      if (!state?.isSchedulerTriggered || state.adminToolOutcomes.length === 0) return;
-      await consolidateAdminOutcomes(state);
     },
 
     'session.deleted': async (input) => {
@@ -103,64 +89,9 @@ async function buildSystemContext(): Promise<string | null> {
   lines.push('', '### Session Type',
     '- This is a scheduler-triggered session.',
     '- Focus on the scheduled task. Use admin tools as needed.',
-    '- Store any findings as procedural memory for future reference.');
+    '- Record durable findings via the akm stash (akm_remember / akm_distill).');
 
   return lines.join('\n');
-}
-
-async function retrieveAdminToolGuidance(toolName: string): Promise<string | null> {
-  try {
-    const query = `openpalm procedure for ${toolName.replace(/_/g, ' ')} operations`;
-    const res = await fetch(`${MEMORY_URL}/api/v2/memories/search`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ user_id: STACK_USER_ID, query, search_query: query, filters: { category: 'procedural' }, page: 1, size: 5 }),
-      signal: AbortSignal.timeout(1_200),
-    });
-    if (!res.ok) return null;
-    const data = await res.json() as HookIO;
-    const items = (data.items ?? data.results) as Array<HookIO> | undefined;
-    if (!items?.length) return null;
-
-    const lines = [`### Learned Procedures For ${toolName}`];
-    for (const item of items) {
-      const content = item.content ?? item.memory;
-      if (typeof content !== 'string') continue;
-      const meta = item.metadata as HookIO | undefined;
-      const tag = typeof meta?.category === 'string' ? `[${meta.category}]` : '';
-      lines.push(`- ${tag} ${content}`.trim());
-    }
-    return lines.join('\n');
-  } catch { return null; }
-}
-
-async function consolidateAdminOutcomes(state: AdminSessionState): Promise<void> {
-  const grouped = new Map<string, { ok: number; total: number }>();
-  for (const o of state.adminToolOutcomes) {
-    const c = grouped.get(o.toolName) ?? { ok: 0, total: 0 };
-    if (o.ok) c.ok++;
-    c.total++;
-    grouped.set(o.toolName, c);
-  }
-
-  for (const [toolName, c] of grouped.entries()) {
-    if (c.ok >= 2 && c.ok / c.total >= 0.8) {
-      try {
-        await fetch(`${MEMORY_URL}/api/v1/memories/`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            user_id: STACK_USER_ID, agent_id: 'openpalm', app_id: 'openpalm',
-            text: `${toolName} is reliable in scheduler context; ${c.ok}/${c.total} recent executions succeeded.`,
-            app: 'openpalm-admin-tools',
-            metadata: { category: 'procedural', source: 'consolidation', confidence: 0.65, scope: 'stack' },
-            infer: true,
-          }),
-          signal: AbortSignal.timeout(5_000),
-        });
-      } catch { /* best-effort */ }
-    }
-  }
 }
 
 function isAdminTool(name: string): boolean {

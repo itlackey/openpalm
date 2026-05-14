@@ -12,7 +12,6 @@ import {
   appendAudit,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
-  ensureMemoryDir,
   ensureSecrets,
   buildComposeOptions,
   ensureHomeDirs,
@@ -36,7 +35,6 @@ export const POST: RequestHandler = async (event) => {
   ensureHomeDirs();
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
-  ensureMemoryDir();
   ensureSecrets(state);
 
   const dockerCheck = await checkDocker();

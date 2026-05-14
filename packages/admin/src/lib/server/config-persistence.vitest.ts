@@ -276,14 +276,11 @@ describe("writeRuntimeFiles", () => {
     expect(content).toContain(`OP_IMAGE_TAG=`);
   });
 
-  test("stack.env does NOT contain user secrets (MEMORY_USER_ID)", () => {
+  test("stack.env does NOT leak user-managed secrets", () => {
     writeRuntimeFiles(state);
 
     const systemEnvPath = join(state.vaultDir, "stack", "stack.env");
     const content = readFileSync(systemEnvPath, "utf-8");
-    // User secrets belong in user.env, not stack.env.
-    // Having them in both causes precedence bugs with Docker Compose --env-file.
-    expect(content).not.toContain("MEMORY_USER_ID=");
     // OP_ADMIN_TOKEN is a system secret and correctly lives in stack.env.
     // Only the legacy bare ADMIN_TOKEN (without OP_ prefix) should not appear.
     const lines = content.split("\n");

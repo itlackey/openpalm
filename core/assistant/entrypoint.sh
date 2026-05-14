@@ -46,29 +46,6 @@ ensure_home_layout() {
   fi
 }
 
-maybe_set_memory_user_id() {
-  if [ -n "${MEMORY_USER_ID:-}" ] && [ "${MEMORY_USER_ID}" != "default_user" ]; then
-    return 0
-  fi
-
-  local inferred_user
-  inferred_user=""
-
-  if command -v getent >/dev/null 2>&1; then
-    inferred_user="$(getent passwd "$TARGET_UID" | cut -d: -f1 || true)"
-  fi
-
-  if [ -z "$inferred_user" ] && command -v whoami >/dev/null 2>&1; then
-    inferred_user="$(whoami 2>/dev/null || true)"
-  fi
-
-  if [ -z "$inferred_user" ]; then
-    inferred_user="opencode"
-  fi
-
-  export MEMORY_USER_ID="$inferred_user"
-}
-
 maybe_enable_ssh() {
   if [ "$ENABLE_SSH" != "1" ] && [ "$ENABLE_SSH" != "true" ]; then
     return 0
@@ -215,7 +192,7 @@ maybe_unset_unused_provider_keys() {
   # only the active provider's key remains in the environment.
   # Note: docker-compose.yml cannot conditionally include keys (no template rendering
   # per architecture rules), so this mitigation is applied at the process level.
-  local provider="${SYSTEM_LLM_PROVIDER:-}"
+  local provider="${OP_CAP_LLM_PROVIDER:-}"
   case "$provider" in
     openai)    unset ANTHROPIC_API_KEY GROQ_API_KEY MISTRAL_API_KEY GOOGLE_API_KEY ;;
     anthropic) unset OPENAI_API_KEY GROQ_API_KEY MISTRAL_API_KEY GOOGLE_API_KEY ;;
@@ -301,7 +278,6 @@ start_opencode() {
 
 maybe_adjust_uid_gid
 ensure_home_layout
-maybe_set_memory_user_id
 maybe_enable_ssh
 maybe_proxy_lmstudio
 maybe_unset_unused_provider_keys

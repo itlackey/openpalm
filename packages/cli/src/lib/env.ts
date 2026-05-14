@@ -60,8 +60,8 @@ export function reconcileStackEnvImageTag(
  * Seeds vault/user/user.env with initial template.
  * Uses `export` prefix so the file can be sourced in a shell and is still
  * compatible with Docker Compose v2 `env_file`.
- * Contains user-managed secrets only (API keys, memory user ID).
- * System secrets (OP_ADMIN_TOKEN, OP_ASSISTANT_TOKEN, OP_MEMORY_TOKEN)
+ * Contains user-managed custom env vars only (the seeded user.env is empty
+ * by default). System secrets (OP_ADMIN_TOKEN, OP_ASSISTANT_TOKEN)
  * live in vault/stack/stack.env and are managed by the control plane.
  */
 export async function ensureSecrets(vaultDir: string): Promise<void> {

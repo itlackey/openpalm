@@ -11,7 +11,6 @@ import {
   appendAudit,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
-  ensureMemoryDir,
   ensureSecrets,
   buildComposeOptions,
   buildManagedServices,
@@ -41,7 +40,6 @@ export const POST: RequestHandler = async (event) => {
   // 2. Seed starter OpenCode config (opencode.json + tools/plugins/skills dirs)
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
-  ensureMemoryDir();
 
   // 3. Write consolidated secrets file
   ensureSecrets(state);

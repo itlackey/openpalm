@@ -48,15 +48,6 @@ export function ensureSystemEnvSchema(): string {
   return path;
 }
 
-// ── Memory data directory ────────────────────────────────────────────
-
-export function ensureMemoryDir(dataDir?: string): string {
-  const resolved = dataDir ?? resolveDataDir();
-  const dir = `${resolved}/memory`;
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
 // ── Core Compose (stack/) ─────────────────────────────────────────────
 
 function coreComposePath(): string {

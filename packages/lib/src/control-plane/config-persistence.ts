@@ -102,7 +102,6 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     `OP_ASSISTANT_TOKEN=\${OP_ASSISTANT_TOKEN}`,
     "",
     "# ── Service Auth ─────────────────────────────────────────────────────",
-    `OP_MEMORY_TOKEN=${process.env.OP_MEMORY_TOKEN ?? ""}`,
     "OP_OPENCODE_PASSWORD=",
     "",
     "# ── Paths ──────────────────────────────────────────────────────────",
@@ -119,7 +118,6 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     `OP_ASSISTANT_PORT=3800`,
     `OP_ADMIN_PORT=3880`,
     `OP_ADMIN_OPENCODE_PORT=3881`,
-    `OP_MEMORY_PORT=3898`,
     `OP_GUARDIAN_PORT=3899`,
     ""
   ].join("\n");

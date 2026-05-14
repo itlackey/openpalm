@@ -57,12 +57,6 @@ function validateSpecCapabilities(body: Record<string, unknown>, errors: string[
       errors.push("capabilities.embeddings.dims must be a positive integer or 0 (auto-resolve)");
     }
   }
-  const mem = requireObj(caps.memory, "capabilities.memory is required", errors);
-  if (!mem) return;
-  if (mem.userId !== undefined && typeof mem.userId !== "string") errors.push("capabilities.memory.userId must be a string if provided");
-  if (typeof mem.userId === "string" && mem.userId && !/^[A-Za-z0-9_]+$/.test(mem.userId)) {
-    errors.push("capabilities.memory.userId contains invalid characters (alphanumeric and underscores only)");
-  }
 }
 
 function validateConnectionsArray(connections: unknown, errors: string[]): void {

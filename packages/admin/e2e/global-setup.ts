@@ -27,8 +27,8 @@ function writeInPlace(path: string, data: string): void {
 }
 
 export default async function globalSetup() {
-	// Load user.env into process.env so integration tests can use
-	// MEMORY_AUTH_TOKEN, MEMORY_USER_ID, etc. without manual env setup.
+	// Load user.env into process.env so integration tests can read user-managed
+	// secrets without manual env setup.
 	// Only backfills — does not overwrite values already set by the caller.
 	if (existsSync(SECRETS_ENV)) {
 		const secrets = dotenvParse(readFileSync(SECRETS_ENV, "utf8"));

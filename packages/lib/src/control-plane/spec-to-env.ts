@@ -44,7 +44,6 @@ export function deriveSystemEnvFromSpec(
   result["OP_ASSISTANT_PORT"] = String(ports.assistant);
   result["OP_ADMIN_PORT"] = String(ports.admin);
   result["OP_ADMIN_OPENCODE_PORT"] = String(ports.adminOpencode);
-  result["OP_MEMORY_PORT"] = String(ports.memory);
   result["OP_GUARDIAN_PORT"] = String(ports.guardian);
   result["OP_ASSISTANT_SSH_PORT"] = String(ports.assistantSsh);
 
@@ -181,9 +180,6 @@ export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
   } else {
     clearCapVars("OP_CAP_RERANKING", ["PROVIDER", "MODEL", "BASE_URL", "API_KEY", "TOP_K", "TOP_N"]);
   }
-
-  // ── Memory ──
-  caps.MEMORY_USER_ID = spec.capabilities.memory.userId || "default_user";
 
   // Merge into stack.env
   const base = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
