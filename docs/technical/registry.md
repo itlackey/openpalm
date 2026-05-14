@@ -35,7 +35,7 @@ Repo catalog addons live in `.openpalm/registry/addons/<name>/`. Runtime availab
 | `compose.yml` | Docker Compose overlay defining the addon's services |
 | `.env.schema` | Annotated env var schema declaring required and optional configuration |
 
-Current addons in the registry: `admin`, `api`, `chat`, `discord`, `ollama`, `openviking`, `slack`, `voice`.
+Current addons in the registry: `admin`, `api`, `chat`, `discord`, `ollama`, `slack`, `voice`.
 
 ### Automations
 

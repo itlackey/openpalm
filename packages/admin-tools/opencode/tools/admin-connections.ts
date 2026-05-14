@@ -3,7 +3,6 @@ import { adminFetch } from "./lib.ts";
 
 const ALLOWED_KEYS = new Set([
   "OPENAI_API_KEY",
-  "OPENVIKING_API_KEY",
   "ANTHROPIC_API_KEY",
   "GROQ_API_KEY",
   "MISTRAL_API_KEY",
@@ -23,7 +22,7 @@ export const get = tool({
 });
 
 export const set = tool({
-  description: "Update one or more LLM provider connection keys in vault/stack/stack.env. Only allowed keys are accepted: OPENAI_API_KEY, OPENVIKING_API_KEY, ANTHROPIC_API_KEY, GROQ_API_KEY, MISTRAL_API_KEY, GOOGLE_API_KEY, MCP_API_KEY, EMBEDDING_API_KEY, OPENAI_BASE_URL, OWNER_NAME, OWNER_EMAIL. Never log or echo the actual key values.",
+  description: "Update one or more LLM provider connection keys in vault/stack/stack.env. Only allowed keys are accepted: OPENAI_API_KEY, ANTHROPIC_API_KEY, GROQ_API_KEY, MISTRAL_API_KEY, GOOGLE_API_KEY, MCP_API_KEY, EMBEDDING_API_KEY, OPENAI_BASE_URL, OWNER_NAME, OWNER_EMAIL. Never log or echo the actual key values.",
   args: {
     patches: tool.schema.string().describe("JSON object of key-value pairs to update, e.g. '{\"OPENAI_API_KEY\":\"sk-...\",\"OWNER_NAME\":\"Alice\"}'"),
   },

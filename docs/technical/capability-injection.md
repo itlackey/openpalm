@@ -182,7 +182,6 @@ Which services consume which capability slots via compose substitution:
 | **memory** | LLM, Embeddings | LLM for fact extraction; embeddings for vector storage |
 | **assistant** | LLM (provider only) | `SYSTEM_LLM_PROVIDER` for provider detection. Raw API keys passed separately for OpenCode |
 | **voice** (addon) | SLM, TTS, STT | SLM for lightweight voice inference |
-| **openviking** (addon) | Embeddings | Semantic search and indexing |
 
 The assistant is a special case: it receives raw provider API keys
 (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.) directly because OpenCode

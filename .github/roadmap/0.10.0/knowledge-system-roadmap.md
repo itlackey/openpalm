@@ -1,5 +1,7 @@
 # OpenPalm 0.10.0 — Knowledge System Roadmap (Revised)
 
+> **Superseded by [#382](https://github.com/itlackey/openpalm/issues/382):** The OpenViking-based knowledge system has been cancelled. Knowledge browsing is now covered by `akm wiki` + `akm search --type knowledge` once the AKM migration lands. This document is preserved for historical context only; do not implement anything described here.
+
 > **Scope Update (2026-03-18):** Agent review consensus (3/5 agents) narrowed the 0.10.0 scope to **Priority 1 only** (Phases 1A-1D: OpenViking as addon + assistant tools). Priorities 2-4 (MCP server, eval framework, MemRL feedback loop) are deferred to 0.11.0 and are included below only as "deferred" context. See `../0.11.0/knowledge-system.md` for the deferred work.
 >
 > **Filesystem context:** This plan uses the `~/.openpalm/` single-root layout defined in [fs-mounts-refactor.md](fs-mounts-refactor.md). The old three-tier XDG references (`DATA_HOME`, `CONFIG_HOME`, `STATE_HOME`) are replaced by subdirectories under `~/.openpalm/`.

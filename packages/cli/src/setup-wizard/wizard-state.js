@@ -96,7 +96,6 @@ var CHANNELS = [
 
 var SERVICES = [
   { id: "admin", name: "Admin Dashboard", icon: "\u2699\uFE0F", desc: "Web-based admin UI for managing your stack", recommended: true },
-  { id: "openviking", name: "OpenViking", icon: "\u2694\uFE0F", desc: "Agentic task execution engine" },
 ];
 
 /* =========================================================================

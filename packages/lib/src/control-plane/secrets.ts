@@ -88,7 +88,6 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
       "GROQ_API_KEY=",
       "MISTRAL_API_KEY=",
       "GOOGLE_API_KEY=",
-      "OPENVIKING_API_KEY=",
       "MCP_API_KEY=",
       "EMBEDDING_API_KEY=",
       "LMSTUDIO_API_KEY=",

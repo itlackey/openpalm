@@ -10,7 +10,6 @@ import {
   type MemoryIdentity,
 } from './memory-lib.ts';
 import { buildHygieneContextNote, runAutomatedHygiene } from './memory-hygiene.ts';
-import { isVikingConfigured, vikingFetch, vikingResponseHasError } from '../tools/viking-lib.ts';
 import {
   type HookIO,
   type SessionState,
@@ -22,7 +21,6 @@ import {
   getExecutionId,
   getIdentity,
   getSessionId,
-  initViking,
   isProjectCodeTool,
   log,
   maybeSynthesizeCrossSessions,
@@ -62,7 +60,6 @@ export const MemoryContextPlugin: Plugin = async (ctx) => {
         sessionId, project, appId: deriveAppId(project),
         startedAtIso: new Date().toISOString(), idleCount: 0, lastLearningAtMs: 0,
         contextInjected: false, commandSignals: new Set<string>(), outcomes: [],
-        vikingSessionId: null, vikingAvailable: false, vikingSessionCommitted: false,
       };
       sessions.set(sessionId, state);
 
@@ -73,9 +70,6 @@ export const MemoryContextPlugin: Plugin = async (ctx) => {
 
       ensureContext(out).push(await retrieveAndBuildSessionContext(state, INCLUDE_STACK_MEMORY, INCLUDE_GLOBAL_PROCEDURAL));
       state.contextInjected = true;
-
-      const vikingCtx = await initViking(state, sessionId, ctx.client);
-      if (vikingCtx.length > 0) ensureContext(out).push('## Viking Knowledge Context\n' + vikingCtx.join('\n\n'));
 
       await maybeRunHygiene(state, out);
       sessionsSinceSynthesis++;
@@ -145,12 +139,6 @@ export const MemoryContextPlugin: Plugin = async (ctx) => {
       const t1 = Date.now();
       rememberOutcome(state, { toolName, ok: !failed, startedAt: t0, finishedAt: t1, durationMs: t1 - t0, executionId: eid });
 
-      if (state.vikingAvailable && state.vikingSessionId) {
-        vikingFetch(`/sessions/${state.vikingSessionId}/messages`, {
-          method: 'POST', body: JSON.stringify({ role: 'assistant', content: `Tool ${toolName} ${!failed ? 'succeeded' : 'failed'} (${t1 - t0}ms)` }),
-        }).catch(() => {});
-      }
-
       if (queue.length === 0) pendingToolFeedback.delete(eid);
       else pendingToolFeedback.set(eid, queue);
     },
@@ -159,11 +147,6 @@ export const MemoryContextPlugin: Plugin = async (ctx) => {
       const sessionId = getSessionId(asRecord(input));
       const state = sessions.get(sessionId);
       if (!state) return;
-
-      if (state.vikingAvailable && state.vikingSessionId && !state.vikingSessionCommitted) {
-        state.vikingSessionCommitted = !vikingResponseHasError(
-          await vikingFetch(`/sessions/${state.vikingSessionId}/commit`, { method: 'POST', body: '{}', signal: AbortSignal.timeout(60_000) }));
-      }
 
       await persistSessionLearnings(state, true);
       await persistSessionEpisode(state, MIN_IDLE_COUNT_FOR_LEARNING);
@@ -188,16 +171,6 @@ export const MemoryContextPlugin: Plugin = async (ctx) => {
       if (semantic.length > 0) lines.push('', '### Facts And Preferences', formatMemoriesForContext(semantic));
       if (procedural.length > 0) lines.push('', '### Learned Procedures', formatMemoriesForContext(procedural));
 
-      if (state.vikingAvailable) {
-        try {
-          const r = await vikingFetch('/content/overview?uri=' + encodeURIComponent('viking://agent/memories/'), { signal: AbortSignal.timeout(5_000) });
-          if (!vikingResponseHasError(r)) {
-            const p = JSON.parse(r);
-            if (p?.result) lines.push('', '### Viking Knowledge Overview', p.result);
-          }
-        } catch { /* compaction must not fail */ }
-      }
-
       lines.push('', '### Session State', `- Project: ${state.project}`, `- Tool outcomes tracked: ${state.outcomes.length}`);
       ensureContext(out).push(lines.join('\n'));
     },
@@ -208,7 +181,6 @@ export const MemoryContextPlugin: Plugin = async (ctx) => {
       const env = out.env as Record<string, string>;
       env.MEMORY_API_URL = MEMORY_URL;
       env.MEMORY_USER_ID = USER_ID;
-      if (isVikingConfigured()) env.OPENVIKING_URL = process.env.OPENVIKING_URL ?? '';
     },
   };
 };

@@ -100,7 +100,6 @@ copied into `~/.openpalm/stack/addons/`.
 | `slack` | `addons/slack/compose.yml` |
 | `voice` | `addons/voice/compose.yml` |
 | `ollama` | `addons/ollama/compose.yml` |
-| `openviking` | `addons/openviking/compose.yml` |
 
 If a compose file is not included with `-f`, it is not part of the running
 stack.
