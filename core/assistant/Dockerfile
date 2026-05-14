@@ -151,6 +151,11 @@ RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
 RUN mkdir -p /usr/local/etc/varlock && mkdir -p /etc/opencode
 COPY .openpalm/vault/redact.env.schema /usr/local/etc/varlock/.env.schema
+# Persona / config only — opencode.jsonc, system.md, openpalm.md. Built-in
+# skills, commands, and agents now live in the shared akm stash
+# (bind-mounted at /akm), not in the image. See `.openpalm/stash-seeds/`
+# for the source-of-truth seeds and `seedStashAssets()` in @openpalm/lib
+# for the install-time copy that respects user edits.
 COPY core/assistant/opencode /etc/opencode
 
 # ── Scheduler co-process ─────────────────────────────────────────────────

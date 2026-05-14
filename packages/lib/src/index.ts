@@ -143,6 +143,7 @@ export {
   readCoreCompose,
   ensureOpenCodeSystemConfig,
   refreshCoreAssets,
+  seedStashAssets,
 } from "./control-plane/core-assets.js";
 
 // ── Configuration Persistence ────────────────────────────────────────────

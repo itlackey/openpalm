@@ -1,3 +1,14 @@
+---
+name: config-diagnostics
+type: skill
+description: Diagnose OpenPalm configuration issues (missing API keys, validation errors, connection problems) using the admin /admin/config/validate endpoint and schema metadata, without exposing any actual secret values.
+when_to_use: Use when the user reports configuration issues, missing API keys, validation errors, or connection problems and needs guidance on what to fix without leaking secrets.
+license: Proprietary
+metadata:
+  author: openpalm
+  version: "1.0"
+---
+
 # Config Diagnostics Skill
 
 When a user asks about configuration issues, connection problems, missing API
