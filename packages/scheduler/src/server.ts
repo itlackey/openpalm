@@ -1,182 +1,181 @@
 /**
- * OpenPalm Scheduler Sidecar — lightweight Bun HTTP server.
+ * OpenPalm Scheduler — automation co-process.
  *
- * Reads automations from config/automations/ and runs them on
- * cron schedules. Provides a REST API for health checks, automation
- * listing, execution logs, and manual triggers.
+ * Runs alongside the assistant (OpenCode) inside the assistant container.
+ * Does NOT expose any network port. The control plane is purely filesystem-
+ * driven:
  *
- * Port: 8090 (configurable via PORT env)
+ *   ${OP_HOME}/config/automations/*.yml         — automation definitions
+ *   ${OP_HOME}/data/scheduler/triggers/<file>.run — manual trigger sentinels
+ *
+ * Drop a `<fileName>.run` file (any content) into the triggers directory to
+ * fire the named automation once; the sentinel is removed after the run
+ * starts (success or failure is recorded in the in-memory execution log).
+ *
+ * Library exports (croner status / execution log / manual trigger) remain
+ * available for in-process callers via `./scheduler.js`.
  */
-import { timingSafeEqual, createHash } from "node:crypto";
-import { createLogger, loadAutomations } from "@openpalm/lib";
+import { existsSync, mkdirSync, readdirSync, unlinkSync, watch, type FSWatcher } from "node:fs";
+import { join } from "node:path";
+import { createLogger } from "@openpalm/lib";
 import {
   startScheduler,
   stopScheduler,
   startWatching,
   stopWatching,
-  getSchedulerStatus,
-  getLoadedAutomations,
-  getExecutionLog,
-  getAllExecutionLogs,
   triggerAutomation,
+  getSchedulerStatus,
 } from "./scheduler.js";
 
 const logger = createLogger("scheduler:server");
 
-const PORT = parseInt(process.env.PORT ?? "8090", 10);
 const OP_HOME = process.env.OP_HOME ?? "";
-const CONFIG_DIR = OP_HOME ? `${OP_HOME}/config` : "";
-const ADMIN_TOKEN = process.env.OP_ADMIN_TOKEN ?? "";
+const CONFIG_DIR = OP_HOME ? join(OP_HOME, "config") : "";
+// Scheduler runs inside the assistant container; admin API calls authenticate
+// with the assistant's operational token (OP_ASSISTANT_TOKEN). No dedicated
+// admin↔scheduler token exists anymore.
+const ADMIN_TOKEN = process.env.OP_ASSISTANT_TOKEN ?? "";
+const TRIGGERS_DIR = OP_HOME ? join(OP_HOME, "data", "scheduler", "triggers") : "";
 
-if (!CONFIG_DIR) {
+if (!CONFIG_DIR || !TRIGGERS_DIR) {
   logger.error("OP_HOME is required");
   process.exit(1);
 }
 
 if (!ADMIN_TOKEN) {
-  logger.warn("OP_ADMIN_TOKEN is not set — authenticated endpoints will reject all requests");
+  logger.warn(
+    "OP_ASSISTANT_TOKEN is not set — `api` automations that call the admin API will fail",
+  );
 }
 
-// ── Timing-safe token comparison ─────────────────────────────────────
+// ── Manual-trigger sentinel watcher ───────────────────────────────────
+// Filenames are matched against the loaded automation `fileName` (e.g.
+// `daily-summary.yml.run`). The `.run` suffix is stripped before lookup.
+// Sentinels are deleted as soon as they are observed, so a long-running
+// automation doesn't fire twice from the same file.
 
-function safeTokenCompare(a: string, b: string): boolean {
-  if (typeof a !== "string" || typeof b !== "string") return false;
-  if (!a || !b) return false;
-  const hashA = createHash("sha256").update(a).digest();
-  const hashB = createHash("sha256").update(b).digest();
-  return timingSafeEqual(hashA, hashB);
+const TRIGGER_SUFFIX = ".run";
+let triggerWatcher: FSWatcher | null = null;
+const inFlightTriggers = new Set<string>();
+
+function ensureTriggersDir(): void {
+  if (!existsSync(TRIGGERS_DIR)) {
+    mkdirSync(TRIGGERS_DIR, { recursive: true });
+  }
 }
 
-// ── Auth Helper ──────────────────────────────────────────────────────
+async function processTriggerFile(fileName: string): Promise<void> {
+  if (!fileName.endsWith(TRIGGER_SUFFIX)) return;
+  const automationFile = fileName.slice(0, -TRIGGER_SUFFIX.length);
+  if (!automationFile) return;
 
-function requireAuth(req: Request): boolean {
-  if (!ADMIN_TOKEN) return false; // No token configured = fail closed
-  const token =
-    req.headers.get("x-admin-token") ??
-    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
-    "";
-  return safeTokenCompare(token, ADMIN_TOKEN);
-}
+  const sentinelPath = join(TRIGGERS_DIR, fileName);
+  if (!existsSync(sentinelPath)) return;
 
-// ── JSON Response Helper ──────────────────────────────────────────────
+  // De-dupe — fs.watch can fire multiple events for a single sentinel.
+  if (inFlightTriggers.has(fileName)) return;
+  inFlightTriggers.add(fileName);
 
-function json(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-// ── Route Handling ───────────────────────────────────────────────────
-
-function handleRequest(req: Request): Response | Promise<Response> {
-  const url = new URL(req.url);
-  const path = url.pathname;
-  const method = req.method;
-
-  // GET /health
-  if (method === "GET" && path === "/health") {
-    const status = getSchedulerStatus();
-    return json(200, {
-      status: "ok",
-      service: "scheduler",
-      jobCount: status.jobCount,
-      uptime: process.uptime(),
+  // Remove the sentinel first so a slow automation doesn't re-fire from
+  // late-arriving watch events.
+  try {
+    unlinkSync(sentinelPath);
+  } catch (err) {
+    // If we couldn't unlink, refuse to fire — another process may handle it.
+    logger.warn("failed to remove trigger sentinel; skipping fire", {
+      fileName,
+      error: String(err),
     });
+    inFlightTriggers.delete(fileName);
+    return;
   }
 
-  // GET /automations (authenticated — exposes automation topology)
-  if (method === "GET" && path === "/automations") {
-    if (!requireAuth(req)) {
-      return json(401, { error: "unauthorized" });
+  logger.info("manual trigger received", { sentinel: fileName, automation: automationFile });
+
+  try {
+    const result = await triggerAutomation(automationFile, ADMIN_TOKEN);
+    if (!result.ok) {
+      logger.warn("manual trigger failed", { automation: automationFile, error: result.error });
     }
-    const status = getSchedulerStatus();
-    const allLogs = getAllExecutionLogs();
-    const automations = loadAutomations(CONFIG_DIR).map((c) => ({
-      name: c.name,
-      description: c.description,
-      schedule: c.schedule,
-      timezone: c.timezone,
-      enabled: c.enabled,
-      action: {
-        type: c.action.type,
-        method: c.action.method,
-        path: c.action.path,
-        url: c.action.url,
-        content: c.action.content,
-        agent: c.action.agent,
-      },
-      on_failure: c.on_failure,
-      fileName: c.fileName,
-      nextRun:
-        status.jobs.find((j) => j.fileName === c.fileName)?.nextRun ?? null,
-      logs: allLogs[c.fileName] ?? [],
-    }));
-
-    return json(200, { automations, scheduler: status });
+  } catch (err) {
+    logger.error("manual trigger threw", { automation: automationFile, error: String(err) });
+  } finally {
+    inFlightTriggers.delete(fileName);
   }
-
-  // GET /automations/:name/log (authenticated — exposes execution details)
-  // POST /automations/:name/run (authenticated)
-  if (path.startsWith("/automations/")) {
-    const segments = path.split("/").filter(Boolean); // ["automations", ...name parts..., action]
-    // Expect at least 3 segments: "automations", <name>, <action>
-    if (segments.length >= 3) {
-      const action = segments[segments.length - 1]; // last segment is the action
-      const name = segments.slice(1, -1).join("/"); // everything between "automations" and action
-
-      if (method === "GET" && action === "log" && name) {
-        if (!requireAuth(req)) {
-          return json(401, { error: "unauthorized" });
-        }
-        const logs = getExecutionLog(name);
-        return json(200, { fileName: name, logs });
-      }
-
-      if (method === "POST" && action === "run" && name) {
-        if (!requireAuth(req)) {
-          return json(401, { error: "unauthorized" });
-        }
-        return triggerAutomation(name, ADMIN_TOKEN).then((result) => {
-          if (result.ok) {
-            return json(200, { ok: true, fileName: name });
-          }
-          return json(404, { ok: false, error: result.error });
-        });
-      }
-    }
-  }
-
-  return json(404, { error: "not found" });
 }
 
-// ── Server Startup ───────────────────────────────────────────────────
+function scanExistingTriggers(): void {
+  let entries: string[];
+  try {
+    entries = readdirSync(TRIGGERS_DIR);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.endsWith(TRIGGER_SUFFIX)) {
+      void processTriggerFile(entry);
+    }
+  }
+}
 
-logger.info("starting scheduler sidecar", {
-  port: PORT,
+function startTriggerWatcher(): void {
+  ensureTriggersDir();
+  try {
+    triggerWatcher = watch(TRIGGERS_DIR, (_eventType, filename) => {
+      if (!filename) return;
+      void processTriggerFile(filename);
+    });
+    logger.info("watching for manual trigger sentinels", { dir: TRIGGERS_DIR });
+  } catch (err) {
+    logger.warn("trigger watcher unavailable, falling back to polling", {
+      error: String(err),
+    });
+    startTriggerPolling();
+  }
+
+  // Pick up any sentinels that already exist (e.g. dropped before the
+  // scheduler started).
+  scanExistingTriggers();
+}
+
+let triggerPollInterval: ReturnType<typeof setInterval> | null = null;
+function startTriggerPolling(): void {
+  const POLL_INTERVAL_MS = 2_000;
+  triggerPollInterval = setInterval(scanExistingTriggers, POLL_INTERVAL_MS);
+}
+
+function stopTriggerWatcher(): void {
+  if (triggerWatcher) {
+    triggerWatcher.close();
+    triggerWatcher = null;
+  }
+  if (triggerPollInterval) {
+    clearInterval(triggerPollInterval);
+    triggerPollInterval = null;
+  }
+}
+
+// ── Startup ──────────────────────────────────────────────────────────
+
+logger.info("starting scheduler co-process", {
   configDir: CONFIG_DIR,
+  triggersDir: TRIGGERS_DIR,
 });
 
-// Start the automation scheduler
 startScheduler(CONFIG_DIR, ADMIN_TOKEN);
-
-// Watch for automation file changes (no restart required)
 startWatching(CONFIG_DIR, ADMIN_TOKEN);
+startTriggerWatcher();
 
-// Start HTTP server
-const server = Bun.serve({
-  port: PORT,
-  fetch: handleRequest,
-});
+const status = getSchedulerStatus();
+logger.info(`scheduler running with ${status.jobCount} automation(s)`);
 
-logger.info(`scheduler HTTP server listening on port ${server.port}`);
+// ── Graceful shutdown ────────────────────────────────────────────────
 
-// Graceful shutdown
 function shutdown(): void {
   logger.info("shutting down scheduler");
+  stopTriggerWatcher();
   stopWatching();
   stopScheduler();
-  server.stop();
   process.exit(0);
 }
 

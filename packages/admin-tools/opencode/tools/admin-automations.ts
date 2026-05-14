@@ -1,15 +1,17 @@
 import { tool } from "@opencode-ai/plugin";
-import { adminFetch, buildAdminHeaders } from "./lib.ts";
+import { adminFetch } from "./lib.ts";
 
-const SCHEDULER_URL = process.env.OP_SCHEDULER_URL || "http://scheduler:8090";
-
-const MISSING_ASSISTANT_TOKEN = JSON.stringify({
-  error: true,
-  message: 'Missing OP_ASSISTANT_TOKEN. Admin-token fallback is disabled for assistant/admin-tools contexts.',
-});
+/**
+ * Automation tools.
+ *
+ * The scheduler now runs as a co-process inside the assistant container and
+ * has no HTTP API. All three tools go through the admin API, which writes
+ * trigger sentinels and reads scheduler.log on disk.
+ */
 
 export const list = tool({
-  description: "List configured automations (name, schedule, enabled, action type, fileName). For live scheduler status and execution logs, query the scheduler sidecar at http://scheduler:8090/automations.",
+  description:
+    "List configured automations (name, schedule, enabled, action type, fileName). Reads from config/automations/ via the admin API.",
   async execute() {
     return adminFetch("/admin/automations");
   },
@@ -17,60 +19,33 @@ export const list = tool({
 
 export const trigger = tool({
   description:
-    "Manually trigger an automation by its fileName. Sends a POST to the scheduler sidecar to execute the automation immediately, outside its normal cron schedule.",
+    "Manually trigger an automation by its fileName. The admin API drops a sentinel file under ${OP_HOME}/data/scheduler/triggers/<name>.run; the scheduler co-process watches that directory and fires the matching automation immediately.",
   args: {
     name: tool.schema
       .string()
       .describe("The fileName of the automation to trigger (e.g. 'daily-summary.yml')"),
   },
   async execute(args) {
-    const headers = buildAdminHeaders();
-    if (!headers) return MISSING_ASSISTANT_TOKEN;
-
-    try {
-      const res = await fetch(`${SCHEDULER_URL}/automations/${encodeURIComponent(args.name)}/run`, {
-        method: "POST",
-        headers,
-        signal: AbortSignal.timeout(30_000),
-      });
-      const body = await res.text();
-      if (!res.ok) return JSON.stringify({ error: true, status: res.status, body });
-      return body;
-    } catch (err) {
-      return JSON.stringify({
-        error: true,
-        message: err instanceof Error ? err.message : String(err),
-      });
-    }
+    return adminFetch(`/admin/automations/${encodeURIComponent(args.name)}/run`, {
+      method: "POST",
+    });
   },
 });
 
 export const log = tool({
   description:
-    "Retrieve execution history for a specific automation by its fileName. Returns recent execution log entries (timestamp, success/failure, duration, errors).",
+    "Retrieve recent scheduler log lines for a specific automation by its fileName. Reads ${OP_HOME}/logs/scheduler.log via the admin API and filters to lines mentioning the automation.",
   args: {
     name: tool.schema
       .string()
       .describe("The fileName of the automation to get logs for (e.g. 'daily-summary.yml')"),
+    limit: tool.schema
+      .number()
+      .optional()
+      .describe("Maximum number of log entries to return (default 50, max 500)"),
   },
   async execute(args) {
-    const headers = buildAdminHeaders();
-    if (!headers) return MISSING_ASSISTANT_TOKEN;
-
-    try {
-      const res = await fetch(`${SCHEDULER_URL}/automations/${encodeURIComponent(args.name)}/log`, {
-        method: "GET",
-        headers,
-        signal: AbortSignal.timeout(10_000),
-      });
-      const body = await res.text();
-      if (!res.ok) return JSON.stringify({ error: true, status: res.status, body });
-      return body;
-    } catch (err) {
-      return JSON.stringify({
-        error: true,
-        message: err instanceof Error ? err.message : String(err),
-      });
-    }
+    const qs = args.limit !== undefined ? `?limit=${encodeURIComponent(args.limit)}` : "";
+    return adminFetch(`/admin/automations/${encodeURIComponent(args.name)}/log${qs}`);
   },
 });

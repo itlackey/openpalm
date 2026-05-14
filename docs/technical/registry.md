@@ -132,7 +132,7 @@ Request body:
 { "name": "health-check", "type": "automation" }
 ```
 
-Copies the automation YAML from `~/.openpalm/registry/automations/` into `~/.openpalm/config/automations/<name>.yml`. Fails if the automation is already installed or not found in the registry. The scheduler auto-reloads via file watching.
+Copies the automation YAML from `~/.openpalm/registry/automations/` into `~/.openpalm/config/automations/<name>.yml`. Fails if the automation is already installed or not found in the registry. The scheduler co-process auto-reloads via file watching.
 
 Channel addons are not installed through this endpoint. Use `POST /admin/addons` instead.
 
@@ -146,7 +146,7 @@ Request body:
 { "name": "health-check", "type": "automation" }
 ```
 
-Deletes `config/automations/<name>.yml` from disk. The scheduler auto-reloads.
+Deletes `config/automations/<name>.yml` from disk. The scheduler co-process auto-reloads.
 
 ### `POST /admin/automations/catalog/refresh`
 

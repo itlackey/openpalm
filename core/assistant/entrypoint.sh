@@ -148,6 +148,63 @@ maybe_proxy_lmstudio() {
   fi
 }
 
+start_scheduler_coprocess() {
+  # Run the automation scheduler alongside OpenCode. The scheduler has no
+  # HTTP port — it watches /openpalm/config/automations for definitions and
+  # /openpalm/data/scheduler/triggers for manual-trigger sentinels. Logs
+  # stream to /openpalm/logs/scheduler.log.
+  #
+  # OP_HOME defaults to /openpalm and is set by compose; we fall back here
+  # for local Docker builds that omit it.
+  local op_home="${OP_HOME:-/openpalm}"
+  local scheduler_dir="/opt/scheduler"
+  local log_dir="${op_home}/logs"
+  local triggers_dir="${op_home}/data/scheduler/triggers"
+  local scheduler_log="${log_dir}/scheduler.log"
+
+  if [ ! -f "${scheduler_dir}/src/server.ts" ]; then
+    echo "Scheduler co-process source not found at ${scheduler_dir}; skipping." >&2
+    return 0
+  fi
+
+  if ! command -v bun >/dev/null 2>&1; then
+    echo "Scheduler co-process requires bun; skipping." >&2
+    return 0
+  fi
+
+  # Make sure the directories the scheduler depends on exist with the
+  # right ownership. These are bind-mounted from the host, so they may be
+  # empty on first boot.
+  mkdir -p "${log_dir}" "${triggers_dir}" || true
+  if [ "$(id -u)" = "0" ]; then
+    chown "$TARGET_UID:$TARGET_GID" "${log_dir}" "${triggers_dir}" 2>/dev/null || true
+  fi
+
+  echo "Starting scheduler co-process (OP_HOME=${op_home})"
+
+  # We deliberately do NOT use setsid so the scheduler stays in the
+  # container's process group. When tini receives SIGTERM it forwards the
+  # signal to its direct child (the eventual `opencode` process from
+  # start_opencode), but tini configured with `--` will also reap any
+  # orphaned children. The scheduler installs its own SIGTERM handler in
+  # server.ts to flush state and exit cleanly.
+  if [ "$(id -u)" = "0" ]; then
+    # Drop privileges to match the assistant's runtime UID/GID.
+    gosu opencode env \
+      HOME=/home/opencode \
+      OP_HOME="${op_home}" \
+      bun run "${scheduler_dir}/src/server.ts" >>"${scheduler_log}" 2>&1 &
+  else
+    env OP_HOME="${op_home}" \
+      bun run "${scheduler_dir}/src/server.ts" >>"${scheduler_log}" 2>&1 &
+  fi
+
+  # The container primary is opencode (exec'd by start_opencode). On
+  # container teardown tini reaps remaining children including the
+  # scheduler. server.ts also installs its own SIGTERM/SIGINT handlers
+  # for graceful local shutdown.
+}
+
 maybe_unset_unused_provider_keys() {
   # Unset LLM provider keys that are not needed for the configured provider.
   # This limits the blast radius if the assistant process is compromised —
@@ -214,4 +271,5 @@ maybe_set_memory_user_id
 maybe_enable_ssh
 maybe_proxy_lmstudio
 maybe_unset_unused_provider_keys
+start_scheduler_coprocess
 start_opencode

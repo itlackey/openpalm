@@ -214,7 +214,7 @@ Body:
 Rules:
 
 - Allowed core services:
-  `assistant`, `guardian`, `memory`, `scheduler`, `admin`
+  `assistant`, `guardian`, `memory`, `admin`
 - Allowed addon services: installed addon service names such as `chat`, `api`,
   `voice`, `discord`, or `slack` when a matching overlay exists in `stack/addons/`.
 
@@ -422,7 +422,7 @@ Body:
 - `type` (required) -- Must be `"automation"`. Passing `"channel"` returns 400.
 
 Copies the `.yml` into `~/.openpalm/config/automations/`.
-The scheduler sidecar auto-reloads via file watching.
+The scheduler co-process inside the assistant container auto-reloads via file watching.
 
 Response:
 
@@ -464,7 +464,7 @@ Body:
 - `type` (required) -- Must be `"automation"`. Passing `"channel"` returns 400.
 
 Removes the `.yml` from `~/.openpalm/config/automations/`.
-The scheduler sidecar auto-reloads via file watching.
+The scheduler co-process inside the assistant container auto-reloads via file watching.
 
 Response:
 
@@ -500,6 +500,47 @@ Response:
       "on_failure": "log",
       "fileName": "daily-summary.yml"
     }
+  ]
+}
+```
+
+### `POST /admin/automations/:name/run`
+
+Manually trigger an automation. The admin writes a sentinel file at
+`${OP_HOME}/data/scheduler/triggers/<name>.run`; the scheduler co-process
+inside the assistant container picks it up, fires the automation, and
+deletes the sentinel.
+
+- `:name` -- Automation fileName (`.yml` suffix optional in the URL). Must
+  match `^[a-zA-Z0-9._-]+\.yml$`.
+
+Response (202 Accepted):
+
+```json
+{ "ok": true, "fileName": "daily-summary.yml", "queued": true }
+```
+
+Error responses:
+
+- `400 invalid_input` -- Name does not match the allowed pattern.
+- `404 not_found` -- Automation is not installed in `config/automations/`.
+- `500 internal_error` -- Failed to write the sentinel.
+
+### `GET /admin/automations/:name/log`
+
+Returns the tail of `${OP_HOME}/logs/scheduler.log` filtered to the named
+automation. Each entry is a parsed log line (newest first).
+
+- `:name` -- Same name validation as `/run`.
+- `?limit=<n>` -- Cap entries returned (default 50, max 500).
+
+Response:
+
+```json
+{
+  "fileName": "daily-summary.yml",
+  "entries": [
+    { "at": "2026-05-14T18:00:00.000Z", "level": "info", "msg": "automation executed", "raw": "..." }
   ]
 }
 ```

@@ -36,8 +36,10 @@ List, enable, or disable addons via the registry/stack addon directories.
 - Shows all addons from `registry/addons/` with their enabled state from `stack/addons/`
 - Enable/disable copies/removes addon directories and manages HMAC secrets for channels
 
-### `admin-automations` (list)
-List configured automations (name, schedule, enabled, action type). For live scheduler status and execution logs, query the scheduler sidecar at `http://scheduler:8090/automations`.
+### `admin-automations` (list, trigger, log)
+- **list** (`GET /admin/automations`) — configured automations (name, schedule, enabled, action type, fileName) from `config/automations/`.
+- **trigger** (`POST /admin/automations/:name/run`) — drop a sentinel under `${OP_HOME}/data/scheduler/triggers/<name>.run`; the scheduler co-process inside the assistant container picks it up within seconds.
+- **log** (`GET /admin/automations/:name/log`) — recent lines from `${OP_HOME}/logs/scheduler.log` filtered to the named automation.
 
 ### `admin-artifacts` (list, manifest, get)
 Inspect the generated configuration files:

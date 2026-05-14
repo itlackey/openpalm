@@ -53,7 +53,7 @@ The standard startup path uses:
 
 | Network | Purpose | Core members |
 |---|---|---|
-| `assistant_net` | Core internal mesh | `memory`, `assistant`, `guardian`, `scheduler`, optional `admin` |
+| `assistant_net` | Core internal mesh | `memory`, `assistant` (which also hosts the scheduler co-process), `guardian`, optional `admin` |
 | `channel_lan` | Default channel ingress (LAN-restricted) | `guardian` and LAN-facing channel addons |
 | `channel_public` | Reserved for internet-facing channel ingress | `guardian` and public-facing channel addons. Access semantics and membership rules are under design. |
 | `admin_docker_net` | Isolated Docker control plane | `admin`, `docker-socket-proxy`. Only exists when the admin addon is installed. |
@@ -225,45 +225,50 @@ Notes:
 - Guardian is internal-only from the host perspective.
 - It is the only bridge between addon ingress networks and `assistant_net`.
 
-### Scheduler
+### Scheduler co-process
 
 Role:
 
 - scheduled automation execution
-- admin API caller
+- admin API caller (via the assistant token)
 - assistant and memory client
 
-The scheduler is a local-only automation runner. It does not serve an OpenCode instance and runs a private instance locally.
+The scheduler is a Bun co-process that runs **inside the assistant
+container** (started by `core/assistant/entrypoint.sh`). It has no
+network port and no Docker socket.
 
-Env sources:
+Control plane:
 
-- direct compose env
-- selected values from `stack.env`
+- Definitions: `${OP_HOME}/config/automations/*.yml` (read at startup, re-read on file change)
+- Manual triggers: sentinel files at `${OP_HOME}/data/scheduler/triggers/<fileName>.run`
+- Logs: `${OP_HOME}/logs/scheduler.log` (written by the entrypoint via stdout/stderr redirect)
 
-Key env:
+Env sources (inherits the assistant container's environment):
 
-- `PORT=8090`
 - `OP_HOME=/openpalm`
-- `OP_ADMIN_TOKEN=${OP_ADMIN_TOKEN:-}`
+- `OP_ASSISTANT_TOKEN` — used as the admin API token for `api` actions
 - `OP_ADMIN_API_URL`
 - `MEMORY_API_URL=http://memory:8765`
 - `MEMORY_AUTH_TOKEN`
-- `OPENCODE_API_URL=http://assistant:4096`
-- `OPENCODE_SERVER_PASSWORD`
+- `OPENCODE_API_URL=http://localhost:4096` (co-resident OpenCode; auth disabled on this interface)
 
-Mounts:
+Mounts (provided by the assistant service):
 
 - `$OP_HOME/config -> /openpalm/config:ro`
-- `$OP_HOME/logs -> /openpalm/logs`
-- `$OP_HOME/data -> /openpalm/data`
+- `$OP_HOME/data/scheduler -> /openpalm/data/scheduler` (rw, for trigger sentinels)
+- `$OP_HOME/logs -> /openpalm/logs` (rw)
 
-Design note — scheduler access scope: The scheduler receives `OP_ADMIN_TOKEN` and mounts `config/` (read-only), `logs/`, and `data/` because it must execute automations that call the admin API (e.g., triggering lifecycle operations, managing addons), read automation definitions from config, write automation logs, and access data for automation state. This is a deliberate design choice, not an accidental over-grant. The scheduler is an internal-only service on `assistant_net` with no ingress exposure, and its access is bounded to what automations require: config (read-only), logs (read-write), data (read-write), admin API (token-authenticated), assistant API, and memory API.
+Design note — scheduler scope: The scheduler runs as part of the
+assistant container, so it shares the assistant's identity and trust
+posture. It uses `OP_ASSISTANT_TOKEN` to authenticate to the admin API
+when an automation has an `api` action. Because it has no network
+listener, no separate admin↔scheduler token is required.
 
 Ports and network:
 
 - host: none
-- container: 8090
-- network: `assistant_net`
+- container: none (in-process; uses `localhost` for assistant API calls)
+- network: shares the assistant's network membership
 
 ---
 

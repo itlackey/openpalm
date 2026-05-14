@@ -38,10 +38,9 @@ For the core compose stack using a remote LLM provider:
 
 The core compose file includes these always-on services:
 
-- `assistant`
+- `assistant` (also runs the automation scheduler as a co-process)
 - `memory`
 - `guardian`
-- `scheduler`
 
 If you add the `admin` addon, you also run `admin` and `docker-socket-proxy`.
 
@@ -68,9 +67,8 @@ These are rough expectations, not hard limits:
 | Service | Typical idle RAM | Notes |
 |---|---|---|
 | `memory` | ~60 MB | Bun + sqlite-backed memory service |
-| `assistant` | ~200 MB | OpenCode runtime |
+| `assistant` | ~240 MB | OpenCode runtime + scheduler co-process |
 | `guardian` | ~30 MB | Request verification and routing |
-| `scheduler` | ~40 MB | Automation runner |
 | `admin` addon | ~80 MB | SvelteKit admin UI/API |
 | `docker-socket-proxy` addon | ~10 MB | Docker API filter |
 | each channel addon | ~30-60 MB | Chat/API/voice/Discord/Slack edge |
