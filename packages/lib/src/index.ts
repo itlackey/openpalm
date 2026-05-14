@@ -60,6 +60,8 @@ export {
   setAddonEnabled,
   installAutomationFromRegistry,
   uninstallAutomation,
+  seedDefaultAutomations,
+  SEEDED_AUTOMATIONS,
 } from "./control-plane/registry.js";
 
 // ── Home Layout (v0.10.0) ───────────────────────────────────────────────

@@ -29,7 +29,7 @@ import type { StackSpec, StackSpecCapabilities } from "./stack-spec.js";
 import { writeCapabilityVars } from "./spec-to-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
-import { listEnabledAddonIds } from "./registry.js";
+import { listEnabledAddonIds, seedDefaultAutomations } from "./registry.js";
 export { validateSetupSpec } from "./setup-validation.js";
 
 const logger = createLogger("setup");
@@ -242,6 +242,18 @@ export async function performSetup(
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
   ensureMemoryDir();
+
+  // Seed default automations (idempotent — preserves user edits on re-install).
+  try {
+    const seeded = seedDefaultAutomations(state.configDir);
+    if (seeded.length > 0) logger.info("seeded default automations", { seeded });
+  } catch (err) {
+    // Non-fatal: missing registry catalog should not block setup. Operators
+    // can install automations later via the admin UI or by re-running setup.
+    logger.warn("failed to seed default automations", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   // Mark setup complete in vault/stack/stack.env (where isSetupComplete reads it)
   const systemEnvPath = `${state.vaultDir}/stack/stack.env`;

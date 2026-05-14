@@ -242,6 +242,10 @@ export async function executeHttpAction(action: AutomationAction): Promise<void>
 const SHELL_SAFE_ENV_KEYS = [
   "PATH", "HOME", "LANG", "LC_ALL", "TZ", "NODE_ENV",
   "OP_HOME",
+  // akm-cli (AKM 0.8.0+) honours these XDG-style paths independently;
+  // we forward them so the scheduler's `akm improve` automation operates
+  // against the same stash root that the assistant uses interactively.
+  "AKM_STASH_DIR", "AKM_DATA_DIR", "AKM_STATE_DIR", "AKM_CONFIG_DIR", "AKM_CACHE_DIR",
 ];
 
 export function executeShellAction(action: AutomationAction): Promise<void> {

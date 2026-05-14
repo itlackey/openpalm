@@ -26,6 +26,8 @@ import {
   setAddonEnabled,
   installAutomationFromRegistry,
   uninstallAutomation,
+  seedDefaultAutomations,
+  SEEDED_AUTOMATIONS,
 } from "./registry.js";
 
 // ── Validation Tests ─────────────────────────────────────────────────
@@ -410,5 +412,36 @@ describe("materialized registry catalog", () => {
 
     expect(uninstallAutomation('cleanup', configDir)).toEqual({ ok: true });
     expect(existsSync(join(configDir, 'automations', 'cleanup.yml'))).toBe(false);
+  });
+
+  it("seedDefaultAutomations seeds akm-improve idempotently and preserves user edits", () => {
+    const sourceRoot = join(tmpDir, 'repo');
+    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+    const configDir = join(process.env.OP_HOME!, 'config');
+
+    mkdirSync(addonDir, { recursive: true });
+    mkdirSync(automationsDir, { recursive: true });
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
+    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
+    const seededYaml = 'name: akm-improve\ndescription: run akm improve\nschedule: "0 3 * * *"\nenabled: true\naction:\n  type: shell\n  command: ["akm", "improve"]\n';
+    writeFileSync(join(automationsDir, 'akm-improve.yml'), seededYaml);
+    materializeRegistryCatalog(sourceRoot);
+
+    // First seed: writes file from registry.
+    expect(SEEDED_AUTOMATIONS).toContain('akm-improve');
+    const seeded = seedDefaultAutomations(configDir);
+    expect(seeded).toEqual(['akm-improve']);
+    const destPath = join(configDir, 'automations', 'akm-improve.yml');
+    expect(readFileSync(destPath, 'utf-8')).toBe(seededYaml);
+
+    // User edits the file in place.
+    const userEdited = '# user-customized\nname: akm-improve\nschedule: "0 9 * * *"\nenabled: false\naction:\n  type: shell\n  command: ["akm", "improve"]\n';
+    writeFileSync(destPath, userEdited);
+
+    // Re-seed: must not overwrite the user edit.
+    expect(seedDefaultAutomations(configDir)).toEqual([]);
+    expect(readFileSync(destPath, 'utf-8')).toBe(userEdited);
   });
 });

@@ -403,6 +403,44 @@ export function installAutomationFromRegistry(name: string, configDir: string): 
   return { ok: true };
 }
 
+/**
+ * Names of automations that should be present in `${OP_HOME}/config/automations/`
+ * after a clean install. Each name must match a file in the registry catalog
+ * (`registry/automations/<name>.yml`). Files already present in config are
+ * never overwritten — this seeding is idempotent and safe to re-run on update.
+ */
+export const SEEDED_AUTOMATIONS: readonly string[] = ['akm-improve'];
+
+/**
+ * Copy default automations from the registry catalog into
+ * `${configDir}/automations/`. Idempotent: existing files are left alone, so
+ * user edits survive re-install and upgrade.
+ *
+ * Returns the list of automation names that were freshly written.
+ */
+export function seedDefaultAutomations(configDir: string): string[] {
+  const automationsDir = join(configDir, 'automations');
+  mkdirSync(automationsDir, { recursive: true });
+
+  const seeded: string[] = [];
+  for (const name of SEEDED_AUTOMATIONS) {
+    if (!VALID_NAME_RE.test(name)) continue;
+
+    const destPath = join(automationsDir, `${name}.yml`);
+    if (existsSync(destPath)) continue;
+
+    const ymlContent = getRegistryAutomation(name);
+    if (!ymlContent) {
+      logger.warn('default automation missing from registry; skipping seed', { name });
+      continue;
+    }
+
+    writeFileSync(destPath, ymlContent);
+    seeded.push(name);
+  }
+  return seeded;
+}
+
 export function uninstallAutomation(name: string, configDir: string): MutationResult {
   if (!VALID_NAME_RE.test(name)) {
     return { ok: false, error: `Invalid automation name: ${name}` };
