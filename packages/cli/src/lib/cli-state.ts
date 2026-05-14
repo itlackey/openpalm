@@ -17,7 +17,7 @@ import type { ControlPlaneState } from '@openpalm/lib';
  * Does NOT persist to disk — persistence happens inside runComposeWithPreflight()
  * after compose preflight validation, ensuring no mutation before validation.
  *
- * Returns a ControlPlaneState usable with fullComposeArgs().
+ * Returns a ControlPlaneState usable with buildComposeCliArgs().
  */
 export function ensureValidState(): ControlPlaneState {
   const state = createState();

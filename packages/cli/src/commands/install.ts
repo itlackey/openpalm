@@ -7,6 +7,7 @@ import { ensureSecrets, ensureStackEnv, resolveRequestedImageTag } from '../lib/
 import { ensureDirectoryTree, seedOpenPalmDir, openBrowser, runDockerCompose, runDockerComposeCapture } from '../lib/docker.ts';
 import {
   backupOpenPalmHome,
+  buildComposeCliArgs,
   ensureOpenCodeConfig, ensureOpenCodeSystemConfig,
   performSetup,
   applyInstall,
@@ -18,9 +19,7 @@ import {
 import { seedEmbeddedAssets } from '../lib/embedded-assets.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
 import { ensureValidState } from '../lib/cli-state.ts';
-import { fullComposeArgs } from '../lib/cli-compose.ts';
 import { createSetupServer } from '../setup-wizard/server.ts';
-import { buildDeployStatusEntries } from './install-services.ts';
 import { startOpenCodeSubprocess, type OpenCodeSubprocess } from '../lib/opencode-subprocess.ts';
 
 const logger = createLogger('cli:install');
@@ -105,7 +104,7 @@ async function deployServices(mode: string, pull = true): Promise<string[]> {
   const state = await ensureValidState();
   await applyInstall(state);
   const managedServices = await buildManagedServices(state);
-  const composeArgs = fullComposeArgs(state);
+  const composeArgs = buildComposeCliArgs(state);
   if (pull) await runDockerCompose([...composeArgs, 'pull', ...managedServices]).catch(() => console.warn('Warning: image pull failed.'));
   await runDockerCompose([...composeArgs, 'up', '-d', ...managedServices]);
   console.log(JSON.stringify({ ok: true, mode, services: managedServices }, null, 2));
@@ -254,13 +253,13 @@ async function runWizardInstall(configDir: string, noOpen: boolean, noStart = fa
   const state = await ensureValidState();
   await applyInstall(state);
   const allServices = await buildManagedServices(state);
-  const composeArgs = fullComposeArgs(state);
+  const composeArgs = buildComposeCliArgs(state);
   try {
-    wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Pulling images...'));
+    wizard.updateDeployStatus(allServices.map(service => ({ service, status: 'pending', label: 'Pulling images...' })));
     await runDockerCompose([...composeArgs, 'pull', ...allServices]).catch(() => {
       console.warn('Warning: image pull failed — if this is your first install, check your network connection.');
     });
-    wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Starting...'));
+    wizard.updateDeployStatus(allServices.map(service => ({ service, status: 'pending', label: 'Starting...' })));
     await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
 
     // Poll container health so the wizard shows real progress per-service
@@ -280,7 +279,8 @@ async function runWizardInstall(configDir: string, noOpen: boolean, noStart = fa
     // at least 2-3 polls to fetch the final "all running" state with URLs.
     await new Promise(resolve => setTimeout(resolve, 8000));
   } catch (err) {
-    wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'error', String(err)));
+    const errLabel = String(err);
+    wizard.updateDeployStatus(allServices.map(service => ({ service, status: 'error', label: errLabel })));
     wizard.setDeployError(String(err));
     await new Promise(resolve => setTimeout(resolve, 10000));
     throw err;

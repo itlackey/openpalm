@@ -1,6 +1,7 @@
 import { defineCommand } from 'citty';
+import { buildManagedServices } from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
-import { buildManagedServiceNames, runComposeWithPreflight } from '../lib/cli-compose.ts';
+import { runComposeWithPreflight } from '../lib/cli-compose.ts';
 
 export default defineCommand({
   meta: {
@@ -24,7 +25,7 @@ export async function runRestartAction(services: string[]): Promise<void> {
   if (services.length === 0) {
     // Restart all managed services (admin included if enabled)
     const state = await ensureValidState();
-    const managedServices = await buildManagedServiceNames(state);
+    const managedServices = await buildManagedServices(state);
     await runComposeWithPreflight(state, ['restart', ...managedServices]);
     return;
   }

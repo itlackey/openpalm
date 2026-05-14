@@ -64,16 +64,8 @@ export function resolveRegistryAutomationsDir(): string {
   return `${resolveRegistryDir()}/automations`;
 }
 
-export function resolveStackDir(): string {
-  return `${resolveOpenPalmHome()}/stack`;
-}
-
 export function resolveBackupsDir(): string {
   return `${resolveOpenPalmHome()}/backups`;
-}
-
-export function resolveWorkspaceDir(): string {
-  return `${resolveOpenPalmHome()}/data/workspace`;
 }
 
 // ── Directory Setup ──────────────────────────────────────────────────

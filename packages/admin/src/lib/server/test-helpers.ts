@@ -7,7 +7,7 @@ import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rmSync } from "node:fs";
-import type { ControlPlaneState } from "./types.js";
+import type { ControlPlaneState } from "@openpalm/lib";
 import { createState } from "@openpalm/lib";
 import { _replaceState, getState } from "./state.js";
 

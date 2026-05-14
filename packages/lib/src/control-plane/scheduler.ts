@@ -178,9 +178,9 @@ export function loadAutomations(configDir: string): AutomationConfig[] {
 }
 
 
-export const SAFE_PATH_RE = /^\/admin\/[a-zA-Z0-9/._-]+$/;
+const SAFE_PATH_RE = /^\/admin\/[a-zA-Z0-9/._-]+$/;
 
-export async function executeApiAction(
+async function executeApiAction(
   action: AutomationAction,
   adminToken: string
 ): Promise<void> {
@@ -216,7 +216,7 @@ export async function executeApiAction(
   }
 }
 
-export async function executeHttpAction(action: AutomationAction): Promise<void> {
+async function executeHttpAction(action: AutomationAction): Promise<void> {
   if (!action.url) throw new Error("http action requires a url");
   const headers: Record<string, string> = { ...action.headers };
   if (action.body) {
@@ -251,7 +251,7 @@ const SHELL_SAFE_ENV_KEYS = [
 // interactively — without us chasing every new AKM_* var akm-cli adds upstream.
 const SHELL_SAFE_ENV_PREFIXES = ["AKM_"];
 
-export function executeShellAction(action: AutomationAction): Promise<void> {
+function executeShellAction(action: AutomationAction): Promise<void> {
   if (!action.command?.length) throw new Error("shell action requires a non-empty command array");
   const cmd = action.command;
 
@@ -282,7 +282,7 @@ export function executeShellAction(action: AutomationAction): Promise<void> {
   });
 }
 
-export async function executeAssistantAction(action: AutomationAction): Promise<void> {
+async function executeAssistantAction(action: AutomationAction): Promise<void> {
   if (!action.content) {
     throw new Error("assistant action requires a non-empty 'content' field");
   }

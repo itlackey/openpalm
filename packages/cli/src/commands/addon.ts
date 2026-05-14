@@ -1,12 +1,13 @@
 import { defineCommand } from 'citty';
 import {
+  buildComposeCliArgs,
   getAddonServiceNames,
   listAvailableAddonIds,
   listEnabledAddonIds,
   setAddonEnabled,
 } from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
-import { fullComposeArgs, runComposeWithPreflight } from '../lib/cli-compose.ts';
+import { runComposeWithPreflight } from '../lib/cli-compose.ts';
 import { runDockerCompose } from '../lib/docker.ts';
 
 function requireKnownAddon(name: string): void {
@@ -66,7 +67,7 @@ export async function runAddonDisableAction(name: string): Promise<void> {
 
   if (wasEnabled && services.length > 0) {
     try {
-      await runDockerCompose([...fullComposeArgs(state), 'stop', ...services]);
+      await runDockerCompose([...buildComposeCliArgs(state), 'stop', ...services]);
       console.log(`Stopped services: ${services.join(', ')}`);
     } catch (err) {
       console.warn(

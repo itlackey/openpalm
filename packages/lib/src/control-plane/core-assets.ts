@@ -19,19 +19,14 @@ const logger = createLogger("core-assets");
 
 // ── Core Compose (stack/) ─────────────────────────────────────────────
 
-function coreComposePath(): string {
-  return `${resolveOpenPalmHome()}/stack/core.compose.yml`;
-}
-
 export function ensureCoreCompose(): string {
-  const path = coreComposePath();
+  const path = `${resolveOpenPalmHome()}/stack/core.compose.yml`;
   mkdirSync(dirname(path), { recursive: true });
   return path;
 }
 
 export function readCoreCompose(): string {
-  const path = coreComposePath();
-  return readFileSync(path, "utf-8");
+  return readFileSync(`${resolveOpenPalmHome()}/stack/core.compose.yml`, "utf-8");
 }
 
 // ── OpenCode System Config ──────────────────────────────────────────
