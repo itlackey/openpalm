@@ -10,8 +10,9 @@ reinstalls, but they are not the main user configuration surface.
 | `admin/` | `/home/node` | Admin runtime home |
 | `assistant/` | `/home/opencode` | Assistant home and local runtime state |
 | `guardian/` | `/app/data` | Guardian nonce and rate-limit state |
+| `guardian-stash/` | `/akm-guardian` | Operator-only AKM stash (guardian only) |
 | `memory/` | `/data` | Memory database, mem0 compatibility data, generated config |
-| `stash/` | `/home/opencode/.akm` | AKM stash |
+| `stash/` | `/akm` | Shared AKM stash (assistant + admin) |
 | `workspace/` | `/work` | Shared workspace mounted into assistant and admin |
 
 ## Notes

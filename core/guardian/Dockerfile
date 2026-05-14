@@ -21,6 +21,16 @@ FROM oven/bun:1.3-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
+# Install akm-cli for shared stash, vault, and skill management.
+# Pinned via build arg so the install step is reproducible. Install globally
+# into /usr/local so the unprivileged bun user (set with USER below) can
+# execute it without writing to its own $HOME.
+ARG AKM_CLI_VERSION=^0.8.0-rc1
+RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
+    && chmod -R a+rX /usr/local/install/global \
+    && chmod 755 /usr/local/bin/akm \
+    && akm --version
+
 WORKDIR /app
 # Bun workspace symlinks are not available inside Docker builds, so we copy the
 # raw TypeScript source of @openpalm/channels-sdk directly into node_modules.
@@ -37,6 +47,8 @@ RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.pars
 
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
 COPY .openpalm/vault/redact.env.schema /app/.env.schema
+COPY core/guardian/entrypoint.sh /usr/local/bin/guardian-entrypoint.sh
+RUN chmod +x /usr/local/bin/guardian-entrypoint.sh
 
 RUN mkdir -p /app/data && chown -R bun:bun /app
 USER bun
@@ -48,4 +60,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
   CMD curl -sf http://localhost:8080/health || exit 1
 
+ENTRYPOINT ["/usr/local/bin/guardian-entrypoint.sh"]
 CMD ["varlock", "run", "--path", "/app/", "--", "bun", "run", "src/server.ts"]
