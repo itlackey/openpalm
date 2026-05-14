@@ -1,8 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 import { adminFetch } from "./lib.ts";
 
-const ALLOWED_ARTIFACTS = new Set(["compose"]);
-
 export const list = tool({
   description: "List all generated artifacts with their metadata (name, sha256 hash, generation time, size)",
   async execute() {
@@ -23,7 +21,7 @@ export const get = tool({
     name: tool.schema.string().describe("The artifact to retrieve: 'compose' for docker-compose.yml"),
   },
   async execute(args) {
-    if (!ALLOWED_ARTIFACTS.has(args.name)) {
+    if (args.name !== "compose") {
       return JSON.stringify({
         error: true,
         message: "Invalid artifact name. Expected: compose",

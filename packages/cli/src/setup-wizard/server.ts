@@ -52,33 +52,6 @@ function errorResponse(status: number, code: string, message: string): Response 
   return jsonResponse(status, { ok: false, error: code, message });
 }
 
-// ── Route Matching ───────────────────────────────────────────────────────
-
-/**
- * Match a URL path against a pattern with `:param` segments.
- * Returns the matched params or null if no match.
- */
-function matchRoute(
-  path: string,
-  pattern: string
-): Record<string, string> | null {
-  const pathSegments = path.split("/").filter(Boolean);
-  const patternSegments = pattern.split("/").filter(Boolean);
-
-  if (pathSegments.length !== patternSegments.length) return null;
-
-  const params: Record<string, string> = {};
-  for (let i = 0; i < patternSegments.length; i++) {
-    const patSeg = patternSegments[i];
-    if (patSeg.startsWith(":")) {
-      params[patSeg.slice(1)] = decodeURIComponent(pathSegments[i]);
-    } else if (patSeg !== pathSegments[i]) {
-      return null;
-    }
-  }
-  return params;
-}
-
 // ── Server Factory ───────────────────────────────────────────────────────
 
 export type SetupServer = {
@@ -178,9 +151,9 @@ export function createSetupServer(
     // ── API: Fetch Models for a Provider ─────────────────────────────
     // Uses POST to keep API keys out of URLs/query strings.
 
-    const modelsMatch = matchRoute(path, "/api/setup/models/:provider");
-    if (method === "POST" && modelsMatch) {
-      const provider = modelsMatch.provider;
+    const MODELS_PREFIX = "/api/setup/models/";
+    if (method === "POST" && path.startsWith(MODELS_PREFIX) && path.length > MODELS_PREFIX.length) {
+      const provider = decodeURIComponent(path.slice(MODELS_PREFIX.length));
 
       let reqBody: Record<string, unknown> = {};
       try {

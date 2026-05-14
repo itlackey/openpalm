@@ -20,7 +20,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parse as yamlParse } from 'yaml';
-import { readStackSpec } from '@openpalm/lib';
+import { readStackSpec, parseEnvFile, expandEnvVars } from '@openpalm/lib';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -132,22 +132,6 @@ function makeSetupSpec(): Record<string, unknown> {
   };
 }
 
-/** Parse env vars from stack.env for compose variable substitution. */
-function parseEnvFile(path: string): Record<string, string> {
-  const vars: Record<string, string> = {};
-  if (!existsSync(path)) return vars;
-  for (const line of readFileSync(path, 'utf-8').split('\n')) {
-    const m = line.match(/^(?:export\s+)?([A-Z_][A-Z0-9_]*)=(.*)$/);
-    if (m) vars[m[1]] = m[2];
-  }
-  return vars;
-}
-
-/** Resolve ${VAR:-default} patterns in a string. */
-function resolveVars(str: string, vars: Record<string, string>): string {
-  return str.replace(/\$\{([^}:]+)(?::-([^}]*))?\}/g, (_, name, def) => vars[name] ?? def ?? '');
-}
-
 /** Extract all host-side volume mount paths from compose files. */
 function extractVolumeMountPaths(
   composeFiles: string[],
@@ -164,7 +148,7 @@ function extractVolumeMountPaths(
       for (const vol of svc.volumes) {
         const raw = typeof vol === 'string' ? vol.split(':')[0] : (vol?.source ?? '');
         if (!raw || typeof raw !== 'string') continue;
-        const resolved = resolveVars(raw, vars);
+        const resolved = expandEnvVars(raw, vars);
         if (!resolved.startsWith('/')) continue;
         const basename = resolved.split('/').pop() ?? '';
         const isFile = basename.includes('.') && !basename.startsWith('.');

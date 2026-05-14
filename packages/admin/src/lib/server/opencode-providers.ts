@@ -11,6 +11,9 @@ import type {
 	ProviderPageState,
 	ProviderView,
 } from '$lib/types/providers.js';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { asRecord, asString, asStringArray, asStringRecord, asNumber } from './coercion.js';
 
 const OPENCODE_URL = process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL ?? 'http://localhost:4096';
 
@@ -137,8 +140,6 @@ export async function loadProviderPage(): Promise<ProviderPageState> {
 
 export async function getCurrentConfig(): Promise<RawConfig> {
 	// Read from disk — OpenCode's in-memory config may not reflect disk changes
-	const { readFileSync } = await import('node:fs');
-	const { join } = await import('node:path');
 	const opHome = process.env.OP_HOME ?? '';
 	const configPath = join(opHome, 'config', 'assistant', 'opencode.json');
 	try {
@@ -152,8 +153,6 @@ export async function getCurrentConfig(): Promise<RawConfig> {
 export async function patchConfig(config: RawConfig) {
 	// Write directly to the host config file — OpenCode's PATCH /config
 	// doesn't persist in Docker because the container config is read-only.
-	const { readFileSync, writeFileSync } = await import('node:fs');
-	const { join } = await import('node:path');
 	const opHome = process.env.OP_HOME ?? '';
 	const configPath = join(opHome, 'config', 'assistant', 'opencode.json');
 
@@ -352,30 +351,8 @@ function splitModel(model: string | undefined, providerId: string) {
 	return model.slice(providerId.length + 1);
 }
 
-function asRecord(value: unknown) {
-	return value && typeof value === 'object' && !Array.isArray(value) ? ({ ...value } as JsonRecord) : undefined;
-}
-
 function asModelRecord(value: unknown) {
 	return value && typeof value === 'object' && !Array.isArray(value)
 		? (value as Record<string, { name?: string }>)
 		: undefined;
-}
-
-function asString(value: unknown) {
-	return typeof value === 'string' ? value : undefined;
-}
-
-function asStringArray(value: unknown) {
-	return Array.isArray(value) ? value.filter((e): e is string => typeof e === 'string') : undefined;
-}
-
-function asStringRecord(value: unknown) {
-	if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-	const entries = Object.entries(value).filter((e): e is [string, string] => typeof e[1] === 'string');
-	return entries.length > 0 ? Object.fromEntries(entries) : undefined;
-}
-
-function asNumber(value: unknown) {
-	return typeof value === 'number' ? value : undefined;
 }

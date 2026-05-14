@@ -40,18 +40,39 @@ export const PROVIDER_KEY_MAP: Record<string, string> = {
   huggingface: "HF_TOKEN",
 };
 
-/** Known embedding model dimensions (cloud providers). */
+/** Known embedding model dimensions. Keyed by `provider/model`. */
 export const EMBEDDING_DIMS: Record<string, number> = {
   "openai/text-embedding-3-small": 1536,
   "openai/text-embedding-3-large": 3072,
   "openai/text-embedding-ada-002": 1536,
   "ollama/nomic-embed-text": 768,
   "ollama/mxbai-embed-large": 1024,
+  "ollama/mxbai-embed-large-v1": 1024,
   "ollama/all-minilm": 384,
   "ollama/snowflake-arctic-embed": 1024,
+  "model-runner/ai/mxbai-embed-large-v1": 1024,
+  "mistral/mistral-embed": 1024,
   "google/text-embedding-004": 768,
   "huggingface/sentence-transformers/all-MiniLM-L6-v2": 384,
+  "huggingface/intfloat/multilingual-e5-large": 1024,
 };
+
+/**
+ * Look up embedding model dimensions. Tries the full key first, then strips
+ * any trailing `:tag` from the model name (Ollama-style versions).
+ * Returns 0 when no match is found.
+ */
+export function lookupEmbeddingDims(provider: string, model: string): number {
+  if (!provider || !model) return 0;
+  const key = `${provider}/${model}`;
+  if (EMBEDDING_DIMS[key]) return EMBEDDING_DIMS[key];
+  const colon = model.lastIndexOf(":");
+  if (colon > 0) {
+    const bare = `${provider}/${model.slice(0, colon)}`;
+    if (EMBEDDING_DIMS[bare]) return EMBEDDING_DIMS[bare];
+  }
+  return 0;
+}
 
 /** Provider display labels for UI. */
 export const PROVIDER_LABELS: Record<string, string> = {

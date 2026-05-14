@@ -10,6 +10,7 @@
 export {
   LLM_PROVIDERS,
   EMBEDDING_DIMS,
+  lookupEmbeddingDims,
 } from "./provider-constants.js";
 
 // ── Logger ──────────────────────────────────────────────────────────────
@@ -82,6 +83,7 @@ export {
 export {
   parseEnvContent,
   parseEnvFile,
+  expandEnvVars,
   mergeEnvContent,
   removeEnvKey,
 } from "./control-plane/env.js";

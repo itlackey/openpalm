@@ -2,18 +2,8 @@
  * Shared utility functions for OpenPalm channel packages.
  */
 
-/**
- * Constant-time string comparison to prevent timing attacks.
- * Used for API key and token validation.
- */
-export function constantTimeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
-}
+// Re-export for backwards compatibility — canonical home is `./crypto.ts`.
+export { constantTimeEqual } from "./crypto.ts";
 
 /**
  * Type guard that narrows an unknown value to a plain object record.
