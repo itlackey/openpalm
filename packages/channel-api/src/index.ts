@@ -12,9 +12,11 @@
  *   GET  /health                — Health check
  */
 
-import { BaseChannel, type HandleResult, constantTimeEqual, asRecord, extractChatText } from "@openpalm/channels-sdk";
+import { BaseChannel, constantTimeEqual, asRecord, extractChatText } from "@openpalm/channels-sdk";
 
 // ── Error helpers ────────────────────────────────────────────────────────
+
+type ErrorFormatter = (message: string, type?: string) => Record<string, unknown>;
 
 function openAIError(message: string, type = "invalid_request_error") {
   return { error: { message, type } };
@@ -22,6 +24,27 @@ function openAIError(message: string, type = "invalid_request_error") {
 
 function anthropicError(message: string, type = "invalid_request_error") {
   return { type: "error", error: { type, message } };
+}
+
+/**
+ * Map an error thrown by `forwardToGuardian` into a per-protocol error
+ * Response. The SDK throws on guardian failure; we translate the message
+ * into the right shape (OpenAI vs Anthropic) so callers don't have to.
+ */
+function guardianErrorResponse(
+  err: unknown,
+  formatError: ErrorFormatter,
+  jsonResp: (status: number, data: unknown) => Response,
+): Response {
+  const message = err instanceof Error ? err.message : String(err);
+  // The SDK error format is: `Guardian returned status <N>` for HTTP errors,
+  // and arbitrary network messages for transport failures. Both should map
+  // to 502 — the upstream service is unreachable / misbehaving from the
+  // client's point of view.
+  const statusMatch = message.match(/Guardian returned status (\d+)/);
+  const upstreamStatus = statusMatch ? Number(statusMatch[1]) : NaN;
+  const status = Number.isFinite(upstreamStatus) && upstreamStatus < 500 ? upstreamStatus : 502;
+  return jsonResp(status, formatError(`Guardian error: ${message}`));
 }
 
 // ── Channel ──────────────────────────────────────────────────────────────
@@ -116,8 +139,13 @@ export default class ApiChannel extends BaseChannel {
     const model = typeof body.model === "string" && body.model.trim() ? body.model : "openpalm";
     const userId = typeof body.user === "string" && body.user.trim() ? body.user : "api-user";
 
-    const answer = await this.forwardToGuardian(userId, text, { model }, openAIError, requestId);
-    if (answer instanceof Response) return answer;
+    let answer: string;
+    try {
+      answer = await this.forwardToGuardian(userId, text, { model });
+    } catch (err) {
+      this.log("error", "guardian_error", { requestId, error: err instanceof Error ? err.message : String(err) });
+      return guardianErrorResponse(err, openAIError, (s, d) => this.json(s, d));
+    }
 
     this.log("info", "request_forwarded", { requestId, userId, path: "/v1/chat/completions" });
     const created = Math.floor(Date.now() / 1000);
@@ -162,8 +190,13 @@ export default class ApiChannel extends BaseChannel {
     const model = typeof body.model === "string" && body.model.trim() ? body.model : "openpalm";
     const userId = typeof body.user === "string" && body.user.trim() ? body.user : "api-user";
 
-    const answer = await this.forwardToGuardian(userId, text, { model }, openAIError, requestId);
-    if (answer instanceof Response) return answer;
+    let answer: string;
+    try {
+      answer = await this.forwardToGuardian(userId, text, { model });
+    } catch (err) {
+      this.log("error", "guardian_error", { requestId, error: err instanceof Error ? err.message : String(err) });
+      return guardianErrorResponse(err, openAIError, (s, d) => this.json(s, d));
+    }
 
     this.log("info", "request_forwarded", { requestId, userId, path: "/v1/completions" });
     const created = Math.floor(Date.now() / 1000);
@@ -202,8 +235,13 @@ export default class ApiChannel extends BaseChannel {
       ? meta.user_id
       : "api-user";
 
-    const answer = await this.forwardToGuardian(userId, text, { model }, anthropicError, requestId);
-    if (answer instanceof Response) return answer;
+    let answer: string;
+    try {
+      answer = await this.forwardToGuardian(userId, text, { model });
+    } catch (err) {
+      this.log("error", "guardian_error", { requestId, error: err instanceof Error ? err.message : String(err) });
+      return guardianErrorResponse(err, anthropicError, (s, d) => this.json(s, d));
+    }
 
     this.log("info", "request_forwarded", { requestId, userId, path: "/v1/messages" });
     return this.json(200, {
@@ -216,47 +254,5 @@ export default class ApiChannel extends BaseChannel {
       stop_sequence: null,
       usage: { input_tokens: 0, output_tokens: 0 },
     });
-  }
-
-  // ── Guardian forwarding ──────────────────────────────────────────────
-
-  /**
-   * Forward user text to the guardian and return the answer string,
-   * or a pre-built error Response on failure.
-   */
-  private async forwardToGuardian(
-    userId: string,
-    text: string,
-    metadata: Record<string, unknown>,
-    formatError: (message: string, type?: string) => Record<string, unknown> = openAIError,
-    requestId?: string,
-  ): Promise<string | Response> {
-    let guardianResp: Response;
-    try {
-      guardianResp = await this.forward({ userId, text, metadata });
-    } catch (err) {
-      this.log("error", "guardian_fetch_failed", { requestId, error: String(err) });
-      return this.json(502, formatError("Guardian unavailable"));
-    }
-
-    if (!guardianResp.ok) {
-      const status = guardianResp.status >= 500 ? 502 : guardianResp.status;
-      this.log("error", "guardian_error", { requestId, status: guardianResp.status });
-      return this.json(status, formatError(`Guardian error (${guardianResp.status})`));
-    }
-
-    let data: Record<string, unknown>;
-    try {
-      data = await guardianResp.json() as Record<string, unknown>;
-    } catch {
-      this.log("error", "guardian_invalid_json", { requestId });
-      return this.json(502, formatError("Guardian returned invalid JSON"));
-    }
-    return typeof data.answer === "string" ? data.answer : "";
-  }
-
-  // handleRequest is not used — all logic is in route()
-  async handleRequest(_req: Request): Promise<HandleResult | null> {
-    return null;
   }
 }

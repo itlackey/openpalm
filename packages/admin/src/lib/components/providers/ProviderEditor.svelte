@@ -75,17 +75,28 @@
 		}, 0);
 	}
 
+	const ACTION_ENDPOINTS: Record<string, string> = {
+		saveProvider: '/admin/providers/save',
+		toggleProvider: '/admin/providers/toggle',
+		setModel: '/admin/providers/model',
+		startOauth: '/admin/providers/oauth/start',
+		finishOauth: '/admin/providers/oauth/finish'
+	};
+
 	async function submitAction(actionName: string, formData: FormData) {
 		submitting = true;
 		actionResult = undefined;
 		try {
 			const token = getAdminToken() ?? '';
-			const body: Record<string, unknown> = { action: actionName };
+			const body: Record<string, unknown> = {};
 			for (const [key, value] of formData.entries()) {
 				if (typeof value === 'string') body[key] = value;
 			}
 
-			const response = await fetch('/admin/providers/actions', {
+			const endpoint = ACTION_ENDPOINTS[actionName];
+			if (!endpoint) throw new Error(`Unknown provider action: ${actionName}`);
+
+			const response = await fetch(endpoint, {
 				method: 'POST',
 				headers: { ...buildHeaders(token), 'content-type': 'application/json' },
 				body: JSON.stringify(body)

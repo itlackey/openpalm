@@ -61,21 +61,23 @@ type ResolvedSecretTarget = {
   envKey?: string;
 };
 
-export type SecretBackendCapabilities = {
-  generate: boolean;
-  remove: boolean;
-  rename: boolean;
-};
-
-export interface SecretBackend {
+/**
+ * Public shape returned by `detectSecretBackend`. Both the plaintext and
+ * pass implementations expose the same surface — a small set of async
+ * methods plus a `provider` tag and a flat `capabilities` object.
+ *
+ * Kept as a `type` alias of an inline object literal so consumers don't
+ * have to import a separate interface or capabilities type.
+ */
+export type SecretBackend = {
   readonly provider: 'plaintext' | 'pass';
-  readonly capabilities: SecretBackendCapabilities;
+  readonly capabilities: { generate: boolean; remove: boolean; rename: boolean };
   list(prefix?: string): Promise<SecretEntryMetadata[]>;
   write(key: string, value: string): Promise<SecretEntryMetadata>;
   generate(key: string, length?: number): Promise<SecretEntryMetadata>;
   remove(key: string): Promise<void>;
   exists(key: string): Promise<boolean>;
-}
+};
 
 function generateSecretValue(length = 32): string {
   // Hex encoding produces two output characters per byte. Clamp to at least
@@ -106,97 +108,106 @@ function currentValueForTarget(state: ControlPlaneState, target: ResolvedSecretT
   return readStackEnv(state.vaultDir)[target.envKey] ?? '';
 }
 
-export class PlaintextBackend implements SecretBackend {
-  readonly provider = 'plaintext' as const;
-  readonly capabilities = { generate: true, remove: true, rename: false } as const;
+// ── Plaintext backend ─────────────────────────────────────────────────────
 
-  constructor(private readonly state: ControlPlaneState) {}
+export async function plaintextList(state: ControlPlaneState, prefix = 'openpalm/'): Promise<SecretEntryMetadata[]> {
+  const systemEnv = readStackEnv(state.vaultDir);
+  const userEnvFile = readUserEnv(state.vaultDir);
+  // Legacy/consolidated secrets may live in stack.env even for user scope.
+  // Layer user.env on top so explicit user-managed values win.
+  const userEnv: Record<string, string> = { ...systemEnv, ...userEnvFile };
+  const index = readPlaintextSecretIndex(state);
+  const entries: SecretEntryMetadata[] = [];
 
-  async list(prefix = 'openpalm/'): Promise<SecretEntryMetadata[]> {
-    const systemEnv = readStackEnv(this.state.vaultDir);
-    const userEnvFile = readUserEnv(this.state.vaultDir);
-    // Legacy/consolidated secrets may live in stack.env even for user scope.
-    // Layer user.env on top so explicit user-managed values win.
-    const userEnv: Record<string, string> = { ...systemEnv, ...userEnvFile };
-    const index = readPlaintextSecretIndex(this.state);
-    const entries: SecretEntryMetadata[] = [];
-
-    for (const mapping of getCoreSecretMappings(systemEnv)) {
-      if (!mapping.secretKey.startsWith(prefix)) continue;
-      const env = mapping.scope === 'system' ? systemEnv : userEnv;
-      entries.push({
-        key: mapping.secretKey,
-        scope: mapping.scope,
-        kind: 'core',
-        provider: this.provider,
-        present: Boolean(env[mapping.envKey]),
-        envKey: mapping.envKey,
-      });
-    }
-
-    for (const [key, entry] of Object.entries(index.entries)) {
-      if (!key.startsWith(prefix)) continue;
-      const env = entry.scope === 'system' ? systemEnv : userEnv;
-      entries.push({
-        key,
-        scope: entry.scope,
-        kind: entry.kind,
-        provider: this.provider,
-        present: Boolean(env[entry.envKey]),
-        envKey: entry.envKey,
-        updatedAt: entry.updatedAt,
-      });
-    }
-
-    entries.sort((a, b) => a.key.localeCompare(b.key));
-    return entries;
+  for (const mapping of getCoreSecretMappings(systemEnv)) {
+    if (!mapping.secretKey.startsWith(prefix)) continue;
+    const env = mapping.scope === 'system' ? systemEnv : userEnv;
+    entries.push({
+      key: mapping.secretKey,
+      scope: mapping.scope,
+      kind: 'core',
+      provider: 'plaintext',
+      present: Boolean(env[mapping.envKey]),
+      envKey: mapping.envKey,
+    });
   }
 
-  async write(key: string, value: string): Promise<SecretEntryMetadata> {
-    const target = resolvePlaintextTarget(this.state, key);
-    if (!target.envKey) {
-      throw new Error(`Unable to resolve env key for secret ${key}`);
-    }
-
-    if (target.scope === 'system') {
-      updateSystemSecretsEnv(this.state, { [target.envKey]: value });
-    } else {
-      updateSecretsEnv(this.state, { [target.envKey]: value });
-    }
-
-    return {
+  for (const [key, entry] of Object.entries(index.entries)) {
+    if (!key.startsWith(prefix)) continue;
+    const env = entry.scope === 'system' ? systemEnv : userEnv;
+    entries.push({
       key,
-      scope: target.scope,
-      kind: key.startsWith('openpalm/component/') ? 'component' : key.startsWith('openpalm/custom/') ? 'custom' : 'core',
-      provider: this.provider,
-      present: true,
-      envKey: target.envKey,
-    };
+      scope: entry.scope,
+      kind: entry.kind,
+      provider: 'plaintext',
+      present: Boolean(env[entry.envKey]),
+      envKey: entry.envKey,
+      updatedAt: entry.updatedAt,
+    });
   }
 
-  async generate(key: string, length = 32): Promise<SecretEntryMetadata> {
-    return this.write(key, generateSecretValue(length));
+  entries.sort((a, b) => a.key.localeCompare(b.key));
+  return entries;
+}
+
+export async function plaintextWrite(state: ControlPlaneState, key: string, value: string): Promise<SecretEntryMetadata> {
+  const target = resolvePlaintextTarget(state, key);
+  if (!target.envKey) {
+    throw new Error(`Unable to resolve env key for secret ${key}`);
   }
 
-  async remove(key: string): Promise<void> {
-    const target = resolvePlaintextTarget(this.state, key);
-    if (target.envKey) {
-      if (target.scope === 'system') {
-        updateSystemSecretsEnv(this.state, { [target.envKey]: '' });
-      } else {
-        updateSecretsEnv(this.state, { [target.envKey]: '' });
-      }
+  if (target.scope === 'system') {
+    updateSystemSecretsEnv(state, { [target.envKey]: value });
+  } else {
+    updateSecretsEnv(state, { [target.envKey]: value });
+  }
+
+  return {
+    key,
+    scope: target.scope,
+    kind: key.startsWith('openpalm/component/') ? 'component' : key.startsWith('openpalm/custom/') ? 'custom' : 'core',
+    provider: 'plaintext',
+    present: true,
+    envKey: target.envKey,
+  };
+}
+
+export async function plaintextGenerate(state: ControlPlaneState, key: string, length = 32): Promise<SecretEntryMetadata> {
+  return plaintextWrite(state, key, generateSecretValue(length));
+}
+
+export async function plaintextRemove(state: ControlPlaneState, key: string): Promise<void> {
+  const target = resolvePlaintextTarget(state, key);
+  if (target.envKey) {
+    if (target.scope === 'system') {
+      updateSystemSecretsEnv(state, { [target.envKey]: '' });
+    } else {
+      updateSecretsEnv(state, { [target.envKey]: '' });
     }
-    if (!findCoreSecretByKey(key, readStackEnv(this.state.vaultDir))) {
-      removePlaintextSecretEntry(this.state, key);
-    }
   }
-
-  async exists(key: string): Promise<boolean> {
-    const target = resolvePlaintextTarget(this.state, key);
-    return currentValueForTarget(this.state, target).length > 0;
+  if (!findCoreSecretByKey(key, readStackEnv(state.vaultDir))) {
+    removePlaintextSecretEntry(state, key);
   }
 }
+
+export async function plaintextExists(state: ControlPlaneState, key: string): Promise<boolean> {
+  const target = resolvePlaintextTarget(state, key);
+  return currentValueForTarget(state, target).length > 0;
+}
+
+function makePlaintextBackend(state: ControlPlaneState): SecretBackend {
+  return {
+    provider: 'plaintext',
+    capabilities: { generate: true, remove: true, rename: false },
+    list: (prefix) => plaintextList(state, prefix),
+    write: (key, value) => plaintextWrite(state, key, value),
+    generate: (key, length) => plaintextGenerate(state, key, length),
+    remove: (key) => plaintextRemove(state, key),
+    exists: (key) => plaintextExists(state, key),
+  };
+}
+
+// ── Pass backend ──────────────────────────────────────────────────────────
 
 export function validatePassEntryName(entry: string): string {
   const trimmed = entry.trim().replace(/^\/+|\/+$/g, '');
@@ -229,107 +240,124 @@ function walkPassStore(dir: string, prefix = ''): string[] {
   return entries;
 }
 
-export class PassBackend implements SecretBackend {
-  readonly provider = 'pass' as const;
-  readonly capabilities = { generate: true, remove: true, rename: false } as const;
-  private readonly passwordStoreDir: string;
-  private readonly passPrefix: string;
+type PassContext = {
+  passwordStoreDir: string;
+  passPrefix: string;
+};
 
-  constructor(private readonly state: ControlPlaneState) {
-    const config = readSecretProviderConfig(state);
-    this.passwordStoreDir = config?.passwordStoreDir ?? `${state.dataDir}/secrets/pass-store`;
-    this.passPrefix = config?.passPrefix ?? '';
+function passContext(state: ControlPlaneState): PassContext {
+  const config = readSecretProviderConfig(state);
+  return {
+    passwordStoreDir: config?.passwordStoreDir ?? `${state.dataDir}/secrets/pass-store`,
+    passPrefix: config?.passPrefix ?? '',
+  };
+}
+
+function passEnv(ctx: PassContext): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    PASSWORD_STORE_DIR: ctx.passwordStoreDir,
+  };
+}
+
+/** Prepend passPrefix to a canonical key for pass store operations. */
+function prefixedEntry(ctx: PassContext, canonicalKey: string): string {
+  const entry = validatePassEntryName(canonicalKey);
+  return ctx.passPrefix ? `${ctx.passPrefix}/${entry}` : entry;
+}
+
+function passKeyPath(ctx: PassContext, key: string): string {
+  const prefixed = prefixedEntry(ctx, key);
+  const normalizedEntry = normalize(prefixed);
+  const resolvedPath = resolve(ctx.passwordStoreDir, `${normalizedEntry}.gpg`);
+  const resolvedStore = resolve(ctx.passwordStoreDir);
+  if (!resolvedPath.startsWith(`${resolvedStore}/`)) {
+    throw new Error('Secret key resolves outside the password store');
   }
+  return resolvedPath;
+}
 
-  private env(): NodeJS.ProcessEnv {
-    return {
-      ...process.env,
-      PASSWORD_STORE_DIR: this.passwordStoreDir,
-    };
-  }
-
-  /** Prepend passPrefix to a canonical key for pass store operations. */
-  private prefixedEntry(canonicalKey: string): string {
-    const entry = validatePassEntryName(canonicalKey);
-    return this.passPrefix ? `${this.passPrefix}/${entry}` : entry;
-  }
-
-  private keyPath(key: string): string {
-    const prefixed = this.prefixedEntry(key);
-    const normalizedEntry = normalize(prefixed);
-    const resolvedPath = resolve(this.passwordStoreDir, `${normalizedEntry}.gpg`);
-    const resolvedStore = resolve(this.passwordStoreDir);
-    if (!resolvedPath.startsWith(`${resolvedStore}/`)) {
-      throw new Error('Secret key resolves outside the password store');
-    }
-    return resolvedPath;
-  }
-
-  async list(prefix = 'openpalm/'): Promise<SecretEntryMetadata[]> {
-    // Scope walk to the passPrefix subdirectory
-    const walkDir = this.passPrefix
-      ? join(this.passwordStoreDir, this.passPrefix)
-      : this.passwordStoreDir;
-    return walkPassStore(walkDir)
-      .filter((entry) => entry.startsWith(prefix))
-      .sort((a, b) => a.localeCompare(b))
-      .map((key) => ({
-        key,
-        scope: classifySecretScope(key),
-        kind: classifySecretKey(key),
-        provider: this.provider,
-        present: true,
-      }));
-  }
-
-  async write(key: string, value: string): Promise<SecretEntryMetadata> {
-    const canonicalKey = validatePassEntryName(key);
-    const storeEntry = this.prefixedEntry(canonicalKey);
-    await execWithInput('pass', ['insert', '-m', '-f', storeEntry], `${value}\n`, this.env());
-    return {
-      key: canonicalKey,
-      scope: classifySecretScope(canonicalKey),
-      kind: classifySecretKey(canonicalKey),
-      provider: this.provider,
+export async function passList(state: ControlPlaneState, prefix = 'openpalm/'): Promise<SecretEntryMetadata[]> {
+  const ctx = passContext(state);
+  // Scope walk to the passPrefix subdirectory
+  const walkDir = ctx.passPrefix
+    ? join(ctx.passwordStoreDir, ctx.passPrefix)
+    : ctx.passwordStoreDir;
+  return walkPassStore(walkDir)
+    .filter((entry) => entry.startsWith(prefix))
+    .sort((a, b) => a.localeCompare(b))
+    .map((key) => ({
+      key,
+      scope: classifySecretScope(key),
+      kind: classifySecretKey(key),
+      provider: 'pass',
       present: true,
-    };
-  }
+    }));
+}
 
-  async generate(key: string, length = 32): Promise<SecretEntryMetadata> {
-    const canonicalKey = validatePassEntryName(key);
-    const storeEntry = this.prefixedEntry(canonicalKey);
-    await execFile('pass', ['generate', '-n', '-f', storeEntry, String(length)], {
-      env: this.env(),
-    });
-    return {
-      key: canonicalKey,
-      scope: classifySecretScope(canonicalKey),
-      kind: classifySecretKey(canonicalKey),
-      provider: this.provider,
-      present: true,
-    };
-  }
+export async function passWrite(state: ControlPlaneState, key: string, value: string): Promise<SecretEntryMetadata> {
+  const ctx = passContext(state);
+  const canonicalKey = validatePassEntryName(key);
+  const storeEntry = prefixedEntry(ctx, canonicalKey);
+  await execWithInput('pass', ['insert', '-m', '-f', storeEntry], `${value}\n`, passEnv(ctx));
+  return {
+    key: canonicalKey,
+    scope: classifySecretScope(canonicalKey),
+    kind: classifySecretKey(canonicalKey),
+    provider: 'pass',
+    present: true,
+  };
+}
 
-  async remove(key: string): Promise<void> {
-    const storeEntry = this.prefixedEntry(key);
-    await execFile('pass', ['rm', '-f', storeEntry], {
-      env: this.env(),
-    });
-  }
+export async function passGenerate(state: ControlPlaneState, key: string, length = 32): Promise<SecretEntryMetadata> {
+  const ctx = passContext(state);
+  const canonicalKey = validatePassEntryName(key);
+  const storeEntry = prefixedEntry(ctx, canonicalKey);
+  await execFile('pass', ['generate', '-n', '-f', storeEntry, String(length)], {
+    env: passEnv(ctx),
+  });
+  return {
+    key: canonicalKey,
+    scope: classifySecretScope(canonicalKey),
+    kind: classifySecretKey(canonicalKey),
+    provider: 'pass',
+    present: true,
+  };
+}
 
-  async exists(key: string): Promise<boolean> {
-    return existsSync(this.keyPath(key));
-  }
+export async function passRemove(state: ControlPlaneState, key: string): Promise<void> {
+  const ctx = passContext(state);
+  const storeEntry = prefixedEntry(ctx, key);
+  await execFile('pass', ['rm', '-f', storeEntry], {
+    env: passEnv(ctx),
+  });
+}
+
+export async function passExists(state: ControlPlaneState, key: string): Promise<boolean> {
+  const ctx = passContext(state);
+  return existsSync(passKeyPath(ctx, key));
+}
+
+function makePassBackend(state: ControlPlaneState): SecretBackend {
+  return {
+    provider: 'pass',
+    capabilities: { generate: true, remove: true, rename: false },
+    list: (prefix) => passList(state, prefix),
+    write: (key, value) => passWrite(state, key, value),
+    generate: (key, length) => passGenerate(state, key, length),
+    remove: (key) => passRemove(state, key),
+    exists: (key) => passExists(state, key),
+  };
 }
 
 export function detectSecretBackend(state: ControlPlaneState): SecretBackend {
   const providerConfig = readSecretProviderConfig(state);
   if (providerConfig?.provider === 'pass') {
-    return new PassBackend(state);
+    return makePassBackend(state);
   }
 
   // Historical fallback: pre-#391 we sniffed `.env.schema` files for a
   // `@varlock/pass-plugin` marker. Schemas are gone; operators who want
   // `pass` set `secret-provider.json` to `{ "provider": "pass" }`.
-  return new PlaintextBackend(state);
+  return makePlaintextBackend(state);
 }

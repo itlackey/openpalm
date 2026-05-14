@@ -53,9 +53,13 @@ export abstract class BaseChannel {
    * Parse an incoming request into channel message fields.
    * Return null to skip forwarding (e.g., webhook verification handshakes).
    *
-   * This is the only method community developers MUST implement.
+   * Optional — channels that handle everything inside `route()` can omit
+   * this method. The default implementation returns null (no-op). Channels
+   * that rely on the default POST handler MUST override this method.
    */
-  abstract handleRequest(req: Request): Promise<HandleResult | null>;
+  async handleRequest(_req: Request): Promise<HandleResult | null> {
+    return null;
+  }
 
   /**
    * Optional: handle custom routes (e.g., webhook verification, OAuth callbacks).

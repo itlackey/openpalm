@@ -1,15 +1,12 @@
 import { tool } from "@opencode-ai/plugin";
 import { readFile, access } from "fs/promises";
 import { existsSync } from "fs";
-import { promisify } from "util";
-import { execFile as execFileCb } from "child_process";
-
-const execFile = promisify(execFileCb);
 
 /**
  * Legacy compose-mounted path. Phase 1 of #388 keeps this as the
- * fallback while the akm secret store mirror catches up; Phase 2 will
- * retire the bind mount and route entirely through akm.
+ * fallback while the akm secret store mirror catches up; Phase 2
+ * (tracked in #406) will retire the bind mount and route entirely
+ * through akm.
  */
 const FALLBACK_VAULT_PATH = "/etc/vault/user.env";
 const AKM_USER_VAULT_REF = "vault:user";
@@ -68,9 +65,18 @@ export function parseEnvContent(
  */
 async function resolveVaultPath(): Promise<{ path: string; source: VaultSource }> {
   try {
-    const { stdout } = await execFile("akm", ["vault", "path", AKM_USER_VAULT_REF]);
-    const path = stdout.trim();
-    if (path && existsSync(path)) return { path, source: "akm" };
+    // Bun.spawn keeps us off node:child_process + util.promisify here.
+    // We need stdout text, so capture it as a pipe and decode on success.
+    const proc = Bun.spawn(["akm", "vault", "path", AKM_USER_VAULT_REF], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const stdout = await new Response(proc.stdout).text();
+    const exitCode = await proc.exited;
+    if (exitCode === 0) {
+      const path = stdout.trim();
+      if (path && existsSync(path)) return { path, source: "akm" };
+    }
   } catch {
     // akm not on PATH or vault missing — fall through to legacy file
   }
