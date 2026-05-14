@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseEnvContent, mergeEnvContent } from "./env.js";
+import { parseEnvContent, mergeEnvContent, removeEnvKey } from "./env.js";
 
 // ── Special character round-trips ────────────────────────────────────────
 // Values written by mergeEnvContent (which uses quoteEnvValue internally)
@@ -105,5 +105,29 @@ describe("mergeEnvContent updates existing keys with special char values", () =>
     expect(result).toMatch(/^export ADMIN_TOKEN=/m);
     const parsed = parseEnvContent(result);
     expect(parsed.ADMIN_TOKEN).toBe("new#value");
+  });
+});
+
+describe("removeEnvKey", () => {
+  it("removes a simple key", () => {
+    const out = removeEnvKey("FOO=1\nBAR=2\n", "FOO");
+    expect(parseEnvContent(out)).toEqual({ BAR: "2" });
+  });
+
+  it("returns content unchanged when key is absent", () => {
+    const input = "FOO=1\nBAR=2\n";
+    expect(removeEnvKey(input, "MISSING")).toBe(input);
+  });
+
+  it("handles the export prefix form", () => {
+    const out = removeEnvKey("export FOO=1\nBAR=2\n", "FOO");
+    expect(parseEnvContent(out)).toEqual({ BAR: "2" });
+  });
+
+  it("leaves comments above the deleted key intact", () => {
+    const out = removeEnvKey("# header comment\nFOO=1\nBAR=2\n", "FOO");
+    expect(out).toContain("# header comment");
+    expect(parseEnvContent(out).FOO).toBeUndefined();
+    expect(parseEnvContent(out).BAR).toBe("2");
   });
 });

@@ -118,7 +118,7 @@ describe('admin user-vault route', () => {
     expect(res.status).toBe(400);
   });
 
-  test('DELETE clears a key from user.env', async () => {
+  test('DELETE removes a key from user.env entirely', async () => {
     const state = getState();
     writeFileSync(join(state.vaultDir, 'user', 'user.env'), 'KEEP_ME=ok\nDROP_ME=bye\n');
 
@@ -127,8 +127,20 @@ describe('admin user-vault route', () => {
 
     const content = readFileSync(join(state.vaultDir, 'user', 'user.env'), 'utf-8');
     expect(content).toContain('KEEP_ME=ok');
-    // mergeEnvContent clears the value to empty rather than deleting the line.
-    expect(content).toMatch(/DROP_ME=\s*$/m);
+    // Removed line must not appear at all (clean semantics so subsequent
+    // GETs don't list a phantom empty-value key).
+    expect(content).not.toMatch(/^DROP_ME=/m);
+  });
+
+  test('DELETE followed by GET no longer lists the key', async () => {
+    const state = getState();
+    writeFileSync(join(state.vaultDir, 'user', 'user.env'), 'KEEP_ME=ok\nDROP_ME=bye\n');
+    await DELETE(makeEvent('DELETE', '/admin/secrets/user-vault?key=DROP_ME'));
+
+    const listRes = await GET(makeEvent('GET', '/admin/secrets/user-vault'));
+    const body = await listRes.json() as { keys: string[] };
+    expect(body.keys).toContain('KEEP_ME');
+    expect(body.keys).not.toContain('DROP_ME');
   });
 
   test.skipIf(!AKM_AVAILABLE)('writes are visible to akm vault list after POST', async () => {

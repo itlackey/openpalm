@@ -11,6 +11,11 @@
  * endpoint by default — operator-managed `stack.env` secrets remain in
  * the existing `/admin/secrets` plaintext/pass backends. This endpoint
  * is scoped to user-extension keys only.
+ *
+ * SECURITY: writes go DIRECTLY to the akm vault .env file via lib's
+ * `writeAkmVaultKey`/`deleteAkmVaultKey` helpers. We never pass secret
+ * values on the `akm` argv, since that would expose them through
+ * `/proc/<pid>/cmdline`.
  */
 import type { RequestHandler } from './$types';
 import { getState } from '$lib/server/state.js';
@@ -25,32 +30,22 @@ import {
   requireAdmin,
 } from '$lib/server/helpers.js';
 import {
+  AKM_USER_VAULT_REF,
   appendAudit,
+  deleteAkmVaultKey,
   ensureAkmUserVault,
-  mirrorUserVaultToAkm,
-  readAkmUserVaultFile,
-  parseEnvFile,
   mergeEnvContent,
+  parseEnvFile,
+  readAkmUserVaultFile,
+  removeEnvKey,
+  writeAkmVaultKey,
 } from '@openpalm/lib';
+import { createLogger } from '$lib/server/logger.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { execFile as execFileCb } from 'node:child_process';
-import { promisify } from 'node:util';
 
-const execFile = promisify(execFileCb);
+const logger = createLogger('admin.secrets.user-vault');
 
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-function buildAkmEnv(state: ReturnType<typeof getState>): NodeJS.ProcessEnv {
-  const stashRoot = `${state.dataDir}/stash`;
-  return {
-    ...process.env,
-    AKM_STASH_DIR: stashRoot,
-    AKM_DATA_DIR: `${stashRoot}/.data`,
-    AKM_STATE_DIR: `${stashRoot}/.state`,
-    AKM_CONFIG_DIR: `${stashRoot}/.config`,
-    AKM_CACHE_DIR: `${state.dataDir}/akm-cache`,
-  };
-}
 
 function writeUserEnvKey(vaultDir: string, key: string, value: string): void {
   const userEnvPath = `${vaultDir}/user/user.env`;
@@ -60,10 +55,22 @@ function writeUserEnvKey(vaultDir: string, key: string, value: string): void {
   writeFileSync(userEnvPath, merged.endsWith('\n') ? merged : merged + '\n', { mode: 0o600 });
 }
 
+function removeUserEnvKey(vaultDir: string, key: string): void {
+  const userEnvPath = `${vaultDir}/user/user.env`;
+  if (!existsSync(userEnvPath)) return;
+  const existing = readFileSync(userEnvPath, 'utf-8');
+  const stripped = removeEnvKey(existing, key);
+  writeFileSync(userEnvPath, stripped.endsWith('\n') ? stripped : stripped + '\n', { mode: 0o600 });
+}
+
 /**
  * GET — list keys in the akm vault:user store. Values are NEVER returned
  * so this endpoint behaves identically whether the underlying backend
  * exposes plaintext or encrypted secrets.
+ *
+ * Mirror is NOT run on GET — it is part of install/upgrade lifecycle only.
+ * Calling akm on every list would be wasteful and surface transient
+ * akm-CLI failures as list errors.
  */
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -74,14 +81,13 @@ export const GET: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
-  // Ensure mirror is up to date before listing so a freshly-installed
-  // stack shows the seeded keys without a separate /upgrade call.
-  try { await mirrorUserVaultToAkm(state); } catch { /* best-effort */ }
-
   const vaultPath = await ensureAkmUserVault(state);
   const userEnvPath = `${state.vaultDir}/user/user.env`;
   const akmKeys = vaultPath ? Object.keys(readAkmUserVaultFile(vaultPath)) : [];
-  const fileKeys = Object.keys(parseEnvFile(userEnvPath));
+  const fileEntries = parseEnvFile(userEnvPath);
+  // Filter empty values so cleared keys don't show up post-DELETE if the
+  // file write path ever leaves a `KEY=` line behind.
+  const fileKeys = Object.keys(fileEntries).filter((k) => fileEntries[k] !== '');
   const merged = Array.from(new Set([...akmKeys, ...fileKeys])).sort();
 
   appendAudit(
@@ -96,7 +102,7 @@ export const GET: RequestHandler = async (event) => {
 
   return jsonResponse(200, {
     provider: 'akm-mirror',
-    vaultRef: 'vault:user',
+    vaultRef: AKM_USER_VAULT_REF,
     available: Boolean(vaultPath),
     keys: merged,
   }, requestId);
@@ -106,6 +112,11 @@ export const GET: RequestHandler = async (event) => {
  * PUT/POST — write a key into both the akm vault and the runtime user.env
  * file. Both writes happen so Compose env_file consumption stays in sync
  * with what the admin UI displays.
+ *
+ * If the akm write fails the .env update still succeeds (since Compose is
+ * the runtime source of truth), but the response surfaces `mirrored:false`
+ * and an `error` field so callers can decide whether to retry. A warn-level
+ * log is emitted for operators (key name only, never the value).
  */
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -138,29 +149,43 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(500, 'internal_error', 'Failed to update user.env', {}, requestId);
   }
 
-  // 2. Mirror into akm. If akm is unavailable the .env write still
-  //    succeeded, so we report partial success rather than a hard error.
-  let akmOk = false;
+  // 2. Mirror into the akm vault file by writing directly (no argv exposure).
+  let mirrored = false;
+  let mirrorError: string | undefined;
   try {
-    const env = buildAkmEnv(state);
-    await execFile('akm', ['vault', 'create', 'vault:user'], { env }).catch(() => { /* idempotent */ });
-    await execFile('akm', ['vault', 'set', 'vault:user', key, value], { env });
-    akmOk = true;
-  } catch {
-    akmOk = false;
+    mirrored = await writeAkmVaultKey(state, key, value);
+    if (!mirrored) mirrorError = 'akm_unavailable';
+  } catch (err) {
+    mirrored = false;
+    mirrorError = err instanceof Error ? err.message : String(err);
+  }
+
+  if (!mirrored) {
+    // Divergence is recoverable (re-running upgrade re-mirrors) but
+    // operators need to see it. Never log the value.
+    logger.warn('akm vault write failed; user.env and akm vault are diverged', {
+      key,
+      reason: mirrorError,
+      requestId,
+    });
   }
 
   appendAudit(
     state,
     actor,
     'secrets.user-vault.write',
-    { key, mirrored: akmOk },
+    { key, mirrored, ...(mirrorError ? { mirrorError } : {}) },
     true,
     requestId,
     callerType,
   );
 
-  return jsonResponse(200, { ok: true, key, mirrored: akmOk }, requestId);
+  return jsonResponse(200, {
+    ok: true,
+    key,
+    mirrored,
+    ...(mirrorError ? { error: mirrorError } : {}),
+  }, requestId);
 };
 
 /** DELETE — remove a key from both the akm vault and user.env. */
@@ -177,34 +202,48 @@ export const DELETE: RequestHandler = async (event) => {
     return errorResponse(400, 'bad_request', 'valid key query parameter is required', {}, requestId);
   }
 
-  // 1. Drop from user.env by setting to empty (the .env file format treats
-  //    empty values as cleared; downstream Compose env_file sees no value).
+  // 1. Remove from user.env entirely (clean semantics — no empty-valued
+  //    stub line left behind for GET to filter out).
   try {
-    writeUserEnvKey(state.vaultDir, key, '');
+    removeUserEnvKey(state.vaultDir, key);
   } catch (err) {
     appendAudit(state, actor, 'secrets.user-vault.remove', { key, error: String(err) }, false, requestId, callerType);
     return errorResponse(500, 'internal_error', 'Failed to update user.env', {}, requestId);
   }
 
-  // 2. Drop from akm vault.
-  let akmOk = false;
+  // 2. Drop from akm vault file directly (no argv exposure).
+  let mirrored = false;
+  let mirrorError: string | undefined;
   try {
-    const env = buildAkmEnv(state);
-    await execFile('akm', ['vault', 'unset', 'vault:user', key], { env });
-    akmOk = true;
-  } catch {
-    akmOk = false;
+    mirrored = await deleteAkmVaultKey(state, key);
+    if (!mirrored) mirrorError = 'akm_unavailable';
+  } catch (err) {
+    mirrored = false;
+    mirrorError = err instanceof Error ? err.message : String(err);
+  }
+
+  if (!mirrored) {
+    logger.warn('akm vault delete failed; user.env and akm vault are diverged', {
+      key,
+      reason: mirrorError,
+      requestId,
+    });
   }
 
   appendAudit(
     state,
     actor,
     'secrets.user-vault.remove',
-    { key, mirrored: akmOk },
+    { key, mirrored, ...(mirrorError ? { mirrorError } : {}) },
     true,
     requestId,
     callerType,
   );
 
-  return jsonResponse(200, { ok: true, key, mirrored: akmOk }, requestId);
+  return jsonResponse(200, {
+    ok: true,
+    key,
+    mirrored,
+    ...(mirrorError ? { error: mirrorError } : {}),
+  }, requestId);
 };

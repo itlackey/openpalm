@@ -81,6 +81,7 @@ export {
   parseEnvContent,
   parseEnvFile,
   mergeEnvContent,
+  removeEnvKey,
 } from "./control-plane/env.js";
 
 // ── Audit ───────────────────────────────────────────────────────────────
@@ -274,6 +275,8 @@ export {
   AKM_USER_VAULT_REF,
   mirrorUserVaultToAkm,
   ensureAkmUserVault,
-  resolveAkmUserVaultPath,
+  writeAkmVaultKey,
+  deleteAkmVaultKey,
+  buildAkmEnv,
   readAkmUserVaultFile,
 } from "./control-plane/akm-vault.js";

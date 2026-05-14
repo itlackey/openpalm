@@ -8,7 +8,7 @@
  * pairs into an akm-cli secret store at `vault:user`, residing in the
  * shared akm stash at `${OP_HOME}/data/stash`. This makes the same
  * secrets browsable from the assistant and admin UI through the existing
- * `akm vault list|path|set` interface.
+ * `akm vault list|path` interface.
  *
  * Phase 2 (deferred, tracked under a follow-up) will:
  *  - drop the `${OP_HOME}/vault/user → /etc/vault` compose mount
@@ -18,11 +18,21 @@
  * NON-CHANGE: `vault/stack/stack.env` and `vault/stack/guardian.env` are
  * operator-managed and are NOT mirrored into akm. Migrating them would
  * break guardian's HMAC env_file hot-reload contract.
+ *
+ * SECURITY: This module never invokes `akm vault set|unset` with secret
+ * values on the command line. `akm 0.8.x` accepts values via argv only,
+ * which would leak through `/proc/<pid>/cmdline`. Instead we resolve the
+ * vault file path via `akm vault create` + `akm vault path` and write
+ * key/value pairs directly with `writeFileSync` + `mergeEnvContent`. The
+ * resulting .env file format is byte-compatible with what `akm vault set`
+ * would have produced (a plain `KEY=value` .env file), and `akm vault
+ * list|run|path` continue to work against it unchanged.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
-import { parseEnvFile } from "./env.js";
+import { mergeEnvContent, parseEnvFile, removeEnvKey } from "./env.js";
 import { createLogger } from "../logger.js";
 import type { ControlPlaneState } from "./types.js";
 
@@ -44,8 +54,16 @@ export type MirrorResult = {
  * XDG layout that the assistant/admin containers use (see
  * `.openpalm/stack/core.compose.yml`) so host-side and container-side runs
  * resolve to the same vault file.
+ *
+ * NOTE: AKM_STASH_DIR/AKM_DATA_DIR/AKM_STATE_DIR/AKM_CONFIG_DIR all live
+ * inside the stash root so they share a single bind mount. AKM_CACHE_DIR
+ * intentionally lives one level up (sibling of `stash/`) because it
+ * contains regenerable derived data only — keeping it outside the stash
+ * matches the compose mount layout introduced by #386 and avoids
+ * polluting the asset directory with cache artefacts that should not be
+ * indexed alongside real stash assets.
  */
-function buildAkmEnv(state: ControlPlaneState): NodeJS.ProcessEnv {
+export function buildAkmEnv(state: ControlPlaneState): NodeJS.ProcessEnv {
   const stashRoot = `${state.dataDir}/stash`;
   return {
     ...process.env,
@@ -73,6 +91,8 @@ export async function ensureAkmUserVault(state: ControlPlaneState): Promise<stri
     return null;
   }
   try {
+    // `vault create` accepts only the ref on argv — no secret material crosses
+    // the process boundary here.
     await execFile("akm", ["vault", "create", AKM_USER_VAULT_REF], { env });
   } catch (err) {
     // `create` is documented as a no-op when the vault already exists, but
@@ -94,6 +114,51 @@ export async function ensureAkmUserVault(state: ControlPlaneState): Promise<stri
     });
     return null;
   }
+}
+
+/**
+ * Write a single key/value into the akm `vault:user` store WITHOUT shelling
+ * out to `akm vault set`. The akm vault file format is a plain `.env` file
+ * at `<stash>/vaults/<name>.env`; writing directly with `mergeEnvContent`
+ * produces a byte-identical result while keeping the secret out of argv
+ * (and therefore out of `/proc/<pid>/cmdline`).
+ *
+ * Returns `true` on success, `false` when akm is unavailable or the vault
+ * path cannot be resolved. Throws only on filesystem write failures.
+ */
+export async function writeAkmVaultKey(
+  state: ControlPlaneState,
+  key: string,
+  value: string,
+): Promise<boolean> {
+  const vaultPath = await ensureAkmUserVault(state);
+  if (!vaultPath) return false;
+
+  mkdirSync(dirname(vaultPath), { recursive: true, mode: 0o700 });
+  const existing = existsSync(vaultPath) ? readFileSync(vaultPath, "utf-8") : "";
+  const merged = mergeEnvContent(existing, { [key]: value });
+  writeFileSync(vaultPath, merged.endsWith("\n") ? merged : merged + "\n", { mode: 0o600 });
+  return true;
+}
+
+/**
+ * Remove a key from the akm `vault:user` store. Mirrors `writeAkmVaultKey`
+ * by editing the .env file directly rather than invoking `akm vault unset`.
+ * Returns `true` if the operation completed (whether or not the key was
+ * present), `false` when akm is unavailable.
+ */
+export async function deleteAkmVaultKey(
+  state: ControlPlaneState,
+  key: string,
+): Promise<boolean> {
+  const vaultPath = await ensureAkmUserVault(state);
+  if (!vaultPath) return false;
+  if (!existsSync(vaultPath)) return true;
+
+  const existing = readFileSync(vaultPath, "utf-8");
+  const stripped = removeEnvKey(existing, key);
+  writeFileSync(vaultPath, stripped.endsWith("\n") ? stripped : stripped + "\n", { mode: 0o600 });
+  return true;
 }
 
 /**
@@ -134,20 +199,31 @@ export async function mirrorUserVaultToAkm(state: ControlPlaneState): Promise<Mi
 
   const written: string[] = [];
   const unchanged: string[] = [];
+  // Build the full updated content in one merge so we issue a single write.
+  const updates: Record<string, string> = {};
   for (const key of keys) {
     const value = sourceEntries[key];
     if (existing[key] === value) {
       unchanged.push(key);
       continue;
     }
+    updates[key] = value;
+    written.push(key);
+  }
+
+  if (written.length > 0) {
     try {
-      await execFile("akm", ["vault", "set", AKM_USER_VAULT_REF, key, value], { env });
-      written.push(key);
+      mkdirSync(dirname(vaultPath), { recursive: true, mode: 0o700 });
+      const currentContent = existsSync(vaultPath) ? readFileSync(vaultPath, "utf-8") : "";
+      const merged = mergeEnvContent(currentContent, updates);
+      writeFileSync(vaultPath, merged.endsWith("\n") ? merged : merged + "\n", { mode: 0o600 });
     } catch (err) {
-      logger.warn("akm vault set failed", {
-        key,
+      logger.warn("akm vault file write failed", {
+        vaultPath,
+        keyCount: written.length,
         error: err instanceof Error ? err.message : String(err),
       });
+      return { ok: false, skipped: false, reason: "vault file write failed", written: [], unchanged };
     }
   }
 
@@ -160,24 +236,7 @@ export async function mirrorUserVaultToAkm(state: ControlPlaneState): Promise<Mi
   return { ok: true, skipped: false, written, unchanged };
 }
 
-/**
- * Read the path of the akm user vault without creating it. Returns null if
- * akm is unavailable or the vault has not been created yet. Used by the
- * `load_vault` assistant tool so it can switch between the legacy
- * `/etc/vault/user.env` path and the akm-resolved one as Phase 1 rolls out.
- */
-export async function resolveAkmUserVaultPath(): Promise<string | null> {
-  try {
-    const { stdout } = await execFile("akm", ["vault", "path", AKM_USER_VAULT_REF]);
-    const path = stdout.trim();
-    if (!path || !existsSync(path)) return null;
-    return path;
-  } catch {
-    return null;
-  }
-}
-
-/** For tests and diagnostics — return the parsed contents of the akm vault file. */
+/** Return the parsed contents of the akm vault file (public API used by admin UI list endpoint). */
 export function readAkmUserVaultFile(vaultPath: string): Record<string, string> {
   if (!existsSync(vaultPath)) return {};
   try {

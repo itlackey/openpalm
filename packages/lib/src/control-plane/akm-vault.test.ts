@@ -5,16 +5,24 @@
  * stash directory. Tests gate on those conditions so the suite stays
  * green in environments without akm installed. The pure logic (env
  * file enumeration, idempotency diff) is covered unconditionally.
+ *
+ * CI coverage gap: the gated tests `it.skipIf(!AKM_AVAILABLE)` skip
+ * silently when akm is not on PATH. CI does not install akm today, so
+ * these branches are exercised only by local developers. Follow-up
+ * tracked in the PR body.
  */
-import { describe, expect, it, beforeEach, afterEach } from "bun:test";
+import { describe, expect, it, beforeEach, afterEach, spyOn } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
+import * as childProcess from "node:child_process";
 import {
   mirrorUserVaultToAkm,
   ensureAkmUserVault,
   readAkmUserVaultFile,
+  writeAkmVaultKey,
+  deleteAkmVaultKey,
   AKM_USER_VAULT_REF,
 } from "./akm-vault.js";
 import type { ControlPlaneState } from "./types.js";
@@ -84,38 +92,44 @@ describe("mirrorUserVaultToAkm", () => {
     expect(result.reason).toBe("user.env empty");
   });
 
-  it.skipIf(!AKM_AVAILABLE)("migrates a fake 0.10.x layout idempotently", async () => {
-    // Seed a pre-0.11 user.env with a single key.
+  it.skipIf(!AKM_AVAILABLE)("migrates a fake 0.10.x layout idempotently (upgrade-path contract)", async () => {
+    // Seed a pre-0.11 vault/user/user.env layout — this is exactly the
+    // shape `applyUpgrade()` sees on the first 0.10.x → 0.11 upgrade.
     writeFileSync(
       join(state.vaultDir, "user", "user.env"),
-      "# legacy 0.10.x layout\nGROQ_API_KEY=xyz-test-value-1\n",
+      "# legacy 0.10.x layout\nGROQ_API_KEY=xyz-test-value-1\nOWNER_NAME=Alice\n",
     );
 
-    // First mirror — should write the key.
+    // First mirror — should write the keys (this is the operation
+    // `applyUpgrade()` performs after `refreshCoreAssets`+`reconcileCore`).
     const first = await mirrorUserVaultToAkm(state);
     expect(first.ok).toBe(true);
     expect(first.skipped).toBe(false);
-    expect(first.written).toContain("GROQ_API_KEY");
+    expect(first.written.sort()).toEqual(["GROQ_API_KEY", "OWNER_NAME"]);
     expect(first.unchanged).toHaveLength(0);
 
-    // The akm vault file should now contain the value.
+    // The akm vault file should now contain the values.
     const vaultPath = await ensureAkmUserVault(state);
     expect(vaultPath).not.toBeNull();
+    expect(vaultPath).toContain("vaults/user.env");
     if (vaultPath) {
       const stored = readAkmUserVaultFile(vaultPath);
       expect(stored.GROQ_API_KEY).toBe("xyz-test-value-1");
+      expect(stored.OWNER_NAME).toBe("Alice");
     }
 
-    // The source .env file MUST still exist (Phase 1 keeps both in sync).
+    // The source .env file MUST still exist (Phase 1 keeps both in sync
+    // — Compose env_file consumption stays on user.env until Phase 2).
     expect(existsSync(join(state.vaultDir, "user", "user.env"))).toBe(true);
     expect(readFileSync(join(state.vaultDir, "user", "user.env"), "utf-8"))
       .toContain("GROQ_API_KEY=xyz-test-value-1");
 
-    // Second mirror — every key should now be reported as unchanged.
+    // Second mirror — every key should now be reported as unchanged
+    // (proves the upgrade is idempotent on re-run).
     const second = await mirrorUserVaultToAkm(state);
     expect(second.ok).toBe(true);
     expect(second.skipped).toBe(false);
-    expect(second.unchanged).toContain("GROQ_API_KEY");
+    expect(second.unchanged.sort()).toEqual(["GROQ_API_KEY", "OWNER_NAME"]);
     expect(second.written).toHaveLength(0);
   });
 
@@ -134,6 +148,101 @@ describe("mirrorUserVaultToAkm", () => {
     const result = await mirrorUserVaultToAkm(state);
     expect(result.written).toEqual(["KEY_B"]);
     expect(result.unchanged).toEqual(["KEY_A"]);
+  });
+
+  it.skipIf(!AKM_AVAILABLE)("never passes secret values via execFile argv (no /proc/cmdline leak)", async () => {
+    // This is the regression test for the security finding on PR #404.
+    // Spy on execFile and assert no call contains the secret value.
+    const secret = "secret-payload-12345-do-not-leak";
+    writeFileSync(
+      join(state.vaultDir, "user", "user.env"),
+      `LEAK_CHECK_KEY=${secret}\n`,
+    );
+
+    const calls: Array<{ command: string; args: readonly string[] }> = [];
+    const spy = spyOn(childProcess, "execFile").mockImplementation(
+      ((command: string, args: readonly string[], _options: unknown, cb?: unknown) => {
+        calls.push({ command, args });
+        // Fake `akm --version` so akmAvailable() returns true. For any
+        // other invocation, fake success with a stdout suitable for the
+        // caller (e.g. `vault path` returns the vault file path).
+        let stdout = "";
+        if (args[0] === "--version") {
+          stdout = "0.8.0\n";
+        } else if (args[0] === "vault" && args[1] === "path") {
+          stdout = `${state.dataDir}/stash/vaults/user.env\n`;
+        }
+        const callback = cb as ((err: unknown, result: { stdout: string; stderr: string }) => void) | undefined;
+        if (callback) callback(null, { stdout, stderr: "" });
+        return undefined as unknown as ReturnType<typeof childProcess.execFile>;
+      }) as typeof childProcess.execFile,
+    );
+
+    try {
+      const result = await mirrorUserVaultToAkm(state);
+      expect(result.ok).toBe(true);
+
+      // No execFile call may include the secret value anywhere on argv.
+      for (const call of calls) {
+        for (const arg of call.args) {
+          expect(arg).not.toContain(secret);
+        }
+      }
+
+      // The vault file should still have been written by the direct-write path.
+      const vaultPath = `${state.dataDir}/stash/vaults/user.env`;
+      // Direct-write path created the file under stash; verify the value lives there.
+      if (existsSync(vaultPath)) {
+        const stored = readFileSync(vaultPath, "utf-8");
+        expect(stored).toContain(`LEAK_CHECK_KEY=${secret}`);
+      }
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("writeAkmVaultKey", () => {
+  let homeDir: string;
+  let state: ControlPlaneState;
+
+  beforeEach(() => {
+    homeDir = mkdtempSync(join(tmpdir(), "openpalm-akm-write-"));
+    state = makeState(homeDir);
+    mkdirSync(join(state.dataDir, "stash"), { recursive: true });
+    mkdirSync(join(state.dataDir, "akm-cache"), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  it.skipIf(!AKM_AVAILABLE)("writes a key to the akm vault file without invoking `akm vault set`", async () => {
+    const value = "argv-free-secret-9988";
+    const ok = await writeAkmVaultKey(state, "TOKEN", value);
+    expect(ok).toBe(true);
+
+    const vaultPath = await ensureAkmUserVault(state);
+    expect(vaultPath).not.toBeNull();
+    if (vaultPath) {
+      const stored = readAkmUserVaultFile(vaultPath);
+      expect(stored.TOKEN).toBe(value);
+    }
+  });
+
+  it.skipIf(!AKM_AVAILABLE)("deleteAkmVaultKey removes a key", async () => {
+    await writeAkmVaultKey(state, "TOKEN_A", "value-a");
+    await writeAkmVaultKey(state, "TOKEN_B", "value-b");
+
+    const ok = await deleteAkmVaultKey(state, "TOKEN_A");
+    expect(ok).toBe(true);
+
+    const vaultPath = await ensureAkmUserVault(state);
+    if (vaultPath) {
+      const stored = readAkmUserVaultFile(vaultPath);
+      expect(stored.TOKEN_A).toBeUndefined();
+      expect(stored.TOKEN_B).toBe("value-b");
+    }
   });
 });
 
