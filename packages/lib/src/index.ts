@@ -265,3 +265,15 @@ export type {
 export {
   performSetup,
 } from "./control-plane/setup.js";
+
+// ── AKM Vault Mirror (Phase 1 of #388) ───────────────────────────────────
+export type {
+  MirrorResult,
+} from "./control-plane/akm-vault.js";
+export {
+  AKM_USER_VAULT_REF,
+  mirrorUserVaultToAkm,
+  ensureAkmUserVault,
+  resolveAkmUserVaultPath,
+  readAkmUserVaultFile,
+} from "./control-plane/akm-vault.js";

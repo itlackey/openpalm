@@ -1,5 +1,5 @@
 /** Lifecycle helpers — state factory, apply transitions, compose file list. */
-import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { parseEnvFile, mergeEnvContent } from "./env.js";
 import type { ControlPlaneState, CallerType } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
@@ -12,6 +12,7 @@ import {
   resolveCacheHome,
 } from "./home.js";
 import { ensureSecrets, readStackEnv, updateSystemSecretsEnv } from "./secrets.js";
+import { mirrorUserVaultToAkm } from "./akm-vault.js";
 import {
   resolveRuntimeFiles,
   writeRuntimeFiles,
@@ -21,7 +22,6 @@ import {
 } from "./config-persistence.js";
 import { readStackSpec } from "./stack-spec.js";
 import { refreshCoreAssets, ensureMemoryDir } from "./core-assets.js";
-import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName } from "./docker.js";
 import { acquireLock, releaseLock } from "./lock.js";
@@ -77,21 +77,13 @@ export function createState(
       ?? process.env.OP_ASSISTANT_TOKEN
       ?? "";
 
-  writeSetupTokenFile(bootstrapState);
+  // Phase 1 of #388 §B.2: state.setupToken is held in memory only.
+  // Previously persisted to `${dataDir}/setup-token.txt`; that file is
+  // now ephemeral. The setup wizard server owns the token lifetime
+  // directly. Cross-process callers should use `${XDG_RUNTIME_DIR}`
+  // (tmpfs) rather than the stash data dir.
 
   return bootstrapState;
-}
-
-export function writeSetupTokenFile(state: ControlPlaneState): void {
-  const tokenPath = `${state.dataDir}/setup-token.txt`;
-  const setupComplete = isSetupComplete(state.vaultDir);
-
-  if (setupComplete) {
-    try { unlinkSync(tokenPath); } catch { /* already gone */ }
-  } else {
-    mkdirSync(state.dataDir, { recursive: true });
-    writeFileSync(tokenPath, state.setupToken + "\n", { mode: 0o600 });
-  }
 }
 
 
@@ -249,6 +241,15 @@ export async function applyUpgrade(
   try {
     const { backupDir, updated } = await refreshCoreAssets();
     const restarted = await reconcileCore(state, {});
+
+    // Phase 1 of #388: migrate existing `${OP_HOME}/vault/user/*.env` from
+    // pre-0.11 layouts into the shared akm `vault:user` store. The .env
+    // file is left in place — it remains the runtime source of truth for
+    // Compose env_file consumption until Phase 2 swaps the mount.
+    // Mirror is best-effort; the upgrade succeeds (or fails) on its own
+    // merits, and any akm-side error is captured by the mirror's logger.
+    await mirrorUserVaultToAkm(state).catch(() => { /* best-effort */ });
+
     return { backupDir, updated, restarted };
   } finally {
     releaseLock(lock);

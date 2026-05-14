@@ -23,7 +23,8 @@ import {
   readStackEnv,
 } from "./secrets.js";
 import { ensureOpenCodeSystemConfig, ensureMemoryDir } from "./core-assets.js";
-import { createState, writeSetupTokenFile } from "./lifecycle.js";
+import { createState } from "./lifecycle.js";
+import { mirrorUserVaultToAkm } from "./akm-vault.js";
 import { writeStackSpec } from "./stack-spec.js";
 import type { StackSpec, StackSpecCapabilities } from "./stack-spec.js";
 import { writeCapabilityVars } from "./spec-to-env.js";
@@ -234,7 +235,11 @@ export async function performSetup(
 
   state.adminToken = security.adminToken;
   state.assistantToken = readStackEnv(state.vaultDir).OP_ASSISTANT_TOKEN ?? state.assistantToken;
-  writeSetupTokenFile(state);
+  // Phase 1 of #388 §B.2: state.setupToken is held in memory only.
+  // Previously persisted to `${dataDir}/setup-token.txt`; that file
+  // is now ephemeral. The setup wizard server owns the token lifetime
+  // directly. Future callers needing cross-process access should use
+  // `${XDG_RUNTIME_DIR}` (tmpfs) rather than the stash data dir.
 
   // Write stack.yml and OP_CAP_* capability vars to stack.env
   writeMemoryAndStackConfigs({ version: 2, capabilities }, state);
@@ -247,6 +252,28 @@ export async function performSetup(
   const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
   const systemBase = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
   writeFileSync(systemEnvPath, mergeEnvContent(systemBase, { OP_SETUP_COMPLETE: "true" }), { mode: 0o600 });
+
+  // Phase 1 of #388: mirror vault/user/user.env into the shared akm
+  // vault (vault:user) so the assistant and admin UI can browse/edit
+  // user secrets through the same `akm vault` interface used for every
+  // other shared secret. The .env file remains the runtime source of
+  // truth for Docker Compose env_file consumption. Best-effort: a
+  // failure here must never block setup completion.
+  try {
+    const mirror = await mirrorUserVaultToAkm(state);
+    if (mirror.skipped) {
+      logger.debug("vault:user mirror skipped", { reason: mirror.reason });
+    } else {
+      logger.info("vault:user mirror complete", {
+        written: mirror.written.length,
+        unchanged: mirror.unchanged.length,
+      });
+    }
+  } catch (err) {
+    logger.warn("vault:user mirror failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   logger.info("setup complete", { capabilityCount: connections.length });
   return { ok: true };
