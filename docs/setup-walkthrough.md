@@ -81,7 +81,7 @@ Examples include local and cloud options (depending on what is available). Voice
 You configure stack options before install:
 
 - **Channels** (chat is always on)
-- **Services** (for example admin, openviking)
+- **Services** (for example admin)
 - Memory user ID
 - Optional in-stack Ollama toggle when relevant
 

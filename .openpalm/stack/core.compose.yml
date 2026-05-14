@@ -35,7 +35,7 @@ services:
   # ── Memory ─────────────────────────────────────────────────────────
   # Lightweight Bun.js wrapper around @openpalm/memory with sqlite-vec.
   # Configuration uses ${VAR} placeholders in memory.conf.json, expanded
-  # at startup from the environment variables below (same pattern as OpenViking).
+  # at startup from the environment variables below.
   memory:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/memory:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
@@ -122,7 +122,6 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       XAI_API_KEY: ${XAI_API_KEY:-}
       HF_TOKEN: ${HF_TOKEN:-}
-      OPENVIKING_API_KEY: ${OPENVIKING_API_KEY:-}
       MCP_API_KEY: ${MCP_API_KEY:-}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       SYSTEM_LLM_PROVIDER: ${OP_CAP_LLM_PROVIDER:-}

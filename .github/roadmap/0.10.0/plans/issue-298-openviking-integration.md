@@ -1,5 +1,7 @@
 # Issue #298 - Add OpenViking integration
 
+> **Superseded by [#382](https://github.com/itlackey/openpalm/issues/382):** The OpenViking integration has been cancelled. Knowledge browsing is now covered by `akm wiki` + `akm search --type knowledge` once the AKM migration lands. This plan is preserved for historical context only; do not implement anything described here.
+
 ## Scope
 
 - Deliver only roadmap Phases 1A-1D for 0.10.0: OpenViking as an optional component, assistant-side Viking tools, session-memory hooks, and token-budget utilities.

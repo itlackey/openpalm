@@ -11,7 +11,6 @@ import {
   isMemoryAvailable,
   searchMemories,
 } from './memory-lib.ts';
-import { isVikingConfigured, vikingFetch, vikingResponseHasError } from '../tools/viking-lib.ts';
 
 export type HookIO = Record<string, unknown>;
 
@@ -40,9 +39,6 @@ export type SessionState = {
   contextInjected: boolean;
   commandSignals: Set<string>;
   outcomes: ToolOutcome[];
-  vikingSessionId: string | null;
-  vikingAvailable: boolean;
-  vikingSessionCommitted: boolean;
 };
 
 const CODE_TOOL_PREFIXES = ['bash', 'view', 'rg', 'glob', 'task', 'search_code_subagent', 'apply_patch', 'read_bash', 'write_bash', 'code_review'];
@@ -233,35 +229,6 @@ export async function maybeSynthesizeCrossSessions(
   await Promise.all(recurring.map((signal) =>
     addMemoryIfNovel(signal, { category: 'procedural', source: 'consolidation', confidence: 0.6, keywords: ['cross-session', 'synthesis', state.appId], project: state.project, created_by_hook: 'session.created' }, getIdentity(state, 'personal'))));
   return { reset: true };
-}
-
-// ── Viking ──────────────────────────────────────────────────────────────
-
-export async function initViking(state: SessionState, sessionId: string, client: unknown): Promise<string[]> {
-  if (!isVikingConfigured()) return [];
-  state.vikingAvailable = true;
-  const context: string[] = [];
-  try {
-    const [sessionResult, memoriesAbstract, resourcesAbstract] = await Promise.all([
-      vikingFetch('/sessions', { method: 'POST', body: '{}' }),
-      vikingFetch('/content/abstract?uri=' + encodeURIComponent('viking://agent/memories/')),
-      vikingFetch('/content/abstract?uri=' + encodeURIComponent('viking://resources/')),
-    ]);
-    if (!vikingResponseHasError(sessionResult)) {
-      state.vikingSessionId = JSON.parse(sessionResult)?.result?.session_id ?? null;
-    }
-    for (const [label, raw] of [['Viking Agent Memories', memoriesAbstract], ['Viking Resources', resourcesAbstract]] as const) {
-      if (!vikingResponseHasError(raw)) {
-        const parsed = JSON.parse(raw);
-        if (parsed?.result) context.push(`### ${label}\n${parsed.result}`);
-      }
-    }
-  } catch (err) {
-    await log(client, 'warn', 'Viking initialization failed', { sessionId, error: err instanceof Error ? err.message : String(err) });
-    state.vikingAvailable = false;
-  }
-  if (state.vikingAvailable && !state.vikingSessionId) state.vikingAvailable = false;
-  return context;
 }
 
 // ── Session Context Retrieval ───────────────────────────────────────────

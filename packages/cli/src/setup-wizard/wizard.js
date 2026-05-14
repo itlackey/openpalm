@@ -341,7 +341,6 @@ function buildPayload() {
   var addons = {};
   if (ollamaEnabled) addons.ollama = true;
   if (serviceSelection.admin) addons.admin = true;
-  if (serviceSelection.openviking) addons.openviking = true;
 
   // Add channel addons and extract channel credentials
   var channelCredentials = {};
