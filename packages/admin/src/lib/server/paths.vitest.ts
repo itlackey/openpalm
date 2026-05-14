@@ -52,6 +52,9 @@ describe("ensureHomeDirs", () => {
     expect(existsSync(join(dataDir, "memory"))).toBe(true);
     expect(existsSync(join(dataDir, "guardian"))).toBe(true);
     expect(existsSync(join(dataDir, "stash"))).toBe(true);
+    expect(existsSync(join(dataDir, "guardian-stash"))).toBe(true);
+    expect(existsSync(join(dataDir, "akm-cache"))).toBe(true);
+    expect(existsSync(join(dataDir, "guardian-cache"))).toBe(true);
 
     // stack/ subtrees
     expect(existsSync(join(home, "stack"))).toBe(true);

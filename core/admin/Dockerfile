@@ -56,6 +56,8 @@ FROM node:22-trixie-slim
 # ── Pinned installer versions ────────────────────────────────────────────────
 ARG OPENCODE_VERSION=1.2.24
 ARG BUN_VERSION=bun-v1.3.10
+# akm-cli — Agent Kit Manager, installed globally via bun add -g.
+ARG AKM_CLI_VERSION=^0.8.0-rc1
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends curl ca-certificates gnupg git unzip bash pass \
@@ -76,6 +78,15 @@ RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
 ENV BUN_INSTALL=/home/node/.bun
 ENV BUN_INSTALL_CACHE_DIR=/home/node/.cache/bun/install
 ENV PATH="/home/node/.bun/bin:/usr/local/bin:$PATH"
+
+# Install akm-cli globally so admin shares the same stash CLI as assistant
+# and guardian. BUN_INSTALL=/usr/local for this RUN keeps the global install
+# tree at /usr/local/install/global so the unprivileged node user can exec
+# the binary without needing write access to its $HOME.
+RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
+    && chmod -R a+rX /usr/local/install/global \
+    && chmod 755 /usr/local/bin/akm \
+    && akm --version
 
 WORKDIR /app
 COPY --from=build /workspace/packages/admin/build ./build

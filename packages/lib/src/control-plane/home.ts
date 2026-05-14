@@ -103,7 +103,17 @@ export function ensureHomeDirs(): void {
     `${home}/data/admin`,
     `${home}/data/memory`,
     `${home}/data/guardian`,
+    // Shared akm stash — bind-mounted rw into admin and assistant containers.
     `${home}/data/stash`,
+    // Operator-only akm stash — bind-mounted rw into guardian only.
+    // TODO: per `docs/technical/core-principles.md` filesystem convention this
+    // should live at `data/guardian/stash/` (service-named subtree). Deferred —
+    // rename touches compose, install tests, and upgrade scripts in lockstep.
+    `${home}/data/guardian-stash`,
+    // Persistent akm caches (registry index, downloaded artifacts).
+    // Bind-mounted so `akm` registry fetches survive container recreate.
+    `${home}/data/akm-cache`,
+    `${home}/data/guardian-cache`,
 
     // stack/ — compose files
     `${home}/stack`,

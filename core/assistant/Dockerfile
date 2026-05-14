@@ -23,7 +23,8 @@ FROM node:22-trixie-slim
 # Bump these ARGs when upgrading; keeps curl|bash installs reproducible.
 ARG OPENCODE_VERSION=1.3.3
 ARG BUN_VERSION=bun-v1.3.10
-ARG AGENTIKIT_VERSION=v0.2.2
+# akm-cli — Agent Kit Manager, installed globally via bun add -g.
+ARG AKM_CLI_VERSION=^0.8.0-rc1
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu sudo socat unzip \
@@ -110,9 +111,9 @@ RUN set -e; \
 RUN HOME=/usr/local curl -fsSL https://opencode.ai/install | HOME=/usr/local bash -s -- --no-modify-path --version "$OPENCODE_VERSION"
 ENV PATH="/home/opencode/.local/bin:/usr/local/.opencode/bin:$PATH"
 
-RUN mkdir -p /home/opencode/.cache /work /home/opencode/.akm \
-    && chmod 755 /home/opencode /home/opencode/.cache /home/opencode/.akm \
-    && chown opencode:opencode /home/opencode /home/opencode/.cache /work /home/opencode/.akm \
+RUN mkdir -p /home/opencode/.cache /work /akm \
+    && chmod 755 /home/opencode /home/opencode/.cache /akm \
+    && chown opencode:opencode /home/opencode /home/opencode/.cache /work /akm \
     && sed -i 's@^#\?PasswordAuthentication .*@PasswordAuthentication no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
@@ -137,12 +138,15 @@ ENV BUN_INSTALL=/home/opencode/.bun
 ENV BUN_INSTALL_CACHE_DIR=/home/opencode/.cache/bun/install
 ENV PATH="/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:$PATH"
 
-# Install agentikit CLI; fix permissions so bun-compiled binary is readable
-# by unprivileged users (bun-compiled binaries read themselves at runtime).
-# The install script downloads a checksums.txt from the release and verifies
-# the binary SHA-256 before installing.
-RUN curl -fsSL https://raw.githubusercontent.com/itlackey/agentikit/"$AGENTIKIT_VERSION"/install.sh | bash -s -- "$AGENTIKIT_VERSION" \
-    && chmod 755 /usr/local/bin/akm
+# Install akm-cli globally so every container shares the same stash CLI.
+# BUN_INSTALL=/usr/local for this RUN puts the global install tree at
+# /usr/local/install/global so the unprivileged opencode user (which the
+# entrypoint drops to via gosu) can exec the binary without writing to its
+# own $HOME. chmod -R a+rX makes the tree world-readable.
+RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
+    && chmod -R a+rX /usr/local/install/global \
+    && chmod 755 /usr/local/bin/akm \
+    && akm --version
 
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
 RUN mkdir -p /usr/local/etc/varlock && mkdir -p /etc/opencode

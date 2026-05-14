@@ -21,6 +21,16 @@ FROM oven/bun:1.3-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
+# Install akm-cli for shared stash, vault, and skill management.
+# Pinned via build arg so the install step is reproducible. Install globally
+# into /usr/local so the unprivileged bun user (set with USER below) can
+# execute it without writing to its own $HOME.
+ARG AKM_CLI_VERSION=^0.8.0-rc1
+RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
+    && chmod -R a+rX /usr/local/install/global \
+    && chmod 755 /usr/local/bin/akm \
+    && akm --version
+
 WORKDIR /app
 # Bun workspace symlinks are not available inside Docker builds, so we copy the
 # raw TypeScript source of @openpalm/channels-sdk directly into node_modules.
