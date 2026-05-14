@@ -117,7 +117,6 @@ mkdir -p \
 	"$DEV_ROOT/stack" "$DEV_ROOT/stack/addons" \
 	"$VAULT_DIR" "$VAULT_DIR/stack" "$VAULT_DIR/user" \
 	"$DATA_DIR/assistant/.config/opencode" \
-	"$DATA_DIR/admin/.varlock" \
 	"$DATA_DIR/guardian" \
 	"$DATA_DIR/openviking" \
 	"$DATA_DIR/automations" "$DATA_DIR/ollama" "$DATA_DIR/stash" "$DATA_DIR/guardian-stash" \

@@ -2,14 +2,29 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 /**
  * In-house redactor. Returns `'***REDACTED***'` when `key` names something
- * that looks like a secret (token, key, secret, password). Replaces the
- * value-masking that varlock used to do for log output. Keys are matched
- * case-insensitively against the suffix patterns we care about.
+ * that looks like a secret (token, key, secret, password, hmac). Replaces
+ * the value-masking that varlock used to do for log output.
+ *
+ * The pattern matches the bare word at the start or end of the key, using
+ * underscore as a word boundary. This avoids substring false positives
+ * like `MONKEY` (contains `_KEY`? no, but the un-anchored pattern used
+ * to match the substring `KEY` even without an underscore) and
+ * `PACKET_SIZE` (does not actually contain `_KEY`, but the regex engine
+ * with un-anchored alternations was sloppy enough to invite future bugs).
+ *
+ * Examples:
+ *   OP_ADMIN_TOKEN     → sensitive (suffix _TOKEN)
+ *   CHANNEL_API_KEY    → sensitive (suffix _KEY)
+ *   CHANNEL_FOO_HMAC   → sensitive (suffix _HMAC)
+ *   HMAC_KEY           → sensitive (prefix HMAC_, suffix _KEY)
+ *   TOKEN              → sensitive (bare word)
+ *   MONKEY             → NOT sensitive
+ *   PACKET_SIZE        → NOT sensitive
  *
  * The same predicate is exported as {@link isSensitiveEnvKey} so callers
  * that need to mask only part of a larger payload can short-circuit.
  */
-const REDACT_PATTERN = /_TOKEN|_SECRET|_KEY|_PASSWORD/i;
+const REDACT_PATTERN = /(?:^|_)(?:TOKEN|SECRET|KEY|PASSWORD|HMAC)(?:_|$)/i;
 
 export function isSensitiveEnvKey(key: string): boolean {
   return REDACT_PATTERN.test(key);
@@ -22,7 +37,10 @@ export function redactValue(key: string, value: string): string {
 /**
  * Recursively walk a structured `extra` payload and mask every value whose
  * own key (or the nearest enclosing object key) matches the sensitivity
- * pattern. The original object is not mutated.
+ * pattern. The original object is not mutated. Sensitive values of any
+ * primitive type (string, number, boolean) are replaced wholesale; nested
+ * objects under a sensitive key are still walked so that callers can mix
+ * structured payloads with redacted leaves.
  */
 export function redactExtra<T>(extra: T): T {
   if (extra == null || typeof extra !== 'object') return extra;
@@ -31,8 +49,17 @@ export function redactExtra<T>(extra: T): T {
   }
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(extra as Record<string, unknown>)) {
-    if (isSensitiveEnvKey(k) && typeof v === 'string') {
-      out[k] = '***REDACTED***';
+    if (isSensitiveEnvKey(k)) {
+      // Redact any non-null primitive (string/number/boolean) under a
+      // sensitive key. Nested objects keep being walked so a structured
+      // payload like { credentials: { ... } } still gets per-field masking.
+      if (v && typeof v === 'object') {
+        out[k] = redactExtra(v);
+      } else if (v == null) {
+        out[k] = v;
+      } else {
+        out[k] = '***REDACTED***';
+      }
     } else if (v && typeof v === 'object') {
       out[k] = redactExtra(v);
     } else {

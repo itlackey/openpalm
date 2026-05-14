@@ -57,7 +57,7 @@ If you'd rather set things up by hand with raw `docker compose`, see the [setup 
 - **Add channels** — Enable Discord, Slack, API, or web chat by copying an addon into your stack.
 - **Extend the assistant** — Drop in OpenCode plugins, custom tools, or let the assistant find what they need with built-in [AKM](https://github.com/itlackey/akm) support.
 - **Schedule automations** — Add YAML files to run recurring tasks on a cron schedule.
-- **Protect your secrets** — [Varlock](https://varlock.dev) optionally scans for leaks, validates env files, and redacts secrets from assistant output.
+- **Protect your secrets** — Built-in log redactor masks token/secret/key/password/HMAC values from every service log; `openpalm scan` lists which sensitive slots are populated in your vault env files.
 
 ## How it works
 
