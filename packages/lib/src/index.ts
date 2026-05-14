@@ -144,7 +144,6 @@ export {
   ensureOpenCodeSystemConfig,
   refreshCoreAssets,
   seedStashAssets,
-  STASH_SEED_PATHS,
 } from "./control-plane/core-assets.js";
 
 // ── Configuration Persistence ────────────────────────────────────────────

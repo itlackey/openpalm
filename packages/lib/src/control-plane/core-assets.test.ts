@@ -1,8 +1,8 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { seedStashAssets, STASH_SEED_PATHS } from "./core-assets.js";
+import { seedStashAssets } from "./core-assets.js";
 
 describe("seedStashAssets", () => {
   let homeDir: string;
@@ -16,6 +16,12 @@ describe("seedStashAssets", () => {
 
   afterEach(() => {
     process.env.OP_HOME = originalHome;
+    // Restore writable mode in case a test chmod'd the stash dir.
+    try {
+      chmodSync(join(homeDir, "data", "stash"), 0o755);
+    } catch {
+      // ignore — dir may not exist
+    }
     rmSync(homeDir, { recursive: true, force: true });
   });
 
@@ -61,23 +67,38 @@ describe("seedStashAssets", () => {
   it("returns an empty list when called with no seeds", () => {
     expect(seedStashAssets({})).toEqual([]);
   });
-});
 
-describe("STASH_SEED_PATHS", () => {
-  it("declares every built-in stash seed shipped with OpenPalm", () => {
-    // The manifest is the single source of truth used by the CLI's
-    // embedded record and the admin's refresh logic. Lock the current
-    // shape so accidental removals/renames surface in review.
-    const refs = STASH_SEED_PATHS.map((s) => s.stashRelPath).sort();
-    expect(refs).toEqual(["skills/config-diagnostics/SKILL.md"]);
+  it("rejects seed keys that escape the stash directory", () => {
+    // Path-traversal guard: ../ sequences in keys must throw rather than
+    // silently writing outside data/stash/.
+    expect(() =>
+      seedStashAssets({ "../../etc/cron.d/evil": "owned\n" }),
+    ).toThrow(/escapes stash dir/);
+
+    // Confirm the malicious payload was NOT written anywhere relative to
+    // the temp home.
+    expect(existsSync(join(homeDir, "..", "..", "etc", "cron.d", "evil"))).toBe(false);
   });
 
-  it("uses .openpalm/stash-seeds/ as the upstream source for every entry", () => {
-    for (const seed of STASH_SEED_PATHS) {
-      expect(seed.githubFilename.startsWith(".openpalm/stash-seeds/")).toBe(true);
-      // The on-disk seed path under the repo should end with the same
-      // relative tail as the stash target, so a single rename moves both.
-      expect(seed.githubFilename.endsWith(seed.stashRelPath)).toBe(true);
+  it("rejects seed keys that traverse through the stash dir back out", () => {
+    expect(() =>
+      seedStashAssets({ "skills/../../../escape.md": "x" }),
+    ).toThrow(/escapes stash dir/);
+  });
+
+  it("surfaces errors when the stash directory is read-only", () => {
+    // Skip when running as root (chmod is a no-op for the superuser).
+    const uid = process.getuid?.();
+    if (uid === 0) return;
+
+    const stashDir = join(homeDir, "data", "stash");
+    chmodSync(stashDir, 0o555);
+    try {
+      expect(() =>
+        seedStashAssets({ "skills/readonly/SKILL.md": "nope\n" }),
+      ).toThrow();
+    } finally {
+      chmodSync(stashDir, 0o755);
     }
   });
 });

@@ -364,14 +364,10 @@ describe('install flow — tier 1 (file validation)', () => {
     mkdirSync(join(homeDir, 'data/stash'), { recursive: true });
 
     const { seedEmbeddedAssets, EMBEDDED_STASH_SEEDS } = await import('./lib/embedded-assets.ts');
-    const { STASH_SEED_PATHS } = await import('@openpalm/lib');
 
-    // The embedded record and the lib-side path manifest must list the
-    // same set of stash assets — otherwise the CLI would ship a seed the
-    // admin can't refresh, or vice versa.
-    expect(Object.keys(EMBEDDED_STASH_SEEDS).sort())
-      .toEqual(STASH_SEED_PATHS.map((p: { stashRelPath: string }) => p.stashRelPath).sort());
-
+    // Every embedded seed must land on disk with non-empty content and a
+    // YAML frontmatter intro — proves the Bun text import survived the
+    // build and `seedEmbeddedAssets` wired the seeder up correctly.
     seedEmbeddedAssets(homeDir);
 
     for (const relPath of Object.keys(EMBEDDED_STASH_SEEDS)) {
@@ -379,17 +375,21 @@ describe('install flow — tier 1 (file validation)', () => {
       expect(existsSync(seeded)).toBe(true);
       const content = readFileSync(seeded, 'utf-8');
       expect(content.length).toBeGreaterThan(0);
-      // Sanity-check that the YAML frontmatter survived the embed.
       expect(content.startsWith('---')).toBe(true);
     }
 
-    // Sanity-check the specific skill referenced by system.md.
-    const skill = readFileSync(
-      join(homeDir, 'data/stash/skills/config-diagnostics/SKILL.md'),
-      'utf-8',
-    );
+    // The system prompt references this specific skill — assert both
+    // file existence AND content shape so we know the install actually
+    // ran seedEmbeddedAssets end-to-end (not just created the dir).
+    const skillPath = join(homeDir, 'data/stash/skills/config-diagnostics/SKILL.md');
+    expect(existsSync(skillPath)).toBe(true);
+    const skill = readFileSync(skillPath, 'utf-8');
     expect(skill).toContain('name: config-diagnostics');
     expect(skill).toContain('type: skill');
+    // Body must exist after the closing frontmatter delimiter.
+    const frontmatterEnd = skill.indexOf('\n---', 3);
+    expect(frontmatterEnd).toBeGreaterThan(0);
+    expect(skill.slice(frontmatterEnd + 4).trim().length).toBeGreaterThan(0);
   }, 30_000);
 
   tier1Test('seedEmbeddedAssets preserves user edits to seeded stash assets', async () => {

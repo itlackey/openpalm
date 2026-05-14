@@ -13,7 +13,7 @@
  * the CLI install command (which downloads assets before calling setup).
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { resolveDataDir, resolveVaultDir, resolveOpenPalmHome, resolveBackupsDir } from "./home.js";
 import { createLogger } from "../logger.js";
 import { sha256 } from "./crypto.js";
@@ -84,21 +84,6 @@ export function ensureOpenCodeSystemConfig(): void {
 // ── Shared akm stash (skills / commands / agents) ────────────────────
 
 /**
- * Relative paths (under `data/stash/`) of every stash asset that ships
- * with OpenPalm. Source of truth lives in `.openpalm/stash-seeds/`.
- *
- * Enumerated in code (rather than discovered at runtime) so the seed set
- * is reviewable and the CLI's embedded record cannot silently drift away
- * from what `refreshCoreAssets()` would download.
- */
-export const STASH_SEED_PATHS: { stashRelPath: string; githubFilename: string }[] = [
-  {
-    stashRelPath: "skills/config-diagnostics/SKILL.md",
-    githubFilename: ".openpalm/stash-seeds/skills/config-diagnostics/SKILL.md",
-  },
-];
-
-/**
  * Seed the shared akm stash with built-in skills / commands / agents.
  *
  * Idempotent: **never overwrites** an existing file — user edits to a
@@ -108,16 +93,27 @@ export const STASH_SEED_PATHS: { stashRelPath: string; githubFilename: string }[
  * Returns the list of stash-relative paths that were actually written
  * (empty on re-run when every seed already exists on disk).
  *
- * `seeds` is a map of stash-relative path → file content. The CLI
- * embeds seeds at build time and passes the embedded record directly;
- * the admin builds the same record from fetched content if it ever
- * needs to re-seed at runtime.
+ * `seeds` is a map of stash-relative path → file content. Keys MUST be
+ * forward-slash relative paths that stay inside `data/stash/`; any key
+ * that escapes the stash directory after canonicalization throws,
+ * preventing a malicious caller from writing arbitrary files. Source of
+ * truth for the seeded files lives at `.openpalm/stash-seeds/` in the
+ * repo; the CLI embeds them at build time and passes the embedded
+ * record directly.
  */
 export function seedStashAssets(seeds: Record<string, string>): string[] {
   const stashDir = `${resolveDataDir()}/stash`;
+  const normalizedStash = resolve(stashDir);
   const written: string[] = [];
   for (const [relPath, content] of Object.entries(seeds)) {
     const targetPath = join(stashDir, relPath);
+    const normalizedTarget = resolve(targetPath);
+    if (
+      normalizedTarget !== normalizedStash &&
+      !normalizedTarget.startsWith(normalizedStash + sep)
+    ) {
+      throw new Error(`Seed path escapes stash dir: ${relPath}`);
+    }
     if (existsSync(targetPath)) continue;
     mkdirSync(dirname(targetPath), { recursive: true });
     writeFileSync(targetPath, content);
@@ -131,6 +127,8 @@ export function seedStashAssets(seeds: Record<string, string>): string[] {
 const REPO = "itlackey/openpalm";
 const VERSION = process.env.OP_ASSET_VERSION ?? "main";
 
+// Stash seeds are intentionally NOT in this list — they use seedStashAssets()
+// which never overwrites existing files (user edits win on re-install).
 const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
   { relPath: "stack/core.compose.yml", githubFilename: ".openpalm/stack/core.compose.yml" },
   { relPath: "data/assistant/opencode.jsonc", githubFilename: "core/assistant/opencode/opencode.jsonc" },

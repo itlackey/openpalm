@@ -62,8 +62,8 @@ import assistantDailyBriefingAutomation from "../../../../.openpalm/registry/aut
 // ── Stash seeds (built-in skills / commands / agents) ────────────────
 // Each seed lives in .openpalm/stash-seeds/<type>/<...> and is copied
 // into ${OP_HOME}/data/stash/<type>/<...> on first install. Source of
-// truth for the path → file mapping is `STASH_SEED_PATHS` in
-// `@openpalm/lib`. Keep that constant and this block in sync.
+// truth for the on-disk seed files is `.openpalm/stash-seeds/` in the
+// repo — add new seeds by dropping a file there and importing it below.
 // @ts-ignore — Bun text import
 import configDiagnosticsSkill from "../../../../.openpalm/stash-seeds/skills/config-diagnostics/SKILL.md" with { type: "text" };
 
