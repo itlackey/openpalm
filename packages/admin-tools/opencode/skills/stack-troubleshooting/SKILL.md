@@ -14,32 +14,17 @@ This skill provides a systematic approach to diagnosing and resolving issues in 
 
 ## Overview
 
-### Stack Services
+For the canonical service inventory, network topology, and tool list,
+see the `openpalm-admin` skill — that is the single source of truth.
+This skill focuses on diagnosis flow.
 
-The OpenPalm stack runs two core services:
+Health endpoints used below:
 
-| Service | Role | Health endpoint |
-|---------|------|-----------------|
-| **assistant** | OpenCode runtime (no Docker socket). Hosts the scheduler co-process and the shared akm stash. | TCP check on port 3800 |
-| **guardian** | HMAC-verified message ingress, rate limiting, replay detection | http://localhost:3899/health |
-
-Optional addons (enabled by copying from the registry catalog into `stack/addons/`):
-| **admin** | Control plane API (Docker socket access via docker-socket-proxy) | http://localhost:3880/ |
-
-Persistent memory, lessons, skills, commands, and workflows live in the shared akm stash that the assistant and admin containers bind-mount from `~/.openpalm/data/stash/`.
-
-### Service Communication
-
-```
-External clients -> Guardian (HMAC/validate) -> Assistant -> akm stash (memories, skills, lessons)
-
-Assistant -> Admin API (stack operations, authenticated)
-Admin -> Docker Socket Proxy -> Docker daemon
-```
-
-Networks:
-- `assistant_net` — admin, assistant, guardian (internal communication)
-- `admin_docker_net` — admin, docker-socket-proxy only (isolated)
+| Service | Health endpoint |
+|---------|-----------------|
+| **assistant** | TCP check on port 3800 |
+| **guardian**  | http://localhost:3899/health |
+| **admin** (optional addon) | http://localhost:3880/ |
 
 ### Diagnostic Tools Available
 
@@ -104,7 +89,7 @@ Networks:
 
 ### "Memory / akm stash not working" (assistant cannot search or add memories)
 
-Memory is now served by the akm stash bind-mounted into the assistant container. There is no longer a separate memory service.
+Memory is served by the akm stash bind-mounted into the assistant container. There is no separate memory service.
 
 1. **Check the stash mount:** `admin-containers-inspect service=assistant` — is `/akm` mounted?
    - Missing -> the install/upgrade did not create the bind mount. Re-run `admin-lifecycle-update`.
@@ -114,7 +99,7 @@ Memory is now served by the akm stash bind-mounted into the assistant container.
    | Symptom | Cause | Fix |
    |---------|-------|-----|
    | `AKM_STASH_DIR not writable` | Bind mount owned by wrong UID | Re-run `admin-lifecycle-update`; verify `OP_UID`/`OP_GID` match the host. |
-   | `index out of date` | Stash files added outside akm | Ask the assistant to run `akm index` to rebuild the local index. |
+   | `index out of date` | Stash files added outside akm | Ask the assistant to run `akm improve` to rebuild the local index. |
    | Embedding errors | Configured embedding provider unavailable | Check `admin-providers-local` and the `OP_CAP_EMBEDDINGS_*` env vars on the assistant. |
 
 3. **Inspect the stash directly:** the shared root is `~/.openpalm/data/stash/` on the host. Use `admin-logs service=assistant` to look for errors emitted by the akm CLI.

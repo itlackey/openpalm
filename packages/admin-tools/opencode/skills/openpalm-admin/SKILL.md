@@ -13,14 +13,18 @@ OpenPalm runs as a Docker Compose stack with two core services plus optional add
 
 | Service | Role |
 |---------|------|
-| **assistant** | This OpenCode instance (you). Hosts the scheduler co-process and the shared akm stash. |
-| **guardian** | Message routing with HMAC verification |
+| **assistant** | This OpenCode instance (you). Hosts the scheduler co-process. |
+| **guardian** | Message routing with HMAC verification, replay protection, and rate limiting. |
 
-Persistent memory, skills, commands, lessons, and workflows live in the shared akm stash that is bind-mounted into the assistant and admin containers — there is no longer a dedicated memory service.
+Persistent memory, skills, commands, lessons, and workflows live in the shared akm stash bind-mounted into the assistant and admin containers from `~/.openpalm/data/stash/`. There is no dedicated memory service.
 
 Optional addons (enabled by copying from the registry catalog into `stack/addons/`):
-| **admin** | Control plane API (protects Docker socket) |
-| **chat** | OpenAI-compatible chat channel |
+
+| Addon | Role |
+|-------|------|
+| **admin** | Control plane API (talks to Docker via docker-socket-proxy). |
+| **chat** | OpenAI-compatible chat channel. |
+| **api**, **discord**, **slack**, **voice** | Additional channel adapters. |
 
 ## Available Tool Groups
 

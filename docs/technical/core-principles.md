@@ -4,7 +4,7 @@
 
 The foundation of the OpenPalm stack is simply a set of conventions used to manage Docker compose overlay files, .env files, and configuration files related to specific services in the stack. That is it. That is what the entire stack is built upon.
 
-There are three core containers, the guardian, the assistant, and the memory. These containers vary in complexity but are designed to do one thing each. The guardian and the assistant are OpenCode servers, and the memory is the shared agentic memory server. Automation scheduling runs as a Bun co-process inside the assistant container (no separate service, no network port).
+There are two core containers, the guardian and the assistant. These containers are designed to do one thing each. Both are OpenCode-based services. The assistant uses the akm CLI (with a stash bind-mounted from the host) for persistent memory, skills, lessons, and knowledge — there is no separate memory service. Automation scheduling runs as a Bun co-process inside the assistant container (no separate service, no network port).
 
 The stack allows for three primary extension points.
 
@@ -42,13 +42,12 @@ For (9), OpenCode supports a custom config directory via `OPENCODE_CONFIG_DIR`; 
 - Admin provides:
   - Way to manage addons by copying the compose file to the stack if needed and providing an easy way to provide values or assign secrets to the addons required environment variables.
   - Editor for automation configuration files, simple yaml editor/form and copy from registry function.
-  - Editor the memory configuration file.
   - Editor to manage global capabilities
   - Editor to manage account/assistant details
     - Assistant name, email, persona
     - Admin and assistant tokens
-  - Editor for addon on configurations/environments
-    - This is for the standard .env.schema and any specific configuration files needed by the addon. ie. memory configuration json, etc.
+  - Editor for addon configurations/environments
+    - This is for the standard .env.schema and any specific configuration files needed by the addon.
 
 All of this functionality exists to simplify managing files under the OP_HOME directory. The base line is managing the compose and schema files under OP_HOME/stack, the .env files under OP_HOME/vault, configuration/automation files under OP_HOME/config, possibly service specific files under OP_HOME/data. These tasks should be achievable by a technical user without the tooling by manually editing files and placing them in the proper locations.
 
@@ -58,7 +57,7 @@ These are hard constraints that must never be violated during development. See a
 
 1. **Host CLI or admin is the orchestrator.** The host CLI manages Docker Compose directly on the host. The admin container, when present, provides a web UI and API for remote/assistant-driven stack operations via docker-socket-proxy. Only one orchestrator should manage compose operations at a time. The Docker socket is never exposed to any other container. The admin mounts all of `$OP_HOME` because it manages config, vault, stack assembly, data, and logs — mounting individual subdirectories would be fragile and break when new paths are added. Its blast radius is already constrained by docker-socket-proxy (filtered API), token-authenticated API endpoints, and localhost-only binding.
 2. **Guardian-only ingress.** All channel traffic enters through the guardian, which enforces HMAC verification, timestamp skew rejection, replay detection, and rate limiting. No channel may communicate directly with the assistant. Channel secrets are distributed during addon install (see § Addon secret lifecycle below).
-3. **Assistant isolation.** The assistant has no Docker socket and no broad host filesystem access beyond its designated mounts: `config/ -> /etc/openpalm`, `config/assistant/ -> /home/opencode/.config/opencode`, `vault/stack/auth.json`, `vault/user/ -> /etc/vault/` (directory, rw), `data/assistant/`, `data/stash/`, `data/workspace/`, and `logs/opencode/`. When the admin service is present, the assistant interacts with the stack through the admin API. When admin is absent, assistant stack-management tools are unavailable — the assistant operates with memory tools only.
+3. **Assistant isolation.** The assistant has no Docker socket and no broad host filesystem access beyond its designated mounts: `config/ -> /etc/openpalm`, `config/assistant/ -> /home/opencode/.config/opencode`, `vault/stack/auth.json`, `vault/user/ -> /etc/vault/` (directory, rw), `data/assistant/`, `data/stash/ -> /akm` (shared akm stash), `data/akm-cache/ -> /akm-cache`, `data/workspace/`, and `logs/opencode/`. When the admin service is present, the assistant interacts with the stack through the admin API. When admin is absent, assistant stack-management tools are unavailable — the assistant operates with akm-only access to memory and knowledge.
 4. **Host only by default.** Admin interfaces, dashboards, and channels are host-restricted by default. Nothing is exposed to the network or internet without explicit user opt-in. The admin UI stores the admin token in localStorage; this is acceptable because the admin is LAN-first and never publicly exposed. The threat model for XSS-based token theft requires the attacker to already have network access to the host or LAN, at which point they likely have broader access. Session expiry and httpOnly cookies would add implementation complexity without meaningful security improvement under this threat model. **OpenCode auth (`OPENCODE_AUTH`) is disabled by default** because all host port bindings default to `127.0.0.1` (loopback-only) and the guardian communicates with the assistant over Docker's `assistant_net` network without credentials. If a user changes `OP_ASSISTANT_BIND_ADDRESS` to `0.0.0.0`, they must also set `OP_OPENCODE_PASSWORD` in `stack.env` and enable `OPENCODE_AUTH` — the compose comments document this requirement.
 5. **Scheduler access is scoped to automation needs.** The scheduler co-process inherits the assistant container's environment (including `OP_ASSISTANT_TOKEN`) and mounts `config/` (read-only) and `data/scheduler/` (read-write, for trigger sentinels) plus the shared `logs/` volume. It calls the admin API with the assistant token for `api` actions and `http://localhost:4096` for `assistant` actions. There is no dedicated scheduler↔admin token anymore.
 
@@ -117,7 +116,7 @@ Subtrees:
 
 Env schemas and example files live in the repo at `vault/` (committed, no secret values).
 
-**Rule:** no container except admin may mount `vault/` as a directory. The assistant receives only a bind mount of `vault/user/` (the directory, rw). Guardian and memory receive secrets exclusively through `${VAR}` substitution at container creation time and optional service-specific managed env files located under `vault/stack/services/<service-name>/`. The scheduler co-process inherits the assistant container's environment (and therefore the same vault posture). Note: the `vault/stack/services/` directory is not shipped in the `.openpalm/` bundle -- it is created at runtime by `dev-setup.sh` (dev) or the CLI installer (production) when service-specific managed env files are needed.
+**Rule:** no container except admin may mount `vault/` as a directory. The assistant receives only a bind mount of `vault/user/` (the directory, rw). Guardian and channels receive secrets exclusively through `${VAR}` substitution at container creation time and optional service-specific managed env files located under `vault/stack/services/<service-name>/`. The scheduler co-process inherits the assistant container's environment (and therefore the same vault posture). Note: the `vault/stack/services/` directory is not shipped in the `.openpalm/` bundle -- it is created at runtime by `dev-setup.sh` (dev) or the CLI installer (production) when service-specific managed env files are needed.
 
 ### 3) Data (service-managed, durable)
 
@@ -126,9 +125,9 @@ Env schemas and example files live in the repo at `vault/` (committed, no secret
 
 **Rule:** every persistence-requiring container path is a bind mount into this tree.
 
-Subtrees: `assistant/`, `admin/`, `memory/`, `guardian/`, `stash/` (AKM assets), `workspace/` (shared working directory).
+Subtrees: `assistant/`, `admin/`, `guardian/`, `stash/` (shared akm stash for assistant + admin), `akm-cache/` (regenerable akm registry artifacts), `workspace/` (shared working directory), `scheduler/` (trigger sentinels).
 
-**Write policy:** Each container may write only to its own designated `data/` subdirectories via its mounts. The assistant writes to `data/assistant/`, `data/stash/`, and `data/workspace/`; the memory service writes to `data/memory/`; and so on. No container may access another service's data directories. Stack-wide data operations (creating new data subtrees, managing other services' data) require the admin API.
+**Write policy:** Each container may write only to its own designated `data/` subdirectories via its mounts. The assistant writes to `data/assistant/`, `data/stash/`, `data/akm-cache/`, `data/workspace/`, and `data/scheduler/`; the admin shares `data/stash/` and `data/akm-cache/` with the assistant; the guardian writes to `data/guardian/` (and its private stash); and so on. No container may access another service's data directories. Stack-wide data operations (creating new data subtrees, managing other services' data) require the admin API.
 
 ### 4) Logs (audit and debug)
 
@@ -212,7 +211,6 @@ Host-exposed OpenPalm services default to a small localhost-friendly port set. C
 | **Admin** | 8100 | `127.0.0.1:3880` | Admin UI + API |
 | **Admin OpenCode** | 3881 | `127.0.0.1:3881` | Admin-side OpenCode runtime |
 | **Guardian** | 8080 | (internal only) | HMAC verification + rate limiting |
-| **Memory** | 8765 | `127.0.0.1:3898` | Memory service API |
 | **Chat addon** | 8181 | `127.0.0.1:3820` | OpenAI-compatible chat edge |
 | **API addon** | 8182 | `127.0.0.1:3821` | OpenAI/Anthropic-compatible API edge |
 
@@ -268,7 +266,7 @@ Both sides must have the same secret value. Rotating a channel secret requires u
 
 Addon overlays may extend core services by injecting environment variables or volumes into core service definitions via Compose multi-file merge. This is standard Docker Compose merge behavior — no custom merging logic is involved. ([Docker Documentation][3])
 
-**Known limitation:** the validate-in-place step checks that the assembled compose config is syntactically valid and that Varlock schemas pass, but it does not detect semantic conflicts between addons — for example, two addons setting different values for the same environment variable on a core service. In such cases, Compose's last-file-wins merge order determines the final value. Users installing multiple addons that target the same core service env vars should review the assembled config.
+**Known limitation:** the validate-in-place step checks that the assembled compose config is syntactically valid, but it does not detect semantic conflicts between addons — for example, two addons setting different values for the same environment variable on a core service. In such cases, Compose's last-file-wins merge order determines the final value. Users installing multiple addons that target the same core service env vars should review the assembled config.
 
 ---
 
@@ -290,7 +288,7 @@ On health check failure after deploy, the snapshot is automatically restored and
 - **Add an addon:** drop `compose.yml` into `stack/addons/<n>/`, then rerun `docker compose up -d` with that addon included. ([Docker Documentation][3])
 - **Add an extension (user):** copy OpenCode assets into `config/assistant/` following OpenCode's directory structure. ([OpenCode][1])
 - **Core precedence:** core extensions live in `/etc/opencode` inside the assistant container and are loaded via `OPENCODE_CONFIG_DIR`. ([OpenCode][1])
-- **Apply changes:** the CLI or admin validates proposed changes (Varlock schema, compose config) before writing anything. If validation passes, a snapshot of current live files is saved to `~/.cache/openpalm/rollback/` (see § Rollback scope), changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution. Compose is normally invoked with `vault/stack/stack.env` (system-managed: all config, secrets, and capabilities), `vault/user/user.env` (optional user extensions), and `vault/stack/guardian.env` (channel HMAC secrets; created by CLI installer, not shipped -- compose marks it `required: false`). Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` and `vault/user/user.env`; it may seed missing defaults, do targeted updates, and update system-managed files in `stack/` and `vault/stack/`.
+- **Apply changes:** the CLI or admin validates proposed changes (compose config) before writing anything. If validation passes, a snapshot of current live files is saved to `~/.cache/openpalm/rollback/` (see § Rollback scope), changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution. Compose is normally invoked with `vault/stack/stack.env` (system-managed: all config, secrets, and capabilities), `vault/user/user.env` (optional user extensions), and `vault/stack/guardian.env` (channel HMAC secrets; created by CLI installer, not shipped -- compose marks it `required: false`). Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` and `vault/user/user.env`; it may seed missing defaults, do targeted updates, and update system-managed files in `stack/` and `vault/stack/`.
 - **Addon overlays may extend core services.** Addon compose files can inject environment variables or volumes into core service definitions via Compose multi-file merge. For example, an addon can add environment entries to the assistant service by defining an `assistant:` block with additional `environment:` entries in its overlay. This is standard Docker Compose merge behavior — no custom merging logic is involved. See § Addon conflict detection for limitations.
 - **API key changes require restart:** provider API keys now live in `vault/stack/stack.env` and are injected into containers via compose `${VAR}` substitution at startup. Changing keys requires a stack restart (`docker compose up -d`) for the new values to take effect.
 - **Rollback:** `openpalm rollback` restores the most recent snapshot from `~/.cache/openpalm/rollback/` and restarts the stack. Available both as an automated response to failed deploys and as a manual escape hatch. See § Rollback scope for snapshot contents.

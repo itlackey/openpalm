@@ -11,7 +11,7 @@
 
 OpenPalm is a self-hosted personal AI platform built on Docker Compose and OpenCode. It manages a stack of containers orchestrated by the host CLI or an optional admin web UI.
 
-Four core containers: **guardian** (HMAC ingress), **assistant** (OpenCode runtime), **memory** (vector-backed agentic memory), **scheduler** (cron/automations). Channels (chat, API, Discord, Slack, voice) and services (Ollama, etc.) are added as addon compose overlays.
+Two core containers: **guardian** (HMAC ingress) and **assistant** (OpenCode runtime — also hosts the scheduler co-process and uses the akm CLI for memory/skills/lessons via a shared akm stash). Channels (chat, API, Discord, Slack, voice) and services (Ollama, etc.) are added as addon compose overlays.
 
 Repo layout convention:
 - `packages/*` — app/package source workspaces
@@ -33,13 +33,12 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 - **CLI** (`packages/cli/`) — Host-side orchestrator. Manages Docker Compose directly. Serves setup wizard during install. Self-sufficient without admin.
 - **Admin** (`packages/admin/`) — SvelteKit app: optional operator web UI + API. Uses Docker socket via docker-socket-proxy. Behind `profiles: ["admin"]` compose profile.
 - **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic.
-- **Assistant** (`core/assistant/`) — OpenCode runtime with tools/skills. No Docker socket. When admin is present, calls Admin API for stack operations.
-- **Memory** (`packages/memory/`, `core/memory/`) — Bun-based memory service with sqlite-vec. Provides vector-backed agentic memory.
-- **Scheduler** (`packages/scheduler/`) — Lightweight Bun sidecar: sole automation engine. Runs cron jobs (http, shell, assistant, api actions). Reads enabled automation files from `config/automations/`.
+- **Assistant** (`core/assistant/`) — OpenCode runtime with tools/skills. No Docker socket. When admin is present, calls Admin API for stack operations. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/data/stash/`.
+- **Scheduler** (`packages/scheduler/`) — Lightweight Bun co-process started inside the assistant container by `core/assistant/entrypoint.sh`. No network port. Runs cron jobs (http, shell, assistant, api actions) from `config/automations/`.
 - **Channel runtime** (`core/channel/`) — Unified `channel` image build and startup entrypoint.
-- **Channel adapters** (`packages/channel-chat/`, `packages/channel-api/`, `packages/channel-discord/`, `packages/channel-slack/`, `packages/channel-voice/`) — Translate external protocols into signed guardian messages.
+- **Channel adapters** (`packages/channel-api/`, `packages/channel-discord/`, `packages/channel-slack/`, `packages/channel-voice/`) — Translate external protocols into signed guardian messages.
 - **Channels SDK** (`packages/channels-sdk/`) — Shared SDK for channel adapters: signing, assistant client, base classes.
-- **Assistant-tools** (`packages/assistant-tools/`) — Memory tools and session hooks for the assistant. No admin dependency.
+- **Assistant-tools** (`packages/assistant-tools/`) — `load_vault` and `health-check` tools for the assistant. No admin dependency. Memory/knowledge access comes from the `akm-opencode` plugin.
 - **Admin-tools** (`packages/admin-tools/`) — Admin API tools for the assistant. Only loaded when admin is present.
 - **Stack** (`.openpalm/stack/`) — Repo-shipped Docker Compose foundation. Contains the core compose file only. Runtime enabled addons live under `~/.openpalm/stack/addons/`.
 
@@ -58,17 +57,15 @@ npm run check                                       # svelte-check + TypeScript
 # Guardian (Bun)
 cd core/guardian && bun install && bun run src/server.ts
 
-# Channel Chat (Bun)
-cd packages/channel-chat && bun install && bun run src/index.ts
-
 # Root shortcuts
 bun run admin:dev        # Runs admin dev from root
 bun run admin:build      # Builds admin from root
 bun run admin:check      # svelte-check + TypeScript for admin
 bun run guardian:dev     # Runs guardian server
-bun run channel:chat:dev    # Runs chat channel dev server
 bun run channel:api:dev     # Runs api channel dev server
 bun run channel:discord:dev # Runs discord channel dev server
+bun run channel:slack:dev   # Runs slack channel dev server
+bun run channel:voice:dev   # Runs voice channel dev server
 
 # Dev environment setup
 ./scripts/dev-setup.sh --seed-env       # Creates .dev/ dirs, seeds configs
@@ -164,7 +161,7 @@ Read these before making significant changes. They are the authoritative sources
 ### Language & Runtime
 
 - **TypeScript** everywhere (`"strict": true`, no `any` for untrusted data)
-- **Bun** for guardian, channels, memory, and scheduler; **Node/Vite** for admin (SvelteKit + `adapter-node`)
+- **Bun** for guardian, channels, and the scheduler co-process; **Node/Vite** for admin (SvelteKit + `adapter-node`)
 - All packages use `"type": "module"` (ES modules only)
 
 ### Imports
@@ -239,7 +236,7 @@ Full detail in [`docs/technical/core-principles.md`](docs/technical/core-princip
 - **Host CLI or admin is the orchestrator.** CLI manages Docker Compose directly on the host. Admin (optional) provides a web UI via docker-socket-proxy.
 - **Shared control-plane library (`@openpalm/lib`) is the single source of truth.** All portable control-plane logic lives in `packages/lib/`. CLI, admin, and scheduler all import from this package. Never duplicate control-plane logic in a consumer.
 - **Guardian-only ingress.** All channel traffic must enter through the guardian (HMAC, replay protection, rate limiting).
-- **Assistant isolation.** Assistant has no Docker socket. When admin is present, it calls the admin API. When admin is absent, only memory tools are available.
+- **Assistant isolation.** Assistant has no Docker socket. When admin is present, it calls the admin API. When admin is absent, only the akm-backed memory/knowledge tools are available.
 - **LAN-first by default.** Nothing is publicly exposed without explicit user opt-in.
 - **Add a channel** by installing from the registry or dropping an addon compose file into `stack/addons/<name>/` — no code changes.
 - **No shell interpolation.** Docker commands use `execFile` with argument arrays, never shell strings.
@@ -257,7 +254,7 @@ All state lives under `~/.openpalm/` (configurable via `OP_HOME`):
 | `vault/user/` | User | User-managed secrets: `user.env` (LLM keys, owner info) |
 | `vault/stack/` | Admin | System-managed secrets: `stack.env` (admin token, HMAC, paths) |
 | `stack/` | System | Live Docker Compose assembly: `core.compose.yml` + addon overlays |
-| `data/` | Services | Persistent data: assistant, admin, memory, guardian |
+| `data/` | Services | Persistent data: assistant, admin, guardian, shared akm `stash/` |
 | `logs/` | Services | Audit and debug logs |
 | `backups/` | System | Durable upgrade backup snapshots |
 | `~/.cache/openpalm/` | System | Ephemeral: rollback snapshots |
@@ -304,9 +301,9 @@ Before submitting any change:
 | `packages/scheduler/src/server.ts` | Scheduler sidecar entry point |
 | `core/guardian/src/server.ts` | HMAC-signed message guardian |
 | `packages/channels-sdk/src/logger.ts` | Shared logger (createLogger factory) |
-| `.openpalm/stack/core.compose.yml` | Core service definitions (4 services) |
+| `.openpalm/stack/core.compose.yml` | Core service definitions (assistant + guardian) |
 | `.openpalm/registry/` | Repo catalog for available addons and automations |
-| `packages/assistant-tools/AGENTS.md` | Assistant persona and operational guidelines |
-| `packages/assistant-tools/src/index.ts` | Memory tools plugin |
+| `packages/assistant-tools/AGENTS.md` | Contributor pointer for the assistant-tools package |
+| `packages/assistant-tools/src/index.ts` | Assistant tools plugin (`load_vault`, `health-check`) |
 | `packages/admin-tools/src/index.ts` | Admin tools plugin |
 | `.opencode/opencode.json` | OpenCode project configuration |
