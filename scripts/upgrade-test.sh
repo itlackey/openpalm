@@ -17,9 +17,8 @@
 #      - The wizard will pull remaining images and start all services
 #
 #   3. Seed some user state:
-#      - Add a memory via the assistant or memory API
 #      - Install a channel
-#      - Note the ADMIN_TOKEN and MEMORY_USER_ID in vault/user/user.env
+#      - Note the ADMIN_TOKEN in vault/user/user.env
 #
 #   4. Upgrade to the target version:
 #        curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh \
@@ -28,7 +27,6 @@
 #   5. Verify:
 #      - vault/user/user.env is NOT overwritten (ADMIN_TOKEN, custom keys preserved)
 #      - vault/stack/stack.env is NOT overwritten (paths, UID/GID preserved)
-#      - Memory database still exists and responds
 #      - All services come back healthy
 #      - Admin token still authenticates
 #      - No errors in container logs
@@ -100,7 +98,6 @@ OP_STACK_HOME="${OP_HOME}/stack"
 PROJECT_NAME="openpalm-upgrade-test"
 ADMIN_PORT=8101
 ADMIN_URL="http://127.0.0.1:${ADMIN_PORT}"
-MEMORY_PORT=8766
 OP_ADMIN_TOKEN="upgrade-test-token"
 
 # ── Colors / Output ──────────────────────────────────────────────────
@@ -171,7 +168,7 @@ wait_for_admin() {
 wait_for_healthy() {
   local timeout="${1:-180}"
   local elapsed=0
-  local services="admin memory assistant guardian docker-socket-proxy"
+  local services="admin assistant guardian docker-socket-proxy"
 
   while [[ $elapsed -lt $timeout ]]; do
     local all_up=true
@@ -216,7 +213,6 @@ mkdir -p \
   "${OP_CONFIG_HOME}/assistant/skills" \
   "${OP_CONFIG_HOME}/automations" \
   "${VAULT_HOME}/user" "${VAULT_HOME}/stack" \
-  "${OP_DATA_HOME}/memory" \
   "${OP_DATA_HOME}/assistant" \
   "${OP_DATA_HOME}/guardian" \
   "${OP_DATA_HOME}/stash" \
@@ -241,7 +237,6 @@ cat >"${VAULT_HOME}/user/user.env" <<EOF
 OP_ADMIN_TOKEN=${OP_ADMIN_TOKEN}
 OPENAI_API_KEY=
 OPENAI_BASE_URL=
-MEMORY_USER_ID=upgrade-test-user
 # Custom user key that must survive upgrade
 MY_CUSTOM_KEY=my-custom-value-12345
 EOF
@@ -270,9 +265,6 @@ services:
   admin:
     ports:
       - "127.0.0.1:${ADMIN_PORT}:8100"
-  memory:
-    ports:
-      - "127.0.0.1:${MEMORY_PORT}:8765"
 EOF
 
 # Seed opencode config
@@ -281,43 +273,6 @@ cat >"${OP_CONFIG_HOME}/assistant/opencode.json" <<'EOF'
   "$schema": "https://opencode.ai/config.json"
 }
 EOF
-
-# Seed memory config
-cat >"${OP_DATA_HOME}/memory/default_config.json" <<'MEMCFG'
-{
-  "mem0": {
-    "llm": {
-      "provider": "ollama",
-      "config": {
-        "model": "qwen2.5-coder:3b",
-        "temperature": 0.1,
-        "max_tokens": 2000,
-        "api_key": "not-needed",
-        "openai_base_url": "http://host.docker.internal:11434"
-      }
-    },
-    "embedder": {
-      "provider": "ollama",
-      "config": {
-        "model": "nomic-embed-text:latest",
-        "api_key": "not-needed",
-        "openai_base_url": "http://host.docker.internal:11434"
-      }
-    },
-    "vector_store": {
-      "provider": "sqlite-vec",
-      "config": {
-        "collection_name": "memory",
-        "db_path": "/data/memory.db",
-        "embedding_model_dims": 768
-      }
-    }
-  },
-  "memory": {
-    "custom_instructions": ""
-  }
-}
-MEMCFG
 
 pass "Directory tree and config files created"
 
@@ -407,29 +362,12 @@ if wait_for_healthy 180; then
   pass "All services healthy after initial install"
 else
   echo "  Some services not healthy, checking status..."
-  for svc in admin memory assistant guardian docker-socket-proxy; do
+  for svc in admin assistant guardian docker-socket-proxy; do
     status=$(docker inspect --format '{{.State.Health.Status}}' "${PROJECT_NAME}-${svc}-1" 2>/dev/null || echo "missing")
     echo "    ${svc}: ${status}"
   done
-  # Continue anyway — memory might not be healthy if Ollama models aren't available
+  # Continue anyway — some services may not be healthy without Ollama
   echo "  Continuing with available services..."
-fi
-
-# ── 2b: Seed a test memory via the memory API ────────────────────────
-
-echo "  Adding test memory via memory API..."
-MEMORY_ADD_RESULT=$(curl -sf -X POST "http://127.0.0.1:${MEMORY_PORT}/api/v1/memories/" \
-  -H "content-type: application/json" \
-  -d '{
-    "messages": [{"role":"user","content":"My favorite programming language is Rust and I have been coding for 15 years."}],
-    "user_id": "upgrade-test-user"
-  }' 2>&1 || echo '{"error":"failed"}')
-
-if echo "$MEMORY_ADD_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if 'results' in d or 'id' in d else 1)" 2>/dev/null; then
-  pass "Test memory seeded via memory API"
-else
-  echo "  Memory API response: $MEMORY_ADD_RESULT"
-  echo "  (Memory seeding may fail if Ollama models are not available — this is ok for config-only tests)"
 fi
 
 # ── 2c: Write a custom user file in stack/ ───────────────────────────
@@ -450,13 +388,6 @@ echo "  user.env checksum:    ${SECRETS_CHECKSUM_BEFORE}"
 # Checksum system.env
 STACK_ENV_CHECKSUM_BEFORE=$(sha256sum "${VAULT_HOME}/stack/stack.env" | awk '{print $1}')
 echo "  system.env checksum:  ${STACK_ENV_CHECKSUM_BEFORE}"
-
-# Memory database size (if it exists)
-MEMORY_DB_SIZE_BEFORE=0
-if [[ -f "${OP_DATA_HOME}/memory/memory.db" ]]; then
-  MEMORY_DB_SIZE_BEFORE=$(stat --printf='%s' "${OP_DATA_HOME}/memory/memory.db" 2>/dev/null || echo "0")
-fi
-echo "  memory.db size:       ${MEMORY_DB_SIZE_BEFORE} bytes"
 
 # Record running services
 SERVICES_BEFORE=$(compose_cmd ps --format '{{.Service}}' 2>/dev/null | sort | tr '\n' ',' | sed 's/,$//')
@@ -495,7 +426,7 @@ mkdir -p \
   "${OP_CONFIG_HOME}/assistant" \
   "${OP_CONFIG_HOME}/automations" \
   "${VAULT_HOME}/user" "${VAULT_HOME}/stack" \
-  "${OP_DATA_HOME}" "${OP_DATA_HOME}/memory" \
+  "${OP_DATA_HOME}" \
   "${OP_DATA_HOME}/assistant" \
   "${OP_DATA_HOME}/guardian" \
   "${OP_DATA_HOME}/stash" \
@@ -549,7 +480,7 @@ if wait_for_healthy 180; then
   pass "All services healthy after upgrade"
 else
   echo "  Some services not healthy after upgrade..."
-  for svc in admin memory assistant guardian docker-socket-proxy; do
+  for svc in admin assistant guardian docker-socket-proxy; do
     status=$(docker inspect --format '{{.State.Health.Status}}' "${PROJECT_NAME}-${svc}-1" 2>/dev/null || echo "missing")
     echo "    ${svc}: ${status}"
   done
@@ -587,13 +518,6 @@ else
   fail "Custom user key lost (expected 'my-custom-value-12345', got '${CUSTOM_KEY_VALUE}')"
 fi
 
-MEMORY_USER_VALUE=$(grep "^MEMORY_USER_ID=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
-if [[ "$MEMORY_USER_VALUE" == "upgrade-test-user" ]]; then
-  pass "MEMORY_USER_ID preserved in user.env"
-else
-  fail "MEMORY_USER_ID changed (expected 'upgrade-test-user', got '${MEMORY_USER_VALUE}')"
-fi
-
 # ── 5b: vault/stack/stack.env unchanged ───────────────────────────────────
 echo ""
 echo "=== 5b: vault/stack/stack.env preservation ==="
@@ -608,43 +532,6 @@ else
   else
     fail "system.env was modified during upgrade (before: ${STACK_ENV_CHECKSUM_BEFORE}, after: ${STACK_ENV_CHECKSUM_AFTER})"
   fi
-fi
-
-# ── 5c: Memory database preserved ───────────────────────────────────
-echo ""
-echo "=== 5c: Memory data preservation ==="
-
-if [[ -f "${OP_DATA_HOME}/memory/memory.db" ]]; then
-  MEMORY_DB_SIZE_AFTER=$(stat --printf='%s' "${OP_DATA_HOME}/memory/memory.db" 2>/dev/null || echo "0")
-  if [[ "$MEMORY_DB_SIZE_AFTER" -ge "$MEMORY_DB_SIZE_BEFORE" && "$MEMORY_DB_SIZE_AFTER" -gt 0 ]]; then
-    pass "memory.db preserved (${MEMORY_DB_SIZE_BEFORE} -> ${MEMORY_DB_SIZE_AFTER} bytes)"
-  elif [[ "$MEMORY_DB_SIZE_BEFORE" -eq 0 && "$MEMORY_DB_SIZE_AFTER" -eq 0 ]]; then
-    pass "memory.db not created (Ollama models likely not available — config-only test)"
-  else
-    fail "memory.db shrunk (${MEMORY_DB_SIZE_BEFORE} -> ${MEMORY_DB_SIZE_AFTER} bytes)"
-  fi
-else
-  if [[ "$MEMORY_DB_SIZE_BEFORE" -eq 0 ]]; then
-    pass "memory.db not present (was not created before upgrade either)"
-  else
-    fail "memory.db was deleted during upgrade"
-  fi
-fi
-
-# Check memory API responds (if memory container is healthy)
-MEMORY_STATUS=$(docker inspect --format '{{.State.Health.Status}}' "${PROJECT_NAME}-memory-1" 2>/dev/null || echo "missing")
-if [[ "$MEMORY_STATUS" == "healthy" ]]; then
-  MEMORY_API_STATUS=$(curl -sf -o /dev/null -w '%{http_code}' \
-    -X POST "http://127.0.0.1:${MEMORY_PORT}/api/v1/memories/filter" \
-    -H 'content-type: application/json' \
-    -d '{"user_id": "upgrade-test-user"}' 2>/dev/null || echo "error")
-  if [[ "$MEMORY_API_STATUS" == "200" ]]; then
-    pass "Memory API responds after upgrade"
-  else
-    fail "Memory API returned HTTP ${MEMORY_API_STATUS} after upgrade"
-  fi
-else
-  echo "  Memory container not healthy (${MEMORY_STATUS}) — skipping API check"
 fi
 
 # ── 5d: Custom user files preserved ─────────────────────────────────
@@ -677,7 +564,7 @@ for svc in $HEALTHCHECK_SVCS; do
 done
 
 # Optional services (may not be healthy without Ollama)
-OPTIONAL_SVCS="memory assistant guardian"
+OPTIONAL_SVCS="assistant guardian"
 for svc in $OPTIONAL_SVCS; do
   status=$(docker inspect --format '{{.State.Health.Status}}' "${PROJECT_NAME}-${svc}-1" 2>/dev/null || echo "missing")
   if [[ "$status" == "healthy" ]]; then
@@ -727,7 +614,7 @@ fi
 
 # Check for container restarts (CrashLoopBackOff indicator)
 RESTART_COUNT=0
-for svc in admin memory assistant guardian docker-socket-proxy; do
+for svc in admin assistant guardian docker-socket-proxy; do
   restarts=$(docker inspect --format '{{.RestartCount}}' "${PROJECT_NAME}-${svc}-1" 2>/dev/null || echo "0")
   if [[ "$restarts" -gt 2 ]]; then
     fail "${svc} restarted ${restarts} times (possible crash loop)"

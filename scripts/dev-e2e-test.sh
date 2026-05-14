@@ -8,8 +8,7 @@
 #   2. No root-owned files in .dev/
 #   3. stack.env has correct values
 #   4. Assistant container has correct env vars
-#   5. Memory user is provisioned
-#   6. Setup is marked complete
+#   5. Setup is marked complete
 #
 # Usage:
 #   ./scripts/dev-e2e-test.sh [--skip-build]
@@ -47,7 +46,6 @@ dev_compose() {
 		-f .dev/stack/addons/admin/compose.yml \
 		-f compose.dev.yml \
 		--env-file .dev/vault/stack/stack.env \
-		--env-file .dev/vault/stack/services/memory/managed.env \
 		--env-file .dev/vault/user/user.env \
 		--env-file .dev/vault/stack/guardian.env \
 		--project-name openpalm "$@"
@@ -85,9 +83,6 @@ mkdir -p .dev/vault/user .dev/vault/stack
 echo "# User extension file (empty placeholder for custom vars)" >.dev/vault/user/user.env
 
 # Data — remove everything except models (HF cache)
-rm -f .dev/data/memory/default_config.json
-rm -f .dev/data/memory/memory.db
-rm -f .dev/data/memory/memory.py
 rm -f .dev/data/local-models.json
 rm -f .dev/data/local-models.yml
 rm -rf .dev/data/backups
@@ -97,9 +92,7 @@ rm -f .dev/config/assistant/opencode.json
 # Config — remove generated compose so dev-setup seeds a fresh one
 rm -f .dev/stack/core.compose.yml
 
-# Root-owned data from containers (qdrant, opencode logs, apprise)
-docker run --rm -v "$ROOT_DIR/.dev/data/memory:/c" alpine sh -c \
-	"rm -rf /c/qdrant" 2>/dev/null || true
+# Root-owned data from containers (opencode logs, apprise)
 docker run --rm -v "$ROOT_DIR/.dev/data/opencode:/c" alpine sh -c \
 	"find /c -user root -delete" 2>/dev/null || true
 docker run --rm -v "$ROOT_DIR/.dev/config/assistant:/c" alpine sh -c \
@@ -138,7 +131,7 @@ sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/vault/stack/st
 sed -i 's/^\(export \)\{0,1\}OP_ADMIN_TOKEN=.*/\1OP_ADMIN_TOKEN=/' .dev/vault/stack/stack.env
 
 # Use a dev-only image tag so the wizard's pull step doesn't overwrite locally
-# built images with remote ones (e.g. an older Python-based memory:latest).
+# built images with remote ones.
 sed -i 's/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=dev/' .dev/vault/stack/stack.env
 
 # Remove stack.yml so the wizard creates a fresh one (verifies Step 7 writes it)
@@ -275,7 +268,6 @@ const result = await performSetup({
   capabilities: {
     llm: 'ollama/qwen2.5-coder:3b',
     embeddings: { provider: 'ollama', model: 'nomic-embed-text:latest', dims: 768 },
-    memory: { userId: 'node', customInstructions: '' },
     slm: 'ollama/qwen2.5-coder:3b',
   },
   security: { adminToken: 'dev-admin-token' },
@@ -321,7 +313,7 @@ echo ""
 echo "=== Step 8: Wait for all containers healthy ==="
 
 # Poll until all services are ready (max 120s)
-HEALTHCHECK_SVCS="admin memory assistant guardian docker-socket-proxy"
+HEALTHCHECK_SVCS="admin assistant guardian docker-socket-proxy"
 MAX_WAIT=120
 ELAPSED=0
 while [ $ELAPSED -lt $MAX_WAIT ]; do
@@ -389,8 +381,7 @@ if [ "$STACK_ADMIN_TOKEN" = "dev-admin-token" ]; then
 else
 	fail "OP_ADMIN_TOKEN expected 'dev-admin-token', got '$STACK_ADMIN_TOKEN'"
 fi
-# Config vars (SYSTEM_LLM_*, EMBEDDING_*, MEMORY_USER_ID) are now in
-# stack.yml capabilities and vault/stack/services/memory/managed.env,
+# Config vars (SYSTEM_LLM_*, EMBEDDING_*) live in stack.yml capabilities,
 # NOT in user.env. Verify they are NOT in user.env.
 if grep -qE 'SYSTEM_LLM_PROVIDER=' .dev/vault/user/user.env 2>/dev/null; then
 	fail "SYSTEM_LLM_PROVIDER should NOT be in user.env (lives in stack.yml now)"
@@ -408,19 +399,6 @@ if [ -f "$STACK_YAML" ]; then
 	fi
 else
 	fail "stack.yml not found"
-fi
-
-# Verify managed.env exists with correct values
-MANAGED_ENV=".dev/vault/stack/services/memory/managed.env"
-if [ -f "$MANAGED_ENV" ]; then
-	managed_llm=$(grep 'SYSTEM_LLM_PROVIDER=' "$MANAGED_ENV" | cut -d= -f2-)
-	if [ "$managed_llm" = "ollama" ]; then
-		pass "managed.env has SYSTEM_LLM_PROVIDER=ollama"
-	else
-		fail "managed.env SYSTEM_LLM_PROVIDER expected 'ollama', got '$managed_llm'"
-	fi
-else
-	fail "managed.env not found at $MANAGED_ENV"
 fi
 
 # Verify auth.json exists
@@ -455,11 +433,6 @@ check_container_env() {
 
 # OP_ADMIN_TOKEN is in guardian compose, not assistant. (The scheduler
 # co-process inside the assistant uses OP_ASSISTANT_TOKEN, not OP_ADMIN_TOKEN.)
-# MEMORY_USER_ID for the assistant comes from user.env (default_user) —
-# the actual userId 'node' is in managed.env and used by the memory service.
-# Verify the assistant has the memory auth token (proves compose env substitution works).
-MEMORY_AUTH_TOKEN_EXPECTED=$(grep -E '^(export )?OP_MEMORY_TOKEN=' "$ROOT_DIR/.dev/vault/stack/stack.env" 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
-check_container_env "MEMORY_AUTH_TOKEN" "$MEMORY_AUTH_TOKEN_EXPECTED"
 
 # OPENAI_BASE_URL should end with /v1
 BASE_URL=""
@@ -483,33 +456,6 @@ if [ -n "$LMSTUDIO_URL" ]; then
 	pass "assistant LMSTUDIO_BASE_URL=$LMSTUDIO_URL"
 else
 	fail "assistant LMSTUDIO_BASE_URL is empty (needed for lmstudio/Ollama proxy)"
-fi
-
-# ── Step 12: Verify Memory user provisioned ──────────────────────
-echo ""
-echo "=== Step 12: Verify Memory user provisioned ==="
-
-MEMORY_AUTH_TOKEN=$(grep -E '^(export )?OP_MEMORY_TOKEN=' "$ROOT_DIR/.dev/vault/stack/stack.env" 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
-
-# Check memory API is responding (curl from host since memory port is published)
-OM_STATUS="error"
-for attempt in 1 2 3 4 5 6; do
-	OM_STATUS=$(curl -sf -o /dev/null -w '%{http_code}' \
-		-X POST http://localhost:8765/api/v1/memories/filter \
-		-H "Authorization: Bearer $MEMORY_AUTH_TOKEN" \
-		-H 'content-type: application/json' \
-		-d '{"user_id": "node"}' 2>/dev/null || echo "error")
-	if [ "$OM_STATUS" = "200" ]; then
-		break
-	fi
-	echo "  Attempt $attempt: HTTP $OM_STATUS, retrying in 10s..."
-	sleep 10
-done
-
-if [ "$OM_STATUS" = "200" ]; then
-	pass "Memory user 'node' is reachable"
-else
-	fail "Memory not responding for user 'node' (HTTP $OM_STATUS)"
 fi
 
 # ── Step 13: Verify setup marked complete ────────────────────────────
@@ -547,16 +493,6 @@ if echo "$MESSAGE_RESPONSE" | grep -q '"text":"ok"'; then
 	pass "Assistant message pipeline returned expected response"
 else
 	fail "Assistant message pipeline did not return the expected response"
-fi
-
-# ── Step 15: Verify memory SYSTEM_LLM_BASE_URL env ───────────────────
-echo ""
-echo "=== Step 15: Verify memory container env ==="
-OM_BASE_URL=$(docker exec openpalm-memory-1 printenv SYSTEM_LLM_BASE_URL 2>/dev/null || echo "")
-if [ -n "$OM_BASE_URL" ]; then
-	pass "memory SYSTEM_LLM_BASE_URL=$OM_BASE_URL"
-else
-	fail "memory SYSTEM_LLM_BASE_URL is empty"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────

@@ -44,7 +44,6 @@ dev_compose() {
 		-f .dev/stack/addons/admin/compose.yml \
 		-f compose.dev.yml \
 		--env-file .dev/vault/stack/stack.env \
-		--env-file .dev/vault/stack/services/memory/managed.env \
 		--env-file .dev/vault/user/user.env \
 		--env-file .dev/vault/stack/guardian.env \
 		--project-name openpalm "$@"
@@ -63,14 +62,6 @@ ensure_admin_build() {
 		echo "Building admin..."
 		bun run admin:build
 	fi
-}
-
-load_memory_token() {
-	MEMORY_AUTH_TOKEN=""
-	if [[ -f .dev/vault/stack/stack.env ]]; then
-		MEMORY_AUTH_TOKEN=$(grep -E '^OP_MEMORY_TOKEN=' .dev/vault/stack/stack.env | cut -d= -f2- || echo "")
-	fi
-	export MEMORY_AUTH_TOKEN
 }
 
 rebuild_stack() {
@@ -93,7 +84,7 @@ rebuild_stack() {
 	echo "Waiting for all services to be healthy..."
 	for i in $(seq 1 30); do
 		local all_healthy=true
-		for svc in admin memory assistant guardian; do
+		for svc in admin assistant guardian; do
 			local status
 			status=$(docker inspect --format '{{.State.Health.Status}}' "openpalm-${svc}-1" 2>/dev/null || echo "missing")
 			if [[ "$status" != "healthy" ]]; then
@@ -145,13 +136,11 @@ case "$TIER" in
 5)
 	echo "=== Tier 5: Integration E2E (stack-dependent) ==="
 	rebuild_stack
-	load_memory_token
 	bun run admin:test:stack
 	;;
 6)
 	echo "=== Tier 6: Full stack E2E incl. LLM pipeline ==="
 	rebuild_stack
-	load_memory_token
 	bun run admin:test:llm
 	;;
 *)

@@ -8,7 +8,7 @@
 #   1. Production setup.sh (asset download, dir creation, secrets seeding)
 #   2. Admin container health (image pull, startup, HTTP 200)
 #   3. Setup wizard API (GET status, POST complete, deploy-status polling)
-#   4. All-service health checks (admin, memory, assistant, guardian)
+#   4. All-service health checks (admin, assistant, guardian)
 #   5. Chat channel message round-trip (if installed)
 #   6. Cleanup (or --keep to leave stack running)
 #
@@ -351,7 +351,6 @@ if [ "$NEED_SETUP" = "true" ]; then
       SETUP_PAYLOAD=$(cat <<PAYLOAD
 {
   "adminToken": "$ADMIN_TOKEN",
-  "memoryUserId": "release-test",
   "connections": [
     {
       "id": "ollama-local",
@@ -385,7 +384,6 @@ PAYLOAD
       SETUP_PAYLOAD=$(cat <<PAYLOAD
 {
   "adminToken": "$ADMIN_TOKEN",
-  "memoryUserId": "release-test",
   "connections": [
     {
       "id": "openai",
@@ -482,7 +480,7 @@ fi
 
 step "Wait for all services to be healthy"
 
-HEALTHCHECK_SVCS="admin memory assistant guardian docker-socket-proxy"
+HEALTHCHECK_SVCS="admin assistant guardian docker-socket-proxy"
 MAX_WAIT="$SERVICE_TIMEOUT"
 elapsed=0
 while [ $elapsed -lt "$MAX_WAIT" ]; do
@@ -565,7 +563,6 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
   }
 
   check_env_val "ADMIN_TOKEN" "$ADMIN_TOKEN"
-  check_env_val "MEMORY_USER_ID" "release-test"
   check_env_key "SYSTEM_LLM_PROVIDER"
   check_env_key "SYSTEM_LLM_MODEL"
 else
@@ -583,41 +580,6 @@ if [ -n "$AUTH_RESPONSE" ]; then
   pass "Authenticated admin API request succeeds"
 else
   fail "Authenticated admin API request failed"
-fi
-
-# ── Step 11: Verify memory service ────────────────────────────────────
-
-step "Verify memory service"
-
-MEMORY_URL="http://127.0.0.1:8765"
-MEMORY_OK=false
-for attempt in 1 2 3 4 5 6; do
-  MEMORY_STATUS=$(curl -sf -o /dev/null -w '%{http_code}' \
-    "$MEMORY_URL/health" 2>/dev/null || echo "error")
-  if [ "$MEMORY_STATUS" = "200" ]; then
-    MEMORY_OK=true
-    break
-  fi
-  echo "  Attempt $attempt: HTTP $MEMORY_STATUS, retrying in 10s..."
-  sleep 10
-done
-
-if [ "$MEMORY_OK" = "true" ]; then
-  pass "Memory service health endpoint responds"
-else
-  fail "Memory service not healthy (HTTP $MEMORY_STATUS)"
-fi
-
-# Verify memory user can be queried
-MEMORY_FILTER_STATUS=$(curl -sf -o /dev/null -w '%{http_code}' \
-  -X POST "$MEMORY_URL/api/v1/memories/filter" \
-  -H 'content-type: application/json' \
-  -d '{"user_id": "release-test"}' 2>/dev/null || echo "error")
-
-if [ "$MEMORY_FILTER_STATUS" = "200" ]; then
-  pass "Memory user filter API responds (HTTP 200)"
-else
-  fail "Memory user filter returned HTTP $MEMORY_FILTER_STATUS"
 fi
 
 # ── Step 12: Verify assistant container env ───────────────────────────
@@ -651,7 +613,6 @@ check_container_env() {
 }
 
 check_container_env "openpalm-assistant-1" "OP_ADMIN_TOKEN" "equals" "$ADMIN_TOKEN"
-check_container_env "openpalm-assistant-1" "MEMORY_USER_ID" "nonempty"
 check_container_env "openpalm-assistant-1" "OPENAI_BASE_URL" "endswith" "/v1"
 
 # ── Step 13: Test chat channel (if installed) ─────────────────────────
