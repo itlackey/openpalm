@@ -19,7 +19,7 @@ import {
   ensureOpenCodeConfig,
   PLAIN_CONFIG_KEYS
 } from "@openpalm/lib";
-import type { ControlPlaneState } from "./types.js";
+import type { ControlPlaneState } from "@openpalm/lib";
 import { makeTempDir, trackDir, registerCleanup, seedSecretsEnv } from "./test-helpers.js";
 
 registerCleanup();

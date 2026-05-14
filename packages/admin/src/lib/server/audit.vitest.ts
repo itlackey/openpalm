@@ -9,7 +9,7 @@ import {
 import { join } from "node:path";
 
 import { appendAudit } from "@openpalm/lib";
-import type { ControlPlaneState } from "./types.js";
+import type { ControlPlaneState } from "@openpalm/lib";
 import { makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();

@@ -4,10 +4,7 @@
 import type { RequestEvent } from "@sveltejs/kit";
 import { timingSafeEqual, createHash } from "node:crypto";
 import { getState } from "./state.js";
-import { normalizeCaller } from "@openpalm/lib";
-import {
-  type CallerType,
-} from "./types.js";
+import { normalizeCaller, type CallerType } from "@openpalm/lib";
 
 export function safeTokenCompare(a: string, b: string): boolean {
   if (typeof a !== "string" || typeof b !== "string") return false;

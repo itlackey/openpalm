@@ -27,7 +27,7 @@ const ANTHROPIC_MODELS = [
  *   to `vault/stack/stack.env` resolved against `configDir`.
  * - Anything else → returned verbatim (treated as a literal key value).
  */
-export function resolveApiKey(apiKeyRef: string, configDir: string): string {
+function resolveApiKey(apiKeyRef: string, configDir: string): string {
   if (!apiKeyRef) return "";
   if (!apiKeyRef.startsWith("env:")) return apiKeyRef;
 

@@ -5,7 +5,6 @@
  * CLI argument construction, and preflight checks.
  */
 import {
-  buildManagedServices,
   buildComposeCliArgs,
   buildComposeOptions,
   composePreflight,
@@ -15,23 +14,6 @@ import type { ControlPlaneState } from '@openpalm/lib';
 import { runDockerCompose } from './docker.ts';
 
 /**
- * Build the full list of docker compose CLI arguments for a given state.
- *
- * Returns: ['--project-name', 'openpalm', '-f', '...', '--env-file', '...']
- */
-export function fullComposeArgs(state: ControlPlaneState): string[] {
-  return buildComposeCliArgs(state);
-}
-
-/**
- * Build the list of managed service names (used for targeted `up` commands).
- * Uses compose-derived discovery when Docker is available.
- */
-export async function buildManagedServiceNames(state: ControlPlaneState): Promise<string[]> {
-  return buildManagedServices(state);
-}
-
-/**
  * Run a compose command that does NOT mutate state (e.g. logs, ps, status).
  * Skips preflight validation since these commands are read-only.
  */
@@ -39,7 +21,7 @@ export async function runComposeReadOnly(
   state: ControlPlaneState,
   composeSubArgs: string[],
 ): Promise<void> {
-  const composeArgs = fullComposeArgs(state);
+  const composeArgs = buildComposeCliArgs(state);
   await runDockerCompose([...composeArgs, ...composeSubArgs]);
 }
 
@@ -73,6 +55,6 @@ export async function runComposeWithPreflight(
     }
   }
 
-  const composeArgs = fullComposeArgs(state);
+  const composeArgs = buildComposeCliArgs(state);
   await runDockerCompose([...composeArgs, ...composeSubArgs]);
 }

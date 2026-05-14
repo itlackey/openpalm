@@ -21,22 +21,6 @@ import { sha256, randomHex } from "./crypto.js";
 
 const DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
 
-// ── Stack Config (stack.yml) ─────────────────────────────────────
-
-/**
- * Check whether Ollama is enabled via active stack/addons/ overlay.
- */
-export function isOllamaEnabled(state: ControlPlaneState): boolean {
-  return listEnabledAddonIds(state.homeDir).includes("ollama");
-}
-
-/**
- * Check whether admin is enabled via active stack/addons/ overlay.
- */
-export function isAdminEnabled(state: ControlPlaneState): boolean {
-  return listEnabledAddonIds(state.homeDir).includes("admin");
-}
-
 // ── Env File Management ──────────────────────────────────────────────
 
 /**

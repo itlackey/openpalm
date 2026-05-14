@@ -122,7 +122,7 @@ export async function runDockerComposeCapture(args: string[]): Promise<string> {
   return output;
 }
 
-// composeProjectArgs() removed — use fullComposeArgs(state) from cli-compose.ts instead.
+// composeProjectArgs() removed — use buildComposeCliArgs(state) from @openpalm/lib instead.
 // That function builds the correct file list including channel overlays and env files.
 
 // ensureOpenCodeConfig and ensureOpenCodeSystemConfig are imported from @openpalm/lib.

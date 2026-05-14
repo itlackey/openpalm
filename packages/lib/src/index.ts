@@ -75,9 +75,6 @@ export {
   resolveDataDir,
   resolveLogsDir,
   resolveCacheHome,
-  resolveRegistryDir,
-  resolveRegistryAddonsDir,
-  resolveRegistryAutomationsDir,
   ensureHomeDirs,
 } from "./control-plane/home.js";
 
@@ -120,7 +117,6 @@ export {
   discoverChannels,
   isAllowedService,
   isValidChannel,
-  isChannelAddon,
 } from "./control-plane/channels.js";
 
 // ── Provider Model Discovery ────────────────────────────────────────────
@@ -129,7 +125,6 @@ export type {
   ModelDiscoveryReason,
 } from "./control-plane/provider-models.js";
 export {
-  resolveApiKey,
   fetchProviderModels,
 } from "./control-plane/provider-models.js";
 
@@ -242,7 +237,6 @@ export {
   STACK_SPEC_FILENAME,
   writeStackSpec,
   readStackSpec,
-  updateCapability,
   parseCapabilityString,
   formatCapabilityString,
 } from "./control-plane/stack-spec.js";

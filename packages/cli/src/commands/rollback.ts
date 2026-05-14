@@ -1,7 +1,8 @@
 import { defineCommand } from 'citty';
 import { ensureValidState } from '../lib/cli-state.ts';
-import { buildManagedServiceNames, runComposeWithPreflight } from '../lib/cli-compose.ts';
+import { runComposeWithPreflight } from '../lib/cli-compose.ts';
 import {
+  buildManagedServices,
   createState,
   restoreSnapshot,
   hasSnapshot,
@@ -32,7 +33,7 @@ export default defineCommand({
     // Now validate and persist with the restored files in place
     const state = await ensureValidState();
 
-    const managedServices = await buildManagedServiceNames(state);
+    const managedServices = await buildManagedServices(state);
 
     await runComposeWithPreflight(state, [
       'up', '-d', '--remove-orphans', ...managedServices,

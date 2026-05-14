@@ -122,10 +122,7 @@ export async function containerAction(
 
 // ── Artifacts ───────────────────────────────────────────────────────────
 
-export async function fetchArtifacts(
-  token: string,
-  _type: 'compose'
-): Promise<string> {
+export async function fetchArtifacts(token: string): Promise<string> {
   const res = await requireOk(await request('GET', '/admin/artifacts/compose', token));
   return res.text();
 }
@@ -136,9 +133,18 @@ export async function applyChanges(token: string): Promise<void> {
   await requireOk(await request('POST', '/admin/update', token, {}));
 }
 
-export async function upgradeStack(token: string): Promise<string> {
+export type UpgradeStackResult = {
+  ok: boolean;
+  imageTag: string;
+  backupDir: string | null;
+  assetsUpdated: string[];
+  restarted: string[];
+  adminRecreateScheduled: boolean;
+};
+
+export async function upgradeStack(token: string): Promise<UpgradeStackResult> {
   const res = await requireOk(await request('POST', '/admin/upgrade', token, {}));
-  return res.text();
+  return (await res.json()) as UpgradeStackResult;
 }
 
 // ── Automations ─────────────────────────────────────────────────────────

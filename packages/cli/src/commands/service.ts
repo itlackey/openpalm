@@ -1,6 +1,7 @@
 import { defineCommand } from 'citty';
+import { buildManagedServices } from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
-import { buildManagedServiceNames, runComposeWithPreflight, runComposeReadOnly } from '../lib/cli-compose.ts';
+import { runComposeWithPreflight, runComposeReadOnly } from '../lib/cli-compose.ts';
 import { runLogsAction } from './logs.ts';
 import { runStartAction } from './start.ts';
 import { runStopAction } from './stop.ts';
@@ -42,7 +43,7 @@ const updateCmd = defineCommand({
   meta: { name: 'update', description: 'Pull latest images' },
   async run() {
     const state = await ensureValidState();
-    const managedServices = await buildManagedServiceNames(state);
+    const managedServices = await buildManagedServices(state);
     console.log('Pulling latest images...');
     await runComposeWithPreflight(state, ['pull', ...managedServices]);
     console.log('Recreating containers...');

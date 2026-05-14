@@ -259,7 +259,7 @@
     artifactsLoading = true;
     artifactType = type;
     try {
-      artifacts = await fetchArtifacts(token, type);
+      artifacts = await fetchArtifacts(token);
     } catch (e) {
       const err = e as { status?: number; message?: string };
       if (err.status === 401) {
@@ -364,7 +364,8 @@
     }
     upgradeLoading = true;
     try {
-      operationResult = await upgradeStack(token);
+      const result = await upgradeStack(token);
+      operationResult = `Upgrade complete (image: ${result.imageTag}). ${result.assetsUpdated.length} asset(s) updated, ${result.restarted.length} service(s) restarted.`;
       operationResultType = 'success';
     } catch (e) {
       const err = e as { status?: number; message?: string };

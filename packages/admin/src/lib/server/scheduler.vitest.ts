@@ -22,7 +22,7 @@ import {
   SCHEDULE_PRESETS,
   loadAutomations,
   executeAction
-} from "./scheduler.js";
+} from "@openpalm/lib";
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `openpalm-sched-test-${randomBytes(4).toString("hex")}`);
