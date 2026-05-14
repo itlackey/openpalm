@@ -121,7 +121,8 @@ mkdir -p \
 	"$DATA_DIR/admin/.varlock" \
 	"$DATA_DIR/guardian" \
 	"$DATA_DIR/openviking" \
-	"$DATA_DIR/automations" "$DATA_DIR/ollama" "$DATA_DIR/stash" "$DATA_DIR/workspace" \
+	"$DATA_DIR/automations" "$DATA_DIR/ollama" "$DATA_DIR/stash" "$DATA_DIR/guardian-stash" \
+	"$DATA_DIR/akm-cache" "$DATA_DIR/guardian-cache" "$DATA_DIR/workspace" \
 	"$LOGS_DIR/opencode" \
 	"$DEV_ROOT/work"
 

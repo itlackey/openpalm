@@ -47,8 +47,6 @@ RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.pars
 
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
 COPY .openpalm/vault/redact.env.schema /app/.env.schema
-COPY core/guardian/entrypoint.sh /usr/local/bin/guardian-entrypoint.sh
-RUN chmod +x /usr/local/bin/guardian-entrypoint.sh
 
 RUN mkdir -p /app/data && chown -R bun:bun /app
 USER bun
@@ -60,5 +58,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
   CMD curl -sf http://localhost:8080/health || exit 1
 
-ENTRYPOINT ["/usr/local/bin/guardian-entrypoint.sh"]
 CMD ["varlock", "run", "--path", "/app/", "--", "bun", "run", "src/server.ts"]

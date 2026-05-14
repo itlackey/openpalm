@@ -60,12 +60,16 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       # Docker API via socket proxy
       DOCKER_HOST: tcp://docker-socket-proxy:2375
-      # akm-cli XDG layout (AKM 0.8.0+). Shares the stash bind mount with
-      # the assistant container so admin can browse/edit user-facing assets.
+      # akm-cli XDG layout (AKM 0.8.0+). Shares the stash + cache bind mounts
+      # with the assistant container so admin can browse/edit user-facing
+      # assets and reuse downloaded registry artifacts. All four dirs are
+      # pinned explicitly — akm does NOT derive .data/.state/.config from
+      # AKM_STASH_DIR (they fall back to per-container HOME defaults), so
+      # admin and assistant would silently diverge without this.
       AKM_STASH_DIR: /akm
       AKM_DATA_DIR: /akm/.data
       AKM_STATE_DIR: /akm/.state
-      AKM_CACHE_DIR: /tmp/akm-cache
+      AKM_CACHE_DIR: /akm-cache
       AKM_CONFIG_DIR: /akm/.config
     volumes:
       - ${OP_HOME}:/openpalm
@@ -74,6 +78,8 @@ services:
       # Shared akm stash (rw on both sides) — assistant publishes assets here,
       # admin reads/edits them through its OpenCode + UI surface.
       - ${OP_HOME}/data/stash:/akm
+      # Shared, persistent akm cache (registry index, downloaded artifacts).
+      - ${OP_HOME}/data/akm-cache:/akm-cache
       # GPG agent socket for pass backend (read-only; only needed when pass is active).
       # create_host_path is false to avoid creating ~/.gnupg on hosts without GPG.
       # If the source directory does not exist, Docker will skip this mount silently.

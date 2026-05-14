@@ -220,6 +220,9 @@ mkdir -p \
   "${OP_DATA_HOME}/assistant" \
   "${OP_DATA_HOME}/guardian" \
   "${OP_DATA_HOME}/stash" \
+  "${OP_DATA_HOME}/guardian-stash" \
+  "${OP_DATA_HOME}/akm-cache" \
+  "${OP_DATA_HOME}/guardian-cache" \
   "${OP_LOGS_HOME}"
 
 # ── 1c: Seed config files ───────────────────────────────────────────
@@ -496,6 +499,9 @@ mkdir -p \
   "${OP_DATA_HOME}/assistant" \
   "${OP_DATA_HOME}/guardian" \
   "${OP_DATA_HOME}/stash" \
+  "${OP_DATA_HOME}/guardian-stash" \
+  "${OP_DATA_HOME}/akm-cache" \
+  "${OP_DATA_HOME}/guardian-cache" \
   "${OP_LOGS_HOME}"
 
 # Step 2: Re-download assets (simulate by copying from source)

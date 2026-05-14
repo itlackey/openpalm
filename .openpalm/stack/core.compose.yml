@@ -26,7 +26,7 @@ services:
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     restart: "no"
     command: ["sh", "-c",
-      "mkdir -p /data/memory /data/assistant /data/guardian /data/scheduler /data/stash /data/guardian-stash /data/workspace /logs/opencode && ls /addons 2>/dev/null | xargs -I{} mkdir -p /data/{}"]
+      "mkdir -p /data/memory /data/assistant /data/guardian /data/scheduler /data/stash /data/stash/.data /data/stash/.state /data/stash/.config /data/guardian-stash /data/guardian-stash/.data /data/guardian-stash/.state /data/guardian-stash/.config /data/akm-cache /data/guardian-cache /data/workspace /logs/opencode && chmod 700 /data/guardian-stash /data/guardian-cache && ls /addons 2>/dev/null | xargs -I{} mkdir -p /data/{}"]
     volumes:
       - ${OP_HOME}/data:/data
       - ${OP_HOME}/logs:/logs
@@ -101,14 +101,18 @@ services:
       OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
       TERM: xterm-256color
       HOME: /home/opencode
-      # akm-cli XDG layout (AKM 0.8.0+). All four dirs are required; the
-      # stash root and the data/state/config dirs live on the bind-mounted
-      # shared stash so admin and assistant see the same assets. The cache
-      # dir is regenerable and stays on the container filesystem.
+      OP_HOME: /openpalm
+      # akm-cli XDG layout (AKM 0.8.0+). akm does NOT derive .data/.state/.config
+      # from AKM_STASH_DIR — each path resolves independently against XDG/HOME
+      # fallbacks. We pin all four explicitly so admin and assistant share the
+      # same stash root AND the same index/state/config (otherwise they would
+      # silently diverge into per-container HOME-based defaults). Cache is
+      # separately bind-mounted so registry artifacts survive container
+      # recreate (regenerable but expensive to refetch).
       AKM_STASH_DIR: /akm
       AKM_DATA_DIR: /akm/.data
       AKM_STATE_DIR: /akm/.state
-      AKM_CACHE_DIR: /tmp/akm-cache
+      AKM_CACHE_DIR: /akm-cache
       AKM_CONFIG_DIR: /akm/.config
       OP_ADMIN_API_URL: ${OP_ADMIN_API_URL:-}
       OP_ASSISTANT_TOKEN: ${OP_ASSISTANT_TOKEN:-}
@@ -158,6 +162,9 @@ services:
       # Shared akm stash: assistant and admin both mount this rw so they
       # can read/write the same skills, commands, memories, and vaults.
       - ${OP_HOME}/data/stash:/akm
+      # Persistent akm cache (registry index, downloaded artifacts). Shared
+      # with admin since both query the same registries.
+      - ${OP_HOME}/data/akm-cache:/akm-cache
       - ${OP_HOME}/data/workspace:/work
       - ${OP_HOME}/logs/opencode:/home/opencode/.local/state/opencode
     working_dir: /work
@@ -191,10 +198,11 @@ services:
       GUARDIAN_SECRETS_PATH: /app/secrets/guardian.env
       # Guardian has its own isolated akm stash for operator-only artifacts
       # (channel HMAC vaults, audit notes). NOT shared with admin/assistant.
+      # See assistant block for the rationale behind pinning all four dirs.
       AKM_STASH_DIR: /akm-guardian
       AKM_DATA_DIR: /akm-guardian/.data
       AKM_STATE_DIR: /akm-guardian/.state
-      AKM_CACHE_DIR: /tmp/akm-cache
+      AKM_CACHE_DIR: /akm-cache
       AKM_CONFIG_DIR: /akm-guardian/.config
     volumes:
       - ${OP_HOME}/data/guardian:/app/data
@@ -202,6 +210,8 @@ services:
       - ${OP_HOME}/vault/stack/guardian.env:/app/secrets/guardian.env:ro
       # Operator-only akm stash (NOT shared with admin or assistant).
       - ${OP_HOME}/data/guardian-stash:/akm-guardian
+      # Operator-only akm cache (isolated from the shared admin/assistant cache).
+      - ${OP_HOME}/data/guardian-cache:/akm-cache
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     networks: [ channel_lan, channel_public, assistant_net ]
     depends_on:

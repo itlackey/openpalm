@@ -8,8 +8,10 @@ reinstalls, but they are not the main user configuration surface.
 | Directory | Mounted as | Purpose |
 |---|---|---|
 | `admin/` | `/home/node` | Admin runtime home |
+| `akm-cache/` | `/akm-cache` | Shared AKM cache (assistant + admin) — registry index, downloaded artifacts |
 | `assistant/` | `/home/opencode` | Assistant home and local runtime state |
 | `guardian/` | `/app/data` | Guardian nonce and rate-limit state |
+| `guardian-cache/` | `/akm-cache` | Operator-only AKM cache (guardian only) |
 | `guardian-stash/` | `/akm-guardian` | Operator-only AKM stash (guardian only) |
 | `memory/` | `/data` | Memory database, mem0 compatibility data, generated config |
 | `stash/` | `/akm` | Shared AKM stash (assistant + admin) |
