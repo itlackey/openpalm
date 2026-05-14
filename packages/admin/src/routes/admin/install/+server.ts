@@ -9,6 +9,7 @@ import { getState } from "$lib/server/state.js";
 import {
   applyInstall,
   appendAudit,
+  createLogger,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
   ensureSecrets,
@@ -18,7 +19,6 @@ import {
   ensureHomeDirs,
 } from "@openpalm/lib";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
-import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("install");

@@ -6,9 +6,8 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { applyUpdate, appendAudit, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, buildComposeOptions, buildManagedServices, ensureHomeDirs } from "@openpalm/lib";
+import { applyUpdate, appendAudit, createLogger, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, buildComposeOptions, buildManagedServices, ensureHomeDirs } from "@openpalm/lib";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
-import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("update");

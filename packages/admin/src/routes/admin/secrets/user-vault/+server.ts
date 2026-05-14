@@ -32,6 +32,7 @@ import {
 import {
   AKM_USER_VAULT_REF,
   appendAudit,
+  createLogger,
   deleteAkmVaultKey,
   ensureAkmUserVault,
   mergeEnvContent,
@@ -40,7 +41,6 @@ import {
   removeEnvKey,
   writeAkmVaultKey,
 } from '@openpalm/lib';
-import { createLogger } from '$lib/server/logger.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const logger = createLogger('admin.secrets.user-vault');

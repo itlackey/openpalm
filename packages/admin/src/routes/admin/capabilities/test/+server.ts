@@ -8,8 +8,7 @@ import {
   jsonBodyError,
   requireAdmin,
 } from '$lib/server/helpers.js';
-import { fetchProviderModels } from '@openpalm/lib';
-import { createLogger } from '$lib/server/logger.js';
+import { createLogger, fetchProviderModels } from '@openpalm/lib';
 import { mapDiscoveryResultToErrorCode } from '$lib/model-discovery.js';
 
 const logger = createLogger('capabilities-test');

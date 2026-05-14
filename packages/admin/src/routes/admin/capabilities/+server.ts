@@ -21,13 +21,13 @@ import {
   readStackSpec,
   formatCapabilityString,
   maskSecretValue,
+  createLogger,
 } from "@openpalm/lib";
 import { updateAndPersistCapabilities } from "$lib/server/capabilities.js";
 import {
   PROVIDER_KEY_MAP,
   EMBEDDING_DIMS,
 } from "@openpalm/lib/provider-constants";
-import { createLogger } from "$lib/server/logger.js";
 
 const logger = createLogger("capabilities");
 

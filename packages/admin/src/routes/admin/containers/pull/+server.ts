@@ -7,9 +7,8 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { appendAudit, buildComposeOptions, buildManagedServices } from "@openpalm/lib";
+import { appendAudit, buildComposeOptions, buildManagedServices, createLogger } from "@openpalm/lib";
 import { composePull, composeUp, checkDocker } from "$lib/server/docker.js";
-import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("containers-pull");
