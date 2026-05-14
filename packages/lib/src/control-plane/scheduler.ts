@@ -274,7 +274,10 @@ export async function executeAssistantAction(action: AutomationAction): Promise<
     throw new Error("assistant action requires a non-empty 'content' field");
   }
 
-  const baseUrl = process.env.OPENCODE_API_URL ?? "http://assistant:4096";
+  // Scheduler runs as a co-process inside the assistant container, so the
+  // assistant's HTTP API is reachable on loopback. The Docker-network name
+  // `assistant` does NOT resolve from within the container itself.
+  const baseUrl = process.env.OPENCODE_API_URL ?? "http://localhost:4096";
   const password = process.env.OPENCODE_SERVER_PASSWORD;
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (password) {

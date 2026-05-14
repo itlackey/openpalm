@@ -45,15 +45,6 @@ export function clearExecutionLogs(): void {
   executionLogs.clear();
 }
 
-/** Return all execution logs keyed by fileName. */
-export function getAllExecutionLogs(): Record<string, ExecutionLogEntry[]> {
-  const result: Record<string, ExecutionLogEntry[]> = {};
-  for (const [fileName, entries] of executionLogs) {
-    result[fileName] = [...entries].reverse();
-  }
-  return result;
-}
-
 // ── Active Jobs ──────────────────────────────────────────────────────
 
 type ActiveJob = {

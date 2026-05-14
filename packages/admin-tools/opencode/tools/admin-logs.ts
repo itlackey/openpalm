@@ -9,7 +9,7 @@ export default tool({
       .string()
       .optional()
       .describe(
-        "Comma-separated service names. Core services: guardian, memory, admin, assistant, scheduler. Use the containers list tool or /admin/installed to discover installed addon services. Omit for all services."
+        "Comma-separated service names. Core services: guardian, memory, admin, assistant. (Scheduler runs as a co-process inside the assistant container, so its logs appear in the assistant service.) Use the containers list tool or /admin/installed to discover installed addon services. Omit for all services."
       ),
     tail: tool.schema
       .string()

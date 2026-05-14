@@ -148,6 +148,8 @@ maybe_proxy_lmstudio() {
   fi
 }
 
+SCHED_PID=""
+
 start_scheduler_coprocess() {
   # Run the automation scheduler alongside OpenCode. The scheduler has no
   # HTTP port — it watches /openpalm/config/automations for definitions and
@@ -182,12 +184,8 @@ start_scheduler_coprocess() {
 
   echo "Starting scheduler co-process (OP_HOME=${op_home})"
 
-  # We deliberately do NOT use setsid so the scheduler stays in the
-  # container's process group. When tini receives SIGTERM it forwards the
-  # signal to its direct child (the eventual `opencode` process from
-  # start_opencode), but tini configured with `--` will also reap any
-  # orphaned children. The scheduler installs its own SIGTERM handler in
-  # server.ts to flush state and exit cleanly.
+  # Keep the scheduler in the container's process group (no setsid) so the
+  # forward_term trap below can deliver SIGTERM to it on shutdown.
   if [ "$(id -u)" = "0" ]; then
     # Drop privileges to match the assistant's runtime UID/GID.
     gosu opencode env \
@@ -198,11 +196,17 @@ start_scheduler_coprocess() {
     env OP_HOME="${op_home}" \
       bun run "${scheduler_dir}/src/server.ts" >>"${scheduler_log}" 2>&1 &
   fi
+  SCHED_PID=$!
+}
 
-  # The container primary is opencode (exec'd by start_opencode). On
-  # container teardown tini reaps remaining children including the
-  # scheduler. server.ts also installs its own SIGTERM/SIGINT handlers
-  # for graceful local shutdown.
+forward_term_to_scheduler() {
+  # Forward SIGTERM from this bash supervisor to the scheduler co-process
+  # and reap it. Bounded wait so a hung scheduler can't block container
+  # teardown — tini will SIGKILL anything still alive after its timeout.
+  if [ -n "${SCHED_PID}" ] && kill -0 "${SCHED_PID}" 2>/dev/null; then
+    kill -TERM "${SCHED_PID}" 2>/dev/null || true
+    wait "${SCHED_PID}" 2>/dev/null || true
+  fi
 }
 
 maybe_unset_unused_provider_keys() {
@@ -249,6 +253,16 @@ start_opencode() {
     export SHELL=/usr/local/bin/varlock-shell
   fi
 
+  # If the scheduler co-process is running we must NOT exec opencode —
+  # exec replaces the bash process and discards the SIGTERM trap that
+  # forwards termination to the scheduler. Instead we spawn opencode as
+  # a foreground child, install the trap, and wait. tini still sees this
+  # bash process as PID 1's child and forwards SIGTERM to us.
+  local use_supervisor=0
+  if [ -n "${SCHED_PID}" ] && kill -0 "${SCHED_PID}" 2>/dev/null; then
+    use_supervisor=1
+  fi
+
   if [ "$(id -u)" = "0" ]; then
     if ! command -v gosu >/dev/null 2>&1; then
       echo "ERROR: gosu not found — cannot drop privileges. Install gosu in the Dockerfile." >&2
@@ -258,8 +272,28 @@ start_opencode() {
     # must forward HOME and SHELL explicitly. The user has passwordless sudo
     # for root operations; normal file I/O preserves host UID ownership.
     export HOME=/home/opencode
+    if [ "$use_supervisor" = "1" ]; then
+      gosu opencode env HOME=/home/opencode SHELL="$SHELL" \
+        "${VARLOCK_CMD[@]}" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs &
+      local oc_pid=$!
+      trap 'forward_term_to_scheduler; kill -TERM "$oc_pid" 2>/dev/null || true' TERM INT
+      wait "$oc_pid"
+      local oc_status=$?
+      forward_term_to_scheduler
+      exit "$oc_status"
+    fi
     exec gosu opencode env HOME=/home/opencode SHELL="$SHELL" \
       "${VARLOCK_CMD[@]}" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
+  fi
+
+  if [ "$use_supervisor" = "1" ]; then
+    "${VARLOCK_CMD[@]}" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs &
+    local oc_pid=$!
+    trap 'forward_term_to_scheduler; kill -TERM "$oc_pid" 2>/dev/null || true' TERM INT
+    wait "$oc_pid"
+    local oc_status=$?
+    forward_term_to_scheduler
+    exit "$oc_status"
   fi
 
   exec "${VARLOCK_CMD[@]}" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs

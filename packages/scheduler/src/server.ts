@@ -1,6 +1,11 @@
 /**
  * OpenPalm Scheduler — automation co-process.
  *
+ * TODO: rename this file to `main.ts` (or `index.ts`) in a follow-up. The
+ * `server.ts` name is misleading now that there is no HTTP server. Deferred
+ * because the rename touches the assistant entrypoint and the build/test
+ * scripts and is out of scope for this PR.
+ *
  * Runs alongside the assistant (OpenCode) inside the assistant container.
  * Does NOT expose any network port. The control plane is purely filesystem-
  * driven:
@@ -31,10 +36,7 @@ const logger = createLogger("scheduler:server");
 
 const OP_HOME = process.env.OP_HOME ?? "";
 const CONFIG_DIR = OP_HOME ? join(OP_HOME, "config") : "";
-// Scheduler runs inside the assistant container; admin API calls authenticate
-// with the assistant's operational token (OP_ASSISTANT_TOKEN). No dedicated
-// admin↔scheduler token exists anymore.
-const ADMIN_TOKEN = process.env.OP_ASSISTANT_TOKEN ?? "";
+const ASSISTANT_TOKEN = process.env.OP_ASSISTANT_TOKEN ?? "";
 const TRIGGERS_DIR = OP_HOME ? join(OP_HOME, "data", "scheduler", "triggers") : "";
 
 if (!CONFIG_DIR || !TRIGGERS_DIR) {
@@ -42,7 +44,7 @@ if (!CONFIG_DIR || !TRIGGERS_DIR) {
   process.exit(1);
 }
 
-if (!ADMIN_TOKEN) {
+if (!ASSISTANT_TOKEN) {
   logger.warn(
     "OP_ASSISTANT_TOKEN is not set — `api` automations that call the admin API will fail",
   );
@@ -66,6 +68,18 @@ function ensureTriggersDir(): void {
 
 async function processTriggerFile(fileName: string): Promise<void> {
   if (!fileName.endsWith(TRIGGER_SUFFIX)) return;
+  // Reject any filename containing path separators or `..` traversal. Without
+  // this guard, `path.join` would normalize a malicious filename such as
+  // `../../../etc/something.run` to a location outside TRIGGERS_DIR and we
+  // would `unlinkSync` it. fs.watch only ever yields a basename, but defense
+  // in depth covers polling-fallback callers and future code paths.
+  if (
+    fileName.includes("/") ||
+    fileName.includes("\\") ||
+    fileName.includes("..")
+  ) {
+    return;
+  }
   const automationFile = fileName.slice(0, -TRIGGER_SUFFIX.length);
   if (!automationFile) return;
 
@@ -93,7 +107,7 @@ async function processTriggerFile(fileName: string): Promise<void> {
   logger.info("manual trigger received", { sentinel: fileName, automation: automationFile });
 
   try {
-    const result = await triggerAutomation(automationFile, ADMIN_TOKEN);
+    const result = await triggerAutomation(automationFile, ASSISTANT_TOKEN);
     if (!result.ok) {
       logger.warn("manual trigger failed", { automation: automationFile, error: result.error });
     }
@@ -162,8 +176,8 @@ logger.info("starting scheduler co-process", {
   triggersDir: TRIGGERS_DIR,
 });
 
-startScheduler(CONFIG_DIR, ADMIN_TOKEN);
-startWatching(CONFIG_DIR, ADMIN_TOKEN);
+startScheduler(CONFIG_DIR, ASSISTANT_TOKEN);
+startWatching(CONFIG_DIR, ASSISTANT_TOKEN);
 startTriggerWatcher();
 
 const status = getSchedulerStatus();

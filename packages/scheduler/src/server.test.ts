@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { existsSync, mkdirSync, writeFileSync, rmSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -109,4 +109,101 @@ describe("scheduler co-process", () => {
     await waitFor(() => !existsSync(unknownSentinel), 5000);
     expect(existsSync(unknownSentinel)).toBe(false);
   });
+
+  it("de-duplicates concurrent sentinels for the same automation", async () => {
+    // Drop a slow shell automation that takes ~2 seconds to complete and
+    // appends a single line to a counter file each time it fires.
+    const counterFile = join(TEST_DIR, "slow-counter.txt");
+    rmSync(counterFile, { force: true });
+
+    const slowAutomation = `
+name: slow-test
+description: Slow shell automation used to verify de-dupe
+schedule: "0 0 1 1 *"
+enabled: true
+action:
+  type: shell
+  command:
+    - sh
+    - -c
+    - 'sleep 2 && echo fired >> ${counterFile}'
+on_failure: log
+`;
+    writeFileSync(join(AUTOMATIONS_DIR, "slow-test.yml"), slowAutomation);
+
+    // Give the watcher a moment to pick up the new automation.
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // Drop two sentinels in rapid succession. inFlightTriggers should
+    // collapse them into a single execution.
+    writeFileSync(join(TRIGGERS_DIR, "slow-test.yml.run"), "");
+    // Tiny delay so fs.watch reliably fires twice (once per write).
+    await new Promise((r) => setTimeout(r, 50));
+    writeFileSync(join(TRIGGERS_DIR, "slow-test.yml.run"), "");
+
+    // Wait long enough for the slow automation to finish.
+    await waitFor(() => existsSync(counterFile), 8000);
+    // Give any (incorrect) second run a chance to also complete.
+    await new Promise((r) => setTimeout(r, 3000));
+
+    const content = readFileSync(counterFile, "utf-8");
+    const fireCount = content.split("\n").filter((line) => line === "fired").length;
+    expect(fireCount).toBe(1);
+  }, 15000);
+
+  it("picks up new automations dropped into config/automations (hot reload)", async () => {
+    const hotTouch = join(TEST_DIR, "hot-fired.txt");
+    rmSync(hotTouch, { force: true });
+
+    const hotAutomation = `
+name: hot-reload-test
+description: Verifies hot reload through the subprocess
+schedule: "0 0 1 1 *"
+enabled: true
+action:
+  type: shell
+  command:
+    - sh
+    - -c
+    - 'echo hot > ${hotTouch}'
+on_failure: log
+`;
+    writeFileSync(join(AUTOMATIONS_DIR, "hot-reload-test.yml"), hotAutomation);
+
+    // Wait for the file watcher debounce + reload (the scheduler uses a
+    // short debounce in startWatching). 2.5s comfortably exceeds it.
+    await new Promise((r) => setTimeout(r, 2500));
+
+    writeFileSync(join(TRIGGERS_DIR, "hot-reload-test.yml.run"), "");
+    await waitFor(() => existsSync(hotTouch), 5000);
+    expect(existsSync(hotTouch)).toBe(true);
+  }, 10000);
+
+  it("shuts down cleanly on SIGTERM", async () => {
+    // Spawn a fresh subprocess so the afterAll teardown still has the
+    // primary subprocess available (and so this test is independent of
+    // any prior state).
+    const proc = Bun.spawn(["bun", "run", join(__dirname, "server.ts")], {
+      env: {
+        ...process.env,
+        OP_HOME: TEST_DIR,
+        OP_ASSISTANT_TOKEN: "test-assistant-token",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    // Give it time to fully boot.
+    await new Promise((r) => setTimeout(r, 1000));
+
+    proc.kill("SIGTERM");
+
+    const exitedWithin = await Promise.race([
+      proc.exited.then(() => true),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3000)),
+    ]);
+
+    expect(exitedWithin).toBe(true);
+    expect(proc.exitCode).toBe(0);
+  }, 8000);
 });

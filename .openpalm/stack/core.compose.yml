@@ -125,8 +125,7 @@ services:
       OP_GID: ${OP_GID:-1000}
       # Scheduler co-process — runs inside this container, reads
       # automations from /openpalm/config/automations and watches sentinels
-      # in /openpalm/data/scheduler/triggers.
-      OP_HOME: /openpalm
+      # in /openpalm/data/scheduler/triggers. Uses OP_HOME from above.
       OPENCODE_API_URL: http://localhost:4096
       # Provider API keys (resolved from stack.env)
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
