@@ -81,7 +81,7 @@
 
 		try {
 			const token = getAdminToken() ?? '';
-			const body: Record<string, unknown> = { action: 'saveCustomProvider' };
+			const body: Record<string, unknown> = {};
 			for (const [key, value] of formData.entries()) {
 				if (typeof value === 'string') body[key] = value;
 			}
@@ -89,7 +89,7 @@
 			body.headersJson = headersJson;
 			body.confirmOverwrite = String(confirmOverwrite);
 
-			const response = await fetch('/admin/providers/actions', {
+			const response = await fetch('/admin/providers/custom', {
 				method: 'POST',
 				headers: { ...buildHeaders(token), 'content-type': 'application/json' },
 				body: JSON.stringify(body)

@@ -8,7 +8,6 @@ import {
   ensureSecrets,
   validatePassEntryName,
 } from '../index.js';
-import { PlaintextBackend, PassBackend } from './secret-backend.js';
 import { writeSecretProviderConfig } from './provider-config.js';
 
 let rootDir = '';
@@ -68,6 +67,9 @@ describe('secret backend', () => {
     const backend = detectSecretBackend(state);
 
     expect(backend.provider).toBe('plaintext');
+    expect(backend.capabilities.generate).toBe(true);
+    expect(backend.capabilities.remove).toBe(true);
+    expect(backend.capabilities.rename).toBe(false);
 
     const entry = await backend.write('openpalm/custom/example', 'very-secret');
     expect(entry.provider).toBe('plaintext');
@@ -107,11 +109,11 @@ describe('secret backend', () => {
   });
 });
 
-describe('PlaintextBackend', () => {
+describe('plaintext backend (via detectSecretBackend)', () => {
   test('remove clears value for non-core secrets', async () => {
     const state = createState();
     ensureSecrets(state);
-    const backend = new PlaintextBackend(state);
+    const backend = detectSecretBackend(state);
 
     await backend.write('openpalm/custom/temp', 'temp-value');
     expect(await backend.exists('openpalm/custom/temp')).toBe(true);
@@ -130,7 +132,7 @@ describe('PlaintextBackend', () => {
   test('remove clears value but keeps index for core secrets', async () => {
     const state = createState();
     ensureSecrets(state);
-    const backend = new PlaintextBackend(state);
+    const backend = detectSecretBackend(state);
 
     // Write a core secret
     await backend.write('openpalm/admin-token', 'my-token');
@@ -148,7 +150,7 @@ describe('PlaintextBackend', () => {
   test('list includes both core and indexed entries', async () => {
     const state = createState();
     ensureSecrets(state);
-    const backend = new PlaintextBackend(state);
+    const backend = detectSecretBackend(state);
 
     await backend.write('openpalm/custom/my-key', 'value');
 
@@ -164,7 +166,7 @@ describe('PlaintextBackend', () => {
   test('generate creates a secret with random value', async () => {
     const state = createState();
     ensureSecrets(state);
-    const backend = new PlaintextBackend(state);
+    const backend = detectSecretBackend(state);
 
     const entry = await backend.generate('openpalm/custom/generated', 64);
     expect(entry.present).toBe(true);
@@ -178,7 +180,7 @@ describe('PlaintextBackend', () => {
     // different values, the two scopes must return their own file's value.
     const state = createState();
     ensureSecrets(state);
-    const backend = new PlaintextBackend(state);
+    const backend = detectSecretBackend(state);
 
     // OPENAI_API_KEY is a user-scope core mapping; OP_ADMIN_TOKEN is system-scope.
     // Seed user.env with a user-scope override and a deliberately-wrong system
@@ -219,8 +221,8 @@ describe('PlaintextBackend', () => {
   });
 });
 
-describe('PassBackend', () => {
-  test('constructor reads passPrefix from provider config', () => {
+describe('pass backend (via detectSecretBackend)', () => {
+  test('reports pass provider when configured', () => {
     const state = createState();
     writeSecretProviderConfig(state, {
       provider: 'pass',
@@ -228,15 +230,15 @@ describe('PassBackend', () => {
       passPrefix: 'myprefix',
     });
 
-    const backend = new PassBackend(state);
+    const backend = detectSecretBackend(state);
     expect(backend.provider).toBe('pass');
-    // Verify it doesn't throw with valid config
     expect(backend.capabilities.generate).toBe(true);
   });
 
-  test('constructor uses default store dir when no config', () => {
+  test('uses default store dir when no config', () => {
     const state = createState();
-    const backend = new PassBackend(state);
+    writeSecretProviderConfig(state, { provider: 'pass' });
+    const backend = detectSecretBackend(state);
     expect(backend.provider).toBe('pass');
   });
 
@@ -244,8 +246,9 @@ describe('PassBackend', () => {
     const state = createState();
     const storeDir = join(rootDir, 'data', 'secrets', 'pass-store');
     mkdirSync(storeDir, { recursive: true });
+    writeSecretProviderConfig(state, { provider: 'pass', passwordStoreDir: storeDir });
 
-    const backend = new PassBackend(state);
+    const backend = detectSecretBackend(state);
     expect(await backend.exists('openpalm/nonexistent')).toBe(false);
   });
 
@@ -253,8 +256,9 @@ describe('PassBackend', () => {
     const state = createState();
     const storeDir = join(rootDir, 'data', 'secrets', 'pass-store');
     mkdirSync(storeDir, { recursive: true });
+    writeSecretProviderConfig(state, { provider: 'pass', passwordStoreDir: storeDir });
 
-    const backend = new PassBackend(state);
+    const backend = detectSecretBackend(state);
     const entries = await backend.list();
     expect(entries).toEqual([]);
   });
@@ -279,7 +283,7 @@ describe('PassBackend', () => {
       passPrefix: 'myprefix',
     });
 
-    const backend = new PassBackend(state);
+    const backend = detectSecretBackend(state);
     const entries = await backend.list();
 
     expect(entries).toHaveLength(2);
@@ -301,21 +305,20 @@ describe('PassBackend', () => {
       passPrefix: 'myprefix',
     });
 
-    const backend = new PassBackend(state);
+    const backend = detectSecretBackend(state);
     expect(await backend.exists('openpalm/admin-token')).toBe(true);
     expect(await backend.exists('openpalm/nonexistent')).toBe(false);
   });
 });
 
 describe('detectSecretBackend', () => {
-  test('returns PlaintextBackend by default', () => {
+  test('returns plaintext provider by default', () => {
     const state = createState();
     const backend = detectSecretBackend(state);
     expect(backend.provider).toBe('plaintext');
-    expect(backend).toBeInstanceOf(PlaintextBackend);
   });
 
-  test('returns PassBackend when provider.json has provider: pass', () => {
+  test('returns pass provider when provider.json has provider: pass', () => {
     const state = createState();
     writeSecretProviderConfig(state, {
       provider: 'pass',
@@ -324,15 +327,13 @@ describe('detectSecretBackend', () => {
 
     const backend = detectSecretBackend(state);
     expect(backend.provider).toBe('pass');
-    expect(backend).toBeInstanceOf(PassBackend);
   });
 
-  test('returns PlaintextBackend when provider.json has provider: plaintext', () => {
+  test('returns plaintext provider when provider.json has provider: plaintext', () => {
     const state = createState();
     writeSecretProviderConfig(state, { provider: 'plaintext' });
 
     const backend = detectSecretBackend(state);
     expect(backend.provider).toBe('plaintext');
-    expect(backend).toBeInstanceOf(PlaintextBackend);
   });
 });

@@ -140,7 +140,9 @@ describe("api channel chat completions", () => {
     expect(url).toBe("http://guardian:8080/channel/inbound");
     const parsed = JSON.parse(body) as Record<string, unknown>;
     expect(parsed.channel).toBe("api");
-    expect(parsed.userId).toBe("u1");
+    // SDK's forwardToGuardian prefixes userId with "{channel}:" so external
+    // callers don't accidentally collide with other channels.
+    expect(parsed.userId).toBe("api:u1");
     expect(parsed.text).toBe("hello");
     expect(signature).toBe(signPayload("test-secret", body));
   });
@@ -234,7 +236,7 @@ describe("api channel legacy completions", () => {
     }));
     const parsed = JSON.parse(captured().body) as Record<string, unknown>;
     expect(parsed.channel).toBe("api");
-    expect(parsed.userId).toBe("u2");
+    expect(parsed.userId).toBe("api:u2");
     expect(parsed.text).toBe("test prompt");
   });
 
@@ -305,7 +307,7 @@ describe("api channel Anthropic messages", () => {
       }),
     }));
     const parsed = JSON.parse(captured().body) as Record<string, unknown>;
-    expect(parsed.userId).toBe("anthro-user-1");
+    expect(parsed.userId).toBe("api:anthro-user-1");
   });
 
   it("returns 400 when no user message found", async () => {
