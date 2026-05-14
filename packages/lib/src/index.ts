@@ -81,6 +81,7 @@ export {
   parseEnvContent,
   parseEnvFile,
   mergeEnvContent,
+  removeEnvKey,
 } from "./control-plane/env.js";
 
 // ── Audit ───────────────────────────────────────────────────────────────
@@ -266,3 +267,17 @@ export type {
 export {
   performSetup,
 } from "./control-plane/setup.js";
+
+// ── AKM Vault Mirror (Phase 1 of #388) ───────────────────────────────────
+export type {
+  MirrorResult,
+} from "./control-plane/akm-vault.js";
+export {
+  AKM_USER_VAULT_REF,
+  mirrorUserVaultToAkm,
+  ensureAkmUserVault,
+  writeAkmVaultKey,
+  deleteAkmVaultKey,
+  buildAkmEnv,
+  readAkmUserVaultFile,
+} from "./control-plane/akm-vault.js";

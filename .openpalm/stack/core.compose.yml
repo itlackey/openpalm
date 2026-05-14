@@ -99,6 +99,9 @@ services:
       # reaches OpenCode via http://localhost:4096.
       # If you change OP_ASSISTANT_BIND_ADDRESS to 0.0.0.0, you MUST set
       # OP_OPENCODE_PASSWORD in stack.env and set OPENCODE_AUTH to "true".
+      # NON-CHANGE (#388 §B.1): OP_OPENCODE_PASSWORD compose plumbing
+      # is intentional for the LAN-exposed assistant case. Do NOT strip
+      # it as part of vault cleanup.
       OPENCODE_AUTH: "false"
       OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
       TERM: xterm-256color

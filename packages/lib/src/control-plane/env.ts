@@ -25,6 +25,34 @@ function quoteEnvValue(value: string): string {
   return `"${escaped}"`;
 }
 
+/**
+ * Remove a key from .env content. Comments above the line and the
+ * surrounding blank-line structure are preserved exactly as written so
+ * round-tripping the file through this helper is non-destructive.
+ * If the key is absent the input is returned unchanged.
+ */
+export function removeEnvKey(content: string, key: string): string {
+  const lines = content.split('\n');
+  const out: string[] = [];
+  let removed = false;
+  for (const line of lines) {
+    let testLine = line.trim();
+    if (testLine.startsWith('export ')) testLine = testLine.slice(7).trimStart();
+    const eq = testLine.indexOf('=');
+    if (eq > 0 && testLine.slice(0, eq).trim() === key) {
+      removed = true;
+      continue;
+    }
+    out.push(line);
+  }
+  // If we matched, drop a trailing blank line that the deletion left behind so
+  // the file does not accumulate empty lines on repeated edits.
+  if (removed && out.length > 1 && out[out.length - 1] === '' && out[out.length - 2] === '') {
+    out.pop();
+  }
+  return out.join('\n');
+}
+
 export function mergeEnvContent(
   content: string,
   updates: Record<string, string>,
