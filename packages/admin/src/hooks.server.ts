@@ -11,7 +11,6 @@ import {
   ensureSecrets,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
-  ensureMemoryDir,
   ensureUserEnvSchema,
   ensureSystemEnvSchema,
   resolveRuntimeFiles,
@@ -34,7 +33,6 @@ function runStartupApply(): void {
     ensureSecrets(state);
     ensureOpenCodeConfig();
     ensureOpenCodeSystemConfig();
-    ensureMemoryDir();
     ensureUserEnvSchema();
     ensureSystemEnvSchema();
     state.artifacts = resolveRuntimeFiles();

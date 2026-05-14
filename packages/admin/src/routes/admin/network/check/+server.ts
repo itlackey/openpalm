@@ -18,7 +18,6 @@ type ServiceCheckResult = {
 /** Internal services to check connectivity against. */
 const SERVICES: { name: string; url: string }[] = [
   { name: "guardian", url: "http://guardian:8080/health" },
-  { name: "memory", url: "http://memory:8765/health" },
   { name: "assistant", url: "http://assistant:4096" },
 ];
 

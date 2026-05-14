@@ -188,7 +188,6 @@ describe("createState", () => {
 
 describe("CORE_SERVICES", () => {
   test("includes all expected core services", () => {
-    expect(CORE_SERVICES).toContain("memory");
     expect(CORE_SERVICES).toContain("assistant");
     expect(CORE_SERVICES).toContain("guardian");
   });
@@ -205,8 +204,8 @@ describe("CORE_SERVICES", () => {
     expect(OPTIONAL_SERVICES).toContain("docker-socket-proxy");
   });
 
-  test("has exactly 3 core services", () => {
-    expect(CORE_SERVICES).toHaveLength(3);
+  test("has exactly 2 core services", () => {
+    expect(CORE_SERVICES).toHaveLength(2);
   });
 
   test("has exactly 2 optional services", () => {
@@ -245,7 +244,7 @@ describe("applyUpdate", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
     process.env.OP_HOME = state.homeDir;
-    state.services = { admin: "running", guardian: "running", memory: "stopped" };
+    state.services = { admin: "running", guardian: "running", assistant: "stopped" };
 
     mkdirSync(join(state.homeDir, "stack"), { recursive: true });
     mkdirSync(join(state.vaultDir), { recursive: true });
@@ -254,7 +253,7 @@ describe("applyUpdate", () => {
     const result = await applyUpdate(state);
     expect(result.restarted).toContain("admin");
     expect(result.restarted).toContain("guardian");
-    expect(result.restarted).not.toContain("memory");
+    expect(result.restarted).not.toContain("assistant");
   });
 });
 

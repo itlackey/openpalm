@@ -15,7 +15,6 @@ mkdir -p \
 	"$OP_HOME/vault/stack" \
 	"$OP_HOME/vault/user" \
 	"$OP_HOME/data/admin" \
-	"$OP_HOME/data/memory" \
 	"$OP_HOME/data/assistant" \
 	"$OP_HOME/data/guardian" \
 	"$OP_HOME/logs" \

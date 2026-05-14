@@ -31,7 +31,6 @@ function seedStackYaml(): void {
     capabilities: {
       llm: 'openai/gpt-4o',
       embeddings: { provider: 'openai', model: 'text-embedding-3-small', dims: 1536 },
-      memory: { userId: 'default_user' },
     },
   };
   writeStackSpec(state.configDir, spec);

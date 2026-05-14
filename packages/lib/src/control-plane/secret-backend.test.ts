@@ -313,7 +313,6 @@ describe('generateRedactSchema', () => {
     // All static core mappings should be present
     expect(schema).toContain('OP_ADMIN_TOKEN=');
     expect(schema).toContain('OP_ASSISTANT_TOKEN=');
-    expect(schema).toContain('OP_MEMORY_TOKEN=');
     expect(schema).toContain('OPENAI_API_KEY=');
     expect(schema).toContain('ANTHROPIC_API_KEY=');
     expect(schema).toContain('GROQ_API_KEY=');

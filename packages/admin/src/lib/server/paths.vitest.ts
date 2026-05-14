@@ -49,7 +49,6 @@ describe("ensureHomeDirs", () => {
     expect(existsSync(dataDir)).toBe(true);
     expect(existsSync(join(dataDir, "assistant"))).toBe(true);
     expect(existsSync(join(dataDir, "admin"))).toBe(true);
-    expect(existsSync(join(dataDir, "memory"))).toBe(true);
     expect(existsSync(join(dataDir, "guardian"))).toBe(true);
     expect(existsSync(join(dataDir, "stash"))).toBe(true);
     expect(existsSync(join(dataDir, "guardian-stash"))).toBe(true);

@@ -24,10 +24,6 @@ function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
         model: "text-embedding-3-small",
         dims: 1536,
       },
-      memory: {
-        userId: "test_user",
-        customInstructions: "",
-      },
     },
     security: { adminToken: "test-admin-token-12345" },
     owner: { name: "Test User", email: "test@example.com" },
@@ -165,14 +161,6 @@ describe("validateSetupSpec", () => {
     expect(result.errors.some((e) => e.includes("capabilities.embeddings"))).toBe(true);
   });
 
-  it("rejects missing capabilities.memory", () => {
-    const input = makeValidSpec();
-    (input.capabilities as Record<string, unknown>).memory = null;
-    const result = validateSetupSpec(input);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("capabilities.memory"))).toBe(true);
-  });
-
   it("rejects non-integer embeddings.dims", () => {
     const input = makeValidSpec();
     input.capabilities.embeddings.dims = 1.5;
@@ -192,29 +180,6 @@ describe("validateSetupSpec", () => {
     expect(result.valid).toBe(true);
   });
 
-  it("rejects memory.userId with dots", () => {
-    const input = makeValidSpec();
-    input.capabilities.memory.userId = "user.name";
-    const result = validateSetupSpec(input);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("alphanumeric and underscores only"))).toBe(true);
-  });
-
-  it("rejects memory.userId with hyphens", () => {
-    const input = makeValidSpec();
-    input.capabilities.memory.userId = "user-name";
-    const result = validateSetupSpec(input);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("alphanumeric and underscores only"))).toBe(true);
-  });
-
-  it("accepts memory.userId with underscores", () => {
-    const input = makeValidSpec();
-    input.capabilities.memory.userId = "user_name_123";
-    const result = validateSetupSpec(input);
-    expect(result.valid).toBe(true);
-  });
-
   it("accepts valid owner fields", () => {
     const spec = makeValidSpec({ owner: { name: "Alice", email: "alice@test.com" } });
     const result = validateSetupSpec(spec);
@@ -229,12 +194,6 @@ describe("validateSetupSpec", () => {
     expect(result.errors.some((e) => e.includes("owner.name"))).toBe(true);
   });
 
-  it("accepts valid memory section", () => {
-    const spec = makeValidSpec();
-    spec.capabilities.memory.userId = "my_user";
-    const result = validateSetupSpec(spec);
-    expect(result.valid).toBe(true);
-  });
 });
 
 // ── Tests: buildSecretsFromSetup ─────────────────────────────────────────
@@ -259,12 +218,6 @@ describe("buildSecretsFromSetup", () => {
     const spec = makeValidSpec();
     const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.OPENAI_BASE_URL).toBe("https://api.openai.com");
-  });
-
-  it("does not include MEMORY_USER_ID in user secrets (lives in stack.env via OP_CAP_*)", () => {
-    const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
-    expect(secrets.MEMORY_USER_ID).toBeUndefined();
   });
 
   it("sets owner info when provided", () => {
@@ -334,7 +287,6 @@ describe("buildSystemSecretsFromSetup", () => {
     expect(secrets.OP_ADMIN_TOKEN).toBe("test-admin-token-12345");
     expect(typeof secrets.OP_ASSISTANT_TOKEN).toBe("string");
     expect(secrets.OP_ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
-    expect(typeof secrets.OP_MEMORY_TOKEN).toBe("string");
   });
 });
 
@@ -367,7 +319,6 @@ describe("performSetup", () => {
       vaultDir,
       dataDir,
       join(dataDir, "admin"),
-      join(dataDir, "memory"),
       join(dataDir, "assistant"),
       join(dataDir, "guardian"),
       join(dataDir, "automations"),
@@ -477,10 +428,6 @@ describe("performSetup", () => {
           model: "nomic-embed-text",
           dims: 768,
         },
-        memory: {
-          userId: "test_user",
-          customInstructions: "",
-        },
       },
       connections: [
         {
@@ -511,10 +458,6 @@ describe("performSetup", () => {
           provider: "ollama",
           model: "nomic-embed-text",
           dims: 0, // Should be resolved from lookup
-        },
-        memory: {
-          userId: "test_user",
-          customInstructions: "",
         },
       },
       connections: [
@@ -549,7 +492,6 @@ describe("performSetup", () => {
     expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
     expect(spec!.capabilities.embeddings.provider).toBe("openai");
     expect(spec!.capabilities.embeddings.model).toBe("text-embedding-3-small");
-    expect(spec!.capabilities.memory.userId).toBe("test_user");
   });
 
   it("completes setup even when duplicate connection ID with hyphen is skipped by env var map", async () => {

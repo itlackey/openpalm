@@ -6,8 +6,6 @@
 		buildHeaders,
 		fetchAssignments,
 		saveAssignments,
-		resetMemoryCollection,
-		fetchMemoryConfig,
 	} from '$lib/api.js';
 
 	type ProviderEntry = OpenCodeProviderSummary & { authMethods: OpenCodeAuthMethod[] };
@@ -30,7 +28,7 @@
 	let { loading, onRefresh }: Props = $props();
 
 	// ── Sub-tab state ───────────────────────────────────────────────
-	let activeSubTab = $state<'capabilities' | 'voice' | 'memory'>('capabilities');
+	let activeSubTab = $state<'capabilities' | 'voice'>('capabilities');
 
 	// ── Page state ──────────────────────────────────────────────────
 	let pageLoading = $state(false);
@@ -48,7 +46,6 @@
 		tts: { provider: '', model: '', voice: '' },
 		stt: { provider: '', model: '', language: '' },
 		reranking: { provider: '', mode: 'llm' as 'llm' | 'dedicated', model: '', topK: 10 },
-		memory: { userId: 'default_user', instructions: '' },
 	});
 
 	// ── Save state ──────────────────────────────────────────────────
@@ -105,9 +102,6 @@
 			caps.embeddings.provider = (emb?.provider as string) ?? '';
 			caps.embeddings.model = (emb?.model as string) ?? '';
 			caps.embeddings.dims = (emb?.dims as number) ?? 768;
-			const mem = loaded.memory as Record<string, unknown> | undefined;
-			caps.memory.userId = (mem?.userId as string) ?? 'default_user';
-			caps.memory.instructions = (mem?.customInstructions as string) ?? '';
 			const tts = loaded.tts as Record<string, unknown> | undefined;
 			caps.tts.provider = (tts?.provider as string) ?? '';
 			caps.tts.model = (tts?.model as string) ?? '';
@@ -126,24 +120,12 @@
 		}
 	}
 
-	async function loadMemoryConfig(): Promise<void> {
-		const token = getAdminToken();
-		if (!token) return;
-		try {
-			const memConfig = await fetchMemoryConfig(token);
-			if (memConfig?.config?.memory?.custom_instructions) caps.memory.instructions = memConfig.config.memory.custom_instructions;
-		} catch {
-			// optional
-		}
-	}
-
 	async function loadAll(): Promise<void> {
 		pageLoading = true;
 		loadError = '';
 		try {
 			await loadProviderDropdowns();
 			await loadCapabilities();
-			await loadMemoryConfig();
 		} catch (e) {
 			loadError = e instanceof Error ? e.message : 'Failed to load.';
 		} finally {
@@ -182,12 +164,11 @@
 		const token = getAdminToken(); if (!token) return;
 		saving = true; saveError = ''; saveSuccess = false;
 		try {
-			const { llm, slm, embeddings: emb, tts, stt, reranking: rr, memory: mem } = caps;
+			const { llm, slm, embeddings: emb, tts, stt, reranking: rr } = caps;
 			const p: Record<string, unknown> = {
 				llm: llm.provider && llm.model ? `${llm.provider}/${llm.model}` : undefined,
 				slm: slm.provider && slm.model ? `${slm.provider}/${slm.model}` : undefined,
 				embeddings: emb.provider && emb.model ? { provider: emb.provider, model: emb.model, dims: emb.dims } : undefined,
-				memory: { userId: mem.userId, customInstructions: mem.instructions },
 				tts: tts.provider ? { enabled: true, provider: tts.provider, model: tts.model || undefined, voice: tts.voice || undefined } : undefined,
 				stt: stt.provider ? { enabled: true, provider: stt.provider, model: stt.model || undefined, language: stt.language || undefined } : undefined,
 				reranking: rr.provider ? { enabled: true, provider: rr.provider, mode: rr.mode, model: rr.model || undefined, topK: rr.topK } : undefined,
@@ -198,12 +179,6 @@
 		finally { saving = false; }
 	}
 
-	async function handleResetMemory(): Promise<void> {
-		if (!confirm('Delete all stored memories? This cannot be undone.')) return;
-		const token = getAdminToken(); if (!token) return;
-		try { await resetMemoryCollection(token); saveSuccess = true; setTimeout(() => saveSuccess = false, 4000); }
-		catch (e) { saveError = e instanceof Error ? e.message : 'Reset failed.'; }
-	}
 </script>
 
 <div class="cap-tab" role="tabpanel">
@@ -216,7 +191,6 @@
 <div class="sub-tabs" role="tablist">
 	<button class="pill" class:pill--active={activeSubTab === 'capabilities'} role="tab" aria-selected={activeSubTab === 'capabilities'} onclick={() => activeSubTab = 'capabilities'}>Capabilities</button>
 	<button class="pill" class:pill--active={activeSubTab === 'voice'} role="tab" aria-selected={activeSubTab === 'voice'} onclick={() => activeSubTab = 'voice'}>Voice</button>
-	<button class="pill" class:pill--active={activeSubTab === 'memory'} role="tab" aria-selected={activeSubTab === 'memory'} onclick={() => activeSubTab = 'memory'}>Memory</button>
 	{#if pageLoading}<span class="loading-hint"><span class="spinner"></span> Loading...</span>{/if}
 </div>
 
@@ -439,45 +413,6 @@
 	</div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════ -->
-<!-- MEMORY SUB-TAB                                                -->
-<!-- ═══════════════════════════════════════════════════════════════ -->
-{:else if activeSubTab === 'memory'}
-<div class="sub-panel">
-
-	{#if saveSuccess}<div class="feedback feedback--success"><span>Saved.</span></div>{/if}
-	{#if saveError}<div class="feedback feedback--error"><span>{saveError}</span>
-		<button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => saveError = ''}>x</button>
-	</div>{/if}
-
-	<div class="assign-section">
-		<h3 class="assign-heading">Memory Settings</h3>
-		<p class="section-desc">The assistant uses memory to remember context across conversations.</p>
-		<div class="assign-row">
-			<div class="form-field" style="max-width: 240px">
-				<label class="form-label" for="mem-u">User ID</label>
-				<input id="mem-u" name="mem-u" autocomplete="off" class="form-input" type="text" bind:value={caps.memory.userId} />
-				<span class="form-hint">Identifies your memory collection</span>
-			</div>
-		</div>
-		<div class="assign-row">
-			<div class="form-field form-field--grow">
-				<label class="form-label" for="mem-i">Custom Instructions</label>
-				<textarea id="mem-i" name="mem-i" autocomplete="off" class="form-input form-textarea" bind:value={caps.memory.instructions} rows="4" placeholder="Optional instructions that guide how the assistant stores and recalls memories"></textarea>
-			</div>
-		</div>
-	</div>
-
-	<div class="save-footer">
-		<div class="save-footer-left">
-			<button class="btn btn-danger btn-sm" onclick={() => void handleResetMemory()}>Reset Memory Collection</button>
-			<span class="form-hint">Permanently deletes all stored memories.</span>
-		</div>
-		<button class="btn btn-primary" onclick={() => void handleSave()} disabled={saving}>
-			{#if saving}<span class="spinner"></span>{/if} Save Changes
-		</button>
-	</div>
-</div>
 {/if}
 </div>
 
@@ -490,15 +425,12 @@
 	.form-field { display: flex; flex-direction: column; gap: var(--space-1); flex: 1; min-width: 140px; }
 	.form-field--grow { flex: 2; min-width: 180px; }
 	.form-field--narrow { flex: 0 0 100px; min-width: 80px; }
-	.form-hint { font-size: var(--text-xs); color: var(--color-text-tertiary); }
 	.assign-section { margin-bottom: var(--space-4); }
 	.assign-heading { font-size: var(--text-xs); font-weight: var(--font-semibold); text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text); margin-bottom: var(--space-2); }
 	.assign-required { color: var(--color-danger); font-weight: normal; text-transform: none; letter-spacing: normal; }
 	.assign-optional { color: var(--color-text-tertiary); font-weight: normal; text-transform: none; letter-spacing: normal; }
 	.assign-row { display: flex; align-items: flex-end; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-2); }
-	.form-textarea { height: auto; padding: var(--space-2) var(--space-3); resize: vertical; }
 	.save-footer { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; align-items: center; gap: var(--space-3); }
-	.save-footer-left { display: flex; align-items: center; gap: var(--space-3); margin-right: auto; }
 	.feedback { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); font-size: var(--text-sm); border-radius: var(--radius-md); margin-bottom: var(--space-4); }
 	.feedback span { flex: 1; }
 	.feedback--success { background: var(--color-success-bg); color: var(--color-text); }

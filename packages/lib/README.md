@@ -30,7 +30,7 @@ Compose files in `stack/` and env files in `vault/` are the live runtime inputs.
 | `control-plane/env` and `control-plane/secrets` | Read, merge, and patch env files |
 | `control-plane/lifecycle` and `control-plane/docker` | Compose operations and stack lifecycle helpers |
 | `control-plane/channels` and `control-plane/components` | Addon discovery and install/uninstall logic |
-| `control-plane/memory-config` | Memory service configuration helpers |
+| `control-plane/provider-models` | Provider model discovery helpers |
 | `control-plane/scheduler` | Automation parsing and scheduler helpers |
 | `logger` | Shared structured logger |
 

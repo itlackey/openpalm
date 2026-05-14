@@ -45,7 +45,7 @@ describe("ensureSecrets", () => {
 
   test("is idempotent — does not overwrite existing stack.env", () => {
     const state = { vaultDir } as ControlPlaneState;
-    const existingContent = "OP_ADMIN_TOKEN=my-token\nOPENAI_API_KEY=sk-test\nOP_ASSISTANT_TOKEN=ast\nOP_MEMORY_TOKEN=mem\n";
+    const existingContent = "OP_ADMIN_TOKEN=my-token\nOPENAI_API_KEY=sk-test\nOP_ASSISTANT_TOKEN=ast\n";
     seedSecretsEnv(vaultDir, existingContent);
 
     ensureSecrets(state);

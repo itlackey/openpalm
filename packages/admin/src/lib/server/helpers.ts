@@ -125,7 +125,6 @@ export function getCallerType(event: RequestEvent): CallerType {
  * via user-supplied connection URLs.
  */
 const DOCKER_SERVICE_NAMES = new Set([
-  "memory",
   "assistant",
   "guardian",
   "admin",
@@ -138,7 +137,7 @@ const DOCKER_SERVICE_NAMES = new Set([
  * Blocks:
  * - Cloud metadata IPs (169.254.x.x link-local range)
  * - Loopback addresses (127.x, ::1) — wrong target from inside Docker
- * - Known Docker Compose service names (memory, admin, etc.)
+ * - Known Docker Compose service names (assistant, admin, etc.)
  * - Non-http(s) schemes
  *
  * Allows:

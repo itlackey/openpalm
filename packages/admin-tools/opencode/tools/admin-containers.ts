@@ -12,7 +12,7 @@ export const up = tool({
   description: "Start a stopped OpenPalm service container",
   args: {
     service: tool.schema.string().describe(
-      "The service to start. Core services: memory, assistant, guardian. Use the list tool or /admin/installed to discover installed addon services."
+      "The service to start. Core services: assistant, guardian. Use the list tool or /admin/installed to discover installed addon services."
     ),
   },
   async execute(args) {
@@ -27,7 +27,7 @@ export const down = tool({
   description: "Stop a running OpenPalm service container",
   args: {
     service: tool.schema.string().describe(
-      "The service to stop. Core services: memory, assistant, guardian. Use the list tool or /admin/installed to discover installed addon services."
+      "The service to stop. Core services: assistant, guardian. Use the list tool or /admin/installed to discover installed addon services."
     ),
   },
   async execute(args) {
@@ -42,7 +42,7 @@ export const restart = tool({
   description: "Restart an OpenPalm service container",
   args: {
     service: tool.schema.string().describe(
-      "The service to restart. Core services: memory, assistant, guardian. Use the list tool or /admin/installed to discover installed addon services."
+      "The service to restart. Core services: assistant, guardian. Use the list tool or /admin/installed to discover installed addon services."
     ),
   },
   async execute(args) {

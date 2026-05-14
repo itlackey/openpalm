@@ -47,10 +47,6 @@ assignments:          # Which connection + model to use for each capability
     connectionId: openai
     model: text-embedding-3-small
     embeddingDims: 1536
-  memory:             # Preferred memory settings for helper tooling
-    llm: { connectionId: openai, model: gpt-4o }
-    embeddings: { connectionId: openai, model: text-embedding-3-small }
-    vectorStore: { provider: sqlite-vec, collectionName: memory, dbPath: /data/memory.db }
 
 addons:               # Enabled addon services
   - admin

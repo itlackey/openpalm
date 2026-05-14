@@ -16,35 +16,29 @@ This skill provides a systematic approach to diagnosing and resolving issues in 
 
 ### Stack Services
 
-The OpenPalm stack runs 4 core services:
+The OpenPalm stack runs two core services:
 
 | Service | Role | Health endpoint |
 |---------|------|-----------------|
-| **memory** | Semantic memory service (sqlite-vec + embeddings) | http://localhost:3898/health |
-| **assistant** | OpenCode runtime (no Docker socket) | TCP check on port 3800 |
+| **assistant** | OpenCode runtime (no Docker socket). Hosts the scheduler co-process and the shared akm stash. | TCP check on port 3800 |
 | **guardian** | HMAC-verified message ingress, rate limiting, replay detection | http://localhost:3899/health |
-| **scheduler** | Lightweight automation sidecar (cron jobs) | http://localhost:3897/health |
 
 Optional addons (enabled by copying from the registry catalog into `stack/addons/`):
 | **admin** | Control plane API (Docker socket access via docker-socket-proxy) | http://localhost:3880/ |
 
+Persistent memory, lessons, skills, commands, and workflows live in the shared akm stash that the assistant and admin containers bind-mount from `~/.openpalm/data/stash/`.
+
 ### Service Communication
 
 ```
-External clients -> Guardian (HMAC/validate) -> Assistant
-                                                    |
-                                                    v
-                                                  Memory (semantic search)
-                                                    |
-                                                    v
-                                             Embedding model (Ollama/cloud)
+External clients -> Guardian (HMAC/validate) -> Assistant -> akm stash (memories, skills, lessons)
 
 Assistant -> Admin API (stack operations, authenticated)
 Admin -> Docker Socket Proxy -> Docker daemon
 ```
 
 Networks:
-- `assistant_net` — admin, memory, assistant, guardian, scheduler (internal communication)
+- `assistant_net` — admin, assistant, guardian (internal communication)
 - `admin_docker_net` — admin, docker-socket-proxy only (isolated)
 
 ### Diagnostic Tools Available
@@ -52,7 +46,7 @@ Networks:
 | Tool | Purpose |
 |------|---------|
 | `stack-diagnostics` | Full snapshot of all services, health, and config |
-| `health-check` | Quick probe of core services (guardian, memory, admin) |
+| `health-check` | Quick probe of core services (guardian, admin) |
 | `admin-containers-list` | List all containers with status |
 | `admin-containers-up` | Start a specific service |
 | `admin-containers-down` | Stop a specific service |
@@ -108,32 +102,22 @@ Networks:
 
 ---
 
-### "Memory not working" (assistant cannot search or add memories)
+### "Memory / akm stash not working" (assistant cannot search or add memories)
 
-1. **Health check memory:** `health-check services=memory`
-   - Unreachable -> continue to step 2.
-   - Healthy -> skip to step 4.
+Memory is now served by the akm stash bind-mounted into the assistant container. There is no longer a separate memory service.
 
-2. **Check container:** `admin-containers-list` — is memory running?
-   - No -> `admin-containers-up service=memory`
-   - Yes but unhealthy -> continue to step 3.
+1. **Check the stash mount:** `admin-containers-inspect service=assistant` — is `/akm` mounted?
+   - Missing -> the install/upgrade did not create the bind mount. Re-run `admin-lifecycle-update`.
 
-3. **Check logs:** `admin-logs service=memory`
-   - Look for error messages related to startup, database, or embedding model.
-
-4. **Check memory stats:** `memory-stats` — does it return data?
-   - Yes -> memory service is operational. The problem may be query-specific.
-   - No -> memory service is up but not functioning correctly.
-
-5. **Common issues and fixes:**
+2. **Check akm health from the assistant container:** ask the assistant to run `akm doctor` (or `akm-help`) and report its output. Common failures:
 
    | Symptom | Cause | Fix |
    |---------|-------|-----|
-   | Embedding errors | Model not available | Run `admin-memory-models` to verify. Ensure Ollama is running with the model pulled. |
-   | Dimension mismatch | Wrong `embedding_model_dims` | nomic-embed-text = 768 dims. Check and correct the memory config. |
-   | User ID mismatch | MEMORY_USER_ID differs between services | Check MEMORY_USER_ID in connections — must be consistent. |
-   | Connection refused to Ollama | Wrong URL from container | Must use `http://host.docker.internal:11434` from containers, not `localhost`. |
-   | SQLite lock errors | Concurrent access issue | Restart memory service: `admin-containers-restart service=memory` |
+   | `AKM_STASH_DIR not writable` | Bind mount owned by wrong UID | Re-run `admin-lifecycle-update`; verify `OP_UID`/`OP_GID` match the host. |
+   | `index out of date` | Stash files added outside akm | Ask the assistant to run `akm index` to rebuild the local index. |
+   | Embedding errors | Configured embedding provider unavailable | Check `admin-providers-local` and the `OP_CAP_EMBEDDINGS_*` env vars on the assistant. |
+
+3. **Inspect the stash directly:** the shared root is `~/.openpalm/data/stash/` on the host. Use `admin-logs service=assistant` to look for errors emitted by the akm CLI.
 
 ---
 
@@ -160,7 +144,7 @@ Networks:
 ### "Stack won't start / containers keep restarting"
 
 1. **Check all containers:** `admin-containers-list` — which services are stopped or restarting?
-   - Note the dependency chain: memory -> assistant -> guardian. Admin addon: docker-socket-proxy -> admin.
+   - Note the dependency chain: assistant -> guardian. Admin addon: docker-socket-proxy -> admin.
 
 2. **Check logs for failing service:** `admin-logs service=<name>`
    - Look for startup errors, missing environment variables, or configuration issues.
@@ -181,9 +165,8 @@ Networks:
    |---------|-------|-----|
    | All containers fail | Docker daemon not running | Check Docker service on host |
    | Admin addon won't start | docker-socket-proxy unhealthy | Check Docker socket path (`OP_DOCKER_SOCK`) |
-   | Assistant restart loop | Memory service unhealthy | Assistant depends on memory health. Fix memory first. |
    | Guardian restart loop | Assistant unhealthy | Guardian depends on assistant health. Fix assistant first. |
-   | Port conflict errors | Another service on the same port | Check ports 8080, 8100, 4096, 8765 for conflicts |
+   | Port conflict errors | Another service on the same port | Check ports 8080, 8100, 4096 for conflicts |
    | Permission denied | UID/GID mismatch | Check `OP_UID`/`OP_GID` match volume ownership |
 
 ---
@@ -239,15 +222,10 @@ Networks:
 Understanding dependencies is critical for diagnosing cascade failures:
 
 ```
-     memory  (no compose deps — starts independently)
-       |
-       v
-   assistant  (depends on: memory healthy)
+   assistant  (depends on: init service completed; hosts scheduler co-process)
        |
        v
     guardian  (depends on: assistant healthy)
-
-    scheduler  (depends on: assistant healthy)
 
 Optional (admin addon):
   docker-socket-proxy  (no deps — starts first)
@@ -256,7 +234,7 @@ Optional (admin addon):
      admin  (depends on: docker-socket-proxy healthy)
 ```
 
-**Cascade failure pattern:** If memory goes down, assistant becomes unhealthy, which causes guardian to become unhealthy, which causes all channels to stop receiving messages. Fix memory first, then wait for the chain to recover.
+**Cascade failure pattern:** If the assistant becomes unhealthy the guardian also goes unhealthy and all channels stop receiving messages. Fix the assistant first, then wait for the chain to recover.
 
 ## Environment Variables Reference
 
@@ -265,17 +243,15 @@ Key environment variables that affect diagnostics:
 | Variable | Service | Purpose |
 |----------|---------|---------|
 | `ADMIN_TOKEN` | admin, guardian | Admin API authentication token |
-| `MEMORY_API_URL` | assistant | Memory service endpoint (default: `http://memory:8765`) |
-| `MEMORY_AUTH_TOKEN` | admin, memory | Memory service authentication |
-| `MEMORY_USER_ID` | assistant | Memory user identity |
+| `AKM_STASH_DIR` | assistant, admin | Shared akm stash mount (default: `/akm` inside the container) |
 | `OP_ADMIN_API_URL` | assistant | Admin API from assistant (default: `http://admin:8100`) |
 | `OP_ASSISTANT_TOKEN` | assistant | Admin API token for assistant |
 | `GUARDIAN_AUDIT_PATH` | guardian | Audit log file location |
 | `GUARDIAN_SECRETS_PATH` | guardian | Channel secrets file path |
 | `OPENCODE_TIMEOUT_MS` | guardian | Message forwarding timeout (default: 120000ms) |
 | `OP_DOCKER_SOCK` | docker-socket-proxy | Docker socket path |
-| `SYSTEM_LLM_PROVIDER` | assistant | LLM provider configuration |
-| `SYSTEM_LLM_MODEL` | assistant | LLM model selection |
+| `OP_CAP_LLM_PROVIDER` | assistant | Resolved LLM provider id (drives entrypoint key-scoping) |
+| `OP_CAP_LLM_MODEL` | assistant | Resolved primary LLM model id |
 
 ## When to Use This Skill
 

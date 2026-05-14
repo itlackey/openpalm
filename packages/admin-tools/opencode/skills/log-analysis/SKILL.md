@@ -21,9 +21,9 @@ Accessed via the `admin-logs` tool.
 Each service writes to stdout/stderr, captured by Docker's logging driver. You can filter by service name and control the number of lines returned.
 
 ```
-admin-logs                         # All services, recent logs
-admin-logs service=guardian        # Specific service
-admin-logs service=memory tail=100 # Last 100 lines
+admin-logs                            # All services, recent logs
+admin-logs service=guardian           # Specific service
+admin-logs service=assistant tail=100 # Last 100 lines
 ```
 
 ### 2. Guardian Audit Log
@@ -104,15 +104,13 @@ Each entry contains:
 | `"secrets_file_unreadable"` | Cannot read secrets path | Verify GUARDIAN_SECRETS_PATH and file permissions |
 | `"started"` with port | Guardian server started | Normal startup message |
 
-### Memory Logs
+### akm Stash Logs (emitted by the assistant container)
 
 | Pattern | Meaning | Action |
 |---------|---------|--------|
-| `"embedding"` errors | Embedding model not available or failed | Verify Ollama is running and model is pulled |
-| `"sqlite"` errors | Database corruption or lock | Restart memory service; check data directory |
-| `"connection refused"` to Ollama | Embedding service unreachable | Ollama must be at `http://host.docker.internal:11434` |
-| `"dimension"` mismatch | Vector dimensions wrong | nomic-embed-text = 768 dims; check config |
-| Health check pass | Memory service healthy | Normal |
+| `"AKM_STASH_DIR"` permission errors | Stash mount owned by wrong UID | Re-run `admin-lifecycle-update`; check `OP_UID`/`OP_GID`. |
+| `"akm index"` errors | Stash index out of date | Ask the assistant to run `akm index` to rebuild. |
+| `"embedding"` errors from `akm` | Configured embedding provider unavailable | Check `admin-providers-local` and the `OP_CAP_EMBEDDINGS_*` vars on the assistant. |
 
 ### Assistant Logs
 
@@ -160,9 +158,9 @@ Follow this progression from broad to narrow:
 
 ### Cascade Failure
 **Symptom:** Multiple services unhealthy, channel messages failing.
-**Pattern:** Memory goes down -> assistant health check fails -> guardian cannot forward -> all channels stop.
+**Pattern:** Assistant becomes unhealthy -> guardian cannot forward -> all channels stop.
 **Diagnosis:** Check which service failed *first* by looking at timestamps. The root cause is the first service to report errors.
-**Fix:** Fix the root service. The dependency chain will recover automatically (guardian retries assistant, assistant retries memory).
+**Fix:** Fix the root service. The dependency chain will recover automatically (guardian retries the assistant).
 
 ### Config Drift
 **Symptom:** `invalid_signature` errors in guardian audit after a config change.

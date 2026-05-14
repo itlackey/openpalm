@@ -3,7 +3,6 @@ import type {
   HealthPayload,
   ContainerListResponse,
   AutomationsResponse,
-  MemoryConfigResponse,
   CapabilitiesResponseDto,
 } from './types.js';
 
@@ -215,19 +214,6 @@ export async function fetchCapabilities(
   return dto.secrets;
 }
 
-
-// ── Memory Config ───────────────────────────────────────────────────────
-
-export async function fetchMemoryConfig(
-  token: string
-): Promise<MemoryConfigResponse> {
-  const res = await requireOk(await request('GET', '/admin/memory/config', token));
-  return (await res.json()) as MemoryConfigResponse;
-}
-
-export async function resetMemoryCollection(token: string): Promise<void> {
-  await requireOk(await request('POST', '/admin/memory/reset-collection', token, {}));
-}
 
 // ── Addon Management ────────────────────────────────────────────────────
 

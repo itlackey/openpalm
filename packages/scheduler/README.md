@@ -55,7 +55,6 @@ Use safe argument arrays; do not depend on shell interpolation.
 | `OP_ADMIN_API_URL` | `http://admin:8100` | Admin API URL for `api` actions |
 | `OPENCODE_API_URL` | `http://localhost:4096` | Assistant API URL for `assistant` actions (co-resident in the same container) |
 | `OPENCODE_SERVER_PASSWORD` | - | Optional password for assistant API auth (compose-mapped from `OP_OPENCODE_PASSWORD`) |
-| `MEMORY_API_URL` | `http://memory:8765` | Memory service URL |
 
 ## Development
 

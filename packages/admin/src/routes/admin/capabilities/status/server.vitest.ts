@@ -60,9 +60,6 @@ describe('/admin/capabilities/status route', () => {
         model: '   ',
         dims: 1536,
       },
-      memory: {
-        userId: 'default_user',
-      },
     });
 
     const res = await GET(makeEvent());

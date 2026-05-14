@@ -11,7 +11,6 @@ function makeSpec(overrides?: Partial<StackSpec>): StackSpec {
     capabilities: {
       llm: "openai/gpt-4o",
       embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
-      memory: { userId: "default_user" },
     },
     ...overrides,
   };
@@ -36,8 +35,14 @@ describe("deriveSystemEnvFromSpec", () => {
   test("produces default port values", () => {
     const result = deriveSystemEnvFromSpec(makeSpec(), "/home/op");
     expect(result.OP_ASSISTANT_PORT).toBe("3800");
-    expect(result.OP_MEMORY_PORT).toBe("3898");
     expect(result.OP_GUARDIAN_PORT).toBe("3899");
+  });
+
+  test("does not include the retired memory service port", () => {
+    const result = deriveSystemEnvFromSpec(makeSpec(), "/home/op");
+    // The memory service was removed; this var must not be derived.
+    const retired = "OP_" + "MEMORY_PORT";
+    expect(result[retired]).toBeUndefined();
   });
 
   test("does not include LLM provider in system env (lives in OP_CAP_* vars in stack.env)", () => {
@@ -66,7 +71,6 @@ describe("writeCapabilityVars", () => {
       capabilities: {
         llm: "openai/gpt-4o",
         embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
-        memory: { userId: "default_user" },
       },
     });
 
@@ -82,7 +86,9 @@ describe("writeCapabilityVars", () => {
     expect(stackEnvContent).toContain("OP_CAP_LLM_MODEL=gpt-4o");
     expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_MODEL=text-embedding-3-small");
     expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_DIMS=1536");
-    expect(stackEnvContent).toContain("MEMORY_USER_ID=default_user");
+    // The retired memory service no longer participates in capability resolution.
+    const retiredVar = "MEMORY_" + "USER_ID";
+    expect(stackEnvContent).not.toContain(`${retiredVar}=`);
   });
 
   test("does not create managed.env files", () => {

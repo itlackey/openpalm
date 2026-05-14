@@ -21,7 +21,6 @@ function seedStackYaml(): void {
     capabilities: {
       llm: 'openai/gpt-4o',
       embeddings: { provider: 'openai', model: 'text-embedding-3-small', dims: 1536 },
-      memory: { userId: 'default_user' },
     },
   };
   writeStackSpec(state.configDir, spec);
@@ -101,10 +100,6 @@ describe('/admin/capabilities/assignments route', () => {
           model: 'text-embedding-004',
           dims: 768,
         },
-        memory: {
-          userId: 'owner',
-          customInstructions: 'Keep it concise.',
-        },
       },
     }));
 
@@ -118,10 +113,6 @@ describe('/admin/capabilities/assignments route', () => {
       provider: 'google',
       model: 'text-embedding-004',
       dims: 768,
-    });
-    expect(spec!.capabilities.memory).toEqual({
-      userId: 'owner',
-      customInstructions: 'Keep it concise.',
     });
 
     const stackEnv = readFileSync(join(state.vaultDir, 'stack', 'stack.env'), 'utf-8');

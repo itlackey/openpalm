@@ -5,7 +5,7 @@ OpenPalm remains compose-first and manual-first; the admin addon is a convenienc
 
 ## Responsibilities
 
-- Web UI for stack status, addons, connections, automations, and memory settings
+- Web UI for stack status, addons, connections, and automations
 - Authenticated `/admin/*` API used by the UI and assistant tools
 - Thin control-plane consumer built on `@openpalm/lib`
 - Reads the shipped addon catalog from `registry/addons/` and enabled runtime overlays from `stack/addons/`
@@ -59,4 +59,3 @@ In a normal install the token source of truth is `~/.openpalm/vault/stack/stack.
 | `OP_HOME` | OpenPalm root mounted into the container, usually `~/.openpalm` |
 | `ADMIN_TOKEN` | Runtime admin API token (compose-mapped from `OP_ADMIN_TOKEN` in stack.env) |
 | `DOCKER_HOST` | Docker Socket Proxy URL inside the addon network |
-| `MEMORY_AUTH_TOKEN` | Memory service bearer token (compose-mapped from `OP_MEMORY_TOKEN` in stack.env) |

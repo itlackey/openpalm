@@ -8,7 +8,6 @@ import adminGuardianAudit from "../opencode/tools/admin-guardian-audit.ts";
 import adminConfigValidate from "../opencode/tools/admin-config-validate.ts";
 import adminConnectionsTest from "../opencode/tools/admin-connections-test.ts";
 import adminProvidersLocal from "../opencode/tools/admin-providers-local.ts";
-import adminMemoryModels from "../opencode/tools/admin-memory-models.ts";
 import adminContainersInspect from "../opencode/tools/admin-containers-inspect.ts";
 import adminContainersEvents from "../opencode/tools/admin-containers-events.ts";
 import adminGuardianStats from "../opencode/tools/admin-guardian-stats.ts";
@@ -37,7 +36,6 @@ export const plugin: Plugin = async () => {
       "admin-config-validate": adminConfigValidate,
       "admin-connections-test": adminConnectionsTest,
       "admin-providers-local": adminProvidersLocal,
-      "admin-memory-models": adminMemoryModels,
       "admin-containers-inspect": adminContainersInspect,
       "admin-containers-events": adminContainersEvents,
       "admin-guardian-stats": adminGuardianStats,

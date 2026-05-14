@@ -34,7 +34,6 @@ describe('CapabilitiesTab', () => {
           capabilities: {
             llm: 'openai/gpt-4o',
             embeddings: { provider: 'openai', model: 'text-embedding-3-small', dims: 1536 },
-            memory: { userId: 'default_user', customInstructions: '' },
           },
         });
       }
@@ -43,13 +42,6 @@ describe('CapabilitiesTab', () => {
           providers: [
             { id: 'openai', name: 'OpenAI', connected: true, env: [], modelCount: 2, authMethods: [{ type: 'api', label: 'API Key' }] },
           ],
-        });
-      }
-      if (url === '/admin/memory/config') {
-        return createJsonResponse({
-          config: { memory: { custom_instructions: '' } },
-          providers: { llm: ['openai'], embed: ['openai'] },
-          embeddingDims: {},
         });
       }
 
@@ -67,7 +59,6 @@ describe('CapabilitiesTab', () => {
     // Sub-tab pills (no Providers — moved to Connections tab)
     await expect.element(page.getByRole('tab', { name: 'Capabilities' })).toBeInTheDocument();
     await expect.element(page.getByRole('tab', { name: 'Voice' })).toBeInTheDocument();
-    await expect.element(page.getByRole('tab', { name: 'Memory' })).toBeInTheDocument();
 
     // Save button should be present
     await expect.element(page.getByRole('button', { name: 'Save Changes' })).toBeInTheDocument();

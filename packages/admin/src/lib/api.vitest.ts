@@ -16,7 +16,6 @@ describe('api capabilities adapter', () => {
           capabilities: {
             llm: 'openai/gpt-4o-mini',
             embeddings: { provider: 'openai', model: 'text-embedding-3-small', dims: 1536 },
-            memory: { userId: 'default_user' },
           },
           secrets: {
             OPENAI_API_KEY: 'sk-****1234',

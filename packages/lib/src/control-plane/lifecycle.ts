@@ -21,7 +21,8 @@ import {
   discoverStackOverlays,
 } from "./config-persistence.js";
 import { readStackSpec } from "./stack-spec.js";
-import { refreshCoreAssets, ensureMemoryDir } from "./core-assets.js";
+import { refreshCoreAssets } from "./core-assets.js";
+import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName } from "./docker.js";
 import { acquireLock, releaseLock } from "./lock.js";
@@ -94,7 +95,6 @@ async function reconcileCore(
   if (opts.activateServices) {
     for (const s of CORE_SERVICES) state.services[s] = "running";
   }
-  ensureMemoryDir(state.dataDir);
 
   for (const addonName of listEnabledAddonIds(state.homeDir)) {
     mkdirSync(`${state.dataDir}/${addonName}`, { recursive: true });

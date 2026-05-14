@@ -40,10 +40,6 @@ function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
         model: "text-embedding-3-small",
         dims: 1536,
       },
-      memory: {
-        userId: "test_user",
-        customInstructions: "",
-      },
     },
     security: { adminToken: "test-admin-token-12345" },
     owner: { name: "Test User", email: "test@example.com" },
@@ -116,7 +112,6 @@ function createFullDirTree(): void {
     vaultDir,
     dataDir,
     join(dataDir, "admin"),
-    join(dataDir, "memory"),
     join(dataDir, "assistant"),
     join(dataDir, "guardian"),
     join(dataDir, "automations"),
@@ -153,7 +148,6 @@ function seedMinimalEnvFiles(): void {
       "# OpenPalm — Stack Configuration",
       "OP_ADMIN_TOKEN=",
       "OP_ASSISTANT_TOKEN=",
-      "OP_MEMORY_TOKEN=",
       "OPENAI_API_KEY=",
       "OPENAI_BASE_URL=",
       "ANTHROPIC_API_KEY=",
@@ -273,7 +267,7 @@ describe("Existing Install", () => {
   // Scenario 5: ensureSecrets does NOT overwrite existing user.env
   it("ensureSecrets does not overwrite existing user.env", () => {
     const customContent =
-      "export OP_ADMIN_TOKEN=my-custom-token\nexport OP_MEMORY_TOKEN=custom-auth-token\n";
+      "export OP_ADMIN_TOKEN=my-custom-token\nexport OPENAI_API_KEY=custom-key\n";
     mkdirSync(join(vaultDir, "user"), { recursive: true });
     writeFileSync(join(vaultDir, "user", "user.env"), customContent);
 
@@ -299,8 +293,8 @@ describe("Existing Install", () => {
     expect(afterContent).toBe(customContent);
   });
 
-  // Scenario 6: performSetup re-run preserves OP_MEMORY_TOKEN
-  it("performSetup re-run preserves OP_MEMORY_TOKEN from first run", async () => {
+  // Scenario 6: performSetup re-run preserves OP_ASSISTANT_TOKEN
+  it("performSetup re-run preserves OP_ASSISTANT_TOKEN from first run", async () => {
     // First setup
     await performSetup(makeValidSpec());
 
@@ -309,7 +303,7 @@ describe("Existing Install", () => {
       "utf-8"
     );
     const firstMatch = secretsAfterFirst.match(
-      /OP_MEMORY_TOKEN=([a-f0-9]+)/
+      /OP_ASSISTANT_TOKEN=([a-f0-9]+)/
     );
     expect(firstMatch).not.toBeNull();
     const firstToken = firstMatch![1];
@@ -334,10 +328,10 @@ describe("Existing Install", () => {
       "utf-8"
     );
     const secondMatch = secretsAfterSecond.match(
-      /OP_MEMORY_TOKEN=([a-f0-9]+)/
+      /OP_ASSISTANT_TOKEN=([a-f0-9]+)/
     );
     expect(secondMatch).not.toBeNull();
-    // OP_MEMORY_TOKEN should be preserved (buildSystemSecretsFromSetup does not overwrite it)
+    // OP_ASSISTANT_TOKEN should be preserved across setups
     expect(secondMatch![1]).toBe(firstToken);
   });
 
@@ -371,10 +365,6 @@ describe("Existing Install", () => {
             provider: "groq",
             model: "text-embedding-3-small",
             dims: 1536,
-          },
-          memory: {
-            userId: "test_user",
-            customInstructions: "",
           },
         },
         connections: [
@@ -638,10 +628,6 @@ describe("Setup Input Variations", () => {
           model: "nomic-embed-text",
           dims: 768,
         },
-        memory: {
-          userId: "test_user",
-          customInstructions: "",
-        },
       },
       connections: [
         {
@@ -736,10 +722,6 @@ describe("performSetup end-to-end artifacts", () => {
           provider: "ollama",
           model: "nomic-embed-text",
           dims: 0, // Resolved from lookup
-        },
-        memory: {
-          userId: "test_user",
-          customInstructions: "",
         },
       },
       connections: [

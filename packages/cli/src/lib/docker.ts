@@ -34,7 +34,6 @@ export async function ensureDirectoryTree(
     dataDir,
     join(dataDir, 'assistant'),
     join(dataDir, 'admin'),
-    join(dataDir, 'memory'),
     join(dataDir, 'guardian'),
     join(dataDir, 'stash'),
     join(homeDir, 'stack'),

@@ -39,7 +39,6 @@ describe("ensureSecrets", () => {
     expect(stackEnv).toContain("OWNER_NAME=");
     expect(stackEnv).toContain("OP_ADMIN_TOKEN=");
     expect(stackEnv).toContain("OP_ASSISTANT_TOKEN=");
-    expect(stackEnv).toContain("OP_MEMORY_TOKEN=");
     expect(existsSync(join(vaultDir, "user", "user.env"))).toBe(true);
   });
 

@@ -101,7 +101,6 @@ export function ensureHomeDirs(): void {
     `${home}/data`,
     `${home}/data/assistant`,
     `${home}/data/admin`,
-    `${home}/data/memory`,
     `${home}/data/guardian`,
     // Shared akm stash — bind-mounted rw into admin and assistant containers.
     `${home}/data/stash`,

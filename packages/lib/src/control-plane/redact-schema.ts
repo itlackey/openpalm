@@ -29,10 +29,8 @@ export function generateRedactSchema(systemEnv: Record<string, string>): string 
     envKeys.add(mapping.envKey);
   }
 
-  // Include container-runtime env names that differ from env-file keys
-  // (compose maps OP_MEMORY_TOKEN -> MEMORY_AUTH_TOKEN, etc.)
+  // Include container-runtime env names that differ from env-file keys.
   envKeys.add('ADMIN_TOKEN');
-  envKeys.add('MEMORY_AUTH_TOKEN');
   envKeys.add('OPENCODE_SERVER_PASSWORD');
 
   // Resolved capability API keys (written to stack.env by spec-to-env)

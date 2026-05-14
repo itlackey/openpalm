@@ -27,7 +27,6 @@ const TEST_OWNER_EMAIL = "test@example.com";
 const TEST_LLM_MODEL = "qwen2.5-coder:3b";
 const TEST_EMBED_MODEL = "nomic-embed-text:latest";
 const TEST_EMBED_DIMS = 768;
-const TEST_MEMORY_USER = "e2e-wizard-user";
 
 // ── Mock API Responses ──────────────────────────────────────────────────
 
@@ -58,7 +57,6 @@ function mockDeployStatus(phase: "pulling" | "running", complete: boolean) {
 		ok: true,
 		setupComplete: complete,
 		deployStatus: [
-			{ service: "memory", status: phase, label: "Memory" },
 			{ service: "assistant", status: phase, label: "Assistant" },
 			{ service: "guardian", status: phase, label: "Guardian" },
 		],
@@ -495,19 +493,6 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await expect(page.locator("#ollama-enabled")).toBeVisible();
 		});
 
-		test("Memory User ID defaults from owner name", async ({ page }) => {
-			await goToStep4(page);
-			// Wizard derives memory user ID from owner name: lowercased, spaces → underscores
-			const expected = TEST_OWNER_NAME.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
-			await expect(page.locator("#memory-user-id")).toHaveValue(expected);
-		});
-
-		test("Memory User ID can be overridden", async ({ page }) => {
-			await goToStep4(page);
-			await page.fill("#memory-user-id", TEST_MEMORY_USER);
-			await expect(page.locator("#memory-user-id")).toHaveValue(TEST_MEMORY_USER);
-		});
-
 		test("shows channels and services sections", async ({ page }) => {
 			await goToStep4(page);
 			await expect(page.locator("#channels-grid")).toBeVisible();
@@ -548,7 +533,6 @@ test.describe("@mocked Setup Wizard UI", () => {
 			// Step 3 (Voice)
 			await page.click("#btn-step3-next");
 			// Step 4 (Options)
-			await page.fill("#memory-user-id", TEST_MEMORY_USER);
 			await page.click("#btn-step4-next");
 			await expect(page.locator('[data-testid="step-review"]')).toBeVisible();
 		}
@@ -588,8 +572,6 @@ test.describe("@mocked Setup Wizard UI", () => {
 
 			// Options section
 			await expect(summary).toContainText("Options");
-			await expect(summary).toContainText("Memory User ID");
-			await expect(summary).toContainText(TEST_MEMORY_USER);
 		});
 
 		test("shows owner name and email in review", async ({ page }) => {
@@ -699,7 +681,6 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await page.click("#btn-step3-next");
 
 			// Step 4: Options
-			await page.fill("#memory-user-id", TEST_MEMORY_USER);
 			await page.click("#btn-step4-next");
 
 			// Click Install
@@ -713,7 +694,8 @@ test.describe("@mocked Setup Wizard UI", () => {
 			const payload = setupPayload as unknown as Record<string, unknown>;
 			expect((payload.security as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
 			expect(payload.version).toBe(2);
-			expect(((payload.capabilities as Record<string, unknown>).memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
+			const caps = payload.capabilities as Record<string, unknown>;
+			expect(typeof caps.llm).toBe("string");
 			const conns = payload.connections;
 			expect(Array.isArray(conns)).toBe(true);
 			expect((conns as Array<Record<string, string>>)[0].provider).toBe("ollama");
@@ -742,7 +724,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 						ok: true,
 						setupComplete: false,
 						deployStatus: [
-							{ service: "memory", status: "error", label: "Memory" },
+							{ service: "assistant", status: "error", label: "Assistant" },
 						],
 						deployError: "Docker Compose failed: port conflict on 8080",
 					}),
@@ -866,7 +848,6 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await page.click("#btn-step3-next");
 
 			// Step 4: Options
-			await page.fill("#memory-user-id", TEST_MEMORY_USER);
 			await page.click("#btn-step4-next");
 
 			// Step 5: Review & Install
@@ -887,7 +868,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 			expect(payload.version).toBe(2);
 			const specCaps = payload.capabilities as Record<string, unknown>;
 			expect(typeof specCaps.llm).toBe("string");
-			expect((specCaps.memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
+			expect(specCaps.embeddings).toBeDefined();
 
 			// Connections
 			const conns = payload.connections as Array<Record<string, string>>;
@@ -1020,13 +1001,12 @@ test.describe("Setup Wizard with Real Ollama", () => {
 		await page.click("#btn-step3-next");
 
 		// Step 4: Options
-		await page.fill("#memory-user-id", TEST_MEMORY_USER);
 		await page.click("#btn-step4-next");
 
 		// Step 5: Review
 		await expect(page.locator('[data-testid="step-review"]')).toBeVisible();
 		const summary = page.locator("#review-summary");
-		await expect(summary).toContainText(TEST_MEMORY_USER);
+		await expect(summary).toContainText(TEST_OWNER_NAME);
 
 		// Install
 		await page.click("#btn-install");

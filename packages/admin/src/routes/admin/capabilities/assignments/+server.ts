@@ -21,7 +21,7 @@ import {
   requireAdmin,
 } from '$lib/server/helpers.js';
 
-const TOP_LEVEL_KEYS = new Set(['llm', 'slm', 'embeddings', 'memory', 'tts', 'stt', 'reranking']);
+const TOP_LEVEL_KEYS = new Set(['llm', 'slm', 'embeddings', 'tts', 'stt', 'reranking']);
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -116,14 +116,6 @@ export const POST: RequestHandler = async (event) => {
       { provider: 'string', model: 'string', dims: 'number' }, requestId);
     if (r instanceof Response) return r;
     spec.capabilities.embeddings = r as typeof spec.capabilities.embeddings;
-  }
-
-  // Memory
-  if ('memory' in raw) {
-    const r = mergeCapability(spec.capabilities.memory as Record<string, unknown>, raw.memory, 'memory',
-      { userId: 'string', customInstructions: 'string' }, requestId);
-    if (r instanceof Response) return r;
-    spec.capabilities.memory = r as typeof spec.capabilities.memory;
   }
 
   // TTS, STT, Reranking — optional, deletable

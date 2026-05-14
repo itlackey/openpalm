@@ -23,7 +23,7 @@ import {
   ensureOpenCodeConfig,
   readStackEnv,
 } from "./secrets.js";
-import { ensureOpenCodeSystemConfig, ensureMemoryDir } from "./core-assets.js";
+import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { createState } from "./lifecycle.js";
 import { mirrorUserVaultToAkm } from "./akm-vault.js";
 import { writeStackSpec } from "./stack-spec.js";
@@ -112,7 +112,7 @@ export function buildSecretsFromSetup(
 /**
  * Read auth.json and extract API keys for OAuth-authenticated providers.
  * This fills the gap where OAuth auth writes tokens to auth.json but
- * not to stack.env — the memory service needs them as env vars.
+ * not to stack.env — channels and other services need them as env vars.
  */
 export function extractAuthJsonKeys(vaultDir: string): Record<string, string> {
   const authJsonPath = `${vaultDir}/stack/auth.json`;
@@ -145,7 +145,6 @@ export function buildSystemSecretsFromSetup(
   return {
     OP_ADMIN_TOKEN: adminToken,
     OP_ASSISTANT_TOKEN: existingSystemEnv.OP_ASSISTANT_TOKEN || randomBytes(32).toString("hex"),
-    OP_MEMORY_TOKEN: existingSystemEnv.OP_MEMORY_TOKEN || randomBytes(32).toString("hex"),
   };
 }
 
@@ -243,11 +242,10 @@ export async function performSetup(
   // `${XDG_RUNTIME_DIR}` (tmpfs) rather than the stash data dir.
 
   // Write stack.yml and OP_CAP_* capability vars to stack.env
-  writeMemoryAndStackConfigs({ version: 2, capabilities }, state);
+  writeStackConfigs({ version: 2, capabilities }, state);
 
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
-  ensureMemoryDir();
 
   // Seed default automations from the registry catalog. Idempotent — existing
   // files are left alone so user edits survive re-install and upgrade. Registry
@@ -301,7 +299,7 @@ export async function performSetup(
 }
 
 /** Write stack.yml and OP_CAP_* capability vars to stack.env from the spec's capabilities. */
-function writeMemoryAndStackConfigs(spec: StackSpec, state: ControlPlaneState): void {
+function writeStackConfigs(spec: StackSpec, state: ControlPlaneState): void {
   const { provider: embProvider, model: embModel } = spec.capabilities.embeddings;
   const resolvedDims = spec.capabilities.embeddings.dims || EMBEDDING_DIMS[`${embProvider}/${embModel}`] || 1536;
 

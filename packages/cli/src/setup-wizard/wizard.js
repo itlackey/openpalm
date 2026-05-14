@@ -301,7 +301,6 @@ function buildPayload() {
   var adminToken = ($("admin-token").value || "").trim();
   var ownerName = ($("owner-name").value || "").trim();
   var ownerEmail = ($("owner-email").value || "").trim();
-  var memoryUserId = ($("memory-user-id").value || "").trim() || (ownerName ? ownerName.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") : "") || "default_user";
   var ollamaEnabled = $("ollama-enabled") ? $("ollama-enabled").checked : false;
 
   var llm = modelSelection.llm;
@@ -373,10 +372,6 @@ function buildPayload() {
         provider: embProvider,
         model: emb ? emb.model : "",
         dims: emb ? (emb.dims || 1536) : 1536,
-      },
-      memory: {
-        userId: memoryUserId,
-        customInstructions: "",
       },
     },
     addons: addons,

@@ -86,7 +86,7 @@ if command -v ollama &>/dev/null; then
 			for m in "${missing_models[@]}"; do
 				echo "  - $m    (pull with: ollama pull $m)" >&2
 			done
-			echo "  Dev defaults require these models for the assistant and memory service." >&2
+			echo "  Dev defaults require these models for the assistant." >&2
 			echo ""
 		fi
 	fi
@@ -116,8 +116,7 @@ mkdir -p \
 	"$DEV_ROOT/registry/addons" "$DEV_ROOT/registry/automations" \
 	"$DEV_ROOT/stack" "$DEV_ROOT/stack/addons" \
 	"$VAULT_DIR" "$VAULT_DIR/stack" "$VAULT_DIR/user" \
-	"$VAULT_DIR/stack/services/memory" \
-	"$DATA_DIR/memory" "$DATA_DIR/assistant/.config/opencode" \
+	"$DATA_DIR/assistant/.config/opencode" \
 	"$DATA_DIR/admin/.varlock" \
 	"$DATA_DIR/guardian" \
 	"$DATA_DIR/openviking" \
@@ -164,9 +163,6 @@ capabilities:
     provider: ollama
     model: nomic-embed-text
     dims: 768
-  memory:
-    userId: default_user
-    customInstructions: ""
 SYEOF
 fi
 
@@ -177,18 +173,6 @@ if [[ ! -f "$AUTH_JSON" || $force -eq 1 ]]; then
 	chmod 600 "$AUTH_JSON"
 fi
 
-# Seed managed.env for memory service (derived from capabilities)
-MANAGED_ENV="$VAULT_DIR/stack/services/memory/managed.env"
-if [[ ! -f "$MANAGED_ENV" || $force -eq 1 ]]; then
-	cat >"$MANAGED_ENV" <<'MEEOF'
-SYSTEM_LLM_PROVIDER=ollama
-SYSTEM_LLM_MODEL=qwen2.5-coder:3b
-EMBEDDING_MODEL=nomic-embed-text
-EMBEDDING_DIMS=768
-MEMORY_USER_ID=default_user
-MEEOF
-fi
-
 # ── Seed environment files ───────────────────────────────────────
 if [[ $seed_env -eq 1 ]]; then
 	env_dest="$VAULT_DIR/user/user.env"
@@ -196,7 +180,6 @@ if [[ $seed_env -eq 1 ]]; then
 		# Seed user.env with dev-friendly defaults (Ollama backend, dev tokens).
 		# The schema template (vault/user.env.schema) documents all supported
 		# variables but contains no values; we write concrete dev values here.
-		mem_token=$(openssl rand -hex 32)
 		cat >"$env_dest" <<USEREOF
 # OpenPalm user.env — dev environment
 # Seeded by dev-setup.sh; safe to edit.
@@ -204,9 +187,6 @@ if [[ $seed_env -eq 1 ]]; then
 # LLM provider (Ollama for local dev)
 OPENAI_API_KEY=ollama
 OPENAI_BASE_URL=http://host.docker.internal:11434/v1
-
-# Memory
-MEMORY_USER_ID=default_user
 USEREOF
 	fi
 
@@ -232,7 +212,6 @@ USEREOF
 # NEVER use this value in production — generate a strong random token instead.
 OP_ADMIN_TOKEN=dev-admin-token
 OP_ASSISTANT_TOKEN=${assistant_token}
-OP_MEMORY_TOKEN=${mem_token}
 OP_OPENCODE_PASSWORD=
 
 OP_HOME=$DEV_ROOT
@@ -247,7 +226,6 @@ OP_IMAGE_TAG=latest
 
 # Dev override: map host ports to match internal ports so tests can use hardcoded URLs
 OP_ASSISTANT_PORT=4096
-OP_MEMORY_PORT=8765
 OP_ADMIN_PORT=8100
 OP_GUARDIAN_PORT=8180
 EOF
@@ -282,45 +260,6 @@ fi
 OC_CONFIG="$CONFIG_DIR/assistant/opencode.json"
 if [[ ! -f "$OC_CONFIG" || $force -eq 1 ]]; then
 	cp "$ROOT_DIR/.openpalm/config/assistant/opencode.json" "$OC_CONFIG"
-fi
-
-# ── Seed Memory default config ───────────────────────────────────
-if [ ! -f "$DATA_DIR/memory/default_config.json" ]; then
-	cat >"$DATA_DIR/memory/default_config.json" <<'OMEOF'
-{
-  "mem0": {
-    "llm": {
-      "provider": "ollama",
-      "config": {
-        "model": "qwen2.5-coder:3b",
-        "temperature": 0.1,
-        "max_tokens": 2000,
-        "api_key": "not-needed",
-        "openai_base_url": "http://host.docker.internal:11434"
-      }
-    },
-    "embedder": {
-      "provider": "ollama",
-      "config": {
-        "model": "nomic-embed-text:latest",
-        "api_key": "not-needed",
-        "openai_base_url": "http://host.docker.internal:11434"
-      }
-    },
-    "vector_store": {
-      "provider": "sqlite-vec",
-      "config": {
-        "collection_name": "memory",
-        "db_path": "/data/memory.db",
-        "embedding_model_dims": 768
-      }
-    }
-  },
-  "memory": {
-    "custom_instructions": ""
-  }
-}
-OMEOF
 fi
 
 # ── Initialize pass backend (optional) ───────────────────────────

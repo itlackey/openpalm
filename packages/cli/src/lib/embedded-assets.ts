@@ -43,8 +43,6 @@ import voiceCompose from "../../../../.openpalm/registry/addons/voice/compose.ym
 // @ts-ignore — Bun text import
 import voiceSchema from "../../../../.openpalm/registry/addons/voice/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import memoryConfigTemplate from "../../../../.openpalm/config/memory/memory.conf.json" with { type: "text" };
-// @ts-ignore — Bun text import
 import cleanupLogsAutomation from "../../../../.openpalm/registry/automations/cleanup-logs.yml" with { type: "text" };
 // @ts-ignore — Bun text import
 import cleanupDataAutomation from "../../../../.openpalm/registry/automations/cleanup-data.yml" with { type: "text" };
@@ -95,7 +93,6 @@ export const EMBEDDED_ASSETS: Record<string, string> = {
   "registry/addons/ollama/.env.schema": ollamaSchema,
   "registry/addons/voice/compose.yml": voiceCompose,
   "registry/addons/voice/.env.schema": voiceSchema,
-  "config/memory/memory.conf.json": memoryConfigTemplate,
   "registry/automations/cleanup-logs.yml": cleanupLogsAutomation,
   "registry/automations/cleanup-data.yml": cleanupDataAutomation,
   "registry/automations/validate-config.yml": validateConfigAutomation,

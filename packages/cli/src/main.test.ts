@@ -17,8 +17,6 @@ function writeMinimalSetupSpec(dir: string): string {
     '    provider: openai',
     '    model: text-embedding-3-small',
     '    dims: 1536',
-    '  memory:',
-    '    userId: test_user',
     'security:',
     '  adminToken: test-admin-token-12345',
     'owner:',
@@ -706,7 +704,7 @@ describe('secrets.env generation', () => {
       // (empty values would override real keys in stack.env via compose env-file precedence)
       expect(content).not.toContain('OPENAI_API_KEY');
       expect(content).not.toContain('OP_ADMIN_TOKEN');
-      expect(content).not.toContain('OP_MEMORY_TOKEN');
+      expect(content).not.toContain('OP_ASSISTANT_TOKEN');
       expect(content).toContain('User Extensions');
     } finally {
       rmSync(tempDir, { recursive: true, force: true });

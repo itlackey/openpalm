@@ -38,9 +38,6 @@ services:
       HOME: /home/node
       OP_HOME: /openpalm
       ADMIN_TOKEN: ${OP_ADMIN_TOKEN:-}
-      MEMORY_AUTH_TOKEN: ${OP_MEMORY_TOKEN:-}
-      MEMORY_API_URL: http://memory:8765
-      MEMORY_USER_ID: ${MEMORY_USER_ID:-default_user}
       GUARDIAN_URL: http://guardian:8080
       OP_ASSISTANT_URL: http://assistant:4096
       OP_ADMIN_API_URL: http://localhost:8100
