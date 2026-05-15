@@ -24,12 +24,12 @@ export async function runStopAction(services: string[]): Promise<void> {
   if (services.length === 0) {
     // Compose file list includes admin.yml when admin is enabled,
     // so `down` tears down all services including admin/socket-proxy.
-    const state = await ensureValidState();
+    const state = ensureValidState();
     await runComposeWithPreflight(state, ['down']);
     return;
   }
 
-  const state = await ensureValidState();
+  const state = ensureValidState();
   for (const service of services) {
     await runComposeWithPreflight(state, ['stop', service]);
   }

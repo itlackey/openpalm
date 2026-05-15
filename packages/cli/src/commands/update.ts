@@ -13,7 +13,7 @@ export default defineCommand({
 });
 
 export async function runUpgradeAction(): Promise<void> {
-  const state = await ensureValidState();
+  const state = ensureValidState();
 
   console.log('Upgrading stack...');
   const result = await performUpgrade(state);

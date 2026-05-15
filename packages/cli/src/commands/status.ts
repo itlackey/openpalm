@@ -8,7 +8,7 @@ export default defineCommand({
     description: 'Show container status',
   },
   async run() {
-    const state = await ensureValidState();
+    const state = ensureValidState();
     await runComposeReadOnly(state, ['ps', '--format', 'table']);
   },
 });

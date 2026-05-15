@@ -19,6 +19,7 @@ import {
   randomHex,
   buildEnvFiles,
   discoverStackOverlays,
+  ensureComposeVolumeTargets,
 } from "./config-persistence.js";
 import { readStackSpec } from "./stack-spec.js";
 import { refreshCoreAssets } from "./core-assets.js";
@@ -151,6 +152,10 @@ export async function applyInstall(state: ControlPlaneState): Promise<void> {
   const lock = acquireLock(state.homeDir, "install");
   try {
     await reconcileCore(state, { activateServices: true });
+    // Pre-create host-side volume mount targets as the current user so
+    // Docker doesn't create them root-owned (which causes EACCES inside
+    // non-root containers).
+    ensureComposeVolumeTargets(state);
   } finally {
     releaseLock(lock);
   }

@@ -85,6 +85,10 @@ export {
   expandEnvVars,
   mergeEnvContent,
   removeEnvKey,
+  upsertEnvValue,
+  resolveRequestedImageTag,
+  reconcileStackEnvImageTag,
+  RELEASE_TAG_REGEX,
 } from "./control-plane/env.js";
 
 // ── Audit ───────────────────────────────────────────────────────────────
@@ -151,6 +155,7 @@ export {
   writeSystemEnv,
   readChannelSecrets,
   writeChannelSecrets,
+  ensureComposeVolumeTargets,
 } from "./control-plane/config-persistence.js";
 
 // ── Rollback ─────────────────────────────────────────────────────────────

@@ -26,14 +26,14 @@ export async function runStartAction(
 ): Promise<void> {
   if (services.length === 0) {
     // Stage artifacts and start all managed services (admin included if enabled)
-    const state = await ensureValidState();
+    const state = ensureValidState();
     const managedServices = await buildManagedServices(state);
     await runComposeWithPreflight(state, ['up', '-d', ...managedServices]);
     return;
   }
 
   // Start specific services
-  const state = await ensureValidState();
+  const state = ensureValidState();
   for (const service of services) {
     await runComposeWithPreflight(state, ['up', '-d', service]);
   }

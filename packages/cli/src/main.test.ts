@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, writeFileSync, mkdtempSync, readFileSync, readdi
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { detectHostInfo, main, reconcileStackEnvImageTag, resolveRequestedImageTag, upsertEnvValue } from './main.ts';
+import { detectHostInfo, main } from './main.ts';
+import { reconcileStackEnvImageTag, resolveRequestedImageTag, upsertEnvValue } from '@openpalm/lib';
 import { canReplaceCurrentExecutable, resolveCliArtifactName } from './commands/self-update.ts';
 
 /** Write a minimal SetupSpec YAML file that satisfies validation, allowing --file installs to skip the wizard. */

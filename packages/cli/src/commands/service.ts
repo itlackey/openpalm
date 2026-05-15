@@ -42,7 +42,7 @@ const logsCmd = defineCommand({
 const updateCmd = defineCommand({
   meta: { name: 'update', description: 'Pull latest images' },
   async run() {
-    const state = await ensureValidState();
+    const state = ensureValidState();
     const managedServices = await buildManagedServices(state);
     console.log('Pulling latest images...');
     await runComposeWithPreflight(state, ['pull', ...managedServices]);
@@ -55,7 +55,7 @@ const updateCmd = defineCommand({
 const statusCmd = defineCommand({
   meta: { name: 'status', description: 'Show container status' },
   async run() {
-    const state = await ensureValidState();
+    const state = ensureValidState();
     await runComposeReadOnly(state, ['ps', '--format', 'table']);
   },
 });

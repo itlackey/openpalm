@@ -6,7 +6,9 @@
  * the rollback module (snapshot to ~/.cache/openpalm/rollback/).
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, chmodSync } from "node:fs";
-import { parseEnvFile, mergeEnvContent } from './env.js';
+import { dirname } from "node:path";
+import { parse as yamlParse } from "yaml";
+import { parseEnvFile, mergeEnvContent, expandEnvVars } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { isChannelAddon } from "./channels.js";
 import { readStackSpec } from "./stack-spec.js";
@@ -206,6 +208,76 @@ export function writeChannelSecrets(vaultDir: string, secrets: Record<string, st
   writeFileSync(guardianPath, content, { mode: 0o600 });
   // Ensure correct permissions even if file already existed with wrong mode
   chmodSync(guardianPath, 0o600);
+}
+
+// ── Volume Mount Targets ───────────────────────────────────────────────
+
+/**
+ * Parse all enabled compose files and pre-create every host-side volume
+ * mount target as the current user. This prevents Docker from creating
+ * them as root-owned, which causes EACCES inside non-root containers.
+ *
+ * For file mounts (basename contains a `.`), creates an empty file.
+ * For directory mounts (basename has no `.`), creates the directory.
+ *
+ * Heuristic: a basename containing a `.` is treated as a file. This
+ * intentionally includes leading-dot files (e.g. `.env`) because Docker
+ * bind mounts to them must be regular files. Bare directory names like
+ * `stack` or `addons` lack extensions and are created as directories.
+ *
+ * Only mount sources under `state.homeDir` are touched; external paths
+ * (e.g. `/var/run/docker.sock`) are left alone.
+ */
+export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
+  const composeFiles = discoverStackOverlays(`${state.homeDir}/stack`);
+  if (composeFiles.length === 0) return;
+
+  const envVars: Record<string, string> = {
+    ...(process.env as Record<string, string>),
+    ...parseEnvFile(`${state.vaultDir}/stack/stack.env`),
+  };
+
+  for (const file of composeFiles) {
+    let doc: Record<string, unknown>;
+    try {
+      doc = yamlParse(readFileSync(file, 'utf-8')) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const services = doc?.services;
+    if (!services || typeof services !== 'object') continue;
+
+    for (const svc of Object.values(services as Record<string, unknown>)) {
+      if (!svc || typeof svc !== 'object') continue;
+      const svcRecord = svc as Record<string, unknown>;
+      if (!Array.isArray(svcRecord.volumes)) continue;
+      for (const vol of svcRecord.volumes as unknown[]) {
+        const volRecord = typeof vol === 'object' && vol !== null
+          ? (vol as Record<string, unknown>)
+          : null;
+        const rawSource = typeof vol === 'string'
+          ? vol.split(':')[0]
+          : String(volRecord?.source ?? '');
+        if (!rawSource) continue;
+
+        const hostPath = expandEnvVars(rawSource, envVars);
+        if (!hostPath || !hostPath.startsWith('/')) continue;
+        if (existsSync(hostPath)) continue;
+
+        // A basename containing a `.` (anywhere, including leading) is a file.
+        // Bare names like `stack` or `data` are directories.
+        const basename = hostPath.split('/').pop() ?? '';
+        const isFile = basename.includes('.');
+
+        if (isFile) {
+          mkdirSync(dirname(hostPath), { recursive: true });
+          writeFileSync(hostPath, '');
+        } else {
+          mkdirSync(hostPath, { recursive: true });
+        }
+      }
+    }
+  }
 }
 
 // ── Persistence (direct-write to live paths) ────────────────────────

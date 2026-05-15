@@ -3,8 +3,10 @@ import { join } from 'node:path';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
 import { resolveOpenPalmHome, resolveConfigDir, resolveVaultDir, resolveDataDir } from '@openpalm/lib';
-import { ensureSecrets, ensureStackEnv, resolveRequestedImageTag } from '../lib/env.ts';
-import { ensureDirectoryTree, seedOpenPalmDir, openBrowser, runDockerCompose, runDockerComposeCapture } from '../lib/docker.ts';
+import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
+import { ensureDirectoryTree, seedOpenPalmDir } from '../lib/io.ts';
+import { openBrowser } from '../lib/browser.ts';
+import { runDockerCompose, runDockerComposeCapture } from '../lib/docker.ts';
 import {
   backupOpenPalmHome,
   buildComposeCliArgs,
@@ -14,8 +16,7 @@ import {
   buildManagedServices,
   createOpenCodeClient,
   createLogger,
-  expandEnvVars,
-  parseEnvFile,
+  resolveRequestedImageTag,
   type SetupSpec,
 } from '@openpalm/lib';
 import { seedEmbeddedAssets } from '../lib/embedded-assets.ts';
@@ -103,7 +104,7 @@ async function requireDocker(): Promise<void> {
 }
 
 async function deployServices(mode: string, pull = true): Promise<string[]> {
-  const state = await ensureValidState();
+  const state = ensureValidState();
   await applyInstall(state);
   const managedServices = await buildManagedServices(state);
   const composeArgs = buildComposeCliArgs(state);
@@ -253,10 +254,7 @@ async function runWizardInstall(configDir: string, noOpen: boolean, noStart = fa
   await requireDocker();
 
   console.log('Starting services...');
-  const homeDir = resolveOpenPalmHome();
-  const vaultDir = resolveVaultDir();
-  await ensureVolumeMountTargets(homeDir, vaultDir);
-  const state = await ensureValidState();
+  const state = ensureValidState();
   await applyInstall(state);
   const allServices = await buildManagedServices(state);
   const composeArgs = buildComposeCliArgs(state);
@@ -331,7 +329,6 @@ async function runFileInstall(filePath: string, noStart: boolean): Promise<void>
   console.log('Setup complete.');
   if (noStart) { console.log('Config written. Run `openpalm start` to start services.'); return; }
   await requireDocker();
-  await ensureVolumeMountTargets(resolveOpenPalmHome(), resolveVaultDir());
   await deployServices('install');
 }
 
@@ -385,80 +382,5 @@ async function pollContainerHealth(
   const pending = services.filter(s => !running.has(s));
   console.warn(`Warning: health check timed out for: ${pending.join(', ')}. They may still be starting.`);
   wizard.markAllRunning();
-}
-
-/**
- * Parse all compose files under homeDir/stack/ and pre-create every host-side
- * volume mount target as the current user. This prevents Docker from creating
- * them as root-owned, which causes EACCES inside non-root containers.
- *
- * For file mounts (source path has an extension like .json, .env), creates
- * an empty file. For directory mounts, creates the directory.
- */
-async function ensureVolumeMountTargets(homeDir: string, vaultDir: string): Promise<void> {
-  const { readFileSync, existsSync, mkdirSync, writeFileSync } = await import('node:fs');
-  const { parse: yamlParse } = await import('yaml');
-  const { dirname } = await import('node:path');
-  const stackDir = join(homeDir, 'stack');
-  const composeFiles: string[] = [];
-
-  // Collect all compose files
-  const coreYml = join(stackDir, 'core.compose.yml');
-  if (existsSync(coreYml)) composeFiles.push(coreYml);
-  const addonsDir = join(stackDir, 'addons');
-  if (existsSync(addonsDir)) {
-    for (const entry of (await import('node:fs')).readdirSync(addonsDir, { withFileTypes: true })) {
-      if (entry.isDirectory()) {
-        const addonYml = join(addonsDir, entry.name, 'compose.yml');
-        if (existsSync(addonYml)) composeFiles.push(addonYml);
-      }
-    }
-  }
-
-  // Read env vars for variable substitution
-  const envVars: Record<string, string> = {
-    ...(process.env as Record<string, string>),
-    ...parseEnvFile(join(vaultDir, 'stack', 'stack.env')),
-  };
-
-  function resolveEnvVar(str: string): string {
-    return expandEnvVars(str, envVars);
-  }
-
-  // Extract volume mount sources from all compose files
-  for (const file of composeFiles) {
-    let doc: Record<string, unknown>;
-    try { doc = yamlParse(readFileSync(file, 'utf-8')) as Record<string, unknown>; } catch { continue; }
-    const services = doc?.services;
-    if (!services || typeof services !== 'object') continue;
-
-    for (const svc of Object.values(services as Record<string, unknown>)) {
-      if (!svc || typeof svc !== 'object') continue;
-      const svcRecord = svc as Record<string, unknown>;
-      if (!Array.isArray(svcRecord.volumes)) continue;
-      for (const vol of svcRecord.volumes as unknown[]) {
-        const volRecord = typeof vol === 'object' && vol !== null ? vol as Record<string, unknown> : null;
-        const raw = typeof vol === 'string' ? vol : String(volRecord?.source ?? volRecord?.target ?? '');
-        if (!raw || typeof raw !== 'string') continue;
-
-        // Parse "source:target[:opts]" format
-        const hostPath = resolveEnvVar(typeof vol === 'string' ? vol.split(':')[0] : String(volRecord?.source ?? ''));
-        if (!hostPath || !hostPath.startsWith('/')) continue;
-
-        // Determine if this is a file mount (has extension) or directory mount
-        const basename = hostPath.split('/').pop() ?? '';
-        const isFile = basename.includes('.') && !basename.startsWith('.');
-
-        if (existsSync(hostPath)) continue;
-
-        if (isFile) {
-          mkdirSync(dirname(hostPath), { recursive: true });
-          writeFileSync(hostPath, '');
-        } else {
-          mkdirSync(hostPath, { recursive: true });
-        }
-      }
-    }
-  }
 }
 

@@ -31,7 +31,7 @@ export default defineCommand({
     console.log('Snapshot restored. Rebuilding configuration...');
 
     // Now validate and persist with the restored files in place
-    const state = await ensureValidState();
+    const state = ensureValidState();
 
     const managedServices = await buildManagedServices(state);
 

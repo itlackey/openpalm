@@ -24,13 +24,13 @@ export default defineCommand({
 export async function runRestartAction(services: string[]): Promise<void> {
   if (services.length === 0) {
     // Restart all managed services (admin included if enabled)
-    const state = await ensureValidState();
+    const state = ensureValidState();
     const managedServices = await buildManagedServices(state);
     await runComposeWithPreflight(state, ['restart', ...managedServices]);
     return;
   }
 
-  const state = await ensureValidState();
+  const state = ensureValidState();
   for (const service of services) {
     await runComposeWithPreflight(state, ['restart', service]);
   }

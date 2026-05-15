@@ -24,7 +24,7 @@ export default defineCommand({
   async run({ args }) {
     // Compose file list includes admin.yml when admin is enabled,
     // so `down` tears down all services including admin/socket-proxy.
-    const state = await ensureValidState();
+    const state = ensureValidState();
     const downArgs = args.volumes || args.purge ? ['down', '-v'] : ['down'];
     await runComposeWithPreflight(state, downArgs);
 

@@ -1,60 +1,7 @@
-import { join, dirname } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
+import { reconcileStackEnvImageTag, resolveRequestedImageTag } from '@openpalm/lib';
 import { defaultDockerSock } from './paths.ts';
-
-export function unwrapQuotedEnvValue(value: string): string {
-  const isDoubleQuoted = value.startsWith('"') && value.endsWith('"');
-  const isSingleQuoted = value.startsWith('\'') && value.endsWith('\'');
-  if ((isDoubleQuoted || isSingleQuoted) && value.length >= 2) {
-    return value.slice(1, -1);
-  }
-
-  return value;
-}
-
-/**
- * Upserts a key=value pair in env file content. If the key exists, replaces the line;
- * otherwise appends a new line.
- */
-export function upsertEnvValue(content: string, key: string, value: string): string {
-  const escapedKey = key.replace(/[|\\{}()[\]^$+*?.-]/g, '\\$&');
-  const pattern = new RegExp(`^((?:export\\s+)?)${escapedKey}=.*$`, 'm');
-  if (pattern.test(content)) {
-    // Preserve the `export ` prefix if the original line had one
-    return content.replace(pattern, `$1${key}=${value}`);
-  }
-
-  const line = `${key}=${value}`;
-  const suffix = content.endsWith('\n') || content.length === 0 ? '' : '\n';
-  return `${content}${suffix}${line}\n`;
-}
-
-export const RELEASE_TAG_REGEX = /^v?\d+\.\d+\.\d+(?:[-+](?:[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*))?$/;
-
-/**
- * Normalizes a repository ref to an image tag. Returns null for non-release refs.
- * E.g. "0.9.0" → "v0.9.0", "v0.9.0" → "v0.9.0", "main" → null.
- */
-export function resolveRequestedImageTag(repoRef: string): string | null {
-  const trimmed = repoRef.trim();
-  if (!trimmed || trimmed === 'main') return null;
-  if (!RELEASE_TAG_REGEX.test(trimmed)) return null;
-  return trimmed.startsWith('v') ? trimmed : `v${trimmed}`;
-}
-
-/**
- * Reconciles the OP_IMAGE_TAG value in stack.env content.
- */
-export function reconcileStackEnvImageTag(
-  content: string,
-  repoRef: string,
-  explicitImageTag?: string,
-): string {
-  const desiredImageTag = explicitImageTag || resolveRequestedImageTag(repoRef);
-  if (!desiredImageTag) return content;
-  return upsertEnvValue(content, 'OP_IMAGE_TAG', desiredImageTag);
-}
 
 /**
  * Ensures vault/user exists. Phase 2 of #388 (closes #406): the

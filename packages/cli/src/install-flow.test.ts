@@ -151,7 +151,7 @@ function extractVolumeMountPaths(
         const resolved = expandEnvVars(raw, vars);
         if (!resolved.startsWith('/')) continue;
         const basename = resolved.split('/').pop() ?? '';
-        const isFile = basename.includes('.') && !basename.startsWith('.');
+        const isFile = basename.includes('.');
         results.push({ path: resolved, isFile });
       }
     }
@@ -247,22 +247,13 @@ describe('install flow — tier 1 (file validation)', () => {
     const mounts = extractVolumeMountPaths(allComposeFiles, stackEnvVars);
     expect(mounts.length).toBeGreaterThan(0);
 
-    // Ensure they all exist first (this is what ensureVolumeMountTargets does)
-    const { ensureVolumeMountTargets } = await import('./commands/install.ts') as any;
-    // Can't import private function, so replicate the check
-    // Only check mounts inside homeDir (ignore Docker socket, etc.)
+    // Ensure they all exist first via the canonical lib helper. Only mounts
+    // under homeDir are touched; external paths (Docker socket, etc.) are left
+    // alone by ensureComposeVolumeTargets itself, but we also filter the
+    // verification loop below to homeDir to keep the assertion local.
+    const { ensureComposeVolumeTargets, createState } = await import('@openpalm/lib');
+    ensureComposeVolumeTargets(createState());
     const homeMounts = mounts.filter(m => m.path.startsWith(homeDir));
-
-    for (const mount of homeMounts) {
-      if (!existsSync(mount.path)) {
-        if (mount.isFile) {
-          mkdirSync(join(mount.path, '..'), { recursive: true });
-          Bun.spawnSync(['touch', mount.path]);
-        } else {
-          mkdirSync(mount.path, { recursive: true });
-        }
-      }
-    }
 
     for (const mount of homeMounts) {
       expect(existsSync(mount.path)).toBe(true);
@@ -322,23 +313,13 @@ describe('install flow — tier 1 (file validation)', () => {
 
     // Ensure all volume mount targets exist so compose doesn't complain
     const stackEnv = join(homeDir, 'vault/stack/stack.env');
-    const vars = { ...parseEnvFile(stackEnv), OP_HOME: homeDir };
     const composeFiles = [
       join(homeDir, 'stack/core.compose.yml'),
       join(homeDir, 'stack/addons/admin/compose.yml'),
       join(homeDir, 'stack/addons/chat/compose.yml'),
     ];
-    for (const mount of extractVolumeMountPaths(composeFiles, vars)) {
-      if (!mount.path.startsWith(homeDir)) continue; // skip Docker socket etc.
-      if (!existsSync(mount.path)) {
-        if (mount.isFile) {
-          mkdirSync(join(mount.path, '..'), { recursive: true });
-          Bun.spawnSync(['touch', mount.path]);
-        } else {
-          mkdirSync(mount.path, { recursive: true });
-        }
-      }
-    }
+    const { ensureComposeVolumeTargets, createState } = await import('@openpalm/lib');
+    ensureComposeVolumeTargets(createState());
 
     // Run docker compose config --quiet
     // Phase 2 of #388 (closes #406): vault/user/user.env is no longer a

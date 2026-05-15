@@ -5,8 +5,6 @@ import cliPkg from '../package.json' with { type: 'json' };
 // Re-export public API used by tests and external consumers
 export { detectHostInfo } from './lib/host-info.ts';
 export type { HostInfo } from './lib/host-info.ts';
-export { upsertEnvValue, resolveRequestedImageTag, reconcileStackEnvImageTag } from './lib/env.ts';
-export { bootstrapInstall } from './commands/install.ts';
 
 export const mainCommand = defineCommand({
   meta: {

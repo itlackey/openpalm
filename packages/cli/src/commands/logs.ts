@@ -3,7 +3,7 @@ import { ensureValidState } from '../lib/cli-state.ts';
 import { runComposeReadOnly } from '../lib/cli-compose.ts';
 
 export async function runLogsAction(services: string[]): Promise<void> {
-  const state = await ensureValidState();
+  const state = ensureValidState();
   await runComposeReadOnly(state, ['logs', '--tail', '100', ...services]);
 }
 
