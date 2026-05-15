@@ -126,8 +126,12 @@ describe("askAssistant", () => {
     const result = await withMockFetch(
       (async (input: RequestInfo | URL, init?: RequestInit) => {
         calls.push({ url: String(input), init });
-        if (String(input).endsWith("/session")) {
+        const url = String(input);
+        if (url.endsWith("/session")) {
           return new Response(JSON.stringify({ id: "session_1" }), { status: 200 });
+        }
+        if (init?.method === "DELETE") {
+          return new Response(null, { status: 204 });
         }
         return new Response(
           JSON.stringify({
@@ -147,10 +151,35 @@ describe("askAssistant", () => {
     );
 
     expect(result).toBe("hello\nworld");
-    expect(calls.length).toBe(2);
+    // create session + send message + auto-cleanup delete = 3 calls
+    expect(calls.length).toBe(3);
+    expect(calls[2]?.init?.method).toBe("DELETE");
     expect(calls[0]?.init?.headers).toMatchObject({
       authorization: "Basic dMOpc3Q6cMOkc3M=",
     });
+  });
+
+  it("skips cleanup when keepSession is true", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    await withMockFetch(
+      (async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({ url: String(input), init });
+        if (String(input).endsWith("/session")) {
+          return new Response(JSON.stringify({ id: "session_1" }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ parts: [{ type: "text", text: "ok" }] }), { status: 200 });
+      }) as typeof fetch,
+      () => askAssistant(
+        { baseUrl: "http://assistant" },
+        "title",
+        "prompt",
+        { keepSession: true },
+      ),
+    );
+
+    // create session + send message; no DELETE
+    expect(calls.length).toBe(2);
+    expect(calls.find((c) => c.init?.method === "DELETE")).toBeUndefined();
   });
 
   it("throws on non-200 session create response", async () => {
@@ -195,6 +224,11 @@ describe("askAssistant", () => {
       (async (input: RequestInfo | URL, init?: RequestInit) => {
         if (String(input).endsWith("/session")) {
           return new Response(JSON.stringify({ id: "session_1" }), { status: 200 });
+        }
+        if (init?.method === "DELETE") {
+          // Auto-cleanup after the message-timeout error path. Resolve quickly
+          // so the test doesn't wait on the cleanup's own timeout.
+          return new Response(null, { status: 204 });
         }
         return new Promise<Response>((_, reject) => {
           init?.signal?.addEventListener("abort", () => {

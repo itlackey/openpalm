@@ -263,6 +263,11 @@ export async function sendMessage(
 /**
  * Create a one-shot assistant session client.
  *
+ * Creates a session, sends the prompt, returns the answer, and deletes the
+ * session — the assistant is left in the same state it started in. Pass
+ * `keepSession: true` if you intend to send follow-up messages to the same
+ * session (in which case you are responsible for calling `deleteSession`).
+ *
  * Usage:
  *   const answer = await askAssistant(opts, title, prompt);
  */
@@ -270,7 +275,17 @@ export async function askAssistant(
   opts: AssistantClientOptions,
   title: string,
   prompt: string,
+  options: { keepSession?: boolean } = {},
 ): Promise<string> {
   const sessionId = await createSession(opts, title);
-  return sendMessage(opts, sessionId, prompt);
+  try {
+    return await sendMessage(opts, sessionId, prompt);
+  } finally {
+    if (!options.keepSession) {
+      // Best-effort cleanup. If deletion fails (e.g. assistant unreachable
+      // after the response), surface no error to the caller — the answer
+      // they're waiting on takes priority.
+      await deleteSession(opts, sessionId).catch(() => {});
+    }
+  }
 }
