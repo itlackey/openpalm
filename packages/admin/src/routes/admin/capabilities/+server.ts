@@ -3,6 +3,7 @@
  * POST /admin/capabilities — Update capabilities in stack.yml and/or secrets in stack.env.
  */
 import type { RequestHandler } from "./$types";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
@@ -21,6 +22,7 @@ import {
   readStackSpec,
   writeStackSpec,
   writeCapabilityVars,
+  buildAkmSetupJson,
   formatCapabilityString,
   maskSecretValue,
   createLogger,
@@ -113,6 +115,12 @@ export const POST: RequestHandler = async (event) => {
     };
     writeStackSpec(state.configDir, spec);
     writeCapabilityVars(spec, state.vaultDir);
+    const akmJson = buildAkmSetupJson(spec, readStackEnv(state.vaultDir));
+    if (akmJson) {
+      const akmConfigDir = `${state.dataDir}/stash/.config`;
+      mkdirSync(akmConfigDir, { recursive: true });
+      writeFileSync(`${akmConfigDir}/config.json`, akmJson, { mode: 0o600 });
+    }
   } catch (err) {
     appendAudit(state, actor, "capabilities.save", { provider, error: String(err) }, false, requestId, callerType);
     return errorResponse(500, "internal_error", "Failed to update stack.yml", {}, requestId);

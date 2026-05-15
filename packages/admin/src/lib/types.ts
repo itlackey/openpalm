@@ -58,17 +58,6 @@ export type CatalogAutomation = {
   schedule: string;
 };
 
-export type CapabilitiesSummary = {
-  llm: string;
-  slm?: string;
-  embeddings: { provider: string; model: string; dims: number };
-};
-
-export type CapabilitiesResponseDto = {
-  capabilities: CapabilitiesSummary | null;
-  secrets: Record<string, string>;
-};
-
 // ── OpenCode Provider/Model Types ──────────────────────────────────────
 
 export type OpenCodeProviderSummary = {

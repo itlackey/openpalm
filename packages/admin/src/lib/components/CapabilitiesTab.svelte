@@ -11,8 +11,8 @@
 
 	type ProviderEntry = OpenCodeProviderSummary & { authMethods: OpenCodeAuthMethod[] };
 
-	interface Props { loading: boolean; onRefresh: () => void; openCodeStatus?: 'checking' | 'ready' | 'unavailable'; }
-	let { loading, onRefresh }: Props = $props();
+	interface Props { openCodeStatus?: 'checking' | 'ready' | 'unavailable'; }
+	let {}: Props = $props();
 
 	// ── Sub-tab state ───────────────────────────────────────────────
 	let activeSubTab = $state<'capabilities' | 'voice'>('capabilities');
@@ -159,7 +159,7 @@
 				reranking: rr.provider ? { enabled: true, provider: rr.provider, mode: rr.mode, model: rr.model || undefined, topK: rr.topK } : undefined,
 			};
 			await saveAssignments(token, p);
-			saveSuccess = true; setTimeout(() => saveSuccess = false, 4000); onRefresh();
+			saveSuccess = true; setTimeout(() => saveSuccess = false, 4000);
 		} catch (e) { saveError = e instanceof Error ? e.message : 'Save failed.'; }
 		finally { saving = false; }
 	}

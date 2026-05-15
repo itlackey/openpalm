@@ -50,8 +50,6 @@ describe('CapabilitiesTab', () => {
 
     render(CapabilitiesTab, {
       props: {
-        loading: false,
-        onRefresh: () => {},
         openCodeStatus: 'ready' as const,
       },
     });

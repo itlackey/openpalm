@@ -27,7 +27,6 @@
     upgradeStack,
     containerAction,
     fetchCapabilityStatus,
-    fetchCapabilities,
     pullImages,
   } from '$lib/api.js';
   import type { HealthPayload, ContainerListResponse, AutomationsResponse } from '$lib/types.js';
@@ -65,8 +64,6 @@
   let automationsData: AutomationsResponse | null = $state(null);
   let automationsError = $state('');
   let selectedContainerId: string | null = $state(null);
-  let capabilitiesData: Record<string, string> = $state({});
-  let capabilitiesLoading = $state(false);
   // ── Migration ───────────────────────────────────────────────────────────────
   let legacyInstallDetected = $state(false);
 
@@ -151,7 +148,6 @@
       void loadContainers();
       void loadAutomations();
       void checkCapabilityStatus();
-      void loadCapabilities();
       return true;
     } catch (e) {
       console.warn('[page] Auth failed:', e);
@@ -296,29 +292,6 @@
     automationsLoading = false;
   }
 
-  async function loadCapabilities(): Promise<void> {
-    const token = getAdminToken();
-    tokenStored = Boolean(token);
-    if (!token) {
-      authLocked = true;
-      authError = 'Admin token required.';
-      adminStatus = '';
-      capabilitiesData = {};
-      return;
-    }
-    capabilitiesLoading = true;
-    try {
-      capabilitiesData = await fetchCapabilities(token);
-    } catch (e) {
-      capabilitiesData = {};
-      const err = e as { status?: number; message?: string };
-      if (err.status === 401) {
-        applyInvalidTokenState();
-      }
-    }
-    capabilitiesLoading = false;
-  }
-
   // ── Actions ──────────────────────────────────────────────────────────────────
 
   async function handleApplyChanges(): Promise<void> {
@@ -441,9 +414,6 @@
     }
     if (tab === 'automations' && !automationsData) {
       void loadAutomations();
-    }
-    if (tab === 'capabilities' && Object.keys(capabilitiesData).length === 0) {
-      void loadCapabilities();
     }
   }
 
@@ -569,11 +539,7 @@
       <SecretsTab {tokenStored} />
     {/if}
     <div hidden={activeTab !== 'capabilities'}>
-      <CapabilitiesTab
-        loading={capabilitiesLoading}
-        onRefresh={loadCapabilities}
-        openCodeStatus={adminOpenCodeStatus}
-      />
+      <CapabilitiesTab openCodeStatus={adminOpenCodeStatus} />
     </div>
     {#if activeTab === 'logs'}
       <LogsTab

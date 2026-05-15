@@ -3,7 +3,6 @@ import type {
   HealthPayload,
   ContainerListResponse,
   AutomationsResponse,
-  CapabilitiesResponseDto,
 } from './types.js';
 
 const apiBase = '';
@@ -207,19 +206,6 @@ export async function fetchCapabilityStatus(
   if (!res.ok) return { complete: true, missing: [] };
   return (await res.json()) as { complete: boolean; missing: string[] };
 }
-
-export async function fetchCapabilities(
-  token: string
-): Promise<Record<string, string>> {
-  const res = await request('GET', '/admin/capabilities', token);
-  if (res.status === 401) {
-    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
-  }
-  if (!res.ok) return {};
-  const dto = (await res.json()) as CapabilitiesResponseDto;
-  return dto.secrets;
-}
-
 
 // ── Addon Management ────────────────────────────────────────────────────
 
