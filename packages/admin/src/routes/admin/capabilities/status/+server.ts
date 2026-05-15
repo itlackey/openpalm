@@ -28,7 +28,7 @@ export const GET: RequestHandler = async (event) => {
   const callerType = getCallerType(event);
 
   const missing: string[] = [];
-  const spec = readStackSpec(state.configDir);
+  const spec = readStackSpec(state.stackDir);
 
   if (!spec) {
     missing.push("Stack configuration (stack.yml)");

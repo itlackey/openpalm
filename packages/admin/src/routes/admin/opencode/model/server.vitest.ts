@@ -37,7 +37,7 @@ function seedStackYaml(): void {
       embeddings: { provider: 'openai', model: 'text-embedding-3-small', dims: 1536 },
     },
   };
-  writeStackSpec(state.configDir, spec);
+  writeStackSpec(state.stackDir, spec);
 }
 
 function makeEvent(method: string, body?: unknown, token = 'admin-token'): Parameters<typeof GET>[0] {

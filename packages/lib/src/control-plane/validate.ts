@@ -38,14 +38,14 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const stackEnvPath = `${state.stateDir}/stack.env`;
+  const stackEnvPath = `${state.stackDir}/stack.env`;
 
   if (!existsSync(stackEnvPath)) {
     errors.push(`ERROR: stack env file missing at ${stackEnvPath}`);
     return { ok: false, errors, warnings };
   }
 
-  const stackEnv = readStackEnv(state.stateDir);
+  const stackEnv = readStackEnv(state.stackDir);
   const userEnv: Record<string, string> = {};
 
   for (const key of REQUIRED_STACK_KEYS) {

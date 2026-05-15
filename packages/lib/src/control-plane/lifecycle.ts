@@ -70,7 +70,7 @@ export function createState(
 
   ensureSecrets(bootstrapState);
 
-  const stackEnv = readStackEnv(stateDir);
+  const stackEnv = readStackEnv(stackDir);
   // Precedence: explicit parameter > stack.env > process.env.
   bootstrapState.adminToken =
     adminToken
@@ -203,7 +203,7 @@ export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): 
   namespace: string;
   tag: string;
 }> {
-  const systemEnvPath = `${state.stateDir}/stack.env`;
+  const systemEnvPath = `${state.stackDir}/stack.env`;
   const parsed = parseEnvFile(systemEnvPath);
   const namespace = (parsed.OP_IMAGE_NAMESPACE ?? process.env.OP_IMAGE_NAMESPACE ?? "openpalm").trim().toLowerCase();
 
@@ -291,7 +291,7 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
   // mutation just the same.
 
   // 1. Snapshot stack.env for rollback on failure
-  const stackEnvPath = `${state.stateDir}/stack.env`;
+  const stackEnvPath = `${state.stackDir}/stack.env`;
   let originalStackEnv: string | null = null;
   try {
     originalStackEnv = readFileSync(stackEnvPath, "utf-8");
@@ -337,7 +337,7 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
 }
 
 export function buildComposeFileList(state: ControlPlaneState): string[] {
-  return discoverStackOverlays(`${state.homeDir}/stack`);
+  return discoverStackOverlays(state.stackDir);
 }
 
 export async function buildManagedServices(state: ControlPlaneState): Promise<string[]> {

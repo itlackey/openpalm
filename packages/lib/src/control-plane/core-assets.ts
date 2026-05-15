@@ -20,13 +20,13 @@ const logger = createLogger("core-assets");
 // ── Core Compose (stack/) ─────────────────────────────────────────────
 
 export function ensureCoreCompose(): string {
-  const path = `${resolveOpenPalmHome()}/stack/core.compose.yml`;
+  const path = `${resolveOpenPalmHome()}/config/stack/core.compose.yml`;
   mkdirSync(dirname(path), { recursive: true });
   return path;
 }
 
 export function readCoreCompose(): string {
-  return readFileSync(`${resolveOpenPalmHome()}/stack/core.compose.yml`, "utf-8");
+  return readFileSync(`${resolveOpenPalmHome()}/config/stack/core.compose.yml`, "utf-8");
 }
 
 // ── OpenCode System Config ──────────────────────────────────────────
@@ -85,7 +85,7 @@ const VERSION = process.env.OP_ASSET_VERSION ?? "main";
 // Stash seeds are intentionally NOT in this list — they use seedStashAssets()
 // which never overwrites existing files (user edits win on re-install).
 const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
-  { relPath: "stack/core.compose.yml", githubFilename: ".openpalm/stack/core.compose.yml" },
+  { relPath: "config/stack/core.compose.yml", githubFilename: ".openpalm/stack/core.compose.yml" },
   { relPath: "state/assistant/opencode.jsonc", githubFilename: "core/assistant/opencode/opencode.jsonc" },
   { relPath: "state/assistant/AGENTS.md", githubFilename: "core/assistant/opencode/AGENTS.md" },
 ];

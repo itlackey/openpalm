@@ -9,7 +9,6 @@
 import type { StackSpec } from "./stack-spec.js";
 import { SPEC_DEFAULTS, parseCapabilityString } from "./stack-spec.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
 import { mergeEnvContent, parseEnvContent } from "./env.js";
 import { PROVIDER_DEFAULT_URLS, PROVIDER_KEY_MAP, OLLAMA_INSTACK_URL } from "../provider-constants.js";
 import { listEnabledAddonIds } from "./registry.js";
@@ -60,8 +59,8 @@ export function deriveSystemEnvFromSpec(
  *
  * Services consume these via compose ${VAR} substitution in their environment blocks.
  */
-export function writeCapabilityVars(spec: StackSpec, stateDir: string): void {
-  const stackEnvPath = `${stateDir}/stack.env`;
+export function writeCapabilityVars(spec: StackSpec, stackDir: string, homeDir?: string): void {
+  const stackEnvPath = `${stackDir}/stack.env`;
   const stackEnv = existsSync(stackEnvPath)
     ? parseEnvContent(readFileSync(stackEnvPath, "utf-8"))
     : {};
@@ -97,7 +96,7 @@ export function writeCapabilityVars(spec: StackSpec, stateDir: string): void {
   };
 
   const resolveUrl = (provider: string): string => {
-    if (provider === "ollama" && listEnabledAddonIds(dirname(stateDir)).includes("ollama")) return OLLAMA_INSTACK_URL;
+    if (provider === "ollama" && homeDir && listEnabledAddonIds(homeDir).includes("ollama")) return OLLAMA_INSTACK_URL;
     // Check stack.env for a user-configured base URL override for any provider
     const urlEnvKey = BASE_URL_ENV_MAP[provider];
     if (urlEnvKey && stackEnv[urlEnvKey]) {

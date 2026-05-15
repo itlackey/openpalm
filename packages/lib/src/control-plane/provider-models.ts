@@ -24,17 +24,17 @@ const ANTHROPIC_MODELS = [
  *
  * - Empty input → empty string.
  * - `env:NAME` form → looks up `NAME` in `process.env` first, then falls back
- *   to `vault/stack/stack.env` resolved against `configDir`.
+ *   to `config/stack/stack.env` resolved against `stackDir`.
  * - Anything else → returned verbatim (treated as a literal key value).
  */
-function resolveApiKey(apiKeyRef: string, configDir: string): string {
+function resolveApiKey(apiKeyRef: string, stackDir: string): string {
   if (!apiKeyRef) return "";
   if (!apiKeyRef.startsWith("env:")) return apiKeyRef;
 
   const varName = apiKeyRef.slice(4);
   if (process.env[varName]) return process.env[varName]!;
 
-  const secrets = readStackEnv(configDir);
+  const secrets = readStackEnv(stackDir);
   return secrets[varName] ?? "";
 }
 
@@ -74,14 +74,14 @@ export async function fetchProviderModels(
   provider: string,
   apiKeyRef: string,
   baseUrl: string,
-  configDir: string
+  stackDir: string
 ): Promise<ProviderModelsResult> {
   try {
     if (provider === "anthropic") {
       return { models: [...ANTHROPIC_MODELS], status: 'ok', reason: 'provider_static' };
     }
 
-    const resolvedKey = resolveApiKey(apiKeyRef, configDir);
+    const resolvedKey = resolveApiKey(apiKeyRef, stackDir);
 
     if (provider === "ollama") {
       const base = baseUrl?.trim() || PROVIDER_DEFAULT_URLS.ollama;

@@ -15,7 +15,7 @@ import {
   isSetupComplete,
   fetchProviderModels,
   resolveConfigDir,
-  resolveStateDir,
+  resolveStackDir,
   createOpenCodeClient,
 } from "@openpalm/lib";
 
@@ -79,6 +79,7 @@ export function createSetupServer(
   }
 ): SetupServer {
   const configDir = opts?.configDir ?? resolveConfigDir();
+  const stackDir = `${configDir}/stack`;
   const ocClient = opts?.openCodeClient ?? null;
 
   // Mutable server state
@@ -129,8 +130,8 @@ export function createSetupServer(
     // ── API: Setup Status ────────────────────────────────────────────
 
     if (method === "GET" && path === "/api/setup/status") {
-      const stateDir = resolveStateDir();
-      const complete = isSetupComplete(stateDir);
+      const stackDir = resolveStackDir();
+      const complete = isSetupComplete(stackDir);
       return jsonResponse(200, {
         ok: true,
         setupComplete: complete || state.setupComplete,
@@ -166,7 +167,7 @@ export function createSetupServer(
       const baseUrl = typeof reqBody.baseUrl === "string" ? reqBody.baseUrl : "";
 
       try {
-        const result = await fetchProviderModels(provider, apiKey, baseUrl, configDir);
+        const result = await fetchProviderModels(provider, apiKey, baseUrl, stackDir);
         if (result.status !== "ok") {
           return jsonResponse(502, { ok: false, ...result });
         }

@@ -183,7 +183,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const { getState } = await import('$lib/server/state.js');
-    const stackEnvPath = join(getState().stateDir, 'stack.env');
+    const stackEnvPath = join(getState().stackDir, "stack.env");
     expect(readFileSync(stackEnvPath, 'utf-8')).toContain('GROQ_API_KEY=gsk-test-key');
   });
 

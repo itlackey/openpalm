@@ -23,7 +23,7 @@ function seedStackYaml(): void {
       embeddings: { provider: 'openai', model: 'text-embedding-3-small', dims: 1536 },
     },
   };
-  writeStackSpec(state.configDir, spec);
+  writeStackSpec(state.stackDir, spec);
 }
 
 function makeEvent(body: unknown, token = 'admin-token'): Parameters<typeof POST>[0] {
@@ -106,7 +106,7 @@ describe('/admin/capabilities/assignments route', () => {
     expect(res.status).toBe(200);
 
     const state = getState();
-    const spec = readStackSpec(state.configDir);
+    const spec = readStackSpec(state.stackDir);
     expect(spec).not.toBeNull();
     expect(spec!.capabilities.llm).toBe('anthropic/claude-sonnet-4');
     expect(spec!.capabilities.embeddings).toEqual({
@@ -115,7 +115,7 @@ describe('/admin/capabilities/assignments route', () => {
       dims: 768,
     });
 
-    const stackEnv = readFileSync(join(state.stateDir, 'stack.env'), 'utf-8');
+    const stackEnv = readFileSync(join(state.stackDir, "stack.env"), 'utf-8');
     expect(stackEnv).toContain('OP_CAP_LLM_PROVIDER=anthropic');
     expect(stackEnv).toContain('OP_CAP_EMBEDDINGS_MODEL=text-embedding-004');
   });

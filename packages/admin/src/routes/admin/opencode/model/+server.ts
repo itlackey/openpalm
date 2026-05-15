@@ -42,15 +42,15 @@ export const POST: RequestHandler = async (event) => {
 
   try {
     // Read current LLM capability to preserve provider, then update and persist
-    const currentSpec = readStackSpec(state.configDir);
+    const currentSpec = readStackSpec(state.stackDir);
     if (!currentSpec) {
       return errorResponse(500, 'internal_error', 'stack.yml not found', {}, requestId);
     }
     const { provider } = parseCapabilityString(currentSpec.capabilities.llm);
 
     currentSpec.capabilities.llm = formatCapabilityString(provider, model);
-    writeStackSpec(state.configDir, currentSpec);
-    writeCapabilityVars(currentSpec, state.stateDir);
+    writeStackSpec(state.stackDir, currentSpec);
+    writeCapabilityVars(currentSpec, state.stackDir, state.homeDir);
   } catch (e) {
     console.warn('[opencode.model] Failed to persist model selection', e);
     return errorResponse(500, 'internal_error', 'Failed to persist model selection', {}, requestId);

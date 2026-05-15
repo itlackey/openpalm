@@ -16,14 +16,15 @@ let rootDir = '';
 
 function createState(): ControlPlaneState {
   const stateDir = join(rootDir, 'state');
-  const servicesDir = join(rootDir, 'services');
   const configDir = join(rootDir, 'config');
+  const stackDir = join(configDir, 'stack');
+  const cacheDir = join(rootDir, 'cache');
   mkdirSync(stateDir, { recursive: true });
-  mkdirSync(servicesDir, { recursive: true });
+  mkdirSync(stackDir, { recursive: true });
   mkdirSync(configDir, { recursive: true });
   mkdirSync(join(rootDir, 'stash'), { recursive: true });
   mkdirSync(join(rootDir, 'workspace'), { recursive: true });
-  mkdirSync(join(rootDir, 'stack'), { recursive: true });
+  mkdirSync(cacheDir, { recursive: true });
 
   return {
     adminToken: 'admin-token',
@@ -33,9 +34,9 @@ function createState(): ControlPlaneState {
     configDir,
     stashDir: join(rootDir, 'stash'),
     workspaceDir: join(rootDir, 'workspace'),
-    servicesDir,
+    cacheDir,
     stateDir,
-    stackDir: join(rootDir, 'stack'),
+    stackDir,
     services: {},
     artifacts: { compose: '' },
     artifactMeta: [],
@@ -54,11 +55,11 @@ afterEach(() => {
 describe('secret backend', () => {
   test('ensureSecrets repairs auth.json when Docker created it as a directory', () => {
     const state = createState();
-    mkdirSync(join(state.stateDir, 'auth.json'), { recursive: true });
+    mkdirSync(join(state.configDir, "auth.json"), { recursive: true });
 
     ensureSecrets(state);
 
-    const authJsonPath = join(state.stateDir, 'auth.json');
+    const authJsonPath = join(state.configDir, "auth.json");
     expect(lstatSync(authJsonPath).isFile()).toBe(true);
     expect(readFileSync(authJsonPath, 'utf-8')).toBe('{}\n');
   });
@@ -79,7 +80,7 @@ describe('secret backend', () => {
     expect(await backend.exists('openpalm/custom/example')).toBe(true);
 
     // Custom secrets are now written to stack.env (all secrets consolidated there)
-    const stackEnv = readFileSync(join(state.stateDir, 'stack.env'), 'utf-8');
+    const stackEnv = readFileSync(join(state.stackDir, "stack.env"), 'utf-8');
     expect(stackEnv).toContain('very-secret');
   });
 
@@ -189,7 +190,7 @@ describe('plaintext backend (via detectSecretBackend)', () => {
     writeFileSync(akmPath, 'OPENAI_API_KEY=akm-vault-openai\n');
 
     // Stack.env already exists from ensureSecrets — seed a system token.
-    const stackEnvPath = join(state.stateDir, 'stack.env');
+    const stackEnvPath = join(state.stackDir, "stack.env");
     const stackContent = readFileSync(stackEnvPath, 'utf-8')
       .replace(/^OP_ADMIN_TOKEN=.*$/m, 'OP_ADMIN_TOKEN=stack-admin-token');
     writeFileSync(stackEnvPath, stackContent);

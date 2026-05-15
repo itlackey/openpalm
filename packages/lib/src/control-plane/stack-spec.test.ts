@@ -127,8 +127,8 @@ describe("updateCapability", () => {
 // ── stackSpecPath / STACK_SPEC_FILENAME ──────────────────────────────────
 
 describe("stackSpecPath", () => {
-  it("returns configDir/stack.yml", () => {
-    expect(stackSpecPath("/foo/config")).toBe("/foo/config/stack.yml");
+  it("returns stackDir/stack.yml", () => {
+    expect(stackSpecPath("/foo/config/stack")).toBe("/foo/config/stack/stack.yml");
   });
 
   it("uses STACK_SPEC_FILENAME constant", () => {

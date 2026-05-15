@@ -46,7 +46,7 @@ export type ControlPlaneState = {
   workspaceDir: string;  // homeDir/workspace
   cacheDir: string;      // homeDir/cache (regenerable/semi-persistent data)
   stateDir: string;      // homeDir/state (service data + system state)
-  stackDir: string;      // homeDir/stack
+  stackDir: string;      // configDir/stack (compose runtime + stack config)
   services: Record<string, "running" | "stopped">;
   artifacts: {
     compose: string;

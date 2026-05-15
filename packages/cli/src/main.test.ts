@@ -157,12 +157,12 @@ describe('cli main', () => {
     try {
       await main(['install', '--no-start', '--file', specFile]);
       // Bootstrap runs directly, creating directories
-      expect(existsSync(join(base, 'services', 'admin'))).toBe(true);
+      expect(existsSync(join(base, 'state', 'admin'))).toBe(true);
       expect(existsSync(join(base, 'state', 'registry', 'addons', 'chat', 'compose.yml'))).toBe(true);
       expect(existsSync(join(base, 'state', 'registry', 'automations', 'cleanup-logs.yml'))).toBe(true);
       // guardian.env must be a file (not directory) — Docker creates a directory
       // when bind-mounting a non-existent source path, breaking compose up.
-      const guardianEnv = join(base, 'state', 'guardian.env');
+      const guardianEnv = join(base, 'config', 'stack', 'guardian.env');
       expect(existsSync(guardianEnv)).toBe(true);
       expect(statSync(guardianEnv).isFile()).toBe(true);
     } finally {
@@ -197,7 +197,7 @@ describe('cli main', () => {
 
     try {
       await main(['install', '--no-start', '--file', specFile]);
-      expect(existsSync(join(base, 'services', 'admin'))).toBe(true);
+      expect(existsSync(join(base, 'state', 'admin'))).toBe(true);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
@@ -302,13 +302,13 @@ describe('cli main', () => {
 
   it('supports addon and admin commands for enabling and disabling addons', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-addon-cli-'));
-    const coreCompose = join(base, 'stack', 'core.compose.yml');
+    const coreCompose = join(base, 'config', 'stack', 'core.compose.yml');
     const adminAddonDir = join(base, 'state', 'registry', 'addons', 'admin');
     const chatAddonDir = join(base, 'state', 'registry', 'addons', 'chat');
-    const guardianEnv = join(base, 'state', 'guardian.env');
+    const guardianEnv = join(base, 'config', 'stack', 'guardian.env');
     const logs: string[] = [];
 
-    mkdirSync(join(base, 'stack'), { recursive: true });
+    mkdirSync(join(base, 'config', 'stack'), { recursive: true });
     mkdirSync(join(base, 'state'), { recursive: true });
     mkdirSync(adminAddonDir, { recursive: true });
     mkdirSync(chatAddonDir, { recursive: true });
@@ -327,20 +327,20 @@ describe('cli main', () => {
 
     try {
       await main(['addon', 'enable', 'chat']);
-      expect(existsSync(join(base, 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
+      expect(existsSync(join(base, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
       expect(readFileSync(guardianEnv, 'utf8')).toMatch(/CHANNEL_CHAT_SECRET=/);
 
       await main(['admin', 'enable']);
-      expect(existsSync(join(base, 'stack', 'addons', 'admin', 'compose.yml'))).toBe(true);
+      expect(existsSync(join(base, 'config', 'stack', 'addons', 'admin', 'compose.yml'))).toBe(true);
 
       await main(['admin', 'status']);
       expect(logs.some((line) => line.includes('Admin addon is enabled.'))).toBe(true);
 
       await main(['addon', 'disable', 'chat']);
-      expect(existsSync(join(base, 'stack', 'addons', 'chat'))).toBe(false);
+      expect(existsSync(join(base, 'config', 'stack', 'addons', 'chat'))).toBe(false);
 
       await main(['admin', 'disable']);
-      expect(existsSync(join(base, 'stack', 'addons', 'admin'))).toBe(false);
+      expect(existsSync(join(base, 'config', 'stack', 'addons', 'admin'))).toBe(false);
     } finally {
       delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
       rmSync(base, { recursive: true, force: true });
@@ -428,9 +428,9 @@ describe('npm bin launcher', () => {
 describe('validate command', () => {
   it('is a recognized command and exits 0 when stack.env carries the required tokens', async () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const stateDir = join(tempHome, 'state');
-    mkdirSync(stateDir, { recursive: true });
-    writeFileSync(join(stateDir, 'stack.env'), 'OP_ADMIN_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n');
+    const stackDir = join(tempHome, 'config', 'stack');
+    mkdirSync(stackDir, { recursive: true });
+    writeFileSync(join(stackDir, 'stack.env'), 'OP_ADMIN_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n');
 
     const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
@@ -453,9 +453,9 @@ describe('validate command', () => {
 describe('scan command', () => {
   it('is a recognized command and exits 0 listing sensitive keys', async () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const stateDir = join(tempHome, 'state');
-    mkdirSync(stateDir, { recursive: true });
-    writeFileSync(join(stateDir, 'stack.env'), 'OP_ADMIN_TOKEN=abc\nOPENAI_API_KEY=sk-test\n');
+    const stackDir = join(tempHome, 'config', 'stack');
+    mkdirSync(stackDir, { recursive: true });
+    writeFileSync(join(stackDir, 'stack.env'), 'OP_ADMIN_TOKEN=abc\nOPENAI_API_KEY=sk-test\n');
 
     const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;

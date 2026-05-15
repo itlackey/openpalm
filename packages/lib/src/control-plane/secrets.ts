@@ -54,7 +54,7 @@ function mergeVaultEnvFile(path: string, updates: Record<string, string>, uncomm
 }
 
 function ensureSystemSecrets(state: ControlPlaneState): void {
-  const systemEnvPath = `${state.stateDir}/stack.env`;
+  const systemEnvPath = `${state.stackDir}/stack.env`;
   const existing = existsSync(systemEnvPath) ? parseEnvFile(systemEnvPath) : {};
   const updates: Record<string, string> = {};
 
@@ -102,21 +102,21 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
 }
 
 export function ensureSecrets(state: ControlPlaneState): void {
-  enforceVaultDirMode(state.stateDir);
+  enforceVaultDirMode(state.stackDir);
 
   ensureSystemSecrets(state);
-  ensureGuardianEnv(state.stateDir);
-  ensureAuthJson(state.stateDir);
+  ensureGuardianEnv(state.stackDir);
+  ensureAuthJson(state.configDir);
 }
 
 /**
- * Ensure state/guardian.env exists.
+ * Ensure config/stack/guardian.env exists.
  * Channel HMAC secrets (CHANNEL_<NAME>_SECRET) live here exclusively.
  * This file is loaded by the guardian as an env_file and via GUARDIAN_SECRETS_PATH.
  */
-function ensureGuardianEnv(stateDir: string): void {
-  const guardianEnvPath = `${stateDir}/guardian.env`;
-  mkdirSync(stateDir, { recursive: true, mode: VAULT_DIR_MODE });
+function ensureGuardianEnv(stackDir: string): void {
+  const guardianEnvPath = `${stackDir}/guardian.env`;
+  mkdirSync(stackDir, { recursive: true, mode: VAULT_DIR_MODE });
   if (!existsSync(guardianEnvPath)) {
     writeVaultFile(guardianEnvPath, [
       "# Guardian channel HMAC secrets — managed by openpalm",
@@ -128,9 +128,9 @@ function ensureGuardianEnv(stateDir: string): void {
   }
 }
 
-function ensureAuthJson(stateDir: string): void {
-  const authJsonPath = `${stateDir}/auth.json`;
-  mkdirSync(stateDir, { recursive: true, mode: VAULT_DIR_MODE });
+function ensureAuthJson(configDir: string): void {
+  const authJsonPath = `${configDir}/auth.json`;
+  mkdirSync(configDir, { recursive: true, mode: VAULT_DIR_MODE });
 
   if (existsSync(authJsonPath)) {
     try {
@@ -156,25 +156,25 @@ export function updateSecretsEnv(
   state: ControlPlaneState,
   updates: Record<string, string>
 ): void {
-  const stackEnvPath = `${state.stateDir}/stack.env`;
+  const stackEnvPath = `${state.stackDir}/stack.env`;
   if (!existsSync(stackEnvPath)) {
-    throw new Error("state/stack.env does not exist — run setup first");
+    throw new Error("config/stack/stack.env does not exist — run setup first");
   }
 
   mergeVaultEnvFile(stackEnvPath, updates, true);
 }
 
-/** Read and parse state/stack.env. Returns {} if the file does not exist. */
-export function readStackEnv(stateDir: string): Record<string, string> {
-  return parseEnvFile(`${stateDir}/stack.env`);
+/** Read and parse config/stack/stack.env. Returns {} if the file does not exist. */
+export function readStackEnv(stackDir: string): Record<string, string> {
+  return parseEnvFile(`${stackDir}/stack.env`);
 }
 
 export function updateSystemSecretsEnv(
   state: ControlPlaneState,
   updates: Record<string, string>
 ): void {
-  const systemEnvPath = `${state.stateDir}/stack.env`;
-  enforceVaultDirMode(state.stateDir);
+  const systemEnvPath = `${state.stackDir}/stack.env`;
+  enforceVaultDirMode(state.stackDir);
   if (!existsSync(systemEnvPath)) {
     ensureSystemSecrets(state);
   }
@@ -182,14 +182,14 @@ export function updateSystemSecretsEnv(
 }
 
 export function patchSecretsEnvFile(
-  stateDir: string,
+  stackDir: string,
   patches: Record<string, string>
 ): void {
   if (Object.keys(patches).length === 0) return;
 
-  const stackEnvPath = `${stateDir}/stack.env`;
-  enforceVaultDirMode(stateDir);
-  mkdirSync(stateDir, { recursive: true, mode: VAULT_DIR_MODE });
+  const stackEnvPath = `${stackDir}/stack.env`;
+  enforceVaultDirMode(stackDir);
+  mkdirSync(stackDir, { recursive: true, mode: VAULT_DIR_MODE });
 
   let existingContent = "";
   try {

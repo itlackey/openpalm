@@ -256,7 +256,7 @@ export function getRegistryAddonConfig(homeDir: string, name: string): RegistryA
   const schemaFile = join(homeDir, schemaPath);
   return {
     schemaPath,
-    userEnvPath: 'config/stack.env',
+    userEnvPath: 'config/stack/stack.env',
     envSchema: existsSync(schemaFile) ? readFileSync(schemaFile, 'utf-8') : '',
   };
 }
@@ -271,7 +271,7 @@ export function listAvailableAddonIds(): string[] {
 }
 
 export function listEnabledAddonIds(homeDir: string): string[] {
-  const addonsDir = join(homeDir, 'stack', 'addons');
+  const addonsDir = join(homeDir, 'config', 'stack', 'addons');
   if (!existsSync(addonsDir)) return [];
 
   return readdirSync(addonsDir, { withFileTypes: true })
@@ -290,15 +290,15 @@ function copyAddonFromRegistry(homeDir: string, name: string): void {
     throw new Error(`Addon "${name}" not found in registry`);
   }
 
-  const targetDir = join(homeDir, 'stack', 'addons', name);
+  const targetDir = join(homeDir, 'config', 'stack', 'addons', name);
   rmSync(targetDir, { recursive: true, force: true });
-  mkdirSync(join(homeDir, 'stack', 'addons'), { recursive: true });
+  mkdirSync(join(homeDir, 'config', 'stack', 'addons'), { recursive: true });
   cpSync(sourceDir, targetDir, { recursive: true });
 }
 
 function removeEnabledAddon(homeDir: string, name: string): void {
   if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
-  rmSync(join(homeDir, 'stack', 'addons', name), { recursive: true, force: true });
+  rmSync(join(homeDir, 'config', 'stack', 'addons', name), { recursive: true, force: true });
 }
 
 function readAddonServiceNames(composePath: string): string[] {
@@ -322,7 +322,7 @@ export function getAddonServiceNames(homeDir: string, name: string): string[] {
   if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
 
   const composeCandidates = [
-    join(homeDir, "stack", "addons", name, "compose.yml"),
+    join(homeDir, "config", "stack", "addons", name, "compose.yml"),
     join(homeDir, "state", "registry", "addons", name, "compose.yml"),
   ];
 
@@ -354,7 +354,7 @@ export function disableAddonByName(homeDir: string, name: string): MutationResul
   }
 }
 
-export function setAddonEnabled(homeDir: string, stateDir: string, name: string, enabled: boolean): AddonMutationResult {
+export function setAddonEnabled(homeDir: string, stackDir: string, name: string, enabled: boolean): AddonMutationResult {
   if (!VALID_NAME_RE.test(name)) {
     return { ok: false, error: `Invalid addon name: ${name}` };
   }
@@ -379,9 +379,9 @@ export function setAddonEnabled(homeDir: string, stateDir: string, name: string,
   if (!mutation.ok) return mutation;
 
   if (enabled) {
-    const composePath = join(homeDir, "stack", "addons", name, "compose.yml");
+    const composePath = join(homeDir, "config", "stack", "addons", name, "compose.yml");
     if (isChannelAddon(composePath)) {
-      writeChannelSecrets(stateDir, { [name]: randomHex(16) });
+      writeChannelSecrets(stackDir, { [name]: randomHex(16) });
     }
   }
 

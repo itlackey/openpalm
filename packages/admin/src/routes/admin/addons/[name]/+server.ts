@@ -96,7 +96,7 @@ export const POST: RequestHandler = async (event) => {
     }
   }
 
-  const mutation = setAddonEnabled(state.homeDir, state.stateDir, name, newEnabled);
+  const mutation = setAddonEnabled(state.homeDir, state.stackDir, name, newEnabled);
   if (!mutation.ok) {
     appendAudit(state, actor, "addons.name.post", { name, error: mutation.error }, false, requestId, callerType);
     return errorResponse(500, "internal_error", mutation.error, {}, requestId);

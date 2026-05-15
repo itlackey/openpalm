@@ -37,7 +37,7 @@ export const POST: RequestHandler = async (event) => {
   const derivedProvider = explicitProvider || deriveProvider(baseUrl);
   logger.info('capability test', { requestId, derivedProvider, kind });
 
-  const result = await fetchProviderModels(derivedProvider, apiKey, baseUrl, state.configDir);
+  const result = await fetchProviderModels(derivedProvider, apiKey, baseUrl, state.stackDir);
   const ok = result.status === 'ok';
   const errorCode = ok ? undefined : mapDiscoveryResultToErrorCode(result);
 

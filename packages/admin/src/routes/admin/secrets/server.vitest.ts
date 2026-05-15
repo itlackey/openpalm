@@ -40,7 +40,7 @@ beforeEach(() => {
 
   const state = getState();
   mkdirSync(state.configDir, { recursive: true });
-  mkdirSync(state.stateDir, { recursive: true });
+  mkdirSync(state.stackDir, { recursive: true });
   mkdirSync(state.stashDir, { recursive: true });
 });
 
@@ -73,7 +73,7 @@ describe('admin secrets routes', () => {
     expect(body.value).toBeUndefined();
 
     const state = getState();
-    const stackEnv = readFileSync(join(state.stateDir, 'stack.env'), 'utf-8');
+    const stackEnv = readFileSync(join(state.stackDir, "stack.env"), 'utf-8');
     expect(stackEnv).toContain('super-secret-value');
   });
 

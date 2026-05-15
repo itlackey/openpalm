@@ -40,26 +40,26 @@ function cpTree(src: string, dest: string): void {
 function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
   const configDir = join(homeDir, 'config');
   const stateDir = join(homeDir, 'state');
-  const servicesDir = join(homeDir, 'services');
+  const stackDir = join(configDir, 'stack');
 
-  // stack/ — seed core compose only
-  mkdirSync(join(homeDir, 'stack'), { recursive: true });
-  Bun.spawnSync(['cp', join(OPENPALM_SRC, 'stack', 'core.compose.yml'), join(homeDir, 'stack', 'core.compose.yml')]);
+  // config/stack/ — seed core compose only
+  mkdirSync(stackDir, { recursive: true });
+  Bun.spawnSync(['cp', join(OPENPALM_SRC, 'stack', 'core.compose.yml'), join(stackDir, 'core.compose.yml')]);
 
   // state/registry/ — shipped catalog source
   cpTree(join(OPENPALM_SRC, 'registry', 'addons'), join(stateDir, 'registry', 'addons'));
   cpTree(join(OPENPALM_SRC, 'registry', 'automations'), join(stateDir, 'registry', 'automations'));
 
-  // stack/addons/ — enabled runtime overlays only
+  // config/stack/addons/ — enabled runtime overlays only
   for (const addon of enabledAddons) {
-    cpTree(join(OPENPALM_SRC, 'registry', 'addons', addon), join(homeDir, 'stack', 'addons', addon));
+    cpTree(join(OPENPALM_SRC, 'registry', 'addons', addon), join(stackDir, 'addons', addon));
   }
 
   // config/automations/ — enabled only (start empty)
   mkdirSync(join(configDir, 'automations'), { recursive: true });
 
-  // services/assistant/ — opencode config
-  const assistantDir = join(servicesDir, 'assistant');
+  // state/assistant/ — opencode config
+  const assistantDir = join(stateDir, 'assistant');
   mkdirSync(assistantDir, { recursive: true });
   if (existsSync(ASSISTANT_SRC)) {
     for (const f of readdirSync(ASSISTANT_SRC)) {
@@ -68,28 +68,32 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
   }
 
   // Seed file-based volume mount targets (CLI bootstrapInstall does this)
-  mkdirSync(stateDir, { recursive: true });
-  if (!existsSync(join(stateDir, 'guardian.env'))) {
-    Bun.spawnSync(['touch', join(stateDir, 'guardian.env')]);
+  mkdirSync(stackDir, { recursive: true });
+  if (!existsSync(join(stackDir, 'guardian.env'))) {
+    Bun.spawnSync(['touch', join(stackDir, 'guardian.env')]);
   }
-  if (!existsSync(join(stateDir, 'auth.json'))) {
-    writeFileSync(join(stateDir, 'auth.json'), '{}\n');
+  if (!existsSync(join(configDir, 'auth.json'))) {
+    writeFileSync(join(configDir, 'auth.json'), '{}\n');
   }
 
   // Create required directories
   for (const dir of [
     configDir,
     join(configDir, 'assistant'),
-    join(configDir, 'guardian'),
+    join(configDir, 'akm'),
+    stackDir,
+    join(stackDir, 'addons'),
     stateDir,
-    servicesDir,
-    join(servicesDir, 'admin'),
-    join(servicesDir, 'guardian'),
+    join(stateDir, 'assistant'),
+    join(stateDir, 'admin'),
+    join(stateDir, 'guardian'),
     join(homeDir, 'stash'),
     join(homeDir, 'workspace'),
+    join(homeDir, 'cache'),
+    join(homeDir, 'cache', 'akm'),
     join(stateDir, 'logs'),
     join(stateDir, 'logs', 'opencode'),
-    join(homeDir, 'backups'),
+    join(stateDir, 'backups'),
   ]) {
     mkdirSync(dir, { recursive: true });
   }
@@ -172,15 +176,15 @@ describe('install flow — tier 1 (file validation)', () => {
 
     // ── Validate stack.yml via lib parser ─────────────────────────
     const configDir = join(homeDir, 'config');
-    const stackSpec = readStackSpec(configDir);
+    const stackSpec = readStackSpec(join(homeDir, 'config', 'stack'));
     expect(stackSpec).not.toBeNull();
     expect(stackSpec!.version).toBe(2);
     expect(stackSpec!.capabilities.llm).toBe('ollama/qwen2.5-coder:3b');
 
     // ── Validate compose files exist ─────────────────────────────────
-    expect(existsSync(join(homeDir, 'stack/core.compose.yml'))).toBe(true);
-    expect(existsSync(join(homeDir, 'stack/addons/admin/compose.yml'))).toBe(true);
-    expect(existsSync(join(homeDir, 'stack/addons/chat/compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'config/stack/core.compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'config/stack/addons/admin/compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'config/stack/addons/chat/compose.yml'))).toBe(true);
 
     expect(existsSync(join(homeDir, 'state/registry/addons/admin/compose.yml'))).toBe(true);
     expect(existsSync(join(homeDir, 'state/registry/addons/chat/compose.yml'))).toBe(true);
@@ -193,9 +197,9 @@ describe('install flow — tier 1 (file validation)', () => {
     // it directly. The compose env_file mount for vault/user/user.env
     // has been removed too.
     for (const relPath of [
-      'state/stack.env',
-      'state/guardian.env',
-      'state/auth.json',
+      'config/stack/stack.env',
+      'config/stack/guardian.env',
+      'config/auth.json',
     ]) {
       const fullPath = join(homeDir, relPath);
       expect(existsSync(fullPath)).toBe(true);
@@ -204,16 +208,16 @@ describe('install flow — tier 1 (file validation)', () => {
 
     // ── Validate all volume mount targets exist as user-owned ────────
     const stackEnvVars = {
-      ...parseEnvFile(join(homeDir, 'state/stack.env')),
+      ...parseEnvFile(join(homeDir, 'config/stack/stack.env')),
       ...process.env as Record<string, string>,
     };
     // OP_HOME must resolve to absolute path
     stackEnvVars.OP_HOME = homeDir;
 
     const allComposeFiles = [
-      join(homeDir, 'stack/core.compose.yml'),
-      join(homeDir, 'stack/addons/admin/compose.yml'),
-      join(homeDir, 'stack/addons/chat/compose.yml'),
+      join(homeDir, 'config/stack/core.compose.yml'),
+      join(homeDir, 'config/stack/addons/admin/compose.yml'),
+      join(homeDir, 'config/stack/addons/chat/compose.yml'),
     ];
     const mounts = extractVolumeMountPaths(allComposeFiles, stackEnvVars);
     expect(mounts.length).toBeGreaterThan(0);
@@ -243,8 +247,8 @@ describe('install flow — tier 1 (file validation)', () => {
     const rootFiles = new TextDecoder().decode(rootOwned.stdout).trim();
     expect(rootFiles).toBe('');
 
-    // ── Validate services and stash directories ────────────────────────────────────
-    for (const dir of ['services/admin', 'services/assistant', 'services/guardian', 'stash', 'workspace']) {
+    // ── Validate state and stash directories ────────────────────────────────────
+    for (const dir of ['state/admin', 'state/assistant', 'state/guardian', 'stash', 'workspace']) {
       expect(existsSync(join(homeDir, dir))).toBe(true);
     }
 
@@ -283,11 +287,11 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(result.ok).toBe(true);
 
     // Ensure all volume mount targets exist so compose doesn't complain
-    const stackEnv = join(homeDir, 'state/stack.env');
+    const stackEnv = join(homeDir, 'config/stack/stack.env');
     const composeFiles = [
-      join(homeDir, 'stack/core.compose.yml'),
-      join(homeDir, 'stack/addons/admin/compose.yml'),
-      join(homeDir, 'stack/addons/chat/compose.yml'),
+      join(homeDir, 'config/stack/core.compose.yml'),
+      join(homeDir, 'config/stack/addons/admin/compose.yml'),
+      join(homeDir, 'config/stack/addons/chat/compose.yml'),
     ];
     const { ensureComposeVolumeTargets, createState } = await import('@openpalm/lib');
     ensureComposeVolumeTargets(createState());
@@ -384,15 +388,15 @@ describe('install flow — tier 1 (file validation)', () => {
     const result = await performSetup(makeSetupSpec() as any);
     expect(result.ok).toBe(true);
 
-    const noAddonSpec = readStackSpec(join(homeDir, 'config'));
+    const noAddonSpec = readStackSpec(join(homeDir, 'config', 'stack'));
     expect(noAddonSpec).not.toBeNull();
 
     // Core compose only, no addon files in the compose list.
     // Only state/stack.env is needed for `compose config`.
-    const stackEnv = join(homeDir, 'state/stack.env');
+    const stackEnv = join(homeDir, 'config/stack/stack.env');
     const proc = Bun.spawnSync([
       'docker', 'compose', '--project-name', 'openpalm-test',
-      '-f', join(homeDir, 'stack/core.compose.yml'),
+      '-f', join(homeDir, 'config/stack/core.compose.yml'),
       '--env-file', stackEnv,
       'config', '--services',
     ], { stdout: 'pipe', stderr: 'pipe', env: { ...process.env, OP_HOME: homeDir } });

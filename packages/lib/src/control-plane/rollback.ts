@@ -14,8 +14,8 @@ import { resolveRollbackDir } from "./home.js";
  *  Only config/ system files are included — user-editable config files
  *  are never overwritten by lifecycle operations. */
 const SNAPSHOT_FILES = [
-  "config/stack.env",
-  "config/guardian.env",
+  "config/stack/stack.env",
+  "config/stack/guardian.env",
   "config/auth.json",
 ];
 
@@ -44,12 +44,12 @@ export function snapshotCurrentState(state: ControlPlaneState): void {
     safeCopy(src, dest);
   }
 
-  // Snapshot stack/core.compose.yml
-  const coreCompose = join(state.homeDir, "stack/core.compose.yml");
-  safeCopy(coreCompose, join(rollbackDir, "stack/core.compose.yml"));
+  // Snapshot config/stack/core.compose.yml
+  const coreCompose = join(state.homeDir, "config/stack/core.compose.yml");
+  safeCopy(coreCompose, join(rollbackDir, "config/stack/core.compose.yml"));
 
-  // Snapshot stack/addons/*/compose.yml
-  const addonsDir = join(state.homeDir, "stack/addons");
+  // Snapshot config/stack/addons/*/compose.yml
+  const addonsDir = join(state.homeDir, "config/stack/addons");
   if (existsSync(addonsDir)) {
     for (const entry of readdirSync(addonsDir, { withFileTypes: true })) {
       if (entry.isDirectory()) {
@@ -57,7 +57,7 @@ export function snapshotCurrentState(state: ControlPlaneState): void {
         if (existsSync(addonCompose)) {
           safeCopy(
             addonCompose,
-            join(rollbackDir, "stack/addons", entry.name, "compose.yml"),
+            join(rollbackDir, "config/stack/addons", entry.name, "compose.yml"),
           );
         }
       }
@@ -88,14 +88,14 @@ export function restoreSnapshot(state: ControlPlaneState): void {
     safeCopy(src, dest);
   }
 
-  // Restore stack/core.compose.yml
-  const srcCoreCompose = join(rollbackDir, "stack/core.compose.yml");
+  // Restore config/stack/core.compose.yml
+  const srcCoreCompose = join(rollbackDir, "config/stack/core.compose.yml");
   if (existsSync(srcCoreCompose)) {
-    safeCopy(srcCoreCompose, join(state.homeDir, "stack/core.compose.yml"));
+    safeCopy(srcCoreCompose, join(state.homeDir, "config/stack/core.compose.yml"));
   }
 
-  // Restore stack/addons/*/compose.yml
-  const srcAddons = join(rollbackDir, "stack/addons");
+  // Restore config/stack/addons/*/compose.yml
+  const srcAddons = join(rollbackDir, "config/stack/addons");
   if (existsSync(srcAddons)) {
     for (const entry of readdirSync(srcAddons, { withFileTypes: true })) {
       if (entry.isDirectory()) {
@@ -103,7 +103,7 @@ export function restoreSnapshot(state: ControlPlaneState): void {
         if (existsSync(srcAddonCompose)) {
           safeCopy(
             srcAddonCompose,
-            join(state.homeDir, "stack/addons", entry.name, "compose.yml"),
+            join(state.homeDir, "config/stack/addons", entry.name, "compose.yml"),
           );
         }
       }

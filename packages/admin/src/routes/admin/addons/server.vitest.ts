@@ -46,7 +46,7 @@ function seedRegistryAddon(homeDir: string, name: string): void {
 }
 
 function enableAddon(homeDir: string, name: string): void {
-  const dir = join(homeDir, 'stack', 'addons', name);
+  const dir = join(homeDir, 'config', 'stack', 'addons', name);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'compose.yml'), `services:\n  ${name}:\n    image: test\n`);
 }
@@ -125,7 +125,7 @@ describe('POST /admin/addons', () => {
     expect(body.addon).toBe('chat');
     expect(body.enabled).toBe(true);
     expect(body.changed).toBe(true);
-    expect(existsSync(join(state.homeDir, 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
+    expect(existsSync(join(state.homeDir, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
   });
 
   test('disables an enabled addon', async () => {
@@ -139,6 +139,6 @@ describe('POST /admin/addons', () => {
     const body = await res.json() as { ok: boolean; enabled: boolean };
     expect(body.ok).toBe(true);
     expect(body.enabled).toBe(false);
-    expect(existsSync(join(state.homeDir, 'stack', 'addons', 'chat'))).toBe(false);
+    expect(existsSync(join(state.homeDir, 'config', 'stack', 'addons', 'chat'))).toBe(false);
   });
 });

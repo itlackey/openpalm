@@ -51,7 +51,7 @@ function makeState(tempDir?: string): ControlPlaneState {
     workspaceDir: join(base, "workspace"),
     cacheDir: join(base, "cache"),
     stateDir: join(base, "state"),
-    stackDir: join(base, "stack"),
+    stackDir: join(base, "config", "stack"),
     services: {},
     artifacts: { compose: "" },
     artifactMeta: [],
@@ -65,7 +65,7 @@ function seedChannelAddons(
   channels: { name: string; yml: string }[]
 ): void {
   for (const ch of channels) {
-    const addonDir = join(homeDir, "stack", "addons", ch.name);
+    const addonDir = join(homeDir, "config", "stack", "addons", ch.name);
     mkdirSync(addonDir, { recursive: true });
     writeFileSync(join(addonDir, "compose.yml"), ch.yml);
   }

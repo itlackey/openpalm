@@ -42,11 +42,11 @@ function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
 
 /** Seed the minimal asset files that ensure* functions expect to find at OP_HOME. */
 function seedRequiredAssets(homeDir: string): void {
-  mkdirSync(join(homeDir, "stack"), { recursive: true });
-  writeFileSync(join(homeDir, "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
-  mkdirSync(join(homeDir, "services", "assistant"), { recursive: true });
-  writeFileSync(join(homeDir, "services", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
-  writeFileSync(join(homeDir, "services", "assistant", "AGENTS.md"), "# Agents\n");
+  mkdirSync(join(homeDir, "config", "stack"), { recursive: true });
+  writeFileSync(join(homeDir, "config", "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
+  mkdirSync(join(homeDir, "state", "assistant"), { recursive: true });
+  writeFileSync(join(homeDir, "state", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
+  writeFileSync(join(homeDir, "state", "assistant", "AGENTS.md"), "# Agents\n");
   mkdirSync(join(homeDir, "state"), { recursive: true });
   mkdirSync(join(homeDir, "config", "automations"), { recursive: true });
   writeFileSync(join(homeDir, "config", "automations", "cleanup-logs.yml"), "name: cleanup-logs\nschedule: daily\n");
@@ -293,6 +293,7 @@ describe("performSetup", () => {
   let homeDir: string;
   let configDir: string;
   let stateDir: string;
+  let stackDir: string;
 
   const savedEnv: Record<string, string | undefined> = {};
 
@@ -300,6 +301,7 @@ describe("performSetup", () => {
     homeDir = mkdtempSync(join(tmpdir(), "openpalm-setup-"));
     configDir = join(homeDir, "config");
     stateDir = join(homeDir, "state");
+    stackDir = join(configDir, "stack");
 
     // Create required directory structure
     for (const dir of [
@@ -307,13 +309,17 @@ describe("performSetup", () => {
       configDir,
       join(configDir, "automations"),
       join(configDir, "assistant"),
+      join(configDir, "akm"),
+      stackDir,
+      join(stackDir, "addons"),
       join(homeDir, "stash"),
       join(homeDir, "workspace"),
-      join(homeDir, "services"),
-      join(homeDir, "services", "admin"),
-      join(homeDir, "services", "assistant"),
-      join(homeDir, "services", "guardian"),
+      join(homeDir, "cache"),
+      join(homeDir, "cache", "akm"),
       stateDir,
+      join(stateDir, "assistant"),
+      join(stateDir, "admin"),
+      join(stateDir, "guardian"),
       join(stateDir, "logs"),
       join(stateDir, "logs", "opencode"),
     ]) {
@@ -322,7 +328,7 @@ describe("performSetup", () => {
 
     // Create stub stack.env so isSetupComplete doesn't crash
     writeFileSync(
-      join(stateDir, "stack.env"),
+      join(stackDir, "stack.env"),
       [
         "OP_SETUP_COMPLETE=false",
         "OP_ADMIN_TOKEN=",
@@ -363,7 +369,7 @@ describe("performSetup", () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
-    const secretsContent = readFileSync(join(stateDir, "stack.env"), "utf-8");
+    const secretsContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(secretsContent).toContain("test-admin-token-12345");
   });
 
@@ -371,7 +377,7 @@ describe("performSetup", () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
-    const stackEnvContent = readFileSync(join(stateDir, "stack.env"), "utf-8");
+    const stackEnvContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(stackEnvContent).toContain("OP_CAP_LLM_MODEL=gpt-4o");
     expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_MODEL=text-embedding-3-small");
   });
@@ -380,7 +386,7 @@ describe("performSetup", () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
-    const spec = readStackSpec(configDir);
+    const spec = readStackSpec(stackDir);
     expect(spec).not.toBeNull();
     expect(spec!.version).toBe(2);
     expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
@@ -393,7 +399,7 @@ describe("performSetup", () => {
     expect(result.ok).toBe(true);
 
     // applyInstall should have written the compose file to stack/ (not config/components/)
-    const stagedCompose = join(homeDir, "stack", "core.compose.yml");
+    const stagedCompose = join(homeDir, "config", "stack", "core.compose.yml");
     expect(existsSync(stagedCompose)).toBe(true);
   });
 
@@ -422,7 +428,7 @@ describe("performSetup", () => {
     expect(result.ok).toBe(true);
 
     // v2 spec should have correct capabilities without addon metadata
-    const spec = readStackSpec(configDir);
+    const spec = readStackSpec(stackDir);
     expect(spec).not.toBeNull();
     expect(spec!.version).toBe(2);
     expect(spec!.capabilities.llm).toBe("ollama/llama3.2");
@@ -453,7 +459,7 @@ describe("performSetup", () => {
     expect(result.ok).toBe(true);
 
     // nomic-embed-text is 768 dims per EMBEDDING_DIMS — verify via stack.env OP_CAP_EMBEDDINGS_DIMS
-    const stackEnvContent = readFileSync(join(stateDir, "stack.env"), "utf-8");
+    const stackEnvContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_DIMS=768");
   });
 
@@ -461,10 +467,10 @@ describe("performSetup", () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
-    const specPath = join(configDir, STACK_SPEC_FILENAME);
+    const specPath = join(stackDir, STACK_SPEC_FILENAME);
     expect(existsSync(specPath)).toBe(true);
 
-    const spec = readStackSpec(configDir);
+    const spec = readStackSpec(stackDir);
     expect(spec).not.toBeNull();
     expect(spec!.version).toBe(2);
     expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
@@ -484,7 +490,7 @@ describe("performSetup", () => {
     expect(result.ok).toBe(true);
 
     // v2 spec should still have correct capabilities
-    const spec = readStackSpec(configDir);
+    const spec = readStackSpec(stackDir);
     expect(spec).not.toBeNull();
     expect(spec!.version).toBe(2);
     expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
@@ -511,7 +517,7 @@ describe("performSetup", () => {
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    const stackEnvContent = readFileSync(join(stateDir, "stack.env"), "utf-8");
+    const stackEnvContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(stackEnvContent).toContain("discord-bot-token-xyz");
     expect(stackEnvContent).toContain("discord-app-id-123");
   });

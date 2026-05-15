@@ -17,7 +17,7 @@ function makeTempDir(): string {
 function seedStackYaml(capabilities: Record<string, unknown>): void {
   const state = getState();
   const spec: StackSpec = { version: 2, capabilities: capabilities as StackSpec['capabilities'] };
-  writeStackSpec(state.configDir, spec);
+  writeStackSpec(state.stackDir, spec);
 }
 
 function makeEvent(token = 'admin-token'): Parameters<typeof GET>[0] {

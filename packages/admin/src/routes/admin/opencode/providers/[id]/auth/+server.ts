@@ -123,7 +123,7 @@ export const POST: RequestHandler = async (event) => {
     const envVar = typeof body.envVar === 'string' ? body.envVar : '';
     if (envVar && ENV_VAR_PATTERN.test(envVar)) {
       try {
-        patchSecretsEnvFile(state.stateDir, { [envVar]: apiKey });
+        patchSecretsEnvFile(state.stackDir, { [envVar]: apiKey });
       } catch (e) {
         logger.warn('Failed to write API key to vault', { providerId, envVar, requestId, error: String(e) });
         appendAudit(state, actor, 'opencode.auth.api_key', { providerId, error: 'vault_write_failed' }, false, requestId, callerType);

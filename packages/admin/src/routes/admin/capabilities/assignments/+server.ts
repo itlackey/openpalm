@@ -68,7 +68,7 @@ export const GET: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const spec = readStackSpec(state.configDir);
+  const spec = readStackSpec(state.stackDir);
   appendAudit(state, getActor(event), 'capabilities.assignments.get', {}, true, requestId, getCallerType(event));
   return jsonResponse(200, { capabilities: spec?.capabilities ?? null }, requestId);
 };
@@ -93,7 +93,7 @@ export const POST: RequestHandler = async (event) => {
     if (!TOP_LEVEL_KEYS.has(k)) return errorResponse(400, 'bad_request', `capabilities contains unsupported key "${k}"`, {}, requestId);
   }
 
-  const spec = readStackSpec(state.configDir);
+  const spec = readStackSpec(state.stackDir);
   if (!spec) return errorResponse(500, 'internal_error', 'stack.yml not found', {}, requestId);
 
   // LLM (required string, never deletable)
@@ -136,11 +136,11 @@ export const POST: RequestHandler = async (event) => {
   }
 
   try {
-    writeStackSpec(state.configDir, spec);
-    writeCapabilityVars(spec, state.stateDir);
-    const akmJson = buildAkmSetupJson(spec, readStackEnv(state.stateDir));
+    writeStackSpec(state.stackDir, spec);
+    writeCapabilityVars(spec, state.stackDir, state.homeDir);
+    const akmJson = buildAkmSetupJson(spec, readStackEnv(state.stackDir));
     if (akmJson) {
-      const akmConfigDir = `${state.stateDir}/akm/config`;
+      const akmConfigDir = `${state.configDir}/akm`;
       mkdirSync(akmConfigDir, { recursive: true });
       writeFileSync(`${akmConfigDir}/config.json`, akmJson, { mode: 0o600 });
     }

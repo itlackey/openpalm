@@ -5,30 +5,34 @@
  * When the directory layout changes, update this file only.
  *
  * Layout:
- *   config/   — user-editable config + system config files (stack.env, auth.json, akm/)
- *   cache/    — regenerable/semi-persistent data (akm cache, guardian cache, rollback)
- *   state/    — persistent service data (assistant, admin, guardian, logs, backups, registry)
- *   stash/    — akm knowledge (skills, vaults, agents)
- *   workspace/ — shared work area
- *   stack/    — compose runtime (addon overlays)
+ *   config/        — user-editable config + system config files (auth.json, akm/)
+ *   config/stack/  — compose runtime + stack config (stack.env, guardian.env, stack.yml, addons/)
+ *   cache/         — regenerable/semi-persistent data (akm cache, guardian cache, rollback)
+ *   state/         — persistent service data (assistant, admin, guardian, logs, backups, registry)
+ *   stash/         — akm knowledge (skills, vaults, agents)
+ *   workspace/     — shared work area
  */
 import type { ControlPlaneState } from "./types.js";
 
 // ── Config directory — user + system config ─────────────────────────────────
 
-/** System env: capabilities, secrets, tokens */
-export const stackEnvPath          = (s: ControlPlaneState): string => `${s.configDir}/stack.env`;
-/** Guardian HMAC channel secrets */
-export const guardianEnvPath       = (s: ControlPlaneState): string => `${s.configDir}/guardian.env`;
 /** OpenCode auth token store */
 export const authJsonPath          = (s: ControlPlaneState): string => `${s.configDir}/auth.json`;
 /** akm setup config directory (AKM_CONFIG_DIR) */
 export const akmConfigDir          = (s: ControlPlaneState): string => `${s.configDir}/akm`;
 /** akm setup config file (written by admin on capability save) */
 export const akmConfigPath         = (s: ControlPlaneState): string => `${s.configDir}/akm/config.json`;
-export const stackSpecFilePath     = (s: ControlPlaneState): string => `${s.configDir}/stack.yml`;
 export const automationsDir        = (s: ControlPlaneState): string => `${s.configDir}/automations`;
 export const assistantConfigDir    = (s: ControlPlaneState): string => `${s.configDir}/assistant`;
+
+// ── Config/stack directory — compose runtime + stack config ─────────────────
+
+/** System env: capabilities, secrets, tokens */
+export const stackEnvPath          = (s: ControlPlaneState): string => `${s.stackDir}/stack.env`;
+/** Guardian HMAC channel secrets */
+export const guardianEnvPath       = (s: ControlPlaneState): string => `${s.stackDir}/guardian.env`;
+/** Stack spec: capability assignments */
+export const stackSpecFilePath     = (s: ControlPlaneState): string => `${s.stackDir}/stack.yml`;
 
 // ── Cache directory — regenerable/semi-persistent ───────────────────────────
 

@@ -27,7 +27,7 @@ function seedChannelAddons(
   channels: { name: string; yml: string }[]
 ): void {
   for (const ch of channels) {
-    const addonDir = join(homeDir, "stack", "addons", ch.name);
+    const addonDir = join(homeDir, "config", "stack", "addons", ch.name);
     mkdirSync(addonDir, { recursive: true });
     writeFileSync(join(addonDir, "compose.yml"), ch.yml);
   }
@@ -86,7 +86,7 @@ describe("discoverChannels", () => {
   });
 
   test("filters out invalid channel names", () => {
-    const addonsDir = join(homeDir, "stack", "addons");
+    const addonsDir = join(homeDir, "config", "stack", "addons");
     // Invalid: uppercase
     const upperDir = join(addonsDir, "UPPER");
     mkdirSync(upperDir, { recursive: true });
@@ -106,7 +106,7 @@ describe("discoverChannels", () => {
   });
 
   test("ignores addon dirs without compose.yml", () => {
-    const addonsDir = join(homeDir, "stack", "addons");
+    const addonsDir = join(homeDir, "config", "stack", "addons");
     mkdirSync(join(addonsDir, "no-compose"), { recursive: true });
     seedChannelAddons(homeDir, [
       { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" }
@@ -170,7 +170,7 @@ describe("isAllowedService", () => {
     const homeDir = trackDir(makeTempDir());
     const configDir = join(homeDir, "config");
     mkdirSync(configDir, { recursive: true });
-    const ollamaDir = join(homeDir, "stack", "addons", "ollama");
+    const ollamaDir = join(homeDir, "config", "stack", "addons", "ollama");
     mkdirSync(ollamaDir, { recursive: true });
     writeFileSync(join(ollamaDir, "compose.yml"), "services:\n  ollama:\n    image: ollama/ollama\n");
 

@@ -15,17 +15,18 @@ import type { ControlPlaneState } from "./types.js";
 let tempDir: string;
 
 function makeState(overrides: Partial<ControlPlaneState> = {}): ControlPlaneState {
+  const configDir = join(tempDir, "config");
   return {
     adminToken: "test",
     assistantToken: "test",
     setupToken: "test",
     homeDir: tempDir,
-    configDir: join(tempDir, "config"),
+    configDir,
     stashDir: join(tempDir, "stash"),
     workspaceDir: join(tempDir, "workspace"),
-    servicesDir: join(tempDir, "services"),
+    cacheDir: join(tempDir, "cache"),
     stateDir: join(tempDir, "state"),
-    stackDir: join(tempDir, "stack"),
+    stackDir: join(configDir, "stack"),
     services: {},
     artifacts: { compose: "" },
     artifactMeta: [],
@@ -35,24 +36,25 @@ function makeState(overrides: Partial<ControlPlaneState> = {}): ControlPlaneStat
 }
 
 function seedCoreCompose(): void {
-  const stackDir = join(tempDir, "stack");
+  const stackDir = join(tempDir, "config", "stack");
   mkdirSync(stackDir, { recursive: true });
   writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
 }
 
 function seedEnvFiles(files: { stack?: boolean; guardian?: boolean } = {}): void {
+  const stackDir = join(tempDir, "config", "stack");
   if (files.stack) {
-    mkdirSync(join(tempDir, "state"), { recursive: true });
-    writeFileSync(join(tempDir, "state", "stack.env"), "KEY=val");
+    mkdirSync(stackDir, { recursive: true });
+    writeFileSync(join(stackDir, "stack.env"), "KEY=val");
   }
   if (files.guardian) {
-    mkdirSync(join(tempDir, "state"), { recursive: true });
-    writeFileSync(join(tempDir, "state", "guardian.env"), "CHANNEL_CHAT_SECRET=abc");
+    mkdirSync(stackDir, { recursive: true });
+    writeFileSync(join(stackDir, "guardian.env"), "CHANNEL_CHAT_SECRET=abc");
   }
 }
 
 function seedAddon(name: string): void {
-  const addonDir = join(tempDir, "stack", "addons", name);
+  const addonDir = join(tempDir, "config", "stack", "addons", name);
   mkdirSync(addonDir, { recursive: true });
   writeFileSync(join(addonDir, "compose.yml"), "services: {}");
 }

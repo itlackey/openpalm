@@ -255,7 +255,7 @@ describe("materialized registry catalog", () => {
 
     expect(getRegistryAddonConfig(process.env.OP_HOME!, 'chat')).toEqual({
       schemaPath: 'state/registry/addons/chat/.env.schema',
-      userEnvPath: 'config/stack.env',
+      userEnvPath: 'config/stack/stack.env',
       envSchema: 'CHANNEL_CHAT_SECRET=\n',
     });
   });
@@ -306,10 +306,10 @@ describe("materialized registry catalog", () => {
     materializeRegistryCatalog(sourceRoot);
 
     expect(enableAddon(process.env.OP_HOME!, 'chat')).toEqual({ ok: true });
-    expect(existsSync(join(process.env.OP_HOME!, 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
+    expect(existsSync(join(process.env.OP_HOME!, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
 
     expect(disableAddonByName(process.env.OP_HOME!, 'chat')).toEqual({ ok: true });
-    expect(existsSync(join(process.env.OP_HOME!, 'stack', 'addons', 'chat'))).toBe(false);
+    expect(existsSync(join(process.env.OP_HOME!, 'config', 'stack', 'addons', 'chat'))).toBe(false);
   });
 
   it("returns addon service names from stack or registry compose files", () => {
@@ -341,22 +341,22 @@ describe("materialized registry catalog", () => {
 
     materializeRegistryCatalog(sourceRoot);
 
-    expect(setAddonEnabled(process.env.OP_HOME!, join(process.env.OP_HOME!, 'state'), 'chat', true)).toEqual({
+    expect(setAddonEnabled(process.env.OP_HOME!, join(process.env.OP_HOME!, 'config', 'stack'), 'chat', true)).toEqual({
       ok: true,
       enabled: true,
       changed: true,
       services: ['chat'],
     });
-    expect(existsSync(join(process.env.OP_HOME!, 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
-    expect(readFileSync(join(process.env.OP_HOME!, 'state', 'guardian.env'), 'utf-8')).toMatch(/CHANNEL_CHAT_SECRET=/);
+    expect(existsSync(join(process.env.OP_HOME!, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
+    expect(readFileSync(join(process.env.OP_HOME!, 'config', 'stack', 'guardian.env'), 'utf-8')).toMatch(/CHANNEL_CHAT_SECRET=/);
 
-    expect(setAddonEnabled(process.env.OP_HOME!, join(process.env.OP_HOME!, 'state'), 'chat', false)).toEqual({
+    expect(setAddonEnabled(process.env.OP_HOME!, join(process.env.OP_HOME!, 'config', 'stack'), 'chat', false)).toEqual({
       ok: true,
       enabled: false,
       changed: true,
       services: ['chat'],
     });
-    expect(existsSync(join(process.env.OP_HOME!, 'stack', 'addons', 'chat'))).toBe(false);
+    expect(existsSync(join(process.env.OP_HOME!, 'config', 'stack', 'addons', 'chat'))).toBe(false);
   });
 
   it("backs up OP_HOME without recursively copying backups", () => {

@@ -18,53 +18,57 @@ const REPO_NAME = 'openpalm';
  */
 export async function ensureDirectoryTree(
   homeDir: string,
-  configDir: string,
+  _configDir: string,
   _vaultDir: string,
   _dataDir: string,
   workDir: string,
 ): Promise<void> {
+  const configDir = `${homeDir}/config`;
   const stateDir = `${homeDir}/state`;
+  const cacheDir = `${homeDir}/cache`;
 
   for (const dir of [
     homeDir,
+    // config/ — user-editable config + system config
     configDir,
     join(configDir, 'automations'),
     join(configDir, 'assistant'),
     join(configDir, 'assistant', 'tools'),
     join(configDir, 'assistant', 'plugins'),
     join(configDir, 'assistant', 'skills'),
-    join(configDir, 'guardian'),
+    join(configDir, 'akm'),
+    // config/stack/ — compose runtime + stack config
+    join(configDir, 'stack'),
+    join(configDir, 'stack', 'addons'),
     // stash/ — akm asset content (skills, vaults, knowledge, agents)
     join(homeDir, 'stash'),
     // workspace/ — shared assistant workspace
     join(homeDir, 'workspace'),
-    // services/ — service-managed persistent data
-    join(homeDir, 'services'),
-    join(homeDir, 'services', 'assistant'),
-    join(homeDir, 'services', 'admin'),
-    join(homeDir, 'services', 'guardian'),
-    join(homeDir, 'services', 'guardian', 'stash'),
-    join(homeDir, 'services', 'guardian', 'akm'),
-    // state/ — operator-managed env, logs, scheduler, akm ops, cache, backups, registry
+    // cache/ — regenerable/semi-persistent data
+    cacheDir,
+    join(cacheDir, 'akm'),
+    join(cacheDir, 'guardian'),
+    join(cacheDir, 'rollback'),
+    // state/ — persistent service data
     stateDir,
+    join(stateDir, 'assistant'),
+    join(stateDir, 'admin'),
+    join(stateDir, 'guardian'),
+    join(stateDir, 'guardian', 'stash'),
+    join(stateDir, 'guardian', 'akm'),
+    join(stateDir, 'guardian', 'akm', 'data'),
+    join(stateDir, 'guardian', 'akm', 'state'),
     join(stateDir, 'akm'),
-    join(stateDir, 'akm', 'config'),
     join(stateDir, 'akm', 'data'),
     join(stateDir, 'akm', 'state'),
     join(stateDir, 'scheduler'),
+    join(stateDir, 'scheduler', 'triggers'),
     join(stateDir, 'logs'),
     join(stateDir, 'logs', 'opencode'),
     join(stateDir, 'backups'),
     join(stateDir, 'registry'),
     join(stateDir, 'registry', 'addons'),
     join(stateDir, 'registry', 'automations'),
-    join(stateDir, 'cache'),
-    join(stateDir, 'cache', 'akm'),
-    join(stateDir, 'cache', 'guardian'),
-    join(stateDir, 'cache', 'rollback'),
-    // stack/ — compose files
-    join(homeDir, 'stack'),
-    join(homeDir, 'stack', 'addons'),
     workDir,
   ]) {
     await mkdir(dir, { recursive: true });

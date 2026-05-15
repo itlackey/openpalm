@@ -51,10 +51,10 @@ describe("ensureHomeDirs", () => {
     expect(existsSync(join(home, "state", "registry", "addons"))).toBe(true);
     expect(existsSync(join(home, "state", "registry", "automations"))).toBe(true);
 
-    // stash/, workspace/, stack/
+    // stash/, workspace/, config/stack/
     expect(existsSync(join(home, "stash"))).toBe(true);
     expect(existsSync(join(home, "workspace"))).toBe(true);
-    expect(existsSync(join(home, "stack", "addons"))).toBe(true);
+    expect(existsSync(join(home, "config", "stack", "addons"))).toBe(true);
 
     // removed top-levels must NOT exist
     expect(existsSync(join(home, "vault"))).toBe(false);

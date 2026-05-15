@@ -58,11 +58,11 @@ function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
 
 /** Seed the minimal asset files that ensure* functions expect to find at OP_HOME. */
 function seedRequiredAssets(homeDir: string): void {
-  mkdirSync(join(homeDir, "stack"), { recursive: true });
-  writeFileSync(join(homeDir, "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
-  mkdirSync(join(homeDir, "services", "assistant"), { recursive: true });
-  writeFileSync(join(homeDir, "services", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
-  writeFileSync(join(homeDir, "services", "assistant", "AGENTS.md"), "# Agents\n");
+  mkdirSync(join(homeDir, "config", "stack"), { recursive: true });
+  writeFileSync(join(homeDir, "config", "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
+  mkdirSync(join(homeDir, "state", "assistant"), { recursive: true });
+  writeFileSync(join(homeDir, "state", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
+  writeFileSync(join(homeDir, "state", "assistant", "AGENTS.md"), "# Agents\n");
   mkdirSync(join(homeDir, "state"), { recursive: true });
   mkdirSync(join(homeDir, "config", "automations"), { recursive: true });
   writeFileSync(join(homeDir, "config", "automations", "cleanup-logs.yml"), "name: cleanup-logs\nschedule: daily\n");
@@ -75,7 +75,8 @@ function seedRequiredAssets(homeDir: string): void {
 let homeDir: string;
 let configDir: string;
 let stateDir: string;
-let servicesDir: string;
+let stackDir: string;
+let cacheDir: string;
 
 const savedEnv: Record<string, string | undefined> = {};
 
@@ -93,26 +94,35 @@ function createFullDirTree(): void {
   homeDir = mkdtempSync(join(tmpdir(), "openpalm-edge-"));
   configDir = join(homeDir, "config");
   stateDir = join(homeDir, "state");
-  servicesDir = join(homeDir, "services");
+  stackDir = join(configDir, "stack");
+  cacheDir = join(homeDir, "cache");
 
   for (const dir of [
     homeDir,
     configDir,
     join(configDir, "automations"),
     join(configDir, "assistant"),
+    join(configDir, "akm"),
     join(homeDir, "stash"),
     join(homeDir, "workspace"),
-    join(homeDir, "stack"),
-    join(homeDir, "stack", "addons"),
-    servicesDir,
-    join(servicesDir, "admin"),
-    join(servicesDir, "assistant"),
-    join(servicesDir, "guardian"),
+    stackDir,
+    join(stackDir, "addons"),
     stateDir,
+    join(stateDir, "assistant"),
+    join(stateDir, "admin"),
+    join(stateDir, "guardian"),
     join(stateDir, "logs"),
     join(stateDir, "logs", "opencode"),
     join(stateDir, "registry"),
-    join(stateDir, "cache"),
+    join(stateDir, "registry", "addons"),
+    join(stateDir, "backups"),
+    join(stateDir, "akm"),
+    join(stateDir, "akm", "data"),
+    join(stateDir, "akm", "state"),
+    cacheDir,
+    join(cacheDir, "akm"),
+    join(cacheDir, "guardian"),
+    join(cacheDir, "rollback"),
   ]) {
     mkdirSync(dir, { recursive: true });
   }
@@ -123,10 +133,10 @@ function createFullDirTree(): void {
 
 /** Seed the minimal stack.env needed for most tests. */
 function seedMinimalEnvFiles(): void {
-  mkdirSync(stateDir, { recursive: true });
+  mkdirSync(stackDir, { recursive: true });
 
   writeFileSync(
-    join(stateDir, "stack.env"),
+    join(stackDir, "stack.env"),
     [
       "# OpenPalm — Stack Configuration",
       "OP_ADMIN_TOKEN=",
@@ -172,9 +182,9 @@ describe("Fresh Install", () => {
       configDir,
       stashDir: join(homeDir, "stash"),
       workspaceDir: join(homeDir, "workspace"),
-      servicesDir,
+      cacheDir,
       stateDir,
-      stackDir: join(homeDir, "stack"),
+      stackDir,
       services: {},
       artifacts: { compose: "" },
       artifactMeta: [],
@@ -184,7 +194,7 @@ describe("Fresh Install", () => {
     ensureSecrets(state);
 
     // API keys and owner info are seeded in state/stack.env.
-    const stackContent = readFileSync(join(stateDir, "stack.env"), "utf-8");
+    const stackContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(stackContent).toContain("OPENAI_API_KEY=");
     expect(stackContent).toContain("OWNER_NAME=");
   });
@@ -193,11 +203,11 @@ describe("Fresh Install", () => {
   it("isSetupComplete returns false when stack.env has OP_SETUP_COMPLETE=false", () => {
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
-      join(stateDir, "stack.env"),
+      join(stackDir, "stack.env"),
       "OP_SETUP_COMPLETE=false\n"
     );
 
-    expect(isSetupComplete(stateDir)).toBe(false);
+    expect(isSetupComplete(stackDir)).toBe(false);
   });
 
   // Scenario 3: performSetup succeeds from completely empty state
@@ -217,7 +227,7 @@ describe("Fresh Install", () => {
 
     await performSetup(makeValidSpec());
 
-    const stackEnv = readFileSync(join(stateDir, "stack.env"), "utf-8");
+    const stackEnv = readFileSync(join(stackDir, "stack.env"), "utf-8");
     const parsed = parseEnvContent(stackEnv);
     expect(parsed.OP_SETUP_COMPLETE).toBe("true");
   });
@@ -242,7 +252,7 @@ describe("Existing Install", () => {
   // Scenario 5: ensureSecrets does NOT overwrite existing stack.env
   it("ensureSecrets does not overwrite existing stack.env tokens", () => {
     mkdirSync(stateDir, { recursive: true });
-    writeFileSync(join(stateDir, "stack.env"), "OP_ADMIN_TOKEN=my-custom-token\nOP_ASSISTANT_TOKEN=existing-token\n");
+    writeFileSync(join(stackDir, "stack.env"), "OP_ADMIN_TOKEN=my-custom-token\nOP_ASSISTANT_TOKEN=existing-token\n");
 
     const state: ControlPlaneState = {
       adminToken: "",
@@ -252,9 +262,9 @@ describe("Existing Install", () => {
       configDir,
       stashDir: join(homeDir, "stash"),
       workspaceDir: join(homeDir, "workspace"),
-      servicesDir,
+      cacheDir,
       stateDir,
-      stackDir: join(homeDir, "stack"),
+      stackDir,
       services: {},
       artifacts: { compose: "" },
       artifactMeta: [],
@@ -264,7 +274,7 @@ describe("Existing Install", () => {
     ensureSecrets(state);
 
     // Existing tokens must be preserved
-    const afterContent = readFileSync(join(stateDir, "stack.env"), "utf-8");
+    const afterContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(afterContent).toContain("OP_ADMIN_TOKEN=my-custom-token");
     expect(afterContent).toContain("OP_ASSISTANT_TOKEN=existing-token");
   });
@@ -275,7 +285,7 @@ describe("Existing Install", () => {
     await performSetup(makeValidSpec());
 
     const secretsAfterFirst = readFileSync(
-      join(stateDir, "stack.env"),
+      join(stackDir, "stack.env"),
       "utf-8"
     );
     const firstMatch = secretsAfterFirst.match(
@@ -300,7 +310,7 @@ describe("Existing Install", () => {
     );
 
     const secretsAfterSecond = readFileSync(
-      join(stateDir, "stack.env"),
+      join(stackDir, "stack.env"),
       "utf-8"
     );
     const secondMatch = secretsAfterSecond.match(
@@ -316,7 +326,7 @@ describe("Existing Install", () => {
     await performSetup(makeValidSpec());
 
     const stackEnv = readFileSync(
-      join(stateDir, "stack.env"),
+      join(stackDir, "stack.env"),
       "utf-8"
     );
     const parsed = parseEnvContent(stackEnv);
@@ -328,7 +338,7 @@ describe("Existing Install", () => {
     // First setup with OpenAI
     await performSetup(makeValidSpec());
 
-    const specAfterFirst = readStackSpec(configDir);
+    const specAfterFirst = readStackSpec(stackDir);
     expect(specAfterFirst).not.toBeNull();
     expect(specAfterFirst!.capabilities.llm).toContain("openai/");
 
@@ -355,12 +365,12 @@ describe("Existing Install", () => {
       })
     );
 
-    const specAfterSecond = readStackSpec(configDir);
+    const specAfterSecond = readStackSpec(stackDir);
     expect(specAfterSecond).not.toBeNull();
     expect(specAfterSecond!.capabilities.llm).toBe("groq/llama3-70b-8192");
 
     // stack.env should retain both keys
-    const secrets = readFileSync(join(stateDir, "stack.env"), "utf-8");
+    const secrets = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(secrets).toContain("GROQ_API_KEY");
   });
 });
@@ -383,7 +393,7 @@ describe("Broken/Corrupt State", () => {
   // Scenario 9: ensureSecrets is idempotent on repeated calls
   it("ensureSecrets is idempotent — second call does not overwrite existing stack.env", () => {
     mkdirSync(stateDir, { recursive: true });
-    writeFileSync(join(stateDir, "stack.env"), "OP_ADMIN_TOKEN=existing-token\nOP_ASSISTANT_TOKEN=existing-assistant\n");
+    writeFileSync(join(stackDir, "stack.env"), "OP_ADMIN_TOKEN=existing-token\nOP_ASSISTANT_TOKEN=existing-assistant\n");
 
     const state: ControlPlaneState = {
       adminToken: "",
@@ -393,9 +403,9 @@ describe("Broken/Corrupt State", () => {
       configDir,
       stashDir: join(homeDir, "stash"),
       workspaceDir: join(homeDir, "workspace"),
-      servicesDir,
+      cacheDir,
       stateDir,
-      stackDir: join(homeDir, "stack"),
+      stackDir,
       services: {},
       artifacts: { compose: "" },
       artifactMeta: [],
@@ -405,7 +415,7 @@ describe("Broken/Corrupt State", () => {
     ensureSecrets(state);
 
     // Existing tokens must be preserved
-    const content = readFileSync(join(stateDir, "stack.env"), "utf-8");
+    const content = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(content).toContain("OP_ADMIN_TOKEN=existing-token");
     expect(content).toContain("OP_ASSISTANT_TOKEN=existing-assistant");
   });
@@ -438,21 +448,21 @@ describe("Broken/Corrupt State", () => {
     // stack.env without OP_SETUP_COMPLETE
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
-      join(stateDir, "stack.env"),
+      join(stackDir, "stack.env"),
       "OP_IMAGE_TAG=latest\n"
     );
 
-    expect(isSetupComplete(stateDir)).toBe(false);
+    expect(isSetupComplete(stackDir)).toBe(false);
   });
 
   it("isSetupComplete falls back to true when admin token is set but OP_SETUP_COMPLETE missing", () => {
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
-      join(stateDir, "stack.env"),
+      join(stackDir, "stack.env"),
       "OP_IMAGE_TAG=latest\nexport OP_ADMIN_TOKEN=my-real-token\n"
     );
 
-    expect(isSetupComplete(stateDir)).toBe(true);
+    expect(isSetupComplete(stackDir)).toBe(true);
   });
 
   // Scenario 12: API key with special characters round-trips
@@ -473,7 +483,7 @@ describe("Broken/Corrupt State", () => {
 
   // Scenario 13: Missing stack.yml returns null
   it("readStackSpec returns null when stack.yml missing", () => {
-    const spec = readStackSpec(configDir);
+    const spec = readStackSpec(stackDir);
     expect(spec).toBeNull();
   });
 
@@ -491,7 +501,7 @@ describe("Broken/Corrupt State", () => {
     expect(result.ok).toBe(true);
 
     // Artifacts should exist in stack/ (not config/components/)
-    expect(existsSync(join(homeDir, "stack", "core.compose.yml"))).toBe(
+    expect(existsSync(join(homeDir, "config", "stack", "core.compose.yml"))).toBe(
       true
     );
     // Automations dir should be recreated
@@ -501,11 +511,11 @@ describe("Broken/Corrupt State", () => {
   // Scenario 15: openpalm.yaml with old version
   it("readStackSpec returns null for version 1 spec", () => {
     writeFileSync(
-      join(configDir, STACK_SPEC_FILENAME),
+      join(stackDir, STACK_SPEC_FILENAME),
       "version: 1\nconnections: []\n"
     );
 
-    const spec = readStackSpec(configDir);
+    const spec = readStackSpec(stackDir);
     expect(spec).toBeNull();
   });
 });
@@ -529,11 +539,11 @@ describe("Environment Edge Cases", () => {
   it("isSetupComplete detects OP_ADMIN_TOKEN when ADMIN_TOKEN is commented out", () => {
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
-      join(stateDir, "stack.env"),
+      join(stackDir, "stack.env"),
       "SOME_OTHER_KEY=value\nexport OP_ADMIN_TOKEN=real-token-here\n"
     );
 
-    expect(isSetupComplete(stateDir)).toBe(true);
+    expect(isSetupComplete(stackDir)).toBe(true);
   });
 
   // Scenario 17: export prefix on env vars
@@ -615,7 +625,7 @@ describe("Setup Input Variations", () => {
     expect(result.ok).toBe(true);
 
     // stack.yml should have ollama capabilities
-    const spec = readStackSpec(configDir);
+    const spec = readStackSpec(stackDir);
     expect(spec).not.toBeNull();
     expect(spec!.capabilities.llm).toBe("ollama/llama3.2");
   });
@@ -678,7 +688,7 @@ describe("performSetup end-to-end artifacts", () => {
   it("writes stack.yml and readStackSpec returns v2", async () => {
     await performSetup(makeValidSpec());
 
-    const spec = readStackSpec(configDir);
+    const spec = readStackSpec(stackDir);
     expect(spec).not.toBeNull();
     expect(spec!.version).toBe(2);
     expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
@@ -709,7 +719,7 @@ describe("performSetup end-to-end artifacts", () => {
     await performSetup(input);
 
     // nomic-embed-text is 768 dims per EMBEDDING_DIMS constant — verify via stack.env
-    const stackEnvContent = readFileSync(join(stateDir, "stack.env"), "utf-8");
+    const stackEnvContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_DIMS=768");
   });
 
@@ -717,14 +727,14 @@ describe("performSetup end-to-end artifacts", () => {
     await performSetup(makeValidSpec());
 
     expect(
-      existsSync(join(homeDir, "stack", "core.compose.yml"))
+      existsSync(join(homeDir, "config", "stack", "core.compose.yml"))
     ).toBe(true);
   });
 
   it("writes admin and assistant tokens to stack.env", async () => {
     await performSetup(makeValidSpec());
 
-    const secrets = parseEnvFile(join(stateDir, "stack.env"));
+    const secrets = parseEnvFile(join(stackDir, "stack.env"));
     expect(secrets.OP_ADMIN_TOKEN).toBe("test-admin-token-12345");
     expect(typeof secrets.OP_ASSISTANT_TOKEN).toBe("string");
     expect(secrets.OP_ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
@@ -733,7 +743,7 @@ describe("performSetup end-to-end artifacts", () => {
   it("writes OP_CAP_* vars from capabilities to stack.env", async () => {
     await performSetup(makeValidSpec());
 
-    const stackEnv = parseEnvFile(join(stateDir, "stack.env"));
+    const stackEnv = parseEnvFile(join(stackDir, "stack.env"));
     expect(stackEnv.OP_CAP_LLM_PROVIDER).toBe("openai");
     expect(stackEnv.OP_CAP_LLM_MODEL).toBe("gpt-4o");
     expect(stackEnv.OP_CAP_EMBEDDINGS_MODEL).toBe("text-embedding-3-small");

@@ -85,26 +85,25 @@ describe("normalizeCaller", () => {
 // ── Build Compose File List ─────────────────────────────────────────────
 
 describe("buildComposeFileList", () => {
-  test("starts with core compose from stack/", () => {
+  test("starts with core compose from config/stack/", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    // Create the core.compose.yml so it's found
-    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
-    writeFileSync(join(state.homeDir, "stack", "core.compose.yml"), "services: {}");
+    // Create the core.compose.yml at the new path
+    mkdirSync(state.stackDir, { recursive: true });
+    writeFileSync(join(state.stackDir, "core.compose.yml"), "services: {}");
 
     const files = buildComposeFileList(state);
-    expect(files[0]).toBe(`${state.homeDir}/stack/core.compose.yml`);
+    expect(files[0]).toBe(`${state.stackDir}/core.compose.yml`);
   });
 
-  test("includes addon overlays from stack/addons/", () => {
+  test("includes addon overlays from config/stack/addons/", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    const stackDir = join(state.homeDir, "stack");
-    const addonsDir = join(stackDir, "addons");
-    mkdirSync(stackDir, { recursive: true });
-    writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
+    const addonsDir = join(state.stackDir, "addons");
+    mkdirSync(state.stackDir, { recursive: true });
+    writeFileSync(join(state.stackDir, "core.compose.yml"), "services: {}");
 
     // Create the addon compose file
     mkdirSync(join(addonsDir, "chat"), { recursive: true });
@@ -119,8 +118,8 @@ describe("buildComposeFileList", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
-    writeFileSync(join(state.homeDir, "stack", "core.compose.yml"), "services: {}");
+    mkdirSync(state.stackDir, { recursive: true });
+    writeFileSync(join(state.stackDir, "core.compose.yml"), "services: {}");
 
     const files = buildComposeFileList(state);
     expect(files).toHaveLength(1); // just core compose
@@ -148,10 +147,10 @@ describe("createState", () => {
     process.env.OP_HOME = base;
     delete process.env.OP_ADMIN_TOKEN;
 
-    const stateDir = join(base, "state");
-    mkdirSync(stateDir, { recursive: true });
+    const stackDir = join(base, "config", "stack");
+    mkdirSync(stackDir, { recursive: true });
     writeFileSync(
-      join(stateDir, "stack.env"),
+      join(stackDir, "stack.env"),
       "OP_ADMIN_TOKEN=file-token\n"
     );
 
@@ -222,9 +221,8 @@ describe("applyInstall", () => {
     }
 
     // Create required dirs and seed core compose for writeRuntimeFiles
-    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
-    mkdirSync(state.stateDir, { recursive: true });
-    writeFileSync(join(state.homeDir, "stack", "core.compose.yml"), "services: {}");
+    mkdirSync(state.stackDir, { recursive: true });
+    writeFileSync(join(state.stackDir, "core.compose.yml"), "services: {}");
 
     await applyInstall(state);
 
@@ -241,9 +239,8 @@ describe("applyUpdate", () => {
     process.env.OP_HOME = state.homeDir;
     state.services = { admin: "running", guardian: "running", assistant: "stopped" };
 
-    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
-    mkdirSync(state.stateDir, { recursive: true });
-    writeFileSync(join(state.homeDir, "stack", "core.compose.yml"), "services: {}");
+    mkdirSync(state.stackDir, { recursive: true });
+    writeFileSync(join(state.stackDir, "core.compose.yml"), "services: {}");
 
     const result = await applyUpdate(state);
     expect(result.restarted).toContain("admin");
@@ -259,9 +256,8 @@ describe("applyUninstall", () => {
     process.env.OP_HOME = state.homeDir;
     state.services = { admin: "running", guardian: "running" };
 
-    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
-    mkdirSync(state.stateDir, { recursive: true });
-    writeFileSync(join(state.homeDir, "stack", "core.compose.yml"), "services: {}");
+    mkdirSync(state.stackDir, { recursive: true });
+    writeFileSync(join(state.stackDir, "core.compose.yml"), "services: {}");
 
     const result = await applyUninstall(state);
     expect(result.stopped).toContain("admin");
@@ -281,9 +277,9 @@ describe("updateStackEnvToLatestImageTag", () => {
   test("updates OP_IMAGE_TAG in state/stack.env", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    mkdirSync(state.stateDir, { recursive: true });
+    mkdirSync(state.stackDir, { recursive: true });
     writeFileSync(
-      join(state.stateDir, "stack.env"),
+      join(state.stackDir, "stack.env"),
       "OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=v0.1.0\n"
     );
 
@@ -297,7 +293,7 @@ describe("updateStackEnvToLatestImageTag", () => {
     );
 
     const result = await updateStackEnvToLatestImageTag(state);
-    const updated = readFileSync(join(state.stateDir, "stack.env"), "utf-8");
+    const updated = readFileSync(join(state.stackDir, "stack.env"), "utf-8");
 
     expect(result.namespace).toBe("openpalm");
     expect(result.tag).toBe("v0.7.7");
@@ -307,8 +303,8 @@ describe("updateStackEnvToLatestImageTag", () => {
   test("throws when docker tag lookup fails", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    mkdirSync(state.stateDir, { recursive: true });
-    writeFileSync(join(state.stateDir, "stack.env"), "OP_IMAGE_NAMESPACE=openpalm\n");
+    mkdirSync(state.stackDir, { recursive: true });
+    writeFileSync(join(state.stackDir, "stack.env"), "OP_IMAGE_NAMESPACE=openpalm\n");
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("bad gateway", { status: 502 }));
 

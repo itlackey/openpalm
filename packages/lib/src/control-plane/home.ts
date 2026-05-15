@@ -2,12 +2,13 @@
  * Home directory layout for the OpenPalm control plane (v0.11.0+).
  *
  * Single ~/.openpalm/ root:
- *   config/    — user-editable config + system config files (stack.env, auth.json, akm/)
+ *   config/    — user-editable config + system config files (auth.json, akm/)
+ *   config/stack/ — compose runtime + stack config (stack.env, guardian.env, stack.yml, addons/)
  *   cache/     — regenerable/semi-persistent data (akm cache, guardian cache, rollback)
  *   state/     — persistent service data (assistant, admin, guardian, logs, backups, registry)
  *   stash/     — akm knowledge (skills, vaults, agents)
  *   workspace/ — shared assistant work area
- *   stack/     — compose runtime assets (addon overlays)
+ *   config/stack/ — compose runtime assets + stack config (stack.env, guardian.env, stack.yml)
  */
 import { mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -49,7 +50,7 @@ export function resolveStateDir(): string {
 }
 
 export function resolveStackDir(): string {
-  return `${resolveOpenPalmHome()}/stack`;
+  return `${resolveConfigDir()}/stack`;
 }
 
 // Derived from stateDir — used by registry.ts, rollback.ts, backup.ts, core-assets.ts
@@ -126,9 +127,9 @@ export function ensureHomeDirs(): void {
     // workspace/ — shared assistant work area
     `${home}/workspace`,
 
-    // stack/ — compose runtime (addon overlays)
-    `${home}/stack`,
-    `${home}/stack/addons`,
+    // config/stack/ — compose runtime (addon overlays + stack config files)
+    `${home}/config/stack`,
+    `${home}/config/stack/addons`,
   ]) {
     mkdirSync(dir, { recursive: true });
   }

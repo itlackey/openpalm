@@ -60,7 +60,7 @@ export function isChannelAddon(composePath: string): boolean {
  */
 export function discoverChannels(configDir: string): ChannelInfo[] {
   const homeDir = dirname(configDir);
-  const addonsDir = `${homeDir}/stack/addons`;
+  const addonsDir = `${homeDir}/config/stack/addons`;
   if (!existsSync(addonsDir)) return [];
 
   const entries = readdirSync(addonsDir, { withFileTypes: true });
@@ -91,7 +91,7 @@ export function isAllowedService(value: string, configDir?: string): boolean {
 
   if (configDir) {
     const homeDir = dirname(configDir);
-    const addonsDir = `${homeDir}/stack/addons`;
+    const addonsDir = `${homeDir}/config/stack/addons`;
     if (!existsSync(addonsDir)) return false;
 
     // Check if any addon compose.yml defines this service name (YAML-parsed)
@@ -125,7 +125,7 @@ export function isValidChannel(value: string, configDir?: string): boolean {
   if (!isValidChannelName(value)) return false;
   if (configDir) {
     const homeDir = dirname(configDir);
-    return existsSync(`${homeDir}/stack/addons/${value}/compose.yml`);
+    return existsSync(`${homeDir}/config/stack/addons/${value}/compose.yml`);
   }
   return false;
 }

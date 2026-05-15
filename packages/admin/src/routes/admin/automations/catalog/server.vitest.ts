@@ -83,8 +83,8 @@ beforeEach(() => {
 
   // Seed core.compose.yml — needed by resolveRuntimeFiles() in install/uninstall routes
   const state = getState();
-  mkdirSync(join(state.homeDir, 'stack'), { recursive: true });
-  writeFileSync(join(state.homeDir, 'stack', 'core.compose.yml'), 'services: {}\n');
+  mkdirSync(state.stackDir, { recursive: true });
+  writeFileSync(join(state.stackDir, 'core.compose.yml'), 'services: {}\n');
 });
 
 afterEach(() => {

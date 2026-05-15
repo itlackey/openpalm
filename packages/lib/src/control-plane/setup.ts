@@ -207,7 +207,7 @@ export async function performSetup(
 
   // Merge OAuth-authenticated provider keys from auth.json
   // (OAuth flows store tokens in auth.json, not in the setup payload)
-  const oauthKeys = extractAuthJsonKeys(state.stateDir);
+  const oauthKeys = extractAuthJsonKeys(state.configDir);
   for (const [key, value] of Object.entries(oauthKeys)) {
     // Only fill in keys that weren't already provided via API key entry
     if (!updates[key]) updates[key] = value;
@@ -217,7 +217,7 @@ export async function performSetup(
   try {
     ensureHomeDirs();
     ensureSecrets(state);
-    const existingSystemEnv = readStackEnv(state.stateDir);
+    const existingSystemEnv = readStackEnv(state.stackDir);
     if (channelCredentials) Object.assign(updates, buildChannelCredentialEnvVars(channelCredentials));
     // Pick up channel credential env vars not already provided in the spec
     for (const mapping of Object.values(CHANNEL_CREDENTIAL_ENV_MAP)) {
@@ -234,7 +234,7 @@ export async function performSetup(
   }
 
   state.adminToken = security.adminToken;
-  state.assistantToken = readStackEnv(state.stateDir).OP_ASSISTANT_TOKEN ?? state.assistantToken;
+  state.assistantToken = readStackEnv(state.stackDir).OP_ASSISTANT_TOKEN ?? state.assistantToken;
   // Phase 1 of #388 §B.2: state.setupToken is held in memory only.
   // Previously persisted to `${dataDir}/setup-token.txt`; that file
   // is now ephemeral. The setup wizard server owns the token lifetime
@@ -267,8 +267,8 @@ export async function performSetup(
     }
   }
 
-  // Mark setup complete in state/stack.env (where isSetupComplete reads it)
-  const systemEnvPath = `${state.stateDir}/stack.env`;
+  // Mark setup complete in config/stack/stack.env (where isSetupComplete reads it)
+  const systemEnvPath = `${state.stackDir}/stack.env`;
   const systemBase = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
   writeFileSync(systemEnvPath, mergeEnvContent(systemBase, { OP_SETUP_COMPLETE: "true" }), { mode: 0o600 });
 
@@ -314,6 +314,6 @@ function writeStackConfigs(spec: StackSpec, state: ControlPlaneState): void {
     ...spec,
     capabilities: { ...spec.capabilities, embeddings: { ...spec.capabilities.embeddings, dims: resolvedDims } },
   };
-  writeStackSpec(state.configDir, specToWrite);
-  writeCapabilityVars(specToWrite, state.stateDir);
+  writeStackSpec(state.stackDir, specToWrite);
+  writeCapabilityVars(specToWrite, state.stackDir, state.homeDir);
 }

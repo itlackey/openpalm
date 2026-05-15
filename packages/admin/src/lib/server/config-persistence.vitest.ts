@@ -29,7 +29,7 @@ function seedChannelAddons(
   channels: { name: string; yml: string }[]
 ): void {
   for (const ch of channels) {
-      const addonDir = join(homeDir, "stack", "addons", ch.name);
+      const addonDir = join(homeDir, "config", "stack", "addons", ch.name);
       mkdirSync(addonDir, { recursive: true });
       writeFileSync(join(addonDir, "compose.yml"), ch.yml);
     }
@@ -159,11 +159,11 @@ describe("buildEnvFiles", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(state.stateDir, { recursive: true });
-    writeFileSync(join(state.stateDir, "stack.env"), "KEY=val");
+    mkdirSync(state.stackDir, { recursive: true });
+    writeFileSync(join(state.stackDir, "stack.env"), "KEY=val");
     // user.env may still exist on disk during migration but must NOT be
     // surfaced as a compose env_file (compose would shadow akm-sourced values).
-    writeFileSync(join(state.stateDir, "guardian.env"), "CHANNEL_CHAT_SECRET=abc");
+    writeFileSync(join(state.stackDir, "guardian.env"), "CHANNEL_CHAT_SECRET=abc");
 
     const files = buildEnvFiles(state);
     expect(files).toHaveLength(2);
@@ -177,8 +177,8 @@ describe("buildEnvFiles", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(state.stateDir, { recursive: true });
-    writeFileSync(join(state.stateDir, "stack.env"), "KEY=val");
+    mkdirSync(state.stackDir, { recursive: true });
+    writeFileSync(join(state.stackDir, "stack.env"), "KEY=val");
 
     const files = buildEnvFiles(state);
     expect(files).toHaveLength(1);
@@ -190,8 +190,8 @@ describe("buildEnvFiles", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(state.stateDir, { recursive: true });
-    writeFileSync(join(state.stateDir, "stack.env"), "KEY=val");
+    mkdirSync(state.stackDir, { recursive: true });
+    writeFileSync(join(state.stackDir, "stack.env"), "KEY=val");
 
     const files = buildEnvFiles(state);
     expect(files).toHaveLength(1);
@@ -211,9 +211,9 @@ describe("buildEnvFiles", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(state.stateDir, { recursive: true });
-    writeFileSync(join(state.stateDir, "stack.env"), "KEY=val");
-    writeFileSync(join(state.stateDir, "guardian.env"), "CHANNEL_CHAT_SECRET=abc");
+    mkdirSync(state.stackDir, { recursive: true });
+    writeFileSync(join(state.stackDir, "stack.env"), "KEY=val");
+    writeFileSync(join(state.stackDir, "guardian.env"), "CHANNEL_CHAT_SECRET=abc");
 
     const files = buildEnvFiles(state);
     const guardianIdx = files.findIndex(f => f.includes("guardian.env"));
@@ -233,14 +233,13 @@ describe("writeRuntimeFiles", () => {
       compose: "services:\n  admin:\n    image: admin:latest\n",
     };
     // Create required base dirs
-    mkdirSync(join(state.homeDir, "stack"), { recursive: true });
-    mkdirSync(state.stateDir, { recursive: true });
+    mkdirSync(state.stackDir, { recursive: true });
   });
 
-  test("writes compose to stack/", () => {
+  test("writes compose to config/stack/", () => {
     writeRuntimeFiles(state);
 
-    const composePath = join(state.homeDir, "stack", "core.compose.yml");
+    const composePath = join(state.stackDir, "core.compose.yml");
     expect(existsSync(composePath)).toBe(true);
     expect(readFileSync(composePath, "utf-8")).toBe(state.artifacts.compose);
   });
@@ -252,20 +251,20 @@ describe("writeRuntimeFiles", () => {
 
     writeRuntimeFiles(state);
 
-    const guardianPath = join(state.stateDir, "guardian.env");
+    const guardianPath = join(state.stackDir, "guardian.env");
     expect(existsSync(guardianPath)).toBe(true);
     const content = readFileSync(guardianPath, "utf-8");
     expect(content).toContain("CHANNEL_CHAT_SECRET=");
 
     // Channel secrets must NOT be in stack.env
-    const stackContent = readFileSync(join(state.stateDir, "stack.env"), "utf-8");
+    const stackContent = readFileSync(join(state.stackDir, "stack.env"), "utf-8");
     expect(stackContent).not.toContain("CHANNEL_CHAT_SECRET=");
   });
 
   test("writes stack.env with runtime configuration", () => {
     writeRuntimeFiles(state);
 
-    const systemEnvPath = join(state.stateDir, "stack.env");
+    const systemEnvPath = join(state.stackDir, "stack.env");
     expect(existsSync(systemEnvPath)).toBe(true);
     const content = readFileSync(systemEnvPath, "utf-8");
     expect(content).toContain(`OP_HOME=${state.homeDir}`);
@@ -275,7 +274,7 @@ describe("writeRuntimeFiles", () => {
   test("stack.env does NOT leak user-managed secrets", () => {
     writeRuntimeFiles(state);
 
-    const systemEnvPath = join(state.stateDir, "stack.env");
+    const systemEnvPath = join(state.stackDir, "stack.env");
     const content = readFileSync(systemEnvPath, "utf-8");
     // OP_ADMIN_TOKEN is a system secret and correctly lives in stack.env.
     // Only the legacy bare ADMIN_TOKEN (without OP_ prefix) should not appear.
@@ -286,7 +285,7 @@ describe("writeRuntimeFiles", () => {
   test("preserves existing channel secrets in guardian.env (does not regenerate)", () => {
     // Pre-seed a channel secret in state/guardian.env
     writeFileSync(
-      join(state.stateDir, "guardian.env"),
+      join(state.stackDir, "guardian.env"),
       "CHANNEL_CHAT_SECRET=pre-existing-secret-value\n"
     );
 
@@ -297,7 +296,7 @@ describe("writeRuntimeFiles", () => {
     writeRuntimeFiles(state);
 
     // The pre-existing secret should be preserved, not regenerated
-    const guardianPath = join(state.stateDir, "guardian.env");
+    const guardianPath = join(state.stackDir, "guardian.env");
     const content = readFileSync(guardianPath, "utf-8");
     expect(content).toContain("CHANNEL_CHAT_SECRET=pre-existing-secret-value");
   });
@@ -311,22 +310,22 @@ describe("readChannelSecrets", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(state.stateDir, { recursive: true });
+    mkdirSync(state.stackDir, { recursive: true });
     writeFileSync(
-      join(state.stateDir, "guardian.env"),
+      join(state.stackDir, "guardian.env"),
       "CHANNEL_CHAT_SECRET=abc123\nCHANNEL_API_SECRET=def456\n"
     );
 
-    const secrets = readChannelSecrets(state.stateDir);
+    const secrets = readChannelSecrets(state.stackDir);
     expect(secrets).toEqual({ chat: "abc123", api: "def456" });
   });
 
   test("returns empty when no secrets exist", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    mkdirSync(state.stateDir, { recursive: true });
+    mkdirSync(state.stackDir, { recursive: true });
 
-    const secrets = readChannelSecrets(state.stateDir);
+    const secrets = readChannelSecrets(state.stackDir);
     expect(secrets).toEqual({});
   });
 });
@@ -336,9 +335,9 @@ describe("writeChannelSecrets", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    writeChannelSecrets(state.stateDir, { chat: "abc", api: "def" });
+    writeChannelSecrets(state.stackDir, { chat: "abc", api: "def" });
 
-    const content = readFileSync(join(state.stateDir, "guardian.env"), "utf-8");
+    const content = readFileSync(join(state.stackDir, "guardian.env"), "utf-8");
     expect(content).toContain("CHANNEL_CHAT_SECRET=abc");
     expect(content).toContain("CHANNEL_API_SECRET=def");
   });
@@ -347,15 +346,15 @@ describe("writeChannelSecrets", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(state.stateDir, { recursive: true });
+    mkdirSync(state.stackDir, { recursive: true });
     writeFileSync(
-      join(state.stateDir, "guardian.env"),
+      join(state.stackDir, "guardian.env"),
       "CHANNEL_CHAT_SECRET=existing\n"
     );
 
-    writeChannelSecrets(state.stateDir, { api: "new-secret" });
+    writeChannelSecrets(state.stackDir, { api: "new-secret" });
 
-    const content = readFileSync(join(state.stateDir, "guardian.env"), "utf-8");
+    const content = readFileSync(join(state.stackDir, "guardian.env"), "utf-8");
     expect(content).toContain("CHANNEL_CHAT_SECRET=existing");
     expect(content).toContain("CHANNEL_API_SECRET=new-secret");
   });

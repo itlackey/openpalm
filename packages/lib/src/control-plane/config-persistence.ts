@@ -41,8 +41,8 @@ const DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
  */
 export function buildEnvFiles(state: ControlPlaneState): string[] {
   return [
-    `${state.stateDir}/stack.env`,
-    `${state.stateDir}/guardian.env`,
+    `${state.stackDir}/stack.env`,
+    `${state.stackDir}/guardian.env`,
   ].filter(existsSync);
 }
 
@@ -53,9 +53,9 @@ export function buildEnvFiles(state: ControlPlaneState): string[] {
  * Use writeChannelSecrets() for channel secrets.
  */
 export function writeSystemEnv(state: ControlPlaneState): void {
-  mkdirSync(state.stateDir, { recursive: true });
+  mkdirSync(state.stackDir, { recursive: true });
 
-  const systemEnvPath = `${state.stateDir}/stack.env`;
+  const systemEnvPath = `${state.stackDir}/stack.env`;
 
   let base = "";
   if (existsSync(systemEnvPath)) {
@@ -178,19 +178,19 @@ function extractChannelSecrets(parsed: Record<string, string>): Record<string, s
 }
 
 /**
- * Read channel HMAC secrets from state/guardian.env.
+ * Read channel HMAC secrets from config/stack/guardian.env.
  */
-export function readChannelSecrets(stateDir: string): Record<string, string> {
-  return extractChannelSecrets(parseEnvFile(`${stateDir}/guardian.env`));
+export function readChannelSecrets(stackDir: string): Record<string, string> {
+  return extractChannelSecrets(parseEnvFile(`${stackDir}/guardian.env`));
 }
 
 /**
  * Write channel HMAC secrets to state/guardian.env.
  * Merges with existing content; does not overwrite unrelated entries.
  */
-export function writeChannelSecrets(stateDir: string, secrets: Record<string, string>): void {
-  const guardianPath = `${stateDir}/guardian.env`;
-  mkdirSync(stateDir, { recursive: true });
+export function writeChannelSecrets(stackDir: string, secrets: Record<string, string>): void {
+  const guardianPath = `${stackDir}/guardian.env`;
+  mkdirSync(stackDir, { recursive: true });
 
   let base = "";
   if (existsSync(guardianPath)) {
@@ -285,24 +285,22 @@ export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
 export function writeRuntimeFiles(
   state: ControlPlaneState
 ): void {
-  // Write core compose to stack/
-  const stackDir = `${state.homeDir}/stack`;
-  mkdirSync(stackDir, { recursive: true });
-  writeFileSync(`${stackDir}/core.compose.yml`, state.artifacts.compose);
+  // Write core compose to config/stack/
+  mkdirSync(state.stackDir, { recursive: true });
+  writeFileSync(`${state.stackDir}/core.compose.yml`, state.artifacts.compose);
 
   // Load persisted channel HMAC secrets from guardian.env,
   // then generate new ones for new channel addons.
-  const channelSecrets = readChannelSecrets(state.stateDir);
-  const addonStackDir = `${state.homeDir}/stack`;
+  const channelSecrets = readChannelSecrets(state.stackDir);
   for (const addon of listEnabledAddonIds(state.homeDir)) {
-    const composePath = `${addonStackDir}/addons/${addon}/compose.yml`;
+    const composePath = `${state.stackDir}/addons/${addon}/compose.yml`;
     if (isChannelAddon(composePath) && !channelSecrets[addon]) {
       channelSecrets[addon] = randomHex(16);
     }
   }
 
   // Write channel secrets to guardian.env (the canonical source)
-  writeChannelSecrets(state.stateDir, channelSecrets);
+  writeChannelSecrets(state.stackDir, channelSecrets);
 
   // Write system.env (no channel secrets — those live in guardian.env)
   writeSystemEnv(state);
@@ -310,10 +308,10 @@ export function writeRuntimeFiles(
   // Ensure state directory exists
   mkdirSync(state.stateDir, { recursive: true });
 
-  const spec = readStackSpec(state.configDir);
+  const spec = readStackSpec(state.stackDir);
   // Write OP_CAP_* capability vars to stack.env from stack spec
   if (spec) {
-    writeCapabilityVars(spec, state.stateDir);
+    writeCapabilityVars(spec, state.stackDir, state.homeDir);
   }
 
   state.artifactMeta = buildRuntimeFileMeta(state.artifacts);

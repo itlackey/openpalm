@@ -44,14 +44,14 @@ export const GET: RequestHandler = async (event) => {
   const callerType = getCallerType(event);
 
   // Read secrets (masked)
-  const raw = readStackEnv(state.stateDir);
+  const raw = readStackEnv(state.stackDir);
   const secrets: Record<string, string> = {};
   for (const [key, value] of Object.entries(raw)) {
     secrets[key] = maskSecretValue(key, value);
   }
 
   // Read capabilities from stack.yml
-  const spec = readStackSpec(state.configDir);
+  const spec = readStackSpec(state.stackDir);
   const capabilities = spec?.capabilities ?? null;
 
   appendAudit(state, actor, "capabilities.get", {}, true, requestId, callerType);
@@ -93,7 +93,7 @@ export const POST: RequestHandler = async (event) => {
   }
   if (Object.keys(secretPatches).length > 0) {
     try {
-      patchSecretsEnvFile(state.stateDir, secretPatches);
+      patchSecretsEnvFile(state.stackDir, secretPatches);
     } catch (err) {
       appendAudit(state, actor, "capabilities.save", { provider, error: String(err) }, false, requestId, callerType);
       return errorResponse(500, "internal_error", "Failed to update state/stack.env", {}, requestId);
@@ -105,7 +105,7 @@ export const POST: RequestHandler = async (event) => {
   const resolvedDims = embeddingDims || EMBEDDING_DIMS[lookupKey] || 1536;
 
   try {
-    const spec = readStackSpec(state.configDir);
+    const spec = readStackSpec(state.stackDir);
     if (!spec) throw new Error('stack.yml not found or invalid');
     spec.capabilities.llm = formatCapabilityString(provider, systemModel);
     spec.capabilities.embeddings = {
@@ -113,11 +113,11 @@ export const POST: RequestHandler = async (event) => {
       model: embeddingModel || "text-embedding-3-small",
       dims: resolvedDims,
     };
-    writeStackSpec(state.configDir, spec);
-    writeCapabilityVars(spec, state.stateDir);
-    const akmJson = buildAkmSetupJson(spec, readStackEnv(state.stateDir));
+    writeStackSpec(state.stackDir, spec);
+    writeCapabilityVars(spec, state.stackDir, state.homeDir);
+    const akmJson = buildAkmSetupJson(spec, readStackEnv(state.stackDir));
     if (akmJson) {
-      const akmConfigDir = `${state.stateDir}/akm/config`;
+      const akmConfigDir = `${state.configDir}/akm`;
       mkdirSync(akmConfigDir, { recursive: true });
       writeFileSync(`${akmConfigDir}/config.json`, akmJson, { mode: 0o600 });
     }

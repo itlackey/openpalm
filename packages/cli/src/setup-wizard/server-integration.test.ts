@@ -22,17 +22,17 @@ let tempBase: string;
 let homeDir: string;
 let configDir: string;
 let stateDir: string;
-let servicesDir: string;
+let stackDir: string;
 
 const savedEnv: Record<string, string | undefined> = {};
 
 /** Seed minimal asset files so performSetup() can read them at OP_HOME. */
 function seedRequiredAssets(homeDir: string): void {
-  mkdirSync(join(homeDir, "stack"), { recursive: true });
-  writeFileSync(join(homeDir, "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
-  mkdirSync(join(homeDir, "services", "assistant"), { recursive: true });
-  writeFileSync(join(homeDir, "services", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
-  writeFileSync(join(homeDir, "services", "assistant", "AGENTS.md"), "# Agents\n");
+  mkdirSync(join(homeDir, "config", "stack"), { recursive: true });
+  writeFileSync(join(homeDir, "config", "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
+  mkdirSync(join(homeDir, "state", "assistant"), { recursive: true });
+  writeFileSync(join(homeDir, "state", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
+  writeFileSync(join(homeDir, "state", "assistant", "AGENTS.md"), "# Agents\n");
   mkdirSync(join(homeDir, "config", "automations"), { recursive: true });
   writeFileSync(join(homeDir, "config", "automations", "cleanup-logs.yml"), "name: cleanup-logs\nschedule: daily\n");
   writeFileSync(join(homeDir, "config", "automations", "cleanup-data.yml"), "name: cleanup-data\nschedule: weekly\n");
@@ -44,27 +44,31 @@ function makeSetupDirs(): void {
   homeDir = tempBase;
   configDir = join(homeDir, "config");
   stateDir = join(homeDir, "state");
-  servicesDir = join(homeDir, "services");
+  stackDir = join(configDir, "stack");
 
   for (const dir of [
     configDir,
     join(configDir, "assistant"),
     join(configDir, "automations"),
+    join(configDir, "akm"),
+    stackDir,
+    join(stackDir, "addons"),
     stateDir,
+    join(stateDir, "assistant"),
+    join(stateDir, "admin"),
+    join(stateDir, "guardian"),
     join(stateDir, "logs"),
     join(stateDir, "logs", "opencode"),
-    servicesDir,
-    join(servicesDir, "admin"),
-    join(servicesDir, "assistant"),
-    join(servicesDir, "guardian"),
     join(homeDir, "stash"),
     join(homeDir, "workspace"),
+    join(homeDir, "cache"),
+    join(homeDir, "cache", "akm"),
   ]) {
     mkdirSync(dir, { recursive: true });
   }
 
   writeFileSync(
-    join(stateDir, "stack.env"),
+    join(stackDir, "stack.env"),
     [
       "OP_SETUP_COMPLETE=false",
       "OP_ADMIN_TOKEN=",
@@ -243,7 +247,7 @@ describe("setup wizard server integration", () => {
       expect(result.ok).toBe(true);
 
       // Verify state/stack.env was written with the admin token
-      const systemEnvContent = readFileSync(join(stateDir, "stack.env"), "utf-8");
+      const systemEnvContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
       expect(systemEnvContent).toContain("integration-test-token-123");
 
       // Verify state/stack.env was written with owner info
@@ -255,11 +259,11 @@ describe("setup wizard server integration", () => {
       expect(systemEnvContent).toContain("OP_CAP_EMBEDDINGS_DIMS=768");
 
       // Verify stack spec was written
-      const specPath = join(configDir, STACK_SPEC_FILENAME);
+      const specPath = join(stackDir, STACK_SPEC_FILENAME);
       expect(existsSync(specPath)).toBe(true);
 
-      // Verify core compose artifact exists in stack/
-      const stagedCompose = join(homeDir, "stack", "core.compose.yml");
+      // Verify core compose artifact exists in config/stack/
+      const stagedCompose = join(homeDir, "config", "stack", "core.compose.yml");
       expect(existsSync(stagedCompose)).toBe(true);
     } finally {
       stop();

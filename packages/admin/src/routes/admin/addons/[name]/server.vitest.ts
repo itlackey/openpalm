@@ -70,8 +70,8 @@ describe('/admin/addons/:name route', () => {
   test('returns enabled state and schema metadata', async () => {
     const state = getState();
     seedRegistryAddon(state.homeDir, 'chat', '# chat schema\nCHANNEL_CHAT_SECRET=\n');
-    mkdirSync(join(state.homeDir, 'stack', 'addons', 'chat'), { recursive: true });
-    writeFileSync(join(state.homeDir, 'stack', 'addons', 'chat', 'compose.yml'), 'services:\n  chat:\n    image: test\n');
+    mkdirSync(join(state.homeDir, 'config', 'stack', 'addons', 'chat'), { recursive: true });
+    writeFileSync(join(state.homeDir, 'config', 'stack', 'addons', 'chat', 'compose.yml'), 'services:\n  chat:\n    image: test\n');
 
     const res = await GET(makeGetEvent('chat'));
     expect(res.status).toBe(200);
@@ -84,7 +84,7 @@ describe('/admin/addons/:name route', () => {
     expect(body.name).toBe('chat');
     expect(body.enabled).toBe(true);
     expect(body.config.schemaPath).toBe('state/registry/addons/chat/.env.schema');
-    expect(body.config.userEnvPath).toBe('config/stack.env');
+    expect(body.config.userEnvPath).toBe('config/stack/stack.env');
     expect(body.config.envSchema).toContain('CHANNEL_CHAT_SECRET');
   });
 
@@ -129,7 +129,7 @@ describe('POST /admin/addons/:name', () => {
     expect(body.changed).toBe(true);
 
     // Verify file was copied to stack/addons
-    expect(existsSync(join(state.homeDir, 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
+    expect(existsSync(join(state.homeDir, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
   });
 
   test('disables an addon by removing from stack/addons', async () => {
@@ -137,8 +137,8 @@ describe('POST /admin/addons/:name', () => {
     seedRegistryAddon(state.homeDir, 'chat');
 
     // First enable it
-    mkdirSync(join(state.homeDir, 'stack', 'addons', 'chat'), { recursive: true });
-    writeFileSync(join(state.homeDir, 'stack', 'addons', 'chat', 'compose.yml'), 'services:\n  chat:\n    image: test\n');
+    mkdirSync(join(state.homeDir, 'config', 'stack', 'addons', 'chat'), { recursive: true });
+    writeFileSync(join(state.homeDir, 'config', 'stack', 'addons', 'chat', 'compose.yml'), 'services:\n  chat:\n    image: test\n');
 
     const res = await POST(makePostEvent('chat', { enabled: false }));
     expect(res.status).toBe(200);
@@ -149,7 +149,7 @@ describe('POST /admin/addons/:name', () => {
     expect(body.changed).toBe(true);
 
     // Verify file was removed from stack/addons
-    expect(existsSync(join(state.homeDir, 'stack', 'addons', 'chat'))).toBe(false);
+    expect(existsSync(join(state.homeDir, 'config', 'stack', 'addons', 'chat'))).toBe(false);
   });
 
   test('reports changed=false when already in target state', async () => {
