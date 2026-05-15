@@ -193,9 +193,9 @@ export async function seedOpenPalmDir(
     if (!await Bun.file(srcCoreCompose).exists()) {
       throw new Error('core.compose.yml not found in downloaded assets');
     }
-    await mkdir(join(homeDir, 'stack'), { recursive: true });
+    await mkdir(join(homeDir, 'config', 'stack'), { recursive: true });
     await writeFile(
-      join(homeDir, 'stack', 'core.compose.yml'),
+      join(homeDir, 'config', 'stack', 'core.compose.yml'),
       new Uint8Array(await Bun.file(srcCoreCompose).arrayBuffer()),
     );
 
@@ -206,7 +206,7 @@ export async function seedOpenPalmDir(
 
     const srcAssistant = join(tmpDir, 'core', 'assistant', 'opencode');
     if (dirExists(srcAssistant)) {
-      await copyTree(srcAssistant, join(homeDir, 'services', 'assistant'));
+      await copyTree(srcAssistant, join(stateDir, 'assistant'));
     }
   } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
