@@ -152,36 +152,43 @@ describe("buildEnvFiles", () => {
     expect(buildEnvFiles(state)).toEqual([]);
   });
 
-  test("returns all three files in correct order when they exist", () => {
+  test("returns stack.env and guardian.env in correct order when they exist", () => {
+    // Phase 2 of #388 (closes #406): user.env is no longer a compose
+    // env_file. User-managed env secrets live in the akm `vault:user` store
+    // and are sourced by the assistant entrypoint at container startup.
     const state = makeTestState();
     trackDir(state.homeDir);
 
     mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
     mkdirSync(join(state.vaultDir, "user"), { recursive: true });
     writeFileSync(join(state.vaultDir, "stack", "stack.env"), "KEY=val");
+    // user.env may still exist on disk during migration but must NOT be
+    // surfaced as a compose env_file (compose would shadow akm-sourced values).
     writeFileSync(join(state.vaultDir, "user", "user.env"), "SECRET=val");
     writeFileSync(join(state.vaultDir, "stack", "guardian.env"), "CHANNEL_CHAT_SECRET=abc");
 
     const files = buildEnvFiles(state);
-    expect(files).toHaveLength(3);
+    expect(files).toHaveLength(2);
     expect(files[0]).toContain("stack.env");
-    expect(files[1]).toContain("user.env");
-    expect(files[2]).toContain("guardian.env");
+    expect(files[1]).toContain("guardian.env");
+    // user.env must never appear in the env file list.
+    expect(files.some((f) => f.includes("user.env"))).toBe(false);
   });
 
-  test("returns stack.env and user.env when guardian.env is missing", () => {
+  test("returns only stack.env when guardian.env is missing", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
     mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
     mkdirSync(join(state.vaultDir, "user"), { recursive: true });
     writeFileSync(join(state.vaultDir, "stack", "stack.env"), "KEY=val");
+    // Even with a legacy user.env on disk, only stack.env should be returned.
     writeFileSync(join(state.vaultDir, "user", "user.env"), "SECRET=val");
 
     const files = buildEnvFiles(state);
-    expect(files).toHaveLength(2);
+    expect(files).toHaveLength(1);
     expect(files[0]).toContain("stack.env");
-    expect(files[1]).toContain("user.env");
+    expect(files.some((f) => f.includes("user.env"))).toBe(false);
   });
 
   test("returns only stack.env when user.env and guardian.env are missing", () => {
@@ -196,7 +203,10 @@ describe("buildEnvFiles", () => {
     expect(files[0]).toContain("stack.env");
   });
 
-  test("returns only user.env when stack.env and guardian.env are missing", () => {
+  test("returns empty list when stack.env and guardian.env are missing (user.env is ignored post-Phase 2)", () => {
+    // Phase 2 of #388: a lingering legacy user.env is intentionally NOT
+    // promoted to a compose env_file — its contents have already been
+    // migrated into the akm vault:user store.
     const state = makeTestState();
     trackDir(state.homeDir);
 
@@ -204,8 +214,7 @@ describe("buildEnvFiles", () => {
     writeFileSync(join(state.vaultDir, "user", "user.env"), "SECRET=val");
 
     const files = buildEnvFiles(state);
-    expect(files).toHaveLength(1);
-    expect(files[0]).toContain("user.env");
+    expect(files).toEqual([]);
   });
 
   test("guardian.env is last (takes precedence for channel secrets)", () => {
