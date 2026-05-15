@@ -24,7 +24,7 @@ For information about managing OpenPalm view @openpalm.md
 
 ## Secrets & Environment
 
-- Use `load_vault` to load user secrets (prefers the shared akm `vault:user` store, falls back to `/etc/vault/user.env`) — this is the primary tool for accessing API keys, owner info, and other user-configured secrets.
+- Use `load_vault` to load user secrets — resolves the user-managed env namespace via `akm vault path vault:user` and sources the resulting file. Primary tool for accessing API keys, owner info, and other user-configured secrets.
 - Use `load_env` only for ad-hoc `.env` files in the `/work` directory (workspace). It cannot read files outside `/work`.
 - Never display, log, or store secret values.
 

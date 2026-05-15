@@ -386,6 +386,43 @@ export async function migrateAndCleanupLegacyUserEnv(
   }
 }
 
+/**
+ * Synchronously resolve the canonical akm `vault:user` file path for a given
+ * control-plane state. Used by sync read paths (e.g. plaintext secret backend
+ * `list`/`exists`) that cannot await `ensureAkmUserVault`.
+ *
+ * The path is deterministic: `buildAkmEnv` pins `AKM_STASH_DIR` to
+ * `${state.dataDir}/stash`, and akm-cli (>= 0.8.0) materializes vault files
+ * at `${AKM_STASH_DIR}/vaults/<ref>.env`. The `mirrorUserVaultToAkm` test
+ * (`packages/lib/src/control-plane/akm-vault.test.ts`) pins this layout.
+ *
+ * Returns the path string regardless of whether the file currently exists —
+ * callers should `existsSync` if presence matters.
+ */
+export function akmUserVaultPathSync(state: ControlPlaneState): string {
+  return `${state.dataDir}/stash/vaults/user.env`;
+}
+
+/**
+ * Read the user-managed env namespace, preferring the akm `vault:user` store
+ * (canonical post-#421) and falling back to the legacy
+ * `${vaultDir}/user/user.env` file when akm hasn't materialized the vault
+ * yet (fresh installs that have not run the mirror, or upgrades mid-flight).
+ *
+ * Returns `{}` when neither source exists. Pure sync — no subprocess spawn.
+ */
+export function readUserVaultSync(state: ControlPlaneState): Record<string, string> {
+  const akmPath = akmUserVaultPathSync(state);
+  if (existsSync(akmPath)) {
+    return readAkmUserVaultFile(akmPath);
+  }
+  const legacyPath = `${state.vaultDir}/user/user.env`;
+  if (existsSync(legacyPath)) {
+    return parseEnvFile(legacyPath);
+  }
+  return {};
+}
+
 /** Return the parsed contents of the akm vault file (public API used by admin UI list endpoint). */
 export function readAkmUserVaultFile(vaultPath: string): Record<string, string> {
   if (!existsSync(vaultPath)) return {};

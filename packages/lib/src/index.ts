@@ -109,6 +109,7 @@ export {
   detectSecretBackend,
   validatePassEntryName,
 } from "./control-plane/secret-backend.js";
+export type { SecretBackend } from "./control-plane/secret-backend.js";
 // ── Setup Status ────────────────────────────────────────────────────────
 export {
   isSetupComplete,
@@ -271,4 +272,6 @@ export {
   deleteAkmVaultKey,
   buildAkmEnv,
   readAkmUserVaultFile,
+  akmUserVaultPathSync,
+  readUserVaultSync,
 } from "./control-plane/akm-vault.js";

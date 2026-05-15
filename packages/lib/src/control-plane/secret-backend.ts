@@ -21,16 +21,20 @@ import {
   updateSecretsEnv,
   updateSystemSecretsEnv,
 } from './secrets.js';
-import { parseEnvFile } from './env.js';
+import { readUserVaultSync } from './akm-vault.js';
 
 /**
- * Read parsed key/value pairs from `vault/user/user.env`.
- * Returns {} if the file does not exist. Used for user-scope secret reads
- * so they consult the user-managed env file rather than the system stack
- * env file.
+ * Read parsed key/value pairs from the user-managed env namespace.
+ *
+ * Post-#421 the canonical home is the akm `vault:user` store
+ * (`${dataDir}/stash/vaults/user.env`), since `migrateAndCleanupLegacyUserEnv`
+ * deletes the legacy `${vaultDir}/user/user.env` file after upgrade. We
+ * delegate to the shared `readUserVaultSync` helper which prefers the akm
+ * file and falls back to the legacy path for fresh installs that have not
+ * yet seeded the akm store.
  */
-function readUserEnv(vaultDir: string): Record<string, string> {
-  return parseEnvFile(`${vaultDir}/user/user.env`);
+function readUserEnv(state: ControlPlaneState): Record<string, string> {
+  return readUserVaultSync(state);
 }
 
 const execFile = promisify(execFileCb);
@@ -101,9 +105,10 @@ function currentValueForTarget(state: ControlPlaneState, target: ResolvedSecretT
   if (target.scope === 'system') {
     return readStackEnv(state.vaultDir)[target.envKey] ?? '';
   }
-  // User scope: user.env is the canonical user-managed env file. Fall back to
-  // stack.env for legacy/consolidated secrets so older layouts keep resolving.
-  const userEnv = readUserEnv(state.vaultDir);
+  // User scope: the akm `vault:user` store is the canonical user-managed env
+  // namespace post-#421. Fall back to stack.env for legacy/consolidated
+  // secrets so older layouts keep resolving.
+  const userEnv = readUserEnv(state);
   if (target.envKey in userEnv) return userEnv[target.envKey];
   return readStackEnv(state.vaultDir)[target.envKey] ?? '';
 }
@@ -112,9 +117,9 @@ function currentValueForTarget(state: ControlPlaneState, target: ResolvedSecretT
 
 export async function plaintextList(state: ControlPlaneState, prefix = 'openpalm/'): Promise<SecretEntryMetadata[]> {
   const systemEnv = readStackEnv(state.vaultDir);
-  const userEnvFile = readUserEnv(state.vaultDir);
+  const userEnvFile = readUserEnv(state);
   // Legacy/consolidated secrets may live in stack.env even for user scope.
-  // Layer user.env on top so explicit user-managed values win.
+  // Layer the user vault on top so explicit user-managed values win.
   const userEnv: Record<string, string> = { ...systemEnv, ...userEnvFile };
   const index = readPlaintextSecretIndex(state);
   const entries: SecretEntryMetadata[] = [];

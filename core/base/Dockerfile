@@ -6,7 +6,10 @@
 # and AKM_CLI_VERSION across the admin and assistant images.
 #
 # Guardian uses oven/bun:1.3-slim and only needs akm-cli + bun, so it does NOT
-# inherit from this image. Its AKM_CLI_VERSION is kept manually in sync.
+# inherit from this image. Its AKM_CLI_VERSION ARG must match the value
+# below — CI enforces the lockstep via the
+# "Validate AKM_CLI_VERSION sync between base and guardian Dockerfiles" step
+# in `.github/workflows/ci.yml`.
 #
 # Built locally via `docker compose --profile build build openpalm-base`.
 # Not published to a registry as part of normal releases — CI publishes a
