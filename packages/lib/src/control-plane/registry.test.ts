@@ -255,7 +255,7 @@ describe("materialized registry catalog", () => {
 
     expect(getRegistryAddonConfig(process.env.OP_HOME!, 'chat')).toEqual({
       schemaPath: 'state/registry/addons/chat/.env.schema',
-      userEnvPath: 'state/stack.env',
+      userEnvPath: 'config/stack.env',
       envSchema: 'CHANNEL_CHAT_SECRET=\n',
     });
   });

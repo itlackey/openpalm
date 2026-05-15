@@ -73,7 +73,7 @@ export {
   resolveConfigDir,
   resolveStashDir,
   resolveWorkspaceDir,
-  resolveServicesDir,
+  resolveCacheDir,
   resolveStateDir,
   resolveStackDir,
   resolveLogsDir,

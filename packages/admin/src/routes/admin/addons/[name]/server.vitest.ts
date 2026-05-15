@@ -84,7 +84,7 @@ describe('/admin/addons/:name route', () => {
     expect(body.name).toBe('chat');
     expect(body.enabled).toBe(true);
     expect(body.config.schemaPath).toBe('state/registry/addons/chat/.env.schema');
-    expect(body.config.userEnvPath).toBe('state/stack.env');
+    expect(body.config.userEnvPath).toBe('config/stack.env');
     expect(body.config.envSchema).toContain('CHANNEL_CHAT_SECRET');
   });
 

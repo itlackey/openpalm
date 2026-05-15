@@ -11,7 +11,7 @@
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
-import { resolveServicesDir, resolveOpenPalmHome, resolveBackupsDir, resolveStashDir } from "./home.js";
+import { resolveStateDir, resolveOpenPalmHome, resolveBackupsDir, resolveStashDir } from "./home.js";
 import { createLogger } from "../logger.js";
 import { sha256 } from "./crypto.js";
 
@@ -32,7 +32,7 @@ export function readCoreCompose(): string {
 // ── OpenCode System Config ──────────────────────────────────────────
 
 export function ensureOpenCodeSystemConfig(): void {
-  const dir = `${resolveServicesDir()}/assistant`;
+  const dir = `${resolveStateDir()}/assistant`;
   mkdirSync(dir, { recursive: true });
 }
 
@@ -86,8 +86,8 @@ const VERSION = process.env.OP_ASSET_VERSION ?? "main";
 // which never overwrites existing files (user edits win on re-install).
 const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
   { relPath: "stack/core.compose.yml", githubFilename: ".openpalm/stack/core.compose.yml" },
-  { relPath: "services/assistant/opencode.jsonc", githubFilename: "core/assistant/opencode/opencode.jsonc" },
-  { relPath: "services/assistant/AGENTS.md", githubFilename: "core/assistant/opencode/AGENTS.md" },
+  { relPath: "state/assistant/opencode.jsonc", githubFilename: "core/assistant/opencode/opencode.jsonc" },
+  { relPath: "state/assistant/AGENTS.md", githubFilename: "core/assistant/opencode/AGENTS.md" },
 ];
 
 async function downloadAsset(filename: string): Promise<string> {

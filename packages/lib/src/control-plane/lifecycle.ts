@@ -8,7 +8,7 @@ import {
   resolveConfigDir,
   resolveStashDir,
   resolveWorkspaceDir,
-  resolveServicesDir,
+  resolveCacheDir,
   resolveStateDir,
   resolveStackDir,
 } from "./home.js";
@@ -41,7 +41,7 @@ export function createState(
   const configDir = resolveConfigDir();
   const stashDir = resolveStashDir();
   const workspaceDir = resolveWorkspaceDir();
-  const servicesDir = resolveServicesDir();
+  const cacheDir = resolveCacheDir();
   const stateDir = resolveStateDir();
   const stackDir = resolveStackDir();
 
@@ -59,7 +59,7 @@ export function createState(
     configDir,
     stashDir,
     workspaceDir,
-    servicesDir,
+    cacheDir,
     stateDir,
     stackDir,
     services,
@@ -101,7 +101,7 @@ async function reconcileCore(
   }
 
   for (const addonName of listEnabledAddonIds(state.homeDir)) {
-    mkdirSync(`${state.servicesDir}/${addonName}`, { recursive: true });
+    mkdirSync(`${state.stateDir}/${addonName}`, { recursive: true });
   }
 
   const active: string[] = [];

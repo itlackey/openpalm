@@ -45,19 +45,24 @@ export type MirrorResult = {
 
 /**
  * Build the env that points akm at the shared OpenPalm stash. We mirror the
- * XDG layout that the assistant/admin containers use (see
+ * layout that the assistant/admin containers use (see
  * `.openpalm/stack/core.compose.yml`) so host-side and container-side runs
  * resolve to the same vault file.
+ *
+ * AKM_CONFIG_DIR lives in config/ (alongside stack.env, auth.json) so
+ * operators can inspect and version-control akm setup alongside other config.
+ * AKM_CACHE_DIR lives in cache/ since registry index and downloaded artifacts
+ * are regenerable and should not be indexed alongside stash assets.
  */
 export function buildAkmEnv(state: ControlPlaneState): NodeJS.ProcessEnv {
-  const akmRoot = `${state.stateDir}/akm`;
+  const akmOperational = `${state.stateDir}/akm`;
   return {
     ...process.env,
     AKM_STASH_DIR: state.stashDir,
-    AKM_DATA_DIR: `${akmRoot}/data`,
-    AKM_STATE_DIR: `${akmRoot}/state`,
-    AKM_CONFIG_DIR: `${akmRoot}/config`,
-    AKM_CACHE_DIR: `${state.stateDir}/cache/akm`,
+    AKM_CONFIG_DIR: `${state.configDir}/akm`,
+    AKM_DATA_DIR: `${akmOperational}/data`,
+    AKM_STATE_DIR: `${akmOperational}/state`,
+    AKM_CACHE_DIR: `${state.cacheDir}/akm`,
   };
 }
 

@@ -20,7 +20,7 @@ describe("getState", () => {
     expect(state.configDir).toBeDefined();
     expect(state.stateDir).toBeDefined();
     expect(state.stashDir).toBeDefined();
-    expect(state.servicesDir).toBeDefined();
+    expect(state.cacheDir).toBeDefined();
     expect(state.stackDir).toBeDefined();
     expect(state.services).toBeDefined();
     expect(state.artifacts).toBeDefined();

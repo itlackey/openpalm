@@ -44,8 +44,8 @@ export type ControlPlaneState = {
   configDir: string;
   stashDir: string;      // homeDir/stash
   workspaceDir: string;  // homeDir/workspace
-  servicesDir: string;   // homeDir/services
-  stateDir: string;      // homeDir/state (replaces vaultDir + dataDir + logsDir)
+  cacheDir: string;      // homeDir/cache (regenerable/semi-persistent data)
+  stateDir: string;      // homeDir/state (service data + system state)
   stackDir: string;      // homeDir/stack
   services: Record<string, "running" | "stopped">;
   artifacts: {

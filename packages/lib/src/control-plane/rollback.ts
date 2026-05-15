@@ -11,11 +11,12 @@ import type { ControlPlaneState } from "./types.js";
 import { resolveRollbackDir } from "./home.js";
 
 /** Files that are tracked for rollback (relative to homeDir).
- *  Only state/ files are included — config/ is user-owned and never
- *  overwritten by lifecycle operations. */
+ *  Only config/ system files are included — user-editable config files
+ *  are never overwritten by lifecycle operations. */
 const SNAPSHOT_FILES = [
-  "state/stack.env",
-  "state/guardian.env",
+  "config/stack.env",
+  "config/guardian.env",
+  "config/auth.json",
 ];
 
 /**

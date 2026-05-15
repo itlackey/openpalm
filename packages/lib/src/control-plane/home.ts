@@ -2,12 +2,12 @@
  * Home directory layout for the OpenPalm control plane (v0.11.0+).
  *
  * Single ~/.openpalm/ root:
- *   config/      — user-editable, non-secret configuration
- *   stash/       — akm knowledge (skills, vaults, knowledge, agents)
- *   workspace/   — shared assistant work area
- *   services/    — container bind mounts (per-service persistent data)
- *   state/       — system-managed state (replaces vault/ + data/ + logs/)
- *   stack/       — compose runtime assets
+ *   config/    — user-editable config + system config files (stack.env, auth.json, akm/)
+ *   cache/     — regenerable/semi-persistent data (akm cache, guardian cache, rollback)
+ *   state/     — persistent service data (assistant, admin, guardian, logs, backups, registry)
+ *   stash/     — akm knowledge (skills, vaults, agents)
+ *   workspace/ — shared assistant work area
+ *   stack/     — compose runtime assets (addon overlays)
  */
 import { mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -40,8 +40,8 @@ export function resolveWorkspaceDir(): string {
   return `${resolveOpenPalmHome()}/workspace`;
 }
 
-export function resolveServicesDir(): string {
-  return `${resolveOpenPalmHome()}/services`;
+export function resolveCacheDir(): string {
+  return `${resolveOpenPalmHome()}/cache`;
 }
 
 export function resolveStateDir(): string {
@@ -74,7 +74,7 @@ export function resolveRegistryAutomationsDir(): string {
 }
 
 export function resolveRollbackDir(): string {
-  return `${resolveStateDir()}/cache/rollback`;
+  return `${resolveCacheDir()}/rollback`;
 }
 
 // ── Directory Setup ──────────────────────────────────────────────────
@@ -86,33 +86,29 @@ export function ensureHomeDirs(): void {
   const home = resolveOpenPalmHome();
 
   for (const dir of [
-    // config/ — user-editable, non-secret
+    // config/ — user-editable config + system config files
     `${home}/config`,
     `${home}/config/automations`,
     `${home}/config/assistant`,
     `${home}/config/guardian`,
+    `${home}/config/akm`,           // AKM_CONFIG_DIR — akm setup config.json lives here
 
-    // stash/ — akm asset content (skills, vaults, knowledge, agents)
-    `${home}/stash`,
+    // cache/ — regenerable/semi-persistent data
+    `${home}/cache`,
+    `${home}/cache/akm`,            // akm registry index, downloaded artifacts
+    `${home}/cache/guardian`,       // guardian cache
+    `${home}/cache/rollback`,       // rollback snapshots
 
-    // workspace/ — shared assistant work area
-    `${home}/workspace`,
-
-    // services/ — container bind mounts
-    `${home}/services`,
-    `${home}/services/assistant`,
-    `${home}/services/admin`,
-    `${home}/services/guardian`,
-    `${home}/services/guardian/stash`,
-    `${home}/services/guardian/akm`,
-    `${home}/services/guardian/akm/config`,
-    `${home}/services/guardian/akm/data`,
-    `${home}/services/guardian/akm/state`,
-
-    // state/ — system-managed state
+    // state/ — persistent service data
     `${home}/state`,
-    `${home}/state/akm`,
-    `${home}/state/akm/config`,
+    `${home}/state/assistant`,      // assistant HOME bind mount
+    `${home}/state/admin`,          // admin home bind mount
+    `${home}/state/guardian`,       // guardian runtime data
+    `${home}/state/guardian/stash`, // guardian-only akm stash (operator-isolated)
+    `${home}/state/guardian/akm`,   // guardian akm operational data
+    `${home}/state/guardian/akm/data`,
+    `${home}/state/guardian/akm/state`,
+    `${home}/state/akm`,            // shared akm operational data (NOT config)
     `${home}/state/akm/data`,
     `${home}/state/akm/state`,
     `${home}/state/scheduler`,
@@ -123,17 +119,16 @@ export function ensureHomeDirs(): void {
     `${home}/state/registry`,
     `${home}/state/registry/addons`,
     `${home}/state/registry/automations`,
-    `${home}/state/cache`,
-    `${home}/state/cache/akm`,
-    `${home}/state/cache/guardian`,
-    `${home}/state/cache/rollback`,
 
-    // stack/ — compose files
+    // stash/ — akm knowledge (skills, vaults, agents)
+    `${home}/stash`,
+
+    // workspace/ — shared assistant work area
+    `${home}/workspace`,
+
+    // stack/ — compose runtime (addon overlays)
     `${home}/stack`,
     `${home}/stack/addons`,
-
-    // backups/ — user backups at root level
-    `${home}/backups`,
   ]) {
     mkdirSync(dir, { recursive: true });
   }

@@ -256,7 +256,7 @@ export function getRegistryAddonConfig(homeDir: string, name: string): RegistryA
   const schemaFile = join(homeDir, schemaPath);
   return {
     schemaPath,
-    userEnvPath: 'state/stack.env',
+    userEnvPath: 'config/stack.env',
     envSchema: existsSync(schemaFile) ? readFileSync(schemaFile, 'utf-8') : '',
   };
 }

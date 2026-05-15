@@ -49,7 +49,7 @@ function makeState(tempDir?: string): ControlPlaneState {
     configDir: join(base, "config"),
     stashDir: join(base, "stash"),
     workspaceDir: join(base, "workspace"),
-    servicesDir: join(base, "services"),
+    cacheDir: join(base, "cache"),
     stateDir: join(base, "state"),
     stackDir: join(base, "stack"),
     services: {},

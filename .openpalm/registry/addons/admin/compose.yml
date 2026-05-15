@@ -74,22 +74,21 @@ services:
       # AKM_STASH_DIR (they fall back to per-container HOME defaults), so
       # admin and assistant would silently diverge without this.
       AKM_STASH_DIR: /akm
+      AKM_CONFIG_DIR: /openpalm/config/akm
       AKM_DATA_DIR: /akm-op/data
       AKM_STATE_DIR: /akm-op/state
       AKM_CACHE_DIR: /akm-cache
-      AKM_CONFIG_DIR: /akm-op/config
     volumes:
       - ${OP_HOME}:/openpalm
-      - ${OP_HOME}/services/admin:/home/node
+      - ${OP_HOME}/state/admin:/home/node
       - ${OP_HOME}/workspace:/work
       # Shared akm stash (rw on both sides) — assistant publishes assets here,
       # admin reads/edits them through its OpenCode + UI surface.
       - ${OP_HOME}/stash:/akm
-      # Shared akm operational data (config, data, state). Mirrors the assistant
-      # mount so both containers resolve to the same index, state, and config.
+      # Shared akm operational data (data, state only — config is at /openpalm/config/akm).
       - ${OP_HOME}/state/akm:/akm-op
       # Shared, persistent akm cache (registry index, downloaded artifacts).
-      - ${OP_HOME}/state/cache/akm:/akm-cache
+      - ${OP_HOME}/cache/akm:/akm-cache
       # GPG agent socket for pass backend (read-only; only needed when pass is active).
       # create_host_path is false to avoid creating ~/.gnupg on hosts without GPG.
       # If the source directory does not exist, Docker will skip this mount silently.

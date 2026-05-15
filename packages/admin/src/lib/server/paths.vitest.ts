@@ -1,5 +1,5 @@
 /**
- * Tests for paths.ts — home directory setup with new v0.11.0 layout.
+ * Tests for paths.ts — home directory setup with v0.11.0 final layout.
  */
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { existsSync } from "node:fs";
@@ -24,57 +24,51 @@ describe("ensureHomeDirs", () => {
 
   test("creates full home directory tree", () => {
     ensureHomeDirs();
-
     const home = process.env.OP_HOME!;
 
-    // config/ — user-editable
+    // config/ — user-editable + system config files
     expect(existsSync(join(home, "config"))).toBe(true);
     expect(existsSync(join(home, "config", "automations"))).toBe(true);
     expect(existsSync(join(home, "config", "assistant"))).toBe(true);
     expect(existsSync(join(home, "config", "guardian"))).toBe(true);
+    expect(existsSync(join(home, "config", "akm"))).toBe(true);
 
-    // stash/ — akm knowledge
-    expect(existsSync(join(home, "stash"))).toBe(true);
+    // cache/ — regenerable data
+    expect(existsSync(join(home, "cache", "akm"))).toBe(true);
+    expect(existsSync(join(home, "cache", "guardian"))).toBe(true);
+    expect(existsSync(join(home, "cache", "rollback"))).toBe(true);
 
-    // workspace/ — shared work area
-    expect(existsSync(join(home, "workspace"))).toBe(true);
-
-    // services/ — container bind mounts
-    expect(existsSync(join(home, "services", "assistant"))).toBe(true);
-    expect(existsSync(join(home, "services", "admin"))).toBe(true);
-    expect(existsSync(join(home, "services", "guardian"))).toBe(true);
-    expect(existsSync(join(home, "services", "guardian", "stash"))).toBe(true);
-    expect(existsSync(join(home, "services", "guardian", "akm"))).toBe(true);
-
-    // state/ — system-managed
-    expect(existsSync(join(home, "state"))).toBe(true);
-    expect(existsSync(join(home, "state", "akm", "config"))).toBe(true);
+    // state/ — persistent service data
+    expect(existsSync(join(home, "state", "assistant"))).toBe(true);
+    expect(existsSync(join(home, "state", "admin"))).toBe(true);
+    expect(existsSync(join(home, "state", "guardian"))).toBe(true);
+    expect(existsSync(join(home, "state", "guardian", "stash"))).toBe(true);
+    expect(existsSync(join(home, "state", "guardian", "akm"))).toBe(true);
     expect(existsSync(join(home, "state", "akm", "data"))).toBe(true);
     expect(existsSync(join(home, "state", "scheduler", "triggers"))).toBe(true);
     expect(existsSync(join(home, "state", "logs", "opencode"))).toBe(true);
     expect(existsSync(join(home, "state", "backups"))).toBe(true);
     expect(existsSync(join(home, "state", "registry", "addons"))).toBe(true);
     expect(existsSync(join(home, "state", "registry", "automations"))).toBe(true);
-    expect(existsSync(join(home, "state", "cache", "akm"))).toBe(true);
-    expect(existsSync(join(home, "state", "cache", "guardian"))).toBe(true);
-    expect(existsSync(join(home, "state", "cache", "rollback"))).toBe(true);
 
-    // stack/ — compose runtime
-    expect(existsSync(join(home, "stack"))).toBe(true);
+    // stash/, workspace/, stack/
+    expect(existsSync(join(home, "stash"))).toBe(true);
+    expect(existsSync(join(home, "workspace"))).toBe(true);
     expect(existsSync(join(home, "stack", "addons"))).toBe(true);
 
-    // vault/ and data/ must NOT exist — removed in v0.11.0
+    // removed top-levels must NOT exist
     expect(existsSync(join(home, "vault"))).toBe(false);
     expect(existsSync(join(home, "data"))).toBe(false);
     expect(existsSync(join(home, "logs"))).toBe(false);
     expect(existsSync(join(home, "registry"))).toBe(false);
+    expect(existsSync(join(home, "services"))).toBe(false);
   });
 
   test("is idempotent — safe to call multiple times", () => {
     ensureHomeDirs();
     ensureHomeDirs();
     expect(existsSync(join(process.env.OP_HOME!, "config"))).toBe(true);
-    expect(existsSync(join(process.env.OP_HOME!, "stash"))).toBe(true);
+    expect(existsSync(join(process.env.OP_HOME!, "cache"))).toBe(true);
     expect(existsSync(join(process.env.OP_HOME!, "state"))).toBe(true);
   });
 });
