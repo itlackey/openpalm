@@ -8,6 +8,15 @@
 # Exports:
 #   ADMIN_TOKEN  — from OP_ADMIN_TOKEN in .dev/vault/stack/stack.env
 
+# Guard: this script must be sourced, not executed. Direct execution would
+# silently set vars in a child shell that exits immediately, leaving the
+# caller without ADMIN_TOKEN — a confusing failure mode.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  echo "Error: scripts/load-test-env.sh must be sourced, not executed." >&2
+  echo "       Use: source scripts/load-test-env.sh" >&2
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 STACK_ENV="$ROOT_DIR/.dev/vault/stack/stack.env"

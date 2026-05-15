@@ -118,7 +118,6 @@ mkdir -p \
 	"$VAULT_DIR" "$VAULT_DIR/stack" "$VAULT_DIR/user" \
 	"$DATA_DIR/assistant/.config/opencode" \
 	"$DATA_DIR/guardian" \
-	"$DATA_DIR/openviking" \
 	"$DATA_DIR/automations" "$DATA_DIR/ollama" "$DATA_DIR/stash" "$DATA_DIR/guardian-stash" \
 	"$DATA_DIR/akm-cache" "$DATA_DIR/guardian-cache" "$DATA_DIR/workspace" \
 	"$LOGS_DIR/opencode" \

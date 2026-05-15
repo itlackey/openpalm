@@ -538,35 +538,38 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
   step "Verify vault/user/user.env"
 
   VAULT_HOME="${VAULT_HOME:-${OP_HOME}/vault}"
-  secrets="$VAULT_HOME/user/user.env"
+  stack_env="$VAULT_HOME/stack/stack.env"
 
-  check_env_key() {
-    local key="$1"
-    local actual
-    actual=$(grep -E "^(export )?${key}=" "$secrets" 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
-    if [ -n "$actual" ]; then
-      pass "$key is set in user.env"
-    else
-      fail "$key is empty or missing in user.env"
-    fi
-  }
-
-  check_env_val() {
+  check_stack_env_val() {
     local key="$1" expected="$2"
     local actual
-    actual=$(grep -E "^(export )?${key}=" "$secrets" 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
+    actual=$(grep -E "^(export )?${key}=" "$stack_env" 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
     if [ "$actual" = "$expected" ]; then
-      pass "$key=$expected"
+      pass "$key=$expected (in stack.env)"
     else
-      fail "$key expected '$expected', got '$actual'"
+      fail "$key expected '$expected', got '$actual' (in stack.env)"
     fi
   }
 
-  check_env_val "ADMIN_TOKEN" "$ADMIN_TOKEN"
-  check_env_key "SYSTEM_LLM_PROVIDER"
-  check_env_key "SYSTEM_LLM_MODEL"
+  check_stack_env_key() {
+    local key="$1"
+    local actual
+    actual=$(grep -E "^(export )?${key}=" "$stack_env" 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
+    if [ -n "$actual" ]; then
+      pass "$key is set in stack.env"
+    else
+      fail "$key is empty or missing in stack.env"
+    fi
+  }
+
+  # Admin token lives in vault/stack/stack.env as OP_ADMIN_TOKEN.
+  check_stack_env_val "OP_ADMIN_TOKEN" "$ADMIN_TOKEN"
+  # LLM provider/model are resolved into OP_CAP_LLM_* capability vars in stack.env
+  # by the control plane (see docs/technical/capability-injection.md).
+  check_stack_env_key "OP_CAP_LLM_PROVIDER"
+  check_stack_env_key "OP_CAP_LLM_MODEL"
 else
-  step "Skipping user.env check (--skip-install)"
+  step "Skipping stack.env check (--skip-install)"
 fi
 
 # ── Step 10: Verify admin API with token ──────────────────────────────
@@ -582,7 +585,7 @@ else
   fail "Authenticated admin API request failed"
 fi
 
-# ── Step 12: Verify assistant container env ───────────────────────────
+# ── Step 11: Verify assistant container env ───────────────────────────
 
 step "Verify assistant container environment"
 
@@ -615,7 +618,7 @@ check_container_env() {
 check_container_env "openpalm-assistant-1" "OP_ADMIN_TOKEN" "equals" "$ADMIN_TOKEN"
 check_container_env "openpalm-assistant-1" "OPENAI_BASE_URL" "endswith" "/v1"
 
-# ── Step 13: Test chat channel (if installed) ─────────────────────────
+# ── Step 12: Test chat channel (if installed) ─────────────────────────
 
 step "Check for chat channel"
 
@@ -642,7 +645,7 @@ else
   skip "Chat channel not installed (optional)"
 fi
 
-# ── Step 15: Verify no root-owned files (if we created temp dirs) ────
+# ── Step 13: Verify no root-owned files (if we created temp dirs) ────
 
 if [ "$SKIP_INSTALL" -eq 0 ] && [ "$USE_TEMP_DIRS" -eq 1 ]; then
   step "Check file ownership"
@@ -660,7 +663,7 @@ if [ "$SKIP_INSTALL" -eq 0 ] && [ "$USE_TEMP_DIRS" -eq 1 ]; then
   fi
 fi
 
-# ── Step 16: List all running containers ──────────────────────────────
+# ── Step 14: List all running containers ──────────────────────────────
 
 step "Running container summary"
 

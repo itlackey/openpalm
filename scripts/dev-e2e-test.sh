@@ -458,9 +458,9 @@ else
 	fail "assistant LMSTUDIO_BASE_URL is empty (needed for lmstudio/Ollama proxy)"
 fi
 
-# ── Step 13: Verify setup marked complete ────────────────────────────
+# ── Step 12: Verify setup marked complete ────────────────────────────
 echo ""
-echo "=== Step 13: Verify setup complete ==="
+echo "=== Step 12: Verify setup complete ==="
 FINAL_STATUS=$(curl -s http://localhost:8100/admin/capabilities/status \
 	-H "x-admin-token: dev-admin-token" 2>/dev/null |
 	python3 -c "import sys,json; print(json.load(sys.stdin).get('complete', False))" 2>/dev/null || echo "unknown")
@@ -471,9 +471,9 @@ else
 	fail "Setup is NOT marked complete: $FINAL_STATUS"
 fi
 
-# ── Step 14: Verify assistant message pipeline ─────────────────────
+# ── Step 13: Verify assistant message pipeline ─────────────────────
 echo ""
-echo "=== Step 14: Verify assistant pipeline ==="
+echo "=== Step 13: Verify assistant pipeline ==="
 
 # OpenCode auth is disabled by default (host-only binding provides security)
 SESSION_ID=$(curl -sf http://localhost:4096/session \

@@ -231,17 +231,17 @@ if host_url="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/d
   esac
 fi
 
-# Seed user.env with a known admin token
+# Seed user.env with custom non-secret operator settings.
+# OP_ADMIN_TOKEN belongs in vault/stack/stack.env (system-managed), NOT user.env.
 cat >"${VAULT_HOME}/user/user.env" <<EOF
-# Upgrade test secrets
-OP_ADMIN_TOKEN=${OP_ADMIN_TOKEN}
+# Upgrade test user-managed extension env
 OPENAI_API_KEY=
 OPENAI_BASE_URL=
 # Custom user key that must survive upgrade
 MY_CUSTOM_KEY=my-custom-value-12345
 EOF
 
-# Seed system.env
+# Seed system.env (admin token + paths + UID/GID)
 cat >"${VAULT_HOME}/stack/stack.env" <<EOF
 OP_HOME=${OP_HOME}
 OP_UID=$(id -u)
@@ -249,6 +249,7 @@ OP_GID=$(id -g)
 OP_DOCKER_SOCK=${docker_sock}
 OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=dev
+OP_ADMIN_TOKEN=${OP_ADMIN_TOKEN}
 EOF
 
 # Seed guardian.env (channel HMAC secrets)
@@ -503,12 +504,12 @@ else
   fail "user.env was modified during upgrade (before: ${SECRETS_CHECKSUM_BEFORE}, after: ${SECRETS_CHECKSUM_AFTER})"
 fi
 
-# Verify specific values in user.env
-OP_ADMIN_TOKEN_VALUE=$(grep "^OP_ADMIN_TOKEN=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
+# Verify specific values: OP_ADMIN_TOKEN in stack.env, MY_CUSTOM_KEY in user.env
+OP_ADMIN_TOKEN_VALUE=$(grep "^OP_ADMIN_TOKEN=" "${VAULT_HOME}/stack/stack.env" | head -1 | cut -d= -f2-)
 if [[ "$OP_ADMIN_TOKEN_VALUE" == "$OP_ADMIN_TOKEN" ]]; then
-  pass "OP_ADMIN_TOKEN preserved in user.env"
+  pass "OP_ADMIN_TOKEN preserved in stack.env"
 else
-  fail "OP_ADMIN_TOKEN changed (expected '${OP_ADMIN_TOKEN}', got '${ADMIN_TOKEN_VALUE}')"
+  fail "OP_ADMIN_TOKEN changed (expected '${OP_ADMIN_TOKEN}', got '${OP_ADMIN_TOKEN_VALUE}')"
 fi
 
 CUSTOM_KEY_VALUE=$(grep "^MY_CUSTOM_KEY=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)

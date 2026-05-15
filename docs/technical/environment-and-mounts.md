@@ -33,9 +33,17 @@ Current durable data subdirectories used by the shipped stack:
 - `data/admin`
 - `data/assistant`
 - `data/guardian`
-- `data/memory`
+- `data/guardian-stash`
+- `data/akm-cache`
+- `data/guardian-cache`
+- `data/scheduler`
 - `data/stash`
 - `data/workspace`
+
+Persistent memory and knowledge live in `data/stash` (the shared akm stash
+mounted at `/akm` for both assistant and admin) and `data/guardian-stash`
+(the operator-only akm stash mounted at `/akm-guardian` for guardian).
+There is no separate memory service.
 
 ---
 
@@ -59,48 +67,11 @@ That means the effective env model is:
 
 ## Core Services
 
-### Memory
-
-Compose source: `.openpalm/stack/core.compose.yml`
-
-Mounts:
-
-| Host path | Container path | Mode | Purpose |
-|---|---|---|---|
-| `$OP_HOME/data/memory` | `/data` | rw | Memory database, mem0 compatibility data, generated config |
-
-Ports and networks:
-
-| Item | Value |
-|---|---|
-| Container port | `8765` |
-| Host bind | `${OP_MEMORY_BIND_ADDRESS:-127.0.0.1}:${OP_MEMORY_PORT:-3898}` |
-| Networks | `assistant_net` |
-
-Key env:
-
-| Variable | Value / source | Purpose |
-|---|---|---|
-| `MEMORY_DATA_DIR` | `/data` | Persistent data root |
-| `HOME` | `/data` | Writable home |
-| `MEM0_DIR` | `/data/.mem0` | mem0 compatibility directory |
-| `MEMORY_AUTH_TOKEN` | `stack.env` via `${VAR}` | Memory API auth |
-| `MEMORY_USER_ID` | `stack.env` via `${VAR}` | Default memory identity |
-| `SYSTEM_LLM_PROVIDER` | `${OP_CAP_LLM_PROVIDER}` | LLM provider name for fact extraction |
-| `SYSTEM_LLM_MODEL` | `${OP_CAP_LLM_MODEL}` | LLM model for fact extraction |
-| `SYSTEM_LLM_BASE_URL` | `${OP_CAP_LLM_BASE_URL}` | LLM endpoint URL |
-| `SYSTEM_LLM_API_KEY` | `${OP_CAP_LLM_API_KEY}` | LLM API key |
-| `EMBEDDING_PROVIDER` | `${OP_CAP_EMBEDDINGS_PROVIDER}` | Embedding provider name |
-| `EMBEDDING_MODEL` | `${OP_CAP_EMBEDDINGS_MODEL}` | Embedding model identifier |
-| `EMBEDDING_BASE_URL` | `${OP_CAP_EMBEDDINGS_BASE_URL}` | Embedding endpoint URL |
-| `EMBEDDING_API_KEY` | `${OP_CAP_EMBEDDINGS_API_KEY}` | Embedding API key |
-| `EMBEDDING_DIMS` | `${OP_CAP_EMBEDDINGS_DIMS}` | Embedding vector dimensions |
-
-Notes:
-
-- Memory env vars are resolved from `OP_CAP_*` capability variables in `stack.env`. See [`capability-injection.md`](capability-injection.md) for the full resolution pipeline.
-- The shipped compose file does not mount `default_config.json` separately.
-- The memory service persists everything through `/data`.
+> Memory is no longer a separate service. Persistent knowledge and recall
+> live in the akm stash bind-mounted from the host: `data/stash` is shared
+> between admin and assistant at `/akm`, and `data/guardian-stash` is the
+> operator-only stash for guardian at `/akm-guardian`. See
+> [`core-principles.md`](core-principles.md) for the rationale.
 
 ### Assistant
 
@@ -142,9 +113,6 @@ Key env:
 | `AKM_STASH_DIR` | `/home/opencode/.akm` | AKM stash location hint |
 | `OP_ADMIN_API_URL` | `stack.env` / addon wiring | Admin API URL when admin is present |
 | `OP_ASSISTANT_TOKEN` | `OP_ASSISTANT_TOKEN` from `stack.env` | Assistant-scoped auth token |
-| `MEMORY_API_URL` | `http://memory:8765` | Memory service URL |
-| `MEMORY_AUTH_TOKEN` | `stack.env` | Memory auth token |
-| `MEMORY_USER_ID` | `stack.env` or default | Default memory identity |
 | `OP_UID` / `OP_GID` | `stack.env` | Entrypoint privilege drop target |
 
 Notes:
@@ -221,8 +189,6 @@ Key env (inherited from the assistant container):
 | `OP_ASSISTANT_TOKEN` | `${OP_ASSISTANT_TOKEN:-}` | Admin API token for `api` actions |
 | `OP_ADMIN_API_URL` | `stack.env` / addon wiring | Admin API base URL |
 | `OPENCODE_API_URL` | `http://localhost:4096` | Co-resident OpenCode |
-| `MEMORY_API_URL` | `http://memory:8765` | Memory URL |
-| `MEMORY_AUTH_TOKEN` | `${OP_MEMORY_TOKEN:-}` | Memory API auth token |
 
 Notes:
 
@@ -285,9 +251,6 @@ Key env:
 | `HOME` | `/home/node` | Writable home |
 | `OP_HOME` | `/openpalm` | In-container OpenPalm root |
 | `ADMIN_TOKEN` | `${OP_ADMIN_TOKEN:-}` | Admin API auth token |
-| `MEMORY_AUTH_TOKEN` | `stack.env` | Memory auth token |
-| `MEMORY_API_URL` | `http://memory:8765` | Memory URL |
-| `MEMORY_USER_ID` | `stack.env` / default | Memory identity |
 | `GUARDIAN_URL` | `http://guardian:8080` | Guardian API URL |
 | `OP_ASSISTANT_URL` | `http://assistant:4096` | Assistant URL |
 | `OP_ADMIN_API_URL` | `http://localhost:8100` | Admin self-URL |
@@ -318,7 +281,7 @@ All addon and channel services use `user: "${OP_UID:-1000}:${OP_GID:-1000}"` to 
 
 | Network | Connected services | Purpose |
 |---|---|---|
-| `assistant_net` | `memory`, `assistant` (also hosts the scheduler co-process), `guardian`, and `admin` when enabled | Core internal service mesh |
+| `assistant_net` | `assistant` (also hosts the scheduler co-process), `guardian`, and `admin` when enabled | Core internal service mesh |
 | `channel_lan` | `guardian` and LAN-facing channel/addon edges | Default channel ingress network |
 | `channel_public` | `guardian` only in core; public-facing overlays can join it intentionally | Public ingress isolation |
 | `admin_docker_net` | `admin`, `docker-socket-proxy` | Isolated Docker control-plane network |
@@ -339,15 +302,12 @@ These variables are consumed by Compose and service env blocks.
 | `OP_ADMIN_OPENCODE_BIND_ADDRESS`, `OP_ADMIN_OPENCODE_PORT` | Admin OpenCode host bind |
 | `OP_ASSISTANT_BIND_ADDRESS`, `OP_ASSISTANT_PORT` | Assistant host bind |
 | `OP_ASSISTANT_SSH_BIND_ADDRESS`, `OP_ASSISTANT_SSH_PORT` | Assistant SSH host bind |
-| `OP_MEMORY_BIND_ADDRESS`, `OP_MEMORY_PORT` | Memory host bind |
 | `OP_CHAT_BIND_ADDRESS`, `OP_CHAT_PORT` | Chat addon host bind |
 | `OP_API_BIND_ADDRESS`, `OP_API_PORT` | API addon host bind |
 | `OP_VOICE_BIND_ADDRESS`, `OP_VOICE_PORT` | Voice addon host bind |
 | `OP_ADMIN_TOKEN` | Admin auth token |
 | `OP_ASSISTANT_TOKEN` | Assistant operational token (also used by the scheduler co-process for admin API calls) |
-| `OP_MEMORY_TOKEN` | Memory API auth token |
 | `OP_OPENCODE_PASSWORD` | OpenCode server password |
-| `MEMORY_USER_ID` | Default memory identity |
 | `OWNER_NAME` | Operator display name |
 | `OWNER_EMAIL` | Operator email |
 | `OP_CAP_LLM_*` | Resolved LLM capability (provider, model, base URL, API key) |
@@ -370,7 +330,6 @@ API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, etc.) and
 provider/model selections live in `stack.env`. The control plane resolves
 these into `OP_CAP_*` capability variables (see [`capability-injection.md`](capability-injection.md)),
 which services consume via compose `${VAR}` substitution in their `environment:`
-blocks. Memory receives `OP_CAP_LLM_*` and `OP_CAP_EMBEDDINGS_*` vars this way.
-The assistant receives raw provider API keys directly for OpenCode compatibility.
-Channels receive only their own HMAC secret via `${VAR}` substitution from
-`guardian.env`.
+blocks. The assistant receives raw provider API keys directly for OpenCode
+compatibility. Channels receive only their own HMAC secret via `${VAR}`
+substitution from `guardian.env`.
