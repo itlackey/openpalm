@@ -8,7 +8,6 @@
  * function never shells out and never reads schemas.
  */
 import { existsSync } from "node:fs";
-import { parseEnvFile } from "./env.js";
 import { readStackEnv } from "./secrets.js";
 import { getCoreSecretMappings } from "./secret-mappings.js";
 import type { ControlPlaneState } from "./types.js";
@@ -39,21 +38,20 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const stackEnvPath = `${state.vaultDir}/stack/stack.env`;
-  const userEnvPath = `${state.vaultDir}/user/user.env`;
+  const stackEnvPath = `${state.stateDir}/stack.env`;
 
   if (!existsSync(stackEnvPath)) {
     errors.push(`ERROR: stack env file missing at ${stackEnvPath}`);
     return { ok: false, errors, warnings };
   }
 
-  const stackEnv = readStackEnv(state.vaultDir);
-  const userEnv = existsSync(userEnvPath) ? parseEnvFile(userEnvPath) : {};
+  const stackEnv = readStackEnv(state.stateDir);
+  const userEnv: Record<string, string> = {};
 
   for (const key of REQUIRED_STACK_KEYS) {
     const value = stackEnv[key];
     if (!value || value.trim().length === 0) {
-      errors.push(`ERROR: required key ${key} is missing or empty in vault/stack/stack.env`);
+      errors.push(`ERROR: required key ${key} is missing or empty in state/stack.env`);
     }
   }
 
@@ -65,7 +63,7 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
     const inUser = Object.prototype.hasOwnProperty.call(userEnv, mapping.envKey);
     if (!inStack && !inUser) {
       warnings.push(
-        `WARN: ${mapping.envKey} (akm ${mapping.secretKey}) is not declared in vault/${mapping.scope === "system" ? "stack/stack" : "user/user"}.env`,
+        `WARN: ${mapping.envKey} (akm ${mapping.secretKey}) is not declared in state/stack.env`,
       );
     }
   }

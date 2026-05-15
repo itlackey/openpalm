@@ -65,13 +65,13 @@ export const GET: RequestHandler = async (event) => {
   }
 
   if (source === "guardian") {
-    const guardianEntries = await readGuardianAudit(state.logsDir);
+    const guardianEntries = await readGuardianAudit(`${state.stateDir}/logs`);
     const limit = Math.min(rawLimit > 0 ? rawLimit : guardianEntries.length, 1000);
     return jsonResponse(200, { audit: guardianEntries.slice(-limit) }, requestId);
   }
 
   // source === "all": merge admin and guardian entries, sort by timestamp descending
-  const guardianEntries = await readGuardianAudit(state.logsDir);
+  const guardianEntries = await readGuardianAudit(`${state.stateDir}/logs`);
 
   // Normalize both sources into a common shape with a timestamp key
   const adminNormalized = state.audit.map((e) => ({

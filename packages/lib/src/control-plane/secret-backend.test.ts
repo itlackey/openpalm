@@ -15,16 +15,15 @@ import { dirname } from 'node:path';
 let rootDir = '';
 
 function createState(): ControlPlaneState {
-  const vaultDir = join(rootDir, 'vault');
-  const dataDir = join(rootDir, 'data');
+  const stateDir = join(rootDir, 'state');
+  const servicesDir = join(rootDir, 'services');
   const configDir = join(rootDir, 'config');
-  const logsDir = join(rootDir, 'logs');
-  const cacheDir = join(rootDir, 'cache');
-  mkdirSync(vaultDir, { recursive: true });
-  mkdirSync(dataDir, { recursive: true });
+  mkdirSync(stateDir, { recursive: true });
+  mkdirSync(servicesDir, { recursive: true });
   mkdirSync(configDir, { recursive: true });
-  mkdirSync(logsDir, { recursive: true });
-  mkdirSync(cacheDir, { recursive: true });
+  mkdirSync(join(rootDir, 'stash'), { recursive: true });
+  mkdirSync(join(rootDir, 'workspace'), { recursive: true });
+  mkdirSync(join(rootDir, 'stack'), { recursive: true });
 
   return {
     adminToken: 'admin-token',
@@ -32,10 +31,11 @@ function createState(): ControlPlaneState {
     setupToken: 'setup-token',
     homeDir: rootDir,
     configDir,
-    vaultDir,
-    dataDir,
-    logsDir,
-    cacheDir,
+    stashDir: join(rootDir, 'stash'),
+    workspaceDir: join(rootDir, 'workspace'),
+    servicesDir,
+    stateDir,
+    stackDir: join(rootDir, 'stack'),
     services: {},
     artifacts: { compose: '' },
     artifactMeta: [],
@@ -54,11 +54,11 @@ afterEach(() => {
 describe('secret backend', () => {
   test('ensureSecrets repairs auth.json when Docker created it as a directory', () => {
     const state = createState();
-    mkdirSync(join(state.vaultDir, 'stack', 'auth.json'), { recursive: true });
+    mkdirSync(join(state.stateDir, 'auth.json'), { recursive: true });
 
     ensureSecrets(state);
 
-    const authJsonPath = join(state.vaultDir, 'stack', 'auth.json');
+    const authJsonPath = join(state.stateDir, 'auth.json');
     expect(lstatSync(authJsonPath).isFile()).toBe(true);
     expect(readFileSync(authJsonPath, 'utf-8')).toBe('{}\n');
   });
@@ -79,7 +79,7 @@ describe('secret backend', () => {
     expect(await backend.exists('openpalm/custom/example')).toBe(true);
 
     // Custom secrets are now written to stack.env (all secrets consolidated there)
-    const stackEnv = readFileSync(join(state.vaultDir, 'stack', 'stack.env'), 'utf-8');
+    const stackEnv = readFileSync(join(state.stateDir, 'stack.env'), 'utf-8');
     expect(stackEnv).toContain('very-secret');
   });
 
@@ -175,26 +175,22 @@ describe('plaintext backend (via detectSecretBackend)', () => {
     expect(await backend.exists('openpalm/custom/generated')).toBe(true);
   });
 
-  test('user-scope and system-scope reads return distinct values when both files set the same key', async () => {
-    // Regression test for the duplicate-ternary bug in currentValueForTarget:
-    // user scope must consult vault/user/user.env, system scope must consult
-    // vault/stack/stack.env. When both files define the same key with
+  test('user-scope reads from akm vault, system-scope reads from stack.env', async () => {
+    // Regression test: user scope must consult the akm vault file, system scope
+    // must consult state/stack.env. When both files define the same key with
     // different values, the two scopes must return their own file's value.
     const state = createState();
     ensureSecrets(state);
     const backend = detectSecretBackend(state);
 
-    // OPENAI_API_KEY is a user-scope core mapping; OP_ADMIN_TOKEN is system-scope.
-    // Seed user.env with a user-scope override and a deliberately-wrong system
-    // value, then seed stack.env with the system token + a different user value.
-    const userEnvPath = join(state.vaultDir, 'user', 'user.env');
-    appendFileSync(userEnvPath, '\nOPENAI_API_KEY=user-env-openai\n');
+    // Seed the akm vault file with a user-scope value.
+    const akmPath = akmUserVaultPathSync(state);
+    mkdirSync(dirname(akmPath), { recursive: true });
+    writeFileSync(akmPath, 'OPENAI_API_KEY=akm-vault-openai\n');
 
-    // Stack.env already exists from ensureSecrets — overwrite OPENAI_API_KEY
-    // there so we can prove user.env wins for user scope.
-    const stackEnvPath = join(state.vaultDir, 'stack', 'stack.env');
+    // Stack.env already exists from ensureSecrets — seed a system token.
+    const stackEnvPath = join(state.stateDir, 'stack.env');
     const stackContent = readFileSync(stackEnvPath, 'utf-8')
-      .replace(/^OPENAI_API_KEY=.*$/m, 'OPENAI_API_KEY=stack-env-openai')
       .replace(/^OP_ADMIN_TOKEN=.*$/m, 'OP_ADMIN_TOKEN=stack-admin-token');
     writeFileSync(stackEnvPath, stackContent);
 
@@ -203,41 +199,22 @@ describe('plaintext backend (via detectSecretBackend)', () => {
     const systemEntries = await backend.list('openpalm/admin-token');
     expect(systemEntries.find((e) => e.key === 'openpalm/admin-token')?.present).toBe(true);
 
-    // User scope reads user.env (with stack.env fallback). Because user.env
-    // sets OPENAI_API_KEY, the user-scope read must reflect the user.env
-    // value, not the stack.env value — proving the two branches diverge.
+    // User scope reads akm vault file.
     const userEntries = await backend.list('openpalm/openai/');
     const openai = userEntries.find((e) => e.key === 'openpalm/openai/api-key');
     expect(openai).toBeDefined();
     expect(openai?.scope).toBe('user');
     expect(openai?.present).toBe(true);
-
-    // Direct verification: parse both files and confirm they hold distinct
-    // values for the same key. This guards against a future regression where
-    // someone collapses the ternary again.
-    const userEnvParsed = readFileSync(userEnvPath, 'utf-8');
-    const stackEnvParsed = readFileSync(stackEnvPath, 'utf-8');
-    expect(userEnvParsed).toContain('OPENAI_API_KEY=user-env-openai');
-    expect(stackEnvParsed).toContain('OPENAI_API_KEY=stack-env-openai');
-    expect(stackEnvParsed).not.toContain('user-env-openai');
   });
 
-  test('list/exists resolve user-scope secrets from akm vault after legacy user.env is deleted', async () => {
-    // Regression test for the post-#421 correctness bug: Phase 2 of #388
-    // (`migrateAndCleanupLegacyUserEnv`) deletes `${vaultDir}/user/user.env`
-    // after migrating its contents into the akm `vault:user` store. If the
-    // plaintext backend keeps reading the legacy file, user-scope secrets
-    // appear absent post-upgrade. The backend MUST resolve them through the
-    // akm vault file (`${dataDir}/stash/vaults/user.env`).
+  test('list/exists resolve user-scope secrets from akm vault', async () => {
+    // The backend MUST resolve user-managed secrets through the akm vault file
+    // (stash/vaults/user.env), not from any legacy path.
     const state = createState();
     ensureSecrets(state);
     const backend = detectSecretBackend(state);
 
-    // Simulate the post-migration state: legacy user.env is gone, the akm
-    // vault file holds the user-managed secret.
-    const legacyPath = join(state.vaultDir, 'user', 'user.env');
-    rmSync(legacyPath, { force: true });
-
+    // Place the secret in the akm vault file.
     const akmPath = akmUserVaultPathSync(state);
     mkdirSync(dirname(akmPath), { recursive: true });
     writeFileSync(akmPath, 'OPENAI_API_KEY=migrated-akm-value\n');
@@ -277,7 +254,7 @@ describe('pass backend (via detectSecretBackend)', () => {
 
   test('exists returns false for non-existent entries', async () => {
     const state = createState();
-    const storeDir = join(rootDir, 'data', 'secrets', 'pass-store');
+    const storeDir = join(rootDir, 'state', 'secrets', 'pass-store');
     mkdirSync(storeDir, { recursive: true });
     writeSecretProviderConfig(state, { provider: 'pass', passwordStoreDir: storeDir });
 
@@ -287,7 +264,7 @@ describe('pass backend (via detectSecretBackend)', () => {
 
   test('list returns empty array for empty store', async () => {
     const state = createState();
-    const storeDir = join(rootDir, 'data', 'secrets', 'pass-store');
+    const storeDir = join(rootDir, 'state', 'secrets', 'pass-store');
     mkdirSync(storeDir, { recursive: true });
     writeSecretProviderConfig(state, { provider: 'pass', passwordStoreDir: storeDir });
 
@@ -298,7 +275,7 @@ describe('pass backend (via detectSecretBackend)', () => {
 
   test('list scopes to passPrefix subdirectory', async () => {
     const state = createState();
-    const storeDir = join(rootDir, 'data', 'secrets', 'pass-store');
+    const storeDir = join(rootDir, 'state', 'secrets', 'pass-store');
 
     // Create fake .gpg files under the prefix subdirectory
     const prefixDir = join(storeDir, 'myprefix', 'openpalm');
@@ -327,7 +304,7 @@ describe('pass backend (via detectSecretBackend)', () => {
 
   test('exists checks prefixed path in store', async () => {
     const state = createState();
-    const storeDir = join(rootDir, 'data', 'secrets', 'pass-store');
+    const storeDir = join(rootDir, 'state', 'secrets', 'pass-store');
     const prefixDir = join(storeDir, 'myprefix');
     mkdirSync(join(prefixDir, 'openpalm'), { recursive: true });
     writeFileSync(join(prefixDir, 'openpalm', 'admin-token.gpg'), 'fake');

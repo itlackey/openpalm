@@ -80,16 +80,14 @@ beforeEach(() => {
 
   const state = getState();
   mkdirSync(state.configDir, { recursive: true });
-  mkdirSync(state.vaultDir, { recursive: true });
-  mkdirSync(join(state.vaultDir, 'user'), { recursive: true });
-  mkdirSync(state.dataDir, { recursive: true });
-  mkdirSync(join(state.dataDir, 'stash'), { recursive: true });
-  mkdirSync(state.logsDir, { recursive: true });
+  mkdirSync(state.stateDir, { recursive: true });
+  mkdirSync(state.stashDir, { recursive: true });
+  mkdirSync(join(state.stashDir, 'vaults'), { recursive: true });
 
   // Reset the mocked akm vault state to a fresh, available, empty store.
   mockAkmVault.clear();
   mockAkmAvailable = true;
-  mockVaultPath = join(state.dataDir, 'stash', 'vaults', 'user.env');
+  mockVaultPath = join(state.stashDir, 'vaults', 'user.env');
 });
 
 afterEach(() => {

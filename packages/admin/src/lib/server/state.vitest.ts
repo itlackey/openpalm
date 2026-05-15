@@ -18,10 +18,10 @@ describe("getState", () => {
     expect(state.adminToken).toBe("test-token");
     expect(state.homeDir).toBeDefined();
     expect(state.configDir).toBeDefined();
-    expect(state.vaultDir).toBeDefined();
-    expect(state.dataDir).toBeDefined();
-    expect(state.logsDir).toBeDefined();
-    expect(state.cacheDir).toBeDefined();
+    expect(state.stateDir).toBeDefined();
+    expect(state.stashDir).toBeDefined();
+    expect(state.servicesDir).toBeDefined();
+    expect(state.stackDir).toBeDefined();
     expect(state.services).toBeDefined();
     expect(state.artifacts).toBeDefined();
     expect(state.audit).toEqual([]);

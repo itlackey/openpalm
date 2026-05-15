@@ -39,16 +39,16 @@ function cpTree(src: string, dest: string): void {
 /** Seed the OP_HOME directory from the local repo (no network). */
 function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
   const configDir = join(homeDir, 'config');
-  const vaultDir = join(homeDir, 'vault');
-  const dataDir = join(homeDir, 'data');
+  const stateDir = join(homeDir, 'state');
+  const servicesDir = join(homeDir, 'services');
 
   // stack/ — seed core compose only
   mkdirSync(join(homeDir, 'stack'), { recursive: true });
   Bun.spawnSync(['cp', join(OPENPALM_SRC, 'stack', 'core.compose.yml'), join(homeDir, 'stack', 'core.compose.yml')]);
 
-  // registry/ — shipped catalog source
-  cpTree(join(OPENPALM_SRC, 'registry', 'addons'), join(homeDir, 'registry', 'addons'));
-  cpTree(join(OPENPALM_SRC, 'registry', 'automations'), join(homeDir, 'registry', 'automations'));
+  // state/registry/ — shipped catalog source
+  cpTree(join(OPENPALM_SRC, 'registry', 'addons'), join(stateDir, 'registry', 'addons'));
+  cpTree(join(OPENPALM_SRC, 'registry', 'automations'), join(stateDir, 'registry', 'automations'));
 
   // stack/addons/ — enabled runtime overlays only
   for (const addon of enabledAddons) {
@@ -58,23 +58,8 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
   // config/automations/ — enabled only (start empty)
   mkdirSync(join(configDir, 'automations'), { recursive: true });
 
-  // vault/ — schemas only
-  for (const sub of ['user', 'stack']) {
-    const srcDir = join(OPENPALM_SRC, 'vault', sub);
-    const destDir = join(vaultDir, sub);
-    mkdirSync(destDir, { recursive: true });
-    if (existsSync(srcDir)) {
-      for (const f of readdirSync(srcDir)) {
-        if (f.endsWith('.schema')) {
-          const content = readFileSync(join(srcDir, f));
-          Bun.spawnSync(['cp', join(srcDir, f), join(destDir, f)]);
-        }
-      }
-    }
-  }
-
-  // data/assistant/ — opencode config
-  const assistantDir = join(dataDir, 'assistant');
+  // services/assistant/ — opencode config
+  const assistantDir = join(servicesDir, 'assistant');
   mkdirSync(assistantDir, { recursive: true });
   if (existsSync(ASSISTANT_SRC)) {
     for (const f of readdirSync(ASSISTANT_SRC)) {
@@ -83,13 +68,12 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
   }
 
   // Seed file-based volume mount targets (CLI bootstrapInstall does this)
-  const stackVault = join(vaultDir, 'stack');
-  mkdirSync(stackVault, { recursive: true });
-  if (!existsSync(join(stackVault, 'guardian.env'))) {
-    Bun.spawnSync(['touch', join(stackVault, 'guardian.env')]);
+  mkdirSync(stateDir, { recursive: true });
+  if (!existsSync(join(stateDir, 'guardian.env'))) {
+    Bun.spawnSync(['touch', join(stateDir, 'guardian.env')]);
   }
-  if (!existsSync(join(stackVault, 'auth.json'))) {
-    writeFileSync(join(stackVault, 'auth.json'), '{}\n');
+  if (!existsSync(join(stateDir, 'auth.json'))) {
+    writeFileSync(join(stateDir, 'auth.json'), '{}\n');
   }
 
   // Create required directories
@@ -97,15 +81,14 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
     configDir,
     join(configDir, 'assistant'),
     join(configDir, 'guardian'),
-    join(vaultDir, 'user'),
-    join(vaultDir, 'stack'),
-    dataDir,
-    join(dataDir, 'admin'),
-    join(dataDir, 'guardian'),
-    join(dataDir, 'stash'),
-    join(dataDir, 'workspace'),
-    join(homeDir, 'logs'),
-    join(homeDir, 'logs/opencode'),
+    stateDir,
+    servicesDir,
+    join(servicesDir, 'admin'),
+    join(servicesDir, 'guardian'),
+    join(homeDir, 'stash'),
+    join(homeDir, 'workspace'),
+    join(stateDir, 'logs'),
+    join(stateDir, 'logs', 'opencode'),
     join(homeDir, 'backups'),
   ]) {
     mkdirSync(dir, { recursive: true });
@@ -176,7 +159,7 @@ describe('install flow — tier 1 (file validation)', () => {
   tier1Test('seed + performSetup produces complete file structure for admin+chat', async () => {
     homeDir = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
     process.env.OP_HOME = homeDir;
-    process.env.OP_WORK_DIR = join(homeDir, 'data/workspace');
+    process.env.OP_WORK_DIR = join(homeDir, 'workspace');
 
     // Step 1: Seed from local .openpalm/
     seedFromLocal(homeDir, ['admin', 'chat']);
@@ -199,9 +182,9 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(existsSync(join(homeDir, 'stack/addons/admin/compose.yml'))).toBe(true);
     expect(existsSync(join(homeDir, 'stack/addons/chat/compose.yml'))).toBe(true);
 
-    expect(existsSync(join(homeDir, 'registry/addons/admin/compose.yml'))).toBe(true);
-    expect(existsSync(join(homeDir, 'registry/addons/chat/compose.yml'))).toBe(true);
-    expect(existsSync(join(homeDir, 'registry/automations/cleanup-logs.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'state/registry/addons/admin/compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'state/registry/addons/chat/compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'state/registry/automations/cleanup-logs.yml'))).toBe(true);
 
     // ── Validate vault files are regular files (not directories) ─────
     // Phase 2 of #388 (closes #406): vault/user/user.env is no longer
@@ -210,30 +193,18 @@ describe('install flow — tier 1 (file validation)', () => {
     // it directly. The compose env_file mount for vault/user/user.env
     // has been removed too.
     for (const relPath of [
-      'vault/stack/stack.env',
-      'vault/stack/guardian.env',
-      'vault/stack/auth.json',
+      'state/stack.env',
+      'state/guardian.env',
+      'state/auth.json',
     ]) {
       const fullPath = join(homeDir, relPath);
       expect(existsSync(fullPath)).toBe(true);
       expect(statSync(fullPath).isFile()).toBe(true);
     }
-    // Confirm user.env is NOT present after a fresh setup.
-    expect(existsSync(join(homeDir, 'vault/user/user.env'))).toBe(false);
-
-    // ── No legacy .env.schema files (removed in #391) ───────────────
-    for (const relPath of [
-      'vault/user/user.env.schema',
-      'vault/stack/stack.env.schema',
-      'vault/redact.env.schema',
-    ]) {
-      const fullPath = join(homeDir, relPath);
-      expect(existsSync(fullPath)).toBe(false);
-    }
 
     // ── Validate all volume mount targets exist as user-owned ────────
     const stackEnvVars = {
-      ...parseEnvFile(join(homeDir, 'vault/stack/stack.env')),
+      ...parseEnvFile(join(homeDir, 'state/stack.env')),
       ...process.env as Record<string, string>,
     };
     // OP_HOME must resolve to absolute path
@@ -272,9 +243,9 @@ describe('install flow — tier 1 (file validation)', () => {
     const rootFiles = new TextDecoder().decode(rootOwned.stdout).trim();
     expect(rootFiles).toBe('');
 
-    // ── Validate data directories ────────────────────────────────────
-    for (const dir of ['admin', 'assistant', 'guardian', 'stash', 'guardian-stash', 'akm-cache', 'guardian-cache', 'workspace']) {
-      expect(existsSync(join(homeDir, `data/${dir}`))).toBe(true);
+    // ── Validate services and stash directories ────────────────────────────────────
+    for (const dir of ['services/admin', 'services/assistant', 'services/guardian', 'stash', 'workspace']) {
+      expect(existsSync(join(homeDir, dir))).toBe(true);
     }
 
     // ── Validate active automations dir exists with seeded defaults ──
@@ -303,7 +274,7 @@ describe('install flow — tier 1 (file validation)', () => {
   tier1Test('compose config validates with selected addons', async () => {
     homeDir = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
     process.env.OP_HOME = homeDir;
-    process.env.OP_WORK_DIR = join(homeDir, 'data/workspace');
+    process.env.OP_WORK_DIR = join(homeDir, 'workspace');
 
     seedFromLocal(homeDir, ['admin', 'chat']);
 
@@ -312,7 +283,7 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(result.ok).toBe(true);
 
     // Ensure all volume mount targets exist so compose doesn't complain
-    const stackEnv = join(homeDir, 'vault/stack/stack.env');
+    const stackEnv = join(homeDir, 'state/stack.env');
     const composeFiles = [
       join(homeDir, 'stack/core.compose.yml'),
       join(homeDir, 'stack/addons/admin/compose.yml'),
@@ -344,11 +315,11 @@ describe('install flow — tier 1 (file validation)', () => {
   tier1Test('seedEmbeddedAssets copies built-in stash skills on first install', async () => {
     homeDir = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
     process.env.OP_HOME = homeDir;
-    process.env.OP_WORK_DIR = join(homeDir, 'data/workspace');
+    process.env.OP_WORK_DIR = join(homeDir, 'workspace');
 
     // Pre-create the data/stash dir the way ensureHomeDirs() does, so the
     // seeder lands in a realistic OP_HOME shape.
-    mkdirSync(join(homeDir, 'data/stash'), { recursive: true });
+    mkdirSync(join(homeDir, 'stash'), { recursive: true });
 
     const { seedEmbeddedAssets, EMBEDDED_STASH_SEEDS } = await import('./lib/embedded-assets.ts');
 
@@ -358,7 +329,7 @@ describe('install flow — tier 1 (file validation)', () => {
     seedEmbeddedAssets(homeDir);
 
     for (const relPath of Object.keys(EMBEDDED_STASH_SEEDS)) {
-      const seeded = join(homeDir, 'data/stash', relPath);
+      const seeded = join(homeDir, 'stash', relPath);
       expect(existsSync(seeded)).toBe(true);
       const content = readFileSync(seeded, 'utf-8');
       expect(content.length).toBeGreaterThan(0);
@@ -368,7 +339,7 @@ describe('install flow — tier 1 (file validation)', () => {
     // The system prompt references this specific skill — assert both
     // file existence AND content shape so we know the install actually
     // ran seedEmbeddedAssets end-to-end (not just created the dir).
-    const skillPath = join(homeDir, 'data/stash/skills/config-diagnostics/SKILL.md');
+    const skillPath = join(homeDir, 'stash/skills/config-diagnostics/SKILL.md');
     expect(existsSync(skillPath)).toBe(true);
     const skill = readFileSync(skillPath, 'utf-8');
     expect(skill).toContain('name: config-diagnostics');
@@ -382,14 +353,14 @@ describe('install flow — tier 1 (file validation)', () => {
   tier1Test('seedEmbeddedAssets preserves user edits to seeded stash assets', async () => {
     homeDir = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
     process.env.OP_HOME = homeDir;
-    process.env.OP_WORK_DIR = join(homeDir, 'data/workspace');
-    mkdirSync(join(homeDir, 'data/stash'), { recursive: true });
+    process.env.OP_WORK_DIR = join(homeDir, 'workspace');
+    mkdirSync(join(homeDir, 'stash'), { recursive: true });
 
     const { seedEmbeddedAssets } = await import('./lib/embedded-assets.ts');
 
     // First install seeds the asset.
     seedEmbeddedAssets(homeDir);
-    const skillPath = join(homeDir, 'data/stash/skills/config-diagnostics/SKILL.md');
+    const skillPath = join(homeDir, 'stash/skills/config-diagnostics/SKILL.md');
     expect(existsSync(skillPath)).toBe(true);
 
     // User edits the seeded skill.
@@ -405,7 +376,7 @@ describe('install flow — tier 1 (file validation)', () => {
   tier1Test('performSetup with no addons produces only core services', async () => {
     homeDir = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
     process.env.OP_HOME = homeDir;
-    process.env.OP_WORK_DIR = join(homeDir, 'data/workspace');
+    process.env.OP_WORK_DIR = join(homeDir, 'workspace');
 
     seedFromLocal(homeDir);
 
@@ -416,16 +387,15 @@ describe('install flow — tier 1 (file validation)', () => {
     const noAddonSpec = readStackSpec(join(homeDir, 'config'));
     expect(noAddonSpec).not.toBeNull();
 
-    // Core compose only, no addon files in the compose list
-    // Phase 2 of #388 (closes #406): vault/user/user.env is no longer a
-    // compose env_file. Only stack.env is needed for `compose config`.
-    const stackEnv = join(homeDir, 'vault/stack/stack.env');
+    // Core compose only, no addon files in the compose list.
+    // Only state/stack.env is needed for `compose config`.
+    const stackEnv = join(homeDir, 'state/stack.env');
     const proc = Bun.spawnSync([
       'docker', 'compose', '--project-name', 'openpalm-test',
       '-f', join(homeDir, 'stack/core.compose.yml'),
       '--env-file', stackEnv,
       'config', '--services',
-    ], { stdout: 'pipe', stderr: 'pipe' });
+    ], { stdout: 'pipe', stderr: 'pipe', env: { ...process.env, OP_HOME: homeDir } });
 
     const services = new TextDecoder().decode(proc.stdout).trim().split('\n').sort();
     expect(services).toEqual(['assistant', 'guardian', 'init']);

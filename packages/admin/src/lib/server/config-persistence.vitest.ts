@@ -84,7 +84,7 @@ describe("buildRuntimeFileMeta", () => {
   });
 
   test("bytes reflects buffer byte length (handles multibyte)", () => {
-    const artifacts = { compose: "\u00e9" }; // é = 2 bytes UTF-8
+    const artifacts = { compose: "é" }; // é = 2 bytes UTF-8
     const meta = buildRuntimeFileMeta(artifacts);
     expect(meta[0].bytes).toBe(2);
   });
@@ -159,13 +159,11 @@ describe("buildEnvFiles", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
-    mkdirSync(join(state.vaultDir, "user"), { recursive: true });
-    writeFileSync(join(state.vaultDir, "stack", "stack.env"), "KEY=val");
+    mkdirSync(state.stateDir, { recursive: true });
+    writeFileSync(join(state.stateDir, "stack.env"), "KEY=val");
     // user.env may still exist on disk during migration but must NOT be
     // surfaced as a compose env_file (compose would shadow akm-sourced values).
-    writeFileSync(join(state.vaultDir, "user", "user.env"), "SECRET=val");
-    writeFileSync(join(state.vaultDir, "stack", "guardian.env"), "CHANNEL_CHAT_SECRET=abc");
+    writeFileSync(join(state.stateDir, "guardian.env"), "CHANNEL_CHAT_SECRET=abc");
 
     const files = buildEnvFiles(state);
     expect(files).toHaveLength(2);
@@ -179,11 +177,8 @@ describe("buildEnvFiles", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
-    mkdirSync(join(state.vaultDir, "user"), { recursive: true });
-    writeFileSync(join(state.vaultDir, "stack", "stack.env"), "KEY=val");
-    // Even with a legacy user.env on disk, only stack.env should be returned.
-    writeFileSync(join(state.vaultDir, "user", "user.env"), "SECRET=val");
+    mkdirSync(state.stateDir, { recursive: true });
+    writeFileSync(join(state.stateDir, "stack.env"), "KEY=val");
 
     const files = buildEnvFiles(state);
     expect(files).toHaveLength(1);
@@ -191,28 +186,23 @@ describe("buildEnvFiles", () => {
     expect(files.some((f) => f.includes("user.env"))).toBe(false);
   });
 
-  test("returns only stack.env when user.env and guardian.env are missing", () => {
+  test("returns only stack.env when guardian.env is missing", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
-    writeFileSync(join(state.vaultDir, "stack", "stack.env"), "KEY=val");
+    mkdirSync(state.stateDir, { recursive: true });
+    writeFileSync(join(state.stateDir, "stack.env"), "KEY=val");
 
     const files = buildEnvFiles(state);
     expect(files).toHaveLength(1);
     expect(files[0]).toContain("stack.env");
   });
 
-  test("returns empty list when stack.env and guardian.env are missing (user.env is ignored post-Phase 2)", () => {
-    // Phase 2 of #388: a lingering legacy user.env is intentionally NOT
-    // promoted to a compose env_file — its contents have already been
-    // migrated into the akm vault:user store.
+  test("returns empty list when stack.env and guardian.env are missing", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(join(state.vaultDir, "user"), { recursive: true });
-    writeFileSync(join(state.vaultDir, "user", "user.env"), "SECRET=val");
-
+    // No env files — empty result
     const files = buildEnvFiles(state);
     expect(files).toEqual([]);
   });
@@ -221,11 +211,9 @@ describe("buildEnvFiles", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
-    mkdirSync(join(state.vaultDir, "user"), { recursive: true });
-    writeFileSync(join(state.vaultDir, "stack", "stack.env"), "KEY=val");
-    writeFileSync(join(state.vaultDir, "user", "user.env"), "");
-    writeFileSync(join(state.vaultDir, "stack", "guardian.env"), "CHANNEL_CHAT_SECRET=abc");
+    mkdirSync(state.stateDir, { recursive: true });
+    writeFileSync(join(state.stateDir, "stack.env"), "KEY=val");
+    writeFileSync(join(state.stateDir, "guardian.env"), "CHANNEL_CHAT_SECRET=abc");
 
     const files = buildEnvFiles(state);
     const guardianIdx = files.findIndex(f => f.includes("guardian.env"));
@@ -246,8 +234,7 @@ describe("writeRuntimeFiles", () => {
     };
     // Create required base dirs
     mkdirSync(join(state.homeDir, "stack"), { recursive: true });
-    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
-    mkdirSync(join(state.vaultDir, "user"), { recursive: true });
+    mkdirSync(state.stateDir, { recursive: true });
   });
 
   test("writes compose to stack/", () => {
@@ -265,20 +252,20 @@ describe("writeRuntimeFiles", () => {
 
     writeRuntimeFiles(state);
 
-    const guardianEnvPath = join(state.vaultDir, "stack", "guardian.env");
-    expect(existsSync(guardianEnvPath)).toBe(true);
-    const content = readFileSync(guardianEnvPath, "utf-8");
+    const guardianPath = join(state.stateDir, "guardian.env");
+    expect(existsSync(guardianPath)).toBe(true);
+    const content = readFileSync(guardianPath, "utf-8");
     expect(content).toContain("CHANNEL_CHAT_SECRET=");
 
     // Channel secrets must NOT be in stack.env
-    const stackContent = readFileSync(join(state.vaultDir, "stack", "stack.env"), "utf-8");
+    const stackContent = readFileSync(join(state.stateDir, "stack.env"), "utf-8");
     expect(stackContent).not.toContain("CHANNEL_CHAT_SECRET=");
   });
 
   test("writes stack.env with runtime configuration", () => {
     writeRuntimeFiles(state);
 
-    const systemEnvPath = join(state.vaultDir, "stack", "stack.env");
+    const systemEnvPath = join(state.stateDir, "stack.env");
     expect(existsSync(systemEnvPath)).toBe(true);
     const content = readFileSync(systemEnvPath, "utf-8");
     expect(content).toContain(`OP_HOME=${state.homeDir}`);
@@ -288,7 +275,7 @@ describe("writeRuntimeFiles", () => {
   test("stack.env does NOT leak user-managed secrets", () => {
     writeRuntimeFiles(state);
 
-    const systemEnvPath = join(state.vaultDir, "stack", "stack.env");
+    const systemEnvPath = join(state.stateDir, "stack.env");
     const content = readFileSync(systemEnvPath, "utf-8");
     // OP_ADMIN_TOKEN is a system secret and correctly lives in stack.env.
     // Only the legacy bare ADMIN_TOKEN (without OP_ prefix) should not appear.
@@ -297,10 +284,9 @@ describe("writeRuntimeFiles", () => {
   });
 
   test("preserves existing channel secrets in guardian.env (does not regenerate)", () => {
-    // Pre-seed a channel secret in vault/stack/guardian.env
-    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
+    // Pre-seed a channel secret in state/guardian.env
     writeFileSync(
-      join(state.vaultDir, "stack", "guardian.env"),
+      join(state.stateDir, "guardian.env"),
       "CHANNEL_CHAT_SECRET=pre-existing-secret-value\n"
     );
 
@@ -311,8 +297,8 @@ describe("writeRuntimeFiles", () => {
     writeRuntimeFiles(state);
 
     // The pre-existing secret should be preserved, not regenerated
-    const guardianEnvPath = join(state.vaultDir, "stack", "guardian.env");
-    const content = readFileSync(guardianEnvPath, "utf-8");
+    const guardianPath = join(state.stateDir, "guardian.env");
+    const content = readFileSync(guardianPath, "utf-8");
     expect(content).toContain("CHANNEL_CHAT_SECRET=pre-existing-secret-value");
   });
 
@@ -325,22 +311,22 @@ describe("readChannelSecrets", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
+    mkdirSync(state.stateDir, { recursive: true });
     writeFileSync(
-      join(state.vaultDir, "stack", "guardian.env"),
+      join(state.stateDir, "guardian.env"),
       "CHANNEL_CHAT_SECRET=abc123\nCHANNEL_API_SECRET=def456\n"
     );
 
-    const secrets = readChannelSecrets(state.vaultDir);
+    const secrets = readChannelSecrets(state.stateDir);
     expect(secrets).toEqual({ chat: "abc123", api: "def456" });
   });
 
   test("returns empty when no secrets exist", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
+    mkdirSync(state.stateDir, { recursive: true });
 
-    const secrets = readChannelSecrets(state.vaultDir);
+    const secrets = readChannelSecrets(state.stateDir);
     expect(secrets).toEqual({});
   });
 });
@@ -350,9 +336,9 @@ describe("writeChannelSecrets", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    writeChannelSecrets(state.vaultDir, { chat: "abc", api: "def" });
+    writeChannelSecrets(state.stateDir, { chat: "abc", api: "def" });
 
-    const content = readFileSync(join(state.vaultDir, "stack", "guardian.env"), "utf-8");
+    const content = readFileSync(join(state.stateDir, "guardian.env"), "utf-8");
     expect(content).toContain("CHANNEL_CHAT_SECRET=abc");
     expect(content).toContain("CHANNEL_API_SECRET=def");
   });
@@ -361,15 +347,15 @@ describe("writeChannelSecrets", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
+    mkdirSync(state.stateDir, { recursive: true });
     writeFileSync(
-      join(state.vaultDir, "stack", "guardian.env"),
+      join(state.stateDir, "guardian.env"),
       "CHANNEL_CHAT_SECRET=existing\n"
     );
 
-    writeChannelSecrets(state.vaultDir, { api: "new-secret" });
+    writeChannelSecrets(state.stateDir, { api: "new-secret" });
 
-    const content = readFileSync(join(state.vaultDir, "stack", "guardian.env"), "utf-8");
+    const content = readFileSync(join(state.stateDir, "guardian.env"), "utf-8");
     expect(content).toContain("CHANNEL_CHAT_SECRET=existing");
     expect(content).toContain("CHANNEL_API_SECRET=new-secret");
   });

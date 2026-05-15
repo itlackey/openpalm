@@ -75,13 +75,13 @@ describe("writeCapabilityVars", () => {
     });
 
     // Seed stack.env so writeCapabilityVars can read/merge it
-    const vaultDir = join(tempDir, "vault");
-    mkdirSync(join(vaultDir, "stack"), { recursive: true });
-    writeFileSync(join(vaultDir, "stack", "stack.env"), "# stack env\n");
+    const stateDir = join(tempDir, "state");
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(join(stateDir, "stack.env"), "# stack env\n");
 
-    writeCapabilityVars(spec, vaultDir);
+    writeCapabilityVars(spec, stateDir);
 
-    const stackEnvContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    const stackEnvContent = readFileSync(join(stateDir, "stack.env"), "utf-8");
     expect(stackEnvContent).toContain("OP_CAP_LLM_PROVIDER=openai");
     expect(stackEnvContent).toContain("OP_CAP_LLM_MODEL=gpt-4o");
     expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_MODEL=text-embedding-3-small");
@@ -94,13 +94,13 @@ describe("writeCapabilityVars", () => {
   test("does not create managed.env files", () => {
     const spec = makeSpec();
 
-    const vaultDir = join(tempDir, "vault");
-    mkdirSync(join(vaultDir, "stack"), { recursive: true });
-    writeFileSync(join(vaultDir, "stack", "stack.env"), "# stack env\n");
+    const stateDir = join(tempDir, "state");
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(join(stateDir, "stack.env"), "# stack env\n");
 
-    writeCapabilityVars(spec, vaultDir);
+    writeCapabilityVars(spec, stateDir);
 
-    const managedEnvPath = join(vaultDir, "stack", "services", "memory", "managed.env");
+    const managedEnvPath = join(stateDir, "services", "memory", "managed.env");
     expect(() => readFileSync(managedEnvPath)).toThrow();
   });
 });

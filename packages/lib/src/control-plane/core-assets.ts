@@ -11,7 +11,7 @@
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
-import { resolveDataDir, resolveOpenPalmHome, resolveBackupsDir } from "./home.js";
+import { resolveServicesDir, resolveOpenPalmHome, resolveBackupsDir, resolveStashDir } from "./home.js";
 import { createLogger } from "../logger.js";
 import { sha256 } from "./crypto.js";
 
@@ -32,7 +32,7 @@ export function readCoreCompose(): string {
 // ── OpenCode System Config ──────────────────────────────────────────
 
 export function ensureOpenCodeSystemConfig(): void {
-  const dir = `${resolveDataDir()}/assistant`;
+  const dir = `${resolveServicesDir()}/assistant`;
   mkdirSync(dir, { recursive: true });
 }
 
@@ -57,7 +57,7 @@ export function ensureOpenCodeSystemConfig(): void {
  * record directly.
  */
 export function seedStashAssets(seeds: Record<string, string>): string[] {
-  const stashDir = `${resolveDataDir()}/stash`;
+  const stashDir = resolveStashDir();
   const normalizedStash = resolve(stashDir);
   const written: string[] = [];
   for (const [relPath, content] of Object.entries(seeds)) {
@@ -86,8 +86,8 @@ const VERSION = process.env.OP_ASSET_VERSION ?? "main";
 // which never overwrites existing files (user edits win on re-install).
 const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
   { relPath: "stack/core.compose.yml", githubFilename: ".openpalm/stack/core.compose.yml" },
-  { relPath: "data/assistant/opencode.jsonc", githubFilename: "core/assistant/opencode/opencode.jsonc" },
-  { relPath: "data/assistant/AGENTS.md", githubFilename: "core/assistant/opencode/AGENTS.md" },
+  { relPath: "services/assistant/opencode.jsonc", githubFilename: "core/assistant/opencode/opencode.jsonc" },
+  { relPath: "services/assistant/AGENTS.md", githubFilename: "core/assistant/opencode/AGENTS.md" },
 ];
 
 async function downloadAsset(filename: string): Promise<string> {

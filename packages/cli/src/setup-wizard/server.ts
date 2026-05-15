@@ -15,7 +15,7 @@ import {
   isSetupComplete,
   fetchProviderModels,
   resolveConfigDir,
-  resolveVaultDir,
+  resolveStateDir,
   createOpenCodeClient,
 } from "@openpalm/lib";
 
@@ -129,8 +129,8 @@ export function createSetupServer(
     // ── API: Setup Status ────────────────────────────────────────────
 
     if (method === "GET" && path === "/api/setup/status") {
-      const vaultDir = resolveVaultDir();
-      const complete = isSetupComplete(vaultDir);
+      const stateDir = resolveStateDir();
+      const complete = isSetupComplete(stateDir);
       return jsonResponse(200, {
         ok: true,
         setupComplete: complete || state.setupComplete,

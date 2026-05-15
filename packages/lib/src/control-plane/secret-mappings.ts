@@ -63,7 +63,7 @@ type SecretIndexFile = {
 };
 
 function secretIndexPath(state: ControlPlaneState): string {
-  return `${state.dataDir}/secrets/plaintext-index.json`;
+  return `${state.stateDir}/secrets/plaintext-index.json`;
 }
 
 function normalizeIndexedKey(key: string): string {
@@ -145,7 +145,7 @@ export function readPlaintextSecretIndex(state: ControlPlaneState): SecretIndexF
 }
 
 export function writePlaintextSecretIndex(state: ControlPlaneState, index: SecretIndexFile): void {
-  const dir = `${state.dataDir}/secrets`;
+  const dir = `${state.stateDir}/secrets`;
   mkdirSync(dir, { recursive: true });
   writeFileSync(secretIndexPath(state), JSON.stringify(index, null, 2) + '\n');
 }

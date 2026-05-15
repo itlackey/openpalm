@@ -76,7 +76,7 @@ function generateSecretValue(length = 32): string {
 }
 
 function resolvePlaintextTarget(state: ControlPlaneState, key: string): ResolvedSecretTarget {
-  const systemEnv = readStackEnv(state.vaultDir);
+  const systemEnv = readStackEnv(state.stateDir);
   const coreMapping = findCoreSecretByKey(key, systemEnv);
   if (coreMapping) {
     return { key, scope: coreMapping.scope, envKey: coreMapping.envKey };
@@ -89,20 +89,20 @@ function resolvePlaintextTarget(state: ControlPlaneState, key: string): Resolved
 function currentValueForTarget(state: ControlPlaneState, target: ResolvedSecretTarget): string {
   if (!target.envKey) return '';
   if (target.scope === 'system') {
-    return readStackEnv(state.vaultDir)[target.envKey] ?? '';
+    return readStackEnv(state.stateDir)[target.envKey] ?? '';
   }
   // User scope: the akm `vault:user` store is the canonical user-managed env
   // namespace post-#421. Fall back to stack.env for legacy/consolidated
   // secrets so older layouts keep resolving.
   const userEnv = readUserVaultSync(state);
   if (target.envKey in userEnv) return userEnv[target.envKey];
-  return readStackEnv(state.vaultDir)[target.envKey] ?? '';
+  return readStackEnv(state.stateDir)[target.envKey] ?? '';
 }
 
 // ── Plaintext backend ─────────────────────────────────────────────────────
 
 export async function plaintextList(state: ControlPlaneState, prefix = 'openpalm/'): Promise<SecretEntryMetadata[]> {
-  const systemEnv = readStackEnv(state.vaultDir);
+  const systemEnv = readStackEnv(state.stateDir);
   const userEnvFile = readUserVaultSync(state);
   // Legacy/consolidated secrets may live in stack.env even for user scope.
   // Layer the user vault on top so explicit user-managed values win.
@@ -176,7 +176,7 @@ export async function plaintextRemove(state: ControlPlaneState, key: string): Pr
       updateSecretsEnv(state, { [target.envKey]: '' });
     }
   }
-  if (!findCoreSecretByKey(key, readStackEnv(state.vaultDir))) {
+  if (!findCoreSecretByKey(key, readStackEnv(state.stateDir))) {
     removePlaintextSecretEntry(state, key);
   }
 }
@@ -247,7 +247,7 @@ type PassContext = {
 function passContext(state: ControlPlaneState): PassContext {
   const config = readSecretProviderConfig(state);
   return {
-    passwordStoreDir: config?.passwordStoreDir ?? `${state.dataDir}/secrets/pass-store`,
+    passwordStoreDir: config?.passwordStoreDir ?? `${state.stateDir}/secrets/pass-store`,
     passPrefix: config?.passPrefix ?? '',
   };
 }

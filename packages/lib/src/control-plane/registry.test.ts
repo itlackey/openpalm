@@ -212,7 +212,7 @@ describe("materialized registry catalog", () => {
 
     const root = materializeRegistryCatalog(sourceRoot);
 
-    expect(root).toBe(join(process.env.OP_HOME!, 'registry'));
+    expect(root).toBe(join(process.env.OP_HOME!, 'state', 'registry'));
     expect(existsSync(join(root, 'addons', 'chat', 'compose.yml'))).toBe(true);
     expect(existsSync(join(root, 'addons', 'chat', '.env.schema'))).toBe(true);
     expect(readFileSync(join(root, 'automations', 'cleanup.yml'), 'utf-8')).toContain('Cleanup');
@@ -254,8 +254,8 @@ describe("materialized registry catalog", () => {
     materializeRegistryCatalog(sourceRoot);
 
     expect(getRegistryAddonConfig(process.env.OP_HOME!, 'chat')).toEqual({
-      schemaPath: 'registry/addons/chat/.env.schema',
-      userEnvPath: 'vault/user/user.env',
+      schemaPath: 'state/registry/addons/chat/.env.schema',
+      userEnvPath: 'state/stack.env',
       envSchema: 'CHANNEL_CHAT_SECRET=\n',
     });
   });
@@ -341,16 +341,16 @@ describe("materialized registry catalog", () => {
 
     materializeRegistryCatalog(sourceRoot);
 
-    expect(setAddonEnabled(process.env.OP_HOME!, join(process.env.OP_HOME!, 'vault'), 'chat', true)).toEqual({
+    expect(setAddonEnabled(process.env.OP_HOME!, join(process.env.OP_HOME!, 'state'), 'chat', true)).toEqual({
       ok: true,
       enabled: true,
       changed: true,
       services: ['chat'],
     });
     expect(existsSync(join(process.env.OP_HOME!, 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
-    expect(readFileSync(join(process.env.OP_HOME!, 'vault', 'stack', 'guardian.env'), 'utf-8')).toMatch(/CHANNEL_CHAT_SECRET=/);
+    expect(readFileSync(join(process.env.OP_HOME!, 'state', 'guardian.env'), 'utf-8')).toMatch(/CHANNEL_CHAT_SECRET=/);
 
-    expect(setAddonEnabled(process.env.OP_HOME!, join(process.env.OP_HOME!, 'vault'), 'chat', false)).toEqual({
+    expect(setAddonEnabled(process.env.OP_HOME!, join(process.env.OP_HOME!, 'state'), 'chat', false)).toEqual({
       ok: true,
       enabled: false,
       changed: true,

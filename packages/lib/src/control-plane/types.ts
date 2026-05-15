@@ -42,10 +42,11 @@ export type ControlPlaneState = {
   setupToken: string;
   homeDir: string;
   configDir: string;
-  vaultDir: string;
-  dataDir: string;
-  logsDir: string;
-  cacheDir: string;
+  stashDir: string;      // homeDir/stash
+  workspaceDir: string;  // homeDir/workspace
+  servicesDir: string;   // homeDir/services
+  stateDir: string;      // homeDir/state (replaces vaultDir + dataDir + logsDir)
+  stackDir: string;      // homeDir/stack
   services: Record<string, "running" | "stopped">;
   artifacts: {
     compose: string;

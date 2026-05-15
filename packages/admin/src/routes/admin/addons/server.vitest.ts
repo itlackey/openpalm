@@ -39,7 +39,7 @@ function makePostEvent(body: Record<string, unknown>, token = 'admin-token'): Pa
 }
 
 function seedRegistryAddon(homeDir: string, name: string): void {
-  const addonDir = join(homeDir, 'registry', 'addons', name);
+  const addonDir = join(homeDir, 'state', 'registry', 'addons', name);
   mkdirSync(addonDir, { recursive: true });
   writeFileSync(join(addonDir, 'compose.yml'), `services:\n  ${name}:\n    image: test\n`);
   writeFileSync(join(addonDir, '.env.schema'), `CHANNEL_${name.toUpperCase()}_SECRET=\n`);

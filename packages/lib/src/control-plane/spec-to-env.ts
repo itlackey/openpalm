@@ -60,8 +60,8 @@ export function deriveSystemEnvFromSpec(
  *
  * Services consume these via compose ${VAR} substitution in their environment blocks.
  */
-export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
-  const stackEnvPath = `${vaultDir}/stack/stack.env`;
+export function writeCapabilityVars(spec: StackSpec, stateDir: string): void {
+  const stackEnvPath = `${stateDir}/stack.env`;
   const stackEnv = existsSync(stackEnvPath)
     ? parseEnvContent(readFileSync(stackEnvPath, "utf-8"))
     : {};
@@ -97,7 +97,7 @@ export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
   };
 
   const resolveUrl = (provider: string): string => {
-    if (provider === "ollama" && listEnabledAddonIds(dirname(vaultDir)).includes("ollama")) return OLLAMA_INSTACK_URL;
+    if (provider === "ollama" && listEnabledAddonIds(dirname(stateDir)).includes("ollama")) return OLLAMA_INSTACK_URL;
     // Check stack.env for a user-configured base URL override for any provider
     const urlEnvKey = BASE_URL_ENV_MAP[provider];
     if (urlEnvKey && stackEnv[urlEnvKey]) {
@@ -181,7 +181,7 @@ export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
     clearCapVars("OP_CAP_RERANKING", ["PROVIDER", "MODEL", "BASE_URL", "API_KEY", "TOP_K", "TOP_N"]);
   }
 
-  // Merge into stack.env
+  // Merge into state/stack.env
   const base = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
   let content = mergeEnvContent(base, caps, {
     sectionHeader: "# ── Resolved Capabilities (from stack.yml) ─────────────────────────",

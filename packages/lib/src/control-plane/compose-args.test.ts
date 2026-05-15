@@ -21,10 +21,11 @@ function makeState(overrides: Partial<ControlPlaneState> = {}): ControlPlaneStat
     setupToken: "test",
     homeDir: tempDir,
     configDir: join(tempDir, "config"),
-    vaultDir: join(tempDir, "vault"),
-    dataDir: join(tempDir, "data"),
-    logsDir: join(tempDir, "logs"),
-    cacheDir: join(tempDir, "cache"),
+    stashDir: join(tempDir, "stash"),
+    workspaceDir: join(tempDir, "workspace"),
+    servicesDir: join(tempDir, "services"),
+    stateDir: join(tempDir, "state"),
+    stackDir: join(tempDir, "stack"),
     services: {},
     artifacts: { compose: "" },
     artifactMeta: [],
@@ -39,18 +40,14 @@ function seedCoreCompose(): void {
   writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
 }
 
-function seedEnvFiles(files: { stack?: boolean; user?: boolean; guardian?: boolean } = {}): void {
+function seedEnvFiles(files: { stack?: boolean; guardian?: boolean } = {}): void {
   if (files.stack) {
-    mkdirSync(join(tempDir, "vault", "stack"), { recursive: true });
-    writeFileSync(join(tempDir, "vault", "stack", "stack.env"), "KEY=val");
-  }
-  if (files.user) {
-    mkdirSync(join(tempDir, "vault", "user"), { recursive: true });
-    writeFileSync(join(tempDir, "vault", "user", "user.env"), "SECRET=val");
+    mkdirSync(join(tempDir, "state"), { recursive: true });
+    writeFileSync(join(tempDir, "state", "stack.env"), "KEY=val");
   }
   if (files.guardian) {
-    mkdirSync(join(tempDir, "vault", "stack"), { recursive: true });
-    writeFileSync(join(tempDir, "vault", "stack", "guardian.env"), "CHANNEL_CHAT_SECRET=abc");
+    mkdirSync(join(tempDir, "state"), { recursive: true });
+    writeFileSync(join(tempDir, "state", "guardian.env"), "CHANNEL_CHAT_SECRET=abc");
   }
 }
 
@@ -102,13 +99,12 @@ describe("buildComposeOptions", () => {
     // compose env_file. The runtime env file list is: stack.env, guardian.env.
     // Even when a legacy user.env is present on disk, it is intentionally
     // excluded from the compose args.
-    seedEnvFiles({ stack: true, user: true, guardian: true });
+    seedEnvFiles({ stack: true, guardian: true });
     const state = makeState();
     const opts = buildComposeOptions(state);
     expect(opts.envFiles).toHaveLength(2);
     expect(opts.envFiles[0]).toContain("stack.env");
     expect(opts.envFiles[1]).toContain("guardian.env");
-    expect(opts.envFiles.some((p) => p.endsWith("user/user.env"))).toBe(false);
   });
 
   it("excludes missing env files", () => {
@@ -144,7 +140,7 @@ describe("buildComposeCliArgs", () => {
     // listed in the compose env_file set. Only stack.env and guardian.env
     // (when present) are passed via --env-file.
     seedCoreCompose();
-    seedEnvFiles({ stack: true, user: true, guardian: true });
+    seedEnvFiles({ stack: true, guardian: true });
     const state = makeState();
     const args = buildComposeCliArgs(state);
     const envFileIndices = args.reduce<number[]>((acc, arg, i) => {
@@ -152,9 +148,6 @@ describe("buildComposeCliArgs", () => {
       return acc;
     }, []);
     expect(envFileIndices).toHaveLength(2);
-    // Confirm user.env is NEVER in the args list, regardless of disk presence.
-    const envFilePaths = envFileIndices.map((i) => args[i + 1]);
-    expect(envFilePaths.some((p) => p.endsWith("user/user.env"))).toBe(false);
   });
 
   it("does not include --env-file for missing files", () => {

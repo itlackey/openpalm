@@ -67,16 +67,21 @@ export {
   uninstallAutomation,
 } from "./control-plane/registry.js";
 
-// ── Home Layout (v0.10.0) ───────────────────────────────────────────────
+// ── Home Layout (v0.11.0) ───────────────────────────────────────────────
 export {
   resolveOpenPalmHome,
   resolveConfigDir,
-  resolveVaultDir,
-  resolveDataDir,
+  resolveStashDir,
+  resolveWorkspaceDir,
+  resolveServicesDir,
+  resolveStateDir,
+  resolveStackDir,
   resolveLogsDir,
-  resolveCacheHome,
   ensureHomeDirs,
 } from "./control-plane/home.js";
+
+// ── Path Resolution ─────────────────────────────────────────────────────
+export * from "./control-plane/paths.js";
 
 // ── Env ─────────────────────────────────────────────────────────────────
 export {

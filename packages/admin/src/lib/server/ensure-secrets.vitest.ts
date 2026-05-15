@@ -22,45 +22,36 @@ afterEach(() => {
 });
 
 describe("ensureSecrets", () => {
-  test("seeds vault env files with default keys on first run", () => {
-    const vaultDir = join(rootDir, "vault");
-    mkdirSync(vaultDir, { recursive: true });
+  test("seeds state env files with default keys on first run", () => {
+    const stateDir = join(rootDir, "state");
+    mkdirSync(stateDir, { recursive: true });
 
     const state = {
       configDir: join(rootDir, "config"),
-      vaultDir,
+      stateDir,
       adminToken: "preconfigured-token"
     } as ControlPlaneState;
 
     ensureSecrets(state);
 
-    const stackEnv = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    const stackEnv = readFileSync(join(stateDir, "stack.env"), "utf-8");
     expect(stackEnv).toContain("OPENAI_API_KEY=");
     expect(stackEnv).toContain("OWNER_NAME=");
     expect(stackEnv).toContain("OP_ADMIN_TOKEN=");
     expect(stackEnv).toContain("OP_ASSISTANT_TOKEN=");
-    // Phase 2 of #388 (closes #406): user-managed env secrets live in the
-    // akm `vault:user` store, not in `vault/user/user.env`. The vault/user
-    // directory is still created (it backs apprise.yml, gcloud creds, etc.)
-    // but the .env file is no longer seeded.
-    expect(existsSync(join(vaultDir, "user"))).toBe(true);
-    expect(existsSync(join(vaultDir, "user", "user.env"))).toBe(false);
   });
 
-  test("applies strict permissions to vault files", () => {
-    const vaultDir = join(rootDir, "vault");
+  test("applies strict permissions to state files", () => {
+    const stateDir = join(rootDir, "state");
     const state = {
       configDir: join(rootDir, "config"),
-      vaultDir,
+      stateDir,
       adminToken: "preconfigured-token"
     } as ControlPlaneState;
 
     ensureSecrets(state);
 
-    expect(statSync(vaultDir).mode & 0o777).toBe(0o700);
-    // vault/user is still managed (0700) for non-env operational files;
-    // user.env itself is no longer seeded under Phase 2 of #388.
-    expect(statSync(join(vaultDir, "user")).mode & 0o777).toBe(0o700);
-    expect(statSync(join(vaultDir, "stack", "stack.env")).mode & 0o777).toBe(0o600);
+    expect(statSync(stateDir).mode & 0o777).toBe(0o700);
+    expect(statSync(join(stateDir, "stack.env")).mode & 0o777).toBe(0o600);
   });
 });

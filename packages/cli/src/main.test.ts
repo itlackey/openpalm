@@ -127,8 +127,6 @@ describe('cli main', () => {
 
   it('runs bootstrap install directly without admin delegation', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-install-'));
-    const configHome = join(base, 'config');
-    const dataHome = join(base, 'data');
     const workDir = join(base, 'work');
 
     const specFile = writeMinimalSetupSpec(base);
@@ -159,12 +157,12 @@ describe('cli main', () => {
     try {
       await main(['install', '--no-start', '--file', specFile]);
       // Bootstrap runs directly, creating directories
-      expect(existsSync(join(dataHome, 'admin'))).toBe(true);
-      expect(existsSync(join(base, 'registry', 'addons', 'chat', 'compose.yml'))).toBe(true);
-      expect(existsSync(join(base, 'registry', 'automations', 'cleanup-logs.yml'))).toBe(true);
+      expect(existsSync(join(base, 'services', 'admin'))).toBe(true);
+      expect(existsSync(join(base, 'state', 'registry', 'addons', 'chat', 'compose.yml'))).toBe(true);
+      expect(existsSync(join(base, 'state', 'registry', 'automations', 'cleanup-logs.yml'))).toBe(true);
       // guardian.env must be a file (not directory) — Docker creates a directory
       // when bind-mounting a non-existent source path, breaking compose up.
-      const guardianEnv = join(base, 'vault', 'stack', 'guardian.env');
+      const guardianEnv = join(base, 'state', 'guardian.env');
       expect(existsSync(guardianEnv)).toBe(true);
       expect(statSync(guardianEnv).isFile()).toBe(true);
     } finally {
@@ -174,7 +172,6 @@ describe('cli main', () => {
 
   it('creates the admin data directory during bootstrap install', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-install-'));
-    const dataHome = join(base, 'data');
     const workDir = join(base, 'work');
 
     const specFile = writeMinimalSetupSpec(base);
@@ -200,7 +197,7 @@ describe('cli main', () => {
 
     try {
       await main(['install', '--no-start', '--file', specFile]);
-      expect(existsSync(join(dataHome, 'admin'))).toBe(true);
+      expect(existsSync(join(base, 'services', 'admin'))).toBe(true);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
@@ -260,21 +257,15 @@ describe('cli main', () => {
   it('backs up the current OP_HOME before install --force rewrites assets', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-install-force-'));
     const workDir = join(base, 'work');
-    const userEnv = join(base, 'vault', 'user', 'user.env');
-    const stackEnv = join(base, 'vault', 'stack', 'stack.env');
     const stackConfig = join(base, 'config', 'stack.yml');
     const specFile = writeMinimalSetupSpec(base);
 
-    // Phase 2 of #388 (closes #406): the canonical "already installed"
-    // marker is now vault/stack/stack.env (user.env may be absent on a
-    // fresh Phase 2 install). Seed both files so the backup path triggers
-    // AND we can prove the backup carries forward legacy user.env content
-    // from pre-Phase-2 hosts that still have it on disk.
-    mkdirSync(join(base, 'vault', 'user'), { recursive: true });
-    mkdirSync(join(base, 'vault', 'stack'), { recursive: true });
+    // The canonical "already installed" marker is state/stack.env.
+    // Seed it so the backup path triggers AND we can prove the backup
+    // carries forward existing content.
+    mkdirSync(join(base, 'state'), { recursive: true });
     mkdirSync(join(base, 'config'), { recursive: true });
-    writeFileSync(userEnv, 'EXISTING=1\n');
-    writeFileSync(stackEnv, 'OP_ADMIN_TOKEN=existing-token\n');
+    writeFileSync(join(base, 'state', 'stack.env'), 'OP_ADMIN_TOKEN=existing-token\n');
     writeFileSync(stackConfig, 'llm: old\n');
 
     process.env.OP_HOME = base;
@@ -303,7 +294,7 @@ describe('cli main', () => {
       const backups = readdirSync(backupsDir);
       expect(backups.length).toBeGreaterThan(0);
       expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack.yml'), 'utf8')).toContain('llm: old');
-      expect(readFileSync(join(backupsDir, backups[0], 'vault', 'user', 'user.env'), 'utf8')).toContain('EXISTING=1');
+      expect(readFileSync(join(backupsDir, backups[0], 'state', 'stack.env'), 'utf8')).toContain('OP_ADMIN_TOKEN=existing-token');
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
@@ -312,13 +303,13 @@ describe('cli main', () => {
   it('supports addon and admin commands for enabling and disabling addons', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-addon-cli-'));
     const coreCompose = join(base, 'stack', 'core.compose.yml');
-    const adminAddonDir = join(base, 'registry', 'addons', 'admin');
-    const chatAddonDir = join(base, 'registry', 'addons', 'chat');
-    const guardianEnv = join(base, 'vault', 'stack', 'guardian.env');
+    const adminAddonDir = join(base, 'state', 'registry', 'addons', 'admin');
+    const chatAddonDir = join(base, 'state', 'registry', 'addons', 'chat');
+    const guardianEnv = join(base, 'state', 'guardian.env');
     const logs: string[] = [];
 
     mkdirSync(join(base, 'stack'), { recursive: true });
-    mkdirSync(join(base, 'vault', 'stack'), { recursive: true });
+    mkdirSync(join(base, 'state'), { recursive: true });
     mkdirSync(adminAddonDir, { recursive: true });
     mkdirSync(chatAddonDir, { recursive: true });
     writeFileSync(coreCompose, 'services:\n  assistant:\n    image: test\n');
@@ -437,11 +428,9 @@ describe('npm bin launcher', () => {
 describe('validate command', () => {
   it('is a recognized command and exits 0 when stack.env carries the required tokens', async () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const vaultDir = join(tempHome, 'vault');
-    mkdirSync(join(vaultDir, 'stack'), { recursive: true });
-    mkdirSync(join(vaultDir, 'user'), { recursive: true });
-    writeFileSync(join(vaultDir, 'stack', 'stack.env'), 'OP_ADMIN_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n');
-    writeFileSync(join(vaultDir, 'user', 'user.env'), 'OPENAI_API_KEY=sk-test\n');
+    const stateDir = join(tempHome, 'state');
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(join(stateDir, 'stack.env'), 'OP_ADMIN_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n');
 
     const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
@@ -464,11 +453,9 @@ describe('validate command', () => {
 describe('scan command', () => {
   it('is a recognized command and exits 0 listing sensitive keys', async () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const vaultDir = join(tempHome, 'vault');
-    mkdirSync(join(vaultDir, 'user'), { recursive: true });
-    mkdirSync(join(vaultDir, 'stack'), { recursive: true });
-    writeFileSync(join(vaultDir, 'user', 'user.env'), 'OPENAI_API_KEY=sk-test\nOWNER_NAME=alice\n');
-    writeFileSync(join(vaultDir, 'stack', 'stack.env'), 'OP_ADMIN_TOKEN=abc\n');
+    const stateDir = join(tempHome, 'state');
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(join(stateDir, 'stack.env'), 'OP_ADMIN_TOKEN=abc\nOPENAI_API_KEY=sk-test\n');
 
     const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
@@ -625,22 +612,15 @@ describe('cli entrypoint (subprocess)', () => {
 });
 
 describe('secrets.env generation', () => {
-  it('does NOT seed vault/user/user.env on fresh install (Phase 2 of #388)', async () => {
-    // Phase 2 of #388 (closes #406): user-managed env secrets now live
-    // in the akm vault:user store at `${dataDir}/stash/vaults/user.env`.
-    // Fresh installs MUST NOT create `vault/user/user.env` — leaving an
-    // empty placeholder would shadow the akm-sourced values via compose
-    // env_file precedence and is the bug Phase 2 was designed to remove.
+  it('creates the state/ directory on fresh install', async () => {
+    const { existsSync: fsExistsSync } = await import('node:fs');
     const { ensureSecrets } = await import('./lib/env.ts');
     const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-secrets-'));
-    const vaultDir = join(tempDir, 'vault');
-    mkdirSync(vaultDir, { recursive: true });
+    const stateDir = join(tempDir, 'state');
 
     try {
-      await ensureSecrets(vaultDir);
-      // The vault/user directory may exist (other operational files live
-      // here, e.g. apprise.yml) but user.env itself must not be created.
-      expect(await Bun.file(join(vaultDir, 'user', 'user.env')).exists()).toBe(false);
+      await ensureSecrets(stateDir);
+      expect(fsExistsSync(stateDir)).toBe(true);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

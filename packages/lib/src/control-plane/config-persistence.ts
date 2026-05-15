@@ -41,8 +41,8 @@ const DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
  */
 export function buildEnvFiles(state: ControlPlaneState): string[] {
   return [
-    `${state.vaultDir}/stack/stack.env`,
-    `${state.vaultDir}/stack/guardian.env`,
+    `${state.stateDir}/stack.env`,
+    `${state.stateDir}/guardian.env`,
   ].filter(existsSync);
 }
 
@@ -53,9 +53,9 @@ export function buildEnvFiles(state: ControlPlaneState): string[] {
  * Use writeChannelSecrets() for channel secrets.
  */
 export function writeSystemEnv(state: ControlPlaneState): void {
-  mkdirSync(`${state.vaultDir}/stack`, { recursive: true });
+  mkdirSync(state.stateDir, { recursive: true });
 
-  const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
+  const systemEnvPath = `${state.stateDir}/stack.env`;
 
   let base = "";
   if (existsSync(systemEnvPath)) {
@@ -178,19 +178,19 @@ function extractChannelSecrets(parsed: Record<string, string>): Record<string, s
 }
 
 /**
- * Read channel HMAC secrets from vault/stack/guardian.env.
+ * Read channel HMAC secrets from state/guardian.env.
  */
-export function readChannelSecrets(vaultDir: string): Record<string, string> {
-  return extractChannelSecrets(parseEnvFile(`${vaultDir}/stack/guardian.env`));
+export function readChannelSecrets(stateDir: string): Record<string, string> {
+  return extractChannelSecrets(parseEnvFile(`${stateDir}/guardian.env`));
 }
 
 /**
- * Write channel HMAC secrets to vault/stack/guardian.env.
+ * Write channel HMAC secrets to state/guardian.env.
  * Merges with existing content; does not overwrite unrelated entries.
  */
-export function writeChannelSecrets(vaultDir: string, secrets: Record<string, string>): void {
-  const guardianPath = `${vaultDir}/stack/guardian.env`;
-  mkdirSync(`${vaultDir}/stack`, { recursive: true });
+export function writeChannelSecrets(stateDir: string, secrets: Record<string, string>): void {
+  const guardianPath = `${stateDir}/guardian.env`;
+  mkdirSync(stateDir, { recursive: true });
 
   let base = "";
   if (existsSync(guardianPath)) {
@@ -234,7 +234,7 @@ export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
 
   const envVars: Record<string, string> = {
     ...(process.env as Record<string, string>),
-    ...parseEnvFile(`${state.vaultDir}/stack/stack.env`),
+    ...parseEnvFile(`${state.stateDir}/stack.env`),
   };
 
   for (const file of composeFiles) {
@@ -292,7 +292,7 @@ export function writeRuntimeFiles(
 
   // Load persisted channel HMAC secrets from guardian.env,
   // then generate new ones for new channel addons.
-  const channelSecrets = readChannelSecrets(state.vaultDir);
+  const channelSecrets = readChannelSecrets(state.stateDir);
   const addonStackDir = `${state.homeDir}/stack`;
   for (const addon of listEnabledAddonIds(state.homeDir)) {
     const composePath = `${addonStackDir}/addons/${addon}/compose.yml`;
@@ -302,20 +302,18 @@ export function writeRuntimeFiles(
   }
 
   // Write channel secrets to guardian.env (the canonical source)
-  writeChannelSecrets(state.vaultDir, channelSecrets);
+  writeChannelSecrets(state.stateDir, channelSecrets);
 
   // Write system.env (no channel secrets — those live in guardian.env)
   writeSystemEnv(state);
 
-  // Ensure vault directories exist (env files live under them; .env.schema
-  // files have been retired — secret hygiene now lives in `akm vault`).
-  mkdirSync(`${state.vaultDir}/user`, { recursive: true });
-  mkdirSync(`${state.vaultDir}/stack`, { recursive: true });
+  // Ensure state directory exists
+  mkdirSync(state.stateDir, { recursive: true });
 
   const spec = readStackSpec(state.configDir);
   // Write OP_CAP_* capability vars to stack.env from stack spec
   if (spec) {
-    writeCapabilityVars(spec, state.vaultDir);
+    writeCapabilityVars(spec, state.stateDir);
   }
 
   state.artifactMeta = buildRuntimeFileMeta(state.artifacts);

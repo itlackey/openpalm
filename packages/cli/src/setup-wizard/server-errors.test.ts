@@ -9,9 +9,8 @@ import { createSetupServer } from "./server.ts";
 let tempBase: string;
 let homeDir: string;
 let configDir: string;
-let vaultDir: string;
-let dataDir: string;
-let logsDir: string;
+let stateDir: string;
+let servicesDir: string;
 
 const savedEnv: Record<string, string | undefined> = {};
 
@@ -19,11 +18,9 @@ const savedEnv: Record<string, string | undefined> = {};
 function seedRequiredAssets(homeDir: string): void {
   mkdirSync(join(homeDir, "stack"), { recursive: true });
   writeFileSync(join(homeDir, "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
-  mkdirSync(join(homeDir, "data", "assistant"), { recursive: true });
-  writeFileSync(join(homeDir, "data", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
-  writeFileSync(join(homeDir, "data", "assistant", "AGENTS.md"), "# Agents\n");
-  writeFileSync(join(homeDir, "vault", "user", "user.env.schema"), "OP_ADMIN_TOKEN=string\n");
-  writeFileSync(join(homeDir, "vault", "stack", "stack.env.schema"), "OP_IMAGE_TAG=string\n");
+  mkdirSync(join(homeDir, "services", "assistant"), { recursive: true });
+  writeFileSync(join(homeDir, "services", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
+  writeFileSync(join(homeDir, "services", "assistant", "AGENTS.md"), "# Agents\n");
   mkdirSync(join(homeDir, "config", "automations"), { recursive: true });
   writeFileSync(join(homeDir, "config", "automations", "cleanup-logs.yml"), "name: cleanup-logs\nschedule: daily\n");
   writeFileSync(join(homeDir, "config", "automations", "cleanup-data.yml"), "name: cleanup-data\nschedule: weekly\n");
@@ -34,34 +31,28 @@ function makeSetupDirs(): void {
   tempBase = mkdtempSync(join(tmpdir(), "openpalm-server-err-test-"));
   homeDir = tempBase;
   configDir = join(homeDir, "config");
-  vaultDir = join(homeDir, "vault");
-  dataDir = join(homeDir, "data");
-  logsDir = join(homeDir, "logs");
+  stateDir = join(homeDir, "state");
+  servicesDir = join(homeDir, "services");
 
   for (const dir of [
     configDir,
-    join(configDir, "components"),
-    join(configDir, "capabilities"),
     join(configDir, "assistant"),
     join(configDir, "automations"),
-    vaultDir,
-    dataDir,
-    join(dataDir, "admin"),
-    join(dataDir, "memory"),
-    join(dataDir, "assistant"),
-    join(dataDir, "guardian"),
-    join(dataDir, "stash"),
-    join(dataDir, "workspace"),
-    logsDir,
-    join(logsDir, "opencode"),
+    stateDir,
+    join(stateDir, "logs"),
+    join(stateDir, "logs", "opencode"),
+    servicesDir,
+    join(servicesDir, "admin"),
+    join(servicesDir, "assistant"),
+    join(servicesDir, "guardian"),
+    join(homeDir, "stash"),
+    join(homeDir, "workspace"),
   ]) {
     mkdirSync(dir, { recursive: true });
   }
 
-  mkdirSync(join(vaultDir, "stack"), { recursive: true });
-  mkdirSync(join(vaultDir, "user"), { recursive: true });
   writeFileSync(
-    join(vaultDir, "stack", "stack.env"),
+    join(stateDir, "stack.env"),
     [
       "OP_SETUP_COMPLETE=false",
       "OP_ADMIN_TOKEN=",
@@ -76,16 +67,6 @@ function makeSetupDirs(): void {
       "",
     ].join("\n")
   );
-  writeFileSync(
-    join(vaultDir, "user", "user.env"),
-    [
-      "# OpenPalm — User Extensions",
-      "# Add any custom environment variables here.",
-      "# These are loaded by compose alongside stack.env.",
-      "",
-    ].join("\n")
-  );
-
   // Seed asset files for performSetup() reads
   seedRequiredAssets(homeDir);
 }

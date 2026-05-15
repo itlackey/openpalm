@@ -41,7 +41,7 @@ function makePostEvent(name: string, body: Record<string, unknown>, token = 'adm
 }
 
 function seedRegistryAddon(homeDir: string, name: string, schema = 'CHANNEL_CHAT_SECRET=\n'): void {
-  const addonDir = join(homeDir, 'registry', 'addons', name);
+  const addonDir = join(homeDir, 'state', 'registry', 'addons', name);
   mkdirSync(addonDir, { recursive: true });
   writeFileSync(join(addonDir, 'compose.yml'), 'services:\n  chat:\n    image: test\n');
   writeFileSync(join(addonDir, '.env.schema'), schema);
@@ -83,8 +83,8 @@ describe('/admin/addons/:name route', () => {
     };
     expect(body.name).toBe('chat');
     expect(body.enabled).toBe(true);
-    expect(body.config.schemaPath).toBe('registry/addons/chat/.env.schema');
-    expect(body.config.userEnvPath).toBe('vault/user/user.env');
+    expect(body.config.schemaPath).toBe('state/registry/addons/chat/.env.schema');
+    expect(body.config.userEnvPath).toBe('state/stack.env');
     expect(body.config.envSchema).toContain('CHANNEL_CHAT_SECRET');
   });
 

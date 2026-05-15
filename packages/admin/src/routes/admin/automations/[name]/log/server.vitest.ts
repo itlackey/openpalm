@@ -32,7 +32,8 @@ function makeLogEvent(
   } as unknown as Parameters<typeof GET>[0];
 }
 
-function seedSchedulerLog(logsDir: string, lines: string[]): void {
+function seedSchedulerLog(stateDir: string, lines: string[]): void {
+  const logsDir = join(stateDir, 'logs');
   mkdirSync(logsDir, { recursive: true });
   writeFileSync(join(logsDir, 'scheduler.log'), lines.join('\n') + '\n');
 }
@@ -105,7 +106,7 @@ describe('GET /admin/automations/:name/log', () => {
 
   test('filters log lines to those mentioning the automation', async () => {
     const state = getState();
-    seedSchedulerLog(state.logsDir, [
+    seedSchedulerLog(state.stateDir, [
       JSON.stringify({ ts: '2026-01-01T00:00:00Z', level: 'info', msg: 'fired health-check.yml ok' }),
       JSON.stringify({ ts: '2026-01-01T00:01:00Z', level: 'info', msg: 'fired other.yml ok' }),
       JSON.stringify({ ts: '2026-01-01T00:02:00Z', level: 'warn', msg: 'health-check.yml retry' }),
@@ -125,7 +126,7 @@ describe('GET /admin/automations/:name/log', () => {
     for (let i = 0; i < 10; i++) {
       lines.push(JSON.stringify({ ts: `2026-01-01T00:00:0${i}Z`, msg: `health-check.yml entry ${i}` }));
     }
-    seedSchedulerLog(state.logsDir, lines);
+    seedSchedulerLog(state.stateDir, lines);
 
     const res = await GET(makeLogEvent('health-check.yml', { limit: '3' }));
     expect(res.status).toBe(200);
@@ -135,7 +136,7 @@ describe('GET /admin/automations/:name/log', () => {
 
   test('accepts a bare base name and normalizes to .yml', async () => {
     const state = getState();
-    seedSchedulerLog(state.logsDir, [
+    seedSchedulerLog(state.stateDir, [
       JSON.stringify({ ts: '2026-01-01T00:00:00Z', msg: 'fired health-check.yml ok' }),
     ]);
 

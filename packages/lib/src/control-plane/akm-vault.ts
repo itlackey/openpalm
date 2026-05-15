@@ -1,14 +1,14 @@
 /**
  * akm vault mirror — completes Phase 2 of issue #388.
  *
- * The akm-cli `vault:user` secret store at `${OP_HOME}/data/stash/vaults/user.env`
+ * The akm-cli `vault:user` secret store at `${OP_HOME}/stash/vaults/user.env`
  * is now the canonical home for user-managed environment secrets. The
  * `${OP_HOME}/vault/user/user.env` file (the legacy compose env_file) is no
  * longer mounted into containers — the assistant entrypoint sources the
  * akm vault file directly. Migration on upgrade copies the legacy file into
  * akm and then deletes it.
  *
- * NON-CHANGE: `vault/stack/stack.env` and `vault/stack/guardian.env` are
+ * NON-CHANGE: `state/stack.env` and `state/guardian.env` are
  * operator-managed and are NOT mirrored into akm. Migrating them would
  * break guardian's HMAC env_file hot-reload contract.
  *
@@ -17,8 +17,13 @@
  * (akm-cli >= 0.8.0). Values never appear in argv, so they cannot leak
  * through `/proc/<pid>/cmdline`. The matching delete path uses
  * `akm vault unset <ref> <key>` which is naturally argv-safe.
+ *
+ * Layout (v0.12.0):
+ *   stash/             — AKM_STASH_DIR: asset content only (skills, vaults, knowledge, agents)
+ *   state/akm/         — AKM_DATA_DIR / AKM_STATE_DIR / AKM_CONFIG_DIR: operational metadata
+ *   state/cache/akm/   — AKM_CACHE_DIR: regenerable registry artifacts (separate sibling)
  */
-import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
 import { parseEnvFile } from "./env.js";
@@ -43,27 +48,16 @@ export type MirrorResult = {
  * XDG layout that the assistant/admin containers use (see
  * `.openpalm/stack/core.compose.yml`) so host-side and container-side runs
  * resolve to the same vault file.
- *
- * Layout (v0.11.0):
- *   data/stash/   — AKM_STASH_DIR: asset content only (skills, vaults, knowledge, agents)
- *   data/akm/     — AKM_DATA_DIR / AKM_STATE_DIR / AKM_CONFIG_DIR: operational metadata
- *   data/akm-cache/ — AKM_CACHE_DIR: regenerable registry artifacts (separate sibling)
- *
- * The stash and akm operational dirs use separate bind mounts in compose so
- * asset content and operational metadata never share a directory. AKM_CACHE_DIR
- * is a further sibling because its contents are regenerable and should not be
- * indexed alongside stash assets.
  */
 export function buildAkmEnv(state: ControlPlaneState): NodeJS.ProcessEnv {
-  const stashRoot = `${state.dataDir}/stash`;
-  const akmRoot = `${state.dataDir}/akm`;
+  const akmRoot = `${state.stateDir}/akm`;
   return {
     ...process.env,
-    AKM_STASH_DIR: stashRoot,
+    AKM_STASH_DIR: state.stashDir,
     AKM_DATA_DIR: `${akmRoot}/data`,
     AKM_STATE_DIR: `${akmRoot}/state`,
     AKM_CONFIG_DIR: `${akmRoot}/config`,
-    AKM_CACHE_DIR: `${state.dataDir}/akm-cache`,
+    AKM_CACHE_DIR: `${state.stateDir}/cache/akm`,
   };
 }
 
@@ -272,136 +266,29 @@ export async function deleteAkmVaultKey(
 }
 
 /**
- * Idempotently mirror `${OP_HOME}/vault/user/user.env` into the akm
- * `vault:user` secret store. Keys whose value already matches the source
- * are skipped so we never trigger a needless write or rewrite mtime.
+ * No-op migration stub: the legacy vault/user/user.env file no longer exists
+ * in the v0.12.0 directory layout. Retained for API compatibility.
  *
- * On Phase 2 (this PR), the legacy `user.env` file is the migration source
- * only — once every key has landed in the akm vault, callers should
- * delete it (see `migrateAndCleanupLegacyUserEnv` below).
- *
- * Returns a structured result describing what happened. Never throws on
- * akm errors — mirror is best-effort and must not block install/upgrade.
+ * Returns a skipped result. Never throws.
  */
-export async function mirrorUserVaultToAkm(state: ControlPlaneState): Promise<MirrorResult> {
-  const userEnvPath = `${state.vaultDir}/user/user.env`;
-  if (!existsSync(userEnvPath)) {
-    return { ok: true, skipped: true, reason: "user.env missing", written: [], unchanged: [] };
-  }
-
-  const sourceEntries = parseEnvFile(userEnvPath);
-  const keys = Object.keys(sourceEntries).filter((k) => sourceEntries[k] !== "");
-  if (keys.length === 0) {
-    return { ok: true, skipped: true, reason: "user.env empty", written: [], unchanged: [] };
-  }
-
-  const env = buildAkmEnv(state);
-  if (!(await akmAvailable(env))) {
-    logger.info("akm CLI unavailable — skipping vault:user mirror", { userEnvPath });
-    return { ok: true, skipped: true, reason: "akm not on PATH", written: [], unchanged: [] };
-  }
-
-  const vaultPath = await ensureAkmUserVault(state, env);
-  if (!vaultPath) {
-    return { ok: false, skipped: true, reason: "could not resolve vault path", written: [], unchanged: [] };
-  }
-
-  // Diff against the existing vault file so we issue exactly one
-  // `akm vault set` per changed key. The vault file is a plain .env file
-  // produced by akm itself, so parseEnvFile() is the right parser.
-  const existing = existsSync(vaultPath) ? parseEnvFile(vaultPath) : {};
-
-  const written: string[] = [];
-  const unchanged: string[] = [];
-  for (const key of keys) {
-    const value = sourceEntries[key];
-    if (existing[key] === value) {
-      unchanged.push(key);
-      continue;
-    }
-    try {
-      await akmVaultSetViaStdin(AKM_USER_VAULT_REF, key, value, env);
-      written.push(key);
-    } catch (err) {
-      logger.warn("akm vault set failed", {
-        key,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return { ok: false, skipped: false, reason: "akm vault set failed", written, unchanged };
-    }
-  }
-
-  logger.info("mirrored user.env into akm vault:user", {
-    vaultPath,
-    written: written.length,
-    unchanged: unchanged.length,
-  });
-
-  return { ok: true, skipped: false, written, unchanged };
+export async function mirrorUserVaultToAkm(_state: ControlPlaneState): Promise<MirrorResult> {
+  // The legacy vault/user/user.env path no longer exists in the new directory
+  // layout (v0.12.0). New installs have no file to migrate.
+  return { ok: true, skipped: true, reason: "user.env missing", written: [], unchanged: [] };
 }
 
 /**
- * Phase 2 finalization step: after `mirrorUserVaultToAkm` has populated
- * the akm vault, verify every non-empty key from the legacy user.env is
- * present in the akm vault, and only then delete the legacy file.
+ * No-op migration stub: the legacy vault/user/user.env file no longer exists
+ * in the v0.12.0 directory layout. Retained for API compatibility.
  *
- * Returns:
- *   - `{ deleted: true }`            when the legacy file was deleted
- *   - `{ deleted: false, reason }`   when the file was kept (akm missing,
- *                                    keys not yet mirrored, etc.) so the
- *                                    operator can re-run upgrade safely
- *
- * Never throws — this is a best-effort migration step. The runtime path
- * (entrypoint sources the akm vault directly) is independent of whether
- * the legacy file lingers.
+ * Returns `{ deleted: false, reason: "user.env already absent" }`. Never throws.
  */
 export async function migrateAndCleanupLegacyUserEnv(
   state: ControlPlaneState,
 ): Promise<{ deleted: boolean; reason?: string }> {
-  const userEnvPath = `${state.vaultDir}/user/user.env`;
-  if (!existsSync(userEnvPath)) {
-    return { deleted: false, reason: "user.env already absent" };
-  }
-
-  const sourceEntries = parseEnvFile(userEnvPath);
-  const keys = Object.keys(sourceEntries).filter((k) => sourceEntries[k] !== "");
-  if (keys.length === 0) {
-    // No keys to migrate — safe to remove the empty placeholder so the
-    // assistant entrypoint stops finding it.
-    try {
-      unlinkSync(userEnvPath);
-      return { deleted: true };
-    } catch (err) {
-      return { deleted: false, reason: `unlink failed: ${err instanceof Error ? err.message : String(err)}` };
-    }
-  }
-
-  const env = buildAkmEnv(state);
-  if (!(await akmAvailable(env))) {
-    return { deleted: false, reason: "akm not on PATH" };
-  }
-  const vaultPath = await ensureAkmUserVault(state, env);
-  if (!vaultPath || !existsSync(vaultPath)) {
-    return { deleted: false, reason: "akm vault file missing" };
-  }
-
-  const akmEntries = parseEnvFile(vaultPath);
-  for (const key of keys) {
-    if (akmEntries[key] !== sourceEntries[key]) {
-      return { deleted: false, reason: `key not yet migrated: ${key}` };
-    }
-  }
-
-  try {
-    unlinkSync(userEnvPath);
-    logger.info("deleted legacy user.env after akm migration", {
-      userEnvPath,
-      migratedKeys: keys.length,
-    });
-    return { deleted: true };
-  } catch (err) {
-    return { deleted: false, reason: `unlink failed: ${err instanceof Error ? err.message : String(err)}` };
-  }
+  // The legacy vault/user/user.env path no longer exists in the new directory
+  // layout (v0.12.0). New installs have no file to migrate.
+  return { deleted: false, reason: "user.env already absent" };
 }
 
 /**
@@ -410,33 +297,25 @@ export async function migrateAndCleanupLegacyUserEnv(
  * `list`/`exists`) that cannot await `ensureAkmUserVault`.
  *
  * The path is deterministic: `buildAkmEnv` pins `AKM_STASH_DIR` to
- * `${state.dataDir}/stash`, and akm-cli (>= 0.8.0) materializes vault files
- * at `${AKM_STASH_DIR}/vaults/<ref>.env`. The `mirrorUserVaultToAkm` test
- * (`packages/lib/src/control-plane/akm-vault.test.ts`) pins this layout.
+ * `state.stashDir`, and akm-cli (>= 0.8.0) materializes vault files
+ * at `${AKM_STASH_DIR}/vaults/<ref>.env`.
  *
  * Returns the path string regardless of whether the file currently exists —
  * callers should `existsSync` if presence matters.
  */
 export function akmUserVaultPathSync(state: ControlPlaneState): string {
-  return `${state.dataDir}/stash/vaults/user.env`;
+  return `${state.stashDir}/vaults/user.env`;
 }
 
 /**
- * Read the user-managed env namespace, preferring the akm `vault:user` store
- * (canonical post-#421) and falling back to the legacy
- * `${vaultDir}/user/user.env` file when akm hasn't materialized the vault
- * yet (fresh installs that have not run the mirror, or upgrades mid-flight).
+ * Read the user-managed env namespace from the akm `vault:user` store.
  *
- * Returns `{}` when neither source exists. Pure sync — no subprocess spawn.
+ * Returns `{}` when the vault file does not exist yet. Pure sync — no subprocess spawn.
  */
 export function readUserVaultSync(state: ControlPlaneState): Record<string, string> {
   const akmPath = akmUserVaultPathSync(state);
   if (existsSync(akmPath)) {
     return readAkmUserVaultFile(akmPath);
-  }
-  const legacyPath = `${state.vaultDir}/user/user.env`;
-  if (existsSync(legacyPath)) {
-    return parseEnvFile(legacyPath);
   }
   return {};
 }

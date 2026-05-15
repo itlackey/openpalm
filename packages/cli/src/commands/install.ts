@@ -2,7 +2,7 @@ import { defineCommand } from 'citty';
 import { join } from 'node:path';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
-import { resolveOpenPalmHome, resolveConfigDir, resolveVaultDir, resolveDataDir } from '@openpalm/lib';
+import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
 import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
 import { ensureDirectoryTree, seedOpenPalmDir } from '../lib/io.ts';
 import { openBrowser } from '../lib/browser.ts';
@@ -128,15 +128,12 @@ async function parseConfigFile(filePath: string, raw: string): Promise<Record<st
 export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const homeDir = resolveOpenPalmHome();
   const configDir = resolveConfigDir();
-  const vaultDir = resolveVaultDir();
-  const dataDir = resolveDataDir();
+  const stateDir = `${homeDir}/state`;
   const workDir = defaultWorkDir();
 
-  // Phase 2 of #388 (closes #406): user.env is no longer the install
-  // marker — fresh installs never create it, and upgrades delete it after
-  // migration into akm. Use vault/stack/stack.env (always present after a
-  // successful install) as the canonical "already installed" indicator.
-  const alreadyInstalled = await Bun.file(join(vaultDir, 'stack', 'stack.env')).exists();
+  // Use state/stack.env (always present after a successful install) as the
+  // canonical "already installed" indicator.
+  const alreadyInstalled = await Bun.file(join(stateDir, 'stack.env')).exists();
   if (alreadyInstalled && !options.force) {
     throw new Error('OpenPalm appears to already be installed. Re-run install with --force to continue.');
   }
@@ -149,7 +146,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   }
 
   // ── Bootstrap files ────────────────────────────────────────────────────
-  await prepareInstallFiles(homeDir, configDir, vaultDir, dataDir, workDir, options.version);
+  await prepareInstallFiles(homeDir, configDir, stateDir, workDir, options.version);
 
   // ── Configure ──────────────────────────────────────────────────────────
   // File-based install: read config, run performSetup, optionally deploy
@@ -175,12 +172,12 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 }
 
 async function prepareInstallFiles(
-  homeDir: string, configDir: string, vaultDir: string, dataDir: string, workDir: string, version: string,
+  homeDir: string, configDir: string, stateDir: string, workDir: string, version: string,
 ): Promise<void> {
   console.log('Preparing directories...');
-  await ensureDirectoryTree(homeDir, configDir, vaultDir, dataDir, workDir);
+  await ensureDirectoryTree(homeDir, configDir, '', '', workDir);
 
-  try { await Bun.write(join(dataDir, 'host.json'), JSON.stringify(await detectHostInfo(), null, 2) + '\n'); }
+  try { await Bun.write(join(stateDir, 'host.json'), JSON.stringify(await detectHostInfo(), null, 2) + '\n'); }
   catch (err) { logger.debug('failed to write host.json', { error: String(err) }); }
 
   // Seed core files from embedded assets (always available, even offline)
@@ -188,18 +185,18 @@ async function prepareInstallFiles(
 
   // Try to fetch latest assets from GitHub (non-fatal — embedded assets are sufficient)
   try {
-    await seedOpenPalmDir(version, homeDir, configDir, vaultDir, dataDir);
+    await seedOpenPalmDir(version, homeDir, configDir, stateDir);
   } catch (err) {
     logger.debug('seedOpenPalmDir failed (embedded assets already seeded)', { error: String(err) });
   }
 
   console.log('Configuring secrets...');
-  await ensureSecrets(vaultDir);
-  await ensureStackEnv(homeDir, vaultDir, workDir, version, resolveRequestedImageTag(version) ?? undefined);
+  await ensureSecrets(stateDir);
+  await ensureStackEnv(homeDir, stateDir, workDir, version, resolveRequestedImageTag(version) ?? undefined);
 
   for (const [path, content] of [
-    [join(vaultDir, 'stack', 'guardian.env'), '# Guardian channel HMAC secrets — managed by openpalm\n'],
-    [join(vaultDir, 'stack', 'auth.json'), '{}\n'],
+    [join(stateDir, 'guardian.env'), '# Guardian channel HMAC secrets — managed by openpalm\n'],
+    [join(stateDir, 'auth.json'), '{}\n'],
   ] as const) {
     if (!(await Bun.file(path).exists())) await Bun.write(path, content);
   }
@@ -218,8 +215,7 @@ async function runWizardInstall(configDir: string, noOpen: boolean, noStart = fa
     openCodeSub = await startOpenCodeSubprocess({
       homeDir: resolveOpenPalmHome(),
       configDir: resolveConfigDir(),
-      vaultDir: resolveVaultDir(),
-      dataDir: resolveDataDir(),
+      stateDir: `${resolveOpenPalmHome()}/state`,
     });
     const ready = await openCodeSub.waitForReady();
     if (ready) {

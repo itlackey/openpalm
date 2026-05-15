@@ -55,7 +55,7 @@ describe('CapabilitiesTab', () => {
     });
 
     // Sub-tab pills (no Providers — moved to Connections tab)
-    await expect.element(page.getByRole('tab', { name: 'Capabilities' })).toBeInTheDocument();
+    await expect.element(page.getByRole('tab', { name: 'AI Models' })).toBeInTheDocument();
     await expect.element(page.getByRole('tab', { name: 'Voice' })).toBeInTheDocument();
 
     // Save button should be present

@@ -29,9 +29,10 @@ export function appendAudit(
     state.audit = state.audit.slice(-MAX_AUDIT_MEMORY);
   }
   try {
-    mkdirSync(state.logsDir, { recursive: true });
+    const logsDir = `${state.stateDir}/logs`;
+    mkdirSync(logsDir, { recursive: true });
     appendFileSync(
-      `${state.logsDir}/admin-audit.jsonl`,
+      `${logsDir}/admin-audit.jsonl`,
       JSON.stringify(entry) + "\n"
     );
   } catch {

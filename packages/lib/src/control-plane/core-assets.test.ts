@@ -11,21 +11,21 @@ describe("seedStashAssets", () => {
   beforeEach(() => {
     homeDir = mkdtempSync(join(tmpdir(), "stash-seed-test-"));
     process.env.OP_HOME = homeDir;
-    mkdirSync(join(homeDir, "data", "stash"), { recursive: true });
+    mkdirSync(join(homeDir, "stash"), { recursive: true });
   });
 
   afterEach(() => {
     process.env.OP_HOME = originalHome;
     // Restore writable mode in case a test chmod'd the stash dir.
     try {
-      chmodSync(join(homeDir, "data", "stash"), 0o755);
+      chmodSync(join(homeDir, "stash"), 0o755);
     } catch {
       // ignore — dir may not exist
     }
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  it("writes every seed under data/stash/ on first run", () => {
+  it("writes every seed under stash/ on first run", () => {
     const seeds = {
       "skills/test-skill/SKILL.md": "---\nname: test-skill\ntype: skill\n---\nhello\n",
       "commands/test-cmd.md": "---\nname: test-cmd\ntype: command\n---\nrun me\n",
@@ -34,7 +34,7 @@ describe("seedStashAssets", () => {
 
     expect(written.sort()).toEqual(Object.keys(seeds).sort());
     for (const [rel, content] of Object.entries(seeds)) {
-      const target = join(homeDir, "data/stash", rel);
+      const target = join(homeDir, "stash", rel);
       expect(existsSync(target)).toBe(true);
       expect(readFileSync(target, "utf-8")).toBe(content);
     }
@@ -46,7 +46,7 @@ describe("seedStashAssets", () => {
 
     // Simulate a previous install: seed first.
     seedStashAssets(seeds);
-    const target = join(homeDir, "data/stash/skills/keep-mine/SKILL.md");
+    const target = join(homeDir, "stash/skills/keep-mine/SKILL.md");
     expect(readFileSync(target, "utf-8")).toBe("ORIGINAL SEED\n");
 
     // User edits the file.
@@ -58,10 +58,10 @@ describe("seedStashAssets", () => {
     expect(readFileSync(target, "utf-8")).toBe(userEdit);
   });
 
-  it("creates nested directories under data/stash/ as needed", () => {
+  it("creates nested directories under stash/ as needed", () => {
     const seeds = { "skills/deep/nested/asset/SKILL.md": "x" };
     seedStashAssets(seeds);
-    expect(existsSync(join(homeDir, "data/stash/skills/deep/nested/asset/SKILL.md"))).toBe(true);
+    expect(existsSync(join(homeDir, "stash/skills/deep/nested/asset/SKILL.md"))).toBe(true);
   });
 
   it("returns an empty list when called with no seeds", () => {
@@ -70,7 +70,7 @@ describe("seedStashAssets", () => {
 
   it("rejects seed keys that escape the stash directory", () => {
     // Path-traversal guard: ../ sequences in keys must throw rather than
-    // silently writing outside data/stash/.
+    // silently writing outside stash/.
     expect(() =>
       seedStashAssets({ "../../etc/cron.d/evil": "owned\n" }),
     ).toThrow(/escapes stash dir/);
@@ -91,7 +91,7 @@ describe("seedStashAssets", () => {
     const uid = process.getuid?.();
     if (uid === 0) return;
 
-    const stashDir = join(homeDir, "data", "stash");
+    const stashDir = join(homeDir, "stash");
     chmodSync(stashDir, 0o555);
     try {
       expect(() =>

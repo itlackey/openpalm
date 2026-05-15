@@ -28,13 +28,12 @@ const STOP_TIMEOUT_MS = 5_000;
  * Start an OpenCode subprocess for the wizard to talk to.
  *
  * Creates a temporary HOME directory structure with symlinks to the real
- * vault/config paths so OpenCode reads/writes auth.json at the right location.
+ * state/config paths so OpenCode reads/writes auth.json at the right location.
  */
 export async function startOpenCodeSubprocess(opts: {
   homeDir: string;
   configDir: string;
-  vaultDir: string;
-  dataDir: string;
+  stateDir: string;
   port?: number;
 }): Promise<OpenCodeSubprocess> {
   const opencodeBin = Bun.which("opencode");
@@ -54,8 +53,8 @@ export async function startOpenCodeSubprocess(opts: {
   mkdirSync(ocConfigDir, { recursive: true });
   mkdirSync(ocStateDir, { recursive: true });
 
-  // Symlink auth.json → real vault location
-  const authJsonSrc = join(opts.vaultDir, "stack", "auth.json");
+  // Symlink auth.json → real state location
+  const authJsonSrc = join(opts.stateDir, "auth.json");
   const authJsonDst = join(ocShareDir, "auth.json");
   if (!existsSync(authJsonDst)) {
     symlinkSync(authJsonSrc, authJsonDst);

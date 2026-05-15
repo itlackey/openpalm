@@ -38,9 +38,8 @@ beforeEach(() => {
 
   const state = getState();
   mkdirSync(state.configDir, { recursive: true });
-  mkdirSync(state.vaultDir, { recursive: true });
-  mkdirSync(state.dataDir, { recursive: true });
-  mkdirSync(state.logsDir, { recursive: true });
+  mkdirSync(state.stateDir, { recursive: true });
+  mkdirSync(state.stashDir, { recursive: true });
 });
 
 afterEach(() => {

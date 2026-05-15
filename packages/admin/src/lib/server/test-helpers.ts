@@ -19,9 +19,13 @@ export function makeTempDir(): string {
   return dir;
 }
 
-export function seedSecretsEnv(vaultDir: string, content: string): void {
-  mkdirSync(join(vaultDir, "stack"), { recursive: true });
-  writeFileSync(join(vaultDir, "stack", "stack.env"), content);
+/**
+ * Seed the stack.env file into a stateDir.
+ * The file lives at ${stateDir}/stack.env (flat, no subdirectory).
+ */
+export function seedSecretsEnv(stateDir: string, content: string): void {
+  mkdirSync(stateDir, { recursive: true });
+  writeFileSync(join(stateDir, "stack.env"), content);
 }
 
 export function makeTestState(overrides: Partial<ControlPlaneState> = {}): ControlPlaneState {
@@ -32,10 +36,11 @@ export function makeTestState(overrides: Partial<ControlPlaneState> = {}): Contr
     setupToken: "test-setup-token",
     homeDir: tempDir,
     configDir: join(tempDir, "config"),
-    vaultDir: join(tempDir, "vault"),
-    dataDir: join(tempDir, "data"),
-    logsDir: join(tempDir, "logs"),
-    cacheDir: join(tempDir, "cache"),
+    stashDir: join(tempDir, "stash"),
+    workspaceDir: join(tempDir, "workspace"),
+    servicesDir: join(tempDir, "services"),
+    stateDir: join(tempDir, "state"),
+    stackDir: join(tempDir, "stack"),
     services: {},
     artifacts: { compose: "" },
     artifactMeta: [],

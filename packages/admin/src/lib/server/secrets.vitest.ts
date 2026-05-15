@@ -27,224 +27,218 @@ registerCleanup();
 // ── Secrets Management ──────────────────────────────────────────────────
 
 describe("ensureSecrets", () => {
-  let vaultDir: string;
+  let stateDir: string;
 
   beforeEach(() => {
-    vaultDir = trackDir(makeTempDir());
+    stateDir = trackDir(makeTempDir());
   });
 
   test("seeds stack.env with API key placeholders on first run", () => {
-    const state = { vaultDir, adminToken: "preconfigured-token" } as ControlPlaneState;
+    const state = { stateDir, adminToken: "preconfigured-token" } as ControlPlaneState;
 
     ensureSecrets(state);
 
-    const secrets = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    const secrets = readFileSync(join(stateDir, "stack.env"), "utf-8");
     expect(secrets).toContain("OPENAI_API_KEY=");
     expect(secrets).toContain("OP_ADMIN_TOKEN=");
   });
 
   test("is idempotent — does not overwrite existing stack.env", () => {
-    const state = { vaultDir } as ControlPlaneState;
+    const state = { stateDir } as ControlPlaneState;
     const existingContent = "OP_ADMIN_TOKEN=my-token\nOPENAI_API_KEY=sk-test\nOP_ASSISTANT_TOKEN=ast\n";
-    seedSecretsEnv(vaultDir, existingContent);
+    seedSecretsEnv(stateDir, existingContent);
 
     ensureSecrets(state);
 
-    const result = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    const result = readFileSync(join(stateDir, "stack.env"), "utf-8");
     expect(result).toBe(existingContent);
   });
 
   test("includes LLM provider key placeholders in stack.env", () => {
-    const state = { vaultDir } as ControlPlaneState;
+    const state = { stateDir } as ControlPlaneState;
     ensureSecrets(state);
 
-    const secrets = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    const secrets = readFileSync(join(stateDir, "stack.env"), "utf-8");
     expect(secrets).toContain("OPENAI_API_KEY=");
     expect(secrets).toContain("GROQ_API_KEY=");
     expect(secrets).toContain("MISTRAL_API_KEY=");
     expect(secrets).toContain("GOOGLE_API_KEY=");
   });
 
-  test("creates vault directory if missing", () => {
-    const nestedDir = join(vaultDir, "deep", "nested");
-    const state = { vaultDir: nestedDir } as ControlPlaneState;
+  test("creates stateDir if missing", () => {
+    const nestedDir = join(stateDir, "deep", "nested");
+    const state = { stateDir: nestedDir } as ControlPlaneState;
 
     ensureSecrets(state);
 
-    expect(existsSync(join(nestedDir, "stack", "stack.env"))).toBe(true);
-    // Phase 2 of #388 (closes #406): user.env is no longer seeded; the
-    // user-managed env store lives in akm `vault:user` instead. The
-    // `vault/user/` directory is still created (it backs operational
-    // non-env files mounted into the assistant container).
-    expect(existsSync(join(nestedDir, "user"))).toBe(true);
-    expect(existsSync(join(nestedDir, "user", "user.env"))).toBe(false);
+    expect(existsSync(join(nestedDir, "stack.env"))).toBe(true);
   });
 });
 
 describe("updateSecretsEnv", () => {
-  let vaultDir: string;
+  let stateDir: string;
 
   beforeEach(() => {
-    vaultDir = trackDir(makeTempDir());
+    stateDir = trackDir(makeTempDir());
   });
 
   test("throws when stack.env does not exist", () => {
-    const state = { vaultDir } as ControlPlaneState;
+    const state = { stateDir } as ControlPlaneState;
     expect(() => updateSecretsEnv(state, { KEY: "val" })).toThrow(
       "stack.env does not exist"
     );
   });
 
   test("updates existing key in-place", () => {
-    seedSecretsEnv(vaultDir, "ADMIN_TOKEN=token\nOPENAI_API_KEY=old\n");
-    const state = { vaultDir } as ControlPlaneState;
+    seedSecretsEnv(stateDir, "ADMIN_TOKEN=token\nOPENAI_API_KEY=old\n");
+    const state = { stateDir } as ControlPlaneState;
 
     updateSecretsEnv(state, { OPENAI_API_KEY: "sk-new" });
 
-    const result = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    const result = readFileSync(join(stateDir, "stack.env"), "utf-8");
     expect(result).toContain("OPENAI_API_KEY=sk-new");
     expect(result).not.toContain("old");
     expect(result).toContain("ADMIN_TOKEN=token");
   });
 
   test("uncomments and updates commented-out keys", () => {
-    seedSecretsEnv(vaultDir, "ADMIN_TOKEN=token\n# OPENAI_API_KEY=\n");
-    const state = { vaultDir } as ControlPlaneState;
+    seedSecretsEnv(stateDir, "ADMIN_TOKEN=token\n# OPENAI_API_KEY=\n");
+    const state = { stateDir } as ControlPlaneState;
 
     updateSecretsEnv(state, { OPENAI_API_KEY: "sk-uncommented" });
 
-    const result = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    const result = readFileSync(join(stateDir, "stack.env"), "utf-8");
     expect(result).toContain("OPENAI_API_KEY=sk-uncommented");
     expect(result).not.toContain("# OPENAI_API_KEY");
   });
 
   test("appends keys not found in file", () => {
-    seedSecretsEnv(vaultDir, "ADMIN_TOKEN=token\n");
-    const state = { vaultDir } as ControlPlaneState;
+    seedSecretsEnv(stateDir, "ADMIN_TOKEN=token\n");
+    const state = { stateDir } as ControlPlaneState;
 
     updateSecretsEnv(state, { NEW_KEY: "new-value" });
 
-    const result = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    const result = readFileSync(join(stateDir, "stack.env"), "utf-8");
     expect(result).toContain("NEW_KEY=new-value");
     expect(result).toContain("ADMIN_TOKEN=token");
   });
 
   test("empty updates leave file unchanged", () => {
     const original = "ADMIN_TOKEN=token\n";
-    seedSecretsEnv(vaultDir, original);
-    const state = { vaultDir } as ControlPlaneState;
+    seedSecretsEnv(stateDir, original);
+    const state = { stateDir } as ControlPlaneState;
 
     updateSecretsEnv(state, {});
 
-    expect(readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8")).toBe(original);
+    expect(readFileSync(join(stateDir, "stack.env"), "utf-8")).toBe(original);
   });
 });
 
 // ── Connection Key Management ───────────────────────────────────────────
 
 describe("readStackEnv", () => {
-  let vaultDir: string;
+  let stateDir: string;
 
   beforeEach(() => {
-    vaultDir = trackDir(makeTempDir());
+    stateDir = trackDir(makeTempDir());
   });
 
   test("returns empty object when file does not exist", () => {
-    expect(readStackEnv(vaultDir)).toEqual({});
+    expect(readStackEnv(stateDir)).toEqual({});
   });
 
   test("reads all keys from stack.env", () => {
     seedSecretsEnv(
-      vaultDir,
+      stateDir,
       "ADMIN_TOKEN=secret\nOPENAI_API_KEY=sk-test\nCUSTOM_KEY=val\n"
     );
 
-    const result = readStackEnv(vaultDir);
+    const result = readStackEnv(stateDir);
     expect(result.OPENAI_API_KEY).toBe("sk-test");
     expect(result.ADMIN_TOKEN).toBe("secret");
     expect(result.CUSTOM_KEY).toBe("val");
   });
 
   test("skips comments and blank lines", () => {
-    seedSecretsEnv(vaultDir, "# A comment\n\nOPENAI_API_KEY=sk-test\n# another\n");
-    const result = readStackEnv(vaultDir);
+    seedSecretsEnv(stateDir, "# A comment\n\nOPENAI_API_KEY=sk-test\n# another\n");
+    const result = readStackEnv(stateDir);
     expect(result.OPENAI_API_KEY).toBe("sk-test");
   });
 
   test("strips inline comments from values", () => {
-    seedSecretsEnv(vaultDir, "OPENAI_API_KEY=sk-test # my key\n");
-    const result = readStackEnv(vaultDir);
+    seedSecretsEnv(stateDir, "OPENAI_API_KEY=sk-test # my key\n");
+    const result = readStackEnv(stateDir);
     expect(result.OPENAI_API_KEY).toBe("sk-test");
   });
 
   test("unquotes single and double quoted values", () => {
     seedSecretsEnv(
-      vaultDir,
+      stateDir,
       'OPENAI_API_KEY="sk-double"\nGROQ_API_KEY=\'sk-single\'\n'
     );
-    const result = readStackEnv(vaultDir);
+    const result = readStackEnv(stateDir);
     expect(result.OPENAI_API_KEY).toBe("sk-double");
     expect(result.GROQ_API_KEY).toBe("sk-single");
   });
 
   test("returns empty string for keys with no value", () => {
-    seedSecretsEnv(vaultDir, "OPENAI_API_KEY=\n");
-    const result = readStackEnv(vaultDir);
+    seedSecretsEnv(stateDir, "OPENAI_API_KEY=\n");
+    const result = readStackEnv(stateDir);
     expect(result.OPENAI_API_KEY).toBe("");
   });
 });
 
 describe("patchSecretsEnvFile", () => {
-  let vaultDir: string;
+  let stateDir: string;
 
   beforeEach(() => {
-    vaultDir = trackDir(makeTempDir());
+    stateDir = trackDir(makeTempDir());
   });
 
   test("patches any key passed to it", () => {
-    seedSecretsEnv(vaultDir, "ADMIN_TOKEN=token\nOPENAI_API_KEY=old\n");
-    patchSecretsEnvFile(vaultDir, {
+    seedSecretsEnv(stateDir, "ADMIN_TOKEN=token\nOPENAI_API_KEY=old\n");
+    patchSecretsEnvFile(stateDir, {
       OPENAI_API_KEY: "sk-new",
       ADMIN_TOKEN: "updated",
       CUSTOM_KEY: "injected"
     });
 
-    const result = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    const result = readFileSync(join(stateDir, "stack.env"), "utf-8");
     expect(result).toContain("OPENAI_API_KEY=sk-new");
     expect(result).toContain("ADMIN_TOKEN=updated");
     expect(result).toContain("CUSTOM_KEY=injected");
   });
 
   test("appends new keys when not in file", () => {
-    seedSecretsEnv(vaultDir, "OPENAI_API_KEY=existing\n");
-    patchSecretsEnvFile(vaultDir, { GROQ_API_KEY: "gsk-new" });
+    seedSecretsEnv(stateDir, "OPENAI_API_KEY=existing\n");
+    patchSecretsEnvFile(stateDir, { GROQ_API_KEY: "gsk-new" });
 
-    const result = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    const result = readFileSync(join(stateDir, "stack.env"), "utf-8");
     expect(result).toContain("OPENAI_API_KEY=existing");
     expect(result).toContain("GROQ_API_KEY=gsk-new");
   });
 
   test("creates file if it does not exist", () => {
-    patchSecretsEnvFile(vaultDir, { OPENAI_API_KEY: "sk-created" });
-    const result = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    patchSecretsEnvFile(stateDir, { OPENAI_API_KEY: "sk-created" });
+    const result = readFileSync(join(stateDir, "stack.env"), "utf-8");
     expect(result).toContain("OPENAI_API_KEY=sk-created");
   });
 
   test("no-op when patches is empty", () => {
     const original = "ADMIN_TOKEN=keep\n";
-    seedSecretsEnv(vaultDir, original);
-    patchSecretsEnvFile(vaultDir, {});
-    expect(readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8")).toBe(original);
+    seedSecretsEnv(stateDir, original);
+    patchSecretsEnvFile(stateDir, {});
+    expect(readFileSync(join(stateDir, "stack.env"), "utf-8")).toBe(original);
   });
 
   test("preserves comments and existing keys", () => {
     seedSecretsEnv(
-      vaultDir,
+      stateDir,
       "# Config\nADMIN_TOKEN=secret\nOPENAI_API_KEY=old\nCUSTOM=val\n"
     );
-    patchSecretsEnvFile(vaultDir, { OPENAI_API_KEY: "sk-updated" });
+    patchSecretsEnvFile(stateDir, { OPENAI_API_KEY: "sk-updated" });
 
-    const result = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    const result = readFileSync(join(stateDir, "stack.env"), "utf-8");
     expect(result).toContain("# Config");
     expect(result).toContain("ADMIN_TOKEN=secret");
     expect(result).toContain("CUSTOM=val");

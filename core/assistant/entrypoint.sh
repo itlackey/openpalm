@@ -161,15 +161,15 @@ SCHED_PID=""
 start_scheduler_coprocess() {
   # Run the automation scheduler alongside OpenCode. The scheduler has no
   # HTTP port — it watches /openpalm/config/automations for definitions and
-  # /openpalm/data/scheduler/triggers for manual-trigger sentinels. Logs
-  # stream to /openpalm/logs/scheduler.log.
+  # /openpalm/state/scheduler/triggers for manual-trigger sentinels. Logs
+  # stream to /openpalm/state/logs/scheduler.log.
   #
   # OP_HOME defaults to /openpalm and is set by compose; we fall back here
   # for local Docker builds that omit it.
   local op_home="${OP_HOME:-/openpalm}"
   local scheduler_dir="/opt/scheduler"
-  local log_dir="${op_home}/logs"
-  local triggers_dir="${op_home}/data/scheduler/triggers"
+  local log_dir="${op_home}/state/logs"
+  local triggers_dir="${op_home}/state/scheduler/triggers"
   local scheduler_log="${log_dir}/scheduler.log"
 
   if [ ! -f "${scheduler_dir}/src/main.ts" ]; then

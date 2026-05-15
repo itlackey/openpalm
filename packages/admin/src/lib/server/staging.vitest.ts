@@ -47,10 +47,11 @@ function makeState(tempDir?: string): ControlPlaneState {
     setupToken: "",
     homeDir: base,
     configDir: join(base, "config"),
-    vaultDir: join(base, "vault"),
-    dataDir: join(base, "data"),
-    logsDir: join(base, "logs"),
-    cacheDir: join(base, "cache"),
+    stashDir: join(base, "stash"),
+    workspaceDir: join(base, "workspace"),
+    servicesDir: join(base, "services"),
+    stateDir: join(base, "state"),
+    stackDir: join(base, "stack"),
     services: {},
     artifacts: { compose: "" },
     artifactMeta: [],
@@ -70,9 +71,9 @@ function seedChannelAddons(
   }
 }
 
-function seedUserEnv(vaultDir: string, content: string): void {
-  mkdirSync(join(vaultDir, "user"), { recursive: true });
-  writeFileSync(join(vaultDir, "user", "user.env"), content);
+function seedUserEnv(stashDir: string, content: string): void {
+  mkdirSync(join(stashDir, "vaults"), { recursive: true });
+  writeFileSync(join(stashDir, "vaults", "user.env"), content);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
@@ -120,13 +121,13 @@ describe("Stack overlay discovery — stack/ layout", () => {
   });
 });
 
-describe("User extensions in vault/user/user.env (secrets in vault/stack/stack.env)", () => {
-  test("user.env is read from vault/user/", () => {
+describe("User extensions in stash/vaults/user.env (akm vault:user store)", () => {
+  test("user.env is read from stash/vaults/", () => {
     const state = makeState(baseDir);
     const secretsContent = "ADMIN_TOKEN=test-token\n";
-    seedUserEnv(state.vaultDir, secretsContent);
+    seedUserEnv(state.stashDir, secretsContent);
 
-    const userEnvPath = join(state.vaultDir, "user", "user.env");
+    const userEnvPath = join(state.stashDir, "vaults", "user.env");
     expect(existsSync(userEnvPath)).toBe(true);
     expect(readFileSync(userEnvPath, "utf-8")).toBe(secretsContent);
   });

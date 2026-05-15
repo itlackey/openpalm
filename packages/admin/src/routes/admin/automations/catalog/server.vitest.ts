@@ -69,7 +69,7 @@ function makeRefreshEvent(token = 'admin-token'): Parameters<typeof refreshPost>
 }
 
 function seedRegistryAutomation(homeDir: string, name: string): void {
-  const dir = join(homeDir, 'registry', 'automations');
+  const dir = join(homeDir, 'state', 'registry', 'automations');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, `${name}.yml`), `description: ${name} automation\nschedule: daily\naction:\n  type: http\n  url: http://localhost\n`);
 }
@@ -255,7 +255,7 @@ describe('POST /admin/automations/catalog/refresh', () => {
         automationCount: number;
       };
       expect(body.ok).toBe(true);
-      expect(body.root).toBe(join(state.homeDir, 'registry'));
+      expect(body.root).toBe(join(state.homeDir, 'state', 'registry'));
       expect(body.addonCount).toBe(1);
       expect(body.automationCount).toBe(1);
     } finally {

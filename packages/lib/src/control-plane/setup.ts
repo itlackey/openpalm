@@ -114,8 +114,8 @@ export function buildSecretsFromSetup(
  * This fills the gap where OAuth auth writes tokens to auth.json but
  * not to stack.env — channels and other services need them as env vars.
  */
-export function extractAuthJsonKeys(vaultDir: string): Record<string, string> {
-  const authJsonPath = `${vaultDir}/stack/auth.json`;
+export function extractAuthJsonKeys(stateDir: string): Record<string, string> {
+  const authJsonPath = `${stateDir}/auth.json`;
   if (!existsSync(authJsonPath)) return {};
   try {
     const raw = readFileSync(authJsonPath, "utf-8").trim();
@@ -207,7 +207,7 @@ export async function performSetup(
 
   // Merge OAuth-authenticated provider keys from auth.json
   // (OAuth flows store tokens in auth.json, not in the setup payload)
-  const oauthKeys = extractAuthJsonKeys(state.vaultDir);
+  const oauthKeys = extractAuthJsonKeys(state.stateDir);
   for (const [key, value] of Object.entries(oauthKeys)) {
     // Only fill in keys that weren't already provided via API key entry
     if (!updates[key]) updates[key] = value;
@@ -217,7 +217,7 @@ export async function performSetup(
   try {
     ensureHomeDirs();
     ensureSecrets(state);
-    const existingSystemEnv = readStackEnv(state.vaultDir);
+    const existingSystemEnv = readStackEnv(state.stateDir);
     if (channelCredentials) Object.assign(updates, buildChannelCredentialEnvVars(channelCredentials));
     // Pick up channel credential env vars not already provided in the spec
     for (const mapping of Object.values(CHANNEL_CREDENTIAL_ENV_MAP)) {
@@ -234,7 +234,7 @@ export async function performSetup(
   }
 
   state.adminToken = security.adminToken;
-  state.assistantToken = readStackEnv(state.vaultDir).OP_ASSISTANT_TOKEN ?? state.assistantToken;
+  state.assistantToken = readStackEnv(state.stateDir).OP_ASSISTANT_TOKEN ?? state.assistantToken;
   // Phase 1 of #388 §B.2: state.setupToken is held in memory only.
   // Previously persisted to `${dataDir}/setup-token.txt`; that file
   // is now ephemeral. The setup wizard server owns the token lifetime
@@ -267,8 +267,8 @@ export async function performSetup(
     }
   }
 
-  // Mark setup complete in vault/stack/stack.env (where isSetupComplete reads it)
-  const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
+  // Mark setup complete in state/stack.env (where isSetupComplete reads it)
+  const systemEnvPath = `${state.stateDir}/stack.env`;
   const systemBase = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
   writeFileSync(systemEnvPath, mergeEnvContent(systemBase, { OP_SETUP_COMPLETE: "true" }), { mode: 0o600 });
 
@@ -315,5 +315,5 @@ function writeStackConfigs(spec: StackSpec, state: ControlPlaneState): void {
     capabilities: { ...spec.capabilities, embeddings: { ...spec.capabilities.embeddings, dims: resolvedDims } },
   };
   writeStackSpec(state.configDir, specToWrite);
-  writeCapabilityVars(specToWrite, state.vaultDir);
+  writeCapabilityVars(specToWrite, state.stateDir);
 }

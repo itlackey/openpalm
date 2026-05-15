@@ -8,7 +8,6 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { readdirSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
-import { resolveCacheHome } from '@openpalm/lib';
 
 const REPO_OWNER = 'itlackey';
 const REPO_NAME = 'openpalm';
@@ -20,11 +19,11 @@ const REPO_NAME = 'openpalm';
 export async function ensureDirectoryTree(
   homeDir: string,
   configDir: string,
-  vaultDir: string,
-  dataDir: string,
+  _vaultDir: string,
+  _dataDir: string,
   workDir: string,
 ): Promise<void> {
-  const cacheDir = resolveCacheHome();
+  const stateDir = `${homeDir}/state`;
 
   for (const dir of [
     homeDir,
@@ -35,25 +34,37 @@ export async function ensureDirectoryTree(
     join(configDir, 'assistant', 'plugins'),
     join(configDir, 'assistant', 'skills'),
     join(configDir, 'guardian'),
-    vaultDir,
-    join(vaultDir, 'user'),
-    join(vaultDir, 'stack'),
-    join(vaultDir, 'stack', 'addons'),
-    dataDir,
-    join(dataDir, 'assistant'),
-    join(dataDir, 'admin'),
-    join(dataDir, 'guardian'),
-    join(dataDir, 'stash'),
+    // stash/ — akm asset content (skills, vaults, knowledge, agents)
+    join(homeDir, 'stash'),
+    // workspace/ — shared assistant workspace
+    join(homeDir, 'workspace'),
+    // services/ — service-managed persistent data
+    join(homeDir, 'services'),
+    join(homeDir, 'services', 'assistant'),
+    join(homeDir, 'services', 'admin'),
+    join(homeDir, 'services', 'guardian'),
+    join(homeDir, 'services', 'guardian', 'stash'),
+    join(homeDir, 'services', 'guardian', 'akm'),
+    // state/ — operator-managed env, logs, scheduler, akm ops, cache, backups, registry
+    stateDir,
+    join(stateDir, 'akm'),
+    join(stateDir, 'akm', 'config'),
+    join(stateDir, 'akm', 'data'),
+    join(stateDir, 'akm', 'state'),
+    join(stateDir, 'scheduler'),
+    join(stateDir, 'logs'),
+    join(stateDir, 'logs', 'opencode'),
+    join(stateDir, 'backups'),
+    join(stateDir, 'registry'),
+    join(stateDir, 'registry', 'addons'),
+    join(stateDir, 'registry', 'automations'),
+    join(stateDir, 'cache'),
+    join(stateDir, 'cache', 'akm'),
+    join(stateDir, 'cache', 'guardian'),
+    join(stateDir, 'cache', 'rollback'),
+    // stack/ — compose files
     join(homeDir, 'stack'),
     join(homeDir, 'stack', 'addons'),
-    join(homeDir, 'registry'),
-    join(homeDir, 'registry', 'addons'),
-    join(homeDir, 'registry', 'automations'),
-    join(homeDir, 'backups'),
-    join(homeDir, 'logs'),
-    join(homeDir, 'logs', 'opencode'),
-    cacheDir,
-    join(cacheDir, 'rollback'),
     workDir,
   ]) {
     await mkdir(dir, { recursive: true });
@@ -150,8 +161,7 @@ export async function seedOpenPalmDir(
   repoRef: string,
   homeDir: string,
   _configDir: string,
-  vaultDir: string,
-  dataDir: string,
+  stateDir: string,
 ): Promise<void> {
   const tarballUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/archive/${repoRef}.tar.gz`;
   const tmpDir = join(homeDir, '.seed-tmp');
@@ -187,17 +197,12 @@ export async function seedOpenPalmDir(
 
     const srcRegistry = join(tmpDir, '.openpalm', 'registry');
     if (dirExists(srcRegistry)) {
-      await copyTree(srcRegistry, join(homeDir, 'registry'));
-    }
-
-    const srcVault = join(tmpDir, '.openpalm', 'vault');
-    if (dirExists(srcVault)) {
-      await copyTree(srcVault, vaultDir, { onlyPattern: /\.schema$/ });
+      await copyTree(srcRegistry, join(stateDir, 'registry'));
     }
 
     const srcAssistant = join(tmpDir, 'core', 'assistant', 'opencode');
     if (dirExists(srcAssistant)) {
-      await copyTree(srcAssistant, join(dataDir, 'assistant'));
+      await copyTree(srcAssistant, join(homeDir, 'services', 'assistant'));
     }
   } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});

@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
-  resolveDataDir,
+  resolveWorkspaceDir,
 } from '@openpalm/lib';
 
 export const IS_WINDOWS = process.platform === 'win32';
@@ -27,5 +27,5 @@ export function defaultDockerSock(): string {
 }
 
 export function defaultWorkDir(): string {
-  return process.env.OP_WORK_DIR || `${resolveDataDir()}/workspace`;
+  return process.env.OP_WORK_DIR || resolveWorkspaceDir();
 }

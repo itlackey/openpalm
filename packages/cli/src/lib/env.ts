@@ -4,19 +4,16 @@ import { reconcileStackEnvImageTag, resolveRequestedImageTag } from '@openpalm/l
 import { defaultDockerSock } from './paths.ts';
 
 /**
- * Ensures vault/user exists. Phase 2 of #388 (closes #406): the
- * `user.env` file is no longer seeded — user-managed env secrets live in
- * the akm `vault:user` store and are sourced by the assistant entrypoint
- * directly. The directory itself is still created because operational
- * files (apprise.yml, gcloud creds, gws/mgc auth dirs) bind-mount from
- * here into the assistant container at /etc/vault/.
+ * Ensures the state/ directory exists.
+ * User-managed env secrets live in the akm `vault:user` store and are sourced
+ * by the assistant entrypoint directly.
  */
-export async function ensureSecrets(vaultDir: string): Promise<void> {
-  mkdirSync(join(vaultDir, 'user'), { recursive: true });
+export async function ensureSecrets(stateDir: string): Promise<void> {
+  mkdirSync(stateDir, { recursive: true });
 }
 
 /**
- * Creates or updates the vault/stack/stack.env bootstrap file.
+ * Creates or updates the state/stack.env bootstrap file.
  *
  * When `imageTagOverride` is provided (e.g. derived from --version during
  * install), it takes precedence over both the OP_IMAGE_TAG env var
@@ -25,15 +22,15 @@ export async function ensureSecrets(vaultDir: string): Promise<void> {
  */
 export async function ensureStackEnv(
   homeDir: string,
-  vaultDir: string,
+  stateDir: string,
   workDir: string,
   repoRef: string,
   imageTagOverride?: string,
 ): Promise<void> {
-  const systemEnvPath = join(vaultDir, 'stack', 'stack.env');
+  const systemEnvPath = join(stateDir, 'stack.env');
   const explicitImageTag = imageTagOverride ?? process.env.OP_IMAGE_TAG;
   const hasExplicitImageTag = explicitImageTag !== undefined && explicitImageTag !== '';
-  mkdirSync(join(vaultDir, 'stack'), { recursive: true });
+  mkdirSync(stateDir, { recursive: true });
   if (!(await Bun.file(systemEnvPath).exists())) {
     const defaultImageTag = hasExplicitImageTag
       ? explicitImageTag

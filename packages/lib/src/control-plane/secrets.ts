@@ -54,7 +54,7 @@ function mergeVaultEnvFile(path: string, updates: Record<string, string>, uncomm
 }
 
 function ensureSystemSecrets(state: ControlPlaneState): void {
-  const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
+  const systemEnvPath = `${state.stateDir}/stack.env`;
   const existing = existsSync(systemEnvPath) ? parseEnvFile(systemEnvPath) : {};
   const updates: Record<string, string> = {};
 
@@ -102,39 +102,21 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
 }
 
 export function ensureSecrets(state: ControlPlaneState): void {
-  enforceVaultDirMode(state.vaultDir);
-  mkdirSync(`${state.vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
-  // vault/user is still created — it holds operational files (apprise.yml,
-  // gcloud creds, gws/mgc auth dirs) that the assistant container mounts
-  // at /etc/vault/. Phase 2 of #388 only retired the .env file from this
-  // directory; the directory itself remains a service-side bind mount.
-  mkdirSync(`${state.vaultDir}/user`, { recursive: true, mode: VAULT_DIR_MODE });
-
-  // Phase 2 of #388 (closes #406): user-managed env secrets now live in
-  // the akm `vault:user` store at `${dataDir}/stash/vaults/user.env`.
-  // Fresh installs do NOT seed `vault/user/user.env` — the assistant
-  // entrypoint sources the akm vault file directly. A pre-existing legacy
-  // `user.env` is kept here so `migrateAndCleanupLegacyUserEnv()` (called
-  // from upgrade and setup) can read its contents into akm and then
-  // delete the file in a single atomic step.
-  const userEnvPath = `${state.vaultDir}/user/user.env`;
-  if (existsSync(userEnvPath)) {
-    try { chmodSync(userEnvPath, VAULT_FILE_MODE); } catch { /* best-effort */ }
-  }
+  enforceVaultDirMode(state.stateDir);
 
   ensureSystemSecrets(state);
-  ensureGuardianEnv(state.vaultDir);
-  ensureAuthJson(state.vaultDir);
+  ensureGuardianEnv(state.stateDir);
+  ensureAuthJson(state.stateDir);
 }
 
 /**
- * Ensure vault/stack/guardian.env exists.
+ * Ensure state/guardian.env exists.
  * Channel HMAC secrets (CHANNEL_<NAME>_SECRET) live here exclusively.
  * This file is loaded by the guardian as an env_file and via GUARDIAN_SECRETS_PATH.
  */
-function ensureGuardianEnv(vaultDir: string): void {
-  const guardianEnvPath = `${vaultDir}/stack/guardian.env`;
-  mkdirSync(`${vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
+function ensureGuardianEnv(stateDir: string): void {
+  const guardianEnvPath = `${stateDir}/guardian.env`;
+  mkdirSync(stateDir, { recursive: true, mode: VAULT_DIR_MODE });
   if (!existsSync(guardianEnvPath)) {
     writeVaultFile(guardianEnvPath, [
       "# Guardian channel HMAC secrets — managed by openpalm",
@@ -146,9 +128,9 @@ function ensureGuardianEnv(vaultDir: string): void {
   }
 }
 
-function ensureAuthJson(vaultDir: string): void {
-  const authJsonPath = `${vaultDir}/stack/auth.json`;
-  mkdirSync(`${vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
+function ensureAuthJson(stateDir: string): void {
+  const authJsonPath = `${stateDir}/auth.json`;
+  mkdirSync(stateDir, { recursive: true, mode: VAULT_DIR_MODE });
 
   if (existsSync(authJsonPath)) {
     try {
@@ -174,25 +156,25 @@ export function updateSecretsEnv(
   state: ControlPlaneState,
   updates: Record<string, string>
 ): void {
-  const stackEnvPath = `${state.vaultDir}/stack/stack.env`;
+  const stackEnvPath = `${state.stateDir}/stack.env`;
   if (!existsSync(stackEnvPath)) {
-    throw new Error("vault/stack/stack.env does not exist — run setup first");
+    throw new Error("state/stack.env does not exist — run setup first");
   }
 
   mergeVaultEnvFile(stackEnvPath, updates, true);
 }
 
-/** Read and parse vault/stack/stack.env. Returns {} if the file does not exist. */
-export function readStackEnv(vaultDir: string): Record<string, string> {
-  return parseEnvFile(`${vaultDir}/stack/stack.env`);
+/** Read and parse state/stack.env. Returns {} if the file does not exist. */
+export function readStackEnv(stateDir: string): Record<string, string> {
+  return parseEnvFile(`${stateDir}/stack.env`);
 }
 
 export function updateSystemSecretsEnv(
   state: ControlPlaneState,
   updates: Record<string, string>
 ): void {
-  const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
-  enforceVaultDirMode(state.vaultDir);
+  const systemEnvPath = `${state.stateDir}/stack.env`;
+  enforceVaultDirMode(state.stateDir);
   if (!existsSync(systemEnvPath)) {
     ensureSystemSecrets(state);
   }
@@ -200,14 +182,14 @@ export function updateSystemSecretsEnv(
 }
 
 export function patchSecretsEnvFile(
-  vaultDir: string,
+  stateDir: string,
   patches: Record<string, string>
 ): void {
   if (Object.keys(patches).length === 0) return;
 
-  const stackEnvPath = `${vaultDir}/stack/stack.env`;
-  enforceVaultDirMode(vaultDir);
-  mkdirSync(`${vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
+  const stackEnvPath = `${stateDir}/stack.env`;
+  enforceVaultDirMode(stateDir);
+  mkdirSync(stateDir, { recursive: true, mode: VAULT_DIR_MODE });
 
   let existingContent = "";
   try {

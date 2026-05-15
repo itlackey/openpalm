@@ -65,7 +65,7 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(404, "not_found", `Automation '${fileName}' is not installed.`, {}, requestId);
   }
 
-  const triggersDir = join(state.dataDir, "scheduler", "triggers");
+  const triggersDir = join(state.stateDir, "scheduler", "triggers");
   try {
     if (!existsSync(triggersDir)) mkdirSync(triggersDir, { recursive: true });
     writeFileSync(join(triggersDir, `${fileName}.run`), "");

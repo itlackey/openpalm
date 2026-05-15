@@ -95,16 +95,16 @@ describe("ensureOpenCodeSystemConfig", () => {
     process.env.OP_HOME = origEnv.OP_HOME;
   });
 
-  test("creates data/assistant/ directory", () => {
+  test("creates services/assistant/ directory", () => {
     ensureOpenCodeSystemConfig();
-    const assistantDir = join(process.env.OP_HOME!, "data", "assistant");
+    const assistantDir = join(process.env.OP_HOME!, "services", "assistant");
     expect(existsSync(assistantDir)).toBe(true);
   });
 
   test("is idempotent", () => {
     ensureOpenCodeSystemConfig();
     ensureOpenCodeSystemConfig();
-    const assistantDir = join(process.env.OP_HOME!, "data", "assistant");
+    const assistantDir = join(process.env.OP_HOME!, "services", "assistant");
     expect(existsSync(assistantDir)).toBe(true);
   });
 
@@ -160,16 +160,16 @@ describe("refreshCoreAssets", () => {
 
     const result = await refreshCoreAssets();
     expect(result.updated).toContain("stack/core.compose.yml");
-    expect(result.updated).toContain("data/assistant/opencode.jsonc");
-    expect(result.updated).toContain("data/assistant/AGENTS.md");
+    expect(result.updated).toContain("services/assistant/opencode.jsonc");
+    expect(result.updated).toContain("services/assistant/AGENTS.md");
     // .env.schema files were retired in #391 — they MUST NOT come back.
     expect(result.updated).not.toContain("vault/user/user.env.schema");
     expect(result.updated).not.toContain("vault/stack/stack.env.schema");
     expect(result.backupDir).toBeNull(); // no existing files to back up
 
     expect(existsSync(join(homeDir, "stack/core.compose.yml"))).toBe(true);
-    expect(existsSync(join(homeDir, "data/assistant/opencode.jsonc"))).toBe(true);
-    expect(existsSync(join(homeDir, "data/assistant/AGENTS.md"))).toBe(true);
+    expect(existsSync(join(homeDir, "services/assistant/opencode.jsonc"))).toBe(true);
+    expect(existsSync(join(homeDir, "services/assistant/AGENTS.md"))).toBe(true);
     expect(existsSync(join(homeDir, "vault/user/user.env.schema"))).toBe(false);
     expect(existsSync(join(homeDir, "vault/stack/stack.env.schema"))).toBe(false);
   });
@@ -178,9 +178,9 @@ describe("refreshCoreAssets", () => {
     const homeDir = process.env.OP_HOME!;
     mkdirSync(join(homeDir, "stack"), { recursive: true });
     writeFileSync(join(homeDir, "stack/core.compose.yml"), "old-compose-content");
-    mkdirSync(join(homeDir, "data/assistant"), { recursive: true });
-    writeFileSync(join(homeDir, "data/assistant/opencode.jsonc"), "old-opencode-content");
-    writeFileSync(join(homeDir, "data/assistant/AGENTS.md"), "old-agents-content");
+    mkdirSync(join(homeDir, "services/assistant"), { recursive: true });
+    writeFileSync(join(homeDir, "services/assistant/opencode.jsonc"), "old-opencode-content");
+    writeFileSync(join(homeDir, "services/assistant/AGENTS.md"), "old-agents-content");
     mockFetchAll();
 
     const result = await refreshCoreAssets();
@@ -190,15 +190,15 @@ describe("refreshCoreAssets", () => {
     // Verify backup contains old content
     const backupCompose = readFileSync(join(result.backupDir!, "stack/core.compose.yml"), "utf-8");
     expect(backupCompose).toBe("old-compose-content");
-    const backupOpencode = readFileSync(join(result.backupDir!, "data/assistant/opencode.jsonc"), "utf-8");
+    const backupOpencode = readFileSync(join(result.backupDir!, "services/assistant/opencode.jsonc"), "utf-8");
     expect(backupOpencode).toBe("old-opencode-content");
-    const backupAgents = readFileSync(join(result.backupDir!, "data/assistant/AGENTS.md"), "utf-8");
+    const backupAgents = readFileSync(join(result.backupDir!, "services/assistant/AGENTS.md"), "utf-8");
     expect(backupAgents).toBe("old-agents-content");
 
     // Verify new content written
     expect(readFileSync(join(homeDir, "stack/core.compose.yml"), "utf-8")).not.toBe("old-compose-content");
-    expect(readFileSync(join(homeDir, "data/assistant/opencode.jsonc"), "utf-8")).not.toBe("old-opencode-content");
-    expect(readFileSync(join(homeDir, "data/assistant/AGENTS.md"), "utf-8")).not.toBe("old-agents-content");
+    expect(readFileSync(join(homeDir, "services/assistant/opencode.jsonc"), "utf-8")).not.toBe("old-opencode-content");
+    expect(readFileSync(join(homeDir, "services/assistant/AGENTS.md"), "utf-8")).not.toBe("old-agents-content");
   });
 
   test("skips assets with identical content", async () => {
@@ -206,9 +206,9 @@ describe("refreshCoreAssets", () => {
     const content = "same-content";
     mkdirSync(join(homeDir, "stack"), { recursive: true });
     writeFileSync(join(homeDir, "stack/core.compose.yml"), content);
-    mkdirSync(join(homeDir, "data/assistant"), { recursive: true });
-    writeFileSync(join(homeDir, "data/assistant/opencode.jsonc"), content);
-    writeFileSync(join(homeDir, "data/assistant/AGENTS.md"), content);
+    mkdirSync(join(homeDir, "services/assistant"), { recursive: true });
+    writeFileSync(join(homeDir, "services/assistant/opencode.jsonc"), content);
+    writeFileSync(join(homeDir, "services/assistant/AGENTS.md"), content);
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       return new Response(content, { status: 200 });
     });

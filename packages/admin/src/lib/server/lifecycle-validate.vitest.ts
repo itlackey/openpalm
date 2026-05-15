@@ -15,22 +15,16 @@ import { makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
 
-function seedStack(vaultDir: string, env: string): void {
-  mkdirSync(join(vaultDir, "stack"), { recursive: true });
-  writeFileSync(join(vaultDir, "stack", "stack.env"), env);
-}
-
-function seedUser(vaultDir: string, env: string): void {
-  mkdirSync(join(vaultDir, "user"), { recursive: true });
-  writeFileSync(join(vaultDir, "user", "user.env"), env);
+function seedStack(stateDir: string, env: string): void {
+  mkdirSync(stateDir, { recursive: true });
+  writeFileSync(join(stateDir, "stack.env"), env);
 }
 
 describe("validateProposedState", () => {
   test("ok=true when required keys are present", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    seedStack(state.vaultDir, "OP_ADMIN_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n");
-    seedUser(state.vaultDir, "OPENAI_API_KEY=sk-test\n");
+    seedStack(state.stateDir, "OP_ADMIN_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n");
 
     const result = await validateProposedState(state);
     expect(result.ok).toBe(true);
@@ -49,8 +43,7 @@ describe("validateProposedState", () => {
   test("ok=false when OP_ADMIN_TOKEN is empty", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    seedStack(state.vaultDir, "OP_ADMIN_TOKEN=\nOP_ASSISTANT_TOKEN=def\n");
-    seedUser(state.vaultDir, "");
+    seedStack(state.stateDir, "OP_ADMIN_TOKEN=\nOP_ASSISTANT_TOKEN=def\n");
 
     const result = await validateProposedState(state);
     expect(result.ok).toBe(false);
@@ -60,9 +53,7 @@ describe("validateProposedState", () => {
   test("warns about missing optional canonical slots", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    seedStack(state.vaultDir, "OP_ADMIN_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n");
-    // user.env intentionally missing — every user-scoped mapping should warn
-    seedUser(state.vaultDir, "");
+    seedStack(state.stateDir, "OP_ADMIN_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n");
 
     const result = await validateProposedState(state);
     expect(result.ok).toBe(true);

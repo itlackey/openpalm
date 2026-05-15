@@ -95,7 +95,7 @@ describe('POST /admin/automations/:name/run', () => {
     expect(body.fileName).toBe('health-check.yml');
     expect(body.queued).toBe(true);
 
-    const sentinelPath = join(state.dataDir, 'scheduler', 'triggers', 'health-check.yml.run');
+    const sentinelPath = join(state.stateDir, 'scheduler', 'triggers', 'health-check.yml.run');
     expect(existsSync(sentinelPath)).toBe(true);
   });
 
@@ -106,7 +106,7 @@ describe('POST /admin/automations/:name/run', () => {
     const res = await POST(makeRunEvent('health-check'));
     expect(res.status).toBe(202);
 
-    const sentinelPath = join(state.dataDir, 'scheduler', 'triggers', 'health-check.yml.run');
+    const sentinelPath = join(state.stateDir, 'scheduler', 'triggers', 'health-check.yml.run');
     expect(existsSync(sentinelPath)).toBe(true);
   });
 });

@@ -44,11 +44,10 @@ function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
 function seedRequiredAssets(homeDir: string): void {
   mkdirSync(join(homeDir, "stack"), { recursive: true });
   writeFileSync(join(homeDir, "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
-  mkdirSync(join(homeDir, "data", "assistant"), { recursive: true });
-  writeFileSync(join(homeDir, "data", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
-  writeFileSync(join(homeDir, "data", "assistant", "AGENTS.md"), "# Agents\n");
-  mkdirSync(join(homeDir, "vault", "user"), { recursive: true });
-  mkdirSync(join(homeDir, "vault", "stack"), { recursive: true });
+  mkdirSync(join(homeDir, "services", "assistant"), { recursive: true });
+  writeFileSync(join(homeDir, "services", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
+  writeFileSync(join(homeDir, "services", "assistant", "AGENTS.md"), "# Agents\n");
+  mkdirSync(join(homeDir, "state"), { recursive: true });
   mkdirSync(join(homeDir, "config", "automations"), { recursive: true });
   writeFileSync(join(homeDir, "config", "automations", "cleanup-logs.yml"), "name: cleanup-logs\nschedule: daily\n");
   writeFileSync(join(homeDir, "config", "automations", "cleanup-data.yml"), "name: cleanup-data\nschedule: weekly\n");
@@ -293,45 +292,37 @@ describe("buildSystemSecretsFromSetup", () => {
 describe("performSetup", () => {
   let homeDir: string;
   let configDir: string;
-  let vaultDir: string;
-  let dataDir: string;
-  let logsDir: string;
+  let stateDir: string;
 
   const savedEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
     homeDir = mkdtempSync(join(tmpdir(), "openpalm-setup-"));
     configDir = join(homeDir, "config");
-    vaultDir = join(homeDir, "vault");
-    dataDir = join(homeDir, "data");
-    logsDir = join(homeDir, "logs");
+    stateDir = join(homeDir, "state");
 
     // Create required directory structure
     for (const dir of [
       homeDir,
       configDir,
       join(configDir, "automations"),
-      join(configDir, "channels"),
       join(configDir, "assistant"),
-      join(configDir, "stash"),
-      vaultDir,
-      dataDir,
-      join(dataDir, "admin"),
-      join(dataDir, "assistant"),
-      join(dataDir, "guardian"),
-      join(dataDir, "automations"),
-      join(dataDir, "opencode"),
-      logsDir,
-      join(logsDir, "opencode"),
+      join(homeDir, "stash"),
+      join(homeDir, "workspace"),
+      join(homeDir, "services"),
+      join(homeDir, "services", "admin"),
+      join(homeDir, "services", "assistant"),
+      join(homeDir, "services", "guardian"),
+      stateDir,
+      join(stateDir, "logs"),
+      join(stateDir, "logs", "opencode"),
     ]) {
       mkdirSync(dir, { recursive: true });
     }
 
     // Create stub stack.env so isSetupComplete doesn't crash
-    mkdirSync(join(vaultDir, "stack"), { recursive: true });
-    mkdirSync(join(vaultDir, "user"), { recursive: true });
     writeFileSync(
-      join(vaultDir, "stack", "stack.env"),
+      join(stateDir, "stack.env"),
       [
         "OP_SETUP_COMPLETE=false",
         "OP_ADMIN_TOKEN=",
@@ -343,17 +334,6 @@ describe("performSetup", () => {
         "GOOGLE_API_KEY=",
         "OWNER_NAME=",
         "OWNER_EMAIL=",
-        "",
-      ].join("\n")
-    );
-
-    // Seed a user.env placeholder
-    writeFileSync(
-      join(vaultDir, "user", "user.env"),
-      [
-        "# OpenPalm — User Extensions",
-        "# Add any custom environment variables here.",
-        "# These are loaded by compose alongside stack.env.",
         "",
       ].join("\n")
     );
@@ -383,7 +363,7 @@ describe("performSetup", () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
-    const secretsContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    const secretsContent = readFileSync(join(stateDir, "stack.env"), "utf-8");
     expect(secretsContent).toContain("test-admin-token-12345");
   });
 
@@ -391,7 +371,7 @@ describe("performSetup", () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
-    const stackEnvContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    const stackEnvContent = readFileSync(join(stateDir, "stack.env"), "utf-8");
     expect(stackEnvContent).toContain("OP_CAP_LLM_MODEL=gpt-4o");
     expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_MODEL=text-embedding-3-small");
   });
@@ -473,7 +453,7 @@ describe("performSetup", () => {
     expect(result.ok).toBe(true);
 
     // nomic-embed-text is 768 dims per EMBEDDING_DIMS — verify via stack.env OP_CAP_EMBEDDINGS_DIMS
-    const stackEnvContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    const stackEnvContent = readFileSync(join(stateDir, "stack.env"), "utf-8");
     expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_DIMS=768");
   });
 
@@ -531,7 +511,7 @@ describe("performSetup", () => {
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    const stackEnvContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+    const stackEnvContent = readFileSync(join(stateDir, "stack.env"), "utf-8");
     expect(stackEnvContent).toContain("discord-bot-token-xyz");
     expect(stackEnvContent).toContain("discord-app-id-123");
   });

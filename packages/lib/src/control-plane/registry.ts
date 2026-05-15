@@ -252,11 +252,11 @@ export function getRegistryAddonConfig(homeDir: string, name: string): RegistryA
 
   // Overlay-only addons (compose.yml only, no .env.schema) have no env vars
   // to render, so the schema reads as an empty string.
-  const schemaPath = `registry/addons/${name}/.env.schema`;
+  const schemaPath = `state/registry/addons/${name}/.env.schema`;
   const schemaFile = join(homeDir, schemaPath);
   return {
     schemaPath,
-    userEnvPath: 'vault/user/user.env',
+    userEnvPath: 'state/stack.env',
     envSchema: existsSync(schemaFile) ? readFileSync(schemaFile, 'utf-8') : '',
   };
 }
@@ -323,7 +323,7 @@ export function getAddonServiceNames(homeDir: string, name: string): string[] {
 
   const composeCandidates = [
     join(homeDir, "stack", "addons", name, "compose.yml"),
-    join(homeDir, "registry", "addons", name, "compose.yml"),
+    join(homeDir, "state", "registry", "addons", name, "compose.yml"),
   ];
 
   for (const composePath of composeCandidates) {
@@ -337,8 +337,8 @@ export function getAddonServiceNames(homeDir: string, name: string): string[] {
 export function enableAddon(homeDir: string, name: string): MutationResult {
   try {
     copyAddonFromRegistry(homeDir, name);
-    // Pre-create the addon data directory so Docker doesn't create it as root
-    mkdirSync(join(homeDir, 'data', name), { recursive: true });
+    // Pre-create the addon services directory so Docker doesn't create it as root
+    mkdirSync(join(homeDir, 'services', name), { recursive: true });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -354,7 +354,7 @@ export function disableAddonByName(homeDir: string, name: string): MutationResul
   }
 }
 
-export function setAddonEnabled(homeDir: string, vaultDir: string, name: string, enabled: boolean): AddonMutationResult {
+export function setAddonEnabled(homeDir: string, stateDir: string, name: string, enabled: boolean): AddonMutationResult {
   if (!VALID_NAME_RE.test(name)) {
     return { ok: false, error: `Invalid addon name: ${name}` };
   }
@@ -381,7 +381,7 @@ export function setAddonEnabled(homeDir: string, vaultDir: string, name: string,
   if (enabled) {
     const composePath = join(homeDir, "stack", "addons", name, "compose.yml");
     if (isChannelAddon(composePath)) {
-      writeChannelSecrets(vaultDir, { [name]: randomHex(16) });
+      writeChannelSecrets(stateDir, { [name]: randomHex(16) });
     }
   }
 

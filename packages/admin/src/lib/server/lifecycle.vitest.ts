@@ -143,16 +143,15 @@ describe("createState", () => {
     process.env.OP_ADMIN_TOKEN = origEnv.OP_ADMIN_TOKEN;
   });
 
-  test("reads OP_ADMIN_TOKEN from vault/stack/stack.env file", () => {
+  test("reads OP_ADMIN_TOKEN from state/stack.env file", () => {
     const base = trackDir(makeTempDir());
     process.env.OP_HOME = base;
     delete process.env.OP_ADMIN_TOKEN;
-    delete process.env.OP_ADMIN_TOKEN;
 
-    const vaultDir = join(base, "vault");
-    mkdirSync(join(vaultDir, "stack"), { recursive: true });
+    const stateDir = join(base, "state");
+    mkdirSync(stateDir, { recursive: true });
     writeFileSync(
-      join(vaultDir, "stack", "stack.env"),
+      join(stateDir, "stack.env"),
       "OP_ADMIN_TOKEN=file-token\n"
     );
 
@@ -164,10 +163,6 @@ describe("createState", () => {
     const base = trackDir(makeTempDir());
     process.env.OP_HOME = base;
     process.env.OP_ADMIN_TOKEN = "env-token";
-
-    const vaultDir = join(base, "vault");
-    mkdirSync(join(vaultDir, "user"), { recursive: true });
-    writeFileSync(join(vaultDir, "user", "user.env"), "OP_ADMIN_TOKEN=file-token\n");
 
     const state = createState("explicit-token");
     expect(state.adminToken).toBe("explicit-token");
@@ -228,7 +223,7 @@ describe("applyInstall", () => {
 
     // Create required dirs and seed core compose for writeRuntimeFiles
     mkdirSync(join(state.homeDir, "stack"), { recursive: true });
-    mkdirSync(join(state.vaultDir), { recursive: true });
+    mkdirSync(state.stateDir, { recursive: true });
     writeFileSync(join(state.homeDir, "stack", "core.compose.yml"), "services: {}");
 
     await applyInstall(state);
@@ -247,7 +242,7 @@ describe("applyUpdate", () => {
     state.services = { admin: "running", guardian: "running", assistant: "stopped" };
 
     mkdirSync(join(state.homeDir, "stack"), { recursive: true });
-    mkdirSync(join(state.vaultDir), { recursive: true });
+    mkdirSync(state.stateDir, { recursive: true });
     writeFileSync(join(state.homeDir, "stack", "core.compose.yml"), "services: {}");
 
     const result = await applyUpdate(state);
@@ -265,7 +260,7 @@ describe("applyUninstall", () => {
     state.services = { admin: "running", guardian: "running" };
 
     mkdirSync(join(state.homeDir, "stack"), { recursive: true });
-    mkdirSync(join(state.vaultDir), { recursive: true });
+    mkdirSync(state.stateDir, { recursive: true });
     writeFileSync(join(state.homeDir, "stack", "core.compose.yml"), "services: {}");
 
     const result = await applyUninstall(state);
@@ -283,12 +278,12 @@ describe("updateStackEnvToLatestImageTag", () => {
     vi.restoreAllMocks();
   });
 
-  test("updates OP_IMAGE_TAG in vault/stack/stack.env", async () => {
+  test("updates OP_IMAGE_TAG in state/stack.env", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
+    mkdirSync(state.stateDir, { recursive: true });
     writeFileSync(
-      join(state.vaultDir, "stack", "stack.env"),
+      join(state.stateDir, "stack.env"),
       "OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=v0.1.0\n"
     );
 
@@ -302,7 +297,7 @@ describe("updateStackEnvToLatestImageTag", () => {
     );
 
     const result = await updateStackEnvToLatestImageTag(state);
-    const updated = readFileSync(join(state.vaultDir, "stack", "stack.env"), "utf-8");
+    const updated = readFileSync(join(state.stateDir, "stack.env"), "utf-8");
 
     expect(result.namespace).toBe("openpalm");
     expect(result.tag).toBe("v0.7.7");
@@ -312,8 +307,8 @@ describe("updateStackEnvToLatestImageTag", () => {
   test("throws when docker tag lookup fails", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    mkdirSync(join(state.vaultDir, "stack"), { recursive: true });
-    writeFileSync(join(state.vaultDir, "stack", "stack.env"), "OP_IMAGE_NAMESPACE=openpalm\n");
+    mkdirSync(state.stateDir, { recursive: true });
+    writeFileSync(join(state.stateDir, "stack.env"), "OP_IMAGE_NAMESPACE=openpalm\n");
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("bad gateway", { status: 502 }));
 

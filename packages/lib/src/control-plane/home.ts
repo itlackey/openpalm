@@ -1,13 +1,13 @@
 /**
- * Home directory layout for the OpenPalm control plane (v0.10.0+).
+ * Home directory layout for the OpenPalm control plane (v0.11.0+).
  *
- * Replaces the XDG three-tier model with a single ~/.openpalm/ root:
- *   config/  — user-editable, non-secret configuration
- *   vault/   — secrets boundary (user.env, system.env)
- *   data/    — service-managed persistent data
- *   logs/    — consolidated audit/debug output
- *
- * Cache and rollback data live in ~/.cache/openpalm/ (ephemeral).
+ * Single ~/.openpalm/ root:
+ *   config/      — user-editable, non-secret configuration
+ *   stash/       — akm knowledge (skills, vaults, knowledge, agents)
+ *   workspace/   — shared assistant work area
+ *   services/    — container bind mounts (per-service persistent data)
+ *   state/       — system-managed state (replaces vault/ + data/ + logs/)
+ *   stack/       — compose runtime assets
  */
 import { mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -32,28 +32,37 @@ export function resolveConfigDir(): string {
   return `${resolveOpenPalmHome()}/config`;
 }
 
-export function resolveVaultDir(): string {
-  return `${resolveOpenPalmHome()}/vault`;
+export function resolveStashDir(): string {
+  return `${resolveOpenPalmHome()}/stash`;
 }
 
-export function resolveDataDir(): string {
-  return `${resolveOpenPalmHome()}/data`;
+export function resolveWorkspaceDir(): string {
+  return `${resolveOpenPalmHome()}/workspace`;
 }
 
+export function resolveServicesDir(): string {
+  return `${resolveOpenPalmHome()}/services`;
+}
+
+export function resolveStateDir(): string {
+  return `${resolveOpenPalmHome()}/state`;
+}
+
+export function resolveStackDir(): string {
+  return `${resolveOpenPalmHome()}/stack`;
+}
+
+// Derived from stateDir — used by registry.ts, rollback.ts, backup.ts, core-assets.ts
 export function resolveLogsDir(): string {
-  return `${resolveOpenPalmHome()}/logs`;
+  return `${resolveStateDir()}/logs`;
 }
 
-export function resolveCacheHome(): string {
-  return `${resolveHome()}/.cache/openpalm`;
-}
-
-export function resolveRollbackDir(): string {
-  return `${resolveCacheHome()}/rollback`;
+export function resolveBackupsDir(): string {
+  return `${resolveStateDir()}/backups`;
 }
 
 export function resolveRegistryDir(): string {
-  return `${resolveOpenPalmHome()}/registry`;
+  return `${resolveStateDir()}/registry`;
 }
 
 export function resolveRegistryAddonsDir(): string {
@@ -64,18 +73,17 @@ export function resolveRegistryAutomationsDir(): string {
   return `${resolveRegistryDir()}/automations`;
 }
 
-export function resolveBackupsDir(): string {
-  return `${resolveOpenPalmHome()}/backups`;
+export function resolveRollbackDir(): string {
+  return `${resolveStateDir()}/cache/rollback`;
 }
 
 // ── Directory Setup ──────────────────────────────────────────────────
 
 /**
- * Create the full ~/.openpalm/ directory tree and cache directories.
+ * Create the full ~/.openpalm/ directory tree.
  */
 export function ensureHomeDirs(): void {
   const home = resolveOpenPalmHome();
-  const cache = resolveCacheHome();
 
   for (const dir of [
     // config/ — user-editable, non-secret
@@ -84,58 +92,48 @@ export function ensureHomeDirs(): void {
     `${home}/config/assistant`,
     `${home}/config/guardian`,
 
-    // vault/ — secrets boundary
-    `${home}/vault`,
-    `${home}/vault/stack`,
-    `${home}/vault/user`,
+    // stash/ — akm asset content (skills, vaults, knowledge, agents)
+    `${home}/stash`,
 
-    // data/ — service-managed persistent data
-    `${home}/data`,
-    `${home}/data/assistant`,
-    `${home}/data/admin`,
-    `${home}/data/guardian`,
-    // Shared akm stash — asset content only (skills, vaults, knowledge, agents).
-    // Bind-mounted rw into admin and assistant containers at /akm.
-    `${home}/data/stash`,
-    // Shared akm operational data (config, data, state) — mounted at /akm-data.
-    `${home}/data/akm`,
-    `${home}/data/akm/config`,
-    `${home}/data/akm/data`,
-    `${home}/data/akm/state`,
-    // Operator-only akm stash — bind-mounted rw into guardian only.
-    `${home}/data/guardian-stash`,
-    // Operator-only akm operational data — mounted at /akm-guardian-data in guardian.
-    `${home}/data/guardian-akm`,
-    `${home}/data/guardian-akm/config`,
-    `${home}/data/guardian-akm/data`,
-    `${home}/data/guardian-akm/state`,
-    // Persistent akm caches (registry index, downloaded artifacts).
-    // Bind-mounted so `akm` registry fetches survive container recreate.
-    `${home}/data/akm-cache`,
-    `${home}/data/guardian-cache`,
+    // workspace/ — shared assistant work area
+    `${home}/workspace`,
+
+    // services/ — container bind mounts
+    `${home}/services`,
+    `${home}/services/assistant`,
+    `${home}/services/admin`,
+    `${home}/services/guardian`,
+    `${home}/services/guardian/stash`,
+    `${home}/services/guardian/akm`,
+    `${home}/services/guardian/akm/config`,
+    `${home}/services/guardian/akm/data`,
+    `${home}/services/guardian/akm/state`,
+
+    // state/ — system-managed state
+    `${home}/state`,
+    `${home}/state/akm`,
+    `${home}/state/akm/config`,
+    `${home}/state/akm/data`,
+    `${home}/state/akm/state`,
+    `${home}/state/scheduler`,
+    `${home}/state/scheduler/triggers`,
+    `${home}/state/logs`,
+    `${home}/state/logs/opencode`,
+    `${home}/state/backups`,
+    `${home}/state/registry`,
+    `${home}/state/registry/addons`,
+    `${home}/state/registry/automations`,
+    `${home}/state/cache`,
+    `${home}/state/cache/akm`,
+    `${home}/state/cache/guardian`,
+    `${home}/state/cache/rollback`,
 
     // stack/ — compose files
     `${home}/stack`,
     `${home}/stack/addons`,
 
-    // registry/ — available catalog
-    `${home}/registry`,
-    `${home}/registry/addons`,
-    `${home}/registry/automations`,
-
-    // backups/ — user backups
+    // backups/ — user backups at root level
     `${home}/backups`,
-
-    // data/workspace/ — shared assistant workspace (compose: $OP_HOME/data/workspace:/work)
-    `${home}/data/workspace`,
-
-    // logs/ — consolidated audit/debug
-    `${home}/logs`,
-    `${home}/logs/opencode`,
-
-    // cache/ — ephemeral, regenerable
-    cache,
-    `${cache}/rollback`,
   ]) {
     mkdirSync(dir, { recursive: true });
   }

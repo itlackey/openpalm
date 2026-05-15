@@ -21,9 +21,8 @@ import { STACK_SPEC_FILENAME } from "@openpalm/lib";
 let tempBase: string;
 let homeDir: string;
 let configDir: string;
-let vaultDir: string;
-let dataDir: string;
-let logsDir: string;
+let stateDir: string;
+let servicesDir: string;
 
 const savedEnv: Record<string, string | undefined> = {};
 
@@ -31,11 +30,9 @@ const savedEnv: Record<string, string | undefined> = {};
 function seedRequiredAssets(homeDir: string): void {
   mkdirSync(join(homeDir, "stack"), { recursive: true });
   writeFileSync(join(homeDir, "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
-  mkdirSync(join(homeDir, "data", "assistant"), { recursive: true });
-  writeFileSync(join(homeDir, "data", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
-  writeFileSync(join(homeDir, "data", "assistant", "AGENTS.md"), "# Agents\n");
-  writeFileSync(join(homeDir, "vault", "user", "user.env.schema"), "OP_ADMIN_TOKEN=string\n");
-  writeFileSync(join(homeDir, "vault", "stack", "stack.env.schema"), "OP_IMAGE_TAG=string\n");
+  mkdirSync(join(homeDir, "services", "assistant"), { recursive: true });
+  writeFileSync(join(homeDir, "services", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
+  writeFileSync(join(homeDir, "services", "assistant", "AGENTS.md"), "# Agents\n");
   mkdirSync(join(homeDir, "config", "automations"), { recursive: true });
   writeFileSync(join(homeDir, "config", "automations", "cleanup-logs.yml"), "name: cleanup-logs\nschedule: daily\n");
   writeFileSync(join(homeDir, "config", "automations", "cleanup-data.yml"), "name: cleanup-data\nschedule: weekly\n");
@@ -46,34 +43,28 @@ function makeSetupDirs(): void {
   tempBase = mkdtempSync(join(tmpdir(), "openpalm-server-integ-test-"));
   homeDir = tempBase;
   configDir = join(homeDir, "config");
-  vaultDir = join(homeDir, "vault");
-  dataDir = join(homeDir, "data");
-  logsDir = join(homeDir, "logs");
+  stateDir = join(homeDir, "state");
+  servicesDir = join(homeDir, "services");
 
   for (const dir of [
     configDir,
-    join(configDir, "components"),
-    join(configDir, "capabilities"),
     join(configDir, "assistant"),
     join(configDir, "automations"),
-    vaultDir,
-    dataDir,
-    join(dataDir, "admin"),
-    join(dataDir, "memory"),
-    join(dataDir, "assistant"),
-    join(dataDir, "guardian"),
-    join(dataDir, "stash"),
-    join(dataDir, "workspace"),
-    logsDir,
-    join(logsDir, "opencode"),
+    stateDir,
+    join(stateDir, "logs"),
+    join(stateDir, "logs", "opencode"),
+    servicesDir,
+    join(servicesDir, "admin"),
+    join(servicesDir, "assistant"),
+    join(servicesDir, "guardian"),
+    join(homeDir, "stash"),
+    join(homeDir, "workspace"),
   ]) {
     mkdirSync(dir, { recursive: true });
   }
 
-  mkdirSync(join(vaultDir, "stack"), { recursive: true });
-  mkdirSync(join(vaultDir, "user"), { recursive: true });
   writeFileSync(
-    join(vaultDir, "stack", "stack.env"),
+    join(stateDir, "stack.env"),
     [
       "OP_SETUP_COMPLETE=false",
       "OP_ADMIN_TOKEN=",
@@ -85,15 +76,6 @@ function makeSetupDirs(): void {
       "GOOGLE_API_KEY=",
       "OWNER_NAME=",
       "OWNER_EMAIL=",
-      "",
-    ].join("\n")
-  );
-  writeFileSync(
-    join(vaultDir, "user", "user.env"),
-    [
-      "# OpenPalm — User Extensions",
-      "# Add any custom environment variables here.",
-      "# These are loaded by compose alongside stack.env.",
       "",
     ].join("\n")
   );
@@ -260,11 +242,11 @@ describe("setup wizard server integration", () => {
       expect(data.ok).toBe(true);
       expect(result.ok).toBe(true);
 
-      // Verify vault/stack/stack.env was written with the admin token
-      const systemEnvContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
+      // Verify state/stack.env was written with the admin token
+      const systemEnvContent = readFileSync(join(stateDir, "stack.env"), "utf-8");
       expect(systemEnvContent).toContain("integration-test-token-123");
 
-      // Verify vault/stack/stack.env was written with owner info (now in stack.env, not user.env)
+      // Verify state/stack.env was written with owner info
       expect(systemEnvContent).toContain("OWNER_NAME=Integration Test");
 
       // Verify OP_CAP_* vars were written to stack.env (replaces managed.env)

@@ -39,7 +39,7 @@ describe("appendAudit", () => {
 
   test("persists to JSONL file on disk", () => {
     appendAudit(state, "admin", "install", {}, true, "req-1");
-    const auditFile = join(state.logsDir, "admin-audit.jsonl");
+    const auditFile = join(state.stateDir, "logs", "admin-audit.jsonl");
     expect(existsSync(auditFile)).toBe(true);
     const content = readFileSync(auditFile, "utf-8");
     const entry = JSON.parse(content.trim());

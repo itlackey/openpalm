@@ -6,10 +6,11 @@ import { CORE_SERVICES } from "./types.js";
 import {
   resolveOpenPalmHome,
   resolveConfigDir,
-  resolveVaultDir,
-  resolveDataDir,
-  resolveLogsDir,
-  resolveCacheHome,
+  resolveStashDir,
+  resolveWorkspaceDir,
+  resolveServicesDir,
+  resolveStateDir,
+  resolveStackDir,
 } from "./home.js";
 import { ensureSecrets, readStackEnv, updateSystemSecretsEnv } from "./secrets.js";
 import { mirrorUserVaultToAkm, migrateAndCleanupLegacyUserEnv } from "./akm-vault.js";
@@ -38,10 +39,11 @@ export function createState(
 ): ControlPlaneState {
   const homeDir = resolveOpenPalmHome();
   const configDir = resolveConfigDir();
-  const vaultDir = resolveVaultDir();
-  const dataDir = resolveDataDir();
-  const logsDir = resolveLogsDir();
-  const cacheDir = resolveCacheHome();
+  const stashDir = resolveStashDir();
+  const workspaceDir = resolveWorkspaceDir();
+  const servicesDir = resolveServicesDir();
+  const stateDir = resolveStateDir();
+  const stackDir = resolveStackDir();
 
   const services: Record<string, "running" | "stopped"> = {};
   for (const name of CORE_SERVICES) {
@@ -55,10 +57,11 @@ export function createState(
     setupToken,
     homeDir,
     configDir,
-    vaultDir,
-    dataDir,
-    logsDir,
-    cacheDir,
+    stashDir,
+    workspaceDir,
+    servicesDir,
+    stateDir,
+    stackDir,
     services,
     artifacts: { compose: "" },
     artifactMeta: [],
@@ -67,7 +70,7 @@ export function createState(
 
   ensureSecrets(bootstrapState);
 
-  const stackEnv = readStackEnv(vaultDir);
+  const stackEnv = readStackEnv(stateDir);
   // Precedence: explicit parameter > stack.env > process.env.
   bootstrapState.adminToken =
     adminToken
@@ -98,7 +101,7 @@ async function reconcileCore(
   }
 
   for (const addonName of listEnabledAddonIds(state.homeDir)) {
-    mkdirSync(`${state.dataDir}/${addonName}`, { recursive: true });
+    mkdirSync(`${state.servicesDir}/${addonName}`, { recursive: true });
   }
 
   const active: string[] = [];
@@ -200,7 +203,7 @@ export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): 
   namespace: string;
   tag: string;
 }> {
-  const systemEnvPath = `${state.vaultDir}/stack/stack.env`;
+  const systemEnvPath = `${state.stateDir}/stack.env`;
   const parsed = parseEnvFile(systemEnvPath);
   const namespace = (parsed.OP_IMAGE_NAMESPACE ?? process.env.OP_IMAGE_NAMESPACE ?? "openpalm").trim().toLowerCase();
 
@@ -288,7 +291,7 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
   // mutation just the same.
 
   // 1. Snapshot stack.env for rollback on failure
-  const stackEnvPath = `${state.vaultDir}/stack/stack.env`;
+  const stackEnvPath = `${state.stateDir}/stack.env`;
   let originalStackEnv: string | null = null;
   try {
     originalStackEnv = readFileSync(stackEnvPath, "utf-8");

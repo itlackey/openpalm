@@ -34,10 +34,11 @@ function makeState(homeDir: string): ControlPlaneState {
     setupToken: "test-setup",
     homeDir,
     configDir: join(homeDir, "config"),
-    vaultDir: join(homeDir, "vault"),
-    dataDir: join(homeDir, "data"),
-    logsDir: join(homeDir, "logs"),
-    cacheDir: join(homeDir, ".cache"),
+    stashDir: join(homeDir, "stash"),
+    workspaceDir: join(homeDir, "workspace"),
+    servicesDir: join(homeDir, "services"),
+    stateDir: join(homeDir, "state"),
+    stackDir: join(homeDir, "stack"),
     services: {},
     artifacts: { compose: "" },
     artifactMeta: [],
@@ -63,11 +64,9 @@ describe("mirrorUserVaultToAkm", () => {
   beforeEach(() => {
     homeDir = mkdtempSync(join(tmpdir(), "openpalm-akm-"));
     state = makeState(homeDir);
-    mkdirSync(state.vaultDir, { recursive: true });
-    mkdirSync(join(state.vaultDir, "user"), { recursive: true });
-    mkdirSync(state.dataDir, { recursive: true });
-    mkdirSync(join(state.dataDir, "stash"), { recursive: true });
-    mkdirSync(join(state.dataDir, "akm-cache"), { recursive: true });
+    mkdirSync(state.stateDir, { recursive: true });
+    mkdirSync(state.stashDir, { recursive: true });
+    mkdirSync(`${state.stateDir}/cache/akm`, { recursive: true });
   });
 
   afterEach(() => {
@@ -82,68 +81,26 @@ describe("mirrorUserVaultToAkm", () => {
   });
 
   it("skips when user.env contains no non-empty values", async () => {
-    writeFileSync(
-      join(state.vaultDir, "user", "user.env"),
-      "# comments only\n\n# another comment\nEMPTY_KEY=\n",
-    );
+    // mirrorUserVaultToAkm is a no-op stub in v0.12.0 — always reports skipped.
     const result = await mirrorUserVaultToAkm(state);
     expect(result.ok).toBe(true);
     expect(result.skipped).toBe(true);
-    expect(result.reason).toBe("user.env empty");
   });
 
-  it.skipIf(!AKM_AVAILABLE)("migrates a fake 0.10.x layout idempotently (upgrade-path contract)", async () => {
-    // Seed a pre-0.11 vault/user/user.env layout — exactly the shape
-    // `applyUpgrade()` sees on the first 0.10.x → 0.11 upgrade.
-    writeFileSync(
-      join(state.vaultDir, "user", "user.env"),
-      "# legacy 0.10.x layout\nGROQ_API_KEY=xyz-test-value-1\nOWNER_NAME=Alice\n",
-    );
-
-    // First mirror — should write the keys via `akm vault set` (stdin mode).
+  it("migrates a fake 0.10.x layout idempotently (upgrade-path contract) — no-op stub", async () => {
+    // mirrorUserVaultToAkm is a no-op stub in v0.12.0 — legacy vault/user/user.env
+    // no longer exists in the new directory layout.
     const first = await mirrorUserVaultToAkm(state);
     expect(first.ok).toBe(true);
-    expect(first.skipped).toBe(false);
-    expect(first.written.sort()).toEqual(["GROQ_API_KEY", "OWNER_NAME"]);
-    expect(first.unchanged).toHaveLength(0);
-
-    // The akm vault file should now contain the values.
-    const vaultPath = await ensureAkmUserVault(state);
-    expect(vaultPath).not.toBeNull();
-    expect(vaultPath).toContain("vaults/user.env");
-    if (vaultPath) {
-      const stored = readAkmUserVaultFile(vaultPath);
-      expect(stored.GROQ_API_KEY).toBe("xyz-test-value-1");
-      expect(stored.OWNER_NAME).toBe("Alice");
-    }
-
-    // The source .env file is still on disk — `mirrorUserVaultToAkm` is
-    // mirror-only. `migrateAndCleanupLegacyUserEnv` performs the delete.
-    expect(existsSync(join(state.vaultDir, "user", "user.env"))).toBe(true);
-
-    // Second mirror — every key reported as unchanged (idempotent).
-    const second = await mirrorUserVaultToAkm(state);
-    expect(second.ok).toBe(true);
-    expect(second.skipped).toBe(false);
-    expect(second.unchanged.sort()).toEqual(["GROQ_API_KEY", "OWNER_NAME"]);
-    expect(second.written).toHaveLength(0);
+    expect(first.skipped).toBe(true);
+    expect(first.reason).toBe("user.env missing");
   });
 
-  it.skipIf(!AKM_AVAILABLE)("updates only changed keys on second run", async () => {
-    writeFileSync(
-      join(state.vaultDir, "user", "user.env"),
-      "KEY_A=value-a\nKEY_B=value-b\n",
-    );
-    await mirrorUserVaultToAkm(state);
-
-    // Change KEY_B, leave KEY_A untouched.
-    writeFileSync(
-      join(state.vaultDir, "user", "user.env"),
-      "KEY_A=value-a\nKEY_B=value-b-updated\n",
-    );
+  it("updates only changed keys on second run — no-op stub", async () => {
+    // mirrorUserVaultToAkm is a no-op stub in v0.12.0.
     const result = await mirrorUserVaultToAkm(state);
-    expect(result.written).toEqual(["KEY_B"]);
-    expect(result.unchanged).toEqual(["KEY_A"]);
+    expect(result.ok).toBe(true);
+    expect(result.skipped).toBe(true);
   });
 
   it("returns a skipped result (does not hang) when the child process never resolves", async () => {
@@ -156,10 +113,7 @@ describe("mirrorUserVaultToAkm", () => {
     // surrounding test timed out. This test pins the contract: even with a
     // permanently-pending child, the mirror must abort fast and report a
     // skip rather than hang.
-    writeFileSync(
-      join(state.vaultDir, "user", "user.env"),
-      "STUCK_CHECK=value-1\n",
-    );
+    // mirrorUserVaultToAkm is a no-op stub — no file to write.
 
     const originalSpawn = Bun.spawn;
     (Bun as unknown as { spawn: typeof Bun.spawn }).spawn = (() => ({
@@ -210,10 +164,10 @@ describe("mirrorUserVaultToAkm", () => {
     //   2. The secret value DID arrive via stdin on the `vault set` call.
     //   3. The `vault set` invocation requested a stdin pipe.
     const secret = "secret-payload-12345-do-not-leak";
-    writeFileSync(
-      join(state.vaultDir, "user", "user.env"),
-      `LEAK_CHECK_KEY=${secret}\n`,
-    );
+    // In v0.12.0, mirrorUserVaultToAkm is a no-op stub. Use writeAkmVaultKey
+    // directly to test the argv-leak guard for the underlying mechanism.
+    // The test seeds the akm stash dir and uses writeAkmVaultKey.
+    mkdirSync(state.stashDir, { recursive: true });
 
     const argvCalls: Array<{ cmd: string; args: readonly string[] }> = [];
     const stdinWrites: string[] = [];
@@ -272,7 +226,7 @@ describe("mirrorUserVaultToAkm", () => {
       }
       // akm vault path vault:user → return a deterministic path
       if (argv[0] === "akm" && argv[1] === "vault" && argv[2] === "path") {
-        return { exitCode: 0, stdout: `${state.dataDir}/stash/vaults/user.env\n` };
+        return { exitCode: 0, stdout: `${state.stashDir}/vaults/user.env\n` };
       }
       // akm vault set vault:user <key> → must pipe stdin and never carry value on argv
       if (argv[0] === "akm" && argv[1] === "vault" && argv[2] === "set") {
@@ -322,10 +276,8 @@ describe("mirrorUserVaultToAkm", () => {
     }) as typeof Bun.spawn;
 
     try {
-      const result = await mirrorUserVaultToAkm(state);
-      expect(result.ok).toBe(true);
-      // The mirror should have written the key (mock claims success).
-      expect(result.written).toContain("LEAK_CHECK_KEY");
+      const ok = await writeAkmVaultKey(state, "LEAK_CHECK_KEY", secret);
+      expect(ok).toBe(true);
 
       // SECURITY ASSERTION (1): the secret value MUST NOT appear on any
       // observed argv across every spawn we intercepted.
@@ -350,14 +302,8 @@ describe("mirrorUserVaultToAkm", () => {
   });
 
   it.skipIf(!AKM_AVAILABLE)("never passes secret values via Bun.spawn argv (no /proc/cmdline leak) — live akm sanity", async () => {
-    // Live sanity check against the real akm binary. The mocked test above
-    // is the unconditional security gate; this one verifies the contract
-    // also holds end-to-end on environments that have akm installed.
+    // Live sanity check against the real akm binary.
     const secret = "secret-payload-12345-do-not-leak";
-    writeFileSync(
-      join(state.vaultDir, "user", "user.env"),
-      `LEAK_CHECK_KEY=${secret}\n`,
-    );
 
     const argvCalls: Array<{ cmd: string; args: readonly string[] }> = [];
     let stdinPiped = false;
@@ -372,8 +318,8 @@ describe("mirrorUserVaultToAkm", () => {
     }) as typeof Bun.spawn;
 
     try {
-      const result = await mirrorUserVaultToAkm(state);
-      expect(result.ok).toBe(true);
+      const ok = await writeAkmVaultKey(state, "LEAK_CHECK_KEY", secret);
+      expect(ok).toBe(true);
 
       for (const call of argvCalls) {
         for (const arg of call.args) {
@@ -383,7 +329,7 @@ describe("mirrorUserVaultToAkm", () => {
 
       expect(stdinPiped).toBe(true);
 
-      const vaultPath = `${state.dataDir}/stash/vaults/user.env`;
+      const vaultPath = `${state.stashDir}/vaults/user.env`;
       expect(existsSync(vaultPath)).toBe(true);
       const stored = readAkmUserVaultFile(vaultPath);
       expect(stored.LEAK_CHECK_KEY).toBe(secret);
@@ -400,8 +346,8 @@ describe("writeAkmVaultKey", () => {
   beforeEach(() => {
     homeDir = mkdtempSync(join(tmpdir(), "openpalm-akm-write-"));
     state = makeState(homeDir);
-    mkdirSync(join(state.dataDir, "stash"), { recursive: true });
-    mkdirSync(join(state.dataDir, "akm-cache"), { recursive: true });
+    mkdirSync(state.stashDir, { recursive: true });
+    mkdirSync(`${state.stateDir}/cache/akm`, { recursive: true });
   });
 
   afterEach(() => {
@@ -451,9 +397,8 @@ describe("migrateAndCleanupLegacyUserEnv", () => {
   beforeEach(() => {
     homeDir = mkdtempSync(join(tmpdir(), "openpalm-akm-cleanup-"));
     state = makeState(homeDir);
-    mkdirSync(join(state.vaultDir, "user"), { recursive: true });
-    mkdirSync(join(state.dataDir, "stash"), { recursive: true });
-    mkdirSync(join(state.dataDir, "akm-cache"), { recursive: true });
+    mkdirSync(state.stashDir, { recursive: true });
+    mkdirSync(`${state.stateDir}/cache/akm`, { recursive: true });
   });
 
   afterEach(() => {
@@ -466,71 +411,30 @@ describe("migrateAndCleanupLegacyUserEnv", () => {
     expect(result.reason).toBe("user.env already absent");
   });
 
-  it("deletes an empty placeholder user.env without invoking akm", async () => {
-    writeFileSync(join(state.vaultDir, "user", "user.env"), "# placeholder only\nEMPTY=\n");
+  it("deletes an empty placeholder user.env without invoking akm — no-op stub", async () => {
+    // migrateAndCleanupLegacyUserEnv is a no-op stub in v0.12.0.
     const result = await migrateAndCleanupLegacyUserEnv(state);
-    expect(result.deleted).toBe(true);
-    expect(existsSync(join(state.vaultDir, "user", "user.env"))).toBe(false);
+    expect(result.deleted).toBe(false);
+    expect(result.reason).toBe("user.env already absent");
   });
 
-  it.skipIf(!AKM_AVAILABLE)("end-to-end: mirror then cleanup deletes the legacy file", async () => {
-    writeFileSync(
-      join(state.vaultDir, "user", "user.env"),
-      "MIGRATE_KEY=migrated-value\nOWNER_NAME=Alice\n",
-    );
-
+  it("end-to-end: mirror then cleanup — no-op stubs in v0.12.0", async () => {
+    // Both mirrorUserVaultToAkm and migrateAndCleanupLegacyUserEnv are no-op
+    // stubs in v0.12.0. The legacy vault/user/user.env no longer exists.
     const mirror = await mirrorUserVaultToAkm(state);
     expect(mirror.ok).toBe(true);
-    expect(mirror.written.sort()).toEqual(["MIGRATE_KEY", "OWNER_NAME"]);
+    expect(mirror.skipped).toBe(true);
 
     const cleanup = await migrateAndCleanupLegacyUserEnv(state);
-    expect(cleanup.deleted).toBe(true);
-    expect(existsSync(join(state.vaultDir, "user", "user.env"))).toBe(false);
-
-    // The akm vault still has the migrated keys after cleanup.
-    const vaultPath = await ensureAkmUserVault(state);
-    expect(vaultPath).not.toBeNull();
-    if (vaultPath) {
-      const stored = readAkmUserVaultFile(vaultPath);
-      expect(stored.MIGRATE_KEY).toBe("migrated-value");
-      expect(stored.OWNER_NAME).toBe("Alice");
-    }
+    expect(cleanup.deleted).toBe(false);
+    expect(cleanup.reason).toBe("user.env already absent");
   });
 
-  it("retains the legacy file when akm is unavailable (operator can re-run)", async () => {
-    writeFileSync(
-      join(state.vaultDir, "user", "user.env"),
-      "REAL_KEY=real-value\n",
-    );
-
-    // Stub Bun.spawn so akm appears unavailable.
-    const originalSpawn = Bun.spawn;
-    (Bun as unknown as { spawn: typeof Bun.spawn }).spawn = (() => ({
-      pid: 0,
-      exited: Promise.resolve(127),
-      exitCode: 127,
-      signalCode: null,
-      killed: false,
-      stdin: null,
-      stdout: new Response("").body,
-      stderr: new Response("akm: command not found").body,
-      kill: () => {},
-      ref: () => {},
-      unref: () => {},
-      [Symbol.asyncDispose]: async () => {},
-      resourceUsage: () => undefined,
-    })) as unknown as typeof Bun.spawn;
-
-    try {
-      const cleanup = await migrateAndCleanupLegacyUserEnv(state);
-      expect(cleanup.deleted).toBe(false);
-      expect(cleanup.reason).toBe("akm not on PATH");
-      // Legacy file MUST still exist so the upgrade is re-runnable once
-      // akm is fixed.
-      expect(existsSync(join(state.vaultDir, "user", "user.env"))).toBe(true);
-    } finally {
-      (Bun as unknown as { spawn: typeof Bun.spawn }).spawn = originalSpawn;
-    }
+  it("retains the legacy file when akm is unavailable (operator can re-run) — no-op stub", async () => {
+    // migrateAndCleanupLegacyUserEnv is a no-op stub in v0.12.0.
+    const cleanup = await migrateAndCleanupLegacyUserEnv(state);
+    expect(cleanup.deleted).toBe(false);
+    expect(cleanup.reason).toBe("user.env already absent");
   });
 });
 

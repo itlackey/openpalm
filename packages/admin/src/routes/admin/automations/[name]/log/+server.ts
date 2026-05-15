@@ -89,7 +89,7 @@ export const GET: RequestHandler = async (event) => {
     limit = Math.min(parsed, MAX_LIMIT);
   }
 
-  const logPath = join(state.logsDir, "scheduler.log");
+  const logPath = join(state.stateDir, "logs", "scheduler.log");
   let entries: LogEntry[] = [];
 
   if (existsSync(logPath)) {

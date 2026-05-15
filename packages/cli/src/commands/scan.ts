@@ -1,7 +1,7 @@
 import { defineCommand } from 'citty';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { resolveVaultDir } from '@openpalm/lib';
+import { resolveStateDir } from '@openpalm/lib';
 import { parseEnvFile, isSensitiveEnvKey } from '@openpalm/lib';
 
 /**
@@ -37,11 +37,10 @@ export default defineCommand({
       process.exit(2);
     }
 
-    const vaultDir = resolveVaultDir();
+    const stateDir = resolveStateDir();
     const targets = [
-      join(vaultDir, 'stack', 'stack.env'),
-      join(vaultDir, 'stack', 'guardian.env'),
-      join(vaultDir, 'user', 'user.env'),
+      join(stateDir, 'stack.env'),
+      join(stateDir, 'guardian.env'),
     ];
 
     type FileResult = { path: string; keys: Array<{ name: string; set: boolean }> };

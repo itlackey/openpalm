@@ -50,7 +50,7 @@ export const POST: RequestHandler = async (event) => {
 
     currentSpec.capabilities.llm = formatCapabilityString(provider, model);
     writeStackSpec(state.configDir, currentSpec);
-    writeCapabilityVars(currentSpec, state.vaultDir);
+    writeCapabilityVars(currentSpec, state.stateDir);
   } catch (e) {
     console.warn('[opencode.model] Failed to persist model selection', e);
     return errorResponse(500, 'internal_error', 'Failed to persist model selection', {}, requestId);

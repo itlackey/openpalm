@@ -44,7 +44,7 @@ export const GET: RequestHandler = async (event) => {
   const callerType = getCallerType(event);
 
   // Read secrets (masked)
-  const raw = readStackEnv(state.vaultDir);
+  const raw = readStackEnv(state.stateDir);
   const secrets: Record<string, string> = {};
   for (const [key, value] of Object.entries(raw)) {
     secrets[key] = maskSecretValue(key, value);
@@ -93,10 +93,10 @@ export const POST: RequestHandler = async (event) => {
   }
   if (Object.keys(secretPatches).length > 0) {
     try {
-      patchSecretsEnvFile(state.vaultDir, secretPatches);
+      patchSecretsEnvFile(state.stateDir, secretPatches);
     } catch (err) {
       appendAudit(state, actor, "capabilities.save", { provider, error: String(err) }, false, requestId, callerType);
-      return errorResponse(500, "internal_error", "Failed to update vault/stack/stack.env", {}, requestId);
+      return errorResponse(500, "internal_error", "Failed to update state/stack.env", {}, requestId);
     }
   }
 
@@ -114,10 +114,10 @@ export const POST: RequestHandler = async (event) => {
       dims: resolvedDims,
     };
     writeStackSpec(state.configDir, spec);
-    writeCapabilityVars(spec, state.vaultDir);
-    const akmJson = buildAkmSetupJson(spec, readStackEnv(state.vaultDir));
+    writeCapabilityVars(spec, state.stateDir);
+    const akmJson = buildAkmSetupJson(spec, readStackEnv(state.stateDir));
     if (akmJson) {
-      const akmConfigDir = `${state.dataDir}/akm/config`;
+      const akmConfigDir = `${state.stateDir}/akm/config`;
       mkdirSync(akmConfigDir, { recursive: true });
       writeFileSync(`${akmConfigDir}/config.json`, akmJson, { mode: 0o600 });
     }

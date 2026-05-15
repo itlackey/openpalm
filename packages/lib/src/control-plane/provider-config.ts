@@ -8,7 +8,7 @@ export type SecretProviderConfig = {
 };
 
 function providerConfigPath(state: ControlPlaneState): string {
-  return `${state.dataDir}/secrets/provider.json`;
+  return `${state.stateDir}/secrets/provider.json`;
 }
 
 export function readSecretProviderConfig(state: ControlPlaneState): SecretProviderConfig | null {
@@ -28,7 +28,7 @@ export function readSecretProviderConfig(state: ControlPlaneState): SecretProvid
 }
 
 export function writeSecretProviderConfig(state: ControlPlaneState, config: SecretProviderConfig): void {
-  const dir = `${state.dataDir}/secrets`;
+  const dir = `${state.stateDir}/secrets`;
   mkdirSync(dir, { recursive: true });
   writeFileSync(providerConfigPath(state), JSON.stringify(config, null, 2) + '\n');
 }

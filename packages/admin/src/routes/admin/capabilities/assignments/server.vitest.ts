@@ -115,7 +115,7 @@ describe('/admin/capabilities/assignments route', () => {
       dims: 768,
     });
 
-    const stackEnv = readFileSync(join(state.vaultDir, 'stack', 'stack.env'), 'utf-8');
+    const stackEnv = readFileSync(join(state.stateDir, 'stack.env'), 'utf-8');
     expect(stackEnv).toContain('OP_CAP_LLM_PROVIDER=anthropic');
     expect(stackEnv).toContain('OP_CAP_EMBEDDINGS_MODEL=text-embedding-004');
   });

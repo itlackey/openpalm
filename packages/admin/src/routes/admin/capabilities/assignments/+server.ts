@@ -137,10 +137,10 @@ export const POST: RequestHandler = async (event) => {
 
   try {
     writeStackSpec(state.configDir, spec);
-    writeCapabilityVars(spec, state.vaultDir);
-    const akmJson = buildAkmSetupJson(spec, readStackEnv(state.vaultDir));
+    writeCapabilityVars(spec, state.stateDir);
+    const akmJson = buildAkmSetupJson(spec, readStackEnv(state.stateDir));
     if (akmJson) {
-      const akmConfigDir = `${state.dataDir}/akm/config`;
+      const akmConfigDir = `${state.stateDir}/akm/config`;
       mkdirSync(akmConfigDir, { recursive: true });
       writeFileSync(`${akmConfigDir}/config.json`, akmJson, { mode: 0o600 });
     }
