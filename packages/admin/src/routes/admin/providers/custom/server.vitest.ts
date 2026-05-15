@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { resetState } from '$lib/server/test-helpers.js';
 import { POST } from './+server.js';
 
-vi.mock('$lib/server/opencode-providers.js', () => ({
+vi.mock('$lib/server/opencode/index.js', () => ({
 	getCurrentConfig: vi.fn(async () => ({ provider: {} })),
 	patchConfig: vi.fn(async () => {}),
 	actionSuccess: (message: string, providerId?: string) => ({
@@ -21,7 +21,7 @@ vi.mock('$lib/server/opencode-providers.js', () => ({
 	}),
 }));
 
-import { getCurrentConfig, patchConfig } from '$lib/server/opencode-providers.js';
+import { getCurrentConfig, patchConfig } from '$lib/server/opencode/index.js';
 
 let rootDir = '';
 let originalHome: string | undefined;

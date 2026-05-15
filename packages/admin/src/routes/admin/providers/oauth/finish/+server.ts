@@ -4,7 +4,7 @@ import {
 	finishOauthFlowAtBase,
 	actionSuccess,
 	actionFailure,
-} from '$lib/server/opencode-providers.js';
+} from '$lib/server/opencode/index.js';
 import { ensureAuthServer } from '$lib/server/opencode-auth-subprocess.js';
 import { asString } from '../../_helpers.js';
 

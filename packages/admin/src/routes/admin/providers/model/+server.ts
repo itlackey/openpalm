@@ -5,7 +5,7 @@ import {
 	patchConfig,
 	actionSuccess,
 	actionFailure,
-} from '$lib/server/opencode-providers.js';
+} from '$lib/server/opencode/index.js';
 import { asString } from '../_helpers.js';
 
 /**
