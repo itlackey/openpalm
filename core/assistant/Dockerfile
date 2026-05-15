@@ -2,25 +2,19 @@
 # OpenCode AI runtime with OpenPalm extensions for the akm stash, policy,
 # and tools. Config, plugins, and persona are mounted at runtime — not baked
 # into the image.
+#
+# Inherits Bun, OpenCode, and akm-cli from openpalm-base. See
+# core/base/Dockerfile for the single source of truth on those versions.
 # ──────────────────────────────────────────────────────────────────────────────
 
-FROM node:22-trixie-slim
+FROM openpalm-base
 
-# ── Pinned installer versions ────────────────────────────────────────────────
-# Bump these ARGs when upgrading; keeps curl|bash installs reproducible.
-# Keep OPENCODE_VERSION in sync with core/admin/Dockerfile — admin and
-# assistant must run the same OpenCode build so plugin/config behaviour is
-# identical across both AI surfaces. TODO: extract Bun + akm-cli + OpenCode
-# into a shared core/base image so this version cannot drift again.
-ARG OPENCODE_VERSION=1.3.3
-ARG BUN_VERSION=bun-v1.3.10
-# akm-cli — Agent Kit Manager, installed globally via bun add -g.
-ARG AKM_CLI_VERSION=^0.8.0-rc2
-
+# Assistant-specific OS packages: sshd for remote agent sessions, sudo + socat
+# for entrypoint privilege drop and Ollama proxy, Python (uv-managed venv for
+# azure-cli, hf-cli, apprise), jq/ripgrep + gh for in-container tooling.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu sudo socat unzip \
-        python3 python3-pip python3-venv \
-        jq ripgrep \
+    && apt-get install -y --no-install-recommends openssh-server sudo socat \
+        python3 python3-pip python3-venv jq ripgrep \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
@@ -29,11 +23,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
-# ── opencode user (rename the base image's node user to opencode) ────────
-# The node:22-trixie-slim base ships a "node" user at UID 1000. Rename it
-# so the container has a purpose-named user. Passwordless sudo lets OpenCode
-# agents run root operations (apt install, pip install, etc.) while the
-# entrypoint's gosu drop keeps normal file I/O at the host user's UID.
+# Rename the base image's "node" user (UID 1000) to "opencode" for clarity.
+# Passwordless sudo lets agents run root operations; the entrypoint's gosu
+# drop keeps normal file I/O at the host user's UID.
 RUN usermod -l opencode -d /home/opencode node \
     && groupmod -n opencode node \
     && mkdir -p /home/opencode \
@@ -41,24 +33,19 @@ RUN usermod -l opencode -d /home/opencode node \
     && echo "opencode ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/opencode \
     && chmod 0440 /etc/sudoers.d/opencode
 
-# ── CLI tools (yq, ast-grep, uv, azure-cli, huggingface-cli) ──────────────
-# yq — YAML processor (mikefarah/yq)
+# yq (mikefarah), ast-grep, uv (Python package manager).
 RUN set -e; \
     if [ "$(dpkg --print-architecture)" = "arm64" ]; then YQ_ARCH=arm64; else YQ_ARCH=amd64; fi \
     && curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${YQ_ARCH}" \
          -o /usr/local/bin/yq \
-    && chmod +x /usr/local/bin/yq
-
-# ast-grep — structural code search (https://ast-grep.github.io/)
-RUN npm install -g @ast-grep/cli
-
-# uv — fast Python package manager (https://docs.astral.sh/uv/)
-RUN curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 sh \
+    && chmod +x /usr/local/bin/yq \
+    && npm install -g @ast-grep/cli \
+    && curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 sh \
     && mv /root/.local/bin/uv /usr/local/bin/ \
     && mv /root/.local/bin/uvx /usr/local/bin/
 
-# Azure CLI + Hugging Face CLI — installed into an isolated venv via uv
-# (avoids pip --break-system-packages which modifies the system Python)
+# Azure CLI + Hugging Face CLI + apprise — isolated venv via uv (avoids pip
+# --break-system-packages).
 RUN uv venv /opt/assistant-tools \
     && uv pip install --python /opt/assistant-tools/bin/python azure-cli huggingface-hub[cli] apprise
 ENV PATH="/opt/assistant-tools/bin:$PATH"
@@ -67,7 +54,7 @@ ENV GOOGLE_APPLICATION_CREDENTIALS="/etc/vault/gcloud-credentials.json"
 ENV CLOUDSDK_CONFIG="/etc/vault/.gcloud"
 ENV MGC_CONFIG_DIR="/etc/vault/.mgc"
 
-# gcloud CLI — Google Cloud SDK
+# gcloud CLI
 RUN curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-$(uname -m | sed 's/aarch64/arm/' | sed 's/x86_64/x86_64/').tar.gz \
       -o /tmp/gcloud.tar.gz \
     && tar xzf /tmp/gcloud.tar.gz -C /opt/ \
@@ -75,7 +62,7 @@ RUN curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google
     && rm /tmp/gcloud.tar.gz
 ENV PATH="/opt/google-cloud-sdk/bin:$PATH"
 
-# Google Workspace CLI (https://github.com/googleworkspace/cli)
+# Google Workspace CLI
 ARG GWS_VERSION=0.22.3
 RUN set -e; \
     if [ "$(dpkg --print-architecture)" = "arm64" ]; then GWS_TRIPLE=aarch64-unknown-linux-gnu; else GWS_TRIPLE=x86_64-unknown-linux-gnu; fi \
@@ -83,8 +70,7 @@ RUN set -e; \
          | tar xz --strip-components=1 -C /usr/local/bin "google-workspace-cli-${GWS_TRIPLE}/gws" \
     && chmod +x /usr/local/bin/gws
 
-# Microsoft Graph CLI (https://github.com/microsoftgraph/msgraph-cli)
-# Only linux-x64 binaries are published; skip on arm64.
+# Microsoft Graph CLI — only linux-x64 binaries are published; skip on arm64.
 ARG MGC_VERSION=1.9.0
 RUN set -e; \
     if [ "$(dpkg --print-architecture)" = "arm64" ]; then \
@@ -97,9 +83,8 @@ RUN set -e; \
            | tar xz -C /usr/local/bin; \
     fi
 
-
-# Install opencode to /usr/local/.opencode/bin (set HOME so installer puts it there)
-RUN HOME=/usr/local curl -fsSL https://opencode.ai/install | HOME=/usr/local bash -s -- --no-modify-path --version "$OPENCODE_VERSION"
+# OpenCode lives at /usr/local/.opencode/bin from the base image. Prepend the
+# opencode user's local bin so per-user installs win.
 ENV PATH="/home/opencode/.local/bin:/usr/local/.opencode/bin:$PATH"
 
 RUN mkdir -p /home/opencode/.cache /work /akm \
@@ -112,49 +97,27 @@ RUN mkdir -p /home/opencode/.cache /work /akm \
 COPY core/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
 
-# NOTE: No final USER directive — container starts as root intentionally.
-# The entrypoint uses gosu to drop to the "opencode" user (UID/GID from
-# OP_UID/OP_GID, default 1000:1000) after root-only setup (sshd, socat).
-# Agents get root access via passwordless sudo; normal file I/O runs as
-# the unprivileged user so bind-mounted files keep the host user's ownership.
+# Container starts as root intentionally. The entrypoint uses gosu to drop to
+# the "opencode" user (UID/GID from OP_UID/OP_GID, default 1000:1000) after
+# root-only setup (sshd, socat).
 WORKDIR /work
 
-# Install Bun binary to /usr/local so it's on PATH for all users.
-# After install, reset BUN_INSTALL to a user-writable path so that
-# bun install -g and the install cache work for the unprivileged user.
-ENV BUN_INSTALL=/usr/local
-RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
+# Point Bun's user-writable paths at the opencode user's home. Bun was
+# installed into /usr/local by openpalm-base.
 ENV BUN_INSTALL=/home/opencode/.bun
 ENV BUN_INSTALL_CACHE_DIR=/home/opencode/.cache/bun/install
 ENV PATH="/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:$PATH"
 
-# Install akm-cli globally so every container shares the same stash CLI.
-# BUN_INSTALL=/usr/local for this RUN puts the global install tree at
-# /usr/local/install/global so the unprivileged opencode user (which the
-# entrypoint drops to via gosu) can exec the binary without writing to its
-# own $HOME. chmod -R a+rX makes the tree world-readable.
-RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
-    && chmod -R a+rX /usr/local/install/global \
-    && chmod 755 /usr/local/bin/akm \
-    && akm --version
-
 RUN mkdir -p /etc/opencode
-# Persona / config only — opencode.jsonc, system.md, openpalm.md. Built-in
-# skills, commands, and agents now live in the shared akm stash
-# (bind-mounted at /akm), not in the image. See `.openpalm/stash-seeds/`
-# for the source-of-truth seeds and `seedStashAssets()` in @openpalm/lib
-# for the install-time copy that respects user edits.
+# Persona / config only. Built-in skills/commands/agents now live in the
+# shared akm stash (bind-mounted at /akm), not in the image.
 COPY core/assistant/opencode /etc/opencode
 
 # ── Scheduler co-process ─────────────────────────────────────────────────
-# The scheduler runs alongside OpenCode inside this container. It has no
-# HTTP port — automations are read from /openpalm/config/automations and
-# manual triggers come from sentinel files under /openpalm/data/scheduler/
-# triggers. See core/assistant/entrypoint.sh for the supervisor logic.
-#
-# Pattern matches the previous standalone scheduler image: copy
-# @openpalm/lib source into node_modules so the workspace:* dep resolves,
-# then install the scheduler's remaining deps with bun (already on PATH).
+# The scheduler runs alongside OpenCode inside this container with no HTTP
+# port. Automations are read from /openpalm/config/automations and triggers
+# from sentinel files under /openpalm/data/scheduler/triggers. See
+# core/assistant/entrypoint.sh for the supervisor logic.
 COPY packages/lib /opt/scheduler/node_modules/@openpalm/lib
 RUN cd /opt/scheduler/node_modules/@openpalm/lib && bun install --production
 COPY packages/scheduler/package.json /opt/scheduler/package.json
