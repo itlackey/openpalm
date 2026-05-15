@@ -14,7 +14,7 @@
  */
 import { expect } from 'vitest';
 
-export interface ConsoleGuard {
+export type ConsoleGuard = {
 	/** Assert that no console errors or uncaught exceptions occurred. */
 	expectNoErrors: () => void;
 	/** Assert that no console warnings occurred. */
@@ -25,7 +25,7 @@ export interface ConsoleGuard {
 	getWarnings: () => string[];
 	/** Cleanup — call in afterEach if not using the auto-cleanup pattern. */
 	cleanup: () => void;
-}
+};
 
 /**
  * Install console error/warning monitoring for the current test.

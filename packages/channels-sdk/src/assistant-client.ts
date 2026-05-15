@@ -5,7 +5,7 @@
  * Uses standard `fetch()` so it works in both Node.js and Bun runtimes.
  */
 
-export interface AssistantClientOptions {
+export type AssistantClientOptions = {
   /** Base URL of the OpenCode server. */
   baseUrl: string;
   /** Optional Basic-auth username (defaults to "opencode"). */
@@ -16,28 +16,28 @@ export interface AssistantClientOptions {
   createTimeoutMs?: number;
   /** Timeout for the message request (ms). Default: 0 (no timeout). Set to a positive value to enable. */
   messageTimeoutMs?: number;
-}
+};
 
-interface SessionCreateResponse {
+type SessionCreateResponse = {
   id: string;
-}
+};
 
-interface SessionListItemResponse {
+type SessionListItemResponse = {
   id?: unknown;
   title?: unknown;
-}
+};
 
-interface MessageResponse {
+type MessageResponse = {
   info?: unknown;
   parts?: Array<{ type: string; text?: string; content?: string }>;
-}
+};
 
 const SESSION_ID_RE = /^[a-zA-Z0-9_-]+$/;
 
-export interface AssistantSessionSummary {
+export type AssistantSessionSummary = {
   id: string;
   title: string;
-}
+};
 
 /**
  * Produce a short human-readable description for an assistant HTTP error.
