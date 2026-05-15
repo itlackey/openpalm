@@ -1,35 +1,35 @@
 export type ProviderFilter = 'all' | 'connected' | 'configured' | 'oauth' | 'disabled';
 
-export interface ProviderAuthPrompt {
+export type ProviderAuthPrompt = {
 	key: string;
 	message: string;
 	placeholder?: string;
 	options?: string[];
 	when?: string;
-}
+};
 
-export interface ProviderAuthMethod {
+export type ProviderAuthMethod = {
 	index: number;
 	type: 'oauth' | 'api';
 	label: string;
 	prompts: ProviderAuthPrompt[];
-}
+};
 
-export interface ProviderModelOption {
+export type ProviderModelOption = {
 	id: string;
 	name: string;
-}
+};
 
-export interface ProviderOptionView {
+export type ProviderOptionView = {
 	apiKey?: string;
 	baseURL?: string;
 	headers?: Record<string, string>;
 	timeout?: number;
 	chunkTimeout?: number;
 	setCacheKey?: boolean;
-}
+};
 
-export interface ProviderView {
+export type ProviderView = {
 	id: string;
 	name: string;
 	source: string;
@@ -46,9 +46,9 @@ export interface ProviderView {
 	options: ProviderOptionView;
 	supportsOauth: boolean;
 	supportsApiAuth: boolean;
-}
+};
 
-export interface ProviderPageState {
+export type ProviderPageState = {
 	available: boolean;
 	error?: string;
 	providers: ProviderView[];
@@ -63,9 +63,9 @@ export interface ProviderPageState {
 	defaultModels: Record<string, string>;
 	allowlistActive: boolean;
 	providerCountLabel: string;
-}
+};
 
-export interface ProviderActionResult {
+export type ProviderActionResult = {
 	ok?: boolean;
 	message?: string;
 	selectedProviderId?: string;
@@ -77,4 +77,4 @@ export interface ProviderActionResult {
 		instructions?: string;
 		inputs?: Record<string, string>;
 	};
-}
+};

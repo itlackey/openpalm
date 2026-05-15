@@ -46,10 +46,10 @@ export function isValidComponentName(name: string): boolean {
 
 const DEFAULT_REPO = 'itlackey/openpalm';
 
-export interface RegistryConfig {
+export type RegistryConfig = {
   repoUrl: string;
   branch: string;
-}
+};
 
 export function getRegistryConfig(): RegistryConfig {
   return {
