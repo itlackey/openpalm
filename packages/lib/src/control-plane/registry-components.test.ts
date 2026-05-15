@@ -5,6 +5,19 @@
  * component conventions: compose.yml with required labels, .env.schema
  * with documented variables, proper service naming, and no security
  * violations.
+ *
+ * Two component shapes are accepted:
+ *
+ *   1. Full addons — compose.yml + .env.schema. They introduce a new
+ *      service, declare env vars, and must satisfy the full structural
+ *      checklist (labels, network, healthcheck, restart policy, sensitive
+ *      fields).
+ *   2. Overlay-only addons — compose.yml only. They patch existing
+ *      services (ports, env, volumes) instead of introducing new ones,
+ *      so they have no env vars to document and no service-shaped
+ *      requirements. They still must satisfy the security invariants:
+ *      no INSTANCE_ID, no container_name, no INSTANCE_DIR, no vault
+ *      directory mounts, no docker socket.
  */
 import { describe, expect, it } from "bun:test";
 import {
@@ -26,6 +39,19 @@ function listComponentDirs(): string[] {
   return readdirSync(REGISTRY_DIR, { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .map((d) => d.name);
+}
+
+/** Overlay-only addons ship compose.yml only — no .env.schema. */
+function isOverlayOnly(componentId: string): boolean {
+  return !existsSync(join(REGISTRY_DIR, componentId, ".env.schema"));
+}
+
+function listFullAddonIds(componentIds: string[]): string[] {
+  return componentIds.filter((id) => !isOverlayOnly(id));
+}
+
+function listOverlayOnlyAddonIds(componentIds: string[]): string[] {
+  return componentIds.filter(isOverlayOnly);
 }
 
 /** Read a file from a component directory */
@@ -118,14 +144,54 @@ describe("registry component discovery", () => {
 
 describe("registry component required files", () => {
   const componentIds = listComponentDirs();
+  const fullAddonIds = listFullAddonIds(componentIds);
 
   for (const id of componentIds) {
     it(`${id}: has compose.yml`, () => {
       expect(existsSync(join(REGISTRY_DIR, id, "compose.yml"))).toBe(true);
     });
+  }
 
-    it(`${id}: has .env.schema`, () => {
+  for (const id of fullAddonIds) {
+    it(`${id}: has .env.schema (full addon)`, () => {
       expect(existsSync(join(REGISTRY_DIR, id, ".env.schema"))).toBe(true);
+    });
+  }
+});
+
+// ── Overlay-only Addon Tests ─────────────────────────────────────────────
+
+describe("registry overlay-only addons", () => {
+  const componentIds = listComponentDirs();
+  const overlayIds = listOverlayOnlyAddonIds(componentIds);
+
+  it("at least one overlay-only addon (ssh) is recognized as valid", () => {
+    expect(overlayIds).toContain("ssh");
+  });
+
+  for (const id of overlayIds) {
+    describe(id, () => {
+      it("ships only compose.yml (no .env.schema, no entrypoint, no Dockerfile)", () => {
+        const dirEntries = readdirSync(join(REGISTRY_DIR, id));
+        // compose.yml is required; an optional README.md is allowed; nothing
+        // else (no .env.schema, no entrypoint*, no Dockerfile, no scripts).
+        const allowed = new Set(["compose.yml", "README.md"]);
+        for (const file of dirEntries) {
+          expect(allowed.has(file)).toBe(true);
+        }
+      });
+
+      it("compose.yml does not introduce a new service (no image: or build:)", () => {
+        // Overlay-only addons may patch existing services with new ports/env,
+        // but they MUST NOT introduce a new service that needs its own
+        // network/healthcheck/restart contract — those would belong in a
+        // full addon. Reject service definition keys that imply a new
+        // service body. A pure overlay only sets `ports:`, `environment:`,
+        // `volumes:`, etc. on already-defined services.
+        const compose = readComponentFile(id, "compose.yml");
+        expect(compose).not.toMatch(/^\s+image:\s/m);
+        expect(compose).not.toMatch(/^\s+build:\s/m);
+      });
     });
   }
 });
@@ -134,8 +200,11 @@ describe("registry component required files", () => {
 
 describe("registry compose.yml validation", () => {
   const componentIds = listComponentDirs();
+  const fullAddonIds = listFullAddonIds(componentIds);
 
-  for (const id of componentIds) {
+  // Full-addon-only assertions: anything that requires a service body
+  // (labels, network, healthcheck, restart policy) is checked here.
+  for (const id of fullAddonIds) {
     describe(id, () => {
       const compose = readComponentFile(id, "compose.yml");
 
@@ -145,18 +214,6 @@ describe("registry compose.yml validation", () => {
 
       it("has openpalm.description label", () => {
         expect(compose).toMatch(/openpalm\.description:/);
-      });
-
-      it("uses static service name (no INSTANCE_ID)", () => {
-        expect(compose).not.toContain("${INSTANCE_ID}");
-      });
-
-      it("does not use container_name", () => {
-        expect(compose).not.toMatch(/container_name:/);
-      });
-
-      it("does not reference INSTANCE_DIR", () => {
-        expect(compose).not.toContain("${INSTANCE_DIR}");
       });
 
       it("joins a valid stack network", () => {
@@ -170,6 +227,25 @@ describe("registry compose.yml validation", () => {
 
       it("has healthcheck", () => {
         expect(compose).toMatch(/healthcheck:/);
+      });
+    });
+  }
+
+  // Security/hygiene assertions apply to ALL addons (full and overlay-only).
+  for (const id of componentIds) {
+    describe(`${id} (security)`, () => {
+      const compose = readComponentFile(id, "compose.yml");
+
+      it("uses static service name (no INSTANCE_ID)", () => {
+        expect(compose).not.toContain("${INSTANCE_ID}");
+      });
+
+      it("does not use container_name", () => {
+        expect(compose).not.toMatch(/container_name:/);
+      });
+
+      it("does not reference INSTANCE_DIR", () => {
+        expect(compose).not.toContain("${INSTANCE_DIR}");
       });
 
       it("does not mount vault directory (single-file mounts allowed)", () => {
@@ -209,8 +285,9 @@ describe("registry compose.yml validation", () => {
 
 describe("registry .env.schema validation", () => {
   const componentIds = listComponentDirs();
+  const fullAddonIds = listFullAddonIds(componentIds);
 
-  for (const id of componentIds) {
+  for (const id of fullAddonIds) {
     describe(id, () => {
       const schema = readComponentFile(id, ".env.schema");
       const entries = parseEnvSchema(schema);
@@ -264,8 +341,9 @@ describe("registry .env.schema validation", () => {
 
 describe("registry component sensitive fields", () => {
   const componentIds = listComponentDirs();
+  const fullAddonIds = listFullAddonIds(componentIds);
 
-  for (const id of componentIds) {
+  for (const id of fullAddonIds) {
     it(`${id}: has at least one @sensitive field (channel secret)`, () => {
       // ollama is a local inference server — no channel secret or API key needed
       if (id === "ollama") return;
@@ -283,10 +361,11 @@ describe("registry component sensitive fields", () => {
 
 describe("cross-component consistency", () => {
   const componentIds = listComponentDirs();
+  const fullAddonIds = listFullAddonIds(componentIds);
 
-  it("no duplicate openpalm.name labels across components", () => {
+  it("no duplicate openpalm.name labels across full addons", () => {
     const names = new Set<string>();
-    for (const id of componentIds) {
+    for (const id of fullAddonIds) {
       const compose = readComponentFile(id, "compose.yml");
       const nameMatch = compose.match(/openpalm\.name:\s*(.+)/);
       expect(nameMatch).not.toBeNull();
@@ -296,8 +375,8 @@ describe("cross-component consistency", () => {
     }
   });
 
-  it("all components join a valid stack network", () => {
-    for (const id of componentIds) {
+  it("all full addons join a valid stack network", () => {
+    for (const id of fullAddonIds) {
       const compose = readComponentFile(id, "compose.yml");
       const hasValidNetwork = compose.includes("channel_lan") || compose.includes("channel_public") || compose.includes("assistant_net");
       expect(hasValidNetwork).toBe(true);

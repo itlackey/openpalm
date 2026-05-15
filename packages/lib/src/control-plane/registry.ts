@@ -95,7 +95,10 @@ function countValidAddons(rootDir: string): number {
   return readdirSync(addonsDir, { withFileTypes: true }).filter((entry) => {
     if (!entry.isDirectory() || !isValidComponentName(entry.name)) return false;
     const addonDir = join(addonsDir, entry.name);
-    return existsSync(join(addonDir, 'compose.yml')) && existsSync(join(addonDir, '.env.schema'));
+    // An addon is valid if it has a compose.yml. Overlay-only addons that only
+    // patch existing services (ports, env, volumes) do not need an .env.schema;
+    // full addons that introduce services and env vars do.
+    return existsSync(join(addonDir, 'compose.yml'));
   }).length;
 }
 
@@ -184,12 +187,16 @@ export function discoverRegistryComponents(): Record<string, RegistryComponentEn
     if (!entry.isDirectory() || !VALID_NAME_RE.test(entry.name)) continue;
     const addonDir = join(addonsDir, entry.name);
     const composeFile = join(addonDir, 'compose.yml');
+    if (!existsSync(composeFile)) continue;
+
+    // .env.schema is optional: overlay-only addons (e.g. a port toggle) do
+    // not introduce new env vars, so they ship just compose.yml.
     const schemaFile = join(addonDir, '.env.schema');
-    if (!existsSync(composeFile) || !existsSync(schemaFile)) continue;
+    const schema = existsSync(schemaFile) ? readFileSync(schemaFile, 'utf-8') : '';
 
     result[entry.name] = {
       compose: readFileSync(composeFile, 'utf-8'),
-      schema: readFileSync(schemaFile, 'utf-8'),
+      schema,
     };
   }
 
@@ -243,11 +250,14 @@ export function getRegistryAddonConfig(homeDir: string, name: string): RegistryA
     throw new Error(`Invalid addon name: ${name}`);
   }
 
+  // Overlay-only addons (compose.yml only, no .env.schema) have no env vars
+  // to render, so the schema reads as an empty string.
   const schemaPath = `registry/addons/${name}/.env.schema`;
+  const schemaFile = join(homeDir, schemaPath);
   return {
     schemaPath,
     userEnvPath: 'vault/user/user.env',
-    envSchema: readFileSync(join(homeDir, schemaPath), 'utf-8'),
+    envSchema: existsSync(schemaFile) ? readFileSync(schemaFile, 'utf-8') : '',
   };
 }
 
@@ -274,7 +284,9 @@ function copyAddonFromRegistry(homeDir: string, name: string): void {
   if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
 
   const sourceDir = join(resolveRegistryAddonsDir(), name);
-  if (!existsSync(join(sourceDir, 'compose.yml')) || !existsSync(join(sourceDir, '.env.schema'))) {
+  // compose.yml is the only required file. Overlay-only addons may omit
+  // .env.schema entirely.
+  if (!existsSync(join(sourceDir, 'compose.yml'))) {
     throw new Error(`Addon "${name}" not found in registry`);
   }
 

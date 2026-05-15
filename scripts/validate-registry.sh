@@ -43,13 +43,40 @@ for addon_dir in "$ADDONS_DIR"/*/; do
 		continue
 	fi
 
+	# Detect overlay-only addons: compose.yml that doesn't introduce a new
+	# service (no `image:` and no `build:` stanza). Such addons override
+	# settings on existing services and don't need .env.schema, labels,
+	# healthcheck, or network membership.
+	overlay_only=0
+	if ! grep -qE '^[[:space:]]+(image|build):' "$compose_file"; then
+		overlay_only=1
+	fi
+
+	# Vault mount violations apply to every addon (security).
+	if grep -qE '^\s*-\s+.*vault(/?)"\s*:' "$compose_file" || grep -qE '^\s*-\s+.*vault(/?)\s*:/' "$compose_file"; then
+		echo "  FAIL: compose.yml mounts vault directory (security violation)"
+		errors=$((errors + 1))
+	fi
+
+	# Legacy ${INSTANCE_ID} pattern check applies to every addon.
+	if grep -q '\${INSTANCE_ID}' "$compose_file"; then
+		echo "  FAIL: compose.yml still uses \${INSTANCE_ID} — should use static service names"
+		errors=$((errors + 1))
+	fi
+
+	if [ "$overlay_only" -eq 1 ]; then
+		echo "  OK (overlay-only)"
+		continue
+	fi
+
+	# Full addons must also have:
 	if [ ! -f "$schema_file" ]; then
 		echo "  FAIL: Missing .env.schema"
 		errors=$((errors + 1))
 		continue
 	fi
 
-	# 2. Check compose.yml has required labels
+	# Required labels
 	if ! grep -q 'openpalm\.name:' "$compose_file"; then
 		echo "  FAIL: compose.yml missing openpalm.name label"
 		errors=$((errors + 1))
@@ -60,33 +87,18 @@ for addon_dir in "$ADDONS_DIR"/*/; do
 		errors=$((errors + 1))
 	fi
 
-	# 3. Check compose.yml does NOT use legacy ${INSTANCE_ID} pattern
-	if grep -q '\${INSTANCE_ID}' "$compose_file"; then
-		echo "  FAIL: compose.yml still uses \${INSTANCE_ID} — should use static service names"
-		errors=$((errors + 1))
-	fi
-
-	# 4. Check for vault mount violations — look for full vault directory mounts
-	# (mounting a specific file like vault/user/ov.conf:ro is allowed)
-	# Flag any broad vault mount (vault:, vault/:) regardless of other mounts
-	if grep -qE '^\s*-\s+.*vault(/?)"\s*:' "$compose_file" || grep -qE '^\s*-\s+.*vault(/?)\s*:/' "$compose_file"; then
-		echo "  FAIL: compose.yml mounts vault directory (security violation)"
-		errors=$((errors + 1))
-	fi
-
-	# 5. Check .env.schema is non-empty and parseable
+	# .env.schema is non-empty and parseable
 	if [ ! -s "$schema_file" ]; then
 		echo "  FAIL: .env.schema is empty"
 		errors=$((errors + 1))
 	else
-		# Validate basic structure: should have at least one VAR= line
 		if ! grep -qE '^[A-Z_][A-Z0-9_]*=' "$schema_file"; then
 			echo "  FAIL: .env.schema has no variable definitions (expected KEY=value lines)"
 			errors=$((errors + 1))
 		fi
 	fi
 
-	# 6. Check compose.yml joins a valid stack network (channel_lan, channel_public, or assistant_net)
+	# Stack network membership
 	if ! grep -qE 'channel_lan|channel_public|assistant_net|admin_docker_net' "$compose_file"; then
 		echo "  FAIL: compose.yml must join at least one stack network"
 		errors=$((errors + 1))
