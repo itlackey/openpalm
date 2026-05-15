@@ -260,12 +260,20 @@ describe('cli main', () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-install-force-'));
     const workDir = join(base, 'work');
     const userEnv = join(base, 'vault', 'user', 'user.env');
+    const stackEnv = join(base, 'vault', 'stack', 'stack.env');
     const stackConfig = join(base, 'config', 'stack.yml');
     const specFile = writeMinimalSetupSpec(base);
 
+    // Phase 2 of #388 (closes #406): the canonical "already installed"
+    // marker is now vault/stack/stack.env (user.env may be absent on a
+    // fresh Phase 2 install). Seed both files so the backup path triggers
+    // AND we can prove the backup carries forward legacy user.env content
+    // from pre-Phase-2 hosts that still have it on disk.
     mkdirSync(join(base, 'vault', 'user'), { recursive: true });
+    mkdirSync(join(base, 'vault', 'stack'), { recursive: true });
     mkdirSync(join(base, 'config'), { recursive: true });
     writeFileSync(userEnv, 'EXISTING=1\n');
+    writeFileSync(stackEnv, 'OP_ADMIN_TOKEN=existing-token\n');
     writeFileSync(stackConfig, 'llm: old\n');
 
     process.env.OP_HOME = base;
@@ -616,7 +624,12 @@ describe('cli entrypoint (subprocess)', () => {
 });
 
 describe('secrets.env generation', () => {
-  it('generates user.env as empty placeholder (no API key placeholders)', async () => {
+  it('does NOT seed vault/user/user.env on fresh install (Phase 2 of #388)', async () => {
+    // Phase 2 of #388 (closes #406): user-managed env secrets now live
+    // in the akm vault:user store at `${dataDir}/stash/vaults/user.env`.
+    // Fresh installs MUST NOT create `vault/user/user.env` — leaving an
+    // empty placeholder would shadow the akm-sourced values via compose
+    // env_file precedence and is the bug Phase 2 was designed to remove.
     const { ensureSecrets } = await import('./lib/env.ts');
     const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-secrets-'));
     const vaultDir = join(tempDir, 'vault');
@@ -624,13 +637,9 @@ describe('secrets.env generation', () => {
 
     try {
       await ensureSecrets(vaultDir);
-      const content = await Bun.file(join(vaultDir, 'user', 'user.env')).text();
-      // user.env is for user-added custom vars only — no API key placeholders
-      // (empty values would override real keys in stack.env via compose env-file precedence)
-      expect(content).not.toContain('OPENAI_API_KEY');
-      expect(content).not.toContain('OP_ADMIN_TOKEN');
-      expect(content).not.toContain('OP_ASSISTANT_TOKEN');
-      expect(content).toContain('User Extensions');
+      // The vault/user directory may exist (other operational files live
+      // here, e.g. apprise.yml) but user.env itself must not be created.
+      expect(await Bun.file(join(vaultDir, 'user', 'user.env')).exists()).toBe(false);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

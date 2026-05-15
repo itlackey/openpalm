@@ -176,8 +176,9 @@ describe("Fresh Install", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  // Scenario 1: ensureSecrets creates user.env as placeholder and stack.env with required keys
-  it("ensureSecrets creates user.env as placeholder and stack.env with required keys when files do not exist", () => {
+  // Scenario 1: ensureSecrets does NOT seed user.env (Phase 2 of #388) but
+  // does create stack.env with required keys when files do not exist.
+  it("ensureSecrets does NOT seed user.env on fresh install but creates stack.env with required keys (Phase 2 of #388)", () => {
     const state: ControlPlaneState = {
       adminToken: "",
       assistantToken: "",
@@ -194,16 +195,19 @@ describe("Fresh Install", () => {
       audit: [],
     };
 
-    // No user.env exists yet
+    // Sanity: nothing exists yet
     expect(existsSync(join(vaultDir, "user", "user.env"))).toBe(false);
 
     ensureSecrets(state);
 
-    // user.env is now a minimal placeholder
-    const userContent = readFileSync(join(vaultDir, "user", "user.env"), "utf-8");
-    expect(userContent).toContain("User Extensions");
+    // Phase 2 of #388 (closes #406): vault/user/user.env is no longer
+    // seeded — user-managed env secrets live in akm vault:user
+    // (data/stash/vaults/user.env). The vault/user directory itself is
+    // still created (other operational files mount from it).
+    expect(existsSync(join(vaultDir, "user"))).toBe(true);
+    expect(existsSync(join(vaultDir, "user", "user.env"))).toBe(false);
 
-    // API keys and owner info are seeded in stack.env
+    // API keys and owner info are seeded in stack.env (unchanged by Phase 2).
     const stackContent = readFileSync(join(vaultDir, "stack", "stack.env"), "utf-8");
     expect(stackContent).toContain("OPENAI_API_KEY=");
     expect(stackContent).toContain("OWNER_NAME=");
