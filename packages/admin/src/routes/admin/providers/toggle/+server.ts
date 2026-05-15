@@ -7,7 +7,7 @@ import {
 	actionSuccess,
 	actionFailure,
 } from '$lib/server/opencode/index.js';
-import { asString } from '../_helpers.js';
+import { asStringOrEmpty } from '../_helpers.js';
 
 /**
  * POST /admin/providers/toggle — Enable or disable a provider for OpenCode
@@ -24,8 +24,8 @@ export const POST: RequestHandler = async (event) => {
 	const body = parsed.data;
 
 	try {
-		const providerId = asString(body.providerId);
-		const nextState = asString(body.enabled) === 'true';
+		const providerId = asStringOrEmpty(body.providerId);
+		const nextState = asStringOrEmpty(body.enabled) === 'true';
 		if (!providerId) {
 			return jsonResponse(
 				200,

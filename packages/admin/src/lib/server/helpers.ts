@@ -4,7 +4,22 @@
 import type { RequestEvent } from "@sveltejs/kit";
 import { timingSafeEqual, createHash } from "node:crypto";
 import { getState } from "./state.js";
-import { normalizeCaller, type CallerType } from "@openpalm/lib";
+import { createOpenCodeClient, normalizeCaller, type CallerType } from "@openpalm/lib";
+
+/**
+ * Lazy singleton OpenCode client bound to the admin's configured base URL.
+ * Routes call `getOpenCodeClient()` instead of importing factories so the
+ * env-var resolution lives in one place.
+ */
+let _openCodeClient: ReturnType<typeof createOpenCodeClient> | undefined;
+export function getOpenCodeClient(): ReturnType<typeof createOpenCodeClient> {
+  if (!_openCodeClient) {
+    const baseUrl =
+      process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL ?? "http://localhost:4096";
+    _openCodeClient = createOpenCodeClient({ baseUrl });
+  }
+  return _openCodeClient;
+}
 
 export function safeTokenCompare(a: string, b: string): boolean {
   if (typeof a !== "string" || typeof b !== "string") return false;

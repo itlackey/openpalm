@@ -6,7 +6,7 @@ import {
 	actionFailure,
 } from '$lib/server/opencode/index.js';
 import { ensureAuthServer } from '$lib/server/opencode-auth-subprocess.js';
-import { asString } from '../../_helpers.js';
+import { asStringOrEmpty } from '../../_helpers.js';
 
 /**
  * POST /admin/providers/oauth/finish — Complete an OAuth sign-in by
@@ -24,9 +24,9 @@ export const POST: RequestHandler = async (event) => {
 	const body = parsed.data;
 
 	try {
-		const providerId = asString(body.providerId);
-		const methodIndex = Number(asString(body.methodIndex));
-		const code = asString(body.code);
+		const providerId = asStringOrEmpty(body.providerId);
+		const methodIndex = Number(asStringOrEmpty(body.methodIndex));
+		const code = asStringOrEmpty(body.code);
 
 		if (!providerId || Number.isNaN(methodIndex) || !code) {
 			return jsonResponse(

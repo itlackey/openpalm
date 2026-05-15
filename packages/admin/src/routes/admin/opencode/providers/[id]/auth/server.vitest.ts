@@ -6,17 +6,21 @@ import { tmpdir } from 'node:os';
 import { resetState } from '$lib/server/test-helpers.js';
 import { GET, POST } from './+server.js';
 
-vi.mock('$lib/opencode/client.server.js', () => ({
-  setProviderApiKey: vi.fn(),
-  startProviderOAuth: vi.fn(),
-  completeProviderOAuth: vi.fn(),
-}));
+const setProviderApiKey = vi.fn();
+const startProviderOAuth = vi.fn();
+const completeProviderOAuth = vi.fn();
 
-import {
-  setProviderApiKey,
-  startProviderOAuth,
-  completeProviderOAuth,
-} from '$lib/opencode/client.server.js';
+vi.mock('$lib/server/helpers.js', async () => {
+  const actual = await vi.importActual<typeof import('$lib/server/helpers.js')>('$lib/server/helpers.js');
+  return {
+    ...actual,
+    getOpenCodeClient: () => ({
+      setProviderApiKey,
+      startProviderOAuth,
+      completeProviderOAuth,
+    }),
+  };
+});
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `openpalm-opencode-auth-${randomBytes(4).toString('hex')}`);
@@ -84,7 +88,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
 
   // ── API key POST mode ──────────────────────────────────────────────
   test('sends API key to OpenCode', async () => {
-    vi.mocked(setProviderApiKey).mockResolvedValueOnce({ ok: true, data: true });
+    setProviderApiKey.mockResolvedValueOnce({ ok: true, data: true });
 
     const res = await POST(makeEvent('POST', {
       providerId: 'groq',
@@ -92,11 +96,11 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
     }));
 
     expect(res.status).toBe(200);
-    expect(vi.mocked(setProviderApiKey)).toHaveBeenCalledWith('groq', 'gsk-test-key');
+    expect(setProviderApiKey).toHaveBeenCalledWith('groq', 'gsk-test-key');
   });
 
   test('never echoes secrets in response', async () => {
-    vi.mocked(setProviderApiKey).mockResolvedValueOnce({ ok: true, data: true });
+    setProviderApiKey.mockResolvedValueOnce({ ok: true, data: true });
 
     const res = await POST(makeEvent('POST', {
       body: { mode: 'api_key', apiKey: 'sk-test-secret' },
@@ -145,7 +149,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
   });
 
   test('api_key POST returns ok:true and mode in response', async () => {
-    vi.mocked(setProviderApiKey).mockResolvedValueOnce({ ok: true, data: true });
+    setProviderApiKey.mockResolvedValueOnce({ ok: true, data: true });
 
     const res = await POST(makeEvent('POST', {
       body: { mode: 'api_key', apiKey: 'sk-valid' },
@@ -158,7 +162,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
   });
 
   test('succeeds even if OpenCode rejects — vault write is primary', async () => {
-    vi.mocked(setProviderApiKey).mockRejectedValueOnce(new Error('OpenCode down'));
+    setProviderApiKey.mockRejectedValueOnce(new Error('OpenCode down'));
 
     const res = await POST(makeEvent('POST', {
       body: { mode: 'api_key', apiKey: 'sk-still-saves', envVar: 'GROQ_API_KEY' },
@@ -168,7 +172,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
   });
 
   test('writes env var to vault/stack/stack.env', async () => {
-    vi.mocked(setProviderApiKey).mockResolvedValueOnce({ ok: true, data: true });
+    setProviderApiKey.mockResolvedValueOnce({ ok: true, data: true });
 
     const res = await POST(makeEvent('POST', {
       providerId: 'groq',
@@ -206,7 +210,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
 
   // ── OAuth POST mode ────────────────────────────────────────────────
   test('oauth POST starts OAuth flow and returns pollToken', async () => {
-    vi.mocked(startProviderOAuth).mockResolvedValueOnce({
+    startProviderOAuth.mockResolvedValueOnce({
       ok: true,
       data: {
         url: 'https://accounts.google.com/auth',
@@ -238,7 +242,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
   });
 
   test('oauth POST defaults methodIndex to 0 when omitted', async () => {
-    vi.mocked(startProviderOAuth).mockResolvedValueOnce({
+    startProviderOAuth.mockResolvedValueOnce({
       ok: true,
       data: {
         url: 'https://example.com/auth',
@@ -252,7 +256,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
     }));
 
     expect(res.status).toBe(200);
-    expect(vi.mocked(startProviderOAuth)).toHaveBeenCalledWith('openai', 0);
+    expect(startProviderOAuth).toHaveBeenCalledWith('openai', 0);
   });
 
   test('oauth POST rejects negative methodIndex', async () => {
@@ -274,7 +278,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
   });
 
   test('oauth POST propagates startProviderOAuth failures', async () => {
-    vi.mocked(startProviderOAuth).mockResolvedValueOnce({
+    startProviderOAuth.mockResolvedValueOnce({
       ok: false,
       status: 503,
       code: 'opencode_unavailable',
@@ -308,7 +312,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
   });
 
   test('GET returns complete when OAuth flow succeeds', async () => {
-    vi.mocked(startProviderOAuth).mockResolvedValueOnce({
+    startProviderOAuth.mockResolvedValueOnce({
       ok: true,
       data: {
         url: 'https://example.com/auth',
@@ -316,7 +320,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
         instructions: 'Sign in',
       },
     });
-    vi.mocked(completeProviderOAuth).mockResolvedValueOnce({
+    completeProviderOAuth.mockResolvedValueOnce({
       ok: true,
       data: { token: 'access-token' },
     });
@@ -339,11 +343,11 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
   });
 
   test('GET removes session after successful completion', async () => {
-    vi.mocked(startProviderOAuth).mockResolvedValueOnce({
+    startProviderOAuth.mockResolvedValueOnce({
       ok: true,
       data: { url: 'https://example.com/auth', method: 'auto', instructions: 'Sign in' },
     });
-    vi.mocked(completeProviderOAuth).mockResolvedValueOnce({
+    completeProviderOAuth.mockResolvedValueOnce({
       ok: true,
       data: { token: 'access-token' },
     });
@@ -364,7 +368,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
   });
 
   test('returns pending while OAuth completion is still waiting', async () => {
-    vi.mocked(startProviderOAuth).mockResolvedValueOnce({
+    startProviderOAuth.mockResolvedValueOnce({
       ok: true,
       data: {
         url: 'https://example.com/auth',
@@ -372,7 +376,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
         instructions: 'Sign in',
       },
     });
-    vi.mocked(completeProviderOAuth).mockResolvedValueOnce({
+    completeProviderOAuth.mockResolvedValueOnce({
       ok: false,
       status: 400,
       code: 'opencode_error',
@@ -394,7 +398,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
   });
 
   test('GET rejects provider ID mismatch on poll', async () => {
-    vi.mocked(startProviderOAuth).mockResolvedValueOnce({
+    startProviderOAuth.mockResolvedValueOnce({
       ok: true,
       data: { url: 'https://example.com/auth', method: 'auto', instructions: 'Sign in' },
     });
@@ -420,7 +424,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
   test('expires OAuth poll sessions', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-21T07:00:00Z'));
-    vi.mocked(startProviderOAuth).mockResolvedValueOnce({
+    startProviderOAuth.mockResolvedValueOnce({
       ok: true,
       data: {
         url: 'https://example.com/auth',

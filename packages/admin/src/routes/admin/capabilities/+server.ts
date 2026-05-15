@@ -19,11 +19,12 @@ import {
   readStackEnv,
   patchSecretsEnvFile,
   readStackSpec,
+  writeStackSpec,
+  writeCapabilityVars,
   formatCapabilityString,
   maskSecretValue,
   createLogger,
 } from "@openpalm/lib";
-import { updateAndPersistCapabilities } from "$lib/server/capabilities.js";
 import {
   PROVIDER_KEY_MAP,
   EMBEDDING_DIMS,
@@ -102,14 +103,16 @@ export const POST: RequestHandler = async (event) => {
   const resolvedDims = embeddingDims || EMBEDDING_DIMS[lookupKey] || 1536;
 
   try {
-    updateAndPersistCapabilities(state.configDir, state.vaultDir, (spec) => {
-      spec.capabilities.llm = formatCapabilityString(provider, systemModel);
-      spec.capabilities.embeddings = {
-        provider,
-        model: embeddingModel || "text-embedding-3-small",
-        dims: resolvedDims,
-      };
-    });
+    const spec = readStackSpec(state.configDir);
+    if (!spec) throw new Error('stack.yml not found or invalid');
+    spec.capabilities.llm = formatCapabilityString(provider, systemModel);
+    spec.capabilities.embeddings = {
+      provider,
+      model: embeddingModel || "text-embedding-3-small",
+      dims: resolvedDims,
+    };
+    writeStackSpec(state.configDir, spec);
+    writeCapabilityVars(spec, state.vaultDir);
   } catch (err) {
     appendAudit(state, actor, "capabilities.save", { provider, error: String(err) }, false, requestId, callerType);
     return errorResponse(500, "internal_error", "Failed to update stack.yml", {}, requestId);

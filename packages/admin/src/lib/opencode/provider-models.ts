@@ -1,8 +1,5 @@
 import type { OpenCodeModelInfo } from '$lib/types.js';
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null ? value as Record<string, unknown> : null;
-}
+import { asRecord } from '$lib/server/coercion.js';
 
 export function sanitizeOpenCodeModels(
   models: unknown,
@@ -13,7 +10,7 @@ export function sanitizeOpenCodeModels(
   }
 
   return Object.values(models)
-    .map(asRecord)
+    .map((value) => asRecord(value))
     .filter((model): model is Record<string, unknown> & { id: string } => typeof model?.id === 'string')
     .map((model) => {
       const id = model.id;

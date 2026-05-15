@@ -1,5 +1,6 @@
 /**
- * Tests for the automation scheduler — parsing, resolution, and action execution.
+ * Tests for the automation scheduler primitives exported by `@openpalm/lib` —
+ * parsing, schedule resolution, automation loading, and action execution.
  *
  * Verifies:
  * 1. YAML parsing and validation (valid, invalid, defaults)

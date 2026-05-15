@@ -15,8 +15,7 @@ import {
   getActor,
   getCallerType
 } from "$lib/server/helpers.js";
-import { appendAudit } from "@openpalm/lib";
-import { loadAutomations } from "$lib/server/scheduler.js";
+import { appendAudit, loadAutomations } from "@openpalm/lib";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

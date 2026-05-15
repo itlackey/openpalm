@@ -1,20 +1,20 @@
 import type { RequestHandler } from './$types';
-import { requireAdmin, jsonResponse, errorResponse, getRequestId, parseJsonBody, jsonBodyError } from '$lib/server/helpers.js';
-import { getOpenCodeConfig, proxyToOpenCode } from '$lib/opencode/client.server.js';
+import { requireAdmin, jsonResponse, errorResponse, getRequestId, parseJsonBody, jsonBodyError, getOpenCodeClient } from '$lib/server/helpers.js';
 import { getState } from '$lib/server/state.js';
 import {
   formatCapabilityString,
   parseCapabilityString,
   readStackSpec,
+  writeStackSpec,
+  writeCapabilityVars,
 } from '@openpalm/lib';
-import { updateAndPersistCapabilities } from '$lib/server/capabilities.js';
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  const config = await getOpenCodeConfig();
+  const config = await getOpenCodeClient().getConfig();
   if (!config) {
     return errorResponse(503, 'opencode_unavailable', 'OpenCode is not reachable', {}, requestId);
   }
@@ -48,16 +48,16 @@ export const POST: RequestHandler = async (event) => {
     }
     const { provider } = parseCapabilityString(currentSpec.capabilities.llm);
 
-    updateAndPersistCapabilities(state.configDir, state.vaultDir, (spec) => {
-      spec.capabilities.llm = formatCapabilityString(provider, model);
-    });
+    currentSpec.capabilities.llm = formatCapabilityString(provider, model);
+    writeStackSpec(state.configDir, currentSpec);
+    writeCapabilityVars(currentSpec, state.vaultDir);
   } catch (e) {
     console.warn('[opencode.model] Failed to persist model selection', e);
     return errorResponse(500, 'internal_error', 'Failed to persist model selection', {}, requestId);
   }
 
   try {
-    const result = await proxyToOpenCode('/config', {
+    const result = await getOpenCodeClient().proxy('/config', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model }),

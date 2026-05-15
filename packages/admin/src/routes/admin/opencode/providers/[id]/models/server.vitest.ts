@@ -6,11 +6,15 @@ import { tmpdir } from 'node:os';
 import { resetState } from '$lib/server/test-helpers.js';
 import { GET } from './+server.js';
 
-vi.mock('$lib/opencode/client.server.js', () => ({
-  proxyToOpenCode: vi.fn(),
-}));
+const proxy = vi.fn();
 
-import { proxyToOpenCode } from '$lib/opencode/client.server.js';
+vi.mock('$lib/server/helpers.js', async () => {
+  const actual = await vi.importActual<typeof import('$lib/server/helpers.js')>('$lib/server/helpers.js');
+  return {
+    ...actual,
+    getOpenCodeClient: () => ({ proxy }),
+  };
+});
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `openpalm-opencode-model-list-${randomBytes(4).toString('hex')}`);
@@ -53,7 +57,7 @@ describe('/admin/opencode/providers/[id]/models route', () => {
   });
 
   test('propagates OpenCode proxy failures', async () => {
-    vi.mocked(proxyToOpenCode).mockResolvedValueOnce({
+    proxy.mockResolvedValueOnce({
       ok: false,
       status: 503,
       code: 'opencode_unavailable',
@@ -69,7 +73,7 @@ describe('/admin/opencode/providers/[id]/models route', () => {
   });
 
   test('filters out models without string ids', async () => {
-    vi.mocked(proxyToOpenCode).mockResolvedValueOnce({
+    proxy.mockResolvedValueOnce({
       ok: true,
       data: {
         all: [

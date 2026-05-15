@@ -8,12 +8,8 @@ import {
   getCallerType,
   parseJsonBody,
   jsonBodyError,
+  getOpenCodeClient,
 } from '$lib/server/helpers.js';
-import {
-  setProviderApiKey,
-  startProviderOAuth,
-  completeProviderOAuth,
-} from '$lib/opencode/client.server.js';
 import { getState } from '$lib/server/state.js';
 import { appendAudit, createLogger, patchSecretsEnvFile } from '@openpalm/lib';
 
@@ -73,7 +69,7 @@ export const GET: RequestHandler = async (event) => {
   }
 
   // Try to complete the OAuth flow (user may have authorized in their browser)
-  const result = await completeProviderOAuth(session.providerId, session.methodIndex);
+  const result = await getOpenCodeClient().completeProviderOAuth(session.providerId, session.methodIndex);
 
   if (result.ok) {
     oauthSessions.delete(pollToken);
@@ -136,7 +132,7 @@ export const POST: RequestHandler = async (event) => {
     }
 
     // Also register with OpenCode (non-critical)
-    await setProviderApiKey(providerId, apiKey).catch((e) => {
+    await getOpenCodeClient().setProviderApiKey(providerId, apiKey).catch((e) => {
       logger.warn('Failed to register API key with OpenCode', { providerId, requestId, error: String(e) });
     });
 
@@ -152,7 +148,7 @@ export const POST: RequestHandler = async (event) => {
     }
     const methodIndex = typeof body.methodIndex === 'number' ? body.methodIndex : 0;
 
-    const result = await startProviderOAuth(providerId, methodIndex);
+    const result = await getOpenCodeClient().startProviderOAuth(providerId, methodIndex);
     if (!result.ok) {
       return errorResponse(result.status, result.code, result.message, {}, requestId);
     }

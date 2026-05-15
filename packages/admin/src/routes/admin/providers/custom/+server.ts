@@ -6,7 +6,7 @@ import {
 	actionSuccess,
 	actionFailure,
 } from '$lib/server/opencode/index.js';
-import { asString, buildModelConfig, parseHeaders, parseModels } from '../_helpers.js';
+import { asStringOrEmpty, buildModelConfig, parseHeaders, parseModels } from '../_helpers.js';
 
 /** Allowed format for a custom provider id: lowercase letters, digits, hyphens, underscores. */
 const CUSTOM_PROVIDER_ID_PATTERN = /^[a-z0-9_-]+$/;
@@ -26,11 +26,11 @@ export const POST: RequestHandler = async (event) => {
 	const body = parsed.data;
 
 	try {
-		const providerId = asString(body.providerId);
-		const displayName = asString(body.displayName);
-		const baseURL = asString(body.baseURL);
-		const apiKey = asString(body.apiKey);
-		const confirmOverwrite = asString(body.confirmOverwrite) === 'true';
+		const providerId = asStringOrEmpty(body.providerId);
+		const displayName = asStringOrEmpty(body.displayName);
+		const baseURL = asStringOrEmpty(body.baseURL);
+		const apiKey = asStringOrEmpty(body.apiKey);
+		const confirmOverwrite = asStringOrEmpty(body.confirmOverwrite) === 'true';
 
 		if (!providerId || !CUSTOM_PROVIDER_ID_PATTERN.test(providerId)) {
 			return jsonResponse(
@@ -48,8 +48,8 @@ export const POST: RequestHandler = async (event) => {
 			);
 		}
 
-		const models = parseModels(asString(body.modelsJson));
-		const headers = parseHeaders(asString(body.headersJson));
+		const models = parseModels(asStringOrEmpty(body.modelsJson));
+		const headers = parseHeaders(asStringOrEmpty(body.headersJson));
 		const config = await getCurrentConfig();
 		const providerConfig = { ...(config.provider ?? {}) };
 

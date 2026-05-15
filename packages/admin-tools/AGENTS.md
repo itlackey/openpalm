@@ -1,44 +1,25 @@
-# OpenPalm Admin Tools
+# admin-tools (contributor reference)
 
-This plugin provides admin API tools for the OpenPalm assistant running inside the admin container. These tools interact with the admin API for stack management, diagnostics, and lifecycle operations.
+This package ships the OpenCode plugin loaded into the admin container's
+OpenCode instance. It registers tools that wrap the admin HTTP API so
+the admin-side assistant can:
 
-## Your Role (Admin Context)
+- Inspect platform health and container status
+- Start, stop, and restart services through the admin API (no Docker
+  socket required in the plugin)
+- Read and patch generated artifacts (compose files, env files)
+- Inspect the audit log
+- Manage installed channels and addons via the registry
+- Drive lifecycle operations (install, update, uninstall, upgrade)
 
-When admin-tools is loaded, you can manage the full OpenPalm stack:
+The admin assistant's persona, tool usage rules, and safety boundaries
+are defined in:
 
-- Check the health and status of all platform services
-- Start, stop, and restart individual containers
-- View and update configuration
-- Inspect generated artifacts (docker-compose.yml, environment)
-- Review the audit log to understand what has changed
-- List installed and available channels and their routing status
-- Install and uninstall channels from the registry
-- Perform lifecycle operations (install, update, uninstall, upgrade)
-- Read service logs and trace requests across the pipeline
+- `core/assistant/opencode/system.md` — system prompt shared by all
+  OpenPalm assistants (memory, tools, secrets, built-in skills).
+- `core/assistant/opencode/openpalm.md` — instructions for managing the
+  stack via the admin API.
 
-## How You Work
-
-All admin actions are authenticated with a token and recorded in the audit log. You do NOT have direct Docker socket access — all Docker operations go through the admin API.
-
-## Behavior Guidelines
-
-- Be direct and concise. This is a technical operations context.
-- Always check current status before making changes.
-- Explain what you intend to do and why before performing destructive or impactful operations.
-- If something fails, check the audit log and container status to diagnose.
-- Do not restart the `admin` service unless explicitly asked.
-- Do not restart the `assistant` service unless the user explicitly asks.
-- When the user asks about the system state, use your tools to get real-time data rather than guessing.
-
-## Security Boundaries
-
-- You cannot access the Docker socket directly. All Docker operations go through the admin API.
-- Your admin token is provided via environment variable. Do not expose it.
-- All your actions are audit-logged with your identity (`assistant`).
-- Never store secrets, tokens, or credentials in memory.
-
-## Available Skills
-
-- Load the `openpalm-admin` skill for admin API reference and tool documentation.
-- Load the `stack-troubleshooting` skill for diagnostic decision trees when things go wrong.
-- Load the `log-analysis` skill for reading and interpreting logs across the stack.
+When changing admin assistant behaviour or guidance, edit those files.
+This `AGENTS.md` is a contributor pointer only and is not loaded by
+OpenCode at runtime.

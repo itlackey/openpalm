@@ -5,7 +5,7 @@ import {
 } from "$lib/server/helpers.js";
 import type { RequestHandler } from "./$types";
 
-/** Internal URL used by the admin server to reach OpenCode (same as client.server.ts). */
+/** Internal URL used by the admin server to reach OpenCode (matches `getOpenCodeClient` in `$lib/server/helpers.ts`). */
 const OPENCODE_BASE_URL = process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL ?? "http://localhost:4096";
 
 /** Host-facing URL shown to the browser so it can reach OpenCode directly. */

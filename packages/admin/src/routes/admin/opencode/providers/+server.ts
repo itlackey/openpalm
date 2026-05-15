@@ -1,9 +1,5 @@
 import type { RequestHandler } from './$types';
-import { requireAdmin, jsonResponse, getRequestId } from '$lib/server/helpers.js';
-import {
-  getOpenCodeProviders,
-  getOpenCodeProviderAuth,
-} from '$lib/opencode/client.server.js';
+import { requireAdmin, jsonResponse, getRequestId, getOpenCodeClient } from '$lib/server/helpers.js';
 import { sanitizeOpenCodeModels } from '$lib/opencode/provider-models.js';
 
 export const GET: RequestHandler = async (event) => {
@@ -11,9 +7,10 @@ export const GET: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
+  const client = getOpenCodeClient();
   const [providers, authMethods] = await Promise.all([
-    getOpenCodeProviders(),
-    getOpenCodeProviderAuth(),
+    client.getProviders(),
+    client.getProviderAuth(),
   ]);
 
   const result = providers.map((p) => {

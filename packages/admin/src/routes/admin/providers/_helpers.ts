@@ -4,16 +4,19 @@
  * Each handler under `packages/admin/src/routes/admin/providers/<action>/`
  * imports from this file to keep the per-route +server.ts files focused on
  * their own request shape and response.
+ *
+ * Coercion primitives (asString, asRecord) live in `$lib/server/coercion.ts`.
+ * The per-route helpers here trim string inputs and fall back to `''` because
+ * the form-encoded provider payloads always treat missing fields as empty
+ * strings before validation.
  */
+import { asString, asRecord } from '$lib/server/coercion.js';
 
-export function asString(value: unknown): string {
-	return typeof value === 'string' ? value.trim() : '';
-}
+export { asRecord };
 
-export function asRecord(value: unknown): Record<string, unknown> | undefined {
-	return value && typeof value === 'object' && !Array.isArray(value)
-		? ({ ...value } as Record<string, unknown>)
-		: undefined;
+/** Coerce `unknown` to a trimmed string, returning `''` when missing/non-string. */
+export function asStringOrEmpty(value: unknown): string {
+	return (asString(value) ?? '').trim();
 }
 
 export function updateStringOption(target: Record<string, unknown>, key: string, value: string) {

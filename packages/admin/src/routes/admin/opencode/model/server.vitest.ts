@@ -8,12 +8,16 @@ import { resetState } from '$lib/server/test-helpers.js';
 import { GET, POST } from './+server.js';
 import { writeStackSpec, type StackSpec } from '@openpalm/lib';
 
-vi.mock('$lib/opencode/client.server.js', () => ({
-  getOpenCodeConfig: vi.fn(),
-  proxyToOpenCode: vi.fn(),
-}));
+const getConfig = vi.fn();
+const proxy = vi.fn();
 
-import { getOpenCodeConfig, proxyToOpenCode } from '$lib/opencode/client.server.js';
+vi.mock('$lib/server/helpers.js', async () => {
+  const actual = await vi.importActual<typeof import('$lib/server/helpers.js')>('$lib/server/helpers.js');
+  return {
+    ...actual,
+    getOpenCodeClient: () => ({ getConfig, proxy }),
+  };
+});
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `openpalm-opencode-model-${randomBytes(4).toString('hex')}`);
@@ -71,7 +75,7 @@ describe('/admin/opencode/model route', () => {
   });
 
   test('GET returns 503 when OpenCode is unreachable', async () => {
-    vi.mocked(getOpenCodeConfig).mockResolvedValueOnce(null);
+    getConfig.mockResolvedValueOnce(null);
 
     const res = await GET(makeEvent('GET'));
     expect(res.status).toBe(503);
@@ -83,7 +87,7 @@ describe('/admin/opencode/model route', () => {
   });
 
   test('POST persists the model and propagates OpenCode 4xx errors', async () => {
-    vi.mocked(proxyToOpenCode).mockResolvedValueOnce({
+    proxy.mockResolvedValueOnce({
       ok: false,
       status: 400,
       code: 'opencode_error',
@@ -98,7 +102,7 @@ describe('/admin/opencode/model route', () => {
   });
 
   test('POST degrades gracefully when OpenCode is unavailable', async () => {
-    vi.mocked(proxyToOpenCode).mockResolvedValueOnce({
+    proxy.mockResolvedValueOnce({
       ok: false,
       status: 503,
       code: 'opencode_unavailable',

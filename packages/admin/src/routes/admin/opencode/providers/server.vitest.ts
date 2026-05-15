@@ -6,12 +6,16 @@ import { tmpdir } from 'node:os';
 import { resetState } from '$lib/server/test-helpers.js';
 import { GET } from './+server.js';
 
-vi.mock('$lib/opencode/client.server.js', () => ({
-  getOpenCodeProviders: vi.fn(),
-  getOpenCodeProviderAuth: vi.fn(),
-}));
+const getProviders = vi.fn();
+const getProviderAuth = vi.fn();
 
-import { getOpenCodeProviders, getOpenCodeProviderAuth } from '$lib/opencode/client.server.js';
+vi.mock('$lib/server/helpers.js', async () => {
+  const actual = await vi.importActual<typeof import('$lib/server/helpers.js')>('$lib/server/helpers.js');
+  return {
+    ...actual,
+    getOpenCodeClient: () => ({ getProviders, getProviderAuth }),
+  };
+});
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `openpalm-opencode-providers-${randomBytes(4).toString('hex')}`);
@@ -53,7 +57,7 @@ describe('/admin/opencode/providers route', () => {
   });
 
   test('returns sanitized provider model lists for the models sheet', async () => {
-    vi.mocked(getOpenCodeProviders).mockResolvedValueOnce([
+    getProviders.mockResolvedValueOnce([
       {
         id: 'openai',
         name: 'OpenAI',
@@ -64,7 +68,7 @@ describe('/admin/opencode/providers route', () => {
         },
       },
     ]);
-    vi.mocked(getOpenCodeProviderAuth).mockResolvedValueOnce({
+    getProviderAuth.mockResolvedValueOnce({
       openai: [{ type: 'api', label: 'API key' }],
     });
 

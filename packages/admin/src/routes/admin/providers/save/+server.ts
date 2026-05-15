@@ -9,7 +9,7 @@ import {
 } from '$lib/server/opencode/index.js';
 import {
 	asRecord,
-	asString,
+	asStringOrEmpty,
 	updateBooleanOption,
 	updateNumberOption,
 	updateStringOption,
@@ -30,7 +30,7 @@ export const POST: RequestHandler = async (event) => {
 	const body = parsed.data;
 
 	try {
-		const providerId = asString(body.providerId);
+		const providerId = asStringOrEmpty(body.providerId);
 		if (!providerId) {
 			return jsonResponse(200, actionFailure('Pick a provider before saving changes.'), requestId);
 		}
@@ -41,10 +41,10 @@ export const POST: RequestHandler = async (event) => {
 		const currentOptions = asRecord(currentEntry?.options) ?? {};
 		const nextOptions = { ...currentOptions };
 
-		updateStringOption(nextOptions, 'apiKey', asString(body.apiKey));
-		updateStringOption(nextOptions, 'baseURL', asString(body.baseURL));
-		updateNumberOption(nextOptions, 'timeout', asString(body.timeout));
-		updateNumberOption(nextOptions, 'chunkTimeout', asString(body.chunkTimeout));
+		updateStringOption(nextOptions, 'apiKey', asStringOrEmpty(body.apiKey));
+		updateStringOption(nextOptions, 'baseURL', asStringOrEmpty(body.baseURL));
+		updateNumberOption(nextOptions, 'timeout', asStringOrEmpty(body.timeout));
+		updateNumberOption(nextOptions, 'chunkTimeout', asStringOrEmpty(body.chunkTimeout));
 		updateBooleanOption(nextOptions, 'setCacheKey', body.setCacheKey === 'on' || body.setCacheKey === true);
 
 		const nextEntry = normalizeProviderConfig({ ...currentEntry, options: nextOptions });

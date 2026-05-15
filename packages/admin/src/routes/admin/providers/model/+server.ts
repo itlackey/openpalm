@@ -6,7 +6,7 @@ import {
 	actionSuccess,
 	actionFailure,
 } from '$lib/server/opencode/index.js';
-import { asString } from '../_helpers.js';
+import { asStringOrEmpty } from '../_helpers.js';
 
 /**
  * POST /admin/providers/model — Pick a model for either the main `model`
@@ -24,9 +24,9 @@ export const POST: RequestHandler = async (event) => {
 	const body = parsed.data;
 
 	try {
-		const providerId = asString(body.providerId);
-		const modelId = asString(body.modelId);
-		const target = asString(body.target);
+		const providerId = asStringOrEmpty(body.providerId);
+		const modelId = asStringOrEmpty(body.modelId);
+		const target = asStringOrEmpty(body.target);
 
 		if (!providerId || !modelId || (target !== 'model' && target !== 'small_model')) {
 			return jsonResponse(

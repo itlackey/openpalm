@@ -100,10 +100,6 @@
   });
 
   // ── Derived ─────────────────────────────────────────────────────────────────
-  let services = $derived([
-    { name: 'Admin API', status: adminHealth?.status ?? null, icon: 'shield' },
-    { name: 'Guardian', status: guardianHealth?.status ?? null, icon: 'globe' }
-  ]);
   let anyDangerousLoading = $derived(applyLoading || upgradeLoading);
 
   // ── Auth helpers ─────────────────────────────────────────────────────────────
@@ -513,13 +509,11 @@
 
     {#if activeTab === 'overview'}
       <OverviewTab
-        {services}
         {adminHealth}
         {adminOpenCodeStatus}
         {adminOpenCodeUrl}
         {operationResult}
         {operationResultType}
-        {adminStatus}
         {tokenStored}
         {healthLoading}
         {applyLoading}

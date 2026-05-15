@@ -1,20 +1,12 @@
 <script lang="ts">
   import type { HealthPayload, ContainerListResponse, AutomationsResponse } from '$lib/types.js';
 
-  interface ServiceItem {
-    name: string;
-    status: string | null;
-    icon: string;
-  }
-
   interface Props {
-    services: ServiceItem[];
     adminHealth: HealthPayload | null;
     adminOpenCodeStatus: 'checking' | 'ready' | 'unavailable';
     adminOpenCodeUrl: string;
     operationResult: string;
     operationResultType: 'success' | 'error' | 'info';
-    adminStatus: string;
     tokenStored: boolean;
     healthLoading: boolean;
     applyLoading: boolean;
@@ -29,13 +21,11 @@
   }
 
   let {
-    services,
     adminHealth,
     adminOpenCodeStatus,
     adminOpenCodeUrl,
     operationResult,
     operationResultType,
-    adminStatus,
     tokenStored,
     healthLoading,
     applyLoading,
