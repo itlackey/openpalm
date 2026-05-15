@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { resetState } from '$lib/server/test-helpers.js';
 import { POST } from './+server.js';
 
-vi.mock('$lib/server/opencode-providers.js', () => ({
+vi.mock('$lib/server/opencode/index.js', () => ({
 	finishOauthFlowAtBase: vi.fn(async () => undefined),
 	actionSuccess: (message: string, providerId?: string) => ({
 		ok: true,
@@ -24,7 +24,7 @@ vi.mock('$lib/server/opencode-auth-subprocess.js', () => ({
 	ensureAuthServer: vi.fn(async () => 'http://localhost:9999'),
 }));
 
-import { finishOauthFlowAtBase } from '$lib/server/opencode-providers.js';
+import { finishOauthFlowAtBase } from '$lib/server/opencode/index.js';
 
 let rootDir = '';
 let originalHome: string | undefined;

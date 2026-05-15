@@ -5,8 +5,11 @@ import {
 	patchConfig,
 	actionSuccess,
 	actionFailure,
-} from '$lib/server/opencode-providers.js';
+} from '$lib/server/opencode/index.js';
 import { asString, buildModelConfig, parseHeaders, parseModels } from '../_helpers.js';
+
+/** Allowed format for a custom provider id: lowercase letters, digits, hyphens, underscores. */
+const CUSTOM_PROVIDER_ID_PATTERN = /^[a-z0-9_-]+$/;
 
 /**
  * POST /admin/providers/custom — Save (or replace) a user-defined custom
@@ -29,7 +32,7 @@ export const POST: RequestHandler = async (event) => {
 		const apiKey = asString(body.apiKey);
 		const confirmOverwrite = asString(body.confirmOverwrite) === 'true';
 
-		if (!providerId || !/^[a-z0-9_-]+$/.test(providerId)) {
+		if (!providerId || !CUSTOM_PROVIDER_ID_PATTERN.test(providerId)) {
 			return jsonResponse(
 				200,
 				actionFailure('Use a lowercase provider id with letters, numbers, hyphens, or underscores.'),

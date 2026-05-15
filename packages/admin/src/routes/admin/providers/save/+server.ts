@@ -6,7 +6,7 @@ import {
 	normalizeProviderConfig,
 	actionSuccess,
 	actionFailure,
-} from '$lib/server/opencode-providers.js';
+} from '$lib/server/opencode/index.js';
 import {
 	asRecord,
 	asString,
