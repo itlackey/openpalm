@@ -11,7 +11,10 @@ services:
     environment:
       PORT: "8186"
       CHANNEL_PACKAGE: "@openpalm/channel-voice"
-    command: ["bun", "run", "node_modules/@openpalm/channel-voice/src/index.ts"]
+      # Voice runs its own Bun.serve (not BaseChannel), so override the
+      # default channel-entrypoint with the package's own index. start.sh
+      # still installs CHANNEL_PACKAGE first.
+      CHANNEL_ENTRYPOINT: "node_modules/@openpalm/channel-voice/src/index.ts"
     networks: [channel_lan]
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8186' || exit 1"]

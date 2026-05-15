@@ -2,9 +2,6 @@
  * Shared utility functions for OpenPalm channel packages.
  */
 
-// Re-export for backwards compatibility — canonical home is `./crypto.ts`.
-export { constantTimeEqual } from "./crypto.ts";
-
 /**
  * Type guard that narrows an unknown value to a plain object record.
  * Returns null for non-objects, null, and arrays.

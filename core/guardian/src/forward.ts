@@ -22,6 +22,13 @@ const MESSAGE_TIMEOUT = Number(Bun.env.OPENCODE_TIMEOUT_MS ?? 0);
 const SESSION_TTL_MS = Number(Bun.env.GUARDIAN_SESSION_TTL_MS ?? 15 * 60_000);
 const SESSION_KEY_MAX_LENGTH = 256;
 
+const CLIENT_OPTS: AssistantClientOptions = Object.freeze({
+  baseUrl: ASSISTANT_URL,
+  username: Bun.env.OPENCODE_SERVER_USERNAME ?? "opencode",
+  password: Bun.env.OPENCODE_SERVER_PASSWORD,
+  messageTimeoutMs: MESSAGE_TIMEOUT,
+});
+
 // ── Session cache ───────────────────────────────────────────────────────
 
 const sessionCache = new Map<string, { sessionId: string; lastUsed: number }>();
@@ -86,12 +93,11 @@ export async function askAssistant(
 ): Promise<{ answer: string; sessionId: string }> {
   return withSessionLock(sessionTarget.cacheKey, async () => {
     const cacheKey = sessionTarget.cacheKey;
-    const opts = clientOpts();
     const cached = sessionCache.get(cacheKey);
 
     if (cached && Date.now() - cached.lastUsed < SESSION_TTL_MS) {
       try {
-        const answer = await sendMessage(opts, cached.sessionId, message);
+        const answer = await sendMessage(CLIENT_OPTS, cached.sessionId, message);
         cached.lastUsed = Date.now();
         sessionTitleCache.set(sessionTarget.title, cached.sessionId);
         return { answer, sessionId: cached.sessionId };
@@ -105,7 +111,7 @@ export async function askAssistant(
     const existingSessionId = await findExistingSessionId(sessionTarget);
     if (existingSessionId) {
       try {
-        const answer = await sendMessage(opts, existingSessionId, message);
+        const answer = await sendMessage(CLIENT_OPTS, existingSessionId, message);
         sessionCache.set(cacheKey, { sessionId: existingSessionId, lastUsed: Date.now() });
         sessionTitleCache.set(sessionTarget.title, existingSessionId);
         return { answer, sessionId: existingSessionId };
@@ -116,8 +122,8 @@ export async function askAssistant(
       }
     }
 
-    const sessionId = await createSession(opts, sessionTarget.title);
-    const answer = await sendMessage(opts, sessionId, message);
+    const sessionId = await createSession(CLIENT_OPTS, sessionTarget.title);
+    const answer = await sendMessage(CLIENT_OPTS, sessionId, message);
     sessionCache.set(cacheKey, { sessionId, lastUsed: Date.now() });
     sessionTitleCache.set(sessionTarget.title, sessionId);
     return { answer, sessionId };
@@ -131,13 +137,12 @@ export async function clearAssistantSessions(sessionTarget: SessionTarget): Prom
     // Force the next findExistingSessionId to re-fetch the session list
     sessionListCacheLastLoaded = 0;
 
-    const opts = clientOpts();
-    const sessions = await listSessions(opts);
+    const sessions = await listSessions(CLIENT_OPTS);
     const matching = sessions.filter((session) => session.title === sessionTarget.title);
 
     for (const session of matching) {
       try {
-        await deleteSession(opts, session.id);
+        await deleteSession(CLIENT_OPTS, session.id);
       } catch {
         // best-effort cleanup; cache removal already ensures a fresh mapping next turn
       }
@@ -154,15 +159,6 @@ export function sessionCacheSize(): number {
 export { SESSION_TTL_MS };
 
 // ── Internal helpers ────────────────────────────────────────────────────
-
-function clientOpts(): AssistantClientOptions {
-  return {
-    baseUrl: ASSISTANT_URL,
-    username: Bun.env.OPENCODE_SERVER_USERNAME ?? "opencode",
-    password: Bun.env.OPENCODE_SERVER_PASSWORD,
-    messageTimeoutMs: MESSAGE_TIMEOUT,
-  };
-}
 
 async function withSessionLock<T>(cacheKey: string, fn: () => Promise<T>): Promise<T> {
   const previous = sessionLocks.get(cacheKey) ?? Promise.resolve();
@@ -189,25 +185,20 @@ async function withSessionLock<T>(cacheKey: string, fn: () => Promise<T>): Promi
 async function findExistingSessionId(sessionTarget: SessionTarget): Promise<string | null> {
   const now = Date.now();
   const cachedId = sessionTitleCache.get(sessionTarget.title);
+  // Fresh cache hit: return immediately. Either a stale TTL or a miss (which could
+  // be an externally-created session) triggers a refresh.
   if (cachedId && now - sessionListCacheLastLoaded < SESSION_LIST_CACHE_TTL_MS) {
     return cachedId;
   }
 
-  // Re-fetch if TTL expired OR if the title is not in the cache (a miss
-  // should trigger a refresh so externally-created sessions are discovered).
-  if (!cachedId || now - sessionListCacheLastLoaded >= SESSION_LIST_CACHE_TTL_MS) {
-    const opts = clientOpts();
-    const sessions = await listSessions(opts);
-
-    sessionTitleCache.clear();
-    for (const session of sessions) {
-      if (session.title) {
-        sessionTitleCache.set(session.title, session.id);
-      }
+  const sessions = await listSessions(CLIENT_OPTS);
+  sessionTitleCache.clear();
+  for (const session of sessions) {
+    if (session.title) {
+      sessionTitleCache.set(session.title, session.id);
     }
-
-    sessionListCacheLastLoaded = now;
   }
+  sessionListCacheLastLoaded = now;
 
   return sessionTitleCache.get(sessionTarget.title) ?? null;
 }

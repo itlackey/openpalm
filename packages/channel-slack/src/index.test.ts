@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import SlackChannel, { DEFAULT_FORWARD_TIMEOUT_MS, parseForwardTimeoutMs, splitMessage } from "./index.ts";
+import SlackChannel, { DEFAULT_FORWARD_TIMEOUT_MS, parseForwardTimeoutMs } from "./index.ts";
 import { checkPermissions, loadPermissionConfig, parseIdList } from "./permissions.ts";
 import {
   buildChannelUserSessionKey,
@@ -547,114 +547,6 @@ describe("ConversationQueue", () => {
 
     expect(events).toEqual(["first:start", "first:end"]);
     expect(queue.queuedCount("s1")).toBe(0);
-  });
-});
-
-// ── splitMessage ────────────────────────────────────────────────────────────
-
-describe("splitMessage", () => {
-  it("returns single chunk for short message", () => {
-    const result = splitMessage("Hello world", 4000);
-    expect(result).toEqual(["Hello world"]);
-  });
-
-  it("returns single chunk for message exactly at limit", () => {
-    const text = "x".repeat(4000);
-    const result = splitMessage(text, 4000);
-    expect(result).toEqual([text]);
-  });
-
-  it("splits at double newline when possible", () => {
-    const part1 = "a".repeat(2000);
-    const part2 = "b".repeat(2000);
-    const content = part1 + "\n\n" + part2;
-    const result = splitMessage(content, 3000);
-    expect(result.length).toBe(2);
-    expect(result[0]).toBe(part1);
-    expect(result[1]).toBe(part2);
-  });
-
-  it("splits at single newline when no double newline", () => {
-    const part1 = "a".repeat(2000);
-    const part2 = "b".repeat(2000);
-    const content = part1 + "\n" + part2;
-    const result = splitMessage(content, 3000);
-    expect(result.length).toBe(2);
-  });
-
-  it("handles code block continuations", () => {
-    const code = "```js\n" + "x".repeat(5000) + "\n```";
-    const result = splitMessage(code, 3000);
-    expect(result.length).toBeGreaterThan(1);
-    for (const chunk of result) {
-      const count = (chunk.match(/```/g) || []).length;
-      expect(count % 2).toBe(0);
-    }
-  });
-
-  it("continues code block language hint in continuation chunks", () => {
-    const code = "```python\n" + Array.from({ length: 100 }, (_, i) => `print(${i})`).join("\n") + "\n```";
-    const chunks = splitMessage(code, 500);
-    expect(chunks.length).toBeGreaterThan(1);
-    expect(chunks[0]).toMatch(/^```python/);
-    for (const chunk of chunks) {
-      const count = (chunk.match(/```/g) || []).length;
-      expect(count % 2).toBe(0);
-    }
-  });
-
-  it("returns empty array for empty string", () => {
-    const result = splitMessage("", 4000);
-    expect(result).toEqual([]);
-  });
-
-  it("handles content just over max length", () => {
-    const content = "a".repeat(4001);
-    const result = splitMessage(content, 4000);
-    expect(result.length).toBe(2);
-  });
-
-  it("handles very long single line without newlines", () => {
-    const text = "x".repeat(10000);
-    const chunks = splitMessage(text, 4000);
-    expect(chunks.length).toBeGreaterThan(1);
-    const totalLen = chunks.reduce((sum, c) => sum + c.length, 0);
-    expect(totalLen).toBe(10000);
-  });
-
-  it("preserves all content across splits", () => {
-    const lines = Array.from({ length: 50 }, (_, i) => `Line ${i}: ${"y".repeat(100)}`);
-    const text = lines.join("\n");
-    const chunks = splitMessage(text, 2000);
-    const rejoined = chunks.join("\n");
-    for (const line of lines) {
-      expect(rejoined).toContain(line);
-    }
-  });
-
-  it("handles multiple separate code blocks", () => {
-    const block1 = "```js\nconsole.log('a');\n```";
-    const block2 = "```py\nprint('b')\n```";
-    const text = `${block1}\n\nSome text\n\n${block2}`;
-    const chunks = splitMessage(text, 4000);
-    expect(chunks.length).toBe(1);
-    expect(chunks[0]).toContain("console.log");
-    expect(chunks[0]).toContain("print");
-  });
-
-  it("handles unicode content", () => {
-    const text = "Hello 🌍! ".repeat(500);
-    const chunks = splitMessage(text, 2000);
-    expect(chunks.length).toBeGreaterThan(1);
-    const joined = chunks.join("");
-    expect(joined).toContain("🌍");
-  });
-
-  it("uses 4000 as default max for Slack (not Discord 2000)", () => {
-    // Verify the constant is correct for Slack
-    const text = "x".repeat(3999);
-    const chunks = splitMessage(text, 4000);
-    expect(chunks.length).toBe(1);
   });
 });
 

@@ -48,13 +48,23 @@ services:
       # Auth disabled: admin OpenCode is only reachable on assistant_net
       # and the host port defaults to 127.0.0.1 (loopback-only).
       OPENCODE_AUTH: "false"
-      # LLM provider keys — admin's OpenCode reads from vault mount
+      # LLM provider keys — admin's OpenCode reads from vault mount.
+      # Keep this list in sync with the assistant service in core.compose.yml.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      LMSTUDIO_API_KEY: ${LMSTUDIO_API_KEY:-}
+      LMSTUDIO_BASE_URL: ${LMSTUDIO_BASE_URL:-}
+      TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      XAI_API_KEY: ${XAI_API_KEY:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+      MCP_API_KEY: ${MCP_API_KEY:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      OP_CAP_LLM_PROVIDER: ${OP_CAP_LLM_PROVIDER:-}
       # Docker API via socket proxy
       DOCKER_HOST: tcp://docker-socket-proxy:2375
       # akm-cli XDG layout (AKM 0.8.0+). Shares the stash + cache bind mounts

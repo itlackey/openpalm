@@ -51,27 +51,25 @@ maybe_enable_ssh() {
     return 0
   fi
 
-  mkdir -p /var/run/sshd /home/opencode/.ssh
+  local is_root=0
+  [ "$(id -u)" = "0" ] && is_root=1
 
-  if [ "$(id -u)" = "0" ]; then
+  mkdir -p /var/run/sshd /home/opencode/.ssh
+  touch /home/opencode/.ssh/authorized_keys
+
+  if [ "$is_root" = "1" ]; then
     chown -R "$TARGET_UID:$TARGET_GID" /home/opencode/.ssh
     chmod 755 /home/opencode
     chmod 700 /home/opencode/.ssh
-  fi
-
-  touch /home/opencode/.ssh/authorized_keys
-
-  if [ "$(id -u)" = "0" ]; then
-    chown "$TARGET_UID:$TARGET_GID" /home/opencode/.ssh/authorized_keys
     chmod 600 /home/opencode/.ssh/authorized_keys
-  fi
 
-  if command -v openssl >/dev/null 2>&1; then
-    usermod -p "$(openssl passwd -6 "$(openssl rand -hex 16)")" opencode 2>/dev/null || true
-  fi
+    if command -v openssl >/dev/null 2>&1; then
+      usermod -p "$(openssl passwd -6 "$(openssl rand -hex 16)")" opencode 2>/dev/null || true
+    fi
 
-  if [ ! -f /etc/ssh/ssh_host_ed25519_key ]; then
-    ssh-keygen -A
+    if [ ! -f /etc/ssh/ssh_host_ed25519_key ]; then
+      ssh-keygen -A
+    fi
   fi
 
   /usr/sbin/sshd \
@@ -292,31 +290,21 @@ start_opencode() {
     use_supervisor=1
   fi
 
+  # Build the opencode command once. If running as root, prepend gosu so we
+  # drop to the opencode user. gosu resets HOME from /etc/passwd, so forward
+  # HOME explicitly via env.
+  local cmd=(opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs)
   if [ "$(id -u)" = "0" ]; then
     if ! command -v gosu >/dev/null 2>&1; then
       echo "ERROR: gosu not found — cannot drop privileges. Install gosu in the Dockerfile." >&2
       exit 1
     fi
-    # Drop to the opencode user. gosu resets HOME from /etc/passwd, so we
-    # must forward HOME explicitly. The user has passwordless sudo for root
-    # operations; normal file I/O preserves host UID ownership.
     export HOME=/home/opencode
-    if [ "$use_supervisor" = "1" ]; then
-      gosu opencode env HOME=/home/opencode \
-        opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs &
-      local oc_pid=$!
-      trap 'forward_term_to_scheduler; kill -TERM "$oc_pid" 2>/dev/null || true' TERM INT
-      wait "$oc_pid"
-      local oc_status=$?
-      forward_term_to_scheduler
-      exit "$oc_status"
-    fi
-    exec gosu opencode env HOME=/home/opencode \
-      opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
+    cmd=(gosu opencode env HOME=/home/opencode "${cmd[@]}")
   fi
 
   if [ "$use_supervisor" = "1" ]; then
-    opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs &
+    "${cmd[@]}" &
     local oc_pid=$!
     trap 'forward_term_to_scheduler; kill -TERM "$oc_pid" 2>/dev/null || true' TERM INT
     wait "$oc_pid"
@@ -325,7 +313,7 @@ start_opencode() {
     exit "$oc_status"
   fi
 
-  exec opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
+  exec "${cmd[@]}"
 }
 
 maybe_adjust_uid_gid

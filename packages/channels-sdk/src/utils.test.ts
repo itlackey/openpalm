@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { asRecord, constantTimeEqual, extractChatText } from "./utils.ts";
+import { constantTimeEqual } from "./crypto.ts";
+import { asRecord, extractChatText } from "./utils.ts";
 
 describe("constantTimeEqual", () => {
   it("returns true for equal strings and false for different strings", () => {

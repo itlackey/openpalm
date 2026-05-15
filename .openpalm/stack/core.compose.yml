@@ -104,12 +104,10 @@ services:
       OP_CAP_LLM_PROVIDER: ${OP_CAP_LLM_PROVIDER:-}
       # Google Cloud credentials (file lives in vault/user, mounted at /etc/vault).
       # NOTE: the /etc/vault mount no longer carries `user.env` (Phase 2 of #388
-      # routed that through akm `vault:user`). The mount remains because gws,
-      # gcloud, and mgc rely on it for their auth directories below.
+      # routed that through akm `vault:user`). The mount remains because gws and
+      # gcloud rely on it for their auth directories below.
       GOOGLE_APPLICATION_CREDENTIALS: /etc/vault/gcloud-credentials.json
       CLOUDSDK_CONFIG: /etc/vault/.gcloud
-      # Microsoft Graph CLI credential config
-      MGC_CONFIG_DIR: /etc/vault/.mgc
       # Google Workspace CLI (gws) — config dir persists OAuth tokens across restarts.
       # Only set CONFIG_DIR here. Do NOT set CREDENTIALS_FILE — if it points to a
       # missing plaintext JSON, gws fails even when encrypted creds exist in the

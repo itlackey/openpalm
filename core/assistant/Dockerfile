@@ -11,7 +11,7 @@ FROM openpalm-base
 
 # Assistant-specific OS packages: sshd for remote agent sessions, sudo + socat
 # for entrypoint privilege drop and Ollama proxy, Python (uv-managed venv for
-# azure-cli, hf-cli, apprise), jq/ripgrep + gh for in-container tooling.
+# apprise — used by the notify skill), jq/ripgrep + gh for in-container tooling.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openssh-server sudo socat \
         python3 python3-pip python3-venv jq ripgrep \
@@ -44,17 +44,16 @@ RUN set -e; \
     && mv /root/.local/bin/uv /usr/local/bin/ \
     && mv /root/.local/bin/uvx /usr/local/bin/
 
-# Azure CLI + Hugging Face CLI + apprise — isolated venv via uv (avoids pip
-# --break-system-packages).
+# apprise — isolated venv via uv (avoids pip --break-system-packages).
+# Used by the `notify` skill in packages/assistant-tools.
 RUN uv venv /opt/assistant-tools \
-    && uv pip install --python /opt/assistant-tools/bin/python azure-cli huggingface-hub[cli] apprise
+    && uv pip install --python /opt/assistant-tools/bin/python apprise
 ENV PATH="/opt/assistant-tools/bin:$PATH"
 ENV APPRISE_CONFIG="/etc/vault/apprise.conf"
 ENV GOOGLE_APPLICATION_CREDENTIALS="/etc/vault/gcloud-credentials.json"
 ENV CLOUDSDK_CONFIG="/etc/vault/.gcloud"
-ENV MGC_CONFIG_DIR="/etc/vault/.mgc"
 
-# gcloud CLI
+# gcloud CLI — required by the `gws-setup` skill for OAuth credential bootstrap.
 RUN curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-$(uname -m | sed 's/aarch64/arm/' | sed 's/x86_64/x86_64/').tar.gz \
       -o /tmp/gcloud.tar.gz \
     && tar xzf /tmp/gcloud.tar.gz -C /opt/ \
@@ -62,26 +61,13 @@ RUN curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google
     && rm /tmp/gcloud.tar.gz
 ENV PATH="/opt/google-cloud-sdk/bin:$PATH"
 
-# Google Workspace CLI
+# Google Workspace CLI — used by the `gws-setup` skill (gws-verify.sh + drive operations).
 ARG GWS_VERSION=0.22.3
 RUN set -e; \
     if [ "$(dpkg --print-architecture)" = "arm64" ]; then GWS_TRIPLE=aarch64-unknown-linux-gnu; else GWS_TRIPLE=x86_64-unknown-linux-gnu; fi \
     && curl -fsSL "https://github.com/googleworkspace/cli/releases/download/v${GWS_VERSION}/google-workspace-cli-${GWS_TRIPLE}.tar.gz" \
          | tar xz --strip-components=1 -C /usr/local/bin "google-workspace-cli-${GWS_TRIPLE}/gws" \
     && chmod +x /usr/local/bin/gws
-
-# Microsoft Graph CLI — only linux-x64 binaries are published; skip on arm64.
-ARG MGC_VERSION=1.9.0
-RUN set -e; \
-    if [ "$(dpkg --print-architecture)" = "arm64" ]; then \
-      echo "mgc: skipping — no linux-arm64 binary available"; \
-    else \
-      apt-get update \
-      && apt-get install -y --no-install-recommends dbus gnome-keyring libsecret-1-0 \
-      && rm -rf /var/lib/apt/lists/* \
-      && curl -fsSL "https://github.com/microsoftgraph/msgraph-cli/releases/download/v${MGC_VERSION}/msgraph-cli-linux-x64-${MGC_VERSION}.tar.gz" \
-           | tar xz -C /usr/local/bin; \
-    fi
 
 # OpenCode lives at /usr/local/.opencode/bin from the base image. Prepend the
 # opencode user's local bin so per-user installs win.

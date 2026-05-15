@@ -23,13 +23,13 @@ export {
 export { buildChannelMessage, forwardChannelMessage } from "./channel-sdk.ts";
 
 // ── Crypto ───────────────────────────────────────────────────────────────
-export { signPayload, verifySignature } from "./crypto.ts";
+export { constantTimeEqual, signPayload, verifySignature } from "./crypto.ts";
 
 // ── Logger ───────────────────────────────────────────────────────────────
 export { createLogger, type LogLevel } from "./logger.ts";
 
 // ── Utilities ────────────────────────────────────────────────────────────
-export { constantTimeEqual, asRecord, extractChatText, splitMessage } from "./utils.ts";
+export { asRecord, extractChatText, splitMessage } from "./utils.ts";
 
 // ── Assistant client ─────────────────────────────────────────────────────
 export { askAssistant, type AssistantClientOptions } from "./assistant-client.ts";

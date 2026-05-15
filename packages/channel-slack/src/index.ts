@@ -850,8 +850,6 @@ export default class SlackChannel extends BaseChannel {
   }
 }
 
-// Re-export splitMessage for tests (avoids breaking existing test imports)
-export { splitMessage } from "@openpalm/channels-sdk";
 export { DEFAULT_FORWARD_TIMEOUT_MS, parseForwardTimeoutMs };
 
 // ── Type shorthands for Slack Bolt ────────────────────────────────────────
