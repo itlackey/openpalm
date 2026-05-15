@@ -131,7 +131,11 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const dataDir = resolveDataDir();
   const workDir = defaultWorkDir();
 
-  const alreadyInstalled = await Bun.file(join(vaultDir, 'user', 'user.env')).exists();
+  // Phase 2 of #388 (closes #406): user.env is no longer the install
+  // marker — fresh installs never create it, and upgrades delete it after
+  // migration into akm. Use vault/stack/stack.env (always present after a
+  // successful install) as the canonical "already installed" indicator.
+  const alreadyInstalled = await Bun.file(join(vaultDir, 'stack', 'stack.env')).exists();
   if (alreadyInstalled && !options.force) {
     throw new Error('OpenPalm appears to already be installed. Re-run install with --force to continue.');
   }

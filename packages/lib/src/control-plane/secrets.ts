@@ -104,19 +104,21 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
 export function ensureSecrets(state: ControlPlaneState): void {
   enforceVaultDirMode(state.vaultDir);
   mkdirSync(`${state.vaultDir}/stack`, { recursive: true, mode: VAULT_DIR_MODE });
+  // vault/user is still created — it holds operational files (apprise.yml,
+  // gcloud creds, gws/mgc auth dirs) that the assistant container mounts
+  // at /etc/vault/. Phase 2 of #388 only retired the .env file from this
+  // directory; the directory itself remains a service-side bind mount.
   mkdirSync(`${state.vaultDir}/user`, { recursive: true, mode: VAULT_DIR_MODE });
 
-  // user.env is an empty placeholder — users can add custom vars here.
-  // All standard config lives in stack.env.
+  // Phase 2 of #388 (closes #406): user-managed env secrets now live in
+  // the akm `vault:user` store at `${dataDir}/stash/vaults/user.env`.
+  // Fresh installs do NOT seed `vault/user/user.env` — the assistant
+  // entrypoint sources the akm vault file directly. A pre-existing legacy
+  // `user.env` is kept here so `migrateAndCleanupLegacyUserEnv()` (called
+  // from upgrade and setup) can read its contents into akm and then
+  // delete the file in a single atomic step.
   const userEnvPath = `${state.vaultDir}/user/user.env`;
-  if (!existsSync(userEnvPath)) {
-    writeVaultFile(userEnvPath, [
-      "# OpenPalm — User Extensions",
-      "# Add any custom environment variables here.",
-      "# These are loaded by compose alongside stack.env.",
-      "",
-    ].join("\n"));
-  } else {
+  if (existsSync(userEnvPath)) {
     try { chmodSync(userEnvPath, VAULT_FILE_MODE); } catch { /* best-effort */ }
   }
 

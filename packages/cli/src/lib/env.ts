@@ -57,30 +57,15 @@ export function reconcileStackEnvImageTag(
 }
 
 /**
- * Seeds vault/user/user.env with initial template.
- * Uses `export` prefix so the file can be sourced in a shell and is still
- * compatible with Docker Compose v2 `env_file`.
- * Contains user-managed custom env vars only (the seeded user.env is empty
- * by default). System secrets (OP_ADMIN_TOKEN, OP_ASSISTANT_TOKEN)
- * live in vault/stack/stack.env and are managed by the control plane.
+ * Ensures vault/user exists. Phase 2 of #388 (closes #406): the
+ * `user.env` file is no longer seeded — user-managed env secrets live in
+ * the akm `vault:user` store and are sourced by the assistant entrypoint
+ * directly. The directory itself is still created because operational
+ * files (apprise.yml, gcloud creds, gws/mgc auth dirs) bind-mount from
+ * here into the assistant container at /etc/vault/.
  */
 export async function ensureSecrets(vaultDir: string): Promise<void> {
-  const secretsPath = join(vaultDir, 'user', 'user.env');
-  if (await Bun.file(secretsPath).exists()) {
-    return;
-  }
-
   mkdirSync(join(vaultDir, 'user'), { recursive: true });
-  // user.env is for user-added custom env vars only.
-  // All standard secrets (API keys, tokens) live in stack.env.
-  // Do NOT put API key placeholders here — user.env is loaded after
-  // stack.env by Docker Compose, so empty values would override real keys.
-  const content = `# OpenPalm — User Extensions
-# Add any custom environment variables here.
-# These are loaded by compose alongside stack.env.
-`;
-
-  await Bun.write(secretsPath, content);
 }
 
 /**

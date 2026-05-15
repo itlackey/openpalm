@@ -190,6 +190,35 @@ forward_term_to_scheduler() {
   fi
 }
 
+maybe_source_akm_user_vault() {
+  # Phase 2 of #388 (closes #406): user-managed env secrets now live in
+  # the akm `vault:user` store at <stash>/vaults/user.env (akm-cli >= 0.8.0
+  # layout). The legacy `${OP_HOME}/vault/user/user.env` compose env_file
+  # has been retired — instead we ask akm for the resolved vault path and
+  # source it inline so OpenCode and the scheduler co-process inherit
+  # every key. Sourcing happens AFTER the gosu drop in start_opencode, so
+  # the values land in the same process tree as opencode itself.
+  #
+  # We deliberately do NOT shell out to `akm vault run` — that would put
+  # akm in the supervisor path. A static one-shot source keeps the
+  # entrypoint dependency-free post-startup.
+  if ! command -v akm >/dev/null 2>&1; then
+    return 0
+  fi
+  local vault_path
+  vault_path="$(akm vault path vault:user 2>/dev/null || true)"
+  if [ -z "$vault_path" ] || [ ! -f "$vault_path" ]; then
+    return 0
+  fi
+  # `set -a` exports every variable assigned by the sourced file. The .env
+  # format produced by akm is plain `KEY=value` (no `export ` prefix), so
+  # this is the standard way to load it without parsing line-by-line.
+  set -a
+  # shellcheck disable=SC1090
+  . "$vault_path"
+  set +a
+}
+
 maybe_unset_unused_provider_keys() {
   # Unset LLM provider keys that are not needed for the configured provider.
   # This limits the blast radius if the assistant process is compromised —
@@ -274,6 +303,12 @@ maybe_adjust_uid_gid
 ensure_home_layout
 maybe_enable_ssh
 maybe_proxy_lmstudio
+# Source the akm `vault:user` env file BEFORE the scheduler co-process
+# starts so both OpenCode and the scheduler inherit user-managed secrets.
+# This replaces the retired `${OP_HOME}/vault/user → /etc/vault` compose
+# env_file (#388 / #406). Runs as root because gosu has not been invoked
+# yet — root can read the 0600 vault file and re-export to children.
+maybe_source_akm_user_vault
 maybe_unset_unused_provider_keys
 start_scheduler_coprocess
 start_opencode
