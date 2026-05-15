@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../..');
-const GUARDIAN_ENV_PATH = resolve(REPO_ROOT, '.dev/vault/stack/guardian.env');
+const GUARDIAN_ENV_PATH = resolve(REPO_ROOT, '.dev/config/stack/guardian.env');
 
 /**
  * Guardian URL: In dev mode, guardian is published directly on OP_GUARDIAN_PORT

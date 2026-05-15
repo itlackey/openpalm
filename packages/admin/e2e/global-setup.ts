@@ -5,7 +5,7 @@ import { parse as dotenvParse } from "dotenv";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
-const STACK_ENV = resolve(REPO_ROOT, ".dev/vault/stack/stack.env");
+const STACK_ENV = resolve(REPO_ROOT, ".dev/config/stack/stack.env");
 const SECRETS_ENV = resolve(REPO_ROOT, ".dev/vault/user/user.env");
 const BACKUP = `${STACK_ENV}.e2e-backup`;
 

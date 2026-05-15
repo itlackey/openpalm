@@ -260,12 +260,12 @@ describe('cli main', () => {
     const stackConfig = join(base, 'config', 'stack.yml');
     const specFile = writeMinimalSetupSpec(base);
 
-    // The canonical "already installed" marker is state/stack.env.
+    // The canonical "already installed" marker is config/stack/stack.env.
     // Seed it so the backup path triggers AND we can prove the backup
     // carries forward existing content.
     mkdirSync(join(base, 'state'), { recursive: true });
-    mkdirSync(join(base, 'config'), { recursive: true });
-    writeFileSync(join(base, 'state', 'stack.env'), 'OP_ADMIN_TOKEN=existing-token\n');
+    mkdirSync(join(base, 'config', 'stack'), { recursive: true });
+    writeFileSync(join(base, 'config', 'stack', 'stack.env'), 'OP_ADMIN_TOKEN=existing-token\n');
     writeFileSync(stackConfig, 'llm: old\n');
 
     process.env.OP_HOME = base;
@@ -294,7 +294,7 @@ describe('cli main', () => {
       const backups = readdirSync(backupsDir);
       expect(backups.length).toBeGreaterThan(0);
       expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack.yml'), 'utf8')).toContain('llm: old');
-      expect(readFileSync(join(backupsDir, backups[0], 'state', 'stack.env'), 'utf8')).toContain('OP_ADMIN_TOKEN=existing-token');
+      expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack', 'stack.env'), 'utf8')).toContain('OP_ADMIN_TOKEN=existing-token');
     } finally {
       rmSync(base, { recursive: true, force: true });
     }

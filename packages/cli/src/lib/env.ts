@@ -13,7 +13,7 @@ export async function ensureSecrets(stateDir: string): Promise<void> {
 }
 
 /**
- * Creates or updates the state/stack.env bootstrap file.
+ * Creates or updates the config/stack/stack.env bootstrap file.
  *
  * When `imageTagOverride` is provided (e.g. derived from --version during
  * install), it takes precedence over both the OP_IMAGE_TAG env var
@@ -22,15 +22,16 @@ export async function ensureSecrets(stateDir: string): Promise<void> {
  */
 export async function ensureStackEnv(
   homeDir: string,
-  stateDir: string,
+  configDir: string,
   workDir: string,
   repoRef: string,
   imageTagOverride?: string,
 ): Promise<void> {
-  const systemEnvPath = join(stateDir, 'stack.env');
+  const stackDir = join(configDir, 'stack');
+  const systemEnvPath = join(stackDir, 'stack.env');
   const explicitImageTag = imageTagOverride ?? process.env.OP_IMAGE_TAG;
   const hasExplicitImageTag = explicitImageTag !== undefined && explicitImageTag !== '';
-  mkdirSync(stateDir, { recursive: true });
+  mkdirSync(stackDir, { recursive: true });
   if (!(await Bun.file(systemEnvPath).exists())) {
     const defaultImageTag = hasExplicitImageTag
       ? explicitImageTag

@@ -189,9 +189,9 @@ export async function seedOpenPalmDir(
       throw new Error(`tar extraction failed (exit code ${extractCode})`);
     }
 
-    const srcCoreCompose = join(tmpDir, '.openpalm', 'stack', 'core.compose.yml');
+    const srcCoreCompose = join(tmpDir, '.openpalm', 'config', 'stack', 'core.compose.yml');
     if (!await Bun.file(srcCoreCompose).exists()) {
-      throw new Error('core.compose.yml not found in downloaded assets');
+      throw new Error('core.compose.yml not found in downloaded assets (expected at .openpalm/config/stack/)');
     }
     await mkdir(join(homeDir, 'config', 'stack'), { recursive: true });
     await writeFile(

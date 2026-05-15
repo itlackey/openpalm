@@ -2,9 +2,9 @@
  * Tests for the configuration persistence contract.
  *
  * Verifies that:
- * 1. Stack compose overlays live in stack/ (not config/components/)
- * 2. Compose file list uses stack/ paths
- * 3. User extensions live in vault/user/user.env (secrets live in vault/stack/stack.env)
+ * 1. Stack compose overlays live in config/stack/ (not config/components/)
+ * 2. Compose file list uses config/stack/ paths
+ * 3. User extensions live in vault/user/user.env (secrets live in config/stack/stack.env)
  * 4. Runtime validation checks the stack spec for channels
  * 5. Configuration persistence is idempotent
  */

@@ -163,15 +163,16 @@ describe("refreshCoreAssets", () => {
     expect(result.updated).toContain("state/assistant/opencode.jsonc");
     expect(result.updated).toContain("state/assistant/AGENTS.md");
     // .env.schema files were retired in #391 — they MUST NOT come back.
+    // Old paths from v0.10.0 or earlier must not be resurrected.
     expect(result.updated).not.toContain("vault/user/user.env.schema");
-    expect(result.updated).not.toContain("vault/stack/stack.env.schema");
+    expect(result.updated).not.toContain("config/stack/stack.env.schema");
     expect(result.backupDir).toBeNull(); // no existing files to back up
 
     expect(existsSync(join(homeDir, "config/stack/core.compose.yml"))).toBe(true);
     expect(existsSync(join(homeDir, "state/assistant/opencode.jsonc"))).toBe(true);
     expect(existsSync(join(homeDir, "state/assistant/AGENTS.md"))).toBe(true);
     expect(existsSync(join(homeDir, "vault/user/user.env.schema"))).toBe(false);
-    expect(existsSync(join(homeDir, "vault/stack/stack.env.schema"))).toBe(false);
+    expect(existsSync(join(homeDir, "config/stack/stack.env.schema"))).toBe(false);
   });
 
   test("backs up changed files before overwriting", async () => {

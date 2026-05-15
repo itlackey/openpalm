@@ -131,9 +131,9 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const stateDir = `${homeDir}/state`;
   const workDir = defaultWorkDir();
 
-  // Use state/stack.env (always present after a successful install) as the
+  // Use config/stack/stack.env (always present after a successful install) as the
   // canonical "already installed" indicator.
-  const alreadyInstalled = await Bun.file(join(stateDir, 'stack.env')).exists();
+  const alreadyInstalled = await Bun.file(join(configDir, 'stack', 'stack.env')).exists();
   if (alreadyInstalled && !options.force) {
     throw new Error('OpenPalm appears to already be installed. Re-run install with --force to continue.');
   }
@@ -192,11 +192,11 @@ async function prepareInstallFiles(
 
   console.log('Configuring secrets...');
   await ensureSecrets(stateDir);
-  await ensureStackEnv(homeDir, stateDir, workDir, version, resolveRequestedImageTag(version) ?? undefined);
+  await ensureStackEnv(homeDir, configDir, workDir, version, resolveRequestedImageTag(version) ?? undefined);
 
   for (const [path, content] of [
-    [join(stateDir, 'guardian.env'), '# Guardian channel HMAC secrets — managed by openpalm\n'],
-    [join(stateDir, 'auth.json'), '{}\n'],
+    [join(configDir, 'stack', 'guardian.env'), '# Guardian channel HMAC secrets — managed by openpalm\n'],
+    [join(configDir, 'stack', 'auth.json'), '{}\n'],
   ] as const) {
     if (!(await Bun.file(path).exists())) await Bun.write(path, content);
   }

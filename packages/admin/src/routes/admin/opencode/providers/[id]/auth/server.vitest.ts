@@ -171,7 +171,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
     expect(res.status).toBe(200);
   });
 
-  test('writes env var to vault/stack/stack.env', async () => {
+  test('writes env var to config/stack/stack.env', async () => {
     setProviderApiKey.mockResolvedValueOnce({ ok: true, data: true });
 
     const res = await POST(makeEvent('POST', {
