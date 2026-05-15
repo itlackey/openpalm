@@ -72,7 +72,12 @@ describe("ensureSecrets", () => {
     ensureSecrets(state);
 
     expect(existsSync(join(nestedDir, "stack", "stack.env"))).toBe(true);
-    expect(existsSync(join(nestedDir, "user", "user.env"))).toBe(true);
+    // Phase 2 of #388 (closes #406): user.env is no longer seeded; the
+    // user-managed env store lives in akm `vault:user` instead. The
+    // `vault/user/` directory is still created (it backs operational
+    // non-env files mounted into the assistant container).
+    expect(existsSync(join(nestedDir, "user"))).toBe(true);
+    expect(existsSync(join(nestedDir, "user", "user.env"))).toBe(false);
   });
 });
 

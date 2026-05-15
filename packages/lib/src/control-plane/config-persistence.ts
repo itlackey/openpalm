@@ -27,12 +27,19 @@ const DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
  * Return the env files used for docker compose --env-file args.
  * These are the live vault env files.
  *
- * Order: stack.env -> user.env -> guardian.env
+ * Order: stack.env -> guardian.env
+ *
+ * Phase 2 of #388 (closes #406): `vault/user/user.env` is no longer a
+ * compose env_file. User-managed env secrets live in the akm
+ * `vault:user` store and are sourced by the assistant entrypoint at
+ * container startup. The legacy file is migrated into akm and deleted
+ * on upgrade; subsequent `docker compose` invocations must not reference
+ * it (compose interpolates `${VAR}` against the merged --env-file
+ * contents, and a stale user.env would shadow the akm-sourced values).
  */
 export function buildEnvFiles(state: ControlPlaneState): string[] {
   return [
     `${state.vaultDir}/stack/stack.env`,
-    `${state.vaultDir}/user/user.env`,
     `${state.vaultDir}/stack/guardian.env`,
   ].filter(existsSync);
 }

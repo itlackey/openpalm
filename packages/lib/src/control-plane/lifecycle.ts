@@ -12,7 +12,7 @@ import {
   resolveCacheHome,
 } from "./home.js";
 import { ensureSecrets, readStackEnv, updateSystemSecretsEnv } from "./secrets.js";
-import { mirrorUserVaultToAkm } from "./akm-vault.js";
+import { mirrorUserVaultToAkm, migrateAndCleanupLegacyUserEnv } from "./akm-vault.js";
 import {
   resolveRuntimeFiles,
   writeRuntimeFiles,
@@ -242,13 +242,17 @@ export async function applyUpgrade(
     const { backupDir, updated } = await refreshCoreAssets();
     const restarted = await reconcileCore(state, {});
 
-    // Phase 1 of #388: migrate existing `${OP_HOME}/vault/user/*.env` from
-    // pre-0.11 layouts into the shared akm `vault:user` store. The .env
-    // file is left in place — it remains the runtime source of truth for
-    // Compose env_file consumption until Phase 2 swaps the mount.
-    // Mirror is best-effort; the upgrade succeeds (or fails) on its own
-    // merits, and any akm-side error is captured by the mirror's logger.
+    // Phase 2 of #388 (closes #406): migrate existing
+    // `${OP_HOME}/vault/user/user.env` from pre-0.11 layouts into the
+    // shared akm `vault:user` store, then delete the legacy file once
+    // every key is verified present in akm. The assistant entrypoint
+    // sources the akm vault directly (no compose env_file dependency on
+    // user.env), so removing the file does not affect runtime env
+    // resolution. Mirror + cleanup are both best-effort: the upgrade
+    // succeeds on its own merits, and any akm-side error is logged so
+    // the operator can re-run upgrade after fixing the akm CLI.
     await mirrorUserVaultToAkm(state).catch(() => { /* best-effort */ });
+    await migrateAndCleanupLegacyUserEnv(state).catch(() => { /* best-effort */ });
 
     return { backupDir, updated, restarted };
   } finally {

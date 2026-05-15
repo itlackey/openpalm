@@ -1,38 +1,27 @@
 /**
- * akm vault mirror — Phase 1 of issue #388.
+ * akm vault mirror — completes Phase 2 of issue #388.
  *
- * The runtime source of truth for user-scoped secrets remains
- * `${OP_HOME}/vault/user/user.env` (it is bind-mounted into containers
- * via `${OP_HOME}/vault/user → /etc/vault` and consumed by Docker Compose
- * as an env_file). For Phase 1 we additionally mirror those key/value
- * pairs into an akm-cli secret store at `vault:user`, residing in the
- * shared akm stash at `${OP_HOME}/data/stash`. This makes the same
- * secrets browsable from the assistant and admin UI through the existing
- * `akm vault list|path` interface.
- *
- * Phase 2 (deferred, tracked under a follow-up) will:
- *  - drop the `${OP_HOME}/vault/user → /etc/vault` compose mount
- *  - source the akm vault path from an entrypoint instead
- *  - delete `${OP_HOME}/vault/user/` after migration
+ * The akm-cli `vault:user` secret store at `${OP_HOME}/data/stash/vaults/user.env`
+ * is now the canonical home for user-managed environment secrets. The
+ * `${OP_HOME}/vault/user/user.env` file (the legacy compose env_file) is no
+ * longer mounted into containers — the assistant entrypoint sources the
+ * akm vault file directly. Migration on upgrade copies the legacy file into
+ * akm and then deletes it.
  *
  * NON-CHANGE: `vault/stack/stack.env` and `vault/stack/guardian.env` are
  * operator-managed and are NOT mirrored into akm. Migrating them would
  * break guardian's HMAC env_file hot-reload contract.
  *
- * SECURITY: This module never invokes `akm vault set|unset` with secret
- * values on the command line. `akm 0.8.x` accepts values via argv only,
- * which would leak through `/proc/<pid>/cmdline`. Instead we resolve the
- * vault file path via `akm vault create` + `akm vault path` and write
- * key/value pairs directly with `writeFileSync` + `mergeEnvContent`. The
- * resulting .env file format is byte-compatible with what `akm vault set`
- * would have produced (a plain `KEY=value` .env file), and `akm vault
- * list|run|path` continue to work against it unchanged.
+ * SECURITY: Every write into the akm vault is performed by spawning
+ * `akm vault set <ref> <key>` with the secret VALUE delivered via stdin
+ * (akm-cli >= 0.8.0). Values never appear in argv, so they cannot leak
+ * through `/proc/<pid>/cmdline`. The matching delete path uses
+ * `akm vault unset <ref> <key>` which is naturally argv-safe.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
-import { mergeEnvContent, parseEnvFile, removeEnvKey } from "./env.js";
+import { parseEnvFile } from "./env.js";
 import { createLogger } from "../logger.js";
 import type { ControlPlaneState } from "./types.js";
 
@@ -77,10 +66,11 @@ export function buildAkmEnv(state: ControlPlaneState): NodeJS.ProcessEnv {
 
 /**
  * Per-invocation timeout (ms) for every akm subprocess we launch. The CLI is
- * a local binary and these probes (`--version`, `vault create`, `vault path`)
- * complete in well under a second on a healthy host; anything longer means
- * akm is wedged or unreachable. Bounding the call keeps `mirrorUserVaultToAkm`
- * truly best-effort: a stuck akm binary cannot block install/upgrade.
+ * a local binary and these probes (`--version`, `vault create`, `vault path`,
+ * `vault set/unset`) complete in well under a second on a healthy host;
+ * anything longer means akm is wedged or unreachable. Bounding the call
+ * keeps `mirrorUserVaultToAkm` truly best-effort: a stuck akm binary cannot
+ * block install/upgrade.
  *
  * Why a wall-clock race instead of execFile's built-in `timeout` option:
  * node's `child_process.execFile` in Bun is implemented on top of `Bun.spawn`,
@@ -154,54 +144,123 @@ export async function ensureAkmUserVault(state: ControlPlaneState): Promise<stri
 }
 
 /**
- * Write a single key/value into the akm `vault:user` store WITHOUT shelling
- * out to `akm vault set`. The akm vault file format is a plain `.env` file
- * at `<stash>/vaults/<name>.env`; writing directly with `mergeEnvContent`
- * produces a byte-identical result while keeping the secret out of argv
- * (and therefore out of `/proc/<pid>/cmdline`).
+ * Spawn `akm vault set <ref> <key>` and feed the secret VALUE via stdin.
+ * The value never crosses argv, so it cannot leak through
+ * `/proc/<pid>/cmdline`. Bounded by AKM_EXEC_TIMEOUT_MS — a stuck akm
+ * binary cannot block the calling install/upgrade flow.
+ */
+async function akmVaultSetViaStdin(
+  ref: string,
+  key: string,
+  value: string,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
+  // We use Bun.spawn directly because it supports an in-memory stdin pipe
+  // (a buffer/string stream) without dragging in an extra dependency, and
+  // because akm-cli on >= 0.8.0 reads the value from stdin when no
+  // positional `<value>` is provided. (The CLI silently switched stdin to
+  // the default in commit c50f9f4; explicit `--stdin` is still accepted
+  // for older binaries — but since we pin akm-cli >= 0.8.0-rc2 across all
+  // images via Dockerfile ARGs, the implicit form is enough.)
+  const child = Bun.spawn(["akm", "vault", "set", ref, key], {
+    env,
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  // Wall-clock bound. Mirrors the pattern in execAkm above.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      try { child.kill(); } catch { /* best-effort */ }
+      reject(new Error(`akm vault set ${key} timed out after ${AKM_EXEC_TIMEOUT_MS}ms`));
+    }, AKM_EXEC_TIMEOUT_MS);
+    timer.unref?.();
+  });
+
+  try {
+    // Feed the secret. `child.stdin` is a FileSink in Bun — write+end then
+    // wait for exit. We don't use `await child.stdin.end(value)` because
+    // some Bun versions return undefined here; explicit write+end is portable.
+    if (child.stdin) {
+      // child.stdin is typed as FileSink in Bun
+      const sink = child.stdin as { write: (data: string) => unknown; end: () => unknown };
+      sink.write(value);
+      sink.end();
+    }
+    const exitCode = await Promise.race([child.exited, timeoutPromise]);
+    if (exitCode !== 0) {
+      const stderrText = child.stderr ? await new Response(child.stderr).text() : "";
+      throw new Error(`akm vault set ${key} failed (exit ${exitCode}): ${stderrText.trim()}`);
+    }
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * Write a single key/value into the akm `vault:user` store via
+ * `akm vault set <ref> <key>` with the value delivered on stdin.
  *
  * Returns `true` on success, `false` when akm is unavailable or the vault
- * path cannot be resolved. Throws only on filesystem write failures.
+ * could not be ensured. Throws on akm subprocess failures (non-zero exit
+ * with a captured stderr, or wall-clock timeout) so callers can surface
+ * the real error instead of silently dropping the write.
  */
 export async function writeAkmVaultKey(
   state: ControlPlaneState,
   key: string,
   value: string,
 ): Promise<boolean> {
+  const env = buildAkmEnv(state);
+  // ensureAkmUserVault already runs the availability probe. We re-check
+  // here to short-circuit before spawning the set process when akm is
+  // missing on PATH.
   const vaultPath = await ensureAkmUserVault(state);
   if (!vaultPath) return false;
-
-  mkdirSync(dirname(vaultPath), { recursive: true, mode: 0o700 });
-  const existing = existsSync(vaultPath) ? readFileSync(vaultPath, "utf-8") : "";
-  const merged = mergeEnvContent(existing, { [key]: value });
-  writeFileSync(vaultPath, merged.endsWith("\n") ? merged : merged + "\n", { mode: 0o600 });
+  await akmVaultSetViaStdin(AKM_USER_VAULT_REF, key, value, env);
   return true;
 }
 
 /**
- * Remove a key from the akm `vault:user` store. Mirrors `writeAkmVaultKey`
- * by editing the .env file directly rather than invoking `akm vault unset`.
- * Returns `true` if the operation completed (whether or not the key was
- * present), `false` when akm is unavailable.
+ * Remove a key from the akm `vault:user` store via `akm vault unset`.
+ * The key name is a normal identifier and crosses argv only — secret
+ * values are never involved. Returns `true` if the operation completed
+ * (whether or not the key was present), `false` when akm is unavailable.
  */
 export async function deleteAkmVaultKey(
   state: ControlPlaneState,
   key: string,
 ): Promise<boolean> {
+  const env = buildAkmEnv(state);
   const vaultPath = await ensureAkmUserVault(state);
   if (!vaultPath) return false;
-  if (!existsSync(vaultPath)) return true;
-
-  const existing = readFileSync(vaultPath, "utf-8");
-  const stripped = removeEnvKey(existing, key);
-  writeFileSync(vaultPath, stripped.endsWith("\n") ? stripped : stripped + "\n", { mode: 0o600 });
+  try {
+    await execAkm(["vault", "unset", AKM_USER_VAULT_REF, key], env);
+  } catch (err) {
+    // `unset` of a missing key is a benign no-op; many akm versions exit 0
+    // anyway. If akm hard-fails (non-zero, non-empty stderr) we surface it.
+    const message = err instanceof Error ? err.message : String(err);
+    // Heuristic: tolerate "not found" / "no such" messages so re-running
+    // delete on an already-deleted key stays idempotent for callers.
+    if (/not\s*found|no\s+such|does\s+not\s+exist/i.test(message)) {
+      logger.debug("akm vault unset reported missing key", { key, message });
+      return true;
+    }
+    throw err;
+  }
   return true;
 }
 
 /**
  * Idempotently mirror `${OP_HOME}/vault/user/user.env` into the akm
- * `vault:user` secret store. Keys that already match the source value are
- * left untouched so we never trigger a needless write or rewrite mtime.
+ * `vault:user` secret store. Keys whose value already matches the source
+ * are skipped so we never trigger a needless write or rewrite mtime.
+ *
+ * On Phase 2 (this PR), the legacy `user.env` file is the migration source
+ * only — once every key has landed in the akm vault, callers should
+ * delete it (see `migrateAndCleanupLegacyUserEnv` below).
  *
  * Returns a structured result describing what happened. Never throws on
  * akm errors — mirror is best-effort and must not block install/upgrade.
@@ -229,38 +288,28 @@ export async function mirrorUserVaultToAkm(state: ControlPlaneState): Promise<Mi
     return { ok: false, skipped: true, reason: "could not resolve vault path", written: [], unchanged: [] };
   }
 
-  // Read the current akm vault contents directly so we can diff before writing.
-  // `akm vault` stores values in a plain .env file at the path above; reading
-  // it here keeps the mirror an O(keys) operation with no subprocess fan-out.
+  // Diff against the existing vault file so we issue exactly one
+  // `akm vault set` per changed key. The vault file is a plain .env file
+  // produced by akm itself, so parseEnvFile() is the right parser.
   const existing = existsSync(vaultPath) ? parseEnvFile(vaultPath) : {};
 
   const written: string[] = [];
   const unchanged: string[] = [];
-  // Build the full updated content in one merge so we issue a single write.
-  const updates: Record<string, string> = {};
   for (const key of keys) {
     const value = sourceEntries[key];
     if (existing[key] === value) {
       unchanged.push(key);
       continue;
     }
-    updates[key] = value;
-    written.push(key);
-  }
-
-  if (written.length > 0) {
     try {
-      mkdirSync(dirname(vaultPath), { recursive: true, mode: 0o700 });
-      const currentContent = existsSync(vaultPath) ? readFileSync(vaultPath, "utf-8") : "";
-      const merged = mergeEnvContent(currentContent, updates);
-      writeFileSync(vaultPath, merged.endsWith("\n") ? merged : merged + "\n", { mode: 0o600 });
+      await akmVaultSetViaStdin(AKM_USER_VAULT_REF, key, value, env);
+      written.push(key);
     } catch (err) {
-      logger.warn("akm vault file write failed", {
-        vaultPath,
-        keyCount: written.length,
+      logger.warn("akm vault set failed", {
+        key,
         error: err instanceof Error ? err.message : String(err),
       });
-      return { ok: false, skipped: false, reason: "vault file write failed", written: [], unchanged };
+      return { ok: false, skipped: false, reason: "akm vault set failed", written, unchanged };
     }
   }
 
@@ -273,14 +322,78 @@ export async function mirrorUserVaultToAkm(state: ControlPlaneState): Promise<Mi
   return { ok: true, skipped: false, written, unchanged };
 }
 
+/**
+ * Phase 2 finalization step: after `mirrorUserVaultToAkm` has populated
+ * the akm vault, verify every non-empty key from the legacy user.env is
+ * present in the akm vault, and only then delete the legacy file.
+ *
+ * Returns:
+ *   - `{ deleted: true }`            when the legacy file was deleted
+ *   - `{ deleted: false, reason }`   when the file was kept (akm missing,
+ *                                    keys not yet mirrored, etc.) so the
+ *                                    operator can re-run upgrade safely
+ *
+ * Never throws — this is a best-effort migration step. The runtime path
+ * (entrypoint sources the akm vault directly) is independent of whether
+ * the legacy file lingers.
+ */
+export async function migrateAndCleanupLegacyUserEnv(
+  state: ControlPlaneState,
+): Promise<{ deleted: boolean; reason?: string }> {
+  const userEnvPath = `${state.vaultDir}/user/user.env`;
+  if (!existsSync(userEnvPath)) {
+    return { deleted: false, reason: "user.env already absent" };
+  }
+
+  const sourceEntries = parseEnvFile(userEnvPath);
+  const keys = Object.keys(sourceEntries).filter((k) => sourceEntries[k] !== "");
+  if (keys.length === 0) {
+    // No keys to migrate — safe to remove the empty placeholder so the
+    // assistant entrypoint stops finding it.
+    try {
+      unlinkSync(userEnvPath);
+      return { deleted: true };
+    } catch (err) {
+      return { deleted: false, reason: `unlink failed: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+
+  const env = buildAkmEnv(state);
+  if (!(await akmAvailable(env))) {
+    return { deleted: false, reason: "akm not on PATH" };
+  }
+  const vaultPath = await ensureAkmUserVault(state);
+  if (!vaultPath || !existsSync(vaultPath)) {
+    return { deleted: false, reason: "akm vault file missing" };
+  }
+
+  const akmEntries = parseEnvFile(vaultPath);
+  for (const key of keys) {
+    if (akmEntries[key] !== sourceEntries[key]) {
+      return { deleted: false, reason: `key not yet migrated: ${key}` };
+    }
+  }
+
+  try {
+    unlinkSync(userEnvPath);
+    logger.info("deleted legacy user.env after akm migration", {
+      userEnvPath,
+      migratedKeys: keys.length,
+    });
+    return { deleted: true };
+  } catch (err) {
+    return { deleted: false, reason: `unlink failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
 /** Return the parsed contents of the akm vault file (public API used by admin UI list endpoint). */
 export function readAkmUserVaultFile(vaultPath: string): Record<string, string> {
   if (!existsSync(vaultPath)) return {};
   try {
     return parseEnvFile(vaultPath);
   } catch {
+    // Fallback: hand-parse if dotenv chokes (e.g. file with stray BOM).
     const raw = readFileSync(vaultPath, "utf-8");
-    // Fallback: hand-parse if dotenv chokes (e.g. file with stray BOM)
     const out: Record<string, string> = {};
     for (const line of raw.split("\n")) {
       const m = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);

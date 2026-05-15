@@ -258,13 +258,14 @@ export {
   performSetup,
 } from "./control-plane/setup.js";
 
-// ── AKM Vault Mirror (Phase 1 of #388) ───────────────────────────────────
+// ── AKM Vault Mirror (#388) ──────────────────────────────────────────────
 export type {
   MirrorResult,
 } from "./control-plane/akm-vault.js";
 export {
   AKM_USER_VAULT_REF,
   mirrorUserVaultToAkm,
+  migrateAndCleanupLegacyUserEnv,
   ensureAkmUserVault,
   writeAkmVaultKey,
   deleteAkmVaultKey,

@@ -98,13 +98,17 @@ describe("buildComposeOptions", () => {
   });
 
   it("returns env files in correct order", () => {
+    // Phase 2 of #388 (closes #406): vault/user/user.env is no longer a
+    // compose env_file. The runtime env file list is: stack.env, guardian.env.
+    // Even when a legacy user.env is present on disk, it is intentionally
+    // excluded from the compose args.
     seedEnvFiles({ stack: true, user: true, guardian: true });
     const state = makeState();
     const opts = buildComposeOptions(state);
-    expect(opts.envFiles).toHaveLength(3);
+    expect(opts.envFiles).toHaveLength(2);
     expect(opts.envFiles[0]).toContain("stack.env");
-    expect(opts.envFiles[1]).toContain("user.env");
-    expect(opts.envFiles[2]).toContain("guardian.env");
+    expect(opts.envFiles[1]).toContain("guardian.env");
+    expect(opts.envFiles.some((p) => p.endsWith("user/user.env"))).toBe(false);
   });
 
   it("excludes missing env files", () => {
@@ -136,8 +140,11 @@ describe("buildComposeCliArgs", () => {
   });
 
   it("includes --env-file flags for env files that exist", () => {
+    // Phase 2 of #388 (closes #406): vault/user/user.env is no longer
+    // listed in the compose env_file set. Only stack.env and guardian.env
+    // (when present) are passed via --env-file.
     seedCoreCompose();
-    seedEnvFiles({ stack: true, user: true });
+    seedEnvFiles({ stack: true, user: true, guardian: true });
     const state = makeState();
     const args = buildComposeCliArgs(state);
     const envFileIndices = args.reduce<number[]>((acc, arg, i) => {
@@ -145,6 +152,9 @@ describe("buildComposeCliArgs", () => {
       return acc;
     }, []);
     expect(envFileIndices).toHaveLength(2);
+    // Confirm user.env is NEVER in the args list, regardless of disk presence.
+    const envFilePaths = envFileIndices.map((i) => args[i + 1]);
+    expect(envFilePaths.some((p) => p.endsWith("user/user.env"))).toBe(false);
   });
 
   it("does not include --env-file for missing files", () => {

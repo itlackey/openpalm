@@ -26,5 +26,8 @@
     "croner": "^9.0.0",
     "dotenv": "^16.4.7",
     "yaml": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.0.0"
   }
 }

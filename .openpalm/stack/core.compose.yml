@@ -3,15 +3,22 @@
 # This file defines the core infrastructure. Addon services are added
 # via compose overlays in stack/addons/.
 #
-# Docker Compose reads variable values via --env-file for three env files:
+# Docker Compose reads variable values via --env-file for two env files:
 #   vault/stack/stack.env    — system config, API keys, OP_CAP_* capabilities
-#   vault/user/user.env      — optional user-managed custom vars
 #   vault/stack/guardian.env  — channel HMAC secrets (loaded by guardian)
 #
-# Directory model (v0.10.0):
+# User-managed env secrets live in the akm `vault:user` store at
+# data/stash/vaults/user.env (akm-cli >= 0.8.0 layout). The assistant
+# entrypoint sources that file at startup via `akm vault path vault:user`
+# — see Phase 2 of #388 / closed by #406. The legacy
+# vault/user/user.env compose env_file was retired; on upgrade it is
+# migrated into akm and deleted.
+#
+# Directory model (v0.11.0):
 #   ~/.openpalm/config/       — user-editable, non-secret configuration
-#   ~/.openpalm/vault/stack/   — system-managed secrets (stack.env)
-#   ~/.openpalm/vault/user/    — user-managed runtime files (user.env)
+#   ~/.openpalm/vault/stack/   — system-managed secrets (stack.env, guardian.env)
+#   ~/.openpalm/vault/user/    — operational files only (apprise.yml, gws/gcloud/mgc auth dirs)
+#   ~/.openpalm/data/stash/   — akm-cli stash (skills, vaults, etc.) — vault:user lives here
 #   ~/.openpalm/data/          — service-managed persistent data
 #   ~/.openpalm/logs/          — consolidated audit/debug output
 
@@ -95,7 +102,10 @@ services:
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       # Capability resolution (used by entrypoint.sh to drop unused provider keys).
       OP_CAP_LLM_PROVIDER: ${OP_CAP_LLM_PROVIDER:-}
-      # Google Cloud credentials (file lives in vault/user, mounted at /etc/vault)
+      # Google Cloud credentials (file lives in vault/user, mounted at /etc/vault).
+      # NOTE: the /etc/vault mount no longer carries `user.env` (Phase 2 of #388
+      # routed that through akm `vault:user`). The mount remains because gws,
+      # gcloud, and mgc rely on it for their auth directories below.
       GOOGLE_APPLICATION_CREDENTIALS: /etc/vault/gcloud-credentials.json
       CLOUDSDK_CONFIG: /etc/vault/.gcloud
       # Microsoft Graph CLI credential config

@@ -1,17 +1,16 @@
 import { tool } from "@opencode-ai/plugin";
 import { readFile, access } from "fs/promises";
-import { existsSync } from "fs";
 
 /**
- * Legacy compose-mounted path. Phase 1 of #388 keeps this as the
- * fallback while the akm secret store mirror catches up; Phase 2
- * (tracked in #406) will retire the bind mount and route entirely
- * through akm.
+ * `vault:user` is the akm-cli ref for the user-managed env vault. Phase 2
+ * of issue #388 (closed by #406) retired the legacy
+ * `${OP_HOME}/vault/user → /etc/vault` compose mount; the assistant
+ * entrypoint now sources the akm vault file directly at container start,
+ * so most callers never need this tool. It remains useful for re-loading
+ * after the operator updates a key via the admin UI, and for `prefix`-
+ * scoped reads.
  */
-const FALLBACK_VAULT_PATH = "/etc/vault/user.env";
 const AKM_USER_VAULT_REF = "vault:user";
-
-type VaultSource = "akm" | "fallback";
 
 export function parseEnvContent(
   content: string,
@@ -53,44 +52,42 @@ export function parseEnvContent(
 }
 
 /**
- * Resolve the user vault file path. Phase 1 of #388: prefer the
- * shared akm store (`vault:user`) so editing through the admin UI
- * immediately reflects on the next call. If the akm CLI is missing
- * or the vault has not been provisioned yet, fall back to the
- * Compose-mounted .env file.
- *
- * We `existsSync`-guard the akm-resolved path so a stale ref (e.g. the
- * vault file was deleted out from under akm) cleanly falls through to
- * the bind-mount fallback instead of returning a non-existent path.
+ * Resolve the akm `vault:user` file path. The legacy `/etc/vault/user.env`
+ * fallback was retired in Phase 2 of #388 — there is no other location to
+ * try. If akm is missing, the vault is unprovisioned, or the path it
+ * returns no longer exists, this returns `null` and the tool reports an
+ * actionable error to the caller.
  */
-async function resolveVaultPath(): Promise<{ path: string; source: VaultSource }> {
+async function resolveVaultPath(): Promise<string | null> {
   try {
-    // Bun.spawn keeps us off node:child_process + util.promisify here.
-    // We need stdout text, so capture it as a pipe and decode on success.
     const proc = Bun.spawn(["akm", "vault", "path", AKM_USER_VAULT_REF], {
       stdout: "pipe",
       stderr: "ignore",
     });
     const stdout = await new Response(proc.stdout).text();
     const exitCode = await proc.exited;
-    if (exitCode === 0) {
-      const path = stdout.trim();
-      if (path && existsSync(path)) return { path, source: "akm" };
+    if (exitCode !== 0) return null;
+    const path = stdout.trim();
+    if (!path) return null;
+    try {
+      await access(path);
+      return path;
+    } catch {
+      return null;
     }
   } catch {
-    // akm not on PATH or vault missing — fall through to legacy file
+    return null;
   }
-  return { path: FALLBACK_VAULT_PATH, source: "fallback" };
 }
 
 export default tool({
   description:
     "Load user vault secrets into the running process. Returns only the " +
-    "variable names that were loaded — never the values. Prefers the " +
-    "shared akm vault `vault:user` (resolved via `akm vault path`) and " +
-    "falls back to `/etc/vault/user.env` when akm is unavailable. This is " +
-    "the primary way to load API keys, owner info, and other user-configured " +
-    "secrets. Use load_env only for ad-hoc .env files under /work.",
+    "variable names that were loaded — never the values. Reads from the " +
+    "shared akm vault `vault:user` (resolved via `akm vault path`). The " +
+    "assistant entrypoint already sources this vault at container startup, " +
+    "so call this tool only when you need to pick up a key the operator " +
+    "added after the assistant started, or to apply a `prefix` filter.",
   args: {
     override: tool.schema
       .boolean()
@@ -103,18 +100,14 @@ export default tool({
       .describe("Only load vars whose name starts with this prefix"),
   },
   async execute(args) {
-    const { path: vaultPath, source } = await resolveVaultPath();
-    // Symbolic label exposed to the LLM. We deliberately do NOT return
-    // the absolute filesystem path — the model never needs it, and the
-    // stash path can leak operator-side filesystem layout.
-    const sourceLabel = source === "akm" ? "akm:vault:user" : "fallback:/etc/vault";
-
-    try {
-      await access(vaultPath);
-    } catch {
+    const vaultPath = await resolveVaultPath();
+    if (!vaultPath) {
       return JSON.stringify({
         error: true,
-        message: `Vault file not found (source=${sourceLabel})`,
+        message:
+          "akm vault `vault:user` not available — the assistant entrypoint " +
+          "should have sourced it at startup. Check that akm-cli is installed " +
+          "and that the operator has populated the vault via the admin UI.",
       });
     }
 
@@ -124,7 +117,7 @@ export default tool({
     } catch (err: unknown) {
       return JSON.stringify({
         error: true,
-        message: `Failed to read vault file (source=${sourceLabel})`,
+        message: "Failed to read akm vault file (source=akm:vault:user)",
         detail: err instanceof Error ? err.message : String(err),
       });
     }
@@ -135,7 +128,7 @@ export default tool({
     });
 
     return JSON.stringify({
-      source: sourceLabel,
+      source: "akm:vault:user",
       loaded,
       skipped,
       message:

@@ -25,7 +25,7 @@ import {
 } from "./secrets.js";
 import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { createState } from "./lifecycle.js";
-import { mirrorUserVaultToAkm } from "./akm-vault.js";
+import { mirrorUserVaultToAkm, migrateAndCleanupLegacyUserEnv } from "./akm-vault.js";
 import { writeStackSpec } from "./stack-spec.js";
 import type { StackSpec, StackSpecCapabilities } from "./stack-spec.js";
 import { writeCapabilityVars } from "./spec-to-env.js";
@@ -272,12 +272,13 @@ export async function performSetup(
   const systemBase = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
   writeFileSync(systemEnvPath, mergeEnvContent(systemBase, { OP_SETUP_COMPLETE: "true" }), { mode: 0o600 });
 
-  // Phase 1 of #388: mirror vault/user/user.env into the shared akm
-  // vault (vault:user) so the assistant and admin UI can browse/edit
-  // user secrets through the same `akm vault` interface used for every
-  // other shared secret. The .env file remains the runtime source of
-  // truth for Docker Compose env_file consumption. Best-effort: a
-  // failure here must never block setup completion.
+  // Phase 2 of #388 (closes #406): the akm `vault:user` store is now the
+  // sole runtime source of truth for user-managed env secrets. On a
+  // legacy install we migrate any `vault/user/user.env` content into akm
+  // and delete the file. On a fresh install no user.env is created, so
+  // the migration is a no-op (mirror reports `skipped: user.env missing`).
+  // Both steps are best-effort — a missing or wedged akm CLI must never
+  // block setup completion.
   try {
     const mirror = await mirrorUserVaultToAkm(state);
     if (mirror.skipped) {
@@ -287,6 +288,12 @@ export async function performSetup(
         written: mirror.written.length,
         unchanged: mirror.unchanged.length,
       });
+    }
+    const cleanup = await migrateAndCleanupLegacyUserEnv(state);
+    if (cleanup.deleted) {
+      logger.info("removed legacy vault/user/user.env after akm migration");
+    } else if (cleanup.reason && cleanup.reason !== "user.env already absent") {
+      logger.debug("legacy user.env retained", { reason: cleanup.reason });
     }
   } catch (err) {
     logger.warn("vault:user mirror failed", {

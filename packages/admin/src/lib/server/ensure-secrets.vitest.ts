@@ -39,7 +39,12 @@ describe("ensureSecrets", () => {
     expect(stackEnv).toContain("OWNER_NAME=");
     expect(stackEnv).toContain("OP_ADMIN_TOKEN=");
     expect(stackEnv).toContain("OP_ASSISTANT_TOKEN=");
-    expect(existsSync(join(vaultDir, "user", "user.env"))).toBe(true);
+    // Phase 2 of #388 (closes #406): user-managed env secrets live in the
+    // akm `vault:user` store, not in `vault/user/user.env`. The vault/user
+    // directory is still created (it backs apprise.yml, gcloud creds, etc.)
+    // but the .env file is no longer seeded.
+    expect(existsSync(join(vaultDir, "user"))).toBe(true);
+    expect(existsSync(join(vaultDir, "user", "user.env"))).toBe(false);
   });
 
   test("applies strict permissions to vault files", () => {
@@ -53,7 +58,9 @@ describe("ensureSecrets", () => {
     ensureSecrets(state);
 
     expect(statSync(vaultDir).mode & 0o777).toBe(0o700);
-    expect(statSync(join(vaultDir, "user", "user.env")).mode & 0o777).toBe(0o600);
+    // vault/user is still managed (0700) for non-env operational files;
+    // user.env itself is no longer seeded under Phase 2 of #388.
+    expect(statSync(join(vaultDir, "user")).mode & 0o777).toBe(0o700);
     expect(statSync(join(vaultDir, "stack", "stack.env")).mode & 0o777).toBe(0o600);
   });
 });

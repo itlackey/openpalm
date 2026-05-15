@@ -204,16 +204,22 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(existsSync(join(homeDir, 'registry/automations/cleanup-logs.yml'))).toBe(true);
 
     // ── Validate vault files are regular files (not directories) ─────
+    // Phase 2 of #388 (closes #406): vault/user/user.env is no longer
+    // seeded — user-managed env secrets live in akm vault:user
+    // (data/stash/vaults/user.env) and the assistant entrypoint sources
+    // it directly. The compose env_file mount for vault/user/user.env
+    // has been removed too.
     for (const relPath of [
       'vault/stack/stack.env',
       'vault/stack/guardian.env',
       'vault/stack/auth.json',
-      'vault/user/user.env',
     ]) {
       const fullPath = join(homeDir, relPath);
       expect(existsSync(fullPath)).toBe(true);
       expect(statSync(fullPath).isFile()).toBe(true);
     }
+    // Confirm user.env is NOT present after a fresh setup.
+    expect(existsSync(join(homeDir, 'vault/user/user.env'))).toBe(false);
 
     // ── No legacy .env.schema files (removed in #391) ───────────────
     for (const relPath of [
@@ -335,13 +341,15 @@ describe('install flow — tier 1 (file validation)', () => {
     }
 
     // Run docker compose config --quiet
+    // Phase 2 of #388 (closes #406): vault/user/user.env is no longer a
+    // compose env_file. Only stack.env (and guardian.env, when present)
+    // are passed to compose.
     const proc = Bun.spawnSync([
       'docker', 'compose', '--project-name', 'openpalm-test',
       '-f', composeFiles[0],
       '-f', composeFiles[1],
       '-f', composeFiles[2],
       '--env-file', stackEnv,
-      '--env-file', join(homeDir, 'vault/user/user.env'),
       'config', '--quiet',
     ], { stdout: 'pipe', stderr: 'pipe', env: { ...process.env, OP_HOME: homeDir } });
 
@@ -428,12 +436,13 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(noAddonSpec).not.toBeNull();
 
     // Core compose only, no addon files in the compose list
+    // Phase 2 of #388 (closes #406): vault/user/user.env is no longer a
+    // compose env_file. Only stack.env is needed for `compose config`.
     const stackEnv = join(homeDir, 'vault/stack/stack.env');
     const proc = Bun.spawnSync([
       'docker', 'compose', '--project-name', 'openpalm-test',
       '-f', join(homeDir, 'stack/core.compose.yml'),
       '--env-file', stackEnv,
-      '--env-file', join(homeDir, 'vault/user/user.env'),
       'config', '--services',
     ], { stdout: 'pipe', stderr: 'pipe' });
 
