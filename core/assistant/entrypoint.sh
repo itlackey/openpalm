@@ -87,15 +87,28 @@ maybe_enable_ssh() {
 }
 
 maybe_proxy_lmstudio() {
-  # OpenCode's lmstudio provider still ships a hardcoded base URL of
-  # http://127.0.0.1:1234/v1 (verified through OpenCode 1.3.3, the version
-  # pinned in this image). The "providers" config key remains unsupported
-  # there — setting it triggers ConfigInvalidError at startup.
+  # OpenCode's lmstudio provider catalog entry hardcodes baseURL
+  # http://127.0.0.1:1234/v1 (verified in v1.2.24, v1.3.3 — currently pinned —
+  # and v1.14.50 latest as of 2026-05-14). Source: models.dev catalog used by
+  # @opencode-ai/core/models, mirrored in the OpenCode docs at
+  # https://opencode.ai/docs/providers#lm-studio.
+  #
+  # OpenCode DOES allow overriding via the `provider` (singular) config key
+  # in opencode.json, e.g.:
+  #   { "provider": { "lmstudio": { "options": { "baseURL": "..." } } } }
+  # (see packages/opencode/src/provider/provider.ts mergeProvider / cfg.provider
+  # in the upstream repo at github.com/anomalyco/opencode — formerly sst/opencode).
+  # However, OpenCode does NOT read an env var for lmstudio baseURL, so the
+  # OpenPalm `LMSTUDIO_BASE_URL` stack env can't be passed through directly.
+  #
   # Workaround: if LMSTUDIO_BASE_URL points to a remote host, start a TCP
   # proxy from 127.0.0.1:1234 to that host so lmstudio requests reach Ollama
   # or other local LLM providers running outside the container.
-  # TODO: drop this proxy (and `socat` from the apt-get install list in the
-  # Dockerfile) once OpenCode allows runtime baseURL overrides for lmstudio.
+  #
+  # TODO(upstream): file an issue requesting an LMSTUDIO_BASE_URL (or generic
+  # provider.<id>.options.baseURL) env override so we can drop socat entirely.
+  # Related discussion: https://github.com/anomalyco/opencode/issues/1555
+  # (LM Studio missing as provider; custom provider for LM Studio non-functional).
   local base_url="${LMSTUDIO_BASE_URL:-}"
   if [ -z "$base_url" ]; then
     return 0
