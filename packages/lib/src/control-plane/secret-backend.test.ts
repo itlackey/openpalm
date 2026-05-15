@@ -9,6 +9,8 @@ import {
   validatePassEntryName,
 } from '../index.js';
 import { writeSecretProviderConfig } from './provider-config.js';
+import { akmUserVaultPathSync } from './akm-vault.js';
+import { dirname } from 'node:path';
 
 let rootDir = '';
 
@@ -218,6 +220,37 @@ describe('plaintext backend (via detectSecretBackend)', () => {
     expect(userEnvParsed).toContain('OPENAI_API_KEY=user-env-openai');
     expect(stackEnvParsed).toContain('OPENAI_API_KEY=stack-env-openai');
     expect(stackEnvParsed).not.toContain('user-env-openai');
+  });
+
+  test('list/exists resolve user-scope secrets from akm vault after legacy user.env is deleted', async () => {
+    // Regression test for the post-#421 correctness bug: Phase 2 of #388
+    // (`migrateAndCleanupLegacyUserEnv`) deletes `${vaultDir}/user/user.env`
+    // after migrating its contents into the akm `vault:user` store. If the
+    // plaintext backend keeps reading the legacy file, user-scope secrets
+    // appear absent post-upgrade. The backend MUST resolve them through the
+    // akm vault file (`${dataDir}/stash/vaults/user.env`).
+    const state = createState();
+    ensureSecrets(state);
+    const backend = detectSecretBackend(state);
+
+    // Simulate the post-migration state: legacy user.env is gone, the akm
+    // vault file holds the user-managed secret.
+    const legacyPath = join(state.vaultDir, 'user', 'user.env');
+    rmSync(legacyPath, { force: true });
+
+    const akmPath = akmUserVaultPathSync(state);
+    mkdirSync(dirname(akmPath), { recursive: true });
+    writeFileSync(akmPath, 'OPENAI_API_KEY=migrated-akm-value\n');
+
+    // exists() must report the user-scope secret as present.
+    expect(await backend.exists('openpalm/openai/api-key')).toBe(true);
+
+    // list() must enumerate it with present: true.
+    const entries = await backend.list('openpalm/openai/');
+    const openai = entries.find((e) => e.key === 'openpalm/openai/api-key');
+    expect(openai).toBeDefined();
+    expect(openai?.scope).toBe('user');
+    expect(openai?.present).toBe(true);
   });
 });
 

@@ -132,6 +132,22 @@ maybe_proxy_lmstudio() {
     target_port=80
   fi
 
+  # Sanity-check both fields BEFORE handing them to socat. Even though the
+  # values are double-quoted, socat parses commas inside an address spec as
+  # option separators (e.g. `TCP:host,connect-timeout=...`). A maliciously
+  # crafted LMSTUDIO_BASE_URL like `http://evil,verify=0:1234` would smuggle
+  # extra socat options into the connection. Restricting to a strict
+  # hostname/IP and numeric-port character class makes such injection
+  # impossible without changing observed behaviour for any valid URL.
+  if ! printf '%s' "$target_host" | grep -qE '^[a-zA-Z0-9._-]+$'; then
+    echo "lmstudio-proxy: invalid host in LMSTUDIO_BASE_URL: $target_host" >&2
+    return 1
+  fi
+  if ! printf '%s' "$target_port" | grep -qE '^[0-9]+$'; then
+    echo "lmstudio-proxy: invalid port in LMSTUDIO_BASE_URL: $target_port" >&2
+    return 1
+  fi
+
   if command -v socat >/dev/null 2>&1; then
     echo "Starting LLM proxy: 127.0.0.1:1234 → ${target_host}:${target_port}"
     (while true; do

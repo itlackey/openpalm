@@ -20,7 +20,7 @@ mic -> STT -> assistant -> TTS -> speaker
 - Enabled runtime overlay: `~/.openpalm/stack/addons/voice/compose.yml`
 - Default host URL: `http://localhost:3810`
 - Container port: `8186`
-- System-managed HMAC secret: `CHANNEL_VOICE_SECRET` in `~/.openpalm/vault/stack/guardian.env`
+- The deployed voice addon serves a static web app and talks directly to OpenCode's session API in the browser; it does not round-trip through the guardian, so no `CHANNEL_VOICE_SECRET` HMAC is needed in the addon overlay.
 
 Manual start example:
 

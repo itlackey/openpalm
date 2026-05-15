@@ -141,6 +141,29 @@ jobs:
           fi
           echo "All stack files validated successfully"
 
+      - name: Validate AKM_CLI_VERSION sync between base and guardian Dockerfiles
+        run: |
+          set -euo pipefail
+          # Guardian uses oven/bun:1.3-slim and pins akm-cli independently from
+          # core/base/Dockerfile (the assistant + admin base). The two pins
+          # MUST stay in lockstep so a bump to the base image isn't silently
+          # left behind in guardian. See finding from 0.11.0 final review.
+          BASE_VERSION=$(grep -oP '^ARG AKM_CLI_VERSION=\K\S+' core/base/Dockerfile || true)
+          GUARDIAN_VERSION=$(grep -oP '^ARG AKM_CLI_VERSION=\K\S+' core/guardian/Dockerfile || true)
+          if [ -z "$BASE_VERSION" ]; then
+            echo "::error file=core/base/Dockerfile::Could not extract AKM_CLI_VERSION ARG"
+            exit 1
+          fi
+          if [ -z "$GUARDIAN_VERSION" ]; then
+            echo "::error file=core/guardian/Dockerfile::Could not extract AKM_CLI_VERSION ARG"
+            exit 1
+          fi
+          if [ "$BASE_VERSION" != "$GUARDIAN_VERSION" ]; then
+            echo "::error::AKM_CLI_VERSION mismatch: core/base/Dockerfile=$BASE_VERSION vs core/guardian/Dockerfile=$GUARDIAN_VERSION — bump both together"
+            exit 1
+          fi
+          echo "AKM_CLI_VERSION matches across base + guardian: $BASE_VERSION"
+
       - name: Validate platform version sync
         run: |
           set -euo pipefail
