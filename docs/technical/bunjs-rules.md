@@ -92,7 +92,7 @@ for structured JSON output. Do not use bare `console.log` for operational events
 
 ```typescript
 import { createLogger } from "@openpalm/channels-sdk/logger";
-const logger = createLogger("guardian"); // or "channel-chat", etc.
+const logger = createLogger("guardian"); // or "channel-discord", "channel-slack", etc.
 
 logger.info("Request accepted", { requestId, actor });
 logger.warn("Replay detected", { requestId });

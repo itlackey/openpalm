@@ -89,8 +89,7 @@ See `packages/channels-sdk/src/channel-base.test.ts` for fuller examples.
 
 ## Built-in examples
 
-- `packages/channel-chat/README.md`
-- `packages/channel-api/README.md`
+- `packages/channel-api/README.md` (also serves the chat addon when run with `CHANNEL_ID=chat`)
 - `packages/channel-discord/README.md`
 - `packages/channel-slack/README.md`
 - `packages/channel-voice/README.md`

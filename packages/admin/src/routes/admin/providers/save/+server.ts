@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types';
-import { requireAdmin, jsonResponse, getRequestId, parseJsonBody, jsonBodyError } from '$lib/server/helpers.js';
+import { jsonResponse, withAdminBody } from '$lib/server/helpers.js';
 import {
 	getCurrentConfig,
 	patchConfig,
@@ -19,16 +19,7 @@ import {
  * POST /admin/providers/save — Save connection settings (apiKey/baseURL/timeouts/cache)
  * for a single provider into the user's local OpenCode config.
  */
-export const POST: RequestHandler = async (event) => {
-	const requestId = getRequestId(event);
-	const authError = requireAdmin(event, requestId);
-	if (authError) return authError;
-
-	const parsed = await parseJsonBody(event.request);
-	if ('error' in parsed) return jsonBodyError(parsed, requestId);
-
-	const body = parsed.data;
-
+export const POST: RequestHandler = (event) => withAdminBody(event, async ({ requestId, body }) => {
 	try {
 		const providerId = asStringOrEmpty(body.providerId);
 		if (!providerId) {
@@ -63,4 +54,4 @@ export const POST: RequestHandler = async (event) => {
 		const message = error instanceof Error ? error.message : 'Internal error';
 		return jsonResponse(200, actionFailure(message), requestId);
 	}
-};
+});

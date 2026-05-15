@@ -253,4 +253,27 @@ export function jsonBodyError(err: ParseJsonBodyError, requestId: string): Respo
   return errorResponse(400, "invalid_json", "Request body must be valid JSON", {}, requestId);
 }
 
-
+/**
+ * Auth + JSON body wrapper for admin POST/DELETE handlers.
+ *
+ * Replaces the 4-line boilerplate copy-pasted across 30+ routes:
+ *   const requestId = getRequestId(event);
+ *   const authError = requireAdmin(event, requestId);
+ *   if (authError) return authError;
+ *   const result = await parseJsonBody(event.request);
+ *   if ('error' in result) return jsonBodyError(result, requestId);
+ *
+ * Use for routes that need both auth and a JSON body. For auth-only or
+ * GET routes, call `requireAdmin` directly.
+ */
+export async function withAdminBody(
+  event: RequestEvent,
+  handler: (ctx: { requestId: string; body: Record<string, unknown> }) => Promise<Response>
+): Promise<Response> {
+  const requestId = getRequestId(event);
+  const authError = requireAdmin(event, requestId);
+  if (authError) return authError;
+  const result = await parseJsonBody(event.request);
+  if ('error' in result) return jsonBodyError(result, requestId);
+  return handler({ requestId, body: result.data });
+}

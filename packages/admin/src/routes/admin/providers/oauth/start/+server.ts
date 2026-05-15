@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types';
-import { requireAdmin, jsonResponse, getRequestId, parseJsonBody, jsonBodyError } from '$lib/server/helpers.js';
+import { jsonResponse, withAdminBody } from '$lib/server/helpers.js';
 import {
 	startOauthFlowAtBase,
 	actionSuccess,
@@ -13,16 +13,7 @@ import { asStringOrEmpty, extractInputs } from '../../_helpers.js';
  * sign-in for a provider. Returns the authorization URL and any extra
  * inputs the operator needs to confirm in the UI.
  */
-export const POST: RequestHandler = async (event) => {
-	const requestId = getRequestId(event);
-	const authError = requireAdmin(event, requestId);
-	if (authError) return authError;
-
-	const parsed = await parseJsonBody(event.request);
-	if ('error' in parsed) return jsonBodyError(parsed, requestId);
-
-	const body = parsed.data;
-
+export const POST: RequestHandler = (event) => withAdminBody(event, async ({ requestId, body }) => {
 	try {
 		const providerId = asStringOrEmpty(body.providerId);
 		const methodIndex = Number(asStringOrEmpty(body.methodIndex));
@@ -57,4 +48,4 @@ export const POST: RequestHandler = async (event) => {
 		const message = error instanceof Error ? error.message : 'Internal error';
 		return jsonResponse(200, actionFailure(message), requestId);
 	}
-};
+});

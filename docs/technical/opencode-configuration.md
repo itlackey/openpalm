@@ -50,15 +50,14 @@ Primary runtime sources:
 | `HOME` | `/home/opencode` | Runtime home |
 | `OP_ADMIN_API_URL` | from `stack.env` / addon wiring | Admin API URL when admin is present |
 | `OP_ASSISTANT_TOKEN` | mapped from `OP_ASSISTANT_TOKEN` in `stack.env` | Assistant auth token for admin API calls |
-| `MEMORY_API_URL` | `http://memory:8765` | Memory service URL |
-| `MEMORY_AUTH_TOKEN` | compose-mapped from `OP_MEMORY_TOKEN` | Memory auth token |
-| `MEMORY_USER_ID` | from env or default | Default memory identity |
+| `AKM_STASH_DIR` | `/akm` | Shared akm stash bind-mounted from `${OP_HOME}/data/stash` (memory + skills) |
+| `AKM_CACHE_DIR` | `/akm-cache` | akm cache bind-mounted from `${OP_HOME}/data/akm-cache` |
 
 ### Operational notes
 
 - The assistant starts in `/work`.
 - The assistant has no Docker socket mount.
-- The assistant mounts only `vault/user/` from the vault boundary, not the full `vault/` tree.
+- Memory + skills are served via the bind-mounted akm stash; there is no separate memory service.
 - The entrypoint normalizes permissions, optionally enables SSH, then drops privileges to `OP_UID:OP_GID`.
 
 ---
