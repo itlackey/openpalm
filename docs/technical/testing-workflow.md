@@ -9,7 +9,7 @@ Testing is organized into 6 tiers, from fastest/simplest to most thorough. Run t
 Before running any stack tests (Tiers 5+), ensure:
 
 1. **Dev environment is seeded:** `./scripts/dev-setup.sh --seed-env` (seeds `ADMIN_TOKEN=dev-admin-token`, correct Ollama URLs)
-2. **Ollama running on host** with `nomic-embed-text` model pulled (768-dim embeddings)
+2. **Ollama running on host** (required for T6 LLM tests)
 3. **Docker running** — T5/T6 rebuild and recreate containers automatically
 
 ### Test tier commands
@@ -108,9 +108,7 @@ Rebuilds and recreates the entire compose stack, then runs integration Playwrigh
 
 **What it validates:**
 - OpenCode web UI accessible
-- OpenMemory CRUD operations
 - OpenCode API session management
-- Memory Ollama integration
 - Guardian HMAC pipeline (channel→guardian→assistant)
 - Scheduler automations API
 
@@ -128,12 +126,10 @@ Same as T5 but additionally enables LLM tests and enforces no-skip policy. Every
 
 **Additional validation over T5:**
 - Full assistant message pipeline (send message → LLM inference → response)
-- Memory integration end-to-end (assistant adds memory via tool, recalls via search)
 - Channel→Guardian→Assistant→LLM full chain with real inference
 
 **Model prerequisites:** Ollama with:
 - `qwen2.5-coder:3b` or equivalent (system LLM)
-- `nomic-embed-text` (embeddings, 768 dims)
 
 ---
 

@@ -18,7 +18,7 @@ This is the anti-hype alternative. No "autonomous agent swarms." No "AGI-powered
 
 OpenPalm is in active development. It works — I use it every day — but there's a lot of rough edges being sanded down right now:
 
-- **Stabilizing the core** — The assistant, guardian, and memory services are solid, but the install and upgrade lifecycle is still getting hardened.
+- **Stabilizing the core** — The assistant and guardian are solid, but the install and upgrade lifecycle is still getting hardened.
 - **Improving setup** — The setup wizard works, but the goal is a one-command install that just does the right thing on any Docker host.
 - **Extending the assistant** — More built-in tools, better memory integration, and first-class support for plugins and automations.
 

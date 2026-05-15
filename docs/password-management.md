@@ -13,10 +13,8 @@ and one guardian secret env.
   stack/
     stack.env
     guardian.env
-    stack.env.schema
   user/
     user.env
-    user.env.schema
 ```
 
 - `vault/user/user.env` is the recommended user-managed override file for addon and operator values.
@@ -52,14 +50,12 @@ Important keys include:
 |---|---|
 | `OP_ADMIN_TOKEN` | Admin UI/API authentication token |
 | `OP_ASSISTANT_TOKEN` | Assistant auth token for admin API access (also used by the scheduler co-process inside the assistant container) |
-| `OP_MEMORY_TOKEN` | Memory API auth token |
 | `OP_HOME` | OpenPalm home directory |
 | `OP_UID` / `OP_GID` | Host user/group mapping |
 | `OP_IMAGE_NAMESPACE` / `OP_IMAGE_TAG` | Image source and tag |
 | `OP_ASSISTANT_PORT` | Assistant host port, default `3800` |
 | `OP_ADMIN_PORT` | Admin host port, default `3880` |
 | `OP_ADMIN_OPENCODE_PORT` | Admin-side OpenCode port, default `3881` |
-| `OP_MEMORY_PORT` | Memory host port, default `3898` |
 | `OP_CHAT_PORT` | Chat addon host port, default `3820` |
 | `OP_API_PORT` | API addon host port, default `3821` |
 | `OP_VOICE_PORT` | Voice addon host port, default `3810` |
@@ -72,13 +68,11 @@ Important keys include:
 | `GROQ_API_KEY` | Groq key |
 | `MISTRAL_API_KEY` | Mistral key |
 | `GOOGLE_API_KEY` | Google AI key |
-| `EMBEDDING_API_KEY` | Embedding provider key |
-| `SYSTEM_LLM_PROVIDER` | Default provider selection |
-| `SYSTEM_LLM_BASE_URL` | Default provider base URL |
-| `SYSTEM_LLM_MODEL` | Default model |
-| `EMBEDDING_MODEL` | Embedding model |
-| `EMBEDDING_DIMS` | Embedding dimensions |
-| `MEMORY_USER_ID` | Default memory identity |
+| `OP_CAP_LLM_*` | Resolved LLM capability (provider, model, base URL, API key) |
+| `OP_CAP_SLM_*` | Resolved small/fast LLM capability |
+| `OP_CAP_EMBEDDINGS_*` | Resolved embedding capability (provider, model, base URL, API key, dims) |
+| `OP_CAP_TTS_*` | Resolved text-to-speech capability |
+| `OP_CAP_STT_*` | Resolved speech-to-text capability |
 
 Behavior:
 
@@ -95,7 +89,6 @@ Behavior:
 | `admin` addon | full `~/.openpalm/` bind mount | Only service with broad vault visibility |
 | `assistant` | `vault/user/` only | Directory mount plus env injection |
 | `guardian` | no vault mount | Reads needed values from Compose env |
-| `memory` | no vault mount | Reads needed values from Compose env |
 
 The scheduler is not a separate container — it runs as a co-process inside the
 assistant container and inherits the assistant's environment and mounts.

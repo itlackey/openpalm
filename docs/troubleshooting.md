@@ -41,7 +41,6 @@ Common defaults:
 - `3800` assistant
 - `3880` admin
 - `3881` admin OpenCode
-- `3898` memory
 - `3820` chat addon
 - `3821` API addon
 - `3810` voice addon

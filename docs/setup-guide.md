@@ -126,7 +126,7 @@ That file is optional metadata. It only matters when a helper tool reads it.
 
 ### An addon fails to start
 
-Review its `.env.schema` file in `~/.openpalm/registry/addons/<name>/` and then inspect logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
+Inspect the addon's compose file in `~/.openpalm/registry/addons/<name>/compose.yml` and then inspect logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
 
 ### Start over
 

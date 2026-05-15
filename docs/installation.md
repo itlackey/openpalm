@@ -57,24 +57,22 @@ deployment truth.
 
 ### `~/.openpalm/vault/stack/stack.env`
 
-This file holds system-managed values, provider API keys, and owner identity:
+This file holds system-managed values, provider API keys, capability variables, and owner identity:
 
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`
 - `ANTHROPIC_API_KEY`
-- `SYSTEM_LLM_PROVIDER`
-- `SYSTEM_LLM_MODEL`
-- `MEMORY_USER_ID`
 - `OWNER_NAME`
 - `OWNER_EMAIL`
+- `OP_CAP_LLM_*` (resolved LLM capability — provider, model, base URL, API key)
+- `OP_CAP_EMBEDDINGS_*` (resolved embedding capability)
 
 It also includes system-managed values such as:
 
 - `OP_ADMIN_TOKEN`
 - `OP_ASSISTANT_TOKEN`
-- `OP_MEMORY_TOKEN`
 - `OP_HOME`, `OP_UID`, `OP_GID`
-- `OP_ASSISTANT_PORT`, `OP_ADMIN_PORT`, `OP_MEMORY_PORT`, `OP_CHAT_PORT`
+- `OP_ASSISTANT_PORT`, `OP_ADMIN_PORT`, `OP_CHAT_PORT`
 
 Review it before first start, especially if you need different host ports or
 paths.

@@ -107,7 +107,7 @@ Response:
 ```json
 {
   "ok": true,
-  "started": ["memory", "assistant", "guardian", "admin", "chat"],
+  "started": ["assistant", "guardian", "admin", "chat"],
   "dockerAvailable": true,
   "composeResult": { "ok": true, "stderr": "" }
 }
@@ -190,7 +190,7 @@ Response:
 Response:
 
 ```json
-{ "ok": true, "pulled": "...", "started": ["memory", "assistant", "guardian"] }
+{ "ok": true, "pulled": "...", "started": ["assistant", "guardian"] }
 ```
 
 Note: `started` is an array of managed service names.
@@ -214,7 +214,7 @@ Body:
 Rules:
 
 - Allowed core services:
-  `assistant`, `guardian`, `memory`, `admin`
+  `assistant`, `guardian`, `admin`
 - Allowed addon services: installed addon service names such as `chat`, `api`,
   `voice`, `discord`, or `slack` when a matching overlay exists in `stack/addons/`.
 
@@ -285,7 +285,6 @@ Response:
 {
   "results": {
     "guardian": { "status": "reachable", "latencyMs": 12 },
-    "memory": { "status": "reachable", "latencyMs": 8 },
     "assistant": { "status": "unreachable", "latencyMs": 0, "error": "fetch failed" }
   }
 }
@@ -562,8 +561,7 @@ Response:
 {
   "capabilities": {
     "llm": "openai/gpt-4o-mini",
-    "embeddings": { "provider": "openai", "model": "text-embedding-3-small", "dims": 1536 },
-    "memory": { "userId": "default_user" }
+    "embeddings": { "provider": "openai", "model": "text-embedding-3-small", "dims": 1536 }
   },
   "secrets": {
     "OPENAI_API_KEY": "*********************1234",
@@ -576,8 +574,7 @@ Response:
     "SYSTEM_LLM_MODEL": "gpt-4o-mini",
     "OPENAI_BASE_URL": "",
     "EMBEDDING_MODEL": "text-embedding-3-small",
-    "EMBEDDING_DIMS": "1536",
-    "MEMORY_USER_ID": "default_user"
+    "EMBEDDING_DIMS": "1536"
   }
 }
 ```
@@ -596,9 +593,7 @@ Body:
   "baseUrl": "",
   "systemModel": "gpt-4o-mini",
   "embeddingModel": "text-embedding-3-small",
-  "embeddingDims": 1536,
-  "memoryUserId": "default_user",
-  "customInstructions": ""
+  "embeddingDims": 1536
 }
 ```
 
@@ -608,17 +603,11 @@ Body:
 - `systemModel` -- Model name for the LLM capability.
 - `embeddingModel` -- Model name for the embeddings capability.
 - `embeddingDims` -- Embedding dimensions (falls back to known defaults or 1536).
-- `memoryUserId` -- User ID for memory capability (default `"default_user"`).
-- `customInstructions` -- Custom instructions for memory.
 
 Response:
 
 ```json
-{
-  "ok": true,
-  "dimensionWarning": null,
-  "dimensionMismatch": false
-}
+{ "ok": true }
 ```
 
 Error responses:
@@ -696,10 +685,6 @@ Returns the current `stack.yml` capability assignments:
       "provider": "openai",
       "model": "text-embedding-3-small",
       "dims": 1536
-    },
-    "memory": {
-      "userId": "default_user",
-      "customInstructions": ""
     }
   }
 }
@@ -710,7 +695,7 @@ Returns the current `stack.yml` capability assignments:
 Saves validated capability updates back to `stack.yml`. The request body may either be the capabilities
 object directly or `{ "capabilities": ... }`.
 
-Supported top-level keys are `llm`, `slm`, `embeddings`, `memory`, `tts`,
+Supported top-level keys are `llm`, `slm`, `embeddings`, `tts`,
 `stt`, and `reranking`. Unknown keys are rejected with `400 bad_request`.
 
 Example body:
@@ -723,10 +708,6 @@ Example body:
       "provider": "google",
       "model": "text-embedding-004",
       "dims": 768
-    },
-    "memory": {
-      "userId": "owner",
-      "customInstructions": "Keep it concise."
     }
   }
 }
@@ -743,23 +724,6 @@ Error responses:
 - `400 bad_request` -- malformed capability payload, unknown keys, or invalid field types.
 - `500 internal_error` -- `stack.yml` could not be written.
 
-### `GET /admin/capabilities/export/mem0`
-
-Exports the compatibility-formatted memory config derived from current
-`stack.yml` capabilities. The route name remains `export/mem0`
-for backward compatibility, but the generated file configures OpenPalm's
-Bun-based memory service.
-
-Returns the config as a downloadable JSON file (`mem0-config.json`).
-
-Auth: `requireAdmin`
-
-Response: `application/json` with `Content-Disposition: attachment; filename="mem0-config.json"`.
-
-Error responses:
-
-- `404 not_found` -- No stack configuration found.
-
 ### `GET /admin/capabilities/export/opencode`
 
 Exports the generated `opencode.json` config from `config/assistant/opencode.json`.
@@ -773,162 +737,6 @@ Error responses:
 
 - `404 not_found` -- opencode.json has not been generated yet.
 - `500 internal_error` -- Failed to read opencode.json.
-
-## Memory Configuration
-
-Manage the Memory service LLM and embedding provider configuration stored at
-`data/memory/default_config.json`. The persisted file still uses a
-mem0-shaped JSON schema for compatibility, but the running service is the
-OpenPalm Bun-based memory API backed by SQLite and `sqlite-vec`.
-
-Changes are persisted to disk.
-
-### `GET /admin/memory/config`
-
-Returns the persisted config, provider lists, and known embedding dimension mappings.
-
-Response:
-
-```json
-{
-  "config": {
-    "mem0": {
-      "llm": { "provider": "openai", "config": { "model": "gpt-4o-mini", "temperature": 0.1, "max_tokens": 2000, "api_key": "env:OPENAI_API_KEY" } },
-      "embedder": { "provider": "openai", "config": { "model": "text-embedding-3-small", "api_key": "env:OPENAI_API_KEY" } },
-      "vector_store": { "provider": "sqlite-vec", "config": { "collection_name": "memory", "db_path": "/data/memory.db", "embedding_model_dims": 1536 } }
-    },
-    "memory": { "custom_instructions": "" }
-  },
-  "providers": {
-    "llm": ["openai", "anthropic", "ollama", "groq", "together", "mistral", "deepseek", "xai", "lmstudio", "model-runner"],
-    "embed": ["openai", "ollama", "huggingface", "lmstudio"]
-  },
-  "embeddingDims": {
-    "openai/text-embedding-3-small": 1536,
-    "ollama/nomic-embed-text": 768
-  }
-}
-```
-
-### `POST /admin/memory/config`
-
-Saves a full Memory config to disk.
-
-Body: A complete `MemoryConfig` object (same shape as `config` in the GET response).
-
-Response:
-
-```json
-{
-  "ok": true,
-  "persisted": true,
-  "dimensionWarning": null,
-  "dimensionMismatch": false
-}
-```
-
-- `dimensionMismatch` is `true` when the new config's embedding dimensions
-  differ from the previously persisted config. Requires a vector-store reset.
-- `dimensionWarning` is a human-readable message when `dimensionMismatch` is `true`.
-
-Error responses:
-
-- `400 bad_request` -- Missing or invalid memory config structure.
-
-### `POST /admin/memory/models`
-
-Proxy endpoint for listing available models from a provider's API. Resolves
-`env:` API key references server-side before making the upstream request.
-
-Body:
-
-```json
-{
-  "provider": "ollama",
-  "apiKeyRef": "env:OPENAI_API_KEY",
-  "baseUrl": "http://host.docker.internal:11434"
-}
-```
-
-- `provider` (required) -- Must be a recognized LLM or embedding provider name.
-- `apiKeyRef` -- Raw API key or `env:VAR_NAME` reference resolved from
-  `process.env` then `vault/stack/stack.env`.
-- `baseUrl` -- Provider API base URL. Falls back to provider defaults when empty.
-
-Provider API conventions:
-
-| Provider | URL Pattern | Auth |
-| -------- | ----------- | ---- |
-| Ollama | `{baseUrl}/api/tags` | None |
-| Anthropic | Static list (no API) | N/A |
-| OpenAI, Groq, Mistral, Together, DeepSeek, xAI, LM Studio, Model Runner | `{baseUrl}/v1/models` | `Bearer {key}` (optional) |
-
-Response:
-
-```json
-{ "models": ["gpt-4o", "gpt-4o-mini"], "status": "ok", "reason": "provider_api", "error": null }
-```
-
-On failure (unreachable provider, timeout, etc.):
-
-```json
-{ "models": [], "status": "recoverable_error", "reason": "network", "error": "Request timed out after 5s" }
-```
-
-`status` is `"ok"` on success or `"recoverable_error"` when the provider could not be reached.
-`reason` indicates how the model list was obtained: `"provider_api"` (live fetch),
-`"provider_static"` (built-in list, e.g. Anthropic), or on error: `"network"`, `"auth"`, `"parse"`, or `"unknown"`.
-
-Error responses:
-
-- `400 bad_request` -- Invalid or missing provider name.
-
-### `POST /admin/memory/reset-collection`
-
-Deletes the configured vector store data so the memory service recreates it
-with the correct embedding dimensions on next restart. In the current default
-configuration this removes the SQLite database and companion WAL/SHM files; it
-also removes any legacy Qdrant directory if one exists. This is a destructive
-operation that deletes all stored memories.
-
-Response:
-
-```json
-{
-  "ok": true,
-  "collection": "memory",
-  "restartRequired": true
-}
-```
-
-The memory container must be restarted after a successful reset for the new
-collection to be created.
-
-Error responses:
-
-- `502 collection_reset_failed` -- Failed to delete the configured vector-store data.
-
-### Ollama Integration Notes
-
-When using Ollama as the LLM or embedding provider with Memory:
-
-1. **Config key**: The Ollama provider expects `ollama_base_url` (not `base_url`)
-   in the mem0 config. The admin UI handles this automatically.
-
-2. **Docker networking**: On Linux hosts, containers need
-   `extra_hosts: ["host.docker.internal:host-gateway"]` in docker-compose.yml
-   to reach `http://host.docker.internal:11434`. Docker Desktop (Mac/Windows)
-   adds this automatically.
-
-3. **Embedding dimensions**: The configured vector store must use
-   `embedding_model_dims` matching the embedding model's output dimensions
-   (e.g., 1024 for `qwen3-embedding:0.6b`, 768 for `nomic-embed-text`).
-   A dimension mismatch causes silent insert failures.
-
-4. **Model compatibility**: Models that use `<think>` tags (e.g., qwen3:4b)
-   can break mem0's JSON fact extraction parser. Use models without thinking
-   mode (e.g., `qwen2.5:14b`) for the LLM provider. Embedding models are
-   unaffected.
 
 ## Configuration Endpoints
 

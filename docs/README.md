@@ -60,5 +60,4 @@ Repo layout convention:
 | [environment-and-mounts.md](technical/environment-and-mounts.md) | All env vars and volume mounts |
 | [opencode-configuration.md](technical/opencode-configuration.md) | OpenCode runtime integration |
 | [community-channels.md](community-channels.md) | BaseChannel SDK for custom adapters |
-| [memory-privacy.md](memory-privacy.md) | Memory service data privacy — what is stored, external calls, how to wipe |
 | [prd.md](technical/prd.md) | MVP product requirements |

@@ -82,7 +82,6 @@ You configure stack options before install:
 
 - **Channels** (chat is always on)
 - **Services** (for example admin)
-- Memory user ID
 - Optional in-stack Ollama toggle when relevant
 
 ---
@@ -109,7 +108,6 @@ After install starts, the wizard shows deployment progress from `/api/setup/depl
 
 Typical core services shown are compose-derived (for example):
 
-- memory
 - assistant (includes the automation scheduler co-process)
 - guardian
 - plus enabled addons

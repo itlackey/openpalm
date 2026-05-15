@@ -61,8 +61,6 @@ service-local env vars          (SYSTEM_LLM_*, EMBEDDING_*, TTS_*, etc.)
        provider: ollama
        model: nomic-embed-text
        dims: 768
-     memory:
-       userId: default_user
    ```
 
 2. **`writeCapabilityVars(spec, vaultDir)`** reads the spec and current
@@ -77,10 +75,9 @@ service-local env vars          (SYSTEM_LLM_*, EMBEDDING_*, TTS_*, etc.)
 
 3. **Compose substitution** maps `OP_CAP_*` into service-local names:
    ```yaml
-   # core.compose.yml — memory service
+   # core.compose.yml — assistant service
    environment:
      SYSTEM_LLM_PROVIDER: ${OP_CAP_LLM_PROVIDER:-}
-     EMBEDDING_MODEL: ${OP_CAP_EMBEDDINGS_MODEL:-}
    ```
 
 ---
@@ -165,12 +162,6 @@ provider when `reranking.provider` is not set.
 | `OP_CAP_RERANKING_TOP_K` | Candidates to consider |
 | `OP_CAP_RERANKING_TOP_N` | Results to return |
 
-### Memory (always present)
-
-| Variable | Content |
-|---|---|
-| `MEMORY_USER_ID` | User identity for memory operations (no `OP_CAP_` prefix) |
-
 ---
 
 ## Service Consumption
@@ -179,7 +170,6 @@ Which services consume which capability slots via compose substitution:
 
 | Service | Capabilities consumed | Notes |
 |---|---|---|
-| **memory** | LLM, Embeddings | LLM for fact extraction; embeddings for vector storage |
 | **assistant** | LLM (provider only) | `SYSTEM_LLM_PROVIDER` for provider detection. Raw API keys passed separately for OpenCode |
 | **voice** (addon) | SLM, TTS, STT | SLM for lightweight voice inference |
 

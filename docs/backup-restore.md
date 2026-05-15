@@ -123,6 +123,6 @@ the current model.
 | `~/.openpalm/config/assistant/` | User OpenCode config |
 | `~/.openpalm/config/automations/` | Scheduled automation files |
 | `~/.openpalm/config/stack.yml` | Capabilities only |
-| `~/.openpalm/data/memory/` | Memory database |
+| `~/.openpalm/data/stash/` | Shared akm stash (assistant + admin memory and knowledge) |
 | `~/.openpalm/data/workspace/` | Shared workspace |
 | `~/.openpalm/logs/` | Logs and audit files |

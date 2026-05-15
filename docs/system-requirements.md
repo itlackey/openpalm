@@ -39,7 +39,6 @@ For the core compose stack using a remote LLM provider:
 The core compose file includes these always-on services:
 
 - `assistant` (also runs the automation scheduler as a co-process)
-- `memory`
 - `guardian`
 
 If you add the `admin` addon, you also run `admin` and `docker-socket-proxy`.
@@ -66,10 +65,9 @@ These are rough expectations, not hard limits:
 
 | Service | Typical idle RAM | Notes |
 |---|---|---|
-| `memory` | ~60 MB | Bun + sqlite-backed memory service |
 | `assistant` | ~240 MB | OpenCode runtime + scheduler co-process |
 | `guardian` | ~30 MB | Request verification and routing |
-| `admin` addon | ~80 MB | SvelteKit admin UI/API |
+| `admin` addon | ~80 MB | SvelteKit admin UI/API (includes admin-side OpenCode on port 3881) |
 | `docker-socket-proxy` addon | ~10 MB | Docker API filter |
 | each channel addon | ~30-60 MB | Chat/API/voice/Discord/Slack edge |
 
@@ -94,7 +92,7 @@ Approximate storage use:
 | Docker images (core) | ~2-3 GB | Depends on pulled tags |
 | Docker images (per addon) | ~100-200 MB | Many share layers |
 | `~/.openpalm/config/` + `vault/` | small | Usually measured in MB |
-| `~/.openpalm/data/` | variable | Memory store and workspace can grow |
+| `~/.openpalm/data/` | variable | Stash, workspace, and assistant data can grow |
 | local model weights | 2-8+ GB per model | If using Ollama or similar |
 
 ---
@@ -122,7 +120,6 @@ unless you intentionally change bind addresses in `vault/stack/stack.env`.
 | `3821` | API addon | `OP_API_PORT` |
 | `3880` | Admin UI/API addon | `OP_ADMIN_PORT` |
 | `3881` | Admin-side OpenCode addon | `OP_ADMIN_OPENCODE_PORT` |
-| `3898` | Memory API | `OP_MEMORY_PORT` |
 | `2222` | Assistant SSH (optional) | `OP_ASSISTANT_SSH_PORT` |
 
 `guardian` stays internal to Docker networks by default.

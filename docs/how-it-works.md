@@ -91,9 +91,8 @@ The runtime image for registry-backed adapters is the unified
 `channel`, built from `core/channel/Dockerfile`.
 
 ### Supporting services
-- **Memory** -- Bun.js service (`@openpalm/memory`) with sqlite-vec vector
-  storage; gives the assistant persistent memory across conversations
 - **Scheduler** -- automation co-process running inside the assistant container; no network port. Reads `~/.openpalm/config/automations/` through the mounted `config/` tree and calls the admin API using the assistant-scoped token.
+- **AKM stash** -- persistent memory and knowledge live in the shared akm stash at `~/.openpalm/data/stash/`, mounted at `/home/opencode/.akm` in the assistant and shared with the admin. There is no separate memory service.
 
 ---
 

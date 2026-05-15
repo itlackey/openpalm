@@ -67,8 +67,7 @@ Keep this split in mind:
 │   ├── admin/
 │   ├── assistant/
 │   ├── guardian/
-│   ├── memory/
-│   ├── stash/
+│   ├── stash/                        # Shared akm stash (assistant + admin)
 │   └── workspace/                    # Shared /work mount for assistant and admin
 └── logs/                             ← AUDIT AND DEBUG LOGS
 ```
@@ -80,7 +79,7 @@ Keep this split in mind:
 Secrets are split into two files under `~/.openpalm/vault/`:
 
 - **`user/user.env`** -- Recommended location for addon/operator overrides and custom values.
-- **`stack/stack.env`** -- System-managed runtime env and secrets: admin/assistant/memory auth tokens, provider API keys, capability vars, ports, and other infrastructure values.
+- **`stack/stack.env`** -- System-managed runtime env and secrets: admin/assistant auth tokens, provider API keys, capability vars (`OP_CAP_*`), ports, and other infrastructure values.
 
 ```env
 # ~/.openpalm/vault/stack/stack.env
@@ -115,7 +114,7 @@ curl http://localhost:3880/admin/capabilities \
 curl -X POST http://localhost:3880/admin/capabilities \
   -H "x-admin-token: $OP_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"provider":"openai","apiKey":"sk-...","systemModel":"gpt-4o","embeddingModel":"text-embedding-3-small","embeddingDims":1536,"memoryUserId":"default_user"}'
+  -d '{"provider":"openai","apiKey":"sk-...","systemModel":"gpt-4o","embeddingModel":"text-embedding-3-small","embeddingDims":1536}'
 
 # Check whether stack.yml has non-empty LLM and embedding assignments
 curl http://localhost:3880/admin/capabilities/status \
@@ -342,11 +341,10 @@ After restoring, start the stack using the compose commands in the [Manual Compo
 |---|---|
 | `http://localhost:3880/` | Admin UI and API |
 | `http://localhost:3800/` | OpenCode assistant UI |
+| `http://localhost:3881/` | Admin-side OpenCode instance |
 | `http://localhost:3820/` | Chat addon |
 | `http://localhost:3821/` | API addon |
 | `http://localhost:3810/` | Voice addon |
-| `http://localhost:3898/` | Memory API |
-| `http://localhost:3898/docs` | Memory API docs (Swagger UI) |
 
 All ports are `127.0.0.1`-bound by default.
 
