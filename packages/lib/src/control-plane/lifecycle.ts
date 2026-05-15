@@ -278,22 +278,18 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
   const files = buildComposeFileList(state);
   const envFiles = buildEnvFiles(state);
 
-  // 1. Preflight: validate compose merge before any mutation
-  if (files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
-    const preflight = await composePreflight({ files, envFiles });
-    if (!preflight.ok) {
-      throw new Error(`Compose preflight failed: ${preflight.stderr}`);
-    }
-  }
+  // Compose preflight runs inside `applyUpgrade` -> `reconcileCore`, so we
+  // skip the redundant top-level call. Any merge failure aborts before
+  // mutation just the same.
 
-  // 2. Snapshot stack.env for rollback on failure
+  // 1. Snapshot stack.env for rollback on failure
   const stackEnvPath = `${state.vaultDir}/stack/stack.env`;
   let originalStackEnv: string | null = null;
   try {
     originalStackEnv = readFileSync(stackEnvPath, "utf-8");
   } catch { /* stack.env may not exist yet */ }
 
-  // 3. Update image tag + refresh core assets
+  // 2. Update image tag + refresh core assets
   let imageTag: string;
   let namespace: string;
   let upgradeResult: { backupDir: string | null; updated: string[]; restarted: string[] };
@@ -310,13 +306,13 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
     throw e;
   }
 
-  // 4. Pull images
+  // 3. Pull images
   const pullResult = await composePull({ files, envFiles });
   if (!pullResult.ok) {
     throw new Error(`Failed to pull images: ${pullResult.stderr}`);
   }
 
-  // 5. Recreate containers
+  // 4. Recreate containers
   const services = await buildManagedServices(state);
   const upResult = await composeUp({ files, envFiles, services, removeOrphans: true });
   if (!upResult.ok) {

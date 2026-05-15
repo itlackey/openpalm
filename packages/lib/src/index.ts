@@ -26,7 +26,6 @@ export type {
   ControlPlaneState,
   CoreServiceName,
   OptionalServiceName,
-  AccessScope,
   ChannelInfo,
   CallerType,
   ArtifactMeta,
@@ -179,7 +178,6 @@ export {
   buildManagedServices,
   normalizeCaller,
 } from "./control-plane/lifecycle.js";
-export type { UpgradeResult } from "./control-plane/lifecycle.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
 export type { DockerResult } from "./control-plane/docker.js";
@@ -204,8 +202,6 @@ export {
 
 // ── Scheduler ───────────────────────────────────────────────────────────
 export type {
-  ActionType,
-  AutomationAction,
   AutomationConfig,
   ExecutionLogEntry,
 } from "./control-plane/scheduler.js";
@@ -260,9 +256,6 @@ export {
 } from "./control-plane/setup.js";
 
 // ── AKM Vault Mirror (#388) ──────────────────────────────────────────────
-export type {
-  MirrorResult,
-} from "./control-plane/akm-vault.js";
 export {
   AKM_USER_VAULT_REF,
   mirrorUserVaultToAkm,
@@ -270,8 +263,6 @@ export {
   ensureAkmUserVault,
   writeAkmVaultKey,
   deleteAkmVaultKey,
-  buildAkmEnv,
   readAkmUserVaultFile,
-  akmUserVaultPathSync,
   readUserVaultSync,
 } from "./control-plane/akm-vault.js";

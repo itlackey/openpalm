@@ -23,20 +23,6 @@ import {
 } from './secrets.js';
 import { readUserVaultSync } from './akm-vault.js';
 
-/**
- * Read parsed key/value pairs from the user-managed env namespace.
- *
- * Post-#421 the canonical home is the akm `vault:user` store
- * (`${dataDir}/stash/vaults/user.env`), since `migrateAndCleanupLegacyUserEnv`
- * deletes the legacy `${vaultDir}/user/user.env` file after upgrade. We
- * delegate to the shared `readUserVaultSync` helper which prefers the akm
- * file and falls back to the legacy path for fresh installs that have not
- * yet seeded the akm store.
- */
-function readUserEnv(state: ControlPlaneState): Record<string, string> {
-  return readUserVaultSync(state);
-}
-
 const execFile = promisify(execFileCb);
 
 /** Run a command with stdin input, returning a promise. */
@@ -108,7 +94,7 @@ function currentValueForTarget(state: ControlPlaneState, target: ResolvedSecretT
   // User scope: the akm `vault:user` store is the canonical user-managed env
   // namespace post-#421. Fall back to stack.env for legacy/consolidated
   // secrets so older layouts keep resolving.
-  const userEnv = readUserEnv(state);
+  const userEnv = readUserVaultSync(state);
   if (target.envKey in userEnv) return userEnv[target.envKey];
   return readStackEnv(state.vaultDir)[target.envKey] ?? '';
 }
@@ -117,7 +103,7 @@ function currentValueForTarget(state: ControlPlaneState, target: ResolvedSecretT
 
 export async function plaintextList(state: ControlPlaneState, prefix = 'openpalm/'): Promise<SecretEntryMetadata[]> {
   const systemEnv = readStackEnv(state.vaultDir);
-  const userEnvFile = readUserEnv(state);
+  const userEnvFile = readUserVaultSync(state);
   // Legacy/consolidated secrets may live in stack.env even for user scope.
   // Layer the user vault on top so explicit user-managed values win.
   const userEnv: Record<string, string> = { ...systemEnv, ...userEnvFile };
@@ -245,6 +231,14 @@ function walkPassStore(dir: string, prefix = ''): string[] {
   return entries;
 }
 
+/**
+ * Resolved pass-backend configuration. Kept as a small in-file struct so the
+ * five `pass*` helpers below share one place where defaults
+ * (`${dataDir}/secrets/pass-store`, empty prefix) are applied — inlining the
+ * `?? defaults` logic into each helper would multiply the truth source.
+ * The two strings travel together everywhere (passEnv, prefixedEntry,
+ * passKeyPath) so they're worth bundling.
+ */
 type PassContext = {
   passwordStoreDir: string;
   passPrefix: string;

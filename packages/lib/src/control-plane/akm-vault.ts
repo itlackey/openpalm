@@ -84,22 +84,30 @@ export function buildAkmEnv(state: ControlPlaneState): NodeJS.ProcessEnv {
  */
 const AKM_EXEC_TIMEOUT_MS = 2_000;
 
-async function execAkm(args: string[], env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string }> {
+/**
+ * Race a promise against an unref'd setTimeout. If the timeout fires first,
+ * reject with `<label> timed out after <ms>ms`. The timer is always cleared
+ * in `finally` so it never keeps the event loop alive past resolution. The
+ * unref means the timer alone won't block process exit — the surrounding
+ * subprocess work owns the liveness.
+ */
+function raceWithTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error(`akm ${args[0] ?? "?"} timed out after ${AKM_EXEC_TIMEOUT_MS}ms`)),
-      AKM_EXEC_TIMEOUT_MS,
-    );
-    // Don't keep the event loop alive solely for this timer — the process
-    // should be free to exit if every other handle is closed.
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
     timer.unref?.();
   });
-  try {
-    return await Promise.race([execFile("akm", args, { env }), timeoutPromise]);
-  } finally {
+  return Promise.race([promise, timeoutPromise]).finally(() => {
     if (timer) clearTimeout(timer);
-  }
+  });
+}
+
+async function execAkm(args: string[], env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string }> {
+  return raceWithTimeout(
+    execFile("akm", args, { env }),
+    AKM_EXEC_TIMEOUT_MS,
+    `akm ${args[0] ?? "?"}`,
+  );
 }
 
 async function akmAvailable(env: NodeJS.ProcessEnv): Promise<boolean> {
@@ -111,9 +119,15 @@ async function akmAvailable(env: NodeJS.ProcessEnv): Promise<boolean> {
   }
 }
 
-/** Return the absolute path of the akm vault file, creating the vault if missing. */
-export async function ensureAkmUserVault(state: ControlPlaneState): Promise<string | null> {
-  const env = buildAkmEnv(state);
+/**
+ * Return the absolute path of the akm vault file, creating the vault if
+ * missing. Callers that have already built the akm env (via `buildAkmEnv`)
+ * can pass it in to avoid rebuilding — the result is identical either way.
+ */
+export async function ensureAkmUserVault(
+  state: ControlPlaneState,
+  env: NodeJS.ProcessEnv = buildAkmEnv(state),
+): Promise<string | null> {
   if (!(await akmAvailable(env))) {
     return null;
   }
@@ -169,33 +183,33 @@ async function akmVaultSetViaStdin(
     stderr: "pipe",
   });
 
-  // Wall-clock bound. Mirrors the pattern in execAkm above.
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      try { child.kill(); } catch { /* best-effort */ }
-      reject(new Error(`akm vault set ${key} timed out after ${AKM_EXEC_TIMEOUT_MS}ms`));
-    }, AKM_EXEC_TIMEOUT_MS);
-    timer.unref?.();
-  });
+  // Feed the secret. `child.stdin` is a FileSink in Bun — write+end then
+  // wait for exit. We don't use `await child.stdin.end(value)` because
+  // some Bun versions return undefined here; explicit write+end is portable.
+  if (child.stdin) {
+    // child.stdin is typed as FileSink in Bun
+    const sink = child.stdin as { write: (data: string) => unknown; end: () => unknown };
+    sink.write(value);
+    sink.end();
+  }
 
+  // Wall-clock bound — mirror of the execAkm pattern. On timeout we also
+  // SIGKILL the child so the orphaned subprocess doesn't outlive us.
+  let exitCode: number;
   try {
-    // Feed the secret. `child.stdin` is a FileSink in Bun — write+end then
-    // wait for exit. We don't use `await child.stdin.end(value)` because
-    // some Bun versions return undefined here; explicit write+end is portable.
-    if (child.stdin) {
-      // child.stdin is typed as FileSink in Bun
-      const sink = child.stdin as { write: (data: string) => unknown; end: () => unknown };
-      sink.write(value);
-      sink.end();
-    }
-    const exitCode = await Promise.race([child.exited, timeoutPromise]);
-    if (exitCode !== 0) {
-      const stderrText = child.stderr ? await new Response(child.stderr).text() : "";
-      throw new Error(`akm vault set ${key} failed (exit ${exitCode}): ${stderrText.trim()}`);
-    }
-  } finally {
-    if (timer) clearTimeout(timer);
+    exitCode = await raceWithTimeout(
+      child.exited,
+      AKM_EXEC_TIMEOUT_MS,
+      `akm vault set ${key}`,
+    );
+  } catch (err) {
+    try { child.kill(); } catch { /* best-effort */ }
+    throw err;
+  }
+
+  if (exitCode !== 0) {
+    const stderrText = child.stderr ? await new Response(child.stderr).text() : "";
+    throw new Error(`akm vault set ${key} failed (exit ${exitCode}): ${stderrText.trim()}`);
   }
 }
 
@@ -213,11 +227,10 @@ export async function writeAkmVaultKey(
   key: string,
   value: string,
 ): Promise<boolean> {
+  // Build env once and thread it through both the ensure step and the
+  // subsequent `akm vault set`. Avoids a redundant `buildAkmEnv` call.
   const env = buildAkmEnv(state);
-  // ensureAkmUserVault already runs the availability probe. We re-check
-  // here to short-circuit before spawning the set process when akm is
-  // missing on PATH.
-  const vaultPath = await ensureAkmUserVault(state);
+  const vaultPath = await ensureAkmUserVault(state, env);
   if (!vaultPath) return false;
   await akmVaultSetViaStdin(AKM_USER_VAULT_REF, key, value, env);
   return true;
@@ -233,8 +246,10 @@ export async function deleteAkmVaultKey(
   state: ControlPlaneState,
   key: string,
 ): Promise<boolean> {
+  // Build env once and pass it into ensureAkmUserVault so we don't pay
+  // for two `buildAkmEnv` calls on a single delete.
   const env = buildAkmEnv(state);
-  const vaultPath = await ensureAkmUserVault(state);
+  const vaultPath = await ensureAkmUserVault(state, env);
   if (!vaultPath) return false;
   try {
     await execAkm(["vault", "unset", AKM_USER_VAULT_REF, key], env);
@@ -283,7 +298,7 @@ export async function mirrorUserVaultToAkm(state: ControlPlaneState): Promise<Mi
     return { ok: true, skipped: true, reason: "akm not on PATH", written: [], unchanged: [] };
   }
 
-  const vaultPath = await ensureAkmUserVault(state);
+  const vaultPath = await ensureAkmUserVault(state, env);
   if (!vaultPath) {
     return { ok: false, skipped: true, reason: "could not resolve vault path", written: [], unchanged: [] };
   }
@@ -362,7 +377,7 @@ export async function migrateAndCleanupLegacyUserEnv(
   if (!(await akmAvailable(env))) {
     return { deleted: false, reason: "akm not on PATH" };
   }
-  const vaultPath = await ensureAkmUserVault(state);
+  const vaultPath = await ensureAkmUserVault(state, env);
   if (!vaultPath || !existsSync(vaultPath)) {
     return { deleted: false, reason: "akm vault file missing" };
   }
