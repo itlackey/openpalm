@@ -74,10 +74,10 @@ services:
       # AKM_STASH_DIR (they fall back to per-container HOME defaults), so
       # admin and assistant would silently diverge without this.
       AKM_STASH_DIR: /akm
-      AKM_DATA_DIR: /akm/.data
-      AKM_STATE_DIR: /akm/.state
+      AKM_DATA_DIR: /akm-data/data
+      AKM_STATE_DIR: /akm-data/state
       AKM_CACHE_DIR: /akm-cache
-      AKM_CONFIG_DIR: /akm/.config
+      AKM_CONFIG_DIR: /akm-data/config
     volumes:
       - ${OP_HOME}:/openpalm
       - ${OP_HOME}/data/admin:/home/node
@@ -85,6 +85,9 @@ services:
       # Shared akm stash (rw on both sides) — assistant publishes assets here,
       # admin reads/edits them through its OpenCode + UI surface.
       - ${OP_HOME}/data/stash:/akm
+      # Shared akm operational data (config, data, state). Mirrors the assistant
+      # mount so both containers resolve to the same index, state, and config.
+      - ${OP_HOME}/data/akm:/akm-data
       # Shared, persistent akm cache (registry index, downloaded artifacts).
       - ${OP_HOME}/data/akm-cache:/akm-cache
       # GPG agent socket for pass backend (read-only; only needed when pass is active).

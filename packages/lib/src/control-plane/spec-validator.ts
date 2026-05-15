@@ -147,13 +147,4 @@ function validateCapabilities(
     }
   }
 
-  // Memory (required object)
-  if (!capabilities.memory || typeof capabilities.memory !== "object") {
-    errors.push({
-      code: "OP-CFG-002",
-      message: "capabilities.memory is required",
-      path: "capabilities.memory",
-      hint: "Add at minimum a userId field",
-    });
-  }
 }

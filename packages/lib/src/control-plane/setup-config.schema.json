@@ -51,18 +51,6 @@
     "assignments": {
       "$ref": "#/$defs/SetupConfigAssignments"
     },
-    "memory": {
-      "type": "object",
-      "description": "Optional memory subsystem configuration.",
-      "additionalProperties": false,
-      "properties": {
-        "userId": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9_]+$",
-          "description": "User ID for the memory service. Alphanumeric and underscores only. Defaults to 'default_user' if omitted."
-        }
-      }
-    },
     "channels": {
       "type": "object",
       "description": "Optional channel configurations. Keys are channel identifiers (e.g. 'chat', 'discord', 'api'). Values can be a boolean to enable (true) or skip (false) installation, or a credential object.",
@@ -162,13 +150,13 @@
             },
             "smallModel": {
               "type": "string",
-              "description": "Optional smaller/faster model for lightweight tasks (e.g. memory extraction)."
+              "description": "Optional smaller/faster model for lightweight akm operations."
             }
           }
         },
         "embeddings": {
           "type": "object",
-          "description": "Embedding model assignment for the memory subsystem.",
+          "description": "Embedding model assignment for akm and semantic operations.",
           "required": ["capabilityId", "model"],
           "additionalProperties": false,
           "properties": {

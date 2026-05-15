@@ -525,10 +525,6 @@ describe("performSetup", () => {
           model: "text-embedding-3-small",
           dims: 1536,
         },
-        memory: {
-          userId: "test_user",
-          customInstructions: "",
-        },
       },
     });
 

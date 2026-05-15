@@ -44,22 +44,25 @@ export type MirrorResult = {
  * `.openpalm/stack/core.compose.yml`) so host-side and container-side runs
  * resolve to the same vault file.
  *
- * NOTE: AKM_STASH_DIR/AKM_DATA_DIR/AKM_STATE_DIR/AKM_CONFIG_DIR all live
- * inside the stash root so they share a single bind mount. AKM_CACHE_DIR
- * intentionally lives one level up (sibling of `stash/`) because it
- * contains regenerable derived data only — keeping it outside the stash
- * matches the compose mount layout introduced by #386 and avoids
- * polluting the asset directory with cache artefacts that should not be
- * indexed alongside real stash assets.
+ * Layout (v0.11.0):
+ *   data/stash/   — AKM_STASH_DIR: asset content only (skills, vaults, knowledge, agents)
+ *   data/akm/     — AKM_DATA_DIR / AKM_STATE_DIR / AKM_CONFIG_DIR: operational metadata
+ *   data/akm-cache/ — AKM_CACHE_DIR: regenerable registry artifacts (separate sibling)
+ *
+ * The stash and akm operational dirs use separate bind mounts in compose so
+ * asset content and operational metadata never share a directory. AKM_CACHE_DIR
+ * is a further sibling because its contents are regenerable and should not be
+ * indexed alongside stash assets.
  */
 export function buildAkmEnv(state: ControlPlaneState): NodeJS.ProcessEnv {
   const stashRoot = `${state.dataDir}/stash`;
+  const akmRoot = `${state.dataDir}/akm`;
   return {
     ...process.env,
     AKM_STASH_DIR: stashRoot,
-    AKM_DATA_DIR: `${stashRoot}/.data`,
-    AKM_STATE_DIR: `${stashRoot}/.state`,
-    AKM_CONFIG_DIR: `${stashRoot}/.config`,
+    AKM_DATA_DIR: `${akmRoot}/data`,
+    AKM_STATE_DIR: `${akmRoot}/state`,
+    AKM_CONFIG_DIR: `${akmRoot}/config`,
     AKM_CACHE_DIR: `${state.dataDir}/akm-cache`,
   };
 }

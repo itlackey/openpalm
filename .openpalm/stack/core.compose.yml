@@ -33,7 +33,7 @@ services:
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     restart: "no"
     command: ["sh", "-c",
-      "umask 077 && mkdir -p /data/guardian-stash /data/guardian-stash/.data /data/guardian-stash/.state /data/guardian-stash/.config /data/guardian-cache && umask 022 && mkdir -p /data/assistant /data/guardian /data/scheduler /data/scheduler/triggers /data/stash /data/stash/.data /data/stash/.state /data/stash/.config /data/akm-cache /data/workspace /logs/opencode && ls /addons 2>/dev/null | xargs -I{} mkdir -p /data/{}"]
+      "umask 077 && mkdir -p /data/guardian-stash /data/guardian-akm /data/guardian-akm/config /data/guardian-akm/data /data/guardian-akm/state /data/guardian-cache && umask 022 && mkdir -p /data/assistant /data/guardian /data/scheduler /data/scheduler/triggers /data/stash /data/akm /data/akm/config /data/akm/data /data/akm/state /data/akm-cache /data/workspace /logs/opencode && ls /addons 2>/dev/null | xargs -I{} mkdir -p /data/{}"]
     volumes:
       - ${OP_HOME}/data:/data
       - ${OP_HOME}/logs:/logs
@@ -73,10 +73,10 @@ services:
       # separately bind-mounted so registry artifacts survive container
       # recreate (regenerable but expensive to refetch).
       AKM_STASH_DIR: /akm
-      AKM_DATA_DIR: /akm/.data
-      AKM_STATE_DIR: /akm/.state
+      AKM_DATA_DIR: /akm-data/data
+      AKM_STATE_DIR: /akm-data/state
       AKM_CACHE_DIR: /akm-cache
-      AKM_CONFIG_DIR: /akm/.config
+      AKM_CONFIG_DIR: /akm-data/config
       OP_ADMIN_API_URL: ${OP_ADMIN_API_URL:-}
       OP_ASSISTANT_TOKEN: ${OP_ASSISTANT_TOKEN:-}
       OP_UID: ${OP_UID:-1000}
@@ -131,6 +131,9 @@ services:
       # Shared akm stash: assistant and admin both mount this rw so they
       # can read/write the same skills, commands, memories, and vaults.
       - ${OP_HOME}/data/stash:/akm
+      # Operational akm data (config, data, state). Shared with admin so both
+      # containers resolve to the same index, state, and config.
+      - ${OP_HOME}/data/akm:/akm-data
       # Persistent akm cache (registry index, downloaded artifacts). Shared
       # with admin since both query the same registries.
       - ${OP_HOME}/data/akm-cache:/akm-cache
@@ -174,16 +177,18 @@ services:
       # (channel HMAC vaults, audit notes). NOT shared with admin/assistant.
       # See assistant block for the rationale behind pinning all four dirs.
       AKM_STASH_DIR: /akm-guardian
-      AKM_DATA_DIR: /akm-guardian/.data
-      AKM_STATE_DIR: /akm-guardian/.state
+      AKM_DATA_DIR: /akm-guardian-data/data
+      AKM_STATE_DIR: /akm-guardian-data/state
       AKM_CACHE_DIR: /akm-cache
-      AKM_CONFIG_DIR: /akm-guardian/.config
+      AKM_CONFIG_DIR: /akm-guardian-data/config
     volumes:
       - ${OP_HOME}/data/guardian:/app/data
       - ${OP_HOME}/logs:/app/audit
       - ${OP_HOME}/vault/stack/guardian.env:/app/secrets/guardian.env:ro
       # Operator-only akm stash (NOT shared with admin or assistant).
       - ${OP_HOME}/data/guardian-stash:/akm-guardian
+      # Operator-only akm operational data (config, data, state).
+      - ${OP_HOME}/data/guardian-akm:/akm-guardian-data
       # Operator-only akm cache (isolated from the shared admin/assistant cache).
       - ${OP_HOME}/data/guardian-cache:/akm-cache
     user: "${OP_UID:-1000}:${OP_GID:-1000}"

@@ -140,7 +140,7 @@ export const POST: RequestHandler = async (event) => {
     writeCapabilityVars(spec, state.vaultDir);
     const akmJson = buildAkmSetupJson(spec, readStackEnv(state.vaultDir));
     if (akmJson) {
-      const akmConfigDir = `${state.dataDir}/stash/.config`;
+      const akmConfigDir = `${state.dataDir}/akm/config`;
       mkdirSync(akmConfigDir, { recursive: true });
       writeFileSync(`${akmConfigDir}/config.json`, akmJson, { mode: 0o600 });
     }
