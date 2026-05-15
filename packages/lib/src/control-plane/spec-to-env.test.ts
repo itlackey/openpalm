@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { deriveSystemEnvFromSpec, writeCapabilityVars } from "./spec-to-env.js";
+import { deriveSystemEnvFromSpec, writeCapabilityVars, buildAkmSetupJson } from "./spec-to-env.js";
 import type { StackSpec } from "./stack-spec.js";
 
 function makeSpec(overrides?: Partial<StackSpec>): StackSpec {
@@ -102,5 +102,130 @@ describe("writeCapabilityVars", () => {
 
     const managedEnvPath = join(vaultDir, "stack", "services", "memory", "managed.env");
     expect(() => readFileSync(managedEnvPath)).toThrow();
+  });
+});
+
+describe("buildAkmSetupJson", () => {
+  test("returns null when no LLM configured", () => {
+    const spec: StackSpec = {
+      version: 2,
+      capabilities: {
+        llm: "/",
+        embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
+      },
+    };
+    // parseCapabilityString("/" ) → { provider: "", model: "" }
+    expect(buildAkmSetupJson(spec, {})).toBeNull();
+  });
+
+  test("uses LLM when SLM is not set", () => {
+    const spec = makeSpec({ capabilities: { llm: "openai/gpt-4o", embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 } } });
+    const json = buildAkmSetupJson(spec, {});
+    expect(json).not.toBeNull();
+    const config = JSON.parse(json!);
+    expect(config.llm.provider).toBe("openai");
+    expect(config.llm.model).toBe("gpt-4o");
+  });
+
+  test("prefers SLM over LLM for akm LLM config", () => {
+    const spec = makeSpec({
+      capabilities: {
+        llm: "openai/gpt-4o",
+        slm: "ollama/qwen2.5-coder:3b",
+        embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
+      },
+    });
+    const json = buildAkmSetupJson(spec, {});
+    expect(json).not.toBeNull();
+    const config = JSON.parse(json!);
+    expect(config.llm.provider).toBe("ollama");
+    expect(config.llm.model).toBe("qwen2.5-coder:3b");
+  });
+
+  test("falls back to LLM when SLM is set but empty string", () => {
+    const spec = makeSpec({
+      capabilities: {
+        llm: "groq/llama-3.3-70b-versatile",
+        slm: "",
+        embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 },
+      },
+    });
+    const json = buildAkmSetupJson(spec, {});
+    expect(json).not.toBeNull();
+    const config = JSON.parse(json!);
+    expect(config.llm.provider).toBe("groq");
+    expect(config.llm.model).toBe("llama-3.3-70b-versatile");
+  });
+
+  test("includes embedding config when configured", () => {
+    const spec = makeSpec({
+      capabilities: {
+        llm: "openai/gpt-4o",
+        embeddings: { provider: "ollama", model: "nomic-embed-text", dims: 768 },
+      },
+    });
+    const json = buildAkmSetupJson(spec, {});
+    expect(json).not.toBeNull();
+    const config = JSON.parse(json!);
+    expect(config.embedding).toBeDefined();
+    expect(config.embedding.provider).toBe("ollama");
+    expect(config.embedding.model).toBe("nomic-embed-text");
+    expect(config.embedding.dimension).toBe(768);
+  });
+
+  test("omits embedding when dims is 0", () => {
+    const spec = makeSpec({
+      capabilities: {
+        llm: "openai/gpt-4o",
+        embeddings: { provider: "", model: "", dims: 0 },
+      },
+    });
+    const json = buildAkmSetupJson(spec, {});
+    expect(json).not.toBeNull();
+    const config = JSON.parse(json!);
+    expect(config.embedding).toBeUndefined();
+  });
+
+  test("appends /chat/completions to a base URL already ending in /v1 (LLM endpoint)", () => {
+    const spec = makeSpec({ capabilities: { llm: "openai/gpt-4o", embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 } } });
+    const json = buildAkmSetupJson(spec, { OPENAI_BASE_URL: "https://api.openai.com/v1" });
+    expect(json).not.toBeNull();
+    const config = JSON.parse(json!);
+    expect(config.llm.endpoint).toBe("https://api.openai.com/v1/chat/completions");
+  });
+
+  test("appends /v1/chat/completions to a base URL without /v1 suffix", () => {
+    const spec = makeSpec({ capabilities: { llm: "openai/gpt-4o", embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 } } });
+    const json = buildAkmSetupJson(spec, { OPENAI_BASE_URL: "https://custom.example.com" });
+    expect(json).not.toBeNull();
+    const config = JSON.parse(json!);
+    expect(config.llm.endpoint).toBe("https://custom.example.com/v1/chat/completions");
+  });
+
+  test("embedding endpoint uses /embeddings path", () => {
+    const spec = makeSpec({ capabilities: { llm: "openai/gpt-4o", embeddings: { provider: "openai", model: "text-embedding-3-small", dims: 1536 } } });
+    const json = buildAkmSetupJson(spec, {});
+    expect(json).not.toBeNull();
+    const config = JSON.parse(json!);
+    expect(config.embedding.endpoint).toBe("https://api.openai.com/v1/embeddings");
+  });
+
+  test("ollama embedding endpoint does not get /v1 appended", () => {
+    const spec = makeSpec({ capabilities: { llm: "openai/gpt-4o", embeddings: { provider: "ollama", model: "nomic-embed-text", dims: 768 } } });
+    const json = buildAkmSetupJson(spec, { OLLAMA_BASE_URL: "http://localhost:11434" });
+    expect(json).not.toBeNull();
+    const config = JSON.parse(json!);
+    // ollama is in NO_V1_SUFFIX — base stays as-is, then buildEndpoint adds /v1/embeddings
+    expect(config.embedding.endpoint).toBe("http://localhost:11434/v1/embeddings");
+  });
+
+  test("includes all required llm feature flags", () => {
+    const spec = makeSpec();
+    const json = buildAkmSetupJson(spec, {});
+    expect(json).not.toBeNull();
+    const config = JSON.parse(json!);
+    expect(config.llm.features.feedback_distillation).toBe(true);
+    expect(config.llm.features.memory_inference).toBe(true);
+    expect(config.llm.features.memory_consolidation).toBe(true);
   });
 });

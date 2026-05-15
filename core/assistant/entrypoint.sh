@@ -246,24 +246,80 @@ maybe_source_akm_user_vault() {
   set +a
 }
 
-maybe_unset_unused_provider_keys() {
-  # Unset LLM provider keys that are not needed for the configured provider.
-  # This limits the blast radius if the assistant process is compromised —
-  # only the active provider's key remains in the environment.
-  # Note: docker-compose.yml cannot conditionally include keys (no template rendering
-  # per architecture rules), so this mitigation is applied at the process level.
-  local provider="${OP_CAP_LLM_PROVIDER:-}"
-  case "$provider" in
-    openai)    unset ANTHROPIC_API_KEY GROQ_API_KEY MISTRAL_API_KEY GOOGLE_API_KEY ;;
-    anthropic) unset OPENAI_API_KEY GROQ_API_KEY MISTRAL_API_KEY GOOGLE_API_KEY ;;
-    groq)      unset OPENAI_API_KEY ANTHROPIC_API_KEY MISTRAL_API_KEY GOOGLE_API_KEY ;;
-    mistral)   unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY GOOGLE_API_KEY ;;
-    google)    unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY MISTRAL_API_KEY ;;
-    # OpenAI-compatible providers that use OPENAI_API_KEY with a different base URL
-    together|deepseek|xai) unset ANTHROPIC_API_KEY GROQ_API_KEY MISTRAL_API_KEY GOOGLE_API_KEY ;;
-    # ollama, lmstudio, model-runner, or unset: no cloud provider key needed
-    *)         unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY MISTRAL_API_KEY GOOGLE_API_KEY ;;
+maybe_configure_akm() {
+  # Configure akm LLM and embedding from OP_CAP_* capability vars so that
+  # akm improve, distill, and semantic search use the same provider as the
+  # stack. Uses SLM preferentially for akm's own LLM (lightweight operations);
+  # falls back to primary LLM when SLM is not configured.
+  # Runs before maybe_unset_unused_provider_keys so API keys are still in env.
+  if ! command -v akm >/dev/null 2>&1; then
+    return 0
+  fi
+
+  # Prefer SLM for akm operations (lightweight); fall back to LLM
+  local llm_provider="${OP_CAP_SLM_PROVIDER:-${OP_CAP_LLM_PROVIDER:-}}"
+  local llm_model="${OP_CAP_SLM_MODEL:-${OP_CAP_LLM_MODEL:-}}"
+  local llm_base_url="${OP_CAP_SLM_BASE_URL:-${OP_CAP_LLM_BASE_URL:-}}"
+
+  if [ -z "$llm_provider" ] || [ -z "$llm_model" ] || [ -z "$llm_base_url" ]; then
+    return 0
+  fi
+
+  # Build OpenAI-compatible endpoint URLs from the resolved base URL
+  local base_no_slash="${llm_base_url%/}"
+  local llm_endpoint
+  case "$base_no_slash" in
+    */v1) llm_endpoint="${base_no_slash}/chat/completions" ;;
+    *)    llm_endpoint="${base_no_slash}/v1/chat/completions" ;;
   esac
+
+  local akm_config
+  akm_config='{"llm":{"endpoint":"'"$llm_endpoint"'","model":"'"$llm_model"'","provider":"'"$llm_provider"'","features":{"feedback_distillation":true,"memory_inference":true,"memory_consolidation":true}}}'
+
+  # Append embedding config when all required vars are present
+  local emb_provider="${OP_CAP_EMBEDDINGS_PROVIDER:-}"
+  local emb_model="${OP_CAP_EMBEDDINGS_MODEL:-}"
+  local emb_base_url="${OP_CAP_EMBEDDINGS_BASE_URL:-}"
+  local emb_dims="${OP_CAP_EMBEDDINGS_DIMS:-0}"
+
+  if [ -n "$emb_provider" ] && [ -n "$emb_model" ] && [ -n "$emb_base_url" ] && [ "$emb_dims" != "0" ]; then
+    local emb_base_no_slash="${emb_base_url%/}"
+    local emb_endpoint
+    case "$emb_base_no_slash" in
+      */v1) emb_endpoint="${emb_base_no_slash}/embeddings" ;;
+      *)    emb_endpoint="${emb_base_no_slash}/v1/embeddings" ;;
+    esac
+    akm_config='{"llm":{"endpoint":"'"$llm_endpoint"'","model":"'"$llm_model"'","provider":"'"$llm_provider"'","features":{"feedback_distillation":true,"memory_inference":true,"memory_consolidation":true}},"embedding":{"endpoint":"'"$emb_endpoint"'","model":"'"$emb_model"'","provider":"'"$emb_provider"'","dimension":'"$emb_dims"'}}'
+  fi
+
+  akm setup --config "$akm_config" --yes 2>/dev/null || true
+}
+
+maybe_unset_unused_provider_keys() {
+  # Unset API keys for providers not used by either LLM or SLM capability.
+  # This limits the blast radius if the assistant process is compromised —
+  # only active providers' keys remain in the environment. Both LLM and SLM
+  # are checked so the scheduler's akm improve/distill calls (which use SLM)
+  # still have the key they need.
+  local llm="${OP_CAP_LLM_PROVIDER:-}"
+  local slm="${OP_CAP_SLM_PROVIDER:-}"
+
+  local openai_used=0 anthropic_used=0 groq_used=0 mistral_used=0 google_used=0
+  for p in "$llm" "$slm"; do
+    case "$p" in
+      openai|together|deepseek|xai) openai_used=1 ;;
+      anthropic) anthropic_used=1 ;;
+      groq)      groq_used=1 ;;
+      mistral)   mistral_used=1 ;;
+      google)    google_used=1 ;;
+    esac
+  done
+
+  [ "$anthropic_used" = "0" ] && unset ANTHROPIC_API_KEY
+  [ "$groq_used"      = "0" ] && unset GROQ_API_KEY
+  [ "$mistral_used"   = "0" ] && unset MISTRAL_API_KEY
+  [ "$google_used"    = "0" ] && unset GOOGLE_API_KEY
+  [ "$openai_used"    = "0" ] && unset OPENAI_API_KEY
 }
 
 start_opencode() {
@@ -326,6 +382,7 @@ maybe_proxy_lmstudio
 # env_file (#388 / #406). Runs as root because gosu has not been invoked
 # yet — root can read the 0600 vault file and re-export to children.
 maybe_source_akm_user_vault
+maybe_configure_akm
 maybe_unset_unused_provider_keys
 start_scheduler_coprocess
 start_opencode

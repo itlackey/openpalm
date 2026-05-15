@@ -248,6 +248,7 @@ export {
 // ── Spec-to-Env Derivation ──────────────────────────────────────────────
 export {
   writeCapabilityVars,
+  buildAkmSetupJson,
 } from "./control-plane/spec-to-env.js";
 
 // ── Setup ────────────────────────────────────────────────────────────────

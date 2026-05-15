@@ -3,12 +3,15 @@
  * POST /admin/capabilities/assignments — Update capabilities in stack.yml.
  */
 import type { RequestHandler } from './$types';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { getState } from '$lib/server/state.js';
 import {
   appendAudit,
   readStackSpec,
   writeStackSpec,
   writeCapabilityVars,
+  buildAkmSetupJson,
+  readStackEnv,
 } from '@openpalm/lib';
 import {
   errorResponse,
@@ -135,6 +138,12 @@ export const POST: RequestHandler = async (event) => {
   try {
     writeStackSpec(state.configDir, spec);
     writeCapabilityVars(spec, state.vaultDir);
+    const akmJson = buildAkmSetupJson(spec, readStackEnv(state.vaultDir));
+    if (akmJson) {
+      const akmConfigDir = `${state.dataDir}/stash/.config`;
+      mkdirSync(akmConfigDir, { recursive: true });
+      writeFileSync(`${akmConfigDir}/config.json`, akmJson, { mode: 0o600 });
+    }
   } catch (e) {
     appendAudit(state, actor, 'capabilities.assignments.save', { error: String(e) }, false, requestId, callerType);
     return errorResponse(500, 'internal_error', 'Failed to persist capabilities', {}, requestId);

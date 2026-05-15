@@ -174,7 +174,7 @@
 
 <!-- Sub-tab pills -->
 <div class="sub-tabs" role="tablist">
-	<button class="pill" class:pill--active={activeSubTab === 'capabilities'} role="tab" aria-selected={activeSubTab === 'capabilities'} onclick={() => activeSubTab = 'capabilities'}>Capabilities</button>
+	<button class="pill" class:pill--active={activeSubTab === 'capabilities'} role="tab" aria-selected={activeSubTab === 'capabilities'} onclick={() => activeSubTab = 'capabilities'}>AI Models</button>
 	<button class="pill" class:pill--active={activeSubTab === 'voice'} role="tab" aria-selected={activeSubTab === 'voice'} onclick={() => activeSubTab = 'voice'}>Voice</button>
 	{#if pageLoading}<span class="loading-hint"><span class="spinner"></span> Loading...</span>{/if}
 </div>
@@ -187,7 +187,7 @@
 
 	{#if connectedProviders.length === 0}
 		<div class="empty-state">
-			<p>No providers connected. Use the Connections tab to add providers.</p>
+			<p>No providers connected. Use the <strong>Connections</strong> tab to authenticate with a provider. Model assignments here configure both the AI assistant and akm stash operations.</p>
 		</div>
 	{:else}
 
@@ -199,6 +199,7 @@
 	<!-- LLM -->
 	<div class="assign-section">
 		<h3 class="assign-heading">Language Model <span class="assign-required">required</span></h3>
+		<p class="section-desc">Primary reasoning model used by the AI assistant (OpenCode). Also the fallback for akm operations when no small model is configured.</p>
 		<div class="assign-row">
 			<div class="form-field">
 				<label class="form-label" for="llm-p">Provider</label>
@@ -224,6 +225,7 @@
 	<!-- SLM -->
 	<div class="assign-section">
 		<h3 class="assign-heading">Small Language Model <span class="assign-optional">optional</span></h3>
+		<p class="section-desc">Lightweight model for fast, low-cost tasks. When configured, akm uses this model for stash improvement, memory consolidation, and feedback distillation — keeping the primary model free for assistant conversations.</p>
 		<div class="assign-row">
 			<div class="form-field">
 				<label class="form-label" for="slm-p">Provider</label>
@@ -249,6 +251,7 @@
 	<!-- Embeddings -->
 	<div class="assign-section">
 		<h3 class="assign-heading">Embeddings <span class="assign-required">required</span></h3>
+		<p class="section-desc">Embedding model for semantic search. akm uses this to index stash assets and recall relevant context during assistant sessions.</p>
 		<div class="assign-row">
 			<div class="form-field">
 				<label class="form-label" for="emb-p">Provider</label>
@@ -278,7 +281,7 @@
 	<!-- Reranking -->
 	<div class="assign-section">
 		<h3 class="assign-heading">Reranking <span class="assign-optional">optional</span></h3>
-		<p class="section-desc">Re-rank search results for better relevance. Leave empty to disable.</p>
+		<p class="section-desc">Re-rank akm semantic search results for better relevance. Leave empty to disable.</p>
 		<div class="assign-row">
 			<div class="form-field">
 				<label class="form-label" for="rr-p">Provider</label>
@@ -332,6 +335,8 @@
 	{#if saveError}<div class="feedback feedback--error"><span>{saveError}</span>
 		<button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => saveError = ''}>x</button>
 	</div>{/if}
+
+	<p class="section-desc">Voice capabilities are used by the voice channel addon and web audio features. They are independent of akm operations.</p>
 
 	<div class="assign-section">
 		<h3 class="assign-heading">Text-to-Speech</h3>

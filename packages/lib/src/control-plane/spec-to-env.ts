@@ -189,3 +189,114 @@ export function writeCapabilityVars(spec: StackSpec, vaultDir: string): void {
   if (!content.endsWith("\n")) content += "\n";
   writeFileSync(stackEnvPath, content, { mode: 0o600 });
 }
+
+// ── AKM Setup Config ─────────────────────────────────────────────────────
+
+/**
+ * Build the akm setup config JSON from a StackSpec + resolved env.
+ *
+ * The SLM capability is preferred for akm's own LLM (lightweight model
+ * for improve/distill/memory operations); falls back to the primary LLM.
+ * The embeddings capability maps directly to akm's embedding config.
+ *
+ * Returns null when no LLM capability is configured (akm setup would be
+ * a no-op anyway).
+ */
+export function buildAkmSetupJson(
+  spec: StackSpec,
+  stackEnv: Record<string, string>,
+): string | null {
+  const { provider: llmP, model: llmM } = parseCapabilityString(spec.capabilities.llm);
+  const slmStr = spec.capabilities.slm ?? "";
+  const { provider: slmP, model: slmM } = slmStr
+    ? parseCapabilityString(slmStr)
+    : { provider: "", model: "" };
+
+  // SLM preferred for akm LLM (lightweight ops)
+  const akmLlmProvider = slmP || llmP;
+  const akmLlmModel = slmM || llmM;
+
+  if (!akmLlmProvider || !akmLlmModel) return null;
+
+  /** Providers that do NOT use an OpenAI-compatible /v1 path prefix. */
+  const NO_V1_SUFFIX = new Set(["ollama", "google"]);
+
+  const ensureV1 = (url: string, provider: string): string => {
+    if (!url || NO_V1_SUFFIX.has(provider)) return url;
+    return url.endsWith("/v1") ? url : `${url.replace(/\/+$/, "")}/v1`;
+  };
+
+  const BASE_URL_ENV_MAP: Record<string, string> = {
+    openai: "OPENAI_BASE_URL",
+    anthropic: "ANTHROPIC_BASE_URL",
+    groq: "GROQ_BASE_URL",
+    mistral: "MISTRAL_BASE_URL",
+    together: "TOGETHER_BASE_URL",
+    deepseek: "DEEPSEEK_BASE_URL",
+    xai: "XAI_BASE_URL",
+    google: "GOOGLE_BASE_URL",
+    huggingface: "HF_BASE_URL",
+    ollama: "OLLAMA_BASE_URL",
+    lmstudio: "LMSTUDIO_BASE_URL",
+    "model-runner": "MODEL_RUNNER_BASE_URL",
+    "openai-compatible": "OPENAI_COMPATIBLE_BASE_URL",
+  };
+
+  const resolveBaseUrl = (provider: string): string => {
+    const urlEnvKey = BASE_URL_ENV_MAP[provider];
+    if (urlEnvKey && stackEnv[urlEnvKey]) return ensureV1(stackEnv[urlEnvKey], provider);
+    return ensureV1(PROVIDER_DEFAULT_URLS[provider] ?? "", provider);
+  };
+
+  const buildEndpoint = (baseUrl: string, path: string): string => {
+    const stripped = baseUrl.replace(/\/+$/, "");
+    return stripped.endsWith("/v1")
+      ? `${stripped}/${path}`
+      : `${stripped}/v1/${path}`;
+  };
+
+  const llmBaseUrl = resolveBaseUrl(akmLlmProvider);
+  const llmEndpoint = buildEndpoint(llmBaseUrl, "chat/completions");
+
+  type AkmConfig = {
+    llm: {
+      endpoint: string;
+      model: string;
+      provider: string;
+      features: Record<string, boolean>;
+    };
+    embedding?: {
+      endpoint: string;
+      model: string;
+      provider: string;
+      dimension: number;
+    };
+  };
+
+  const config: AkmConfig = {
+    llm: {
+      endpoint: llmEndpoint,
+      model: akmLlmModel,
+      provider: akmLlmProvider,
+      features: {
+        feedback_distillation: true,
+        memory_inference: true,
+        memory_consolidation: true,
+      },
+    },
+  };
+
+  const emb = spec.capabilities.embeddings;
+  if (emb.provider && emb.model && emb.dims > 0) {
+    const embBaseUrl = resolveBaseUrl(emb.provider);
+    const embEndpoint = buildEndpoint(embBaseUrl, "embeddings");
+    config.embedding = {
+      endpoint: embEndpoint,
+      model: emb.model,
+      provider: emb.provider,
+      dimension: emb.dims,
+    };
+  }
+
+  return JSON.stringify(config, null, 2);
+}
