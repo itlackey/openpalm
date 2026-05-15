@@ -5,8 +5,8 @@ containers today.
 
 Primary runtime sources:
 
-- `.openpalm/stack/core.compose.yml`
-- `.openpalm/registry/addons/admin/compose.yml` materialized into `~/.openpalm/stack/addons/admin/compose.yml` when enabled
+- `.openpalm/config/stack/core.compose.yml`
+- `.openpalm/registry/addons/admin/compose.yml` materialized into `~/.openpalm/config/stack/addons/admin/compose.yml` when enabled
 - `core/assistant/entrypoint.sh`
 - `core/admin/entrypoint.sh`
 
@@ -14,10 +14,10 @@ Primary runtime sources:
 
 ## What Is Authoritative
 
-- The running assistant is defined by `.openpalm/stack/core.compose.yml`.
-- The optional admin-side OpenCode runtime is defined by `~/.openpalm/stack/addons/admin/compose.yml` when the `admin` addon is enabled.
+- The running assistant is defined by `.openpalm/config/stack/core.compose.yml`.
+- The optional admin-side OpenCode runtime is defined by `~/.openpalm/config/stack/addons/admin/compose.yml` when the `admin` addon is enabled.
 - `~/.openpalm/config/assistant/` is the user-editable OpenCode extension surface.
-- `~/.openpalm/vault/stack/stack.env` provides runtime provider keys and resolved capability env values.
+- `~/.openpalm/config/stack/stack.env` provides runtime provider keys and resolved capability env values.
 - `~/.openpalm/vault/user/user.env` is the recommended place for addon overrides and operator-managed values.
 - Project-local OpenCode config inside `/work` still works per normal OpenCode behavior, but OpenPalm's container wiring is controlled by Compose.
 
@@ -32,7 +32,7 @@ Primary runtime sources:
 | baked into image | `/etc/opencode` | Core OpenCode config and built-in extensions |
 | `~/.openpalm/config/assistant/` | `/home/opencode/.config/opencode` | User tools, plugins, skills, commands |
 | `~/.openpalm/config/` | `/etc/openpalm` | OpenPalm config tree |
-| `~/.openpalm/vault/stack/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | OpenCode auth state |
+| `~/.openpalm/config/stack/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | OpenCode auth state |
 | `~/.openpalm/vault/user/` | `/etc/vault/` | User extension vault directory mount |
 | `~/.openpalm/data/assistant/` | `/home/opencode` | Assistant home |
 | `~/.openpalm/data/stash/` | `/home/opencode/.akm` | AKM stash |
@@ -107,7 +107,7 @@ Compose remains the source of truth for that contract.
 
 - The assistant has no Docker socket.
 - The assistant receives only `vault/user/` as a mount from the vault boundary.
-- Stack-level secrets such as `OP_ADMIN_TOKEN` remain in `vault/stack/stack.env`. Channel HMAC secrets live in `vault/stack/guardian.env`. Neither is mounted as a file into the assistant.
+- Stack-level secrets such as `OP_ADMIN_TOKEN` remain in `config/stack/stack.env`. Channel HMAC secrets live in `config/stack/guardian.env`. Neither is mounted as a file into the assistant.
 - Admin-side Docker access is mediated by `docker-socket-proxy` on the isolated `admin_docker_net` network.
 
 ---
@@ -115,6 +115,6 @@ Compose remains the source of truth for that contract.
 ## Day-To-Day Changes
 
 - Add tools, plugins, commands, or skills under `~/.openpalm/config/assistant/`.
-- Update provider keys and model-related env in `~/.openpalm/vault/stack/stack.env`.
-- Change service wiring by editing the compose file set in `~/.openpalm/stack/`.
-- Verify the exact runtime by reading `~/.openpalm/stack/core.compose.yml` and any addon overlays used for startup.
+- Update provider keys and model-related env in `~/.openpalm/config/stack/stack.env`.
+- Change service wiring by editing the compose file set in `~/.openpalm/config/stack/`.
+- Verify the exact runtime by reading `~/.openpalm/config/stack/core.compose.yml` and any addon overlays used for startup.

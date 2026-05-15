@@ -50,7 +50,7 @@ bun run admin:check
 ## API auth
 
 Protected endpoints require `x-admin-token`.
-In a normal install the token source of truth is `~/.openpalm/vault/stack/stack.env` as `OP_ADMIN_TOKEN`.
+In a normal install the token source of truth is `~/.openpalm/config/stack/stack.env` as `OP_ADMIN_TOKEN`.
 
 ## Key environment variables
 

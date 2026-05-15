@@ -23,7 +23,7 @@ overwrite existing user files.
 
 This file is optional. It can describe capability settings,
 but the runtime stack is still defined by the compose files in
-`~/.openpalm/stack/`. If `stack.yml` disagrees with an explicit compose
+`~/.openpalm/config/stack/`. If `stack.yml` disagrees with an explicit compose
 command, the explicit compose command wins.
 
 ```yaml

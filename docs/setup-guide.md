@@ -4,8 +4,8 @@ OpenPalm now uses a manual-first setup model:
 
 - copy the repo's `.openpalm/` bundle to `~/.openpalm/`
 - edit the env files you need
-- copy any addons you want from `~/.openpalm/registry/addons/` into `~/.openpalm/stack/addons/`
-- run `docker compose` against files in `~/.openpalm/stack/`
+- copy any addons you want from `~/.openpalm/registry/addons/` into `~/.openpalm/config/stack/addons/`
+- run `docker compose` against files in `~/.openpalm/config/stack/`
 
 Helper scripts still exist, but they are optional.
 
@@ -32,7 +32,7 @@ The clearest setup is:
 ```bash
 git clone https://github.com/itlackey/openpalm.git
 cp -R openpalm/.openpalm "$HOME/.openpalm"
-$EDITOR "$HOME/.openpalm/vault/stack/stack.env"
+$EDITOR "$HOME/.openpalm/config/stack/stack.env"
 $EDITOR "$HOME/.openpalm/vault/user/user.env"
 ```
 
@@ -44,9 +44,9 @@ The running deployment is always the exact compose file list you pass to Docker 
 
 ## Deployment truth
 
-- `~/.openpalm/stack/` is the only deployment foundation.
-- Base services come from `~/.openpalm/stack/core.compose.yml`.
-- Addons come from enabled overlays in `~/.openpalm/stack/addons/<name>/compose.yml`.
+- `~/.openpalm/config/stack/` is the only deployment foundation.
+- Base services come from `~/.openpalm/config/stack/core.compose.yml`.
+- Addons come from enabled overlays in `~/.openpalm/config/stack/addons/<name>/compose.yml`.
 - Available addons live in `~/.openpalm/registry/addons/<name>/` until you enable them.
 - `~/.openpalm/config/stack.yml` stores capabilities only. It is not deployment truth.
 
@@ -85,7 +85,7 @@ For all common compose operations (start, stop, status, pull, logs, restart), se
 
 **Change model keys**
 
-Edit `~/.openpalm/vault/stack/stack.env`, then recreate services that need the new values.
+Edit `~/.openpalm/config/stack/stack.env`, then recreate services that need the new values.
 
 ---
 
@@ -95,8 +95,8 @@ The copied bundle gives you a predictable host layout:
 
 | Path | Purpose |
 |---|---|
-| `~/.openpalm/stack/` | Compose files |
-| `~/.openpalm/vault/stack/stack.env` | Stack-level env values |
+| `~/.openpalm/config/stack/` | Compose files |
+| `~/.openpalm/config/stack/stack.env` | Stack-level env values |
 | `~/.openpalm/vault/user/user.env` | Optional user extensions |
 | `~/.openpalm/config/` | User-managed config |
 | `~/.openpalm/data/` | Persistent container data |

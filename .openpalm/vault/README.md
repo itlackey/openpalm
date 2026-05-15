@@ -50,7 +50,7 @@ in #391 along with the varlock binary. Secret hygiene now flows through
 The runtime `.env` files are operator-managed. Edit them directly:
 
 ```bash
-$EDITOR vault/stack/stack.env
+$EDITOR config/stack/stack.env
 $EDITOR vault/user/user.env
 ```
 

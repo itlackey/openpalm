@@ -40,14 +40,14 @@ Three hard rules define the whole design:
 The optional web control plane. When present, it reaches Docker through docker-socket-proxy.
 
 Responsibilities:
-- Writes runtime configuration and secrets directly to `~/.openpalm/stack/` and
+- Writes runtime configuration and secrets directly to `~/.openpalm/config/stack/` and
   `~/.openpalm/vault/`
 - Runs `docker compose` for all lifecycle operations (install, update, up, down,
   restart)
 - Exposes an authenticated API used by the browser UI and the assistant
 - Applies explicit config mutations to `config/`, reads addon catalog data from
   `~/.openpalm/registry/`, and manages enabled addon overlays in
-  `~/.openpalm/stack/addons/` when requested through authorized UI/API actions
+  `~/.openpalm/config/stack/addons/` when requested through authorized UI/API actions
 - Writes the audit log
 - Helps manage addons and other host-side files through an authenticated API
 
@@ -73,10 +73,10 @@ unauthorized.
 
 The assistant uses baked-in core config inside the image at `/etc/opencode`,
 mounts user extensions from `~/.openpalm/config/assistant/` into
-`/home/opencode/.config/opencode`, mounts `~/.openpalm/vault/stack/auth.json`
+`/home/opencode/.config/opencode`, mounts `~/.openpalm/config/stack/auth.json`
 for OpenCode auth state, and mounts `~/.openpalm/vault/user/` at `/etc/vault/`
 for optional user extension files. Provider keys are injected from
-`~/.openpalm/vault/stack/stack.env` via compose `${VAR}` substitution. Its durable home is
+`~/.openpalm/config/stack/stack.env` via compose `${VAR}` substitution. Its durable home is
 `~/.openpalm/data/assistant/`, and its shared workspace is
 `~/.openpalm/data/workspace/` mounted at `/work`.
 
@@ -176,16 +176,16 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
   allowlisted admin API actions
 
 ```
-~/.openpalm/stack/core.compose.yml         -> base compose definition
-~/.openpalm/stack/addons/chat/compose.yml  -> addon overlay
+~/.openpalm/config/stack/core.compose.yml         -> base compose definition
+~/.openpalm/config/stack/addons/chat/compose.yml  -> addon overlay
 ~/.openpalm/registry/addons/chat/.env.schema -> addon config contract
-~/.openpalm/vault/stack/stack.env          -> passed via --env-file
+~/.openpalm/config/stack/stack.env          -> passed via --env-file
 ~/.openpalm/vault/user/user.env            -> recommended addon/operator overrides
 ```
 
 Docker reads compose files and env files directly from their final locations.
 There is no intermediate staging step. The standard wrapper includes
-`vault/stack/stack.env`, `vault/user/user.env`, and `vault/stack/guardian.env`.
+`config/stack/stack.env`, `vault/user/user.env`, and `config/stack/guardian.env`.
 
 ---
 
@@ -220,8 +220,8 @@ Anything not on the list is rejected with `400 invalid_service` or
 ## Adding a Channel (the whole process)
 
 1. Browse the available catalog entry in `~/.openpalm/registry/addons/<name>/` via admin API, admin UI, or direct file inspection
-2. Enable it by copying `~/.openpalm/registry/addons/<name>/` into `~/.openpalm/stack/addons/<name>/`
-3. Or hand-author `~/.openpalm/stack/addons/<name>/` for a custom or multi-instance setup
+2. Enable it by copying `~/.openpalm/registry/addons/<name>/` into `~/.openpalm/config/stack/addons/<name>/`
+3. Or hand-author `~/.openpalm/config/stack/addons/<name>/` for a custom or multi-instance setup
 4. Rerun `docker compose` with that addon included
 5. If admin tooling is involved, it may also ensure/generate the channel HMAC secret first
 

@@ -2,7 +2,7 @@
 
 OpenPalm now documents the compose-first, manual-first setup as the primary
 path. The running stack is the exact Docker Compose file set you launch from
-`~/.openpalm/stack/`.
+`~/.openpalm/config/stack/`.
 
 If you prefer convenience tooling, the CLI can still help bootstrap the same
 layout, but it is not the source of truth.
@@ -25,8 +25,8 @@ details.
 ```bash
 git clone https://github.com/itlackey/openpalm.git
 cp -R openpalm/.openpalm "$HOME/.openpalm"
-cp -R "$HOME/.openpalm/registry/addons/admin" "$HOME/.openpalm/stack/addons/admin"
-$EDITOR "$HOME/.openpalm/vault/stack/stack.env"
+cp -R "$HOME/.openpalm/registry/addons/admin" "$HOME/.openpalm/config/stack/addons/admin"
+$EDITOR "$HOME/.openpalm/config/stack/stack.env"
 $EDITOR "$HOME/.openpalm/vault/user/user.env"
 ```
 
@@ -40,9 +40,9 @@ OpenPalm uses one home directory: `~/.openpalm/` by default.
 
 | Path | Purpose |
 |---|---|
-| `~/.openpalm/stack/` | Live compose files and helper scripts |
+| `~/.openpalm/config/stack/` | Live compose files and helper scripts |
 | `~/.openpalm/registry/` | Available addon and automation catalog |
-| `~/.openpalm/vault/stack/stack.env` | System-managed stack values and tokens |
+| `~/.openpalm/config/stack/stack.env` | System-managed stack values and tokens |
 | `~/.openpalm/vault/user/user.env` | Optional user-managed extension settings |
 | `~/.openpalm/config/` | User-editable config, automations, assistant extensions |
 | `~/.openpalm/data/` | Durable service data |
@@ -55,7 +55,7 @@ deployment truth.
 
 ## Important env files
 
-### `~/.openpalm/vault/stack/stack.env`
+### `~/.openpalm/config/stack/stack.env`
 
 This file holds system-managed values, provider API keys, capability variables, and owner identity:
 
@@ -87,7 +87,7 @@ preferences. Owner name and email live in `stack.env`.
 ## Addons
 
 Addons are available in `~/.openpalm/registry/addons/` and become active when
-copied into `~/.openpalm/stack/addons/`.
+copied into `~/.openpalm/config/stack/addons/`.
 
 | Addon | Compose file |
 |---|---|
@@ -116,7 +116,7 @@ For the full compose command reference including convenience shortcuts, see the
 
 If you want a bootstrap shortcut, you can still use the repo setup scripts or
 the `openpalm` CLI. They prepare the same `~/.openpalm/` layout and ultimately
-run Docker Compose against files in `~/.openpalm/stack/`.
+run Docker Compose against files in `~/.openpalm/config/stack/`.
 
 ---
 

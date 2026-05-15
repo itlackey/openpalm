@@ -18,10 +18,10 @@ Streaming is not supported.
 ## Deployment model
 
 - Shipped addon source: `.openpalm/registry/addons/api/compose.yml`
-- Enabled runtime overlay: `~/.openpalm/stack/addons/api/compose.yml`
+- Enabled runtime overlay: `~/.openpalm/config/stack/addons/api/compose.yml`
 - Default host URL: `http://localhost:3821`
 - Container port: `8182`
-- System-managed HMAC secret: `CHANNEL_API_SECRET` in `~/.openpalm/vault/stack/guardian.env`
+- System-managed HMAC secret: `CHANNEL_API_SECRET` in `~/.openpalm/config/stack/guardian.env`
 
 Manual start example:
 
@@ -29,7 +29,7 @@ Manual start example:
 cd "$HOME/.openpalm/stack"
 docker compose \
   --project-name openpalm \
-  --env-file ../vault/stack/stack.env \
+  --env-file ../config/stack/stack.env \
   --env-file ../vault/user/user.env \
   -f core.compose.yml \
   -f addons/api/compose.yml \

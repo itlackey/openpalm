@@ -79,7 +79,7 @@ OpenPalm uses one host home directory: `~/.openpalm/`.
 
 | Path | Purpose |
 |---|---|
-| `~/.openpalm/stack/` | Live compose files and helper scripts |
+| `~/.openpalm/config/stack/` | Live compose files and helper scripts |
 | `~/.openpalm/vault/` | Env files and schemas |
 | `~/.openpalm/config/` | User-editable config |
 | `~/.openpalm/data/` | Durable service data |
@@ -110,7 +110,7 @@ Approximate storage use:
 ### Default inbound ports
 
 OpenPalm is localhost/LAN-first by default. Most services bind to `127.0.0.1`
-unless you intentionally change bind addresses in `vault/stack/stack.env`.
+unless you intentionally change bind addresses in `config/stack/stack.env`.
 
 | Host port | Service | Variable |
 |---|---|---|
@@ -128,6 +128,6 @@ unless you intentionally change bind addresses in `vault/stack/stack.env`.
 
 ## Operational note
 
-The compose file set under `~/.openpalm/stack/` is the live deployment truth.
+The compose file set under `~/.openpalm/config/stack/` is the live deployment truth.
 `~/.openpalm/config/stack.yml` is optional metadata for tooling and does not
 change Docker's requirements on its own.

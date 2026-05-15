@@ -8,7 +8,7 @@ Compose files are the source of truth; the admin UI/API is optional convenience.
 - A working OpenPalm install; see [manual compose runbook](../operations/manual-compose-runbook.md)
 - Discord app/bot creation access
 - The `discord` addon included in your compose file set, or an admin addon if you want the optional install API
-- `OP_ADMIN_TOKEN` from `~/.openpalm/vault/stack/stack.env` if you use admin endpoints
+- `OP_ADMIN_TOKEN` from `~/.openpalm/config/stack/stack.env` if you use admin endpoints
 
 ## 1. Create the Discord app and bot
 
@@ -20,7 +20,7 @@ Compose files are the source of truth; the admin UI/API is optional convenience.
 
 ## 2. Add Discord secrets to `stack.env`
 
-Edit `~/.openpalm/vault/stack/stack.env`:
+Edit `~/.openpalm/config/stack/stack.env`:
 
 ```dotenv
 DISCORD_BOT_TOKEN=your-bot-token
@@ -45,8 +45,8 @@ Manual-first path:
 cd "$HOME/.openpalm/stack"
 docker compose \
   --project-name openpalm \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/stack/guardian.env \
+  --env-file ../config/stack/stack.env \
+  --env-file ../config/stack/guardian.env \
   --env-file ../vault/user/user.env \
   -f core.compose.yml \
   -f addons/discord/compose.yml \
@@ -108,4 +108,4 @@ Conversation notes:
 | `DISCORD_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `DISCORD_BLOCKED_USERS` | no | Comma-separated user blocklist |
 | `DISCORD_CUSTOM_COMMANDS` | no | JSON array of custom slash commands |
-| `CHANNEL_DISCORD_SECRET` | system-managed | Guardian HMAC secret from `vault/stack/guardian.env` |
+| `CHANNEL_DISCORD_SECRET` | system-managed | Guardian HMAC secret from `config/stack/guardian.env` |

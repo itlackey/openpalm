@@ -8,8 +8,8 @@ Primary sources:
 - `packages/lib/src/control-plane/spec-to-env.ts` — resolution logic
 - `packages/lib/src/control-plane/stack-spec.ts` — capability types
 - `packages/lib/src/provider-constants.ts` — provider URLs and key mappings
-- `.openpalm/stack/core.compose.yml` — compose variable consumption
-- `.openpalm/vault/stack/stack.env.schema` — env schema with OP_CAP_* entries
+- `.openpalm/config/stack/core.compose.yml` — compose variable consumption
+- `.openpalm/config/stack/stack.env.schema` — env schema with OP_CAP_* entries
 
 ---
 
@@ -38,13 +38,13 @@ writeCapabilityVars()          (packages/lib/src/control-plane/spec-to-env.ts)
   |-- parseCapabilityString()  parse "provider/model" into parts
   |-- PROVIDER_DEFAULT_URLS    resolve provider -> base URL
   |-- PROVIDER_KEY_MAP         resolve provider -> API key env var name
-  |-- reads raw keys from      vault/stack/stack.env
+  |-- reads raw keys from      config/stack/stack.env
         |
         v
-OP_CAP_* vars merged into      vault/stack/stack.env
+OP_CAP_* vars merged into      config/stack/stack.env
         |
         v
-compose ${OP_CAP_*} subst      .openpalm/stack/core.compose.yml + addon overlays
+compose ${OP_CAP_*} subst      .openpalm/config/stack/core.compose.yml + addon overlays
         |
         v
 service-local env vars          (SYSTEM_LLM_*, EMBEDDING_*, TTS_*, etc.)

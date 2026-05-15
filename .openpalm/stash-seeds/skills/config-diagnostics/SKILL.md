@@ -27,7 +27,7 @@ and guide them — without ever exposing actual secret values.
 2. **Read the canonical schema files** to understand variable descriptions,
    types, and requirements:
    - `vault/user/user.env.schema` — schema for `~/.openpalm/vault/user/user.env`
-   - `vault/stack/stack.env.schema` — schema for `~/.openpalm/vault/stack/stack.env`
+   - `config/stack/stack.env.schema` — schema for `~/.openpalm/config/stack/stack.env`
 
 3. **Interpret validation errors** using the schema metadata:
    - Match error variable names to schema entries for human-readable descriptions

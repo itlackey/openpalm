@@ -15,10 +15,10 @@ material it depends on, typically `${GNUPGHOME:-~/.gnupg}`.
 
 | Path | Contains | Back up? |
 |---|---|---|
-| `~/.openpalm/vault/` | `vault/stack/stack.env`, `vault/stack/guardian.env`, `vault/user/user.env`, schemas | Yes |
+| `~/.openpalm/vault/` | `config/stack/stack.env`, `config/stack/guardian.env`, `vault/user/user.env`, schemas | Yes |
 | `~/.openpalm/config/` | assistant config, enabled automations, `stack.yml` capabilities | Yes |
 | `~/.openpalm/registry/` | available addon and automation catalog | Yes |
-| `~/.openpalm/stack/` | live compose files and helper scripts | Yes |
+| `~/.openpalm/config/stack/` | live compose files and helper scripts | Yes |
 | `~/.openpalm/data/` | durable service data, workspace, stash | Yes |
 | `~/.openpalm/logs/` | logs and audit files | Optional |
 
@@ -38,8 +38,8 @@ docker compose \
   -f core.compose.yml \
   -f addons/admin/compose.yml \
   -f addons/chat/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/stack/guardian.env \
+  --env-file ../config/stack/stack.env \
+  --env-file ../config/stack/guardian.env \
   --env-file ../vault/user/user.env \
   down
 ```
@@ -86,8 +86,8 @@ docker compose \
   -f core.compose.yml \
   -f addons/admin/compose.yml \
   -f addons/chat/compose.yml \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/stack/guardian.env \
+  --env-file ../config/stack/stack.env \
+  --env-file ../config/stack/guardian.env \
   --env-file ../vault/user/user.env \
   up -d
 ```
@@ -102,7 +102,7 @@ Use the same addon file set you used before the backup.
 2. Install Docker on the new machine.
 3. Restore the backup into the new user's home directory.
 4. Fix ownership.
-5. Start the stack from `~/.openpalm/stack/` with the same compose file set.
+5. Start the stack from `~/.openpalm/config/stack/` with the same compose file set.
 
 There is no separate staging/artifacts/config-components reconstruction step in
 the current model.
@@ -114,12 +114,12 @@ the current model.
 | File or directory | Purpose |
 |---|---|
 | `~/.openpalm/vault/user/user.env` | Optional user extension env |
-| `~/.openpalm/vault/stack/stack.env` | Stack tokens, ports, paths, image tags |
-| `~/.openpalm/vault/stack/guardian.env` | Channel HMAC secrets for guardian/channel verification |
+| `~/.openpalm/config/stack/stack.env` | Stack tokens, ports, paths, image tags |
+| `~/.openpalm/config/stack/guardian.env` | Channel HMAC secrets for guardian/channel verification |
 | `~/.openpalm/registry/addons/<name>/` | Available addon catalog entries |
 | `~/.openpalm/registry/automations/` | Available automation catalog entries |
-| `~/.openpalm/stack/core.compose.yml` | Base stack definition |
-| `~/.openpalm/stack/addons/<name>/compose.yml` | Addon overlays |
+| `~/.openpalm/config/stack/core.compose.yml` | Base stack definition |
+| `~/.openpalm/config/stack/addons/<name>/compose.yml` | Addon overlays |
 | `~/.openpalm/config/assistant/` | User OpenCode config |
 | `~/.openpalm/config/automations/` | Scheduled automation files |
 | `~/.openpalm/config/stack.yml` | Capabilities only |

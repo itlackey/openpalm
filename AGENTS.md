@@ -40,7 +40,7 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 - **Channels SDK** (`packages/channels-sdk/`) — Shared SDK for channel adapters: signing, assistant client, base classes.
 - **Assistant-tools** (`packages/assistant-tools/`) — `load_vault` and `health-check` tools for the assistant. No admin dependency. Memory/knowledge access comes from the `akm-opencode` plugin.
 - **Admin-tools** (`packages/admin-tools/`) — Admin API tools for the assistant. Only loaded when admin is present.
-- **Stack** (`.openpalm/stack/`) — Repo-shipped Docker Compose foundation. Contains the core compose file only. Runtime enabled addons live under `~/.openpalm/stack/addons/`.
+- **Stack** (`.openpalm/config/stack/`) — Repo-shipped Docker Compose foundation. Contains the core compose file only. Runtime enabled addons live under `~/.openpalm/config/stack/addons/`.
 
 ---
 
@@ -129,9 +129,9 @@ bun run dev:stack
 
 # Manual equivalent with channel overlay:
 docker compose --project-directory . \
-  -f .openpalm/stack/core.compose.yml \
+  -f .openpalm/config/stack/core.compose.yml \
   -f compose.dev.yml \
-  --env-file .dev/vault/stack/stack.env \
+  --env-file .dev/config/stack/stack.env \
   --env-file .dev/vault/user/user.env \
   up --build -d
 ```
@@ -232,7 +232,7 @@ Full detail in [`docs/technical/core-principles.md`](docs/technical/core-princip
 
 - **File assembly, not rendering.** Write whole files; no string interpolation or template generation.
 - **`config/` is user-owned.** Automatic lifecycle operations are non-destructive for existing user files and only seed missing defaults. Allowed writers: user direct edits, explicit admin UI/API config actions, assistant calls through authenticated admin APIs on user request.
-- **`vault/` boundary.** Only admin mounts full `vault/` (rw). Assistant mounts `vault/user/` (rw). No other container mounts anything from vault. Guardian loads `vault/stack/guardian.env` as env_file (channel HMAC secrets with hot-reload).
+- **`vault/` boundary.** Only admin mounts full `vault/` (rw). Assistant mounts `vault/user/` (rw). No other container mounts anything from vault. Guardian loads `config/stack/guardian.env` as env_file (channel HMAC secrets with hot-reload).
 - **Host CLI or admin is the orchestrator.** CLI manages Docker Compose directly on the host. Admin (optional) provides a web UI via docker-socket-proxy.
 - **Shared control-plane library (`@openpalm/lib`) is the single source of truth.** All portable control-plane logic lives in `packages/lib/`. CLI, admin, and scheduler all import from this package. Never duplicate control-plane logic in a consumer.
 - **Guardian-only ingress.** All channel traffic must enter through the guardian (HMAC, replay protection, rate limiting).
@@ -252,7 +252,7 @@ All state lives under `~/.openpalm/` (configurable via `OP_HOME`):
 |-----------|-------|---------|
 | `config/` | User | Non-secret config: `stack.yml` capabilities, enabled automations, assistant extensions |
 | `vault/user/` | User | User-managed secrets: `user.env` (LLM keys, owner info) |
-| `vault/stack/` | Admin | System-managed secrets: `stack.env` (admin token, HMAC, paths) |
+| `config/stack/` | Admin | System-managed secrets: `stack.env` (admin token, HMAC, paths) |
 | `stack/` | System | Live Docker Compose assembly: `core.compose.yml` + addon overlays |
 | `data/` | Services | Persistent data: assistant, admin, guardian, shared akm `stash/` |
 | `logs/` | Services | Audit and debug logs |
@@ -301,7 +301,7 @@ Before submitting any change:
 | `packages/scheduler/src/main.ts` | Scheduler co-process entry point |
 | `core/guardian/src/server.ts` | HMAC-signed message guardian |
 | `packages/channels-sdk/src/logger.ts` | Shared logger (createLogger factory) |
-| `.openpalm/stack/core.compose.yml` | Core service definitions (assistant + guardian) |
+| `.openpalm/config/stack/core.compose.yml` | Core service definitions (assistant + guardian) |
 | `.openpalm/registry/` | Repo catalog for available addons and automations |
 | `packages/assistant-tools/AGENTS.md` | Contributor pointer for the assistant-tools package |
 | `packages/assistant-tools/src/index.ts` | Assistant tools plugin (`load_vault`, `health-check`) |

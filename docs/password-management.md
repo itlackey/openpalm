@@ -18,10 +18,10 @@ and one guardian secret env.
 ```
 
 - `vault/user/user.env` is the recommended user-managed override file for addon and operator values.
-- `vault/stack/stack.env` is system-managed runtime env + secrets.
-- `vault/stack/guardian.env` holds channel HMAC secrets.
+- `config/stack/stack.env` is system-managed runtime env + secrets.
+- `config/stack/guardian.env` holds channel HMAC secrets.
 - Compose is run with both files, usually as:
-  `--env-file ../vault/stack/stack.env --env-file ../vault/user/user.env`.
+  `--env-file ../config/stack/stack.env --env-file ../vault/user/user.env`.
 
 ---
 
@@ -39,7 +39,7 @@ Behavior:
 
 ---
 
-## `vault/stack/stack.env`
+## `config/stack/stack.env`
 
 This file is for stack-level tokens, host paths, ports, API keys, provider
 configuration, and other runtime settings used by Compose.
@@ -133,7 +133,7 @@ source of truth.
 
 ## Practical guidance
 
-- Edit `~/.openpalm/vault/stack/stack.env` when changing API keys, provider
+- Edit `~/.openpalm/config/stack/stack.env` when changing API keys, provider
   settings, ports, paths, or stack-level tokens.
 - Edit `~/.openpalm/vault/user/user.env` for optional user-managed extension
   settings and custom preferences.

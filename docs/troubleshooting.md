@@ -3,7 +3,7 @@
 Common problems and their fixes for the current compose-first OpenPalm model.
 
 When in doubt, inspect the exact compose file set you started from
-`~/.openpalm/stack/` and rerun that same file set explicitly.
+`~/.openpalm/config/stack/` and rerun that same file set explicitly.
 
 ---
 
@@ -52,7 +52,7 @@ lsof -i :3880
 ```
 
 Then either stop that process or change the matching `OP_*_PORT` value in
-`~/.openpalm/vault/stack/stack.env`, then recreate the stack with the same
+`~/.openpalm/config/stack/stack.env`, then recreate the stack with the same
 compose file set.
 
 ---
@@ -74,7 +74,7 @@ cd "$HOME/.openpalm/stack"
 docker compose \
   -f core.compose.yml \
   -f addons/admin/compose.yml \
-  --env-file ../vault/stack/stack.env \
+  --env-file ../config/stack/stack.env \
   --env-file ../vault/user/user.env \
   ps
 ```
@@ -85,7 +85,7 @@ Then inspect logs if needed:
 docker compose \
   -f core.compose.yml \
   -f addons/admin/compose.yml \
-  --env-file ../vault/stack/stack.env \
+  --env-file ../config/stack/stack.env \
   --env-file ../vault/user/user.env \
   logs admin
 ```
@@ -107,7 +107,7 @@ docker compose \
   -f core.compose.yml \
   -f addons/admin/compose.yml \
   -f addons/chat/compose.yml \
-  --env-file ../vault/stack/stack.env \
+  --env-file ../config/stack/stack.env \
   --env-file ../vault/user/user.env \
   up -d
 ```
@@ -124,20 +124,20 @@ reading it.
 **Fix:**
 
 1. check the assistant container status and logs
-2. verify at least one provider is configured in `~/.openpalm/vault/stack/stack.env`
+2. verify at least one provider is configured in `~/.openpalm/config/stack/stack.env`
 3. confirm the provider endpoint is reachable from Docker if you use a local model server
 
 Useful checks:
 
 ```bash
-grep -E 'API_KEY|BASE_URL|OP_CAP_LLM_' ~/.openpalm/vault/stack/stack.env
+grep -E 'API_KEY|BASE_URL|OP_CAP_LLM_' ~/.openpalm/config/stack/stack.env
 ```
 
 ```bash
 cd "$HOME/.openpalm/stack"
 docker compose \
   -f core.compose.yml \
-  --env-file ../vault/stack/stack.env \
+  --env-file ../config/stack/stack.env \
   --env-file ../vault/user/user.env \
   logs assistant
 ```
@@ -167,11 +167,11 @@ Then recreate any services that depend on that value.
 **Fix:**
 
 - verify the channel addon is part of the compose file set you started
-- check `~/.openpalm/vault/stack/guardian.env` for the relevant `CHANNEL_*_SECRET`
+- check `~/.openpalm/config/stack/guardian.env` for the relevant `CHANNEL_*_SECRET`
 - recreate the affected channel and guardian services after changing secrets
 
 There is no separate staging/artifacts file to inspect in the current model; the
-live values come straight from `vault/stack/stack.env`.
+live values come straight from `config/stack/stack.env`.
 
 ---
 
@@ -181,10 +181,10 @@ live values come straight from `vault/stack/stack.env`.
 the wrong user.
 
 **Fix:** verify ownership and the UID/GID values in
-`~/.openpalm/vault/stack/stack.env`:
+`~/.openpalm/config/stack/stack.env`:
 
 ```bash
-grep -E 'OP_UID|OP_GID' ~/.openpalm/vault/stack/stack.env
+grep -E 'OP_UID|OP_GID' ~/.openpalm/config/stack/stack.env
 id -u
 id -g
 sudo chown -R $(id -u):$(id -g) ~/.openpalm
@@ -201,12 +201,12 @@ restart-loop.
 
 **Fix:**
 
-- compare your current `~/.openpalm/vault/stack/stack.env` with the newer schema
+- compare your current `~/.openpalm/config/stack/stack.env` with the newer schema
 - make sure any newly required variables are present
 - rerun `docker compose pull` and then `docker compose up -d` with the same file set
 
 There is no XDG staging or artifacts directory to clear. The live deployment is
-the compose files under `~/.openpalm/stack/` plus the two vault env files.
+the compose files under `~/.openpalm/config/stack/` plus the two vault env files.
 
 ---
 
@@ -220,7 +220,7 @@ docker compose \
   -f core.compose.yml \
   -f addons/admin/compose.yml \
   -f addons/chat/compose.yml \
-  --env-file ../vault/stack/stack.env \
+  --env-file ../config/stack/stack.env \
   --env-file ../vault/user/user.env \
   down -v
 

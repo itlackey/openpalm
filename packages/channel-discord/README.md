@@ -14,9 +14,9 @@ It runs behind guardian and is normally deployed by including `addons/discord/co
 ## Deployment model
 
 - Shipped addon source: `.openpalm/registry/addons/discord/compose.yml`
-- Enabled runtime overlay: `~/.openpalm/stack/addons/discord/compose.yml`
+- Enabled runtime overlay: `~/.openpalm/config/stack/addons/discord/compose.yml`
 - User-managed values: `~/.openpalm/vault/user/user.env`
-- System-managed HMAC secret: `CHANNEL_DISCORD_SECRET` in `~/.openpalm/vault/stack/guardian.env`
+- System-managed HMAC secret: `CHANNEL_DISCORD_SECRET` in `~/.openpalm/config/stack/guardian.env`
 
 Manual start example:
 
@@ -24,7 +24,7 @@ Manual start example:
 cd "$HOME/.openpalm/stack"
 docker compose \
   --project-name openpalm \
-  --env-file ../vault/stack/stack.env \
+  --env-file ../config/stack/stack.env \
   --env-file ../vault/user/user.env \
   -f core.compose.yml \
   -f addons/discord/compose.yml \
@@ -33,7 +33,7 @@ docker compose \
 
 See `docs/channels/discord-setup.md` for the full walkthrough.
 
-The shipped addon overlay loads `vault/stack/stack.env` and `vault/user/user.env`
+The shipped addon overlay loads `config/stack/stack.env` and `vault/user/user.env`
 with `env_file`, so Discord credentials placed in `user.env` are passed into the container.
 
 ## Environment variables

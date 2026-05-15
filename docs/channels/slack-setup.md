@@ -8,7 +8,7 @@ OpenPalm is compose-first: add the Slack overlay to your compose file set, put S
 - A working OpenPalm install; see [manual compose runbook](../operations/manual-compose-runbook.md)
 - A Slack workspace where you can create apps
 - The `slack` addon in your compose file set, or the optional `admin` addon if you want admin-assisted install
-- `OP_ADMIN_TOKEN` from `~/.openpalm/vault/stack/stack.env` if you use admin endpoints
+- `OP_ADMIN_TOKEN` from `~/.openpalm/config/stack/stack.env` if you use admin endpoints
 
 ## 1. Create the Slack app
 
@@ -58,7 +58,7 @@ SLACK_ALLOWED_USERS=U01ABCDEF23
 SLACK_BLOCKED_USERS=U09ZZZZZZ99
 ```
 
-`CHANNEL_SLACK_SECRET` is system-managed and stays in `~/.openpalm/vault/stack/guardian.env`.
+`CHANNEL_SLACK_SECRET` is system-managed and stays in `~/.openpalm/config/stack/guardian.env`.
 
 ## 3. Start the addon
 
@@ -68,8 +68,8 @@ Manual-first path:
 cd "$HOME/.openpalm/stack"
 docker compose \
   --project-name openpalm \
-  --env-file ../vault/stack/stack.env \
-  --env-file ../vault/stack/guardian.env \
+  --env-file ../config/stack/stack.env \
+  --env-file ../config/stack/guardian.env \
   --env-file ../vault/user/user.env \
   -f core.compose.yml \
   -f addons/slack/compose.yml \
@@ -126,4 +126,4 @@ Conversation notes:
 | `SLACK_ALLOWED_CHANNELS` | no | Comma-separated channel allowlist |
 | `SLACK_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `SLACK_BLOCKED_USERS` | no | Comma-separated user blocklist |
-| `CHANNEL_SLACK_SECRET` | system-managed | Guardian HMAC secret from `vault/stack/guardian.env` |
+| `CHANNEL_SLACK_SECRET` | system-managed | Guardian HMAC secret from `config/stack/guardian.env` |

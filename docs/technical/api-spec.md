@@ -385,7 +385,7 @@ Error responses:
 
 ## Registry
 
-Runtime catalog endpoints for automations. Channel/addon management is handled by `/admin/addons` endpoints against `~/.openpalm/registry/addons/` and active `~/.openpalm/stack/addons/`.
+Runtime catalog endpoints for automations. Channel/addon management is handled by `/admin/addons` endpoints against `~/.openpalm/registry/addons/` and active `~/.openpalm/config/stack/addons/`.
 
 ### `GET /admin/automations/catalog`
 
@@ -547,13 +547,13 @@ Response:
 ## Capabilities
 
 Manage LLM provider credentials and related configuration stored in
-`vault/stack/stack.env`. Values are patched in-place by `patchSecretsEnvFile`
+`config/stack/stack.env`. Values are patched in-place by `patchSecretsEnvFile`
 -- existing keys not in the allowed set are never removed or overwritten.
 
 ### `GET /admin/capabilities`
 
 Returns the current capability assignments from `stack.yml` and masked secret
-values from `vault/stack/stack.env`.
+values from `config/stack/stack.env`.
 
 Response:
 
@@ -581,7 +581,7 @@ Response:
 
 ### `POST /admin/capabilities`
 
-Saves provider credentials to `vault/stack/stack.env`, updates `stack.yml`
+Saves provider credentials to `config/stack/stack.env`, updates `stack.yml`
 capabilities.
 
 Body:
@@ -598,7 +598,7 @@ Body:
 ```
 
 - `provider` (required) -- Must be a supported provider name.
-- `apiKey` -- API key to write to `vault/stack/stack.env`.
+- `apiKey` -- API key to write to `config/stack/stack.env`.
 - `baseUrl` -- Provider base URL.
 - `systemModel` -- Model name for the LLM capability.
 - `embeddingModel` -- Model name for the embeddings capability.
@@ -613,7 +613,7 @@ Response:
 Error responses:
 
 - `400 bad_request` -- `provider` is missing or not in scope.
-- `500 internal_error` -- Failed to write `vault/stack/stack.env` or `stack.yml`.
+- `500 internal_error` -- Failed to write `config/stack/stack.env` or `stack.yml`.
 
 ### `GET /admin/capabilities/status`
 
@@ -743,7 +743,7 @@ Error responses:
 ### `GET /admin/config/validate`
 
 Run the in-house key-presence check against the live vault env files
-(`vault/stack/stack.env`, `vault/stack/guardian.env`, `vault/user/user.env`).
+(`config/stack/stack.env`, `config/stack/guardian.env`, `vault/user/user.env`).
 The validator confirms that the canonical secret slots are present and that
 every required token is non-empty — no varlock binary, no schema file. Always
 returns 200; validation failures are non-fatal and are logged to the audit

@@ -1,32 +1,27 @@
-# stack/ (DEPRECATED — moved to config/stack/)
+# config/stack/
 
-**This directory has been moved to `config/stack/` as part of v0.11.0 restructuring.**
-
-See [`../config/stack/README.md`](../config/stack/README.md) for current documentation.
-
----
-
-The following documentation is preserved for reference but is OUTDATED:
+This directory contains the runtime stack composition and configuration. OpenPalm runs from `core.compose.yml`
+plus whichever addon compose files you include from `addons/`.
 
 ## Quick start
 
 ```bash
 # Run the core stack by hand
-cd ~/.openpalm/stack
+cd ~/.openpalm/config/stack
 docker compose \
   --project-name openpalm \
-  --env-file ../config/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  --env-file ../config/stack/guardian.env \
+  --env-file ../stack.env \
+  --env-file ../../vault/user/user.env \
+  --env-file guardian.env \
   -f core.compose.yml \
   up -d
 
 # Add addons by adding more -f files
 docker compose \
   --project-name openpalm \
-  --env-file ../config/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  --env-file ../config/stack/guardian.env \
+  --env-file ../stack.env \
+  --env-file ../../vault/user/user.env \
+  --env-file guardian.env \
   -f core.compose.yml \
   -f addons/chat/compose.yml \
   -f addons/admin/compose.yml \
@@ -47,11 +42,11 @@ status, logs, and all other operations.
 ## Addons
 
 Each addon is a compose overlay in `addons/<name>/compose.yml`. Compose file
-selection is the deployment model. `config/stack.yml` is optional tooling
+selection is the deployment model. `../stack.yml` is optional tooling
 metadata that can help choose addons, but it does not replace these files.
 
 Repo addon sources live under `.openpalm/registry/addons/`. At runtime,
-`stack/addons/` should contain enabled addons only.
+`addons/` should contain enabled addons only.
 
 | Addon | Host port | Purpose |
 |-------|-----------|---------|
@@ -71,3 +66,13 @@ Repo addon sources live under `.openpalm/registry/addons/`. At runtime,
 | `channel_lan` | Internal/LAN-facing channel traffic |
 | `assistant_net` | Internal core-service communication |
 | `admin_docker_net` | Isolated network for admin and docker-socket-proxy |
+
+## Files in this directory
+
+| File | Purpose | Owner |
+|------|---------|-------|
+| `stack.yml` | Capabilities only (metadata) | User, explicit admin actions |
+| `stack.env` | System-managed environment variables (API keys, etc.) | CLI/admin (automated) |
+| `guardian.env` | Channel HMAC secrets (hot-loaded at runtime) | CLI/admin (automated) |
+| `core.compose.yml` | Core service definition (always used) | System (managed via CLI/admin) |
+| `addons/` | Enabled addon compose overlays | CLI/admin (via install/enable operations) |

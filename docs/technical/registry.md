@@ -28,7 +28,7 @@ Two environment variables control the registry source:
 
 ### Addon components
 
-Repo catalog addons live in `.openpalm/registry/addons/<name>/`. Runtime available addons live in `~/.openpalm/registry/addons/<name>/`. Enabled addons live in `~/.openpalm/stack/addons/<name>/`. Each addon directory must contain:
+Repo catalog addons live in `.openpalm/registry/addons/<name>/`. Runtime available addons live in `~/.openpalm/registry/addons/<name>/`. Enabled addons live in `~/.openpalm/config/stack/addons/<name>/`. Each addon directory must contain:
 
 | File | Purpose |
 |---|---|
@@ -160,11 +160,11 @@ Response:
 
 ### `GET /admin/addons`
 
-List all available addons from `~/.openpalm/registry/addons/` with enabled state from `~/.openpalm/stack/addons/`.
+List all available addons from `~/.openpalm/registry/addons/` with enabled state from `~/.openpalm/config/stack/addons/`.
 
 ### `POST /admin/addons`
 
-Enable or disable an addon by copying or removing its directory under `~/.openpalm/stack/addons/`. When enabling a channel addon, an HMAC secret is auto-generated.
+Enable or disable an addon by copying or removing its directory under `~/.openpalm/config/stack/addons/`. When enabling a channel addon, an HMAC secret is auto-generated.
 
 ### `GET /admin/addons/:name` / `POST /admin/addons/:name`
 

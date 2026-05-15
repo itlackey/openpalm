@@ -36,9 +36,9 @@ Ephemeral cache lives under `~/.cache/openpalm/`.
 
 The standard startup path uses:
 
-- `vault/stack/stack.env` — primary: all config, secrets, and resolved capabilities (OP_CAP_*)
+- `config/stack/stack.env` — primary: all config, secrets, and resolved capabilities (OP_CAP_*)
 - `vault/user/user.env` — extension: optional user additions, loaded alongside stack.env
-- `vault/stack/guardian.env` — guardian-specific: channel HMAC secrets. Not shipped in the bundle; created by the CLI installer when the first channel is installed. Compose marks it `required: false`.
+- `config/stack/guardian.env` — guardian-specific: channel HMAC secrets. Not shipped in the bundle; created by the CLI installer when the first channel is installed. Compose marks it `required: false`.
 
 ### Security boundaries
 
@@ -97,7 +97,7 @@ Mounts:
 - `$OP_HOME/data/workspace -> /work`
 - `$OP_HOME/config -> /etc/openpalm`
 - `$OP_HOME/config/assistant -> /home/opencode/.config/opencode`
-- `$OP_HOME/vault/stack/auth.json -> /home/opencode/.local/share/opencode/auth.json`
+- `$OP_HOME/config/stack/auth.json -> /home/opencode/.local/share/opencode/auth.json`
 - `$OP_HOME/vault/user/ -> /etc/vault/` (directory mount, rw)
 - `$OP_HOME/logs/opencode -> /home/opencode/.local/state/opencode`
 
@@ -138,7 +138,7 @@ Role:
 Env sources:
 
 - direct compose `environment:` block (non-secret config via ${VAR} substitution)
-- `vault/stack/guardian.env` as compose `env_file` (channel HMAC secrets). This file is not shipped; it is created by the CLI installer when the first channel is installed. Compose marks it `required: false`, so the guardian starts without it.
+- `config/stack/guardian.env` as compose `env_file` (channel HMAC secrets). This file is not shipped; it is created by the CLI installer when the first channel is installed. Compose marks it `required: false`, so the guardian starts without it.
 - same file mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload
 
 Key env:
@@ -154,7 +154,7 @@ Mounts:
 
 - `$OP_HOME/data/guardian -> /app/data`
 - `$OP_HOME/logs -> /app/audit`
-- `$OP_HOME/vault/stack/guardian.env -> /app/secrets/guardian.env:ro` (created by CLI installer; absent until first channel install)
+- `$OP_HOME/config/stack/guardian.env -> /app/secrets/guardian.env:ro` (created by CLI installer; absent until first channel install)
 
 Ports and network:
 
@@ -309,12 +309,12 @@ Ports and network:
 
 Shipped channel-style addons follow the same basic pattern:
 
-- receive their channel HMAC secret via `${VAR}` substitution from `vault/stack/guardian.env` (passed as a compose `--env-file`)
+- receive their channel HMAC secret via `${VAR}` substitution from `config/stack/guardian.env` (passed as a compose `--env-file`)
 - join `channel_lan` by default (or `channel_public` for internet-facing channels once that network's access semantics are finalized)
 - depend on `guardian`
 - send signed traffic to guardian, not directly to assistant
 
-Channel secret distribution: when a channel addon is installed, a shared HMAC secret is generated and written to both the channel's addon env and `vault/stack/guardian.env` as a `CHANNEL_<n>_SECRET` entry. This file is loaded by the guardian as a compose `env_file` and bind-mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload. The channel SDK uses this secret to sign outbound requests; the guardian uses it to verify inbound requests. See the Guardian section above for hot-reload details.
+Channel secret distribution: when a channel addon is installed, a shared HMAC secret is generated and written to both the channel's addon env and `config/stack/guardian.env` as a `CHANNEL_<n>_SECRET` entry. This file is loaded by the guardian as a compose `env_file` and bind-mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload. The channel SDK uses this secret to sign outbound requests; the guardian uses it to verify inbound requests. See the Guardian section above for hot-reload details.
 
 Default host binds for shipped HTTP-ish edges:
 

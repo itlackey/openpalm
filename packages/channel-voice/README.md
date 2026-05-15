@@ -17,7 +17,7 @@ mic -> STT -> assistant -> TTS -> speaker
 ## Deployment model
 
 - Shipped addon source: `.openpalm/registry/addons/voice/compose.yml`
-- Enabled runtime overlay: `~/.openpalm/stack/addons/voice/compose.yml`
+- Enabled runtime overlay: `~/.openpalm/config/stack/addons/voice/compose.yml`
 - Default host URL: `http://localhost:3810`
 - Container port: `8186`
 - The deployed voice addon serves a static web app and talks directly to OpenCode's session API in the browser; it does not round-trip through the guardian, so no `CHANNEL_VOICE_SECRET` HMAC is needed in the addon overlay.
@@ -28,7 +28,7 @@ Manual start example:
 cd "$HOME/.openpalm/stack"
 docker compose \
   --project-name openpalm \
-  --env-file ../vault/stack/stack.env \
+  --env-file ../config/stack/stack.env \
   --env-file ../vault/user/user.env \
   -f core.compose.yml \
   -f addons/voice/compose.yml \

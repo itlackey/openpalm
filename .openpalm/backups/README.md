@@ -16,7 +16,7 @@ backups/
   2026-03-20T15-30-00-000Z/
     stack/core.compose.yml
     vault/user/user.env.schema
-    vault/stack/stack.env.schema
+    config/stack/stack.env.schema
     ...
 ```
 
@@ -30,9 +30,9 @@ ls ~/.openpalm/backups/
 
 # Restore a specific backup (stop services first, then restart)
 # See docs/operations/manual-compose-runbook.md for the full compose command
-docker compose --project-name openpalm -f ~/.openpalm/stack/core.compose.yml down
+docker compose --project-name openpalm -f ~/.openpalm/config/stack/core.compose.yml down
 cp -r ~/.openpalm/backups/<timestamp>/* ~/.openpalm/
-docker compose --project-name openpalm -f ~/.openpalm/stack/core.compose.yml up -d
+docker compose --project-name openpalm -f ~/.openpalm/config/stack/core.compose.yml up -d
 ```
 
 This directory is excluded from version control. Only this README is tracked.

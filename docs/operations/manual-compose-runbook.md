@@ -26,11 +26,11 @@ variable). The relevant files for running the stack are:
 
 | Path | Purpose |
 |---|---|
-| `~/.openpalm/stack/core.compose.yml` | Core services: assistant (also runs the scheduler co-process), guardian |
-| `~/.openpalm/stack/addons/<name>/compose.yml` | One file per enabled addon (admin, chat, api, etc.) |
-| `~/.openpalm/vault/stack/stack.env` | System-managed values: tokens, ports, UID/GID, image tags |
+| `~/.openpalm/config/stack/core.compose.yml` | Core services: assistant (also runs the scheduler co-process), guardian |
+| `~/.openpalm/config/stack/addons/<name>/compose.yml` | One file per enabled addon (admin, chat, api, etc.) |
+| `~/.openpalm/config/stack/stack.env` | System-managed values: tokens, ports, UID/GID, image tags |
 | `~/.openpalm/vault/user/user.env` | User-managed settings: owner info, custom preferences |
-| `~/.openpalm/vault/stack/guardian.env` | Channel HMAC secrets (loaded by guardian; compose marks it `required: false`) |
+| `~/.openpalm/config/stack/guardian.env` | Channel HMAC secrets (loaded by guardian; compose marks it `required: false`) |
 | `~/.openpalm/config/stack.yml` | Optional tooling metadata (helper scripts read this; it is not deployment truth) |
 
 The project name defaults to `openpalm` and can be overridden with the
@@ -39,7 +39,7 @@ The project name defaults to `openpalm` and can be overridden with the
 To see which addon compose files are present:
 
 ```bash
-ls ~/.openpalm/stack/addons/
+ls ~/.openpalm/config/stack/addons/
 ```
 
 ---
@@ -66,10 +66,10 @@ op() {
 
   docker compose \
     --project-name "$PROJECT_NAME" \
-    --env-file "$OP_HOME/vault/stack/stack.env" \
+    --env-file "$OP_HOME/config/stack/stack.env" \
     --env-file "$OP_HOME/vault/user/user.env" \
-    --env-file "$OP_HOME/vault/stack/guardian.env" \
-    -f "$OP_HOME/stack/core.compose.yml" \
+    --env-file "$OP_HOME/config/stack/guardian.env" \
+    -f "$OP_HOME/config/stack/core.compose.yml" \
     $addon_files \
     "$@"
 }
@@ -98,12 +98,12 @@ PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
 
 docker compose \
   --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/vault/stack/stack.env" \
+  --env-file "$OP_HOME/config/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
-  --env-file "$OP_HOME/vault/stack/guardian.env" \
-  -f "$OP_HOME/stack/core.compose.yml" \
-  -f "$OP_HOME/stack/addons/admin/compose.yml" \
-  -f "$OP_HOME/stack/addons/chat/compose.yml" \
+  --env-file "$OP_HOME/config/stack/guardian.env" \
+  -f "$OP_HOME/config/stack/core.compose.yml" \
+  -f "$OP_HOME/config/stack/addons/admin/compose.yml" \
+  -f "$OP_HOME/config/stack/addons/chat/compose.yml" \
   <command>
 ```
 
@@ -131,11 +131,11 @@ op config --services
 ```bash
 docker compose \
   --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/vault/stack/stack.env" \
+  --env-file "$OP_HOME/config/stack/stack.env" \
   --env-file "$OP_HOME/vault/user/user.env" \
-  --env-file "$OP_HOME/vault/stack/guardian.env" \
-  -f "$OP_HOME/stack/core.compose.yml" \
-  -f "$OP_HOME/stack/addons/admin/compose.yml" \
+  --env-file "$OP_HOME/config/stack/guardian.env" \
+  -f "$OP_HOME/config/stack/core.compose.yml" \
+  -f "$OP_HOME/config/stack/addons/admin/compose.yml" \
   config --quiet
 ```
 
@@ -209,7 +209,7 @@ op pull
    ```
 2. Copy the addon directory into the active stack:
    ```bash
-   cp -R ~/.openpalm/registry/addons/<name> ~/.openpalm/stack/addons/<name>
+   cp -R ~/.openpalm/registry/addons/<name> ~/.openpalm/config/stack/addons/<name>
    ```
 3. Run preflight to confirm the merge is clean:
    ```bash
@@ -224,7 +224,7 @@ op pull
 
 1. Remove the addon directory:
    ```bash
-   rm -rf ~/.openpalm/stack/addons/<name>
+   rm -rf ~/.openpalm/config/stack/addons/<name>
    ```
 2. Recreate the stack (the helper automatically excludes the removed addon):
    ```bash
@@ -321,14 +321,14 @@ file that contains the `extends` directive.
 
 ## Secret Rotation
 
-### LLM provider keys and system secrets (`vault/stack/stack.env`)
+### LLM provider keys and system secrets (`config/stack/stack.env`)
 
 API keys, provider config, admin token, HMAC secrets, and service auth tokens
 all live in `stack.env`. Changes require a full container recreate to take
 effect:
 
 ```bash
-$EDITOR ~/.openpalm/vault/stack/stack.env
+$EDITOR ~/.openpalm/config/stack/stack.env
 
 # Recreate all containers to pick up new values
 op up -d --force-recreate
@@ -374,4 +374,4 @@ directly — extract and start.
 | [troubleshooting.md](../troubleshooting.md) | Common problems and fixes |
 | [core-principles.md](../technical/core-principles.md) | Architectural rules and filesystem contract |
 | [environment-and-mounts.md](../technical/environment-and-mounts.md) | Per-service mount and env details |
-| `.openpalm/stack/README.md` | Stack directory quick reference |
+| `.openpalm/config/stack/README.md` | Stack directory quick reference |

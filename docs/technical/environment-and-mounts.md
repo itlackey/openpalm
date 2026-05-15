@@ -5,7 +5,7 @@ and runtime files under `OP_HOME`.
 
 Primary sources:
 
-- `.openpalm/stack/core.compose.yml`
+- `.openpalm/config/stack/core.compose.yml`
 - `.openpalm/registry/addons/*/compose.yml`
 - `core/*/entrypoint.sh` and service source where runtime defaults matter
 
@@ -21,9 +21,9 @@ OpenPalm stores runtime state under `OP_HOME`, which defaults to `~/.openpalm`.
 |---|---|
 | `~/.openpalm/config/` | User-editable, non-secret config |
 | `~/.openpalm/registry/` | Available addon and automation catalog |
-| `~/.openpalm/stack/` | Live compose assembly; `stack/addons/` contains enabled addon overlays only |
+| `~/.openpalm/config/stack/` | Live compose assembly; `stack/addons/` contains enabled addon overlays only |
 | `~/.openpalm/vault/user/` | User-managed settings (`user.env`) |
-| `~/.openpalm/vault/stack/` | System-managed secrets and runtime env (`stack.env`, API keys, auth.json) |
+| `~/.openpalm/config/stack/` | System-managed secrets and runtime env (`stack.env`, API keys, auth.json) |
 | `~/.openpalm/data/` | Durable service data |
 | `~/.openpalm/logs/` | Audit and debug logs |
 | `~/.cache/openpalm/` | Ephemeral cache and rollback snapshots |
@@ -52,16 +52,16 @@ There is no separate memory service.
 Docker Compose is invoked with these env files (see [Manual Compose Runbook](../operations/manual-compose-runbook.md)):
 
 ```bash
---env-file "$OP_HOME/vault/stack/stack.env"
+--env-file "$OP_HOME/config/stack/stack.env"
 --env-file "$OP_HOME/vault/user/user.env"
---env-file "$OP_HOME/vault/stack/guardian.env"
+--env-file "$OP_HOME/config/stack/guardian.env"
 ```
 
 That means the effective env model is:
 
-- `vault/stack/stack.env` - system-managed runtime env and secrets (admin token, paths, UID/GID, image tags, bind ports, API keys, provider config, owner identity)
+- `config/stack/stack.env` - system-managed runtime env and secrets (admin token, paths, UID/GID, image tags, bind ports, API keys, provider config, owner identity)
 - `vault/user/user.env` - recommended user-managed addon overrides and operator settings
-- `vault/stack/guardian.env` - channel HMAC secrets (loaded by guardian as env_file and via GUARDIAN_SECRETS_PATH)
+- `config/stack/guardian.env` - channel HMAC secrets (loaded by guardian as env_file and via GUARDIAN_SECRETS_PATH)
 
 ---
 
@@ -75,7 +75,7 @@ That means the effective env model is:
 
 ### Assistant
 
-Compose source: `.openpalm/stack/core.compose.yml`
+Compose source: `.openpalm/config/stack/core.compose.yml`
 
 Mounts:
 
@@ -84,7 +84,7 @@ Mounts:
 | baked into image | `/etc/opencode` | image content | Core OpenCode config and built-in extensions |
 | `$OP_HOME/config` | `/etc/openpalm` | rw | OpenPalm config tree available inside container |
 | `$OP_HOME/config/assistant` | `/home/opencode/.config/opencode` | rw | User OpenCode tools, plugins, skills, commands |
-| `$OP_HOME/vault/stack/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | OpenCode auth state |
+| `$OP_HOME/config/stack/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | OpenCode auth state |
 | `$OP_HOME/vault/user/` | `/etc/vault/` | rw | User secrets directory |
 | `$OP_HOME/data/assistant` | `/home/opencode/` | rw | Assistant persistent data |
 | `$OP_HOME/data/stash` | `/home/opencode/.akm` | rw | AKM stash |
@@ -123,7 +123,7 @@ Notes:
 
 ### Guardian
 
-Compose source: `.openpalm/stack/core.compose.yml`
+Compose source: `.openpalm/config/stack/core.compose.yml`
 
 Mounts:
 
@@ -151,13 +151,13 @@ Key env:
 | `ADMIN_TOKEN` | `${OP_ADMIN_TOKEN:-}` | Admin token forwarded from stack env |
 | `GUARDIAN_AUDIT_PATH` | `/app/audit/guardian-audit.log` | Audit log path |
 | `GUARDIAN_SECRETS_PATH` | `/app/secrets/guardian.env` | Path to mounted guardian secrets for hot-reload |
-| `CHANNEL_<NAME>_SECRET` | `vault/stack/guardian.env` (via env_file) | Channel HMAC verification secrets |
+| `CHANNEL_<NAME>_SECRET` | `config/stack/guardian.env` (via env_file) | Channel HMAC verification secrets |
 
 Notes:
 
 - Guardian is internal-only from the host perspective.
 - It is the only bridge between addon ingress networks and `assistant_net`.
-- Guardian loads `vault/stack/guardian.env` as a compose `env_file` for channel HMAC secrets. The same file is bind-mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload. Non-secret config (`OP_ADMIN_TOKEN`) is passed via `${VAR}` substitution in the compose `environment:` block.
+- Guardian loads `config/stack/guardian.env` as a compose `env_file` for channel HMAC secrets. The same file is bind-mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload. Non-secret config (`OP_ADMIN_TOKEN`) is passed via `${VAR}` substitution in the compose `environment:` block.
 
 ### Scheduler co-process
 
@@ -202,7 +202,7 @@ Notes:
 
 ## Admin Addon
 
-Compose source: runtime `~/.openpalm/stack/addons/admin/compose.yml` seeded from `.openpalm/registry/addons/admin/compose.yml`
+Compose source: runtime `~/.openpalm/config/stack/addons/admin/compose.yml` seeded from `.openpalm/registry/addons/admin/compose.yml`
 
 ### Docker Socket Proxy
 
@@ -273,7 +273,7 @@ Key env:
 | `slack` | none | service-specific | `channel_lan` | No host port exposure |
 | `ollama` | `${OP_OLLAMA_BIND_ADDRESS:-127.0.0.1}:11434` | `11434` | `assistant_net` | Mounts `$OP_HOME/data/ollama:/data`, `user: ${OP_UID}:${OP_GID}`, `OLLAMA_MODELS=/data/models` |
 
-All addon and channel services use `user: "${OP_UID:-1000}:${OP_GID:-1000}"` to ensure bind-mounted files are owned by the host user. All shipped channel overlays depend on guardian and receive only their own HMAC secret via `${VAR}` substitution from `vault/stack/guardian.env` (passed as a compose `--env-file`).
+All addon and channel services use `user: "${OP_UID:-1000}:${OP_GID:-1000}"` to ensure bind-mounted files are owned by the host user. All shipped channel overlays depend on guardian and receive only their own HMAC secret via `${VAR}` substitution from `config/stack/guardian.env` (passed as a compose `--env-file`).
 
 ---
 

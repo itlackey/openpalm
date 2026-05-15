@@ -28,7 +28,7 @@ Disable with `openpalm addon disable ssh`.
 | `OP_ASSISTANT_SSH_BIND_ADDRESS`   | `127.0.0.1`   | Host interface to bind. Use `0.0.0.0` for LAN access. |
 | `OP_ASSISTANT_SSH_PORT`           | `2222`        | Host port to publish.                    |
 
-Set these in `vault/stack/stack.env` if you need to override the
+Set these in `config/stack/stack.env` if you need to override the
 defaults.
 
 ## Security implications

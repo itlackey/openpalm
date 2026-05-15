@@ -17,11 +17,11 @@ You can manage config files in whichever way is most convenient:
 
 All three paths are valid ways to write files in `~/.openpalm/config/`. In
 normal operation you do not edit `data/` directly, and stack runtime files live
-under `~/.openpalm/stack/`.
+under `~/.openpalm/config/stack/`.
 
 Keep this split in mind:
 - `~/.openpalm/registry/` is the available catalog
-- `~/.openpalm/stack/addons/` contains enabled addons only
+- `~/.openpalm/config/stack/addons/` contains enabled addons only
 - `~/.openpalm/config/automations/` contains enabled automations only
 - `~/.openpalm/config/stack.yml` stores capabilities only
 
@@ -82,7 +82,7 @@ Secrets are split into two files under `~/.openpalm/vault/`:
 - **`stack/stack.env`** -- System-managed runtime env and secrets: admin/assistant auth tokens, provider API keys, capability vars (`OP_CAP_*`), ports, and other infrastructure values.
 
 ```env
-# ~/.openpalm/vault/stack/stack.env
+# ~/.openpalm/config/stack/stack.env
 # LLM provider keys and capability values
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
@@ -93,16 +93,16 @@ GOOGLE_API_KEY=...
 
 System-managed values (`CHANNEL_*_SECRET`, `OP_*` infrastructure vars,
 `OP_ADMIN_TOKEN`, `OP_ASSISTANT_TOKEN`, bind addresses, image tags) are generated
-by setup/admin tooling and written into `vault/stack/stack.env` -- you do not
+by setup/admin tooling and written into `config/stack/stack.env` -- you do not
 normally edit them manually.
 
 **After editing** -- rerun the same compose command or restart the services that
 consume the changed values. The standard wrapper includes both
-`vault/stack/stack.env` and `vault/user/user.env` automatically.
+`config/stack/stack.env` and `vault/user/user.env` automatically.
 
 LLM provider keys and related capability settings can also be managed via the
 Capabilities API or the Capabilities settings page in the admin UI -- no manual
-file editing required. The API patches `vault/stack/stack.env` in-place, preserving all
+file editing required. The API patches `config/stack/stack.env` in-place, preserving all
 other keys.
 
 ```bash
@@ -127,7 +127,7 @@ curl http://localhost:3880/admin/capabilities/status \
 
 An addon has two states:
 - available in the catalog at `~/.openpalm/registry/addons/<name>/`
-- enabled at runtime under `~/.openpalm/stack/addons/<name>/compose.yml`
+- enabled at runtime under `~/.openpalm/config/stack/addons/<name>/compose.yml`
 
 Channels, services, and integrations are all addons.
 
@@ -160,13 +160,13 @@ Addon config is schema-driven and file-based. There is no addon config block in 
 
 ### Add an addon manually
 
-1. Copy `~/.openpalm/registry/addons/<name>/` into `~/.openpalm/stack/addons/<name>/`
-2. Or author `~/.openpalm/stack/addons/<name>/` manually if you want a custom or multi-instance layout
+1. Copy `~/.openpalm/registry/addons/<name>/` into `~/.openpalm/config/stack/addons/<name>/`
+2. Or author `~/.openpalm/config/stack/addons/<name>/` manually if you want a custom or multi-instance layout
 3. Run preflight to confirm the merge is clean, then rerun `docker compose` with that addon included
 
 ### Uninstall an addon
 
-Remove the addon directory from `~/.openpalm/stack/addons/`, then rerun `docker compose` without it.
+Remove the addon directory from `~/.openpalm/config/stack/addons/`, then rerun `docker compose` without it.
 
 ---
 
@@ -310,7 +310,7 @@ write to the same config files.
 
 The running stack is whatever compose file set you launch. To change it:
 
-1. Edit files under `~/.openpalm/config/`, `~/.openpalm/vault/`, or `~/.openpalm/stack/`
+1. Edit files under `~/.openpalm/config/`, `~/.openpalm/vault/`, or `~/.openpalm/config/stack/`
 2. Rerun compose: `op up -d` (or the full `docker compose` command)
 
 The `op` helper function auto-discovers enabled addons under `stack/addons/`.
@@ -353,16 +353,16 @@ All ports are `127.0.0.1`-bound by default.
 ## Common Tasks
 
 **Change an LLM API key:**
-1. Edit `~/.openpalm/vault/stack/stack.env`
+1. Edit `~/.openpalm/config/stack/stack.env`
 2. Restart the services that use it, such as `assistant`: `docker compose restart assistant`
 
 **Add a new LLM provider:**
-1. Add the API key to `~/.openpalm/vault/stack/stack.env`
+1. Add the API key to `~/.openpalm/config/stack/stack.env`
 2. Edit `~/.openpalm/config/assistant/opencode.json` to configure the provider
 3. Restart assistant: `docker compose restart assistant`
 
 **Rotate the admin token:**
-1. Update `OP_ADMIN_TOKEN` in `~/.openpalm/vault/stack/stack.env`
+1. Update `OP_ADMIN_TOKEN` in `~/.openpalm/config/stack/stack.env`
 2. Restart all services: `docker compose restart`
 
 **Add an automation:**
@@ -394,5 +394,5 @@ containers with the updated images. Equivalent to a manual
 `docker compose pull && docker compose up -d`.
 
 **Docker socket GID** is auto-detected from `/var/run/docker.sock` by the admin at startup
-and written to `vault/stack/stack.env`. You do not need to set it manually.
+and written to `config/stack/stack.env`. You do not need to set it manually.
 If the admin fails to reach Docker, check that the socket exists and is readable.
