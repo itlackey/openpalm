@@ -21,21 +21,6 @@
 #   ~/.openpalm/stack/     — compose runtime (addon overlays)
 
 services:
-  # ── Init (pre-create data directories with correct ownership) ──────
-  # Ensures all data/ and logs/ subdirectories exist before services
-  # start, preventing Docker from creating them as root.
-  # Core dirs are listed explicitly; addon dirs are discovered
-  # dynamically from stack/addons/.
-  init:
-    image: busybox:latest
-    user: "${OP_UID:-1000}:${OP_GID:-1000}"
-    restart: "no"
-    command: ["sh", "-c",
-      "umask 077 && mkdir -p /op/state/guardian && umask 022 && mkdir -p /op/state/assistant /op/state/admin /op/config/akm /op/config/stack /op/config/stack/addons /op/stash /op/stash/tasks /op/workspace /op/state/akm /op/state/akm/data /op/state/akm/state /op/state/logs /op/state/logs/opencode /op/state/backups /op/state/registry /op/state/registry/addons /op/state/registry/automations /op/cache/akm /op/cache/rollback && ls /addons 2>/dev/null | xargs -I{} mkdir -p /op/state/{}"]
-    volumes:
-      - ${OP_HOME}:/op
-      - ${OP_HOME}/config/stack/addons:/addons:ro
-
   # ── Assistant (opencode runtime — NO docker socket) ────────────────
   assistant:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_IMAGE_TAG:-latest}
@@ -131,9 +116,6 @@ services:
       - ${OP_HOME}/state/logs:/openpalm/logs
     working_dir: /work
     networks: [ assistant_net ]
-    depends_on:
-      init:
-        condition: service_completed_successfully
     healthcheck:
       test: [ "CMD-SHELL", "curl -sf http://localhost:4096/health || exit 1" ]
       interval: 30s

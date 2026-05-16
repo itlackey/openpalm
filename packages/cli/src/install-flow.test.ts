@@ -398,7 +398,7 @@ describe('install flow — tier 1 (file validation)', () => {
     ], { stdout: 'pipe', stderr: 'pipe', env: { ...process.env, OP_HOME: homeDir } });
 
     const services = new TextDecoder().decode(proc.stdout).trim().split('\n').sort();
-    expect(services).toEqual(['assistant', 'guardian', 'init']);
+    expect(services).toEqual(['assistant', 'guardian']);
   }, 30_000);
 });
 
