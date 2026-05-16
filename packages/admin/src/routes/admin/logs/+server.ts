@@ -12,7 +12,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { appendAudit, buildComposeOptions, isAllowedService } from "@openpalm/lib";
-import { composeLogs, checkDocker } from "$lib/server/docker.js";
+import { composeLogs, checkDocker } from "@openpalm/lib";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

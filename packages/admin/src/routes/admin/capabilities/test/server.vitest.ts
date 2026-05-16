@@ -52,7 +52,7 @@ function makeEvent(body?: unknown, token = 'admin-token'): Parameters<typeof POS
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-admin-token': token,
+        cookie: `op_session=${token}`,
         'x-request-id': 'req-test',
       },
       body: body === undefined ? undefined : JSON.stringify(body),

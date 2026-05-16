@@ -1,0 +1,63 @@
+import { defineCommand } from 'citty';
+import { execFile } from 'node:child_process';
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { resolveOpenPalmHome } from '@openpalm/lib';
+
+async function automationsCheck(): Promise<void> {
+  const home = resolveOpenPalmHome();
+  const tasksDir = join(home, 'stash', 'tasks');
+
+  if (!existsSync(tasksDir)) {
+    console.log('No tasks directory found at', tasksDir);
+    process.exit(0);
+  }
+
+  const taskFiles = readdirSync(tasksDir).filter((f) => f.endsWith('.md'));
+  if (taskFiles.length === 0) {
+    console.log('No automation tasks installed.');
+    process.exit(0);
+  }
+
+  console.log(`Found ${taskFiles.length} automation task(s):`);
+  for (const file of taskFiles) {
+    console.log(`  - ${file.replace('.md', '')}`);
+  }
+
+  // Check crontab for registered tasks
+  await new Promise<void>((resolve) => {
+    execFile('crontab', ['-l'], (error, stdout) => {
+      if (error) {
+        console.log('No crontab found — tasks not yet registered (assistant not started?)');
+        resolve();
+        return;
+      }
+      const registered = taskFiles.filter((f) => stdout.includes(f.replace('.md', '')));
+      console.log(`Registered in crontab: ${registered.length}/${taskFiles.length}`);
+      if (registered.length < taskFiles.length) {
+        console.log(
+          "Run 'akm tasks sync' inside the assistant container to register remaining tasks."
+        );
+      }
+      resolve();
+    });
+  });
+}
+
+export default defineCommand({
+  meta: {
+    name: 'automations',
+    description: 'Manage automation tasks',
+  },
+  subCommands: {
+    check: defineCommand({
+      meta: {
+        name: 'check',
+        description: 'Report automation task registration status',
+      },
+      async run() {
+        await automationsCheck();
+      },
+    }),
+  },
+});

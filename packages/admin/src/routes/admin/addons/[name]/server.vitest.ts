@@ -18,7 +18,7 @@ function makeGetEvent(name: string, token = 'admin-token'): Parameters<typeof GE
     params: { name },
     request: new Request(`http://localhost/admin/addons/${name}`, {
       headers: {
-        'x-admin-token': token,
+        cookie: `op_session=${token}`,
         'x-request-id': 'req-addon-detail',
       },
     }),
@@ -31,7 +31,7 @@ function makePostEvent(name: string, body: Record<string, unknown>, token = 'adm
     request: new Request(`http://localhost/admin/addons/${name}`, {
       method: 'POST',
       headers: {
-        'x-admin-token': token,
+        cookie: `op_session=${token}`,
         'x-request-id': 'req-addon-post',
         'content-type': 'application/json',
       },

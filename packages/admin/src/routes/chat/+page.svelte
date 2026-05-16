@@ -5,7 +5,6 @@
   import ChatMessage from '$lib/components/ChatMessage.svelte';
   import ChatInput from '$lib/components/ChatInput.svelte';
   import { voiceState, speakText, stopSpeaking } from '$lib/voice/voice-state.svelte.js';
-  import { getAdminToken, clearToken, storeToken, validateToken } from '$lib/auth.js';
   import {
     createChatSession,
     sendChatMessage,
@@ -44,14 +43,12 @@
   }
 
   async function ensureSession(b: ChatBackend): Promise<string | null> {
-    const token = getAdminToken();
-    if (!token) return null;
     const existing = b === 'assistant' ? assistantSessionId : adminSessionId;
     if (existing) return existing;
 
     sessionInitializing = true;
     try {
-      const { id } = await createChatSession(token, b);
+      const { id } = await createChatSession(b);
       setSessionId(b, id);
       return id;
     } catch (e) {
@@ -72,9 +69,6 @@
 
   async function handleSend(text: string): Promise<void> {
     if (sending) return;
-    const token = getAdminToken();
-    if (!token) return;
-
     const sessionId = await ensureSession(backend);
     if (!sessionId) return;
 
@@ -92,7 +86,7 @@
     scrollToBottom();
 
     try {
-      const response = await sendChatMessage(token, backend, sessionId, text);
+      const response = await sendChatMessage(backend, sessionId, text);
 
       // Extract text from parts array
       const replyText = response.parts
@@ -161,14 +155,17 @@
     authLoading = true;
     authError = '';
     try {
-      const result = await validateToken(token);
-      if (!result.allowed) {
-        clearToken();
+      const loginRes = await fetch('/admin/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token }),
+        credentials: 'include'
+      });
+      if (!loginRes.ok) {
         authLocked = true;
         authError = 'Invalid admin token.';
         return false;
       }
-      storeToken(token);
       authLocked = false;
       authError = '';
       // Start the initial session immediately on auth
@@ -182,9 +179,13 @@
     }
   }
 
-  function handleLogout(): void {
+  async function handleLogout(): Promise<void> {
     stopSpeaking();
-    clearToken();
+    try {
+      await fetch('/admin/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {
+      // best-effort
+    }
     authLocked = true;
     authError = '';
     entries = [];
@@ -203,10 +204,8 @@
     function handleVisibilityChange(): void {
       if (destroyed || document.visibilityState !== 'visible') return;
       if (authLocked) return;
-      const token = getAdminToken();
-      if (!token) return;
       void (async () => {
-        const reachable = await probeChatBackend(token, backend);
+        const reachable = await probeChatBackend(backend);
         if (!reachable && !destroyed) {
           chatError = `${backend === 'admin' ? 'Admin' : 'Assistant'} is not reachable. Try reconnecting.`;
           // Clear stale session
@@ -227,18 +226,13 @@
 
   onMount(() => {
     void (async () => {
-      const token = getAdminToken();
-      if (!token) {
-        authLocked = true;
-        return;
-      }
       authLoading = true;
       try {
-        const result = await validateToken(token);
-        if (!result.allowed) {
-          clearToken();
+        // Probe auth state via cookie
+        const probe = await fetch('/admin/capabilities/status', { credentials: 'include' });
+        if (probe.status === 401 || probe.status === 503) {
           authLocked = true;
-          authError = 'Invalid admin token.';
+          authLoading = false;
           return;
         }
         authLocked = false;

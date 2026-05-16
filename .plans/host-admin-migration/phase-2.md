@@ -26,7 +26,7 @@ The goal is to move the audit call _into_ the lib mutating functions themselves 
 do not have to carry the audit ceremony. Routes that currently double-call (error path + success
 path) will be simplified to zero calls.
 
-### Step A-1: Define `AuditContext` type in lib types (Workstream A)
+### ✅ Step A-1: Define `AuditContext` type in lib types (Workstream A)
 
 **File:** `packages/lib/src/control-plane/types.ts`
 **Change type:** modify
@@ -50,7 +50,7 @@ export type AuditContext = {
 
 ---
 
-### Step A-2: Add optional `ctx` parameter to lib mutating functions (Workstream A)
+### ✅ Step A-2: Add optional `ctx` parameter to lib mutating functions (Workstream A)
 
 **Files:** All lib functions that currently trigger an `appendAudit` callsite in routes.
 Identified by cross-referencing the 52 routes' `appendAudit` calls with the lib functions they call:
@@ -106,7 +106,7 @@ callers that omit `ctx`). Route tests pass with ctx-bearing calls.
 
 ---
 
-### Step A-3: Remove `appendAudit` callsites from routes that now get audit from lib (Workstream A)
+### ✅ Step A-3: Remove `appendAudit` callsites from routes that now get audit from lib (Workstream A)
 
 **Files:** Routes whose lib call now handles audit internally (install, update, uninstall,
 and any others updated in A-2).
@@ -169,7 +169,7 @@ assistant is updated to use a service token via a different mechanism.
 
 ---
 
-### Step B-1: Add `/admin/auth/login` and `/admin/auth/logout` server routes (Workstream B)
+### ✅ Step B-1: Add `/admin/auth/login` and `/admin/auth/logout` server routes (Workstream B)
 
 **File:** `packages/admin/src/routes/admin/auth/login/+server.ts` (create)
 **File:** `packages/admin/src/routes/admin/auth/logout/+server.ts` (create)
@@ -240,7 +240,7 @@ shows `Set-Cookie: op_session=dev-admin-token; HttpOnly; ...`. Invalid token ret
 
 ---
 
-### Step B-2: Update `requireAdmin` and `requireAuth` in helpers.ts to accept cookie OR header (Workstream B)
+### ✅ Step B-2: Update `requireAdmin` and `requireAuth` in helpers.ts to accept cookie OR header (Workstream B)
 
 **File:** `packages/admin/src/lib/server/helpers.ts` (lines 76–120)
 **Change type:** modify
@@ -293,7 +293,7 @@ header fallback path is still present.
 
 ---
 
-### Step B-3: Delete `packages/admin/src/lib/auth.ts` (Workstream B)
+### ✅ Step B-3: Delete `packages/admin/src/lib/auth.ts` (Workstream B)
 
 **File:** `packages/admin/src/lib/auth.ts`
 **Change type:** delete
@@ -313,7 +313,7 @@ This must return zero results before deleting.
 
 ---
 
-### Step B-4: Update `packages/admin/src/lib/api.ts` — remove token parameter (Workstream B)
+### ✅ Step B-4: Update `packages/admin/src/lib/api.ts` — remove token parameter (Workstream B)
 
 **File:** `packages/admin/src/lib/api.ts`
 **Change type:** modify
@@ -399,7 +399,7 @@ functions compile without the removed parameter.
 
 ---
 
-### Step B-5: Update `+page.svelte` — remove token threading (Workstream B)
+### ✅ Step B-5: Update `+page.svelte` — remove token threading (Workstream B)
 
 **File:** `packages/admin/src/routes/+page.svelte`
 **Change type:** modify
@@ -444,7 +444,7 @@ Each must be updated to remove the prop.
 
 ---
 
-### Step B-6: Update 45 vitest test files — replace `x-admin-token` with cookie header (Workstream B)
+### ✅ Step B-6: Update 45 vitest test files — replace `x-admin-token` with cookie header (Workstream B)
 
 **Files:** All `*.vitest.ts` files in `packages/admin/src/routes/` that inject `x-admin-token`.
 (45 vitest files total; 17 route vitest files contain `x-admin-token` — listed in grep output above.)
@@ -543,7 +543,7 @@ All remaining routes under `routes/admin/`.
 
 ---
 
-### Step C-1: Create `packages/admin/src/server/router.ts` — path router (Workstream C)
+### ✅ Step C-1: Create `packages/admin/src/server/router.ts` — path router (Workstream C)
 
 **File:** `packages/admin/src/server/router.ts` (create)
 **Change type:** create
@@ -603,7 +603,7 @@ export function dispatch(req: Request): Promise<Response> {
 
 ---
 
-### Step C-2: Create `packages/admin/src/server/entry.ts` — `Bun.serve` entry point (Workstream C)
+### ✅ Step C-2: Create `packages/admin/src/server/entry.ts` — `Bun.serve` entry point (Workstream C)
 
 **File:** `packages/admin/src/server/entry.ts` (create)
 **Change type:** create
@@ -652,7 +652,7 @@ console.log(`Admin server listening on :${port}`);
 
 ---
 
-### Step C-3: Migration template — before/after pattern for each route (Workstream C)
+### ✅ Step C-3: Migration template — before/after pattern for each route (Workstream C)
 
 **Context:** All 52 routes follow one of 4 patterns. Each migrated route becomes a function
 registered with `addRoute`. The SvelteKit `RequestHandler` signature changes to
@@ -716,7 +716,7 @@ No pattern change needed; just replace `event.request` with `req`.
 
 ---
 
-### Step C-4: Migrate all 52 routes (Workstream C)
+### ✅ Step C-4: Migrate all 52 routes (Workstream C)
 
 Each migration is mechanical using the template from C-3. Listed in recommended order
 (simple GETs first, mutations second, complex routes last):
@@ -808,7 +808,7 @@ curl -s -b /tmp/op.jar localhost:8100/admin/containers/list | jq .
 
 ---
 
-### Step C-5: Update `packages/admin/package.json` — replace SvelteKit start script with Bun entry (Workstream C)
+### ✅ Step C-5: Update `packages/admin/package.json` — replace SvelteKit start script with Bun entry (Workstream C)
 
 **File:** `packages/admin/package.json`
 **Change type:** modify
@@ -847,7 +847,7 @@ this flag yet — it is a planned variable. Phase 2 introduces the runtime check
 
 ---
 
-### Step D-1: Add `resolveAdminMode` to `packages/lib/src/control-plane/types.ts` (Workstream D)
+### ✅ Step D-1: Add `resolveAdminMode` to `packages/lib/src/control-plane/types.ts` (Workstream D)
 
 **File:** `packages/lib/src/control-plane/types.ts`
 **Change type:** modify
@@ -875,7 +875,7 @@ when `OPENPALM_ADMIN_MODE=container`. Add to lib unit tests.
 
 ---
 
-### Step D-2: Update CLI install command to skip admin container when mode is `host` (Workstream D)
+### ✅ Step D-2: Update CLI install command to skip admin container when mode is `host` (Workstream D)
 
 **File:** `packages/cli/src/commands/install.ts`
 **Change type:** modify
@@ -901,7 +901,7 @@ command does not include `--profile admin`. Container mode still works with `OPE
 
 ---
 
-### Step D-3: Update `packages/admin/src/lib/server/state.ts` — remove container-mode startup assumptions (Workstream D)
+### ✅ Step D-3: Update `packages/admin/src/lib/server/state.ts` — remove container-mode startup assumptions (Workstream D)
 
 **File:** `packages/admin/src/lib/server/state.ts`
 **Change type:** modify
@@ -951,7 +951,7 @@ belongs in lib.
 
 ---
 
-### Step E-1: Move preflight enforcement into `packages/lib/src/control-plane/docker.ts` (Workstream E)
+### ✅ Step E-1: Move preflight enforcement into `packages/lib/src/control-plane/docker.ts` (Workstream E)
 
 **File:** `packages/lib/src/control-plane/docker.ts`
 **Change type:** modify
@@ -986,7 +986,7 @@ Then add `await runPreflight(options)` at the top of `composeUp`, `composeDown`,
 
 ---
 
-### Step E-2: Move `inspectContainerStatus` into `packages/lib/src/control-plane/docker.ts` (Workstream E)
+### ✅ Step E-2: Move `inspectContainerStatus` into `packages/lib/src/control-plane/docker.ts` (Workstream E)
 
 **File:** `packages/lib/src/control-plane/docker.ts`
 **Change type:** modify
@@ -1025,7 +1025,7 @@ shows the function. Import it from `@openpalm/lib` in a lib consumer — no type
 
 ---
 
-### Step E-3: Delete `packages/admin/src/lib/server/docker.ts` (Workstream E)
+### ✅ Step E-3 (partial — docker.ts kept, vitest references it; routes migrated to @openpalm/lib directly): Delete `packages/admin/src/lib/server/docker.ts` (Workstream E)
 
 **File:** `packages/admin/src/lib/server/docker.ts`
 **Change type:** delete
@@ -1060,7 +1060,7 @@ in the new server files. The lib import stays the same.
 
 ---
 
-### Step E-4: Export `inspectContainerStatus` from `packages/lib/src/index.ts` (Workstream E)
+### ✅ Step E-4: Export `inspectContainerStatus` from `packages/lib/src/index.ts` (Workstream E)
 
 **File:** `packages/lib/src/index.ts`
 **Change type:** modify
@@ -1092,7 +1092,7 @@ wizard to confirm the scheduler is running.
 
 ---
 
-### Step F-1: Add `automations check` command to the CLI (Workstream F)
+### ✅ Step F-1: Add `automations check` command to the CLI (Workstream F)
 
 **File:** `packages/cli/src/commands/automations.ts` (create)
 **Change type:** create
@@ -1158,7 +1158,7 @@ Outputs task list and crontab registration status.
 
 ---
 
-### Step F-2: Register `automations check` in CLI command routing (Workstream F)
+### ✅ Step F-2: Register `automations check` in CLI command routing (Workstream F)
 
 **File:** `packages/cli/src/index.ts` (or wherever commands are dispatched)
 **Change type:** modify
@@ -1187,7 +1187,7 @@ case "automations":
 
 ---
 
-### Step F-3: Update `packages/admin/src/routes/admin/automations/catalog/refresh/+server.ts` — detect stale cron (Workstream F)
+### ✅ Step F-3: Update `packages/admin/src/routes/admin/automations/catalog/refresh/+server.ts` — detect stale cron (Workstream F)
 
 **File:** `packages/admin/src/routes/admin/automations/catalog/refresh/+server.ts`
 **Change type:** modify

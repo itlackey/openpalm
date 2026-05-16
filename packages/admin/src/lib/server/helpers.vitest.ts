@@ -133,9 +133,15 @@ describe("requireAdmin", () => {
     resetState("test-admin-token-12345");
   });
 
-  test("returns null (pass) for valid admin token", () => {
-    const event = makeEvent({ "x-admin-token": "test-admin-token-12345" });
+  test("returns null (pass) for valid admin token via cookie", () => {
+    const event = makeEvent({ cookie: "op_session=test-admin-token-12345" });
     const result = requireAdmin(event as never, "req-1");
+    expect(result).toBeNull();
+  });
+
+  test("returns null (pass) for valid admin token via x-admin-token header (fallback path)", () => {
+    const event = makeEvent({ "x-admin-token": "test-admin-token-12345" });
+    const result = requireAdmin(event as never, "req-1-header");
     expect(result).toBeNull();
   });
 
@@ -148,8 +154,8 @@ describe("requireAdmin", () => {
     expect(body.error).toBe("unauthorized");
   });
 
-  test("returns 401 for wrong token", async () => {
-    const event = makeEvent({ "x-admin-token": "wrong-token" });
+  test("returns 401 for wrong token (cookie)", async () => {
+    const event = makeEvent({ cookie: "op_session=wrong-token" });
     const result = requireAdmin(event as never, "req-3");
     expect(result).not.toBeNull();
     expect(result!.status).toBe(401);
@@ -163,7 +169,7 @@ describe("requireAdmin", () => {
   });
 
   test("rejects token that differs only in length (timing-safe)", async () => {
-    const event = makeEvent({ "x-admin-token": "test-admin-token-1234" }); // one char shorter
+    const event = makeEvent({ cookie: "op_session=test-admin-token-1234" }); // one char shorter
     const result = requireAdmin(event as never, "req-5");
     expect(result).not.toBeNull();
     expect(result!.status).toBe(401);
@@ -184,19 +190,24 @@ describe("getActor", () => {
     resetState("test-admin-token-12345");
   });
 
-  test("returns 'admin' when x-admin-token matches configured token", () => {
+  test("returns 'admin' when cookie matches configured token", () => {
+    const event = makeEvent({ cookie: "op_session=test-admin-token-12345" });
+    expect(getActor(event as never)).toBe("admin");
+  });
+
+  test("returns 'admin' when x-admin-token header matches (fallback path)", () => {
     const event = makeEvent({ "x-admin-token": "test-admin-token-12345" });
     expect(getActor(event as never)).toBe("admin");
   });
 
-  test("returns 'assistant' when x-admin-token matches assistant token", () => {
+  test("returns 'assistant' when cookie matches assistant token", () => {
     const state = resetState("test-admin-token-12345");
-    const event = makeEvent({ "x-admin-token": state.assistantToken });
+    const event = makeEvent({ cookie: `op_session=${state.assistantToken}` });
     expect(getActor(event as never)).toBe("assistant");
   });
 
-  test("returns 'unauthenticated' when x-admin-token is wrong", () => {
-    const event = makeEvent({ "x-admin-token": "wrong-token" });
+  test("returns 'unauthenticated' when cookie token is wrong", () => {
+    const event = makeEvent({ cookie: "op_session=wrong-token" });
     expect(getActor(event as never)).toBe("unauthenticated");
   });
 
@@ -217,25 +228,36 @@ describe("identifyCallerByToken / requireAuth", () => {
     resetState("test-admin-token-12345");
   });
 
-  test("identifyCallerByToken returns admin for admin token", () => {
+  test("identifyCallerByToken returns admin for admin token via cookie", () => {
+    const event = makeEvent({ cookie: "op_session=test-admin-token-12345" });
+    expect(identifyCallerByToken(event as never)).toBe("admin");
+  });
+
+  test("identifyCallerByToken returns admin for admin token via header (fallback path)", () => {
     const event = makeEvent({ "x-admin-token": "test-admin-token-12345" });
     expect(identifyCallerByToken(event as never)).toBe("admin");
   });
 
-  test("identifyCallerByToken returns assistant for assistant token", () => {
+  test("identifyCallerByToken returns assistant for assistant token via cookie", () => {
     const state = resetState("test-admin-token-12345");
-    const event = makeEvent({ "x-admin-token": state.assistantToken });
+    const event = makeEvent({ cookie: `op_session=${state.assistantToken}` });
     expect(identifyCallerByToken(event as never)).toBe("assistant");
   });
 
-  test("requireAuth passes for assistant token", () => {
+  test("requireAuth passes for assistant token via cookie", () => {
     const state = resetState("test-admin-token-12345");
-    const event = makeEvent({ "x-admin-token": state.assistantToken });
+    const event = makeEvent({ cookie: `op_session=${state.assistantToken}` });
     expect(requireAuth(event as never, "req-assistant")).toBeNull();
   });
 
+  test("requireAuth passes for assistant token via header (fallback path)", () => {
+    const state = resetState("test-admin-token-12345");
+    const event = makeEvent({ "x-admin-token": state.assistantToken });
+    expect(requireAuth(event as never, "req-assistant-header")).toBeNull();
+  });
+
   test("requireAuth rejects unknown token", async () => {
-    const event = makeEvent({ "x-admin-token": "nope" });
+    const event = makeEvent({ cookie: "op_session=nope" });
     const result = requireAuth(event as never, "req-bad");
     expect(result).not.toBeNull();
     expect(result!.status).toBe(401);

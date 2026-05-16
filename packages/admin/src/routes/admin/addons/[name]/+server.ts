@@ -25,7 +25,7 @@ import {
   composeStop,
   buildComposeOptions,
 } from "@openpalm/lib";
-import { checkDocker } from "$lib/server/docker.js";
+import { checkDocker } from "@openpalm/lib";
 
 const logger = createLogger("addons.name");
 

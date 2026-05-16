@@ -21,7 +21,7 @@ function makeGetEvent(token = 'admin-token'): Parameters<typeof GET>[0] {
   return {
     request: new Request('http://localhost/admin/automations/catalog', {
       headers: {
-        'x-admin-token': token,
+        cookie: `op_session=${token}`,
         'x-request-id': 'req-catalog',
       },
     }),
@@ -33,7 +33,7 @@ function makeInstallEvent(body: Record<string, unknown>, token = 'admin-token'):
     request: new Request('http://localhost/admin/automations/catalog/install', {
       method: 'POST',
       headers: {
-        'x-admin-token': token,
+        cookie: `op_session=${token}`,
         'x-request-id': 'req-catalog-install',
         'content-type': 'application/json',
       },
@@ -47,7 +47,7 @@ function makeUninstallEvent(body: Record<string, unknown>, token = 'admin-token'
     request: new Request('http://localhost/admin/automations/catalog/uninstall', {
       method: 'POST',
       headers: {
-        'x-admin-token': token,
+        cookie: `op_session=${token}`,
         'x-request-id': 'req-catalog-uninstall',
         'content-type': 'application/json',
       },
@@ -61,7 +61,7 @@ function makeRefreshEvent(token = 'admin-token'): Parameters<typeof refreshPost>
     request: new Request('http://localhost/admin/automations/catalog/refresh', {
       method: 'POST',
       headers: {
-        'x-admin-token': token,
+        cookie: `op_session=${token}`,
         'x-request-id': 'req-catalog-refresh',
       },
     }),

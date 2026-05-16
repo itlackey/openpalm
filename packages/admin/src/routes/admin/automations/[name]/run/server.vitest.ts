@@ -29,7 +29,7 @@ function makeRunEvent(
     request: new Request(`http://localhost/admin/automations/${encodeURIComponent(name)}/run`, {
       method: 'POST',
       headers: {
-        'x-admin-token': token,
+        cookie: `op_session=${token}`,
         'x-request-id': 'req-run-test',
       },
     }),

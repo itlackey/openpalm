@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { AutomationsResponse, CatalogAutomation } from '$lib/types.js';
-  import { getAdminToken } from '$lib/auth.js';
   import { fetchAutomationCatalog, installAutomation, uninstallAutomation } from '$lib/api.js';
 
   interface Props {
@@ -45,12 +44,10 @@
   }
 
   async function loadCatalog(): Promise<void> {
-    const token = getAdminToken();
-    if (!token) return;
     catalogLoading = true;
     catalogError = '';
     try {
-      const result = await fetchAutomationCatalog(token);
+      const result = await fetchAutomationCatalog();
       catalog = result.automations;
     } catch (e) {
       catalogError = e instanceof Error ? e.message : 'Failed to load catalog.';
@@ -67,12 +64,10 @@
   }
 
   async function handleInstall(name: string): Promise<void> {
-    const token = getAdminToken();
-    if (!token) return;
     actionLoading = name;
     actionSuccess = '';
     try {
-      await installAutomation(token, name);
+      await installAutomation(name);
       actionSuccess = `Installed "${name}".`;
       await loadCatalog();
       onRefresh();
@@ -84,12 +79,10 @@
   }
 
   async function handleUninstall(name: string): Promise<void> {
-    const token = getAdminToken();
-    if (!token) return;
     actionLoading = name;
     actionSuccess = '';
     try {
-      await uninstallAutomation(token, name);
+      await uninstallAutomation(name);
       actionSuccess = `Uninstalled "${name}".`;
       await loadCatalog();
       onRefresh();

@@ -46,7 +46,7 @@ function makeEvent(method: string, body?: unknown, token = 'admin-token'): Param
       method,
       headers: {
         'content-type': 'application/json',
-        'x-admin-token': token,
+        cookie: `op_session=${token}`,
         'x-request-id': 'req-model',
       },
       body: body === undefined ? undefined : JSON.stringify(body),

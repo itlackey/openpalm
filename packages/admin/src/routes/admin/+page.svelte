@@ -16,7 +16,6 @@
   import AuditTab from '$lib/components/AuditTab.svelte';
   import SecretsTab from '$lib/components/SecretsTab.svelte';
 
-  import { getAdminToken, clearToken, storeToken, validateToken } from '$lib/auth.js';
   import {
     fetchHealth,
     fetchAdminOpenCodeStatus,
@@ -35,7 +34,6 @@
   let authLocked = $state(true);
   let authLoading = $state(false);
   let authError = $state('');
-  let tokenStored = $state(false);
 
   // ── Health & service state ──────────────────────────────────────────────────
   let adminHealth = $state<HealthPayload | null>(null);
@@ -102,18 +100,19 @@
   // ── Auth helpers ─────────────────────────────────────────────────────────────
 
   function applyInvalidTokenState(): void {
-    clearToken();
-    tokenStored = false;
     authLocked = true;
     authError = 'Invalid admin token.';
     adminStatus = 'Invalid admin token.';
     adminOpenCodeStatus = 'unavailable';
   }
 
-  function handleLogout(): void {
+  async function handleLogout(): Promise<void> {
     stopContainerPolling();
-    clearToken();
-    tokenStored = false;
+    try {
+      await fetch('/admin/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {
+      // best-effort
+    }
     authLocked = true;
     authError = '';
     adminStatus = '';
@@ -132,13 +131,16 @@
     authLoading = true;
     authError = '';
     try {
-      const result = await validateToken(token);
-      if (!result.allowed) {
+      const loginRes = await fetch('/admin/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token }),
+        credentials: 'include'
+      });
+      if (!loginRes.ok) {
         applyInvalidTokenState();
         return false;
       }
-      storeToken(token);
-      tokenStored = true;
       authLocked = false;
       authError = '';
       adminStatus = '';
@@ -159,10 +161,8 @@
   }
 
   async function checkCapabilityStatus(): Promise<void> {
-    const token = getAdminToken();
-    if (!token) return;
     try {
-      const data = await fetchCapabilityStatus(token);
+      const data = await fetchCapabilityStatus();
       capabilitiesMissing = data.complete ? [] : data.missing;
     } catch (e) {
       console.warn('[page] Capability status check failed (non-critical):', e);
@@ -172,14 +172,6 @@
   // ── Data loaders ─────────────────────────────────────────────────────────────
 
   async function loadHealth(): Promise<void> {
-    const token = getAdminToken();
-    tokenStored = Boolean(token);
-    if (!token) {
-      authLocked = true;
-      authError = 'Admin token required.';
-      adminStatus = '';
-      return;
-    }
     healthLoading = true;
     try {
       const health = await fetchHealth();
@@ -192,7 +184,7 @@
     }
 
     try {
-      const adminOpenCode = await fetchAdminOpenCodeStatus(token);
+      const adminOpenCode = await fetchAdminOpenCodeStatus();
       adminOpenCodeStatus = adminOpenCode.status;
       adminOpenCodeUrl = adminOpenCode.url;
     } catch (e) {
@@ -208,20 +200,10 @@
   }
 
   async function loadContainers(): Promise<void> {
-    const token = getAdminToken();
-    tokenStored = Boolean(token);
-    if (!token) {
-      authLocked = true;
-      authError = 'Admin token required.';
-      adminStatus = '';
-      containerError = 'Admin token required for protected actions.';
-      containerData = null;
-      return;
-    }
     containersLoading = true;
     containerError = '';
     try {
-      containerData = await fetchContainers(token);
+      containerData = await fetchContainers();
     } catch (e) {
       containerData = null;
       const err = e as { status?: number; message?: string };
@@ -239,19 +221,10 @@
   }
 
   async function loadArtifacts(type: 'compose'): Promise<void> {
-    const token = getAdminToken();
-    tokenStored = Boolean(token);
-    if (!token) {
-      authLocked = true;
-      authError = 'Admin token required.';
-      adminStatus = '';
-      artifacts = 'Admin token required for protected actions.';
-      return;
-    }
     artifactsLoading = true;
     artifactType = type;
     try {
-      artifacts = await fetchArtifacts(token);
+      artifacts = await fetchArtifacts();
     } catch (e) {
       const err = e as { status?: number; message?: string };
       if (err.status === 401) {
@@ -265,20 +238,10 @@
   }
 
   async function loadAutomations(): Promise<void> {
-    const token = getAdminToken();
-    tokenStored = Boolean(token);
-    if (!token) {
-      authLocked = true;
-      authError = 'Admin token required.';
-      adminStatus = '';
-      automationsError = 'Admin token required for protected actions.';
-      automationsData = null;
-      return;
-    }
     automationsLoading = true;
     automationsError = '';
     try {
-      automationsData = await fetchAutomations(token);
+      automationsData = await fetchAutomations();
     } catch (e) {
       automationsData = null;
       const err = e as { status?: number; message?: string };
@@ -296,17 +259,9 @@
 
   async function handleApplyChanges(): Promise<void> {
     if (anyDangerousLoading) return;
-    const token = getAdminToken();
-    tokenStored = Boolean(token);
-    if (!token) {
-      authLocked = true;
-      authError = 'Admin token required.';
-      adminStatus = '';
-      return;
-    }
     applyLoading = true;
     try {
-      await applyChanges(token);
+      await applyChanges();
       operationResult = 'Changes applied successfully.';
       operationResultType = 'success';
     } catch (e) {
@@ -323,17 +278,9 @@
 
   async function handleUpgradeStack(): Promise<void> {
     if (anyDangerousLoading) return;
-    const token = getAdminToken();
-    tokenStored = Boolean(token);
-    if (!token) {
-      authLocked = true;
-      authError = 'Admin token required.';
-      adminStatus = '';
-      return;
-    }
     upgradeLoading = true;
     try {
-      const result = await upgradeStack(token);
+      const result = await upgradeStack();
       operationResult = `Upgrade complete (image: ${result.imageTag}). ${result.assetsUpdated.length} asset(s) updated, ${result.restarted.length} service(s) restarted.`;
       operationResultType = 'success';
     } catch (e) {
@@ -352,10 +299,8 @@
     action: 'start' | 'stop' | 'restart',
     containerId: string
   ): Promise<void> {
-    const token = getAdminToken();
-    if (!token) return;
     try {
-      await containerAction(token, action, containerId);
+      await containerAction(action, containerId);
       await loadContainers();
     } catch (e) {
       const err = e as { status?: number; message?: string };
@@ -389,11 +334,9 @@
   });
 
   async function handlePullImages(): Promise<void> {
-    const token = getAdminToken();
-    if (!token) return;
     pullLoading = true;
     try {
-      await pullImages(token);
+      await pullImages();
       await loadContainers();
     } catch (e) {
       const err = e as { status?: number; message?: string };
@@ -425,21 +368,14 @@
 
   onMount(() => {
     void (async () => {
-      const token = getAdminToken();
-      tokenStored = Boolean(token);
-      if (!token) {
-        authLocked = true;
-        authLoading = false;
-        authError = '';
-        adminStatus = '';
-        return;
-      }
-
       authLoading = true;
       try {
-        const result = await validateToken(token);
-        if (!result.allowed) {
-          applyInvalidTokenState();
+        // Check session validity by attempting an authenticated request.
+        // A 401 means no valid session cookie — show auth gate.
+        const probe = await fetch('/admin/capabilities/status', { credentials: 'include' });
+        if (probe.status === 401 || probe.status === 503) {
+          authLocked = true;
+          authLoading = false;
           return;
         }
         authLocked = false;
@@ -452,7 +388,7 @@
         void loadAutomations();
         void checkCapabilityStatus();
       } catch (e) {
-        console.warn('[page] Token validation on mount failed:', e);
+        console.warn('[page] Session probe on mount failed:', e);
         authLocked = true;
         authError = 'Unable to reach admin API.';
       } finally {
@@ -484,7 +420,7 @@
         {adminOpenCodeUrl}
         {operationResult}
         {operationResultType}
-        {tokenStored}
+        tokenStored={true}
         {healthLoading}
         {applyLoading}
         {upgradeLoading}
@@ -505,7 +441,7 @@
         {containerData}
         loading={containersLoading}
         error={containerError}
-        {tokenStored}
+        tokenStored={true}
         {selectedContainerId}
         onToggleContainer={handleToggleContainer}
         onStart={(id) => handleContainerAction('start', id)}
@@ -521,7 +457,7 @@
         {artifacts}
         {artifactType}
         loading={artifactsLoading}
-        {tokenStored}
+        tokenStored={true}
         onInspect={(type) => loadArtifacts(type)}
         onDismiss={() => { artifacts = ''; artifactType = null; }}
       />
@@ -530,24 +466,24 @@
         data={automationsData}
         loading={automationsLoading}
         error={automationsError}
-        {tokenStored}
+        tokenStored={true}
         onRefresh={loadAutomations}
       />
     {:else if activeTab === 'connections'}
       <ConnectionsTab />
     {:else if activeTab === 'secrets'}
-      <SecretsTab {tokenStored} />
+      <SecretsTab tokenStored={true} />
     {/if}
     <div hidden={activeTab !== 'capabilities'}>
       <CapabilitiesTab openCodeStatus={adminOpenCodeStatus} />
     </div>
     {#if activeTab === 'logs'}
       <LogsTab
-        {tokenStored}
+        tokenStored={true}
         services={serviceNames}
       />
     {:else if activeTab === 'audit'}
-      <AuditTab {tokenStored} />
+      <AuditTab tokenStored={true} />
     {/if}
   </main>
 {/if}

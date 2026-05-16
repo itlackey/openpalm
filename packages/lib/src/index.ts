@@ -209,6 +209,7 @@ export {
   composePull,
   composeStats,
   getDockerEvents,
+  inspectContainerStatus,
   selfRecreateAdmin,
 } from "./control-plane/docker.js";
 

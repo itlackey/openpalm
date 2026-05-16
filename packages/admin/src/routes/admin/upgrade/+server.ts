@@ -17,7 +17,7 @@ import {
   buildComposeOptions,
   ensureHomeDirs,
 } from "@openpalm/lib";
-import { checkDocker, selfRecreateAdmin } from "$lib/server/docker.js";
+import { checkDocker, selfRecreateAdmin } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("upgrade");

@@ -69,8 +69,9 @@ export default defineCommand({
     },
     'admin-mode': {
       type: 'string',
-      description: 'Admin server mode: "host" or "container" (default: container)',
-      default: 'container',
+      description: 'Admin server mode: "host" or "container" (default: host)',
+      default: 'host',
+      // TODO(phase-3): remove container mode entirely
     },
   },
   async run({ args }) {

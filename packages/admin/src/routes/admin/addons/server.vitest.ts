@@ -17,7 +17,7 @@ function makeGetEvent(token = 'admin-token'): Parameters<typeof GET>[0] {
   return {
     request: new Request('http://localhost/admin/addons', {
       headers: {
-        'x-admin-token': token,
+        cookie: `op_session=${token}`,
         'x-request-id': 'req-addons-list',
       },
     }),
@@ -29,7 +29,7 @@ function makePostEvent(body: Record<string, unknown>, token = 'admin-token'): Pa
     request: new Request('http://localhost/admin/addons', {
       method: 'POST',
       headers: {
-        'x-admin-token': token,
+        cookie: `op_session=${token}`,
         'x-request-id': 'req-addons-post',
         'content-type': 'application/json',
       },

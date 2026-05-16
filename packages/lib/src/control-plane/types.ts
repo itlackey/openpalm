@@ -12,6 +12,11 @@ export type OptionalServiceName = "admin" | "docker-socket-proxy";
 
 export type AccessScope = "host" | "lan";
 export type CallerType = "assistant" | "cli" | "ui" | "system" | "test" | "unknown";
+export type AuditContext = {
+  actor: string;
+  requestId?: string;
+  callerType?: CallerType;
+};
 
 /** Info about a discovered channel */
 export type ChannelInfo = {
@@ -80,6 +85,7 @@ export type AdminMode = "host" | "container";
  */
 export function resolveAdminMode(): AdminMode {
   const raw = process.env.OPENPALM_ADMIN_MODE;
-  if (raw === "host") return "host";
-  return "container";
+  if (raw === "container") return "container";
+  // TODO(phase-3): remove container mode entirely
+  return "host";
 }

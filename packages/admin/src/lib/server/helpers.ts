@@ -72,17 +72,27 @@ export function requireNonEmptyAdminToken(state: { adminToken: string }, request
   return null;
 }
 
+/** Extract raw token from cookie (browser) or x-admin-token header (assistant/legacy). */
+function extractToken(event: RequestEvent): string {
+  // Cookie takes precedence (browser UI after auth migration lands)
+  const cookieHeader = event.request.headers.get("cookie") ?? "";
+  const match = cookieHeader.match(/(?:^|;\s*)op_session=([^;]+)/);
+  if (match) return match[1];
+  // Fallback: x-admin-token header (assistant, legacy — dropped in Phase 3)
+  return event.request.headers.get("x-admin-token") ?? "";
+}
+
 /** Check admin token — returns error Response or null if OK */
 export function requireAdmin(event: RequestEvent, requestId: string): Response | null {
   const state = getState();
   const notConfigured = requireNonEmptyAdminToken(state, requestId);
   if (notConfigured) return notConfigured;
-  const token = event.request.headers.get("x-admin-token");
-  if (!safeTokenCompare(token ?? "", state.adminToken)) {
+  const token = extractToken(event);
+  if (!safeTokenCompare(token, state.adminToken)) {
     return errorResponse(
       401,
       "unauthorized",
-      "Missing or invalid x-admin-token",
+      "Missing or invalid credentials",
       {},
       requestId
     );
@@ -93,7 +103,7 @@ export function requireAdmin(event: RequestEvent, requestId: string): Response |
 /** Identify caller by presented token. */
 export function identifyCallerByToken(event: RequestEvent): "admin" | "assistant" | null {
   const state = getState();
-  const token = event.request.headers.get("x-admin-token") ?? "";
+  const token = extractToken(event);
   if (state.adminToken && safeTokenCompare(token, state.adminToken)) return "admin";
   if (state.assistantToken && safeTokenCompare(token, state.assistantToken)) return "assistant";
   return null;

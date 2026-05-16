@@ -16,7 +16,9 @@
     "test": "npm run test:unit -- --run && npm run test:e2e",
     "test:unit": "vitest",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "start": "node build/index.js",
+    "start:bun": "bun src/server/entry.ts"
   },
   "dependencies": {
     "@openpalm/lib": "workspace:*",

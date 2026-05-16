@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { fetchAddons, toggleAddon } from '$lib/api.js';
-  import { getAdminToken } from '$lib/auth.js';
 
   interface Props {
     onAuthError: () => void;
@@ -17,12 +16,10 @@
   let actionLoading = $state<string | null>(null);
 
   async function loadAddons(): Promise<void> {
-    const token = getAdminToken();
-    if (!token) { onAuthError(); return; }
     loading = true;
     error = '';
     try {
-      addons = await fetchAddons(token);
+      addons = await fetchAddons();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('401') || msg.includes('403')) { onAuthError(); return; }
@@ -33,11 +30,9 @@
   }
 
   async function toggle(name: string, enabled: boolean): Promise<void> {
-    const token = getAdminToken();
-    if (!token) { onAuthError(); return; }
     actionLoading = name;
     try {
-      await toggleAddon(token, name, enabled);
+      await toggleAddon(name, enabled);
       await loadAddons();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
