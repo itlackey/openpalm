@@ -48,7 +48,6 @@ Primary runtime sources:
 | `OPENCODE_AUTH` | `false` | Disabled by default because host exposure is loopback-only |
 | `OPENCODE_ENABLE_SSH` | from `stack.env` | Optional SSH server toggle |
 | `HOME` | `/home/opencode` | Runtime home |
-| `OP_ADMIN_API_URL` | from `stack.env` / addon wiring | Admin API URL when admin is present |
 | `OP_ASSISTANT_TOKEN` | mapped from `OP_ASSISTANT_TOKEN` in `stack.env` | Assistant auth token for admin API calls |
 | `AKM_STASH_DIR` | `/akm` | Shared akm stash bind-mounted from `${OP_HOME}/data/stash` (memory + skills) |
 | `AKM_CACHE_DIR` | `/akm-cache` | akm cache bind-mounted from `${OP_HOME}/data/akm-cache` |
@@ -61,32 +60,6 @@ Primary runtime sources:
 - The entrypoint normalizes permissions, optionally enables SSH, then drops privileges to `OP_UID:OP_GID`.
 
 ---
-
-## Admin OpenCode Wiring
-
-The optional admin addon runs its own OpenCode instance alongside the SvelteKit
-admin API/UI process.
-
-### Mounts
-
-| Host path | Container path | Purpose |
-|---|---|---|
-| baked into image | `/etc/opencode` | Built-in admin OpenCode config |
-| `~/.openpalm/` | `/openpalm` | Full OpenPalm home for control-plane access |
-| `~/.openpalm/data/admin/` | `/home/node` | Admin home |
-| `~/.openpalm/data/workspace/` | `/work` | Shared workspace |
-
-### Key environment variables
-
-| Variable | Value | Purpose |
-|---|---|---|
-| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Admin OpenCode config root |
-| `OPENCODE_PORT` | `3881` | Admin-side OpenCode port |
-| `OPENCODE_AUTH` | `false` | Disabled by default for loopback-only host binding |
-| `OP_ADMIN_API_URL` | `http://localhost:8100` | Admin self-reference |
-| `DOCKER_HOST` | `tcp://docker-socket-proxy:2375` | Docker API via proxy |
-
-This OpenCode runtime is where the admin-tools plugin is loaded.
 
 ---
 
@@ -108,7 +81,7 @@ Compose remains the source of truth for that contract.
 - The assistant has no Docker socket.
 - The assistant receives only `vault/user/` as a mount from the vault boundary.
 - Stack-level secrets such as `OP_ADMIN_TOKEN` remain in `config/stack/stack.env`. Channel HMAC secrets live in `config/stack/guardian.env`. Neither is mounted as a file into the assistant.
-- Admin-side Docker access is mediated by `docker-socket-proxy` on the isolated `admin_docker_net` network.
+- Admin is a host process. It accesses the Docker socket directly on the host — no container is involved in admin operations.
 
 ---
 

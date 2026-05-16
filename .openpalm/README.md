@@ -98,5 +98,4 @@ truth.
 - Docker Compose global env files: `config/stack/stack.env` (system-managed) and `vault/user/user.env` (user-managed).
 - Guardian loads channel HMAC secrets from `config/stack/guardian.env` with hot-reload support (via `GUARDIAN_SECRETS_PATH`).
 - The assistant workspace is `data/workspace/`, mounted at `/work`.
-- The admin addon mounts the full OpenPalm home at `/openpalm` and reaches Docker only through `docker-socket-proxy`.
-- The CLI always runs from the host and manages Docker Compose directly. Admin UI is optional (behind `profiles: ["admin"]`).
+- The CLI always runs from the host and manages Docker Compose directly. Admin UI is a host process started by `openpalm admin serve` — no container is needed.

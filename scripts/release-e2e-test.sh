@@ -480,7 +480,7 @@ fi
 
 step "Wait for all services to be healthy"
 
-HEALTHCHECK_SVCS="admin assistant guardian docker-socket-proxy"
+HEALTHCHECK_SVCS="assistant guardian"
 MAX_WAIT="$SERVICE_TIMEOUT"
 elapsed=0
 while [ $elapsed -lt "$MAX_WAIT" ]; do

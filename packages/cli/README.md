@@ -1,16 +1,14 @@
 # @openpalm/cli
 
-Bun CLI for bootstrapping and managing an OpenPalm installation. The CLI is the primary orchestrator -- all commands work without the admin container. When admin is running, commands optionally delegate to the admin API.
+Bun CLI for bootstrapping and managing an OpenPalm installation. The CLI is the primary orchestrator — all commands operate directly against Docker Compose. Use `openpalm admin serve` to start the host admin UI.
 
 ## Self-Sufficient Mode
 
-The CLI operates directly against Docker Compose without requiring an admin container:
+The CLI operates directly against Docker Compose:
 
 - **Install** -- creates the `~/.openpalm/` home layout, downloads assets, serves the setup wizard locally via `Bun.serve()`, writes files to their final locations, and starts core services
 - **All lifecycle commands** -- refresh files in `~/.openpalm/` when needed, then run Docker Compose directly
-- **Admin delegation** -- the `install` command checks for a running admin and delegates if reachable. Other commands operate directly via Docker Compose.
-
-The admin container is optional. Use `--with-admin` to enable the admin addon overlay in the compose file set.
+- **Admin UI** -- start the host admin server with `openpalm admin serve` (no container required)
 
 ## Commands
 
@@ -24,7 +22,7 @@ The admin container is optional. Use `--with-admin` to enable the admin addon ov
 | `openpalm addon <enable|disable|list>` | Manage registry addons directly from the CLI |
 | `openpalm admin <enable|disable|status>` | Manage the admin addon directly from the CLI |
 | `openpalm start [svc...]` | Start all or named services |
-| `openpalm start --with-admin` | Start all services including admin UI and docker-socket-proxy |
+| `openpalm admin serve` | Start the host admin UI server |
 | `openpalm stop [svc...]` | Stop all or named services |
 | `openpalm restart [svc...]` | Restart all or named services |
 | `openpalm logs [svc...]` | Tail last 100 log lines |
@@ -37,13 +35,12 @@ The admin container is optional. Use `--with-admin` to enable the admin addon ov
 
 `--force` skip "already installed" check and create a backup of the current `OP_HOME`, `--version TAG` install a specific ref (default: current CLI version), `--no-start` prepare files only, `--no-open` skip browser launch.
 
-### Admin addon
-
-Admin and docker-socket-proxy start only when explicitly requested:
+### Admin commands
 
 ```bash
-openpalm admin enable           # Enable the admin addon and start its services
-openpalm admin disable          # Stop and disable the admin addon
+openpalm admin serve            # Start the host admin UI (binds to 127.0.0.1:3880)
+openpalm admin enable           # Enable a registry addon named "admin" (if it exists)
+openpalm admin disable          # Disable the admin addon
 openpalm admin status           # Show whether the admin addon is enabled
 openpalm addon enable chat      # Enable a registry addon and start its services
 openpalm addon disable chat     # Stop and disable a registry addon
@@ -52,7 +49,7 @@ openpalm addon list             # Show available addons and whether they are ena
 
 ## Setup Wizard
 
-On first install, the CLI serves a setup wizard on port `8100` via `Bun.serve()`. That temporary setup port is separate from the admin container, which defaults to `http://localhost:3880` once installed. The wizard runs entirely in the browser (vanilla HTML/JS) and calls `performSetup()` from `@openpalm/lib` to write secrets, connection profiles, memory config, and other files to their final locations. No admin container is involved.
+On first install, the CLI serves a setup wizard on port `8100` via `Bun.serve()`. The wizard defaults to `http://localhost:3880` once installed. The wizard runs entirely in the browser (vanilla HTML/JS) and calls `performSetup()` from `@openpalm/lib` to write secrets, connection profiles, memory config, and other files to their final locations.
 
 ## Environment Variables
 
@@ -60,8 +57,8 @@ On first install, the CLI serves a setup wizard on port `8100` via `Bun.serve()`
 |---|---|---|
 | `OP_HOME` | `~/.openpalm` | Root of all OpenPalm state |
 | `OP_WORK_DIR` | `~/openpalm` | Assistant working directory |
-| `OP_ADMIN_API_URL` | `http://localhost:3880` | Admin API endpoint (for optional delegation) |
-| `OP_ADMIN_TOKEN` | (from `config/stack/stack.env`) | Admin API auth token |
+| `OP_HOST_ADMIN_PORT` | `3880` | Port for the host admin server (`openpalm admin serve`) |
+| `OP_ADMIN_TOKEN` | (from `state/admin/token`) | Admin API auth token |
 
 ## How It Works
 

@@ -168,7 +168,7 @@ wait_for_admin() {
 wait_for_healthy() {
   local timeout="${1:-180}"
   local elapsed=0
-  local services="admin assistant guardian docker-socket-proxy"
+  local services="assistant guardian"
 
   while [[ $elapsed -lt $timeout ]]; do
     local all_up=true
@@ -320,11 +320,11 @@ compose_cmd() {
 
 header "Starting initial stack"
 
-compose_cmd up -d docker-socket-proxy admin 2>&1 | tail -5
+compose_cmd up -d 2>&1 | tail -5
 
-echo "  Waiting for admin to become healthy..."
+echo "  Waiting for services to become healthy..."
 if wait_for_admin 90; then
-  pass "Admin is healthy"
+  pass "Services are healthy"
 else
   fail "Admin did not become healthy within 90s"
   echo "Container logs:"
@@ -363,7 +363,7 @@ if wait_for_healthy 180; then
   pass "All services healthy after initial install"
 else
   echo "  Some services not healthy, checking status..."
-  for svc in admin assistant guardian docker-socket-proxy; do
+  for svc in assistant guardian; do
     status=$(docker inspect --format '{{.State.Health.Status}}' "${PROJECT_NAME}-${svc}-1" 2>/dev/null || echo "missing")
     echo "    ${svc}: ${status}"
   done
@@ -481,7 +481,7 @@ if wait_for_healthy 180; then
   pass "All services healthy after upgrade"
 else
   echo "  Some services not healthy after upgrade..."
-  for svc in admin assistant guardian docker-socket-proxy; do
+  for svc in assistant guardian; do
     status=$(docker inspect --format '{{.State.Health.Status}}' "${PROJECT_NAME}-${svc}-1" 2>/dev/null || echo "missing")
     echo "    ${svc}: ${status}"
   done
@@ -554,7 +554,7 @@ fi
 echo ""
 echo "=== 5e: Service health ==="
 
-HEALTHCHECK_SVCS="admin docker-socket-proxy"
+HEALTHCHECK_SVCS="assistant guardian"
 for svc in $HEALTHCHECK_SVCS; do
   status=$(docker inspect --format '{{.State.Health.Status}}' "${PROJECT_NAME}-${svc}-1" 2>/dev/null || echo "missing")
   if [[ "$status" == "healthy" ]]; then
@@ -615,7 +615,7 @@ fi
 
 # Check for container restarts (CrashLoopBackOff indicator)
 RESTART_COUNT=0
-for svc in admin assistant guardian docker-socket-proxy; do
+for svc in assistant guardian; do
   restarts=$(docker inspect --format '{{.RestartCount}}' "${PROJECT_NAME}-${svc}-1" 2>/dev/null || echo "0")
   if [[ "$restarts" -gt 2 ]]; then
     fail "${svc} restarted ${restarts} times (possible crash loop)"

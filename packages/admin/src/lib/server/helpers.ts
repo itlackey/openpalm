@@ -149,8 +149,6 @@ export function getCallerType(event: RequestEvent): CallerType {
 const DOCKER_SERVICE_NAMES = new Set([
   "assistant",
   "guardian",
-  "admin",
-  "docker-socket-proxy",
 ]);
 
 /**

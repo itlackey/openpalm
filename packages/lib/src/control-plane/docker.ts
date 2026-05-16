@@ -340,29 +340,6 @@ export async function getDockerEvents(
   return run(args, undefined, 15_000);
 }
 
-/**
- * Fire-and-forget recreation of the admin container.
- */
-export function selfRecreateAdmin(
-  options: { files: string[]; envFiles?: string[] }
-): void {
-  const args = buildComposeArgs(options);
-  args.push("--profile", "admin", "up", "-d", "--force-recreate", "--remove-orphans", "admin");
-  try {
-    const child = spawn("docker", args, {
-      stdio: "ignore",
-      detached: true,
-      env: { ...process.env, ...collectEnvOverrides(options.envFiles) }
-    });
-    child.on("error", (err) => {
-      logger.error("selfRecreateAdmin spawn error", { error: err.message });
-    });
-    child.unref();
-  } catch (err) {
-    logger.error("selfRecreateAdmin failed to spawn", { error: err instanceof Error ? err.message : String(err) });
-  }
-}
-
 
 /**
  * Query Docker for a container's running state by name.

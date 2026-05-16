@@ -313,7 +313,7 @@ describe('cli main', () => {
     mkdirSync(adminAddonDir, { recursive: true });
     mkdirSync(chatAddonDir, { recursive: true });
     writeFileSync(coreCompose, 'services:\n  assistant:\n    image: test\n');
-    writeFileSync(join(adminAddonDir, 'compose.yml'), 'services:\n  docker-socket-proxy:\n    image: proxy\n  admin:\n    image: admin\n');
+    writeFileSync(join(adminAddonDir, 'compose.yml'), 'services:\n  admin:\n    image: admin\n');
     writeFileSync(join(adminAddonDir, '.env.schema'), 'OP_ADMIN_TOKEN=\n');
     writeFileSync(join(chatAddonDir, 'compose.yml'), 'services:\n  chat:\n    image: chat\n    environment:\n      CHANNEL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
     writeFileSync(join(chatAddonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');

@@ -8,7 +8,7 @@ export type CoreServiceName =
   | "assistant"
   | "guardian";
 
-export type OptionalServiceName = "admin" | "docker-socket-proxy";
+export type OptionalServiceName = never;
 
 export type AccessScope = "host" | "lan";
 export type CallerType = "assistant" | "cli" | "ui" | "system" | "test" | "unknown";
@@ -70,22 +70,5 @@ export const CORE_SERVICES: CoreServiceName[] = [
   "guardian",
 ];
 
-export const OPTIONAL_SERVICES: OptionalServiceName[] = [
-  "admin",
-  "docker-socket-proxy",
-];
+export const OPTIONAL_SERVICES: OptionalServiceName[] = [];
 
-// ── Admin mode feature flag ──────────────────────────────────────────────
-
-export type AdminMode = "host" | "container";
-
-/**
- * Read OPENPALM_ADMIN_MODE from the environment.
- * Returns "container" by default (existing behavior preserved).
- */
-export function resolveAdminMode(): AdminMode {
-  const raw = process.env.OPENPALM_ADMIN_MODE;
-  if (raw === "container") return "container";
-  // TODO(phase-3): remove container mode entirely
-  return "host";
-}

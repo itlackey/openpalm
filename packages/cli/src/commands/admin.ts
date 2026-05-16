@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty';
-import { listEnabledAddonIds, resolveAdminMode, resolveCacheDir, resolveOpenPalmHome, resolveConfigDir, createLogger } from '@openpalm/lib';
+import { listEnabledAddonIds, resolveCacheDir, resolveOpenPalmHome, resolveConfigDir, createLogger } from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { runAddonDisableAction, runAddonEnableAction } from './addon.ts';
 import { ensureAdminBuild } from '../lib/admin-build.ts';
@@ -38,7 +38,7 @@ const statusCmd = defineCommand({
 const serveCmd = defineCommand({
   meta: {
     name: 'serve',
-    description: 'Start the host admin server (requires OPENPALM_ADMIN_MODE=host)',
+    description: 'Start the host admin server',
   },
   args: {
     port: {
@@ -56,15 +56,6 @@ const serveCmd = defineCommand({
     },
   },
   async run({ args }) {
-    const adminMode = resolveAdminMode();
-    if (adminMode !== 'host') {
-      console.error(
-        'openpalm admin serve requires OPENPALM_ADMIN_MODE=host.\n' +
-        'Set OPENPALM_ADMIN_MODE=host in your environment and retry.'
-      );
-      process.exit(1);
-    }
-
     const port = args.port ? Number(args.port) : HOST_ADMIN_PORT;
     if (isNaN(port) || port < 1 || port > 65535) {
       console.error(`Invalid port: ${args.port}`);

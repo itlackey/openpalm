@@ -249,7 +249,7 @@ describe("registry compose.yml validation", () => {
       });
 
       it("does not mount vault directory (single-file mounts allowed)", () => {
-        // Directory-level vault mounts are a security violation — only admin gets full vault access.
+        // Directory-level vault mounts are a security violation — no container may mount the full vault.
         // Single-file mounts like vault/user/ov.conf are allowed (the source must end with a filename).
         const lines = compose.split("\n");
         for (const line of lines) {
@@ -269,8 +269,6 @@ describe("registry compose.yml validation", () => {
       });
 
       it("does not mount docker socket", () => {
-        // admin component is exempt — docker-socket-proxy IS the docker socket accessor by design
-        if (id === "admin") return;
         expect(compose).not.toContain("/var/run/docker.sock");
       });
 

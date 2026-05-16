@@ -164,7 +164,7 @@ See [docs/technical/foundations.md](../docs/technical/foundations.md) for the fu
    bun run guardian:test            # Guardian security tests
    ```
 
-3. **Docker builds** must follow the patterns in [docs/technical/docker-dependency-resolution.md](../docs/technical/docker-dependency-resolution.md) (no Bun in admin Docker, no symlink-based node_modules).
+3. **Docker builds** — Guardian and channel Dockerfiles must install `packages/channels-sdk` deps with `bun install --production` after copying sdk source (no symlink-based node_modules). Admin is a host binary — no Docker build.
 4. **No secrets** in client bundles or logs.
 5. **No new dependencies** that duplicate a built-in Bun or platform capability.
 
@@ -178,7 +178,6 @@ OpenPalm publishes npm packages on an independent release cycle from Docker imag
 |----------|-----------------|
 | [docs/technical/core-principles.md](../docs/technical/core-principles.md) | **Must-read.** Security invariants, filesystem contract, architectural rules |
 | [docs/technical/code-quality-principles.md](../docs/technical/code-quality-principles.md) | TypeScript strictness, module design, error handling |
-| [docs/technical/docker-dependency-resolution.md](../docs/technical/docker-dependency-resolution.md) | **Mandatory.** How Docker builds resolve deps across the monorepo |
 | [docs/technical/api-spec.md](../docs/technical/api-spec.md) | Admin API endpoint contract |
 | [docs/technical/bunjs-rules.md](../docs/technical/bunjs-rules.md) | Bun-specific patterns (guardian, channels, SDK) |
 | [docs/technical/sveltekit-rules.md](../docs/technical/sveltekit-rules.md) | SvelteKit patterns (admin UI) |

@@ -22,7 +22,7 @@
 # Docker Compose resolves build contexts relative to the first -f file's
 # directory, which breaks builds.
 #
-# openpalm-base MUST be built before admin/assistant — both `FROM openpalm-base`
+# openpalm-base MUST be built before assistant — it uses `FROM openpalm-base`
 # and Docker Compose's parallel builder has no dependency awareness for FROM.
 # It lives under the `build` profile so `up` never tries to start it (the image
 # has no entrypoint).
@@ -40,21 +40,6 @@ services:
     # openpalm-base` resolves the image. It is never started by `up`.
     command: ["true"]
 
-  admin:
-    build:
-      context: .
-      dockerfile: core/admin/Dockerfile
-      # Resolve `FROM openpalm-base` against the locally-built image. Without
-      # this, BuildKit (especially the docker-container driver) tries to pull
-      # openpalm-base from a registry and fails. `docker-image://openpalm-base`
-      # forces it to read from the local image store populated by the
-      # `openpalm-base` service above.
-      additional_contexts:
-        openpalm-base: docker-image://openpalm-base
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/admin:dev
-    environment:
-      - OP_ADMIN_OPENCODE_INTERNAL_URL=${OP_ADMIN_OPENCODE_INTERNAL_URL:-http://localhost:4096}
-
   guardian:
     build:
       context: .
@@ -70,7 +55,7 @@ services:
     build:
       context: .
       dockerfile: core/assistant/Dockerfile
-      # See admin.build.additional_contexts above for rationale.
+      # See openpalm-base service above for rationale on additional_contexts.
       additional_contexts:
         openpalm-base: docker-image://openpalm-base
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev

@@ -313,7 +313,7 @@ echo ""
 echo "=== Step 8: Wait for all containers healthy ==="
 
 # Poll until all services are ready (max 120s)
-HEALTHCHECK_SVCS="admin assistant guardian docker-socket-proxy"
+HEALTHCHECK_SVCS="assistant guardian"
 MAX_WAIT=120
 ELAPSED=0
 while [ $ELAPSED -lt $MAX_WAIT ]; do

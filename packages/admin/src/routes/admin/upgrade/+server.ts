@@ -14,10 +14,9 @@ import {
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
   ensureSecrets,
-  buildComposeOptions,
   ensureHomeDirs,
+  checkDocker,
 } from "@openpalm/lib";
-import { checkDocker, selfRecreateAdmin } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("upgrade");
@@ -61,15 +60,7 @@ export const POST: RequestHandler = async (event) => {
     restarted: result.restarted
   }, true, requestId, callerType);
 
-  logger.info("upgrade completed, scheduling admin self-recreation", { requestId, imageTag: result.imageTag, assetsUpdated: result.assetsUpdated });
-
-  // Schedule deferred self-recreation of the admin container so the HTTP
-  // response is flushed before Docker replaces this container.
-  const { files, envFiles } = buildComposeOptions(state);
-  setTimeout(() => {
-    logger.info("recreating admin container with new image", { requestId, imageTag: result.imageTag });
-    selfRecreateAdmin({ files, envFiles });
-  }, 2_000);
+  logger.info("upgrade completed", { requestId, imageTag: result.imageTag, assetsUpdated: result.assetsUpdated });
 
   return jsonResponse(200, {
     ok: true,
@@ -77,6 +68,5 @@ export const POST: RequestHandler = async (event) => {
     backupDir: result.backupDir,
     assetsUpdated: result.assetsUpdated,
     restarted: result.restarted,
-    adminRecreateScheduled: true
   }, requestId);
 };

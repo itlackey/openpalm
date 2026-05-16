@@ -12,7 +12,6 @@
     "packages/channel-discord",
     "packages/channel-slack",
     "packages/channel-voice",
-    "packages/assistant-tools",
-    "packages/admin-tools"
+    "packages/assistant-tools"
   ]
 }

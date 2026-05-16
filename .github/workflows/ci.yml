@@ -172,7 +172,7 @@ jobs:
           # redeclare ARG OPENCODE_VERSION (which would shadow the base value
           # silently). See finding from 0.11.0 audit #2.
           errors=0
-          for df in core/admin/Dockerfile core/assistant/Dockerfile; do
+          for df in core/assistant/Dockerfile; do
             if grep -qP '^ARG OPENCODE_VERSION' "$df"; then
               echo "::error file=$df::OPENCODE_VERSION must only be declared in core/base/Dockerfile (single source of truth)"
               errors=$((errors + 1))

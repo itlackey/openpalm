@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test';
 
 const ASSISTANT_OPENCODE_URL = 'http://localhost:4096';
-const ADMIN_OPENCODE_URL = 'http://localhost:3881';
 
 /**
  * OpenCode Web UI tests — require RUN_DOCKER_STACK_TESTS=1 and a running compose stack.
@@ -68,27 +67,6 @@ test.describe('OpenCode Web UI', () => {
 			// Check that the response contains plugin/extension information
 			expect(data).toBeDefined();
 		}
-	});
-});
-
-test.describe('Admin OpenCode Web UI', () => {
-	const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
-	test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
-
-	test('admin OpenCode is reachable on the configured localhost port', async ({ page }) => {
-		await page.goto(ADMIN_OPENCODE_URL, { timeout: 15000 });
-		await expect(page).toHaveTitle('OpenCode', { timeout: 10000 });
-	});
-
-	test('admin tools config is available', async ({ request }) => {
-		const response = await request.get(`${ADMIN_OPENCODE_URL}/config`, {
-			headers: { 'content-type': 'application/json' },
-			timeout: 10000
-		});
-
-		expect(response.ok(), `GET /config failed: ${response.status()}`).toBeTruthy();
-		const data = await response.json();
-		expect(JSON.stringify(data)).toContain('@openpalm/admin-tools');
 	});
 });
 

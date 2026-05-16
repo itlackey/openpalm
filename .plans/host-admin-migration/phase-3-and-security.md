@@ -620,7 +620,7 @@ independent), then Tier 2, then Tier 3.
 
 ---
 
-## Step 1: Delete `core/admin/`
+## ✅ Step 1: Delete `core/admin/`
 
 **Files to delete:**
 - `core/admin/Dockerfile`
@@ -662,7 +662,7 @@ git status --short | grep "^D  core/admin"
 
 ---
 
-## Step 2: Delete admin addon compose files and update registry validation script
+## ✅ Step 2: Delete admin addon compose files and update registry validation script
 
 **Files to delete / modify:**
 - `.openpalm/registry/addons/admin/compose.yml` (121 lines) — delete
@@ -709,7 +709,7 @@ grep -rn "admin_docker_net" scripts/
 
 ---
 
-## Step 3: Delete `packages/admin-tools/` and remove from workspace
+## ✅ Step 3: Delete `packages/admin-tools/` and remove from workspace
 
 **Files to delete:**
 - `packages/admin-tools/` (entire directory, 32 files)
@@ -779,7 +779,7 @@ bun run check
 
 ---
 
-## Step 4: Remove `selfRecreateAdmin` from all files
+## ✅ Step 4: Remove `selfRecreateAdmin` from all files
 
 **Files to modify:**
 - `packages/lib/src/control-plane/docker.ts` — delete lines 318–339 (the function; line 325 contains `"--profile", "admin"`)
@@ -825,7 +825,7 @@ bun run admin:test:unit
 
 ---
 
-## Step 5: Simplify `OptionalServiceName` and `OPTIONAL_SERVICES` and remove stale test assertions
+## ✅ Step 5: Simplify `OptionalServiceName` and `OPTIONAL_SERVICES` and remove stale test assertions
 
 **Files to modify:**
 - `packages/lib/src/control-plane/types.ts` — lines 11 and 68–71
@@ -870,7 +870,7 @@ grep -rn "\"admin\"" packages/lib/src/control-plane/types.ts
 
 ---
 
-## Step 6: Remove `OP_ADMIN_API_URL` from core compose file and assistant README
+## ✅ Step 6: Remove `OP_ADMIN_API_URL` from core compose file and assistant README
 
 **Files to modify:**
 - `.openpalm/stack/core.compose.yml` — delete line 77 (`OP_ADMIN_API_URL: ${OP_ADMIN_API_URL:-}`)
@@ -905,7 +905,7 @@ docker compose -f .openpalm/stack/core.compose.yml config --quiet
 
 ---
 
-## Step 7: Remove `OPENPALM_ADMIN_MODE` feature flag everywhere
+## ✅ Step 7: Remove `OPENPALM_ADMIN_MODE` feature flag everywhere
 
 **Context:** Once Phase 3 is complete, there is only one admin mode (host). The feature flag is
 deleted from all env schemas, compose files, and documentation.
@@ -943,7 +943,7 @@ bun run check
 
 ---
 
-## Step 8: Clean SSRF blocklist in `packages/admin/src/lib/server/helpers.ts`
+## ✅ Step 8: Clean SSRF blocklist in `packages/admin/src/lib/server/helpers.ts`
 
 **File:** `packages/admin/src/lib/server/helpers.ts` (lines 139–144)
 
@@ -990,7 +990,7 @@ grep -n "\"admin\"\|\"docker-socket-proxy\"" packages/admin/src/lib/server/helpe
 
 ---
 
-## Step 9: Delete `docs/technical/docker-dependency-resolution.md` and remove references
+## ✅ Step 9: Delete `docs/technical/docker-dependency-resolution.md` and remove references
 
 **Files to delete / modify:**
 - `docs/technical/docker-dependency-resolution.md` — delete
@@ -1023,7 +1023,7 @@ ls docs/technical/docker-dependency-resolution.md
 
 ---
 
-## Step 10: Update `docs/technical/core-principles.md`
+## ✅ Step 10: Update `docs/technical/core-principles.md`
 
 **File:** `docs/technical/core-principles.md`
 
@@ -1064,7 +1064,7 @@ grep -n "host-only\|127.0.0.1" docs/technical/core-principles.md
 
 ---
 
-## Step 11: Update `docs/technical/foundations.md`
+## ✅ Step 11: Update `docs/technical/foundations.md`
 
 **File:** `docs/technical/foundations.md`
 
@@ -1110,7 +1110,7 @@ grep -n "host process\|UI-first" docs/technical/foundations.md
 
 ---
 
-## Step 12: Update remaining documentation files
+## ✅ Step 12: Update remaining documentation files
 
 **Files to modify:**
 - `docs/technical/environment-and-mounts.md` — remove admin container env var rows and volume mount rows
@@ -1150,7 +1150,7 @@ grep -rn "core/admin\|admin-tools\|OP_ADMIN_API_URL\|admin_docker_net\|docker-so
 
 ---
 
-## Step 13: Update test scripts to remove admin and docker-socket-proxy from health check lists
+## ✅ Step 13: Update test scripts to remove admin and docker-socket-proxy from health check lists
 
 **Files to modify:**
 - `scripts/dev-e2e-test.sh` — line 316 (remove `admin` and `docker-socket-proxy` from service health check list)

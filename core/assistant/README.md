@@ -52,6 +52,5 @@ See [`packages/assistant-tools/AGENTS.md`](../../packages/assistant-tools/AGENTS
 
 | Variable | Purpose |
 |---|---|
-| `OP_ADMIN_API_URL` | Admin API base URL |
 | `OP_ASSISTANT_TOKEN` | Assistant token for Admin API authentication |
 | `OPENCODE_CONFIG_DIR` | System config directory (maps to `DATA_HOME/assistant`, mounted at `/etc/opencode`) |

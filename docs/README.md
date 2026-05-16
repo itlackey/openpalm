@@ -35,7 +35,6 @@ Repo layout convention:
 | [core-principles.md](technical/core-principles.md) | **Authoritative.** Core goals, security invariants, filesystem + volume-mount contracts |
 | [foundations.md](technical/foundations.md) | Stripped-down runtime contract for env, filesystem, mounts, and networks |
 | [undocumented-details.md](technical/undocumented-details.md) | Source-backed inventory of important runtime details not yet covered in the primary docs |
-| [docker-dependency-resolution.md](technical/docker-dependency-resolution.md) | **Mandatory.** Docker build patterns — no Bun in admin, no symlinks |
 
 ## Implementation rules
 

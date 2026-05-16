@@ -34,8 +34,6 @@ export type {
 export {
   CORE_SERVICES,
   OPTIONAL_SERVICES,
-  type AdminMode,
-  resolveAdminMode,
 } from "./control-plane/types.js";
 
 // ── Backups ───────────────────────────────────────────────────────────────
@@ -210,7 +208,6 @@ export {
   composeStats,
   getDockerEvents,
   inspectContainerStatus,
-  selfRecreateAdmin,
 } from "./control-plane/docker.js";
 
 // ── Scheduler ───────────────────────────────────────────────────────────

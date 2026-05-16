@@ -74,7 +74,6 @@ services:
       AKM_DATA_DIR: /akm-op/data
       AKM_STATE_DIR: /akm-op/state
       AKM_CACHE_DIR: /akm-cache
-      OP_ADMIN_API_URL: ${OP_ADMIN_API_URL:-}
       OP_ASSISTANT_TOKEN: ${OP_ASSISTANT_TOKEN:-}
       OP_UID: ${OP_UID:-1000}
       OP_GID: ${OP_GID:-1000}
