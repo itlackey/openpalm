@@ -92,4 +92,7 @@ See `packages/channels-sdk/src/channel-base.test.ts` for fuller examples.
 - `packages/channel-api/README.md` (also serves the chat addon when run with `CHANNEL_ID=chat`)
 - `packages/channel-discord/README.md`
 - `packages/channel-slack/README.md`
-- `packages/channel-voice/README.md`
+
+## Related addons (not channels-sdk channels)
+
+- `packages/channel-voice/README.md` — serves a static voice chat UI directly from the browser; has no guardian pipeline or channels-sdk dependency. It is an addon, not a channel in the SDK sense.

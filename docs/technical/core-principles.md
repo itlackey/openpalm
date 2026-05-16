@@ -12,7 +12,7 @@ The stack allows for three primary extension points.
 2. **Assistant extensions** are standard OpenCode resources that are mounted into the assistant container.
 3. **Automations** that run on the scheduler co-process inside the assistant container and have direct in-container access to the assistant to execute workflows on a recurring basis.
 
-The stack defines a special type of addon, referred to as a channel. These are services that use the openpalm/channel docker image with a know entry point that uses the openpalm/channels-sdk. These containers are meant to be the entry point to the stack, and provide services like Discord/Slack/Telegram bots, MCP/API servers, voice chat, etc. Addons that provide services/tools to the rest of the stack can also be added. These can be any container you have access to pull, ollama for example.
+The stack defines a special type of addon, referred to as a channel. These are services that use the openpalm/channel docker image with a known entry point that uses the openpalm/channels-sdk. These containers are meant to be the entry point to the stack, and provide services like Discord/Slack/Telegram bots and MCP/API servers. Addons that provide services/tools to the rest of the stack can also be added — these can be any container you have access to pull (ollama for example, or the `channel-voice` static file server which serves a voice chat UI directly from the browser without a guardian pipeline).
 
 ## File System
 
