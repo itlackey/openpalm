@@ -36,7 +36,6 @@ cd "$HOME/.openpalm/stack"
 docker compose \
   --project-name openpalm \
   -f core.compose.yml \
-  -f addons/admin/compose.yml \
   -f addons/chat/compose.yml \
   --env-file ../config/stack/stack.env \
   --env-file ../config/stack/guardian.env \
@@ -84,7 +83,6 @@ This is especially important when moving between machines or users.
 cd "$HOME/.openpalm/stack"
 docker compose \
   -f core.compose.yml \
-  -f addons/admin/compose.yml \
   -f addons/chat/compose.yml \
   --env-file ../config/stack/stack.env \
   --env-file ../config/stack/guardian.env \

@@ -36,7 +36,6 @@ Examples:
 ```bash
 ./scripts/dev-setup.sh --seed-env
 ./scripts/dev-setup.sh --seed-env --force
-./scripts/dev-setup.sh --seed-env --enable-addon admin
 ./scripts/dev-setup.sh --seed-env --pass --gpg-id <key>
 ```
 

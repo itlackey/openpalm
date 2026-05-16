@@ -71,7 +71,6 @@ rebuild_stack() {
 
 	echo "Building admin..."
 	bun run admin:build
-	./scripts/dev-setup.sh --enable-addon admin
 
 	echo "Stopping previous stack containers..."
 	dev_compose down --remove-orphans 2>/dev/null || true

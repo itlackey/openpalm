@@ -64,7 +64,6 @@ fail() {
 # ── Step 1: Stop everything ──────────────────────────────────────────
 echo ""
 echo "=== Step 1: Stop all containers ==="
-./scripts/dev-setup.sh --seed-env --enable-addon admin >/dev/null 2>&1 || true
 dev_compose down --remove-orphans 2>/dev/null || true
 remaining=$(docker ps --format '{{.Names}}' | grep openpalm || true)
 if [ -z "$remaining" ]; then
@@ -136,8 +135,6 @@ sed -i 's/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=dev/' .dev/vault/stack/stack.env
 # Remove stack.yml so the wizard creates a fresh one (verifies Step 7 writes it)
 rm -f .dev/config/stack.yml
 
-./scripts/dev-setup.sh --enable-addon admin >/dev/null 2>&1
-
 # Remove stack.yml AFTER dev-setup.sh (which recreates it) so Step 6 sees fresh state
 rm -f .dev/config/stack.yml
 
@@ -201,7 +198,6 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 	echo ""
 	echo "=== Step 4: Build all images from source ==="
 	npm run admin:build 2>&1 | tail -3
-	./scripts/dev-setup.sh --enable-addon admin
 	dev_compose build 2>&1 | tail -5
 	pass "All images built"
 else
