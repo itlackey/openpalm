@@ -34,15 +34,17 @@ describe("ensureHomeDirs", () => {
 
     // cache/ — regenerable data
     expect(existsSync(join(home, "cache", "akm"))).toBe(true);
-    expect(existsSync(join(home, "cache", "guardian"))).toBe(true);
     expect(existsSync(join(home, "cache", "rollback"))).toBe(true);
+    // guardian AKM cache removed — guardian has no akm CLI invocations
+    expect(existsSync(join(home, "cache", "guardian"))).toBe(false);
 
     // state/ — persistent service data
     expect(existsSync(join(home, "state", "assistant"))).toBe(true);
     expect(existsSync(join(home, "state", "admin"))).toBe(true);
     expect(existsSync(join(home, "state", "guardian"))).toBe(true);
-    expect(existsSync(join(home, "state", "guardian", "stash"))).toBe(true);
-    expect(existsSync(join(home, "state", "guardian", "akm"))).toBe(true);
+    // guardian AKM subdirs removed — guardian has no akm CLI invocations
+    expect(existsSync(join(home, "state", "guardian", "stash"))).toBe(false);
+    expect(existsSync(join(home, "state", "guardian", "akm"))).toBe(false);
     expect(existsSync(join(home, "state", "akm", "data"))).toBe(true);
     expect(existsSync(join(home, "state", "akm", "state"))).toBe(true);
     expect(existsSync(join(home, "state", "logs", "opencode"))).toBe(true);
