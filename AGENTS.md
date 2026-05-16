@@ -33,7 +33,7 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 - **CLI** (`packages/cli/`) — Host-side orchestrator. Manages Docker Compose directly. Serves setup wizard during install. Self-sufficient without admin.
 - **Admin** (`packages/admin/`) — SvelteKit app: operator web UI + API. Served as a host process by `openpalm admin serve` (no container). Accesses Docker socket directly on the host.
 - **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic.
-- **Assistant** (`core/assistant/`) — OpenCode runtime with tools/skills. No Docker socket. When admin is present, calls Admin API for stack operations. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/data/stash/`.
+- **Assistant** (`core/assistant/`) — OpenCode runtime with tools/skills. No Docker socket. No admin API access — stack operations are host-only. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/data/stash/`.
 - **Scheduler** (`packages/scheduler/`) — Lightweight Bun co-process started inside the assistant container by `core/assistant/entrypoint.sh`. No network port. Runs cron jobs (http, shell, assistant, api actions) from `config/automations/`.
 - **Channel runtime** (`core/channel/`) — Unified `channel` image build and startup entrypoint.
 - **Channel adapters** (`packages/channel-api/`, `packages/channel-discord/`, `packages/channel-slack/`, `packages/channel-voice/`) — Translate external protocols into signed guardian messages.
