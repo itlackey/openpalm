@@ -41,7 +41,7 @@ Key boundaries:
 - **Signed messages** — Every channel message is HMAC-SHA256 signed and verified by the guardian before reaching the assistant.
 - **Rate limiting** — Per-user (120 req/min) and per-channel (200 req/min) throttling with replay detection.
 - **Assistant isolation** — The assistant container has no Docker socket access. All stack operations go through the authenticated admin API.
-- **Docker socket proxy** — Only the admin container communicates with Docker, and only through a filtered socket proxy (Tecnativa) — never a direct socket mount.
+- **Host-only admin** — The admin process runs on the host and accesses Docker directly; containers cannot reach it via the network.
 - **Secret protection** — Secrets are never stored in memory. The admin token is required for all non-health API endpoints after setup completes.
 
 ## Scope

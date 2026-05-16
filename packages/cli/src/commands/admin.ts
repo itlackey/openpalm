@@ -1,7 +1,6 @@
 import { defineCommand } from 'citty';
-import { listEnabledAddonIds, resolveCacheDir, resolveOpenPalmHome, resolveConfigDir, createLogger } from '@openpalm/lib';
+import { resolveCacheDir, resolveOpenPalmHome, resolveConfigDir, createLogger } from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
-import { runAddonDisableAction, runAddonEnableAction } from './addon.ts';
 import { ensureAdminBuild } from '../lib/admin-build.ts';
 import { createHostAdminServer } from '../lib/host-admin-server.ts';
 import { startOpenCodeSubprocess, type OpenCodeSubprocess } from '../lib/opencode-subprocess.ts';
@@ -10,28 +9,7 @@ import { openBrowser } from '../lib/browser.ts';
 const logger = createLogger('cli:admin');
 const HOST_ADMIN_PORT = Number(process.env.OP_HOST_ADMIN_PORT) || 3880;
 
-// ── existing subcommands ─────────────────────────────────────────────────
 
-async function runAdminStatusAction(): Promise<void> {
-  const state = ensureValidState();
-  const enabled = listEnabledAddonIds(state.homeDir).includes('admin');
-  console.log(enabled ? 'Admin addon is enabled.' : 'Admin addon is disabled.');
-}
-
-const enableCmd = defineCommand({
-  meta: { name: 'enable', description: 'Enable the admin addon' },
-  async run() { await runAddonEnableAction('admin'); },
-});
-
-const disableCmd = defineCommand({
-  meta: { name: 'disable', description: 'Disable the admin addon' },
-  async run() { await runAddonDisableAction('admin'); },
-});
-
-const statusCmd = defineCommand({
-  meta: { name: 'status', description: 'Show whether the admin addon is enabled' },
-  async run() { await runAdminStatusAction(); },
-});
 
 // ── serve subcommand ─────────────────────────────────────────────────────
 
@@ -150,12 +128,9 @@ const serveCmd = defineCommand({
 export default defineCommand({
   meta: {
     name: 'admin',
-    description: 'Enable, disable, inspect, or host the admin panel',
+    description: 'Start the host admin UI (serve subcommand is the default)',
   },
   subCommands: {
-    enable: enableCmd,
-    disable: disableCmd,
-    status: statusCmd,
     serve: serveCmd,
   },
 });

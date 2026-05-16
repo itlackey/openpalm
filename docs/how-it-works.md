@@ -129,7 +129,7 @@ If the assistant needs to do a stack operation during its turn (e.g., restart
 a service):
 
 ```
-Assistant calls POST http://admin:8100/admin/containers/restart
+User requests stack operation via admin chat UI → host admin process calls docker compose restart
   Header: x-admin-token: <assistant-scoped token>
   Body:   { "service": "chat" }
         |

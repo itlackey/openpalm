@@ -6,9 +6,7 @@ containers today.
 Primary runtime sources:
 
 - `.openpalm/config/stack/core.compose.yml`
-- `.openpalm/registry/addons/admin/compose.yml` materialized into `~/.openpalm/config/stack/addons/admin/compose.yml` when enabled
 - `core/assistant/entrypoint.sh`
-- `core/admin/entrypoint.sh`
 
 ---
 

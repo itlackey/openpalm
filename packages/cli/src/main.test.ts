@@ -330,17 +330,8 @@ describe('cli main', () => {
       expect(existsSync(join(base, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
       expect(readFileSync(guardianEnv, 'utf8')).toMatch(/CHANNEL_CHAT_SECRET=/);
 
-      await main(['admin', 'enable']);
-      expect(existsSync(join(base, 'config', 'stack', 'addons', 'admin', 'compose.yml'))).toBe(true);
-
-      await main(['admin', 'status']);
-      expect(logs.some((line) => line.includes('Admin addon is enabled.'))).toBe(true);
-
       await main(['addon', 'disable', 'chat']);
       expect(existsSync(join(base, 'config', 'stack', 'addons', 'chat'))).toBe(false);
-
-      await main(['admin', 'disable']);
-      expect(existsSync(join(base, 'config', 'stack', 'addons', 'admin'))).toBe(false);
     } finally {
       delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
       rmSync(base, { recursive: true, force: true });

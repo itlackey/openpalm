@@ -193,7 +193,7 @@ enabled: true
 description: Pull latest images and recreate containers weekly
 tags: [openpalm, containers]
 timeoutMs: 300000
-command: ["sh","-c","curl -fsS -X POST 'http://admin:8100/admin/containers/pull' -H \"x-admin-token: ${OP_ASSISTANT_TOKEN}\""]
+command: ["sh","-c","openpalm update"]
 ---
 ```
 

@@ -68,7 +68,7 @@ schedule: "*/5 * * * *"
 enabled: true
 description: Health check every 5 minutes
 tags: [openpalm]
-command: ["sh","-c","curl -sf http://admin:8100/health"]
+command: ["sh","-c","openpalm status --json"]
 ---
 `);
 
