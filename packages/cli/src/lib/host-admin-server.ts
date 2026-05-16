@@ -7,7 +7,7 @@
  *   - Origin / Host header validation (CSRF)
  *   - Cookie session auth (op_session) + legacy x-admin-token support
  *   - /proxy/assistant → OpenCode subprocess
- *   - /proxy/admin     → container admin (when running)
+ *   - /proxy/admin     → host admin OpenCode subprocess
  */
 import { join } from "node:path";
 import { createLogger } from "@openpalm/lib";

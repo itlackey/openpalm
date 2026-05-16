@@ -50,10 +50,6 @@ const serveCmd = defineCommand({
       description: 'Open browser after start (use --no-open to skip)',
       default: true,
     },
-    'container-admin': {
-      type: 'string',
-      description: 'Base URL for the container admin to proxy /proxy/admin (optional)',
-    },
   },
   async run({ args }) {
     const port = args.port ? Number(args.port) : HOST_ADMIN_PORT;
@@ -116,7 +112,6 @@ const serveCmd = defineCommand({
         buildDir,
         adminToken,
         openCodeBaseUrl,
-        containerAdminBaseUrl: args['container-admin'],
       });
     } catch (err) {
       console.error(`Failed to start host admin server: ${err instanceof Error ? err.message : String(err)}`);

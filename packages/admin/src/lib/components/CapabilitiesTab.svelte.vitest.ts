@@ -24,7 +24,6 @@ describe('CapabilitiesTab', () => {
 
   it('shows capability sub-tabs and assignment form', async () => {
     guard = useConsoleGuard();
-    localStorage.setItem('openpalm.adminToken', 'test-admin-token');
 
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;

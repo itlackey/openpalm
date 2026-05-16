@@ -24,8 +24,6 @@ describe('SecretsTab', () => {
 
   it('renders backend-aware actions and hierarchical namespace sections', async () => {
     guard = useConsoleGuard();
-    localStorage.setItem('openpalm.adminToken', 'test-admin-token');
-
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
       if (url === '/admin/secrets') {
@@ -64,8 +62,6 @@ describe('SecretsTab', () => {
 
   it('hides unsupported backend actions', async () => {
     guard = useConsoleGuard();
-    localStorage.setItem('openpalm.adminToken', 'test-admin-token');
-
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
       if (url === '/admin/secrets') {
@@ -95,8 +91,6 @@ describe('SecretsTab', () => {
 
   it('keeps secrets visible when kind metadata is missing or unknown', async () => {
     guard = useConsoleGuard();
-    localStorage.setItem('openpalm.adminToken', 'test-admin-token');
-
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
       if (url === '/admin/secrets') {

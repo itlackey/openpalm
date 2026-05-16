@@ -97,7 +97,6 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     `OP_HOME=${state.homeDir}`,
     `OP_UID=${uid}`,
     `OP_GID=${gid}`,
-    `OP_DOCKER_SOCK=${process.env.OP_DOCKER_SOCK ?? "/var/run/docker.sock"}`,
     "",
     "# ── Images ──────────────────────────────────────────────────────────",
     `OP_IMAGE_NAMESPACE=${process.env.OP_IMAGE_NAMESPACE ?? "openpalm"}`,
