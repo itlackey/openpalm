@@ -23,11 +23,10 @@ type AuthServerState = {
 	};
 };
 
-const globalState = globalThis as typeof globalThis & { __ocpAuthServer?: AuthServerState };
+let authServer: AuthServerState = {};
 
-function state() {
-	globalState.__ocpAuthServer ??= {};
-	return globalState.__ocpAuthServer;
+function state(): AuthServerState {
+	return authServer;
 }
 
 export async function ensureAuthServer() {
