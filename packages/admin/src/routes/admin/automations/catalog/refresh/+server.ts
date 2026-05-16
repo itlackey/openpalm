@@ -1,6 +1,7 @@
 /**
  * POST /admin/automations/catalog/refresh — Refresh the runtime catalog from GitHub.
  */
+import { existsSync, readdirSync } from "node:fs";
 import type { RequestHandler } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
 import {
@@ -37,6 +38,11 @@ export const POST: RequestHandler = async (event) => {
       requestId,
       callerType,
     );
+    const tasksDir = `${state.stashDir}/tasks`;
+    const taskFiles = existsSync(tasksDir)
+      ? readdirSync(tasksDir).filter((f) => f.endsWith(".md")).map((f) => f.replace(".md", ""))
+      : [];
+
     return jsonResponse(
       200,
       {
@@ -44,6 +50,8 @@ export const POST: RequestHandler = async (event) => {
         root: result.root,
         addonCount: result.addonCount,
         automationCount: result.automationCount,
+        tasks: taskFiles,
+        cronSyncRequired: taskFiles.length > 0,
       },
       requestId,
     );

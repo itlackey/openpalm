@@ -55,11 +55,12 @@ All of this functionality exists to simplify managing files under the OP_HOME di
 
 These are hard constraints that must never be violated during development. See also the Security boundaries summary in `foundations.md`, which provides a condensed version of these rules for quick reference.
 
-1. **Host CLI or admin is the orchestrator.** The host CLI manages Docker Compose directly on the host. The admin container, when present, provides a web UI and API for remote/assistant-driven stack operations via docker-socket-proxy. Only one orchestrator should manage compose operations at a time. The Docker socket is never exposed to any other container. The admin mounts all of `$OP_HOME` because it manages config, vault, stack assembly, data, and logs — mounting individual subdirectories would be fragile and break when new paths are added. Its blast radius is already constrained by docker-socket-proxy (filtered API), token-authenticated API endpoints, and localhost-only binding.
+1. **Host CLI or admin is the orchestrator.** The host CLI manages Docker Compose directly on the host. The admin UI is a host process (a Bun.serve server started by `openpalm admin serve`) that embeds the SvelteKit UI as a pre-built tarball and manages Docker Compose via the host Docker socket. There is no admin container. Only one orchestrator should manage compose operations at a time. The Docker socket is never exposed to any container.
 2. **Guardian-only ingress.** All channel traffic enters through the guardian, which enforces HMAC verification, timestamp skew rejection, replay detection, and rate limiting. No channel may communicate directly with the assistant. Channel secrets are distributed during addon install (see § Addon secret lifecycle below).
-3. **Assistant isolation.** The assistant has no Docker socket and no broad host filesystem access beyond its designated mounts: `config/ -> /etc/openpalm`, `config/assistant/ -> /home/opencode/.config/opencode`, `vault/stack/auth.json`, `vault/user/ -> /etc/vault/` (directory, rw), `data/assistant/`, `data/stash/ -> /akm` (shared akm stash), `data/akm-cache/ -> /akm-cache`, `data/workspace/`, and `logs/opencode/`. When the admin service is present, the assistant interacts with the stack through the admin API. When admin is absent, assistant stack-management tools are unavailable — the assistant operates with akm-only access to memory and knowledge.
-4. **Host only by default.** Admin interfaces, dashboards, and channels are host-restricted by default. Nothing is exposed to the network or internet without explicit user opt-in. The admin UI stores the admin token in localStorage; this is acceptable because the admin is LAN-first and never publicly exposed. The threat model for XSS-based token theft requires the attacker to already have network access to the host or LAN, at which point they likely have broader access. Session expiry and httpOnly cookies would add implementation complexity without meaningful security improvement under this threat model. **OpenCode auth (`OPENCODE_AUTH`) is disabled by default** because all host port bindings default to `127.0.0.1` (loopback-only) and the guardian communicates with the assistant over Docker's `assistant_net` network without credentials. If a user changes `OP_ASSISTANT_BIND_ADDRESS` to `0.0.0.0`, they must also set `OP_OPENCODE_PASSWORD` in `stack.env` and enable `OPENCODE_AUTH` — the compose comments document this requirement.
-5. **Scheduler access is scoped to automation needs.** The scheduler co-process inherits the assistant container's environment (including `OP_ASSISTANT_TOKEN`) and mounts `config/` (read-only) and `data/scheduler/` (read-write, for trigger sentinels) plus the shared `logs/` volume. It calls the admin API with the assistant token for `api` actions and `http://localhost:4096` for `assistant` actions. There is no dedicated scheduler↔admin token anymore.
+3. **Assistant isolation.** The assistant has no Docker socket and no broad host filesystem access beyond its designated mounts: `config/ -> /etc/openpalm`, `config/assistant/ -> /home/opencode/.config/opencode`, `vault/stack/auth.json`, `vault/user/ -> /etc/vault/` (directory, rw), `data/assistant/`, `data/stash/ -> /akm` (shared akm stash), `data/akm-cache/ -> /akm-cache`, `data/workspace/`, and `logs/opencode/`. The assistant has no network path to the host admin process (which binds to `127.0.0.1` only) and no admin tools — it cannot perform stack operations. Stack operations are handled exclusively by the host CLI and admin UI.
+4. **Host only by default.** Admin interfaces, dashboards, and channels are host-restricted by default. Nothing is exposed to the network or internet without explicit user opt-in. The admin UI uses an `httpOnly` `SameSite=Strict` session cookie (no `localStorage` token). A `Host` header allowlist on every handler closes DNS rebinding. The admin process binds to `127.0.0.1` only and is never publicly exposed. **OpenCode auth (`OPENCODE_AUTH`) is disabled by default** because all host port bindings default to `127.0.0.1` (loopback-only) and the guardian communicates with the assistant over Docker's `assistant_net` network without credentials. If a user changes `OP_ASSISTANT_BIND_ADDRESS` to `0.0.0.0`, they must also set `OP_OPENCODE_PASSWORD` in `stack.env` and enable `OPENCODE_AUTH` — the compose comments document this requirement.
+5. **Scheduler access is scoped to automation needs.** The scheduler co-process inherits the assistant container's environment (including `OP_ASSISTANT_TOKEN`) and mounts `config/` (read-only) and `data/scheduler/` (read-write, for trigger sentinels) plus the shared `logs/` volume. It calls `http://localhost:4096` for `assistant`-type actions only. Stack-level cron jobs run via host OS cron using the CLI (`openpalm` commands), not via an in-container admin API call.
+6. **Admin is host-only.** Admin binds exclusively to `127.0.0.1` and is never reachable from the Docker bridge network or any container. Containers cannot reach admin under any configuration. The admin process manages Docker Compose directly on the host via the host Docker socket — there is no docker-socket-proxy container.
 
 ---
 
@@ -215,7 +216,6 @@ Host-exposed OpenPalm services default to a small localhost-friendly port set. C
 | **Assistant** (OpenCode) | 4096 | `127.0.0.1:3800` | OpenCode web UI + API |
 | **Voice addon** | 8186 | `127.0.0.1:3810` | Voice interface (TTS/STT) |
 | **Admin** | 8100 | `127.0.0.1:3880` | Admin UI + API |
-| **Admin OpenCode** | 3881 | `127.0.0.1:3881` | Admin-side OpenCode runtime |
 | **Guardian** | 8080 | (internal only) | HMAC verification + rate limiting |
 | **Chat addon** | 8181 | `127.0.0.1:3820` | OpenAI-compatible chat edge |
 | **API addon** | 8182 | `127.0.0.1:3821` | OpenAI/Anthropic-compatible API edge |
@@ -226,17 +226,9 @@ Port assignments are defined via `OP_*_PORT` variables in `config/stack/stack.en
 
 ## Docker build dependency contract
 
-Docker builds run outside the Bun workspace — the monorepo's hoisted `node_modules` is not available. Each Dockerfile must resolve service dependencies explicitly. **This pattern is mandatory; do not deviate.** See [`docker-dependency-resolution.md`](docker-dependency-resolution.md) for the full rationale and background behind these rules.
+Docker builds run outside the Bun workspace — the monorepo's hoisted `node_modules` is not available. Each Dockerfile must resolve service dependencies explicitly.
 
-### Admin (SvelteKit/Node build)
-
-The admin Dockerfile uses **plain `npm install`** (not Bun) at a workspace root directory so `node_modules/` lands at a common ancestor of admin source paths. This gives standard Node module resolution a real directory tree with no symlinks. The build output is a self-contained SvelteKit adapter-node bundle — no runtime `node_modules` needed.
-
-**Rules:**
-
-- Never use Bun to install dependencies in the admin Docker build — Bun's symlink-based `node_modules` layout is fragile under Node/Vite resolution.
-- `node_modules` must be at a common ancestor of all source directories that Vite resolves (admin source, stack).
-- `PATH` must include `node_modules/.bin` so build tool binaries (svelte-kit, vite) are available from subdirectories.
+Admin is a host binary (not a Docker service). Its SvelteKit build runs on the host via `npm run build` and is embedded in the CLI binary as a tarball.
 
 ### Guardian + Channels (Bun runtime)
 
@@ -246,7 +238,7 @@ These Dockerfiles copy `packages/channels-sdk` source into `/app/node_modules/@o
 RUN cd /app/node_modules/@openpalm/channels-sdk && bun install --production
 ```
 
-This ensures sdk transitive dependencies are available at runtime. Since these services run on Bun (which created the install), there is no cross-tool resolution concern.
+This ensures sdk transitive dependencies are available at runtime.
 
 **Rules:**
 

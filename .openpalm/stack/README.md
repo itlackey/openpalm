@@ -70,4 +70,3 @@ Repo addon sources live under `.openpalm/registry/addons/`. At runtime,
 |---------|---------|
 | `channel_lan` | Internal/LAN-facing channel traffic |
 | `assistant_net` | Internal core-service communication |
-| `admin_docker_net` | Isolated network for admin and docker-socket-proxy |

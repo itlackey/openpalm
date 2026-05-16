@@ -315,18 +315,18 @@ describe("materialized registry catalog", () => {
 
   it("returns addon service names from stack or registry compose files", () => {
     const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'admin');
+    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'proxy-test');
     const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
 
     mkdirSync(addonDir, { recursive: true });
     mkdirSync(automationsDir, { recursive: true });
-    writeFileSync(join(addonDir, 'compose.yml'), 'services:\n  docker-socket-proxy:\n    image: proxy\n  admin:\n    image: admin\n');
-    writeFileSync(join(addonDir, '.env.schema'), 'OP_ADMIN_TOKEN=\n');
+    writeFileSync(join(addonDir, 'compose.yml'), 'services:\n  svc-a:\n    image: image-a\n  svc-b:\n    image: image-b\n');
+    writeFileSync(join(addonDir, '.env.schema'), 'PROXY_TOKEN=\n');
     writeFileSync(join(automationsDir, 'cleanup.md'), '---\ndescription: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n---\n');
 
     materializeRegistryCatalog(sourceRoot);
 
-    expect(getAddonServiceNames(process.env.OP_HOME!, 'admin')).toEqual(['docker-socket-proxy', 'admin']);
+    expect(getAddonServiceNames(process.env.OP_HOME!, 'proxy-test')).toEqual(['svc-a', 'svc-b']);
   });
 
   it("toggles addons and generates channel secrets when enabling channel addons", () => {

@@ -25,7 +25,7 @@ details.
 ```bash
 git clone https://github.com/itlackey/openpalm.git
 cp -R openpalm/.openpalm "$HOME/.openpalm"
-cp -R "$HOME/.openpalm/registry/addons/admin" "$HOME/.openpalm/config/stack/addons/admin"
+
 $EDITOR "$HOME/.openpalm/config/stack/stack.env"
 $EDITOR "$HOME/.openpalm/vault/user/user.env"
 ```
@@ -91,7 +91,7 @@ copied into `~/.openpalm/config/stack/addons/`.
 
 | Addon | Compose file |
 |---|---|
-| `admin` | `addons/admin/compose.yml` |
+
 | `chat` | `addons/chat/compose.yml` |
 | `api` | `addons/api/compose.yml` |
 | `discord` | `addons/discord/compose.yml` |

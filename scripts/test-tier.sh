@@ -41,7 +41,6 @@ cd "$ROOT_DIR"
 dev_compose() {
 	docker compose --project-directory . \
 		-f .dev/stack/core.compose.yml \
-		-f .dev/stack/addons/admin/compose.yml \
 		-f compose.dev.yml \
 		--env-file .dev/vault/stack/stack.env \
 		--env-file .dev/vault/user/user.env \
@@ -72,7 +71,6 @@ rebuild_stack() {
 
 	echo "Building admin..."
 	bun run admin:build
-	./scripts/dev-setup.sh --enable-addon admin
 
 	echo "Stopping previous stack containers..."
 	dev_compose down --remove-orphans 2>/dev/null || true

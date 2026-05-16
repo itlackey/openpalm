@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { getAdminToken } from '$lib/auth.js';
   import { fetchServiceLogs } from '$lib/api.js';
 
   interface Props {
@@ -19,12 +18,10 @@
   let logContainer: HTMLPreElement | undefined = $state();
 
   async function loadLogs(): Promise<void> {
-    const token = getAdminToken();
-    if (!token) return;
     loading = true;
     error = '';
     try {
-      const result = await fetchServiceLogs(token, {
+      const result = await fetchServiceLogs({
         service: selectedService || undefined,
         tail: tailLines,
       });

@@ -108,6 +108,24 @@ export async function composePreflight(
   return run(args, undefined, 30_000, collectEnvOverrides(options.envFiles));
 }
 
+/**
+ * Run compose config preflight validation before any mutation.
+ * Skipped when OP_SKIP_COMPOSE_PREFLIGHT is set (tests, CI).
+ */
+async function runPreflight(options: { files: string[]; envFiles?: string[] }): Promise<void> {
+  if (options.files.length === 0 || process.env.OP_SKIP_COMPOSE_PREFLIGHT) return;
+  const result = await composePreflight(options);
+  if (!result.ok) {
+    const project = resolveComposeProjectName();
+    const fileArgs = options.files.map((f) => `-f ${f}`).join(" ");
+    const envArgs = (options.envFiles ?? []).map((f) => `--env-file ${f}`).join(" ");
+    throw new Error(
+      `Compose preflight failed: ${result.stderr}\n` +
+      `Resolved command: docker compose ${fileArgs} --project-name ${project} ${envArgs} config --quiet`
+    );
+  }
+}
+
 export async function composeConfigServices(
   options: { files: string[]; envFiles?: string[] }
 ): Promise<{ ok: boolean; services: string[] }> {
@@ -133,6 +151,7 @@ export async function composeUp(
     removeOrphans?: boolean;
   }
 ): Promise<DockerResult> {
+  await runPreflight(options);
   if (!existsSync(options.files[0])) {
     return { ok: false, stdout: "", stderr: "Compose file not found", code: 1 };
   }
@@ -156,6 +175,7 @@ export async function composeDown(
     envFiles?: string[];
   }
 ): Promise<DockerResult> {
+  await runPreflight(options);
   if (!existsSync(options.files[0])) {
     return { ok: false, stdout: "", stderr: "Compose file not found", code: 1 };
   }
@@ -173,6 +193,7 @@ export async function composeRestart(
   services: string[],
   options: { files: string[]; envFiles?: string[] }
 ): Promise<DockerResult> {
+  await runPreflight(options);
   const primaryFile = options.files[0];
   if (!existsSync(primaryFile)) {
     return {
@@ -196,6 +217,7 @@ export async function composeStop(
   services: string[],
   options: { files: string[]; envFiles?: string[] }
 ): Promise<DockerResult> {
+  await runPreflight(options);
   const args = buildComposeArgs(options);
   args.push("stop", ...services);
 
@@ -209,6 +231,7 @@ export async function composeStart(
   services: string[],
   options: { files: string[]; envFiles?: string[] }
 ): Promise<DockerResult> {
+  await runPreflight(options);
   const args = buildComposeArgs(options);
   // Use up -d for specific services to ensure they're created
   args.push("up", "-d", ...services);
@@ -272,6 +295,7 @@ export async function composePullService(
   service: string,
   options: { files: string[]; envFiles?: string[] }
 ): Promise<DockerResult> {
+  await runPreflight(options);
   const args = buildComposeArgs(options);
   args.push("pull", service);
   return run(args, undefined, 300_000, collectEnvOverrides(options.envFiles));
@@ -280,6 +304,7 @@ export async function composePullService(
 export async function composePull(
   options: { files: string[]; envFiles?: string[] }
 ): Promise<DockerResult> {
+  await runPreflight(options);
   const args = buildComposeArgs(options);
   args.push("pull");
   return run(args, undefined, 300_000, collectEnvOverrides(options.envFiles));
@@ -315,25 +340,27 @@ export async function getDockerEvents(
   return run(args, undefined, 15_000);
 }
 
+
 /**
- * Fire-and-forget recreation of the admin container.
+ * Query Docker for a container's running state by name.
+ * Returns "running" or "stopped". Falls back to "unknown" on error.
  */
-export function selfRecreateAdmin(
-  options: { files: string[]; envFiles?: string[] }
-): void {
-  const args = buildComposeArgs(options);
-  args.push("--profile", "admin", "up", "-d", "--force-recreate", "--remove-orphans", "admin");
-  try {
-    const child = spawn("docker", args, {
-      stdio: "ignore",
-      detached: true,
-      env: { ...process.env, ...collectEnvOverrides(options.envFiles) }
-    });
-    child.on("error", (err) => {
-      logger.error("selfRecreateAdmin spawn error", { error: err.message });
-    });
-    child.unref();
-  } catch (err) {
-    logger.error("selfRecreateAdmin failed to spawn", { error: err instanceof Error ? err.message : String(err) });
-  }
+export function inspectContainerStatus(
+  containerName: string
+): Promise<"running" | "stopped" | "unknown"> {
+  return new Promise((resolve) => {
+    execFile(
+      "docker",
+      ["inspect", "--format", "{{.State.Status}}", containerName],
+      { timeout: 5000 },
+      (error, stdout) => {
+        if (error) {
+          resolve("unknown");
+          return;
+        }
+        const status = (stdout ?? "").toString().trim();
+        resolve(status === "running" ? "running" : "stopped");
+      }
+    );
+  });
 }

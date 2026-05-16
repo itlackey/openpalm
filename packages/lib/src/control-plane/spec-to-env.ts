@@ -33,8 +33,6 @@ export function deriveSystemEnvFromSpec(
   result["OP_HOME"] = homeDir;
   result["OP_UID"] = String(uid);
   result["OP_GID"] = String(gid);
-  result["OP_DOCKER_SOCK"] = process.env.OP_DOCKER_SOCK ?? "/var/run/docker.sock";
-
   // Image
   result["OP_IMAGE_NAMESPACE"] = image.namespace;
   result["OP_IMAGE_TAG"] = image.tag;

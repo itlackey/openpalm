@@ -8,7 +8,7 @@ import {
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import { appendAudit, buildComposeOptions } from "@openpalm/lib";
-import { composeStats, checkDocker } from "$lib/server/docker.js";
+import { composeStats, checkDocker } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 export const GET: RequestHandler = async (event) => {

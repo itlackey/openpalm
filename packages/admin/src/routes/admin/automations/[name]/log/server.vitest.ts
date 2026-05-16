@@ -23,7 +23,7 @@ function makeLogEvent(
   return {
     request: new Request(url, {
       headers: {
-        'x-admin-token': token,
+        cookie: `op_session=${token}`,
         'x-request-id': 'req-log-test',
       },
     }),

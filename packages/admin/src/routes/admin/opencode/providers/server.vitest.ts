@@ -30,7 +30,7 @@ function makeEvent(token = 'admin-token'): Parameters<typeof GET>[0] {
   return {
     request: new Request('http://localhost/admin/opencode/providers', {
       headers: {
-        'x-admin-token': token,
+        cookie: `op_session=${token}`,
         'x-request-id': 'req-providers',
       },
     }),

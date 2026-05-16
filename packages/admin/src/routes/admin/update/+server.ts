@@ -6,8 +6,17 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { applyUpdate, appendAudit, createLogger, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, buildComposeOptions, buildManagedServices, ensureHomeDirs } from "@openpalm/lib";
-import { composeUp, checkDocker } from "$lib/server/docker.js";
+import {
+  applyUpdate,
+  createLogger,
+  ensureOpenCodeConfig,
+  ensureOpenCodeSystemConfig,
+  buildComposeOptions,
+  buildManagedServices,
+  ensureHomeDirs,
+  composeUp,
+  checkDocker,
+} from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("update");
@@ -25,7 +34,8 @@ export const POST: RequestHandler = async (event) => {
   ensureHomeDirs();
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
-  const result = await applyUpdate(state);
+  // audit recorded inside lib via ctx
+  const result = await applyUpdate(state, { actor, requestId, callerType });
   logger.info("update applied, re-running compose", { requestId, restarted: result.restarted });
 
   // Re-apply compose with updated artifacts (include all channel overlays)
@@ -37,16 +47,6 @@ export const POST: RequestHandler = async (event) => {
       services: await buildManagedServices(state)
     });
   }
-
-  appendAudit(
-    state,
-    actor,
-    "update",
-    { restarted: result.restarted, dockerAvailable: dockerCheck.ok },
-    true,
-    requestId,
-    callerType
-  );
 
   logger.info("update completed", { requestId, dockerAvailable: dockerCheck.ok });
   return jsonResponse(200, { ok: true, ...result, dockerAvailable: dockerCheck.ok }, requestId);

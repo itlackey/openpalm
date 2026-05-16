@@ -4,9 +4,10 @@
 
   interface Props {
     onLogout: () => void;
+    navLink?: { href: string; label: string };
   }
 
-  let { onLogout }: Props = $props();
+  let { onLogout, navLink }: Props = $props();
 </script>
 
 <nav class="navbar" aria-label="Main navigation">
@@ -19,6 +20,9 @@
       <span class="version-badge">v{version}</span>
     </div>
     <div class="navbar-actions">
+      {#if navLink}
+        <a href={navLink.href} class="btn btn-secondary btn-sm">{navLink.label}</a>
+      {/if}
       <VoiceControl />
       <button class="btn btn-secondary btn-sm" type="button" onclick={onLogout}>Sign Out</button>
     </div>

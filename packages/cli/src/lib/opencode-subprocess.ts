@@ -54,10 +54,15 @@ export async function startOpenCodeSubprocess(opts: {
   mkdirSync(ocStateDir, { recursive: true });
 
   // Symlink auth.json → real state location
+  // SEC-5: Windows does not support unprivileged symlinks; use copyFileSync instead.
   const authJsonSrc = join(opts.stateDir, "auth.json");
   const authJsonDst = join(ocShareDir, "auth.json");
   if (!existsSync(authJsonDst)) {
-    symlinkSync(authJsonSrc, authJsonDst);
+    if (process.platform === "win32") {
+      if (existsSync(authJsonSrc)) copyFileSync(authJsonSrc, authJsonDst);
+    } else {
+      symlinkSync(authJsonSrc, authJsonDst);
+    }
   }
 
   // Copy opencode.json config (not symlink — OpenCode may modify it)

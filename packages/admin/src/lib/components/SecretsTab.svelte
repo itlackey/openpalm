@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getAdminToken } from '$lib/auth.js';
   import { fetchSecrets, writeSecret, deleteSecret, generateSecret, type SecretEntry } from '$lib/api.js';
 
   interface Props {
@@ -105,12 +104,10 @@
   }
 
   async function loadSecrets(): Promise<void> {
-    const token = getAdminToken();
-    if (!token) return;
     loading = true;
     error = '';
     try {
-      const result = await fetchSecrets(token);
+      const result = await fetchSecrets();
       entries = result.entries;
       provider = result.provider;
       capabilities = result.capabilities;
@@ -122,13 +119,12 @@
   }
 
   async function handleWrite(): Promise<void> {
-    const token = getAdminToken();
-    if (!token || !writeKey.trim() || !writeValue.trim()) return;
+    if (!writeKey.trim() || !writeValue.trim()) return;
     actionLoading = true;
     actionError = '';
     actionSuccess = '';
     try {
-      await writeSecret(token, writeKey.trim(), writeValue);
+      await writeSecret(writeKey.trim(), writeValue);
       actionSuccess = `Secret "${writeKey.trim()}" saved.`;
       writeKey = '';
       writeValue = '';
@@ -142,13 +138,12 @@
   }
 
   async function handleGenerate(): Promise<void> {
-    const token = getAdminToken();
-    if (!token || !genKey.trim()) return;
+    if (!genKey.trim()) return;
     actionLoading = true;
     actionError = '';
     actionSuccess = '';
     try {
-      await generateSecret(token, genKey.trim(), genLength);
+      await generateSecret(genKey.trim(), genLength);
       actionSuccess = `Secret "${genKey.trim()}" generated (${genLength} bytes).`;
       genKey = '';
       genLength = 32;
@@ -163,13 +158,11 @@
 
   async function handleDelete(key: string): Promise<void> {
     if (!confirm(`Delete secret "${key}"? This cannot be undone.`)) return;
-    const token = getAdminToken();
-    if (!token) return;
     actionLoading = true;
     actionError = '';
     actionSuccess = '';
     try {
-      await deleteSecret(token, key);
+      await deleteSecret(key);
       actionSuccess = `Secret "${key}" deleted.`;
       await loadSecrets();
     } catch (e) {

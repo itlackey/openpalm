@@ -1,12 +1,11 @@
 # core/assistant — OpenCode Runtime
 
-Containerized [OpenCode](https://opencode.ai) instance that is the AI brain of OpenPalm. It has **no Docker socket access** — all stack operations are performed by calling the Admin API.
+Containerized [OpenCode](https://opencode.ai) instance that is the AI brain of OpenPalm. It has **no Docker socket access** and no network path to the host admin process — it cannot perform stack operations. Stack management is handled by the host CLI and admin UI.
 
 ## Responsibilities
 
 - Process messages forwarded by the guardian
-- Call Admin API endpoints to inspect and manage the stack
-- Maintain persistent memory via the memory service (SQLite + `sqlite-vec`)
+- Maintain persistent memory via the akm stash (skills, lessons, memories)
 - Execute user-defined skills, tools, and plugins
 
 ## Isolation model
@@ -14,7 +13,7 @@ Containerized [OpenCode](https://opencode.ai) instance that is the AI brain of O
 The assistant is deliberately isolated:
 - No Docker socket mount
 - No host filesystem access beyond designated mounts (`$OP_HOME/data/assistant`, `$OP_HOME/config/assistant`, `$OP_HOME/data/workspace`, `$OP_HOME/vault/user/`, `$OP_HOME/logs/opencode`)
-- Admin API calls are HMAC-authenticated and allowlisted
+- No network path to the host admin process (`127.0.0.1` loopback is unreachable from inside the container)
 
 ## Plugin Architecture
 
@@ -52,6 +51,5 @@ See [`packages/assistant-tools/AGENTS.md`](../../packages/assistant-tools/AGENTS
 
 | Variable | Purpose |
 |---|---|
-| `OP_ADMIN_API_URL` | Admin API base URL |
-| `OP_ASSISTANT_TOKEN` | Assistant token for Admin API authentication |
+| `OP_ASSISTANT_TOKEN` | Assistant token (used by guardian for message authentication) |
 | `OPENCODE_CONFIG_DIR` | System config directory (maps to `DATA_HOME/assistant`, mounted at `/etc/opencode`) |

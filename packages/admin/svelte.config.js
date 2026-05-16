@@ -6,7 +6,10 @@ import pkg from "./package.json" with { type: "json" };
 const config = {
   preprocess: vitePreprocess(),
   kit: {
-    adapter: adapter(),
+    adapter: adapter({
+      out: "build",
+      envPrefix: "",
+    }),
     version: { name: pkg.version }
   }
 };

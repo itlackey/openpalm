@@ -37,7 +37,7 @@ Three hard rules define the whole design:
 ## Components
 
 ### Admin (SvelteKit app, host port 3880)
-The optional web control plane. When present, it reaches Docker through docker-socket-proxy.
+The optional web control plane. Runs as a host process and accesses Docker directly on the host.
 
 Responsibilities:
 - Writes runtime configuration and secrets directly to `~/.openpalm/config/stack/` and
@@ -129,7 +129,7 @@ If the assistant needs to do a stack operation during its turn (e.g., restart
 a service):
 
 ```
-Assistant calls POST http://admin:8100/admin/containers/restart
+User requests stack operation via admin chat UI → host admin process calls docker compose restart
   Header: x-admin-token: <assistant-scoped token>
   Body:   { "service": "chat" }
         |
@@ -193,7 +193,7 @@ There is no intermediate staging step. The standard wrapper includes
 
 | Invariant | Enforcement |
 |-----------|-------------|
-| Host CLI or admin is the orchestrator | CLI manages Docker Compose directly on host; admin (optional) uses docker-socket-proxy |
+| Host CLI or admin is the orchestrator | CLI manages Docker Compose directly on host; admin (optional) runs as a host process with direct Docker access |
 | Guardian-only ingress | Channel adapters POST to Guardian only; Guardian HMAC-verifies every message |
 | Assistant isolation | `assistant` has no Docker socket; when admin is present, calls Admin API on allowlist |
 | LAN-first by default | Host-exposed ports bind to `127.0.0.1`; nothing public without opt-in |

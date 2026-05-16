@@ -41,7 +41,6 @@ OP_HOME=${homeDir}
 OP_WORK_DIR=${workDir}
 OP_UID=${process.getuid?.() ?? 1000}
 OP_GID=${process.getgid?.() ?? 1000}
-OP_DOCKER_SOCK=${defaultDockerSock()}
 OP_IMAGE_NAMESPACE=${process.env.OP_IMAGE_NAMESPACE || 'openpalm'}
 OP_IMAGE_TAG=${defaultImageTag}
 `;

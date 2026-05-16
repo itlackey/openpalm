@@ -83,4 +83,35 @@ export type OpenCodeAuthMethod = {
   label: string;
 };
 
+// ── Chat Types ──────────────────────────────────────────────────────────
+
+export type ChatBackend = 'assistant' | 'admin';
+
+export type ChatMessage = {
+  id: string;
+  type?: never;
+  role: 'user' | 'assistant';
+  text: string;
+  backend: ChatBackend;
+  timestamp: number;
+};
+
+export type ChatDivider = {
+  id: string;
+  type: 'divider';
+  label: string;
+  timestamp: number;
+};
+
+export type ChatEntry = ChatMessage | ChatDivider;
+
+export type OpenCodeMessageResponse = {
+  parts: Array<{ type: string; text?: string }>;
+};
+
+export type ChatSessionState = {
+  sessionId: string | null;
+  status: 'idle' | 'connecting' | 'ready' | 'error';
+  error: string;
+};
 

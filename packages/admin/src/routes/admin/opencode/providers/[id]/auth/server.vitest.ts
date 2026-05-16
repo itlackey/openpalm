@@ -52,7 +52,7 @@ function makeEvent(
       method,
       headers: {
         'content-type': 'application/json',
-        'x-admin-token': options?.token ?? 'admin-token',
+        cookie: `op_session=${options?.token ?? 'admin-token'}`,
         'x-request-id': 'req-auth',
       },
       body: options?.body === undefined ? undefined : JSON.stringify(options.body),

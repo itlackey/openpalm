@@ -4,8 +4,12 @@
  * Performs an idempotent auto-apply: ensures home dirs exist, seeds
  * secrets and OpenCode config, resolves runtime files, and records
  * the outcome in the audit log.
+ *
+ * Also enforces SEC-1: Host header allowlist to prevent DNS rebinding attacks.
  */
+import type { Handle } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
+import { checkHostHeader, ADMIN_PORT } from "$lib/server/helpers.js";
 import {
   createLogger,
   ensureSecrets,
@@ -70,3 +74,10 @@ function runStartupApply(): void {
 runStartupApply();
 
 // Scheduler is now a dedicated sidecar — admin has zero background processes.
+
+// ── SEC-1: Host header allowlist (DNS rebinding protection) ───────────────
+export const handle: Handle = async ({ event, resolve }) => {
+  const hostError = checkHostHeader(event.request, ADMIN_PORT);
+  if (hostError) return hostError;
+  return resolve(event);
+};

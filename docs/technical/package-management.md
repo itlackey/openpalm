@@ -40,13 +40,13 @@ All `@openpalm/*` cross-references in `dependencies`, `devDependencies`, and `pe
 
 ### Keeping ranges in sync
 
-Platform packages (root, `packages/lib`, `packages/admin`, `core/guardian`, `packages/cli`, `packages/channels-sdk`) share a coordinated version bumped by `scripts/bump-platform.sh` and published from the release workflow. Independent npm packages (`packages/channel-*`, `packages/assistant-tools`, `packages/admin-tools`) are versioned via per-package publish workflows. Cross-references between groups use real semver ranges and are updated manually when a dependency's API changes.
+Platform packages (root, `packages/lib`, `packages/admin`, `core/guardian`, `packages/cli`, `packages/channels-sdk`) share a coordinated version bumped by `scripts/bump-platform.sh` and published from the release workflow. Independent npm packages (`packages/channel-*`, `packages/assistant-tools`) are versioned via per-package publish workflows. Cross-references between groups use real semver ranges and are updated manually when a dependency's API changes.
 
 ### Why Docker builds don't use lock files
 
 Docker builds install dependencies without `--frozen-lockfile`:
 
-- **Admin** (`core/admin/Dockerfile`) uses `npm install` because the SvelteKit build requires Node.js and npm — not Bun. The `.npmrc` prevents npm from creating a lock file inside the image.
 - **Guardian** and **channel** Dockerfiles use `bun install --production` after copying only the source files they need. They don't mount the root lock file because they only install a small subset of workspace dependencies.
+- **Admin** is a host binary (no Docker build). Its SvelteKit UI is built on the host via `npm run build` and embedded in the CLI binary as a tarball.
 
 This is intentional. The lock file guards the development workflow (ensuring reproducible local installs and CI checks). Docker builds produce immutable images and are tested by CI's `docker compose config` validation.

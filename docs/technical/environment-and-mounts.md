@@ -111,7 +111,6 @@ Key env:
 | `OPENCODE_ENABLE_SSH` | `stack.env` | Optional SSH enablement |
 | `HOME` | `/home/opencode` | Runtime home |
 | `AKM_STASH_DIR` | `/home/opencode/.akm` | AKM stash location hint |
-| `OP_ADMIN_API_URL` | `stack.env` / addon wiring | Admin API URL when admin is present |
 | `OP_ASSISTANT_TOKEN` | `OP_ASSISTANT_TOKEN` from `stack.env` | Assistant-scoped auth token |
 | `OP_UID` / `OP_GID` | `stack.env` | Entrypoint privilege drop target |
 
@@ -182,65 +181,19 @@ Notes:
 
 ---
 
-## Admin Addon
+## Admin (host process)
 
-Compose source: runtime `~/.openpalm/config/stack/addons/admin/compose.yml` seeded from `.openpalm/registry/addons/admin/compose.yml`
+Admin is a host-only Bun.serve server started by `openpalm admin serve`. It has no container, no Docker socket mount, and no `$OP_HOME` volume bind — it accesses everything directly as a host process.
 
-### Docker Socket Proxy
+Bind address: `127.0.0.1:${OP_HOST_ADMIN_PORT:-3880}` (loopback only — never reachable from containers or LAN)
 
-Mounts:
-
-| Host path | Container path | Mode | Purpose |
-|---|---|---|---|
-| `${OP_DOCKER_SOCK:-/var/run/docker.sock}` | `/var/run/docker.sock` | ro | Filtered Docker API source |
-
-Networks and behavior:
-
-| Item | Value |
-|---|---|
-| Networks | `admin_docker_net` |
-| Internal port | `2375` |
-| Allowed API areas | `CONTAINERS`, `IMAGES`, `NETWORKS`, `VOLUMES`, `POST`, `INFO` |
-
-This is the only shipped container that mounts the Docker socket.
-
-### Admin
-
-Mounts:
-
-| Host path | Container path | Mode | Purpose |
-|---|---|---|---|
-| `$OP_HOME` | `/openpalm` | rw | Full OpenPalm home for control-plane management |
-| `$OP_HOME/data/admin` | `/home/node` | rw | Admin home directory |
-| `$OP_HOME/data/workspace` | `/work` | rw | Workspace access |
-| `${GNUPGHOME:-${HOME}/.gnupg}` | `/home/node/.gnupg` | ro | Optional pass/GPG integration |
-
-Ports and networks:
-
-| Item | Value |
-|---|---|
-| Container port | `8100` |
-| Host bind | `${OP_ADMIN_BIND_ADDRESS:-127.0.0.1}:${OP_ADMIN_PORT:-3880}` |
-| Admin OpenCode container port | `3881` |
-| Host bind | `${OP_ADMIN_OPENCODE_BIND_ADDRESS:-127.0.0.1}:${OP_ADMIN_OPENCODE_PORT:-3881}` |
-| Networks | `assistant_net`, `admin_docker_net` |
-
-Key env:
+Key env (host process, not container):
 
 | Variable | Value / source | Purpose |
 |---|---|---|
-| `PORT` | `8100` | Admin HTTP port |
-| `HOME` | `/home/node` | Writable home |
-| `OP_HOME` | `/openpalm` | In-container OpenPalm root |
-| `ADMIN_TOKEN` | `${OP_ADMIN_TOKEN:-}` | Admin API auth token |
-| `GUARDIAN_URL` | `http://guardian:8080` | Guardian API URL |
-| `OP_ASSISTANT_URL` | `http://assistant:4096` | Assistant URL |
-| `OP_ADMIN_API_URL` | `http://localhost:8100` | Admin self-URL |
-| `OP_ADMIN_OPENCODE_PORT` | `${OP_ADMIN_OPENCODE_PORT:-3881}` | Admin OpenCode port |
-| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Built-in admin OpenCode config |
-| `OPENCODE_PORT` | `3881` | Admin OpenCode listen port |
-| `OPENCODE_AUTH` | `false` | Loopback-only by default |
-| `DOCKER_HOST` | `tcp://docker-socket-proxy:2375` | Docker API via proxy |
+| `PORT` | `OP_HOST_ADMIN_PORT` or `3880` | Admin HTTP listen port |
+| `OP_HOME` | resolved from host env | OpenPalm home directory |
+| `ADMIN_TOKEN` | `$OP_HOME/state/admin/token` | Admin API auth token |
 
 ---
 
@@ -263,10 +216,9 @@ All addon and channel services use `user: "${OP_UID:-1000}:${OP_GID:-1000}"` to 
 
 | Network | Connected services | Purpose |
 |---|---|---|
-| `assistant_net` | `assistant` (also hosts the scheduler co-process), `guardian`, and `admin` when enabled | Core internal service mesh |
+| `assistant_net` | `assistant` (also hosts the scheduler co-process), `guardian` | Core internal service mesh |
 | `channel_lan` | `guardian` and LAN-facing channel/addon edges | Default channel ingress network |
 | `channel_public` | `guardian` only in core; public-facing overlays can join it intentionally | Public ingress isolation |
-| `admin_docker_net` | `admin`, `docker-socket-proxy` | Isolated Docker control-plane network |
 
 ---
 
@@ -279,7 +231,6 @@ These variables are consumed by Compose and service env blocks.
 | `OP_HOME` | Host OpenPalm root used in bind mounts |
 | `OP_UID`, `OP_GID` | Runtime UID/GID for bind-mounted file ownership |
 | `OP_IMAGE_NAMESPACE`, `OP_IMAGE_TAG` | Image selection |
-| `OP_DOCKER_SOCK` | Docker socket path for the proxy |
 | `OP_ADMIN_BIND_ADDRESS`, `OP_ADMIN_PORT` | Admin host bind |
 | `OP_ADMIN_OPENCODE_BIND_ADDRESS`, `OP_ADMIN_OPENCODE_PORT` | Admin OpenCode host bind |
 | `OP_ASSISTANT_BIND_ADDRESS`, `OP_ASSISTANT_PORT` | Assistant host bind |

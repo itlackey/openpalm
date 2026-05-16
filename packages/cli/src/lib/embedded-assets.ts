@@ -6,14 +6,20 @@
  * without downloading from GitHub.
  */
 
+// ── Admin build tarball — embedded at CLI compile time ───────────────────
+// Build: cd packages/admin && npm run build && npm run build:tar
+// The resulting packages/admin/dist/admin-build.tar.gz is embedded here.
+// @ts-ignore — Bun binary import
+import ADMIN_BUILD_TAR from "../../../admin/dist/admin-build.tar.gz" with { type: "binary" };
+import cliPkg from "../../package.json" with { type: "json" };
+
+export const EMBEDDED_ADMIN_TAR: Uint8Array = ADMIN_BUILD_TAR as unknown as Uint8Array;
+export const ADMIN_BUILD_VERSION: string = cliPkg.version;
+
 // @ts-ignore — Bun text import
 import coreCompose from "../../../../.openpalm/stack/core.compose.yml" with { type: "text" };
 
 // Addon compose files
-// @ts-ignore — Bun text import
-import adminCompose from "../../../../.openpalm/registry/addons/admin/compose.yml" with { type: "text" };
-// @ts-ignore — Bun text import
-import adminSchema from "../../../../.openpalm/registry/addons/admin/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
 import chatCompose from "../../../../.openpalm/registry/addons/chat/compose.yml" with { type: "text" };
 // @ts-ignore — Bun text import
@@ -75,8 +81,6 @@ export const EMBEDDED_STASH_SEEDS: Record<string, string> = {
 
 export const EMBEDDED_ASSETS: Record<string, string> = {
   "stack/core.compose.yml": coreCompose,
-  "state/registry/addons/admin/compose.yml": adminCompose,
-  "state/registry/addons/admin/.env.schema": adminSchema,
   "state/registry/addons/chat/compose.yml": chatCompose,
   "state/registry/addons/chat/.env.schema": chatSchema,
   "state/registry/addons/api/compose.yml": apiCompose,

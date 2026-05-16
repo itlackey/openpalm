@@ -9,6 +9,7 @@ admin/build/
 CLAUDE.md
 packages/admin/.svelte-kit/
 packages/admin/build/
+packages/admin/dist/
 packages/admin/undefined/
 packages/admin/.env
 packages/admin/.env.local
@@ -38,7 +39,6 @@ packages/channel-voice/test-results/.last-run.json
 .openpalm/workspace/*/
 !.openpalm/workspace/README.md
 packages/assistant-tools/dist/
-packages/admin-tools/dist/index.js
 .dev-tmp/
 .dev-tmp*
 scripts/azure/.generated/prod.generated.bicepparam

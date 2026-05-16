@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { getAdminToken } from '$lib/auth.js';
 	import { buildHeaders } from '$lib/api.js';
 	import { onDestroy } from 'svelte';
 
@@ -55,10 +54,9 @@
 		}, 600_000);
 
 		callbackStartHandle = setTimeout(() => {
-			const token = getAdminToken() ?? '';
 			void fetch(`/admin/providers/oauth/${encodeURIComponent(providerId)}/callback`, {
 				method: 'POST',
-				headers: { ...buildHeaders(token), 'content-type': 'application/json' },
+				headers: { ...buildHeaders(), 'content-type': 'application/json' },
 				body: JSON.stringify({ method: methodIndex })
 			})
 				.then(async (response) => {
@@ -87,7 +85,6 @@
 		submitting = true;
 		actionResult = undefined;
 		try {
-			const token = getAdminToken() ?? '';
 			const body: Record<string, unknown> = {};
 			for (const [key, value] of formData.entries()) {
 				if (typeof value === 'string') body[key] = value;
@@ -98,7 +95,7 @@
 
 			const response = await fetch(endpoint, {
 				method: 'POST',
-				headers: { ...buildHeaders(token), 'content-type': 'application/json' },
+				headers: { ...buildHeaders(), 'content-type': 'application/json' },
 				body: JSON.stringify(body)
 			});
 

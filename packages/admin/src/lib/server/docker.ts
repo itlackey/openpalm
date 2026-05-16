@@ -18,7 +18,6 @@ import {
   composePull as _composePull,
   composeStats as _composeStats,
   getDockerEvents as _getDockerEvents,
-  selfRecreateAdmin as _selfRecreateAdmin,
   composePreflight,
   resolveComposeProjectName,
 } from "@openpalm/lib";
@@ -104,15 +103,6 @@ export async function composePull(
 ): Promise<DockerResult> {
   await runPreflight(options);
   return _composePull(options);
-}
-
-export function selfRecreateAdmin(
-  options: { files: string[]; envFiles?: string[] }
-): void {
-  // selfRecreateAdmin is fire-and-forget (spawns detached process).
-  // Preflight is synchronous-incompatible here but the compose files
-  // were already validated by the lifecycle preflight in reconcileCore().
-  _selfRecreateAdmin(options);
 }
 
 // ── Container inspection ──────────────────────────────────────────────

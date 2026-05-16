@@ -40,7 +40,6 @@ Common defaults:
 
 - `3800` assistant
 - `3880` admin
-- `3881` admin OpenCode
 - `3820` chat addon
 - `3821` API addon
 - `3810` voice addon
@@ -63,31 +62,17 @@ compose file set.
 
 **Common causes:**
 
-- you did not include `addons/admin/compose.yml`
-- the admin container is still starting
+- the `openpalm admin` host process is not running
 - `OP_ADMIN_PORT` was changed in `stack.env`
 
 **Fix:**
 
 ```bash
-cd "$HOME/.openpalm/stack"
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  --env-file ../config/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  ps
-```
+# Check if the host admin process is running
+lsof -i :3880 || ss -tlnp | grep 3880
 
-Then inspect logs if needed:
-
-```bash
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  --env-file ../config/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  logs admin
+# Restart the admin process
+openpalm admin
 ```
 
 ---
@@ -105,7 +90,6 @@ running.
 cd "$HOME/.openpalm/stack"
 docker compose \
   -f core.compose.yml \
-  -f addons/admin/compose.yml \
   -f addons/chat/compose.yml \
   --env-file ../config/stack/stack.env \
   --env-file ../vault/user/user.env \
@@ -218,7 +202,6 @@ the compose files under `~/.openpalm/config/stack/` plus the two vault env files
 cd "$HOME/.openpalm/stack"
 docker compose \
   -f core.compose.yml \
-  -f addons/admin/compose.yml \
   -f addons/chat/compose.yml \
   --env-file ../config/stack/stack.env \
   --env-file ../vault/user/user.env \

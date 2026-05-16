@@ -63,7 +63,6 @@ docker compose \
   --env-file ~/.openpalm/config/stack/guardian.env \
   -f ~/.openpalm/config/stack/core.compose.yml \
   -f ~/.openpalm/config/stack/addons/chat/compose.yml \
-  -f ~/.openpalm/config/stack/addons/admin/compose.yml \
   up -d
 ```
 
@@ -72,7 +71,7 @@ catalog into the runtime stack, for example:
 
 ```bash
 cp -r ~/.openpalm/registry/addons/chat ~/.openpalm/config/stack/addons/chat
-cp -r ~/.openpalm/registry/addons/admin ~/.openpalm/config/stack/addons/admin
+
 ```
 
 See [Manual Compose Runbook](../docs/operations/manual-compose-runbook.md) for the full reference.
@@ -98,5 +97,4 @@ truth.
 - Docker Compose global env files: `config/stack/stack.env` (system-managed) and `vault/user/user.env` (user-managed).
 - Guardian loads channel HMAC secrets from `config/stack/guardian.env` with hot-reload support (via `GUARDIAN_SECRETS_PATH`).
 - The assistant workspace is `data/workspace/`, mounted at `/work`.
-- The admin addon mounts the full OpenPalm home at `/openpalm` and reaches Docker only through `docker-socket-proxy`.
-- The CLI always runs from the host and manages Docker Compose directly. Admin UI is optional (behind `profiles: ["admin"]`).
+- The CLI always runs from the host and manages Docker Compose directly. Admin UI is a host process started by `openpalm admin serve` — no container is needed.

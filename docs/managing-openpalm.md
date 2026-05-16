@@ -193,7 +193,7 @@ enabled: true
 description: Pull latest images and recreate containers weekly
 tags: [openpalm, containers]
 timeoutMs: 300000
-command: ["sh","-c","curl -fsS -X POST 'http://admin:8100/admin/containers/pull' -H \"x-admin-token: ${OP_ASSISTANT_TOKEN}\""]
+command: ["sh","-c","openpalm update"]
 ---
 ```
 
@@ -332,7 +332,6 @@ After restoring, start the stack using the compose commands in the [Manual Compo
 |---|---|
 | `http://localhost:3880/` | Admin UI and API |
 | `http://localhost:3800/` | OpenCode assistant UI |
-| `http://localhost:3881/` | Admin-side OpenCode instance |
 | `http://localhost:3820/` | Chat addon |
 | `http://localhost:3821/` | API addon |
 | `http://localhost:3810/` | Voice addon |

@@ -8,7 +8,6 @@ import {
 import { getState } from "$lib/server/state.js";
 import {
   applyInstall,
-  appendAudit,
   createLogger,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
@@ -17,8 +16,9 @@ import {
   buildManagedServices,
   CORE_SERVICES,
   ensureHomeDirs,
+  composeUp,
+  checkDocker,
 } from "@openpalm/lib";
-import { composeUp, checkDocker } from "$lib/server/docker.js";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("install");
@@ -44,8 +44,8 @@ export const POST: RequestHandler = async (event) => {
   // 3. Write consolidated secrets file
   ensureSecrets(state);
 
-  // 4. Update state and generate artifacts
-  await applyInstall(state);
+  // 4. Update state and generate artifacts (audit recorded inside lib)
+  await applyInstall(state, { actor, requestId, callerType });
 
   // 5. Run docker compose up — managed services derived from compose config
   const managedServices = await buildManagedServices(state);
@@ -59,20 +59,6 @@ export const POST: RequestHandler = async (event) => {
       services: managedServices
     });
   }
-
-  appendAudit(
-    state,
-    actor,
-    "install",
-    {
-      dockerAvailable: dockerCheck.ok,
-      composeResult: dockerResult?.ok ?? null,
-      services: managedServices
-    },
-    true,
-    requestId,
-    callerType
-  );
 
   const started = [...CORE_SERVICES];
 

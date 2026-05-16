@@ -7,28 +7,26 @@ import type {
 
 const apiBase = '';
 
-export function buildHeaders(token?: string): HeadersInit {
-  const headers: HeadersInit = { 'x-request-id': crypto.randomUUID() };
-  if (token) {
-    headers['x-admin-token'] = token;
-    headers['x-requested-by'] = 'ui';
-  }
-  return headers;
+export function buildHeaders(): HeadersInit {
+  return {
+    'x-request-id': crypto.randomUUID(),
+    'x-requested-by': 'ui'
+  };
 }
 
 async function request(
   method: string,
   path: string,
-  token?: string,
   body?: unknown
 ): Promise<Response> {
   const headers: HeadersInit = {
     ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
-    ...buildHeaders(token)
+    ...buildHeaders()
   };
   return fetch(`${apiBase}${path}`, {
     method,
     headers,
+    credentials: 'include',
     ...(body !== undefined ? { body: JSON.stringify(body) } : {})
   });
 }
@@ -92,22 +90,19 @@ export async function fetchHealth(): Promise<{
 
 // ── OpenCode ────────────────────────────────────────────────────────────
 
-export async function fetchAdminOpenCodeStatus(
-  token: string
-): Promise<AdminOpenCodeStatusResponse> {
-  const res = await requireOk(await request('GET', '/admin/opencode/status', token));
+export async function fetchAdminOpenCodeStatus(): Promise<AdminOpenCodeStatusResponse> {
+  const res = await requireOk(await request('GET', '/admin/opencode/status'));
   return (await res.json()) as AdminOpenCodeStatusResponse;
 }
 
 // ── Containers ──────────────────────────────────────────────────────────
 
-export async function fetchContainers(token: string): Promise<ContainerListResponse> {
-  const res = await requireOk(await request('GET', '/admin/containers/list', token));
+export async function fetchContainers(): Promise<ContainerListResponse> {
+  const res = await requireOk(await request('GET', '/admin/containers/list'));
   return (await res.json()) as ContainerListResponse;
 }
 
 export async function containerAction(
-  token: string,
   action: 'start' | 'stop' | 'restart',
   containerId: string
 ): Promise<void> {
@@ -116,20 +111,20 @@ export async function containerAction(
     stop: '/admin/containers/down',
     restart: '/admin/containers/restart'
   } as const;
-  await requireOk(await request('POST', pathMap[action], token, { service: containerId }));
+  await requireOk(await request('POST', pathMap[action], { service: containerId }));
 }
 
 // ── Artifacts ───────────────────────────────────────────────────────────
 
-export async function fetchArtifacts(token: string): Promise<string> {
-  const res = await requireOk(await request('GET', '/admin/artifacts/compose', token));
+export async function fetchArtifacts(): Promise<string> {
+  const res = await requireOk(await request('GET', '/admin/artifacts/compose'));
   return res.text();
 }
 
 // ── Lifecycle ───────────────────────────────────────────────────────────
 
-export async function applyChanges(token: string): Promise<void> {
-  await requireOk(await request('POST', '/admin/update', token, {}));
+export async function applyChanges(): Promise<void> {
+  await requireOk(await request('POST', '/admin/update', {}));
 }
 
 export type UpgradeStackResult = {
@@ -141,43 +136,35 @@ export type UpgradeStackResult = {
   adminRecreateScheduled: boolean;
 };
 
-export async function upgradeStack(token: string): Promise<UpgradeStackResult> {
-  const res = await requireOk(await request('POST', '/admin/upgrade', token, {}));
+export async function upgradeStack(): Promise<UpgradeStackResult> {
+  const res = await requireOk(await request('POST', '/admin/upgrade', {}));
   return (await res.json()) as UpgradeStackResult;
 }
 
 // ── Automations ─────────────────────────────────────────────────────────
 
-export async function fetchAutomations(token: string): Promise<AutomationsResponse> {
-  const res = await requireOk(await request('GET', '/admin/automations', token));
+export async function fetchAutomations(): Promise<AutomationsResponse> {
+  const res = await requireOk(await request('GET', '/admin/automations'));
   return (await res.json()) as AutomationsResponse;
 }
 
 // ── Automation Catalog ──────────────────────────────────────────
 
-export async function fetchAutomationCatalog(
-  token: string
-): Promise<{ automations: import('./types.js').CatalogAutomation[]; source: string }> {
-  const res = await requireOk(await request('GET', '/admin/automations/catalog', token));
+export async function fetchAutomationCatalog(): Promise<{ automations: import('./types.js').CatalogAutomation[]; source: string }> {
+  const res = await requireOk(await request('GET', '/admin/automations/catalog'));
   return (await res.json()) as { automations: import('./types.js').CatalogAutomation[]; source: string };
 }
 
-export async function installAutomation(
-  token: string,
-  name: string
-): Promise<{ ok: boolean }> {
+export async function installAutomation(name: string): Promise<{ ok: boolean }> {
   const res = await requireOk(
-    await request('POST', '/admin/automations/catalog/install', token, { name, type: 'automation' })
+    await request('POST', '/admin/automations/catalog/install', { name, type: 'automation' })
   );
   return (await res.json()) as { ok: boolean };
 }
 
-export async function uninstallAutomation(
-  token: string,
-  name: string
-): Promise<{ ok: boolean }> {
+export async function uninstallAutomation(name: string): Promise<{ ok: boolean }> {
   const res = await requireOk(
-    await request('POST', '/admin/automations/catalog/uninstall', token, { name, type: 'automation' })
+    await request('POST', '/admin/automations/catalog/uninstall', { name, type: 'automation' })
   );
   return (await res.json()) as { ok: boolean };
 }
@@ -185,7 +172,6 @@ export async function uninstallAutomation(
 // ── Service Logs ────────────────────────────────────────────────
 
 export async function fetchServiceLogs(
-  token: string,
   options?: { service?: string; tail?: number; since?: string }
 ): Promise<{ ok: boolean; logs: string; error?: string }> {
   const params = new URLSearchParams();
@@ -193,51 +179,47 @@ export async function fetchServiceLogs(
   if (options?.tail) params.set('tail', String(options.tail));
   if (options?.since) params.set('since', options.since);
   const qs = params.toString();
-  const res = await requireOk(await request('GET', `/admin/logs${qs ? `?${qs}` : ''}`, token));
+  const res = await requireOk(await request('GET', `/admin/logs${qs ? `?${qs}` : ''}`));
   return (await res.json()) as { ok: boolean; logs: string; error?: string };
 }
 
 // ── Capabilities ────────────────────────────────────────────────────────
 
-export async function fetchCapabilityStatus(
-  token: string
-): Promise<{ complete: boolean; missing: string[] }> {
-  const res = await request('GET', '/admin/capabilities/status', token);
+export async function fetchCapabilityStatus(): Promise<{ complete: boolean; missing: string[] }> {
+  const res = await request('GET', '/admin/capabilities/status');
   if (!res.ok) return { complete: true, missing: [] };
   return (await res.json()) as { complete: boolean; missing: string[] };
 }
 
 // ── Addon Management ────────────────────────────────────────────────────
 
-export async function fetchAddons(token: string): Promise<{ name: string; enabled: boolean; available: boolean }[]> {
-  const res = await requireOk(await request('GET', '/admin/addons', token));
+export async function fetchAddons(): Promise<{ name: string; enabled: boolean; available: boolean }[]> {
+  const res = await requireOk(await request('GET', '/admin/addons'));
   const data = (await res.json()) as { addons: { name: string; enabled: boolean; available: boolean }[] };
   return data.addons;
 }
 
 export async function toggleAddon(
-  token: string,
   name: string,
   enabled: boolean,
   env?: Record<string, string>
 ): Promise<{ ok: boolean; changed: boolean }> {
   const body: Record<string, unknown> = { enabled };
   if (env) body.env = env;
-  const res = await requireOk(await request('POST', `/admin/addons/${encodeURIComponent(name)}`, token, body));
+  const res = await requireOk(await request('POST', `/admin/addons/${encodeURIComponent(name)}`, body));
   return (await res.json()) as { ok: boolean; changed: boolean };
 }
 
 // ── Audit Log ───────────────────────────────────────────────────────
 
 export async function fetchAuditLog(
-  token: string,
   options?: { source?: 'admin' | 'guardian' | 'all'; limit?: number }
 ): Promise<{ audit: Record<string, unknown>[] }> {
   const params = new URLSearchParams();
   if (options?.source) params.set('source', options.source);
   if (options?.limit) params.set('limit', String(options.limit));
   const qs = params.toString();
-  const res = await requireOk(await request('GET', `/admin/audit${qs ? `?${qs}` : ''}`, token));
+  const res = await requireOk(await request('GET', `/admin/audit${qs ? `?${qs}` : ''}`));
   return (await res.json()) as { audit: Record<string, unknown>[] };
 }
 
@@ -246,72 +228,123 @@ export async function fetchAuditLog(
 export type SecretEntry = { key: string; scope?: string; kind?: string };
 
 export async function fetchSecrets(
-  token: string,
   prefix?: string
 ): Promise<{ provider: string; capabilities: Record<string, boolean>; entries: SecretEntry[] }> {
   const params = new URLSearchParams();
   if (prefix) params.set('prefix', prefix);
   const qs = params.toString();
-  const res = await requireOk(await request('GET', `/admin/secrets${qs ? `?${qs}` : ''}`, token));
+  const res = await requireOk(await request('GET', `/admin/secrets${qs ? `?${qs}` : ''}`));
   return (await res.json()) as { provider: string; capabilities: Record<string, boolean>; entries: SecretEntry[] };
 }
 
-export async function writeSecret(
-  token: string,
-  key: string,
-  value: string
-): Promise<{ ok: boolean }> {
-  const res = await requireOk(await request('POST', '/admin/secrets', token, { key, value }));
+export async function writeSecret(key: string, value: string): Promise<{ ok: boolean }> {
+  const res = await requireOk(await request('POST', '/admin/secrets', { key, value }));
   return (await res.json()) as { ok: boolean };
 }
 
-export async function deleteSecret(
-  token: string,
-  key: string
-): Promise<{ ok: boolean }> {
+export async function deleteSecret(key: string): Promise<{ ok: boolean }> {
   const res = await requireOk(
-    await request('DELETE', `/admin/secrets?key=${encodeURIComponent(key)}`, token)
+    await request('DELETE', `/admin/secrets?key=${encodeURIComponent(key)}`)
   );
   return (await res.json()) as { ok: boolean };
 }
 
-export async function generateSecret(
-  token: string,
-  key: string,
-  length: number = 32
-): Promise<{ ok: boolean }> {
-  const res = await requireOk(await request('POST', '/admin/secrets/generate', token, { key, length }));
+export async function generateSecret(key: string, length: number = 32): Promise<{ ok: boolean }> {
+  const res = await requireOk(await request('POST', '/admin/secrets/generate', { key, length }));
   return (await res.json()) as { ok: boolean };
 }
 
 // ── Capabilities Assignments (direct stack.yml editor) ──────────────
 
-export async function fetchAssignments(
-  token: string
-): Promise<{ capabilities: Record<string, unknown> | null }> {
-  const res = await requireOk(await request('GET', '/admin/capabilities/assignments', token));
+export async function fetchAssignments(): Promise<{ capabilities: Record<string, unknown> | null }> {
+  const res = await requireOk(await request('GET', '/admin/capabilities/assignments'));
   return (await res.json()) as { capabilities: Record<string, unknown> | null };
 }
 
 export async function saveAssignments(
-  token: string,
   capabilities: Record<string, unknown>
 ): Promise<{ ok: boolean; capabilities: Record<string, unknown> }> {
-  const res = await requireOk(await request('POST', '/admin/capabilities/assignments', token, { capabilities }));
+  const res = await requireOk(await request('POST', '/admin/capabilities/assignments', { capabilities }));
   return (await res.json()) as { ok: boolean; capabilities: Record<string, unknown> };
 }
 
 // ── Docker Pull ─────────────────────────────────────────────────────
 
-export async function pullImages(token: string): Promise<void> {
-  await requireOk(await request('POST', '/admin/containers/pull', token, {}));
+export async function pullImages(): Promise<void> {
+  await requireOk(await request('POST', '/admin/containers/pull', {}));
 }
 
 // ── Local Provider Detection ────────────────────────────────────────
 
-export async function detectLocalProviders(
-  token: string
-): Promise<{ providers: Array<{ provider: string; url: string; available: boolean }> }> {
-  const res = await requireOk(await request('GET', '/admin/providers/local', token));
+export async function detectLocalProviders(): Promise<{ providers: Array<{ provider: string; url: string; available: boolean }> }> {
+  const res = await requireOk(await request('GET', '/admin/providers/local'));
   return (await res.json()) as { providers: Array<{ provider: string; url: string; available: boolean }> };
+}
+
+// ── Chat Proxy ──────────────────────────────────────────────────────────
+
+/**
+ * Create a new OpenCode session via the SvelteKit proxy.
+ * backend: 'assistant' or 'admin' selects which proxy route to use.
+ */
+export async function createChatSession(
+  backend: import('./types.js').ChatBackend
+): Promise<{ id: string }> {
+  const res = await requireOk(
+    await request('POST', `/proxy/${backend}/session`, {})
+  );
+  return (await res.json()) as { id: string };
+}
+
+/**
+ * Send a message to an existing OpenCode session via the SvelteKit proxy.
+ * Uses direct fetch with a 150s AbortSignal timeout — OpenCode responses
+ * can take 30–120s.
+ */
+export async function sendChatMessage(
+  backend: import('./types.js').ChatBackend,
+  sessionId: string,
+  text: string
+): Promise<import('./types.js').OpenCodeMessageResponse> {
+  const res = await fetch(
+    `/proxy/${backend}/session/${encodeURIComponent(sessionId)}/message`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...buildHeaders(),
+      },
+      credentials: 'include',
+      body: JSON.stringify({ parts: [{ type: 'text', text }] }),
+      signal: AbortSignal.timeout(150_000),
+    }
+  );
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    const msg = await readErrorMessage(res);
+    throw Object.assign(new Error(msg), { status: res.status });
+  }
+  return (await res.json()) as import('./types.js').OpenCodeMessageResponse;
+}
+
+/**
+ * Probe whether a backend is reachable.
+ * Returns true if the probe succeeds within 3s.
+ */
+export async function probeChatBackend(
+  backend: import('./types.js').ChatBackend
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/proxy/${backend}/provider`, {
+      method: 'GET',
+      headers: buildHeaders(),
+      credentials: 'include',
+      signal: AbortSignal.timeout(3000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }

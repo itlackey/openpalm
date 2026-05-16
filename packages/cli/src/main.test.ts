@@ -313,7 +313,7 @@ describe('cli main', () => {
     mkdirSync(adminAddonDir, { recursive: true });
     mkdirSync(chatAddonDir, { recursive: true });
     writeFileSync(coreCompose, 'services:\n  assistant:\n    image: test\n');
-    writeFileSync(join(adminAddonDir, 'compose.yml'), 'services:\n  docker-socket-proxy:\n    image: proxy\n  admin:\n    image: admin\n');
+    writeFileSync(join(adminAddonDir, 'compose.yml'), 'services:\n  admin:\n    image: admin\n');
     writeFileSync(join(adminAddonDir, '.env.schema'), 'OP_ADMIN_TOKEN=\n');
     writeFileSync(join(chatAddonDir, 'compose.yml'), 'services:\n  chat:\n    image: chat\n    environment:\n      CHANNEL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
     writeFileSync(join(chatAddonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
@@ -330,17 +330,8 @@ describe('cli main', () => {
       expect(existsSync(join(base, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
       expect(readFileSync(guardianEnv, 'utf8')).toMatch(/CHANNEL_CHAT_SECRET=/);
 
-      await main(['admin', 'enable']);
-      expect(existsSync(join(base, 'config', 'stack', 'addons', 'admin', 'compose.yml'))).toBe(true);
-
-      await main(['admin', 'status']);
-      expect(logs.some((line) => line.includes('Admin addon is enabled.'))).toBe(true);
-
       await main(['addon', 'disable', 'chat']);
       expect(existsSync(join(base, 'config', 'stack', 'addons', 'chat'))).toBe(false);
-
-      await main(['admin', 'disable']);
-      expect(existsSync(join(base, 'config', 'stack', 'addons', 'admin'))).toBe(false);
     } finally {
       delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
       rmSync(base, { recursive: true, force: true });
@@ -609,6 +600,16 @@ describe('cli entrypoint (subprocess)', () => {
       rmSync(tempHome, { recursive: true, force: true });
     }
   }, 60_000);
+});
+
+describe('admin command registration', () => {
+  it("registers 'admin serve' subcommand", async () => {
+    // Import the admin command and verify it has a 'serve' subcommand
+    const adminMod = await import("./commands/admin.ts");
+    const adminCmd = adminMod.default;
+    // citty commands expose subCommands as a record — check the key exists
+    expect(Object.keys((adminCmd as any).subCommands ?? {})).toContain("serve");
+  });
 });
 
 describe('secrets.env generation', () => {

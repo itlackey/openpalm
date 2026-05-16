@@ -35,7 +35,7 @@ function makeEvent(body: unknown, headers: Record<string, string> = {}): Paramet
 			method: 'POST',
 			headers: {
 				'content-type': 'application/json',
-				'x-admin-token': 'admin-token',
+				cookie: 'op_session=admin-token',
 				'x-request-id': 'req-test',
 				...headers,
 			},
@@ -62,7 +62,7 @@ afterEach(() => {
 
 describe('POST /admin/providers/save', () => {
 	test('rejects unauthenticated requests', async () => {
-		const res = await POST(makeEvent({ providerId: 'p1' }, { 'x-admin-token': 'wrong-token' }));
+		const res = await POST(makeEvent({ providerId: 'p1' }, { cookie: 'op_session=wrong-token' }));
 		expect(res.status).toBe(401);
 	});
 

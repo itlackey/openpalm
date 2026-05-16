@@ -31,15 +31,14 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 
 - **Lib** (`packages/lib/`) — Shared control-plane library (`@openpalm/lib`). All portable lifecycle, staging, secrets, channels, connections, scheduler logic. Both CLI and admin import from this package.
 - **CLI** (`packages/cli/`) — Host-side orchestrator. Manages Docker Compose directly. Serves setup wizard during install. Self-sufficient without admin.
-- **Admin** (`packages/admin/`) — SvelteKit app: optional operator web UI + API. Uses Docker socket via docker-socket-proxy. Behind `profiles: ["admin"]` compose profile.
+- **Admin** (`packages/admin/`) — SvelteKit app: operator web UI + API. Served as a host process by `openpalm admin serve` (no container). Accesses Docker socket directly on the host.
 - **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic.
-- **Assistant** (`core/assistant/`) — OpenCode runtime with tools/skills. No Docker socket. When admin is present, calls Admin API for stack operations. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/data/stash/`.
+- **Assistant** (`core/assistant/`) — OpenCode runtime with tools/skills. No Docker socket. No admin API access — stack operations are host-only. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/data/stash/`.
 - **Scheduler** (`packages/scheduler/`) — Lightweight Bun co-process started inside the assistant container by `core/assistant/entrypoint.sh`. No network port. Runs cron jobs (http, shell, assistant, api actions) from `config/automations/`.
 - **Channel runtime** (`core/channel/`) — Unified `channel` image build and startup entrypoint.
 - **Channel adapters** (`packages/channel-api/`, `packages/channel-discord/`, `packages/channel-slack/`, `packages/channel-voice/`) — Translate external protocols into signed guardian messages.
 - **Channels SDK** (`packages/channels-sdk/`) — Shared SDK for channel adapters: signing, assistant client, base classes.
 - **Assistant-tools** (`packages/assistant-tools/`) — `load_vault` and `health-check` tools for the assistant. No admin dependency. Memory/knowledge access comes from the `akm-opencode` plugin.
-- **Admin-tools** (`packages/admin-tools/`) — Admin API tools for the assistant. Only loaded when admin is present.
 - **Stack** (`.openpalm/config/stack/`) — Repo-shipped Docker Compose foundation. Contains the core compose file only. Runtime enabled addons live under `~/.openpalm/config/stack/addons/`.
 
 ---
@@ -145,7 +144,6 @@ Read these before making significant changes. They are the authoritative sources
 | Document | Scope |
 |---|---|
 | [`docs/technical/core-principles.md`](docs/technical/core-principles.md) | Architectural rules, security invariants, filesystem contract |
-| [`docs/technical/docker-dependency-resolution.md`](docs/technical/docker-dependency-resolution.md) | Docker build dependency patterns (must follow) |
 | [`docs/technical/code-quality-principles.md`](docs/technical/code-quality-principles.md) | Engineering invariants, quality contracts |
 | [`docs/technical/bunjs-rules.md`](docs/technical/bunjs-rules.md) | Bun-specific implementation rules, built-in API preference list |
 | [`docs/technical/sveltekit-rules.md`](docs/technical/sveltekit-rules.md) | SvelteKit-specific rules, server/client boundaries, routing |
@@ -233,14 +231,14 @@ Full detail in [`docs/technical/core-principles.md`](docs/technical/core-princip
 - **File assembly, not rendering.** Write whole files; no string interpolation or template generation.
 - **`config/` is user-owned.** Automatic lifecycle operations are non-destructive for existing user files and only seed missing defaults. Allowed writers: user direct edits, explicit admin UI/API config actions, assistant calls through authenticated admin APIs on user request.
 - **`vault/` boundary.** Only admin mounts full `vault/` (rw). Assistant mounts `vault/user/` (rw). No other container mounts anything from vault. Guardian loads `config/stack/guardian.env` as env_file (channel HMAC secrets with hot-reload).
-- **Host CLI or admin is the orchestrator.** CLI manages Docker Compose directly on the host. Admin (optional) provides a web UI via docker-socket-proxy.
+- **Host CLI or admin is the orchestrator.** CLI manages Docker Compose directly on the host. Admin provides a web UI as a host process (no container, no docker-socket-proxy).
 - **Shared control-plane library (`@openpalm/lib`) is the single source of truth.** All portable control-plane logic lives in `packages/lib/`. CLI, admin, and scheduler all import from this package. Never duplicate control-plane logic in a consumer.
 - **Guardian-only ingress.** All channel traffic must enter through the guardian (HMAC, replay protection, rate limiting).
 - **Assistant isolation.** Assistant has no Docker socket. When admin is present, it calls the admin API. When admin is absent, only the akm-backed memory/knowledge tools are available.
 - **LAN-first by default.** Nothing is publicly exposed without explicit user opt-in.
 - **Add a channel** by installing from the registry or dropping an addon compose file into `stack/addons/<name>/` — no code changes.
 - **No shell interpolation.** Docker commands use `execFile` with argument arrays, never shell strings.
-- **Docker dependency resolution pattern is mandatory.** Admin uses plain `npm install` (no Bun in Docker). Guardian and channel Dockerfiles install `packages/channels-sdk` deps with `bun install --production` after copying sdk source. See [`docs/technical/docker-dependency-resolution.md`](docs/technical/docker-dependency-resolution.md).
+- **Docker dependency resolution pattern.** Guardian and channel Dockerfiles install `packages/channels-sdk` deps with `bun install --production` after copying sdk source. Admin is a host binary — no Docker build needed.
 
 ---
 
@@ -273,7 +271,7 @@ Before submitting any change:
 - [ ] Filesystem, guardian ingress, and assistant-isolation rules in `docs/technical/core-principles.md` remain intact
 - [ ] Errors and logs are structured and include request identifiers where available
 - [ ] No secrets leak through client bundles or logs
-- [ ] Docker builds follow the dependency resolution pattern in `docs/technical/docker-dependency-resolution.md`
+- [ ] Docker builds follow the dependency resolution pattern (no symlink-based node_modules, channels-sdk deps installed after COPY)
 - [ ] Control-plane logic lives in `packages/lib/`, not duplicated in CLI or admin
 
 ---
@@ -283,7 +281,6 @@ Before submitting any change:
 | Path | Purpose |
 |---|---|
 | `docs/technical/core-principles.md` | **Authoritative architectural rules** |
-| `docs/technical/docker-dependency-resolution.md` | **Docker build dependency patterns** |
 | `docs/technical/code-quality-principles.md` | Engineering invariants and quality contracts |
 | `docs/technical/bunjs-rules.md` | Bun built-in API rules |
 | `docs/technical/sveltekit-rules.md` | SvelteKit-specific implementation rules |
@@ -305,5 +302,4 @@ Before submitting any change:
 | `.openpalm/registry/` | Repo catalog for available addons and automations |
 | `packages/assistant-tools/AGENTS.md` | Contributor pointer for the assistant-tools package |
 | `packages/assistant-tools/src/index.ts` | Assistant tools plugin (`load_vault`, `health-check`) |
-| `packages/admin-tools/src/index.ts` | Admin tools plugin |
 | `.opencode/opencode.json` | OpenCode project configuration |

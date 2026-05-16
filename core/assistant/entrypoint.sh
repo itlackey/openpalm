@@ -200,7 +200,7 @@ start_cron_and_sync_tasks() {
   akm tasks sync >>"$sync_log" 2>&1 || true
 
   # Background loop: re-sync every 60 s to pick up task files written by the
-  # admin container into the shared /akm/tasks/ mount.
+  # host admin process into the shared stash/tasks/ directory.
   (while sleep 60; do akm tasks sync >>"$sync_log" 2>&1 || true; done) &
 }
 

@@ -5,9 +5,6 @@ node_modules
 .opencode
 .state
 # core/ layout (post-refactor)
-core/admin/node_modules
-core/admin/.svelte-kit
-core/admin/build
 core/guardian/node_modules
 # channels
 channels/chat/node_modules

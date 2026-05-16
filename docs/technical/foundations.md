@@ -42,8 +42,8 @@ The standard startup path uses:
 
 ### Security boundaries
 
-- Only `docker-socket-proxy` mounts the Docker socket.
-- Only `admin` mounts the full OpenPalm home (`$OP_HOME -> /openpalm`).
+- The host CLI and host admin process access the Docker socket directly on the host. No container mounts the Docker socket.
+- The host admin process reads and writes `$OP_HOME` directly as a host process. No container mounts the full `$OP_HOME`.
 - `assistant` mounts only `vault/user/` (the directory, rw) from the vault boundary, not the whole vault directory.
 - `guardian` is the only path from channel ingress networks to the assistant.
 
@@ -53,10 +53,9 @@ The standard startup path uses:
 
 | Network | Purpose | Core members |
 |---|---|---|
-| `assistant_net` | Core internal mesh | `assistant` (which also hosts the scheduler co-process), `guardian`, optional `admin` |
+| `assistant_net` | Core internal mesh | `assistant` (which also hosts the scheduler co-process), `guardian` |
 | `channel_lan` | Default channel ingress (LAN-restricted) | `guardian` and LAN-facing channel addons |
 | `channel_public` | Reserved for internet-facing channel ingress | `guardian` and public-facing channel addons. Access semantics and membership rules are under design. |
-| `admin_docker_net` | Isolated Docker control plane | `admin`, `docker-socket-proxy`. Only exists when the admin addon is installed. |
 
 ---
 
@@ -83,7 +82,6 @@ Key env:
 - `OPENCODE_PORT=4096`
 - `OPENCODE_AUTH=false` (safe because host bind defaults to 127.0.0.1; see § Security invariants #4 in core-principles.md)
 - `OPENCODE_ENABLE_SSH`
-- `OP_ADMIN_API_URL`
 - `OP_ASSISTANT_TOKEN`
 - `AKM_STASH_DIR=/akm` (and matching `AKM_DATA_DIR`, `AKM_STATE_DIR`, `AKM_CONFIG_DIR`, `AKM_CACHE_DIR`)
 - `OP_UID`, `OP_GID`
@@ -92,7 +90,7 @@ Mounts:
 
 - image-baked `/etc/opencode`
 - `$OP_HOME/data/assistant -> /home/opencode/`
-- `$OP_HOME/data/stash -> /akm` (shared akm stash; also bind-mounted into the admin container)
+- `$OP_HOME/data/stash -> /akm` (shared akm stash)
 - `$OP_HOME/data/akm-cache -> /akm-cache` (regenerable registry artifacts)
 - `$OP_HOME/data/workspace -> /work`
 - `$OP_HOME/config -> /etc/openpalm`
@@ -216,7 +214,6 @@ Env sources (inherits the assistant container's environment):
 
 - `OP_HOME=/openpalm`
 - `OP_ASSISTANT_TOKEN` — used as the admin API token for `api` actions
-- `OP_ADMIN_API_URL`
 - `OPENCODE_API_URL=http://localhost:4096` (co-resident OpenCode; auth disabled on this interface)
 
 Mounts (provided by the assistant service):
@@ -239,70 +236,27 @@ Ports and network:
 
 ---
 
-## Admin Addon
+## Admin (host process)
 
-### Docker Socket Proxy
-
-Role:
-
-- only Docker socket mount in the shipped stack
-- filtered Docker API for the admin service
-
-Env:
-
-- `CONTAINERS=1`
-- `IMAGES=1`
-- `NETWORKS=1`
-- `VOLUMES=1`
-- `POST=1`
-- `INFO=1`
-
-Mounts:
-
-- `${OP_DOCKER_SOCK:-/var/run/docker.sock} -> /var/run/docker.sock:ro`
-
-Network:
-
-- `admin_docker_net`
-
-### Admin
+Admin is a Bun.serve HTTP server started by `openpalm admin serve`. It embeds the SvelteKit UI as a pre-built tarball and manages Docker Compose directly on the host via the host Docker socket. There is no admin container.
 
 Role:
 
-- web UI and API
-- lifecycle orchestration through docker-socket-proxy
-- control-plane file management under `OP_HOME`
+- web UI and API (SvelteKit, served as a static build)
+- lifecycle orchestration via host Docker socket (`/var/run/docker.sock` or `$DOCKER_HOST`)
+- control-plane file management under `$OP_HOME` (direct host filesystem access)
 
 Key env:
 
-- `PORT=8100`
-- `HOME=/home/node`
-- `OP_HOME=/openpalm`
-- `ADMIN_TOKEN`
-- `AKM_STASH_DIR=/akm` (and matching `AKM_DATA_DIR`, `AKM_STATE_DIR`, `AKM_CONFIG_DIR`, `AKM_CACHE_DIR`)
-- `GUARDIAN_URL=http://guardian:8080`
-- `OP_ASSISTANT_URL=http://assistant:4096`
-- `OP_ADMIN_API_URL=http://localhost:8100`
-- `OPENCODE_CONFIG_DIR=/etc/opencode`
-- `OPENCODE_PORT=3881`
-- `DOCKER_HOST=tcp://docker-socket-proxy:2375`
+- `PORT` — listen port (default: `3880`)
+- `OP_HOME` — resolved from the host environment
+- `ADMIN_TOKEN` — read from `$OP_HOME/state/admin/token`
 
-Mounts:
+Bind address:
 
-- `$OP_HOME -> /openpalm`
-- `$OP_HOME/data/admin -> /home/node`
-- `$OP_HOME/data/workspace -> /work`
-- `${GNUPGHOME:-${HOME}/.gnupg} -> /home/node/.gnupg:ro`
+- `127.0.0.1:${OP_HOST_ADMIN_PORT:-3880}` (loopback only — never exposed to Docker networks or LAN)
 
-Design note — admin mounts all of `OP_HOME`: The admin service mounts the full `$OP_HOME` directory because it is the web-based orchestrator responsible for managing config, vault, stack assembly, data, and logs. Mounting individual subdirectories would be fragile and would break whenever new paths are introduced. The blast radius is already constrained: the admin reaches Docker only through docker-socket-proxy (filtered API), all admin API endpoints require `ADMIN_TOKEN` authentication, and the service binds to localhost by default. Narrowing the mount would add complexity without meaningful security improvement given these existing controls.
-
-Ports and network:
-
-- host: `${OP_ADMIN_BIND_ADDRESS:-127.0.0.1}:${OP_ADMIN_PORT:-3880}`
-- host admin OpenCode: `${OP_ADMIN_OPENCODE_BIND_ADDRESS:-127.0.0.1}:${OP_ADMIN_OPENCODE_PORT:-3881}`
-- container: `8100`
-- container admin OpenCode: `3881`
-- networks: `assistant_net`, `admin_docker_net`
+UI-first principle: the admin UI is the primary operator interface. CLI commands are the fallback for scripted workflows and headless environments.
 
 ---
 

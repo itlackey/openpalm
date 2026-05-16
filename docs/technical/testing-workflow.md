@@ -68,7 +68,7 @@ Validates type correctness across all SvelteKit admin code and channels-sdk.
 bun run test
 ```
 
-Runs all non-admin unit tests: lib, cli, guardian, channels-sdk, channel adapters, scheduler, assistant-tools, admin-tools.
+Runs all non-admin unit tests: lib, cli, guardian, channels-sdk, channel adapters, scheduler, assistant-tools.
 
 ---
 

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { getAdminToken } from '$lib/auth.js';
   import { fetchAuditLog } from '$lib/api.js';
 
   interface Props {
@@ -15,12 +14,10 @@
   let limit = $state(100);
 
   async function loadAudit(): Promise<void> {
-    const token = getAdminToken();
-    if (!token) return;
     loading = true;
     error = '';
     try {
-      const result = await fetchAuditLog(token, { source, limit });
+      const result = await fetchAuditLog({ source, limit });
       entries = result.audit;
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load audit log.';

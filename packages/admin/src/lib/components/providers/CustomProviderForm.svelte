@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { getAdminToken } from '$lib/auth.js';
 	import { buildHeaders } from '$lib/api.js';
 	import type { ProviderActionResult } from '$lib/types/providers.js';
 
@@ -80,7 +79,6 @@
 		feedback = undefined;
 
 		try {
-			const token = getAdminToken() ?? '';
 			const body: Record<string, unknown> = {};
 			for (const [key, value] of formData.entries()) {
 				if (typeof value === 'string') body[key] = value;
@@ -91,7 +89,7 @@
 
 			const response = await fetch('/admin/providers/custom', {
 				method: 'POST',
-				headers: { ...buildHeaders(token), 'content-type': 'application/json' },
+				headers: { ...buildHeaders(), 'content-type': 'application/json' },
 				body: JSON.stringify(body)
 			});
 

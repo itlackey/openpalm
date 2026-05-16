@@ -212,9 +212,6 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          - dockerfile: core/admin/Dockerfile
-            image: openpalm/admin
-            needs_base: true
           - dockerfile: core/guardian/Dockerfile
             image: openpalm/guardian
             needs_base: false

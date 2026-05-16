@@ -45,9 +45,9 @@ This plan fixes the immediate breakage and removes policy drift between scripts,
 2. **Unify package-group metadata**
    - Added `.github/release-package-groups.json` as a shared source of truth for platform manifest lists.
    - Updated release workflow, CI version sync, and `scripts/bump-platform.sh` to read platform manifests from that file.
-3. **Clarify assistant-tools/admin-tools strategy**
-   - Standardized both as independently published npm packages.
-   - Added dedicated workflows for `@openpalm/assistant-tools` and `@openpalm/admin-tools`.
+3. **Clarify assistant-tools publish strategy**
+   - `@openpalm/assistant-tools` is independently published as an npm package.
+   - `@openpalm/admin-tools` has been removed — admin is now a host process.
 4. **Add smoke test for published CLI installability**
    - Added a release workflow step after CLI publish to run `npm install openpalm@${VERSION} --dry-run` in a temporary directory.
 
@@ -73,6 +73,6 @@ This plan fixes the immediate breakage and removes policy drift between scripts,
 6. `actions/setup-node` is set to Node 24 across release/CI/publish workflows.
 7. CLI publish includes an npm preflight check for `@openpalm/lib@${VERSION}` availability.
 8. Platform manifest lists come from `.github/release-package-groups.json`.
-9. Independent workflows exist for `@openpalm/assistant-tools` and `@openpalm/admin-tools`.
+9. Independent workflow exists for `@openpalm/assistant-tools`.
 10. Release workflow includes a CLI installability smoke test.
 11. Docs/comments no longer contradict workflow behavior for platform vs independent npm packages.

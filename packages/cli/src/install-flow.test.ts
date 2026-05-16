@@ -160,13 +160,13 @@ describe('install flow — tier 1 (file validation)', () => {
     if (homeDir) rmSync(homeDir, { recursive: true, force: true });
   });
 
-  tier1Test('seed + performSetup produces complete file structure for admin+chat', async () => {
+  tier1Test('seed + performSetup produces complete file structure for chat addon', async () => {
     homeDir = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
     process.env.OP_HOME = homeDir;
     process.env.OP_WORK_DIR = join(homeDir, 'workspace');
 
     // Step 1: Seed from local .openpalm/
-    seedFromLocal(homeDir, ['admin', 'chat']);
+    seedFromLocal(homeDir, ['chat']);
 
     // Step 2: Run performSetup
     const { performSetup } = await import('@openpalm/lib');
@@ -183,10 +183,8 @@ describe('install flow — tier 1 (file validation)', () => {
 
     // ── Validate compose files exist ─────────────────────────────────
     expect(existsSync(join(homeDir, 'config/stack/core.compose.yml'))).toBe(true);
-    expect(existsSync(join(homeDir, 'config/stack/addons/admin/compose.yml'))).toBe(true);
     expect(existsSync(join(homeDir, 'config/stack/addons/chat/compose.yml'))).toBe(true);
 
-    expect(existsSync(join(homeDir, 'state/registry/addons/admin/compose.yml'))).toBe(true);
     expect(existsSync(join(homeDir, 'state/registry/addons/chat/compose.yml'))).toBe(true);
     expect(existsSync(join(homeDir, 'state/registry/automations/cleanup-logs.md'))).toBe(true);
 
@@ -216,7 +214,6 @@ describe('install flow — tier 1 (file validation)', () => {
 
     const allComposeFiles = [
       join(homeDir, 'config/stack/core.compose.yml'),
-      join(homeDir, 'config/stack/addons/admin/compose.yml'),
       join(homeDir, 'config/stack/addons/chat/compose.yml'),
     ];
     const mounts = extractVolumeMountPaths(allComposeFiles, stackEnvVars);
@@ -281,7 +278,7 @@ describe('install flow — tier 1 (file validation)', () => {
     process.env.OP_HOME = homeDir;
     process.env.OP_WORK_DIR = join(homeDir, 'workspace');
 
-    seedFromLocal(homeDir, ['admin', 'chat']);
+    seedFromLocal(homeDir, ['chat']);
 
     const { performSetup } = await import('@openpalm/lib');
     const result = await performSetup(makeSetupSpec() as any);
@@ -291,7 +288,6 @@ describe('install flow — tier 1 (file validation)', () => {
     const stackEnv = join(homeDir, 'config/stack/stack.env');
     const composeFiles = [
       join(homeDir, 'config/stack/core.compose.yml'),
-      join(homeDir, 'config/stack/addons/admin/compose.yml'),
       join(homeDir, 'config/stack/addons/chat/compose.yml'),
     ];
     const { ensureComposeVolumeTargets, createState } = await import('@openpalm/lib');
@@ -305,7 +301,6 @@ describe('install flow — tier 1 (file validation)', () => {
       'docker', 'compose', '--project-name', 'openpalm-test',
       '-f', composeFiles[0],
       '-f', composeFiles[1],
-      '-f', composeFiles[2],
       '--env-file', stackEnv,
       'config', '--quiet',
     ], { stdout: 'pipe', stderr: 'pipe', env: { ...process.env, OP_HOME: homeDir } });

@@ -6,8 +6,13 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { applyUninstall, appendAudit, buildComposeOptions, createLogger } from "@openpalm/lib";
-import { composeDown, checkDocker } from "$lib/server/docker.js";
+import {
+  applyUninstall,
+  buildComposeOptions,
+  createLogger,
+  composeDown,
+  checkDocker,
+} from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("uninstall");
@@ -26,22 +31,13 @@ export const POST: RequestHandler = async (event) => {
   const dockerCheck = await checkDocker();
   let dockerResult = null;
   if (dockerCheck.ok) {
-    dockerResult = await composeDown({ ...buildComposeOptions(state), profiles: ['admin'] });
+    dockerResult = await composeDown(buildComposeOptions(state));
   }
 
   logger.info("stopping containers and applying uninstall", { requestId, dockerAvailable: dockerCheck.ok });
-  const result = await applyUninstall(state);
+  // audit recorded inside lib via ctx
+  const result = await applyUninstall(state, { actor, requestId, callerType });
   logger.info("uninstall completed", { requestId, stopped: result.stopped });
-
-  appendAudit(
-    state,
-    actor,
-    "uninstall",
-    { stopped: result.stopped, dockerAvailable: dockerCheck.ok },
-    true,
-    requestId,
-    callerType
-  );
 
   return jsonResponse(200, { ok: true, ...result, dockerAvailable: dockerCheck.ok }, requestId);
 };

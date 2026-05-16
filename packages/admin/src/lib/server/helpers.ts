@@ -72,17 +72,27 @@ export function requireNonEmptyAdminToken(state: { adminToken: string }, request
   return null;
 }
 
+/** Extract raw token from cookie (browser) or x-admin-token header (assistant/legacy). */
+function extractToken(event: RequestEvent): string {
+  // Cookie takes precedence (browser UI after auth migration lands)
+  const cookieHeader = event.request.headers.get("cookie") ?? "";
+  const match = cookieHeader.match(/(?:^|;\s*)op_session=([^;]+)/);
+  if (match) return match[1];
+  // Fallback: x-admin-token header (assistant, legacy — dropped in Phase 3)
+  return event.request.headers.get("x-admin-token") ?? "";
+}
+
 /** Check admin token — returns error Response or null if OK */
 export function requireAdmin(event: RequestEvent, requestId: string): Response | null {
   const state = getState();
   const notConfigured = requireNonEmptyAdminToken(state, requestId);
   if (notConfigured) return notConfigured;
-  const token = event.request.headers.get("x-admin-token");
-  if (!safeTokenCompare(token ?? "", state.adminToken)) {
+  const token = extractToken(event);
+  if (!safeTokenCompare(token, state.adminToken)) {
     return errorResponse(
       401,
       "unauthorized",
-      "Missing or invalid x-admin-token",
+      "Missing or invalid credentials",
       {},
       requestId
     );
@@ -93,7 +103,7 @@ export function requireAdmin(event: RequestEvent, requestId: string): Response |
 /** Identify caller by presented token. */
 export function identifyCallerByToken(event: RequestEvent): "admin" | "assistant" | null {
   const state = getState();
-  const token = event.request.headers.get("x-admin-token") ?? "";
+  const token = extractToken(event);
   if (state.adminToken && safeTokenCompare(token, state.adminToken)) return "admin";
   if (state.assistantToken && safeTokenCompare(token, state.assistantToken)) return "assistant";
   return null;
@@ -139,8 +149,6 @@ export function getCallerType(event: RequestEvent): CallerType {
 const DOCKER_SERVICE_NAMES = new Set([
   "assistant",
   "guardian",
-  "admin",
-  "docker-socket-proxy",
 ]);
 
 /**
@@ -271,9 +279,65 @@ export async function withAdminBody(
   handler: (ctx: { requestId: string; body: Record<string, unknown> }) => Promise<Response>
 ): Promise<Response> {
   const requestId = getRequestId(event);
+  const originError = checkOriginHeader(event.request, ADMIN_PORT);
+  if (originError) return originError;
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
   const result = await parseJsonBody(event.request);
   if ('error' in result) return jsonBodyError(result, requestId);
   return handler({ requestId, body: result.data });
 }
+
+// ── SEC-1: Host header allowlist ─────────────────────────────────────────
+/**
+ * Reject requests whose Host header does not match localhost or 127.0.0.1
+ * on the configured admin port.
+ *
+ * @param request  Incoming Request (or SvelteKit RequestEvent.request)
+ * @param port     The port this server is bound to (e.g. 3880 or 8100)
+ * @returns        A 400 Response if the host is rejected; null if allowed
+ */
+export function checkHostHeader(request: Request, port: number): Response | null {
+  const host = request.headers.get("host") ?? "";
+  // Strip any trailing dot or extra whitespace
+  const normalized = host.trim().replace(/\.$/, "");
+  const allowed = [`localhost:${port}`, `127.0.0.1:${port}`];
+  if (allowed.includes(normalized)) return null;
+  return new Response(
+    JSON.stringify({ error: "invalid_host", host: normalized }),
+    { status: 400, headers: { "content-type": "application/json" } }
+  );
+}
+
+// ── SEC-2: Origin check for state-mutating requests ──────────────────────
+/**
+ * Reject POST/PUT/DELETE requests whose Origin header does not match
+ * localhost or 127.0.0.1. Requests with no Origin (non-browser clients)
+ * are always allowed.
+ *
+ * @param request  Incoming Request
+ * @param port     The port this server is bound to
+ * @returns        A 403 Response if the origin is rejected; null if allowed
+ */
+export function checkOriginHeader(request: Request, port: number): Response | null {
+  const method = request.method.toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return null;
+
+  const origin = request.headers.get("origin");
+  if (!origin) return null; // non-browser clients have no Origin
+
+  try {
+    const u = new URL(origin);
+    const allowed = [`localhost:${port}`, `127.0.0.1:${port}`];
+    if (allowed.includes(u.host)) return null;
+  } catch {
+    // Unparseable Origin is treated as hostile
+  }
+  return new Response(
+    JSON.stringify({ error: "forbidden_origin", origin }),
+    { status: 403, headers: { "content-type": "application/json" } }
+  );
+}
+
+// ADMIN_PORT is exported so hooks.server.ts and other modules can import it.
+export const ADMIN_PORT = Number(process.env.PORT ?? 8100);

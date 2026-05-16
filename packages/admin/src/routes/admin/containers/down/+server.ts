@@ -10,7 +10,7 @@ import {
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import { isAllowedService, appendAudit, buildComposeOptions, createLogger } from "@openpalm/lib";
-import { composeStop, checkDocker } from "$lib/server/docker.js";
+import { composeStop, checkDocker } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("containers-down");

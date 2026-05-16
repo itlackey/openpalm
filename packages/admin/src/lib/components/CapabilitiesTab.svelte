@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getAdminToken } from '$lib/auth.js';
 	import type { OpenCodeProviderSummary, OpenCodeAuthMethod } from '$lib/types.js';
 	import {
 		buildHeaders,
@@ -53,10 +52,8 @@
 
 	// ── Load data ───────────────────────────────────────────────────
 	async function loadProviderDropdowns(): Promise<void> {
-		const token = getAdminToken();
-		if (!token) return;
 		try {
-			const res = await fetch('/admin/opencode/providers', { headers: buildHeaders(token) });
+			const res = await fetch('/admin/opencode/providers', { headers: buildHeaders() });
 			if (!res.ok) return;
 			const data = await res.json();
 			ocProviders = data.providers ?? [];
@@ -73,10 +70,8 @@
 	}
 
 	async function loadCapabilities(): Promise<void> {
-		const token = getAdminToken();
-		if (!token) return;
 		try {
-			const res = await fetchAssignments(token);
+			const res = await fetchAssignments();
 			const loaded = res.capabilities as Record<string, unknown> | null;
 			if (!loaded) return;
 			const llmStr = (loaded.llm as string) ?? '';
@@ -146,7 +141,6 @@
 
 	// ── Save assignments ────────────────────────────────────────────
 	async function handleSave(): Promise<void> {
-		const token = getAdminToken(); if (!token) return;
 		saving = true; saveError = ''; saveSuccess = false;
 		try {
 			const { llm, slm, embeddings: emb, tts, stt, reranking: rr } = caps;
@@ -158,7 +152,7 @@
 				stt: stt.provider ? { enabled: true, provider: stt.provider, model: stt.model || undefined, language: stt.language || undefined } : undefined,
 				reranking: rr.provider ? { enabled: true, provider: rr.provider, mode: rr.mode, model: rr.model || undefined, topK: rr.topK } : undefined,
 			};
-			await saveAssignments(token, p);
+			await saveAssignments(p);
 			saveSuccess = true; setTimeout(() => saveSuccess = false, 4000);
 		} catch (e) { saveError = e instanceof Error ? e.message : 'Save failed.'; }
 		finally { saving = false; }

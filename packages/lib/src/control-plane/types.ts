@@ -8,10 +8,15 @@ export type CoreServiceName =
   | "assistant"
   | "guardian";
 
-export type OptionalServiceName = "admin" | "docker-socket-proxy";
+export type OptionalServiceName = never;
 
 export type AccessScope = "host" | "lan";
 export type CallerType = "assistant" | "cli" | "ui" | "system" | "test" | "unknown";
+export type AuditContext = {
+  actor: string;
+  requestId?: string;
+  callerType?: CallerType;
+};
 
 /** Info about a discovered channel */
 export type ChannelInfo = {
@@ -65,7 +70,5 @@ export const CORE_SERVICES: CoreServiceName[] = [
   "guardian",
 ];
 
-export const OPTIONAL_SERVICES: OptionalServiceName[] = [
-  "admin",
-  "docker-socket-proxy",
-];
+export const OPTIONAL_SERVICES: OptionalServiceName[] = [];
+

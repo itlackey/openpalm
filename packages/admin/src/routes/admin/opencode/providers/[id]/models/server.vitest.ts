@@ -30,7 +30,7 @@ function makeEvent(providerId = 'openai', token = 'admin-token'): Parameters<typ
     params: { id: providerId },
     request: new Request(`http://localhost/admin/opencode/providers/${providerId}/models`, {
       headers: {
-        'x-admin-token': token,
+        cookie: `op_session=${token}`,
         'x-request-id': 'req-models',
       },
     }),
