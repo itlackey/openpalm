@@ -118,10 +118,12 @@ curl -sS -H "x-admin-token: $ADMIN_TOKEN" http://localhost:3880/admin/opencode/s
 ```
 
 If the admin addon is installed, also verify which OpenCode runtime the admin is
-actually targeting. In confusing cases, inspect env inside the admin container:
+actually targeting. In confusing cases, check the admin process environment or logs:
 
 ```bash
-docker compose exec admin sh -lc 'printenv OP_OPENCODE_URL OPENCODE_PORT OP_ADMIN_OPENCODE_PORT'
+# Look for the openpalm admin process and its config
+ps aux | grep "openpalm admin"
+cat ~/.openpalm/config/stack/stack.env | grep -E "OP_OPENCODE|OPENCODE_PORT|OP_ADMIN_OPENCODE"
 ```
 
 Read these files if the behavior does not match the docs:

@@ -141,8 +141,7 @@ Response:
 
 Full upgrade sequence: fetches the latest image tag, downloads fresh stack
 files from GitHub, backs up changed files, writes updated configuration, pulls
-images, and recreates all containers. After responding, schedules a deferred
-self-recreation of the admin container so the HTTP response is flushed first.
+images, and recreates all containers. After responding, the host admin process exits cleanly so the HTTP response is flushed first.
 
 Response:
 
@@ -275,7 +274,7 @@ Error responses:
 
 ### `GET /admin/network/check`
 
-Checks inter-container connectivity by probing each core service health endpoint from within the admin container.
+Checks inter-container connectivity by probing each core service health endpoint from the host admin process.
 
 Auth: `requireAuth`
 

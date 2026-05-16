@@ -63,31 +63,17 @@ compose file set.
 
 **Common causes:**
 
-- you did not include `addons/admin/compose.yml`
-- the admin container is still starting
+- the `openpalm admin` host process is not running
 - `OP_ADMIN_PORT` was changed in `stack.env`
 
 **Fix:**
 
 ```bash
-cd "$HOME/.openpalm/stack"
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  --env-file ../config/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  ps
-```
+# Check if the host admin process is running
+lsof -i :3880 || ss -tlnp | grep 3880
 
-Then inspect logs if needed:
-
-```bash
-docker compose \
-  -f core.compose.yml \
-  -f addons/admin/compose.yml \
-  --env-file ../config/stack/stack.env \
-  --env-file ../vault/user/user.env \
-  logs admin
+# Restart the admin process
+openpalm admin
 ```
 
 ---

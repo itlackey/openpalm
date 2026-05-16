@@ -120,7 +120,6 @@ export async function createHostAdminServer(opts: {
   buildDir: string;
   adminToken: string;
   openCodeBaseUrl?: string;          // http://127.0.0.1:<port>
-  containerAdminBaseUrl?: string;    // http://localhost:3880 (container admin)
 }): Promise<HostAdminServer> {
   const allowedHosts = [
     `localhost:${opts.port}`,
@@ -194,19 +193,6 @@ export async function createHostAdminServer(opts: {
       }
       const suffix = path.replace(/^\/proxy\/assistant/, "");
       const target = opts.openCodeBaseUrl + suffix + url.search;
-      return proxyTo(target.replace(/\?$/, ""), new Request(target, req));
-    }
-
-    // ── Proxy: /proxy/admin/* ──────────────────────────────────────────
-    if (path.startsWith("/proxy/admin/") || path === "/proxy/admin") {
-      if (!opts.containerAdminBaseUrl) {
-        return new Response(JSON.stringify({ error: "container_admin_unavailable" }), {
-          status: 503,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      const suffix = path.replace(/^\/proxy\/admin/, "");
-      const target = opts.containerAdminBaseUrl + suffix + url.search;
       return proxyTo(target.replace(/\?$/, ""), new Request(target, req));
     }
 

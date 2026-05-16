@@ -8,8 +8,8 @@
  *   POST /admin/automations/:name/run      — runs akm tasks run <name> directly
  *   GET  /admin/automations/:name/log      — reads from cache/akm/tasks/logs/<name>/
  *
- * These tests hit the real admin container at http://localhost:8100 and
- * require a running compose stack.
+ * These tests hit the host admin process at http://localhost:3880 and
+ * require a running stack and admin process.
  *
  * Run with:
  *   RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e
@@ -17,7 +17,7 @@
 
 import { expect, test } from "@playwright/test";
 
-const ADMIN_URL = "http://localhost:8100";
+const ADMIN_URL = process.env.ADMIN_URL ?? "http://localhost:3880";
 
 function adminHeaders(): Record<string, string> {
   return {
