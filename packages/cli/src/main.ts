@@ -16,7 +16,6 @@ export const mainCommand = defineCommand({
     install: () => import('./commands/install.ts').then((m) => m.default),
     uninstall: () => import('./commands/uninstall.ts').then((m) => m.default),
     update: () => import('./commands/update.ts').then((m) => m.default),
-    upgrade: () => import('./commands/upgrade.ts').then((m) => m.default),
     'self-update': () => import('./commands/self-update.ts').then((m) => m.default),
     addon: () => import('./commands/addon.ts').then((m) => m.default),
     admin: () => import('./commands/admin.ts').then((m) => m.default),
