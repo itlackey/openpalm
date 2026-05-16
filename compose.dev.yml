@@ -52,6 +52,8 @@ services:
       additional_contexts:
         openpalm-base: docker-image://openpalm-base
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/admin:dev
+    environment:
+      - OP_ADMIN_OPENCODE_INTERNAL_URL=${OP_ADMIN_OPENCODE_INTERNAL_URL:-http://localhost:4096}
 
   guardian:
     build:

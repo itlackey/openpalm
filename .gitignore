@@ -9,6 +9,7 @@ admin/build/
 CLAUDE.md
 packages/admin/.svelte-kit/
 packages/admin/build/
+packages/admin/dist/
 packages/admin/undefined/
 packages/admin/.env
 packages/admin/.env.local

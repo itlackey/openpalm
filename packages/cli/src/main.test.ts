@@ -611,6 +611,16 @@ describe('cli entrypoint (subprocess)', () => {
   }, 60_000);
 });
 
+describe('admin command registration', () => {
+  it("registers 'admin serve' subcommand", async () => {
+    // Import the admin command and verify it has a 'serve' subcommand
+    const adminMod = await import("./commands/admin.ts");
+    const adminCmd = adminMod.default;
+    // citty commands expose subCommands as a record — check the key exists
+    expect(Object.keys((adminCmd as any).subCommands ?? {})).toContain("serve");
+  });
+});
+
 describe('secrets.env generation', () => {
   it('creates the state/ directory on fresh install', async () => {
     const { existsSync: fsExistsSync } = await import('node:fs');

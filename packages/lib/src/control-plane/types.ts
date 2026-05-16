@@ -69,3 +69,17 @@ export const OPTIONAL_SERVICES: OptionalServiceName[] = [
   "admin",
   "docker-socket-proxy",
 ];
+
+// ── Admin mode feature flag ──────────────────────────────────────────────
+
+export type AdminMode = "host" | "container";
+
+/**
+ * Read OPENPALM_ADMIN_MODE from the environment.
+ * Returns "container" by default (existing behavior preserved).
+ */
+export function resolveAdminMode(): AdminMode {
+  const raw = process.env.OPENPALM_ADMIN_MODE;
+  if (raw === "host") return "host";
+  return "container";
+}

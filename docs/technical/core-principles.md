@@ -63,6 +63,17 @@ These are hard constraints that must never be violated during development. See a
 
 ---
 
+### Feature Flag: `OPENPALM_ADMIN_MODE`
+
+Default: `container`
+
+- `container` — Admin UI is served by the Docker container (existing behavior). `openpalm admin serve` is not run.
+- `host` — Admin UI is served by the CLI host process via `openpalm admin serve`. The container admin can still run simultaneously during migration. The host admin gateway binds to `127.0.0.1:3880` by default (`OP_HOST_ADMIN_PORT` overrides).
+
+Set at install time via `openpalm install --admin-mode host`, or manually in `config/stack/stack.env`. Resolved in code via `resolveAdminMode()` from `@openpalm/lib`.
+
+---
+
 ## Filesystem contract (file assembly, not rendering)
 
 Configuration is managed by **writing whole files** or **targeted edits** — never by string interpolation, template expansion, or dynamic code generation. The CLI or admin validates proposed changes, writes them to live paths, and uses Docker Compose natively for variable substitution. All control-plane logic lives in `@openpalm/lib` — both CLI and admin import from this shared library. OpenCode core config is image-baked at `/etc/opencode`, with user extensions mounted from `config/assistant/`.

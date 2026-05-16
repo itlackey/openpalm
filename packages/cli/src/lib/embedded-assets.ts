@@ -6,6 +6,16 @@
  * without downloading from GitHub.
  */
 
+// ── Admin build tarball — embedded at CLI compile time ───────────────────
+// Build: cd packages/admin && npm run build && npm run build:tar
+// The resulting packages/admin/dist/admin-build.tar.gz is embedded here.
+// @ts-ignore — Bun binary import
+import ADMIN_BUILD_TAR from "../../../admin/dist/admin-build.tar.gz" with { type: "binary" };
+import cliPkg from "../../package.json" with { type: "json" };
+
+export const EMBEDDED_ADMIN_TAR: Uint8Array = ADMIN_BUILD_TAR as unknown as Uint8Array;
+export const ADMIN_BUILD_VERSION: string = cliPkg.version;
+
 // @ts-ignore — Bun text import
 import coreCompose from "../../../../.openpalm/stack/core.compose.yml" with { type: "text" };
 

@@ -315,3 +315,72 @@ export async function detectLocalProviders(
   const res = await requireOk(await request('GET', '/admin/providers/local', token));
   return (await res.json()) as { providers: Array<{ provider: string; url: string; available: boolean }> };
 }
+
+// ── Chat Proxy ──────────────────────────────────────────────────────────
+
+/**
+ * Create a new OpenCode session via the SvelteKit proxy.
+ * backend: 'assistant' or 'admin' selects which proxy route to use.
+ */
+export async function createChatSession(
+  token: string,
+  backend: import('./types.js').ChatBackend
+): Promise<{ id: string }> {
+  const res = await requireOk(
+    await request('POST', `/proxy/${backend}/session`, token, {})
+  );
+  return (await res.json()) as { id: string };
+}
+
+/**
+ * Send a message to an existing OpenCode session via the SvelteKit proxy.
+ * Uses direct fetch with a 150s AbortSignal timeout — OpenCode responses
+ * can take 30–120s.
+ */
+export async function sendChatMessage(
+  token: string,
+  backend: import('./types.js').ChatBackend,
+  sessionId: string,
+  text: string
+): Promise<import('./types.js').OpenCodeMessageResponse> {
+  const res = await fetch(
+    `/proxy/${backend}/session/${encodeURIComponent(sessionId)}/message`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...buildHeaders(token),
+      },
+      body: JSON.stringify({ parts: [{ type: 'text', text }] }),
+      signal: AbortSignal.timeout(150_000),
+    }
+  );
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    const msg = await readErrorMessage(res);
+    throw Object.assign(new Error(msg), { status: res.status });
+  }
+  return (await res.json()) as import('./types.js').OpenCodeMessageResponse;
+}
+
+/**
+ * Probe whether a backend is reachable.
+ * Returns true if the probe succeeds within 3s.
+ */
+export async function probeChatBackend(
+  token: string,
+  backend: import('./types.js').ChatBackend
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/proxy/${backend}/provider`, {
+      method: 'GET',
+      headers: buildHeaders(token),
+      signal: AbortSignal.timeout(3000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

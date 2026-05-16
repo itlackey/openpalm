@@ -67,6 +67,11 @@ export default defineCommand({
       alias: 'f',
       description: 'Path to setup config file (JSON or YAML) — skips wizard',
     },
+    'admin-mode': {
+      type: 'string',
+      description: 'Admin server mode: "host" or "container" (default: container)',
+      default: 'container',
+    },
   },
   async run({ args }) {
     try {
@@ -77,6 +82,7 @@ export default defineCommand({
         noStart: !args.start,
         noOpen: !args.open,
         file: args.file,
+        adminMode: (args['admin-mode'] === 'host' ? 'host' : 'container'),
       });
     } catch (err) {
       console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -91,6 +97,7 @@ type InstallOptions = {
   noStart: boolean;
   noOpen: boolean;
   file?: string;
+  adminMode: 'host' | 'container';
 };
 
 async function requireCmd(cmd: string[], msg: string): Promise<void> {
@@ -147,6 +154,15 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
   // ── Bootstrap files ────────────────────────────────────────────────────
   await prepareInstallFiles(homeDir, configDir, stateDir, workDir, options.version);
+
+  // Write admin mode preference to stack.env (append if not present)
+  if (options.adminMode === 'host') {
+    const stackEnvPath = join(configDir, 'stack', 'stack.env');
+    const existing = await Bun.file(stackEnvPath).text().catch(() => '');
+    if (!existing.includes('OPENPALM_ADMIN_MODE=')) {
+      await Bun.write(stackEnvPath, existing.trimEnd() + '\nOPENPALM_ADMIN_MODE=host\n');
+    }
+  }
 
   // ── Configure ──────────────────────────────────────────────────────────
   // File-based install: read config, run performSetup, optionally deploy

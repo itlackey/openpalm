@@ -34,6 +34,8 @@ export type {
 export {
   CORE_SERVICES,
   OPTIONAL_SERVICES,
+  type AdminMode,
+  resolveAdminMode,
 } from "./control-plane/types.js";
 
 // ── Backups ───────────────────────────────────────────────────────────────
@@ -265,6 +267,9 @@ export type {
 export {
   performSetup,
 } from "./control-plane/setup.js";
+
+// ── Admin Token Management ───────────────────────────────────────────────
+export { ensureAdminToken, rotateAdminToken } from "./control-plane/admin-token.js";
 
 // ── AKM Vault Mirror (#388) ──────────────────────────────────────────────
 export {
