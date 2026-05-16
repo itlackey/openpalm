@@ -24,9 +24,8 @@
   let chatError = $state('');
 
   // ── Session state ────────────────────────────────────────────────────
-  // Separate session ID per backend. null = not yet created.
-  let assistantSessionId = $state<string | null>(null);
-  let adminSessionId = $state<string | null>(null);
+  // Keyed by backend. null = not yet created.
+  let sessions = $state<Record<ChatBackend, string | null>>({ assistant: null, admin: null });
   let sessionInitializing = $state(false);
 
   // ── Scroll anchor ────────────────────────────────────────────────────
@@ -34,22 +33,14 @@
 
   // ── Helpers ──────────────────────────────────────────────────────────
 
-  function setSessionId(b: ChatBackend, id: string | null): void {
-    if (b === 'assistant') {
-      assistantSessionId = id;
-    } else {
-      adminSessionId = id;
-    }
-  }
-
   async function ensureSession(b: ChatBackend): Promise<string | null> {
-    const existing = b === 'assistant' ? assistantSessionId : adminSessionId;
+    const existing = sessions[b];
     if (existing) return existing;
 
     sessionInitializing = true;
     try {
       const { id } = await createChatSession(b);
-      setSessionId(b, id);
+      sessions[b] = id;
       return id;
     } catch (e) {
       const err = e as { message?: string };
@@ -62,8 +53,7 @@
 
   async function reconnect(): Promise<void> {
     chatError = '';
-    if (backend === 'assistant') assistantSessionId = null;
-    else adminSessionId = null;
+    sessions[backend] = null;
     await ensureSession(backend);
   }
 
@@ -112,8 +102,7 @@
       if (err.status === 503 || err.status === 502) {
         chatError = `${backend === 'admin' ? 'Admin' : 'Assistant'} is not reachable. Try reconnecting.`;
         // Invalidate session — it may have died
-        if (backend === 'assistant') assistantSessionId = null;
-        else adminSessionId = null;
+        sessions[backend] = null;
       } else {
         chatError = err.message ?? 'Message failed.';
       }
@@ -190,8 +179,7 @@
     authError = '';
     entries = [];
     chatError = '';
-    assistantSessionId = null;
-    adminSessionId = null;
+    sessions = { assistant: null, admin: null };
     backend = 'assistant';
   }
 
@@ -209,8 +197,7 @@
         if (!reachable && !destroyed) {
           chatError = `${backend === 'admin' ? 'Admin' : 'Assistant'} is not reachable. Try reconnecting.`;
           // Clear stale session
-          if (backend === 'assistant') assistantSessionId = null;
-          else adminSessionId = null;
+          sessions[backend] = null;
         }
       })();
     }
