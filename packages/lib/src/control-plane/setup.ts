@@ -247,18 +247,15 @@ export async function performSetup(
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
 
-  // Seed default automations from the registry catalog. Idempotent — existing
-  // files are left alone so user edits survive re-install and upgrade. Registry
-  // misses are logged and skipped; any other error (e.g. filesystem permission)
-  // propagates and fails setup loudly rather than silently leaving the install
-  // in a half-broken state.
-  const automationsDir = join(state.configDir, "automations");
-  mkdirSync(automationsDir, { recursive: true });
-  const akmImproveDest = join(automationsDir, "akm-improve.yml");
+  // Seed default automation into the AKM stash. Idempotent — existing files
+  // are left alone so user edits survive re-install and upgrade.
+  const tasksDir = join(state.stashDir, "tasks");
+  mkdirSync(tasksDir, { recursive: true });
+  const akmImproveDest = join(tasksDir, "akm-improve.md");
   if (!existsSync(akmImproveDest)) {
-    const akmImproveYml = getRegistryAutomation("akm-improve");
-    if (akmImproveYml) {
-      writeFileSync(akmImproveDest, akmImproveYml);
+    const akmImproveMd = getRegistryAutomation("akm-improve");
+    if (akmImproveMd) {
+      writeFileSync(akmImproveDest, akmImproveMd);
       logger.info("seeded default automation", { name: "akm-improve" });
     } else {
       logger.warn("default automation missing from registry; skipping seed", {

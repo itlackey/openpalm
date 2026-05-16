@@ -1,28 +1,22 @@
 /**
- * Tests for the automation scheduler primitives exported by `@openpalm/lib` —
- * parsing, schedule resolution, automation loading, and action execution.
+ * Tests for AKM markdown task loading and scheduler functions.
  *
- * Verifies:
- * 1. YAML parsing and validation (valid, invalid, defaults)
- * 2. Schedule preset resolution
- * 3. Automation loading from directory
- * 4. executeAction integration (http action with real HTTP server)
+ * Covers:
+ * 1. SCHEDULE_PRESETS display labels
+ * 2. loadAutomations — reads markdown tasks from stash/tasks/
+ * 3. readAutomationLogs — reads from cache/akm/tasks/logs/
  *
- * Scheduler lifecycle tests (start/stop/reload/cron firing) live in
- * packages/scheduler/src/scheduler.test.ts.
+ * executeAutomation is verified at the route level via the run vitest.
  */
-import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createServer, type Server } from "node:http";
 import {
-  parseAutomationYaml,
-  resolveSchedule,
   SCHEDULE_PRESETS,
   loadAutomations,
-  executeAction
+  readAutomationLogs,
 } from "@openpalm/lib";
 
 function makeTempDir(): string {
@@ -31,624 +25,152 @@ function makeTempDir(): string {
   return dir;
 }
 
-// ── parseAutomationYaml ──────────────────────────────────────────────
+function writeTask(stashDir: string, id: string, content: string): void {
+  const tasksDir = join(stashDir, "tasks");
+  mkdirSync(tasksDir, { recursive: true });
+  writeFileSync(join(tasksDir, `${id}.md`), content);
+}
 
-describe("parseAutomationYaml", () => {
-  test("parses valid api automation", () => {
-    const yaml = `
-name: Health Check
-description: Monitor services
+let stashDir: string;
+let cacheDir: string;
+
+beforeEach(() => {
+  stashDir = makeTempDir();
+  cacheDir = makeTempDir();
+});
+
+afterEach(() => {
+  rmSync(stashDir, { recursive: true, force: true });
+  rmSync(cacheDir, { recursive: true, force: true });
+});
+
+// ── SCHEDULE_PRESETS ─────────────────────────────────────────────────────
+
+describe("SCHEDULE_PRESETS", () => {
+  test("contains expected display labels", () => {
+    expect(SCHEDULE_PRESETS["every-5-minutes"]).toBe("*/5 * * * *");
+    expect(SCHEDULE_PRESETS["daily-8am"]).toBe("0 8 * * *");
+    expect(SCHEDULE_PRESETS["weekly-sunday-3am"]).toBe("0 3 * * 0");
+  });
+});
+
+// ── loadAutomations ──────────────────────────────────────────────────────
+
+describe("loadAutomations", () => {
+  test("returns empty array when stash/tasks does not exist", () => {
+    const result = loadAutomations(stashDir);
+    expect(result).toEqual([]);
+  });
+
+  test("loads a command-target task as shell action", () => {
+    writeTask(stashDir, "health-check", `---
 schedule: "*/5 * * * *"
 enabled: true
-action:
-  type: api
-  method: GET
-  path: /health
-`;
-    const config = parseAutomationYaml(yaml, "health-check.yml");
-    expect(config).not.toBeNull();
-    expect(config!.name).toBe("Health Check");
-    expect(config!.description).toBe("Monitor services");
-    expect(config!.schedule).toBe("*/5 * * * *");
-    expect(config!.enabled).toBe(true);
-    expect(config!.action.type).toBe("api");
-    expect(config!.action.method).toBe("GET");
-    expect(config!.action.path).toBe("/health");
-    expect(config!.timezone).toBe("UTC");
-    expect(config!.on_failure).toBe("log");
+description: Health check every 5 minutes
+tags: [openpalm]
+command: ["sh","-c","curl -sf http://admin:8100/health"]
+---
+`);
+
+    const automations = loadAutomations(stashDir);
+    expect(automations).toHaveLength(1);
+    const a = automations[0];
+    expect(a.name).toBe("health-check");
+    expect(a.schedule).toBe("*/5 * * * *");
+    expect(a.enabled).toBe(true);
+    expect(a.description).toBe("Health check every 5 minutes");
+    expect(a.action.type).toBe("shell");
+    expect(a.fileName).toBe("health-check.md");
   });
 
-  test("parses valid http automation", () => {
-    const yaml = `
-schedule: daily-8am
-action:
-  type: http
-  method: POST
-  url: http://channel-chat:8181/v1/chat/completions
-  body:
-    model: default
-    messages:
-      - role: user
-        content: Good morning
-`;
-    const config = parseAutomationYaml(yaml, "prompt.yml");
-    expect(config).not.toBeNull();
-    expect(config!.action.type).toBe("http");
-    expect(config!.action.url).toBe("http://channel-chat:8181/v1/chat/completions");
-    expect(config!.action.body).toEqual({
-      model: "default",
-      messages: [{ role: "user", content: "Good morning" }]
-    });
-    // preset should be resolved
-    expect(config!.schedule).toBe("0 8 * * *");
-  });
+  test("loads a prompt-target task as assistant action", () => {
+    writeTask(stashDir, "daily-brief", `---
+schedule: "0 8 * * *"
+enabled: true
+description: Daily briefing
+prompt: inline
+---
 
-  test("parses valid shell automation", () => {
-    const yaml = `
-schedule: weekly-sunday-4am
-action:
-  type: shell
-  command:
-    - /bin/bash
-    - -c
-    - "tail -n 10000 /state/audit/audit.jsonl > /tmp/audit.tmp && mv /tmp/audit.tmp /state/audit/audit.jsonl"
-`;
-    const config = parseAutomationYaml(yaml, "cleanup.yml");
-    expect(config).not.toBeNull();
-    expect(config!.action.type).toBe("shell");
-    expect(config!.action.command).toEqual([
-      "/bin/bash",
-      "-c",
-      "tail -n 10000 /state/audit/audit.jsonl > /tmp/audit.tmp && mv /tmp/audit.tmp /state/audit/audit.jsonl"
-    ]);
-    expect(config!.schedule).toBe("0 4 * * 0");
-  });
+Good morning. How are systems?
+`);
 
-  test("applies defaults for optional fields", () => {
-    const yaml = `
-schedule: "0 0 * * *"
-action:
-  type: api
-  path: /health
-`;
-    const config = parseAutomationYaml(yaml, "minimal.yml");
-    expect(config).not.toBeNull();
-    expect(config!.name).toBe("minimal");
-    expect(config!.description).toBe("");
-    expect(config!.timezone).toBe("UTC");
-    expect(config!.enabled).toBe(true);
-    expect(config!.on_failure).toBe("log");
-    expect(config!.action.method).toBe("GET");
-    expect(config!.action.timeout).toBe(30_000);
+    const automations = loadAutomations(stashDir);
+    expect(automations).toHaveLength(1);
+    const a = automations[0];
+    expect(a.action.type).toBe("assistant");
+    expect(a.action.content).toBe("Good morning. How are systems?");
   });
 
   test("respects enabled: false", () => {
-    const yaml = `
-schedule: daily
+    writeTask(stashDir, "disabled-task", `---
+schedule: "*/5 * * * *"
 enabled: false
-action:
-  type: api
-  path: /health
-`;
-    const config = parseAutomationYaml(yaml, "disabled.yml");
-    expect(config).not.toBeNull();
-    expect(config!.enabled).toBe(false);
+command: ["echo","hello"]
+---
+`);
+
+    const automations = loadAutomations(stashDir);
+    expect(automations).toHaveLength(1);
+    expect(automations[0].enabled).toBe(false);
   });
 
-  test("respects on_failure: audit", () => {
-    const yaml = `
-schedule: daily
-on_failure: audit
-action:
-  type: api
-  path: /health
-`;
-    const config = parseAutomationYaml(yaml, "audit.yml");
-    expect(config).not.toBeNull();
-    expect(config!.on_failure).toBe("audit");
+  test("skips malformed task files without crashing", () => {
+    writeTask(stashDir, "bad-task", `not valid frontmatter at all`);
+    writeTask(stashDir, "good-task", `---
+schedule: "0 3 * * *"
+command: ["akm","improve"]
+---
+`);
+
+    const automations = loadAutomations(stashDir);
+    expect(automations).toHaveLength(1);
+    expect(automations[0].name).toBe("good-task");
   });
 
-  test("rejects missing schedule", () => {
-    const yaml = `
-action:
-  type: api
-  path: /health
-`;
-    expect(parseAutomationYaml(yaml, "no-schedule.yml")).toBeNull();
-  });
+  test("loads multiple tasks", () => {
+    writeTask(stashDir, "task-a", `---\nschedule: "*/5 * * * *"\ncommand: ["echo","a"]\n---\n`);
+    writeTask(stashDir, "task-b", `---\nschedule: "0 3 * * *"\ncommand: ["echo","b"]\n---\n`);
 
-  test("rejects empty schedule", () => {
-    const yaml = `
-schedule: ""
-action:
-  type: api
-  path: /health
-`;
-    expect(parseAutomationYaml(yaml, "empty-schedule.yml")).toBeNull();
-  });
-
-  test("rejects missing action", () => {
-    const yaml = `
-schedule: daily
-`;
-    expect(parseAutomationYaml(yaml, "no-action.yml")).toBeNull();
-  });
-
-  test("rejects invalid action type", () => {
-    const yaml = `
-schedule: daily
-action:
-  type: webhook
-  url: http://example.com
-`;
-    expect(parseAutomationYaml(yaml, "bad-type.yml")).toBeNull();
-  });
-
-  test("rejects api action without path", () => {
-    const yaml = `
-schedule: daily
-action:
-  type: api
-  method: GET
-`;
-    expect(parseAutomationYaml(yaml, "api-no-path.yml")).toBeNull();
-  });
-
-  test("rejects http action without url", () => {
-    const yaml = `
-schedule: daily
-action:
-  type: http
-  method: GET
-`;
-    expect(parseAutomationYaml(yaml, "http-no-url.yml")).toBeNull();
-  });
-
-  test("rejects shell action without command", () => {
-    const yaml = `
-schedule: daily
-action:
-  type: shell
-`;
-    expect(parseAutomationYaml(yaml, "shell-no-cmd.yml")).toBeNull();
-  });
-
-  test("rejects shell action with empty command array", () => {
-    const yaml = `
-schedule: daily
-action:
-  type: shell
-  command: []
-`;
-    expect(parseAutomationYaml(yaml, "shell-empty-cmd.yml")).toBeNull();
-  });
-
-  test("rejects invalid YAML syntax", () => {
-    const yaml = `schedule: [invalid: yaml: :::`;
-    expect(parseAutomationYaml(yaml, "bad-yaml.yml")).toBeNull();
-  });
-
-  test("rejects non-object YAML (scalar)", () => {
-    expect(parseAutomationYaml("just a string", "scalar.yml")).toBeNull();
-  });
-
-  test("preserves custom timezone", () => {
-    const yaml = `
-schedule: daily
-timezone: America/New_York
-action:
-  type: api
-  path: /health
-`;
-    const config = parseAutomationYaml(yaml, "tz.yml");
-    expect(config!.timezone).toBe("America/New_York");
-  });
-
-  test("preserves custom headers", () => {
-    const yaml = `
-schedule: daily
-action:
-  type: http
-  method: POST
-  url: http://example.com/hook
-  headers:
-    Authorization: "Bearer token123"
-    X-Custom: "value"
-`;
-    const config = parseAutomationYaml(yaml, "headers.yml");
-    expect(config!.action.headers).toEqual({
-      Authorization: "Bearer token123",
-      "X-Custom": "value"
-    });
-  });
-
-  test("parses valid assistant automation with content only", () => {
-    const yaml = `
-schedule: daily-8am
-action:
-  type: assistant
-  content: Good morning. Summarize system health and open tasks.
-`;
-    const config = parseAutomationYaml(yaml, "assistant-prompt.yml");
-    expect(config).not.toBeNull();
-    expect(config!.action.type).toBe("assistant");
-    expect(config!.action.content).toBe(
-      "Good morning. Summarize system health and open tasks."
-    );
-    expect(config!.action.agent).toBeUndefined();
-    expect(config!.action.timeout).toBe(120_000);
-    expect(config!.name).toBe("assistant-prompt");
-  });
-
-  test("parses assistant automation with optional agent", () => {
-    const yaml = `
-name: Daily Report
-description: Ask the assistant for a daily report
-schedule: daily-8am
-action:
-  type: assistant
-  content: Generate a daily system report.
-  agent: reporter
-`;
-    const config = parseAutomationYaml(yaml, "daily-report.yml");
-    expect(config).not.toBeNull();
-    expect(config!.name).toBe("Daily Report");
-    expect(config!.description).toBe("Ask the assistant for a daily report");
-    expect(config!.action.type).toBe("assistant");
-    expect(config!.action.content).toBe("Generate a daily system report.");
-    expect(config!.action.agent).toBe("reporter");
-  });
-
-  test("parses assistant automation with custom timeout", () => {
-    const yaml = `
-schedule: daily
-action:
-  type: assistant
-  content: Run a long analysis task.
-  timeout: 300000
-`;
-    const config = parseAutomationYaml(yaml, "long-task.yml");
-    expect(config).not.toBeNull();
-    expect(config!.action.timeout).toBe(300_000);
-  });
-
-  test("rejects assistant action without content", () => {
-    const yaml = `
-schedule: daily
-action:
-  type: assistant
-`;
-    expect(parseAutomationYaml(yaml, "no-content.yml")).toBeNull();
-  });
-
-  test("rejects assistant action with empty content", () => {
-    const yaml = `
-schedule: daily
-action:
-  type: assistant
-  content: "   "
-`;
-    expect(parseAutomationYaml(yaml, "empty-content.yml")).toBeNull();
+    const automations = loadAutomations(stashDir);
+    expect(automations).toHaveLength(2);
   });
 });
 
-// ── resolveSchedule ──────────────────────────────────────────────────
+// ── readAutomationLogs ───────────────────────────────────────────────────
 
-describe("resolveSchedule", () => {
-  test("resolves all presets correctly", () => {
-    for (const [name, cron] of Object.entries(SCHEDULE_PRESETS)) {
-      expect(resolveSchedule(name)).toBe(cron);
-    }
+describe("readAutomationLogs", () => {
+  test("returns empty array when no log dir exists", () => {
+    const lines = readAutomationLogs("health-check", cacheDir, 50);
+    expect(lines).toEqual([]);
   });
 
-  test("passes through raw cron expressions unchanged", () => {
-    expect(resolveSchedule("0 2 * * *")).toBe("0 2 * * *");
-    expect(resolveSchedule("*/10 * * * *")).toBe("*/10 * * * *");
+  test("reads lines from log files newest-first", () => {
+    const logDir = join(cacheDir, "akm", "tasks", "logs", "health-check");
+    mkdirSync(logDir, { recursive: true });
+    writeFileSync(join(logDir, "2026-05-15T03-00-00-000Z.log"), "line-old\n");
+    writeFileSync(join(logDir, "2026-05-16T03-00-00-000Z.log"), "line-new\n");
+
+    const lines = readAutomationLogs("health-check", cacheDir, 50);
+    expect(lines[0]).toBe("line-new");
+    expect(lines[1]).toBe("line-old");
   });
 
-  test("unknown preset name passes through as cron expression", () => {
-    expect(resolveSchedule("every-second")).toBe("every-second");
-  });
-});
+  test("respects the limit parameter", () => {
+    const logDir = join(cacheDir, "akm", "tasks", "logs", "cleanup");
+    mkdirSync(logDir, { recursive: true });
+    const content = Array.from({ length: 20 }, (_, i) => `line-${i}`).join("\n");
+    writeFileSync(join(logDir, "2026-05-16T00-00-00-000Z.log"), content);
 
-// ── loadAutomations ──────────────────────────────────────────────────
-
-describe("loadAutomations", () => {
-  let configDir: string;
-
-  beforeEach(() => {
-    configDir = makeTempDir();
+    const lines = readAutomationLogs("cleanup", cacheDir, 5);
+    expect(lines).toHaveLength(5);
   });
 
-  afterEach(() => {
-    rmSync(configDir, { recursive: true, force: true });
-  });
+  test("strips .md suffix from id", () => {
+    const logDir = join(cacheDir, "akm", "tasks", "logs", "health-check");
+    mkdirSync(logDir, { recursive: true });
+    writeFileSync(join(logDir, "2026-05-16T00-00-00-000Z.log"), "entry\n");
 
-  test("loads .yml files from automations dir", () => {
-    const dir = join(configDir, "automations");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, "health.yml"),
-      'schedule: every-5-minutes\naction:\n  type: api\n  path: /health\n'
-    );
-    writeFileSync(
-      join(dir, "update.yml"),
-      'schedule: weekly\naction:\n  type: api\n  method: POST\n  path: /admin/upgrade\n'
-    );
-
-    const configs = loadAutomations(configDir);
-    expect(configs.length).toBe(2);
-  });
-
-  test("ignores non-.yml files", () => {
-    const dir = join(configDir, "automations");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, "health.yml"),
-      'schedule: daily\naction:\n  type: api\n  path: /health\n'
-    );
-    // Old crontab-style file — should be ignored
-    writeFileSync(join(dir, "old-crontab"), "0 2 * * * node /work/task.sh\n");
-
-    const configs = loadAutomations(configDir);
-    expect(configs.length).toBe(1);
-    expect(configs[0].fileName).toBe("health.yml");
-  });
-
-  test("skips invalid YAML files", () => {
-    const dir = join(configDir, "automations");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "bad.yml"), "schedule: [invalid: yaml: :::");
-    writeFileSync(
-      join(dir, "good.yml"),
-      'schedule: daily\naction:\n  type: api\n  path: /health\n'
-    );
-
-    const configs = loadAutomations(configDir);
-    expect(configs.length).toBe(1);
-    expect(configs[0].fileName).toBe("good.yml");
-  });
-
-  test("returns empty array when dir does not exist", () => {
-    const configs = loadAutomations(join(configDir, "nonexistent"));
-    expect(configs.length).toBe(0);
-  });
-
-  test("returns empty array when automations dir is empty", () => {
-    mkdirSync(join(configDir, "automations"), { recursive: true });
-    const configs = loadAutomations(configDir);
-    expect(configs.length).toBe(0);
+    const lines = readAutomationLogs("health-check.md", cacheDir, 50);
+    expect(lines).toContain("entry");
   });
 });
-
-
-// ── executeAction: assistant ─────────────────────────────────────────
-
-describe("executeAction assistant", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  test("rejects invalid session ID from assistant", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify({ id: "bad id with spaces" }), { status: 200 })
-    );
-
-    await expect(
-      executeAction(
-        { type: "assistant", content: "hello", timeout: 5000 },
-        "test-token"
-      )
-    ).rejects.toThrow("Invalid session ID from assistant");
-
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-  });
-
-  test("rejects session ID with path traversal characters", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify({ id: "../admin/evil" }), { status: 200 })
-    );
-
-    await expect(
-      executeAction(
-        { type: "assistant", content: "hello", timeout: 5000 },
-        "test-token"
-      )
-    ).rejects.toThrow("Invalid session ID from assistant");
-
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-  });
-
-  test("completes two-step flow with valid session ID", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ id: "session_abc-123" }), { status: 200 })
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ info: {}, parts: [{ type: "text", text: "done" }] }),
-          { status: 200 }
-        )
-      );
-
-    await executeAction(
-      { type: "assistant", content: "summarize health", timeout: 5000 },
-      "test-token"
-    );
-
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-    // Step 1: session creation
-    const [sessionUrl, sessionOpts] = fetchSpy.mock.calls[0];
-    expect(sessionUrl).toContain("/session");
-    expect(JSON.parse(sessionOpts!.body as string)).toHaveProperty("title");
-    // Step 2: message send
-    const [messageUrl, messageOpts] = fetchSpy.mock.calls[1];
-    expect(messageUrl).toContain("/session/session_abc-123/message");
-    const body = JSON.parse(messageOpts!.body as string);
-    expect(body.parts[0].text).toBe("summarize health");
-  });
-
-  test("sends no auth header when OPENCODE_SERVER_PASSWORD is unset", async () => {
-    const prevPassword = process.env.OPENCODE_SERVER_PASSWORD;
-    delete process.env.OPENCODE_SERVER_PASSWORD;
-
-    try {
-      const fetchSpy = vi.spyOn(globalThis, "fetch")
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({ id: "sess1" }), { status: 200 })
-        )
-        .mockResolvedValueOnce(
-          new Response(
-            JSON.stringify({ info: {}, parts: [] }),
-            { status: 200 }
-          )
-        );
-
-      await executeAction(
-        { type: "assistant", content: "hello", timeout: 5000 },
-        "test-token"
-      );
-
-      const headers = fetchSpy.mock.calls[0][1]!.headers as Record<string, string>;
-      expect(headers["authorization"]).toBeUndefined();
-    } finally {
-      if (prevPassword !== undefined) {
-        process.env.OPENCODE_SERVER_PASSWORD = prevPassword;
-      }
-    }
-  });
-
-  test("throws on session creation failure", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response("service unavailable", { status: 503 })
-    );
-
-    await expect(
-      executeAction(
-        { type: "assistant", content: "hello", timeout: 5000 },
-        "test-token"
-      )
-    ).rejects.toThrow("OpenCode POST /session 503");
-  });
-
-  test("throws on message send failure", async () => {
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ id: "sess1" }), { status: 200 })
-      )
-      .mockResolvedValueOnce(
-        new Response("inference timeout", { status: 504 })
-      );
-
-    await expect(
-      executeAction(
-        { type: "assistant", content: "hello", timeout: 5000 },
-        "test-token"
-      )
-    ).rejects.toThrow("OpenCode POST /session/sess1/message 504");
-  });
-});
-
-// ── executeAction integration: http action with real HTTP server ─────
-
-describe("executeAction http integration", () => {
-  let server: Server;
-  let serverPort: number;
-  let receivedRequests: { method: string; url: string; body: string; headers: Record<string, string | string[] | undefined> }[];
-
-  beforeEach(async () => {
-    receivedRequests = [];
-    server = createServer((req, res) => {
-      let body = "";
-      req.on("data", (chunk) => { body += chunk; });
-      req.on("end", () => {
-        receivedRequests.push({
-          method: req.method ?? "",
-          url: req.url ?? "",
-          body,
-          headers: req.headers as Record<string, string | string[] | undefined>
-        });
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ ok: true }));
-      });
-    });
-
-    // Listen on a random available port
-    await new Promise<void>((resolve) => {
-      server.listen(0, "127.0.0.1", () => resolve());
-    });
-    const addr = server.address();
-    serverPort = typeof addr === "object" && addr !== null ? addr.port : 0;
-  });
-
-  afterEach(async () => {
-    await new Promise<void>((resolve) => {
-      server.close(() => resolve());
-    });
-  });
-
-  test("http GET action hits the target server", async () => {
-    await executeAction(
-      {
-        type: "http",
-        method: "GET",
-        url: `http://127.0.0.1:${serverPort}/test-endpoint`,
-        timeout: 5000
-      },
-      "unused-token"
-    );
-
-    expect(receivedRequests.length).toBe(1);
-    expect(receivedRequests[0].method).toBe("GET");
-    expect(receivedRequests[0].url).toBe("/test-endpoint");
-  });
-
-  test("http POST action sends body and custom headers", async () => {
-    await executeAction(
-      {
-        type: "http",
-        method: "POST",
-        url: `http://127.0.0.1:${serverPort}/webhook`,
-        body: { message: "hello from automation" },
-        headers: { "x-custom-header": "test-value" },
-        timeout: 5000
-      },
-      "unused-token"
-    );
-
-    expect(receivedRequests.length).toBe(1);
-    expect(receivedRequests[0].method).toBe("POST");
-    expect(receivedRequests[0].url).toBe("/webhook");
-    expect(JSON.parse(receivedRequests[0].body)).toEqual({ message: "hello from automation" });
-    expect(receivedRequests[0].headers["x-custom-header"]).toBe("test-value");
-    expect(receivedRequests[0].headers["content-type"]).toBe("application/json");
-  });
-
-  test("http action throws on non-2xx response", async () => {
-    // Replace the server with one that returns 500
-    await new Promise<void>((resolve) => {
-      server.close(() => resolve());
-    });
-
-    server = createServer((_req, res) => {
-      res.writeHead(500, { "content-type": "text/plain" });
-      res.end("Internal Server Error");
-    });
-    await new Promise<void>((resolve) => {
-      server.listen(serverPort, "127.0.0.1", () => resolve());
-    });
-
-    await expect(
-      executeAction(
-        {
-          type: "http",
-          method: "GET",
-          url: `http://127.0.0.1:${serverPort}/fail`,
-          timeout: 5000
-        },
-        "unused-token"
-      )
-    ).rejects.toThrow("HTTP 500");
-  });
-});
-

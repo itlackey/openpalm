@@ -266,7 +266,7 @@
           <button class="btn btn-secondary btn-sm" onclick={onRefresh}>Try Again</button>
         {:else}
           <p>No automations configured.</p>
-          <p class="empty-state-hint">Use the catalog above to install automations, or drop .yml files into <code>~/.openpalm/config/automations/</code>.</p>
+          <p class="empty-state-hint">Use the catalog above to install automations, or add .md task files to <code>~/.openpalm/stash/tasks/</code>.</p>
         {/if}
       </div>
     {/if}

@@ -18,7 +18,7 @@ const tmpBase = `/tmp/openpalm-wizard-test-${port}`;
 // API endpoints that need real files are mocked at the browser level
 // by Playwright's page.route(), so these dirs just prevent crashes.
 mkdirSync(`${tmpBase}/config`, { recursive: true });
-mkdirSync(`${tmpBase}/config/automations`, { recursive: true });
+mkdirSync(`${tmpBase}/stash/tasks`, { recursive: true });
 mkdirSync(`${tmpBase}/data`, { recursive: true });
 mkdirSync(`${tmpBase}/data/assistant`, { recursive: true });
 mkdirSync(`${tmpBase}/registry/automations`, { recursive: true });

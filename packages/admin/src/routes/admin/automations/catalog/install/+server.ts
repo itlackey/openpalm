@@ -1,8 +1,9 @@
 /**
  * POST /admin/automations/catalog/install — Install a catalog automation.
  *
- * Channel addons are managed via POST /admin/addons/:name.
- * This endpoint only handles automations from the registry catalog.
+ * Copies the markdown task file from the registry catalog to stash/tasks/.
+ * The assistant container's 60-second akm tasks sync loop picks up the new
+ * file from the shared /akm/tasks/ mount and registers it with OS cron.
  */
 import type { RequestHandler } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
@@ -19,8 +20,6 @@ import {
 import {
   appendAudit,
   installAutomationFromRegistry,
-  writeRuntimeFiles,
-  resolveRuntimeFiles,
 } from "@openpalm/lib";
 
 
@@ -50,15 +49,11 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_input", "type must be 'automation'", {}, requestId);
   }
 
-  const result = installAutomationFromRegistry(name, state.configDir);
+  const result = installAutomationFromRegistry(name, state.stashDir);
   if (!result.ok) {
     appendAudit(state, actor, "automations.catalog.install", { name, type, error: result.error }, false, requestId, callerType);
     return errorResponse(400, "invalid_input", result.error, {}, requestId);
   }
-
-  state.artifacts = resolveRuntimeFiles();
-  writeRuntimeFiles(state);
-  // Scheduler sidecar auto-reloads via file watching
 
   appendAudit(state, actor, "automations.catalog.install", { name, type }, true, requestId, callerType);
   return jsonResponse(200, { ok: true, name, type }, requestId);

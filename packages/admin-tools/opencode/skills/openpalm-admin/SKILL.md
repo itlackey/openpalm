@@ -13,7 +13,7 @@ OpenPalm runs as a Docker Compose stack with two core services plus optional add
 
 | Service | Role |
 |---------|------|
-| **assistant** | This OpenCode instance (you). Hosts the scheduler co-process. |
+| **assistant** | This OpenCode instance (you). Runs alongside crond which executes AKM tasks. |
 | **guardian** | Message routing with HMAC verification, replay protection, and rate limiting. |
 
 Persistent memory, skills, commands, lessons, and workflows live in the shared akm stash bind-mounted into the assistant and admin containers from `~/.openpalm/data/stash/`. There is no dedicated memory service.
@@ -37,9 +37,9 @@ List, enable, or disable addons via the registry/stack addon directories.
 - Enable/disable copies/removes addon directories and manages HMAC secrets for channels
 
 ### `admin-automations` (list, trigger, log)
-- **list** (`GET /admin/automations`) — configured automations (name, schedule, enabled, action type, fileName) from `config/automations/`.
-- **trigger** (`POST /admin/automations/:name/run`) — drop a sentinel under `${OP_HOME}/data/scheduler/triggers/<name>.run`; the scheduler co-process inside the assistant container picks it up within seconds.
-- **log** (`GET /admin/automations/:name/log`) — recent lines from `${OP_HOME}/logs/scheduler.log` filtered to the named automation.
+- **list** (`GET /admin/automations`) — configured automations from `stash/tasks/*.md` (AKM markdown task files; name, schedule, enabled, action type).
+- **trigger** (`POST /admin/automations/:name/run`) — runs `akm tasks run <name>` directly; logs appear in `cache/akm/tasks/logs/<name>/`.
+- **log** (`GET /admin/automations/:name/log`) — recent log lines from `cache/akm/tasks/logs/<name>/` (akm task per-run log files).
 
 ### `admin-artifacts` (list, manifest, get)
 Inspect the generated configuration files:

@@ -89,7 +89,6 @@ export function ensureHomeDirs(): void {
   for (const dir of [
     // config/ — user-editable config + system config files
     `${home}/config`,
-    `${home}/config/automations`,
     `${home}/config/assistant`,
     `${home}/config/guardian`,
     `${home}/config/akm`,           // AKM_CONFIG_DIR — akm setup config.json lives here
@@ -112,8 +111,6 @@ export function ensureHomeDirs(): void {
     `${home}/state/akm`,            // shared akm operational data (NOT config)
     `${home}/state/akm/data`,
     `${home}/state/akm/state`,
-    `${home}/state/scheduler`,
-    `${home}/state/scheduler/triggers`,
     `${home}/state/logs`,
     `${home}/state/logs/opencode`,
     `${home}/state/backups`,
@@ -121,8 +118,9 @@ export function ensureHomeDirs(): void {
     `${home}/state/registry/addons`,
     `${home}/state/registry/automations`,
 
-    // stash/ — akm knowledge (skills, vaults, agents)
+    // stash/ — akm knowledge (skills, vaults, agents); stash/tasks/ for scheduled automations
     `${home}/stash`,
+    `${home}/stash/tasks`,
 
     // workspace/ — shared assistant work area
     `${home}/workspace`,

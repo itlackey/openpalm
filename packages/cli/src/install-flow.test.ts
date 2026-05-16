@@ -55,8 +55,8 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
     cpTree(join(OPENPALM_SRC, 'registry', 'addons', addon), join(stackDir, 'addons', addon));
   }
 
-  // config/automations/ — enabled only (start empty)
-  mkdirSync(join(configDir, 'automations'), { recursive: true });
+  // stash/tasks/ — active AKM task files (populated by setup)
+  mkdirSync(join(homeDir, 'stash', 'tasks'), { recursive: true });
 
   // state/assistant/ — opencode config
   const assistantDir = join(stateDir, 'assistant');
@@ -188,7 +188,7 @@ describe('install flow — tier 1 (file validation)', () => {
 
     expect(existsSync(join(homeDir, 'state/registry/addons/admin/compose.yml'))).toBe(true);
     expect(existsSync(join(homeDir, 'state/registry/addons/chat/compose.yml'))).toBe(true);
-    expect(existsSync(join(homeDir, 'state/registry/automations/cleanup-logs.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'state/registry/automations/cleanup-logs.md'))).toBe(true);
 
     // ── Validate vault files are regular files (not directories) ─────
     // Phase 2 of #388 (closes #406): vault/user/user.env is no longer
@@ -252,23 +252,24 @@ describe('install flow — tier 1 (file validation)', () => {
       expect(existsSync(join(homeDir, dir))).toBe(true);
     }
 
-    // ── Validate active automations dir exists with seeded defaults ──
+    // ── Validate akm-improve is seeded into stash/tasks/ ──
     // performSetup seeds the akm-improve maintenance automation on first
-    // install; everything else stays in the registry catalog until enabled.
-    expect(existsSync(join(homeDir, 'config/automations'))).toBe(true);
-    const automations = readdirSync(join(homeDir, 'config/automations')).sort();
-    expect(automations).toEqual(['akm-improve.yml']);
+    // install as an AKM markdown task; everything else stays in the registry
+    // catalog until enabled.
+    const tasksDir = join(homeDir, 'stash/tasks');
+    expect(existsSync(tasksDir)).toBe(true);
+    const tasks = readdirSync(tasksDir).sort();
+    expect(tasks).toEqual(['akm-improve.md']);
 
-    const akmImprovePath = join(homeDir, 'config/automations/akm-improve.yml');
+    const akmImprovePath = join(homeDir, 'stash/tasks/akm-improve.md');
     const akmImproveContent = readFileSync(akmImprovePath, 'utf-8');
-    expect(akmImproveContent).toContain('name: akm-improve');
     expect(akmImproveContent).toContain('akm');
     expect(akmImproveContent).toContain('improve');
     // Confirm we're on the 0.8.0+ command, not the removed `index --enrich`.
     expect(akmImproveContent).not.toMatch(/--enrich\b/);
 
-    // ── Re-run setup: user edits to akm-improve.yml must survive ─────
-    const userEdited = '# user customized\nname: akm-improve\nschedule: "0 9 * * *"\nenabled: false\naction:\n  type: shell\n  command: ["akm", "improve"]\n';
+    // ── Re-run setup: user edits to akm-improve.md must survive ─────
+    const userEdited = '---\nschedule: "0 9 * * *"\nenabled: false\ncommand: ["akm","improve","--auto-accept","safe"]\n---\n';
     writeFileSync(akmImprovePath, userEdited);
     const reSetup = await performSetup(spec as any);
     expect(reSetup.ok).toBe(true);

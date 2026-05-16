@@ -27,7 +27,6 @@ import {
   isValidChannel,
   discoverStackOverlays,
   writeSystemEnv,
-  parseAutomationYaml,
 } from "@openpalm/lib";
 
 // ── Test helpers — create isolated temp directories ────────────────────
@@ -159,43 +158,3 @@ describe("Runtime validation uses stack/addons/", () => {
   });
 });
 
-// ── Automation YAML parsing ──────────────────────────────────────────────
-
-// Valid YAML automation content for tests
-const VALID_API_YAML = 'schedule: daily\naction:\n  type: api\n  path: /health\n';
-const VALID_HTTP_YAML = 'schedule: daily\naction:\n  type: http\n  method: POST\n  url: http://example.com/hook\n';
-const VALID_SHELL_YAML = 'schedule: weekly\naction:\n  type: shell\n  command:\n    - /bin/echo\n    - hello\n';
-
-describe("Automation YAML parsing", () => {
-  test("parses valid api automation", () => {
-    const config = parseAutomationYaml(VALID_API_YAML, "backup.yml");
-    expect(config).not.toBeNull();
-    expect(config!.action.type).toBe("api");
-  });
-
-  test("parses valid http automation", () => {
-    const config = parseAutomationYaml(VALID_HTTP_YAML, "http-job.yml");
-    expect(config).not.toBeNull();
-    expect(config!.action.type).toBe("http");
-  });
-
-  test("parses valid shell automation", () => {
-    const config = parseAutomationYaml(VALID_SHELL_YAML, "shell-job.yml");
-    expect(config).not.toBeNull();
-    expect(config!.action.type).toBe("shell");
-  });
-
-  test("rejects invalid YAML content", () => {
-    expect(parseAutomationYaml("schedule: [invalid: yaml: :::", "bad-yaml.yml")).toBeNull();
-  });
-
-  test("rejects YAML missing required fields", () => {
-    // Missing action
-    expect(parseAutomationYaml("schedule: daily\n", "no-action.yml")).toBeNull();
-  });
-
-  test("rejects YAML with invalid action type", () => {
-    const yaml = 'schedule: daily\naction:\n  type: webhook\n  url: http://example.com\n';
-    expect(parseAutomationYaml(yaml, "bad-type.yml")).toBeNull();
-  });
-});

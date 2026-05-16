@@ -1,0 +1,11 @@
+---
+schedule: "0 8 * * *"
+enabled: true
+description: Ask the assistant for a daily system health summary
+tags: [openpalm, assistant]
+timeoutMs: 120000
+prompt: inline
+---
+
+Good morning. Give me a brief summary of system health,
+any recent errors in the audit log, and open tasks.

@@ -213,14 +213,14 @@ export {
 // ── Scheduler ───────────────────────────────────────────────────────────
 export type {
   AutomationConfig,
-  ExecutionLogEntry,
+  AutomationRunResult,
 } from "./control-plane/scheduler.js";
 export {
   SCHEDULE_PRESETS,
-  resolveSchedule,
-  parseAutomationYaml,
   loadAutomations,
-  executeAction,
+  executeAutomation,
+  syncAutomations,
+  readAutomationLogs,
 } from "./control-plane/scheduler.js";
 
 // ── Model Runner (local provider detection) ─────────────────────────────
@@ -269,6 +269,7 @@ export {
 // ── AKM Vault Mirror (#388) ──────────────────────────────────────────────
 export {
   AKM_USER_VAULT_REF,
+  buildAkmEnv,
   mirrorUserVaultToAkm,
   migrateAndCleanupLegacyUserEnv,
   ensureAkmUserVault,

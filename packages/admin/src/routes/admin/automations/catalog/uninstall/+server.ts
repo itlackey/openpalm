@@ -1,12 +1,8 @@
 /**
  * POST /admin/automations/catalog/uninstall — Uninstall a catalog automation.
  *
- * Channel addons are managed via POST /admin/addons/:name.
- * This endpoint only handles automations.
- *
- * Removes the .yml from CONFIG_HOME/automations/ and refreshes runtime
- * files. The scheduler co-process inside the assistant container auto-
- * reloads via file watching.
+ * Removes the markdown task file from stash/tasks/. The assistant container's
+ * next akm tasks sync (≤60 s) deregisters it from OS cron automatically.
  */
 import type { RequestHandler } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
@@ -23,8 +19,6 @@ import {
 import {
   appendAudit,
   uninstallAutomation,
-  writeRuntimeFiles,
-  resolveRuntimeFiles,
 } from "@openpalm/lib";
 
 
@@ -54,16 +48,11 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_input", "type must be 'automation'", {}, requestId);
   }
 
-  // type === "automation"
-  const result = uninstallAutomation(name, state.configDir);
+  const result = uninstallAutomation(name, state.stashDir);
   if (!result.ok) {
     appendAudit(state, actor, "automations.catalog.uninstall", { name, type, error: result.error }, false, requestId, callerType);
     return errorResponse(400, "invalid_input", result.error, {}, requestId);
   }
-
-  state.artifacts = resolveRuntimeFiles();
-  writeRuntimeFiles(state);
-  // Scheduler sidecar auto-reloads via file watching
 
   appendAudit(state, actor, "automations.catalog.uninstall", { name, type }, true, requestId, callerType);
   return jsonResponse(200, { ok: true, name, type }, requestId);

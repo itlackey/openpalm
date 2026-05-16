@@ -1,15 +1,10 @@
 /**
  * POST /admin/automations/:name/run — Manually trigger an automation.
  *
- * The scheduler now runs as a co-process inside the assistant container and
- * has no HTTP API. Triggers are filesystem-based: we drop a sentinel file
- * under `${OP_HOME}/data/scheduler/triggers/<name>.run`. The scheduler
- * watches that directory and fires the matching automation, deleting the
- * sentinel as soon as the run starts.
+ * Spawns `akm tasks run <id>` directly (no sentinel files). The task
+ * must exist in ${stashDir}/tasks/<name>.md to be accepted.
  */
 import type { RequestHandler } from "./$types";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
@@ -19,11 +14,14 @@ import {
   getActor,
   getCallerType,
 } from "$lib/server/helpers.js";
-import { appendAudit, loadAutomations } from "@openpalm/lib";
+import {
+  appendAudit,
+  loadAutomations,
+  executeAutomation,
+  buildAkmEnv,
+} from "@openpalm/lib";
 
-// Allow the same character set used by automation fileNames in the scheduler
-// (alphanumerics plus `._-`) followed by the `.yml` suffix.
-const SAFE_NAME_RE = /^[a-zA-Z0-9._-]+\.yml$/;
+const SAFE_NAME_RE = /^[a-zA-Z0-9._-]+(?:\.md)?$/;
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -35,53 +33,32 @@ export const POST: RequestHandler = async (event) => {
   const callerType = getCallerType(event);
   const rawName = event.params.name ?? "";
 
-  // Accept both bare base names and full filenames; normalize to .yml.
-  const fileName = rawName.endsWith(".yml") ? rawName : `${rawName}.yml`;
+  // Accept both bare IDs and full filenames; normalize to bare ID.
+  const taskId = rawName.endsWith(".md") ? rawName.slice(0, -3) : rawName;
 
-  if (!SAFE_NAME_RE.test(fileName) || fileName.includes("..") || fileName.includes("/")) {
+  if (!SAFE_NAME_RE.test(rawName) || rawName.includes("..") || rawName.includes("/")) {
     appendAudit(
-      state,
-      actor,
-      "automations.run",
-      { fileName: rawName, error: "invalid_name" },
-      false,
-      requestId,
-      callerType,
+      state, actor, "automations.run",
+      { name: rawName, error: "invalid_name" }, false, requestId, callerType,
     );
-    return errorResponse(400, "invalid_input", "name must match /^[a-zA-Z0-9._-]+\\.yml$/", {}, requestId);
+    return errorResponse(400, "invalid_input", "name must match /^[a-zA-Z0-9._-]+$/", {}, requestId);
   }
 
-  const configured = loadAutomations(state.configDir).some((c) => c.fileName === fileName);
+  const configured = loadAutomations(state.stashDir).some((c) => c.name === taskId);
   if (!configured) {
     appendAudit(
-      state,
-      actor,
-      "automations.run",
-      { fileName, error: "not_found" },
-      false,
-      requestId,
-      callerType,
+      state, actor, "automations.run",
+      { name: taskId, error: "not_found" }, false, requestId, callerType,
     );
-    return errorResponse(404, "not_found", `Automation '${fileName}' is not installed.`, {}, requestId);
+    return errorResponse(404, "not_found", `Automation '${taskId}' is not installed.`, {}, requestId);
   }
 
-  const triggersDir = join(state.stateDir, "scheduler", "triggers");
-  try {
-    if (!existsSync(triggersDir)) mkdirSync(triggersDir, { recursive: true });
-    writeFileSync(join(triggersDir, `${fileName}.run`), "");
-  } catch (err) {
-    appendAudit(
-      state,
-      actor,
-      "automations.run",
-      { fileName, error: String(err) },
-      false,
-      requestId,
-      callerType,
-    );
-    return errorResponse(500, "internal_error", `Failed to write trigger sentinel: ${String(err)}`, {}, requestId);
-  }
+  const result = await executeAutomation(taskId, buildAkmEnv(state));
 
-  appendAudit(state, actor, "automations.run", { fileName }, true, requestId, callerType);
-  return jsonResponse(202, { ok: true, fileName, queued: true }, requestId);
+  appendAudit(
+    state, actor, "automations.run",
+    { name: taskId, ok: result.ok, status: result.status }, result.ok, requestId, callerType,
+  );
+
+  return jsonResponse(202, { ok: result.ok, name: taskId, status: result.status }, requestId);
 };

@@ -19,7 +19,7 @@ export const list = tool({
 });
 
 export const install = tool({
-  description: "Install an automation from the registry catalog into config/automations/. The scheduler auto-reloads.",
+  description: "Install an automation from the registry catalog into stash/tasks/. The assistant picks it up within 60 s and registers it with OS cron.",
   args: {
     name: tool.schema.string().describe("The automation name to install (e.g. 'health-check', 'cleanup-logs')"),
   },
@@ -34,7 +34,7 @@ export const install = tool({
 });
 
 export const uninstall = tool({
-  description: "Uninstall an automation by removing it from config/automations/. The scheduler auto-reloads.",
+  description: "Uninstall an automation by removing it from stash/tasks/. The assistant deregisters it from OS cron within 60 s.",
   args: {
     name: tool.schema.string().describe("The automation name to uninstall (e.g. 'health-check', 'cleanup-logs')"),
   },

@@ -5,8 +5,8 @@
  * no HTTP API. All control flows through the admin API onto the filesystem:
  *
  *   GET  /admin/automations                — list automations (loadAutomations)
- *   POST /admin/automations/:name/run      — drop sentinel under data/scheduler/triggers
- *   GET  /admin/automations/:name/log      — read tail of logs/scheduler.log
+ *   POST /admin/automations/:name/run      — runs akm tasks run <name> directly
+ *   GET  /admin/automations/:name/log      — reads from cache/akm/tasks/logs/<name>/
  *
  * These tests hit the real admin container at http://localhost:8100 and
  * require a running compose stack.

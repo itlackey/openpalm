@@ -208,14 +208,14 @@ describe("materialized registry catalog", () => {
     mkdirSync(automationsDir, { recursive: true });
     writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
     writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+    writeFileSync(join(automationsDir, 'cleanup.md'), '---\ndescription: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n---\n');
 
     const root = materializeRegistryCatalog(sourceRoot);
 
     expect(root).toBe(join(process.env.OP_HOME!, 'state', 'registry'));
     expect(existsSync(join(root, 'addons', 'chat', 'compose.yml'))).toBe(true);
     expect(existsSync(join(root, 'addons', 'chat', '.env.schema'))).toBe(true);
-    expect(readFileSync(join(root, 'automations', 'cleanup.yml'), 'utf-8')).toContain('Cleanup');
+    expect(readFileSync(join(root, 'automations', 'cleanup.md'), 'utf-8')).toContain('Cleanup');
   });
 
   it("discovers materialized registry entries", () => {
@@ -227,17 +227,18 @@ describe("materialized registry catalog", () => {
     mkdirSync(automationsDir, { recursive: true });
     writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
     writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+    writeFileSync(join(automationsDir, 'cleanup.md'), '---\ndescription: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n---\n');
 
     materializeRegistryCatalog(sourceRoot);
 
     const components = discoverRegistryComponents();
-    const automations = discoverRegistryAutomations();
+    const stashDir = join(process.env.OP_HOME!, 'stash');
+    const automations = discoverRegistryAutomations(stashDir);
 
     expect(Object.keys(components)).toEqual(['chat']);
     expect(components.chat?.schema).toContain('CHANNEL_CHAT_SECRET');
     expect(automations.map((entry) => entry.name)).toEqual(['cleanup']);
-    expect(getRegistryAutomation('cleanup')).toContain('schedule: daily');
+    expect(getRegistryAutomation('cleanup')).toContain('schedule: "0 3 * * *"');
   });
 
   it("returns addon config metadata from the materialized registry", () => {
@@ -249,7 +250,7 @@ describe("materialized registry catalog", () => {
     mkdirSync(automationsDir, { recursive: true });
     writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
     writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+    writeFileSync(join(automationsDir, 'cleanup.md'), '---\ndescription: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n---\n');
 
     materializeRegistryCatalog(sourceRoot);
 
@@ -269,7 +270,7 @@ describe("materialized registry catalog", () => {
     mkdirSync(automationsDir, { recursive: true });
     writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
     writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+    writeFileSync(join(automationsDir, 'cleanup.md'), '---\ndescription: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n---\n');
 
     const root = materializeRegistryCatalog(sourceRoot);
 
@@ -301,7 +302,7 @@ describe("materialized registry catalog", () => {
     mkdirSync(automationsDir, { recursive: true });
     writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
     writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+    writeFileSync(join(automationsDir, 'cleanup.md'), '---\ndescription: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n---\n');
 
     materializeRegistryCatalog(sourceRoot);
 
@@ -321,7 +322,7 @@ describe("materialized registry catalog", () => {
     mkdirSync(automationsDir, { recursive: true });
     writeFileSync(join(addonDir, 'compose.yml'), 'services:\n  docker-socket-proxy:\n    image: proxy\n  admin:\n    image: admin\n');
     writeFileSync(join(addonDir, '.env.schema'), 'OP_ADMIN_TOKEN=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+    writeFileSync(join(automationsDir, 'cleanup.md'), '---\ndescription: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n---\n');
 
     materializeRegistryCatalog(sourceRoot);
 
@@ -337,7 +338,7 @@ describe("materialized registry catalog", () => {
     mkdirSync(automationsDir, { recursive: true });
     writeFileSync(join(addonDir, 'compose.yml'), 'services:\n  chat:\n    image: test\n    environment:\n      CHANNEL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
     writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+    writeFileSync(join(automationsDir, 'cleanup.md'), '---\ndescription: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n---\n');
 
     materializeRegistryCatalog(sourceRoot);
 
@@ -390,7 +391,7 @@ describe("materialized registry catalog", () => {
     expect(existsSync(join(otherHome, 'backups', 'config', 'stack.yml'))).toBe(false);
   });
 
-  it("installs and uninstalls automations through config/automations", () => {
+  it("installs and uninstalls automations through stash/tasks", () => {
     const sourceRoot = join(tmpDir, 'repo');
     const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
     const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
@@ -401,14 +402,15 @@ describe("materialized registry catalog", () => {
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
     writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: daily\n');
+    writeFileSync(join(automationsDir, 'cleanup.md'), '---\ndescription: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n---\n');
 
     materializeRegistryCatalog(sourceRoot);
 
-    expect(installAutomationFromRegistry('cleanup', configDir)).toEqual({ ok: true });
-    expect(readFileSync(join(configDir, 'automations', 'cleanup.yml'), 'utf-8')).toContain('Cleanup');
+    const stashDir = join(process.env.OP_HOME!, 'stash');
+    expect(installAutomationFromRegistry('cleanup', stashDir)).toEqual({ ok: true });
+    expect(readFileSync(join(stashDir, 'tasks', 'cleanup.md'), 'utf-8')).toContain('Cleanup');
 
-    expect(uninstallAutomation('cleanup', configDir)).toEqual({ ok: true });
-    expect(existsSync(join(configDir, 'automations', 'cleanup.yml'))).toBe(false);
+    expect(uninstallAutomation('cleanup', stashDir)).toEqual({ ok: true });
+    expect(existsSync(join(stashDir, 'tasks', 'cleanup.md'))).toBe(false);
   });
 });

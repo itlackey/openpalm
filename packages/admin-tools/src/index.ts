@@ -70,7 +70,7 @@ export const plugin: Plugin = async () => {
       "admin-lifecycle-installed": adminLifecycle.installed,
       "admin-lifecycle-upgrade": adminLifecycle.upgrade,
 
-      // admin-automations (enabled in config/automations/)
+      // admin-automations (task files in stash/tasks/; OS cron handles scheduling)
       "admin-automations-list": adminAutomations.list,
       "admin-automations-trigger": adminAutomations.trigger,
       "admin-automations-log": adminAutomations.log,

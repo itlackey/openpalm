@@ -39,21 +39,21 @@ import voiceCompose from "../../../../.openpalm/registry/addons/voice/compose.ym
 // @ts-ignore — Bun text import
 import voiceSchema from "../../../../.openpalm/registry/addons/voice/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import cleanupLogsAutomation from "../../../../.openpalm/registry/automations/cleanup-logs.yml" with { type: "text" };
+import cleanupLogsAutomation from "../../../../.openpalm/registry/automations/cleanup-logs.md" with { type: "text" };
 // @ts-ignore — Bun text import
-import cleanupDataAutomation from "../../../../.openpalm/registry/automations/cleanup-data.yml" with { type: "text" };
+import cleanupDataAutomation from "../../../../.openpalm/registry/automations/cleanup-data.md" with { type: "text" };
 // @ts-ignore — Bun text import
-import validateConfigAutomation from "../../../../.openpalm/registry/automations/validate-config.yml" with { type: "text" };
+import validateConfigAutomation from "../../../../.openpalm/registry/automations/validate-config.md" with { type: "text" };
 // @ts-ignore — Bun text import
-import healthCheckAutomation from "../../../../.openpalm/registry/automations/health-check.yml" with { type: "text" };
+import healthCheckAutomation from "../../../../.openpalm/registry/automations/health-check.md" with { type: "text" };
 // @ts-ignore — Bun text import
-import promptAssistantAutomation from "../../../../.openpalm/registry/automations/prompt-assistant.yml" with { type: "text" };
+import promptAssistantAutomation from "../../../../.openpalm/registry/automations/prompt-assistant.md" with { type: "text" };
 // @ts-ignore — Bun text import
-import updateContainersAutomation from "../../../../.openpalm/registry/automations/update-containers.yml" with { type: "text" };
+import updateContainersAutomation from "../../../../.openpalm/registry/automations/update-containers.md" with { type: "text" };
 // @ts-ignore — Bun text import
-import assistantDailyBriefingAutomation from "../../../../.openpalm/registry/automations/assistant-daily-briefing.yml" with { type: "text" };
+import assistantDailyBriefingAutomation from "../../../../.openpalm/registry/automations/assistant-daily-briefing.md" with { type: "text" };
 // @ts-ignore — Bun text import
-import akmImproveAutomation from "../../../../.openpalm/registry/automations/akm-improve.yml" with { type: "text" };
+import akmImproveAutomation from "../../../../.openpalm/registry/automations/akm-improve.md" with { type: "text" };
 
 // ── Stash seeds (built-in skills / commands / agents) ────────────────
 // Each seed lives in .openpalm/stash-seeds/<type>/<...> and is copied
@@ -89,14 +89,14 @@ export const EMBEDDED_ASSETS: Record<string, string> = {
   "state/registry/addons/ollama/.env.schema": ollamaSchema,
   "state/registry/addons/voice/compose.yml": voiceCompose,
   "state/registry/addons/voice/.env.schema": voiceSchema,
-  "state/registry/automations/cleanup-logs.yml": cleanupLogsAutomation,
-  "state/registry/automations/cleanup-data.yml": cleanupDataAutomation,
-  "state/registry/automations/validate-config.yml": validateConfigAutomation,
-  "state/registry/automations/health-check.yml": healthCheckAutomation,
-  "state/registry/automations/prompt-assistant.yml": promptAssistantAutomation,
-  "state/registry/automations/update-containers.yml": updateContainersAutomation,
-  "state/registry/automations/assistant-daily-briefing.yml": assistantDailyBriefingAutomation,
-  "state/registry/automations/akm-improve.yml": akmImproveAutomation,
+  "state/registry/automations/cleanup-logs.md": cleanupLogsAutomation,
+  "state/registry/automations/cleanup-data.md": cleanupDataAutomation,
+  "state/registry/automations/validate-config.md": validateConfigAutomation,
+  "state/registry/automations/health-check.md": healthCheckAutomation,
+  "state/registry/automations/prompt-assistant.md": promptAssistantAutomation,
+  "state/registry/automations/update-containers.md": updateContainersAutomation,
+  "state/registry/automations/assistant-daily-briefing.md": assistantDailyBriefingAutomation,
+  "state/registry/automations/akm-improve.md": akmImproveAutomation,
 };
 
 /**

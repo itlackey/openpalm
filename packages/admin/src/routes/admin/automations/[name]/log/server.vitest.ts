@@ -32,10 +32,12 @@ function makeLogEvent(
   } as unknown as Parameters<typeof GET>[0];
 }
 
-function seedSchedulerLog(stateDir: string, lines: string[]): void {
-  const logsDir = join(stateDir, 'logs');
-  mkdirSync(logsDir, { recursive: true });
-  writeFileSync(join(logsDir, 'scheduler.log'), lines.join('\n') + '\n');
+function seedTaskLogs(cacheDir: string, id: string, entries: Array<{ ts: string; content: string }>): void {
+  const logDir = join(cacheDir, 'akm', 'tasks', 'logs', id);
+  mkdirSync(logDir, { recursive: true });
+  for (const { ts, content } of entries) {
+    writeFileSync(join(logDir, `${ts}.log`), content + '\n');
+  }
 }
 
 let originalHome: string | undefined;
@@ -54,96 +56,87 @@ afterEach(() => {
 
 describe('GET /admin/automations/:name/log', () => {
   test('returns 401 when unauthenticated', async () => {
-    const res = await GET(makeLogEvent('health-check.yml', {}, 'bad-token'));
+    const res = await GET(makeLogEvent('health-check', {}, 'bad-token'));
     expect(res.status).toBe(401);
   });
 
   test('returns 400 when name contains traversal', async () => {
-    const res = await GET(makeLogEvent('../etc/passwd.yml'));
+    const res = await GET(makeLogEvent('../etc/passwd'));
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe('invalid_input');
   });
 
   test('returns 400 when name contains a slash', async () => {
-    const res = await GET(makeLogEvent('foo/bar.yml'));
-    expect(res.status).toBe(400);
-  });
-
-  test('returns 400 when name fails SAFE_NAME_RE', async () => {
-    const res = await GET(makeLogEvent('bad name.yml'));
+    const res = await GET(makeLogEvent('foo/bar'));
     expect(res.status).toBe(400);
   });
 
   test('returns 400 when limit is negative', async () => {
-    const res = await GET(makeLogEvent('health-check.yml', { limit: '-1' }));
+    const res = await GET(makeLogEvent('health-check', { limit: '-1' }));
     expect(res.status).toBe(400);
   });
 
   test('returns 400 when limit is zero', async () => {
-    const res = await GET(makeLogEvent('health-check.yml', { limit: '0' }));
+    const res = await GET(makeLogEvent('health-check', { limit: '0' }));
     expect(res.status).toBe(400);
   });
 
   test('returns 400 when limit is non-numeric', async () => {
-    const res = await GET(makeLogEvent('health-check.yml', { limit: 'abc' }));
+    const res = await GET(makeLogEvent('health-check', { limit: 'abc' }));
     expect(res.status).toBe(400);
   });
 
   test('caps limit at MAX_LIMIT (500) silently', async () => {
-    // No log file, so we just verify the request doesn't 400 on huge limits.
-    const res = await GET(makeLogEvent('health-check.yml', { limit: '999999' }));
+    const res = await GET(makeLogEvent('health-check', { limit: '999999' }));
     expect(res.status).toBe(200);
   });
 
-  test('returns empty entries when scheduler.log does not exist', async () => {
-    const res = await GET(makeLogEvent('health-check.yml'));
+  test('returns empty lines when no log files exist', async () => {
+    const res = await GET(makeLogEvent('health-check'));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { fileName: string; entries: unknown[] };
-    expect(body.fileName).toBe('health-check.yml');
-    expect(body.entries).toEqual([]);
+    const body = (await res.json()) as { name: string; lines: unknown[] };
+    expect(body.name).toBe('health-check');
+    expect(body.lines).toEqual([]);
   });
 
-  test('filters log lines to those mentioning the automation', async () => {
+  test('returns log lines from akm task log dir newest-first', async () => {
     const state = getState();
-    seedSchedulerLog(state.stateDir, [
-      JSON.stringify({ ts: '2026-01-01T00:00:00Z', level: 'info', msg: 'fired health-check.yml ok' }),
-      JSON.stringify({ ts: '2026-01-01T00:01:00Z', level: 'info', msg: 'fired other.yml ok' }),
-      JSON.stringify({ ts: '2026-01-01T00:02:00Z', level: 'warn', msg: 'health-check.yml retry' }),
-    ]);
-
-    const res = await GET(makeLogEvent('health-check.yml'));
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { entries: Array<{ raw: string }> };
-    expect(body.entries).toHaveLength(2);
-    // Newest-first ordering
-    expect(body.entries[0].raw).toContain('retry');
-  });
-
-  test('applies the requested limit', async () => {
-    const state = getState();
-    const lines: string[] = [];
-    for (let i = 0; i < 10; i++) {
-      lines.push(JSON.stringify({ ts: `2026-01-01T00:00:0${i}Z`, msg: `health-check.yml entry ${i}` }));
-    }
-    seedSchedulerLog(state.stateDir, lines);
-
-    const res = await GET(makeLogEvent('health-check.yml', { limit: '3' }));
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { entries: unknown[] };
-    expect(body.entries).toHaveLength(3);
-  });
-
-  test('accepts a bare base name and normalizes to .yml', async () => {
-    const state = getState();
-    seedSchedulerLog(state.stateDir, [
-      JSON.stringify({ ts: '2026-01-01T00:00:00Z', msg: 'fired health-check.yml ok' }),
+    seedTaskLogs(state.cacheDir, 'health-check', [
+      { ts: '2026-05-15T03-00-00-000Z', content: 'run-old' },
+      { ts: '2026-05-16T03-00-00-000Z', content: 'run-new' },
     ]);
 
     const res = await GET(makeLogEvent('health-check'));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { fileName: string; entries: unknown[] };
-    expect(body.fileName).toBe('health-check.yml');
-    expect(body.entries).toHaveLength(1);
+    const body = (await res.json()) as { lines: string[] };
+    expect(body.lines[0]).toBe('run-new');
+    expect(body.lines[1]).toBe('run-old');
+  });
+
+  test('applies the requested limit', async () => {
+    const state = getState();
+    const content = Array.from({ length: 10 }, (_, i) => `entry-${i}`).join('\n');
+    seedTaskLogs(state.cacheDir, 'health-check', [
+      { ts: '2026-05-16T03-00-00-000Z', content },
+    ]);
+
+    const res = await GET(makeLogEvent('health-check', { limit: '3' }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { lines: unknown[] };
+    expect(body.lines).toHaveLength(3);
+  });
+
+  test('strips .md suffix from name', async () => {
+    const state = getState();
+    seedTaskLogs(state.cacheDir, 'health-check', [
+      { ts: '2026-05-16T03-00-00-000Z', content: 'found-entry' },
+    ]);
+
+    const res = await GET(makeLogEvent('health-check.md'));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { name: string; lines: string[] };
+    expect(body.name).toBe('health-check');
+    expect(body.lines).toContain('found-entry');
   });
 });

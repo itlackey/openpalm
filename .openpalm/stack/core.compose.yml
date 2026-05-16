@@ -31,7 +31,7 @@ services:
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     restart: "no"
     command: ["sh", "-c",
-      "umask 077 && mkdir -p /op/state/guardian /op/state/guardian/stash /op/state/guardian/akm /op/state/guardian/akm/data /op/state/guardian/akm/state /op/cache/guardian && umask 022 && mkdir -p /op/state/assistant /op/state/admin /op/config/akm /op/config/stack /op/config/stack/addons /op/stash /op/workspace /op/state/akm /op/state/akm/data /op/state/akm/state /op/state/scheduler /op/state/scheduler/triggers /op/state/logs /op/state/logs/opencode /op/state/backups /op/state/registry /op/state/registry/addons /op/state/registry/automations /op/cache/akm /op/cache/rollback && ls /addons 2>/dev/null | xargs -I{} mkdir -p /op/state/{}"]
+      "umask 077 && mkdir -p /op/state/guardian /op/state/guardian/stash /op/state/guardian/akm /op/state/guardian/akm/data /op/state/guardian/akm/state /op/cache/guardian && umask 022 && mkdir -p /op/state/assistant /op/state/admin /op/config/akm /op/config/stack /op/config/stack/addons /op/stash /op/stash/tasks /op/workspace /op/state/akm /op/state/akm/data /op/state/akm/state /op/state/logs /op/state/logs/opencode /op/state/backups /op/state/registry /op/state/registry/addons /op/state/registry/automations /op/cache/akm /op/cache/rollback && ls /addons 2>/dev/null | xargs -I{} mkdir -p /op/state/{}"]
     volumes:
       - ${OP_HOME}:/op
       - ${OP_HOME}/config/stack/addons:/addons:ro
@@ -78,9 +78,6 @@ services:
       OP_ASSISTANT_TOKEN: ${OP_ASSISTANT_TOKEN:-}
       OP_UID: ${OP_UID:-1000}
       OP_GID: ${OP_GID:-1000}
-      # Scheduler co-process — runs inside this container, reads
-      # automations from /openpalm/config/automations and watches sentinels
-      # in /openpalm/state/scheduler/triggers. Uses OP_HOME from above.
       OPENCODE_API_URL: http://localhost:4096
       # Provider API keys (resolved from stack.env)
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -132,9 +129,6 @@ services:
       - ${OP_HOME}/cache/akm:/akm-cache
       - ${OP_HOME}/workspace:/work
       - ${OP_HOME}/state/logs/opencode:/home/opencode/.local/state/opencode
-      # Scheduler co-process: read-only automation definitions, rw trigger sentinels.
-      - ${OP_HOME}/config:/openpalm/config:ro
-      - ${OP_HOME}/state/scheduler:/openpalm/state/scheduler
       - ${OP_HOME}/state/logs:/openpalm/logs
     working_dir: /work
     networks: [ assistant_net ]

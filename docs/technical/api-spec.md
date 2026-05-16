@@ -420,8 +420,8 @@ Body:
 - `name` (required) -- Must match `^[a-z0-9][a-z0-9-]{0,62}$`.
 - `type` (required) -- Must be `"automation"`. Passing `"channel"` returns 400.
 
-Copies the `.yml` into `~/.openpalm/config/automations/`.
-The scheduler co-process inside the assistant container auto-reloads via file watching.
+Copies the `.md` into `~/.openpalm/stash/tasks/`.
+The assistant container picks up the new file within 60 s via its background `akm tasks sync` loop.
 
 Response:
 
@@ -462,8 +462,8 @@ Body:
 - `name` (required) -- Automation name.
 - `type` (required) -- Must be `"automation"`. Passing `"channel"` returns 400.
 
-Removes the `.yml` from `~/.openpalm/config/automations/`.
-The scheduler co-process inside the assistant container auto-reloads via file watching.
+Removes the `.md` from `~/.openpalm/stash/tasks/`.
+The assistant container drops the cron entry within 60 s via its background `akm tasks sync` loop.
 
 Response:
 
@@ -475,7 +475,7 @@ Response:
 
 ### `GET /admin/automations`
 
-Lists all automation configs from `~/.openpalm/config/automations/`.
+Lists all automation configs from `~/.openpalm/stash/tasks/`.
 
 Response:
 
@@ -505,30 +505,27 @@ Response:
 
 ### `POST /admin/automations/:name/run`
 
-Manually trigger an automation. The admin writes a sentinel file at
-`${OP_HOME}/data/scheduler/triggers/<name>.run`; the scheduler co-process
-inside the assistant container picks it up, fires the automation, and
-deletes the sentinel.
+Manually trigger an automation. The admin spawns `akm tasks run <name>` directly;
+execution logs are written to `${OP_HOME}/cache/akm/tasks/logs/<name>/` and history
+to akm's `state.db`.
 
-- `:name` -- Automation fileName (`.yml` suffix optional in the URL). Must
-  match `^[a-zA-Z0-9._-]+\.yml$`.
+- `:name` -- Automation name. Must match `^[a-z0-9][a-z0-9-]{0,62}$`.
 
 Response (202 Accepted):
 
 ```json
-{ "ok": true, "fileName": "daily-summary.yml", "queued": true }
+{ "ok": true, "name": "daily-summary", "status": "started" }
 ```
 
 Error responses:
 
 - `400 invalid_input` -- Name does not match the allowed pattern.
-- `404 not_found` -- Automation is not installed in `config/automations/`.
-- `500 internal_error` -- Failed to write the sentinel.
+- `404 not_found` -- Automation is not installed in `stash/tasks/`.
+- `500 internal_error` -- `akm tasks run` exited non-zero.
 
 ### `GET /admin/automations/:name/log`
 
-Returns the tail of `${OP_HOME}/logs/scheduler.log` filtered to the named
-automation. Each entry is a parsed log line (newest first).
+Returns recent execution log lines from `${OP_HOME}/cache/akm/tasks/logs/<name>/` (newest first).
 
 - `:name` -- Same name validation as `/run`.
 - `?limit=<n>` -- Cap entries returned (default 50, max 500).
@@ -537,9 +534,10 @@ Response:
 
 ```json
 {
-  "fileName": "daily-summary.yml",
-  "entries": [
-    { "at": "2026-05-14T18:00:00.000Z", "level": "info", "msg": "automation executed", "raw": "..." }
+  "name": "daily-summary",
+  "lines": [
+    "2026-05-14T18:00:00Z task daily-summary finished ok",
+    "2026-05-14T18:00:00Z output: {\"ok\":true}"
   ]
 }
 ```

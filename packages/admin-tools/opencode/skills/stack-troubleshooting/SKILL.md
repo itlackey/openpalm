@@ -207,7 +207,7 @@ Memory is served by the akm stash bind-mounted into the assistant container. The
 Understanding dependencies is critical for diagnosing cascade failures:
 
 ```
-   assistant  (depends on: init service completed; hosts scheduler co-process)
+   assistant  (depends on: init service completed; runs crond + akm tasks)
        |
        v
     guardian  (depends on: assistant healthy)

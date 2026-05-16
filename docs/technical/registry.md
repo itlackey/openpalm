@@ -39,7 +39,7 @@ Current addons in the registry: `admin`, `api`, `chat`, `discord`, `ollama`, `sl
 
 ### Automations
 
-Registry automations live in `.openpalm/registry/automations/<name>.yml` in the repo source and are materialized into `~/.openpalm/registry/automations/<name>.yml` on install or refresh. They become active only after being copied into `~/.openpalm/config/automations/`.
+Registry automations live in `.openpalm/registry/automations/<name>.md` in the repo source and are materialized into `~/.openpalm/state/registry/automations/<name>.md` on install or refresh. They become active only after being installed into `~/.openpalm/stash/tasks/` via the admin catalog API or UI.
 
 ## Addon structure
 
@@ -124,7 +124,7 @@ Response:
 
 ### `POST /admin/automations/catalog/install`
 
-Install an automation from the runtime registry into `config/automations/`.
+Install an automation from the runtime registry into `stash/tasks/`.
 
 Request body:
 
@@ -132,7 +132,7 @@ Request body:
 { "name": "health-check", "type": "automation" }
 ```
 
-Copies the automation YAML from `~/.openpalm/registry/automations/` into `~/.openpalm/config/automations/<name>.yml`. Fails if the automation is already installed or not found in the registry. The scheduler co-process auto-reloads via file watching.
+Copies the automation markdown from `~/.openpalm/state/registry/automations/` into `~/.openpalm/stash/tasks/<name>.md`. Fails if the automation is already installed or not found in the registry. The assistant container picks it up within 60 s via its background `akm tasks sync` loop.
 
 Channel addons are not installed through this endpoint. Use `POST /admin/addons` instead.
 
@@ -146,7 +146,7 @@ Request body:
 { "name": "health-check", "type": "automation" }
 ```
 
-Deletes `config/automations/<name>.yml` from disk. The scheduler co-process auto-reloads.
+Deletes `stash/tasks/<name>.md` from disk. The assistant container drops the cron entry within 60 s.
 
 ### `POST /admin/automations/catalog/refresh`
 

@@ -22,7 +22,7 @@ export const authJsonPath          = (s: ControlPlaneState): string => `${s.conf
 export const akmConfigDir          = (s: ControlPlaneState): string => `${s.configDir}/akm`;
 /** akm setup config file (written by admin on capability save) */
 export const akmConfigPath         = (s: ControlPlaneState): string => `${s.configDir}/akm/config.json`;
-export const automationsDir        = (s: ControlPlaneState): string => `${s.configDir}/automations`;
+export const tasksDir              = (s: ControlPlaneState): string => `${s.stashDir}/tasks`;
 export const assistantConfigDir    = (s: ControlPlaneState): string => `${s.configDir}/assistant`;
 
 // ── Config/stack directory — compose runtime + stack config ─────────────────
@@ -49,8 +49,8 @@ export const guardianStashDir      = (s: ControlPlaneState): string => `${s.stat
 export const guardianAkmDir        = (s: ControlPlaneState): string => `${s.stateDir}/guardian/akm`;
 /** Shared akm operational data (data/, state/ — NOT config, which lives in config/akm/) */
 export const akmStateDir           = (s: ControlPlaneState): string => `${s.stateDir}/akm`;
-export const schedulerDir          = (s: ControlPlaneState): string => `${s.stateDir}/scheduler`;
-export const schedulerTriggersDir  = (s: ControlPlaneState): string => `${s.stateDir}/scheduler/triggers`;
+export const taskLogDir            = (s: ControlPlaneState, id: string): string => `${s.cacheDir}/akm/tasks/logs/${id}`;
+export const taskLogsRootDir       = (s: ControlPlaneState): string => `${s.cacheDir}/akm/tasks/logs`;
 export const logsDir               = (s: ControlPlaneState): string => `${s.stateDir}/logs`;
 export const adminAuditPath        = (s: ControlPlaneState): string => `${s.stateDir}/logs/admin-audit.jsonl`;
 export const guardianAuditPath     = (s: ControlPlaneState): string => `${s.stateDir}/logs/guardian-audit.log`;

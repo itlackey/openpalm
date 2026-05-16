@@ -156,65 +156,52 @@ maybe_proxy_lmstudio() {
   fi
 }
 
-SCHED_PID=""
+start_cron_and_sync_tasks() {
+  # Register AKM markdown tasks with the OS cron daemon.
+  # Tasks are markdown files at /akm/tasks/*.md (AKM_STASH_DIR).
+  # Scheduling, execution, and history are delegated to `akm tasks run`.
+  command -v akm >/dev/null 2>&1 || return 0
 
-start_scheduler_coprocess() {
-  # Run the automation scheduler alongside OpenCode. The scheduler has no
-  # HTTP port — it watches /openpalm/config/automations for definitions and
-  # /openpalm/state/scheduler/triggers for manual-trigger sentinels. Logs
-  # stream to /openpalm/state/logs/scheduler.log.
-  #
-  # OP_HOME defaults to /openpalm and is set by compose; we fall back here
-  # for local Docker builds that omit it.
   local op_home="${OP_HOME:-/openpalm}"
-  local scheduler_dir="/opt/scheduler"
-  local log_dir="${op_home}/state/logs"
-  local triggers_dir="${op_home}/state/scheduler/triggers"
-  local scheduler_log="${log_dir}/scheduler.log"
+  # /openpalm/logs is bind-mounted from ${OP_HOME}/state/logs — writes are persisted.
+  local sync_log="/openpalm/logs/akm-tasks-sync.log"
+  mkdir -p /openpalm/logs || true
 
-  if [ ! -f "${scheduler_dir}/src/main.ts" ]; then
-    echo "Scheduler co-process source not found at ${scheduler_dir}; skipping." >&2
-    return 0
-  fi
+  # Build the crontab env preamble. Cron jobs run in a stripped environment
+  # so every variable our automations need must be listed here.
+  local preamble
+  preamble=$(
+    printf '# openpalm-env — rebuilt at container start, do not edit\n'
+    printf 'PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin\n'
+    printf 'AKM_STASH_DIR=/akm\n'
+    printf 'AKM_CONFIG_DIR=/etc/openpalm/akm\n'
+    printf 'AKM_DATA_DIR=/akm-op/data\n'
+    printf 'AKM_STATE_DIR=/akm-op/state\n'
+    printf 'AKM_CACHE_DIR=/akm-cache\n'
+    printf 'OP_HOME=/openpalm\n'
+    printf 'OP_ASSISTANT_TOKEN=%s\n' "${OP_ASSISTANT_TOKEN:-}"
+    printf 'TZ=%s\n' "${TZ:-UTC}"
+    # Include all vault:user keys (LLM API keys etc.) so automation commands
+    # that call external services have the keys in their environment.
+    local vault_path
+    vault_path="$(akm vault path vault:user 2>/dev/null || true)"
+    if [ -n "$vault_path" ] && [ -f "$vault_path" ]; then
+      grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$vault_path" 2>/dev/null || true
+    fi
+  )
 
-  if ! command -v bun >/dev/null 2>&1; then
-    echo "Scheduler co-process requires bun; skipping." >&2
-    return 0
-  fi
+  # Write preamble to crontab. `akm tasks sync` appends task entries below it.
+  printf '%s\n' "$preamble" | crontab -
 
-  # Make sure the directories the scheduler depends on exist with the
-  # right ownership. These are bind-mounted from the host, so they may be
-  # empty on first boot.
-  mkdir -p "${log_dir}" "${triggers_dir}" || true
-  if [ "$(id -u)" = "0" ]; then
-    chown "$TARGET_UID:$TARGET_GID" "${log_dir}" "${triggers_dir}" 2>/dev/null || true
-  fi
+  # Start the cron daemon.
+  cron
 
-  echo "Starting scheduler co-process (OP_HOME=${op_home})"
+  # Register all stash/tasks/*.md with cron (idempotent).
+  akm tasks sync >>"$sync_log" 2>&1 || true
 
-  # Keep the scheduler in the container's process group (no setsid) so the
-  # forward_term trap below can deliver SIGTERM to it on shutdown.
-  if [ "$(id -u)" = "0" ]; then
-    # Drop privileges to match the assistant's runtime UID/GID.
-    gosu opencode env \
-      HOME=/home/opencode \
-      OP_HOME="${op_home}" \
-      bun run "${scheduler_dir}/src/main.ts" >>"${scheduler_log}" 2>&1 &
-  else
-    env OP_HOME="${op_home}" \
-      bun run "${scheduler_dir}/src/main.ts" >>"${scheduler_log}" 2>&1 &
-  fi
-  SCHED_PID=$!
-}
-
-forward_term_to_scheduler() {
-  # Forward SIGTERM from this bash supervisor to the scheduler co-process
-  # and reap it. Bounded wait so a hung scheduler can't block container
-  # teardown — tini will SIGKILL anything still alive after its timeout.
-  if [ -n "${SCHED_PID}" ] && kill -0 "${SCHED_PID}" 2>/dev/null; then
-    kill -TERM "${SCHED_PID}" 2>/dev/null || true
-    wait "${SCHED_PID}" 2>/dev/null || true
-  fi
+  # Background loop: re-sync every 60 s to pick up task files written by the
+  # admin container into the shared /akm/tasks/ mount.
+  (while sleep 60; do akm tasks sync >>"$sync_log" 2>&1 || true; done) &
 }
 
 maybe_source_akm_user_vault() {
@@ -336,17 +323,7 @@ start_opencode() {
   # redaction in tool output should rely on the akm secret store rather
   # than an LD_PRELOAD-style shell wrapper.
 
-  # If the scheduler co-process is running we must NOT exec opencode —
-  # exec replaces the bash process and discards the SIGTERM trap that
-  # forwards termination to the scheduler. Instead we spawn opencode as
-  # a foreground child, install the trap, and wait. tini still sees this
-  # bash process as PID 1's child and forwards SIGTERM to us.
-  local use_supervisor=0
-  if [ -n "${SCHED_PID}" ] && kill -0 "${SCHED_PID}" 2>/dev/null; then
-    use_supervisor=1
-  fi
-
-  # Build the opencode command once. If running as root, prepend gosu so we
+  # Build the opencode command. If running as root, prepend gosu so we
   # drop to the opencode user. gosu resets HOME from /etc/passwd, so forward
   # HOME explicitly via env.
   local cmd=(opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs)
@@ -359,16 +336,6 @@ start_opencode() {
     cmd=(gosu opencode env HOME=/home/opencode "${cmd[@]}")
   fi
 
-  if [ "$use_supervisor" = "1" ]; then
-    "${cmd[@]}" &
-    local oc_pid=$!
-    trap 'forward_term_to_scheduler; kill -TERM "$oc_pid" 2>/dev/null || true' TERM INT
-    wait "$oc_pid"
-    local oc_status=$?
-    forward_term_to_scheduler
-    exit "$oc_status"
-  fi
-
   exec "${cmd[@]}"
 }
 
@@ -376,13 +343,12 @@ maybe_adjust_uid_gid
 ensure_home_layout
 maybe_enable_ssh
 maybe_proxy_lmstudio
-# Source the akm `vault:user` env file BEFORE the scheduler co-process
-# starts so both OpenCode and the scheduler inherit user-managed secrets.
-# This replaces the retired `${OP_HOME}/vault/user → /etc/vault` compose
-# env_file (#388 / #406). Runs as root because gosu has not been invoked
-# yet — root can read the 0600 vault file and re-export to children.
+# Source the akm `vault:user` env file before starting cron so vault keys
+# land in the crontab preamble that start_cron_and_sync_tasks builds.
+# Runs as root because gosu has not been invoked yet — root can read the
+# 0600 vault file and re-export to children.
 maybe_source_akm_user_vault
 maybe_configure_akm
 maybe_unset_unused_provider_keys
-start_scheduler_coprocess
+start_cron_and_sync_tasks
 start_opencode

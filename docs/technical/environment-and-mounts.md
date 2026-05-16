@@ -165,38 +165,20 @@ The scheduler is no longer a separate compose service. It runs as a Bun
 co-process inside the `assistant` container, launched by
 `core/assistant/entrypoint.sh`.
 
-Filesystem control plane (provided by the `assistant` service's mounts):
+Scheduling control plane (crond started by `core/assistant/entrypoint.sh`):
 
 | Host path | Container path | Mode | Purpose |
 |---|---|---|---|
-| `$OP_HOME/config` | `/openpalm/config` | ro | Automation definitions |
-| `$OP_HOME/data/scheduler` | `/openpalm/data/scheduler` | rw | Trigger sentinels (`triggers/<name>.run`) |
-| `$OP_HOME/logs` | `/openpalm/logs` | rw | `scheduler.log` output |
-
-Ports and networks:
-
-| Item | Value |
-|---|---|
-| Container port | none — no HTTP listener |
-| Host bind | none |
-| Networks | inherits the assistant's `assistant_net` membership |
-
-Key env (inherited from the assistant container):
-
-| Variable | Value / source | Purpose |
-|---|---|---|
-| `OP_HOME` | `/openpalm` | Runtime root used by scheduler code |
-| `OP_ASSISTANT_TOKEN` | `${OP_ASSISTANT_TOKEN:-}` | Admin API token for `api` actions |
-| `OP_ADMIN_API_URL` | `stack.env` / addon wiring | Admin API base URL |
-| `OPENCODE_API_URL` | `http://localhost:4096` | Co-resident OpenCode |
+| `$OP_HOME/stash/tasks` | `/akm/tasks` | rw | AKM task markdown files |
+| `$OP_HOME/cache/akm` | `/akm-cache` | rw | Per-run task logs |
+| `$OP_HOME/state/akm` | `/akm-op` | rw | akm state.db (execution history) |
+| `$OP_HOME/state/logs` | `/openpalm/logs` | rw | akm-tasks-sync.log |
 
 Notes:
 
-- The scheduler does not mount the Docker socket and has no separate
-  network port.
-- Manual triggers: write any content into
-  `${OP_HOME}/data/scheduler/triggers/<fileName>.run` and the watcher
-  fires the matching automation, deleting the sentinel.
+- `crond` runs in the background; no network port, no Docker socket.
+- `akm tasks sync` registers task files with the user crontab at boot and every 60 s.
+- Manual trigger: `POST /admin/automations/<name>/run` (admin spawns `akm tasks run <name>` directly).
 
 ---
 

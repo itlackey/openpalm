@@ -121,7 +121,7 @@ the current model.
 | `~/.openpalm/config/stack/core.compose.yml` | Base stack definition |
 | `~/.openpalm/config/stack/addons/<name>/compose.yml` | Addon overlays |
 | `~/.openpalm/config/assistant/` | User OpenCode config |
-| `~/.openpalm/config/automations/` | Scheduled automation files |
+| `~/.openpalm/stash/tasks/` | Active AKM automation task files (markdown) |
 | `~/.openpalm/config/stack.yml` | Capabilities only |
 | `~/.openpalm/data/stash/` | Shared akm stash (assistant + admin memory and knowledge) |
 | `~/.openpalm/data/workspace/` | Shared workspace |

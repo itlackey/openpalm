@@ -28,7 +28,6 @@ describe("ensureHomeDirs", () => {
 
     // config/ — user-editable + system config files
     expect(existsSync(join(home, "config"))).toBe(true);
-    expect(existsSync(join(home, "config", "automations"))).toBe(true);
     expect(existsSync(join(home, "config", "assistant"))).toBe(true);
     expect(existsSync(join(home, "config", "guardian"))).toBe(true);
     expect(existsSync(join(home, "config", "akm"))).toBe(true);
@@ -45,13 +44,14 @@ describe("ensureHomeDirs", () => {
     expect(existsSync(join(home, "state", "guardian", "stash"))).toBe(true);
     expect(existsSync(join(home, "state", "guardian", "akm"))).toBe(true);
     expect(existsSync(join(home, "state", "akm", "data"))).toBe(true);
-    expect(existsSync(join(home, "state", "scheduler", "triggers"))).toBe(true);
+    expect(existsSync(join(home, "state", "akm", "state"))).toBe(true);
     expect(existsSync(join(home, "state", "logs", "opencode"))).toBe(true);
     expect(existsSync(join(home, "state", "backups"))).toBe(true);
     expect(existsSync(join(home, "state", "registry", "addons"))).toBe(true);
     expect(existsSync(join(home, "state", "registry", "automations"))).toBe(true);
 
     // stash/, workspace/, config/stack/
+    expect(existsSync(join(home, "stash", "tasks"))).toBe(true);
     expect(existsSync(join(home, "stash"))).toBe(true);
     expect(existsSync(join(home, "workspace"))).toBe(true);
     expect(existsSync(join(home, "config", "stack", "addons"))).toBe(true);

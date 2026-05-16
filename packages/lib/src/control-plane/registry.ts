@@ -63,7 +63,7 @@ export type RegistryAutomationEntry = {
   type: 'automation';
   description: string;
   schedule: string;
-  ymlContent: string;
+  content: string;
 };
 
 export type RegistryComponentEntry = {
@@ -106,8 +106,8 @@ function countValidAutomations(rootDir: string): number {
   const automationsDir = join(rootDir, 'automations');
   if (!existsSync(automationsDir)) return 0;
   return readdirSync(automationsDir).filter((file) => {
-    if (!file.endsWith('.yml')) return false;
-    return isValidComponentName(file.replace(/\.yml$/, ''));
+    if (!file.endsWith('.md')) return false;
+    return isValidComponentName(file.replace(/\.md$/, ''));
   }).length;
 }
 
@@ -203,25 +203,30 @@ export function discoverRegistryComponents(): Record<string, RegistryComponentEn
   return result;
 }
 
-export function discoverRegistryAutomations(): RegistryAutomationEntry[] {
+export function discoverRegistryAutomations(stashDir: string): RegistryAutomationEntry[] {
   const automationsDir = resolveRegistryAutomationsDir();
   if (!existsSync(automationsDir)) return [];
 
   return readdirSync(automationsDir)
-    .filter((file) => file.endsWith('.yml'))
+    .filter((file) => file.endsWith('.md'))
     .map((file) => {
-      const name = file.replace(/\.yml$/, '');
+      const name = file.replace(/\.md$/, '');
       if (!VALID_NAME_RE.test(name)) return null;
 
-      const ymlContent = readFileSync(join(automationsDir, file), 'utf-8');
+      const content = readFileSync(join(automationsDir, file), 'utf-8');
       let description = '';
       let schedule = '';
 
+      // Extract frontmatter metadata (between --- delimiters)
       try {
-        const parsed = parseYaml(ymlContent);
-        if (parsed && typeof parsed === 'object') {
-          description = parsed.description ?? '';
-          schedule = parsed.schedule ?? '';
+        const after = content.startsWith('---') ? content.slice(3) : '';
+        const end = after.indexOf('\n---');
+        if (end !== -1) {
+          const parsed = parseYaml(after.slice(0, end));
+          if (parsed && typeof parsed === 'object') {
+            description = (parsed as Record<string, unknown>).description as string ?? '';
+            schedule = (parsed as Record<string, unknown>).schedule as string ?? '';
+          }
         }
       } catch {
         // best-effort metadata extraction
@@ -232,7 +237,7 @@ export function discoverRegistryAutomations(): RegistryAutomationEntry[] {
         type: 'automation' as const,
         description,
         schedule,
-        ymlContent,
+        content,
       };
     })
     .filter((entry): entry is RegistryAutomationEntry => entry !== null);
@@ -240,9 +245,9 @@ export function discoverRegistryAutomations(): RegistryAutomationEntry[] {
 
 export function getRegistryAutomation(name: string): string | null {
   if (!VALID_NAME_RE.test(name)) return null;
-  const ymlPath = join(resolveRegistryAutomationsDir(), `${name}.yml`);
-  if (!existsSync(ymlPath)) return null;
-  return readFileSync(ymlPath, 'utf-8');
+  const mdPath = join(resolveRegistryAutomationsDir(), `${name}.md`);
+  if (!existsSync(mdPath)) return null;
+  return readFileSync(mdPath, 'utf-8');
 }
 
 export function getRegistryAddonConfig(homeDir: string, name: string): RegistryAddonConfig {
@@ -393,38 +398,42 @@ export function setAddonEnabled(homeDir: string, stackDir: string, name: string,
   };
 }
 
-export function installAutomationFromRegistry(name: string, configDir: string): MutationResult {
+export function installAutomationFromRegistry(name: string, stashDir: string): MutationResult {
   if (!VALID_NAME_RE.test(name)) {
     return { ok: false, error: `Invalid automation name: ${name}` };
   }
 
-  const automationYml = getRegistryAutomation(name);
-  if (!automationYml) {
+  const markdownContent = getRegistryAutomation(name);
+  if (!markdownContent) {
     return { ok: false, error: `Automation "${name}" not found in registry` };
   }
 
-  const automationsDir = join(configDir, 'automations');
-  mkdirSync(automationsDir, { recursive: true });
+  const tasksDir = join(stashDir, 'tasks');
+  mkdirSync(tasksDir, { recursive: true });
 
-  const ymlPath = join(automationsDir, `${name}.yml`);
-  if (existsSync(ymlPath)) {
+  const mdPath = join(tasksDir, `${name}.md`);
+  if (existsSync(mdPath)) {
     return { ok: false, error: `Automation "${name}" is already installed` };
   }
 
-  writeFileSync(ymlPath, automationYml);
+  writeFileSync(mdPath, markdownContent);
+  // The assistant container's 60-second akm tasks sync loop picks up the new
+  // file from the shared stash mount and registers it with OS cron.
   return { ok: true };
 }
 
-export function uninstallAutomation(name: string, configDir: string): MutationResult {
+export function uninstallAutomation(name: string, stashDir: string): MutationResult {
   if (!VALID_NAME_RE.test(name)) {
     return { ok: false, error: `Invalid automation name: ${name}` };
   }
 
-  const ymlPath = join(configDir, 'automations', `${name}.yml`);
-  if (!existsSync(ymlPath)) {
+  const mdPath = join(stashDir, 'tasks', `${name}.md`);
+  if (!existsSync(mdPath)) {
     return { ok: false, error: `Automation "${name}" is not installed` };
   }
 
-  rmSync(ymlPath, { force: true });
+  rmSync(mdPath, { force: true });
+  // The assistant container's 60-second akm tasks sync will notice the file
+  // is gone and deregister it from OS cron on next sync.
   return { ok: true };
 }

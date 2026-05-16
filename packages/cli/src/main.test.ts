@@ -159,7 +159,7 @@ describe('cli main', () => {
       // Bootstrap runs directly, creating directories
       expect(existsSync(join(base, 'state', 'admin'))).toBe(true);
       expect(existsSync(join(base, 'state', 'registry', 'addons', 'chat', 'compose.yml'))).toBe(true);
-      expect(existsSync(join(base, 'state', 'registry', 'automations', 'cleanup-logs.yml'))).toBe(true);
+      expect(existsSync(join(base, 'state', 'registry', 'automations', 'cleanup-logs.md'))).toBe(true);
       // guardian.env must be a file (not directory) — Docker creates a directory
       // when bind-mounting a non-existent source path, breaking compose up.
       const guardianEnv = join(base, 'config', 'stack', 'guardian.env');

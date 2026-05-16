@@ -15,7 +15,7 @@ OpenPalm remains compose-first and manual-first; the admin addon is a convenienc
 
 - Some module names still use historical terms like `staging`
 - The current runtime model is direct write + Docker Compose over `~/.openpalm/`
-- `registry/` is the shipped catalog source; `stack/addons/` and `config/automations/` are active runtime state
+- `registry/` is the shipped catalog source; `stack/addons/` are active runtime addon overlays; `stash/tasks/` holds active AKM task files
 - Compose overlays under `stack/addons/` are deployment truth; admin does not replace that model
 
 ## Structure

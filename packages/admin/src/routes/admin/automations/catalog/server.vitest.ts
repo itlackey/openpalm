@@ -71,7 +71,10 @@ function makeRefreshEvent(token = 'admin-token'): Parameters<typeof refreshPost>
 function seedRegistryAutomation(homeDir: string, name: string): void {
   const dir = join(homeDir, 'state', 'registry', 'automations');
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, `${name}.yml`), `description: ${name} automation\nschedule: daily\naction:\n  type: http\n  url: http://localhost\n`);
+  writeFileSync(
+    join(dir, `${name}.md`),
+    `---\ndescription: ${name} automation\nschedule: "0 3 * * *"\ncommand: ["echo","${name}"]\n---\n`,
+  );
 }
 
 let originalHome: string | undefined;
@@ -81,7 +84,6 @@ beforeEach(() => {
   process.env.OP_HOME = makeTempDir();
   resetState('admin-token');
 
-  // Seed core.compose.yml — needed by resolveRuntimeFiles() in install/uninstall routes
   const state = getState();
   mkdirSync(state.stackDir, { recursive: true });
   writeFileSync(join(state.stackDir, 'core.compose.yml'), 'services: {}\n');
@@ -112,9 +114,12 @@ describe('GET /admin/automations/catalog', () => {
     seedRegistryAutomation(state.homeDir, 'health-check');
     seedRegistryAutomation(state.homeDir, 'cleanup-logs');
 
-    // Install one
-    mkdirSync(join(state.configDir, 'automations'), { recursive: true });
-    writeFileSync(join(state.configDir, 'automations', 'health-check.yml'), 'description: installed\n');
+    // Install one into stash/tasks/
+    mkdirSync(join(state.stashDir, 'tasks'), { recursive: true });
+    writeFileSync(
+      join(state.stashDir, 'tasks', 'health-check.md'),
+      `---\nschedule: "*/5 * * * *"\ncommand: ["echo","installed"]\n---\n`,
+    );
 
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
@@ -147,7 +152,7 @@ describe('POST /admin/automations/catalog/install', () => {
     expect(body.message).toContain('/admin/addons');
   });
 
-  test('installs automation from registry to config/automations', async () => {
+  test('installs automation from registry to stash/tasks', async () => {
     const state = getState();
     seedRegistryAutomation(state.homeDir, 'health-check');
 
@@ -157,17 +162,15 @@ describe('POST /admin/automations/catalog/install', () => {
     const body = await res.json() as { ok: boolean; name: string };
     expect(body.ok).toBe(true);
     expect(body.name).toBe('health-check');
-    expect(existsSync(join(state.configDir, 'automations', 'health-check.yml'))).toBe(true);
+    expect(existsSync(join(state.stashDir, 'tasks', 'health-check.md'))).toBe(true);
   });
 
   test('rejects duplicate install', async () => {
     const state = getState();
     seedRegistryAutomation(state.homeDir, 'health-check');
 
-    // Install once
     await installPost(makeInstallEvent({ name: 'health-check', type: 'automation' }));
 
-    // Try again
     const res = await installPost(makeInstallEvent({ name: 'health-check', type: 'automation' }));
     expect(res.status).toBe(400);
     const body = await res.json() as { message: string };
@@ -188,20 +191,20 @@ describe('POST /admin/automations/catalog/uninstall', () => {
     expect(res.status).toBe(401);
   });
 
-  test('uninstalls installed automation', async () => {
+  test('uninstalls installed automation from stash/tasks', async () => {
     const state = getState();
-    seedRegistryAutomation(state.homeDir, 'health-check');
-
-    // Install first
-    mkdirSync(join(state.configDir, 'automations'), { recursive: true });
-    writeFileSync(join(state.configDir, 'automations', 'health-check.yml'), 'description: test\n');
+    mkdirSync(join(state.stashDir, 'tasks'), { recursive: true });
+    writeFileSync(
+      join(state.stashDir, 'tasks', 'health-check.md'),
+      `---\nschedule: "*/5 * * * *"\ncommand: ["echo","hello"]\n---\n`,
+    );
 
     const res = await uninstallPost(makeUninstallEvent({ name: 'health-check', type: 'automation' }));
     expect(res.status).toBe(200);
 
     const body = await res.json() as { ok: boolean; name: string };
     expect(body.ok).toBe(true);
-    expect(existsSync(join(state.configDir, 'automations', 'health-check.yml'))).toBe(false);
+    expect(existsSync(join(state.stashDir, 'tasks', 'health-check.md'))).toBe(false);
   });
 
   test('rejects uninstall of non-installed automation', async () => {
@@ -233,7 +236,10 @@ describe('POST /admin/automations/catalog/refresh', () => {
     mkdirSync(automationsDir, { recursive: true });
     writeFileSync(join(addonDir, 'compose.yml'), 'services:\n  chat:\n    image: test\n');
     writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
-    writeFileSync(join(automationsDir, 'health-check.yml'), 'description: health\nschedule: daily\naction:\n  type: http\n  url: http://localhost\n');
+    writeFileSync(
+      join(automationsDir, 'health-check.md'),
+      `---\ndescription: health\nschedule: "*/5 * * * *"\ncommand: ["echo","health"]\n---\n`,
+    );
     execFileSync('git', ['init', '--initial-branch=main'], { cwd: sourceRoot, stdio: 'pipe' });
     execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: sourceRoot, stdio: 'pipe' });
     execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: sourceRoot, stdio: 'pipe' });

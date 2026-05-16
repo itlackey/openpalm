@@ -13,7 +13,7 @@ FROM openpalm-base
 # for entrypoint privilege drop and Ollama proxy, Python (uv-managed venv for
 # apprise — used by the notify skill), jq/ripgrep + gh for in-container tooling.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssh-server sudo socat \
+    && apt-get install -y --no-install-recommends openssh-server sudo socat cron \
         python3 python3-pip python3-venv jq ripgrep \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
@@ -99,20 +99,6 @@ RUN mkdir -p /etc/opencode
 # shared akm stash (bind-mounted at /akm), not in the image.
 COPY core/assistant/opencode /etc/opencode
 
-# ── Scheduler co-process ─────────────────────────────────────────────────
-# The scheduler runs alongside OpenCode inside this container with no HTTP
-# port. Automations are read from /openpalm/config/automations and triggers
-# from sentinel files under /openpalm/data/scheduler/triggers. See
-# core/assistant/entrypoint.sh for the supervisor logic.
-COPY packages/lib /opt/scheduler/node_modules/@openpalm/lib
-RUN cd /opt/scheduler/node_modules/@openpalm/lib && bun install --production
-COPY packages/scheduler/package.json /opt/scheduler/package.json
-COPY packages/scheduler/src /opt/scheduler/src
-RUN cd /opt/scheduler \
-    && bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.parse(readFileSync('package.json','utf8'));delete p.dependencies['@openpalm/lib'];writeFileSync('package.json',JSON.stringify(p,null,2))" \
-    && rm -f bun.lock bun.lockb \
-    && bun install --production \
-    && chown -R opencode:opencode /opt/scheduler
 
 EXPOSE 4096 22
 

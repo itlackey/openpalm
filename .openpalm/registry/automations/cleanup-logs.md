@@ -1,0 +1,16 @@
+---
+schedule: "0 4 * * 0"
+enabled: true
+description: Trim old audit log entries to prevent unbounded disk growth
+tags: [openpalm, maintenance]
+timeoutMs: 30000
+command:
+  - /bin/bash
+  - "-c"
+  - |
+    LOGS_DIR="${OP_HOME:?OP_HOME is required}/state/logs"
+    for f in "$LOGS_DIR"/*.jsonl "$LOGS_DIR"/*.log; do
+      [ -f "$f" ] || continue
+      tail -n 10000 "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+    done
+---

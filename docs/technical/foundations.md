@@ -207,9 +207,10 @@ network port and no Docker socket.
 
 Control plane:
 
-- Definitions: `${OP_HOME}/config/automations/*.yml` (read at startup, re-read on file change)
-- Manual triggers: sentinel files at `${OP_HOME}/data/scheduler/triggers/<fileName>.run`
-- Logs: `${OP_HOME}/logs/scheduler.log` (written by the entrypoint via stdout/stderr redirect)
+- Definitions: `${OP_HOME}/stash/tasks/*.md` (AKM markdown task files; `akm tasks sync` registers with OS cron)
+- Manual triggers: `POST /admin/automations/<name>/run` spawns `akm tasks run <name>` directly
+- Per-run logs: `${OP_HOME}/cache/akm/tasks/logs/<name>/` (written by akm)
+- Sync log: `${OP_HOME}/state/logs/akm-tasks-sync.log`
 
 Env sources (inherits the assistant container's environment):
 

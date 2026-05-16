@@ -91,7 +91,7 @@ The runtime image for registry-backed adapters is the unified
 `channel`, built from `core/channel/Dockerfile`.
 
 ### Supporting services
-- **Scheduler** -- automation co-process running inside the assistant container; no network port. Reads `~/.openpalm/config/automations/` through the mounted `config/` tree and calls the admin API using the assistant-scoped token.
+- **Scheduler** -- OS cron daemon (`crond`) started by the assistant container entrypoint. Automations are AKM markdown task files in `~/.openpalm/stash/tasks/`; `akm tasks sync` registers them with cron at boot and re-syncs every 60 s to pick up new files written by admin.
 - **AKM stash** -- persistent memory and knowledge live in the shared akm stash at `~/.openpalm/data/stash/`, mounted at `/home/opencode/.akm` in the assistant and shared with the admin. There is no separate memory service.
 
 ---

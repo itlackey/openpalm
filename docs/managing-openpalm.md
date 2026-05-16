@@ -22,7 +22,7 @@ under `~/.openpalm/config/stack/`.
 Keep this split in mind:
 - `~/.openpalm/registry/` is the available catalog
 - `~/.openpalm/config/stack/addons/` contains enabled addons only
-- `~/.openpalm/config/automations/` contains enabled automations only
+- `~/.openpalm/stash/tasks/` contains active AKM automation task files
 - `~/.openpalm/config/stack.yml` stores capabilities only
 
 ---
@@ -173,62 +173,53 @@ Remove the addon directory from `~/.openpalm/config/stack/addons/`, then rerun `
 ## Automations
 
 You can schedule recurring tasks — like backups, cleanup scripts, or health checks —
-by dropping a `.yml` file into `~/.openpalm/config/automations/`.
+using AKM task files in `~/.openpalm/stash/tasks/`.
 
-Automations are executed by a scheduler co-process that runs inside the
-assistant container (using Croner — no system cron required and no
-separate service to manage).
+Automations are markdown files with YAML frontmatter. The assistant container starts
+`crond` at boot and calls `akm tasks sync` to register tasks with the OS scheduler.
+New task files written by admin are picked up within 60 seconds.
 
 ### How to add an automation
 
-1. Create a `.yml` file in `~/.openpalm/config/automations/`
-2. Define a schedule and action (see format below)
-3. The scheduler watches the directory and picks up changes within a few
-   seconds — no restart required. If you do need to restart it, recreate
-   the assistant container: `docker compose up -d --force-recreate assistant`
+1. Install one from the Registry tab in the admin console, or
+2. Create a `.md` file in `~/.openpalm/stash/tasks/` directly
 
 **Example** — pull the latest container images every Sunday at 3 AM:
 
-```yaml
-# ~/.openpalm/config/automations/update-containers.yml
-name: Update Containers
-description: Pull latest images and recreate containers weekly
-schedule: weekly-sunday-3am
+```markdown
+---
+schedule: "0 3 * * 0"
 enabled: true
-
-action:
-  type: api
-  method: POST
-  path: /admin/containers/pull
-  timeout: 300000
+description: Pull latest images and recreate containers weekly
+tags: [openpalm, containers]
+timeoutMs: 300000
+command: ["sh","-c","curl -fsS -X POST 'http://admin:8100/admin/containers/pull' -H \"x-admin-token: ${OP_ASSISTANT_TOKEN}\""]
+---
 ```
 
-OpenPalm ships several ready-to-use examples in `~/.openpalm/registry/automations/` — install them
-from the Registry tab in the admin console, or copy any of them into `~/.openpalm/config/automations/` to activate:
+OpenPalm ships several ready-to-use automations in `~/.openpalm/registry/automations/` — install them
+from the Registry tab in the admin console:
 
 | File | What it does |
 |---|---|
-| `health-check.yml` | Check admin health every 5 minutes |
-| `prompt-assistant.yml` | Send a daily prompt to the assistant via the chat channel |
-| `cleanup-logs.yml` | Weekly trim audit logs to prevent unbounded disk growth |
-| `update-containers.yml` | Weekly pull latest images and recreate containers |
+| `health-check.md` | Check admin health every 5 minutes |
+| `prompt-assistant.md` | Send a daily prompt to the assistant via the chat channel |
+| `cleanup-logs.md` | Weekly trim audit logs to prevent unbounded disk growth |
+| `update-containers.md` | Weekly pull latest images and recreate containers |
 
-### Automation YAML format
+### Automation markdown format
 
-```yaml
-name: My Automation          # optional display name
-description: What it does    # optional
-schedule: every-5-minutes    # cron expression or preset name
-timezone: UTC                # optional, default UTC
+```markdown
+---
+schedule: "0 9 * * *"       # standard cron expression (required)
 enabled: true                # optional, default true
+description: What it does    # optional
+tags: [openpalm]             # optional
+timeoutMs: 30000             # optional, milliseconds
+command: ["sh","-c","..."]  # shell command (mutually exclusive with prompt:)
+---
 
-action:
-  type: api                  # "api" | "http" | "shell"
-  method: GET
-  path: /health
-  timeout: 30000             # optional, ms
-
-on_failure: log              # "log" (default) | "audit"
+Body text here is used as the prompt when `prompt: inline` is set in frontmatter.
 ```
 
 ### Action types
@@ -259,24 +250,24 @@ Or use standard cron syntax directly (e.g., `"0 2 * * *"` for daily at 2 AM).
 
 ### Rules
 
-- **Filenames** must use `.yml` extension (e.g., `backup.yml`, `weekly-cleanup.yml`)
-- Filenames must be lowercase letters, numbers, and hyphens only (before the `.yml` extension)
-- Automations run via the scheduler co-process inside the assistant container, which reads files from `~/.openpalm/config/automations/`
-- Shell actions use `execFile` with an argument array — no shell interpolation for security
+- **Filenames** must use `.md` extension (e.g., `backup.md`, `weekly-cleanup.md`)
+- Filenames must be lowercase letters, numbers, and hyphens only (before the `.md` extension)
+- Automations are AKM task files in `~/.openpalm/stash/tasks/`, registered with OS cron by `akm tasks sync`
+- `command` arrays use `Bun.spawn` argument form — no shell interpolation; use `["sh","-c","..."]` explicitly when needed
 
 ### When do changes take effect?
 
-Automation files are picked up by the scheduler co-process within a few
-seconds of being written. If you need to force a reload (e.g. after
-editing assistant configuration), recreate the assistant container:
+New task files in `stash/tasks/` are picked up by the assistant container's background
+sync loop within 60 seconds. To force immediate registration:
 
 ```bash
-docker compose up -d --force-recreate assistant
+docker exec openpalm-assistant akm tasks sync
 ```
 
 ### Overriding system automations
 
-Shipped examples live in `~/.openpalm/registry/automations/`. They are inactive until copied into `~/.openpalm/config/automations/`.
+Shipped examples live in `~/.openpalm/registry/automations/`. Install them from the
+Registry tab in the admin console — they are written to `~/.openpalm/stash/tasks/`.
 
 ---
 
@@ -366,8 +357,8 @@ All ports are `127.0.0.1`-bound by default.
 2. Restart all services: `docker compose restart`
 
 **Add an automation:**
-1. Create `~/.openpalm/config/automations/my-job.yml` with your schedule
-2. The scheduler co-process inside the assistant container picks it up within seconds — no restart required.
+1. Install from the Registry tab in admin, or create `~/.openpalm/stash/tasks/my-job.md` with frontmatter `schedule` and `command`/`prompt`
+2. The assistant container picks it up within 60 s via the background `akm tasks sync` loop.
 
 **View audit logs:**
 ```bash
