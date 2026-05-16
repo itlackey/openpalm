@@ -63,7 +63,6 @@ docker compose \
   --env-file ~/.openpalm/config/stack/guardian.env \
   -f ~/.openpalm/config/stack/core.compose.yml \
   -f ~/.openpalm/config/stack/addons/chat/compose.yml \
-  -f ~/.openpalm/config/stack/addons/admin/compose.yml \
   up -d
 ```
 
@@ -72,7 +71,7 @@ catalog into the runtime stack, for example:
 
 ```bash
 cp -r ~/.openpalm/registry/addons/chat ~/.openpalm/config/stack/addons/chat
-cp -r ~/.openpalm/registry/addons/admin ~/.openpalm/config/stack/addons/admin
+
 ```
 
 See [Manual Compose Runbook](../docs/operations/manual-compose-runbook.md) for the full reference.

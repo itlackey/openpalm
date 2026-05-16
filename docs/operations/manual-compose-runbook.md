@@ -102,7 +102,6 @@ docker compose \
   --env-file "$OP_HOME/vault/user/user.env" \
   --env-file "$OP_HOME/config/stack/guardian.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
-  -f "$OP_HOME/config/stack/addons/admin/compose.yml" \
   -f "$OP_HOME/config/stack/addons/chat/compose.yml" \
   <command>
 ```
@@ -135,7 +134,6 @@ docker compose \
   --env-file "$OP_HOME/vault/user/user.env" \
   --env-file "$OP_HOME/config/stack/guardian.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
-  -f "$OP_HOME/config/stack/addons/admin/compose.yml" \
   config --quiet
 ```
 

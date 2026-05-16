@@ -90,7 +90,6 @@ running.
 cd "$HOME/.openpalm/stack"
 docker compose \
   -f core.compose.yml \
-  -f addons/admin/compose.yml \
   -f addons/chat/compose.yml \
   --env-file ../config/stack/stack.env \
   --env-file ../vault/user/user.env \
@@ -203,7 +202,6 @@ the compose files under `~/.openpalm/config/stack/` plus the two vault env files
 cd "$HOME/.openpalm/stack"
 docker compose \
   -f core.compose.yml \
-  -f addons/admin/compose.yml \
   -f addons/chat/compose.yml \
   --env-file ../config/stack/stack.env \
   --env-file ../vault/user/user.env \
