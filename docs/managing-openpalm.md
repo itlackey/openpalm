@@ -332,7 +332,6 @@ After restoring, start the stack using the compose commands in the [Manual Compo
 |---|---|
 | `http://localhost:3880/` | Admin UI and API |
 | `http://localhost:3800/` | OpenCode assistant UI |
-| `http://localhost:3881/` | Admin-side OpenCode instance |
 | `http://localhost:3820/` | Chat addon |
 | `http://localhost:3821/` | API addon |
 | `http://localhost:3810/` | Voice addon |

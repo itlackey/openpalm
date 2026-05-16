@@ -69,7 +69,7 @@
         merged.set(name, state);
       }
     }
-    // Overlay from live Docker data (wins on conflict; adds extras like docker-socket-proxy, channels)
+    // Overlay from live Docker data (wins on conflict; adds extras like channels and addons)
     if (containerData.dockerContainers) {
       for (const c of containerData.dockerContainers) {
         merged.set(c.Service, c.State);

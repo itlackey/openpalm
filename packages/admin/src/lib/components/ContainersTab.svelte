@@ -46,7 +46,7 @@
       }
     }
 
-    // Overlay with real Docker container data (includes docker-socket-proxy, channels)
+    // Overlay with real Docker container data (includes channel containers and other addons)
     if (containerData.dockerContainers) {
       for (const c of containerData.dockerContainers) {
         const existing = byService.get(c.Service);
