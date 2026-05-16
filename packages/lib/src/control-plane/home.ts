@@ -96,7 +96,6 @@ export function ensureHomeDirs(): void {
     // cache/ — regenerable/semi-persistent data
     `${home}/cache`,
     `${home}/cache/akm`,            // akm registry index, downloaded artifacts
-    `${home}/cache/guardian`,       // guardian cache
     `${home}/cache/rollback`,       // rollback snapshots
 
     // state/ — persistent service data
@@ -104,10 +103,6 @@ export function ensureHomeDirs(): void {
     `${home}/state/assistant`,      // assistant HOME bind mount
     `${home}/state/admin`,          // admin home bind mount
     `${home}/state/guardian`,       // guardian runtime data
-    `${home}/state/guardian/stash`, // guardian-only akm stash (operator-isolated)
-    `${home}/state/guardian/akm`,   // guardian akm operational data
-    `${home}/state/guardian/akm/data`,
-    `${home}/state/guardian/akm/state`,
     `${home}/state/akm`,            // shared akm operational data (NOT config)
     `${home}/state/akm/data`,
     `${home}/state/akm/state`,

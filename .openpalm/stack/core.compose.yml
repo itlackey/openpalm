@@ -31,7 +31,7 @@ services:
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     restart: "no"
     command: ["sh", "-c",
-      "umask 077 && mkdir -p /op/state/guardian /op/state/guardian/stash /op/state/guardian/akm /op/state/guardian/akm/data /op/state/guardian/akm/state /op/cache/guardian && umask 022 && mkdir -p /op/state/assistant /op/state/admin /op/config/akm /op/config/stack /op/config/stack/addons /op/stash /op/stash/tasks /op/workspace /op/state/akm /op/state/akm/data /op/state/akm/state /op/state/logs /op/state/logs/opencode /op/state/backups /op/state/registry /op/state/registry/addons /op/state/registry/automations /op/cache/akm /op/cache/rollback && ls /addons 2>/dev/null | xargs -I{} mkdir -p /op/state/{}"]
+      "umask 077 && mkdir -p /op/state/guardian && umask 022 && mkdir -p /op/state/assistant /op/state/admin /op/config/akm /op/config/stack /op/config/stack/addons /op/stash /op/stash/tasks /op/workspace /op/state/akm /op/state/akm/data /op/state/akm/state /op/state/logs /op/state/logs/opencode /op/state/backups /op/state/registry /op/state/registry/addons /op/state/registry/automations /op/cache/akm /op/cache/rollback && ls /addons 2>/dev/null | xargs -I{} mkdir -p /op/state/{}"]
     volumes:
       - ${OP_HOME}:/op
       - ${OP_HOME}/config/stack/addons:/addons:ro
@@ -158,24 +158,12 @@ services:
       OPENCODE_TIMEOUT_MS: "0"
       GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
       GUARDIAN_SECRETS_PATH: /app/secrets/guardian.env
-      # Guardian has its own isolated akm stash for operator-only artifacts
-      # (channel HMAC vaults, audit notes). NOT shared with admin/assistant.
-      # See assistant block for the rationale behind pinning all four dirs.
-      AKM_STASH_DIR: /akm-guardian
-      AKM_CONFIG_DIR: /akm-guardian-op/config
-      AKM_DATA_DIR: /akm-guardian-op/data
-      AKM_STATE_DIR: /akm-guardian-op/state
-      AKM_CACHE_DIR: /akm-guardian-cache
+
     volumes:
       - ${OP_HOME}/state/guardian:/app/data
       - ${OP_HOME}/state/logs:/app/audit
       - ${OP_HOME}/config/stack/guardian.env:/app/secrets/guardian.env:ro
-      # Operator-only akm stash (NOT shared with admin or assistant).
-      - ${OP_HOME}/state/guardian/stash:/akm-guardian
-      # Operator-only akm operational data (data, state).
-      - ${OP_HOME}/state/guardian/akm:/akm-guardian-op
-      # Operator-only akm cache (isolated from the shared admin/assistant cache).
-      - ${OP_HOME}/cache/guardian:/akm-guardian-cache
+
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     networks: [ channel_lan, assistant_net ]
     depends_on:
