@@ -216,7 +216,6 @@ Host-exposed OpenPalm services default to a small localhost-friendly port set. C
 | **Assistant** (OpenCode) | 4096 | `127.0.0.1:3800` | OpenCode web UI + API |
 | **Voice addon** | 8186 | `127.0.0.1:3810` | Voice interface (TTS/STT) |
 | **Admin** | 8100 | `127.0.0.1:3880` | Admin UI + API |
-| **Admin OpenCode** | 3881 | `127.0.0.1:3881` | Admin-side OpenCode runtime |
 | **Guardian** | 8080 | (internal only) | HMAC verification + rate limiting |
 | **Chat addon** | 8181 | `127.0.0.1:3820` | OpenAI-compatible chat edge |
 | **API addon** | 8182 | `127.0.0.1:3821` | OpenAI/Anthropic-compatible API edge |

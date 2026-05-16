@@ -43,7 +43,6 @@ TESTS=0
 dev_compose() {
 	docker compose --project-directory . \
 		-f .dev/stack/core.compose.yml \
-		-f .dev/stack/addons/admin/compose.yml \
 		-f compose.dev.yml \
 		--env-file .dev/vault/stack/stack.env \
 		--env-file .dev/vault/user/user.env \
