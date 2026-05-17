@@ -6,13 +6,7 @@
  * validates it exports a BaseChannel subclass, and starts the server.
  *
  * Environment:
- *   CHANNEL_PACKAGE — npm package name (e.g., "@openpalm/channel-discord")
- *   CHANNEL_FILE    — path to the channel .ts file (default: /app/channel.ts)
- *
- * Resolution order:
- *   1. If CHANNEL_PACKAGE is set, import the npm package
- *   2. Else if CHANNEL_FILE exists, import the local file
- *   3. Else exit with error
+ *   CHANNEL_PACKAGE — npm package name (required, e.g., "@openpalm/channel-discord")
  */
 
 import { BaseChannel } from "./channel-base.ts";
@@ -27,21 +21,13 @@ function logError(msg: string): void {
 }
 
 const channelPackage = Bun.env.CHANNEL_PACKAGE;
-const channelFile = Bun.env.CHANNEL_FILE ?? "/app/channel.ts";
 
-let importTarget: string;
-
-if (channelPackage) {
-  importTarget = channelPackage;
-} else {
-  // Legacy file-based loading
-  const file = Bun.file(channelFile);
-  if (!(await file.exists())) {
-    logError(`No CHANNEL_PACKAGE set and channel file not found: ${channelFile}`);
-    process.exit(1);
-  }
-  importTarget = channelFile;
+if (!channelPackage) {
+  logError("CHANNEL_PACKAGE environment variable is required");
+  process.exit(1);
 }
+
+const importTarget = channelPackage;
 
 // Dynamic import
 let mod: Record<string, unknown>;

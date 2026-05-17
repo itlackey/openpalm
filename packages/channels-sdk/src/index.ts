@@ -20,7 +20,7 @@ export {
 } from "./channel.ts";
 
 // ── SDK helpers ──────────────────────────────────────────────────────────
-export { buildChannelMessage, forwardChannelMessage } from "./channel-sdk.ts";
+export { forwardChannelMessage } from "./channel-sdk.ts";
 
 // ── Crypto ───────────────────────────────────────────────────────────────
 export { constantTimeEqual, signPayload, verifySignature } from "./crypto.ts";

@@ -29,7 +29,6 @@ docker compose \
   --env-file ../config/stack/guardian.env \
   -f core.compose.yml \
   -f addons/chat/compose.yml \
-  -f addons/admin/compose.yml \
   up -d
 
 ```
@@ -55,7 +54,6 @@ Repo addon sources live under `.openpalm/registry/addons/`. At runtime,
 
 | Addon | Host port | Purpose |
 |-------|-----------|---------|
-| `admin` | `3880 -> 8100` | Admin UI/API |
 | `api` | `3821 -> 8182` | OpenAI/Anthropic-compatible API facade |
 | `chat` | `3820 -> 8181` | OpenAI-compatible chat edge |
 | `discord` | none | Discord bot adapter |

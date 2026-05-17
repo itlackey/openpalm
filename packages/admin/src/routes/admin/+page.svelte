@@ -1,7 +1,5 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import CapabilitiesBanner from '$lib/components/CapabilitiesBanner.svelte';
-  import MigrationBanner from '$lib/components/MigrationBanner.svelte';
   import Navbar from '$lib/components/Navbar.svelte';
   import AuthGate from '$lib/components/AuthGate.svelte';
   import TabBar from '$lib/components/TabBar.svelte';
@@ -11,7 +9,7 @@
   import ArtifactsTab from '$lib/components/ArtifactsTab.svelte';
   import AutomationsTab from '$lib/components/AutomationsTab.svelte';
   import CapabilitiesTab from '$lib/components/CapabilitiesTab.svelte';
-  import ConnectionsTab from '$lib/components/ConnectionsTab.svelte';
+  import ProvidersPanel from '$lib/components/ProvidersPanel.svelte';
   import LogsTab from '$lib/components/LogsTab.svelte';
   import AuditTab from '$lib/components/AuditTab.svelte';
   import SecretsTab from '$lib/components/SecretsTab.svelte';
@@ -64,6 +62,8 @@
   let selectedContainerId: string | null = $state(null);
   // ── Migration ───────────────────────────────────────────────────────────────
   let legacyInstallDetected = $state(false);
+  let migrationBannerDismissed = $state(false);
+  let showMigrationBanner = $derived(legacyInstallDetected && !migrationBannerDismissed);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
   let activeTab: 'overview' | 'addons' | 'automations' | 'connections' | 'secrets' | 'capabilities' | 'containers' | 'logs' | 'audit' | 'artifacts' = $state('overview');
@@ -408,8 +408,36 @@
   <Navbar onLogout={handleLogout} navLink={{ href: '/chat', label: 'Chat' }} />
 
   <main>
-    <MigrationBanner visible={legacyInstallDetected} />
-    <CapabilitiesBanner missing={capabilitiesMissing} onNavigate={() => handleTabSelect('capabilities')} />
+    {#if showMigrationBanner}
+      <div class="migration-banner" role="alert">
+        <div class="banner-content">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <div class="banner-text">
+            <strong>Legacy installation detected</strong>
+            <span>Run <code>openpalm migrate</code> to move to the new <code>~/.openpalm/</code> layout.</span>
+          </div>
+        </div>
+        <button
+          class="banner-dismiss"
+          onclick={() => { migrationBannerDismissed = true; }}
+          aria-label="Dismiss migration notice"
+        >
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+    {/if}
+    {#if capabilitiesMissing.length > 0}
+      <div class="capabilities-banner" role="alert">
+        <span>Missing capabilities: {capabilitiesMissing.join(', ')}.</span>
+        <button class="banner-link" type="button" onclick={() => handleTabSelect('capabilities')}>Configure</button>
+      </div>
+    {/if}
 
     <TabBar active={activeTab} onSelect={handleTabSelect} />
 
@@ -470,7 +498,7 @@
         onRefresh={loadAutomations}
       />
     {:else if activeTab === 'connections'}
-      <ConnectionsTab />
+      <ProvidersPanel />
     {:else if activeTab === 'secrets'}
       <SecretsTab tokenStored={true} />
     {/if}
@@ -498,6 +526,107 @@
   @media (max-width: 768px) {
     main {
       padding: var(--space-4) var(--space-4) var(--space-8);
+    }
+  }
+
+  .capabilities-banner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-5);
+    background: var(--color-warning-bg, rgba(253, 126, 20, 0.1));
+    border: 1px solid var(--color-warning-border, rgba(253, 126, 20, 0.25));
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    color: var(--color-text);
+    margin-bottom: var(--space-4);
+  }
+  .capabilities-banner span { flex: 1; }
+  .banner-link {
+    background: none; border: none; color: var(--color-primary);
+    font-size: var(--text-sm); font-weight: var(--font-semibold);
+    cursor: pointer; text-decoration: underline;
+  }
+  .banner-link:hover { color: var(--color-primary-hover); }
+
+  .migration-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    margin-bottom: var(--space-4);
+    background: var(--color-caution-bg);
+    border: 1px solid var(--color-caution);
+    border-radius: var(--radius-md);
+  }
+
+  .banner-content {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    color: var(--color-caution);
+    min-width: 0;
+  }
+
+  .banner-content svg {
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .banner-text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    font-size: var(--text-sm);
+    color: var(--color-text);
+  }
+
+  .banner-text strong {
+    font-weight: var(--font-semibold);
+  }
+
+  .banner-text span {
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+  }
+
+  .banner-text code {
+    font-family: var(--font-mono);
+    font-size: inherit;
+    padding: 1px 4px;
+    background: rgba(0, 0, 0, 0.06);
+    border-radius: 3px;
+  }
+
+  .banner-dismiss {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast);
+  }
+
+  .banner-dismiss:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--color-text);
+  }
+
+  @media (max-width: 480px) {
+    .migration-banner {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .banner-dismiss {
+      align-self: flex-end;
     }
   }
 </style>

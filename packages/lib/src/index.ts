@@ -266,9 +266,6 @@ export {
   performSetup,
 } from "./control-plane/setup.js";
 
-// ── Admin Token Management ───────────────────────────────────────────────
-export { ensureAdminToken, rotateAdminToken } from "./control-plane/admin-token.js";
-
 // ── AKM Vault Mirror (#388) ──────────────────────────────────────────────
 export {
   AKM_USER_VAULT_REF,
