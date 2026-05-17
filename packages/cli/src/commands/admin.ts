@@ -1,15 +1,31 @@
 import { defineCommand } from 'citty';
+import { join } from 'node:path';
 import { resolveCacheDir, resolveOpenPalmHome, resolveConfigDir, createLogger } from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { ensureAdminBuild } from '../lib/admin-build.ts';
-import { createHostAdminServer } from '../lib/host-admin-server.ts';
 import { startOpenCodeSubprocess, type OpenCodeSubprocess } from '../lib/opencode-subprocess.ts';
 import { openBrowser } from '../lib/browser.ts';
 
 const logger = createLogger('cli:admin');
 const HOST_ADMIN_PORT = Number(process.env.OP_HOST_ADMIN_PORT) || 3880;
+const READY_TIMEOUT_MS = 15_000;
+const STOP_TIMEOUT_MS  = 5_000;
 
-
+async function waitForReady(port: number): Promise<boolean> {
+  const deadline = Date.now() + READY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/health`, {
+        signal: AbortSignal.timeout(1000),
+      });
+      if (res.ok || res.status === 401) return true;
+    } catch {
+      // not ready yet
+    }
+    await new Promise(r => setTimeout(r, 300));
+  }
+  return false;
+}
 
 // ── serve subcommand ─────────────────────────────────────────────────────
 
@@ -36,12 +52,11 @@ const serveCmd = defineCommand({
       process.exit(1);
     }
 
-    const cacheDir = resolveCacheDir();
-    const homeDir = resolveOpenPalmHome();
-    const configDir = resolveConfigDir();
-    const stateDir = `${homeDir}/state`;
+    const cacheDir    = resolveCacheDir();
+    const homeDir     = resolveOpenPalmHome();
+    const configDir   = resolveConfigDir();
+    const stateDir    = `${homeDir}/state`;
 
-    // Extract the admin build (idempotent)
     console.log('Preparing admin build...');
     let buildDir: string;
     try {
@@ -51,17 +66,14 @@ const serveCmd = defineCommand({
       process.exit(1);
     }
 
-    // Read admin token from stack state
     const state = ensureValidState();
-    const adminToken = state.adminToken;
+    const { adminToken } = state;
     if (!adminToken) {
-      console.error(
-        'Admin token not configured. Run `openpalm install` first.'
-      );
+      console.error('Admin token not configured. Run `openpalm install` first.');
       process.exit(1);
     }
 
-    // Start OpenCode subprocess (non-fatal)
+    // Start OpenCode subprocess (non-fatal — admin still works without it)
     let openCodeSub: OpenCodeSubprocess | null = null;
     let openCodeBaseUrl: string | undefined;
     try {
@@ -81,32 +93,46 @@ const serveCmd = defineCommand({
       openCodeSub = null;
     }
 
-    // Start host admin server
-    console.log('Starting host admin server...');
-    let adminServer: Awaited<ReturnType<typeof createHostAdminServer>>;
-    try {
-      adminServer = await createHostAdminServer({
-        port,
-        buildDir,
-        adminToken,
-        openCodeBaseUrl,
-      });
-    } catch (err) {
-      console.error(`Failed to start host admin server: ${err instanceof Error ? err.message : String(err)}`);
+    // Start SvelteKit adapter-node build bound to localhost
+    console.log('Starting admin server...');
+    const adminProc = Bun.spawn(
+      ['node', join(buildDir, 'index.js')],
+      {
+        cwd: buildDir,
+        env: {
+          ...process.env,
+          HOST:           '127.0.0.1',
+          PORT:           String(port),
+          ORIGIN:         `http://127.0.0.1:${port}`,
+          OP_ADMIN_TOKEN: adminToken,
+          ...(openCodeBaseUrl ? { OP_OPENCODE_URL: openCodeBaseUrl } : {}),
+        },
+        stdout: 'inherit',
+        stderr: 'inherit',
+      }
+    );
+
+    if (!await waitForReady(port)) {
+      adminProc.kill('SIGTERM');
       if (openCodeSub) await openCodeSub.stop().catch(() => {});
+      console.error('Admin server did not become ready in time.');
       process.exit(1);
     }
 
     const adminUrl = `http://localhost:${port}`;
-    console.log(`Host admin server running at ${adminUrl}`);
-
+    console.log(`Admin server running at ${adminUrl}`);
     if (args.open) await openBrowser(adminUrl);
 
     // ── Graceful shutdown ──────────────────────────────────────────────
     async function shutdown(signal: string): Promise<void> {
       console.log(`\nReceived ${signal}. Shutting down...`);
       try {
-        await adminServer.stop();
+        adminProc.kill('SIGTERM');
+        await Promise.race([
+          adminProc.exited,
+          new Promise(r => setTimeout(r, STOP_TIMEOUT_MS)),
+        ]);
+        if (!adminProc.killed) adminProc.kill('SIGKILL');
         if (openCodeSub) await openCodeSub.stop().catch(() => {});
         console.log('Shutdown complete.');
       } catch (err) {
@@ -115,7 +141,7 @@ const serveCmd = defineCommand({
       process.exit(0);
     }
 
-    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGINT',  () => shutdown('SIGINT'));
     process.on('SIGTERM', () => shutdown('SIGTERM'));
 
     // Keep the process alive

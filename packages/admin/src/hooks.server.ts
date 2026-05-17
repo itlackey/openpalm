@@ -9,7 +9,7 @@
  */
 import type { Handle } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
-import { checkHostHeader, ADMIN_PORT } from "$lib/server/helpers.js";
+import { checkHostHeader, checkOriginHeader, ADMIN_PORT } from "$lib/server/helpers.js";
 import {
   createLogger,
   ensureSecrets,
@@ -75,9 +75,12 @@ runStartupApply();
 
 // Scheduler is now a dedicated sidecar — admin has zero background processes.
 
-// ── SEC-1: Host header allowlist (DNS rebinding protection) ───────────────
+// ── SEC-1: Host header allowlist (DNS rebinding protection) ──────────────
+// ── SEC-2: Origin check for state-mutating requests (CSRF protection) ────
 export const handle: Handle = async ({ event, resolve }) => {
   const hostError = checkHostHeader(event.request, ADMIN_PORT);
   if (hostError) return hostError;
+  const originError = checkOriginHeader(event.request, ADMIN_PORT);
+  if (originError) return originError;
   return resolve(event);
 };
