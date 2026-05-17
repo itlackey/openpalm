@@ -8,6 +8,7 @@
  * Also enforces SEC-1: Host header allowlist to prevent DNS rebinding attacks.
  */
 import type { Handle } from "@sveltejs/kit";
+import { redirect } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
 import { checkHostHeader, checkOriginHeader, ADMIN_PORT } from "$lib/server/helpers.js";
 import {
@@ -19,6 +20,8 @@ import {
   writeRuntimeFiles,
   appendAudit,
   ensureHomeDirs,
+  isSetupComplete,
+  resolveStackDir,
 } from "@openpalm/lib";
 
 const logger = createLogger("admin");
@@ -75,12 +78,23 @@ runStartupApply();
 
 // Scheduler is now a dedicated sidecar — admin has zero background processes.
 
+// Paths exempt from the setup guard (setup UI itself + health probes)
+const SETUP_PATHS = ["/setup", "/api/setup", "/health", "/guardian/health"];
+
 // ── SEC-1: Host header allowlist (DNS rebinding protection) ──────────────
 // ── SEC-2: Origin check for state-mutating requests (CSRF protection) ────
+// ── Setup guard: redirect to /setup when first-time setup not complete ───
 export const handle: Handle = async ({ event, resolve }) => {
   const hostError = checkHostHeader(event.request, ADMIN_PORT);
   if (hostError) return hostError;
   const originError = checkOriginHeader(event.request, ADMIN_PORT);
   if (originError) return originError;
+
+  const path = event.url.pathname;
+  const isSetupPath = SETUP_PATHS.some(p => path === p || path.startsWith(p + "/"));
+  if (!isSetupPath && !isSetupComplete(resolveStackDir())) {
+    redirect(302, "/setup");
+  }
+
   return resolve(event);
 };

@@ -6,7 +6,7 @@ import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
 import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
 import { ensureDirectoryTree, seedOpenPalmDir } from '../lib/io.ts';
 import { openBrowser } from '../lib/browser.ts';
-import { runDockerCompose, runDockerComposeCapture } from '../lib/docker.ts';
+import { runDockerCompose } from '../lib/docker.ts';
 import {
   backupOpenPalmHome,
   buildComposeCliArgs,
@@ -14,7 +14,6 @@ import {
   performSetup,
   applyInstall,
   buildManagedServices,
-  createOpenCodeClient,
   createLogger,
   resolveRequestedImageTag,
   type SetupSpec,
@@ -22,11 +21,8 @@ import {
 import { seedEmbeddedAssets } from '../lib/embedded-assets.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
 import { ensureValidState } from '../lib/cli-state.ts';
-import { createSetupServer } from '../setup-wizard/server.ts';
-import { startOpenCodeSubprocess, type OpenCodeSubprocess } from '../lib/opencode-subprocess.ts';
 
 const logger = createLogger('cli:install');
-const SETUP_WIZARD_PORT = Number(process.env.OP_SETUP_PORT) || 0; // 0 = random available port
 
 async function resolveDefaultInstallRef(): Promise<string> {
   try {
@@ -155,10 +151,10 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     return;
   }
 
-  // Interactive wizard: --force always runs wizard, otherwise only on first install
+  // Interactive wizard: start the admin UI which serves the setup wizard
   const needsWizard = !alreadyInstalled || options.force;
   if (needsWizard) {
-    await runWizardInstall(configDir, options.noOpen, options.noStart);
+    await runWizardInstall(options.noOpen);
     return;
   }
 
@@ -204,90 +200,32 @@ async function prepareInstallFiles(
   try { ensureOpenCodeConfig(); ensureOpenCodeSystemConfig(); } catch (err) { logger.debug('failed to ensure OpenCode config', { error: String(err) }); }
 }
 
-async function runWizardInstall(configDir: string, noOpen: boolean, noStart = false): Promise<void> {
-  console.log('Starting setup wizard...');
+/**
+ * Launch the admin UI to handle first-time setup.
+ *
+ * The SvelteKit admin detects that setup is not complete (via hooks.server.ts)
+ * and redirects to /setup where the wizard runs. Deploy is triggered from
+ * within the admin process after the user completes the wizard.
+ */
+async function runWizardInstall(noOpen: boolean): Promise<void> {
+  const port = Number(process.env.OP_HOST_ADMIN_PORT) || 3880;
+  const wizardUrl = `http://localhost:${port}/setup`;
+  console.log(`Setup wizard: ${wizardUrl}`);
 
-  // Start OpenCode subprocess for provider discovery (non-fatal if unavailable)
-  let openCodeSub: OpenCodeSubprocess | null = null;
-  let openCodeClient: ReturnType<typeof createOpenCodeClient> | undefined;
-  try {
-    console.log('Starting provider discovery...');
-    openCodeSub = await startOpenCodeSubprocess({
-      homeDir: resolveOpenPalmHome(),
-      configDir: resolveConfigDir(),
-      stateDir: `${resolveOpenPalmHome()}/state`,
-    });
-    const ready = await openCodeSub.waitForReady();
-    if (ready) {
-      openCodeClient = createOpenCodeClient({ baseUrl: openCodeSub.baseUrl });
-    } else {
-      console.log('Provider discovery unavailable. Using built-in provider list.');
-      await openCodeSub.stop();
-      openCodeSub = null;
-    }
-  } catch {
-    console.log('Provider discovery unavailable. Using built-in provider list.');
-    openCodeSub = null;
-  }
+  // Re-invoke this binary with `admin serve` so the admin process runs with
+  // the same environment. The SvelteKit hooks redirect / to /setup on first run.
+  const argv = process.argv;
+  const bin = argv[0] === 'bun' ? [...argv.slice(0, 2)] : [argv[1]];
+  const args = [...bin, 'admin', 'serve'];
+  if (noOpen) args.push('--no-open');
 
-  const wizard = createSetupServer(SETUP_WIZARD_PORT, { configDir, openCodeClient });
-  const wizardUrl = `http://localhost:${wizard.server.port}/setup`;
-  console.log(`Setup wizard running at ${wizardUrl}`);
-  if (!noOpen) await openBrowser(wizardUrl);
+  const proc = Bun.spawn(args, { stdout: 'inherit', stderr: 'inherit' });
 
-  const result = await wizard.waitForComplete();
-  if (!result.ok) { wizard.stop(); throw new Error(`Setup failed: ${result.error ?? 'unknown error'}`); }
+  // Signal: forward SIGINT/SIGTERM so `openpalm install` exits cleanly
+  process.on('SIGINT',  () => { proc.kill('SIGTERM'); });
+  process.on('SIGTERM', () => { proc.kill('SIGTERM'); });
 
-  if (noStart) {
-    console.log('Setup complete. Config written. Run `openpalm start` to start services.');
-    wizard.stop();
-    if (openCodeSub) await openCodeSub.stop().catch(() => {});
-    return;
-  }
-
-  console.log('Setup complete. Checking Docker...');
-  wizard.setDeploying(true);
-  await requireDocker();
-
-  console.log('Starting services...');
-  const state = ensureValidState();
-  await applyInstall(state);
-  const allServices = await buildManagedServices(state);
-  const composeArgs = buildComposeCliArgs(state);
-  try {
-    wizard.updateDeployStatus(allServices.map(service => ({ service, status: 'pending', label: 'Pulling images...' })));
-    await runDockerCompose([...composeArgs, 'pull', ...allServices]).catch(() => {
-      console.warn('Warning: image pull failed — if this is your first install, check your network connection.');
-    });
-    wizard.updateDeployStatus(allServices.map(service => ({ service, status: 'pending', label: 'Starting...' })));
-    await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
-
-    // Poll container health so the wizard shows real progress per-service
-    await pollContainerHealth(composeArgs, allServices, wizard);
-
-    console.log('\n✓ All services are running:');
-    for (const svc of allServices) {
-      console.log(`  • ${svc}`);
-    }
-    console.log(`\n  Assistant:  http://localhost:${3800}`);
-    console.log(`  Admin:      http://localhost:${3880}`);
-    console.log(`  Memory API: http://localhost:${3898}`);
-    console.log(`  Guardian:   http://localhost:${3899}`);
-    console.log('');
-    // pollContainerHealth returns as soon as all services are healthy, but
-    // the frontend polls every 2.5s — keep the server alive long enough for
-    // at least 2-3 polls to fetch the final "all running" state with URLs.
-    await new Promise(resolve => setTimeout(resolve, 8000));
-  } catch (err) {
-    const errLabel = String(err);
-    wizard.updateDeployStatus(allServices.map(service => ({ service, status: 'error', label: errLabel })));
-    wizard.setDeployError(String(err));
-    await new Promise(resolve => setTimeout(resolve, 10000));
-    throw err;
-  } finally {
-    wizard.stop();
-    if (openCodeSub) await openCodeSub.stop().catch(() => {});
-  }
+  await proc.exited;
 }
 
 async function runFileInstall(filePath: string, noStart: boolean): Promise<void> {
@@ -328,55 +266,4 @@ async function runFileInstall(filePath: string, noStart: boolean): Promise<void>
   await deployServices('install');
 }
 
-/**
- * Poll `docker compose ps` until all services are running/healthy (or timeout).
- * Updates the wizard deploy status per-service so the frontend shows real progress.
- */
-async function pollContainerHealth(
-  composeArgs: string[],
-  services: string[],
-  wizard: ReturnType<typeof createSetupServer>,
-): Promise<void> {
-  const MAX_WAIT_MS = 120_000; // 2 minutes
-  const POLL_INTERVAL = 3_000;
-  const start = Date.now();
-  const running = new Set<string>();
-  const psArgs = [...composeArgs, 'ps', '--format', 'json'];
-  let prevRunningCount = 0;
-
-  while (Date.now() - start < MAX_WAIT_MS) {
-    try {
-      const output = await runDockerComposeCapture(psArgs);
-      for (const line of output.trim().split('\n')) {
-        if (!line.trim()) continue;
-        try {
-          const container = JSON.parse(line) as { Service?: string; State?: string; Health?: string };
-          const svc = container.Service;
-          if (!svc || !services.includes(svc)) continue;
-          const isHealthy = container.Health === 'healthy' || (container.State === 'running' && !container.Health);
-          if (isHealthy) running.add(svc);
-        } catch { /* skip malformed JSON line */ }
-      }
-    } catch { /* compose ps failed — retry next tick */ }
-
-    if (running.size !== prevRunningCount) {
-      prevRunningCount = running.size;
-      const entries = services.map(svc => ({
-        service: svc,
-        status: (running.has(svc) ? 'running' : 'pending') as 'running' | 'pending',
-        label: running.has(svc) ? 'Running' : 'Starting...',
-      }));
-      wizard.updateDeployStatus(entries);
-    }
-
-    if (running.size >= services.length) return;
-
-    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
-  }
-
-  // Timeout: mark remaining as running so the UI completes, but warn
-  const pending = services.filter(s => !running.has(s));
-  console.warn(`Warning: health check timed out for: ${pending.join(', ')}. They may still be starting.`);
-  wizard.markAllRunning();
-}
 

@@ -16,6 +16,14 @@ export function getState(): ControlPlaneState {
 }
 
 /**
+ * Bust the singleton so the next getState() call re-reads from disk.
+ * Called after performSetup() writes new tokens to stack.env.
+ */
+export function resetState(): void {
+  _state = null;
+}
+
+/**
  * Replace the singleton state. Exposed for test-helpers only — do not
  * call from production code.
  */
