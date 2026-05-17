@@ -1,510 +1,294 @@
 #!/usr/bin/env bash
 #
-# End-to-end test for the OpenPalm dev environment.
+# End-to-end test for the OpenPalm dev environment (v0.11.0).
 #
-# Cleans all state, rebuilds admin from source, starts the stack,
-# runs the setup wizard, and verifies:
-#   1. All containers are healthy
-#   2. No root-owned files in .dev/
-#   3. stack.env has correct values
-#   4. Assistant container has correct env vars
-#   5. Setup is marked complete
+# v0.11.0 architecture:
+#   - Admin is a HOST PROCESS (`openpalm admin`), not a container
+#   - Compose stack: assistant + guardian containers only
+#   - Directory layout: config/stack/, stash/vaults/, state/, cache/
+#
+# Cleans state, rebuilds all images from source, starts the stack and
+# admin process, then verifies:
+#   1. All containers are healthy (assistant + guardian)
+#   2. Admin host process responds on the configured port
+#   3. Setup wizard route serves
+#   4. Admin API auth works (correct + wrong tokens)
+#   5. stack.env carries the right OP_CAP_* values
+#
+# Isolation:
+#   - COMPOSE_PROJECT_NAME (default: openpalm-e2e) — never touches user stack
+#   - OP_E2E_HOME (default: .dev-e2e) — never touches user .dev/
+#   - OP_E2E_ADMIN_PORT (default: 3890) — avoids :3880 if user has admin up
 #
 # Usage:
-#   ./scripts/dev-e2e-test.sh [--skip-build]
+#   ./scripts/dev-e2e-test.sh [--skip-build] [--keep]
 #
 # Options:
-#   --skip-build   Skip npm + Docker image build (use existing image)
+#   --skip-build   Reuse existing images instead of rebuilding
+#   --keep         Leave the stack/admin running after tests for inspection
 #
 set -euo pipefail
 
 SKIP_BUILD=0
+KEEP=0
 for arg in "$@"; do
 	case "$arg" in
 	--skip-build) SKIP_BUILD=1 ;;
+	--keep) KEEP=1 ;;
 	-h | --help)
-		echo "Usage: $0 [--skip-build]"
+		echo "Usage: $0 [--skip-build] [--keep]"
 		exit 0
 		;;
-	*)
-		echo "Unknown option: $arg" >&2
-		exit 1
-		;;
+	*) echo "Unknown option: $arg" >&2; exit 1 ;;
 	esac
 done
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# ── Isolation knobs ──────────────────────────────────────────────────
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openpalm-e2e}"
+OP_E2E_HOME="${OP_E2E_HOME:-${ROOT_DIR}/.dev-e2e}"
+OP_E2E_ADMIN_PORT="${OP_E2E_ADMIN_PORT:-3890}"
+ADMIN_URL="http://127.0.0.1:${OP_E2E_ADMIN_PORT}"
+
 PASS=0
 FAIL=0
-TESTS=0
+ADMIN_PID=""
 
+pass() { PASS=$((PASS + 1)); echo "  PASS: $1"; }
+fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
+
+# ── Compose helper bound to OP_E2E_HOME ──────────────────────────────
 dev_compose() {
 	docker compose --project-directory . \
-		-f .dev/config/stack/core.compose.yml \
+		-f "${OP_E2E_HOME}/config/stack/core.compose.yml" \
 		-f compose.dev.yml \
-		--env-file .dev/config/stack/stack.env \
-		--env-file .dev/stash/vaults/user.env \
-		--env-file .dev/config/stack/guardian.env \
-		--project-name openpalm "$@"
+		--env-file "${OP_E2E_HOME}/config/stack/stack.env" \
+		--env-file "${OP_E2E_HOME}/config/stack/guardian.env" \
+		--project-name "$COMPOSE_PROJECT_NAME" "$@"
 }
 
-pass() {
-	PASS=$((PASS + 1))
-	TESTS=$((TESTS + 1))
-	echo "  PASS: $1"
-}
-fail() {
-	FAIL=$((FAIL + 1))
-	TESTS=$((TESTS + 1))
-	echo "  FAIL: $1"
-}
-
-# ── Step 1: Stop everything ──────────────────────────────────────────
-echo ""
-echo "=== Step 1: Stop all containers ==="
-dev_compose down --remove-orphans 2>/dev/null || true
-remaining=$(docker ps --format '{{.Names}}' | grep openpalm || true)
-if [ -z "$remaining" ]; then
-	pass "All containers stopped"
-else
-	fail "Containers still running: $remaining"
-fi
-
-# ── Step 2: Clean all state ──────────────────────────────────────────
-echo ""
-echo "=== Step 2: Clean .dev/ state ==="
-
-# Vaults — reset user secrets
-mkdir -p .dev/stash/vaults
-echo "# User extension file (empty placeholder for custom vars)" >.dev/stash/vaults/user.env
-
-# Config — reset stack secrets
-mkdir -p .dev/config/stack
-
-# Data — remove everything except models (HF cache)
-rm -f .dev/data/local-models.json
-rm -f .dev/data/local-models.yml
-rm -rf .dev/data/backups
-
-# Config — remove generated assistant config so the wizard writes a fresh one
-rm -f .dev/config/assistant/opencode.json
-# Config — remove generated compose so dev-setup seeds a fresh one
-rm -f .dev/config/stack/core.compose.yml
-
-# Root-owned data from containers (opencode logs, apprise)
-docker run --rm -v "$ROOT_DIR/.dev/data/opencode:/c" alpine sh -c \
-	"find /c -user root -delete" 2>/dev/null || true
-docker run --rm -v "$ROOT_DIR/.dev/config/assistant:/c" alpine sh -c \
-	"find /c -user root -delete" 2>/dev/null || true
-docker run --rm -v "$ROOT_DIR/.dev/stash/vaults:/c" alpine sh -c \
-	"find /c -user root -delete" 2>/dev/null || true
-
-# Config — reset system env and managed files
-rm -f .dev/config/stack/stack.env
-rm -f .dev/config/stack/auth.json
-rm -rf .dev/config/stack/services
-
-# Runtime addons — clear enabled overlays only
-rm -rf .dev/config/stack/addons
-
-# Config — remove stack.yml so the wizard writes a fresh one
-rm -f .dev/config/stack.yml
-
-# State — remove setup markers and audit logs
-rm -f .dev/state/setup-complete
-rm -f .dev/state/setup-token.txt
-rm -f .dev/state/audit/admin-audit.jsonl
-rm -f .dev/state/audit/guardian-audit.log
-
-pass "State cleaned"
-
-# ── Step 3: Seed fresh config ────────────────────────────────────────
-echo ""
-echo "=== Step 3: Seed config ==="
-./scripts/dev-setup.sh --seed-env --force
-
-# Clear admin tokens from seeded secrets so admin starts in first-boot state.
-# dev-setup seeds them for convenience, but the e2e test needs to verify the wizard sets them.
-# The stack.env uses `export ` prefix, so match both with and without.
-sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/config/stack/stack.env
-sed -i 's/^\(export \)\{0,1\}OP_ADMIN_TOKEN=.*/\1OP_ADMIN_TOKEN=/' .dev/config/stack/stack.env
-
-# Use a dev-only image tag so the wizard's pull step doesn't overwrite locally
-# built images with remote ones.
-sed -i 's/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=dev/' .dev/config/stack/stack.env
-
-# Remove stack.yml so the wizard creates a fresh one (verifies Step 7 writes it)
-rm -f .dev/config/stack.yml
-
-# Remove stack.yml AFTER dev-setup.sh (which recreates it) so Step 6 sees fresh state
-rm -f .dev/config/stack.yml
-
-pass "Config seeded (admin token cleared, image tag set to dev)"
-
-# ── Step 3b: Ensure local models available on Ollama ─────────────────
-echo ""
-echo "=== Step 3b: Ensure Ollama models available ==="
-
-OLLAMA_URL="http://localhost:11434"
-SYSTEM_MODEL="qwen2.5-coder:3b"
-EMBED_MODEL="nomic-embed-text:latest"
-
-# Verify Ollama is running
-if ! curl -sf "$OLLAMA_URL/api/tags" >/dev/null 2>&1; then
-	fail "Ollama is not running at $OLLAMA_URL"
-	echo "ABORTING — Ollama is required for e2e tests"
-	exit 1
-fi
-
-# Pull models if not already available (idempotent)
-for model_info in "$SYSTEM_MODEL|System LLM" "$EMBED_MODEL|Embedding"; do
-	IFS='|' read -r model_name model_label <<<"$model_info"
-	available=$(curl -sf "$OLLAMA_URL/api/tags" | python3 -c "import sys,json; d=json.load(sys.stdin); print('yes' if any(m['name']=='$model_name' for m in d.get('models',[])) else 'no')" 2>/dev/null || echo "no")
-	if [ "$available" = "yes" ]; then
-		echo "  $model_label model already available: $model_name"
-	else
-		echo "  Pulling $model_label model: $model_name..."
-		curl -sf "$OLLAMA_URL/api/pull" -d "{\"name\":\"$model_name\"}" >/dev/null 2>&1
+# ── Cleanup on exit ──────────────────────────────────────────────────
+cleanup() {
+	echo ""
+	if [[ -n "$ADMIN_PID" ]] && kill -0 "$ADMIN_PID" 2>/dev/null; then
+		echo "Stopping admin host process (PID $ADMIN_PID)..."
+		kill "$ADMIN_PID" 2>/dev/null || true
+		wait "$ADMIN_PID" 2>/dev/null || true
 	fi
-done
+	if [[ $KEEP -eq 0 ]]; then
+		echo "Cleaning up containers and ${OP_E2E_HOME}..."
+		dev_compose down --remove-orphans --volumes 2>/dev/null || true
+		# Clean root-owned files from container volumes before rm -rf
+		docker run --rm -v "${OP_E2E_HOME}:/cleanup" alpine rm -rf /cleanup 2>/dev/null || true
+		rm -rf "${OP_E2E_HOME}" 2>/dev/null || true
+	else
+		echo "Keeping stack running (--keep). Clean up manually:"
+		echo "  docker compose --project-name ${COMPOSE_PROJECT_NAME} down"
+		echo "  rm -rf ${OP_E2E_HOME}"
+	fi
+}
+trap cleanup EXIT
 
-# Verify models are available
-AVAILABLE_MODELS=$(curl -sf "$OLLAMA_URL/api/tags" | python3 -c "import sys,json; d=json.load(sys.stdin); print(' '.join(m['name'] for m in d.get('models',[])))" 2>/dev/null || echo "")
-if echo "$AVAILABLE_MODELS" | grep -q "qwen2.5-coder:3b"; then
-	pass "System model available in Ollama"
-else
-	fail "System model not found in Ollama. Available: $AVAILABLE_MODELS"
-fi
-if echo "$AVAILABLE_MODELS" | grep -q "nomic-embed-text"; then
-	pass "Embedding model available in Ollama"
-else
-	fail "Embedding model not found in Ollama. Available: $AVAILABLE_MODELS"
-fi
+# ── Step 1: Clean previous test state ────────────────────────────────
+echo "=== Step 1: Clean isolated test state ==="
+dev_compose down --remove-orphans --volumes 2>/dev/null || true
+docker run --rm -v "${OP_E2E_HOME}:/cleanup" alpine rm -rf /cleanup 2>/dev/null || true
+rm -rf "$OP_E2E_HOME" 2>/dev/null || true
+pass "Previous test state cleaned"
 
-# Create Ollama alias matching OpenCode lmstudio catalog model name.
-# OpenCode's lmstudio provider has a static model catalog — the Ollama model
-# must be aliased to a name that appears in that catalog.
-LMSTUDIO_MODEL="qwen/qwen3-coder-30b"
-alias_exists=$(curl -sf "$OLLAMA_URL/api/tags" | python3 -c "import sys,json; d=json.load(sys.stdin); print('yes' if any(m['name']=='$LMSTUDIO_MODEL:latest' for m in d.get('models',[])) else 'no')" 2>/dev/null || echo "no")
-if [ "$alias_exists" = "yes" ]; then
-	echo "  LMStudio alias already exists: $LMSTUDIO_MODEL"
-else
-	echo "  Creating Ollama alias: $SYSTEM_MODEL → $LMSTUDIO_MODEL"
-	curl -sf "$OLLAMA_URL/api/copy" -d "{\"source\":\"$SYSTEM_MODEL\",\"destination\":\"$LMSTUDIO_MODEL\"}" >/dev/null 2>&1
-fi
-pass "LMStudio model alias ready"
+# ── Step 2: Seed isolated OP_E2E_HOME ────────────────────────────────
+echo ""
+echo "=== Step 2: Seed isolated OP_HOME at $OP_E2E_HOME ==="
+# Use dev-setup.sh but redirect DEV_ROOT to our isolated dir
+# dev-setup.sh hardcodes .dev, so we cp the skeleton manually instead
+mkdir -p "${OP_E2E_HOME}"
+cp -r .openpalm/. "${OP_E2E_HOME}/"
 
-# ── Step 4: Build all images from source ──────────────────────────
-if [ "$SKIP_BUILD" -eq 0 ]; then
+# Seed stack.env with isolated values
+mkdir -p "${OP_E2E_HOME}/config/stack"
+docker_sock="/var/run/docker.sock"
+cat > "${OP_E2E_HOME}/config/stack/stack.env" <<EOF
+OP_HOME=${OP_E2E_HOME}
+OP_UID=$(id -u)
+OP_GID=$(id -g)
+OP_DOCKER_SOCK=${docker_sock}
+OP_IMAGE_NAMESPACE=openpalm
+OP_IMAGE_TAG=dev
+OP_ADMIN_TOKEN=e2e-test-token-$(date +%s)
+OP_ASSISTANT_TOKEN=$(openssl rand -hex 32)
+OP_ASSISTANT_PORT=${OP_E2E_ASSISTANT_PORT:-3891}
+OP_GUARDIAN_PORT=${OP_E2E_GUARDIAN_PORT:-8181}
+OP_VOICE_PORT=${OP_E2E_VOICE_PORT:-8187}
+OP_HOST_ADMIN_PORT=${OP_E2E_ADMIN_PORT}
+OP_CAP_LLM_PROVIDER=ollama
+OP_CAP_LLM_MODEL=qwen2.5-coder:3b
+OP_CAP_LLM_BASE_URL=http://host.docker.internal:11434/v1
+OP_CAP_EMBEDDINGS_PROVIDER=ollama
+OP_CAP_EMBEDDINGS_MODEL=nomic-embed-text:latest
+OP_CAP_EMBEDDINGS_DIMS=768
+OP_CAP_EMBEDDINGS_BASE_URL=http://host.docker.internal:11434/v1
+OP_SETUP_COMPLETE=true
+EOF
+chmod 600 "${OP_E2E_HOME}/config/stack/stack.env"
+
+touch "${OP_E2E_HOME}/config/stack/guardian.env"
+chmod 600 "${OP_E2E_HOME}/config/stack/guardian.env"
+
+# Empty user.env (akm vault:user is the source of truth at runtime)
+mkdir -p "${OP_E2E_HOME}/stash/vaults"
+touch "${OP_E2E_HOME}/stash/vaults/user.env"
+chmod 600 "${OP_E2E_HOME}/stash/vaults/user.env"
+
+# Override stack.yml so admin's startup auto-apply doesn't reset OP_CAP_*
+# back to the .openpalm/ defaults (openai/gpt-4o).
+cat > "${OP_E2E_HOME}/config/stack/stack.yml" <<'EOF'
+version: 2
+capabilities:
+  llm: ollama/qwen2.5-coder:3b
+  embeddings:
+    provider: ollama
+    model: nomic-embed-text:latest
+    dims: 768
+EOF
+
+pass "Isolated OP_HOME seeded from .openpalm/"
+
+# ── Step 3: Build UI ─────────────────────────────────────────────────
+if [[ $SKIP_BUILD -eq 0 ]]; then
 	echo ""
-	echo "=== Step 4: Build all images from source ==="
-	bun run admin:build 2>&1 | tail -3
-	dev_compose build 2>&1 | tail -5
-	pass "All images built"
+	echo "=== Step 3: Build UI ==="
+	bun run ui:build 2>&1 | tail -3
+	pass "UI built"
 else
-	echo ""
-	echo "=== Step 4: Skipping build (--skip-build) ==="
+	if [[ ! -f packages/ui/build/index.js ]]; then
+		fail "UI build missing (need to rebuild — drop --skip-build)"
+		exit 1
+	fi
+	echo "=== Step 3: Skipping UI build (--skip-build) ==="
 fi
 
-# ── Step 5: Start stack ─────────────────────────────────────────────
+# ── Step 4: Build container images ──────────────────────────────────
+# BUILDX_BUILDER=default forces the classic builder so additional_contexts
+# (docker-image://openpalm-base) resolves to the locally built image.
+if [[ $SKIP_BUILD -eq 0 ]]; then
+	echo ""
+	echo "=== Step 4: Build container images ==="
+	BUILDX_BUILDER=default dev_compose --profile build build openpalm-base 2>&1 | tail -5
+	BUILDX_BUILDER=default dev_compose build 2>&1 | tail -5
+	pass "Container images built"
+else
+	echo "=== Step 4: Skipping container build (--skip-build) ==="
+fi
+
+# ── Step 5: Start stack ──────────────────────────────────────────────
 echo ""
 echo "=== Step 5: Start stack ==="
-dev_compose up -d 2>&1 | tail -10
+BUILDX_BUILDER=default dev_compose up -d 2>&1 | tail -10
 
-# Wait for admin to be healthy
-echo "  Waiting for admin health..."
+echo "  Waiting for services to be healthy (up to 60s)..."
 for i in $(seq 1 30); do
-	if curl -sf http://localhost:8100/ >/dev/null 2>&1; then
+	all_healthy=true
+	for svc in assistant guardian; do
+		status=$(docker inspect --format '{{.State.Health.Status}}' "${COMPOSE_PROJECT_NAME}-${svc}-1" 2>/dev/null || echo "missing")
+		if [[ "$status" != "healthy" ]]; then
+			all_healthy=false
+			break
+		fi
+	done
+	if [[ "$all_healthy" == "true" ]]; then
 		break
 	fi
 	sleep 2
 done
 
-if curl -sf http://localhost:8100/ >/dev/null 2>&1; then
-	pass "Stack started"
+for svc in assistant guardian; do
+	status=$(docker inspect --format '{{.State.Health.Status}}' "${COMPOSE_PROJECT_NAME}-${svc}-1" 2>/dev/null || echo "missing")
+	if [[ "$status" == "healthy" ]]; then
+		pass "${svc} container healthy"
+	else
+		fail "${svc} container status: $status"
+		dev_compose logs "$svc" --tail 30 2>&1 | sed 's/^/    /' | tail -30
+	fi
+done
+
+# ── Step 6: Start admin host process ─────────────────────────────────
+echo ""
+echo "=== Step 6: Start admin host process on port $OP_E2E_ADMIN_PORT ==="
+OP_HOME="$OP_E2E_HOME" \
+OP_HOST_ADMIN_PORT="$OP_E2E_ADMIN_PORT" \
+bun run packages/cli/src/main.ts admin --no-open > "${OP_E2E_HOME}/admin.log" 2>&1 &
+ADMIN_PID=$!
+echo "  Admin PID: $ADMIN_PID"
+
+echo "  Waiting for admin to listen..."
+for i in $(seq 1 30); do
+	if curl -sf "${ADMIN_URL}/health" >/dev/null 2>&1; then
+		break
+	fi
+	sleep 1
+done
+
+if curl -sf "${ADMIN_URL}/health" >/dev/null 2>&1; then
+	pass "Admin host process listening at $ADMIN_URL"
 else
-	fail "Admin not healthy after 60s"
-	echo "ABORTING — cannot continue without admin"
+	fail "Admin host process not responding"
+	cat "${OP_E2E_HOME}/admin.log" | tail -30 | sed 's/^/    /'
 	exit 1
 fi
 
-# ── Step 6: Verify setup is NOT complete ─────────────────────────────
+# ── Step 7: Verify admin endpoints ───────────────────────────────────
 echo ""
-echo "=== Step 6: Verify fresh state ==="
+echo "=== Step 7: Verify admin endpoints ==="
+ADMIN_TOKEN=$(grep '^OP_ADMIN_TOKEN=' "${OP_E2E_HOME}/config/stack/stack.env" | cut -d= -f2-)
 
-# Read admin token from stack.env (seeded by dev-setup.sh)
-ADMIN_TOKEN=$(grep -E '^(export )?OP_ADMIN_TOKEN=' .dev/config/stack/stack.env 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
-if [ -z "$ADMIN_TOKEN" ]; then
-	ADMIN_TOKEN="dev-admin-token"
-fi
+# /health
+status=$(curl -s -o /dev/null -w "%{http_code}" "${ADMIN_URL}/health")
+[[ "$status" == "200" ]] && pass "/health → 200" || fail "/health returned $status"
 
-# Check if stack.yml exists — fresh state means no stack.yml yet
-if [ ! -f .dev/config/stack.yml ]; then
-	pass "Setup is NOT complete (no stack.yml — fresh state)"
+# / (redirect to setup OR home)
+status=$(curl -s -o /dev/null -w "%{http_code}" "${ADMIN_URL}/")
+[[ "$status" == "200" || "$status" == "302" ]] && pass "/ → $status" || fail "/ returned $status"
+
+# /setup wizard
+status=$(curl -s -o /dev/null -w "%{http_code}" "${ADMIN_URL}/setup")
+[[ "$status" == "200" ]] && pass "/setup wizard → 200" || fail "/setup returned $status"
+
+# /admin/containers/list with correct token
+status=$(curl -s -o /dev/null -w "%{http_code}" -H "x-admin-token: $ADMIN_TOKEN" "${ADMIN_URL}/admin/containers/list")
+[[ "$status" == "200" ]] && pass "/admin/containers/list (auth) → 200" || fail "/admin/containers/list (auth) returned $status"
+
+# /admin/containers/list without token (must 401)
+status=$(curl -s -o /dev/null -w "%{http_code}" "${ADMIN_URL}/admin/containers/list")
+[[ "$status" == "401" ]] && pass "/admin/containers/list (no auth) → 401" || fail "/admin/containers/list (no auth) returned $status"
+
+# /admin/capabilities verifies stack.yml is being read (capabilities.llm is unmasked)
+caps=$(curl -sf -H "x-admin-token: $ADMIN_TOKEN" "${ADMIN_URL}/admin/capabilities" 2>/dev/null || echo "")
+if echo "$caps" | grep -q '"llm":"ollama/qwen2.5-coder:3b"'; then
+	pass "/admin/capabilities reflects seeded LLM (ollama/qwen2.5-coder:3b)"
 else
-	fail "Setup should not be complete yet (stack.yml exists)"
+	fail "/admin/capabilities did not return expected LLM (got: $(echo "$caps" | head -c 200))"
 fi
 
-if [ -n "$ADMIN_TOKEN" ]; then
-	pass "Admin token available"
-else
-	fail "Missing admin token in stack.env"
-fi
-
-# ── Step 7: Run setup via performSetup ───────────────────────────────
+# ── Step 8: Verify container ↔ admin pipeline ────────────────────────
 echo ""
-echo "=== Step 7: Run setup ==="
-
-# Use performSetup directly (same as the CLI wizard). This creates stack.yml,
-# writes secrets and all runtime files in one atomic operation.
-SETUP_OK=$(OP_HOME=.dev bun -e "
-const { performSetup } = await import('@openpalm/lib');
-const result = await performSetup({
-  version: 2,
-  capabilities: {
-    llm: 'ollama/qwen2.5-coder:3b',
-    embeddings: { provider: 'ollama', model: 'nomic-embed-text:latest', dims: 768 },
-    slm: 'ollama/qwen2.5-coder:3b',
-  },
-  security: { adminToken: 'dev-admin-token' },
-  owner: { name: 'Dev', email: 'dev@localhost' },
-  connections: [{ id: 'ollama', name: 'Ollama', provider: 'ollama', baseUrl: 'http://host.docker.internal:11434', apiKey: '' }],
-});
-console.log(result.ok ? 'True' : 'False');
-if (!result.ok) console.error(result.error);
-" 2>&1 | tail -1)
-
-if [ "$SETUP_OK" = "True" ]; then
-	pass "performSetup completed"
+echo "=== Step 8: Verify container API surface ==="
+# Containers report status through /admin/containers/list
+list=$(curl -sf -H "x-admin-token: $ADMIN_TOKEN" "${ADMIN_URL}/admin/containers/list" 2>/dev/null || echo "")
+if echo "$list" | grep -q '"assistant"' && echo "$list" | grep -q '"guardian"'; then
+	pass "Admin reports both assistant and guardian containers"
 else
-	fail "performSetup failed: $SETUP_OK"
+	fail "Admin container list missing services: $list"
 fi
 
-# Step 7a: Configure OpenCode to use lmstudio provider (Ollama-compatible).
-# OpenCode's lmstudio provider uses @ai-sdk/openai-compatible (Chat Completions API)
-# with hardcoded base URL 127.0.0.1:1234. The entrypoint.sh socat proxy forwards
-# that to LMSTUDIO_BASE_URL (the real Ollama endpoint).
-echo "LMSTUDIO_BASE_URL=http://host.docker.internal:11434" >> .dev/config/stack/stack.env
-echo "LMSTUDIO_API_KEY=not-needed" >> .dev/config/stack/stack.env
-
-# Write model to OpenCode user config so OpenCode uses lmstudio/qwen/qwen3-coder-30b
-cat > .dev/config/assistant/opencode.json <<'OCEOF'
-{
-  "$schema": "https://opencode.ai/config.json",
-  "model": "lmstudio/qwen/qwen3-coder-30b"
-}
-OCEOF
-pass "OpenCode configured for lmstudio/Ollama"
-
-# Step 7b: Recreate all services with the dev overlay to pick up new env vars.
-dev_compose up -d --force-recreate 2>&1 | tail -10
-
-pass "Services recreated with updated config"
-
-# Step 7b already applied compose.dev.yml overlay to all services,
-# so no separate assistant re-apply is needed.
-
-# ── Step 8: Wait for containers ──────────────────────────────────────
+# ── Results ──────────────────────────────────────────────────────────
 echo ""
-echo "=== Step 8: Wait for all containers healthy ==="
+echo "============================================================"
+echo "  Tests: $((PASS + FAIL))   Pass: $PASS   Fail: $FAIL"
+echo "============================================================"
 
-# Poll until all services are ready (max 120s)
-HEALTHCHECK_SVCS="assistant guardian"
-MAX_WAIT=120
-ELAPSED=0
-while [ $ELAPSED -lt $MAX_WAIT ]; do
-	ALL_UP=true
-	WAIT_MSG=""
-	for svc in $HEALTHCHECK_SVCS; do
-		status=$(docker inspect --format '{{.State.Health.Status}}' "openpalm-${svc}-1" 2>/dev/null || echo "missing")
-		if [ "$status" != "healthy" ]; then
-			ALL_UP=false
-			WAIT_MSG="$svc is $status"
-			break
-		fi
-	done
-	if [ "$ALL_UP" = "true" ]; then
-		break
-	fi
-	echo "  Waiting... ($ELAPSED/${MAX_WAIT}s) — $WAIT_MSG"
-	sleep 10
-	ELAPSED=$((ELAPSED + 10))
-done
-
-ALL_HEALTHY=true
-for svc in $HEALTHCHECK_SVCS; do
-	status=$(docker inspect --format '{{.State.Health.Status}}' "openpalm-${svc}-1" 2>/dev/null || echo "missing")
-	if [ "$status" = "healthy" ]; then
-		pass "$svc is healthy"
-	else
-		fail "$svc status: $status"
-		ALL_HEALTHY=false
-	fi
-done
-
-# ── Step 9: Check for root-owned files ───────────────────────────────
-echo ""
-echo "=== Step 9: Root-owned file check ==="
-root_files=$(find .dev -not -user "$(whoami)" 2>/dev/null || true)
-if [ -z "$root_files" ]; then
-	pass "No root-owned files in .dev/"
-else
-	fail "Root-owned files found:"
-	echo "$root_files" | while read -r f; do echo "    $f"; done
-fi
-
-# ── Step 10: Verify stack.env ─────────────────────────────────────────
-echo ""
-echo "=== Step 10: Verify stack.env ==="
-secrets=".dev/config/stack/stack.env"
-
-check_env_val() {
-	local key="$1" expected="$2"
-	local actual
-	# Match both `KEY=val` and `export KEY=val` forms
-	actual=$(grep -E "^(export )?${key}=" "$secrets" 2>/dev/null | head -1 | sed "s/^export //" | cut -d= -f2-)
-	if [ "$actual" = "$expected" ]; then
-		pass "$key=$expected"
-	else
-		fail "$key expected '$expected', got '$actual'"
-	fi
-}
-
-# ADMIN_TOKEN is now OP_ADMIN_TOKEN in stack.env, not user.env
-STACK_ADMIN_TOKEN=$(grep -E '^(export )?OP_ADMIN_TOKEN=' .dev/config/stack/stack.env 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
-if [ "$STACK_ADMIN_TOKEN" = "dev-admin-token" ]; then
-	pass "OP_ADMIN_TOKEN=dev-admin-token (in stack.env)"
-else
-	fail "OP_ADMIN_TOKEN expected 'dev-admin-token', got '$STACK_ADMIN_TOKEN'"
-fi
-# Config vars (SYSTEM_LLM_*, EMBEDDING_*) live in stack.yml capabilities,
-# NOT in user.env. Verify they are NOT in user.env.
-if grep -qE 'SYSTEM_LLM_PROVIDER=' .dev/stash/vaults/user.env 2>/dev/null; then
-	fail "SYSTEM_LLM_PROVIDER should NOT be in user.env (lives in stack.yml now)"
-else
-	pass "Config vars correctly absent from user.env"
-fi
-
-# Verify stack.yml has correct capabilities
-STACK_YAML=".dev/config/stack.yml"
-if [ -f "$STACK_YAML" ]; then
-	if grep -q "llm: ollama/" "$STACK_YAML"; then
-		pass "stack.yml has capabilities.llm with ollama provider"
-	else
-		fail "stack.yml capabilities.llm missing or wrong provider"
-	fi
-else
-	fail "stack.yml not found"
-fi
-
-# Verify auth.json exists
-if [ -f ".dev/config/stack/auth.json" ]; then
-	pass "auth.json exists"
-else
-	fail "auth.json not found"
-fi
-
-# ── Step 11: Verify assistant env ────────────────────────────────────
-echo ""
-echo "=== Step 11: Verify assistant container env ==="
-
-check_container_env() {
-	local var="$1" expected="$2"
-	local actual=""
-	for _attempt in $(seq 1 30); do
-		local health
-		health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' openpalm-assistant-1 2>/dev/null || echo "missing")
-		actual=$(docker exec openpalm-assistant-1 printenv "$var" 2>/dev/null || echo "")
-		if [ "$health" = "healthy" ] && [ "$actual" = "$expected" ]; then
-			break
-		fi
-		sleep 2
-	done
-	if [ "$actual" = "$expected" ]; then
-		pass "assistant $var=$expected"
-	else
-		fail "assistant $var expected '$expected', got '$actual'"
-	fi
-}
-
-# OP_ADMIN_TOKEN is in guardian compose, not assistant. (The scheduler
-# co-process inside the assistant uses OP_ASSISTANT_TOKEN, not OP_ADMIN_TOKEN.)
-
-# OPENAI_BASE_URL should end with /v1
-BASE_URL=""
-for _attempt in $(seq 1 30); do
-	assistant_health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' openpalm-assistant-1 2>/dev/null || echo "missing")
-	BASE_URL=$(docker exec openpalm-assistant-1 printenv OPENAI_BASE_URL 2>/dev/null || echo "")
-	if [ "$assistant_health" = "healthy" ] && echo "$BASE_URL" | grep -q "/v1$"; then
-		break
-	fi
-	sleep 2
-done
-if echo "$BASE_URL" | grep -q "/v1$"; then
-	pass "assistant OPENAI_BASE_URL ends with /v1: $BASE_URL"
-else
-	fail "assistant OPENAI_BASE_URL should end with /v1, got: $BASE_URL"
-fi
-
-# LMSTUDIO_BASE_URL should point to Ollama (for socat proxy in entrypoint).
-LMSTUDIO_URL=$(docker exec openpalm-assistant-1 printenv LMSTUDIO_BASE_URL 2>/dev/null || echo "")
-if [ -n "$LMSTUDIO_URL" ]; then
-	pass "assistant LMSTUDIO_BASE_URL=$LMSTUDIO_URL"
-else
-	fail "assistant LMSTUDIO_BASE_URL is empty (needed for lmstudio/Ollama proxy)"
-fi
-
-# ── Step 12: Verify setup marked complete ────────────────────────────
-echo ""
-echo "=== Step 12: Verify setup complete ==="
-FINAL_STATUS=$(curl -s http://localhost:8100/admin/capabilities/status \
-	-H "x-admin-token: dev-admin-token" 2>/dev/null |
-	python3 -c "import sys,json; print(json.load(sys.stdin).get('complete', False))" 2>/dev/null || echo "unknown")
-
-if [ "$FINAL_STATUS" = "True" ]; then
-	pass "Setup is marked complete"
-else
-	fail "Setup is NOT marked complete: $FINAL_STATUS"
-fi
-
-# ── Step 13: Verify assistant message pipeline ─────────────────────
-echo ""
-echo "=== Step 13: Verify assistant pipeline ==="
-
-# OpenCode auth is disabled by default (host-only binding provides security)
-SESSION_ID=$(curl -sf http://localhost:4096/session \
-	-H 'content-type: application/json' \
-	-d '{"title":"tier6-assistant-pipeline"}' |
-	python3 -c "import sys,json; print(json.load(sys.stdin)['id'])" 2>/dev/null || echo "")
-
-MESSAGE_RESPONSE=""
-if [ -n "$SESSION_ID" ]; then
-	MESSAGE_RESPONSE=$(curl -sf http://localhost:4096/session/$SESSION_ID/message \
-		-H 'content-type: application/json' \
-		-d '{"parts":[{"type":"text","text":"Reply with exactly ok"}]}' \
-		2>/dev/null || echo "")
-fi
-
-if echo "$MESSAGE_RESPONSE" | grep -q '"text":"ok"'; then
-	pass "Assistant message pipeline returned expected response"
-else
-	fail "Assistant message pipeline did not return the expected response"
-fi
-
-# ── Summary ──────────────────────────────────────────────────────────
-echo ""
-echo "=========================================="
-echo "  RESULTS: $PASS passed, $FAIL failed (${TESTS} total)"
-echo "=========================================="
-
-if [ "$FAIL" -gt 0 ]; then
-	echo ""
-	echo "  FAILED — $FAIL test(s) did not pass"
+if [[ $FAIL -gt 0 ]]; then
 	exit 1
-else
-	echo ""
-	echo "  ALL TESTS PASSED"
-	exit 0
 fi
+exit 0

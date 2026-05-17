@@ -45,7 +45,7 @@ dev_compose() {
 		--env-file .dev/config/stack/stack.env \
 		--env-file .dev/stash/vaults/user.env \
 		--env-file .dev/config/stack/guardian.env \
-		--project-name openpalm "$@"
+		--project-name "${COMPOSE_PROJECT_NAME:-openpalm}" "$@"
 }
 
 ensure_dev_setup() {
@@ -84,7 +84,7 @@ rebuild_stack() {
 		local all_healthy=true
 		for svc in assistant guardian; do
 			local status
-			status=$(docker inspect --format '{{.State.Health.Status}}' "openpalm-${svc}-1" 2>/dev/null || echo "missing")
+			status=$(docker inspect --format '{{.State.Health.Status}}' "${COMPOSE_PROJECT_NAME:-openpalm}-${svc}-1" 2>/dev/null || echo "missing")
 			if [[ "$status" != "healthy" ]]; then
 				all_healthy=false
 				break

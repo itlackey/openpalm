@@ -26,9 +26,10 @@ maybe_adjust_uid_gid() {
 }
 
 ensure_home_layout() {
-  # Create directories that may not exist on first run. Bind-mounted paths
-  # (/home/opencode, /work) already have correct host ownership from the
-  # init service — no recursive chown needed.
+  # Create directories that may not exist on first run inside bind-mounted
+  # /home/opencode (which shadows whatever was baked into the Dockerfile).
+  # Pre-v0.11.0 the init service chowned these; that service was removed,
+  # so we chown here when running as root before gosu drops privileges.
   mkdir -p \
     /home/opencode \
     /home/opencode/.cache \
@@ -38,10 +39,22 @@ ensure_home_layout() {
     /home/opencode/.local/share/opencode \
     /work
 
-  # Root-owned directories — only create when running as root.
-  # These are also created in the Dockerfile, so they exist in fresh images;
-  # this handles the case where volumes shadow the image layers.
   if [ "$(id -u)" = "0" ]; then
+    # New dirs created above are root-owned; chown so the opencode user
+    # (mapped to TARGET_UID/GID) can write into .cache and .config at runtime.
+    chown "$TARGET_UID:$TARGET_GID" \
+      /home/opencode \
+      /home/opencode/.cache \
+      /home/opencode/.config \
+      /home/opencode/.config/opencode \
+      /home/opencode/.local \
+      /home/opencode/.local/bin \
+      /home/opencode/.local/state \
+      /home/opencode/.local/state/opencode \
+      /home/opencode/.local/share \
+      /home/opencode/.local/share/opencode \
+      2>/dev/null || true
+
     mkdir -p /etc/opencode /var/run/sshd
   fi
 }
