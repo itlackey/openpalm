@@ -74,7 +74,7 @@ unauthorized.
 The assistant uses baked-in core config inside the image at `/etc/opencode`,
 mounts user extensions from `~/.openpalm/config/assistant/` into
 `/home/opencode/.config/opencode`, mounts `~/.openpalm/config/stack/auth.json`
-for OpenCode auth state, and mounts `~/.openpalm/vault/user/` at `/etc/vault/`
+for OpenCode auth state, and mounts user-managed vault files from `~/.openpalm/stash/vaults/` at `/etc/vault/`
 for optional user extension files. Provider keys are injected from
 `~/.openpalm/config/stack/stack.env` via compose `${VAR}` substitution. Its durable home is
 `~/.openpalm/data/assistant/`, and its shared workspace is
@@ -180,12 +180,12 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
 ~/.openpalm/config/stack/addons/chat/compose.yml  -> addon overlay
 ~/.openpalm/registry/addons/chat/.env.schema -> addon config contract
 ~/.openpalm/config/stack/stack.env          -> passed via --env-file
-~/.openpalm/vault/user/user.env            -> recommended addon/operator overrides
+~/.openpalm/stash/vaults/user.env            -> user-managed secrets (akm vault:user)
 ```
 
 Docker reads compose files and env files directly from their final locations.
 There is no intermediate staging step. The standard wrapper includes
-`config/stack/stack.env`, `vault/user/user.env`, and `config/stack/guardian.env`.
+`config/stack/stack.env` and `config/stack/guardian.env`.
 
 ---
 

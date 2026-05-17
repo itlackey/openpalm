@@ -260,12 +260,13 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
     fail "Asset missing or empty: $CONFIG_HOME/stack/core.compose.yml"
   fi
 
-  # Verify vault/user/user.env was seeded
-  VAULT_HOME="${OP_HOME}/vault"
-  if [ -f "$VAULT_HOME/user/user.env" ]; then
-    pass "vault/user/user.env created"
+  # Verify stash/vaults/user.env was seeded
+  CONFIG_HOME="${OP_HOME}/config"
+STASH_HOME="${OP_HOME}/stash"
+  if [ -f "$STASH_HOME/vaults/user.env" ]; then
+    pass "stash/vaults/user.env created"
   else
-    fail "vault/user/user.env not created"
+    fail "stash/vaults/user.env not created"
   fi
 else
   step "Skipping install (--skip-install)"
@@ -532,13 +533,12 @@ else
   fail "Setup is NOT marked complete: $FINAL_COMPLETE"
 fi
 
-# ── Step 9: Verify vault/user/user.env has expected values ─────────────────
+# ── Step 9: Verify stack.env has expected values ─────────────────
 
 if [ "$SKIP_INSTALL" -eq 0 ]; then
-  step "Verify vault/user/user.env"
+  step "Verify stack.env"
 
-  VAULT_HOME="${VAULT_HOME:-${OP_HOME}/vault}"
-  stack_env="$VAULT_HOME/stack/stack.env"
+  stack_env="$CONFIG_HOME/stack/stack.env"
 
   check_stack_env_val() {
     local key="$1" expected="$2"
@@ -562,7 +562,7 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
     fi
   }
 
-  # Admin token lives in vault/stack/stack.env as OP_ADMIN_TOKEN.
+  # Admin token lives in config/stack/stack.env as OP_ADMIN_TOKEN.
   check_stack_env_val "OP_ADMIN_TOKEN" "$ADMIN_TOKEN"
   # LLM provider/model are resolved into OP_CAP_LLM_* capability vars in stack.env
   # by the control plane (see docs/technical/capability-injection.md).

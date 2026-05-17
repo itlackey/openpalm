@@ -25,9 +25,9 @@ Updates platform package versions without touching independently versioned npm p
 
 Creates a local `.dev/` OpenPalm home for development.
 
-- Seeds `.dev/vault/user/user.env` and `.dev/config/stack/stack.env` when `--seed-env` is used
+- Seeds `.dev/stash/vaults/user.env` and `.dev/config/stack/stack.env` when `--seed-env` is used
 - Copies the repo registry catalog into `.dev/registry/`
-- Copies `.dev/registry/addons/<name>/` into `.dev/stack/addons/<name>/` when `--enable-addon <name>` is used
+- Copies `.dev/registry/addons/<name>/` into `.dev/config/stack/addons/<name>/` when `--enable-addon <name>` is used
 - Seeds a local OpenCode config and memory `default_config.json`
 - Can initialize the optional `pass` backend
 
@@ -42,7 +42,7 @@ Examples:
 Notes:
 
 - This is a dev-only compatibility layout, not the recommended user-facing manual setup flow
-- `stack.yml` in `.dev/config/stack.yml` is capability metadata only; enabled addons still live in `.dev/stack/addons/`
+- `stack.yml` in `.dev/config/stack/stack.yml` is capability metadata only; enabled addons still live in `.dev/config/stack/addons/`
 
 ## Test and misc helpers
 

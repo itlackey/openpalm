@@ -11,6 +11,8 @@ import {
   buildManagedServices,
   composeUp,
   createLogger,
+  isSetupComplete,
+  resolveStackDir,
 } from "@openpalm/lib";
 import type { ControlPlaneState } from "@openpalm/lib";
 
@@ -37,6 +39,10 @@ let _state: DeployState = {
 };
 
 export function getDeployState(): DeployState {
+  // Reconcile after a server restart: if setup is complete on disk, reflect that.
+  if (!_state.setupComplete && !_state.deploying && isSetupComplete(resolveStackDir())) {
+    _state.setupComplete = true;
+  }
   return { ..._state, deployStatus: [..._state.deployStatus] };
 }
 

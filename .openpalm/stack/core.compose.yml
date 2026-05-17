@@ -18,7 +18,7 @@
 #   ~/.openpalm/state/     — persistent service data (assistant, admin, guardian, logs, registry)
 #   ~/.openpalm/stash/     — akm knowledge (skills, vaults, agents) — vault:user lives here
 #   ~/.openpalm/workspace/ — shared work area
-#   ~/.openpalm/stack/     — compose runtime (addon overlays)
+#   ~/.openpalm/config/stack/ — compose runtime (addon overlays, stack config)
 
 services:
   # ── Assistant (opencode runtime — NO docker socket) ────────────────
@@ -80,7 +80,7 @@ services:
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       # Capability resolution (used by entrypoint.sh to drop unused provider keys).
       OP_CAP_LLM_PROVIDER: ${OP_CAP_LLM_PROVIDER:-}
-      # Google Cloud credentials (file lives in vault/user, mounted at /etc/vault).
+      # Google Cloud credentials (files live in stash/vaults/, mounted at /etc/vault).
       # NOTE: the /etc/vault mount no longer carries `user.env` (Phase 2 of #388
       # routed that through akm `vault:user`). The mount remains because gws and
       # gcloud rely on it for their auth directories below.

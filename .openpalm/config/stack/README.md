@@ -10,8 +10,7 @@ plus whichever addon compose files you include from `addons/`.
 cd ~/.openpalm/config/stack
 docker compose \
   --project-name openpalm \
-  --env-file ../stack.env \
-  --env-file ../../vault/user/user.env \
+  --env-file stack.env \
   --env-file guardian.env \
   -f core.compose.yml \
   up -d
@@ -19,8 +18,7 @@ docker compose \
 # Add addons by adding more -f files
 docker compose \
   --project-name openpalm \
-  --env-file ../stack.env \
-  --env-file ../../vault/user/user.env \
+  --env-file stack.env \
   --env-file guardian.env \
   -f core.compose.yml \
   -f addons/chat/compose.yml \
@@ -41,7 +39,7 @@ status, logs, and all other operations.
 ## Addons
 
 Each addon is a compose overlay in `addons/<name>/compose.yml`. Compose file
-selection is the deployment model. `../stack.yml` is optional tooling
+selection is the deployment model. `./stack.yml` is optional tooling
 metadata that can help choose addons, but it does not replace these files.
 
 Repo addon sources live under `.openpalm/registry/addons/`. At runtime,

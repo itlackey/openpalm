@@ -1,7 +1,7 @@
 # OpenPalm Admin API Spec (Current Implementation)
 
 This document describes the Admin API routes currently implemented in
-`packages/admin/src/routes/**/+server.ts`.
+`packages/ui/src/routes/**/+server.ts`.
 
 ## Conventions
 
@@ -346,7 +346,7 @@ Response:
   "enabled": true,
   "config": {
     "schemaPath": "registry/addons/chat/.env.schema",
-    "userEnvPath": "vault/user/user.env",
+    "userEnvPath": "stash/vaults/user.env",
     "envSchema": "# ..."
   }
 }
@@ -740,7 +740,7 @@ Error responses:
 ### `GET /admin/config/validate`
 
 Run the in-house key-presence check against the live vault env files
-(`config/stack/stack.env`, `config/stack/guardian.env`, `vault/user/user.env`).
+(`config/stack/stack.env`, `config/stack/guardian.env`).
 The validator confirms that the canonical secret slots are present and that
 every required token is non-empty — no varlock binary, no schema file. Always
 returns 200; validation failures are non-fatal and are logged to the audit
@@ -1120,6 +1120,215 @@ Response:
 Error responses:
 
 - `404 not_found` -- Provider not found.
+
+## Setup Wizard API
+
+These endpoints are used exclusively by the setup wizard (`/setup`). They are
+public (no admin token required) because setup runs before any admin token is
+configured. The wizard is served at `http://localhost:<OP_HOST_ADMIN_PORT>/setup`
+(default port `3880`) by `openpalm admin serve`, which is spawned automatically
+by `openpalm install`.
+
+### `GET /api/setup/status`
+
+Returns whether first-time setup has been completed.
+
+Auth: None (public)
+
+Response:
+
+```json
+{ "ok": true, "setupComplete": false }
+```
+
+### `GET /api/setup/detect-providers`
+
+Detects locally running model providers (Ollama, LM Studio, Docker Model Runner,
+etc.) by probing well-known ports.
+
+Auth: None (public)
+
+Response:
+
+```json
+{
+  "ok": true,
+  "providers": [{ "id": "ollama", "name": "Ollama", "baseUrl": "http://localhost:11434", "verified": true }]
+}
+```
+
+Error responses:
+
+- `500 detection_failed` -- Detection threw an unexpected error.
+
+### `POST /api/setup/models/:provider`
+
+Fetches available models for a provider given optional API credentials.
+
+Auth: None (public)
+
+Body:
+
+```json
+{ "apiKey": "sk-...", "baseUrl": "https://..." }
+```
+
+Response:
+
+```json
+{ "ok": true, "models": [{ "id": "gpt-4o", "name": "GPT-4o" }] }
+```
+
+Error responses:
+
+- `400 invalid_json` -- Body is not valid JSON.
+- `502` -- Provider returned an error or timed out.
+
+### `POST /api/setup/complete`
+
+Runs first-time setup from a `SetupSpec` payload, writes managed config files,
+sets the session cookie, and kicks off a background Docker deploy.
+
+Auth: None (public — runs before admin token exists)
+
+Body: A `SetupSpec` v2 object (see `packages/lib/src/control-plane/types.ts`).
+
+Response:
+
+```json
+{ "ok": true, "dockerAvailable": true }
+```
+
+Sets `op_session` cookie on success. The cookie value is the new admin token so
+the browser is immediately authenticated for subsequent admin requests.
+
+Error responses:
+
+- `400 invalid_json` -- Body is not valid JSON.
+- `400` -- `performSetup` validation failure (missing required fields, etc.).
+- `500 setup_failed` -- Unexpected error during setup.
+
+### `GET /api/setup/deploy-status`
+
+Polls the in-progress Docker deploy started by `/api/setup/complete`.
+
+Auth: None (public)
+
+Response:
+
+```json
+{
+  "ok": true,
+  "setupComplete": true,
+  "deploying": false,
+  "deployStatus": [{ "service": "assistant", "status": "running", "label": "Running" }],
+  "deployError": null
+}
+```
+
+### `GET /api/setup/opencode/status`
+
+Checks whether the OpenCode binary is available on the host (used to decide
+whether to show the full OpenCode provider list or the built-in fallback).
+
+Auth: None (public)
+
+Response:
+
+```json
+{ "ok": true, "available": true }
+```
+
+### `GET /api/setup/opencode/providers`
+
+Returns the full OpenCode provider catalog and per-provider auth methods when
+the OpenCode binary is available. Falls back to `{ available: false, providers: [] }`
+when OpenCode is not running.
+
+Auth: None (public)
+
+Response:
+
+```json
+{
+  "ok": true,
+  "available": true,
+  "providers": [{ "id": "anthropic", "name": "Anthropic", ... }],
+  "auth": { "anthropic": [{ "type": "api_key" }] }
+}
+```
+
+### `PUT /api/setup/opencode/auth/:provider`
+
+Sets an API key for a provider in the running OpenCode instance.
+
+Auth: None (public — during setup flow)
+
+Body:
+
+```json
+{ "type": "api_key", "key": "sk-..." }
+```
+
+Response:
+
+```json
+{ "ok": true, "type": "api_key" }
+```
+
+Error responses:
+
+- `400` -- Invalid key or unsupported provider.
+- `503` -- OpenCode is not available.
+
+### `POST /api/setup/opencode/provider/:provider/oauth/authorize`
+
+Initiates OAuth for a provider through the OpenCode OAuth flow.
+
+Auth: None (public)
+
+Body:
+
+```json
+{ "method": 0 }
+```
+
+Response:
+
+```json
+{ "ok": true, "url": "https://...", "method": "browser", "instructions": "..." }
+```
+
+Error responses:
+
+- `400` -- Invalid method or provider.
+- `503` -- OpenCode is not available.
+
+### `POST /api/setup/opencode/provider/:provider/oauth/callback`
+
+Completes an OAuth flow by submitting the authorization code returned by the
+provider.
+
+Auth: None (public)
+
+Body:
+
+```json
+{ "method": 0, "code": "auth-code-from-provider" }
+```
+
+Response:
+
+```json
+{ "ok": true, "complete": true }
+```
+
+Error responses:
+
+- `400` -- Invalid code or method.
+- `503` -- OpenCode is not available.
+
+---
 
 ## Logs
 
