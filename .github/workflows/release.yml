@@ -151,82 +151,22 @@ jobs:
           git tag -a "${TAG}" -m "Release ${TAG}"
           git push origin "${TAG}"
 
-  build-base-image:
-    name: Build shared base image
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    needs: prepare-tag
-    outputs:
-      base-ref: ${{ steps.publish.outputs.ref }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare-tag.outputs.tag }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Resolve base image ref
-        id: publish
-        env:
-          REPO_OWNER: ${{ github.repository_owner }}
-          SHA: ${{ github.sha }}
-        run: |
-          # Lowercase the owner — GHCR rejects mixed-case path components.
-          OWNER_LC="$(echo "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')"
-          REF="ghcr.io/${OWNER_LC}/openpalm-base:sha-${SHA}"
-          echo "ref=${REF}" >> "$GITHUB_OUTPUT"
-          echo "Base image will be published to ${REF}"
-
-      - name: Build and push base image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: core/base/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.publish.outputs.ref }}
-          cache-from: type=gha,scope=openpalm-base
-          cache-to: type=gha,scope=openpalm-base,mode=max
-
   push-images:
     name: Build and push Docker images
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs:
       - prepare-tag
-      - build-base-image
     strategy:
       fail-fast: true
       matrix:
         include:
           - dockerfile: core/guardian/Dockerfile
             image: openpalm/guardian
-            needs_base: false
           - dockerfile: core/channel/Dockerfile
             image: openpalm/channel
-            needs_base: false
           - dockerfile: core/assistant/Dockerfile
             image: openpalm/assistant
-            needs_base: true
-          - dockerfile: core/memory/Dockerfile
-            image: openpalm/memory
-            needs_base: false
-          - dockerfile: core/scheduler/Dockerfile
-            image: openpalm/scheduler
-            needs_base: false
 
     steps:
       - name: Checkout
@@ -239,14 +179,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR (for shared base image)
-        if: matrix.needs_base
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -273,11 +205,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Resolve `FROM openpalm-base` against the GHCR-published base. The
-          # docker-container buildx driver cannot read images from the local
-          # daemon, so the base must be reachable via a registry. Empty for
-          # images that don't depend on the base (guardian, channel, etc.).
-          build-contexts: ${{ matrix.needs_base && format('openpalm-base=docker-image://{0}', needs.build-base-image.outputs.base-ref) || '' }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=max
 

@@ -560,8 +560,8 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
     fi
   }
 
-  # Admin token lives in config/stack/stack.env as OP_ADMIN_TOKEN.
-  check_stack_env_val "OP_ADMIN_TOKEN" "$ADMIN_TOKEN"
+  # Admin token lives in config/stack/stack.env as OP_UI_TOKEN.
+  check_stack_env_val "OP_UI_TOKEN" "$ADMIN_TOKEN"
   # LLM provider/model are resolved into OP_CAP_LLM_* capability vars in stack.env
   # by the control plane (see docs/technical/capability-injection.md).
   check_stack_env_key "OP_CAP_LLM_PROVIDER"
@@ -613,7 +613,7 @@ check_container_env() {
   fi
 }
 
-check_container_env "openpalm-assistant-1" "OP_ADMIN_TOKEN" "equals" "$ADMIN_TOKEN"
+check_container_env "openpalm-assistant-1" "OP_UI_TOKEN" "equals" "$ADMIN_TOKEN"
 check_container_env "openpalm-assistant-1" "OPENAI_BASE_URL" "endswith" "/v1"
 
 # ── Step 12: Test chat channel (if installed) ─────────────────────────

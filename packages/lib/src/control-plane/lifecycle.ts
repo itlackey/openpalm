@@ -53,7 +53,7 @@ export function createState(
 
   const setupToken = randomHex(16);
   const bootstrapState: ControlPlaneState = {
-    adminToken: adminToken ?? process.env.OP_ADMIN_TOKEN ?? "",
+    adminToken: adminToken ?? process.env.OP_UI_TOKEN ?? "",
     assistantToken: "",
     setupToken,
     homeDir,
@@ -75,8 +75,8 @@ export function createState(
   // Precedence: explicit parameter > stack.env > process.env.
   bootstrapState.adminToken =
     adminToken
-      ?? stackEnv.OP_ADMIN_TOKEN
-      ?? process.env.OP_ADMIN_TOKEN
+      ?? stackEnv.OP_UI_TOKEN
+      ?? process.env.OP_UI_TOKEN
       ?? "";
   bootstrapState.assistantToken =
     stackEnv.OP_ASSISTANT_TOKEN

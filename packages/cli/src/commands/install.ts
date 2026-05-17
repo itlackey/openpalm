@@ -194,22 +194,23 @@ async function prepareInstallFiles(
 }
 
 /**
- * Launch the admin UI to handle first-time setup.
+ * Launch the UI host server to handle first-time setup.
  *
- * The SvelteKit admin detects that setup is not complete (via hooks.server.ts)
+ * The SvelteKit UI detects that setup is not complete (via hooks.server.ts)
  * and redirects to /setup where the wizard runs. Deploy is triggered from
- * within the admin process after the user completes the wizard.
+ * within the UI process after the user completes the wizard.
  */
 async function runWizardInstall(noOpen: boolean): Promise<void> {
-  const port = Number(process.env.OP_HOST_ADMIN_PORT) || 3880;
+  const port = Number(process.env.OP_HOST_UI_PORT) || 3880;
   const wizardUrl = `http://localhost:${port}/setup`;
   console.log(`Setup wizard: ${wizardUrl}`);
 
-  // Re-invoke this binary with `admin` so the admin process runs with
-  // the same environment. The SvelteKit hooks redirect / to /setup on first run.
+  // Re-invoke this binary with no subcommand — the bare command starts
+  // the UI host server (foreground). SvelteKit hooks redirect / to /setup
+  // on first run.
   const argv = process.argv;
   const bin = argv[0] === 'bun' ? [...argv.slice(0, 2)] : [argv[1]];
-  const args = [...bin, 'admin'];
+  const args = [...bin];
   if (noOpen) args.push('--no-open');
 
   const proc = Bun.spawn(args, { stdout: 'inherit', stderr: 'inherit' });
@@ -246,8 +247,8 @@ async function runFileInstall(filePath: string, noStart: boolean): Promise<void>
 
   // Resolve security.adminToken from environment when not in spec
   const security = (config.security ?? {}) as Record<string, unknown>;
-  if (!security.adminToken && process.env.OP_ADMIN_TOKEN) {
-    security.adminToken = process.env.OP_ADMIN_TOKEN;
+  if (!security.adminToken && process.env.OP_UI_TOKEN) {
+    security.adminToken = process.env.OP_UI_TOKEN;
     config.security = security;
   }
 

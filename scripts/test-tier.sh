@@ -63,6 +63,47 @@ ensure_ui_build() {
 	fi
 }
 
+# ── UI host process lifecycle (v0.11.0: UI runs on the host, not in a container) ────
+UI_PID_FILE="${ROOT_DIR}/.dev/admin.pid"
+UI_LOG_FILE="${ROOT_DIR}/.dev/admin.log"
+UI_PORT="${OP_HOST_UI_PORT:-3880}"
+
+start_ui_host() {
+	# Idempotent: kill any stale admin first
+	stop_ui_host
+	echo "Starting UI host process on port ${UI_PORT}..."
+	OP_HOME="${ROOT_DIR}/.dev" \
+	OP_HOST_UI_PORT="${UI_PORT}" \
+		bun run packages/cli/src/main.ts --no-open >"${UI_LOG_FILE}" 2>&1 &
+	echo $! >"${UI_PID_FILE}"
+	# Wait for /health
+	for i in $(seq 1 30); do
+		if curl -sf "http://127.0.0.1:${UI_PORT}/health" >/dev/null 2>&1; then
+			echo "UI host process ready at http://127.0.0.1:${UI_PORT}"
+			return 0
+		fi
+		sleep 1
+	done
+	echo "ERROR: UI host process did not become ready within 30s" >&2
+	tail -30 "${UI_LOG_FILE}" >&2
+	return 1
+}
+
+stop_ui_host() {
+	if [[ -f "${UI_PID_FILE}" ]]; then
+		local pid
+		pid=$(cat "${UI_PID_FILE}" 2>/dev/null || echo "")
+		if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+			echo "Stopping UI host process (PID $pid)..."
+			kill "$pid" 2>/dev/null || true
+			wait "$pid" 2>/dev/null || true
+		fi
+		rm -f "${UI_PID_FILE}"
+	fi
+}
+
+trap stop_ui_host EXIT
+
 rebuild_stack() {
 	# Always rebuild and recreate containers from source to ensure
 	# compose config changes (env_file paths, mounts, env vars) are
@@ -123,11 +164,13 @@ case "$TIER" in
 5)
 	echo "=== Tier 5: Integration E2E (stack-dependent) ==="
 	rebuild_stack
+	start_ui_host
 	bun run ui:test:stack
 	;;
 6)
 	echo "=== Tier 6: Full stack E2E incl. LLM pipeline ==="
 	rebuild_stack
+	start_ui_host
 	bun run ui:test:llm
 	;;
 *)

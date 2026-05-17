@@ -8,43 +8,57 @@ import { resolveConfigDir } from '@openpalm/lib';
 export { detectHostInfo } from './lib/host-info.ts';
 export type { HostInfo } from './lib/host-info.ts';
 
-const ADMIN_URL = `http://localhost:${process.env.OP_HOST_ADMIN_PORT ?? 3880}`;
+const SUBCOMMAND_NAMES = new Set([
+  'install', 'uninstall', 'update', 'self-update', 'addon',
+  'start', 'stop', 'restart', 'logs', 'status', 'service',
+  'validate', 'scan', 'rollback', 'automations',
+  '--help', '-h', 'help',
+]);
+
+interface BareRunOpts {
+  port?: number;
+  open?: boolean;
+}
 
 /**
- * Smart default: running `openpalm` with no subcommand detects state and
- * does the right thing automatically.
+ * Smart default: `openpalm` (no subcommand) detects state and does the
+ * right thing automatically.
  *
- *  - Not installed → runs install flow (seeds OP_HOME, spawns setup wizard)
- *  - Installed, not running → starts the stack, then opens the UI
- *  - Installed and running → opens the UI in the browser
+ *  - Not installed → runs the install flow (seeds OP_HOME, spawns wizard)
+ *  - Installed, stack down → starts the stack
+ *  - Installed, stack up → starts the UI host server (foreground)
+ *
+ * The UI server runs in the foreground until SIGINT/SIGTERM. This is
+ * the canonical way to "run OpenPalm" — no separate `ui`/`admin`
+ * subcommand.
  */
-async function autoRun(): Promise<void> {
+async function autoRun(opts: BareRunOpts = {}): Promise<void> {
   const stackEnv = join(resolveConfigDir(), 'stack', 'stack.env');
   const isInstalled = await Bun.file(stackEnv).exists();
 
   if (!isInstalled) {
-    const { bootstrapInstall } = await import('./commands/install.ts');
-    const { resolveDefaultInstallRef } = await import('./commands/install.ts') as any;
-    // Resolve version the same way `openpalm install` does
+    const { bootstrapInstall, resolveDefaultInstallRef } = await import('./commands/install.ts') as any;
     const version: string = typeof resolveDefaultInstallRef === 'function'
       ? await resolveDefaultInstallRef()
       : (cliPkg.version ? `v${cliPkg.version}` : 'main');
-    await bootstrapInstall({ force: false, version, noStart: false, noOpen: false });
+    await bootstrapInstall({
+      force: false,
+      version,
+      noStart: false,
+      noOpen: opts.open === false,
+    });
     return;
   }
 
-  // Already installed — check if UI is reachable
-  const isRunning = await fetch(ADMIN_URL, { signal: AbortSignal.timeout(1500) })
-    .then((r) => r.status < 500)
-    .catch(() => false);
+  // Ensure the stack is up (idempotent — no-op if already running).
+  const { runStartAction } = await import('./commands/start.ts');
+  await runStartAction([]).catch((err) => {
+    console.warn(`Warning: failed to ensure stack is running: ${err instanceof Error ? err.message : String(err)}`);
+  });
 
-  if (!isRunning) {
-    console.log('Starting OpenPalm...');
-    const { runStartAction } = await import('./commands/start.ts');
-    await runStartAction([]);
-  }
-
-  await import('./lib/browser.ts').then(({ openBrowser }) => openBrowser(ADMIN_URL));
+  // Start the UI host server in the foreground (blocks until SIGINT/SIGTERM).
+  const { startUIServer } = await import('./lib/ui-server.ts');
+  await startUIServer({ port: opts.port, open: opts.open });
 }
 
 export const mainCommand = defineCommand({
@@ -53,13 +67,23 @@ export const mainCommand = defineCommand({
     version: cliPkg.version,
     description: 'OpenPalm CLI — install and manage a self-hosted OpenPalm stack',
   },
+  args: {
+    port: {
+      type: 'string',
+      description: 'UI server port (default: 3880 or OP_HOST_UI_PORT)',
+    },
+    open: {
+      type: 'boolean',
+      description: 'Open browser after start (use --no-open to skip)',
+      default: true,
+    },
+  },
   subCommands: {
     install: () => import('./commands/install.ts').then((m) => m.default),
     uninstall: () => import('./commands/uninstall.ts').then((m) => m.default),
     update: () => import('./commands/update.ts').then((m) => m.default),
     'self-update': () => import('./commands/self-update.ts').then((m) => m.default),
     addon: () => import('./commands/addon.ts').then((m) => m.default),
-    admin: () => import('./commands/admin.ts').then((m) => m.default),
     start: () => import('./commands/start.ts').then((m) => m.default),
     stop: () => import('./commands/stop.ts').then((m) => m.default),
     restart: () => import('./commands/restart.ts').then((m) => m.default),
@@ -73,28 +97,50 @@ export const mainCommand = defineCommand({
   },
 });
 
+/** Parse `--port`/`--no-open` from a bare-command argv. */
+function parseBareArgs(argv: string[]): BareRunOpts {
+  const opts: BareRunOpts = {};
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--port' && argv[i + 1]) {
+      opts.port = Number(argv[++i]);
+    } else if (argv[i]?.startsWith('--port=')) {
+      opts.port = Number(argv[i]!.split('=')[1]);
+    } else if (argv[i] === '--no-open') {
+      opts.open = false;
+    }
+  }
+  return opts;
+}
+
 /**
  * Programmatic entry point for tests and embedding.
- * Uses runCommand directly (not runMain) to avoid the process.exit(1) wrapper
- * and process.argv manipulation.
  *
- * No-args behaviour: autoRun() detects state and does the right thing.
+ * No-subcommand behaviour: autoRun() detects state and does the right thing.
+ * Subcommand: route through citty.
  */
 export async function main(argv = process.argv.slice(2)): Promise<void> {
-  if (argv.length === 0 || (argv.length === 1 && (argv[0] === '--version' || argv[0] === '-v'))) {
-    if (argv[0] === '--version' || argv[0] === '-v') {
-      console.log(cliPkg.version);
-      return;
-    }
-    await autoRun();
+  if (argv.length === 1 && (argv[0] === '--version' || argv[0] === '-v')) {
+    console.log(cliPkg.version);
     return;
   }
+
+  const hasSubcommand = argv.length > 0 && SUBCOMMAND_NAMES.has(argv[0]!);
+  if (!hasSubcommand) {
+    await autoRun(parseBareArgs(argv));
+    return;
+  }
+
   await runCommand(mainCommand, { rawArgs: argv });
 }
 
 if (import.meta.main) {
-  if (process.argv.slice(2).length === 0) {
-    await autoRun();
+  const argv = process.argv.slice(2);
+  if (argv.length === 0 || !SUBCOMMAND_NAMES.has(argv[0]!)) {
+    if (argv[0] === '--version' || argv[0] === '-v') {
+      console.log(cliPkg.version);
+    } else {
+      await autoRun(parseBareArgs(argv));
+    }
   } else {
     await runMain(mainCommand);
   }

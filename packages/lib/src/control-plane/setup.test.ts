@@ -200,7 +200,7 @@ describe("buildSecretsFromSetup", () => {
   it("does not include admin token in user secrets", () => {
     const spec = makeValidSpec();
     const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
-    expect(secrets.OP_ADMIN_TOKEN).toBeUndefined();
+    expect(secrets.OP_UI_TOKEN).toBeUndefined();
     expect(secrets.ADMIN_TOKEN).toBeUndefined();
   });
 
@@ -282,7 +282,7 @@ describe("buildSecretsFromSetup", () => {
 describe("buildSystemSecretsFromSetup", () => {
   it("includes distinct admin and assistant credentials", () => {
     const secrets = buildSystemSecretsFromSetup("test-admin-token-12345");
-    expect(secrets.OP_ADMIN_TOKEN).toBe("test-admin-token-12345");
+    expect(secrets.OP_UI_TOKEN).toBe("test-admin-token-12345");
     expect(typeof secrets.OP_ASSISTANT_TOKEN).toBe("string");
     expect(secrets.OP_ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
   });
@@ -332,7 +332,7 @@ describe("performSetup", () => {
       join(stackDir, "stack.env"),
       [
         "OP_SETUP_COMPLETE=false",
-        "OP_ADMIN_TOKEN=",
+        "OP_UI_TOKEN=",
         "OPENAI_API_KEY=",
         "OPENAI_BASE_URL=",
         "ANTHROPIC_API_KEY=",

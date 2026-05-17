@@ -24,7 +24,7 @@ describe("validateProposedState", () => {
   test("ok=true when required keys are present", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    seedStack(state.stackDir, "OP_ADMIN_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n");
+    seedStack(state.stackDir, "OP_UI_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n");
 
     const result = await validateProposedState(state);
     expect(result.ok).toBe(true);
@@ -40,20 +40,20 @@ describe("validateProposedState", () => {
     expect(result.errors[0]).toContain("stack env file missing");
   });
 
-  test("ok=false when OP_ADMIN_TOKEN is empty", async () => {
+  test("ok=false when OP_UI_TOKEN is empty", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    seedStack(state.stackDir, "OP_ADMIN_TOKEN=\nOP_ASSISTANT_TOKEN=def\n");
+    seedStack(state.stackDir, "OP_UI_TOKEN=\nOP_ASSISTANT_TOKEN=def\n");
 
     const result = await validateProposedState(state);
     expect(result.ok).toBe(false);
-    expect(result.errors.some((e) => e.includes("OP_ADMIN_TOKEN"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("OP_UI_TOKEN"))).toBe(true);
   });
 
   test("warns about missing optional canonical slots", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    seedStack(state.stackDir, "OP_ADMIN_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n");
+    seedStack(state.stackDir, "OP_UI_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n");
 
     const result = await validateProposedState(state);
     expect(result.ok).toBe(true);

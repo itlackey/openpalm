@@ -69,7 +69,7 @@ This file holds system-managed values, provider API keys, capability variables, 
 
 It also includes system-managed values such as:
 
-- `OP_ADMIN_TOKEN`
+- `OP_UI_TOKEN`
 - `OP_ASSISTANT_TOKEN`
 - `OP_HOME`, `OP_UID`, `OP_GID`
 - `OP_ASSISTANT_PORT`, `OP_ADMIN_PORT`, `OP_CHAT_PORT`

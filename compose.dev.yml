@@ -8,38 +8,14 @@
 #     -f .openpalm/config/stack/core.compose.yml \
 #     -f compose.dev.yml \
 #     --env-file .dev/config/stack/stack.env \
-#     --env-file .dev/stash/vaults/user.env \
-#     build openpalm-base \
-#   && docker compose --project-directory . \
-#        -f .openpalm/config/stack/core.compose.yml \
-#        -f compose.dev.yml \
-#        --env-file .dev/config/stack/stack.env \
-#        --env-file .dev/stash/vaults/user.env \
-#        up --build -d
+#     up --build -d
 #
 # The --project-directory . flag is REQUIRED when the core compose file lives
-# in a different directory (.openpalm/stack/ or .dev/stack/). Without it,
-# Docker Compose resolves build contexts relative to the first -f file's
-# directory, which breaks builds.
-#
-# openpalm-base MUST be built before assistant — it uses `FROM openpalm-base`
-# and Docker Compose's parallel builder has no dependency awareness for FROM.
-# It lives under the `build` profile so `up` never tries to start it (the image
-# has no entrypoint).
+# in a different directory (.openpalm/config/stack/ or .dev/config/stack/).
+# Without it, Docker Compose resolves build contexts relative to the first -f
+# file's directory, which breaks builds.
 
 services:
-  # Shared foundation image: Bun + OpenCode + akm-cli at pinned versions.
-  # See core/base/Dockerfile for the single source of truth on those versions.
-  openpalm-base:
-    build:
-      context: .
-      dockerfile: core/base/Dockerfile
-    image: openpalm-base
-    profiles: ["build"]
-    # No command/restart — this service exists only so `docker compose build
-    # openpalm-base` resolves the image. It is never started by `up`.
-    command: ["true"]
-
   guardian:
     build:
       context: .
@@ -55,9 +31,6 @@ services:
     build:
       context: .
       dockerfile: core/assistant/Dockerfile
-      # See openpalm-base service above for rationale on additional_contexts.
-      additional_contexts:
-        openpalm-base: docker-image://openpalm-base
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev
     # Dev override: blank cloud keys to prevent host env leakage.
     # OpenCode uses its own provider detection and auth store.

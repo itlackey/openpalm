@@ -56,7 +56,7 @@ Returns guardian runtime statistics: uptime, rate limiter state, nonce cache
 size, active session counts, and per-channel/per-status request counters.
 This endpoint is served directly by the guardian process (not proxied through admin).
 
-Auth: Protected by admin token (`x-admin-token`) when `OP_ADMIN_TOKEN` is set.
+Auth: Protected by admin token (`x-admin-token`) when `OP_UI_TOKEN` is set.
 When no admin token is configured (dev/LAN), the endpoint is open.
 
 Response:
@@ -1125,8 +1125,8 @@ Error responses:
 
 These endpoints are used exclusively by the setup wizard (`/setup`). They are
 public (no admin token required) because setup runs before any admin token is
-configured. The wizard is served at `http://localhost:<OP_HOST_ADMIN_PORT>/setup`
-(default port `3880`) by `openpalm admin`, which is spawned automatically
+configured. The wizard is served at `http://localhost:<OP_HOST_UI_PORT>/setup`
+(default port `3880`) by `openpalm`, which is spawned automatically
 by `openpalm install`.
 
 ### `GET /api/setup/status`

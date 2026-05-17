@@ -9,5 +9,5 @@ export function isSetupComplete(stackDir: string): boolean {
     return parsed.OP_SETUP_COMPLETE.toLowerCase() === "true";
   }
 
-  return (parsed.OP_ADMIN_TOKEN ?? "").length > 0;
+  return (parsed.OP_UI_TOKEN ?? "").length > 0;
 }

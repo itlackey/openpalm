@@ -3,18 +3,29 @@
 # and tools. Config, plugins, and persona are mounted at runtime — not baked
 # into the image.
 #
-# Inherits Bun, OpenCode, and akm-cli from openpalm-base. See
-# core/base/Dockerfile for the single source of truth on those versions.
+# v0.11.0: this is the only image that needs Bun + OpenCode + akm-cli, so
+# the previously-shared `openpalm-base` image has been inlined here.
+# Guardian/channel use `oven/bun:1.3-slim` directly. CI keeps AKM_CLI_VERSION
+# between this file and core/guardian/Dockerfile in lockstep.
 # ──────────────────────────────────────────────────────────────────────────────
 
-FROM openpalm-base
+FROM node:22-trixie-slim
 
-# Assistant-specific OS packages: sshd for remote agent sessions, sudo for
-# entrypoint privilege drop, Python (uv-managed venv for apprise — used by
-# the notify skill), jq + gh for in-container tooling.
+ARG OPENCODE_VERSION=1.3.3
+ARG BUN_VERSION=bun-v1.3.10
+ARG AKM_CLI_VERSION=^0.8.0-rc2
+
+# Re-export for runtime introspection.
+ENV OPENCODE_VERSION=${OPENCODE_VERSION} \
+    BUN_VERSION=${BUN_VERSION} \
+    AKM_CLI_VERSION=${AKM_CLI_VERSION}
+
+# Combined OS packages: base tools (tini, gosu) + assistant-specific
+# (openssh-server, sudo, cron, python3, jq, gh).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssh-server sudo cron \
-        python3 jq \
+    && apt-get install -y --no-install-recommends \
+        tini curl git ca-certificates bash gosu unzip \
+        openssh-server sudo cron python3 jq \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
@@ -23,7 +34,28 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Rename the base image's "node" user (UID 1000) to "opencode" for clarity.
+# OpenCode installer drops the binary under $HOME/.opencode/bin. Pin
+# HOME=/usr/local so the binary lands at /usr/local/.opencode/bin and is
+# reachable from every user the entrypoint switches to.
+RUN HOME=/usr/local curl -fsSL https://opencode.ai/install \
+        | HOME=/usr/local bash -s -- --no-modify-path --version "$OPENCODE_VERSION"
+ENV PATH="/usr/local/.opencode/bin:$PATH"
+
+# Install Bun into /usr/local. Later we override BUN_INSTALL +
+# BUN_INSTALL_CACHE_DIR to per-user paths so unprivileged users can install
+# additional packages at runtime.
+ENV BUN_INSTALL=/usr/local
+RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
+
+# Install akm-cli globally. chmod a+rX makes it world-readable so the
+# unprivileged opencode user can exec the binary.
+RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
+    && chmod -R a+rX /usr/local/install/global \
+    && chmod 755 /usr/local/bin/akm \
+    && akm --version
+ENV BUN_INSTALL=
+
+# Rename the base "node" user (UID 1000) to "opencode" for clarity.
 # Passwordless sudo lets agents run root operations; the entrypoint's gosu
 # drop keeps normal file I/O at the host user's UID.
 RUN usermod -l opencode -d /home/opencode node \
@@ -63,8 +95,7 @@ RUN set -e; \
          | tar xz --strip-components=1 -C /usr/local/bin "google-workspace-cli-${GWS_TRIPLE}/gws" \
     && chmod +x /usr/local/bin/gws
 
-# OpenCode lives at /usr/local/.opencode/bin from the base image. Prepend the
-# opencode user's local bin so per-user installs win.
+# Prepend opencode user's local bin so per-user installs win.
 ENV PATH="/home/opencode/.local/bin:/usr/local/.opencode/bin:$PATH"
 
 RUN mkdir -p /home/opencode/.cache /work /akm \
@@ -82,14 +113,13 @@ RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
 # root-only setup (sshd, uid/gid adjustment).
 WORKDIR /work
 
-# Point Bun's user-writable paths at the opencode user's home. Bun was
-# installed into /usr/local by openpalm-base.
+# Point Bun's user-writable paths at the opencode user's home.
 ENV BUN_INSTALL=/home/opencode/.bun
 ENV BUN_INSTALL_CACHE_DIR=/home/opencode/.cache/bun/install
 ENV PATH="/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:$PATH"
 
 RUN mkdir -p /etc/opencode
-# Persona / config only. Built-in skills/commands/agents now live in the
+# Persona / config only. Built-in skills/commands/agents live in the
 # shared akm stash (bind-mounted at /akm), not in the image.
 COPY core/assistant/opencode /etc/opencode
 

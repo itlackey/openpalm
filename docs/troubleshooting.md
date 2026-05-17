@@ -62,7 +62,7 @@ compose file set.
 
 **Common causes:**
 
-- the `openpalm admin` host process is not running
+- the `openpalm` host process is not running
 - `OP_ADMIN_PORT` was changed in `stack.env`
 
 **Fix:**
@@ -72,7 +72,7 @@ compose file set.
 lsof -i :3880 || ss -tlnp | grep 3880
 
 # Restart the admin process
-openpalm admin
+openpalm
 ```
 
 ---

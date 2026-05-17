@@ -3,14 +3,14 @@
 # End-to-end test for the OpenPalm dev environment (v0.11.0).
 #
 # v0.11.0 architecture:
-#   - Admin is a HOST PROCESS (`openpalm admin`), not a container
+#   - UI is a HOST PROCESS (`openpalm`), not a container
 #   - Compose stack: assistant + guardian containers only
 #   - Directory layout: config/stack/, stash/vaults/, state/, cache/
 #
 # Cleans state, rebuilds all images from source, starts the stack and
 # admin process, then verifies:
 #   1. All containers are healthy (assistant + guardian)
-#   2. Admin host process responds on the configured port
+#   2. UI host process responds on the configured port
 #   3. Setup wizard route serves
 #   4. Admin API auth works (correct + wrong tokens)
 #   5. stack.env carries the right OP_CAP_* values
@@ -18,7 +18,7 @@
 # Isolation:
 #   - COMPOSE_PROJECT_NAME (default: openpalm-e2e) — never touches user stack
 #   - OP_E2E_HOME (default: .dev-e2e) — never touches user .dev/
-#   - OP_E2E_ADMIN_PORT (default: 3890) — avoids :3880 if user has admin up
+#   - OP_E2E_UI_PORT (default: 3890) — avoids :3880 if user has admin up
 #
 # Usage:
 #   ./scripts/dev-e2e-test.sh [--skip-build] [--keep]
@@ -49,12 +49,12 @@ cd "$ROOT_DIR"
 # ── Isolation knobs ──────────────────────────────────────────────────
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openpalm-e2e}"
 OP_E2E_HOME="${OP_E2E_HOME:-${ROOT_DIR}/.dev-e2e}"
-OP_E2E_ADMIN_PORT="${OP_E2E_ADMIN_PORT:-3890}"
-ADMIN_URL="http://127.0.0.1:${OP_E2E_ADMIN_PORT}"
+OP_E2E_UI_PORT="${OP_E2E_UI_PORT:-3890}"
+UI_URL="http://127.0.0.1:${OP_E2E_UI_PORT}"
 
 PASS=0
 FAIL=0
-ADMIN_PID=""
+UI_PID=""
 
 pass() { PASS=$((PASS + 1)); echo "  PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
@@ -72,10 +72,10 @@ dev_compose() {
 # ── Cleanup on exit ──────────────────────────────────────────────────
 cleanup() {
 	echo ""
-	if [[ -n "$ADMIN_PID" ]] && kill -0 "$ADMIN_PID" 2>/dev/null; then
-		echo "Stopping admin host process (PID $ADMIN_PID)..."
-		kill "$ADMIN_PID" 2>/dev/null || true
-		wait "$ADMIN_PID" 2>/dev/null || true
+	if [[ -n "$UI_PID" ]] && kill -0 "$UI_PID" 2>/dev/null; then
+		echo "Stopping UI host process (PID $UI_PID)..."
+		kill "$UI_PID" 2>/dev/null || true
+		wait "$UI_PID" 2>/dev/null || true
 	fi
 	if [[ $KEEP -eq 0 ]]; then
 		echo "Cleaning up containers and ${OP_E2E_HOME}..."
@@ -116,12 +116,12 @@ OP_GID=$(id -g)
 OP_DOCKER_SOCK=${docker_sock}
 OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=dev
-OP_ADMIN_TOKEN=e2e-test-token-$(date +%s)
+OP_UI_TOKEN=e2e-test-token-$(date +%s)
 OP_ASSISTANT_TOKEN=$(openssl rand -hex 32)
 OP_ASSISTANT_PORT=${OP_E2E_ASSISTANT_PORT:-3891}
 OP_GUARDIAN_PORT=${OP_E2E_GUARDIAN_PORT:-8181}
 OP_VOICE_PORT=${OP_E2E_VOICE_PORT:-8187}
-OP_HOST_ADMIN_PORT=${OP_E2E_ADMIN_PORT}
+OP_HOST_UI_PORT=${OP_E2E_UI_PORT}
 OP_CAP_LLM_PROVIDER=ollama
 OP_CAP_LLM_MODEL=qwen2.5-coder:3b
 OP_CAP_LLM_BASE_URL=http://host.docker.internal:11434/v1
@@ -170,13 +170,12 @@ else
 fi
 
 # ── Step 4: Build container images ──────────────────────────────────
-# BUILDX_BUILDER=default forces the classic builder so additional_contexts
-# (docker-image://openpalm-base) resolves to the locally built image.
+# v0.11.0: openpalm-base was inlined into the assistant Dockerfile, so a
+# single `compose build` is sufficient — no separate base-image step.
 if [[ $SKIP_BUILD -eq 0 ]]; then
 	echo ""
 	echo "=== Step 4: Build container images ==="
-	BUILDX_BUILDER=default dev_compose --profile build build openpalm-base 2>&1 | tail -5
-	BUILDX_BUILDER=default dev_compose build 2>&1 | tail -5
+	dev_compose build 2>&1 | tail -5
 	pass "Container images built"
 else
 	echo "=== Step 4: Skipping container build (--skip-build) ==="
@@ -213,58 +212,58 @@ for svc in assistant guardian; do
 	fi
 done
 
-# ── Step 6: Start admin host process ─────────────────────────────────
+# ── Step 6: Start UI host process ─────────────────────────────────
 echo ""
-echo "=== Step 6: Start admin host process on port $OP_E2E_ADMIN_PORT ==="
+echo "=== Step 6: Start UI host process on port $OP_E2E_UI_PORT ==="
 OP_HOME="$OP_E2E_HOME" \
-OP_HOST_ADMIN_PORT="$OP_E2E_ADMIN_PORT" \
-bun run packages/cli/src/main.ts admin --no-open > "${OP_E2E_HOME}/admin.log" 2>&1 &
-ADMIN_PID=$!
-echo "  Admin PID: $ADMIN_PID"
+OP_HOST_UI_PORT="$OP_E2E_UI_PORT" \
+bun run packages/cli/src/main.ts --no-open > "${OP_E2E_HOME}/ui.log" 2>&1 &
+UI_PID=$!
+echo "  UI host PID: $UI_PID"
 
-echo "  Waiting for admin to listen..."
+echo "  Waiting for UI to listen..."
 for i in $(seq 1 30); do
-	if curl -sf "${ADMIN_URL}/health" >/dev/null 2>&1; then
+	if curl -sf "${UI_URL}/health" >/dev/null 2>&1; then
 		break
 	fi
 	sleep 1
 done
 
-if curl -sf "${ADMIN_URL}/health" >/dev/null 2>&1; then
-	pass "Admin host process listening at $ADMIN_URL"
+if curl -sf "${UI_URL}/health" >/dev/null 2>&1; then
+	pass "UI host process listening at $UI_URL"
 else
-	fail "Admin host process not responding"
-	cat "${OP_E2E_HOME}/admin.log" | tail -30 | sed 's/^/    /'
+	fail "UI host process not responding"
+	cat "${OP_E2E_HOME}/ui.log" | tail -30 | sed 's/^/    /'
 	exit 1
 fi
 
-# ── Step 7: Verify admin endpoints ───────────────────────────────────
+# ── Step 7: Verify UI endpoints ───────────────────────────────────
 echo ""
-echo "=== Step 7: Verify admin endpoints ==="
-ADMIN_TOKEN=$(grep '^OP_ADMIN_TOKEN=' "${OP_E2E_HOME}/config/stack/stack.env" | cut -d= -f2-)
+echo "=== Step 7: Verify UI endpoints ==="
+UI_TOKEN=$(grep '^OP_UI_TOKEN=' "${OP_E2E_HOME}/config/stack/stack.env" | cut -d= -f2-)
 
 # /health
-status=$(curl -s -o /dev/null -w "%{http_code}" "${ADMIN_URL}/health")
+status=$(curl -s -o /dev/null -w "%{http_code}" "${UI_URL}/health")
 [[ "$status" == "200" ]] && pass "/health → 200" || fail "/health returned $status"
 
 # / (redirect to setup OR home)
-status=$(curl -s -o /dev/null -w "%{http_code}" "${ADMIN_URL}/")
+status=$(curl -s -o /dev/null -w "%{http_code}" "${UI_URL}/")
 [[ "$status" == "200" || "$status" == "302" ]] && pass "/ → $status" || fail "/ returned $status"
 
 # /setup wizard
-status=$(curl -s -o /dev/null -w "%{http_code}" "${ADMIN_URL}/setup")
+status=$(curl -s -o /dev/null -w "%{http_code}" "${UI_URL}/setup")
 [[ "$status" == "200" ]] && pass "/setup wizard → 200" || fail "/setup returned $status"
 
 # /admin/containers/list with correct token
-status=$(curl -s -o /dev/null -w "%{http_code}" -H "x-admin-token: $ADMIN_TOKEN" "${ADMIN_URL}/admin/containers/list")
+status=$(curl -s -o /dev/null -w "%{http_code}" -H "x-admin-token: $UI_TOKEN" "${UI_URL}/admin/containers/list")
 [[ "$status" == "200" ]] && pass "/admin/containers/list (auth) → 200" || fail "/admin/containers/list (auth) returned $status"
 
 # /admin/containers/list without token (must 401)
-status=$(curl -s -o /dev/null -w "%{http_code}" "${ADMIN_URL}/admin/containers/list")
+status=$(curl -s -o /dev/null -w "%{http_code}" "${UI_URL}/admin/containers/list")
 [[ "$status" == "401" ]] && pass "/admin/containers/list (no auth) → 401" || fail "/admin/containers/list (no auth) returned $status"
 
 # /admin/capabilities verifies stack.yml is being read (capabilities.llm is unmasked)
-caps=$(curl -sf -H "x-admin-token: $ADMIN_TOKEN" "${ADMIN_URL}/admin/capabilities" 2>/dev/null || echo "")
+caps=$(curl -sf -H "x-admin-token: $UI_TOKEN" "${UI_URL}/admin/capabilities" 2>/dev/null || echo "")
 if echo "$caps" | grep -q '"llm":"ollama/qwen2.5-coder:3b"'; then
 	pass "/admin/capabilities reflects seeded LLM (ollama/qwen2.5-coder:3b)"
 else
@@ -275,7 +274,7 @@ fi
 echo ""
 echo "=== Step 8: Verify container API surface ==="
 # Containers report status through /admin/containers/list
-list=$(curl -sf -H "x-admin-token: $ADMIN_TOKEN" "${ADMIN_URL}/admin/containers/list" 2>/dev/null || echo "")
+list=$(curl -sf -H "x-admin-token: $UI_TOKEN" "${UI_URL}/admin/containers/list" 2>/dev/null || echo "")
 if echo "$list" | grep -q '"assistant"' && echo "$list" | grep -q '"guardian"'; then
 	pass "Admin reports both assistant and guardian containers"
 else

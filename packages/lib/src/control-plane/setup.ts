@@ -143,7 +143,7 @@ export function buildSystemSecretsFromSetup(
   existingSystemEnv: Record<string, string> = {}
 ): Record<string, string> {
   return {
-    OP_ADMIN_TOKEN: adminToken,
+    OP_UI_TOKEN: adminToken,
     OP_ASSISTANT_TOKEN: existingSystemEnv.OP_ASSISTANT_TOKEN || randomBytes(32).toString("hex"),
   };
 }

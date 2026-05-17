@@ -146,7 +146,7 @@ Key env:
 - `PORT=8080`
 - `OP_ASSISTANT_URL=http://assistant:4096`
 - `OPENCODE_TIMEOUT_MS=0`
-- `OP_ADMIN_TOKEN=${OP_ADMIN_TOKEN:-}`
+- `OP_UI_TOKEN=${OP_UI_TOKEN:-}`
 - `GUARDIAN_AUDIT_PATH=/app/audit/guardian-audit.log`
 - `CHANNEL_<n>_SECRET`
 
@@ -240,7 +240,7 @@ Ports and network:
 
 ## Admin (host process)
 
-Admin is a Bun.serve HTTP server started by `openpalm admin`. It embeds the SvelteKit UI as a pre-built tarball and manages Docker Compose directly on the host via the host Docker socket. There is no admin container.
+Admin is a Bun.serve HTTP server started by `openpalm`. It embeds the SvelteKit UI as a pre-built tarball and manages Docker Compose directly on the host via the host Docker socket. There is no admin container.
 
 Role:
 
@@ -252,11 +252,11 @@ Key env:
 
 - `PORT` — listen port (default: `3880`)
 - `OP_HOME` — resolved from the host environment
-- `OP_ADMIN_TOKEN` — read from `$OP_HOME/config/stack/stack.env`
+- `OP_UI_TOKEN` — read from `$OP_HOME/config/stack/stack.env`
 
 Bind address:
 
-- `127.0.0.1:${OP_HOST_ADMIN_PORT:-3880}` (loopback only — never exposed to Docker networks or LAN)
+- `127.0.0.1:${OP_HOST_UI_PORT:-3880}` (loopback only — never exposed to Docker networks or LAN)
 
 UI-first principle: the admin UI is the primary operator interface. CLI commands are the fallback for scripted workflows and headless environments.
 

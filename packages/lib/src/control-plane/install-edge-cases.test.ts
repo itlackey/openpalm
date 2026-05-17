@@ -140,7 +140,7 @@ function seedMinimalEnvFiles(): void {
     join(stackDir, "stack.env"),
     [
       "# OpenPalm — Stack Configuration",
-      "OP_ADMIN_TOKEN=",
+      "OP_UI_TOKEN=",
       "OP_ASSISTANT_TOKEN=",
       "OPENAI_API_KEY=",
       "OPENAI_BASE_URL=",
@@ -253,7 +253,7 @@ describe("Existing Install", () => {
   // Scenario 5: ensureSecrets does NOT overwrite existing stack.env
   it("ensureSecrets does not overwrite existing stack.env tokens", () => {
     mkdirSync(stateDir, { recursive: true });
-    writeFileSync(join(stackDir, "stack.env"), "OP_ADMIN_TOKEN=my-custom-token\nOP_ASSISTANT_TOKEN=existing-token\n");
+    writeFileSync(join(stackDir, "stack.env"), "OP_UI_TOKEN=my-custom-token\nOP_ASSISTANT_TOKEN=existing-token\n");
 
     const state: ControlPlaneState = {
       adminToken: "",
@@ -276,7 +276,7 @@ describe("Existing Install", () => {
 
     // Existing tokens must be preserved
     const afterContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(afterContent).toContain("OP_ADMIN_TOKEN=my-custom-token");
+    expect(afterContent).toContain("OP_UI_TOKEN=my-custom-token");
     expect(afterContent).toContain("OP_ASSISTANT_TOKEN=existing-token");
   });
 
@@ -394,7 +394,7 @@ describe("Broken/Corrupt State", () => {
   // Scenario 9: ensureSecrets is idempotent on repeated calls
   it("ensureSecrets is idempotent — second call does not overwrite existing stack.env", () => {
     mkdirSync(stateDir, { recursive: true });
-    writeFileSync(join(stackDir, "stack.env"), "OP_ADMIN_TOKEN=existing-token\nOP_ASSISTANT_TOKEN=existing-assistant\n");
+    writeFileSync(join(stackDir, "stack.env"), "OP_UI_TOKEN=existing-token\nOP_ASSISTANT_TOKEN=existing-assistant\n");
 
     const state: ControlPlaneState = {
       adminToken: "",
@@ -417,7 +417,7 @@ describe("Broken/Corrupt State", () => {
 
     // Existing tokens must be preserved
     const content = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(content).toContain("OP_ADMIN_TOKEN=existing-token");
+    expect(content).toContain("OP_UI_TOKEN=existing-token");
     expect(content).toContain("OP_ASSISTANT_TOKEN=existing-assistant");
   });
 
@@ -460,7 +460,7 @@ describe("Broken/Corrupt State", () => {
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
       join(stackDir, "stack.env"),
-      "OP_IMAGE_TAG=latest\nexport OP_ADMIN_TOKEN=my-real-token\n"
+      "OP_IMAGE_TAG=latest\nexport OP_UI_TOKEN=my-real-token\n"
     );
 
     expect(isSetupComplete(stackDir)).toBe(true);
@@ -536,12 +536,12 @@ describe("Environment Edge Cases", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  // Scenario 16: Commented-out ADMIN_TOKEN but OP_ADMIN_TOKEN set
-  it("isSetupComplete detects OP_ADMIN_TOKEN when ADMIN_TOKEN is commented out", () => {
+  // Scenario 16: Commented-out ADMIN_TOKEN but OP_UI_TOKEN set
+  it("isSetupComplete detects OP_UI_TOKEN when ADMIN_TOKEN is commented out", () => {
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
       join(stackDir, "stack.env"),
-      "SOME_OTHER_KEY=value\nexport OP_ADMIN_TOKEN=real-token-here\n"
+      "SOME_OTHER_KEY=value\nexport OP_UI_TOKEN=real-token-here\n"
     );
 
     expect(isSetupComplete(stackDir)).toBe(true);
@@ -736,7 +736,7 @@ describe("performSetup end-to-end artifacts", () => {
     await performSetup(makeValidSpec());
 
     const secrets = parseEnvFile(join(stackDir, "stack.env"));
-    expect(secrets.OP_ADMIN_TOKEN).toBe("test-admin-token-12345");
+    expect(secrets.OP_UI_TOKEN).toBe("test-admin-token-12345");
     expect(typeof secrets.OP_ASSISTANT_TOKEN).toBe("string");
     expect(secrets.OP_ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
   });

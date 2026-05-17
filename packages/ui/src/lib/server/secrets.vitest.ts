@@ -44,12 +44,12 @@ describe("ensureSecrets", () => {
 
     const secrets = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(secrets).toContain("OPENAI_API_KEY=");
-    expect(secrets).toContain("OP_ADMIN_TOKEN=");
+    expect(secrets).toContain("OP_UI_TOKEN=");
   });
 
   test("is idempotent — does not overwrite existing stack.env", () => {
     const state = { stackDir, configDir } as ControlPlaneState;
-    const existingContent = "OP_ADMIN_TOKEN=my-token\nOPENAI_API_KEY=sk-test\nOP_ASSISTANT_TOKEN=ast\n";
+    const existingContent = "OP_UI_TOKEN=my-token\nOPENAI_API_KEY=sk-test\nOP_ASSISTANT_TOKEN=ast\n";
     seedSecretsEnv(stackDir, existingContent);
 
     ensureSecrets(state);

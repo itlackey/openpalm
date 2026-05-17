@@ -192,7 +192,7 @@ describe('plaintext backend (via detectSecretBackend)', () => {
     // Stack.env already exists from ensureSecrets — seed a system token.
     const stackEnvPath = join(state.stackDir, "stack.env");
     const stackContent = readFileSync(stackEnvPath, 'utf-8')
-      .replace(/^OP_ADMIN_TOKEN=.*$/m, 'OP_ADMIN_TOKEN=stack-admin-token');
+      .replace(/^OP_UI_TOKEN=.*$/m, 'OP_UI_TOKEN=stack-admin-token');
     writeFileSync(stackEnvPath, stackContent);
 
     // System scope reads stack.env exclusively.

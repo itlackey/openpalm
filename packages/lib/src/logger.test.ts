@@ -47,7 +47,7 @@ describe('isSensitiveEnvKey', () => {
     expect(isSensitiveEnvKey('FOO_KEY')).toBe(true);
     expect(isSensitiveEnvKey('FOO_PASSWORD')).toBe(true);
     expect(isSensitiveEnvKey('CHANNEL_FOO_HMAC')).toBe(true);
-    expect(isSensitiveEnvKey('OP_ADMIN_TOKEN')).toBe(true);
+    expect(isSensitiveEnvKey('OP_UI_TOKEN')).toBe(true);
     expect(isSensitiveEnvKey('CHANNEL_API_KEY')).toBe(true);
   });
 
@@ -127,12 +127,12 @@ describe('redactExtra', () => {
 
   test('redacts non-string sensitive values (numbers, booleans)', () => {
     const result = redactExtra({
-      OP_ADMIN_TOKEN: 12345,
+      OP_UI_TOKEN: 12345,
       OPENAI_API_KEY: true,
       OWNER_NAME: 'alice',
     });
     expect(result).toEqual({
-      OP_ADMIN_TOKEN: '***REDACTED***',
+      OP_UI_TOKEN: '***REDACTED***',
       OPENAI_API_KEY: '***REDACTED***',
       OWNER_NAME: 'alice',
     });
@@ -190,8 +190,8 @@ describe('createLogger', () => {
 
   test('error level still goes through redaction', () => {
     const logger = createLogger('test');
-    logger.error('boom', { OP_ADMIN_TOKEN: 'tok-leak' });
-    expect(logged[0]).toContain('"OP_ADMIN_TOKEN":"***REDACTED***"');
+    logger.error('boom', { OP_UI_TOKEN: 'tok-leak' });
+    expect(logged[0]).toContain('"OP_UI_TOKEN":"***REDACTED***"');
     expect(logged[0]).not.toContain('tok-leak');
   });
 
@@ -221,8 +221,8 @@ describe('createLogger', () => {
 
   test('non-string sensitive values are redacted at log time', () => {
     const logger = createLogger('test');
-    logger.info('msg', { OP_ADMIN_TOKEN: 12345 });
-    expect(logged[0]).toContain('"OP_ADMIN_TOKEN":"***REDACTED***"');
+    logger.info('msg', { OP_UI_TOKEN: 12345 });
+    expect(logged[0]).toContain('"OP_UI_TOKEN":"***REDACTED***"');
     expect(logged[0]).not.toContain('12345');
   });
 });

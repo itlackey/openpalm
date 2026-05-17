@@ -229,8 +229,8 @@ describe('POST /admin/automations/catalog/refresh', () => {
   test('returns verified catalog counts after refresh', async () => {
     const state = getState();
     const sourceRoot = join(state.homeDir, 'source');
-    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
-    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+    const addonDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'automations');
 
     mkdirSync(addonDir, { recursive: true });
     mkdirSync(automationsDir, { recursive: true });

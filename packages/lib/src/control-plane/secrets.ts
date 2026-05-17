@@ -58,8 +58,8 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
   const existing = existsSync(systemEnvPath) ? parseEnvFile(systemEnvPath) : {};
   const updates: Record<string, string> = {};
 
-  if (!existing.OP_ADMIN_TOKEN && state.adminToken) {
-    updates.OP_ADMIN_TOKEN = state.adminToken;
+  if (!existing.OP_UI_TOKEN && state.adminToken) {
+    updates.OP_UI_TOKEN = state.adminToken;
   }
   if (!existing.OP_ASSISTANT_TOKEN) {
     updates.OP_ASSISTANT_TOKEN = randomBytes(32).toString("hex");
@@ -71,7 +71,7 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
       "# All secrets and configuration live here. Advanced users may edit directly.",
       "",
       "# ── Authentication ──────────────────────────────────────────────────",
-      "OP_ADMIN_TOKEN=",
+      "OP_UI_TOKEN=",
       "OP_ASSISTANT_TOKEN=",
       "",
       "# ── Service Auth ─────────────────────────────────────────────────────",

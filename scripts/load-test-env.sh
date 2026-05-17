@@ -6,7 +6,7 @@
 #   source scripts/load-test-env.sh
 #
 # Exports:
-#   ADMIN_TOKEN  — from OP_ADMIN_TOKEN in .dev/config/stack/stack.env
+#   ADMIN_TOKEN  — from OP_UI_TOKEN in .dev/config/stack/stack.env
 
 # Guard: this script must be sourced, not executed. Direct execution would
 # silently set vars in a child shell that exits immediately, leaving the
@@ -23,7 +23,7 @@ STACK_ENV="$ROOT_DIR/.dev/config/stack/stack.env"
 
 if [[ -f "$STACK_ENV" ]]; then
   export ADMIN_TOKEN
-  ADMIN_TOKEN=$(grep -E '^OP_ADMIN_TOKEN=' "$STACK_ENV" 2>/dev/null | cut -d= -f2-)
+  ADMIN_TOKEN=$(grep -E '^OP_UI_TOKEN=' "$STACK_ENV" 2>/dev/null | cut -d= -f2-)
 else
   echo "Warning: $STACK_ENV not found. Run 'bun run dev:setup' first." >&2
 fi

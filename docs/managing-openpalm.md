@@ -92,7 +92,7 @@ GOOGLE_API_KEY=...
 ```
 
 System-managed values (`CHANNEL_*_SECRET`, `OP_*` infrastructure vars,
-`OP_ADMIN_TOKEN`, `OP_ASSISTANT_TOKEN`, bind addresses, image tags) are generated
+`OP_UI_TOKEN`, `OP_ASSISTANT_TOKEN`, bind addresses, image tags) are generated
 by setup/admin tooling and written into `config/stack/stack.env` -- you do not
 normally edit them manually.
 
@@ -108,17 +108,17 @@ other keys.
 ```bash
 # View current capability settings (keys are masked in the response)
 curl http://localhost:3880/admin/capabilities \
-  -H "x-admin-token: $OP_ADMIN_TOKEN"
+  -H "x-admin-token: $OP_UI_TOKEN"
 
 # Update one or more keys
 curl -X POST http://localhost:3880/admin/capabilities \
-  -H "x-admin-token: $OP_ADMIN_TOKEN" \
+  -H "x-admin-token: $OP_UI_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"provider":"openai","apiKey":"sk-...","systemModel":"gpt-4o","embeddingModel":"text-embedding-3-small","embeddingDims":1536}'
 
 # Check whether stack.yml has non-empty LLM and embedding assignments
 curl http://localhost:3880/admin/capabilities/status \
-  -H "x-admin-token: $OP_ADMIN_TOKEN"
+  -H "x-admin-token: $OP_UI_TOKEN"
 ```
 
 ---
@@ -143,7 +143,7 @@ Addons are managed via `/admin/addons` routes. Example:
 
 ```bash
 curl -X POST http://localhost:3880/admin/addons/chat \
-  -H "x-admin-token: $OP_ADMIN_TOKEN" \
+  -H "x-admin-token: $OP_UI_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"enabled":true}'
 ```
@@ -352,7 +352,7 @@ All ports are `127.0.0.1`-bound by default.
 3. Restart assistant: `docker compose restart assistant`
 
 **Rotate the admin token:**
-1. Update `OP_ADMIN_TOKEN` in `~/.openpalm/config/stack/stack.env`
+1. Update `OP_UI_TOKEN` in `~/.openpalm/config/stack/stack.env`
 2. Restart all services: `docker compose restart`
 
 **Add an automation:**
@@ -370,13 +370,13 @@ tail -f ~/.openpalm/logs/guardian-audit.log
 docker compose ps
 # Or via API:
 curl http://localhost:3880/admin/containers/list \
-  -H "x-admin-token: $OP_ADMIN_TOKEN"
+  -H "x-admin-token: $OP_UI_TOKEN"
 ```
 
 **Pull latest images and recreate containers:**
 ```bash
 curl -X POST http://localhost:3880/admin/containers/pull \
-  -H "x-admin-token: $OP_ADMIN_TOKEN"
+  -H "x-admin-token: $OP_UI_TOKEN"
 ```
 
 This runs `docker compose pull` followed by `docker compose up` to recreate

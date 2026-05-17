@@ -1,6 +1,6 @@
 # @openpalm/cli
 
-Bun CLI for bootstrapping and managing an OpenPalm installation. The CLI is the primary orchestrator — all commands operate directly against Docker Compose. Use `openpalm admin` to start the host admin UI.
+Bun CLI for bootstrapping and managing an OpenPalm installation. The CLI is the primary orchestrator — all commands operate directly against Docker Compose. Use `openpalm` to start the UI host process.
 
 ## Self-Sufficient Mode
 
@@ -8,7 +8,7 @@ The CLI operates directly against Docker Compose:
 
 - **Install** -- creates the `~/.openpalm/` home layout, downloads assets, spawns the setup wizard via the admin UI, writes files to their final locations, and starts core services
 - **All lifecycle commands** -- refresh files in `~/.openpalm/` when needed, then run Docker Compose directly
-- **Admin UI** -- start the host admin server with `openpalm admin` (no container required)
+- **Admin UI** -- start the host admin server with `openpalm` (no container required)
 
 ## Commands
 
@@ -20,7 +20,7 @@ The CLI operates directly against Docker Compose:
 | `openpalm self-update` | Replace the installed CLI binary with the latest release build |
 | `openpalm addon <enable|disable|list>` | Manage registry addons directly from the CLI |
 | `openpalm start [svc...]` | Start all or named services |
-| `openpalm admin` | Start the host admin UI server |
+| `openpalm` | Start the UI host process server |
 | `openpalm stop [svc...]` | Stop all or named services |
 | `openpalm restart [svc...]` | Restart all or named services |
 | `openpalm logs [svc...]` | Tail last 100 log lines |
@@ -36,7 +36,7 @@ The CLI operates directly against Docker Compose:
 ### Admin commands
 
 ```bash
-openpalm admin            # Start the host admin UI (binds to 127.0.0.1:3880)
+openpalm            # Start the UI host process (binds to 127.0.0.1:3880)
 openpalm addon enable chat      # Enable a registry addon and start its services
 openpalm addon disable chat     # Stop and disable a registry addon
 openpalm addon list             # Show available addons and whether they are enabled
@@ -44,7 +44,7 @@ openpalm addon list             # Show available addons and whether they are ena
 
 ## Setup Wizard
 
-On first install, the CLI spawns `openpalm admin` which serves the setup wizard via the SvelteKit admin UI at `http://localhost:3880/setup`. The wizard runs entirely in the browser and calls `performSetup()` from `@openpalm/lib` to write secrets, connection profiles, memory config, and other files to their final locations.
+On first install, the CLI spawns `openpalm` which serves the setup wizard via the SvelteKit admin UI at `http://localhost:3880/setup`. The wizard runs entirely in the browser and calls `performSetup()` from `@openpalm/lib` to write secrets, connection profiles, memory config, and other files to their final locations.
 
 ## Environment Variables
 
@@ -52,8 +52,8 @@ On first install, the CLI spawns `openpalm admin` which serves the setup wizard 
 |---|---|---|
 | `OP_HOME` | `~/.openpalm` | Root of all OpenPalm state |
 | `OP_WORK_DIR` | `~/openpalm` | Assistant working directory |
-| `OP_HOST_ADMIN_PORT` | `3880` | Port for the host admin server (`openpalm admin`) |
-| `OP_ADMIN_TOKEN` | (from `state/admin/token`) | Admin API auth token |
+| `OP_HOST_UI_PORT` | `3880` | Port for the host admin server (`openpalm`) |
+| `OP_UI_TOKEN` | (from `state/admin/token`) | Admin API auth token |
 
 ## How It Works
 

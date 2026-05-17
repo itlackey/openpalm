@@ -113,7 +113,7 @@ describe('cli main', () => {
   const originalWarn = console.warn;
   const originalHome = process.env.OP_HOME;
   const originalWorkDir = process.env.OP_WORK_DIR;
-  const originalAdminToken = process.env.OP_ADMIN_TOKEN;
+  const originalAdminToken = process.env.OP_UI_TOKEN;
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
@@ -122,7 +122,7 @@ describe('cli main', () => {
     restoreDockerCli();
     process.env.OP_HOME = originalHome;
     process.env.OP_WORK_DIR = originalWorkDir;
-    process.env.OP_ADMIN_TOKEN = originalAdminToken;
+    process.env.OP_UI_TOKEN = originalAdminToken;
   });
 
   it('runs bootstrap install directly without admin delegation', async () => {
@@ -133,7 +133,7 @@ describe('cli main', () => {
 
     process.env.OP_HOME = base;
     process.env.OP_WORK_DIR = workDir;
-    delete process.env.OP_ADMIN_TOKEN;
+    delete process.env.OP_UI_TOKEN;
 
     mockDockerCli();
     const fetchedUrls: string[] = [];
@@ -255,7 +255,7 @@ describe('cli main', () => {
     // carries forward existing content.
     mkdirSync(join(base, 'state'), { recursive: true });
     mkdirSync(join(base, 'config', 'stack'), { recursive: true });
-    writeFileSync(join(base, 'config', 'stack', 'stack.env'), 'OP_ADMIN_TOKEN=existing-token\n');
+    writeFileSync(join(base, 'config', 'stack', 'stack.env'), 'OP_UI_TOKEN=existing-token\n');
     writeFileSync(stackConfig, 'llm: old\n');
 
     process.env.OP_HOME = base;
@@ -284,13 +284,13 @@ describe('cli main', () => {
       const backups = readdirSync(backupsDir);
       expect(backups.length).toBeGreaterThan(0);
       expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack.yml'), 'utf8')).toContain('llm: old');
-      expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack', 'stack.env'), 'utf8')).toContain('OP_ADMIN_TOKEN=existing-token');
+      expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack', 'stack.env'), 'utf8')).toContain('OP_UI_TOKEN=existing-token');
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
   });
 
-  it('supports addon and admin commands for enabling and disabling addons', async () => {
+  it('supports addon enable/disable commands', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-addon-cli-'));
     const coreCompose = join(base, 'config', 'stack', 'core.compose.yml');
     const adminAddonDir = join(base, 'state', 'registry', 'addons', 'admin');
@@ -304,7 +304,7 @@ describe('cli main', () => {
     mkdirSync(chatAddonDir, { recursive: true });
     writeFileSync(coreCompose, 'services:\n  assistant:\n    image: test\n');
     writeFileSync(join(adminAddonDir, 'compose.yml'), 'services:\n  admin:\n    image: admin\n');
-    writeFileSync(join(adminAddonDir, '.env.schema'), 'OP_ADMIN_TOKEN=\n');
+    writeFileSync(join(adminAddonDir, '.env.schema'), 'OP_UI_TOKEN=\n');
     writeFileSync(join(chatAddonDir, 'compose.yml'), 'services:\n  chat:\n    image: chat\n    environment:\n      CHANNEL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
     writeFileSync(join(chatAddonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
     writeFileSync(guardianEnv, '# Guardian channel HMAC secrets — managed by openpalm\n');
@@ -411,7 +411,7 @@ describe('validate command', () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
     const stackDir = join(tempHome, 'config', 'stack');
     mkdirSync(stackDir, { recursive: true });
-    writeFileSync(join(stackDir, 'stack.env'), 'OP_ADMIN_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n');
+    writeFileSync(join(stackDir, 'stack.env'), 'OP_UI_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n');
 
     const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
@@ -436,7 +436,7 @@ describe('scan command', () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
     const stackDir = join(tempHome, 'config', 'stack');
     mkdirSync(stackDir, { recursive: true });
-    writeFileSync(join(stackDir, 'stack.env'), 'OP_ADMIN_TOKEN=abc\nOPENAI_API_KEY=sk-test\n');
+    writeFileSync(join(stackDir, 'stack.env'), 'OP_UI_TOKEN=abc\nOPENAI_API_KEY=sk-test\n');
 
     const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
@@ -553,8 +553,8 @@ describe('install image tag pinning', () => {
   });
 
   it('preserves export prefix when upserting a key', () => {
-    expect(upsertEnvValue('export OP_ADMIN_TOKEN=old\n', 'OP_ADMIN_TOKEN', 'new')).toBe(
-      'export OP_ADMIN_TOKEN=new\n',
+    expect(upsertEnvValue('export OP_UI_TOKEN=old\n', 'OP_UI_TOKEN', 'new')).toBe(
+      'export OP_UI_TOKEN=new\n',
     );
   });
 
@@ -592,13 +592,12 @@ describe('cli entrypoint (subprocess)', () => {
   }, 60_000);
 });
 
-describe('admin command registration', () => {
-  it("admin command has a run handler (no serve subcommand)", async () => {
-    const adminMod = await import("./commands/admin.ts");
-    const adminCmd = adminMod.default;
-    // admin is a direct command — no subcommands, just a run handler
-    expect(typeof (adminCmd as any).run).toBe("function");
-    expect((adminCmd as any).subCommands ?? null).toBeNull();
+describe('UI host server (no subcommand)', () => {
+  it("startUIServer is exported from lib/ui-server.ts", async () => {
+    // v0.11.0: there is no separate `admin`/`ui` subcommand.
+    // The bare `openpalm` command starts the UI host server via startUIServer().
+    const mod = await import("./lib/ui-server.ts");
+    expect(typeof mod.startUIServer).toBe("function");
   });
 });
 

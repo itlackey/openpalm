@@ -37,9 +37,16 @@ function run(
   });
 }
 
-/** Resolve the Docker Compose project name. Respects OP_PROJECT_NAME env var. */
+/**
+ * Resolve the Docker Compose project name.
+ * Honors COMPOSE_PROJECT_NAME (Docker standard) and OP_PROJECT_NAME (legacy).
+ */
 export function resolveComposeProjectName(): string {
-  return process.env.OP_PROJECT_NAME?.trim() || "openpalm";
+  return (
+    process.env.OP_PROJECT_NAME?.trim() ||
+    process.env.COMPOSE_PROJECT_NAME?.trim() ||
+    "openpalm"
+  );
 }
 
 /** Check if Docker is available */

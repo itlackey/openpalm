@@ -13,7 +13,7 @@ Primary runtime sources:
 ## What Is Authoritative
 
 - The running assistant is defined by `.openpalm/config/stack/core.compose.yml`.
-- The optional admin-side OpenCode runtime is started by `openpalm admin` as a host subprocess on a random loopback port.
+- The optional admin-side OpenCode runtime is started by `openpalm` as a host subprocess on a random loopback port.
 - `~/.openpalm/config/assistant/` is the user-editable OpenCode extension surface.
 - `~/.openpalm/config/stack/stack.env` provides runtime provider keys and resolved capability env values.
 - `~/.openpalm/vault/user/user.env` is the recommended place for addon overrides and operator-managed values.
@@ -78,7 +78,7 @@ Compose remains the source of truth for that contract.
 
 - The assistant has no Docker socket.
 - The assistant receives only `vault/user/` as a mount from the vault boundary.
-- Stack-level secrets such as `OP_ADMIN_TOKEN` remain in `config/stack/stack.env`. Channel HMAC secrets live in `config/stack/guardian.env`. Neither is mounted as a file into the assistant.
+- Stack-level secrets such as `OP_UI_TOKEN` remain in `config/stack/stack.env`. Channel HMAC secrets live in `config/stack/guardian.env`. Neither is mounted as a file into the assistant.
 - Admin is a host process. It accesses the Docker socket directly on the host — no container is involved in admin operations.
 
 ---

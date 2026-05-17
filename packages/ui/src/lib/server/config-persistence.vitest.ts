@@ -276,7 +276,7 @@ describe("writeRuntimeFiles", () => {
 
     const systemEnvPath = join(state.stackDir, "stack.env");
     const content = readFileSync(systemEnvPath, "utf-8");
-    // OP_ADMIN_TOKEN is a system secret and correctly lives in stack.env.
+    // OP_UI_TOKEN is a system secret and correctly lives in stack.env.
     // Only the legacy bare ADMIN_TOKEN (without OP_ prefix) should not appear.
     const lines = content.split("\n");
     expect(lines.some((l) => /^ADMIN_TOKEN=/.test(l))).toBe(false);

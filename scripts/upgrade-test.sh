@@ -95,7 +95,7 @@ STATE_DIR="${OP_HOME}/state"
 CACHE_DIR="${OP_HOME}/cache"
 
 PROJECT_NAME="openpalm-upgrade-test"
-OP_ADMIN_TOKEN="upgrade-test-token"
+OP_UI_TOKEN="upgrade-test-token"
 
 # ── Colors / Output ──────────────────────────────────────────────────
 
@@ -135,7 +135,7 @@ trap cleanup EXIT
 
 # ── Helper: compose command ──────────────────────────────────────────
 # v0.11.0: two env files — config/stack/stack.env + config/stack/guardian.env
-# No admin container. Admin is a host process (openpalm admin).
+# No admin container. Admin is a host process (openpalm).
 
 compose_cmd() {
   docker compose \
@@ -230,7 +230,7 @@ OP_GID=$(id -g)
 OP_DOCKER_SOCK=${docker_sock}
 OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=dev
-OP_ADMIN_TOKEN=${OP_ADMIN_TOKEN}
+OP_UI_TOKEN=${OP_UI_TOKEN}
 EOF
 chmod 600 "${STACK_DIR}/stack.env"
 
@@ -412,11 +412,11 @@ else
   fail "stash/vaults/user.env was modified during upgrade (before: ${SECRETS_CHECKSUM_BEFORE}, after: ${SECRETS_CHECKSUM_AFTER})"
 fi
 
-OP_ADMIN_TOKEN_VALUE=$(grep "^OP_ADMIN_TOKEN=" "${STACK_DIR}/stack.env" | head -1 | cut -d= -f2-)
-if [[ "$OP_ADMIN_TOKEN_VALUE" == "$OP_ADMIN_TOKEN" ]]; then
-  pass "OP_ADMIN_TOKEN preserved in config/stack/stack.env"
+OP_UI_TOKEN_VALUE=$(grep "^OP_UI_TOKEN=" "${STACK_DIR}/stack.env" | head -1 | cut -d= -f2-)
+if [[ "$OP_UI_TOKEN_VALUE" == "$OP_UI_TOKEN" ]]; then
+  pass "OP_UI_TOKEN preserved in config/stack/stack.env"
 else
-  fail "OP_ADMIN_TOKEN changed (expected '${OP_ADMIN_TOKEN}', got '${OP_ADMIN_TOKEN_VALUE}')"
+  fail "OP_UI_TOKEN changed (expected '${OP_UI_TOKEN}', got '${OP_UI_TOKEN_VALUE}')"
 fi
 
 CUSTOM_KEY_VALUE=$(grep "^MY_CUSTOM_KEY=" "${STASH_DIR}/vaults/user.env" | head -1 | cut -d= -f2-)
@@ -487,11 +487,11 @@ echo "=== 5f: Admin token preservation ==="
 
 # Admin is a host process — no HTTP auth check here.
 # Verify the token value is still in stack.env.
-TOKEN_AFTER=$(grep "^OP_ADMIN_TOKEN=" "${STACK_DIR}/stack.env" | head -1 | cut -d= -f2-)
-if [[ "$TOKEN_AFTER" == "$OP_ADMIN_TOKEN" ]]; then
-  pass "OP_ADMIN_TOKEN preserved in config/stack/stack.env after upgrade"
+TOKEN_AFTER=$(grep "^OP_UI_TOKEN=" "${STACK_DIR}/stack.env" | head -1 | cut -d= -f2-)
+if [[ "$TOKEN_AFTER" == "$OP_UI_TOKEN" ]]; then
+  pass "OP_UI_TOKEN preserved in config/stack/stack.env after upgrade"
 else
-  fail "OP_ADMIN_TOKEN changed after upgrade (expected '${OP_ADMIN_TOKEN}', got '${TOKEN_AFTER}')"
+  fail "OP_UI_TOKEN changed after upgrade (expected '${OP_UI_TOKEN}', got '${TOKEN_AFTER}')"
 fi
 
 # ── 5g: No errors in container logs ─────────────────────────────────

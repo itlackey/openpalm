@@ -1,7 +1,9 @@
 import { defineConfig } from '@playwright/test';
 
 const STACK_TESTS = process.env.RUN_DOCKER_STACK_TESTS === '1';
-const baseURL = STACK_TESTS ? 'http://localhost:8100' : 'http://localhost:4173';
+// v0.11.0: admin is a host process (default port 3880, overridable via OP_HOST_UI_PORT)
+const ADMIN_PORT = process.env.OP_HOST_UI_PORT ?? '3880';
+const baseURL = STACK_TESTS ? `http://localhost:${ADMIN_PORT}` : 'http://localhost:4173';
 
 export default defineConfig({
 	globalSetup: './e2e/global-setup.ts',

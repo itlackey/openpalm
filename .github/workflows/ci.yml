@@ -141,69 +141,43 @@ jobs:
           fi
           echo "All stack files validated successfully"
 
-      - name: Validate AKM_CLI_VERSION sync between base and guardian Dockerfiles
+      - name: Validate AKM_CLI_VERSION sync between assistant and guardian Dockerfiles
         run: |
           set -euo pipefail
-          # Guardian uses oven/bun:1.3-slim and pins akm-cli independently from
-          # core/base/Dockerfile (the assistant + admin base). The two pins
-          # MUST stay in lockstep so a bump to the base image isn't silently
-          # left behind in guardian. See finding from 0.11.0 final review.
-          BASE_VERSION=$(grep -oP '^ARG AKM_CLI_VERSION=\K\S+' core/base/Dockerfile || true)
+          # Both assistant and guardian install akm-cli at runtime. Keep the
+          # two pins in lockstep so a bump in one isn't silently left behind
+          # in the other.
+          ASSISTANT_VERSION=$(grep -oP '^ARG AKM_CLI_VERSION=\K\S+' core/assistant/Dockerfile || true)
           GUARDIAN_VERSION=$(grep -oP '^ARG AKM_CLI_VERSION=\K\S+' core/guardian/Dockerfile || true)
-          if [ -z "$BASE_VERSION" ]; then
-            echo "::error file=core/base/Dockerfile::Could not extract AKM_CLI_VERSION ARG"
+          if [ -z "$ASSISTANT_VERSION" ]; then
+            echo "::error file=core/assistant/Dockerfile::Could not extract AKM_CLI_VERSION ARG"
             exit 1
           fi
           if [ -z "$GUARDIAN_VERSION" ]; then
             echo "::error file=core/guardian/Dockerfile::Could not extract AKM_CLI_VERSION ARG"
             exit 1
           fi
-          if [ "$BASE_VERSION" != "$GUARDIAN_VERSION" ]; then
-            echo "::error::AKM_CLI_VERSION mismatch: core/base/Dockerfile=$BASE_VERSION vs core/guardian/Dockerfile=$GUARDIAN_VERSION — bump both together"
+          if [ "$ASSISTANT_VERSION" != "$GUARDIAN_VERSION" ]; then
+            echo "::error::AKM_CLI_VERSION mismatch: assistant=$ASSISTANT_VERSION guardian=$GUARDIAN_VERSION — bump both together"
             exit 1
           fi
-          echo "AKM_CLI_VERSION matches across base + guardian: $BASE_VERSION"
+          echo "AKM_CLI_VERSION matches across assistant + guardian: $ASSISTANT_VERSION"
 
-      - name: Validate OPENCODE_VERSION is declared only in base Dockerfile
+      - name: Validate BUN_VERSION sync between assistant and guardian/channel Dockerfiles
         run: |
           set -euo pipefail
-          # core/base/Dockerfile is the single source of truth for OPENCODE_VERSION.
-          # Admin and assistant images derive from openpalm-base and MUST NOT
-          # redeclare ARG OPENCODE_VERSION (which would shadow the base value
-          # silently). See finding from 0.11.0 audit #2.
-          errors=0
-          for df in core/assistant/Dockerfile; do
-            if grep -qP '^ARG OPENCODE_VERSION' "$df"; then
-              echo "::error file=$df::OPENCODE_VERSION must only be declared in core/base/Dockerfile (single source of truth)"
-              errors=$((errors + 1))
-            fi
-          done
-          if [ "$errors" -gt 0 ]; then
-            exit 1
-          fi
-          BASE_OC=$(grep -oP '^ARG OPENCODE_VERSION=\K\S+' core/base/Dockerfile || true)
-          if [ -z "$BASE_OC" ]; then
-            echo "::error file=core/base/Dockerfile::Could not extract OPENCODE_VERSION ARG"
-            exit 1
-          fi
-          echo "OPENCODE_VERSION pinned only in base: $BASE_OC"
-
-      - name: Validate BUN_VERSION sync between base and guardian/channel Dockerfiles
-        run: |
-          set -euo pipefail
-          # core/base/Dockerfile sets BUN_VERSION (e.g. bun-v1.3.10). Guardian
+          # Assistant sets BUN_VERSION (e.g. bun-v1.3.10) explicitly. Guardian
           # and channel use the official oven/bun:<MAJOR.MINOR>-slim image
-          # tag — keep the major.minor in lockstep so a bump in base is not
-          # silently left behind in guardian/channel.
-          BASE_BUN=$(grep -oP '^ARG BUN_VERSION=\K\S+' core/base/Dockerfile || true)
-          if [ -z "$BASE_BUN" ]; then
-            echo "::error file=core/base/Dockerfile::Could not extract BUN_VERSION ARG"
+          # tag — keep the major.minor in lockstep across all three.
+          ASSISTANT_BUN=$(grep -oP '^ARG BUN_VERSION=\K\S+' core/assistant/Dockerfile || true)
+          if [ -z "$ASSISTANT_BUN" ]; then
+            echo "::error file=core/assistant/Dockerfile::Could not extract BUN_VERSION ARG"
             exit 1
           fi
           # bun-v1.3.10 → 1.3
-          BASE_MM=$(echo "$BASE_BUN" | sed -E 's/^bun-v//; s/^([0-9]+\.[0-9]+).*/\1/')
-          if [ -z "$BASE_MM" ]; then
-            echo "::error::Could not parse major.minor from BUN_VERSION=$BASE_BUN"
+          ASSISTANT_MM=$(echo "$ASSISTANT_BUN" | sed -E 's/^bun-v//; s/^([0-9]+\.[0-9]+).*/\1/')
+          if [ -z "$ASSISTANT_MM" ]; then
+            echo "::error::Could not parse major.minor from BUN_VERSION=$ASSISTANT_BUN"
             exit 1
           fi
           errors=0
@@ -214,17 +188,16 @@ jobs:
               errors=$((errors + 1))
               continue
             fi
-            # Strip -slim or other suffix to get the version
             TAG_MM=$(echo "$TAG" | sed -E 's/-.*//')
-            if [ "$TAG_MM" != "$BASE_MM" ]; then
-              echo "::error file=$df::Bun version mismatch: image tag $TAG (major.minor=$TAG_MM) vs base BUN_VERSION major.minor=$BASE_MM — bump together"
+            if [ "$TAG_MM" != "$ASSISTANT_MM" ]; then
+              echo "::error file=$df::Bun version mismatch: image tag $TAG (major.minor=$TAG_MM) vs assistant BUN_VERSION major.minor=$ASSISTANT_MM — bump together"
               errors=$((errors + 1))
             fi
           done
           if [ "$errors" -gt 0 ]; then
             exit 1
           fi
-          echo "BUN_VERSION major.minor matches across base + guardian + channel: $BASE_MM"
+          echo "BUN_VERSION major.minor matches across assistant + guardian + channel: $ASSISTANT_MM"
 
       - name: Validate platform version sync
         run: |

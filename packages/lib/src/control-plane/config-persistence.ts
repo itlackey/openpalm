@@ -87,7 +87,7 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "# Auto-generated fallback.",
     "",
     "# ── Authentication ──────────────────────────────────────────────────",
-    `OP_ADMIN_TOKEN=\${OP_ADMIN_TOKEN}`,
+    `OP_UI_TOKEN=\${OP_UI_TOKEN}`,
     `OP_ASSISTANT_TOKEN=\${OP_ASSISTANT_TOKEN}`,
     "",
     "# ── Service Auth ─────────────────────────────────────────────────────",

@@ -71,7 +71,7 @@ The admin link in the top nav opens the existing admin pages (`/admin/...`) as a
 | `.openpalm/registry/addons/admin/compose.yml` | ❌ deleted |
 | `packages/admin-tools/` (~35 OpenCode tools wrapping admin HTTP) | ❌ deleted |
 | `admin_docker_net` network | ❌ deleted |
-| `OP_ADMIN_API_URL`, `OP_ADMIN_TOKEN`, `OP_ADMIN_BIND_ADDRESS`, `OP_ADMIN_PORT`, `OP_ADMIN_OPENCODE_*` env plumbing | ❌ removed from container env |
+| `OP_ADMIN_API_URL`, `OP_UI_TOKEN`, `OP_ADMIN_BIND_ADDRESS`, `OP_ADMIN_PORT`, `OP_ADMIN_OPENCODE_*` env plumbing | ❌ removed from container env |
 | `x-admin-token` HTTP header auth | ❌ replaced with `httpOnly` cookie |
 | `docs/technical/docker-dependency-resolution.md` (exists only because of admin-in-Docker) | ❌ deleted |
 | Second OpenCode instance on `:3881` inside admin container | ❌ replaced with host subprocess |
@@ -372,7 +372,7 @@ Net verdict: **better on balance**. The elimination of the containerized attack 
 | Packages under `packages/` | 10 | 8 (drop `admin-tools`, fold admin build into CLI) |
 | OpenCode instances in Docker | 2 (assistant + admin containers) | 1 (assistant only) |
 | HTTP auth layers | `x-admin-token` + `OP_ASSISTANT_TOKEN` | cookie (admin) + `OP_ASSISTANT_TOKEN` (guardian↔assistant only) |
-| Container env vars | `OP_ADMIN_API_URL`, `OP_ADMIN_TOKEN`, `OP_ADMIN_BIND_ADDRESS`, `OP_ADMIN_PORT`, `OP_ADMIN_OPENCODE_PORT`, `OP_ADMIN_OPENCODE_BIND_ADDRESS`, `DOCKER_HOST` | All gone from container env |
+| Container env vars | `OP_ADMIN_API_URL`, `OP_UI_TOKEN`, `OP_ADMIN_BIND_ADDRESS`, `OP_ADMIN_PORT`, `OP_ADMIN_OPENCODE_PORT`, `OP_ADMIN_OPENCODE_BIND_ADDRESS`, `DOCKER_HOST` | All gone from container env |
 | Docs existing purely because of admin-in-Docker | `docker-dependency-resolution.md` | Deleted |
 | First-run UX codebases | Wizard (hand-rolled HTML/JS) + post-install admin UI (SvelteKit) — two separate codebases | One SvelteKit app, modal first-run state |
 | Default landing for new users | Admin dashboard with cards | Chat with stack toggle |

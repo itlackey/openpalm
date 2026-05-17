@@ -8,7 +8,7 @@ OpenPalm is compose-first: add the Slack overlay to your compose file set, put S
 - A working OpenPalm install; see [manual compose runbook](../operations/manual-compose-runbook.md)
 - A Slack workspace where you can create apps
 - The `slack` addon in your compose file set, or the optional `admin` addon if you want admin-assisted install
-- `OP_ADMIN_TOKEN` from `~/.openpalm/config/stack/stack.env` if you use admin endpoints
+- `OP_UI_TOKEN` from `~/.openpalm/config/stack/stack.env` if you use admin endpoints
 
 ## 1. Create the Slack app
 

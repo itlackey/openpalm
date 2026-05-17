@@ -121,8 +121,8 @@ If the admin addon is installed, also verify which OpenCode runtime the admin is
 actually targeting. In confusing cases, check the admin process environment or logs:
 
 ```bash
-# Look for the openpalm admin process and its config
-ps aux | grep "openpalm admin"
+# Look for the openpalm process and its config
+ps aux | grep "openpalm"
 cat ~/.openpalm/config/stack/stack.env | grep -E "OP_OPENCODE|OPENCODE_PORT"
 ```
 

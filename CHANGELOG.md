@@ -11,13 +11,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **Admin UI as a host process** — `openpalm admin` (or bare `openpalm`)
-  starts the SvelteKit admin UI directly on the host at `http://localhost:3880`.
-  No admin container, no docker-socket-proxy. The setup wizard runs at `/setup`
+- **UI as a host process** — the bare `openpalm` command starts the
+  SvelteKit UI directly on the host at `http://localhost:3880`. No UI
+  container, no docker-socket-proxy. The setup wizard runs at `/setup`
   on first boot and auto-redirects there until setup is complete.
+  Configurable via `OP_HOST_UI_PORT`; auth token in `OP_UI_TOKEN`.
+- **`openpalm` smart default** — running the bare command detects state
+  and does the right thing: bootstraps the install if not installed,
+  starts the Docker stack if it's down, then runs the UI server in the
+  foreground. There is no separate `admin`/`ui` subcommand.
 - **akm stash as the shared knowledge layer** — akm-cli 0.8.0 is installed in
   the assistant container. The stash at `OP_HOME/stash/` is mounted at `/akm`
-  and shared with the host-side admin process.
+  and shared with the host-side UI process.
 - **Scheduler co-process inside the assistant container** — the standalone
   `scheduler` compose service has been removed. The scheduler now runs as a
   lightweight co-process inside `core/assistant/entrypoint.sh`.
@@ -72,8 +77,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
-- **Admin container** — `openpalm/admin` Docker image is gone. Admin is now a
-  host process (`openpalm admin`). `docker-socket-proxy` also removed.
+- **Admin container** — `openpalm/admin` Docker image is gone. The UI runs
+  as a host process via the bare `openpalm` command. `docker-socket-proxy`
+  also removed.
+- **`admin`/`ui` subcommand** — folded into the bare `openpalm` command.
+  Use `openpalm --no-open` for headless invocation (systemd, scripts).
+- **Shared `openpalm-base` Docker image** — inlined into
+  `core/assistant/Dockerfile` since it was the only consumer. Removes the
+  separate `build-base-image` CI job and the two-step `dev:build`.
 - **Memory service** (`packages/memory`) — the Bun-based memory service and all
   OpenMemory integration deleted. Memory and knowledge recall now live in the
   shared akm stash.

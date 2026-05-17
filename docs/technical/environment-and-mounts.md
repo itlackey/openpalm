@@ -147,7 +147,7 @@ Key env:
 | `PORT` | `8080` | HTTP listen port |
 | `OP_ASSISTANT_URL` | `http://assistant:4096` | Assistant forward target |
 | `OPENCODE_TIMEOUT_MS` | `0` | Guardian-side timeout override |
-| `ADMIN_TOKEN` | `${OP_ADMIN_TOKEN:-}` | Admin token forwarded from stack env |
+| `ADMIN_TOKEN` | `${OP_UI_TOKEN:-}` | Admin token forwarded from stack env |
 | `GUARDIAN_AUDIT_PATH` | `/app/audit/guardian-audit.log` | Audit log path |
 | `GUARDIAN_SECRETS_PATH` | `/app/secrets/guardian.env` | Path to mounted guardian secrets for hot-reload |
 | `CHANNEL_<NAME>_SECRET` | `config/stack/guardian.env` (via env_file) | Channel HMAC verification secrets |
@@ -156,7 +156,7 @@ Notes:
 
 - Guardian is internal-only from the host perspective.
 - It is the only bridge between addon ingress networks and `assistant_net`.
-- Guardian loads `config/stack/guardian.env` as a compose `env_file` for channel HMAC secrets. The same file is bind-mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload. Non-secret config (`OP_ADMIN_TOKEN`) is passed via `${VAR}` substitution in the compose `environment:` block.
+- Guardian loads `config/stack/guardian.env` as a compose `env_file` for channel HMAC secrets. The same file is bind-mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload. Non-secret config (`OP_UI_TOKEN`) is passed via `${VAR}` substitution in the compose `environment:` block.
 
 ### Scheduler co-process
 
@@ -183,15 +183,15 @@ Notes:
 
 ## Admin (host process)
 
-Admin is a host-only Bun.serve server started by `openpalm admin`. It has no container, no Docker socket mount, and no `$OP_HOME` volume bind — it accesses everything directly as a host process.
+Admin is a host-only Bun.serve server started by `openpalm`. It has no container, no Docker socket mount, and no `$OP_HOME` volume bind — it accesses everything directly as a host process.
 
-Bind address: `127.0.0.1:${OP_HOST_ADMIN_PORT:-3880}` (loopback only — never reachable from containers or LAN)
+Bind address: `127.0.0.1:${OP_HOST_UI_PORT:-3880}` (loopback only — never reachable from containers or LAN)
 
 Key env (host process, not container):
 
 | Variable | Value / source | Purpose |
 |---|---|---|
-| `PORT` | `OP_HOST_ADMIN_PORT` or `3880` | Admin HTTP listen port |
+| `PORT` | `OP_HOST_UI_PORT` or `3880` | Admin HTTP listen port |
 | `OP_HOME` | resolved from host env | OpenPalm home directory |
 | `ADMIN_TOKEN` | `$OP_HOME/state/admin/token` | Admin API auth token |
 
@@ -238,7 +238,7 @@ These variables are consumed by Compose and service env blocks.
 | `OP_CHAT_BIND_ADDRESS`, `OP_CHAT_PORT` | Chat addon host bind |
 | `OP_API_BIND_ADDRESS`, `OP_API_PORT` | API addon host bind |
 | `OP_VOICE_BIND_ADDRESS`, `OP_VOICE_PORT` | Voice addon host bind |
-| `OP_ADMIN_TOKEN` | Admin auth token |
+| `OP_UI_TOKEN` | Admin auth token |
 | `OP_ASSISTANT_TOKEN` | Assistant operational token (also used by the scheduler co-process for admin API calls) |
 | `OP_OPENCODE_PASSWORD` | OpenCode server password |
 | `OWNER_NAME` | Operator display name |

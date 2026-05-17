@@ -49,7 +49,7 @@ Important keys include:
 
 | Key | Notes |
 |---|---|
-| `OP_ADMIN_TOKEN` | Admin UI/API authentication token |
+| `OP_UI_TOKEN` | Admin UI/API authentication token |
 | `OP_ASSISTANT_TOKEN` | Assistant auth token for admin API access (also used by the scheduler co-process inside the assistant container) |
 | `OP_HOME` | OpenPalm home directory |
 | `OP_UID` / `OP_GID` | Host user/group mapping |
@@ -100,7 +100,7 @@ access to stack secrets by filesystem path.
 
 ## Authentication tokens
 
-### `OP_ADMIN_TOKEN`
+### `OP_UI_TOKEN`
 
 - primary admin credential
 - used for privileged admin UI/API operations
