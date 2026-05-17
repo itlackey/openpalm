@@ -1,7 +1,7 @@
 /**
  * Registry catalog discovery and refresh.
  *
- * `OP_HOME/registry` is the only persistent catalog location.
+ * `OP_HOME/state/registry` is the only persistent catalog location.
  * Install seeds it once; refresh replaces it explicitly.
  */
 import { cpSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';

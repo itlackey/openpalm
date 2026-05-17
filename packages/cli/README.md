@@ -6,7 +6,7 @@ Bun CLI for bootstrapping and managing an OpenPalm installation. The CLI is the 
 
 The CLI operates directly against Docker Compose:
 
-- **Install** -- creates the `~/.openpalm/` home layout, downloads assets, serves the setup wizard locally via `Bun.serve()`, writes files to their final locations, and starts core services
+- **Install** -- creates the `~/.openpalm/` home layout, downloads assets, spawns the setup wizard via the admin UI, writes files to their final locations, and starts core services
 - **All lifecycle commands** -- refresh files in `~/.openpalm/` when needed, then run Docker Compose directly
 - **Admin UI** -- start the host admin server with `openpalm admin serve` (no container required)
 
@@ -17,10 +17,8 @@ The CLI operates directly against Docker Compose:
 | `openpalm install` | Bootstrap `~/.openpalm/`, download assets, run setup wizard, start core services |
 | `openpalm uninstall` | Stop and remove the stack (preserves config and data) |
 | `openpalm update` | Pull latest images and recreate containers |
-| `openpalm upgrade` | Alias for `update` |
 | `openpalm self-update` | Replace the installed CLI binary with the latest release build |
 | `openpalm addon <enable|disable|list>` | Manage registry addons directly from the CLI |
-| `openpalm admin <enable|disable|status>` | Manage the admin addon directly from the CLI |
 | `openpalm start [svc...]` | Start all or named services |
 | `openpalm admin serve` | Start the host admin UI server |
 | `openpalm stop [svc...]` | Stop all or named services |
@@ -39,9 +37,6 @@ The CLI operates directly against Docker Compose:
 
 ```bash
 openpalm admin serve            # Start the host admin UI (binds to 127.0.0.1:3880)
-openpalm admin enable           # Enable a registry addon named "admin" (if it exists)
-openpalm admin disable          # Disable the admin addon
-openpalm admin status           # Show whether the admin addon is enabled
 openpalm addon enable chat      # Enable a registry addon and start its services
 openpalm addon disable chat     # Stop and disable a registry addon
 openpalm addon list             # Show available addons and whether they are enabled
@@ -49,7 +44,7 @@ openpalm addon list             # Show available addons and whether they are ena
 
 ## Setup Wizard
 
-On first install, the CLI serves a setup wizard on port `8100` via `Bun.serve()`. The wizard defaults to `http://localhost:3880` once installed. The wizard runs entirely in the browser (vanilla HTML/JS) and calls `performSetup()` from `@openpalm/lib` to write secrets, connection profiles, memory config, and other files to their final locations.
+On first install, the CLI spawns `openpalm admin serve` which serves the setup wizard via the SvelteKit admin UI at `http://localhost:3880/setup`. The wizard runs entirely in the browser and calls `performSetup()` from `@openpalm/lib` to write secrets, connection profiles, memory config, and other files to their final locations.
 
 ## Environment Variables
 
@@ -62,7 +57,7 @@ On first install, the CLI serves a setup wizard on port `8100` via `Bun.serve()`
 
 ## How It Works
 
-1. **Bootstrap** (first install) -- creates the `~/.openpalm/` tree, downloads core assets from GitHub, seeds `vault/user/user.env` and `config/stack/stack.env`, materializes the runtime registry catalog under `registry/`, serves the setup wizard, writes `stack/core.compose.yml`, enables requested addons under `stack/addons/`, and starts core services via `docker compose up`
+1. **Bootstrap** (first install) -- creates the `~/.openpalm/` tree, downloads core assets from GitHub, seeds `stash/vaults/user.env` and `config/stack/stack.env`, materializes the runtime registry catalog under `state/registry/`, serves the setup wizard, writes `stack/core.compose.yml`, enables requested addons under `stack/addons/`, and starts core services via `docker compose up`
 2. **Running stack** -- commands refresh files in `~/.openpalm/` when needed, then execute Docker Compose directly.
 3. **Admin absent** -- all commands work identically. Admin is never required for any operation.
 

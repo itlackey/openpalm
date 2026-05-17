@@ -57,7 +57,7 @@ ensure_dev_setup() {
 
 ensure_admin_build() {
 	# Build admin if the build output is missing or older than source
-	if [[ ! -d packages/admin/build ]]; then
+	if [[ ! -d packages/ui/build ]]; then
 		echo "Building admin..."
 		bun run admin:build
 	fi

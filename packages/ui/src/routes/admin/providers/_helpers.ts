@@ -1,7 +1,7 @@
 /**
  * Shared coercion + parsing helpers for the per-action provider routes.
  *
- * Each handler under `packages/admin/src/routes/admin/providers/<action>/`
+ * Each handler under `packages/ui/src/routes/admin/providers/<action>/`
  * imports from this file to keep the per-route +server.ts files focused on
  * their own request shape and response.
  *

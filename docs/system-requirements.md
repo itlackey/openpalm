@@ -118,7 +118,6 @@ unless you intentionally change bind addresses in `config/stack/stack.env`.
 | `3820` | Chat addon | `OP_CHAT_PORT` |
 | `3821` | API addon | `OP_API_PORT` |
 | `3880` | Admin UI/API addon | `OP_ADMIN_PORT` |
-| `3881` | Admin-side OpenCode addon | `OP_ADMIN_OPENCODE_PORT` |
 | `2222` | Assistant SSH (optional) | `OP_ASSISTANT_SSH_PORT` |
 
 `guardian` stays internal to Docker networks by default.

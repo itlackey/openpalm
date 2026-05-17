@@ -959,13 +959,13 @@ Auth: `requireAdmin`
 Response:
 
 ```json
-{ "status": "ready", "url": "http://localhost:3881/" }
+{ "status": "ready", "url": "http://localhost:4096/" }
 ```
 
 When unreachable:
 
 ```json
-{ "status": "unavailable", "url": "http://localhost:3881/" }
+{ "status": "unavailable", "url": "http://localhost:4096/" }
 ```
 
 ### `GET /admin/opencode/model`

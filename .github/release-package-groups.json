@@ -2,7 +2,7 @@
   "platformManifests": [
     "package.json",
     "packages/lib/package.json",
-    "packages/admin/package.json",
+    "packages/ui/package.json",
     "core/guardian/package.json",
     "packages/cli/package.json",
     "packages/channels-sdk/package.json"

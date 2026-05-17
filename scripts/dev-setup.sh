@@ -8,10 +8,10 @@ Usage: scripts/dev-setup.sh [--seed-env] [--force] [--enable-addon <name>] [--pa
 Creates local .dev directories and seeds dev config files.
 
 Options:
-  --seed-env          Seed .dev/vault/user/user.env from the user.env.schema template
-                      (if missing) and generate vault/stack/stack.env with auto-detected values.
+  --seed-env          Seed .dev/stash/vaults/user.env from the user.env.schema template
+                      (if missing) and generate .dev/config/stack/stack.env with auto-detected values.
   --force             Overwrite seeded files even if they already exist.
-  --enable-addon <n>  Copy .dev/registry/addons/<n>/ into .dev/stack/addons/<n>/.
+  --enable-addon <n>  Copy .dev/registry/addons/<n>/ into .dev/config/stack/addons/<n>/.
                       Repeat to enable multiple dev addons.
   --pass              Initialize a pass backend for secret storage (requires GPG key).
   --gpg-id <key>      GPG key ID for the pass backend (required with --pass).
@@ -106,16 +106,15 @@ fi
 
 DEV_ROOT="$ROOT_DIR/.dev"
 CONFIG_DIR="$DEV_ROOT/config"
-VAULT_DIR="$DEV_ROOT/vault"
+STASH_DIR="$DEV_ROOT/stash"
 DATA_DIR="$DEV_ROOT/data"
 LOGS_DIR="$DEV_ROOT/logs"
 
 mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
-	"$CONFIG_DIR/automations" "$CONFIG_DIR/stash" \
+	"$CONFIG_DIR/automations" "$CONFIG_DIR/stack/addons" \
+	"$STASH_DIR/vaults" \
 	"$DEV_ROOT/registry/addons" "$DEV_ROOT/registry/automations" \
-	"$DEV_ROOT/stack" "$DEV_ROOT/stack/addons" \
-	"$VAULT_DIR" "$VAULT_DIR/stack" "$VAULT_DIR/user" \
 	"$DATA_DIR/assistant/.config/opencode" \
 	"$DATA_DIR/guardian" \
 	"$DATA_DIR/automations" "$DATA_DIR/ollama" "$DATA_DIR/stash" "$DATA_DIR/guardian-stash" \
@@ -124,9 +123,9 @@ mkdir -p \
 	"$DEV_ROOT/work"
 
 # ── Seed core assets (write-once unless --force) ─────────────────
-COMPOSE_DEST="$DEV_ROOT/stack/core.compose.yml"
+COMPOSE_DEST="$CONFIG_DIR/stack/core.compose.yml"
 
-[[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/.openpalm/stack/core.compose.yml" "$COMPOSE_DEST"
+[[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/.openpalm/config/stack/core.compose.yml" "$COMPOSE_DEST"
 
 # Seed registry catalog from repo template.
 # Replace shipped addon directories wholesale so removed support files do not linger.
@@ -141,7 +140,7 @@ cp -r "$ROOT_DIR/.openpalm/registry/automations/"* "$DEV_ROOT/registry/automatio
 # Enable requested addons in the dev runtime
 for addon in "${enabled_addons[@]}"; do
 	src_dir="$DEV_ROOT/registry/addons/$addon"
-	dest_dir="$DEV_ROOT/stack/addons/$addon"
+	dest_dir="$CONFIG_DIR/stack/addons/$addon"
 	if [[ ! -d "$src_dir" ]]; then
 		echo "Error: dev registry addon not found: $addon" >&2
 		exit 1
@@ -165,7 +164,7 @@ SYEOF
 fi
 
 # Seed auth.json (empty — prevents Docker creating it as directory)
-AUTH_JSON="$VAULT_DIR/stack/auth.json"
+AUTH_JSON="$CONFIG_DIR/stack/auth.json"
 if [[ ! -f "$AUTH_JSON" || $force -eq 1 ]]; then
 	echo '{}' >"$AUTH_JSON"
 	chmod 600 "$AUTH_JSON"
@@ -173,10 +172,10 @@ fi
 
 # ── Seed environment files ───────────────────────────────────────
 if [[ $seed_env -eq 1 ]]; then
-	env_dest="$VAULT_DIR/user/user.env"
+	env_dest="$STASH_DIR/vaults/user.env"
 	if [[ ! -f "$env_dest" || $force -eq 1 ]]; then
 		# Seed user.env with dev-friendly defaults (Ollama backend, dev tokens).
-		# The schema template (vault/user.env.schema) documents all supported
+		# The schema template (stash/vaults/user.env.schema) documents all supported
 		# variables but contains no values; we write concrete dev values here.
 		cat >"$env_dest" <<USEREOF
 # OpenPalm user.env — dev environment
@@ -188,7 +187,7 @@ OPENAI_BASE_URL=http://host.docker.internal:11434/v1
 USEREOF
 	fi
 
-	system_env="$VAULT_DIR/stack/stack.env"
+	system_env="$CONFIG_DIR/stack/stack.env"
 	if [[ ! -f "$system_env" || $force -eq 1 ]]; then
 		# Detect Docker socket from active context (supports OrbStack, Colima, etc.)
 		docker_sock="/var/run/docker.sock"
@@ -230,11 +229,11 @@ EOF
 	fi
 fi
 
-# Ensure vault env files exist (compose needs them even if empty)
-touch "$VAULT_DIR/user/user.env" "$VAULT_DIR/stack/stack.env"
+# Ensure env files exist (compose needs them even if empty)
+touch "$STASH_DIR/vaults/user.env" "$CONFIG_DIR/stack/stack.env"
 
 # Generate channel HMAC secrets in guardian.env (the canonical location)
-guardian_env="$VAULT_DIR/stack/guardian.env"
+guardian_env="$CONFIG_DIR/stack/guardian.env"
 if [[ ! -f "$guardian_env" || $force -eq 1 ]]; then
 	channel_chat_secret=$(openssl rand -hex 16)
 	channel_api_secret=$(openssl rand -hex 16)
@@ -296,7 +295,7 @@ if docker info >/dev/null 2>&1; then
 fi
 
 if [[ $EUID -ne 0 ]]; then
-	chown -R "$(id -u):$(id -g)" "$CONFIG_DIR" "$VAULT_DIR" "$DATA_DIR" "$LOGS_DIR" 2>/dev/null || true
+	chown -R "$(id -u):$(id -g)" "$CONFIG_DIR" "$STASH_DIR" "$DATA_DIR" "$LOGS_DIR" 2>/dev/null || true
 else
 	echo "Note: running as root; ownership left as-is." >&2
 fi

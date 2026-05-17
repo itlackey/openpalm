@@ -51,7 +51,7 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
   for (const key of REQUIRED_STACK_KEYS) {
     const value = stackEnv[key];
     if (!value || value.trim().length === 0) {
-      errors.push(`ERROR: required key ${key} is missing or empty in state/stack.env`);
+      errors.push(`ERROR: required key ${key} is missing or empty in config/stack/stack.env`);
     }
   }
 
@@ -63,7 +63,7 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
     const inUser = Object.prototype.hasOwnProperty.call(userEnv, mapping.envKey);
     if (!inStack && !inUser) {
       warnings.push(
-        `WARN: ${mapping.envKey} (akm ${mapping.secretKey}) is not declared in state/stack.env`,
+        `WARN: ${mapping.envKey} (akm ${mapping.secretKey}) is not declared in config/stack/stack.env`,
       );
     }
   }

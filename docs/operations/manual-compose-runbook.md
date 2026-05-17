@@ -29,7 +29,7 @@ variable). The relevant files for running the stack are:
 | `~/.openpalm/config/stack/core.compose.yml` | Core services: assistant (also runs the scheduler co-process), guardian |
 | `~/.openpalm/config/stack/addons/<name>/compose.yml` | One file per enabled addon (admin, chat, api, etc.) |
 | `~/.openpalm/config/stack/stack.env` | System-managed values: tokens, ports, UID/GID, image tags |
-| `~/.openpalm/vault/user/user.env` | User-managed settings: owner info, custom preferences |
+| `~/.openpalm/stash/vaults/user.env` | User-managed settings: owner info, custom preferences |
 | `~/.openpalm/config/stack/guardian.env` | Channel HMAC secrets (loaded by guardian; compose marks it `required: false`) |
 | `~/.openpalm/config/stack.yml` | Optional tooling metadata (helper scripts read this; it is not deployment truth) |
 
@@ -60,14 +60,14 @@ op() {
   local PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
 
   local addon_files=""
-  for f in "$OP_HOME"/stack/addons/*/compose.yml; do
+  for f in "$OP_HOME"/config/stack/addons/*/compose.yml; do
     [ -f "$f" ] && addon_files="$addon_files -f $f"
   done
 
   docker compose \
     --project-name "$PROJECT_NAME" \
     --env-file "$OP_HOME/config/stack/stack.env" \
-    --env-file "$OP_HOME/vault/user/user.env" \
+    --env-file "$OP_HOME/stash/vaults/user.env" \
     --env-file "$OP_HOME/config/stack/guardian.env" \
     -f "$OP_HOME/config/stack/core.compose.yml" \
     $addon_files \
@@ -84,9 +84,9 @@ op ps
 op logs -f assistant
 ```
 
-The function discovers all `compose.yml` files under `stack/addons/` and passes
+The function discovers all `compose.yml` files under `config/stack/addons/` and passes
 them as `-f` arguments automatically. Only addons you have enabled (i.e.,
-directories present under `stack/addons/`) are included.
+directories present under `config/stack/addons/`) are included.
 
 ### Manual command (without the helper)
 
@@ -99,7 +99,7 @@ PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
 docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/config/stack/stack.env" \
-  --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/stash/vaults/user.env" \
   --env-file "$OP_HOME/config/stack/guardian.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
   -f "$OP_HOME/config/stack/addons/chat/compose.yml" \
@@ -131,7 +131,7 @@ op config --services
 docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/config/stack/stack.env" \
-  --env-file "$OP_HOME/vault/user/user.env" \
+  --env-file "$OP_HOME/stash/vaults/user.env" \
   --env-file "$OP_HOME/config/stack/guardian.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
   config --quiet
@@ -203,11 +203,11 @@ op pull
 
 1. Verify the addon is available in the registry:
    ```bash
-   ls ~/.openpalm/registry/addons/
+   ls ~/.openpalm/state/registry/addons/
    ```
 2. Copy the addon directory into the active stack:
    ```bash
-   cp -R ~/.openpalm/registry/addons/<name> ~/.openpalm/config/stack/addons/<name>
+   cp -R ~/.openpalm/state/registry/addons/<name> ~/.openpalm/config/stack/addons/<name>
    ```
 3. Run preflight to confirm the merge is clean:
    ```bash

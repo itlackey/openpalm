@@ -55,7 +55,6 @@ Important keys include:
 | `OP_IMAGE_NAMESPACE` / `OP_IMAGE_TAG` | Image source and tag |
 | `OP_ASSISTANT_PORT` | Assistant host port, default `3800` |
 | `OP_ADMIN_PORT` | Admin host port, default `3880` |
-| `OP_ADMIN_OPENCODE_PORT` | Admin-side OpenCode port, default `3881` |
 | `OP_CHAT_PORT` | Chat addon host port, default `3820` |
 | `OP_API_PORT` | API addon host port, default `3821` |
 | `OP_VOICE_PORT` | Voice addon host port, default `3810` |

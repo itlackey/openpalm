@@ -112,6 +112,8 @@ fi
 OP_HOME="${OP_HOME:-${HOME}/.openpalm}"
 CONFIG_HOME="${OP_HOME}/config"
 DATA_HOME="${OP_HOME}/data"
+STATE_HOME="${OP_HOME}/state"
+STASH_HOME="${OP_HOME}/stash"
 
 # ── Cleanup handler ──────────────────────────────────────────────────
 
@@ -245,7 +247,7 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
   fi
 
   # Verify directory structure was created
-  for dir in "$CONFIG_HOME" "$DATA_HOME" "${OP_HOME}/vault"; do
+  for dir in "$CONFIG_HOME" "$DATA_HOME" "$STASH_HOME"; do
     if [ -d "$dir" ]; then
       pass "Directory created: $dir"
     else
@@ -261,8 +263,6 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
   fi
 
   # Verify stash/vaults/user.env was seeded
-  CONFIG_HOME="${OP_HOME}/config"
-STASH_HOME="${OP_HOME}/stash"
   if [ -f "$STASH_HOME/vaults/user.env" ]; then
     pass "stash/vaults/user.env created"
   else
@@ -297,8 +297,7 @@ if [ "$ADMIN_HEALTHY" = "true" ]; then
 else
   fail "Admin did not respond within ${SERVICE_TIMEOUT}s"
   echo ""
-  echo "  Admin container logs (last 30 lines):"
-  docker compose --project-name openpalm logs admin --tail 30 2>/dev/null || true
+  echo "  Note: admin is a host process; use HTTP diagnostics instead"
   echo "ABORTING -- cannot continue without admin"
   exit 1
 fi
@@ -440,8 +439,7 @@ PAYLOAD
     else
       fail "Setup wizard failed. Response: $SETUP_RESULT"
       echo ""
-      echo "  Admin logs (last 20 lines):"
-      docker compose --project-name openpalm logs admin --tail 20 2>/dev/null || true
+      echo "  Note: admin is a host process; use HTTP diagnostics instead"
     fi
   fi
 

@@ -487,25 +487,25 @@ describe("Broken/Corrupt State", () => {
     expect(spec).toBeNull();
   });
 
-  // Scenario 14: config dir exists but automations dir doesn't
+  // Scenario 14: stash/tasks dir missing (performSetup should recreate it via ensureHomeDirs)
   it("performSetup creates missing subdirectories", async () => {
     // Seed the minimal env files first
     seedMinimalEnvFiles();
 
-    // Remove automations dir (performSetup should recreate it)
-    rmSync(join(configDir, "automations"), { recursive: true, force: true });
+    // Remove stash/tasks dir (performSetup should recreate it via ensureHomeDirs)
+    rmSync(join(homeDir, "stash", "tasks"), { recursive: true, force: true });
 
     const result = await performSetup(
       makeValidSpec()
     );
     expect(result.ok).toBe(true);
 
-    // Artifacts should exist in stack/ (not config/components/)
+    // Artifacts should exist in config/stack/
     expect(existsSync(join(homeDir, "config", "stack", "core.compose.yml"))).toBe(
       true
     );
-    // Automations dir should be recreated
-    expect(existsSync(join(configDir, "automations"))).toBe(true);
+    // stash/tasks dir should be recreated by ensureHomeDirs
+    expect(existsSync(join(homeDir, "stash", "tasks"))).toBe(true);
   });
 
   // Scenario 15: openpalm.yaml with old version

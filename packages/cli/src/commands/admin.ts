@@ -2,7 +2,7 @@ import { defineCommand } from 'citty';
 import { join } from 'node:path';
 import { resolveCacheDir, resolveOpenPalmHome, resolveConfigDir, createLogger } from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
-import { ensureAdminBuild } from '../lib/admin-build.ts';
+import { ensureAdminBuild } from '../lib/ui-build.ts';
 import { startOpenCodeSubprocess, type OpenCodeSubprocess } from '../lib/opencode-subprocess.ts';
 import { openBrowser } from '../lib/browser.ts';
 

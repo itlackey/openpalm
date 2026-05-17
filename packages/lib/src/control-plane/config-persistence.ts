@@ -233,7 +233,7 @@ export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
 
   const envVars: Record<string, string> = {
     ...(process.env as Record<string, string>),
-    ...parseEnvFile(`${state.stateDir}/stack.env`),
+    ...parseEnvFile(`${state.stackDir}/stack.env`),
   };
 
   for (const file of composeFiles) {

@@ -96,7 +96,7 @@ export const POST: RequestHandler = async (event) => {
       patchSecretsEnvFile(state.stackDir, secretPatches);
     } catch (err) {
       appendAudit(state, actor, "capabilities.save", { provider, error: String(err) }, false, requestId, callerType);
-      return errorResponse(500, "internal_error", "Failed to update state/stack.env", {}, requestId);
+      return errorResponse(500, "internal_error", "Failed to update config/stack/stack.env", {}, requestId);
     }
   }
 

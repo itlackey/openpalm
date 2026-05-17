@@ -44,9 +44,9 @@ dev_compose() {
 	docker compose --project-directory . \
 		-f .dev/stack/core.compose.yml \
 		-f compose.dev.yml \
-		--env-file .dev/vault/stack/stack.env \
-		--env-file .dev/vault/user/user.env \
-		--env-file .dev/vault/stack/guardian.env \
+		--env-file .dev/config/stack/stack.env \
+		--env-file .dev/stash/vaults/user.env \
+		--env-file .dev/config/stack/guardian.env \
 		--project-name openpalm "$@"
 }
 
@@ -76,9 +76,12 @@ fi
 echo ""
 echo "=== Step 2: Clean .dev/ state ==="
 
-# Vault — reset secrets
-mkdir -p .dev/vault/user .dev/vault/stack
-echo "# User extension file (empty placeholder for custom vars)" >.dev/vault/user/user.env
+# Vaults — reset user secrets
+mkdir -p .dev/stash/vaults
+echo "# User extension file (empty placeholder for custom vars)" >.dev/stash/vaults/user.env
+
+# Config — reset stack secrets
+mkdir -p .dev/config/stack
 
 # Data — remove everything except models (HF cache)
 rm -f .dev/data/local-models.json
@@ -95,13 +98,13 @@ docker run --rm -v "$ROOT_DIR/.dev/data/opencode:/c" alpine sh -c \
 	"find /c -user root -delete" 2>/dev/null || true
 docker run --rm -v "$ROOT_DIR/.dev/config/assistant:/c" alpine sh -c \
 	"find /c -user root -delete" 2>/dev/null || true
-docker run --rm -v "$ROOT_DIR/.dev/vault/user:/c" alpine sh -c \
+docker run --rm -v "$ROOT_DIR/.dev/stash/vaults:/c" alpine sh -c \
 	"find /c -user root -delete" 2>/dev/null || true
 
-# Vault — reset system env and managed files
-rm -f .dev/vault/stack/stack.env
-rm -f .dev/vault/stack/auth.json
-rm -rf .dev/vault/stack/services
+# Config — reset system env and managed files
+rm -f .dev/config/stack/stack.env
+rm -f .dev/config/stack/auth.json
+rm -rf .dev/config/stack/services
 
 # Runtime addons — clear enabled overlays only
 rm -rf .dev/stack/addons
@@ -125,12 +128,12 @@ echo "=== Step 3: Seed config ==="
 # Clear admin tokens from seeded secrets so admin starts in first-boot state.
 # dev-setup seeds them for convenience, but the e2e test needs to verify the wizard sets them.
 # The stack.env uses `export ` prefix, so match both with and without.
-sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/vault/stack/stack.env
-sed -i 's/^\(export \)\{0,1\}OP_ADMIN_TOKEN=.*/\1OP_ADMIN_TOKEN=/' .dev/vault/stack/stack.env
+sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/config/stack/stack.env
+sed -i 's/^\(export \)\{0,1\}OP_ADMIN_TOKEN=.*/\1OP_ADMIN_TOKEN=/' .dev/config/stack/stack.env
 
 # Use a dev-only image tag so the wizard's pull step doesn't overwrite locally
 # built images with remote ones.
-sed -i 's/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=dev/' .dev/vault/stack/stack.env
+sed -i 's/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=dev/' .dev/config/stack/stack.env
 
 # Remove stack.yml so the wizard creates a fresh one (verifies Step 7 writes it)
 rm -f .dev/config/stack.yml
@@ -232,7 +235,7 @@ echo ""
 echo "=== Step 6: Verify fresh state ==="
 
 # Read admin token from stack.env (seeded by dev-setup.sh)
-ADMIN_TOKEN=$(grep -E '^(export )?OP_ADMIN_TOKEN=' .dev/vault/stack/stack.env 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
+ADMIN_TOKEN=$(grep -E '^(export )?OP_ADMIN_TOKEN=' .dev/config/stack/stack.env 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
 if [ -z "$ADMIN_TOKEN" ]; then
 	ADMIN_TOKEN="dev-admin-token"
 fi
@@ -283,8 +286,8 @@ fi
 # OpenCode's lmstudio provider uses @ai-sdk/openai-compatible (Chat Completions API)
 # with hardcoded base URL 127.0.0.1:1234. The entrypoint.sh socat proxy forwards
 # that to LMSTUDIO_BASE_URL (the real Ollama endpoint).
-echo "LMSTUDIO_BASE_URL=http://host.docker.internal:11434" >> .dev/vault/stack/stack.env
-echo "LMSTUDIO_API_KEY=not-needed" >> .dev/vault/stack/stack.env
+echo "LMSTUDIO_BASE_URL=http://host.docker.internal:11434" >> .dev/config/stack/stack.env
+echo "LMSTUDIO_API_KEY=not-needed" >> .dev/config/stack/stack.env
 
 # Write model to OpenCode user config so OpenCode uses lmstudio/qwen/qwen3-coder-30b
 cat > .dev/config/assistant/opencode.json <<'OCEOF'
@@ -355,7 +358,7 @@ fi
 # ── Step 10: Verify stack.env ─────────────────────────────────────────
 echo ""
 echo "=== Step 10: Verify stack.env ==="
-secrets=".dev/vault/stack/stack.env"
+secrets=".dev/config/stack/stack.env"
 
 check_env_val() {
 	local key="$1" expected="$2"
@@ -370,7 +373,7 @@ check_env_val() {
 }
 
 # ADMIN_TOKEN is now OP_ADMIN_TOKEN in stack.env, not user.env
-STACK_ADMIN_TOKEN=$(grep -E '^(export )?OP_ADMIN_TOKEN=' .dev/vault/stack/stack.env 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
+STACK_ADMIN_TOKEN=$(grep -E '^(export )?OP_ADMIN_TOKEN=' .dev/config/stack/stack.env 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
 if [ "$STACK_ADMIN_TOKEN" = "dev-admin-token" ]; then
 	pass "OP_ADMIN_TOKEN=dev-admin-token (in stack.env)"
 else
@@ -378,7 +381,7 @@ else
 fi
 # Config vars (SYSTEM_LLM_*, EMBEDDING_*) live in stack.yml capabilities,
 # NOT in user.env. Verify they are NOT in user.env.
-if grep -qE 'SYSTEM_LLM_PROVIDER=' .dev/vault/user/user.env 2>/dev/null; then
+if grep -qE 'SYSTEM_LLM_PROVIDER=' .dev/stash/vaults/user.env 2>/dev/null; then
 	fail "SYSTEM_LLM_PROVIDER should NOT be in user.env (lives in stack.yml now)"
 else
 	pass "Config vars correctly absent from user.env"
@@ -397,7 +400,7 @@ else
 fi
 
 # Verify auth.json exists
-if [ -f ".dev/vault/stack/auth.json" ]; then
+if [ -f ".dev/config/stack/auth.json" ]; then
 	pass "auth.json exists"
 else
 	fail "auth.json not found"

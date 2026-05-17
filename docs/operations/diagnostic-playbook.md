@@ -170,7 +170,7 @@ Especially check:
 
 - whether the `admin` addon overlay is actually enabled
 - whether `OP_OPENCODE_URL` points to the intended runtime
-- whether you are mixing up assistant OpenCode `:4096` and admin OpenCode `:3881`
+- whether the admin UI can reach the assistant OpenCode at `:4096`
 - whether the stack has restarted onto a different env/config than the one you think is live
 
 ## Practical Triage Order
@@ -194,8 +194,8 @@ This order usually isolates the broken layer in a few minutes.
 - stronger request ID propagation from browser -> admin logs -> OpenCode logs
 - explicit browser-console guidance in the main troubleshooting docs
 - production source maps, or at least easier stack traces, for admin UI debugging
-- a clearer doc section on assistant OpenCode `:4096` vs admin OpenCode `:3881`
-- an operator-facing list of the most important env vars for this path, especially `OP_OPENCODE_URL`, `OPENCODE_PORT`, and `OP_ADMIN_OPENCODE_PORT`
+- a clearer doc section on how the admin UI proxies to the assistant OpenCode at `:4096`
+- an operator-facing list of the most important env vars for this path, especially `OP_OPENCODE_URL` and `OPENCODE_PORT`
 - a generated endpoint inventory for the admin API and OpenCode API so contributors do not have to infer paths from source
 - a one-command diagnostics report for provider wiring, not just general stack health
 
