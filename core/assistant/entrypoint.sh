@@ -84,76 +84,27 @@ maybe_enable_ssh() {
     -o StrictModes=yes
 }
 
-maybe_proxy_lmstudio() {
-  # OpenCode's lmstudio provider catalog entry hardcodes baseURL
-  # http://127.0.0.1:1234/v1 (verified in v1.2.24, v1.3.3 — currently pinned —
-  # and v1.14.50 latest as of 2026-05-14). Source: models.dev catalog used by
-  # @opencode-ai/core/models, mirrored in the OpenCode docs at
-  # https://opencode.ai/docs/providers#lm-studio.
-  #
-  # OpenCode DOES allow overriding via the `provider` (singular) config key
-  # in opencode.json, e.g.:
+maybe_configure_lmstudio_provider() {
+  # OpenCode allows overriding the lmstudio provider's hardcoded baseURL via the
+  # `provider` config key in opencode.json:
   #   { "provider": { "lmstudio": { "options": { "baseURL": "..." } } } }
-  # (see packages/opencode/src/provider/provider.ts mergeProvider / cfg.provider
-  # in the upstream repo at github.com/anomalyco/opencode — formerly sst/opencode).
-  # However, OpenCode does NOT read an env var for lmstudio baseURL, so the
-  # OpenPalm `LMSTUDIO_BASE_URL` stack env can't be passed through directly.
-  #
-  # Workaround: if LMSTUDIO_BASE_URL points to a remote host, start a TCP
-  # proxy from 127.0.0.1:1234 to that host so lmstudio requests reach Ollama
-  # or other local LLM providers running outside the container.
-  #
-  # TODO(upstream): file an issue requesting an LMSTUDIO_BASE_URL (or generic
-  # provider.<id>.options.baseURL) env override so we can drop socat entirely.
-  # Related discussion: https://github.com/anomalyco/opencode/issues/1555
-  # (LM Studio missing as provider; custom provider for LM Studio non-functional).
+  # Write this into the user config when LMSTUDIO_BASE_URL is set so OpenCode
+  # sends lmstudio requests to the correct host (e.g. Ollama via socat was the
+  # old workaround; this is the direct, supported mechanism).
   local base_url="${LMSTUDIO_BASE_URL:-}"
   if [ -z "$base_url" ]; then
     return 0
   fi
 
-  # Strip scheme and /v1 path suffix to extract host:port
-  local hostport
-  hostport="${base_url#http://}"
-  hostport="${hostport#https://}"
-  hostport="${hostport%%/*}"
+  local user_config="/home/opencode/.config/opencode/opencode.json"
+  # Ensure the directory exists (ensure_home_layout creates it, but be safe).
+  mkdir -p "$(dirname "$user_config")"
 
-  # Skip if already pointing at localhost:1234 (no proxy needed)
-  case "$hostport" in
-    127.0.0.1:1234|localhost:1234) return 0 ;;
-  esac
-
-  local target_host="${hostport%%:*}"
-  local target_port="${hostport##*:}"
-  # Default to port 80 if no port specified
-  if [ "$target_port" = "$target_host" ]; then
-    target_port=80
-  fi
-
-  # Sanity-check both fields BEFORE handing them to socat. Even though the
-  # values are double-quoted, socat parses commas inside an address spec as
-  # option separators (e.g. `TCP:host,connect-timeout=...`). A maliciously
-  # crafted LMSTUDIO_BASE_URL like `http://evil,verify=0:1234` would smuggle
-  # extra socat options into the connection. Restricting to a strict
-  # hostname/IP and numeric-port character class makes such injection
-  # impossible without changing observed behaviour for any valid URL.
-  if ! printf '%s' "$target_host" | grep -qE '^[a-zA-Z0-9._-]+$'; then
-    echo "lmstudio-proxy: invalid host in LMSTUDIO_BASE_URL: $target_host" >&2
-    return 1
-  fi
-  if ! printf '%s' "$target_port" | grep -qE '^[0-9]+$'; then
-    echo "lmstudio-proxy: invalid port in LMSTUDIO_BASE_URL: $target_port" >&2
-    return 1
-  fi
-
-  if command -v socat >/dev/null 2>&1; then
-    echo "Starting LLM proxy: 127.0.0.1:1234 → ${target_host}:${target_port}"
-    (while true; do
-      socat TCP-LISTEN:1234,reuseaddr,fork TCP:"${target_host}":"${target_port}"
-      echo "socat proxy exited, restarting in 1s..." >&2
-      sleep 1
-    done) &
-  fi
+  # Write a minimal user config with the lmstudio baseURL override.
+  # This file is regenerated on every container start — user-managed config
+  # lives in the project config (/etc/opencode/opencode.jsonc), not here.
+  printf '{\n  "$schema": "https://opencode.ai/config.json",\n  "provider": {\n    "lmstudio": {\n      "options": {\n        "baseURL": "%s"\n      }\n    }\n  }\n}\n' "$base_url" > "$user_config"
+  echo "lmstudio: configured baseURL → $base_url"
 }
 
 start_cron_and_sync_tasks() {
@@ -342,7 +293,7 @@ start_opencode() {
 maybe_adjust_uid_gid
 ensure_home_layout
 maybe_enable_ssh
-maybe_proxy_lmstudio
+maybe_configure_lmstudio_provider
 # Source the akm `vault:user` env file before starting cron so vault keys
 # land in the crontab preamble that start_cron_and_sync_tasks builds.
 # Runs as root because gosu has not been invoked yet — root can read the

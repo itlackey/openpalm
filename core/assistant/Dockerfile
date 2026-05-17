@@ -9,11 +9,11 @@
 
 FROM openpalm-base
 
-# Assistant-specific OS packages: sshd for remote agent sessions, sudo + socat
-# for entrypoint privilege drop and Ollama proxy, Python (uv-managed venv for
-# apprise — used by the notify skill), jq + gh for in-container tooling.
+# Assistant-specific OS packages: sshd for remote agent sessions, sudo for
+# entrypoint privilege drop, Python (uv-managed venv for apprise — used by
+# the notify skill), jq + gh for in-container tooling.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssh-server sudo socat cron \
+    && apt-get install -y --no-install-recommends openssh-server sudo cron \
         python3 jq \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
@@ -79,7 +79,7 @@ RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
 
 # Container starts as root intentionally. The entrypoint uses gosu to drop to
 # the "opencode" user (UID/GID from OP_UID/OP_GID, default 1000:1000) after
-# root-only setup (sshd, socat).
+# root-only setup (sshd, uid/gid adjustment).
 WORKDIR /work
 
 # Point Bun's user-writable paths at the opencode user's home. Bun was
