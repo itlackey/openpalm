@@ -299,7 +299,7 @@ Before submitting any change:
 | `core/guardian/src/server.ts` | HMAC-signed message guardian |
 | `packages/channels-sdk/src/logger.ts` | Shared logger (createLogger factory) |
 | `.openpalm/config/stack/core.compose.yml` | Core service definitions (assistant + guardian) |
-| `.openpalm/registry/` | Repo catalog for available addons and automations |
+| `.openpalm/state/registry/` | Repo catalog for available addons and automations |
 | `packages/assistant-tools/AGENTS.md` | Contributor pointer for the assistant-tools package |
 | `packages/assistant-tools/src/index.ts` | Assistant tools plugin (`load_vault`, `health-check`) |
 | `.opencode/opencode.json` | OpenCode project configuration |

@@ -7,61 +7,61 @@
  */
 
 // @ts-ignore — Bun text import
-import coreCompose from "../../../../.openpalm/stack/core.compose.yml" with { type: "text" };
+import coreCompose from "../../../../.openpalm/config/stack/core.compose.yml" with { type: "text" };
 
 // Addon compose files
 // @ts-ignore — Bun text import
-import chatCompose from "../../../../.openpalm/registry/addons/chat/compose.yml" with { type: "text" };
+import chatCompose from "../../../../.openpalm/state/registry/addons/chat/compose.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import chatSchema from "../../../../.openpalm/registry/addons/chat/.env.schema" with { type: "text" };
+import chatSchema from "../../../../.openpalm/state/registry/addons/chat/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import apiCompose from "../../../../.openpalm/registry/addons/api/compose.yml" with { type: "text" };
+import apiCompose from "../../../../.openpalm/state/registry/addons/api/compose.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import apiSchema from "../../../../.openpalm/registry/addons/api/.env.schema" with { type: "text" };
+import apiSchema from "../../../../.openpalm/state/registry/addons/api/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import discordCompose from "../../../../.openpalm/registry/addons/discord/compose.yml" with { type: "text" };
+import discordCompose from "../../../../.openpalm/state/registry/addons/discord/compose.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import discordSchema from "../../../../.openpalm/registry/addons/discord/.env.schema" with { type: "text" };
+import discordSchema from "../../../../.openpalm/state/registry/addons/discord/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import slackCompose from "../../../../.openpalm/registry/addons/slack/compose.yml" with { type: "text" };
+import slackCompose from "../../../../.openpalm/state/registry/addons/slack/compose.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import slackSchema from "../../../../.openpalm/registry/addons/slack/.env.schema" with { type: "text" };
+import slackSchema from "../../../../.openpalm/state/registry/addons/slack/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import ollamaCompose from "../../../../.openpalm/registry/addons/ollama/compose.yml" with { type: "text" };
+import ollamaCompose from "../../../../.openpalm/state/registry/addons/ollama/compose.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import ollamaSchema from "../../../../.openpalm/registry/addons/ollama/.env.schema" with { type: "text" };
+import ollamaSchema from "../../../../.openpalm/state/registry/addons/ollama/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import voiceCompose from "../../../../.openpalm/registry/addons/voice/compose.yml" with { type: "text" };
+import voiceCompose from "../../../../.openpalm/state/registry/addons/voice/compose.yml" with { type: "text" };
 // @ts-ignore — Bun text import
-import voiceSchema from "../../../../.openpalm/registry/addons/voice/.env.schema" with { type: "text" };
+import voiceSchema from "../../../../.openpalm/state/registry/addons/voice/.env.schema" with { type: "text" };
 // @ts-ignore — Bun text import
-import cleanupLogsAutomation from "../../../../.openpalm/registry/automations/cleanup-logs.md" with { type: "text" };
+import cleanupLogsAutomation from "../../../../.openpalm/state/registry/automations/cleanup-logs.md" with { type: "text" };
 // @ts-ignore — Bun text import
-import cleanupDataAutomation from "../../../../.openpalm/registry/automations/cleanup-data.md" with { type: "text" };
+import cleanupDataAutomation from "../../../../.openpalm/state/registry/automations/cleanup-data.md" with { type: "text" };
 // @ts-ignore — Bun text import
-import validateConfigAutomation from "../../../../.openpalm/registry/automations/validate-config.md" with { type: "text" };
+import validateConfigAutomation from "../../../../.openpalm/state/registry/automations/validate-config.md" with { type: "text" };
 // @ts-ignore — Bun text import
-import healthCheckAutomation from "../../../../.openpalm/registry/automations/health-check.md" with { type: "text" };
+import healthCheckAutomation from "../../../../.openpalm/state/registry/automations/health-check.md" with { type: "text" };
 // @ts-ignore — Bun text import
-import promptAssistantAutomation from "../../../../.openpalm/registry/automations/prompt-assistant.md" with { type: "text" };
+import promptAssistantAutomation from "../../../../.openpalm/state/registry/automations/prompt-assistant.md" with { type: "text" };
 // @ts-ignore — Bun text import
-import updateContainersAutomation from "../../../../.openpalm/registry/automations/update-containers.md" with { type: "text" };
+import updateContainersAutomation from "../../../../.openpalm/state/registry/automations/update-containers.md" with { type: "text" };
 // @ts-ignore — Bun text import
-import assistantDailyBriefingAutomation from "../../../../.openpalm/registry/automations/assistant-daily-briefing.md" with { type: "text" };
+import assistantDailyBriefingAutomation from "../../../../.openpalm/state/registry/automations/assistant-daily-briefing.md" with { type: "text" };
 // @ts-ignore — Bun text import
-import akmImproveAutomation from "../../../../.openpalm/registry/automations/akm-improve.md" with { type: "text" };
+import akmImproveAutomation from "../../../../.openpalm/state/registry/automations/akm-improve.md" with { type: "text" };
 
 // ── Stash seeds (built-in skills / commands / agents) ────────────────
-// Each seed lives in .openpalm/stash-seeds/<type>/<...> and is copied
-// into ${OP_HOME}/data/stash/<type>/<...> on first install. Source of
-// truth for the on-disk seed files is `.openpalm/stash-seeds/` in the
+// Each seed lives in .openpalm/stash/<type>/<...> and is copied
+// into ${OP_HOME}/stash/<type>/<...> on first install. Source of
+// truth for the on-disk seed files is `.openpalm/stash/` in the
 // repo — add new seeds by dropping a file there and importing it below.
 // @ts-ignore — Bun text import
-import configDiagnosticsSkill from "../../../../.openpalm/stash-seeds/skills/config-diagnostics/SKILL.md" with { type: "text" };
+import configDiagnosticsSkill from "../../../../.openpalm/stash/skills/config-diagnostics/SKILL.md" with { type: "text" };
 
 /**
  * Stash seeds keyed by their stash-relative path (relative to
- * `${OP_HOME}/data/stash/`). Passed to `seedStashAssets()` from
+ * `${OP_HOME}/stash/`). Passed to `seedStashAssets()` from
  * `@openpalm/lib`, which writes each entry exactly once and never
  * overwrites an existing file.
  */

@@ -16,7 +16,7 @@ mic -> STT -> assistant -> TTS -> speaker
 
 ## Deployment model
 
-- Shipped addon source: `.openpalm/registry/addons/voice/compose.yml`
+- Shipped addon source: `.openpalm/state/registry/addons/voice/compose.yml`
 - Enabled runtime overlay: `~/.openpalm/config/stack/addons/voice/compose.yml`
 - Default host URL: `http://localhost:3810`
 - Container port: `8186`
@@ -25,7 +25,7 @@ mic -> STT -> assistant -> TTS -> speaker
 Manual start example:
 
 ```bash
-cd "$HOME/.openpalm/stack"
+cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
   --env-file ../config/stack/stack.env \

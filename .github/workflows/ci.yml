@@ -105,7 +105,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${OP_HOME}/config/stack" "${OP_HOME}/stash/vaults" "${OP_HOME}/state" "${OP_HOME}/cache"
-          docker compose -f .openpalm/stack/core.compose.yml -f compose.dev.yml config -q
+          docker compose -f .openpalm/config/stack/core.compose.yml -f compose.dev.yml config -q
 
       - name: Assert deleted scripts are absent
         run: |
@@ -127,7 +127,7 @@ jobs:
           # Also validate catalog automation YAML files are well-formed
           pip install --quiet PyYAML
           errors=0
-          for f in .openpalm/registry/automations/*.yml; do
+          for f in .openpalm/state/registry/automations/*.yml; do
             if [ ! -f "$f" ]; then continue; fi
             if ! python3 -c "import yaml, sys; yaml.safe_load(open(sys.argv[1]))" "$f" 2>/dev/null; then
               echo "::error file=$f::Invalid YAML: $f"

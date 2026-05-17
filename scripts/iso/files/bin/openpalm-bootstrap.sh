@@ -39,7 +39,7 @@ fi
 
 # Seed core compose into config/stack/ (source of truth for compose)
 if [[ ! -f "$OP_HOME/config/stack/core.compose.yml" ]]; then
-	cp "$INSTALL_HOME/.openpalm/stack/core.compose.yml" "$OP_HOME/config/stack/core.compose.yml"
+	cp "$INSTALL_HOME/.openpalm/config/stack/core.compose.yml" "$OP_HOME/config/stack/core.compose.yml"
 fi
 
 if [[ -f "$INSTALL_HOME/image-cache/openpalm-images.tar.zst" && ! -f "$OP_HOME/.images-loaded" ]]; then

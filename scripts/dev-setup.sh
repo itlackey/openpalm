@@ -125,17 +125,17 @@ mkdir -p \
 # ── Seed core assets (write-once unless --force) ─────────────────
 COMPOSE_DEST="$CONFIG_DIR/stack/core.compose.yml"
 
-[[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/.openpalm/stack/core.compose.yml" "$COMPOSE_DEST"
+[[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/.openpalm/config/stack/core.compose.yml" "$COMPOSE_DEST"
 
 # Seed registry catalog from repo template.
 # Replace shipped addon directories wholesale so removed support files do not linger.
-for src_dir in "$ROOT_DIR/.openpalm/registry/addons/"*; do
+for src_dir in "$ROOT_DIR/.openpalm/state/registry/addons/"*; do
 	[[ -d "$src_dir" ]] || continue
 	addon_name="$(basename "$src_dir")"
 	rm -rf "$DEV_ROOT/registry/addons/$addon_name"
 	cp -r "$src_dir" "$DEV_ROOT/registry/addons/$addon_name"
 done
-cp -r "$ROOT_DIR/.openpalm/registry/automations/"* "$DEV_ROOT/registry/automations/" 2>/dev/null || true
+cp -r "$ROOT_DIR/.openpalm/state/registry/automations/"* "$DEV_ROOT/registry/automations/" 2>/dev/null || true
 
 # Enable requested addons in the dev runtime
 for addon in "${enabled_addons[@]}"; do

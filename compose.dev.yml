@@ -5,13 +5,13 @@
 #
 # Manual equivalent (from project root):
 #   docker compose --project-directory . \
-#     -f .openpalm/stack/core.compose.yml \
+#     -f .openpalm/config/stack/core.compose.yml \
 #     -f compose.dev.yml \
 #     --env-file .dev/config/stack/stack.env \
 #     --env-file .dev/stash/vaults/user.env \
 #     build openpalm-base \
 #   && docker compose --project-directory . \
-#        -f .openpalm/stack/core.compose.yml \
+#        -f .openpalm/config/stack/core.compose.yml \
 #        -f compose.dev.yml \
 #        --env-file .dev/config/stack/stack.env \
 #        --env-file .dev/stash/vaults/user.env \

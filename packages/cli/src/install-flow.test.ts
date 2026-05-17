@@ -44,15 +44,15 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
 
   // config/stack/ — seed core compose only
   mkdirSync(stackDir, { recursive: true });
-  Bun.spawnSync(['cp', join(OPENPALM_SRC, 'stack', 'core.compose.yml'), join(stackDir, 'core.compose.yml')]);
+  Bun.spawnSync(['cp', join(OPENPALM_SRC, 'config', 'stack', 'core.compose.yml'), join(stackDir, 'core.compose.yml')]);
 
   // state/registry/ — shipped catalog source
-  cpTree(join(OPENPALM_SRC, 'registry', 'addons'), join(stateDir, 'registry', 'addons'));
-  cpTree(join(OPENPALM_SRC, 'registry', 'automations'), join(stateDir, 'registry', 'automations'));
+  cpTree(join(OPENPALM_SRC, 'state', 'registry', 'addons'), join(stateDir, 'registry', 'addons'));
+  cpTree(join(OPENPALM_SRC, 'state', 'registry', 'automations'), join(stateDir, 'registry', 'automations'));
 
   // config/stack/addons/ — enabled runtime overlays only
   for (const addon of enabledAddons) {
-    cpTree(join(OPENPALM_SRC, 'registry', 'addons', addon), join(stackDir, 'addons', addon));
+    cpTree(join(OPENPALM_SRC, 'state', 'registry', 'addons', addon), join(stackDir, 'addons', addon));
   }
 
   // stash/tasks/ — active AKM task files (populated by setup)

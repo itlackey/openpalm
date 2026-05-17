@@ -201,8 +201,8 @@ describe("materialized registry catalog", () => {
 
   it("materializes addons and automations into OP_HOME/registry", () => {
     const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
-    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+    const addonDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'automations');
 
     mkdirSync(addonDir, { recursive: true });
     mkdirSync(automationsDir, { recursive: true });
@@ -220,8 +220,8 @@ describe("materialized registry catalog", () => {
 
   it("discovers materialized registry entries", () => {
     const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
-    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+    const addonDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'automations');
 
     mkdirSync(addonDir, { recursive: true });
     mkdirSync(automationsDir, { recursive: true });
@@ -243,8 +243,8 @@ describe("materialized registry catalog", () => {
 
   it("returns addon config metadata from the materialized registry", () => {
     const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
-    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+    const addonDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'automations');
 
     mkdirSync(addonDir, { recursive: true });
     mkdirSync(automationsDir, { recursive: true });
@@ -263,8 +263,8 @@ describe("materialized registry catalog", () => {
 
   it("verifies the materialized registry and returns counts", () => {
     const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
-    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+    const addonDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'automations');
 
     mkdirSync(addonDir, { recursive: true });
     mkdirSync(automationsDir, { recursive: true });
@@ -287,16 +287,16 @@ describe("materialized registry catalog", () => {
 
   it("fails when source catalog is incomplete", () => {
     const sourceRoot = join(tmpDir, 'repo');
-    mkdirSync(join(sourceRoot, '.openpalm', 'registry', 'addons'), { recursive: true });
-    mkdirSync(join(sourceRoot, '.openpalm', 'registry', 'automations'), { recursive: true });
+    mkdirSync(join(sourceRoot, '.openpalm', 'state', 'registry', 'addons'), { recursive: true });
+    mkdirSync(join(sourceRoot, '.openpalm', 'state', 'registry', 'automations'), { recursive: true });
 
     expect(() => materializeRegistryCatalog(sourceRoot)).toThrow('Registry catalog is incomplete');
   });
 
   it("enables and disables addons through the runtime stack directory", () => {
     const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
-    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+    const addonDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'automations');
 
     mkdirSync(addonDir, { recursive: true });
     mkdirSync(automationsDir, { recursive: true });
@@ -315,8 +315,8 @@ describe("materialized registry catalog", () => {
 
   it("returns addon service names from stack or registry compose files", () => {
     const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'proxy-test');
-    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+    const addonDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'addons', 'proxy-test');
+    const automationsDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'automations');
 
     mkdirSync(addonDir, { recursive: true });
     mkdirSync(automationsDir, { recursive: true });
@@ -331,8 +331,8 @@ describe("materialized registry catalog", () => {
 
   it("toggles addons and generates channel secrets when enabling channel addons", () => {
     const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
-    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+    const addonDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'automations');
 
     mkdirSync(addonDir, { recursive: true });
     mkdirSync(automationsDir, { recursive: true });
@@ -393,8 +393,8 @@ describe("materialized registry catalog", () => {
 
   it("installs and uninstalls automations through stash/tasks", () => {
     const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'registry', 'addons', 'chat');
-    const automationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+    const addonDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'addons', 'chat');
+    const automationsDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'automations');
     const configDir = join(process.env.OP_HOME!, 'config');
 
     mkdirSync(addonDir, { recursive: true });

@@ -126,8 +126,8 @@ export function verifyRegistryCatalog(rootDir = resolveRegistryDir()): RegistryC
 }
 
 export function materializeRegistryCatalog(sourceRoot: string): string {
-  const sourceAddonsDir = join(sourceRoot, '.openpalm', 'registry', 'addons');
-  const sourceAutomationsDir = join(sourceRoot, '.openpalm', 'registry', 'automations');
+  const sourceAddonsDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'addons');
+  const sourceAutomationsDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'automations');
   const tempRoot = mkdtempSync(join(tmpdir(), 'openpalm-registry-materialize-'));
 
   try {

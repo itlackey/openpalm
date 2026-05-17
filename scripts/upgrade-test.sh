@@ -239,7 +239,7 @@ touch "${STACK_DIR}/guardian.env"
 chmod 600 "${STACK_DIR}/guardian.env"
 
 # Seed core.compose.yml into config/stack/
-cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
+cp "${ROOT_DIR}/.openpalm/config/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
 
 # Seed opencode config
 cat >"${OP_HOME}/config/assistant/opencode.json" <<'EOF'
@@ -355,7 +355,7 @@ mkdir -p \
   "${STATE_DIR}/logs" "${CACHE_DIR}/akm" "${OP_HOME}/workspace"
 
 # Step 2: Refresh compose (simulate download from GitHub)
-cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
+cp "${ROOT_DIR}/.openpalm/config/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
 
 # Step 3: stash/vaults/user.env — must NOT be overwritten on upgrade
 if [[ -f "${STASH_DIR}/vaults/user.env" ]]; then

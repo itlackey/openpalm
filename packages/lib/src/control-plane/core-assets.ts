@@ -52,7 +52,7 @@ export function ensureOpenCodeSystemConfig(): void {
  * forward-slash relative paths that stay inside `data/stash/`; any key
  * that escapes the stash directory after canonicalization throws,
  * preventing a malicious caller from writing arbitrary files. Source of
- * truth for the seeded files lives at `.openpalm/stash-seeds/` in the
+ * truth for the seeded files lives at `.openpalm/stash/` in the
  * repo; the CLI embeds them at build time and passes the embedded
  * record directly.
  */
@@ -85,7 +85,7 @@ const VERSION = process.env.OP_ASSET_VERSION ?? "main";
 // Stash seeds are intentionally NOT in this list — they use seedStashAssets()
 // which never overwrites existing files (user edits win on re-install).
 const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
-  { relPath: "config/stack/core.compose.yml", githubFilename: ".openpalm/stack/core.compose.yml" },
+  { relPath: "config/stack/core.compose.yml", githubFilename: ".openpalm/config/stack/core.compose.yml" },
   { relPath: "state/assistant/opencode.jsonc", githubFilename: "core/assistant/opencode/opencode.jsonc" },
   { relPath: "state/assistant/AGENTS.md", githubFilename: "core/assistant/opencode/AGENTS.md" },
 ];

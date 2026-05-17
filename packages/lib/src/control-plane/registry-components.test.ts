@@ -1,7 +1,7 @@
 /**
  * Tests for the registry component directory format.
  *
- * Validates that all components in .openpalm/registry/addons/ follow the
+ * Validates that all components in .openpalm/state/registry/addons/ follow the
  * component conventions: compose.yml with required labels, .env.schema
  * with documented variables, proper service naming, and no security
  * violations.
@@ -31,7 +31,7 @@ import { join, resolve } from "node:path";
 
 /** Resolve path from repo root */
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
-const REGISTRY_DIR = join(REPO_ROOT, ".openpalm/registry/addons");
+const REGISTRY_DIR = join(REPO_ROOT, ".openpalm/state/registry/addons");
 
 /** List all component directories in the registry */
 function listComponentDirs(): string[] {

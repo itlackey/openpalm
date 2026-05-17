@@ -41,7 +41,7 @@ Each addon is a compose overlay in `addons/<name>/compose.yml`. Compose file
 selection is the deployment model. `./stack.yml` is optional tooling
 metadata that can help choose addons, but it does not replace these files.
 
-Repo addon sources live under `.openpalm/registry/addons/`. At runtime,
+Repo addon sources live under `.openpalm/state/registry/addons/`. At runtime,
 `addons/` should contain enabled addons only.
 
 | Addon | Host port | Purpose |

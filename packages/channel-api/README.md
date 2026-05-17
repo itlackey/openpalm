@@ -17,7 +17,7 @@ Streaming is not supported.
 
 ## Deployment model
 
-- Shipped addon source: `.openpalm/registry/addons/api/compose.yml`
+- Shipped addon source: `.openpalm/state/registry/addons/api/compose.yml`
 - Enabled runtime overlay: `~/.openpalm/config/stack/addons/api/compose.yml`
 - Default host URL: `http://localhost:3821`
 - Container port: `8182`
@@ -26,7 +26,7 @@ Streaming is not supported.
 Manual start example:
 
 ```bash
-cd "$HOME/.openpalm/stack"
+cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
   --env-file ../config/stack/stack.env \

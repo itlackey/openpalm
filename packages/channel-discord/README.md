@@ -13,7 +13,7 @@ It runs behind guardian and is normally deployed by including `addons/discord/co
 
 ## Deployment model
 
-- Shipped addon source: `.openpalm/registry/addons/discord/compose.yml`
+- Shipped addon source: `.openpalm/state/registry/addons/discord/compose.yml`
 - Enabled runtime overlay: `~/.openpalm/config/stack/addons/discord/compose.yml`
 - User-managed values: `~/.openpalm/stash/vaults/user.env`
 - System-managed HMAC secret: `CHANNEL_DISCORD_SECRET` in `~/.openpalm/config/stack/guardian.env`
@@ -21,7 +21,7 @@ It runs behind guardian and is normally deployed by including `addons/discord/co
 Manual start example:
 
 ```bash
-cd "$HOME/.openpalm/stack"
+cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
   --env-file ../config/stack/stack.env \
