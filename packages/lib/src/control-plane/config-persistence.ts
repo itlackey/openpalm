@@ -47,7 +47,7 @@ export function buildEnvFiles(state: ControlPlaneState): string[] {
 }
 
 /**
- * Write system-managed values to vault/stack/stack.env.
+ * Write system-managed values to config/stack/stack.env.
  *
  * Channel HMAC secrets are NOT written here — they belong in guardian.env.
  * Use writeChannelSecrets() for channel secrets.

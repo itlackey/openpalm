@@ -2,7 +2,7 @@
  * Runtime configuration validation for the OpenPalm control plane.
  *
  * Validation is a presence check on the canonical env keys we expect in
- * the live vault/stack/stack.env and vault/user/user.env files. The
+ * the live config/stack/stack.env file. The
  * historical schema files and external validation binary were retired in
  * #391; everything advisory is surfaced as a non-blocking warning. The
  * function never shells out and never reads schemas.
@@ -21,7 +21,7 @@ const REQUIRED_STACK_KEYS = ["OP_ADMIN_TOKEN", "OP_ASSISTANT_TOKEN"] as const;
  * Validate the live configuration files.
  *
  * Checks:
- * 1. vault/stack/stack.env exists and carries every required key with a
+ * 1. config/stack/stack.env exists and carries every required key with a
  *    non-empty value.
  * 2. Every secret env key in getCoreSecretMappings() is present (key only
  *    — blank values are warned about, never erred on, because operators

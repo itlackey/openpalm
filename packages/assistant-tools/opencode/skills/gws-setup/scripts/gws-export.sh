@@ -19,7 +19,7 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       echo "Usage: $0 [--op-home PATH]"
       echo ""
-      echo "Exports gws CLI credentials to vault/user/.gws/ for Docker/CI use."
+      echo "Exports gws CLI credentials to stash/vaults/.gws/ for Docker/CI use."
       echo "Run 'gws auth login' on the host first."
       exit 0
       ;;
@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-VAULT_GWS="${OP_HOME}/vault/user/.gws"
+VAULT_GWS="${OP_HOME}/stash/vaults/.gws"
 
 if ! command -v gws &>/dev/null; then
   echo "ERROR: gws CLI not found."
