@@ -8,7 +8,6 @@
   "scripts": {
     "dev": "vite dev",
     "build": "svelte-kit sync && vite build",
-    "build:tar": "mkdir -p dist && tar -czf dist/admin-build.tar.gz -C build .",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test:e2e": "playwright test --grep-invert @mocked",
@@ -17,8 +16,7 @@
     "test:unit": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "start": "node build/index.js",
-    "start:bun": "bun src/server/entry.ts"
+    "start": "node build/index.js"
   },
   "dependencies": {
     "@openpalm/lib": "workspace:*",

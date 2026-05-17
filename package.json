@@ -18,7 +18,6 @@
   "scripts": {
     "admin:dev": "bun run --cwd packages/ui dev",
     "admin:build": "bun run --cwd packages/ui build",
-    "admin:build:tar": "bun run --cwd packages/ui build && bun run --cwd packages/ui build:tar",
     "admin:check": "bun run --cwd packages/ui check",
     "admin:test": "cd packages/ui && npm test",
     "admin:test:unit": "cd packages/ui && npm run test:unit -- --run",
