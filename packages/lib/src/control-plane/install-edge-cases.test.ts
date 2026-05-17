@@ -64,10 +64,11 @@ function seedRequiredAssets(homeDir: string): void {
   writeFileSync(join(homeDir, "state", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
   writeFileSync(join(homeDir, "state", "assistant", "AGENTS.md"), "# Agents\n");
   mkdirSync(join(homeDir, "state"), { recursive: true });
-  mkdirSync(join(homeDir, "config", "automations"), { recursive: true });
-  writeFileSync(join(homeDir, "config", "automations", "cleanup-logs.yml"), "name: cleanup-logs\nschedule: daily\n");
-  writeFileSync(join(homeDir, "config", "automations", "cleanup-data.yml"), "name: cleanup-data\nschedule: weekly\n");
-  writeFileSync(join(homeDir, "config", "automations", "validate-config.yml"), "name: validate-config\nschedule: hourly\n");
+  // Automations live in state/registry/automations (shipped catalog) and stash/tasks (user tasks)
+  mkdirSync(join(homeDir, "state", "registry", "automations"), { recursive: true });
+  writeFileSync(join(homeDir, "state", "registry", "automations", "cleanup-logs.md"), "---\nschedule: \"0 4 * * 0\"\ndescription: cleanup logs\n---\n");
+  writeFileSync(join(homeDir, "state", "registry", "automations", "cleanup-data.md"), "---\nschedule: \"0 5 * * 0\"\ndescription: cleanup data\n---\n");
+  writeFileSync(join(homeDir, "state", "registry", "automations", "validate-config.md"), "---\nschedule: \"0 3 * * *\"\ndescription: validate config\n---\n");
 }
 
 // ── Shared test fixture ──────────────────────────────────────────────────
@@ -100,7 +101,7 @@ function createFullDirTree(): void {
   for (const dir of [
     homeDir,
     configDir,
-    join(configDir, "automations"),
+    join(homeDir, "state", "registry", "automations"),
     join(configDir, "assistant"),
     join(configDir, "akm"),
     join(homeDir, "stash"),

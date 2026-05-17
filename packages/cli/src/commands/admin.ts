@@ -95,7 +95,7 @@ export default defineCommand({
     }
 
     // Start SvelteKit adapter-node build bound to localhost
-    console.log('Starting admin server...');
+    console.log('Starting UI server...');
     const adminProc = Bun.spawn(
       ['node', join(buildDir, 'index.js')],
       {
@@ -116,12 +116,12 @@ export default defineCommand({
     if (!await waitForReady(port)) {
       adminProc.kill('SIGTERM');
       if (openCodeSub) await openCodeSub.stop().catch(() => {});
-      console.error('Admin server did not become ready in time.');
+      console.error('UI server did not become ready in time.');
       process.exit(1);
     }
 
     const adminUrl = `http://localhost:${port}`;
-    console.log(`Admin server running at ${adminUrl}`);
+    console.log(`UI server running at ${adminUrl}`);
     if (args.open) await openBrowser(adminUrl);
 
     // ── Graceful shutdown ──────────────────────────────────────────────

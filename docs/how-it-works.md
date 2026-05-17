@@ -46,7 +46,7 @@ Responsibilities:
   restart)
 - Exposes an authenticated API used by the browser UI and the assistant
 - Applies explicit config mutations to `config/`, reads addon catalog data from
-  `~/.openpalm/registry/`, and manages enabled addon overlays in
+  `~/.openpalm/state/registry/`, and manages enabled addon overlays in
   `~/.openpalm/config/stack/addons/` when requested through authorized UI/API actions
 - Writes the audit log
 - Helps manage addons and other host-side files through an authenticated API
@@ -178,7 +178,7 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
 ```
 ~/.openpalm/config/stack/core.compose.yml         -> base compose definition
 ~/.openpalm/config/stack/addons/chat/compose.yml  -> addon overlay
-~/.openpalm/registry/addons/chat/.env.schema -> addon config contract
+~/.openpalm/state/registry/addons/chat/.env.schema -> addon config contract
 ~/.openpalm/config/stack/stack.env          -> passed via --env-file
 ~/.openpalm/stash/vaults/user.env            -> user-managed secrets (akm vault:user)
 ```
@@ -219,8 +219,8 @@ Anything not on the list is rejected with `400 invalid_service` or
 
 ## Adding a Channel (the whole process)
 
-1. Browse the available catalog entry in `~/.openpalm/registry/addons/<name>/` via admin API, admin UI, or direct file inspection
-2. Enable it by copying `~/.openpalm/registry/addons/<name>/` into `~/.openpalm/config/stack/addons/<name>/`
+1. Browse the available catalog entry in `~/.openpalm/state/registry/addons/<name>/` via admin API, admin UI, or direct file inspection
+2. Enable it by copying `~/.openpalm/state/registry/addons/<name>/` into `~/.openpalm/config/stack/addons/<name>/`
 3. Or hand-author `~/.openpalm/config/stack/addons/<name>/` for a custom or multi-instance setup
 4. Rerun `docker compose` with that addon included
 5. If admin tooling is involved, it may also ensure/generate the channel HMAC secret first

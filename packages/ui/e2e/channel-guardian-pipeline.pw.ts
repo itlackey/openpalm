@@ -25,8 +25,8 @@ import { fileURLToPath } from 'node:url';
  *   - LLM provider configured for message tests (RUN_LLM_TESTS=1)
  *
  * Run with:
- *   RUN_DOCKER_STACK_TESTS=1 bun run admin:test:e2e
- *   RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 bun run admin:test:e2e
+ *   RUN_DOCKER_STACK_TESTS=1 bun run ui:test:e2e
+ *   RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 bun run ui:test:e2e
  */
 
 // ── Config ───────────────────────────────────────────────────────────────

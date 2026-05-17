@@ -22,15 +22,17 @@ All persistent runtime state lives under `OP_HOME`, which defaults to `~/.openpa
 
 ```text
 ~/.openpalm/
-├── config/     user-editable non-secret config
-├── stack/      live compose assembly
-├── vault/      secrets boundary
-├── data/       durable service data
-├── logs/       audit and debug logs
-└── backups/    durable upgrade backup snapshots
+├── config/          user-editable config (assistant/, akm/, guardian/)
+│   └── stack/       live compose assembly (core.compose.yml, stack.env, guardian.env, addons/)
+├── stash/           AKM knowledge base (vaults/, tasks/, skills/)
+│   └── vaults/      user-managed secrets (user.env = vault:user)
+├── state/           durable service data (assistant/, guardian/, akm/, logs/, registry/)
+│   └── registry/    available addon + automation catalog
+├── cache/           regenerable data (akm/, rollback/, guardian/)
+└── workspace/       shared work area
 ```
 
-Ephemeral cache lives under `~/.cache/openpalm/`.
+Ephemeral backups live under `~/.openpalm/state/backups/`.
 
 ### Compose env sources
 
@@ -250,7 +252,7 @@ Key env:
 
 - `PORT` — listen port (default: `3880`)
 - `OP_HOME` — resolved from the host environment
-- `ADMIN_TOKEN` — read from `$OP_HOME/state/admin/token`
+- `OP_ADMIN_TOKEN` — read from `$OP_HOME/config/stack/stack.env`
 
 Bind address:
 
@@ -289,7 +291,7 @@ Addon compose files use `openpalm.*` Docker labels for discovery and UI metadata
 - `openpalm.category` (optional) — `messaging`, `ai`, `integration`, `management`
 - `openpalm.healthcheck` (optional) — internal health check URL
 
-The `openpalm.name` and `openpalm.description` labels are validated by the registry test suite (`scripts/validate-registry.sh`). The admin UI reads addon availability from `registry/addons/` and active state from `stack/addons/`, not from Docker labels.
+The `openpalm.name` and `openpalm.description` labels are validated by the registry test suite (`scripts/validate-registry.sh`). The admin UI reads addon availability from `state/registry/addons/` and active state from `config/stack/addons/`, not from Docker labels.
 
 ---
 

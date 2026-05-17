@@ -252,12 +252,15 @@ EOF
 fi
 
 # ── Seed OpenCode user config ─────────────────────────────────────
-# Copy from repo source. OpenCode uses its own default provider/model
-# when no model key is present.
-OC_CONFIG="$CONFIG_DIR/assistant/opencode.json"
-if [[ ! -f "$OC_CONFIG" || $force -eq 1 ]]; then
-	cp "$ROOT_DIR/.openpalm/config/assistant/opencode.json" "$OC_CONFIG"
-fi
+# Copy all files from repo source. opencode.json references assistant.md
+# via "instructions", so both must be present.
+for src_file in "$ROOT_DIR/.openpalm/config/assistant/"*; do
+	[[ -f "$src_file" ]] || continue
+	dest_file="$CONFIG_DIR/assistant/$(basename "$src_file")"
+	if [[ ! -f "$dest_file" || $force -eq 1 ]]; then
+		cp "$src_file" "$dest_file"
+	fi
+done
 
 # ── Initialize pass backend (optional) ───────────────────────────
 if [[ $use_pass -eq 1 ]]; then

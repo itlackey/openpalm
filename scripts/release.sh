@@ -68,7 +68,7 @@ bun install
 # --- Run tests ---
 echo "Running tests..."
 bun run test
-bun run admin:check
+bun run ui:check
 
 # --- Commit ---
 echo "Committing..."

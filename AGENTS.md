@@ -57,9 +57,9 @@ npm run check                                       # svelte-check + TypeScript
 cd core/guardian && bun install && bun run src/server.ts
 
 # Root shortcuts
-bun run admin:dev     # Runs UI dev from root
-bun run admin:build   # Builds UI from root
-bun run admin:check   # svelte-check + TypeScript for UI
+bun run ui:dev     # Runs UI dev from root
+bun run ui:build   # Builds UI from root
+bun run ui:check   # svelte-check + TypeScript for UI
 bun run guardian:dev     # Runs guardian server
 bun run channel:api:dev     # Runs api channel dev server
 bun run channel:discord:dev # Runs discord channel dev server
@@ -78,7 +78,7 @@ bun run wizard:dev                      # Runs install --no-start --force with O
 ```bash
 cd packages/ui && npm run check
 # or from root:
-bun run check            # Runs admin:check + sdk:test
+bun run check            # Runs ui:check + sdk:test
 ```
 
 ### Tests
@@ -91,12 +91,12 @@ The project has ~100 test files across all packages using Bun test, Vitest, and 
 | `bun test` (sdk) | `bun run sdk:test` | packages/channels-sdk unit tests |
 | `bun test` (guardian) | `bun run guardian:test` | core/guardian security tests |
 | `bun test` (cli) | `bun run cli:test` | packages/cli tests |
-| Vitest (UI) | `bun run admin:test:unit` | packages/ui unit + browser component tests |
-| Playwright (UI integration) | `bun run admin:test:e2e` | packages/ui integration tests (no browser route mocks) |
-| Playwright (UI mocked) | `bun run admin:test:e2e:mocked` | packages/ui mocked browser contract tests |
-| Both UI | `bun run admin:test` | Vitest then Playwright (requires running build) |
-| Playwright (stack) | `bun run admin:test:stack` | Stack-dependent integration tests (needs running stack + ADMIN_TOKEN) |
-| Playwright (LLM) | `bun run admin:test:llm` | LLM-dependent pipeline tests (needs stack + ADMIN_TOKEN + API keys) |
+| Vitest (UI) | `bun run ui:test:unit` | packages/ui unit + browser component tests |
+| Playwright (UI integration) | `bun run ui:test:e2e` | packages/ui integration tests (no browser route mocks) |
+| Playwright (UI mocked) | `bun run ui:test:e2e:mocked` | packages/ui mocked browser contract tests |
+| Both UI | `bun run ui:test` | Vitest then Playwright (requires running build) |
+| Playwright (stack) | `bun run ui:test:stack` | Stack-dependent integration tests (needs running stack + ADMIN_TOKEN) |
+| Playwright (LLM) | `bun run ui:test:llm` | LLM-dependent pipeline tests (needs stack + ADMIN_TOKEN + API keys) |
 
 ```bash
 # Run guardian tests
@@ -106,16 +106,16 @@ cd core/guardian && bun test
 cd core/guardian && bun test src/server.test.ts
 
 # Run UI unit tests (Vitest, CI-friendly)
-bun run admin:test:unit
+bun run ui:test:unit
 
 # Run all non-UI tests
 bun run test
 
 # Stack integration tests (requires running compose stack)
-RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e
+RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run ui:test:e2e
 ```
 
-> **Important:** Always use `bun run admin:test:e2e` (not `npx playwright test` directly) to avoid Playwright version conflicts.
+> **Important:** Always use `bun run ui:test:e2e` (not `npx playwright test` directly) to avoid Playwright version conflicts.
 
 ### Docker
 

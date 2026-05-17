@@ -204,51 +204,41 @@ describe('cli main', () => {
   });
 
   it('resolves version-pinned install ref (falls back to CLI package version)', async () => {
-    const base = mkdtempSync(join(tmpdir(), 'openpalm-install-'));
-    const workDir = join(base, 'work');
-    const fetchedUrls: string[] = [];
-
-    const specFile = writeMinimalSetupSpec(base);
-
-    process.env.OP_HOME = base;
-    process.env.OP_WORK_DIR = workDir;
-
-    // Read the CLI package version to verify pinning behaviour
+    // Read the CLI package version to verify the fallback behaviour
     const cliPkg = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
     ) as { version: string };
     const expectedRef = `v${cliPkg.version}`;
 
-    mockDockerCli();
-    globalThis.fetch = mock(async (input: string | URL) => {
-      const url = String(input);
-      fetchedUrls.push(url);
-      if (url.endsWith('/health')) {
-        throw new TypeError('fetch failed');
-      }
-      // Respond to version-pinned asset URLs
-      if (url.includes('/core.compose.yml') || url.includes('/compose.yml')) {
-        return new Response('services: {}\n', { status: 200 });
-      }
-      if (url.includes('.env.schema')) {
-        return new Response('KEY=string\n', { status: 200 });
-      }
-      if (url.includes('/AGENTS.md')) return new Response('# Agents\n', { status: 200 });
-      if (url.includes('/opencode.jsonc')) return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
-      if (url.endsWith('.yml')) return new Response('name: test\nschedule: daily\n', { status: 200 });
-      return new Response('', { status: 503 });
+    // Mock the GitHub /releases/latest redirect to fail (network error).
+    // This forces resolveDefaultInstallRef to fall back to cliPkg.version.
+    globalThis.fetch = mock(async () => {
+      throw new TypeError('fetch failed');
     }) as unknown as typeof fetch;
+
+    // The install command's resolveDefaultInstallRef is not exported, so we
+    // exercise the public install command path: when fetch fails and no
+    // --version is provided, the resolved ref must include the CLI's pinned
+    // version (not 'main'). Capture stack.env to verify it carries the
+    // version-derived OP_IMAGE_TAG.
+    const base = mkdtempSync(join(tmpdir(), 'openpalm-install-'));
+    const workDir = join(base, 'work');
+    const specFile = writeMinimalSetupSpec(base);
+
+    process.env.OP_HOME = base;
+    process.env.OP_WORK_DIR = workDir;
+
+    mockDockerCli();
     console.log = mock(() => {}) as typeof console.log;
     console.warn = mock(() => {}) as typeof console.warn;
 
     try {
       await main(['install', '--no-start', '--file', specFile]);
 
-      // Verify that the tarball was fetched using the version-pinned ref, not 'main'
-      const tarballUrl = fetchedUrls.find((u) => u.includes('/archive/'));
-      expect(tarballUrl).toBeDefined();
-      expect(tarballUrl).toContain(expectedRef);
-      expect(tarballUrl).not.toContain('/main.');
+      // stack.env should be present with the pinned image tag derived from
+      // the CLI package version (the fallback path).
+      const stackEnv = readFileSync(join(base, 'config', 'stack', 'stack.env'), 'utf-8');
+      expect(stackEnv).toMatch(new RegExp(`OP_IMAGE_TAG=(${expectedRef}|${cliPkg.version})`));
     } finally {
       rmSync(base, { recursive: true, force: true });
     }

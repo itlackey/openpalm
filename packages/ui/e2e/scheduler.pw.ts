@@ -12,7 +12,7 @@
  * require a running stack and admin process.
  *
  * Run with:
- *   RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e
+ *   RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run ui:test:e2e
  */
 
 import { expect, test } from "@playwright/test";

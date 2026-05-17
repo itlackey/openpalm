@@ -4,14 +4,14 @@ The registry is the addon and automation discovery system for OpenPalm. It provi
 
 ## How it works
 
-Repo source assets live under `.openpalm/registry/`. The runtime catalog lives at `~/.openpalm/registry/`. Install seeds that directory from bundled assets. Manual refresh replaces it from the remote Git repository.
+Repo source assets live under `.openpalm/state/registry/`. The runtime catalog lives at `~/.openpalm/state/registry/`. Install seeds that directory from bundled assets. Manual refresh replaces it from the remote Git repository.
 
 **Sync flow:**
 
-1. Install seeds `~/.openpalm/registry/` from repo assets under `.openpalm/registry/`.
+1. Install seeds `~/.openpalm/state/registry/` from repo assets under `.openpalm/state/registry/`.
 2. `refreshRegistryCatalog()` performs a shallow sparse clone of `.openpalm/` into a temporary directory.
-3. `materializeRegistryCatalog()` validates the cloned catalog and replaces `~/.openpalm/registry/`.
-4. Discovery functions scan `~/.openpalm/registry/addons/` and `~/.openpalm/registry/automations/`.
+3. `materializeRegistryCatalog()` validates the cloned catalog and replaces `~/.openpalm/state/registry/`.
+4. Discovery functions scan `~/.openpalm/state/registry/addons/` and `~/.openpalm/state/registry/automations/`.
 
 All git operations use `execFileSync` with argument arrays (no shell interpolation) and validated inputs. URLs must start with `https://`, `git@`, or be an absolute local path. Branch names are validated against a strict regex that rejects shell metacharacters and `..` sequences.
 
@@ -28,7 +28,7 @@ Two environment variables control the registry source:
 
 ### Addon components
 
-Repo catalog addons live in `.openpalm/registry/addons/<name>/`. Runtime available addons live in `~/.openpalm/registry/addons/<name>/`. Enabled addons live in `~/.openpalm/config/stack/addons/<name>/`. Each addon directory must contain:
+Repo catalog addons live in `.openpalm/state/registry/addons/<name>/`. Runtime available addons live in `~/.openpalm/state/registry/addons/<name>/`. Enabled addons live in `~/.openpalm/config/stack/addons/<name>/`. Each addon directory must contain:
 
 | File | Purpose |
 |---|---|
@@ -39,7 +39,7 @@ Current addons in the registry: `admin`, `api`, `chat`, `discord`, `ollama`, `sl
 
 ### Automations
 
-Registry automations live in `.openpalm/registry/automations/<name>.md` in the repo source and are materialized into `~/.openpalm/state/registry/automations/<name>.md` on install or refresh. They become active only after being installed into `~/.openpalm/stash/tasks/` via the admin catalog API or UI.
+Registry automations live in `.openpalm/state/registry/automations/<name>.md` in the repo source and are materialized into `~/.openpalm/state/registry/automations/<name>.md` on install or refresh. They become active only after being installed into `~/.openpalm/stash/tasks/` via the admin catalog API or UI.
 
 ## Addon structure
 
@@ -103,7 +103,7 @@ All endpoints require authentication via `x-admin-token` header.
 
 ### `GET /admin/automations/catalog`
 
-List available automations from `~/.openpalm/registry/automations/`.
+List available automations from `~/.openpalm/state/registry/automations/`.
 
 Response:
 
@@ -160,7 +160,7 @@ Response:
 
 ### `GET /admin/addons`
 
-List all available addons from `~/.openpalm/registry/addons/` with enabled state from `~/.openpalm/config/stack/addons/`.
+List all available addons from `~/.openpalm/state/registry/addons/` with enabled state from `~/.openpalm/config/stack/addons/`.
 
 ### `POST /admin/addons`
 

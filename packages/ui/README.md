@@ -41,8 +41,8 @@ npm run check
 Repo-root shortcuts:
 
 ```bash
-bun run admin:dev
-bun run admin:check
+bun run ui:dev
+bun run ui:check
 ```
 
 `npm run dev` uses Vite's local dev server. The deployed admin addon is served on `http://localhost:3880` by default.

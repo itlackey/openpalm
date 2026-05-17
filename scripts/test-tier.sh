@@ -8,8 +8,8 @@
 #
 # Tiers:
 #   1 — Type check (svelte-check + SDK unit tests)
-#   2 — Non-admin unit tests (lib, cli, guardian, channels, scheduler)
-#   3 — Admin unit tests (vitest)
+#   2 — Non-UI unit tests (lib, cli, guardian, channels, scheduler)
+#   3 — UI unit tests (vitest)
 #   4 — Mocked browser E2E (Playwright, no stack needed)
 #   5 — Integration E2E (needs running stack — rebuilds containers)
 #   6 — Full stack E2E incl. LLM pipeline (needs stack + Ollama — no-skip enforced)
@@ -24,8 +24,8 @@ Usage: ./scripts/test-tier.sh <tier>
 
 Tiers:
   1  Type check (svelte-check + SDK unit tests)
-  2  Non-admin unit tests (lib, cli, guardian, channels, scheduler)
-  3  Admin unit tests (vitest)
+  2  Non-UI unit tests (lib, cli, guardian, channels, scheduler)
+  3  UI unit tests (vitest)
   4  Mocked browser E2E (Playwright, no stack needed)
   5  Integration E2E (rebuilds and starts stack)
   6  Full stack E2E incl. LLM pipeline (rebuilds stack, enforces no skips)
@@ -55,11 +55,11 @@ ensure_dev_setup() {
 	fi
 }
 
-ensure_admin_build() {
+ensure_ui_build() {
 	# Build UI if the build output is missing or older than source
 	if [[ ! -d packages/ui/build ]]; then
 		echo "Building UI..."
-		bun run admin:build
+		bun run ui:build
 	fi
 }
 
@@ -70,7 +70,7 @@ rebuild_stack() {
 	ensure_dev_setup
 
 	echo "Building UI..."
-	bun run admin:build
+	bun run ui:build
 
 	echo "Stopping previous stack containers..."
 	dev_compose down --remove-orphans 2>/dev/null || true
@@ -108,27 +108,27 @@ case "$TIER" in
 	bun run check
 	;;
 2)
-	echo "=== Tier 2: Non-admin unit tests ==="
+	echo "=== Tier 2: Non-UI unit tests ==="
 	bun run test
 	;;
 3)
-	echo "=== Tier 3: Admin unit tests ==="
-	bun run admin:test:unit
+	echo "=== Tier 3: UI unit tests ==="
+	bun run ui:test:unit
 	;;
 4)
 	echo "=== Tier 4: Mocked browser E2E ==="
-	ensure_admin_build
-	bun run admin:test:e2e:mocked
+	ensure_ui_build
+	bun run ui:test:e2e:mocked
 	;;
 5)
 	echo "=== Tier 5: Integration E2E (stack-dependent) ==="
 	rebuild_stack
-	bun run admin:test:stack
+	bun run ui:test:stack
 	;;
 6)
 	echo "=== Tier 6: Full stack E2E incl. LLM pipeline ==="
 	rebuild_stack
-	bun run admin:test:llm
+	bun run ui:test:llm
 	;;
 *)
 	echo "Unknown tier: $TIER (valid: 1-6)" >&2

@@ -115,6 +115,7 @@ export function ensureHomeDirs(): void {
 
     // stash/ — akm knowledge (skills, vaults, agents); stash/tasks/ for scheduled automations
     `${home}/stash`,
+    `${home}/stash/vaults`,
     `${home}/stash/tasks`,
 
     // workspace/ — shared assistant work area

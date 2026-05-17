@@ -6,8 +6,9 @@
  * synchronous directory existence check.
  */
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const REPO_OWNER = 'itlackey';
 const REPO_NAME = 'openpalm';
@@ -31,7 +32,6 @@ export async function ensureDirectoryTree(
     homeDir,
     // config/ — user-editable config + system config
     configDir,
-    join(configDir, 'automations'),
     join(configDir, 'assistant'),
     join(configDir, 'assistant', 'tools'),
     join(configDir, 'assistant', 'plugins'),
@@ -42,6 +42,8 @@ export async function ensureDirectoryTree(
     join(configDir, 'stack', 'addons'),
     // stash/ — akm asset content (skills, vaults, knowledge, agents)
     join(homeDir, 'stash'),
+    join(homeDir, 'stash', 'vaults'),
+    join(homeDir, 'stash', 'tasks'),
     // workspace/ — shared assistant workspace
     join(homeDir, 'workspace'),
     // cache/ — regenerable/semi-persistent data
@@ -157,16 +159,41 @@ export async function copyTree(
 }
 
 /**
- * Downloads the latest .openpalm/ assets from GitHub and seeds them into
- * the OP_HOME tree. Optional — embedded assets in lib provide the
- * baseline; this function upgrades to the latest release versions.
+ * Resolve the on-disk `.openpalm/` source directory if one exists alongside
+ * this CLI source (git clone / dev run / source install). Returns null when
+ * the CLI is running as a compiled binary without a sibling `.openpalm/`.
+ */
+function resolveLocalOpenpalmDir(): string | null {
+  // io.ts lives at packages/cli/src/lib/io.ts; repo root is four levels up.
+  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+  const candidate = join(repoRoot, '.openpalm');
+  return existsSync(candidate) ? candidate : null;
+}
+
+/**
+ * Seed the OP_HOME tree from the repo's `.openpalm/` skeleton.
+ *
+ * `.openpalm/` mirrors the runtime OP_HOME layout exactly, so seeding is a
+ * single recursive copy. Existing files in OP_HOME are preserved (skipExisting).
+ *
+ * Source order:
+ *   1. Local `.openpalm/` next to the CLI source (dev / git-clone install)
+ *   2. Download tarball from GitHub at the requested `repoRef` (production binary)
  */
 export async function seedOpenPalmDir(
   repoRef: string,
   homeDir: string,
   _configDir: string,
-  stateDir: string,
+  _stateDir: string,
 ): Promise<void> {
+  // Prefer a local .openpalm/ (dev / source install) — no network needed.
+  const localSrc = resolveLocalOpenpalmDir();
+  if (localSrc) {
+    await copyTree(localSrc, homeDir, { skipExisting: true });
+    return;
+  }
+
+  // Production binary path: download the tarball and copy `.openpalm/` out of it.
   const tarballUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/archive/${repoRef}.tar.gz`;
   const tmpDir = join(homeDir, '.seed-tmp');
   const tmpTar = join(tmpDir, 'repo.tar.gz');
@@ -189,25 +216,11 @@ export async function seedOpenPalmDir(
       throw new Error(`tar extraction failed (exit code ${extractCode})`);
     }
 
-    const srcCoreCompose = join(tmpDir, '.openpalm', 'stack', 'core.compose.yml');
-    if (!await Bun.file(srcCoreCompose).exists()) {
-      throw new Error('core.compose.yml not found in downloaded assets (expected at .openpalm/config/stack/)');
+    const srcOpenpalm = join(tmpDir, '.openpalm');
+    if (!dirExists(srcOpenpalm)) {
+      throw new Error('.openpalm/ not found in downloaded tarball');
     }
-    await mkdir(join(homeDir, 'config', 'stack'), { recursive: true });
-    await writeFile(
-      join(homeDir, 'config', 'stack', 'core.compose.yml'),
-      new Uint8Array(await Bun.file(srcCoreCompose).arrayBuffer()),
-    );
-
-    const srcRegistry = join(tmpDir, '.openpalm', 'registry');
-    if (dirExists(srcRegistry)) {
-      await copyTree(srcRegistry, join(stateDir, 'registry'));
-    }
-
-    const srcAssistant = join(tmpDir, 'core', 'assistant', 'opencode');
-    if (dirExists(srcAssistant)) {
-      await copyTree(srcAssistant, join(stateDir, 'assistant'));
-    }
+    await copyTree(srcOpenpalm, homeDir, { skipExisting: true });
   } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }

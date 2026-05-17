@@ -78,11 +78,11 @@ OpenPalm uses one host home directory: `~/.openpalm/`.
 
 | Path | Purpose |
 |---|---|
-| `~/.openpalm/config/stack/` | Live compose files and helper scripts |
-| `~/.openpalm/vault/` | Env files and schemas |
+| `~/.openpalm/config/stack/` | Live compose files and enabled addon overlays |
+| `~/.openpalm/stash/vaults/` | User-managed secret env files |
 | `~/.openpalm/config/` | User-editable config |
-| `~/.openpalm/data/` | Durable service data |
-| `~/.openpalm/logs/` | Logs and audit files |
+| `~/.openpalm/state/` | Durable service data |
+| `~/.openpalm/state/logs/` | Logs and audit files |
 
 Approximate storage use:
 
@@ -90,8 +90,8 @@ Approximate storage use:
 |---|---|---|
 | Docker images (core) | ~2-3 GB | Depends on pulled tags |
 | Docker images (per addon) | ~100-200 MB | Many share layers |
-| `~/.openpalm/config/` + `vault/` | small | Usually measured in MB |
-| `~/.openpalm/data/` | variable | Stash, workspace, and assistant data can grow |
+| `~/.openpalm/config/` + `~/.openpalm/stash/` | small | Usually measured in MB |
+| `~/.openpalm/state/` | variable | Stash, workspace, and assistant data can grow |
 | local model weights | 2-8+ GB per model | If using Ollama or similar |
 
 ---

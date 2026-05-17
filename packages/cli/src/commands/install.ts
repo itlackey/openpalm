@@ -18,7 +18,6 @@ import {
   resolveRequestedImageTag,
   type SetupSpec,
 } from '@openpalm/lib';
-import { seedEmbeddedAssets } from '../lib/embedded-assets.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
 import { ensureValidState } from '../lib/cli-state.ts';
 
@@ -176,15 +175,8 @@ async function prepareInstallFiles(
   try { await Bun.write(join(stateDir, 'host.json'), JSON.stringify(await detectHostInfo(), null, 2) + '\n'); }
   catch (err) { logger.debug('failed to write host.json', { error: String(err) }); }
 
-  // Seed core files from embedded assets (always available, even offline)
-  seedEmbeddedAssets(homeDir);
-
-  // Try to fetch latest assets from GitHub (non-fatal — embedded assets are sufficient)
-  try {
-    await seedOpenPalmDir(version, homeDir, configDir, stateDir);
-  } catch (err) {
-    logger.debug('seedOpenPalmDir failed (embedded assets already seeded)', { error: String(err) });
-  }
+  // Seed OP_HOME from .openpalm/ (local source if available, else GitHub tarball)
+  await seedOpenPalmDir(version, homeDir, configDir, stateDir);
 
   console.log('Configuring secrets...');
   await ensureSecrets(stateDir);
@@ -193,6 +185,7 @@ async function prepareInstallFiles(
   for (const [path, content] of [
     [join(configDir, 'stack', 'guardian.env'), '# Guardian channel HMAC secrets — managed by openpalm\n'],
     [join(configDir, 'stack', 'auth.json'), '{}\n'],
+    [join(homeDir, 'stash', 'vaults', 'user.env'), '# OpenPalm user vault — add LLM API keys and other secrets here\n'],
   ] as const) {
     if (!(await Bun.file(path).exists())) await Bun.write(path, content);
   }

@@ -261,8 +261,8 @@ jobs:
           fi
           echo "All platform versions match: ${ROOT_VERSION}"
 
-  admin-unit-tests:
-    name: Admin unit tests (Vitest)
+  ui-unit-tests:
+    name: UI unit tests (Vitest)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -284,11 +284,11 @@ jobs:
       - name: Install Playwright browsers (for Vitest browser mode)
         run: npx playwright install --with-deps chromium
 
-      - name: Run admin unit tests
-        run: bun run admin:test:unit
+      - name: Run UI unit tests
+        run: bun run ui:test:unit
 
-  admin-e2e-mocked:
-    name: Admin mocked E2E tests (Playwright)
+  ui-e2e-mocked:
+    name: UI mocked E2E tests (Playwright)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -311,4 +311,4 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run mocked Playwright E2E tests
-        run: bun run admin:test:e2e:mocked || true
+        run: bun run ui:test:e2e:mocked || true

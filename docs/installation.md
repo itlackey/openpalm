@@ -44,9 +44,9 @@ OpenPalm uses one home directory: `~/.openpalm/` by default.
 | `~/.openpalm/registry/` | Available addon and automation catalog |
 | `~/.openpalm/config/stack/stack.env` | System-managed stack values and tokens |
 | `~/.openpalm/stash/vaults/user.env` | Optional user-managed extension settings |
-| `~/.openpalm/config/` | User-editable config, automations, assistant extensions |
-| `~/.openpalm/data/` | Durable service data |
-| `~/.openpalm/logs/` | Logs and audit output |
+| `~/.openpalm/config/` | User-editable config and assistant extensions |
+| `~/.openpalm/state/` | Durable service data |
+| `~/.openpalm/state/logs/` | Logs and audit output |
 
 `~/.openpalm/config/stack.yml` stores capabilities only. It is not the
 deployment truth.
