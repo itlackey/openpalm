@@ -1,31 +1,32 @@
 # Password & Secret Management
 
-OpenPalm keeps secrets inside one vault boundary under `~/.openpalm/vault/`.
+OpenPalm keeps secrets in two separate locations: user secrets under `~/.openpalm/stash/vaults/`
+and stack secrets under `~/.openpalm/config/stack/`.
 The current model is simple: one user-managed override env, one stack env,
 and one guardian secret env.
 
 ---
 
-## Vault layout
+## Secret layout
 
 ```text
-~/.openpalm/vault/
-  stack/
+~/.openpalm/
+  config/stack/
     stack.env
     guardian.env
-  user/
+  stash/vaults/
     user.env
 ```
 
-- `vault/user/user.env` is the recommended user-managed override file for addon and operator values.
+- `stash/vaults/user.env` is the recommended user-managed override file for addon and operator values.
 - `config/stack/stack.env` is system-managed runtime env + secrets.
 - `config/stack/guardian.env` holds channel HMAC secrets.
 - Compose is run with both files, usually as:
-  `--env-file ../config/stack/stack.env --env-file ../vault/user/user.env`.
+  `--env-file ../config/stack/stack.env --env-file ../stash/vaults/user.env`.
 
 ---
 
-## `vault/user/user.env`
+## `stash/vaults/user.env`
 
 This file is for user-managed addon overrides, operator values, and custom preferences.
 It starts empty and is never overwritten by normal lifecycle operations.
@@ -33,7 +34,7 @@ It starts empty and is never overwritten by normal lifecycle operations.
 Behavior:
 
 - safe to edit directly on the host
-- mounted into the assistant via the `vault/user/` directory mount
+- mounted into the assistant via the `stash/vaults/` directory mount
 - also passed as container environment via Compose
 - not overwritten by normal lifecycle operations
 
@@ -83,16 +84,16 @@ Behavior:
 
 ## Container access rules
 
-| Container | Vault access | Notes |
+| Container | Secret access | Notes |
 |---|---|---|
-| `admin` addon | full `~/.openpalm/` bind mount | Only service with broad vault visibility |
-| `assistant` | `vault/user/` only | Directory mount plus env injection |
+| `admin` addon | full `~/.openpalm/` bind mount | Only service with broad visibility |
+| `assistant` | `stash/vaults/` only | Directory mount plus env injection |
 | `guardian` | no vault mount | Reads needed values from Compose env |
 
 The scheduler is not a separate container — it runs as a co-process inside the
 assistant container and inherits the assistant's environment and mounts.
 
-The assistant does not mount the full `vault/` directory and does not get broad
+The assistant does not mount the full `config/stack/` directory and does not get broad
 access to stack secrets by filesystem path.
 
 ---
@@ -134,7 +135,7 @@ source of truth.
 
 - Edit `~/.openpalm/config/stack/stack.env` when changing API keys, provider
   settings, ports, paths, or stack-level tokens.
-- Edit `~/.openpalm/vault/user/user.env` for optional user-managed extension
+- Edit `~/.openpalm/stash/vaults/user.env` for optional user-managed extension
   settings and custom preferences.
-- Back up the whole `~/.openpalm/vault/` tree.
-- Never commit real env values from either vault file.
+- Back up the whole `~/.openpalm/stash/vaults/` and `~/.openpalm/config/stack/` trees.
+- Never commit real env values from either file.

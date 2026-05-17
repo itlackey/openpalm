@@ -40,25 +40,25 @@ cd "$ROOT_DIR"
 
 dev_compose() {
 	docker compose --project-directory . \
-		-f .dev/stack/core.compose.yml \
+		-f .dev/config/stack/core.compose.yml \
 		-f compose.dev.yml \
-		--env-file .dev/vault/stack/stack.env \
-		--env-file .dev/vault/user/user.env \
-		--env-file .dev/vault/stack/guardian.env \
+		--env-file .dev/config/stack/stack.env \
+		--env-file .dev/stash/vaults/user.env \
+		--env-file .dev/config/stack/guardian.env \
 		--project-name openpalm "$@"
 }
 
 ensure_dev_setup() {
-	if [[ ! -f .dev/vault/stack/stack.env ]]; then
+	if [[ ! -f .dev/config/stack/stack.env ]]; then
 		echo "Seeding dev environment..."
 		./scripts/dev-setup.sh --seed-env
 	fi
 }
 
 ensure_admin_build() {
-	# Build admin if the build output is missing or older than source
+	# Build UI if the build output is missing or older than source
 	if [[ ! -d packages/ui/build ]]; then
-		echo "Building admin..."
+		echo "Building UI..."
 		bun run admin:build
 	fi
 }
@@ -69,7 +69,7 @@ rebuild_stack() {
 	# picked up. Docker restart does NOT re-read compose config.
 	ensure_dev_setup
 
-	echo "Building admin..."
+	echo "Building UI..."
 	bun run admin:build
 
 	echo "Stopping previous stack containers..."
@@ -82,7 +82,7 @@ rebuild_stack() {
 	echo "Waiting for all services to be healthy..."
 	for i in $(seq 1 30); do
 		local all_healthy=true
-		for svc in admin assistant guardian; do
+		for svc in assistant guardian; do
 			local status
 			status=$(docker inspect --format '{{.State.Health.Status}}' "openpalm-${svc}-1" 2>/dev/null || echo "missing")
 			if [[ "$status" != "healthy" ]]; then
@@ -92,17 +92,6 @@ rebuild_stack() {
 		done
 		if [[ "$all_healthy" == "true" ]]; then
 			echo "All services healthy."
-			# Wait for admin OpenCode subprocess to start (health check only
-			# verifies the admin HTTP server, not its internal OpenCode process)
-			echo "Waiting for admin OpenCode subprocess..."
-			for j in $(seq 1 12); do
-				if curl -sS -o /dev/null -w '' http://localhost:3881/ 2>/dev/null; then
-					echo "Admin OpenCode ready."
-					return 0
-				fi
-				sleep 5
-			done
-			echo "WARNING: Admin OpenCode not reachable on :3881 after 60s (tests may fail)"
 			return 0
 		fi
 		sleep 10

@@ -29,16 +29,16 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 
 ## Architecture
 
-- **Lib** (`packages/lib/`) — Shared control-plane library (`@openpalm/lib`). All portable lifecycle, staging, secrets, channels, connections, scheduler logic. Both CLI and admin import from this package.
-- **CLI** (`packages/cli/`) — Host-side orchestrator. Manages Docker Compose directly. Serves setup wizard during install. Self-sufficient without admin.
-- **Admin** (`packages/admin/`) — SvelteKit app: operator web UI + API. Served as a host process by `openpalm admin serve` (no container). Accesses Docker socket directly on the host.
+- **Lib** (`packages/lib/`) — Shared control-plane library (`@openpalm/lib`). All portable lifecycle, staging, secrets, channels, connections, scheduler logic. Both CLI and UI import from this package.
+- **CLI** (`packages/cli/`) — Host-side orchestrator. Manages Docker Compose directly. Serves setup wizard during install. Self-sufficient without UI.
+- **UI** (`packages/ui/`) — SvelteKit app: operator web UI + API. Served as a host process by `openpalm ui serve` (no container). Accesses Docker socket directly on the host.
 - **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic.
-- **Assistant** (`core/assistant/`) — OpenCode runtime with tools/skills. No Docker socket. No admin API access — stack operations are host-only. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/data/stash/`.
+- **Assistant** (`core/assistant/`) — OpenCode runtime with tools/skills. No Docker socket. When UI is present, it calls the admin API for stack operations. When UI is absent, only the akm-backed memory/knowledge tools are available. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/stash/`.
 - **Scheduler** (`packages/scheduler/`) — Lightweight Bun co-process started inside the assistant container by `core/assistant/entrypoint.sh`. No network port. Runs cron jobs (http, shell, assistant, api actions) from `config/automations/`.
 - **Channel runtime** (`core/channel/`) — Unified `channel` image build and startup entrypoint.
 - **Channel adapters** (`packages/channel-api/`, `packages/channel-discord/`, `packages/channel-slack/`, `packages/channel-voice/`) — Translate external protocols into signed guardian messages.
 - **Channels SDK** (`packages/channels-sdk/`) — Shared SDK for channel adapters: signing, assistant client, base classes.
-- **Assistant-tools** (`packages/assistant-tools/`) — `load_vault` and `health-check` tools for the assistant. No admin dependency. Memory/knowledge access comes from the `akm-opencode` plugin.
+- **Assistant-tools** (`packages/assistant-tools/`) — `load_vault` and `health-check` tools for the assistant. No UI dependency. Memory/knowledge access comes from the `akm-opencode` plugin.
 - **Stack** (`.openpalm/config/stack/`) — Repo-shipped Docker Compose foundation. Contains the core compose file only. Runtime enabled addons live under `~/.openpalm/config/stack/addons/`.
 
 ---
@@ -48,8 +48,8 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 ### Development
 
 ```bash
-# Admin (SvelteKit admin + API)
-cd packages/admin && npm install && npm run dev     # Dev server on :8100
+# UI (SvelteKit UI + API)
+cd packages/ui && npm install && npm run dev     # Dev server on :8100
 npm run build                                       # Production build
 npm run check                                       # svelte-check + TypeScript
 
@@ -57,9 +57,9 @@ npm run check                                       # svelte-check + TypeScript
 cd core/guardian && bun install && bun run src/server.ts
 
 # Root shortcuts
-bun run admin:dev        # Runs admin dev from root
-bun run admin:build      # Builds admin from root
-bun run admin:check      # svelte-check + TypeScript for admin
+bun run ui:dev        # Runs UI dev from root
+bun run ui:build      # Builds UI from root
+bun run ui:check      # svelte-check + TypeScript for UI
 bun run guardian:dev     # Runs guardian server
 bun run channel:api:dev     # Runs api channel dev server
 bun run channel:discord:dev # Runs discord channel dev server
@@ -76,9 +76,9 @@ bun run wizard:dev                      # Runs install --no-start --force with O
 ### Type Checking
 
 ```bash
-cd packages/admin && npm run check
+cd packages/ui && npm run check
 # or from root:
-bun run check            # Runs admin:check + sdk:test
+bun run check            # Runs ui:check + sdk:test
 ```
 
 ### Tests
@@ -87,16 +87,16 @@ The project has ~100 test files across all packages using Bun test, Vitest, and 
 
 | Runner | Command | Scope |
 |--------|---------|-------|
-| `bun test` (root) | `bun run test` | channels-sdk, guardian, cli, all channel packages (excludes admin) |
+| `bun test` (root) | `bun run test` | channels-sdk, guardian, cli, all channel packages (excludes ui) |
 | `bun test` (sdk) | `bun run sdk:test` | packages/channels-sdk unit tests |
 | `bun test` (guardian) | `bun run guardian:test` | core/guardian security tests |
 | `bun test` (cli) | `bun run cli:test` | packages/cli tests |
-| Vitest (admin) | `bun run admin:test:unit` | packages/admin unit + browser component tests |
-| Playwright (admin integration) | `bun run admin:test:e2e` | packages/admin integration tests (no browser route mocks) |
-| Playwright (admin mocked) | `bun run admin:test:e2e:mocked` | packages/admin mocked browser contract tests |
-| Both admin | `bun run admin:test` | Vitest then Playwright (requires running build) |
-| Playwright (stack) | `bun run admin:test:stack` | Stack-dependent integration tests (needs running stack + ADMIN_TOKEN) |
-| Playwright (LLM) | `bun run admin:test:llm` | LLM-dependent pipeline tests (needs stack + ADMIN_TOKEN + API keys) |
+| Vitest (UI) | `bun run ui:test:unit` | packages/ui unit + browser component tests |
+| Playwright (UI integration) | `bun run ui:test:e2e` | packages/ui integration tests (no browser route mocks) |
+| Playwright (UI mocked) | `bun run ui:test:e2e:mocked` | packages/ui mocked browser contract tests |
+| Both UI | `bun run ui:test` | Vitest then Playwright (requires running build) |
+| Playwright (stack) | `bun run ui:test:stack` | Stack-dependent integration tests (needs running stack + ADMIN_TOKEN) |
+| Playwright (LLM) | `bun run ui:test:llm` | LLM-dependent pipeline tests (needs stack + ADMIN_TOKEN + API keys) |
 
 ```bash
 # Run guardian tests
@@ -105,17 +105,17 @@ cd core/guardian && bun test
 # Run a single test file
 cd core/guardian && bun test src/server.test.ts
 
-# Run admin unit tests (Vitest, CI-friendly)
-bun run admin:test:unit
+# Run UI unit tests (Vitest, CI-friendly)
+bun run ui:test:unit
 
-# Run all non-admin tests
+# Run all non-UI tests
 bun run test
 
 # Stack integration tests (requires running compose stack)
-RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e
+RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run ui:test:e2e
 ```
 
-> **Important:** Always use `bun run admin:test:e2e` (not `npx playwright test` directly) to avoid Playwright version conflicts.
+> **Important:** Always use `bun run ui:test:e2e` (not `npx playwright test` directly) to avoid Playwright version conflicts.
 
 ### Docker
 
@@ -131,7 +131,7 @@ docker compose --project-directory . \
   -f .openpalm/config/stack/core.compose.yml \
   -f compose.dev.yml \
   --env-file .dev/config/stack/stack.env \
-  --env-file .dev/vault/user/user.env \
+  --env-file .dev/stash/vaults/user.env \
   up --build -d
 ```
 
@@ -229,16 +229,16 @@ No Prettier or ESLint configured. Match the existing file style:
 Full detail in [`docs/technical/core-principles.md`](docs/technical/core-principles.md).
 
 - **File assembly, not rendering.** Write whole files; no string interpolation or template generation.
-- **`config/` is user-owned.** Automatic lifecycle operations are non-destructive for existing user files and only seed missing defaults. Allowed writers: user direct edits, explicit admin UI/API config actions, assistant calls through authenticated admin APIs on user request.
-- **`vault/` boundary.** Only admin mounts full `vault/` (rw). Assistant mounts `vault/user/` (rw). No other container mounts anything from vault. Guardian loads `config/stack/guardian.env` as env_file (channel HMAC secrets with hot-reload).
-- **Host CLI or admin is the orchestrator.** CLI manages Docker Compose directly on the host. Admin provides a web UI as a host process (no container, no docker-socket-proxy).
-- **Shared control-plane library (`@openpalm/lib`) is the single source of truth.** All portable control-plane logic lives in `packages/lib/`. CLI, admin, and scheduler all import from this package. Never duplicate control-plane logic in a consumer.
+- **`config/` is user-owned.** Automatic lifecycle operations are non-destructive for existing user files and only seed missing defaults. Allowed writers: user direct edits, explicit UI/API config actions, assistant calls through authenticated admin APIs on user request.
+- **`stash/vaults/` boundary.** User secrets live in `stash/vaults/user.env` and are mounted at `/etc/vault/` by the assistant container. Stack secrets are in `config/stack/stack.env` and `config/stack/guardian.env` (passed via docker compose `--env-file`).
+- **Host CLI or UI is the orchestrator.** CLI manages Docker Compose directly on the host. UI provides a web UI as a host process (no container, no docker-socket-proxy).
+- **Shared control-plane library (`@openpalm/lib`) is the single source of truth.** All portable control-plane logic lives in `packages/lib/`. CLI and UI both import from this package. Never duplicate control-plane logic in a consumer.
 - **Guardian-only ingress.** All channel traffic must enter through the guardian (HMAC, replay protection, rate limiting).
-- **Assistant isolation.** Assistant has no Docker socket. When admin is present, it calls the admin API. When admin is absent, only the akm-backed memory/knowledge tools are available.
+- **Assistant isolation.** Assistant has no Docker socket. When UI is present, it calls the admin API for stack operations. When UI is absent, only the akm-backed memory/knowledge tools are available.
 - **LAN-first by default.** Nothing is publicly exposed without explicit user opt-in.
 - **Add a channel** by installing from the registry or dropping an addon compose file into `stack/addons/<name>/` — no code changes.
 - **No shell interpolation.** Docker commands use `execFile` with argument arrays, never shell strings.
-- **Docker dependency resolution pattern.** Guardian and channel Dockerfiles install `packages/channels-sdk` deps with `bun install --production` after copying sdk source. Admin is a host binary — no Docker build needed.
+- **Docker dependency resolution pattern.** Guardian and channel Dockerfiles install `packages/channels-sdk` deps with `bun install --production` after copying sdk source. UI is a host binary — no Docker build needed.
 
 ---
 
@@ -265,14 +265,14 @@ Dev mode uses `.dev/` with the same subdirectory structure.
 
 Before submitting any change:
 
-- [ ] `cd packages/admin && npm run check` passes (UI type correctness)
+- [ ] `cd packages/ui && npm run check` passes (UI type correctness)
 - [ ] `cd core/guardian && bun test` passes (security-critical branches covered)
 - [ ] No new dependency duplicates a built-in Bun/platform capability
 - [ ] Filesystem, guardian ingress, and assistant-isolation rules in `docs/technical/core-principles.md` remain intact
 - [ ] Errors and logs are structured and include request identifiers where available
 - [ ] No secrets leak through client bundles or logs
 - [ ] Docker builds follow the dependency resolution pattern (no symlink-based node_modules, channels-sdk deps installed after COPY)
-- [ ] Control-plane logic lives in `packages/lib/`, not duplicated in CLI or admin
+- [ ] Control-plane logic lives in `packages/lib/`, not duplicated in CLI or UI
 
 ---
 
@@ -288,11 +288,11 @@ Before submitting any change:
 | `packages/lib/src/control-plane/lifecycle.ts` | State factory, lifecycle transitions (install/update/uninstall) |
 | `packages/lib/src/control-plane/config-persistence.ts` | Runtime file writing (compose, env, secrets) |
 | `packages/lib/src/control-plane/types.ts` | CORE_SERVICES, OPTIONAL_SERVICES, ControlPlaneState |
-| `packages/admin/src/lib/server/docker.ts` | Docker compose wrapper (re-exports lib with preflight enforcement) |
-| `packages/admin/src/lib/server/helpers.ts` | Shared request/response utilities |
-| `packages/admin/src/lib/types.ts` | Shared TypeScript types |
-| `packages/admin/src/lib/auth.ts` | Auth utilities |
-| `packages/admin/src/lib/api.ts` | API call functions |
+| `packages/ui/src/lib/server/docker.ts` | Docker compose wrapper (re-exports lib with preflight enforcement) |
+| `packages/ui/src/lib/server/helpers.ts` | Shared request/response utilities |
+| `packages/ui/src/lib/types.ts` | Shared TypeScript types |
+| `packages/ui/src/lib/auth.ts` | Auth utilities |
+| `packages/ui/src/lib/api.ts` | API call functions |
 | `packages/cli/src/lib/cli-state.ts` | CLI state helpers (ensureValidState) |
 | `packages/cli/src/commands/install.ts` | CLI install (setup wizard + compose up) |
 | `packages/scheduler/src/main.ts` | Scheduler co-process entry point |

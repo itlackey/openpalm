@@ -1,6 +1,6 @@
-# packages/admin
+# packages/ui
 
-Optional SvelteKit admin UI and API for OpenPalm.
+Optional SvelteKit UI and API for OpenPalm.
 OpenPalm remains compose-first and manual-first; the admin addon is a convenience layer for inspecting state and performing stack actions through Docker Socket Proxy.
 
 ## Responsibilities
@@ -29,10 +29,10 @@ src/
 
 ## Development
 
-Local dev is package-local only; it does not represent the deployed admin addon port mapping.
+Local dev is package-local only; it does not represent the deployed UI addon port mapping.
 
 ```bash
-cd packages/admin
+cd packages/ui
 npm install
 npm run dev
 npm run check
@@ -41,8 +41,8 @@ npm run check
 Repo-root shortcuts:
 
 ```bash
-bun run admin:dev
-bun run admin:check
+bun run ui:dev
+bun run ui:check
 ```
 
 `npm run dev` uses Vite's local dev server. The deployed admin addon is served on `http://localhost:3880` by default.

@@ -19,9 +19,9 @@ Repo layout convention:
 ```bash
 ./scripts/dev-setup.sh --seed-env
 
-cd packages/admin
-bun install
-bun run dev
+cd packages/ui
+npm install
+npm run dev
 ```
 
 Admin UI + API runs on `http://localhost:8100`.
@@ -29,8 +29,8 @@ Admin UI + API runs on `http://localhost:8100`.
 From the repo root, convenience scripts are available:
 
 ```bash
-bun run admin:dev        # packages/admin dev server
-bun run admin:check      # svelte-check + TypeScript
+bun run ui:dev        # packages/ui dev server
+bun run ui:check      # svelte-check + TypeScript
 bun run guardian:dev     # core/guardian server
 bun run guardian:test    # guardian tests
 bun run sdk:test         # packages/channels-sdk tests
@@ -46,7 +46,7 @@ bun run check            # admin:check + sdk:test
 
 `dev:stack` pulls pre-built images from the configured container registries — use it for quick starts and testing admin apply flows. `dev:build` compiles all images from local source using `compose.dev.yml` — use it when developing services or testing Dockerfile changes.
 
-`dev-setup.sh --seed-env` seeds `.dev/vault/user/user.env` and `.dev/config/stack/stack.env` and sets the `OP_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
+`dev-setup.sh --seed-env` seeds `.dev/stash/vaults/user.env` and `.dev/config/stack/stack.env` and sets the `OP_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
 
 ## 1. Clone and bootstrap
 
@@ -59,18 +59,18 @@ bun run dev:setup      # Creates .dev/ dirs, seeds vault env files
 
 `dev:setup` runs [`scripts/dev-setup.sh --seed-env`](../scripts/dev-setup.sh), which:
 
-- Creates the `.dev/config`, `.dev/vault`, `.dev/data`, and `.dev/logs` directories
-- Seeds `.dev/vault/user/user.env` and `.dev/config/stack/stack.env` with dev-safe defaults
+- Creates the `.dev/config`, `.dev/stash`, `.dev/state`, and `.dev/logs` directories
+- Seeds `.dev/stash/vaults/user.env` and `.dev/config/stack/stack.env` with dev-safe defaults
 
-After setup, edit `.dev/vault/user/user.env` to add your LLM provider keys.
+After setup, edit `.dev/stash/vaults/user.env` to add your LLM provider keys.
 
-## 2. Run the admin UI (no Docker needed)
+## 2. Run the UI (no Docker needed)
 
 ```bash
-cd packages/admin && npm install && npm run dev
+cd packages/ui && npm install && npm run dev
 ```
 
-Admin UI + API starts on `http://localhost:8100`. The dev server reads `.env` (copy from [`.env.example`](../packages/admin/.env.example)) and the seeded `.dev/` paths automatically.
+UI + API starts on `http://localhost:8100`. The dev server reads `.env` and the seeded `.dev/` paths automatically.
 
 ## 3. Start the full stack
 
@@ -81,15 +81,15 @@ Two options depending on what you're working on:
 | `bun run dev:stack` | Pulls pre-built images from the configured container registries. Fast start for testing admin workflows. |
 | `bun run dev:build` | Builds all images from local source via [`compose.dev.yml`](../compose.dev.yml). Use when developing services or testing Dockerfile changes. |
 
-Both scripts read env files from `.dev/vault/`.
+Both scripts read env files from `.dev/config/stack/` and `.dev/stash/vaults/`.
 
 ## 4. Run tests and checks
 
 ```bash
-# Type check the admin UI
-bun run admin:check
+# Type check the UI
+bun run ui:check
 
-# Non-admin tests (sdk, guardian, channels, cli)
+# Non-UI tests (sdk, guardian, channels, cli)
 bun run test
 
 # Both of the above
@@ -99,17 +99,17 @@ bun run check
 bun run guardian:test        # Guardian security tests
 bun run sdk:test             # Channels SDK unit tests
 bun run cli:test             # CLI tests
-bun run admin:test:unit      # Admin Vitest (unit + browser components)
-bun run admin:test:e2e       # Admin Playwright integration tests (no-skip enforced locally)
-bun run admin:test:e2e:mocked # Admin Playwright mocked browser contract tests
+bun run ui:test:unit      # UI Vitest (unit + browser components)
+bun run ui:test:e2e       # UI Playwright integration tests (no-skip enforced locally)
+bun run ui:test:e2e:mocked # UI Playwright mocked browser contract tests
 ```
 
-> Admin uses Vitest and Playwright, not Bun's test runner. Use `bun run test` (not bare `bun test`) from the repo root — the script filters to non-admin directories.
+> UI uses Vitest and Playwright, not Bun's test runner. Use `bun run test` (not bare `bun test`) from the repo root — the script filters to non-UI directories.
 
 ## 5. Run individual services
 
 ```bash
-bun run admin:dev            # Admin SvelteKit dev server (:8100)
+bun run ui:dev            # UI SvelteKit dev server (:8100)
 bun run guardian:dev         # Guardian Bun server
 bun run channel:api:dev      # API channel (CHANNEL_ID=chat reuses this image to serve the chat addon)
 bun run channel:discord:dev  # Discord channel
@@ -121,13 +121,13 @@ All scripts are defined in the root [`package.json`](../package.json):
 
 | Script | Description |
 |--------|-------------|
-| `bun run admin:dev` | Admin dev server (packages/admin) |
-| `bun run admin:build` | Admin production build |
-| `bun run admin:check` | svelte-check + TypeScript |
-| `bun run admin:test` | Vitest + Playwright (requires build) |
-| `bun run admin:test:unit` | Vitest only (CI-friendly) |
-| `bun run admin:test:e2e` | Playwright integration only (no browser route mocks) |
-| `bun run admin:test:e2e:mocked` | Playwright mocked browser contracts |
+| `bun run ui:dev` | UI dev server (packages/ui) |
+| `bun run ui:build` | UI production build |
+| `bun run ui:check` | svelte-check + TypeScript |
+| `bun run ui:test` | Vitest + Playwright (requires build) |
+| `bun run ui:test:unit` | Vitest only (CI-friendly) |
+| `bun run ui:test:e2e` | Playwright integration only (no browser route mocks) |
+| `bun run ui:test:e2e:mocked` | Playwright mocked browser contracts |
 | `bun run guardian:dev` | Guardian server |
 | `bun run guardian:test` | Guardian tests |
 | `bun run sdk:test` | Channels SDK tests |
@@ -147,8 +147,8 @@ Dev mode mirrors the production [filesystem contract](../docs/technical/foundati
 ```
 .dev/
 ├── config/          # User-editable, non-secret configuration
-├── vault/           # Secrets: vault/user/user.env, config/stack/stack.env
-├── data/            # Service-managed persistent data
+├── stash/           # AKM knowledge (skills, vaults, agents)
+├── state/           # Service-managed persistent data
 └── logs/            # Consolidated audit/debug output
 ```
 
@@ -164,13 +164,13 @@ See [docs/technical/foundations.md](../docs/technical/foundations.md) for the fu
    bun run guardian:test            # Guardian security tests
    ```
 
-3. **Docker builds** — Guardian and channel Dockerfiles must install `packages/channels-sdk` deps with `bun install --production` after copying sdk source (no symlink-based node_modules). Admin is a host binary — no Docker build.
+3. **Docker builds** — Guardian and channel Dockerfiles must install `packages/channels-sdk` deps with `bun install --production` after copying sdk source (no symlink-based node_modules). UI is a host binary — no Docker build.
 4. **No secrets** in client bundles or logs.
 5. **No new dependencies** that duplicate a built-in Bun or platform capability.
 
 ## npm Package Releases
 
-OpenPalm publishes npm packages on an independent release cycle from Docker images and the platform. Each publishable package (`packages/channels-sdk`, `packages/assistant-tools`, `packages/channel-*`) has its own GitHub Actions workflow that publishes to npm when its version field changes on `main`. Platform packages (`packages/admin`, `core/guardian`, `packages/cli`) share a coordinated version managed by `scripts/release.sh`.
+OpenPalm publishes npm packages on an independent release cycle from Docker images and the platform. Each publishable package (`packages/channels-sdk`, `packages/assistant-tools`, `packages/channel-*`) has its own GitHub Actions workflow that publishes to npm when its version field changes on `main`. Platform packages (`packages/ui`, `core/guardian`, `packages/cli`) share a coordinated version managed by `scripts/release.sh`.
 
 ## Key docs for contributors
 
@@ -178,8 +178,8 @@ OpenPalm publishes npm packages on an independent release cycle from Docker imag
 |----------|-----------------|
 | [docs/technical/core-principles.md](../docs/technical/core-principles.md) | **Must-read.** Security invariants, filesystem contract, architectural rules |
 | [docs/technical/code-quality-principles.md](../docs/technical/code-quality-principles.md) | TypeScript strictness, module design, error handling |
-| [docs/technical/api-spec.md](../docs/technical/api-spec.md) | Admin API endpoint contract |
+| [docs/technical/api-spec.md](../docs/technical/api-spec.md) | API endpoint contract |
 | [docs/technical/bunjs-rules.md](../docs/technical/bunjs-rules.md) | Bun-specific patterns (guardian, channels, SDK) |
-| [docs/technical/sveltekit-rules.md](../docs/technical/sveltekit-rules.md) | SvelteKit patterns (admin UI) |
+| [docs/technical/sveltekit-rules.md](../docs/technical/sveltekit-rules.md) | SvelteKit patterns (UI) |
 | [docs/community-channels.md](../docs/community-channels.md) | BaseChannel SDK for building custom channel adapters |
 | [docs/technical/environment-and-mounts.md](../docs/technical/environment-and-mounts.md) | All environment variables and volume mounts |

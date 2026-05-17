@@ -28,9 +28,9 @@ Admin UI component
 
 Relevant code paths:
 
-- `packages/admin/src/lib/components/opencode/ConnectProviderSheet.svelte`
-- `packages/admin/src/lib/components/CapabilitiesTab.svelte`
-- `packages/admin/src/routes/admin/opencode/providers/+server.ts`
+- `packages/ui/src/lib/components/opencode/ConnectProviderSheet.svelte`
+- `packages/ui/src/lib/components/CapabilitiesTab.svelte`
+- `packages/ui/src/routes/admin/opencode/providers/+server.ts`
 - `packages/lib/src/control-plane/opencode-client.ts`
 
 ## Distinguishing the Failure Domain
@@ -57,8 +57,8 @@ UI still does not render it correctly.
   - `provider.models`
   - `provider.authMethods`
 - Read the consuming components:
-  - `packages/admin/src/lib/components/opencode/ConnectProviderSheet.svelte`
-  - `packages/admin/src/lib/components/CapabilitiesTab.svelte`
+  - `packages/ui/src/lib/components/opencode/ConnectProviderSheet.svelte`
+  - `packages/ui/src/lib/components/CapabilitiesTab.svelte`
 
 Useful check from the host:
 
@@ -93,7 +93,7 @@ curl -sS -H "x-admin-token: $ADMIN_TOKEN" "http://localhost:3880/admin/logs?serv
 
 Key lessons from the provider-display path:
 
-- the admin route is in `packages/admin/src/routes/admin/opencode/providers/+server.ts`
+- the admin route is in `packages/ui/src/routes/admin/opencode/providers/+server.ts`
 - it merges OpenCode provider data with auth-method data
 - the route can look broken even when the UI is fine if OpenCode returns an unexpected shape
 
@@ -123,12 +123,12 @@ actually targeting. In confusing cases, check the admin process environment or l
 ```bash
 # Look for the openpalm admin process and its config
 ps aux | grep "openpalm admin"
-cat ~/.openpalm/config/stack/stack.env | grep -E "OP_OPENCODE|OPENCODE_PORT|OP_ADMIN_OPENCODE"
+cat ~/.openpalm/config/stack/stack.env | grep -E "OP_OPENCODE|OPENCODE_PORT"
 ```
 
 Read these files if the behavior does not match the docs:
 
-- `packages/admin/src/lib/opencode/client.server.ts`
+- `packages/ui/src/lib/server/opencode/client.server.ts`
 - `packages/lib/src/control-plane/opencode-client.ts`
 - `docs/technical/api-spec.md`
 - `docs/technical/opencode-configuration.md`

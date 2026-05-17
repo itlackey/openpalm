@@ -9,7 +9,7 @@ OpenCode plugin that registers the small set of OpenPalm-specific assistant tool
 
 Persistent memory, lessons, skills, commands, workflows, wikis, and shared agent dispatch are all served by the akm-cli stash that ships in the assistant container (see `core/assistant/README.md`). That makes the assistant-tools surface intentionally tiny.
 
-Admin operations (containers, channels, lifecycle, config, connections, artifacts, automations, audit) are handled by the host admin process (`packages/admin`), not by the assistant.
+Admin operations (containers, channels, lifecycle, config, connections, artifacts, automations, audit) are handled by the host UI process (`packages/ui`), not by the assistant.
 
 ## Structure
 

@@ -1,4 +1,4 @@
-<img src="packages/admin/static/banner.png" alt="OpenPalm" width="500" />
+<img src="packages/ui/static/banner.png" alt="OpenPalm" width="500" />
 
 <p>
   <strong>Your own AI assistant. Private, self-hosted, no hype required.</strong>
@@ -62,7 +62,7 @@ If you'd rather set things up by hand with raw `docker compose`, see the [setup 
 ## How it works
 
 <div>
-<img src="packages/admin/static/fu-128.png" alt="OpenPalm" width="90" style="float: right; shape-margin: 0.25rem;" />
+<img src="packages/ui/static/fu-128.png" alt="OpenPalm" width="90" style="float: right; shape-margin: 0.25rem;" />
 <p>Clients talk to channels. Channels sign messages and send them through the guardian. The guardian validates everything and forwards to the assistant. The assistant does the work. That's it.</p>
 </div>
 

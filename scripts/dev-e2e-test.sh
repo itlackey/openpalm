@@ -42,7 +42,7 @@ TESTS=0
 
 dev_compose() {
 	docker compose --project-directory . \
-		-f .dev/stack/core.compose.yml \
+		-f .dev/config/stack/core.compose.yml \
 		-f compose.dev.yml \
 		--env-file .dev/config/stack/stack.env \
 		--env-file .dev/stash/vaults/user.env \
@@ -91,7 +91,7 @@ rm -rf .dev/data/backups
 # Config — remove generated assistant config so the wizard writes a fresh one
 rm -f .dev/config/assistant/opencode.json
 # Config — remove generated compose so dev-setup seeds a fresh one
-rm -f .dev/stack/core.compose.yml
+rm -f .dev/config/stack/core.compose.yml
 
 # Root-owned data from containers (opencode logs, apprise)
 docker run --rm -v "$ROOT_DIR/.dev/data/opencode:/c" alpine sh -c \
@@ -107,7 +107,7 @@ rm -f .dev/config/stack/auth.json
 rm -rf .dev/config/stack/services
 
 # Runtime addons — clear enabled overlays only
-rm -rf .dev/stack/addons
+rm -rf .dev/config/stack/addons
 
 # Config — remove stack.yml so the wizard writes a fresh one
 rm -f .dev/config/stack.yml
@@ -200,7 +200,7 @@ pass "LMStudio model alias ready"
 if [ "$SKIP_BUILD" -eq 0 ]; then
 	echo ""
 	echo "=== Step 4: Build all images from source ==="
-	npm run admin:build 2>&1 | tail -3
+	bun run admin:build 2>&1 | tail -3
 	dev_compose build 2>&1 | tail -5
 	pass "All images built"
 else
