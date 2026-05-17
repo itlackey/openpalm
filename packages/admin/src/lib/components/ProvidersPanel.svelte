@@ -1,17 +1,35 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { buildHeaders } from '$lib/api.js';
 	import type { ProviderActionResult, ProviderFilter, ProviderPageState, ProviderView } from '$lib/types/providers.js';
 	import ProviderCard from './providers/ProviderCard.svelte';
 	import ProviderEditor from './providers/ProviderEditor.svelte';
 	import ProviderFilters from './providers/ProviderFilters.svelte';
 	import CustomProviderForm from './providers/CustomProviderForm.svelte';
 
-	interface Props {
-		pageState: ProviderPageState;
-		loading: boolean;
-		onRefresh: () => void;
+	let pageState = $state<ProviderPageState>({
+		available: false,
+		providers: [],
+		defaultModels: {},
+		allowlistActive: false,
+		providerCountLabel: 'Loading...',
+		stats: { total: 0, connected: 0, configured: 0, disabled: 0 }
+	});
+	let loading = $state(true);
+
+	async function load(): Promise<void> {
+		loading = true;
+		try {
+			const res = await fetch('/admin/providers', { headers: buildHeaders() });
+			if (res.ok) pageState = (await res.json()) as ProviderPageState;
+		} catch {
+			// will show offline state
+		} finally {
+			loading = false;
+		}
 	}
 
-	let { pageState, loading, onRefresh }: Props = $props();
+	onMount(() => { void load(); });
 
 	let search = $state('');
 	let filter = $state<ProviderFilter>('all');
@@ -57,7 +75,7 @@
 	function handleAction(result: ProviderActionResult) {
 		lastActionResult = result;
 		if (result.selectedProviderId) selectedProviderId = result.selectedProviderId;
-		onRefresh();
+		void load();
 	}
 </script>
 
