@@ -12,11 +12,13 @@ import { join, resolve } from "node:path";
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
 const SKELETON_DIR = join(REPO_ROOT, ".openpalm");
 
-// Allowed source-asset dirs in .openpalm/ (v0.11.0 structure)
+// Allowed top-level dirs in .openpalm/ — mirrors the OP_HOME runtime layout
 const ALLOWED_SOURCE_DIRS = new Set([
-  "config",  // seed files for config/ (assistant, guardian, stack/, akm/)
-  "stash",   // stash source assets: skills/ and vaults/
-  "state",   // state/registry/ holds the shipped addon + automation catalog
+  "config",     // seed files for config/ (assistant, guardian, stack/, akm/)
+  "stash",      // stash source assets: skills/ and vaults/
+  "state",      // state/registry/ + empty service dirs (.gitkeep)
+  "cache",      // empty cache dirs (.gitkeep — regenerable at runtime)
+  "workspace",  // empty workspace dir (.gitkeep)
 ]);
 
 // ── Top-level structure ───────────────────────────────────────────────
@@ -101,5 +103,49 @@ describe("skeleton: .openpalm/stash/ structure", () => {
 
   test("stash/vaults/ exists", () => {
     expect(existsSync(join(SKELETON_DIR, "stash", "vaults"))).toBe(true);
+  });
+
+  test("stash/tasks/ exists", () => {
+    expect(existsSync(join(SKELETON_DIR, "stash", "tasks"))).toBe(true);
+  });
+});
+
+// ── state/ service dirs ───────────────────────────────────────────────
+
+describe("skeleton: .openpalm/state/ service directories", () => {
+  const serviceDirs = ["assistant", "admin", "guardian", "logs", "backups"];
+
+  for (const dir of serviceDirs) {
+    test(`state/${dir}/ exists`, () => {
+      expect(existsSync(join(SKELETON_DIR, "state", dir))).toBe(true);
+    });
+  }
+
+  test("state/akm/data/ exists", () => {
+    expect(existsSync(join(SKELETON_DIR, "state", "akm", "data"))).toBe(true);
+  });
+
+  test("state/akm/state/ exists", () => {
+    expect(existsSync(join(SKELETON_DIR, "state", "akm", "state"))).toBe(true);
+  });
+
+  test("state/logs/opencode/ exists", () => {
+    expect(existsSync(join(SKELETON_DIR, "state", "logs", "opencode"))).toBe(true);
+  });
+});
+
+// ── cache/ and workspace/ ─────────────────────────────────────────────
+
+describe("skeleton: .openpalm/cache/ and workspace/", () => {
+  test("cache/akm/ exists", () => {
+    expect(existsSync(join(SKELETON_DIR, "cache", "akm"))).toBe(true);
+  });
+
+  test("cache/rollback/ exists", () => {
+    expect(existsSync(join(SKELETON_DIR, "cache", "rollback"))).toBe(true);
+  });
+
+  test("workspace/ exists", () => {
+    expect(existsSync(join(SKELETON_DIR, "workspace"))).toBe(true);
   });
 });
