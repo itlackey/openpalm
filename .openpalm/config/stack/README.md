@@ -23,7 +23,6 @@ docker compose \
   -f core.compose.yml \
   -f addons/chat/compose.yml \
   up -d
-
 ```
 
 See the [Manual Compose Runbook](../../docs/operations/manual-compose-runbook.md) for preflight,
@@ -71,3 +70,11 @@ Repo addon sources live under `.openpalm/registry/addons/`. At runtime,
 | `guardian.env` | Channel HMAC secrets (hot-loaded at runtime) | CLI/admin (automated) |
 | `core.compose.yml` | Core service definition (always used) | System (managed via CLI/admin) |
 | `addons/` | Enabled addon compose overlays | CLI/admin (via install/enable operations) |
+
+## Env files
+
+Compose receives **only two env files** from this directory:
+- `stack.env` — System-managed environment variables (LLM API keys, OpenCode config, etc.)
+- `guardian.env` — Channel HMAC secrets for guardian ingress validation
+
+All other configuration (secrets, vaults, automations) is loaded by services at runtime from their respective mounts (`stash/`, `config/`, etc.). Do not add other `--env-file` arguments to the compose command.
