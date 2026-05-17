@@ -9,7 +9,7 @@ OpenPalm remains compose-first and manual-first; the admin addon is a convenienc
 - Authenticated `/admin/*` API used by the UI and assistant tools
 - Thin control-plane consumer built on `@openpalm/lib`
 - Reads the shipped addon catalog from `registry/addons/` and enabled runtime overlays from `stack/addons/`
-- Exposes addon schema details and points operators to `vault/user/user.env` for values
+- Exposes addon schema details and points operators to `stash/vaults/user.env` for values
 
 ## Notes on internals
 

@@ -15,10 +15,10 @@ material it depends on, typically `${GNUPGHOME:-~/.gnupg}`.
 
 | Path | Contains | Back up? |
 |---|---|---|
-| `~/.openpalm/vault/` | `config/stack/stack.env`, `config/stack/guardian.env`, `vault/user/user.env`, schemas | Yes |
+| `~/.openpalm/config/stack/` | `stack.env`, `guardian.env`, live compose files and helper scripts | Yes |
+| `~/.openpalm/stash/vaults/` | `user.env` (optional user-managed secrets) | Yes |
 | `~/.openpalm/config/` | assistant config, enabled automations, `stack.yml` capabilities | Yes |
 | `~/.openpalm/registry/` | available addon and automation catalog | Yes |
-| `~/.openpalm/config/stack/` | live compose files and helper scripts | Yes |
 | `~/.openpalm/data/` | durable service data, workspace, stash | Yes |
 | `~/.openpalm/logs/` | logs and audit files | Optional |
 
@@ -32,14 +32,14 @@ set you normally use.
 Example:
 
 ```bash
-cd "$HOME/.openpalm/stack"
+cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
   -f core.compose.yml \
   -f addons/chat/compose.yml \
-  --env-file ../config/stack/stack.env \
-  --env-file ../config/stack/guardian.env \
-  --env-file ../vault/user/user.env \
+  --env-file stack.env \
+  --env-file guardian.env \
+  --env-file ../../stash/vaults/user.env \
   down
 ```
 
@@ -80,13 +80,13 @@ This is especially important when moving between machines or users.
 ### 4. Start the stack again
 
 ```bash
-cd "$HOME/.openpalm/stack"
+cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
   -f addons/chat/compose.yml \
-  --env-file ../config/stack/stack.env \
-  --env-file ../config/stack/guardian.env \
-  --env-file ../vault/user/user.env \
+  --env-file stack.env \
+  --env-file guardian.env \
+  --env-file ../../stash/vaults/user.env \
   up -d
 ```
 
@@ -111,7 +111,7 @@ the current model.
 
 | File or directory | Purpose |
 |---|---|
-| `~/.openpalm/vault/user/user.env` | Optional user extension env |
+| `~/.openpalm/stash/vaults/user.env` | Optional user extension env |
 | `~/.openpalm/config/stack/stack.env` | Stack tokens, ports, paths, image tags |
 | `~/.openpalm/config/stack/guardian.env` | Channel HMAC secrets for guardian/channel verification |
 | `~/.openpalm/registry/addons/<name>/` | Available addon catalog entries |

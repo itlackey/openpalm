@@ -87,12 +87,12 @@ running.
 **Fix:** rerun the exact file set you want. Example:
 
 ```bash
-cd "$HOME/.openpalm/stack"
+cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
   -f addons/chat/compose.yml \
-  --env-file ../config/stack/stack.env \
-  --env-file ../vault/user/user.env \
+  --env-file stack.env \
+  --env-file ../../stash/vaults/user.env \
   up -d
 ```
 
@@ -118,11 +118,11 @@ grep -E 'API_KEY|BASE_URL|OP_CAP_LLM_' ~/.openpalm/config/stack/stack.env
 ```
 
 ```bash
-cd "$HOME/.openpalm/stack"
+cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
-  --env-file ../config/stack/stack.env \
-  --env-file ../vault/user/user.env \
+  --env-file stack.env \
+  --env-file ../../stash/vaults/user.env \
   logs assistant
 ```
 
@@ -199,12 +199,12 @@ the compose files under `~/.openpalm/config/stack/` plus the two vault env files
 **Warning:** destructive.
 
 ```bash
-cd "$HOME/.openpalm/stack"
+cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
   -f addons/chat/compose.yml \
-  --env-file ../config/stack/stack.env \
-  --env-file ../vault/user/user.env \
+  --env-file stack.env \
+  --env-file ../../stash/vaults/user.env \
   down -v
 
 rm -rf "$HOME/.openpalm"

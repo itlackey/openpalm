@@ -33,7 +33,7 @@ The clearest setup is:
 git clone https://github.com/itlackey/openpalm.git
 cp -R openpalm/.openpalm "$HOME/.openpalm"
 $EDITOR "$HOME/.openpalm/config/stack/stack.env"
-$EDITOR "$HOME/.openpalm/vault/user/user.env"
+$EDITOR "$HOME/.openpalm/stash/vaults/user.env"
 ```
 
 Then start the stack using the compose commands in the [Manual Compose Runbook](operations/manual-compose-runbook.md). That starts the base stack plus any addons you choose after you review the copied env files.
@@ -97,7 +97,7 @@ The copied bundle gives you a predictable host layout:
 |---|---|
 | `~/.openpalm/config/stack/` | Compose files |
 | `~/.openpalm/config/stack/stack.env` | Stack-level env values |
-| `~/.openpalm/vault/user/user.env` | Optional user extensions |
+| `~/.openpalm/stash/vaults/user.env` | Optional user extensions |
 | `~/.openpalm/config/` | User-managed config |
 | `~/.openpalm/data/` | Persistent container data |
 | `~/.openpalm/logs/` | Logs |

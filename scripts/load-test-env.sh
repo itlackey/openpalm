@@ -6,7 +6,7 @@
 #   source scripts/load-test-env.sh
 #
 # Exports:
-#   ADMIN_TOKEN  — from OP_ADMIN_TOKEN in .dev/vault/stack/stack.env
+#   ADMIN_TOKEN  — from OP_ADMIN_TOKEN in .dev/config/stack/stack.env
 
 # Guard: this script must be sourced, not executed. Direct execution would
 # silently set vars in a child shell that exits immediately, leaving the
@@ -19,7 +19,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-STACK_ENV="$ROOT_DIR/.dev/vault/stack/stack.env"
+STACK_ENV="$ROOT_DIR/.dev/config/stack/stack.env"
 
 if [[ -f "$STACK_ENV" ]]; then
   export ADMIN_TOKEN

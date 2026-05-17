@@ -18,7 +18,7 @@ It normally runs via `addons/slack/compose.yml` and connects outbound to Slack, 
 
 - Shipped addon source: `.openpalm/registry/addons/slack/compose.yml`
 - Enabled runtime overlay: `~/.openpalm/config/stack/addons/slack/compose.yml`
-- User-managed values: `~/.openpalm/vault/user/user.env`
+- User-managed values: `~/.openpalm/stash/vaults/user.env`
 - System-managed HMAC secret: `CHANNEL_SLACK_SECRET` in `~/.openpalm/config/stack/guardian.env`
 
 Manual start example:
@@ -28,13 +28,13 @@ cd "$HOME/.openpalm/stack"
 docker compose \
   --project-name openpalm \
   --env-file ../config/stack/stack.env \
-  --env-file ../vault/user/user.env \
+  --env-file ../stash/vaults/user.env \
   -f core.compose.yml \
   -f addons/slack/compose.yml \
   up -d
 ```
 
-The shipped addon overlay loads `config/stack/stack.env` and `vault/user/user.env`
+The shipped addon overlay loads `config/stack/stack.env` and `stash/vaults/user.env`
 with `env_file`, so Slack credentials placed in `user.env` are passed into the container.
 
 `CHANNEL_SLACK_SECRET` remains system-managed in `config/stack/guardian.env`.

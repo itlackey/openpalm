@@ -29,7 +29,7 @@ cd "$HOME/.openpalm/stack"
 docker compose \
   --project-name openpalm \
   --env-file ../config/stack/stack.env \
-  --env-file ../vault/user/user.env \
+  --env-file ../stash/vaults/user.env \
   -f core.compose.yml \
   -f addons/voice/compose.yml \
   up -d

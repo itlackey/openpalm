@@ -36,8 +36,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-VAULT_GWS="${OP_HOME}/vault/user/.gws"
-VAULT_USER="${OP_HOME}/vault/user"
+VAULT_GWS="${OP_HOME}/stash/vaults/.gws"
+VAULT_USER="${OP_HOME}/stash/vaults"
 
 # Check gws is installed
 if ! command -v gws &>/dev/null; then
@@ -203,7 +203,7 @@ case "$choice" in
       echo "ERROR: Empty token"
       exit 1
     fi
-    USER_ENV="${OP_HOME}/vault/user/user.env"
+    USER_ENV="${OP_HOME}/stash/vaults/user.env"
     # Append or update GOOGLE_WORKSPACE_CLI_TOKEN in user.env
     if grep -q '^GOOGLE_WORKSPACE_CLI_TOKEN=' "$USER_ENV" 2>/dev/null; then
       sed -i "s|^GOOGLE_WORKSPACE_CLI_TOKEN=.*|GOOGLE_WORKSPACE_CLI_TOKEN=${token}|" "$USER_ENV"

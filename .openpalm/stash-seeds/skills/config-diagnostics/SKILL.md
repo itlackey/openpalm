@@ -26,7 +26,7 @@ and guide them — without ever exposing actual secret values.
 
 2. **Read the canonical schema files** to understand variable descriptions,
    types, and requirements:
-   - `vault/user/user.env.schema` — schema for `~/.openpalm/vault/user/user.env`
+   - `stash/vaults/user.env.schema` — schema for `~/.openpalm/stash/vaults/user.env`
    - `config/stack/stack.env.schema` — schema for `~/.openpalm/config/stack/stack.env`
 
 3. **Interpret validation errors** using the schema metadata:
@@ -36,14 +36,14 @@ and guide them — without ever exposing actual secret values.
 
 4. **Guide the user to fix issues** via:
    - The admin UI (Settings > Secrets) for secret variables
-   - Direct editing of `~/.openpalm/vault/user/user.env` for advanced users
+   - Direct editing of `~/.openpalm/stash/vaults/user.env` for advanced users
    - The admin UI (Settings > Stack) for system configuration
 
 ## Critical Rules
 
 - **NEVER read, display, echo, or reference actual `.env` file contents.**
   Schema files describe variable structure — they contain no real values.
-- **NEVER suggest `cat ~/.openpalm/vault/user/user.env` or any command that exposes secret values.**
+- **NEVER suggest `cat ~/.openpalm/stash/vaults/user.env` or any command that exposes secret values.**
 - When referring to a variable, use its name and schema description only.
   Example: "OPENAI_API_KEY is missing — this is your OpenAI API key (string,
   sensitive, required when using the openai provider)."
@@ -56,10 +56,10 @@ and guide them — without ever exposing actual secret values.
 
 **Assistant:**
 1. Calls `GET /admin/config/validate`
-2. Reads `vault/user/user.env.schema` to find OPENAI_API_KEY description
+2. Reads `stash/vaults/user.env.schema` to find OPENAI_API_KEY description
 3. Responds: "Validation shows OPENAI_API_KEY is not set. This variable holds
    your OpenAI API key — set it in Settings > Secrets in the admin UI, or add
-   `OPENAI_API_KEY=<your-key>` to `~/.openpalm/vault/user/user.env`."
+   `OPENAI_API_KEY=<your-key>` to `~/.openpalm/stash/vaults/user.env`."
 
 **User:** "Can you show me my vault files?"
 

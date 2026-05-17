@@ -30,7 +30,7 @@ cd "$HOME/.openpalm/stack"
 docker compose \
   --project-name openpalm \
   --env-file ../config/stack/stack.env \
-  --env-file ../vault/user/user.env \
+  --env-file ../stash/vaults/user.env \
   -f core.compose.yml \
   -f addons/api/compose.yml \
   up -d
@@ -46,4 +46,4 @@ current install API instead of editing the compose file list by hand.
 | `PORT` | Container listen port, default `8182` |
 | `GUARDIAN_URL` | Guardian forwarding target |
 | `CHANNEL_API_SECRET` | Guardian HMAC secret |
-| `OPENAI_COMPAT_API_KEY` | Optional incoming Bearer or `x-api-key` auth token; the shipped addon overlay reads it from `vault/user/user.env` via `env_file` |
+| `OPENAI_COMPAT_API_KEY` | Optional incoming Bearer or `x-api-key` auth token; the shipped addon overlay reads it from `stash/vaults/user.env` via `env_file` |
