@@ -1,10 +1,16 @@
 import { defineCommand } from 'citty';
-import { join } from 'node:path';
-import { resolveCacheDir, resolveOpenPalmHome, resolveConfigDir, createLogger } from '@openpalm/lib';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
+import { resolveOpenPalmHome, resolveConfigDir, createLogger } from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
-import { ensureAdminBuild } from '../lib/ui-build.ts';
 import { startOpenCodeSubprocess, type OpenCodeSubprocess } from '../lib/opencode-subprocess.ts';
 import { openBrowser } from '../lib/browser.ts';
+
+// The SvelteKit adapter-node build lives in packages/ui/build/ relative to the repo root.
+// When the CLI is compiled to a binary, this path is resolved at build time.
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+const UI_BUILD_DIR = join(REPO_ROOT, 'packages', 'ui', 'build');
 
 const logger = createLogger('cli:admin');
 const HOST_ADMIN_PORT = Number(process.env.OP_HOST_ADMIN_PORT) || 3880;
@@ -52,19 +58,16 @@ const serveCmd = defineCommand({
       process.exit(1);
     }
 
-    const cacheDir    = resolveCacheDir();
     const homeDir     = resolveOpenPalmHome();
     const configDir   = resolveConfigDir();
     const stateDir    = `${homeDir}/state`;
 
-    console.log('Preparing admin build...');
-    let buildDir: string;
-    try {
-      buildDir = ensureAdminBuild(cacheDir);
-    } catch (err) {
-      console.error(`Failed to prepare admin build: ${err instanceof Error ? err.message : String(err)}`);
+    if (!existsSync(join(UI_BUILD_DIR, 'index.js'))) {
+      console.error(`Admin UI build not found at ${UI_BUILD_DIR}`);
+      console.error('Run: bun run admin:build');
       process.exit(1);
     }
+    const buildDir = UI_BUILD_DIR;
 
     const state = ensureValidState();
     const { adminToken } = state;

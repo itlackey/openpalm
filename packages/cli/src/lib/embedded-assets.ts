@@ -6,16 +6,6 @@
  * without downloading from GitHub.
  */
 
-// ── Admin build tarball — embedded at CLI compile time ───────────────────
-// Build: cd packages/ui && npm run build && npm run build:tar
-// The resulting packages/ui/dist/admin-build.tar.gz is embedded here.
-// @ts-ignore — Bun binary import
-import ADMIN_BUILD_TAR from "../../../ui/dist/admin-build.tar.gz" with { type: "binary" };
-import cliPkg from "../../package.json" with { type: "json" };
-
-export const EMBEDDED_ADMIN_TAR: Uint8Array = ADMIN_BUILD_TAR as unknown as Uint8Array;
-export const ADMIN_BUILD_VERSION: string = cliPkg.version;
-
 // @ts-ignore — Bun text import
 import coreCompose from "../../../../.openpalm/stack/core.compose.yml" with { type: "text" };
 
@@ -63,7 +53,7 @@ import akmImproveAutomation from "../../../../.openpalm/registry/automations/akm
 
 // ── Stash seeds (built-in skills / commands / agents) ────────────────
 // Each seed lives in .openpalm/stash-seeds/<type>/<...> and is copied
-// into ${OP_HOME}/stash/<type>/<...> on first install. Source of
+// into ${OP_HOME}/data/stash/<type>/<...> on first install. Source of
 // truth for the on-disk seed files is `.openpalm/stash-seeds/` in the
 // repo — add new seeds by dropping a file there and importing it below.
 // @ts-ignore — Bun text import
@@ -71,7 +61,7 @@ import configDiagnosticsSkill from "../../../../.openpalm/stash-seeds/skills/con
 
 /**
  * Stash seeds keyed by their stash-relative path (relative to
- * `${OP_HOME}/stash/`). Passed to `seedStashAssets()` from
+ * `${OP_HOME}/data/stash/`). Passed to `seedStashAssets()` from
  * `@openpalm/lib`, which writes each entry exactly once and never
  * overwrites an existing file.
  */
