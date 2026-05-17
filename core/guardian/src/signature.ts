@@ -13,7 +13,7 @@ const logger = createLogger("guardian");
 
 const CHANNEL_SECRET_RE = /^CHANNEL_[A-Z0-9_]+_SECRET$/;
 
-export function parseChannelSecrets(content: string): Record<string, string> {
+function parseChannelSecrets(content: string): Record<string, string> {
   const parsed = dotenvParse(content);
   const secrets: Record<string, string> = {};
   for (const [key, val] of Object.entries(parsed)) {

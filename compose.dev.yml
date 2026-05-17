@@ -74,12 +74,6 @@ services:
       dockerfile: core/channel/Dockerfile
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:dev
 
-  memory:
-    build:
-      context: .
-      dockerfile: core/memory/Dockerfile
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/memory:dev
-
   # Voice channel dev override: standalone static file server (no channel SDK entrypoint).
   channel-voice:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:dev

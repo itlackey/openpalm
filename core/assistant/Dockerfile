@@ -11,10 +11,10 @@ FROM openpalm-base
 
 # Assistant-specific OS packages: sshd for remote agent sessions, sudo + socat
 # for entrypoint privilege drop and Ollama proxy, Python (uv-managed venv for
-# apprise — used by the notify skill), jq/ripgrep + gh for in-container tooling.
+# apprise — used by the notify skill), jq + gh for in-container tooling.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openssh-server sudo socat cron \
-        python3 python3-pip python3-venv jq ripgrep \
+        python3 jq \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
@@ -33,14 +33,8 @@ RUN usermod -l opencode -d /home/opencode node \
     && echo "opencode ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/opencode \
     && chmod 0440 /etc/sudoers.d/opencode
 
-# yq (mikefarah), ast-grep, uv (Python package manager).
-RUN set -e; \
-    if [ "$(dpkg --print-architecture)" = "arm64" ]; then YQ_ARCH=arm64; else YQ_ARCH=amd64; fi \
-    && curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${YQ_ARCH}" \
-         -o /usr/local/bin/yq \
-    && chmod +x /usr/local/bin/yq \
-    && npm install -g @ast-grep/cli \
-    && curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 sh \
+# uv (Python package manager for apprise venv).
+RUN curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 sh \
     && mv /root/.local/bin/uv /usr/local/bin/ \
     && mv /root/.local/bin/uvx /usr/local/bin/
 
