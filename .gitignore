@@ -41,6 +41,8 @@ packages/channel-voice/test-results/.last-run.json
 packages/assistant-tools/dist/
 .dev-tmp/
 .dev-tmp*
+.dev-*/
+packages/cli/src/lib/*.tar.gz
 scripts/azure/.generated/prod.generated.bicepparam
 scripts/azure/vm-declarative/deploy.env
 scripts/azure/vm-declarative/deploy.spec.yaml

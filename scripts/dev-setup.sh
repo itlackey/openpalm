@@ -125,7 +125,7 @@ mkdir -p \
 # ── Seed core assets (write-once unless --force) ─────────────────
 COMPOSE_DEST="$CONFIG_DIR/stack/core.compose.yml"
 
-[[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/.openpalm/config/stack/core.compose.yml" "$COMPOSE_DEST"
+[[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/.openpalm/stack/core.compose.yml" "$COMPOSE_DEST"
 
 # Seed registry catalog from repo template.
 # Replace shipped addon directories wholesale so removed support files do not linger.

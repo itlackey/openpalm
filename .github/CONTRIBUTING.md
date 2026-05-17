@@ -29,8 +29,8 @@ Admin UI + API runs on `http://localhost:8100`.
 From the repo root, convenience scripts are available:
 
 ```bash
-bun run ui:dev        # packages/ui dev server
-bun run ui:check      # svelte-check + TypeScript
+bun run admin:dev     # packages/ui dev server
+bun run admin:check   # svelte-check + TypeScript
 bun run guardian:dev     # core/guardian server
 bun run guardian:test    # guardian tests
 bun run sdk:test         # packages/channels-sdk tests
@@ -87,7 +87,7 @@ Both scripts read env files from `.dev/config/stack/` and `.dev/stash/vaults/`.
 
 ```bash
 # Type check the UI
-bun run ui:check
+bun run admin:check
 
 # Non-UI tests (sdk, guardian, channels, cli)
 bun run test
@@ -99,9 +99,9 @@ bun run check
 bun run guardian:test        # Guardian security tests
 bun run sdk:test             # Channels SDK unit tests
 bun run cli:test             # CLI tests
-bun run ui:test:unit      # UI Vitest (unit + browser components)
-bun run ui:test:e2e       # UI Playwright integration tests (no-skip enforced locally)
-bun run ui:test:e2e:mocked # UI Playwright mocked browser contract tests
+bun run admin:test:unit      # UI Vitest (unit + browser components)
+bun run admin:test:e2e       # UI Playwright integration tests (no-skip enforced locally)
+bun run admin:test:e2e:mocked # UI Playwright mocked browser contract tests
 ```
 
 > UI uses Vitest and Playwright, not Bun's test runner. Use `bun run test` (not bare `bun test`) from the repo root — the script filters to non-UI directories.
@@ -109,7 +109,7 @@ bun run ui:test:e2e:mocked # UI Playwright mocked browser contract tests
 ## 5. Run individual services
 
 ```bash
-bun run ui:dev            # UI SvelteKit dev server (:8100)
+bun run admin:dev         # UI SvelteKit dev server (:8100)
 bun run guardian:dev         # Guardian Bun server
 bun run channel:api:dev      # API channel (CHANNEL_ID=chat reuses this image to serve the chat addon)
 bun run channel:discord:dev  # Discord channel
@@ -121,13 +121,13 @@ All scripts are defined in the root [`package.json`](../package.json):
 
 | Script | Description |
 |--------|-------------|
-| `bun run ui:dev` | UI dev server (packages/ui) |
-| `bun run ui:build` | UI production build |
-| `bun run ui:check` | svelte-check + TypeScript |
-| `bun run ui:test` | Vitest + Playwright (requires build) |
-| `bun run ui:test:unit` | Vitest only (CI-friendly) |
-| `bun run ui:test:e2e` | Playwright integration only (no browser route mocks) |
-| `bun run ui:test:e2e:mocked` | Playwright mocked browser contracts |
+| `bun run admin:dev` | UI dev server (packages/ui) |
+| `bun run admin:build` | UI production build |
+| `bun run admin:check` | svelte-check + TypeScript |
+| `bun run admin:test` | Vitest + Playwright (requires build) |
+| `bun run admin:test:unit` | Vitest only (CI-friendly) |
+| `bun run admin:test:e2e` | Playwright integration only (no browser route mocks) |
+| `bun run admin:test:e2e:mocked` | Playwright mocked browser contracts |
 | `bun run guardian:dev` | Guardian server |
 | `bun run guardian:test` | Guardian tests |
 | `bun run sdk:test` | Channels SDK tests |
