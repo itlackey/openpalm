@@ -380,12 +380,9 @@ jobs:
 
             | Image | Pull command |
             |---|---|
-            | [openpalm/admin](https://hub.docker.com/r/openpalm/admin) | `docker pull openpalm/admin:v${{ needs.prepare-tag.outputs.version }}` |
+            | [openpalm/assistant](https://hub.docker.com/r/openpalm/assistant) | `docker pull openpalm/assistant:v${{ needs.prepare-tag.outputs.version }}` |
             | [openpalm/guardian](https://hub.docker.com/r/openpalm/guardian) | `docker pull openpalm/guardian:v${{ needs.prepare-tag.outputs.version }}` |
             | [openpalm/channel](https://hub.docker.com/r/openpalm/channel) | `docker pull openpalm/channel:v${{ needs.prepare-tag.outputs.version }}` |
-            | [openpalm/assistant](https://hub.docker.com/r/openpalm/assistant) | `docker pull openpalm/assistant:v${{ needs.prepare-tag.outputs.version }}` |
-            | [openpalm/memory](https://hub.docker.com/r/openpalm/memory) | `docker pull openpalm/memory:v${{ needs.prepare-tag.outputs.version }}` |
-            | [openpalm/scheduler](https://hub.docker.com/r/openpalm/scheduler) | `docker pull openpalm/scheduler:v${{ needs.prepare-tag.outputs.version }}` |
 
             ## npm Packages
 

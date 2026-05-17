@@ -11,103 +11,89 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **akm stash as the shared knowledge layer** — akm-cli 0.8.0 is now installed
-  in the assistant and admin containers. A shared stash at `OP_HOME/data/stash`
-  is mounted into both containers (`/home/opencode/.akm` for the assistant,
-  `/akm` for admin). The guardian receives its own isolated stash at
-  `OP_HOME/data/guardian-stash`.
+- **Admin UI as a host process** — `openpalm admin` (or bare `openpalm`)
+  starts the SvelteKit admin UI directly on the host at `http://localhost:3880`.
+  No admin container, no docker-socket-proxy. The setup wizard runs at `/setup`
+  on first boot and auto-redirects there until setup is complete.
+- **akm stash as the shared knowledge layer** — akm-cli 0.8.0 is installed in
+  the assistant container. The stash at `OP_HOME/stash/` is mounted at `/akm`
+  and shared with the host-side admin process.
 - **Scheduler co-process inside the assistant container** — the standalone
   `scheduler` compose service has been removed. The scheduler now runs as a
-  lightweight Bun co-process started by `core/assistant/entrypoint.sh` inside
-  the assistant container. Trigger sentinel files continue to use
-  `OP_HOME/data/scheduler/`.
-- **Seeds in the akm stash** — built-in skills, commands, and agents that were
-  previously baked into config directories are now seeded into the shared akm
-  stash on first boot, making them immediately available to the assistant and
-  admin OpenCode instance.
-- **Periodic `akm improve` automation** — a new catalog automation runs
-  `akm improve` on a schedule to continuously refine stash assets. Drop it into
-  `config/automations/` to enable.
+  lightweight co-process inside `core/assistant/entrypoint.sh`.
+- **Seeds in the akm stash** — built-in skills, commands, and agents are seeded
+  into `OP_HOME/stash/` on first install via the CLI embedded assets.
+- **Periodic `akm improve` automation** — a catalog automation that runs
+  `akm improve` on a schedule to continuously refine stash assets.
 - **SSH addon overlay** — SSH port binding is now an optional addon
-  (`stack/addons/ssh/`) rather than baked into the core compose file. Enable it
-  only when needed.
-- **Shared base image** — admin and assistant containers now share a common base
-  image, reducing total image surface and keeping OpenCode versions consistent
-  across containers.
+  (`config/stack/addons/ssh/`) rather than baked into the core compose file.
 - **`withAdminBody` route handler helper** — new typed request-body helper for
   admin API route handlers, replacing ad-hoc body parsing.
 - **`askAssistant()` one-shot semantics** — the channels-SDK `askAssistant()`
   function now automatically deletes the OpenCode session after receiving a
-  response. Pass `{ keepSession: true }` to retain the session across calls.
+  response. Pass `{ keepSession: true }` to retain the session.
 
 ### Changed
 
+- **Directory layout restructured** — the `OP_HOME` layout is now:
+  - `config/stack/` — compose runtime: `core.compose.yml`, `stack.env`,
+    `guardian.env`, `addons/`
+  - `stash/` — akm knowledge; `stash/vaults/user.env` replaces `vault/user/`
+  - `state/` — service-persistent data (replaces `data/`)
+  - `cache/` — regenerable data (akm cache, rollback snapshots)
+  - `workspace/` — shared `/work` mount
 - **Provider/model configuration uses `OP_CAP_*` capability env vars** —
-  provider and model settings are now driven by `config/stack.yml` capabilities
-  and written to `stack.env` as `OP_CAP_*` variables. No more env-schema
-  validation files.
-- **akm secret store replaces vault/user mirroring** — secrets from
-  `vault/user/` are now surfaced through the akm secret store (Phase 1: UI
-  visibility; Phase 2: full vault/user mirror removed). The akm secret store is
-  the primary visibility and access mechanism for user secrets.
-- **`opencode-providers.ts` split into focused modules** — provider logic
-  reorganised into `providers-read`, `providers-write`, and `providers-dispatch`
-  to reduce coupling and surface area per module.
-- **Single-implementation interfaces converted to type aliases** — removed
-  unnecessary interface indirection across packages; concrete types are used
-  directly where only one implementation exists.
-- **Channel SDK unified** — channel adapter internals consolidated;
-  redundant abstractions removed.
-- **`readUserVaultSync` removed** — replaced with the async `readUserVault`
-  throughout. No synchronous vault reads remain in the hot path.
-- **socat lmstudio proxy guard and documentation** — the socat injection in
-  `core/assistant/entrypoint.sh` now includes an explicit guard and improved
-  inline documentation explaining the 127.0.0.1:1234 → LMSTUDIO_BASE_URL
+  driven by `config/stack/stack.yml` capabilities. No more env-schema files.
+- **akm secret store replaces vault/user** — user secrets live in the akm
+  `vault:user` store at `stash/vaults/user.env`. The assistant entrypoint
+  sources this at startup; compose no longer passes it as `--env-file`.
+- **`opencode-providers.ts` split into focused modules** — provider logic split
+  into `providers-read`, `providers-write`, and `providers-dispatch`.
+- **Single-implementation interfaces converted to type aliases** — unnecessary
+  interface indirection removed across packages.
+- **Channel SDK unified** — channel adapter internals consolidated.
+- **`readUserVaultSync` removed** — replaced with async `readUserVault`.
+- **socat lmstudio proxy** — `core/assistant/entrypoint.sh` now includes an
+  explicit guard and documentation for the 127.0.0.1:1234 → LMSTUDIO_BASE_URL
   proxy pattern.
-- **CLI type assertions removed** — runtime coercions replaced with proper
-  typed helpers; coercion helpers consolidated in admin.
 
 ### Fixed
 
-- **Path traversal guard in assistant-client** — requests that escape the
-  allowed path prefix are now rejected before reaching the assistant.
-- **HMAC constant-time comparison in guardian** — timing-safe byte comparison
-  is now enforced for all HMAC validation, closing a potential timing-oracle
-  side channel.
-- **Session cleanup ordering** — OpenCode session teardown now follows the
-  correct dependency order, preventing resource leaks on shutdown.
-- **argv-leak test coverage made unconditional** — secret-in-argv tests no
-  longer require an opt-in environment flag; they run in all CI contexts.
-- **`akm vault` secret operations use stdin** — secrets are passed to
-  `akm vault` commands via stdin rather than command-line arguments, eliminating
-  the risk of secrets appearing in process listings.
+- **Path traversal guard in assistant-client** — requests escaping the allowed
+  path prefix are rejected before reaching the assistant.
+- **HMAC constant-time comparison in guardian** — timing-safe comparison for all
+  channel HMAC validation, closing a potential timing-oracle side channel.
+- **Session cleanup ordering** — OpenCode session teardown follows correct
+  dependency order, preventing resource leaks on shutdown.
+- **argv-leak test coverage made unconditional** — secret-in-argv tests run in
+  all CI contexts without an opt-in flag.
+- **`akm vault` secret operations use stdin** — secrets passed via stdin, not
+  command-line arguments.
 
 ### Removed
 
+- **Admin container** — `openpalm/admin` Docker image is gone. Admin is now a
+  host process (`openpalm admin`). `docker-socket-proxy` also removed.
 - **Memory service** (`packages/memory`) — the Bun-based memory service and all
-  OpenMemory integration have been deleted. Persistent memory and knowledge
-  recall now live entirely in the shared akm stash.
-- **`*.env.schema` files and varlock** — env-schema validation has been removed.
-  Provider/model configuration migrated to declarative `OP_CAP_*` capability
-  vars.
+  OpenMemory integration deleted. Memory and knowledge recall now live in the
+  shared akm stash.
+- **`*.env.schema` files and varlock** — env-schema validation removed.
+  Provider/model configuration migrated to `OP_CAP_*` capability vars.
 - **Standalone `scheduler` compose service** — replaced by the in-process
-  scheduler co-process inside the assistant container.
+  co-process inside the assistant container.
 - **OpenViking roadmap documents** — superseded project planning documents
   removed.
 - **Dead code and dead exports** — unused functions, types, and barrel re-exports
-  identified in the audit sweep have been deleted across all packages.
-- **SSH port binding from core compose** — SSH is no longer exposed by default;
-  use the `ssh` addon overlay to opt in.
+  deleted across all packages.
+- **SSH port binding from core compose** — SSH is no longer exposed by default.
 
 ### Security
 
-- **HMAC constant-time compare** — guardian now uses timing-safe comparison for
-  all channel HMAC validation, eliminating a timing-oracle attack surface.
-- **Path traversal rejection** — assistant-client rejects requests that attempt
-  to escape the allowed path prefix before forwarding to the assistant.
+- **HMAC constant-time compare** — guardian uses timing-safe comparison for all
+  channel HMAC validation.
+- **Path traversal rejection** — assistant-client rejects path-escape requests.
 - **argv-leak prevention** — `akm vault` secret operations pass secrets via
-  stdin; unconditional test coverage verifies no secrets appear in process
-  arguments.
+  stdin; unconditional CI test coverage verifies this.
 
 ## [0.9.0-rc2] - 2026-03-10
 

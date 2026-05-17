@@ -212,11 +212,11 @@ async function runWizardInstall(noOpen: boolean): Promise<void> {
   const wizardUrl = `http://localhost:${port}/setup`;
   console.log(`Setup wizard: ${wizardUrl}`);
 
-  // Re-invoke this binary with `admin serve` so the admin process runs with
+  // Re-invoke this binary with `admin` so the admin process runs with
   // the same environment. The SvelteKit hooks redirect / to /setup on first run.
   const argv = process.argv;
   const bin = argv[0] === 'bun' ? [...argv.slice(0, 2)] : [argv[1]];
-  const args = [...bin, 'admin', 'serve'];
+  const args = [...bin, 'admin'];
   if (noOpen) args.push('--no-open');
 
   const proc = Bun.spawn(args, { stdout: 'inherit', stderr: 'inherit' });

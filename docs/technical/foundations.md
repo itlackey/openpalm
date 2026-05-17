@@ -238,7 +238,7 @@ Ports and network:
 
 ## Admin (host process)
 
-Admin is a Bun.serve HTTP server started by `openpalm admin serve`. It embeds the SvelteKit UI as a pre-built tarball and manages Docker Compose directly on the host via the host Docker socket. There is no admin container.
+Admin is a Bun.serve HTTP server started by `openpalm admin`. It embeds the SvelteKit UI as a pre-built tarball and manages Docker Compose directly on the host via the host Docker socket. There is no admin container.
 
 Role:
 

@@ -41,7 +41,7 @@ The core compose file includes these always-on services:
 - `assistant` (also runs the automation scheduler as a co-process)
 - `guardian`
 
-Run `openpalm admin serve` to start the admin UI as a host process (no container required).
+Run `openpalm admin` to start the admin UI as a host process (no container required).
 
 ### Recommended
 
@@ -67,7 +67,7 @@ These are rough expectations, not hard limits:
 |---|---|---|
 | `assistant` | ~240 MB | OpenCode runtime + scheduler co-process |
 | `guardian` | ~30 MB | Request verification and routing |
-| Admin (host process) | minimal | SvelteKit admin UI/API served by `openpalm admin serve` |
+| Admin (host process) | minimal | SvelteKit admin UI/API served by `openpalm admin` |
 | each channel addon | ~30-60 MB | Chat/API/voice/Discord/Slack edge |
 
 ---

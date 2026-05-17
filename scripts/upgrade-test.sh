@@ -18,17 +18,16 @@
 #
 #   3. Seed some user state:
 #      - Install a channel
-#      - Note the ADMIN_TOKEN in vault/user/user.env
+#      - Note the ADMIN_TOKEN in config/stack/stack.env
 #
 #   4. Upgrade to the target version:
 #        curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh \
 #          | bash -s -- --force --version <target>
 #
 #   5. Verify:
-#      - vault/user/user.env is NOT overwritten (ADMIN_TOKEN, custom keys preserved)
-#      - vault/stack/stack.env is NOT overwritten (paths, UID/GID preserved)
+#      - stash/vaults/user.env is NOT overwritten (custom keys preserved)
+#      - config/stack/stack.env is NOT overwritten (ADMIN_TOKEN, paths, UID/GID preserved)
 #      - All services come back healthy
-#      - Admin token still authenticates
 #      - No errors in container logs
 #
 # ── Automated test (current version → re-run) ─────────────────────────
@@ -90,15 +89,12 @@ cd "$ROOT_DIR"
 
 TEST_ROOT="${ROOT_DIR}/.upgrade-test"
 export OP_HOME="${OP_HOME:-${TEST_ROOT}}"
-OP_CONFIG_HOME="${OP_HOME}/config"
-OP_DATA_HOME="${OP_HOME}/data"
-OP_LOGS_HOME="${OP_HOME}/logs"
-OP_STACK_HOME="${OP_HOME}/stack"
-VAULT_HOME="${TEST_ROOT}/vault"
+STACK_DIR="${OP_HOME}/config/stack"
+STASH_DIR="${OP_HOME}/stash"
+STATE_DIR="${OP_HOME}/state"
+CACHE_DIR="${OP_HOME}/cache"
 
 PROJECT_NAME="openpalm-upgrade-test"
-ADMIN_PORT=8101
-ADMIN_URL="http://127.0.0.1:${ADMIN_PORT}"
 OP_ADMIN_TOKEN="upgrade-test-token"
 
 # ── Colors / Output ──────────────────────────────────────────────────
@@ -138,30 +134,16 @@ cleanup() {
 trap cleanup EXIT
 
 # ── Helper: compose command ──────────────────────────────────────────
+# v0.11.0: two env files — config/stack/stack.env + config/stack/guardian.env
+# No admin container. Admin is a host process (openpalm admin).
 
 compose_cmd() {
   docker compose \
     --project-name "$PROJECT_NAME" \
-    -f "${OP_STACK_HOME}/core.compose.yml" \
-    --env-file "${VAULT_HOME}/user/user.env" \
-    --env-file "${VAULT_HOME}/stack/stack.env" \
-    --env-file "${VAULT_HOME}/stack/guardian.env" \
+    -f "${STACK_DIR}/core.compose.yml" \
+    --env-file "${STACK_DIR}/stack.env" \
+    --env-file "${STACK_DIR}/guardian.env" \
     "$@"
-}
-
-# ── Helper: wait for admin health ────────────────────────────────────
-
-wait_for_admin() {
-  local timeout="${1:-90}"
-  local elapsed=0
-  while [[ $elapsed -lt $timeout ]]; do
-    if curl -sf "${ADMIN_URL}/" >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 3
-    elapsed=$((elapsed + 3))
-  done
-  return 1
 }
 
 # ── Helper: wait for all services healthy ────────────────────────────
@@ -206,19 +188,19 @@ rm -rf "${TEST_ROOT}" 2>/dev/null || true
 # ── 1b: Create directory structure ───────────────────────────────────
 
 mkdir -p \
-  "${OP_STACK_HOME}" \
-  "${OP_CONFIG_HOME}/assistant/tools" \
-  "${OP_CONFIG_HOME}/assistant/plugins" \
-  "${OP_CONFIG_HOME}/assistant/skills" \
-  "${OP_CONFIG_HOME}/automations" \
-  "${VAULT_HOME}/user" "${VAULT_HOME}/stack" \
-  "${OP_DATA_HOME}/assistant" \
-  "${OP_DATA_HOME}/guardian" \
-  "${OP_DATA_HOME}/stash" \
-  "${OP_DATA_HOME}/guardian-stash" \
-  "${OP_DATA_HOME}/akm-cache" \
-  "${OP_DATA_HOME}/guardian-cache" \
-  "${OP_LOGS_HOME}"
+  "${STACK_DIR}" \
+  "${STACK_DIR}/addons" \
+  "${OP_HOME}/config/assistant" \
+  "${OP_HOME}/config/akm" \
+  "${STASH_DIR}/vaults" \
+  "${STASH_DIR}/tasks" \
+  "${STATE_DIR}/assistant" \
+  "${STATE_DIR}/guardian" \
+  "${STATE_DIR}/registry/addons" \
+  "${STATE_DIR}/registry/automations" \
+  "${STATE_DIR}/logs" \
+  "${CACHE_DIR}/akm" \
+  "${OP_HOME}/workspace"
 
 # ── 1c: Seed config files ───────────────────────────────────────────
 
@@ -230,18 +212,18 @@ if host_url="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/d
   esac
 fi
 
-# Seed user.env with custom non-secret operator settings.
-# OP_ADMIN_TOKEN belongs in vault/stack/stack.env (system-managed), NOT user.env.
-cat >"${VAULT_HOME}/user/user.env" <<EOF
-# Upgrade test user-managed extension env
+# Seed stash/vaults/user.env — user-managed secrets (akm vault:user)
+cat >"${STASH_DIR}/vaults/user.env" <<EOF
+# Upgrade test user-managed env
 OPENAI_API_KEY=
 OPENAI_BASE_URL=
 # Custom user key that must survive upgrade
 MY_CUSTOM_KEY=my-custom-value-12345
 EOF
+chmod 600 "${STASH_DIR}/vaults/user.env"
 
-# Seed system.env (admin token + paths + UID/GID)
-cat >"${VAULT_HOME}/stack/stack.env" <<EOF
+# Seed config/stack/stack.env (system-managed)
+cat >"${STACK_DIR}/stack.env" <<EOF
 OP_HOME=${OP_HOME}
 OP_UID=$(id -u)
 OP_GID=$(id -g)
@@ -250,25 +232,17 @@ OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=dev
 OP_ADMIN_TOKEN=${OP_ADMIN_TOKEN}
 EOF
+chmod 600 "${STACK_DIR}/stack.env"
 
 # Seed guardian.env (channel HMAC secrets)
-touch "${VAULT_HOME}/stack/guardian.env"
-chmod 600 "${VAULT_HOME}/stack/guardian.env"
+touch "${STACK_DIR}/guardian.env"
+chmod 600 "${STACK_DIR}/guardian.env"
 
-# Seed compose to stack/ (source of truth)
-cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_STACK_HOME}/core.compose.yml"
-
-# Override ports so we don't conflict with a running dev stack.
-# We override admin's port via a compose override.
-cat >"${OP_STACK_HOME}/compose-port-override.yml" <<EOF
-services:
-  admin:
-    ports:
-      - "127.0.0.1:${ADMIN_PORT}:8100"
-EOF
+# Seed core.compose.yml into config/stack/
+cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
 
 # Seed opencode config
-cat >"${OP_CONFIG_HOME}/assistant/opencode.json" <<'EOF'
+cat >"${OP_HOME}/config/assistant/opencode.json" <<'EOF'
 {
   "$schema": "https://opencode.ai/config.json"
 }
@@ -280,13 +254,11 @@ pass "Directory tree and config files created"
 
 if [[ $SKIP_BUILD -eq 0 && -z "$FROM_VERSION" ]]; then
   header "Building images from source"
-  npm run admin:build 2>&1 | tail -3
   docker compose --project-directory "$ROOT_DIR" \
-    -f "${OP_STACK_HOME}/core.compose.yml" \
+    -f "${STACK_DIR}/core.compose.yml" \
     -f compose.dev.yml \
-    --env-file "${VAULT_HOME}/stack/stack.env" \
-    --env-file "${VAULT_HOME}/user/user.env" \
-    --env-file "${VAULT_HOME}/stack/guardian.env" \
+    --env-file "${STACK_DIR}/stack.env" \
+    --env-file "${STACK_DIR}/guardian.env" \
     --project-name "$PROJECT_NAME" build 2>&1 | tail -5
   pass "Images built from source"
 fi
@@ -294,41 +266,16 @@ fi
 # If --from-version is specified, pull that version's images
 if [[ -n "$FROM_VERSION" ]]; then
   header "Pulling images for from-version: ${FROM_VERSION}"
-  OP_IMAGE_TAG="$FROM_VERSION"
-  # Update system.env with the from-version tag
-  sed -i "s/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=${FROM_VERSION}/" \
-    "${VAULT_HOME}/stack/stack.env"
+  sed -i "s/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=${FROM_VERSION}/" "${STACK_DIR}/stack.env"
   compose_cmd pull 2>&1 | tail -5
   pass "Images pulled for ${FROM_VERSION}"
 fi
 
-# ── 1e: Update compose_cmd to include port override ─────────────────
-
-compose_cmd() {
-  docker compose \
-    --project-name "$PROJECT_NAME" \
-    -f "${OP_STACK_HOME}/core.compose.yml" \
-    -f "${OP_STACK_HOME}/compose-port-override.yml" \
-    --env-file "${VAULT_HOME}/user/user.env" \
-    --env-file "${VAULT_HOME}/stack/stack.env" \
-    --env-file "${VAULT_HOME}/stack/guardian.env" \
-    "$@"
-}
-
-# ── 1f: Start the stack ──────────────────────────────────────────────
+# ── 1e: Start the stack ──────────────────────────────────────────────
 
 header "Starting initial stack"
 
 compose_cmd up -d 2>&1 | tail -5
-
-echo "  Waiting for services to become healthy..."
-if wait_for_admin 90; then
-  pass "Services are healthy"
-else
-  fail "Admin did not become healthy within 90s"
-  echo "Note: admin is a host process; use HTTP diagnostics instead"
-  exit 1
-fi
 
 # ══════════════════════════════════════════════════════════════════════
 # PHASE 2: Seed test data
@@ -338,23 +285,8 @@ header "Phase 2: Seed test data"
 
 # ── 2a: Run the setup / install to start all services ────────────────
 
-echo "  Calling admin install endpoint..."
-INSTALL_RESULT=$(curl -sf -X POST "${ADMIN_URL}/admin/install" \
-  -H "x-admin-token: ${OP_ADMIN_TOKEN}" \
-  -H "content-type: application/json" \
-  -d '{}' 2>&1 || echo '{"ok":false}')
-
-INSTALL_OK=$(echo "$INSTALL_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('ok', False))" 2>/dev/null || echo "False")
-
-if [[ "$INSTALL_OK" == "True" ]]; then
-  pass "Install endpoint returned ok"
-else
-  # Install may fail if images aren't available — for dev builds with compose overlay,
-  # we need to start services manually
-  echo "  Install API returned: $INSTALL_RESULT"
-  echo "  Starting services manually via compose..."
-  compose_cmd up -d 2>&1 | tail -5
-fi
+echo "  Starting services via compose..."
+compose_cmd up -d 2>&1 | tail -5
 
 echo "  Waiting for all services to become healthy (up to 180s)..."
 if wait_for_healthy 180; then
@@ -371,7 +303,7 @@ fi
 
 # ── 2c: Write a custom user file in stack/ ───────────────────────────
 
-echo "# My custom channel config" > "${OP_STACK_HOME}/my-custom-channel.yml"
+echo "# My custom channel config" > "${STACK_DIR}/my-custom-channel.yml"
 pass "Custom user file written to stack/"
 
 # ══════════════════════════════════════════════════════════════════════
@@ -380,12 +312,12 @@ pass "Custom user file written to stack/"
 
 header "Phase 3: Record pre-upgrade state"
 
-# Checksum user.env
-SECRETS_CHECKSUM_BEFORE=$(sha256sum "${VAULT_HOME}/user/user.env" | awk '{print $1}')
+# Checksum stash/vaults/user.env
+SECRETS_CHECKSUM_BEFORE=$(sha256sum "${STASH_DIR}/vaults/user.env" | awk '{print $1}')
 echo "  user.env checksum:    ${SECRETS_CHECKSUM_BEFORE}"
 
-# Checksum system.env
-STACK_ENV_CHECKSUM_BEFORE=$(sha256sum "${VAULT_HOME}/stack/stack.env" | awk '{print $1}')
+# Checksum config/stack/stack.env
+STACK_ENV_CHECKSUM_BEFORE=$(sha256sum "${STACK_DIR}/stack.env" | awk '{print $1}')
 echo "  system.env checksum:  ${STACK_ENV_CHECKSUM_BEFORE}"
 
 # Record running services
@@ -393,16 +325,10 @@ SERVICES_BEFORE=$(compose_cmd ps --format '{{.Service}}' 2>/dev/null | sort | tr
 echo "  Running services:     ${SERVICES_BEFORE}"
 
 # Custom user file checksum
-CUSTOM_FILE_CHECKSUM=$(sha256sum "${OP_STACK_HOME}/my-custom-channel.yml" | awk '{print $1}')
+CUSTOM_FILE_CHECKSUM=$(sha256sum "${STACK_DIR}/my-custom-channel.yml" | awk '{print $1}')
 echo "  Custom file checksum: ${CUSTOM_FILE_CHECKSUM}"
 
-# Record admin token works
-AUTH_CHECK_BEFORE=$(curl -sf -o /dev/null -w '%{http_code}' \
-  "${ADMIN_URL}/admin/containers/list" \
-  -H "x-admin-token: ${OP_ADMIN_TOKEN}" 2>/dev/null || echo "error")
-echo "  Admin auth status:    ${AUTH_CHECK_BEFORE}"
-
-pass "Pre-upgrade state recorded"
+pass "Pre-upgrade state recorded (admin is a host process; no HTTP check at this stage)"
 
 # ══════════════════════════════════════════════════════════════════════
 # PHASE 4: Simulate upgrade (re-run setup)
@@ -411,68 +337,52 @@ pass "Pre-upgrade state recorded"
 header "Phase 4: Simulate upgrade"
 
 # The upgrade simulation mirrors what setup.sh does on re-run:
-#   1. Detects existing install (vault/user/user.env exists)
+#   1. Detects existing install (stash/vaults/user.env exists)
 #   2. Re-creates directory tree (mkdir -p, idempotent)
-#   3. Downloads fresh compose to stack/
-#   4. Does NOT overwrite vault/user/user.env or vault/stack/stack.env
-#   5. Starts services with compose up
+#   3. Refreshes compose to config/stack/
+#   4. Does NOT overwrite stash/vaults/user.env or config/stack/stack.env
+#   5. Restarts services with compose up
 
 echo "  Simulating setup.sh re-run..."
 
-# Step 1: Directory creation (idempotent, same as setup.sh)
+# Step 1: Directory creation (idempotent)
 mkdir -p \
-  "${OP_CONFIG_HOME}" "${OP_STACK_HOME}" \
-  "${OP_CONFIG_HOME}/assistant" \
-  "${OP_CONFIG_HOME}/automations" \
-  "${VAULT_HOME}/user" "${VAULT_HOME}/stack" \
-  "${OP_DATA_HOME}" \
-  "${OP_DATA_HOME}/assistant" \
-  "${OP_DATA_HOME}/guardian" \
-  "${OP_DATA_HOME}/stash" \
-  "${OP_DATA_HOME}/guardian-stash" \
-  "${OP_DATA_HOME}/akm-cache" \
-  "${OP_DATA_HOME}/guardian-cache" \
-  "${OP_LOGS_HOME}"
+  "${STACK_DIR}" "${STACK_DIR}/addons" \
+  "${OP_HOME}/config/assistant" "${OP_HOME}/config/akm" \
+  "${STASH_DIR}/vaults" "${STASH_DIR}/tasks" \
+  "${STATE_DIR}/assistant" "${STATE_DIR}/guardian" \
+  "${STATE_DIR}/registry/addons" "${STATE_DIR}/registry/automations" \
+  "${STATE_DIR}/logs" "${CACHE_DIR}/akm" "${OP_HOME}/workspace"
 
-# Step 2: Re-download assets (simulate by copying from source)
-# In a real upgrade, setup.sh downloads from GitHub. We copy from local assets.
-cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${OP_STACK_HOME}/core.compose.yml"
+# Step 2: Refresh compose (simulate download from GitHub)
+cp "${ROOT_DIR}/.openpalm/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
 
-# Step 3: vault/user/user.env — setup.sh checks if it exists and skips if so
-if [[ -f "${VAULT_HOME}/user/user.env" ]]; then
-  echo "  vault/user/user.env exists -- NOT overwriting (same as setup.sh)"
+# Step 3: stash/vaults/user.env — must NOT be overwritten on upgrade
+if [[ -f "${STASH_DIR}/vaults/user.env" ]]; then
+  echo "  stash/vaults/user.env exists -- NOT overwriting (same as setup.sh)"
 else
-  echo "  BUG: vault/user/user.env was deleted during upgrade simulation!"
-  fail "vault/user/user.env should still exist"
+  echo "  BUG: stash/vaults/user.env was deleted during upgrade simulation!"
+  fail "stash/vaults/user.env should still exist"
 fi
 
-# Step 4: vault/stack/stack.env — setup.sh checks if it exists and skips if so
-if [[ -f "${VAULT_HOME}/stack/stack.env" ]]; then
-  echo "  vault/stack/stack.env exists -- NOT overwriting (same as setup.sh)"
+# Step 4: config/stack/stack.env — must NOT be overwritten on upgrade
+if [[ -f "${STACK_DIR}/stack.env" ]]; then
+  echo "  config/stack/stack.env exists -- NOT overwriting (same as setup.sh)"
 else
-  echo "  BUG: vault/stack/stack.env was deleted during upgrade simulation!"
-  fail "vault/stack/stack.env should still exist"
+  echo "  BUG: config/stack/stack.env was deleted during upgrade simulation!"
+  fail "config/stack/stack.env should still exist"
 fi
 
-# Step 6: If --to-version specified, update image tag
+# Step 5: If --to-version specified, update image tag
 if [[ -n "$TO_VERSION" ]]; then
   echo "  Updating image tag to ${TO_VERSION}..."
-  sed -i "s/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=${TO_VERSION}/" \
-    "${VAULT_HOME}/stack/stack.env"
+  sed -i "s/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=${TO_VERSION}/" "${STACK_DIR}/stack.env"
   compose_cmd pull 2>&1 | tail -5
 fi
 
-# Step 7: Restart services (same as setup.sh for IS_UPDATE=1)
+# Step 6: Restart services
 echo "  Running compose up (simulating upgrade restart)..."
 compose_cmd up -d 2>&1 | tail -10
-
-echo "  Waiting for admin to become healthy after upgrade..."
-if wait_for_admin 90; then
-  pass "Admin healthy after upgrade"
-else
-  fail "Admin not healthy after upgrade"
-  echo "Note: admin is a host process; use HTTP diagnostics instead"
-fi
 
 echo "  Waiting for all services after upgrade (up to 180s)..."
 if wait_for_healthy 180; then
@@ -491,45 +401,43 @@ fi
 
 header "Phase 5: Verification"
 
-# ── 5a: vault/user/user.env unchanged ─────────────────────────────────────
+# ── 5a: stash/vaults/user.env unchanged ──────────────────────────────
 echo ""
-echo "=== 5a: vault/user/user.env preservation ==="
+echo "=== 5a: stash/vaults/user.env preservation ==="
 
-SECRETS_CHECKSUM_AFTER=$(sha256sum "${VAULT_HOME}/user/user.env" | awk '{print $1}')
+SECRETS_CHECKSUM_AFTER=$(sha256sum "${STASH_DIR}/vaults/user.env" | awk '{print $1}')
 if [[ "$SECRETS_CHECKSUM_BEFORE" == "$SECRETS_CHECKSUM_AFTER" ]]; then
-  pass "user.env checksum unchanged"
+  pass "stash/vaults/user.env checksum unchanged"
 else
-  fail "user.env was modified during upgrade (before: ${SECRETS_CHECKSUM_BEFORE}, after: ${SECRETS_CHECKSUM_AFTER})"
+  fail "stash/vaults/user.env was modified during upgrade (before: ${SECRETS_CHECKSUM_BEFORE}, after: ${SECRETS_CHECKSUM_AFTER})"
 fi
 
-# Verify specific values: OP_ADMIN_TOKEN in stack.env, MY_CUSTOM_KEY in user.env
-OP_ADMIN_TOKEN_VALUE=$(grep "^OP_ADMIN_TOKEN=" "${VAULT_HOME}/stack/stack.env" | head -1 | cut -d= -f2-)
+OP_ADMIN_TOKEN_VALUE=$(grep "^OP_ADMIN_TOKEN=" "${STACK_DIR}/stack.env" | head -1 | cut -d= -f2-)
 if [[ "$OP_ADMIN_TOKEN_VALUE" == "$OP_ADMIN_TOKEN" ]]; then
-  pass "OP_ADMIN_TOKEN preserved in stack.env"
+  pass "OP_ADMIN_TOKEN preserved in config/stack/stack.env"
 else
   fail "OP_ADMIN_TOKEN changed (expected '${OP_ADMIN_TOKEN}', got '${OP_ADMIN_TOKEN_VALUE}')"
 fi
 
-CUSTOM_KEY_VALUE=$(grep "^MY_CUSTOM_KEY=" "${VAULT_HOME}/user/user.env" | head -1 | cut -d= -f2-)
+CUSTOM_KEY_VALUE=$(grep "^MY_CUSTOM_KEY=" "${STASH_DIR}/vaults/user.env" | head -1 | cut -d= -f2-)
 if [[ "$CUSTOM_KEY_VALUE" == "my-custom-value-12345" ]]; then
-  pass "Custom user key preserved in user.env"
+  pass "Custom user key preserved in stash/vaults/user.env"
 else
   fail "Custom user key lost (expected 'my-custom-value-12345', got '${CUSTOM_KEY_VALUE}')"
 fi
 
-# ── 5b: vault/stack/stack.env unchanged ───────────────────────────────────
+# ── 5b: config/stack/stack.env unchanged ─────────────────────────────
 echo ""
-echo "=== 5b: vault/stack/stack.env preservation ==="
+echo "=== 5b: config/stack/stack.env preservation ==="
 
-STACK_ENV_CHECKSUM_AFTER=$(sha256sum "${VAULT_HOME}/stack/stack.env" | awk '{print $1}')
+STACK_ENV_CHECKSUM_AFTER=$(sha256sum "${STACK_DIR}/stack.env" | awk '{print $1}')
 if [[ "$STACK_ENV_CHECKSUM_BEFORE" == "$STACK_ENV_CHECKSUM_AFTER" ]]; then
-  pass "system.env checksum unchanged"
+  pass "config/stack/stack.env checksum unchanged"
 else
-  # If --to-version was used, system.env will change (image tag update). That's expected.
   if [[ -n "$TO_VERSION" ]]; then
-    pass "system.env changed (expected: image tag updated to ${TO_VERSION})"
+    pass "config/stack/stack.env changed (expected: image tag updated to ${TO_VERSION})"
   else
-    fail "system.env was modified during upgrade (before: ${STACK_ENV_CHECKSUM_BEFORE}, after: ${STACK_ENV_CHECKSUM_AFTER})"
+    fail "config/stack/stack.env was modified during upgrade (before: ${STACK_ENV_CHECKSUM_BEFORE}, after: ${STACK_ENV_CHECKSUM_AFTER})"
   fi
 fi
 
@@ -537,8 +445,8 @@ fi
 echo ""
 echo "=== 5d: User file preservation ==="
 
-if [[ -f "${OP_STACK_HOME}/my-custom-channel.yml" ]]; then
-  CUSTOM_FILE_CHECKSUM_AFTER=$(sha256sum "${OP_STACK_HOME}/my-custom-channel.yml" | awk '{print $1}')
+if [[ -f "${STACK_DIR}/my-custom-channel.yml" ]]; then
+  CUSTOM_FILE_CHECKSUM_AFTER=$(sha256sum "${STACK_DIR}/my-custom-channel.yml" | awk '{print $1}')
   if [[ "$CUSTOM_FILE_CHECKSUM" == "$CUSTOM_FILE_CHECKSUM_AFTER" ]]; then
     pass "Custom channel file preserved and unchanged"
   else
@@ -573,29 +481,17 @@ for svc in $OPTIONAL_SVCS; do
   fi
 done
 
-# ── 5f: Admin token still works ─────────────────────────────────────
+# ── 5f: Admin token preserved in stack.env ──────────────────────────
 echo ""
-echo "=== 5f: Admin authentication ==="
+echo "=== 5f: Admin token preservation ==="
 
-AUTH_CHECK_AFTER=$(curl -sf -o /dev/null -w '%{http_code}' \
-  "${ADMIN_URL}/admin/containers/list" \
-  -H "x-admin-token: ${OP_ADMIN_TOKEN}" 2>/dev/null || echo "error")
-
-if [[ "$AUTH_CHECK_AFTER" == "200" ]]; then
-  pass "Admin token still authenticates (HTTP 200)"
+# Admin is a host process — no HTTP auth check here.
+# Verify the token value is still in stack.env.
+TOKEN_AFTER=$(grep "^OP_ADMIN_TOKEN=" "${STACK_DIR}/stack.env" | head -1 | cut -d= -f2-)
+if [[ "$TOKEN_AFTER" == "$OP_ADMIN_TOKEN" ]]; then
+  pass "OP_ADMIN_TOKEN preserved in config/stack/stack.env after upgrade"
 else
-  fail "Admin token failed after upgrade (HTTP ${AUTH_CHECK_AFTER})"
-fi
-
-# Verify unauthorized requests are rejected
-UNAUTH_CHECK=$(curl -sf -o /dev/null -w '%{http_code}' \
-  "${ADMIN_URL}/admin/containers/list" \
-  -H "x-admin-token: wrong-token" 2>/dev/null || echo "error")
-
-if [[ "$UNAUTH_CHECK" == "401" || "$UNAUTH_CHECK" == "403" ]]; then
-  pass "Unauthorized requests correctly rejected (HTTP ${UNAUTH_CHECK})"
-else
-  fail "Unauthorized request not rejected (HTTP ${UNAUTH_CHECK})"
+  fail "OP_ADMIN_TOKEN changed after upgrade (expected '${OP_ADMIN_TOKEN}', got '${TOKEN_AFTER}')"
 fi
 
 # ── 5g: No errors in container logs ─────────────────────────────────

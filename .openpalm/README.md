@@ -114,5 +114,5 @@ truth.
 - Docker Compose global env files: `config/stack/stack.env` (system-managed) and `config/stack/guardian.env` (channel HMAC secrets).
 - Guardian loads channel HMAC secrets from `config/stack/guardian.env` with hot-reload support (via `GUARDIAN_SECRETS_PATH`).
 - The assistant workspace is `workspace/`, mounted at `/work`.
-- The CLI always runs from the host and manages Docker Compose directly. Admin UI is a host process started by `openpalm admin serve` — no container is needed.
+- The CLI always runs from the host and manages Docker Compose directly. Admin UI is a host process started by `openpalm admin` — no container is needed.
 - Scheduled automations are stored as markdown task files in `stash/tasks/` and registered with OS cron by the assistant at startup via `akm tasks sync`.

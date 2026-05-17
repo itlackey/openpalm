@@ -183,7 +183,7 @@ Notes:
 
 ## Admin (host process)
 
-Admin is a host-only Bun.serve server started by `openpalm admin serve`. It has no container, no Docker socket mount, and no `$OP_HOME` volume bind — it accesses everything directly as a host process.
+Admin is a host-only Bun.serve server started by `openpalm admin`. It has no container, no Docker socket mount, and no `$OP_HOME` volume bind — it accesses everything directly as a host process.
 
 Bind address: `127.0.0.1:${OP_HOST_ADMIN_PORT:-3880}` (loopback only — never reachable from containers or LAN)
 

@@ -603,12 +603,12 @@ describe('cli entrypoint (subprocess)', () => {
 });
 
 describe('admin command registration', () => {
-  it("registers 'admin serve' subcommand", async () => {
-    // Import the admin command and verify it has a 'serve' subcommand
+  it("admin command has a run handler (no serve subcommand)", async () => {
     const adminMod = await import("./commands/admin.ts");
     const adminCmd = adminMod.default;
-    // citty commands expose subCommands as a record — check the key exists
-    expect(Object.keys((adminCmd as any).subCommands ?? {})).toContain("serve");
+    // admin is a direct command — no subcommands, just a run handler
+    expect(typeof (adminCmd as any).run).toBe("function");
+    expect((adminCmd as any).subCommands ?? null).toBeNull();
   });
 });
 

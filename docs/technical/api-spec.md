@@ -1126,7 +1126,7 @@ Error responses:
 These endpoints are used exclusively by the setup wizard (`/setup`). They are
 public (no admin token required) because setup runs before any admin token is
 configured. The wizard is served at `http://localhost:<OP_HOST_ADMIN_PORT>/setup`
-(default port `3880`) by `openpalm admin serve`, which is spawned automatically
+(default port `3880`) by `openpalm admin`, which is spawned automatically
 by `openpalm install`.
 
 ### `GET /api/setup/status`

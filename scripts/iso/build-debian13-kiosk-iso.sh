@@ -126,10 +126,10 @@ build_image_cache() {
   fi
 
   local images=(
-    'docker.io/itlackey/openpalm-memory:latest'
     'ghcr.io/sst/opencode:latest'
+    'docker.io/itlackey/openpalm-assistant:latest'
     'docker.io/itlackey/openpalm-guardian:latest'
-    'docker.io/itlackey/openpalm-admin:latest'
+    'docker.io/itlackey/openpalm-channel:latest'
   )
 
   local tmp_tar

@@ -33,12 +33,10 @@ async function waitForReady(port: number): Promise<boolean> {
   return false;
 }
 
-// ── serve subcommand ─────────────────────────────────────────────────────
-
-const serveCmd = defineCommand({
+export default defineCommand({
   meta: {
-    name: 'serve',
-    description: 'Start the host admin server',
+    name: 'admin',
+    description: 'Start the host admin UI',
   },
   args: {
     port: {
@@ -149,17 +147,5 @@ const serveCmd = defineCommand({
 
     // Keep the process alive
     await new Promise<never>(() => {});
-  },
-});
-
-// ── Root admin command ───────────────────────────────────────────────────
-
-export default defineCommand({
-  meta: {
-    name: 'admin',
-    description: 'Start the host admin UI (serve subcommand is the default)',
-  },
-  subCommands: {
-    serve: serveCmd,
   },
 });

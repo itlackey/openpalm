@@ -13,7 +13,7 @@ Primary runtime sources:
 ## What Is Authoritative
 
 - The running assistant is defined by `.openpalm/config/stack/core.compose.yml`.
-- The optional admin-side OpenCode runtime is started by `openpalm admin serve` as a host subprocess on a random loopback port.
+- The optional admin-side OpenCode runtime is started by `openpalm admin` as a host subprocess on a random loopback port.
 - `~/.openpalm/config/assistant/` is the user-editable OpenCode extension surface.
 - `~/.openpalm/config/stack/stack.env` provides runtime provider keys and resolved capability env values.
 - `~/.openpalm/vault/user/user.env` is the recommended place for addon overrides and operator-managed values.
