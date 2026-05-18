@@ -29,6 +29,11 @@
 		tts: { provider: '', model: '', voice: '' },
 		stt: { provider: '', model: '', language: '' },
 		reranking: { provider: '', mode: 'llm' as 'llm' | 'dedicated', model: '', topK: 10 },
+		akm: {
+			feedback_distillation: true,
+			memory_inference: true,
+			memory_consolidation: true,
+		},
 	});
 
 	// ── Save state ──────────────────────────────────────────────────
@@ -94,6 +99,10 @@
 			caps.reranking.mode = (rr?.mode as 'llm' | 'dedicated') ?? 'llm';
 			caps.reranking.model = (rr?.model as string) ?? '';
 			caps.reranking.topK = (rr?.topK as number) ?? 10;
+			const akm = loaded.akm as Record<string, unknown> | undefined;
+			caps.akm.feedback_distillation = (akm?.feedback_distillation as boolean) ?? true;
+			caps.akm.memory_inference = (akm?.memory_inference as boolean) ?? true;
+			caps.akm.memory_consolidation = (akm?.memory_consolidation as boolean) ?? true;
 		} catch {
 			// will show empty state
 		}
@@ -140,7 +149,7 @@
 	async function handleSave(): Promise<void> {
 		saving = true; saveError = ''; saveSuccess = false;
 		try {
-			const { llm, slm, embeddings: emb, tts, stt, reranking: rr } = caps;
+			const { llm, slm, embeddings: emb, tts, stt, reranking: rr, akm } = caps;
 			const p: Record<string, unknown> = {
 				llm: llm.provider && llm.model ? `${llm.provider}/${llm.model}` : undefined,
 				slm: slm.provider && slm.model ? `${slm.provider}/${slm.model}` : undefined,
@@ -148,6 +157,11 @@
 				tts: tts.provider ? { enabled: true, provider: tts.provider, model: tts.model || undefined, voice: tts.voice || undefined } : undefined,
 				stt: stt.provider ? { enabled: true, provider: stt.provider, model: stt.model || undefined, language: stt.language || undefined } : undefined,
 				reranking: rr.provider ? { enabled: true, provider: rr.provider, mode: rr.mode, model: rr.model || undefined, topK: rr.topK } : undefined,
+				akm: {
+					feedback_distillation: akm.feedback_distillation,
+					memory_inference: akm.memory_inference,
+					memory_consolidation: akm.memory_consolidation,
+				},
 			};
 			await saveAssignments(p);
 			saveSuccess = true; setTimeout(() => saveSuccess = false, 4000);
@@ -306,6 +320,33 @@
 		</div>
 	</div>
 
+	<!-- akm Features -->
+	<div class="assign-section">
+		<h3 class="assign-heading">Features</h3>
+		<p class="section-desc">akm runtime features. Disable a toggle if you want akm to skip that operation across all sessions.</p>
+		<label class="toggle-row">
+			<input type="checkbox" bind:checked={caps.akm.feedback_distillation} />
+			<div>
+				<span class="toggle-title">Feedback distillation</span>
+				<span class="toggle-desc">Distill durable lessons from user feedback during stash-improve runs.</span>
+			</div>
+		</label>
+		<label class="toggle-row">
+			<input type="checkbox" bind:checked={caps.akm.memory_inference} />
+			<div>
+				<span class="toggle-title">Memory inference</span>
+				<span class="toggle-desc">Infer new memories from assistant sessions.</span>
+			</div>
+		</label>
+		<label class="toggle-row">
+			<input type="checkbox" bind:checked={caps.akm.memory_consolidation} />
+			<div>
+				<span class="toggle-title">Memory consolidation</span>
+				<span class="toggle-desc">Merge / dedupe overlapping memories on the consolidation pass.</span>
+			</div>
+		</label>
+	</div>
+
 	<!-- Save -->
 	<div class="save-footer">
 		<button class="btn btn-primary" onclick={() => void handleSave()} disabled={saving || !caps.llm.provider || !caps.llm.model}>
@@ -420,4 +461,9 @@
 	.btn-dismiss:hover { opacity: 1; }
 	.error-state { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) var(--space-5); font-size: var(--text-sm); color: var(--color-danger); }
 	.empty-state { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding: var(--space-8); color: var(--color-text-tertiary); text-align: center; }
+	.toggle-row { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-2) 0; cursor: pointer; }
+	.toggle-row input[type="checkbox"] { width: 16px; height: 16px; margin-top: 3px; flex-shrink: 0; }
+	.toggle-row > div { display: flex; flex-direction: column; }
+	.toggle-title { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); }
+	.toggle-desc { font-size: var(--text-xs); color: var(--color-text-tertiary); margin-top: 2px; }
 </style>

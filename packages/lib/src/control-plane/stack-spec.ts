@@ -52,6 +52,17 @@ export type StackSpecCapabilities = {
   tts?: StackSpecTts;
   stt?: StackSpecStt;
   reranking?: StackSpecReranker;
+  /** akm runtime features. Defaults: all true (matches pre-toggle behaviour). */
+  akm?: StackSpecAkmFeatures;
+};
+
+export type StackSpecAkmFeatures = {
+  /** Distill durable lessons from feedback during stash improve runs. */
+  feedback_distillation?: boolean;
+  /** Infer new memories from assistant sessions. */
+  memory_inference?: boolean;
+  /** Merge / dedupe overlapping memories on the consolidation pass. */
+  memory_consolidation?: boolean;
 };
 
 // ── StackSpec v2 ────────────────────────────────────────────────────────

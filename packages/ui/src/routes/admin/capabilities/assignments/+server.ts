@@ -121,11 +121,12 @@ export const POST: RequestHandler = async (event) => {
     spec.capabilities.embeddings = r as typeof spec.capabilities.embeddings;
   }
 
-  // TTS, STT, Reranking — optional, deletable
+  // TTS, STT, Reranking, akm features — optional, deletable
   const optionalSchemas: Record<string, Record<string, 'string' | 'number' | 'boolean'>> = {
     tts: { enabled: 'boolean', provider: 'string', model: 'string', voice: 'string', format: 'string' },
     stt: { enabled: 'boolean', provider: 'string', model: 'string', language: 'string' },
     reranking: { enabled: 'boolean', provider: 'string', mode: 'string', model: 'string', topK: 'number', topN: 'number' },
+    akm: { feedback_distillation: 'boolean', memory_inference: 'boolean', memory_consolidation: 'boolean' },
   };
   for (const [key, schema] of Object.entries(optionalSchemas)) {
     if (!(key in raw)) continue;

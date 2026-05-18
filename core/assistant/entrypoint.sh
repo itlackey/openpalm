@@ -226,8 +226,18 @@ maybe_configure_akm() {
     *)    llm_endpoint="${base_no_slash}/v1/chat/completions" ;;
   esac
 
+  # Feature toggles — propagated from stack.yml.capabilities.akm by
+  # writeCapabilityVars. Unset values default to "true" to preserve the
+  # pre-toggle behaviour for upgraded installs.
+  local feat_fd="${OP_CAP_AKM_FEEDBACK_DISTILLATION:-true}"
+  local feat_mi="${OP_CAP_AKM_MEMORY_INFERENCE:-true}"
+  local feat_mc="${OP_CAP_AKM_MEMORY_CONSOLIDATION:-true}"
+
+  local features
+  features='"feedback_distillation":'"$feat_fd"',"memory_inference":'"$feat_mi"',"memory_consolidation":'"$feat_mc"
+
   local akm_config
-  akm_config='{"llm":{"endpoint":"'"$llm_endpoint"'","model":"'"$llm_model"'","provider":"'"$llm_provider"'","features":{"feedback_distillation":true,"memory_inference":true,"memory_consolidation":true}}}'
+  akm_config='{"llm":{"endpoint":"'"$llm_endpoint"'","model":"'"$llm_model"'","provider":"'"$llm_provider"'","features":{'"$features"'}}}'
 
   # Append embedding config when all required vars are present
   local emb_provider="${OP_CAP_EMBEDDINGS_PROVIDER:-}"
@@ -242,7 +252,7 @@ maybe_configure_akm() {
       */v1) emb_endpoint="${emb_base_no_slash}/embeddings" ;;
       *)    emb_endpoint="${emb_base_no_slash}/v1/embeddings" ;;
     esac
-    akm_config='{"llm":{"endpoint":"'"$llm_endpoint"'","model":"'"$llm_model"'","provider":"'"$llm_provider"'","features":{"feedback_distillation":true,"memory_inference":true,"memory_consolidation":true}},"embedding":{"endpoint":"'"$emb_endpoint"'","model":"'"$emb_model"'","provider":"'"$emb_provider"'","dimension":'"$emb_dims"'}}'
+    akm_config='{"llm":{"endpoint":"'"$llm_endpoint"'","model":"'"$llm_model"'","provider":"'"$llm_provider"'","features":{'"$features"'}},"embedding":{"endpoint":"'"$emb_endpoint"'","model":"'"$emb_model"'","provider":"'"$emb_provider"'","dimension":'"$emb_dims"'}}'
   fi
 
   akm setup --config "$akm_config" --yes 2>/dev/null || true

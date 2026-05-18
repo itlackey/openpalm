@@ -164,6 +164,14 @@ export function writeCapabilityVars(spec: StackSpec, stackDir: string, homeDir?:
     clearCapVars("STT", ["BASE_URL", "MODEL", "LANGUAGE"]);
   }
 
+  // ── akm features ── read by the assistant container's entrypoint when
+  // it regenerates akm's config.json on boot. Defaulting unset to "true"
+  // preserves the previous hardcoded behaviour.
+  const akmFeatures = spec.capabilities.akm ?? {};
+  caps.OP_CAP_AKM_FEEDBACK_DISTILLATION = String(akmFeatures.feedback_distillation ?? true);
+  caps.OP_CAP_AKM_MEMORY_INFERENCE = String(akmFeatures.memory_inference ?? true);
+  caps.OP_CAP_AKM_MEMORY_CONSOLIDATION = String(akmFeatures.memory_consolidation ?? true);
+
   // ── Reranking ──
   const rr = spec.capabilities.reranking;
   if (rr?.enabled) {
@@ -269,15 +277,16 @@ export function buildAkmSetupJson(
     };
   };
 
+  const akmFeatures = spec.capabilities.akm ?? {};
   const config: AkmConfig = {
     llm: {
       endpoint: llmEndpoint,
       model: akmLlmModel,
       provider: akmLlmProvider,
       features: {
-        feedback_distillation: true,
-        memory_inference: true,
-        memory_consolidation: true,
+        feedback_distillation: akmFeatures.feedback_distillation ?? true,
+        memory_inference: akmFeatures.memory_inference ?? true,
+        memory_consolidation: akmFeatures.memory_consolidation ?? true,
       },
     },
   };

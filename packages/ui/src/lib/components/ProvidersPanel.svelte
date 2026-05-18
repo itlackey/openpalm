@@ -21,7 +21,18 @@
 		loading = true;
 		try {
 			const res = await fetch('/admin/providers', { headers: buildHeaders() });
-			if (res.ok) pageState = (await res.json()) as ProviderPageState;
+			if (res.ok) {
+				pageState = (await res.json()) as ProviderPageState;
+				// First-run fallback: if nothing's connected yet, show "All"
+				// so the operator can pick a starting provider. Only flips
+				// once — won't fight the user's later filter choices.
+				if (!hasInitializedFilter) {
+					if (pageState.providers.filter((p) => p.connected).length === 0 && pageState.providers.length > 0) {
+						filter = 'all';
+					}
+					hasInitializedFilter = true;
+				}
+			}
 		} catch {
 			// will show offline state
 		} finally {
@@ -29,10 +40,18 @@
 		}
 	}
 
+	let hasInitializedFilter = false;
+
 	onMount(() => { void load(); });
 
 	let search = $state('');
-	let filter = $state<ProviderFilter>('all');
+	// Default to "connected" — surfacing only the providers that are
+	// actually wired up keeps the initial view tractable (OpenCode ships
+	// 130+ catalog entries). The filter pills + search box are right
+	// there for browsing the rest. On a fresh install with nothing
+	// connected, `load()` flips this to "all" so the operator can pick a
+	// starting provider.
+	let filter = $state<ProviderFilter>('connected');
 	let selectedProviderId = $state('');
 	let lastActionResult = $state<ProviderActionResult | undefined>(undefined);
 
@@ -77,6 +96,55 @@
 		if (result.selectedProviderId) selectedProviderId = result.selectedProviderId;
 		void load();
 	}
+
+	// ── Local provider detection (Ollama / LM Studio / Docker Model Runner)
+	type LocalProbe = { provider: string; url: string; available: boolean };
+	const LOCAL_LABELS: Record<string, string> = {
+		ollama: 'Local Ollama',
+		lmstudio: 'Local LM Studio',
+		'model-runner': 'Docker Model Runner',
+	};
+	let localProbes = $state<LocalProbe[]>([]);
+	let localRegistering = $state<string | null>(null);
+	let localMessage = $state<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+	async function probeLocal(): Promise<void> {
+		try {
+			const res = await fetch('/admin/providers/local', { headers: buildHeaders() });
+			if (!res.ok) return;
+			const data = (await res.json()) as { providers: LocalProbe[] };
+			localProbes = data.providers;
+		} catch { /* offline — keep empty */ }
+	}
+
+	async function registerLocal(provider: string): Promise<void> {
+		localRegistering = provider;
+		localMessage = null;
+		try {
+			const res = await fetch('/admin/providers/local', {
+				method: 'POST',
+				headers: { ...buildHeaders(), 'content-type': 'application/json' },
+				body: JSON.stringify({ provider }),
+			});
+			const result = (await res.json()) as ProviderActionResult;
+			if (result.ok) {
+				localMessage = { kind: 'ok', text: result.message ?? 'Registered.' };
+				await load();
+				if (result.selectedProviderId) selectedProviderId = result.selectedProviderId;
+			} else {
+				localMessage = { kind: 'err', text: result.message ?? 'Registration failed.' };
+			}
+		} catch (err) {
+			localMessage = { kind: 'err', text: err instanceof Error ? err.message : 'Request failed.' };
+		} finally {
+			localRegistering = null;
+		}
+	}
+
+	const availableLocal = $derived(localProbes.filter((p) => p.available));
+	const registeredLocalIds = $derived(new Set(pageState.providers.filter((p) => p.connected).map((p) => p.id)));
+
+	onMount(() => { void probeLocal(); });
 </script>
 
 <div class="providers-panel">
@@ -91,6 +159,41 @@
 			{/if}
 		</section>
 	{:else}
+		{#if availableLocal.length > 0}
+			<section class="local-detected">
+				<div class="local-detected-header">
+					<h4 class="section-heading">Detected on this host</h4>
+					<button type="button" class="btn-link" onclick={() => void probeLocal()}>Refresh</button>
+				</div>
+				<div class="local-detected-list">
+					{#each availableLocal as probe (probe.provider)}
+						<div class="local-detected-row">
+							<div class="local-detected-info">
+								<strong>{LOCAL_LABELS[probe.provider] ?? probe.provider}</strong>
+								<code>{probe.url}</code>
+							</div>
+							{#if registeredLocalIds.has(probe.provider)}
+								<span class="local-detected-tag">registered</span>
+							{:else}
+								<button
+									type="button"
+									class="btn btn-outline btn-sm"
+									disabled={localRegistering === probe.provider}
+									onclick={() => void registerLocal(probe.provider)}
+								>
+									{#if localRegistering === probe.provider}<span class="spinner"></span>{/if}
+									Register
+								</button>
+							{/if}
+						</div>
+					{/each}
+				</div>
+				{#if localMessage}
+					<p class="local-detected-message" class:local-detected-message--err={localMessage.kind === 'err'}>{localMessage.text}</p>
+				{/if}
+			</section>
+		{/if}
+
 		<section class="workspace-grid">
 			<div class="catalog-column">
 				<ProviderFilters bind:search bind:filter {counts} />
@@ -179,6 +282,83 @@
 		margin-top: var(--space-2);
 		font-size: var(--text-xs);
 		color: var(--color-danger);
+	}
+
+	.local-detected {
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		padding: var(--space-3) var(--space-4);
+		margin-bottom: var(--space-4);
+	}
+
+	.local-detected-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: var(--space-2);
+	}
+
+	.local-detected-list {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+	}
+
+	.local-detected-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-3);
+	}
+
+	.local-detected-info {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		font-size: var(--text-sm);
+	}
+
+	.local-detected-info code {
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		color: var(--color-text-secondary);
+		background: var(--color-bg-tertiary);
+		padding: 1px 6px;
+		border-radius: var(--radius-sm);
+	}
+
+	.local-detected-tag {
+		font-size: 10px;
+		padding: 1px 6px;
+		border-radius: var(--radius-full);
+		background: var(--color-success-bg);
+		color: var(--color-success);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
+
+	.local-detected-message {
+		margin-top: var(--space-2);
+		font-size: var(--text-xs);
+		color: var(--color-text-secondary);
+	}
+
+	.local-detected-message--err {
+		color: var(--color-danger);
+	}
+
+	.btn-link {
+		background: none;
+		border: none;
+		color: var(--color-primary);
+		font-size: var(--text-xs);
+		cursor: pointer;
+		text-decoration: underline;
+	}
+
+	.btn-link:hover {
+		color: var(--color-primary-hover);
 	}
 
 	.workspace-grid {
