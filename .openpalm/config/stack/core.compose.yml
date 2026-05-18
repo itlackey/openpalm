@@ -63,22 +63,15 @@ services:
       OP_UID: ${OP_UID:-1000}
       OP_GID: ${OP_GID:-1000}
       OPENCODE_API_URL: http://localhost:4096
-      # Provider API keys (resolved from stack.env)
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Provider credentials live in OpenCode's auth.json (bind-mounted
+      # below) — NOT in this env block. Connections-tab saves and the
+      # setup wizard both call OpenCode's PUT /auth/{providerID}; ai-sdk
+      # picks the key up via OpenCode at call time. Only baseURL
+      # overrides are still forwarded here because writeCapabilityVars
+      # and the lmstudio entrypoint code path need them up-front.
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      GROQ_API_KEY: ${GROQ_API_KEY:-}
-      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
-      LMSTUDIO_API_KEY: ${LMSTUDIO_API_KEY:-}
       LMSTUDIO_BASE_URL: ${LMSTUDIO_BASE_URL:-}
-      TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      XAI_API_KEY: ${XAI_API_KEY:-}
-      HF_TOKEN: ${HF_TOKEN:-}
-      MCP_API_KEY: ${MCP_API_KEY:-}
-      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
-      # Capability resolution (used by entrypoint.sh to drop unused provider keys).
+      # Capability resolution (used by entrypoint.sh + akm setup).
       OP_CAP_LLM_PROVIDER: ${OP_CAP_LLM_PROVIDER:-}
       # Google Cloud credentials (files live in stash/vaults/, mounted at /etc/vault).
       # NOTE: the /etc/vault mount no longer carries `user.env` (Phase 2 of #388

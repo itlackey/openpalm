@@ -202,7 +202,9 @@ maybe_configure_akm() {
   # akm improve, distill, and semantic search use the same provider as the
   # stack. Uses SLM preferentially for akm's own LLM (lightweight operations);
   # falls back to primary LLM when SLM is not configured.
-  # Runs before maybe_unset_unused_provider_keys so API keys are still in env.
+  # Provider API keys live in OpenCode's auth.json (bind-mounted into this
+  # container). akm reads keys from /etc/vault/user.env (sourced above by
+  # maybe_source_akm_user_vault) — never from compose-forwarded env vars.
   if ! command -v akm >/dev/null 2>&1; then
     return 0
   fi
@@ -246,36 +248,6 @@ maybe_configure_akm() {
   akm setup --config "$akm_config" --yes 2>/dev/null || true
 }
 
-maybe_unset_unused_provider_keys() {
-  # Unset API keys for providers not used by either LLM or SLM capability.
-  # This limits the blast radius if the assistant process is compromised —
-  # only active providers' keys remain in the environment. Both LLM and SLM
-  # are checked so the scheduler's akm improve/distill calls (which use SLM)
-  # still have the key they need.
-  local llm="${OP_CAP_LLM_PROVIDER:-}"
-  local slm="${OP_CAP_SLM_PROVIDER:-}"
-
-  local openai_used=0 anthropic_used=0 groq_used=0 mistral_used=0 google_used=0
-  for p in "$llm" "$slm"; do
-    case "$p" in
-      openai|together|deepseek|xai) openai_used=1 ;;
-      anthropic) anthropic_used=1 ;;
-      groq)      groq_used=1 ;;
-      mistral)   mistral_used=1 ;;
-      google)    google_used=1 ;;
-    esac
-  done
-
-  # Use `if` blocks rather than `[ ... ] && cmd` chains — under `set -e`,
-  # the latter exits the script when the test fails (because `[` is the
-  # last executed command in the && list, and its non-zero exit propagates).
-  if [ "$anthropic_used" = "0" ]; then unset ANTHROPIC_API_KEY; fi
-  if [ "$groq_used"      = "0" ]; then unset GROQ_API_KEY;      fi
-  if [ "$mistral_used"   = "0" ]; then unset MISTRAL_API_KEY;   fi
-  if [ "$google_used"    = "0" ]; then unset GOOGLE_API_KEY;    fi
-  if [ "$openai_used"    = "0" ]; then unset OPENAI_API_KEY;    fi
-}
-
 start_opencode() {
   cd /work
 
@@ -316,6 +288,5 @@ maybe_configure_lmstudio_provider
 # 0600 vault file and re-export to children.
 maybe_source_akm_user_vault
 maybe_configure_akm
-maybe_unset_unused_provider_keys
 start_cron_and_sync_tasks
 start_opencode

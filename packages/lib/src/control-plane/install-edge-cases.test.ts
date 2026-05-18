@@ -22,6 +22,7 @@ import { isSetupComplete } from "./setup-status.js";
 import {
   performSetup,
   buildSecretsFromSetup,
+  buildAuthJsonFromSetup,
   buildSystemSecretsFromSetup,
 } from "./setup.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
@@ -632,16 +633,16 @@ describe("Setup Input Variations", () => {
   });
 
   // Scenario 21: Multiple providers map to correct env vars
-  it("multiple providers each write their API key to the correct env var", () => {
+  it("multiple providers each write their API key into auth.json keyed by providerId", () => {
     const conns: SetupConnection[] = [
       { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-openai" },
       { id: "groq-1", name: "Groq", provider: "groq", baseUrl: "", apiKey: "gsk-groq" },
       { id: "anthropic-1", name: "Anthropic", provider: "anthropic", baseUrl: "", apiKey: "sk-ant-api03" },
     ];
-    const secrets = buildSecretsFromSetup(conns);
-    expect(secrets.OPENAI_API_KEY).toBe("sk-openai");
-    expect(secrets.GROQ_API_KEY).toBe("gsk-groq");
-    expect(secrets.ANTHROPIC_API_KEY).toBe("sk-ant-api03");
+    const keys = buildAuthJsonFromSetup(conns);
+    expect(keys.openai).toBe("sk-openai");
+    expect(keys.groq).toBe("gsk-groq");
+    expect(keys.anthropic).toBe("sk-ant-api03");
   });
 
   // Scenario 21b: OAuth providers (no API key) are silently skipped
@@ -650,19 +651,22 @@ describe("Setup Input Variations", () => {
       { id: "github-copilot", name: "GitHub Copilot", provider: "github-copilot", baseUrl: "", apiKey: "" },
       { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-test" },
     ];
-    const secrets = buildSecretsFromSetup(conns);
-    expect(secrets.OPENAI_API_KEY).toBe("sk-test");
-    expect(Object.keys(secrets)).not.toContain("GITHUB_COPILOT_API_KEY");
+    const keys = buildAuthJsonFromSetup(conns);
+    expect(keys.openai).toBe("sk-test");
+    expect(keys["github-copilot"]).toBeUndefined();
   });
 
-  // Scenario 22: buildSecretsFromSetup only writes API keys and owner info
-  it("buildSecretsFromSetup writes API keys but not config vars", () => {
+  // Scenario 22: buildSecretsFromSetup writes non-credential vars only;
+  // API keys flow into auth.json via buildAuthJsonFromSetup.
+  it("buildSecretsFromSetup does not write API keys; buildAuthJsonFromSetup does", () => {
     const spec = makeValidSpec();
     const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
+    const keys = buildAuthJsonFromSetup(spec.connections);
 
-    // API key should be written
-    expect(secrets.OPENAI_API_KEY).toBe("sk-test-key-123");
-    // Config vars should NOT be in user.env anymore
+    // API keys go to auth.json, not stack.env
+    expect(secrets.OPENAI_API_KEY).toBeUndefined();
+    expect(keys.openai).toBe("sk-test-key-123");
+    // Config vars (capability resolution) are not in stack.env user-secrets either
     expect(secrets.SYSTEM_LLM_PROVIDER).toBeUndefined();
     expect(secrets.SYSTEM_LLM_MODEL).toBeUndefined();
     expect(secrets.EMBEDDING_MODEL).toBeUndefined();

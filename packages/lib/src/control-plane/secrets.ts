@@ -164,6 +164,49 @@ export function updateSecretsEnv(
   mergeVaultEnvFile(stackEnvPath, updates, true);
 }
 
+/**
+ * Merge-write provider API keys into OpenCode's auth.json at
+ * `${configDir}/auth.json`. Each entry uses OpenCode's schema for
+ * api-key auth: `{ <providerId>: { type: "api", key: "..." } }`.
+ *
+ * This file is bind-mounted into the assistant container so the chat
+ * assistant picks up new credentials on its next OpenCode restart —
+ * see core.compose.yml.
+ *
+ * Existing entries (OAuth tokens, other providers) are preserved.
+ * Empty values DELETE the corresponding entry.
+ */
+export function writeAuthJsonProviderKeys(
+  state: ControlPlaneState,
+  providerKeys: Record<string, string>
+): void {
+  if (Object.keys(providerKeys).length === 0) return;
+
+  const authJsonPath = `${state.configDir}/auth.json`;
+  mkdirSync(state.configDir, { recursive: true, mode: VAULT_DIR_MODE });
+
+  let current: Record<string, unknown> = {};
+  if (existsSync(authJsonPath)) {
+    try {
+      const raw = readFileSync(authJsonPath, "utf-8").trim();
+      if (raw && raw !== "{}") current = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      // Corrupt auth.json — start fresh; better than failing the wizard.
+      current = {};
+    }
+  }
+
+  for (const [providerId, key] of Object.entries(providerKeys)) {
+    if (key) {
+      current[providerId] = { type: "api", key };
+    } else {
+      delete current[providerId];
+    }
+  }
+
+  writeVaultFile(authJsonPath, JSON.stringify(current, null, 2) + "\n");
+}
+
 /** Read and parse config/stack/stack.env. Returns {} if the file does not exist. */
 export function readStackEnv(stackDir: string): Record<string, string> {
   return parseEnvFile(`${stackDir}/stack.env`);

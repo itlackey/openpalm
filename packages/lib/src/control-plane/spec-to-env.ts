@@ -10,7 +10,7 @@ import type { StackSpec } from "./stack-spec.js";
 import { SPEC_DEFAULTS, parseCapabilityString } from "./stack-spec.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mergeEnvContent, parseEnvContent } from "./env.js";
-import { PROVIDER_DEFAULT_URLS, PROVIDER_KEY_MAP, OLLAMA_INSTACK_URL } from "../provider-constants.js";
+import { PROVIDER_DEFAULT_URLS, OLLAMA_INSTACK_URL } from "../provider-constants.js";
 import { listEnabledAddonIds } from "./registry.js";
 
 /**
@@ -63,11 +63,6 @@ export function writeCapabilityVars(spec: StackSpec, stackDir: string, homeDir?:
     ? parseEnvContent(readFileSync(stackEnvPath, "utf-8"))
     : {};
 
-  const resolveKey = (provider: string): string => {
-    const keyVar = PROVIDER_KEY_MAP[provider];
-    return keyVar ? (stackEnv[keyVar] || "") : "";
-  };
-
   /** Providers that do NOT use an OpenAI-compatible /v1 path prefix. */
   const NO_V1_SUFFIX = new Set(["ollama", "google"]);
 
@@ -112,11 +107,14 @@ export function writeCapabilityVars(spec: StackSpec, stackDir: string, homeDir?:
   };
 
   // ── LLM ──
+  // Capability vars (PROVIDER/MODEL/BASE_URL) describe what the assistant
+  // and akm should reach for. Credentials live in OpenCode's auth.json
+  // (managed via /auth/{providerID}), not here — never re-resolve API
+  // keys into stack.env.
   const { provider: llmP, model: llmM } = parseCapabilityString(spec.capabilities.llm);
   caps.OP_CAP_LLM_PROVIDER = llmP;
   caps.OP_CAP_LLM_MODEL = llmM;
   caps.OP_CAP_LLM_BASE_URL = resolveUrl(llmP);
-  caps.OP_CAP_LLM_API_KEY = resolveKey(llmP);
 
   // ── SLM ──
   if (spec.capabilities.slm) {
@@ -124,9 +122,8 @@ export function writeCapabilityVars(spec: StackSpec, stackDir: string, homeDir?:
     caps.OP_CAP_SLM_PROVIDER = slmP;
     caps.OP_CAP_SLM_MODEL = slmM;
     caps.OP_CAP_SLM_BASE_URL = resolveUrl(slmP);
-    caps.OP_CAP_SLM_API_KEY = resolveKey(slmP);
   } else {
-    clearCapVars("OP_CAP_SLM", ["PROVIDER", "MODEL", "BASE_URL", "API_KEY"]);
+    clearCapVars("OP_CAP_SLM", ["PROVIDER", "MODEL", "BASE_URL"]);
   }
 
   // ── Embeddings ──
@@ -134,21 +131,26 @@ export function writeCapabilityVars(spec: StackSpec, stackDir: string, homeDir?:
   caps.OP_CAP_EMBEDDINGS_PROVIDER = emb.provider;
   caps.OP_CAP_EMBEDDINGS_MODEL = emb.model;
   caps.OP_CAP_EMBEDDINGS_BASE_URL = resolveUrl(emb.provider);
-  caps.OP_CAP_EMBEDDINGS_API_KEY = resolveKey(emb.provider);
   caps.OP_CAP_EMBEDDINGS_DIMS = String(emb.dims);
 
   // ── TTS ── voice channel reads these directly (no OP_CAP_ prefix);
   // they're surfaced to the voice container via compose env substitution
   // and exposed to the browser via GET /config/defaults on first load.
+  //
+  // API keys are NOT auto-resolved from the LLM provider's credentials
+  // anymore — the voice channel is its own consumer and its key would
+  // travel to the browser via /config/defaults, which is a different
+  // trust boundary from OpenCode's auth.json. Operators set TTS_API_KEY
+  // / STT_API_KEY in stack.env explicitly, or fill them in via the
+  // voice web app's settings dialog (saved to browser localStorage).
   const tts = spec.capabilities.tts;
   if (tts?.enabled) {
     const p = tts.provider || llmP;
     caps.TTS_BASE_URL = resolveUrl(p);
-    caps.TTS_API_KEY = resolveKey(p);
     caps.TTS_MODEL = tts.model || "";
     caps.TTS_VOICE = tts.voice || "";
   } else {
-    clearCapVars("TTS", ["BASE_URL", "API_KEY", "MODEL", "VOICE"]);
+    clearCapVars("TTS", ["BASE_URL", "MODEL", "VOICE"]);
   }
 
   // ── STT ──
@@ -156,11 +158,10 @@ export function writeCapabilityVars(spec: StackSpec, stackDir: string, homeDir?:
   if (stt?.enabled) {
     const p = stt.provider || llmP;
     caps.STT_BASE_URL = resolveUrl(p);
-    caps.STT_API_KEY = resolveKey(p);
     caps.STT_MODEL = stt.model || "";
     caps.STT_LANGUAGE = stt.language || "";
   } else {
-    clearCapVars("STT", ["BASE_URL", "API_KEY", "MODEL", "LANGUAGE"]);
+    clearCapVars("STT", ["BASE_URL", "MODEL", "LANGUAGE"]);
   }
 
   // ── Reranking ──
@@ -170,11 +171,10 @@ export function writeCapabilityVars(spec: StackSpec, stackDir: string, homeDir?:
     caps.OP_CAP_RERANKING_PROVIDER = p;
     caps.OP_CAP_RERANKING_MODEL = rr.model || "";
     caps.OP_CAP_RERANKING_BASE_URL = resolveUrl(p);
-    caps.OP_CAP_RERANKING_API_KEY = resolveKey(p);
     caps.OP_CAP_RERANKING_TOP_K = rr.topK ? String(rr.topK) : "";
     caps.OP_CAP_RERANKING_TOP_N = rr.topN ? String(rr.topN) : "";
   } else {
-    clearCapVars("OP_CAP_RERANKING", ["PROVIDER", "MODEL", "BASE_URL", "API_KEY", "TOP_K", "TOP_N"]);
+    clearCapVars("OP_CAP_RERANKING", ["PROVIDER", "MODEL", "BASE_URL", "TOP_K", "TOP_N"]);
   }
 
   // Merge into state/stack.env

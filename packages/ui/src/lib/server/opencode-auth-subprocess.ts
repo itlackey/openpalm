@@ -8,9 +8,10 @@
  */
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
-import { mkdirSync, mkdtempSync, symlinkSync, existsSync, copyFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, symlinkSync, existsSync, copyFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir, homedir } from 'node:os';
+import { tmpdir } from 'node:os';
+import { getState } from './state.js';
 
 type AuthServerState = {
 	baseUrl?: string;
@@ -97,7 +98,6 @@ async function startServer() {
 
 function createWizardStyleHome() {
 	const homeDir = mkdtempSync(join(tmpdir(), 'ocp-auth-'));
-	const home = homedir();
 	const shareDir = join(homeDir, '.local', 'share', 'opencode');
 	const configDir = join(homeDir, '.config', 'opencode');
 	const stateDir = join(homeDir, '.local', 'state', 'opencode');
@@ -106,13 +106,24 @@ function createWizardStyleHome() {
 	mkdirSync(configDir, { recursive: true });
 	mkdirSync(stateDir, { recursive: true });
 
-	const authSrc = join(home, '.local/share/opencode', 'auth.json');
+	// Symlink auth.json → the canonical OpenCode credential file at
+	// ${OP_HOME}/config/auth.json. This is the same file the assistant
+	// container bind-mounts, so any token an OAuth flow writes via this
+	// subprocess lands where the chat assistant can read it on next start.
+	const opState = getState();
+	const authSrc = join(opState.configDir, 'auth.json');
 	const authDst = join(shareDir, 'auth.json');
-	if (existsSync(authSrc) && !existsSync(authDst)) {
+	if (!existsSync(authSrc)) {
+		// OpenCode requires the file to exist; ensure an empty JSON object.
+		try { writeFileSync(authSrc, '{}\n', { mode: 0o600 }); } catch { /* best-effort */ }
+	}
+	if (!existsSync(authDst)) {
 		symlinkSync(authSrc, authDst);
 	}
 
-	const configSrc = join(home, '.config/opencode', 'opencode.json');
+	// Project config (opencode.json) — copy from the canonical location so
+	// the subprocess can see the same provider catalog the assistant uses.
+	const configSrc = join(opState.configDir, 'assistant', 'opencode.json');
 	const configDst = join(configDir, 'opencode.json');
 	if (existsSync(configSrc) && !existsSync(configDst)) {
 		copyFileSync(configSrc, configDst);

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   validateSetupSpec,
   buildSecretsFromSetup,
+  buildAuthJsonFromSetup,
   buildSystemSecretsFromSetup,
   performSetup,
 } from "./setup.js";
@@ -232,40 +233,13 @@ describe("buildSecretsFromSetup", () => {
     expect(secrets.OWNER_EMAIL).toBeUndefined();
   });
 
-  it("maps API key to correct env var", () => {
+  it("does NOT include provider API keys in stack.env updates", () => {
+    // Provider API keys now live in OpenCode's auth.json — buildSecretsFromSetup
+    // returns only non-credential vars. See buildAuthJsonFromSetup for the key flow.
     const spec = makeValidSpec();
     const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
-    expect(secrets.OPENAI_API_KEY).toBe("sk-test-key-123");
-  });
-
-  it("falls back to process.env when apiKey is empty", () => {
-    const saved = process.env.OPENAI_API_KEY;
-    process.env.OPENAI_API_KEY = "sk-from-env";
-    try {
-      const caps: SetupConnection[] = [
-        { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "" },
-      ];
-      const secrets = buildSecretsFromSetup(caps);
-      expect(secrets.OPENAI_API_KEY).toBe("sk-from-env");
-    } finally {
-      if (saved !== undefined) process.env.OPENAI_API_KEY = saved;
-      else delete process.env.OPENAI_API_KEY;
-    }
-  });
-
-  it("spec apiKey takes precedence over process.env", () => {
-    const saved = process.env.OPENAI_API_KEY;
-    process.env.OPENAI_API_KEY = "sk-from-env";
-    try {
-      const caps: SetupConnection[] = [
-        { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-from-spec" },
-      ];
-      const secrets = buildSecretsFromSetup(caps);
-      expect(secrets.OPENAI_API_KEY).toBe("sk-from-spec");
-    } finally {
-      if (saved !== undefined) process.env.OPENAI_API_KEY = saved;
-      else delete process.env.OPENAI_API_KEY;
-    }
+    expect(secrets.OPENAI_API_KEY).toBeUndefined();
+    expect(secrets.ANTHROPIC_API_KEY).toBeUndefined();
   });
 
   it("does not include Ollama base URL in user secrets when ollamaEnabled (lives in stack.env via OP_CAP_*)", () => {
@@ -276,6 +250,62 @@ describe("buildSecretsFromSetup", () => {
     // These are no longer written to user.env — they live in stack.env via OP_CAP_* vars
     expect(secrets.SYSTEM_LLM_BASE_URL).toBeUndefined();
     expect(secrets.OPENAI_BASE_URL).toBeUndefined();
+  });
+});
+
+describe("buildAuthJsonFromSetup", () => {
+  it("maps provider id → apiKey from the spec", () => {
+    const conns: SetupConnection[] = [
+      { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-from-spec" },
+      { id: "anthropic-1", name: "Anthropic", provider: "anthropic", baseUrl: "", apiKey: "sk-ant" },
+    ];
+    const keys = buildAuthJsonFromSetup(conns);
+    expect(keys.openai).toBe("sk-from-spec");
+    expect(keys.anthropic).toBe("sk-ant");
+  });
+
+  it("falls back to process.env when spec apiKey is empty", () => {
+    const saved = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "sk-from-env";
+    try {
+      const conns: SetupConnection[] = [
+        { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "" },
+      ];
+      const keys = buildAuthJsonFromSetup(conns);
+      expect(keys.openai).toBe("sk-from-env");
+    } finally {
+      if (saved !== undefined) process.env.OPENAI_API_KEY = saved;
+      else delete process.env.OPENAI_API_KEY;
+    }
+  });
+
+  it("spec apiKey takes precedence over process.env", () => {
+    const saved = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "sk-from-env";
+    try {
+      const conns: SetupConnection[] = [
+        { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "sk-from-spec" },
+      ];
+      const keys = buildAuthJsonFromSetup(conns);
+      expect(keys.openai).toBe("sk-from-spec");
+    } finally {
+      if (saved !== undefined) process.env.OPENAI_API_KEY = saved;
+      else delete process.env.OPENAI_API_KEY;
+    }
+  });
+
+  it("skips connections without a key in either spec or env", () => {
+    const conns: SetupConnection[] = [
+      { id: "openai-1", name: "OpenAI", provider: "openai", baseUrl: "", apiKey: "" },
+    ];
+    const saved = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    try {
+      const keys = buildAuthJsonFromSetup(conns);
+      expect(keys.openai).toBeUndefined();
+    } finally {
+      if (saved !== undefined) process.env.OPENAI_API_KEY = saved;
+    }
   });
 });
 

@@ -22,6 +22,7 @@ import {
   updateSystemSecretsEnv,
   ensureOpenCodeConfig,
   readStackEnv,
+  writeAuthJsonProviderKeys,
 } from "./secrets.js";
 import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { createState } from "./lifecycle.js";
@@ -83,6 +84,13 @@ const PROVIDER_BASE_URL_ENV: Record<string, string> = {
   "openai-compatible": "OPENAI_COMPATIBLE_BASE_URL",
 };
 
+/**
+ * Build the stack.env update payload from a setup spec. Provider API
+ * keys are NOT included here — credentials live in OpenCode's auth.json
+ * (see buildAuthJsonFromSetup), not stack.env. This function returns
+ * only the non-credential vars: owner identity, provider base-URL
+ * overrides (consumed by writeCapabilityVars), and similar.
+ */
 export function buildSecretsFromSetup(
   connections: SetupConnection[],
   owner?: { name?: string; email?: string },
@@ -94,12 +102,6 @@ export function buildSecretsFromSetup(
   if (ownerEmail) updates.OWNER_EMAIL = ownerEmail;
 
   for (const cap of connections) {
-    // API key: spec value takes precedence, then fall back to environment
-    const envVar = PROVIDER_KEY_MAP[cap.provider];
-    if (envVar) {
-      const key = cap.apiKey || process.env[envVar] || "";
-      if (key) updates[envVar] = key;
-    }
     // Persist user-configured base URL for any provider so writeCapabilityVars can resolve it
     if (cap.baseUrl) {
       const urlEnv = PROVIDER_BASE_URL_ENV[cap.provider];
@@ -110,32 +112,23 @@ export function buildSecretsFromSetup(
 }
 
 /**
- * Read auth.json and extract API keys for OAuth-authenticated providers.
- * This fills the gap where OAuth auth writes tokens to auth.json but
- * not to stack.env — channels and other services need them as env vars.
+ * Build the auth.json payload from a setup spec. Returns a record of
+ * `{ providerId: apiKey }` ready to feed into writeAuthJsonProviderKeys.
+ * Pulls keys from the spec first, falling back to the host process
+ * environment for the canonical env var name (e.g. OPENAI_API_KEY for
+ * provider "openai") so operators can preload keys via env before
+ * running the wizard.
  */
-export function extractAuthJsonKeys(stateDir: string): Record<string, string> {
-  const authJsonPath = `${stateDir}/auth.json`;
-  if (!existsSync(authJsonPath)) return {};
-  try {
-    const raw = readFileSync(authJsonPath, "utf-8").trim();
-    if (!raw || raw === "{}") return {};
-    const auth = JSON.parse(raw) as Record<string, unknown>;
-    const updates: Record<string, string> = {};
-    for (const [provider, entry] of Object.entries(auth)) {
-      if (!entry || typeof entry !== "object") continue;
-      const record = entry as Record<string, unknown>;
-      // OpenCode stores API keys as { token: "..." } or { apiKey: "..." }
-      const token = (record.token ?? record.apiKey ?? record.api_key ?? record.key) as string | undefined;
-      if (token && typeof token === "string") {
-        const envVar = PROVIDER_KEY_MAP[provider];
-        if (envVar) updates[envVar] = token;
-      }
-    }
-    return updates;
-  } catch {
-    return {};
+export function buildAuthJsonFromSetup(
+  connections: SetupConnection[],
+): Record<string, string> {
+  const keys: Record<string, string> = {};
+  for (const cap of connections) {
+    const envVar = PROVIDER_KEY_MAP[cap.provider];
+    const key = cap.apiKey || (envVar ? process.env[envVar] : undefined) || "";
+    if (key) keys[cap.provider] = key;
   }
+  return keys;
 }
 
 export function buildSystemSecretsFromSetup(
@@ -204,16 +197,9 @@ export async function performSetup(
     ? connections.map((c) => c.provider === "ollama" ? { ...c, baseUrl: OLLAMA_INSTACK_URL } : c)
     : connections;
   const updates = buildSecretsFromSetup(effectiveConnections, owner);
+  const providerKeys = buildAuthJsonFromSetup(effectiveConnections);
 
-  // Merge OAuth-authenticated provider keys from auth.json
-  // (OAuth flows store tokens in auth.json, not in the setup payload)
-  const oauthKeys = extractAuthJsonKeys(state.configDir);
-  for (const [key, value] of Object.entries(oauthKeys)) {
-    // Only fill in keys that weren't already provided via API key entry
-    if (!updates[key]) updates[key] = value;
-  }
-
-  // Persist vault env files
+  // Persist vault env files + OpenCode auth.json
   try {
     ensureHomeDirs();
     ensureSecrets(state);
@@ -227,10 +213,13 @@ export async function performSetup(
     }
     updateSecretsEnv(state, updates);
     updateSystemSecretsEnv(state, buildSystemSecretsFromSetup(security.adminToken, existingSystemEnv));
+    // Provider API keys land in OpenCode's auth.json (bind-mounted into
+    // the assistant container) — never in stack.env.
+    writeAuthJsonProviderKeys(state, providerKeys);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error("failed to update vault env files", { error: message });
-    return { ok: false, error: `Failed to update vault env files: ${message}` };
+    logger.error("failed to persist setup outputs", { error: message });
+    return { ok: false, error: `Failed to persist setup outputs: ${message}` };
   }
 
   state.adminToken = security.adminToken;

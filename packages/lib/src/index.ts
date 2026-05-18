@@ -108,6 +108,7 @@ export {
   PLAIN_CONFIG_KEYS,
   ensureSecrets,
   updateSecretsEnv,
+  writeAuthJsonProviderKeys,
   readStackEnv,
   patchSecretsEnvFile,
   maskSecretValue,
