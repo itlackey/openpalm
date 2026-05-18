@@ -11,14 +11,13 @@ import {
   getOpenCodeClient,
 } from '$lib/server/helpers.js';
 import { getState } from '$lib/server/state.js';
-import { appendAudit, createLogger, patchSecretsEnvFile } from '@openpalm/lib';
+import { appendAudit, createLogger } from '@openpalm/lib';
 
 const logger = createLogger('opencode.auth');
 
 // ── API key validation ────────────────────────────────────────────────
 const MAX_API_KEY_LENGTH = 512;
 const API_KEY_PATTERN = /^[\x20-\x7E]+$/; // printable ASCII only
-const ENV_VAR_PATTERN = /^[A-Z][A-Z0-9_]{0,127}$/;
 const OAUTH_SESSION_TTL_MS = 600_000;
 const MAX_PROVIDER_ID_LENGTH = 128;
 const PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_.-]+$/;
@@ -119,25 +118,19 @@ export const POST: RequestHandler = async (event) => {
       return errorResponse(400, 'bad_request', keyError, {}, requestId);
     }
 
-    // Write to stack.env using the env var name from the provider
-    const envVar = typeof body.envVar === 'string' ? body.envVar : '';
-    if (envVar && ENV_VAR_PATTERN.test(envVar)) {
-      try {
-        patchSecretsEnvFile(state.stackDir, { [envVar]: apiKey });
-      } catch (e) {
-        logger.warn('Failed to write API key to vault', { providerId, envVar, requestId, error: String(e) });
-        appendAudit(state, actor, 'opencode.auth.api_key', { providerId, error: 'vault_write_failed' }, false, requestId, callerType);
-        return errorResponse(500, 'internal_error', 'Failed to save API key', {}, requestId);
-      }
+    // Connections is a thin wrapper around OpenCode's auth API — the
+    // single source of truth for provider credentials is OpenCode's
+    // own auth.json, which is bind-mounted into the assistant
+    // container. We do NOT write the key to stack.env or the akm user
+    // vault; those are separate concerns (assistant env / akm tools).
+    const result = await getOpenCodeClient().setProviderApiKey(providerId, apiKey);
+    if (!result.ok) {
+      appendAudit(state, actor, 'opencode.auth.api_key', { providerId, error: result.code }, false, requestId, callerType);
+      return errorResponse(result.status, result.code, result.message, {}, requestId);
     }
 
-    // Also register with OpenCode (non-critical)
-    await getOpenCodeClient().setProviderApiKey(providerId, apiKey).catch((e) => {
-      logger.warn('Failed to register API key with OpenCode', { providerId, requestId, error: String(e) });
-    });
-
     appendAudit(state, actor, 'opencode.auth.api_key', { providerId }, true, requestId, callerType);
-    logger.info('provider API key saved', { providerId, requestId });
+    logger.info('provider API key saved via OpenCode /auth/{providerID}', { providerId, requestId });
 
     return jsonResponse(200, { ok: true, mode: 'api_key' }, requestId);
   }

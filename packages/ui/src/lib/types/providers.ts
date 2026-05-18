@@ -27,7 +27,6 @@ export type ProviderModelOption = {
 };
 
 export type ProviderOptionView = {
-	apiKey?: string;
 	baseURL?: string;
 	headers?: Record<string, string>;
 	timeout?: number;

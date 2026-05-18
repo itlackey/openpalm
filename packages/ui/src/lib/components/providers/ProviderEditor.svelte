@@ -134,6 +134,46 @@
 		void submitAction(actionName, new FormData(form));
 	}
 
+	/**
+	 * Save an API key by calling OpenCode's PUT /auth/{providerID} wrapper.
+	 * OpenCode persists the credential to its own auth.json store — that
+	 * file is bind-mounted into the assistant container, so the chat
+	 * assistant picks the key up on the next OpenCode restart without
+	 * any further plumbing.
+	 */
+	async function submitApiKey(event: SubmitEvent) {
+		event.preventDefault();
+		const form = event.currentTarget as HTMLFormElement;
+		const input = form.querySelector(`#apiKey-${provider.id}`) as HTMLInputElement | null;
+		const apiKey = input?.value.trim() ?? '';
+		if (!apiKey) {
+			actionResult = { ok: false, message: 'Enter an API key before saving.' };
+			return;
+		}
+		submitting = true;
+		actionResult = undefined;
+		try {
+			const response = await fetch(`/admin/opencode/providers/${encodeURIComponent(provider.id)}/auth`, {
+				method: 'POST',
+				headers: { ...buildHeaders(), 'content-type': 'application/json' },
+				body: JSON.stringify({ mode: 'api_key', apiKey })
+			});
+			const result = (await response.json()) as ProviderActionResult & { mode?: string };
+			if (response.ok) {
+				actionResult = { ok: true, message: 'API key saved to OpenCode (auth.json).', selectedProviderId: provider.id };
+				if (input) input.value = '';
+				setTimeout(() => { if (actionResult?.ok === true) actionResult = undefined; }, 4000);
+				onaction?.(actionResult);
+			} else {
+				actionResult = { ok: false, message: result.message ?? `Save failed (${response.status})` };
+			}
+		} catch (err) {
+			actionResult = { ok: false, message: err instanceof Error ? err.message : 'Request failed.' };
+		} finally {
+			submitting = false;
+		}
+	}
+
 	onDestroy(() => { stopPolling(); });
 
 	const currentMainModelId = $derived(
@@ -251,22 +291,37 @@
 		</section>
 	</div>
 
-	<!-- Connection settings -->
+	<!-- API key — persisted directly to OpenCode's auth.json -->
+	<section class="panel">
+		<div class="panel-heading">
+			<div>
+				<h3 class="panel-title">API key</h3>
+				<p class="panel-desc">Sent to OpenCode's <code>PUT /auth/{provider.id}</code>. OpenCode stores it in its own auth.json (bind-mounted into the assistant container) — no separate vault entry needed.</p>
+			</div>
+		</div>
+
+		<form class="settings-grid" autocomplete="off" onsubmit={submitApiKey}>
+			<div class="form-field form-field--wide">
+				<label class="form-label" for="apiKey-{provider.id}">API key</label>
+				<input id="apiKey-{provider.id}" name="apiKey" type="password" autocomplete="new-password" class="form-input" placeholder={provider.connected ? 'Replace existing key' : 'Paste an API key'} />
+			</div>
+			<div class="action-row">
+				<button class="btn btn-primary btn-sm" type="submit" disabled={submitting}>Save API key</button>
+			</div>
+		</form>
+	</section>
+
+	<!-- Connection settings — non-credential options written to opencode.json -->
 	<section class="panel">
 		<div class="panel-heading">
 			<div>
 				<h3 class="panel-title">Connection settings</h3>
-				<p class="panel-desc">Written to your local OpenCode config. When you set an API key here, it's also mirrored into the akm user vault so the assistant container picks it up on restart.</p>
+				<p class="panel-desc">Non-credential options written to your local OpenCode config (<code>opencode.json</code>).</p>
 			</div>
 		</div>
 
 		<form class="settings-grid" autocomplete="off" onsubmit={(e) => handleFormSubmit('saveProvider', e)}>
 			<input type="hidden" name="providerId" value={provider.id} />
-
-			<div class="form-field">
-				<label class="form-label" for="apiKey-{provider.id}">API key</label>
-				<input id="apiKey-{provider.id}" name="apiKey" type="password" autocomplete="new-password" class="form-input" value={provider.options.apiKey ?? ''} placeholder="Paste an API key if you want project-local auth" />
-			</div>
 
 			<div class="form-field">
 				<label class="form-label" for="baseURL-{provider.id}">Base URL</label>

@@ -7,18 +7,12 @@ import {
 	actionSuccess,
 	actionFailure,
 } from '$lib/server/opencode/index.js';
-import { getState } from '$lib/server/state.js';
-import { createLogger, writeAkmVaultKey } from '@openpalm/lib';
-import { PROVIDER_KEY_MAP } from '@openpalm/lib/provider-constants';
 import {
 	asRecord,
 	asStringOrEmpty,
 	updateBooleanOption,
 	updateNumberOption,
-	updateStringOption,
 } from '../_helpers.js';
-
-const logger = createLogger('admin.providers.save');
 
 /**
  * Parse a `headers` payload into a flat string→string record. Accepts either:
@@ -49,15 +43,12 @@ function parseHeaders(raw: unknown): Record<string, string> | null {
 }
 
 /**
- * POST /admin/providers/save — Save connection settings for a provider.
- *
- * Writes the provider config to the user's local OpenCode config
- * (apiKey/baseURL/timeout/headers/setCacheKey/enterpriseUrl). When an
- * apiKey is supplied AND we know the canonical env var name for the
- * provider (PROVIDER_KEY_MAP), we ALSO mirror the key into the akm
- * user vault so the assistant container picks it up via the standard
- * env injection — without this mirror, Connections-tab saves only
- * affect the local `opencode` CLI, not the chat assistant.
+ * POST /admin/providers/save — Save non-credential connection settings
+ * for a provider into opencode.json (baseURL, headers, timeout,
+ * setCacheKey, enterpriseUrl). Credentials are NOT handled here —
+ * the apiKey field POSTs separately to /admin/opencode/providers/:id/auth
+ * which calls OpenCode's `PUT /auth/{providerID}` and lets OpenCode
+ * persist the credential to its own auth.json store.
  */
 export const POST: RequestHandler = (event) => withAdminBody(event, async ({ requestId, body }) => {
 	try {
@@ -72,10 +63,16 @@ export const POST: RequestHandler = (event) => withAdminBody(event, async ({ req
 		const currentOptions = asRecord(currentEntry?.options) ?? {};
 		const nextOptions = { ...currentOptions };
 
-		const apiKey = asStringOrEmpty(body.apiKey);
-		updateStringOption(nextOptions, 'apiKey', apiKey);
-		updateStringOption(nextOptions, 'baseURL', asStringOrEmpty(body.baseURL));
-		updateStringOption(nextOptions, 'enterpriseUrl', asStringOrEmpty(body.enterpriseUrl));
+		// Strip any apiKey that may still be present in the existing
+		// options blob — Phase D moved credentials out of opencode.json.
+		// Leaving them here would shadow auth.json and re-introduce the
+		// split-source-of-truth bug.
+		delete nextOptions.apiKey;
+
+		const baseURL = asStringOrEmpty(body.baseURL);
+		const enterpriseUrl = asStringOrEmpty(body.enterpriseUrl);
+		if (baseURL) nextOptions.baseURL = baseURL; else delete nextOptions.baseURL;
+		if (enterpriseUrl) nextOptions.enterpriseUrl = enterpriseUrl; else delete nextOptions.enterpriseUrl;
 		updateNumberOption(nextOptions, 'timeout', asStringOrEmpty(body.timeout));
 		updateBooleanOption(nextOptions, 'setCacheKey', body.setCacheKey === 'on' || body.setCacheKey === true);
 
@@ -90,29 +87,9 @@ export const POST: RequestHandler = (event) => withAdminBody(event, async ({ req
 		config.provider = providerConfig;
 		await patchConfig(config);
 
-		// Mirror the apiKey into the akm user vault so the assistant
-		// container receives it via env injection. Best-effort: failure
-		// here doesn't fail the save (the opencode.json write succeeded).
-		let mirrored: string | null = null;
-		const envVar = PROVIDER_KEY_MAP[providerId];
-		if (apiKey && envVar) {
-			try {
-				const state = getState();
-				const ok = await writeAkmVaultKey(state, envVar, apiKey);
-				if (ok) mirrored = envVar;
-				else logger.warn('vault mirror skipped (akm unavailable)', { providerId, envVar, requestId });
-			} catch (err) {
-				logger.warn('vault mirror failed', { providerId, envVar, reason: String(err), requestId });
-			}
-		}
-
-		const message = mirrored
-			? `Provider settings saved. API key mirrored to akm user vault (${mirrored}) — recreate the assistant to apply.`
-			: 'Provider settings saved to your local OpenCode config.';
-
 		return jsonResponse(
 			200,
-			actionSuccess(message, providerId),
+			actionSuccess('Provider settings saved.', providerId),
 			requestId,
 		);
 	} catch (error) {

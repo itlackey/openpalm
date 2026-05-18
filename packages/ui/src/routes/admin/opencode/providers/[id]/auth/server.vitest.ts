@@ -161,30 +161,32 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
     expect(body.mode).toBe('api_key');
   });
 
-  test('succeeds even if OpenCode rejects — vault write is primary', async () => {
-    setProviderApiKey.mockRejectedValueOnce(new Error('OpenCode down'));
+  test('returns 5xx when OpenCode rejects — auth.json is the only persistence path', async () => {
+    setProviderApiKey.mockResolvedValueOnce({ ok: false, status: 503, code: 'opencode_unreachable', message: 'OpenCode down' });
 
     const res = await POST(makeEvent('POST', {
-      body: { mode: 'api_key', apiKey: 'sk-still-saves', envVar: 'GROQ_API_KEY' },
+      body: { mode: 'api_key', apiKey: 'sk-still-saves' },
     }));
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(503);
   });
 
-  test('writes env var to config/stack/stack.env', async () => {
+  test('does NOT write to stack.env — credentials live in OpenCode auth.json only', async () => {
     setProviderApiKey.mockResolvedValueOnce({ ok: true, data: true });
 
     const res = await POST(makeEvent('POST', {
       providerId: 'groq',
-      body: { mode: 'api_key', apiKey: 'gsk-test-key', envVar: 'GROQ_API_KEY' },
+      body: { mode: 'api_key', apiKey: 'gsk-test-key' },
     }));
 
     expect(res.status).toBe(200);
-    const { readFileSync } = await import('node:fs');
+    const { existsSync, readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const { getState } = await import('$lib/server/state.js');
     const stackEnvPath = join(getState().stackDir, "stack.env");
-    expect(readFileSync(stackEnvPath, 'utf-8')).toContain('GROQ_API_KEY=gsk-test-key');
+    if (existsSync(stackEnvPath)) {
+      expect(readFileSync(stackEnvPath, 'utf-8')).not.toContain('GROQ_API_KEY=gsk-test-key');
+    }
   });
 
   // ── Invalid mode ───────────────────────────────────────────────────

@@ -167,7 +167,9 @@ function buildProviderViews(
 				models,
 				authMethods,
 				options: {
-					apiKey: asString(rawOptions.apiKey),
+					// Credentials live in OpenCode's auth.json (managed via /auth/{providerID}),
+					// not in opencode.json. Don't surface a stray apiKey here even if a legacy
+					// config still has one — Connections never offers to edit it.
 					baseURL: asString(rawOptions.baseURL),
 					headers: asStringRecord(rawOptions.headers),
 					timeout: asNumber(rawOptions.timeout),

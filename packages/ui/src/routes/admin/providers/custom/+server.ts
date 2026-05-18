@@ -1,12 +1,15 @@
 import type { RequestHandler } from './$types';
-import { requireAdmin, jsonResponse, getRequestId, parseJsonBody, jsonBodyError } from '$lib/server/helpers.js';
+import { requireAdmin, jsonResponse, getRequestId, parseJsonBody, jsonBodyError, getOpenCodeClient } from '$lib/server/helpers.js';
 import {
 	getCurrentConfig,
 	patchConfig,
 	actionSuccess,
 	actionFailure,
 } from '$lib/server/opencode/index.js';
+import { createLogger } from '@openpalm/lib';
 import { asStringOrEmpty, buildModelConfig, parseHeaders, parseModels } from '../_helpers.js';
+
+const logger = createLogger('admin.providers.custom');
 
 /** Allowed format for a custom provider id: lowercase letters, digits, hyphens, underscores. */
 const CUSTOM_PROVIDER_ID_PATTERN = /^[a-z0-9_-]+$/;
@@ -61,12 +64,15 @@ export const POST: RequestHandler = async (event) => {
 			);
 		}
 
+		// Register the provider shell (npm, name, baseURL, headers, models)
+		// in opencode.json. The apiKey is NOT stored here — credentials go
+		// through OpenCode's auth endpoint so auth.json is the single
+		// source of truth.
 		const entry: Record<string, unknown> = {
 			npm: '@ai-sdk/openai-compatible',
 			name: displayName,
 			options: {
 				baseURL,
-				...(apiKey ? { apiKey } : {}),
 				...(Object.keys(headers).length > 0 ? { headers } : {}),
 			},
 		};
@@ -78,9 +84,23 @@ export const POST: RequestHandler = async (event) => {
 		config.provider = providerConfig;
 		await patchConfig(config);
 
+		// If the operator supplied an API key, route it to auth.json via
+		// OpenCode. Best-effort — the provider shell write is the primary
+		// success path; auth.json can be set later via the Connections tab.
+		if (apiKey) {
+			try {
+				const result = await getOpenCodeClient().setProviderApiKey(providerId, apiKey);
+				if (!result.ok) {
+					logger.warn('custom provider apiKey save failed', { providerId, code: result.code, message: result.message, requestId });
+				}
+			} catch (err) {
+				logger.warn('custom provider apiKey threw', { providerId, error: String(err), requestId });
+			}
+		}
+
 		return jsonResponse(
 			200,
-			actionSuccess('Custom provider saved to your OpenCode config.', providerId),
+			actionSuccess('Custom provider saved.', providerId),
 			requestId,
 		);
 	} catch (error) {
