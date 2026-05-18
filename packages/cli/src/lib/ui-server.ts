@@ -66,10 +66,10 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
 
   const state = ensureValidState();
   const { adminToken } = state;
-  if (!adminToken) {
-    console.error('UI token not configured. Run `openpalm install` first.');
-    process.exit(1);
-  }
+  // OP_UI_TOKEN is unset during first-run install — the SvelteKit hooks
+  // detect that and redirect /* to /setup, where the wizard generates
+  // the token. Don't short-circuit here, or the install wizard can
+  // never come up.
 
   // Start OpenCode subprocess (non-fatal — UI still works without it)
   let openCodeSub: OpenCodeSubprocess | null = null;
