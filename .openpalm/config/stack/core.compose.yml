@@ -90,7 +90,7 @@ services:
       GOOGLE_WORKSPACE_CLI_CONFIG_DIR: /etc/vault/.gws
       GOOGLE_WORKSPACE_PROJECT_ID: ${GOOGLE_WORKSPACE_PROJECT_ID:-}
     ports:
-      - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3900}:4096"
+      - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
       # SSH port (2222 → :22) is published only when the `ssh` addon is
       # enabled. The overlay at registry/addons/ssh/compose.yml adds the
       # port binding and flips OPENCODE_ENABLE_SSH=1 so sshd starts
