@@ -21,6 +21,25 @@ interface BareRunOpts {
 }
 
 /**
+ * Probe the assistant container's healthcheck to decide whether the stack
+ * is already up. We hit the assistant's published host port (default 3800,
+ * overridable via OP_ASSISTANT_PORT) rather than introspect Docker so this
+ * works without docker socket access and respects whatever overrides are
+ * active.
+ */
+async function isAssistantHealthy(): Promise<boolean> {
+  const port = process.env.OP_ASSISTANT_PORT ?? '3800';
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/health`, {
+      signal: AbortSignal.timeout(1500),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Smart default: `openpalm` (no subcommand) detects state and does the
  * right thing automatically.
  *
@@ -50,11 +69,17 @@ async function autoRun(opts: BareRunOpts = {}): Promise<void> {
     return;
   }
 
-  // Ensure the stack is up (idempotent — no-op if already running).
-  const { runStartAction } = await import('./commands/start.ts');
-  await runStartAction([]).catch((err) => {
-    console.warn(`Warning: failed to ensure stack is running: ${err instanceof Error ? err.message : String(err)}`);
-  });
+  // Ensure the stack is up. Skip when the assistant is already healthy —
+  // calling `docker compose up -d` would otherwise recreate containers
+  // (when compose config differs, e.g. dev overlays add port bindings)
+  // and tear down test/dev port mappings.
+  const stackAlreadyUp = await isAssistantHealthy();
+  if (!stackAlreadyUp) {
+    const { runStartAction } = await import('./commands/start.ts');
+    await runStartAction([]).catch((err) => {
+      console.warn(`Warning: failed to ensure stack is running: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }
 
   // Start the UI host server in the foreground (blocks until SIGINT/SIGTERM).
   const { startUIServer } = await import('./lib/ui-server.ts');

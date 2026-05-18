@@ -17,7 +17,7 @@
 
 import { expect, test } from "@playwright/test";
 
-const ADMIN_URL = process.env.ADMIN_URL ?? "http://localhost:3880";
+const ADMIN_URL = process.env.ADMIN_URL ?? "http://127.0.0.1:3880";
 
 function adminHeaders(): Record<string, string> {
   return {

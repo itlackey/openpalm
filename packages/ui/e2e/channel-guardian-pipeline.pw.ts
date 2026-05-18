@@ -41,7 +41,9 @@ const GUARDIAN_ENV_PATH = resolve(REPO_ROOT, '.dev/config/stack/guardian.env');
  * at their native paths (/health, /channel/inbound).
  */
 const GUARDIAN_PORT = process.env.OP_GUARDIAN_PORT ?? '8180';
-const GUARDIAN_URL = `http://localhost:${GUARDIAN_PORT}`;
+// Use 127.0.0.1 explicitly — compose binds guardian to 127.0.0.1:8180 (IPv4 only),
+// and `localhost` may resolve to ::1 first → ECONNREFUSED.
+const GUARDIAN_URL = `http://127.0.0.1:${GUARDIAN_PORT}`;
 
 const TEST_CHANNEL = 'e2etest';
 const TEST_SECRET = `e2e-test-secret-${Date.now()}`;

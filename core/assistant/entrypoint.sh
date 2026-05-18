@@ -266,11 +266,14 @@ maybe_unset_unused_provider_keys() {
     esac
   done
 
-  [ "$anthropic_used" = "0" ] && unset ANTHROPIC_API_KEY
-  [ "$groq_used"      = "0" ] && unset GROQ_API_KEY
-  [ "$mistral_used"   = "0" ] && unset MISTRAL_API_KEY
-  [ "$google_used"    = "0" ] && unset GOOGLE_API_KEY
-  [ "$openai_used"    = "0" ] && unset OPENAI_API_KEY
+  # Use `if` blocks rather than `[ ... ] && cmd` chains — under `set -e`,
+  # the latter exits the script when the test fails (because `[` is the
+  # last executed command in the && list, and its non-zero exit propagates).
+  if [ "$anthropic_used" = "0" ]; then unset ANTHROPIC_API_KEY; fi
+  if [ "$groq_used"      = "0" ]; then unset GROQ_API_KEY;      fi
+  if [ "$mistral_used"   = "0" ]; then unset MISTRAL_API_KEY;   fi
+  if [ "$google_used"    = "0" ]; then unset GOOGLE_API_KEY;    fi
+  if [ "$openai_used"    = "0" ]; then unset OPENAI_API_KEY;    fi
 }
 
 start_opencode() {

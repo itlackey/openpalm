@@ -76,15 +76,16 @@ start_ui_host() {
 	OP_HOST_UI_PORT="${UI_PORT}" \
 		bun run packages/cli/src/main.ts --no-open >"${UI_LOG_FILE}" 2>&1 &
 	echo $! >"${UI_PID_FILE}"
-	# Wait for /health
-	for i in $(seq 1 30); do
+	# Wait for /health — the bare `openpalm` autoRun also runs docker
+	# compose up -d before starting the UI, so allow time for recreate
+	for i in $(seq 1 120); do
 		if curl -sf "http://127.0.0.1:${UI_PORT}/health" >/dev/null 2>&1; then
 			echo "UI host process ready at http://127.0.0.1:${UI_PORT}"
 			return 0
 		fi
 		sleep 1
 	done
-	echo "ERROR: UI host process did not become ready within 30s" >&2
+	echo "ERROR: UI host process did not become ready within 120s" >&2
 	tail -30 "${UI_LOG_FILE}" >&2
 	return 1
 }

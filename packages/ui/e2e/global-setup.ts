@@ -51,15 +51,10 @@ export default async function globalSetup() {
 		}
 	}
 
+	// Backup stack.env so global-teardown can restore it if any test mutates it.
+	// (Pre-v0.11.0 this also flipped OP_SETUP_COMPLETE=false for wizard tests;
+	// those tests were removed when the setup wizard migrated into SvelteKit,
+	// so the override is no longer necessary and broke post-setup tests by
+	// triggering the setup guard's redirect to /setup.)
 	writeFileSync(BACKUP, content);
-	// Use in-place write to preserve the file inode. Docker bind mounts
-	// (guardian secrets) reference the original inode — a regular
-	// writeFileSync would create a new file invisible to the container.
-	writeInPlace(
-		STACK_ENV,
-		content.replace(
-			/^OP_SETUP_COMPLETE=true$/m,
-			"OP_SETUP_COMPLETE=false"
-		)
-	);
 }
