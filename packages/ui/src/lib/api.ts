@@ -174,6 +174,31 @@ export async function toggleAddon(
   return (await res.json()) as { ok: boolean; changed: boolean };
 }
 
+export type AddonCredentialField = {
+  key: string;
+  sensitive: boolean;
+  description: string;
+  default: string;
+  set: boolean;
+  value: string;
+};
+
+export async function fetchAddonCredentials(name: string): Promise<AddonCredentialField[]> {
+  const res = await requireOk(await request('GET', `/admin/addons/${encodeURIComponent(name)}/credentials`));
+  const data = (await res.json()) as { fields: AddonCredentialField[] };
+  return data.fields;
+}
+
+export async function saveAddonCredentials(
+  name: string,
+  values: Record<string, string>
+): Promise<{ ok: boolean; updated: string[] }> {
+  const res = await requireOk(
+    await request('POST', `/admin/addons/${encodeURIComponent(name)}/credentials`, { values })
+  );
+  return (await res.json()) as { ok: boolean; updated: string[] };
+}
+
 // ── Audit Log ───────────────────────────────────────────────────────
 
 export async function fetchAuditLog(

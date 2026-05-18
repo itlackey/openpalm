@@ -36,6 +36,13 @@
 		return oauthState.inputs?.[prompt.key] ?? defaultValue;
 	}
 
+	function headersToText(headers?: Record<string, string>): string {
+		if (!headers) return '';
+		return Object.entries(headers)
+			.map(([k, v]) => `${k}=${v}`)
+			.join('\n');
+	}
+
 	function stopPolling() {
 		if (pollHandle) { clearTimeout(pollHandle); pollHandle = undefined; }
 		if (callbackStartHandle) { clearTimeout(callbackStartHandle); callbackStartHandle = undefined; }
@@ -249,7 +256,7 @@
 		<div class="panel-heading">
 			<div>
 				<h3 class="panel-title">Connection settings</h3>
-				<p class="panel-desc">These values are written into your local OpenCode config so they stay with this project.</p>
+				<p class="panel-desc">Written to your local OpenCode config. When you set an API key here, it's also mirrored into the akm user vault so the assistant container picks it up on restart.</p>
 			</div>
 		</div>
 
@@ -266,14 +273,22 @@
 				<input id="baseURL-{provider.id}" name="baseURL" type="url" class="form-input" value={provider.options.baseURL ?? ''} placeholder="https://api.example.com/v1" />
 			</div>
 
+			{#if provider.id === 'github-copilot'}
+				<div class="form-field">
+					<label class="form-label" for="enterpriseUrl-{provider.id}">Enterprise URL</label>
+					<input id="enterpriseUrl-{provider.id}" name="enterpriseUrl" type="url" class="form-input" value={provider.options.enterpriseUrl ?? ''} placeholder="https://company.ghe.com" />
+				</div>
+			{/if}
+
 			<div class="form-field">
 				<label class="form-label" for="timeout-{provider.id}">Timeout (ms)</label>
 				<input id="timeout-{provider.id}" name="timeout" inputmode="numeric" class="form-input" value={provider.options.timeout ?? ''} placeholder="300000" />
 			</div>
 
-			<div class="form-field">
-				<label class="form-label" for="chunkTimeout-{provider.id}">Chunk timeout (ms)</label>
-				<input id="chunkTimeout-{provider.id}" name="chunkTimeout" inputmode="numeric" class="form-input" value={provider.options.chunkTimeout ?? ''} placeholder="30000" />
+			<div class="form-field form-field--wide">
+				<label class="form-label" for="headers-{provider.id}">Custom headers</label>
+				<textarea id="headers-{provider.id}" name="headers" class="form-input form-input--textarea" rows="3" placeholder={'X-Org-Id=abc123\nX-Region=us-east-1'} value={headersToText(provider.options.headers)}></textarea>
+				<span class="form-hint">One <code>KEY=VALUE</code> per line.</span>
 			</div>
 
 			<label class="checkbox-row">
@@ -516,6 +531,30 @@
 
 	.form-field--grow {
 		flex: 1;
+	}
+
+	.form-field--wide {
+		grid-column: 1 / -1;
+	}
+
+	.form-input--textarea {
+		min-height: 72px;
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		padding: var(--space-2);
+		resize: vertical;
+	}
+
+	.form-hint {
+		font-size: var(--text-xs);
+		color: var(--color-text-tertiary);
+	}
+
+	.form-hint code {
+		font-family: var(--font-mono);
+		background: var(--color-bg-tertiary);
+		padding: 1px 6px;
+		border-radius: var(--radius-sm);
 	}
 
 	.checkbox-row {

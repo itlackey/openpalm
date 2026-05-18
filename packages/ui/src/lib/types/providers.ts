@@ -31,8 +31,9 @@ export type ProviderOptionView = {
 	baseURL?: string;
 	headers?: Record<string, string>;
 	timeout?: number;
-	chunkTimeout?: number;
 	setCacheKey?: boolean;
+	/** GitHub Copilot Enterprise URL (and similar provider-specific connect targets). */
+	enterpriseUrl?: string;
 };
 
 export type ProviderView = {

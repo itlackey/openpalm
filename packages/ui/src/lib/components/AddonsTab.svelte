@@ -1,6 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fetchAddons, toggleAddon } from '$lib/api.js';
+  import {
+    fetchAddons,
+    toggleAddon,
+    fetchAddonCredentials,
+    saveAddonCredentials,
+    type AddonCredentialField,
+  } from '$lib/api.js';
 
   interface Props {
     onAuthError: () => void;
@@ -14,6 +20,14 @@
   let loading = $state(false);
   let error = $state('');
   let actionLoading = $state<string | null>(null);
+
+  // Per-addon credentials editor state (lazy — populated when expanded).
+  let expanded = $state<string | null>(null);
+  let credFields = $state<Record<string, AddonCredentialField[]>>({});
+  let credValues = $state<Record<string, Record<string, string>>>({});
+  let credLoading = $state<string | null>(null);
+  let credSaving = $state<string | null>(null);
+  let credMessage = $state<{ addon: string; type: 'ok' | 'err'; text: string } | null>(null);
 
   async function loadAddons(): Promise<void> {
     loading = true;
@@ -40,6 +54,66 @@
       error = msg;
     } finally {
       actionLoading = null;
+    }
+  }
+
+  async function toggleExpanded(name: string): Promise<void> {
+    if (expanded === name) {
+      expanded = null;
+      return;
+    }
+    expanded = name;
+    credMessage = null;
+    if (!credFields[name]) {
+      credLoading = name;
+      try {
+        const fields = await fetchAddonCredentials(name);
+        credFields[name] = fields;
+        const seed: Record<string, string> = {};
+        for (const f of fields) seed[f.key] = f.sensitive ? '' : f.value;
+        credValues[name] = seed;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('401') || msg.includes('403')) { onAuthError(); return; }
+        credMessage = { addon: name, type: 'err', text: `Could not load credentials: ${msg}` };
+      } finally {
+        credLoading = null;
+      }
+    }
+  }
+
+  async function saveCredentials(name: string): Promise<void> {
+    credSaving = name;
+    credMessage = null;
+    try {
+      // Drop empty values for sensitive fields (user didn't change them);
+      // leave non-sensitive empties so the user can clear a value.
+      const fields = credFields[name] ?? [];
+      const sensitiveKeys = new Set(fields.filter((f) => f.sensitive).map((f) => f.key));
+      const submitted: Record<string, string> = {};
+      const current = credValues[name] ?? {};
+      for (const [k, v] of Object.entries(current)) {
+        if (sensitiveKeys.has(k) && v === '') continue;
+        submitted[k] = v;
+      }
+      if (Object.keys(submitted).length === 0) {
+        credMessage = { addon: name, type: 'err', text: 'Nothing to save.' };
+        return;
+      }
+      const { updated } = await saveAddonCredentials(name, submitted);
+      credMessage = { addon: name, type: 'ok', text: `Saved ${updated.length} field(s). Recreate the addon container to apply.` };
+      // Re-fetch to refresh `set` flags
+      const fresh = await fetchAddonCredentials(name);
+      credFields[name] = fresh;
+      const reset = { ...current };
+      for (const f of fresh) if (f.sensitive) reset[f.key] = '';
+      credValues[name] = reset;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('401') || msg.includes('403')) { onAuthError(); return; }
+      credMessage = { addon: name, type: 'err', text: `Save failed: ${msg}` };
+    } finally {
+      credSaving = null;
     }
   }
 
@@ -94,6 +168,14 @@
             </span>
             <span class="addon-col addon-col--actions">
               <button
+                class="btn btn-sm btn-ghost"
+                onclick={() => void toggleExpanded(addon.name)}
+                disabled={!addon.available}
+                aria-expanded={expanded === addon.name}
+              >
+                {expanded === addon.name ? 'Hide' : 'Configure'}
+              </button>
+              <button
                 class="btn btn-sm"
                 class:btn-danger={addon.enabled}
                 class:btn-outline={!addon.enabled}
@@ -108,6 +190,45 @@
               </button>
             </span>
           </div>
+          {#if expanded === addon.name}
+            <div class="addon-creds">
+              {#if credLoading === addon.name}
+                <div class="creds-loading"><span class="spinner"></span> Loading credentials...</div>
+              {:else if (credFields[addon.name]?.length ?? 0) === 0}
+                <p class="creds-empty">This addon has no configurable env vars (compose overlay only).</p>
+              {:else}
+                <p class="creds-hint">Values are written to <code>config/stack/stack.env</code> and read by the addon container on next recreate.</p>
+                {#each credFields[addon.name] ?? [] as field (field.key)}
+                  <div class="creds-row">
+                    <label class="creds-label" for="cred-{addon.name}-{field.key}">
+                      <code>{field.key}</code>
+                      {#if field.sensitive}<span class="creds-tag">sensitive</span>{/if}
+                      {#if field.sensitive && field.set}<span class="creds-tag creds-tag--set">set</span>{/if}
+                    </label>
+                    {#if field.description}<p class="creds-desc">{field.description}</p>{/if}
+                    <input
+                      id="cred-{addon.name}-{field.key}"
+                      type={field.sensitive ? 'password' : 'text'}
+                      class="form-input"
+                      placeholder={field.sensitive ? (field.set ? '••••••• (leave empty to keep current)' : field.default) : field.default}
+                      bind:value={credValues[addon.name][field.key]}
+                      autocomplete="off"
+                    />
+                  </div>
+                {/each}
+                {#if credMessage && credMessage.addon === addon.name}
+                  <div class="creds-message" class:creds-message--err={credMessage.type === 'err'} class:creds-message--ok={credMessage.type === 'ok'}>
+                    {credMessage.text}
+                  </div>
+                {/if}
+                <div class="creds-actions">
+                  <button class="btn btn-primary btn-sm" disabled={credSaving === addon.name} onclick={() => void saveCredentials(addon.name)}>
+                    {#if credSaving === addon.name}<span class="spinner"></span>{/if} Save
+                  </button>
+                </div>
+              {/if}
+            </div>
+          {/if}
         {/each}
       </div>
     {/if}
@@ -365,6 +486,100 @@
     .addon-col--status {
       flex: 0 0 auto;
     }
+  }
+
+  /* ── Inline credentials editor ───────────────────────────────── */
+
+  .addon-creds {
+    padding: var(--space-4) var(--space-5);
+    background: var(--color-bg-secondary);
+    border-bottom: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .creds-loading {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+  }
+
+  .creds-empty,
+  .creds-hint {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    margin: 0;
+  }
+
+  .creds-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .creds-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--color-text);
+  }
+
+  .creds-label code {
+    font-family: var(--font-mono);
+    background: var(--color-bg-tertiary);
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+  }
+
+  .creds-tag {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: var(--radius-full);
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .creds-tag--set {
+    background: var(--color-success-bg);
+    color: var(--color-success);
+  }
+
+  .creds-desc {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    margin: 0;
+  }
+
+  .form-input {
+    width: 100%;
+    height: 32px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 0 var(--space-3);
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-size: var(--text-sm);
+    font-family: inherit;
+  }
+  .form-input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-subtle); }
+
+  .creds-message {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    font-size: var(--text-xs);
+  }
+  .creds-message--ok { background: var(--color-success-bg); color: var(--color-text); }
+  .creds-message--err { background: var(--color-danger-bg); color: var(--color-text); }
+
+  .creds-actions {
+    display: flex;
+    justify-content: flex-end;
   }
 
   @media (prefers-reduced-motion: reduce) {
