@@ -6,8 +6,9 @@
  * agent, STT, and TTS provider selection client-side.
  *
  * Endpoints:
- *   GET /health  — Health check
- *   GET /*       — Static file serving from web/ directory
+ *   GET /health           — Health check
+ *   GET /config/defaults  — Operator-supplied STT/TTS defaults (from container env)
+ *   GET /*                — Static file serving from web/ directory
  */
 
 import { extname, join, resolve, sep } from 'node:path'
@@ -55,6 +56,33 @@ function serveStatic(pathname: string): Response | null {
 
 const PORT = Number(Bun.env.PORT ?? 8186)
 
+// Operator-supplied STT/TTS defaults — the voice browser app fetches
+// this on first load (when no localStorage entry exists) and seeds its
+// settings from these values. Provider is derived: if a base URL is set
+// we default to the openai-compatible HTTP provider; otherwise the
+// in-browser Web Speech API. Set by writeCapabilityVars() via stack.env.
+function defaultsResponse(): Response {
+  const env = Bun.env
+  const sttUrl = (env.STT_BASE_URL ?? '').trim()
+  const ttsUrl = (env.TTS_BASE_URL ?? '').trim()
+  return Response.json({
+    stt: {
+      provider: sttUrl ? 'openai' : 'browser',
+      url: sttUrl,
+      apiKey: (env.STT_API_KEY ?? '').trim(),
+      model: (env.STT_MODEL ?? '').trim(),
+      language: (env.STT_LANGUAGE ?? '').trim(),
+    },
+    tts: {
+      provider: ttsUrl ? 'openai' : 'browser',
+      url: ttsUrl,
+      apiKey: (env.TTS_API_KEY ?? '').trim(),
+      model: (env.TTS_MODEL ?? '').trim(),
+      voice: (env.TTS_VOICE ?? '').trim(),
+    },
+  })
+}
+
 Bun.serve({
   port: PORT,
   fetch(req) {
@@ -64,6 +92,11 @@ Bun.serve({
     // Health check
     if (pathname === '/health') {
       return Response.json({ status: 'ok', service: 'voice' })
+    }
+
+    // STT/TTS defaults seeded from container env
+    if (pathname === '/config/defaults') {
+      return defaultsResponse()
     }
 
     // Serve static files

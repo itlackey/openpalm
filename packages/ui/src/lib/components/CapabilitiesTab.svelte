@@ -11,7 +11,7 @@
 	type ProviderEntry = OpenCodeProviderSummary & { authMethods: OpenCodeAuthMethod[] };
 
 	// ── Sub-tab state ───────────────────────────────────────────────
-	let activeSubTab = $state<'capabilities' | 'voice'>('capabilities');
+	let activeSubTab = $state<'akm' | 'tts-stt'>('akm');
 
 	// ── Page state ──────────────────────────────────────────────────
 	let pageLoading = $state(false);
@@ -165,20 +165,20 @@
 
 <!-- Sub-tab pills -->
 <div class="sub-tabs" role="tablist">
-	<button class="pill" class:pill--active={activeSubTab === 'capabilities'} role="tab" aria-selected={activeSubTab === 'capabilities'} onclick={() => activeSubTab = 'capabilities'}>AI Models</button>
-	<button class="pill" class:pill--active={activeSubTab === 'voice'} role="tab" aria-selected={activeSubTab === 'voice'} onclick={() => activeSubTab = 'voice'}>Voice</button>
+	<button class="pill" class:pill--active={activeSubTab === 'akm'} role="tab" aria-selected={activeSubTab === 'akm'} onclick={() => activeSubTab = 'akm'}>akm</button>
+	<button class="pill" class:pill--active={activeSubTab === 'tts-stt'} role="tab" aria-selected={activeSubTab === 'tts-stt'} onclick={() => activeSubTab = 'tts-stt'}>TTS/STT</button>
 	{#if pageLoading}<span class="loading-hint"><span class="spinner"></span> Loading...</span>{/if}
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->
-<!-- CAPABILITIES SUB-TAB                                          -->
+<!-- akm SUB-TAB                                                   -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
-{#if activeSubTab === 'capabilities'}
+{#if activeSubTab === 'akm'}
 <div class="sub-panel">
 
 	{#if connectedProviders.length === 0}
 		<div class="empty-state">
-			<p>No providers connected. Use the <strong>Connections</strong> tab to authenticate with a provider. Model assignments here configure both the AI assistant and akm stash operations.</p>
+			<p>No providers connected. Use the <strong>Connections</strong> tab to authenticate with an OpenCode provider. Models picked here drive akm operations (knowledge indexing, memory consolidation, feedback distillation).</p>
 		</div>
 	{:else}
 
@@ -189,8 +189,8 @@
 
 	<!-- LLM -->
 	<div class="assign-section">
-		<h3 class="assign-heading">Language Model <span class="assign-required">required</span></h3>
-		<p class="section-desc">Primary reasoning model used by the AI assistant (OpenCode). Also the fallback for akm operations when no small model is configured.</p>
+		<h3 class="assign-heading">Reasoning Model <span class="assign-required">required</span></h3>
+		<p class="section-desc">Model akm uses when no small model is configured. Also drives the assistant container's default chat model. OpenCode-specific provider settings live in the Connections tab.</p>
 		<div class="assign-row">
 			<div class="form-field">
 				<label class="form-label" for="llm-p">Provider</label>
@@ -215,8 +215,8 @@
 
 	<!-- SLM -->
 	<div class="assign-section">
-		<h3 class="assign-heading">Small Language Model <span class="assign-optional">optional</span></h3>
-		<p class="section-desc">Lightweight model for fast, low-cost tasks. When configured, akm uses this model for stash improvement, memory consolidation, and feedback distillation — keeping the primary model free for assistant conversations.</p>
+		<h3 class="assign-heading">Small Model <span class="assign-optional">optional</span></h3>
+		<p class="section-desc">Lightweight model for akm's stash improvement, memory consolidation, and feedback distillation. Keeps the primary model free for live assistant conversations.</p>
 		<div class="assign-row">
 			<div class="form-field">
 				<label class="form-label" for="slm-p">Provider</label>
@@ -317,9 +317,9 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->
-<!-- VOICE SUB-TAB                                                 -->
+<!-- TTS/STT SUB-TAB                                               -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
-{:else if activeSubTab === 'voice'}
+{:else if activeSubTab === 'tts-stt'}
 <div class="sub-panel">
 
 	{#if saveSuccess}<div class="feedback feedback--success"><span>Saved.</span></div>{/if}
@@ -327,7 +327,7 @@
 		<button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => saveError = ''}>x</button>
 	</div>{/if}
 
-	<p class="section-desc">Voice capabilities are used by the voice channel addon and web audio features. They are independent of akm operations.</p>
+	<p class="section-desc">Operator-supplied defaults seeded into the voice channel's web app on first load (via <code>GET /config/defaults</code>). Once a user saves settings in the voice app, browser localStorage wins and these defaults stop applying.</p>
 
 	<div class="assign-section">
 		<h3 class="assign-heading">Text-to-Speech</h3>

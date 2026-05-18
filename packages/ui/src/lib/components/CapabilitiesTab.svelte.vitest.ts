@@ -49,9 +49,9 @@ describe('CapabilitiesTab', () => {
 
     render(CapabilitiesTab, { props: {} });
 
-    // Sub-tab pills (no Providers — moved to Connections tab)
-    await expect.element(page.getByRole('tab', { name: 'AI Models' })).toBeInTheDocument();
-    await expect.element(page.getByRole('tab', { name: 'Voice' })).toBeInTheDocument();
+    // Sub-tab pills — akm (knowledge model config) + TTS/STT (voice channel defaults)
+    await expect.element(page.getByRole('tab', { name: 'akm' })).toBeInTheDocument();
+    await expect.element(page.getByRole('tab', { name: 'TTS/STT' })).toBeInTheDocument();
 
     // Save button should be present
     await expect.element(page.getByRole('button', { name: 'Save Changes' })).toBeInTheDocument();

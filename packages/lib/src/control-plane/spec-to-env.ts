@@ -137,31 +137,30 @@ export function writeCapabilityVars(spec: StackSpec, stackDir: string, homeDir?:
   caps.OP_CAP_EMBEDDINGS_API_KEY = resolveKey(emb.provider);
   caps.OP_CAP_EMBEDDINGS_DIMS = String(emb.dims);
 
-  // ── TTS ──
+  // ── TTS ── voice channel reads these directly (no OP_CAP_ prefix);
+  // they're surfaced to the voice container via compose env substitution
+  // and exposed to the browser via GET /config/defaults on first load.
   const tts = spec.capabilities.tts;
   if (tts?.enabled) {
     const p = tts.provider || llmP;
-    caps.OP_CAP_TTS_PROVIDER = p;
-    caps.OP_CAP_TTS_MODEL = tts.model || "";
-    caps.OP_CAP_TTS_BASE_URL = resolveUrl(p);
-    caps.OP_CAP_TTS_API_KEY = resolveKey(p);
-    caps.OP_CAP_TTS_VOICE = tts.voice || "";
-    caps.OP_CAP_TTS_FORMAT = tts.format || "";
+    caps.TTS_BASE_URL = resolveUrl(p);
+    caps.TTS_API_KEY = resolveKey(p);
+    caps.TTS_MODEL = tts.model || "";
+    caps.TTS_VOICE = tts.voice || "";
   } else {
-    clearCapVars("OP_CAP_TTS", ["PROVIDER", "MODEL", "BASE_URL", "API_KEY", "VOICE", "FORMAT"]);
+    clearCapVars("TTS", ["BASE_URL", "API_KEY", "MODEL", "VOICE"]);
   }
 
   // ── STT ──
   const stt = spec.capabilities.stt;
   if (stt?.enabled) {
     const p = stt.provider || llmP;
-    caps.OP_CAP_STT_PROVIDER = p;
-    caps.OP_CAP_STT_MODEL = stt.model || "";
-    caps.OP_CAP_STT_BASE_URL = resolveUrl(p);
-    caps.OP_CAP_STT_API_KEY = resolveKey(p);
-    caps.OP_CAP_STT_LANGUAGE = stt.language || "";
+    caps.STT_BASE_URL = resolveUrl(p);
+    caps.STT_API_KEY = resolveKey(p);
+    caps.STT_MODEL = stt.model || "";
+    caps.STT_LANGUAGE = stt.language || "";
   } else {
-    clearCapVars("OP_CAP_STT", ["PROVIDER", "MODEL", "BASE_URL", "API_KEY", "LANGUAGE"]);
+    clearCapVars("STT", ["BASE_URL", "API_KEY", "MODEL", "LANGUAGE"]);
   }
 
   // ── Reranking ──

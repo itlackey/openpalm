@@ -15,6 +15,17 @@ services:
       # default channel-entrypoint with the package's own index. start.sh
       # still installs CHANNEL_PACKAGE first.
       CHANNEL_ENTRYPOINT: "node_modules/@openpalm/channel-voice/src/index.ts"
+      # STT/TTS defaults — voice browser fetches GET /config/defaults
+      # on first load and seeds localStorage from these values. Written
+      # by writeCapabilityVars() in @openpalm/lib.
+      STT_BASE_URL: "${STT_BASE_URL:-}"
+      STT_API_KEY: "${STT_API_KEY:-}"
+      STT_MODEL: "${STT_MODEL:-}"
+      STT_LANGUAGE: "${STT_LANGUAGE:-}"
+      TTS_BASE_URL: "${TTS_BASE_URL:-}"
+      TTS_API_KEY: "${TTS_API_KEY:-}"
+      TTS_MODEL: "${TTS_MODEL:-}"
+      TTS_VOICE: "${TTS_VOICE:-}"
     networks: [channel_lan]
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8186' || exit 1"]

@@ -27,20 +27,48 @@ const state = {
 
 // ─── Settings Persistence ────────────────────────────────
 
-function loadSettings() {
+// Fetch operator-supplied defaults from the voice container's
+// /config/defaults endpoint. Falls back silently when absent (e.g.
+// when running the app outside the container in dev).
+async function fetchServerDefaults() {
   try {
-    const raw = localStorage.getItem('voicechat_settings');
-    if (raw) {
+    const res = await fetch('/config/defaults', { headers: { accept: 'application/json' } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return {
+      stt: { ...DEFAULT_SETTINGS.stt, ...(data?.stt ?? {}) },
+      tts: { ...DEFAULT_SETTINGS.tts, ...(data?.tts ?? {}) },
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function loadSettings() {
+  // Operator defaults only matter on first load. Once the user has saved
+  // settings to localStorage, those win — don't re-overlay defaults.
+  let raw = null;
+  try { raw = localStorage.getItem('voicechat_settings'); } catch {}
+  if (raw) {
+    try {
       const saved = JSON.parse(raw);
-      // Merge with defaults to ensure all keys exist
       return {
         agent: { ...DEFAULT_SETTINGS.agent, ...saved.agent },
         stt:   { ...DEFAULT_SETTINGS.stt,   ...saved.stt },
         tts:   { ...DEFAULT_SETTINGS.tts,   ...saved.tts },
         app:   { ...DEFAULT_SETTINGS.app,   ...saved.app },
       };
-    }
-  } catch {}
+    } catch {}
+  }
+  const serverDefaults = await fetchServerDefaults();
+  if (serverDefaults) {
+    return {
+      agent: { ...DEFAULT_SETTINGS.agent },
+      stt:   serverDefaults.stt,
+      tts:   serverDefaults.tts,
+      app:   { ...DEFAULT_SETTINGS.app },
+    };
+  }
   return structuredClone(DEFAULT_SETTINGS);
 }
 
@@ -48,7 +76,7 @@ function saveSettings(settings) {
   localStorage.setItem('voicechat_settings', JSON.stringify(settings));
 }
 
-let settings = loadSettings();
+let settings = structuredClone(DEFAULT_SETTINGS);
 
 // ─── DOM References ──────────────────────────────────────
 
@@ -511,7 +539,8 @@ btnCancel.addEventListener('click', () => {
 
 // ─── Init ────────────────────────────────────────────────
 
-function init() {
+async function init() {
+  settings = await loadSettings();
   state.conversationVisible = settings.app.showConversation;
   setStatus('idle', 'Ready');
   updateProviderSummary();
@@ -525,4 +554,4 @@ function init() {
   }
 }
 
-init();
+void init();
