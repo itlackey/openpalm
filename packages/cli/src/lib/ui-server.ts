@@ -98,6 +98,10 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
       cwd: UI_BUILD_DIR,
       env: {
         ...process.env,
+        // Pass resolved absolute OP_HOME so the child doesn't re-resolve a
+        // relative value (e.g. `.dev` from a repo-root .env) against its
+        // own cwd (packages/ui/build/).
+        OP_HOME:     homeDir,
         HOST:        '127.0.0.1',
         PORT:        String(port),
         ORIGIN:      `http://127.0.0.1:${port}`,

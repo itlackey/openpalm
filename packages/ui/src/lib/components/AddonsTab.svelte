@@ -50,7 +50,7 @@
   <div class="panel-header">
     <div>
       <h2>Addons</h2>
-      <p class="panel-subtitle">Catalog lives in <code>registry/addons/</code>. Put addon values in <code>vault/user/user.env</code>.</p>
+      <p class="panel-subtitle">Catalog lives in <code>state/registry/addons/</code>. Put addon values in <code>stash/vaults/user.env</code>.</p>
     </div>
     <button class="btn btn-secondary btn-sm" onclick={() => loadAddons()} disabled={loading}>
       {#if loading}

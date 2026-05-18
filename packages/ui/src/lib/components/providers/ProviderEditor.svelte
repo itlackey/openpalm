@@ -30,9 +30,10 @@
 	let pollHandle: ReturnType<typeof setTimeout> | undefined;
 	let callbackStartHandle: ReturnType<typeof setTimeout> | undefined;
 
-	function previousPromptValue(methodIndex: number, prompt: ProviderAuthPrompt) {
-		if (oauthState?.methodIndex !== methodIndex) return prompt.options?.[0] ?? '';
-		return oauthState.inputs?.[prompt.key] ?? prompt.options?.[0] ?? '';
+	function previousPromptValue(methodIndex: number, prompt: ProviderAuthPrompt): string {
+		const defaultValue = prompt.options?.[0]?.value ?? '';
+		if (oauthState?.methodIndex !== methodIndex) return defaultValue;
+		return oauthState.inputs?.[prompt.key] ?? defaultValue;
 	}
 
 	function stopPolling() {
@@ -319,8 +320,8 @@
 										<label class="form-label" for="prompt-{provider.id}-{method.index}-{prompt.key}">{prompt.message}</label>
 										{#if prompt.options && prompt.options.length > 0}
 											<select id="prompt-{provider.id}-{method.index}-{prompt.key}" name={`inputs[${prompt.key}]`} class="form-input" value={previousPromptValue(method.index, prompt)}>
-												{#each prompt.options as option (option)}
-													<option value={option}>{option}</option>
+												{#each prompt.options as option (option.value)}
+													<option value={option.value}>{option.label}{option.hint ? ` — ${option.hint}` : ''}</option>
 												{/each}
 											</select>
 										{:else}

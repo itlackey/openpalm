@@ -47,11 +47,7 @@ describe('CapabilitiesTab', () => {
       throw new Error(`Unexpected fetch: ${url}`);
     }));
 
-    render(CapabilitiesTab, {
-      props: {
-        openCodeStatus: 'ready' as const,
-      },
-    });
+    render(CapabilitiesTab, { props: {} });
 
     // Sub-tab pills (no Providers — moved to Connections tab)
     await expect.element(page.getByRole('tab', { name: 'AI Models' })).toBeInTheDocument();

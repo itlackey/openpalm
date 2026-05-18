@@ -10,9 +10,6 @@
 
 	type ProviderEntry = OpenCodeProviderSummary & { authMethods: OpenCodeAuthMethod[] };
 
-	interface Props { openCodeStatus?: 'checking' | 'ready' | 'unavailable'; }
-	let {}: Props = $props();
-
 	// ── Sub-tab state ───────────────────────────────────────────────
 	let activeSubTab = $state<'capabilities' | 'voice'>('capabilities');
 

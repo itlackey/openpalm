@@ -1,10 +1,5 @@
 export type HealthPayload = { status: string; service: string };
 
-export type AdminOpenCodeStatusResponse = {
-  status: 'ready' | 'unavailable';
-  url: string;
-};
-
 export type DockerContainer = {
   ID: string;
   Name: string;
@@ -48,14 +43,6 @@ export type AutomationInfo = {
 
 export type AutomationsResponse = {
   automations: AutomationInfo[];
-};
-
-export type CatalogAutomation = {
-  name: string;
-  type: 'automation';
-  installed: boolean;
-  description: string;
-  schedule: string;
 };
 
 // ── OpenCode Provider/Model Types ──────────────────────────────────────

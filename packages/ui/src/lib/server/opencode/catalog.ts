@@ -49,7 +49,7 @@ type RawAuthMethod = {
 		key: string;
 		message: string;
 		placeholder?: string;
-		options?: string[];
+		options?: Array<{ label: string; value: string; hint?: string }>;
 		when?: string;
 	}>;
 };

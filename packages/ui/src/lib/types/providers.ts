@@ -1,10 +1,16 @@
 export type ProviderFilter = 'all' | 'connected' | 'configured' | 'oauth' | 'disabled';
 
+export type ProviderAuthPromptOption = {
+	label: string;
+	value: string;
+	hint?: string;
+};
+
 export type ProviderAuthPrompt = {
 	key: string;
 	message: string;
 	placeholder?: string;
-	options?: string[];
+	options?: ProviderAuthPromptOption[];
 	when?: string;
 };
 

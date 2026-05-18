@@ -6,7 +6,6 @@
   import OverviewTab from '$lib/components/OverviewTab.svelte';
   import AddonsTab from '$lib/components/AddonsTab.svelte';
   import ContainersTab from '$lib/components/ContainersTab.svelte';
-  import ArtifactsTab from '$lib/components/ArtifactsTab.svelte';
   import AutomationsTab from '$lib/components/AutomationsTab.svelte';
   import CapabilitiesTab from '$lib/components/CapabilitiesTab.svelte';
   import ProvidersPanel from '$lib/components/ProvidersPanel.svelte';
@@ -16,9 +15,7 @@
 
   import {
     fetchHealth,
-    fetchAdminOpenCodeStatus,
     fetchContainers,
-    fetchArtifacts,
     fetchAutomations,
     applyChanges,
     upgradeStack,
@@ -36,8 +33,6 @@
   // ── Health & service state ──────────────────────────────────────────────────
   let adminHealth = $state<HealthPayload | null>(null);
   let guardianHealth = $state<HealthPayload | null>(null);
-  let adminOpenCodeStatus = $state<'checking' | 'ready' | 'unavailable'>('checking');
-  let adminOpenCodeUrl = $state('http://localhost:3881/');
   let adminStatus = $state('');
   let capabilitiesMissing = $state<string[]>([]);
 
@@ -45,28 +40,21 @@
   let healthLoading = $state(false);
   let applyLoading = $state(false);
   let upgradeLoading = $state(false);
-  let artifactsLoading = $state(false);
   let containersLoading = $state(false);
   let automationsLoading = $state(false);
 
   // ── Content state ───────────────────────────────────────────────────────────
   let operationResult = $state('');
   let operationResultType: 'success' | 'error' | 'info' = $state('info');
-  let artifacts = $state('');
-  let artifactType: 'compose' | null = $state(null);
   let containerData: ContainerListResponse | null = $state(null);
   let containerError = $state('');
   let containersLastUpdated: string | null = $state(null);
   let automationsData: AutomationsResponse | null = $state(null);
   let automationsError = $state('');
   let selectedContainerId: string | null = $state(null);
-  // ── Migration ───────────────────────────────────────────────────────────────
-  let legacyInstallDetected = $state(false);
-  let migrationBannerDismissed = $state(false);
-  let showMigrationBanner = $derived(legacyInstallDetected && !migrationBannerDismissed);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: 'overview' | 'addons' | 'automations' | 'connections' | 'secrets' | 'capabilities' | 'containers' | 'logs' | 'audit' | 'artifacts' = $state('overview');
+  let activeTab: 'overview' | 'addons' | 'automations' | 'connections' | 'secrets' | 'capabilities' | 'containers' | 'logs' | 'audit' = $state('overview');
   let pullLoading = $state(false);
 
   // ── Container polling ──────────────────────────────────────────────────────
@@ -103,7 +91,6 @@
     authLocked = true;
     authError = 'Invalid admin token.';
     adminStatus = 'Invalid admin token.';
-    adminOpenCodeStatus = 'unavailable';
   }
 
   async function handleLogout(): Promise<void> {
@@ -116,11 +103,8 @@
     authLocked = true;
     authError = '';
     adminStatus = '';
-    adminOpenCodeStatus = 'checking';
     operationResult = '';
     operationResultType = 'info';
-    artifacts = '';
-    artifactType = null;
     containerData = null;
     containersLastUpdated = null;
     selectedContainerId = null;
@@ -182,20 +166,6 @@
       adminHealth = { status: 'error', service: 'admin' };
       guardianHealth = { status: 'error', service: 'guardian' };
     }
-
-    try {
-      const adminOpenCode = await fetchAdminOpenCodeStatus();
-      adminOpenCodeStatus = adminOpenCode.status;
-      adminOpenCodeUrl = adminOpenCode.url;
-    } catch (e) {
-      adminOpenCodeStatus = 'unavailable';
-
-      const err = e as { status?: number };
-      if (err.status === 401) {
-        applyInvalidTokenState();
-      }
-    }
-
     healthLoading = false;
   }
 
@@ -218,23 +188,6 @@
     if (containerData) {
       containersLastUpdated = new Date().toLocaleTimeString();
     }
-  }
-
-  async function loadArtifacts(type: 'compose'): Promise<void> {
-    artifactsLoading = true;
-    artifactType = type;
-    try {
-      artifacts = await fetchArtifacts();
-    } catch (e) {
-      const err = e as { status?: number; message?: string };
-      if (err.status === 401) {
-        artifacts = 'Invalid admin token.';
-        applyInvalidTokenState();
-      } else {
-        artifacts = `Error: ${err.message ?? e}`;
-      }
-    }
-    artifactsLoading = false;
   }
 
   async function loadAutomations(): Promise<void> {
@@ -408,30 +361,6 @@
   <Navbar onLogout={handleLogout} navLink={{ href: '/chat', label: 'Chat' }} />
 
   <main>
-    {#if showMigrationBanner}
-      <div class="migration-banner" role="alert">
-        <div class="banner-content">
-          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-          <div class="banner-text">
-            <strong>Legacy installation detected</strong>
-            <span>Run <code>openpalm migrate</code> to move to the new <code>~/.openpalm/</code> layout.</span>
-          </div>
-        </div>
-        <button
-          class="banner-dismiss"
-          onclick={() => { migrationBannerDismissed = true; }}
-          aria-label="Dismiss migration notice"
-        >
-          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
-    {/if}
     {#if capabilitiesMissing.length > 0}
       <div class="capabilities-banner" role="alert">
         <span>Missing capabilities: {capabilitiesMissing.join(', ')}.</span>
@@ -444,8 +373,6 @@
     {#if activeTab === 'overview'}
       <OverviewTab
         {adminHealth}
-        {adminOpenCodeStatus}
-        {adminOpenCodeUrl}
         {operationResult}
         {operationResultType}
         tokenStored={true}
@@ -480,15 +407,6 @@
         lastUpdated={containersLastUpdated}
         {pullLoading}
       />
-    {:else if activeTab === 'artifacts'}
-      <ArtifactsTab
-        {artifacts}
-        {artifactType}
-        loading={artifactsLoading}
-        tokenStored={true}
-        onInspect={(type) => loadArtifacts(type)}
-        onDismiss={() => { artifacts = ''; artifactType = null; }}
-      />
     {:else if activeTab === 'automations'}
       <AutomationsTab
         data={automationsData}
@@ -503,7 +421,7 @@
       <SecretsTab tokenStored={true} />
     {/if}
     <div hidden={activeTab !== 'capabilities'}>
-      <CapabilitiesTab openCodeStatus={adminOpenCodeStatus} />
+      <CapabilitiesTab />
     </div>
     {#if activeTab === 'logs'}
       <LogsTab
@@ -549,84 +467,4 @@
   }
   .banner-link:hover { color: var(--color-primary-hover); }
 
-  .migration-banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
-    margin-bottom: var(--space-4);
-    background: var(--color-caution-bg);
-    border: 1px solid var(--color-caution);
-    border-radius: var(--radius-md);
-  }
-
-  .banner-content {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-3);
-    color: var(--color-caution);
-    min-width: 0;
-  }
-
-  .banner-content svg {
-    flex-shrink: 0;
-    margin-top: 1px;
-  }
-
-  .banner-text {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    font-size: var(--text-sm);
-    color: var(--color-text);
-  }
-
-  .banner-text strong {
-    font-weight: var(--font-semibold);
-  }
-
-  .banner-text span {
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
-  }
-
-  .banner-text code {
-    font-family: var(--font-mono);
-    font-size: inherit;
-    padding: 1px 4px;
-    background: rgba(0, 0, 0, 0.06);
-    border-radius: 3px;
-  }
-
-  .banner-dismiss {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    flex-shrink: 0;
-    background: none;
-    border: none;
-    border-radius: var(--radius-sm);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    transition: background var(--transition-fast), color var(--transition-fast);
-  }
-
-  .banner-dismiss:hover {
-    background: rgba(0, 0, 0, 0.06);
-    color: var(--color-text);
-  }
-
-  @media (max-width: 480px) {
-    .migration-banner {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-
-    .banner-dismiss {
-      align-self: flex-end;
-    }
-  }
 </style>

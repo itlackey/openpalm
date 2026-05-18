@@ -1,5 +1,4 @@
 import type {
-  AdminOpenCodeStatusResponse,
   HealthPayload,
   ContainerListResponse,
   AutomationsResponse,
@@ -88,13 +87,6 @@ export async function fetchHealth(): Promise<{
   return { admin, guardian };
 }
 
-// ── OpenCode ────────────────────────────────────────────────────────────
-
-export async function fetchAdminOpenCodeStatus(): Promise<AdminOpenCodeStatusResponse> {
-  const res = await requireOk(await request('GET', '/admin/opencode/status'));
-  return (await res.json()) as AdminOpenCodeStatusResponse;
-}
-
 // ── Containers ──────────────────────────────────────────────────────────
 
 export async function fetchContainers(): Promise<ContainerListResponse> {
@@ -112,13 +104,6 @@ export async function containerAction(
     restart: '/admin/containers/restart'
   } as const;
   await requireOk(await request('POST', pathMap[action], { service: containerId }));
-}
-
-// ── Artifacts ───────────────────────────────────────────────────────────
-
-export async function fetchArtifacts(): Promise<string> {
-  const res = await requireOk(await request('GET', '/admin/artifacts/compose'));
-  return res.text();
 }
 
 // ── Lifecycle ───────────────────────────────────────────────────────────
@@ -146,27 +131,6 @@ export async function upgradeStack(): Promise<UpgradeStackResult> {
 export async function fetchAutomations(): Promise<AutomationsResponse> {
   const res = await requireOk(await request('GET', '/admin/automations'));
   return (await res.json()) as AutomationsResponse;
-}
-
-// ── Automation Catalog ──────────────────────────────────────────
-
-export async function fetchAutomationCatalog(): Promise<{ automations: import('./types.js').CatalogAutomation[]; source: string }> {
-  const res = await requireOk(await request('GET', '/admin/automations/catalog'));
-  return (await res.json()) as { automations: import('./types.js').CatalogAutomation[]; source: string };
-}
-
-export async function installAutomation(name: string): Promise<{ ok: boolean }> {
-  const res = await requireOk(
-    await request('POST', '/admin/automations/catalog/install', { name, type: 'automation' })
-  );
-  return (await res.json()) as { ok: boolean };
-}
-
-export async function uninstallAutomation(name: string): Promise<{ ok: boolean }> {
-  const res = await requireOk(
-    await request('POST', '/admin/automations/catalog/uninstall', { name, type: 'automation' })
-  );
-  return (await res.json()) as { ok: boolean };
 }
 
 // ── Service Logs ────────────────────────────────────────────────
@@ -223,34 +187,29 @@ export async function fetchAuditLog(
   return (await res.json()) as { audit: Record<string, unknown>[] };
 }
 
-// ── Secrets Management ──────────────────────────────────────────────
+// ── User Vault (akm vault:user) ────────────────────────────────────
 
-export type SecretEntry = { key: string; scope?: string; kind?: string };
+export type UserVaultListResponse = {
+  provider: 'akm';
+  vaultRef: string;
+  available: boolean;
+  keys: string[];
+};
 
-export async function fetchSecrets(
-  prefix?: string
-): Promise<{ provider: string; capabilities: Record<string, boolean>; entries: SecretEntry[] }> {
-  const params = new URLSearchParams();
-  if (prefix) params.set('prefix', prefix);
-  const qs = params.toString();
-  const res = await requireOk(await request('GET', `/admin/secrets${qs ? `?${qs}` : ''}`));
-  return (await res.json()) as { provider: string; capabilities: Record<string, boolean>; entries: SecretEntry[] };
+export async function fetchUserVault(): Promise<UserVaultListResponse> {
+  const res = await requireOk(await request('GET', '/admin/secrets/user-vault'));
+  return (await res.json()) as UserVaultListResponse;
 }
 
-export async function writeSecret(key: string, value: string): Promise<{ ok: boolean }> {
-  const res = await requireOk(await request('POST', '/admin/secrets', { key, value }));
+export async function writeUserVaultKey(key: string, value: string): Promise<{ ok: boolean }> {
+  const res = await requireOk(await request('POST', '/admin/secrets/user-vault', { key, value }));
   return (await res.json()) as { ok: boolean };
 }
 
-export async function deleteSecret(key: string): Promise<{ ok: boolean }> {
+export async function deleteUserVaultKey(key: string): Promise<{ ok: boolean }> {
   const res = await requireOk(
-    await request('DELETE', `/admin/secrets?key=${encodeURIComponent(key)}`)
+    await request('DELETE', `/admin/secrets/user-vault?key=${encodeURIComponent(key)}`)
   );
-  return (await res.json()) as { ok: boolean };
-}
-
-export async function generateSecret(key: string, length: number = 32): Promise<{ ok: boolean }> {
-  const res = await requireOk(await request('POST', '/admin/secrets/generate', { key, length }));
   return (await res.json()) as { ok: boolean };
 }
 

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fetchSecrets, writeSecret, deleteSecret, generateSecret, type SecretEntry } from '$lib/api.js';
+  import { fetchUserVault, writeUserVaultKey, deleteUserVaultKey } from '$lib/api.js';
 
   interface Props {
     tokenStored: boolean;
@@ -8,200 +8,107 @@
 
   let { tokenStored }: Props = $props();
 
-  let entries = $state<SecretEntry[]>([]);
-  let provider = $state('');
-  let capabilities = $state<Record<string, boolean>>({});
+  let keys = $state<string[]>([]);
+  let vaultRef = $state('');
+  let available = $state(false);
   let loading = $state(false);
   let error = $state('');
   let actionSuccess = $state('');
   let actionError = $state('');
-  let actionLoading = $state(false);
+  let actionLoading = $state<string | null>(null); // key being acted on, or 'write' for new
 
-  const namespaceConfigs = [
-    {
-      kind: 'core',
-      title: 'Core namespace',
-      prefix: 'openpalm/',
-      description: 'Built-in OpenPalm secrets such as tokens, provider keys, and channel credentials.',
-    },
-    {
-      kind: 'component',
-      title: 'Component namespace',
-      prefix: 'openpalm/component/',
-      description: 'Per-component secrets for installed services and addon instances.',
-    },
-    {
-      kind: 'custom',
-      title: 'Custom namespace',
-      prefix: 'openpalm/custom/',
-      description: 'User-defined secrets that do not map to a built-in OpenPalm capability.',
-    },
-  ] as const;
-  type NamespaceSection = typeof namespaceConfigs[number] & { entries: SecretEntry[] };
-  const uncategorizedSection = {
-    kind: 'uncategorized',
-    title: 'Uncategorized',
-    prefix: '',
-    description: 'Secrets returned without a supported backend kind value are shown here instead of being hidden.',
-  } as const;
-  type UncategorizedSection = typeof uncategorizedSection & { entries: SecretEntry[] };
-  type Section = NamespaceSection | UncategorizedSection;
-  const knownNamespaceKinds: ReadonlySet<string> = new Set(namespaceConfigs.map((config) => config.kind));
-  const namespacePrefixConfigs = [...namespaceConfigs].sort((a, b) => b.prefix.length - a.prefix.length);
-
-  // Write form
   let showWriteForm = $state(false);
   let writeKey = $state('');
   let writeValue = $state('');
 
-  // Generate form
-  let showGenerateForm = $state(false);
-  let genKey = $state('');
-  let genLength = $state(32);
+  const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-  let availableActions = $derived.by(() => {
-    const actions = ['set'];
-    if (capabilities.generate) actions.push('generate');
-    if (capabilities.remove) actions.push('delete');
-    return actions.join(', ');
-  });
-
-  function isNamespaceKind(kind: SecretEntry['kind']): kind is typeof namespaceConfigs[number]['kind'] {
-    return typeof kind === 'string' && knownNamespaceKinds.has(kind);
-  }
-
-  function getSectionKind(entry: SecretEntry): typeof namespaceConfigs[number]['kind'] | typeof uncategorizedSection.kind {
-    if (isNamespaceKind(entry.kind)) return entry.kind;
-    return namespacePrefixConfigs.find((config) => entry.key.startsWith(config.prefix))?.kind ?? 'uncategorized';
-  }
-
-  function entryKindLabel(entry: SecretEntry, section: Section): string {
-    if (entry.kind) return entry.kind;
-    return section.kind === 'uncategorized' ? '(missing)' : section.kind;
-  }
-
-  let namespaceSections = $derived.by(() => {
-    const sections: Section[] = namespaceConfigs
-      .map((config) => ({
-        ...config,
-        entries: entries.filter((entry) => getSectionKind(entry) === config.kind),
-      }))
-      .filter((section) => section.entries.length > 0);
-
-    const uncategorizedEntries = entries.filter((entry) => getSectionKind(entry) === 'uncategorized');
-    if (uncategorizedEntries.length > 0) {
-      sections.push({
-        ...uncategorizedSection,
-        entries: uncategorizedEntries,
-      });
-    }
-
-    return sections;
-  });
-
-  function entryDisplayPath(entry: SecretEntry, prefix: string): string {
-    return entry.key.startsWith(prefix) ? entry.key.slice(prefix.length) : entry.key;
-  }
-
-  async function loadSecrets(): Promise<void> {
+  async function loadKeys(): Promise<void> {
     loading = true;
     error = '';
     try {
-      const result = await fetchSecrets();
-      entries = result.entries;
-      provider = result.provider;
-      capabilities = result.capabilities;
+      const result = await fetchUserVault();
+      keys = result.keys;
+      vaultRef = result.vaultRef;
+      available = result.available;
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load secrets.';
+      error = e instanceof Error ? e.message : 'Failed to load vault keys.';
     } finally {
       loading = false;
     }
   }
 
   async function handleWrite(): Promise<void> {
-    if (!writeKey.trim() || !writeValue.trim()) return;
-    actionLoading = true;
+    const k = writeKey.trim();
+    if (!k || !writeValue) return;
+    if (!KEY_RE.test(k)) {
+      actionError = 'Key must match [A-Za-z_][A-Za-z0-9_]* (env var format).';
+      return;
+    }
+    actionLoading = 'write';
     actionError = '';
     actionSuccess = '';
     try {
-      await writeSecret(writeKey.trim(), writeValue);
-      actionSuccess = `Secret "${writeKey.trim()}" saved.`;
+      await writeUserVaultKey(k, writeValue);
+      actionSuccess = `Saved "${k}" to akm vault. Recreate the assistant container for it to pick up the new value.`;
       writeKey = '';
       writeValue = '';
       showWriteForm = false;
-      await loadSecrets();
+      await loadKeys();
     } catch (e) {
-      actionError = e instanceof Error ? e.message : 'Failed to write secret.';
+      actionError = e instanceof Error ? e.message : 'Failed to write to vault.';
     } finally {
-      actionLoading = false;
-    }
-  }
-
-  async function handleGenerate(): Promise<void> {
-    if (!genKey.trim()) return;
-    actionLoading = true;
-    actionError = '';
-    actionSuccess = '';
-    try {
-      await generateSecret(genKey.trim(), genLength);
-      actionSuccess = `Secret "${genKey.trim()}" generated (${genLength} bytes).`;
-      genKey = '';
-      genLength = 32;
-      showGenerateForm = false;
-      await loadSecrets();
-    } catch (e) {
-      actionError = e instanceof Error ? e.message : 'Failed to generate secret.';
-    } finally {
-      actionLoading = false;
+      actionLoading = null;
     }
   }
 
   async function handleDelete(key: string): Promise<void> {
-    if (!confirm(`Delete secret "${key}"? This cannot be undone.`)) return;
-    actionLoading = true;
+    if (!confirm(`Delete "${key}" from akm user vault? This cannot be undone.`)) return;
+    actionLoading = key;
     actionError = '';
     actionSuccess = '';
     try {
-      await deleteSecret(key);
-      actionSuccess = `Secret "${key}" deleted.`;
-      await loadSecrets();
+      await deleteUserVaultKey(key);
+      actionSuccess = `Removed "${key}".`;
+      await loadKeys();
     } catch (e) {
-      actionError = e instanceof Error ? e.message : 'Failed to delete secret.';
+      actionError = e instanceof Error ? e.message : 'Failed to remove key.';
     } finally {
-      actionLoading = false;
+      actionLoading = null;
     }
   }
 
   onMount(() => {
-    if (tokenStored) void loadSecrets();
+    if (tokenStored) void loadKeys();
   });
 </script>
 
 <div class="panel" role="tabpanel">
   <div class="panel-header">
     <div>
-      <h2>Secrets</h2>
-      {#if provider}
-        <span class="panel-subtitle">Backend: {provider} · Actions: {availableActions}</span>
-      {/if}
+      <h2>User Vault</h2>
+      <p class="panel-subtitle">
+        User-managed env secrets stored in akm (<code>{vaultRef || 'vault:user'}</code>). Sourced by the assistant
+        container at startup — recreate it after changes.
+      </p>
     </div>
     <div class="panel-header-actions">
-      {#if capabilities.generate}
-        <button class="btn btn-secondary btn-sm" onclick={() => { showGenerateForm = !showGenerateForm; showWriteForm = false; }}>
-          Generate
-        </button>
-      {/if}
-      <button class="btn btn-secondary btn-sm" onclick={() => { showWriteForm = !showWriteForm; showGenerateForm = false; }}>
-        Write Secret
+      <button class="btn btn-secondary btn-sm" onclick={() => { showWriteForm = !showWriteForm; }} disabled={!available}>
+        {showWriteForm ? 'Cancel' : 'Add / Update Key'}
       </button>
-      <button class="btn btn-secondary btn-sm" onclick={() => void loadSecrets()} disabled={loading || !tokenStored}>
+      <button class="btn btn-secondary btn-sm" onclick={() => void loadKeys()} disabled={loading || !tokenStored}>
         {#if loading}<span class="spinner"></span>{/if}
         Refresh
       </button>
     </div>
   </div>
 
-  <!-- Feedback -->
+  {#if !available && !loading && !error}
+    <div class="error-banner">
+      <span>akm vault is unavailable. Install akm and run <code>akm vault init user</code> to enable user-vault management.</span>
+    </div>
+  {/if}
+
   {#if actionSuccess}
     <div class="feedback feedback--success">
       <span>{actionSuccess}</span>
@@ -219,105 +126,57 @@
     </div>
   {/if}
 
-  <!-- Write form -->
   {#if showWriteForm}
     <div class="form-section">
-      <h3>Write Secret</h3>
+      <h3>Write Key</h3>
       <div class="form-row">
         <div class="form-field">
-          <label for="write-key" class="form-label">Key</label>
-          <input id="write-key" class="form-input" type="text" bind:value={writeKey} placeholder="openpalm/my-secret" autocomplete="off" />
+          <label for="vault-key" class="form-label">Key</label>
+          <input id="vault-key" class="form-input" type="text" bind:value={writeKey} placeholder="OPENAI_API_KEY" autocomplete="off" />
         </div>
         <div class="form-field">
-          <label for="write-value" class="form-label">Value</label>
-          <input id="write-value" class="form-input" type="password" bind:value={writeValue} placeholder="Secret value" autocomplete="off" />
+          <label for="vault-value" class="form-label">Value</label>
+          <input id="vault-value" class="form-input" type="password" bind:value={writeValue} placeholder="Secret value" autocomplete="off" />
         </div>
         <div class="form-field form-field--actions">
-          <button class="btn btn-primary btn-sm" onclick={() => void handleWrite()} disabled={actionLoading || !writeKey.trim() || !writeValue.trim()}>
-            {#if actionLoading}<span class="spinner"></span>{/if} Save
+          <button class="btn btn-primary btn-sm" onclick={() => void handleWrite()} disabled={actionLoading === 'write' || !writeKey.trim() || !writeValue}>
+            {#if actionLoading === 'write'}<span class="spinner"></span>{/if} Save
           </button>
-          <button class="btn btn-ghost btn-sm" onclick={() => showWriteForm = false}>Cancel</button>
         </div>
       </div>
     </div>
   {/if}
 
-  <!-- Generate form -->
-  {#if showGenerateForm}
-    <div class="form-section">
-      <h3>Generate Secret</h3>
-      <div class="form-row">
-        <div class="form-field">
-          <label for="gen-key" class="form-label">Key</label>
-          <input id="gen-key" class="form-input" type="text" bind:value={genKey} placeholder="openpalm/hmac-key" autocomplete="off" />
-        </div>
-        <div class="form-field">
-          <label for="gen-length" class="form-label">Length (bytes)</label>
-          <input id="gen-length" class="form-input" type="number" bind:value={genLength} min="16" max="4096" />
-        </div>
-        <div class="form-field form-field--actions">
-          <button class="btn btn-primary btn-sm" onclick={() => void handleGenerate()} disabled={actionLoading || !genKey.trim()}>
-            {#if actionLoading}<span class="spinner"></span>{/if} Generate
-          </button>
-          <button class="btn btn-ghost btn-sm" onclick={() => showGenerateForm = false}>Cancel</button>
-        </div>
-      </div>
-    </div>
-  {/if}
-
-  <!-- Entries list -->
   <div class="panel-body panel-body--flush">
     {#if error}
       <div class="error-banner"><span>{error}</span></div>
     {/if}
 
-    {#if namespaceSections.length > 0}
-      <div class="namespace-list">
-        {#each namespaceSections as section (section.kind)}
-          <section class="namespace-section" aria-label={section.title}>
-            <div class="namespace-header">
-              <div>
-                <h3>{section.title}</h3>
-                <p>{section.description}</p>
-              </div>
-              <code>{section.prefix}</code>
-            </div>
-            <div class="secret-table">
-              <div class="secret-table-header">
-                <span class="secret-col secret-col--key">Path</span>
-                <span class="secret-col secret-col--scope">Scope</span>
-                <span class="secret-col secret-col--kind">Kind</span>
-                {#if capabilities.remove}
-                  <span class="secret-col secret-col--actions">Actions</span>
-                {/if}
-              </div>
-              {#each section.entries as entry (entry.key)}
-                <div class="secret-row">
-                  <span class="secret-col secret-col--key">
-                    <span class="secret-path-prefix">{section.prefix}</span>
-                    <span class="secret-key">{entryDisplayPath(entry, section.prefix)}</span>
-                  </span>
-                  <span class="secret-col secret-col--scope">{entry.scope ?? ''}</span>
-                  <span class="secret-col secret-col--kind">{entryKindLabel(entry, section)}</span>
-                  {#if capabilities.remove}
-                    <span class="secret-col secret-col--actions">
-                      <button class="btn btn-sm btn-danger" onclick={() => void handleDelete(entry.key)} disabled={actionLoading}>
-                        Delete
-                      </button>
-                    </span>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          </section>
+    {#if keys.length > 0}
+      <div class="key-table">
+        <div class="key-table-header">
+          <span class="key-col key-col--name">Key</span>
+          <span class="key-col key-col--actions">Actions</span>
+        </div>
+        {#each keys as key (key)}
+          <div class="key-row">
+            <span class="key-col key-col--name">
+              <code>{key}</code>
+            </span>
+            <span class="key-col key-col--actions">
+              <button class="btn btn-sm btn-danger" onclick={() => void handleDelete(key)} disabled={actionLoading === key}>
+                {#if actionLoading === key}<span class="spinner"></span>{/if} Delete
+              </button>
+            </span>
+          </div>
         {/each}
       </div>
-    {:else if !loading}
+    {:else if !loading && available}
       <div class="empty-state">
         <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
         </svg>
-        <p>No secrets found.</p>
+        <p>No keys in the user vault yet.</p>
       </div>
     {/if}
   </div>
@@ -325,10 +184,11 @@
 
 <style>
   .panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; }
-  .panel-header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--color-border); }
+  .panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--color-border); }
   .panel-header h2 { font-size: var(--text-base); font-weight: var(--font-semibold); color: var(--color-text); }
-  .panel-subtitle { font-size: var(--text-xs); color: var(--color-text-tertiary); }
-  .panel-header-actions { display: flex; align-items: center; gap: var(--space-2); }
+  .panel-subtitle { font-size: var(--text-xs); color: var(--color-text-tertiary); margin-top: var(--space-1); max-width: 60ch; }
+  .panel-subtitle code { font-family: var(--font-mono); background: var(--color-bg-tertiary); padding: 1px 6px; border-radius: var(--radius-sm); }
+  .panel-header-actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
   .panel-body--flush { padding: 0; }
 
   .form-section { padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--color-border); background: var(--color-bg-secondary); }
@@ -340,25 +200,15 @@
   .form-input { width: 100%; height: 32px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0 var(--space-3); background: var(--color-bg); color: var(--color-text); font-size: var(--text-sm); font-family: inherit; }
   .form-input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-subtle); }
 
-  .namespace-list { display: flex; flex-direction: column; }
-  .namespace-section + .namespace-section { border-top: 1px solid var(--color-border); }
-  .namespace-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-5); background: var(--color-bg-secondary); border-bottom: 1px solid var(--color-border); }
-  .namespace-header h3 { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text); margin-bottom: var(--space-1); }
-  .namespace-header p { font-size: var(--text-xs); color: var(--color-text-secondary); max-width: 60ch; }
-  .namespace-header code { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: var(--radius-sm); background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text-secondary); font-size: var(--text-xs); font-family: var(--font-mono); white-space: nowrap; }
-  .secret-table { display: flex; flex-direction: column; width: 100%; }
-  .secret-table-header { display: flex; align-items: center; padding: var(--space-2) var(--space-5); background: var(--color-bg-tertiary); border-bottom: 1px solid var(--color-border); font-size: var(--text-xs); font-weight: var(--font-semibold); color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
-  .secret-row { display: flex; align-items: center; padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--color-bg-tertiary); }
-  .secret-row:last-child { border-bottom: none; }
-  .secret-row:hover { background: var(--color-surface-hover); }
-
-  .secret-col { display: flex; align-items: center; }
-  .secret-col--key { flex: 3; min-width: 0; overflow: hidden; }
-  .secret-col--scope { flex: 1; min-width: 0; font-size: var(--text-xs); color: var(--color-text-secondary); }
-  .secret-col--kind { flex: 1; min-width: 0; font-size: var(--text-xs); color: var(--color-text-secondary); }
-  .secret-col--actions { flex: 0 0 auto; }
-  .secret-path-prefix { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-tertiary); white-space: nowrap; }
-  .secret-key { font-family: var(--font-mono); font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .key-table { display: flex; flex-direction: column; width: 100%; }
+  .key-table-header { display: flex; align-items: center; padding: var(--space-2) var(--space-5); background: var(--color-bg-tertiary); border-bottom: 1px solid var(--color-border); font-size: var(--text-xs); font-weight: var(--font-semibold); color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+  .key-row { display: flex; align-items: center; padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--color-bg-tertiary); }
+  .key-row:last-child { border-bottom: none; }
+  .key-row:hover { background: var(--color-surface-hover); }
+  .key-col { display: flex; align-items: center; }
+  .key-col--name { flex: 1; min-width: 0; }
+  .key-col--name code { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-text); }
+  .key-col--actions { flex: 0 0 auto; }
 
   .feedback { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-5); font-size: var(--text-sm); }
   .feedback span { flex: 1; }
@@ -368,6 +218,7 @@
   .btn-dismiss:hover { opacity: 1; background: rgba(128,128,128,0.1); }
 
   .error-banner { padding: var(--space-3) var(--space-5); background: var(--color-danger-bg); border-bottom: 1px solid var(--color-danger-border, rgba(255,107,107,0.25)); color: var(--color-danger); font-size: var(--text-sm); }
+  .error-banner code { font-family: var(--font-mono); background: rgba(0,0,0,0.1); padding: 1px 6px; border-radius: var(--radius-sm); }
   .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--space-10) var(--space-4); color: var(--color-text-tertiary); text-align: center; gap: var(--space-4); }
   .empty-state p { font-size: var(--text-sm); }
 
@@ -379,11 +230,9 @@
   .btn-secondary:hover:not(:disabled) { background: var(--color-surface-hover); border-color: var(--color-border-hover); }
   .btn-danger { background: var(--color-danger); color: #fff; border-color: var(--color-danger); }
   .btn-danger:hover:not(:disabled) { opacity: 0.9; }
-  .btn-ghost { background: none; border: none; color: var(--color-text-secondary); padding: 6px 12px; border-radius: var(--radius-sm); cursor: pointer; }
-  .btn-ghost:hover:not(:disabled) { color: var(--color-text); background: var(--color-bg-secondary); }
   .btn-sm { padding: 5px 12px; font-size: var(--text-xs); }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  @media (max-width: 768px) { .secret-table-header { display: none; } .secret-row { flex-wrap: wrap; gap: var(--space-2); } .form-row { flex-direction: column; } .form-field { min-width: unset; } .namespace-header { flex-direction: column; } .secret-col--key { width: 100%; } }
+  @media (max-width: 768px) { .key-table-header { display: none; } .key-row { flex-wrap: wrap; gap: var(--space-2); } .form-row { flex-direction: column; } .form-field { min-width: unset; } }
   @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 </style>
