@@ -74,25 +74,25 @@ services:
       # invalid"). To override the endpoint, set it on a per-provider
       # basis via the Connections tab (writes opencode.json) — never via
       # this env block.
-      LMSTUDIO_BASE_URL: ${LMSTUDIO_BASE_URL:-}
+      # LMSTUDIO_BASE_URL: ${LMSTUDIO_BASE_URL:-}
       # Capability resolution (used by entrypoint.sh + akm setup).
-      OP_CAP_LLM_PROVIDER: ${OP_CAP_LLM_PROVIDER:-}
+      # OP_CAP_LLM_PROVIDER: ${OP_CAP_LLM_PROVIDER:-}
       # akm feature toggles (see entrypoint.sh maybe_configure_akm).
-      OP_CAP_AKM_FEEDBACK_DISTILLATION: ${OP_CAP_AKM_FEEDBACK_DISTILLATION:-true}
-      OP_CAP_AKM_MEMORY_INFERENCE: ${OP_CAP_AKM_MEMORY_INFERENCE:-true}
-      OP_CAP_AKM_MEMORY_CONSOLIDATION: ${OP_CAP_AKM_MEMORY_CONSOLIDATION:-true}
+      # OP_CAP_AKM_FEEDBACK_DISTILLATION: ${OP_CAP_AKM_FEEDBACK_DISTILLATION:-true}
+      # OP_CAP_AKM_MEMORY_INFERENCE: ${OP_CAP_AKM_MEMORY_INFERENCE:-true}
+      # OP_CAP_AKM_MEMORY_CONSOLIDATION: ${OP_CAP_AKM_MEMORY_CONSOLIDATION:-true}
       # Google Cloud credentials (files live in stash/vaults/, mounted at /etc/vault).
       # NOTE: the /etc/vault mount no longer carries `user.env` (Phase 2 of #388
       # routed that through akm `vault:user`). The mount remains because gws and
       # gcloud rely on it for their auth directories below.
-      GOOGLE_APPLICATION_CREDENTIALS: /etc/vault/gcloud-credentials.json
-      CLOUDSDK_CONFIG: /etc/vault/.gcloud
+      # GOOGLE_APPLICATION_CREDENTIALS: /etc/vault/gcloud-credentials.json
+      # CLOUDSDK_CONFIG: /etc/vault/.gcloud
       # Google Workspace CLI (gws) — config dir persists OAuth tokens across restarts.
       # Only set CONFIG_DIR here. Do NOT set CREDENTIALS_FILE — if it points to a
       # missing plaintext JSON, gws fails even when encrypted creds exist in the
       # config dir. Letting gws discover creds via CONFIG_DIR works for all methods.
-      GOOGLE_WORKSPACE_CLI_CONFIG_DIR: /etc/vault/.gws
-      GOOGLE_WORKSPACE_PROJECT_ID: ${GOOGLE_WORKSPACE_PROJECT_ID:-}
+      # GOOGLE_WORKSPACE_CLI_CONFIG_DIR: /etc/vault/.gws
+      # GOOGLE_WORKSPACE_PROJECT_ID: ${GOOGLE_WORKSPACE_PROJECT_ID:-}
     ports:
       - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
       # SSH port (2222 → :22) is published only when the `ssh` addon is
