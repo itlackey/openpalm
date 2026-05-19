@@ -112,7 +112,7 @@ export function validateCapabilities(raw: Record<string, unknown>): CapabilityVa
       result.tts = undefined;
     } else {
       const r = validateObject(raw.tts, 'tts', {},
-        { enabled: 'boolean', engine: 'string', provider: 'string', model: 'string', voice: 'string', format: 'string' });
+        { enabled: 'boolean', engine: 'string', provider: 'string', baseURL: 'string', model: 'string', voice: 'string', format: 'string' });
       if (!r.ok) return { ok: false, errors: [r.error] };
       result.tts = r.value as StackSpecCapabilities['tts'];
     }
@@ -123,7 +123,7 @@ export function validateCapabilities(raw: Record<string, unknown>): CapabilityVa
       result.stt = undefined;
     } else {
       const r = validateObject(raw.stt, 'stt', {},
-        { enabled: 'boolean', engine: 'string', provider: 'string', model: 'string', language: 'string' });
+        { enabled: 'boolean', engine: 'string', provider: 'string', baseURL: 'string', model: 'string', language: 'string' });
       if (!r.ok) return { ok: false, errors: [r.error] };
       result.stt = r.value as StackSpecCapabilities['stt'];
     }

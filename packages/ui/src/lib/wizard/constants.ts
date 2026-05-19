@@ -56,11 +56,23 @@ export const STT_OPTIONS: SttOption[] = [
  *
  * Shared between the setup wizard's VoiceStep and the admin Capabilities tab.
  */
+// Field definitions shared by engines that talk to an HTTP backend.
+const BASE_URL_FIELD = (placeholder: string, hint: string) => ({
+  key: 'baseURL' as const,
+  label: 'Endpoint URL',
+  placeholder,
+  hint,
+});
+
 export const TTS_ENGINES: Record<string, VoiceEngineConfig> = {
   kokoro: {
     id: 'kokoro',
     provider: 'kokoro',
     fields: [
+      BASE_URL_FIELD(
+        'http://host.docker.internal:8880/v1',
+        'Where your Kokoro server is running (OpenAI-compatible /v1/audio/speech).',
+      ),
       { key: 'voice', label: 'Voice', placeholder: 'af_bella', hint: 'Kokoro voice ID (e.g. af_bella, am_michael)' },
     ],
   },
@@ -68,6 +80,10 @@ export const TTS_ENGINES: Record<string, VoiceEngineConfig> = {
     id: 'piper',
     provider: 'piper',
     fields: [
+      BASE_URL_FIELD(
+        'http://host.docker.internal:5000',
+        'Where your Piper server is running.',
+      ),
       { key: 'voice', label: 'Voice', placeholder: 'en_US-amy-low', hint: 'Piper voice model name' },
     ],
   },
@@ -75,6 +91,10 @@ export const TTS_ENGINES: Record<string, VoiceEngineConfig> = {
     id: 'openai-tts',
     provider: 'openai',
     fields: [
+      BASE_URL_FIELD(
+        'https://api.openai.com/v1',
+        'Leave empty to use the default OpenAI endpoint. Override for proxies / Azure-compat.',
+      ),
       { key: 'model', label: 'Model', options: ['tts-1', 'tts-1-hd', 'gpt-4o-mini-tts'] },
       { key: 'voice', label: 'Voice', options: ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] },
     ],
@@ -94,6 +114,10 @@ export const STT_ENGINES: Record<string, VoiceEngineConfig> = {
     id: 'whisper-local',
     provider: 'whisper-local',
     fields: [
+      BASE_URL_FIELD(
+        'http://host.docker.internal:9000/v1',
+        'Where your local Whisper server is running.',
+      ),
       { key: 'model', label: 'Model size', options: ['tiny', 'base', 'small', 'medium', 'large'] },
       { key: 'language', label: 'Language', placeholder: 'en', hint: 'BCP-47 tag (e.g. en, en-US) or empty for auto-detect' },
     ],
@@ -102,6 +126,10 @@ export const STT_ENGINES: Record<string, VoiceEngineConfig> = {
     id: 'openai-stt',
     provider: 'openai',
     fields: [
+      BASE_URL_FIELD(
+        'https://api.openai.com/v1',
+        'Leave empty to use the default OpenAI endpoint.',
+      ),
       { key: 'model', label: 'Model', options: ['whisper-1', 'gpt-4o-mini-transcribe', 'gpt-4o-transcribe'] },
       { key: 'language', label: 'Language', placeholder: 'en' },
     ],

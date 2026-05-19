@@ -24,6 +24,8 @@ export type StackSpecTts = {
   /** Engine identifier (e.g. 'kokoro', 'openai-tts'). Drives the UI's picker. */
   engine?: string;
   provider?: string;
+  /** Operator-supplied endpoint override. Wins over PROVIDER_DEFAULT_URLS. */
+  baseURL?: string;
   model?: string;
   voice?: string;
   format?: string;
@@ -34,6 +36,8 @@ export type StackSpecStt = {
   /** Engine identifier (e.g. 'whisper-local', 'openai-stt'). */
   engine?: string;
   provider?: string;
+  /** Operator-supplied endpoint override. */
+  baseURL?: string;
   model?: string;
   language?: string;
 };

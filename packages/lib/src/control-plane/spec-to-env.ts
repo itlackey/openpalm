@@ -146,7 +146,11 @@ export function writeCapabilityVars(spec: StackSpec, stackDir: string, homeDir?:
   const tts = spec.capabilities.tts;
   if (tts?.enabled) {
     const p = tts.provider || llmP;
-    caps.TTS_BASE_URL = resolveUrl(p);
+    // Operator-supplied baseURL (Capabilities tab) wins over the
+    // PROVIDER_DEFAULT_URLS lookup. Required for engines that ship no
+    // default URL — Kokoro, Piper, Whisper-local — and useful for
+    // proxy/Azure overrides of the cloud ones.
+    caps.TTS_BASE_URL = tts.baseURL ? ensureV1(tts.baseURL, p) : resolveUrl(p);
     caps.TTS_MODEL = tts.model || "";
     caps.TTS_VOICE = tts.voice || "";
   } else {
@@ -157,7 +161,7 @@ export function writeCapabilityVars(spec: StackSpec, stackDir: string, homeDir?:
   const stt = spec.capabilities.stt;
   if (stt?.enabled) {
     const p = stt.provider || llmP;
-    caps.STT_BASE_URL = resolveUrl(p);
+    caps.STT_BASE_URL = stt.baseURL ? ensureV1(stt.baseURL, p) : resolveUrl(p);
     caps.STT_MODEL = stt.model || "";
     caps.STT_LANGUAGE = stt.language || "";
   } else {

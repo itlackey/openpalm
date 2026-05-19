@@ -119,8 +119,10 @@ export interface SttOption {
  */
 export interface VoiceEngineValue {
   engine: string;
-  /** Stable provider/runtime identifier — drives base URL resolution. */
+  /** Stable provider/runtime identifier — drives default base URL lookup. */
   provider?: string;
+  /** Operator-supplied endpoint override. Wins over PROVIDER_DEFAULT_URLS. */
+  baseURL?: string;
   model?: string;
   voice?: string;
   language?: string;
@@ -128,7 +130,7 @@ export interface VoiceEngineValue {
 
 /** A single configurable field for a voice engine. */
 export interface VoiceEngineField {
-  key: 'model' | 'voice' | 'language';
+  key: 'baseURL' | 'model' | 'voice' | 'language';
   label: string;
   /** When provided, render as a select. When omitted, render as a text input. */
   options?: string[];

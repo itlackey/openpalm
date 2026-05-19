@@ -90,6 +90,7 @@
 			};
 			// Only populate provider when a distinct engine field is present.
 			if (hasEngine && typeof obj.provider === 'string') v.provider = obj.provider;
+			if (typeof obj.baseURL === 'string') v.baseURL = obj.baseURL;
 			if (typeof obj.model === 'string') v.model = obj.model;
 			if (typeof obj.voice === 'string') v.voice = obj.voice;
 			if (typeof obj.language === 'string') v.language = obj.language;
@@ -176,6 +177,7 @@
 				if (!v.engine || v.engine.startsWith('skip-')) return undefined;
 				const out: Record<string, unknown> = { enabled: true, engine: v.engine };
 				if (v.provider) out.provider = v.provider;
+				if (v.baseURL) out.baseURL = v.baseURL;
 				if (v.model) out.model = v.model;
 				if (v.voice) out.voice = v.voice;
 				if (v.language) out.language = v.language;

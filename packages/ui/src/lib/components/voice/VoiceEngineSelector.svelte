@@ -37,6 +37,7 @@
 		const next: VoiceEngineValue = {
 			engine: id,
 			provider: config?.provider,
+			...(allowed.has('baseURL') && value.baseURL ? { baseURL: value.baseURL } : {}),
 			...(allowed.has('model') && value.model ? { model: value.model } : {}),
 			...(allowed.has('voice') && value.voice ? { voice: value.voice } : {}),
 			...(allowed.has('language') && value.language ? { language: value.language } : {}),
@@ -44,7 +45,7 @@
 		onchange(next);
 	}
 
-	function updateField(key: 'model' | 'voice' | 'language', val: string) {
+	function updateField(key: 'baseURL' | 'model' | 'voice' | 'language', val: string) {
 		const next: VoiceEngineValue = { ...value };
 		if (val) next[key] = val;
 		else delete next[key];
@@ -89,11 +90,12 @@
 						{:else}
 							<input
 								id="voice-{kind}-{field.key}"
-								type="text"
+								type={field.key === 'baseURL' ? 'url' : 'text'}
 								class="form-input"
 								value={value[field.key] ?? ''}
 								placeholder={field.placeholder ?? ''}
 								autocomplete="off"
+								spellcheck={field.key === 'baseURL' ? false : undefined}
 								oninput={(e) => updateField(field.key, (e.currentTarget as HTMLInputElement).value)}
 							/>
 						{/if}
