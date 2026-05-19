@@ -16,31 +16,16 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
-  createLogger,
-  getAddonServiceNames,
   listAvailableAddonIds,
   listEnabledAddonIds,
-  setAddonEnabled,
-  composeStop,
-  buildComposeOptions,
 } from "@openpalm/lib";
-import { checkDocker } from "@openpalm/lib";
+import { performAddonToggle } from "$lib/server/addon-helpers.js";
 
-const logger = createLogger("addons");
-
-type AddonItem = {
-  name: string;
-  enabled: boolean;
-  available: boolean;
-};
+type AddonItem = { name: string; enabled: boolean; available: boolean };
 
 function buildAddonList(availableIds: string[], enabledIds: string[]): AddonItem[] {
   const enabledSet = new Set(enabledIds);
-  return availableIds.map((name) => ({
-    name,
-    enabled: enabledSet.has(name),
-    available: true,
-  }));
+  return availableIds.map((name) => ({ name, enabled: enabledSet.has(name), available: true }));
 }
 
 export const GET: RequestHandler = async (event) => {
@@ -49,13 +34,10 @@ export const GET: RequestHandler = async (event) => {
   if (authErr) return authErr;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
-
   const availableIds = listAvailableAddonIds();
   const addons = buildAddonList(availableIds, listEnabledAddonIds(state.homeDir));
 
-  appendAudit(state, actor, "addons.get", {}, true, requestId, callerType);
+  appendAudit(state, getActor(event), "addons.get", {}, true, requestId, getCallerType(event));
   return jsonResponse(200, { addons }, requestId);
 };
 
@@ -73,44 +55,20 @@ export const POST: RequestHandler = async (event) => {
   const body = result.data;
 
   const name = typeof body.name === "string" ? body.name.trim() : "";
-  if (!name) {
-    return errorResponse(400, "bad_request", "name is required", {}, requestId);
-  }
+  if (!name) return errorResponse(400, "bad_request", "name is required", {}, requestId);
 
-  // Validate name is a known addon
-  const availableIds = listAvailableAddonIds();
-  if (!availableIds.includes(name)) {
+  if (!listAvailableAddonIds().includes(name)) {
     return errorResponse(404, "not_found", `Addon "${name}" is not available`, { name }, requestId);
   }
 
-  const enabled: boolean | undefined =
-    typeof body.enabled === "boolean" ? body.enabled : undefined;
-  const wasEnabled = listEnabledAddonIds(state.homeDir).includes(name);
-  const nextEnabled = enabled !== undefined ? enabled : wasEnabled;
-  const serviceNames = !nextEnabled && wasEnabled ? getAddonServiceNames(state.homeDir, name) : [];
+  const requestedEnabled: boolean | undefined = typeof body.enabled === "boolean" ? body.enabled : undefined;
+  const toggle = await performAddonToggle(state, name, requestedEnabled, requestId);
 
-  if (serviceNames.length > 0) {
-    const dockerCheck = await checkDocker();
-    if (dockerCheck.ok) {
-      try {
-        await composeStop(serviceNames, buildComposeOptions(state));
-        logger.info("stopped addon services before disable", { name, services: serviceNames, requestId });
-      } catch (err) {
-        logger.warn("failed to stop addon services before disable", { name, services: serviceNames, error: String(err), requestId });
-      }
-    }
+  if (!toggle.ok) {
+    appendAudit(state, actor, "addons.post", { name, error: toggle.error }, false, requestId, callerType);
+    return errorResponse(500, "internal_error", toggle.error, {}, requestId);
   }
 
-  const mutation = setAddonEnabled(state.homeDir, state.stackDir, name, nextEnabled);
-  if (!mutation.ok) {
-    appendAudit(state, actor, "addons.post", { name, error: mutation.error }, false, requestId, callerType);
-    return errorResponse(500, "internal_error", mutation.error, {}, requestId);
-  }
-
-  const resultEnabled = listEnabledAddonIds(state.homeDir).includes(name);
-
-  appendAudit(state, actor, "addons.post", { name, enabled: resultEnabled, changed: mutation.changed }, true, requestId, callerType);
-  logger.info("addon updated", { name, enabled: resultEnabled, changed: mutation.changed, requestId });
-
-  return jsonResponse(200, { ok: true, addon: name, enabled: resultEnabled, changed: mutation.changed }, requestId);
+  appendAudit(state, actor, "addons.post", { name, enabled: toggle.enabled, changed: toggle.changed }, true, requestId, callerType);
+  return jsonResponse(200, { ok: true, addon: name, enabled: toggle.enabled, changed: toggle.changed }, requestId);
 };

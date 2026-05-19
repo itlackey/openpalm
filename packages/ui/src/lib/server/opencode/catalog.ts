@@ -5,6 +5,7 @@
  * (and the on-disk config), merges them, and emits ProviderView records the
  * UI renders directly.
  */
+import { readFileSync, existsSync } from 'node:fs';
 import type {
 	ProviderAuthMethod,
 	ProviderPageState,
@@ -13,6 +14,31 @@ import type {
 import { asNumber, asRecord, asString, asStringArray, asStringRecord } from '../coercion.js';
 import { getCurrentConfig, type RawConfig } from './config.js';
 import { opencodeFetch } from './http.js';
+import { getState } from '../state.js';
+import { authJsonPath } from '@openpalm/lib';
+
+/**
+ * Map of provider ID → credential type, as found in OpenCode's auth.json.
+ * OpenCode's /provider response only reports env-var-detected providers in
+ * `connected`; auth.json-stored credentials (API keys + OAuth tokens) are
+ * loaded on-demand and don't appear there. We surface them here so the UI
+ * can treat them as connected and show the right badge.
+ */
+function readAuthedProviders(): Map<string, 'api' | 'oauth'> {
+	const out = new Map<string, 'api' | 'oauth'>();
+	try {
+		const path = authJsonPath(getState());
+		if (!existsSync(path)) return out;
+		const data = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, { type?: string }>;
+		for (const [id, entry] of Object.entries(data ?? {})) {
+			const type = entry?.type === 'oauth' ? 'oauth' : 'api';
+			out.set(id, type);
+		}
+	} catch {
+		/* malformed file → empty */
+	}
+	return out;
+}
 
 type RawProviderCatalogEntry = {
 	id: string;
@@ -72,7 +98,8 @@ export async function loadProviderPage(): Promise<ProviderPageState> {
 			enabled_providers: diskConfig.enabled_providers ?? ocConfig.enabled_providers,
 		};
 
-		const views = buildProviderViews(catalog, auth, config, configured);
+		const authed = readAuthedProviders();
+		const views = buildProviderViews(catalog, auth, config, configured, authed);
 
 		return {
 			available: true,
@@ -103,14 +130,30 @@ export async function loadProviderPage(): Promise<ProviderPageState> {
 	}
 }
 
+function extractAndSortModels(
+	...sources: Array<unknown>
+): Array<{ id: string; name: string }> {
+	let entries: Record<string, { name?: string }> = {};
+	for (const source of sources) {
+		const record = asModelRecord(source);
+		if (record) { entries = record; break; }
+	}
+	return Object.entries(entries)
+		.map(([id, model]) => ({ id, name: model.name ?? id }))
+		.sort((left, right) => left.name.localeCompare(right.name));
+}
+
 function buildProviderViews(
 	catalog: RawProviderCatalog,
 	auth: Record<string, RawAuthMethod[]>,
 	config: RawConfig,
-	configured: RawConfiguredProviders
+	configured: RawConfiguredProviders,
+	authed: Map<string, 'api' | 'oauth'>
 ): ProviderView[] {
 	const catalogMap = new Map(catalog.all.map((p) => [p.id, p]));
-	const connected = new Set(catalog.connected);
+	const envConnected = new Set(catalog.connected);
+	// "connected" = env-var detection (OpenCode's list) ∪ has-credential (auth.json)
+	const connected = new Set([...envConnected, ...authed.keys()]);
 	const disabled = new Set(config.disabled_providers ?? []);
 	const allowlist = config.enabled_providers ? new Set(config.enabled_providers) : undefined;
 	const configuredMap = new Map(configured.providers.map((p) => [p.id, p]));
@@ -133,26 +176,29 @@ function buildProviderViews(
 				label: method.label,
 				prompts: method.prompts ?? [],
 			}));
-			const modelEntries =
-				asModelRecord(resolvedEntry?.models) ??
-				asModelRecord(configEntry?.models) ??
-				asModelRecord(entry?.models) ??
-				{};
-			const models = Object.entries(modelEntries)
-				.map(([id, model]) => ({ id, name: model.name ?? id }))
-				.sort((left, right) => left.name.localeCompare(right.name));
+			const models = extractAndSortModels(resolvedEntry?.models, configEntry?.models, entry?.models);
 			const currentModelId = splitModel(config.model, providerId);
 			const currentSmallModelId = splitModel(config.small_model, providerId);
 			const enabled = allowlist
 				? allowlist.has(providerId) && !disabled.has(providerId)
 				: !disabled.has(providerId);
 
+			const isConnected = connected.has(providerId);
+			const isEnvConnected = envConnected.has(providerId);
+			const authedType = authed.get(providerId);
+			const credentialType: ProviderView['credentialType'] =
+				!isConnected ? undefined
+				: isEnvConnected ? 'env'
+				: authedType ? authedType
+				: configEntry ? 'config'
+				: 'custom';
+
 			return {
 				id: providerId,
 				name: resolvedEntry?.name ?? asString(configEntry?.name) ?? entry?.name ?? providerId,
 				source: resolvedEntry?.source ?? (entry ? (configEntry ? 'config' : 'catalog') : 'custom'),
 				env: resolvedEntry?.env ?? asStringArray(configEntry?.env) ?? entry?.env ?? [],
-				connected: connected.has(providerId),
+				connected: isConnected,
 				configured: Boolean(resolvedEntry || configEntry),
 				disabled: !enabled,
 				activeMainModel: Boolean(currentModelId),
@@ -166,6 +212,7 @@ function buildProviderViews(
 				modelCount: models.length,
 				models,
 				authMethods,
+				credentialType,
 				options: {
 					// Credentials live in OpenCode's auth.json (managed via /auth/{providerID}),
 					// not in opencode.json. Don't surface a stray apiKey here even if a legacy

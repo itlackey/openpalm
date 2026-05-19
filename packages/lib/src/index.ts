@@ -251,6 +251,13 @@ export {
   formatCapabilityString,
 } from "./control-plane/stack-spec.js";
 
+// ── Capability Validation ────────────────────────────────────────────────
+export type {
+  CapabilityValidationError,
+  CapabilityValidationResult,
+} from "./control-plane/capability-schema.js";
+export { validateCapabilities } from "./control-plane/capability-schema.js";
+
 // ── Spec-to-Env Derivation ──────────────────────────────────────────────
 export {
   writeCapabilityVars,
@@ -266,6 +273,16 @@ export type {
 export {
   performSetup,
 } from "./control-plane/setup.js";
+
+// ── Host OpenCode Import ─────────────────────────────────────────────────
+export type {
+  HostOpenCodeStatus,
+  HostImportResult,
+} from "./control-plane/host-opencode.js";
+export {
+  detectHostOpenCode,
+  importHostOpenCode,
+} from "./control-plane/host-opencode.js";
 
 // ── AKM Vault Mirror (#388) ──────────────────────────────────────────────
 export {

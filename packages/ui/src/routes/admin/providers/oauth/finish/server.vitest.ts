@@ -6,8 +6,11 @@ import { tmpdir } from 'node:os';
 import { resetState } from '$lib/server/test-helpers.js';
 import { POST } from './+server.js';
 
+vi.mock('$lib/server/opencode/http.js', () => ({
+	opencodeFetch: vi.fn(async () => undefined),
+}));
+
 vi.mock('$lib/server/opencode/index.js', () => ({
-	finishOauthFlowAtBase: vi.fn(async () => undefined),
 	actionSuccess: (message: string, providerId?: string) => ({
 		ok: true,
 		message,
@@ -20,11 +23,7 @@ vi.mock('$lib/server/opencode/index.js', () => ({
 	}),
 }));
 
-vi.mock('$lib/server/opencode-auth-subprocess.js', () => ({
-	ensureAuthServer: vi.fn(async () => 'http://localhost:9999'),
-}));
-
-import { finishOauthFlowAtBase } from '$lib/server/opencode/index.js';
+import { opencodeFetch } from '$lib/server/opencode/http.js';
 
 let rootDir = '';
 let originalHome: string | undefined;
@@ -72,11 +71,12 @@ describe('POST /admin/providers/oauth/finish', () => {
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { ok: boolean };
 		expect(body.ok).toBe(true);
-		expect(vi.mocked(finishOauthFlowAtBase)).toHaveBeenCalledWith(
-			'http://localhost:9999',
-			'openai',
-			0,
-			'auth-code-123',
+		expect(vi.mocked(opencodeFetch)).toHaveBeenCalledWith(
+			'/provider/openai/oauth/callback',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ method: 0, code: 'auth-code-123' }),
+			}),
 		);
 	});
 

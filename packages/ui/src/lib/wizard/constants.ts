@@ -1,4 +1,4 @@
-import type { Provider, ProviderGroup, TtsOption, SttOption, Channel, Service, OpenCodeProvider } from './types.js';
+import type { Provider, ProviderGroup, TtsOption, SttOption, Channel, Service, OpenCodeProvider, VoiceEngineConfig } from './types.js';
 
 export const PROVIDER_GROUPS: ProviderGroup[] = [
   { id: 'recommended', label: 'Recommended', desc: 'Best options to get started quickly' },
@@ -48,6 +48,75 @@ export const STT_OPTIONS: SttOption[] = [
   { id: 'browser-stt', name: 'Browser Built-in', type: 'builtin', desc: 'Web Speech API. No setup' },
   { id: 'skip-stt', name: 'Skip — text only', type: 'skip', desc: 'Add STT later from the dashboard' },
 ];
+
+/**
+ * Per-engine configuration fields. Empty `fields` means "no extra settings".
+ * `provider` is what gets written to stack.yml `capabilities.tts.provider`
+ * (and STT) so spec-to-env can resolve the runtime URL.
+ *
+ * Shared between the setup wizard's VoiceStep and the admin Capabilities tab.
+ */
+export const TTS_ENGINES: Record<string, VoiceEngineConfig> = {
+  kokoro: {
+    id: 'kokoro',
+    provider: 'kokoro',
+    fields: [
+      { key: 'voice', label: 'Voice', placeholder: 'af_bella', hint: 'Kokoro voice ID (e.g. af_bella, am_michael)' },
+    ],
+  },
+  piper: {
+    id: 'piper',
+    provider: 'piper',
+    fields: [
+      { key: 'voice', label: 'Voice', placeholder: 'en_US-amy-low', hint: 'Piper voice model name' },
+    ],
+  },
+  'openai-tts': {
+    id: 'openai-tts',
+    provider: 'openai',
+    fields: [
+      { key: 'model', label: 'Model', options: ['tts-1', 'tts-1-hd', 'gpt-4o-mini-tts'] },
+      { key: 'voice', label: 'Voice', options: ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] },
+    ],
+  },
+  'browser-tts': {
+    id: 'browser-tts',
+    fields: [],
+  },
+  'skip-tts': {
+    id: 'skip-tts',
+    fields: [],
+  },
+};
+
+export const STT_ENGINES: Record<string, VoiceEngineConfig> = {
+  'whisper-local': {
+    id: 'whisper-local',
+    provider: 'whisper-local',
+    fields: [
+      { key: 'model', label: 'Model size', options: ['tiny', 'base', 'small', 'medium', 'large'] },
+      { key: 'language', label: 'Language', placeholder: 'en', hint: 'BCP-47 tag (e.g. en, en-US) or empty for auto-detect' },
+    ],
+  },
+  'openai-stt': {
+    id: 'openai-stt',
+    provider: 'openai',
+    fields: [
+      { key: 'model', label: 'Model', options: ['whisper-1', 'gpt-4o-mini-transcribe', 'gpt-4o-transcribe'] },
+      { key: 'language', label: 'Language', placeholder: 'en' },
+    ],
+  },
+  'browser-stt': {
+    id: 'browser-stt',
+    fields: [
+      { key: 'language', label: 'Language', placeholder: 'en-US', hint: 'BCP-47 tag for Web Speech API' },
+    ],
+  },
+  'skip-stt': {
+    id: 'skip-stt',
+    fields: [],
+  },
+};
 
 export const CHANNELS: Channel[] = [
   { id: 'chat', name: 'Web Chat', icon: '💬', desc: 'Browser-based chat — always available', locked: true },

@@ -66,10 +66,14 @@ services:
       # Provider credentials live in OpenCode's auth.json (bind-mounted
       # below) — NOT in this env block. Connections-tab saves and the
       # setup wizard both call OpenCode's PUT /auth/{providerID}; ai-sdk
-      # picks the key up via OpenCode at call time. Only baseURL
-      # overrides are still forwarded here because writeCapabilityVars
-      # and the lmstudio entrypoint code path need them up-front.
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      # picks the key up via OpenCode at call time.
+      #
+      # OPENAI_BASE_URL is intentionally NOT forwarded. The @ai-sdk/openai
+      # library reads it directly and treats an empty string as a literal
+      # baseURL (which breaks request URL construction with "URL is
+      # invalid"). To override the endpoint, set it on a per-provider
+      # basis via the Connections tab (writes opencode.json) — never via
+      # this env block.
       LMSTUDIO_BASE_URL: ${LMSTUDIO_BASE_URL:-}
       # Capability resolution (used by entrypoint.sh + akm setup).
       OP_CAP_LLM_PROVIDER: ${OP_CAP_LLM_PROVIDER:-}

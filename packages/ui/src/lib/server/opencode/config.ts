@@ -95,3 +95,88 @@ export function setProviderEnabled(config: RawConfig, providerId: string, enable
 
 	return config;
 }
+
+/** Save non-credential connection options (baseURL, headers, timeout, etc.) for a provider. */
+export async function setProviderOptions(
+	providerId: string,
+	options: {
+		baseURL?: string;
+		enterpriseUrl?: string;
+		timeout?: number;
+		setCacheKey?: boolean;
+		headers?: Record<string, string> | null;
+	},
+): Promise<void> {
+	const config = await getCurrentConfig();
+	const providerConfig = { ...(config.provider ?? {}) };
+	const current = asRecord(providerConfig[providerId]) ?? {};
+	const currentOptions = asRecord(current.options) ?? {};
+	const nextOptions: Record<string, unknown> = { ...currentOptions };
+
+	// Credentials must not live here — strip any stale apiKey.
+	delete nextOptions.apiKey;
+
+	if (options.baseURL) nextOptions.baseURL = options.baseURL; else delete nextOptions.baseURL;
+	if (options.enterpriseUrl) nextOptions.enterpriseUrl = options.enterpriseUrl; else delete nextOptions.enterpriseUrl;
+	if (options.timeout !== undefined && options.timeout > 0) nextOptions.timeout = options.timeout; else delete nextOptions.timeout;
+	if (options.setCacheKey === true) nextOptions.setCacheKey = true; else delete nextOptions.setCacheKey;
+	if (options.headers && Object.keys(options.headers).length > 0) nextOptions.headers = options.headers;
+	else delete nextOptions.headers;
+
+	const nextEntry = normalizeProviderConfig({ ...current, options: nextOptions });
+	if (nextEntry) providerConfig[providerId] = nextEntry;
+	else delete providerConfig[providerId];
+
+	config.provider = providerConfig;
+	await patchConfig(config);
+}
+
+/** Register a provider entry (local-detected or fully custom) in opencode.json. */
+export async function registerProvider(
+	providerId: string,
+	entry: {
+		npm?: string;
+		name?: string;
+		options?: Record<string, unknown>;
+		models?: Record<string, unknown>;
+	},
+	overwrite = false,
+): Promise<{ alreadyExists: boolean }> {
+	const config = await getCurrentConfig();
+	const providerConfig = { ...(config.provider ?? {}) };
+
+	if (providerConfig[providerId] && !overwrite) {
+		return { alreadyExists: true };
+	}
+
+	const existing = asRecord(providerConfig[providerId]);
+	providerConfig[providerId] = {
+		...existing,
+		...(entry.npm !== undefined ? { npm: entry.npm } : {}),
+		...(entry.name !== undefined ? { name: entry.name } : {}),
+		...(entry.options !== undefined ? { options: entry.options } : {}),
+		...(entry.models !== undefined ? { models: entry.models } : {}),
+	};
+
+	config.provider = providerConfig;
+	await patchConfig(config);
+	return { alreadyExists: false };
+}
+
+/** Set the main model (or small model) in opencode.json. */
+export async function setMainModel(
+	providerId: string,
+	modelId: string,
+	target: 'model' | 'small_model',
+): Promise<void> {
+	const config = await getCurrentConfig();
+	config[target] = `${providerId}/${modelId}`;
+	await patchConfig(config);
+}
+
+/** Clear the main model (or small model) in opencode.json. */
+export async function unsetMainModel(target: 'model' | 'small_model'): Promise<void> {
+	const config = await getCurrentConfig();
+	delete (config as Record<string, unknown>)[target];
+	await patchConfig(config);
+}

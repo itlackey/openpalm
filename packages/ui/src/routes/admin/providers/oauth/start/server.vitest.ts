@@ -6,12 +6,15 @@ import { tmpdir } from 'node:os';
 import { resetState } from '$lib/server/test-helpers.js';
 import { POST } from './+server.js';
 
-vi.mock('$lib/server/opencode/index.js', () => ({
-	startOauthFlowAtBase: vi.fn(async () => ({
+vi.mock('$lib/server/opencode/http.js', () => ({
+	opencodeFetch: vi.fn(async () => ({
 		url: 'https://example.com/oauth',
 		method: 'code',
 		instructions: 'paste the code',
 	})),
+}));
+
+vi.mock('$lib/server/opencode/index.js', () => ({
 	actionSuccess: (message: string, providerId?: string, extra?: Record<string, unknown>) => ({
 		ok: true,
 		message,
@@ -25,11 +28,7 @@ vi.mock('$lib/server/opencode/index.js', () => ({
 	}),
 }));
 
-vi.mock('$lib/server/opencode-auth-subprocess.js', () => ({
-	ensureAuthServer: vi.fn(async () => 'http://localhost:9999'),
-}));
-
-import { startOauthFlowAtBase } from '$lib/server/opencode/index.js';
+import { opencodeFetch } from '$lib/server/opencode/http.js';
 
 let rootDir = '';
 let originalHome: string | undefined;
@@ -79,7 +78,7 @@ describe('POST /admin/providers/oauth/start', () => {
 		expect(body.ok).toBe(true);
 		expect(body.oauth?.url).toBe('https://example.com/oauth');
 		expect(body.oauth?.mode).toBe('code');
-		expect(vi.mocked(startOauthFlowAtBase)).toHaveBeenCalled();
+		expect(vi.mocked(opencodeFetch)).toHaveBeenCalled();
 	});
 
 	test('rejects missing providerId', async () => {

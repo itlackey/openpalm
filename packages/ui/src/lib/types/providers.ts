@@ -52,6 +52,16 @@ export type ProviderView = {
 	options: ProviderOptionView;
 	supportsOauth: boolean;
 	supportsApiAuth: boolean;
+	/**
+	 * How the provider got its credentials. Drives the badge in the UI.
+	 *   'env'    — OpenCode detected env vars at startup
+	 *   'api'    — stored API key in auth.json
+	 *   'oauth'  — stored OAuth credential in auth.json
+	 *   'config' — credential supplied inline in opencode.json
+	 *   'custom' — custom provider registration, no credential stored
+	 *   undefined — not connected
+	 */
+	credentialType?: 'env' | 'api' | 'oauth' | 'config' | 'custom';
 };
 
 export type ProviderPageState = {

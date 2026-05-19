@@ -5,7 +5,7 @@
   } from '$lib/wizard/constants.js';
   import type {
     ProviderState, ModelSelection, DetectedProvider, ChannelState,
-    OpenCodeProvider, AuthMethod,
+    OpenCodeProvider, AuthMethod, VoiceEngineValue,
   } from '$lib/wizard/types.js';
   import ProgressBar from './ProgressBar.svelte';
   import WelcomeStep from './steps/WelcomeStep.svelte';
@@ -44,6 +44,8 @@
   let opencodeProviders = $state<OpenCodeProvider[]>([]);
   let opencodeAuth = $state<Record<string, AuthMethod[]>>({});
   let ocFilterQuery = $state('');
+  // Host import detection
+  let hostProviderCount = $state(0);
   /** Generation counter per provider — discard stale verify results */
   const verifyGeneration: Record<string, number> = {};
 
@@ -52,8 +54,10 @@
   let step2Error = $state('');
 
   // ── Step 3: Voice ─────────────────────────────────────────────────────────
-  let voiceTts = $state<string | null>(null);
-  let voiceStt = $state<string | null>(null);
+  // VoiceEngineValue holds engine id + per-engine settings (model/voice/language).
+  // Empty engine = not yet chosen; we fall back to voiceDefaults at render time.
+  let voiceTts = $state<VoiceEngineValue>({ engine: '' });
+  let voiceStt = $state<VoiceEngineValue>({ engine: '' });
 
   // ── Step 4: Options ───────────────────────────────────────────────────────
   let channelSelection = $state<Record<string, boolean | ChannelState>>({
@@ -125,8 +129,8 @@
     ? { tts: 'openai-tts', stt: 'openai-stt' }
     : { tts: 'browser-tts', stt: 'browser-stt' });
 
-  const activeTts = $derived(voiceTts ?? voiceDefaults.tts);
-  const activeStt = $derived(voiceStt ?? voiceDefaults.stt);
+  const activeTts = $derived(voiceTts.engine || voiceDefaults.tts);
+  const activeStt = $derived(voiceStt.engine || voiceDefaults.stt);
 
   // Build the install payload for /api/setup/complete
   const payload = $derived.by(() => {
@@ -203,6 +207,22 @@
         topN: reranking.topN || 5,
       };
     }
+
+    // Voice engines — only persist if the user picked something explicit
+    // and it isn't the "skip" sentinel.
+    const voicePayload = (v: VoiceEngineValue) => {
+      if (!v.engine || v.engine.startsWith('skip-')) return undefined;
+      const out: Record<string, unknown> = { enabled: true, engine: v.engine };
+      if (v.provider) out.provider = v.provider;
+      if (v.model) out.model = v.model;
+      if (v.voice) out.voice = v.voice;
+      if (v.language) out.language = v.language;
+      return out;
+    };
+    const ttsCap = voicePayload(voiceTts);
+    if (ttsCap) (result.capabilities as Record<string, unknown>).tts = ttsCap;
+    const sttCap = voicePayload(voiceStt);
+    if (sttCap) (result.capabilities as Record<string, unknown>).stt = sttCap;
 
     if (ownerName || ownerEmail) {
       result.owner = {
@@ -811,6 +831,32 @@
     currentStep = 5;
   }
 
+  // ── Host import ───────────────────────────────────────────────────────────
+
+  async function loadHostStatus(): Promise<void> {
+    try {
+      const res = await fetch('/admin/providers/host-status');
+      if (res.ok) {
+        const data = (await res.json()) as { providerCount: number };
+        hostProviderCount = data.providerCount ?? 0;
+      }
+    } catch {
+      // non-critical — import option simply won't appear
+    }
+  }
+
+  async function handleHostImport(): Promise<void> {
+    try {
+      const res = await fetch('/admin/providers/import-host', { method: 'POST' });
+      if (res.ok) {
+        // Import succeeded — advance to models step
+        goToStep(2);
+      }
+    } catch {
+      // On failure fall through — user can configure manually
+    }
+  }
+
   // ── Mount: generate token, check status, start discovery ─────────────────
   onMount(() => {
     initProviderState();
@@ -820,6 +866,8 @@
       .then((r) => r.json())
       .then((data) => { if (data.setupComplete) window.location.href = '/'; })
       .catch(() => { /* ignore */ });
+
+    void loadHostStatus();
 
     checkOpenCodeAndInit()
       .then(() => detectProviders())
@@ -886,6 +934,7 @@
             {detecting}
             {ocFilterQuery}
             {verifiedCount}
+            {hostProviderCount}
             onback={() => goToStep(0)}
             onnext={() => { if (verifiedCount > 0) goToStep(2); }}
             ontogglefallback={handleToggleFallback}
@@ -899,6 +948,7 @@
             onmarkready={handleMarkReady}
             ondeselect={handleDeselect}
             onfilterchange={(q) => ocFilterQuery = q}
+            onhostimport={() => void handleHostImport()}
           />
         </section>
       {:else if currentStep === 2}
@@ -917,17 +967,13 @@
       {:else if currentStep === 3}
         <section class="step-content" id="step-3" data-testid="step-voice">
           <VoiceStep
-            {activeTts}
-            {activeStt}
-            voiceTtsExplicit={voiceTts}
-            voiceSttExplicit={voiceStt}
-            defaultTts={voiceDefaults.tts}
-            defaultStt={voiceDefaults.stt}
+            tts={voiceTts.engine ? voiceTts : { engine: voiceDefaults.tts }}
+            stt={voiceStt.engine ? voiceStt : { engine: voiceDefaults.stt }}
             {hasOpenAI}
             onback={() => goToStep(2)}
             onnext={() => goToStep(4)}
-            onselecttts={(id) => voiceTts = id}
-            onselectstt={(id) => voiceStt = id}
+            onchangetts={(v) => voiceTts = v}
+            onchangestt={(v) => voiceStt = v}
           />
         </section>
       {:else if currentStep === 4}

@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
+    "dev:local": "PORT=5173 OP_OPENCODE_URL=${OP_OPENCODE_URL:-http://localhost:3800} vite dev",
     "build": "svelte-kit sync && vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",

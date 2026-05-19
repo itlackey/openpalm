@@ -25,6 +25,10 @@
     onmarkready: (id: string) => void;
     ondeselect: (id: string) => void;
     onfilterchange: (q: string) => void;
+    /** Number of providers detected on this host's OpenCode install (0 = none) */
+    hostProviderCount?: number;
+    /** Called when user chooses Import and clicks Continue — parent calls import-host then advances */
+    onhostimport?: () => void;
   }
 
   let {
@@ -50,7 +54,15 @@
     onmarkready,
     ondeselect,
     onfilterchange,
+    hostProviderCount = 0,
+    onhostimport,
   }: Props = $props();
+
+  // When host providers are detected, default to Import mode.
+  // Use explicit state so the user can toggle between import and manual
+  // without the prop value re-driving the choice.
+  let importModeExplicit = $state<'import' | 'manual' | null>(null);
+  const importMode = $derived(importModeExplicit ?? (hostProviderCount > 0 ? 'import' : 'manual'));
 
   function handleFilterInput(e: Event) {
     onfilterchange((e.currentTarget as HTMLInputElement).value);
@@ -77,6 +89,23 @@
 <h2>Where should your models run?</h2>
 <p class="step-description">Select one or more providers. Click a card to configure it.</p>
 
+{#if hostProviderCount > 0}
+  <div class="host-import-choice">
+    <p class="host-import-desc">
+      We found OpenCode on this host with <strong>{hostProviderCount}</strong> provider{hostProviderCount !== 1 ? 's' : ''} configured.
+    </p>
+    <label class="host-radio">
+      <input type="radio" name="provider-source" value="import" checked={importMode === 'import'} onchange={() => { importModeExplicit = 'import'; }} />
+      <span><strong>Import from host OpenCode</strong> <em>(recommended)</em></span>
+    </label>
+    <label class="host-radio">
+      <input type="radio" name="provider-source" value="manual" checked={importMode === 'manual'} onchange={() => { importModeExplicit = 'manual'; }} />
+      <span>Configure providers manually</span>
+    </label>
+  </div>
+{/if}
+
+{#if !hostProviderCount || importMode === 'manual'}
 {#if detecting}
   <div class="loading-state" id="conn-detecting">
     <span class="spinner"></span>&nbsp;Detecting local providers...
@@ -369,14 +398,52 @@
   {/if}
 </div>
 
+{/if}
+
 <div class="step-actions" id="step1-actions">
   <button class="btn btn-secondary" id="btn-step1-back" onclick={onback}>Back</button>
-  <span class="nav-info" id="provider-count-info">
-    {#if verifiedCount > 0}
-      <b>{verifiedCount}</b> provider{verifiedCount > 1 ? 's' : ''} ready
-    {:else}
-      Connect at least one
-    {/if}
-  </span>
-  <button class="btn btn-primary" id="btn-step1-next" onclick={onnext} disabled={verifiedCount === 0}>Choose Models</button>
+  {#if importMode === 'import' && hostProviderCount > 0}
+    <span class="nav-info">Import {hostProviderCount} provider{hostProviderCount !== 1 ? 's' : ''} from host</span>
+    <button class="btn btn-primary" id="btn-step1-next" onclick={onhostimport}>Continue</button>
+  {:else}
+    <span class="nav-info" id="provider-count-info">
+      {#if verifiedCount > 0}
+        <b>{verifiedCount}</b> provider{verifiedCount > 1 ? 's' : ''} ready
+      {:else}
+        Connect at least one
+      {/if}
+    </span>
+    <button class="btn btn-primary" id="btn-step1-next" onclick={onnext} disabled={verifiedCount === 0}>Choose Models</button>
+  {/if}
 </div>
+
+<style>
+  .host-import-choice {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px;
+    border: 1px solid var(--color-border, #e2e8f0);
+    border-radius: 8px;
+    background: var(--color-surface, #fff);
+    margin-bottom: 16px;
+  }
+
+  .host-import-desc {
+    font-size: 14px;
+    color: var(--color-text-secondary, #64748b);
+    margin: 0 0 4px;
+  }
+
+  .host-radio {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  .host-radio input[type="radio"] {
+    accent-color: var(--color-primary, #6366f1);
+  }
+</style>

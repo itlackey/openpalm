@@ -111,6 +111,40 @@ export interface SttOption {
   desc: string;
 }
 
+/**
+ * Settings shape persisted alongside a TTS or STT engine selection.
+ * Fields are optional; an engine that needs no extra config (browser, skip)
+ * leaves them empty. Stored in stack.yml `capabilities.tts` / `.stt` and
+ * surfaced to the voice channel via TTS_ / STT_ env vars.
+ */
+export interface VoiceEngineValue {
+  engine: string;
+  /** Stable provider/runtime identifier — drives base URL resolution. */
+  provider?: string;
+  model?: string;
+  voice?: string;
+  language?: string;
+}
+
+/** A single configurable field for a voice engine. */
+export interface VoiceEngineField {
+  key: 'model' | 'voice' | 'language';
+  label: string;
+  /** When provided, render as a select. When omitted, render as a text input. */
+  options?: string[];
+  placeholder?: string;
+  hint?: string;
+}
+
+export interface VoiceEngineConfig {
+  /** Engine identifier matching TTS_OPTIONS / STT_OPTIONS. */
+  id: string;
+  /** The provider name used at the stack-yml level (`tts.provider`). */
+  provider?: string;
+  /** Fields the operator can configure for this engine. */
+  fields: VoiceEngineField[];
+}
+
 export interface RerankingOptions {
   enabled: boolean;
   mode: 'llm' | 'dedicated';

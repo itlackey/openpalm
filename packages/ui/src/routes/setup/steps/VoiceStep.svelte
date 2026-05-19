@@ -1,21 +1,18 @@
 <script lang="ts">
-  import { TTS_OPTIONS, STT_OPTIONS } from '$lib/wizard/constants.js';
+  import type { VoiceEngineValue } from '$lib/wizard/types.js';
+  import VoiceEngineSelector from '$lib/components/voice/VoiceEngineSelector.svelte';
 
   interface Props {
-    activeTts: string;
-    activeStt: string;
-    voiceTtsExplicit: string | null;
-    voiceSttExplicit: string | null;
-    defaultTts: string;
-    defaultStt: string;
+    tts: VoiceEngineValue;
+    stt: VoiceEngineValue;
     hasOpenAI: boolean;
     onback: () => void;
     onnext: () => void;
-    onselecttts: (id: string) => void;
-    onselectstt: (id: string) => void;
+    onchangetts: (v: VoiceEngineValue) => void;
+    onchangestt: (v: VoiceEngineValue) => void;
   }
 
-  let { activeTts, activeStt, voiceTtsExplicit, voiceSttExplicit, defaultTts, defaultStt, hasOpenAI, onback, onnext, onselecttts, onselectstt }: Props = $props();
+  let { tts, stt, hasOpenAI, onback, onnext, onchangetts, onchangestt }: Props = $props();
 
   const hint = $derived(hasOpenAI
     ? 'OpenAI selected as voice defaults. Kokoro and Whisper recommended for better quality.'
@@ -34,24 +31,7 @@
       <span class="model-group-tag model-group-tag-optional">Optional</span>
     </div>
     <div class="model-group-desc">How your assistant speaks</div>
-
-    {#each TTS_OPTIONS as o}
-      {@const isOn = activeTts === o.id}
-      <div class="model-opt {isOn ? 'on' : ''}" role="button" tabindex="0"
-        onclick={() => onselecttts(o.id)}
-        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onselecttts(o.id); }}>
-        <div class="model-opt-dot"><div class="model-opt-dot-inner"></div></div>
-        <div style="flex:1;min-width:0">
-          <div class="model-opt-name">{o.name}</div>
-          <div class="model-opt-meta">{o.desc}</div>
-        </div>
-        {#if o.recommended}
-          <span class="model-opt-badge model-opt-badge-top">Recommended</span>
-        {:else if defaultTts === o.id && !voiceTtsExplicit}
-          <span class="model-opt-badge model-opt-badge-auto">Auto</span>
-        {/if}
-      </div>
-    {/each}
+    <VoiceEngineSelector kind="tts" value={tts} onchange={onchangetts} />
   </div>
 
   <div class="model-group">
@@ -60,24 +40,7 @@
       <span class="model-group-tag model-group-tag-optional">Optional</span>
     </div>
     <div class="model-group-desc">How your assistant hears you</div>
-
-    {#each STT_OPTIONS as o}
-      {@const isOn = activeStt === o.id}
-      <div class="model-opt {isOn ? 'on' : ''}" role="button" tabindex="0"
-        onclick={() => onselectstt(o.id)}
-        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onselectstt(o.id); }}>
-        <div class="model-opt-dot"><div class="model-opt-dot-inner"></div></div>
-        <div style="flex:1;min-width:0">
-          <div class="model-opt-name">{o.name}</div>
-          <div class="model-opt-meta">{o.desc}</div>
-        </div>
-        {#if o.recommended}
-          <span class="model-opt-badge model-opt-badge-top">Recommended</span>
-        {:else if defaultStt === o.id && !voiceSttExplicit}
-          <span class="model-opt-badge model-opt-badge-auto">Auto</span>
-        {/if}
-      </div>
-    {/each}
+    <VoiceEngineSelector kind="stt" value={stt} onchange={onchangestt} />
   </div>
 </div>
 

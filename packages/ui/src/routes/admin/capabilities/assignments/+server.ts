@@ -12,6 +12,7 @@ import {
   writeCapabilityVars,
   buildAkmSetupJson,
   readStackEnv,
+  validateCapabilities,
 } from '@openpalm/lib';
 import {
   errorResponse,
@@ -24,42 +25,8 @@ import {
   requireAdmin,
 } from '$lib/server/helpers.js';
 
-const TOP_LEVEL_KEYS = new Set(['llm', 'slm', 'embeddings', 'tts', 'stt', 'reranking']);
-
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-function requireCapRef(value: unknown, key: string, requestId: string): string | Response {
-  if (typeof value !== 'string' || !value.trim()) return errorResponse(400, 'bad_request', `${key} must be a non-empty "provider/model" string`, {}, requestId);
-  const idx = value.indexOf('/');
-  if (idx <= 0 || idx === value.length - 1) return errorResponse(400, 'bad_request', `${key} must use "provider/model" format`, {}, requestId);
-  return value.trim();
-}
-
-/** Merge an object capability, picking only known string/number/boolean fields. */
-function mergeCapability(
-  existing: Record<string, unknown> | undefined,
-  input: unknown,
-  label: string,
-  schema: Record<string, 'string' | 'number' | 'boolean'>,
-  requestId: string,
-): Record<string, unknown> | Response {
-  if (!isRecord(input)) return errorResponse(400, 'bad_request', `${label} must be an object`, {}, requestId);
-  const result: Record<string, unknown> = { ...existing };
-  for (const [k, v] of Object.entries(input)) {
-    const expected = schema[k];
-    if (!expected) return errorResponse(400, 'bad_request', `${label} contains unsupported key "${k}"`, {}, requestId);
-    if (expected === 'number') {
-      if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) {
-        return errorResponse(400, 'bad_request', `${label}.${k} must be a positive integer`, {}, requestId);
-      }
-    } else if (typeof v !== expected) {
-      return errorResponse(400, 'bad_request', `${label}.${k} must be a ${expected}`, {}, requestId);
-    }
-    result[k] = v;
-  }
-  return result;
 }
 
 export const GET: RequestHandler = async (event) => {
@@ -89,51 +56,32 @@ export const POST: RequestHandler = async (event) => {
   const raw = body.capabilities ?? body;
   if (!isRecord(raw)) return errorResponse(400, 'bad_request', 'capabilities must be an object', {}, requestId);
 
-  for (const k of Object.keys(raw)) {
-    if (!TOP_LEVEL_KEYS.has(k)) return errorResponse(400, 'bad_request', `capabilities contains unsupported key "${k}"`, {}, requestId);
+  const validation = validateCapabilities(raw);
+  if (!validation.ok) {
+    const first = validation.errors[0];
+    return errorResponse(400, 'bad_request', first.message, {}, requestId);
   }
 
   const spec = readStackSpec(state.stackDir);
   if (!spec) return errorResponse(500, 'internal_error', 'stack.yml not found', {}, requestId);
 
-  // LLM (required string, never deletable)
-  if ('llm' in raw) {
-    const r = requireCapRef(raw.llm, 'llm', requestId);
-    if (r instanceof Response) return r;
-    spec.capabilities.llm = r;
+  // Apply validated partial capabilities onto the existing spec.
+  const validated = validation.capabilities;
+  if ('llm' in validated && validated.llm !== undefined) spec.capabilities.llm = validated.llm;
+  if ('slm' in validated) {
+    if (validated.slm === undefined) delete spec.capabilities.slm;
+    else spec.capabilities.slm = validated.slm;
   }
-
-  // SLM (optional string, deletable)
-  if ('slm' in raw) {
-    if (raw.slm === undefined) { delete spec.capabilities.slm; }
-    else {
-      const r = requireCapRef(raw.slm, 'slm', requestId);
-      if (r instanceof Response) return r;
-      spec.capabilities.slm = r;
-    }
+  if ('embeddings' in validated && validated.embeddings !== undefined) {
+    spec.capabilities.embeddings = { ...spec.capabilities.embeddings, ...validated.embeddings };
   }
-
-  // Embeddings
-  if ('embeddings' in raw) {
-    const r = mergeCapability(spec.capabilities.embeddings as Record<string, unknown>, raw.embeddings, 'embeddings',
-      { provider: 'string', model: 'string', dims: 'number' }, requestId);
-    if (r instanceof Response) return r;
-    spec.capabilities.embeddings = r as typeof spec.capabilities.embeddings;
-  }
-
-  // TTS, STT, Reranking, akm features — optional, deletable
-  const optionalSchemas: Record<string, Record<string, 'string' | 'number' | 'boolean'>> = {
-    tts: { enabled: 'boolean', provider: 'string', model: 'string', voice: 'string', format: 'string' },
-    stt: { enabled: 'boolean', provider: 'string', model: 'string', language: 'string' },
-    reranking: { enabled: 'boolean', provider: 'string', mode: 'string', model: 'string', topK: 'number', topN: 'number' },
-    akm: { feedback_distillation: 'boolean', memory_inference: 'boolean', memory_consolidation: 'boolean' },
-  };
-  for (const [key, schema] of Object.entries(optionalSchemas)) {
-    if (!(key in raw)) continue;
-    if (raw[key] === undefined) { delete (spec.capabilities as Record<string, unknown>)[key]; continue; }
-    const r = mergeCapability((spec.capabilities as Record<string, unknown>)[key] as Record<string, unknown>, raw[key], key, schema, requestId);
-    if (r instanceof Response) return r;
-    (spec.capabilities as Record<string, unknown>)[key] = r;
+  for (const key of ['tts', 'stt', 'reranking', 'akm'] as const) {
+    if (!(key in validated)) continue;
+    if (validated[key] === undefined) delete (spec.capabilities as Record<string, unknown>)[key];
+    else (spec.capabilities as Record<string, unknown>)[key] = {
+      ...((spec.capabilities as Record<string, unknown>)[key] as Record<string, unknown>),
+      ...(validated[key] as Record<string, unknown>),
+    };
   }
 
   try {
@@ -149,6 +97,12 @@ export const POST: RequestHandler = async (event) => {
     appendAudit(state, actor, 'capabilities.assignments.save', { error: String(e) }, false, requestId, callerType);
     return errorResponse(500, 'internal_error', 'Failed to persist capabilities', {}, requestId);
   }
+
+  // Note: we deliberately do NOT write `model` / `small_model` to
+  // opencode.json from here. OpenCode owns model selection — it falls
+  // back to its own default or whatever the user has configured directly.
+  // The stack.yml LLM capability is read by writeCapabilityVars and the
+  // akm setup, not by OpenCode.
 
   appendAudit(state, actor, 'capabilities.assignments.save', {}, true, requestId, callerType);
   return jsonResponse(200, { ok: true, capabilities: spec.capabilities }, requestId);

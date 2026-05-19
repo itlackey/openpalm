@@ -1,6 +1,15 @@
+/**
+ * POST /admin/providers/oauth/:providerId/callback
+ *
+ * Forwards an OAuth callback (auto-mode completion) to the assistant
+ * container's OpenCode. The previous implementation spawned a separate
+ * OpenCode subprocess, but a fresh OpenCode instance's OAuth methods map
+ * fails to initialize (TypeError on .methods lookup), so we route the
+ * call directly to the running assistant.
+ */
 import type { RequestHandler } from './$types';
 import { requireAdmin, getRequestId, errorResponse } from '$lib/server/helpers.js';
-import { ensureAuthServer } from '$lib/server/opencode-auth-subprocess.js';
+import { opencodeFetch } from '$lib/server/opencode/http.js';
 
 export const POST: RequestHandler = async (event) => {
 	const requestId = getRequestId(event);
@@ -14,20 +23,17 @@ export const POST: RequestHandler = async (event) => {
 
 	try {
 		const body = await event.request.text();
-		const baseUrl = await ensureAuthServer();
-		const response = await fetch(`${baseUrl}/provider/${encodeURIComponent(providerId)}/oauth/callback`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body
-		});
-
-		return new Response(await response.text(), {
-			status: response.status,
+		await opencodeFetch(
+			`/provider/${encodeURIComponent(providerId)}/oauth/callback`,
+			{ method: 'POST', body },
+		);
+		return new Response(JSON.stringify({ ok: true }), {
+			status: 200,
 			headers: {
 				'cache-control': 'no-store',
-				'content-type': response.headers.get('content-type') ?? 'application/json',
-				...(requestId ? { 'x-request-id': requestId } : {})
-			}
+				'content-type': 'application/json',
+				...(requestId ? { 'x-request-id': requestId } : {}),
+			},
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'OAuth callback failed';

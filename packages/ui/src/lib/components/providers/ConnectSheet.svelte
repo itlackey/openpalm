@@ -1,0 +1,372 @@
+<!--
+  ConnectSheet — modal/sheet for signing in to a provider.
+
+  Mirrors OpenCode's own Connect flow:
+    1. If the provider has more than one auth method, show a method picker.
+    2. After a method is selected (or if there's only one), show the form:
+       - API key: hint + input + Continue
+       - OAuth code: hint with "this link" + auth code input + Continue
+       - OAuth auto: "Authorization in progress…" (browser tab handles it,
+         we poll the callback endpoint)
+    3. On success, the parent reloads the provider list.
+
+  Header has Back arrow + Close × (no Cancel button — close via header).
+-->
+<script lang="ts">
+	import { onDestroy } from 'svelte';
+	import { buildHeaders } from '$lib/api.js';
+	import type {
+		ProviderActionResult,
+		ProviderAuthMethod,
+		ProviderView
+	} from '$lib/types/providers.js';
+
+	let {
+		provider,
+		onaction,
+		onclose
+	}: {
+		provider: ProviderView;
+		onaction?: (result: ProviderActionResult) => void;
+		onclose?: () => void;
+	} = $props();
+
+	type Step = 'method-picker' | 'api-form' | 'oauth-code' | 'oauth-auto' | 'success';
+
+	// `methods` is derived from `provider`, which is set once per sheet
+	// instance (parent re-renders the sheet when switching providers).
+	const methods = $derived(
+		provider.authMethods.filter((m) => !m.label.toLowerCase().includes('headless')),
+	);
+
+	// Initial step is computed once at mount from the props snapshot. The
+	// parent destroys + recreates the sheet on provider change, so we
+	// intentionally don't react to `provider` updates here.
+	// svelte-ignore state_referenced_locally
+	let step = $state<Step>(initialStepFor(provider));
+
+	function initialStepFor(p: ProviderView): Step {
+		const list = p.authMethods.filter((m) => !m.label.toLowerCase().includes('headless'));
+		if (list.length === 0) return 'api-form'; // bare API-key fallback
+		if (list.length === 1) {
+			return list[0]!.type === 'oauth' ? 'oauth-code' : 'api-form';
+		}
+		return 'method-picker';
+	}
+
+	let selectedMethod = $state<ProviderAuthMethod | null>(null);
+	let apiKey = $state('');
+	let authCode = $state('');
+	let oauthUrl = $state<string | null>(null);
+	let oauthInstructions = $state<string | null>(null);
+	let submitting = $state(false);
+	let error = $state<string | null>(null);
+
+	let abortController: AbortController | undefined;
+
+	function stopPolling() {
+		abortController?.abort();
+		abortController = undefined;
+	}
+
+	onDestroy(stopPolling);
+
+	const title = $derived.by((): string => {
+		if (step === 'method-picker') return `Connect ${provider.name}`;
+		if (selectedMethod) return `Login with ${selectedMethod.label}`;
+		return `Connect ${provider.name}`;
+	});
+
+	const canGoBack = $derived(step !== 'method-picker' && methods.length > 1);
+
+	function selectMethod(m: ProviderAuthMethod) {
+		selectedMethod = m;
+		apiKey = '';
+		authCode = '';
+		oauthUrl = null;
+		oauthInstructions = null;
+		error = null;
+		if (m.type === 'oauth') {
+			void startOauth(m);
+		} else {
+			step = 'api-form';
+		}
+	}
+
+	function goBack() {
+		stopPolling();
+		selectedMethod = null;
+		apiKey = '';
+		authCode = '';
+		oauthUrl = null;
+		oauthInstructions = null;
+		error = null;
+		submitting = false;
+		step = 'method-picker';
+	}
+
+	async function startOauth(method: ProviderAuthMethod): Promise<void> {
+		submitting = true;
+		error = null;
+		try {
+			const res = await fetch('/admin/providers/oauth/start', {
+				method: 'POST',
+				headers: { ...buildHeaders(), 'content-type': 'application/json' },
+				body: JSON.stringify({ providerId: provider.id, methodIndex: String(method.index) })
+			});
+			const result = (await res.json()) as ProviderActionResult;
+			if (!result.ok || !result.oauth) {
+				error = result.message ?? 'OAuth start failed.';
+				step = 'method-picker';
+				return;
+			}
+			oauthUrl = result.oauth.url;
+			oauthInstructions = result.oauth.instructions ?? null;
+			window.open(result.oauth.url, '_blank', 'noopener');
+
+			if (result.oauth.mode === 'auto') {
+				// OpenCode's /oauth/callback is a long-poll: it blocks server-side
+				// until the OAuth provider completes the device-code or redirect
+				// flow (up to ~10 minutes for GitHub device codes), then returns.
+				// We make one call and wait — no interval polling.
+				step = 'oauth-auto';
+				abortController = new AbortController();
+				const pid = result.oauth.providerId;
+				const methodIndex = result.oauth.methodIndex;
+
+				void fetch(`/admin/providers/oauth/${encodeURIComponent(pid)}/callback`, {
+					method: 'POST',
+					headers: { ...buildHeaders(), 'content-type': 'application/json' },
+					body: JSON.stringify({ method: methodIndex }),
+					signal: abortController.signal,
+				})
+					.then((r) => {
+						if (step !== 'oauth-auto') return; // sheet closed or back-arrow pressed
+						if (r.ok) {
+							finish('Signed in successfully.');
+						} else {
+							error = `Sign-in failed (${r.status}). Try again.`;
+							step = 'method-picker';
+						}
+					})
+					.catch((err: unknown) => {
+						if (step !== 'oauth-auto') return;
+						if (err instanceof DOMException && err.name === 'AbortError') return;
+						error = err instanceof Error ? err.message : 'Authorization failed.';
+						step = 'method-picker';
+					});
+			} else {
+				step = 'oauth-code';
+			}
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'OAuth start failed.';
+			step = 'method-picker';
+		} finally {
+			submitting = false;
+		}
+	}
+
+	async function submitApiKey() {
+		if (!apiKey.trim()) {
+			error = 'Enter an API key.';
+			return;
+		}
+		submitting = true;
+		error = null;
+		try {
+			const res = await fetch(`/admin/opencode/providers/${encodeURIComponent(provider.id)}/auth`, {
+				method: 'POST',
+				headers: { ...buildHeaders(), 'content-type': 'application/json' },
+				body: JSON.stringify({ mode: 'api_key', apiKey: apiKey.trim() })
+			});
+			if (!res.ok) {
+				const body = (await res.json().catch(() => ({}))) as { message?: string };
+				error = body.message ?? `Save failed (${res.status})`;
+				return;
+			}
+			finish('API key saved.');
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Request failed.';
+		} finally {
+			submitting = false;
+		}
+	}
+
+	async function submitOauthCode() {
+		if (!selectedMethod || !authCode.trim()) {
+			error = 'Paste the authorization code.';
+			return;
+		}
+		submitting = true;
+		error = null;
+		try {
+			const res = await fetch('/admin/providers/oauth/finish', {
+				method: 'POST',
+				headers: { ...buildHeaders(), 'content-type': 'application/json' },
+				body: JSON.stringify({
+					providerId: provider.id,
+					methodIndex: selectedMethod.index,
+					code: authCode.trim()
+				})
+			});
+			if (!res.ok) {
+				const body = (await res.json().catch(() => ({}))) as { message?: string };
+				error = body.message ?? `Submission failed (${res.status})`;
+				return;
+			}
+			finish('Signed in successfully.');
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Request failed.';
+		} finally {
+			submitting = false;
+		}
+	}
+
+	function finish(message: string) {
+		onaction?.({ ok: true, message, selectedProviderId: provider.id });
+	}
+
+	function handleKey(e: KeyboardEvent) {
+		if (e.key !== 'Enter') return;
+		if (step === 'api-form') void submitApiKey();
+		else if (step === 'oauth-code') void submitOauthCode();
+	}
+</script>
+
+<div class="sheet-overlay" onclick={onclose} role="presentation"></div>
+<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="connect-sheet-title">
+	<header class="sheet-header">
+		{#if canGoBack}
+			<button type="button" class="sheet-header-back" onclick={goBack} aria-label="Back">←</button>
+		{/if}
+		<h2 class="sheet-title" id="connect-sheet-title">{title}</h2>
+		<button type="button" class="sheet-close" onclick={onclose} aria-label="Close">×</button>
+	</header>
+
+	<div class="sheet-body">
+		{#if error}
+			<div class="feedback feedback--error"><span>{error}</span></div>
+		{/if}
+
+		{#if step === 'method-picker'}
+			<p class="field-hint">Select login method for {provider.name}.</p>
+			<div class="auth-method-group">
+				{#each methods as method (method.index)}
+					<button
+						type="button"
+						class="auth-method-card"
+						onclick={() => selectMethod(method)}
+					>
+						<span class="method-label">{method.label}</span>
+						<span class="method-type">{method.type === 'oauth' ? 'Browser sign-in' : 'API key'}</span>
+					</button>
+				{/each}
+			</div>
+
+		{:else if step === 'api-form'}
+			<p class="field-hint">
+				Enter your {provider.name} API key to connect your account and use {provider.name} models in OpenCode.
+			</p>
+			<div class="form-field">
+				<label class="form-label" for="connect-apikey">{provider.name} API key</label>
+				<input
+					id="connect-apikey"
+					type="password"
+					class="form-input"
+					placeholder="API key"
+					bind:value={apiKey}
+					disabled={submitting}
+					onkeydown={handleKey}
+					autocomplete="off"
+				/>
+			</div>
+
+		{:else if step === 'oauth-code'}
+			<p class="field-hint">
+				Visit
+				<a href={oauthUrl ?? '#'} target="_blank" rel="noopener" class="text-link">this link</a>
+				to collect your authorization code to connect your account and use {provider.name} models in OpenCode.
+			</p>
+			<div class="form-field">
+				<label class="form-label" for="connect-code">{selectedMethod?.label ?? 'OAuth'} authorization code</label>
+				<input
+					id="connect-code"
+					type="text"
+					class="form-input"
+					placeholder="Authorization code"
+					bind:value={authCode}
+					disabled={submitting}
+					onkeydown={handleKey}
+					autocomplete="off"
+				/>
+			</div>
+
+		{:else if step === 'oauth-auto'}
+			{#if oauthInstructions}
+				<p class="field-hint">{oauthInstructions}</p>
+			{/if}
+			{#if oauthUrl}
+				<p class="field-hint">
+					Open <a href={oauthUrl} target="_blank" rel="noopener" class="text-link">{oauthUrl}</a>
+					to continue.
+				</p>
+			{/if}
+			<p class="field-hint">
+				<span class="spinner"></span>
+				Waiting for sign-in to complete…
+			</p>
+		{/if}
+	</div>
+
+	{#if step === 'api-form' || step === 'oauth-code'}
+		<footer class="sheet-footer">
+			<button
+				type="button"
+				class="btn btn-primary"
+				disabled={submitting}
+				onclick={() => step === 'api-form' ? void submitApiKey() : void submitOauthCode()}
+			>
+				{#if submitting}<span class="spinner"></span>{/if}
+				Continue
+			</button>
+		</footer>
+	{/if}
+</div>
+
+<style>
+	.auth-method-group {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+	}
+
+	.auth-method-card {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+		padding: var(--space-3) var(--space-4);
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		cursor: pointer;
+		text-align: left;
+		font-family: inherit;
+		transition: border-color var(--transition-fast), background var(--transition-fast);
+	}
+
+	.auth-method-card:hover {
+		border-color: var(--color-border-hover);
+		background: var(--color-surface-hover);
+	}
+
+	.method-label {
+		font-size: var(--text-sm);
+		font-weight: var(--font-medium);
+		color: var(--color-text);
+	}
+
+	.method-type {
+		font-size: var(--text-xs);
+		color: var(--color-text-tertiary);
+	}
+</style>

@@ -3,21 +3,25 @@ import { join } from 'node:path';
 import { mkdirSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { getState } from '$lib/server/state.js';
 import { resetState } from '$lib/server/test-helpers.js';
 import { GET, POST } from './+server.js';
-import { writeStackSpec, type StackSpec } from '@openpalm/lib';
 
 const getConfig = vi.fn();
-const proxy = vi.fn();
 
 vi.mock('$lib/server/helpers.js', async () => {
   const actual = await vi.importActual<typeof import('$lib/server/helpers.js')>('$lib/server/helpers.js');
   return {
     ...actual,
-    getOpenCodeClient: () => ({ getConfig, proxy }),
+    getOpenCodeClient: () => ({ getConfig }),
   };
 });
+
+vi.mock('$lib/server/opencode/config.js', () => ({
+  setMainModel: vi.fn(async () => undefined),
+  unsetMainModel: vi.fn(async () => undefined),
+}));
+
+import { setMainModel, unsetMainModel } from '$lib/server/opencode/config.js';
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `openpalm-opencode-model-${randomBytes(4).toString('hex')}`);
@@ -27,18 +31,6 @@ function makeTempDir(): string {
 
 let rootDir = '';
 let originalHome: string | undefined;
-
-function seedStackYaml(): void {
-  const state = getState();
-  const spec: StackSpec = {
-    version: 2,
-    capabilities: {
-      llm: 'openai/gpt-4o',
-      embeddings: { provider: 'openai', model: 'text-embedding-3-small', dims: 1536 },
-    },
-  };
-  writeStackSpec(state.stackDir, spec);
-}
 
 function makeEvent(method: string, body?: unknown, token = 'admin-token'): Parameters<typeof GET>[0] {
   return {
@@ -59,7 +51,6 @@ beforeEach(() => {
   originalHome = process.env.OP_HOME;
   process.env.OP_HOME = rootDir;
   resetState('admin-token');
-  seedStackYaml();
 });
 
 afterEach(() => {
@@ -76,45 +67,54 @@ describe('/admin/opencode/model route', () => {
 
   test('GET returns 503 when OpenCode is unreachable', async () => {
     getConfig.mockResolvedValueOnce(null);
-
     const res = await GET(makeEvent('GET'));
     expect(res.status).toBe(503);
   });
 
-  test('POST rejects an empty model', async () => {
-    const res = await POST(makeEvent('POST', { model: '   ' }));
-    expect(res.status).toBe(400);
-  });
-
-  test('POST persists the model and propagates OpenCode 4xx errors', async () => {
-    proxy.mockResolvedValueOnce({
-      ok: false,
-      status: 400,
-      code: 'opencode_error',
-      message: 'Invalid model',
-    });
-
-    const res = await POST(makeEvent('POST', { model: 'bad-model' }));
-    expect(res.status).toBe(400);
-
-    const body = await res.json() as { message: string };
-    expect(body.message).toBe('Invalid model');
-  });
-
-  test('POST degrades gracefully when OpenCode is unavailable', async () => {
-    proxy.mockResolvedValueOnce({
-      ok: false,
-      status: 503,
-      code: 'opencode_unavailable',
-      message: 'OpenCode is not reachable',
-    });
-
-    const res = await POST(makeEvent('POST', { model: 'gpt-4.1-mini' }));
+  test('GET returns model + small_model', async () => {
+    getConfig.mockResolvedValueOnce({ model: 'openai/gpt-4o', small_model: 'openai/gpt-4o-mini' });
+    const res = await GET(makeEvent('GET'));
     expect(res.status).toBe(200);
+    const body = (await res.json()) as { model: string; small_model: string };
+    expect(body.model).toBe('openai/gpt-4o');
+    expect(body.small_model).toBe('openai/gpt-4o-mini');
+  });
 
-    const body = await res.json() as { ok: boolean; restartRequired: boolean; liveApplied: boolean };
-    expect(body.ok).toBe(true);
-    expect(body.liveApplied).toBe(false);
-    expect(body.restartRequired).toBe(true);
+  test('POST without model or small_model is rejected', async () => {
+    const res = await POST(makeEvent('POST', {}));
+    expect(res.status).toBe(400);
+  });
+
+  test('POST rejects malformed model (no provider prefix)', async () => {
+    const res = await POST(makeEvent('POST', { model: 'gpt-4o' }));
+    expect(res.status).toBe(400);
+  });
+
+  test('POST writes model via setMainModel', async () => {
+    const res = await POST(makeEvent('POST', { model: 'openai/gpt-4o' }));
+    expect(res.status).toBe(200);
+    expect(setMainModel).toHaveBeenCalledWith('openai', 'gpt-4o', 'model');
+  });
+
+  test('POST writes both model and small_model', async () => {
+    const res = await POST(makeEvent('POST', {
+      model: 'openai/gpt-4o',
+      small_model: 'openai/gpt-4o-mini',
+    }));
+    expect(res.status).toBe(200);
+    expect(setMainModel).toHaveBeenCalledWith('openai', 'gpt-4o', 'model');
+    expect(setMainModel).toHaveBeenCalledWith('openai', 'gpt-4o-mini', 'small_model');
+  });
+
+  test('POST with empty model unsets the field', async () => {
+    const res = await POST(makeEvent('POST', { model: '' }));
+    expect(res.status).toBe(200);
+    expect(unsetMainModel).toHaveBeenCalledWith('model');
+  });
+
+  test('POST with null small_model unsets it', async () => {
+    const res = await POST(makeEvent('POST', { small_model: null }));
+    expect(res.status).toBe(200);
+    expect(unsetMainModel).toHaveBeenCalledWith('small_model');
   });
 });

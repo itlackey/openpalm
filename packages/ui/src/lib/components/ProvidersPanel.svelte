@@ -1,21 +1,29 @@
+<!--
+  ProvidersPanel — Connections tab.
+
+  Main view shows only Connected providers + an "Add provider" button.
+  Add opens a searchable sheet of unconnected providers; selecting one
+  opens ConnectSheet. "Import from host" pulls the host OpenCode config.
+-->
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { buildHeaders } from '$lib/api.js';
-	import type { ProviderActionResult, ProviderFilter, ProviderPageState, ProviderView } from '$lib/types/providers.js';
-	import ProviderCard from './providers/ProviderCard.svelte';
-	import ProviderEditor from './providers/ProviderEditor.svelte';
-	import ProviderFilters from './providers/ProviderFilters.svelte';
+	import type { ProviderPageState, ProviderView } from '$lib/types/providers.js';
+	import AddProviderSheet from './providers/AddProviderSheet.svelte';
+	import ConnectSheet from './providers/ConnectSheet.svelte';
 	import CustomProviderForm from './providers/CustomProviderForm.svelte';
+	import HostImportModal from './providers/HostImportModal.svelte';
 
 	let pageState = $state<ProviderPageState>({
 		available: false,
 		providers: [],
 		defaultModels: {},
 		allowlistActive: false,
-		providerCountLabel: 'Loading...',
+		providerCountLabel: '',
 		stats: { total: 0, connected: 0, configured: 0, disabled: 0 }
 	});
 	let loading = $state(true);
+	let actionError = $state<string | null>(null);
 
 	async function load(): Promise<void> {
 		loading = true;
@@ -23,413 +31,422 @@
 			const res = await fetch('/admin/providers', { headers: buildHeaders() });
 			if (res.ok) {
 				pageState = (await res.json()) as ProviderPageState;
-				// First-run fallback: if nothing's connected yet, show "All"
-				// so the operator can pick a starting provider. Only flips
-				// once — won't fight the user's later filter choices.
-				if (!hasInitializedFilter) {
-					if (pageState.providers.filter((p) => p.connected).length === 0 && pageState.providers.length > 0) {
-						filter = 'all';
-					}
-					hasInitializedFilter = true;
-				}
+				// Sync the model dropdowns to whatever the server says — only at
+				// load-time, never via a reactive $effect (which would stomp
+				// user-in-progress edits if a refresh raced a select change).
+				mainModelChoice = pageState.currentModel ?? '';
+				smallModelChoice = pageState.currentSmallModel ?? '';
 			}
 		} catch {
-			// will show offline state
+			/* offline */
 		} finally {
 			loading = false;
 		}
 	}
 
-	let hasInitializedFilter = false;
-
 	onMount(() => { void load(); });
 
-	let search = $state('');
-	// Default to "connected" — surfacing only the providers that are
-	// actually wired up keeps the initial view tractable (OpenCode ships
-	// 130+ catalog entries). The filter pills + search box are right
-	// there for browsing the rest. On a fresh install with nothing
-	// connected, `load()` flips this to "all" so the operator can pick a
-	// starting provider.
-	let filter = $state<ProviderFilter>('connected');
-	let selectedProviderId = $state('');
-	let lastActionResult = $state<ProviderActionResult | undefined>(undefined);
+	const connected = $derived(pageState.providers.filter((p) => p.connected));
+	const unconnected = $derived(pageState.providers.filter((p) => !p.connected));
 
-	const counts = $derived({
-		all: pageState.providers.length,
-		connected: pageState.providers.filter((p) => p.connected).length,
-		configured: pageState.providers.filter((p) => p.configured).length,
-		oauth: pageState.providers.filter((p) => p.supportsOauth).length,
-		disabled: pageState.providers.filter((p) => p.disabled).length
-	});
+	// Default model + small model bound to `<select>` values. Empty string =
+	// "use OpenCode's own default" (unsets the field in opencode.json).
+	// These are synced to `pageState.currentModel` inside `load()`, not via
+	// `$effect`, so a refresh in flight can't stomp a user-in-progress edit.
+	let mainModelChoice = $state('');
+	let smallModelChoice = $state('');
+	let modelSaveError = $state<string | null>(null);
 
-	const filteredProviders = $derived.by(() => {
-		const query = search.trim().toLowerCase();
+	async function saveModel(target: 'model' | 'small_model', value: string) {
+		modelSaveError = null;
+		try {
+			const res = await fetch('/admin/opencode/model', {
+				method: 'POST',
+				headers: { ...buildHeaders(), 'content-type': 'application/json' },
+				body: JSON.stringify({ [target]: value || null }),
+			});
+			if (!res.ok) {
+				const body = (await res.json().catch(() => ({}))) as { message?: string };
+				modelSaveError = body.message ?? `Save failed (${res.status})`;
+			}
+		} catch (err) {
+			modelSaveError = err instanceof Error ? err.message : 'Request failed.';
+		}
+	}
 
-		return pageState.providers.filter((provider) => {
-			const matchesQuery =
-				query.length === 0 ||
-				provider.name.toLowerCase().includes(query) ||
-				provider.id.toLowerCase().includes(query) ||
-				provider.env.some((e) => e.toLowerCase().includes(query)) ||
-				provider.models.some((m) => m.name.toLowerCase().includes(query) || m.id.toLowerCase().includes(query));
+	// Sheets
+	let showAddSheet = $state(false);
+	let connectProvider = $state<ProviderView | null>(null);
+	let showCustomForm = $state(false);
+	let disconnectingId = $state<string | null>(null);
 
-			if (!matchesQuery) return false;
+	const BADGE_LABEL: Record<NonNullable<ProviderView['credentialType']>, string> = {
+		env: 'env',
+		api: 'api key',
+		oauth: 'oauth',
+		config: 'config',
+		custom: 'custom',
+	};
+	function authBadge(p: ProviderView): string {
+		return p.credentialType ? BADGE_LABEL[p.credentialType] : '';
+	}
 
-			if (filter === 'connected') return provider.connected;
-			if (filter === 'configured') return provider.configured;
-			if (filter === 'oauth') return provider.supportsOauth;
-			if (filter === 'disabled') return provider.disabled;
+	function pickProvider(p: ProviderView) {
+		showAddSheet = false;
+		connectProvider = p;
+	}
 
-			return true;
-		});
-	});
+	function pickCustom() {
+		showAddSheet = false;
+		showCustomForm = true;
+	}
 
-	const preferredProviderId = $derived(lastActionResult?.selectedProviderId ?? selectedProviderId ?? pageState.providers[0]?.id ?? '');
-
-	const activeProvider: ProviderView | undefined = $derived(
-		filteredProviders.find((p) => p.id === preferredProviderId) ?? filteredProviders[0]
-	);
-
-	function handleAction(result: ProviderActionResult) {
-		lastActionResult = result;
-		if (result.selectedProviderId) selectedProviderId = result.selectedProviderId;
+	function handleAfterAction() {
+		connectProvider = null;
+		showCustomForm = false;
 		void load();
 	}
 
-	// ── Local provider detection (Ollama / LM Studio / Docker Model Runner)
-	type LocalProbe = { provider: string; url: string; available: boolean };
-	const LOCAL_LABELS: Record<string, string> = {
-		ollama: 'Local Ollama',
-		lmstudio: 'Local LM Studio',
-		'model-runner': 'Docker Model Runner',
-	};
-	let localProbes = $state<LocalProbe[]>([]);
-	let localRegistering = $state<string | null>(null);
-	let localMessage = $state<{ kind: 'ok' | 'err'; text: string } | null>(null);
-
-	async function probeLocal(): Promise<void> {
+	async function disconnect(p: ProviderView) {
+		if (!confirm(`Disconnect ${p.name}? Stored credentials will be removed.`)) return;
+		disconnectingId = p.id;
+		actionError = null;
 		try {
-			const res = await fetch('/admin/providers/local', { headers: buildHeaders() });
-			if (!res.ok) return;
-			const data = (await res.json()) as { providers: LocalProbe[] };
-			localProbes = data.providers;
-		} catch { /* offline — keep empty */ }
-	}
-
-	async function registerLocal(provider: string): Promise<void> {
-		localRegistering = provider;
-		localMessage = null;
-		try {
-			const res = await fetch('/admin/providers/local', {
-				method: 'POST',
-				headers: { ...buildHeaders(), 'content-type': 'application/json' },
-				body: JSON.stringify({ provider }),
-			});
-			const result = (await res.json()) as ProviderActionResult;
-			if (result.ok) {
-				localMessage = { kind: 'ok', text: result.message ?? 'Registered.' };
-				await load();
-				if (result.selectedProviderId) selectedProviderId = result.selectedProviderId;
+			const res = await fetch(
+				`/admin/opencode/providers/${encodeURIComponent(p.id)}/auth`,
+				{ method: 'DELETE', headers: buildHeaders() }
+			);
+			if (!res.ok) {
+				const body = (await res.json().catch(() => ({}))) as { message?: string };
+				actionError = body.message ?? `Disconnect failed (${res.status})`;
 			} else {
-				localMessage = { kind: 'err', text: result.message ?? 'Registration failed.' };
+				void load();
 			}
 		} catch (err) {
-			localMessage = { kind: 'err', text: err instanceof Error ? err.message : 'Request failed.' };
+			actionError = err instanceof Error ? err.message : 'Request failed.';
 		} finally {
-			localRegistering = null;
+			disconnectingId = null;
 		}
 	}
 
-	const availableLocal = $derived(localProbes.filter((p) => p.available));
-	const registeredLocalIds = $derived(new Set(pageState.providers.filter((p) => p.connected).map((p) => p.id)));
+	// Host import
+	type HostStatus = {
+		detected: boolean;
+		providerCount: number;
+		credentialCount: number;
+		configPath: string | null;
+		authPath: string | null;
+	};
+	let hostStatus = $state<HostStatus | null>(null);
+	let showImportSheet = $state(false);
 
-	onMount(() => { void probeLocal(); });
+	async function loadHostStatus(): Promise<void> {
+		try {
+			const res = await fetch('/admin/providers/host-status', { headers: buildHeaders() });
+			if (res.ok) hostStatus = (await res.json()) as HostStatus;
+		} catch {
+			/* non-critical */
+		}
+	}
+
+	onMount(() => { void loadHostStatus(); });
+
+	function handleImportDone() {
+		showImportSheet = false;
+		void load();
+		void loadHostStatus();
+	}
 </script>
 
-<div class="providers-panel">
-	{#if !pageState.available}
-		<section class="offline-state">
-			<h3 class="section-heading">OpenCode server unavailable</h3>
-			<p class="section-desc">
-				The OpenCode server is not reachable. Start it and refresh, or check the container logs.
+<div class="panel" role="tabpanel">
+	<div class="panel-header">
+		<div>
+			<h2>Connections</h2>
+			<p class="panel-subtitle">
+				Sign in to AI providers. Credentials are stored in OpenCode's auth.json.
 			</p>
-			{#if pageState.error}
-				<p class="error-detail">{pageState.error}</p>
-			{/if}
-		</section>
-	{:else}
-		{#if availableLocal.length > 0}
-			<section class="local-detected">
-				<div class="local-detected-header">
-					<h4 class="section-heading">Detected on this host</h4>
-					<button type="button" class="btn-link" onclick={() => void probeLocal()}>Refresh</button>
-				</div>
-				<div class="local-detected-list">
-					{#each availableLocal as probe (probe.provider)}
-						<div class="local-detected-row">
-							<div class="local-detected-info">
-								<strong>{LOCAL_LABELS[probe.provider] ?? probe.provider}</strong>
-								<code>{probe.url}</code>
-							</div>
-							{#if registeredLocalIds.has(probe.provider)}
-								<span class="local-detected-tag">registered</span>
-							{:else}
-								<button
-									type="button"
-									class="btn btn-outline btn-sm"
-									disabled={localRegistering === probe.provider}
-									onclick={() => void registerLocal(probe.provider)}
-								>
-									{#if localRegistering === probe.provider}<span class="spinner"></span>{/if}
-									Register
-								</button>
-							{/if}
-						</div>
-					{/each}
-				</div>
-				{#if localMessage}
-					<p class="local-detected-message" class:local-detected-message--err={localMessage.kind === 'err'}>{localMessage.text}</p>
-				{/if}
-			</section>
-		{/if}
+		</div>
+		<div class="panel-header-actions">
+			<button
+				type="button"
+				class="btn btn-secondary btn-sm"
+				disabled={!hostStatus?.detected}
+				onclick={() => { showImportSheet = true; }}
+				title={hostStatus?.detected
+					? `Import ${hostStatus.providerCount} providers from host OpenCode`
+					: 'No host OpenCode installation detected'}
+			>
+				Import from host
+			</button>
+			<button
+				type="button"
+				class="btn btn-primary btn-sm"
+				onclick={() => { showAddSheet = true; }}
+			>
+				Add provider
+			</button>
+			<button class="btn btn-secondary btn-sm" onclick={() => void load()} disabled={loading}>
+				{#if loading}<span class="spinner"></span>{/if}
+				Refresh
+			</button>
+		</div>
+	</div>
 
-		<section class="workspace-grid">
-			<div class="catalog-column">
-				<ProviderFilters bind:search bind:filter {counts} />
-
-				<div class="catalog-header">
-					<span class="catalog-label">{pageState.providerCountLabel}</span>
-					{#if pageState.currentModel}
-						<span class="catalog-label">Main model: <code>{pageState.currentModel}</code></span>
-					{/if}
-				</div>
-
-				<div class="card-list">
-					{#if loading}
-						<p class="section-empty"><span class="spinner"></span> Loading providers...</p>
-					{:else}
-						{#each filteredProviders as provider (provider.id)}
-							<ProviderCard
-								{provider}
-								selected={activeProvider?.id === provider.id}
-								onselect={() => { selectedProviderId = provider.id; lastActionResult = undefined; }}
-							/>
-						{:else}
-							<div class="empty-search">
-								<h4 class="section-heading">No provider matches this view.</h4>
-								<p class="section-desc">Try a broader search or switch the filter to see more providers.</p>
-							</div>
-						{/each}
-					{/if}
-				</div>
-			</div>
-
-			<div class="editor-column">
-				{#if activeProvider}
-					{#key activeProvider.id}
-						<ProviderEditor
-							provider={activeProvider}
-							currentModel={pageState.currentModel}
-							currentSmallModel={pageState.currentSmallModel}
-							allowlistActive={pageState.allowlistActive}
-							onaction={handleAction}
-						/>
-					{/key}
-				{/if}
-			</div>
-		</section>
+	{#if actionError}
+		<div class="feedback feedback--error inline">
+			<span>{actionError}</span>
+			<button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => actionError = null}>×</button>
+		</div>
 	{/if}
 
-	<CustomProviderForm onaction={handleAction} />
+	<div class="panel-body panel-body--flush">
+		{#if !pageState.available && !loading}
+			<div class="empty-state">
+				<p>OpenCode server unavailable. Start it and refresh.</p>
+				{#if pageState.error}<p class="error-detail">{pageState.error}</p>{/if}
+			</div>
+		{:else if loading && pageState.providers.length === 0}
+			<div class="loading-state">
+				<span class="spinner"></span>
+				<span>Loading providers…</span>
+			</div>
+		{:else if connected.length === 0}
+			<div class="empty-state">
+				<p>No providers connected yet.</p>
+				<p class="empty-hint">Click <strong>Add provider</strong> above to sign in to one.</p>
+			</div>
+		{:else}
+			<!-- OpenCode default + small model. Saved to opencode.json — used
+			     when the chat doesn't specify a model per-request. -->
+			<div class="model-defaults">
+				<div class="model-field">
+					<label class="form-label" for="default-model">Default model</label>
+					<select
+						id="default-model"
+						class="form-input"
+						bind:value={mainModelChoice}
+						onchange={(e) => void saveModel('model', (e.currentTarget as HTMLSelectElement).value)}
+					>
+						<option value="">— OpenCode default —</option>
+						{#each connected as p (p.id)}
+							{#if p.models.length > 0}
+								<optgroup label={p.name}>
+									{#each p.models as m (m.id)}
+										<option value="{p.id}/{m.id}">{m.name || m.id}</option>
+									{/each}
+								</optgroup>
+							{/if}
+						{/each}
+					</select>
+				</div>
+				<div class="model-field">
+					<label class="form-label" for="small-model">Small model</label>
+					<select
+						id="small-model"
+						class="form-input"
+						bind:value={smallModelChoice}
+						onchange={(e) => void saveModel('small_model', (e.currentTarget as HTMLSelectElement).value)}
+					>
+						<option value="">— OpenCode default —</option>
+						{#each connected as p (p.id)}
+							{#if p.models.length > 0}
+								<optgroup label={p.name}>
+									{#each p.models as m (m.id)}
+										<option value="{p.id}/{m.id}">{m.name || m.id}</option>
+									{/each}
+								</optgroup>
+							{/if}
+						{/each}
+					</select>
+				</div>
+				{#if modelSaveError}<p class="model-error">{modelSaveError}</p>{/if}
+			</div>
+
+			{#each connected as p (p.id)}
+				<div class="provider-row">
+					<div class="provider-id">
+						<span class="provider-name">{p.name}</span>
+						<span class="badge badge-connected">{authBadge(p)}</span>
+					</div>
+					<button
+						class="btn btn-outline btn-sm"
+						disabled={disconnectingId === p.id}
+						onclick={() => void disconnect(p)}
+					>
+						{#if disconnectingId === p.id}<span class="spinner"></span>{/if}
+						Disconnect
+					</button>
+				</div>
+			{/each}
+		{/if}
+	</div>
 </div>
 
+{#if showAddSheet}
+	<AddProviderSheet
+		providers={unconnected}
+		onselect={pickProvider}
+		oncustom={pickCustom}
+		onclose={() => { showAddSheet = false; }}
+	/>
+{/if}
+
+{#if connectProvider}
+	<ConnectSheet
+		provider={connectProvider}
+		onaction={handleAfterAction}
+		onclose={() => { connectProvider = null; }}
+	/>
+{/if}
+
+{#if showCustomForm}
+	<CustomProviderForm
+		onaction={handleAfterAction}
+		onclose={() => { showCustomForm = false; }}
+	/>
+{/if}
+
+{#if showImportSheet && hostStatus}
+	<HostImportModal
+		providerCount={hostStatus.providerCount}
+		credentialCount={hostStatus.credentialCount}
+		configPath={hostStatus.configPath}
+		authPath={hostStatus.authPath}
+		onimported={handleImportDone}
+		oncancel={() => { showImportSheet = false; }}
+	/>
+{/if}
+
 <style>
-	.providers-panel {
-		display: grid;
-		gap: var(--space-3);
-	}
-
-	.offline-state {
-		padding: var(--space-5);
-		border-radius: var(--radius-lg);
-		border: 1px solid var(--color-border);
+	.panel {
 		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		overflow: hidden;
 	}
 
-	.section-heading {
-		font-size: var(--text-sm);
+	.panel-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-3);
+		padding: var(--space-4) var(--space-5);
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.panel-header h2 {
+		font-size: var(--text-base);
 		font-weight: var(--font-semibold);
 		color: var(--color-text);
-		margin-bottom: var(--space-2);
+		margin: 0;
 	}
 
-	.section-desc {
-		font-size: var(--text-sm);
-		color: var(--color-text-tertiary);
-	}
-
-	.section-empty {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		font-size: var(--text-sm);
-		color: var(--color-text-tertiary);
-		padding: var(--space-3);
-	}
-
-	.error-detail {
-		margin-top: var(--space-2);
+	.panel-subtitle {
 		font-size: var(--text-xs);
-		color: var(--color-danger);
+		color: var(--color-text-secondary);
+		margin-top: var(--space-1);
 	}
 
-	.local-detected {
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		padding: var(--space-3) var(--space-4);
-		margin-bottom: var(--space-4);
-	}
-
-	.local-detected-header {
+	.panel-header-actions {
 		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: var(--space-2);
-	}
-
-	.local-detected-list {
-		display: flex;
-		flex-direction: column;
 		gap: var(--space-2);
 	}
 
-	.local-detected-row {
-		display: flex;
-		align-items: center;
+	.panel-body--flush { padding: 0; }
+
+	.feedback.inline {
+		margin: var(--space-3) var(--space-5);
 		justify-content: space-between;
-		gap: var(--space-3);
 	}
 
-	.local-detected-info {
+	.provider-row {
 		display: flex;
 		align-items: center;
 		gap: var(--space-3);
-		font-size: var(--text-sm);
+		padding: var(--space-3) var(--space-5);
+		border-bottom: 1px solid var(--color-bg-tertiary);
 	}
 
-	.local-detected-info code {
-		font-family: var(--font-mono);
-		font-size: var(--text-xs);
-		color: var(--color-text-secondary);
-		background: var(--color-bg-tertiary);
-		padding: 1px 6px;
-		border-radius: var(--radius-sm);
-	}
-
-	.local-detected-tag {
-		font-size: 10px;
-		padding: 1px 6px;
-		border-radius: var(--radius-full);
-		background: var(--color-success-bg);
-		color: var(--color-success);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-	}
-
-	.local-detected-message {
-		margin-top: var(--space-2);
-		font-size: var(--text-xs);
-		color: var(--color-text-secondary);
-	}
-
-	.local-detected-message--err {
-		color: var(--color-danger);
-	}
-
-	.btn-link {
-		background: none;
-		border: none;
-		color: var(--color-primary);
-		font-size: var(--text-xs);
-		cursor: pointer;
-		text-decoration: underline;
-	}
-
-	.btn-link:hover {
-		color: var(--color-primary-hover);
-	}
-
-	.workspace-grid {
+	.model-defaults {
 		display: grid;
-		grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
-		gap: var(--space-3);
-		align-items: start;
+		grid-template-columns: 1fr 1fr;
+		gap: var(--space-4);
+		padding: var(--space-4) var(--space-5);
+		border-bottom: 1px solid var(--color-border);
+		background: var(--color-bg-secondary);
 	}
 
-	.catalog-column {
+	.model-field {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-3);
-		position: sticky;
-		top: var(--space-3);
-		padding: var(--space-3);
-		border-radius: var(--radius-lg);
-		border: 1px solid var(--color-border);
-		background: var(--color-surface);
-		max-height: calc(100vh - var(--nav-height, 56px) - var(--space-8));
+		gap: var(--space-1);
 	}
 
-	.editor-column {
+	.model-error {
+		grid-column: 1 / -1;
+		font-size: var(--text-xs);
+		color: var(--color-danger);
+		margin: 0;
+	}
+
+	.provider-id {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
 		min-width: 0;
 	}
 
-	.catalog-header {
-		display: flex;
-		justify-content: space-between;
-		gap: var(--space-2);
-		align-items: flex-start;
-		flex-wrap: wrap;
+	.provider-name {
+		font-size: var(--text-sm);
+		font-weight: var(--font-medium);
+		color: var(--color-text);
 	}
 
-	.catalog-label {
-		font-size: var(--text-xs);
+	.badge {
+		display: inline-flex;
+		align-items: center;
+		font-size: 10px;
+		font-weight: var(--font-semibold);
+		padding: 1px 6px;
+		border-radius: var(--radius-full);
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+	}
+
+	.badge-connected {
+		background: var(--color-success-bg);
+		color: var(--color-success);
+	}
+
+	.loading-state,
+	.empty-state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-2);
+		padding: var(--space-8) var(--space-5);
+		color: var(--color-text-secondary);
+		font-size: var(--text-sm);
+		text-align: center;
+	}
+
+	.empty-hint {
 		color: var(--color-text-tertiary);
 	}
 
-	.catalog-label code {
-		font-family: var(--font-mono);
+	.btn-dismiss {
+		background: none;
+		border: none;
+		font-size: 18px;
+		line-height: 1;
+		color: var(--color-text-tertiary);
+		cursor: pointer;
+		padding: 0 var(--space-2);
+	}
+
+	.error-detail {
 		font-size: var(--text-xs);
-		padding: 1px var(--space-1);
-		border-radius: var(--radius-sm);
-		background: var(--color-bg-tertiary);
-	}
-
-	.card-list {
-		display: grid;
-		gap: var(--space-2);
-		flex: 1;
-		min-height: 0;
-		overflow-y: auto;
-		padding-right: 2px;
-	}
-
-	.empty-search {
-		padding: var(--space-4);
-		border-radius: var(--radius-md);
-		background: var(--color-bg-secondary);
-		border: 1px dashed var(--color-border);
-	}
-
-	@media (max-width: 900px) {
-		.workspace-grid {
-			grid-template-columns: 1fr;
-		}
-
-		.catalog-column {
-			position: static;
-			max-height: none;
-		}
+		color: var(--color-danger);
 	}
 </style>

@@ -1,17 +1,18 @@
 import type { RequestHandler } from './$types';
 import { jsonResponse, withAdminBody } from '$lib/server/helpers.js';
-import {
-	startOauthFlowAtBase,
-	actionSuccess,
-	actionFailure,
-} from '$lib/server/opencode/index.js';
-import { ensureAuthServer } from '$lib/server/opencode-auth-subprocess.js';
+import { actionSuccess, actionFailure } from '$lib/server/opencode/index.js';
+import { opencodeFetch } from '$lib/server/opencode/http.js';
 import { asStringOrEmpty, extractInputs } from '../../_helpers.js';
 
 /**
  * POST /admin/providers/oauth/start — Begin an OpenCode-mediated OAuth
  * sign-in for a provider. Returns the authorization URL and any extra
  * inputs the operator needs to confirm in the UI.
+ *
+ * Forwards directly to the assistant container's OpenCode at
+ * OP_OPENCODE_URL. (A fresh OpenCode subprocess used to be spawned here
+ * for isolation, but it 500s on /provider/{id}/oauth/authorize — its
+ * internal OAuth methods map never initializes.)
  */
 export const POST: RequestHandler = (event) => withAdminBody(event, async ({ requestId, body }) => {
 	try {
@@ -27,8 +28,13 @@ export const POST: RequestHandler = (event) => withAdminBody(event, async ({ req
 		}
 
 		const inputs = extractInputs(body);
-		const authBaseUrl = await ensureAuthServer();
-		const oauth = await startOauthFlowAtBase(authBaseUrl, providerId, methodIndex, inputs);
+		const oauth = await opencodeFetch<{ url: string; method: 'auto' | 'code'; instructions?: string }>(
+			`/provider/${encodeURIComponent(providerId)}/oauth/authorize`,
+			{
+				method: 'POST',
+				body: JSON.stringify({ method: methodIndex, ...(inputs ? { inputs } : {}) }),
+			},
+		);
 
 		return jsonResponse(
 			200,

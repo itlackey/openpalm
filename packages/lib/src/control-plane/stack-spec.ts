@@ -21,6 +21,8 @@ export type StackSpecEmbeddings = {
 
 export type StackSpecTts = {
   enabled: boolean;
+  /** Engine identifier (e.g. 'kokoro', 'openai-tts'). Drives the UI's picker. */
+  engine?: string;
   provider?: string;
   model?: string;
   voice?: string;
@@ -29,6 +31,8 @@ export type StackSpecTts = {
 
 export type StackSpecStt = {
   enabled: boolean;
+  /** Engine identifier (e.g. 'whisper-local', 'openai-stt'). */
+  engine?: string;
   provider?: string;
   model?: string;
   language?: string;

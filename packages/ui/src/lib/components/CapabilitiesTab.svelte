@@ -7,6 +7,8 @@
 		saveAssignments,
 	} from '$lib/api.js';
 	import { lookupEmbeddingDims } from '@openpalm/lib/provider-constants';
+	import type { VoiceEngineValue } from '$lib/wizard/types.js';
+	import VoiceEngineSelector from './voice/VoiceEngineSelector.svelte';
 
 	type ProviderEntry = OpenCodeProviderSummary & { authMethods: OpenCodeAuthMethod[] };
 
@@ -22,12 +24,14 @@
 	let providerModels = $state<Record<string, string[]>>({});
 
 	// ── Capability fields ───────────────────────────────────────────
+	// tts / stt hold the full engine + settings shape used by the
+	// VoiceEngineSelector. Empty `engine` or `skip-*` means disabled.
 	let caps = $state({
 		llm: { provider: '', model: '' },
 		slm: { provider: '', model: '' },
 		embeddings: { provider: '', model: '', dims: 768 },
-		tts: { provider: '', model: '', voice: '' },
-		stt: { provider: '', model: '', language: '' },
+		tts: { engine: '' } as VoiceEngineValue,
+		stt: { engine: '' } as VoiceEngineValue,
 		reranking: { provider: '', mode: 'llm' as 'llm' | 'dedicated', model: '', topK: 10 },
 		akm: {
 			feedback_distillation: true,
@@ -46,7 +50,7 @@
 	let connectedProviders = $derived.by(() => {
 		const result = ocProviders.filter((p) => p.connected).map((p) => ({ id: p.id, name: p.name }));
 		const ids = new Set(result.map((p) => p.id));
-		for (const id of [caps.llm.provider, caps.slm.provider, caps.embeddings.provider, caps.tts.provider, caps.stt.provider, caps.reranking.provider]) {
+		for (const id of [caps.llm.provider, caps.slm.provider, caps.embeddings.provider, caps.reranking.provider]) {
 			if (id && !ids.has(id)) { result.push({ id, name: id }); ids.add(id); }
 		}
 		return result;
@@ -71,6 +75,24 @@
 		}
 	}
 
+	function readVoiceValue(raw: unknown): VoiceEngineValue {
+		if (typeof raw === 'string') return { engine: raw };
+		if (raw && typeof raw === 'object') {
+			const obj = raw as Record<string, unknown>;
+			const v: VoiceEngineValue = {
+				engine: typeof obj.engine === 'string' ? obj.engine
+					: typeof obj.provider === 'string' ? obj.provider
+					: '',
+			};
+			if (typeof obj.provider === 'string') v.provider = obj.provider;
+			if (typeof obj.model === 'string') v.model = obj.model;
+			if (typeof obj.voice === 'string') v.voice = obj.voice;
+			if (typeof obj.language === 'string') v.language = obj.language;
+			return v;
+		}
+		return { engine: '' };
+	}
+
 	async function loadCapabilities(): Promise<void> {
 		try {
 			const res = await fetchAssignments();
@@ -86,14 +108,9 @@
 			caps.embeddings.provider = (emb?.provider as string) ?? '';
 			caps.embeddings.model = (emb?.model as string) ?? '';
 			caps.embeddings.dims = (emb?.dims as number) ?? 768;
-			const tts = loaded.tts as Record<string, unknown> | undefined;
-			caps.tts.provider = (tts?.provider as string) ?? '';
-			caps.tts.model = (tts?.model as string) ?? '';
-			caps.tts.voice = (tts?.voice as string) ?? '';
-			const stt = loaded.stt as Record<string, unknown> | undefined;
-			caps.stt.provider = (stt?.provider as string) ?? '';
-			caps.stt.model = (stt?.model as string) ?? '';
-			caps.stt.language = (stt?.language as string) ?? '';
+			// tts / stt: full engine + settings object (legacy strings also handled)
+			caps.tts = readVoiceValue(loaded.tts);
+			caps.stt = readVoiceValue(loaded.stt);
 			const rr = loaded.reranking as Record<string, unknown> | undefined;
 			caps.reranking.provider = (rr?.provider as string) ?? '';
 			caps.reranking.mode = (rr?.mode as 'llm' | 'dedicated') ?? 'llm';
@@ -150,12 +167,21 @@
 		saving = true; saveError = ''; saveSuccess = false;
 		try {
 			const { llm, slm, embeddings: emb, tts, stt, reranking: rr, akm } = caps;
+			const voicePayload = (v: VoiceEngineValue): Record<string, unknown> | undefined => {
+				if (!v.engine || v.engine.startsWith('skip-')) return undefined;
+				const out: Record<string, unknown> = { enabled: true, engine: v.engine };
+				if (v.provider) out.provider = v.provider;
+				if (v.model) out.model = v.model;
+				if (v.voice) out.voice = v.voice;
+				if (v.language) out.language = v.language;
+				return out;
+			};
 			const p: Record<string, unknown> = {
 				llm: llm.provider && llm.model ? `${llm.provider}/${llm.model}` : undefined,
 				slm: slm.provider && slm.model ? `${slm.provider}/${slm.model}` : undefined,
 				embeddings: emb.provider && emb.model ? { provider: emb.provider, model: emb.model, dims: emb.dims } : undefined,
-				tts: tts.provider ? { enabled: true, provider: tts.provider, model: tts.model || undefined, voice: tts.voice || undefined } : undefined,
-				stt: stt.provider ? { enabled: true, provider: stt.provider, model: stt.model || undefined, language: stt.language || undefined } : undefined,
+				tts: voicePayload(tts),
+				stt: voicePayload(stt),
 				reranking: rr.provider ? { enabled: true, provider: rr.provider, mode: rr.mode, model: rr.model || undefined, topK: rr.topK } : undefined,
 				akm: {
 					feedback_distillation: akm.feedback_distillation,
@@ -179,8 +205,8 @@
 
 <!-- Sub-tab pills -->
 <div class="sub-tabs" role="tablist">
-	<button class="pill" class:pill--active={activeSubTab === 'akm'} role="tab" aria-selected={activeSubTab === 'akm'} onclick={() => activeSubTab = 'akm'}>akm</button>
-	<button class="pill" class:pill--active={activeSubTab === 'tts-stt'} role="tab" aria-selected={activeSubTab === 'tts-stt'} onclick={() => activeSubTab = 'tts-stt'}>TTS/STT</button>
+	<button class="pill" class:pill--active={activeSubTab === 'akm'} role="tab" aria-selected={activeSubTab === 'akm'} onclick={() => { activeSubTab = 'akm'; saveSuccess = false; saveError = ''; }}>akm</button>
+	<button class="pill" class:pill--active={activeSubTab === 'tts-stt'} role="tab" aria-selected={activeSubTab === 'tts-stt'} onclick={() => { activeSubTab = 'tts-stt'; saveSuccess = false; saveError = ''; }}>TTS/STT</button>
 	{#if pageLoading}<span class="loading-hint"><span class="spinner"></span> Loading...</span>{/if}
 </div>
 
@@ -368,64 +394,18 @@
 		<button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => saveError = ''}>x</button>
 	</div>{/if}
 
-	<p class="section-desc">Operator-supplied defaults seeded into the voice channel's web app on first load (via <code>GET /config/defaults</code>). Once a user saves settings in the voice app, browser localStorage wins and these defaults stop applying.</p>
+	<p class="section-desc">Pick an engine for the assistant's voice. These defaults seed the voice channel's web app on first load. Once a user saves their own settings in that app, browser preferences take precedence.</p>
 
-	<div class="assign-section">
-		<h3 class="assign-heading">Text-to-Speech</h3>
-		<p class="section-desc">Generate audio from assistant responses. Set a provider and model to enable. Leave empty to disable.</p>
-		<div class="assign-row">
-			<div class="form-field">
-				<label class="form-label" for="tts-p">Provider</label>
-				<select id="tts-p" name="tts-p" autocomplete="off" class="form-input" bind:value={caps.tts.provider} onchange={() => { caps.tts.model = ''; }}>
-					<option value="">None</option>
-					{#each connectedProviders as p}<option value={p.id}>{p.name}</option>{/each}
-				</select>
-			</div>
-			<div class="form-field">
-				<label class="form-label" for="tts-m">Model</label>
-				{#if caps.tts.provider && (providerModels[caps.tts.provider] ?? []).length > 0}
-					<select id="tts-m" name="tts-m" autocomplete="off" class="form-input" bind:value={caps.tts.model}>
-						<option value="">Select...</option>
-						{#each providerModels[caps.tts.provider] ?? [] as m}<option value={m}>{m}</option>{/each}
-					</select>
-				{:else}
-					<input id="tts-m" name="tts-m" autocomplete="off" class="form-input" type="text" bind:value={caps.tts.model} placeholder="tts-1" />
-				{/if}
-			</div>
-			<div class="form-field">
-				<label class="form-label" for="tts-v">Voice</label>
-				<input id="tts-v" name="tts-v" autocomplete="off" class="form-input" type="text" bind:value={caps.tts.voice} placeholder="alloy" />
-			</div>
-		</div>
+	<div class="engine-section">
+		<h3 class="engine-heading">Text-to-Speech</h3>
+		<p class="engine-subheading">How your assistant speaks</p>
+		<VoiceEngineSelector kind="tts" value={caps.tts} onchange={(v) => caps.tts = v} />
 	</div>
 
-	<div class="assign-section">
-		<h3 class="assign-heading">Speech-to-Text</h3>
-		<p class="section-desc">Transcribe audio input from users. Set a provider and model to enable. Leave empty to disable.</p>
-		<div class="assign-row">
-			<div class="form-field">
-				<label class="form-label" for="stt-p">Provider</label>
-				<select id="stt-p" name="stt-p" autocomplete="off" class="form-input" bind:value={caps.stt.provider} onchange={() => { caps.stt.model = ''; }}>
-					<option value="">None</option>
-					{#each connectedProviders as p}<option value={p.id}>{p.name}</option>{/each}
-				</select>
-			</div>
-			<div class="form-field">
-				<label class="form-label" for="stt-m">Model</label>
-				{#if caps.stt.provider && (providerModels[caps.stt.provider] ?? []).length > 0}
-					<select id="stt-m" name="stt-m" autocomplete="off" class="form-input" bind:value={caps.stt.model}>
-						<option value="">Select...</option>
-						{#each providerModels[caps.stt.provider] ?? [] as m}<option value={m}>{m}</option>{/each}
-					</select>
-				{:else}
-					<input id="stt-m" name="stt-m" autocomplete="off" class="form-input" type="text" bind:value={caps.stt.model} placeholder="whisper-1" />
-				{/if}
-			</div>
-			<div class="form-field">
-				<label class="form-label" for="stt-l">Language</label>
-				<input id="stt-l" name="stt-l" autocomplete="off" class="form-input" type="text" bind:value={caps.stt.language} placeholder="en" />
-			</div>
-		</div>
+	<div class="engine-section">
+		<h3 class="engine-heading">Speech-to-Text</h3>
+		<p class="engine-subheading">How your assistant hears you</p>
+		<VoiceEngineSelector kind="stt" value={caps.stt} onchange={(v) => caps.stt = v} />
 	</div>
 
 	<div class="save-footer">
@@ -466,4 +446,8 @@
 	.toggle-row > div { display: flex; flex-direction: column; }
 	.toggle-title { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); }
 	.toggle-desc { font-size: var(--text-xs); color: var(--color-text-tertiary); margin-top: 2px; }
+
+	.engine-section { margin-bottom: var(--space-5); }
+	.engine-heading { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text); margin-bottom: var(--space-1); }
+	.engine-subheading { font-size: var(--text-xs); color: var(--color-text-tertiary); margin-bottom: var(--space-3); }
 </style>

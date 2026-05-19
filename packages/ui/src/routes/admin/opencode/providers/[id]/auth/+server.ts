@@ -172,3 +172,37 @@ export const POST: RequestHandler = async (event) => {
   // L2 fix: static error message, don't echo caller input
   return errorResponse(400, 'bad_request', 'mode must be api_key or oauth', {}, requestId);
 };
+
+/**
+ * DELETE /admin/opencode/providers/:id/auth — Disconnect a provider by
+ * removing its credential from OpenCode's auth.json.
+ */
+export const DELETE: RequestHandler = async (event) => {
+  const requestId = getRequestId(event);
+  const authError = requireAdmin(event, requestId);
+  if (authError) return authError;
+
+  const providerId = event.params.id ?? '';
+  if (!providerId || providerId.length > MAX_PROVIDER_ID_LENGTH || !PROVIDER_ID_PATTERN.test(providerId)) {
+    return errorResponse(400, 'bad_request', 'Invalid provider ID', {}, requestId);
+  }
+
+  const state = getState();
+  const actor = getActor(event);
+  const callerType = getCallerType(event);
+
+  const result = await getOpenCodeClient().proxy(
+    `/auth/${encodeURIComponent(providerId)}`,
+    { method: 'DELETE' },
+  );
+
+  if (!result.ok) {
+    appendAudit(state, actor, 'opencode.auth.disconnect', { providerId }, false, requestId, callerType);
+    return errorResponse(result.status, result.code, result.message, {}, requestId);
+  }
+
+  appendAudit(state, actor, 'opencode.auth.disconnect', { providerId }, true, requestId, callerType);
+  logger.info('provider credential removed via OpenCode /auth DELETE', { providerId, requestId });
+
+  return jsonResponse(200, { ok: true }, requestId);
+};

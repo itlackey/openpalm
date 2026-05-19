@@ -5,7 +5,7 @@
  * implementation detail. New consumers may import from the focused modules
  * (`./config`, `./catalog`, `./oauth`, `./results`) directly.
  */
-export { getCurrentConfig, normalizeProviderConfig, patchConfig, setProviderEnabled } from './config.js';
+export { getCurrentConfig, normalizeProviderConfig, patchConfig, setProviderEnabled, setProviderOptions, registerProvider, setMainModel } from './config.js';
 export type { JsonRecord, RawConfig } from './config.js';
 export { loadProviderPage } from './catalog.js';
 export { finishOauthFlowAtBase, startOauthFlowAtBase } from './oauth.js';
