@@ -8,9 +8,8 @@
 		stopListening,
 		stopSpeaking,
 		setTtsAutoEnabled,
-		VOICE_TRANSCRIPT_EVENT,
-		type VoiceTranscriptEventDetail,
 	} from '$lib/voice/voice-state.svelte.js';
+	import { chat } from '$lib/chat/chat-state.svelte.js';
 
 	let mounted = $state(false);
 
@@ -27,10 +26,10 @@
 	let ttsAvailable = $derived(mounted && voiceState.ttsSupported);
 
 	/**
-	 * Mic: always captures. Final transcript is broadcast via the
-	 * `openpalm:voice-transcript` window event. The chat page subscribes
-	 * and submits the transcript directly to the selected OpenCode
-	 * instance — no insertion into a textarea, no Enter-to-send dance.
+	 * Mic: always captures. The transcript is submitted straight to the
+	 * global chat service, which posts to the currently selected OpenCode
+	 * backend. Works from any page because `chat` is a singleton and the
+	 * Navbar (containing this component) is mounted everywhere.
 	 */
 	function handleMicClick(): void {
 		if (voiceState.status === 'listening') {
@@ -44,8 +43,7 @@
 		startListening((transcript: string) => {
 			const trimmed = transcript.trim();
 			if (!trimmed) return;
-			const detail: VoiceTranscriptEventDetail = { transcript: trimmed };
-			window.dispatchEvent(new CustomEvent(VOICE_TRANSCRIPT_EVENT, { detail }));
+			void chat.send(trimmed);
 		});
 	}
 

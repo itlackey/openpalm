@@ -43,11 +43,6 @@ export function setTtsAutoEnabled(value: boolean): void {
 	}
 }
 
-/** Custom event dispatched on `window` after a mic transcript is final. */
-export const VOICE_TRANSCRIPT_EVENT = 'openpalm:voice-transcript';
-export interface VoiceTranscriptEventDetail {
-	transcript: string;
-}
 
 /** Resolve the SpeechRecognition constructor (Chrome prefixes it). */
 function getSpeechRecognitionCtor(): SpeechRecognitionConstructor | undefined {

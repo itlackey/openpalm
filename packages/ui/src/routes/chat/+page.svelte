@@ -4,135 +4,34 @@
   import AuthGate from '$lib/components/AuthGate.svelte';
   import ChatMessage from '$lib/components/ChatMessage.svelte';
   import ChatInput from '$lib/components/ChatInput.svelte';
-  import {
-    voiceState,
-    speakText,
-    stopSpeaking,
-    VOICE_TRANSCRIPT_EVENT,
-    type VoiceTranscriptEventDetail,
-  } from '$lib/voice/voice-state.svelte.js';
-  import {
-    createChatSession,
-    sendChatMessage,
-    probeChatBackend,
-  } from '$lib/api.js';
-  import type { ChatBackend, ChatEntry, ChatMessage as ChatMessageType, ChatDivider } from '$lib/types.js';
+  import { stopSpeaking } from '$lib/voice/voice-state.svelte.js';
+  import { probeChatBackend } from '$lib/api.js';
+  import type { ChatBackend } from '$lib/types.js';
+  import { chat } from '$lib/chat/chat-state.svelte.js';
 
   // ── Auth state ───────────────────────────────────────────────────────
   let authLocked = $state(true);
   let authLoading = $state(false);
   let authError = $state('');
 
-  // ── Chat state ───────────────────────────────────────────────────────
-  let backend = $state<ChatBackend>('assistant');
-  let entries = $state<ChatEntry[]>([]);
-  let sending = $state(false);
-  let chatError = $state('');
-
-  // ── Session state ────────────────────────────────────────────────────
-  // Keyed by backend. null = not yet created.
-  let sessions = $state<Record<ChatBackend, string | null>>({ assistant: null, admin: null });
-  let sessionInitializing = $state(false);
-
   // ── Scroll anchor ────────────────────────────────────────────────────
   let scrollAnchorEl = $state<HTMLDivElement | undefined>();
 
   // ── Helpers ──────────────────────────────────────────────────────────
 
-  async function ensureSession(b: ChatBackend): Promise<string | null> {
-    const existing = sessions[b];
-    if (existing) return existing;
-
-    sessionInitializing = true;
-    try {
-      const { id } = await createChatSession(b);
-      sessions[b] = id;
-      return id;
-    } catch (e) {
-      const err = e as { message?: string };
-      chatError = `Failed to start session with ${b}: ${err.message ?? 'unknown error'}`;
-      return null;
-    } finally {
-      sessionInitializing = false;
-    }
-  }
-
   async function reconnect(): Promise<void> {
-    chatError = '';
-    sessions[backend] = null;
-    await ensureSession(backend);
+    chat.error = '';
+    chat.dropCurrentSession();
+    await chat.ensureSession(chat.backend);
   }
 
   async function handleSend(text: string): Promise<void> {
-    if (sending) return;
-    const sessionId = await ensureSession(backend);
-    if (!sessionId) return;
-
-    // Optimistically add user message
-    const userEntry: ChatMessageType = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      text,
-      backend,
-      timestamp: Date.now(),
-    };
-    entries = [...entries, userEntry];
-    chatError = '';
-    sending = true;
+    await chat.send(text);
     scrollToBottom();
-
-    try {
-      const response = await sendChatMessage(backend, sessionId, text);
-
-      // Extract text from parts array
-      const replyText = response.parts
-        .filter((p) => p.type === 'text' && p.text)
-        .map((p) => p.text ?? '')
-        .join('');
-
-      const assistantEntry: ChatMessageType = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        text: replyText || '(no response)',
-        backend,
-        timestamp: Date.now(),
-      };
-      entries = [...entries, assistantEntry];
-
-      // TTS: only speak when the user has flipped the global toggle on.
-      if (voiceState.ttsSupported && voiceState.ttsAutoEnabled && replyText) {
-        speakText(replyText);
-      }
-    } catch (e) {
-      const err = e as { status?: number; message?: string };
-      if (err.status === 503 || err.status === 502) {
-        chatError = `${backend === 'admin' ? 'Admin' : 'Assistant'} is not reachable. Try reconnecting.`;
-        // Invalidate session — it may have died
-        sessions[backend] = null;
-      } else {
-        chatError = err.message ?? 'Message failed.';
-      }
-    } finally {
-      sending = false;
-      scrollToBottom();
-    }
   }
 
   function handleBackendChange(newBackend: ChatBackend): void {
-    if (newBackend === backend) return;
-
-    // Insert a divider marking the context switch
-    const divider: ChatDivider = {
-      id: crypto.randomUUID(),
-      type: 'divider',
-      label: `Switched to ${newBackend === 'admin' ? 'Admin' : 'Assistant'}`,
-      timestamp: Date.now(),
-    };
-    entries = [...entries, divider];
-    backend = newBackend;
-
-    // Pre-create session for the new backend if not already done
-    void ensureSession(newBackend);
+    chat.setBackend(newBackend);
     scrollToBottom();
   }
 
@@ -164,7 +63,7 @@
       authLocked = false;
       authError = '';
       // Start the initial session immediately on auth
-      await ensureSession(backend);
+      await chat.ensureSession(chat.backend);
       return true;
     } catch {
       authError = 'Unable to reach admin API.';
@@ -183,15 +82,13 @@
     }
     authLocked = true;
     authError = '';
-    entries = [];
-    chatError = '';
-    sessions = { assistant: null, admin: null };
-    backend = 'assistant';
+    chat.reset();
   }
 
   // ── Visibility-change reconnect ───────────────────────────────────────
-  // When the tab regains focus, probe the current backend.
-
+  // When the tab regains focus, probe the current backend. (Uses $effect
+  // because we need a DOM event subscription with cleanup — this is a
+  // legitimate $effect use case, not a state-sync anti-pattern.)
   $effect(() => {
     let destroyed = false;
 
@@ -199,11 +96,10 @@
       if (destroyed || document.visibilityState !== 'visible') return;
       if (authLocked) return;
       void (async () => {
-        const reachable = await probeChatBackend(backend);
+        const reachable = await probeChatBackend(chat.backend);
         if (!reachable && !destroyed) {
-          chatError = `${backend === 'admin' ? 'Admin' : 'Assistant'} is not reachable. Try reconnecting.`;
-          // Clear stale session
-          sessions[backend] = null;
+          chat.error = `${chat.backend === 'admin' ? 'Admin' : 'Assistant'} is not reachable. Try reconnecting.`;
+          chat.dropCurrentSession();
         }
       })();
     }
@@ -229,7 +125,7 @@
           return;
         }
         authLocked = false;
-        await ensureSession(backend);
+        await chat.ensureSession(chat.backend);
       } catch {
         authLocked = true;
         authError = 'Unable to reach admin API.';
@@ -237,20 +133,6 @@
         authLoading = false;
       }
     })();
-
-    // Mic transcripts arrive via window events from the global VoiceControl.
-    // We submit straight to the selected backend — the user's spoken
-    // utterance appears as their message bubble in the history.
-    const onTranscript = (e: Event) => {
-      if (authLocked) return;
-      const detail = (e as CustomEvent<VoiceTranscriptEventDetail>).detail;
-      if (!detail?.transcript) return;
-      void handleSend(detail.transcript);
-    };
-    window.addEventListener(VOICE_TRANSCRIPT_EVENT, onTranscript);
-    return () => {
-      window.removeEventListener(VOICE_TRANSCRIPT_EVENT, onTranscript);
-    };
   });
 </script>
 
@@ -266,20 +148,20 @@
   <div class="chat-layout">
     <!-- Message history -->
     <section class="messages-area" aria-label="Chat history" aria-live="polite">
-      {#if entries.length === 0 && !sessionInitializing}
+      {#if chat.entries.length === 0 && !chat.sessionInitializing}
         <div class="empty-state">
-          <p>Start a conversation with your {backend === 'admin' ? 'Admin' : 'Assistant'}.</p>
+          <p>Start a conversation with your {chat.backend === 'admin' ? 'Admin' : 'Assistant'}.</p>
         </div>
       {/if}
 
-      {#if sessionInitializing}
+      {#if chat.sessionInitializing}
         <div class="session-loading" aria-live="polite">
           <span class="spinner" aria-hidden="true"></span>
-          <span>Connecting to {backend === 'admin' ? 'Admin' : 'Assistant'}…</span>
+          <span>Connecting to {chat.backend === 'admin' ? 'Admin' : 'Assistant'}…</span>
         </div>
       {/if}
 
-      {#each entries as entry (entry.id)}
+      {#each chat.entries as entry (entry.id)}
         <ChatMessage {entry} />
       {/each}
 
@@ -287,9 +169,9 @@
     </section>
 
     <!-- Error / reconnect banner -->
-    {#if chatError}
+    {#if chat.error}
       <div class="chat-error-banner" role="alert">
-        <span>{chatError}</span>
+        <span>{chat.error}</span>
         <button class="reconnect-btn" type="button" onclick={reconnect}>
           Reconnect
         </button>
@@ -297,7 +179,7 @@
           class="dismiss-btn"
           type="button"
           aria-label="Dismiss error"
-          onclick={() => { chatError = ''; }}
+          onclick={() => { chat.error = ''; }}
         >
           &times;
         </button>
@@ -306,8 +188,8 @@
 
     <!-- Input area — always at the bottom -->
     <ChatInput
-      {backend}
-      {sending}
+      backend={chat.backend}
+      sending={chat.sending}
       onSend={handleSend}
       onBackendChange={handleBackendChange}
     />
