@@ -25,6 +25,18 @@
 	let supported = $derived(mounted && voiceState.isSupported);
 	let ttsAvailable = $derived(mounted && voiceState.ttsSupported);
 
+	// Mic states (mutually exclusive, evaluated in priority order):
+	//   listening — actively recording
+	//   processing — message in flight to the assistant
+	//   idle — neutral
+	let isRecording = $derived(voiceState.status === 'listening');
+	let isProcessing = $derived(!isRecording && chat.sending);
+
+	// Speaker is "speaking" only when the auto-TTS is on AND an utterance is
+	// currently playing. With the toggle off, the speechSynthesis queue
+	// shouldn't be active.
+	let isSpeaking = $derived(voiceState.status === 'speaking');
+
 	/**
 	 * Mic: always captures. The transcript is submitted straight to the
 	 * global chat service, which posts to the currently selected OpenCode
@@ -60,32 +72,49 @@
 	<div class="voice-control" role="toolbar" aria-label="Voice controls">
 		<button
 			class="voice-btn"
-			class:voice-btn-active={voiceState.status === 'listening'}
+			class:voice-btn-active={isRecording}
+			class:voice-btn-processing={isProcessing}
+			disabled={isProcessing}
 			onclick={handleMicClick}
-			aria-label={voiceState.status === 'listening' ? 'Stop listening' : 'Start dictation'}
-			aria-pressed={voiceState.status === 'listening'}
-			title={voiceState.status === 'listening'
-				? 'Stop listening'
-				: 'Dictate into focused field'}
+			aria-label={isRecording
+				? 'Stop recording'
+				: isProcessing
+					? 'Sending message…'
+					: 'Start recording'}
+			aria-pressed={isRecording}
+			title={isRecording
+				? 'Stop recording'
+				: isProcessing
+					? 'Sending message…'
+					: 'Speak — message will be sent to the selected assistant'}
 		>
-			<svg
-				aria-hidden="true"
-				width="16"
-				height="16"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-			>
-				<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-				<path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-				<line x1="12" y1="19" x2="12" y2="23" />
-				<line x1="8" y1="23" x2="16" y2="23" />
-			</svg>
-			{#if voiceState.status === 'listening'}
+			{#if isProcessing}
+				<!-- Spinner while the assistant is processing the message -->
+				<span class="voice-spinner" aria-hidden="true"></span>
+			{:else if isRecording}
+				<!-- Stop-square: clicking again ends the recording -->
+				<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+					<rect x="6" y="6" width="12" height="12" rx="1.5" />
+				</svg>
 				<span class="voice-pulse" aria-hidden="true"></span>
+			{:else}
+				<!-- Idle mic -->
+				<svg
+					aria-hidden="true"
+					width="16"
+					height="16"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+					<path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+					<line x1="12" y1="19" x2="12" y2="23" />
+					<line x1="8" y1="23" x2="16" y2="23" />
+				</svg>
 			{/if}
 		</button>
 
@@ -93,14 +122,17 @@
 			<button
 				class="voice-btn"
 				class:voice-btn-on={voiceState.ttsAutoEnabled}
+				class:voice-btn-speaking={isSpeaking}
 				onclick={handleSpeakerClick}
 				aria-label={voiceState.ttsAutoEnabled
 					? 'Turn off spoken responses'
 					: 'Turn on spoken responses'}
 				aria-pressed={voiceState.ttsAutoEnabled}
-				title={voiceState.ttsAutoEnabled
-					? 'Spoken responses are on — click to turn off'
-					: 'Spoken responses are off — click to turn on'}
+				title={isSpeaking
+					? 'Speaking — click to turn off spoken responses'
+					: voiceState.ttsAutoEnabled
+						? 'Spoken responses are on — click to turn off'
+						: 'Spoken responses are off — click to turn on'}
 			>
 				<svg
 					aria-hidden="true"
@@ -114,8 +146,15 @@
 					stroke-linejoin="round"
 				>
 					<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-					<path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-					<path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+					{#if voiceState.ttsAutoEnabled}
+						<!-- Sound waves: one when idle, both animated when speaking -->
+						<path d="M15.54 8.46a5 5 0 0 1 0 7.07" class:wave-anim={isSpeaking} />
+						<path d="M19.07 4.93a10 10 0 0 1 0 14.14" class:wave-anim-2={isSpeaking} />
+					{:else}
+						<!-- Muted: cross-out in place of the waves -->
+						<line x1="23" y1="9" x2="17" y2="15" />
+						<line x1="17" y1="9" x2="23" y2="15" />
+					{/if}
 				</svg>
 			</button>
 		{/if}
@@ -125,13 +164,15 @@
 		{/if}
 
 		<span class="sr-only" aria-live="polite">
-			{voiceState.status === 'listening'
-				? 'Listening for speech'
-				: voiceState.status === 'speaking'
-					? 'Reading aloud'
-					: voiceState.ttsAutoEnabled
-						? 'Spoken responses on'
-						: ''}
+			{isRecording
+				? 'Recording'
+				: isProcessing
+					? 'Sending message to assistant'
+					: isSpeaking
+						? 'Assistant is speaking'
+						: voiceState.ttsAutoEnabled
+							? 'Spoken responses on'
+							: ''}
 		</span>
 	</div>
 {/if}
@@ -194,6 +235,18 @@
 		border-color: var(--color-primary);
 	}
 
+	/* Speaker actively playing audio — slightly brighter background. */
+	.voice-btn-speaking {
+		background: var(--color-primary-subtle);
+		box-shadow: 0 0 0 2px var(--color-primary-subtle);
+	}
+
+	/* Mic mid-send: dimmed; disabled cursor is set by the [disabled] attribute. */
+	.voice-btn-processing {
+		color: var(--color-text-tertiary);
+		cursor: not-allowed;
+	}
+
 	.voice-pulse {
 		position: absolute;
 		inset: -3px;
@@ -202,6 +255,43 @@
 		opacity: 0;
 		animation: voice-pulse-anim 1.5s ease-out infinite;
 		pointer-events: none;
+	}
+
+	/* Processing spinner inside the mic button. */
+	.voice-spinner {
+		display: inline-block;
+		width: 14px;
+		height: 14px;
+		border: 2px solid currentColor;
+		border-right-color: transparent;
+		border-radius: 50%;
+		animation: voice-spinner-anim 0.7s linear infinite;
+	}
+
+	@keyframes voice-spinner-anim {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	/* Speaker wave animation while speaking. */
+	.wave-anim {
+		animation: wave-pulse-anim 1.2s ease-in-out infinite;
+		transform-origin: 11px 12px;
+	}
+
+	.wave-anim-2 {
+		animation: wave-pulse-anim 1.2s ease-in-out infinite 0.3s;
+		transform-origin: 11px 12px;
+	}
+
+	@keyframes wave-pulse-anim {
+		0%, 100% {
+			opacity: 0.4;
+		}
+		50% {
+			opacity: 1;
+		}
 	}
 
 	@keyframes voice-pulse-anim {
@@ -216,8 +306,13 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.voice-pulse {
+		.voice-pulse,
+		.voice-spinner,
+		.wave-anim,
+		.wave-anim-2 {
 			animation: none;
+		}
+		.voice-pulse {
 			opacity: 0.4;
 		}
 	}
