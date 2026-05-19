@@ -166,8 +166,16 @@ export function stopSpeaking(): void {
 	voiceState.status = 'idle';
 }
 
-/** Tear down all voice activity. Call from onDestroy. */
+/**
+ * Tear down per-component voice resources on unmount. Only stops
+ * recognition (which owns a per-instance SpeechRecognition object).
+ *
+ * Deliberately does NOT cancel `speechSynthesis` — that queue is a
+ * window-level singleton and the user's auto-TTS toggle is persistent,
+ * so a page navigation must not interrupt the assistant mid-utterance.
+ * Explicit user actions (logout, mic click, toggle off) call
+ * `stopSpeaking` directly.
+ */
 export function destroyVoice(): void {
 	stopListening();
-	stopSpeaking();
 }
