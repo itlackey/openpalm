@@ -1,14 +1,10 @@
 <script lang="ts">
-  import type { ChatBackend } from '$lib/types.js';
-
   interface Props {
-    backend: ChatBackend;
     sending: boolean;
     onSend: (text: string) => void;
-    onBackendChange: (b: ChatBackend) => void;
   }
 
-  let { backend, sending, onSend, onBackendChange }: Props = $props();
+  let { sending, onSend }: Props = $props();
 
   let inputText = $state('');
   let textareaEl = $state<HTMLTextAreaElement | undefined>();
@@ -39,27 +35,6 @@
 </script>
 
 <div class="chat-input-row">
-  <div class="backend-toggle" role="group" aria-label="Select assistant backend">
-    <button
-      class="backend-btn"
-      class:backend-btn-active={backend === 'assistant'}
-      type="button"
-      onclick={() => onBackendChange('assistant')}
-      aria-pressed={backend === 'assistant'}
-    >
-      Assistant
-    </button>
-    <button
-      class="backend-btn"
-      class:backend-btn-active={backend === 'admin'}
-      type="button"
-      onclick={() => onBackendChange('admin')}
-      aria-pressed={backend === 'admin'}
-    >
-      Admin
-    </button>
-  </div>
-
   <div class="input-area">
     <textarea
       id="chat-input"
@@ -100,45 +75,14 @@
     </button>
   </div>
 </div>
+<!-- backend toggle moved to VoiceControl in the Navbar so it's available
+     on every page (mic uses the same backend selection) -->
 
 <style>
   .chat-input-row {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
     padding: var(--space-3) var(--space-4);
     border-top: 1px solid var(--color-border);
     background: var(--color-bg);
-  }
-
-  .backend-toggle {
-    display: flex;
-    gap: var(--space-1);
-    align-self: flex-start;
-  }
-
-  .backend-btn {
-    padding: 3px 10px;
-    font-size: var(--text-xs);
-    font-weight: var(--font-medium);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-full);
-    background: var(--color-bg);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-  }
-
-  .backend-btn:hover {
-    border-color: var(--color-border-hover);
-    color: var(--color-text);
-  }
-
-  .backend-btn-active {
-    background: var(--color-primary);
-    border-color: var(--color-primary);
-    color: #000;
-    font-weight: var(--font-semibold);
   }
 
   .input-area {

@@ -6,7 +6,6 @@
   import ChatInput from '$lib/components/ChatInput.svelte';
   import { stopSpeaking } from '$lib/voice/voice-state.svelte.js';
   import { probeChatBackend } from '$lib/api.js';
-  import type { ChatBackend } from '$lib/types.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
 
   // ── Auth state ───────────────────────────────────────────────────────
@@ -27,11 +26,6 @@
 
   async function handleSend(text: string): Promise<void> {
     await chat.send(text);
-    scrollToBottom();
-  }
-
-  function handleBackendChange(newBackend: ChatBackend): void {
-    chat.setBackend(newBackend);
     scrollToBottom();
   }
 
@@ -186,12 +180,12 @@
       </div>
     {/if}
 
-    <!-- Input area — always at the bottom -->
+    <!-- Input area — always at the bottom.
+         The backend toggle lives in the Navbar's VoiceControl now so it's
+         consistent with the mic, which uses the same backend selection. -->
     <ChatInput
-      backend={chat.backend}
       sending={chat.sending}
       onSend={handleSend}
-      onBackendChange={handleBackendChange}
     />
   </div>
 {/if}
