@@ -519,6 +519,17 @@ body {
   font-size: var(--text-xs);
 }
 
+.btn-secondary {
+  background: var(--color-bg);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-hover);
+}
+
 .btn-danger {
   background: var(--color-danger);
   color: #fff;
@@ -632,6 +643,141 @@ body {
   color: var(--color-text-secondary);
 }
 
+/* ── Shared Utility: Panel ─────────────────────────────────────── */
+
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.panel-header h2 {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--color-text);
+}
+
+.panel-subtitle {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  margin-top: var(--space-1);
+}
+
+.panel-subtitle code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: var(--color-bg-tertiary);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.panel-body {
+  padding: var(--space-5);
+}
+
+.panel-body--flush {
+  padding: 0;
+}
+
+/* ── Shared Utility: Badge ─────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: var(--font-semibold);
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.badge-enabled {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.badge-disabled {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-tertiary);
+}
+
+.badge-connected {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.badge-recommended {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.badge-success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.badge-danger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.badge-warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.badge-idle {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-tertiary);
+}
+
+/* ── Shared Utility: Dismiss Button ────────────────────────────── */
+
+.btn-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.6;
+  border-radius: var(--radius-sm);
+}
+
+.btn-dismiss:hover {
+  opacity: 1;
+  background: rgba(128, 128, 128, 0.1);
+}
+
+/* ── Shared Utility: Loading State ─────────────────────────────── */
+
+.loading-state {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
 /* ── Shared Utility: Empty State ───────────────────────────────── */
 
 .empty-state {
@@ -641,6 +787,11 @@ body {
   gap: var(--space-3);
   padding: var(--space-8) var(--space-6);
   text-align: center;
+  color: var(--color-text-tertiary);
+}
+
+.empty-state p {
+  font-size: var(--text-sm);
 }
 
 /* ── Shared Utility: Text Link ─────────────────────────────────── */

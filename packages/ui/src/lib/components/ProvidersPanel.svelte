@@ -318,42 +318,6 @@
 {/if}
 
 <style>
-	.panel {
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-lg);
-		overflow: hidden;
-	}
-
-	.panel-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-3);
-		padding: var(--space-4) var(--space-5);
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.panel-header h2 {
-		font-size: var(--text-base);
-		font-weight: var(--font-semibold);
-		color: var(--color-text);
-		margin: 0;
-	}
-
-	.panel-subtitle {
-		font-size: var(--text-xs);
-		color: var(--color-text-secondary);
-		margin-top: var(--space-1);
-	}
-
-	.panel-header-actions {
-		display: flex;
-		gap: var(--space-2);
-	}
-
-	.panel-body--flush { padding: 0; }
-
 	.feedback.inline {
 		margin: var(--space-3) var(--space-5);
 		justify-content: space-between;
@@ -403,46 +367,8 @@
 		color: var(--color-text);
 	}
 
-	.badge {
-		display: inline-flex;
-		align-items: center;
-		font-size: 10px;
-		font-weight: var(--font-semibold);
-		padding: 1px 6px;
-		border-radius: var(--radius-full);
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-	}
-
-	.badge-connected {
-		background: var(--color-success-bg);
-		color: var(--color-success);
-	}
-
-	.loading-state,
-	.empty-state {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--space-2);
-		padding: var(--space-8) var(--space-5);
-		color: var(--color-text-secondary);
-		font-size: var(--text-sm);
-		text-align: center;
-	}
-
 	.empty-hint {
 		color: var(--color-text-tertiary);
-	}
-
-	.btn-dismiss {
-		background: none;
-		border: none;
-		font-size: 18px;
-		line-height: 1;
-		color: var(--color-text-tertiary);
-		cursor: pointer;
-		padding: 0 var(--space-2);
 	}
 
 	.error-detail {

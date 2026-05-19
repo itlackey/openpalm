@@ -181,61 +181,6 @@
     font-size: var(--text-sm);
   }
 
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: 8px 16px;
-    font-family: var(--font-sans);
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
-    line-height: 1.4;
-    border: 1px solid transparent;
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    white-space: nowrap;
-    justify-content: center;
-  }
-
-  .btn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
-
-  .btn-primary {
-    background: var(--color-primary);
-    color: #000;
-    border-color: var(--color-primary);
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    background: var(--color-primary-hover);
-    border-color: var(--color-primary-hover);
-  }
-
-  .spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid currentColor;
-    border-right-color: transparent;
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .spinner {
-      animation: none;
-    }
-  }
-
   .sr-only {
     position: absolute;
     width: 1px;

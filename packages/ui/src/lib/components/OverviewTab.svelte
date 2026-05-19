@@ -439,31 +439,6 @@
     gap: var(--space-6);
   }
 
-  .panel {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-  }
-
-  .panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-4) var(--space-5);
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .panel-header h2 {
-    font-size: var(--text-base);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
-  }
-
-  .panel-body {
-    padding: var(--space-5);
-  }
-
   /* Action List */
   .action-list {
     display: flex;
@@ -591,117 +566,6 @@
     justify-content: flex-end;
   }
 
-  /* Badges */
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    font-size: var(--text-xs);
-    font-weight: var(--font-semibold);
-    border-radius: var(--radius-full);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-  }
-
-  .badge-success {
-    color: var(--color-success);
-    background: var(--color-success-bg);
-  }
-
-  .badge-danger {
-    color: var(--color-danger);
-    background: var(--color-danger-bg);
-  }
-
-  .badge-warning {
-    color: var(--color-warning);
-    background: var(--color-warning-bg);
-  }
-
-  .badge-idle {
-    color: var(--color-text-tertiary);
-    background: var(--color-bg-tertiary);
-  }
-
-  /* Buttons */
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: 8px 16px;
-    font-family: var(--font-sans);
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
-    line-height: 1.4;
-    border: 1px solid transparent;
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    white-space: nowrap;
-  }
-
-  .btn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
-
-  .btn-primary {
-    background: var(--color-primary);
-    color: #000;
-    border-color: var(--color-primary);
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    background: var(--color-primary-hover);
-    border-color: var(--color-primary-hover);
-  }
-
-  .btn-secondary {
-    background: var(--color-bg);
-    color: var(--color-text);
-    border-color: var(--color-border);
-  }
-
-  .btn-secondary:hover:not(:disabled) {
-    background: var(--color-surface-hover);
-    border-color: var(--color-border-hover);
-  }
-
-  .btn-ghost {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--color-text-tertiary);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-  }
-
-  .btn-ghost:hover {
-    background: var(--color-bg-tertiary);
-    color: var(--color-text-secondary);
-  }
-
-  .spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid currentColor;
-    border-right-color: transparent;
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
   @media (max-width: 768px) {
     .panel-grid {
       grid-template-columns: 1fr;
@@ -712,13 +576,4 @@
     }
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .spinner {
-      animation: none;
-    }
-
-    * {
-      transition-duration: 0s !important;
-    }
-  }
 </style>

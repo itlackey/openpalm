@@ -101,31 +101,6 @@
 </div>
 
 <style>
-  .panel {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-  }
-
-  .panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-4) var(--space-5);
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .panel-header h2 {
-    font-size: var(--text-base);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
-  }
-
-  .panel-body {
-    padding: var(--space-5);
-  }
-
   .automation-list {
     display: flex;
     flex-direction: column;
@@ -197,27 +172,6 @@
     color: var(--color-text-tertiary);
   }
 
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    font-size: 10px;
-    font-weight: var(--font-semibold);
-    padding: 1px 6px;
-    border-radius: var(--radius-full);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-  }
-
-  .badge-enabled {
-    background: var(--color-success-bg);
-    color: var(--color-success);
-  }
-
-  .badge-disabled {
-    background: var(--color-bg-tertiary);
-    color: var(--color-text-tertiary);
-  }
-
   .badge-type {
     background: var(--color-bg-tertiary);
     color: var(--color-text-secondary);
@@ -236,21 +190,6 @@
     font-size: var(--text-xs);
     font-family: var(--font-mono);
     color: var(--color-text-tertiary);
-  }
-
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-10) var(--space-4);
-    color: var(--color-text-tertiary);
-    text-align: center;
-    gap: var(--space-4);
-  }
-
-  .empty-state p {
-    font-size: var(--text-sm);
   }
 
   .empty-state-hint {
@@ -275,59 +214,6 @@
     color: var(--color-danger);
   }
 
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: 8px 16px;
-    font-family: var(--font-sans);
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
-    line-height: 1.4;
-    border: 1px solid transparent;
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    white-space: nowrap;
-  }
-
-  .btn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
-
-  .btn-secondary {
-    background: var(--color-bg);
-    color: var(--color-text);
-    border-color: var(--color-border);
-  }
-
-  .btn-secondary:hover:not(:disabled) {
-    background: var(--color-surface-hover);
-    border-color: var(--color-border-hover);
-  }
-
-  .btn-sm {
-    padding: 5px 12px;
-    font-size: var(--text-xs);
-  }
-
-  .spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid currentColor;
-    border-right-color: transparent;
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
   @media (max-width: 768px) {
     .automation-row {
       flex-direction: column;
@@ -340,10 +226,4 @@
     }
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .spinner {
-      animation: none;
-      transition: none;
-    }
-  }
 </style>

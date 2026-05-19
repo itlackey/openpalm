@@ -230,4 +230,35 @@ describe("importHostOpenCode", () => {
       expect(result.conflicts).toHaveLength(0);
     });
   });
+
+  it("partial-merge auth: does not overwrite existing credential, adds new one", () => {
+    // Pre-seed OP_HOME/config/auth.json with one existing credential
+    const opConfigDir = join(opHome, "config");
+    mkdirSync(opConfigDir, { recursive: true });
+    writeFileSync(join(opConfigDir, "auth.json"), JSON.stringify({
+      azure: { type: "api", key: "existing" },
+    }));
+
+    // Set up host auth.json with azure (conflict) + groq (new)
+    const hostDataDir = join(xdgRoot, "data", "opencode");
+    mkdirSync(hostDataDir, { recursive: true });
+    writeFileSync(join(hostDataDir, "auth.json"), JSON.stringify({
+      azure: { type: "api", key: "host-override" },
+      groq: { type: "api", key: "gsk-host" },
+    }));
+
+    const state = makeState(opHome);
+
+    withXdgEnv(`${xdgRoot}/config`, `${xdgRoot}/data`, () => {
+      const result = importHostOpenCode(state, { overwriteConflicts: false });
+      // Only groq was new — azure is a conflict and must NOT be overwritten
+      expect(result.imported.credentials).toBe(1);
+    });
+
+    // Verify azure key was NOT overwritten
+    const written = JSON.parse(readFileSync(join(opConfigDir, "auth.json"), "utf-8")) as Record<string, { key: string }>;
+    expect(written.azure.key).toBe("existing");
+    // Verify groq was added
+    expect(written.groq.key).toBe("gsk-host");
+  });
 });

@@ -79,12 +79,17 @@
 		if (typeof raw === 'string') return { engine: raw };
 		if (raw && typeof raw === 'object') {
 			const obj = raw as Record<string, unknown>;
+			// When the legacy shape { provider: "openai" } is loaded, we use
+			// provider as the engine fallback. In that case do NOT also copy
+			// it to v.provider — it would write both fields on the next save.
+			const hasEngine = typeof obj.engine === 'string';
 			const v: VoiceEngineValue = {
-				engine: typeof obj.engine === 'string' ? obj.engine
+				engine: hasEngine ? (obj.engine as string)
 					: typeof obj.provider === 'string' ? obj.provider
 					: '',
 			};
-			if (typeof obj.provider === 'string') v.provider = obj.provider;
+			// Only populate provider when a distinct engine field is present.
+			if (hasEngine && typeof obj.provider === 'string') v.provider = obj.provider;
 			if (typeof obj.model === 'string') v.model = obj.model;
 			if (typeof obj.voice === 'string') v.voice = obj.voice;
 			if (typeof obj.language === 'string') v.language = obj.language;
@@ -437,10 +442,7 @@
 	.feedback span { flex: 1; }
 	.feedback--success { background: var(--color-success-bg); color: var(--color-text); }
 	.feedback--error { background: var(--color-danger-bg); color: var(--color-text); }
-	.btn-dismiss { background: none; border: none; color: inherit; cursor: pointer; opacity: 0.6; font-size: var(--text-sm); }
-	.btn-dismiss:hover { opacity: 1; }
 	.error-state { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) var(--space-5); font-size: var(--text-sm); color: var(--color-danger); }
-	.empty-state { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding: var(--space-8); color: var(--color-text-tertiary); text-align: center; }
 	.toggle-row { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-2) 0; cursor: pointer; }
 	.toggle-row input[type="checkbox"] { width: 16px; height: 16px; margin-top: 3px; flex-shrink: 0; }
 	.toggle-row > div { display: flex; flex-direction: column; }

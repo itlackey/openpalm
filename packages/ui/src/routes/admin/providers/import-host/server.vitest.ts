@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { join } from 'node:path';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { resetState } from '$lib/server/test-helpers.js';
 import { POST } from './+server.js';
 
-// Mock importHostOpenCode so tests don't depend on the host filesystem
+// Mock importHostOpenCode + detectHostOpenCode so tests don't depend on the host filesystem
 vi.mock('@openpalm/lib', async (importOriginal) => {
 	const original = await importOriginal<typeof import('@openpalm/lib')>();
 	return {
@@ -15,11 +15,17 @@ vi.mock('@openpalm/lib', async (importOriginal) => {
 			imported: { providers: 2, credentials: 1 },
 			conflicts: [],
 		})),
+		detectHostOpenCode: vi.fn(() => ({ providerCount: 0, credentialCount: 0 })),
 		appendAudit: vi.fn(),
 	};
 });
 
-import { importHostOpenCode, appendAudit } from '@openpalm/lib';
+vi.mock('$lib/server/opencode/http.js', () => ({
+	opencodeFetch: vi.fn(async () => undefined),
+}));
+
+import { importHostOpenCode, detectHostOpenCode, appendAudit } from '@openpalm/lib';
+import { opencodeFetch } from '$lib/server/opencode/http.js';
 
 let rootDir = '';
 let originalHome: string | undefined;
@@ -57,6 +63,9 @@ beforeEach(() => {
 		imported: { providers: 2, credentials: 1 },
 		conflicts: [],
 	});
+	// Default: no host OpenCode found — prevents isolation leak from real XDG paths
+	vi.mocked(detectHostOpenCode).mockReturnValue({ providerCount: 0, credentialCount: 0 });
+	vi.mocked(opencodeFetch).mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -148,5 +157,54 @@ describe('POST /admin/providers/import-host', () => {
 			expect.any(String),
 			expect.any(String)
 		);
+	});
+
+	test('live push: calls opencodeFetch twice and reports livePushed:2', async () => {
+		// Write a fixture auth.json with two entries
+		const authPath = join(rootDir, 'auth.json');
+		writeFileSync(authPath, JSON.stringify({
+			openai: { type: 'api', key: 'sk-test' },
+			groq: { type: 'api', key: 'gsk-test' },
+		}));
+
+		vi.mocked(detectHostOpenCode).mockReturnValue({
+			providerCount: 2,
+			credentialCount: 2,
+			authPath,
+		});
+
+		const res = await POST(makeEvent());
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { livePushed: number; livePushFailed: string[] };
+		expect(body.livePushed).toBe(2);
+		expect(body.livePushFailed).toHaveLength(0);
+		expect(vi.mocked(opencodeFetch)).toHaveBeenCalledTimes(2);
+		expect(vi.mocked(opencodeFetch)).toHaveBeenCalledWith('/auth/openai', expect.objectContaining({ method: 'PUT' }));
+		expect(vi.mocked(opencodeFetch)).toHaveBeenCalledWith('/auth/groq', expect.objectContaining({ method: 'PUT' }));
+	});
+
+	test('live push: one provider fails → livePushFailed includes that provider ID and livePushed:1', async () => {
+		const authPath = join(rootDir, 'auth-partial.json');
+		writeFileSync(authPath, JSON.stringify({
+			openai: { type: 'api', key: 'sk-test' },
+			anthropic: { type: 'api', key: 'sk-ant' },
+		}));
+
+		vi.mocked(detectHostOpenCode).mockReturnValue({
+			providerCount: 2,
+			credentialCount: 2,
+			authPath,
+		});
+
+		// First call (openai) succeeds; second (anthropic) fails
+		vi.mocked(opencodeFetch)
+			.mockResolvedValueOnce(undefined)
+			.mockRejectedValueOnce(new Error('opencode down'));
+
+		const res = await POST(makeEvent());
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { livePushed: number; livePushFailed: string[] };
+		expect(body.livePushed).toBe(1);
+		expect(body.livePushFailed).toContain('anthropic');
 	});
 });

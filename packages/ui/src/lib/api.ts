@@ -258,13 +258,6 @@ export async function pullImages(): Promise<void> {
   await requireOk(await request('POST', '/admin/containers/pull', {}));
 }
 
-// ── Local Provider Detection ────────────────────────────────────────
-
-export async function detectLocalProviders(): Promise<{ providers: Array<{ provider: string; url: string; available: boolean }> }> {
-  const res = await requireOk(await request('GET', '/admin/providers/local'));
-  return (await res.json()) as { providers: Array<{ provider: string; url: string; available: boolean }> };
-}
-
 // ── Chat Proxy ──────────────────────────────────────────────────────────
 
 /**

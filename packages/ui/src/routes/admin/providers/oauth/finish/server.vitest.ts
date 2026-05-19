@@ -86,4 +86,20 @@ describe('POST /admin/providers/oauth/finish', () => {
 		const body = (await res.json()) as { ok: boolean };
 		expect(body.ok).toBe(false);
 	});
+
+	test('returns ok:false when opencodeFetch throws', async () => {
+		vi.mocked(opencodeFetch).mockRejectedValueOnce(new Error('connection refused'));
+
+		const res = await POST(makeEvent({ providerId: 'openai', methodIndex: '0', code: 'auth-code' }));
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { ok: boolean };
+		expect(body.ok).toBe(false);
+	});
+
+	test('non-numeric methodIndex ("abc") returns failure response', async () => {
+		const res = await POST(makeEvent({ providerId: 'openai', methodIndex: 'abc', code: 'auth-code' }));
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { ok: boolean };
+		expect(body.ok).toBe(false);
+	});
 });

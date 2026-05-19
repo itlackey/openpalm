@@ -87,4 +87,47 @@ describe('POST /admin/providers/oauth/start', () => {
 		const body = (await res.json()) as { ok: boolean };
 		expect(body.ok).toBe(false);
 	});
+
+	test('calls opencodeFetch with correct URL and body shape', async () => {
+		await POST(makeEvent({ providerId: 'anthropic', methodIndex: '2' }));
+
+		expect(vi.mocked(opencodeFetch)).toHaveBeenCalledWith(
+			'/provider/anthropic/oauth/authorize',
+			expect.objectContaining({
+				method: 'POST',
+				body: expect.stringContaining('"method":2'),
+			}),
+		);
+	});
+
+	test('forwards inputs field when provided', async () => {
+		vi.mocked(opencodeFetch).mockResolvedValueOnce({
+			url: 'https://example.com/oauth',
+			method: 'code',
+			instructions: 'paste code',
+		});
+
+		const res = await POST(makeEvent({
+			providerId: 'aws',
+			methodIndex: '0',
+			'inputs[region]': 'us-east-1',
+		}));
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { ok: boolean; oauth?: { inputs?: Record<string, string> } };
+		expect(body.ok).toBe(true);
+		expect(body.oauth?.inputs).toEqual({ region: 'us-east-1' });
+
+		const call = vi.mocked(opencodeFetch).mock.calls[0];
+		const sentBody = JSON.parse(call[1]?.body as string) as Record<string, unknown>;
+		expect(sentBody.inputs).toEqual({ region: 'us-east-1' });
+	});
+
+	test('returns ok:false when opencodeFetch throws', async () => {
+		vi.mocked(opencodeFetch).mockRejectedValueOnce(new Error('network error'));
+
+		const res = await POST(makeEvent({ providerId: 'openai', methodIndex: '0' }));
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { ok: boolean };
+		expect(body.ok).toBe(false);
+	});
 });

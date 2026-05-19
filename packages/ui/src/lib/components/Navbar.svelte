@@ -90,43 +90,6 @@
     letter-spacing: 0.02em;
   }
 
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: 8px 16px;
-    font-family: var(--font-sans);
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
-    line-height: 1.4;
-    border: 1px solid transparent;
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    white-space: nowrap;
-  }
-
-  .btn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
-
-  .btn-secondary {
-    background: var(--color-bg);
-    color: var(--color-text);
-    border-color: var(--color-border);
-  }
-
-  .btn-secondary:hover:not(:disabled) {
-    background: var(--color-surface-hover);
-    border-color: var(--color-border-hover);
-  }
-
-  .btn-sm {
-    padding: 5px 12px;
-    font-size: var(--text-xs);
-  }
-
   @media (max-width: 768px) {
     .navbar-inner {
       padding: 0 var(--space-4);

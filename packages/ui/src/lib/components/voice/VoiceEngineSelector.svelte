@@ -132,19 +132,6 @@
 		color: var(--color-text-tertiary);
 	}
 
-	.badge-recommended {
-		background: var(--color-success-bg);
-		color: var(--color-success);
-		display: inline-flex;
-		align-items: center;
-		font-size: 10px;
-		font-weight: var(--font-semibold);
-		padding: 1px 6px;
-		border-radius: var(--radius-full);
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-	}
-
 	.engine-config {
 		display: flex;
 		flex-direction: column;

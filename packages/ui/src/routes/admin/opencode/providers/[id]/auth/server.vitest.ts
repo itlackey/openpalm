@@ -4,11 +4,12 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { resetState } from '$lib/server/test-helpers.js';
-import { GET, POST } from './+server.js';
+import { GET, POST, DELETE } from './+server.js';
 
 const setProviderApiKey = vi.fn();
 const startProviderOAuth = vi.fn();
 const completeProviderOAuth = vi.fn();
+const proxy = vi.fn();
 
 vi.mock('$lib/server/helpers.js', async () => {
   const actual = await vi.importActual<typeof import('$lib/server/helpers.js')>('$lib/server/helpers.js');
@@ -18,6 +19,7 @@ vi.mock('$lib/server/helpers.js', async () => {
       setProviderApiKey,
       startProviderOAuth,
       completeProviderOAuth,
+      proxy,
     }),
   };
 });
@@ -32,7 +34,7 @@ let rootDir = '';
 let originalHome: string | undefined;
 
 function makeEvent(
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'DELETE',
   options?: {
     token?: string;
     body?: unknown;
@@ -454,5 +456,56 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
       search: '?pollToken=some-token',
     }));
     expect(res.status).toBe(401);
+  });
+
+  // ── DELETE handler ─────────────────────────────────────────────────
+  test('DELETE rejects unauthenticated request', async () => {
+    const res = await DELETE(makeEvent('DELETE', { token: 'bad-token', providerId: 'openai' }));
+    expect(res.status).toBe(401);
+  });
+
+  test('DELETE rejects invalid provider ID', async () => {
+    const res = await DELETE(makeEvent('DELETE', { providerId: 'bad provider!' }));
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBe('bad_request');
+  });
+
+  test('DELETE success returns { ok: true } and calls proxy with DELETE', async () => {
+    proxy.mockResolvedValueOnce({ ok: true, data: null });
+
+    const res = await DELETE(makeEvent('DELETE', { providerId: 'groq' }));
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as { ok: boolean };
+    expect(body.ok).toBe(true);
+    expect(proxy).toHaveBeenCalledWith('/auth/groq', { method: 'DELETE' });
+  });
+
+  test('DELETE surfaces 4xx from OpenCode', async () => {
+    proxy.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      code: 'opencode_error',
+      message: 'Provider not found',
+    });
+
+    const res = await DELETE(makeEvent('DELETE', { providerId: 'nonexistent' }));
+
+    expect(res.status).toBe(404);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBe('opencode_error');
+  });
+
+  test('DELETE writes audit log with action opencode.auth.disconnect', async () => {
+    proxy.mockResolvedValueOnce({ ok: true, data: null });
+
+    await DELETE(makeEvent('DELETE', { providerId: 'openai' }));
+
+    const { getState } = await import('$lib/server/state.js');
+    const state = getState();
+    const entry = state.audit.find((a) => a.action === 'opencode.auth.disconnect');
+    expect(entry).toBeDefined();
+    expect(entry?.ok).toBe(true);
   });
 });

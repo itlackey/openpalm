@@ -117,4 +117,22 @@ describe('/admin/opencode/model route', () => {
     expect(res.status).toBe(200);
     expect(unsetMainModel).toHaveBeenCalledWith('small_model');
   });
+
+  test('POST with empty string small_model calls unsetMainModel("small_model")', async () => {
+    const res = await POST(makeEvent('POST', { small_model: '' }));
+    expect(res.status).toBe(200);
+    expect(unsetMainModel).toHaveBeenCalledWith('small_model');
+    expect(setMainModel).not.toHaveBeenCalled();
+  });
+
+  test('POST returns 500 with "Failed to persist model selection" when setMainModel throws', async () => {
+    vi.mocked(setMainModel).mockRejectedValueOnce(new Error('disk write failed'));
+
+    const res = await POST(makeEvent('POST', { model: 'openai/gpt-4o' }));
+
+    expect(res.status).toBe(500);
+    const body = await res.json() as { error: string; message: string };
+    expect(body.error).toBe('internal_error');
+    expect(body.message).toBe('Failed to persist model selection');
+  });
 });
