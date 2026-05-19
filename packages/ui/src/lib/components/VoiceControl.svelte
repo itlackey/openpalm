@@ -6,92 +6,55 @@
 		destroyVoice,
 		startListening,
 		stopListening,
-		speakText,
 		stopSpeaking,
+		setTtsAutoEnabled,
+		VOICE_TRANSCRIPT_EVENT,
+		type VoiceTranscriptEventDetail,
 	} from '$lib/voice/voice-state.svelte.js';
 
 	let mounted = $state(false);
 
-	/** Track the last focused input/textarea so dictation works after mic click steals focus. */
-	let lastFocusedInput: HTMLInputElement | HTMLTextAreaElement | null = null;
-	let abortController: AbortController | null = null;
-
-	function handleFocusIn(e: FocusEvent): void {
-		const target = e.target;
-		if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-			lastFocusedInput = target;
-		}
-	}
-
 	onMount(() => {
-		abortController = new AbortController();
-		document.addEventListener('focusin', handleFocusIn, { signal: abortController.signal });
 		initVoice();
 		mounted = true;
 	});
 
 	onDestroy(() => {
-		abortController?.abort();
 		destroyVoice();
 	});
 
 	let supported = $derived(mounted && voiceState.isSupported);
 	let ttsAvailable = $derived(mounted && voiceState.ttsSupported);
 
-	function isSecretElement(el: Element | null): boolean {
-		if (!el) return true;
-		if (el instanceof HTMLInputElement && el.type === 'password') return true;
-		if (el.hasAttribute('data-secret')) return true;
-		return false;
-	}
-
+	/**
+	 * Mic: always captures. Final transcript is broadcast via the
+	 * `openpalm:voice-transcript` window event. The chat page subscribes
+	 * and submits the transcript directly to the selected OpenCode
+	 * instance — no insertion into a textarea, no Enter-to-send dance.
+	 */
 	function handleMicClick(): void {
 		if (voiceState.status === 'listening') {
 			stopListening();
 			return;
 		}
+		// If TTS is mid-utterance, stop it so we don't hear ourselves over
+		// the assistant's previous response.
+		stopSpeaking();
 
 		startListening((transcript: string) => {
-			const target = lastFocusedInput;
-			if (!target || isSecretElement(target)) return;
-			if (!target.isConnected) return;
-			const start = target.selectionStart ?? target.value.length;
-			const end = target.selectionEnd ?? target.value.length;
-			const before = target.value.slice(0, start);
-			const after = target.value.slice(end);
-			const separator = before.length > 0 && !before.endsWith(' ') ? ' ' : '';
-			target.value = before + separator + transcript + after;
-			target.dispatchEvent(new Event('input', { bubbles: true }));
-			const newPos = start + separator.length + transcript.length;
-			target.setSelectionRange(newPos, newPos);
-			target.focus();
+			const trimmed = transcript.trim();
+			if (!trimmed) return;
+			const detail: VoiceTranscriptEventDetail = { transcript: trimmed };
+			window.dispatchEvent(new CustomEvent(VOICE_TRANSCRIPT_EVENT, { detail }));
 		});
 	}
 
-	function handleReadAloud(): void {
-		if (voiceState.status === 'speaking') {
-			stopSpeaking();
-			return;
-		}
-
-		const sel = window.getSelection();
-		const anchorEl =
-			sel?.anchorNode instanceof Element ? sel.anchorNode : sel?.anchorNode?.parentElement;
-		if (!isSecretElement(anchorEl ?? null)) {
-			const selection = sel?.toString().trim();
-			if (selection) {
-				speakText(selection);
-				return;
-			}
-		}
-
-		const target = lastFocusedInput;
-		if (target && target.isConnected && !isSecretElement(target)) {
-			const text = target.value.trim();
-			if (text) {
-				speakText(text);
-			}
-		}
+	/**
+	 * Speaker: global toggle for auto-TTS of assistant replies.
+	 * Pressed state = auto-TTS is on. State persists to localStorage.
+	 */
+	function handleSpeakerClick(): void {
+		setTtsAutoEnabled(!voiceState.ttsAutoEnabled);
 	}
 </script>
 
@@ -131,13 +94,15 @@
 		{#if ttsAvailable}
 			<button
 				class="voice-btn"
-				class:voice-btn-active={voiceState.status === 'speaking'}
-				onclick={handleReadAloud}
-				aria-label={voiceState.status === 'speaking' ? 'Stop reading' : 'Read aloud'}
-				aria-pressed={voiceState.status === 'speaking'}
-				title={voiceState.status === 'speaking'
-					? 'Stop reading'
-					: 'Read selected text aloud'}
+				class:voice-btn-on={voiceState.ttsAutoEnabled}
+				onclick={handleSpeakerClick}
+				aria-label={voiceState.ttsAutoEnabled
+					? 'Turn off spoken responses'
+					: 'Turn on spoken responses'}
+				aria-pressed={voiceState.ttsAutoEnabled}
+				title={voiceState.ttsAutoEnabled
+					? 'Spoken responses are on — click to turn off'
+					: 'Spoken responses are off — click to turn on'}
 			>
 				<svg
 					aria-hidden="true"
@@ -166,7 +131,9 @@
 				? 'Listening for speech'
 				: voiceState.status === 'speaking'
 					? 'Reading aloud'
-					: ''}
+					: voiceState.ttsAutoEnabled
+						? 'Spoken responses on'
+						: ''}
 		</span>
 	</div>
 {/if}
@@ -215,6 +182,18 @@
 	.voice-btn-active:hover {
 		color: var(--color-danger);
 		border-color: var(--color-danger);
+	}
+
+	/* Speaker toggle "on" state — distinct from the mic's recording-active state. */
+	.voice-btn-on {
+		color: var(--color-primary);
+		border-color: var(--color-primary);
+		background: var(--color-primary-subtle);
+	}
+
+	.voice-btn-on:hover {
+		color: var(--color-primary);
+		border-color: var(--color-primary);
 	}
 
 	.voice-pulse {

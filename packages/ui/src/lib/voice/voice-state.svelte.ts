@@ -17,10 +17,37 @@ class VoiceState {
 	ttsSupported = $state(false);
 	errorMessage = $state('');
 
+	/** Global toggle: when true, assistant chat replies are spoken automatically. */
+	ttsAutoEnabled = $state(false);
+
 	recognition: SpeechRecognitionInstance | null = $state(null);
 }
 
 export const voiceState = new VoiceState();
+
+const TTS_AUTO_STORAGE_KEY = 'openpalm.tts.auto';
+
+/** Toggle the global auto-TTS flag and persist to localStorage. */
+export function setTtsAutoEnabled(value: boolean): void {
+	voiceState.ttsAutoEnabled = value;
+	if (typeof window !== 'undefined') {
+		try {
+			window.localStorage.setItem(TTS_AUTO_STORAGE_KEY, value ? '1' : '0');
+		} catch {
+			/* storage disabled */
+		}
+	}
+	if (!value) {
+		// Stop any in-flight speech when the user turns the toggle off.
+		stopSpeaking();
+	}
+}
+
+/** Custom event dispatched on `window` after a mic transcript is final. */
+export const VOICE_TRANSCRIPT_EVENT = 'openpalm:voice-transcript';
+export interface VoiceTranscriptEventDetail {
+	transcript: string;
+}
 
 /** Resolve the SpeechRecognition constructor (Chrome prefixes it). */
 function getSpeechRecognitionCtor(): SpeechRecognitionConstructor | undefined {
@@ -35,6 +62,13 @@ function getSpeechRecognitionCtor(): SpeechRecognitionConstructor | undefined {
 export function initVoice(): void {
 	voiceState.isSupported = Boolean(getSpeechRecognitionCtor());
 	voiceState.ttsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
+	if (typeof window !== 'undefined') {
+		try {
+			voiceState.ttsAutoEnabled = window.localStorage.getItem(TTS_AUTO_STORAGE_KEY) === '1';
+		} catch {
+			/* storage disabled */
+		}
+	}
 }
 
 /**

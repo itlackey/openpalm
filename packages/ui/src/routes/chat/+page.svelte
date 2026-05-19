@@ -4,7 +4,13 @@
   import AuthGate from '$lib/components/AuthGate.svelte';
   import ChatMessage from '$lib/components/ChatMessage.svelte';
   import ChatInput from '$lib/components/ChatInput.svelte';
-  import { voiceState, speakText, stopSpeaking } from '$lib/voice/voice-state.svelte.js';
+  import {
+    voiceState,
+    speakText,
+    stopSpeaking,
+    VOICE_TRANSCRIPT_EVENT,
+    type VoiceTranscriptEventDetail,
+  } from '$lib/voice/voice-state.svelte.js';
   import {
     createChatSession,
     sendChatMessage,
@@ -93,8 +99,8 @@
       };
       entries = [...entries, assistantEntry];
 
-      // TTS: speak if voice is supported and not already speaking
-      if (voiceState.ttsSupported && replyText) {
+      // TTS: only speak when the user has flipped the global toggle on.
+      if (voiceState.ttsSupported && voiceState.ttsAutoEnabled && replyText) {
         speakText(replyText);
       }
     } catch (e) {
@@ -231,6 +237,20 @@
         authLoading = false;
       }
     })();
+
+    // Mic transcripts arrive via window events from the global VoiceControl.
+    // We submit straight to the selected backend — the user's spoken
+    // utterance appears as their message bubble in the history.
+    const onTranscript = (e: Event) => {
+      if (authLocked) return;
+      const detail = (e as CustomEvent<VoiceTranscriptEventDetail>).detail;
+      if (!detail?.transcript) return;
+      void handleSend(detail.transcript);
+    };
+    window.addEventListener(VOICE_TRANSCRIPT_EVENT, onTranscript);
+    return () => {
+      window.removeEventListener(VOICE_TRANSCRIPT_EVENT, onTranscript);
+    };
   });
 </script>
 
