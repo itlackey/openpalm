@@ -1,5 +1,5 @@
 <script lang="ts">
-	type TabId = 'overview' | 'addons' | 'automations' | 'connections' | 'secrets' | 'capabilities' | 'containers' | 'logs' | 'audit';
+	type TabId = 'overview' | 'addons' | 'automations' | 'connections' | 'secrets' | 'capabilities' | 'akm' | 'containers' | 'logs' | 'audit';
 
 	interface Props {
 		active: TabId;
@@ -169,6 +169,30 @@
 			<path d="M2 17l.621 2.485A2 2 0 0 0 4.561 21h14.878a2 2 0 0 0 1.94-1.515L22 17" />
 		</svg>
 		Capabilities
+	</button>
+	<button
+		class="tab"
+		role="tab"
+		aria-selected={active === 'akm'}
+		class:tab-active={active === 'akm'}
+		onclick={() => onSelect('akm')}
+		onkeydown={handleTabKeydown}
+	>
+		<svg
+			aria-hidden="true"
+			width="15"
+			height="15"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+		>
+			<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+			<path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+		</svg>
+		AKM
 	</button>
 	<button
 		class="tab"

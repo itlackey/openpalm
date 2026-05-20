@@ -3,7 +3,7 @@
  * POST /admin/capabilities/assignments — Update capabilities in stack.yml.
  */
 import type { RequestHandler } from './$types';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { getState } from '$lib/server/state.js';
 import {
   appendAudit,
@@ -91,7 +91,14 @@ export const POST: RequestHandler = async (event) => {
     if (akmJson) {
       const akmConfigDir = `${state.configDir}/akm`;
       mkdirSync(akmConfigDir, { recursive: true });
-      writeFileSync(`${akmConfigDir}/config.json`, akmJson, { mode: 0o600 });
+      const akmConfigPath = `${akmConfigDir}/config.json`;
+      let existing: Record<string, unknown> = {};
+      if (existsSync(akmConfigPath)) {
+        try { existing = JSON.parse(readFileSync(akmConfigPath, 'utf-8')); } catch { /* ignore corrupt */ }
+      }
+      const generated = JSON.parse(akmJson) as Record<string, unknown>;
+      const merged = { ...existing, ...generated };
+      writeFileSync(akmConfigPath, JSON.stringify(merged, null, 2), { mode: 0o600 });
     }
   } catch (e) {
     appendAudit(state, actor, 'capabilities.assignments.save', { error: String(e) }, false, requestId, callerType);

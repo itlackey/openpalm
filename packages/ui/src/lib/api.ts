@@ -252,6 +252,18 @@ export async function saveAssignments(
   return (await res.json()) as { ok: boolean; capabilities: Record<string, unknown> };
 }
 
+// ── AKM Config ──────────────────────────────────────────────────────
+
+export async function fetchAkmConfig(): Promise<{ config: Record<string, unknown> }> {
+  const res = await requireOk(await request('GET', '/admin/akm'));
+  return (await res.json()) as { config: Record<string, unknown> };
+}
+
+export async function saveAkmConfig(settings: Record<string, unknown>): Promise<{ ok: boolean }> {
+  const res = await requireOk(await request('PATCH', '/admin/akm', settings));
+  return (await res.json()) as { ok: boolean };
+}
+
 // ── Docker Pull ─────────────────────────────────────────────────────
 
 export async function pullImages(): Promise<void> {

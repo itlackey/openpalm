@@ -12,6 +12,7 @@
   import LogsTab from '$lib/components/LogsTab.svelte';
   import AuditTab from '$lib/components/AuditTab.svelte';
   import SecretsTab from '$lib/components/SecretsTab.svelte';
+  import AkmTab from '$lib/components/AkmTab.svelte';
 
   import {
     fetchHealth,
@@ -54,7 +55,7 @@
   let selectedContainerId: string | null = $state(null);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: 'overview' | 'addons' | 'automations' | 'connections' | 'secrets' | 'capabilities' | 'containers' | 'logs' | 'audit' = $state('overview');
+  let activeTab: 'overview' | 'addons' | 'automations' | 'connections' | 'secrets' | 'capabilities' | 'akm' | 'containers' | 'logs' | 'audit' = $state('overview');
   let pullLoading = $state(false);
 
   // ── Container polling ──────────────────────────────────────────────────────
@@ -423,7 +424,9 @@
     <div hidden={activeTab !== 'capabilities'}>
       <CapabilitiesTab />
     </div>
-    {#if activeTab === 'logs'}
+    {#if activeTab === 'akm'}
+      <AkmTab tokenStored={true} />
+    {:else if activeTab === 'logs'}
       <LogsTab
         tokenStored={true}
         services={serviceNames}
