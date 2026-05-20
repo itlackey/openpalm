@@ -123,23 +123,29 @@ export const PATCH: RequestHandler = async (event) => {
     if ('semanticSearchMode' in body) updated.semanticSearchMode = body.semanticSearchMode;
     if ('archiveRetentionDays' in body) updated.archiveRetentionDays = body.archiveRetentionDays;
 
+    // Only write the specific known sub-keys — never spread unknown keys from sub-objects
     if (outputObj !== undefined) {
-      updated.output = { ...(existing.output as Record<string, unknown> ?? {}), ...outputObj };
+      const existingOutput = (existing.output as Record<string, unknown> ?? {});
+      updated.output = { ...existingOutput, ...('format' in outputObj ? { format: outputObj.format } : {}) };
     }
 
     if (defaultsObj !== undefined) {
       const existingDefaults = (existing.defaults as Record<string, unknown> ?? {});
-      const improveObj2 = defaultsObj.improve as Record<string, unknown> | undefined;
       const existingImprove = (existingDefaults.improve as Record<string, unknown> ?? {});
-      updated.defaults = {
-        ...existingDefaults,
-        ...defaultsObj,
-        ...(improveObj2 !== undefined ? { improve: { ...existingImprove, ...improveObj2 } } : {}),
-      };
+      const improveObj = defaultsObj.improve as Record<string, unknown> | undefined;
+      const mergedImprove = improveObj !== undefined
+        ? {
+            ...existingImprove,
+            ...('limit' in improveObj ? { limit: improveObj.limit } : {}),
+            ...('preset' in improveObj ? { preset: improveObj.preset } : {}),
+          }
+        : existingImprove;
+      updated.defaults = { ...existingDefaults, improve: mergedImprove };
     }
 
     if (searchObj !== undefined) {
-      updated.search = { ...(existing.search as Record<string, unknown> ?? {}), ...searchObj };
+      const existingSearch = (existing.search as Record<string, unknown> ?? {});
+      updated.search = { ...existingSearch, ...('minScore' in searchObj ? { minScore: searchObj.minScore } : {}) };
     }
 
     mkdirSync(`${state.configDir}/akm`, { recursive: true });

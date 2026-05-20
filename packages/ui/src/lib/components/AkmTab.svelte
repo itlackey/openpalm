@@ -95,7 +95,7 @@
 		}
 	}
 
-	onMount(() => { void load(); });
+	onMount(() => { if (tokenStored) void load(); });
 </script>
 
 <div class="panel" role="tabpanel">
@@ -105,7 +105,7 @@
 			<button
 				class="btn btn-secondary btn-sm"
 				onclick={() => void load()}
-				disabled={loading || saving}
+				disabled={loading || saving || !tokenStored}
 			>
 				{#if loading}<span class="spinner"></span>{/if}
 				Refresh
