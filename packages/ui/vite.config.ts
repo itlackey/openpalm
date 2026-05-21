@@ -31,6 +31,12 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [sveltekit(), devtoolsJson()],
     envDir: rootDir,
+    ssr: {
+      // Bundle all SSR dependencies into the server chunks so the build/
+      // directory is self-contained and can be deployed without node_modules.
+      // Required for state/ui/ deployment where no node_modules are present.
+      noExternal: true,
+    },
     test: {
       expect: { requireAssertions: true },
       projects: [
