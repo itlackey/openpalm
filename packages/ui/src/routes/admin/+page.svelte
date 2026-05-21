@@ -314,7 +314,7 @@
       try {
         // Check session validity by attempting an authenticated request.
         // A 401 means no valid session cookie — show auth gate.
-        const probe = await fetch('/admin/akm', { credentials: 'include' });
+        const probe = await fetch('/admin/health', { credentials: 'include' });
         if (probe.status === 401 || probe.status === 503) {
           authLocked = true;
           authLoading = false;

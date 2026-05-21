@@ -112,7 +112,7 @@
       authLoading = true;
       try {
         // Probe auth state via cookie
-        const probe = await fetch('/admin/akm', { credentials: 'include' });
+        const probe = await fetch('/admin/health', { credentials: 'include' });
         if (probe.status === 401 || probe.status === 503) {
           authLocked = true;
           authLoading = false;
