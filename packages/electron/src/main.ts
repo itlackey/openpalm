@@ -171,8 +171,6 @@ function showWindow(): void {
 function createTray(): void {
   const iconPath = join(__dirname, '..', 'assets', 'tray-icon.png');
   if (!existsSync(iconPath)) {
-    // No icon asset yet — skip tray rather than crash.
-    // Add assets/tray-icon.png (16×16 PNG) to enable the system tray.
     return;
   }
 
