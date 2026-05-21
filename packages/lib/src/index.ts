@@ -282,3 +282,12 @@ export {
   readAkmUserVaultFile,
   readUserVaultSync,
 } from "./control-plane/akm-vault.js";
+
+// ── UI asset seeding and resolution ─────────────────────────────────────────
+export {
+  resolveLocalOpenpalmDir,
+  seedOpenPalmDir,
+  resolveLocalUiBuild,
+  resolveUiBuildDir,
+  seedUiBuild,
+} from "./control-plane/ui-assets.js";
