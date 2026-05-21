@@ -149,17 +149,11 @@ for addon in "${enabled_addons[@]}"; do
 	cp -r "$src_dir" "$dest_dir"
 done
 
-# Seed stack.yml (capabilities only)
+# Seed stack.yml (version marker only — LLM/embedding config lives in config/akm/config.json)
 STACK_YAML="$CONFIG_DIR/stack.yml"
 if [[ ! -f "$STACK_YAML" || $force -eq 1 ]]; then
 	cat >"$STACK_YAML" <<'SYEOF'
 version: 2
-capabilities:
-  llm: ollama/qwen2.5-coder:3b
-  embeddings:
-    provider: ollama
-    model: nomic-embed-text
-    dims: 768
 SYEOF
 fi
 
@@ -221,10 +215,14 @@ OP_DOCKER_SOCK=$docker_sock
 OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=latest
 
-# Dev override: map host ports to match internal ports so tests can use hardcoded URLs
-OP_ASSISTANT_PORT=4096
-OP_ADMIN_PORT=8100
-OP_GUARDIAN_PORT=8180
+# Host-side port bindings for the compose stack.
+# These are intentionally offset from the production defaults (3800/8100/8180)
+# so a dev/test stack never conflicts with a production instance running on the
+# same machine. Playwright e2e test defaults match these ports so that
+# global-setup.ts auto-builds the correct ADMIN_URL/ASSISTANT_URL from stack.env.
+OP_ASSISTANT_PORT=4800
+OP_ADMIN_PORT=9100
+OP_GUARDIAN_PORT=9180
 EOF
 	fi
 fi

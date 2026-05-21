@@ -13,7 +13,7 @@
 #   2. UI host process responds on the configured port
 #   3. Setup wizard route serves
 #   4. Admin API auth works (correct + wrong tokens)
-#   5. stack.env carries the right OP_CAP_* values
+#   5. Admin health endpoint responds correctly
 #
 # Isolation:
 #   - COMPOSE_PROJECT_NAME (default: openpalm-e2e) — never touches user stack
@@ -122,13 +122,7 @@ OP_ASSISTANT_PORT=${OP_E2E_ASSISTANT_PORT:-3891}
 OP_GUARDIAN_PORT=${OP_E2E_GUARDIAN_PORT:-8181}
 OP_VOICE_PORT=${OP_E2E_VOICE_PORT:-8187}
 OP_HOST_UI_PORT=${OP_E2E_UI_PORT}
-OP_CAP_LLM_PROVIDER=ollama
-OP_CAP_LLM_MODEL=qwen2.5-coder:3b
-OP_CAP_LLM_BASE_URL=http://host.docker.internal:11434/v1
-OP_CAP_EMBEDDINGS_PROVIDER=ollama
-OP_CAP_EMBEDDINGS_MODEL=nomic-embed-text:latest
-OP_CAP_EMBEDDINGS_DIMS=768
-OP_CAP_EMBEDDINGS_BASE_URL=http://host.docker.internal:11434/v1
+OP_ADMIN_PORT=${OP_E2E_UI_PORT}
 OP_SETUP_COMPLETE=true
 EOF
 chmod 600 "${OP_E2E_HOME}/config/stack/stack.env"
@@ -140,18 +134,6 @@ chmod 600 "${OP_E2E_HOME}/config/stack/guardian.env"
 mkdir -p "${OP_E2E_HOME}/stash/vaults"
 touch "${OP_E2E_HOME}/stash/vaults/user.env"
 chmod 600 "${OP_E2E_HOME}/stash/vaults/user.env"
-
-# Override stack.yml so admin's startup auto-apply doesn't reset OP_CAP_*
-# back to the .openpalm/ defaults (openai/gpt-4o).
-cat > "${OP_E2E_HOME}/config/stack/stack.yml" <<'EOF'
-version: 2
-capabilities:
-  llm: ollama/qwen2.5-coder:3b
-  embeddings:
-    provider: ollama
-    model: nomic-embed-text:latest
-    dims: 768
-EOF
 
 pass "Isolated OP_HOME seeded from .openpalm/"
 
@@ -262,12 +244,12 @@ status=$(curl -s -o /dev/null -w "%{http_code}" -H "x-admin-token: $UI_TOKEN" "$
 status=$(curl -s -o /dev/null -w "%{http_code}" "${UI_URL}/admin/containers/list")
 [[ "$status" == "401" ]] && pass "/admin/containers/list (no auth) → 401" || fail "/admin/containers/list (no auth) returned $status"
 
-# /admin/capabilities verifies stack.yml is being read (capabilities.llm is unmasked)
-caps=$(curl -sf -H "x-admin-token: $UI_TOKEN" "${UI_URL}/admin/capabilities" 2>/dev/null || echo "")
-if echo "$caps" | grep -q '"llm":"ollama/qwen2.5-coder:3b"'; then
-	pass "/admin/capabilities reflects seeded LLM (ollama/qwen2.5-coder:3b)"
+# /admin/health verifies admin is responding and assistant is reachable
+health=$(curl -sf -H "x-admin-token: $UI_TOKEN" "${UI_URL}/admin/health" 2>/dev/null || echo "")
+if echo "$health" | grep -q '"ok":true'; then
+	pass "/admin/health responds with ok:true"
 else
-	fail "/admin/capabilities did not return expected LLM (got: $(echo "$caps" | head -c 200))"
+	fail "/admin/health did not return ok:true (got: $(echo "$health" | head -c 200))"
 fi
 
 # ── Step 8: Verify container ↔ admin pipeline ────────────────────────

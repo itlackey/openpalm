@@ -36,7 +36,7 @@ describe('redactValue', () => {
   test('leaves non-secret values alone', () => {
     expect(redactValue('OWNER_NAME', 'alice')).toBe('alice');
     expect(redactValue('OP_HOME', '/openpalm')).toBe('/openpalm');
-    expect(redactValue('OP_CAP_LLM_PROVIDER', 'openai')).toBe('openai');
+    expect(redactValue('OP_ASSISTANT_PORT', '3800')).toBe('3800');
   });
 });
 
@@ -73,7 +73,7 @@ describe('isSensitiveEnvKey', () => {
   test('returns false for ordinary keys', () => {
     expect(isSensitiveEnvKey('OWNER_NAME')).toBe(false);
     expect(isSensitiveEnvKey('OP_HOME')).toBe(false);
-    expect(isSensitiveEnvKey('OP_CAP_LLM_PROVIDER')).toBe(false);
+    expect(isSensitiveEnvKey('OP_ASSISTANT_PORT')).toBe(false);
   });
 });
 

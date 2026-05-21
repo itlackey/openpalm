@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
 
-const ADMIN_URL = process.env.ADMIN_URL ?? "http://127.0.0.1:3880";
+const ADMIN_URL = process.env.ADMIN_URL ?? "http://127.0.0.1:9100";
 const OP_HOME = process.env.OP_HOME ?? resolve(REPO_ROOT, ".dev");
 const AKM_CONFIG_PATH = resolve(OP_HOME, "config/akm/config.json");
 

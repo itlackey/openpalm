@@ -102,11 +102,8 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
 function makeSetupSpec(): Record<string, unknown> {
   return {
     version: 2,
-    capabilities: {
-      llm: 'ollama/qwen2.5-coder:3b',
-      embeddings: { provider: 'ollama', model: 'nomic-embed-text:latest', dims: 768 },
-      slm: 'ollama/qwen2.5-coder:3b',
-    },
+    llm: { provider: 'ollama', model: 'qwen2.5-coder:3b', baseUrl: 'http://host.docker.internal:11434' },
+    embedding: { provider: 'ollama', model: 'nomic-embed-text:latest', dims: 768, baseUrl: 'http://host.docker.internal:11434' },
     security: { adminToken: 'test-admin-token-12345' },
     owner: { name: 'Test', email: 'test@test.com' },
     connections: [{
@@ -179,7 +176,12 @@ describe('install flow — tier 1 (file validation)', () => {
     const stackSpec = readStackSpec(join(homeDir, 'config', 'stack'));
     expect(stackSpec).not.toBeNull();
     expect(stackSpec!.version).toBe(2);
-    expect(stackSpec!.capabilities.llm).toBe('ollama/qwen2.5-coder:3b');
+    // stack.yml carries only { version: 2 } — LLM config lives in akm config.json
+    const akmConfigPath = join(homeDir, 'config/akm/config.json');
+    expect(existsSync(akmConfigPath)).toBe(true);
+    const akmConfig = JSON.parse(readFileSync(akmConfigPath, 'utf-8'));
+    expect(akmConfig.llm?.provider).toBe('ollama');
+    expect(akmConfig.llm?.model).toBe('qwen2.5-coder:3b');
 
     // ── Validate compose files exist ─────────────────────────────────
     expect(existsSync(join(homeDir, 'config/stack/core.compose.yml'))).toBe(true);

@@ -4,7 +4,7 @@ import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
 import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
 import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
-import { ensureDirectoryTree, seedOpenPalmDir } from '../lib/io.ts';
+import { ensureDirectoryTree, seedOpenPalmDir, seedUiBuild } from '../lib/io.ts';
 import { openBrowser } from '../lib/browser.ts';
 import { runDockerCompose } from '../lib/docker.ts';
 import {
@@ -177,6 +177,8 @@ async function prepareInstallFiles(
 
   // Seed OP_HOME from .openpalm/ (local source if available, else GitHub tarball)
   await seedOpenPalmDir(version, homeDir, configDir, stateDir);
+  // Install UI build to state/ui/ (local build if available, else GitHub release asset)
+  await seedUiBuild(version, stateDir);
 
   console.log('Configuring secrets...');
   await ensureSecrets(stateDir);
@@ -202,24 +204,9 @@ async function prepareInstallFiles(
  */
 async function runWizardInstall(noOpen: boolean): Promise<void> {
   const port = Number(process.env.OP_HOST_UI_PORT) || 3880;
-  const wizardUrl = `http://localhost:${port}/setup`;
-  console.log(`Setup wizard: ${wizardUrl}`);
-
-  // Re-invoke this binary with no subcommand — the bare command starts
-  // the UI host server (foreground). SvelteKit hooks redirect / to /setup
-  // on first run.
-  const argv = process.argv;
-  const bin = argv[0] === 'bun' ? [...argv.slice(0, 2)] : [argv[1]];
-  const args = [...bin];
-  if (noOpen) args.push('--no-open');
-
-  const proc = Bun.spawn(args, { stdout: 'inherit', stderr: 'inherit' });
-
-  // Signal: forward SIGINT/SIGTERM so `openpalm install` exits cleanly
-  process.on('SIGINT',  () => { proc.kill('SIGTERM'); });
-  process.on('SIGTERM', () => { proc.kill('SIGTERM'); });
-
-  await proc.exited;
+  console.log(`Setup wizard: http://localhost:${port}/setup`);
+  const { startUIServer } = await import('../lib/ui-server.ts');
+  await startUIServer({ open: !noOpen, port });
 }
 
 async function runFileInstall(filePath: string, noStart: boolean): Promise<void> {

@@ -6,12 +6,12 @@
  * - GET /admin/providers: Connections tab availability with running assistant
  *
  * Run with:
- *   RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token ADMIN_URL=http://localhost:8100 bun run ui:test:e2e
+ *   RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run ui:test:e2e
  */
 
 import { expect, test } from '@playwright/test';
 
-const ADMIN_URL = process.env.ADMIN_URL ?? 'http://127.0.0.1:3880';
+const ADMIN_URL = process.env.ADMIN_URL ?? 'http://127.0.0.1:9100';
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? '';
 
 function headers(): Record<string, string> {

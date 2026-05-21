@@ -5,8 +5,11 @@ import { parse as dotenvParse } from "dotenv";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
-const STACK_ENV = resolve(REPO_ROOT, ".dev/config/stack/stack.env");
-const SECRETS_ENV = resolve(REPO_ROOT, ".dev/stash/vaults/user.env");
+// STACK_ENV_PATH allows pointing at a test-isolated stack (e.g. .dev-test/config/stack/stack.env)
+// so Playwright tests don't accidentally target a developer's running dev stack.
+const STACK_ENV = process.env.STACK_ENV_PATH ?? resolve(REPO_ROOT, ".dev/config/stack/stack.env");
+const OP_HOME_DIR = process.env.OP_HOME ?? resolve(REPO_ROOT, ".dev");
+const SECRETS_ENV = resolve(OP_HOME_DIR, "stash/vaults/user.env");
 const BACKUP = `${STACK_ENV}.e2e-backup`;
 
 /**
@@ -49,6 +52,16 @@ export default async function globalSetup() {
 		if (!process.env[key] && value) {
 			process.env[key] = value;
 		}
+	}
+
+	// Build URL env vars from stack.env port vars so test files can use
+	// process.env.ADMIN_URL without repeating port logic.
+	if (!process.env.ADMIN_URL) {
+		const adminPort = stackVars.OP_ADMIN_PORT ?? stackVars.OP_HOST_UI_PORT;
+		if (adminPort) process.env.ADMIN_URL = `http://127.0.0.1:${adminPort}`;
+	}
+	if (!process.env.ASSISTANT_URL && stackVars.OP_ASSISTANT_PORT) {
+		process.env.ASSISTANT_URL = `http://localhost:${stackVars.OP_ASSISTANT_PORT}`;
 	}
 
 	// Backup stack.env so global-teardown can restore it if any test mutates it.

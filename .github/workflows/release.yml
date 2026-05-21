@@ -208,6 +208,36 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=max
 
+  build-ui-artifact:
+    name: Build UI artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: prepare-tag
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-tag.outputs.tag }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build UI
+        run: bun run ui:build
+
+      - name: Package UI build
+        run: tar -czf ui-build.tar.gz -C packages/ui/build .
+
+      - name: Upload UI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-build
+          path: ui-build.tar.gz
+
   build-cli-artifacts:
     name: Build CLI artifacts
     runs-on: ${{ matrix.os }}
@@ -266,6 +296,7 @@ jobs:
       - prepare-tag
       - push-images
       - build-cli-artifacts
+      - build-ui-artifact
 
     steps:
       - name: Checkout
@@ -289,6 +320,12 @@ jobs:
           pattern: openpalm-cli-*
           path: dist
           merge-multiple: true
+
+      - name: Download UI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-build
+          path: dist
 
       - name: Generate checksums
         run: |
@@ -325,9 +362,18 @@ jobs:
             curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v${{ needs.prepare-tag.outputs.version }}/scripts/setup.sh | bash
             ```
 
+            ## Out-of-band UI update
+
+            To update only the admin UI without a full `openpalm update`:
+            ```bash
+            curl -fsSL https://github.com/itlackey/openpalm/releases/download/v${{ needs.prepare-tag.outputs.version }}/ui-build.tar.gz \
+              | tar xz --strip-components=0 -C ~/.openpalm/state/ui/
+            ```
+
             ## What's Changed
           files: |
             dist/openpalm-${{ needs.prepare-tag.outputs.version }}-deploy-bundle.tar.gz
+            dist/ui-build.tar.gz
             dist/checksums-sha256.txt
             dist/openpalm-cli-linux-x64
             dist/openpalm-cli-linux-arm64

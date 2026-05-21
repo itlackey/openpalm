@@ -8,14 +8,36 @@
  */
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync } from 'node:fs';
-import { resolveOpenPalmHome, resolveConfigDir, createLogger } from '@openpalm/lib';
+import { existsSync, realpathSync } from 'node:fs';
+import { resolveOpenPalmHome, resolveConfigDir, resolveStateDir, createLogger } from '@openpalm/lib';
 import { ensureValidState } from './cli-state.ts';
 import { startOpenCodeSubprocess, type OpenCodeSubprocess } from './opencode-subprocess.ts';
 import { openBrowser } from './browser.ts';
 
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
-const UI_BUILD_DIR = join(REPO_ROOT, 'packages', 'ui', 'build');
+/**
+ * Resolve the UI build directory.
+ *
+ * Priority:
+ *   1. OP_HOME/state/ui/ — installed by `openpalm install` / `openpalm update`
+ *      This is the canonical path for both production binaries and local installs.
+ *   2. Dev fallback — packages/ui/build/ relative to source or binary location.
+ *      Used when running from the source repo before state/ui/ is populated.
+ */
+function resolveUiBuildDir(): string {
+  const stateBuild = join(resolveStateDir(), 'ui');
+  if (existsSync(join(stateBuild, 'index.js'))) return stateBuild;
+
+  // Dev fallback: navigate from source file (not bunfs-safe, but that's fine
+  // here because if state/ui/ doesn't exist we're already in dev mode).
+  const metaPath = fileURLToPath(import.meta.url);
+  if (!metaPath.startsWith('/$bunfs/')) {
+    return join(dirname(metaPath), '..', '..', '..', '..', 'packages', 'ui', 'build');
+  }
+  // Compiled binary, no state/ui/ yet: fall back to relative-to-binary path.
+  return join(dirname(realpathSync(process.execPath)), '..', '..', '..', 'packages', 'ui', 'build');
+}
+
+const UI_BUILD_DIR = resolveUiBuildDir();
 
 const logger = createLogger('cli:ui');
 const DEFAULT_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;

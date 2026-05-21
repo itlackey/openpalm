@@ -8,7 +8,7 @@
  *   POST /admin/automations/:name/run      — runs akm tasks run <name> directly
  *   GET  /admin/automations/:name/log      — reads from cache/akm/tasks/logs/<name>/
  *
- * These tests hit the host admin process at http://localhost:3880 and
+ * These tests hit the host admin process (default test port 9100) and
  * require a running stack and admin process.
  *
  * Run with:
@@ -17,7 +17,7 @@
 
 import { expect, test } from "@playwright/test";
 
-const ADMIN_URL = process.env.ADMIN_URL ?? "http://127.0.0.1:3880";
+const ADMIN_URL = process.env.ADMIN_URL ?? "http://127.0.0.1:9100";
 
 function adminHeaders(): Record<string, string> {
   return {

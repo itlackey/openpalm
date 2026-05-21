@@ -36,12 +36,13 @@ const REPO_ROOT = resolve(HERE, '../../..');
 const GUARDIAN_ENV_PATH = resolve(REPO_ROOT, '.dev/config/stack/guardian.env');
 
 /**
- * Guardian URL: In dev mode, guardian is published directly on OP_GUARDIAN_PORT
- * (default 8180). No gateway prefix stripping needed — hit guardian routes
- * at their native paths (/health, /channel/inbound).
+ * Guardian URL: In test mode, guardian is published on OP_GUARDIAN_PORT
+ * (default 9180 for test stacks — offset from dev default 8180 to prevent
+ * tests from hitting a developer's running stack). No gateway prefix stripping
+ * needed — hit guardian routes at their native paths (/health, /channel/inbound).
  */
-const GUARDIAN_PORT = process.env.OP_GUARDIAN_PORT ?? '8180';
-// Use 127.0.0.1 explicitly — compose binds guardian to 127.0.0.1:8180 (IPv4 only),
+const GUARDIAN_PORT = process.env.OP_GUARDIAN_PORT ?? '9180';
+// Use 127.0.0.1 explicitly — compose binds guardian to 127.0.0.1 (IPv4 only),
 // and `localhost` may resolve to ::1 first → ECONNREFUSED.
 const GUARDIAN_URL = `http://127.0.0.1:${GUARDIAN_PORT}`;
 

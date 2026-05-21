@@ -60,7 +60,7 @@ const PORT = Number(Bun.env.PORT ?? 8186)
 // this on first load (when no localStorage entry exists) and seeds its
 // settings from these values. Provider is derived: if a base URL is set
 // we default to the openai-compatible HTTP provider; otherwise the
-// in-browser Web Speech API. Set by writeCapabilityVars() via stack.env.
+// in-browser Web Speech API. Set by writeVoiceVars() via stack.env.
 function defaultsResponse(): Response {
   const env = Bun.env
   const sttUrl = (env.STT_BASE_URL ?? '').trim()

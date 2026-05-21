@@ -9,6 +9,9 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createLogger } from '@openpalm/lib';
+
+const logger = createLogger('cli:io');
 
 const REPO_OWNER = 'itlackey';
 const REPO_NAME = 'openpalm';
@@ -71,6 +74,8 @@ export async function ensureDirectoryTree(
     join(stateDir, 'registry'),
     join(stateDir, 'registry', 'addons'),
     join(stateDir, 'registry', 'automations'),
+    // UI build — installed here by seedUiBuild, updated by openpalm update
+    join(stateDir, 'ui'),
     workDir,
   ]) {
     await mkdir(dir, { recursive: true });
@@ -165,9 +170,23 @@ export async function copyTree(
  */
 function resolveLocalOpenpalmDir(): string | null {
   // io.ts lives at packages/cli/src/lib/io.ts; repo root is four levels up.
-  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+  const metaPath = fileURLToPath(import.meta.url);
+  if (metaPath.startsWith('/$bunfs/')) return null;
+  const repoRoot = join(dirname(metaPath), '..', '..', '..', '..');
   const candidate = join(repoRoot, '.openpalm');
   return existsSync(candidate) ? candidate : null;
+}
+
+/**
+ * Resolve the local packages/ui/build/ if running from source.
+ * Returns null for compiled binaries (which have no sibling source tree).
+ */
+function resolveLocalUiBuild(): string | null {
+  const metaPath = fileURLToPath(import.meta.url);
+  if (metaPath.startsWith('/$bunfs/')) return null;
+  const repoRoot = join(dirname(metaPath), '..', '..', '..', '..');
+  const candidate = join(repoRoot, 'packages', 'ui', 'build');
+  return existsSync(join(candidate, 'index.js')) ? candidate : null;
 }
 
 /**
@@ -223,5 +242,51 @@ export async function seedOpenPalmDir(
     await copyTree(srcOpenpalm, homeDir, { skipExisting: true });
   } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
+ * Install or refresh the UI build at OP_HOME/state/ui/.
+ *
+ * Source priority:
+ *   1. Local packages/ui/build/ — dev / source install (no download needed)
+ *   2. ui-build.tar.gz from GitHub release — production binary
+ *
+ * The UI build is versioned independently from docker images. It can be
+ * updated out of band by re-running `openpalm update` or by manually
+ * replacing state/ui/ with a newer tarball. Backups include state/ui/
+ * automatically because backupOpenPalmHome copies all of OP_HOME/state/.
+ */
+export async function seedUiBuild(repoRef: string, stateDir: string): Promise<void> {
+  const uiDir = join(stateDir, 'ui');
+
+  const localBuild = resolveLocalUiBuild();
+  if (localBuild) {
+    logger.debug('seeding UI build from local source', { src: localBuild });
+    await copyTree(localBuild, uiDir);
+    return;
+  }
+
+  const tarballUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${repoRef}/ui-build.tar.gz`;
+  const tmpTar = join(stateDir, '.ui-build.tar.gz.tmp');
+  logger.debug('downloading UI build', { url: tarballUrl });
+
+  try {
+    const res = await fetch(tarballUrl, { signal: AbortSignal.timeout(120_000) });
+    if (!res.ok) throw new Error(`Failed to download UI build tarball (HTTP ${res.status})`);
+    await Bun.write(tmpTar, res);
+
+    await mkdir(uiDir, { recursive: true });
+    const proc = Bun.spawn(
+      ['tar', 'xzf', tmpTar, '--strip-components=1', '-C', uiDir],
+      { stdout: 'ignore', stderr: 'pipe' },
+    );
+    const code = await proc.exited;
+    if (code !== 0) {
+      const errText = await new Response(proc.stderr).text();
+      throw new Error(`UI build extraction failed (exit ${code}): ${errText}`);
+    }
+  } finally {
+    await rm(tmpTar, { force: true }).catch(() => {});
   }
 }
