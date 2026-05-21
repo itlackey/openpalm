@@ -324,13 +324,13 @@ jobs:
         include:
           - os: macos-latest
             platform: mac
-            script: build:mac
+            electron_flag: --mac
           - os: ubuntu-latest
             platform: linux
-            script: build:linux
+            electron_flag: --linux
           - os: windows-latest
             platform: win
-            script: build:win
+            electron_flag: --win
 
     steps:
       - name: Checkout
@@ -338,14 +338,26 @@ jobs:
         with:
           ref: ${{ needs.prepare-tag.outputs.tag }}
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Compile TypeScript
+        run: bun run --cwd packages/electron compile
+
       - name: Build Electron app
-        run: bun run --cwd packages/electron ${{ matrix.script }}
+        # electron-builder must run under Node.js, not bun. When run via bun,
+        # process.execPath is the bun binary; electron-builder spawns worker
+        # processes using process.execPath and Node.js fails to parse the ELF binary.
+        working-directory: packages/electron
+        run: node ../../node_modules/electron-builder/cli.js ${{ matrix.electron_flag }}
 
       - name: Upload Electron artifacts
         uses: actions/upload-artifact@v4
