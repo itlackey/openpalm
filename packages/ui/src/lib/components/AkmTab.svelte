@@ -13,6 +13,7 @@
 
 	// ── Profile types ────────────────────────────────────────────────────────────
 	interface LlmProfile {
+		id: string;
 		name: string;
 		endpoint: string;
 		model: string;
@@ -37,6 +38,7 @@
 	}
 
 	interface AgentProfile {
+		id: string;
 		name: string;
 		platform: 'opencode' | 'claude' | 'opencode-sdk';
 		bin: string;
@@ -48,12 +50,12 @@
 	// ── LLM Profiles ─────────────────────────────────────────────────────────────
 	let llmProfiles = $state<LlmProfile[]>([]);
 	let defaultLlmProfile = $state('');
-	let expandedLlmIdx = $state<number | null>(null);
+	let expandedLlmId = $state<string | null>(null);
 
 	// ── Agent Profiles ────────────────────────────────────────────────────────────
 	let agentProfiles = $state<AgentProfile[]>([]);
 	let defaultAgentProfile = $state('');
-	let expandedAgentIdx = $state<number | null>(null);
+	let expandedAgentId = $state<string | null>(null);
 
 	// ── LLM Connection (v1 compat) ────────────────────────────────────────────────
 	let llmEndpoint = $state('');
@@ -122,17 +124,20 @@
 	let feedbackAllowedModes = $state('incorrect, outdated, dangerous, incomplete, redundant');
 
 	// ── Helpers ───────────────────────────────────────────────────────────────────
-	function optNum(s: string): number | undefined {
+	function optNum(s: string | number): number | undefined {
+		if (typeof s === 'number') return isNaN(s) ? undefined : s;
 		const n = parseFloat(s);
 		return s.trim() === '' || isNaN(n) ? undefined : n;
 	}
-	function optInt(s: string): number | undefined {
+	function optInt(s: string | number): number | undefined {
+		if (typeof s === 'number') return isNaN(s) ? undefined : Math.trunc(s);
 		const n = parseInt(s, 10);
 		return s.trim() === '' || isNaN(n) ? undefined : n;
 	}
 
 	function newLlmProfile(): LlmProfile {
 		return {
+			id: crypto.randomUUID(),
 			name: '', endpoint: '', model: '', provider: '', apiKey: '',
 			temperature: '', maxTokens: '', timeoutMs: '', concurrency: '',
 			contextLength: '', judgeModel: '', supportsJsonSchema: false,
@@ -143,10 +148,10 @@
 	}
 
 	function newAgentProfile(): AgentProfile {
-		return { name: '', platform: 'opencode', bin: '', args: '', workspace: '', model: '' };
+		return { id: crypto.randomUUID(), name: '', platform: 'opencode', bin: '', args: '', workspace: '', model: '' };
 	}
 
-	function profileFromRaw(raw: Record<string, unknown>): Omit<LlmProfile, 'name'> {
+	function profileFromRaw(raw: Record<string, unknown>): Omit<LlmProfile, 'name' | 'id'> {
 		const f = (raw.features as Record<string, unknown>) ?? {};
 		return {
 			endpoint: (raw.endpoint as string) ?? '',
@@ -208,7 +213,7 @@
 			// LLM Profiles
 			const rawLlm = rawProfiles?.llm as Record<string, unknown> | undefined;
 			llmProfiles = rawLlm
-				? Object.entries(rawLlm).map(([name, p]) => ({ name, ...profileFromRaw(p as Record<string, unknown>) }))
+				? Object.entries(rawLlm).map(([name, p]) => ({ id: crypto.randomUUID(), name, ...profileFromRaw(p as Record<string, unknown>) }))
 				: [];
 
 			// Agent Profiles
@@ -217,6 +222,7 @@
 				? Object.entries(rawAgent).map(([name, p]) => {
 					const raw = p as Record<string, unknown>;
 					return {
+						id: crypto.randomUUID(),
 						name,
 						platform: (raw.platform as 'opencode' | 'claude' | 'opencode-sdk') ?? 'opencode',
 						bin: (raw.bin as string) ?? '',
@@ -458,19 +464,19 @@
 				<p class="empty-note">No profiles defined. Using the default LLM connection below.</p>
 			{/if}
 
-			{#each llmProfiles as p, i (i)}
+			{#each llmProfiles as p (p.id)}
 				<div class="profile-card">
 					<div class="profile-card-header">
 						<input class="control-input profile-name-input" type="text" placeholder="profile name" bind:value={p.name} disabled={loading || saving} />
-						<button class="btn btn-sm" onclick={() => { expandedLlmIdx = expandedLlmIdx === i ? null : i; }} disabled={loading || saving}>
-							{expandedLlmIdx === i ? 'Collapse' : 'Edit'}
+						<button class="btn btn-sm" onclick={() => { expandedLlmId = expandedLlmId === p.id ? null : p.id; }} disabled={loading || saving}>
+							{expandedLlmId === p.id ? 'Collapse' : 'Edit'}
 						</button>
-						<button class="btn btn-sm btn-danger" onclick={() => { llmProfiles = llmProfiles.filter((_, j) => j !== i); if (expandedLlmIdx === i) expandedLlmIdx = null; }} disabled={loading || saving}>
+						<button class="btn btn-sm btn-danger" onclick={() => { if (defaultLlmProfile === p.name) defaultLlmProfile = ''; if (expandedLlmId === p.id) expandedLlmId = null; llmProfiles = llmProfiles.filter(x => x.id !== p.id); }} disabled={loading || saving}>
 							Remove
 						</button>
 					</div>
 
-					{#if expandedLlmIdx === i}
+					{#if expandedLlmId === p.id}
 						<div class="profile-card-body">
 							<div class="controls controls--grid">
 								<div class="control-group control-group--wide">
@@ -535,7 +541,7 @@
 				</div>
 			{/each}
 
-			<button class="btn btn-secondary btn-sm" onclick={() => { llmProfiles = [...llmProfiles, newLlmProfile()]; expandedLlmIdx = llmProfiles.length - 1; }} disabled={loading || saving}>
+			<button class="btn btn-secondary btn-sm" onclick={() => { const p = newLlmProfile(); llmProfiles = [...llmProfiles, p]; expandedLlmId = p.id; }} disabled={loading || saving}>
 				+ Add LLM Profile
 			</button>
 
@@ -561,20 +567,20 @@
 				<p class="empty-note">No agent profiles defined.</p>
 			{/if}
 
-			{#each agentProfiles as p, i (i)}
+			{#each agentProfiles as p (p.id)}
 				<div class="profile-card">
 					<div class="profile-card-header">
 						<input class="control-input profile-name-input" type="text" placeholder="profile name" bind:value={p.name} disabled={loading || saving} />
 						<span class="badge">{p.platform}</span>
-						<button class="btn btn-sm" onclick={() => { expandedAgentIdx = expandedAgentIdx === i ? null : i; }} disabled={loading || saving}>
-							{expandedAgentIdx === i ? 'Collapse' : 'Edit'}
+						<button class="btn btn-sm" onclick={() => { expandedAgentId = expandedAgentId === p.id ? null : p.id; }} disabled={loading || saving}>
+							{expandedAgentId === p.id ? 'Collapse' : 'Edit'}
 						</button>
-						<button class="btn btn-sm btn-danger" onclick={() => { agentProfiles = agentProfiles.filter((_, j) => j !== i); if (expandedAgentIdx === i) expandedAgentIdx = null; }} disabled={loading || saving}>
+						<button class="btn btn-sm btn-danger" onclick={() => { if (defaultAgentProfile === p.name) defaultAgentProfile = ''; if (expandedAgentId === p.id) expandedAgentId = null; agentProfiles = agentProfiles.filter(x => x.id !== p.id); }} disabled={loading || saving}>
 							Remove
 						</button>
 					</div>
 
-					{#if expandedAgentIdx === i}
+					{#if expandedAgentId === p.id}
 						<div class="profile-card-body">
 							<div class="controls controls--grid">
 								<div class="control-group">
@@ -610,7 +616,7 @@
 				</div>
 			{/each}
 
-			<button class="btn btn-secondary btn-sm" onclick={() => { agentProfiles = [...agentProfiles, newAgentProfile()]; expandedAgentIdx = agentProfiles.length - 1; }} disabled={loading || saving}>
+			<button class="btn btn-secondary btn-sm" onclick={() => { const p = newAgentProfile(); agentProfiles = [...agentProfiles, p]; expandedAgentId = p.id; }} disabled={loading || saving}>
 				+ Add Agent Profile
 			</button>
 
