@@ -8,64 +8,79 @@
 
 	let { tokenStored }: Props = $props();
 
-	// ── State ───────────────────────────────────────────────────────────────────
-	let config = $state<Record<string, unknown>>({});
+	// ── Status ──────────────────────────────────────────────────────────────────
 	let loading = $state(false);
 	let saving = $state(false);
 	let error = $state('');
 	let saved = $state(false);
 
-	// Editable fields — initialized once in load()
+	// ── LLM Connection ──────────────────────────────────────────────────────────
+	let llmEndpoint = $state('');
+	let llmModel = $state('');
+	let llmProvider = $state('');
+	let llmApiKey = $state('');
+
+	// ── Embedding Connection ────────────────────────────────────────────────────
+	let embEndpoint = $state('');
+	let embModel = $state('');
+	let embProvider = $state('');
+	let embDimension = $state(1536);
+
+	// ── Features ────────────────────────────────────────────────────────────────
+	let feedbackDistillation = $state(true);
+	let memoryInference = $state(true);
+	let memoryConsolidation = $state(true);
+
+	// ── Behavior ────────────────────────────────────────────────────────────────
 	let semanticSearchMode = $state<'auto' | 'off'>('auto');
 	let archiveRetentionDays = $state(90);
+	let stashInheritance = $state<'merge' | 'replace'>('merge');
 	let outputFormat = $state<'json' | 'yaml' | 'text'>('json');
+
+	// ── Improve ─────────────────────────────────────────────────────────────────
 	let improveLimit = $state(25);
 	let improvePreset = $state<'fast' | 'thorough' | 'mixed' | 'custom'>('custom');
+
+	// ── Search ──────────────────────────────────────────────────────────────────
 	let searchMinScore = $state(0.2);
-
-	// ── Derived read-only display ───────────────────────────────────────────────
-	let llmInfo = $derived.by(() => {
-		const llm = config.llm as Record<string, unknown> | undefined;
-		if (!llm) return null;
-		const provider = llm.provider as string | undefined;
-		const model = llm.model as string | undefined;
-		const endpoint = llm.endpoint as string | undefined;
-		return { provider, model, endpoint };
-	});
-
-	let embeddingInfo = $derived.by(() => {
-		const emb = config.embedding as Record<string, unknown> | undefined;
-		if (!emb) return null;
-		return {
-			provider: emb.provider as string | undefined,
-			model: emb.model as string | undefined,
-			dimension: emb.dimension as number | undefined,
-		};
-	});
 
 	// ── Load ────────────────────────────────────────────────────────────────────
 	async function load(): Promise<void> {
 		loading = true;
 		error = '';
 		try {
-			const result = await fetchAkmConfig();
-			config = result.config;
+			const { config } = await fetchAkmConfig();
 
-			// Init fields from loaded config — no $effect, init here only
-			const raw = result.config;
-			semanticSearchMode = (raw.semanticSearchMode as 'auto' | 'off') ?? 'auto';
-			archiveRetentionDays = typeof raw.archiveRetentionDays === 'number' ? raw.archiveRetentionDays : 90;
+			const llm = config.llm as Record<string, unknown> | undefined;
+			llmEndpoint = (llm?.endpoint as string) ?? '';
+			llmModel = (llm?.model as string) ?? '';
+			llmProvider = (llm?.provider as string) ?? '';
+			llmApiKey = (llm?.apiKey as string) ?? '';
+			const features = llm?.features as Record<string, unknown> | undefined;
+			feedbackDistillation = (features?.feedback_distillation as boolean) ?? true;
+			memoryInference = (features?.memory_inference as boolean) ?? true;
+			memoryConsolidation = (features?.memory_consolidation as boolean) ?? true;
 
-			const outputRaw = raw.output as Record<string, unknown> | undefined;
-			outputFormat = (outputRaw?.format as 'json' | 'yaml' | 'text') ?? 'json';
+			const emb = config.embedding as Record<string, unknown> | undefined;
+			embEndpoint = (emb?.endpoint as string) ?? '';
+			embModel = (emb?.model as string) ?? '';
+			embProvider = (emb?.provider as string) ?? '';
+			embDimension = typeof emb?.dimension === 'number' ? emb.dimension : 1536;
 
-			const defaultsRaw = raw.defaults as Record<string, unknown> | undefined;
-			const improveRaw = defaultsRaw?.improve as Record<string, unknown> | undefined;
-			improveLimit = typeof improveRaw?.limit === 'number' ? improveRaw.limit : 25;
-			improvePreset = (improveRaw?.preset as 'fast' | 'thorough' | 'mixed' | 'custom') ?? 'custom';
+			semanticSearchMode = (config.semanticSearchMode as 'auto' | 'off') ?? 'auto';
+			archiveRetentionDays = typeof config.archiveRetentionDays === 'number' ? config.archiveRetentionDays : 90;
+			stashInheritance = (config.stashInheritance as 'merge' | 'replace') ?? 'merge';
 
-			const searchRaw = raw.search as Record<string, unknown> | undefined;
-			searchMinScore = typeof searchRaw?.minScore === 'number' ? searchRaw.minScore : 0.2;
+			const output = config.output as Record<string, unknown> | undefined;
+			outputFormat = (output?.format as 'json' | 'yaml' | 'text') ?? 'json';
+
+			const defaults = config.defaults as Record<string, unknown> | undefined;
+			const improve = defaults?.improve as Record<string, unknown> | undefined;
+			improveLimit = typeof improve?.limit === 'number' ? improve.limit : 25;
+			improvePreset = (improve?.preset as 'fast' | 'thorough' | 'mixed' | 'custom') ?? 'custom';
+
+			const search = config.search as Record<string, unknown> | undefined;
+			searchMinScore = typeof search?.minScore === 'number' ? search.minScore : 0.2;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load AKM config.';
 		} finally {
@@ -79,9 +94,31 @@
 		error = '';
 		saved = false;
 		try {
+			const llm: Record<string, unknown> = {
+				endpoint: llmEndpoint,
+				model: llmModel,
+				features: {
+					feedback_distillation: feedbackDistillation,
+					memory_inference: memoryInference,
+					memory_consolidation: memoryConsolidation,
+				},
+			};
+			if (llmProvider) llm.provider = llmProvider;
+			if (llmApiKey) llm.apiKey = llmApiKey;
+
+			const embedding: Record<string, unknown> = {
+				endpoint: embEndpoint,
+				model: embModel,
+				dimension: embDimension,
+			};
+			if (embProvider) embedding.provider = embProvider;
+
 			await saveAkmConfig({
+				llm,
+				embedding,
 				semanticSearchMode,
 				archiveRetentionDays,
+				stashInheritance,
 				output: { format: outputFormat },
 				defaults: { improve: { limit: improveLimit, preset: improvePreset } },
 				search: { minScore: searchMinScore },
@@ -126,35 +163,142 @@
 	{/if}
 
 	<div class="panel-body">
+
+		<!-- ── LLM Connection ─────────────────────────────────────────── -->
 		<section class="config-section">
-			<h3 class="section-title">Connection</h3>
-			<p class="section-note">LLM and embedding connections are managed on the <strong>Capabilities</strong> tab.</p>
-			{#if llmInfo}
-				<div class="info-row">
-					<span class="info-label">LLM</span>
-					<span class="info-value">
-						{llmInfo.provider}/{llmInfo.model}
-						{#if llmInfo.endpoint}<span class="info-endpoint"> — {llmInfo.endpoint}</span>{/if}
-					</span>
+			<h3 class="section-title">LLM Connection</h3>
+			<div class="controls controls--grid">
+				<div class="control-group control-group--wide">
+					<label class="control-label" for="llmEndpoint">Endpoint</label>
+					<input
+						id="llmEndpoint"
+						class="control-input"
+						type="url"
+						spellcheck="false"
+						placeholder="https://api.openai.com/v1/chat/completions"
+						bind:value={llmEndpoint}
+						disabled={loading || saving}
+					/>
 				</div>
-			{/if}
-			{#if embeddingInfo}
-				<div class="info-row">
-					<span class="info-label">Embedding</span>
-					<span class="info-value">
-						{embeddingInfo.provider}/{embeddingInfo.model}
-						{#if embeddingInfo.dimension}<span class="info-dim"> (dim: {embeddingInfo.dimension})</span>{/if}
-					</span>
+				<div class="control-group">
+					<label class="control-label" for="llmModel">Model</label>
+					<input
+						id="llmModel"
+						class="control-input"
+						type="text"
+						spellcheck="false"
+						placeholder="gpt-4o"
+						bind:value={llmModel}
+						disabled={loading || saving}
+					/>
 				</div>
-			{/if}
-			{#if !llmInfo && !embeddingInfo && !loading}
-				<p class="empty-note">No connection config generated yet. Save capabilities to generate the initial config.</p>
-			{/if}
+				<div class="control-group">
+					<label class="control-label" for="llmProvider">Provider (label)</label>
+					<input
+						id="llmProvider"
+						class="control-input"
+						type="text"
+						spellcheck="false"
+						placeholder="openai"
+						bind:value={llmProvider}
+						disabled={loading || saving}
+					/>
+				</div>
+				<div class="control-group">
+					<label class="control-label" for="llmApiKey">API Key</label>
+					<input
+						id="llmApiKey"
+						class="control-input"
+						type="text"
+						spellcheck="false"
+						placeholder="$&#123;AKM_LLM_API_KEY&#125; or literal key"
+						bind:value={llmApiKey}
+						disabled={loading || saving}
+					/>
+				</div>
+			</div>
 		</section>
 
+		<!-- ── Embedding Connection ───────────────────────────────────── -->
+		<section class="config-section">
+			<h3 class="section-title">Embedding Connection</h3>
+			<div class="controls controls--grid">
+				<div class="control-group control-group--wide">
+					<label class="control-label" for="embEndpoint">Endpoint</label>
+					<input
+						id="embEndpoint"
+						class="control-input"
+						type="url"
+						spellcheck="false"
+						placeholder="https://api.openai.com/v1/embeddings"
+						bind:value={embEndpoint}
+						disabled={loading || saving}
+					/>
+				</div>
+				<div class="control-group">
+					<label class="control-label" for="embModel">Model</label>
+					<input
+						id="embModel"
+						class="control-input"
+						type="text"
+						spellcheck="false"
+						placeholder="text-embedding-3-small"
+						bind:value={embModel}
+						disabled={loading || saving}
+					/>
+				</div>
+				<div class="control-group">
+					<label class="control-label" for="embProvider">Provider (label)</label>
+					<input
+						id="embProvider"
+						class="control-input"
+						type="text"
+						spellcheck="false"
+						placeholder="openai"
+						bind:value={embProvider}
+						disabled={loading || saving}
+					/>
+				</div>
+				<div class="control-group">
+					<label class="control-label" for="embDimension">Dimensions</label>
+					<input
+						id="embDimension"
+						class="control-input control-input--narrow"
+						type="number"
+						min="1"
+						bind:value={embDimension}
+						disabled={loading || saving}
+					/>
+				</div>
+			</div>
+		</section>
+
+		<!-- ── Features ──────────────────────────────────────────────── -->
+		<section class="config-section">
+			<h3 class="section-title">Features</h3>
+			<div class="controls controls--toggles">
+				<label class="toggle-row">
+					<input type="checkbox" bind:checked={feedbackDistillation} disabled={loading || saving} />
+					<span class="toggle-label">Feedback distillation</span>
+					<span class="toggle-hint">Distill durable lessons from feedback during improve runs</span>
+				</label>
+				<label class="toggle-row">
+					<input type="checkbox" bind:checked={memoryInference} disabled={loading || saving} />
+					<span class="toggle-label">Memory inference</span>
+					<span class="toggle-hint">Infer new memories from assistant sessions</span>
+				</label>
+				<label class="toggle-row">
+					<input type="checkbox" bind:checked={memoryConsolidation} disabled={loading || saving} />
+					<span class="toggle-label">Memory consolidation</span>
+					<span class="toggle-hint">Merge and deduplicate overlapping memories</span>
+				</label>
+			</div>
+		</section>
+
+		<!-- ── Behavior ──────────────────────────────────────────────── -->
 		<section class="config-section">
 			<h3 class="section-title">Behavior</h3>
-			<div class="controls">
+			<div class="controls controls--grid">
 				<div class="control-group">
 					<label class="control-label" for="semanticSearch">Semantic search</label>
 					<select
@@ -163,8 +307,20 @@
 						bind:value={semanticSearchMode}
 						disabled={loading || saving}
 					>
-						<option value="auto">Auto (use vector index when available)</option>
+						<option value="auto">Auto (vector index when available)</option>
 						<option value="off">Off (keyword only)</option>
+					</select>
+				</div>
+				<div class="control-group">
+					<label class="control-label" for="stashInheritance">Stash inheritance</label>
+					<select
+						id="stashInheritance"
+						class="control-input"
+						bind:value={stashInheritance}
+						disabled={loading || saving}
+					>
+						<option value="merge">Merge (project stash appends to global)</option>
+						<option value="replace">Replace (project stash replaces global)</option>
 					</select>
 				</div>
 				<div class="control-group">
@@ -195,21 +351,10 @@
 			</div>
 		</section>
 
+		<!-- ── Improve ───────────────────────────────────────────────── -->
 		<section class="config-section">
 			<h3 class="section-title">Improve defaults</h3>
-			<div class="controls">
-				<div class="control-group">
-					<label class="control-label" for="improveLimit">Limit</label>
-					<input
-						id="improveLimit"
-						class="control-input control-input--narrow"
-						type="number"
-						min="1"
-						max="100"
-						bind:value={improveLimit}
-						disabled={loading || saving}
-					/>
-				</div>
+			<div class="controls controls--grid">
 				<div class="control-group">
 					<label class="control-label" for="improvePreset">Preset</label>
 					<select
@@ -224,12 +369,25 @@
 						<option value="custom">Custom</option>
 					</select>
 				</div>
+				<div class="control-group">
+					<label class="control-label" for="improveLimit">Asset limit per run</label>
+					<input
+						id="improveLimit"
+						class="control-input control-input--narrow"
+						type="number"
+						min="1"
+						max="100"
+						bind:value={improveLimit}
+						disabled={loading || saving}
+					/>
+				</div>
 			</div>
 		</section>
 
+		<!-- ── Search ────────────────────────────────────────────────── -->
 		<section class="config-section">
 			<h3 class="section-title">Search tuning</h3>
-			<div class="controls">
+			<div class="controls controls--grid">
 				<div class="control-group">
 					<label class="control-label" for="minScore">Min score (0–1)</label>
 					<input
@@ -245,6 +403,7 @@
 				</div>
 			</div>
 		</section>
+
 	</div>
 </div>
 
@@ -277,7 +436,7 @@
 	.config-section {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-3);
+		gap: var(--space-4);
 	}
 
 	.section-title {
@@ -291,50 +450,26 @@
 		border-bottom: 1px solid var(--color-border);
 	}
 
-	.section-note {
-		font-size: var(--text-sm);
-		color: var(--color-text-secondary);
-		margin: 0;
-	}
-
-	.empty-note {
-		font-size: var(--text-sm);
-		color: var(--color-text-secondary);
-		font-style: italic;
-		margin: 0;
-	}
-
-	.info-row {
-		display: flex;
-		gap: var(--space-3);
-		align-items: baseline;
-		font-size: var(--text-sm);
-	}
-
-	.info-label {
-		font-weight: var(--font-medium);
-		color: var(--color-text-secondary);
-		min-width: 6rem;
-		flex-shrink: 0;
-	}
-
-	.info-value {
-		color: var(--color-text);
-		font-family: var(--font-mono);
-	}
-
-	.info-endpoint {
-		color: var(--color-text-secondary);
-	}
-
-	.info-dim {
-		color: var(--color-text-secondary);
-	}
-
 	.controls {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-4);
+	}
+
+	.controls--grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+		gap: var(--space-4);
+	}
+
+	.control-group--wide {
+		grid-column: 1 / -1;
+	}
+
+	.controls--toggles {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
 	}
 
 	.control-group {
@@ -359,7 +494,6 @@
 		border-radius: var(--radius-sm);
 		padding: var(--space-2) var(--space-3);
 		width: 100%;
-		max-width: 32rem;
 	}
 
 	.control-input--narrow {
@@ -374,6 +508,30 @@
 	.control-input:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	.toggle-row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		cursor: pointer;
+		font-size: var(--text-sm);
+	}
+
+	.toggle-row input[type="checkbox"] {
+		width: 1rem;
+		height: 1rem;
+		flex-shrink: 0;
+	}
+
+	.toggle-label {
+		font-weight: var(--font-medium);
+		color: var(--color-text);
+	}
+
+	.toggle-hint {
+		color: var(--color-text-secondary);
+		font-size: var(--text-xs);
 	}
 
 	.error-banner {
