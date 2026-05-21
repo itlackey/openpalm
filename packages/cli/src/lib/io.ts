@@ -164,17 +164,34 @@ export async function copyTree(
 }
 
 /**
- * Resolve the on-disk `.openpalm/` source directory if one exists alongside
- * this CLI source (git clone / dev run / source install). Returns null when
- * the CLI is running as a compiled binary without a sibling `.openpalm/`.
+ * Resolve the on-disk `.openpalm/` source directory.
+ *
+ * Checks two locations:
+ *   1. Relative to source file (dev mode / bun run)
+ *   2. Relative to the compiled binary on disk (binary at packages/cli/dist/
+ *      → 3 levels up = repo root → .openpalm/)
+ *
+ * Returns null only when neither location has .openpalm/, triggering the
+ * GitHub tarball download fallback.
  */
 function resolveLocalOpenpalmDir(): string | null {
-  // io.ts lives at packages/cli/src/lib/io.ts; repo root is four levels up.
   const metaPath = fileURLToPath(import.meta.url);
-  if (metaPath.startsWith('/$bunfs/')) return null;
-  const repoRoot = join(dirname(metaPath), '..', '..', '..', '..');
-  const candidate = join(repoRoot, '.openpalm');
-  return existsSync(candidate) ? candidate : null;
+
+  // Dev mode: navigate from source file location
+  if (!metaPath.startsWith('/$bunfs/')) {
+    const candidate = join(dirname(metaPath), '..', '..', '..', '..', '.openpalm');
+    if (existsSync(candidate)) return candidate;
+  }
+
+  // Compiled binary: navigate from the real binary location on disk.
+  // Works when the binary is at packages/cli/dist/ within the repo.
+  try {
+    const binDir = dirname(realpathSync(process.execPath));
+    const candidate = join(binDir, '..', '..', '..', '.openpalm');
+    if (existsSync(candidate)) return candidate;
+  } catch { /* binary path unresolvable — fall through to download */ }
+
+  return null;
 }
 
 /**
