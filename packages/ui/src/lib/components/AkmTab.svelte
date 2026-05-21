@@ -5,7 +5,7 @@
 	interface Props { tokenStored: boolean; }
 	let { tokenStored }: Props = $props();
 
-	// ── Status ──────────────────────────────────────────────────────────────────
+	// ── Status ───────────────────────────────────────────────────────────────────
 	let loading = $state(false);
 	let saving = $state(false);
 	let error = $state('');
@@ -26,15 +26,6 @@
 		contextLength: string;
 		judgeModel: string;
 		supportsJsonSchema: boolean;
-		memory_inference: boolean;
-		memory_consolidation: boolean;
-		feedback_distillation: boolean;
-		graph_extraction: boolean;
-		curate_rerank: boolean;
-		lesson_quality_gate: boolean;
-		proposal_quality_gate: boolean;
-		metadata_enhance: boolean;
-		memory_contradiction_detection: boolean;
 	}
 
 	interface AgentProfile {
@@ -47,6 +38,9 @@
 		model: string;
 	}
 
+	type FMode = '' | 'llm' | 'agent' | 'sdk';
+	interface FEntry { enabled: boolean; mode: FMode; profile: string; timeoutMs: string; }
+
 	// ── LLM Profiles ─────────────────────────────────────────────────────────────
 	let llmProfiles = $state<LlmProfile[]>([]);
 	let defaultLlmProfile = $state('');
@@ -56,30 +50,6 @@
 	let agentProfiles = $state<AgentProfile[]>([]);
 	let defaultAgentProfile = $state('');
 	let expandedAgentId = $state<string | null>(null);
-
-	// ── LLM Connection (v1 compat) ────────────────────────────────────────────────
-	let llmEndpoint = $state('');
-	let llmModel = $state('');
-	let llmProvider = $state('');
-	let llmApiKey = $state('');
-	let llmTemperature = $state('');
-	let llmMaxTokens = $state('');
-	let llmTimeoutMs = $state('');
-	let llmConcurrency = $state('');
-	let llmContextLength = $state('');
-	let llmJudgeModel = $state('');
-	let llmSupportsJsonSchema = $state(false);
-
-	// ── LLM Feature Flags ─────────────────────────────────────────────────────────
-	let featMemoryInference = $state(true);
-	let featMemoryConsolidation = $state(true);
-	let featFeedbackDistillation = $state(true);
-	let featGraphExtraction = $state(true);
-	let featCurateRerank = $state(false);
-	let featLessonQualityGate = $state(false);
-	let featProposalQualityGate = $state(false);
-	let featMetadataEnhance = $state(false);
-	let featMemoryContradiction = $state(false);
 
 	// ── Embedding Connection ──────────────────────────────────────────────────────
 	let embEndpoint = $state('');
@@ -93,7 +63,24 @@
 	let embContextLength = $state('');
 	let embOllamaNumCtx = $state('');
 
-	// ── Behavior ──────────────────────────────────────────────────────────────────
+	// ── Features — Improve ───────────────────────────────────────────────────────
+	let featImproveReflect = $state<FEntry>({ enabled: true, mode: '', profile: '', timeoutMs: '' });
+	let featImproveDistill = $state<FEntry>({ enabled: true, mode: '', profile: '', timeoutMs: '' });
+	let featImproveMemConsolidation = $state<FEntry>({ enabled: false, mode: '', profile: '', timeoutMs: '' });
+	let featImproveFeedbackDistillation = $state<FEntry>({ enabled: true, mode: '', profile: '', timeoutMs: '' });
+	let featImproveValidation = $state<FEntry>({ enabled: false, mode: '', profile: '', timeoutMs: '' });
+	let featImprovePropose = $state<FEntry>({ enabled: false, mode: '', profile: '', timeoutMs: '' });
+
+	// ── Features — Index ─────────────────────────────────────────────────────────
+	let featIndexMemInference = $state<FEntry>({ enabled: true, mode: '', profile: '', timeoutMs: '' });
+	let featIndexGraphExtraction = $state<FEntry>({ enabled: true, mode: '', profile: '', timeoutMs: '' });
+	let featIndexMetadataEnhance = $state<FEntry>({ enabled: false, mode: '', profile: '', timeoutMs: '' });
+	let featIndexStalenessDetection = $state<FEntry>({ enabled: false, mode: '', profile: '', timeoutMs: '' });
+
+	// ── Features — Search ────────────────────────────────────────────────────────
+	let featSearchCurateRerank = $state<FEntry>({ enabled: false, mode: '', profile: '', timeoutMs: '' });
+
+	// ── Behavior ─────────────────────────────────────────────────────────────────
 	let semanticSearchMode = $state<'auto' | 'off'>('auto');
 	let archiveRetentionDays = $state(90);
 	let stashInheritance = $state<'merge' | 'replace'>('merge');
@@ -102,14 +89,18 @@
 	let outputFormat = $state<'json' | 'yaml' | 'text'>('json');
 	let outputDetail = $state<'brief' | 'normal' | 'full'>('brief');
 
-	// ── Improve Defaults ──────────────────────────────────────────────────────────
+	// ── Improve defaults ─────────────────────────────────────────────────────────
 	let improveLimit = $state(25);
 	let improvePreset = $state<'fast' | 'thorough' | 'mixed' | 'custom'>('custom');
 	let improveHalfLifeDays = $state(30);
 	let improveFeedbackBoost = $state(1.5);
-	let improveReflectCooldown = $state('');
 
-	// ── Search ────────────────────────────────────────────────────────────────────
+	// ── Reflect cooldowns (days per asset type; empty = use akm default) ─────────
+	const COOLDOWN_TYPES = ['memory','lesson','workflow','skill','agent','command','knowledge','script','wiki','task'] as const;
+	const COOLDOWN_DEFAULTS: Record<string, number> = { memory: 2, lesson: 7, workflow: 30, skill: 30, agent: 30, command: 30, knowledge: 30, script: 30, wiki: 30, task: 60 };
+	let reflectCooldowns = $state<Record<string, string>>(Object.fromEntries(COOLDOWN_TYPES.map(t => [t, ''])));
+
+	// ── Search ───────────────────────────────────────────────────────────────────
 	let searchMinScore = $state(0.2);
 	let graphDirectBoostPerEntity = $state(0.25);
 	let graphDirectBoostCap = $state(0.75);
@@ -119,11 +110,15 @@
 	let graphConfidenceMode = $state<'off' | 'blend' | 'multiply'>('blend');
 	let graphConfidenceWeight = $state(0.2);
 
-	// ── Feedback ──────────────────────────────────────────────────────────────────
+	// ── Feedback ─────────────────────────────────────────────────────────────────
 	let feedbackRequireReason = $state(true);
 	let feedbackAllowedModes = $state('incorrect, outdated, dangerous, incomplete, redundant');
 
-	// ── Helpers ───────────────────────────────────────────────────────────────────
+	// ── Derived ──────────────────────────────────────────────────────────────────
+	let llmProfileNames = $derived(llmProfiles.map(p => p.name).filter(n => n));
+	let agentProfileNames = $derived(agentProfiles.map(p => p.name).filter(n => n));
+
+	// ── Helpers ──────────────────────────────────────────────────────────────────
 	function optNum(s: string | number): number | undefined {
 		if (typeof s === 'number') return isNaN(s) ? undefined : s;
 		const n = parseFloat(s);
@@ -136,23 +131,34 @@
 	}
 
 	function newLlmProfile(): LlmProfile {
-		return {
-			id: crypto.randomUUID(),
-			name: '', endpoint: '', model: '', provider: '', apiKey: '',
-			temperature: '', maxTokens: '', timeoutMs: '', concurrency: '',
-			contextLength: '', judgeModel: '', supportsJsonSchema: false,
-			memory_inference: true, memory_consolidation: true, feedback_distillation: false,
-			graph_extraction: true, curate_rerank: false, lesson_quality_gate: false,
-			proposal_quality_gate: false, metadata_enhance: false, memory_contradiction_detection: false,
-		};
+		return { id: crypto.randomUUID(), name: '', endpoint: '', model: '', provider: '', apiKey: '', temperature: '', maxTokens: '', timeoutMs: '', concurrency: '', contextLength: '', judgeModel: '', supportsJsonSchema: false };
 	}
-
 	function newAgentProfile(): AgentProfile {
 		return { id: crypto.randomUUID(), name: '', platform: 'opencode', bin: '', args: '', workspace: '', model: '' };
 	}
 
+	function readFEntry(raw: unknown, defaultEnabled: boolean): FEntry {
+		if (typeof raw === 'boolean') return { enabled: raw, mode: '', profile: '', timeoutMs: '' };
+		if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { enabled: defaultEnabled, mode: '', profile: '', timeoutMs: '' };
+		const r = raw as Record<string, unknown>;
+		return {
+			enabled: typeof r.enabled === 'boolean' ? r.enabled : defaultEnabled,
+			mode: (r.mode as FMode) ?? '',
+			profile: (r.profile as string) ?? '',
+			timeoutMs: r.timeoutMs != null ? String(r.timeoutMs) : '',
+		};
+	}
+
+	function buildFEntry(e: FEntry): boolean | Record<string, unknown> {
+		if (!e.mode && !e.profile && !e.timeoutMs) return e.enabled;
+		const out: Record<string, unknown> = { enabled: e.enabled };
+		if (e.mode) out.mode = e.mode;
+		if (e.profile) out.profile = e.profile;
+		if (e.timeoutMs !== '') out.timeoutMs = parseInt(e.timeoutMs, 10);
+		return out;
+	}
+
 	function profileFromRaw(raw: Record<string, unknown>): Omit<LlmProfile, 'name' | 'id'> {
-		const f = (raw.features as Record<string, unknown>) ?? {};
 		return {
 			endpoint: (raw.endpoint as string) ?? '',
 			model: (raw.model as string) ?? '',
@@ -165,15 +171,6 @@
 			contextLength: raw.contextLength != null ? String(raw.contextLength) : '',
 			judgeModel: (raw.judgeModel as string) ?? '',
 			supportsJsonSchema: (raw.supportsJsonSchema as boolean) ?? false,
-			memory_inference: (f.memory_inference as boolean) ?? true,
-			memory_consolidation: (f.memory_consolidation as boolean) ?? true,
-			feedback_distillation: (f.feedback_distillation as boolean) ?? false,
-			graph_extraction: (f.graph_extraction as boolean) ?? true,
-			curate_rerank: (f.curate_rerank as boolean) ?? false,
-			lesson_quality_gate: (f.lesson_quality_gate as boolean) ?? false,
-			proposal_quality_gate: (f.proposal_quality_gate as boolean) ?? false,
-			metadata_enhance: (f.metadata_enhance as boolean) ?? false,
-			memory_contradiction_detection: (f.memory_contradiction_detection as boolean) ?? false,
 		};
 	}
 
@@ -188,21 +185,10 @@
 		const cl = optInt(p.contextLength); if (cl !== undefined) out.contextLength = cl;
 		if (p.judgeModel) out.judgeModel = p.judgeModel;
 		if (p.supportsJsonSchema) out.supportsJsonSchema = true;
-		out.features = {
-			memory_inference: p.memory_inference,
-			memory_consolidation: p.memory_consolidation,
-			feedback_distillation: p.feedback_distillation,
-			graph_extraction: p.graph_extraction,
-			curate_rerank: p.curate_rerank,
-			lesson_quality_gate: p.lesson_quality_gate,
-			proposal_quality_gate: p.proposal_quality_gate,
-			metadata_enhance: p.metadata_enhance,
-			memory_contradiction_detection: p.memory_contradiction_detection,
-		};
 		return out;
 	}
 
-	// ── Load ──────────────────────────────────────────────────────────────────────
+	// ── Load ─────────────────────────────────────────────────────────────────────
 	async function load(): Promise<void> {
 		loading = true;
 		error = '';
@@ -210,61 +196,25 @@
 			const { config } = await fetchAkmConfig();
 			const rawProfiles = config.profiles as Record<string, unknown> | undefined;
 
-			// LLM Profiles
 			const rawLlm = rawProfiles?.llm as Record<string, unknown> | undefined;
 			llmProfiles = rawLlm
 				? Object.entries(rawLlm).map(([name, p]) => ({ id: crypto.randomUUID(), name, ...profileFromRaw(p as Record<string, unknown>) }))
 				: [];
 
-			// Agent Profiles
 			const rawAgent = rawProfiles?.agent as Record<string, unknown> | undefined;
 			agentProfiles = rawAgent
 				? Object.entries(rawAgent).map(([name, p]) => {
 					const raw = p as Record<string, unknown>;
-					return {
-						id: crypto.randomUUID(),
-						name,
-						platform: (raw.platform as 'opencode' | 'claude' | 'opencode-sdk') ?? 'opencode',
-						bin: (raw.bin as string) ?? '',
-						args: Array.isArray(raw.args) ? (raw.args as string[]).join(' ') : '',
-						workspace: (raw.workspace as string) ?? '',
-						model: (raw.model as string) ?? '',
-					};
+					return { id: crypto.randomUUID(), name, platform: (raw.platform as 'opencode' | 'claude' | 'opencode-sdk') ?? 'opencode', bin: (raw.bin as string) ?? '', args: Array.isArray(raw.args) ? (raw.args as string[]).join(' ') : '', workspace: (raw.workspace as string) ?? '', model: (raw.model as string) ?? '' };
 				})
 				: [];
 
-			// Defaults
 			const rawDefaults = config.defaults as Record<string, unknown> | undefined;
 			defaultLlmProfile = (rawDefaults?.llm as string) ?? '';
 			defaultAgentProfile = (rawDefaults?.agent as string) ?? '';
 			const rawImproveDef = rawDefaults?.improve as Record<string, unknown> | undefined;
 			improveLimit = typeof rawImproveDef?.limit === 'number' ? rawImproveDef.limit : 25;
 			improvePreset = (rawImproveDef?.preset as 'fast' | 'thorough' | 'mixed' | 'custom') ?? 'custom';
-
-			// v1 LLM
-			const llm = config.llm as Record<string, unknown> | undefined;
-			llmEndpoint = (llm?.endpoint as string) ?? '';
-			llmModel = (llm?.model as string) ?? '';
-			llmProvider = (llm?.provider as string) ?? '';
-			llmApiKey = (llm?.apiKey as string) ?? '';
-			llmTemperature = llm?.temperature != null ? String(llm.temperature) : '';
-			llmMaxTokens = llm?.maxTokens != null ? String(llm.maxTokens) : '';
-			llmTimeoutMs = llm?.timeoutMs != null ? String(llm.timeoutMs) : '';
-			llmConcurrency = llm?.concurrency != null ? String(llm.concurrency) : '';
-			llmContextLength = llm?.contextLength != null ? String(llm.contextLength) : '';
-			llmJudgeModel = (llm?.judgeModel as string) ?? '';
-			llmSupportsJsonSchema = (llm?.supportsJsonSchema as boolean) ?? false;
-
-			const features = llm?.features as Record<string, unknown> | undefined;
-			featMemoryInference = (features?.memory_inference as boolean) ?? true;
-			featMemoryConsolidation = (features?.memory_consolidation as boolean) ?? true;
-			featFeedbackDistillation = (features?.feedback_distillation as boolean) ?? true;
-			featGraphExtraction = (features?.graph_extraction as boolean) ?? true;
-			featCurateRerank = (features?.curate_rerank as boolean) ?? false;
-			featLessonQualityGate = (features?.lesson_quality_gate as boolean) ?? false;
-			featProposalQualityGate = (features?.proposal_quality_gate as boolean) ?? false;
-			featMetadataEnhance = (features?.metadata_enhance as boolean) ?? false;
-			featMemoryContradiction = (features?.memory_contradiction_detection as boolean) ?? false;
 
 			// Embedding
 			const emb = config.embedding as Record<string, unknown> | undefined;
@@ -279,6 +229,25 @@
 			embContextLength = emb?.contextLength != null ? String(emb.contextLength) : '';
 			const ollamaOpts = emb?.ollamaOptions as Record<string, unknown> | undefined;
 			embOllamaNumCtx = ollamaOpts?.num_ctx != null ? String(ollamaOpts.num_ctx) : '';
+
+			// Features
+			const rawFeatures = config.features as Record<string, unknown> | undefined;
+			const rawFI = rawFeatures?.improve as Record<string, unknown> | undefined;
+			featImproveReflect = readFEntry(rawFI?.reflect, true);
+			featImproveDistill = readFEntry(rawFI?.distill, true);
+			featImproveMemConsolidation = readFEntry(rawFI?.memory_consolidation, false);
+			featImproveFeedbackDistillation = readFEntry(rawFI?.feedback_distillation, true);
+			featImproveValidation = readFEntry(rawFI?.validation, false);
+			featImprovePropose = readFEntry(rawFI?.propose, false);
+
+			const rawFIdx = rawFeatures?.index as Record<string, unknown> | undefined;
+			featIndexMemInference = readFEntry(rawFIdx?.memory_inference, true);
+			featIndexGraphExtraction = readFEntry(rawFIdx?.graph_extraction, true);
+			featIndexMetadataEnhance = readFEntry(rawFIdx?.metadata_enhance, false);
+			featIndexStalenessDetection = readFEntry(rawFIdx?.staleness_detection, false);
+
+			const rawFS = rawFeatures?.search as Record<string, unknown> | undefined;
+			featSearchCurateRerank = readFEntry(rawFS?.curate_rerank, false);
 
 			// Behavior
 			semanticSearchMode = (config.semanticSearchMode as 'auto' | 'off') ?? 'auto';
@@ -295,8 +264,10 @@
 			const decay = rawImproveTop?.utilityDecay as Record<string, unknown> | undefined;
 			improveHalfLifeDays = typeof decay?.halfLifeDays === 'number' ? decay.halfLifeDays : 30;
 			improveFeedbackBoost = typeof decay?.feedbackStabilityBoost === 'number' ? decay.feedbackStabilityBoost : 1.5;
-			const cooldown = rawImproveTop?.reflectCooldownByType;
-			improveReflectCooldown = cooldown ? JSON.stringify(cooldown, null, 2) : '';
+			const rawCooldown = rawImproveTop?.reflectCooldownByType as Record<string, number> | undefined;
+			for (const t of COOLDOWN_TYPES) {
+				reflectCooldowns[t] = rawCooldown?.[t] != null ? String(rawCooldown[t]) : '';
+			}
 
 			// Search
 			const search = config.search as Record<string, unknown> | undefined;
@@ -324,7 +295,7 @@
 		}
 	}
 
-	// ── Save ──────────────────────────────────────────────────────────────────────
+	// ── Save ─────────────────────────────────────────────────────────────────────
 	async function save(): Promise<void> {
 		saving = true;
 		error = '';
@@ -334,7 +305,6 @@
 			for (const p of llmProfiles) {
 				if (p.name.trim()) profilesLlm[p.name.trim()] = buildLlmProfilePayload(p);
 			}
-
 			const profilesAgent: Record<string, unknown> = {};
 			for (const p of agentProfiles) {
 				if (!p.name.trim()) continue;
@@ -346,31 +316,6 @@
 				profilesAgent[p.name.trim()] = entry;
 			}
 
-			const llmPayload: Record<string, unknown> = {
-				endpoint: llmEndpoint,
-				model: llmModel,
-				features: {
-					memory_inference: featMemoryInference,
-					memory_consolidation: featMemoryConsolidation,
-					feedback_distillation: featFeedbackDistillation,
-					graph_extraction: featGraphExtraction,
-					curate_rerank: featCurateRerank,
-					lesson_quality_gate: featLessonQualityGate,
-					proposal_quality_gate: featProposalQualityGate,
-					metadata_enhance: featMetadataEnhance,
-					memory_contradiction_detection: featMemoryContradiction,
-				},
-			};
-			if (llmProvider) llmPayload.provider = llmProvider;
-			if (llmApiKey) llmPayload.apiKey = llmApiKey;
-			const t = optNum(llmTemperature); if (t !== undefined) llmPayload.temperature = t;
-			const mt = optInt(llmMaxTokens); if (mt !== undefined) llmPayload.maxTokens = mt;
-			const to = optInt(llmTimeoutMs); if (to !== undefined) llmPayload.timeoutMs = to;
-			const co = optInt(llmConcurrency); if (co !== undefined) llmPayload.concurrency = co;
-			const cl = optInt(llmContextLength); if (cl !== undefined) llmPayload.contextLength = cl;
-			if (llmJudgeModel) llmPayload.judgeModel = llmJudgeModel;
-			if (llmSupportsJsonSchema) llmPayload.supportsJsonSchema = true;
-
 			const embPayload: Record<string, unknown> = { endpoint: embEndpoint, model: embModel, dimension: embDimension };
 			if (embProvider) embPayload.provider = embProvider;
 			if (embApiKey) embPayload.apiKey = embApiKey;
@@ -380,21 +325,39 @@
 			const ecl = optInt(embContextLength); if (ecl !== undefined) embPayload.contextLength = ecl;
 			const numCtx = optInt(embOllamaNumCtx); if (numCtx !== undefined) embPayload.ollamaOptions = { num_ctx: numCtx };
 
-			let reflectCooldown: Record<string, number> | undefined;
-			if (improveReflectCooldown.trim()) {
-				try { reflectCooldown = JSON.parse(improveReflectCooldown) as Record<string, number>; }
-				catch { throw new Error('Reflect cooldown must be valid JSON (e.g. {"memory":2,"lesson":7})'); }
-			}
-
 			const defaultsPayload: Record<string, unknown> = { improve: { limit: improveLimit, preset: improvePreset } };
 			if (defaultLlmProfile) defaultsPayload.llm = defaultLlmProfile;
 			if (defaultAgentProfile) defaultsPayload.agent = defaultAgentProfile;
 
+			const cooldownResult: Record<string, number> = {};
+			for (const t of COOLDOWN_TYPES) {
+				const v = optInt(reflectCooldowns[t]);
+				if (v !== undefined) cooldownResult[t] = v;
+			}
+
 			await saveAkmConfig({
 				profiles: { llm: profilesLlm, agent: profilesAgent },
 				defaults: defaultsPayload,
-				llm: llmPayload,
 				embedding: embPayload,
+				features: {
+					improve: {
+						reflect: buildFEntry(featImproveReflect),
+						distill: buildFEntry(featImproveDistill),
+						memory_consolidation: buildFEntry(featImproveMemConsolidation),
+						feedback_distillation: buildFEntry(featImproveFeedbackDistillation),
+						validation: buildFEntry(featImproveValidation),
+						propose: buildFEntry(featImprovePropose),
+					},
+					index: {
+						memory_inference: buildFEntry(featIndexMemInference),
+						graph_extraction: buildFEntry(featIndexGraphExtraction),
+						metadata_enhance: buildFEntry(featIndexMetadataEnhance),
+						staleness_detection: buildFEntry(featIndexStalenessDetection),
+					},
+					search: {
+						curate_rerank: buildFEntry(featSearchCurateRerank),
+					},
+				},
 				semanticSearchMode,
 				archiveRetentionDays,
 				stashInheritance,
@@ -402,7 +365,7 @@
 				defaultWriteTarget: defaultWriteTarget.trim(),
 				output: { format: outputFormat, detail: outputDetail },
 				improve: {
-					...(reflectCooldown !== undefined ? { reflectCooldownByType: reflectCooldown } : {}),
+					...(Object.keys(cooldownResult).length > 0 ? { reflectCooldownByType: cooldownResult } : {}),
 					utilityDecay: { halfLifeDays: improveHalfLifeDays, feedbackStabilityBoost: improveFeedbackBoost },
 				},
 				search: {
@@ -451,17 +414,30 @@
 
 	{#if error}<div class="error-banner"><span>{error}</span></div>{/if}
 
+	{#snippet featRow(feat: FEntry, name: string, hint: string)}
+		<div class="feature-row">
+			<input type="checkbox" bind:checked={feat.enabled} disabled={loading || saving} />
+			<div><span class="feat-name">{name}</span><span class="feat-hint">{hint}</span></div>
+			<select class="control-input" bind:value={feat.mode} disabled={loading || saving}>
+				<option value="">default</option>
+				<option value="llm">llm</option>
+				<option value="agent">agent</option>
+				<option value="sdk">sdk</option>
+			</select>
+			<input class="control-input" type="text" spellcheck="false" list="llm-profiles-list" placeholder="— default profile —" bind:value={feat.profile} disabled={loading || saving} />
+			<input class="control-input control-input--narrow" type="number" min="1" placeholder="unlimited" bind:value={feat.timeoutMs} disabled={loading || saving} />
+		</div>
+	{/snippet}
+
 	<div class="panel-body">
 
-		<!-- ── LLM Profiles ─────────────────────────────────────────────── -->
+		<!-- ── LLM Profiles ──────────────────────────────────────────────── -->
 		<section class="config-section">
 			<h3 class="section-title">LLM Profiles</h3>
-			<div class="section-note">
-				Named profiles for <code>profiles.llm</code>. Reference by name in features/agent configs.
-			</div>
+			<p class="section-note">Named profiles for <code>profiles.llm</code>. Each profile is a full LLM connection configuration referenceable by name in feature operations.</p>
 
 			{#if llmProfiles.length === 0}
-				<p class="empty-note">No profiles defined. Using the default LLM connection below.</p>
+				<p class="empty-note">No profiles defined.</p>
 			{/if}
 
 			{#each llmProfiles as p (p.id)}
@@ -525,17 +501,6 @@
 								<span class="toggle-label">Supports JSON schema</span>
 								<span class="toggle-hint">Use response_format: json_schema for structured output</span>
 							</label>
-							<div class="feature-grid">
-								<label class="toggle-row"><input type="checkbox" bind:checked={p.memory_inference} disabled={loading || saving} /><span class="toggle-label">memory_inference</span><span class="toggle-hint">Infer new memories from sessions</span></label>
-								<label class="toggle-row"><input type="checkbox" bind:checked={p.memory_consolidation} disabled={loading || saving} /><span class="toggle-label">memory_consolidation</span><span class="toggle-hint">Merge and deduplicate memories</span></label>
-								<label class="toggle-row"><input type="checkbox" bind:checked={p.feedback_distillation} disabled={loading || saving} /><span class="toggle-label">feedback_distillation</span><span class="toggle-hint">Distill lessons from feedback</span></label>
-								<label class="toggle-row"><input type="checkbox" bind:checked={p.graph_extraction} disabled={loading || saving} /><span class="toggle-label">graph_extraction</span><span class="toggle-hint">Extract knowledge graph from assets</span></label>
-								<label class="toggle-row"><input type="checkbox" bind:checked={p.curate_rerank} disabled={loading || saving} /><span class="toggle-label">curate_rerank</span><span class="toggle-hint">LLM rerank for akm curate</span></label>
-								<label class="toggle-row"><input type="checkbox" bind:checked={p.lesson_quality_gate} disabled={loading || saving} /><span class="toggle-label">lesson_quality_gate</span><span class="toggle-hint">Quality gate for lessons</span></label>
-								<label class="toggle-row"><input type="checkbox" bind:checked={p.proposal_quality_gate} disabled={loading || saving} /><span class="toggle-label">proposal_quality_gate</span><span class="toggle-hint">Quality gate for proposals</span></label>
-								<label class="toggle-row"><input type="checkbox" bind:checked={p.metadata_enhance} disabled={loading || saving} /><span class="toggle-label">metadata_enhance</span><span class="toggle-hint">Enhance asset metadata during indexing</span></label>
-								<label class="toggle-row"><input type="checkbox" bind:checked={p.memory_contradiction_detection} disabled={loading || saving} /><span class="toggle-label">memory_contradiction_detection</span><span class="toggle-hint">Detect contradictions between memories</span></label>
-							</div>
 						</div>
 					{/if}
 				</div>
@@ -549,7 +514,7 @@
 				<div class="control-group" style="margin-top: var(--space-3)">
 					<label class="control-label" for="defaultLlmProfile">Default LLM profile</label>
 					<select id="defaultLlmProfile" class="control-input" bind:value={defaultLlmProfile} disabled={loading || saving}>
-						<option value="">— none (use top-level llm connection) —</option>
+						<option value="">— none —</option>
 						{#each llmProfiles as p}
 							{#if p.name}<option value={p.name}>{p.name}</option>{/if}
 						{/each}
@@ -558,10 +523,10 @@
 			{/if}
 		</section>
 
-		<!-- ── Agent Profiles ───────────────────────────────────────────── -->
+		<!-- ── Agent Profiles ────────────────────────────────────────────── -->
 		<section class="config-section">
 			<h3 class="section-title">Agent Profiles</h3>
-			<div class="section-note">Named profiles for <code>profiles.agent</code>. Used by features that run via opencode or claude CLI.</div>
+			<p class="section-note">Named profiles for <code>profiles.agent</code>. Used by feature operations that run via opencode or claude CLI.</p>
 
 			{#if agentProfiles.length === 0}
 				<p class="empty-note">No agent profiles defined.</p>
@@ -633,112 +598,6 @@
 			{/if}
 		</section>
 
-		<!-- ── LLM Connection (v1 compat) ───────────────────────────────── -->
-		<section class="config-section">
-			<h3 class="section-title">LLM Connection</h3>
-			<div class="section-note">Top-level <code>llm</code> connection — v1 compat, used by the assistant container and as the default when no profile is set.</div>
-			<div class="controls controls--grid">
-				<div class="control-group control-group--wide">
-					<label class="control-label" for="llmEndpoint">Endpoint</label>
-					<input id="llmEndpoint" class="control-input" type="url" spellcheck="false" placeholder="https://api.openai.com/v1/chat/completions" bind:value={llmEndpoint} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="llmModel">Model</label>
-					<input id="llmModel" class="control-input" type="text" spellcheck="false" placeholder="gpt-4o" bind:value={llmModel} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="llmProvider">Provider (label)</label>
-					<input id="llmProvider" class="control-input" type="text" spellcheck="false" placeholder="openai" bind:value={llmProvider} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="llmApiKey">API Key</label>
-					<input id="llmApiKey" class="control-input" type="text" spellcheck="false" placeholder={'${AKM_LLM_API_KEY}'} bind:value={llmApiKey} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="llmTemperature">Temperature (0–2)</label>
-					<input id="llmTemperature" class="control-input control-input--narrow" type="number" min="0" max="2" step="0.1" bind:value={llmTemperature} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="llmMaxTokens">Max tokens</label>
-					<input id="llmMaxTokens" class="control-input control-input--narrow" type="number" min="1" bind:value={llmMaxTokens} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="llmTimeoutMs">Timeout (ms)</label>
-					<input id="llmTimeoutMs" class="control-input control-input--narrow" type="number" min="1" bind:value={llmTimeoutMs} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="llmConcurrency">Concurrency</label>
-					<input id="llmConcurrency" class="control-input control-input--narrow" type="number" min="1" bind:value={llmConcurrency} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="llmContextLength">Context length</label>
-					<input id="llmContextLength" class="control-input control-input--narrow" type="number" min="1" bind:value={llmContextLength} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="llmJudgeModel">Judge model</label>
-					<input id="llmJudgeModel" class="control-input" type="text" spellcheck="false" placeholder="gpt-4o" bind:value={llmJudgeModel} disabled={loading || saving} />
-				</div>
-			</div>
-			<label class="toggle-row">
-				<input type="checkbox" bind:checked={llmSupportsJsonSchema} disabled={loading || saving} />
-				<span class="toggle-label">Supports JSON schema</span>
-				<span class="toggle-hint">Use response_format: json_schema for structured output</span>
-			</label>
-		</section>
-
-		<!-- ── LLM Feature Flags ─────────────────────────────────────────── -->
-		<section class="config-section">
-			<h3 class="section-title">LLM Feature Flags</h3>
-			<div class="section-note">Controls which pipeline passes are active via the top-level LLM connection.</div>
-			<div class="feature-grid">
-				<label class="toggle-row">
-					<input type="checkbox" bind:checked={featMemoryInference} disabled={loading || saving} />
-					<span class="toggle-label">Memory inference</span>
-					<span class="toggle-hint">Infer new memories from assistant sessions</span>
-				</label>
-				<label class="toggle-row">
-					<input type="checkbox" bind:checked={featMemoryConsolidation} disabled={loading || saving} />
-					<span class="toggle-label">Memory consolidation</span>
-					<span class="toggle-hint">Merge and deduplicate overlapping memories</span>
-				</label>
-				<label class="toggle-row">
-					<input type="checkbox" bind:checked={featFeedbackDistillation} disabled={loading || saving} />
-					<span class="toggle-label">Feedback distillation</span>
-					<span class="toggle-hint">Distill durable lessons from feedback during improve runs</span>
-				</label>
-				<label class="toggle-row">
-					<input type="checkbox" bind:checked={featGraphExtraction} disabled={loading || saving} />
-					<span class="toggle-label">Graph extraction</span>
-					<span class="toggle-hint">Extract knowledge graph from assets during indexing</span>
-				</label>
-				<label class="toggle-row">
-					<input type="checkbox" bind:checked={featCurateRerank} disabled={loading || saving} />
-					<span class="toggle-label">Curate rerank</span>
-					<span class="toggle-hint">LLM-rerank results during akm curate</span>
-				</label>
-				<label class="toggle-row">
-					<input type="checkbox" bind:checked={featLessonQualityGate} disabled={loading || saving} />
-					<span class="toggle-label">Lesson quality gate</span>
-					<span class="toggle-hint">Quality gate for proposed lessons before they go live</span>
-				</label>
-				<label class="toggle-row">
-					<input type="checkbox" bind:checked={featProposalQualityGate} disabled={loading || saving} />
-					<span class="toggle-label">Proposal quality gate</span>
-					<span class="toggle-hint">Quality gate for stash improvement proposals</span>
-				</label>
-				<label class="toggle-row">
-					<input type="checkbox" bind:checked={featMetadataEnhance} disabled={loading || saving} />
-					<span class="toggle-label">Metadata enhance</span>
-					<span class="toggle-hint">Enhance asset metadata during indexing</span>
-				</label>
-				<label class="toggle-row">
-					<input type="checkbox" bind:checked={featMemoryContradiction} disabled={loading || saving} />
-					<span class="toggle-label">Memory contradiction detection</span>
-					<span class="toggle-hint">Detect contradictions between memories</span>
-				</label>
-			</div>
-		</section>
-
 		<!-- ── Embedding Connection ──────────────────────────────────────── -->
 		<section class="config-section">
 			<h3 class="section-title">Embedding Connection</h3>
@@ -785,6 +644,70 @@
 				</div>
 			</div>
 		</section>
+
+		<!-- ── Features ─────────────────────────────────────────────────── -->
+		<section class="config-section">
+			<h3 class="section-title">Features — Improve</h3>
+			<p class="section-note">Controls which operations run during <code>akm improve</code>. Profile references the LLM or agent profile to use; leave blank to inherit the default.</p>
+			<div class="feature-table">
+				<div class="feature-table-head">
+					<span></span><span>Operation</span><span>Mode</span><span>Profile</span><span>Timeout (ms)</span>
+				</div>
+				{@render featRow(featImproveReflect, 'reflect', 'Propose stash updates via self-reflection')}
+				{@render featRow(featImproveDistill, 'distill', 'Quality-judge and distill feedback into reusable knowledge')}
+				{@render featRow(featImproveMemConsolidation, 'memory_consolidation', 'Deduplicate and merge overlapping memories')}
+				{@render featRow(featImproveFeedbackDistillation, 'feedback_distillation', 'Extract durable lessons from collected feedback')}
+				{@render featRow(featImproveValidation, 'validation', 'Third-model confidence and staleness scoring')}
+				{@render featRow(featImprovePropose, 'propose', 'Author new stash assets (requires tool-capable agent mode)')}
+			</div>
+		</section>
+
+		<section class="config-section">
+			<h3 class="section-title">Features — Index</h3>
+			<p class="section-note">Controls which operations run during <code>akm index</code>.</p>
+			<div class="feature-table">
+				<div class="feature-table-head">
+					<span></span><span>Operation</span><span>Mode</span><span>Profile</span><span>Timeout (ms)</span>
+				</div>
+				{@render featRow(featIndexMemInference, 'memory_inference', 'Derive structured memories from pending memory files')}
+				{@render featRow(featIndexGraphExtraction, 'graph_extraction', 'Extract entities and relations for graph-boosted search')}
+				{@render featRow(featIndexMetadataEnhance, 'metadata_enhance', 'LLM-driven description and tag enrichment')}
+				{@render featRow(featIndexStalenessDetection, 'staleness_detection', 'Detect and mark deprecated or superseded memories')}
+			</div>
+		</section>
+
+		<section class="config-section">
+			<h3 class="section-title">Features — Search</h3>
+			<p class="section-note">Controls which operations run during <code>akm search</code> / <code>akm curate</code>.</p>
+			<div class="feature-table">
+				<div class="feature-table-head">
+					<span></span><span>Operation</span><span>Mode</span><span>Profile</span><span>Timeout (ms)</span>
+				</div>
+				<div class="feature-row">
+					<input type="checkbox" bind:checked={featSearchCurateRerank.enabled} disabled={loading || saving} />
+					<div>
+						<span class="feat-name">curate_rerank</span>
+						<span class="feat-hint">LLM reranking during akm curate to improve result relevance</span>
+					</div>
+					<select class="control-input" bind:value={featSearchCurateRerank.mode} disabled={loading || saving}>
+						<option value="">default</option>
+						<option value="llm">llm</option>
+						<option value="agent">agent</option>
+						<option value="sdk">sdk</option>
+					</select>
+					<input class="control-input" type="text" spellcheck="false" list="llm-profiles-list" placeholder="— default profile —" bind:value={featSearchCurateRerank.profile} disabled={loading || saving} />
+					<input class="control-input control-input--narrow" type="number" min="1" placeholder="unlimited" bind:value={featSearchCurateRerank.timeoutMs} disabled={loading || saving} />
+				</div>
+			</div>
+		</section>
+
+		<!-- Profile name datalist for feature profile inputs -->
+		<datalist id="llm-profiles-list">
+			{#each llmProfileNames as name}<option value={name}></option>{/each}
+		</datalist>
+		<datalist id="agent-profiles-list">
+			{#each agentProfileNames as name}<option value={name}></option>{/each}
+		</datalist>
 
 		<!-- ── Behavior ──────────────────────────────────────────────────── -->
 		<section class="config-section">
@@ -835,7 +758,7 @@
 			</div>
 		</section>
 
-		<!-- ── Improve Defaults ──────────────────────────────────────────── -->
+		<!-- ── Improve ───────────────────────────────────────────────────── -->
 		<section class="config-section">
 			<h3 class="section-title">Improve</h3>
 			<div class="controls controls--grid">
@@ -860,14 +783,19 @@
 					<label class="control-label" for="improveFeedbackBoost">Feedback stability boost</label>
 					<input id="improveFeedbackBoost" class="control-input control-input--narrow" type="number" min="1" step="0.1" bind:value={improveFeedbackBoost} disabled={loading || saving} />
 				</div>
-				<div class="control-group control-group--wide">
-					<label class="control-label" for="reflectCooldown">Reflect cooldown by type (JSON)</label>
-					<textarea id="reflectCooldown" class="control-input control-textarea" spellcheck="false" placeholder={'{"memory": 2, "lesson": 7, "knowledge": 30}'} bind:value={improveReflectCooldown} disabled={loading || saving}></textarea>
-				</div>
+			</div>
+			<h4 class="subsection-title">Reflect cooldown by asset type (days; blank = use akm default)</h4>
+			<div class="cooldown-grid">
+				{#each COOLDOWN_TYPES as type}
+					<div class="control-group">
+						<label class="control-label" for="cd-{type}">{type} <span class="default-hint">(default: {COOLDOWN_DEFAULTS[type]})</span></label>
+						<input id="cd-{type}" class="control-input control-input--narrow" type="number" min="0" placeholder={String(COOLDOWN_DEFAULTS[type])} bind:value={reflectCooldowns[type]} disabled={loading || saving} />
+					</div>
+				{/each}
 			</div>
 		</section>
 
-		<!-- ── Search Tuning ────────────────────────────────────────────── -->
+		<!-- ── Search Tuning ─────────────────────────────────────────────── -->
 		<section class="config-section">
 			<h3 class="section-title">Search Tuning</h3>
 			<div class="controls controls--grid">
@@ -930,12 +858,7 @@
 </div>
 
 <style>
-	.panel-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: var(--space-6);
-	}
+	.panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-6); }
 	.panel-header h2 { font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text); margin: 0; }
 	.panel-header-actions { display: flex; gap: var(--space-2); }
 
@@ -944,98 +867,89 @@
 	.config-section { display: flex; flex-direction: column; gap: var(--space-4); }
 
 	.section-title {
-		font-size: var(--text-sm);
-		font-weight: var(--font-semibold);
-		color: var(--color-text);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0;
-		padding-bottom: var(--space-2);
-		border-bottom: 1px solid var(--color-border);
+		font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text);
+		text-transform: uppercase; letter-spacing: 0.05em; margin: 0;
+		padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-border);
+	}
+	.subsection-title {
+		font-size: var(--text-xs); font-weight: var(--font-semibold); color: var(--color-text-secondary);
+		text-transform: uppercase; letter-spacing: 0.05em; margin: var(--space-2) 0 0;
 	}
 
 	.section-note { font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0; }
 	.empty-note { font-size: var(--text-sm); color: var(--color-text-secondary); font-style: italic; margin: 0; }
 
 	.controls { display: flex; flex-direction: column; gap: var(--space-4); }
-	.controls--grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-		gap: var(--space-4);
-	}
+	.controls--grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: var(--space-4); }
+
 	.control-group { display: flex; flex-direction: column; gap: var(--space-1); }
 	.control-group--wide { grid-column: 1 / -1; }
-	.control-label {
-		font-size: var(--text-xs);
-		font-weight: var(--font-medium);
-		color: var(--color-text-secondary);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
+	.control-label { font-size: var(--text-xs); font-weight: var(--font-medium); color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+
 	.control-input {
-		font-size: var(--text-sm);
-		color: var(--color-text);
-		background: var(--color-input-bg, var(--color-bg));
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
-		padding: var(--space-2) var(--space-3);
-		width: 100%;
+		font-size: var(--text-sm); color: var(--color-text);
+		background: var(--color-input-bg, var(--color-bg)); border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); width: 100%;
 	}
 	.control-input--narrow { max-width: 8rem; }
-	.control-textarea { min-height: 5rem; font-family: var(--font-mono); resize: vertical; }
 	.control-input:focus { outline: 2px solid var(--color-primary); outline-offset: 1px; }
 	.control-input:disabled { opacity: 0.5; cursor: not-allowed; }
 
-	.feature-grid { display: flex; flex-direction: column; gap: var(--space-2); }
+	/* Feature table */
+	.feature-table { display: flex; flex-direction: column; gap: var(--space-1); }
+	.feature-table-head {
+		display: grid;
+		grid-template-columns: 1.5rem 1fr 7rem 12rem 8rem;
+		gap: var(--space-2);
+		padding: 0 var(--space-2) var(--space-1);
+		font-size: var(--text-xs); font-weight: var(--font-semibold);
+		color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.05em;
+	}
+	.feature-row {
+		display: grid;
+		grid-template-columns: 1.5rem 1fr 7rem 12rem 8rem;
+		align-items: center;
+		gap: var(--space-2);
+		padding: var(--space-2);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: var(--color-bg-secondary);
+	}
+	.feature-row input[type="checkbox"] { width: 1rem; height: 1rem; }
+	.feat-name { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); font-family: var(--font-mono); display: block; }
+	.feat-hint { font-size: var(--text-xs); color: var(--color-text-secondary); }
+
+	/* Cooldown grid */
+	.cooldown-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+		gap: var(--space-3);
+	}
+	.default-hint { font-weight: var(--font-normal); color: var(--color-text-secondary); text-transform: none; letter-spacing: 0; }
+
+	/* Profile cards */
+	.profile-card { border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; }
+	.profile-card-header { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); background: var(--color-bg-secondary); }
+	.profile-name-input { flex: 1; min-width: 8rem; }
+	.profile-card-body { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); border-top: 1px solid var(--color-border); }
+
+	.badge { font-size: var(--text-xs); padding: 2px var(--space-2); border-radius: var(--radius-sm); background: var(--color-bg-tertiary, var(--color-bg-secondary)); color: var(--color-text-secondary); border: 1px solid var(--color-border); white-space: nowrap; }
+	.btn-danger { color: var(--color-error, #dc2626); }
+	.btn-danger:hover { background: var(--color-error-bg, rgba(220, 38, 38, 0.08)); }
 
 	.toggle-row { display: flex; align-items: center; gap: var(--space-3); cursor: pointer; font-size: var(--text-sm); }
 	.toggle-row input[type="checkbox"] { width: 1rem; height: 1rem; flex-shrink: 0; }
 	.toggle-label { font-weight: var(--font-medium); color: var(--color-text); }
 	.toggle-hint { color: var(--color-text-secondary); font-size: var(--text-xs); }
 
-	.profile-card {
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		overflow: hidden;
-	}
-	.profile-card-header {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		padding: var(--space-2) var(--space-3);
-		background: var(--color-bg-secondary);
-	}
-	.profile-name-input { flex: 1; min-width: 8rem; }
-	.profile-card-body { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); border-top: 1px solid var(--color-border); }
-
-	.badge {
-		font-size: var(--text-xs);
-		padding: 2px var(--space-2);
-		border-radius: var(--radius-sm);
-		background: var(--color-bg-tertiary, var(--color-bg-secondary));
-		color: var(--color-text-secondary);
-		border: 1px solid var(--color-border);
-		white-space: nowrap;
-	}
-
-	.btn-danger { color: var(--color-error, #dc2626); }
-	.btn-danger:hover { background: var(--color-error-bg, rgba(220, 38, 38, 0.08)); }
-
 	.error-banner {
 		display: flex; align-items: center; gap: var(--space-2);
 		padding: var(--space-3) var(--space-4);
 		background: var(--color-error-bg, rgba(220, 38, 38, 0.08));
 		border: 1px solid var(--color-error-border, rgba(220, 38, 38, 0.25));
-		border-radius: var(--radius-md);
-		font-size: var(--text-sm);
-		color: var(--color-error, #dc2626);
-		margin-bottom: var(--space-4);
+		border-radius: var(--radius-md); font-size: var(--text-sm);
+		color: var(--color-error, #dc2626); margin-bottom: var(--space-4);
 	}
-
-	.spinner {
-		display: inline-block; width: 0.75rem; height: 0.75rem;
-		border: 2px solid transparent; border-top-color: currentColor;
-		border-radius: 50%; animation: spin 0.6s linear infinite;
-	}
+	.spinner { display: inline-block; width: 0.75rem; height: 0.75rem; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin 0.6s linear infinite; }
 	@keyframes spin { to { transform: rotate(360deg); } }
 </style>

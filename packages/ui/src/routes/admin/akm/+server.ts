@@ -164,12 +164,25 @@ export const PATCH: RequestHandler = async (event) => {
       return errorResponse(400, 'bad_request', 'defaults.improve.preset must be fast, thorough, mixed, or custom', {}, requestId);
   }
 
-  // ── llm (v1 compat) ───────────────────────────────────────────────────────
-  const llmBody = body.llm as Rec | undefined;
-  if (llmBody !== undefined) {
-    if (!isRec(llmBody)) return errorResponse(400, 'bad_request', 'llm must be an object', {}, requestId);
-    const err = validateLlmProfile(llmBody, 'llm');
-    if (err) return errorResponse(400, 'bad_request', err.message, {}, requestId);
+  // ── features ──────────────────────────────────────────────────────────────
+  const featuresBody = body.features as Rec | undefined;
+  if (featuresBody !== undefined) {
+    if (!isRec(featuresBody)) return errorResponse(400, 'bad_request', 'features must be an object', {}, requestId);
+    const FEAT_MODES = new Set(['llm','agent','sdk']);
+    for (const section of ['improve','index','search']) {
+      const sec = featuresBody[section] as Rec | undefined;
+      if (sec === undefined) continue;
+      if (!isRec(sec)) return errorResponse(400, 'bad_request', `features.${section} must be an object`, {}, requestId);
+      for (const [op, entry] of Object.entries(sec)) {
+        if (typeof entry === 'boolean') continue;
+        if (!isRec(entry)) return errorResponse(400, 'bad_request', `features.${section}.${op} must be boolean or a config object`, {}, requestId);
+        if ('enabled' in entry) { const r = expectBool(entry.enabled, `features.${section}.${op}.enabled`); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+        if ('mode' in entry && (typeof entry.mode !== 'string' || !FEAT_MODES.has(entry.mode as string)))
+          return errorResponse(400, 'bad_request', `features.${section}.${op}.mode must be llm, agent, or sdk`, {}, requestId);
+        if ('profile' in entry) { const r = expectStr(entry.profile, `features.${section}.${op}.profile`); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+        if ('timeoutMs' in entry && entry.timeoutMs !== null) { const r = expectPosInt(entry.timeoutMs, `features.${section}.${op}.timeoutMs`); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+      }
+    }
   }
 
   // ── embedding ─────────────────────────────────────────────────────────────
@@ -312,10 +325,29 @@ export const PATCH: RequestHandler = async (event) => {
       };
     }
 
-    // llm v1 compat
-    if (llmBody !== undefined) {
-      const existingLlm = (existing.llm as Rec) ?? {};
-      updated.llm = { ...existingLlm, ...pickLlmProfile(llmBody) };
+    // features (v2 — merge per-section per-operation)
+    if (featuresBody !== undefined) {
+      const existingFeatures = (existing.features as Rec) ?? {};
+      const newFeatures: Rec = { ...existingFeatures };
+      for (const section of ['improve','index','search']) {
+        const secBody = featuresBody[section] as Rec | undefined;
+        if (!secBody || !isRec(secBody)) continue;
+        const existingSec = (existingFeatures[section] as Rec) ?? {};
+        const newSec: Rec = { ...existingSec };
+        for (const [op, entry] of Object.entries(secBody)) {
+          if (typeof entry === 'boolean') { newSec[op] = entry; continue; }
+          if (!isRec(entry)) continue;
+          const existingOp = (existingSec[op] as Rec) ?? {};
+          const mergedOp: Rec = { ...existingOp };
+          if ('enabled' in entry) mergedOp.enabled = entry.enabled;
+          if ('mode' in entry) { if (entry.mode) mergedOp.mode = entry.mode; else delete mergedOp.mode; }
+          if ('profile' in entry) { if (entry.profile) mergedOp.profile = entry.profile; else delete mergedOp.profile; }
+          if ('timeoutMs' in entry) { if (entry.timeoutMs !== null && entry.timeoutMs !== undefined) mergedOp.timeoutMs = entry.timeoutMs; else mergedOp.timeoutMs = null; }
+          newSec[op] = mergedOp;
+        }
+        newFeatures[section] = newSec;
+      }
+      updated.features = newFeatures;
     }
 
     // embedding
