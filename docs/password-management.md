@@ -68,11 +68,8 @@ Important keys include:
 | `GROQ_API_KEY` | Groq key |
 | `MISTRAL_API_KEY` | Mistral key |
 | `GOOGLE_API_KEY` | Google AI key |
-| `OP_CAP_LLM_*` | Resolved LLM capability (provider, model, base URL, API key) |
-| `OP_CAP_SLM_*` | Resolved small/fast LLM capability |
-| `OP_CAP_EMBEDDINGS_*` | Resolved embedding capability (provider, model, base URL, API key, dims) |
-| `OP_CAP_TTS_*` | Resolved text-to-speech capability |
-| `OP_CAP_STT_*` | Resolved speech-to-text capability |
+
+> **Note:** LLM and embedding configuration lives in `config/akm/config.json`, not in `stack.env`. The `OP_CAP_*` capability variables were removed in v0.11.0.
 
 Behavior:
 

@@ -48,7 +48,7 @@ The running deployment is always the exact compose file list you pass to Docker 
 - Base services come from `~/.openpalm/config/stack/core.compose.yml`.
 - Addons come from enabled overlays in `~/.openpalm/config/stack/addons/<name>/compose.yml`.
 - Available addons live in `~/.openpalm/state/registry/addons/<name>/` until you enable them.
-- `~/.openpalm/config/stack.yml` stores capabilities only. It is not deployment truth.
+- `~/.openpalm/config/stack/stack.yml` is a version marker only. It is not deployment truth.
 
 This keeps the live system understandable: if a compose file is not in the command, it is not part of the stack.
 

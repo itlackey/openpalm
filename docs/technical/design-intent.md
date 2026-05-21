@@ -16,20 +16,21 @@ It captures why the system is shaped the way it is and what must remain true as 
 
 - OpenPalm is a file-assembly control plane over Docker Compose, not a template-rendering engine.
 - Runtime behavior is composed from:
-  - compose files (`stack/` core + addon overlays),
-  - environment files (`vault/`),
-  - service configuration files (`config/`).
-- `stack.yml` is a metadata and coordination artifact for tooling, not a replacement for Compose or env files.
+  - compose files (`config/stack/` core + addon overlays),
+  - environment files (`config/stack/stack.env`, `config/stack/guardian.env`, `stash/vaults/user.env`),
+  - service configuration files (`config/assistant/`, `config/akm/`).
+- `stack.yml` is a version marker only (`{ version: 2 }`), not a replacement for Compose or env files.
 - All control-plane logic is implemented once in `@openpalm/lib`; CLI, admin, and the scheduler co-process are thin consumers.
 
 ## Filesystem and ownership model
 
-- `config/` is user-owned, non-secret configuration and remains manually editable.
-- `stack/` is the system-assembled live Compose runtime definition.
-- `vault/` is the secrets boundary with strict mount and writer constraints.
-- `data/` is durable service-managed state.
-- `logs/` is consolidated audit and operational logging.
-- Lifecycle operations must be non-destructive for user-owned config and user-managed vault content unless the user explicitly requests mutation.
+- `config/` is user-owned, non-secret configuration and remains manually editable. `config/stack/` is the system-assembled live Compose runtime definition.
+- `stash/vaults/` is the user-managed secrets boundary (`user.env`). System secrets live in `config/stack/stack.env` and `config/stack/guardian.env`.
+- `state/` is durable service-managed data (assistant, guardian, registry, logs, backups).
+- `stash/` is the AKM knowledge base (skills, commands, memories, agents).
+- `cache/` is regenerable data (akm cache, rollback snapshots).
+- `workspace/` is the shared assistant work area.
+- Lifecycle operations must be non-destructive for user-owned config and user-managed stash content unless the user explicitly requests mutation.
 
 ## Security and boundary intent
 
@@ -52,7 +53,7 @@ Channels are a specialized addon class that use the channel image and SDK patter
 ## Assistant intent
 
 - The assistant is an OpenCode runtime for user-facing interaction and workflows.
-- It can read and write only within its defined mounted boundaries (assistant data, stash, workspace, and allowed config/vault paths).
+- It can read and write only within its defined mounted boundaries (state/assistant, stash/, workspace/, config/, and config/akm/).
 - User extensions are mounted from `config/assistant/`.
 - Core OpenCode assets are baked into the image under `/etc/opencode` and provide the default baseline behavior.
 

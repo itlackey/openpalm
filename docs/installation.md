@@ -40,15 +40,15 @@ OpenPalm uses one home directory: `~/.openpalm/` by default.
 
 | Path | Purpose |
 |---|---|
-| `~/.openpalm/config/stack/` | Live compose files and helper scripts |
-| `~/.openpalm/registry/` | Available addon and automation catalog |
+| `~/.openpalm/config/stack/` | Live compose files and system-managed env |
+| `~/.openpalm/state/registry/` | Available addon and automation catalog |
 | `~/.openpalm/config/stack/stack.env` | System-managed stack values and tokens |
 | `~/.openpalm/stash/vaults/user.env` | Optional user-managed extension settings |
 | `~/.openpalm/config/` | User-editable config and assistant extensions |
 | `~/.openpalm/state/` | Durable service data |
 | `~/.openpalm/state/logs/` | Logs and audit output |
 
-`~/.openpalm/config/stack.yml` stores capabilities only. It is not the
+`~/.openpalm/config/stack/stack.yml` is a version marker only. It is not the
 deployment truth.
 
 ---
@@ -57,15 +57,16 @@ deployment truth.
 
 ### `~/.openpalm/config/stack/stack.env`
 
-This file holds system-managed values, provider API keys, capability variables, and owner identity:
+This file holds system-managed values, provider API keys, and owner identity:
 
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`
 - `ANTHROPIC_API_KEY`
 - `OWNER_NAME`
 - `OWNER_EMAIL`
-- `OP_CAP_LLM_*` (resolved LLM capability — provider, model, base URL, API key)
-- `OP_CAP_EMBEDDINGS_*` (resolved embedding capability)
+
+LLM and embedding configuration lives in `config/akm/config.json` and is managed
+via the AKM tab in the admin UI — not in `stack.env`.
 
 It also includes system-managed values such as:
 
@@ -86,7 +87,7 @@ preferences. Owner name and email live in `stack.env`.
 
 ## Addons
 
-Addons are available in `~/.openpalm/registry/addons/` and become active when
+Addons are available in `~/.openpalm/state/registry/addons/` and become active when
 copied into `~/.openpalm/config/stack/addons/`.
 
 | Addon | Compose file |

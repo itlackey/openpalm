@@ -43,7 +43,7 @@ OpenPalm is compose-first: add the Slack overlay to your compose file set, put S
 
 ## 2. Add Slack tokens to `user.env`
 
-Edit `~/.openpalm/vault/user/user.env`:
+Edit `~/.openpalm/stash/vaults/user.env`:
 
 ```dotenv
 SLACK_BOT_TOKEN=xoxb-your-bot-token
@@ -70,7 +70,7 @@ docker compose \
   --project-name openpalm \
   --env-file ../config/stack/stack.env \
   --env-file ../config/stack/guardian.env \
-  --env-file ../vault/user/user.env \
+  --env-file ../stash/vaults/user.env \
   -f core.compose.yml \
   -f addons/slack/compose.yml \
   up -d
@@ -108,7 +108,7 @@ Conversation notes:
 
 ## Troubleshooting
 
-- No replies: verify `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` in `~/.openpalm/vault/user/user.env`, Socket Mode, and subscribed events
+- No replies: verify `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` in `~/.openpalm/stash/vaults/user.env`, Socket Mode, and subscribed events
 - DMs fail: verify `im:history` and `message.im`
 - Channel thread follow-ups fail: verify `channels:history` + `message.channels` (public) and `groups:history` + `message.groups` (private)
 - Slash commands missing: add `commands`, create the commands in Slack, then reinstall the app

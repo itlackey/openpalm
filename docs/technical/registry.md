@@ -168,7 +168,7 @@ Enable or disable an addon by copying or removing its directory under `~/.openpa
 
 ### `GET /admin/addons/:name` / `POST /admin/addons/:name`
 
-Get or update a specific addon. Detail responses include the raw `.env.schema` and point operators at `vault/user/user.env` for values.
+Get or update a specific addon. Detail responses include the raw `.env.schema` and point operators at `stash/vaults/user.env` for values.
 
 ## Name validation
 

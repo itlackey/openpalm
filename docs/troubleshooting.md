@@ -114,7 +114,7 @@ reading it.
 Useful checks:
 
 ```bash
-grep -E 'API_KEY|BASE_URL|OP_CAP_LLM_' ~/.openpalm/config/stack/stack.env
+grep -E 'API_KEY|BASE_URL' ~/.openpalm/config/stack/stack.env
 ```
 
 ```bash

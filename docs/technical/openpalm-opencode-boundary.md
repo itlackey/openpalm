@@ -6,22 +6,21 @@ relevant tabs **must not bleed into each other**:
 
 | Tab | Owns | Files written | Endpoints |
 |---|---|---|---|
-| **Capabilities** | OpenPalm-internal capability assignment | `OP_HOME/config/stack/stack.yml` (`.capabilities`), `OP_HOME/config/stack/stack.env` (`OP_CAP_*` vars), `OP_HOME/config/akm/config.json` | `POST /admin/capabilities/assignments` |
+| **AKM** | AKM's internal LLM/embedding config | `OP_HOME/config/akm/config.json` (`llm`, `embedding` top-level fields) | `PATCH /admin/akm` |
 | **Connections** | OpenCode's provider config + credentials | `OP_HOME/config/assistant/opencode.json` (`.provider`, `.model`, `.small_model`, `.disabled_providers`), `OP_HOME/config/auth.json` | `PATCH /admin/providers/[id]`, `POST /admin/opencode/model`, `POST/DELETE /admin/opencode/providers/[id]/auth`, `POST /admin/providers/import-host` |
+| **Voice** | TTS/STT channel configuration | `OP_HOME/config/stack/stack.env` (`TTS_*`, `STT_*` vars) | `PUT /admin/voice` |
 
-## What Capabilities is for
+## What the AKM tab is for
 
-`stack.yml.capabilities.{llm, slm, embeddings, tts, stt, reranking, akm}` is
-OpenPalm's view of what models/engines the assistant should use for
-internal pipelines:
+`config/akm/config.json` is AKM's native configuration file, read directly by the
+`akm` CLI inside the assistant container at `AKM_CONFIG_DIR`. It controls:
 
-- `OP_CAP_LLM_*` env vars surface to the assistant container's entrypoint and
-  to akm's internal LLM client.
-- `embeddings` drives the akm memory pipeline.
-- `tts` / `stt` engine selection is read by the voice channel addon.
+- `llm` — the endpoint, model, and provider AKM uses for internal LLM operations
+  (memory inference, feedback distillation, index operations)
+- `embedding` — the endpoint, model, provider, and dimension for AKM's vector search
 
-It is **not** OpenCode's chat model. The chat tab sends `{ parts: [...] }`
-with no `providerID`/`modelID` and lets OpenCode resolve its own default.
+This is **not** OpenCode's chat model. AKM reads `config.json` directly; the assistant
+entrypoint does not call `akm setup --config` at startup (removed in v0.11.0).
 
 ## What Connections is for
 
@@ -41,14 +40,13 @@ UI. It writes the files OpenCode itself reads:
 
 ## What the boundary forbids
 
-- The Capabilities save handler **must not** call `setMainModel`,
-  `patchConfig`, or any function from `$lib/server/opencode/config.ts`.
-  Writing the LLM capability does not change OpenCode's chat model.
-- The Connections endpoints **must not** call `writeStackSpec`,
-  `writeCapabilityVars`, or `buildAkmSetupJson`. Changing OpenCode's
-  default model does not change OpenPalm's capability assignment.
-- If a user wants OpenPalm's capability LLM and OpenCode's chat model to be
-  the same value, they set both — once in each tab. They are deliberately
+- The AKM save handler **must not** call `setMainModel`, `patchConfig`, or any
+  function from `$lib/server/opencode/config.ts`. Writing AKM's LLM config
+  does not change OpenCode's chat model.
+- The Connections endpoints **must not** write `config/akm/config.json`.
+  Changing OpenCode's default model does not change AKM's LLM config.
+- If a user wants AKM's internal LLM and OpenCode's chat model to be the same
+  provider/model, they configure both — once in each tab. They are deliberately
   separate concerns.
 
 ## Operational gotchas
@@ -86,16 +84,13 @@ UI. It writes the files OpenCode itself reads:
 
 ## Why the separation matters
 
-OpenCode is a separate runtime with its own settings model. If the
-Capabilities save handler also wrote OpenCode's model, then:
+OpenCode is a separate runtime with its own settings model. If the AKM save
+handler also wrote OpenCode's model, then:
 
-- Changing the LLM capability would silently overwrite the user's chat
-  model preference.
-- Disconnecting a provider in Connections would clobber a capability
-  assignment.
-- The "Import from host" feature would inappropriately overwrite
-  OpenPalm's stack.yml just because the host's OpenCode had a different
-  default.
+- Changing the AKM LLM would silently overwrite the user's chat model preference.
+- Disconnecting a provider in Connections would clobber AKM's config.
+- The "Import from host" feature would inappropriately overwrite AKM's config
+  just because the host's OpenCode had a different default.
 
 Keeping the writes scoped lets each tab be reasoned about independently
 and prevents one user action from triggering surprising changes in the

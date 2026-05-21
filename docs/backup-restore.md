@@ -18,8 +18,10 @@ material it depends on, typically `${GNUPGHOME:-~/.gnupg}`.
 | `~/.openpalm/config/stack/` | `stack.env`, `guardian.env`, live compose files and helper scripts | Yes |
 | `~/.openpalm/stash/vaults/` | `user.env` (optional user-managed secrets) | Yes |
 | `~/.openpalm/config/` | assistant config, enabled automations, `stack.yml` capabilities | Yes |
-| `~/.openpalm/registry/` | available addon and automation catalog | Yes |
-| `~/.openpalm/data/` | durable service data, workspace, stash | Yes |
+| `~/.openpalm/state/registry/` | available addon and automation catalog | Yes |
+| `~/.openpalm/state/` | durable service data | Yes |
+| `~/.openpalm/stash/` | AKM stash (memory, skills, vaults) | Yes |
+| `~/.openpalm/workspace/` | shared workspace | Yes |
 | `~/.openpalm/logs/` | logs and audit files | Optional |
 
 ---
@@ -114,13 +116,13 @@ the current model.
 | `~/.openpalm/stash/vaults/user.env` | Optional user extension env |
 | `~/.openpalm/config/stack/stack.env` | Stack tokens, ports, paths, image tags |
 | `~/.openpalm/config/stack/guardian.env` | Channel HMAC secrets for guardian/channel verification |
-| `~/.openpalm/registry/addons/<name>/` | Available addon catalog entries |
-| `~/.openpalm/registry/automations/` | Available automation catalog entries |
+| `~/.openpalm/state/registry/addons/<name>/` | Available addon catalog entries |
+| `~/.openpalm/state/registry/automations/` | Available automation catalog entries |
 | `~/.openpalm/config/stack/core.compose.yml` | Base stack definition |
 | `~/.openpalm/config/stack/addons/<name>/compose.yml` | Addon overlays |
 | `~/.openpalm/config/assistant/` | User OpenCode config |
 | `~/.openpalm/stash/tasks/` | Active AKM automation task files (markdown) |
 | `~/.openpalm/config/stack.yml` | Capabilities only |
-| `~/.openpalm/data/stash/` | Shared akm stash (assistant + admin memory and knowledge) |
-| `~/.openpalm/data/workspace/` | Shared workspace |
+| `~/.openpalm/stash/` | Shared akm stash (assistant + admin memory and knowledge) |
+| `~/.openpalm/workspace/` | Shared workspace |
 | `~/.openpalm/logs/` | Logs and audit files |

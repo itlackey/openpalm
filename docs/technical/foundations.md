@@ -38,15 +38,15 @@ Ephemeral backups live under `~/.openpalm/state/backups/`.
 
 The standard startup path uses:
 
-- `config/stack/stack.env` — primary: all config, secrets, and resolved capabilities (OP_CAP_*)
-- `vault/user/user.env` — extension: optional user additions, loaded alongside stack.env
+- `config/stack/stack.env` — primary: all config, secrets, and infrastructure env vars
+- `stash/vaults/user.env` — extension: optional user additions, loaded alongside stack.env
 - `config/stack/guardian.env` — guardian-specific: channel HMAC secrets. Not shipped in the bundle; created by the CLI installer when the first channel is installed. Compose marks it `required: false`.
 
 ### Security boundaries
 
 - The host CLI and host admin process access the Docker socket directly on the host. No container mounts the Docker socket.
 - The host admin process reads and writes `$OP_HOME` directly as a host process. No container mounts the full `$OP_HOME`.
-- `assistant` mounts only `vault/user/` (the directory, rw) from the vault boundary, not the whole vault directory.
+- `assistant` has no `/etc/vault/` mount — user secrets are read via `akm vault:user` from the `stash/` bind mount.
 - `guardian` is the only path from channel ingress networks to the assistant.
 
 ---
@@ -91,15 +91,16 @@ Key env:
 Mounts:
 
 - image-baked `/etc/opencode`
-- `$OP_HOME/data/assistant -> /home/opencode/`
-- `$OP_HOME/data/stash -> /akm` (shared akm stash)
-- `$OP_HOME/data/akm-cache -> /akm-cache` (regenerable registry artifacts)
-- `$OP_HOME/data/workspace -> /work`
 - `$OP_HOME/config -> /etc/openpalm`
 - `$OP_HOME/config/assistant -> /home/opencode/.config/opencode`
-- `$OP_HOME/config/stack/auth.json -> /home/opencode/.local/share/opencode/auth.json`
-- `$OP_HOME/vault/user/ -> /etc/vault/` (directory mount, rw)
-- `$OP_HOME/logs/opencode -> /home/opencode/.local/state/opencode`
+- `$OP_HOME/config/auth.json -> /home/opencode/.local/share/opencode/auth.json`
+- `$OP_HOME/state/assistant -> /home/opencode/`
+- `$OP_HOME/stash -> /akm` (shared akm stash)
+- `$OP_HOME/state/akm -> /akm-op` (akm operational state)
+- `$OP_HOME/cache/akm -> /akm-cache` (regenerable registry artifacts)
+- `$OP_HOME/workspace -> /work`
+- `$OP_HOME/state/logs/opencode -> /home/opencode/.local/state/opencode`
+- `$OP_HOME/state/logs -> /openpalm/logs`
 
 Ports and network:
 
@@ -152,8 +153,8 @@ Key env:
 
 Mounts:
 
-- `$OP_HOME/data/guardian -> /app/data`
-- `$OP_HOME/logs -> /app/audit`
+- `$OP_HOME/state/guardian -> /app/data`
+- `$OP_HOME/state/logs -> /app/audit`
 - `$OP_HOME/config/stack/guardian.env -> /app/secrets/guardian.env:ro` (created by CLI installer; absent until first channel install)
 
 Ports and network:
@@ -220,9 +221,11 @@ Env sources (inherits the assistant container's environment):
 
 Mounts (provided by the assistant service):
 
-- `$OP_HOME/config -> /openpalm/config:ro`
-- `$OP_HOME/data/scheduler -> /openpalm/data/scheduler` (rw, for trigger sentinels)
-- `$OP_HOME/logs -> /openpalm/logs` (rw)
+- `$OP_HOME/config -> /etc/openpalm:ro`
+- `$OP_HOME/stash/tasks -> /akm/tasks` (rw, AKM task markdown files)
+- `$OP_HOME/cache/akm -> /akm-cache` (rw, per-run task logs)
+- `$OP_HOME/state/akm -> /akm-op` (rw, akm state.db)
+- `$OP_HOME/state/logs -> /openpalm/logs` (rw)
 
 Design note — scheduler scope: The scheduler runs as part of the
 assistant container, so it shares the assistant's identity and trust

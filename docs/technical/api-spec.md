@@ -90,9 +90,8 @@ Policy for this section:
 - `POST /admin/install`, `POST /admin/update`, and startup auto-apply are
   automatic lifecycle operations: non-destructive for existing user config files
   in `config/`; they only seed missing defaults.
-- Explicit mutation endpoints (`POST /admin/capabilities`,
-  `POST /admin/addons`, `POST /admin/addons/:name`,
-  `POST /admin/setup`) are the allowed write path
+- Explicit mutation endpoints (`POST /admin/addons`, `POST /admin/addons/:name`,
+  `POST /admin/setup`, `PATCH /admin/akm`) are the allowed write path
   for requested config changes.
 
 ### `POST /admin/install`
@@ -319,7 +318,7 @@ Body:
 { "name": "chat", "enabled": true }
 ```
 
-- `name` (required) -- Addon name (must exist under `~/.openpalm/registry/addons/<name>/compose.yml`).
+- `name` (required) -- Addon name (must exist under `~/.openpalm/state/registry/addons/<name>/compose.yml`).
 - `enabled` (optional) -- Set to `true` or `false` to enable/disable.
 
 Response:
@@ -331,7 +330,7 @@ Response:
 Error responses:
 
 - `400 bad_request` -- `name` is missing.
-- `404 not_found` -- Addon name is not available in `~/.openpalm/registry/addons/`.
+- `404 not_found` -- Addon name is not available in `~/.openpalm/state/registry/addons/`.
 - `500 internal_error` -- Failed to update addon state on disk.
 
 ### `GET /admin/addons/:name`
@@ -354,7 +353,7 @@ Response:
 
 Error responses:
 
-- `404 not_found` -- Addon name is not available in `~/.openpalm/registry/addons/`.
+- `404 not_found` -- Addon name is not available in `~/.openpalm/state/registry/addons/`.
 
 ### `POST /admin/addons/:name`
 
@@ -379,17 +378,17 @@ Response:
 
 Error responses:
 
-- `404 not_found` -- Addon name is not available in `~/.openpalm/registry/addons/`.
+- `404 not_found` -- Addon name is not available in `~/.openpalm/state/registry/addons/`.
 - `500 internal_error` -- Failed to update addon state on disk.
 
 ## Registry
 
-Runtime catalog endpoints for automations. Channel/addon management is handled by `/admin/addons` endpoints against `~/.openpalm/registry/addons/` and active `~/.openpalm/config/stack/addons/`.
+Runtime catalog endpoints for automations. Channel/addon management is handled by `/admin/addons` endpoints against `~/.openpalm/state/registry/addons/` and active `~/.openpalm/config/stack/addons/`.
 
 ### `GET /admin/automations/catalog`
 
 Lists available registry automations with install status. Channel addons are
-managed via `/admin/addons`. Reads from `~/.openpalm/registry/automations/`.
+managed via `/admin/addons`. Reads from `~/.openpalm/state/registry/automations/`.
 
 Response:
 
@@ -540,200 +539,6 @@ Response:
   ]
 }
 ```
-
-## Capabilities
-
-Manage LLM provider credentials and related configuration stored in
-`config/stack/stack.env`. Values are patched in-place by `patchSecretsEnvFile`
--- existing keys not in the allowed set are never removed or overwritten.
-
-### `GET /admin/capabilities`
-
-Returns the current capability assignments from `stack.yml` and masked secret
-values from `config/stack/stack.env`.
-
-Response:
-
-```json
-{
-  "capabilities": {
-    "llm": "openai/gpt-4o-mini",
-    "embeddings": { "provider": "openai", "model": "text-embedding-3-small", "dims": 1536 }
-  },
-  "secrets": {
-    "OPENAI_API_KEY": "*********************1234",
-    "ANTHROPIC_API_KEY": "",
-    "GROQ_API_KEY": "",
-    "MISTRAL_API_KEY": "",
-    "GOOGLE_API_KEY": "",
-    "SYSTEM_LLM_PROVIDER": "openai",
-    "SYSTEM_LLM_BASE_URL": "",
-    "SYSTEM_LLM_MODEL": "gpt-4o-mini",
-    "OPENAI_BASE_URL": "",
-    "EMBEDDING_MODEL": "text-embedding-3-small",
-    "EMBEDDING_DIMS": "1536"
-  }
-}
-```
-
-### `POST /admin/capabilities`
-
-Saves provider credentials to `config/stack/stack.env`, updates `stack.yml`
-capabilities.
-
-Body:
-
-```json
-{
-  "provider": "openai",
-  "apiKey": "sk-...",
-  "baseUrl": "",
-  "systemModel": "gpt-4o-mini",
-  "embeddingModel": "text-embedding-3-small",
-  "embeddingDims": 1536
-}
-```
-
-- `provider` (required) -- Must be a supported provider name.
-- `apiKey` -- API key to write to `config/stack/stack.env`.
-- `baseUrl` -- Provider base URL.
-- `systemModel` -- Model name for the LLM capability.
-- `embeddingModel` -- Model name for the embeddings capability.
-- `embeddingDims` -- Embedding dimensions (falls back to known defaults or 1536).
-
-Response:
-
-```json
-{ "ok": true }
-```
-
-Error responses:
-
-- `400 bad_request` -- `provider` is missing or not in scope.
-- `500 internal_error` -- Failed to write `config/stack/stack.env` or `stack.yml`.
-
-### `GET /admin/capabilities/status`
-
-Checks whether `stack.yml` has non-empty capability assignments for the
-system LLM and embeddings provider/model. Leading and trailing whitespace is
-ignored during the completeness check. API keys are not required here.
-
-Response:
-
-```json
-{ "complete": true, "missing": [] }
-```
-
-`complete` is `true` when `capabilities.llm` and `capabilities.embeddings.provider/model`
-are non-empty strings after trimming; otherwise `missing` lists what is absent.
-
-### `POST /admin/capabilities/test`
-
-Tests a capability endpoint by fetching models from the given base URL. Derives
-the provider type from the URL (Ollama for URLs containing `ollama` or `:11434`,
-otherwise OpenAI-compatible).
-
-Auth: `requireAdmin`
-
-Body:
-
-```json
-{
-  "baseUrl": "http://host.docker.internal:11434",
-  "apiKey": "",
-  "kind": "openai_compatible_local"
-}
-```
-
-- `baseUrl` (required) -- The endpoint to test.
-- `apiKey` -- Optional API key for authentication.
-- `kind` -- Capability kind hint (informational).
-
-Response:
-
-```json
-{
-  "ok": true,
-  "models": ["llama3.2:3b", "nomic-embed-text"],
-  "error": null,
-  "errorCode": null
-}
-```
-
-On failure:
-
-```json
-{
-  "ok": false,
-  "error": "Connection refused",
-  "errorCode": "connection_error"
-}
-```
-
-### `GET /admin/capabilities/assignments`
-
-Returns the current `stack.yml` capability assignments:
-
-```json
-{
-  "capabilities": {
-    "llm": "openai/gpt-4.1-mini",
-    "embeddings": {
-      "provider": "openai",
-      "model": "text-embedding-3-small",
-      "dims": 1536
-    }
-  }
-}
-```
-
-### `POST /admin/capabilities/assignments`
-
-Saves validated capability updates back to `stack.yml`. The request body may either be the capabilities
-object directly or `{ "capabilities": ... }`.
-
-Supported top-level keys are `llm`, `slm`, `embeddings`, `tts`,
-`stt`, and `reranking`. Unknown keys are rejected with `400 bad_request`.
-
-Example body:
-
-```json
-{
-  "capabilities": {
-    "llm": "anthropic/claude-sonnet-4",
-    "embeddings": {
-      "provider": "google",
-      "model": "text-embedding-004",
-      "dims": 768
-    }
-  }
-}
-```
-
-Response:
-
-```json
-{ "ok": true, "capabilities": { "llm": "anthropic/claude-sonnet-4", "..." : "..." } }
-```
-
-Error responses:
-
-- `400 bad_request` -- malformed capability payload, unknown keys, or invalid field types.
-- `500 internal_error` -- `stack.yml` could not be written.
-
-### `GET /admin/capabilities/export/opencode`
-
-Exports the generated `opencode.json` config from `config/assistant/opencode.json`.
-Returns the config as a downloadable JSON file with `_nextSteps` guidance.
-
-Auth: `requireAdmin`
-
-Response: `application/json` with `Content-Disposition: attachment; filename="opencode.json"`.
-
-Error responses:
-
-- `404 not_found` -- opencode.json has not been generated yet.
-- `500 internal_error` -- Failed to read opencode.json.
 
 ## Configuration Endpoints
 

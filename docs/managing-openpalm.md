@@ -20,10 +20,10 @@ normal operation you do not edit `data/` directly, and stack runtime files live
 under `~/.openpalm/config/stack/`.
 
 Keep this split in mind:
-- `~/.openpalm/registry/` is the available catalog
+- `~/.openpalm/state/registry/` is the available catalog
 - `~/.openpalm/config/stack/addons/` contains enabled addons only
 - `~/.openpalm/stash/tasks/` contains active AKM automation task files
-- `~/.openpalm/config/stack.yml` stores capabilities only
+- `~/.openpalm/config/stack/stack.yml` is a version marker only
 
 ---
 
@@ -31,59 +31,56 @@ Keep this split in mind:
 
 ```
 ~/.openpalm/                          ← YOUR OPENPALM HOME
-├── registry/
-│   ├── addons/                       # Available addon catalog
-│   │   ├── chat/
-│   │   │   ├── compose.yml
-│   │   │   └── .env.schema
-│   │   └── api/
-│   └── automations/                  # Available automation catalog
-│       └── health-check.yml
-│
-├── stack/
-│   ├── core.compose.yml              # Base compose file used for the runtime stack
-│   └── addons/
-│       └── chat/
-│           └── compose.yml           # Enabled addons only
-│
-├── vault/
-│   ├── user/
-│   │   └── user.env                  # Optional user extension env
-│   └── stack/
-│       ├── stack.env                 # System-managed secrets: admin token, ports, API keys
-│       └── guardian.env              # Channel HMAC secrets (compose marks required: false)
-│
 ├── config/
-│   ├── automations/                  # Scheduled automations (drop files here)
-│   │   └── backup.yml
-│   │
-│   └── assistant/
-│       ├── opencode.json             # OpenCode config (LLM provider, settings)
-│       ├── tools/                    # Drop custom tools here
-│       ├── plugins/                  # Drop custom plugins here
-│       └── skills/                   # Drop custom skills here
+│   ├── stack/
+│   │   ├── core.compose.yml          # Base compose file for the runtime stack
+│   │   ├── stack.env                 # System-managed secrets: admin token, ports, API keys
+│   │   ├── guardian.env              # Channel HMAC secrets (compose marks required: false)
+│   │   ├── stack.yml                 # Version marker only ({ version: 2 })
+│   │   └── addons/
+│   │       └── chat/
+│   │           └── compose.yml       # Enabled addons only
+│   ├── assistant/
+│   │   ├── opencode.json             # OpenCode config (LLM provider, settings)
+│   │   ├── tools/                    # Drop custom tools here
+│   │   ├── plugins/                  # Drop custom plugins here
+│   │   └── skills/                   # Drop custom skills here
+│   └── akm/
+│       └── config.json               # AKM config (LLM, embedding settings)
 │
-├── data/                             ← DURABLE CONTAINER DATA
-│   ├── admin/
+├── stash/
+│   ├── vaults/
+│   │   └── user.env                  # Optional user-managed extension env
+│   └── tasks/                        # AKM automation task files
+│
+├── state/                            ← DURABLE SERVICE DATA
 │   ├── assistant/
 │   ├── guardian/
-│   ├── stash/                        # Shared akm stash (assistant + admin)
-│   └── workspace/                    # Shared /work mount for assistant and admin
-└── logs/                             ← AUDIT AND DEBUG LOGS
+│   ├── akm/                          # akm state.db (execution history)
+│   ├── registry/
+│   │   ├── addons/                   # Available addon catalog
+│   │   └── automations/              # Available automation catalog
+│   └── logs/                         ← AUDIT AND DEBUG LOGS
+│
+├── cache/
+│   ├── akm/                          # Regenerable akm artifacts, per-run task logs
+│   └── rollback/                     # Config rollback snapshots
+│
+└── workspace/                        # Shared work area
 ```
 
 ---
 
-## Secrets (`vault/`)
+## Secrets
 
-Secrets are split into two files under `~/.openpalm/vault/`:
+Secrets are split into two files:
 
-- **`user/user.env`** -- Recommended location for addon/operator overrides and custom values.
-- **`stack/stack.env`** -- System-managed runtime env and secrets: admin/assistant auth tokens, provider API keys, capability vars (`OP_CAP_*`), ports, and other infrastructure values.
+- **`~/.openpalm/stash/vaults/user.env`** -- User-managed addon overrides and custom values.
+- **`~/.openpalm/config/stack/stack.env`** -- System-managed runtime env and secrets: admin/assistant auth tokens, provider API keys, ports, and other infrastructure values.
 
 ```env
 # ~/.openpalm/config/stack/stack.env
-# LLM provider keys and capability values
+# LLM provider keys
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 GROQ_API_KEY=gsk_...
@@ -98,35 +95,17 @@ normally edit them manually.
 
 **After editing** -- rerun the same compose command or restart the services that
 consume the changed values. The standard wrapper includes both
-`config/stack/stack.env` and `vault/user/user.env` automatically.
+`config/stack/stack.env` and `stash/vaults/user.env` automatically.
 
-LLM provider keys and related capability settings can also be managed via the
-Capabilities API or the Capabilities settings page in the admin UI -- no manual
-file editing required. The API patches `config/stack/stack.env` in-place, preserving all
-other keys.
-
-```bash
-# View current capability settings (keys are masked in the response)
-curl http://localhost:3880/admin/capabilities \
-  -H "x-admin-token: $OP_UI_TOKEN"
-
-# Update one or more keys
-curl -X POST http://localhost:3880/admin/capabilities \
-  -H "x-admin-token: $OP_UI_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"provider":"openai","apiKey":"sk-...","systemModel":"gpt-4o","embeddingModel":"text-embedding-3-small","embeddingDims":1536}'
-
-# Check whether stack.yml has non-empty LLM and embedding assignments
-curl http://localhost:3880/admin/capabilities/status \
-  -H "x-admin-token: $OP_UI_TOKEN"
-```
+LLM and embedding configuration lives in `config/akm/config.json` and is managed
+via the AKM tab in the admin UI -- no manual file editing required.
 
 ---
 
 ## Addons (Channels, Services, Integrations)
 
 An addon has two states:
-- available in the catalog at `~/.openpalm/registry/addons/<name>/`
+- available in the catalog at `~/.openpalm/state/registry/addons/<name>/`
 - enabled at runtime under `~/.openpalm/config/stack/addons/<name>/compose.yml`
 
 Channels, services, and integrations are all addons.
@@ -152,15 +131,15 @@ This copies the addon from the catalog into the active runtime overlays. `config
 
 ### Configure an addon
 
-- Read the addon's schema at `~/.openpalm/registry/addons/<name>/.env.schema`
-- Put values in `~/.openpalm/vault/user/user.env`
+- Read the addon's schema at `~/.openpalm/state/registry/addons/<name>/.env.schema`
+- Put values in `~/.openpalm/stash/vaults/user.env`
 - Rerun your compose command or restart affected services
 
 Addon config is schema-driven and file-based. There is no addon config block in `stack.yml`.
 
 ### Add an addon manually
 
-1. Copy `~/.openpalm/registry/addons/<name>/` into `~/.openpalm/config/stack/addons/<name>/`
+1. Copy `~/.openpalm/state/registry/addons/<name>/` into `~/.openpalm/config/stack/addons/<name>/`
 2. Or author `~/.openpalm/config/stack/addons/<name>/` manually if you want a custom or multi-instance layout
 3. Run preflight to confirm the merge is clean, then rerun `docker compose` with that addon included
 
@@ -197,7 +176,7 @@ command: ["sh","-c","openpalm update"]
 ---
 ```
 
-OpenPalm ships several ready-to-use automations in `~/.openpalm/registry/automations/` — install them
+OpenPalm ships several ready-to-use automations in `~/.openpalm/state/registry/automations/` — install them
 from the Registry tab in the admin console:
 
 | File | What it does |
@@ -266,7 +245,7 @@ docker exec openpalm-assistant akm tasks sync
 
 ### Overriding system automations
 
-Shipped examples live in `~/.openpalm/registry/automations/`. Install them from the
+Shipped examples live in `~/.openpalm/state/registry/automations/`. Install them from the
 Registry tab in the admin console — they are written to `~/.openpalm/stash/tasks/`.
 
 ---
@@ -301,10 +280,10 @@ write to the same config files.
 
 The running stack is whatever compose file set you launch. To change it:
 
-1. Edit files under `~/.openpalm/config/`, `~/.openpalm/vault/`, or `~/.openpalm/config/stack/`
+1. Edit files under `~/.openpalm/config/`, `~/.openpalm/stash/vaults/`, or `~/.openpalm/config/stack/`
 2. Rerun compose: `op up -d` (or the full `docker compose` command)
 
-The `op` helper function auto-discovers enabled addons under `stack/addons/`.
+The `op` helper function auto-discovers enabled addons under `config/stack/addons/`.
 For the full compose command reference and helper setup, see the
 [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
@@ -361,8 +340,8 @@ All ports are `127.0.0.1`-bound by default.
 
 **View audit logs:**
 ```bash
-tail -f ~/.openpalm/logs/admin-audit.jsonl
-tail -f ~/.openpalm/logs/guardian-audit.log
+tail -f ~/.openpalm/state/logs/admin-audit.jsonl
+tail -f ~/.openpalm/state/logs/guardian-audit.log
 ```
 
 **Check container status:**

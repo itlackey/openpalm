@@ -24,7 +24,7 @@ export default class MyChannel extends BaseChannel {
 ```
 
 2. Publish it as an npm package, or mount a local file and use `CHANNEL_FILE`.
-3. Create a catalog entry under `~/.openpalm/registry/addons/<name>/`, or write a custom runtime overlay directly in `~/.openpalm/config/stack/addons/<name>/compose.yml`.
+3. Create a catalog entry under `~/.openpalm/state/registry/addons/<name>/`, or write a custom runtime overlay directly in `~/.openpalm/config/stack/addons/<name>/compose.yml`.
 4. If you use the registry path, copy the addon into `~/.openpalm/config/stack/addons/<name>/` to enable it.
 5. Include that overlay in your `docker compose -f ... up -d` command.
 
@@ -42,7 +42,7 @@ services:
     env_file:
       - ${OP_HOME}/config/stack/stack.env
       - ${OP_HOME}/config/stack/guardian.env
-      - ${OP_HOME}/vault/user/user.env
+      - ${OP_HOME}/stash/vaults/user.env
     networks: [channel_lan]
 ```
 

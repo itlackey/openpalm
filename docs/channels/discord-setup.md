@@ -47,7 +47,7 @@ docker compose \
   --project-name openpalm \
   --env-file ../config/stack/stack.env \
   --env-file ../config/stack/guardian.env \
-  --env-file ../vault/user/user.env \
+  --env-file ../stash/vaults/user.env \
   -f core.compose.yml \
   -f addons/discord/compose.yml \
   up -d

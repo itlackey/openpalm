@@ -1,8 +1,10 @@
 # How OpenPalm Works — TLDR
 
-OpenPalm is a local-first AI assistant platform. It runs as a Docker Compose
-stack on your machine. Everything is LAN-only by default, nothing is in the
-cloud, and all persistent data stays on your host.
+OpenPalm is two things: a **harness** and a **stack**.
+
+The **harness** (CLI or Electron app) runs on your host machine. Its only job is to manage the files in `~/.openpalm/` — Docker Compose files, env files, OpenCode configuration, AKM configuration — and then start `docker compose up`. No harness, no problem: a technical user can do the same thing by hand.
+
+The **stack** is what the harness runs. At its core: an OpenCode assistant in Docker (with persistent memory and skills via AKM), a Guardian that enforces HMAC-signed verification on every inbound channel message, and optional channel containers that translate external protocols into signed guardian messages.
 
 ---
 
@@ -36,20 +38,15 @@ Three hard rules define the whole design:
 
 ## Components
 
-### Admin (SvelteKit app, host port 3880)
-The optional web control plane. Runs as a host process and accesses Docker directly on the host.
+### Harness UI (SvelteKit app, host port 3880)
+The web face of the harness. Started by `openpalm ui serve` as a host process — no container. Accesses Docker and `~/.openpalm/` directly on the host.
 
 Responsibilities:
-- Writes runtime configuration and secrets directly to `~/.openpalm/config/stack/` and
-  `~/.openpalm/vault/`
-- Runs `docker compose` for all lifecycle operations (install, update, up, down,
-  restart)
+- Writes runtime configuration directly to `~/.openpalm/config/stack/` and `~/.openpalm/config/akm/`
+- Runs `docker compose` for all lifecycle operations (install, update, up, down, restart)
 - Exposes an authenticated API used by the browser UI and the assistant
-- Applies explicit config mutations to `config/`, reads addon catalog data from
-  `~/.openpalm/state/registry/`, and manages enabled addon overlays in
-  `~/.openpalm/config/stack/addons/` when requested through authorized UI/API actions
+- Manages addon overlays in `~/.openpalm/config/stack/addons/` and the addon catalog in `~/.openpalm/state/registry/`
 - Writes the audit log
-- Helps manage addons and other host-side files through an authenticated API
 
 ### Guardian (Bun server, port 8080)
 The security checkpoint for all inbound channel traffic.
@@ -73,12 +70,11 @@ unauthorized.
 
 The assistant uses baked-in core config inside the image at `/etc/opencode`,
 mounts user extensions from `~/.openpalm/config/assistant/` into
-`/home/opencode/.config/opencode`, mounts `~/.openpalm/config/stack/auth.json`
-for OpenCode auth state, and mounts user-managed vault files from `~/.openpalm/stash/vaults/` at `/etc/vault/`
-for optional user extension files. Provider keys are injected from
-`~/.openpalm/config/stack/stack.env` via compose `${VAR}` substitution. Its durable home is
-`~/.openpalm/data/assistant/`, and its shared workspace is
-`~/.openpalm/data/workspace/` mounted at `/work`.
+`/home/opencode/.config/opencode`, mounts `~/.openpalm/config/auth.json`
+for OpenCode auth state, and mounts the full AKM stash from `~/.openpalm/stash/`
+at `/akm` for persistent memory and skills. Provider API keys are stored in OpenCode's
+auth.json via the Connections tab. Its durable home is `~/.openpalm/state/assistant/`,
+and its shared workspace is `~/.openpalm/workspace/` mounted at `/work`.
 
 ### Addon edge services (e.g. `chat`, host port 3820)
 Translate external protocols into signed Guardian messages. The `chat` addon is
@@ -92,7 +88,7 @@ The runtime image for registry-backed adapters is the unified
 
 ### Supporting services
 - **Scheduler** -- OS cron daemon (`crond`) started by the assistant container entrypoint. Automations are AKM markdown task files in `~/.openpalm/stash/tasks/`; `akm tasks sync` registers them with cron at boot and re-syncs every 60 s to pick up new files written by admin.
-- **AKM stash** -- persistent memory and knowledge live in the shared akm stash at `~/.openpalm/data/stash/`, mounted at `/home/opencode/.akm` in the assistant and shared with the admin. There is no separate memory service.
+- **AKM stash** -- persistent memory and knowledge live in the shared akm stash at `~/.openpalm/stash/`, mounted at `/akm` in the assistant. Skills, commands, memories, and knowledge files all live here. There is no separate memory service.
 
 ---
 
