@@ -1,6 +1,6 @@
 /**
  * GET  /admin/akm  — Return current akm config from OP_HOME/config/akm/config.json
- * PATCH /admin/akm — Update config fields (connections, features, behavior, tuning)
+ * PATCH /admin/akm — Update config fields (profiles, connections, features, behavior, tuning)
  */
 import type { RequestHandler } from './$types';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -17,18 +17,78 @@ import {
   requireAdmin,
 } from '$lib/server/helpers.js';
 
+type Rec = Record<string, unknown>;
+
 function akmConfigPath(configDir: string): string {
   return `${configDir}/akm/config.json`;
 }
 
-function readAkmConfig(configDir: string): Record<string, unknown> {
+function readAkmConfig(configDir: string): Rec {
   const path = akmConfigPath(configDir);
   if (!existsSync(path)) return {};
-  try {
-    return JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>;
-  } catch {
-    return {};
+  try { return JSON.parse(readFileSync(path, 'utf-8')) as Rec; } catch { return {}; }
+}
+
+function isRec(v: unknown): v is Rec {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+// ── Validation helpers ───────────────────────────────────────────────────────
+
+function expectStr(v: unknown, field: string): string | Error {
+  return typeof v === 'string' ? v : new Error(`${field} must be a string`);
+}
+
+function expectBool(v: unknown, field: string): boolean | Error {
+  return typeof v === 'boolean' ? v : new Error(`${field} must be a boolean`);
+}
+
+function expectPosInt(v: unknown, field: string): number | Error {
+  return typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : new Error(`${field} must be a positive integer`);
+}
+
+function expectNum(v: unknown, field: string, min: number, max: number): number | Error {
+  return typeof v === 'number' && v >= min && v <= max ? v : new Error(`${field} must be a number between ${min} and ${max}`);
+}
+
+function validateLlmProfile(raw: Rec, prefix: string): Error | null {
+  if ('endpoint' in raw) { const r = expectStr(raw.endpoint, `${prefix}.endpoint`); if (r instanceof Error) return r; }
+  if ('model' in raw) { const r = expectStr(raw.model, `${prefix}.model`); if (r instanceof Error) return r; }
+  if ('provider' in raw) { const r = expectStr(raw.provider, `${prefix}.provider`); if (r instanceof Error) return r; }
+  if ('apiKey' in raw) { const r = expectStr(raw.apiKey, `${prefix}.apiKey`); if (r instanceof Error) return r; }
+  if ('judgeModel' in raw) { const r = expectStr(raw.judgeModel, `${prefix}.judgeModel`); if (r instanceof Error) return r; }
+  if ('temperature' in raw) { const r = expectNum(raw.temperature, `${prefix}.temperature`, 0, 2); if (r instanceof Error) return r; }
+  if ('maxTokens' in raw) { const r = expectPosInt(raw.maxTokens, `${prefix}.maxTokens`); if (r instanceof Error) return r; }
+  if ('timeoutMs' in raw) { const r = expectPosInt(raw.timeoutMs, `${prefix}.timeoutMs`); if (r instanceof Error) return r; }
+  if ('concurrency' in raw) { const r = expectPosInt(raw.concurrency, `${prefix}.concurrency`); if (r instanceof Error) return r; }
+  if ('contextLength' in raw) { const r = expectPosInt(raw.contextLength, `${prefix}.contextLength`); if (r instanceof Error) return r; }
+  if ('supportsJsonSchema' in raw) { const r = expectBool(raw.supportsJsonSchema, `${prefix}.supportsJsonSchema`); if (r instanceof Error) return r; }
+  if ('features' in raw) {
+    if (!isRec(raw.features)) return new Error(`${prefix}.features must be an object`);
+    for (const k of ['memory_inference','memory_consolidation','feedback_distillation','graph_extraction','curate_rerank','lesson_quality_gate','proposal_quality_gate','metadata_enhance','memory_contradiction_detection']) {
+      if (k in raw.features) { const r = expectBool((raw.features as Rec)[k], `${prefix}.features.${k}`); if (r instanceof Error) return r; }
+    }
   }
+  return null;
+}
+
+function pickLlmProfile(raw: Rec): Rec {
+  const out: Rec = {};
+  const strFields = ['endpoint','model','provider','judgeModel'] as const;
+  for (const f of strFields) if (f in raw && raw[f]) out[f] = raw[f];
+  // apiKey: write if non-empty, omit to clear
+  if ('apiKey' in raw) { if (raw.apiKey) out.apiKey = raw.apiKey; }
+  const numFields = ['temperature','maxTokens','timeoutMs','concurrency','contextLength'] as const;
+  for (const f of numFields) if (f in raw && raw[f] !== undefined) out[f] = raw[f];
+  if ('supportsJsonSchema' in raw) out.supportsJsonSchema = raw.supportsJsonSchema;
+  if ('features' in raw && isRec(raw.features)) {
+    const feats: Rec = {};
+    for (const k of ['memory_inference','memory_consolidation','feedback_distillation','graph_extraction','curate_rerank','lesson_quality_gate','proposal_quality_gate','metadata_enhance','memory_contradiction_detection']) {
+      if (k in raw.features) feats[k] = (raw.features as Rec)[k];
+    }
+    out.features = feats;
+  }
+  return out;
 }
 
 export const GET: RequestHandler = async (event) => {
@@ -37,18 +97,16 @@ export const GET: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const config = readAkmConfig(state.configDir);
-  return jsonResponse(200, { config }, requestId);
+  return jsonResponse(200, { config: readAkmConfig(state.configDir) }, requestId);
 };
 
-const SEMANTIC_SEARCH_MODES = new Set(['auto', 'off']);
-const OUTPUT_FORMATS = new Set(['json', 'yaml', 'text']);
-const IMPROVE_PRESETS = new Set(['fast', 'thorough', 'mixed', 'custom']);
-const STASH_INHERITANCE = new Set(['merge', 'replace']);
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
+const SEMANTIC_SEARCH_MODES = new Set(['auto','off']);
+const OUTPUT_FORMATS = new Set(['json','yaml','text']);
+const OUTPUT_DETAILS = new Set(['brief','normal','full']);
+const IMPROVE_PRESETS = new Set(['fast','thorough','mixed','custom']);
+const STASH_INHERITANCE = new Set(['merge','replace']);
+const AGENT_PLATFORMS = new Set(['opencode','claude','opencode-sdk']);
+const CONFIDENCE_MODES = new Set(['off','blend','multiply']);
 
 export const PATCH: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -61,153 +119,184 @@ export const PATCH: RequestHandler = async (event) => {
 
   const result = await parseJsonBody(event.request);
   if ('error' in result) return jsonBodyError(result, requestId);
-  const body = result.data as Record<string, unknown>;
+  const body = result.data as Rec;
 
-  // ── Validate llm connection ───────────────────────────────────────────────
-  const llmBody = body.llm as Record<string, unknown> | undefined;
+  // ── profiles ──────────────────────────────────────────────────────────────
+  const profilesBody = body.profiles as Rec | undefined;
+  if (profilesBody !== undefined && !isRec(profilesBody))
+    return errorResponse(400, 'bad_request', 'profiles must be an object', {}, requestId);
+
+  const profilesLlmBody = profilesBody?.llm as Rec | undefined;
+  if (profilesLlmBody !== undefined) {
+    if (!isRec(profilesLlmBody)) return errorResponse(400, 'bad_request', 'profiles.llm must be an object', {}, requestId);
+    for (const [name, entry] of Object.entries(profilesLlmBody)) {
+      if (!isRec(entry)) return errorResponse(400, 'bad_request', `profiles.llm.${name} must be an object`, {}, requestId);
+      const err = validateLlmProfile(entry, `profiles.llm.${name}`);
+      if (err) return errorResponse(400, 'bad_request', err.message, {}, requestId);
+    }
+  }
+
+  const profilesAgentBody = profilesBody?.agent as Rec | undefined;
+  if (profilesAgentBody !== undefined) {
+    if (!isRec(profilesAgentBody)) return errorResponse(400, 'bad_request', 'profiles.agent must be an object', {}, requestId);
+    for (const [name, entry] of Object.entries(profilesAgentBody)) {
+      if (!isRec(entry)) return errorResponse(400, 'bad_request', `profiles.agent.${name} must be an object`, {}, requestId);
+      if ('platform' in entry && (typeof entry.platform !== 'string' || !AGENT_PLATFORMS.has(entry.platform as string)))
+        return errorResponse(400, 'bad_request', `profiles.agent.${name}.platform must be opencode, claude, or opencode-sdk`, {}, requestId);
+      if ('bin' in entry) { const r = expectStr(entry.bin, `profiles.agent.${name}.bin`); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+      if ('workspace' in entry) { const r = expectStr(entry.workspace, `profiles.agent.${name}.workspace`); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+      if ('model' in entry) { const r = expectStr(entry.model, `profiles.agent.${name}.model`); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+      if ('args' in entry && !Array.isArray(entry.args)) return errorResponse(400, 'bad_request', `profiles.agent.${name}.args must be an array`, {}, requestId);
+    }
+  }
+
+  // ── defaults ──────────────────────────────────────────────────────────────
+  const defaultsBody = body.defaults as Rec | undefined;
+  if (defaultsBody !== undefined && !isRec(defaultsBody))
+    return errorResponse(400, 'bad_request', 'defaults must be an object', {}, requestId);
+  if (defaultsBody?.llm !== undefined) { const r = expectStr(defaultsBody.llm, 'defaults.llm'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+  if (defaultsBody?.agent !== undefined) { const r = expectStr(defaultsBody.agent, 'defaults.agent'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+  const improveBody = defaultsBody?.improve as Rec | undefined;
+  if (improveBody !== undefined) {
+    if (!isRec(improveBody)) return errorResponse(400, 'bad_request', 'defaults.improve must be an object', {}, requestId);
+    if ('limit' in improveBody) { const r = expectPosInt(improveBody.limit, 'defaults.improve.limit'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+    if ('preset' in improveBody && (typeof improveBody.preset !== 'string' || !IMPROVE_PRESETS.has(improveBody.preset as string)))
+      return errorResponse(400, 'bad_request', 'defaults.improve.preset must be fast, thorough, mixed, or custom', {}, requestId);
+  }
+
+  // ── llm (v1 compat) ───────────────────────────────────────────────────────
+  const llmBody = body.llm as Rec | undefined;
   if (llmBody !== undefined) {
-    if (!isRecord(llmBody)) return errorResponse(400, 'bad_request', 'llm must be an object', {}, requestId);
-    if ('endpoint' in llmBody && typeof llmBody.endpoint !== 'string')
-      return errorResponse(400, 'bad_request', 'llm.endpoint must be a string', {}, requestId);
-    if ('model' in llmBody && typeof llmBody.model !== 'string')
-      return errorResponse(400, 'bad_request', 'llm.model must be a string', {}, requestId);
-    if ('provider' in llmBody && typeof llmBody.provider !== 'string')
-      return errorResponse(400, 'bad_request', 'llm.provider must be a string', {}, requestId);
-    if ('apiKey' in llmBody && typeof llmBody.apiKey !== 'string')
-      return errorResponse(400, 'bad_request', 'llm.apiKey must be a string', {}, requestId);
-    if ('features' in llmBody) {
-      if (!isRecord(llmBody.features)) return errorResponse(400, 'bad_request', 'llm.features must be an object', {}, requestId);
-      for (const k of ['feedback_distillation', 'memory_inference', 'memory_consolidation'] as const) {
-        if (k in llmBody.features && typeof (llmBody.features as Record<string, unknown>)[k] !== 'boolean')
-          return errorResponse(400, 'bad_request', `llm.features.${k} must be a boolean`, {}, requestId);
-      }
-    }
+    if (!isRec(llmBody)) return errorResponse(400, 'bad_request', 'llm must be an object', {}, requestId);
+    const err = validateLlmProfile(llmBody, 'llm');
+    if (err) return errorResponse(400, 'bad_request', err.message, {}, requestId);
   }
 
-  // ── Validate embedding connection ─────────────────────────────────────────
-  const embBody = body.embedding as Record<string, unknown> | undefined;
+  // ── embedding ─────────────────────────────────────────────────────────────
+  const embBody = body.embedding as Rec | undefined;
   if (embBody !== undefined) {
-    if (!isRecord(embBody)) return errorResponse(400, 'bad_request', 'embedding must be an object', {}, requestId);
-    if ('endpoint' in embBody && typeof embBody.endpoint !== 'string')
-      return errorResponse(400, 'bad_request', 'embedding.endpoint must be a string', {}, requestId);
-    if ('model' in embBody && typeof embBody.model !== 'string')
-      return errorResponse(400, 'bad_request', 'embedding.model must be a string', {}, requestId);
-    if ('provider' in embBody && typeof embBody.provider !== 'string')
-      return errorResponse(400, 'bad_request', 'embedding.provider must be a string', {}, requestId);
-    if ('dimension' in embBody) {
-      const v = embBody.dimension;
-      if (typeof v !== 'number' || !Number.isInteger(v) || v < 1)
-        return errorResponse(400, 'bad_request', 'embedding.dimension must be a positive integer', {}, requestId);
+    if (!isRec(embBody)) return errorResponse(400, 'bad_request', 'embedding must be an object', {}, requestId);
+    const strFields = ['endpoint','model','provider','apiKey','localModel'] as const;
+    for (const f of strFields) {
+      if (f in embBody) { const r = expectStr(embBody[f], `embedding.${f}`); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+    }
+    if ('dimension' in embBody) { const r = expectPosInt(embBody.dimension, 'embedding.dimension'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+    const posIntFields = ['maxTokens','batchSize','chunkSize','contextLength'] as const;
+    for (const f of posIntFields) {
+      if (f in embBody) { const r = expectPosInt(embBody[f], `embedding.${f}`); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+    }
+    if (isRec(embBody.ollamaOptions) && 'num_ctx' in embBody.ollamaOptions) {
+      const r = expectPosInt((embBody.ollamaOptions as Rec).num_ctx, 'embedding.ollamaOptions.num_ctx');
+      if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId);
     }
   }
 
-  // ── Validate scalar fields ────────────────────────────────────────────────
+  // ── scalar behavior fields ────────────────────────────────────────────────
   if ('semanticSearchMode' in body && (typeof body.semanticSearchMode !== 'string' || !SEMANTIC_SEARCH_MODES.has(body.semanticSearchMode as string)))
     return errorResponse(400, 'bad_request', 'semanticSearchMode must be "auto" or "off"', {}, requestId);
-
   if ('archiveRetentionDays' in body) {
-    const v = body.archiveRetentionDays;
-    if (typeof v !== 'number' || !Number.isInteger(v) || v < 1 || v > 365)
-      return errorResponse(400, 'bad_request', 'archiveRetentionDays must be an integer 1–365', {}, requestId);
+    if (typeof body.archiveRetentionDays !== 'number' || !Number.isInteger(body.archiveRetentionDays) || body.archiveRetentionDays < 0)
+      return errorResponse(400, 'bad_request', 'archiveRetentionDays must be a non-negative integer', {}, requestId);
   }
-
   if ('stashInheritance' in body && (typeof body.stashInheritance !== 'string' || !STASH_INHERITANCE.has(body.stashInheritance as string)))
     return errorResponse(400, 'bad_request', 'stashInheritance must be "merge" or "replace"', {}, requestId);
+  if ('stashDir' in body) { const r = expectStr(body.stashDir, 'stashDir'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+  if ('defaultWriteTarget' in body) { const r = expectStr(body.defaultWriteTarget, 'defaultWriteTarget'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
 
-  const outputBody = body.output as Record<string, unknown> | undefined;
+  // ── output ────────────────────────────────────────────────────────────────
+  const outputBody = body.output as Rec | undefined;
   if (outputBody !== undefined) {
-    if (!isRecord(outputBody)) return errorResponse(400, 'bad_request', 'output must be an object', {}, requestId);
+    if (!isRec(outputBody)) return errorResponse(400, 'bad_request', 'output must be an object', {}, requestId);
     if ('format' in outputBody && (typeof outputBody.format !== 'string' || !OUTPUT_FORMATS.has(outputBody.format as string)))
-      return errorResponse(400, 'bad_request', 'output.format must be "json", "yaml", or "text"', {}, requestId);
+      return errorResponse(400, 'bad_request', 'output.format must be json, yaml, or text', {}, requestId);
+    if ('detail' in outputBody && (typeof outputBody.detail !== 'string' || !OUTPUT_DETAILS.has(outputBody.detail as string)))
+      return errorResponse(400, 'bad_request', 'output.detail must be brief, normal, or full', {}, requestId);
   }
 
-  const defaultsBody = body.defaults as Record<string, unknown> | undefined;
-  if (defaultsBody !== undefined) {
-    if (!isRecord(defaultsBody)) return errorResponse(400, 'bad_request', 'defaults must be an object', {}, requestId);
-    const improveBody = defaultsBody.improve as Record<string, unknown> | undefined;
-    if (improveBody !== undefined) {
-      if (!isRecord(improveBody)) return errorResponse(400, 'bad_request', 'defaults.improve must be an object', {}, requestId);
-      if ('limit' in improveBody) {
-        const v = improveBody.limit;
-        if (typeof v !== 'number' || !Number.isInteger(v) || v < 1 || v > 100)
-          return errorResponse(400, 'bad_request', 'defaults.improve.limit must be an integer 1–100', {}, requestId);
+  // ── improve (top-level pipeline tuning) ──────────────────────────────────
+  const improveTopBody = body.improve as Rec | undefined;
+  if (improveTopBody !== undefined) {
+    if (!isRec(improveTopBody)) return errorResponse(400, 'bad_request', 'improve must be an object', {}, requestId);
+    if ('reflectCooldownByType' in improveTopBody && !isRec(improveTopBody.reflectCooldownByType))
+      return errorResponse(400, 'bad_request', 'improve.reflectCooldownByType must be an object', {}, requestId);
+    if (isRec(improveTopBody.reflectCooldownByType)) {
+      for (const [k, v] of Object.entries(improveTopBody.reflectCooldownByType as Rec)) {
+        if (typeof v !== 'number' || v < 0) return errorResponse(400, 'bad_request', `improve.reflectCooldownByType.${k} must be a non-negative number`, {}, requestId);
       }
-      if ('preset' in improveBody && (typeof improveBody.preset !== 'string' || !IMPROVE_PRESETS.has(improveBody.preset as string)))
-        return errorResponse(400, 'bad_request', 'defaults.improve.preset must be "fast", "thorough", "mixed", or "custom"', {}, requestId);
+    }
+    if ('utilityDecay' in improveTopBody) {
+      const ud = improveTopBody.utilityDecay as Rec;
+      if (!isRec(ud)) return errorResponse(400, 'bad_request', 'improve.utilityDecay must be an object', {}, requestId);
+      if ('halfLifeDays' in ud && (typeof ud.halfLifeDays !== 'number' || ud.halfLifeDays < 0.1))
+        return errorResponse(400, 'bad_request', 'improve.utilityDecay.halfLifeDays must be >= 0.1', {}, requestId);
+      if ('feedbackStabilityBoost' in ud && (typeof ud.feedbackStabilityBoost !== 'number' || ud.feedbackStabilityBoost < 1))
+        return errorResponse(400, 'bad_request', 'improve.utilityDecay.feedbackStabilityBoost must be >= 1', {}, requestId);
     }
   }
 
-  const searchBody = body.search as Record<string, unknown> | undefined;
+  // ── search ────────────────────────────────────────────────────────────────
+  const searchBody = body.search as Rec | undefined;
   if (searchBody !== undefined) {
-    if (!isRecord(searchBody)) return errorResponse(400, 'bad_request', 'search must be an object', {}, requestId);
-    if ('minScore' in searchBody) {
-      const v = searchBody.minScore;
-      if (typeof v !== 'number' || v < 0 || v > 1)
-        return errorResponse(400, 'bad_request', 'search.minScore must be a number between 0 and 1', {}, requestId);
+    if (!isRec(searchBody)) return errorResponse(400, 'bad_request', 'search must be an object', {}, requestId);
+    if ('minScore' in searchBody) { const r = expectNum(searchBody.minScore, 'search.minScore', 0, 1); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+    if ('graphBoost' in searchBody && isRec(searchBody.graphBoost)) {
+      const gb = searchBody.graphBoost as Rec;
+      const numFields = ['directBoostPerEntity','directBoostCap','hopBoostPerEntity','hopBoostCap','confidenceWeight'] as const;
+      for (const f of numFields) {
+        if (f in gb && typeof gb[f] !== 'number') return errorResponse(400, 'bad_request', `search.graphBoost.${f} must be a number`, {}, requestId);
+      }
+      if ('maxHops' in gb) { const r = expectPosInt(gb.maxHops, 'search.graphBoost.maxHops'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+      if ('confidenceMode' in gb && (typeof gb.confidenceMode !== 'string' || !CONFIDENCE_MODES.has(gb.confidenceMode as string)))
+        return errorResponse(400, 'bad_request', 'search.graphBoost.confidenceMode must be off, blend, or multiply', {}, requestId);
     }
+  }
+
+  // ── feedback ──────────────────────────────────────────────────────────────
+  const feedbackBody = body.feedback as Rec | undefined;
+  if (feedbackBody !== undefined) {
+    if (!isRec(feedbackBody)) return errorResponse(400, 'bad_request', 'feedback must be an object', {}, requestId);
+    if ('requireReason' in feedbackBody) { const r = expectBool(feedbackBody.requireReason, 'feedback.requireReason'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+    if ('allowedFailureModes' in feedbackBody && !Array.isArray(feedbackBody.allowedFailureModes))
+      return errorResponse(400, 'bad_request', 'feedback.allowedFailureModes must be an array', {}, requestId);
   }
 
   // ── Merge and write ───────────────────────────────────────────────────────
   try {
     const existing = readAkmConfig(state.configDir);
-    const updated: Record<string, unknown> = { ...existing };
+    const updated: Rec = { ...existing };
 
-    // LLM connection — pick only known fields
-    if (llmBody !== undefined) {
-      const existingLlm = (existing.llm as Record<string, unknown>) ?? {};
-      const existingFeatures = (existingLlm.features as Record<string, unknown>) ?? {};
-      const incomingFeatures = llmBody.features as Record<string, unknown> | undefined;
-      const mergedFeatures = incomingFeatures !== undefined
-        ? {
-            ...existingFeatures,
-            ...('feedback_distillation' in incomingFeatures ? { feedback_distillation: incomingFeatures.feedback_distillation } : {}),
-            ...('memory_inference' in incomingFeatures ? { memory_inference: incomingFeatures.memory_inference } : {}),
-            ...('memory_consolidation' in incomingFeatures ? { memory_consolidation: incomingFeatures.memory_consolidation } : {}),
-          }
-        : existingFeatures;
-      const mergedLlm: Record<string, unknown> = {
-        ...existingLlm,
-        ...('endpoint' in llmBody ? { endpoint: llmBody.endpoint } : {}),
-        ...('model' in llmBody ? { model: llmBody.model } : {}),
-        ...('provider' in llmBody ? { provider: llmBody.provider } : {}),
-        features: mergedFeatures,
-      };
-      // apiKey: only write if non-empty; omit if cleared
-      if ('apiKey' in llmBody) {
-        if (llmBody.apiKey) mergedLlm.apiKey = llmBody.apiKey;
-        else delete mergedLlm.apiKey;
+    // profiles
+    if (profilesBody !== undefined) {
+      const existingProfiles = (existing.profiles as Rec) ?? {};
+      const newProfiles: Rec = { ...existingProfiles };
+      if (profilesLlmBody !== undefined) {
+        const built: Rec = {};
+        for (const [name, entry] of Object.entries(profilesLlmBody)) {
+          built[name] = pickLlmProfile(entry as Rec);
+        }
+        newProfiles.llm = built;
       }
-      updated.llm = mergedLlm;
+      if (profilesAgentBody !== undefined) {
+        const built: Rec = {};
+        for (const [name, entry] of Object.entries(profilesAgentBody)) {
+          const raw = entry as Rec;
+          const agentEntry: Rec = {};
+          if ('platform' in raw) agentEntry.platform = raw.platform;
+          if ('bin' in raw && raw.bin) agentEntry.bin = raw.bin;
+          if ('args' in raw && Array.isArray(raw.args) && (raw.args as unknown[]).length) agentEntry.args = raw.args;
+          if ('workspace' in raw && raw.workspace) agentEntry.workspace = raw.workspace;
+          if ('model' in raw && raw.model) agentEntry.model = raw.model;
+          built[name] = agentEntry;
+        }
+        newProfiles.agent = built;
+      }
+      updated.profiles = newProfiles;
     }
 
-    // Embedding connection — pick only known fields
-    if (embBody !== undefined) {
-      const existingEmb = (existing.embedding as Record<string, unknown>) ?? {};
-      const mergedEmb: Record<string, unknown> = {
-        ...existingEmb,
-        ...('endpoint' in embBody ? { endpoint: embBody.endpoint } : {}),
-        ...('model' in embBody ? { model: embBody.model } : {}),
-        ...('provider' in embBody ? { provider: embBody.provider } : {}),
-        ...('dimension' in embBody ? { dimension: embBody.dimension } : {}),
-      };
-      updated.embedding = mergedEmb;
-    }
-
-    // Scalar fields
-    if ('semanticSearchMode' in body) updated.semanticSearchMode = body.semanticSearchMode;
-    if ('archiveRetentionDays' in body) updated.archiveRetentionDays = body.archiveRetentionDays;
-    if ('stashInheritance' in body) updated.stashInheritance = body.stashInheritance;
-
-    // Nested — pick only known sub-keys
-    if (outputBody !== undefined) {
-      const existingOutput = (existing.output as Record<string, unknown>) ?? {};
-      updated.output = { ...existingOutput, ...('format' in outputBody ? { format: outputBody.format } : {}) };
-    }
-
+    // defaults
     if (defaultsBody !== undefined) {
-      const existingDefaults = (existing.defaults as Record<string, unknown>) ?? {};
-      const existingImprove = (existingDefaults.improve as Record<string, unknown>) ?? {};
-      const improveBody = defaultsBody.improve as Record<string, unknown> | undefined;
+      const existingDefaults = (existing.defaults as Rec) ?? {};
+      const existingImprove = (existingDefaults.improve as Rec) ?? {};
       const mergedImprove = improveBody !== undefined
         ? {
             ...existingImprove,
@@ -215,12 +304,101 @@ export const PATCH: RequestHandler = async (event) => {
             ...('preset' in improveBody ? { preset: improveBody.preset } : {}),
           }
         : existingImprove;
-      updated.defaults = { ...existingDefaults, improve: mergedImprove };
+      updated.defaults = {
+        ...existingDefaults,
+        ...('llm' in defaultsBody ? { llm: defaultsBody.llm } : {}),
+        ...('agent' in defaultsBody ? { agent: defaultsBody.agent } : {}),
+        improve: mergedImprove,
+      };
     }
 
+    // llm v1 compat
+    if (llmBody !== undefined) {
+      const existingLlm = (existing.llm as Rec) ?? {};
+      updated.llm = { ...existingLlm, ...pickLlmProfile(llmBody) };
+    }
+
+    // embedding
+    if (embBody !== undefined) {
+      const existingEmb = (existing.embedding as Rec) ?? {};
+      const merged: Rec = { ...existingEmb };
+      for (const f of ['endpoint','model','provider','localModel']) {
+        if (f in embBody) { if (embBody[f]) merged[f] = embBody[f]; else delete merged[f]; }
+      }
+      if ('apiKey' in embBody) { if (embBody.apiKey) merged.apiKey = embBody.apiKey; else delete merged.apiKey; }
+      if ('dimension' in embBody) merged.dimension = embBody.dimension;
+      for (const f of ['maxTokens','batchSize','chunkSize','contextLength'] as const) {
+        if (f in embBody) merged[f] = embBody[f];
+      }
+      if (isRec(embBody.ollamaOptions) && 'num_ctx' in embBody.ollamaOptions) {
+        merged.ollamaOptions = { ...(existing.embedding as Rec | undefined)?.['ollamaOptions'] as Rec ?? {}, num_ctx: (embBody.ollamaOptions as Rec).num_ctx };
+      }
+      updated.embedding = merged;
+    }
+
+    // scalars
+    if ('semanticSearchMode' in body) updated.semanticSearchMode = body.semanticSearchMode;
+    if ('archiveRetentionDays' in body) updated.archiveRetentionDays = body.archiveRetentionDays;
+    if ('stashInheritance' in body) updated.stashInheritance = body.stashInheritance;
+    if ('stashDir' in body) { if (body.stashDir) updated.stashDir = body.stashDir; else delete updated.stashDir; }
+    if ('defaultWriteTarget' in body) { if (body.defaultWriteTarget) updated.defaultWriteTarget = body.defaultWriteTarget; else delete updated.defaultWriteTarget; }
+
+    // output
+    if (outputBody !== undefined) {
+      const existingOutput = (existing.output as Rec) ?? {};
+      updated.output = {
+        ...existingOutput,
+        ...('format' in outputBody ? { format: outputBody.format } : {}),
+        ...('detail' in outputBody ? { detail: outputBody.detail } : {}),
+      };
+    }
+
+    // improve (top-level pipeline)
+    if (improveTopBody !== undefined) {
+      const existingImproveTop = (existing.improve as Rec) ?? {};
+      const existingDecay = (existingImproveTop.utilityDecay as Rec) ?? {};
+      const udBody = improveTopBody.utilityDecay as Rec | undefined;
+      const mergedDecay = udBody !== undefined
+        ? {
+            ...existingDecay,
+            ...('halfLifeDays' in udBody ? { halfLifeDays: udBody.halfLifeDays } : {}),
+            ...('feedbackStabilityBoost' in udBody ? { feedbackStabilityBoost: udBody.feedbackStabilityBoost } : {}),
+          }
+        : existingDecay;
+      updated.improve = {
+        ...existingImproveTop,
+        ...('reflectCooldownByType' in improveTopBody ? { reflectCooldownByType: improveTopBody.reflectCooldownByType } : {}),
+        utilityDecay: mergedDecay,
+      };
+    }
+
+    // search
     if (searchBody !== undefined) {
-      const existingSearch = (existing.search as Record<string, unknown>) ?? {};
-      updated.search = { ...existingSearch, ...('minScore' in searchBody ? { minScore: searchBody.minScore } : {}) };
+      const existingSearch = (existing.search as Rec) ?? {};
+      const existingGb = (existingSearch.graphBoost as Rec) ?? {};
+      const gbBody = searchBody.graphBoost as Rec | undefined;
+      const mergedGb = gbBody !== undefined
+        ? {
+            ...existingGb,
+            ...(['directBoostPerEntity','directBoostCap','hopBoostPerEntity','hopBoostCap','maxHops','confidenceMode','confidenceWeight']
+              .reduce((acc, k) => { if (k in gbBody) acc[k] = gbBody[k]; return acc; }, {} as Rec)),
+          }
+        : existingGb;
+      updated.search = {
+        ...existingSearch,
+        ...('minScore' in searchBody ? { minScore: searchBody.minScore } : {}),
+        ...( gbBody !== undefined ? { graphBoost: mergedGb } : {}),
+      };
+    }
+
+    // feedback
+    if (feedbackBody !== undefined) {
+      const existingFeedback = (existing.feedback as Rec) ?? {};
+      updated.feedback = {
+        ...existingFeedback,
+        ...('requireReason' in feedbackBody ? { requireReason: feedbackBody.requireReason } : {}),
+        ...('allowedFailureModes' in feedbackBody ? { allowedFailureModes: feedbackBody.allowedFailureModes } : {}),
+      };
     }
 
     mkdirSync(`${state.configDir}/akm`, { recursive: true });
