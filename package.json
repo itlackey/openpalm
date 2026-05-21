@@ -13,7 +13,8 @@
     "packages/channel-api",
     "packages/assistant-tools",
     "packages/channel-slack",
-    "packages/channel-voice"
+    "packages/channel-voice",
+    "packages/electron"
   ],
   "scripts": {
     "ui:dev": "bun run --cwd packages/ui dev",

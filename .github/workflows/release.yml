@@ -288,6 +288,50 @@ jobs:
           name: ${{ matrix.artifact }}
           path: packages/cli/dist/${{ matrix.artifact }}
 
+  build-electron-artifacts:
+    name: Build Electron artifacts
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    needs: prepare-tag
+    continue-on-error: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+            script: build:mac
+          - os: ubuntu-latest
+            platform: linux
+            script: build:linux
+          - os: windows-latest
+            platform: win
+            script: build:win
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-tag.outputs.tag }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build Electron app
+        run: bun run --cwd packages/electron ${{ matrix.script }}
+
+      - name: Upload Electron artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-${{ matrix.platform }}
+          path: |
+            packages/electron/dist/packages/*.dmg
+            packages/electron/dist/packages/*.AppImage
+            packages/electron/dist/packages/*.exe
+
   release:
     name: Publish GitHub release
     runs-on: ubuntu-latest
@@ -297,6 +341,7 @@ jobs:
       - push-images
       - build-cli-artifacts
       - build-ui-artifact
+      - build-electron-artifacts
 
     steps:
       - name: Checkout
@@ -327,6 +372,13 @@ jobs:
           name: ui-build
           path: dist
 
+      - name: Download Electron artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: electron-*
+          path: dist
+          merge-multiple: true
+
       - name: Generate checksums
         run: |
           cd dist
@@ -340,6 +392,18 @@ jobs:
           prerelease: ${{ needs.prepare-tag.outputs.prerelease == 'true' }}
           generate_release_notes: true
           body: |
+            ## Desktop App
+
+            Download the desktop app for your platform from the release assets below:
+
+            | Platform | Download |
+            |---|---|
+            | macOS (Apple Silicon) | `OpenPalm-${{ needs.prepare-tag.outputs.version }}-arm64.dmg` |
+            | macOS (Intel) | `OpenPalm-${{ needs.prepare-tag.outputs.version }}-x64.dmg` |
+            | Linux x64 | `OpenPalm-${{ needs.prepare-tag.outputs.version }}.AppImage` |
+            | Linux arm64 | `OpenPalm-${{ needs.prepare-tag.outputs.version }}-arm64.AppImage` |
+            | Windows x64 | `OpenPalm Setup ${{ needs.prepare-tag.outputs.version }}.exe` |
+
             ## Docker Images
 
             | Image | Pull command |
@@ -380,6 +444,9 @@ jobs:
             dist/openpalm-cli-darwin-x64
             dist/openpalm-cli-darwin-arm64
             dist/openpalm-cli-windows-x64.exe
+            dist/*.dmg
+            dist/*.AppImage
+            dist/*.exe
 
   publish-lib-npm:
     name: Publish lib to npm
