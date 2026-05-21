@@ -7,13 +7,7 @@
 		saveAssignments,
 	} from '$lib/api.js';
 	import { lookupEmbeddingDims } from '@openpalm/lib/provider-constants';
-	import type { VoiceEngineValue } from '$lib/wizard/types.js';
-	import VoiceEngineSelector from './voice/VoiceEngineSelector.svelte';
-
 	type ProviderEntry = OpenCodeProviderSummary & { authMethods: OpenCodeAuthMethod[] };
-
-	// ── Sub-tab state ───────────────────────────────────────────────
-	let activeSubTab = $state<'akm' | 'tts-stt'>('akm');
 
 	// ── Page state ──────────────────────────────────────────────────
 	let pageLoading = $state(false);
@@ -24,14 +18,10 @@
 	let providerModels = $state<Record<string, string[]>>({});
 
 	// ── Capability fields ───────────────────────────────────────────
-	// tts / stt hold the full engine + settings shape used by the
-	// VoiceEngineSelector. Empty `engine` or `skip-*` means disabled.
 	let caps = $state({
 		llm: { provider: '', model: '' },
 		slm: { provider: '', model: '' },
 		embeddings: { provider: '', model: '', dims: 768 },
-		tts: { engine: '' } as VoiceEngineValue,
-		stt: { engine: '' } as VoiceEngineValue,
 		reranking: { provider: '', mode: 'llm' as 'llm' | 'dedicated', model: '', topK: 10 },
 		akm: {
 			feedback_distillation: true,
@@ -75,30 +65,6 @@
 		}
 	}
 
-	function readVoiceValue(raw: unknown): VoiceEngineValue {
-		if (typeof raw === 'string') return { engine: raw };
-		if (raw && typeof raw === 'object') {
-			const obj = raw as Record<string, unknown>;
-			// When the legacy shape { provider: "openai" } is loaded, we use
-			// provider as the engine fallback. In that case do NOT also copy
-			// it to v.provider — it would write both fields on the next save.
-			const hasEngine = typeof obj.engine === 'string';
-			const v: VoiceEngineValue = {
-				engine: hasEngine ? (obj.engine as string)
-					: typeof obj.provider === 'string' ? obj.provider
-					: '',
-			};
-			// Only populate provider when a distinct engine field is present.
-			if (hasEngine && typeof obj.provider === 'string') v.provider = obj.provider;
-			if (typeof obj.baseURL === 'string') v.baseURL = obj.baseURL;
-			if (typeof obj.model === 'string') v.model = obj.model;
-			if (typeof obj.voice === 'string') v.voice = obj.voice;
-			if (typeof obj.language === 'string') v.language = obj.language;
-			return v;
-		}
-		return { engine: '' };
-	}
-
 	async function loadCapabilities(): Promise<void> {
 		try {
 			const res = await fetchAssignments();
@@ -114,9 +80,6 @@
 			caps.embeddings.provider = (emb?.provider as string) ?? '';
 			caps.embeddings.model = (emb?.model as string) ?? '';
 			caps.embeddings.dims = (emb?.dims as number) ?? 768;
-			// tts / stt: full engine + settings object (legacy strings also handled)
-			caps.tts = readVoiceValue(loaded.tts);
-			caps.stt = readVoiceValue(loaded.stt);
 			const rr = loaded.reranking as Record<string, unknown> | undefined;
 			caps.reranking.provider = (rr?.provider as string) ?? '';
 			caps.reranking.mode = (rr?.mode as 'llm' | 'dedicated') ?? 'llm';
@@ -172,23 +135,11 @@
 	async function handleSave(): Promise<void> {
 		saving = true; saveError = ''; saveSuccess = false;
 		try {
-			const { llm, slm, embeddings: emb, tts, stt, reranking: rr, akm } = caps;
-			const voicePayload = (v: VoiceEngineValue): Record<string, unknown> | undefined => {
-				if (!v.engine || v.engine.startsWith('skip-')) return undefined;
-				const out: Record<string, unknown> = { enabled: true, engine: v.engine };
-				if (v.provider) out.provider = v.provider;
-				if (v.baseURL) out.baseURL = v.baseURL;
-				if (v.model) out.model = v.model;
-				if (v.voice) out.voice = v.voice;
-				if (v.language) out.language = v.language;
-				return out;
-			};
+			const { llm, slm, embeddings: emb, reranking: rr, akm } = caps;
 			const p: Record<string, unknown> = {
 				llm: llm.provider && llm.model ? `${llm.provider}/${llm.model}` : undefined,
 				slm: slm.provider && slm.model ? `${slm.provider}/${slm.model}` : undefined,
 				embeddings: emb.provider && emb.model ? { provider: emb.provider, model: emb.model, dims: emb.dims } : undefined,
-				tts: voicePayload(tts),
-				stt: voicePayload(stt),
 				reranking: rr.provider ? { enabled: true, provider: rr.provider, mode: rr.mode, model: rr.model || undefined, topK: rr.topK } : undefined,
 				akm: {
 					feedback_distillation: akm.feedback_distillation,
@@ -210,17 +161,6 @@
 	<div class="error-state">{loadError} <button class="btn btn-secondary btn-sm" onclick={() => void loadAll()}>Retry</button></div>
 {/if}
 
-<!-- Sub-tab pills -->
-<div class="sub-tabs" role="tablist">
-	<button class="pill" class:pill--active={activeSubTab === 'akm'} role="tab" aria-selected={activeSubTab === 'akm'} onclick={() => { activeSubTab = 'akm'; saveSuccess = false; saveError = ''; }}>akm</button>
-	<button class="pill" class:pill--active={activeSubTab === 'tts-stt'} role="tab" aria-selected={activeSubTab === 'tts-stt'} onclick={() => { activeSubTab = 'tts-stt'; saveSuccess = false; saveError = ''; }}>TTS/STT</button>
-	{#if pageLoading}<span class="loading-hint"><span class="spinner"></span> Loading...</span>{/if}
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════════ -->
-<!-- akm SUB-TAB                                                   -->
-<!-- ═══════════════════════════════════════════════════════════════ -->
-{#if activeSubTab === 'akm'}
 <div class="sub-panel">
 
 	{#if connectedProviders.length === 0}
@@ -390,39 +330,6 @@
 	{/if}
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════ -->
-<!-- TTS/STT SUB-TAB                                               -->
-<!-- ═══════════════════════════════════════════════════════════════ -->
-{:else if activeSubTab === 'tts-stt'}
-<div class="sub-panel">
-
-	{#if saveSuccess}<div class="feedback feedback--success"><span>Saved.</span></div>{/if}
-	{#if saveError}<div class="feedback feedback--error"><span>{saveError}</span>
-		<button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => saveError = ''}>x</button>
-	</div>{/if}
-
-	<p class="section-desc">Pick an engine for the assistant's voice. These defaults seed the voice channel's web app on first load. Once a user saves their own settings in that app, browser preferences take precedence.</p>
-
-	<div class="engine-section">
-		<h3 class="engine-heading">Text-to-Speech</h3>
-		<p class="engine-subheading">How your assistant speaks</p>
-		<VoiceEngineSelector kind="tts" value={caps.tts} onchange={(v) => caps.tts = v} />
-	</div>
-
-	<div class="engine-section">
-		<h3 class="engine-heading">Speech-to-Text</h3>
-		<p class="engine-subheading">How your assistant hears you</p>
-		<VoiceEngineSelector kind="stt" value={caps.stt} onchange={(v) => caps.stt = v} />
-	</div>
-
-	<div class="save-footer">
-		<button class="btn btn-primary" onclick={() => void handleSave()} disabled={saving}>
-			{#if saving}<span class="spinner"></span>{/if} Save Changes
-		</button>
-	</div>
-</div>
-
-{/if}
 </div>
 
 <style>
