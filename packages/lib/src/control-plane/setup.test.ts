@@ -11,21 +11,14 @@ import {
 } from "./setup.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
 import { STACK_SPEC_FILENAME, readStackSpec } from "./stack-spec.js";
-import type { StackSpec } from "./stack-spec.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
   return {
     version: 2,
-    capabilities: {
-      llm: "openai/gpt-4o",
-      embeddings: {
-        provider: "openai",
-        model: "text-embedding-3-small",
-        dims: 1536,
-      },
-    },
+    llm: { provider: "openai", model: "gpt-4o", baseUrl: "https://api.openai.com/v1" },
+    embedding: { provider: "openai", model: "text-embedding-3-small", dims: 1536, baseUrl: "https://api.openai.com/v1" },
     security: { adminToken: "test-admin-token-12345" },
     owner: { name: "Test User", email: "test@example.com" },
     connections: [
@@ -144,28 +137,36 @@ describe("validateSetupSpec", () => {
     expect(result.errors.some((e) => e.includes("version must be 2"))).toBe(true);
   });
 
-  it("rejects missing capabilities.llm", () => {
+  it("rejects missing llm.model", () => {
     const input = makeValidSpec();
-    (input.capabilities as Record<string, unknown>).llm = "";
+    (input.llm as Record<string, unknown>).model = "";
     const result = validateSetupSpec(input);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("capabilities.llm"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("llm.model"))).toBe(true);
   });
 
-  it("rejects missing capabilities.embeddings", () => {
+  it("rejects missing llm.provider", () => {
     const input = makeValidSpec();
-    (input.capabilities as Record<string, unknown>).embeddings = null;
+    (input.llm as Record<string, unknown>).provider = "";
     const result = validateSetupSpec(input);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("capabilities.embeddings"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("llm.provider"))).toBe(true);
   });
 
-  it("rejects non-integer embeddings.dims", () => {
+  it("rejects non-integer embedding.dims", () => {
     const input = makeValidSpec();
-    input.capabilities.embeddings.dims = 1.5;
+    (input.embedding as Record<string, unknown>).dims = 1.5;
     const result = validateSetupSpec(input);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("dims must be a positive integer"))).toBe(true);  // or 0 (auto-resolve)
+    expect(result.errors.some((e) => e.includes("dims must be a positive integer"))).toBe(true);
+  });
+
+  it("accepts spec without llm or embedding (minimal)", () => {
+    const input = makeValidSpec();
+    delete (input as Record<string, unknown>).llm;
+    delete (input as Record<string, unknown>).embedding;
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(true);
   });
 
   it("accepts multiple connections with different IDs", () => {
@@ -205,18 +206,12 @@ describe("buildSecretsFromSetup", () => {
     expect(secrets.ADMIN_TOKEN).toBeUndefined();
   });
 
-  it("does not include SYSTEM_LLM_* in user secrets (lives in stack.env via OP_CAP_*)", () => {
+  it("does not include SYSTEM_LLM_* in user secrets", () => {
     const spec = makeValidSpec();
     const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
     expect(secrets.SYSTEM_LLM_PROVIDER).toBeUndefined();
     expect(secrets.SYSTEM_LLM_MODEL).toBeUndefined();
     expect(secrets.SYSTEM_LLM_BASE_URL).toBeUndefined();
-  });
-
-  it("persists OPENAI_BASE_URL from openai connection", () => {
-    const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
-    expect(secrets.OPENAI_BASE_URL).toBe("https://api.openai.com");
   });
 
   it("sets owner info when provided", () => {
@@ -242,14 +237,13 @@ describe("buildSecretsFromSetup", () => {
     expect(secrets.ANTHROPIC_API_KEY).toBeUndefined();
   });
 
-  it("does not include Ollama base URL in user secrets when ollamaEnabled (lives in stack.env via OP_CAP_*)", () => {
+  it("does not include Ollama base URL in stack.env secrets", () => {
     const caps: SetupConnection[] = [
       { id: "ollama-1", name: "Ollama", provider: "ollama", baseUrl: "http://localhost:11434", apiKey: "" },
     ];
     const secrets = buildSecretsFromSetup(caps);
-    // These are no longer written to user.env — they live in stack.env via OP_CAP_* vars
     expect(secrets.SYSTEM_LLM_BASE_URL).toBeUndefined();
-    expect(secrets.OPENAI_BASE_URL).toBeUndefined();
+    expect(secrets.OLLAMA_BASE_URL).toBeUndefined();
   });
 });
 
@@ -404,25 +398,27 @@ describe("performSetup", () => {
     expect(secretsContent).toContain("test-admin-token-12345");
   });
 
-  it("writes OP_CAP_* vars to stack.env for capabilities", async () => {
+  it("writes akm config.json with llm and embedding", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
-    const stackEnvContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(stackEnvContent).toContain("OP_CAP_LLM_MODEL=gpt-4o");
-    expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_MODEL=text-embedding-3-small");
+    const akmConfigPath = join(homeDir, "config", "akm", "config.json");
+    expect(existsSync(akmConfigPath)).toBe(true);
+    const config = JSON.parse(readFileSync(akmConfigPath, "utf-8"));
+    expect(config.llm.model).toBe("gpt-4o");
+    expect(config.llm.provider).toBe("openai");
+    expect(config.embedding.model).toBe("text-embedding-3-small");
+    expect(config.embedding.provider).toBe("openai");
+    expect(config.embedding.dimension).toBe(1536);
   });
 
-  it("writes capabilities to stack.yml v2", async () => {
+  it("writes stack.yml v2 version marker", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
     const spec = readStackSpec(stackDir);
     expect(spec).not.toBeNull();
     expect(spec!.version).toBe(2);
-    expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
-    expect(spec!.capabilities.embeddings.model).toBe("text-embedding-3-small");
-    expect(spec!.capabilities.embeddings.provider).toBe("openai");
   });
 
   it("writes core compose file to stack/", async () => {
@@ -434,67 +430,26 @@ describe("performSetup", () => {
     expect(existsSync(stagedCompose)).toBe(true);
   });
 
-  it("writes ollama capabilities without addon metadata in stack.yml", async () => {
+  it("writes akm config.json with ollama llm settings", async () => {
     const input = makeValidSpec({
-      capabilities: {
-        llm: "ollama/llama3.2",
-        embeddings: {
-          provider: "ollama",
-          model: "nomic-embed-text",
-          dims: 768,
-        },
-      },
+      llm: { provider: "ollama", model: "llama3.2", baseUrl: "http://localhost:11434/v1" },
+      embedding: { provider: "ollama", model: "nomic-embed-text", dims: 768, baseUrl: "http://localhost:11434/v1" },
       connections: [
-        {
-          id: "ollama-local",
-          name: "Ollama",
-          provider: "ollama",
-          baseUrl: "http://localhost:11434",
-          apiKey: "",
-        },
+        { id: "ollama-local", name: "Ollama", provider: "ollama", baseUrl: "http://localhost:11434", apiKey: "" },
       ],
     });
 
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    // v2 spec should have correct capabilities without addon metadata
-    const spec = readStackSpec(stackDir);
-    expect(spec).not.toBeNull();
-    expect(spec!.version).toBe(2);
-    expect(spec!.capabilities.llm).toBe("ollama/llama3.2");
+    const akmConfigPath = join(homeDir, "config", "akm", "config.json");
+    const config = JSON.parse(readFileSync(akmConfigPath, "utf-8"));
+    expect(config.llm.provider).toBe("ollama");
+    expect(config.llm.model).toBe("llama3.2");
+    expect(config.embedding.dimension).toBe(768);
   });
 
-  it("resolves embedding dims from EMBEDDING_DIMS lookup", async () => {
-    const input = makeValidSpec({
-      capabilities: {
-        llm: "ollama/llama3.2",
-        embeddings: {
-          provider: "ollama",
-          model: "nomic-embed-text",
-          dims: 0, // Should be resolved from lookup
-        },
-      },
-      connections: [
-        {
-          id: "ollama-local",
-          name: "Ollama",
-          provider: "ollama",
-          baseUrl: "http://localhost:11434",
-          apiKey: "",
-        },
-      ],
-    });
-
-    const result = await performSetup(input);
-    expect(result.ok).toBe(true);
-
-    // nomic-embed-text is 768 dims per EMBEDDING_DIMS — verify via stack.env OP_CAP_EMBEDDINGS_DIMS
-    const stackEnvContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_DIMS=768");
-  });
-
-  it("writes stack.yml with correct v2 structure", async () => {
+  it("writes stack.yml as version marker only", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
@@ -504,12 +459,9 @@ describe("performSetup", () => {
     const spec = readStackSpec(stackDir);
     expect(spec).not.toBeNull();
     expect(spec!.version).toBe(2);
-    expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
-    expect(spec!.capabilities.embeddings.provider).toBe("openai");
-    expect(spec!.capabilities.embeddings.model).toBe("text-embedding-3-small");
   });
 
-  it("completes setup even when duplicate connection ID with hyphen is skipped by env var map", async () => {
+  it("completes setup with multiple connections", async () => {
     const input = makeValidSpec({
       connections: [
         { id: "openai_primary", name: "OpenAI Primary", provider: "openai", baseUrl: "https://api.openai.com", apiKey: "sk-primary" },
@@ -520,11 +472,9 @@ describe("performSetup", () => {
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    // v2 spec should still have correct capabilities
     const spec = readStackSpec(stackDir);
     expect(spec).not.toBeNull();
     expect(spec!.version).toBe(2);
-    expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
   });
 
   it("writes channel credentials to stack.env when channelCredentials provided", async () => {
@@ -533,14 +483,6 @@ describe("performSetup", () => {
         discord: {
           botToken: "discord-bot-token-xyz",
           applicationId: "discord-app-id-123",
-        },
-      },
-      capabilities: {
-        llm: "openai/gpt-4o",
-        embeddings: {
-          provider: "openai",
-          model: "text-embedding-3-small",
-          dims: 1536,
         },
       },
     });

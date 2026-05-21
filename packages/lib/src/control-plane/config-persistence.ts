@@ -11,8 +11,6 @@ import { parse as yamlParse } from "yaml";
 import { parseEnvFile, mergeEnvContent, expandEnvVars } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { isChannelAddon } from "./channels.js";
-import { readStackSpec } from "./stack-spec.js";
-import { writeCapabilityVars } from "./spec-to-env.js";
 import { listEnabledAddonIds } from "./registry.js";
 
 import {
@@ -306,12 +304,6 @@ export function writeRuntimeFiles(
 
   // Ensure state directory exists
   mkdirSync(state.stateDir, { recursive: true });
-
-  const spec = readStackSpec(state.stackDir);
-  // Write OP_CAP_* capability vars to stack.env from stack spec
-  if (spec) {
-    writeCapabilityVars(spec, state.stackDir, state.homeDir);
-  }
 
   state.artifactMeta = buildRuntimeFileMeta(state.artifacts);
 }

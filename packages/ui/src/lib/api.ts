@@ -147,13 +147,6 @@ export async function fetchServiceLogs(
   return (await res.json()) as { ok: boolean; logs: string; error?: string };
 }
 
-// ── Capabilities ────────────────────────────────────────────────────────
-
-export async function fetchCapabilityStatus(): Promise<{ complete: boolean; missing: string[] }> {
-  const res = await request('GET', '/admin/capabilities/status');
-  if (!res.ok) return { complete: true, missing: [] };
-  return (await res.json()) as { complete: boolean; missing: string[] };
-}
 
 // ── Addon Management ────────────────────────────────────────────────────
 
@@ -238,18 +231,16 @@ export async function deleteUserVaultKey(key: string): Promise<{ ok: boolean }> 
   return (await res.json()) as { ok: boolean };
 }
 
-// ── Capabilities Assignments (direct stack.yml editor) ──────────────
+// ── Voice Config ────────────────────────────────────────────────────────
 
-export async function fetchAssignments(): Promise<{ capabilities: Record<string, unknown> | null }> {
-  const res = await requireOk(await request('GET', '/admin/capabilities/assignments'));
-  return (await res.json()) as { capabilities: Record<string, unknown> | null };
+export async function fetchVoiceConfig(): Promise<{ tts: Record<string, unknown>; stt: Record<string, unknown> }> {
+  const res = await requireOk(await request('GET', '/admin/voice'));
+  return (await res.json()) as { tts: Record<string, unknown>; stt: Record<string, unknown> };
 }
 
-export async function saveAssignments(
-  capabilities: Record<string, unknown>
-): Promise<{ ok: boolean; capabilities: Record<string, unknown> }> {
-  const res = await requireOk(await request('POST', '/admin/capabilities/assignments', { capabilities }));
-  return (await res.json()) as { ok: boolean; capabilities: Record<string, unknown> };
+export async function saveVoiceConfig(config: { tts?: unknown; stt?: unknown }): Promise<{ ok: boolean }> {
+  const res = await requireOk(await request('PUT', '/admin/voice', config));
+  return (await res.json()) as { ok: boolean };
 }
 
 // ── AKM Config ──────────────────────────────────────────────────────

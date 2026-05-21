@@ -1,6 +1,5 @@
 /**
  * Validation logic for SetupSpec inputs.
- * Extracted from setup.ts to reduce per-file complexity.
  */
 
 const CAPABILITY_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
@@ -20,10 +19,12 @@ export function validateSetupSpec(input: unknown): { valid: boolean; errors: str
   const body = requireObj(input, "Input must be a non-null object", errors);
   if (!body) return { valid: false, errors };
 
+  if (body.version !== 2) errors.push("version must be 2");
   validateSecurity(body, errors);
   validateOwner(body, errors);
   validateConnectionsArray(body.connections, errors);
-  validateSpecCapabilities(body, errors);
+  validateLlm(body, errors);
+  validateEmbedding(body, errors);
   if (body.channelCredentials !== undefined && (typeof body.channelCredentials !== "object" || body.channelCredentials === null)) {
     errors.push("channelCredentials must be an object if provided");
   }
@@ -39,23 +40,28 @@ function validateSecurity(body: Record<string, unknown>, errors: string[]): void
 
 function validateOwner(body: Record<string, unknown>, errors: string[]): void {
   const owner = body.owner as Record<string, unknown> | undefined;
-  if (!owner) return; // owner is optional
+  if (!owner) return;
   if (owner.name !== undefined && typeof owner.name !== "string") errors.push("owner.name must be a string");
   if (owner.email !== undefined && typeof owner.email !== "string") errors.push("owner.email must be a string");
 }
 
-function validateSpecCapabilities(body: Record<string, unknown>, errors: string[]): void {
-  if (body.version !== 2) errors.push("version must be 2");
-  const caps = requireObj(body.capabilities, "capabilities is required", errors);
-  if (!caps) return;
-  requireStr(caps, "llm", "capabilities.llm is required (format: 'provider/model')", errors);
-  const emb = requireObj(caps.embeddings, "capabilities.embeddings is required", errors);
-  if (emb) {
-    requireStr(emb, "provider", "capabilities.embeddings.provider is required", errors);
-    requireStr(emb, "model", "capabilities.embeddings.model is required", errors);
-    if (emb.dims !== undefined && emb.dims !== 0 && (typeof emb.dims !== "number" || !Number.isInteger(emb.dims) || emb.dims < 1)) {
-      errors.push("capabilities.embeddings.dims must be a positive integer or 0 (auto-resolve)");
-    }
+function validateLlm(body: Record<string, unknown>, errors: string[]): void {
+  if (body.llm === undefined) return;
+  const llm = requireObj(body.llm, "llm must be an object if provided", errors);
+  if (!llm) return;
+  requireStr(llm, "provider", "llm.provider is required", errors);
+  requireStr(llm, "model", "llm.model is required", errors);
+  if (llm.baseUrl !== undefined && typeof llm.baseUrl !== "string") errors.push("llm.baseUrl must be a string");
+}
+
+function validateEmbedding(body: Record<string, unknown>, errors: string[]): void {
+  if (body.embedding === undefined) return;
+  const emb = requireObj(body.embedding, "embedding must be an object if provided", errors);
+  if (!emb) return;
+  requireStr(emb, "provider", "embedding.provider is required", errors);
+  requireStr(emb, "model", "embedding.model is required", errors);
+  if (emb.dims !== undefined && (typeof emb.dims !== "number" || !Number.isInteger(emb.dims) || emb.dims < 1)) {
+    errors.push("embedding.dims must be a positive integer");
   }
 }
 

@@ -7,7 +7,6 @@
   import AddonsTab from '$lib/components/AddonsTab.svelte';
   import ContainersTab from '$lib/components/ContainersTab.svelte';
   import AutomationsTab from '$lib/components/AutomationsTab.svelte';
-  import CapabilitiesTab from '$lib/components/CapabilitiesTab.svelte';
   import ProvidersPanel from '$lib/components/ProvidersPanel.svelte';
   import LogsTab from '$lib/components/LogsTab.svelte';
   import AuditTab from '$lib/components/AuditTab.svelte';
@@ -22,7 +21,6 @@
     applyChanges,
     upgradeStack,
     containerAction,
-    fetchCapabilityStatus,
     pullImages,
   } from '$lib/api.js';
   import type { HealthPayload, ContainerListResponse, AutomationsResponse } from '$lib/types.js';
@@ -36,7 +34,6 @@
   let adminHealth = $state<HealthPayload | null>(null);
   let guardianHealth = $state<HealthPayload | null>(null);
   let adminStatus = $state('');
-  let capabilitiesMissing = $state<string[]>([]);
 
   // ── Loading flags ───────────────────────────────────────────────────────────
   let healthLoading = $state(false);
@@ -56,7 +53,7 @@
   let selectedContainerId: string | null = $state(null);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: 'overview' | 'addons' | 'automations' | 'connections' | 'secrets' | 'capabilities' | 'voice' | 'akm' | 'containers' | 'logs' | 'audit' = $state('overview');
+  let activeTab: 'overview' | 'addons' | 'automations' | 'connections' | 'secrets' | 'voice' | 'akm' | 'containers' | 'logs' | 'audit' = $state('overview');
   let pullLoading = $state(false);
 
   // ── Container polling ──────────────────────────────────────────────────────
@@ -135,7 +132,6 @@
       await loadHealth();
       void loadContainers();
       void loadAutomations();
-      void checkCapabilityStatus();
       return true;
     } catch (e) {
       console.warn('[page] Auth failed:', e);
@@ -143,15 +139,6 @@
       return false;
     } finally {
       authLoading = false;
-    }
-  }
-
-  async function checkCapabilityStatus(): Promise<void> {
-    try {
-      const data = await fetchCapabilityStatus();
-      capabilitiesMissing = data.complete ? [] : data.missing;
-    } catch (e) {
-      console.warn('[page] Capability status check failed (non-critical):', e);
     }
   }
 
@@ -327,7 +314,7 @@
       try {
         // Check session validity by attempting an authenticated request.
         // A 401 means no valid session cookie — show auth gate.
-        const probe = await fetch('/admin/capabilities/status', { credentials: 'include' });
+        const probe = await fetch('/admin/health', { credentials: 'include' });
         if (probe.status === 401 || probe.status === 503) {
           authLocked = true;
           authLoading = false;
@@ -341,8 +328,7 @@
         void loadHealth();
         void loadContainers();
         void loadAutomations();
-        void checkCapabilityStatus();
-      } catch (e) {
+        } catch (e) {
         console.warn('[page] Session probe on mount failed:', e);
         authLocked = true;
         authError = 'Unable to reach admin API.';
@@ -363,13 +349,6 @@
   <Navbar onLogout={handleLogout} navLink={{ href: '/chat', label: 'Chat' }} />
 
   <main>
-    {#if capabilitiesMissing.length > 0}
-      <div class="capabilities-banner" role="alert">
-        <span>Missing capabilities: {capabilitiesMissing.join(', ')}.</span>
-        <button class="banner-link" type="button" onclick={() => handleTabSelect('capabilities')}>Configure</button>
-      </div>
-    {/if}
-
     <TabBar active={activeTab} onSelect={handleTabSelect} />
 
     {#if activeTab === 'overview'}
@@ -422,9 +401,6 @@
     {:else if activeTab === 'secrets'}
       <SecretsTab tokenStored={true} />
     {/if}
-    <div hidden={activeTab !== 'capabilities'}>
-      <CapabilitiesTab />
-    </div>
     {#if activeTab === 'voice'}
       <VoiceTab tokenStored={true} />
     {:else if activeTab === 'akm'}
@@ -453,24 +429,5 @@
     }
   }
 
-  .capabilities-banner {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-5);
-    background: var(--color-warning-bg, rgba(253, 126, 20, 0.1));
-    border: 1px solid var(--color-warning-border, rgba(253, 126, 20, 0.25));
-    border-radius: var(--radius-md);
-    font-size: var(--text-sm);
-    color: var(--color-text);
-    margin-bottom: var(--space-4);
-  }
-  .capabilities-banner span { flex: 1; }
-  .banner-link {
-    background: none; border: none; color: var(--color-primary);
-    font-size: var(--text-sm); font-weight: var(--font-semibold);
-    cursor: pointer; text-decoration: underline;
-  }
-  .banner-link:hover { color: var(--color-primary-hover); }
 
 </style>

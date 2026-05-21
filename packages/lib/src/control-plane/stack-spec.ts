@@ -1,83 +1,19 @@
 /**
  * Stack specification file (stack.yml) management.
  *
- * The stack spec is a YAML document that captures the high-level
- * configuration of an OpenPalm installation: capabilities only.
- * It lives in CONFIG_HOME.
+ * The stack spec is a YAML document used as a version marker for the
+ * OpenPalm installation schema. AI provider configuration lives in
+ * config/akm/config.json (managed via the admin AKM tab).
  *
- * v2: Capabilities-based schema. No connections array — capabilities
- *     carry their own provider info.
+ * v2: capabilities removed — LLM/embedding now live in akm config.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { stringify as yamlStringify, parse as yamlParse } from "yaml";
-
-// ── Capability Types ────────────────────────────────────────────────────
-
-export type StackSpecEmbeddings = {
-  provider: string;
-  model: string;
-  dims: number;
-};
-
-export type StackSpecTts = {
-  enabled: boolean;
-  /** Engine identifier (e.g. 'kokoro', 'openai-tts'). Drives the UI's picker. */
-  engine?: string;
-  provider?: string;
-  /** Operator-supplied endpoint override. Wins over PROVIDER_DEFAULT_URLS. */
-  baseURL?: string;
-  model?: string;
-  voice?: string;
-  format?: string;
-};
-
-export type StackSpecStt = {
-  enabled: boolean;
-  /** Engine identifier (e.g. 'whisper-local', 'openai-stt'). */
-  engine?: string;
-  provider?: string;
-  /** Operator-supplied endpoint override. */
-  baseURL?: string;
-  model?: string;
-  language?: string;
-};
-
-export type StackSpecReranker = {
-  enabled: boolean;
-  provider?: string;
-  mode?: "llm" | "dedicated";
-  model?: string;
-  topK?: number;
-  topN?: number;
-};
-
-export type StackSpecCapabilities = {
-  /** Primary LLM: "provider/model" */
-  llm: string;
-  /** Small/fast model: "provider/model" */
-  slm?: string;
-  embeddings: StackSpecEmbeddings;
-  tts?: StackSpecTts;
-  stt?: StackSpecStt;
-  reranking?: StackSpecReranker;
-  /** akm runtime features. Defaults: all true (matches pre-toggle behaviour). */
-  akm?: StackSpecAkmFeatures;
-};
-
-export type StackSpecAkmFeatures = {
-  /** Distill durable lessons from feedback during stash improve runs. */
-  feedback_distillation?: boolean;
-  /** Infer new memories from assistant sessions. */
-  memory_inference?: boolean;
-  /** Merge / dedupe overlapping memories on the consolidation pass. */
-  memory_consolidation?: boolean;
-};
 
 // ── StackSpec v2 ────────────────────────────────────────────────────────
 
 export type StackSpec = {
   version: 2;
-  capabilities: StackSpecCapabilities;
 };
 
 // ── Constants ───────────────────────────────────────────────────────────
@@ -98,20 +34,6 @@ export const SPEC_DEFAULTS = {
   },
 } as const;
 
-// ── Capability Helpers ──────────────────────────────────────────────────
-
-/** Parse a "provider/model" capability string into parts */
-export function parseCapabilityString(cap: string): { provider: string; model: string } {
-  const idx = cap.indexOf("/");
-  if (idx < 0) return { provider: cap, model: "" };
-  return { provider: cap.slice(0, idx), model: cap.slice(idx + 1) };
-}
-
-/** Format provider + model into a capability string */
-export function formatCapabilityString(provider: string, model: string): string {
-  return `${provider}/${model}`;
-}
-
 // ── Read / Write ────────────────────────────────────────────────────────
 
 export function stackSpecPath(configDir: string): string {
@@ -125,7 +47,8 @@ export function writeStackSpec(configDir: string, spec: StackSpec): void {
 }
 
 /**
- * Read the stack spec. Returns null for missing, corrupt, or unrecognized version files.
+ * Read the stack spec. Returns null for missing or corrupt files.
+ * Only the version field is checked; legacy capability fields are ignored.
  */
 export function readStackSpec(configDir: string): StackSpec | null {
   const path = stackSpecPath(configDir);
@@ -140,16 +63,5 @@ export function readStackSpec(configDir: string): StackSpec | null {
   if (typeof raw !== "object" || raw === null) return null;
   const obj = raw as Record<string, unknown>;
   if (obj.version !== 2) return null;
-  if (typeof obj.capabilities !== "object" || obj.capabilities === null) return null;
-  return obj as unknown as StackSpec;
-}
-
-/**
- * Update a single capability key in the stack spec.
- */
-export function updateCapability(configDir: string, key: string, value: unknown): void {
-  const spec = readStackSpec(configDir);
-  if (!spec) throw new Error("stack.yml not found or invalid");
-  (spec.capabilities as Record<string, unknown>)[key] = value;
-  writeStackSpec(configDir, spec);
+  return { version: 2 };
 }

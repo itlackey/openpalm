@@ -34,14 +34,8 @@ import { STACK_SPEC_FILENAME, readStackSpec } from "./stack-spec.js";
 function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
   return {
     version: 2,
-    capabilities: {
-      llm: "openai/gpt-4o",
-      embeddings: {
-        provider: "openai",
-        model: "text-embedding-3-small",
-        dims: 1536,
-      },
-    },
+    llm: { provider: "openai", model: "gpt-4o", baseUrl: "https://api.openai.com/v1" },
+    embedding: { provider: "openai", model: "text-embedding-3-small", dims: 1536, baseUrl: "https://api.openai.com/v1" },
     security: { adminToken: "test-admin-token-12345" },
     owner: { name: "Test User", email: "test@example.com" },
     connections: [
@@ -335,26 +329,16 @@ describe("Existing Install", () => {
     expect(parsed.OP_SETUP_COMPLETE).toBe("true");
   });
 
-  // Scenario 8: Re-setup with different provider updates stack.yml capabilities
-  it("re-setup with different provider updates capabilities in stack.yml", async () => {
+  // Scenario 8: Re-setup with different provider updates akm config
+  it("re-setup with different provider updates akm config", async () => {
     // First setup with OpenAI
     await performSetup(makeValidSpec());
-
-    const specAfterFirst = readStackSpec(stackDir);
-    expect(specAfterFirst).not.toBeNull();
-    expect(specAfterFirst!.capabilities.llm).toContain("openai/");
 
     // Second setup with Groq
     await performSetup(
       makeValidSpec({
-        capabilities: {
-          llm: "groq/llama3-70b-8192",
-          embeddings: {
-            provider: "groq",
-            model: "text-embedding-3-small",
-            dims: 1536,
-          },
-        },
+        llm: { provider: "groq", model: "llama3-70b-8192", baseUrl: "https://api.groq.com/openai/v1" },
+        embedding: { provider: "groq", model: "text-embedding-3-small", dims: 1536, baseUrl: "https://api.groq.com/openai/v1" },
         connections: [
           {
             id: "groq-main",
@@ -367,9 +351,10 @@ describe("Existing Install", () => {
       })
     );
 
+    // stack.yml is just a version marker now
     const specAfterSecond = readStackSpec(stackDir);
     expect(specAfterSecond).not.toBeNull();
-    expect(specAfterSecond!.capabilities.llm).toBe("groq/llama3-70b-8192");
+    expect(specAfterSecond!.version).toBe(2);
 
     // stack.env should retain both keys
     const secrets = readFileSync(join(stackDir, "stack.env"), "utf-8");
@@ -601,17 +586,11 @@ describe("Setup Input Variations", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  // Scenario 20: Ollama in-stack setup
-  it("Ollama in-stack setup overrides localhost URL to docker-internal", async () => {
+  // Scenario 20: Ollama setup
+  it("Ollama setup writes akm config with ollama provider", async () => {
     const input = makeValidSpec({
-      capabilities: {
-        llm: "ollama/llama3.2",
-        embeddings: {
-          provider: "ollama",
-          model: "nomic-embed-text",
-          dims: 768,
-        },
-      },
+      llm: { provider: "ollama", model: "llama3.2", baseUrl: "http://localhost:11434/v1" },
+      embedding: { provider: "ollama", model: "nomic-embed-text", dims: 768, baseUrl: "http://localhost:11434/v1" },
       connections: [
         {
           id: "ollama-local",
@@ -626,10 +605,9 @@ describe("Setup Input Variations", () => {
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    // stack.yml should have ollama capabilities
     const spec = readStackSpec(stackDir);
     expect(spec).not.toBeNull();
-    expect(spec!.capabilities.llm).toBe("ollama/llama3.2");
+    expect(spec!.version).toBe(2);
   });
 
   // Scenario 21: Multiple providers map to correct env vars
@@ -696,36 +674,22 @@ describe("performSetup end-to-end artifacts", () => {
     const spec = readStackSpec(stackDir);
     expect(spec).not.toBeNull();
     expect(spec!.version).toBe(2);
-    expect(spec!.capabilities.llm).toBe("openai/gpt-4o");
-    expect(spec!.capabilities.embeddings.model).toBe("text-embedding-3-small");
   });
 
-  it("writes OP_CAP_EMBEDDINGS_DIMS with correct embedding dims from lookup", async () => {
+  it("writes akm config with embedding dims from setup spec", async () => {
     const input = makeValidSpec({
-      capabilities: {
-        llm: "ollama/llama3.2",
-        embeddings: {
-          provider: "ollama",
-          model: "nomic-embed-text",
-          dims: 0, // Resolved from lookup
-        },
-      },
+      llm: { provider: "ollama", model: "llama3.2", baseUrl: "http://localhost:11434/v1" },
+      embedding: { provider: "ollama", model: "nomic-embed-text", dims: 768, baseUrl: "http://localhost:11434/v1" },
       connections: [
-        {
-          id: "ollama-1",
-          name: "Ollama",
-          provider: "ollama",
-          baseUrl: "http://localhost:11434",
-          apiKey: "",
-        },
+        { id: "ollama-1", name: "Ollama", provider: "ollama", baseUrl: "http://localhost:11434", apiKey: "" },
       ],
     });
 
     await performSetup(input);
 
-    // nomic-embed-text is 768 dims per EMBEDDING_DIMS constant — verify via stack.env
-    const stackEnvContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(stackEnvContent).toContain("OP_CAP_EMBEDDINGS_DIMS=768");
+    const akmConfigPath = join(homeDir, "config", "akm", "config.json");
+    const config = JSON.parse(readFileSync(akmConfigPath, "utf-8"));
+    expect(config.embedding.dimension).toBe(768);
   });
 
   it("writes core.compose.yml to stack/", async () => {
@@ -745,13 +709,14 @@ describe("performSetup end-to-end artifacts", () => {
     expect(secrets.OP_ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
   });
 
-  it("writes OP_CAP_* vars from capabilities to stack.env", async () => {
+  it("writes akm config with llm provider and model", async () => {
     await performSetup(makeValidSpec());
 
-    const stackEnv = parseEnvFile(join(stackDir, "stack.env"));
-    expect(stackEnv.OP_CAP_LLM_PROVIDER).toBe("openai");
-    expect(stackEnv.OP_CAP_LLM_MODEL).toBe("gpt-4o");
-    expect(stackEnv.OP_CAP_EMBEDDINGS_MODEL).toBe("text-embedding-3-small");
+    const akmConfigPath = join(homeDir, "config", "akm", "config.json");
+    const config = JSON.parse(readFileSync(akmConfigPath, "utf-8"));
+    expect(config.llm.provider).toBe("openai");
+    expect(config.llm.model).toBe("gpt-4o");
+    expect(config.embedding.model).toBe("text-embedding-3-small");
   });
 });
 

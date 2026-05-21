@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import type { VoiceEngineValue } from '$lib/wizard/types.js';
 	import VoiceEngineSelector from './voice/VoiceEngineSelector.svelte';
-	import { fetchAssignments, saveAssignments } from '$lib/api.js';
+	import { fetchVoiceConfig, saveVoiceConfig } from '$lib/api.js';
 
 	interface Props { tokenStored: boolean; }
 	let { tokenStored }: Props = $props();
@@ -39,12 +39,9 @@
 		loading = true;
 		error = '';
 		try {
-			const res = await fetchAssignments();
-			const loaded = res.capabilities as Record<string, unknown> | null;
-			if (loaded) {
-				tts = readVoiceValue(loaded.tts);
-				stt = readVoiceValue(loaded.stt);
-			}
+			const res = await fetchVoiceConfig();
+			tts = readVoiceValue(res.tts);
+			stt = readVoiceValue(res.stt);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load voice settings.';
 		} finally {
@@ -67,7 +64,7 @@
 				if (v.language) out.language = v.language;
 				return out;
 			};
-			await saveAssignments({ tts: voicePayload(tts), stt: voicePayload(stt) });
+			await saveVoiceConfig({ tts: voicePayload(tts), stt: voicePayload(stt) });
 			saved = true;
 			setTimeout(() => { saved = false; }, 3000);
 		} catch (e) {

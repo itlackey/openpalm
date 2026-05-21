@@ -181,31 +181,17 @@
 
     const result: Record<string, unknown> = {
       version: 2,
-      capabilities: {
-        llm: llmProvider + '/' + (llm?.model ?? ''),
-        embeddings: {
-          provider: embProvider,
-          model: emb?.model ?? '',
-          dims: emb?.dims ?? 1536,
-        },
-      },
       addons,
       security: { adminToken },
       connections: capabilities,
     };
 
-    if (small?.model) {
-      (result.capabilities as Record<string, unknown>).slm = small.connId + '/' + small.model;
+    // LLM and embedding go directly to akm config (not stack.yml capabilities)
+    if (llmProvider && llm?.model) {
+      result.llm = { provider: llmProvider, model: llm.model, baseUrl: llmCap?.baseUrl ?? '' };
     }
-
-    if (reranking.enabled) {
-      (result.capabilities as Record<string, unknown>).reranking = {
-        enabled: true,
-        mode: reranking.mode,
-        model: reranking.mode === 'dedicated' ? reranking.model : '',
-        topK: reranking.topK || 20,
-        topN: reranking.topN || 5,
-      };
+    if (embProvider && emb?.model) {
+      result.embedding = { provider: embProvider, model: emb.model, dims: emb.dims ?? 1536, baseUrl: embCap?.baseUrl ?? '' };
     }
 
     // Voice engines — only persist if the user picked something explicit
@@ -221,9 +207,9 @@
       return out;
     };
     const ttsCap = voicePayload(voiceTts);
-    if (ttsCap) (result.capabilities as Record<string, unknown>).tts = ttsCap;
+    if (ttsCap) result.tts = ttsCap;
     const sttCap = voicePayload(voiceStt);
-    if (sttCap) (result.capabilities as Record<string, unknown>).stt = sttCap;
+    if (sttCap) result.stt = sttCap;
 
     if (ownerName || ownerEmail) {
       result.owner = {

@@ -41,6 +41,12 @@
 	type FMode = '' | 'llm' | 'agent' | 'sdk';
 	interface FEntry { enabled: boolean; mode: FMode; profile: string; timeoutMs: string; }
 
+	// ── Default LLM Connection ───────────────────────────────────────────────────
+	let defaultLlmEndpoint = $state('');
+	let defaultLlmModel = $state('');
+	let defaultLlmProvider = $state('');
+	let defaultLlmApiKey = $state('');
+
 	// ── LLM Profiles ─────────────────────────────────────────────────────────────
 	let llmProfiles = $state<LlmProfile[]>([]);
 	let defaultLlmProfile = $state('');
@@ -194,6 +200,14 @@
 		error = '';
 		try {
 			const { config } = await fetchAkmConfig();
+
+			// Default LLM connection
+			const rawDefaultLlm = config.llm as Record<string, unknown> | undefined;
+			defaultLlmEndpoint = (rawDefaultLlm?.endpoint as string) ?? '';
+			defaultLlmModel = (rawDefaultLlm?.model as string) ?? '';
+			defaultLlmProvider = (rawDefaultLlm?.provider as string) ?? '';
+			defaultLlmApiKey = (rawDefaultLlm?.apiKey as string) ?? '';
+
 			const rawProfiles = config.profiles as Record<string, unknown> | undefined;
 
 			const rawLlm = rawProfiles?.llm as Record<string, unknown> | undefined;
@@ -335,7 +349,14 @@
 				if (v !== undefined) cooldownResult[t] = v;
 			}
 
+			const llmPayload: Record<string, unknown> = {};
+			if (defaultLlmEndpoint) llmPayload.endpoint = defaultLlmEndpoint;
+			if (defaultLlmModel) llmPayload.model = defaultLlmModel;
+			if (defaultLlmProvider) llmPayload.provider = defaultLlmProvider;
+			llmPayload.apiKey = defaultLlmApiKey; // allow clearing
+
 			await saveAkmConfig({
+				...(Object.keys(llmPayload).length > 0 ? { llm: llmPayload } : {}),
 				profiles: { llm: profilesLlm, agent: profilesAgent },
 				defaults: defaultsPayload,
 				embedding: embPayload,
@@ -430,6 +451,22 @@
 	{/snippet}
 
 	<div class="panel-body">
+
+		<!-- ── Default LLM ──────────────────────────────────────────────── -->
+		<section class="config-section">
+			<h3 class="section-title">Default LLM</h3>
+			<p class="section-note">Primary LLM connection used by akm operations. Override per-operation using LLM Profiles below.</p>
+			<div class="control-grid">
+				<label class="control-label" for="defaultLlmEndpoint">Endpoint</label>
+				<input id="defaultLlmEndpoint" class="control-input" type="url" spellcheck="false" placeholder="https://api.openai.com/v1/chat/completions" bind:value={defaultLlmEndpoint} disabled={loading || saving} />
+				<label class="control-label" for="defaultLlmModel">Model</label>
+				<input id="defaultLlmModel" class="control-input" type="text" spellcheck="false" placeholder="gpt-4o" bind:value={defaultLlmModel} disabled={loading || saving} />
+				<label class="control-label" for="defaultLlmProvider">Provider</label>
+				<input id="defaultLlmProvider" class="control-input" type="text" spellcheck="false" placeholder="openai" bind:value={defaultLlmProvider} disabled={loading || saving} />
+				<label class="control-label" for="defaultLlmApiKey">API Key</label>
+				<input id="defaultLlmApiKey" class="control-input" type="text" spellcheck="false" placeholder={'${AKM_LLM_API_KEY}'} bind:value={defaultLlmApiKey} disabled={loading || saving} />
+			</div>
+		</section>
 
 		<!-- ── LLM Profiles ──────────────────────────────────────────────── -->
 		<section class="config-section">

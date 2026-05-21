@@ -368,6 +368,18 @@ export const PATCH: RequestHandler = async (event) => {
       updated.embedding = merged;
     }
 
+    // top-level llm (default connection — written by setup wizard, editable via AKM tab)
+    if (isRec(body.llm)) {
+      const existingLlm = (existing.llm as Rec) ?? {};
+      const llmUpdate = body.llm as Rec;
+      const merged: Rec = { ...existingLlm };
+      for (const f of ['endpoint', 'model', 'provider'] as const) {
+        if (f in llmUpdate && typeof llmUpdate[f] === 'string') merged[f] = llmUpdate[f];
+      }
+      if ('apiKey' in llmUpdate) { if (llmUpdate.apiKey) merged.apiKey = llmUpdate.apiKey; else delete merged.apiKey; }
+      updated.llm = merged;
+    }
+
     // scalars
     if ('semanticSearchMode' in body) updated.semanticSearchMode = body.semanticSearchMode;
     if ('archiveRetentionDays' in body) updated.archiveRetentionDays = body.archiveRetentionDays;

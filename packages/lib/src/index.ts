@@ -237,31 +237,17 @@ export {
 // ── Stack Spec (v2) ──────────────────────────────────────────────────────
 export type {
   StackSpec,
-  StackSpecCapabilities,
-  StackSpecEmbeddings,
-  StackSpecTts,
-  StackSpecStt,
-  StackSpecReranker,
 } from "./control-plane/stack-spec.js";
 export {
   STACK_SPEC_FILENAME,
   writeStackSpec,
   readStackSpec,
-  parseCapabilityString,
-  formatCapabilityString,
 } from "./control-plane/stack-spec.js";
 
-// ── Capability Validation ────────────────────────────────────────────────
-export type {
-  CapabilityValidationError,
-  CapabilityValidationResult,
-} from "./control-plane/capability-schema.js";
-export { validateCapabilities } from "./control-plane/capability-schema.js";
-
 // ── Spec-to-Env Derivation ──────────────────────────────────────────────
+export type { VoiceVarsConfig } from "./control-plane/spec-to-env.js";
 export {
-  writeCapabilityVars,
-  buildAkmSetupJson,
+  writeVoiceVars,
 } from "./control-plane/spec-to-env.js";
 
 // ── Setup ────────────────────────────────────────────────────────────────

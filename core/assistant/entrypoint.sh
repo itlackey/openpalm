@@ -197,66 +197,6 @@ maybe_source_akm_user_vault() {
   set +a
 }
 
-maybe_configure_akm() {
-  # Configure akm LLM and embedding from OP_CAP_* capability vars so that
-  # akm improve, distill, and semantic search use the same provider as the
-  # stack. Uses SLM preferentially for akm's own LLM (lightweight operations);
-  # falls back to primary LLM when SLM is not configured.
-  # Provider API keys live in OpenCode's auth.json (bind-mounted into this
-  # container). akm reads keys from /etc/vault/user.env (sourced above by
-  # maybe_source_akm_user_vault) — never from compose-forwarded env vars.
-  if ! command -v akm >/dev/null 2>&1; then
-    return 0
-  fi
-
-  # Prefer SLM for akm operations (lightweight); fall back to LLM
-  local llm_provider="${OP_CAP_SLM_PROVIDER:-${OP_CAP_LLM_PROVIDER:-}}"
-  local llm_model="${OP_CAP_SLM_MODEL:-${OP_CAP_LLM_MODEL:-}}"
-  local llm_base_url="${OP_CAP_SLM_BASE_URL:-${OP_CAP_LLM_BASE_URL:-}}"
-
-  if [ -z "$llm_provider" ] || [ -z "$llm_model" ] || [ -z "$llm_base_url" ]; then
-    return 0
-  fi
-
-  # Build OpenAI-compatible endpoint URLs from the resolved base URL
-  local base_no_slash="${llm_base_url%/}"
-  local llm_endpoint
-  case "$base_no_slash" in
-    */v1) llm_endpoint="${base_no_slash}/chat/completions" ;;
-    *)    llm_endpoint="${base_no_slash}/v1/chat/completions" ;;
-  esac
-
-  # Feature toggles — propagated from stack.yml.capabilities.akm by
-  # writeCapabilityVars. Unset values default to "true" to preserve the
-  # pre-toggle behaviour for upgraded installs.
-  local feat_fd="${OP_CAP_AKM_FEEDBACK_DISTILLATION:-true}"
-  local feat_mi="${OP_CAP_AKM_MEMORY_INFERENCE:-true}"
-  local feat_mc="${OP_CAP_AKM_MEMORY_CONSOLIDATION:-true}"
-
-  local features
-  features='"feedback_distillation":'"$feat_fd"',"memory_inference":'"$feat_mi"',"memory_consolidation":'"$feat_mc"
-
-  local akm_config
-  akm_config='{"llm":{"endpoint":"'"$llm_endpoint"'","model":"'"$llm_model"'","provider":"'"$llm_provider"'","features":{'"$features"'}}}'
-
-  # Append embedding config when all required vars are present
-  local emb_provider="${OP_CAP_EMBEDDINGS_PROVIDER:-}"
-  local emb_model="${OP_CAP_EMBEDDINGS_MODEL:-}"
-  local emb_base_url="${OP_CAP_EMBEDDINGS_BASE_URL:-}"
-  local emb_dims="${OP_CAP_EMBEDDINGS_DIMS:-0}"
-
-  if [ -n "$emb_provider" ] && [ -n "$emb_model" ] && [ -n "$emb_base_url" ] && [ "$emb_dims" != "0" ]; then
-    local emb_base_no_slash="${emb_base_url%/}"
-    local emb_endpoint
-    case "$emb_base_no_slash" in
-      */v1) emb_endpoint="${emb_base_no_slash}/embeddings" ;;
-      *)    emb_endpoint="${emb_base_no_slash}/v1/embeddings" ;;
-    esac
-    akm_config='{"llm":{"endpoint":"'"$llm_endpoint"'","model":"'"$llm_model"'","provider":"'"$llm_provider"'","features":{'"$features"'}},"embedding":{"endpoint":"'"$emb_endpoint"'","model":"'"$emb_model"'","provider":"'"$emb_provider"'","dimension":'"$emb_dims"'}}'
-  fi
-
-  akm setup --config "$akm_config" --yes 2>/dev/null || true
-}
 
 start_opencode() {
   cd /work
@@ -297,6 +237,10 @@ maybe_configure_lmstudio_provider
 # Runs as root because gosu has not been invoked yet — root can read the
 # 0600 vault file and re-export to children.
 maybe_source_akm_user_vault
-maybe_configure_akm
+
+# Validate akm config is present (written by admin UI or setup wizard)
+if [ ! -f "${AKM_CONFIG_DIR}/config.json" ]; then
+  echo "WARN: akm config not found at ${AKM_CONFIG_DIR}/config.json — akm will use defaults" >&2
+fi
 start_cron_and_sync_tasks
 start_opencode

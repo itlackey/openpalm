@@ -11,8 +11,6 @@ import { randomBytes } from "node:crypto";
 import { createLogger } from "../logger.js";
 import {
   PROVIDER_KEY_MAP,
-  EMBEDDING_DIMS,
-  OLLAMA_INSTACK_URL,
 } from "../provider-constants.js";
 import { mergeEnvContent } from "./env.js";
 import { ensureHomeDirs } from "./home.js";
@@ -28,11 +26,10 @@ import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { createState } from "./lifecycle.js";
 import { mirrorUserVaultToAkm, migrateAndCleanupLegacyUserEnv } from "./akm-vault.js";
 import { writeStackSpec } from "./stack-spec.js";
-import type { StackSpec, StackSpecCapabilities } from "./stack-spec.js";
-import { writeCapabilityVars } from "./spec-to-env.js";
+import { writeVoiceVars } from "./spec-to-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
-import { listEnabledAddonIds, getRegistryAutomation } from "./registry.js";
+import { getRegistryAutomation } from "./registry.js";
 export { validateSetupSpec } from "./setup-validation.js";
 
 const logger = createLogger("setup");
@@ -55,7 +52,10 @@ export type SetupResult = {
 
 export type SetupSpec = {
   version: 2;
-  capabilities: StackSpecCapabilities;
+  llm?: { provider: string; model: string; baseUrl?: string };
+  embedding?: { provider: string; model: string; dims: number; baseUrl?: string };
+  tts?: { enabled?: boolean; engine?: string; provider?: string; baseURL?: string; model?: string; voice?: string };
+  stt?: { enabled?: boolean; engine?: string; provider?: string; baseURL?: string; model?: string; language?: string };
   security: { adminToken: string };
   owner?: { name?: string; email?: string };
   connections: SetupConnection[];
@@ -65,31 +65,10 @@ export type SetupSpec = {
 // ── Secrets Builder ──────────────────────────────────────────────────────
 
 /**
- * Map provider id → env var for a custom base URL override.
- * Allows writeCapabilityVars to resolve non-default endpoints.
- */
-const PROVIDER_BASE_URL_ENV: Record<string, string> = {
-  openai: "OPENAI_BASE_URL",
-  anthropic: "ANTHROPIC_BASE_URL",
-  groq: "GROQ_BASE_URL",
-  mistral: "MISTRAL_BASE_URL",
-  together: "TOGETHER_BASE_URL",
-  deepseek: "DEEPSEEK_BASE_URL",
-  xai: "XAI_BASE_URL",
-  google: "GOOGLE_BASE_URL",
-  huggingface: "HF_BASE_URL",
-  ollama: "OLLAMA_BASE_URL",
-  lmstudio: "LMSTUDIO_BASE_URL",
-  "model-runner": "MODEL_RUNNER_BASE_URL",
-  "openai-compatible": "OPENAI_COMPATIBLE_BASE_URL",
-};
-
-/**
  * Build the stack.env update payload from a setup spec. Provider API
  * keys are NOT included here — credentials live in OpenCode's auth.json
  * (see buildAuthJsonFromSetup), not stack.env. This function returns
- * only the non-credential vars: owner identity, provider base-URL
- * overrides (consumed by writeCapabilityVars), and similar.
+ * only non-credential vars: owner identity and similar.
  */
 export function buildSecretsFromSetup(
   connections: SetupConnection[],
@@ -100,14 +79,7 @@ export function buildSecretsFromSetup(
   const ownerEmail = (owner?.email?.trim() ?? "").replace(/[\r\n\0]/g, "").slice(0, 200);
   if (ownerName) updates.OWNER_NAME = ownerName;
   if (ownerEmail) updates.OWNER_EMAIL = ownerEmail;
-
-  for (const cap of connections) {
-    // Persist user-configured base URL for any provider so writeCapabilityVars can resolve it
-    if (cap.baseUrl) {
-      const urlEnv = PROVIDER_BASE_URL_ENV[cap.provider];
-      if (urlEnv) updates[urlEnv] = cap.baseUrl;
-    }
-  }
+  void connections;
   return updates;
 }
 
@@ -186,18 +158,11 @@ export async function performSetup(
   const validation = validateSetupSpec(input);
   if (!validation.valid) return { ok: false, error: validation.errors.join("; ") };
 
-  const { capabilities, security, owner, connections, channelCredentials } = input;
+  const { llm, embedding, tts, stt, security, owner, connections, channelCredentials } = input;
   const state = opts?.state ?? createState(security.adminToken);
-  const ollamaEnabled = listEnabledAddonIds(state.homeDir).includes("ollama");
-
-  logger.info("performing setup", { capabilityCount: connections.length, ollamaEnabled });
-
-  // Apply Ollama in-stack URL override when addon is enabled
-  const effectiveConnections = ollamaEnabled
-    ? connections.map((c) => c.provider === "ollama" ? { ...c, baseUrl: OLLAMA_INSTACK_URL } : c)
-    : connections;
-  const updates = buildSecretsFromSetup(effectiveConnections, owner);
-  const providerKeys = buildAuthJsonFromSetup(effectiveConnections);
+  logger.info("performing setup", { connectionCount: connections.length });
+  const updates = buildSecretsFromSetup(connections, owner);
+  const providerKeys = buildAuthJsonFromSetup(connections);
 
   // Persist vault env files + OpenCode auth.json
   try {
@@ -230,8 +195,45 @@ export async function performSetup(
   // directly. Future callers needing cross-process access should use
   // `${XDG_RUNTIME_DIR}` (tmpfs) rather than the stash data dir.
 
-  // Write stack.yml and OP_CAP_* capability vars to stack.env
-  writeStackConfigs({ version: 2, capabilities }, state);
+  // Write stack.yml (version marker only)
+  writeStackSpec(state.stackDir, { version: 2 });
+
+  // Write akm config with LLM and embedding settings from setup
+  if (llm || embedding) {
+    const akmConfigDir = join(state.configDir, "akm");
+    mkdirSync(akmConfigDir, { recursive: true });
+    const akmConfigPath = join(akmConfigDir, "config.json");
+    let existing: Record<string, unknown> = {};
+    if (existsSync(akmConfigPath)) {
+      try { existing = JSON.parse(readFileSync(akmConfigPath, "utf-8")); } catch { /* ignore corrupt */ }
+    }
+    const updated = { ...existing };
+    if (llm) {
+      const base = llm.baseUrl ? llm.baseUrl.replace(/\/+$/, "") : "";
+      updated.llm = {
+        ...((existing.llm as Record<string, unknown>) ?? {}),
+        endpoint: base ? `${base}/chat/completions` : "",
+        model: llm.model,
+        provider: llm.provider,
+      };
+    }
+    if (embedding) {
+      const base = embedding.baseUrl ? embedding.baseUrl.replace(/\/+$/, "") : "";
+      updated.embedding = {
+        ...((existing.embedding as Record<string, unknown>) ?? {}),
+        endpoint: base ? `${base}/embeddings` : "",
+        model: embedding.model,
+        provider: embedding.provider,
+        dimension: embedding.dims,
+      };
+    }
+    writeFileSync(akmConfigPath, JSON.stringify(updated, null, 2), { mode: 0o600 });
+  }
+
+  // Write TTS/STT vars to stack.env for the voice channel
+  if (tts || stt) {
+    writeVoiceVars({ tts, stt }, state.stackDir);
+  }
 
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
@@ -287,19 +289,6 @@ export async function performSetup(
     });
   }
 
-  logger.info("setup complete", { capabilityCount: connections.length });
+  logger.info("setup complete", { connectionCount: connections.length });
   return { ok: true };
-}
-
-/** Write stack.yml and OP_CAP_* capability vars to stack.env from the spec's capabilities. */
-function writeStackConfigs(spec: StackSpec, state: ControlPlaneState): void {
-  const { provider: embProvider, model: embModel } = spec.capabilities.embeddings;
-  const resolvedDims = spec.capabilities.embeddings.dims || EMBEDDING_DIMS[`${embProvider}/${embModel}`] || 1536;
-
-  const specToWrite: StackSpec = {
-    ...spec,
-    capabilities: { ...spec.capabilities, embeddings: { ...spec.capabilities.embeddings, dims: resolvedDims } },
-  };
-  writeStackSpec(state.stackDir, specToWrite);
-  writeCapabilityVars(specToWrite, state.stackDir, state.homeDir);
 }
