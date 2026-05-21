@@ -12,7 +12,9 @@ import type { RequestHandler } from './$types';
 import { requireAdmin, jsonResponse, getRequestId } from '$lib/server/helpers.js';
 
 const OPENCODE_URL =
-	process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL ?? 'http://localhost:4096';
+	process.env.OP_OPENCODE_URL ??
+	process.env.OP_ASSISTANT_URL ??
+	`http://localhost:${process.env.OP_ASSISTANT_PORT ?? '3800'}`;
 
 export const GET: RequestHandler = async (event) => {
 	const requestId = getRequestId(event);

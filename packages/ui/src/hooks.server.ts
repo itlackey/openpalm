@@ -22,6 +22,7 @@ import {
   ensureHomeDirs,
   isSetupComplete,
   resolveStackDir,
+  readStackEnv,
 } from "@openpalm/lib";
 
 const logger = createLogger("admin");
@@ -36,6 +37,12 @@ function runStartupApply(): void {
     ensureHomeDirs();
     const state = getState();
     ensureSecrets(state);
+    // Promote stack.env values into process.env so lazy reads (OpenCode URL,
+    // assistant port) in server modules pick up the correct values.
+    const stackVars = readStackEnv(state.stackDir);
+    for (const [k, v] of Object.entries(stackVars)) {
+      if (v && !process.env[k]) process.env[k] = v;
+    }
     ensureOpenCodeConfig();
     ensureOpenCodeSystemConfig();
     state.artifacts = resolveRuntimeFiles();

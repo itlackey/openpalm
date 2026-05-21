@@ -12,11 +12,13 @@ import { createOpenCodeClient, normalizeCaller, type CallerType } from "@openpal
  * env-var resolution lives in one place.
  */
 let _openCodeClient: ReturnType<typeof createOpenCodeClient> | undefined;
+let _openCodeClientUrl: string | undefined;
 export function getOpenCodeClient(): ReturnType<typeof createOpenCodeClient> {
-  if (!_openCodeClient) {
-    const baseUrl =
-      process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL ?? "http://localhost:4096";
+  const baseUrl =
+    process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL ?? `http://localhost:${process.env.OP_ASSISTANT_PORT ?? "3800"}`;
+  if (!_openCodeClient || baseUrl !== _openCodeClientUrl) {
     _openCodeClient = createOpenCodeClient({ baseUrl });
+    _openCodeClientUrl = baseUrl;
   }
   return _openCodeClient;
 }
