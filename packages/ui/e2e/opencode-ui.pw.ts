@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-const ASSISTANT_OPENCODE_URL = 'http://localhost:4096';
+// The assistant container maps host port OP_ASSISTANT_PORT (default 3800) → container port 4096.
+// Use the host-side port so tests work on the host without entering the container network.
+const ASSISTANT_OPENCODE_URL = process.env.ASSISTANT_URL ?? `http://localhost:${process.env.OP_ASSISTANT_PORT ?? '3800'}`;
 
 /**
  * OpenCode Web UI tests — require RUN_DOCKER_STACK_TESTS=1 and a running compose stack.
