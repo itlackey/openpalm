@@ -8,11 +8,31 @@
 
 ## What is this?
 
-OpenPalm started as a hobby project — a weekend experiment to see if a useful AI assistant could be built on boring, standard tools instead of whatever the VC-funded flavor of the month is. Turns out it can. It's now a daily driver, and it keeps getting better.
+OpenPalm is two things: a **harness** and a **stack**.
 
-The idea is simple: you run your own assistant on your own hardware, using Docker Compose and plain files you can actually read. No proprietary orchestration layer, no magic runtime, no lock-in. Just containers, env files, and compose overlays. If you can run `docker compose up`, you can run OpenPalm.
+**The harness** runs on your machine — either as a CLI binary or an Electron desktop app. It manages a single directory (`~/.openpalm/`) that contains plain files you can read and edit:
 
-This is the anti-hype alternative. No "autonomous agent swarms." No "AGI-powered workflows." Just a well-structured assistant that stays on your LAN, remembers what you tell it, and does what you ask — built on standards that will still work next year.
+- Docker Compose files and addon overlays
+- Environment variable files (system config, channel secrets, user API keys)
+- OpenCode configuration (model, providers, persona)
+- AKM configuration (memory, embeddings, knowledge stash)
+- Voice and channel configuration
+
+The harness job is unglamorous: download Docker images, place the right content in the right files, and start `docker compose up`. That's the entire control plane. If you prefer, you can skip the harness entirely and manage those files by hand.
+
+**The stack** is what the harness runs. At its core:
+
+- An **OpenCode assistant** in Docker — your AI, talking to whatever model you point it at, with persistent memory and skills via AKM
+- A **Guardian** — the only way in from the outside, enforcing HMAC signatures, replay detection, and rate limiting on every message
+- Optional **channel containers** — Discord, Slack, API, voice chat, or anything you build — each one just a compose overlay
+
+Official clients are the Electron desktop app and the OpenCode web interface (served directly by the assistant container). Everything else reaches the assistant through a channel → guardian pipeline.
+
+---
+
+OpenPalm started as a hobby project — a weekend experiment to see if a useful AI assistant could be built on boring, standard tools. Turns out it can. It's now a daily driver, and it keeps getting better.
+
+No proprietary orchestration layer, no magic runtime, no lock-in. Just containers, env files, and compose overlays. If you can run `docker compose up`, you can run OpenPalm.
 
 ## Where things stand
 
