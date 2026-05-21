@@ -6,7 +6,7 @@
  * synchronous directory existence check.
  */
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync, realpathSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createLogger } from '@openpalm/lib';
@@ -178,15 +178,34 @@ function resolveLocalOpenpalmDir(): string | null {
 }
 
 /**
- * Resolve the local packages/ui/build/ if running from source.
- * Returns null for compiled binaries (which have no sibling source tree).
+ * Resolve the local packages/ui/build/ if one is accessible.
+ *
+ * Checks two locations:
+ *   1. Relative to source file (dev mode / bun run)
+ *   2. Relative to the compiled binary on disk (binary lives in the repo at
+ *      packages/cli/dist/, so packages/ui/build/ is 3 levels up + ui/build)
+ *
+ * Returns null only if neither location has a built UI — triggering the
+ * GitHub release download path.
  */
 function resolveLocalUiBuild(): string | null {
   const metaPath = fileURLToPath(import.meta.url);
-  if (metaPath.startsWith('/$bunfs/')) return null;
-  const repoRoot = join(dirname(metaPath), '..', '..', '..', '..');
-  const candidate = join(repoRoot, 'packages', 'ui', 'build');
-  return existsSync(join(candidate, 'index.js')) ? candidate : null;
+
+  // Dev mode: navigate from source file location
+  if (!metaPath.startsWith('/$bunfs/')) {
+    const candidate = join(dirname(metaPath), '..', '..', '..', '..', 'packages', 'ui', 'build');
+    if (existsSync(join(candidate, 'index.js'))) return candidate;
+  }
+
+  // Compiled binary: navigate from the real binary location on disk.
+  // Works when the binary is at packages/cli/dist/ within the repo.
+  try {
+    const binDir = dirname(realpathSync(process.execPath));
+    const candidate = join(binDir, '..', '..', '..', 'packages', 'ui', 'build');
+    if (existsSync(join(candidate, 'index.js'))) return candidate;
+  } catch { /* binary path unresolvable — fall through to download */ }
+
+  return null;
 }
 
 /**
