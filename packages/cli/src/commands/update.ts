@@ -1,7 +1,6 @@
 import { defineCommand } from 'citty';
-import { performUpgrade } from '@openpalm/lib';
+import { performUpgrade, checkAndUpdateUiBuild } from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
-import { seedUiBuild } from '../lib/io.ts';
 
 export default defineCommand({
   meta: {
@@ -23,17 +22,20 @@ export async function runUpgradeAction(): Promise<void> {
     console.log(`Assets updated: ${result.assetsUpdated.join(', ')}`);
   }
 
-  // Refresh UI build from the new release alongside the stack upgrade.
-  // state/ui/ is automatically included in the backup taken by performUpgrade.
-  const imageTag = result.imageTag ?? state.imageTag;
-  if (imageTag) {
-    try {
-      console.log('Refreshing UI build...');
-      await seedUiBuild(imageTag, state.stateDir);
-      console.log('UI build refreshed.');
-    } catch (err) {
-      console.warn(`Warning: UI build refresh failed — existing build still active. Run 'openpalm update' again to retry. (${err instanceof Error ? err.message : String(err)})`);
-    }
+  // Check for a newer UI build on GitHub and install it if available.
+  // Passes the pre-upgrade image tag as the reference version so any newer
+  // release (including the one just upgraded to) triggers a download.
+  // Existing state/ui/ is backed up to state/backups/ui-{timestamp}/ before
+  // replacement. Non-fatal — existing build remains on any error.
+  const currentUiVersion = state.imageTag ?? '0.0.0';
+  console.log('Checking for UI build update...');
+  const uiResult = await checkAndUpdateUiBuild(currentUiVersion, state.stateDir);
+  if (uiResult.updated) {
+    console.log(`UI build updated to v${uiResult.latestVersion}.`);
+  } else if (uiResult.error) {
+    console.warn(`Warning: UI build update skipped — ${uiResult.error}. Existing build still active.`);
+  } else {
+    console.log(`UI build is current (v${uiResult.latestVersion}).`);
   }
 
   console.log('Update complete.');
