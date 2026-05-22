@@ -18,6 +18,7 @@ import {
   ensureHomeDirs,
   checkAndUpdateUiBuild,
 } from '@openpalm/lib';
+import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -26,6 +27,7 @@ const UI_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;
 const READY_TIMEOUT_MS = 20_000;
 
 let mainWindow: BrowserWindow | null = null;
+let splashWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let uiProcess: ChildProcess | null = null;
 
@@ -35,14 +37,21 @@ let uiProcess: ChildProcess | null = null;
  * Build the environment object to pass to the UI Node child process.
  * Exported as a pure function so tests can verify it without spawning anything.
  */
-export function buildUIServerEnv(homeDir: string, port: number): NodeJS.ProcessEnv {
-  return {
+export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateInfo | null): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     OP_HOME: homeDir,
     HOST: '127.0.0.1',
     PORT: String(port),
     ORIGIN: `http://127.0.0.1:${port}`,
+    OP_INSIDE_ELECTRON: '1',
+    OP_ELECTRON_VERSION: app.getVersion?.() ?? '',
   };
+  if (update?.updateAvailable && update.latestVersion) {
+    env.OP_ELECTRON_LATEST_VERSION = update.latestVersion;
+    if (update.latestUrl) env.OP_ELECTRON_LATEST_URL = update.latestUrl;
+  }
+  return env;
 }
 
 // ── UI server lifecycle ──────────────────────────────────────────────────────
@@ -75,6 +84,15 @@ async function startUIServer(): Promise<void> {
 
   const version = app.getVersion();
 
+  // Check for a newer Electron app version on GitHub. Non-fatal; result is
+  // surfaced to the UI as an env var so the in-app banner can offer a download.
+  const appUpdate = await checkForElectronUpdate(version);
+  if (appUpdate.updateAvailable) {
+    console.log(`App update available: v${appUpdate.latestVersion}`);
+  } else if (appUpdate.error) {
+    console.log(`App update check skipped: ${appUpdate.error}`);
+  }
+
   // Check for a newer UI build on GitHub before starting.
   // Non-fatal: if the check or download fails, we continue with what's on disk.
   const updateResult = await checkAndUpdateUiBuild(version, stateDir);
@@ -100,7 +118,7 @@ async function startUIServer(): Promise<void> {
 
   uiProcess = spawn('node', [join(uiBuildDir, 'index.js')], {
     cwd: uiBuildDir,
-    env: buildUIServerEnv(homeDir, UI_PORT),
+    env: buildUIServerEnv(homeDir, UI_PORT, appUpdate),
     stdio: 'inherit',
   });
 
@@ -131,13 +149,71 @@ function stopUIServer(): void {
 
 // ── Window management ────────────────────────────────────────────────────────
 
-function createWindow(): void {
+function createSplashWindow(): void {
+  splashWindow = new BrowserWindow({
+    width: 380,
+    height: 200,
+    frame: false,
+    resizable: false,
+    movable: true,
+    alwaysOnTop: true,
+    show: true,
+    backgroundColor: '#0f172a',
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    html,body{height:100%;margin:0;background:#0f172a;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+    body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+    .logo{font-size:22px;font-weight:600;letter-spacing:0.5px}
+    .hint{font-size:13px;color:#94a3b8}
+    .spinner{width:24px;height:24px;border:3px solid #1e293b;border-top-color:#60a5fa;border-radius:50%;animation:spin 0.8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style></head><body>
+    <div class="logo">OpenPalm</div>
+    <div class="spinner"></div>
+    <div class="hint">Starting…</div>
+  </body></html>`;
+  void splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  splashWindow.on('closed', () => { splashWindow = null; });
+}
+
+function closeSplashWindow(): void {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.close();
+    splashWindow = null;
+  }
+}
+
+async function resolveInitialUrl(): Promise<string> {
+  // Try to read setup status so we can land directly on the right page.
+  // Falls back to root (which itself redirects appropriately).
+  try {
+    const res = await fetch(`http://127.0.0.1:${UI_PORT}/api/setup/status`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (res.ok) {
+      const data = await res.json() as { setupComplete?: boolean };
+      return `http://127.0.0.1:${UI_PORT}/${data.setupComplete ? 'chat' : 'setup'}`;
+    }
+  } catch {
+    // ignore; fall through to root
+  }
+  return `http://127.0.0.1:${UI_PORT}`;
+}
+
+async function createWindow(): Promise<void> {
+  const update = getCachedUpdateInfo();
+  const title = update?.updateAvailable
+    ? `OpenPalm — Update available (v${update.latestVersion})`
+    : 'OpenPalm';
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 900,
     minWidth: 900,
     minHeight: 600,
-    title: 'OpenPalm',
+    title,
+    show: false,
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -145,7 +221,13 @@ function createWindow(): void {
     },
   });
 
-  mainWindow.loadURL(`http://127.0.0.1:${UI_PORT}`);
+  const initialUrl = await resolveInitialUrl();
+  mainWindow.loadURL(initialUrl);
+
+  mainWindow.once('ready-to-show', () => {
+    closeSplashWindow();
+    mainWindow?.show();
+  });
 
   // Open external links in the system browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -174,7 +256,7 @@ function showWindow(): void {
     mainWindow.show();
     mainWindow.focus();
   } else {
-    createWindow();
+    void createWindow();
   }
 }
 
@@ -208,13 +290,21 @@ function createTray(): void {
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
-  await startUIServer();
-  createWindow();
+  createSplashWindow();
+  try {
+    await startUIServer();
+  } catch (err) {
+    closeSplashWindow();
+    console.error('Failed to start UI server:', err instanceof Error ? err.message : String(err));
+    app.quit();
+    return;
+  }
+  await createWindow();
   createTray();
 
   app.on('activate', () => {
     // macOS: re-open window when dock icon is clicked
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) void createWindow();
     else showWindow();
   });
 });

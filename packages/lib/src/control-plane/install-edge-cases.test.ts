@@ -167,13 +167,12 @@ describe("Fresh Install", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  // Scenario 1: ensureSecrets does NOT seed user.env (Phase 2 of #388) but
+  // Scenario 1: ensureSecrets does NOT seed user.env (see akm-vault) but
   // does create stack.env with required keys when files do not exist.
   it("ensureSecrets creates state/stack.env with required keys on fresh install", () => {
     const state: ControlPlaneState = {
       adminToken: "",
       assistantToken: "",
-      setupToken: "",
       homeDir,
       configDir,
       stashDir: join(homeDir, "stash"),
@@ -253,7 +252,6 @@ describe("Existing Install", () => {
     const state: ControlPlaneState = {
       adminToken: "",
       assistantToken: "",
-      setupToken: "",
       homeDir,
       configDir,
       stashDir: join(homeDir, "stash"),
@@ -385,7 +383,6 @@ describe("Broken/Corrupt State", () => {
     const state: ControlPlaneState = {
       adminToken: "",
       assistantToken: "",
-      setupToken: "",
       homeDir,
       configDir,
       stashDir: join(homeDir, "stash"),

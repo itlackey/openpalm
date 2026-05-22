@@ -17,7 +17,7 @@ import {
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import tar from 'tar';
+import { x as tarExtract } from 'tar';
 import { resolveStateDir } from './home.js';
 import { createLogger } from '../logger.js';
 
@@ -132,7 +132,7 @@ export async function seedOpenPalmDir(
     if (!res.ok) throw new Error(`Failed to download tarball (HTTP ${res.status})`);
     writeFileSync(tmpTar, new Uint8Array(await res.arrayBuffer()));
 
-    await tar.x({ file: tmpTar, cwd: tmpDir, strip: 1 });
+    await tarExtract({ file: tmpTar, cwd: tmpDir, strip: 1 });
 
     const srcOpenpalm = join(tmpDir, '.openpalm');
     if (!existsSync(srcOpenpalm)) throw new Error('.openpalm/ not found in tarball');
@@ -259,7 +259,7 @@ export async function seedUiBuild(repoRef: string, stateDir: string): Promise<vo
     writeFileSync(tmpTar, tarData);
 
     // Cross-platform extraction via the `tar` npm package — no shell dependency
-    await tar.x({ file: tmpTar, cwd: uiDir, strip: 1 });
+    await tarExtract({ file: tmpTar, cwd: uiDir, strip: 1 });
   } finally {
     rmSync(tmpTar, { force: true });
   }
@@ -316,7 +316,7 @@ export async function checkAndUpdateUiBuild(
       tag_name: string;
       assets: Array<{ name: string }>;
     };
-    const latestTag     = release.tag_name;           // e.g. "v0.12.0"
+    const latestTag     = release.tag_name;           // e.g. "v0.11.0"
     const latestVersion = latestTag.replace(/^v/, '');
 
     if (compareVersionTags(latestTag, currentVersion) <= 0) {

@@ -28,9 +28,13 @@ vi.mock("node:child_process", () => ({
 const existsSyncMock = vi.fn((_path: string) => false);
 vi.mock("node:fs", async (importOriginal) => {
   const real = await importOriginal<typeof import("node:fs")>();
+  // vitest 4 requires `default` to be defined when downstream code does
+  // `import fs from 'node:fs'`. Spread the real module so named imports
+  // and the default export both resolve.
   return {
+    ...real,
+    default: real,
     existsSync: (path: string) => existsSyncMock(path),
-    readFileSync: real.readFileSync,
   };
 });
 

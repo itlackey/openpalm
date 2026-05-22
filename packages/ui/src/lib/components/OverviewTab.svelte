@@ -185,6 +185,23 @@
           </span>
         </button>
 
+        <a class="action-item" href="/setup?rerun=1">
+          <span class="action-icon action-icon--purple">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+            </svg>
+          </span>
+          <div class="action-content">
+            <span class="action-title">Update Settings</span>
+            <span class="action-desc">Re-run setup wizard to change providers, channels, or options</span>
+          </div>
+          <span class="action-arrow">
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </span>
+        </a>
+
         <a class="action-item" href="http://localhost:4096/" target="_blank" rel="noopener noreferrer">
           <span class="action-icon action-icon--blue">
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -491,6 +508,11 @@
   .action-icon--amber {
     background: var(--color-primary-subtle);
     color: var(--color-primary);
+  }
+
+  .action-icon--purple {
+    background: #ede9fe;
+    color: #7c3aed;
   }
 
   .action-content {

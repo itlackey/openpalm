@@ -31,7 +31,7 @@ export const KNOWN_EMB_DIMS: Record<string, number> = {
   'intfloat/multilingual-e5-large': 1024,
 };
 
-export const STEP_LABELS = ['Welcome', 'Providers', 'Models', 'Voice', 'Options', 'Review'];
+export const STEP_LABELS = ['System Check', 'Welcome', 'Providers', 'Models', 'Voice', 'Options', 'Review'];
 export const MAX_VISIBLE_MODELS = 6;
 
 export const TTS_OPTIONS: TtsOption[] = [

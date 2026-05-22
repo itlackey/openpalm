@@ -1,15 +1,12 @@
 # Setup Guide
 
-OpenPalm now uses a manual-first setup model:
+OpenPalm has three setup paths, in order of recommendation:
 
-- copy the repo's `.openpalm/` bundle to `~/.openpalm/`
-- edit the env files you need
-- copy any addons you want from `~/.openpalm/state/registry/addons/` into `~/.openpalm/config/stack/addons/`
-- run `docker compose` against files in `~/.openpalm/config/stack/`
+1. **Desktop app** (most users) — download, double-click, follow the wizard. Recommended.
+2. **CLI install script** — for servers and headless environments. Same wizard, in your browser.
+3. **Manual compose** — copy `.openpalm/` by hand and run `docker compose` yourself.
 
-Helper scripts still exist, but they are optional.
-
-For the fully explicit path, see the [Manual Compose Runbook](operations/manual-compose-runbook.md).
+All three install the same stack from the same compose files. Pick whichever fits.
 
 ---
 
@@ -19,15 +16,58 @@ You need Docker with Compose V2.
 
 | Your computer | What to install | Link |
 |---|---|---|
-| **Windows** | Docker Desktop | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) |
 | **Mac** | Docker Desktop or OrbStack | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) / [orbstack.dev](https://orbstack.dev/download) |
+| **Windows** | Docker Desktop | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) |
 | **Linux** | Docker Engine | Run `curl -fsSL https://get.docker.com | sh` |
+
+The wizard's first screen verifies Docker is installed and running before any configuration happens, so don't worry about getting Docker right ahead of time — you'll be told if anything is missing.
 
 ---
 
-## Recommended path
+## 1. Desktop app (recommended)
 
-The clearest setup is:
+Download the latest installer for your platform from the [releases page](https://github.com/itlackey/openpalm/releases/latest):
+
+| Platform | Artifact |
+|---|---|
+| Mac (Apple Silicon) | `OpenPalm-<version>-arm64.dmg` |
+| Mac (Intel) | `OpenPalm-<version>.dmg` |
+| Windows | `OpenPalm-Setup-<version>.exe` |
+| Linux | `OpenPalm-<version>.AppImage` |
+
+Open the app. The setup wizard will:
+
+1. **System Check** — verify Docker and Compose are available; offer install links if not.
+2. **Welcome** — pick an admin token, name, email.
+3. **Providers** — choose your AI provider (OpenAI, Anthropic, Ollama, LM Studio, etc.).
+4. **Models** — pick chat, embedding, and (optional) small model.
+5. **Voice** — TTS/STT settings.
+6. **Options** — channels (Discord, Slack), addons, image tag.
+7. **Review & Install** — confirm and deploy.
+
+When the install completes, the same window navigates to the chat page. That's it.
+
+> **First launch on macOS/Windows**: the installers aren't yet code-signed. On macOS, right-click the app and choose **Open**; on Windows, click **More info → Run anyway** on the SmartScreen prompt. Subsequent launches are unrestricted.
+
+---
+
+## 2. Headless install (CLI)
+
+For servers or anyone who prefers a terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+```
+
+This downloads the CLI binary, seeds `~/.openpalm/`, opens the wizard in your default browser at `http://localhost:3880/setup`, and starts the stack on completion. The wizard is identical to the desktop version.
+
+To re-run the wizard later (e.g. to add a channel or change providers), run `openpalm` and click **Update Settings** in the admin overview, or open `http://localhost:3880/setup?rerun=1`.
+
+---
+
+## 3. Manual compose (power users)
+
+For full control without any harness:
 
 ```bash
 git clone https://github.com/itlackey/openpalm.git
@@ -36,9 +76,9 @@ $EDITOR "$HOME/.openpalm/config/stack/stack.env"
 $EDITOR "$HOME/.openpalm/stash/vaults/user.env"
 ```
 
-Then start the stack using the compose commands in the [Manual Compose Runbook](operations/manual-compose-runbook.md). That starts the base stack plus any addons you choose after you review the copied env files.
+Then start the stack using the compose commands in the [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
-The running deployment is always the exact compose file list you pass to Docker Compose.
+The running deployment is always the exact compose file list you pass to Docker Compose — there's no hidden orchestration layer.
 
 ---
 

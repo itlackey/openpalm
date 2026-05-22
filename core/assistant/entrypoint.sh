@@ -28,8 +28,7 @@ maybe_adjust_uid_gid() {
 ensure_home_layout() {
   # Create directories that may not exist on first run inside bind-mounted
   # /home/opencode (which shadows whatever was baked into the Dockerfile).
-  # Pre-v0.11.0 the init service chowned these; that service was removed,
-  # so we chown here when running as root before gosu drops privileges.
+  # We chown here when running as root before gosu drops privileges.
   mkdir -p \
     /home/opencode \
     /home/opencode/.cache \
@@ -147,13 +146,12 @@ start_cron_and_sync_tasks() {
 }
 
 maybe_source_akm_user_vault() {
-  # Phase 2 of #388 (closes #406): user-managed env secrets now live in
-  # the akm `vault:user` store at <stash>/vaults/user.env (akm-cli >= 0.8.0
-  # layout). The legacy `${OP_HOME}/vault/user/user.env` compose env_file
-  # has been retired — instead we ask akm for the resolved vault path and
-  # source it inline so OpenCode and the scheduler co-process inherit
-  # every key. Sourcing happens AFTER the gosu drop in start_opencode, so
-  # the values land in the same process tree as opencode itself.
+  # User-managed env secrets live in the akm `vault:user` store at
+  # <stash>/vaults/user.env (akm-cli >= 0.8.0 layout). We ask akm for the
+  # resolved vault path and source it inline so OpenCode and the
+  # scheduler co-process inherit every key. Sourcing happens AFTER the
+  # gosu drop in start_opencode, so the values land in the same process
+  # tree as opencode itself.
   #
   # We deliberately do NOT shell out to `akm vault run` — that would put
   # akm in the supervisor path. A static one-shot source keeps the

@@ -1,27 +1,25 @@
+/// <reference types="bun-types" />
 /**
- * akm vault mirror — completes Phase 2 of issue #388.
+ * akm `vault:user` helpers.
  *
- * The akm-cli `vault:user` secret store at `${OP_HOME}/stash/vaults/user.env`
- * is now the canonical home for user-managed environment secrets. The
- * `${OP_HOME}/vault/user/user.env` file (the legacy compose env_file) is no
- * longer mounted into containers — the assistant entrypoint sources the
- * akm vault file directly. Migration on upgrade copies the legacy file into
- * akm and then deletes it.
+ * The akm-cli vault store at `${OP_HOME}/stash/vaults/user.env` is the
+ * canonical home for user-managed environment secrets. The assistant
+ * entrypoint sources this file directly at startup.
  *
- * NON-CHANGE: `state/stack.env` and `state/guardian.env` are
- * operator-managed and are NOT mirrored into akm. Migrating them would
- * break guardian's HMAC env_file hot-reload contract.
+ * `stack.env` and `guardian.env` are operator-managed and NOT mirrored
+ * into akm — mirroring them would break guardian's HMAC env_file
+ * hot-reload contract.
  *
- * SECURITY: Every write into the akm vault is performed by spawning
+ * SECURITY: every write into the akm vault is performed by spawning
  * `akm vault set <ref> <key>` with the secret VALUE delivered via stdin
  * (akm-cli >= 0.8.0). Values never appear in argv, so they cannot leak
  * through `/proc/<pid>/cmdline`. The matching delete path uses
  * `akm vault unset <ref> <key>` which is naturally argv-safe.
  *
- * Layout (v0.12.0):
- *   stash/             — AKM_STASH_DIR: asset content only (skills, vaults, knowledge, agents)
- *   state/akm/         — AKM_DATA_DIR / AKM_STATE_DIR / AKM_CONFIG_DIR: operational metadata
- *   state/cache/akm/   — AKM_CACHE_DIR: regenerable registry artifacts (separate sibling)
+ * Layout:
+ *   stash/         — AKM_STASH_DIR: asset content (skills, vaults, knowledge, agents)
+ *   state/akm/     — AKM_DATA_DIR / AKM_STATE_DIR / AKM_CONFIG_DIR: operational metadata
+ *   cache/akm/     — AKM_CACHE_DIR: regenerable registry artifacts
  */
 import { existsSync, readFileSync } from "node:fs";
 import { execFile as execFileCb } from "node:child_process";
@@ -35,19 +33,11 @@ const logger = createLogger("akm-vault");
 
 export const AKM_USER_VAULT_REF = "vault:user";
 
-export type MirrorResult = {
-  ok: boolean;
-  skipped: boolean;
-  reason?: string;
-  written: string[];
-  unchanged: string[];
-};
-
 /**
  * Build the env that points akm at the shared OpenPalm stash. We mirror the
  * layout that the assistant/admin containers use (see
- * `.openpalm/stack/core.compose.yml`) so host-side and container-side runs
- * resolve to the same vault file.
+ * `.openpalm/config/stack/core.compose.yml`) so host-side and container-side
+ * runs resolve to the same vault file.
  *
  * AKM_CONFIG_DIR lives in config/ (alongside stack.env, auth.json) so
  * operators can inspect and version-control akm setup alongside other config.
@@ -268,32 +258,6 @@ export async function deleteAkmVaultKey(
     throw err;
   }
   return true;
-}
-
-/**
- * No-op migration stub: the legacy vault/user/user.env file no longer exists
- * in the v0.12.0 directory layout. Retained for API compatibility.
- *
- * Returns a skipped result. Never throws.
- */
-export async function mirrorUserVaultToAkm(_state: ControlPlaneState): Promise<MirrorResult> {
-  // The legacy vault/user/user.env path no longer exists in the new directory
-  // layout (v0.12.0). New installs have no file to migrate.
-  return { ok: true, skipped: true, reason: "user.env missing", written: [], unchanged: [] };
-}
-
-/**
- * No-op migration stub: the legacy vault/user/user.env file no longer exists
- * in the v0.12.0 directory layout. Retained for API compatibility.
- *
- * Returns `{ deleted: false, reason: "user.env already absent" }`. Never throws.
- */
-export async function migrateAndCleanupLegacyUserEnv(
-  state: ControlPlaneState,
-): Promise<{ deleted: boolean; reason?: string }> {
-  // The legacy vault/user/user.env path no longer exists in the new directory
-  // layout (v0.12.0). New installs have no file to migrate.
-  return { deleted: false, reason: "user.env already absent" };
 }
 
 /**

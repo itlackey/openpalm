@@ -29,7 +29,6 @@ function createState(): ControlPlaneState {
   return {
     adminToken: 'admin-token',
     assistantToken: '',
-    setupToken: 'setup-token',
     homeDir: rootDir,
     configDir,
     stashDir: join(rootDir, 'stash'),

@@ -19,7 +19,6 @@ function makeState(overrides: Partial<ControlPlaneState> = {}): ControlPlaneStat
   return {
     adminToken: "test",
     assistantToken: "test",
-    setupToken: "test",
     homeDir: tempDir,
     configDir,
     stashDir: join(tempDir, "stash"),
@@ -97,7 +96,7 @@ describe("buildComposeOptions", () => {
   });
 
   it("returns env files in correct order", () => {
-    // Phase 2 of #388 (closes #406): vault/user/user.env is no longer a
+    // Note: vault/user/user.env is no longer a
     // compose env_file. The runtime env file list is: stack.env, guardian.env.
     // Even when a legacy user.env is present on disk, it is intentionally
     // excluded from the compose args.
@@ -138,7 +137,7 @@ describe("buildComposeCliArgs", () => {
   });
 
   it("includes --env-file flags for env files that exist", () => {
-    // Phase 2 of #388 (closes #406): vault/user/user.env is no longer
+    // Note: vault/user/user.env is no longer
     // listed in the compose env_file set. Only stack.env and guardian.env
     // (when present) are passed via --env-file.
     seedCoreCompose();

@@ -1,24 +1,23 @@
 # OpenPalm — Core Services
 #
 # This file defines the core infrastructure. Addon services are added
-# via compose overlays in stack/addons/.
+# via compose overlays in config/stack/addons/.
 #
 # Docker Compose reads variable values via --env-file for two env files:
-#   config/stack/stack.env   — system config, API keys, OP_CAP_* capabilities
+#   config/stack/stack.env    — system config (admin token, ports, image tag)
 #   config/stack/guardian.env — channel HMAC secrets (loaded by guardian)
 #
 # User-managed env secrets live in the akm `vault:user` store at
 # stash/vaults/user.env (akm-cli >= 0.8.0 layout). The assistant
-# entrypoint sources that file at startup via `akm vault path vault:user`
-# — see Phase 2 of #388 / closed by #406.
+# entrypoint sources that file at startup via `akm vault path vault:user`.
 #
-# Directory model (v0.11.0):
-#   ~/.openpalm/config/    — user-editable config + system config (stack.env, auth.json, akm/)
-#   ~/.openpalm/cache/     — regenerable data (akm cache, guardian cache, rollback)
-#   ~/.openpalm/state/     — persistent service data (assistant, admin, guardian, logs, registry)
-#   ~/.openpalm/stash/     — akm knowledge (skills, vaults, agents) — vault:user lives here
-#   ~/.openpalm/workspace/ — shared work area
-#   ~/.openpalm/config/stack/ — compose runtime (addon overlays, stack config)
+# Directory model:
+#   ~/.openpalm/config/       — user-editable + system config (stack.env, auth.json, akm/)
+#   ~/.openpalm/cache/        — regenerable data (akm cache, rollback)
+#   ~/.openpalm/state/        — persistent service data (assistant, guardian, logs, registry)
+#   ~/.openpalm/stash/        — akm knowledge (skills, vaults, agents) — vault:user lives here
+#   ~/.openpalm/workspace/    — shared work area
+#   ~/.openpalm/config/stack/ — compose runtime (core.compose.yml, addons/, env files)
 
 services:
   # ── Assistant (opencode runtime — NO docker socket) ────────────────
@@ -69,35 +68,9 @@ services:
       OP_GID: ${OP_GID:-1000}
       OPENCODE_API_URL: http://localhost:4096
       # Provider credentials live in OpenCode's auth.json (bind-mounted
-      # below) — NOT in this env block. Connections-tab saves and the
-      # setup wizard both call OpenCode's PUT /auth/{providerID}; ai-sdk
-      # picks the key up via OpenCode at call time.
-      #
-      # OPENAI_BASE_URL is intentionally NOT forwarded. The @ai-sdk/openai
-      # library reads it directly and treats an empty string as a literal
-      # baseURL (which breaks request URL construction with "URL is
-      # invalid"). To override the endpoint, set it on a per-provider
-      # basis via the Connections tab (writes opencode.json) — never via
-      # this env block.
-      # LMSTUDIO_BASE_URL: ${LMSTUDIO_BASE_URL:-}
-      # Capability resolution (used by entrypoint.sh + akm setup).
-      # OP_CAP_LLM_PROVIDER: ${OP_CAP_LLM_PROVIDER:-}
-      # akm feature toggles (see entrypoint.sh maybe_configure_akm).
-      # OP_CAP_AKM_FEEDBACK_DISTILLATION: ${OP_CAP_AKM_FEEDBACK_DISTILLATION:-true}
-      # OP_CAP_AKM_MEMORY_INFERENCE: ${OP_CAP_AKM_MEMORY_INFERENCE:-true}
-      # OP_CAP_AKM_MEMORY_CONSOLIDATION: ${OP_CAP_AKM_MEMORY_CONSOLIDATION:-true}
-      # Google Cloud credentials (files live in stash/vaults/, mounted at /etc/vault).
-      # NOTE: the /etc/vault mount no longer carries `user.env` (Phase 2 of #388
-      # routed that through akm `vault:user`). The mount remains because gws and
-      # gcloud rely on it for their auth directories below.
-      # GOOGLE_APPLICATION_CREDENTIALS: /etc/vault/gcloud-credentials.json
-      # CLOUDSDK_CONFIG: /etc/vault/.gcloud
-      # Google Workspace CLI (gws) — config dir persists OAuth tokens across restarts.
-      # Only set CONFIG_DIR here. Do NOT set CREDENTIALS_FILE — if it points to a
-      # missing plaintext JSON, gws fails even when encrypted creds exist in the
-      # config dir. Letting gws discover creds via CONFIG_DIR works for all methods.
-      # GOOGLE_WORKSPACE_CLI_CONFIG_DIR: /etc/vault/.gws
-      # GOOGLE_WORKSPACE_PROJECT_ID: ${GOOGLE_WORKSPACE_PROJECT_ID:-}
+      # below) — NOT in this env block. The Connections tab and the setup
+      # wizard both call OpenCode's PUT /auth/{providerID}; ai-sdk picks
+      # the key up via OpenCode at call time.
     ports:
       - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
       # SSH port (2222 → :22) is published only when the `ssh` addon is
@@ -120,7 +93,12 @@ services:
       - ${OP_HOME}/workspace:/work
       - ${OP_HOME}/state/logs/opencode:/home/opencode/.local/state/opencode
       - ${OP_HOME}/state/logs:/openpalm/logs
-    working_dir: /work
+      # Persistent install prefix. Survives `docker compose up --force-recreate`
+      # and image upgrades, unlike apt installs which go to the container's
+      # writable layer. Anything installed with a prefix (cargo install --root,
+      # go install with GOBIN, make install PREFIX=…, curl-to-/opt/persistent/bin)
+      # persists here. The Dockerfile puts /opt/persistent/bin on PATH.
+      - assistant-persistent:/opt/persistent
     networks: [ assistant_net ]
     healthcheck:
       test: [ "CMD-SHELL", "curl -sf http://localhost:4096/health || exit 1" ]
@@ -170,3 +148,8 @@ services:
 networks:
   channel_lan:
   assistant_net:
+
+volumes:
+  # Persistent install prefix for assistant-managed tools. See the comment
+  # on the assistant service for usage.
+  assistant-persistent:

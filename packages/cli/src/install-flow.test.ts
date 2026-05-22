@@ -26,7 +26,7 @@ import { readStackSpec, parseEnvFile, expandEnvVars } from '@openpalm/lib';
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..');
 const OPENPALM_SRC = join(REPO_ROOT, '.openpalm');
-const ASSISTANT_SRC = join(REPO_ROOT, 'core/assistant/opencode');
+const ASSISTANT_SRC = join(OPENPALM_SRC, 'config', 'assistant');
 const SKIP_INSTALL_FLOW_IN_CI = process.env.CI === 'true';
 
 /** Copy a directory tree using cp -a (preserves structure, fast). */
@@ -58,8 +58,9 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
   // stash/tasks/ — active AKM task files (populated by setup)
   mkdirSync(join(homeDir, 'stash', 'tasks'), { recursive: true });
 
-  // state/assistant/ — opencode config
-  const assistantDir = join(stateDir, 'assistant');
+  // config/assistant/ — opencode project config (opencode.jsonc, openpalm.md, system.md)
+  // OPENCODE_CONFIG_DIR points at this directory inside the container.
+  const assistantDir = join(configDir, 'assistant');
   mkdirSync(assistantDir, { recursive: true });
   if (existsSync(ASSISTANT_SRC)) {
     for (const f of readdirSync(ASSISTANT_SRC)) {
@@ -191,7 +192,7 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(existsSync(join(homeDir, 'state/registry/automations/cleanup-logs.md'))).toBe(true);
 
     // ── Validate vault files are regular files (not directories) ─────
-    // Phase 2 of #388 (closes #406): vault/user/user.env is no longer
+    // Note: vault/user/user.env is no longer
     // seeded — user-managed env secrets live in akm vault:user
     // (data/stash/vaults/user.env) and the assistant entrypoint sources
     // it directly. The compose env_file mount for vault/user/user.env
@@ -296,7 +297,7 @@ describe('install flow — tier 1 (file validation)', () => {
     ensureComposeVolumeTargets(createState());
 
     // Run docker compose config --quiet
-    // Phase 2 of #388 (closes #406): vault/user/user.env is no longer a
+    // Note: vault/user/user.env is no longer a
     // compose env_file. Only stack.env (and guardian.env, when present)
     // are passed to compose.
     const proc = Bun.spawnSync([

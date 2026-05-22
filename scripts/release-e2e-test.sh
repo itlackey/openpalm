@@ -562,10 +562,12 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
 
   # Admin token lives in config/stack/stack.env as OP_UI_TOKEN.
   check_stack_env_val "OP_UI_TOKEN" "$ADMIN_TOKEN"
-  # LLM provider/model are resolved into OP_CAP_LLM_* capability vars in stack.env
-  # by the control plane (see docs/technical/capability-injection.md).
-  check_stack_env_key "OP_CAP_LLM_PROVIDER"
-  check_stack_env_key "OP_CAP_LLM_MODEL"
+  # LLM and embedding configuration live in config/akm/config.json, NOT stack.env.
+  if [ -f "$OPENPALM_HOME/config/akm/config.json" ]; then
+    pass "config/akm/config.json exists"
+  else
+    fail "config/akm/config.json missing"
+  fi
 else
   step "Skipping stack.env check (--skip-install)"
 fi

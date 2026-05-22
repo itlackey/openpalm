@@ -7,6 +7,111 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **"System Check" wizard step (index 0)** — runs Docker + Compose v2 detection
+  via `/api/setup/system-check`, with platform-specific install/start guidance
+  and port-availability warnings. Blocks navigation forward until Docker is
+  healthy. Suppresses port-conflict warnings in re-run mode (the running stack
+  itself).
+- **`FriendlyError` component + `friendlyError()` utility** — every wizard
+  error site now maps raw API/network/Docker errors to user-actionable
+  `{ title, body, hint, links }` cards. Applied to provider verification,
+  setup-complete failures, deploy errors, and deploy-poll loss-of-contact.
+- **DeployStep phased progress** — `phase` field surfaced through the
+  deploy-status API and consumed by the UI: `writing-config → pulling-images
+  → starting → ready`, with realistic ETA copy for first-time image pulls.
+- **Wizard re-run from admin** — "Update Settings" in the admin overview links
+  to `/setup?rerun=1`. The wizard pre-populates admin token, owner, image tag,
+  host AKM toggle, LLM/embedding selections, voice fields, enabled addons, and
+  channel credentials from the existing install. System Check still runs but
+  doesn't block; auto-redirect on completion is skipped.
+- **Electron update banner (notify-only)** — Electron checks the latest
+  GitHub release on startup (5 s timeout, 6 h cache). When a newer version
+  exists, env vars + a `contextBridge` API are injected into the UI; the new
+  `UpdateBanner` component renders a dismissible banner with a download link.
+  Dismissal persists per-version in `localStorage`.
+- **Electron startup polish** — frameless splash window while `startUIServer`
+  runs; main window shows only after the UI server reports ready. The window
+  navigates directly to `/setup` or `/chat` based on `setupComplete` status,
+  removing the `/` → redirect bounce on first run.
+- **Electron auto-publish to GitHub releases** — `electron-builder.yml` now
+  publishes installers (`.dmg`, `.exe`, `.AppImage`) to the GitHub release tag
+  automatically via `--publish always` in CI.
+- **Persistent install prefix (`/opt/persistent`)** — named volume
+  `assistant-persistent` mounted into the assistant container; first on
+  `$PATH`. Survives `--force-recreate` and image upgrades. Documented in
+  `docs/operations/persistent-assistant-tools.md` along with optional
+  Pattern 2 (apt manifest) and Pattern 3 (Dockerfile bake).
+- **`/api/setup/complete` `dryRun` flag** — persist config without triggering
+  a Docker deploy. Used by tests and any validation flow.
+- **Cross-OP_HOME compose-project collision guard** — `startDeploy` refuses
+  to deploy if existing containers in the same compose project belong to a
+  different `OP_HOME`. Prevents the dev/host stacks from clobbering each
+  other when both default to project name `openpalm`.
+- **Distinct dev compose project name** — `OP_PROJECT_NAME=openpalm-dev`
+  is seeded by `scripts/dev-setup.sh` so the dev stack can never collide
+  with a production stack on the same machine.
+- **README + setup-guide lead with the Electron download** — desktop app is
+  the primary install path; the CLI is collapsed into an "Advanced / headless
+  install" disclosure. Gatekeeper/SmartScreen first-launch notes added.
+- **Assistant `openpalm.md` install-location matrix** — assistant now has
+  explicit guidance on where to install tools (`$HOME`-based installers
+  persist for free, `/opt/persistent` for prefix-style installs, `apt` for
+  one-off session-only tools).
+
+### Changed
+
+- **`MANAGED_ASSETS` points at the v0.11 paths** — `core-assets.ts` now
+  refreshes `config/assistant/opencode.jsonc`, `openpalm.md`, and `system.md`
+  from `.openpalm/config/assistant/` (was the now-deleted
+  `core/assistant/opencode/` directory).
+- **`seedOpenPalmDir` always refreshes `state/registry/`** — system-managed
+  registry overlays now update on every install/upgrade, fixing the case
+  where stale addon overlays (e.g. an old discord overlay missing
+  `DISCORD_BOT_TOKEN`) persisted through reinstalls.
+- **`performSetup` enables addons end-to-end** — `addons: { discord: true }`
+  in the wizard payload now calls `setAddonEnabled`, which copies the
+  compose overlay AND generates `CHANNEL_<NAME>_SECRET` in `guardian.env`.
+  Previously the addon was never enabled.
+- **Provider verification error UX** — inline provider errors run through
+  `friendlyError` so raw `Failed to fetch models (HTTP 401)` becomes
+  "API key rejected — double-check the key and that it has access to the
+  selected model".
+
+### Removed (hard break — no migration path)
+
+- **`core/assistant/opencode/`** — legacy assistant config location. Now lives
+  solely at `.openpalm/config/assistant/`.
+- **`ControlPlaneState.setupToken`** — field, generator, all test fixtures,
+  and the `state.vitest.ts` "generates setupToken on each reset" test.
+  Was unused everywhere outside tests.
+- **`mirrorUserVaultToAkm()` and `migrateAndCleanupLegacyUserEnv()`** —
+  no-op stubs "retained for API compatibility" alongside their call sites
+  in `setup.ts` + `lifecycle.ts`, `MirrorResult` type, re-exports in
+  `index.ts`, and their test `describe` blocks (~330 lines of test code).
+- **Legacy planning artifacts** — `docs/technical/capability-injection.md`,
+  `admin-simplification-plan.md`, `akm-capabilities-refactoring-audit.md`,
+  `connections-simplification-plan.md`, `release-publish-remediation-plan.md`,
+  `proposals/`.
+- **`maybe_configure_lmstudio_provider()` in the assistant entrypoint** —
+  superseded by OpenCode's auth.json + Connections tab provider management.
+  `LMSTUDIO_BASE_URL` plumbing removed from `core.compose.yml`.
+- **Commented-out legacy env block** — `core.compose.yml` no longer carries
+  the `OP_CAP_*`, `LMSTUDIO_BASE_URL`, or `GOOGLE_APPLICATION_CREDENTIALS`
+  commented placeholders.
+- **Stale historical comments** — "Phase N of #388 (closes #406)" prefixes
+  scrubbed from every active source file and replaced with current-state
+  notes. `setup-token.txt` migration comments removed.
+- **`release-e2e-test.sh` capability check** — checks for
+  `config/akm/config.json` existence instead of `OP_CAP_LLM_PROVIDER` /
+  `OP_CAP_LLM_MODEL` in `stack.env`.
+
+### Versioning
+
+- All workspace packages aligned at `0.11.0` (`@openpalm/assistant-tools`,
+  `@openpalm/channel-api/discord/slack/voice` were on `0.10.x`).
+
 ## [0.11.0] - 2026-05-14
 
 ### Added

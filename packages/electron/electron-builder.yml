@@ -35,4 +35,9 @@ nsis:
   allowToChangeInstallationDirectory: true
 
 npmRebuild: false
-publish: null
+generateUpdatesFilesForAllChannels: true
+publish:
+  provider: github
+  owner: itlackey
+  repo: openpalm
+  releaseType: release

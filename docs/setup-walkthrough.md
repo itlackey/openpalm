@@ -1,23 +1,24 @@
 # Setup Wizard Walkthrough
 
-This walkthrough matches the current CLI-hosted setup wizard used by `openpalm install`.
+This walkthrough matches the current setup wizard. **The same wizard ships inside the Electron desktop app and is served by `openpalm install` for CLI users** — the screenshots below apply to both.
 
-The wizard is served locally (default random localhost port) and is separate from the admin addon. The admin UI is optional and is managed in the wizard under **Options**.
+The wizard is served locally (default port 3880 for the desktop app, random localhost port for CLI). Re-run it any time from the admin overview → **Update Settings**, or by opening `/setup?rerun=1`.
 
 ---
 
 ## Step Map
 
-The progress bar has 6 steps:
+The progress bar has 7 steps:
 
-1. Welcome
-2. Providers
-3. Models
-4. Voice
-5. Options
-6. Review
+1. **System Check** — verifies Docker and Compose are installed and running; offers install links if missing
+2. Welcome
+3. Providers
+4. Models
+5. Voice
+6. Options
+7. Review
 
-After Review, the wizard switches to a **Deploy** screen that shows image pull/start progress.
+After Review, the wizard switches to a **Deploy** screen that shows image pull/start progress (phased: writing config → pulling images → starting → ready).
 
 ---
 

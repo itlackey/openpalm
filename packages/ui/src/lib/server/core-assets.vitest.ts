@@ -147,8 +147,11 @@ describe("refreshCoreAssets", () => {
       if (url.includes("opencode.jsonc")) {
         return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
       }
-      if (url.includes("AGENTS.md")) {
-        return new Response("# OpenCode Agents\n", { status: 200 });
+      if (url.includes("openpalm.md")) {
+        return new Response("# OpenPalm Operational Guide\n", { status: 200 });
+      }
+      if (url.includes("system.md")) {
+        return new Response("# System Prompt\n", { status: 200 });
       }
       return new Response("Not found", { status: 404 });
     });
@@ -160,17 +163,20 @@ describe("refreshCoreAssets", () => {
 
     const result = await refreshCoreAssets();
     expect(result.updated).toContain("config/stack/core.compose.yml");
-    expect(result.updated).toContain("state/assistant/opencode.jsonc");
-    expect(result.updated).toContain("state/assistant/AGENTS.md");
-    // .env.schema files were retired in #391 — they MUST NOT come back.
-    // Old paths from v0.10.0 or earlier must not be resurrected.
+    expect(result.updated).toContain("config/assistant/opencode.jsonc");
+    expect(result.updated).toContain("config/assistant/openpalm.md");
+    expect(result.updated).toContain("config/assistant/system.md");
+    // Pre-v0.11 paths must not be resurrected.
+    expect(result.updated).not.toContain("state/assistant/opencode.jsonc");
+    expect(result.updated).not.toContain("state/assistant/AGENTS.md");
     expect(result.updated).not.toContain("vault/user/user.env.schema");
     expect(result.updated).not.toContain("config/stack/stack.env.schema");
     expect(result.backupDir).toBeNull(); // no existing files to back up
 
     expect(existsSync(join(homeDir, "config/stack/core.compose.yml"))).toBe(true);
-    expect(existsSync(join(homeDir, "state/assistant/opencode.jsonc"))).toBe(true);
-    expect(existsSync(join(homeDir, "state/assistant/AGENTS.md"))).toBe(true);
+    expect(existsSync(join(homeDir, "config/assistant/opencode.jsonc"))).toBe(true);
+    expect(existsSync(join(homeDir, "config/assistant/openpalm.md"))).toBe(true);
+    expect(existsSync(join(homeDir, "config/assistant/system.md"))).toBe(true);
     expect(existsSync(join(homeDir, "vault/user/user.env.schema"))).toBe(false);
     expect(existsSync(join(homeDir, "config/stack/stack.env.schema"))).toBe(false);
   });
@@ -179,27 +185,31 @@ describe("refreshCoreAssets", () => {
     const homeDir = process.env.OP_HOME!;
     mkdirSync(join(homeDir, "config/stack"), { recursive: true });
     writeFileSync(join(homeDir, "config/stack/core.compose.yml"), "old-compose-content");
-    mkdirSync(join(homeDir, "state/assistant"), { recursive: true });
-    writeFileSync(join(homeDir, "state/assistant/opencode.jsonc"), "old-opencode-content");
-    writeFileSync(join(homeDir, "state/assistant/AGENTS.md"), "old-agents-content");
+    mkdirSync(join(homeDir, "config/assistant"), { recursive: true });
+    writeFileSync(join(homeDir, "config/assistant/opencode.jsonc"), "old-opencode-content");
+    writeFileSync(join(homeDir, "config/assistant/openpalm.md"), "old-openpalm-content");
+    writeFileSync(join(homeDir, "config/assistant/system.md"), "old-system-content");
     mockFetchAll();
 
     const result = await refreshCoreAssets();
-    expect(result.updated.length).toBeGreaterThanOrEqual(3);
+    expect(result.updated.length).toBeGreaterThanOrEqual(4);
     expect(result.backupDir).not.toBeNull();
 
     // Verify backup contains old content
     const backupCompose = readFileSync(join(result.backupDir!, "config/stack/core.compose.yml"), "utf-8");
     expect(backupCompose).toBe("old-compose-content");
-    const backupOpencode = readFileSync(join(result.backupDir!, "state/assistant/opencode.jsonc"), "utf-8");
+    const backupOpencode = readFileSync(join(result.backupDir!, "config/assistant/opencode.jsonc"), "utf-8");
     expect(backupOpencode).toBe("old-opencode-content");
-    const backupAgents = readFileSync(join(result.backupDir!, "state/assistant/AGENTS.md"), "utf-8");
-    expect(backupAgents).toBe("old-agents-content");
+    const backupOpenpalm = readFileSync(join(result.backupDir!, "config/assistant/openpalm.md"), "utf-8");
+    expect(backupOpenpalm).toBe("old-openpalm-content");
+    const backupSystem = readFileSync(join(result.backupDir!, "config/assistant/system.md"), "utf-8");
+    expect(backupSystem).toBe("old-system-content");
 
     // Verify new content written
     expect(readFileSync(join(homeDir, "config/stack/core.compose.yml"), "utf-8")).not.toBe("old-compose-content");
-    expect(readFileSync(join(homeDir, "state/assistant/opencode.jsonc"), "utf-8")).not.toBe("old-opencode-content");
-    expect(readFileSync(join(homeDir, "state/assistant/AGENTS.md"), "utf-8")).not.toBe("old-agents-content");
+    expect(readFileSync(join(homeDir, "config/assistant/opencode.jsonc"), "utf-8")).not.toBe("old-opencode-content");
+    expect(readFileSync(join(homeDir, "config/assistant/openpalm.md"), "utf-8")).not.toBe("old-openpalm-content");
+    expect(readFileSync(join(homeDir, "config/assistant/system.md"), "utf-8")).not.toBe("old-system-content");
   });
 
   test("skips assets with identical content", async () => {
@@ -207,9 +217,10 @@ describe("refreshCoreAssets", () => {
     const content = "same-content";
     mkdirSync(join(homeDir, "config/stack"), { recursive: true });
     writeFileSync(join(homeDir, "config/stack/core.compose.yml"), content);
-    mkdirSync(join(homeDir, "state/assistant"), { recursive: true });
-    writeFileSync(join(homeDir, "state/assistant/opencode.jsonc"), content);
-    writeFileSync(join(homeDir, "state/assistant/AGENTS.md"), content);
+    mkdirSync(join(homeDir, "config/assistant"), { recursive: true });
+    writeFileSync(join(homeDir, "config/assistant/opencode.jsonc"), content);
+    writeFileSync(join(homeDir, "config/assistant/openpalm.md"), content);
+    writeFileSync(join(homeDir, "config/assistant/system.md"), content);
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       return new Response(content, { status: 200 });
     });

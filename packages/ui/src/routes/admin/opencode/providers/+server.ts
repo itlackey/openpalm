@@ -54,10 +54,10 @@ export const GET: RequestHandler = async (event) => {
     const hasAuthMethod = Boolean(authMethods[p.id as string]?.length);
     // A provider counts as "connected" if either:
     //   - OpenCode has an auth method registered for it (oauth/api-key), OR
-    //   - its canonical env var is set in stack.env, user.env, or process.env.
-    // The second case covers the common path where setup-wizard / Capabilities
-    // tab seeded an API key into stack.env — OpenCode's /provider/auth doesn't
-    // know about that, but ai-sdk picks it up at runtime.
+    //   - its canonical env var is set in stack.env or process.env.
+    // The second case covers the path where an operator seeded an API key
+    // directly into stack.env — OpenCode's /provider/auth doesn't know about
+    // that, but ai-sdk picks it up at runtime.
     const envKey = PROVIDER_KEY_MAP[p.id as string];
     const hasEnvKey = Boolean(envKey && setEnvVars.has(envKey));
     return {

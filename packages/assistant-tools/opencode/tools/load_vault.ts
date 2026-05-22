@@ -53,7 +53,7 @@ export function parseEnvContent(
 
 /**
  * Resolve the akm `vault:user` file path. The legacy `/etc/vault/user.env`
- * fallback was retired in Phase 2 of #388 — there is no other location to
+ * fallback was retired in akm-vault store — there is no other location to
  * try. If akm is missing, the vault is unprovisioned, or the path it
  * returns no longer exists, this returns `null` and the tool reports an
  * actionable error to the caller.

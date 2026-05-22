@@ -1,15 +1,21 @@
 <script lang="ts">
+  import FriendlyError from '$lib/components/FriendlyError.svelte';
+  import { friendlyError } from '$lib/wizard/error-messages.js';
+
   interface ServiceStatus {
     service: string;
     status: string;
     label?: string;
   }
 
+  type DeployPhase = 'writing-config' | 'pulling-images' | 'starting' | 'ready';
+
   interface DeployData {
     deploying?: boolean;
     setupComplete?: boolean;
     deployStatus?: ServiceStatus[];
     deployError?: string | null;
+    phase?: DeployPhase;
   }
 
   interface Props {
@@ -36,19 +42,29 @@
   const running = $derived(services.filter((s) => s.status === 'running').length);
   const pct = $derived(total > 0 ? Math.round((running / total) * 100) : 0);
 
+  const phase = $derived(deployData.phase ?? 'writing-config');
+
   const deployTitle = $derived.by(() => {
     if (deployDone) return 'Setup Complete';
     if (deployError) return 'Deployment Issue';
-    if (pct > 0 && pct < 100) return 'Starting Services...';
-    const ready = services.filter((s) => s.status === 'running' || s.status === 'ready').length;
-    if (ready > 0 && running === 0) return 'Pulling Images...';
-    return 'Deploying...';
+    switch (phase) {
+      case 'writing-config': return 'Preparing Configuration…';
+      case 'pulling-images': return 'Downloading Images…';
+      case 'starting': return 'Starting Services…';
+      case 'ready': return 'Setup Complete';
+    }
+    return 'Deploying…';
   });
 
   const deploySubtitle = $derived.by(() => {
     if (deployDone) return 'Your OpenPalm stack is up and running.';
     if (deployError) return 'Setup could not finish starting the stack.';
-    if (pct > 0 && pct < 100) return `${running} of ${total} services running.`;
+    switch (phase) {
+      case 'writing-config': return 'Writing config files and validating settings.';
+      case 'pulling-images': return 'Downloading container images — first install can take 3–8 minutes depending on connection.';
+      case 'starting': return `${running} of ${total} services running.`;
+      case 'ready': return 'All services are up.';
+    }
     return 'Writing configuration and starting services.';
   });
 
@@ -108,18 +124,8 @@
 </div>
 
 {#if deployError}
-  <div class="deploy-failure-card" id="deploy-failure" role="alert">
-    <div class="deploy-failure-header">
-      <span class="deploy-failure-kicker">Error</span>
-      <h3 id="deploy-failure-title">Deployment failed</h3>
-    </div>
-    <p class="deploy-failure-summary" id="deploy-failure-summary">
-      {typeof deployError === 'string' ? deployError : 'Deployment failed.'}
-    </p>
-    <details class="deploy-error-details">
-      <summary>Technical details</summary>
-      <pre id="deploy-error-pre">{typeof deployError === 'string' ? deployError : JSON.stringify(deployError, null, 2)}</pre>
-    </details>
+  <div id="deploy-failure">
+    <FriendlyError error={friendlyError(deployError, 'deploy')} />
   </div>
 {/if}
 

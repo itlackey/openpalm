@@ -1609,3 +1609,20 @@ body {
   .deploy-service-row { grid-template-columns: 28px 1fr; }
   .deploy-service-bar { display: none; }
 }
+
+.rerun-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--color-surface, #f0f4ff);
+  border-bottom: 1px solid var(--color-border, #dde3f0);
+  font-size: 0.8rem;
+  color: var(--color-text-secondary, #555);
+}
+.rerun-back-link {
+  color: var(--color-primary, #4f6ef7);
+  text-decoration: none;
+  font-weight: 500;
+}
+.rerun-back-link:hover { text-decoration: underline; }

@@ -24,7 +24,6 @@ import {
 } from "./secrets.js";
 import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { createState } from "./lifecycle.js";
-import { mirrorUserVaultToAkm, migrateAndCleanupLegacyUserEnv } from "./akm-vault.js";
 import { writeStackSpec } from "./stack-spec.js";
 import { writeVoiceVars } from "./spec-to-env.js";
 import type { ControlPlaneState } from "./types.js";
@@ -192,11 +191,6 @@ export async function performSetup(
 
   state.adminToken = security.adminToken;
   state.assistantToken = readStackEnv(state.stackDir).OP_ASSISTANT_TOKEN ?? state.assistantToken;
-  // Phase 1 of #388 §B.2: state.setupToken is held in memory only.
-  // Previously persisted to `${dataDir}/setup-token.txt`; that file
-  // is now ephemeral. The setup wizard server owns the token lifetime
-  // directly. Future callers needing cross-process access should use
-  // `${XDG_RUNTIME_DIR}` (tmpfs) rather than the stash data dir.
 
   // Write stack.yml (version marker only)
   writeStackSpec(state.stackDir, { version: 2 });
@@ -290,35 +284,6 @@ export async function performSetup(
   const systemEnvPath = `${state.stackDir}/stack.env`;
   const systemBase = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
   writeFileSync(systemEnvPath, mergeEnvContent(systemBase, { OP_SETUP_COMPLETE: "true" }), { mode: 0o600 });
-
-  // Phase 2 of #388 (closes #406): the akm `vault:user` store is now the
-  // sole runtime source of truth for user-managed env secrets. On a
-  // legacy install we migrate any `vault/user/user.env` content into akm
-  // and delete the file. On a fresh install no user.env is created, so
-  // the migration is a no-op (mirror reports `skipped: user.env missing`).
-  // Both steps are best-effort — a missing or wedged akm CLI must never
-  // block setup completion.
-  try {
-    const mirror = await mirrorUserVaultToAkm(state);
-    if (mirror.skipped) {
-      logger.debug("vault:user mirror skipped", { reason: mirror.reason });
-    } else {
-      logger.info("vault:user mirror complete", {
-        written: mirror.written.length,
-        unchanged: mirror.unchanged.length,
-      });
-    }
-    const cleanup = await migrateAndCleanupLegacyUserEnv(state);
-    if (cleanup.deleted) {
-      logger.info("removed legacy vault/user/user.env after akm migration");
-    } else if (cleanup.reason && cleanup.reason !== "user.env already absent") {
-      logger.debug("legacy user.env retained", { reason: cleanup.reason });
-    }
-  } catch (err) {
-    logger.warn("vault:user mirror failed", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
 
   logger.info("setup complete", { connectionCount: connections.length });
   return { ok: true };

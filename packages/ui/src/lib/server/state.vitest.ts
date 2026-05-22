@@ -50,13 +50,6 @@ describe("resetState", () => {
     expect(getState().adminToken).toBe("reset-verify");
   });
 
-  test("generates setupToken on each reset", () => {
-    const state1 = resetState();
-    const state2 = resetState();
-    // setupTokens should be random and different
-    expect(state1.setupToken).not.toBe(state2.setupToken);
-  });
-
   test("initializes core services as stopped", () => {
     const state = resetState();
     for (const status of Object.values(state.services)) {

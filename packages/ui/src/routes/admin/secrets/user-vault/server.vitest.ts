@@ -1,7 +1,7 @@
 /**
  * Tests for the /admin/secrets/user-vault route.
  *
- * Phase 2 of #388 (closes #406): the route operates on the akm `vault:user`
+ * Note: the route operates on the akm `vault:user`
  * store directly. The legacy `vault/user/user.env` mirror is gone — writes
  * go straight to akm via `akm vault set` (stdin mode), and deletes call
  * `akm vault unset`.
@@ -102,7 +102,7 @@ describe('admin user-vault route', () => {
   });
 
   test('GET lists akm vault keys without exposing values', async () => {
-    // Phase 2 of #388: the GET endpoint enumerates keys from the akm
+    // Note: the GET endpoint enumerates keys from the akm
     // vault:user store, NOT from a legacy `vault/user/user.env` file.
     mockAkmVault.set('CUSTOM_KEY', 'v1');
     mockAkmVault.set('OTHER_KEY', 'v2');
@@ -133,7 +133,7 @@ describe('admin user-vault route', () => {
   });
 
   test('POST writes a key to the akm vault', async () => {
-    // Phase 2 of #388: POST routes through `akm vault set` (stdin mode).
+    // Note: POST routes through `akm vault set` (stdin mode).
     // The value never appears on argv. Here we assert the value lands in
     // the in-memory vault store via the mocked helper.
     const res = await POST(makeEvent('POST', '/admin/secrets/user-vault', {
@@ -179,7 +179,7 @@ describe('admin user-vault route', () => {
   });
 
   test('DELETE removes a key from the akm vault entirely', async () => {
-    // Phase 2 of #388: DELETE routes through `akm vault unset`. The key is
+    // Note: DELETE routes through `akm vault unset`. The key is
     // expected to disappear from subsequent reads, not linger as an
     // empty-value entry.
     mockAkmVault.set('KEEP_ME', 'ok');

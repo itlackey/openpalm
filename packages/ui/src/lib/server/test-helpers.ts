@@ -33,7 +33,6 @@ export function makeTestState(overrides: Partial<ControlPlaneState> = {}): Contr
   return {
     adminToken: "test-admin-token",
     assistantToken: "test-assistant-token",
-    setupToken: "test-setup-token",
     homeDir: tempDir,
     configDir: join(tempDir, "config"),
     stashDir: join(tempDir, "stash"),

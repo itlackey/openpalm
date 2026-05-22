@@ -53,23 +53,39 @@ OpenPalm is in active development. It works — I use it every day — but there
 
 ## Get started
 
-You need Docker with Compose V2 — that's it.
+**1. Install Docker (with Compose V2)** — OpenPalm runs your assistant in Docker containers.
 
-| Platform | Install |
+| Platform | Get Docker |
 |---|---|
-| **Windows** | [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
 | **Mac** | [Docker Desktop](https://www.docker.com/products/docker-desktop/) or [OrbStack](https://orbstack.dev/download) |
-| **Linux** | `curl -fsSL https://get.docker.com \| sh` |
+| **Windows** | [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
+| **Linux** | [Docker Engine](https://docs.docker.com/engine/install/) (`curl -fsSL https://get.docker.com \| sh`) |
 
-Then run the install script:
+**2. Download the OpenPalm desktop app** — Recommended for most users.
+
+| Platform | Download |
+|---|---|
+| **Mac (Apple Silicon)** | [OpenPalm‑arm64.dmg](https://github.com/itlackey/openpalm/releases/latest) |
+| **Mac (Intel)** | [OpenPalm.dmg](https://github.com/itlackey/openpalm/releases/latest) |
+| **Windows** | [OpenPalm-Setup.exe](https://github.com/itlackey/openpalm/releases/latest) |
+| **Linux** | [OpenPalm.AppImage](https://github.com/itlackey/openpalm/releases/latest) |
+
+Open the app, follow the setup wizard (it'll confirm Docker is running, ask which AI provider to use, and start the stack), and land directly on the chat page. Done.
+
+> First launch on macOS/Windows: builds are not yet code-signed. On macOS, right-click the app and choose Open the first time. On Windows, click "More info" → "Run anyway" on the SmartScreen prompt.
+
+<details>
+<summary><strong>Advanced / headless install (CLI)</strong></summary>
+
+For servers or power users who prefer a CLI:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
 
-This downloads the CLI binary for your platform, seeds your `~/.openpalm/` directory, walks you through a setup wizard, and starts the stack. No cloning, no runtime dependencies beyond Docker.
+This downloads the CLI binary for your platform, seeds `~/.openpalm/`, opens the same wizard in your browser, and starts the stack. See the [setup guide](docs/setup-guide.md) for the full headless flow and the bare-metal `docker compose` path.
 
-If you'd rather set things up by hand with raw `docker compose`, see the [setup guide](docs/setup-guide.md).
+</details>
 
 ## Make it yours
 

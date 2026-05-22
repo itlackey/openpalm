@@ -1,7 +1,7 @@
 /**
  * /admin/secrets/user-vault — read/write the shared akm user vault.
  *
- * Phase 2 of #388 (closed by #406): the akm `vault:user` store is now the
+ * Note: the akm `vault:user` store is now the
  * sole source of truth for user-managed env secrets. The legacy
  * `vault/user/user.env` mirror is gone — writes go straight to akm via
  * `akm vault set` with the value delivered on stdin (never on argv), and

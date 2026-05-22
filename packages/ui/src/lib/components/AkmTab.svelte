@@ -493,44 +493,44 @@
 						<div class="profile-card-body">
 							<div class="controls controls--grid">
 								<div class="control-group control-group--wide">
-									<label class="control-label">Endpoint</label>
-									<input class="control-input" type="url" spellcheck="false" placeholder="https://api.openai.com/v1/chat/completions" bind:value={p.endpoint} disabled={loading || saving} />
+									<label class="control-label" for="llm-{p.id}-endpoint">Endpoint</label>
+									<input id="llm-{p.id}-endpoint" class="control-input" type="url" spellcheck="false" placeholder="https://api.openai.com/v1/chat/completions" bind:value={p.endpoint} disabled={loading || saving} />
 								</div>
 								<div class="control-group">
-									<label class="control-label">Model</label>
-									<input class="control-input" type="text" spellcheck="false" placeholder="gpt-4o-mini" bind:value={p.model} disabled={loading || saving} />
+									<label class="control-label" for="llm-{p.id}-model">Model</label>
+									<input id="llm-{p.id}-model" class="control-input" type="text" spellcheck="false" placeholder="gpt-4o-mini" bind:value={p.model} disabled={loading || saving} />
 								</div>
 								<div class="control-group">
-									<label class="control-label">Provider (label)</label>
-									<input class="control-input" type="text" spellcheck="false" placeholder="openai" bind:value={p.provider} disabled={loading || saving} />
+									<label class="control-label" for="llm-{p.id}-provider">Provider (label)</label>
+									<input id="llm-{p.id}-provider" class="control-input" type="text" spellcheck="false" placeholder="openai" bind:value={p.provider} disabled={loading || saving} />
 								</div>
 								<div class="control-group">
-									<label class="control-label">API Key</label>
-									<input class="control-input" type="text" spellcheck="false" placeholder={'${AKM_LLM_API_KEY}'} bind:value={p.apiKey} disabled={loading || saving} />
+									<label class="control-label" for="llm-{p.id}-apikey">API Key</label>
+									<input id="llm-{p.id}-apikey" class="control-input" type="text" spellcheck="false" placeholder={'${AKM_LLM_API_KEY}'} bind:value={p.apiKey} disabled={loading || saving} />
 								</div>
 								<div class="control-group">
-									<label class="control-label">Temperature (0–2)</label>
-									<input class="control-input control-input--narrow" type="number" min="0" max="2" step="0.1" bind:value={p.temperature} disabled={loading || saving} />
+									<label class="control-label" for="llm-{p.id}-temperature">Temperature (0–2)</label>
+									<input id="llm-{p.id}-temperature" class="control-input control-input--narrow" type="number" min="0" max="2" step="0.1" bind:value={p.temperature} disabled={loading || saving} />
 								</div>
 								<div class="control-group">
-									<label class="control-label">Max tokens</label>
-									<input class="control-input control-input--narrow" type="number" min="1" bind:value={p.maxTokens} disabled={loading || saving} />
+									<label class="control-label" for="llm-{p.id}-maxtokens">Max tokens</label>
+									<input id="llm-{p.id}-maxtokens" class="control-input control-input--narrow" type="number" min="1" bind:value={p.maxTokens} disabled={loading || saving} />
 								</div>
 								<div class="control-group">
-									<label class="control-label">Timeout (ms)</label>
-									<input class="control-input control-input--narrow" type="number" min="1" bind:value={p.timeoutMs} disabled={loading || saving} />
+									<label class="control-label" for="llm-{p.id}-timeout">Timeout (ms)</label>
+									<input id="llm-{p.id}-timeout" class="control-input control-input--narrow" type="number" min="1" bind:value={p.timeoutMs} disabled={loading || saving} />
 								</div>
 								<div class="control-group">
-									<label class="control-label">Concurrency</label>
-									<input class="control-input control-input--narrow" type="number" min="1" bind:value={p.concurrency} disabled={loading || saving} />
+									<label class="control-label" for="llm-{p.id}-concurrency">Concurrency</label>
+									<input id="llm-{p.id}-concurrency" class="control-input control-input--narrow" type="number" min="1" bind:value={p.concurrency} disabled={loading || saving} />
 								</div>
 								<div class="control-group">
-									<label class="control-label">Context length</label>
-									<input class="control-input control-input--narrow" type="number" min="1" bind:value={p.contextLength} disabled={loading || saving} />
+									<label class="control-label" for="llm-{p.id}-contextlength">Context length</label>
+									<input id="llm-{p.id}-contextlength" class="control-input control-input--narrow" type="number" min="1" bind:value={p.contextLength} disabled={loading || saving} />
 								</div>
 								<div class="control-group">
-									<label class="control-label">Judge model</label>
-									<input class="control-input" type="text" spellcheck="false" placeholder="gpt-4o" bind:value={p.judgeModel} disabled={loading || saving} />
+									<label class="control-label" for="llm-{p.id}-judgemodel">Judge model</label>
+									<input id="llm-{p.id}-judgemodel" class="control-input" type="text" spellcheck="false" placeholder="gpt-4o" bind:value={p.judgeModel} disabled={loading || saving} />
 								</div>
 							</div>
 							<label class="toggle-row">
@@ -586,8 +586,8 @@
 						<div class="profile-card-body">
 							<div class="controls controls--grid">
 								<div class="control-group">
-									<label class="control-label">Platform</label>
-									<select class="control-input" bind:value={p.platform} disabled={loading || saving}>
+									<label class="control-label" for="agent-{p.id}-platform">Platform</label>
+									<select id="agent-{p.id}-platform" class="control-input" bind:value={p.platform} disabled={loading || saving}>
 										<option value="opencode">opencode</option>
 										<option value="claude">claude</option>
 										<option value="opencode-sdk">opencode-sdk</option>
@@ -595,21 +595,21 @@
 								</div>
 								{#if p.platform !== 'opencode-sdk'}
 									<div class="control-group">
-										<label class="control-label">Binary</label>
-										<input class="control-input" type="text" spellcheck="false" placeholder="opencode" bind:value={p.bin} disabled={loading || saving} />
+										<label class="control-label" for="agent-{p.id}-bin">Binary</label>
+										<input id="agent-{p.id}-bin" class="control-input" type="text" spellcheck="false" placeholder="opencode" bind:value={p.bin} disabled={loading || saving} />
 									</div>
 									<div class="control-group control-group--wide">
-										<label class="control-label">Extra args (space-separated)</label>
-										<input class="control-input" type="text" spellcheck="false" placeholder="run --model gpt-4o" bind:value={p.args} disabled={loading || saving} />
+										<label class="control-label" for="agent-{p.id}-args">Extra args (space-separated)</label>
+										<input id="agent-{p.id}-args" class="control-input" type="text" spellcheck="false" placeholder="run --model gpt-4o" bind:value={p.args} disabled={loading || saving} />
 									</div>
 								{:else}
 									<div class="control-group">
-										<label class="control-label">Model</label>
-										<input class="control-input" type="text" spellcheck="false" placeholder="anthropic/claude-sonnet-4-5" bind:value={p.model} disabled={loading || saving} />
+										<label class="control-label" for="agent-{p.id}-model">Model</label>
+										<input id="agent-{p.id}-model" class="control-input" type="text" spellcheck="false" placeholder="anthropic/claude-sonnet-4-5" bind:value={p.model} disabled={loading || saving} />
 									</div>
 									<div class="control-group">
-										<label class="control-label">Workspace</label>
-										<input class="control-input" type="text" spellcheck="false" placeholder={'${PWD}'} bind:value={p.workspace} disabled={loading || saving} />
+										<label class="control-label" for="agent-{p.id}-workspace">Workspace</label>
+										<input id="agent-{p.id}-workspace" class="control-input" type="text" spellcheck="false" placeholder={'${PWD}'} bind:value={p.workspace} disabled={loading || saving} />
 									</div>
 								{/if}
 							</div>

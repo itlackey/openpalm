@@ -7,7 +7,9 @@
     ProviderState, ModelSelection, DetectedProvider, ChannelState,
     OpenCodeProvider, AuthMethod, VoiceEngineValue,
   } from '$lib/wizard/types.js';
+  import { friendlyError, type FriendlyErrorView } from '$lib/wizard/error-messages.js';
   import ProgressBar from './ProgressBar.svelte';
+  import SystemCheckStep from './steps/SystemCheckStep.svelte';
   import WelcomeStep from './steps/WelcomeStep.svelte';
   import ProvidersStep from './steps/ProvidersStep.svelte';
   import ModelsStep from './steps/ModelsStep.svelte';
@@ -27,6 +29,7 @@
   let currentStep = $state(0);
   let maxVisitedStep = $state(0);
   let showDeploy = $state(false);
+  let systemCheckPassed = $state(false);
 
   // ── Step 0: Identity ──────────────────────────────────────────────────────
   let adminToken = $state('');
@@ -338,18 +341,21 @@
   }
 
   function goToStep(n: number): void {
-    if (n < 0 || n > 5) return;
+    if (n < 0 || n > 6) return;
+    // Block forward navigation past System Check until it has passed.
+    // Allow backwards navigation freely so users can revisit the check.
+    if (n > 0 && !systemCheckPassed) return;
     currentStep = n;
     if (n > maxVisitedStep) maxVisitedStep = n;
     showDeploy = false;
-    // Auto-select model defaults when entering step 2
-    if (n === 2) autoSelectModels();
-    // Sync ollamaEnabled from ollamaMode when entering step 4
-    if (n === 4 && hasOllamaVerified) {
+    // Auto-select model defaults when entering Models step (index 3)
+    if (n === 3) autoSelectModels();
+    // Sync ollamaEnabled from ollamaMode when entering Options step (index 5)
+    if (n === 5 && hasOllamaVerified) {
       ollamaEnabled = providerState.ollama?.ollamaMode === 'instack';
     }
-    // Auto-import from host on first step 1 visit if host providers detected
-    if (n === 1 && hostProviderCount > 0 && !hostImportTriggered) {
+    // Auto-import from host on first Providers visit if host providers detected (index 2)
+    if (n === 2 && hostProviderCount > 0 && !hostImportTriggered) {
       hostImportTriggered = true;
       void handleHostImport();
     }
@@ -689,12 +695,12 @@
       const res = await fetch('/api/setup/deploy-status');
       if (!res.ok) {
         deployPollErrors++;
-        if (deployPollErrors >= 3) {
+        if (deployPollErrors >= 5) {
+          // Lost contact with the installer — surface a real error instead of
+          // pretending the deploy succeeded. Previous behaviour silently marked
+          // all services "running" after 3 failed polls, which hid real problems.
           stopDeployPolling();
-          deployData = lastDeployData && lastDeployData.length > 0
-            ? { deployStatus: lastDeployData.map((s) => ({ ...s, status: 'running' })) }
-            : { deployStatus: [] };
-          deployDone = true;
+          deployError = 'Lost contact with the installer. Services may still be starting in the background.';
         }
         return;
       }
@@ -722,18 +728,13 @@
         stopDeployPolling();
         deployDone = true;
       }
-    } catch {
+    } catch (err) {
       deployPollErrors++;
-      if (deployPollErrors >= 3) {
+      if (deployPollErrors >= 5) {
         stopDeployPolling();
-        if (lastDeployData && lastDeployData.length > 0) {
-          deployData = {
-            deployStatus: lastDeployData.map((s) => ({ ...s, status: 'running' })),
-          };
-        } else {
-          deployData = { deployStatus: [] };
-        }
-        deployDone = true;
+        deployError = err instanceof Error
+          ? `Lost contact with the installer: ${err.message}`
+          : 'Lost contact with the installer.';
       }
     }
   }
@@ -846,7 +847,8 @@
     deployPollErrors = 0;
     lastDeployData = null;
     showDeploy = false;
-    currentStep = 5;
+    // Return to Review step (index 6)
+    currentStep = 6;
   }
 
   // ── Host import ───────────────────────────────────────────────────────────
@@ -862,8 +864,9 @@
         const data = (await res.json()) as { providerCount: number; imageTag?: string };
         hostProviderCount = data.providerCount ?? 0;
         if (data.imageTag && !imageTag) imageTag = data.imageTag;
-        // Auto-import if already on step 1
-        if (hostProviderCount > 0 && currentStep === 1 && !hostImportTriggered) {
+        // Auto-import if already on Providers step (index 2), or always on rerun
+        // so models/settings have verified providers to attach to.
+        if (hostProviderCount > 0 && !hostImportTriggered && (currentStep === 2 || isRerun)) {
           hostImportTriggered = true;
           void handleHostImport();
         }
@@ -893,7 +896,9 @@
           }
 
           hostImporting = false;
-          goToStep(2);
+          // After host import, advance to Models step (index 3). Skip the
+          // auto-advance on rerun — the user picks where to start.
+          if (!isRerun) goToStep(3);
           return;
         }
       }
@@ -903,15 +908,75 @@
     hostImporting = false;
   }
 
+  let isRerun = $state(false);
+
   // ── Mount: generate token, check status, start discovery ─────────────────
   onMount(() => {
     initProviderState();
-    adminToken = generateToken();
 
-    fetch('/api/setup/status')
-      .then((r) => r.json())
-      .then((data) => { if (data.setupComplete) window.location.href = '/'; })
-      .catch(() => { /* ignore */ });
+    const params = new URLSearchParams(window.location.search);
+    isRerun = params.get('rerun') === '1';
+
+    if (isRerun) {
+      // Rerun mode: the install is already working, so unlock navigation
+      // immediately and pre-fill every step from current config.
+      systemCheckPassed = true;
+      maxVisitedStep = 6;
+      adminToken = generateToken(); // fallback; replaced if API returns existing
+
+      fetch('/api/setup/current-config')
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => {
+          if (!data) return;
+          if (data.adminToken) adminToken = data.adminToken;
+          if (data.ownerName) ownerName = data.ownerName;
+          if (data.ownerEmail) ownerEmail = data.ownerEmail;
+          if (data.imageTag) imageTag = data.imageTag;
+          if (typeof data.hostAkm === 'boolean') hostAkmEnabled = data.hostAkm;
+
+          // Models — store saved selections; the connId resolves once the
+          // matching provider is verified by the host-import / OpenCode flow.
+          if (data.llm?.provider && data.llm?.model) {
+            modelSelection.llm = { connId: data.llm.provider, model: data.llm.model };
+          }
+          if (data.embedding?.provider && data.embedding?.model) {
+            modelSelection.embedding = {
+              connId: data.embedding.provider,
+              model: data.embedding.model,
+              dims: data.embedding.dims,
+            };
+          }
+
+          // Voice — pre-fill connection fields; engine choice stays as user
+          // last picked it (engine isn't persisted today; user re-picks).
+          if (data.voice?.tts) {
+            voiceTts = { engine: voiceTts.engine, ...data.voice.tts };
+          }
+          if (data.voice?.stt) {
+            voiceStt = { engine: voiceStt.engine, ...data.voice.stt };
+          }
+
+          // Enabled addons + channel credentials
+          const enabled: string[] = Array.isArray(data.enabledAddons) ? data.enabledAddons : [];
+          if (enabled.includes('ollama')) ollamaEnabled = true;
+          const creds = data.channelCredentials ?? {};
+          for (const chId of ['discord', 'slack']) {
+            const sel = channelSelection[chId];
+            if (typeof sel === 'object' && sel !== null) {
+              if (enabled.includes(chId)) sel.enabled = true;
+              const c = creds[chId];
+              if (c && typeof c === 'object') Object.assign(sel, c);
+            }
+          }
+        })
+        .catch(() => { /* fall through with generated token */ });
+    } else {
+      adminToken = generateToken();
+      fetch('/api/setup/status')
+        .then((r) => r.json())
+        .then((data) => { if (data.setupComplete) window.location.href = '/'; })
+        .catch(() => { /* ignore */ });
+    }
 
     void loadHostStatus();
 
@@ -929,9 +994,16 @@
 <main class="setup-page" aria-label="Setup wizard">
   <div class="wizard-card">
 
+    {#if isRerun}
+      <div class="rerun-banner">
+        <span>Updating existing installation</span>
+        <a href="/" class="rerun-back-link">← Back to Admin</a>
+      </div>
+    {/if}
+
     <div class="wizard-header">
       <div class="hdr-logo">OP</div>
-      <h1>OpenPalm <span class="hdr-suffix">Setup</span></h1>
+      <h1>OpenPalm <span class="hdr-suffix">{isRerun ? 'Update Settings' : 'Setup'}</span></h1>
     </div>
 
     <div class="wizard-body">
@@ -954,7 +1026,15 @@
           onretry={handleDeployRetry}
         />
       {:else if currentStep === 0}
-        <section class="step-content" id="step-0" data-testid="step-welcome">
+        <section class="step-content" id="step-0" data-testid="step-system-check">
+          <SystemCheckStep
+            {isRerun}
+            onpass={() => { systemCheckPassed = true; }}
+            onnext={() => { systemCheckPassed = true; goToStep(1); }}
+          />
+        </section>
+      {:else if currentStep === 1}
+        <section class="step-content" id="step-1" data-testid="step-welcome">
           <WelcomeStep
             {adminToken}
             {ownerName}
@@ -965,11 +1045,11 @@
             onownername={(v) => ownerName = v}
             onowneremail={(v) => ownerEmail = v}
             ondismisshero={() => { welcomeHeroDismissed = true; }}
-            onnext={() => { if (validateStep0()) goToStep(1); }}
+            onnext={() => { if (validateStep0()) goToStep(2); }}
           />
         </section>
-      {:else if currentStep === 1}
-        <section class="step-content" id="step-1" data-testid="step-capabilities">
+      {:else if currentStep === 2}
+        <section class="step-content" id="step-2" data-testid="step-capabilities">
           {#if hostImporting}
             <div style="text-align:center;padding:48px 0">
               <div class="loading-state"><span class="spinner"></span>&nbsp;Importing providers from host OpenCode…</div>
@@ -986,8 +1066,8 @@
             {ocFilterQuery}
             {verifiedCount}
             {hostProviderCount}
-            onback={() => goToStep(0)}
-            onnext={() => goToStep(2)}
+            onback={() => goToStep(1)}
+            onnext={() => goToStep(3)}
             ontogglefallback={handleToggleFallback}
             ontoggleopencode={handleToggleOpenCode}
             onverify={handleVerify}
@@ -1008,35 +1088,35 @@
           />
           {/if}
         </section>
-      {:else if currentStep === 2}
-        <section class="step-content" id="step-2" data-testid="step-models">
+      {:else if currentStep === 3}
+        <section class="step-content" id="step-3" data-testid="step-models">
           <ModelsStep
             {verifiedProviders}
             {providerState}
             {modelSelection}
             {reranking}
             errorMessage={step2Error}
-            onback={() => goToStep(1)}
-            onnext={() => { if (validateStep2()) goToStep(3); }}
+            onback={() => goToStep(2)}
+            onnext={() => { if (validateStep2()) goToStep(4); }}
             onselect={handleSelectModel}
             onselectnone={handleSelectNone}
             onrerankingchange={(updates) => reranking = { ...reranking, ...updates }}
           />
         </section>
-      {:else if currentStep === 3}
-        <section class="step-content" id="step-3" data-testid="step-voice">
+      {:else if currentStep === 4}
+        <section class="step-content" id="step-4" data-testid="step-voice">
           <VoiceStep
             tts={voiceTts.engine ? voiceTts : { engine: voiceDefaults.tts }}
             stt={voiceStt.engine ? voiceStt : { engine: voiceDefaults.stt }}
             {hasOpenAI}
-            onback={() => goToStep(2)}
-            onnext={() => goToStep(4)}
+            onback={() => goToStep(3)}
+            onnext={() => goToStep(5)}
             onchangetts={(v) => voiceTts = v}
             onchangestt={(v) => voiceStt = v}
           />
         </section>
-      {:else if currentStep === 4}
-        <section class="step-content" id="step-4" data-testid="step-options">
+      {:else if currentStep === 5}
+        <section class="step-content" id="step-5" data-testid="step-options">
           <OptionsStep
             {channelSelection}
             hasOllama={hasOllamaVerified}
@@ -1044,8 +1124,8 @@
             {imageTag}
             {hostAkmEnabled}
             errorMessage={step4Error}
-            onback={() => goToStep(3)}
-            onnext={() => { if (validateStep4()) goToStep(5); }}
+            onback={() => goToStep(4)}
+            onnext={() => { if (validateStep4()) goToStep(6); }}
             onchanneltoggle={handleChannelToggle}
             oncredentialchange={handleCredentialChange}
             onollamaenabledchange={(v) => ollamaEnabled = v}
@@ -1053,8 +1133,8 @@
             onhostakmchange={(v) => hostAkmEnabled = v}
           />
         </section>
-      {:else if currentStep === 5}
-        <section class="step-content" id="step-5" data-testid="step-review">
+      {:else if currentStep === 6}
+        <section class="step-content" id="step-6" data-testid="step-review">
           <ReviewStep
             {adminToken}
             {ownerName}
@@ -1069,7 +1149,7 @@
             {payload}
             {installError}
             {installing}
-            onback={() => goToStep(4)}
+            onback={() => goToStep(5)}
             oninstall={handleInstall}
             ongostepedit={goToStep}
           />

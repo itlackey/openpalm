@@ -101,9 +101,9 @@ RUN set -e; \
 # Prepend opencode user's local bin so per-user installs win.
 ENV PATH="/home/opencode/.local/bin:/usr/local/.opencode/bin:$PATH"
 
-RUN mkdir -p /home/opencode/.cache /work /akm \
-    && chmod 755 /home/opencode /home/opencode/.cache /akm \
-    && chown opencode:opencode /home/opencode /home/opencode/.cache /work /akm \
+RUN mkdir -p /home/opencode/.cache /work /akm /opt/persistent/bin \
+    && chmod 755 /home/opencode /home/opencode/.cache /akm /opt/persistent /opt/persistent/bin \
+    && chown opencode:opencode /home/opencode /home/opencode/.cache /work /akm /opt/persistent /opt/persistent/bin \
     && sed -i 's@^#\?PasswordAuthentication .*@PasswordAuthentication no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
@@ -119,7 +119,14 @@ WORKDIR /work
 # Point Bun's user-writable paths at the opencode user's home.
 ENV BUN_INSTALL=/home/opencode/.bun
 ENV BUN_INSTALL_CACHE_DIR=/home/opencode/.cache/bun/install
-ENV PATH="/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:$PATH"
+
+# PATH precedence (highest first):
+#   /opt/persistent/bin — assistant-installed tools that survive recreates/upgrades
+#     (named-volume mount; see core.compose.yml comment for usage patterns)
+#   /home/opencode/.local/bin — pipx / uv / scripts in the home bind-mount
+#   /home/opencode/.bun/bin   — bun install -g (BUN_INSTALL points here)
+#   /usr/local/bin            — image-baked tools
+ENV PATH="/opt/persistent/bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:$PATH"
 
 # OpenCode config (opencode.jsonc, openpalm.md, system.md) now lives in
 # OP_HOME/config/assistant/ and is bind-mounted at OPENCODE_CONFIG_DIR.

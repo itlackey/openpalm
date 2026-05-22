@@ -2,6 +2,8 @@
   import { CHANNELS, TTS_OPTIONS, STT_OPTIONS, PROVIDERS } from '$lib/wizard/constants.js';
   import type { Provider, ModelSelection, ChannelState, RerankingOptions } from '$lib/wizard/types.js';
   import { isChannelEnabled as _isChannelEnabled, getCredValue as _getCredValue } from '$lib/wizard/helpers.js';
+  import FriendlyError from '$lib/components/FriendlyError.svelte';
+  import { friendlyError } from '$lib/wizard/error-messages.js';
 
   interface Props {
     adminToken: string;
@@ -233,7 +235,7 @@
 {/if}
 
 {#if installError}
-  <div class="install-error" role="alert">{installError}</div>
+  <FriendlyError error={friendlyError(installError, 'setup-complete')} />
 {/if}
 
 <div class="step-actions" id="review-actions">

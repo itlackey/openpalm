@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/assistant-tools",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "type": "module",
   "license": "MPL-2.0",
   "description": "Core OpenPalm assistant extensions for OpenCode",
@@ -24,6 +24,6 @@
     "directory": "packages/assistant-tools"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "1.2.15"
+    "@opencode-ai/plugin": "^1.15.9"
   }
 }

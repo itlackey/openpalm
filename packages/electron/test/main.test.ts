@@ -30,15 +30,24 @@ vi.mock('node:child_process', async (importOriginal) => {
 });
 
 // ── Mock electron before importing anything that imports it ──────────────────
-const mockBrowserWindow = {
-  loadURL: vi.fn(),
-  webContents: { setWindowOpenHandler: vi.fn() },
-  on: vi.fn(),
-  show: vi.fn(),
-  focus: vi.fn(),
-  hide: vi.fn(),
-  getAllWindows: vi.fn(() => []),
-};
+// vi.mock() factories are hoisted above other top-level code, so the mock
+// objects they close over must be created via vi.hoisted() to be reachable
+// at hoist time.
+const { mockBrowserWindow } = vi.hoisted(() => ({
+  mockBrowserWindow: {
+    loadURL: vi.fn(),
+    webContents: { setWindowOpenHandler: vi.fn() },
+    on: vi.fn(),
+    once: vi.fn(),
+    show: vi.fn(),
+    focus: vi.fn(),
+    hide: vi.fn(),
+    close: vi.fn(),
+    setTitle: vi.fn(),
+    isDestroyed: vi.fn(() => false),
+    getAllWindows: vi.fn(() => []),
+  },
+}));
 
 vi.mock('electron', () => ({
   app: {
@@ -49,15 +58,20 @@ vi.mock('electron', () => ({
     on: vi.fn(),
     getAppPath: vi.fn(() => '/mock/app'),
   },
+  // Regular function (not arrow) so `new BrowserWindow(...)` works as a
+  // constructor; vitest 4 enforces this stricter than 3 did.
   BrowserWindow: Object.assign(
-    vi.fn(() => mockBrowserWindow),
+    function MockBrowserWindow() { return mockBrowserWindow; },
     { getAllWindows: vi.fn(() => []) },
   ),
-  Tray: vi.fn(() => ({
-    setToolTip: vi.fn(),
-    setContextMenu: vi.fn(),
-    on: vi.fn(),
-  })),
+  contextBridge: { exposeInMainWorld: vi.fn() },
+  Tray: function MockTray() {
+    return {
+      setToolTip: vi.fn(),
+      setContextMenu: vi.fn(),
+      on: vi.fn(),
+    };
+  },
   Menu: { buildFromTemplate: vi.fn(() => ({})) },
   shell: { openExternal: vi.fn() },
 }));

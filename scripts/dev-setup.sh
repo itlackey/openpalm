@@ -215,6 +215,11 @@ OP_DOCKER_SOCK=$docker_sock
 OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=dev
 
+# Compose project name — MUST differ from production. The default name
+# "openpalm" is what ~/.openpalm/ uses; sharing it would let a dev stack
+# accidentally clobber a running production stack via docker compose up.
+OP_PROJECT_NAME=openpalm-dev
+
 # Host-side port bindings for the compose stack.
 # These are intentionally offset from the production defaults (3800/8100/8180)
 # so a dev/test stack never conflicts with a production instance running on the

@@ -13,11 +13,9 @@ import {
   resolveStackDir,
 } from "./home.js";
 import { ensureSecrets, readStackEnv, updateSystemSecretsEnv } from "./secrets.js";
-import { mirrorUserVaultToAkm, migrateAndCleanupLegacyUserEnv } from "./akm-vault.js";
 import {
   resolveRuntimeFiles,
   writeRuntimeFiles,
-  randomHex,
   buildEnvFiles,
   discoverStackOverlays,
   ensureComposeVolumeTargets,
@@ -51,11 +49,9 @@ export function createState(
     services[name] = "stopped";
   }
 
-  const setupToken = randomHex(16);
   const bootstrapState: ControlPlaneState = {
     adminToken: adminToken ?? process.env.OP_UI_TOKEN ?? "",
     assistantToken: "",
-    setupToken,
     homeDir,
     configDir,
     stashDir,
@@ -82,12 +78,6 @@ export function createState(
     stackEnv.OP_ASSISTANT_TOKEN
       ?? process.env.OP_ASSISTANT_TOKEN
       ?? "";
-
-  // Phase 1 of #388 §B.2: state.setupToken is held in memory only.
-  // Previously persisted to `${dataDir}/setup-token.txt`; that file is
-  // now ephemeral. The setup wizard server owns the token lifetime
-  // directly. Cross-process callers should use `${XDG_RUNTIME_DIR}`
-  // (tmpfs) rather than the stash data dir.
 
   return bootstrapState;
 }
@@ -264,19 +254,6 @@ export async function applyUpgrade(
   try {
     const { backupDir, updated } = await refreshCoreAssets();
     const restarted = await reconcileCore(state, {});
-
-    // Phase 2 of #388 (closes #406): migrate existing
-    // `${OP_HOME}/vault/user/user.env` from pre-0.11 layouts into the
-    // shared akm `vault:user` store, then delete the legacy file once
-    // every key is verified present in akm. The assistant entrypoint
-    // sources the akm vault directly (no compose env_file dependency on
-    // user.env), so removing the file does not affect runtime env
-    // resolution. Mirror + cleanup are both best-effort: the upgrade
-    // succeeds on its own merits, and any akm-side error is logged so
-    // the operator can re-run upgrade after fixing the akm CLI.
-    await mirrorUserVaultToAkm(state).catch(() => { /* best-effort */ });
-    await migrateAndCleanupLegacyUserEnv(state).catch(() => { /* best-effort */ });
-
     return { backupDir, updated, restarted };
   } finally {
     releaseLock(lock);

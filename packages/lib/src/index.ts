@@ -270,12 +270,10 @@ export {
   importHostOpenCode,
 } from "./control-plane/host-opencode.js";
 
-// ── AKM Vault Mirror (#388) ──────────────────────────────────────────────
+// ── AKM Vault ────────────────────────────────────────────────────────────
 export {
   AKM_USER_VAULT_REF,
   buildAkmEnv,
-  mirrorUserVaultToAkm,
-  migrateAndCleanupLegacyUserEnv,
   ensureAkmUserVault,
   writeAkmVaultKey,
   deleteAkmVaultKey,

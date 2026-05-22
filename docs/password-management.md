@@ -69,7 +69,7 @@ Important keys include:
 | `MISTRAL_API_KEY` | Mistral key |
 | `GOOGLE_API_KEY` | Google AI key |
 
-> **Note:** LLM and embedding configuration lives in `config/akm/config.json`, not in `stack.env`. The `OP_CAP_*` capability variables were removed in v0.11.0.
+> **Note:** LLM and embedding configuration lives in `config/akm/config.json`, not in `stack.env`.
 
 Behavior:
 

@@ -27,6 +27,7 @@ Repo layout convention:
 |---|---|
 | [manual-compose-runbook.md](operations/manual-compose-runbook.md) | Step-by-step manual host configuration (no scripts) |
 | [diagnostic-playbook.md](operations/diagnostic-playbook.md) | Layer-by-layer debugging workflow for UI, admin API, OpenCode, and container/config issues |
+| [persistent-assistant-tools.md](operations/persistent-assistant-tools.md) | How to keep assistant-installed tools across recreates and upgrades |
 
 ## Architecture (must-read for contributors)
 

@@ -153,7 +153,7 @@ describe("buildEnvFiles", () => {
   });
 
   test("returns stack.env and guardian.env in correct order when they exist", () => {
-    // Phase 2 of #388 (closes #406): user.env is no longer a compose
+    // Note: user.env is no longer a compose
     // env_file. User-managed env secrets live in the akm `vault:user` store
     // and are sourced by the assistant entrypoint at container startup.
     const state = makeTestState();

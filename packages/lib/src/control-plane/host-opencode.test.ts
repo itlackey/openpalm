@@ -16,7 +16,6 @@ function makeState(homeDir: string): ControlPlaneState {
   return {
     adminToken: "test-admin",
     assistantToken: "test-assistant",
-    setupToken: "test-setup",
     homeDir,
     configDir: join(homeDir, "config"),
     stashDir: join(homeDir, "stash"),

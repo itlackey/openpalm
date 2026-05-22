@@ -1,6 +1,14 @@
 <script lang="ts">
   import { PROVIDERS, PROVIDER_GROUPS } from '$lib/wizard/constants.js';
   import type { ProviderState, DetectedProvider, OpenCodeProvider, AuthMethod } from '$lib/wizard/types.js';
+  import { friendlyError } from '$lib/wizard/error-messages.js';
+
+  function friendlyProviderError(raw: string | undefined): string {
+    if (!raw) return 'Connection failed';
+    const view = friendlyError(raw, 'provider-verify');
+    // Inline display: combine title + concise hint
+    return view.hint ? `${view.title}. ${view.hint}` : view.title;
+  }
 
   interface Props {
     opencodeAvailable: boolean;
@@ -161,7 +169,7 @@
               <div class="auth-feedback auth-feedback-ok">Connected</div>
             {:else}
               {#if st.error}
-                <div class="auth-feedback auth-feedback-err">{st.errorMessage ?? 'Connection failed'}</div>
+                <div class="auth-feedback auth-feedback-err">{friendlyProviderError(st.errorMessage)}</div>
               {/if}
 
               {#if authMethods.length > 0}
@@ -395,7 +403,7 @@
                       <div class="auth-feedback auth-feedback-ok">Credentials verified</div>
                     {:else if st.error}
                       <div class="auth-feedback auth-feedback-err">
-                        Verification failed — {st.errorMessage ?? ('check your ' + (p.needsKey ? 'credentials' : 'endpoint'))}
+                        {friendlyProviderError(st.errorMessage) || ('Verification failed — check your ' + (p.needsKey ? 'credentials' : 'endpoint'))}
                       </div>
                     {/if}
                   </div>

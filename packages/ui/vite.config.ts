@@ -1,8 +1,12 @@
-import { defineConfig } from "vitest/config";
+// Use vite's defineConfig instead of vitest's. Vitest reads the `test` field
+// at runtime regardless of how the config is typed, and importing from `vite`
+// avoids a known Bun-workspaces issue where vitest installs with different
+// optional peer deps in different workspaces produce incompatible type
+// universes for `defineConfig`'s `Vitest` generic.
+import { defineConfig, loadEnv } from "vite";
 import { playwright } from "@vitest/browser-playwright";
 import devtoolsJson from "vite-plugin-devtools-json";
 import { sveltekit } from "@sveltejs/kit/vite";
-import { loadEnv } from "vite";
 import { resolve } from "node:path";
 
 const rootDir = resolve(__dirname, "../..");
