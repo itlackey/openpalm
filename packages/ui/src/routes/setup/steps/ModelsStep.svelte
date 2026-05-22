@@ -100,6 +100,12 @@
 <h2>Choose Your Models</h2>
 <p class="step-description">Pre-selected from your providers. Adjust if needed.</p>
 
+{#if verifiedProviders.length === 0}
+  <div class="field-error" style="margin-bottom:16px">
+    No providers configured. You can skip to complete setup and add providers from the admin panel later.
+  </div>
+{/if}
+
 <div id="model-groups">
   {#each roles as role}
     {@const options = getOptionsForRole(role)}
@@ -178,5 +184,7 @@
 
 <div class="step-actions">
   <button class="btn btn-secondary" id="btn-step2-back" onclick={onback}>Back</button>
-  <button class="btn btn-primary" id="btn-step2-next" onclick={onnext}>Voice Setup</button>
+  <button class="btn btn-primary" id="btn-step2-next" onclick={onnext}>
+    {verifiedProviders.length === 0 ? 'Skip for now' : 'Voice Setup'}
+  </button>
 </div>

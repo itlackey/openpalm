@@ -48,6 +48,8 @@
   let hostProviderCount = $state(0);
   /** Generation counter per provider — discard stale verify results */
   const verifyGeneration: Record<string, number> = {};
+  /** AbortControllers for in-flight OAuth long-poll requests */
+  const oauthAbortControllers: Record<string, AbortController> = {};
 
   // ── Step 2: Models ────────────────────────────────────────────────────────
   let modelSelection = $state<{ llm?: ModelSelection; embedding?: ModelSelection; small?: ModelSelection }>({});
@@ -288,12 +290,10 @@
   }
 
   function validateStep2(): boolean {
+    // Allow skipping the model step entirely when no providers are configured
+    if (verifiedProviders.length === 0) { step2Error = ''; return true; }
     if (!modelSelection.llm?.model) {
       step2Error = 'Select a chat model.';
-      return false;
-    }
-    if (!modelSelection.embedding?.model) {
-      step2Error = 'Select an embedding model.';
       return false;
     }
     step2Error = '';
@@ -579,34 +579,34 @@
 
   async function pollOpenCodeOAuth(providerId: string, methodIndex: number): Promise<void> {
     const st = providerState[providerId];
-    for (let i = 0; i < 120 && st.oauthPolling; i++) {
-      await new Promise<void>((r) => setTimeout(r, 5000));
-      if (!st.oauthPolling) break;
+    const ac = new AbortController();
+    oauthAbortControllers[providerId] = ac;
 
-      try {
-        const res = await fetch('/api/setup/opencode/provider/' + encodeURIComponent(providerId) + '/oauth/callback', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ method: methodIndex }),
-        });
-        const data = await res.json().catch(() => null);
-        if (res.ok && data) {
-          st.verified = true;
-          st.error = false;
-          st.oauthPolling = false;
-          st.verifying = false;
-          return;
-        }
-      } catch {
-        // retry
+    try {
+      // The callback is a long-poll — make one call and wait (up to 10 minutes)
+      const res = await fetch('/api/setup/opencode/provider/' + encodeURIComponent(providerId) + '/oauth/callback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: methodIndex }),
+        signal: ac.signal,
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && (data as { ok?: boolean })?.ok) {
+        st.verified = true;
+        st.error = false;
+      } else {
+        st.error = true;
+        st.errorMessage = (data as { message?: string })?.message ?? 'Authorization failed';
       }
-    }
-
-    if (st.oauthPolling) {
+    } catch (e) {
+      // AbortError means the user cancelled — don't show an error
+      if (e instanceof Error && e.name === 'AbortError') return;
+      st.error = true;
+      st.errorMessage = e instanceof Error ? e.message : 'Authorization failed';
+    } finally {
+      delete oauthAbortControllers[providerId];
       st.oauthPolling = false;
       st.verifying = false;
-      st.error = true;
-      st.errorMessage = 'Authorization timed out';
     }
   }
 
@@ -931,7 +931,12 @@
             onbaseurl={handleBaseUrl}
             onollamamode={handleOllamaMode}
             onoauthstart={startOpenCodeOAuth}
-            onoauthcancel={(id) => { const st = providerState[id]; if (st) { st.oauthPolling = false; st.verifying = false; } }}
+            onoauthcancel={(id) => {
+              const ac = oauthAbortControllers[id];
+              if (ac) { ac.abort(); delete oauthAbortControllers[id]; }
+              const st = providerState[id];
+              if (st) { st.oauthPolling = false; st.verifying = false; }
+            }}
             onmarkready={handleMarkReady}
             ondeselect={handleDeselect}
             onfilterchange={(q) => ocFilterQuery = q}

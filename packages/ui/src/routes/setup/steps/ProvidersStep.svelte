@@ -410,10 +410,12 @@
       {#if verifiedCount > 0}
         <b>{verifiedCount}</b> provider{verifiedCount > 1 ? 's' : ''} ready
       {:else}
-        Connect at least one
+        Connect a provider, or skip and configure later
       {/if}
     </span>
-    <button class="btn btn-primary" id="btn-step1-next" onclick={onnext} disabled={verifiedCount === 0}>Choose Models</button>
+    <button class="btn btn-primary" id="btn-step1-next" onclick={onnext}>
+      {verifiedCount > 0 ? 'Choose Models' : 'Skip for now'}
+    </button>
   {/if}
 </div>
 
