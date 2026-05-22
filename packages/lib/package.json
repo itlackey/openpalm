@@ -24,9 +24,11 @@
   },
   "dependencies": {
     "dotenv": "^16.4.7",
+    "tar": "^6.2.1",
     "yaml": "^2.8.0"
   },
   "devDependencies": {
-    "@types/bun": "^1.0.0"
+    "@types/bun": "^1.0.0",
+    "@types/tar": "^6.1.13"
   }
 }

@@ -16,7 +16,8 @@ import {
 } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import tar from 'tar';
 import { resolveStateDir } from './home.js';
 import { createLogger } from '../logger.js';
 
@@ -129,11 +130,7 @@ export async function seedOpenPalmDir(
     if (!res.ok) throw new Error(`Failed to download tarball (HTTP ${res.status})`);
     writeFileSync(tmpTar, new Uint8Array(await res.arrayBuffer()));
 
-    const result = spawnSync(
-      'tar', ['xzf', tmpTar, '--strip-components=1'],
-      { cwd: tmpDir },
-    );
-    if (result.status !== 0) throw new Error('tar extraction failed');
+    await tar.x({ file: tmpTar, cwd: tmpDir, strip: 1 });
 
     const srcOpenpalm = join(tmpDir, '.openpalm');
     if (!existsSync(srcOpenpalm)) throw new Error('.openpalm/ not found in tarball');
@@ -195,6 +192,26 @@ export function resolveUiBuildDir(): string {
  * state/ui/ is automatically included in backups because
  * backupOpenPalmHome() copies all of OP_HOME/state/.
  */
+/** SHA-256 hex digest of arbitrary bytes. */
+function sha256Hex(data: Uint8Array): string {
+  return createHash('sha256').update(data).digest('hex');
+}
+
+/**
+ * Parse a `sha256sum`-format checksums file into a filename→hash map.
+ * Each line is: `<hash>  <filename>` (one or two spaces).
+ */
+function parseChecksumsFile(content: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const line of content.trim().split('\n')) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      map.set(parts[parts.length - 1], parts[0]);
+    }
+  }
+  return map;
+}
+
 export async function seedUiBuild(repoRef: string, stateDir: string): Promise<void> {
   const uiDir = join(stateDir, 'ui');
   mkdirSync(uiDir, { recursive: true });
@@ -206,17 +223,39 @@ export async function seedUiBuild(repoRef: string, stateDir: string): Promise<vo
     return;
   }
 
-  const tarballUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${repoRef}/ui-build.tar.gz`;
+  const base         = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${repoRef}`;
+  const tarballUrl   = `${base}/ui-build.tar.gz`;
+  const checksumUrl  = `${base}/checksums-sha256.txt`;
   logger.debug('downloading UI build', { url: tarballUrl });
 
   const tmpTar = join(stateDir, '.ui-build.tar.gz.tmp');
   try {
-    const res = await fetchWithRetry(tarballUrl);
-    if (!res.ok) throw new Error(`Failed to download UI build (HTTP ${res.status})`);
-    writeFileSync(tmpTar, new Uint8Array(await res.arrayBuffer()));
+    // Download tarball and checksums file in parallel (checksums best-effort)
+    const [tarRes, csRes] = await Promise.all([
+      fetchWithRetry(tarballUrl),
+      fetchWithRetry(checksumUrl).catch(() => null),
+    ]);
+    if (!tarRes.ok) throw new Error(`Failed to download UI build (HTTP ${tarRes.status})`);
 
-    const result = spawnSync('tar', ['xzf', tmpTar, '--strip-components=1', '-C', uiDir]);
-    if (result.status !== 0) throw new Error(`UI build extraction failed (exit ${result.status})`);
+    const tarData = new Uint8Array(await tarRes.arrayBuffer());
+
+    // Verify SHA-256 if the checksums file was available
+    if (csRes?.ok) {
+      const checksums = parseChecksumsFile(await csRes.text());
+      const expected  = checksums.get('ui-build.tar.gz');
+      if (expected) {
+        const actual = sha256Hex(tarData);
+        if (actual !== expected) {
+          throw new Error(`UI build checksum mismatch (expected ${expected}, got ${actual})`);
+        }
+        logger.debug('UI build checksum verified', { sha256: actual });
+      }
+    }
+
+    writeFileSync(tmpTar, tarData);
+
+    // Cross-platform extraction via the `tar` npm package — no shell dependency
+    await tar.x({ file: tmpTar, cwd: uiDir, strip: 1 });
   } finally {
     rmSync(tmpTar, { force: true });
   }
