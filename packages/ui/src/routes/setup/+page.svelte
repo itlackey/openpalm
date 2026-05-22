@@ -63,12 +63,15 @@
 
   // ── Step 4: Options ───────────────────────────────────────────────────────
   let channelSelection = $state<Record<string, boolean | ChannelState>>({
-    chat: true,
     discord: { enabled: false, botToken: '', applicationId: '' },
     slack: { enabled: false, slackBotToken: '', slackAppToken: '' },
   });
-  let serviceSelection = $state<Record<string, boolean>>({ admin: true });
   let ollamaEnabled = $state(false);
+  let imageTag = $state('');
+  let hostAkmEnabled = $state(false);
+  let step4Error = $state('');
+
+  // ── Step 2: Models (reranking) ────────────────────────────────────────────
   let reranking = $state({
     enabled: false,
     mode: 'llm' as 'llm' | 'dedicated',
@@ -76,7 +79,6 @@
     topK: 20,
     topN: 5,
   });
-  let step4Error = $state('');
 
   // ── Step 5: Review + Install ──────────────────────────────────────────────
   let installError = $state('');
@@ -109,10 +111,15 @@
         .filter((p) => providerState[p.id]?.verified)
         .map((p) => {
           const st = providerState[p.id];
+          // Inherit llmModel/embModel/embDims from the fallback list for local providers
+          // (Ollama → nomic-embed-text, model-runner → mxbai-embed-large, etc.)
+          const fallback = PROVIDERS.find((fp) => fp.id === p.id);
           return {
             id: p.id, name: p.name ?? p.id, kind: 'cloud' as const, group: '', order: 0,
-            icon: '', desc: '', baseUrl: st?.baseUrl ?? '', llmModel: '',
-            embModel: '', embDims: 0,
+            icon: '', desc: '', baseUrl: st?.baseUrl ?? '',
+            llmModel: fallback?.llmModel ?? '',
+            embModel: fallback?.embModel ?? '',
+            embDims: fallback?.embDims ?? 0,
           };
         });
     }
@@ -161,7 +168,6 @@
 
     const addons: Record<string, boolean> = {};
     if (ollamaEnabled) addons.ollama = true;
-    if (serviceSelection.admin) addons.admin = true;
 
     const channelCredentials: Record<string, Record<string, string>> = {};
     const channelsConfig = buildChannelsConfig();
@@ -223,6 +229,9 @@
     if (Object.keys(channelCredentials).length > 0) {
       result.channelCredentials = channelCredentials;
     }
+
+    if (imageTag.trim()) result.imageTag = imageTag.trim();
+    if (hostAkmEnabled) result.hostAkm = true;
 
     return result;
   });
@@ -339,6 +348,11 @@
     if (n === 4 && hasOllamaVerified) {
       ollamaEnabled = providerState.ollama?.ollamaMode === 'instack';
     }
+    // Auto-import from host on first step 1 visit if host providers detected
+    if (n === 1 && hostProviderCount > 0 && !hostImportTriggered) {
+      hostImportTriggered = true;
+      void handleHostImport();
+    }
   }
 
   function autoSelectModels(): void {
@@ -385,6 +399,21 @@
 
   async function checkOpenCodeAndInit(): Promise<void> {
     try {
+      // Ensure OpenCode is running — starts a dedicated instance if not already up
+      const ensureRes = await fetch('/api/setup/opencode/ensure', { method: 'POST' });
+      if (ensureRes.ok) {
+        const { ok } = (await ensureRes.json()) as { ok: boolean };
+        if (ok) {
+          opencodeAvailable = true;
+          await loadOpenCodeProviders();
+          return;
+        }
+      }
+    } catch {
+      // fall through to status check
+    }
+    // Fallback: check if OpenCode is reachable at the configured URL
+    try {
       const res = await fetch('/api/setup/opencode/status');
       if (res.ok) {
         const data = await res.json();
@@ -406,6 +435,8 @@
 
     const providers: OpenCodeProvider[] = data.providers;
     const auth: Record<string, AuthMethod[]> = data.auth ?? {};
+    // Providers that are either env-var detected OR have credentials in auth.json
+    const connected = new Set<string>(Array.isArray(data.connected) ? data.connected : []);
 
     // Ensure local providers are in the list
     const existingIds = new Set(providers.map((p: OpenCodeProvider) => p.id));
@@ -429,6 +460,10 @@
       if (modelIds.length > 0 && newState[ocp.id].models.length === 0) {
         newState[ocp.id].models = modelIds;
       }
+      // Mark providers that are actually authenticated (env or auth.json credentials)
+      if (connected.has(ocp.id)) {
+        newState[ocp.id].verified = true;
+      }
     }
     providerState = newState;
   }
@@ -445,13 +480,13 @@
           const st = providerState[dp.provider];
           if (st) {
             st.baseUrl = dp.url;
-            if (!opencodeAvailable) {
-              if (!st.selected) {
-                st.selected = true;
-                if (dp.provider === 'ollama') st.ollamaMode = 'running';
-              }
+            if (!st.selected) {
+              st.selected = true;
+              if (dp.provider === 'ollama') st.ollamaMode = 'running';
             }
-            if (!opencodeAvailable) void verifyProvider(dp.provider);
+            // Always auto-verify detected local providers regardless of whether
+            // OpenCode is available — "Mark as ready" doesn't test connectivity
+            void verifyProvider(dp.provider);
           }
         }
       }
@@ -785,10 +820,6 @@
     }
   }
 
-  function handleServiceToggle(id: string): void {
-    serviceSelection[id] = !serviceSelection[id];
-  }
-
   function handleSelectModel(role: string, connId: string, modelId: string, dims: number): void {
     modelSelection[role as 'llm' | 'embedding' | 'small'] = { connId, model: modelId, dims };
   }
@@ -820,28 +851,56 @@
 
   // ── Host import ───────────────────────────────────────────────────────────
 
+  let hostImportTriggered = $state(false);
+  let hostImporting = $state(false);
+
   async function loadHostStatus(): Promise<void> {
     try {
-      const res = await fetch('/admin/providers/host-status');
+      // Use setup-namespace endpoint — no admin auth needed during setup
+      const res = await fetch('/api/setup/host-status');
       if (res.ok) {
-        const data = (await res.json()) as { providerCount: number };
+        const data = (await res.json()) as { providerCount: number; imageTag?: string };
         hostProviderCount = data.providerCount ?? 0;
+        if (data.imageTag && !imageTag) imageTag = data.imageTag;
+        // Auto-import if already on step 1
+        if (hostProviderCount > 0 && currentStep === 1 && !hostImportTriggered) {
+          hostImportTriggered = true;
+          void handleHostImport();
+        }
       }
     } catch {
-      // non-critical — import option simply won't appear
+      // non-critical
     }
   }
 
   async function handleHostImport(): Promise<void> {
+    hostImporting = true;
     try {
-      const res = await fetch('/admin/providers/import-host', { method: 'POST' });
+      // Use setup-namespace endpoint — no admin auth needed during setup
+      const res = await fetch('/api/setup/import-host', { method: 'POST' });
       if (res.ok) {
-        // Import succeeded — advance to models step
-        goToStep(2);
+        const data = (await res.json()) as { ok: boolean; pushedProviders?: string[] };
+        if (data.ok) {
+          // Reload providers — loadOpenCodeProviders now marks connected providers
+          // verified using OpenCode's env-detection ∪ auth.json (same as admin panel).
+          if (opencodeAvailable) await loadOpenCodeProviders();
+
+          // Verify local providers to fetch live models (non-blocking)
+          for (const id of Object.keys(providerState)) {
+            if (!providerState[id].verified && PROVIDERS.some((p) => p.id === id)) {
+              void verifyProvider(id);
+            }
+          }
+
+          hostImporting = false;
+          goToStep(2);
+          return;
+        }
       }
     } catch {
       // On failure fall through — user can configure manually
     }
+    hostImporting = false;
   }
 
   // ── Mount: generate token, check status, start discovery ─────────────────
@@ -911,6 +970,11 @@
         </section>
       {:else if currentStep === 1}
         <section class="step-content" id="step-1" data-testid="step-capabilities">
+          {#if hostImporting}
+            <div style="text-align:center;padding:48px 0">
+              <div class="loading-state"><span class="spinner"></span>&nbsp;Importing providers from host OpenCode…</div>
+            </div>
+          {:else}
           <ProvidersStep
             {opencodeAvailable}
             {opencodeProviders}
@@ -923,7 +987,7 @@
             {verifiedCount}
             {hostProviderCount}
             onback={() => goToStep(0)}
-            onnext={() => { if (verifiedCount > 0) goToStep(2); }}
+            onnext={() => goToStep(2)}
             ontogglefallback={handleToggleFallback}
             ontoggleopencode={handleToggleOpenCode}
             onverify={handleVerify}
@@ -942,6 +1006,7 @@
             onfilterchange={(q) => ocFilterQuery = q}
             onhostimport={() => void handleHostImport()}
           />
+          {/if}
         </section>
       {:else if currentStep === 2}
         <section class="step-content" id="step-2" data-testid="step-models">
@@ -949,11 +1014,13 @@
             {verifiedProviders}
             {providerState}
             {modelSelection}
+            {reranking}
             errorMessage={step2Error}
             onback={() => goToStep(1)}
             onnext={() => { if (validateStep2()) goToStep(3); }}
             onselect={handleSelectModel}
             onselectnone={handleSelectNone}
+            onrerankingchange={(updates) => reranking = { ...reranking, ...updates }}
           />
         </section>
       {:else if currentStep === 3}
@@ -972,18 +1039,18 @@
         <section class="step-content" id="step-4" data-testid="step-options">
           <OptionsStep
             {channelSelection}
-            {serviceSelection}
             hasOllama={hasOllamaVerified}
             {ollamaEnabled}
-            {reranking}
+            {imageTag}
+            {hostAkmEnabled}
             errorMessage={step4Error}
             onback={() => goToStep(3)}
             onnext={() => { if (validateStep4()) goToStep(5); }}
             onchanneltoggle={handleChannelToggle}
             oncredentialchange={handleCredentialChange}
-            onservicetoggle={handleServiceToggle}
             onollamaenabledchange={(v) => ollamaEnabled = v}
-            onrerankingchange={(updates) => reranking = { ...reranking, ...updates }}
+            onimagtagchange={(v) => imageTag = v}
+            onhostakmchange={(v) => hostAkmEnabled = v}
           />
         </section>
       {:else if currentStep === 5}
@@ -997,7 +1064,6 @@
             {activeTts}
             {activeStt}
             {channelSelection}
-            {serviceSelection}
             {ollamaEnabled}
             {reranking}
             {payload}

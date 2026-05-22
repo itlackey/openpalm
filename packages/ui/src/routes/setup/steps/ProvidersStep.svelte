@@ -216,6 +216,17 @@
                     {st.verifying ? 'Checking...' : 'Connect'}
                   </button>
                 </div>
+              {:else if ocp.localUrl}
+                <div class="auth-row">
+                  <input type="url" placeholder={ocp.localUrl} value={st.baseUrl || ocp.localUrl}
+                    oninput={(e) => { e.stopPropagation(); onbaseurl(ocp.id, (e.currentTarget as HTMLInputElement).value); }}
+                    onclick={(e) => e.stopPropagation()}>
+                  <button class="auth-btn {st.verified ? 'auth-btn-detected' : 'auth-btn-detect'}"
+                    disabled={st.verifying}
+                    onclick={(e) => { e.stopPropagation(); onverify(ocp.id); }}>
+                    {st.verifying ? 'Detecting...' : st.verified ? 'Connected ✓' : 'Detect'}
+                  </button>
+                </div>
               {:else}
                 <div style="padding:4px 0;color:var(--color-text-secondary);font-size:var(--text-xs)">No authentication required</div>
                 <button class="auth-btn auth-btn-detect"

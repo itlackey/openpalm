@@ -29,7 +29,7 @@ import { writeStackSpec } from "./stack-spec.js";
 import { writeVoiceVars } from "./spec-to-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
-import { getRegistryAutomation } from "./registry.js";
+import { getRegistryAutomation, setAddonEnabled } from "./registry.js";
 export { validateSetupSpec } from "./setup-validation.js";
 
 const logger = createLogger("setup");
@@ -60,6 +60,9 @@ export type SetupSpec = {
   owner?: { name?: string; email?: string };
   connections: SetupConnection[];
   channelCredentials?: Record<string, Record<string, string>>;
+  addons?: Record<string, boolean>;
+  imageTag?: string;
+  hostAkm?: boolean;
 };
 
 // ── Secrets Builder ──────────────────────────────────────────────────────
@@ -158,7 +161,7 @@ export async function performSetup(
   const validation = validateSetupSpec(input);
   if (!validation.valid) return { ok: false, error: validation.errors.join("; ") };
 
-  const { llm, embedding, tts, stt, security, owner, connections, channelCredentials } = input;
+  const { llm, embedding, tts, stt, security, owner, connections, channelCredentials, addons, imageTag, hostAkm } = input;
   const state = opts?.state ?? createState(security.adminToken);
   logger.info("performing setup", { connectionCount: connections.length });
   const updates = buildSecretsFromSetup(connections, owner);
@@ -198,6 +201,26 @@ export async function performSetup(
   // Write stack.yml (version marker only)
   writeStackSpec(state.stackDir, { version: 2 });
 
+  // Write image tag and AKM mount paths to stack.env
+  const systemEnvForAkm = existsSync(`${state.stackDir}/stack.env`)
+    ? readFileSync(`${state.stackDir}/stack.env`, "utf-8")
+    : "";
+  const akmUpdates: Record<string, string> = {};
+  if (imageTag) akmUpdates.OP_IMAGE_TAG = imageTag;
+  if (hostAkm) {
+    const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+    if (home) {
+      akmUpdates.OP_AKM_STASH = `${home}/akm`;
+      akmUpdates.OP_AKM_DATA = `${home}/.local/share/akm`;
+      akmUpdates.OP_AKM_STATE = `${home}/.local/state/akm`;
+      akmUpdates.OP_AKM_CACHE = `${home}/.cache/akm`;
+      akmUpdates.OP_AKM_CONFIG = `${home}/.config/akm`;
+    }
+  }
+  if (Object.keys(akmUpdates).length > 0) {
+    writeFileSync(`${state.stackDir}/stack.env`, mergeEnvContent(systemEnvForAkm, akmUpdates), { mode: 0o600 });
+  }
+
   // Write akm config with LLM and embedding settings from setup
   if (llm || embedding) {
     const akmConfigDir = join(state.configDir, "akm");
@@ -233,6 +256,14 @@ export async function performSetup(
   // Write TTS/STT vars to stack.env for the voice channel
   if (tts || stt) {
     writeVoiceVars({ tts, stt }, state.stackDir);
+  }
+
+  // Enable requested addons (channels like discord, slack, etc.)
+  // setAddonEnabled copies the compose overlay AND generates CHANNEL_<NAME>_SECRET in guardian.env
+  if (addons) {
+    for (const [name, enabled] of Object.entries(addons)) {
+      if (enabled) setAddonEnabled(state.homeDir, state.stackDir, name, true);
+    }
   }
 
   ensureOpenCodeConfig();

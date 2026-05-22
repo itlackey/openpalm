@@ -29,7 +29,12 @@ services:
       - "host.docker.internal:host-gateway"
 
     environment:
-      OPENCODE_CONFIG_DIR: /etc/opencode
+      # OpenCode reads project config (opencode.jsonc) and user config (opencode.json)
+      # from OPENCODE_CONFIG_DIR. Use the /etc/openpalm/assistant path because
+      # /etc/openpalm is a top-level bind mount that works on all Docker variants.
+      # The old /home/opencode/.config/opencode mount was nested inside the home
+      # bind mount and silently failed on snap Docker's userns-remap setup.
+      OPENCODE_CONFIG_DIR: /etc/openpalm/assistant
       OPENCODE_PORT: "4096"
       # Auth is disabled because the assistant is only reachable via the
       # internal assistant_net Docker network and the host port binding
@@ -102,16 +107,16 @@ services:
       # security implications (passwordless sudo, key-only auth).
     volumes:
       - ${OP_HOME}/config:/etc/openpalm
-      - ${OP_HOME}/config/assistant:/home/opencode/.config/opencode
       - ${OP_HOME}/config/auth.json:/home/opencode/.local/share/opencode/auth.json
       - ${OP_HOME}/state/assistant:/home/opencode
-      # Shared akm stash: assistant and admin both mount this rw so they
-      # can read/write the same skills, commands, memories, and vaults.
-      - ${OP_HOME}/stash:/akm
-      # Shared akm operational data (data, state only — config lives in config/akm/).
-      - ${OP_HOME}/state/akm:/akm-op
-      # Persistent akm cache (registry index, downloaded artifacts).
-      - ${OP_HOME}/cache/akm:/akm-cache
+      # AKM mount paths. Defaults to OP_HOME-relative dirs; override via
+      # OP_AKM_STASH/DATA/STATE/CACHE/CONFIG in stack.env to share the
+      # host's own akm environment with the assistant container.
+      - ${OP_AKM_STASH:-${OP_HOME}/stash}:/akm
+      - ${OP_AKM_DATA:-${OP_HOME}/state/akm}:/akm-op/data
+      - ${OP_AKM_STATE:-${OP_HOME}/state/akm}:/akm-op/state
+      - ${OP_AKM_CACHE:-${OP_HOME}/cache/akm}:/akm-cache
+      - ${OP_AKM_CONFIG:-${OP_HOME}/config/akm}:/etc/openpalm/akm
       - ${OP_HOME}/workspace:/work
       - ${OP_HOME}/state/logs/opencode:/home/opencode/.local/state/opencode
       - ${OP_HOME}/state/logs:/openpalm/logs
@@ -136,23 +141,25 @@ services:
         required: false
     environment:
       HOME: /app/data
-      PORT: "3996"
+      PORT: "8080"
       OP_ASSISTANT_URL: http://assistant:4096
       OPENCODE_TIMEOUT_MS: "0"
       GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
       GUARDIAN_SECRETS_PATH: /app/secrets/guardian.env
+      OPENCODE_AUTH_JSON: /etc/openpalm/auth.json
+    ports:
+      - "${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-8180}:8080"
     volumes:
       - ${OP_HOME}/state/guardian:/app/data
       - ${OP_HOME}/state/logs:/app/audit
       - ${OP_HOME}/config/stack/guardian.env:/app/secrets/guardian.env:ro
-
-    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+      - ${OP_HOME}/config/auth.json:/etc/openpalm/auth.json:ro
     networks: [ channel_lan, assistant_net ]
     depends_on:
       assistant:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "curl -sf http://localhost:4096/health || exit 1" ]
+      test: [ "CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1" ]
       interval: 30s
       timeout: 5s
       retries: 3

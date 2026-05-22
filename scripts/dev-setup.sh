@@ -213,7 +213,7 @@ OP_GID=$(id -g)
 OP_DOCKER_SOCK=$docker_sock
 
 OP_IMAGE_NAMESPACE=openpalm
-OP_IMAGE_TAG=latest
+OP_IMAGE_TAG=dev
 
 # Host-side port bindings for the compose stack.
 # These are intentionally offset from the production defaults (3800/8100/8180)

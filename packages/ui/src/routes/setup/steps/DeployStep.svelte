@@ -23,10 +23,13 @@
   let { deployData, deployDone, deployError, onback, onretry }: Props = $props();
 
   const SERVICE_LINKS: Record<string, { port: number; label: string; path: string }> = {
-    assistant: { port: 3800, label: 'Assistant (Chat)', path: '' },
+    assistant: { port: 3800, label: 'Assistant (OpenCode)', path: '' },
     admin: { port: 3880, label: 'Admin Dashboard', path: '' },
     guardian: { port: 3899, label: 'Guardian', path: '/health' },
   };
+
+  // Admin UI port — same process serving this wizard
+  const adminPort = typeof window !== 'undefined' ? window.location.port || '3880' : '3880';
 
   const services = $derived(deployData.deployStatus ?? []);
   const total = $derived(services.length);
@@ -164,7 +167,11 @@
           </li>
         {/each}
       </ul>
-      <a href="http://localhost:3800" class="btn btn-primary">Open Chat</a>
+      <div class="done-links">
+        <a href="http://localhost:{adminPort}/chat" class="btn btn-primary">Open Chat</a>
+        <a href="http://localhost:3800" target="_blank" rel="noopener" class="btn btn-secondary">OpenCode UI</a>
+        <a href="http://localhost:{adminPort}" class="btn btn-secondary">Admin Dashboard</a>
+      </div>
     {/if}
   </div>
 {/if}

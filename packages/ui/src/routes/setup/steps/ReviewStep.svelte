@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CHANNELS, SERVICES, TTS_OPTIONS, STT_OPTIONS, PROVIDERS } from '$lib/wizard/constants.js';
+  import { CHANNELS, TTS_OPTIONS, STT_OPTIONS, PROVIDERS } from '$lib/wizard/constants.js';
   import type { Provider, ModelSelection, ChannelState, RerankingOptions } from '$lib/wizard/types.js';
   import { isChannelEnabled as _isChannelEnabled, getCredValue as _getCredValue } from '$lib/wizard/helpers.js';
 
@@ -12,7 +12,6 @@
     activeTts: string;
     activeStt: string;
     channelSelection: Record<string, boolean | ChannelState>;
-    serviceSelection: Record<string, boolean>;
     ollamaEnabled: boolean;
     reranking: RerankingOptions;
     payload: unknown;
@@ -32,7 +31,6 @@
     activeTts,
     activeStt,
     channelSelection,
-    serviceSelection,
     ollamaEnabled,
     reranking,
     payload,
@@ -61,7 +59,6 @@
   const ttsOpt = $derived(TTS_OPTIONS.find((o) => o.id === activeTts));
   const sttOpt = $derived(STT_OPTIONS.find((o) => o.id === activeStt));
   const activeChannels = $derived(CHANNELS.filter((ch) => isChannelEnabled(ch.id, ch.locked)));
-  const activeServices = $derived(SERVICES.filter((svc) => serviceSelection[svc.id]));
 
   function findProvider(connId: string): Provider | undefined {
     return PROVIDERS.find((p) => p.id === connId);
@@ -185,27 +182,6 @@
         {/if}
       {/if}
     {/each}
-  </div>
-
-  <!-- Services -->
-  <div class="review-card">
-    <div class="review-card-title">
-      <span>Services</span>
-      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(4)}>Edit</button>
-    </div>
-    {#if activeServices.length > 0}
-      {#each activeServices as svc}
-        <div class="review-row">
-          <span class="review-row-label">{svc.icon} {svc.name}</span>
-          <span class="review-row-value review-row-value-ok">Enabled ✓</span>
-        </div>
-      {/each}
-    {:else}
-      <div class="review-row">
-        <span class="review-row-label">No extra services</span>
-        <span class="review-row-value">Core only</span>
-      </div>
-    {/if}
   </div>
 
   <!-- Options -->

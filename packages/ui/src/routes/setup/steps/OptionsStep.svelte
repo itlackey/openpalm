@@ -1,38 +1,38 @@
 <script lang="ts">
-  import { CHANNELS, SERVICES } from '$lib/wizard/constants.js';
-  import type { ChannelState, RerankingOptions } from '$lib/wizard/types.js';
+  import { CHANNELS } from '$lib/wizard/constants.js';
+  import type { ChannelState } from '$lib/wizard/types.js';
   import { isChannelEnabled as _isChannelEnabled, getCredValue as _getCredValue } from '$lib/wizard/helpers.js';
 
   interface Props {
     channelSelection: Record<string, boolean | ChannelState>;
-    serviceSelection: Record<string, boolean>;
     hasOllama: boolean;
     ollamaEnabled: boolean;
-    reranking: RerankingOptions;
+    imageTag: string;
+    hostAkmEnabled: boolean;
     errorMessage: string;
     onback: () => void;
     onnext: () => void;
     onchanneltoggle: (id: string) => void;
     oncredentialchange: (chId: string, credKey: string, value: string) => void;
-    onservicetoggle: (id: string) => void;
     onollamaenabledchange: (v: boolean) => void;
-    onrerankingchange: (updates: Partial<RerankingOptions>) => void;
+    onimagtagchange: (v: string) => void;
+    onhostakmchange: (v: boolean) => void;
   }
 
   let {
     channelSelection,
-    serviceSelection,
     hasOllama,
     ollamaEnabled,
-    reranking,
+    imageTag,
+    hostAkmEnabled,
     errorMessage,
     onback,
     onnext,
     onchanneltoggle,
     oncredentialchange,
-    onservicetoggle,
     onollamaenabledchange,
-    onrerankingchange,
+    onimagtagchange,
+    onhostakmchange,
   }: Props = $props();
 
   function isChannelEnabled(chId: string, locked?: boolean): boolean {
@@ -45,12 +45,23 @@
 </script>
 
 <h2>Options</h2>
-<p class="step-description">Choose channels, services, and tweak settings before review.</p>
+<p class="step-description">Configure channels and deployment options.</p>
+
+<!-- Image tag section -->
+<div class="options-section">
+  <h3 class="options-section-title">Container Image</h3>
+  <p class="options-section-desc">Tag or version of the OpenPalm images to deploy.</p>
+  <div class="field-group">
+    <label for="image-tag">Image tag</label>
+    <input id="image-tag" type="text" placeholder="dev" value={imageTag}
+      oninput={(e) => onimagtagchange((e.currentTarget as HTMLInputElement).value)}>
+  </div>
+</div>
 
 <!-- Channels -->
 <div class="options-section">
   <h3 class="options-section-title">Channels</h3>
-  <p class="options-section-desc">How you talk to your assistant. Web Chat is always on.</p>
+  <p class="options-section-desc">Additional ways to reach your assistant.</p>
   <div class="toggle-grid" id="channels-grid">
     {#each CHANNELS as ch}
       {@const isOn = isChannelEnabled(ch.id, ch.locked)}
@@ -97,34 +108,6 @@
   </div>
 </div>
 
-<!-- Services -->
-<div class="options-section">
-  <h3 class="options-section-title">Services</h3>
-  <p class="options-section-desc">Extra capabilities for your stack.</p>
-  <div class="toggle-grid" id="services-grid">
-    {#each SERVICES as svc}
-      {@const isOn = serviceSelection[svc.id]}
-      <div class="toggle-card {isOn ? 'on' : ''}" data-service={svc.id}>
-        <div class="toggle-card-header" role="button" tabindex="0"
-          onclick={() => onservicetoggle(svc.id)}
-          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onservicetoggle(svc.id); }}>
-          <div class="toggle-card-icon">{svc.icon}</div>
-          <div class="toggle-card-info">
-            <div class="toggle-card-name">
-              {svc.name}
-              {#if svc.recommended}<span class="badge badge-cloud">Recommended</span>{/if}
-            </div>
-            <div class="toggle-card-desc">{svc.desc}</div>
-          </div>
-          <div class="toggle-card-switch">
-            <div class="toggle-track {isOn ? 'on' : ''}"><div class="toggle-thumb"></div></div>
-          </div>
-        </div>
-      </div>
-    {/each}
-  </div>
-</div>
-
 <!-- Ollama addon (only shown when Ollama is a verified provider) -->
 {#if hasOllama}
   <div class="addon-row" id="ollama-addon">
@@ -139,56 +122,18 @@
   </div>
 {/if}
 
-<!-- Search Reranking -->
+<!-- Host AKM section -->
 <div class="options-section">
-  <h3 class="options-section-title">Search Reranking</h3>
-  <p class="options-section-desc">Optionally rerank search results returned from the akm stash before they reach the assistant.</p>
+  <h3 class="options-section-title">Shared AKM Environment</h3>
+  <p class="options-section-desc">Mount your host akm stash, index, and cache into the assistant container so the assistant and your local akm share the same knowledge base.</p>
   <div class="addon-toggle-row">
     <label class="addon-toggle-label">
-      <input type="checkbox" id="reranking-enabled" checked={reranking.enabled}
-        onchange={(e) => onrerankingchange({ enabled: (e.currentTarget as HTMLInputElement).checked })}>
-      <span class="addon-label-text">Enable reranking</span>
+      <input type="checkbox" id="host-akm-enabled" checked={hostAkmEnabled}
+        onchange={(e) => onhostakmchange((e.currentTarget as HTMLInputElement).checked)}>
+      <span class="addon-label-text">Share host AKM environment</span>
     </label>
-    <span class="addon-help">Improves recall by reranking search results using an LLM. Uses the chat model by default.</span>
+    <span class="addon-help">Mounts ~/akm, ~/.local/share/akm, ~/.local/state/akm, ~/.cache/akm, and ~/.config/akm into the container. Changes to your stash from either side are immediately visible to the other.</span>
   </div>
-
-  {#if reranking.enabled}
-    <div class="reranking-options" id="reranking-options">
-      <div class="field-group">
-        <label for="reranking-mode">Reranking Mode</label>
-        <select id="reranking-mode" class="field-select"
-          value={reranking.mode}
-          onchange={(e) => onrerankingchange({ mode: (e.currentTarget as HTMLSelectElement).value as 'llm' | 'dedicated' })}>
-          <option value="llm">LLM-based (use chat model)</option>
-          <option value="dedicated">Dedicated reranker model</option>
-        </select>
-      </div>
-
-      {#if reranking.mode === 'dedicated'}
-        <div class="field-group" id="reranking-model-group">
-          <label for="reranking-model">Reranking Model</label>
-          <input id="reranking-model" type="text" placeholder="e.g. BAAI/bge-reranker-v2-m3"
-            value={reranking.model}
-            oninput={(e) => onrerankingchange({ model: (e.currentTarget as HTMLInputElement).value })}>
-        </div>
-      {/if}
-
-      <div class="field-row">
-        <div class="field-group field-group-half">
-          <label for="reranking-top-k">Top K (candidates)</label>
-          <input id="reranking-top-k" type="number" min="1" max="100"
-            value={reranking.topK}
-            oninput={(e) => onrerankingchange({ topK: parseInt((e.currentTarget as HTMLInputElement).value, 10) || 20 })}>
-        </div>
-        <div class="field-group field-group-half">
-          <label for="reranking-top-n">Top N (results)</label>
-          <input id="reranking-top-n" type="number" min="1" max="50"
-            value={reranking.topN}
-            oninput={(e) => onrerankingchange({ topN: parseInt((e.currentTarget as HTMLInputElement).value, 10) || 5 })}>
-        </div>
-      </div>
-    </div>
-  {/if}
 </div>
 
 {#if errorMessage}

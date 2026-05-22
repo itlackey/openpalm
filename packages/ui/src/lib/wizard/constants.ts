@@ -1,4 +1,4 @@
-import type { Provider, ProviderGroup, TtsOption, SttOption, Channel, Service, OpenCodeProvider, VoiceEngineConfig } from './types.js';
+import type { Provider, ProviderGroup, TtsOption, SttOption, Channel, OpenCodeProvider, VoiceEngineConfig } from './types.js';
 
 export const PROVIDER_GROUPS: ProviderGroup[] = [
   { id: 'recommended', label: 'Recommended', desc: 'Best options to get started quickly' },
@@ -147,7 +147,6 @@ export const STT_ENGINES: Record<string, VoiceEngineConfig> = {
 };
 
 export const CHANNELS: Channel[] = [
-  { id: 'chat', name: 'Web Chat', icon: '💬', desc: 'Browser-based chat — always available', locked: true },
   { id: 'api', name: 'API', icon: '🔌', desc: 'OpenAI-compatible REST API endpoint' },
   {
     id: 'discord', name: 'Discord', icon: '🎮', desc: 'Connect to a Discord server',
@@ -163,10 +162,6 @@ export const CHANNELS: Channel[] = [
       { key: 'slackAppToken', label: 'App Token', placeholder: 'xapp-...', required: true },
     ]
   },
-];
-
-export const SERVICES: Service[] = [
-  { id: 'admin', name: 'Admin Dashboard', icon: '⚙️', desc: 'Web-based admin UI for managing your stack', recommended: true },
 ];
 
 export const LOCAL_PROVIDERS: OpenCodeProvider[] = [

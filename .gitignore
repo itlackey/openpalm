@@ -37,3 +37,4 @@ scripts/azure/vm-declarative/deploy.env
 scripts/azure/vm-declarative/deploy.spec.yaml
 scripts/azure/vm-declarative/deploy.key
 .claude/
+packages/electron/dist/

@@ -5,13 +5,21 @@ services:
   discord:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
-    user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
       PORT: "8184"
       GUARDIAN_URL: http://guardian:8080
       CHANNEL_NAME: "Discord Bot"
       CHANNEL_PACKAGE: "@openpalm/channel-discord"
       CHANNEL_DISCORD_SECRET: ${CHANNEL_DISCORD_SECRET:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID:-}
+      DISCORD_ALLOWED_GUILDS: ${DISCORD_ALLOWED_GUILDS:-}
+      DISCORD_ALLOWED_ROLES: ${DISCORD_ALLOWED_ROLES:-}
+      DISCORD_ALLOWED_USERS: ${DISCORD_ALLOWED_USERS:-}
+      DISCORD_BLOCKED_USERS: ${DISCORD_BLOCKED_USERS:-}
+      DISCORD_REGISTER_COMMANDS: ${DISCORD_REGISTER_COMMANDS:-}
+      DISCORD_THREAD_TTL_HOURS: ${DISCORD_THREAD_TTL_HOURS:-}
+      DISCORD_FORWARD_TIMEOUT_MS: ${DISCORD_FORWARD_TIMEOUT_MS:-}
     networks: [channel_lan]
     depends_on:
       guardian:

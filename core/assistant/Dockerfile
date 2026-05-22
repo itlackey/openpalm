@@ -76,8 +76,11 @@ RUN uv venv /opt/assistant-tools \
     && uv pip install --python /opt/assistant-tools/bin/python apprise
 ENV PATH="/opt/assistant-tools/bin:$PATH"
 ENV APPRISE_CONFIG="/etc/vault/apprise.conf"
-ENV GOOGLE_APPLICATION_CREDENTIALS="/etc/vault/gcloud-credentials.json"
 ENV CLOUDSDK_CONFIG="/etc/vault/.gcloud"
+# GOOGLE_APPLICATION_CREDENTIALS is NOT set here — it must be supplied at
+# runtime via stack.env or user.env if Google Cloud tools are needed.
+# Baking a path here causes OpenCode to detect google-vertex-anthropic as
+# connected on every install, even when the credentials file does not exist.
 
 # gcloud CLI — required by the `gws-setup` skill for OAuth credential bootstrap.
 RUN curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-$(uname -m | sed 's/aarch64/arm/' | sed 's/x86_64/x86_64/').tar.gz \
@@ -118,10 +121,9 @@ ENV BUN_INSTALL=/home/opencode/.bun
 ENV BUN_INSTALL_CACHE_DIR=/home/opencode/.cache/bun/install
 ENV PATH="/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:$PATH"
 
-RUN mkdir -p /etc/opencode
-# Persona / config only. Built-in skills/commands/agents live in the
-# shared akm stash (bind-mounted at /akm), not in the image.
-COPY core/assistant/opencode /etc/opencode
+# OpenCode config (opencode.jsonc, openpalm.md, system.md) now lives in
+# OP_HOME/config/assistant/ and is bind-mounted at OPENCODE_CONFIG_DIR.
+# Nothing needs to be baked into the image.
 
 
 EXPOSE 4096 22

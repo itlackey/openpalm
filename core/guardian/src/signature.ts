@@ -47,10 +47,11 @@ export async function loadChannelSecrets(): Promise<Record<string, string>> {
       return secrets;
     } catch {
       logger.warn("secrets_file_unreadable", { path: SECRETS_PATH });
-      return {};
+      // Fall through to env var fallback below
     }
   }
-  // Fallback: read from process env (dev/test without GUARDIAN_SECRETS_PATH)
+  // Fallback: read from process env — used when GUARDIAN_SECRETS_PATH is
+  // absent, unreadable, or the file bind-mount failed (e.g. snap Docker).
   const secrets: Record<string, string> = {};
   for (const [key, val] of Object.entries(Bun.env)) {
     if (CHANNEL_SECRET_RE.test(key) && val) {

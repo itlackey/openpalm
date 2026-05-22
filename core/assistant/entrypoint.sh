@@ -55,7 +55,7 @@ ensure_home_layout() {
       /home/opencode/.local/share/opencode \
       2>/dev/null || true
 
-    mkdir -p /etc/opencode /var/run/sshd
+    mkdir -p /var/run/sshd
   fi
 }
 
@@ -97,28 +97,6 @@ maybe_enable_ssh() {
     -o StrictModes=yes
 }
 
-maybe_configure_lmstudio_provider() {
-  # OpenCode allows overriding the lmstudio provider's hardcoded baseURL via the
-  # `provider` config key in opencode.json:
-  #   { "provider": { "lmstudio": { "options": { "baseURL": "..." } } } }
-  # Write this into the user config when LMSTUDIO_BASE_URL is set so OpenCode
-  # sends lmstudio requests to the correct host (e.g. Ollama via socat was the
-  # old workaround; this is the direct, supported mechanism).
-  local base_url="${LMSTUDIO_BASE_URL:-}"
-  if [ -z "$base_url" ]; then
-    return 0
-  fi
-
-  local user_config="/home/opencode/.config/opencode/opencode.json"
-  # Ensure the directory exists (ensure_home_layout creates it, but be safe).
-  mkdir -p "$(dirname "$user_config")"
-
-  # Write a minimal user config with the lmstudio baseURL override.
-  # This file is regenerated on every container start — user-managed config
-  # lives in the project config (/etc/opencode/opencode.jsonc), not here.
-  printf '{\n  "$schema": "https://opencode.ai/config.json",\n  "provider": {\n    "lmstudio": {\n      "options": {\n        "baseURL": "%s"\n      }\n    }\n  }\n}\n' "$base_url" > "$user_config"
-  echo "lmstudio: configured baseURL → $base_url"
-}
 
 start_cron_and_sync_tasks() {
   # Register AKM markdown tasks with the OS cron daemon.
@@ -231,7 +209,6 @@ start_opencode() {
 maybe_adjust_uid_gid
 ensure_home_layout
 maybe_enable_ssh
-maybe_configure_lmstudio_provider
 # Source the akm `vault:user` env file before starting cron so vault keys
 # land in the crontab preamble that start_cron_and_sync_tasks builds.
 # Runs as root because gosu has not been invoked yet — root can read the
