@@ -349,13 +349,16 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Compile TypeScript
-        run: bun run --cwd packages/electron compile
+      - name: Bundle Electron app
+        # bun build --bundle inlines @openpalm/lib and all other deps so
+        # electron-builder finds no npm dependencies to install — avoiding
+        # the workspace: protocol incompatibility with npm.
+        run: bun run --cwd packages/electron bundle
 
       - name: Build Electron app
-        # electron-builder must run under Node.js, not bun. When run via bun,
-        # process.execPath is the bun binary; electron-builder spawns worker
-        # processes using process.execPath and Node.js fails to parse the ELF binary.
+        # Must run via node, not bun: electron-builder spawns workers using
+        # process.execPath; bun sets that to the ELF binary, causing Node.js
+        # to fail when trying to parse the binary as JavaScript.
         working-directory: packages/electron
         run: node ../../node_modules/electron-builder/cli.js ${{ matrix.electron_flag }}
 

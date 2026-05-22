@@ -86,10 +86,8 @@
     "packages/electron": {
       "name": "@openpalm/electron",
       "version": "0.11.0",
-      "dependencies": {
-        "@openpalm/lib": ">=0.11.0 <1.0.0",
-      },
       "devDependencies": {
+        "@openpalm/lib": ">=0.11.0 <1.0.0",
         "@types/node": "^22.0.0",
         "electron": "34.5.8",
         "electron-builder": "^25.1.8",

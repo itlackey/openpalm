@@ -34,4 +34,5 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
 
+npmRebuild: false
 publish: null

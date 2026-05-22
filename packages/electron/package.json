@@ -8,16 +8,16 @@
   "main": "dist/main.js",
   "scripts": {
     "start": "electron .",
-    "compile": "tsc",
-    "build:mac": "tsc && electron-builder --mac",
-    "build:linux": "tsc && electron-builder --linux",
-    "build:win": "tsc && electron-builder --win",
+    "typecheck": "tsc --noEmit",
+    "bundle": "bun build src/main.ts --bundle --target=node --outfile dist/main.js --external electron && bun build src/preload.ts --bundle --target=node --outfile dist/preload.js --external electron",
+    "build:mac": "bun run bundle && electron-builder --mac",
+    "build:linux": "bun run bundle && electron-builder --linux",
+    "build:win": "bun run bundle && electron-builder --win",
     "test": "vitest run"
   },
-  "dependencies": {
-    "@openpalm/lib": ">=0.11.0 <1.0.0"
-  },
+  "dependencies": {},
   "devDependencies": {
+    "@openpalm/lib": ">=0.11.0 <1.0.0",
     "electron": "34.5.8",
     "electron-builder": "^25.1.8",
     "typescript": "^5.8.3",
