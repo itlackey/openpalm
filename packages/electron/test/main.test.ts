@@ -70,6 +70,7 @@ vi.mock('@openpalm/lib', () => ({
   resolveUiBuildDir: vi.fn(() => '/home/user/.openpalm/state/ui'),
   seedUiBuild: vi.fn(() => Promise.resolve()),
   ensureHomeDirs: vi.fn(),
+  checkAndUpdateUiBuild: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.11.0' })),
 }));
 
 import { buildUIServerEnv, waitForReady } from '../src/main.js';

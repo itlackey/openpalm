@@ -284,10 +284,12 @@ export {
 } from "./control-plane/akm-vault.js";
 
 // ── UI asset seeding and resolution ─────────────────────────────────────────
+export type { UiBuildUpdateResult } from "./control-plane/ui-assets.js";
 export {
   resolveLocalOpenpalmDir,
   seedOpenPalmDir,
   resolveLocalUiBuild,
   resolveUiBuildDir,
   seedUiBuild,
+  checkAndUpdateUiBuild,
 } from "./control-plane/ui-assets.js";

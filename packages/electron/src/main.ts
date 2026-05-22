@@ -16,6 +16,7 @@ import {
   resolveUiBuildDir,
   seedUiBuild,
   ensureHomeDirs,
+  checkAndUpdateUiBuild,
 } from '@openpalm/lib';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -72,12 +73,23 @@ async function startUIServer(): Promise<void> {
 
   ensureHomeDirs();
 
+  const version = app.getVersion();
+
+  // Check for a newer UI build on GitHub before starting.
+  // Non-fatal: if the check or download fails, we continue with what's on disk.
+  const updateResult = await checkAndUpdateUiBuild(version, stateDir);
+  if (updateResult.updated) {
+    console.log(`UI updated to v${updateResult.latestVersion}`);
+  } else if (updateResult.error) {
+    console.log(`UI update check skipped: ${updateResult.error}`);
+  }
+
   let uiBuildDir = resolveUiBuildDir();
 
   if (!existsSync(join(uiBuildDir, 'index.js'))) {
     console.log('UI build not found — seeding from release...');
     try {
-      await seedUiBuild(`v${app.getVersion()}`, stateDir);
+      await seedUiBuild(`v${version}`, stateDir);
       uiBuildDir = resolveUiBuildDir();
     } catch (err) {
       console.error('Failed to seed UI build:', err instanceof Error ? err.message : String(err));

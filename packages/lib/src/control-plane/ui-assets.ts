@@ -12,7 +12,7 @@
  */
 import {
   existsSync, mkdirSync, readdirSync, copyFileSync,
-  writeFileSync, rmSync, realpathSync,
+  writeFileSync, rmSync, realpathSync, renameSync,
 } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -219,5 +219,88 @@ export async function seedUiBuild(repoRef: string, stateDir: string): Promise<vo
     if (result.status !== 0) throw new Error(`UI build extraction failed (exit ${result.status})`);
   } finally {
     rmSync(tmpTar, { force: true });
+  }
+}
+
+// ── UI update check ──────────────────────────────────────────────────────────
+
+const GITHUB_API = 'https://api.github.com';
+
+/** Returns 1 if a > b, -1 if a < b, 0 if equal. Strips leading 'v'. */
+function compareVersionTags(a: string, b: string): number {
+  const parse = (v: string) => v.replace(/^v/, '').split('.').map(Number);
+  const [aM, am, ap] = parse(a);
+  const [bM, bm, bp] = parse(b);
+  if (aM !== bM) return aM > bM ? 1 : -1;
+  if (am !== bm) return am > bm ? 1 : -1;
+  if (ap !== bp) return ap > bp ? 1 : -1;
+  return 0;
+}
+
+export interface UiBuildUpdateResult {
+  updated: boolean;
+  latestVersion: string | null;
+  error?: string;
+}
+
+/**
+ * Check GitHub for a newer UI build and apply it if one exists.
+ *
+ * When an update is available:
+ *   1. Move state/ui/ → state/backups/ui-{timestamp}/ (preserves the old build)
+ *   2. Download ui-build.tar.gz from the latest release and extract to state/ui/
+ *
+ * Non-fatal: any network or extraction error returns { updated: false, error }.
+ * The caller should proceed with the existing build on failure.
+ */
+export async function checkAndUpdateUiBuild(
+  currentVersion: string,
+  stateDir: string,
+): Promise<UiBuildUpdateResult> {
+  try {
+    const res = await fetch(
+      `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
+      {
+        headers: { 'User-Agent': `OpenPalm/${currentVersion}` },
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    if (!res.ok) {
+      return { updated: false, latestVersion: null, error: `GitHub API returned ${res.status}` };
+    }
+
+    const release = await res.json() as {
+      tag_name: string;
+      assets: Array<{ name: string }>;
+    };
+    const latestTag     = release.tag_name;           // e.g. "v0.12.0"
+    const latestVersion = latestTag.replace(/^v/, '');
+
+    if (compareVersionTags(latestTag, currentVersion) <= 0) {
+      logger.debug('UI build is up to date', { current: currentVersion, latest: latestVersion });
+      return { updated: false, latestVersion };
+    }
+
+    if (!release.assets.some(a => a.name === 'ui-build.tar.gz')) {
+      return { updated: false, latestVersion, error: 'Latest release has no ui-build.tar.gz' };
+    }
+
+    // Back up the existing UI build before replacing it
+    const uiDir = join(stateDir, 'ui');
+    if (existsSync(join(uiDir, 'index.js'))) {
+      const backupDir = join(stateDir, 'backups', `ui-${Date.now()}`);
+      mkdirSync(join(stateDir, 'backups'), { recursive: true });
+      renameSync(uiDir, backupDir);
+      logger.debug('backed up UI build before update', { backup: backupDir });
+    }
+
+    await seedUiBuild(latestTag, stateDir);
+    logger.debug('UI build updated', { from: currentVersion, to: latestVersion });
+
+    return { updated: true, latestVersion };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    logger.debug('UI build update check failed (non-fatal)', { error });
+    return { updated: false, latestVersion: null, error };
   }
 }
