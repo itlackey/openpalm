@@ -311,15 +311,20 @@ export async function setActiveEndpoint(id: string): Promise<{ activeId: string;
 
 // ── Chat Proxy ──────────────────────────────────────────────────────────
 
+const ADMIN_BACKEND_REMOVED_MSG =
+  "Admin chat backend was removed in 0.11.0 — use the endpoint switcher to add the local OpenCode instance instead.";
+
 /**
  * Create a new OpenCode session via the SvelteKit proxy.
- * backend: 'assistant' or 'admin' selects which proxy route to use.
+ * Only the 'assistant' backend is supported; 'admin' was removed in 0.11.0
+ * (the dead /proxy/admin route was deleted with the rest of Phase 1).
  */
 export async function createChatSession(
   backend: import('./types.js').ChatBackend
 ): Promise<{ id: string }> {
+  if (backend === 'admin') throw new Error(ADMIN_BACKEND_REMOVED_MSG);
   const res = await requireOk(
-    await request('POST', `/proxy/${backend}/session`, {})
+    await request('POST', `/proxy/assistant/session`, {})
   );
   return (await res.json()) as { id: string };
 }
@@ -334,8 +339,9 @@ export async function sendChatMessage(
   sessionId: string,
   text: string
 ): Promise<import('./types.js').OpenCodeMessageResponse> {
+  if (backend === 'admin') throw new Error(ADMIN_BACKEND_REMOVED_MSG);
   const res = await fetch(
-    `/proxy/${backend}/session/${encodeURIComponent(sessionId)}/message`,
+    `/proxy/assistant/session/${encodeURIComponent(sessionId)}/message`,
     {
       method: 'POST',
       headers: {
@@ -364,8 +370,9 @@ export async function sendChatMessage(
 export async function probeChatBackend(
   backend: import('./types.js').ChatBackend
 ): Promise<boolean> {
+  if (backend === 'admin') throw new Error(ADMIN_BACKEND_REMOVED_MSG);
   try {
-    const res = await fetch(`/proxy/${backend}/provider`, {
+    const res = await fetch(`/proxy/assistant/provider`, {
       method: 'GET',
       headers: buildHeaders(),
       credentials: 'include',

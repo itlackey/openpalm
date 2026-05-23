@@ -6,7 +6,13 @@
  * The target URL and per-endpoint Basic-auth password are resolved per-request
  * from the active endpoint store, so switching endpoints in the UI takes
  * effect immediately without restarting the server.
- * Timeout: 150s — OpenCode responses can take 30–120s.
+ *
+ * Streaming: the upstream response body is forwarded as-is (no buffering) so
+ * SSE responses (text/event-stream) pass through chunk-by-chunk. We do not
+ * impose a fixed timeout on the upstream fetch — OpenCode SSE streams can run
+ * for minutes. Instead the per-request AbortController is wired to the client
+ * disconnect signal (`event.request.signal`); when the browser aborts (tab
+ * close, navigation away), we propagate the abort to upstream.
  */
 import { requireAdmin, getRequestId } from '$lib/server/helpers.js';
 import { getActiveEndpoint } from '$lib/server/endpoints.js';
@@ -23,6 +29,26 @@ function buildForwardHeaders(incomingContentType: string | null, password: strin
   return headers;
 }
 
+function buildResponseHeaders(
+  upstream: Response,
+  requestId: string,
+  endpointId: string,
+  endpointLabel: string,
+): Headers {
+  const headers = new Headers();
+  // Forward useful upstream headers; preserve identity-style streaming hints.
+  headers.set('content-type', upstream.headers.get('content-type') ?? 'application/json');
+  const cacheControl = upstream.headers.get('cache-control');
+  if (cacheControl) headers.set('cache-control', cacheControl);
+  const transferEncoding = upstream.headers.get('transfer-encoding');
+  if (transferEncoding) headers.set('transfer-encoding', transferEncoding);
+  // Always preserve our diagnostic headers.
+  headers.set('x-request-id', requestId);
+  headers.set('x-endpoint-id', endpointId);
+  headers.set('x-endpoint-label', encodeURIComponent(endpointLabel));
+  return headers;
+}
+
 const handler: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const authError = requireAdmin(event, requestId);
@@ -36,25 +62,30 @@ const handler: RequestHandler = async (event) => {
   const contentType = event.request.headers.get('content-type');
   const body = method !== 'GET' && method !== 'HEAD' ? await event.request.arrayBuffer() : undefined;
 
+  // No fixed timeout — SSE streams may legitimately run for minutes. Propagate
+  // the client's disconnect signal so an aborted browser request tears down
+  // the upstream connection promptly.
+  const controller = new AbortController();
+  const onClientAbort = () => controller.abort();
+  event.request.signal.addEventListener('abort', onClientAbort, { once: true });
+
   try {
     const upstream = await fetch(targetUrl, {
       method,
       headers: buildForwardHeaders(contentType, endpoint.password),
       body,
-      signal: AbortSignal.timeout(150_000),
+      signal: controller.signal,
     });
 
-    const responseBody = await upstream.arrayBuffer();
-    return new Response(responseBody, {
+    // Return upstream.body directly so adapter-node streams the chunks to the
+    // client. await upstream.arrayBuffer() here would buffer entire SSE
+    // responses in memory and break streaming completions.
+    return new Response(upstream.body, {
       status: upstream.status,
-      headers: {
-        'content-type': upstream.headers.get('content-type') ?? 'application/json',
-        'x-request-id': requestId,
-        'x-endpoint-id': endpoint.id,
-        'x-endpoint-label': encodeURIComponent(endpoint.label),
-      },
+      headers: buildResponseHeaders(upstream, requestId, endpoint.id, endpoint.label),
     });
   } catch (e) {
+    event.request.signal.removeEventListener('abort', onClientAbort);
     console.warn('[proxy/assistant] Upstream request failed:', e);
     return new Response(
       JSON.stringify({
