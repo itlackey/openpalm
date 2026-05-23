@@ -145,7 +145,15 @@ The shared work area lives in `workspace/`.
 **Location:** `~/.openpalm/state/logs/`
 **Purpose:** consolidated log output from all services.
 
-Files: `guardian-audit.log`, `admin-audit.jsonl`, `opencode/` (OpenCode state/session logs).
+Files: `guardian-audit.log` (channel ingress — guardian's own audit), plus
+OpenCode session and tool-invocation logs under
+`state/assistant/opencode/log/` and `state/admin-opencode/log/`.
+
+The OpenPalm-side `admin-audit.jsonl` writer was removed in v0.11.0
+(Phase 6 of `auth-and-proxy-refactor-plan.md` / D6a). OpenCode session
+logs are the audit trail for chat + tool activity. UI/admin actions
+(login, config writes) log to application stderr via
+`createLogger('admin.*')`.
 
 ### 5) Cache (regenerable)
 

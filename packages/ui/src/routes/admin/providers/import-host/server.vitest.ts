@@ -16,7 +16,6 @@ vi.mock('@openpalm/lib', async (importOriginal) => {
 			conflicts: [],
 		})),
 		detectHostOpenCode: vi.fn(() => ({ providerCount: 0, credentialCount: 0 })),
-		appendAudit: vi.fn(),
 	};
 });
 
@@ -24,7 +23,7 @@ vi.mock('$lib/server/opencode/http.js', () => ({
 	opencodeFetch: vi.fn(async () => undefined),
 }));
 
-import { importHostOpenCode, detectHostOpenCode, appendAudit } from '@openpalm/lib';
+import { importHostOpenCode, detectHostOpenCode } from '@openpalm/lib';
 import { opencodeFetch } from '$lib/server/opencode/http.js';
 
 let rootDir = '';
@@ -129,35 +128,9 @@ describe('POST /admin/providers/import-host', () => {
 		expect(body.message).toContain('disk full');
 	});
 
-	test('audit log is written on success', async () => {
-		await POST(makeEvent());
-		expect(vi.mocked(appendAudit)).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.any(String),
-			'import-host-opencode',
-			expect.objectContaining({ overwriteConflicts: false }),
-			true,
-			expect.any(String),
-			expect.any(String)
-		);
-	});
-
-	test('audit log records failure on error', async () => {
-		vi.mocked(importHostOpenCode).mockImplementation(() => {
-			throw new Error('oops');
-		});
-
-		await POST(makeEvent());
-		expect(vi.mocked(appendAudit)).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.any(String),
-			'import-host-opencode',
-			expect.objectContaining({ overwriteConflicts: false }),
-			false,
-			expect.any(String),
-			expect.any(String)
-		);
-	});
+	// Phase 6 removed OpenPalm-side appendAudit; success/failure now show
+	// up only in stderr via createLogger + the upstream OpenCode session
+	// logs (D6a in docs/technical/auth-and-proxy-refactor-plan.md).
 
 	test('live push: calls opencodeFetch twice and reports livePushed:2', async () => {
 		// Write a fixture auth.json with two entries

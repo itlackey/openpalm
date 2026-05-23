@@ -9,13 +9,10 @@ import {
   errorResponse,
   requireAdmin,
   getRequestId,
-  getActor,
-  getCallerType,
   parseJsonBody,
   jsonBodyError,
 } from "$lib/server/helpers.js";
 import {
-  appendAudit,
   createLogger,
   listAvailableAddonIds,
   listEnabledAddonIds,
@@ -46,7 +43,6 @@ export const GET: RequestHandler = async (event) => {
     return errorResponse(500, "internal_error", `Addon "${name}" schema is unavailable`, {}, requestId);
   }
 
-  appendAudit(state, getActor(event), "addons.name.get", { name }, true, requestId, getCallerType(event));
   return jsonResponse(200, { name, enabled, config }, requestId);
 };
 
@@ -56,8 +52,6 @@ export const POST: RequestHandler = async (event) => {
   if (authErr) return authErr;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
   const name = event.params.name;
 
   if (!listAvailableAddonIds().includes(name)) {
@@ -72,10 +66,8 @@ export const POST: RequestHandler = async (event) => {
   const toggle = await performAddonToggle(state, name, requestedEnabled, requestId);
 
   if (!toggle.ok) {
-    appendAudit(state, actor, "addons.name.post", { name, error: toggle.error }, false, requestId, callerType);
     return errorResponse(500, "internal_error", toggle.error, {}, requestId);
   }
 
-  appendAudit(state, actor, "addons.name.post", { name, enabled: toggle.enabled, changed: toggle.changed }, true, requestId, callerType);
   return jsonResponse(200, { ok: true, addon: name, enabled: toggle.enabled, changed: toggle.changed }, requestId);
 };

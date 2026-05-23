@@ -13,10 +13,10 @@ import {
   jsonResponse,
   requireAuth,
   getRequestId,
-  getActor,
-  getCallerType
 } from "$lib/server/helpers.js";
-import { appendAudit, validateProposedState } from "@openpalm/lib";
+import { validateProposedState, createLogger } from "@openpalm/lib";
+
+const logger = createLogger("admin.config.validate");
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -24,22 +24,16 @@ export const GET: RequestHandler = async (event) => {
   if (authErr) return authErr;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
-
   const result = await validateProposedState(state);
 
-  // Log validation failures to the audit trail as warnings
+  // Log validation failures via application logger; OpenCode session logs +
+  // operator-side stderr (per D6a) are the audit trail.
   if (!result.ok) {
-    appendAudit(
-      state,
-      actor,
-      "config.validate",
-      { errors: result.errors, warnings: result.warnings },
-      false,
+    logger.warn("config validation failed", {
       requestId,
-      callerType
-    );
+      errors: result.errors,
+      warnings: result.warnings,
+    });
   }
 
   return jsonResponse(200, result, requestId);

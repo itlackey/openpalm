@@ -26,7 +26,6 @@ describe("getState", () => {
     expect(state.stackDir).toBeDefined();
     expect(state.services).toBeDefined();
     expect(state.artifacts).toBeDefined();
-    expect(state.audit).toEqual([]);
   });
 
   test("returns same instance on repeated calls (singleton pattern)", () => {

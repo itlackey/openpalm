@@ -188,17 +188,74 @@ function defaultEndpoint(): ActiveEndpoint {
   return { id: DEFAULT_ID, label: 'Default (from environment)', url, password, isDefault: true };
 }
 
-/** Validate a URL string — must be http(s) with a host. Returns the normalized URL or null. */
-export function normalizeEndpointUrl(input: string): string | null {
+/**
+ * Hostnames where plain HTTP is permitted. Anything else must use HTTPS.
+ *
+ * - `127.0.0.1`, `::1`, `localhost` — loopback addresses on the same host.
+ * - `host.docker.internal` — Docker's loopback-equivalent for the container
+ *   hop back to the host (used by the Electron + dev compose setups).
+ *
+ * Phase 6 of docs/technical/auth-and-proxy-refactor-plan.md.
+ */
+const LOOPBACK_HOSTS = new Set([
+  '127.0.0.1',
+  '::1',
+  'localhost',
+  'host.docker.internal',
+]);
+
+/**
+ * `URL.hostname` wraps IPv6 addresses in square brackets (e.g. `[::1]`).
+ * Strip them before checking against the loopback set so the literal IPv6
+ * loopback matches `::1`.
+ */
+function isLoopbackHost(hostname: string): boolean {
+  const stripped = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  return LOOPBACK_HOSTS.has(stripped);
+}
+
+export type EndpointUrlError =
+  | 'invalid_url'
+  | 'invalid_scheme'
+  | 'missing_host'
+  | 'http_not_allowed';
+
+export type EndpointUrlValidation =
+  | { ok: true; url: string }
+  | { ok: false; reason: EndpointUrlError };
+
+/**
+ * Discriminated validator that callers (admin routes) use to surface
+ * specific error messages — in particular, the HTTPS-for-remote rule.
+ */
+export function validateEndpointUrl(input: string): EndpointUrlValidation {
+  let u: URL;
   try {
-    const u = new URL(input.trim());
-    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
-    if (!u.hostname) return null;
-    // Strip trailing slash for consistency
-    return u.toString().replace(/\/$/, '');
+    u = new URL(input.trim());
   } catch {
-    return null;
+    return { ok: false, reason: 'invalid_url' };
   }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    return { ok: false, reason: 'invalid_scheme' };
+  }
+  if (!u.hostname) {
+    return { ok: false, reason: 'missing_host' };
+  }
+  if (u.protocol === 'http:' && !isLoopbackHost(u.hostname)) {
+    return { ok: false, reason: 'http_not_allowed' };
+  }
+  // Strip trailing slash for consistency
+  return { ok: true, url: u.toString().replace(/\/$/, '') };
+}
+
+/**
+ * Validate a URL string — must be http(s) with a host. Plain HTTP is only
+ * allowed for loopback hosts (see `LOOPBACK_HOSTS`). Returns the normalized
+ * URL or null. For finer-grained errors, use `validateEndpointUrl`.
+ */
+export function normalizeEndpointUrl(input: string): string | null {
+  const result = validateEndpointUrl(input);
+  return result.ok ? result.url : null;
 }
 
 // ── Read API ─────────────────────────────────────────────────────────────────

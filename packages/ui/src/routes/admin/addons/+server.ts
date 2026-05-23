@@ -9,13 +9,10 @@ import {
   errorResponse,
   requireAdmin,
   getRequestId,
-  getActor,
-  getCallerType,
   parseJsonBody,
   jsonBodyError,
 } from "$lib/server/helpers.js";
 import {
-  appendAudit,
   listAvailableAddonIds,
   listEnabledAddonIds,
 } from "@openpalm/lib";
@@ -37,7 +34,6 @@ export const GET: RequestHandler = async (event) => {
   const availableIds = listAvailableAddonIds();
   const addons = buildAddonList(availableIds, listEnabledAddonIds(state.homeDir));
 
-  appendAudit(state, getActor(event), "addons.get", {}, true, requestId, getCallerType(event));
   return jsonResponse(200, { addons }, requestId);
 };
 
@@ -47,8 +43,6 @@ export const POST: RequestHandler = async (event) => {
   if (authErr) return authErr;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
 
   const result = await parseJsonBody(event.request);
   if ('error' in result) return jsonBodyError(result, requestId);
@@ -65,10 +59,8 @@ export const POST: RequestHandler = async (event) => {
   const toggle = await performAddonToggle(state, name, requestedEnabled, requestId);
 
   if (!toggle.ok) {
-    appendAudit(state, actor, "addons.post", { name, error: toggle.error }, false, requestId, callerType);
     return errorResponse(500, "internal_error", toggle.error, {}, requestId);
   }
 
-  appendAudit(state, actor, "addons.post", { name, enabled: toggle.enabled, changed: toggle.changed }, true, requestId, callerType);
   return jsonResponse(200, { ok: true, addon: name, enabled: toggle.enabled, changed: toggle.changed }, requestId);
 };

@@ -16,8 +16,6 @@ import type { RequestHandler } from './$types';
 import { getState } from '$lib/server/state.js';
 import {
   errorResponse,
-  getActor,
-  getCallerType,
   getRequestId,
   jsonResponse,
   parseJsonBody,
@@ -26,7 +24,6 @@ import {
 } from '$lib/server/helpers.js';
 import {
   AKM_USER_VAULT_REF,
-  appendAudit,
   createLogger,
   deleteAkmVaultKey,
   ensureAkmUserVault,
@@ -49,21 +46,9 @@ export const GET: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
 
   const vaultPath = await ensureAkmUserVault(state);
   const keys = vaultPath ? Object.keys(readAkmUserVaultFile(vaultPath)).sort() : [];
-
-  appendAudit(
-    state,
-    actor,
-    'secrets.user-vault.list',
-    { count: keys.length, source: vaultPath ? 'akm' : 'unavailable' },
-    true,
-    requestId,
-    callerType,
-  );
 
   return jsonResponse(200, {
     provider: 'akm',
@@ -87,8 +72,6 @@ export const POST: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
   const result = await parseJsonBody(event.request);
   if ('error' in result) return jsonBodyError(result, requestId);
 
@@ -118,15 +101,6 @@ export const POST: RequestHandler = async (event) => {
   }
 
   if (!written) {
-    appendAudit(
-      state,
-      actor,
-      'secrets.user-vault.write',
-      { key, error: writeError ?? 'unknown' },
-      false,
-      requestId,
-      callerType,
-    );
     return errorResponse(
       503,
       'akm_unavailable',
@@ -135,16 +109,6 @@ export const POST: RequestHandler = async (event) => {
       requestId,
     );
   }
-
-  appendAudit(
-    state,
-    actor,
-    'secrets.user-vault.write',
-    { key },
-    true,
-    requestId,
-    callerType,
-  );
 
   return jsonResponse(200, { ok: true, key }, requestId);
 };
@@ -156,8 +120,6 @@ export const DELETE: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
   const key = new URL(event.request.url).searchParams.get('key')?.trim() ?? '';
   if (!key || !KEY_RE.test(key)) {
     return errorResponse(400, 'bad_request', 'valid key query parameter is required', {}, requestId);
@@ -175,15 +137,6 @@ export const DELETE: RequestHandler = async (event) => {
   }
 
   if (!removed) {
-    appendAudit(
-      state,
-      actor,
-      'secrets.user-vault.remove',
-      { key, error: removeError ?? 'unknown' },
-      false,
-      requestId,
-      callerType,
-    );
     return errorResponse(
       503,
       'akm_unavailable',
@@ -192,16 +145,6 @@ export const DELETE: RequestHandler = async (event) => {
       requestId,
     );
   }
-
-  appendAudit(
-    state,
-    actor,
-    'secrets.user-vault.remove',
-    { key },
-    true,
-    requestId,
-    callerType,
-  );
 
   return jsonResponse(200, { ok: true, key }, requestId);
 };

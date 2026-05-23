@@ -3,13 +3,10 @@ import {
   jsonResponse,
   errorResponse,
   requireAdmin,
-  getActor,
-  getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import {
   performUpgrade,
-  appendAudit,
   createLogger,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
@@ -28,8 +25,6 @@ export const POST: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
 
   ensureHomeDirs();
   ensureOpenCodeConfig();
@@ -38,7 +33,7 @@ export const POST: RequestHandler = async (event) => {
 
   const dockerCheck = await checkDocker();
   if (!dockerCheck.ok) {
-    appendAudit(state, actor, "upgrade", { result: "error", reason: "docker_unavailable" }, false, requestId, callerType);
+    logger.error("upgrade aborted: docker unavailable", { requestId, stderr: dockerCheck.stderr });
     return errorResponse(503, "docker_unavailable", "Docker is not available", { stderr: dockerCheck.stderr }, requestId);
   }
 
@@ -48,17 +43,8 @@ export const POST: RequestHandler = async (event) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     logger.error("upgrade failed", { requestId, error: msg });
-    appendAudit(state, actor, "upgrade", { result: "error", message: msg }, false, requestId, callerType);
     return errorResponse(502, "upgrade_failed", msg, { message: msg }, requestId);
   }
-
-  appendAudit(state, actor, "upgrade", {
-    result: "ok",
-    imageTag: result.imageTag,
-    assetsUpdated: result.assetsUpdated,
-    backupDir: result.backupDir,
-    restarted: result.restarted
-  }, true, requestId, callerType);
 
   logger.info("upgrade completed", { requestId, imageTag: result.imageTag, assetsUpdated: result.assetsUpdated });
 

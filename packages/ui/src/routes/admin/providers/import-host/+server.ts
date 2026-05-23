@@ -25,10 +25,8 @@ import {
 	errorResponse,
 	getRequestId,
 	parseJsonBody,
-	getActor,
-	getCallerType,
 } from '$lib/server/helpers.js';
-import { importHostOpenCode, detectHostOpenCode, appendAudit } from '@openpalm/lib';
+import { importHostOpenCode, detectHostOpenCode } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import { opencodeFetch } from '$lib/server/opencode/http.js';
 
@@ -65,8 +63,6 @@ export const POST: RequestHandler = async (event) => {
 	const authError = requireAdmin(event, requestId);
 	if (authError) return authError;
 
-	const actor = getActor(event);
-	const callerType = getCallerType(event);
 	const state = getState();
 
 	let overwriteConflicts = false;
@@ -83,7 +79,6 @@ export const POST: RequestHandler = async (event) => {
 	try {
 		result = importHostOpenCode(state, { overwriteConflicts });
 	} catch (err) {
-		appendAudit(state, actor, 'import-host-opencode', { overwriteConflicts }, false, requestId, callerType);
 		return errorResponse(500, 'import_failed', err instanceof Error ? err.message : 'Import failed', {}, requestId);
 	}
 
@@ -93,23 +88,6 @@ export const POST: RequestHandler = async (event) => {
 	if (hostStatus.authPath) {
 		livePush = await pushAuthToOpenCode(hostStatus.authPath);
 	}
-
-	appendAudit(
-		state,
-		actor,
-		'import-host-opencode',
-		{
-			overwriteConflicts,
-			importedProviders: result.imported.providers,
-			importedCredentials: result.imported.credentials,
-			conflictCount: result.conflicts.length,
-			livePushed: livePush.pushed,
-			livePushFailed: livePush.failed.length,
-		},
-		true,
-		requestId,
-		callerType
-	);
 
 	return jsonResponse(
 		200,

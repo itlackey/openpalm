@@ -27,7 +27,6 @@ function makeState(overrides: Partial<ControlPlaneState> = {}): ControlPlaneStat
     services: {},
     artifacts: { compose: "" },
     artifactMeta: [],
-    audit: [],
     ...overrides,
   };
 }

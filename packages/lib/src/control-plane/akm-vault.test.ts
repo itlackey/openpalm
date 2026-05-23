@@ -31,7 +31,6 @@ function makeState(homeDir: string): ControlPlaneState {
     services: {},
     artifacts: { compose: "" },
     artifactMeta: [],
-    audit: [],
   };
 }
 

@@ -2,8 +2,6 @@ import {
   getRequestId,
   jsonResponse,
   requireAdmin,
-  getActor,
-  getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import {
@@ -24,8 +22,6 @@ export const POST: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
 
   // Stop Docker containers first
   const dockerCheck = await checkDocker();
@@ -35,8 +31,8 @@ export const POST: RequestHandler = async (event) => {
   }
 
   logger.info("stopping containers and applying uninstall", { requestId, dockerAvailable: dockerCheck.ok });
-  // audit recorded inside lib via ctx
-  const result = await applyUninstall(state, { actor, requestId, callerType });
+  // OpenCode session logs are the audit trail (D6a).
+  const result = await applyUninstall(state);
   logger.info("uninstall completed", { requestId, stopped: result.stopped });
 
   return jsonResponse(200, { ok: true, ...result, dockerAvailable: dockerCheck.ok }, requestId);

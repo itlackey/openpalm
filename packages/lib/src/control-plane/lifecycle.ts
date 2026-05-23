@@ -1,7 +1,7 @@
 /** Lifecycle helpers — state factory, apply transitions, compose file list. */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { parseEnvFile, mergeEnvContent } from "./env.js";
-import type { ControlPlaneState, CallerType, AuditContext } from "./types.js";
+import type { ControlPlaneState, CallerType } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
 import {
   resolveOpenPalmHome,
@@ -26,7 +26,6 @@ import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName } from "./docker.js";
 import { acquireLock, releaseLock } from "./lock.js";
-import { appendAudit } from "./audit.js";
 import { listEnabledAddonIds } from "./registry.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
@@ -58,7 +57,6 @@ export function createState(): ControlPlaneState {
     services,
     artifacts: { compose: "" },
     artifactMeta: [],
-    audit: [],
   };
 
   ensureSecrets(bootstrapState);
@@ -126,7 +124,7 @@ async function reconcileCore(
   return active;
 }
 
-export async function applyInstall(state: ControlPlaneState, ctx?: AuditContext): Promise<void> {
+export async function applyInstall(state: ControlPlaneState): Promise<void> {
   const lock = acquireLock(state.homeDir, "install");
   try {
     await reconcileCore(state, { activateServices: true });
@@ -134,38 +132,24 @@ export async function applyInstall(state: ControlPlaneState, ctx?: AuditContext)
     // Docker doesn't create them root-owned (which causes EACCES inside
     // non-root containers).
     ensureComposeVolumeTargets(state);
-    if (ctx) appendAudit(state, ctx.actor, "install", {}, true, ctx.requestId ?? "", ctx.callerType ?? "unknown");
-  } catch (err) {
-    if (ctx) appendAudit(state, ctx.actor, "install", { error: String(err) }, false, ctx.requestId ?? "", ctx.callerType ?? "unknown");
-    throw err;
   } finally {
     releaseLock(lock);
   }
 }
 
-export async function applyUpdate(state: ControlPlaneState, ctx?: AuditContext): Promise<{ restarted: string[] }> {
+export async function applyUpdate(state: ControlPlaneState): Promise<{ restarted: string[] }> {
   const lock = acquireLock(state.homeDir, "update");
   try {
-    const result = { restarted: await reconcileCore(state, {}) };
-    if (ctx) appendAudit(state, ctx.actor, "update", { restarted: result.restarted }, true, ctx.requestId ?? "", ctx.callerType ?? "unknown");
-    return result;
-  } catch (err) {
-    if (ctx) appendAudit(state, ctx.actor, "update", { error: String(err) }, false, ctx.requestId ?? "", ctx.callerType ?? "unknown");
-    throw err;
+    return { restarted: await reconcileCore(state, {}) };
   } finally {
     releaseLock(lock);
   }
 }
 
-export async function applyUninstall(state: ControlPlaneState, ctx?: AuditContext): Promise<{ stopped: string[] }> {
+export async function applyUninstall(state: ControlPlaneState): Promise<{ stopped: string[] }> {
   const lock = acquireLock(state.homeDir, "uninstall");
   try {
-    const result = { stopped: await reconcileCore(state, { deactivateServices: true }) };
-    if (ctx) appendAudit(state, ctx.actor, "uninstall", { stopped: result.stopped }, true, ctx.requestId ?? "", ctx.callerType ?? "unknown");
-    return result;
-  } catch (err) {
-    if (ctx) appendAudit(state, ctx.actor, "uninstall", { error: String(err) }, false, ctx.requestId ?? "", ctx.callerType ?? "unknown");
-    throw err;
+    return { stopped: await reconcileCore(state, { deactivateServices: true }) };
   } finally {
     releaseLock(lock);
   }

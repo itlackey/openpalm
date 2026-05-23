@@ -6,11 +6,8 @@
  * clear, a string to set, or omit to leave unchanged.
  */
 import type { RequestHandler } from './$types';
-import { getState } from '$lib/server/state.js';
 import {
   errorResponse,
-  getActor,
-  getCallerType,
   getRequestId,
   jsonResponse,
   requireAdmin,
@@ -19,35 +16,38 @@ import {
 import {
   deleteEndpoint,
   updateEndpoint,
+  validateEndpointUrl,
   type EndpointPatch,
 } from '$lib/server/endpoints.js';
-import { appendAudit } from '@openpalm/lib';
 
 export const PATCH: RequestHandler = async (event) =>
   withAdminBody(event, async ({ requestId, body }) => {
     const id = event.params.id;
     const patch: EndpointPatch = {};
     if (typeof body.label === 'string') patch.label = body.label;
-    if (typeof body.url === 'string') patch.url = body.url;
+    if (typeof body.url === 'string') {
+      // Validate up-front so the HTTPS-for-remote rule (Phase 6) surfaces a
+      // specific error code, not a generic "URL must be a valid http(s) URL".
+      const urlCheck = validateEndpointUrl(body.url);
+      if (!urlCheck.ok) {
+        if (urlCheck.reason === 'http_not_allowed') {
+          return errorResponse(
+            400,
+            'http_not_allowed',
+            'Plain HTTP is only allowed for loopback addresses. Use https:// for remote OpenPalm instances.',
+            {},
+            requestId,
+          );
+        }
+        return errorResponse(400, 'invalid_endpoint', 'URL must be a valid http(s) URL', {}, requestId);
+      }
+      patch.url = urlCheck.url;
+    }
     if (body.password === null) patch.password = null;
     else if (typeof body.password === 'string') patch.password = body.password;
 
     try {
       const entry = updateEndpoint(id, patch);
-      const state = getState();
-      appendAudit(
-        state,
-        getActor(event),
-        'endpoints.update',
-        {
-          id,
-          changed: Object.keys(patch).filter((k) => k !== 'password'),
-          passwordChanged: 'password' in patch,
-        },
-        true,
-        requestId,
-        getCallerType(event),
-      );
       return jsonResponse(
         200,
         {
@@ -76,16 +76,6 @@ export const DELETE: RequestHandler = async (event) => {
   const id = event.params.id;
   try {
     deleteEndpoint(id);
-    const state = getState();
-    appendAudit(
-      state,
-      getActor(event),
-      'endpoints.delete',
-      { id },
-      true,
-      requestId,
-      getCallerType(event),
-    );
     return jsonResponse(200, { ok: true }, requestId);
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'failed to delete endpoint';

@@ -2,8 +2,10 @@
  * SvelteKit server hooks — runs once on admin startup.
  *
  * Performs an idempotent auto-apply: ensures home dirs exist, seeds
- * secrets and OpenCode config, resolves runtime files, and records
- * the outcome in the audit log.
+ * secrets and OpenCode config, and resolves runtime files. Outcomes are
+ * surfaced via the application logger; OpenCode session logs + the
+ * guardian's own guardian-audit.log are the audit trail (D6a in
+ * docs/technical/auth-and-proxy-refactor-plan.md).
  *
  * Also enforces SEC-1: Host header allowlist to prevent DNS rebinding attacks.
  */
@@ -18,7 +20,6 @@ import {
   ensureOpenCodeSystemConfig,
   resolveRuntimeFiles,
   writeRuntimeFiles,
-  appendAudit,
   ensureHomeDirs,
   isSetupComplete,
   resolveStackDir,
@@ -48,35 +49,11 @@ function runStartupApply(): void {
     state.artifacts = resolveRuntimeFiles();
     writeRuntimeFiles(state);
 
-    appendAudit(
-      state,
-      "system",
-      "startup.apply",
-      {
-        result: "ok",
-        artifactMeta: state.artifactMeta
-      },
-      true,
-      "",
-      "system"
-    );
-    logger.info("startup auto-apply completed successfully");
+    logger.info("startup auto-apply completed successfully", {
+      artifactMeta: state.artifactMeta,
+    });
   } catch (err) {
     logger.error("startup auto-apply failed", { error: String(err) });
-    try {
-      const state = getState();
-      appendAudit(
-        state,
-        "system",
-        "startup.apply",
-        { result: "error", error: String(err) },
-        false,
-        "",
-        "system"
-      );
-    } catch (auditErr) {
-      logger.error("failed to record startup failure in audit", { error: String(auditErr) });
-    }
   }
 }
 

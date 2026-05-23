@@ -19,13 +19,10 @@ import {
   errorResponse,
   requireAdmin,
   getRequestId,
-  getActor,
-  getCallerType,
   parseJsonBody,
   jsonBodyError,
 } from "$lib/server/helpers.js";
 import {
-  appendAudit,
   createLogger,
   getRegistryAddonConfig,
   listAvailableAddonIds,
@@ -115,8 +112,6 @@ export const GET: RequestHandler = async (event) => {
   if (authErr) return authErr;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
   const name = event.params.name;
 
   if (!listAvailableAddonIds().includes(name)) {
@@ -148,7 +143,6 @@ export const GET: RequestHandler = async (event) => {
     };
   });
 
-  appendAudit(state, actor, "addons.name.credentials.get", { name, count: fields.length }, true, requestId, callerType);
   return jsonResponse(200, { name, fields }, requestId);
 };
 
@@ -158,8 +152,6 @@ export const POST: RequestHandler = async (event) => {
   if (authErr) return authErr;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
   const name = event.params.name;
 
   if (!listAvailableAddonIds().includes(name)) {
@@ -199,6 +191,5 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(500, "internal_error", err instanceof Error ? err.message : "write failed", {}, requestId);
   }
 
-  appendAudit(state, actor, "addons.name.credentials.post", { name, keys: Object.keys(updates).sort() }, true, requestId, callerType);
   return jsonResponse(200, { ok: true, name, updated: Object.keys(updates).sort() }, requestId);
 };

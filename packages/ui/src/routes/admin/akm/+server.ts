@@ -5,11 +5,8 @@
 import type { RequestHandler } from './$types';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { getState } from '$lib/server/state.js';
-import { appendAudit } from '@openpalm/lib';
 import {
   errorResponse,
-  getActor,
-  getCallerType,
   getRequestId,
   jsonResponse,
   parseJsonBody,
@@ -114,8 +111,6 @@ export const PATCH: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
 
   const result = await parseJsonBody(event.request);
   if ('error' in result) return jsonBodyError(result, requestId);
@@ -448,10 +443,8 @@ export const PATCH: RequestHandler = async (event) => {
     mkdirSync(`${state.configDir}/akm`, { recursive: true });
     writeFileSync(akmConfigPath(state.configDir), JSON.stringify(updated, null, 2), { mode: 0o600 });
 
-    appendAudit(state, actor, 'akm.config.save', {}, true, requestId, callerType);
     return jsonResponse(200, { ok: true, config: updated }, requestId);
   } catch (e) {
-    appendAudit(state, actor, 'akm.config.save', { error: String(e) }, false, requestId, callerType);
-    return errorResponse(500, 'internal_error', 'Failed to persist akm config', {}, requestId);
+    return errorResponse(500, 'internal_error', `Failed to persist akm config: ${String(e)}`, {}, requestId);
   }
 };

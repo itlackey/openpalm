@@ -11,10 +11,8 @@ import {
   jsonResponse,
   requireAuth,
   getRequestId,
-  getActor,
-  getCallerType
 } from "$lib/server/helpers.js";
-import { appendAudit, loadAutomations } from "@openpalm/lib";
+import { loadAutomations } from "@openpalm/lib";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -22,8 +20,6 @@ export const GET: RequestHandler = async (event) => {
   if (authErr) return authErr;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
 
   const automations = loadAutomations(state.stashDir).map((c) => ({
     name: c.name,
@@ -37,8 +33,6 @@ export const GET: RequestHandler = async (event) => {
     },
     fileName: c.fileName,
   }));
-
-  appendAudit(state, actor, "automations.list", {}, true, requestId, callerType);
 
   return jsonResponse(200, { automations }, requestId);
 };

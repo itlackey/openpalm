@@ -180,7 +180,6 @@ describe("Fresh Install", () => {
       services: {},
       artifacts: { compose: "" },
       artifactMeta: [],
-      audit: [],
     };
 
     ensureSecrets(state);
@@ -263,7 +262,6 @@ describe("Existing Install", () => {
       services: {},
       artifacts: { compose: "" },
       artifactMeta: [],
-      audit: [],
     };
 
     ensureSecrets(state);
@@ -367,7 +365,6 @@ describe("Broken/Corrupt State", () => {
       services: {},
       artifacts: { compose: "" },
       artifactMeta: [],
-      audit: [],
     };
 
     ensureSecrets(state);

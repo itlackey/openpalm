@@ -29,7 +29,6 @@ export type {
   ChannelInfo,
   CallerType,
   ArtifactMeta,
-  AuditEntry,
 } from "./control-plane/types.js";
 export {
   CORE_SERVICES,
@@ -95,9 +94,6 @@ export {
   reconcileStackEnvImageTag,
   RELEASE_TAG_REGEX,
 } from "./control-plane/env.js";
-
-// ── Audit ───────────────────────────────────────────────────────────────
-export { appendAudit } from "./control-plane/audit.js";
 
 // ── OpenCode Client ─────────────────────────────────────────────────────
 export { createOpenCodeClient } from "./control-plane/opencode-client.js";

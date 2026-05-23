@@ -192,19 +192,6 @@ export async function saveAddonCredentials(
   return (await res.json()) as { ok: boolean; updated: string[] };
 }
 
-// ── Audit Log ───────────────────────────────────────────────────────
-
-export async function fetchAuditLog(
-  options?: { source?: 'admin' | 'guardian' | 'all'; limit?: number }
-): Promise<{ audit: Record<string, unknown>[] }> {
-  const params = new URLSearchParams();
-  if (options?.source) params.set('source', options.source);
-  if (options?.limit) params.set('limit', String(options.limit));
-  const qs = params.toString();
-  const res = await requireOk(await request('GET', `/admin/audit${qs ? `?${qs}` : ''}`));
-  return (await res.json()) as { audit: Record<string, unknown>[] };
-}
-
 // ── User Vault (akm vault:user) ────────────────────────────────────
 
 export type UserVaultListResponse = {

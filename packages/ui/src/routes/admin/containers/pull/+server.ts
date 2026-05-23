@@ -3,11 +3,9 @@ import {
   jsonResponse,
   errorResponse,
   requireAdmin,
-  getActor,
-  getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { appendAudit, buildComposeOptions, buildManagedServices, createLogger } from "@openpalm/lib";
+import { buildComposeOptions, buildManagedServices, createLogger } from "@openpalm/lib";
 import { composePull, composeUp, checkDocker } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
@@ -20,12 +18,9 @@ export const POST: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
 
   const dockerCheck = await checkDocker();
   if (!dockerCheck.ok) {
-    appendAudit(state, actor, "containers.pull", { result: "error", reason: "docker_unavailable" }, false, requestId, callerType);
     return errorResponse(503, "docker_unavailable", "Docker is not available", { stderr: dockerCheck.stderr }, requestId);
   }
 
@@ -35,7 +30,6 @@ export const POST: RequestHandler = async (event) => {
   const pullResult = await composePull(composeOpts);
   if (!pullResult.ok) {
     logger.error("image pull failed", { requestId, stderr: pullResult.stderr });
-    appendAudit(state, actor, "containers.pull", { result: "error", reason: "pull_failed", stderr: pullResult.stderr }, false, requestId, callerType);
     return errorResponse(502, "pull_failed", "Failed to pull images", { stderr: pullResult.stderr }, requestId);
   }
 
@@ -44,11 +38,9 @@ export const POST: RequestHandler = async (event) => {
   const upResult = await composeUp({ ...composeOpts, services: managedServices });
   if (!upResult.ok) {
     logger.error("compose up failed after pull", { requestId, stderr: upResult.stderr });
-    appendAudit(state, actor, "containers.pull", { result: "error", reason: "up_failed", stderr: upResult.stderr }, false, requestId, callerType);
     return errorResponse(502, "up_failed", "Images pulled but failed to recreate containers", { stderr: upResult.stderr }, requestId);
   }
 
-  appendAudit(state, actor, "containers.pull", { result: "ok", started: managedServices }, true, requestId, callerType);
   logger.info("pull completed", { requestId, started: managedServices });
 
   return jsonResponse(200, {

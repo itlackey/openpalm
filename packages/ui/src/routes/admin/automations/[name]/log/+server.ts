@@ -14,10 +14,8 @@ import {
   errorResponse,
   requireAuth,
   getRequestId,
-  getActor,
-  getCallerType,
 } from "$lib/server/helpers.js";
-import { appendAudit, readAutomationLogs } from "@openpalm/lib";
+import { readAutomationLogs } from "@openpalm/lib";
 
 const SAFE_NAME_RE = /^[a-zA-Z0-9._-]+(?:\.md)?$/;
 const DEFAULT_LIMIT = 50;
@@ -29,8 +27,6 @@ export const GET: RequestHandler = async (event) => {
   if (authErr) return authErr;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
   const rawName = event.params.name ?? "";
   const taskId = rawName.endsWith(".md") ? rawName.slice(0, -3) : rawName;
 
@@ -50,6 +46,5 @@ export const GET: RequestHandler = async (event) => {
 
   const lines = readAutomationLogs(taskId, state.cacheDir, limit);
 
-  appendAudit(state, actor, "automations.log", { name: taskId, count: lines.length }, true, requestId, callerType);
   return jsonResponse(200, { name: taskId, lines }, requestId);
 };

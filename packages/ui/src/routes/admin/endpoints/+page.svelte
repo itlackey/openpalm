@@ -278,6 +278,20 @@
             Forwarded as HTTP Basic auth. Only required if the remote OpenCode was started with
             <code>OPENCODE_SERVER_PASSWORD</code>.
           </small>
+          {#if formMode === 'edit'}
+            <small class="rotate-hint">
+              <strong>Rotating this password?</strong>
+              OpenCode reads <code>OPENCODE_SERVER_PASSWORD</code> from its env at startup, so
+              rotation is a two-step process:
+              <ol>
+                <li>
+                  On the remote host: update <code>OP_OPENCODE_PASSWORD</code> in
+                  <code>stack.env</code> and restart the <code>assistant</code> container.
+                </li>
+                <li>Paste the new value here and save.</li>
+              </ol>
+            </small>
+          {/if}
         </label>
 
         {#if formMode === 'edit'}
@@ -440,6 +454,22 @@
     background: var(--color-bg-tertiary, #f3f4f6);
     padding: 1px 4px;
     border-radius: 4px;
+  }
+  .rotate-hint {
+    margin-top: var(--space-2);
+    padding: var(--space-3);
+    border-left: 3px solid var(--color-accent, #2563eb);
+    background: var(--color-bg-tertiary, #f3f4f6);
+    color: var(--color-text);
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  }
+  .rotate-hint ol {
+    margin: var(--space-2) 0 0;
+    padding-left: var(--space-4);
+  }
+  .rotate-hint strong {
+    display: block;
+    margin-bottom: var(--space-1);
   }
 
   .field-inline {

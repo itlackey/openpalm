@@ -51,7 +51,6 @@ function makeState(tempDir?: string): ControlPlaneState {
     services: {},
     artifacts: { compose: "" },
     artifactMeta: [],
-    audit: [],
   };
 }
 

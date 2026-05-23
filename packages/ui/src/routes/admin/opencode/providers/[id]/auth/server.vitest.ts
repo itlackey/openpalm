@@ -497,15 +497,16 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
     expect(body.error).toBe('opencode_error');
   });
 
-  test('DELETE writes audit log with action opencode.auth.disconnect', async () => {
+  // Phase 6 removed OpenPalm-side appendAudit. OpenCode logs every
+  // /auth DELETE natively (D6a in docs/technical/auth-and-proxy-refactor-plan.md),
+  // so this contract test now just verifies the DELETE succeeds.
+  test('DELETE succeeds for a valid provider', async () => {
     proxy.mockResolvedValueOnce({ ok: true, data: null });
 
-    await DELETE(makeEvent('DELETE', { providerId: 'openai' }));
+    const res = await DELETE(makeEvent('DELETE', { providerId: 'openai' }));
 
-    const { getState } = await import('$lib/server/state.js');
-    const state = getState();
-    const entry = state.audit.find((a) => a.action === 'opencode.auth.disconnect');
-    expect(entry).toBeDefined();
-    expect(entry?.ok).toBe(true);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { ok: boolean };
+    expect(body.ok).toBe(true);
   });
 });

@@ -17,6 +17,7 @@ import {
   normalizeEndpointUrl,
   setActiveId,
   updateEndpoint,
+  validateEndpointUrl,
 } from './endpoints.js';
 
 registerCleanup();
@@ -46,11 +47,21 @@ afterEach(() => {
 });
 
 describe('normalizeEndpointUrl', () => {
-  it('accepts http URLs and strips trailing slash', () => {
-    expect(normalizeEndpointUrl('http://10.0.0.5:3800/')).toBe('http://10.0.0.5:3800');
+  it('accepts http URLs for loopback hosts and strips trailing slash', () => {
+    expect(normalizeEndpointUrl('http://127.0.0.1:3800/')).toBe('http://127.0.0.1:3800');
+    expect(normalizeEndpointUrl('http://localhost:3800')).toBe('http://localhost:3800');
+    expect(normalizeEndpointUrl('http://[::1]:3800')).toBe('http://[::1]:3800');
+    expect(normalizeEndpointUrl('http://host.docker.internal:3800')).toBe(
+      'http://host.docker.internal:3800',
+    );
   });
-  it('accepts https URLs', () => {
+  it('rejects plain http for non-loopback hosts (Phase 6: HTTPS-for-remote)', () => {
+    expect(normalizeEndpointUrl('http://10.0.0.5:3800')).toBeNull();
+    expect(normalizeEndpointUrl('http://remote.example:3800')).toBeNull();
+  });
+  it('accepts https URLs (any host)', () => {
     expect(normalizeEndpointUrl('https://api.example.test')).toBe('https://api.example.test');
+    expect(normalizeEndpointUrl('https://remote.example:3800')).toBe('https://remote.example:3800');
   });
   it('rejects non-http schemes', () => {
     expect(normalizeEndpointUrl('ftp://example')).toBeNull();
@@ -59,6 +70,35 @@ describe('normalizeEndpointUrl', () => {
   it('rejects garbage', () => {
     expect(normalizeEndpointUrl('not a url')).toBeNull();
     expect(normalizeEndpointUrl('')).toBeNull();
+  });
+});
+
+describe('validateEndpointUrl (Phase 6: discriminated reasons)', () => {
+  it('reports http_not_allowed for plain http on remote hosts', () => {
+    expect(validateEndpointUrl('http://10.0.0.5:3800')).toEqual({
+      ok: false,
+      reason: 'http_not_allowed',
+    });
+    expect(validateEndpointUrl('http://remote.example:3800')).toEqual({
+      ok: false,
+      reason: 'http_not_allowed',
+    });
+  });
+  it('reports invalid_url for garbage', () => {
+    expect(validateEndpointUrl('not a url')).toEqual({ ok: false, reason: 'invalid_url' });
+  });
+  it('reports invalid_scheme for non-http(s) URLs', () => {
+    expect(validateEndpointUrl('ftp://example')).toEqual({ ok: false, reason: 'invalid_scheme' });
+  });
+  it('accepts loopback http and any https', () => {
+    expect(validateEndpointUrl('http://127.0.0.1:3800')).toEqual({
+      ok: true,
+      url: 'http://127.0.0.1:3800',
+    });
+    expect(validateEndpointUrl('https://remote.example:3800')).toEqual({
+      ok: true,
+      url: 'https://remote.example:3800',
+    });
   });
 });
 
@@ -95,10 +135,10 @@ describe('CRUD', () => {
   });
 
   it('adds a user endpoint', () => {
-    const entry = addEndpoint({ label: 'Remote', url: 'http://10.0.0.5:3800' });
+    const entry = addEndpoint({ label: 'Remote', url: 'https://10.0.0.5:3800' });
     expect(entry.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(entry.label).toBe('Remote');
-    expect(entry.url).toBe('http://10.0.0.5:3800');
+    expect(entry.url).toBe('https://10.0.0.5:3800');
 
     const list = listEndpoints();
     expect(list).toHaveLength(2);
@@ -112,21 +152,21 @@ describe('CRUD', () => {
   });
 
   it('updates label and url', () => {
-    const entry = addEndpoint({ label: 'A', url: 'http://10.0.0.1:3800' });
-    const updated = updateEndpoint(entry.id, { label: 'B', url: 'http://10.0.0.2:3800' });
+    const entry = addEndpoint({ label: 'A', url: 'https://10.0.0.1:3800' });
+    const updated = updateEndpoint(entry.id, { label: 'B', url: 'https://10.0.0.2:3800' });
     expect(updated.label).toBe('B');
-    expect(updated.url).toBe('http://10.0.0.2:3800');
+    expect(updated.url).toBe('https://10.0.0.2:3800');
   });
 
   it('clears password when patch.password === null', () => {
-    const entry = addEndpoint({ label: 'A', url: 'http://10.0.0.1:3800', password: 'secret' });
+    const entry = addEndpoint({ label: 'A', url: 'https://10.0.0.1:3800', password: 'secret' });
     expect(entry.password).toBe('secret');
     const updated = updateEndpoint(entry.id, { password: null });
     expect(updated.password).toBeUndefined();
   });
 
   it('leaves password unchanged when patch.password is undefined', () => {
-    const entry = addEndpoint({ label: 'A', url: 'http://10.0.0.1:3800', password: 'secret' });
+    const entry = addEndpoint({ label: 'A', url: 'https://10.0.0.1:3800', password: 'secret' });
     const updated = updateEndpoint(entry.id, { label: 'B' });
     expect(updated.password).toBe('secret');
   });
@@ -140,7 +180,7 @@ describe('CRUD', () => {
   });
 
   it('deletes a user endpoint', () => {
-    const entry = addEndpoint({ label: 'A', url: 'http://10.0.0.1:3800' });
+    const entry = addEndpoint({ label: 'A', url: 'https://10.0.0.1:3800' });
     deleteEndpoint(entry.id);
     expect(listEndpoints()).toHaveLength(1);
   });
@@ -148,7 +188,7 @@ describe('CRUD', () => {
 
 describe('active endpoint', () => {
   it('setActiveId switches to a user entry', () => {
-    const entry = addEndpoint({ label: 'Remote', url: 'http://10.0.0.5:3800' });
+    const entry = addEndpoint({ label: 'Remote', url: 'https://10.0.0.5:3800' });
     setActiveId(entry.id);
     const active = getActiveEndpoint();
     expect(active.id).toBe(entry.id);
@@ -156,14 +196,14 @@ describe('active endpoint', () => {
   });
 
   it('setActiveId("default") reverts to the env-derived entry', () => {
-    const entry = addEndpoint({ label: 'Remote', url: 'http://10.0.0.5:3800' });
+    const entry = addEndpoint({ label: 'Remote', url: 'https://10.0.0.5:3800' });
     setActiveId(entry.id);
     setActiveId('default');
     expect(getActiveEndpoint().isDefault).toBe(true);
   });
 
   it('deleting the active entry reverts to default', () => {
-    const entry = addEndpoint({ label: 'Remote', url: 'http://10.0.0.5:3800' });
+    const entry = addEndpoint({ label: 'Remote', url: 'https://10.0.0.5:3800' });
     setActiveId(entry.id);
     deleteEndpoint(entry.id);
     expect(getActiveEndpoint().isDefault).toBe(true);
@@ -216,7 +256,7 @@ describe('local-electron endpoint synthesis', () => {
 
   it('coexists with user-added endpoints', () => {
     writeLocalRuntime({ url: 'http://127.0.0.1:54321' });
-    addEndpoint({ label: 'Remote', url: 'http://10.0.0.5:3800' });
+    addEndpoint({ label: 'Remote', url: 'https://10.0.0.5:3800' });
     const list = listEndpoints();
     expect(list).toHaveLength(3);
     expect(list[0].id).toBe('local-electron');
@@ -287,7 +327,7 @@ describe('local-electron endpoint synthesis', () => {
 
 describe('persistence', () => {
   it('writes endpoints.json with 0600 permissions', () => {
-    const entry = addEndpoint({ label: 'A', url: 'http://10.0.0.1:3800', password: 'shh' });
+    const entry = addEndpoint({ label: 'A', url: 'https://10.0.0.1:3800', password: 'shh' });
     expect(listEndpoints().find((e) => e.id === entry.id)).toBeDefined();
 
     const path = `${getState().configDir}/endpoints.json`;
@@ -299,7 +339,7 @@ describe('persistence', () => {
 
   it('re-tightens 0600 perms across subsequent writes', () => {
     // First write: create the file via addEndpoint.
-    const entry = addEndpoint({ label: 'A', url: 'http://10.0.0.1:3800', password: 'shh' });
+    const entry = addEndpoint({ label: 'A', url: 'https://10.0.0.1:3800', password: 'shh' });
     const path = `${getState().configDir}/endpoints.json`;
     expect(statSync(path).mode & 0o777).toBe(0o600);
 

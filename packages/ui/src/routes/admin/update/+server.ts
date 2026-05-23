@@ -2,8 +2,6 @@ import {
   getRequestId,
   jsonResponse,
   requireAdmin,
-  getActor,
-  getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import {
@@ -28,14 +26,12 @@ export const POST: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
 
   ensureHomeDirs();
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
-  // audit recorded inside lib via ctx
-  const result = await applyUpdate(state, { actor, requestId, callerType });
+  // OpenCode session logs are the audit trail (D6a).
+  const result = await applyUpdate(state);
   logger.info("update applied, re-running compose", { requestId, restarted: result.restarted });
 
   // Re-apply compose with updated artifacts (include all channel overlays)

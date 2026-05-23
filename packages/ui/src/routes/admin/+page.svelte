@@ -9,7 +9,6 @@
   import AutomationsTab from '$lib/components/AutomationsTab.svelte';
   import ProvidersPanel from '$lib/components/ProvidersPanel.svelte';
   import LogsTab from '$lib/components/LogsTab.svelte';
-  import AuditTab from '$lib/components/AuditTab.svelte';
   import SecretsTab from '$lib/components/SecretsTab.svelte';
   import AkmTab from '$lib/components/AkmTab.svelte';
   import VoiceTab from '$lib/components/VoiceTab.svelte';
@@ -53,7 +52,7 @@
   let selectedContainerId: string | null = $state(null);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: 'overview' | 'addons' | 'automations' | 'connections' | 'secrets' | 'voice' | 'akm' | 'containers' | 'logs' | 'audit' = $state('overview');
+  let activeTab: 'overview' | 'addons' | 'automations' | 'connections' | 'secrets' | 'voice' | 'akm' | 'containers' | 'logs' = $state('overview');
   let pullLoading = $state(false);
 
   // ── Container polling ──────────────────────────────────────────────────────
@@ -410,8 +409,6 @@
         tokenStored={true}
         services={serviceNames}
       />
-    {:else if activeTab === 'audit'}
-      <AuditTab tokenStored={true} />
     {/if}
   </main>
 {/if}

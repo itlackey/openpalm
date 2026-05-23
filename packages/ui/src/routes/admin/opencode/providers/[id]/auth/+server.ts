@@ -4,14 +4,11 @@ import {
   jsonResponse,
   errorResponse,
   getRequestId,
-  getActor,
-  getCallerType,
   parseJsonBody,
   jsonBodyError,
   getOpenCodeClient,
 } from '$lib/server/helpers.js';
-import { getState } from '$lib/server/state.js';
-import { appendAudit, createLogger } from '@openpalm/lib';
+import { createLogger } from '@openpalm/lib';
 
 const logger = createLogger('opencode.auth');
 
@@ -94,9 +91,6 @@ export const POST: RequestHandler = async (event) => {
   if ('error' in result) return jsonBodyError(result, requestId);
   const body = result.data;
 
-  const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
   const providerId = event.params.id;
   const mode = typeof body.mode === 'string' ? body.mode : '';
 
@@ -125,11 +119,10 @@ export const POST: RequestHandler = async (event) => {
     // vault; those are separate concerns (assistant env / akm tools).
     const result = await getOpenCodeClient().setProviderApiKey(providerId, apiKey);
     if (!result.ok) {
-      appendAudit(state, actor, 'opencode.auth.api_key', { providerId, error: result.code }, false, requestId, callerType);
+      logger.warn('provider api key save failed', { providerId, requestId, error: result.code });
       return errorResponse(result.status, result.code, result.message, {}, requestId);
     }
 
-    appendAudit(state, actor, 'opencode.auth.api_key', { providerId }, true, requestId, callerType);
     logger.info('provider API key saved via OpenCode /auth/{providerID}', { providerId, requestId });
 
     return jsonResponse(200, { ok: true, mode: 'api_key' }, requestId);
@@ -155,8 +148,6 @@ export const POST: RequestHandler = async (event) => {
       createdAt: Date.now(),
     });
 
-    // L1 fix: audit log for OAuth initiation
-    appendAudit(state, actor, 'opencode.auth.oauth.start', { providerId, methodIndex }, true, requestId, callerType);
     logger.info('oauth authorization started', { providerId, methodIndex, requestId });
 
     return jsonResponse(200, {
@@ -187,21 +178,16 @@ export const DELETE: RequestHandler = async (event) => {
     return errorResponse(400, 'bad_request', 'Invalid provider ID', {}, requestId);
   }
 
-  const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
-
   const result = await getOpenCodeClient().proxy(
     `/auth/${encodeURIComponent(providerId)}`,
     { method: 'DELETE' },
   );
 
   if (!result.ok) {
-    appendAudit(state, actor, 'opencode.auth.disconnect', { providerId }, false, requestId, callerType);
+    logger.warn('provider disconnect failed', { providerId, requestId, error: result.code });
     return errorResponse(result.status, result.code, result.message, {}, requestId);
   }
 
-  appendAudit(state, actor, 'opencode.auth.disconnect', { providerId }, true, requestId, callerType);
   logger.info('provider credential removed via OpenCode /auth DELETE', { providerId, requestId });
 
   return jsonResponse(200, { ok: true }, requestId);

@@ -4,11 +4,9 @@
  */
 import type { RequestHandler } from './$types';
 import { getState } from '$lib/server/state.js';
-import { appendAudit, readStackEnv, writeVoiceVars } from '@openpalm/lib';
+import { readStackEnv, writeVoiceVars } from '@openpalm/lib';
 import {
   errorResponse,
-  getActor,
-  getCallerType,
   getRequestId,
   jsonResponse,
   requireAdmin,
@@ -79,10 +77,6 @@ export const PUT: RequestHandler = async (event) => {
   }
 
   writeVoiceVars(config, state.stackDir);
-
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
-  appendAudit(state, actor, 'voice.config.save', {}, true, requestId, callerType);
 
   return jsonResponse(200, { ok: true }, requestId);
 };

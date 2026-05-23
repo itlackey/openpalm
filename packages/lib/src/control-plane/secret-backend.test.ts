@@ -37,7 +37,6 @@ function createState(): ControlPlaneState {
     services: {},
     artifacts: { compose: '' },
     artifactMeta: [],
-    audit: [],
   };
 }
 

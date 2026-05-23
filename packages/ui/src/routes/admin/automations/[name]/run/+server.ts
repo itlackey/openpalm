@@ -11,11 +11,8 @@ import {
   errorResponse,
   requireAuth,
   getRequestId,
-  getActor,
-  getCallerType,
 } from "$lib/server/helpers.js";
 import {
-  appendAudit,
   loadAutomations,
   executeAutomation,
   buildAkmEnv,
@@ -29,36 +26,21 @@ export const POST: RequestHandler = async (event) => {
   if (authErr) return authErr;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
   const rawName = event.params.name ?? "";
 
   // Accept both bare IDs and full filenames; normalize to bare ID.
   const taskId = rawName.endsWith(".md") ? rawName.slice(0, -3) : rawName;
 
   if (!SAFE_NAME_RE.test(rawName) || rawName.includes("..") || rawName.includes("/")) {
-    appendAudit(
-      state, actor, "automations.run",
-      { name: rawName, error: "invalid_name" }, false, requestId, callerType,
-    );
     return errorResponse(400, "invalid_input", "name must match /^[a-zA-Z0-9._-]+$/", {}, requestId);
   }
 
   const configured = loadAutomations(state.stashDir).some((c) => c.name === taskId);
   if (!configured) {
-    appendAudit(
-      state, actor, "automations.run",
-      { name: taskId, error: "not_found" }, false, requestId, callerType,
-    );
     return errorResponse(404, "not_found", `Automation '${taskId}' is not installed.`, {}, requestId);
   }
 
   const result = await executeAutomation(taskId, buildAkmEnv(state));
-
-  appendAudit(
-    state, actor, "automations.run",
-    { name: taskId, ok: result.ok, status: result.status }, result.ok, requestId, callerType,
-  );
 
   return jsonResponse(202, { ok: result.ok, name: taskId, status: result.status }, requestId);
 };

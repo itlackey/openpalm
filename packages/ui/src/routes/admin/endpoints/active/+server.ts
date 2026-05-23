@@ -4,16 +4,12 @@
  * Body: { id: string }  — pass "default" to revert to the env-derived entry.
  */
 import type { RequestHandler } from './$types';
-import { getState } from '$lib/server/state.js';
 import {
   errorResponse,
-  getActor,
-  getCallerType,
   jsonResponse,
   withAdminBody,
 } from '$lib/server/helpers.js';
 import { setActiveId } from '$lib/server/endpoints.js';
-import { appendAudit } from '@openpalm/lib';
 
 export const POST: RequestHandler = async (event) =>
   withAdminBody(event, async ({ requestId, body }) => {
@@ -24,16 +20,6 @@ export const POST: RequestHandler = async (event) =>
 
     try {
       const active = setActiveId(id);
-      const state = getState();
-      appendAudit(
-        state,
-        getActor(event),
-        'endpoints.set-active',
-        { id: active.id, label: active.label },
-        true,
-        requestId,
-        getCallerType(event),
-      );
       return jsonResponse(
         200,
         {

@@ -12,26 +12,11 @@ export type OptionalServiceName = never;
 
 export type AccessScope = "host" | "lan";
 export type CallerType = "assistant" | "cli" | "ui" | "system" | "test" | "unknown";
-export type AuditContext = {
-  actor: string;
-  requestId?: string;
-  callerType?: CallerType;
-};
 
 /** Info about a discovered channel */
 export type ChannelInfo = {
   name: string;
   ymlPath: string;
-};
-
-export type AuditEntry = {
-  at: string;
-  requestId: string;
-  actor: string;
-  callerType: CallerType;
-  action: string;
-  args: Record<string, unknown>;
-  ok: boolean;
 };
 
 export type ArtifactMeta = {
@@ -54,7 +39,6 @@ export type ControlPlaneState = {
     compose: string;
   };
   artifactMeta: ArtifactMeta[];
-  audit: AuditEntry[];
 };
 
 // ── Constants ──────────────────────────────────────────────────────────

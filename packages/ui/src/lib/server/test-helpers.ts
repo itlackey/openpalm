@@ -41,7 +41,6 @@ export function makeTestState(overrides: Partial<ControlPlaneState> = {}): Contr
     services: {},
     artifacts: { compose: "" },
     artifactMeta: [],
-    audit: [],
     ...overrides
   };
 }

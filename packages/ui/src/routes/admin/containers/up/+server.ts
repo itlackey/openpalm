@@ -3,13 +3,11 @@ import {
   jsonResponse,
   errorResponse,
   requireAdmin,
-  getActor,
-  getCallerType,
   parseJsonBody,
   jsonBodyError
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { isAllowedService, appendAudit, buildComposeOptions, createLogger } from "@openpalm/lib";
+import { isAllowedService, buildComposeOptions, createLogger } from "@openpalm/lib";
 import { composeStart, checkDocker } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
@@ -22,8 +20,6 @@ export const POST: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
   const result = await parseJsonBody(event.request);
   if ('error' in result) return jsonBodyError(result, requestId);
   const body = result.data;
@@ -31,7 +27,6 @@ export const POST: RequestHandler = async (event) => {
 
   logger.info("starting service", { requestId, service });
   if (!isAllowedService(service, state.configDir)) {
-    appendAudit(state, actor, "containers.up", { service }, false, requestId, callerType);
     return errorResponse(400, "invalid_service", "Service is not in allowlist", { service }, requestId);
   }
 
@@ -42,14 +37,11 @@ export const POST: RequestHandler = async (event) => {
     if (result.ok) {
       state.services[service] = "running";
     } else {
-      appendAudit(state, actor, "containers.up", { service, error: result.stderr }, false, requestId, callerType);
       return errorResponse(500, "docker_error", `Failed to start service: ${result.stderr}`, { service }, requestId);
     }
   } else {
     state.services[service] = "running";
   }
-
-  appendAudit(state, actor, "containers.up", { service }, true, requestId, callerType);
 
   return jsonResponse(
     200,

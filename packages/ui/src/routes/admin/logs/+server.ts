@@ -8,10 +8,8 @@ import {
   errorResponse,
   requireAuth,
   getRequestId,
-  getActor,
-  getCallerType
 } from "$lib/server/helpers.js";
-import { appendAudit, buildComposeOptions, isAllowedService } from "@openpalm/lib";
+import { buildComposeOptions, isAllowedService } from "@openpalm/lib";
 import { composeLogs, checkDocker } from "@openpalm/lib";
 
 export const GET: RequestHandler = async (event) => {
@@ -20,8 +18,6 @@ export const GET: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
   const url = new URL(event.request.url);
 
   // Parse query parameters
@@ -59,7 +55,6 @@ export const GET: RequestHandler = async (event) => {
   // Check Docker availability
   const dockerCheck = await checkDocker();
   if (!dockerCheck.ok) {
-    appendAudit(state, actor, "logs", { services: services ?? "all", tail, error: "docker_unavailable" }, false, requestId, callerType);
     return errorResponse(503, "docker_unavailable", "Docker is not available", {}, requestId);
   }
 
@@ -67,16 +62,6 @@ export const GET: RequestHandler = async (event) => {
     ...buildComposeOptions(state),
     since: sinceParam ?? undefined
   });
-
-  appendAudit(
-    state,
-    actor,
-    "logs",
-    { services: services ?? "all", tail, since: sinceParam ?? undefined },
-    result.ok,
-    requestId,
-    callerType
-  );
 
   if (!result.ok) {
     return jsonResponse(500, { ok: false, logs: "", error: result.stderr }, requestId);

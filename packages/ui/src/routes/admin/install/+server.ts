@@ -2,8 +2,6 @@ import {
   getRequestId,
   jsonResponse,
   requireAdmin,
-  getActor,
-  getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import {
@@ -30,8 +28,6 @@ export const POST: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const actor = getActor(event);
-  const callerType = getCallerType(event);
 
   // 1. Ensure home directory tree exists
   logger.info("ensuring home directories and seeding config", { requestId });
@@ -44,8 +40,9 @@ export const POST: RequestHandler = async (event) => {
   // 3. Write consolidated secrets file
   ensureSecrets(state);
 
-  // 4. Update state and generate artifacts (audit recorded inside lib)
-  await applyInstall(state, { actor, requestId, callerType });
+  // 4. Update state and generate artifacts. OpenCode session logs are the
+  // audit trail (D6a in docs/technical/auth-and-proxy-refactor-plan.md).
+  await applyInstall(state);
 
   // 5. Run docker compose up — managed services derived from compose config
   const managedServices = await buildManagedServices(state);
