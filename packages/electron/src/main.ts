@@ -20,6 +20,7 @@ import {
   parseEnvFile,
 } from '@openpalm/lib';
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
+import { startLocalOpenCode, type LocalOpencodeHandle } from './local-opencode.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -31,6 +32,7 @@ let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let uiProcess: ChildProcess | null = null;
+let localOpencode: LocalOpencodeHandle | null = null;
 
 // ── Stderr ring buffer (200 lines) ────────────────────────────────────────────
 const STDERR_RING_SIZE = 200;
@@ -366,6 +368,23 @@ app.whenReady().then(async () => {
     app.quit();
     return;
   }
+
+  // Spawn the ephemeral local OpenCode (Phase 3). Non-fatal: if the binary
+  // is missing or spawn fails, the UI shows a sentinel and remote endpoints
+  // continue to work.
+  try {
+    const stateDir = `${resolveOpenPalmHome()}/state`;
+    localOpencode = await startLocalOpenCode({ stateDir });
+    if (localOpencode) {
+      console.log(`Local OpenCode listening on ${localOpencode.url}`);
+    }
+  } catch (err) {
+    console.warn(
+      'Local OpenCode spawn raised; continuing without it:',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
   await createWindow();
   createTray();
 
@@ -383,4 +402,22 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   (app as unknown as Record<string, unknown>).isQuitting = true;
   stopUIServer();
+});
+
+app.on('will-quit', async (event) => {
+  if (!localOpencode) return;
+  // Defer the actual quit until the local OpenCode child has been signalled
+  // and the runtime/pidfile cleaned up. 5s grace inside the handle's stop().
+  event.preventDefault();
+  const handle = localOpencode;
+  localOpencode = null;
+  try {
+    await handle.stop();
+  } catch (err) {
+    console.warn(
+      'Local OpenCode stop raised:',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+  app.quit();
 });

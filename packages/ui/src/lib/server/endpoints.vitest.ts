@@ -2,7 +2,7 @@
  * Tests for the assistant endpoint store + active resolution.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { chmodSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { _replaceState, getState } from './state.js';
 import {
   makeTestState,
@@ -169,6 +169,117 @@ describe('active endpoint', () => {
 
   it('setActiveId throws for unknown id', () => {
     expect(() => setActiveId('does-not-exist')).toThrow(/not found/);
+  });
+});
+
+// ── local-electron (Electron-spawned ephemeral OpenCode) ─────────────────────
+
+function writeLocalRuntime(payload: { url: string; password?: string; pid?: number }): string {
+  const path = `${getState().stateDir}/local-opencode.runtime.json`;
+  mkdirSync(getState().stateDir, { recursive: true });
+  writeFileSync(path, JSON.stringify({
+    url: payload.url,
+    username: 'openpalm',
+    password: payload.password,
+    pid: payload.pid ?? 12345,
+    startedAt: new Date().toISOString(),
+  }), { mode: 0o600 });
+  return path;
+}
+
+function removeLocalRuntime(): void {
+  const path = `${getState().stateDir}/local-opencode.runtime.json`;
+  if (existsSync(path)) unlinkSync(path);
+}
+
+describe('local-electron endpoint synthesis', () => {
+  afterEach(() => removeLocalRuntime());
+
+  it('is absent when runtime.json does not exist', () => {
+    const list = listEndpoints();
+    expect(list.some((e) => e.id === 'local-electron')).toBe(false);
+  });
+
+  it('is prepended to the list when runtime.json is present', () => {
+    writeLocalRuntime({ url: 'http://127.0.0.1:54321', password: 'rand-pw' });
+    const list = listEndpoints();
+    expect(list).toHaveLength(2);
+    expect(list[0].id).toBe('local-electron');
+    expect(list[0].isLocal).toBe(true);
+    expect(list[0].isDefault).toBe(false);
+    expect(list[0].url).toBe('http://127.0.0.1:54321');
+    expect(list[0].password).toBe('rand-pw');
+    expect(list[1].id).toBe('default');
+  });
+
+  it('coexists with user-added endpoints', () => {
+    writeLocalRuntime({ url: 'http://127.0.0.1:54321' });
+    addEndpoint({ label: 'Remote', url: 'http://10.0.0.5:3800' });
+    const list = listEndpoints();
+    expect(list).toHaveLength(3);
+    expect(list[0].id).toBe('local-electron');
+    expect(list[1].id).toBe('default');
+    expect(list[2].label).toBe('Remote');
+  });
+
+  it('re-reads runtime.json each call so password rotation is picked up', () => {
+    writeLocalRuntime({ url: 'http://127.0.0.1:54321', password: 'first' });
+    expect(getActiveEndpoint().password).toBeUndefined(); // default is still active
+    setActiveId('local-electron');
+    expect(getActiveEndpoint().password).toBe('first');
+    // Simulate Electron restart with a new password.
+    writeLocalRuntime({ url: 'http://127.0.0.1:54321', password: 'second' });
+    expect(getActiveEndpoint().password).toBe('second');
+  });
+
+  it('cannot be edited via updateEndpoint', () => {
+    writeLocalRuntime({ url: 'http://127.0.0.1:54321' });
+    expect(() => updateEndpoint('local-electron', { label: 'Hacked' })).toThrow(/local Electron/);
+  });
+
+  it('cannot be deleted via deleteEndpoint', () => {
+    writeLocalRuntime({ url: 'http://127.0.0.1:54321' });
+    expect(() => deleteEndpoint('local-electron')).toThrow(/local Electron/);
+  });
+
+  it('cannot be set active when runtime.json is absent', () => {
+    expect(() => setActiveId('local-electron')).toThrow(/not running/);
+  });
+
+  it('falls back to default if active is local-electron but runtime.json is gone', () => {
+    writeLocalRuntime({ url: 'http://127.0.0.1:54321', password: 'pw' });
+    setActiveId('local-electron');
+    expect(getActiveEndpoint().id).toBe('local-electron');
+    removeLocalRuntime();
+    expect(getActiveEndpoint().id).toBe('default');
+    expect(getActiveEndpoint().isDefault).toBe(true);
+  });
+
+  it('ignores a corrupt runtime.json', () => {
+    const path = `${getState().stateDir}/local-opencode.runtime.json`;
+    mkdirSync(getState().stateDir, { recursive: true });
+    writeFileSync(path, 'not json{', { mode: 0o600 });
+    const list = listEndpoints();
+    expect(list.some((e) => e.id === 'local-electron')).toBe(false);
+  });
+
+  it('ignores a runtime.json without a url', () => {
+    const path = `${getState().stateDir}/local-opencode.runtime.json`;
+    mkdirSync(getState().stateDir, { recursive: true });
+    writeFileSync(path, JSON.stringify({ password: 'x' }), { mode: 0o600 });
+    const list = listEndpoints();
+    expect(list.some((e) => e.id === 'local-electron')).toBe(false);
+  });
+
+  it('is NOT persisted to endpoints.json when set active', () => {
+    writeLocalRuntime({ url: 'http://127.0.0.1:54321', password: 'pw' });
+    setActiveId('local-electron');
+    const raw = readFileSync(`${getState().stateDir}/admin/endpoints.json`, 'utf-8');
+    const parsed = JSON.parse(raw);
+    // activeId pointer is fine — but the synthetic entry itself must not be
+    // serialized into the endpoints array.
+    expect(parsed.endpoints).toEqual([]);
+    expect(parsed.activeId).toBe('local-electron');
   });
 });
 

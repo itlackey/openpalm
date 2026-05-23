@@ -26,6 +26,12 @@ export type EndpointEntry = {
 export type ActiveEndpoint = EndpointEntry & {
   /** True for the env-derived default entry (cannot be edited or deleted). */
   isDefault: boolean;
+  /**
+   * True for the Electron-spawned ephemeral local OpenCode (Phase 3).
+   * Synthesized at request time from state/local-opencode.runtime.json;
+   * not persisted to endpoints.json; cannot be edited or deleted.
+   */
+  isLocal?: boolean;
 };
 
 type EndpointsFile = {
@@ -34,9 +40,59 @@ type EndpointsFile = {
 };
 
 const DEFAULT_ID = 'default';
+const LOCAL_ELECTRON_ID = 'local-electron';
 
 function endpointsPath(): string {
   return `${getState().stateDir}/admin/endpoints.json`;
+}
+
+function localRuntimePath(): string {
+  return `${getState().stateDir}/local-opencode.runtime.json`;
+}
+
+type LocalRuntime = {
+  url: string;
+  username?: string;
+  password?: string;
+  pid?: number;
+  startedAt?: string;
+};
+
+/**
+ * Read the Electron-written runtime.json each time it's needed. The file is
+ * 0600 and is rewritten on each Electron launch (random password per launch),
+ * so callers must NOT cache the result.
+ */
+function readLocalRuntime(): LocalRuntime | null {
+  const path = localRuntimePath();
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Partial<LocalRuntime>;
+    if (!parsed || typeof parsed.url !== 'string' || !parsed.url) return null;
+    return {
+      url: parsed.url,
+      username: typeof parsed.username === 'string' ? parsed.username : undefined,
+      password: typeof parsed.password === 'string' ? parsed.password : undefined,
+      pid: typeof parsed.pid === 'number' ? parsed.pid : undefined,
+      startedAt: typeof parsed.startedAt === 'string' ? parsed.startedAt : undefined,
+    };
+  } catch (e) {
+    console.warn('[endpoints] Failed to parse local-opencode.runtime.json:', e);
+    return null;
+  }
+}
+
+function localEndpoint(): ActiveEndpoint | null {
+  const rt = readLocalRuntime();
+  if (!rt) return null;
+  return {
+    id: LOCAL_ELECTRON_ID,
+    label: 'Local OpenCode (Electron)',
+    url: rt.url,
+    ...(rt.password ? { password: rt.password } : {}),
+    isDefault: false,
+    isLocal: true,
+  };
 }
 
 function readFile(): EndpointsFile {
@@ -92,18 +148,35 @@ export function normalizeEndpointUrl(input: string): string | null {
 
 // ── Read API ─────────────────────────────────────────────────────────────────
 
-/** Returns the env-derived default plus all user-added endpoints. */
+/**
+ * Returns: [local-electron (if Electron is running it), default, ...user entries].
+ * The local-electron entry is synthesized at call time from
+ * state/local-opencode.runtime.json — never persisted to endpoints.json.
+ */
 export function listEndpoints(): ActiveEndpoint[] {
   const { endpoints } = readFile();
+  const local = localEndpoint();
   return [
+    ...(local ? [local] : []),
     defaultEndpoint(),
     ...endpoints.map((e) => ({ ...e, isDefault: false })),
   ];
 }
 
-/** Returns the active endpoint, falling back to the default if no active id is set. */
+/**
+ * Returns the active endpoint, falling back to the default if no active id is
+ * set OR if the active id is `local-electron` but the runtime.json isn't there
+ * (e.g. the Electron child died). Re-reads runtime.json each call so a
+ * password rotated by a new Electron launch is picked up immediately.
+ */
 export function getActiveEndpoint(): ActiveEndpoint {
   const { activeId, endpoints } = readFile();
+  if (activeId === LOCAL_ELECTRON_ID) {
+    const local = localEndpoint();
+    if (local) return local;
+    // Active points to a now-defunct local OpenCode; fall back to default.
+    return defaultEndpoint();
+  }
   if (!activeId || activeId === DEFAULT_ID) return defaultEndpoint();
   const found = endpoints.find((e) => e.id === activeId);
   if (!found) return defaultEndpoint();
@@ -116,6 +189,14 @@ export function setActiveId(id: string | null): ActiveEndpoint {
   const data = readFile();
   if (!id || id === DEFAULT_ID) {
     data.activeId = null;
+  } else if (id === LOCAL_ELECTRON_ID) {
+    // Local OpenCode entry must be live right now for this to be a valid
+    // switch. We DO persist the activeId so it survives UI restarts inside
+    // the same Electron session.
+    if (!localEndpoint()) {
+      throw new Error('Local OpenCode is not running (Electron only)');
+    }
+    data.activeId = LOCAL_ELECTRON_ID;
   } else {
     const exists = data.endpoints.some((e) => e.id === id);
     if (!exists) throw new Error(`Endpoint not found: ${id}`);
@@ -154,6 +235,9 @@ export type EndpointPatch = {
 
 export function updateEndpoint(id: string, patch: EndpointPatch): EndpointEntry {
   if (id === DEFAULT_ID) throw new Error('Cannot edit the default endpoint');
+  if (id === LOCAL_ELECTRON_ID) {
+    throw new Error('Cannot edit the local Electron OpenCode entry (it is ephemeral and per-launch)');
+  }
 
   const data = readFile();
   const idx = data.endpoints.findIndex((e) => e.id === id);
@@ -184,6 +268,9 @@ export function updateEndpoint(id: string, patch: EndpointPatch): EndpointEntry 
 
 export function deleteEndpoint(id: string): void {
   if (id === DEFAULT_ID) throw new Error('Cannot delete the default endpoint');
+  if (id === LOCAL_ELECTRON_ID) {
+    throw new Error('Cannot delete the local Electron OpenCode entry (managed by Electron lifecycle)');
+  }
   const data = readFile();
   const idx = data.endpoints.findIndex((e) => e.id === id);
   if (idx === -1) throw new Error(`Endpoint not found: ${id}`);

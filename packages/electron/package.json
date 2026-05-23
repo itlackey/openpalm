@@ -15,7 +15,9 @@
     "build:win": "bun run bundle && electron-builder --win",
     "test": "vitest run"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@opencode-ai/sdk": "^1.15.9"
+  },
   "devDependencies": {
     "@openpalm/lib": "workspace:*",
     "electron": "42.2.0",
