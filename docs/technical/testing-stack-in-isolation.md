@@ -88,7 +88,7 @@ Verify: `curl http://localhost:9100/health` should return `{"status":"ok","servi
 
 ```bash
 RUN_DOCKER_STACK_TESTS=1 \
-ADMIN_TOKEN=dev-admin-token \
+OP_UI_LOGIN_PASSWORD=dev-admin-token \
 ADMIN_URL=http://127.0.0.1:9100 \
 bun run ui:test:e2e
 ```
@@ -97,7 +97,7 @@ Or, using `STACK_ENV_PATH` to auto-build URLs from a stack.env:
 
 ```bash
 RUN_DOCKER_STACK_TESTS=1 \
-ADMIN_TOKEN=dev-admin-token \
+OP_UI_LOGIN_PASSWORD=dev-admin-token \
 STACK_ENV_PATH=.dev-test/config/stack/stack.env \
 bun run ui:test:e2e
 ```
@@ -106,7 +106,7 @@ bun run ui:test:e2e
 
 All three required env vars for the first form:
 - `RUN_DOCKER_STACK_TESTS=1` — gates are skipped by default; this unlocks them
-- `ADMIN_TOKEN=dev-admin-token` — the admin token seeded by `dev-setup.sh`
+- `OP_UI_LOGIN_PASSWORD=dev-admin-token` — the admin password seeded by `dev-setup.sh` (renamed from `ADMIN_TOKEN` in Phase 2 of the auth/proxy refactor)
 - `ADMIN_URL=http://127.0.0.1:9100` — admin host URL (auto-built if `STACK_ENV_PATH` is used)
 
 Expected results (with assistant running):
@@ -124,10 +124,10 @@ Expected results (with assistant running):
 curl -i http://localhost:9100/admin/health
 
 # Should return { ok: true, opencode: true } — assistant is running
-curl -H "x-admin-token: dev-admin-token" http://localhost:9100/admin/health
+curl -b "op_session=dev-admin-token" http://localhost:9100/admin/health
 
 # Should return available: true — assistant is reachable
-curl -H "x-admin-token: dev-admin-token" http://localhost:9100/admin/providers | jq '.available'
+curl -b "op_session=dev-admin-token" http://localhost:9100/admin/providers | jq '.available'
 ```
 
 ## Running against a production stack (ports 8100/3800/8180)
@@ -136,7 +136,7 @@ If you need to test against a production instance running on the default ports, 
 
 ```bash
 RUN_DOCKER_STACK_TESTS=1 \
-ADMIN_TOKEN=your-token \
+OP_UI_LOGIN_PASSWORD=your-password \
 ADMIN_URL=http://127.0.0.1:8100 \
 ASSISTANT_URL=http://localhost:3800 \
 OP_GUARDIAN_PORT=8180 \

@@ -8,7 +8,7 @@ Testing is organized into 6 tiers, from fastest/simplest to most thorough. Run t
 
 Before running any stack tests (Tiers 5+), ensure:
 
-1. **Dev environment is seeded:** `./scripts/dev-setup.sh --seed-env` (seeds `ADMIN_TOKEN=dev-admin-token`, correct Ollama URLs)
+1. **Dev environment is seeded:** `./scripts/dev-setup.sh --seed-env` (seeds the admin password `dev-admin-token` as `OP_UI_TOKEN` in stack.env; tests read it from `OP_UI_LOGIN_PASSWORD` after the Phase 2 env-var rename — see `scripts/load-test-env.sh`)
 2. **Ollama running on host** (required for T6 LLM tests)
 3. **Docker running** — T5/T6 rebuild and recreate containers automatically
 

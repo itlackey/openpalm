@@ -1,6 +1,22 @@
+/**
+ * POST /admin/auth/login
+ *
+ * Issues the `op_session` cookie (HttpOnly, SameSite=Strict, Max-Age=86400)
+ * after verifying the operator-supplied password in the request body against
+ * the configured admin secret.
+ *
+ * The operator-facing env var that seeds this secret is **OP_UI_LOGIN_PASSWORD**
+ * (renamed from the legacy `ADMIN_TOKEN` in Phase 2 of
+ * docs/technical/auth-and-proxy-refactor-plan.md). It is read from `stack.env`
+ * via `state.adminToken` today; Phase 4 will collapse the field and the env
+ * plumbing together. The cookie semantics are unchanged.
+ *
+ * Phase 2 also drops the assistant-token branch — only the admin secret is a
+ * valid login credential; `state.assistantToken` no longer participates.
+ */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
-import { safeTokenCompare, getRequestId, jsonResponse, errorResponse } from "$lib/server/helpers.js";
+import { safeTokenCompare, getRequestId, errorResponse } from "$lib/server/helpers.js";
 
 const COOKIE_NAME = "op_session";
 const COOKIE_OPTS = "HttpOnly; SameSite=Strict; Path=/; Max-Age=86400";
@@ -15,21 +31,23 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "bad_request", "Invalid JSON body", {}, requestId);
   }
 
-  const token = typeof body.token === "string" ? body.token : "";
-  if (!token) return errorResponse(400, "bad_request", "token is required", {}, requestId);
+  // Accept either `password` (preferred) or `token` (legacy field name) so
+  // existing clients keep working while we migrate the surface to "password".
+  const password =
+    typeof body.password === "string" ? body.password :
+    typeof body.token === "string" ? body.token : "";
+  if (!password) return errorResponse(400, "bad_request", "password is required", {}, requestId);
 
   const state = getState();
-  const isAdmin = state.adminToken && safeTokenCompare(token, state.adminToken);
-  const isAssistant = state.assistantToken && safeTokenCompare(token, state.assistantToken);
-  if (!isAdmin && !isAssistant) {
-    return errorResponse(401, "unauthorized", "Invalid token", {}, requestId);
+  if (!state.adminToken || !safeTokenCompare(password, state.adminToken)) {
+    return errorResponse(401, "unauthorized", "Invalid password", {}, requestId);
   }
-  const role = isAdmin ? "admin" : "assistant";
-  return new Response(JSON.stringify({ ok: true, role }), {
+
+  return new Response(JSON.stringify({ ok: true, role: "admin" }), {
     status: 200,
     headers: {
       "content-type": "application/json",
-      "set-cookie": `${COOKIE_NAME}=${token}; ${COOKIE_OPTS}`,
+      "set-cookie": `${COOKIE_NAME}=${password}; ${COOKIE_OPTS}`,
       "x-request-id": requestId
     }
   });

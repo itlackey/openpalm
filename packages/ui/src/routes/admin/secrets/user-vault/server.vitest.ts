@@ -58,7 +58,8 @@ function makeTempDir(): string {
 
 function makeEvent(method: string, path: string, body?: Record<string, unknown>, token = 'admin-token') {
   const headers: Record<string, string> = { 'x-request-id': 'req-uv-1' };
-  if (token) headers['x-admin-token'] = token;
+  // Phase 2: x-admin-token header fallback removed; auth flows via op_session cookie.
+  if (token) headers['cookie'] = `op_session=${token}`;
   if (body) headers['content-type'] = 'application/json';
   return {
     request: new Request(`http://localhost${path}`, {

@@ -138,10 +138,23 @@ describe("requireAdmin", () => {
     expect(result).toBeNull();
   });
 
-  test("returns null (pass) for valid admin token via x-admin-token header (fallback path)", () => {
+  // Phase 2 (auth/proxy refactor): the x-admin-token header fallback was
+  // removed. requireAdmin is cookie-only; presenting the secret in the legacy
+  // header MUST be rejected.
+  test("rejects valid admin token presented via x-admin-token header (legacy fallback removed)", async () => {
     const event = makeEvent({ "x-admin-token": "test-admin-token-12345" });
     const result = requireAdmin(event as never, "req-1-header");
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe(401);
+    const body = await result!.json();
+    expect(body.error).toBe("unauthorized");
+  });
+
+  test("rejects valid admin token presented via Authorization: Bearer (legacy fallback removed)", async () => {
+    const event = makeEvent({ authorization: "Bearer test-admin-token-12345" });
+    const result = requireAdmin(event as never, "req-1-bearer");
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe(401);
   });
 
   test("returns 401 for missing token", async () => {
@@ -160,8 +173,8 @@ describe("requireAdmin", () => {
     expect(result!.status).toBe(401);
   });
 
-  test("returns 401 for empty token", async () => {
-    const event = makeEvent({ "x-admin-token": "" });
+  test("returns 401 for empty cookie value", async () => {
+    const event = makeEvent({ cookie: "op_session=" });
     const result = requireAdmin(event as never, "req-4");
     expect(result).not.toBeNull();
     expect(result!.status).toBe(401);
@@ -194,15 +207,18 @@ describe("getActor", () => {
     expect(getActor(event as never)).toBe("admin");
   });
 
-  test("returns 'admin' when x-admin-token header matches (fallback path)", () => {
+  // Phase 2: x-admin-token header fallback was removed.
+  test("returns 'unauthenticated' when admin token presented via x-admin-token header", () => {
     const event = makeEvent({ "x-admin-token": "test-admin-token-12345" });
-    expect(getActor(event as never)).toBe("admin");
+    expect(getActor(event as never)).toBe("unauthenticated");
   });
 
-  test("returns 'assistant' when cookie matches assistant token", () => {
+  // Phase 2: the assistant-token branch was removed from identifyCallerByToken.
+  // Presenting the assistant token via cookie no longer authenticates.
+  test("returns 'unauthenticated' when cookie carries the assistant token (assistant branch removed)", () => {
     const state = resetState("test-admin-token-12345");
     const event = makeEvent({ cookie: `op_session=${state.assistantToken}` });
-    expect(getActor(event as never)).toBe("assistant");
+    expect(getActor(event as never)).toBe("unauthenticated");
   });
 
   test("returns 'unauthenticated' when cookie token is wrong", () => {
@@ -222,40 +238,48 @@ describe("getActor", () => {
   });
 });
 
-describe("identifyCallerByToken / requireAuth", () => {
+describe("identifyCallerByToken / requireAuth (cookie-only after Phase 2)", () => {
   beforeEach(() => {
     resetState("test-admin-token-12345");
   });
 
-  test("identifyCallerByToken returns admin for admin token via cookie", () => {
+  test("identifyCallerByToken returns 'admin' for admin token via cookie", () => {
     const event = makeEvent({ cookie: "op_session=test-admin-token-12345" });
     expect(identifyCallerByToken(event as never)).toBe("admin");
   });
 
-  test("identifyCallerByToken returns admin for admin token via header (fallback path)", () => {
+  test("identifyCallerByToken rejects admin token presented via x-admin-token header", () => {
     const event = makeEvent({ "x-admin-token": "test-admin-token-12345" });
-    expect(identifyCallerByToken(event as never)).toBe("admin");
+    expect(identifyCallerByToken(event as never)).toBeNull();
   });
 
-  test("identifyCallerByToken returns assistant for assistant token via cookie", () => {
+  test("identifyCallerByToken no longer recognises the assistant token via cookie", () => {
     const state = resetState("test-admin-token-12345");
     const event = makeEvent({ cookie: `op_session=${state.assistantToken}` });
-    expect(identifyCallerByToken(event as never)).toBe("assistant");
+    expect(identifyCallerByToken(event as never)).toBeNull();
   });
 
-  test("requireAuth passes for assistant token via cookie", () => {
+  test("requireAuth rejects assistant token via cookie (assistant branch removed)", async () => {
     const state = resetState("test-admin-token-12345");
     const event = makeEvent({ cookie: `op_session=${state.assistantToken}` });
-    expect(requireAuth(event as never, "req-assistant")).toBeNull();
+    const result = requireAuth(event as never, "req-assistant");
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe(401);
   });
 
-  test("requireAuth passes for assistant token via header (fallback path)", () => {
-    const state = resetState("test-admin-token-12345");
-    const event = makeEvent({ "x-admin-token": state.assistantToken });
-    expect(requireAuth(event as never, "req-assistant-header")).toBeNull();
+  test("requireAuth rejects admin token presented via x-admin-token header", async () => {
+    const event = makeEvent({ "x-admin-token": "test-admin-token-12345" });
+    const result = requireAuth(event as never, "req-header");
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe(401);
   });
 
-  test("requireAuth rejects unknown token", async () => {
+  test("requireAuth passes for admin token via cookie", () => {
+    const event = makeEvent({ cookie: "op_session=test-admin-token-12345" });
+    expect(requireAuth(event as never, "req-admin")).toBeNull();
+  });
+
+  test("requireAuth rejects unknown cookie value", async () => {
     const event = makeEvent({ cookie: "op_session=nope" });
     const result = requireAuth(event as never, "req-bad");
     expect(result).not.toBeNull();

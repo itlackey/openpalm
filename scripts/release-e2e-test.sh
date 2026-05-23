@@ -16,7 +16,7 @@
 # no interactive prompts, no browser opens.
 #
 # Required environment variables:
-#   ADMIN_TOKEN         Admin token to set during setup (default: test-admin-token)
+#   OP_UI_LOGIN_PASSWORD         Admin token to set during setup (default: test-admin-token)
 #
 # Provider configuration (at least one required):
 #   OPENAI_API_KEY      OpenAI API key (if using OpenAI)
@@ -88,7 +88,7 @@ step() {
 
 # ── Defaults ──────────────────────────────────────────────────────────
 
-ADMIN_TOKEN="${ADMIN_TOKEN:-test-admin-token}"
+OP_UI_LOGIN_PASSWORD="${OP_UI_LOGIN_PASSWORD:-test-admin-token}"
 OLLAMA_URL="${OLLAMA_URL:-http://host.docker.internal:11434}"
 SYSTEM_MODEL="${SYSTEM_MODEL:-qwen2.5-coder:3b}"
 EMBED_MODEL="${EMBED_MODEL:-nomic-embed-text:latest}"
@@ -350,7 +350,7 @@ if [ "$NEED_SETUP" = "true" ]; then
     ollama)
       SETUP_PAYLOAD=$(cat <<PAYLOAD
 {
-  "adminToken": "$ADMIN_TOKEN",
+  "adminToken": "$OP_UI_LOGIN_PASSWORD",
   "connections": [
     {
       "id": "ollama-local",
@@ -383,7 +383,7 @@ PAYLOAD
       fi
       SETUP_PAYLOAD=$(cat <<PAYLOAD
 {
-  "adminToken": "$ADMIN_TOKEN",
+  "adminToken": "$OP_UI_LOGIN_PASSWORD",
   "connections": [
     {
       "id": "openai",
@@ -415,10 +415,10 @@ PAYLOAD
   esac
 
   # Determine auth token for the setup POST
-  AUTH_TOKEN="${SETUP_TOKEN:-$ADMIN_TOKEN}"
+  AUTH_TOKEN="${SETUP_TOKEN:-$OP_UI_LOGIN_PASSWORD}"
 
   SETUP_RESULT=$(curl -sf -X POST "$ADMIN_URL/admin/setup" \
-    -H "x-admin-token: $AUTH_TOKEN" \
+    -b "op_session=$AUTH_TOKEN" \
     -H "content-type: application/json" \
     -d "$SETUP_PAYLOAD" 2>&1 || echo '{"ok": false, "error": "curl failed"}')
 
@@ -431,7 +431,7 @@ PAYLOAD
     # Wait and re-check the status.
     sleep 10
     RETRY_RESPONSE=$(curl -sf "$ADMIN_URL/admin/setup" \
-      -H "x-admin-token: $ADMIN_TOKEN" 2>/dev/null || echo '{}')
+      -b "op_session=$OP_UI_LOGIN_PASSWORD" 2>/dev/null || echo '{}')
     RETRY_COMPLETE=$(json_get "$RETRY_RESPONSE" "setupComplete")
 
     if [ "$RETRY_COMPLETE" = "True" ] || [ "$RETRY_COMPLETE" = "true" ]; then
@@ -451,7 +451,7 @@ PAYLOAD
   DEPLOY_DONE=false
   while [ $deploy_elapsed -lt "$SERVICE_TIMEOUT" ]; do
     DEPLOY_STATUS=$(curl -sf "$ADMIN_URL/admin/setup/deploy-status" \
-      -H "x-admin-token: $ADMIN_TOKEN" 2>/dev/null || echo '{}')
+      -b "op_session=$OP_UI_LOGIN_PASSWORD" 2>/dev/null || echo '{}')
     DEPLOY_ACTIVE=$(json_get "$DEPLOY_STATUS" "active")
 
     if [ "$DEPLOY_ACTIVE" = "False" ] || [ "$DEPLOY_ACTIVE" = "false" ]; then
@@ -522,7 +522,7 @@ done
 step "Verify setup is marked complete"
 
 FINAL_STATUS=$(curl -sf "$ADMIN_URL/admin/setup" \
-  -H "x-admin-token: $ADMIN_TOKEN" 2>/dev/null || echo '{}')
+  -b "op_session=$OP_UI_LOGIN_PASSWORD" 2>/dev/null || echo '{}')
 FINAL_COMPLETE=$(json_get "$FINAL_STATUS" "setupComplete")
 
 if [ "$FINAL_COMPLETE" = "True" ] || [ "$FINAL_COMPLETE" = "true" ]; then
@@ -561,7 +561,7 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
   }
 
   # Admin token lives in config/stack/stack.env as OP_UI_TOKEN.
-  check_stack_env_val "OP_UI_TOKEN" "$ADMIN_TOKEN"
+  check_stack_env_val "OP_UI_TOKEN" "$OP_UI_LOGIN_PASSWORD"
   # LLM and embedding configuration live in config/akm/config.json, NOT stack.env.
   if [ -f "$OPENPALM_HOME/config/akm/config.json" ]; then
     pass "config/akm/config.json exists"
@@ -578,7 +578,7 @@ step "Verify admin API authentication"
 
 # Authenticated request should succeed
 AUTH_RESPONSE=$(curl -sf "$ADMIN_URL/admin/setup" \
-  -H "x-admin-token: $ADMIN_TOKEN" 2>/dev/null)
+  -b "op_session=$OP_UI_LOGIN_PASSWORD" 2>/dev/null)
 if [ -n "$AUTH_RESPONSE" ]; then
   pass "Authenticated admin API request succeeds"
 else
@@ -615,7 +615,7 @@ check_container_env() {
   fi
 }
 
-check_container_env "openpalm-assistant-1" "OP_UI_TOKEN" "equals" "$ADMIN_TOKEN"
+check_container_env "openpalm-assistant-1" "OP_UI_TOKEN" "equals" "$OP_UI_LOGIN_PASSWORD"
 check_container_env "openpalm-assistant-1" "OPENAI_BASE_URL" "endswith" "/v1"
 
 # ── Step 12: Test chat channel (if installed) ─────────────────────────

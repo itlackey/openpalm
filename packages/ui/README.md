@@ -49,13 +49,19 @@ bun run ui:check
 
 ## API auth
 
-Protected endpoints require `x-admin-token`.
-In a normal install the token source of truth is `~/.openpalm/config/stack/stack.env` as `OP_UI_TOKEN`.
+Protected endpoints require an `op_session` cookie. The browser obtains the
+cookie by POSTing the operator password to `/admin/auth/login`. The legacy
+`x-admin-token` / `Authorization: Bearer` header fallbacks were removed in
+Phase 2 of `docs/technical/auth-and-proxy-refactor-plan.md`.
+
+In a normal install the source of truth for the password is
+`~/.openpalm/config/stack/stack.env` as `OP_UI_TOKEN` (Phase 4 collapses this
+into the operator-facing `OP_UI_LOGIN_PASSWORD`).
 
 ## Key environment variables
 
 | Variable | Purpose |
 |---|---|
 | `OP_HOME` | OpenPalm root mounted into the container, usually `~/.openpalm` |
-| `ADMIN_TOKEN` | Runtime admin API token (compose-mapped from `OP_UI_TOKEN` in stack.env) |
+| `OP_UI_LOGIN_PASSWORD` | Operator-facing admin password (renamed from `ADMIN_TOKEN`); fed at runtime from `OP_UI_TOKEN` in stack.env |
 | `DOCKER_HOST` | Docker Socket Proxy URL inside the addon network |

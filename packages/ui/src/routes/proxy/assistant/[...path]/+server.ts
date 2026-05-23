@@ -1,7 +1,9 @@
 /**
  * Proxy route: forward /proxy/assistant/[...path] → assistant OpenCode server.
  *
- * Auth: requires the operator's admin session (cookie or x-admin-token).
+ * Auth: requires the operator's `op_session` cookie (cookie-only since
+ * Phase 2 of the auth/proxy refactor — the `x-admin-token` header fallback
+ * was removed).
  * Forwards the full request body and method unchanged.
  * The target URL and per-endpoint Basic-auth password are resolved per-request
  * from the active endpoint store, so switching endpoints in the UI takes

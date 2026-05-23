@@ -6,17 +6,22 @@
  * - GET /admin/providers: Connections tab availability with running assistant
  *
  * Run with:
- *   RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run ui:test:e2e
+ *   RUN_DOCKER_STACK_TESTS=1 OP_UI_LOGIN_PASSWORD=dev-admin-token bun run ui:test:e2e
  */
 
 import { expect, test } from '@playwright/test';
 
 const ADMIN_URL = process.env.ADMIN_URL ?? 'http://127.0.0.1:9100';
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? '';
+const OP_UI_LOGIN_PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? '';
 
+// Phase 2 (auth/proxy refactor): x-admin-token header fallback removed.
+// E2E tests authenticate via the op_session cookie. The cookie value is the
+// admin secret (same value the operator types into the wizard); the host UI
+// server treats a request bearing the correct cookie as an authenticated
+// admin session.
 function headers(): Record<string, string> {
   return {
-    'x-admin-token': ADMIN_TOKEN,
+    cookie: `op_session=${OP_UI_LOGIN_PASSWORD}`,
     'x-requested-by': 'e2e-test',
     'x-request-id': crypto.randomUUID(),
     'content-type': 'application/json',

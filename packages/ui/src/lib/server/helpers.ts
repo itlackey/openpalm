@@ -74,14 +74,21 @@ export function requireNonEmptyAdminToken(state: { adminToken: string }, request
   return null;
 }
 
-/** Extract raw token from cookie (browser) or x-admin-token header (assistant/legacy). */
+/**
+ * Extract raw session token from the `op_session` cookie.
+ *
+ * Phase 2 of the auth/proxy refactor (docs/technical/auth-and-proxy-refactor-plan.md)
+ * removed the legacy `x-admin-token` / `Authorization: Bearer` header fallbacks.
+ * The cookie is HttpOnly + SameSite=Strict and is the ONLY credential the browser
+ * holds; XSS cannot read it and out-of-process callers must obtain a session via
+ * `POST /admin/auth/login` (or `/session`) and present the cookie on subsequent
+ * requests.
+ */
 function extractToken(event: RequestEvent): string {
-  // Cookie takes precedence (browser UI after auth migration lands)
   const cookieHeader = event.request.headers.get("cookie") ?? "";
   const match = cookieHeader.match(/(?:^|;\s*)op_session=([^;]+)/);
   if (match) return match[1];
-  // Fallback: x-admin-token header (assistant, legacy — dropped in Phase 3)
-  return event.request.headers.get("x-admin-token") ?? "";
+  return "";
 }
 
 /** Check admin token — returns error Response or null if OK */
@@ -102,20 +109,35 @@ export function requireAdmin(event: RequestEvent, requestId: string): Response |
   return null;
 }
 
-/** Identify caller by presented token. */
-export function identifyCallerByToken(event: RequestEvent): "admin" | "assistant" | null {
+/**
+ * Identify caller by the presented `op_session` cookie.
+ *
+ * Phase 2: the assistant-token branch was dropped along with the
+ * `x-admin-token` header fallback. The only credential we can resolve from a
+ * request is the admin cookie. Phase 4 will simplify this further (and the
+ * `assistantToken` field on `ControlPlaneState` is removed there too); for now
+ * we keep the function so callers compile unchanged.
+ */
+export function identifyCallerByToken(event: RequestEvent): "admin" | null {
   const state = getState();
   const token = extractToken(event);
   if (state.adminToken && safeTokenCompare(token, state.adminToken)) return "admin";
-  if (state.assistantToken && safeTokenCompare(token, state.assistantToken)) return "assistant";
   return null;
 }
 
-/** Check for either admin or assistant token — returns error Response or null if OK. */
+/**
+ * Check for a valid admin session — returns error Response or null if OK.
+ *
+ * Phase 2: this used to accept admin OR assistant token. The assistant-token
+ * branch has been removed (no remaining consumers after Phase 1; full deletion
+ * of `state.assistantToken` happens in Phase 4). The signature is preserved so
+ * existing route handlers keep compiling; semantically `requireAuth` is now
+ * equivalent to `requireAdmin` and may be collapsed in a future phase.
+ */
 export function requireAuth(event: RequestEvent, requestId: string): Response | null {
   const state = getState();
-  if (!state.adminToken && !state.assistantToken) {
-    return errorResponse(503, 'admin_not_configured', 'Authentication tokens have not been set. Complete setup first.', {}, requestId);
+  if (!state.adminToken) {
+    return errorResponse(503, 'admin_not_configured', 'Admin token has not been set. Complete setup first.', {}, requestId);
   }
 
   if (identifyCallerByToken(event)) {
@@ -125,7 +147,7 @@ export function requireAuth(event: RequestEvent, requestId: string): Response | 
   return errorResponse(
     401,
     "unauthorized",
-    "Missing or invalid x-admin-token (admin or assistant token accepted)",
+    "Missing or invalid session cookie",
     {},
     requestId
   );

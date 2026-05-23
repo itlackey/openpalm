@@ -147,7 +147,7 @@ Key env:
 | `PORT` | `8080` | HTTP listen port |
 | `OP_ASSISTANT_URL` | `http://assistant:4096` | Assistant forward target |
 | `OPENCODE_TIMEOUT_MS` | `0` | Guardian-side timeout override |
-| `ADMIN_TOKEN` | `${OP_UI_TOKEN:-}` | Admin token forwarded from stack env |
+| `OP_UI_LOGIN_PASSWORD` | `${OP_UI_TOKEN:-}` | Operator admin password forwarded from stack env (renamed from `ADMIN_TOKEN` in Phase 2 of the auth/proxy refactor; the `op_session` cookie value is compared against this) |
 | `GUARDIAN_AUDIT_PATH` | `/app/audit/guardian-audit.log` | Audit log path |
 | `GUARDIAN_SECRETS_PATH` | `/app/secrets/guardian.env` | Path to mounted guardian secrets for hot-reload |
 | `CHANNEL_<NAME>_SECRET` | `config/stack/guardian.env` (via env_file) | Channel HMAC verification secrets |
@@ -193,7 +193,7 @@ Key env (host process, not container):
 |---|---|---|
 | `PORT` | `OP_HOST_UI_PORT` or `3880` | Admin HTTP listen port |
 | `OP_HOME` | resolved from host env | OpenPalm home directory |
-| `ADMIN_TOKEN` | `$OP_HOME/state/admin/token` | Admin API auth token |
+| `OP_UI_LOGIN_PASSWORD` | `$OP_HOME/state/admin/token` | Operator admin password (renamed from `ADMIN_TOKEN` in Phase 2 of the auth/proxy refactor) |
 
 ---
 

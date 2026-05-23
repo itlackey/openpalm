@@ -12,7 +12,7 @@
  * - Merge safety (existing fields survive a partial PATCH)
  *
  * Run with:
- *   RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run ui:test:e2e
+ *   RUN_DOCKER_STACK_TESTS=1 OP_UI_LOGIN_PASSWORD=dev-admin-token bun run ui:test:e2e
  */
 
 import { expect, test } from "@playwright/test";
@@ -27,9 +27,11 @@ const ADMIN_URL = process.env.ADMIN_URL ?? "http://127.0.0.1:9100";
 const OP_HOME = process.env.OP_HOME ?? resolve(REPO_ROOT, ".dev");
 const AKM_CONFIG_PATH = resolve(OP_HOME, "config/akm/config.json");
 
+// Phase 2: x-admin-token header fallback removed; auth flows via op_session cookie.
 function adminHeaders(): Record<string, string> {
+  const secret = process.env.OP_UI_LOGIN_PASSWORD ?? "";
   return {
-    "x-admin-token": process.env.ADMIN_TOKEN ?? "",
+    cookie: `op_session=${secret}`,
     "x-requested-by": "test",
     "x-request-id": crypto.randomUUID(),
     "content-type": "application/json",

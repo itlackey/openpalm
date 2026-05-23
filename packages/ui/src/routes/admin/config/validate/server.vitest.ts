@@ -52,8 +52,9 @@ function makeGetEvent(token = "admin-token"): Parameters<typeof GET>[0] {
   const headers: Record<string, string> = {
     "x-request-id": "req-validate-1"
   };
+  // Phase 2: x-admin-token header fallback removed; auth flows via op_session cookie.
   if (token) {
-    headers["x-admin-token"] = token;
+    headers["cookie"] = `op_session=${token}`;
   }
   return {
     request: new Request("http://localhost/admin/config/validate", {

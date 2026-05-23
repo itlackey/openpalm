@@ -6,7 +6,12 @@ This document describes the Admin API routes currently implemented in
 ## Conventions
 
 - Base URL: `http://localhost:3880`
-- Protected endpoints require header: `x-admin-token: <ADMIN_TOKEN>`
+- Protected endpoints require the `op_session` cookie (HttpOnly, SameSite=Strict).
+  The browser obtains the cookie via `POST /admin/auth/login` (password in body).
+  The legacy `x-admin-token` / `Authorization: Bearer` header fallbacks were
+  removed in Phase 2 of `docs/technical/auth-and-proxy-refactor-plan.md`. The
+  operator-facing env var seeding the password was renamed from `ADMIN_TOKEN`
+  to `OP_UI_LOGIN_PASSWORD`.
 - Optional caller attribution: `x-requested-by: assistant|cli|ui|system|test`
 - Optional correlation: `x-request-id: <uuid>`
 
@@ -56,8 +61,10 @@ Returns guardian runtime statistics: uptime, rate limiter state, nonce cache
 size, active session counts, and per-channel/per-status request counters.
 This endpoint is served directly by the guardian process (not proxied through admin).
 
-Auth: Protected by admin token (`x-admin-token`) when `OP_UI_TOKEN` is set.
-When no admin token is configured (dev/LAN), the endpoint is open.
+Auth: Protected by the `op_session` cookie when an admin password is
+configured. When no admin password is configured (dev/LAN), the endpoint is
+open. (Guardian's own port still serves this — it is not proxied through
+the SvelteKit admin process.)
 
 Response:
 
@@ -551,7 +558,7 @@ every required token is non-empty — no varlock binary, no schema file. Always
 returns 200; validation failures are non-fatal and are logged to the audit
 trail.
 
-**Authentication:** Required (`x-admin-token`)
+**Authentication:** Required (`op_session` cookie)
 
 **Response:**
 
@@ -571,7 +578,7 @@ When validation finds issues:
 
 **Error responses:**
 
-- `401 unauthorized` — Missing or invalid `x-admin-token`.
+- `401 unauthorized` — Missing or invalid `op_session` cookie.
 
 **Notes:**
 

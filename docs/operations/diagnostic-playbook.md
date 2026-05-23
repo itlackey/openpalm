@@ -63,7 +63,7 @@ UI still does not render it correctly.
 Useful check from the host:
 
 ```bash
-curl -sS -H "x-admin-token: $ADMIN_TOKEN" http://localhost:3880/admin/opencode/providers | jq
+curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" http://localhost:3880/admin/opencode/providers | jq
 ```
 
 If that payload is correct and the browser still renders incorrectly, stay in the
@@ -86,9 +86,9 @@ Useful commands:
 
 ```bash
 curl -sS http://localhost:3880/health | jq
-curl -sS -H "x-admin-token: $ADMIN_TOKEN" http://localhost:3880/admin/opencode/status | jq
-curl -sS -H "x-admin-token: $ADMIN_TOKEN" http://localhost:3880/admin/opencode/providers | jq
-curl -sS -H "x-admin-token: $ADMIN_TOKEN" "http://localhost:3880/admin/logs?service=admin&tail=200"
+curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" http://localhost:3880/admin/opencode/status | jq
+curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" http://localhost:3880/admin/opencode/providers | jq
+curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" "http://localhost:3880/admin/logs?service=admin&tail=200"
 ```
 
 Key lessons from the provider-display path:
@@ -114,7 +114,7 @@ Useful checks:
 ```bash
 curl -sS http://localhost:4096/provider | jq
 curl -sS http://localhost:4096/provider/auth | jq
-curl -sS -H "x-admin-token: $ADMIN_TOKEN" http://localhost:3880/admin/opencode/status | jq
+curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" http://localhost:3880/admin/opencode/status | jq
 ```
 
 If the admin addon is installed, also verify which OpenCode runtime the admin is
@@ -160,10 +160,10 @@ Useful admin endpoints:
 Useful checks from the host:
 
 ```bash
-curl -sS -H "x-admin-token: $ADMIN_TOKEN" http://localhost:3880/admin/containers/list | jq
-curl -sS -H "x-admin-token: $ADMIN_TOKEN" "http://localhost:3880/admin/containers/events?since=1h" | jq
-curl -sS -H "x-admin-token: $ADMIN_TOKEN" http://localhost:3880/admin/network/check | jq
-curl -sS -H "x-admin-token: $ADMIN_TOKEN" http://localhost:3880/admin/config/validate | jq
+curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" http://localhost:3880/admin/containers/list | jq
+curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" "http://localhost:3880/admin/containers/events?since=1h" | jq
+curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" http://localhost:3880/admin/network/check | jq
+curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" http://localhost:3880/admin/config/validate | jq
 ```
 
 Especially check:
