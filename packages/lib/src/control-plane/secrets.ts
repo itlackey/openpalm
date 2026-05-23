@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSyn
 import { randomBytes } from "node:crypto";
 import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
+import { migrateAuth0110 } from './migrate-0110.js';
 import type { ControlPlaneState } from "./types.js";
 import { resolveConfigDir } from "./home.js";
 
@@ -104,6 +105,10 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
 
 export function ensureSecrets(state: ControlPlaneState): void {
   enforceVaultDirMode(state.stackDir);
+
+  // Migrate pre-0.11.0 installs (OP_UI_TOKEN/OP_ASSISTANT_TOKEN → OP_UI_LOGIN_PASSWORD)
+  // before any code path that reads OP_UI_LOGIN_PASSWORD sees an empty value.
+  migrateAuth0110(state);
 
   ensureSystemSecrets(state);
   ensureGuardianEnv(state.stackDir);
