@@ -380,7 +380,7 @@ migration:
 2. If `OP_ASSISTANT_TOKEN` is set → remove it from `stack.env` (it's now unused).
 3. If `state/admin/endpoints.json` exists → copy to `config/endpoints.json`,
    unlink original.
-4. Log a one-line summary to `state/logs/migration-0.12.0.log`.
+4. Log a one-line summary to `state/logs/migration-0.11.0.log`.
 
 Old installs: no UI access without re-login (the cookie semantics changed). User
 re-runs through wizard or hits `/login`. We accept this UX hit.
@@ -460,7 +460,7 @@ phase until the previous one is green on main.**
   guardian env block in `.openpalm/config/stack/core.compose.yml:120-127`. Today
   guardian reads these in `core/guardian/src/forward.ts:25-30` but the compose
   block doesn't set them. (Report 2 finding.)
-- Add migration log path constant `state/logs/migration-0.12.0.log`.
+- Add migration log path constant `state/logs/migration-0.11.0.log`.
 - Add `config/endpoints.json` to the file-permissions test suite (mode 0600).
 - Add a CSP middleware in `packages/ui/src/hooks.server.ts` setting
   `script-src 'self'; object-src 'none'; frame-ancestors 'none'`. Verify the
@@ -585,7 +585,7 @@ LOC are approximate (from Report 2 plus my read-through).
 | `packages/ui/src/lib/server/endpoints.ts` (local-OpenCode synthesis) | ~40 | Read `state/local-opencode.runtime.json`, prepend synthetic entry to endpoint list. |
 | `packages/admin-tools-plugin/src/index.ts` | ~180 | Admin tool implementations. No audit wrapping (OpenCode logs natively). |
 | `packages/admin-tools-plugin/src/opencode-plugin.ts` | ~60 | OpenCode plugin manifest. |
-| Migration script `packages/lib/src/control-plane/migrate-0.12.0.ts` | ~80 | One-shot token→password + state/→config/ migration. |
+| Migration script `packages/lib/src/control-plane/migrate-0.11.0.ts` | ~80 | One-shot token→password + state/→config/ migration. |
 | Endpoint URL validator (HTTPS enforce for non-loopback) | ~30 | In existing `endpoints.ts`. |
 | Tests | ~300 | streaming broker test, local-opencode lifecycle, migration, cookie-only `requireAdmin`. |
 | **Total** | **~895** | |
@@ -695,7 +695,7 @@ applies it when they accept the plan.)
 
 | Path | Purpose |
 |---|---|
-| `docs/technical/auth-and-proxy-refactor-plan.md` | **Auth/proxy refactor plan (v0.12.0, v2)** — keeps the assistant proxy as a same-origin credential broker, deletes the dead admin proxy + `x-admin-token` fallback, fixes the proxy's response-buffering bug, adds Electron-spawned ephemeral local OpenCode behind the same broker. |
+| `docs/technical/auth-and-proxy-refactor-plan.md` | **Auth/proxy refactor plan (v0.11.0, v2)** — keeps the assistant proxy as a same-origin credential broker, deletes the dead admin proxy + `x-admin-token` fallback, fixes the proxy's response-buffering bug, adds Electron-spawned ephemeral local OpenCode behind the same broker. |
 | `packages/ui/src/routes/proxy/assistant/[...path]/+server.ts` (after Phase 1) | Streaming credential broker — only credential boundary in the system. |
 | `apps/electron/src/local-opencode.ts` (after Phase 3) | Spawn/lifecycle of ephemeral host OpenCode. |
 | `packages/admin-tools-plugin/` (after Phase 3) | OpenCode plugin exposing admin tools (compose, secrets, endpoints). |
