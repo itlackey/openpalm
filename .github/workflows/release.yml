@@ -56,6 +56,10 @@ jobs:
           # recommends.
           git remote set-url origin "https://x-access-token:${GH_TOKEN_FOR_PUSH}@github.com/${GITHUB_REPOSITORY}.git"
 
+      - name: Setup Bun
+        if: github.event_name == 'workflow_dispatch'
+        uses: oven-sh/setup-bun@v2
+
       - name: Resolve release tag
         id: resolve
         env:
@@ -133,12 +137,17 @@ jobs:
             sed -i "s/^\\\$ScriptVersion = '.*'/\$ScriptVersion = '${VERSION}'/" scripts/setup.ps1
             echo "Stamped SCRIPT_VERSION=${VERSION} into setup scripts"
 
-            if git diff --quiet -- ${PLATFORM_MANIFESTS} scripts/setup.sh scripts/setup.ps1; then
+            # Regenerate bun.lock so workspace package versions in the
+            # lockfile match the bumped manifests. Without this, downstream
+            # jobs running `bun install --frozen-lockfile` fail to resolve.
+            bun install
+
+            if git diff --quiet -- ${PLATFORM_MANIFESTS} scripts/setup.sh scripts/setup.ps1 bun.lock; then
               echo "Release files already match ${VERSION}, skipping commit."
               exit 0
             fi
 
-            git add ${PLATFORM_MANIFESTS} scripts/setup.sh scripts/setup.ps1
+            git add ${PLATFORM_MANIFESTS} scripts/setup.sh scripts/setup.ps1 bun.lock
             git commit -m "chore: bump platform version to ${VERSION}"
             git push origin "${BRANCH}"
             exit 0

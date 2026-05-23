@@ -10,7 +10,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
+    "@openpalm/channels-sdk": "workspace:*",
     "dotenv": "^17.4.2"
   }
 }
