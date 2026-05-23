@@ -26,4 +26,13 @@ contextBridge.exposeInMainWorld('openpalm', {
       updateAvailable: !!latest,
     };
   },
+
+  /**
+   * Show a desktop notification from within the renderer.
+   * Electron apps do not require OS permission for Notification on macOS/Windows.
+   * Usage: window.openpalm?.notify('Setup complete', 'Your assistant is ready.')
+   */
+  notify(title: string, body: string): void {
+    new Notification(title, { body });
+  },
 });

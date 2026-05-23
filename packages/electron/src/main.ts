@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, shell } from 'electron';
+import { app, BrowserWindow, Tray, Menu, shell, dialog } from 'electron';
 import { join, dirname } from 'node:path';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -24,12 +24,27 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const UI_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;
-const READY_TIMEOUT_MS = 20_000;
+const READY_TIMEOUT_MS = 60_000;
 
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let uiProcess: ChildProcess | null = null;
+
+// ── Stderr ring buffer (200 lines) ────────────────────────────────────────────
+const STDERR_RING_SIZE = 200;
+const stderrRing: string[] = [];
+
+/** Append a line to the ring buffer, evicting the oldest entry when full. */
+function appendStderrLine(line: string): void {
+  if (stderrRing.length >= STDERR_RING_SIZE) stderrRing.shift();
+  stderrRing.push(line);
+}
+
+/** Returns the most-recent `maxLines` lines of captured UI server stderr. */
+export function getRecentStderr(maxLines = 40): string {
+  return stderrRing.slice(-maxLines).join('\n');
+}
 
 // ── Pure helpers (exported for testing) ──────────────────────────────────────
 
@@ -119,7 +134,23 @@ async function startUIServer(): Promise<void> {
   uiProcess = spawn('node', [join(uiBuildDir, 'index.js')], {
     cwd: uiBuildDir,
     env: buildUIServerEnv(homeDir, UI_PORT, appUpdate),
-    stdio: 'inherit',
+    // stdout inherits so terminal users see it; stderr is piped for diagnostics
+    stdio: ['ignore', 'inherit', 'pipe'],
+  });
+
+  // Tail UI server stderr into the ring buffer and re-emit to process.stderr
+  // so terminal users still see the output.
+  uiProcess.stderr?.on('data', (chunk: Buffer) => {
+    const text = chunk.toString();
+    process.stderr.write(text);
+    // Split on newlines; keep partial last line if chunk doesn't end with \n
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      // Skip the trailing empty string produced by a trailing newline
+      if (i === lines.length - 1 && line === '') continue;
+      appendStderrLine(line);
+    }
   });
 
   uiProcess.on('error', (err) => {
@@ -135,7 +166,19 @@ async function startUIServer(): Promise<void> {
 
   const ready = await waitForReady(UI_PORT);
   if (!ready) {
+    const recentLogs = getRecentStderr(40);
+    const detail = [
+      `The UI server on port ${UI_PORT} did not respond within ${READY_TIMEOUT_MS / 1000} seconds.`,
+      '',
+      recentLogs
+        ? `Last output from UI server:\n${recentLogs}`
+        : '(No UI server output was captured.)',
+      '',
+      'Check the terminal where you launched OpenPalm for full logs.',
+    ].join('\n');
     console.error('UI server did not become ready in time');
+    closeSplashWindow();
+    dialog.showErrorBox('OpenPalm failed to start', detail);
     app.quit();
   }
 }
@@ -171,7 +214,11 @@ function createSplashWindow(): void {
   </style></head><body>
     <div class="logo">OpenPalm</div>
     <div class="spinner"></div>
-    <div class="hint">Starting…</div>
+    <div class="hint" id="hint">Starting…</div>
+    <script>
+      setTimeout(function(){var h=document.getElementById('hint');if(h)h.textContent='Still starting (first launch may take a minute)…';},15000);
+      setTimeout(function(){var h=document.getElementById('hint');if(h)h.textContent='Almost there…';},40000);
+    </script>
   </body></html>`;
   void splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
   splashWindow.on('closed', () => { splashWindow = null; });

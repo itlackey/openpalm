@@ -65,6 +65,7 @@ vi.mock('electron', () => ({
     { getAllWindows: vi.fn(() => []) },
   ),
   contextBridge: { exposeInMainWorld: vi.fn() },
+  dialog: { showErrorBox: vi.fn() },
   Tray: function MockTray() {
     return {
       setToolTip: vi.fn(),

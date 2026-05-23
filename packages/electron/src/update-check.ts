@@ -17,6 +17,7 @@ const REPO_OWNER = "itlackey";
 const REPO_NAME = "openpalm";
 const TIMEOUT_MS = 5000;
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const STALE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — stale suppression threshold
 
 let cached: UpdateInfo | null = null;
 
@@ -53,6 +54,13 @@ export async function checkForElectronUpdate(currentVersion: string): Promise<Up
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!res.ok) {
+      // If the cached result is older than 7 days, suppress it — don't show
+      // a stale "update available" claim when we cannot verify it anymore.
+      if (cached && Date.now() - cached.fetchedAt >= STALE_CACHE_TTL_MS) {
+        console.debug('[update-check] Cached result is older than 7 days and fresh check failed (HTTP ' + res.status + '); suppressing stale update claim');
+        cached = { currentVersion, latestVersion: null, latestUrl: null, updateAvailable: false, error: `HTTP ${res.status} (stale cache suppressed)`, fetchedAt: Date.now() };
+        return cached;
+      }
       cached = {
         currentVersion,
         latestVersion: null,
@@ -76,12 +84,20 @@ export async function checkForElectronUpdate(currentVersion: string): Promise<Up
     };
     return cached;
   } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    // If the cached result is older than 7 days, suppress it — don't show
+    // a stale "update available" claim when we cannot verify it anymore.
+    if (cached && Date.now() - cached.fetchedAt >= STALE_CACHE_TTL_MS) {
+      console.debug('[update-check] Cached result is older than 7 days and fresh check failed (' + errMsg + '); suppressing stale update claim');
+      cached = { currentVersion, latestVersion: null, latestUrl: null, updateAvailable: false, error: `${errMsg} (stale cache suppressed)`, fetchedAt: Date.now() };
+      return cached;
+    }
     cached = {
       currentVersion,
       latestVersion: null,
       latestUrl: null,
       updateAvailable: false,
-      error: err instanceof Error ? err.message : String(err),
+      error: errMsg,
       fetchedAt: Date.now(),
     };
     return cached;

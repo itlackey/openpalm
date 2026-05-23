@@ -161,17 +161,25 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run != 'true'
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
-          EVENT_NAME: ${{ github.event_name }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          if [ "${EVENT_NAME}" = 'workflow_dispatch' ]; then
-            BRANCH="${GITHUB_REF_NAME}"
-          else
-            BRANCH="${DEFAULT_BRANCH}"
+          BRANCH="${GITHUB_REF_NAME}"
+          git checkout "${BRANCH}"
+
+          # Idempotent for republish: fetch remote tags so we see prior pushes,
+          # then skip creation if the tag already points at HEAD. Refuse to
+          # silently move a tag that points elsewhere.
+          git fetch --tags origin
+          HEAD_SHA=$(git rev-parse HEAD)
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            EXISTING=$(git rev-list -n1 "${TAG}")
+            if [ "${EXISTING}" = "${HEAD_SHA}" ]; then
+              echo "Tag ${TAG} already at HEAD (${HEAD_SHA}) — republish, skipping tag creation."
+              exit 0
+            fi
+            echo "::error::Tag ${TAG} exists at ${EXISTING} but HEAD is ${HEAD_SHA}. Refusing to move the tag — delete it manually if you really intend to retag, or pick a new version."
+            exit 1
           fi
 
-          # Point tag at the latest commit (which includes the version bump)
-          git checkout "${BRANCH}"
           git tag -a "${TAG}" -m "Release ${TAG}"
           git push origin "${TAG}"
 
@@ -364,7 +372,9 @@ jobs:
         working-directory: packages/electron
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node ../../node_modules/electron-builder/cli.js ${{ matrix.electron_flag }} --publish always
+          RELEASE_TYPE: ${{ needs.prepare-tag.outputs.prerelease == 'true' && 'prerelease' || 'release' }}
+          PUBLISH_MODE: ${{ needs.prepare-tag.outputs.dry_run == 'true' && 'never' || 'always' }}
+        run: node ../../node_modules/electron-builder/cli.js ${{ matrix.electron_flag }} --publish ${PUBLISH_MODE} --config.publish.releaseType=${RELEASE_TYPE}
 
       - name: Upload Electron artifacts
         uses: actions/upload-artifact@v4

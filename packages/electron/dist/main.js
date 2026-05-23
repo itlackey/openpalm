@@ -32,7 +32,7 @@ var __toESM = (mod, isNodeMode, target) => {
 var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
 var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
-// ../../node_modules/yaml/dist/nodes/identity.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/nodes/identity.js
 var require_identity = __commonJS((exports) => {
   var ALIAS = Symbol.for("yaml.alias");
   var DOC = Symbol.for("yaml.document");
@@ -86,7 +86,7 @@ var require_identity = __commonJS((exports) => {
   exports.isSeq = isSeq;
 });
 
-// ../../node_modules/yaml/dist/visit.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/visit.js
 var require_visit = __commonJS((exports) => {
   var identity = require_identity();
   var BREAK = Symbol("break visit");
@@ -241,7 +241,7 @@ var require_visit = __commonJS((exports) => {
   exports.visitAsync = visitAsync;
 });
 
-// ../../node_modules/yaml/dist/doc/directives.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/doc/directives.js
 var require_directives = __commonJS((exports) => {
   var identity = require_identity();
   var visit = require_visit();
@@ -393,7 +393,7 @@ var require_directives = __commonJS((exports) => {
   exports.Directives = Directives;
 });
 
-// ../../node_modules/yaml/dist/doc/anchors.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/doc/anchors.js
 var require_anchors = __commonJS((exports) => {
   var identity = require_identity();
   var visit = require_visit();
@@ -455,7 +455,7 @@ var require_anchors = __commonJS((exports) => {
   exports.findNewAnchor = findNewAnchor;
 });
 
-// ../../node_modules/yaml/dist/doc/applyReviver.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/doc/applyReviver.js
 var require_applyReviver = __commonJS((exports) => {
   function applyReviver(reviver, obj, key, val) {
     if (val && typeof val === "object") {
@@ -502,7 +502,7 @@ var require_applyReviver = __commonJS((exports) => {
   exports.applyReviver = applyReviver;
 });
 
-// ../../node_modules/yaml/dist/nodes/toJS.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/nodes/toJS.js
 var require_toJS = __commonJS((exports) => {
   var identity = require_identity();
   function toJS(value, arg, ctx) {
@@ -529,7 +529,7 @@ var require_toJS = __commonJS((exports) => {
   exports.toJS = toJS;
 });
 
-// ../../node_modules/yaml/dist/nodes/Node.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/nodes/Node.js
 var require_Node = __commonJS((exports) => {
   var applyReviver = require_applyReviver();
   var identity = require_identity();
@@ -566,7 +566,7 @@ var require_Node = __commonJS((exports) => {
   exports.NodeBase = NodeBase;
 });
 
-// ../../node_modules/yaml/dist/nodes/Alias.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/nodes/Alias.js
 var require_Alias = __commonJS((exports) => {
   var anchors = require_anchors();
   var visit = require_visit();
@@ -585,6 +585,8 @@ var require_Alias = __commonJS((exports) => {
       });
     }
     resolve(doc, ctx) {
+      if (ctx?.maxAliasCount === 0)
+        throw new ReferenceError("Alias resolution is disabled");
       let nodes;
       if (ctx?.aliasResolveCache) {
         nodes = ctx.aliasResolveCache;
@@ -674,7 +676,7 @@ var require_Alias = __commonJS((exports) => {
   exports.Alias = Alias;
 });
 
-// ../../node_modules/yaml/dist/nodes/Scalar.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/nodes/Scalar.js
 var require_Scalar = __commonJS((exports) => {
   var identity = require_identity();
   var Node = require_Node();
@@ -702,7 +704,7 @@ var require_Scalar = __commonJS((exports) => {
   exports.isScalarValue = isScalarValue;
 });
 
-// ../../node_modules/yaml/dist/doc/createNode.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/doc/createNode.js
 var require_createNode = __commonJS((exports) => {
   var Alias = require_Alias();
   var identity = require_identity();
@@ -774,7 +776,7 @@ var require_createNode = __commonJS((exports) => {
   exports.createNode = createNode;
 });
 
-// ../../node_modules/yaml/dist/nodes/Collection.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/nodes/Collection.js
 var require_Collection = __commonJS((exports) => {
   var createNode = require_createNode();
   var identity = require_identity();
@@ -889,7 +891,7 @@ var require_Collection = __commonJS((exports) => {
   exports.isEmptyPath = isEmptyPath;
 });
 
-// ../../node_modules/yaml/dist/stringify/stringifyComment.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyComment.js
 var require_stringifyComment = __commonJS((exports) => {
   var stringifyComment = (str) => str.replace(/^(?!$)(?: $)?/gm, "#");
   function indentComment(comment, indent) {
@@ -906,7 +908,7 @@ var require_stringifyComment = __commonJS((exports) => {
   exports.stringifyComment = stringifyComment;
 });
 
-// ../../node_modules/yaml/dist/stringify/foldFlowLines.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/stringify/foldFlowLines.js
 var require_foldFlowLines = __commonJS((exports) => {
   var FOLD_FLOW = "flow";
   var FOLD_BLOCK = "block";
@@ -1043,7 +1045,7 @@ ${indent}${text.slice(fold + 1, end2)}`;
   exports.foldFlowLines = foldFlowLines;
 });
 
-// ../../node_modules/yaml/dist/stringify/stringifyString.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyString.js
 var require_stringifyString = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var foldFlowLines = require_foldFlowLines();
@@ -1341,7 +1343,7 @@ ${indent}`);
   exports.stringifyString = stringifyString;
 });
 
-// ../../node_modules/yaml/dist/stringify/stringify.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/stringify/stringify.js
 var require_stringify = __commonJS((exports) => {
   var anchors = require_anchors();
   var identity = require_identity();
@@ -1364,6 +1366,7 @@ var require_stringify = __commonJS((exports) => {
       nullStr: "null",
       simpleKeys: false,
       singleQuote: null,
+      trailingComma: false,
       trueStr: "true",
       verifyAliasOrder: true
     }, doc.schema.toStringOptions, options);
@@ -1461,7 +1464,7 @@ ${ctx.indent}${str}`;
   exports.stringify = stringify;
 });
 
-// ../../node_modules/yaml/dist/stringify/stringifyPair.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyPair.js
 var require_stringifyPair = __commonJS((exports) => {
   var identity = require_identity();
   var Scalar = require_Scalar();
@@ -1597,7 +1600,7 @@ ${ctx.indent}`;
   exports.stringifyPair = stringifyPair;
 });
 
-// ../../node_modules/yaml/dist/log.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/log.js
 var require_log = __commonJS((exports) => {
   var node_process = __require("process");
   function debug(logLevel, ...messages) {
@@ -1616,7 +1619,7 @@ var require_log = __commonJS((exports) => {
   exports.warn = warn;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/merge.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/merge.js
 var require_merge = __commonJS((exports) => {
   var identity = require_identity();
   var Scalar = require_Scalar();
@@ -1633,18 +1636,18 @@ var require_merge = __commonJS((exports) => {
   };
   var isMergeKey = (ctx, key) => (merge.identify(key) || identity.isScalar(key) && (!key.type || key.type === Scalar.Scalar.PLAIN) && merge.identify(key.value)) && ctx?.doc.schema.tags.some((tag) => tag.tag === merge.tag && tag.default);
   function addMergeToJSMap(ctx, map, value) {
-    value = ctx && identity.isAlias(value) ? value.resolve(ctx.doc) : value;
-    if (identity.isSeq(value))
-      for (const it of value.items)
+    const source = resolveAliasValue(ctx, value);
+    if (identity.isSeq(source))
+      for (const it of source.items)
         mergeValue(ctx, map, it);
-    else if (Array.isArray(value))
-      for (const it of value)
+    else if (Array.isArray(source))
+      for (const it of source)
         mergeValue(ctx, map, it);
     else
-      mergeValue(ctx, map, value);
+      mergeValue(ctx, map, source);
   }
   function mergeValue(ctx, map, value) {
-    const source = ctx && identity.isAlias(value) ? value.resolve(ctx.doc) : value;
+    const source = resolveAliasValue(ctx, value);
     if (!identity.isMap(source))
       throw new Error("Merge sources must be maps or map aliases");
     const srcMap = source.toJSON(null, ctx, Map);
@@ -1665,12 +1668,15 @@ var require_merge = __commonJS((exports) => {
     }
     return map;
   }
+  function resolveAliasValue(ctx, value) {
+    return ctx && identity.isAlias(value) ? value.resolve(ctx.doc, ctx) : value;
+  }
   exports.addMergeToJSMap = addMergeToJSMap;
   exports.isMergeKey = isMergeKey;
   exports.merge = merge;
 });
 
-// ../../node_modules/yaml/dist/nodes/addPairToJSMap.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/nodes/addPairToJSMap.js
 var require_addPairToJSMap = __commonJS((exports) => {
   var log = require_log();
   var merge = require_merge();
@@ -1731,7 +1737,7 @@ var require_addPairToJSMap = __commonJS((exports) => {
   exports.addPairToJSMap = addPairToJSMap;
 });
 
-// ../../node_modules/yaml/dist/nodes/Pair.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/nodes/Pair.js
 var require_Pair = __commonJS((exports) => {
   var createNode = require_createNode();
   var stringifyPair = require_stringifyPair();
@@ -1769,7 +1775,7 @@ var require_Pair = __commonJS((exports) => {
   exports.createPair = createPair;
 });
 
-// ../../node_modules/yaml/dist/stringify/stringifyCollection.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyCollection.js
 var require_stringifyCollection = __commonJS((exports) => {
   var identity = require_identity();
   var stringify = require_stringify();
@@ -1872,13 +1878,20 @@ ${indent}${line}` : `
       if (comment)
         reqNewline = true;
       let str = stringify.stringify(item, itemCtx, () => comment = null);
-      if (i < items.length - 1)
+      reqNewline || (reqNewline = lines.length > linesAtValue || str.includes(`
+`));
+      if (i < items.length - 1) {
         str += ",";
+      } else if (ctx.options.trailingComma) {
+        if (ctx.options.lineWidth > 0) {
+          reqNewline || (reqNewline = lines.reduce((sum, line) => sum + line.length + 2, 2) + (str.length + 2) > ctx.options.lineWidth);
+        }
+        if (reqNewline) {
+          str += ",";
+        }
+      }
       if (comment)
         str += stringifyComment.lineComment(str, itemIndent, commentString(comment));
-      if (!reqNewline && (lines.length > linesAtValue || str.includes(`
-`)))
-        reqNewline = true;
       lines.push(str);
       linesAtValue = lines.length;
     }
@@ -1914,7 +1927,7 @@ ${indent}${end}`;
   exports.stringifyCollection = stringifyCollection;
 });
 
-// ../../node_modules/yaml/dist/nodes/YAMLMap.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/nodes/YAMLMap.js
 var require_YAMLMap = __commonJS((exports) => {
   var stringifyCollection = require_stringifyCollection();
   var addPairToJSMap = require_addPairToJSMap();
@@ -2041,7 +2054,7 @@ var require_YAMLMap = __commonJS((exports) => {
   exports.findPair = findPair;
 });
 
-// ../../node_modules/yaml/dist/schema/common/map.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/common/map.js
 var require_map = __commonJS((exports) => {
   var identity = require_identity();
   var YAMLMap = require_YAMLMap();
@@ -2060,7 +2073,7 @@ var require_map = __commonJS((exports) => {
   exports.map = map;
 });
 
-// ../../node_modules/yaml/dist/nodes/YAMLSeq.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/nodes/YAMLSeq.js
 var require_YAMLSeq = __commonJS((exports) => {
   var createNode = require_createNode();
   var stringifyCollection = require_stringifyCollection();
@@ -2153,7 +2166,7 @@ var require_YAMLSeq = __commonJS((exports) => {
   exports.YAMLSeq = YAMLSeq;
 });
 
-// ../../node_modules/yaml/dist/schema/common/seq.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/common/seq.js
 var require_seq = __commonJS((exports) => {
   var identity = require_identity();
   var YAMLSeq = require_YAMLSeq();
@@ -2172,7 +2185,7 @@ var require_seq = __commonJS((exports) => {
   exports.seq = seq;
 });
 
-// ../../node_modules/yaml/dist/schema/common/string.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/common/string.js
 var require_string = __commonJS((exports) => {
   var stringifyString = require_stringifyString();
   var string = {
@@ -2188,7 +2201,7 @@ var require_string = __commonJS((exports) => {
   exports.string = string;
 });
 
-// ../../node_modules/yaml/dist/schema/common/null.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/common/null.js
 var require_null = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var nullTag = {
@@ -2203,7 +2216,7 @@ var require_null = __commonJS((exports) => {
   exports.nullTag = nullTag;
 });
 
-// ../../node_modules/yaml/dist/schema/core/bool.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/core/bool.js
 var require_bool = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var boolTag = {
@@ -2224,7 +2237,7 @@ var require_bool = __commonJS((exports) => {
   exports.boolTag = boolTag;
 });
 
-// ../../node_modules/yaml/dist/stringify/stringifyNumber.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyNumber.js
 var require_stringifyNumber = __commonJS((exports) => {
   function stringifyNumber({ format, minFractionDigits, tag, value }) {
     if (typeof value === "bigint")
@@ -2233,7 +2246,7 @@ var require_stringifyNumber = __commonJS((exports) => {
     if (!isFinite(num))
       return isNaN(num) ? ".nan" : num < 0 ? "-.inf" : ".inf";
     let n = Object.is(value, -0) ? "-0" : JSON.stringify(value);
-    if (!format && minFractionDigits && (!tag || tag === "tag:yaml.org,2002:float") && /^\d/.test(n)) {
+    if (!format && minFractionDigits && (!tag || tag === "tag:yaml.org,2002:float") && /^-?\d/.test(n) && !n.includes("e")) {
       let i = n.indexOf(".");
       if (i < 0) {
         i = n.length;
@@ -2248,7 +2261,7 @@ var require_stringifyNumber = __commonJS((exports) => {
   exports.stringifyNumber = stringifyNumber;
 });
 
-// ../../node_modules/yaml/dist/schema/core/float.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/core/float.js
 var require_float = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var stringifyNumber = require_stringifyNumber();
@@ -2291,7 +2304,7 @@ var require_float = __commonJS((exports) => {
   exports.floatNaN = floatNaN;
 });
 
-// ../../node_modules/yaml/dist/schema/core/int.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/core/int.js
 var require_int = __commonJS((exports) => {
   var stringifyNumber = require_stringifyNumber();
   var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
@@ -2333,7 +2346,7 @@ var require_int = __commonJS((exports) => {
   exports.intOct = intOct;
 });
 
-// ../../node_modules/yaml/dist/schema/core/schema.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/core/schema.js
 var require_schema = __commonJS((exports) => {
   var map = require_map();
   var _null = require_null();
@@ -2358,7 +2371,7 @@ var require_schema = __commonJS((exports) => {
   exports.schema = schema;
 });
 
-// ../../node_modules/yaml/dist/schema/json/schema.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/json/schema.js
 var require_schema2 = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var map = require_map();
@@ -2422,7 +2435,7 @@ var require_schema2 = __commonJS((exports) => {
   exports.schema = schema;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/binary.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/binary.js
 var require_binary = __commonJS((exports) => {
   var node_buffer = __require("buffer");
   var Scalar = require_Scalar();
@@ -2477,7 +2490,7 @@ var require_binary = __commonJS((exports) => {
   exports.binary = binary;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/pairs.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/pairs.js
 var require_pairs = __commonJS((exports) => {
   var identity = require_identity();
   var Pair = require_Pair();
@@ -2552,7 +2565,7 @@ ${cn.comment}` : item.comment;
   exports.resolvePairs = resolvePairs;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/omap.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/omap.js
 var require_omap = __commonJS((exports) => {
   var identity = require_identity();
   var toJS = require_toJS();
@@ -2624,7 +2637,7 @@ var require_omap = __commonJS((exports) => {
   exports.omap = omap;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/bool.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/bool.js
 var require_bool2 = __commonJS((exports) => {
   var Scalar = require_Scalar();
   function boolStringify({ value, source }, ctx) {
@@ -2653,7 +2666,7 @@ var require_bool2 = __commonJS((exports) => {
   exports.trueTag = trueTag;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/float.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/float.js
 var require_float2 = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var stringifyNumber = require_stringifyNumber();
@@ -2699,7 +2712,7 @@ var require_float2 = __commonJS((exports) => {
   exports.floatNaN = floatNaN;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/int.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/int.js
 var require_int2 = __commonJS((exports) => {
   var stringifyNumber = require_stringifyNumber();
   var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
@@ -2775,7 +2788,7 @@ var require_int2 = __commonJS((exports) => {
   exports.intOct = intOct;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/set.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/set.js
 var require_set = __commonJS((exports) => {
   var identity = require_identity();
   var Pair = require_Pair();
@@ -2858,7 +2871,7 @@ var require_set = __commonJS((exports) => {
   exports.set = set;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/timestamp.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/timestamp.js
 var require_timestamp = __commonJS((exports) => {
   var stringifyNumber = require_stringifyNumber();
   function parseSexagesimal(str, asBigInt) {
@@ -2940,7 +2953,7 @@ var require_timestamp = __commonJS((exports) => {
   exports.timestamp = timestamp;
 });
 
-// ../../node_modules/yaml/dist/schema/yaml-1.1/schema.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/schema.js
 var require_schema3 = __commonJS((exports) => {
   var map = require_map();
   var _null = require_null();
@@ -2981,7 +2994,7 @@ var require_schema3 = __commonJS((exports) => {
   exports.schema = schema;
 });
 
-// ../../node_modules/yaml/dist/schema/tags.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/tags.js
 var require_tags = __commonJS((exports) => {
   var map = require_map();
   var _null = require_null();
@@ -3072,7 +3085,7 @@ var require_tags = __commonJS((exports) => {
   exports.getTags = getTags;
 });
 
-// ../../node_modules/yaml/dist/schema/Schema.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/schema/Schema.js
 var require_Schema = __commonJS((exports) => {
   var identity = require_identity();
   var map = require_map();
@@ -3102,7 +3115,7 @@ var require_Schema = __commonJS((exports) => {
   exports.Schema = Schema;
 });
 
-// ../../node_modules/yaml/dist/stringify/stringifyDocument.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyDocument.js
 var require_stringifyDocument = __commonJS((exports) => {
   var identity = require_identity();
   var stringify = require_stringify();
@@ -3182,7 +3195,7 @@ var require_stringifyDocument = __commonJS((exports) => {
   exports.stringifyDocument = stringifyDocument;
 });
 
-// ../../node_modules/yaml/dist/doc/Document.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/doc/Document.js
 var require_Document = __commonJS((exports) => {
   var Alias = require_Alias();
   var Collection = require_Collection();
@@ -3417,7 +3430,7 @@ var require_Document = __commonJS((exports) => {
   exports.Document = Document;
 });
 
-// ../../node_modules/yaml/dist/errors.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/errors.js
 var require_errors = __commonJS((exports) => {
   class YAMLError extends Error {
     constructor(name, pos, code, message) {
@@ -3482,7 +3495,7 @@ ${pointer}
   exports.prettifyError = prettifyError;
 });
 
-// ../../node_modules/yaml/dist/compose/resolve-props.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-props.js
 var require_resolve_props = __commonJS((exports) => {
   function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIndent, startOnNewline }) {
     let spaceBefore = false;
@@ -3612,7 +3625,7 @@ var require_resolve_props = __commonJS((exports) => {
   exports.resolveProps = resolveProps;
 });
 
-// ../../node_modules/yaml/dist/compose/util-contains-newline.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/compose/util-contains-newline.js
 var require_util_contains_newline = __commonJS((exports) => {
   function containsNewline(key) {
     if (!key)
@@ -3652,7 +3665,7 @@ var require_util_contains_newline = __commonJS((exports) => {
   exports.containsNewline = containsNewline;
 });
 
-// ../../node_modules/yaml/dist/compose/util-flow-indent-check.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/compose/util-flow-indent-check.js
 var require_util_flow_indent_check = __commonJS((exports) => {
   var utilContainsNewline = require_util_contains_newline();
   function flowIndentCheck(indent, fc, onError) {
@@ -3667,7 +3680,7 @@ var require_util_flow_indent_check = __commonJS((exports) => {
   exports.flowIndentCheck = flowIndentCheck;
 });
 
-// ../../node_modules/yaml/dist/compose/util-map-includes.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/compose/util-map-includes.js
 var require_util_map_includes = __commonJS((exports) => {
   var identity = require_identity();
   function mapIncludes(ctx, items, search) {
@@ -3680,7 +3693,7 @@ var require_util_map_includes = __commonJS((exports) => {
   exports.mapIncludes = mapIncludes;
 });
 
-// ../../node_modules/yaml/dist/compose/resolve-block-map.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-map.js
 var require_resolve_block_map = __commonJS((exports) => {
   var Pair = require_Pair();
   var YAMLMap = require_YAMLMap();
@@ -3787,7 +3800,7 @@ var require_resolve_block_map = __commonJS((exports) => {
   exports.resolveBlockMap = resolveBlockMap;
 });
 
-// ../../node_modules/yaml/dist/compose/resolve-block-seq.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-seq.js
 var require_resolve_block_seq = __commonJS((exports) => {
   var YAMLSeq = require_YAMLSeq();
   var resolveProps = require_resolve_props();
@@ -3835,7 +3848,7 @@ var require_resolve_block_seq = __commonJS((exports) => {
   exports.resolveBlockSeq = resolveBlockSeq;
 });
 
-// ../../node_modules/yaml/dist/compose/resolve-end.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-end.js
 var require_resolve_end = __commonJS((exports) => {
   function resolveEnd(end, offset, reqSpace, onError) {
     let comment = "";
@@ -3875,7 +3888,7 @@ var require_resolve_end = __commonJS((exports) => {
   exports.resolveEnd = resolveEnd;
 });
 
-// ../../node_modules/yaml/dist/compose/resolve-flow-collection.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-flow-collection.js
 var require_resolve_flow_collection = __commonJS((exports) => {
   var identity = require_identity();
   var Pair = require_Pair();
@@ -4066,7 +4079,7 @@ var require_resolve_flow_collection = __commonJS((exports) => {
   exports.resolveFlowCollection = resolveFlowCollection;
 });
 
-// ../../node_modules/yaml/dist/compose/compose-collection.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/compose/compose-collection.js
 var require_compose_collection = __commonJS((exports) => {
   var identity = require_identity();
   var Scalar = require_Scalar();
@@ -4128,7 +4141,7 @@ var require_compose_collection = __commonJS((exports) => {
   exports.composeCollection = composeCollection;
 });
 
-// ../../node_modules/yaml/dist/compose/resolve-block-scalar.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-scalar.js
 var require_resolve_block_scalar = __commonJS((exports) => {
   var Scalar = require_Scalar();
   function resolveBlockScalar(ctx, scalar, onError) {
@@ -4321,7 +4334,7 @@ var require_resolve_block_scalar = __commonJS((exports) => {
   exports.resolveBlockScalar = resolveBlockScalar;
 });
 
-// ../../node_modules/yaml/dist/compose/resolve-flow-scalar.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-flow-scalar.js
 var require_resolve_flow_scalar = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var resolveEnd = require_resolve_end();
@@ -4458,7 +4471,7 @@ var require_resolve_flow_scalar = __commonJS((exports) => {
           while (next === " " || next === "\t")
             next = source[++i + 1];
         } else if (next === "x" || next === "u" || next === "U") {
-          const length = { x: 2, u: 4, U: 8 }[next];
+          const length = next === "x" ? 2 : next === "u" ? 4 : 8;
           res += parseCharCode(source, i + 1, length, onError);
           i += length;
         } else {
@@ -4527,17 +4540,18 @@ var require_resolve_flow_scalar = __commonJS((exports) => {
     const cc = source.substr(offset, length);
     const ok = cc.length === length && /^[0-9a-fA-F]+$/.test(cc);
     const code = ok ? parseInt(cc, 16) : NaN;
-    if (isNaN(code)) {
+    try {
+      return String.fromCodePoint(code);
+    } catch {
       const raw = source.substr(offset - 2, length + 2);
       onError(offset - 2, "BAD_DQ_ESCAPE", `Invalid escape sequence ${raw}`);
       return raw;
     }
-    return String.fromCodePoint(code);
   }
   exports.resolveFlowScalar = resolveFlowScalar;
 });
 
-// ../../node_modules/yaml/dist/compose/compose-scalar.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/compose/compose-scalar.js
 var require_compose_scalar = __commonJS((exports) => {
   var identity = require_identity();
   var Scalar = require_Scalar();
@@ -4615,7 +4629,7 @@ var require_compose_scalar = __commonJS((exports) => {
   exports.composeScalar = composeScalar;
 });
 
-// ../../node_modules/yaml/dist/compose/util-empty-scalar-position.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/compose/util-empty-scalar-position.js
 var require_util_empty_scalar_position = __commonJS((exports) => {
   function emptyScalarPosition(offset, before, pos) {
     if (before) {
@@ -4642,7 +4656,7 @@ var require_util_empty_scalar_position = __commonJS((exports) => {
   exports.emptyScalarPosition = emptyScalarPosition;
 });
 
-// ../../node_modules/yaml/dist/compose/compose-node.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/compose/compose-node.js
 var require_compose_node = __commonJS((exports) => {
   var Alias = require_Alias();
   var identity = require_identity();
@@ -4673,17 +4687,22 @@ var require_compose_node = __commonJS((exports) => {
       case "block-map":
       case "block-seq":
       case "flow-collection":
-        node = composeCollection.composeCollection(CN, ctx, token, props, onError);
-        if (anchor)
-          node.anchor = anchor.source.substring(1);
+        try {
+          node = composeCollection.composeCollection(CN, ctx, token, props, onError);
+          if (anchor)
+            node.anchor = anchor.source.substring(1);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          onError(token, "RESOURCE_EXHAUSTION", message);
+        }
         break;
       default: {
         const message = token.type === "error" ? token.message : `Unsupported token (type: ${token.type})`;
         onError(token, "UNEXPECTED_TOKEN", message);
-        node = composeEmptyNode(ctx, token.offset, undefined, null, props, onError);
         isSrcToken = false;
       }
     }
+    node ?? (node = composeEmptyNode(ctx, token.offset, undefined, null, props, onError));
     if (anchor && node.anchor === "")
       onError(anchor, "BAD_ALIAS", "Anchor cannot be an empty string");
     if (atKey && ctx.options.stringKeys && (!identity.isScalar(node) || typeof node.value !== "string" || node.tag && node.tag !== "tag:yaml.org,2002:str")) {
@@ -4740,7 +4759,7 @@ var require_compose_node = __commonJS((exports) => {
   exports.composeNode = composeNode;
 });
 
-// ../../node_modules/yaml/dist/compose/compose-doc.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/compose/compose-doc.js
 var require_compose_doc = __commonJS((exports) => {
   var Document = require_Document();
   var composeNode = require_compose_node();
@@ -4780,7 +4799,7 @@ var require_compose_doc = __commonJS((exports) => {
   exports.composeDoc = composeDoc;
 });
 
-// ../../node_modules/yaml/dist/compose/composer.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/compose/composer.js
 var require_composer = __commonJS((exports) => {
   var node_process = __require("process");
   var directives = require_directives();
@@ -4866,8 +4885,10 @@ ${cb}` : comment;
         }
       }
       if (afterDoc) {
-        Array.prototype.push.apply(doc.errors, this.errors);
-        Array.prototype.push.apply(doc.warnings, this.warnings);
+        for (let i = 0;i < this.errors.length; ++i)
+          doc.errors.push(this.errors[i]);
+        for (let i = 0;i < this.warnings.length; ++i)
+          doc.warnings.push(this.warnings[i]);
       } else {
         doc.errors = this.errors;
         doc.warnings = this.warnings;
@@ -4969,7 +4990,7 @@ ${end.comment}` : end.comment;
   exports.Composer = Composer;
 });
 
-// ../../node_modules/yaml/dist/parse/cst-scalar.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/parse/cst-scalar.js
 var require_cst_scalar = __commonJS((exports) => {
   var resolveBlockScalar = require_resolve_block_scalar();
   var resolveFlowScalar = require_resolve_flow_scalar();
@@ -5159,7 +5180,7 @@ var require_cst_scalar = __commonJS((exports) => {
   exports.setScalarValue = setScalarValue;
 });
 
-// ../../node_modules/yaml/dist/parse/cst-stringify.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/parse/cst-stringify.js
 var require_cst_stringify = __commonJS((exports) => {
   var stringify = (cst) => ("type" in cst) ? stringifyToken(cst) : stringifyItem(cst);
   function stringifyToken(token) {
@@ -5217,7 +5238,7 @@ var require_cst_stringify = __commonJS((exports) => {
   exports.stringify = stringify;
 });
 
-// ../../node_modules/yaml/dist/parse/cst-visit.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/parse/cst-visit.js
 var require_cst_visit = __commonJS((exports) => {
   var BREAK = Symbol("break visit");
   var SKIP = Symbol("skip children");
@@ -5276,7 +5297,7 @@ var require_cst_visit = __commonJS((exports) => {
   exports.visit = visit;
 });
 
-// ../../node_modules/yaml/dist/parse/cst.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/parse/cst.js
 var require_cst = __commonJS((exports) => {
   var cstScalar = require_cst_scalar();
   var cstStringify = require_cst_stringify();
@@ -5377,7 +5398,7 @@ var require_cst = __commonJS((exports) => {
   exports.tokenType = tokenType;
 });
 
-// ../../node_modules/yaml/dist/parse/lexer.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/parse/lexer.js
 var require_lexer = __commonJS((exports) => {
   var cst = require_cst();
   function isEmpty(ch) {
@@ -5579,7 +5600,7 @@ var require_lexer = __commonJS((exports) => {
         const n = (yield* this.pushCount(1)) + (yield* this.pushSpaces(true));
         this.indentNext = this.indentValue + 1;
         this.indentValue += n;
-        return yield* this.parseBlockStart();
+        return "block-start";
       }
       return "doc";
     }
@@ -5886,26 +5907,37 @@ var require_lexer = __commonJS((exports) => {
       return 0;
     }
     *pushIndicators() {
-      switch (this.charAt(0)) {
-        case "!":
-          return (yield* this.pushTag()) + (yield* this.pushSpaces(true)) + (yield* this.pushIndicators());
-        case "&":
-          return (yield* this.pushUntil(isNotAnchorChar)) + (yield* this.pushSpaces(true)) + (yield* this.pushIndicators());
-        case "-":
-        case "?":
-        case ":": {
-          const inFlow = this.flowLevel > 0;
-          const ch1 = this.charAt(1);
-          if (isEmpty(ch1) || inFlow && flowIndicatorChars.has(ch1)) {
-            if (!inFlow)
-              this.indentNext = this.indentValue + 1;
-            else if (this.flowKey)
-              this.flowKey = false;
-            return (yield* this.pushCount(1)) + (yield* this.pushSpaces(true)) + (yield* this.pushIndicators());
+      let n = 0;
+      loop:
+        while (true) {
+          switch (this.charAt(0)) {
+            case "!":
+              n += yield* this.pushTag();
+              n += yield* this.pushSpaces(true);
+              continue loop;
+            case "&":
+              n += yield* this.pushUntil(isNotAnchorChar);
+              n += yield* this.pushSpaces(true);
+              continue loop;
+            case "-":
+            case "?":
+            case ":": {
+              const inFlow = this.flowLevel > 0;
+              const ch1 = this.charAt(1);
+              if (isEmpty(ch1) || inFlow && flowIndicatorChars.has(ch1)) {
+                if (!inFlow)
+                  this.indentNext = this.indentValue + 1;
+                else if (this.flowKey)
+                  this.flowKey = false;
+                n += yield* this.pushCount(1);
+                n += yield* this.pushSpaces(true);
+                continue loop;
+              }
+            }
           }
+          break loop;
         }
-      }
-      return 0;
+      return n;
     }
     *pushTag() {
       if (this.charAt(1) === "<") {
@@ -5963,7 +5995,7 @@ var require_lexer = __commonJS((exports) => {
   exports.Lexer = Lexer;
 });
 
-// ../../node_modules/yaml/dist/parse/line-counter.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/parse/line-counter.js
 var require_line_counter = __commonJS((exports) => {
   class LineCounter {
     constructor() {
@@ -5991,7 +6023,7 @@ var require_line_counter = __commonJS((exports) => {
   exports.LineCounter = LineCounter;
 });
 
-// ../../node_modules/yaml/dist/parse/parser.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/parse/parser.js
 var require_parser = __commonJS((exports) => {
   var node_process = __require("process");
   var cst = require_cst();
@@ -6059,6 +6091,13 @@ var require_parser = __commonJS((exports) => {
     while (prev[++i]?.type === "space") {}
     return prev.splice(i, prev.length);
   }
+  function arrayPushArray(target, source) {
+    if (source.length < 1e5)
+      Array.prototype.push.apply(target, source);
+    else
+      for (let i = 0;i < source.length; ++i)
+        target.push(source[i]);
+  }
   function fixFlowSeqItems(fc) {
     if (fc.start.type === "flow-seq-start") {
       for (const it of fc.items) {
@@ -6068,11 +6107,11 @@ var require_parser = __commonJS((exports) => {
           delete it.key;
           if (isFlowToken(it.value)) {
             if (it.value.end)
-              Array.prototype.push.apply(it.value.end, it.sep);
+              arrayPushArray(it.value.end, it.sep);
             else
               it.value.end = it.sep;
           } else
-            Array.prototype.push.apply(it.start, it.sep);
+            arrayPushArray(it.start, it.sep);
           delete it.sep;
         }
       }
@@ -6412,7 +6451,7 @@ var require_parser = __commonJS((exports) => {
               const prev = map.items[map.items.length - 2];
               const end = prev?.value?.end;
               if (Array.isArray(end)) {
-                Array.prototype.push.apply(end, it.start);
+                arrayPushArray(end, it.start);
                 end.push(this.sourceToken);
                 map.items.pop();
                 return;
@@ -6600,7 +6639,7 @@ var require_parser = __commonJS((exports) => {
               const prev = seq.items[seq.items.length - 2];
               const end = prev?.value?.end;
               if (Array.isArray(end)) {
-                Array.prototype.push.apply(end, it.start);
+                arrayPushArray(end, it.start);
                 end.push(this.sourceToken);
                 seq.items.pop();
                 return;
@@ -6840,7 +6879,7 @@ var require_parser = __commonJS((exports) => {
   exports.Parser = Parser;
 });
 
-// ../../node_modules/yaml/dist/public-api.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/public-api.js
 var require_public_api = __commonJS((exports) => {
   var composer = require_composer();
   var Document = require_Document();
@@ -6934,80 +6973,37 @@ var require_public_api = __commonJS((exports) => {
   exports.stringify = stringify;
 });
 
-// ../../node_modules/dotenv/package.json
-var require_package = __commonJS((exports, module) => {
-  module.exports = {
-    name: "dotenv",
-    version: "16.6.1",
-    description: "Loads environment variables from .env file",
-    main: "lib/main.js",
-    types: "lib/main.d.ts",
-    exports: {
-      ".": {
-        types: "./lib/main.d.ts",
-        require: "./lib/main.js",
-        default: "./lib/main.js"
-      },
-      "./config": "./config.js",
-      "./config.js": "./config.js",
-      "./lib/env-options": "./lib/env-options.js",
-      "./lib/env-options.js": "./lib/env-options.js",
-      "./lib/cli-options": "./lib/cli-options.js",
-      "./lib/cli-options.js": "./lib/cli-options.js",
-      "./package.json": "./package.json"
-    },
-    scripts: {
-      "dts-check": "tsc --project tests/types/tsconfig.json",
-      lint: "standard",
-      pretest: "npm run lint && npm run dts-check",
-      test: "tap run --allow-empty-coverage --disable-coverage --timeout=60000",
-      "test:coverage": "tap run --show-full-coverage --timeout=60000 --coverage-report=text --coverage-report=lcov",
-      prerelease: "npm test",
-      release: "standard-version"
-    },
-    repository: {
-      type: "git",
-      url: "git://github.com/motdotla/dotenv.git"
-    },
-    homepage: "https://github.com/motdotla/dotenv#readme",
-    funding: "https://dotenvx.com",
-    keywords: [
-      "dotenv",
-      "env",
-      ".env",
-      "environment",
-      "variables",
-      "config",
-      "settings"
-    ],
-    readmeFilename: "README.md",
-    license: "BSD-2-Clause",
-    devDependencies: {
-      "@types/node": "^18.11.3",
-      decache: "^4.6.2",
-      sinon: "^14.0.1",
-      standard: "^17.0.0",
-      "standard-version": "^9.5.0",
-      tap: "^19.2.0",
-      typescript: "^4.8.4"
-    },
-    engines: {
-      node: ">=12"
-    },
-    browser: {
-      fs: false
-    }
-  };
-});
-
-// ../../node_modules/dotenv/lib/main.js
+// ../../node_modules/.bun/dotenv@17.4.2/node_modules/dotenv/lib/main.js
 var require_main = __commonJS((exports, module) => {
   var fs = __require("fs");
   var path = __require("path");
   var os = __require("os");
   var crypto = __require("crypto");
-  var packageJson = require_package();
-  var version = packageJson.version;
+  var TIPS = [
+    "◈ encrypted .env [www.dotenvx.com]",
+    "◈ secrets for agents [www.dotenvx.com]",
+    "⌁ auth for agents [www.vestauth.com]",
+    "⌘ custom filepath { path: '/custom/path/.env' }",
+    "⌘ enable debugging { debug: true }",
+    "⌘ override existing { override: true }",
+    "⌘ suppress logs { quiet: true }",
+    "⌘ multiple files { path: ['.env.local', '.env'] }"
+  ];
+  function _getRandomTip() {
+    return TIPS[Math.floor(Math.random() * TIPS.length)];
+  }
+  function parseBoolean(value) {
+    if (typeof value === "string") {
+      return !["false", "0", "no", "off", ""].includes(value.toLowerCase());
+    }
+    return Boolean(value);
+  }
+  function supportsAnsi() {
+    return process.stdout.isTTY;
+  }
+  function dim(text) {
+    return supportsAnsi() ? `\x1B[2m${text}\x1B[0m` : text;
+  }
   var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
   function parse(src) {
     const obj = {};
@@ -7058,13 +7054,13 @@ var require_main = __commonJS((exports, module) => {
     return DotenvModule.parse(decrypted);
   }
   function _warn(message) {
-    console.log(`[dotenv@${version}][WARN] ${message}`);
+    console.error(`⚠ ${message}`);
   }
   function _debug(message) {
-    console.log(`[dotenv@${version}][DEBUG] ${message}`);
+    console.log(`┆ ${message}`);
   }
   function _log(message) {
-    console.log(`[dotenv@${version}] ${message}`);
+    console.log(`◇ ${message}`);
   }
   function _dotenvKey(options) {
     if (options && options.DOTENV_KEY && options.DOTENV_KEY.length > 0) {
@@ -7132,10 +7128,10 @@ var require_main = __commonJS((exports, module) => {
     return envPath[0] === "~" ? path.join(os.homedir(), envPath.slice(1)) : envPath;
   }
   function _configVault(options) {
-    const debug = Boolean(options && options.debug);
-    const quiet = options && "quiet" in options ? options.quiet : true;
+    const debug = parseBoolean(process.env.DOTENV_CONFIG_DEBUG || options && options.debug);
+    const quiet = parseBoolean(process.env.DOTENV_CONFIG_QUIET || options && options.quiet);
     if (debug || !quiet) {
-      _log("Loading env from encrypted .env.vault");
+      _log("loading env from encrypted .env.vault");
     }
     const parsed = DotenvModule._parseVault(options);
     let processEnv = process.env;
@@ -7148,13 +7144,17 @@ var require_main = __commonJS((exports, module) => {
   function configDotenv(options) {
     const dotenvPath = path.resolve(process.cwd(), ".env");
     let encoding = "utf8";
-    const debug = Boolean(options && options.debug);
-    const quiet = options && "quiet" in options ? options.quiet : true;
+    let processEnv = process.env;
+    if (options && options.processEnv != null) {
+      processEnv = options.processEnv;
+    }
+    let debug = parseBoolean(processEnv.DOTENV_CONFIG_DEBUG || options && options.debug);
+    let quiet = parseBoolean(processEnv.DOTENV_CONFIG_QUIET || options && options.quiet);
     if (options && options.encoding) {
       encoding = options.encoding;
     } else {
       if (debug) {
-        _debug("No encoding is specified. UTF-8 is used by default");
+        _debug("no encoding is specified (UTF-8 is used by default)");
       }
     }
     let optionPaths = [dotenvPath];
@@ -7176,18 +7176,16 @@ var require_main = __commonJS((exports, module) => {
         DotenvModule.populate(parsedAll, parsed, options);
       } catch (e) {
         if (debug) {
-          _debug(`Failed to load ${path2} ${e.message}`);
+          _debug(`failed to load ${path2} ${e.message}`);
         }
         lastError = e;
       }
     }
-    let processEnv = process.env;
-    if (options && options.processEnv != null) {
-      processEnv = options.processEnv;
-    }
-    DotenvModule.populate(processEnv, parsedAll, options);
+    const populated = DotenvModule.populate(processEnv, parsedAll, options);
+    debug = parseBoolean(processEnv.DOTENV_CONFIG_DEBUG || debug);
+    quiet = parseBoolean(processEnv.DOTENV_CONFIG_QUIET || quiet);
     if (debug || !quiet) {
-      const keysCount = Object.keys(parsedAll).length;
+      const keysCount = Object.keys(populated).length;
       const shortPaths = [];
       for (const filePath of optionPaths) {
         try {
@@ -7195,12 +7193,12 @@ var require_main = __commonJS((exports, module) => {
           shortPaths.push(relative);
         } catch (e) {
           if (debug) {
-            _debug(`Failed to load ${filePath} ${e.message}`);
+            _debug(`failed to load ${filePath} ${e.message}`);
           }
           lastError = e;
         }
       }
-      _log(`injecting env (${keysCount}) from ${shortPaths.join(",")}`);
+      _log(`injected env (${keysCount}) from ${shortPaths.join(",")} ${dim(`// tip: ${_getRandomTip()}`)}`);
     }
     if (lastError) {
       return { parsed: parsedAll, error: lastError };
@@ -7214,7 +7212,7 @@ var require_main = __commonJS((exports, module) => {
     }
     const vaultPath = _vaultPath(options);
     if (!vaultPath) {
-      _warn(`You set DOTENV_KEY but you are missing a .env.vault file at ${vaultPath}. Did you forget to build it?`);
+      _warn(`you set DOTENV_KEY but you are missing a .env.vault file at ${vaultPath}`);
       return DotenvModule.configDotenv(options);
     }
     return DotenvModule._configVault(options);
@@ -7249,6 +7247,7 @@ var require_main = __commonJS((exports, module) => {
   function populate(processEnv, parsed, options = {}) {
     const debug = Boolean(options && options.debug);
     const override = Boolean(options && options.override);
+    const populated = {};
     if (typeof parsed !== "object") {
       const err = new Error("OBJECT_REQUIRED: Please check the processEnv argument being passed to populate");
       err.code = "OBJECT_REQUIRED";
@@ -7258,6 +7257,7 @@ var require_main = __commonJS((exports, module) => {
       if (Object.prototype.hasOwnProperty.call(processEnv, key)) {
         if (override === true) {
           processEnv[key] = parsed[key];
+          populated[key] = parsed[key];
         }
         if (debug) {
           if (override === true) {
@@ -7268,8 +7268,10 @@ var require_main = __commonJS((exports, module) => {
         }
       } else {
         processEnv[key] = parsed[key];
+        populated[key] = parsed[key];
       }
     }
+    return populated;
   }
   var DotenvModule = {
     configDotenv,
@@ -7290,6478 +7292,8 @@ var require_main = __commonJS((exports, module) => {
   module.exports = DotenvModule;
 });
 
-// ../../node_modules/tar/lib/high-level-opt.js
-var require_high_level_opt = __commonJS((exports, module) => {
-  var argmap = new Map([
-    ["C", "cwd"],
-    ["f", "file"],
-    ["z", "gzip"],
-    ["P", "preservePaths"],
-    ["U", "unlink"],
-    ["strip-components", "strip"],
-    ["stripComponents", "strip"],
-    ["keep-newer", "newer"],
-    ["keepNewer", "newer"],
-    ["keep-newer-files", "newer"],
-    ["keepNewerFiles", "newer"],
-    ["k", "keep"],
-    ["keep-existing", "keep"],
-    ["keepExisting", "keep"],
-    ["m", "noMtime"],
-    ["no-mtime", "noMtime"],
-    ["p", "preserveOwner"],
-    ["L", "follow"],
-    ["h", "follow"]
-  ]);
-  module.exports = (opt) => opt ? Object.keys(opt).map((k) => [
-    argmap.has(k) ? argmap.get(k) : k,
-    opt[k]
-  ]).reduce((set, kv) => (set[kv[0]] = kv[1], set), Object.create(null)) : {};
-});
-
-// ../../node_modules/tar/node_modules/minipass/index.js
-var require_minipass = __commonJS((exports) => {
-  var proc = typeof process === "object" && process ? process : {
-    stdout: null,
-    stderr: null
-  };
-  var EE = __require("events");
-  var Stream = __require("stream");
-  var stringdecoder = __require("string_decoder");
-  var SD = stringdecoder.StringDecoder;
-  var EOF = Symbol("EOF");
-  var MAYBE_EMIT_END = Symbol("maybeEmitEnd");
-  var EMITTED_END = Symbol("emittedEnd");
-  var EMITTING_END = Symbol("emittingEnd");
-  var EMITTED_ERROR = Symbol("emittedError");
-  var CLOSED = Symbol("closed");
-  var READ = Symbol("read");
-  var FLUSH = Symbol("flush");
-  var FLUSHCHUNK = Symbol("flushChunk");
-  var ENCODING = Symbol("encoding");
-  var DECODER = Symbol("decoder");
-  var FLOWING = Symbol("flowing");
-  var PAUSED = Symbol("paused");
-  var RESUME = Symbol("resume");
-  var BUFFER = Symbol("buffer");
-  var PIPES = Symbol("pipes");
-  var BUFFERLENGTH = Symbol("bufferLength");
-  var BUFFERPUSH = Symbol("bufferPush");
-  var BUFFERSHIFT = Symbol("bufferShift");
-  var OBJECTMODE = Symbol("objectMode");
-  var DESTROYED = Symbol("destroyed");
-  var ERROR = Symbol("error");
-  var EMITDATA = Symbol("emitData");
-  var EMITEND = Symbol("emitEnd");
-  var EMITEND2 = Symbol("emitEnd2");
-  var ASYNC = Symbol("async");
-  var ABORT = Symbol("abort");
-  var ABORTED = Symbol("aborted");
-  var SIGNAL = Symbol("signal");
-  var defer = (fn) => Promise.resolve().then(fn);
-  var doIter = global._MP_NO_ITERATOR_SYMBOLS_ !== "1";
-  var ASYNCITERATOR = doIter && Symbol.asyncIterator || Symbol("asyncIterator not implemented");
-  var ITERATOR = doIter && Symbol.iterator || Symbol("iterator not implemented");
-  var isEndish = (ev) => ev === "end" || ev === "finish" || ev === "prefinish";
-  var isArrayBuffer = (b) => b instanceof ArrayBuffer || typeof b === "object" && b.constructor && b.constructor.name === "ArrayBuffer" && b.byteLength >= 0;
-  var isArrayBufferView = (b) => !Buffer.isBuffer(b) && ArrayBuffer.isView(b);
-
-  class Pipe {
-    constructor(src, dest, opts) {
-      this.src = src;
-      this.dest = dest;
-      this.opts = opts;
-      this.ondrain = () => src[RESUME]();
-      dest.on("drain", this.ondrain);
-    }
-    unpipe() {
-      this.dest.removeListener("drain", this.ondrain);
-    }
-    proxyErrors() {}
-    end() {
-      this.unpipe();
-      if (this.opts.end)
-        this.dest.end();
-    }
-  }
-
-  class PipeProxyErrors extends Pipe {
-    unpipe() {
-      this.src.removeListener("error", this.proxyErrors);
-      super.unpipe();
-    }
-    constructor(src, dest, opts) {
-      super(src, dest, opts);
-      this.proxyErrors = (er) => dest.emit("error", er);
-      src.on("error", this.proxyErrors);
-    }
-  }
-
-  class Minipass extends Stream {
-    constructor(options) {
-      super();
-      this[FLOWING] = false;
-      this[PAUSED] = false;
-      this[PIPES] = [];
-      this[BUFFER] = [];
-      this[OBJECTMODE] = options && options.objectMode || false;
-      if (this[OBJECTMODE])
-        this[ENCODING] = null;
-      else
-        this[ENCODING] = options && options.encoding || null;
-      if (this[ENCODING] === "buffer")
-        this[ENCODING] = null;
-      this[ASYNC] = options && !!options.async || false;
-      this[DECODER] = this[ENCODING] ? new SD(this[ENCODING]) : null;
-      this[EOF] = false;
-      this[EMITTED_END] = false;
-      this[EMITTING_END] = false;
-      this[CLOSED] = false;
-      this[EMITTED_ERROR] = null;
-      this.writable = true;
-      this.readable = true;
-      this[BUFFERLENGTH] = 0;
-      this[DESTROYED] = false;
-      if (options && options.debugExposeBuffer === true) {
-        Object.defineProperty(this, "buffer", { get: () => this[BUFFER] });
-      }
-      if (options && options.debugExposePipes === true) {
-        Object.defineProperty(this, "pipes", { get: () => this[PIPES] });
-      }
-      this[SIGNAL] = options && options.signal;
-      this[ABORTED] = false;
-      if (this[SIGNAL]) {
-        this[SIGNAL].addEventListener("abort", () => this[ABORT]());
-        if (this[SIGNAL].aborted) {
-          this[ABORT]();
-        }
-      }
-    }
-    get bufferLength() {
-      return this[BUFFERLENGTH];
-    }
-    get encoding() {
-      return this[ENCODING];
-    }
-    set encoding(enc) {
-      if (this[OBJECTMODE])
-        throw new Error("cannot set encoding in objectMode");
-      if (this[ENCODING] && enc !== this[ENCODING] && (this[DECODER] && this[DECODER].lastNeed || this[BUFFERLENGTH]))
-        throw new Error("cannot change encoding");
-      if (this[ENCODING] !== enc) {
-        this[DECODER] = enc ? new SD(enc) : null;
-        if (this[BUFFER].length)
-          this[BUFFER] = this[BUFFER].map((chunk) => this[DECODER].write(chunk));
-      }
-      this[ENCODING] = enc;
-    }
-    setEncoding(enc) {
-      this.encoding = enc;
-    }
-    get objectMode() {
-      return this[OBJECTMODE];
-    }
-    set objectMode(om) {
-      this[OBJECTMODE] = this[OBJECTMODE] || !!om;
-    }
-    get ["async"]() {
-      return this[ASYNC];
-    }
-    set ["async"](a) {
-      this[ASYNC] = this[ASYNC] || !!a;
-    }
-    [ABORT]() {
-      this[ABORTED] = true;
-      this.emit("abort", this[SIGNAL].reason);
-      this.destroy(this[SIGNAL].reason);
-    }
-    get aborted() {
-      return this[ABORTED];
-    }
-    set aborted(_) {}
-    write(chunk, encoding, cb) {
-      if (this[ABORTED])
-        return false;
-      if (this[EOF])
-        throw new Error("write after end");
-      if (this[DESTROYED]) {
-        this.emit("error", Object.assign(new Error("Cannot call write after a stream was destroyed"), { code: "ERR_STREAM_DESTROYED" }));
-        return true;
-      }
-      if (typeof encoding === "function")
-        cb = encoding, encoding = "utf8";
-      if (!encoding)
-        encoding = "utf8";
-      const fn = this[ASYNC] ? defer : (f) => f();
-      if (!this[OBJECTMODE] && !Buffer.isBuffer(chunk)) {
-        if (isArrayBufferView(chunk))
-          chunk = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
-        else if (isArrayBuffer(chunk))
-          chunk = Buffer.from(chunk);
-        else if (typeof chunk !== "string")
-          this.objectMode = true;
-      }
-      if (this[OBJECTMODE]) {
-        if (this.flowing && this[BUFFERLENGTH] !== 0)
-          this[FLUSH](true);
-        if (this.flowing)
-          this.emit("data", chunk);
-        else
-          this[BUFFERPUSH](chunk);
-        if (this[BUFFERLENGTH] !== 0)
-          this.emit("readable");
-        if (cb)
-          fn(cb);
-        return this.flowing;
-      }
-      if (!chunk.length) {
-        if (this[BUFFERLENGTH] !== 0)
-          this.emit("readable");
-        if (cb)
-          fn(cb);
-        return this.flowing;
-      }
-      if (typeof chunk === "string" && !(encoding === this[ENCODING] && !this[DECODER].lastNeed)) {
-        chunk = Buffer.from(chunk, encoding);
-      }
-      if (Buffer.isBuffer(chunk) && this[ENCODING])
-        chunk = this[DECODER].write(chunk);
-      if (this.flowing && this[BUFFERLENGTH] !== 0)
-        this[FLUSH](true);
-      if (this.flowing)
-        this.emit("data", chunk);
-      else
-        this[BUFFERPUSH](chunk);
-      if (this[BUFFERLENGTH] !== 0)
-        this.emit("readable");
-      if (cb)
-        fn(cb);
-      return this.flowing;
-    }
-    read(n) {
-      if (this[DESTROYED])
-        return null;
-      if (this[BUFFERLENGTH] === 0 || n === 0 || n > this[BUFFERLENGTH]) {
-        this[MAYBE_EMIT_END]();
-        return null;
-      }
-      if (this[OBJECTMODE])
-        n = null;
-      if (this[BUFFER].length > 1 && !this[OBJECTMODE]) {
-        if (this.encoding)
-          this[BUFFER] = [this[BUFFER].join("")];
-        else
-          this[BUFFER] = [Buffer.concat(this[BUFFER], this[BUFFERLENGTH])];
-      }
-      const ret = this[READ](n || null, this[BUFFER][0]);
-      this[MAYBE_EMIT_END]();
-      return ret;
-    }
-    [READ](n, chunk) {
-      if (n === chunk.length || n === null)
-        this[BUFFERSHIFT]();
-      else {
-        this[BUFFER][0] = chunk.slice(n);
-        chunk = chunk.slice(0, n);
-        this[BUFFERLENGTH] -= n;
-      }
-      this.emit("data", chunk);
-      if (!this[BUFFER].length && !this[EOF])
-        this.emit("drain");
-      return chunk;
-    }
-    end(chunk, encoding, cb) {
-      if (typeof chunk === "function")
-        cb = chunk, chunk = null;
-      if (typeof encoding === "function")
-        cb = encoding, encoding = "utf8";
-      if (chunk)
-        this.write(chunk, encoding);
-      if (cb)
-        this.once("end", cb);
-      this[EOF] = true;
-      this.writable = false;
-      if (this.flowing || !this[PAUSED])
-        this[MAYBE_EMIT_END]();
-      return this;
-    }
-    [RESUME]() {
-      if (this[DESTROYED])
-        return;
-      this[PAUSED] = false;
-      this[FLOWING] = true;
-      this.emit("resume");
-      if (this[BUFFER].length)
-        this[FLUSH]();
-      else if (this[EOF])
-        this[MAYBE_EMIT_END]();
-      else
-        this.emit("drain");
-    }
-    resume() {
-      return this[RESUME]();
-    }
-    pause() {
-      this[FLOWING] = false;
-      this[PAUSED] = true;
-    }
-    get destroyed() {
-      return this[DESTROYED];
-    }
-    get flowing() {
-      return this[FLOWING];
-    }
-    get paused() {
-      return this[PAUSED];
-    }
-    [BUFFERPUSH](chunk) {
-      if (this[OBJECTMODE])
-        this[BUFFERLENGTH] += 1;
-      else
-        this[BUFFERLENGTH] += chunk.length;
-      this[BUFFER].push(chunk);
-    }
-    [BUFFERSHIFT]() {
-      if (this[OBJECTMODE])
-        this[BUFFERLENGTH] -= 1;
-      else
-        this[BUFFERLENGTH] -= this[BUFFER][0].length;
-      return this[BUFFER].shift();
-    }
-    [FLUSH](noDrain) {
-      do {} while (this[FLUSHCHUNK](this[BUFFERSHIFT]()) && this[BUFFER].length);
-      if (!noDrain && !this[BUFFER].length && !this[EOF])
-        this.emit("drain");
-    }
-    [FLUSHCHUNK](chunk) {
-      this.emit("data", chunk);
-      return this.flowing;
-    }
-    pipe(dest, opts) {
-      if (this[DESTROYED])
-        return;
-      const ended = this[EMITTED_END];
-      opts = opts || {};
-      if (dest === proc.stdout || dest === proc.stderr)
-        opts.end = false;
-      else
-        opts.end = opts.end !== false;
-      opts.proxyErrors = !!opts.proxyErrors;
-      if (ended) {
-        if (opts.end)
-          dest.end();
-      } else {
-        this[PIPES].push(!opts.proxyErrors ? new Pipe(this, dest, opts) : new PipeProxyErrors(this, dest, opts));
-        if (this[ASYNC])
-          defer(() => this[RESUME]());
-        else
-          this[RESUME]();
-      }
-      return dest;
-    }
-    unpipe(dest) {
-      const p = this[PIPES].find((p2) => p2.dest === dest);
-      if (p) {
-        this[PIPES].splice(this[PIPES].indexOf(p), 1);
-        p.unpipe();
-      }
-    }
-    addListener(ev, fn) {
-      return this.on(ev, fn);
-    }
-    on(ev, fn) {
-      const ret = super.on(ev, fn);
-      if (ev === "data" && !this[PIPES].length && !this.flowing)
-        this[RESUME]();
-      else if (ev === "readable" && this[BUFFERLENGTH] !== 0)
-        super.emit("readable");
-      else if (isEndish(ev) && this[EMITTED_END]) {
-        super.emit(ev);
-        this.removeAllListeners(ev);
-      } else if (ev === "error" && this[EMITTED_ERROR]) {
-        if (this[ASYNC])
-          defer(() => fn.call(this, this[EMITTED_ERROR]));
-        else
-          fn.call(this, this[EMITTED_ERROR]);
-      }
-      return ret;
-    }
-    get emittedEnd() {
-      return this[EMITTED_END];
-    }
-    [MAYBE_EMIT_END]() {
-      if (!this[EMITTING_END] && !this[EMITTED_END] && !this[DESTROYED] && this[BUFFER].length === 0 && this[EOF]) {
-        this[EMITTING_END] = true;
-        this.emit("end");
-        this.emit("prefinish");
-        this.emit("finish");
-        if (this[CLOSED])
-          this.emit("close");
-        this[EMITTING_END] = false;
-      }
-    }
-    emit(ev, data, ...extra) {
-      if (ev !== "error" && ev !== "close" && ev !== DESTROYED && this[DESTROYED])
-        return;
-      else if (ev === "data") {
-        return !this[OBJECTMODE] && !data ? false : this[ASYNC] ? defer(() => this[EMITDATA](data)) : this[EMITDATA](data);
-      } else if (ev === "end") {
-        return this[EMITEND]();
-      } else if (ev === "close") {
-        this[CLOSED] = true;
-        if (!this[EMITTED_END] && !this[DESTROYED])
-          return;
-        const ret2 = super.emit("close");
-        this.removeAllListeners("close");
-        return ret2;
-      } else if (ev === "error") {
-        this[EMITTED_ERROR] = data;
-        super.emit(ERROR, data);
-        const ret2 = !this[SIGNAL] || this.listeners("error").length ? super.emit("error", data) : false;
-        this[MAYBE_EMIT_END]();
-        return ret2;
-      } else if (ev === "resume") {
-        const ret2 = super.emit("resume");
-        this[MAYBE_EMIT_END]();
-        return ret2;
-      } else if (ev === "finish" || ev === "prefinish") {
-        const ret2 = super.emit(ev);
-        this.removeAllListeners(ev);
-        return ret2;
-      }
-      const ret = super.emit(ev, data, ...extra);
-      this[MAYBE_EMIT_END]();
-      return ret;
-    }
-    [EMITDATA](data) {
-      for (const p of this[PIPES]) {
-        if (p.dest.write(data) === false)
-          this.pause();
-      }
-      const ret = super.emit("data", data);
-      this[MAYBE_EMIT_END]();
-      return ret;
-    }
-    [EMITEND]() {
-      if (this[EMITTED_END])
-        return;
-      this[EMITTED_END] = true;
-      this.readable = false;
-      if (this[ASYNC])
-        defer(() => this[EMITEND2]());
-      else
-        this[EMITEND2]();
-    }
-    [EMITEND2]() {
-      if (this[DECODER]) {
-        const data = this[DECODER].end();
-        if (data) {
-          for (const p of this[PIPES]) {
-            p.dest.write(data);
-          }
-          super.emit("data", data);
-        }
-      }
-      for (const p of this[PIPES]) {
-        p.end();
-      }
-      const ret = super.emit("end");
-      this.removeAllListeners("end");
-      return ret;
-    }
-    collect() {
-      const buf = [];
-      if (!this[OBJECTMODE])
-        buf.dataLength = 0;
-      const p = this.promise();
-      this.on("data", (c) => {
-        buf.push(c);
-        if (!this[OBJECTMODE])
-          buf.dataLength += c.length;
-      });
-      return p.then(() => buf);
-    }
-    concat() {
-      return this[OBJECTMODE] ? Promise.reject(new Error("cannot concat in objectMode")) : this.collect().then((buf) => this[OBJECTMODE] ? Promise.reject(new Error("cannot concat in objectMode")) : this[ENCODING] ? buf.join("") : Buffer.concat(buf, buf.dataLength));
-    }
-    promise() {
-      return new Promise((resolve, reject) => {
-        this.on(DESTROYED, () => reject(new Error("stream destroyed")));
-        this.on("error", (er) => reject(er));
-        this.on("end", () => resolve());
-      });
-    }
-    [ASYNCITERATOR]() {
-      let stopped = false;
-      const stop = () => {
-        this.pause();
-        stopped = true;
-        return Promise.resolve({ done: true });
-      };
-      const next = () => {
-        if (stopped)
-          return stop();
-        const res = this.read();
-        if (res !== null)
-          return Promise.resolve({ done: false, value: res });
-        if (this[EOF])
-          return stop();
-        let resolve = null;
-        let reject = null;
-        const onerr = (er) => {
-          this.removeListener("data", ondata);
-          this.removeListener("end", onend);
-          this.removeListener(DESTROYED, ondestroy);
-          stop();
-          reject(er);
-        };
-        const ondata = (value) => {
-          this.removeListener("error", onerr);
-          this.removeListener("end", onend);
-          this.removeListener(DESTROYED, ondestroy);
-          this.pause();
-          resolve({ value, done: !!this[EOF] });
-        };
-        const onend = () => {
-          this.removeListener("error", onerr);
-          this.removeListener("data", ondata);
-          this.removeListener(DESTROYED, ondestroy);
-          stop();
-          resolve({ done: true });
-        };
-        const ondestroy = () => onerr(new Error("stream destroyed"));
-        return new Promise((res2, rej) => {
-          reject = rej;
-          resolve = res2;
-          this.once(DESTROYED, ondestroy);
-          this.once("error", onerr);
-          this.once("end", onend);
-          this.once("data", ondata);
-        });
-      };
-      return {
-        next,
-        throw: stop,
-        return: stop,
-        [ASYNCITERATOR]() {
-          return this;
-        }
-      };
-    }
-    [ITERATOR]() {
-      let stopped = false;
-      const stop = () => {
-        this.pause();
-        this.removeListener(ERROR, stop);
-        this.removeListener(DESTROYED, stop);
-        this.removeListener("end", stop);
-        stopped = true;
-        return { done: true };
-      };
-      const next = () => {
-        if (stopped)
-          return stop();
-        const value = this.read();
-        return value === null ? stop() : { value };
-      };
-      this.once("end", stop);
-      this.once(ERROR, stop);
-      this.once(DESTROYED, stop);
-      return {
-        next,
-        throw: stop,
-        return: stop,
-        [ITERATOR]() {
-          return this;
-        }
-      };
-    }
-    destroy(er) {
-      if (this[DESTROYED]) {
-        if (er)
-          this.emit("error", er);
-        else
-          this.emit(DESTROYED);
-        return this;
-      }
-      this[DESTROYED] = true;
-      this[BUFFER].length = 0;
-      this[BUFFERLENGTH] = 0;
-      if (typeof this.close === "function" && !this[CLOSED])
-        this.close();
-      if (er)
-        this.emit("error", er);
-      else
-        this.emit(DESTROYED);
-      return this;
-    }
-    static isStream(s) {
-      return !!s && (s instanceof Minipass || s instanceof Stream || s instanceof EE && (typeof s.pipe === "function" || typeof s.write === "function" && typeof s.end === "function"));
-    }
-  }
-  exports.Minipass = Minipass;
-});
-
-// ../../node_modules/minizlib/constants.js
-var require_constants = __commonJS((exports, module) => {
-  var realZlibConstants = __require("zlib").constants || { ZLIB_VERNUM: 4736 };
-  module.exports = Object.freeze(Object.assign(Object.create(null), {
-    Z_NO_FLUSH: 0,
-    Z_PARTIAL_FLUSH: 1,
-    Z_SYNC_FLUSH: 2,
-    Z_FULL_FLUSH: 3,
-    Z_FINISH: 4,
-    Z_BLOCK: 5,
-    Z_OK: 0,
-    Z_STREAM_END: 1,
-    Z_NEED_DICT: 2,
-    Z_ERRNO: -1,
-    Z_STREAM_ERROR: -2,
-    Z_DATA_ERROR: -3,
-    Z_MEM_ERROR: -4,
-    Z_BUF_ERROR: -5,
-    Z_VERSION_ERROR: -6,
-    Z_NO_COMPRESSION: 0,
-    Z_BEST_SPEED: 1,
-    Z_BEST_COMPRESSION: 9,
-    Z_DEFAULT_COMPRESSION: -1,
-    Z_FILTERED: 1,
-    Z_HUFFMAN_ONLY: 2,
-    Z_RLE: 3,
-    Z_FIXED: 4,
-    Z_DEFAULT_STRATEGY: 0,
-    DEFLATE: 1,
-    INFLATE: 2,
-    GZIP: 3,
-    GUNZIP: 4,
-    DEFLATERAW: 5,
-    INFLATERAW: 6,
-    UNZIP: 7,
-    BROTLI_DECODE: 8,
-    BROTLI_ENCODE: 9,
-    Z_MIN_WINDOWBITS: 8,
-    Z_MAX_WINDOWBITS: 15,
-    Z_DEFAULT_WINDOWBITS: 15,
-    Z_MIN_CHUNK: 64,
-    Z_MAX_CHUNK: Infinity,
-    Z_DEFAULT_CHUNK: 16384,
-    Z_MIN_MEMLEVEL: 1,
-    Z_MAX_MEMLEVEL: 9,
-    Z_DEFAULT_MEMLEVEL: 8,
-    Z_MIN_LEVEL: -1,
-    Z_MAX_LEVEL: 9,
-    Z_DEFAULT_LEVEL: -1,
-    BROTLI_OPERATION_PROCESS: 0,
-    BROTLI_OPERATION_FLUSH: 1,
-    BROTLI_OPERATION_FINISH: 2,
-    BROTLI_OPERATION_EMIT_METADATA: 3,
-    BROTLI_MODE_GENERIC: 0,
-    BROTLI_MODE_TEXT: 1,
-    BROTLI_MODE_FONT: 2,
-    BROTLI_DEFAULT_MODE: 0,
-    BROTLI_MIN_QUALITY: 0,
-    BROTLI_MAX_QUALITY: 11,
-    BROTLI_DEFAULT_QUALITY: 11,
-    BROTLI_MIN_WINDOW_BITS: 10,
-    BROTLI_MAX_WINDOW_BITS: 24,
-    BROTLI_LARGE_MAX_WINDOW_BITS: 30,
-    BROTLI_DEFAULT_WINDOW: 22,
-    BROTLI_MIN_INPUT_BLOCK_BITS: 16,
-    BROTLI_MAX_INPUT_BLOCK_BITS: 24,
-    BROTLI_PARAM_MODE: 0,
-    BROTLI_PARAM_QUALITY: 1,
-    BROTLI_PARAM_LGWIN: 2,
-    BROTLI_PARAM_LGBLOCK: 3,
-    BROTLI_PARAM_DISABLE_LITERAL_CONTEXT_MODELING: 4,
-    BROTLI_PARAM_SIZE_HINT: 5,
-    BROTLI_PARAM_LARGE_WINDOW: 6,
-    BROTLI_PARAM_NPOSTFIX: 7,
-    BROTLI_PARAM_NDIRECT: 8,
-    BROTLI_DECODER_RESULT_ERROR: 0,
-    BROTLI_DECODER_RESULT_SUCCESS: 1,
-    BROTLI_DECODER_RESULT_NEEDS_MORE_INPUT: 2,
-    BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT: 3,
-    BROTLI_DECODER_PARAM_DISABLE_RING_BUFFER_REALLOCATION: 0,
-    BROTLI_DECODER_PARAM_LARGE_WINDOW: 1,
-    BROTLI_DECODER_NO_ERROR: 0,
-    BROTLI_DECODER_SUCCESS: 1,
-    BROTLI_DECODER_NEEDS_MORE_INPUT: 2,
-    BROTLI_DECODER_NEEDS_MORE_OUTPUT: 3,
-    BROTLI_DECODER_ERROR_FORMAT_EXUBERANT_NIBBLE: -1,
-    BROTLI_DECODER_ERROR_FORMAT_RESERVED: -2,
-    BROTLI_DECODER_ERROR_FORMAT_EXUBERANT_META_NIBBLE: -3,
-    BROTLI_DECODER_ERROR_FORMAT_SIMPLE_HUFFMAN_ALPHABET: -4,
-    BROTLI_DECODER_ERROR_FORMAT_SIMPLE_HUFFMAN_SAME: -5,
-    BROTLI_DECODER_ERROR_FORMAT_CL_SPACE: -6,
-    BROTLI_DECODER_ERROR_FORMAT_HUFFMAN_SPACE: -7,
-    BROTLI_DECODER_ERROR_FORMAT_CONTEXT_MAP_REPEAT: -8,
-    BROTLI_DECODER_ERROR_FORMAT_BLOCK_LENGTH_1: -9,
-    BROTLI_DECODER_ERROR_FORMAT_BLOCK_LENGTH_2: -10,
-    BROTLI_DECODER_ERROR_FORMAT_TRANSFORM: -11,
-    BROTLI_DECODER_ERROR_FORMAT_DICTIONARY: -12,
-    BROTLI_DECODER_ERROR_FORMAT_WINDOW_BITS: -13,
-    BROTLI_DECODER_ERROR_FORMAT_PADDING_1: -14,
-    BROTLI_DECODER_ERROR_FORMAT_PADDING_2: -15,
-    BROTLI_DECODER_ERROR_FORMAT_DISTANCE: -16,
-    BROTLI_DECODER_ERROR_DICTIONARY_NOT_SET: -19,
-    BROTLI_DECODER_ERROR_INVALID_ARGUMENTS: -20,
-    BROTLI_DECODER_ERROR_ALLOC_CONTEXT_MODES: -21,
-    BROTLI_DECODER_ERROR_ALLOC_TREE_GROUPS: -22,
-    BROTLI_DECODER_ERROR_ALLOC_CONTEXT_MAP: -25,
-    BROTLI_DECODER_ERROR_ALLOC_RING_BUFFER_1: -26,
-    BROTLI_DECODER_ERROR_ALLOC_RING_BUFFER_2: -27,
-    BROTLI_DECODER_ERROR_ALLOC_BLOCK_TYPE_TREES: -30,
-    BROTLI_DECODER_ERROR_UNREACHABLE: -31
-  }, realZlibConstants));
-});
-
-// ../../node_modules/minizlib/node_modules/minipass/index.js
-var require_minipass2 = __commonJS((exports, module) => {
-  var proc = typeof process === "object" && process ? process : {
-    stdout: null,
-    stderr: null
-  };
-  var EE = __require("events");
-  var Stream = __require("stream");
-  var SD = __require("string_decoder").StringDecoder;
-  var EOF = Symbol("EOF");
-  var MAYBE_EMIT_END = Symbol("maybeEmitEnd");
-  var EMITTED_END = Symbol("emittedEnd");
-  var EMITTING_END = Symbol("emittingEnd");
-  var EMITTED_ERROR = Symbol("emittedError");
-  var CLOSED = Symbol("closed");
-  var READ = Symbol("read");
-  var FLUSH = Symbol("flush");
-  var FLUSHCHUNK = Symbol("flushChunk");
-  var ENCODING = Symbol("encoding");
-  var DECODER = Symbol("decoder");
-  var FLOWING = Symbol("flowing");
-  var PAUSED = Symbol("paused");
-  var RESUME = Symbol("resume");
-  var BUFFERLENGTH = Symbol("bufferLength");
-  var BUFFERPUSH = Symbol("bufferPush");
-  var BUFFERSHIFT = Symbol("bufferShift");
-  var OBJECTMODE = Symbol("objectMode");
-  var DESTROYED = Symbol("destroyed");
-  var EMITDATA = Symbol("emitData");
-  var EMITEND = Symbol("emitEnd");
-  var EMITEND2 = Symbol("emitEnd2");
-  var ASYNC = Symbol("async");
-  var defer = (fn) => Promise.resolve().then(fn);
-  var doIter = global._MP_NO_ITERATOR_SYMBOLS_ !== "1";
-  var ASYNCITERATOR = doIter && Symbol.asyncIterator || Symbol("asyncIterator not implemented");
-  var ITERATOR = doIter && Symbol.iterator || Symbol("iterator not implemented");
-  var isEndish = (ev) => ev === "end" || ev === "finish" || ev === "prefinish";
-  var isArrayBuffer = (b) => b instanceof ArrayBuffer || typeof b === "object" && b.constructor && b.constructor.name === "ArrayBuffer" && b.byteLength >= 0;
-  var isArrayBufferView = (b) => !Buffer.isBuffer(b) && ArrayBuffer.isView(b);
-
-  class Pipe {
-    constructor(src, dest, opts) {
-      this.src = src;
-      this.dest = dest;
-      this.opts = opts;
-      this.ondrain = () => src[RESUME]();
-      dest.on("drain", this.ondrain);
-    }
-    unpipe() {
-      this.dest.removeListener("drain", this.ondrain);
-    }
-    proxyErrors() {}
-    end() {
-      this.unpipe();
-      if (this.opts.end)
-        this.dest.end();
-    }
-  }
-
-  class PipeProxyErrors extends Pipe {
-    unpipe() {
-      this.src.removeListener("error", this.proxyErrors);
-      super.unpipe();
-    }
-    constructor(src, dest, opts) {
-      super(src, dest, opts);
-      this.proxyErrors = (er) => dest.emit("error", er);
-      src.on("error", this.proxyErrors);
-    }
-  }
-  module.exports = class Minipass extends Stream {
-    constructor(options) {
-      super();
-      this[FLOWING] = false;
-      this[PAUSED] = false;
-      this.pipes = [];
-      this.buffer = [];
-      this[OBJECTMODE] = options && options.objectMode || false;
-      if (this[OBJECTMODE])
-        this[ENCODING] = null;
-      else
-        this[ENCODING] = options && options.encoding || null;
-      if (this[ENCODING] === "buffer")
-        this[ENCODING] = null;
-      this[ASYNC] = options && !!options.async || false;
-      this[DECODER] = this[ENCODING] ? new SD(this[ENCODING]) : null;
-      this[EOF] = false;
-      this[EMITTED_END] = false;
-      this[EMITTING_END] = false;
-      this[CLOSED] = false;
-      this[EMITTED_ERROR] = null;
-      this.writable = true;
-      this.readable = true;
-      this[BUFFERLENGTH] = 0;
-      this[DESTROYED] = false;
-    }
-    get bufferLength() {
-      return this[BUFFERLENGTH];
-    }
-    get encoding() {
-      return this[ENCODING];
-    }
-    set encoding(enc) {
-      if (this[OBJECTMODE])
-        throw new Error("cannot set encoding in objectMode");
-      if (this[ENCODING] && enc !== this[ENCODING] && (this[DECODER] && this[DECODER].lastNeed || this[BUFFERLENGTH]))
-        throw new Error("cannot change encoding");
-      if (this[ENCODING] !== enc) {
-        this[DECODER] = enc ? new SD(enc) : null;
-        if (this.buffer.length)
-          this.buffer = this.buffer.map((chunk) => this[DECODER].write(chunk));
-      }
-      this[ENCODING] = enc;
-    }
-    setEncoding(enc) {
-      this.encoding = enc;
-    }
-    get objectMode() {
-      return this[OBJECTMODE];
-    }
-    set objectMode(om) {
-      this[OBJECTMODE] = this[OBJECTMODE] || !!om;
-    }
-    get ["async"]() {
-      return this[ASYNC];
-    }
-    set ["async"](a) {
-      this[ASYNC] = this[ASYNC] || !!a;
-    }
-    write(chunk, encoding, cb) {
-      if (this[EOF])
-        throw new Error("write after end");
-      if (this[DESTROYED]) {
-        this.emit("error", Object.assign(new Error("Cannot call write after a stream was destroyed"), { code: "ERR_STREAM_DESTROYED" }));
-        return true;
-      }
-      if (typeof encoding === "function")
-        cb = encoding, encoding = "utf8";
-      if (!encoding)
-        encoding = "utf8";
-      const fn = this[ASYNC] ? defer : (f) => f();
-      if (!this[OBJECTMODE] && !Buffer.isBuffer(chunk)) {
-        if (isArrayBufferView(chunk))
-          chunk = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
-        else if (isArrayBuffer(chunk))
-          chunk = Buffer.from(chunk);
-        else if (typeof chunk !== "string")
-          this.objectMode = true;
-      }
-      if (this[OBJECTMODE]) {
-        if (this.flowing && this[BUFFERLENGTH] !== 0)
-          this[FLUSH](true);
-        if (this.flowing)
-          this.emit("data", chunk);
-        else
-          this[BUFFERPUSH](chunk);
-        if (this[BUFFERLENGTH] !== 0)
-          this.emit("readable");
-        if (cb)
-          fn(cb);
-        return this.flowing;
-      }
-      if (!chunk.length) {
-        if (this[BUFFERLENGTH] !== 0)
-          this.emit("readable");
-        if (cb)
-          fn(cb);
-        return this.flowing;
-      }
-      if (typeof chunk === "string" && !(encoding === this[ENCODING] && !this[DECODER].lastNeed)) {
-        chunk = Buffer.from(chunk, encoding);
-      }
-      if (Buffer.isBuffer(chunk) && this[ENCODING])
-        chunk = this[DECODER].write(chunk);
-      if (this.flowing && this[BUFFERLENGTH] !== 0)
-        this[FLUSH](true);
-      if (this.flowing)
-        this.emit("data", chunk);
-      else
-        this[BUFFERPUSH](chunk);
-      if (this[BUFFERLENGTH] !== 0)
-        this.emit("readable");
-      if (cb)
-        fn(cb);
-      return this.flowing;
-    }
-    read(n) {
-      if (this[DESTROYED])
-        return null;
-      if (this[BUFFERLENGTH] === 0 || n === 0 || n > this[BUFFERLENGTH]) {
-        this[MAYBE_EMIT_END]();
-        return null;
-      }
-      if (this[OBJECTMODE])
-        n = null;
-      if (this.buffer.length > 1 && !this[OBJECTMODE]) {
-        if (this.encoding)
-          this.buffer = [this.buffer.join("")];
-        else
-          this.buffer = [Buffer.concat(this.buffer, this[BUFFERLENGTH])];
-      }
-      const ret = this[READ](n || null, this.buffer[0]);
-      this[MAYBE_EMIT_END]();
-      return ret;
-    }
-    [READ](n, chunk) {
-      if (n === chunk.length || n === null)
-        this[BUFFERSHIFT]();
-      else {
-        this.buffer[0] = chunk.slice(n);
-        chunk = chunk.slice(0, n);
-        this[BUFFERLENGTH] -= n;
-      }
-      this.emit("data", chunk);
-      if (!this.buffer.length && !this[EOF])
-        this.emit("drain");
-      return chunk;
-    }
-    end(chunk, encoding, cb) {
-      if (typeof chunk === "function")
-        cb = chunk, chunk = null;
-      if (typeof encoding === "function")
-        cb = encoding, encoding = "utf8";
-      if (chunk)
-        this.write(chunk, encoding);
-      if (cb)
-        this.once("end", cb);
-      this[EOF] = true;
-      this.writable = false;
-      if (this.flowing || !this[PAUSED])
-        this[MAYBE_EMIT_END]();
-      return this;
-    }
-    [RESUME]() {
-      if (this[DESTROYED])
-        return;
-      this[PAUSED] = false;
-      this[FLOWING] = true;
-      this.emit("resume");
-      if (this.buffer.length)
-        this[FLUSH]();
-      else if (this[EOF])
-        this[MAYBE_EMIT_END]();
-      else
-        this.emit("drain");
-    }
-    resume() {
-      return this[RESUME]();
-    }
-    pause() {
-      this[FLOWING] = false;
-      this[PAUSED] = true;
-    }
-    get destroyed() {
-      return this[DESTROYED];
-    }
-    get flowing() {
-      return this[FLOWING];
-    }
-    get paused() {
-      return this[PAUSED];
-    }
-    [BUFFERPUSH](chunk) {
-      if (this[OBJECTMODE])
-        this[BUFFERLENGTH] += 1;
-      else
-        this[BUFFERLENGTH] += chunk.length;
-      this.buffer.push(chunk);
-    }
-    [BUFFERSHIFT]() {
-      if (this.buffer.length) {
-        if (this[OBJECTMODE])
-          this[BUFFERLENGTH] -= 1;
-        else
-          this[BUFFERLENGTH] -= this.buffer[0].length;
-      }
-      return this.buffer.shift();
-    }
-    [FLUSH](noDrain) {
-      do {} while (this[FLUSHCHUNK](this[BUFFERSHIFT]()));
-      if (!noDrain && !this.buffer.length && !this[EOF])
-        this.emit("drain");
-    }
-    [FLUSHCHUNK](chunk) {
-      return chunk ? (this.emit("data", chunk), this.flowing) : false;
-    }
-    pipe(dest, opts) {
-      if (this[DESTROYED])
-        return;
-      const ended = this[EMITTED_END];
-      opts = opts || {};
-      if (dest === proc.stdout || dest === proc.stderr)
-        opts.end = false;
-      else
-        opts.end = opts.end !== false;
-      opts.proxyErrors = !!opts.proxyErrors;
-      if (ended) {
-        if (opts.end)
-          dest.end();
-      } else {
-        this.pipes.push(!opts.proxyErrors ? new Pipe(this, dest, opts) : new PipeProxyErrors(this, dest, opts));
-        if (this[ASYNC])
-          defer(() => this[RESUME]());
-        else
-          this[RESUME]();
-      }
-      return dest;
-    }
-    unpipe(dest) {
-      const p = this.pipes.find((p2) => p2.dest === dest);
-      if (p) {
-        this.pipes.splice(this.pipes.indexOf(p), 1);
-        p.unpipe();
-      }
-    }
-    addListener(ev, fn) {
-      return this.on(ev, fn);
-    }
-    on(ev, fn) {
-      const ret = super.on(ev, fn);
-      if (ev === "data" && !this.pipes.length && !this.flowing)
-        this[RESUME]();
-      else if (ev === "readable" && this[BUFFERLENGTH] !== 0)
-        super.emit("readable");
-      else if (isEndish(ev) && this[EMITTED_END]) {
-        super.emit(ev);
-        this.removeAllListeners(ev);
-      } else if (ev === "error" && this[EMITTED_ERROR]) {
-        if (this[ASYNC])
-          defer(() => fn.call(this, this[EMITTED_ERROR]));
-        else
-          fn.call(this, this[EMITTED_ERROR]);
-      }
-      return ret;
-    }
-    get emittedEnd() {
-      return this[EMITTED_END];
-    }
-    [MAYBE_EMIT_END]() {
-      if (!this[EMITTING_END] && !this[EMITTED_END] && !this[DESTROYED] && this.buffer.length === 0 && this[EOF]) {
-        this[EMITTING_END] = true;
-        this.emit("end");
-        this.emit("prefinish");
-        this.emit("finish");
-        if (this[CLOSED])
-          this.emit("close");
-        this[EMITTING_END] = false;
-      }
-    }
-    emit(ev, data, ...extra) {
-      if (ev !== "error" && ev !== "close" && ev !== DESTROYED && this[DESTROYED])
-        return;
-      else if (ev === "data") {
-        return !data ? false : this[ASYNC] ? defer(() => this[EMITDATA](data)) : this[EMITDATA](data);
-      } else if (ev === "end") {
-        return this[EMITEND]();
-      } else if (ev === "close") {
-        this[CLOSED] = true;
-        if (!this[EMITTED_END] && !this[DESTROYED])
-          return;
-        const ret2 = super.emit("close");
-        this.removeAllListeners("close");
-        return ret2;
-      } else if (ev === "error") {
-        this[EMITTED_ERROR] = data;
-        const ret2 = super.emit("error", data);
-        this[MAYBE_EMIT_END]();
-        return ret2;
-      } else if (ev === "resume") {
-        const ret2 = super.emit("resume");
-        this[MAYBE_EMIT_END]();
-        return ret2;
-      } else if (ev === "finish" || ev === "prefinish") {
-        const ret2 = super.emit(ev);
-        this.removeAllListeners(ev);
-        return ret2;
-      }
-      const ret = super.emit(ev, data, ...extra);
-      this[MAYBE_EMIT_END]();
-      return ret;
-    }
-    [EMITDATA](data) {
-      for (const p of this.pipes) {
-        if (p.dest.write(data) === false)
-          this.pause();
-      }
-      const ret = super.emit("data", data);
-      this[MAYBE_EMIT_END]();
-      return ret;
-    }
-    [EMITEND]() {
-      if (this[EMITTED_END])
-        return;
-      this[EMITTED_END] = true;
-      this.readable = false;
-      if (this[ASYNC])
-        defer(() => this[EMITEND2]());
-      else
-        this[EMITEND2]();
-    }
-    [EMITEND2]() {
-      if (this[DECODER]) {
-        const data = this[DECODER].end();
-        if (data) {
-          for (const p of this.pipes) {
-            p.dest.write(data);
-          }
-          super.emit("data", data);
-        }
-      }
-      for (const p of this.pipes) {
-        p.end();
-      }
-      const ret = super.emit("end");
-      this.removeAllListeners("end");
-      return ret;
-    }
-    collect() {
-      const buf = [];
-      if (!this[OBJECTMODE])
-        buf.dataLength = 0;
-      const p = this.promise();
-      this.on("data", (c) => {
-        buf.push(c);
-        if (!this[OBJECTMODE])
-          buf.dataLength += c.length;
-      });
-      return p.then(() => buf);
-    }
-    concat() {
-      return this[OBJECTMODE] ? Promise.reject(new Error("cannot concat in objectMode")) : this.collect().then((buf) => this[OBJECTMODE] ? Promise.reject(new Error("cannot concat in objectMode")) : this[ENCODING] ? buf.join("") : Buffer.concat(buf, buf.dataLength));
-    }
-    promise() {
-      return new Promise((resolve, reject) => {
-        this.on(DESTROYED, () => reject(new Error("stream destroyed")));
-        this.on("error", (er) => reject(er));
-        this.on("end", () => resolve());
-      });
-    }
-    [ASYNCITERATOR]() {
-      const next = () => {
-        const res = this.read();
-        if (res !== null)
-          return Promise.resolve({ done: false, value: res });
-        if (this[EOF])
-          return Promise.resolve({ done: true });
-        let resolve = null;
-        let reject = null;
-        const onerr = (er) => {
-          this.removeListener("data", ondata);
-          this.removeListener("end", onend);
-          reject(er);
-        };
-        const ondata = (value) => {
-          this.removeListener("error", onerr);
-          this.removeListener("end", onend);
-          this.pause();
-          resolve({ value, done: !!this[EOF] });
-        };
-        const onend = () => {
-          this.removeListener("error", onerr);
-          this.removeListener("data", ondata);
-          resolve({ done: true });
-        };
-        const ondestroy = () => onerr(new Error("stream destroyed"));
-        return new Promise((res2, rej) => {
-          reject = rej;
-          resolve = res2;
-          this.once(DESTROYED, ondestroy);
-          this.once("error", onerr);
-          this.once("end", onend);
-          this.once("data", ondata);
-        });
-      };
-      return { next };
-    }
-    [ITERATOR]() {
-      const next = () => {
-        const value = this.read();
-        const done = value === null;
-        return { value, done };
-      };
-      return { next };
-    }
-    destroy(er) {
-      if (this[DESTROYED]) {
-        if (er)
-          this.emit("error", er);
-        else
-          this.emit(DESTROYED);
-        return this;
-      }
-      this[DESTROYED] = true;
-      this.buffer.length = 0;
-      this[BUFFERLENGTH] = 0;
-      if (typeof this.close === "function" && !this[CLOSED])
-        this.close();
-      if (er)
-        this.emit("error", er);
-      else
-        this.emit(DESTROYED);
-      return this;
-    }
-    static isStream(s) {
-      return !!s && (s instanceof Minipass || s instanceof Stream || s instanceof EE && (typeof s.pipe === "function" || typeof s.write === "function" && typeof s.end === "function"));
-    }
-  };
-});
-
-// ../../node_modules/minizlib/index.js
-var require_minizlib = __commonJS((exports) => {
-  var assert = __require("assert");
-  var Buffer2 = __require("buffer").Buffer;
-  var realZlib = __require("zlib");
-  var constants = exports.constants = require_constants();
-  var Minipass = require_minipass2();
-  var OriginalBufferConcat = Buffer2.concat;
-  var _superWrite = Symbol("_superWrite");
-
-  class ZlibError extends Error {
-    constructor(err) {
-      super("zlib: " + err.message);
-      this.code = err.code;
-      this.errno = err.errno;
-      if (!this.code)
-        this.code = "ZLIB_ERROR";
-      this.message = "zlib: " + err.message;
-      Error.captureStackTrace(this, this.constructor);
-    }
-    get name() {
-      return "ZlibError";
-    }
-  }
-  var _opts = Symbol("opts");
-  var _flushFlag = Symbol("flushFlag");
-  var _finishFlushFlag = Symbol("finishFlushFlag");
-  var _fullFlushFlag = Symbol("fullFlushFlag");
-  var _handle = Symbol("handle");
-  var _onError = Symbol("onError");
-  var _sawError = Symbol("sawError");
-  var _level = Symbol("level");
-  var _strategy = Symbol("strategy");
-  var _ended = Symbol("ended");
-  var _defaultFullFlush = Symbol("_defaultFullFlush");
-
-  class ZlibBase extends Minipass {
-    constructor(opts, mode) {
-      if (!opts || typeof opts !== "object")
-        throw new TypeError("invalid options for ZlibBase constructor");
-      super(opts);
-      this[_sawError] = false;
-      this[_ended] = false;
-      this[_opts] = opts;
-      this[_flushFlag] = opts.flush;
-      this[_finishFlushFlag] = opts.finishFlush;
-      try {
-        this[_handle] = new realZlib[mode](opts);
-      } catch (er) {
-        throw new ZlibError(er);
-      }
-      this[_onError] = (err) => {
-        if (this[_sawError])
-          return;
-        this[_sawError] = true;
-        this.close();
-        this.emit("error", err);
-      };
-      this[_handle].on("error", (er) => this[_onError](new ZlibError(er)));
-      this.once("end", () => this.close);
-    }
-    close() {
-      if (this[_handle]) {
-        this[_handle].close();
-        this[_handle] = null;
-        this.emit("close");
-      }
-    }
-    reset() {
-      if (!this[_sawError]) {
-        assert(this[_handle], "zlib binding closed");
-        return this[_handle].reset();
-      }
-    }
-    flush(flushFlag) {
-      if (this.ended)
-        return;
-      if (typeof flushFlag !== "number")
-        flushFlag = this[_fullFlushFlag];
-      this.write(Object.assign(Buffer2.alloc(0), { [_flushFlag]: flushFlag }));
-    }
-    end(chunk, encoding, cb) {
-      if (chunk)
-        this.write(chunk, encoding);
-      this.flush(this[_finishFlushFlag]);
-      this[_ended] = true;
-      return super.end(null, null, cb);
-    }
-    get ended() {
-      return this[_ended];
-    }
-    write(chunk, encoding, cb) {
-      if (typeof encoding === "function")
-        cb = encoding, encoding = "utf8";
-      if (typeof chunk === "string")
-        chunk = Buffer2.from(chunk, encoding);
-      if (this[_sawError])
-        return;
-      assert(this[_handle], "zlib binding closed");
-      const nativeHandle = this[_handle]._handle;
-      const originalNativeClose = nativeHandle.close;
-      nativeHandle.close = () => {};
-      const originalClose = this[_handle].close;
-      this[_handle].close = () => {};
-      Buffer2.concat = (args) => args;
-      let result;
-      try {
-        const flushFlag = typeof chunk[_flushFlag] === "number" ? chunk[_flushFlag] : this[_flushFlag];
-        result = this[_handle]._processChunk(chunk, flushFlag);
-        Buffer2.concat = OriginalBufferConcat;
-      } catch (err) {
-        Buffer2.concat = OriginalBufferConcat;
-        this[_onError](new ZlibError(err));
-      } finally {
-        if (this[_handle]) {
-          this[_handle]._handle = nativeHandle;
-          nativeHandle.close = originalNativeClose;
-          this[_handle].close = originalClose;
-          this[_handle].removeAllListeners("error");
-        }
-      }
-      if (this[_handle])
-        this[_handle].on("error", (er) => this[_onError](new ZlibError(er)));
-      let writeReturn;
-      if (result) {
-        if (Array.isArray(result) && result.length > 0) {
-          writeReturn = this[_superWrite](Buffer2.from(result[0]));
-          for (let i = 1;i < result.length; i++) {
-            writeReturn = this[_superWrite](result[i]);
-          }
-        } else {
-          writeReturn = this[_superWrite](Buffer2.from(result));
-        }
-      }
-      if (cb)
-        cb();
-      return writeReturn;
-    }
-    [_superWrite](data) {
-      return super.write(data);
-    }
-  }
-
-  class Zlib extends ZlibBase {
-    constructor(opts, mode) {
-      opts = opts || {};
-      opts.flush = opts.flush || constants.Z_NO_FLUSH;
-      opts.finishFlush = opts.finishFlush || constants.Z_FINISH;
-      super(opts, mode);
-      this[_fullFlushFlag] = constants.Z_FULL_FLUSH;
-      this[_level] = opts.level;
-      this[_strategy] = opts.strategy;
-    }
-    params(level, strategy) {
-      if (this[_sawError])
-        return;
-      if (!this[_handle])
-        throw new Error("cannot switch params when binding is closed");
-      if (!this[_handle].params)
-        throw new Error("not supported in this implementation");
-      if (this[_level] !== level || this[_strategy] !== strategy) {
-        this.flush(constants.Z_SYNC_FLUSH);
-        assert(this[_handle], "zlib binding closed");
-        const origFlush = this[_handle].flush;
-        this[_handle].flush = (flushFlag, cb) => {
-          this.flush(flushFlag);
-          cb();
-        };
-        try {
-          this[_handle].params(level, strategy);
-        } finally {
-          this[_handle].flush = origFlush;
-        }
-        if (this[_handle]) {
-          this[_level] = level;
-          this[_strategy] = strategy;
-        }
-      }
-    }
-  }
-
-  class Deflate extends Zlib {
-    constructor(opts) {
-      super(opts, "Deflate");
-    }
-  }
-
-  class Inflate extends Zlib {
-    constructor(opts) {
-      super(opts, "Inflate");
-    }
-  }
-  var _portable = Symbol("_portable");
-
-  class Gzip extends Zlib {
-    constructor(opts) {
-      super(opts, "Gzip");
-      this[_portable] = opts && !!opts.portable;
-    }
-    [_superWrite](data) {
-      if (!this[_portable])
-        return super[_superWrite](data);
-      this[_portable] = false;
-      data[9] = 255;
-      return super[_superWrite](data);
-    }
-  }
-
-  class Gunzip extends Zlib {
-    constructor(opts) {
-      super(opts, "Gunzip");
-    }
-  }
-
-  class DeflateRaw extends Zlib {
-    constructor(opts) {
-      super(opts, "DeflateRaw");
-    }
-  }
-
-  class InflateRaw extends Zlib {
-    constructor(opts) {
-      super(opts, "InflateRaw");
-    }
-  }
-
-  class Unzip extends Zlib {
-    constructor(opts) {
-      super(opts, "Unzip");
-    }
-  }
-
-  class Brotli extends ZlibBase {
-    constructor(opts, mode) {
-      opts = opts || {};
-      opts.flush = opts.flush || constants.BROTLI_OPERATION_PROCESS;
-      opts.finishFlush = opts.finishFlush || constants.BROTLI_OPERATION_FINISH;
-      super(opts, mode);
-      this[_fullFlushFlag] = constants.BROTLI_OPERATION_FLUSH;
-    }
-  }
-
-  class BrotliCompress extends Brotli {
-    constructor(opts) {
-      super(opts, "BrotliCompress");
-    }
-  }
-
-  class BrotliDecompress extends Brotli {
-    constructor(opts) {
-      super(opts, "BrotliDecompress");
-    }
-  }
-  exports.Deflate = Deflate;
-  exports.Inflate = Inflate;
-  exports.Gzip = Gzip;
-  exports.Gunzip = Gunzip;
-  exports.DeflateRaw = DeflateRaw;
-  exports.InflateRaw = InflateRaw;
-  exports.Unzip = Unzip;
-  if (typeof realZlib.BrotliCompress === "function") {
-    exports.BrotliCompress = BrotliCompress;
-    exports.BrotliDecompress = BrotliDecompress;
-  } else {
-    exports.BrotliCompress = exports.BrotliDecompress = class {
-      constructor() {
-        throw new Error("Brotli is not supported in this version of Node.js");
-      }
-    };
-  }
-});
-
-// ../../node_modules/tar/lib/normalize-windows-path.js
-var require_normalize_windows_path = __commonJS((exports, module) => {
-  var platform = process.env.TESTING_TAR_FAKE_PLATFORM || process.platform;
-  module.exports = platform !== "win32" ? (p) => p : (p) => p && p.replace(/\\/g, "/");
-});
-
-// ../../node_modules/tar/lib/read-entry.js
-var require_read_entry = __commonJS((exports, module) => {
-  var { Minipass } = require_minipass();
-  var normPath = require_normalize_windows_path();
-  var SLURP = Symbol("slurp");
-  module.exports = class ReadEntry extends Minipass {
-    constructor(header, ex, gex) {
-      super();
-      this.pause();
-      this.extended = ex;
-      this.globalExtended = gex;
-      this.header = header;
-      this.startBlockSize = 512 * Math.ceil(header.size / 512);
-      this.blockRemain = this.startBlockSize;
-      this.remain = header.size;
-      this.type = header.type;
-      this.meta = false;
-      this.ignore = false;
-      switch (this.type) {
-        case "File":
-        case "OldFile":
-        case "Link":
-        case "SymbolicLink":
-        case "CharacterDevice":
-        case "BlockDevice":
-        case "Directory":
-        case "FIFO":
-        case "ContiguousFile":
-        case "GNUDumpDir":
-          break;
-        case "NextFileHasLongLinkpath":
-        case "NextFileHasLongPath":
-        case "OldGnuLongPath":
-        case "GlobalExtendedHeader":
-        case "ExtendedHeader":
-        case "OldExtendedHeader":
-          this.meta = true;
-          break;
-        default:
-          this.ignore = true;
-      }
-      this.path = normPath(header.path);
-      this.mode = header.mode;
-      if (this.mode) {
-        this.mode = this.mode & 4095;
-      }
-      this.uid = header.uid;
-      this.gid = header.gid;
-      this.uname = header.uname;
-      this.gname = header.gname;
-      this.size = header.size;
-      this.mtime = header.mtime;
-      this.atime = header.atime;
-      this.ctime = header.ctime;
-      this.linkpath = normPath(header.linkpath);
-      this.uname = header.uname;
-      this.gname = header.gname;
-      if (ex) {
-        this[SLURP](ex);
-      }
-      if (gex) {
-        this[SLURP](gex, true);
-      }
-    }
-    write(data) {
-      const writeLen = data.length;
-      if (writeLen > this.blockRemain) {
-        throw new Error("writing more to entry than is appropriate");
-      }
-      const r = this.remain;
-      const br = this.blockRemain;
-      this.remain = Math.max(0, r - writeLen);
-      this.blockRemain = Math.max(0, br - writeLen);
-      if (this.ignore) {
-        return true;
-      }
-      if (r >= writeLen) {
-        return super.write(data);
-      }
-      return super.write(data.slice(0, r));
-    }
-    [SLURP](ex, global2) {
-      for (const k in ex) {
-        if (ex[k] !== null && ex[k] !== undefined && !(global2 && k === "path")) {
-          this[k] = k === "path" || k === "linkpath" ? normPath(ex[k]) : ex[k];
-        }
-      }
-    }
-  };
-});
-
-// ../../node_modules/tar/lib/types.js
-var require_types = __commonJS((exports) => {
-  exports.name = new Map([
-    ["0", "File"],
-    ["", "OldFile"],
-    ["1", "Link"],
-    ["2", "SymbolicLink"],
-    ["3", "CharacterDevice"],
-    ["4", "BlockDevice"],
-    ["5", "Directory"],
-    ["6", "FIFO"],
-    ["7", "ContiguousFile"],
-    ["g", "GlobalExtendedHeader"],
-    ["x", "ExtendedHeader"],
-    ["A", "SolarisACL"],
-    ["D", "GNUDumpDir"],
-    ["I", "Inode"],
-    ["K", "NextFileHasLongLinkpath"],
-    ["L", "NextFileHasLongPath"],
-    ["M", "ContinuationFile"],
-    ["N", "OldGnuLongPath"],
-    ["S", "SparseFile"],
-    ["V", "TapeVolumeHeader"],
-    ["X", "OldExtendedHeader"]
-  ]);
-  exports.code = new Map(Array.from(exports.name).map((kv) => [kv[1], kv[0]]));
-});
-
-// ../../node_modules/tar/lib/large-numbers.js
-var require_large_numbers = __commonJS((exports, module) => {
-  var encode = (num, buf) => {
-    if (!Number.isSafeInteger(num)) {
-      throw Error("cannot encode number outside of javascript safe integer range");
-    } else if (num < 0) {
-      encodeNegative(num, buf);
-    } else {
-      encodePositive(num, buf);
-    }
-    return buf;
-  };
-  var encodePositive = (num, buf) => {
-    buf[0] = 128;
-    for (var i = buf.length;i > 1; i--) {
-      buf[i - 1] = num & 255;
-      num = Math.floor(num / 256);
-    }
-  };
-  var encodeNegative = (num, buf) => {
-    buf[0] = 255;
-    var flipped = false;
-    num = num * -1;
-    for (var i = buf.length;i > 1; i--) {
-      var byte = num & 255;
-      num = Math.floor(num / 256);
-      if (flipped) {
-        buf[i - 1] = onesComp(byte);
-      } else if (byte === 0) {
-        buf[i - 1] = 0;
-      } else {
-        flipped = true;
-        buf[i - 1] = twosComp(byte);
-      }
-    }
-  };
-  var parse = (buf) => {
-    const pre = buf[0];
-    const value = pre === 128 ? pos(buf.slice(1, buf.length)) : pre === 255 ? twos(buf) : null;
-    if (value === null) {
-      throw Error("invalid base256 encoding");
-    }
-    if (!Number.isSafeInteger(value)) {
-      throw Error("parsed number outside of javascript safe integer range");
-    }
-    return value;
-  };
-  var twos = (buf) => {
-    var len = buf.length;
-    var sum = 0;
-    var flipped = false;
-    for (var i = len - 1;i > -1; i--) {
-      var byte = buf[i];
-      var f;
-      if (flipped) {
-        f = onesComp(byte);
-      } else if (byte === 0) {
-        f = byte;
-      } else {
-        flipped = true;
-        f = twosComp(byte);
-      }
-      if (f !== 0) {
-        sum -= f * Math.pow(256, len - i - 1);
-      }
-    }
-    return sum;
-  };
-  var pos = (buf) => {
-    var len = buf.length;
-    var sum = 0;
-    for (var i = len - 1;i > -1; i--) {
-      var byte = buf[i];
-      if (byte !== 0) {
-        sum += byte * Math.pow(256, len - i - 1);
-      }
-    }
-    return sum;
-  };
-  var onesComp = (byte) => (255 ^ byte) & 255;
-  var twosComp = (byte) => (255 ^ byte) + 1 & 255;
-  module.exports = {
-    encode,
-    parse
-  };
-});
-
-// ../../node_modules/tar/lib/header.js
-var require_header = __commonJS((exports, module) => {
-  var types = require_types();
-  var pathModule = __require("path").posix;
-  var large = require_large_numbers();
-  var SLURP = Symbol("slurp");
-  var TYPE = Symbol("type");
-
-  class Header {
-    constructor(data, off, ex, gex) {
-      this.cksumValid = false;
-      this.needPax = false;
-      this.nullBlock = false;
-      this.block = null;
-      this.path = null;
-      this.mode = null;
-      this.uid = null;
-      this.gid = null;
-      this.size = null;
-      this.mtime = null;
-      this.cksum = null;
-      this[TYPE] = "0";
-      this.linkpath = null;
-      this.uname = null;
-      this.gname = null;
-      this.devmaj = 0;
-      this.devmin = 0;
-      this.atime = null;
-      this.ctime = null;
-      if (Buffer.isBuffer(data)) {
-        this.decode(data, off || 0, ex, gex);
-      } else if (data) {
-        this.set(data);
-      }
-    }
-    decode(buf, off, ex, gex) {
-      if (!off) {
-        off = 0;
-      }
-      if (!buf || !(buf.length >= off + 512)) {
-        throw new Error("need 512 bytes for header");
-      }
-      this.path = decString(buf, off, 100);
-      this.mode = decNumber(buf, off + 100, 8);
-      this.uid = decNumber(buf, off + 108, 8);
-      this.gid = decNumber(buf, off + 116, 8);
-      this.size = decNumber(buf, off + 124, 12);
-      this.mtime = decDate(buf, off + 136, 12);
-      this.cksum = decNumber(buf, off + 148, 12);
-      this[SLURP](ex);
-      this[SLURP](gex, true);
-      this[TYPE] = decString(buf, off + 156, 1);
-      if (this[TYPE] === "") {
-        this[TYPE] = "0";
-      }
-      if (this[TYPE] === "0" && this.path.slice(-1) === "/") {
-        this[TYPE] = "5";
-      }
-      if (this[TYPE] === "5") {
-        this.size = 0;
-      }
-      this.linkpath = decString(buf, off + 157, 100);
-      if (buf.slice(off + 257, off + 265).toString() === "ustar\x0000") {
-        this.uname = decString(buf, off + 265, 32);
-        this.gname = decString(buf, off + 297, 32);
-        this.devmaj = decNumber(buf, off + 329, 8);
-        this.devmin = decNumber(buf, off + 337, 8);
-        if (buf[off + 475] !== 0) {
-          const prefix = decString(buf, off + 345, 155);
-          this.path = prefix + "/" + this.path;
-        } else {
-          const prefix = decString(buf, off + 345, 130);
-          if (prefix) {
-            this.path = prefix + "/" + this.path;
-          }
-          this.atime = decDate(buf, off + 476, 12);
-          this.ctime = decDate(buf, off + 488, 12);
-        }
-      }
-      let sum = 8 * 32;
-      for (let i = off;i < off + 148; i++) {
-        sum += buf[i];
-      }
-      for (let i = off + 156;i < off + 512; i++) {
-        sum += buf[i];
-      }
-      this.cksumValid = sum === this.cksum;
-      if (this.cksum === null && sum === 8 * 32) {
-        this.nullBlock = true;
-      }
-    }
-    [SLURP](ex, global2) {
-      for (const k in ex) {
-        if (ex[k] !== null && ex[k] !== undefined && !(global2 && k === "path")) {
-          this[k] = ex[k];
-        }
-      }
-    }
-    encode(buf, off) {
-      if (!buf) {
-        buf = this.block = Buffer.alloc(512);
-        off = 0;
-      }
-      if (!off) {
-        off = 0;
-      }
-      if (!(buf.length >= off + 512)) {
-        throw new Error("need 512 bytes for header");
-      }
-      const prefixSize = this.ctime || this.atime ? 130 : 155;
-      const split = splitPrefix(this.path || "", prefixSize);
-      const path = split[0];
-      const prefix = split[1];
-      this.needPax = split[2];
-      this.needPax = encString(buf, off, 100, path) || this.needPax;
-      this.needPax = encNumber(buf, off + 100, 8, this.mode) || this.needPax;
-      this.needPax = encNumber(buf, off + 108, 8, this.uid) || this.needPax;
-      this.needPax = encNumber(buf, off + 116, 8, this.gid) || this.needPax;
-      this.needPax = encNumber(buf, off + 124, 12, this.size) || this.needPax;
-      this.needPax = encDate(buf, off + 136, 12, this.mtime) || this.needPax;
-      buf[off + 156] = this[TYPE].charCodeAt(0);
-      this.needPax = encString(buf, off + 157, 100, this.linkpath) || this.needPax;
-      buf.write("ustar\x0000", off + 257, 8);
-      this.needPax = encString(buf, off + 265, 32, this.uname) || this.needPax;
-      this.needPax = encString(buf, off + 297, 32, this.gname) || this.needPax;
-      this.needPax = encNumber(buf, off + 329, 8, this.devmaj) || this.needPax;
-      this.needPax = encNumber(buf, off + 337, 8, this.devmin) || this.needPax;
-      this.needPax = encString(buf, off + 345, prefixSize, prefix) || this.needPax;
-      if (buf[off + 475] !== 0) {
-        this.needPax = encString(buf, off + 345, 155, prefix) || this.needPax;
-      } else {
-        this.needPax = encString(buf, off + 345, 130, prefix) || this.needPax;
-        this.needPax = encDate(buf, off + 476, 12, this.atime) || this.needPax;
-        this.needPax = encDate(buf, off + 488, 12, this.ctime) || this.needPax;
-      }
-      let sum = 8 * 32;
-      for (let i = off;i < off + 148; i++) {
-        sum += buf[i];
-      }
-      for (let i = off + 156;i < off + 512; i++) {
-        sum += buf[i];
-      }
-      this.cksum = sum;
-      encNumber(buf, off + 148, 8, this.cksum);
-      this.cksumValid = true;
-      return this.needPax;
-    }
-    set(data) {
-      for (const i in data) {
-        if (data[i] !== null && data[i] !== undefined) {
-          this[i] = data[i];
-        }
-      }
-    }
-    get type() {
-      return types.name.get(this[TYPE]) || this[TYPE];
-    }
-    get typeKey() {
-      return this[TYPE];
-    }
-    set type(type) {
-      if (types.code.has(type)) {
-        this[TYPE] = types.code.get(type);
-      } else {
-        this[TYPE] = type;
-      }
-    }
-  }
-  var splitPrefix = (p, prefixSize) => {
-    const pathSize = 100;
-    let pp = p;
-    let prefix = "";
-    let ret;
-    const root = pathModule.parse(p).root || ".";
-    if (Buffer.byteLength(pp) < pathSize) {
-      ret = [pp, prefix, false];
-    } else {
-      prefix = pathModule.dirname(pp);
-      pp = pathModule.basename(pp);
-      do {
-        if (Buffer.byteLength(pp) <= pathSize && Buffer.byteLength(prefix) <= prefixSize) {
-          ret = [pp, prefix, false];
-        } else if (Buffer.byteLength(pp) > pathSize && Buffer.byteLength(prefix) <= prefixSize) {
-          ret = [pp.slice(0, pathSize - 1), prefix, true];
-        } else {
-          pp = pathModule.join(pathModule.basename(prefix), pp);
-          prefix = pathModule.dirname(prefix);
-        }
-      } while (prefix !== root && !ret);
-      if (!ret) {
-        ret = [p.slice(0, pathSize - 1), "", true];
-      }
-    }
-    return ret;
-  };
-  var decString = (buf, off, size) => buf.slice(off, off + size).toString("utf8").replace(/\0.*/, "");
-  var decDate = (buf, off, size) => numToDate(decNumber(buf, off, size));
-  var numToDate = (num) => num === null ? null : new Date(num * 1000);
-  var decNumber = (buf, off, size) => buf[off] & 128 ? large.parse(buf.slice(off, off + size)) : decSmallNumber(buf, off, size);
-  var nanNull = (value) => isNaN(value) ? null : value;
-  var decSmallNumber = (buf, off, size) => nanNull(parseInt(buf.slice(off, off + size).toString("utf8").replace(/\0.*$/, "").trim(), 8));
-  var MAXNUM = {
-    12: 8589934591,
-    8: 2097151
-  };
-  var encNumber = (buf, off, size, number) => number === null ? false : number > MAXNUM[size] || number < 0 ? (large.encode(number, buf.slice(off, off + size)), true) : (encSmallNumber(buf, off, size, number), false);
-  var encSmallNumber = (buf, off, size, number) => buf.write(octalString(number, size), off, size, "ascii");
-  var octalString = (number, size) => padOctal(Math.floor(number).toString(8), size);
-  var padOctal = (string, size) => (string.length === size - 1 ? string : new Array(size - string.length - 1).join("0") + string + " ") + "\x00";
-  var encDate = (buf, off, size, date) => date === null ? false : encNumber(buf, off, size, date.getTime() / 1000);
-  var NULLS = new Array(156).join("\x00");
-  var encString = (buf, off, size, string) => string === null ? false : (buf.write(string + NULLS, off, size, "utf8"), string.length !== Buffer.byteLength(string) || string.length > size);
-  module.exports = Header;
-});
-
-// ../../node_modules/tar/lib/pax.js
-var require_pax = __commonJS((exports, module) => {
-  var Header = require_header();
-  var path = __require("path");
-
-  class Pax {
-    constructor(obj, global2) {
-      this.atime = obj.atime || null;
-      this.charset = obj.charset || null;
-      this.comment = obj.comment || null;
-      this.ctime = obj.ctime || null;
-      this.gid = obj.gid || null;
-      this.gname = obj.gname || null;
-      this.linkpath = obj.linkpath || null;
-      this.mtime = obj.mtime || null;
-      this.path = obj.path || null;
-      this.size = obj.size || null;
-      this.uid = obj.uid || null;
-      this.uname = obj.uname || null;
-      this.dev = obj.dev || null;
-      this.ino = obj.ino || null;
-      this.nlink = obj.nlink || null;
-      this.global = global2 || false;
-    }
-    encode() {
-      const body = this.encodeBody();
-      if (body === "") {
-        return null;
-      }
-      const bodyLen = Buffer.byteLength(body);
-      const bufLen = 512 * Math.ceil(1 + bodyLen / 512);
-      const buf = Buffer.allocUnsafe(bufLen);
-      for (let i = 0;i < 512; i++) {
-        buf[i] = 0;
-      }
-      new Header({
-        path: ("PaxHeader/" + path.basename(this.path)).slice(0, 99),
-        mode: this.mode || 420,
-        uid: this.uid || null,
-        gid: this.gid || null,
-        size: bodyLen,
-        mtime: this.mtime || null,
-        type: this.global ? "GlobalExtendedHeader" : "ExtendedHeader",
-        linkpath: "",
-        uname: this.uname || "",
-        gname: this.gname || "",
-        devmaj: 0,
-        devmin: 0,
-        atime: this.atime || null,
-        ctime: this.ctime || null
-      }).encode(buf);
-      buf.write(body, 512, bodyLen, "utf8");
-      for (let i = bodyLen + 512;i < buf.length; i++) {
-        buf[i] = 0;
-      }
-      return buf;
-    }
-    encodeBody() {
-      return this.encodeField("path") + this.encodeField("ctime") + this.encodeField("atime") + this.encodeField("dev") + this.encodeField("ino") + this.encodeField("nlink") + this.encodeField("charset") + this.encodeField("comment") + this.encodeField("gid") + this.encodeField("gname") + this.encodeField("linkpath") + this.encodeField("mtime") + this.encodeField("size") + this.encodeField("uid") + this.encodeField("uname");
-    }
-    encodeField(field) {
-      if (this[field] === null || this[field] === undefined) {
-        return "";
-      }
-      const v = this[field] instanceof Date ? this[field].getTime() / 1000 : this[field];
-      const s = " " + (field === "dev" || field === "ino" || field === "nlink" ? "SCHILY." : "") + field + "=" + v + `
-`;
-      const byteLen = Buffer.byteLength(s);
-      let digits = Math.floor(Math.log(byteLen) / Math.log(10)) + 1;
-      if (byteLen + digits >= Math.pow(10, digits)) {
-        digits += 1;
-      }
-      const len = digits + byteLen;
-      return len + s;
-    }
-  }
-  Pax.parse = (string, ex, g) => new Pax(merge(parseKV(string), ex), g);
-  var merge = (a, b) => b ? Object.keys(a).reduce((s, k) => (s[k] = a[k], s), b) : a;
-  var parseKV = (string) => string.replace(/\n$/, "").split(`
-`).reduce(parseKVLine, Object.create(null));
-  var parseKVLine = (set, line) => {
-    const n = parseInt(line, 10);
-    if (n !== Buffer.byteLength(line) + 1) {
-      return set;
-    }
-    line = line.slice((n + " ").length);
-    const kv = line.split("=");
-    const k = kv.shift().replace(/^SCHILY\.(dev|ino|nlink)/, "$1");
-    if (!k) {
-      return set;
-    }
-    const v = kv.join("=");
-    set[k] = /^([A-Z]+\.)?([mac]|birth|creation)time$/.test(k) ? new Date(v * 1000) : /^[0-9]+$/.test(v) ? +v : v;
-    return set;
-  };
-  module.exports = Pax;
-});
-
-// ../../node_modules/tar/lib/strip-trailing-slashes.js
-var require_strip_trailing_slashes = __commonJS((exports, module) => {
-  module.exports = (str) => {
-    let i = str.length - 1;
-    let slashesStart = -1;
-    while (i > -1 && str.charAt(i) === "/") {
-      slashesStart = i;
-      i--;
-    }
-    return slashesStart === -1 ? str : str.slice(0, slashesStart);
-  };
-});
-
-// ../../node_modules/tar/lib/warn-mixin.js
-var require_warn_mixin = __commonJS((exports, module) => {
-  module.exports = (Base) => class extends Base {
-    warn(code, message, data = {}) {
-      if (this.file) {
-        data.file = this.file;
-      }
-      if (this.cwd) {
-        data.cwd = this.cwd;
-      }
-      data.code = message instanceof Error && message.code || code;
-      data.tarCode = code;
-      if (!this.strict && data.recoverable !== false) {
-        if (message instanceof Error) {
-          data = Object.assign(message, data);
-          message = message.message;
-        }
-        this.emit("warn", data.tarCode, message, data);
-      } else if (message instanceof Error) {
-        this.emit("error", Object.assign(message, data));
-      } else {
-        this.emit("error", Object.assign(new Error(`${code}: ${message}`), data));
-      }
-    }
-  };
-});
-
-// ../../node_modules/tar/lib/winchars.js
-var require_winchars = __commonJS((exports, module) => {
-  var raw = [
-    "|",
-    "<",
-    ">",
-    "?",
-    ":"
-  ];
-  var win = raw.map((char) => String.fromCharCode(61440 + char.charCodeAt(0)));
-  var toWin = new Map(raw.map((char, i) => [char, win[i]]));
-  var toRaw = new Map(win.map((char, i) => [char, raw[i]]));
-  module.exports = {
-    encode: (s) => raw.reduce((s2, c) => s2.split(c).join(toWin.get(c)), s),
-    decode: (s) => win.reduce((s2, c) => s2.split(c).join(toRaw.get(c)), s)
-  };
-});
-
-// ../../node_modules/tar/lib/strip-absolute-path.js
-var require_strip_absolute_path = __commonJS((exports, module) => {
-  var { isAbsolute, parse } = __require("path").win32;
-  module.exports = (path) => {
-    let r = "";
-    let parsed = parse(path);
-    while (isAbsolute(path) || parsed.root) {
-      const root = path.charAt(0) === "/" && path.slice(0, 4) !== "//?/" ? "/" : parsed.root;
-      path = path.slice(root.length);
-      r += root;
-      parsed = parse(path);
-    }
-    return [r, path];
-  };
-});
-
-// ../../node_modules/tar/lib/mode-fix.js
-var require_mode_fix = __commonJS((exports, module) => {
-  module.exports = (mode, isDir, portable) => {
-    mode &= 4095;
-    if (portable) {
-      mode = (mode | 384) & ~18;
-    }
-    if (isDir) {
-      if (mode & 256) {
-        mode |= 64;
-      }
-      if (mode & 32) {
-        mode |= 8;
-      }
-      if (mode & 4) {
-        mode |= 1;
-      }
-    }
-    return mode;
-  };
-});
-
-// ../../node_modules/tar/lib/write-entry.js
-var require_write_entry = __commonJS((exports, module) => {
-  var { Minipass } = require_minipass();
-  var Pax = require_pax();
-  var Header = require_header();
-  var fs = __require("fs");
-  var path = __require("path");
-  var normPath = require_normalize_windows_path();
-  var stripSlash = require_strip_trailing_slashes();
-  var prefixPath = (path2, prefix) => {
-    if (!prefix) {
-      return normPath(path2);
-    }
-    path2 = normPath(path2).replace(/^\.(\/|$)/, "");
-    return stripSlash(prefix) + "/" + path2;
-  };
-  var maxReadSize = 16 * 1024 * 1024;
-  var PROCESS = Symbol("process");
-  var FILE = Symbol("file");
-  var DIRECTORY = Symbol("directory");
-  var SYMLINK = Symbol("symlink");
-  var HARDLINK = Symbol("hardlink");
-  var HEADER = Symbol("header");
-  var READ = Symbol("read");
-  var LSTAT = Symbol("lstat");
-  var ONLSTAT = Symbol("onlstat");
-  var ONREAD = Symbol("onread");
-  var ONREADLINK = Symbol("onreadlink");
-  var OPENFILE = Symbol("openfile");
-  var ONOPENFILE = Symbol("onopenfile");
-  var CLOSE = Symbol("close");
-  var MODE = Symbol("mode");
-  var AWAITDRAIN = Symbol("awaitDrain");
-  var ONDRAIN = Symbol("ondrain");
-  var PREFIX = Symbol("prefix");
-  var HAD_ERROR = Symbol("hadError");
-  var warner = require_warn_mixin();
-  var winchars = require_winchars();
-  var stripAbsolutePath = require_strip_absolute_path();
-  var modeFix = require_mode_fix();
-  var WriteEntry = warner(class WriteEntry2 extends Minipass {
-    constructor(p, opt) {
-      opt = opt || {};
-      super(opt);
-      if (typeof p !== "string") {
-        throw new TypeError("path is required");
-      }
-      this.path = normPath(p);
-      this.portable = !!opt.portable;
-      this.myuid = process.getuid && process.getuid() || 0;
-      this.myuser = process.env.USER || "";
-      this.maxReadSize = opt.maxReadSize || maxReadSize;
-      this.linkCache = opt.linkCache || new Map;
-      this.statCache = opt.statCache || new Map;
-      this.preservePaths = !!opt.preservePaths;
-      this.cwd = normPath(opt.cwd || process.cwd());
-      this.strict = !!opt.strict;
-      this.noPax = !!opt.noPax;
-      this.noMtime = !!opt.noMtime;
-      this.mtime = opt.mtime || null;
-      this.prefix = opt.prefix ? normPath(opt.prefix) : null;
-      this.fd = null;
-      this.blockLen = null;
-      this.blockRemain = null;
-      this.buf = null;
-      this.offset = null;
-      this.length = null;
-      this.pos = null;
-      this.remain = null;
-      if (typeof opt.onwarn === "function") {
-        this.on("warn", opt.onwarn);
-      }
-      let pathWarn = false;
-      if (!this.preservePaths) {
-        const [root, stripped] = stripAbsolutePath(this.path);
-        if (root) {
-          this.path = stripped;
-          pathWarn = root;
-        }
-      }
-      this.win32 = !!opt.win32 || process.platform === "win32";
-      if (this.win32) {
-        this.path = winchars.decode(this.path.replace(/\\/g, "/"));
-        p = p.replace(/\\/g, "/");
-      }
-      this.absolute = normPath(opt.absolute || path.resolve(this.cwd, p));
-      if (this.path === "") {
-        this.path = "./";
-      }
-      if (pathWarn) {
-        this.warn("TAR_ENTRY_INFO", `stripping ${pathWarn} from absolute path`, {
-          entry: this,
-          path: pathWarn + this.path
-        });
-      }
-      if (this.statCache.has(this.absolute)) {
-        this[ONLSTAT](this.statCache.get(this.absolute));
-      } else {
-        this[LSTAT]();
-      }
-    }
-    emit(ev, ...data) {
-      if (ev === "error") {
-        this[HAD_ERROR] = true;
-      }
-      return super.emit(ev, ...data);
-    }
-    [LSTAT]() {
-      fs.lstat(this.absolute, (er, stat) => {
-        if (er) {
-          return this.emit("error", er);
-        }
-        this[ONLSTAT](stat);
-      });
-    }
-    [ONLSTAT](stat) {
-      this.statCache.set(this.absolute, stat);
-      this.stat = stat;
-      if (!stat.isFile()) {
-        stat.size = 0;
-      }
-      this.type = getType(stat);
-      this.emit("stat", stat);
-      this[PROCESS]();
-    }
-    [PROCESS]() {
-      switch (this.type) {
-        case "File":
-          return this[FILE]();
-        case "Directory":
-          return this[DIRECTORY]();
-        case "SymbolicLink":
-          return this[SYMLINK]();
-        default:
-          return this.end();
-      }
-    }
-    [MODE](mode) {
-      return modeFix(mode, this.type === "Directory", this.portable);
-    }
-    [PREFIX](path2) {
-      return prefixPath(path2, this.prefix);
-    }
-    [HEADER]() {
-      if (this.type === "Directory" && this.portable) {
-        this.noMtime = true;
-      }
-      this.header = new Header({
-        path: this[PREFIX](this.path),
-        linkpath: this.type === "Link" ? this[PREFIX](this.linkpath) : this.linkpath,
-        mode: this[MODE](this.stat.mode),
-        uid: this.portable ? null : this.stat.uid,
-        gid: this.portable ? null : this.stat.gid,
-        size: this.stat.size,
-        mtime: this.noMtime ? null : this.mtime || this.stat.mtime,
-        type: this.type,
-        uname: this.portable ? null : this.stat.uid === this.myuid ? this.myuser : "",
-        atime: this.portable ? null : this.stat.atime,
-        ctime: this.portable ? null : this.stat.ctime
-      });
-      if (this.header.encode() && !this.noPax) {
-        super.write(new Pax({
-          atime: this.portable ? null : this.header.atime,
-          ctime: this.portable ? null : this.header.ctime,
-          gid: this.portable ? null : this.header.gid,
-          mtime: this.noMtime ? null : this.mtime || this.header.mtime,
-          path: this[PREFIX](this.path),
-          linkpath: this.type === "Link" ? this[PREFIX](this.linkpath) : this.linkpath,
-          size: this.header.size,
-          uid: this.portable ? null : this.header.uid,
-          uname: this.portable ? null : this.header.uname,
-          dev: this.portable ? null : this.stat.dev,
-          ino: this.portable ? null : this.stat.ino,
-          nlink: this.portable ? null : this.stat.nlink
-        }).encode());
-      }
-      super.write(this.header.block);
-    }
-    [DIRECTORY]() {
-      if (this.path.slice(-1) !== "/") {
-        this.path += "/";
-      }
-      this.stat.size = 0;
-      this[HEADER]();
-      this.end();
-    }
-    [SYMLINK]() {
-      fs.readlink(this.absolute, (er, linkpath) => {
-        if (er) {
-          return this.emit("error", er);
-        }
-        this[ONREADLINK](linkpath);
-      });
-    }
-    [ONREADLINK](linkpath) {
-      this.linkpath = normPath(linkpath);
-      this[HEADER]();
-      this.end();
-    }
-    [HARDLINK](linkpath) {
-      this.type = "Link";
-      this.linkpath = normPath(path.relative(this.cwd, linkpath));
-      this.stat.size = 0;
-      this[HEADER]();
-      this.end();
-    }
-    [FILE]() {
-      if (this.stat.nlink > 1) {
-        const linkKey = this.stat.dev + ":" + this.stat.ino;
-        if (this.linkCache.has(linkKey)) {
-          const linkpath = this.linkCache.get(linkKey);
-          if (linkpath.indexOf(this.cwd) === 0) {
-            return this[HARDLINK](linkpath);
-          }
-        }
-        this.linkCache.set(linkKey, this.absolute);
-      }
-      this[HEADER]();
-      if (this.stat.size === 0) {
-        return this.end();
-      }
-      this[OPENFILE]();
-    }
-    [OPENFILE]() {
-      fs.open(this.absolute, "r", (er, fd) => {
-        if (er) {
-          return this.emit("error", er);
-        }
-        this[ONOPENFILE](fd);
-      });
-    }
-    [ONOPENFILE](fd) {
-      this.fd = fd;
-      if (this[HAD_ERROR]) {
-        return this[CLOSE]();
-      }
-      this.blockLen = 512 * Math.ceil(this.stat.size / 512);
-      this.blockRemain = this.blockLen;
-      const bufLen = Math.min(this.blockLen, this.maxReadSize);
-      this.buf = Buffer.allocUnsafe(bufLen);
-      this.offset = 0;
-      this.pos = 0;
-      this.remain = this.stat.size;
-      this.length = this.buf.length;
-      this[READ]();
-    }
-    [READ]() {
-      const { fd, buf, offset, length, pos } = this;
-      fs.read(fd, buf, offset, length, pos, (er, bytesRead) => {
-        if (er) {
-          return this[CLOSE](() => this.emit("error", er));
-        }
-        this[ONREAD](bytesRead);
-      });
-    }
-    [CLOSE](cb) {
-      fs.close(this.fd, cb);
-    }
-    [ONREAD](bytesRead) {
-      if (bytesRead <= 0 && this.remain > 0) {
-        const er = new Error("encountered unexpected EOF");
-        er.path = this.absolute;
-        er.syscall = "read";
-        er.code = "EOF";
-        return this[CLOSE](() => this.emit("error", er));
-      }
-      if (bytesRead > this.remain) {
-        const er = new Error("did not encounter expected EOF");
-        er.path = this.absolute;
-        er.syscall = "read";
-        er.code = "EOF";
-        return this[CLOSE](() => this.emit("error", er));
-      }
-      if (bytesRead === this.remain) {
-        for (let i = bytesRead;i < this.length && bytesRead < this.blockRemain; i++) {
-          this.buf[i + this.offset] = 0;
-          bytesRead++;
-          this.remain++;
-        }
-      }
-      const writeBuf = this.offset === 0 && bytesRead === this.buf.length ? this.buf : this.buf.slice(this.offset, this.offset + bytesRead);
-      const flushed = this.write(writeBuf);
-      if (!flushed) {
-        this[AWAITDRAIN](() => this[ONDRAIN]());
-      } else {
-        this[ONDRAIN]();
-      }
-    }
-    [AWAITDRAIN](cb) {
-      this.once("drain", cb);
-    }
-    write(writeBuf) {
-      if (this.blockRemain < writeBuf.length) {
-        const er = new Error("writing more data than expected");
-        er.path = this.absolute;
-        return this.emit("error", er);
-      }
-      this.remain -= writeBuf.length;
-      this.blockRemain -= writeBuf.length;
-      this.pos += writeBuf.length;
-      this.offset += writeBuf.length;
-      return super.write(writeBuf);
-    }
-    [ONDRAIN]() {
-      if (!this.remain) {
-        if (this.blockRemain) {
-          super.write(Buffer.alloc(this.blockRemain));
-        }
-        return this[CLOSE]((er) => er ? this.emit("error", er) : this.end());
-      }
-      if (this.offset >= this.length) {
-        this.buf = Buffer.allocUnsafe(Math.min(this.blockRemain, this.buf.length));
-        this.offset = 0;
-      }
-      this.length = this.buf.length - this.offset;
-      this[READ]();
-    }
-  });
-
-  class WriteEntrySync extends WriteEntry {
-    [LSTAT]() {
-      this[ONLSTAT](fs.lstatSync(this.absolute));
-    }
-    [SYMLINK]() {
-      this[ONREADLINK](fs.readlinkSync(this.absolute));
-    }
-    [OPENFILE]() {
-      this[ONOPENFILE](fs.openSync(this.absolute, "r"));
-    }
-    [READ]() {
-      let threw = true;
-      try {
-        const { fd, buf, offset, length, pos } = this;
-        const bytesRead = fs.readSync(fd, buf, offset, length, pos);
-        this[ONREAD](bytesRead);
-        threw = false;
-      } finally {
-        if (threw) {
-          try {
-            this[CLOSE](() => {});
-          } catch (er) {}
-        }
-      }
-    }
-    [AWAITDRAIN](cb) {
-      cb();
-    }
-    [CLOSE](cb) {
-      fs.closeSync(this.fd);
-      cb();
-    }
-  }
-  var WriteEntryTar = warner(class WriteEntryTar2 extends Minipass {
-    constructor(readEntry, opt) {
-      opt = opt || {};
-      super(opt);
-      this.preservePaths = !!opt.preservePaths;
-      this.portable = !!opt.portable;
-      this.strict = !!opt.strict;
-      this.noPax = !!opt.noPax;
-      this.noMtime = !!opt.noMtime;
-      this.readEntry = readEntry;
-      this.type = readEntry.type;
-      if (this.type === "Directory" && this.portable) {
-        this.noMtime = true;
-      }
-      this.prefix = opt.prefix || null;
-      this.path = normPath(readEntry.path);
-      this.mode = this[MODE](readEntry.mode);
-      this.uid = this.portable ? null : readEntry.uid;
-      this.gid = this.portable ? null : readEntry.gid;
-      this.uname = this.portable ? null : readEntry.uname;
-      this.gname = this.portable ? null : readEntry.gname;
-      this.size = readEntry.size;
-      this.mtime = this.noMtime ? null : opt.mtime || readEntry.mtime;
-      this.atime = this.portable ? null : readEntry.atime;
-      this.ctime = this.portable ? null : readEntry.ctime;
-      this.linkpath = normPath(readEntry.linkpath);
-      if (typeof opt.onwarn === "function") {
-        this.on("warn", opt.onwarn);
-      }
-      let pathWarn = false;
-      if (!this.preservePaths) {
-        const [root, stripped] = stripAbsolutePath(this.path);
-        if (root) {
-          this.path = stripped;
-          pathWarn = root;
-        }
-      }
-      this.remain = readEntry.size;
-      this.blockRemain = readEntry.startBlockSize;
-      this.header = new Header({
-        path: this[PREFIX](this.path),
-        linkpath: this.type === "Link" ? this[PREFIX](this.linkpath) : this.linkpath,
-        mode: this.mode,
-        uid: this.portable ? null : this.uid,
-        gid: this.portable ? null : this.gid,
-        size: this.size,
-        mtime: this.noMtime ? null : this.mtime,
-        type: this.type,
-        uname: this.portable ? null : this.uname,
-        atime: this.portable ? null : this.atime,
-        ctime: this.portable ? null : this.ctime
-      });
-      if (pathWarn) {
-        this.warn("TAR_ENTRY_INFO", `stripping ${pathWarn} from absolute path`, {
-          entry: this,
-          path: pathWarn + this.path
-        });
-      }
-      if (this.header.encode() && !this.noPax) {
-        super.write(new Pax({
-          atime: this.portable ? null : this.atime,
-          ctime: this.portable ? null : this.ctime,
-          gid: this.portable ? null : this.gid,
-          mtime: this.noMtime ? null : this.mtime,
-          path: this[PREFIX](this.path),
-          linkpath: this.type === "Link" ? this[PREFIX](this.linkpath) : this.linkpath,
-          size: this.size,
-          uid: this.portable ? null : this.uid,
-          uname: this.portable ? null : this.uname,
-          dev: this.portable ? null : this.readEntry.dev,
-          ino: this.portable ? null : this.readEntry.ino,
-          nlink: this.portable ? null : this.readEntry.nlink
-        }).encode());
-      }
-      super.write(this.header.block);
-      readEntry.pipe(this);
-    }
-    [PREFIX](path2) {
-      return prefixPath(path2, this.prefix);
-    }
-    [MODE](mode) {
-      return modeFix(mode, this.type === "Directory", this.portable);
-    }
-    write(data) {
-      const writeLen = data.length;
-      if (writeLen > this.blockRemain) {
-        throw new Error("writing more to entry than is appropriate");
-      }
-      this.blockRemain -= writeLen;
-      return super.write(data);
-    }
-    end() {
-      if (this.blockRemain) {
-        super.write(Buffer.alloc(this.blockRemain));
-      }
-      return super.end();
-    }
-  });
-  WriteEntry.Sync = WriteEntrySync;
-  WriteEntry.Tar = WriteEntryTar;
-  var getType = (stat) => stat.isFile() ? "File" : stat.isDirectory() ? "Directory" : stat.isSymbolicLink() ? "SymbolicLink" : "Unsupported";
-  module.exports = WriteEntry;
-});
-
-// ../../node_modules/yallist/iterator.js
-var require_iterator = __commonJS((exports, module) => {
-  module.exports = function(Yallist) {
-    Yallist.prototype[Symbol.iterator] = function* () {
-      for (let walker = this.head;walker; walker = walker.next) {
-        yield walker.value;
-      }
-    };
-  };
-});
-
-// ../../node_modules/yallist/yallist.js
-var require_yallist = __commonJS((exports, module) => {
-  module.exports = Yallist;
-  Yallist.Node = Node;
-  Yallist.create = Yallist;
-  function Yallist(list) {
-    var self = this;
-    if (!(self instanceof Yallist)) {
-      self = new Yallist;
-    }
-    self.tail = null;
-    self.head = null;
-    self.length = 0;
-    if (list && typeof list.forEach === "function") {
-      list.forEach(function(item) {
-        self.push(item);
-      });
-    } else if (arguments.length > 0) {
-      for (var i = 0, l = arguments.length;i < l; i++) {
-        self.push(arguments[i]);
-      }
-    }
-    return self;
-  }
-  Yallist.prototype.removeNode = function(node) {
-    if (node.list !== this) {
-      throw new Error("removing node which does not belong to this list");
-    }
-    var next = node.next;
-    var prev = node.prev;
-    if (next) {
-      next.prev = prev;
-    }
-    if (prev) {
-      prev.next = next;
-    }
-    if (node === this.head) {
-      this.head = next;
-    }
-    if (node === this.tail) {
-      this.tail = prev;
-    }
-    node.list.length--;
-    node.next = null;
-    node.prev = null;
-    node.list = null;
-    return next;
-  };
-  Yallist.prototype.unshiftNode = function(node) {
-    if (node === this.head) {
-      return;
-    }
-    if (node.list) {
-      node.list.removeNode(node);
-    }
-    var head = this.head;
-    node.list = this;
-    node.next = head;
-    if (head) {
-      head.prev = node;
-    }
-    this.head = node;
-    if (!this.tail) {
-      this.tail = node;
-    }
-    this.length++;
-  };
-  Yallist.prototype.pushNode = function(node) {
-    if (node === this.tail) {
-      return;
-    }
-    if (node.list) {
-      node.list.removeNode(node);
-    }
-    var tail = this.tail;
-    node.list = this;
-    node.prev = tail;
-    if (tail) {
-      tail.next = node;
-    }
-    this.tail = node;
-    if (!this.head) {
-      this.head = node;
-    }
-    this.length++;
-  };
-  Yallist.prototype.push = function() {
-    for (var i = 0, l = arguments.length;i < l; i++) {
-      push(this, arguments[i]);
-    }
-    return this.length;
-  };
-  Yallist.prototype.unshift = function() {
-    for (var i = 0, l = arguments.length;i < l; i++) {
-      unshift(this, arguments[i]);
-    }
-    return this.length;
-  };
-  Yallist.prototype.pop = function() {
-    if (!this.tail) {
-      return;
-    }
-    var res = this.tail.value;
-    this.tail = this.tail.prev;
-    if (this.tail) {
-      this.tail.next = null;
-    } else {
-      this.head = null;
-    }
-    this.length--;
-    return res;
-  };
-  Yallist.prototype.shift = function() {
-    if (!this.head) {
-      return;
-    }
-    var res = this.head.value;
-    this.head = this.head.next;
-    if (this.head) {
-      this.head.prev = null;
-    } else {
-      this.tail = null;
-    }
-    this.length--;
-    return res;
-  };
-  Yallist.prototype.forEach = function(fn, thisp) {
-    thisp = thisp || this;
-    for (var walker = this.head, i = 0;walker !== null; i++) {
-      fn.call(thisp, walker.value, i, this);
-      walker = walker.next;
-    }
-  };
-  Yallist.prototype.forEachReverse = function(fn, thisp) {
-    thisp = thisp || this;
-    for (var walker = this.tail, i = this.length - 1;walker !== null; i--) {
-      fn.call(thisp, walker.value, i, this);
-      walker = walker.prev;
-    }
-  };
-  Yallist.prototype.get = function(n) {
-    for (var i = 0, walker = this.head;walker !== null && i < n; i++) {
-      walker = walker.next;
-    }
-    if (i === n && walker !== null) {
-      return walker.value;
-    }
-  };
-  Yallist.prototype.getReverse = function(n) {
-    for (var i = 0, walker = this.tail;walker !== null && i < n; i++) {
-      walker = walker.prev;
-    }
-    if (i === n && walker !== null) {
-      return walker.value;
-    }
-  };
-  Yallist.prototype.map = function(fn, thisp) {
-    thisp = thisp || this;
-    var res = new Yallist;
-    for (var walker = this.head;walker !== null; ) {
-      res.push(fn.call(thisp, walker.value, this));
-      walker = walker.next;
-    }
-    return res;
-  };
-  Yallist.prototype.mapReverse = function(fn, thisp) {
-    thisp = thisp || this;
-    var res = new Yallist;
-    for (var walker = this.tail;walker !== null; ) {
-      res.push(fn.call(thisp, walker.value, this));
-      walker = walker.prev;
-    }
-    return res;
-  };
-  Yallist.prototype.reduce = function(fn, initial) {
-    var acc;
-    var walker = this.head;
-    if (arguments.length > 1) {
-      acc = initial;
-    } else if (this.head) {
-      walker = this.head.next;
-      acc = this.head.value;
-    } else {
-      throw new TypeError("Reduce of empty list with no initial value");
-    }
-    for (var i = 0;walker !== null; i++) {
-      acc = fn(acc, walker.value, i);
-      walker = walker.next;
-    }
-    return acc;
-  };
-  Yallist.prototype.reduceReverse = function(fn, initial) {
-    var acc;
-    var walker = this.tail;
-    if (arguments.length > 1) {
-      acc = initial;
-    } else if (this.tail) {
-      walker = this.tail.prev;
-      acc = this.tail.value;
-    } else {
-      throw new TypeError("Reduce of empty list with no initial value");
-    }
-    for (var i = this.length - 1;walker !== null; i--) {
-      acc = fn(acc, walker.value, i);
-      walker = walker.prev;
-    }
-    return acc;
-  };
-  Yallist.prototype.toArray = function() {
-    var arr = new Array(this.length);
-    for (var i = 0, walker = this.head;walker !== null; i++) {
-      arr[i] = walker.value;
-      walker = walker.next;
-    }
-    return arr;
-  };
-  Yallist.prototype.toArrayReverse = function() {
-    var arr = new Array(this.length);
-    for (var i = 0, walker = this.tail;walker !== null; i++) {
-      arr[i] = walker.value;
-      walker = walker.prev;
-    }
-    return arr;
-  };
-  Yallist.prototype.slice = function(from, to) {
-    to = to || this.length;
-    if (to < 0) {
-      to += this.length;
-    }
-    from = from || 0;
-    if (from < 0) {
-      from += this.length;
-    }
-    var ret = new Yallist;
-    if (to < from || to < 0) {
-      return ret;
-    }
-    if (from < 0) {
-      from = 0;
-    }
-    if (to > this.length) {
-      to = this.length;
-    }
-    for (var i = 0, walker = this.head;walker !== null && i < from; i++) {
-      walker = walker.next;
-    }
-    for (;walker !== null && i < to; i++, walker = walker.next) {
-      ret.push(walker.value);
-    }
-    return ret;
-  };
-  Yallist.prototype.sliceReverse = function(from, to) {
-    to = to || this.length;
-    if (to < 0) {
-      to += this.length;
-    }
-    from = from || 0;
-    if (from < 0) {
-      from += this.length;
-    }
-    var ret = new Yallist;
-    if (to < from || to < 0) {
-      return ret;
-    }
-    if (from < 0) {
-      from = 0;
-    }
-    if (to > this.length) {
-      to = this.length;
-    }
-    for (var i = this.length, walker = this.tail;walker !== null && i > to; i--) {
-      walker = walker.prev;
-    }
-    for (;walker !== null && i > from; i--, walker = walker.prev) {
-      ret.push(walker.value);
-    }
-    return ret;
-  };
-  Yallist.prototype.splice = function(start, deleteCount, ...nodes) {
-    if (start > this.length) {
-      start = this.length - 1;
-    }
-    if (start < 0) {
-      start = this.length + start;
-    }
-    for (var i = 0, walker = this.head;walker !== null && i < start; i++) {
-      walker = walker.next;
-    }
-    var ret = [];
-    for (var i = 0;walker && i < deleteCount; i++) {
-      ret.push(walker.value);
-      walker = this.removeNode(walker);
-    }
-    if (walker === null) {
-      walker = this.tail;
-    }
-    if (walker !== this.head && walker !== this.tail) {
-      walker = walker.prev;
-    }
-    for (var i = 0;i < nodes.length; i++) {
-      walker = insert(this, walker, nodes[i]);
-    }
-    return ret;
-  };
-  Yallist.prototype.reverse = function() {
-    var head = this.head;
-    var tail = this.tail;
-    for (var walker = head;walker !== null; walker = walker.prev) {
-      var p = walker.prev;
-      walker.prev = walker.next;
-      walker.next = p;
-    }
-    this.head = tail;
-    this.tail = head;
-    return this;
-  };
-  function insert(self, node, value) {
-    var inserted = node === self.head ? new Node(value, null, node, self) : new Node(value, node, node.next, self);
-    if (inserted.next === null) {
-      self.tail = inserted;
-    }
-    if (inserted.prev === null) {
-      self.head = inserted;
-    }
-    self.length++;
-    return inserted;
-  }
-  function push(self, item) {
-    self.tail = new Node(item, self.tail, null, self);
-    if (!self.head) {
-      self.head = self.tail;
-    }
-    self.length++;
-  }
-  function unshift(self, item) {
-    self.head = new Node(item, null, self.head, self);
-    if (!self.tail) {
-      self.tail = self.head;
-    }
-    self.length++;
-  }
-  function Node(value, prev, next, list) {
-    if (!(this instanceof Node)) {
-      return new Node(value, prev, next, list);
-    }
-    this.list = list;
-    this.value = value;
-    if (prev) {
-      prev.next = this;
-      this.prev = prev;
-    } else {
-      this.prev = null;
-    }
-    if (next) {
-      next.prev = this;
-      this.next = next;
-    } else {
-      this.next = null;
-    }
-  }
-  try {
-    require_iterator()(Yallist);
-  } catch (er) {}
-});
-
-// ../../node_modules/tar/lib/pack.js
-var require_pack = __commonJS((exports, module) => {
-  class PackJob {
-    constructor(path2, absolute) {
-      this.path = path2 || "./";
-      this.absolute = absolute;
-      this.entry = null;
-      this.stat = null;
-      this.readdir = null;
-      this.pending = false;
-      this.ignore = false;
-      this.piped = false;
-    }
-  }
-  var { Minipass } = require_minipass();
-  var zlib = require_minizlib();
-  var ReadEntry = require_read_entry();
-  var WriteEntry = require_write_entry();
-  var WriteEntrySync = WriteEntry.Sync;
-  var WriteEntryTar = WriteEntry.Tar;
-  var Yallist = require_yallist();
-  var EOF = Buffer.alloc(1024);
-  var ONSTAT = Symbol("onStat");
-  var ENDED = Symbol("ended");
-  var QUEUE = Symbol("queue");
-  var CURRENT = Symbol("current");
-  var PROCESS = Symbol("process");
-  var PROCESSING = Symbol("processing");
-  var PROCESSJOB = Symbol("processJob");
-  var JOBS = Symbol("jobs");
-  var JOBDONE = Symbol("jobDone");
-  var ADDFSENTRY = Symbol("addFSEntry");
-  var ADDTARENTRY = Symbol("addTarEntry");
-  var STAT = Symbol("stat");
-  var READDIR = Symbol("readdir");
-  var ONREADDIR = Symbol("onreaddir");
-  var PIPE = Symbol("pipe");
-  var ENTRY = Symbol("entry");
-  var ENTRYOPT = Symbol("entryOpt");
-  var WRITEENTRYCLASS = Symbol("writeEntryClass");
-  var WRITE = Symbol("write");
-  var ONDRAIN = Symbol("ondrain");
-  var fs = __require("fs");
-  var path = __require("path");
-  var warner = require_warn_mixin();
-  var normPath = require_normalize_windows_path();
-  var Pack = warner(class Pack2 extends Minipass {
-    constructor(opt) {
-      super(opt);
-      opt = opt || Object.create(null);
-      this.opt = opt;
-      this.file = opt.file || "";
-      this.cwd = opt.cwd || process.cwd();
-      this.maxReadSize = opt.maxReadSize;
-      this.preservePaths = !!opt.preservePaths;
-      this.strict = !!opt.strict;
-      this.noPax = !!opt.noPax;
-      this.prefix = normPath(opt.prefix || "");
-      this.linkCache = opt.linkCache || new Map;
-      this.statCache = opt.statCache || new Map;
-      this.readdirCache = opt.readdirCache || new Map;
-      this[WRITEENTRYCLASS] = WriteEntry;
-      if (typeof opt.onwarn === "function") {
-        this.on("warn", opt.onwarn);
-      }
-      this.portable = !!opt.portable;
-      this.zip = null;
-      if (opt.gzip || opt.brotli) {
-        if (opt.gzip && opt.brotli) {
-          throw new TypeError("gzip and brotli are mutually exclusive");
-        }
-        if (opt.gzip) {
-          if (typeof opt.gzip !== "object") {
-            opt.gzip = {};
-          }
-          if (this.portable) {
-            opt.gzip.portable = true;
-          }
-          this.zip = new zlib.Gzip(opt.gzip);
-        }
-        if (opt.brotli) {
-          if (typeof opt.brotli !== "object") {
-            opt.brotli = {};
-          }
-          this.zip = new zlib.BrotliCompress(opt.brotli);
-        }
-        this.zip.on("data", (chunk) => super.write(chunk));
-        this.zip.on("end", (_) => super.end());
-        this.zip.on("drain", (_) => this[ONDRAIN]());
-        this.on("resume", (_) => this.zip.resume());
-      } else {
-        this.on("drain", this[ONDRAIN]);
-      }
-      this.noDirRecurse = !!opt.noDirRecurse;
-      this.follow = !!opt.follow;
-      this.noMtime = !!opt.noMtime;
-      this.mtime = opt.mtime || null;
-      this.filter = typeof opt.filter === "function" ? opt.filter : (_) => true;
-      this[QUEUE] = new Yallist;
-      this[JOBS] = 0;
-      this.jobs = +opt.jobs || 4;
-      this[PROCESSING] = false;
-      this[ENDED] = false;
-    }
-    [WRITE](chunk) {
-      return super.write(chunk);
-    }
-    add(path2) {
-      this.write(path2);
-      return this;
-    }
-    end(path2) {
-      if (path2) {
-        this.write(path2);
-      }
-      this[ENDED] = true;
-      this[PROCESS]();
-      return this;
-    }
-    write(path2) {
-      if (this[ENDED]) {
-        throw new Error("write after end");
-      }
-      if (path2 instanceof ReadEntry) {
-        this[ADDTARENTRY](path2);
-      } else {
-        this[ADDFSENTRY](path2);
-      }
-      return this.flowing;
-    }
-    [ADDTARENTRY](p) {
-      const absolute = normPath(path.resolve(this.cwd, p.path));
-      if (!this.filter(p.path, p)) {
-        p.resume();
-      } else {
-        const job = new PackJob(p.path, absolute, false);
-        job.entry = new WriteEntryTar(p, this[ENTRYOPT](job));
-        job.entry.on("end", (_) => this[JOBDONE](job));
-        this[JOBS] += 1;
-        this[QUEUE].push(job);
-      }
-      this[PROCESS]();
-    }
-    [ADDFSENTRY](p) {
-      const absolute = normPath(path.resolve(this.cwd, p));
-      this[QUEUE].push(new PackJob(p, absolute));
-      this[PROCESS]();
-    }
-    [STAT](job) {
-      job.pending = true;
-      this[JOBS] += 1;
-      const stat = this.follow ? "stat" : "lstat";
-      fs[stat](job.absolute, (er, stat2) => {
-        job.pending = false;
-        this[JOBS] -= 1;
-        if (er) {
-          this.emit("error", er);
-        } else {
-          this[ONSTAT](job, stat2);
-        }
-      });
-    }
-    [ONSTAT](job, stat) {
-      this.statCache.set(job.absolute, stat);
-      job.stat = stat;
-      if (!this.filter(job.path, stat)) {
-        job.ignore = true;
-      }
-      this[PROCESS]();
-    }
-    [READDIR](job) {
-      job.pending = true;
-      this[JOBS] += 1;
-      fs.readdir(job.absolute, (er, entries) => {
-        job.pending = false;
-        this[JOBS] -= 1;
-        if (er) {
-          return this.emit("error", er);
-        }
-        this[ONREADDIR](job, entries);
-      });
-    }
-    [ONREADDIR](job, entries) {
-      this.readdirCache.set(job.absolute, entries);
-      job.readdir = entries;
-      this[PROCESS]();
-    }
-    [PROCESS]() {
-      if (this[PROCESSING]) {
-        return;
-      }
-      this[PROCESSING] = true;
-      for (let w = this[QUEUE].head;w !== null && this[JOBS] < this.jobs; w = w.next) {
-        this[PROCESSJOB](w.value);
-        if (w.value.ignore) {
-          const p = w.next;
-          this[QUEUE].removeNode(w);
-          w.next = p;
-        }
-      }
-      this[PROCESSING] = false;
-      if (this[ENDED] && !this[QUEUE].length && this[JOBS] === 0) {
-        if (this.zip) {
-          this.zip.end(EOF);
-        } else {
-          super.write(EOF);
-          super.end();
-        }
-      }
-    }
-    get [CURRENT]() {
-      return this[QUEUE] && this[QUEUE].head && this[QUEUE].head.value;
-    }
-    [JOBDONE](job) {
-      this[QUEUE].shift();
-      this[JOBS] -= 1;
-      this[PROCESS]();
-    }
-    [PROCESSJOB](job) {
-      if (job.pending) {
-        return;
-      }
-      if (job.entry) {
-        if (job === this[CURRENT] && !job.piped) {
-          this[PIPE](job);
-        }
-        return;
-      }
-      if (!job.stat) {
-        if (this.statCache.has(job.absolute)) {
-          this[ONSTAT](job, this.statCache.get(job.absolute));
-        } else {
-          this[STAT](job);
-        }
-      }
-      if (!job.stat) {
-        return;
-      }
-      if (job.ignore) {
-        return;
-      }
-      if (!this.noDirRecurse && job.stat.isDirectory() && !job.readdir) {
-        if (this.readdirCache.has(job.absolute)) {
-          this[ONREADDIR](job, this.readdirCache.get(job.absolute));
-        } else {
-          this[READDIR](job);
-        }
-        if (!job.readdir) {
-          return;
-        }
-      }
-      job.entry = this[ENTRY](job);
-      if (!job.entry) {
-        job.ignore = true;
-        return;
-      }
-      if (job === this[CURRENT] && !job.piped) {
-        this[PIPE](job);
-      }
-    }
-    [ENTRYOPT](job) {
-      return {
-        onwarn: (code, msg, data) => this.warn(code, msg, data),
-        noPax: this.noPax,
-        cwd: this.cwd,
-        absolute: job.absolute,
-        preservePaths: this.preservePaths,
-        maxReadSize: this.maxReadSize,
-        strict: this.strict,
-        portable: this.portable,
-        linkCache: this.linkCache,
-        statCache: this.statCache,
-        noMtime: this.noMtime,
-        mtime: this.mtime,
-        prefix: this.prefix
-      };
-    }
-    [ENTRY](job) {
-      this[JOBS] += 1;
-      try {
-        return new this[WRITEENTRYCLASS](job.path, this[ENTRYOPT](job)).on("end", () => this[JOBDONE](job)).on("error", (er) => this.emit("error", er));
-      } catch (er) {
-        this.emit("error", er);
-      }
-    }
-    [ONDRAIN]() {
-      if (this[CURRENT] && this[CURRENT].entry) {
-        this[CURRENT].entry.resume();
-      }
-    }
-    [PIPE](job) {
-      job.piped = true;
-      if (job.readdir) {
-        job.readdir.forEach((entry) => {
-          const p = job.path;
-          const base = p === "./" ? "" : p.replace(/\/*$/, "/");
-          this[ADDFSENTRY](base + entry);
-        });
-      }
-      const source = job.entry;
-      const zip = this.zip;
-      if (zip) {
-        source.on("data", (chunk) => {
-          if (!zip.write(chunk)) {
-            source.pause();
-          }
-        });
-      } else {
-        source.on("data", (chunk) => {
-          if (!super.write(chunk)) {
-            source.pause();
-          }
-        });
-      }
-    }
-    pause() {
-      if (this.zip) {
-        this.zip.pause();
-      }
-      return super.pause();
-    }
-  });
-
-  class PackSync extends Pack {
-    constructor(opt) {
-      super(opt);
-      this[WRITEENTRYCLASS] = WriteEntrySync;
-    }
-    pause() {}
-    resume() {}
-    [STAT](job) {
-      const stat = this.follow ? "statSync" : "lstatSync";
-      this[ONSTAT](job, fs[stat](job.absolute));
-    }
-    [READDIR](job, stat) {
-      this[ONREADDIR](job, fs.readdirSync(job.absolute));
-    }
-    [PIPE](job) {
-      const source = job.entry;
-      const zip = this.zip;
-      if (job.readdir) {
-        job.readdir.forEach((entry) => {
-          const p = job.path;
-          const base = p === "./" ? "" : p.replace(/\/*$/, "/");
-          this[ADDFSENTRY](base + entry);
-        });
-      }
-      if (zip) {
-        source.on("data", (chunk) => {
-          zip.write(chunk);
-        });
-      } else {
-        source.on("data", (chunk) => {
-          super[WRITE](chunk);
-        });
-      }
-    }
-  }
-  Pack.Sync = PackSync;
-  module.exports = Pack;
-});
-
-// ../../node_modules/fs-minipass/node_modules/minipass/index.js
-var require_minipass3 = __commonJS((exports, module) => {
-  var proc = typeof process === "object" && process ? process : {
-    stdout: null,
-    stderr: null
-  };
-  var EE = __require("events");
-  var Stream = __require("stream");
-  var SD = __require("string_decoder").StringDecoder;
-  var EOF = Symbol("EOF");
-  var MAYBE_EMIT_END = Symbol("maybeEmitEnd");
-  var EMITTED_END = Symbol("emittedEnd");
-  var EMITTING_END = Symbol("emittingEnd");
-  var EMITTED_ERROR = Symbol("emittedError");
-  var CLOSED = Symbol("closed");
-  var READ = Symbol("read");
-  var FLUSH = Symbol("flush");
-  var FLUSHCHUNK = Symbol("flushChunk");
-  var ENCODING = Symbol("encoding");
-  var DECODER = Symbol("decoder");
-  var FLOWING = Symbol("flowing");
-  var PAUSED = Symbol("paused");
-  var RESUME = Symbol("resume");
-  var BUFFERLENGTH = Symbol("bufferLength");
-  var BUFFERPUSH = Symbol("bufferPush");
-  var BUFFERSHIFT = Symbol("bufferShift");
-  var OBJECTMODE = Symbol("objectMode");
-  var DESTROYED = Symbol("destroyed");
-  var EMITDATA = Symbol("emitData");
-  var EMITEND = Symbol("emitEnd");
-  var EMITEND2 = Symbol("emitEnd2");
-  var ASYNC = Symbol("async");
-  var defer = (fn) => Promise.resolve().then(fn);
-  var doIter = global._MP_NO_ITERATOR_SYMBOLS_ !== "1";
-  var ASYNCITERATOR = doIter && Symbol.asyncIterator || Symbol("asyncIterator not implemented");
-  var ITERATOR = doIter && Symbol.iterator || Symbol("iterator not implemented");
-  var isEndish = (ev) => ev === "end" || ev === "finish" || ev === "prefinish";
-  var isArrayBuffer = (b) => b instanceof ArrayBuffer || typeof b === "object" && b.constructor && b.constructor.name === "ArrayBuffer" && b.byteLength >= 0;
-  var isArrayBufferView = (b) => !Buffer.isBuffer(b) && ArrayBuffer.isView(b);
-
-  class Pipe {
-    constructor(src, dest, opts) {
-      this.src = src;
-      this.dest = dest;
-      this.opts = opts;
-      this.ondrain = () => src[RESUME]();
-      dest.on("drain", this.ondrain);
-    }
-    unpipe() {
-      this.dest.removeListener("drain", this.ondrain);
-    }
-    proxyErrors() {}
-    end() {
-      this.unpipe();
-      if (this.opts.end)
-        this.dest.end();
-    }
-  }
-
-  class PipeProxyErrors extends Pipe {
-    unpipe() {
-      this.src.removeListener("error", this.proxyErrors);
-      super.unpipe();
-    }
-    constructor(src, dest, opts) {
-      super(src, dest, opts);
-      this.proxyErrors = (er) => dest.emit("error", er);
-      src.on("error", this.proxyErrors);
-    }
-  }
-  module.exports = class Minipass extends Stream {
-    constructor(options) {
-      super();
-      this[FLOWING] = false;
-      this[PAUSED] = false;
-      this.pipes = [];
-      this.buffer = [];
-      this[OBJECTMODE] = options && options.objectMode || false;
-      if (this[OBJECTMODE])
-        this[ENCODING] = null;
-      else
-        this[ENCODING] = options && options.encoding || null;
-      if (this[ENCODING] === "buffer")
-        this[ENCODING] = null;
-      this[ASYNC] = options && !!options.async || false;
-      this[DECODER] = this[ENCODING] ? new SD(this[ENCODING]) : null;
-      this[EOF] = false;
-      this[EMITTED_END] = false;
-      this[EMITTING_END] = false;
-      this[CLOSED] = false;
-      this[EMITTED_ERROR] = null;
-      this.writable = true;
-      this.readable = true;
-      this[BUFFERLENGTH] = 0;
-      this[DESTROYED] = false;
-    }
-    get bufferLength() {
-      return this[BUFFERLENGTH];
-    }
-    get encoding() {
-      return this[ENCODING];
-    }
-    set encoding(enc) {
-      if (this[OBJECTMODE])
-        throw new Error("cannot set encoding in objectMode");
-      if (this[ENCODING] && enc !== this[ENCODING] && (this[DECODER] && this[DECODER].lastNeed || this[BUFFERLENGTH]))
-        throw new Error("cannot change encoding");
-      if (this[ENCODING] !== enc) {
-        this[DECODER] = enc ? new SD(enc) : null;
-        if (this.buffer.length)
-          this.buffer = this.buffer.map((chunk) => this[DECODER].write(chunk));
-      }
-      this[ENCODING] = enc;
-    }
-    setEncoding(enc) {
-      this.encoding = enc;
-    }
-    get objectMode() {
-      return this[OBJECTMODE];
-    }
-    set objectMode(om) {
-      this[OBJECTMODE] = this[OBJECTMODE] || !!om;
-    }
-    get ["async"]() {
-      return this[ASYNC];
-    }
-    set ["async"](a) {
-      this[ASYNC] = this[ASYNC] || !!a;
-    }
-    write(chunk, encoding, cb) {
-      if (this[EOF])
-        throw new Error("write after end");
-      if (this[DESTROYED]) {
-        this.emit("error", Object.assign(new Error("Cannot call write after a stream was destroyed"), { code: "ERR_STREAM_DESTROYED" }));
-        return true;
-      }
-      if (typeof encoding === "function")
-        cb = encoding, encoding = "utf8";
-      if (!encoding)
-        encoding = "utf8";
-      const fn = this[ASYNC] ? defer : (f) => f();
-      if (!this[OBJECTMODE] && !Buffer.isBuffer(chunk)) {
-        if (isArrayBufferView(chunk))
-          chunk = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
-        else if (isArrayBuffer(chunk))
-          chunk = Buffer.from(chunk);
-        else if (typeof chunk !== "string")
-          this.objectMode = true;
-      }
-      if (this[OBJECTMODE]) {
-        if (this.flowing && this[BUFFERLENGTH] !== 0)
-          this[FLUSH](true);
-        if (this.flowing)
-          this.emit("data", chunk);
-        else
-          this[BUFFERPUSH](chunk);
-        if (this[BUFFERLENGTH] !== 0)
-          this.emit("readable");
-        if (cb)
-          fn(cb);
-        return this.flowing;
-      }
-      if (!chunk.length) {
-        if (this[BUFFERLENGTH] !== 0)
-          this.emit("readable");
-        if (cb)
-          fn(cb);
-        return this.flowing;
-      }
-      if (typeof chunk === "string" && !(encoding === this[ENCODING] && !this[DECODER].lastNeed)) {
-        chunk = Buffer.from(chunk, encoding);
-      }
-      if (Buffer.isBuffer(chunk) && this[ENCODING])
-        chunk = this[DECODER].write(chunk);
-      if (this.flowing && this[BUFFERLENGTH] !== 0)
-        this[FLUSH](true);
-      if (this.flowing)
-        this.emit("data", chunk);
-      else
-        this[BUFFERPUSH](chunk);
-      if (this[BUFFERLENGTH] !== 0)
-        this.emit("readable");
-      if (cb)
-        fn(cb);
-      return this.flowing;
-    }
-    read(n) {
-      if (this[DESTROYED])
-        return null;
-      if (this[BUFFERLENGTH] === 0 || n === 0 || n > this[BUFFERLENGTH]) {
-        this[MAYBE_EMIT_END]();
-        return null;
-      }
-      if (this[OBJECTMODE])
-        n = null;
-      if (this.buffer.length > 1 && !this[OBJECTMODE]) {
-        if (this.encoding)
-          this.buffer = [this.buffer.join("")];
-        else
-          this.buffer = [Buffer.concat(this.buffer, this[BUFFERLENGTH])];
-      }
-      const ret = this[READ](n || null, this.buffer[0]);
-      this[MAYBE_EMIT_END]();
-      return ret;
-    }
-    [READ](n, chunk) {
-      if (n === chunk.length || n === null)
-        this[BUFFERSHIFT]();
-      else {
-        this.buffer[0] = chunk.slice(n);
-        chunk = chunk.slice(0, n);
-        this[BUFFERLENGTH] -= n;
-      }
-      this.emit("data", chunk);
-      if (!this.buffer.length && !this[EOF])
-        this.emit("drain");
-      return chunk;
-    }
-    end(chunk, encoding, cb) {
-      if (typeof chunk === "function")
-        cb = chunk, chunk = null;
-      if (typeof encoding === "function")
-        cb = encoding, encoding = "utf8";
-      if (chunk)
-        this.write(chunk, encoding);
-      if (cb)
-        this.once("end", cb);
-      this[EOF] = true;
-      this.writable = false;
-      if (this.flowing || !this[PAUSED])
-        this[MAYBE_EMIT_END]();
-      return this;
-    }
-    [RESUME]() {
-      if (this[DESTROYED])
-        return;
-      this[PAUSED] = false;
-      this[FLOWING] = true;
-      this.emit("resume");
-      if (this.buffer.length)
-        this[FLUSH]();
-      else if (this[EOF])
-        this[MAYBE_EMIT_END]();
-      else
-        this.emit("drain");
-    }
-    resume() {
-      return this[RESUME]();
-    }
-    pause() {
-      this[FLOWING] = false;
-      this[PAUSED] = true;
-    }
-    get destroyed() {
-      return this[DESTROYED];
-    }
-    get flowing() {
-      return this[FLOWING];
-    }
-    get paused() {
-      return this[PAUSED];
-    }
-    [BUFFERPUSH](chunk) {
-      if (this[OBJECTMODE])
-        this[BUFFERLENGTH] += 1;
-      else
-        this[BUFFERLENGTH] += chunk.length;
-      this.buffer.push(chunk);
-    }
-    [BUFFERSHIFT]() {
-      if (this.buffer.length) {
-        if (this[OBJECTMODE])
-          this[BUFFERLENGTH] -= 1;
-        else
-          this[BUFFERLENGTH] -= this.buffer[0].length;
-      }
-      return this.buffer.shift();
-    }
-    [FLUSH](noDrain) {
-      do {} while (this[FLUSHCHUNK](this[BUFFERSHIFT]()));
-      if (!noDrain && !this.buffer.length && !this[EOF])
-        this.emit("drain");
-    }
-    [FLUSHCHUNK](chunk) {
-      return chunk ? (this.emit("data", chunk), this.flowing) : false;
-    }
-    pipe(dest, opts) {
-      if (this[DESTROYED])
-        return;
-      const ended = this[EMITTED_END];
-      opts = opts || {};
-      if (dest === proc.stdout || dest === proc.stderr)
-        opts.end = false;
-      else
-        opts.end = opts.end !== false;
-      opts.proxyErrors = !!opts.proxyErrors;
-      if (ended) {
-        if (opts.end)
-          dest.end();
-      } else {
-        this.pipes.push(!opts.proxyErrors ? new Pipe(this, dest, opts) : new PipeProxyErrors(this, dest, opts));
-        if (this[ASYNC])
-          defer(() => this[RESUME]());
-        else
-          this[RESUME]();
-      }
-      return dest;
-    }
-    unpipe(dest) {
-      const p = this.pipes.find((p2) => p2.dest === dest);
-      if (p) {
-        this.pipes.splice(this.pipes.indexOf(p), 1);
-        p.unpipe();
-      }
-    }
-    addListener(ev, fn) {
-      return this.on(ev, fn);
-    }
-    on(ev, fn) {
-      const ret = super.on(ev, fn);
-      if (ev === "data" && !this.pipes.length && !this.flowing)
-        this[RESUME]();
-      else if (ev === "readable" && this[BUFFERLENGTH] !== 0)
-        super.emit("readable");
-      else if (isEndish(ev) && this[EMITTED_END]) {
-        super.emit(ev);
-        this.removeAllListeners(ev);
-      } else if (ev === "error" && this[EMITTED_ERROR]) {
-        if (this[ASYNC])
-          defer(() => fn.call(this, this[EMITTED_ERROR]));
-        else
-          fn.call(this, this[EMITTED_ERROR]);
-      }
-      return ret;
-    }
-    get emittedEnd() {
-      return this[EMITTED_END];
-    }
-    [MAYBE_EMIT_END]() {
-      if (!this[EMITTING_END] && !this[EMITTED_END] && !this[DESTROYED] && this.buffer.length === 0 && this[EOF]) {
-        this[EMITTING_END] = true;
-        this.emit("end");
-        this.emit("prefinish");
-        this.emit("finish");
-        if (this[CLOSED])
-          this.emit("close");
-        this[EMITTING_END] = false;
-      }
-    }
-    emit(ev, data, ...extra) {
-      if (ev !== "error" && ev !== "close" && ev !== DESTROYED && this[DESTROYED])
-        return;
-      else if (ev === "data") {
-        return !data ? false : this[ASYNC] ? defer(() => this[EMITDATA](data)) : this[EMITDATA](data);
-      } else if (ev === "end") {
-        return this[EMITEND]();
-      } else if (ev === "close") {
-        this[CLOSED] = true;
-        if (!this[EMITTED_END] && !this[DESTROYED])
-          return;
-        const ret2 = super.emit("close");
-        this.removeAllListeners("close");
-        return ret2;
-      } else if (ev === "error") {
-        this[EMITTED_ERROR] = data;
-        const ret2 = super.emit("error", data);
-        this[MAYBE_EMIT_END]();
-        return ret2;
-      } else if (ev === "resume") {
-        const ret2 = super.emit("resume");
-        this[MAYBE_EMIT_END]();
-        return ret2;
-      } else if (ev === "finish" || ev === "prefinish") {
-        const ret2 = super.emit(ev);
-        this.removeAllListeners(ev);
-        return ret2;
-      }
-      const ret = super.emit(ev, data, ...extra);
-      this[MAYBE_EMIT_END]();
-      return ret;
-    }
-    [EMITDATA](data) {
-      for (const p of this.pipes) {
-        if (p.dest.write(data) === false)
-          this.pause();
-      }
-      const ret = super.emit("data", data);
-      this[MAYBE_EMIT_END]();
-      return ret;
-    }
-    [EMITEND]() {
-      if (this[EMITTED_END])
-        return;
-      this[EMITTED_END] = true;
-      this.readable = false;
-      if (this[ASYNC])
-        defer(() => this[EMITEND2]());
-      else
-        this[EMITEND2]();
-    }
-    [EMITEND2]() {
-      if (this[DECODER]) {
-        const data = this[DECODER].end();
-        if (data) {
-          for (const p of this.pipes) {
-            p.dest.write(data);
-          }
-          super.emit("data", data);
-        }
-      }
-      for (const p of this.pipes) {
-        p.end();
-      }
-      const ret = super.emit("end");
-      this.removeAllListeners("end");
-      return ret;
-    }
-    collect() {
-      const buf = [];
-      if (!this[OBJECTMODE])
-        buf.dataLength = 0;
-      const p = this.promise();
-      this.on("data", (c) => {
-        buf.push(c);
-        if (!this[OBJECTMODE])
-          buf.dataLength += c.length;
-      });
-      return p.then(() => buf);
-    }
-    concat() {
-      return this[OBJECTMODE] ? Promise.reject(new Error("cannot concat in objectMode")) : this.collect().then((buf) => this[OBJECTMODE] ? Promise.reject(new Error("cannot concat in objectMode")) : this[ENCODING] ? buf.join("") : Buffer.concat(buf, buf.dataLength));
-    }
-    promise() {
-      return new Promise((resolve, reject) => {
-        this.on(DESTROYED, () => reject(new Error("stream destroyed")));
-        this.on("error", (er) => reject(er));
-        this.on("end", () => resolve());
-      });
-    }
-    [ASYNCITERATOR]() {
-      const next = () => {
-        const res = this.read();
-        if (res !== null)
-          return Promise.resolve({ done: false, value: res });
-        if (this[EOF])
-          return Promise.resolve({ done: true });
-        let resolve = null;
-        let reject = null;
-        const onerr = (er) => {
-          this.removeListener("data", ondata);
-          this.removeListener("end", onend);
-          reject(er);
-        };
-        const ondata = (value) => {
-          this.removeListener("error", onerr);
-          this.removeListener("end", onend);
-          this.pause();
-          resolve({ value, done: !!this[EOF] });
-        };
-        const onend = () => {
-          this.removeListener("error", onerr);
-          this.removeListener("data", ondata);
-          resolve({ done: true });
-        };
-        const ondestroy = () => onerr(new Error("stream destroyed"));
-        return new Promise((res2, rej) => {
-          reject = rej;
-          resolve = res2;
-          this.once(DESTROYED, ondestroy);
-          this.once("error", onerr);
-          this.once("end", onend);
-          this.once("data", ondata);
-        });
-      };
-      return { next };
-    }
-    [ITERATOR]() {
-      const next = () => {
-        const value = this.read();
-        const done = value === null;
-        return { value, done };
-      };
-      return { next };
-    }
-    destroy(er) {
-      if (this[DESTROYED]) {
-        if (er)
-          this.emit("error", er);
-        else
-          this.emit(DESTROYED);
-        return this;
-      }
-      this[DESTROYED] = true;
-      this.buffer.length = 0;
-      this[BUFFERLENGTH] = 0;
-      if (typeof this.close === "function" && !this[CLOSED])
-        this.close();
-      if (er)
-        this.emit("error", er);
-      else
-        this.emit(DESTROYED);
-      return this;
-    }
-    static isStream(s) {
-      return !!s && (s instanceof Minipass || s instanceof Stream || s instanceof EE && (typeof s.pipe === "function" || typeof s.write === "function" && typeof s.end === "function"));
-    }
-  };
-});
-
-// ../../node_modules/fs-minipass/index.js
-var require_fs_minipass = __commonJS((exports) => {
-  var MiniPass = require_minipass3();
-  var EE = __require("events").EventEmitter;
-  var fs = __require("fs");
-  var writev = fs.writev;
-  if (!writev) {
-    const binding = process.binding("fs");
-    const FSReqWrap = binding.FSReqWrap || binding.FSReqCallback;
-    writev = (fd, iovec, pos, cb) => {
-      const done = (er, bw) => cb(er, bw, iovec);
-      const req = new FSReqWrap;
-      req.oncomplete = done;
-      binding.writeBuffers(fd, iovec, pos, req);
-    };
-  }
-  var _autoClose = Symbol("_autoClose");
-  var _close = Symbol("_close");
-  var _ended = Symbol("_ended");
-  var _fd = Symbol("_fd");
-  var _finished = Symbol("_finished");
-  var _flags = Symbol("_flags");
-  var _flush = Symbol("_flush");
-  var _handleChunk = Symbol("_handleChunk");
-  var _makeBuf = Symbol("_makeBuf");
-  var _mode = Symbol("_mode");
-  var _needDrain = Symbol("_needDrain");
-  var _onerror = Symbol("_onerror");
-  var _onopen = Symbol("_onopen");
-  var _onread = Symbol("_onread");
-  var _onwrite = Symbol("_onwrite");
-  var _open = Symbol("_open");
-  var _path = Symbol("_path");
-  var _pos = Symbol("_pos");
-  var _queue = Symbol("_queue");
-  var _read = Symbol("_read");
-  var _readSize = Symbol("_readSize");
-  var _reading = Symbol("_reading");
-  var _remain = Symbol("_remain");
-  var _size = Symbol("_size");
-  var _write = Symbol("_write");
-  var _writing = Symbol("_writing");
-  var _defaultFlag = Symbol("_defaultFlag");
-  var _errored = Symbol("_errored");
-
-  class ReadStream extends MiniPass {
-    constructor(path, opt) {
-      opt = opt || {};
-      super(opt);
-      this.readable = true;
-      this.writable = false;
-      if (typeof path !== "string")
-        throw new TypeError("path must be a string");
-      this[_errored] = false;
-      this[_fd] = typeof opt.fd === "number" ? opt.fd : null;
-      this[_path] = path;
-      this[_readSize] = opt.readSize || 16 * 1024 * 1024;
-      this[_reading] = false;
-      this[_size] = typeof opt.size === "number" ? opt.size : Infinity;
-      this[_remain] = this[_size];
-      this[_autoClose] = typeof opt.autoClose === "boolean" ? opt.autoClose : true;
-      if (typeof this[_fd] === "number")
-        this[_read]();
-      else
-        this[_open]();
-    }
-    get fd() {
-      return this[_fd];
-    }
-    get path() {
-      return this[_path];
-    }
-    write() {
-      throw new TypeError("this is a readable stream");
-    }
-    end() {
-      throw new TypeError("this is a readable stream");
-    }
-    [_open]() {
-      fs.open(this[_path], "r", (er, fd) => this[_onopen](er, fd));
-    }
-    [_onopen](er, fd) {
-      if (er)
-        this[_onerror](er);
-      else {
-        this[_fd] = fd;
-        this.emit("open", fd);
-        this[_read]();
-      }
-    }
-    [_makeBuf]() {
-      return Buffer.allocUnsafe(Math.min(this[_readSize], this[_remain]));
-    }
-    [_read]() {
-      if (!this[_reading]) {
-        this[_reading] = true;
-        const buf = this[_makeBuf]();
-        if (buf.length === 0)
-          return process.nextTick(() => this[_onread](null, 0, buf));
-        fs.read(this[_fd], buf, 0, buf.length, null, (er, br, buf2) => this[_onread](er, br, buf2));
-      }
-    }
-    [_onread](er, br, buf) {
-      this[_reading] = false;
-      if (er)
-        this[_onerror](er);
-      else if (this[_handleChunk](br, buf))
-        this[_read]();
-    }
-    [_close]() {
-      if (this[_autoClose] && typeof this[_fd] === "number") {
-        const fd = this[_fd];
-        this[_fd] = null;
-        fs.close(fd, (er) => er ? this.emit("error", er) : this.emit("close"));
-      }
-    }
-    [_onerror](er) {
-      this[_reading] = true;
-      this[_close]();
-      this.emit("error", er);
-    }
-    [_handleChunk](br, buf) {
-      let ret = false;
-      this[_remain] -= br;
-      if (br > 0)
-        ret = super.write(br < buf.length ? buf.slice(0, br) : buf);
-      if (br === 0 || this[_remain] <= 0) {
-        ret = false;
-        this[_close]();
-        super.end();
-      }
-      return ret;
-    }
-    emit(ev, data) {
-      switch (ev) {
-        case "prefinish":
-        case "finish":
-          break;
-        case "drain":
-          if (typeof this[_fd] === "number")
-            this[_read]();
-          break;
-        case "error":
-          if (this[_errored])
-            return;
-          this[_errored] = true;
-          return super.emit(ev, data);
-        default:
-          return super.emit(ev, data);
-      }
-    }
-  }
-
-  class ReadStreamSync extends ReadStream {
-    [_open]() {
-      let threw = true;
-      try {
-        this[_onopen](null, fs.openSync(this[_path], "r"));
-        threw = false;
-      } finally {
-        if (threw)
-          this[_close]();
-      }
-    }
-    [_read]() {
-      let threw = true;
-      try {
-        if (!this[_reading]) {
-          this[_reading] = true;
-          do {
-            const buf = this[_makeBuf]();
-            const br = buf.length === 0 ? 0 : fs.readSync(this[_fd], buf, 0, buf.length, null);
-            if (!this[_handleChunk](br, buf))
-              break;
-          } while (true);
-          this[_reading] = false;
-        }
-        threw = false;
-      } finally {
-        if (threw)
-          this[_close]();
-      }
-    }
-    [_close]() {
-      if (this[_autoClose] && typeof this[_fd] === "number") {
-        const fd = this[_fd];
-        this[_fd] = null;
-        fs.closeSync(fd);
-        this.emit("close");
-      }
-    }
-  }
-
-  class WriteStream extends EE {
-    constructor(path, opt) {
-      opt = opt || {};
-      super(opt);
-      this.readable = false;
-      this.writable = true;
-      this[_errored] = false;
-      this[_writing] = false;
-      this[_ended] = false;
-      this[_needDrain] = false;
-      this[_queue] = [];
-      this[_path] = path;
-      this[_fd] = typeof opt.fd === "number" ? opt.fd : null;
-      this[_mode] = opt.mode === undefined ? 438 : opt.mode;
-      this[_pos] = typeof opt.start === "number" ? opt.start : null;
-      this[_autoClose] = typeof opt.autoClose === "boolean" ? opt.autoClose : true;
-      const defaultFlag = this[_pos] !== null ? "r+" : "w";
-      this[_defaultFlag] = opt.flags === undefined;
-      this[_flags] = this[_defaultFlag] ? defaultFlag : opt.flags;
-      if (this[_fd] === null)
-        this[_open]();
-    }
-    emit(ev, data) {
-      if (ev === "error") {
-        if (this[_errored])
-          return;
-        this[_errored] = true;
-      }
-      return super.emit(ev, data);
-    }
-    get fd() {
-      return this[_fd];
-    }
-    get path() {
-      return this[_path];
-    }
-    [_onerror](er) {
-      this[_close]();
-      this[_writing] = true;
-      this.emit("error", er);
-    }
-    [_open]() {
-      fs.open(this[_path], this[_flags], this[_mode], (er, fd) => this[_onopen](er, fd));
-    }
-    [_onopen](er, fd) {
-      if (this[_defaultFlag] && this[_flags] === "r+" && er && er.code === "ENOENT") {
-        this[_flags] = "w";
-        this[_open]();
-      } else if (er)
-        this[_onerror](er);
-      else {
-        this[_fd] = fd;
-        this.emit("open", fd);
-        this[_flush]();
-      }
-    }
-    end(buf, enc) {
-      if (buf)
-        this.write(buf, enc);
-      this[_ended] = true;
-      if (!this[_writing] && !this[_queue].length && typeof this[_fd] === "number")
-        this[_onwrite](null, 0);
-      return this;
-    }
-    write(buf, enc) {
-      if (typeof buf === "string")
-        buf = Buffer.from(buf, enc);
-      if (this[_ended]) {
-        this.emit("error", new Error("write() after end()"));
-        return false;
-      }
-      if (this[_fd] === null || this[_writing] || this[_queue].length) {
-        this[_queue].push(buf);
-        this[_needDrain] = true;
-        return false;
-      }
-      this[_writing] = true;
-      this[_write](buf);
-      return true;
-    }
-    [_write](buf) {
-      fs.write(this[_fd], buf, 0, buf.length, this[_pos], (er, bw) => this[_onwrite](er, bw));
-    }
-    [_onwrite](er, bw) {
-      if (er)
-        this[_onerror](er);
-      else {
-        if (this[_pos] !== null)
-          this[_pos] += bw;
-        if (this[_queue].length)
-          this[_flush]();
-        else {
-          this[_writing] = false;
-          if (this[_ended] && !this[_finished]) {
-            this[_finished] = true;
-            this[_close]();
-            this.emit("finish");
-          } else if (this[_needDrain]) {
-            this[_needDrain] = false;
-            this.emit("drain");
-          }
-        }
-      }
-    }
-    [_flush]() {
-      if (this[_queue].length === 0) {
-        if (this[_ended])
-          this[_onwrite](null, 0);
-      } else if (this[_queue].length === 1)
-        this[_write](this[_queue].pop());
-      else {
-        const iovec = this[_queue];
-        this[_queue] = [];
-        writev(this[_fd], iovec, this[_pos], (er, bw) => this[_onwrite](er, bw));
-      }
-    }
-    [_close]() {
-      if (this[_autoClose] && typeof this[_fd] === "number") {
-        const fd = this[_fd];
-        this[_fd] = null;
-        fs.close(fd, (er) => er ? this.emit("error", er) : this.emit("close"));
-      }
-    }
-  }
-
-  class WriteStreamSync extends WriteStream {
-    [_open]() {
-      let fd;
-      if (this[_defaultFlag] && this[_flags] === "r+") {
-        try {
-          fd = fs.openSync(this[_path], this[_flags], this[_mode]);
-        } catch (er) {
-          if (er.code === "ENOENT") {
-            this[_flags] = "w";
-            return this[_open]();
-          } else
-            throw er;
-        }
-      } else
-        fd = fs.openSync(this[_path], this[_flags], this[_mode]);
-      this[_onopen](null, fd);
-    }
-    [_close]() {
-      if (this[_autoClose] && typeof this[_fd] === "number") {
-        const fd = this[_fd];
-        this[_fd] = null;
-        fs.closeSync(fd);
-        this.emit("close");
-      }
-    }
-    [_write](buf) {
-      let threw = true;
-      try {
-        this[_onwrite](null, fs.writeSync(this[_fd], buf, 0, buf.length, this[_pos]));
-        threw = false;
-      } finally {
-        if (threw)
-          try {
-            this[_close]();
-          } catch (_) {}
-      }
-    }
-  }
-  exports.ReadStream = ReadStream;
-  exports.ReadStreamSync = ReadStreamSync;
-  exports.WriteStream = WriteStream;
-  exports.WriteStreamSync = WriteStreamSync;
-});
-
-// ../../node_modules/tar/lib/parse.js
-var require_parse = __commonJS((exports, module) => {
-  var warner = require_warn_mixin();
-  var Header = require_header();
-  var EE = __require("events");
-  var Yallist = require_yallist();
-  var maxMetaEntrySize = 1024 * 1024;
-  var Entry = require_read_entry();
-  var Pax = require_pax();
-  var zlib = require_minizlib();
-  var { nextTick } = __require("process");
-  var gzipHeader = Buffer.from([31, 139]);
-  var STATE = Symbol("state");
-  var WRITEENTRY = Symbol("writeEntry");
-  var READENTRY = Symbol("readEntry");
-  var NEXTENTRY = Symbol("nextEntry");
-  var PROCESSENTRY = Symbol("processEntry");
-  var EX = Symbol("extendedHeader");
-  var GEX = Symbol("globalExtendedHeader");
-  var META = Symbol("meta");
-  var EMITMETA = Symbol("emitMeta");
-  var BUFFER = Symbol("buffer");
-  var QUEUE = Symbol("queue");
-  var ENDED = Symbol("ended");
-  var EMITTEDEND = Symbol("emittedEnd");
-  var EMIT = Symbol("emit");
-  var UNZIP = Symbol("unzip");
-  var CONSUMECHUNK = Symbol("consumeChunk");
-  var CONSUMECHUNKSUB = Symbol("consumeChunkSub");
-  var CONSUMEBODY = Symbol("consumeBody");
-  var CONSUMEMETA = Symbol("consumeMeta");
-  var CONSUMEHEADER = Symbol("consumeHeader");
-  var CONSUMING = Symbol("consuming");
-  var BUFFERCONCAT = Symbol("bufferConcat");
-  var MAYBEEND = Symbol("maybeEnd");
-  var WRITING = Symbol("writing");
-  var ABORTED = Symbol("aborted");
-  var DONE = Symbol("onDone");
-  var SAW_VALID_ENTRY = Symbol("sawValidEntry");
-  var SAW_NULL_BLOCK = Symbol("sawNullBlock");
-  var SAW_EOF = Symbol("sawEOF");
-  var CLOSESTREAM = Symbol("closeStream");
-  var noop = (_) => true;
-  module.exports = warner(class Parser extends EE {
-    constructor(opt) {
-      opt = opt || {};
-      super(opt);
-      this.file = opt.file || "";
-      this[SAW_VALID_ENTRY] = null;
-      this.on(DONE, (_) => {
-        if (this[STATE] === "begin" || this[SAW_VALID_ENTRY] === false) {
-          this.warn("TAR_BAD_ARCHIVE", "Unrecognized archive format");
-        }
-      });
-      if (opt.ondone) {
-        this.on(DONE, opt.ondone);
-      } else {
-        this.on(DONE, (_) => {
-          this.emit("prefinish");
-          this.emit("finish");
-          this.emit("end");
-        });
-      }
-      this.strict = !!opt.strict;
-      this.maxMetaEntrySize = opt.maxMetaEntrySize || maxMetaEntrySize;
-      this.filter = typeof opt.filter === "function" ? opt.filter : noop;
-      const isTBR = opt.file && (opt.file.endsWith(".tar.br") || opt.file.endsWith(".tbr"));
-      this.brotli = !opt.gzip && opt.brotli !== undefined ? opt.brotli : isTBR ? undefined : false;
-      this.writable = true;
-      this.readable = false;
-      this[QUEUE] = new Yallist;
-      this[BUFFER] = null;
-      this[READENTRY] = null;
-      this[WRITEENTRY] = null;
-      this[STATE] = "begin";
-      this[META] = "";
-      this[EX] = null;
-      this[GEX] = null;
-      this[ENDED] = false;
-      this[UNZIP] = null;
-      this[ABORTED] = false;
-      this[SAW_NULL_BLOCK] = false;
-      this[SAW_EOF] = false;
-      this.on("end", () => this[CLOSESTREAM]());
-      if (typeof opt.onwarn === "function") {
-        this.on("warn", opt.onwarn);
-      }
-      if (typeof opt.onentry === "function") {
-        this.on("entry", opt.onentry);
-      }
-    }
-    [CONSUMEHEADER](chunk, position) {
-      if (this[SAW_VALID_ENTRY] === null) {
-        this[SAW_VALID_ENTRY] = false;
-      }
-      let header;
-      try {
-        header = new Header(chunk, position, this[EX], this[GEX]);
-      } catch (er) {
-        return this.warn("TAR_ENTRY_INVALID", er);
-      }
-      if (header.nullBlock) {
-        if (this[SAW_NULL_BLOCK]) {
-          this[SAW_EOF] = true;
-          if (this[STATE] === "begin") {
-            this[STATE] = "header";
-          }
-          this[EMIT]("eof");
-        } else {
-          this[SAW_NULL_BLOCK] = true;
-          this[EMIT]("nullBlock");
-        }
-      } else {
-        this[SAW_NULL_BLOCK] = false;
-        if (!header.cksumValid) {
-          this.warn("TAR_ENTRY_INVALID", "checksum failure", { header });
-        } else if (!header.path) {
-          this.warn("TAR_ENTRY_INVALID", "path is required", { header });
-        } else {
-          const type = header.type;
-          if (/^(Symbolic)?Link$/.test(type) && !header.linkpath) {
-            this.warn("TAR_ENTRY_INVALID", "linkpath required", { header });
-          } else if (!/^(Symbolic)?Link$/.test(type) && header.linkpath) {
-            this.warn("TAR_ENTRY_INVALID", "linkpath forbidden", { header });
-          } else {
-            const entry = this[WRITEENTRY] = new Entry(header, this[EX], this[GEX]);
-            if (!this[SAW_VALID_ENTRY]) {
-              if (entry.remain) {
-                const onend = () => {
-                  if (!entry.invalid) {
-                    this[SAW_VALID_ENTRY] = true;
-                  }
-                };
-                entry.on("end", onend);
-              } else {
-                this[SAW_VALID_ENTRY] = true;
-              }
-            }
-            if (entry.meta) {
-              if (entry.size > this.maxMetaEntrySize) {
-                entry.ignore = true;
-                this[EMIT]("ignoredEntry", entry);
-                this[STATE] = "ignore";
-                entry.resume();
-              } else if (entry.size > 0) {
-                this[META] = "";
-                entry.on("data", (c) => this[META] += c);
-                this[STATE] = "meta";
-              }
-            } else {
-              this[EX] = null;
-              entry.ignore = entry.ignore || !this.filter(entry.path, entry);
-              if (entry.ignore) {
-                this[EMIT]("ignoredEntry", entry);
-                this[STATE] = entry.remain ? "ignore" : "header";
-                entry.resume();
-              } else {
-                if (entry.remain) {
-                  this[STATE] = "body";
-                } else {
-                  this[STATE] = "header";
-                  entry.end();
-                }
-                if (!this[READENTRY]) {
-                  this[QUEUE].push(entry);
-                  this[NEXTENTRY]();
-                } else {
-                  this[QUEUE].push(entry);
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    [CLOSESTREAM]() {
-      nextTick(() => this.emit("close"));
-    }
-    [PROCESSENTRY](entry) {
-      let go = true;
-      if (!entry) {
-        this[READENTRY] = null;
-        go = false;
-      } else if (Array.isArray(entry)) {
-        this.emit.apply(this, entry);
-      } else {
-        this[READENTRY] = entry;
-        this.emit("entry", entry);
-        if (!entry.emittedEnd) {
-          entry.on("end", (_) => this[NEXTENTRY]());
-          go = false;
-        }
-      }
-      return go;
-    }
-    [NEXTENTRY]() {
-      do {} while (this[PROCESSENTRY](this[QUEUE].shift()));
-      if (!this[QUEUE].length) {
-        const re = this[READENTRY];
-        const drainNow = !re || re.flowing || re.size === re.remain;
-        if (drainNow) {
-          if (!this[WRITING]) {
-            this.emit("drain");
-          }
-        } else {
-          re.once("drain", (_) => this.emit("drain"));
-        }
-      }
-    }
-    [CONSUMEBODY](chunk, position) {
-      const entry = this[WRITEENTRY];
-      const br = entry.blockRemain;
-      const c = br >= chunk.length && position === 0 ? chunk : chunk.slice(position, position + br);
-      entry.write(c);
-      if (!entry.blockRemain) {
-        this[STATE] = "header";
-        this[WRITEENTRY] = null;
-        entry.end();
-      }
-      return c.length;
-    }
-    [CONSUMEMETA](chunk, position) {
-      const entry = this[WRITEENTRY];
-      const ret = this[CONSUMEBODY](chunk, position);
-      if (!this[WRITEENTRY]) {
-        this[EMITMETA](entry);
-      }
-      return ret;
-    }
-    [EMIT](ev, data, extra) {
-      if (!this[QUEUE].length && !this[READENTRY]) {
-        this.emit(ev, data, extra);
-      } else {
-        this[QUEUE].push([ev, data, extra]);
-      }
-    }
-    [EMITMETA](entry) {
-      this[EMIT]("meta", this[META]);
-      switch (entry.type) {
-        case "ExtendedHeader":
-        case "OldExtendedHeader":
-          this[EX] = Pax.parse(this[META], this[EX], false);
-          break;
-        case "GlobalExtendedHeader":
-          this[GEX] = Pax.parse(this[META], this[GEX], true);
-          break;
-        case "NextFileHasLongPath":
-        case "OldGnuLongPath":
-          this[EX] = this[EX] || Object.create(null);
-          this[EX].path = this[META].replace(/\0.*/, "");
-          break;
-        case "NextFileHasLongLinkpath":
-          this[EX] = this[EX] || Object.create(null);
-          this[EX].linkpath = this[META].replace(/\0.*/, "");
-          break;
-        default:
-          throw new Error("unknown meta: " + entry.type);
-      }
-    }
-    abort(error) {
-      this[ABORTED] = true;
-      this.emit("abort", error);
-      this.warn("TAR_ABORT", error, { recoverable: false });
-    }
-    write(chunk) {
-      if (this[ABORTED]) {
-        return;
-      }
-      const needSniff = this[UNZIP] === null || this.brotli === undefined && this[UNZIP] === false;
-      if (needSniff && chunk) {
-        if (this[BUFFER]) {
-          chunk = Buffer.concat([this[BUFFER], chunk]);
-          this[BUFFER] = null;
-        }
-        if (chunk.length < gzipHeader.length) {
-          this[BUFFER] = chunk;
-          return true;
-        }
-        for (let i = 0;this[UNZIP] === null && i < gzipHeader.length; i++) {
-          if (chunk[i] !== gzipHeader[i]) {
-            this[UNZIP] = false;
-          }
-        }
-        const maybeBrotli = this.brotli === undefined;
-        if (this[UNZIP] === false && maybeBrotli) {
-          if (chunk.length < 512) {
-            if (this[ENDED]) {
-              this.brotli = true;
-            } else {
-              this[BUFFER] = chunk;
-              return true;
-            }
-          } else {
-            try {
-              new Header(chunk.slice(0, 512));
-              this.brotli = false;
-            } catch (_) {
-              this.brotli = true;
-            }
-          }
-        }
-        if (this[UNZIP] === null || this[UNZIP] === false && this.brotli) {
-          const ended = this[ENDED];
-          this[ENDED] = false;
-          this[UNZIP] = this[UNZIP] === null ? new zlib.Unzip : new zlib.BrotliDecompress;
-          this[UNZIP].on("data", (chunk2) => this[CONSUMECHUNK](chunk2));
-          this[UNZIP].on("error", (er) => this.abort(er));
-          this[UNZIP].on("end", (_) => {
-            this[ENDED] = true;
-            this[CONSUMECHUNK]();
-          });
-          this[WRITING] = true;
-          const ret2 = this[UNZIP][ended ? "end" : "write"](chunk);
-          this[WRITING] = false;
-          return ret2;
-        }
-      }
-      this[WRITING] = true;
-      if (this[UNZIP]) {
-        this[UNZIP].write(chunk);
-      } else {
-        this[CONSUMECHUNK](chunk);
-      }
-      this[WRITING] = false;
-      const ret = this[QUEUE].length ? false : this[READENTRY] ? this[READENTRY].flowing : true;
-      if (!ret && !this[QUEUE].length) {
-        this[READENTRY].once("drain", (_) => this.emit("drain"));
-      }
-      return ret;
-    }
-    [BUFFERCONCAT](c) {
-      if (c && !this[ABORTED]) {
-        this[BUFFER] = this[BUFFER] ? Buffer.concat([this[BUFFER], c]) : c;
-      }
-    }
-    [MAYBEEND]() {
-      if (this[ENDED] && !this[EMITTEDEND] && !this[ABORTED] && !this[CONSUMING]) {
-        this[EMITTEDEND] = true;
-        const entry = this[WRITEENTRY];
-        if (entry && entry.blockRemain) {
-          const have = this[BUFFER] ? this[BUFFER].length : 0;
-          this.warn("TAR_BAD_ARCHIVE", `Truncated input (needed ${entry.blockRemain} more bytes, only ${have} available)`, { entry });
-          if (this[BUFFER]) {
-            entry.write(this[BUFFER]);
-          }
-          entry.end();
-        }
-        this[EMIT](DONE);
-      }
-    }
-    [CONSUMECHUNK](chunk) {
-      if (this[CONSUMING]) {
-        this[BUFFERCONCAT](chunk);
-      } else if (!chunk && !this[BUFFER]) {
-        this[MAYBEEND]();
-      } else {
-        this[CONSUMING] = true;
-        if (this[BUFFER]) {
-          this[BUFFERCONCAT](chunk);
-          const c = this[BUFFER];
-          this[BUFFER] = null;
-          this[CONSUMECHUNKSUB](c);
-        } else {
-          this[CONSUMECHUNKSUB](chunk);
-        }
-        while (this[BUFFER] && this[BUFFER].length >= 512 && !this[ABORTED] && !this[SAW_EOF]) {
-          const c = this[BUFFER];
-          this[BUFFER] = null;
-          this[CONSUMECHUNKSUB](c);
-        }
-        this[CONSUMING] = false;
-      }
-      if (!this[BUFFER] || this[ENDED]) {
-        this[MAYBEEND]();
-      }
-    }
-    [CONSUMECHUNKSUB](chunk) {
-      let position = 0;
-      const length = chunk.length;
-      while (position + 512 <= length && !this[ABORTED] && !this[SAW_EOF]) {
-        switch (this[STATE]) {
-          case "begin":
-          case "header":
-            this[CONSUMEHEADER](chunk, position);
-            position += 512;
-            break;
-          case "ignore":
-          case "body":
-            position += this[CONSUMEBODY](chunk, position);
-            break;
-          case "meta":
-            position += this[CONSUMEMETA](chunk, position);
-            break;
-          default:
-            throw new Error("invalid state: " + this[STATE]);
-        }
-      }
-      if (position < length) {
-        if (this[BUFFER]) {
-          this[BUFFER] = Buffer.concat([chunk.slice(position), this[BUFFER]]);
-        } else {
-          this[BUFFER] = chunk.slice(position);
-        }
-      }
-    }
-    end(chunk) {
-      if (!this[ABORTED]) {
-        if (this[UNZIP]) {
-          this[UNZIP].end(chunk);
-        } else {
-          this[ENDED] = true;
-          if (this.brotli === undefined)
-            chunk = chunk || Buffer.alloc(0);
-          this.write(chunk);
-        }
-      }
-    }
-  });
-});
-
-// ../../node_modules/tar/lib/list.js
-var require_list = __commonJS((exports, module) => {
-  var hlo = require_high_level_opt();
-  var Parser = require_parse();
-  var fs = __require("fs");
-  var fsm = require_fs_minipass();
-  var path = __require("path");
-  var stripSlash = require_strip_trailing_slashes();
-  module.exports = (opt_, files, cb) => {
-    if (typeof opt_ === "function") {
-      cb = opt_, files = null, opt_ = {};
-    } else if (Array.isArray(opt_)) {
-      files = opt_, opt_ = {};
-    }
-    if (typeof files === "function") {
-      cb = files, files = null;
-    }
-    if (!files) {
-      files = [];
-    } else {
-      files = Array.from(files);
-    }
-    const opt = hlo(opt_);
-    if (opt.sync && typeof cb === "function") {
-      throw new TypeError("callback not supported for sync tar functions");
-    }
-    if (!opt.file && typeof cb === "function") {
-      throw new TypeError("callback only supported with file option");
-    }
-    if (files.length) {
-      filesFilter(opt, files);
-    }
-    if (!opt.noResume) {
-      onentryFunction(opt);
-    }
-    return opt.file && opt.sync ? listFileSync(opt) : opt.file ? listFile(opt, cb) : list(opt);
-  };
-  var onentryFunction = (opt) => {
-    const onentry = opt.onentry;
-    opt.onentry = onentry ? (e) => {
-      onentry(e);
-      e.resume();
-    } : (e) => e.resume();
-  };
-  var filesFilter = (opt, files) => {
-    const map = new Map(files.map((f) => [stripSlash(f), true]));
-    const filter = opt.filter;
-    const mapHas = (file, r) => {
-      const root = r || path.parse(file).root || ".";
-      const ret = file === root ? false : map.has(file) ? map.get(file) : mapHas(path.dirname(file), root);
-      map.set(file, ret);
-      return ret;
-    };
-    opt.filter = filter ? (file, entry) => filter(file, entry) && mapHas(stripSlash(file)) : (file) => mapHas(stripSlash(file));
-  };
-  var listFileSync = (opt) => {
-    const p = list(opt);
-    const file = opt.file;
-    let threw = true;
-    let fd;
-    try {
-      const stat = fs.statSync(file);
-      const readSize = opt.maxReadSize || 16 * 1024 * 1024;
-      if (stat.size < readSize) {
-        p.end(fs.readFileSync(file));
-      } else {
-        let pos = 0;
-        const buf = Buffer.allocUnsafe(readSize);
-        fd = fs.openSync(file, "r");
-        while (pos < stat.size) {
-          const bytesRead = fs.readSync(fd, buf, 0, readSize, pos);
-          pos += bytesRead;
-          p.write(buf.slice(0, bytesRead));
-        }
-        p.end();
-      }
-      threw = false;
-    } finally {
-      if (threw && fd) {
-        try {
-          fs.closeSync(fd);
-        } catch (er) {}
-      }
-    }
-  };
-  var listFile = (opt, cb) => {
-    const parse = new Parser(opt);
-    const readSize = opt.maxReadSize || 16 * 1024 * 1024;
-    const file = opt.file;
-    const p = new Promise((resolve, reject) => {
-      parse.on("error", reject);
-      parse.on("end", resolve);
-      fs.stat(file, (er, stat) => {
-        if (er) {
-          reject(er);
-        } else {
-          const stream = new fsm.ReadStream(file, {
-            readSize,
-            size: stat.size
-          });
-          stream.on("error", reject);
-          stream.pipe(parse);
-        }
-      });
-    });
-    return cb ? p.then(cb, cb) : p;
-  };
-  var list = (opt) => new Parser(opt);
-});
-
-// ../../node_modules/tar/lib/create.js
-var require_create = __commonJS((exports, module) => {
-  var hlo = require_high_level_opt();
-  var Pack = require_pack();
-  var fsm = require_fs_minipass();
-  var t = require_list();
-  var path = __require("path");
-  module.exports = (opt_, files, cb) => {
-    if (typeof files === "function") {
-      cb = files;
-    }
-    if (Array.isArray(opt_)) {
-      files = opt_, opt_ = {};
-    }
-    if (!files || !Array.isArray(files) || !files.length) {
-      throw new TypeError("no files or directories specified");
-    }
-    files = Array.from(files);
-    const opt = hlo(opt_);
-    if (opt.sync && typeof cb === "function") {
-      throw new TypeError("callback not supported for sync tar functions");
-    }
-    if (!opt.file && typeof cb === "function") {
-      throw new TypeError("callback only supported with file option");
-    }
-    return opt.file && opt.sync ? createFileSync(opt, files) : opt.file ? createFile(opt, files, cb) : opt.sync ? createSync(opt, files) : create(opt, files);
-  };
-  var createFileSync = (opt, files) => {
-    const p = new Pack.Sync(opt);
-    const stream = new fsm.WriteStreamSync(opt.file, {
-      mode: opt.mode || 438
-    });
-    p.pipe(stream);
-    addFilesSync(p, files);
-  };
-  var createFile = (opt, files, cb) => {
-    const p = new Pack(opt);
-    const stream = new fsm.WriteStream(opt.file, {
-      mode: opt.mode || 438
-    });
-    p.pipe(stream);
-    const promise = new Promise((res, rej) => {
-      stream.on("error", rej);
-      stream.on("close", res);
-      p.on("error", rej);
-    });
-    addFilesAsync(p, files);
-    return cb ? promise.then(cb, cb) : promise;
-  };
-  var addFilesSync = (p, files) => {
-    files.forEach((file) => {
-      if (file.charAt(0) === "@") {
-        t({
-          file: path.resolve(p.cwd, file.slice(1)),
-          sync: true,
-          noResume: true,
-          onentry: (entry) => p.add(entry)
-        });
-      } else {
-        p.add(file);
-      }
-    });
-    p.end();
-  };
-  var addFilesAsync = (p, files) => {
-    while (files.length) {
-      const file = files.shift();
-      if (file.charAt(0) === "@") {
-        return t({
-          file: path.resolve(p.cwd, file.slice(1)),
-          noResume: true,
-          onentry: (entry) => p.add(entry)
-        }).then((_) => addFilesAsync(p, files));
-      } else {
-        p.add(file);
-      }
-    }
-    p.end();
-  };
-  var createSync = (opt, files) => {
-    const p = new Pack.Sync(opt);
-    addFilesSync(p, files);
-    return p;
-  };
-  var create = (opt, files) => {
-    const p = new Pack(opt);
-    addFilesAsync(p, files);
-    return p;
-  };
-});
-
-// ../../node_modules/tar/lib/replace.js
-var require_replace = __commonJS((exports, module) => {
-  var hlo = require_high_level_opt();
-  var Pack = require_pack();
-  var fs = __require("fs");
-  var fsm = require_fs_minipass();
-  var t = require_list();
-  var path = __require("path");
-  var Header = require_header();
-  module.exports = (opt_, files, cb) => {
-    const opt = hlo(opt_);
-    if (!opt.file) {
-      throw new TypeError("file is required");
-    }
-    if (opt.gzip || opt.brotli || opt.file.endsWith(".br") || opt.file.endsWith(".tbr")) {
-      throw new TypeError("cannot append to compressed archives");
-    }
-    if (!files || !Array.isArray(files) || !files.length) {
-      throw new TypeError("no files or directories specified");
-    }
-    files = Array.from(files);
-    return opt.sync ? replaceSync(opt, files) : replace(opt, files, cb);
-  };
-  var replaceSync = (opt, files) => {
-    const p = new Pack.Sync(opt);
-    let threw = true;
-    let fd;
-    let position;
-    try {
-      try {
-        fd = fs.openSync(opt.file, "r+");
-      } catch (er) {
-        if (er.code === "ENOENT") {
-          fd = fs.openSync(opt.file, "w+");
-        } else {
-          throw er;
-        }
-      }
-      const st = fs.fstatSync(fd);
-      const headBuf = Buffer.alloc(512);
-      POSITION:
-        for (position = 0;position < st.size; position += 512) {
-          for (let bufPos = 0, bytes = 0;bufPos < 512; bufPos += bytes) {
-            bytes = fs.readSync(fd, headBuf, bufPos, headBuf.length - bufPos, position + bufPos);
-            if (position === 0 && headBuf[0] === 31 && headBuf[1] === 139) {
-              throw new Error("cannot append to compressed archives");
-            }
-            if (!bytes) {
-              break POSITION;
-            }
-          }
-          const h = new Header(headBuf);
-          if (!h.cksumValid) {
-            break;
-          }
-          const entryBlockSize = 512 * Math.ceil(h.size / 512);
-          if (position + entryBlockSize + 512 > st.size) {
-            break;
-          }
-          position += entryBlockSize;
-          if (opt.mtimeCache) {
-            opt.mtimeCache.set(h.path, h.mtime);
-          }
-        }
-      threw = false;
-      streamSync(opt, p, position, fd, files);
-    } finally {
-      if (threw) {
-        try {
-          fs.closeSync(fd);
-        } catch (er) {}
-      }
-    }
-  };
-  var streamSync = (opt, p, position, fd, files) => {
-    const stream = new fsm.WriteStreamSync(opt.file, {
-      fd,
-      start: position
-    });
-    p.pipe(stream);
-    addFilesSync(p, files);
-  };
-  var replace = (opt, files, cb) => {
-    files = Array.from(files);
-    const p = new Pack(opt);
-    const getPos = (fd, size, cb_) => {
-      const cb2 = (er, pos) => {
-        if (er) {
-          fs.close(fd, (_) => cb_(er));
-        } else {
-          cb_(null, pos);
-        }
-      };
-      let position = 0;
-      if (size === 0) {
-        return cb2(null, 0);
-      }
-      let bufPos = 0;
-      const headBuf = Buffer.alloc(512);
-      const onread = (er, bytes) => {
-        if (er) {
-          return cb2(er);
-        }
-        bufPos += bytes;
-        if (bufPos < 512 && bytes) {
-          return fs.read(fd, headBuf, bufPos, headBuf.length - bufPos, position + bufPos, onread);
-        }
-        if (position === 0 && headBuf[0] === 31 && headBuf[1] === 139) {
-          return cb2(new Error("cannot append to compressed archives"));
-        }
-        if (bufPos < 512) {
-          return cb2(null, position);
-        }
-        const h = new Header(headBuf);
-        if (!h.cksumValid) {
-          return cb2(null, position);
-        }
-        const entryBlockSize = 512 * Math.ceil(h.size / 512);
-        if (position + entryBlockSize + 512 > size) {
-          return cb2(null, position);
-        }
-        position += entryBlockSize + 512;
-        if (position >= size) {
-          return cb2(null, position);
-        }
-        if (opt.mtimeCache) {
-          opt.mtimeCache.set(h.path, h.mtime);
-        }
-        bufPos = 0;
-        fs.read(fd, headBuf, 0, 512, position, onread);
-      };
-      fs.read(fd, headBuf, 0, 512, position, onread);
-    };
-    const promise = new Promise((resolve, reject) => {
-      p.on("error", reject);
-      let flag = "r+";
-      const onopen = (er, fd) => {
-        if (er && er.code === "ENOENT" && flag === "r+") {
-          flag = "w+";
-          return fs.open(opt.file, flag, onopen);
-        }
-        if (er) {
-          return reject(er);
-        }
-        fs.fstat(fd, (er2, st) => {
-          if (er2) {
-            return fs.close(fd, () => reject(er2));
-          }
-          getPos(fd, st.size, (er3, position) => {
-            if (er3) {
-              return reject(er3);
-            }
-            const stream = new fsm.WriteStream(opt.file, {
-              fd,
-              start: position
-            });
-            p.pipe(stream);
-            stream.on("error", reject);
-            stream.on("close", resolve);
-            addFilesAsync(p, files);
-          });
-        });
-      };
-      fs.open(opt.file, flag, onopen);
-    });
-    return cb ? promise.then(cb, cb) : promise;
-  };
-  var addFilesSync = (p, files) => {
-    files.forEach((file) => {
-      if (file.charAt(0) === "@") {
-        t({
-          file: path.resolve(p.cwd, file.slice(1)),
-          sync: true,
-          noResume: true,
-          onentry: (entry) => p.add(entry)
-        });
-      } else {
-        p.add(file);
-      }
-    });
-    p.end();
-  };
-  var addFilesAsync = (p, files) => {
-    while (files.length) {
-      const file = files.shift();
-      if (file.charAt(0) === "@") {
-        return t({
-          file: path.resolve(p.cwd, file.slice(1)),
-          noResume: true,
-          onentry: (entry) => p.add(entry)
-        }).then((_) => addFilesAsync(p, files));
-      } else {
-        p.add(file);
-      }
-    }
-    p.end();
-  };
-});
-
-// ../../node_modules/tar/lib/update.js
-var require_update = __commonJS((exports, module) => {
-  var hlo = require_high_level_opt();
-  var r = require_replace();
-  module.exports = (opt_, files, cb) => {
-    const opt = hlo(opt_);
-    if (!opt.file) {
-      throw new TypeError("file is required");
-    }
-    if (opt.gzip || opt.brotli || opt.file.endsWith(".br") || opt.file.endsWith(".tbr")) {
-      throw new TypeError("cannot append to compressed archives");
-    }
-    if (!files || !Array.isArray(files) || !files.length) {
-      throw new TypeError("no files or directories specified");
-    }
-    files = Array.from(files);
-    mtimeFilter(opt);
-    return r(opt, files, cb);
-  };
-  var mtimeFilter = (opt) => {
-    const filter = opt.filter;
-    if (!opt.mtimeCache) {
-      opt.mtimeCache = new Map;
-    }
-    opt.filter = filter ? (path, stat) => filter(path, stat) && !(opt.mtimeCache.get(path) > stat.mtime) : (path, stat) => !(opt.mtimeCache.get(path) > stat.mtime);
-  };
-});
-
-// ../../node_modules/mkdirp/lib/opts-arg.js
-var require_opts_arg = __commonJS((exports, module) => {
-  var { promisify: promisify3 } = __require("util");
-  var fs = __require("fs");
-  var optsArg = (opts) => {
-    if (!opts)
-      opts = { mode: 511, fs };
-    else if (typeof opts === "object")
-      opts = { mode: 511, fs, ...opts };
-    else if (typeof opts === "number")
-      opts = { mode: opts, fs };
-    else if (typeof opts === "string")
-      opts = { mode: parseInt(opts, 8), fs };
-    else
-      throw new TypeError("invalid options argument");
-    opts.mkdir = opts.mkdir || opts.fs.mkdir || fs.mkdir;
-    opts.mkdirAsync = promisify3(opts.mkdir);
-    opts.stat = opts.stat || opts.fs.stat || fs.stat;
-    opts.statAsync = promisify3(opts.stat);
-    opts.statSync = opts.statSync || opts.fs.statSync || fs.statSync;
-    opts.mkdirSync = opts.mkdirSync || opts.fs.mkdirSync || fs.mkdirSync;
-    return opts;
-  };
-  module.exports = optsArg;
-});
-
-// ../../node_modules/mkdirp/lib/path-arg.js
-var require_path_arg = __commonJS((exports, module) => {
-  var platform = process.env.__TESTING_MKDIRP_PLATFORM__ || process.platform;
-  var { resolve, parse } = __require("path");
-  var pathArg = (path) => {
-    if (/\0/.test(path)) {
-      throw Object.assign(new TypeError("path must be a string without null bytes"), {
-        path,
-        code: "ERR_INVALID_ARG_VALUE"
-      });
-    }
-    path = resolve(path);
-    if (platform === "win32") {
-      const badWinChars = /[*|"<>?:]/;
-      const { root } = parse(path);
-      if (badWinChars.test(path.substr(root.length))) {
-        throw Object.assign(new Error("Illegal characters in path."), {
-          path,
-          code: "EINVAL"
-        });
-      }
-    }
-    return path;
-  };
-  module.exports = pathArg;
-});
-
-// ../../node_modules/mkdirp/lib/find-made.js
-var require_find_made = __commonJS((exports, module) => {
-  var { dirname } = __require("path");
-  var findMade = (opts, parent, path = undefined) => {
-    if (path === parent)
-      return Promise.resolve();
-    return opts.statAsync(parent).then((st) => st.isDirectory() ? path : undefined, (er) => er.code === "ENOENT" ? findMade(opts, dirname(parent), parent) : undefined);
-  };
-  var findMadeSync = (opts, parent, path = undefined) => {
-    if (path === parent)
-      return;
-    try {
-      return opts.statSync(parent).isDirectory() ? path : undefined;
-    } catch (er) {
-      return er.code === "ENOENT" ? findMadeSync(opts, dirname(parent), parent) : undefined;
-    }
-  };
-  module.exports = { findMade, findMadeSync };
-});
-
-// ../../node_modules/mkdirp/lib/mkdirp-manual.js
-var require_mkdirp_manual = __commonJS((exports, module) => {
-  var { dirname } = __require("path");
-  var mkdirpManual = (path, opts, made) => {
-    opts.recursive = false;
-    const parent = dirname(path);
-    if (parent === path) {
-      return opts.mkdirAsync(path, opts).catch((er) => {
-        if (er.code !== "EISDIR")
-          throw er;
-      });
-    }
-    return opts.mkdirAsync(path, opts).then(() => made || path, (er) => {
-      if (er.code === "ENOENT")
-        return mkdirpManual(parent, opts).then((made2) => mkdirpManual(path, opts, made2));
-      if (er.code !== "EEXIST" && er.code !== "EROFS")
-        throw er;
-      return opts.statAsync(path).then((st) => {
-        if (st.isDirectory())
-          return made;
-        else
-          throw er;
-      }, () => {
-        throw er;
-      });
-    });
-  };
-  var mkdirpManualSync = (path, opts, made) => {
-    const parent = dirname(path);
-    opts.recursive = false;
-    if (parent === path) {
-      try {
-        return opts.mkdirSync(path, opts);
-      } catch (er) {
-        if (er.code !== "EISDIR")
-          throw er;
-        else
-          return;
-      }
-    }
-    try {
-      opts.mkdirSync(path, opts);
-      return made || path;
-    } catch (er) {
-      if (er.code === "ENOENT")
-        return mkdirpManualSync(path, opts, mkdirpManualSync(parent, opts, made));
-      if (er.code !== "EEXIST" && er.code !== "EROFS")
-        throw er;
-      try {
-        if (!opts.statSync(path).isDirectory())
-          throw er;
-      } catch (_) {
-        throw er;
-      }
-    }
-  };
-  module.exports = { mkdirpManual, mkdirpManualSync };
-});
-
-// ../../node_modules/mkdirp/lib/mkdirp-native.js
-var require_mkdirp_native = __commonJS((exports, module) => {
-  var { dirname } = __require("path");
-  var { findMade, findMadeSync } = require_find_made();
-  var { mkdirpManual, mkdirpManualSync } = require_mkdirp_manual();
-  var mkdirpNative = (path, opts) => {
-    opts.recursive = true;
-    const parent = dirname(path);
-    if (parent === path)
-      return opts.mkdirAsync(path, opts);
-    return findMade(opts, path).then((made) => opts.mkdirAsync(path, opts).then(() => made).catch((er) => {
-      if (er.code === "ENOENT")
-        return mkdirpManual(path, opts);
-      else
-        throw er;
-    }));
-  };
-  var mkdirpNativeSync = (path, opts) => {
-    opts.recursive = true;
-    const parent = dirname(path);
-    if (parent === path)
-      return opts.mkdirSync(path, opts);
-    const made = findMadeSync(opts, path);
-    try {
-      opts.mkdirSync(path, opts);
-      return made;
-    } catch (er) {
-      if (er.code === "ENOENT")
-        return mkdirpManualSync(path, opts);
-      else
-        throw er;
-    }
-  };
-  module.exports = { mkdirpNative, mkdirpNativeSync };
-});
-
-// ../../node_modules/mkdirp/lib/use-native.js
-var require_use_native = __commonJS((exports, module) => {
-  var fs = __require("fs");
-  var version = process.env.__TESTING_MKDIRP_NODE_VERSION__ || process.version;
-  var versArr = version.replace(/^v/, "").split(".");
-  var hasNative = +versArr[0] > 10 || +versArr[0] === 10 && +versArr[1] >= 12;
-  var useNative = !hasNative ? () => false : (opts) => opts.mkdir === fs.mkdir;
-  var useNativeSync = !hasNative ? () => false : (opts) => opts.mkdirSync === fs.mkdirSync;
-  module.exports = { useNative, useNativeSync };
-});
-
-// ../../node_modules/mkdirp/index.js
-var require_mkdirp = __commonJS((exports, module) => {
-  var optsArg = require_opts_arg();
-  var pathArg = require_path_arg();
-  var { mkdirpNative, mkdirpNativeSync } = require_mkdirp_native();
-  var { mkdirpManual, mkdirpManualSync } = require_mkdirp_manual();
-  var { useNative, useNativeSync } = require_use_native();
-  var mkdirp = (path, opts) => {
-    path = pathArg(path);
-    opts = optsArg(opts);
-    return useNative(opts) ? mkdirpNative(path, opts) : mkdirpManual(path, opts);
-  };
-  var mkdirpSync = (path, opts) => {
-    path = pathArg(path);
-    opts = optsArg(opts);
-    return useNativeSync(opts) ? mkdirpNativeSync(path, opts) : mkdirpManualSync(path, opts);
-  };
-  mkdirp.sync = mkdirpSync;
-  mkdirp.native = (path, opts) => mkdirpNative(pathArg(path), optsArg(opts));
-  mkdirp.manual = (path, opts) => mkdirpManual(pathArg(path), optsArg(opts));
-  mkdirp.nativeSync = (path, opts) => mkdirpNativeSync(pathArg(path), optsArg(opts));
-  mkdirp.manualSync = (path, opts) => mkdirpManualSync(pathArg(path), optsArg(opts));
-  module.exports = mkdirp;
-});
-
-// ../../node_modules/chownr/chownr.js
-var require_chownr = __commonJS((exports, module) => {
-  var fs = __require("fs");
-  var path = __require("path");
-  var LCHOWN = fs.lchown ? "lchown" : "chown";
-  var LCHOWNSYNC = fs.lchownSync ? "lchownSync" : "chownSync";
-  var needEISDIRHandled = fs.lchown && !process.version.match(/v1[1-9]+\./) && !process.version.match(/v10\.[6-9]/);
-  var lchownSync = (path2, uid, gid) => {
-    try {
-      return fs[LCHOWNSYNC](path2, uid, gid);
-    } catch (er) {
-      if (er.code !== "ENOENT")
-        throw er;
-    }
-  };
-  var chownSync = (path2, uid, gid) => {
-    try {
-      return fs.chownSync(path2, uid, gid);
-    } catch (er) {
-      if (er.code !== "ENOENT")
-        throw er;
-    }
-  };
-  var handleEISDIR = needEISDIRHandled ? (path2, uid, gid, cb) => (er) => {
-    if (!er || er.code !== "EISDIR")
-      cb(er);
-    else
-      fs.chown(path2, uid, gid, cb);
-  } : (_, __, ___, cb) => cb;
-  var handleEISDirSync = needEISDIRHandled ? (path2, uid, gid) => {
-    try {
-      return lchownSync(path2, uid, gid);
-    } catch (er) {
-      if (er.code !== "EISDIR")
-        throw er;
-      chownSync(path2, uid, gid);
-    }
-  } : (path2, uid, gid) => lchownSync(path2, uid, gid);
-  var nodeVersion = process.version;
-  var readdir = (path2, options, cb) => fs.readdir(path2, options, cb);
-  var readdirSync = (path2, options) => fs.readdirSync(path2, options);
-  if (/^v4\./.test(nodeVersion))
-    readdir = (path2, options, cb) => fs.readdir(path2, cb);
-  var chown = (cpath, uid, gid, cb) => {
-    fs[LCHOWN](cpath, uid, gid, handleEISDIR(cpath, uid, gid, (er) => {
-      cb(er && er.code !== "ENOENT" ? er : null);
-    }));
-  };
-  var chownrKid = (p, child, uid, gid, cb) => {
-    if (typeof child === "string")
-      return fs.lstat(path.resolve(p, child), (er, stats) => {
-        if (er)
-          return cb(er.code !== "ENOENT" ? er : null);
-        stats.name = child;
-        chownrKid(p, stats, uid, gid, cb);
-      });
-    if (child.isDirectory()) {
-      chownr(path.resolve(p, child.name), uid, gid, (er) => {
-        if (er)
-          return cb(er);
-        const cpath = path.resolve(p, child.name);
-        chown(cpath, uid, gid, cb);
-      });
-    } else {
-      const cpath = path.resolve(p, child.name);
-      chown(cpath, uid, gid, cb);
-    }
-  };
-  var chownr = (p, uid, gid, cb) => {
-    readdir(p, { withFileTypes: true }, (er, children) => {
-      if (er) {
-        if (er.code === "ENOENT")
-          return cb();
-        else if (er.code !== "ENOTDIR" && er.code !== "ENOTSUP")
-          return cb(er);
-      }
-      if (er || !children.length)
-        return chown(p, uid, gid, cb);
-      let len = children.length;
-      let errState = null;
-      const then = (er2) => {
-        if (errState)
-          return;
-        if (er2)
-          return cb(errState = er2);
-        if (--len === 0)
-          return chown(p, uid, gid, cb);
-      };
-      children.forEach((child) => chownrKid(p, child, uid, gid, then));
-    });
-  };
-  var chownrKidSync = (p, child, uid, gid) => {
-    if (typeof child === "string") {
-      try {
-        const stats = fs.lstatSync(path.resolve(p, child));
-        stats.name = child;
-        child = stats;
-      } catch (er) {
-        if (er.code === "ENOENT")
-          return;
-        else
-          throw er;
-      }
-    }
-    if (child.isDirectory())
-      chownrSync(path.resolve(p, child.name), uid, gid);
-    handleEISDirSync(path.resolve(p, child.name), uid, gid);
-  };
-  var chownrSync = (p, uid, gid) => {
-    let children;
-    try {
-      children = readdirSync(p, { withFileTypes: true });
-    } catch (er) {
-      if (er.code === "ENOENT")
-        return;
-      else if (er.code === "ENOTDIR" || er.code === "ENOTSUP")
-        return handleEISDirSync(p, uid, gid);
-      else
-        throw er;
-    }
-    if (children && children.length)
-      children.forEach((child) => chownrKidSync(p, child, uid, gid));
-    return handleEISDirSync(p, uid, gid);
-  };
-  module.exports = chownr;
-  chownr.sync = chownrSync;
-});
-
-// ../../node_modules/tar/lib/mkdir.js
-var require_mkdir = __commonJS((exports, module) => {
-  var mkdirp = require_mkdirp();
-  var fs = __require("fs");
-  var path = __require("path");
-  var chownr = require_chownr();
-  var normPath = require_normalize_windows_path();
-
-  class SymlinkError extends Error {
-    constructor(symlink, path2) {
-      super("Cannot extract through symbolic link");
-      this.path = path2;
-      this.symlink = symlink;
-    }
-    get name() {
-      return "SylinkError";
-    }
-  }
-
-  class CwdError extends Error {
-    constructor(path2, code) {
-      super(code + ": Cannot cd into '" + path2 + "'");
-      this.path = path2;
-      this.code = code;
-    }
-    get name() {
-      return "CwdError";
-    }
-  }
-  var cGet = (cache, key) => cache.get(normPath(key));
-  var cSet = (cache, key, val) => cache.set(normPath(key), val);
-  var checkCwd = (dir, cb) => {
-    fs.stat(dir, (er, st) => {
-      if (er || !st.isDirectory()) {
-        er = new CwdError(dir, er && er.code || "ENOTDIR");
-      }
-      cb(er);
-    });
-  };
-  module.exports = (dir, opt, cb) => {
-    dir = normPath(dir);
-    const umask = opt.umask;
-    const mode = opt.mode | 448;
-    const needChmod = (mode & umask) !== 0;
-    const uid = opt.uid;
-    const gid = opt.gid;
-    const doChown = typeof uid === "number" && typeof gid === "number" && (uid !== opt.processUid || gid !== opt.processGid);
-    const preserve = opt.preserve;
-    const unlink = opt.unlink;
-    const cache = opt.cache;
-    const cwd = normPath(opt.cwd);
-    const done = (er, created) => {
-      if (er) {
-        cb(er);
-      } else {
-        cSet(cache, dir, true);
-        if (created && doChown) {
-          chownr(created, uid, gid, (er2) => done(er2));
-        } else if (needChmod) {
-          fs.chmod(dir, mode, cb);
-        } else {
-          cb();
-        }
-      }
-    };
-    if (cache && cGet(cache, dir) === true) {
-      return done();
-    }
-    if (dir === cwd) {
-      return checkCwd(dir, done);
-    }
-    if (preserve) {
-      return mkdirp(dir, { mode }).then((made) => done(null, made), done);
-    }
-    const sub = normPath(path.relative(cwd, dir));
-    const parts = sub.split("/");
-    mkdir_(cwd, parts, mode, cache, unlink, cwd, null, done);
-  };
-  var mkdir_ = (base, parts, mode, cache, unlink, cwd, created, cb) => {
-    if (!parts.length) {
-      return cb(null, created);
-    }
-    const p = parts.shift();
-    const part = normPath(path.resolve(base + "/" + p));
-    if (cGet(cache, part)) {
-      return mkdir_(part, parts, mode, cache, unlink, cwd, created, cb);
-    }
-    fs.mkdir(part, mode, onmkdir(part, parts, mode, cache, unlink, cwd, created, cb));
-  };
-  var onmkdir = (part, parts, mode, cache, unlink, cwd, created, cb) => (er) => {
-    if (er) {
-      fs.lstat(part, (statEr, st) => {
-        if (statEr) {
-          statEr.path = statEr.path && normPath(statEr.path);
-          cb(statEr);
-        } else if (st.isDirectory()) {
-          mkdir_(part, parts, mode, cache, unlink, cwd, created, cb);
-        } else if (unlink) {
-          fs.unlink(part, (er2) => {
-            if (er2) {
-              return cb(er2);
-            }
-            fs.mkdir(part, mode, onmkdir(part, parts, mode, cache, unlink, cwd, created, cb));
-          });
-        } else if (st.isSymbolicLink()) {
-          return cb(new SymlinkError(part, part + "/" + parts.join("/")));
-        } else {
-          cb(er);
-        }
-      });
-    } else {
-      created = created || part;
-      mkdir_(part, parts, mode, cache, unlink, cwd, created, cb);
-    }
-  };
-  var checkCwdSync = (dir) => {
-    let ok = false;
-    let code = "ENOTDIR";
-    try {
-      ok = fs.statSync(dir).isDirectory();
-    } catch (er) {
-      code = er.code;
-    } finally {
-      if (!ok) {
-        throw new CwdError(dir, code);
-      }
-    }
-  };
-  module.exports.sync = (dir, opt) => {
-    dir = normPath(dir);
-    const umask = opt.umask;
-    const mode = opt.mode | 448;
-    const needChmod = (mode & umask) !== 0;
-    const uid = opt.uid;
-    const gid = opt.gid;
-    const doChown = typeof uid === "number" && typeof gid === "number" && (uid !== opt.processUid || gid !== opt.processGid);
-    const preserve = opt.preserve;
-    const unlink = opt.unlink;
-    const cache = opt.cache;
-    const cwd = normPath(opt.cwd);
-    const done = (created2) => {
-      cSet(cache, dir, true);
-      if (created2 && doChown) {
-        chownr.sync(created2, uid, gid);
-      }
-      if (needChmod) {
-        fs.chmodSync(dir, mode);
-      }
-    };
-    if (cache && cGet(cache, dir) === true) {
-      return done();
-    }
-    if (dir === cwd) {
-      checkCwdSync(cwd);
-      return done();
-    }
-    if (preserve) {
-      return done(mkdirp.sync(dir, mode));
-    }
-    const sub = normPath(path.relative(cwd, dir));
-    const parts = sub.split("/");
-    let created = null;
-    for (let p = parts.shift(), part = cwd;p && (part += "/" + p); p = parts.shift()) {
-      part = normPath(path.resolve(part));
-      if (cGet(cache, part)) {
-        continue;
-      }
-      try {
-        fs.mkdirSync(part, mode);
-        created = created || part;
-        cSet(cache, part, true);
-      } catch (er) {
-        const st = fs.lstatSync(part);
-        if (st.isDirectory()) {
-          cSet(cache, part, true);
-          continue;
-        } else if (unlink) {
-          fs.unlinkSync(part);
-          fs.mkdirSync(part, mode);
-          created = created || part;
-          cSet(cache, part, true);
-          continue;
-        } else if (st.isSymbolicLink()) {
-          return new SymlinkError(part, part + "/" + parts.join("/"));
-        }
-      }
-    }
-    return done(created);
-  };
-});
-
-// ../../node_modules/tar/lib/normalize-unicode.js
-var require_normalize_unicode = __commonJS((exports, module) => {
-  var normalizeCache = Object.create(null);
-  var { hasOwnProperty } = Object.prototype;
-  module.exports = (s) => {
-    if (!hasOwnProperty.call(normalizeCache, s)) {
-      normalizeCache[s] = s.normalize("NFD");
-    }
-    return normalizeCache[s];
-  };
-});
-
-// ../../node_modules/tar/lib/path-reservations.js
-var require_path_reservations = __commonJS((exports, module) => {
-  var assert = __require("assert");
-  var normalize = require_normalize_unicode();
-  var stripSlashes = require_strip_trailing_slashes();
-  var { join } = __require("path");
-  var platform = process.env.TESTING_TAR_FAKE_PLATFORM || process.platform;
-  var isWindows = platform === "win32";
-  module.exports = () => {
-    const queues = new Map;
-    const reservations = new Map;
-    const getDirs = (path) => {
-      const dirs = path.split("/").slice(0, -1).reduce((set, path2) => {
-        if (set.length) {
-          path2 = join(set[set.length - 1], path2);
-        }
-        set.push(path2 || "/");
-        return set;
-      }, []);
-      return dirs;
-    };
-    const running = new Set;
-    const getQueues = (fn) => {
-      const res = reservations.get(fn);
-      if (!res) {
-        throw new Error("function does not have any path reservations");
-      }
-      return {
-        paths: res.paths.map((path) => queues.get(path)),
-        dirs: [...res.dirs].map((path) => queues.get(path))
-      };
-    };
-    const check = (fn) => {
-      const { paths, dirs } = getQueues(fn);
-      return paths.every((q) => q[0] === fn) && dirs.every((q) => q[0] instanceof Set && q[0].has(fn));
-    };
-    const run = (fn) => {
-      if (running.has(fn) || !check(fn)) {
-        return false;
-      }
-      running.add(fn);
-      fn(() => clear(fn));
-      return true;
-    };
-    const clear = (fn) => {
-      if (!running.has(fn)) {
-        return false;
-      }
-      const { paths, dirs } = reservations.get(fn);
-      const next = new Set;
-      paths.forEach((path) => {
-        const q = queues.get(path);
-        assert.equal(q[0], fn);
-        if (q.length === 1) {
-          queues.delete(path);
-        } else {
-          q.shift();
-          if (typeof q[0] === "function") {
-            next.add(q[0]);
-          } else {
-            q[0].forEach((fn2) => next.add(fn2));
-          }
-        }
-      });
-      dirs.forEach((dir) => {
-        const q = queues.get(dir);
-        assert(q[0] instanceof Set);
-        if (q[0].size === 1 && q.length === 1) {
-          queues.delete(dir);
-        } else if (q[0].size === 1) {
-          q.shift();
-          next.add(q[0]);
-        } else {
-          q[0].delete(fn);
-        }
-      });
-      running.delete(fn);
-      next.forEach((fn2) => run(fn2));
-      return true;
-    };
-    const reserve = (paths, fn) => {
-      paths = isWindows ? ["win32 parallelization disabled"] : paths.map((p) => {
-        return stripSlashes(join(normalize(p))).toLowerCase();
-      });
-      const dirs = new Set(paths.map((path) => getDirs(path)).reduce((a, b) => a.concat(b)));
-      reservations.set(fn, { dirs, paths });
-      paths.forEach((path) => {
-        const q = queues.get(path);
-        if (!q) {
-          queues.set(path, [fn]);
-        } else {
-          q.push(fn);
-        }
-      });
-      dirs.forEach((dir) => {
-        const q = queues.get(dir);
-        if (!q) {
-          queues.set(dir, [new Set([fn])]);
-        } else if (q[q.length - 1] instanceof Set) {
-          q[q.length - 1].add(fn);
-        } else {
-          q.push(new Set([fn]));
-        }
-      });
-      return run(fn);
-    };
-    return { check, reserve };
-  };
-});
-
-// ../../node_modules/tar/lib/get-write-flag.js
-var require_get_write_flag = __commonJS((exports, module) => {
-  var platform = process.env.__FAKE_PLATFORM__ || process.platform;
-  var isWindows = platform === "win32";
-  var fs = global.__FAKE_TESTING_FS__ || __require("fs");
-  var { O_CREAT, O_TRUNC, O_WRONLY, UV_FS_O_FILEMAP = 0 } = fs.constants;
-  var fMapEnabled = isWindows && !!UV_FS_O_FILEMAP;
-  var fMapLimit = 512 * 1024;
-  var fMapFlag = UV_FS_O_FILEMAP | O_TRUNC | O_CREAT | O_WRONLY;
-  module.exports = !fMapEnabled ? () => "w" : (size) => size < fMapLimit ? fMapFlag : "w";
-});
-
-// ../../node_modules/tar/lib/unpack.js
-var require_unpack = __commonJS((exports, module) => {
-  var assert = __require("assert");
-  var Parser = require_parse();
-  var fs = __require("fs");
-  var fsm = require_fs_minipass();
-  var path = __require("path");
-  var mkdir = require_mkdir();
-  var wc = require_winchars();
-  var pathReservations = require_path_reservations();
-  var stripAbsolutePath = require_strip_absolute_path();
-  var normPath = require_normalize_windows_path();
-  var stripSlash = require_strip_trailing_slashes();
-  var normalize = require_normalize_unicode();
-  var ONENTRY = Symbol("onEntry");
-  var CHECKFS = Symbol("checkFs");
-  var CHECKFS2 = Symbol("checkFs2");
-  var PRUNECACHE = Symbol("pruneCache");
-  var ISREUSABLE = Symbol("isReusable");
-  var MAKEFS = Symbol("makeFs");
-  var FILE = Symbol("file");
-  var DIRECTORY = Symbol("directory");
-  var LINK = Symbol("link");
-  var SYMLINK = Symbol("symlink");
-  var HARDLINK = Symbol("hardlink");
-  var UNSUPPORTED = Symbol("unsupported");
-  var CHECKPATH = Symbol("checkPath");
-  var MKDIR = Symbol("mkdir");
-  var ONERROR = Symbol("onError");
-  var PENDING = Symbol("pending");
-  var PEND = Symbol("pend");
-  var UNPEND = Symbol("unpend");
-  var ENDED = Symbol("ended");
-  var MAYBECLOSE = Symbol("maybeClose");
-  var SKIP = Symbol("skip");
-  var DOCHOWN = Symbol("doChown");
-  var UID = Symbol("uid");
-  var GID = Symbol("gid");
-  var CHECKED_CWD = Symbol("checkedCwd");
-  var crypto = __require("crypto");
-  var getFlag = require_get_write_flag();
-  var platform = process.env.TESTING_TAR_FAKE_PLATFORM || process.platform;
-  var isWindows = platform === "win32";
-  var DEFAULT_MAX_DEPTH = 1024;
-  var unlinkFile = (path2, cb) => {
-    if (!isWindows) {
-      return fs.unlink(path2, cb);
-    }
-    const name = path2 + ".DELETE." + crypto.randomBytes(16).toString("hex");
-    fs.rename(path2, name, (er) => {
-      if (er) {
-        return cb(er);
-      }
-      fs.unlink(name, cb);
-    });
-  };
-  var unlinkFileSync = (path2) => {
-    if (!isWindows) {
-      return fs.unlinkSync(path2);
-    }
-    const name = path2 + ".DELETE." + crypto.randomBytes(16).toString("hex");
-    fs.renameSync(path2, name);
-    fs.unlinkSync(name);
-  };
-  var uint32 = (a, b, c) => a === a >>> 0 ? a : b === b >>> 0 ? b : c;
-  var cacheKeyNormalize = (path2) => stripSlash(normPath(normalize(path2))).toLowerCase();
-  var pruneCache = (cache, abs) => {
-    abs = cacheKeyNormalize(abs);
-    for (const path2 of cache.keys()) {
-      const pnorm = cacheKeyNormalize(path2);
-      if (pnorm === abs || pnorm.indexOf(abs + "/") === 0) {
-        cache.delete(path2);
-      }
-    }
-  };
-  var dropCache = (cache) => {
-    for (const key of cache.keys()) {
-      cache.delete(key);
-    }
-  };
-
-  class Unpack extends Parser {
-    constructor(opt) {
-      if (!opt) {
-        opt = {};
-      }
-      opt.ondone = (_) => {
-        this[ENDED] = true;
-        this[MAYBECLOSE]();
-      };
-      super(opt);
-      this[CHECKED_CWD] = false;
-      this.reservations = pathReservations();
-      this.transform = typeof opt.transform === "function" ? opt.transform : null;
-      this.writable = true;
-      this.readable = false;
-      this[PENDING] = 0;
-      this[ENDED] = false;
-      this.dirCache = opt.dirCache || new Map;
-      if (typeof opt.uid === "number" || typeof opt.gid === "number") {
-        if (typeof opt.uid !== "number" || typeof opt.gid !== "number") {
-          throw new TypeError("cannot set owner without number uid and gid");
-        }
-        if (opt.preserveOwner) {
-          throw new TypeError("cannot preserve owner in archive and also set owner explicitly");
-        }
-        this.uid = opt.uid;
-        this.gid = opt.gid;
-        this.setOwner = true;
-      } else {
-        this.uid = null;
-        this.gid = null;
-        this.setOwner = false;
-      }
-      if (opt.preserveOwner === undefined && typeof opt.uid !== "number") {
-        this.preserveOwner = process.getuid && process.getuid() === 0;
-      } else {
-        this.preserveOwner = !!opt.preserveOwner;
-      }
-      this.processUid = (this.preserveOwner || this.setOwner) && process.getuid ? process.getuid() : null;
-      this.processGid = (this.preserveOwner || this.setOwner) && process.getgid ? process.getgid() : null;
-      this.maxDepth = typeof opt.maxDepth === "number" ? opt.maxDepth : DEFAULT_MAX_DEPTH;
-      this.forceChown = opt.forceChown === true;
-      this.win32 = !!opt.win32 || isWindows;
-      this.newer = !!opt.newer;
-      this.keep = !!opt.keep;
-      this.noMtime = !!opt.noMtime;
-      this.preservePaths = !!opt.preservePaths;
-      this.unlink = !!opt.unlink;
-      this.cwd = normPath(path.resolve(opt.cwd || process.cwd()));
-      this.strip = +opt.strip || 0;
-      this.processUmask = opt.noChmod ? 0 : process.umask();
-      this.umask = typeof opt.umask === "number" ? opt.umask : this.processUmask;
-      this.dmode = opt.dmode || 511 & ~this.umask;
-      this.fmode = opt.fmode || 438 & ~this.umask;
-      this.on("entry", (entry) => this[ONENTRY](entry));
-    }
-    warn(code, msg, data = {}) {
-      if (code === "TAR_BAD_ARCHIVE" || code === "TAR_ABORT") {
-        data.recoverable = false;
-      }
-      return super.warn(code, msg, data);
-    }
-    [MAYBECLOSE]() {
-      if (this[ENDED] && this[PENDING] === 0) {
-        this.emit("prefinish");
-        this.emit("finish");
-        this.emit("end");
-      }
-    }
-    [CHECKPATH](entry) {
-      const p = normPath(entry.path);
-      const parts = p.split("/");
-      if (this.strip) {
-        if (parts.length < this.strip) {
-          return false;
-        }
-        if (entry.type === "Link") {
-          const linkparts = normPath(entry.linkpath).split("/");
-          if (linkparts.length >= this.strip) {
-            entry.linkpath = linkparts.slice(this.strip).join("/");
-          } else {
-            return false;
-          }
-        }
-        parts.splice(0, this.strip);
-        entry.path = parts.join("/");
-      }
-      if (isFinite(this.maxDepth) && parts.length > this.maxDepth) {
-        this.warn("TAR_ENTRY_ERROR", "path excessively deep", {
-          entry,
-          path: p,
-          depth: parts.length,
-          maxDepth: this.maxDepth
-        });
-        return false;
-      }
-      if (!this.preservePaths) {
-        if (parts.includes("..") || isWindows && /^[a-z]:\.\.$/i.test(parts[0])) {
-          this.warn("TAR_ENTRY_ERROR", `path contains '..'`, {
-            entry,
-            path: p
-          });
-          return false;
-        }
-        const [root, stripped] = stripAbsolutePath(p);
-        if (root) {
-          entry.path = stripped;
-          this.warn("TAR_ENTRY_INFO", `stripping ${root} from absolute path`, {
-            entry,
-            path: p
-          });
-        }
-      }
-      if (path.isAbsolute(entry.path)) {
-        entry.absolute = normPath(path.resolve(entry.path));
-      } else {
-        entry.absolute = normPath(path.resolve(this.cwd, entry.path));
-      }
-      if (!this.preservePaths && entry.absolute.indexOf(this.cwd + "/") !== 0 && entry.absolute !== this.cwd) {
-        this.warn("TAR_ENTRY_ERROR", "path escaped extraction target", {
-          entry,
-          path: normPath(entry.path),
-          resolvedPath: entry.absolute,
-          cwd: this.cwd
-        });
-        return false;
-      }
-      if (entry.absolute === this.cwd && entry.type !== "Directory" && entry.type !== "GNUDumpDir") {
-        return false;
-      }
-      if (this.win32) {
-        const { root: aRoot } = path.win32.parse(entry.absolute);
-        entry.absolute = aRoot + wc.encode(entry.absolute.slice(aRoot.length));
-        const { root: pRoot } = path.win32.parse(entry.path);
-        entry.path = pRoot + wc.encode(entry.path.slice(pRoot.length));
-      }
-      return true;
-    }
-    [ONENTRY](entry) {
-      if (!this[CHECKPATH](entry)) {
-        return entry.resume();
-      }
-      assert.equal(typeof entry.absolute, "string");
-      switch (entry.type) {
-        case "Directory":
-        case "GNUDumpDir":
-          if (entry.mode) {
-            entry.mode = entry.mode | 448;
-          }
-        case "File":
-        case "OldFile":
-        case "ContiguousFile":
-        case "Link":
-        case "SymbolicLink":
-          return this[CHECKFS](entry);
-        case "CharacterDevice":
-        case "BlockDevice":
-        case "FIFO":
-        default:
-          return this[UNSUPPORTED](entry);
-      }
-    }
-    [ONERROR](er, entry) {
-      if (er.name === "CwdError") {
-        this.emit("error", er);
-      } else {
-        this.warn("TAR_ENTRY_ERROR", er, { entry });
-        this[UNPEND]();
-        entry.resume();
-      }
-    }
-    [MKDIR](dir, mode, cb) {
-      mkdir(normPath(dir), {
-        uid: this.uid,
-        gid: this.gid,
-        processUid: this.processUid,
-        processGid: this.processGid,
-        umask: this.processUmask,
-        preserve: this.preservePaths,
-        unlink: this.unlink,
-        cache: this.dirCache,
-        cwd: this.cwd,
-        mode,
-        noChmod: this.noChmod
-      }, cb);
-    }
-    [DOCHOWN](entry) {
-      return this.forceChown || this.preserveOwner && (typeof entry.uid === "number" && entry.uid !== this.processUid || typeof entry.gid === "number" && entry.gid !== this.processGid) || (typeof this.uid === "number" && this.uid !== this.processUid || typeof this.gid === "number" && this.gid !== this.processGid);
-    }
-    [UID](entry) {
-      return uint32(this.uid, entry.uid, this.processUid);
-    }
-    [GID](entry) {
-      return uint32(this.gid, entry.gid, this.processGid);
-    }
-    [FILE](entry, fullyDone) {
-      const mode = entry.mode & 4095 || this.fmode;
-      const stream = new fsm.WriteStream(entry.absolute, {
-        flags: getFlag(entry.size),
-        mode,
-        autoClose: false
-      });
-      stream.on("error", (er) => {
-        if (stream.fd) {
-          fs.close(stream.fd, () => {});
-        }
-        stream.write = () => true;
-        this[ONERROR](er, entry);
-        fullyDone();
-      });
-      let actions = 1;
-      const done = (er) => {
-        if (er) {
-          if (stream.fd) {
-            fs.close(stream.fd, () => {});
-          }
-          this[ONERROR](er, entry);
-          fullyDone();
-          return;
-        }
-        if (--actions === 0) {
-          fs.close(stream.fd, (er2) => {
-            if (er2) {
-              this[ONERROR](er2, entry);
-            } else {
-              this[UNPEND]();
-            }
-            fullyDone();
-          });
-        }
-      };
-      stream.on("finish", (_) => {
-        const abs = entry.absolute;
-        const fd = stream.fd;
-        if (entry.mtime && !this.noMtime) {
-          actions++;
-          const atime = entry.atime || new Date;
-          const mtime = entry.mtime;
-          fs.futimes(fd, atime, mtime, (er) => er ? fs.utimes(abs, atime, mtime, (er2) => done(er2 && er)) : done());
-        }
-        if (this[DOCHOWN](entry)) {
-          actions++;
-          const uid = this[UID](entry);
-          const gid = this[GID](entry);
-          fs.fchown(fd, uid, gid, (er) => er ? fs.chown(abs, uid, gid, (er2) => done(er2 && er)) : done());
-        }
-        done();
-      });
-      const tx = this.transform ? this.transform(entry) || entry : entry;
-      if (tx !== entry) {
-        tx.on("error", (er) => {
-          this[ONERROR](er, entry);
-          fullyDone();
-        });
-        entry.pipe(tx);
-      }
-      tx.pipe(stream);
-    }
-    [DIRECTORY](entry, fullyDone) {
-      const mode = entry.mode & 4095 || this.dmode;
-      this[MKDIR](entry.absolute, mode, (er) => {
-        if (er) {
-          this[ONERROR](er, entry);
-          fullyDone();
-          return;
-        }
-        let actions = 1;
-        const done = (_) => {
-          if (--actions === 0) {
-            fullyDone();
-            this[UNPEND]();
-            entry.resume();
-          }
-        };
-        if (entry.mtime && !this.noMtime) {
-          actions++;
-          fs.utimes(entry.absolute, entry.atime || new Date, entry.mtime, done);
-        }
-        if (this[DOCHOWN](entry)) {
-          actions++;
-          fs.chown(entry.absolute, this[UID](entry), this[GID](entry), done);
-        }
-        done();
-      });
-    }
-    [UNSUPPORTED](entry) {
-      entry.unsupported = true;
-      this.warn("TAR_ENTRY_UNSUPPORTED", `unsupported entry type: ${entry.type}`, { entry });
-      entry.resume();
-    }
-    [SYMLINK](entry, done) {
-      this[LINK](entry, entry.linkpath, "symlink", done);
-    }
-    [HARDLINK](entry, done) {
-      const linkpath = normPath(path.resolve(this.cwd, entry.linkpath));
-      this[LINK](entry, linkpath, "link", done);
-    }
-    [PEND]() {
-      this[PENDING]++;
-    }
-    [UNPEND]() {
-      this[PENDING]--;
-      this[MAYBECLOSE]();
-    }
-    [SKIP](entry) {
-      this[UNPEND]();
-      entry.resume();
-    }
-    [ISREUSABLE](entry, st) {
-      return entry.type === "File" && !this.unlink && st.isFile() && st.nlink <= 1 && !isWindows;
-    }
-    [CHECKFS](entry) {
-      this[PEND]();
-      const paths = [entry.path];
-      if (entry.linkpath) {
-        paths.push(entry.linkpath);
-      }
-      this.reservations.reserve(paths, (done) => this[CHECKFS2](entry, done));
-    }
-    [PRUNECACHE](entry) {
-      if (entry.type === "SymbolicLink") {
-        dropCache(this.dirCache);
-      } else if (entry.type !== "Directory") {
-        pruneCache(this.dirCache, entry.absolute);
-      }
-    }
-    [CHECKFS2](entry, fullyDone) {
-      this[PRUNECACHE](entry);
-      const done = (er) => {
-        this[PRUNECACHE](entry);
-        fullyDone(er);
-      };
-      const checkCwd = () => {
-        this[MKDIR](this.cwd, this.dmode, (er) => {
-          if (er) {
-            this[ONERROR](er, entry);
-            done();
-            return;
-          }
-          this[CHECKED_CWD] = true;
-          start();
-        });
-      };
-      const start = () => {
-        if (entry.absolute !== this.cwd) {
-          const parent = normPath(path.dirname(entry.absolute));
-          if (parent !== this.cwd) {
-            return this[MKDIR](parent, this.dmode, (er) => {
-              if (er) {
-                this[ONERROR](er, entry);
-                done();
-                return;
-              }
-              afterMakeParent();
-            });
-          }
-        }
-        afterMakeParent();
-      };
-      const afterMakeParent = () => {
-        fs.lstat(entry.absolute, (lstatEr, st) => {
-          if (st && (this.keep || this.newer && st.mtime > entry.mtime)) {
-            this[SKIP](entry);
-            done();
-            return;
-          }
-          if (lstatEr || this[ISREUSABLE](entry, st)) {
-            return this[MAKEFS](null, entry, done);
-          }
-          if (st.isDirectory()) {
-            if (entry.type === "Directory") {
-              const needChmod = !this.noChmod && entry.mode && (st.mode & 4095) !== entry.mode;
-              const afterChmod = (er) => this[MAKEFS](er, entry, done);
-              if (!needChmod) {
-                return afterChmod();
-              }
-              return fs.chmod(entry.absolute, entry.mode, afterChmod);
-            }
-            if (entry.absolute !== this.cwd) {
-              return fs.rmdir(entry.absolute, (er) => this[MAKEFS](er, entry, done));
-            }
-          }
-          if (entry.absolute === this.cwd) {
-            return this[MAKEFS](null, entry, done);
-          }
-          unlinkFile(entry.absolute, (er) => this[MAKEFS](er, entry, done));
-        });
-      };
-      if (this[CHECKED_CWD]) {
-        start();
-      } else {
-        checkCwd();
-      }
-    }
-    [MAKEFS](er, entry, done) {
-      if (er) {
-        this[ONERROR](er, entry);
-        done();
-        return;
-      }
-      switch (entry.type) {
-        case "File":
-        case "OldFile":
-        case "ContiguousFile":
-          return this[FILE](entry, done);
-        case "Link":
-          return this[HARDLINK](entry, done);
-        case "SymbolicLink":
-          return this[SYMLINK](entry, done);
-        case "Directory":
-        case "GNUDumpDir":
-          return this[DIRECTORY](entry, done);
-      }
-    }
-    [LINK](entry, linkpath, link, done) {
-      fs[link](linkpath, entry.absolute, (er) => {
-        if (er) {
-          this[ONERROR](er, entry);
-        } else {
-          this[UNPEND]();
-          entry.resume();
-        }
-        done();
-      });
-    }
-  }
-  var callSync = (fn) => {
-    try {
-      return [null, fn()];
-    } catch (er) {
-      return [er, null];
-    }
-  };
-
-  class UnpackSync extends Unpack {
-    [MAKEFS](er, entry) {
-      return super[MAKEFS](er, entry, () => {});
-    }
-    [CHECKFS](entry) {
-      this[PRUNECACHE](entry);
-      if (!this[CHECKED_CWD]) {
-        const er2 = this[MKDIR](this.cwd, this.dmode);
-        if (er2) {
-          return this[ONERROR](er2, entry);
-        }
-        this[CHECKED_CWD] = true;
-      }
-      if (entry.absolute !== this.cwd) {
-        const parent = normPath(path.dirname(entry.absolute));
-        if (parent !== this.cwd) {
-          const mkParent = this[MKDIR](parent, this.dmode);
-          if (mkParent) {
-            return this[ONERROR](mkParent, entry);
-          }
-        }
-      }
-      const [lstatEr, st] = callSync(() => fs.lstatSync(entry.absolute));
-      if (st && (this.keep || this.newer && st.mtime > entry.mtime)) {
-        return this[SKIP](entry);
-      }
-      if (lstatEr || this[ISREUSABLE](entry, st)) {
-        return this[MAKEFS](null, entry);
-      }
-      if (st.isDirectory()) {
-        if (entry.type === "Directory") {
-          const needChmod = !this.noChmod && entry.mode && (st.mode & 4095) !== entry.mode;
-          const [er3] = needChmod ? callSync(() => {
-            fs.chmodSync(entry.absolute, entry.mode);
-          }) : [];
-          return this[MAKEFS](er3, entry);
-        }
-        const [er2] = callSync(() => fs.rmdirSync(entry.absolute));
-        this[MAKEFS](er2, entry);
-      }
-      const [er] = entry.absolute === this.cwd ? [] : callSync(() => unlinkFileSync(entry.absolute));
-      this[MAKEFS](er, entry);
-    }
-    [FILE](entry, done) {
-      const mode = entry.mode & 4095 || this.fmode;
-      const oner = (er) => {
-        let closeError;
-        try {
-          fs.closeSync(fd);
-        } catch (e) {
-          closeError = e;
-        }
-        if (er || closeError) {
-          this[ONERROR](er || closeError, entry);
-        }
-        done();
-      };
-      let fd;
-      try {
-        fd = fs.openSync(entry.absolute, getFlag(entry.size), mode);
-      } catch (er) {
-        return oner(er);
-      }
-      const tx = this.transform ? this.transform(entry) || entry : entry;
-      if (tx !== entry) {
-        tx.on("error", (er) => this[ONERROR](er, entry));
-        entry.pipe(tx);
-      }
-      tx.on("data", (chunk) => {
-        try {
-          fs.writeSync(fd, chunk, 0, chunk.length);
-        } catch (er) {
-          oner(er);
-        }
-      });
-      tx.on("end", (_) => {
-        let er = null;
-        if (entry.mtime && !this.noMtime) {
-          const atime = entry.atime || new Date;
-          const mtime = entry.mtime;
-          try {
-            fs.futimesSync(fd, atime, mtime);
-          } catch (futimeser) {
-            try {
-              fs.utimesSync(entry.absolute, atime, mtime);
-            } catch (utimeser) {
-              er = futimeser;
-            }
-          }
-        }
-        if (this[DOCHOWN](entry)) {
-          const uid = this[UID](entry);
-          const gid = this[GID](entry);
-          try {
-            fs.fchownSync(fd, uid, gid);
-          } catch (fchowner) {
-            try {
-              fs.chownSync(entry.absolute, uid, gid);
-            } catch (chowner) {
-              er = er || fchowner;
-            }
-          }
-        }
-        oner(er);
-      });
-    }
-    [DIRECTORY](entry, done) {
-      const mode = entry.mode & 4095 || this.dmode;
-      const er = this[MKDIR](entry.absolute, mode);
-      if (er) {
-        this[ONERROR](er, entry);
-        done();
-        return;
-      }
-      if (entry.mtime && !this.noMtime) {
-        try {
-          fs.utimesSync(entry.absolute, entry.atime || new Date, entry.mtime);
-        } catch (er2) {}
-      }
-      if (this[DOCHOWN](entry)) {
-        try {
-          fs.chownSync(entry.absolute, this[UID](entry), this[GID](entry));
-        } catch (er2) {}
-      }
-      done();
-      entry.resume();
-    }
-    [MKDIR](dir, mode) {
-      try {
-        return mkdir.sync(normPath(dir), {
-          uid: this.uid,
-          gid: this.gid,
-          processUid: this.processUid,
-          processGid: this.processGid,
-          umask: this.processUmask,
-          preserve: this.preservePaths,
-          unlink: this.unlink,
-          cache: this.dirCache,
-          cwd: this.cwd,
-          mode
-        });
-      } catch (er) {
-        return er;
-      }
-    }
-    [LINK](entry, linkpath, link, done) {
-      try {
-        fs[link + "Sync"](linkpath, entry.absolute);
-        done();
-        entry.resume();
-      } catch (er) {
-        return this[ONERROR](er, entry);
-      }
-    }
-  }
-  Unpack.Sync = UnpackSync;
-  module.exports = Unpack;
-});
-
-// ../../node_modules/tar/lib/extract.js
-var require_extract = __commonJS((exports, module) => {
-  var hlo = require_high_level_opt();
-  var Unpack = require_unpack();
-  var fs = __require("fs");
-  var fsm = require_fs_minipass();
-  var path = __require("path");
-  var stripSlash = require_strip_trailing_slashes();
-  module.exports = (opt_, files, cb) => {
-    if (typeof opt_ === "function") {
-      cb = opt_, files = null, opt_ = {};
-    } else if (Array.isArray(opt_)) {
-      files = opt_, opt_ = {};
-    }
-    if (typeof files === "function") {
-      cb = files, files = null;
-    }
-    if (!files) {
-      files = [];
-    } else {
-      files = Array.from(files);
-    }
-    const opt = hlo(opt_);
-    if (opt.sync && typeof cb === "function") {
-      throw new TypeError("callback not supported for sync tar functions");
-    }
-    if (!opt.file && typeof cb === "function") {
-      throw new TypeError("callback only supported with file option");
-    }
-    if (files.length) {
-      filesFilter(opt, files);
-    }
-    return opt.file && opt.sync ? extractFileSync(opt) : opt.file ? extractFile(opt, cb) : opt.sync ? extractSync(opt) : extract(opt);
-  };
-  var filesFilter = (opt, files) => {
-    const map = new Map(files.map((f) => [stripSlash(f), true]));
-    const filter = opt.filter;
-    const mapHas = (file, r) => {
-      const root = r || path.parse(file).root || ".";
-      const ret = file === root ? false : map.has(file) ? map.get(file) : mapHas(path.dirname(file), root);
-      map.set(file, ret);
-      return ret;
-    };
-    opt.filter = filter ? (file, entry) => filter(file, entry) && mapHas(stripSlash(file)) : (file) => mapHas(stripSlash(file));
-  };
-  var extractFileSync = (opt) => {
-    const u = new Unpack.Sync(opt);
-    const file = opt.file;
-    const stat = fs.statSync(file);
-    const readSize = opt.maxReadSize || 16 * 1024 * 1024;
-    const stream = new fsm.ReadStreamSync(file, {
-      readSize,
-      size: stat.size
-    });
-    stream.pipe(u);
-  };
-  var extractFile = (opt, cb) => {
-    const u = new Unpack(opt);
-    const readSize = opt.maxReadSize || 16 * 1024 * 1024;
-    const file = opt.file;
-    const p = new Promise((resolve, reject) => {
-      u.on("error", reject);
-      u.on("close", resolve);
-      fs.stat(file, (er, stat) => {
-        if (er) {
-          reject(er);
-        } else {
-          const stream = new fsm.ReadStream(file, {
-            readSize,
-            size: stat.size
-          });
-          stream.on("error", reject);
-          stream.pipe(u);
-        }
-      });
-    });
-    return cb ? p.then(cb, cb) : p;
-  };
-  var extractSync = (opt) => new Unpack.Sync(opt);
-  var extract = (opt) => new Unpack(opt);
-});
-
-// ../../node_modules/tar/index.js
-var require_tar = __commonJS((exports) => {
-  exports.c = exports.create = require_create();
-  exports.r = exports.replace = require_replace();
-  exports.t = exports.list = require_list();
-  exports.u = exports.update = require_update();
-  exports.x = exports.extract = require_extract();
-  exports.Pack = require_pack();
-  exports.Unpack = require_unpack();
-  exports.Parse = require_parse();
-  exports.ReadEntry = require_read_entry();
-  exports.WriteEntry = require_write_entry();
-  exports.Header = require_header();
-  exports.Pax = require_pax();
-  exports.types = require_types();
-});
-
 // src/main.ts
-import { app, BrowserWindow, Tray, Menu, shell } from "electron";
+import { app, BrowserWindow, Tray, Menu, shell, dialog } from "electron";
 import { join as join2, dirname as dirname2 } from "node:path";
 import { existsSync as existsSync2 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
@@ -13808,7 +7340,7 @@ function createLogger(service) {
     debug: (msg, extra) => log("debug", msg, extra)
   };
 }
-// ../../node_modules/yaml/dist/index.js
+// ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/index.js
 var composer = require_composer();
 var Document = require_Document();
 var Schema = require_Schema();
@@ -13960,12 +7492,15 @@ var logger6 = createLogger("markdown-task");
 var logger7 = createLogger("scheduler");
 // ../lib/src/control-plane/model-runner.ts
 var logger8 = createLogger("local-providers");
+// ../lib/src/control-plane/install-lock.ts
+var logger9 = createLogger("install-lock");
+var STALE_AFTER_MS = 30 * 60 * 1000;
+
 // ../lib/src/control-plane/setup.ts
-var logger9 = createLogger("setup");
+var logger10 = createLogger("setup");
 // ../lib/src/control-plane/host-opencode.ts
 var ALLOWED_CONFIG_KEYS = new Set(["$schema", "provider", "model", "small_model", "disabled_providers"]);
 // ../lib/src/control-plane/ui-assets.ts
-var import_tar = __toESM(require_tar(), 1);
 import {
   existsSync,
   mkdirSync as mkdirSync2,
@@ -13979,7 +7514,3178 @@ import {
 import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
-var logger10 = createLogger("lib:ui-assets");
+
+// ../../node_modules/.bun/tar@7.5.15/node_modules/tar/dist/esm/index.min.js
+import Vr from "events";
+import I from "fs";
+import { EventEmitter as Li } from "node:events";
+import Ds from "node:stream";
+import { StringDecoder as Br } from "node:string_decoder";
+import or from "node:path";
+import Vt from "node:fs";
+import { dirname as Ln, parse as Nn } from "path";
+import { EventEmitter as _n } from "events";
+import Pi from "assert";
+import { Buffer as Ot } from "buffer";
+import * as vs from "zlib";
+import Qr from "zlib";
+import { posix as Zt } from "node:path";
+import { basename as Sn } from "node:path";
+import ui from "fs";
+import $ from "fs";
+import Xs from "path";
+import { win32 as Cn } from "node:path";
+import rr from "path";
+import kr from "node:fs";
+import ro from "node:assert";
+import { randomBytes as Cr } from "node:crypto";
+import u from "node:fs";
+import R from "node:path";
+import fr from "fs";
+import Ei from "node:fs";
+import we from "node:path";
+import F from "node:fs";
+import Jn from "node:fs/promises";
+import wi from "node:path";
+import { join as br } from "node:path";
+import v from "node:fs";
+import Fr from "node:path";
+var vr = Object.defineProperty;
+var Mr = (s, t) => {
+  for (var e in t)
+    vr(s, e, { get: t[e], enumerable: true });
+};
+var Ts = typeof process == "object" && process ? process : { stdout: null, stderr: null };
+var Pr = (s) => !!s && typeof s == "object" && (s instanceof A || s instanceof Ds || zr(s) || Ur(s));
+var zr = (s) => !!s && typeof s == "object" && s instanceof Li && typeof s.pipe == "function" && s.pipe !== Ds.Writable.prototype.pipe;
+var Ur = (s) => !!s && typeof s == "object" && s instanceof Li && typeof s.write == "function" && typeof s.end == "function";
+var q = Symbol("EOF");
+var Q = Symbol("maybeEmitEnd");
+var rt = Symbol("emittedEnd");
+var Ne = Symbol("emittingEnd");
+var Qt = Symbol("emittedError");
+var De = Symbol("closed");
+var xs = Symbol("read");
+var Ae = Symbol("flush");
+var Ls = Symbol("flushChunk");
+var z = Symbol("encoding");
+var Mt = Symbol("decoder");
+var g = Symbol("flowing");
+var Jt = Symbol("paused");
+var Bt = Symbol("resume");
+var b = Symbol("buffer");
+var D = Symbol("pipes");
+var _ = Symbol("bufferLength");
+var gi = Symbol("bufferPush");
+var Ie = Symbol("bufferShift");
+var L = Symbol("objectMode");
+var w = Symbol("destroyed");
+var bi = Symbol("error");
+var _i = Symbol("emitData");
+var Ns = Symbol("emitEnd");
+var Oi = Symbol("emitEnd2");
+var Z = Symbol("async");
+var Ti = Symbol("abort");
+var Ce = Symbol("aborted");
+var jt = Symbol("signal");
+var Rt = Symbol("dataListeners");
+var C = Symbol("discarded");
+var te = (s) => Promise.resolve().then(s);
+var Hr = (s) => s();
+var Wr = (s) => s === "end" || s === "finish" || s === "prefinish";
+var Gr = (s) => s instanceof ArrayBuffer || !!s && typeof s == "object" && s.constructor && s.constructor.name === "ArrayBuffer" && s.byteLength >= 0;
+var Zr = (s) => !Buffer.isBuffer(s) && ArrayBuffer.isView(s);
+var ke = class {
+  src;
+  dest;
+  opts;
+  ondrain;
+  constructor(t, e, i) {
+    this.src = t, this.dest = e, this.opts = i, this.ondrain = () => t[Bt](), this.dest.on("drain", this.ondrain);
+  }
+  unpipe() {
+    this.dest.removeListener("drain", this.ondrain);
+  }
+  proxyErrors(t) {}
+  end() {
+    this.unpipe(), this.opts.end && this.dest.end();
+  }
+};
+var xi = class extends ke {
+  unpipe() {
+    this.src.removeListener("error", this.proxyErrors), super.unpipe();
+  }
+  constructor(t, e, i) {
+    super(t, e, i), this.proxyErrors = (r) => this.dest.emit("error", r), t.on("error", this.proxyErrors);
+  }
+};
+var Yr = (s) => !!s.objectMode;
+var Kr = (s) => !s.objectMode && !!s.encoding && s.encoding !== "buffer";
+var A = class extends Li {
+  [g] = false;
+  [Jt] = false;
+  [D] = [];
+  [b] = [];
+  [L];
+  [z];
+  [Z];
+  [Mt];
+  [q] = false;
+  [rt] = false;
+  [Ne] = false;
+  [De] = false;
+  [Qt] = null;
+  [_] = 0;
+  [w] = false;
+  [jt];
+  [Ce] = false;
+  [Rt] = 0;
+  [C] = false;
+  writable = true;
+  readable = true;
+  constructor(...t) {
+    let e = t[0] || {};
+    if (super(), e.objectMode && typeof e.encoding == "string")
+      throw new TypeError("Encoding and objectMode may not be used together");
+    Yr(e) ? (this[L] = true, this[z] = null) : Kr(e) ? (this[z] = e.encoding, this[L] = false) : (this[L] = false, this[z] = null), this[Z] = !!e.async, this[Mt] = this[z] ? new Br(this[z]) : null, e && e.debugExposeBuffer === true && Object.defineProperty(this, "buffer", { get: () => this[b] }), e && e.debugExposePipes === true && Object.defineProperty(this, "pipes", { get: () => this[D] });
+    let { signal: i } = e;
+    i && (this[jt] = i, i.aborted ? this[Ti]() : i.addEventListener("abort", () => this[Ti]()));
+  }
+  get bufferLength() {
+    return this[_];
+  }
+  get encoding() {
+    return this[z];
+  }
+  set encoding(t) {
+    throw new Error("Encoding must be set at instantiation time");
+  }
+  setEncoding(t) {
+    throw new Error("Encoding must be set at instantiation time");
+  }
+  get objectMode() {
+    return this[L];
+  }
+  set objectMode(t) {
+    throw new Error("objectMode must be set at instantiation time");
+  }
+  get async() {
+    return this[Z];
+  }
+  set async(t) {
+    this[Z] = this[Z] || !!t;
+  }
+  [Ti]() {
+    this[Ce] = true, this.emit("abort", this[jt]?.reason), this.destroy(this[jt]?.reason);
+  }
+  get aborted() {
+    return this[Ce];
+  }
+  set aborted(t) {}
+  write(t, e, i) {
+    if (this[Ce])
+      return false;
+    if (this[q])
+      throw new Error("write after end");
+    if (this[w])
+      return this.emit("error", Object.assign(new Error("Cannot call write after a stream was destroyed"), { code: "ERR_STREAM_DESTROYED" })), true;
+    typeof e == "function" && (i = e, e = "utf8"), e || (e = "utf8");
+    let r = this[Z] ? te : Hr;
+    if (!this[L] && !Buffer.isBuffer(t)) {
+      if (Zr(t))
+        t = Buffer.from(t.buffer, t.byteOffset, t.byteLength);
+      else if (Gr(t))
+        t = Buffer.from(t);
+      else if (typeof t != "string")
+        throw new Error("Non-contiguous data written to non-objectMode stream");
+    }
+    return this[L] ? (this[g] && this[_] !== 0 && this[Ae](true), this[g] ? this.emit("data", t) : this[gi](t), this[_] !== 0 && this.emit("readable"), i && r(i), this[g]) : t.length ? (typeof t == "string" && !(e === this[z] && !this[Mt]?.lastNeed) && (t = Buffer.from(t, e)), Buffer.isBuffer(t) && this[z] && (t = this[Mt].write(t)), this[g] && this[_] !== 0 && this[Ae](true), this[g] ? this.emit("data", t) : this[gi](t), this[_] !== 0 && this.emit("readable"), i && r(i), this[g]) : (this[_] !== 0 && this.emit("readable"), i && r(i), this[g]);
+  }
+  read(t) {
+    if (this[w])
+      return null;
+    if (this[C] = false, this[_] === 0 || t === 0 || t && t > this[_])
+      return this[Q](), null;
+    this[L] && (t = null), this[b].length > 1 && !this[L] && (this[b] = [this[z] ? this[b].join("") : Buffer.concat(this[b], this[_])]);
+    let e = this[xs](t || null, this[b][0]);
+    return this[Q](), e;
+  }
+  [xs](t, e) {
+    if (this[L])
+      this[Ie]();
+    else {
+      let i = e;
+      t === i.length || t === null ? this[Ie]() : typeof i == "string" ? (this[b][0] = i.slice(t), e = i.slice(0, t), this[_] -= t) : (this[b][0] = i.subarray(t), e = i.subarray(0, t), this[_] -= t);
+    }
+    return this.emit("data", e), !this[b].length && !this[q] && this.emit("drain"), e;
+  }
+  end(t, e, i) {
+    return typeof t == "function" && (i = t, t = undefined), typeof e == "function" && (i = e, e = "utf8"), t !== undefined && this.write(t, e), i && this.once("end", i), this[q] = true, this.writable = false, (this[g] || !this[Jt]) && this[Q](), this;
+  }
+  [Bt]() {
+    this[w] || (!this[Rt] && !this[D].length && (this[C] = true), this[Jt] = false, this[g] = true, this.emit("resume"), this[b].length ? this[Ae]() : this[q] ? this[Q]() : this.emit("drain"));
+  }
+  resume() {
+    return this[Bt]();
+  }
+  pause() {
+    this[g] = false, this[Jt] = true, this[C] = false;
+  }
+  get destroyed() {
+    return this[w];
+  }
+  get flowing() {
+    return this[g];
+  }
+  get paused() {
+    return this[Jt];
+  }
+  [gi](t) {
+    this[L] ? this[_] += 1 : this[_] += t.length, this[b].push(t);
+  }
+  [Ie]() {
+    return this[L] ? this[_] -= 1 : this[_] -= this[b][0].length, this[b].shift();
+  }
+  [Ae](t = false) {
+    do
+      ;
+    while (this[Ls](this[Ie]()) && this[b].length);
+    !t && !this[b].length && !this[q] && this.emit("drain");
+  }
+  [Ls](t) {
+    return this.emit("data", t), this[g];
+  }
+  pipe(t, e) {
+    if (this[w])
+      return t;
+    this[C] = false;
+    let i = this[rt];
+    return e = e || {}, t === Ts.stdout || t === Ts.stderr ? e.end = false : e.end = e.end !== false, e.proxyErrors = !!e.proxyErrors, i ? e.end && t.end() : (this[D].push(e.proxyErrors ? new xi(this, t, e) : new ke(this, t, e)), this[Z] ? te(() => this[Bt]()) : this[Bt]()), t;
+  }
+  unpipe(t) {
+    let e = this[D].find((i) => i.dest === t);
+    e && (this[D].length === 1 ? (this[g] && this[Rt] === 0 && (this[g] = false), this[D] = []) : this[D].splice(this[D].indexOf(e), 1), e.unpipe());
+  }
+  addListener(t, e) {
+    return this.on(t, e);
+  }
+  on(t, e) {
+    let i = super.on(t, e);
+    if (t === "data")
+      this[C] = false, this[Rt]++, !this[D].length && !this[g] && this[Bt]();
+    else if (t === "readable" && this[_] !== 0)
+      super.emit("readable");
+    else if (Wr(t) && this[rt])
+      super.emit(t), this.removeAllListeners(t);
+    else if (t === "error" && this[Qt]) {
+      let r = e;
+      this[Z] ? te(() => r.call(this, this[Qt])) : r.call(this, this[Qt]);
+    }
+    return i;
+  }
+  removeListener(t, e) {
+    return this.off(t, e);
+  }
+  off(t, e) {
+    let i = super.off(t, e);
+    return t === "data" && (this[Rt] = this.listeners("data").length, this[Rt] === 0 && !this[C] && !this[D].length && (this[g] = false)), i;
+  }
+  removeAllListeners(t) {
+    let e = super.removeAllListeners(t);
+    return (t === "data" || t === undefined) && (this[Rt] = 0, !this[C] && !this[D].length && (this[g] = false)), e;
+  }
+  get emittedEnd() {
+    return this[rt];
+  }
+  [Q]() {
+    !this[Ne] && !this[rt] && !this[w] && this[b].length === 0 && this[q] && (this[Ne] = true, this.emit("end"), this.emit("prefinish"), this.emit("finish"), this[De] && this.emit("close"), this[Ne] = false);
+  }
+  emit(t, ...e) {
+    let i = e[0];
+    if (t !== "error" && t !== "close" && t !== w && this[w])
+      return false;
+    if (t === "data")
+      return !this[L] && !i ? false : this[Z] ? (te(() => this[_i](i)), true) : this[_i](i);
+    if (t === "end")
+      return this[Ns]();
+    if (t === "close") {
+      if (this[De] = true, !this[rt] && !this[w])
+        return false;
+      let n = super.emit("close");
+      return this.removeAllListeners("close"), n;
+    } else if (t === "error") {
+      this[Qt] = i, super.emit(bi, i);
+      let n = !this[jt] || this.listeners("error").length ? super.emit("error", i) : false;
+      return this[Q](), n;
+    } else if (t === "resume") {
+      let n = super.emit("resume");
+      return this[Q](), n;
+    } else if (t === "finish" || t === "prefinish") {
+      let n = super.emit(t);
+      return this.removeAllListeners(t), n;
+    }
+    let r = super.emit(t, ...e);
+    return this[Q](), r;
+  }
+  [_i](t) {
+    for (let i of this[D])
+      i.dest.write(t) === false && this.pause();
+    let e = this[C] ? false : super.emit("data", t);
+    return this[Q](), e;
+  }
+  [Ns]() {
+    return this[rt] ? false : (this[rt] = true, this.readable = false, this[Z] ? (te(() => this[Oi]()), true) : this[Oi]());
+  }
+  [Oi]() {
+    if (this[Mt]) {
+      let e = this[Mt].end();
+      if (e) {
+        for (let i of this[D])
+          i.dest.write(e);
+        this[C] || super.emit("data", e);
+      }
+    }
+    for (let e of this[D])
+      e.end();
+    let t = super.emit("end");
+    return this.removeAllListeners("end"), t;
+  }
+  async collect() {
+    let t = Object.assign([], { dataLength: 0 });
+    this[L] || (t.dataLength = 0);
+    let e = this.promise();
+    return this.on("data", (i) => {
+      t.push(i), this[L] || (t.dataLength += i.length);
+    }), await e, t;
+  }
+  async concat() {
+    if (this[L])
+      throw new Error("cannot concat in objectMode");
+    let t = await this.collect();
+    return this[z] ? t.join("") : Buffer.concat(t, t.dataLength);
+  }
+  async promise() {
+    return new Promise((t, e) => {
+      this.on(w, () => e(new Error("stream destroyed"))), this.on("error", (i) => e(i)), this.on("end", () => t());
+    });
+  }
+  [Symbol.asyncIterator]() {
+    this[C] = false;
+    let t = false, e = async () => (this.pause(), t = true, { value: undefined, done: true });
+    return { next: () => {
+      if (t)
+        return e();
+      let r = this.read();
+      if (r !== null)
+        return Promise.resolve({ done: false, value: r });
+      if (this[q])
+        return e();
+      let n, o, h = (d) => {
+        this.off("data", a), this.off("end", l), this.off(w, c), e(), o(d);
+      }, a = (d) => {
+        this.off("error", h), this.off("end", l), this.off(w, c), this.pause(), n({ value: d, done: !!this[q] });
+      }, l = () => {
+        this.off("error", h), this.off("data", a), this.off(w, c), e(), n({ done: true, value: undefined });
+      }, c = () => h(new Error("stream destroyed"));
+      return new Promise((d, S) => {
+        o = S, n = d, this.once(w, c), this.once("error", h), this.once("end", l), this.once("data", a);
+      });
+    }, throw: e, return: e, [Symbol.asyncIterator]() {
+      return this;
+    }, [Symbol.asyncDispose]: async () => {} };
+  }
+  [Symbol.iterator]() {
+    this[C] = false;
+    let t = false, e = () => (this.pause(), this.off(bi, e), this.off(w, e), this.off("end", e), t = true, { done: true, value: undefined }), i = () => {
+      if (t)
+        return e();
+      let r = this.read();
+      return r === null ? e() : { done: false, value: r };
+    };
+    return this.once("end", e), this.once(bi, e), this.once(w, e), { next: i, throw: e, return: e, [Symbol.iterator]() {
+      return this;
+    }, [Symbol.dispose]: () => {} };
+  }
+  destroy(t) {
+    if (this[w])
+      return t ? this.emit("error", t) : this.emit(w), this;
+    this[w] = true, this[C] = true, this[b].length = 0, this[_] = 0;
+    let e = this;
+    return typeof e.close == "function" && !this[De] && e.close(), t ? this.emit("error", t) : this.emit(w), this;
+  }
+  static get isStream() {
+    return Pr;
+  }
+};
+var $r = I.writev;
+var ot = Symbol("_autoClose");
+var H = Symbol("_close");
+var ee = Symbol("_ended");
+var m = Symbol("_fd");
+var Ni = Symbol("_finished");
+var j = Symbol("_flags");
+var Di = Symbol("_flush");
+var ki = Symbol("_handleChunk");
+var Fi = Symbol("_makeBuf");
+var se = Symbol("_mode");
+var Fe = Symbol("_needDrain");
+var Ut = Symbol("_onerror");
+var Ht = Symbol("_onopen");
+var Ai = Symbol("_onread");
+var Pt = Symbol("_onwrite");
+var ht = Symbol("_open");
+var U = Symbol("_path");
+var nt = Symbol("_pos");
+var Y = Symbol("_queue");
+var zt = Symbol("_read");
+var Ii = Symbol("_readSize");
+var J = Symbol("_reading");
+var ie = Symbol("_remain");
+var Ci = Symbol("_size");
+var ve = Symbol("_write");
+var gt = Symbol("_writing");
+var Me = Symbol("_defaultFlag");
+var bt = Symbol("_errored");
+var _t = class extends A {
+  [bt] = false;
+  [m];
+  [U];
+  [Ii];
+  [J] = false;
+  [Ci];
+  [ie];
+  [ot];
+  constructor(t, e) {
+    if (e = e || {}, super(e), this.readable = true, this.writable = false, typeof t != "string")
+      throw new TypeError("path must be a string");
+    this[bt] = false, this[m] = typeof e.fd == "number" ? e.fd : undefined, this[U] = t, this[Ii] = e.readSize || 16 * 1024 * 1024, this[J] = false, this[Ci] = typeof e.size == "number" ? e.size : 1 / 0, this[ie] = this[Ci], this[ot] = typeof e.autoClose == "boolean" ? e.autoClose : true, typeof this[m] == "number" ? this[zt]() : this[ht]();
+  }
+  get fd() {
+    return this[m];
+  }
+  get path() {
+    return this[U];
+  }
+  write() {
+    throw new TypeError("this is a readable stream");
+  }
+  end() {
+    throw new TypeError("this is a readable stream");
+  }
+  [ht]() {
+    I.open(this[U], "r", (t, e) => this[Ht](t, e));
+  }
+  [Ht](t, e) {
+    t ? this[Ut](t) : (this[m] = e, this.emit("open", e), this[zt]());
+  }
+  [Fi]() {
+    return Buffer.allocUnsafe(Math.min(this[Ii], this[ie]));
+  }
+  [zt]() {
+    if (!this[J]) {
+      this[J] = true;
+      let t = this[Fi]();
+      if (t.length === 0)
+        return process.nextTick(() => this[Ai](null, 0, t));
+      I.read(this[m], t, 0, t.length, null, (e, i, r) => this[Ai](e, i, r));
+    }
+  }
+  [Ai](t, e, i) {
+    this[J] = false, t ? this[Ut](t) : this[ki](e, i) && this[zt]();
+  }
+  [H]() {
+    if (this[ot] && typeof this[m] == "number") {
+      let t = this[m];
+      this[m] = undefined, I.close(t, (e) => e ? this.emit("error", e) : this.emit("close"));
+    }
+  }
+  [Ut](t) {
+    this[J] = true, this[H](), this.emit("error", t);
+  }
+  [ki](t, e) {
+    let i = false;
+    return this[ie] -= t, t > 0 && (i = super.write(t < e.length ? e.subarray(0, t) : e)), (t === 0 || this[ie] <= 0) && (i = false, this[H](), super.end()), i;
+  }
+  emit(t, ...e) {
+    switch (t) {
+      case "prefinish":
+      case "finish":
+        return false;
+      case "drain":
+        return typeof this[m] == "number" && this[zt](), false;
+      case "error":
+        return this[bt] ? false : (this[bt] = true, super.emit(t, ...e));
+      default:
+        return super.emit(t, ...e);
+    }
+  }
+};
+var Be = class extends _t {
+  [ht]() {
+    let t = true;
+    try {
+      this[Ht](null, I.openSync(this[U], "r")), t = false;
+    } finally {
+      t && this[H]();
+    }
+  }
+  [zt]() {
+    let t = true;
+    try {
+      if (!this[J]) {
+        this[J] = true;
+        do {
+          let e = this[Fi](), i = e.length === 0 ? 0 : I.readSync(this[m], e, 0, e.length, null);
+          if (!this[ki](i, e))
+            break;
+        } while (true);
+        this[J] = false;
+      }
+      t = false;
+    } finally {
+      t && this[H]();
+    }
+  }
+  [H]() {
+    if (this[ot] && typeof this[m] == "number") {
+      let t = this[m];
+      this[m] = undefined, I.closeSync(t), this.emit("close");
+    }
+  }
+};
+var tt = class extends Vr {
+  readable = false;
+  writable = true;
+  [bt] = false;
+  [gt] = false;
+  [ee] = false;
+  [Y] = [];
+  [Fe] = false;
+  [U];
+  [se];
+  [ot];
+  [m];
+  [Me];
+  [j];
+  [Ni] = false;
+  [nt];
+  constructor(t, e) {
+    e = e || {}, super(e), this[U] = t, this[m] = typeof e.fd == "number" ? e.fd : undefined, this[se] = e.mode === undefined ? 438 : e.mode, this[nt] = typeof e.start == "number" ? e.start : undefined, this[ot] = typeof e.autoClose == "boolean" ? e.autoClose : true;
+    let i = this[nt] !== undefined ? "r+" : "w";
+    this[Me] = e.flags === undefined, this[j] = e.flags === undefined ? i : e.flags, this[m] === undefined && this[ht]();
+  }
+  emit(t, ...e) {
+    if (t === "error") {
+      if (this[bt])
+        return false;
+      this[bt] = true;
+    }
+    return super.emit(t, ...e);
+  }
+  get fd() {
+    return this[m];
+  }
+  get path() {
+    return this[U];
+  }
+  [Ut](t) {
+    this[H](), this[gt] = true, this.emit("error", t);
+  }
+  [ht]() {
+    I.open(this[U], this[j], this[se], (t, e) => this[Ht](t, e));
+  }
+  [Ht](t, e) {
+    this[Me] && this[j] === "r+" && t && t.code === "ENOENT" ? (this[j] = "w", this[ht]()) : t ? this[Ut](t) : (this[m] = e, this.emit("open", e), this[gt] || this[Di]());
+  }
+  end(t, e) {
+    return t && this.write(t, e), this[ee] = true, !this[gt] && !this[Y].length && typeof this[m] == "number" && this[Pt](null, 0), this;
+  }
+  write(t, e) {
+    return typeof t == "string" && (t = Buffer.from(t, e)), this[ee] ? (this.emit("error", new Error("write() after end()")), false) : this[m] === undefined || this[gt] || this[Y].length ? (this[Y].push(t), this[Fe] = true, false) : (this[gt] = true, this[ve](t), true);
+  }
+  [ve](t) {
+    I.write(this[m], t, 0, t.length, this[nt], (e, i) => this[Pt](e, i));
+  }
+  [Pt](t, e) {
+    t ? this[Ut](t) : (this[nt] !== undefined && typeof e == "number" && (this[nt] += e), this[Y].length ? this[Di]() : (this[gt] = false, this[ee] && !this[Ni] ? (this[Ni] = true, this[H](), this.emit("finish")) : this[Fe] && (this[Fe] = false, this.emit("drain"))));
+  }
+  [Di]() {
+    if (this[Y].length === 0)
+      this[ee] && this[Pt](null, 0);
+    else if (this[Y].length === 1)
+      this[ve](this[Y].pop());
+    else {
+      let t = this[Y];
+      this[Y] = [], $r(this[m], t, this[nt], (e, i) => this[Pt](e, i));
+    }
+  }
+  [H]() {
+    if (this[ot] && typeof this[m] == "number") {
+      let t = this[m];
+      this[m] = undefined, I.close(t, (e) => e ? this.emit("error", e) : this.emit("close"));
+    }
+  }
+};
+var Wt = class extends tt {
+  [ht]() {
+    let t;
+    if (this[Me] && this[j] === "r+")
+      try {
+        t = I.openSync(this[U], this[j], this[se]);
+      } catch (e) {
+        if (e?.code === "ENOENT")
+          return this[j] = "w", this[ht]();
+        throw e;
+      }
+    else
+      t = I.openSync(this[U], this[j], this[se]);
+    this[Ht](null, t);
+  }
+  [H]() {
+    if (this[ot] && typeof this[m] == "number") {
+      let t = this[m];
+      this[m] = undefined, I.closeSync(t), this.emit("close");
+    }
+  }
+  [ve](t) {
+    let e = true;
+    try {
+      this[Pt](null, I.writeSync(this[m], t, 0, t.length, this[nt])), e = false;
+    } finally {
+      if (e)
+        try {
+          this[H]();
+        } catch {}
+    }
+  }
+};
+var Xr = new Map([["C", "cwd"], ["f", "file"], ["z", "gzip"], ["P", "preservePaths"], ["U", "unlink"], ["strip-components", "strip"], ["stripComponents", "strip"], ["keep-newer", "newer"], ["keepNewer", "newer"], ["keep-newer-files", "newer"], ["keepNewerFiles", "newer"], ["k", "keep"], ["keep-existing", "keep"], ["keepExisting", "keep"], ["m", "noMtime"], ["no-mtime", "noMtime"], ["p", "preserveOwner"], ["L", "follow"], ["h", "follow"], ["onentry", "onReadEntry"]]);
+var As = (s) => !!s.sync && !!s.file;
+var Is = (s) => !s.sync && !!s.file;
+var Cs = (s) => !!s.sync && !s.file;
+var ks = (s) => !s.sync && !s.file;
+var Fs = (s) => !!s.file;
+var qr = (s) => {
+  let t = Xr.get(s);
+  return t || s;
+};
+var re = (s = {}) => {
+  if (!s)
+    return {};
+  let t = {};
+  for (let [e, i] of Object.entries(s)) {
+    let r = qr(e);
+    t[r] = i;
+  }
+  return t.chmod === undefined && t.noChmod === false && (t.chmod = true), delete t.noChmod, t;
+};
+var K = (s, t, e, i, r) => Object.assign((n = [], o, h) => {
+  Array.isArray(n) && (o = n, n = {}), typeof o == "function" && (h = o, o = undefined), o = o ? Array.from(o) : [];
+  let a = re(n);
+  if (r?.(a, o), As(a)) {
+    if (typeof h == "function")
+      throw new TypeError("callback not supported for sync tar functions");
+    return s(a, o);
+  } else if (Is(a)) {
+    let l = t(a, o);
+    return h ? l.then(() => h(), h) : l;
+  } else if (Cs(a)) {
+    if (typeof h == "function")
+      throw new TypeError("callback not supported for sync tar functions");
+    return e(a, o);
+  } else if (ks(a)) {
+    if (typeof h == "function")
+      throw new TypeError("callback only supported with file option");
+    return i(a, o);
+  }
+  throw new Error("impossible options??");
+}, { syncFile: s, asyncFile: t, syncNoFile: e, asyncNoFile: i, validate: r });
+var Jr = Qr.constants || { ZLIB_VERNUM: 4736 };
+var M = Object.freeze(Object.assign(Object.create(null), { Z_NO_FLUSH: 0, Z_PARTIAL_FLUSH: 1, Z_SYNC_FLUSH: 2, Z_FULL_FLUSH: 3, Z_FINISH: 4, Z_BLOCK: 5, Z_OK: 0, Z_STREAM_END: 1, Z_NEED_DICT: 2, Z_ERRNO: -1, Z_STREAM_ERROR: -2, Z_DATA_ERROR: -3, Z_MEM_ERROR: -4, Z_BUF_ERROR: -5, Z_VERSION_ERROR: -6, Z_NO_COMPRESSION: 0, Z_BEST_SPEED: 1, Z_BEST_COMPRESSION: 9, Z_DEFAULT_COMPRESSION: -1, Z_FILTERED: 1, Z_HUFFMAN_ONLY: 2, Z_RLE: 3, Z_FIXED: 4, Z_DEFAULT_STRATEGY: 0, DEFLATE: 1, INFLATE: 2, GZIP: 3, GUNZIP: 4, DEFLATERAW: 5, INFLATERAW: 6, UNZIP: 7, BROTLI_DECODE: 8, BROTLI_ENCODE: 9, Z_MIN_WINDOWBITS: 8, Z_MAX_WINDOWBITS: 15, Z_DEFAULT_WINDOWBITS: 15, Z_MIN_CHUNK: 64, Z_MAX_CHUNK: 1 / 0, Z_DEFAULT_CHUNK: 16384, Z_MIN_MEMLEVEL: 1, Z_MAX_MEMLEVEL: 9, Z_DEFAULT_MEMLEVEL: 8, Z_MIN_LEVEL: -1, Z_MAX_LEVEL: 9, Z_DEFAULT_LEVEL: -1, BROTLI_OPERATION_PROCESS: 0, BROTLI_OPERATION_FLUSH: 1, BROTLI_OPERATION_FINISH: 2, BROTLI_OPERATION_EMIT_METADATA: 3, BROTLI_MODE_GENERIC: 0, BROTLI_MODE_TEXT: 1, BROTLI_MODE_FONT: 2, BROTLI_DEFAULT_MODE: 0, BROTLI_MIN_QUALITY: 0, BROTLI_MAX_QUALITY: 11, BROTLI_DEFAULT_QUALITY: 11, BROTLI_MIN_WINDOW_BITS: 10, BROTLI_MAX_WINDOW_BITS: 24, BROTLI_LARGE_MAX_WINDOW_BITS: 30, BROTLI_DEFAULT_WINDOW: 22, BROTLI_MIN_INPUT_BLOCK_BITS: 16, BROTLI_MAX_INPUT_BLOCK_BITS: 24, BROTLI_PARAM_MODE: 0, BROTLI_PARAM_QUALITY: 1, BROTLI_PARAM_LGWIN: 2, BROTLI_PARAM_LGBLOCK: 3, BROTLI_PARAM_DISABLE_LITERAL_CONTEXT_MODELING: 4, BROTLI_PARAM_SIZE_HINT: 5, BROTLI_PARAM_LARGE_WINDOW: 6, BROTLI_PARAM_NPOSTFIX: 7, BROTLI_PARAM_NDIRECT: 8, BROTLI_DECODER_RESULT_ERROR: 0, BROTLI_DECODER_RESULT_SUCCESS: 1, BROTLI_DECODER_RESULT_NEEDS_MORE_INPUT: 2, BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT: 3, BROTLI_DECODER_PARAM_DISABLE_RING_BUFFER_REALLOCATION: 0, BROTLI_DECODER_PARAM_LARGE_WINDOW: 1, BROTLI_DECODER_NO_ERROR: 0, BROTLI_DECODER_SUCCESS: 1, BROTLI_DECODER_NEEDS_MORE_INPUT: 2, BROTLI_DECODER_NEEDS_MORE_OUTPUT: 3, BROTLI_DECODER_ERROR_FORMAT_EXUBERANT_NIBBLE: -1, BROTLI_DECODER_ERROR_FORMAT_RESERVED: -2, BROTLI_DECODER_ERROR_FORMAT_EXUBERANT_META_NIBBLE: -3, BROTLI_DECODER_ERROR_FORMAT_SIMPLE_HUFFMAN_ALPHABET: -4, BROTLI_DECODER_ERROR_FORMAT_SIMPLE_HUFFMAN_SAME: -5, BROTLI_DECODER_ERROR_FORMAT_CL_SPACE: -6, BROTLI_DECODER_ERROR_FORMAT_HUFFMAN_SPACE: -7, BROTLI_DECODER_ERROR_FORMAT_CONTEXT_MAP_REPEAT: -8, BROTLI_DECODER_ERROR_FORMAT_BLOCK_LENGTH_1: -9, BROTLI_DECODER_ERROR_FORMAT_BLOCK_LENGTH_2: -10, BROTLI_DECODER_ERROR_FORMAT_TRANSFORM: -11, BROTLI_DECODER_ERROR_FORMAT_DICTIONARY: -12, BROTLI_DECODER_ERROR_FORMAT_WINDOW_BITS: -13, BROTLI_DECODER_ERROR_FORMAT_PADDING_1: -14, BROTLI_DECODER_ERROR_FORMAT_PADDING_2: -15, BROTLI_DECODER_ERROR_FORMAT_DISTANCE: -16, BROTLI_DECODER_ERROR_DICTIONARY_NOT_SET: -19, BROTLI_DECODER_ERROR_INVALID_ARGUMENTS: -20, BROTLI_DECODER_ERROR_ALLOC_CONTEXT_MODES: -21, BROTLI_DECODER_ERROR_ALLOC_TREE_GROUPS: -22, BROTLI_DECODER_ERROR_ALLOC_CONTEXT_MAP: -25, BROTLI_DECODER_ERROR_ALLOC_RING_BUFFER_1: -26, BROTLI_DECODER_ERROR_ALLOC_RING_BUFFER_2: -27, BROTLI_DECODER_ERROR_ALLOC_BLOCK_TYPE_TREES: -30, BROTLI_DECODER_ERROR_UNREACHABLE: -31 }, Jr));
+var jr = Ot.concat;
+var Ms = Object.getOwnPropertyDescriptor(Ot, "concat");
+var tn = (s) => s;
+var Mi = Ms?.writable === true || Ms?.set !== undefined ? (s) => {
+  Ot.concat = s ? tn : jr;
+} : (s) => {};
+var Tt = Symbol("_superWrite");
+var Gt = class extends Error {
+  code;
+  errno;
+  constructor(t, e) {
+    super("zlib: " + t.message, { cause: t }), this.code = t.code, this.errno = t.errno, this.code || (this.code = "ZLIB_ERROR"), this.message = "zlib: " + t.message, Error.captureStackTrace(this, e ?? this.constructor);
+  }
+  get name() {
+    return "ZlibError";
+  }
+};
+var Bi = Symbol("flushFlag");
+var ne = class extends A {
+  #t = false;
+  #i = false;
+  #s;
+  #n;
+  #r;
+  #e;
+  #o;
+  get sawError() {
+    return this.#t;
+  }
+  get handle() {
+    return this.#e;
+  }
+  get flushFlag() {
+    return this.#s;
+  }
+  constructor(t, e) {
+    if (!t || typeof t != "object")
+      throw new TypeError("invalid options for ZlibBase constructor");
+    if (super(t), this.#s = t.flush ?? 0, this.#n = t.finishFlush ?? 0, this.#r = t.fullFlushFlag ?? 0, typeof vs[e] != "function")
+      throw new TypeError("Compression method not supported: " + e);
+    try {
+      this.#e = new vs[e](t);
+    } catch (i) {
+      throw new Gt(i, this.constructor);
+    }
+    this.#o = (i) => {
+      this.#t || (this.#t = true, this.close(), this.emit("error", i));
+    }, this.#e?.on("error", (i) => this.#o(new Gt(i))), this.once("end", () => this.close);
+  }
+  close() {
+    this.#e && (this.#e.close(), this.#e = undefined, this.emit("close"));
+  }
+  reset() {
+    if (!this.#t)
+      return Pi(this.#e, "zlib binding closed"), this.#e.reset?.();
+  }
+  flush(t) {
+    this.ended || (typeof t != "number" && (t = this.#r), this.write(Object.assign(Ot.alloc(0), { [Bi]: t })));
+  }
+  end(t, e, i) {
+    return typeof t == "function" && (i = t, e = undefined, t = undefined), typeof e == "function" && (i = e, e = undefined), t && (e ? this.write(t, e) : this.write(t)), this.flush(this.#n), this.#i = true, super.end(i);
+  }
+  get ended() {
+    return this.#i;
+  }
+  [Tt](t) {
+    return super.write(t);
+  }
+  write(t, e, i) {
+    if (typeof e == "function" && (i = e, e = "utf8"), typeof t == "string" && (t = Ot.from(t, e)), this.#t)
+      return;
+    Pi(this.#e, "zlib binding closed");
+    let r = this.#e._handle, n = r.close;
+    r.close = () => {};
+    let o = this.#e.close;
+    this.#e.close = () => {}, Mi(true);
+    let h;
+    try {
+      let l = typeof t[Bi] == "number" ? t[Bi] : this.#s;
+      h = this.#e._processChunk(t, l), Mi(false);
+    } catch (l) {
+      Mi(false), this.#o(new Gt(l, this.write));
+    } finally {
+      this.#e && (this.#e._handle = r, r.close = n, this.#e.close = o, this.#e.removeAllListeners("error"));
+    }
+    this.#e && this.#e.on("error", (l) => this.#o(new Gt(l, this.write)));
+    let a;
+    if (h)
+      if (Array.isArray(h) && h.length > 0) {
+        let l = h[0];
+        a = this[Tt](Ot.from(l));
+        for (let c = 1;c < h.length; c++)
+          a = this[Tt](h[c]);
+      } else
+        a = this[Tt](Ot.from(h));
+    return i && i(), a;
+  }
+};
+var Pe = class extends ne {
+  #t;
+  #i;
+  constructor(t, e) {
+    t = t || {}, t.flush = t.flush || M.Z_NO_FLUSH, t.finishFlush = t.finishFlush || M.Z_FINISH, t.fullFlushFlag = M.Z_FULL_FLUSH, super(t, e), this.#t = t.level, this.#i = t.strategy;
+  }
+  params(t, e) {
+    if (!this.sawError) {
+      if (!this.handle)
+        throw new Error("cannot switch params when binding is closed");
+      if (!this.handle.params)
+        throw new Error("not supported in this implementation");
+      if (this.#t !== t || this.#i !== e) {
+        this.flush(M.Z_SYNC_FLUSH), Pi(this.handle, "zlib binding closed");
+        let i = this.handle.flush;
+        this.handle.flush = (r, n) => {
+          typeof r == "function" && (n = r, r = this.flushFlag), this.flush(r), n?.();
+        };
+        try {
+          this.handle.params(t, e);
+        } finally {
+          this.handle.flush = i;
+        }
+        this.handle && (this.#t = t, this.#i = e);
+      }
+    }
+  }
+};
+var ze = class extends Pe {
+  #t;
+  constructor(t) {
+    super(t, "Gzip"), this.#t = t && !!t.portable;
+  }
+  [Tt](t) {
+    return this.#t ? (this.#t = false, t[9] = 255, super[Tt](t)) : super[Tt](t);
+  }
+};
+var Ue = class extends Pe {
+  constructor(t) {
+    super(t, "Unzip");
+  }
+};
+var He = class extends ne {
+  constructor(t, e) {
+    t = t || {}, t.flush = t.flush || M.BROTLI_OPERATION_PROCESS, t.finishFlush = t.finishFlush || M.BROTLI_OPERATION_FINISH, t.fullFlushFlag = M.BROTLI_OPERATION_FLUSH, super(t, e);
+  }
+};
+var We = class extends He {
+  constructor(t) {
+    super(t, "BrotliCompress");
+  }
+};
+var Ge = class extends He {
+  constructor(t) {
+    super(t, "BrotliDecompress");
+  }
+};
+var Ze = class extends ne {
+  constructor(t, e) {
+    t = t || {}, t.flush = t.flush || M.ZSTD_e_continue, t.finishFlush = t.finishFlush || M.ZSTD_e_end, t.fullFlushFlag = M.ZSTD_e_flush, super(t, e);
+  }
+};
+var Ye = class extends Ze {
+  constructor(t) {
+    super(t, "ZstdCompress");
+  }
+};
+var Ke = class extends Ze {
+  constructor(t) {
+    super(t, "ZstdDecompress");
+  }
+};
+var Bs = (s, t) => {
+  if (Number.isSafeInteger(s))
+    s < 0 ? rn(s, t) : sn(s, t);
+  else
+    throw Error("cannot encode number outside of javascript safe integer range");
+  return t;
+};
+var sn = (s, t) => {
+  t[0] = 128;
+  for (var e = t.length;e > 1; e--)
+    t[e - 1] = s & 255, s = Math.floor(s / 256);
+};
+var rn = (s, t) => {
+  t[0] = 255;
+  var e = false;
+  s = s * -1;
+  for (var i = t.length;i > 1; i--) {
+    var r = s & 255;
+    s = Math.floor(s / 256), e ? t[i - 1] = zs(r) : r === 0 ? t[i - 1] = 0 : (e = true, t[i - 1] = Us(r));
+  }
+};
+var Ps = (s) => {
+  let t = s[0], e = t === 128 ? on(s.subarray(1, s.length)) : t === 255 ? nn(s) : null;
+  if (e === null)
+    throw Error("invalid base256 encoding");
+  if (!Number.isSafeInteger(e))
+    throw Error("parsed number outside of javascript safe integer range");
+  return e;
+};
+var nn = (s) => {
+  for (var t = s.length, e = 0, i = false, r = t - 1;r > -1; r--) {
+    var n = Number(s[r]), o;
+    i ? o = zs(n) : n === 0 ? o = n : (i = true, o = Us(n)), o !== 0 && (e -= o * Math.pow(256, t - r - 1));
+  }
+  return e;
+};
+var on = (s) => {
+  for (var t = s.length, e = 0, i = t - 1;i > -1; i--) {
+    var r = Number(s[i]);
+    r !== 0 && (e += r * Math.pow(256, t - i - 1));
+  }
+  return e;
+};
+var zs = (s) => (255 ^ s) & 255;
+var Us = (s) => (255 ^ s) + 1 & 255;
+var zi = {};
+Mr(zi, { code: () => Ve, isCode: () => oe, isName: () => an, name: () => he });
+var oe = (s) => he.has(s);
+var an = (s) => Ve.has(s);
+var he = new Map([["0", "File"], ["", "OldFile"], ["1", "Link"], ["2", "SymbolicLink"], ["3", "CharacterDevice"], ["4", "BlockDevice"], ["5", "Directory"], ["6", "FIFO"], ["7", "ContiguousFile"], ["g", "GlobalExtendedHeader"], ["x", "ExtendedHeader"], ["A", "SolarisACL"], ["D", "GNUDumpDir"], ["I", "Inode"], ["K", "NextFileHasLongLinkpath"], ["L", "NextFileHasLongPath"], ["M", "ContinuationFile"], ["N", "OldGnuLongPath"], ["S", "SparseFile"], ["V", "TapeVolumeHeader"], ["X", "OldExtendedHeader"]]);
+var Ve = new Map(Array.from(he).map((s) => [s[1], s[0]]));
+var k = class {
+  cksumValid = false;
+  needPax = false;
+  nullBlock = false;
+  block;
+  path;
+  mode;
+  uid;
+  gid;
+  size;
+  cksum;
+  #t = "Unsupported";
+  linkpath;
+  uname;
+  gname;
+  devmaj = 0;
+  devmin = 0;
+  atime;
+  ctime;
+  mtime;
+  charset;
+  comment;
+  constructor(t, e = 0, i, r) {
+    Buffer.isBuffer(t) ? this.decode(t, e || 0, i, r) : t && this.#i(t);
+  }
+  decode(t, e, i, r) {
+    if (e || (e = 0), !t || !(t.length >= e + 512))
+      throw new Error("need 512 bytes for header");
+    this.path = i?.path ?? xt(t, e, 100), this.mode = i?.mode ?? r?.mode ?? at(t, e + 100, 8), this.uid = i?.uid ?? r?.uid ?? at(t, e + 108, 8), this.gid = i?.gid ?? r?.gid ?? at(t, e + 116, 8), this.size = i?.size ?? r?.size ?? at(t, e + 124, 12), this.mtime = i?.mtime ?? r?.mtime ?? Ui(t, e + 136, 12), this.cksum = at(t, e + 148, 12), r && this.#i(r, true), i && this.#i(i);
+    let n = xt(t, e + 156, 1);
+    if (oe(n) && (this.#t = n || "0"), this.#t === "0" && this.path.slice(-1) === "/" && (this.#t = "5"), this.#t === "5" && (this.size = 0), this.linkpath = xt(t, e + 157, 100), t.subarray(e + 257, e + 265).toString() === "ustar\x0000")
+      if (this.uname = i?.uname ?? r?.uname ?? xt(t, e + 265, 32), this.gname = i?.gname ?? r?.gname ?? xt(t, e + 297, 32), this.devmaj = i?.devmaj ?? r?.devmaj ?? at(t, e + 329, 8) ?? 0, this.devmin = i?.devmin ?? r?.devmin ?? at(t, e + 337, 8) ?? 0, t[e + 475] !== 0) {
+        let h = xt(t, e + 345, 155);
+        this.path = h + "/" + this.path;
+      } else {
+        let h = xt(t, e + 345, 130);
+        h && (this.path = h + "/" + this.path), this.atime = i?.atime ?? r?.atime ?? Ui(t, e + 476, 12), this.ctime = i?.ctime ?? r?.ctime ?? Ui(t, e + 488, 12);
+      }
+    let o = 256;
+    for (let h = e;h < e + 148; h++)
+      o += t[h];
+    for (let h = e + 156;h < e + 512; h++)
+      o += t[h];
+    this.cksumValid = o === this.cksum, this.cksum === undefined && o === 256 && (this.nullBlock = true);
+  }
+  #i(t, e = false) {
+    Object.assign(this, Object.fromEntries(Object.entries(t).filter(([i, r]) => !(r == null || i === "path" && e || i === "linkpath" && e || i === "global"))));
+  }
+  encode(t, e = 0) {
+    if (t || (t = this.block = Buffer.alloc(512)), this.#t === "Unsupported" && (this.#t = "0"), !(t.length >= e + 512))
+      throw new Error("need 512 bytes for header");
+    let i = this.ctime || this.atime ? 130 : 155, r = ln(this.path || "", i), n = r[0], o = r[1];
+    this.needPax = !!r[2], this.needPax = Lt(t, e, 100, n) || this.needPax, this.needPax = lt(t, e + 100, 8, this.mode) || this.needPax, this.needPax = lt(t, e + 108, 8, this.uid) || this.needPax, this.needPax = lt(t, e + 116, 8, this.gid) || this.needPax, this.needPax = lt(t, e + 124, 12, this.size) || this.needPax, this.needPax = Hi(t, e + 136, 12, this.mtime) || this.needPax, t[e + 156] = Number(this.#t.codePointAt(0)), this.needPax = Lt(t, e + 157, 100, this.linkpath) || this.needPax, t.write("ustar\x0000", e + 257, 8), this.needPax = Lt(t, e + 265, 32, this.uname) || this.needPax, this.needPax = Lt(t, e + 297, 32, this.gname) || this.needPax, this.needPax = lt(t, e + 329, 8, this.devmaj) || this.needPax, this.needPax = lt(t, e + 337, 8, this.devmin) || this.needPax, this.needPax = Lt(t, e + 345, i, o) || this.needPax, t[e + 475] !== 0 ? this.needPax = Lt(t, e + 345, 155, o) || this.needPax : (this.needPax = Lt(t, e + 345, 130, o) || this.needPax, this.needPax = Hi(t, e + 476, 12, this.atime) || this.needPax, this.needPax = Hi(t, e + 488, 12, this.ctime) || this.needPax);
+    let h = 256;
+    for (let a = e;a < e + 148; a++)
+      h += t[a];
+    for (let a = e + 156;a < e + 512; a++)
+      h += t[a];
+    return this.cksum = h, lt(t, e + 148, 8, this.cksum), this.cksumValid = true, this.needPax;
+  }
+  get type() {
+    return this.#t === "Unsupported" ? this.#t : he.get(this.#t);
+  }
+  get typeKey() {
+    return this.#t;
+  }
+  set type(t) {
+    let e = String(Ve.get(t));
+    if (oe(e) || e === "Unsupported")
+      this.#t = e;
+    else if (oe(t))
+      this.#t = t;
+    else
+      throw new TypeError("invalid entry type: " + t);
+  }
+};
+var ln = (s, t) => {
+  let i = s, r = "", n, o = Zt.parse(s).root || ".";
+  if (Buffer.byteLength(i) < 100)
+    n = [i, r, false];
+  else {
+    r = Zt.dirname(i), i = Zt.basename(i);
+    do
+      Buffer.byteLength(i) <= 100 && Buffer.byteLength(r) <= t ? n = [i, r, false] : Buffer.byteLength(i) > 100 && Buffer.byteLength(r) <= t ? n = [i.slice(0, 99), r, true] : (i = Zt.join(Zt.basename(r), i), r = Zt.dirname(r));
+    while (r !== o && n === undefined);
+    n || (n = [s.slice(0, 99), "", true]);
+  }
+  return n;
+};
+var xt = (s, t, e) => s.subarray(t, t + e).toString("utf8").replace(/\0.*/, "");
+var Ui = (s, t, e) => cn(at(s, t, e));
+var cn = (s) => s === undefined ? undefined : new Date(s * 1000);
+var at = (s, t, e) => Number(s[t]) & 128 ? Ps(s.subarray(t, t + e)) : dn(s, t, e);
+var fn = (s) => isNaN(s) ? undefined : s;
+var dn = (s, t, e) => fn(parseInt(s.subarray(t, t + e).toString("utf8").replace(/\0.*$/, "").trim(), 8));
+var un = { 12: 8589934591, 8: 2097151 };
+var lt = (s, t, e, i) => i === undefined ? false : i > un[e] || i < 0 ? (Bs(i, s.subarray(t, t + e)), true) : (mn(s, t, e, i), false);
+var mn = (s, t, e, i) => s.write(pn(i, e), t, e, "ascii");
+var pn = (s, t) => En(Math.floor(s).toString(8), t);
+var En = (s, t) => (s.length === t - 1 ? s : new Array(t - s.length - 1).join("0") + s + " ") + "\x00";
+var Hi = (s, t, e, i) => i === undefined ? false : lt(s, t, e, i.getTime() / 1000);
+var wn = new Array(156).join("\x00");
+var Lt = (s, t, e, i) => i === undefined ? false : (s.write(i + wn, t, e, "utf8"), i.length !== Buffer.byteLength(i) || i.length > e);
+var ct = class s {
+  atime;
+  mtime;
+  ctime;
+  charset;
+  comment;
+  gid;
+  uid;
+  gname;
+  uname;
+  linkpath;
+  dev;
+  ino;
+  nlink;
+  path;
+  size;
+  mode;
+  global;
+  constructor(t, e = false) {
+    this.atime = t.atime, this.charset = t.charset, this.comment = t.comment, this.ctime = t.ctime, this.dev = t.dev, this.gid = t.gid, this.global = e, this.gname = t.gname, this.ino = t.ino, this.linkpath = t.linkpath, this.mtime = t.mtime, this.nlink = t.nlink, this.path = t.path, this.size = t.size, this.uid = t.uid, this.uname = t.uname;
+  }
+  encode() {
+    let t = this.encodeBody();
+    if (t === "")
+      return Buffer.allocUnsafe(0);
+    let e = Buffer.byteLength(t), i = 512 * Math.ceil(1 + e / 512), r = Buffer.allocUnsafe(i);
+    for (let n = 0;n < 512; n++)
+      r[n] = 0;
+    new k({ path: ("PaxHeader/" + Sn(this.path ?? "")).slice(0, 99), mode: this.mode || 420, uid: this.uid, gid: this.gid, size: e, mtime: this.mtime, type: this.global ? "GlobalExtendedHeader" : "ExtendedHeader", linkpath: "", uname: this.uname || "", gname: this.gname || "", devmaj: 0, devmin: 0, atime: this.atime, ctime: this.ctime }).encode(r), r.write(t, 512, e, "utf8");
+    for (let n = e + 512;n < r.length; n++)
+      r[n] = 0;
+    return r;
+  }
+  encodeBody() {
+    return this.encodeField("path") + this.encodeField("ctime") + this.encodeField("atime") + this.encodeField("dev") + this.encodeField("ino") + this.encodeField("nlink") + this.encodeField("charset") + this.encodeField("comment") + this.encodeField("gid") + this.encodeField("gname") + this.encodeField("linkpath") + this.encodeField("mtime") + this.encodeField("size") + this.encodeField("uid") + this.encodeField("uname");
+  }
+  encodeField(t) {
+    if (this[t] === undefined)
+      return "";
+    let e = this[t], i = e instanceof Date ? e.getTime() / 1000 : e, r = " " + (t === "dev" || t === "ino" || t === "nlink" ? "SCHILY." : "") + t + "=" + i + `
+`, n = Buffer.byteLength(r), o = Math.floor(Math.log(n) / Math.log(10)) + 1;
+    return n + o >= Math.pow(10, o) && (o += 1), o + n + r;
+  }
+  static parse(t, e, i = false) {
+    return new s(yn(Rn(t), e), i);
+  }
+};
+var yn = (s2, t) => t ? Object.assign({}, t, s2) : s2;
+var Rn = (s2) => s2.replace(/\n$/, "").split(`
+`).reduce(gn, Object.create(null));
+var gn = (s2, t) => {
+  let e = parseInt(t, 10);
+  if (e !== Buffer.byteLength(t) + 1)
+    return s2;
+  t = t.slice((e + " ").length);
+  let i = t.split("="), r = i.shift();
+  if (!r)
+    return s2;
+  let n = r.replace(/^SCHILY\.(dev|ino|nlink)/, "$1"), o = i.join("=");
+  return s2[n] = /^([A-Z]+\.)?([mac]|birth|creation)time$/.test(n) ? new Date(Number(o) * 1000) : /^[0-9]+$/.test(o) ? +o : o, s2;
+};
+var bn = process.env.TESTING_TAR_FAKE_PLATFORM || process.platform;
+var f = bn !== "win32" ? (s2) => s2 : (s2) => s2 && s2.replaceAll(/\\/g, "/");
+var Yt = class extends A {
+  extended;
+  globalExtended;
+  header;
+  startBlockSize;
+  blockRemain;
+  remain;
+  type;
+  meta = false;
+  ignore = false;
+  path;
+  mode;
+  uid;
+  gid;
+  uname;
+  gname;
+  size = 0;
+  mtime;
+  atime;
+  ctime;
+  linkpath;
+  dev;
+  ino;
+  nlink;
+  invalid = false;
+  absolute;
+  unsupported = false;
+  constructor(t, e, i) {
+    switch (super({}), this.pause(), this.extended = e, this.globalExtended = i, this.header = t, this.remain = t.size ?? 0, this.startBlockSize = 512 * Math.ceil(this.remain / 512), this.blockRemain = this.startBlockSize, this.type = t.type, this.type) {
+      case "File":
+      case "OldFile":
+      case "Link":
+      case "SymbolicLink":
+      case "CharacterDevice":
+      case "BlockDevice":
+      case "Directory":
+      case "FIFO":
+      case "ContiguousFile":
+      case "GNUDumpDir":
+        break;
+      case "NextFileHasLongLinkpath":
+      case "NextFileHasLongPath":
+      case "OldGnuLongPath":
+      case "GlobalExtendedHeader":
+      case "ExtendedHeader":
+      case "OldExtendedHeader":
+        this.meta = true;
+        break;
+      default:
+        this.ignore = true;
+    }
+    if (!t.path)
+      throw new Error("no path provided for tar.ReadEntry");
+    this.path = f(t.path), this.mode = t.mode, this.mode && (this.mode = this.mode & 4095), this.uid = t.uid, this.gid = t.gid, this.uname = t.uname, this.gname = t.gname, this.size = this.remain, this.mtime = t.mtime, this.atime = t.atime, this.ctime = t.ctime, this.linkpath = t.linkpath ? f(t.linkpath) : undefined, this.uname = t.uname, this.gname = t.gname, e && this.#t(e), i && this.#t(i, true);
+  }
+  write(t) {
+    let e = t.length;
+    if (e > this.blockRemain)
+      throw new Error("writing more to entry than is appropriate");
+    let i = this.remain, r = this.blockRemain;
+    return this.remain = Math.max(0, i - e), this.blockRemain = Math.max(0, r - e), this.ignore ? true : i >= e ? super.write(t) : super.write(t.subarray(0, i));
+  }
+  #t(t, e = false) {
+    t.path && (t.path = f(t.path)), t.linkpath && (t.linkpath = f(t.linkpath)), Object.assign(this, Object.fromEntries(Object.entries(t).filter(([i, r]) => !(r == null || i === "path" && e))));
+  }
+};
+var Nt = (s2, t, e, i = {}) => {
+  s2.file && (i.file = s2.file), s2.cwd && (i.cwd = s2.cwd), i.code = e instanceof Error && e.code || t, i.tarCode = t, !s2.strict && i.recoverable !== false ? (e instanceof Error && (i = Object.assign(e, i), e = e.message), s2.emit("warn", t, e, i)) : e instanceof Error ? s2.emit("error", Object.assign(e, i)) : s2.emit("error", Object.assign(new Error(`${t}: ${e}`), i));
+};
+var On = 1024 * 1024;
+var Ki = Buffer.from([31, 139]);
+var Vi = Buffer.from([40, 181, 47, 253]);
+var Tn = Math.max(Ki.length, Vi.length);
+var B = Symbol("state");
+var Dt = Symbol("writeEntry");
+var et = Symbol("readEntry");
+var Wi = Symbol("nextEntry");
+var Hs = Symbol("processEntry");
+var V = Symbol("extendedHeader");
+var ae = Symbol("globalExtendedHeader");
+var ft = Symbol("meta");
+var Ws = Symbol("emitMeta");
+var p = Symbol("buffer");
+var it = Symbol("queue");
+var dt = Symbol("ended");
+var Gi = Symbol("emittedEnd");
+var At = Symbol("emit");
+var y = Symbol("unzip");
+var $e = Symbol("consumeChunk");
+var Xe = Symbol("consumeChunkSub");
+var Zi = Symbol("consumeBody");
+var Gs = Symbol("consumeMeta");
+var Zs = Symbol("consumeHeader");
+var le = Symbol("consuming");
+var Yi = Symbol("bufferConcat");
+var qe = Symbol("maybeEnd");
+var Kt = Symbol("writing");
+var ut = Symbol("aborted");
+var Qe = Symbol("onDone");
+var It = Symbol("sawValidEntry");
+var Je = Symbol("sawNullBlock");
+var je = Symbol("sawEOF");
+var Ys = Symbol("closeStream");
+var xn = () => true;
+var st = class extends _n {
+  file;
+  strict;
+  maxMetaEntrySize;
+  filter;
+  brotli;
+  zstd;
+  writable = true;
+  readable = false;
+  [it] = [];
+  [p];
+  [et];
+  [Dt];
+  [B] = "begin";
+  [ft] = "";
+  [V];
+  [ae];
+  [dt] = false;
+  [y];
+  [ut] = false;
+  [It];
+  [Je] = false;
+  [je] = false;
+  [Kt] = false;
+  [le] = false;
+  [Gi] = false;
+  constructor(t = {}) {
+    super(), this.file = t.file || "", this.on(Qe, () => {
+      (this[B] === "begin" || this[It] === false) && this.warn("TAR_BAD_ARCHIVE", "Unrecognized archive format");
+    }), t.ondone ? this.on(Qe, t.ondone) : this.on(Qe, () => {
+      this.emit("prefinish"), this.emit("finish"), this.emit("end");
+    }), this.strict = !!t.strict, this.maxMetaEntrySize = t.maxMetaEntrySize || On, this.filter = typeof t.filter == "function" ? t.filter : xn;
+    let e = t.file && (t.file.endsWith(".tar.br") || t.file.endsWith(".tbr"));
+    this.brotli = !(t.gzip || t.zstd) && t.brotli !== undefined ? t.brotli : e ? undefined : false;
+    let i = t.file && (t.file.endsWith(".tar.zst") || t.file.endsWith(".tzst"));
+    this.zstd = !(t.gzip || t.brotli) && t.zstd !== undefined ? t.zstd : i ? true : undefined, this.on("end", () => this[Ys]()), typeof t.onwarn == "function" && this.on("warn", t.onwarn), typeof t.onReadEntry == "function" && this.on("entry", t.onReadEntry);
+  }
+  warn(t, e, i = {}) {
+    Nt(this, t, e, i);
+  }
+  [Zs](t, e) {
+    this[It] === undefined && (this[It] = false);
+    let i;
+    try {
+      i = new k(t, e, this[V], this[ae]);
+    } catch (r) {
+      return this.warn("TAR_ENTRY_INVALID", r);
+    }
+    if (i.nullBlock)
+      this[Je] ? (this[je] = true, this[B] === "begin" && (this[B] = "header"), this[At]("eof")) : (this[Je] = true, this[At]("nullBlock"));
+    else if (this[Je] = false, !i.cksumValid)
+      this.warn("TAR_ENTRY_INVALID", "checksum failure", { header: i });
+    else if (!i.path)
+      this.warn("TAR_ENTRY_INVALID", "path is required", { header: i });
+    else {
+      let r = i.type;
+      if (/^(Symbolic)?Link$/.test(r) && !i.linkpath)
+        this.warn("TAR_ENTRY_INVALID", "linkpath required", { header: i });
+      else if (!/^(Symbolic)?Link$/.test(r) && !/^(Global)?ExtendedHeader$/.test(r) && i.linkpath)
+        this.warn("TAR_ENTRY_INVALID", "linkpath forbidden", { header: i });
+      else {
+        let n = this[Dt] = new Yt(i, this[V], this[ae]);
+        if (!this[It])
+          if (n.remain) {
+            let o = () => {
+              n.invalid || (this[It] = true);
+            };
+            n.on("end", o);
+          } else
+            this[It] = true;
+        n.meta ? n.size > this.maxMetaEntrySize ? (n.ignore = true, this[At]("ignoredEntry", n), this[B] = "ignore", n.resume()) : n.size > 0 && (this[ft] = "", n.on("data", (o) => this[ft] += o), this[B] = "meta") : (this[V] = undefined, n.ignore = n.ignore || !this.filter(n.path, n), n.ignore ? (this[At]("ignoredEntry", n), this[B] = n.remain ? "ignore" : "header", n.resume()) : (n.remain ? this[B] = "body" : (this[B] = "header", n.end()), this[et] ? this[it].push(n) : (this[it].push(n), this[Wi]())));
+      }
+    }
+  }
+  [Ys]() {
+    queueMicrotask(() => this.emit("close"));
+  }
+  [Hs](t) {
+    let e = true;
+    if (!t)
+      this[et] = undefined, e = false;
+    else if (Array.isArray(t)) {
+      let [i, ...r] = t;
+      this.emit(i, ...r);
+    } else
+      this[et] = t, this.emit("entry", t), t.emittedEnd || (t.on("end", () => this[Wi]()), e = false);
+    return e;
+  }
+  [Wi]() {
+    do
+      ;
+    while (this[Hs](this[it].shift()));
+    if (this[it].length === 0) {
+      let t = this[et];
+      !t || t.flowing || t.size === t.remain ? this[Kt] || this.emit("drain") : t.once("drain", () => this.emit("drain"));
+    }
+  }
+  [Zi](t, e) {
+    let i = this[Dt];
+    if (!i)
+      throw new Error("attempt to consume body without entry??");
+    let r = i.blockRemain ?? 0, n = r >= t.length && e === 0 ? t : t.subarray(e, e + r);
+    return i.write(n), i.blockRemain || (this[B] = "header", this[Dt] = undefined, i.end()), n.length;
+  }
+  [Gs](t, e) {
+    let i = this[Dt], r = this[Zi](t, e);
+    return !this[Dt] && i && this[Ws](i), r;
+  }
+  [At](t, e, i) {
+    this[it].length === 0 && !this[et] ? this.emit(t, e, i) : this[it].push([t, e, i]);
+  }
+  [Ws](t) {
+    switch (this[At]("meta", this[ft]), t.type) {
+      case "ExtendedHeader":
+      case "OldExtendedHeader":
+        this[V] = ct.parse(this[ft], this[V], false);
+        break;
+      case "GlobalExtendedHeader":
+        this[ae] = ct.parse(this[ft], this[ae], true);
+        break;
+      case "NextFileHasLongPath":
+      case "OldGnuLongPath": {
+        let e = this[V] ?? Object.create(null);
+        this[V] = e, e.path = this[ft].replace(/\0.*/, "");
+        break;
+      }
+      case "NextFileHasLongLinkpath": {
+        let e = this[V] || Object.create(null);
+        this[V] = e, e.linkpath = this[ft].replace(/\0.*/, "");
+        break;
+      }
+      default:
+        throw new Error("unknown meta: " + t.type);
+    }
+  }
+  abort(t) {
+    this[ut] = true, this.emit("abort", t), this.warn("TAR_ABORT", t, { recoverable: false });
+  }
+  write(t, e, i) {
+    if (typeof e == "function" && (i = e, e = undefined), typeof t == "string" && (t = Buffer.from(t, typeof e == "string" ? e : "utf8")), this[ut])
+      return i?.(), false;
+    if ((this[y] === undefined || this.brotli === undefined && this[y] === false) && t) {
+      if (this[p] && (t = Buffer.concat([this[p], t]), this[p] = undefined), t.length < Tn)
+        return this[p] = t, i?.(), true;
+      for (let a = 0;this[y] === undefined && a < Ki.length; a++)
+        t[a] !== Ki[a] && (this[y] = false);
+      let o = false;
+      if (this[y] === false && this.zstd !== false) {
+        o = true;
+        for (let a = 0;a < Vi.length; a++)
+          if (t[a] !== Vi[a]) {
+            o = false;
+            break;
+          }
+      }
+      let h = this.brotli === undefined && !o;
+      if (this[y] === false && h)
+        if (t.length < 512)
+          if (this[dt])
+            this.brotli = true;
+          else
+            return this[p] = t, i?.(), true;
+        else
+          try {
+            new k(t.subarray(0, 512)), this.brotli = false;
+          } catch {
+            this.brotli = true;
+          }
+      if (this[y] === undefined || this[y] === false && (this.brotli || o)) {
+        let a = this[dt];
+        this[dt] = false, this[y] = this[y] === undefined ? new Ue({}) : o ? new Ke({}) : new Ge({}), this[y].on("data", (c) => this[$e](c)), this[y].on("error", (c) => this.abort(c)), this[y].on("end", () => {
+          this[dt] = true, this[$e]();
+        }), this[Kt] = true;
+        let l = !!this[y][a ? "end" : "write"](t);
+        return this[Kt] = false, i?.(), l;
+      }
+    }
+    this[Kt] = true, this[y] ? this[y].write(t) : this[$e](t), this[Kt] = false;
+    let n = this[it].length > 0 ? false : this[et] ? this[et].flowing : true;
+    return !n && this[it].length === 0 && this[et]?.once("drain", () => this.emit("drain")), i?.(), n;
+  }
+  [Yi](t) {
+    t && !this[ut] && (this[p] = this[p] ? Buffer.concat([this[p], t]) : t);
+  }
+  [qe]() {
+    if (this[dt] && !this[Gi] && !this[ut] && !this[le]) {
+      this[Gi] = true;
+      let t = this[Dt];
+      if (t && t.blockRemain) {
+        let e = this[p] ? this[p].length : 0;
+        this.warn("TAR_BAD_ARCHIVE", `Truncated input (needed ${t.blockRemain} more bytes, only ${e} available)`, { entry: t }), this[p] && t.write(this[p]), t.end();
+      }
+      this[At](Qe);
+    }
+  }
+  [$e](t) {
+    if (this[le] && t)
+      this[Yi](t);
+    else if (!t && !this[p])
+      this[qe]();
+    else if (t) {
+      if (this[le] = true, this[p]) {
+        this[Yi](t);
+        let e = this[p];
+        this[p] = undefined, this[Xe](e);
+      } else
+        this[Xe](t);
+      for (;this[p] && this[p]?.length >= 512 && !this[ut] && !this[je]; ) {
+        let e = this[p];
+        this[p] = undefined, this[Xe](e);
+      }
+      this[le] = false;
+    }
+    (!this[p] || this[dt]) && this[qe]();
+  }
+  [Xe](t) {
+    let e = 0, i = t.length;
+    for (;e + 512 <= i && !this[ut] && !this[je]; )
+      switch (this[B]) {
+        case "begin":
+        case "header":
+          this[Zs](t, e), e += 512;
+          break;
+        case "ignore":
+        case "body":
+          e += this[Zi](t, e);
+          break;
+        case "meta":
+          e += this[Gs](t, e);
+          break;
+        default:
+          throw new Error("invalid state: " + this[B]);
+      }
+    e < i && (this[p] = this[p] ? Buffer.concat([t.subarray(e), this[p]]) : t.subarray(e));
+  }
+  end(t, e, i) {
+    return typeof t == "function" && (i = t, e = undefined, t = undefined), typeof e == "function" && (i = e, e = undefined), typeof t == "string" && (t = Buffer.from(t, e)), i && this.once("finish", i), this[ut] || (this[y] ? (t && this[y].write(t), this[y].end()) : (this[dt] = true, (this.brotli === undefined || this.zstd === undefined) && (t = t || Buffer.alloc(0)), t && this.write(t), this[qe]())), this;
+  }
+};
+var mt = (s2) => {
+  let t = s2.length - 1, e = -1;
+  for (;t > -1 && s2.charAt(t) === "/"; )
+    e = t, t--;
+  return e === -1 ? s2 : s2.slice(0, e);
+};
+var Dn = (s2) => {
+  let t = s2.onReadEntry;
+  s2.onReadEntry = t ? (e) => {
+    t(e), e.resume();
+  } : (e) => e.resume();
+};
+var $i = (s2, t) => {
+  let e = new Map(t.map((n) => [mt(n), true])), i = s2.filter, r = (n, o = "") => {
+    let h = o || Nn(n).root || ".", a;
+    if (n === h)
+      a = false;
+    else {
+      let l = e.get(n);
+      a = l !== undefined ? l : r(Ln(n), h);
+    }
+    return e.set(n, a), a;
+  };
+  s2.filter = i ? (n, o) => i(n, o) && r(mt(n)) : (n) => r(mt(n));
+};
+var An = (s2) => {
+  let t = new st(s2), e = s2.file, i;
+  try {
+    i = Vt.openSync(e, "r");
+    let r = Vt.fstatSync(i), n = s2.maxReadSize || 16 * 1024 * 1024;
+    if (r.size < n) {
+      let o = Buffer.allocUnsafe(r.size), h = Vt.readSync(i, o, 0, r.size, 0);
+      t.end(h === o.byteLength ? o : o.subarray(0, h));
+    } else {
+      let o = 0, h = Buffer.allocUnsafe(n);
+      for (;o < r.size; ) {
+        let a = Vt.readSync(i, h, 0, n, o);
+        if (a === 0)
+          break;
+        o += a, t.write(h.subarray(0, a));
+      }
+      t.end();
+    }
+  } finally {
+    if (typeof i == "number")
+      try {
+        Vt.closeSync(i);
+      } catch {}
+  }
+};
+var In = (s2, t) => {
+  let e = new st(s2), i = s2.maxReadSize || 16 * 1024 * 1024, r = s2.file;
+  return new Promise((o, h) => {
+    e.on("error", h), e.on("end", o), Vt.stat(r, (a, l) => {
+      if (a)
+        h(a);
+      else {
+        let c = new _t(r, { readSize: i, size: l.size });
+        c.on("error", h), c.pipe(e);
+      }
+    });
+  });
+};
+var Ct = K(An, In, (s2) => new st(s2), (s2) => new st(s2), (s2, t) => {
+  t?.length && $i(s2, t), s2.noResume || Dn(s2);
+});
+var Xi = (s2, t, e) => (s2 &= 4095, e && (s2 = (s2 | 384) & -19), t && (s2 & 256 && (s2 |= 64), s2 & 32 && (s2 |= 8), s2 & 4 && (s2 |= 1)), s2);
+var { isAbsolute: kn, parse: Ks } = Cn;
+var ce = (s2) => {
+  let t = "", e = Ks(s2);
+  for (;kn(s2) || e.root; ) {
+    let i = s2.charAt(0) === "/" && s2.slice(0, 4) !== "//?/" ? "/" : e.root;
+    s2 = s2.slice(i.length), t += i, e = Ks(s2);
+  }
+  return [t, s2];
+};
+var ti = ["|", "<", ">", "?", ":"];
+var qi = ti.map((s2) => String.fromCodePoint(61440 + Number(s2.codePointAt(0))));
+var Fn = new Map(ti.map((s2, t) => [s2, qi[t]]));
+var vn = new Map(qi.map((s2, t) => [s2, ti[t]]));
+var Qi = (s2) => ti.reduce((t, e) => t.split(e).join(Fn.get(e)), s2);
+var Vs = (s2) => qi.reduce((t, e) => t.split(e).join(vn.get(e)), s2);
+var tr = (s2, t) => t ? (s2 = f(s2).replace(/^\.(\/|$)/, ""), mt(t) + "/" + s2) : f(s2);
+var Mn = 16 * 1024 * 1024;
+var qs = Symbol("process");
+var Qs = Symbol("file");
+var Js = Symbol("directory");
+var ji = Symbol("symlink");
+var js = Symbol("hardlink");
+var fe = Symbol("header");
+var ei = Symbol("read");
+var ts = Symbol("lstat");
+var ii = Symbol("onlstat");
+var es = Symbol("onread");
+var is = Symbol("onreadlink");
+var ss = Symbol("openfile");
+var rs = Symbol("onopenfile");
+var pt = Symbol("close");
+var si = Symbol("mode");
+var ns = Symbol("awaitDrain");
+var Ji = Symbol("ondrain");
+var X = Symbol("prefix");
+var de = class extends A {
+  path;
+  portable;
+  myuid = process.getuid && process.getuid() || 0;
+  myuser = process.env.USER || "";
+  maxReadSize;
+  linkCache;
+  statCache;
+  preservePaths;
+  cwd;
+  strict;
+  mtime;
+  noPax;
+  noMtime;
+  prefix;
+  fd;
+  blockLen = 0;
+  blockRemain = 0;
+  buf;
+  pos = 0;
+  remain = 0;
+  length = 0;
+  offset = 0;
+  win32;
+  absolute;
+  header;
+  type;
+  linkpath;
+  stat;
+  onWriteEntry;
+  #t = false;
+  constructor(t, e = {}) {
+    let i = re(e);
+    super(), this.path = f(t), this.portable = !!i.portable, this.maxReadSize = i.maxReadSize || Mn, this.linkCache = i.linkCache || new Map, this.statCache = i.statCache || new Map, this.preservePaths = !!i.preservePaths, this.cwd = f(i.cwd || process.cwd()), this.strict = !!i.strict, this.noPax = !!i.noPax, this.noMtime = !!i.noMtime, this.mtime = i.mtime, this.prefix = i.prefix ? f(i.prefix) : undefined, this.onWriteEntry = i.onWriteEntry, typeof i.onwarn == "function" && this.on("warn", i.onwarn);
+    let r = false;
+    if (!this.preservePaths) {
+      let [o, h] = ce(this.path);
+      o && typeof h == "string" && (this.path = h, r = o);
+    }
+    this.win32 = !!i.win32 || process.platform === "win32", this.win32 && (this.path = Vs(this.path.replaceAll(/\\/g, "/")), t = t.replaceAll(/\\/g, "/")), this.absolute = f(i.absolute || Xs.resolve(this.cwd, t)), this.path === "" && (this.path = "./"), r && this.warn("TAR_ENTRY_INFO", `stripping ${r} from absolute path`, { entry: this, path: r + this.path });
+    let n = this.statCache.get(this.absolute);
+    n ? this[ii](n) : this[ts]();
+  }
+  warn(t, e, i = {}) {
+    return Nt(this, t, e, i);
+  }
+  emit(t, ...e) {
+    return t === "error" && (this.#t = true), super.emit(t, ...e);
+  }
+  [ts]() {
+    $.lstat(this.absolute, (t, e) => {
+      if (t)
+        return this.emit("error", t);
+      this[ii](e);
+    });
+  }
+  [ii](t) {
+    this.statCache.set(this.absolute, t), this.stat = t, t.isFile() || (t.size = 0), this.type = Bn(t), this.emit("stat", t), this[qs]();
+  }
+  [qs]() {
+    switch (this.type) {
+      case "File":
+        return this[Qs]();
+      case "Directory":
+        return this[Js]();
+      case "SymbolicLink":
+        return this[ji]();
+      default:
+        return this.end();
+    }
+  }
+  [si](t) {
+    return Xi(t, this.type === "Directory", this.portable);
+  }
+  [X](t) {
+    return tr(t, this.prefix);
+  }
+  [fe]() {
+    if (!this.stat)
+      throw new Error("cannot write header before stat");
+    this.type === "Directory" && this.portable && (this.noMtime = true), this.onWriteEntry?.(this), this.header = new k({ path: this[X](this.path), linkpath: this.type === "Link" && this.linkpath !== undefined ? this[X](this.linkpath) : this.linkpath, mode: this[si](this.stat.mode), uid: this.portable ? undefined : this.stat.uid, gid: this.portable ? undefined : this.stat.gid, size: this.stat.size, mtime: this.noMtime ? undefined : this.mtime || this.stat.mtime, type: this.type === "Unsupported" ? undefined : this.type, uname: this.portable ? undefined : this.stat.uid === this.myuid ? this.myuser : "", atime: this.portable ? undefined : this.stat.atime, ctime: this.portable ? undefined : this.stat.ctime }), this.header.encode() && !this.noPax && super.write(new ct({ atime: this.portable ? undefined : this.header.atime, ctime: this.portable ? undefined : this.header.ctime, gid: this.portable ? undefined : this.header.gid, mtime: this.noMtime ? undefined : this.mtime || this.header.mtime, path: this[X](this.path), linkpath: this.type === "Link" && this.linkpath !== undefined ? this[X](this.linkpath) : this.linkpath, size: this.header.size, uid: this.portable ? undefined : this.header.uid, uname: this.portable ? undefined : this.header.uname, dev: this.portable ? undefined : this.stat.dev, ino: this.portable ? undefined : this.stat.ino, nlink: this.portable ? undefined : this.stat.nlink }).encode());
+    let t = this.header?.block;
+    if (!t)
+      throw new Error("failed to encode header");
+    super.write(t);
+  }
+  [Js]() {
+    if (!this.stat)
+      throw new Error("cannot create directory entry without stat");
+    this.path.slice(-1) !== "/" && (this.path += "/"), this.stat.size = 0, this[fe](), this.end();
+  }
+  [ji]() {
+    $.readlink(this.absolute, (t, e) => {
+      if (t)
+        return this.emit("error", t);
+      this[is](e);
+    });
+  }
+  [is](t) {
+    this.linkpath = f(t), this[fe](), this.end();
+  }
+  [js](t) {
+    if (!this.stat)
+      throw new Error("cannot create link entry without stat");
+    this.type = "Link", this.linkpath = f(Xs.relative(this.cwd, t)), this.stat.size = 0, this[fe](), this.end();
+  }
+  [Qs]() {
+    if (!this.stat)
+      throw new Error("cannot create file entry without stat");
+    if (this.stat.nlink > 1) {
+      let t = `${this.stat.dev}:${this.stat.ino}`, e = this.linkCache.get(t);
+      if (e?.indexOf(this.cwd) === 0)
+        return this[js](e);
+      this.linkCache.set(t, this.absolute);
+    }
+    if (this[fe](), this.stat.size === 0)
+      return this.end();
+    this[ss]();
+  }
+  [ss]() {
+    $.open(this.absolute, "r", (t, e) => {
+      if (t)
+        return this.emit("error", t);
+      this[rs](e);
+    });
+  }
+  [rs](t) {
+    if (this.fd = t, this.#t)
+      return this[pt]();
+    if (!this.stat)
+      throw new Error("should stat before calling onopenfile");
+    this.blockLen = 512 * Math.ceil(this.stat.size / 512), this.blockRemain = this.blockLen;
+    let e = Math.min(this.blockLen, this.maxReadSize);
+    this.buf = Buffer.allocUnsafe(e), this.offset = 0, this.pos = 0, this.remain = this.stat.size, this.length = this.buf.length, this[ei]();
+  }
+  [ei]() {
+    let { fd: t, buf: e, offset: i, length: r, pos: n } = this;
+    if (t === undefined || e === undefined)
+      throw new Error("cannot read file without first opening");
+    $.read(t, e, i, r, n, (o, h) => {
+      if (o)
+        return this[pt](() => this.emit("error", o));
+      this[es](h);
+    });
+  }
+  [pt](t = () => {}) {
+    this.fd !== undefined && $.close(this.fd, t);
+  }
+  [es](t) {
+    if (t <= 0 && this.remain > 0) {
+      let r = Object.assign(new Error("encountered unexpected EOF"), { path: this.absolute, syscall: "read", code: "EOF" });
+      return this[pt](() => this.emit("error", r));
+    }
+    if (t > this.remain) {
+      let r = Object.assign(new Error("did not encounter expected EOF"), { path: this.absolute, syscall: "read", code: "EOF" });
+      return this[pt](() => this.emit("error", r));
+    }
+    if (!this.buf)
+      throw new Error("should have created buffer prior to reading");
+    if (t === this.remain)
+      for (let r = t;r < this.length && t < this.blockRemain; r++)
+        this.buf[r + this.offset] = 0, t++, this.remain++;
+    let e = this.offset === 0 && t === this.buf.length ? this.buf : this.buf.subarray(this.offset, this.offset + t);
+    this.write(e) ? this[Ji]() : this[ns](() => this[Ji]());
+  }
+  [ns](t) {
+    this.once("drain", t);
+  }
+  write(t, e, i) {
+    if (typeof e == "function" && (i = e, e = undefined), typeof t == "string" && (t = Buffer.from(t, typeof e == "string" ? e : "utf8")), this.blockRemain < t.length) {
+      let r = Object.assign(new Error("writing more data than expected"), { path: this.absolute });
+      return this.emit("error", r);
+    }
+    return this.remain -= t.length, this.blockRemain -= t.length, this.pos += t.length, this.offset += t.length, super.write(t, null, i);
+  }
+  [Ji]() {
+    if (!this.remain)
+      return this.blockRemain && super.write(Buffer.alloc(this.blockRemain)), this[pt]((t) => t ? this.emit("error", t) : this.end());
+    if (!this.buf)
+      throw new Error("buffer lost somehow in ONDRAIN");
+    this.offset >= this.length && (this.buf = Buffer.allocUnsafe(Math.min(this.blockRemain, this.buf.length)), this.offset = 0), this.length = this.buf.length - this.offset, this[ei]();
+  }
+};
+var ri = class extends de {
+  sync = true;
+  [ts]() {
+    this[ii]($.lstatSync(this.absolute));
+  }
+  [ji]() {
+    this[is]($.readlinkSync(this.absolute));
+  }
+  [ss]() {
+    this[rs]($.openSync(this.absolute, "r"));
+  }
+  [ei]() {
+    let t = true;
+    try {
+      let { fd: e, buf: i, offset: r, length: n, pos: o } = this;
+      if (e === undefined || i === undefined)
+        throw new Error("fd and buf must be set in READ method");
+      let h = $.readSync(e, i, r, n, o);
+      this[es](h), t = false;
+    } finally {
+      if (t)
+        try {
+          this[pt](() => {});
+        } catch {}
+    }
+  }
+  [ns](t) {
+    t();
+  }
+  [pt](t = () => {}) {
+    this.fd !== undefined && $.closeSync(this.fd), t();
+  }
+};
+var ni = class extends A {
+  blockLen = 0;
+  blockRemain = 0;
+  buf = 0;
+  pos = 0;
+  remain = 0;
+  length = 0;
+  preservePaths;
+  portable;
+  strict;
+  noPax;
+  noMtime;
+  readEntry;
+  type;
+  prefix;
+  path;
+  mode;
+  uid;
+  gid;
+  uname;
+  gname;
+  header;
+  mtime;
+  atime;
+  ctime;
+  linkpath;
+  size;
+  onWriteEntry;
+  warn(t, e, i = {}) {
+    return Nt(this, t, e, i);
+  }
+  constructor(t, e = {}) {
+    let i = re(e);
+    super(), this.preservePaths = !!i.preservePaths, this.portable = !!i.portable, this.strict = !!i.strict, this.noPax = !!i.noPax, this.noMtime = !!i.noMtime, this.onWriteEntry = i.onWriteEntry, this.readEntry = t;
+    let { type: r } = t;
+    if (r === "Unsupported")
+      throw new Error("writing entry that should be ignored");
+    this.type = r, this.type === "Directory" && this.portable && (this.noMtime = true), this.prefix = i.prefix, this.path = f(t.path), this.mode = t.mode !== undefined ? this[si](t.mode) : undefined, this.uid = this.portable ? undefined : t.uid, this.gid = this.portable ? undefined : t.gid, this.uname = this.portable ? undefined : t.uname, this.gname = this.portable ? undefined : t.gname, this.size = t.size, this.mtime = this.noMtime ? undefined : i.mtime || t.mtime, this.atime = this.portable ? undefined : t.atime, this.ctime = this.portable ? undefined : t.ctime, this.linkpath = t.linkpath !== undefined ? f(t.linkpath) : undefined, typeof i.onwarn == "function" && this.on("warn", i.onwarn);
+    let n = false;
+    if (!this.preservePaths) {
+      let [h, a] = ce(this.path);
+      h && typeof a == "string" && (this.path = a, n = h);
+    }
+    this.remain = t.size, this.blockRemain = t.startBlockSize, this.onWriteEntry?.(this), this.header = new k({ path: this[X](this.path), linkpath: this.type === "Link" && this.linkpath !== undefined ? this[X](this.linkpath) : this.linkpath, mode: this.mode, uid: this.portable ? undefined : this.uid, gid: this.portable ? undefined : this.gid, size: this.size, mtime: this.noMtime ? undefined : this.mtime, type: this.type, uname: this.portable ? undefined : this.uname, atime: this.portable ? undefined : this.atime, ctime: this.portable ? undefined : this.ctime }), n && this.warn("TAR_ENTRY_INFO", `stripping ${n} from absolute path`, { entry: this, path: n + this.path }), this.header.encode() && !this.noPax && super.write(new ct({ atime: this.portable ? undefined : this.atime, ctime: this.portable ? undefined : this.ctime, gid: this.portable ? undefined : this.gid, mtime: this.noMtime ? undefined : this.mtime, path: this[X](this.path), linkpath: this.type === "Link" && this.linkpath !== undefined ? this[X](this.linkpath) : this.linkpath, size: this.size, uid: this.portable ? undefined : this.uid, uname: this.portable ? undefined : this.uname, dev: this.portable ? undefined : this.readEntry.dev, ino: this.portable ? undefined : this.readEntry.ino, nlink: this.portable ? undefined : this.readEntry.nlink }).encode());
+    let o = this.header?.block;
+    if (!o)
+      throw new Error("failed to encode header");
+    super.write(o), t.pipe(this);
+  }
+  [X](t) {
+    return tr(t, this.prefix);
+  }
+  [si](t) {
+    return Xi(t, this.type === "Directory", this.portable);
+  }
+  write(t, e, i) {
+    typeof e == "function" && (i = e, e = undefined), typeof t == "string" && (t = Buffer.from(t, typeof e == "string" ? e : "utf8"));
+    let r = t.length;
+    if (r > this.blockRemain)
+      throw new Error("writing more to entry than is appropriate");
+    return this.blockRemain -= r, super.write(t, i);
+  }
+  end(t, e, i) {
+    return this.blockRemain && super.write(Buffer.alloc(this.blockRemain)), typeof t == "function" && (i = t, e = undefined, t = undefined), typeof e == "function" && (i = e, e = undefined), typeof t == "string" && (t = Buffer.from(t, e ?? "utf8")), i && this.once("finish", i), t ? super.end(t, i) : super.end(i), this;
+  }
+};
+var Bn = (s2) => s2.isFile() ? "File" : s2.isDirectory() ? "Directory" : s2.isSymbolicLink() ? "SymbolicLink" : "Unsupported";
+var oi = class s2 {
+  tail;
+  head;
+  length = 0;
+  static create(t = []) {
+    return new s2(t);
+  }
+  constructor(t = []) {
+    for (let e of t)
+      this.push(e);
+  }
+  *[Symbol.iterator]() {
+    for (let t = this.head;t; t = t.next)
+      yield t.value;
+  }
+  removeNode(t) {
+    if (t.list !== this)
+      throw new Error("removing node which does not belong to this list");
+    let { next: e, prev: i } = t;
+    return e && (e.prev = i), i && (i.next = e), t === this.head && (this.head = e), t === this.tail && (this.tail = i), this.length--, t.next = undefined, t.prev = undefined, t.list = undefined, e;
+  }
+  unshiftNode(t) {
+    if (t === this.head)
+      return;
+    t.list && t.list.removeNode(t);
+    let e = this.head;
+    t.list = this, t.next = e, e && (e.prev = t), this.head = t, this.tail || (this.tail = t), this.length++;
+  }
+  pushNode(t) {
+    if (t === this.tail)
+      return;
+    t.list && t.list.removeNode(t);
+    let e = this.tail;
+    t.list = this, t.prev = e, e && (e.next = t), this.tail = t, this.head || (this.head = t), this.length++;
+  }
+  push(...t) {
+    for (let e = 0, i = t.length;e < i; e++)
+      zn(this, t[e]);
+    return this.length;
+  }
+  unshift(...t) {
+    for (var e = 0, i = t.length;e < i; e++)
+      Un(this, t[e]);
+    return this.length;
+  }
+  pop() {
+    if (!this.tail)
+      return;
+    let t = this.tail.value, e = this.tail;
+    return this.tail = this.tail.prev, this.tail ? this.tail.next = undefined : this.head = undefined, e.list = undefined, this.length--, t;
+  }
+  shift() {
+    if (!this.head)
+      return;
+    let t = this.head.value, e = this.head;
+    return this.head = this.head.next, this.head ? this.head.prev = undefined : this.tail = undefined, e.list = undefined, this.length--, t;
+  }
+  forEach(t, e) {
+    e = e || this;
+    for (let i = this.head, r = 0;i; r++)
+      t.call(e, i.value, r, this), i = i.next;
+  }
+  forEachReverse(t, e) {
+    e = e || this;
+    for (let i = this.tail, r = this.length - 1;i; r--)
+      t.call(e, i.value, r, this), i = i.prev;
+  }
+  get(t) {
+    let e = 0, i = this.head;
+    for (;i && e < t; e++)
+      i = i.next;
+    if (e === t && i)
+      return i.value;
+  }
+  getReverse(t) {
+    let e = 0, i = this.tail;
+    for (;i && e < t; e++)
+      i = i.prev;
+    if (e === t && i)
+      return i.value;
+  }
+  map(t, e) {
+    e = e || this;
+    let i = new s2;
+    for (let r = this.head;r; )
+      i.push(t.call(e, r.value, this)), r = r.next;
+    return i;
+  }
+  mapReverse(t, e) {
+    e = e || this;
+    var i = new s2;
+    for (let r = this.tail;r; )
+      i.push(t.call(e, r.value, this)), r = r.prev;
+    return i;
+  }
+  reduce(t, e) {
+    let i, r = this.head;
+    if (arguments.length > 1)
+      i = e;
+    else if (this.head)
+      r = this.head.next, i = this.head.value;
+    else
+      throw new TypeError("Reduce of empty list with no initial value");
+    for (var n = 0;r; n++)
+      i = t(i, r.value, n), r = r.next;
+    return i;
+  }
+  reduceReverse(t, e) {
+    let i, r = this.tail;
+    if (arguments.length > 1)
+      i = e;
+    else if (this.tail)
+      r = this.tail.prev, i = this.tail.value;
+    else
+      throw new TypeError("Reduce of empty list with no initial value");
+    for (let n = this.length - 1;r; n--)
+      i = t(i, r.value, n), r = r.prev;
+    return i;
+  }
+  toArray() {
+    let t = new Array(this.length);
+    for (let e = 0, i = this.head;i; e++)
+      t[e] = i.value, i = i.next;
+    return t;
+  }
+  toArrayReverse() {
+    let t = new Array(this.length);
+    for (let e = 0, i = this.tail;i; e++)
+      t[e] = i.value, i = i.prev;
+    return t;
+  }
+  slice(t = 0, e = this.length) {
+    e < 0 && (e += this.length), t < 0 && (t += this.length);
+    let i = new s2;
+    if (e < t || e < 0)
+      return i;
+    t < 0 && (t = 0), e > this.length && (e = this.length);
+    let r = this.head, n = 0;
+    for (n = 0;r && n < t; n++)
+      r = r.next;
+    for (;r && n < e; n++, r = r.next)
+      i.push(r.value);
+    return i;
+  }
+  sliceReverse(t = 0, e = this.length) {
+    e < 0 && (e += this.length), t < 0 && (t += this.length);
+    let i = new s2;
+    if (e < t || e < 0)
+      return i;
+    t < 0 && (t = 0), e > this.length && (e = this.length);
+    let r = this.length, n = this.tail;
+    for (;n && r > e; r--)
+      n = n.prev;
+    for (;n && r > t; r--, n = n.prev)
+      i.push(n.value);
+    return i;
+  }
+  splice(t, e = 0, ...i) {
+    t > this.length && (t = this.length - 1), t < 0 && (t = this.length + t);
+    let r = this.head;
+    for (let o = 0;r && o < t; o++)
+      r = r.next;
+    let n = [];
+    for (let o = 0;r && o < e; o++)
+      n.push(r.value), r = this.removeNode(r);
+    r ? r !== this.tail && (r = r.prev) : r = this.tail;
+    for (let o of i)
+      r = Pn(this, r, o);
+    return n;
+  }
+  reverse() {
+    let t = this.head, e = this.tail;
+    for (let i = t;i; i = i.prev) {
+      let r = i.prev;
+      i.prev = i.next, i.next = r;
+    }
+    return this.head = e, this.tail = t, this;
+  }
+};
+function Pn(s3, t, e) {
+  let i = t, r = t ? t.next : s3.head, n = new ue(e, i, r, s3);
+  return n.next === undefined && (s3.tail = n), n.prev === undefined && (s3.head = n), s3.length++, n;
+}
+function zn(s3, t) {
+  s3.tail = new ue(t, s3.tail, undefined, s3), s3.head || (s3.head = s3.tail), s3.length++;
+}
+function Un(s3, t) {
+  s3.head = new ue(t, undefined, s3.head, s3), s3.tail || (s3.tail = s3.head), s3.length++;
+}
+var ue = class {
+  list;
+  next;
+  prev;
+  value;
+  constructor(t, e, i, r) {
+    this.list = r, this.value = t, e ? (e.next = this, this.prev = e) : this.prev = undefined, i ? (i.prev = this, this.next = i) : this.next = undefined;
+  }
+};
+var mi = class {
+  path;
+  absolute;
+  entry;
+  stat;
+  readdir;
+  pending = false;
+  pendingLink = false;
+  ignore = false;
+  piped = false;
+  constructor(t, e) {
+    this.path = t || "./", this.absolute = e;
+  }
+};
+var er = Buffer.alloc(1024);
+var ai = Symbol("onStat");
+var me = Symbol("ended");
+var W = Symbol("queue");
+var pe = Symbol("queue");
+var Et = Symbol("current");
+var kt = Symbol("process");
+var Ee = Symbol("processing");
+var hi = Symbol("processJob");
+var G = Symbol("jobs");
+var os = Symbol("jobDone");
+var li = Symbol("addFSEntry");
+var ir = Symbol("addTarEntry");
+var ls = Symbol("stat");
+var cs = Symbol("readdir");
+var ci = Symbol("onreaddir");
+var fi = Symbol("pipe");
+var sr = Symbol("entry");
+var hs = Symbol("entryOpt");
+var di = Symbol("writeEntryClass");
+var nr = Symbol("write");
+var as = Symbol("ondrain");
+var wt = class extends A {
+  sync = false;
+  opt;
+  cwd;
+  maxReadSize;
+  preservePaths;
+  strict;
+  noPax;
+  prefix;
+  linkCache;
+  statCache;
+  file;
+  portable;
+  zip;
+  readdirCache;
+  noDirRecurse;
+  follow;
+  noMtime;
+  mtime;
+  filter;
+  jobs;
+  [di];
+  onWriteEntry;
+  [W];
+  [pe] = new Map;
+  [G] = 0;
+  [Ee] = false;
+  [me] = false;
+  constructor(t = {}) {
+    if (super(), this.opt = t, this.file = t.file || "", this.cwd = t.cwd || process.cwd(), this.maxReadSize = t.maxReadSize, this.preservePaths = !!t.preservePaths, this.strict = !!t.strict, this.noPax = !!t.noPax, this.prefix = f(t.prefix || ""), this.linkCache = t.linkCache || new Map, this.statCache = t.statCache || new Map, this.readdirCache = t.readdirCache || new Map, this.onWriteEntry = t.onWriteEntry, this[di] = de, typeof t.onwarn == "function" && this.on("warn", t.onwarn), this.portable = !!t.portable, t.gzip || t.brotli || t.zstd) {
+      if ((t.gzip ? 1 : 0) + (t.brotli ? 1 : 0) + (t.zstd ? 1 : 0) > 1)
+        throw new TypeError("gzip, brotli, zstd are mutually exclusive");
+      if (t.gzip && (typeof t.gzip != "object" && (t.gzip = {}), this.portable && (t.gzip.portable = true), this.zip = new ze(t.gzip)), t.brotli && (typeof t.brotli != "object" && (t.brotli = {}), this.zip = new We(t.brotli)), t.zstd && (typeof t.zstd != "object" && (t.zstd = {}), this.zip = new Ye(t.zstd)), !this.zip)
+        throw new Error("impossible");
+      let e = this.zip;
+      e.on("data", (i) => super.write(i)), e.on("end", () => super.end()), e.on("drain", () => this[as]()), this.on("resume", () => e.resume());
+    } else
+      this.on("drain", this[as]);
+    this.noDirRecurse = !!t.noDirRecurse, this.follow = !!t.follow, this.noMtime = !!t.noMtime, t.mtime && (this.mtime = t.mtime), this.filter = typeof t.filter == "function" ? t.filter : () => true, this[W] = new oi, this[G] = 0, this.jobs = Number(t.jobs) || 4, this[Ee] = false, this[me] = false;
+  }
+  [nr](t) {
+    return super.write(t);
+  }
+  add(t) {
+    return this.write(t), this;
+  }
+  end(t, e, i) {
+    return typeof t == "function" && (i = t, t = undefined), typeof e == "function" && (i = e, e = undefined), t && this.add(t), this[me] = true, this[kt](), i && i(), this;
+  }
+  write(t) {
+    if (this[me])
+      throw new Error("write after end");
+    return t instanceof Yt ? this[ir](t) : this[li](t), this.flowing;
+  }
+  [ir](t) {
+    let e = f(rr.resolve(this.cwd, t.path));
+    if (!this.filter(t.path, t))
+      t.resume();
+    else {
+      let i = new mi(t.path, e);
+      i.entry = new ni(t, this[hs](i)), i.entry.on("end", () => this[os](i)), this[G] += 1, this[W].push(i);
+    }
+    this[kt]();
+  }
+  [li](t) {
+    let e = f(rr.resolve(this.cwd, t));
+    this[W].push(new mi(t, e)), this[kt]();
+  }
+  [ls](t) {
+    t.pending = true, this[G] += 1;
+    let e = this.follow ? "stat" : "lstat";
+    ui[e](t.absolute, (i, r) => {
+      t.pending = false, this[G] -= 1, i ? this.emit("error", i) : this[ai](t, r);
+    });
+  }
+  [ai](t, e) {
+    if (this.statCache.set(t.absolute, e), t.stat = e, !this.filter(t.path, e))
+      t.ignore = true;
+    else if (e.isFile() && e.nlink > 1 && !this.linkCache.get(`${e.dev}:${e.ino}`) && !this.sync)
+      if (t === this[Et])
+        this[hi](t);
+      else {
+        let i = `${e.dev}:${e.ino}`, r = this[pe].get(i);
+        r ? r.push(t) : this[pe].set(i, [t]), t.pendingLink = true, t.pending = true;
+      }
+    this[kt]();
+  }
+  [cs](t) {
+    t.pending = true, this[G] += 1, ui.readdir(t.absolute, (e, i) => {
+      if (t.pending = false, this[G] -= 1, e)
+        return this.emit("error", e);
+      this[ci](t, i);
+    });
+  }
+  [ci](t, e) {
+    this.readdirCache.set(t.absolute, e), t.readdir = e, this[kt]();
+  }
+  [kt]() {
+    if (!this[Ee]) {
+      this[Ee] = true;
+      for (let t = this[W].head;t && this[G] < this.jobs; t = t.next)
+        if (this[hi](t.value), t.value.ignore) {
+          let e = t.next;
+          this[W].removeNode(t), t.next = e;
+        }
+      this[Ee] = false, this[me] && this[W].length === 0 && this[G] === 0 && (this.zip ? this.zip.end(er) : (super.write(er), super.end()));
+    }
+  }
+  get [Et]() {
+    return this[W] && this[W].head && this[W].head.value;
+  }
+  [os](t) {
+    this[W].shift(), this[G] -= 1;
+    let { stat: e } = t;
+    if (e && e.isFile() && e.nlink > 1) {
+      let i = `${e.dev}:${e.ino}`, r = this[pe].get(i);
+      if (r) {
+        this[pe].delete(i);
+        for (let n of r)
+          n.pending = false, this[hi](n);
+      }
+    }
+    this[kt]();
+  }
+  [hi](t) {
+    if (t.pending && t.pendingLink && t === this[Et] && (t.pending = false, t.pendingLink = false), !t.pending) {
+      if (t.entry) {
+        t === this[Et] && !t.piped && this[fi](t);
+        return;
+      }
+      if (!t.stat) {
+        let e = this.statCache.get(t.absolute);
+        e ? this[ai](t, e) : this[ls](t);
+      }
+      if (t.stat && !t.ignore) {
+        if (!this.noDirRecurse && t.stat.isDirectory() && !t.readdir) {
+          let e = this.readdirCache.get(t.absolute);
+          if (e ? this[ci](t, e) : this[cs](t), !t.readdir)
+            return;
+        }
+        if (t.entry = this[sr](t), !t.entry) {
+          t.ignore = true;
+          return;
+        }
+        t === this[Et] && !t.piped && this[fi](t);
+      }
+    }
+  }
+  [hs](t) {
+    return { onwarn: (e, i, r) => this.warn(e, i, r), noPax: this.noPax, cwd: this.cwd, absolute: t.absolute, preservePaths: this.preservePaths, maxReadSize: this.maxReadSize, strict: this.strict, portable: this.portable, linkCache: this.linkCache, statCache: this.statCache, noMtime: this.noMtime, mtime: this.mtime, prefix: this.prefix, onWriteEntry: this.onWriteEntry };
+  }
+  [sr](t) {
+    this[G] += 1;
+    try {
+      return new this[di](t.path, this[hs](t)).on("end", () => this[os](t)).on("error", (i) => this.emit("error", i));
+    } catch (e) {
+      this.emit("error", e);
+    }
+  }
+  [as]() {
+    this[Et] && this[Et].entry && this[Et].entry.resume();
+  }
+  [fi](t) {
+    t.piped = true, t.readdir && t.readdir.forEach((r) => {
+      let n = t.path, o = n === "./" ? "" : n.replace(/\/*$/, "/");
+      this[li](o + r);
+    });
+    let e = t.entry, i = this.zip;
+    if (!e)
+      throw new Error("cannot pipe without source");
+    i ? e.on("data", (r) => {
+      i.write(r) || e.pause();
+    }) : e.on("data", (r) => {
+      super.write(r) || e.pause();
+    });
+  }
+  pause() {
+    return this.zip && this.zip.pause(), super.pause();
+  }
+  warn(t, e, i = {}) {
+    Nt(this, t, e, i);
+  }
+};
+var Ft = class extends wt {
+  sync = true;
+  constructor(t) {
+    super(t), this[di] = ri;
+  }
+  pause() {}
+  resume() {}
+  [ls](t) {
+    let e = this.follow ? "statSync" : "lstatSync";
+    this[ai](t, ui[e](t.absolute));
+  }
+  [cs](t) {
+    this[ci](t, ui.readdirSync(t.absolute));
+  }
+  [fi](t) {
+    let e = t.entry, i = this.zip;
+    if (t.readdir && t.readdir.forEach((r) => {
+      let n = t.path, o = n === "./" ? "" : n.replace(/\/*$/, "/");
+      this[li](o + r);
+    }), !e)
+      throw new Error("Cannot pipe without source");
+    i ? e.on("data", (r) => {
+      i.write(r);
+    }) : e.on("data", (r) => {
+      super[nr](r);
+    });
+  }
+};
+var Hn = (s3, t) => {
+  let e = new Ft(s3), i = new Wt(s3.file, { mode: s3.mode || 438 });
+  e.pipe(i), hr(e, t);
+};
+var Wn = (s3, t) => {
+  let e = new wt(s3), i = new tt(s3.file, { mode: s3.mode || 438 });
+  e.pipe(i);
+  let r = new Promise((n, o) => {
+    i.on("error", o), i.on("close", n), e.on("error", o);
+  });
+  return ar(e, t).catch((n) => e.emit("error", n)), r;
+};
+var hr = (s3, t) => {
+  t.forEach((e) => {
+    e.charAt(0) === "@" ? Ct({ file: or.resolve(s3.cwd, e.slice(1)), sync: true, noResume: true, onReadEntry: (i) => s3.add(i) }) : s3.add(e);
+  }), s3.end();
+};
+var ar = async (s3, t) => {
+  for (let e of t)
+    e.charAt(0) === "@" ? await Ct({ file: or.resolve(String(s3.cwd), e.slice(1)), noResume: true, onReadEntry: (i) => {
+      s3.add(i);
+    } }) : s3.add(e);
+  s3.end();
+};
+var Gn = (s3, t) => {
+  let e = new Ft(s3);
+  return hr(e, t), e;
+};
+var Zn = (s3, t) => {
+  let e = new wt(s3);
+  return ar(e, t).catch((i) => e.emit("error", i)), e;
+};
+var Yn = K(Hn, Wn, Gn, Zn, (s3, t) => {
+  if (!t?.length)
+    throw new TypeError("no paths specified to add to archive");
+});
+var Kn = process.env.__FAKE_PLATFORM__ || process.platform;
+var dr = Kn === "win32";
+var { O_CREAT: ur, O_NOFOLLOW: lr, O_TRUNC: mr, O_WRONLY: pr } = fr.constants;
+var Er = Number(process.env.__FAKE_FS_O_FILENAME__) || fr.constants.UV_FS_O_FILEMAP || 0;
+var Vn = dr && !!Er;
+var $n = 512 * 1024;
+var Xn = Er | mr | ur | pr;
+var cr = !dr && typeof lr == "number" ? lr | mr | ur | pr : null;
+var fs = cr !== null ? () => cr : Vn ? (s3) => s3 < $n ? Xn : "w" : () => "w";
+var ds = (s3, t, e) => {
+  try {
+    return Ei.lchownSync(s3, t, e);
+  } catch (i) {
+    if (i?.code !== "ENOENT")
+      throw i;
+  }
+};
+var pi = (s3, t, e, i) => {
+  Ei.lchown(s3, t, e, (r) => {
+    i(r && r?.code !== "ENOENT" ? r : null);
+  });
+};
+var qn = (s3, t, e, i, r) => {
+  if (t.isDirectory())
+    us(we.resolve(s3, t.name), e, i, (n) => {
+      if (n)
+        return r(n);
+      let o = we.resolve(s3, t.name);
+      pi(o, e, i, r);
+    });
+  else {
+    let n = we.resolve(s3, t.name);
+    pi(n, e, i, r);
+  }
+};
+var us = (s3, t, e, i) => {
+  Ei.readdir(s3, { withFileTypes: true }, (r, n) => {
+    if (r) {
+      if (r.code === "ENOENT")
+        return i();
+      if (r.code !== "ENOTDIR" && r.code !== "ENOTSUP")
+        return i(r);
+    }
+    if (r || !n.length)
+      return pi(s3, t, e, i);
+    let o = n.length, h = null, a = (l) => {
+      if (!h) {
+        if (l)
+          return i(h = l);
+        if (--o === 0)
+          return pi(s3, t, e, i);
+      }
+    };
+    for (let l of n)
+      qn(s3, l, t, e, a);
+  });
+};
+var Qn = (s3, t, e, i) => {
+  t.isDirectory() && ms(we.resolve(s3, t.name), e, i), ds(we.resolve(s3, t.name), e, i);
+};
+var ms = (s3, t, e) => {
+  let i;
+  try {
+    i = Ei.readdirSync(s3, { withFileTypes: true });
+  } catch (r) {
+    let n = r;
+    if (n?.code === "ENOENT")
+      return;
+    if (n?.code === "ENOTDIR" || n?.code === "ENOTSUP")
+      return ds(s3, t, e);
+    throw n;
+  }
+  for (let r of i)
+    Qn(s3, r, t, e);
+  return ds(s3, t, e);
+};
+var Se = class extends Error {
+  path;
+  code;
+  syscall = "chdir";
+  constructor(t, e) {
+    super(`${e}: Cannot cd into '${t}'`), this.path = t, this.code = e;
+  }
+  get name() {
+    return "CwdError";
+  }
+};
+var St = class extends Error {
+  path;
+  symlink;
+  syscall = "symlink";
+  code = "TAR_SYMLINK_ERROR";
+  constructor(t, e) {
+    super("TAR_SYMLINK_ERROR: Cannot extract through symbolic link"), this.symlink = t, this.path = e;
+  }
+  get name() {
+    return "SymlinkError";
+  }
+};
+var jn = (s3, t) => {
+  F.stat(s3, (e, i) => {
+    (e || !i.isDirectory()) && (e = new Se(s3, e?.code || "ENOTDIR")), t(e);
+  });
+};
+var wr = (s3, t, e) => {
+  s3 = f(s3);
+  let i = t.umask ?? 18, r = t.mode | 448, n = (r & i) !== 0, o = t.uid, h = t.gid, a = typeof o == "number" && typeof h == "number" && (o !== t.processUid || h !== t.processGid), l = t.preserve, c = t.unlink, d = f(t.cwd), S = (E, x) => {
+    E ? e(E) : x && a ? us(x, o, h, (Le) => S(Le)) : n ? F.chmod(s3, r, e) : e();
+  };
+  if (s3 === d)
+    return jn(s3, S);
+  if (l)
+    return Jn.mkdir(s3, { mode: r, recursive: true }).then((E) => S(null, E ?? undefined), S);
+  let N = f(wi.relative(d, s3)).split("/");
+  ps(d, N, r, c, d, undefined, S);
+};
+var ps = (s3, t, e, i, r, n, o) => {
+  if (t.length === 0)
+    return o(null, n);
+  let h = t.shift(), a = f(wi.resolve(s3 + "/" + h));
+  F.mkdir(a, e, Sr(a, t, e, i, r, n, o));
+};
+var Sr = (s3, t, e, i, r, n, o) => (h) => {
+  h ? F.lstat(s3, (a, l) => {
+    if (a)
+      a.path = a.path && f(a.path), o(a);
+    else if (l.isDirectory())
+      ps(s3, t, e, i, r, n, o);
+    else if (i)
+      F.unlink(s3, (c) => {
+        if (c)
+          return o(c);
+        F.mkdir(s3, e, Sr(s3, t, e, i, r, n, o));
+      });
+    else {
+      if (l.isSymbolicLink())
+        return o(new St(s3, s3 + "/" + t.join("/")));
+      o(h);
+    }
+  }) : (n = n || s3, ps(s3, t, e, i, r, n, o));
+};
+var to = (s3) => {
+  let t = false, e;
+  try {
+    t = F.statSync(s3).isDirectory();
+  } catch (i) {
+    e = i?.code;
+  } finally {
+    if (!t)
+      throw new Se(s3, e ?? "ENOTDIR");
+  }
+};
+var yr = (s3, t) => {
+  s3 = f(s3);
+  let e = t.umask ?? 18, i = t.mode | 448, r = (i & e) !== 0, n = t.uid, o = t.gid, h = typeof n == "number" && typeof o == "number" && (n !== t.processUid || o !== t.processGid), a = t.preserve, l = t.unlink, c = f(t.cwd), d = (E) => {
+    E && h && ms(E, n, o), r && F.chmodSync(s3, i);
+  };
+  if (s3 === c)
+    return to(c), d();
+  if (a)
+    return d(F.mkdirSync(s3, { mode: i, recursive: true }) ?? undefined);
+  let T = f(wi.relative(c, s3)).split("/"), N;
+  for (let E = T.shift(), x = c;E && (x += "/" + E); E = T.shift()) {
+    x = f(wi.resolve(x));
+    try {
+      F.mkdirSync(x, i), N = N || x;
+    } catch {
+      let Le = F.lstatSync(x);
+      if (Le.isDirectory())
+        continue;
+      if (l) {
+        F.unlinkSync(x), F.mkdirSync(x, i), N = N || x;
+        continue;
+      } else if (Le.isSymbolicLink())
+        return new St(x, x + "/" + T.join("/"));
+    }
+  }
+  return d(N);
+};
+var Es = Object.create(null);
+var Rr = 1e4;
+var $t = new Set;
+var gr = (s3) => {
+  $t.has(s3) ? $t.delete(s3) : Es[s3] = s3.normalize("NFD").toLocaleLowerCase("en").toLocaleUpperCase("en"), $t.add(s3);
+  let t = Es[s3], e = $t.size - Rr;
+  if (e > Rr / 10) {
+    for (let i of $t)
+      if ($t.delete(i), delete Es[i], --e <= 0)
+        break;
+  }
+  return t;
+};
+var eo = process.env.TESTING_TAR_FAKE_PLATFORM || process.platform;
+var io = eo === "win32";
+var so = (s3) => s3.split("/").slice(0, -1).reduce((e, i) => {
+  let r = e.at(-1);
+  return r !== undefined && (i = br(r, i)), e.push(i || "/"), e;
+}, []);
+var Si = class {
+  #t = new Map;
+  #i = new Map;
+  #s = new Set;
+  reserve(t, e) {
+    t = io ? ["win32 parallelization disabled"] : t.map((r) => mt(br(gr(r))));
+    let i = new Set(t.map((r) => so(r)).reduce((r, n) => r.concat(n)));
+    this.#i.set(e, { dirs: i, paths: t });
+    for (let r of t) {
+      let n = this.#t.get(r);
+      n ? n.push(e) : this.#t.set(r, [e]);
+    }
+    for (let r of i) {
+      let n = this.#t.get(r);
+      if (!n)
+        this.#t.set(r, [new Set([e])]);
+      else {
+        let o = n.at(-1);
+        o instanceof Set ? o.add(e) : n.push(new Set([e]));
+      }
+    }
+    return this.#r(e);
+  }
+  #n(t) {
+    let e = this.#i.get(t);
+    if (!e)
+      throw new Error("function does not have any path reservations");
+    return { paths: e.paths.map((i) => this.#t.get(i)), dirs: [...e.dirs].map((i) => this.#t.get(i)) };
+  }
+  check(t) {
+    let { paths: e, dirs: i } = this.#n(t);
+    return e.every((r) => r && r[0] === t) && i.every((r) => r && r[0] instanceof Set && r[0].has(t));
+  }
+  #r(t) {
+    return this.#s.has(t) || !this.check(t) ? false : (this.#s.add(t), t(() => this.#e(t)), true);
+  }
+  #e(t) {
+    if (!this.#s.has(t))
+      return false;
+    let e = this.#i.get(t);
+    if (!e)
+      throw new Error("invalid reservation");
+    let { paths: i, dirs: r } = e, n = new Set;
+    for (let o of i) {
+      let h = this.#t.get(o);
+      if (!h || h?.[0] !== t)
+        continue;
+      let a = h[1];
+      if (!a) {
+        this.#t.delete(o);
+        continue;
+      }
+      if (h.shift(), typeof a == "function")
+        n.add(a);
+      else
+        for (let l of a)
+          n.add(l);
+    }
+    for (let o of r) {
+      let h = this.#t.get(o), a = h?.[0];
+      if (!(!h || !(a instanceof Set)))
+        if (a.size === 1 && h.length === 1) {
+          this.#t.delete(o);
+          continue;
+        } else if (a.size === 1) {
+          h.shift();
+          let l = h[0];
+          typeof l == "function" && n.add(l);
+        } else
+          a.delete(t);
+    }
+    return this.#s.delete(t), n.forEach((o) => this.#r(o)), true;
+  }
+};
+var _r = () => process.umask();
+var Or = Symbol("onEntry");
+var Rs = Symbol("checkFs");
+var Tr = Symbol("checkFs2");
+var gs = Symbol("isReusable");
+var P = Symbol("makeFs");
+var bs = Symbol("file");
+var _s = Symbol("directory");
+var Ri = Symbol("link");
+var xr = Symbol("symlink");
+var Lr = Symbol("hardlink");
+var Re = Symbol("ensureNoSymlink");
+var Nr = Symbol("unsupported");
+var Dr = Symbol("checkPath");
+var ws = Symbol("stripAbsolutePath");
+var yt = Symbol("mkdir");
+var O = Symbol("onError");
+var yi = Symbol("pending");
+var Ar = Symbol("pend");
+var Xt = Symbol("unpend");
+var Ss = Symbol("ended");
+var ys = Symbol("maybeClose");
+var Os = Symbol("skip");
+var ge = Symbol("doChown");
+var be = Symbol("uid");
+var _e = Symbol("gid");
+var Oe = Symbol("checkedCwd");
+var no = process.env.TESTING_TAR_FAKE_PLATFORM || process.platform;
+var Te = no === "win32";
+var oo = 1024;
+var ho = (s3, t) => {
+  if (!Te)
+    return u.unlink(s3, t);
+  let e = s3 + ".DELETE." + Cr(16).toString("hex");
+  u.rename(s3, e, (i) => {
+    if (i)
+      return t(i);
+    u.unlink(e, t);
+  });
+};
+var ao = (s3) => {
+  if (!Te)
+    return u.unlinkSync(s3);
+  let t = s3 + ".DELETE." + Cr(16).toString("hex");
+  u.renameSync(s3, t), u.unlinkSync(t);
+};
+var Ir = (s3, t, e) => s3 !== undefined && s3 === s3 >>> 0 ? s3 : t !== undefined && t === t >>> 0 ? t : e;
+var qt = class extends st {
+  [Ss] = false;
+  [Oe] = false;
+  [yi] = 0;
+  reservations = new Si;
+  transform;
+  writable = true;
+  readable = false;
+  uid;
+  gid;
+  setOwner;
+  preserveOwner;
+  processGid;
+  processUid;
+  maxDepth;
+  forceChown;
+  win32;
+  newer;
+  keep;
+  noMtime;
+  preservePaths;
+  unlink;
+  cwd;
+  strip;
+  processUmask;
+  umask;
+  dmode;
+  fmode;
+  chmod;
+  constructor(t = {}) {
+    if (t.ondone = () => {
+      this[Ss] = true, this[ys]();
+    }, super(t), this.transform = t.transform, this.chmod = !!t.chmod, typeof t.uid == "number" || typeof t.gid == "number") {
+      if (typeof t.uid != "number" || typeof t.gid != "number")
+        throw new TypeError("cannot set owner without number uid and gid");
+      if (t.preserveOwner)
+        throw new TypeError("cannot preserve owner in archive and also set owner explicitly");
+      this.uid = t.uid, this.gid = t.gid, this.setOwner = true;
+    } else
+      this.uid = undefined, this.gid = undefined, this.setOwner = false;
+    this.preserveOwner = t.preserveOwner === undefined && typeof t.uid != "number" ? !!(process.getuid && process.getuid() === 0) : !!t.preserveOwner, this.processUid = (this.preserveOwner || this.setOwner) && process.getuid ? process.getuid() : undefined, this.processGid = (this.preserveOwner || this.setOwner) && process.getgid ? process.getgid() : undefined, this.maxDepth = typeof t.maxDepth == "number" ? t.maxDepth : oo, this.forceChown = t.forceChown === true, this.win32 = !!t.win32 || Te, this.newer = !!t.newer, this.keep = !!t.keep, this.noMtime = !!t.noMtime, this.preservePaths = !!t.preservePaths, this.unlink = !!t.unlink, this.cwd = f(R.resolve(t.cwd || process.cwd())), this.strip = Number(t.strip) || 0, this.processUmask = this.chmod ? typeof t.processUmask == "number" ? t.processUmask : _r() : 0, this.umask = typeof t.umask == "number" ? t.umask : this.processUmask, this.dmode = t.dmode || 511 & ~this.umask, this.fmode = t.fmode || 438 & ~this.umask, this.on("entry", (e) => this[Or](e));
+  }
+  warn(t, e, i = {}) {
+    return (t === "TAR_BAD_ARCHIVE" || t === "TAR_ABORT") && (i.recoverable = false), super.warn(t, e, i);
+  }
+  [ys]() {
+    this[Ss] && this[yi] === 0 && (this.emit("prefinish"), this.emit("finish"), this.emit("end"));
+  }
+  [ws](t, e) {
+    let i = t[e], { type: r } = t;
+    if (!i || this.preservePaths)
+      return true;
+    let [n, o] = ce(i), h = o.replaceAll(/\\/g, "/").split("/");
+    if (h.includes("..") || Te && /^[a-z]:\.\.$/i.test(h[0] ?? "")) {
+      if (e === "path" || r === "Link")
+        return this.warn("TAR_ENTRY_ERROR", `${e} contains '..'`, { entry: t, [e]: i }), false;
+      let a = R.posix.dirname(t.path), l = R.posix.normalize(R.posix.join(a, h.join("/")));
+      if (l.startsWith("../") || l === "..")
+        return this.warn("TAR_ENTRY_ERROR", `${e} escapes extraction directory`, { entry: t, [e]: i }), false;
+    }
+    return n && (t[e] = String(o), this.warn("TAR_ENTRY_INFO", `stripping ${n} from absolute ${e}`, { entry: t, [e]: i })), true;
+  }
+  [Dr](t) {
+    let e = f(t.path), i = e.split("/");
+    if (this.strip) {
+      if (i.length < this.strip)
+        return false;
+      if (t.type === "Link") {
+        let r = f(String(t.linkpath)).split("/");
+        if (r.length >= this.strip)
+          t.linkpath = r.slice(this.strip).join("/");
+        else
+          return false;
+      }
+      i.splice(0, this.strip), t.path = i.join("/");
+    }
+    if (isFinite(this.maxDepth) && i.length > this.maxDepth)
+      return this.warn("TAR_ENTRY_ERROR", "path excessively deep", { entry: t, path: e, depth: i.length, maxDepth: this.maxDepth }), false;
+    if (!this[ws](t, "path") || !this[ws](t, "linkpath"))
+      return false;
+    if (t.absolute = R.isAbsolute(t.path) ? f(R.resolve(t.path)) : f(R.resolve(this.cwd, t.path)), !this.preservePaths && typeof t.absolute == "string" && t.absolute.indexOf(this.cwd + "/") !== 0 && t.absolute !== this.cwd)
+      return this.warn("TAR_ENTRY_ERROR", "path escaped extraction target", { entry: t, path: f(t.path), resolvedPath: t.absolute, cwd: this.cwd }), false;
+    if (t.absolute === this.cwd && t.type !== "Directory" && t.type !== "GNUDumpDir")
+      return false;
+    if (this.win32) {
+      let { root: r } = R.win32.parse(String(t.absolute));
+      t.absolute = r + Qi(String(t.absolute).slice(r.length));
+      let { root: n } = R.win32.parse(t.path);
+      t.path = n + Qi(t.path.slice(n.length));
+    }
+    return true;
+  }
+  [Or](t) {
+    if (!this[Dr](t))
+      return t.resume();
+    switch (ro.equal(typeof t.absolute, "string"), t.type) {
+      case "Directory":
+      case "GNUDumpDir":
+        t.mode && (t.mode = t.mode | 448);
+      case "File":
+      case "OldFile":
+      case "ContiguousFile":
+      case "Link":
+      case "SymbolicLink":
+        return this[Rs](t);
+      default:
+        return this[Nr](t);
+    }
+  }
+  [O](t, e) {
+    t.name === "CwdError" ? this.emit("error", t) : (this.warn("TAR_ENTRY_ERROR", t, { entry: e }), this[Xt](), e.resume());
+  }
+  [yt](t, e, i) {
+    wr(f(t), { uid: this.uid, gid: this.gid, processUid: this.processUid, processGid: this.processGid, umask: this.processUmask, preserve: this.preservePaths, unlink: this.unlink, cwd: this.cwd, mode: e }, i);
+  }
+  [ge](t) {
+    return this.forceChown || this.preserveOwner && (typeof t.uid == "number" && t.uid !== this.processUid || typeof t.gid == "number" && t.gid !== this.processGid) || typeof this.uid == "number" && this.uid !== this.processUid || typeof this.gid == "number" && this.gid !== this.processGid;
+  }
+  [be](t) {
+    return Ir(this.uid, t.uid, this.processUid);
+  }
+  [_e](t) {
+    return Ir(this.gid, t.gid, this.processGid);
+  }
+  [bs](t, e) {
+    let i = typeof t.mode == "number" ? t.mode & 4095 : this.fmode, r = new tt(String(t.absolute), { flags: fs(t.size), mode: i, autoClose: false });
+    r.on("error", (a) => {
+      r.fd && u.close(r.fd, () => {}), r.write = () => true, this[O](a, t), e();
+    });
+    let n = 1, o = (a) => {
+      if (a) {
+        r.fd && u.close(r.fd, () => {}), this[O](a, t), e();
+        return;
+      }
+      --n === 0 && r.fd !== undefined && u.close(r.fd, (l) => {
+        l ? this[O](l, t) : this[Xt](), e();
+      });
+    };
+    r.on("finish", () => {
+      let a = String(t.absolute), l = r.fd;
+      if (typeof l == "number" && t.mtime && !this.noMtime) {
+        n++;
+        let c = t.atime || new Date, d = t.mtime;
+        u.futimes(l, c, d, (S) => S ? u.utimes(a, c, d, (T) => o(T && S)) : o());
+      }
+      if (typeof l == "number" && this[ge](t)) {
+        n++;
+        let c = this[be](t), d = this[_e](t);
+        typeof c == "number" && typeof d == "number" && u.fchown(l, c, d, (S) => S ? u.chown(a, c, d, (T) => o(T && S)) : o());
+      }
+      o();
+    });
+    let h = this.transform && this.transform(t) || t;
+    h !== t && (h.on("error", (a) => {
+      this[O](a, t), e();
+    }), t.pipe(h)), h.pipe(r);
+  }
+  [_s](t, e) {
+    let i = typeof t.mode == "number" ? t.mode & 4095 : this.dmode;
+    this[yt](String(t.absolute), i, (r) => {
+      if (r) {
+        this[O](r, t), e();
+        return;
+      }
+      let n = 1, o = () => {
+        --n === 0 && (e(), this[Xt](), t.resume());
+      };
+      t.mtime && !this.noMtime && (n++, u.utimes(String(t.absolute), t.atime || new Date, t.mtime, o)), this[ge](t) && (n++, u.chown(String(t.absolute), Number(this[be](t)), Number(this[_e](t)), o)), o();
+    });
+  }
+  [Nr](t) {
+    t.unsupported = true, this.warn("TAR_ENTRY_UNSUPPORTED", `unsupported entry type: ${t.type}`, { entry: t }), t.resume();
+  }
+  [xr](t, e) {
+    let i = f(R.relative(this.cwd, R.resolve(R.dirname(String(t.absolute)), String(t.linkpath)))).split("/");
+    this[Re](t, this.cwd, i, () => this[Ri](t, String(t.linkpath), "symlink", e), (r) => {
+      this[O](r, t), e();
+    });
+  }
+  [Lr](t, e) {
+    let i = f(R.resolve(this.cwd, String(t.linkpath))), r = f(String(t.linkpath)).split("/");
+    this[Re](t, this.cwd, r, () => this[Ri](t, i, "link", e), (n) => {
+      this[O](n, t), e();
+    });
+  }
+  [Re](t, e, i, r, n) {
+    let o = i.shift();
+    if (this.preservePaths || o === undefined)
+      return r();
+    let h = R.resolve(e, o);
+    u.lstat(h, (a, l) => {
+      if (a)
+        return r();
+      if (l?.isSymbolicLink())
+        return n(new St(h, R.resolve(h, i.join("/"))));
+      this[Re](t, h, i, r, n);
+    });
+  }
+  [Ar]() {
+    this[yi]++;
+  }
+  [Xt]() {
+    this[yi]--, this[ys]();
+  }
+  [Os](t) {
+    this[Xt](), t.resume();
+  }
+  [gs](t, e) {
+    return t.type === "File" && !this.unlink && e.isFile() && e.nlink <= 1 && !Te;
+  }
+  [Rs](t) {
+    this[Ar]();
+    let e = [t.path];
+    t.linkpath && e.push(t.linkpath), this.reservations.reserve(e, (i) => this[Tr](t, i));
+  }
+  [Tr](t, e) {
+    let i = (h) => {
+      e(h);
+    }, r = () => {
+      this[yt](this.cwd, this.dmode, (h) => {
+        if (h) {
+          this[O](h, t), i();
+          return;
+        }
+        this[Oe] = true, n();
+      });
+    }, n = () => {
+      if (t.absolute !== this.cwd) {
+        let h = f(R.dirname(String(t.absolute)));
+        if (h !== this.cwd)
+          return this[yt](h, this.dmode, (a) => {
+            if (a) {
+              this[O](a, t), i();
+              return;
+            }
+            o();
+          });
+      }
+      o();
+    }, o = () => {
+      u.lstat(String(t.absolute), (h, a) => {
+        if (a && (this.keep || this.newer && a.mtime > (t.mtime ?? a.mtime))) {
+          this[Os](t), i();
+          return;
+        }
+        if (h || this[gs](t, a))
+          return this[P](null, t, i);
+        if (a.isDirectory()) {
+          if (t.type === "Directory") {
+            let l = this.chmod && t.mode && (a.mode & 4095) !== t.mode, c = (d) => this[P](d ?? null, t, i);
+            return l ? u.chmod(String(t.absolute), Number(t.mode), c) : c();
+          }
+          if (t.absolute !== this.cwd)
+            return u.rmdir(String(t.absolute), (l) => this[P](l ?? null, t, i));
+        }
+        if (t.absolute === this.cwd)
+          return this[P](null, t, i);
+        ho(String(t.absolute), (l) => this[P](l ?? null, t, i));
+      });
+    };
+    this[Oe] ? n() : r();
+  }
+  [P](t, e, i) {
+    if (t) {
+      this[O](t, e), i();
+      return;
+    }
+    switch (e.type) {
+      case "File":
+      case "OldFile":
+      case "ContiguousFile":
+        return this[bs](e, i);
+      case "Link":
+        return this[Lr](e, i);
+      case "SymbolicLink":
+        return this[xr](e, i);
+      case "Directory":
+      case "GNUDumpDir":
+        return this[_s](e, i);
+    }
+  }
+  [Ri](t, e, i, r) {
+    u[i](e, String(t.absolute), (n) => {
+      n ? this[O](n, t) : (this[Xt](), t.resume()), r();
+    });
+  }
+};
+var ye = (s3) => {
+  try {
+    return [null, s3()];
+  } catch (t) {
+    return [t, null];
+  }
+};
+var xe = class extends qt {
+  sync = true;
+  [P](t, e) {
+    return super[P](t, e, () => {});
+  }
+  [Rs](t) {
+    if (!this[Oe]) {
+      let n = this[yt](this.cwd, this.dmode);
+      if (n)
+        return this[O](n, t);
+      this[Oe] = true;
+    }
+    if (t.absolute !== this.cwd) {
+      let n = f(R.dirname(String(t.absolute)));
+      if (n !== this.cwd) {
+        let o = this[yt](n, this.dmode);
+        if (o)
+          return this[O](o, t);
+      }
+    }
+    let [e, i] = ye(() => u.lstatSync(String(t.absolute)));
+    if (i && (this.keep || this.newer && i.mtime > (t.mtime ?? i.mtime)))
+      return this[Os](t);
+    if (e || this[gs](t, i))
+      return this[P](null, t);
+    if (i.isDirectory()) {
+      if (t.type === "Directory") {
+        let o = this.chmod && t.mode && (i.mode & 4095) !== t.mode, [h] = o ? ye(() => {
+          u.chmodSync(String(t.absolute), Number(t.mode));
+        }) : [];
+        return this[P](h, t);
+      }
+      let [n] = ye(() => u.rmdirSync(String(t.absolute)));
+      this[P](n, t);
+    }
+    let [r] = t.absolute === this.cwd ? [] : ye(() => ao(String(t.absolute)));
+    this[P](r, t);
+  }
+  [bs](t, e) {
+    let i = typeof t.mode == "number" ? t.mode & 4095 : this.fmode, r = (h) => {
+      let a;
+      try {
+        u.closeSync(n);
+      } catch (l) {
+        a = l;
+      }
+      (h || a) && this[O](h || a, t), e();
+    }, n;
+    try {
+      n = u.openSync(String(t.absolute), fs(t.size), i);
+    } catch (h) {
+      return r(h);
+    }
+    let o = this.transform && this.transform(t) || t;
+    o !== t && (o.on("error", (h) => this[O](h, t)), t.pipe(o)), o.on("data", (h) => {
+      try {
+        u.writeSync(n, h, 0, h.length);
+      } catch (a) {
+        r(a);
+      }
+    }), o.on("end", () => {
+      let h = null;
+      if (t.mtime && !this.noMtime) {
+        let a = t.atime || new Date, l = t.mtime;
+        try {
+          u.futimesSync(n, a, l);
+        } catch (c) {
+          try {
+            u.utimesSync(String(t.absolute), a, l);
+          } catch {
+            h = c;
+          }
+        }
+      }
+      if (this[ge](t)) {
+        let a = this[be](t), l = this[_e](t);
+        try {
+          u.fchownSync(n, Number(a), Number(l));
+        } catch (c) {
+          try {
+            u.chownSync(String(t.absolute), Number(a), Number(l));
+          } catch {
+            h = h || c;
+          }
+        }
+      }
+      r(h);
+    });
+  }
+  [_s](t, e) {
+    let i = typeof t.mode == "number" ? t.mode & 4095 : this.dmode, r = this[yt](String(t.absolute), i);
+    if (r) {
+      this[O](r, t), e();
+      return;
+    }
+    if (t.mtime && !this.noMtime)
+      try {
+        u.utimesSync(String(t.absolute), t.atime || new Date, t.mtime);
+      } catch {}
+    if (this[ge](t))
+      try {
+        u.chownSync(String(t.absolute), Number(this[be](t)), Number(this[_e](t)));
+      } catch {}
+    e(), t.resume();
+  }
+  [yt](t, e) {
+    try {
+      return yr(f(t), { uid: this.uid, gid: this.gid, processUid: this.processUid, processGid: this.processGid, umask: this.processUmask, preserve: this.preservePaths, unlink: this.unlink, cwd: this.cwd, mode: e });
+    } catch (i) {
+      return i;
+    }
+  }
+  [Re](t, e, i, r, n) {
+    if (this.preservePaths || i.length === 0)
+      return r();
+    let o = e;
+    for (let h of i) {
+      o = R.resolve(o, h);
+      let [a, l] = ye(() => u.lstatSync(o));
+      if (a)
+        return r();
+      if (l.isSymbolicLink())
+        return n(new St(o, R.resolve(e, i.join("/"))));
+    }
+    r();
+  }
+  [Ri](t, e, i, r) {
+    let n = `${i}Sync`;
+    try {
+      u[n](e, String(t.absolute)), r(), t.resume();
+    } catch (o) {
+      return this[O](o, t);
+    }
+  }
+};
+var lo = (s3) => {
+  let t = new xe(s3), e = s3.file, i = kr.statSync(e), r = s3.maxReadSize || 16 * 1024 * 1024;
+  new Be(e, { readSize: r, size: i.size }).pipe(t);
+};
+var co = (s3, t) => {
+  let e = new qt(s3), i = s3.maxReadSize || 16 * 1024 * 1024, r = s3.file;
+  return new Promise((o, h) => {
+    e.on("error", h), e.on("close", o), kr.stat(r, (a, l) => {
+      if (a)
+        h(a);
+      else {
+        let c = new _t(r, { readSize: i, size: l.size });
+        c.on("error", h), c.pipe(e);
+      }
+    });
+  });
+};
+var fo = K(lo, co, (s3) => new xe(s3), (s3) => new qt(s3), (s3, t) => {
+  t?.length && $i(s3, t);
+});
+var uo = (s3, t) => {
+  let e = new Ft(s3), i = true, r, n;
+  try {
+    try {
+      r = v.openSync(s3.file, "r+");
+    } catch (a) {
+      if (a?.code === "ENOENT")
+        r = v.openSync(s3.file, "w+");
+      else
+        throw a;
+    }
+    let o = v.fstatSync(r), h = Buffer.alloc(512);
+    t:
+      for (n = 0;n < o.size; n += 512) {
+        for (let c = 0, d = 0;c < 512; c += d) {
+          if (d = v.readSync(r, h, c, h.length - c, n + c), n === 0 && h[0] === 31 && h[1] === 139)
+            throw new Error("cannot append to compressed archives");
+          if (!d)
+            break t;
+        }
+        let a = new k(h);
+        if (!a.cksumValid)
+          break;
+        let l = 512 * Math.ceil((a.size || 0) / 512);
+        if (n + l + 512 > o.size)
+          break;
+        n += l, s3.mtimeCache && a.mtime && s3.mtimeCache.set(String(a.path), a.mtime);
+      }
+    i = false, mo(s3, e, n, r, t);
+  } finally {
+    if (i)
+      try {
+        v.closeSync(r);
+      } catch {}
+  }
+};
+var mo = (s3, t, e, i, r) => {
+  let n = new Wt(s3.file, { fd: i, start: e });
+  t.pipe(n), Eo(t, r);
+};
+var po = (s3, t) => {
+  t = Array.from(t);
+  let e = new wt(s3), i = (n, o, h) => {
+    let a = (T, N) => {
+      T ? v.close(n, (E) => h(T)) : h(null, N);
+    }, l = 0;
+    if (o === 0)
+      return a(null, 0);
+    let c = 0, d = Buffer.alloc(512), S = (T, N) => {
+      if (T || N === undefined)
+        return a(T);
+      if (c += N, c < 512 && N)
+        return v.read(n, d, c, d.length - c, l + c, S);
+      if (l === 0 && d[0] === 31 && d[1] === 139)
+        return a(new Error("cannot append to compressed archives"));
+      if (c < 512)
+        return a(null, l);
+      let E = new k(d);
+      if (!E.cksumValid)
+        return a(null, l);
+      let x = 512 * Math.ceil((E.size ?? 0) / 512);
+      if (l + x + 512 > o || (l += x + 512, l >= o))
+        return a(null, l);
+      s3.mtimeCache && E.mtime && s3.mtimeCache.set(String(E.path), E.mtime), c = 0, v.read(n, d, 0, 512, l, S);
+    };
+    v.read(n, d, 0, 512, l, S);
+  };
+  return new Promise((n, o) => {
+    e.on("error", o);
+    let h = "r+", a = (l, c) => {
+      if (l && l.code === "ENOENT" && h === "r+")
+        return h = "w+", v.open(s3.file, h, a);
+      if (l || !c)
+        return o(l);
+      v.fstat(c, (d, S) => {
+        if (d)
+          return v.close(c, () => o(d));
+        i(c, S.size, (T, N) => {
+          if (T)
+            return o(T);
+          let E = new tt(s3.file, { fd: c, start: N });
+          e.pipe(E), E.on("error", o), E.on("close", n), wo(e, t);
+        });
+      });
+    };
+    v.open(s3.file, h, a);
+  });
+};
+var Eo = (s3, t) => {
+  t.forEach((e) => {
+    e.charAt(0) === "@" ? Ct({ file: Fr.resolve(s3.cwd, e.slice(1)), sync: true, noResume: true, onReadEntry: (i) => s3.add(i) }) : s3.add(e);
+  }), s3.end();
+};
+var wo = async (s3, t) => {
+  for (let e of t)
+    e.charAt(0) === "@" ? await Ct({ file: Fr.resolve(String(s3.cwd), e.slice(1)), noResume: true, onReadEntry: (i) => s3.add(i) }) : s3.add(e);
+  s3.end();
+};
+var vt = K(uo, po, () => {
+  throw new TypeError("file is required");
+}, () => {
+  throw new TypeError("file is required");
+}, (s3, t) => {
+  if (!Fs(s3))
+    throw new TypeError("file is required");
+  if (s3.gzip || s3.brotli || s3.zstd || s3.file.endsWith(".br") || s3.file.endsWith(".tbr"))
+    throw new TypeError("cannot append to compressed archives");
+  if (!t?.length)
+    throw new TypeError("no paths specified to add/replace");
+});
+var So = K(vt.syncFile, vt.asyncFile, vt.syncNoFile, vt.asyncNoFile, (s3, t = []) => {
+  vt.validate?.(s3, t), yo(s3);
+});
+var yo = (s3) => {
+  let t = s3.filter;
+  s3.mtimeCache || (s3.mtimeCache = new Map), s3.filter = t ? (e, i) => t(e, i) && !((s3.mtimeCache?.get(e) ?? i.mtime ?? 0) > (i.mtime ?? 0)) : (e, i) => !((s3.mtimeCache?.get(e) ?? i.mtime ?? 0) > (i.mtime ?? 0));
+};
+
+// ../lib/src/control-plane/ui-assets.ts
+var logger11 = createLogger("lib:ui-assets");
 var REPO_OWNER = "itlackey";
 var REPO_NAME = "openpalm";
 async function fetchWithRetry(url, retries = 3) {
@@ -14018,9 +10724,9 @@ function copyTree(src, dest, opts) {
 function resolveLocalCandidate(...strategies) {
   for (const strategy of strategies) {
     try {
-      const p = strategy();
-      if (p && existsSync(p))
-        return p;
+      const p2 = strategy();
+      if (p2 && existsSync(p2))
+        return p2;
     } catch {}
   }
   return null;
@@ -14063,14 +10769,14 @@ async function seedUiBuild(repoRef, stateDir) {
   mkdirSync2(uiDir, { recursive: true });
   const local = resolveLocalUiBuild();
   if (local) {
-    logger10.debug("seeding UI build from local source", { src: local });
+    logger11.debug("seeding UI build from local source", { src: local });
     copyTree(local, uiDir);
     return;
   }
   const base = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${repoRef}`;
   const tarballUrl = `${base}/ui-build.tar.gz`;
   const checksumUrl = `${base}/checksums-sha256.txt`;
-  logger10.debug("downloading UI build", { url: tarballUrl });
+  logger11.debug("downloading UI build", { url: tarballUrl });
   const tmpTar = join(stateDir, ".ui-build.tar.gz.tmp");
   try {
     const [tarRes, csRes] = await Promise.all([
@@ -14088,20 +10794,20 @@ async function seedUiBuild(repoRef, stateDir) {
         if (actual !== expected) {
           throw new Error(`UI build checksum mismatch (expected ${expected}, got ${actual})`);
         }
-        logger10.debug("UI build checksum verified", { sha256: actual });
+        logger11.debug("UI build checksum verified", { sha256: actual });
       }
     }
     writeFileSync(tmpTar, tarData);
-    await import_tar.default.x({ file: tmpTar, cwd: uiDir, strip: 1 });
+    await fo({ file: tmpTar, cwd: uiDir, strip: 1 });
   } finally {
     rmSync(tmpTar, { force: true });
   }
 }
 var GITHUB_API = "https://api.github.com";
-function compareVersionTags(a, b) {
-  const parse = (v) => v.replace(/^v/, "").split(".").map(Number);
+function compareVersionTags(a, b2) {
+  const parse = (v2) => v2.replace(/^v/, "").split(".").map(Number);
   const [aM, am, ap] = parse(a);
-  const [bM, bm, bp] = parse(b);
+  const [bM, bm, bp] = parse(b2);
   if (aM !== bM)
     return aM > bM ? 1 : -1;
   if (am !== bm)
@@ -14123,7 +10829,7 @@ async function checkAndUpdateUiBuild(currentVersion, stateDir) {
     const latestTag = release.tag_name;
     const latestVersion = latestTag.replace(/^v/, "");
     if (compareVersionTags(latestTag, currentVersion) <= 0) {
-      logger10.debug("UI build is up to date", { current: currentVersion, latest: latestVersion });
+      logger11.debug("UI build is up to date", { current: currentVersion, latest: latestVersion });
       return { updated: false, latestVersion };
     }
     if (!release.assets.some((a) => a.name === "ui-build.tar.gz")) {
@@ -14134,17 +10840,103 @@ async function checkAndUpdateUiBuild(currentVersion, stateDir) {
       const backupDir = join(stateDir, "backups", `ui-${Date.now()}`);
       mkdirSync2(join(stateDir, "backups"), { recursive: true });
       renameSync(uiDir, backupDir);
-      logger10.debug("backed up UI build before update", { backup: backupDir });
+      logger11.debug("backed up UI build before update", { backup: backupDir });
     }
     await seedUiBuild(latestTag, stateDir);
-    logger10.debug("UI build updated", { from: currentVersion, to: latestVersion });
+    logger11.debug("UI build updated", { from: currentVersion, to: latestVersion });
     return { updated: true, latestVersion };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    logger10.debug("UI build update check failed (non-fatal)", { error });
+    logger11.debug("UI build update check failed (non-fatal)", { error });
     return { updated: false, latestVersion: null, error };
   }
 }
+// src/update-check.ts
+var REPO_OWNER2 = "itlackey";
+var REPO_NAME2 = "openpalm";
+var TIMEOUT_MS = 5000;
+var CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+var STALE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+var cached = null;
+function parseVersion(v2) {
+  return v2.replace(/^v/, "").split(/[.\-+]/).map((s3) => {
+    const n = parseInt(s3, 10);
+    return Number.isFinite(n) ? n : 0;
+  });
+}
+function isNewerVersion(current, latest) {
+  const a = parseVersion(current);
+  const b2 = parseVersion(latest);
+  const len = Math.max(a.length, b2.length);
+  for (let i = 0;i < len; i++) {
+    const ai2 = a[i] ?? 0;
+    const bi2 = b2[i] ?? 0;
+    if (bi2 > ai2)
+      return true;
+    if (bi2 < ai2)
+      return false;
+  }
+  return false;
+}
+async function checkForElectronUpdate(currentVersion) {
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS)
+    return cached;
+  const url = `https://api.github.com/repos/${REPO_OWNER2}/${REPO_NAME2}/releases/latest`;
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "application/vnd.github+json" },
+      signal: AbortSignal.timeout(TIMEOUT_MS)
+    });
+    if (!res.ok) {
+      if (cached && Date.now() - cached.fetchedAt >= STALE_CACHE_TTL_MS) {
+        console.debug("[update-check] Cached result is older than 7 days and fresh check failed (HTTP " + res.status + "); suppressing stale update claim");
+        cached = { currentVersion, latestVersion: null, latestUrl: null, updateAvailable: false, error: `HTTP ${res.status} (stale cache suppressed)`, fetchedAt: Date.now() };
+        return cached;
+      }
+      cached = {
+        currentVersion,
+        latestVersion: null,
+        latestUrl: null,
+        updateAvailable: false,
+        error: `HTTP ${res.status}`,
+        fetchedAt: Date.now()
+      };
+      return cached;
+    }
+    const data = await res.json();
+    const tag = data.tag_name ?? "";
+    const latestVersion = tag.replace(/^v/, "");
+    const updateAvailable = latestVersion ? isNewerVersion(currentVersion, latestVersion) : false;
+    cached = {
+      currentVersion,
+      latestVersion: latestVersion || null,
+      latestUrl: data.html_url ?? null,
+      updateAvailable,
+      fetchedAt: Date.now()
+    };
+    return cached;
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (cached && Date.now() - cached.fetchedAt >= STALE_CACHE_TTL_MS) {
+      console.debug("[update-check] Cached result is older than 7 days and fresh check failed (" + errMsg + "); suppressing stale update claim");
+      cached = { currentVersion, latestVersion: null, latestUrl: null, updateAvailable: false, error: `${errMsg} (stale cache suppressed)`, fetchedAt: Date.now() };
+      return cached;
+    }
+    cached = {
+      currentVersion,
+      latestVersion: null,
+      latestUrl: null,
+      updateAvailable: false,
+      error: errMsg,
+      fetchedAt: Date.now()
+    };
+    return cached;
+  }
+}
+function getCachedUpdateInfo() {
+  return cached;
+}
+
 // src/main.ts
 if (!globalThis.Bun) {
   globalThis.Bun = { env: process.env };
@@ -14152,18 +10944,38 @@ if (!globalThis.Bun) {
 var __filename2 = fileURLToPath2(import.meta.url);
 var __dirname2 = dirname2(__filename2);
 var UI_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;
-var READY_TIMEOUT_MS = 20000;
+var READY_TIMEOUT_MS = 60000;
 var mainWindow = null;
+var splashWindow = null;
 var tray = null;
 var uiProcess = null;
-function buildUIServerEnv(homeDir, port) {
-  return {
+var STDERR_RING_SIZE = 200;
+var stderrRing = [];
+function appendStderrLine(line) {
+  if (stderrRing.length >= STDERR_RING_SIZE)
+    stderrRing.shift();
+  stderrRing.push(line);
+}
+function getRecentStderr(maxLines = 40) {
+  return stderrRing.slice(-maxLines).join(`
+`);
+}
+function buildUIServerEnv(homeDir, port, update) {
+  const env = {
     ...process.env,
     OP_HOME: homeDir,
     HOST: "127.0.0.1",
     PORT: String(port),
-    ORIGIN: `http://127.0.0.1:${port}`
+    ORIGIN: `http://127.0.0.1:${port}`,
+    OP_INSIDE_ELECTRON: "1",
+    OP_ELECTRON_VERSION: app.getVersion?.() ?? ""
   };
+  if (update?.updateAvailable && update.latestVersion) {
+    env.OP_ELECTRON_LATEST_VERSION = update.latestVersion;
+    if (update.latestUrl)
+      env.OP_ELECTRON_LATEST_URL = update.latestUrl;
+  }
+  return env;
 }
 async function waitForReady(port, timeoutMs = READY_TIMEOUT_MS) {
   const deadline = Date.now() + timeoutMs;
@@ -14185,6 +10997,12 @@ async function startUIServer() {
   resolveConfigDir();
   ensureHomeDirs();
   const version = app.getVersion();
+  const appUpdate = await checkForElectronUpdate(version);
+  if (appUpdate.updateAvailable) {
+    console.log(`App update available: v${appUpdate.latestVersion}`);
+  } else if (appUpdate.error) {
+    console.log(`App update check skipped: ${appUpdate.error}`);
+  }
   const updateResult = await checkAndUpdateUiBuild(version, stateDir);
   if (updateResult.updated) {
     console.log(`UI updated to v${updateResult.latestVersion}`);
@@ -14205,8 +11023,20 @@ async function startUIServer() {
   }
   uiProcess = spawn2("node", [join2(uiBuildDir, "index.js")], {
     cwd: uiBuildDir,
-    env: buildUIServerEnv(homeDir, UI_PORT),
-    stdio: "inherit"
+    env: buildUIServerEnv(homeDir, UI_PORT, appUpdate),
+    stdio: ["ignore", "inherit", "pipe"]
+  });
+  uiProcess.stderr?.on("data", (chunk) => {
+    const text = chunk.toString();
+    process.stderr.write(text);
+    const lines = text.split(`
+`);
+    for (let i = 0;i < lines.length; i++) {
+      const line = lines[i];
+      if (i === lines.length - 1 && line === "")
+        continue;
+      appendStderrLine(line);
+    }
   });
   uiProcess.on("error", (err) => {
     console.error("UI server process error:", err.message);
@@ -14219,7 +11049,19 @@ async function startUIServer() {
   });
   const ready = await waitForReady(UI_PORT);
   if (!ready) {
+    const recentLogs = getRecentStderr(40);
+    const detail = [
+      `The UI server on port ${UI_PORT} did not respond within ${READY_TIMEOUT_MS / 1000} seconds.`,
+      "",
+      recentLogs ? `Last output from UI server:
+${recentLogs}` : "(No UI server output was captured.)",
+      "",
+      "Check the terminal where you launched OpenPalm for full logs."
+    ].join(`
+`);
     console.error("UI server did not become ready in time");
+    closeSplashWindow();
+    dialog.showErrorBox("OpenPalm failed to start", detail);
     app.quit();
   }
 }
@@ -14229,20 +11071,79 @@ function stopUIServer() {
     uiProcess = null;
   }
 }
-function createWindow() {
+function createSplashWindow() {
+  splashWindow = new BrowserWindow({
+    width: 380,
+    height: 200,
+    frame: false,
+    resizable: false,
+    movable: true,
+    alwaysOnTop: true,
+    show: true,
+    backgroundColor: "#0f172a",
+    webPreferences: { nodeIntegration: false, contextIsolation: true }
+  });
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    html,body{height:100%;margin:0;background:#0f172a;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+    body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+    .logo{font-size:22px;font-weight:600;letter-spacing:0.5px}
+    .hint{font-size:13px;color:#94a3b8}
+    .spinner{width:24px;height:24px;border:3px solid #1e293b;border-top-color:#60a5fa;border-radius:50%;animation:spin 0.8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style></head><body>
+    <div class="logo">OpenPalm</div>
+    <div class="spinner"></div>
+    <div class="hint" id="hint">Starting…</div>
+    <script>
+      setTimeout(function(){var h=document.getElementById('hint');if(h)h.textContent='Still starting (first launch may take a minute)…';},15000);
+      setTimeout(function(){var h=document.getElementById('hint');if(h)h.textContent='Almost there…';},40000);
+    </script>
+  </body></html>`;
+  splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  splashWindow.on("closed", () => {
+    splashWindow = null;
+  });
+}
+function closeSplashWindow() {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.close();
+    splashWindow = null;
+  }
+}
+async function resolveInitialUrl() {
+  try {
+    const res = await fetch(`http://127.0.0.1:${UI_PORT}/api/setup/status`, {
+      signal: AbortSignal.timeout(2000)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return `http://127.0.0.1:${UI_PORT}/${data.setupComplete ? "chat" : "setup"}`;
+    }
+  } catch {}
+  return `http://127.0.0.1:${UI_PORT}`;
+}
+async function createWindow() {
+  const update = getCachedUpdateInfo();
+  const title = update?.updateAvailable ? `OpenPalm — Update available (v${update.latestVersion})` : "OpenPalm";
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 900,
     minWidth: 900,
     minHeight: 600,
-    title: "OpenPalm",
+    title,
+    show: false,
     webPreferences: {
       preload: join2(__dirname2, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true
     }
   });
-  mainWindow.loadURL(`http://127.0.0.1:${UI_PORT}`);
+  const initialUrl = await resolveInitialUrl();
+  mainWindow.loadURL(initialUrl);
+  mainWindow.once("ready-to-show", () => {
+    closeSplashWindow();
+    mainWindow?.show();
+  });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("http://127.0.0.1") || url.startsWith("http://localhost")) {
       return { action: "allow" };
@@ -14290,8 +11191,16 @@ function createTray() {
   tray.on("click", showWindow);
 }
 app.whenReady().then(async () => {
-  await startUIServer();
-  createWindow();
+  createSplashWindow();
+  try {
+    await startUIServer();
+  } catch (err) {
+    closeSplashWindow();
+    console.error("Failed to start UI server:", err instanceof Error ? err.message : String(err));
+    app.quit();
+    return;
+  }
+  await createWindow();
   createTray();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0)
@@ -14307,5 +11216,6 @@ app.on("before-quit", () => {
 });
 export {
   waitForReady,
+  getRecentStderr,
   buildUIServerEnv
 };
