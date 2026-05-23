@@ -1,11 +1,21 @@
 <script lang="ts">
   import type { ChatEntry } from '$lib/types.js';
+  import { renderMarkdown } from '$lib/markdown.js';
 
   interface Props {
     entry: ChatEntry;
   }
 
   let { entry }: Props = $props();
+
+  // User messages are echoed verbatim — they typed it, don't surprise them
+  // by reinterpreting punctuation as markdown. Assistant messages get
+  // rendered (markdown-it strips raw HTML at the source).
+  const renderedHtml = $derived(
+    entry.type !== 'divider' && entry.role === 'assistant'
+      ? renderMarkdown(entry.text)
+      : null,
+  );
 </script>
 
 {#if entry.type === 'divider'}
@@ -21,7 +31,11 @@
     class:message-assistant={entry.role === 'assistant'}
   >
     <div class="message-bubble">
-      <p class="message-text">{entry.text}</p>
+      {#if renderedHtml !== null}
+        <div class="message-text markdown-body">{@html renderedHtml}</div>
+      {:else}
+        <p class="message-text">{entry.text}</p>
+      {/if}
     </div>
     <span class="message-meta">
       {entry.role === 'user' ? 'You' : 'Assistant'}
@@ -94,8 +108,96 @@
 
   .message-text {
     font-size: var(--text-base);
-    white-space: pre-wrap;
     word-break: break-word;
+  }
+
+  /* User messages: preserve typed whitespace verbatim. */
+  .message-user .message-text:not(.markdown-body) {
+    white-space: pre-wrap;
+  }
+
+  /* Markdown-rendered assistant messages: style the common block-level
+     elements emitted by markdown-it. Scoped to .markdown-body so unrelated
+     <p>/<ul> on other pages are untouched. */
+  .markdown-body :global(p) {
+    margin: 0 0 var(--space-2) 0;
+  }
+  .markdown-body :global(p:last-child) {
+    margin-bottom: 0;
+  }
+  .markdown-body :global(ul),
+  .markdown-body :global(ol) {
+    margin: 0 0 var(--space-2) 0;
+    padding-left: var(--space-5);
+  }
+  .markdown-body :global(li) {
+    margin: var(--space-1) 0;
+  }
+  .markdown-body :global(li > p) {
+    margin: 0;
+  }
+  .markdown-body :global(code) {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    background: var(--color-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--color-border);
+  }
+  .markdown-body :global(pre) {
+    margin: var(--space-2) 0;
+    padding: var(--space-3);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    overflow-x: auto;
+    font-size: 0.9em;
+  }
+  .markdown-body :global(pre code) {
+    background: transparent;
+    border: 0;
+    padding: 0;
+  }
+  .markdown-body :global(a) {
+    color: var(--color-primary);
+    text-decoration: underline;
+  }
+  .markdown-body :global(a:hover) {
+    text-decoration: none;
+  }
+  .markdown-body :global(blockquote) {
+    margin: var(--space-2) 0;
+    padding-left: var(--space-3);
+    border-left: 3px solid var(--color-border);
+    color: var(--color-text-secondary);
+  }
+  .markdown-body :global(h1),
+  .markdown-body :global(h2),
+  .markdown-body :global(h3),
+  .markdown-body :global(h4) {
+    margin: var(--space-3) 0 var(--space-2);
+    font-weight: var(--font-bold);
+    line-height: var(--leading-tight, 1.25);
+  }
+  .markdown-body :global(h1) { font-size: 1.4em; }
+  .markdown-body :global(h2) { font-size: 1.25em; }
+  .markdown-body :global(h3) { font-size: 1.1em; }
+  .markdown-body :global(h4) { font-size: 1em; }
+  .markdown-body :global(hr) {
+    margin: var(--space-3) 0;
+    border: 0;
+    border-top: 1px solid var(--color-border);
+  }
+  .markdown-body :global(table) {
+    border-collapse: collapse;
+    margin: var(--space-2) 0;
+    font-size: 0.9em;
+  }
+  .markdown-body :global(th),
+  .markdown-body :global(td) {
+    border: 1px solid var(--color-border);
+    padding: var(--space-1) var(--space-2);
+    text-align: left;
   }
 
   .message-meta {

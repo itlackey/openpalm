@@ -1,6 +1,7 @@
 <script lang="ts">
   import "../app.css";
   import UpdateBanner from '$lib/components/UpdateBanner.svelte';
+  import Toast from '$lib/components/Toast.svelte';
 
   interface Props {
     children?: import('svelte').Snippet;
@@ -11,3 +12,4 @@
 
 <UpdateBanner />
 {@render children?.()}
+<Toast />

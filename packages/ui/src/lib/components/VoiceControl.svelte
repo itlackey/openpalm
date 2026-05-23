@@ -159,9 +159,9 @@
 			</button>
 		{/if}
 
-		{#if voiceState.errorMessage}
-			<span class="voice-error" role="alert">{voiceState.errorMessage}</span>
-		{/if}
+		<!-- Errors surface via the global <Toast> in the root layout. Keeping
+		     them out of the navbar prevents a long message from causing the
+		     navbar to overflow horizontally on narrow widths. -->
 
 		<span class="sr-only" aria-live="polite">
 			{isRecording
@@ -315,15 +315,6 @@
 		.voice-pulse {
 			opacity: 0.4;
 		}
-	}
-
-	.voice-error {
-		font-size: var(--text-xs);
-		color: var(--color-danger);
-		max-width: 160px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 
 	.sr-only {

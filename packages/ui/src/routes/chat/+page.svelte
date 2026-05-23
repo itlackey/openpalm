@@ -189,6 +189,17 @@
 {/if}
 
 <style>
+  /* Chat is the one page that wants exactly viewport-height: the navbar
+     fills nav-height, the chat-layout fills the rest, and the messages-
+     area scrolls internally. Suppress body scroll so we don't end up with
+     two scrollbars (page + messages). Scoped to the chat page via :global,
+     so other admin pages keep their normal flow. */
+  :global(html),
+  :global(body) {
+    overflow: hidden;
+    height: 100dvh;
+  }
+
   .chat-layout {
     display: flex;
     flex-direction: column;

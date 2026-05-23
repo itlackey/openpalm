@@ -51,12 +51,18 @@ export function deriveSystemEnvFromSpec(
 export type VoiceVarsConfig = {
   tts?: {
     enabled?: boolean;
+    /** Engine name (e.g. "kokoro", "elevenlabs", "browser"). */
+    engine?: string;
+    /** Optional sub-provider qualifier when an engine fronts multiple providers. */
+    provider?: string;
     baseURL?: string;
     model?: string;
     voice?: string;
   };
   stt?: {
     enabled?: boolean;
+    engine?: string;
+    provider?: string;
     baseURL?: string;
     model?: string;
     language?: string;
@@ -65,7 +71,8 @@ export type VoiceVarsConfig = {
 
 /**
  * Write TTS/STT env vars to stack.env for the voice channel container.
- * Only vars with non-empty values are written; missing values are left unchanged.
+ * `engine` always writes (even if it's the only field) so picking an
+ * engine without filling in URL/model still persists.
  */
 export function writeVoiceVars(config: VoiceVarsConfig, stackDir: string): void {
   const stackEnvPath = `${stackDir}/stack.env`;
@@ -74,11 +81,15 @@ export function writeVoiceVars(config: VoiceVarsConfig, stackDir: string): void 
 
   const { tts, stt } = config;
   if (tts?.enabled !== false) {
+    if (tts?.engine) vars["TTS_ENGINE"] = tts.engine;
+    if (tts?.provider) vars["TTS_PROVIDER"] = tts.provider;
     if (tts?.baseURL) vars["TTS_BASE_URL"] = tts.baseURL;
     if (tts?.model) vars["TTS_MODEL"] = tts.model;
     if (tts?.voice) vars["TTS_VOICE"] = tts.voice;
   }
   if (stt?.enabled !== false) {
+    if (stt?.engine) vars["STT_ENGINE"] = stt.engine;
+    if (stt?.provider) vars["STT_PROVIDER"] = stt.provider;
     if (stt?.baseURL) vars["STT_BASE_URL"] = stt.baseURL;
     if (stt?.model) vars["STT_MODEL"] = stt.model;
     if (stt?.language) vars["STT_LANGUAGE"] = stt.language;

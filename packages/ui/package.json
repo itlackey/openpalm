@@ -22,6 +22,7 @@
   "dependencies": {
     "@openpalm/lib": "workspace:*",
     "croner": "^10.0.1",
+    "markdown-it": "^14.1.1",
     "yaml": "^2.8.0"
   },
   "devDependencies": {
@@ -31,6 +32,7 @@
     "@sveltejs/adapter-node": "^5.5.4",
     "@sveltejs/kit": "^2.53.3",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@types/markdown-it": "^14.1.2",
     "@types/node": "^25.9.1",
     "@vitest/browser-playwright": "^4.0.18",
     "@vitest/coverage-v8": "^4.0.18",
