@@ -23,6 +23,14 @@ export type EndpointEntry = {
   id: string;
   label: string;
   url: string;
+  /**
+   * Basic-auth username forwarded as Authorization header. Defaults to
+   * `"openpalm"` for synthesized entries; user-added entries may override.
+   * OpenCode rejects Basic auth with an empty username — the default
+   * `OPENCODE_SERVER_USERNAME` on the upstream server is `"opencode"`, but
+   * OpenPalm sets it to `"openpalm"` on every server it spawns/configures.
+   */
+  username?: string;
   /** Optional OpenCode Basic-auth password forwarded as Authorization header. */
   password?: string;
 };
@@ -129,8 +137,9 @@ function localEndpoint(): ActiveEndpoint | null {
   if (!rt) return null;
   return {
     id: LOCAL_ELECTRON_ID,
-    label: 'Local OpenCode (Electron)',
+    label: 'OpenPalm Admin',
     url: rt.url,
+    username: rt.username || 'openpalm',
     ...(rt.password ? { password: rt.password } : {}),
     isDefault: false,
     isLocal: true,
@@ -184,8 +193,9 @@ function defaultEndpoint(): ActiveEndpoint {
     process.env.OP_OPENCODE_URL ??
     process.env.OP_ASSISTANT_URL ??
     `http://localhost:${process.env.OP_ASSISTANT_PORT ?? '3800'}`;
+  const username = process.env.OPENCODE_SERVER_USERNAME || 'openpalm';
   const password = process.env.OPENCODE_SERVER_PASSWORD || undefined;
-  return { id: DEFAULT_ID, label: 'Default (from environment)', url, password, isDefault: true };
+  return { id: DEFAULT_ID, label: 'Local Assistant', url, username, password, isDefault: true };
 }
 
 /**

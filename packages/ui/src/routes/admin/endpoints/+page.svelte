@@ -183,7 +183,7 @@
 {#if authLocked}
   <AuthGate onSuccess={handleAuthSuccess} loading={authLoading} error={authError} />
 {:else}
-  <Navbar onLogout={handleLogout} navLink={{ href: '/admin', label: 'Back to Admin' }} />
+  <Navbar onLogout={handleLogout} navLink={{ href: '/chat', label: '← Back to Chat' }} />
 
   <main class="page">
     <header class="page-header">

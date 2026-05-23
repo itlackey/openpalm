@@ -22,7 +22,10 @@ export const GET: RequestHandler = async (event) => {
 	let opencode = false;
 	try {
 		const headers: Record<string, string> = {};
-		if (endpoint.password) headers['authorization'] = `Basic ${btoa(`:${endpoint.password}`)}`;
+		if (endpoint.password) {
+			const user = endpoint.username || 'openpalm';
+			headers['authorization'] = `Basic ${btoa(`${user}:${endpoint.password}`)}`;
+		}
 		const res = await fetch(`${endpoint.url}/health`, {
 			headers,
 			signal: AbortSignal.timeout(2000),

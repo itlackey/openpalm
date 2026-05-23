@@ -14,7 +14,8 @@ export async function opencodeFetch<T>(path: string, init?: RequestInit): Promis
 		...(init?.headers as Record<string, string> | undefined),
 	};
 	if (endpoint.password) {
-		headers['authorization'] = `Basic ${btoa(`:${endpoint.password}`)}`;
+		const user = endpoint.username || 'openpalm';
+		headers['authorization'] = `Basic ${btoa(`${user}:${endpoint.password}`)}`;
 	}
 	const response = await fetch(`${endpoint.url}${path}`, {
 		...init,

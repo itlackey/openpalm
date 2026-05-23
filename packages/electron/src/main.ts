@@ -279,8 +279,10 @@ async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 900,
-    minWidth: 900,
-    minHeight: 600,
+    // Narrow enough for a mobile-shaped sidecar window (300×500-ish). The
+    // chat + endpoint switcher layouts reflow cleanly below ~360px.
+    minWidth: 300,
+    minHeight: 400,
     title,
     show: false,
     webPreferences: {

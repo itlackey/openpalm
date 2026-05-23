@@ -20,13 +20,23 @@ import { requireAdmin, getRequestId } from '$lib/server/helpers.js';
 import { getActiveEndpoint } from '$lib/server/endpoints.js';
 import type { RequestHandler } from './$types';
 
-function buildForwardHeaders(incomingContentType: string | null, password: string | undefined): HeadersInit {
+function buildForwardHeaders(
+  incomingContentType: string | null,
+  username: string | undefined,
+  password: string | undefined,
+): HeadersInit {
   const headers: HeadersInit = {};
   if (incomingContentType) {
     headers['content-type'] = incomingContentType;
   }
   if (password) {
-    headers['authorization'] = `Basic ${btoa(`:${password}`)}`;
+    // OpenCode rejects Basic auth with an empty username — the upstream
+    // default `OPENCODE_SERVER_USERNAME` is `"opencode"`. OpenPalm configures
+    // all of its OpenCode servers (assistant container + Electron-spawned
+    // local) with `"openpalm"`, so that's our fallback when the endpoint
+    // entry doesn't specify one.
+    const user = username || 'openpalm';
+    headers['authorization'] = `Basic ${btoa(`${user}:${password}`)}`;
   }
   return headers;
 }
@@ -74,7 +84,7 @@ const handler: RequestHandler = async (event) => {
   try {
     const upstream = await fetch(targetUrl, {
       method,
-      headers: buildForwardHeaders(contentType, endpoint.password),
+      headers: buildForwardHeaders(contentType, endpoint.username, endpoint.password),
       body,
       signal: controller.signal,
     });

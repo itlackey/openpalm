@@ -30,6 +30,20 @@ var __toESM = (mod, isNodeMode, target) => {
   return to;
 };
 var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
+var __returnValue = (v) => v;
+function __exportSetter(name, newValue) {
+  this[name] = __returnValue.bind(null, newValue);
+}
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, {
+      get: all[name],
+      enumerable: true,
+      configurable: true,
+      set: __exportSetter.bind(all, name)
+    });
+};
+var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
 var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
 // ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/nodes/identity.js
@@ -7292,10 +7306,2057 @@ var require_main = __commonJS((exports, module) => {
   module.exports = DotenvModule;
 });
 
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/gen/types.gen.js
+var init_types_gen = () => {};
+
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/gen/core/serverSentEvents.gen.js
+var createSseClient = ({ onSseError, onSseEvent, responseTransformer, responseValidator, sseDefaultRetryDelay, sseMaxRetryAttempts, sseMaxRetryDelay, sseSleepFn, url, ...options }) => {
+  let lastEventId;
+  const sleep = sseSleepFn ?? ((ms2) => new Promise((resolve) => setTimeout(resolve, ms2)));
+  const createStream = async function* () {
+    let retryDelay = sseDefaultRetryDelay ?? 3000;
+    let attempt = 0;
+    const signal = options.signal ?? new AbortController().signal;
+    while (true) {
+      if (signal.aborted)
+        break;
+      attempt++;
+      const headers = options.headers instanceof Headers ? options.headers : new Headers(options.headers);
+      if (lastEventId !== undefined) {
+        headers.set("Last-Event-ID", lastEventId);
+      }
+      try {
+        const response = await fetch(url, { ...options, headers, signal });
+        if (!response.ok)
+          throw new Error(`SSE failed: ${response.status} ${response.statusText}`);
+        if (!response.body)
+          throw new Error("No body in SSE response");
+        const reader = response.body.pipeThrough(new TextDecoderStream).getReader();
+        let buffer = "";
+        const abortHandler = () => {
+          try {
+            reader.cancel();
+          } catch {}
+        };
+        signal.addEventListener("abort", abortHandler);
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done)
+              break;
+            buffer += value;
+            const chunks = buffer.split(`
+
+`);
+            buffer = chunks.pop() ?? "";
+            for (const chunk of chunks) {
+              const lines = chunk.split(`
+`);
+              const dataLines = [];
+              let eventName;
+              for (const line of lines) {
+                if (line.startsWith("data:")) {
+                  dataLines.push(line.replace(/^data:\s*/, ""));
+                } else if (line.startsWith("event:")) {
+                  eventName = line.replace(/^event:\s*/, "");
+                } else if (line.startsWith("id:")) {
+                  lastEventId = line.replace(/^id:\s*/, "");
+                } else if (line.startsWith("retry:")) {
+                  const parsed = Number.parseInt(line.replace(/^retry:\s*/, ""), 10);
+                  if (!Number.isNaN(parsed)) {
+                    retryDelay = parsed;
+                  }
+                }
+              }
+              let data;
+              let parsedJson = false;
+              if (dataLines.length) {
+                const rawData = dataLines.join(`
+`);
+                try {
+                  data = JSON.parse(rawData);
+                  parsedJson = true;
+                } catch {
+                  data = rawData;
+                }
+              }
+              if (parsedJson) {
+                if (responseValidator) {
+                  await responseValidator(data);
+                }
+                if (responseTransformer) {
+                  data = await responseTransformer(data);
+                }
+              }
+              onSseEvent?.({
+                data,
+                event: eventName,
+                id: lastEventId,
+                retry: retryDelay
+              });
+              if (dataLines.length) {
+                yield data;
+              }
+            }
+          }
+        } finally {
+          signal.removeEventListener("abort", abortHandler);
+          reader.releaseLock();
+        }
+        break;
+      } catch (error) {
+        onSseError?.(error);
+        if (sseMaxRetryAttempts !== undefined && attempt >= sseMaxRetryAttempts) {
+          break;
+        }
+        const backoff = Math.min(retryDelay * 2 ** (attempt - 1), sseMaxRetryDelay ?? 30000);
+        await sleep(backoff);
+      }
+    }
+  };
+  const stream = createStream();
+  return { stream };
+};
+
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/gen/core/auth.gen.js
+var getAuthToken = async (auth, callback) => {
+  const token = typeof callback === "function" ? await callback(auth) : callback;
+  if (!token) {
+    return;
+  }
+  if (auth.scheme === "bearer") {
+    return `Bearer ${token}`;
+  }
+  if (auth.scheme === "basic") {
+    return `Basic ${btoa(token)}`;
+  }
+  return token;
+};
+
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/gen/core/bodySerializer.gen.js
+var jsonBodySerializer;
+var init_bodySerializer_gen = __esm(() => {
+  jsonBodySerializer = {
+    bodySerializer: (body) => JSON.stringify(body, (_key, value) => typeof value === "bigint" ? value.toString() : value)
+  };
+});
+
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/gen/core/pathSerializer.gen.js
+var separatorArrayExplode = (style) => {
+  switch (style) {
+    case "label":
+      return ".";
+    case "matrix":
+      return ";";
+    case "simple":
+      return ",";
+    default:
+      return "&";
+  }
+}, separatorArrayNoExplode = (style) => {
+  switch (style) {
+    case "form":
+      return ",";
+    case "pipeDelimited":
+      return "|";
+    case "spaceDelimited":
+      return "%20";
+    default:
+      return ",";
+  }
+}, separatorObjectExplode = (style) => {
+  switch (style) {
+    case "label":
+      return ".";
+    case "matrix":
+      return ";";
+    case "simple":
+      return ",";
+    default:
+      return "&";
+  }
+}, serializeArrayParam = ({ allowReserved, explode, name, style, value }) => {
+  if (!explode) {
+    const joinedValues2 = (allowReserved ? value : value.map((v2) => encodeURIComponent(v2))).join(separatorArrayNoExplode(style));
+    switch (style) {
+      case "label":
+        return `.${joinedValues2}`;
+      case "matrix":
+        return `;${name}=${joinedValues2}`;
+      case "simple":
+        return joinedValues2;
+      default:
+        return `${name}=${joinedValues2}`;
+    }
+  }
+  const separator = separatorArrayExplode(style);
+  const joinedValues = value.map((v2) => {
+    if (style === "label" || style === "simple") {
+      return allowReserved ? v2 : encodeURIComponent(v2);
+    }
+    return serializePrimitiveParam({
+      allowReserved,
+      name,
+      value: v2
+    });
+  }).join(separator);
+  return style === "label" || style === "matrix" ? separator + joinedValues : joinedValues;
+}, serializePrimitiveParam = ({ allowReserved, name, value }) => {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  if (typeof value === "object") {
+    throw new Error("Deeply-nested arrays/objects aren’t supported. Provide your own `querySerializer()` to handle these.");
+  }
+  return `${name}=${allowReserved ? value : encodeURIComponent(value)}`;
+}, serializeObjectParam = ({ allowReserved, explode, name, style, value, valueOnly }) => {
+  if (value instanceof Date) {
+    return valueOnly ? value.toISOString() : `${name}=${value.toISOString()}`;
+  }
+  if (style !== "deepObject" && !explode) {
+    let values = [];
+    Object.entries(value).forEach(([key, v2]) => {
+      values = [...values, key, allowReserved ? v2 : encodeURIComponent(v2)];
+    });
+    const joinedValues2 = values.join(",");
+    switch (style) {
+      case "form":
+        return `${name}=${joinedValues2}`;
+      case "label":
+        return `.${joinedValues2}`;
+      case "matrix":
+        return `;${name}=${joinedValues2}`;
+      default:
+        return joinedValues2;
+    }
+  }
+  const separator = separatorObjectExplode(style);
+  const joinedValues = Object.entries(value).map(([key, v2]) => serializePrimitiveParam({
+    allowReserved,
+    name: style === "deepObject" ? `${name}[${key}]` : key,
+    value: v2
+  })).join(separator);
+  return style === "label" || style === "matrix" ? separator + joinedValues : joinedValues;
+};
+
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/gen/core/utils.gen.js
+var PATH_PARAM_RE, defaultPathSerializer = ({ path, url: _url }) => {
+  let url = _url;
+  const matches = _url.match(PATH_PARAM_RE);
+  if (matches) {
+    for (const match of matches) {
+      let explode = false;
+      let name = match.substring(1, match.length - 1);
+      let style = "simple";
+      if (name.endsWith("*")) {
+        explode = true;
+        name = name.substring(0, name.length - 1);
+      }
+      if (name.startsWith(".")) {
+        name = name.substring(1);
+        style = "label";
+      } else if (name.startsWith(";")) {
+        name = name.substring(1);
+        style = "matrix";
+      }
+      const value = path[name];
+      if (value === undefined || value === null) {
+        continue;
+      }
+      if (Array.isArray(value)) {
+        url = url.replace(match, serializeArrayParam({ explode, name, style, value }));
+        continue;
+      }
+      if (typeof value === "object") {
+        url = url.replace(match, serializeObjectParam({
+          explode,
+          name,
+          style,
+          value,
+          valueOnly: true
+        }));
+        continue;
+      }
+      if (style === "matrix") {
+        url = url.replace(match, `;${serializePrimitiveParam({
+          name,
+          value
+        })}`);
+        continue;
+      }
+      const replaceValue = encodeURIComponent(style === "label" ? `.${value}` : value);
+      url = url.replace(match, replaceValue);
+    }
+  }
+  return url;
+}, getUrl = ({ baseUrl, path, query, querySerializer, url: _url }) => {
+  const pathUrl = _url.startsWith("/") ? _url : `/${_url}`;
+  let url = (baseUrl ?? "") + pathUrl;
+  if (path) {
+    url = defaultPathSerializer({ path, url });
+  }
+  let search = query ? querySerializer(query) : "";
+  if (search.startsWith("?")) {
+    search = search.substring(1);
+  }
+  if (search) {
+    url += `?${search}`;
+  }
+  return url;
+};
+var init_utils_gen = __esm(() => {
+  PATH_PARAM_RE = /\{[^{}]+\}/g;
+});
+
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/gen/client/utils.gen.js
+class Interceptors {
+  _fns;
+  constructor() {
+    this._fns = [];
+  }
+  clear() {
+    this._fns = [];
+  }
+  getInterceptorIndex(id) {
+    if (typeof id === "number") {
+      return this._fns[id] ? id : -1;
+    } else {
+      return this._fns.indexOf(id);
+    }
+  }
+  exists(id) {
+    const index = this.getInterceptorIndex(id);
+    return !!this._fns[index];
+  }
+  eject(id) {
+    const index = this.getInterceptorIndex(id);
+    if (this._fns[index]) {
+      this._fns[index] = null;
+    }
+  }
+  update(id, fn2) {
+    const index = this.getInterceptorIndex(id);
+    if (this._fns[index]) {
+      this._fns[index] = fn2;
+      return id;
+    } else {
+      return false;
+    }
+  }
+  use(fn2) {
+    this._fns = [...this._fns, fn2];
+    return this._fns.length - 1;
+  }
+}
+var createQuerySerializer = ({ allowReserved, array, object } = {}) => {
+  const querySerializer = (queryParams) => {
+    const search = [];
+    if (queryParams && typeof queryParams === "object") {
+      for (const name in queryParams) {
+        const value = queryParams[name];
+        if (value === undefined || value === null) {
+          continue;
+        }
+        if (Array.isArray(value)) {
+          const serializedArray = serializeArrayParam({
+            allowReserved,
+            explode: true,
+            name,
+            style: "form",
+            value,
+            ...array
+          });
+          if (serializedArray)
+            search.push(serializedArray);
+        } else if (typeof value === "object") {
+          const serializedObject = serializeObjectParam({
+            allowReserved,
+            explode: true,
+            name,
+            style: "deepObject",
+            value,
+            ...object
+          });
+          if (serializedObject)
+            search.push(serializedObject);
+        } else {
+          const serializedPrimitive = serializePrimitiveParam({
+            allowReserved,
+            name,
+            value
+          });
+          if (serializedPrimitive)
+            search.push(serializedPrimitive);
+        }
+      }
+    }
+    return search.join("&");
+  };
+  return querySerializer;
+}, getParseAs = (contentType) => {
+  if (!contentType) {
+    return "stream";
+  }
+  const cleanContent = contentType.split(";")[0]?.trim();
+  if (!cleanContent) {
+    return;
+  }
+  if (cleanContent.startsWith("application/json") || cleanContent.endsWith("+json")) {
+    return "json";
+  }
+  if (cleanContent === "multipart/form-data") {
+    return "formData";
+  }
+  if (["application/", "audio/", "image/", "video/"].some((type) => cleanContent.startsWith(type))) {
+    return "blob";
+  }
+  if (cleanContent.startsWith("text/")) {
+    return "text";
+  }
+  return;
+}, checkForExistence = (options, name) => {
+  if (!name) {
+    return false;
+  }
+  if (options.headers.has(name) || options.query?.[name] || options.headers.get("Cookie")?.includes(`${name}=`)) {
+    return true;
+  }
+  return false;
+}, setAuthParams = async ({ security, ...options }) => {
+  for (const auth of security) {
+    if (checkForExistence(options, auth.name)) {
+      continue;
+    }
+    const token = await getAuthToken(auth, options.auth);
+    if (!token) {
+      continue;
+    }
+    const name = auth.name ?? "Authorization";
+    switch (auth.in) {
+      case "query":
+        if (!options.query) {
+          options.query = {};
+        }
+        options.query[name] = token;
+        break;
+      case "cookie":
+        options.headers.append("Cookie", `${name}=${token}`);
+        break;
+      case "header":
+      default:
+        options.headers.set(name, token);
+        break;
+    }
+  }
+}, buildUrl = (options) => getUrl({
+  baseUrl: options.baseUrl,
+  path: options.path,
+  query: options.query,
+  querySerializer: typeof options.querySerializer === "function" ? options.querySerializer : createQuerySerializer(options.querySerializer),
+  url: options.url
+}), mergeConfigs = (a, b2) => {
+  const config = { ...a, ...b2 };
+  if (config.baseUrl?.endsWith("/")) {
+    config.baseUrl = config.baseUrl.substring(0, config.baseUrl.length - 1);
+  }
+  config.headers = mergeHeaders(a.headers, b2.headers);
+  return config;
+}, mergeHeaders = (...headers) => {
+  const mergedHeaders = new Headers;
+  for (const header of headers) {
+    if (!header || typeof header !== "object") {
+      continue;
+    }
+    const iterator = header instanceof Headers ? header.entries() : Object.entries(header);
+    for (const [key, value] of iterator) {
+      if (value === null) {
+        mergedHeaders.delete(key);
+      } else if (Array.isArray(value)) {
+        for (const v2 of value) {
+          mergedHeaders.append(key, v2);
+        }
+      } else if (value !== undefined) {
+        mergedHeaders.set(key, typeof value === "object" ? JSON.stringify(value) : value);
+      }
+    }
+  }
+  return mergedHeaders;
+}, createInterceptors = () => ({
+  error: new Interceptors,
+  request: new Interceptors,
+  response: new Interceptors
+}), defaultQuerySerializer, defaultHeaders, createConfig = (override = {}) => ({
+  ...jsonBodySerializer,
+  headers: defaultHeaders,
+  parseAs: "auto",
+  querySerializer: defaultQuerySerializer,
+  ...override
+});
+var init_utils_gen2 = __esm(() => {
+  init_bodySerializer_gen();
+  init_utils_gen();
+  defaultQuerySerializer = createQuerySerializer({
+    allowReserved: false,
+    array: {
+      explode: true,
+      style: "form"
+    },
+    object: {
+      explode: true,
+      style: "deepObject"
+    }
+  });
+  defaultHeaders = {
+    "Content-Type": "application/json"
+  };
+});
+
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/gen/client/client.gen.js
+var createClient = (config = {}) => {
+  let _config = mergeConfigs(createConfig(), config);
+  const getConfig = () => ({ ..._config });
+  const setConfig = (config2) => {
+    _config = mergeConfigs(_config, config2);
+    return getConfig();
+  };
+  const interceptors = createInterceptors();
+  const beforeRequest = async (options) => {
+    const opts = {
+      ..._config,
+      ...options,
+      fetch: options.fetch ?? _config.fetch ?? globalThis.fetch,
+      headers: mergeHeaders(_config.headers, options.headers),
+      serializedBody: undefined
+    };
+    if (opts.security) {
+      await setAuthParams({
+        ...opts,
+        security: opts.security
+      });
+    }
+    if (opts.requestValidator) {
+      await opts.requestValidator(opts);
+    }
+    if (opts.body && opts.bodySerializer) {
+      opts.serializedBody = opts.bodySerializer(opts.body);
+    }
+    if (opts.serializedBody === undefined || opts.serializedBody === "") {
+      opts.headers.delete("Content-Type");
+    }
+    const url = buildUrl(opts);
+    return { opts, url };
+  };
+  const request = async (options) => {
+    const { opts, url } = await beforeRequest(options);
+    const requestInit = {
+      redirect: "follow",
+      ...opts,
+      body: opts.serializedBody
+    };
+    let request2 = new Request(url, requestInit);
+    for (const fn2 of interceptors.request._fns) {
+      if (fn2) {
+        request2 = await fn2(request2, opts);
+      }
+    }
+    const _fetch = opts.fetch;
+    let response = await _fetch(request2);
+    for (const fn2 of interceptors.response._fns) {
+      if (fn2) {
+        response = await fn2(response, request2, opts);
+      }
+    }
+    const result = {
+      request: request2,
+      response
+    };
+    if (response.ok) {
+      if (response.status === 204 || response.headers.get("Content-Length") === "0") {
+        return opts.responseStyle === "data" ? {} : {
+          data: {},
+          ...result
+        };
+      }
+      const parseAs = (opts.parseAs === "auto" ? getParseAs(response.headers.get("Content-Type")) : opts.parseAs) ?? "json";
+      let data;
+      switch (parseAs) {
+        case "arrayBuffer":
+        case "blob":
+        case "formData":
+        case "json":
+        case "text":
+          data = await response[parseAs]();
+          break;
+        case "stream":
+          return opts.responseStyle === "data" ? response.body : {
+            data: response.body,
+            ...result
+          };
+      }
+      if (parseAs === "json") {
+        if (opts.responseValidator) {
+          await opts.responseValidator(data);
+        }
+        if (opts.responseTransformer) {
+          data = await opts.responseTransformer(data);
+        }
+      }
+      return opts.responseStyle === "data" ? data : {
+        data,
+        ...result
+      };
+    }
+    const textError = await response.text();
+    let jsonError;
+    try {
+      jsonError = JSON.parse(textError);
+    } catch {}
+    const error = jsonError ?? textError;
+    let finalError = error;
+    for (const fn2 of interceptors.error._fns) {
+      if (fn2) {
+        finalError = await fn2(error, response, request2, opts);
+      }
+    }
+    finalError = finalError || {};
+    if (opts.throwOnError) {
+      throw finalError;
+    }
+    return opts.responseStyle === "data" ? undefined : {
+      error: finalError,
+      ...result
+    };
+  };
+  const makeMethod = (method) => {
+    const fn2 = (options) => request({ ...options, method });
+    fn2.sse = async (options) => {
+      const { opts, url } = await beforeRequest(options);
+      return createSseClient({
+        ...opts,
+        body: opts.body,
+        headers: opts.headers,
+        method,
+        url
+      });
+    };
+    return fn2;
+  };
+  return {
+    buildUrl,
+    connect: makeMethod("CONNECT"),
+    delete: makeMethod("DELETE"),
+    get: makeMethod("GET"),
+    getConfig,
+    head: makeMethod("HEAD"),
+    interceptors,
+    options: makeMethod("OPTIONS"),
+    patch: makeMethod("PATCH"),
+    post: makeMethod("POST"),
+    put: makeMethod("PUT"),
+    request,
+    setConfig,
+    trace: makeMethod("TRACE")
+  };
+};
+var init_client_gen = __esm(() => {
+  init_utils_gen2();
+});
+
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/gen/core/params.gen.js
+var extraPrefixesMap, extraPrefixes;
+var init_params_gen = __esm(() => {
+  extraPrefixesMap = {
+    $body_: "body",
+    $headers_: "headers",
+    $path_: "path",
+    $query_: "query"
+  };
+  extraPrefixes = Object.entries(extraPrefixesMap);
+});
+
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/gen/client/index.js
+var init_client = __esm(() => {
+  init_bodySerializer_gen();
+  init_params_gen();
+  init_client_gen();
+  init_utils_gen2();
+});
+
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/gen/client.gen.js
+var client;
+var init_client_gen2 = __esm(() => {
+  init_client();
+  client = createClient(createConfig({
+    baseUrl: "http://localhost:4096"
+  }));
+});
+
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/gen/sdk.gen.js
+class _HeyApiClient {
+  _client = client;
+  constructor(args) {
+    if (args?.client) {
+      this._client = args.client;
+    }
+  }
+}
+var Global, Project, Pty, Config, Tool, Instance, Path, Vcs, Session, Command, Oauth, Provider, Find, File, App, Auth, Mcp, Lsp, Formatter, Control, Tui, Event, OpencodeClient;
+var init_sdk_gen = __esm(() => {
+  init_client_gen2();
+  Global = class Global extends _HeyApiClient {
+    event(options) {
+      return (options?.client ?? this._client).get.sse({
+        url: "/global/event",
+        ...options
+      });
+    }
+  };
+  Project = class Project extends _HeyApiClient {
+    list(options) {
+      return (options?.client ?? this._client).get({
+        url: "/project",
+        ...options
+      });
+    }
+    current(options) {
+      return (options?.client ?? this._client).get({
+        url: "/project/current",
+        ...options
+      });
+    }
+  };
+  Pty = class Pty extends _HeyApiClient {
+    list(options) {
+      return (options?.client ?? this._client).get({
+        url: "/pty",
+        ...options
+      });
+    }
+    create(options) {
+      return (options?.client ?? this._client).post({
+        url: "/pty",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers
+        }
+      });
+    }
+    remove(options) {
+      return (options.client ?? this._client).delete({
+        url: "/pty/{id}",
+        ...options
+      });
+    }
+    get(options) {
+      return (options.client ?? this._client).get({
+        url: "/pty/{id}",
+        ...options
+      });
+    }
+    update(options) {
+      return (options.client ?? this._client).put({
+        url: "/pty/{id}",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+    }
+    connect(options) {
+      return (options.client ?? this._client).get({
+        url: "/pty/{id}/connect",
+        ...options
+      });
+    }
+  };
+  Config = class Config extends _HeyApiClient {
+    get(options) {
+      return (options?.client ?? this._client).get({
+        url: "/config",
+        ...options
+      });
+    }
+    update(options) {
+      return (options?.client ?? this._client).patch({
+        url: "/config",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers
+        }
+      });
+    }
+    providers(options) {
+      return (options?.client ?? this._client).get({
+        url: "/config/providers",
+        ...options
+      });
+    }
+  };
+  Tool = class Tool extends _HeyApiClient {
+    ids(options) {
+      return (options?.client ?? this._client).get({
+        url: "/experimental/tool/ids",
+        ...options
+      });
+    }
+    list(options) {
+      return (options.client ?? this._client).get({
+        url: "/experimental/tool",
+        ...options
+      });
+    }
+  };
+  Instance = class Instance extends _HeyApiClient {
+    dispose(options) {
+      return (options?.client ?? this._client).post({
+        url: "/instance/dispose",
+        ...options
+      });
+    }
+  };
+  Path = class Path extends _HeyApiClient {
+    get(options) {
+      return (options?.client ?? this._client).get({
+        url: "/path",
+        ...options
+      });
+    }
+  };
+  Vcs = class Vcs extends _HeyApiClient {
+    get(options) {
+      return (options?.client ?? this._client).get({
+        url: "/vcs",
+        ...options
+      });
+    }
+  };
+  Session = class Session extends _HeyApiClient {
+    list(options) {
+      return (options?.client ?? this._client).get({
+        url: "/session",
+        ...options
+      });
+    }
+    create(options) {
+      return (options?.client ?? this._client).post({
+        url: "/session",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers
+        }
+      });
+    }
+    status(options) {
+      return (options?.client ?? this._client).get({
+        url: "/session/status",
+        ...options
+      });
+    }
+    delete(options) {
+      return (options.client ?? this._client).delete({
+        url: "/session/{id}",
+        ...options
+      });
+    }
+    get(options) {
+      return (options.client ?? this._client).get({
+        url: "/session/{id}",
+        ...options
+      });
+    }
+    update(options) {
+      return (options.client ?? this._client).patch({
+        url: "/session/{id}",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+    }
+    children(options) {
+      return (options.client ?? this._client).get({
+        url: "/session/{id}/children",
+        ...options
+      });
+    }
+    todo(options) {
+      return (options.client ?? this._client).get({
+        url: "/session/{id}/todo",
+        ...options
+      });
+    }
+    init(options) {
+      return (options.client ?? this._client).post({
+        url: "/session/{id}/init",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+    }
+    fork(options) {
+      return (options.client ?? this._client).post({
+        url: "/session/{id}/fork",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+    }
+    abort(options) {
+      return (options.client ?? this._client).post({
+        url: "/session/{id}/abort",
+        ...options
+      });
+    }
+    unshare(options) {
+      return (options.client ?? this._client).delete({
+        url: "/session/{id}/share",
+        ...options
+      });
+    }
+    share(options) {
+      return (options.client ?? this._client).post({
+        url: "/session/{id}/share",
+        ...options
+      });
+    }
+    diff(options) {
+      return (options.client ?? this._client).get({
+        url: "/session/{id}/diff",
+        ...options
+      });
+    }
+    summarize(options) {
+      return (options.client ?? this._client).post({
+        url: "/session/{id}/summarize",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+    }
+    messages(options) {
+      return (options.client ?? this._client).get({
+        url: "/session/{id}/message",
+        ...options
+      });
+    }
+    prompt(options) {
+      return (options.client ?? this._client).post({
+        url: "/session/{id}/message",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+    }
+    message(options) {
+      return (options.client ?? this._client).get({
+        url: "/session/{id}/message/{messageID}",
+        ...options
+      });
+    }
+    promptAsync(options) {
+      return (options.client ?? this._client).post({
+        url: "/session/{id}/prompt_async",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+    }
+    command(options) {
+      return (options.client ?? this._client).post({
+        url: "/session/{id}/command",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+    }
+    shell(options) {
+      return (options.client ?? this._client).post({
+        url: "/session/{id}/shell",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+    }
+    revert(options) {
+      return (options.client ?? this._client).post({
+        url: "/session/{id}/revert",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+    }
+    unrevert(options) {
+      return (options.client ?? this._client).post({
+        url: "/session/{id}/unrevert",
+        ...options
+      });
+    }
+  };
+  Command = class Command extends _HeyApiClient {
+    list(options) {
+      return (options?.client ?? this._client).get({
+        url: "/command",
+        ...options
+      });
+    }
+  };
+  Oauth = class Oauth extends _HeyApiClient {
+    authorize(options) {
+      return (options.client ?? this._client).post({
+        url: "/provider/{id}/oauth/authorize",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+    }
+    callback(options) {
+      return (options.client ?? this._client).post({
+        url: "/provider/{id}/oauth/callback",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+    }
+  };
+  Provider = class Provider extends _HeyApiClient {
+    list(options) {
+      return (options?.client ?? this._client).get({
+        url: "/provider",
+        ...options
+      });
+    }
+    auth(options) {
+      return (options?.client ?? this._client).get({
+        url: "/provider/auth",
+        ...options
+      });
+    }
+    oauth = new Oauth({ client: this._client });
+  };
+  Find = class Find extends _HeyApiClient {
+    text(options) {
+      return (options.client ?? this._client).get({
+        url: "/find",
+        ...options
+      });
+    }
+    files(options) {
+      return (options.client ?? this._client).get({
+        url: "/find/file",
+        ...options
+      });
+    }
+    symbols(options) {
+      return (options.client ?? this._client).get({
+        url: "/find/symbol",
+        ...options
+      });
+    }
+  };
+  File = class File extends _HeyApiClient {
+    list(options) {
+      return (options.client ?? this._client).get({
+        url: "/file",
+        ...options
+      });
+    }
+    read(options) {
+      return (options.client ?? this._client).get({
+        url: "/file/content",
+        ...options
+      });
+    }
+    status(options) {
+      return (options?.client ?? this._client).get({
+        url: "/file/status",
+        ...options
+      });
+    }
+  };
+  App = class App extends _HeyApiClient {
+    log(options) {
+      return (options?.client ?? this._client).post({
+        url: "/log",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers
+        }
+      });
+    }
+    agents(options) {
+      return (options?.client ?? this._client).get({
+        url: "/agent",
+        ...options
+      });
+    }
+  };
+  Auth = class Auth extends _HeyApiClient {
+    remove(options) {
+      return (options.client ?? this._client).delete({
+        url: "/mcp/{name}/auth",
+        ...options
+      });
+    }
+    start(options) {
+      return (options.client ?? this._client).post({
+        url: "/mcp/{name}/auth",
+        ...options
+      });
+    }
+    callback(options) {
+      return (options.client ?? this._client).post({
+        url: "/mcp/{name}/auth/callback",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+    }
+    authenticate(options) {
+      return (options.client ?? this._client).post({
+        url: "/mcp/{name}/auth/authenticate",
+        ...options
+      });
+    }
+    set(options) {
+      return (options.client ?? this._client).put({
+        url: "/auth/{id}",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+    }
+  };
+  Mcp = class Mcp extends _HeyApiClient {
+    status(options) {
+      return (options?.client ?? this._client).get({
+        url: "/mcp",
+        ...options
+      });
+    }
+    add(options) {
+      return (options?.client ?? this._client).post({
+        url: "/mcp",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers
+        }
+      });
+    }
+    connect(options) {
+      return (options.client ?? this._client).post({
+        url: "/mcp/{name}/connect",
+        ...options
+      });
+    }
+    disconnect(options) {
+      return (options.client ?? this._client).post({
+        url: "/mcp/{name}/disconnect",
+        ...options
+      });
+    }
+    auth = new Auth({ client: this._client });
+  };
+  Lsp = class Lsp extends _HeyApiClient {
+    status(options) {
+      return (options?.client ?? this._client).get({
+        url: "/lsp",
+        ...options
+      });
+    }
+  };
+  Formatter = class Formatter extends _HeyApiClient {
+    status(options) {
+      return (options?.client ?? this._client).get({
+        url: "/formatter",
+        ...options
+      });
+    }
+  };
+  Control = class Control extends _HeyApiClient {
+    next(options) {
+      return (options?.client ?? this._client).get({
+        url: "/tui/control/next",
+        ...options
+      });
+    }
+    response(options) {
+      return (options?.client ?? this._client).post({
+        url: "/tui/control/response",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers
+        }
+      });
+    }
+  };
+  Tui = class Tui extends _HeyApiClient {
+    appendPrompt(options) {
+      return (options?.client ?? this._client).post({
+        url: "/tui/append-prompt",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers
+        }
+      });
+    }
+    openHelp(options) {
+      return (options?.client ?? this._client).post({
+        url: "/tui/open-help",
+        ...options
+      });
+    }
+    openSessions(options) {
+      return (options?.client ?? this._client).post({
+        url: "/tui/open-sessions",
+        ...options
+      });
+    }
+    openThemes(options) {
+      return (options?.client ?? this._client).post({
+        url: "/tui/open-themes",
+        ...options
+      });
+    }
+    openModels(options) {
+      return (options?.client ?? this._client).post({
+        url: "/tui/open-models",
+        ...options
+      });
+    }
+    submitPrompt(options) {
+      return (options?.client ?? this._client).post({
+        url: "/tui/submit-prompt",
+        ...options
+      });
+    }
+    clearPrompt(options) {
+      return (options?.client ?? this._client).post({
+        url: "/tui/clear-prompt",
+        ...options
+      });
+    }
+    executeCommand(options) {
+      return (options?.client ?? this._client).post({
+        url: "/tui/execute-command",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers
+        }
+      });
+    }
+    showToast(options) {
+      return (options?.client ?? this._client).post({
+        url: "/tui/show-toast",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers
+        }
+      });
+    }
+    publish(options) {
+      return (options?.client ?? this._client).post({
+        url: "/tui/publish",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers
+        }
+      });
+    }
+    control = new Control({ client: this._client });
+  };
+  Event = class Event extends _HeyApiClient {
+    subscribe(options) {
+      return (options?.client ?? this._client).get.sse({
+        url: "/event",
+        ...options
+      });
+    }
+  };
+  OpencodeClient = class OpencodeClient extends _HeyApiClient {
+    postSessionIdPermissionsPermissionId(options) {
+      return (options.client ?? this._client).post({
+        url: "/session/{id}/permissions/{permissionID}",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+    }
+    global = new Global({ client: this._client });
+    project = new Project({ client: this._client });
+    pty = new Pty({ client: this._client });
+    config = new Config({ client: this._client });
+    tool = new Tool({ client: this._client });
+    instance = new Instance({ client: this._client });
+    path = new Path({ client: this._client });
+    vcs = new Vcs({ client: this._client });
+    session = new Session({ client: this._client });
+    command = new Command({ client: this._client });
+    provider = new Provider({ client: this._client });
+    find = new Find({ client: this._client });
+    file = new File({ client: this._client });
+    app = new App({ client: this._client });
+    mcp = new Mcp({ client: this._client });
+    lsp = new Lsp({ client: this._client });
+    formatter = new Formatter({ client: this._client });
+    tui = new Tui({ client: this._client });
+    auth = new Auth({ client: this._client });
+    event = new Event({ client: this._client });
+  };
+});
+
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/error-interceptor.js
+function wrapClientError(error, response, request, opts) {
+  if (!opts?.throwOnError)
+    return error;
+  if (error instanceof Error)
+    return error;
+  if (typeof error === "object" && error !== null && Object.keys(error).length > 0) {
+    const obj = error;
+    const message = typeof obj.data?.message === "string" && obj.data.message || typeof obj.message === "string" && obj.message || typeof obj.name === "string" && obj.name || describe(request, response);
+    return new Error(message, { cause: { body: error, status: response?.status } });
+  }
+  if (typeof error === "string" && error.length > 0) {
+    return new Error(error, { cause: { body: error, status: response?.status } });
+  }
+  const reason = response ? "(empty response body)" : "network error (no response)";
+  return new Error(`opencode server ${describe(request, response)}: ${reason}`, {
+    cause: { body: error, status: response?.status }
+  });
+}
+function describe(request, response) {
+  const method = request?.method ?? "?";
+  const url = request?.url ?? "?";
+  const status = response?.status;
+  const statusText = response?.statusText;
+  return `${method} ${url}${status ? " → " + status : ""}${statusText ? " " + statusText : ""}`;
+}
+
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/client.js
+function pick(value, fallback) {
+  if (!value)
+    return;
+  if (!fallback)
+    return value;
+  if (value === fallback)
+    return fallback;
+  if (value === encodeURIComponent(fallback))
+    return fallback;
+  return value;
+}
+function rewrite(request, directory) {
+  if (request.method !== "GET" && request.method !== "HEAD")
+    return request;
+  const value = pick(request.headers.get("x-opencode-directory"), directory);
+  if (!value)
+    return request;
+  const url = new URL(request.url);
+  if (!url.searchParams.has("directory")) {
+    url.searchParams.set("directory", value);
+  }
+  const next = new Request(url, request);
+  next.headers.delete("x-opencode-directory");
+  return next;
+}
+function createOpencodeClient(config) {
+  if (!config?.fetch) {
+    const customFetch = (req) => {
+      req.timeout = false;
+      return fetch(req);
+    };
+    config = {
+      ...config,
+      fetch: customFetch
+    };
+  }
+  if (config?.directory) {
+    config.headers = {
+      ...config.headers,
+      "x-opencode-directory": encodeURIComponent(config.directory)
+    };
+  }
+  const client2 = createClient(config);
+  client2.interceptors.request.use((request) => rewrite(request, config?.directory));
+  client2.interceptors.error.use(wrapClientError);
+  return new OpencodeClient({ client: client2 });
+}
+var init_client2 = __esm(() => {
+  init_client_gen();
+  init_sdk_gen();
+  init_types_gen();
+});
+
+// ../../node_modules/.bun/isexe@2.0.0/node_modules/isexe/windows.js
+var require_windows = __commonJS((exports, module) => {
+  module.exports = isexe;
+  isexe.sync = sync;
+  var fs2 = __require("fs");
+  function checkPathExt(path, options) {
+    var pathext = options.pathExt !== undefined ? options.pathExt : process.env.PATHEXT;
+    if (!pathext) {
+      return true;
+    }
+    pathext = pathext.split(";");
+    if (pathext.indexOf("") !== -1) {
+      return true;
+    }
+    for (var i = 0;i < pathext.length; i++) {
+      var p2 = pathext[i].toLowerCase();
+      if (p2 && path.substr(-p2.length).toLowerCase() === p2) {
+        return true;
+      }
+    }
+    return false;
+  }
+  function checkStat(stat, path, options) {
+    if (!stat.isSymbolicLink() && !stat.isFile()) {
+      return false;
+    }
+    return checkPathExt(path, options);
+  }
+  function isexe(path, options, cb) {
+    fs2.stat(path, function(er2, stat) {
+      cb(er2, er2 ? false : checkStat(stat, path, options));
+    });
+  }
+  function sync(path, options) {
+    return checkStat(fs2.statSync(path), path, options);
+  }
+});
+
+// ../../node_modules/.bun/isexe@2.0.0/node_modules/isexe/mode.js
+var require_mode = __commonJS((exports, module) => {
+  module.exports = isexe;
+  isexe.sync = sync;
+  var fs2 = __require("fs");
+  function isexe(path, options, cb) {
+    fs2.stat(path, function(er2, stat) {
+      cb(er2, er2 ? false : checkStat(stat, options));
+    });
+  }
+  function sync(path, options) {
+    return checkStat(fs2.statSync(path), options);
+  }
+  function checkStat(stat, options) {
+    return stat.isFile() && checkMode(stat, options);
+  }
+  function checkMode(stat, options) {
+    var mod = stat.mode;
+    var uid = stat.uid;
+    var gid = stat.gid;
+    var myUid = options.uid !== undefined ? options.uid : process.getuid && process.getuid();
+    var myGid = options.gid !== undefined ? options.gid : process.getgid && process.getgid();
+    var u2 = parseInt("100", 8);
+    var g2 = parseInt("010", 8);
+    var o = parseInt("001", 8);
+    var ug = u2 | g2;
+    var ret = mod & o || mod & g2 && gid === myGid || mod & u2 && uid === myUid || mod & ug && myUid === 0;
+    return ret;
+  }
+});
+
+// ../../node_modules/.bun/isexe@2.0.0/node_modules/isexe/index.js
+var require_isexe = __commonJS((exports, module) => {
+  var fs2 = __require("fs");
+  var core;
+  if (process.platform === "win32" || global.TESTING_WINDOWS) {
+    core = require_windows();
+  } else {
+    core = require_mode();
+  }
+  module.exports = isexe;
+  isexe.sync = sync;
+  function isexe(path, options, cb) {
+    if (typeof options === "function") {
+      cb = options;
+      options = {};
+    }
+    if (!cb) {
+      if (typeof Promise !== "function") {
+        throw new TypeError("callback not provided");
+      }
+      return new Promise(function(resolve, reject) {
+        isexe(path, options || {}, function(er2, is2) {
+          if (er2) {
+            reject(er2);
+          } else {
+            resolve(is2);
+          }
+        });
+      });
+    }
+    core(path, options || {}, function(er2, is2) {
+      if (er2) {
+        if (er2.code === "EACCES" || options && options.ignoreErrors) {
+          er2 = null;
+          is2 = false;
+        }
+      }
+      cb(er2, is2);
+    });
+  }
+  function sync(path, options) {
+    try {
+      return core.sync(path, options || {});
+    } catch (er2) {
+      if (options && options.ignoreErrors || er2.code === "EACCES") {
+        return false;
+      } else {
+        throw er2;
+      }
+    }
+  }
+});
+
+// ../../node_modules/.bun/which@2.0.2/node_modules/which/which.js
+var require_which = __commonJS((exports, module) => {
+  var isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
+  var path = __require("path");
+  var COLON = isWindows ? ";" : ":";
+  var isexe = require_isexe();
+  var getNotFoundError = (cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" });
+  var getPathInfo = (cmd, opt) => {
+    const colon = opt.colon || COLON;
+    const pathEnv = cmd.match(/\//) || isWindows && cmd.match(/\\/) ? [""] : [
+      ...isWindows ? [process.cwd()] : [],
+      ...(opt.path || process.env.PATH || "").split(colon)
+    ];
+    const pathExtExe = isWindows ? opt.pathExt || process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM" : "";
+    const pathExt = isWindows ? pathExtExe.split(colon) : [""];
+    if (isWindows) {
+      if (cmd.indexOf(".") !== -1 && pathExt[0] !== "")
+        pathExt.unshift("");
+    }
+    return {
+      pathEnv,
+      pathExt,
+      pathExtExe
+    };
+  };
+  var which = (cmd, opt, cb) => {
+    if (typeof opt === "function") {
+      cb = opt;
+      opt = {};
+    }
+    if (!opt)
+      opt = {};
+    const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
+    const found = [];
+    const step = (i) => new Promise((resolve, reject) => {
+      if (i === pathEnv.length)
+        return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
+      const ppRaw = pathEnv[i];
+      const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
+      const pCmd = path.join(pathPart, cmd);
+      const p2 = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
+      resolve(subStep(p2, i, 0));
+    });
+    const subStep = (p2, i, ii2) => new Promise((resolve, reject) => {
+      if (ii2 === pathExt.length)
+        return resolve(step(i + 1));
+      const ext = pathExt[ii2];
+      isexe(p2 + ext, { pathExt: pathExtExe }, (er2, is2) => {
+        if (!er2 && is2) {
+          if (opt.all)
+            found.push(p2 + ext);
+          else
+            return resolve(p2 + ext);
+        }
+        return resolve(subStep(p2, i, ii2 + 1));
+      });
+    });
+    return cb ? step(0).then((res) => cb(null, res), cb) : step(0);
+  };
+  var whichSync = (cmd, opt) => {
+    opt = opt || {};
+    const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
+    const found = [];
+    for (let i = 0;i < pathEnv.length; i++) {
+      const ppRaw = pathEnv[i];
+      const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
+      const pCmd = path.join(pathPart, cmd);
+      const p2 = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
+      for (let j2 = 0;j2 < pathExt.length; j2++) {
+        const cur = p2 + pathExt[j2];
+        try {
+          const is2 = isexe.sync(cur, { pathExt: pathExtExe });
+          if (is2) {
+            if (opt.all)
+              found.push(cur);
+            else
+              return cur;
+          }
+        } catch (ex) {}
+      }
+    }
+    if (opt.all && found.length)
+      return found;
+    if (opt.nothrow)
+      return null;
+    throw getNotFoundError(cmd);
+  };
+  module.exports = which;
+  which.sync = whichSync;
+});
+
+// ../../node_modules/.bun/path-key@3.1.1/node_modules/path-key/index.js
+var require_path_key = __commonJS((exports, module) => {
+  var pathKey = (options = {}) => {
+    const environment = options.env || process.env;
+    const platform = options.platform || process.platform;
+    if (platform !== "win32") {
+      return "PATH";
+    }
+    return Object.keys(environment).reverse().find((key) => key.toUpperCase() === "PATH") || "Path";
+  };
+  module.exports = pathKey;
+  module.exports.default = pathKey;
+});
+
+// ../../node_modules/.bun/cross-spawn@7.0.6/node_modules/cross-spawn/lib/util/resolveCommand.js
+var require_resolveCommand = __commonJS((exports, module) => {
+  var path = __require("path");
+  var which = require_which();
+  var getPathKey = require_path_key();
+  function resolveCommandAttempt(parsed, withoutPathExt) {
+    const env = parsed.options.env || process.env;
+    const cwd = process.cwd();
+    const hasCustomCwd = parsed.options.cwd != null;
+    const shouldSwitchCwd = hasCustomCwd && process.chdir !== undefined && !process.chdir.disabled;
+    if (shouldSwitchCwd) {
+      try {
+        process.chdir(parsed.options.cwd);
+      } catch (err) {}
+    }
+    let resolved;
+    try {
+      resolved = which.sync(parsed.command, {
+        path: env[getPathKey({ env })],
+        pathExt: withoutPathExt ? path.delimiter : undefined
+      });
+    } catch (e) {} finally {
+      if (shouldSwitchCwd) {
+        process.chdir(cwd);
+      }
+    }
+    if (resolved) {
+      resolved = path.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
+    }
+    return resolved;
+  }
+  function resolveCommand(parsed) {
+    return resolveCommandAttempt(parsed) || resolveCommandAttempt(parsed, true);
+  }
+  module.exports = resolveCommand;
+});
+
+// ../../node_modules/.bun/cross-spawn@7.0.6/node_modules/cross-spawn/lib/util/escape.js
+var require_escape = __commonJS((exports, module) => {
+  var metaCharsRegExp = /([()\][%!^"`<>&|;, *?])/g;
+  function escapeCommand(arg) {
+    arg = arg.replace(metaCharsRegExp, "^$1");
+    return arg;
+  }
+  function escapeArgument(arg, doubleEscapeMetaChars) {
+    arg = `${arg}`;
+    arg = arg.replace(/(?=(\\+?)?)\1"/g, "$1$1\\\"");
+    arg = arg.replace(/(?=(\\+?)?)\1$/, "$1$1");
+    arg = `"${arg}"`;
+    arg = arg.replace(metaCharsRegExp, "^$1");
+    if (doubleEscapeMetaChars) {
+      arg = arg.replace(metaCharsRegExp, "^$1");
+    }
+    return arg;
+  }
+  exports.command = escapeCommand;
+  exports.argument = escapeArgument;
+});
+
+// ../../node_modules/.bun/shebang-regex@3.0.0/node_modules/shebang-regex/index.js
+var require_shebang_regex = __commonJS((exports, module) => {
+  module.exports = /^#!(.*)/;
+});
+
+// ../../node_modules/.bun/shebang-command@2.0.0/node_modules/shebang-command/index.js
+var require_shebang_command = __commonJS((exports, module) => {
+  var shebangRegex = require_shebang_regex();
+  module.exports = (string = "") => {
+    const match = string.match(shebangRegex);
+    if (!match) {
+      return null;
+    }
+    const [path, argument] = match[0].replace(/#! ?/, "").split(" ");
+    const binary = path.split("/").pop();
+    if (binary === "env") {
+      return argument;
+    }
+    return argument ? `${binary} ${argument}` : binary;
+  };
+});
+
+// ../../node_modules/.bun/cross-spawn@7.0.6/node_modules/cross-spawn/lib/util/readShebang.js
+var require_readShebang = __commonJS((exports, module) => {
+  var fs2 = __require("fs");
+  var shebangCommand = require_shebang_command();
+  function readShebang(command) {
+    const size = 150;
+    const buffer = Buffer.alloc(size);
+    let fd;
+    try {
+      fd = fs2.openSync(command, "r");
+      fs2.readSync(fd, buffer, 0, size, 0);
+      fs2.closeSync(fd);
+    } catch (e) {}
+    return shebangCommand(buffer.toString());
+  }
+  module.exports = readShebang;
+});
+
+// ../../node_modules/.bun/cross-spawn@7.0.6/node_modules/cross-spawn/lib/parse.js
+var require_parse = __commonJS((exports, module) => {
+  var path = __require("path");
+  var resolveCommand = require_resolveCommand();
+  var escape = require_escape();
+  var readShebang = require_readShebang();
+  var isWin = process.platform === "win32";
+  var isExecutableRegExp = /\.(?:com|exe)$/i;
+  var isCmdShimRegExp = /node_modules[\\/].bin[\\/][^\\/]+\.cmd$/i;
+  function detectShebang(parsed) {
+    parsed.file = resolveCommand(parsed);
+    const shebang = parsed.file && readShebang(parsed.file);
+    if (shebang) {
+      parsed.args.unshift(parsed.file);
+      parsed.command = shebang;
+      return resolveCommand(parsed);
+    }
+    return parsed.file;
+  }
+  function parseNonShell(parsed) {
+    if (!isWin) {
+      return parsed;
+    }
+    const commandFile = detectShebang(parsed);
+    const needsShell = !isExecutableRegExp.test(commandFile);
+    if (parsed.options.forceShell || needsShell) {
+      const needsDoubleEscapeMetaChars = isCmdShimRegExp.test(commandFile);
+      parsed.command = path.normalize(parsed.command);
+      parsed.command = escape.command(parsed.command);
+      parsed.args = parsed.args.map((arg) => escape.argument(arg, needsDoubleEscapeMetaChars));
+      const shellCommand = [parsed.command].concat(parsed.args).join(" ");
+      parsed.args = ["/d", "/s", "/c", `"${shellCommand}"`];
+      parsed.command = process.env.comspec || "cmd.exe";
+      parsed.options.windowsVerbatimArguments = true;
+    }
+    return parsed;
+  }
+  function parse(command, args, options) {
+    if (args && !Array.isArray(args)) {
+      options = args;
+      args = null;
+    }
+    args = args ? args.slice(0) : [];
+    options = Object.assign({}, options);
+    const parsed = {
+      command,
+      args,
+      options,
+      file: undefined,
+      original: {
+        command,
+        args
+      }
+    };
+    return options.shell ? parsed : parseNonShell(parsed);
+  }
+  module.exports = parse;
+});
+
+// ../../node_modules/.bun/cross-spawn@7.0.6/node_modules/cross-spawn/lib/enoent.js
+var require_enoent = __commonJS((exports, module) => {
+  var isWin = process.platform === "win32";
+  function notFoundError(original, syscall) {
+    return Object.assign(new Error(`${syscall} ${original.command} ENOENT`), {
+      code: "ENOENT",
+      errno: "ENOENT",
+      syscall: `${syscall} ${original.command}`,
+      path: original.command,
+      spawnargs: original.args
+    });
+  }
+  function hookChildProcess(cp, parsed) {
+    if (!isWin) {
+      return;
+    }
+    const originalEmit = cp.emit;
+    cp.emit = function(name, arg1) {
+      if (name === "exit") {
+        const err = verifyENOENT(arg1, parsed);
+        if (err) {
+          return originalEmit.call(cp, "error", err);
+        }
+      }
+      return originalEmit.apply(cp, arguments);
+    };
+  }
+  function verifyENOENT(status, parsed) {
+    if (isWin && status === 1 && !parsed.file) {
+      return notFoundError(parsed.original, "spawn");
+    }
+    return null;
+  }
+  function verifyENOENTSync(status, parsed) {
+    if (isWin && status === 1 && !parsed.file) {
+      return notFoundError(parsed.original, "spawnSync");
+    }
+    return null;
+  }
+  module.exports = {
+    hookChildProcess,
+    verifyENOENT,
+    verifyENOENTSync,
+    notFoundError
+  };
+});
+
+// ../../node_modules/.bun/cross-spawn@7.0.6/node_modules/cross-spawn/index.js
+var require_cross_spawn = __commonJS((exports, module) => {
+  var cp = __require("child_process");
+  var parse = require_parse();
+  var enoent = require_enoent();
+  function spawn2(command, args, options) {
+    const parsed = parse(command, args, options);
+    const spawned = cp.spawn(parsed.command, parsed.args, parsed.options);
+    enoent.hookChildProcess(spawned, parsed);
+    return spawned;
+  }
+  function spawnSync(command, args, options) {
+    const parsed = parse(command, args, options);
+    const result = cp.spawnSync(parsed.command, parsed.args, parsed.options);
+    result.error = result.error || enoent.verifyENOENTSync(result.status, parsed);
+    return result;
+  }
+  module.exports = spawn2;
+  module.exports.spawn = spawn2;
+  module.exports.sync = spawnSync;
+  module.exports._parse = parse;
+  module.exports._enoent = enoent;
+});
+
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/process.js
+import { spawnSync } from "node:child_process";
+function stop(proc) {
+  if (proc.exitCode !== null || proc.signalCode !== null)
+    return;
+  if (process.platform === "win32" && proc.pid) {
+    const out = spawnSync("taskkill", ["/pid", String(proc.pid), "/T", "/F"], { windowsHide: true });
+    if (!out.error && out.status === 0)
+      return;
+  }
+  proc.kill();
+}
+function bindAbort(proc, signal, onAbort) {
+  if (!signal)
+    return () => {};
+  const abort = () => {
+    clear();
+    stop(proc);
+    onAbort?.();
+  };
+  const clear = () => {
+    signal.removeEventListener("abort", abort);
+    proc.off("exit", clear);
+    proc.off("error", clear);
+  };
+  signal.addEventListener("abort", abort, { once: true });
+  proc.on("exit", clear);
+  proc.on("error", clear);
+  if (signal.aborted)
+    abort();
+  return clear;
+}
+var init_process = () => {};
+
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/server.js
+async function createOpencodeServer(options) {
+  options = Object.assign({
+    hostname: "127.0.0.1",
+    port: 4096,
+    timeout: 5000
+  }, options ?? {});
+  const args = [`serve`, `--hostname=${options.hostname}`, `--port=${options.port}`];
+  if (options.config?.logLevel)
+    args.push(`--log-level=${options.config.logLevel}`);
+  const proc = import_cross_spawn.default(`opencode`, args, {
+    env: {
+      ...process.env,
+      OPENCODE_CONFIG_CONTENT: JSON.stringify(options.config ?? {})
+    }
+  });
+  let clear = () => {};
+  const url = await new Promise((resolve, reject) => {
+    const id = setTimeout(() => {
+      clear();
+      stop(proc);
+      reject(new Error(`Timeout waiting for server to start after ${options.timeout}ms`));
+    }, options.timeout);
+    let output = "";
+    let resolved = false;
+    proc.stdout?.on("data", (chunk) => {
+      if (resolved)
+        return;
+      output += chunk.toString();
+      const lines = output.split(`
+`);
+      for (const line of lines) {
+        if (line.startsWith("opencode server listening")) {
+          const match = line.match(/on\s+(https?:\/\/[^\s]+)/);
+          if (!match) {
+            clear();
+            stop(proc);
+            clearTimeout(id);
+            reject(new Error(`Failed to parse server url from output: ${line}`));
+            return;
+          }
+          clearTimeout(id);
+          resolved = true;
+          resolve(match[1]);
+          return;
+        }
+      }
+    });
+    proc.stderr?.on("data", (chunk) => {
+      output += chunk.toString();
+    });
+    proc.on("exit", (code) => {
+      clearTimeout(id);
+      let msg = `Server exited with code ${code}`;
+      if (output.trim()) {
+        msg += `
+Server output: ${output}`;
+      }
+      reject(new Error(msg));
+    });
+    proc.on("error", (error) => {
+      clearTimeout(id);
+      reject(error);
+    });
+    clear = bindAbort(proc, options.signal, () => {
+      clearTimeout(id);
+      reject(options.signal?.reason);
+    });
+  });
+  return {
+    url,
+    close() {
+      clear();
+      stop(proc);
+    }
+  };
+}
+function createOpencodeTui(options) {
+  const args = [];
+  if (options?.project) {
+    args.push(`--project=${options.project}`);
+  }
+  if (options?.model) {
+    args.push(`--model=${options.model}`);
+  }
+  if (options?.session) {
+    args.push(`--session=${options.session}`);
+  }
+  if (options?.agent) {
+    args.push(`--agent=${options.agent}`);
+  }
+  const proc = import_cross_spawn.default(`opencode`, args, {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      OPENCODE_CONFIG_CONTENT: JSON.stringify(options?.config ?? {})
+    }
+  });
+  const clear = bindAbort(proc, options?.signal);
+  return {
+    close() {
+      clear();
+      stop(proc);
+    }
+  };
+}
+var import_cross_spawn;
+var init_server = __esm(() => {
+  init_process();
+  import_cross_spawn = __toESM(require_cross_spawn(), 1);
+});
+
+// ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/index.js
+var exports_dist = {};
+__export(exports_dist, {
+  createOpencodeTui: () => createOpencodeTui,
+  createOpencodeServer: () => createOpencodeServer,
+  createOpencodeClient: () => createOpencodeClient,
+  createOpencode: () => createOpencode,
+  OpencodeClient: () => OpencodeClient
+});
+async function createOpencode(options) {
+  const server2 = await createOpencodeServer({
+    ...options
+  });
+  const client3 = createOpencodeClient({
+    baseUrl: server2.url
+  });
+  return {
+    client: client3,
+    server: server2
+  };
+}
+var init_dist = __esm(() => {
+  init_client2();
+  init_server();
+  init_client2();
+  init_server();
+});
+
 // src/main.ts
 import { app, BrowserWindow, Tray, Menu, shell, dialog } from "electron";
-import { join as join2, dirname as dirname2 } from "node:path";
-import { existsSync as existsSync3 } from "node:fs";
+import { join as join3, dirname as dirname2 } from "node:path";
+import { existsSync as existsSync4 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { spawn as spawn2 } from "node:child_process";
 // ../lib/src/logger.ts
@@ -10947,6 +13008,200 @@ function getCachedUpdateInfo() {
   return cached;
 }
 
+// src/local-opencode.ts
+import {
+  mkdirSync as mkdirSync3,
+  writeFileSync as writeFileSync2,
+  readFileSync as readFileSync2,
+  existsSync as existsSync3,
+  unlinkSync,
+  chmodSync
+} from "node:fs";
+import { join as join2 } from "node:path";
+import { randomBytes } from "node:crypto";
+var USERNAME = "openpalm";
+var STOP_GRACE_MS = 5000;
+function runtimePath(stateDir) {
+  return join2(stateDir, "local-opencode.runtime.json");
+}
+function pidfilePath(stateDir) {
+  return join2(stateDir, "local-opencode.pid");
+}
+function unavailableSentinelPath(stateDir) {
+  return join2(stateDir, "local-opencode.unavailable");
+}
+function adminOpencodeHome(stateDir) {
+  return join2(stateDir, "admin-opencode-home");
+}
+function generatePassword() {
+  return randomBytes(32).toString("base64url");
+}
+function buildRuntimeJson(url, password, pid, startedAt = new Date) {
+  return {
+    url,
+    username: USERNAME,
+    password,
+    pid,
+    startedAt: startedAt.toISOString()
+  };
+}
+function isPidAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0)
+    return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function stageAdminHome(stateDir) {
+  const home = adminOpencodeHome(stateDir);
+  const configDir = join2(home, ".config", "opencode");
+  const shareDir = join2(home, ".local", "share", "opencode");
+  const ocStateDir = join2(home, ".local", "state", "opencode");
+  mkdirSync3(configDir, { recursive: true });
+  mkdirSync3(shareDir, { recursive: true });
+  mkdirSync3(ocStateDir, { recursive: true });
+  const configPath = join2(configDir, "opencode.json");
+  if (!existsSync3(configPath)) {
+    writeFileSync2(configPath, JSON.stringify({
+      $schema: "https://opencode.ai/config.json",
+      plugin: ["@openpalm/admin-tools-plugin"]
+    }, null, 2), { encoding: "utf-8" });
+  }
+  return { home, configDir };
+}
+function writeRuntimeFile(stateDir, data) {
+  const path = runtimePath(stateDir);
+  mkdirSync3(stateDir, { recursive: true });
+  writeFileSync2(path, JSON.stringify(data, null, 2), { encoding: "utf-8", mode: 384 });
+  try {
+    chmodSync(path, 384);
+  } catch {}
+}
+function writePidFile(stateDir, pid) {
+  const path = pidfilePath(stateDir);
+  mkdirSync3(stateDir, { recursive: true });
+  writeFileSync2(path, `${pid}
+`, { encoding: "utf-8", mode: 384 });
+  try {
+    chmodSync(path, 384);
+  } catch {}
+}
+function readPidFile(stateDir) {
+  const path = pidfilePath(stateDir);
+  if (!existsSync3(path))
+    return null;
+  try {
+    const raw = readFileSync2(path, "utf-8").trim();
+    const pid = Number.parseInt(raw, 10);
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+function unlinkSafely(path) {
+  try {
+    if (existsSync3(path))
+      unlinkSync(path);
+  } catch {}
+}
+function sweepStalePid(stateDir) {
+  const pid = readPidFile(stateDir);
+  let swept = false;
+  if (pid !== null && isPidAlive(pid)) {
+    try {
+      process.kill(pid, "SIGTERM");
+      swept = true;
+    } catch {}
+  }
+  unlinkSafely(pidfilePath(stateDir));
+  unlinkSafely(runtimePath(stateDir));
+  unlinkSafely(unavailableSentinelPath(stateDir));
+  return { swept, pid };
+}
+var _sdkLoader = async () => {
+  return await Promise.resolve().then(() => (init_dist(), exports_dist));
+};
+async function startLocalOpenCode(opts) {
+  const { stateDir } = opts;
+  mkdirSync3(stateDir, { recursive: true });
+  sweepStalePid(stateDir);
+  const password = generatePassword();
+  const { home } = stageAdminHome(stateDir);
+  const env = {
+    ...opts.envOverride ?? process.env,
+    HOME: home,
+    OPENCODE_SERVER_USERNAME: USERNAME,
+    OPENCODE_SERVER_PASSWORD: password,
+    OPENCODE_AUTH: "true"
+  };
+  const savedEnv = {
+    HOME: process.env.HOME,
+    OPENCODE_SERVER_USERNAME: process.env.OPENCODE_SERVER_USERNAME,
+    OPENCODE_SERVER_PASSWORD: process.env.OPENCODE_SERVER_PASSWORD,
+    OPENCODE_AUTH: process.env.OPENCODE_AUTH
+  };
+  for (const [k2, v2] of Object.entries(env)) {
+    if (v2 !== undefined)
+      process.env[k2] = v2;
+  }
+  let server2;
+  try {
+    const sdk = await _sdkLoader();
+    server2 = await sdk.createOpencodeServer({
+      hostname: opts.hostname ?? "127.0.0.1",
+      port: 0,
+      timeout: 30000
+    });
+  } catch (err) {
+    for (const [k2, v2] of Object.entries(savedEnv)) {
+      if (v2 === undefined)
+        delete process.env[k2];
+      else
+        process.env[k2] = v2;
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    const looksMissing = /ENOENT|opencode/i.test(msg) && /not found|no such file/i.test(msg);
+    const reason = looksMissing ? "opencode binary not on PATH" : `opencode spawn failed: ${msg}`;
+    console.warn(`[local-opencode] ${reason}. Local admin OpenCode unavailable; remote endpoints still work.`);
+    try {
+      writeFileSync2(unavailableSentinelPath(stateDir), JSON.stringify({ reason, at: new Date().toISOString() }, null, 2), { encoding: "utf-8", mode: 384 });
+    } catch {}
+    return null;
+  }
+  for (const [k2, v2] of Object.entries(savedEnv)) {
+    if (v2 === undefined)
+      delete process.env[k2];
+    else
+      process.env[k2] = v2;
+  }
+  const pid = process.pid;
+  const runtime = buildRuntimeJson(server2.url, password, pid);
+  writeRuntimeFile(stateDir, runtime);
+  writePidFile(stateDir, pid);
+  unlinkSafely(unavailableSentinelPath(stateDir));
+  let stopped = false;
+  return {
+    url: server2.url,
+    username: USERNAME,
+    password,
+    pid,
+    async stop() {
+      if (stopped)
+        return;
+      stopped = true;
+      try {
+        server2.close();
+      } catch {}
+      await new Promise((resolve) => setTimeout(resolve, STOP_GRACE_MS));
+      unlinkSafely(runtimePath(stateDir));
+      unlinkSafely(pidfilePath(stateDir));
+    }
+  };
+}
+
 // src/main.ts
 if (!globalThis.Bun) {
   globalThis.Bun = { env: process.env };
@@ -10959,6 +13214,7 @@ var mainWindow = null;
 var splashWindow = null;
 var tray = null;
 var uiProcess = null;
+var localOpencode = null;
 var STDERR_RING_SIZE = 200;
 var stderrRing = [];
 function appendStderrLine(line) {
@@ -10974,7 +13230,7 @@ function resolveAssistantUrl(homeDir) {
   const userOverride = process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL;
   if (userOverride)
     return userOverride;
-  const stackEnv = parseEnvFile(join2(homeDir, "config", "stack", "stack.env"));
+  const stackEnv = parseEnvFile(join3(homeDir, "config", "stack", "stack.env"));
   const bind = stackEnv.OP_ASSISTANT_BIND_ADDRESS || "127.0.0.1";
   const port = stackEnv.OP_ASSISTANT_PORT || "3800";
   return `http://${bind}:${port}`;
@@ -11030,7 +13286,7 @@ async function startUIServer() {
     console.log(`UI update check skipped: ${updateResult.error}`);
   }
   let uiBuildDir = resolveUiBuildDir();
-  if (!existsSync3(join2(uiBuildDir, "index.js"))) {
+  if (!existsSync4(join3(uiBuildDir, "index.js"))) {
     console.log("UI build not found — seeding from release...");
     try {
       await seedUiBuild(`v${version}`, stateDir);
@@ -11041,7 +13297,7 @@ async function startUIServer() {
       return;
     }
   }
-  uiProcess = spawn2("node", [join2(uiBuildDir, "index.js")], {
+  uiProcess = spawn2("node", [join3(uiBuildDir, "index.js")], {
     cwd: uiBuildDir,
     env: buildUIServerEnv(homeDir, UI_PORT, appUpdate),
     stdio: ["ignore", "inherit", "pipe"]
@@ -11148,12 +13404,12 @@ async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 900,
-    minWidth: 900,
-    minHeight: 600,
+    minWidth: 300,
+    minHeight: 400,
     title,
     show: false,
     webPreferences: {
-      preload: join2(__dirname2, "preload.js"),
+      preload: join3(__dirname2, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true
     }
@@ -11190,8 +13446,8 @@ function showWindow() {
   }
 }
 function createTray() {
-  const iconPath = join2(__dirname2, "..", "assets", "tray-icon.png");
-  if (!existsSync3(iconPath)) {
+  const iconPath = join3(__dirname2, "..", "assets", "tray-icon.png");
+  if (!existsSync4(iconPath)) {
     return;
   }
   tray = new Tray(iconPath);
@@ -11220,6 +13476,15 @@ app.whenReady().then(async () => {
     app.quit();
     return;
   }
+  try {
+    const stateDir = `${resolveOpenPalmHome()}/state`;
+    localOpencode = await startLocalOpenCode({ stateDir });
+    if (localOpencode) {
+      console.log(`Local OpenCode listening on ${localOpencode.url}`);
+    }
+  } catch (err) {
+    console.warn("Local OpenCode spawn raised; continuing without it:", err instanceof Error ? err.message : String(err));
+  }
   await createWindow();
   createTray();
   app.on("activate", () => {
@@ -11233,6 +13498,19 @@ app.on("window-all-closed", () => {});
 app.on("before-quit", () => {
   app.isQuitting = true;
   stopUIServer();
+});
+app.on("will-quit", async (event) => {
+  if (!localOpencode)
+    return;
+  event.preventDefault();
+  const handle = localOpencode;
+  localOpencode = null;
+  try {
+    await handle.stop();
+  } catch (err) {
+    console.warn("Local OpenCode stop raised:", err instanceof Error ? err.message : String(err));
+  }
+  app.quit();
 });
 export {
   waitForReady,
