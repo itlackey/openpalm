@@ -28,7 +28,9 @@ import type {
 	ChatEntry,
 	ChatMessage,
 	EndpointChatState,
+	SessionSummary,
 } from '$lib/types.js';
+import { subscribeSessionEvents } from './session-events.js';
 import { speakText, stopSpeaking, voiceState } from '$lib/voice/voice-state.svelte.js';
 
 type EndpointId = string;
@@ -62,6 +64,19 @@ class ChatService {
 	entriesLoading = $state(false);
 	sending = $state(false);
 	error = $state('');
+
+	/**
+	 * Set true while the SSE event stream is connected. Surfaced by the
+	 * SessionPicker as a tiny green/gray dot so the operator can see at a
+	 * glance whether live updates are flowing.
+	 */
+	liveConnected = $state(false);
+
+	/**
+	 * Active SSE subscription handle. Reassigned on every endpoint switch.
+	 * Plain field (not `$state`) — only the chat service touches it.
+	 */
+	private _unsubscribeEvents: (() => void) | null = null;
 
 	activeSessionId: SessionId | null = $derived(
 		this.byEndpoint.get(this.activeEndpointId)?.activeSessionId ?? null
@@ -116,6 +131,119 @@ class ChatService {
 
 		if (nextSessionId) {
 			await this.openSession(nextSessionId);
+		}
+
+		// Subscribe to live session events on the new endpoint. The proxy
+		// resolves the endpoint server-side per request so the consumer
+		// doesn't need to know the id.
+		this._resubscribeEvents();
+	}
+
+	/**
+	 * Tear down any prior SSE subscription and open a new one. Handlers
+	 * dispatch session.created / updated / deleted into the per-endpoint
+	 * cache, mirroring out-of-band changes (CLI, other clients).
+	 */
+	private _resubscribeEvents(): void {
+		if (this._unsubscribeEvents) {
+			try {
+				this._unsubscribeEvents();
+			} catch (err) {
+				console.warn('[chat] failed to unsubscribe from previous event stream', err);
+			}
+			this._unsubscribeEvents = null;
+		}
+		this.liveConnected = false;
+		this._unsubscribeEvents = subscribeSessionEvents({
+			onCreated: (id) => {
+				this._onSessionCreated(id);
+			},
+			onUpdated: (id, info) => {
+				this._onSessionUpdated(id, info);
+			},
+			onDeleted: (id) => {
+				void this._onSessionDeleted(id);
+			},
+			onConnect: () => {
+				this.liveConnected = true;
+			},
+			onDisconnect: () => {
+				this.liveConnected = false;
+			},
+		});
+	}
+
+	/**
+	 * A session was created out-of-band — prepend to the active endpoint's
+	 * list if not already known. Do not auto-switch to it: the user owns
+	 * navigation.
+	 */
+	private _onSessionCreated(sessionId: SessionId): void {
+		const endpointId = this.activeEndpointId;
+		const prev = this.byEndpoint.get(endpointId) ?? emptyEndpointState();
+		if (prev.sessions.some((s) => s.id === sessionId)) return;
+		const now = Date.now();
+		const summary: SessionSummary = {
+			id: sessionId,
+			title: '',
+			createdAt: now,
+			updatedAt: now,
+		};
+		this.setEndpointState(endpointId, {
+			sessions: [summary, ...prev.sessions],
+			sessionsLoaded: true,
+		});
+	}
+
+	/**
+	 * A session was touched out-of-band — patch its updatedAt (and title if
+	 * the event carries one) and re-sort. Do NOT refetch messages: if the
+	 * user is viewing this session, leave the in-memory entries alone for
+	 * v1. A follow-up phase can reconcile message deltas via the assistant
+	 * event stream.
+	 */
+	private _onSessionUpdated(
+		sessionId: SessionId,
+		info?: { title?: string; updatedAt?: number }
+	): void {
+		const endpointId = this.activeEndpointId;
+		const prev = this.byEndpoint.get(endpointId);
+		if (!prev) return;
+		const idx = prev.sessions.findIndex((s) => s.id === sessionId);
+		if (idx === -1) return;
+		const existing = prev.sessions[idx];
+		const next: SessionSummary = {
+			...existing,
+			title: info?.title ?? existing.title,
+			updatedAt: info?.updatedAt ?? Date.now(),
+		};
+		const sessions = [next, ...prev.sessions.filter((s) => s.id !== sessionId)];
+		sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+		this.setEndpointState(endpointId, { sessions });
+	}
+
+	/**
+	 * A session was deleted out-of-band. Remove it from the list; if it was
+	 * the active session, fall back to the newest remaining session (or
+	 * null) and reload its messages.
+	 */
+	private async _onSessionDeleted(sessionId: SessionId): Promise<void> {
+		const endpointId = this.activeEndpointId;
+		const prev = this.byEndpoint.get(endpointId);
+		if (!prev) return;
+		if (!prev.sessions.some((s) => s.id === sessionId)) return;
+		const sessions = prev.sessions.filter((s) => s.id !== sessionId);
+		const wasActive = prev.activeSessionId === sessionId;
+		const nextActive = wasActive ? (sessions[0]?.id ?? null) : prev.activeSessionId;
+		this.setEndpointState(endpointId, {
+			sessions,
+			activeSessionId: nextActive,
+		});
+		if (wasActive) {
+			this.entries = [];
+			if (nextActive) {
+				await this.openSession(nextActive);
+			}
 		}
 	}
 
@@ -286,6 +414,16 @@ class ChatService {
 		this.error = '';
 		// Reassign to a fresh Map so subscribers re-render to empty state.
 		this.byEndpoint = new Map();
+		// Tear down the SSE subscription on logout / state wipe.
+		if (this._unsubscribeEvents) {
+			try {
+				this._unsubscribeEvents();
+			} catch (err) {
+				console.warn('[chat] failed to unsubscribe from event stream during reset', err);
+			}
+			this._unsubscribeEvents = null;
+		}
+		this.liveConnected = false;
 	}
 }
 

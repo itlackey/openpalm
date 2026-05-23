@@ -22,7 +22,23 @@ vi.mock('$lib/api.js', () => ({
   sendChatMessage: vi.fn(),
 }));
 
+// Mock the SSE consumer so chat-state tests don't open network sockets.
+// `subscribeSessionEvents` is the only export we care about here — the real
+// behavior is exercised in session-events.vitest.ts.
+type CapturedHandlers = import('./session-events.js').SessionEventHandlers;
+const sseCaptured: { handlers: CapturedHandlers | null; unsub: ReturnType<typeof vi.fn> } = {
+  handlers: null,
+  unsub: vi.fn(),
+};
+vi.mock('./session-events.js', () => ({
+  subscribeSessionEvents: vi.fn((handlers: CapturedHandlers) => {
+    sseCaptured.handlers = handlers;
+    return sseCaptured.unsub;
+  }),
+}));
+
 import * as api from '$lib/api.js';
+import * as sse from './session-events.js';
 import type { SessionSummary, ChatMessage } from '$lib/types.js';
 import { chat } from './chat-state.svelte.js';
 
@@ -31,6 +47,7 @@ const mocked = {
   getSessionMessages: vi.mocked(api.getSessionMessages),
   listSessions: vi.mocked(api.listSessions),
   sendChatMessage: vi.mocked(api.sendChatMessage),
+  subscribeSessionEvents: vi.mocked(sse.subscribeSessionEvents),
 };
 
 function session(id: string, updatedAt: number, title = ''): SessionSummary {
@@ -49,6 +66,9 @@ beforeEach(() => {
   mocked.getSessionMessages.mockReset();
   mocked.listSessions.mockReset();
   mocked.sendChatMessage.mockReset();
+  sseCaptured.handlers = null;
+  sseCaptured.unsub.mockReset();
+  mocked.subscribeSessionEvents.mockClear();
 });
 
 afterEach(() => {
@@ -201,5 +221,116 @@ describe('byEndpoint Map reactivity', () => {
     // The Map reference should change after a write.
     expect(chat.byEndpoint).not.toBe(initial);
     expect(chat.byEndpoint.get('alpha')).toBeDefined();
+  });
+});
+
+describe('live SSE updates', () => {
+  it('subscribes to session events when an endpoint is activated', async () => {
+    mocked.listSessions.mockResolvedValueOnce([]);
+    await chat.onEndpointChanged('alpha');
+    expect(mocked.subscribeSessionEvents).toHaveBeenCalledTimes(1);
+    expect(sseCaptured.handlers).not.toBeNull();
+  });
+
+  it('tears down the prior subscription on endpoint switch', async () => {
+    mocked.listSessions.mockResolvedValueOnce([]);
+    await chat.onEndpointChanged('alpha');
+    const firstUnsub = sseCaptured.unsub;
+    expect(firstUnsub).not.toHaveBeenCalled();
+
+    mocked.listSessions.mockResolvedValueOnce([]);
+    await chat.onEndpointChanged('beta');
+    expect(firstUnsub).toHaveBeenCalledTimes(1);
+    expect(mocked.subscribeSessionEvents).toHaveBeenCalledTimes(2);
+  });
+
+  it('reset() tears down the subscription and clears liveConnected', async () => {
+    mocked.listSessions.mockResolvedValueOnce([]);
+    await chat.onEndpointChanged('alpha');
+    sseCaptured.handlers?.onConnect?.();
+    expect(chat.liveConnected).toBe(true);
+
+    chat.reset();
+    expect(sseCaptured.unsub).toHaveBeenCalled();
+    expect(chat.liveConnected).toBe(false);
+  });
+
+  it('session.created prepends to the active endpoint session list', async () => {
+    mocked.listSessions.mockResolvedValueOnce([session('s1', 1000)]);
+    mocked.getSessionMessages.mockResolvedValueOnce([]);
+    await chat.onEndpointChanged('alpha');
+    expect(chat.byEndpoint.get('alpha')?.sessions.map((s) => s.id)).toEqual(['s1']);
+
+    sseCaptured.handlers?.onCreated('new-1');
+    const sessions = chat.byEndpoint.get('alpha')?.sessions ?? [];
+    expect(sessions.map((s) => s.id)).toEqual(['new-1', 's1']);
+    // Does NOT auto-switch to the new session.
+    expect(chat.activeSessionId).toBe('s1');
+  });
+
+  it('session.created is idempotent when the id is already present', async () => {
+    mocked.listSessions.mockResolvedValueOnce([session('s1', 1000)]);
+    mocked.getSessionMessages.mockResolvedValueOnce([]);
+    await chat.onEndpointChanged('alpha');
+    sseCaptured.handlers?.onCreated('s1');
+    const sessions = chat.byEndpoint.get('alpha')?.sessions ?? [];
+    expect(sessions.map((s) => s.id)).toEqual(['s1']);
+  });
+
+  it('session.updated patches title + updatedAt and re-sorts the list', async () => {
+    mocked.listSessions.mockResolvedValueOnce([
+      session('s2', 2000),
+      session('s1', 1000),
+    ]);
+    mocked.getSessionMessages.mockResolvedValueOnce([]);
+    await chat.onEndpointChanged('alpha');
+
+    sseCaptured.handlers?.onUpdated('s1', { title: 'Renamed', updatedAt: 9999 });
+    const sessions = chat.byEndpoint.get('alpha')?.sessions ?? [];
+    expect(sessions[0].id).toBe('s1');
+    expect(sessions[0].title).toBe('Renamed');
+    expect(sessions[0].updatedAt).toBe(9999);
+  });
+
+  it('session.deleted of an inactive session just removes it', async () => {
+    mocked.listSessions.mockResolvedValueOnce([
+      session('s2', 2000),
+      session('s1', 1000),
+    ]);
+    mocked.getSessionMessages.mockResolvedValueOnce([]);
+    await chat.onEndpointChanged('alpha');
+    expect(chat.activeSessionId).toBe('s2');
+
+    sseCaptured.handlers?.onDeleted('s1');
+    expect(chat.byEndpoint.get('alpha')?.sessions.map((s) => s.id)).toEqual(['s2']);
+    expect(chat.activeSessionId).toBe('s2');
+  });
+
+  it('session.deleted of the active session falls back to the newest remaining', async () => {
+    mocked.listSessions.mockResolvedValueOnce([
+      session('s2', 2000),
+      session('s1', 1000),
+    ]);
+    mocked.getSessionMessages.mockResolvedValueOnce([]); // initial pick (s2)
+    await chat.onEndpointChanged('alpha');
+    expect(chat.activeSessionId).toBe('s2');
+
+    const newMsgs: ChatMessage[] = [
+      { id: 'fallback', role: 'user', text: 'on s1', timestamp: 1 },
+    ];
+    mocked.getSessionMessages.mockResolvedValueOnce(newMsgs);
+    await sseCaptured.handlers?.onDeleted('s2');
+    expect(chat.activeSessionId).toBe('s1');
+    expect(chat.entries).toEqual(newMsgs);
+  });
+
+  it('liveConnected mirrors onConnect / onDisconnect', async () => {
+    mocked.listSessions.mockResolvedValueOnce([]);
+    await chat.onEndpointChanged('alpha');
+    expect(chat.liveConnected).toBe(false);
+    sseCaptured.handlers?.onConnect?.();
+    expect(chat.liveConnected).toBe(true);
+    sseCaptured.handlers?.onDisconnect?.(new Error('boom'));
+    expect(chat.liveConnected).toBe(false);
   });
 });

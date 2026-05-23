@@ -26,6 +26,14 @@
       ? activeSummary.title || `Untitled · ${formatRelative(activeSummary.updatedAt)}`
       : 'New session'
   );
+  /**
+   * Live-updates indicator. True when the chat service's SSE stream to
+   * `/proxy/assistant/event` is connected — out-of-band session changes
+   * (CLI, other clients) will flow through. Shown as a tiny dot so the
+   * operator can tell at a glance whether the picker is reactive or
+   * snapshot.
+   */
+  const liveConnected = $derived(chat.liveConnected);
 
   const visibleSessions = $derived(
     showAll ? sessions : sessions.slice(0, SESSION_LIST_CAP)
@@ -128,6 +136,12 @@
       <path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2z" />
       <path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1" />
     </svg>
+    <span
+      class="dot"
+      class:connected={liveConnected}
+      aria-hidden="true"
+      title={liveConnected ? 'Live updates connected' : 'Live updates disconnected'}
+    ></span>
     <span class="label">{triggerLabel}</span>
     <span class="caret" aria-hidden="true">▾</span>
   </button>
@@ -233,6 +247,23 @@
     color: var(--color-text-secondary);
   }
 
+  /**
+   * Live-updates indicator. Green when the SSE stream is connected,
+   * neutral gray otherwise. Matches the EndpointSwitcher `.dot` pattern
+   * (8px circle, success color) for visual consistency.
+   */
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-text-muted, #9ca3af);
+    flex-shrink: 0;
+    transition: background 120ms ease;
+  }
+  .dot.connected {
+    background: var(--color-success, #16a34a);
+  }
+
   .label {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -255,7 +286,8 @@
       max-width: 32px;
     }
     .label,
-    .caret {
+    .caret,
+    .dot {
       display: none;
     }
   }
