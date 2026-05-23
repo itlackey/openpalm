@@ -2,7 +2,7 @@
  * Tests for the assistant endpoint store + active resolution.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, readFileSync, statSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { _replaceState, getState } from './state.js';
 import {
   makeTestState,
@@ -182,5 +182,23 @@ describe('persistence', () => {
     expect(mode).toBe(0o600);
     const raw = readFileSync(path, 'utf-8');
     expect(raw).toContain('"password"');
+  });
+
+  it('re-tightens 0600 perms across subsequent writes', () => {
+    // First write: create the file via addEndpoint.
+    const entry = addEndpoint({ label: 'A', url: 'http://10.0.0.1:3800', password: 'shh' });
+    const path = `${getState().stateDir}/admin/endpoints.json`;
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+
+    // Simulate an out-of-band perms relaxation (e.g. an operator running
+    // `chmod 0644` to read the file, or a tar restore that drops modes).
+    chmodSync(path, 0o644);
+    expect(statSync(path).mode & 0o777).toBe(0o644);
+
+    // Second write: any update path must re-chmod to 0600. This guards the
+    // re-chmod-on-write behavior in endpoints.ts so file modes can't drift
+    // open over time.
+    updateEndpoint(entry.id, { label: 'B' });
+    expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 });

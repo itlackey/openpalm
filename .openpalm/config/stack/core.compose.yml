@@ -125,6 +125,14 @@ services:
       GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
       GUARDIAN_SECRETS_PATH: /app/secrets/guardian.env
       OPENCODE_AUTH_JSON: /etc/openpalm/auth.json
+      # Basic-auth credentials forwarded by the guardian to the assistant
+      # OpenCode server. Read in core/guardian/src/forward.ts. Both default
+      # to blank when the assistant runs with OPENCODE_AUTH=false; they
+      # become required once OPENCODE_AUTH is flipped to "true" (LAN-exposed
+      # assistant case). See the assistant block above for the matching
+      # OP_OPENCODE_PASSWORD plumbing.
+      OPENCODE_SERVER_USERNAME: ${OP_OPENCODE_USERNAME:-}
+      OPENCODE_SERVER_PASSWORD: ${OP_OPENCODE_PASSWORD:-}
     ports:
       - "${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-8180}:8080"
     volumes:

@@ -54,6 +54,8 @@ export const taskLogsRootDir       = (s: ControlPlaneState): string => `${s.cach
 export const logsDir               = (s: ControlPlaneState): string => `${s.stateDir}/logs`;
 export const adminAuditPath        = (s: ControlPlaneState): string => `${s.stateDir}/logs/admin-audit.jsonl`;
 export const guardianAuditPath     = (s: ControlPlaneState): string => `${s.stateDir}/logs/guardian-audit.log`;
+/** One-shot 0.11.0 migration log (OP_UI_TOKEN → OPENCODE_SERVER_PASSWORD, endpoints.json move) */
+export const migration0110LogPath  = (s: ControlPlaneState): string => `${s.stateDir}/logs/migration-0.11.0.log`;
 export const backupsDir            = (s: ControlPlaneState): string => `${s.stateDir}/backups`;
 export const registryDir           = (s: ControlPlaneState): string => `${s.stateDir}/registry`;
 export const registryAddonsDir     = (s: ControlPlaneState): string => `${s.stateDir}/registry/addons`;
