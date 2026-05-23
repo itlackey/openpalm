@@ -63,7 +63,6 @@ services:
       AKM_DATA_DIR: /akm-op/data
       AKM_STATE_DIR: /akm-op/state
       AKM_CACHE_DIR: /akm-cache
-      OP_ASSISTANT_TOKEN: ${OP_ASSISTANT_TOKEN:-}
       OP_UID: ${OP_UID:-1000}
       OP_GID: ${OP_GID:-1000}
       OPENCODE_API_URL: http://localhost:4096

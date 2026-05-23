@@ -70,30 +70,6 @@
 
 {#if supported}
 	<div class="voice-control" role="toolbar" aria-label="Voice controls">
-		<!-- Backend selector: which OpenCode instance receives the message. -->
-		<div class="backend-toggle" role="group" aria-label="Select assistant">
-			<button
-				type="button"
-				class="backend-btn"
-				class:backend-btn-active={chat.backend === 'assistant'}
-				onclick={() => chat.setBackend('assistant')}
-				aria-pressed={chat.backend === 'assistant'}
-				title="Send to the user assistant"
-			>
-				Assistant
-			</button>
-			<button
-				type="button"
-				class="backend-btn"
-				class:backend-btn-active={chat.backend === 'admin'}
-				onclick={() => chat.setBackend('admin')}
-				aria-pressed={chat.backend === 'admin'}
-				title="Send to the admin OpenCode (stack-management context)"
-			>
-				Admin
-			</button>
-		</div>
-
 		<button
 			class="voice-btn"
 			class:voice-btn-active={isRecording}
@@ -206,40 +182,6 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
-	}
-
-	.backend-toggle {
-		display: inline-flex;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-full);
-		overflow: hidden;
-		background: var(--color-bg);
-	}
-
-	.backend-btn {
-		padding: 3px 10px;
-		font-size: var(--text-xs);
-		font-weight: var(--font-medium);
-		border: none;
-		background: transparent;
-		color: var(--color-text-secondary);
-		cursor: pointer;
-		transition: all var(--transition-fast);
-	}
-
-	.backend-btn + .backend-btn {
-		border-left: 1px solid var(--color-border);
-	}
-
-	.backend-btn:hover:not(.backend-btn-active) {
-		color: var(--color-text);
-		background: var(--color-surface-hover);
-	}
-
-	.backend-btn-active {
-		background: var(--color-primary);
-		color: #000;
-		font-weight: var(--font-semibold);
 	}
 
 	.voice-btn {

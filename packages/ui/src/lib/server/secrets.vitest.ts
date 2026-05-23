@@ -38,18 +38,18 @@ describe("ensureSecrets", () => {
   });
 
   test("seeds stack.env with API key placeholders on first run", () => {
-    const state = { stackDir, configDir, adminToken: "preconfigured-token" } as ControlPlaneState;
+    const state = { stackDir, configDir } as ControlPlaneState;
 
     ensureSecrets(state);
 
     const secrets = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(secrets).toContain("OPENAI_API_KEY=");
-    expect(secrets).toContain("OP_UI_TOKEN=");
+    expect(secrets).toContain("OP_UI_LOGIN_PASSWORD=");
   });
 
   test("is idempotent — does not overwrite existing stack.env", () => {
     const state = { stackDir, configDir } as ControlPlaneState;
-    const existingContent = "OP_UI_TOKEN=my-token\nOPENAI_API_KEY=sk-test\nOP_ASSISTANT_TOKEN=ast\n";
+    const existingContent = "OP_UI_LOGIN_PASSWORD=my-password\nOPENAI_API_KEY=sk-test\n";
     seedSecretsEnv(stackDir, existingContent);
 
     ensureSecrets(state);

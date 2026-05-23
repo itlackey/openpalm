@@ -2,6 +2,7 @@ import { json } from "@sveltejs/kit";
 import { performSetup, checkDocker, type SetupSpec } from "@openpalm/lib";
 import { resetState, getState } from "$lib/server/state.js";
 import { startDeploy, resetDeployState } from "$lib/server/setup-deploy.js";
+import { getUiLoginPassword } from "$lib/server/helpers.js";
 import type { RequestHandler } from "./$types";
 
 interface CompleteBody extends SetupSpec {
@@ -57,7 +58,7 @@ export const POST: RequestHandler = async ({ request }) => {
     return json(result, { status: 400 });
   }
 
-  // Reset state singleton so next getState() re-reads the new admin token
+  // Reset state singleton so next getState() re-reads fresh paths.
   resetState();
   const state = getState();
 
@@ -72,12 +73,21 @@ export const POST: RequestHandler = async ({ request }) => {
     }
   }
 
-  // Set session cookie so the user is automatically authenticated
+  // Set session cookie so the user is automatically authenticated. The
+  // cookie value IS the operator-supplied UI login password (Phase 4) —
+  // we read what the wizard just persisted into stack.env and the host
+  // process must have loaded into its environment before this request.
   const headers = new Headers({ "content-type": "application/json" });
-  if (state.adminToken) {
+  // Prefer the freshly-supplied password from the request body so the user
+  // is authenticated on the same response even if the host process hasn't
+  // re-sourced stack.env yet. Falls back to the env var.
+  const sessionPassword =
+    (typeof body.security?.uiLoginPassword === "string" && body.security.uiLoginPassword) ||
+    getUiLoginPassword();
+  if (sessionPassword) {
     headers.set(
       "set-cookie",
-      `op_session=${state.adminToken}; Path=/; HttpOnly; SameSite=Strict`
+      `op_session=${sessionPassword}; Path=/; HttpOnly; SameSite=Strict`
     );
   }
 

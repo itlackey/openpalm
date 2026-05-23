@@ -13,7 +13,7 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
  * with un-anchored alternations was sloppy enough to invite future bugs).
  *
  * Examples:
- *   OP_UI_TOKEN     → sensitive (suffix _TOKEN)
+ *   OP_UI_LOGIN_PASSWORD → sensitive (suffix _PASSWORD)
  *   CHANNEL_API_KEY    → sensitive (suffix _KEY)
  *   CHANNEL_FOO_HMAC   → sensitive (suffix _HMAC)
  *   HMAC_KEY           → sensitive (prefix HMAC_, suffix _KEY)

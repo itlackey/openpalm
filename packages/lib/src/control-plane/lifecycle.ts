@@ -12,7 +12,7 @@ import {
   resolveStateDir,
   resolveStackDir,
 } from "./home.js";
-import { ensureSecrets, readStackEnv, updateSystemSecretsEnv } from "./secrets.js";
+import { ensureSecrets } from "./secrets.js";
 import {
   resolveRuntimeFiles,
   writeRuntimeFiles,
@@ -33,9 +33,7 @@ const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 
 
-export function createState(
-  adminToken?: string
-): ControlPlaneState {
+export function createState(): ControlPlaneState {
   const homeDir = resolveOpenPalmHome();
   const configDir = resolveConfigDir();
   const stashDir = resolveStashDir();
@@ -50,8 +48,6 @@ export function createState(
   }
 
   const bootstrapState: ControlPlaneState = {
-    adminToken: adminToken ?? process.env.OP_UI_TOKEN ?? "",
-    assistantToken: "",
     homeDir,
     configDir,
     stashDir,
@@ -66,18 +62,6 @@ export function createState(
   };
 
   ensureSecrets(bootstrapState);
-
-  const stackEnv = readStackEnv(stackDir);
-  // Precedence: explicit parameter > stack.env > process.env.
-  bootstrapState.adminToken =
-    adminToken
-      ?? stackEnv.OP_UI_TOKEN
-      ?? process.env.OP_UI_TOKEN
-      ?? "";
-  bootstrapState.assistantToken =
-    stackEnv.OP_ASSISTANT_TOKEN
-      ?? process.env.OP_ASSISTANT_TOKEN
-      ?? "";
 
   return bootstrapState;
 }

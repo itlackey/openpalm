@@ -29,7 +29,6 @@ describe("ensureSecrets", () => {
     const state = {
       configDir: join(rootDir, "config"),
       stackDir,
-      adminToken: "preconfigured-token"
     } as ControlPlaneState;
 
     ensureSecrets(state);
@@ -37,8 +36,7 @@ describe("ensureSecrets", () => {
     const stackEnv = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(stackEnv).toContain("OPENAI_API_KEY=");
     expect(stackEnv).toContain("OWNER_NAME=");
-    expect(stackEnv).toContain("OP_UI_TOKEN=");
-    expect(stackEnv).toContain("OP_ASSISTANT_TOKEN=");
+    expect(stackEnv).toContain("OP_UI_LOGIN_PASSWORD=");
   });
 
   test("applies strict permissions to state files", () => {
@@ -46,7 +44,6 @@ describe("ensureSecrets", () => {
     const state = {
       configDir: join(rootDir, "config"),
       stackDir,
-      adminToken: "preconfigured-token"
     } as ControlPlaneState;
 
     ensureSecrets(state);

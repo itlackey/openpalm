@@ -213,13 +213,9 @@ describe("getActor", () => {
     expect(getActor(event as never)).toBe("unauthenticated");
   });
 
-  // Phase 2: the assistant-token branch was removed from identifyCallerByToken.
-  // Presenting the assistant token via cookie no longer authenticates.
-  test("returns 'unauthenticated' when cookie carries the assistant token (assistant branch removed)", () => {
-    const state = resetState("test-admin-token-12345");
-    const event = makeEvent({ cookie: `op_session=${state.assistantToken}` });
-    expect(getActor(event as never)).toBe("unauthenticated");
-  });
+  // Phase 4: assistantToken was deleted from ControlPlaneState. There is no
+  // longer a second token to test against — the only valid credential is
+  // the operator-supplied UI login password.
 
   test("returns 'unauthenticated' when cookie token is wrong", () => {
     const event = makeEvent({ cookie: "op_session=wrong-token" });
@@ -253,16 +249,18 @@ describe("identifyCallerByToken / requireAuth (cookie-only after Phase 2)", () =
     expect(identifyCallerByToken(event as never)).toBeNull();
   });
 
-  test("identifyCallerByToken no longer recognises the assistant token via cookie", () => {
-    const state = resetState("test-admin-token-12345");
-    const event = makeEvent({ cookie: `op_session=${state.assistantToken}` });
+  // Phase 4: assistantToken was deleted entirely. A cookie carrying any
+  // value other than the UI login password is rejected.
+  test("identifyCallerByToken rejects unknown cookie values", () => {
+    resetState("test-admin-token-12345");
+    const event = makeEvent({ cookie: "op_session=some-stale-value" });
     expect(identifyCallerByToken(event as never)).toBeNull();
   });
 
-  test("requireAuth rejects assistant token via cookie (assistant branch removed)", async () => {
-    const state = resetState("test-admin-token-12345");
-    const event = makeEvent({ cookie: `op_session=${state.assistantToken}` });
-    const result = requireAuth(event as never, "req-assistant");
+  test("requireAuth rejects unknown cookie values", async () => {
+    resetState("test-admin-token-12345");
+    const event = makeEvent({ cookie: "op_session=some-stale-value" });
+    const result = requireAuth(event as never, "req-stale");
     expect(result).not.toBeNull();
     expect(result!.status).toBe(401);
   });

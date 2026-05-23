@@ -53,7 +53,7 @@ async function readErrorMessage(
 /** Throw on 401; throw readErrorMessage on non-OK. Returns the response. */
 async function requireOk(res: Response, fallback?: string): Promise<Response> {
   if (res.status === 401) {
-    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+    throw Object.assign(new Error('Sign-in required.'), { status: 401 });
   }
   if (!res.ok) {
     throw new Error(await readErrorMessage(res, fallback));
@@ -311,18 +311,15 @@ export async function setActiveEndpoint(id: string): Promise<{ activeId: string;
 
 // ── Chat Proxy ──────────────────────────────────────────────────────────
 
-const ADMIN_BACKEND_REMOVED_MSG =
-  "Admin chat backend was removed in 0.11.0 — use the endpoint switcher to add the local OpenCode instance instead.";
-
 /**
- * Create a new OpenCode session via the SvelteKit proxy.
- * Only the 'assistant' backend is supported; 'admin' was removed in 0.11.0
- * (the dead /proxy/admin route was deleted with the rest of Phase 1).
+ * Create a new OpenCode session via the SvelteKit broker.
+ *
+ * Phase 4 of docs/technical/auth-and-proxy-refactor-plan.md deleted the
+ * assistant/admin backend toggle — only `/proxy/assistant/*` is reachable
+ * from the browser. The active OpenCode instance is selected server-side
+ * via the connection switcher.
  */
-export async function createChatSession(
-  backend: import('./types.js').ChatBackend
-): Promise<{ id: string }> {
-  if (backend === 'admin') throw new Error(ADMIN_BACKEND_REMOVED_MSG);
+export async function createChatSession(): Promise<{ id: string }> {
   const res = await requireOk(
     await request('POST', `/proxy/assistant/session`, {})
   );
@@ -330,16 +327,14 @@ export async function createChatSession(
 }
 
 /**
- * Send a message to an existing OpenCode session via the SvelteKit proxy.
+ * Send a message to an existing OpenCode session via the SvelteKit broker.
  * Uses direct fetch with a 150s AbortSignal timeout — OpenCode responses
  * can take 30–120s.
  */
 export async function sendChatMessage(
-  backend: import('./types.js').ChatBackend,
   sessionId: string,
   text: string
 ): Promise<import('./types.js').OpenCodeMessageResponse> {
-  if (backend === 'admin') throw new Error(ADMIN_BACKEND_REMOVED_MSG);
   const res = await fetch(
     `/proxy/assistant/session/${encodeURIComponent(sessionId)}/message`,
     {
@@ -354,7 +349,7 @@ export async function sendChatMessage(
     }
   );
   if (res.status === 401) {
-    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+    throw Object.assign(new Error('Sign-in required.'), { status: 401 });
   }
   if (!res.ok) {
     const msg = await readErrorMessage(res);
@@ -364,13 +359,10 @@ export async function sendChatMessage(
 }
 
 /**
- * Probe whether a backend is reachable.
+ * Probe whether the assistant broker is reachable.
  * Returns true if the probe succeeds within 3s.
  */
-export async function probeChatBackend(
-  backend: import('./types.js').ChatBackend
-): Promise<boolean> {
-  if (backend === 'admin') throw new Error(ADMIN_BACKEND_REMOVED_MSG);
+export async function probeChatBackend(): Promise<boolean> {
   try {
     const res = await fetch(`/proxy/assistant/provider`, {
       method: 'GET',

@@ -194,15 +194,12 @@ USEREOF
 			esac
 		fi
 
-		assistant_token=$(openssl rand -hex 32)
-
 		cat >"$system_env" <<EOF
 # OpenPalm System Environment — system-managed, do not edit
 
 # WARNING: dev-admin-token is for local development only.
-# NEVER use this value in production — generate a strong random token instead.
-OP_UI_TOKEN=dev-admin-token
-OP_ASSISTANT_TOKEN=${assistant_token}
+# NEVER use this value in production — generate a strong random password.
+OP_UI_LOGIN_PASSWORD=dev-admin-token
 OP_OPENCODE_PASSWORD=
 
 OP_HOME=$DEV_ROOT

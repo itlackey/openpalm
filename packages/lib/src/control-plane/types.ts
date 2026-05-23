@@ -42,8 +42,6 @@ export type ArtifactMeta = {
 };
 
 export type ControlPlaneState = {
-  adminToken: string;
-  assistantToken: string;
   homeDir: string;
   configDir: string;
   stashDir: string;      // homeDir/stash

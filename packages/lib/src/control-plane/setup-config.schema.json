@@ -30,12 +30,12 @@
     "security": {
       "type": "object",
       "description": "Security settings for the instance.",
-      "required": ["adminToken"],
+      "required": ["uiLoginPassword"],
       "additionalProperties": false,
       "properties": {
-        "adminToken": {
+        "uiLoginPassword": {
           "type": "string",
-          "description": "Admin API authentication token. Used to authenticate CLI and admin UI requests.",
+          "description": "Operator login password for the OpenPalm UI. Persisted to stack.env as OP_UI_LOGIN_PASSWORD; the UI's op_session cookie value is compared against it on every authenticated request.",
           "minLength": 8
         }
       }

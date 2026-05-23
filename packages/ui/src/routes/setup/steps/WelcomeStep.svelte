@@ -25,7 +25,7 @@
     <span class="pill">Privacy first</span>
   </div>
   <div class="token-callout" id="token-callout">
-    We'll create a secure admin login token for you. Run <code>openpalm token</code> from a terminal anytime to see it.
+    We'll generate a secure UI login password for you. It's also stored in <code>~/.openpalm/config/stack/stack.env</code> as <code>OP_UI_LOGIN_PASSWORD</code>.
   </div>
   {#if errorMessage}
     <div class="field-error" id="step0-error" role="alert">{errorMessage}</div>

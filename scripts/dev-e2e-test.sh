@@ -116,8 +116,7 @@ OP_GID=$(id -g)
 OP_DOCKER_SOCK=${docker_sock}
 OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=dev
-OP_UI_TOKEN=e2e-test-token-$(date +%s)
-OP_ASSISTANT_TOKEN=$(openssl rand -hex 32)
+OP_UI_LOGIN_PASSWORD=e2e-test-password-$(date +%s)
 OP_ASSISTANT_PORT=${OP_E2E_ASSISTANT_PORT:-3891}
 OP_GUARDIAN_PORT=${OP_E2E_GUARDIAN_PORT:-8181}
 OP_VOICE_PORT=${OP_E2E_VOICE_PORT:-8187}
@@ -222,7 +221,7 @@ fi
 # ── Step 7: Verify UI endpoints ───────────────────────────────────
 echo ""
 echo "=== Step 7: Verify UI endpoints ==="
-UI_TOKEN=$(grep '^OP_UI_TOKEN=' "${OP_E2E_HOME}/config/stack/stack.env" | cut -d= -f2-)
+UI_TOKEN=$(grep '^OP_UI_LOGIN_PASSWORD=' "${OP_E2E_HOME}/config/stack/stack.env" | cut -d= -f2-)
 
 # /health
 status=$(curl -s -o /dev/null -w "%{http_code}" "${UI_URL}/health")

@@ -13,9 +13,11 @@ import { resetState } from "./test-helpers.js";
 
 describe("getState", () => {
   test("returns a ControlPlaneState with expected shape", () => {
-    const state = resetState("test-token");
+    const state = resetState("test-password-12345");
     expect(state).toBeDefined();
-    expect(state.adminToken).toBe("test-token");
+    // Phase 4: adminToken/assistantToken were removed from ControlPlaneState;
+    // the operator login secret now lives in process.env.OP_UI_LOGIN_PASSWORD.
+    expect(process.env.OP_UI_LOGIN_PASSWORD).toBe("test-password-12345");
     expect(state.homeDir).toBeDefined();
     expect(state.configDir).toBeDefined();
     expect(state.stateDir).toBeDefined();
@@ -28,7 +30,7 @@ describe("getState", () => {
   });
 
   test("returns same instance on repeated calls (singleton pattern)", () => {
-    resetState("singleton-test");
+    resetState("singleton-test-12345");
     const a = getState();
     const b = getState();
     expect(a).toBe(b);
@@ -36,18 +38,19 @@ describe("getState", () => {
 });
 
 describe("resetState", () => {
-  test("creates fresh state with new token", () => {
-    const state1 = resetState("token-a");
-    expect(state1.adminToken).toBe("token-a");
+  test("creates a fresh state instance and seeds OP_UI_LOGIN_PASSWORD", () => {
+    const state1 = resetState("password-a-12345");
+    expect(process.env.OP_UI_LOGIN_PASSWORD).toBe("password-a-12345");
 
-    const state2 = resetState("token-b");
-    expect(state2.adminToken).toBe("token-b");
+    const state2 = resetState("password-b-12345");
+    expect(process.env.OP_UI_LOGIN_PASSWORD).toBe("password-b-12345");
     expect(state2).not.toBe(state1);
   });
 
   test("getState returns the reset state", () => {
-    resetState("reset-verify");
-    expect(getState().adminToken).toBe("reset-verify");
+    resetState("reset-verify-12345");
+    expect(getState()).toBeDefined();
+    expect(process.env.OP_UI_LOGIN_PASSWORD).toBe("reset-verify-12345");
   });
 
   test("initializes core services as stopped", () => {

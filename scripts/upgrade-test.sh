@@ -95,7 +95,7 @@ STATE_DIR="${OP_HOME}/state"
 CACHE_DIR="${OP_HOME}/cache"
 
 PROJECT_NAME="openpalm-upgrade-test"
-OP_UI_TOKEN="upgrade-test-token"
+OP_UI_LOGIN_PASSWORD="upgrade-test-password"
 
 # ── Colors / Output ──────────────────────────────────────────────────
 
@@ -230,7 +230,7 @@ OP_GID=$(id -g)
 OP_DOCKER_SOCK=${docker_sock}
 OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=dev
-OP_UI_TOKEN=${OP_UI_TOKEN}
+OP_UI_LOGIN_PASSWORD=${OP_UI_LOGIN_PASSWORD}
 EOF
 chmod 600 "${STACK_DIR}/stack.env"
 
@@ -412,11 +412,11 @@ else
   fail "stash/vaults/user.env was modified during upgrade (before: ${SECRETS_CHECKSUM_BEFORE}, after: ${SECRETS_CHECKSUM_AFTER})"
 fi
 
-OP_UI_TOKEN_VALUE=$(grep "^OP_UI_TOKEN=" "${STACK_DIR}/stack.env" | head -1 | cut -d= -f2-)
-if [[ "$OP_UI_TOKEN_VALUE" == "$OP_UI_TOKEN" ]]; then
-  pass "OP_UI_TOKEN preserved in config/stack/stack.env"
+OP_UI_LOGIN_PASSWORD_VALUE=$(grep "^OP_UI_LOGIN_PASSWORD=" "${STACK_DIR}/stack.env" | head -1 | cut -d= -f2-)
+if [[ "$OP_UI_LOGIN_PASSWORD_VALUE" == "$OP_UI_LOGIN_PASSWORD" ]]; then
+  pass "OP_UI_LOGIN_PASSWORD preserved in config/stack/stack.env"
 else
-  fail "OP_UI_TOKEN changed (expected '${OP_UI_TOKEN}', got '${OP_UI_TOKEN_VALUE}')"
+  fail "OP_UI_LOGIN_PASSWORD changed (expected '${OP_UI_LOGIN_PASSWORD}', got '${OP_UI_LOGIN_PASSWORD_VALUE}')"
 fi
 
 CUSTOM_KEY_VALUE=$(grep "^MY_CUSTOM_KEY=" "${STASH_DIR}/vaults/user.env" | head -1 | cut -d= -f2-)
@@ -483,15 +483,15 @@ done
 
 # ── 5f: Admin token preserved in stack.env ──────────────────────────
 echo ""
-echo "=== 5f: Admin token preservation ==="
+echo "=== 5f: UI login password preservation ==="
 
 # Admin is a host process — no HTTP auth check here.
-# Verify the token value is still in stack.env.
-TOKEN_AFTER=$(grep "^OP_UI_TOKEN=" "${STACK_DIR}/stack.env" | head -1 | cut -d= -f2-)
-if [[ "$TOKEN_AFTER" == "$OP_UI_TOKEN" ]]; then
-  pass "OP_UI_TOKEN preserved in config/stack/stack.env after upgrade"
+# Verify the password value is still in stack.env.
+PASSWORD_AFTER=$(grep "^OP_UI_LOGIN_PASSWORD=" "${STACK_DIR}/stack.env" | head -1 | cut -d= -f2-)
+if [[ "$PASSWORD_AFTER" == "$OP_UI_LOGIN_PASSWORD" ]]; then
+  pass "OP_UI_LOGIN_PASSWORD preserved in config/stack/stack.env after upgrade"
 else
-  fail "OP_UI_TOKEN changed after upgrade (expected '${OP_UI_TOKEN}', got '${TOKEN_AFTER}')"
+  fail "OP_UI_LOGIN_PASSWORD changed after upgrade (expected '${OP_UI_LOGIN_PASSWORD}', got '${PASSWORD_AFTER}')"
 fi
 
 # ── 5g: No errors in container logs ─────────────────────────────────

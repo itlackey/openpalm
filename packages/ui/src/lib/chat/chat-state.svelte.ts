@@ -9,61 +9,39 @@
  * the user is already authenticated (those pages have their own gating);
  * if a 401 is returned here, `error` is set and the chat page's AuthGate
  * shows when the user navigates there.
+ *
+ * Phase 4 of docs/technical/auth-and-proxy-refactor-plan.md deleted the
+ * assistant/admin backend toggle. Only the assistant broker
+ * (`/proxy/assistant/...`) is reachable from the browser; the active
+ * OpenCode instance is chosen via the connection switcher, server-side.
  */
 import {
 	createChatSession,
 	sendChatMessage,
 } from '$lib/api.js';
 import type {
-	ChatBackend,
-	ChatDivider,
 	ChatEntry,
 	ChatMessage,
 } from '$lib/types.js';
 import { speakText, stopSpeaking, voiceState } from '$lib/voice/voice-state.svelte.js';
 
-const BACKEND_STORAGE_KEY = 'openpalm.chat.backend';
-
-function readPersistedBackend(): ChatBackend {
-	if (typeof window === 'undefined') return 'assistant';
-	try {
-		const v = window.localStorage.getItem(BACKEND_STORAGE_KEY);
-		return v === 'admin' ? 'admin' : 'assistant';
-	} catch {
-		return 'assistant';
-	}
-}
-
-function writePersistedBackend(b: ChatBackend): void {
-	if (typeof window === 'undefined') return;
-	try {
-		window.localStorage.setItem(BACKEND_STORAGE_KEY, b);
-	} catch {
-		/* storage disabled */
-	}
-}
-
 class ChatService {
-	backend = $state<ChatBackend>(readPersistedBackend());
 	entries = $state<ChatEntry[]>([]);
 	sending = $state(false);
 	sessionInitializing = $state(false);
-	sessions = $state<Record<ChatBackend, string | null>>({
-		assistant: null,
-		admin: null,
-	});
+	sessionId = $state<string | null>(null);
 	error = $state('');
 
-	async ensureSession(b: ChatBackend = this.backend): Promise<string | null> {
-		if (this.sessions[b]) return this.sessions[b];
+	async ensureSession(): Promise<string | null> {
+		if (this.sessionId) return this.sessionId;
 		this.sessionInitializing = true;
 		try {
-			const { id } = await createChatSession(b);
-			this.sessions[b] = id;
+			const { id } = await createChatSession();
+			this.sessionId = id;
 			return id;
 		} catch (e) {
 			const err = e as { message?: string };
-			this.error = `Failed to start session with ${b}: ${err.message ?? 'unknown error'}`;
+			this.error = `Failed to start session: ${err.message ?? 'unknown error'}`;
 			return null;
 		} finally {
 			this.sessionInitializing = false;
@@ -75,14 +53,13 @@ class ChatService {
 		const trimmed = text.trim();
 		if (!trimmed) return;
 
-		const sessionId = await this.ensureSession(this.backend);
+		const sessionId = await this.ensureSession();
 		if (!sessionId) return;
 
 		const userEntry: ChatMessage = {
 			id: crypto.randomUUID(),
 			role: 'user',
 			text: trimmed,
-			backend: this.backend,
 			timestamp: Date.now(),
 		};
 		this.entries = [...this.entries, userEntry];
@@ -90,7 +67,7 @@ class ChatService {
 		this.sending = true;
 
 		try {
-			const response = await sendChatMessage(this.backend, sessionId, trimmed);
+			const response = await sendChatMessage(sessionId, trimmed);
 			const replyText = response.parts
 				.filter((p) => p.type === 'text' && p.text)
 				.map((p) => p.text ?? '')
@@ -100,7 +77,6 @@ class ChatService {
 				id: crypto.randomUUID(),
 				role: 'assistant',
 				text: replyText || '(no response)',
-				backend: this.backend,
 				timestamp: Date.now(),
 			};
 			this.entries = [...this.entries, assistantEntry];
@@ -114,8 +90,8 @@ class ChatService {
 		} catch (e) {
 			const err = e as { status?: number; message?: string };
 			if (err.status === 503 || err.status === 502) {
-				this.error = `${this.backend === 'admin' ? 'Admin' : 'Assistant'} is not reachable. Try reconnecting.`;
-				this.sessions[this.backend] = null;
+				this.error = 'Assistant is not reachable. Try reconnecting.';
+				this.sessionId = null;
 			} else if (err.status === 401) {
 				this.error = 'Sign-in required.';
 			} else {
@@ -126,31 +102,15 @@ class ChatService {
 		}
 	}
 
-	setBackend(next: ChatBackend): void {
-		if (next === this.backend) return;
-		const divider: ChatDivider = {
-			id: crypto.randomUUID(),
-			type: 'divider',
-			label: `Switched to ${next === 'admin' ? 'Admin' : 'Assistant'}`,
-			timestamp: Date.now(),
-		};
-		this.entries = [...this.entries, divider];
-		this.backend = next;
-		writePersistedBackend(next);
-		void this.ensureSession(next);
-	}
-
 	dropCurrentSession(): void {
-		this.sessions[this.backend] = null;
+		this.sessionId = null;
 	}
 
 	reset(): void {
 		stopSpeaking();
 		this.entries = [];
 		this.error = '';
-		this.sessions = { assistant: null, admin: null };
-		this.backend = 'assistant';
-		writePersistedBackend('assistant');
+		this.sessionId = null;
 	}
 }
 

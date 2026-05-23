@@ -32,7 +32,10 @@
   let systemCheckPassed = $state(false);
 
   // ── Step 0: Welcome ───────────────────────────────────────────────────────
-  let adminToken = $state('');
+  // Operator UI login password — replaces the legacy "admin token" UI
+  // (Phase 4 of docs/technical/auth-and-proxy-refactor-plan.md). Persisted
+  // to stack.env as OP_UI_LOGIN_PASSWORD.
+  let uiLoginPassword = $state('');
   let step0Error = $state('');
   // Tracks whether the "Use recommended defaults" detection has settled
   let detectionReady = $state(false);
@@ -189,7 +192,7 @@
     const result: Record<string, unknown> = {
       version: 2,
       addons,
-      security: { adminToken },
+      security: { uiLoginPassword },
       connections: capabilities,
     };
 
@@ -232,7 +235,7 @@
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  function generateToken(): string {
+  function generatePassword(): string {
     const arr = new Uint8Array(16);
     crypto.getRandomValues(arr);
     return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
@@ -276,9 +279,9 @@
   // ── Validation ────────────────────────────────────────────────────────────
 
   function validateStep0(): boolean {
-    // Token is always generated on mount — this is just a safety check.
-    if (adminToken.trim().length < 8) {
-      step0Error = 'Admin token must be at least 8 characters.';
+    // Password is always generated on mount — this is just a safety check.
+    if (uiLoginPassword.trim().length < 8) {
+      step0Error = 'UI login password must be at least 8 characters.';
       return false;
     }
     step0Error = '';
@@ -936,13 +939,13 @@
       // immediately and pre-fill every step from current config.
       systemCheckPassed = true;
       maxVisitedStep = 6;
-      adminToken = generateToken(); // fallback; replaced if API returns existing
+      uiLoginPassword = generatePassword(); // fallback; replaced if API returns existing
 
       fetch('/api/setup/current-config')
         .then((r) => r.ok ? r.json() : null)
         .then((data) => {
           if (!data) return;
-          if (data.adminToken) adminToken = data.adminToken;
+          if (data.uiLoginPassword) uiLoginPassword = data.uiLoginPassword;
           if (data.imageTag) imageTag = data.imageTag;
           if (typeof data.hostAkm === 'boolean') hostAkmEnabled = data.hostAkm;
 
@@ -995,7 +998,7 @@
         })
         .catch(() => { /* fall through with generated token */ });
     } else {
-      adminToken = generateToken();
+      uiLoginPassword = generatePassword();
       fetch('/api/setup/status')
         .then((r) => r.json())
         .then((data) => { if (data.setupComplete) window.location.href = '/'; })
@@ -1174,7 +1177,7 @@
       {:else if currentStep === 6}
         <section class="step-content" id="step-6" data-testid="step-review">
           <ReviewStep
-            {adminToken}
+            {uiLoginPassword}
             ownerName=""
             ownerEmail=""
             {verifiedProviders}

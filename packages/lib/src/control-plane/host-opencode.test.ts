@@ -14,8 +14,6 @@ import type { ControlPlaneState } from "./types.js";
 
 function makeState(homeDir: string): ControlPlaneState {
   return {
-    adminToken: "test-admin",
-    assistantToken: "test-assistant",
     homeDir,
     configDir: join(homeDir, "config"),
     stashDir: join(homeDir, "stash"),

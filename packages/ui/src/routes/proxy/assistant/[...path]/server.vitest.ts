@@ -22,7 +22,7 @@ import type { RequestHandler } from './$types';
 import { _replaceState } from '$lib/server/state.js';
 import { makeTestState } from '$lib/server/test-helpers.js';
 
-const ENV_KEYS = ['OP_OPENCODE_URL', 'OP_ASSISTANT_URL', 'OP_ASSISTANT_PORT', 'OPENCODE_SERVER_PASSWORD'] as const;
+const ENV_KEYS = ['OP_OPENCODE_URL', 'OP_ASSISTANT_URL', 'OP_ASSISTANT_PORT', 'OPENCODE_SERVER_PASSWORD', 'OP_UI_LOGIN_PASSWORD'] as const;
 const savedEnv: Record<string, string | undefined> = {};
 
 let sseServer: Server | undefined;
@@ -34,6 +34,9 @@ beforeEach(async () => {
     delete process.env[k];
   }
   _replaceState(makeTestState());
+  // Phase 4: requireAdmin compares the cookie value against
+  // process.env.OP_UI_LOGIN_PASSWORD. Seed it so makeAuthedEvent() passes.
+  process.env.OP_UI_LOGIN_PASSWORD = 'test-admin-token';
 
   // Stand up an SSE emitter that writes 4 chunks with 80ms gaps between them.
   sseServer = createServer((req, res) => {
@@ -74,8 +77,9 @@ afterEach(async () => {
 type Handler = RequestHandler;
 
 function makeAuthedEvent(): Parameters<Handler>[0] {
-  // makeTestState() seeds adminToken = "test-admin-token"; the proxy reads
-  // the cookie via the same extractToken() helper used by /admin routes.
+  // The beforeEach hook seeds OP_UI_LOGIN_PASSWORD=test-admin-token; the
+  // proxy reads the op_session cookie via the same extractToken() helper
+  // used by /admin routes and compares against that env var.
   const request = new Request(`http://localhost:8100/proxy/assistant/event`, {
     method: 'POST',
     headers: {

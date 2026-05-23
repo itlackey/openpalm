@@ -21,7 +21,7 @@
   async function reconnect(): Promise<void> {
     chat.error = '';
     chat.dropCurrentSession();
-    await chat.ensureSession(chat.backend);
+    await chat.ensureSession();
   }
 
   async function handleSend(text: string): Promise<void> {
@@ -51,13 +51,13 @@
       });
       if (!loginRes.ok) {
         authLocked = true;
-        authError = 'Invalid admin token.';
+        authError = 'Invalid password.';
         return false;
       }
       authLocked = false;
       authError = '';
       // Start the initial session immediately on auth
-      await chat.ensureSession(chat.backend);
+      await chat.ensureSession();
       return true;
     } catch {
       authError = 'Unable to reach admin API.';
@@ -90,9 +90,9 @@
       if (destroyed || document.visibilityState !== 'visible') return;
       if (authLocked) return;
       void (async () => {
-        const reachable = await probeChatBackend(chat.backend);
+        const reachable = await probeChatBackend();
         if (!reachable && !destroyed) {
-          chat.error = `${chat.backend === 'admin' ? 'Admin' : 'Assistant'} is not reachable. Try reconnecting.`;
+          chat.error = 'Assistant is not reachable. Try reconnecting.';
           chat.dropCurrentSession();
         }
       })();
@@ -119,7 +119,7 @@
           return;
         }
         authLocked = false;
-        await chat.ensureSession(chat.backend);
+        await chat.ensureSession();
       } catch {
         authLocked = true;
         authError = 'Unable to reach admin API.';
@@ -144,14 +144,14 @@
     <section class="messages-area" aria-label="Chat history" aria-live="polite">
       {#if chat.entries.length === 0 && !chat.sessionInitializing}
         <div class="empty-state">
-          <p>Start a conversation with your {chat.backend === 'admin' ? 'Admin' : 'Assistant'}.</p>
+          <p>Start a conversation with your assistant.</p>
         </div>
       {/if}
 
       {#if chat.sessionInitializing}
         <div class="session-loading" aria-live="polite">
           <span class="spinner" aria-hidden="true"></span>
-          <span>Connecting to {chat.backend === 'admin' ? 'Admin' : 'Assistant'}…</span>
+          <span>Connecting to assistant…</span>
         </div>
       {/if}
 
@@ -180,9 +180,7 @@
       </div>
     {/if}
 
-    <!-- Input area — always at the bottom.
-         The backend toggle lives in the Navbar's VoiceControl now so it's
-         consistent with the mic, which uses the same backend selection. -->
+    <!-- Input area — always at the bottom. -->
     <ChatInput
       sending={chat.sending}
       onSend={handleSend}

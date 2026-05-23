@@ -41,8 +41,6 @@ function makeTempDir(): string {
 function makeState(tempDir?: string): ControlPlaneState {
   const base = tempDir ?? makeTempDir();
   return {
-    adminToken: "test-token",
-    assistantToken: "test-assistant-token",
     homeDir: base,
     configDir: join(base, "config"),
     stashDir: join(base, "stash"),

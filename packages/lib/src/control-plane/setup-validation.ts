@@ -34,8 +34,8 @@ export function validateSetupSpec(input: unknown): { valid: boolean; errors: str
 function validateSecurity(body: Record<string, unknown>, errors: string[]): void {
   const security = requireObj(body.security, "security object is required", errors);
   if (!security) return;
-  if (!requireStr(security, "adminToken", "security.adminToken is required and must be a non-empty string", errors)) return;
-  if ((security.adminToken as string).length < 8) errors.push("security.adminToken must be at least 8 characters");
+  if (!requireStr(security, "uiLoginPassword", "security.uiLoginPassword is required and must be a non-empty string", errors)) return;
+  if ((security.uiLoginPassword as string).length < 8) errors.push("security.uiLoginPassword must be at least 8 characters");
 }
 
 function validateOwner(body: Record<string, unknown>, errors: string[]): void {

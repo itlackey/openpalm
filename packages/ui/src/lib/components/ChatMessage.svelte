@@ -19,13 +19,12 @@
     class="message"
     class:message-user={entry.role === 'user'}
     class:message-assistant={entry.role === 'assistant'}
-    data-backend={entry.backend}
   >
     <div class="message-bubble">
       <p class="message-text">{entry.text}</p>
     </div>
     <span class="message-meta">
-      {entry.role === 'user' ? 'You' : entry.backend === 'admin' ? 'Admin' : 'Assistant'}
+      {entry.role === 'user' ? 'You' : 'Assistant'}
       · {new Date(entry.timestamp).toLocaleTimeString()}
     </span>
   </div>
@@ -91,12 +90,6 @@
     color: var(--color-text);
     border: 1px solid var(--color-border);
     border-bottom-left-radius: var(--radius-sm);
-  }
-
-  /* Admin backend gets a subtle blue tint on the bubble */
-  .message-assistant[data-backend='admin'] .message-bubble {
-    background: var(--color-info-bg);
-    border-color: rgba(51, 154, 240, 0.2);
   }
 
   .message-text {

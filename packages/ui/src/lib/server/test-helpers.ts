@@ -31,8 +31,6 @@ export function seedSecretsEnv(stateDir: string, content: string): void {
 export function makeTestState(overrides: Partial<ControlPlaneState> = {}): ControlPlaneState {
   const tempDir = makeTempDir();
   return {
-    adminToken: "test-admin-token",
-    assistantToken: "test-assistant-token",
     homeDir: tempDir,
     configDir: join(tempDir, "config"),
     stashDir: join(tempDir, "stash"),
@@ -72,10 +70,18 @@ export function registerCleanup(): void {
 
 /**
  * Reset the singleton control-plane state for testing.
- * Creates a fresh state with the given admin token.
+ *
+ * After Phase 4 of the auth/proxy refactor, `createState()` no longer
+ * accepts a token argument — the operator login password lives in
+ * `process.env.OP_UI_LOGIN_PASSWORD`. Pass a string here to set the env
+ * var for the rest of the test (callers should reset it in `afterEach`
+ * if they need isolation).
  */
-export function resetState(token?: string): ControlPlaneState {
-  const state = createState(token);
+export function resetState(uiLoginPassword?: string): ControlPlaneState {
+  if (uiLoginPassword !== undefined) {
+    process.env.OP_UI_LOGIN_PASSWORD = uiLoginPassword;
+  }
+  const state = createState();
   _replaceState(state);
   return state;
 }

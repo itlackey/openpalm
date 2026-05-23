@@ -17,8 +17,6 @@ let tempDir: string;
 function makeState(overrides: Partial<ControlPlaneState> = {}): ControlPlaneState {
   const configDir = join(tempDir, "config");
   return {
-    adminToken: "test",
-    assistantToken: "test",
     homeDir: tempDir,
     configDir,
     stashDir: join(tempDir, "stash"),

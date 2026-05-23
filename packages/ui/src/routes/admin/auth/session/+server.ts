@@ -2,18 +2,15 @@
  * POST /admin/auth/session
  *
  * Issues an `op_session` cookie after verifying the operator-supplied password
- * in the JSON body. This is the password seeded from **OP_UI_LOGIN_PASSWORD**
- * (renamed in Phase 2 of docs/technical/auth-and-proxy-refactor-plan.md from
- * the legacy `ADMIN_TOKEN`).
+ * against `process.env.OP_UI_LOGIN_PASSWORD`.
  *
- * Phase 2 removed the `x-admin-token` header fallback that this route used to
- * rely on; obtaining a cookie now requires the password in-body. After Phase 4
- * this endpoint and `/admin/auth/login` collapse into one — kept as an alias
- * for now so the host admin gateway (and any wizard clients) keep working
- * without a coordinated client update.
+ * Phase 4 of docs/technical/auth-and-proxy-refactor-plan.md collapsed the
+ * `state.adminToken` field; the cookie value IS the password and is
+ * constant-time-compared on every authenticated request. Kept alongside
+ * `/admin/auth/login` as an alias so the host admin gateway and wizard
+ * clients keep working without a coordinated client update.
  */
-import { safeTokenCompare, getRequestId, errorResponse } from "$lib/server/helpers.js";
-import { getState } from "$lib/server/state.js";
+import { safeTokenCompare, getRequestId, errorResponse, getUiLoginPassword } from "$lib/server/helpers.js";
 import type { RequestHandler } from "./$types";
 
 export const POST: RequestHandler = async (event) => {
@@ -31,8 +28,17 @@ export const POST: RequestHandler = async (event) => {
     typeof body.token === "string" ? body.token : "";
   if (!password) return errorResponse(400, "bad_request", "password is required", {}, requestId);
 
-  const state = getState();
-  if (!state.adminToken || !safeTokenCompare(password, state.adminToken)) {
+  const configured = getUiLoginPassword();
+  if (!configured) {
+    return errorResponse(
+      503,
+      "admin_not_configured",
+      "OP_UI_LOGIN_PASSWORD has not been set. Complete setup first.",
+      {},
+      requestId,
+    );
+  }
+  if (!safeTokenCompare(password, configured)) {
     return errorResponse(401, "unauthorized", "Invalid password", {}, requestId);
   }
 

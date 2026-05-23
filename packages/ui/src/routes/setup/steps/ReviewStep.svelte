@@ -6,7 +6,7 @@
   import { friendlyError } from '$lib/wizard/error-messages.js';
 
   interface Props {
-    adminToken: string;
+    uiLoginPassword: string;
     ownerName: string;
     ownerEmail: string;
     verifiedProviders: Provider[];
@@ -25,7 +25,7 @@
   }
 
   let {
-    adminToken,
+    uiLoginPassword,
     ownerName,
     ownerEmail,
     verifiedProviders,
@@ -43,9 +43,9 @@
     ongostepedit,
   }: Props = $props();
 
-  function maskToken(token: string): string {
-    if (!token || token.length < 8) return '(not set)';
-    return token.slice(0, 4) + '...' + token.slice(-4);
+  function maskSecret(value: string): string {
+    if (!value || value.length < 8) return '(not set)';
+    return value.slice(0, 4) + '...' + value.slice(-4);
   }
 
   function isChannelEnabled(chId: string, locked?: boolean): boolean {
@@ -64,24 +64,24 @@
     return PROVIDERS.find((p) => p.id === connId);
   }
 
-  let tokenCopied = $state(false);
+  let passwordCopied = $state(false);
   let copyFallback = $state(false);
-  let tokenInputEl: HTMLInputElement | null = $state(null);
+  let passwordInputEl: HTMLInputElement | null = $state(null);
 
-  async function copyAdminToken(): Promise<void> {
+  async function copyPassword(): Promise<void> {
     try {
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(adminToken);
-        tokenCopied = true;
-        setTimeout(() => { tokenCopied = false; }, 2000);
+        await navigator.clipboard.writeText(uiLoginPassword);
+        passwordCopied = true;
+        setTimeout(() => { passwordCopied = false; }, 2000);
         return;
       }
       throw new Error('Clipboard API unavailable');
     } catch {
       copyFallback = true;
-      if (tokenInputEl) {
-        tokenInputEl.focus();
-        tokenInputEl.select();
+      if (passwordInputEl) {
+        passwordInputEl.focus();
+        passwordInputEl.select();
       }
     }
   }
@@ -104,8 +104,8 @@
       <button class="review-edit-btn" type="button" onclick={() => ongostepedit(1)}>Edit</button>
     </div>
     <div class="review-row">
-      <span class="review-row-label">Admin Token</span>
-      <span class="review-row-value">{maskToken(adminToken)}</span>
+      <span class="review-row-label">UI Login Password</span>
+      <span class="review-row-value">{maskSecret(uiLoginPassword)}</span>
     </div>
     {#if ownerName}
       <div class="review-row">
@@ -199,7 +199,7 @@
             {#if val}
               <div class="review-row">
                 <span class="review-row-label" style="padding-left:24px">{cred.label}</span>
-                <span class="review-row-value">{maskToken(val)}</span>
+                <span class="review-row-value">{maskSecret(val)}</span>
               </div>
             {/if}
           {/each}
@@ -226,23 +226,23 @@
 {#if !isRerun}
   <div class="token-save-panel" id="token-save-panel">
     <div class="token-save-header">
-      <strong>Save your admin token</strong>
-      <span class="token-save-sub">You'll need it to log in. Run <code>openpalm token</code> from a terminal anytime to see it again.</span>
+      <strong>Save your UI login password</strong>
+      <span class="token-save-sub">You'll need it to sign in to OpenPalm. It's also stored in <code>~/.openpalm/config/stack/stack.env</code> as <code>OP_UI_LOGIN_PASSWORD</code>.</span>
     </div>
     {#if copyFallback}
       <input
-        bind:this={tokenInputEl}
+        bind:this={passwordInputEl}
         class="token-save-input"
         type="text"
         readonly
-        value={adminToken}
+        value={uiLoginPassword}
         onfocus={(e) => (e.currentTarget as HTMLInputElement).select()}
       />
     {:else}
-      <div class="token-save-box">{adminToken}</div>
+      <div class="token-save-box">{uiLoginPassword}</div>
     {/if}
-    <button type="button" class="btn btn-secondary token-save-copy" onclick={() => void copyAdminToken()}>
-      {tokenCopied ? 'Copied!' : 'Copy token'}
+    <button type="button" class="btn btn-secondary token-save-copy" onclick={() => void copyPassword()}>
+      {passwordCopied ? 'Copied!' : 'Copy password'}
     </button>
   </div>
 {/if}

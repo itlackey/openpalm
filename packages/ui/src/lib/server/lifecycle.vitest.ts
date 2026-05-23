@@ -134,37 +134,23 @@ describe("createState", () => {
 
   beforeEach(() => {
     origEnv.OP_HOME = process.env.OP_HOME;
-    origEnv.OP_UI_TOKEN = process.env.OP_UI_TOKEN;
   });
 
   afterEach(() => {
     process.env.OP_HOME = origEnv.OP_HOME;
-    process.env.OP_UI_TOKEN = origEnv.OP_UI_TOKEN;
   });
 
-  test("reads OP_UI_TOKEN from state/stack.env file", () => {
+  // Phase 4 (auth/proxy refactor): createState() no longer carries an
+  // adminToken / assistantToken — login auth lives in
+  // process.env.OP_UI_LOGIN_PASSWORD and is read per-request in helpers.ts.
+
+  test("returns a state with the expected directory shape", () => {
     const base = trackDir(makeTempDir());
     process.env.OP_HOME = base;
-    delete process.env.OP_UI_TOKEN;
-
-    const stackDir = join(base, "config", "stack");
-    mkdirSync(stackDir, { recursive: true });
-    writeFileSync(
-      join(stackDir, "stack.env"),
-      "OP_UI_TOKEN=file-token\n"
-    );
-
     const state = createState();
-    expect(state.adminToken).toBe("file-token");
-  });
-
-  test("uses explicit adminToken parameter over file/env", () => {
-    const base = trackDir(makeTempDir());
-    process.env.OP_HOME = base;
-    process.env.OP_UI_TOKEN = "env-token";
-
-    const state = createState("explicit-token");
-    expect(state.adminToken).toBe("explicit-token");
+    expect(state.homeDir).toBe(base);
+    expect(state.configDir).toBeDefined();
+    expect(state.stackDir).toBeDefined();
   });
 
   test("initializes all core services as stopped", () => {

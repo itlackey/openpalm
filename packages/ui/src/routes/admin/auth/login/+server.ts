@@ -3,20 +3,16 @@
  *
  * Issues the `op_session` cookie (HttpOnly, SameSite=Strict, Max-Age=86400)
  * after verifying the operator-supplied password in the request body against
- * the configured admin secret.
+ * `process.env.OP_UI_LOGIN_PASSWORD`.
  *
- * The operator-facing env var that seeds this secret is **OP_UI_LOGIN_PASSWORD**
- * (renamed from the legacy `ADMIN_TOKEN` in Phase 2 of
- * docs/technical/auth-and-proxy-refactor-plan.md). It is read from `stack.env`
- * via `state.adminToken` today; Phase 4 will collapse the field and the env
- * plumbing together. The cookie semantics are unchanged.
- *
- * Phase 2 also drops the assistant-token branch — only the admin secret is a
- * valid login credential; `state.assistantToken` no longer participates.
+ * Phase 4 of docs/technical/auth-and-proxy-refactor-plan.md deleted the
+ * `state.adminToken` field and the legacy `OP_UI_TOKEN`/`OP_ASSISTANT_TOKEN`
+ * env vars. The cookie value IS the password — every `requireAdmin()` call
+ * re-reads the env var and constant-time-compares the cookie against it.
+ * No in-memory session store.
  */
 import type { RequestHandler } from "./$types";
-import { getState } from "$lib/server/state.js";
-import { safeTokenCompare, getRequestId, errorResponse } from "$lib/server/helpers.js";
+import { safeTokenCompare, getRequestId, errorResponse, getUiLoginPassword } from "$lib/server/helpers.js";
 
 const COOKIE_NAME = "op_session";
 const COOKIE_OPTS = "HttpOnly; SameSite=Strict; Path=/; Max-Age=86400";
@@ -38,8 +34,17 @@ export const POST: RequestHandler = async (event) => {
     typeof body.token === "string" ? body.token : "";
   if (!password) return errorResponse(400, "bad_request", "password is required", {}, requestId);
 
-  const state = getState();
-  if (!state.adminToken || !safeTokenCompare(password, state.adminToken)) {
+  const configured = getUiLoginPassword();
+  if (!configured) {
+    return errorResponse(
+      503,
+      "admin_not_configured",
+      "OP_UI_LOGIN_PASSWORD has not been set. Complete setup first.",
+      {},
+      requestId,
+    );
+  }
+  if (!safeTokenCompare(password, configured)) {
     return errorResponse(401, "unauthorized", "Invalid password", {}, requestId);
   }
 

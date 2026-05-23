@@ -560,8 +560,8 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
     fi
   }
 
-  # Admin token lives in config/stack/stack.env as OP_UI_TOKEN.
-  check_stack_env_val "OP_UI_TOKEN" "$OP_UI_LOGIN_PASSWORD"
+  # UI login password lives in config/stack/stack.env as OP_UI_LOGIN_PASSWORD.
+  check_stack_env_val "OP_UI_LOGIN_PASSWORD" "$OP_UI_LOGIN_PASSWORD"
   # LLM and embedding configuration live in config/akm/config.json, NOT stack.env.
   if [ -f "$OPENPALM_HOME/config/akm/config.json" ]; then
     pass "config/akm/config.json exists"
@@ -615,7 +615,9 @@ check_container_env() {
   fi
 }
 
-check_container_env "openpalm-assistant-1" "OP_UI_TOKEN" "equals" "$OP_UI_LOGIN_PASSWORD"
+# Phase 4 of docs/technical/auth-and-proxy-refactor-plan.md removed the
+# assistant container's OP_UI_TOKEN / OP_ASSISTANT_TOKEN env vars. The UI
+# login password is host-side only.
 check_container_env "openpalm-assistant-1" "OPENAI_BASE_URL" "endswith" "/v1"
 
 # ── Step 12: Test chat channel (if installed) ─────────────────────────

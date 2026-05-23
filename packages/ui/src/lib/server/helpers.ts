@@ -66,10 +66,33 @@ export function getRequestId(event: RequestEvent): string {
   return event.request.headers.get("x-request-id") || crypto.randomUUID();
 }
 
-/** Guard: returns 503 if admin token has not been configured yet. */
-export function requireNonEmptyAdminToken(state: { adminToken: string }, requestId: string): Response | null {
-  if (!state.adminToken) {
-    return errorResponse(503, 'admin_not_configured', 'Admin token has not been set. Complete setup first.', {}, requestId);
+/**
+ * Read the operator UI login password from the host environment.
+ *
+ * Phase 4 of the auth/proxy refactor collapsed
+ * `ControlPlaneState.adminToken` (and the assistant token alongside it).
+ * The cookie value is the operator-supplied password itself; on every
+ * authenticated request we re-read `process.env.OP_UI_LOGIN_PASSWORD` and
+ * compare it against the cookie with the existing constant-time compare.
+ *
+ * Returns the empty string when the env var is unset — `requireNonEmptyUiLoginPassword()`
+ * surfaces that case as a 503 so all authenticated routes fail loudly
+ * rather than silently accepting any cookie.
+ */
+export function getUiLoginPassword(): string {
+  return process.env.OP_UI_LOGIN_PASSWORD ?? "";
+}
+
+/** Guard: returns 503 if the UI login password has not been configured yet. */
+export function requireNonEmptyAdminToken(_state: unknown, requestId: string): Response | null {
+  if (!getUiLoginPassword()) {
+    return errorResponse(
+      503,
+      'admin_not_configured',
+      'OP_UI_LOGIN_PASSWORD has not been set. Complete setup first.',
+      {},
+      requestId,
+    );
   }
   return null;
 }
@@ -91,13 +114,20 @@ function extractToken(event: RequestEvent): string {
   return "";
 }
 
-/** Check admin token — returns error Response or null if OK */
+/** Check admin auth — returns error Response or null if OK */
 export function requireAdmin(event: RequestEvent, requestId: string): Response | null {
-  const state = getState();
-  const notConfigured = requireNonEmptyAdminToken(state, requestId);
-  if (notConfigured) return notConfigured;
+  const password = getUiLoginPassword();
+  if (!password) {
+    return errorResponse(
+      503,
+      'admin_not_configured',
+      'OP_UI_LOGIN_PASSWORD has not been set. Complete setup first.',
+      {},
+      requestId,
+    );
+  }
   const token = extractToken(event);
-  if (!safeTokenCompare(token, state.adminToken)) {
+  if (!safeTokenCompare(token, password)) {
     return errorResponse(
       401,
       "unauthorized",
@@ -112,32 +142,35 @@ export function requireAdmin(event: RequestEvent, requestId: string): Response |
 /**
  * Identify caller by the presented `op_session` cookie.
  *
- * Phase 2: the assistant-token branch was dropped along with the
- * `x-admin-token` header fallback. The only credential we can resolve from a
- * request is the admin cookie. Phase 4 will simplify this further (and the
- * `assistantToken` field on `ControlPlaneState` is removed there too); for now
- * we keep the function so callers compile unchanged.
+ * Phase 4 collapsed the assistant/admin distinction at the cookie layer:
+ * there is one credential (the operator's UI login password) and one
+ * caller identity ("admin") when it matches.
  */
 export function identifyCallerByToken(event: RequestEvent): "admin" | null {
-  const state = getState();
+  const password = getUiLoginPassword();
+  if (!password) return null;
   const token = extractToken(event);
-  if (state.adminToken && safeTokenCompare(token, state.adminToken)) return "admin";
+  if (safeTokenCompare(token, password)) return "admin";
   return null;
 }
 
 /**
  * Check for a valid admin session — returns error Response or null if OK.
  *
- * Phase 2: this used to accept admin OR assistant token. The assistant-token
- * branch has been removed (no remaining consumers after Phase 1; full deletion
- * of `state.assistantToken` happens in Phase 4). The signature is preserved so
- * existing route handlers keep compiling; semantically `requireAuth` is now
- * equivalent to `requireAdmin` and may be collapsed in a future phase.
+ * Phase 4: this is equivalent to `requireAdmin` now that the assistant
+ * token is gone. The signature is preserved so existing route handlers
+ * keep compiling; future cleanup may collapse the two.
  */
 export function requireAuth(event: RequestEvent, requestId: string): Response | null {
-  const state = getState();
-  if (!state.adminToken) {
-    return errorResponse(503, 'admin_not_configured', 'Admin token has not been set. Complete setup first.', {}, requestId);
+  const password = getUiLoginPassword();
+  if (!password) {
+    return errorResponse(
+      503,
+      'admin_not_configured',
+      'OP_UI_LOGIN_PASSWORD has not been set. Complete setup first.',
+      {},
+      requestId,
+    );
   }
 
   if (identifyCallerByToken(event)) {

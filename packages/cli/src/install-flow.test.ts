@@ -105,7 +105,7 @@ function makeSetupSpec(): Record<string, unknown> {
     version: 2,
     llm: { provider: 'ollama', model: 'qwen2.5-coder:3b', baseUrl: 'http://host.docker.internal:11434' },
     embedding: { provider: 'ollama', model: 'nomic-embed-text:latest', dims: 768, baseUrl: 'http://host.docker.internal:11434' },
-    security: { adminToken: 'test-admin-token-12345' },
+    security: { uiLoginPassword: 'test-admin-token-12345' },
     owner: { name: 'Test', email: 'test@test.com' },
     connections: [{
       id: 'ollama',

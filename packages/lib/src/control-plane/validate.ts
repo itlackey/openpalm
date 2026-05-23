@@ -15,7 +15,7 @@ import type { ControlPlaneState } from "./types.js";
 // Stack-scoped env keys that must always exist and carry a non-empty value
 // for the platform to boot. Keep this list small — anything optional
 // belongs in the warning bucket instead.
-const REQUIRED_STACK_KEYS = ["OP_UI_TOKEN", "OP_ASSISTANT_TOKEN"] as const;
+const REQUIRED_STACK_KEYS = ["OP_UI_LOGIN_PASSWORD"] as const;
 
 /**
  * Validate the live configuration files.

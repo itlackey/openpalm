@@ -8,7 +8,7 @@
  */
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { resolveOpenPalmHome, resolveConfigDir, resolveUiBuildDir, createLogger } from '@openpalm/lib';
+import { resolveOpenPalmHome, resolveConfigDir, resolveUiBuildDir, createLogger, readStackEnv } from '@openpalm/lib';
 import { ensureValidState } from './cli-state.ts';
 import { startOpenCodeSubprocess, type OpenCodeSubprocess } from './opencode-subprocess.ts';
 import { openBrowser } from './browser.ts';
@@ -63,11 +63,14 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   }
 
   const state = ensureValidState();
-  const { adminToken } = state;
-  // OP_UI_TOKEN is unset during first-run install — the SvelteKit hooks
-  // detect that and redirect /* to /setup, where the wizard generates
-  // the token. Don't short-circuit here, or the install wizard can
-  // never come up.
+  // OP_UI_LOGIN_PASSWORD is unset during first-run install — the SvelteKit
+  // hooks detect that and redirect /* to /setup, where the wizard sets
+  // it. Don't short-circuit here, or the install wizard can never come up.
+  const stackEnv = readStackEnv(state.stackDir);
+  const uiLoginPassword =
+    process.env.OP_UI_LOGIN_PASSWORD
+      ?? stackEnv.OP_UI_LOGIN_PASSWORD
+      ?? '';
 
   // Start OpenCode subprocess (non-fatal — UI still works without it)
   let openCodeSub: OpenCodeSubprocess | null = null;
@@ -99,11 +102,11 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
         // Pass resolved absolute OP_HOME so the child doesn't re-resolve a
         // relative value (e.g. `.dev` from a repo-root .env) against its
         // own cwd (packages/ui/build/).
-        OP_HOME:     homeDir,
-        HOST:        '127.0.0.1',
-        PORT:        String(port),
-        ORIGIN:      `http://127.0.0.1:${port}`,
-        OP_UI_TOKEN: adminToken,
+        OP_HOME:                homeDir,
+        HOST:                   '127.0.0.1',
+        PORT:                   String(port),
+        ORIGIN:                 `http://127.0.0.1:${port}`,
+        OP_UI_LOGIN_PASSWORD:   uiLoginPassword,
         ...(openCodeBaseUrl ? { OP_OPENCODE_URL: openCodeBaseUrl } : {}),
       },
       stdout: 'inherit',

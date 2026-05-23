@@ -285,10 +285,12 @@ async function runFileInstall(filePath: string, noStart: boolean): Promise<void>
     throw new Error('Setup config must contain a "capabilities" object (llm, embeddings).');
   }
 
-  // Resolve security.adminToken from environment when not in spec
+  // Resolve security.uiLoginPassword from environment when not in spec.
+  // Phase 4 (auth/proxy refactor) renamed the env var to OP_UI_LOGIN_PASSWORD
+  // and the spec field to security.uiLoginPassword.
   const security = (config.security ?? {}) as Record<string, unknown>;
-  if (!security.adminToken && process.env.OP_UI_TOKEN) {
-    security.adminToken = process.env.OP_UI_TOKEN;
+  if (!security.uiLoginPassword && process.env.OP_UI_LOGIN_PASSWORD) {
+    security.uiLoginPassword = process.env.OP_UI_LOGIN_PASSWORD;
     config.security = security;
   }
 

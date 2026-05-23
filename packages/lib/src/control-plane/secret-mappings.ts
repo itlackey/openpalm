@@ -29,9 +29,8 @@ type CoreSecretMapping = {
 };
 
 const STATIC_CORE_MAPPINGS: CoreSecretMapping[] = [
-  // Core authentication tokens
-  { secretKey: 'openpalm/admin-token', envKey: 'OP_UI_TOKEN', scope: 'system' },
-  { secretKey: 'openpalm/assistant-token', envKey: 'OP_ASSISTANT_TOKEN', scope: 'system' },
+  // Core authentication
+  { secretKey: 'openpalm/ui-login-password', envKey: 'OP_UI_LOGIN_PASSWORD', scope: 'system' },
   { secretKey: 'openpalm/opencode/server-password', envKey: 'OP_OPENCODE_PASSWORD', scope: 'system' },
   // LLM provider API keys
   { secretKey: 'openpalm/openai/api-key', envKey: 'OPENAI_API_KEY', scope: 'user' },

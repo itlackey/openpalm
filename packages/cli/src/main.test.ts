@@ -19,7 +19,7 @@ function writeMinimalSetupSpec(dir: string): string {
     '    model: text-embedding-3-small',
     '    dims: 1536',
     'security:',
-    '  adminToken: test-admin-token-12345',
+    '  uiLoginPassword: test-admin-token-12345',
     'owner:',
     '  name: Test User',
     '  email: test@example.com',
@@ -113,7 +113,7 @@ describe('cli main', () => {
   const originalWarn = console.warn;
   const originalHome = process.env.OP_HOME;
   const originalWorkDir = process.env.OP_WORK_DIR;
-  const originalAdminToken = process.env.OP_UI_TOKEN;
+  const originalLoginPassword = process.env.OP_UI_LOGIN_PASSWORD;
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
@@ -122,7 +122,7 @@ describe('cli main', () => {
     restoreDockerCli();
     process.env.OP_HOME = originalHome;
     process.env.OP_WORK_DIR = originalWorkDir;
-    process.env.OP_UI_TOKEN = originalAdminToken;
+    process.env.OP_UI_LOGIN_PASSWORD = originalLoginPassword;
   });
 
   it('runs bootstrap install directly without admin delegation', async () => {
@@ -133,7 +133,7 @@ describe('cli main', () => {
 
     process.env.OP_HOME = base;
     process.env.OP_WORK_DIR = workDir;
-    delete process.env.OP_UI_TOKEN;
+    delete process.env.OP_UI_LOGIN_PASSWORD;
 
     mockDockerCli();
     const fetchedUrls: string[] = [];
@@ -255,7 +255,7 @@ describe('cli main', () => {
     // carries forward existing content.
     mkdirSync(join(base, 'state'), { recursive: true });
     mkdirSync(join(base, 'config', 'stack'), { recursive: true });
-    writeFileSync(join(base, 'config', 'stack', 'stack.env'), 'OP_UI_TOKEN=existing-token\n');
+    writeFileSync(join(base, 'config', 'stack', 'stack.env'), 'OP_UI_LOGIN_PASSWORD=existing-password\n');
     writeFileSync(stackConfig, 'llm: old\n');
 
     process.env.OP_HOME = base;
@@ -284,7 +284,7 @@ describe('cli main', () => {
       const backups = readdirSync(backupsDir);
       expect(backups.length).toBeGreaterThan(0);
       expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack.yml'), 'utf8')).toContain('llm: old');
-      expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack', 'stack.env'), 'utf8')).toContain('OP_UI_TOKEN=existing-token');
+      expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack', 'stack.env'), 'utf8')).toContain('OP_UI_LOGIN_PASSWORD=existing-password');
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
@@ -304,7 +304,7 @@ describe('cli main', () => {
     mkdirSync(chatAddonDir, { recursive: true });
     writeFileSync(coreCompose, 'services:\n  assistant:\n    image: test\n');
     writeFileSync(join(adminAddonDir, 'compose.yml'), 'services:\n  admin:\n    image: admin\n');
-    writeFileSync(join(adminAddonDir, '.env.schema'), 'OP_UI_TOKEN=\n');
+    writeFileSync(join(adminAddonDir, '.env.schema'), 'OP_UI_LOGIN_PASSWORD=\n');
     writeFileSync(join(chatAddonDir, 'compose.yml'), 'services:\n  chat:\n    image: chat\n    environment:\n      CHANNEL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
     writeFileSync(join(chatAddonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
     writeFileSync(guardianEnv, '# Guardian channel HMAC secrets — managed by openpalm\n');
@@ -411,7 +411,7 @@ describe('validate command', () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
     const stackDir = join(tempHome, 'config', 'stack');
     mkdirSync(stackDir, { recursive: true });
-    writeFileSync(join(stackDir, 'stack.env'), 'OP_UI_TOKEN=abc\nOP_ASSISTANT_TOKEN=def\n');
+    writeFileSync(join(stackDir, 'stack.env'), 'OP_UI_LOGIN_PASSWORD=abc\n');
 
     const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
@@ -436,7 +436,7 @@ describe('scan command', () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
     const stackDir = join(tempHome, 'config', 'stack');
     mkdirSync(stackDir, { recursive: true });
-    writeFileSync(join(stackDir, 'stack.env'), 'OP_UI_TOKEN=abc\nOPENAI_API_KEY=sk-test\n');
+    writeFileSync(join(stackDir, 'stack.env'), 'OP_UI_LOGIN_PASSWORD=abc\nOPENAI_API_KEY=sk-test\n');
 
     const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
@@ -553,8 +553,8 @@ describe('install image tag pinning', () => {
   });
 
   it('preserves export prefix when upserting a key', () => {
-    expect(upsertEnvValue('export OP_UI_TOKEN=old\n', 'OP_UI_TOKEN', 'new')).toBe(
-      'export OP_UI_TOKEN=new\n',
+    expect(upsertEnvValue('export OP_UI_LOGIN_PASSWORD=old\n', 'OP_UI_LOGIN_PASSWORD', 'new')).toBe(
+      'export OP_UI_LOGIN_PASSWORD=new\n',
     );
   });
 

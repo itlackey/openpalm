@@ -3,6 +3,7 @@ import { readStackEnv, listEnabledAddonIds } from "@openpalm/lib";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { getState } from "$lib/server/state.js";
+import { getUiLoginPassword, safeTokenCompare } from "$lib/server/helpers.js";
 import type { RequestHandler } from "./$types";
 
 // Returns the full set of pre-fill data for re-running the setup wizard.
@@ -36,8 +37,9 @@ function deriveBaseUrl(endpoint: string | undefined): string {
 
 export const GET: RequestHandler = ({ cookies }) => {
   const state = getState();
-  const sessionToken = cookies.get("op_session");
-  if (!sessionToken || sessionToken !== state.adminToken) {
+  const sessionToken = cookies.get("op_session") ?? "";
+  const configured = getUiLoginPassword();
+  if (!configured || !safeTokenCompare(sessionToken, configured)) {
     return json({ ok: false }, { status: 401 });
   }
 
@@ -74,7 +76,10 @@ export const GET: RequestHandler = ({ cookies }) => {
 
   return json({
     ok: true,
-    adminToken: state.adminToken,
+    // The wizard's "rerun" path uses this to pre-fill the password field.
+    // Returning the env-resolved password (not state.adminToken — that's
+    // gone after Phase 4) keeps the existing UX.
+    uiLoginPassword: configured,
     ownerName: env.OWNER_NAME ?? "",
     ownerEmail: env.OWNER_EMAIL ?? "",
     imageTag: env.OP_IMAGE_TAG ?? "",

@@ -120,7 +120,6 @@ start_cron_and_sync_tasks() {
     printf 'AKM_STATE_DIR=/akm-op/state\n'
     printf 'AKM_CACHE_DIR=/akm-cache\n'
     printf 'OP_HOME=/openpalm\n'
-    printf 'OP_ASSISTANT_TOKEN=%s\n' "${OP_ASSISTANT_TOKEN:-}"
     printf 'TZ=%s\n' "${TZ:-UTC}"
     # Include all vault:user keys (LLM API keys etc.) so automation commands
     # that call external services have the keys in their environment.

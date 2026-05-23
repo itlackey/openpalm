@@ -58,11 +58,13 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
   const existing = existsSync(systemEnvPath) ? parseEnvFile(systemEnvPath) : {};
   const updates: Record<string, string> = {};
 
-  if (!existing.OP_UI_TOKEN && state.adminToken) {
-    updates.OP_UI_TOKEN = state.adminToken;
-  }
-  if (!existing.OP_ASSISTANT_TOKEN) {
-    updates.OP_ASSISTANT_TOKEN = randomBytes(32).toString("hex");
+  // OP_UI_LOGIN_PASSWORD seeds the operator login secret. ensureSecrets
+  // generates a random fallback the first time so the stack is never
+  // installed with an empty password slot; the wizard / CLI install path
+  // overwrites it with the operator's chosen value via
+  // buildSystemSecretsFromSetup().
+  if (!existing.OP_UI_LOGIN_PASSWORD) {
+    updates.OP_UI_LOGIN_PASSWORD = randomBytes(32).toString("hex");
   }
 
   if (!existsSync(systemEnvPath)) {
@@ -71,8 +73,7 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
       "# All secrets and configuration live here. Advanced users may edit directly.",
       "",
       "# ── Authentication ──────────────────────────────────────────────────",
-      "OP_UI_TOKEN=",
-      "OP_ASSISTANT_TOKEN=",
+      "OP_UI_LOGIN_PASSWORD=",
       "",
       "# ── Service Auth ─────────────────────────────────────────────────────",
       "OP_OPENCODE_PASSWORD=",

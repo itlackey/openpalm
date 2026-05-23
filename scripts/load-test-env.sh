@@ -6,11 +6,10 @@
 #   source scripts/load-test-env.sh
 #
 # Exports:
-#   OP_UI_LOGIN_PASSWORD — from OP_UI_TOKEN in .dev/config/stack/stack.env
-#     (Phase 2 of docs/technical/auth-and-proxy-refactor-plan.md renamed the
-#     operator-facing env var from ADMIN_TOKEN to OP_UI_LOGIN_PASSWORD; the
-#     stack.env source field is still OP_UI_TOKEN and stays that way until
-#     Phase 4 collapses the token plumbing entirely.)
+#   OP_UI_LOGIN_PASSWORD — read directly from .dev/config/stack/stack.env.
+#     Phase 4 of docs/technical/auth-and-proxy-refactor-plan.md collapsed the
+#     legacy OP_UI_TOKEN / OP_ASSISTANT_TOKEN pair into this single operator
+#     login secret.
 
 # Guard: this script must be sourced, not executed. Direct execution would
 # silently set vars in a child shell that exits immediately, leaving the
@@ -27,7 +26,7 @@ STACK_ENV="$ROOT_DIR/.dev/config/stack/stack.env"
 
 if [[ -f "$STACK_ENV" ]]; then
   export OP_UI_LOGIN_PASSWORD
-  OP_UI_LOGIN_PASSWORD=$(grep -E '^OP_UI_TOKEN=' "$STACK_ENV" 2>/dev/null | cut -d= -f2-)
+  OP_UI_LOGIN_PASSWORD=$(grep -E '^OP_UI_LOGIN_PASSWORD=' "$STACK_ENV" 2>/dev/null | cut -d= -f2-)
 else
   echo "Warning: $STACK_ENV not found. Run 'bun run dev:setup' first." >&2
 fi

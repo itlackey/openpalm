@@ -27,8 +27,6 @@ function createState(): ControlPlaneState {
   mkdirSync(cacheDir, { recursive: true });
 
   return {
-    adminToken: 'admin-token',
-    assistantToken: '',
     homeDir: rootDir,
     configDir,
     stashDir: join(rootDir, 'stash'),
@@ -188,16 +186,16 @@ describe('plaintext backend (via detectSecretBackend)', () => {
     mkdirSync(dirname(akmPath), { recursive: true });
     writeFileSync(akmPath, 'OPENAI_API_KEY=akm-vault-openai\n');
 
-    // Stack.env already exists from ensureSecrets — seed a system token.
+    // Stack.env already exists from ensureSecrets — seed the system password.
     const stackEnvPath = join(state.stackDir, "stack.env");
     const stackContent = readFileSync(stackEnvPath, 'utf-8')
-      .replace(/^OP_UI_TOKEN=.*$/m, 'OP_UI_TOKEN=stack-admin-token');
+      .replace(/^OP_UI_LOGIN_PASSWORD=.*$/m, 'OP_UI_LOGIN_PASSWORD=stack-login-password');
     writeFileSync(stackEnvPath, stackContent);
 
     // System scope reads stack.env exclusively.
-    expect(await backend.exists('openpalm/admin-token')).toBe(true);
-    const systemEntries = await backend.list('openpalm/admin-token');
-    expect(systemEntries.find((e) => e.key === 'openpalm/admin-token')?.present).toBe(true);
+    expect(await backend.exists('openpalm/ui-login-password')).toBe(true);
+    const systemEntries = await backend.list('openpalm/ui-login-password');
+    expect(systemEntries.find((e) => e.key === 'openpalm/ui-login-password')?.present).toBe(true);
 
     // User scope reads akm vault file.
     const userEntries = await backend.list('openpalm/openai/');
