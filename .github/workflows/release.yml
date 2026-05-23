@@ -384,29 +384,32 @@ jobs:
         # Must run via node, not bun: electron-builder spawns workers using
         # process.execPath; bun sets that to the ELF binary, causing Node.js
         # to fail when trying to parse the binary as JavaScript.
-        # `--publish always` uploads the installers to the GitHub release tag
-        # so users can download them directly from the Releases page.
         # Resolving via require.resolve handles both hoisted (root) and
         # workspace-local installs — newer electron-builder versions are not
         # hoisted by Bun.
+        # Use --publish never always: electron-builder's GH publisher 401s
+        # on republish (can't read existing release assets with GITHUB_TOKEN),
+        # and softprops/action-gh-release in the release job already handles
+        # the upload from artifact downloads. Centralizing uploads in one
+        # place also avoids electron-builder + softprops asset duplication.
         working-directory: packages/electron
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TYPE: ${{ needs.prepare-tag.outputs.prerelease == 'true' && 'prerelease' || 'release' }}
-          PUBLISH_MODE: ${{ needs.prepare-tag.outputs.dry_run == 'true' && 'never' || 'always' }}
         run: |
           CLI=$(node -e "console.log(require.resolve('electron-builder/cli.js'))")
-          node "$CLI" ${{ matrix.electron_flag }} --publish "${PUBLISH_MODE}" --config.publish.releaseType="${RELEASE_TYPE}"
+          node "$CLI" ${{ matrix.electron_flag }} --publish never
 
       - name: Upload Electron artifacts
         uses: actions/upload-artifact@v4
         with:
           name: electron-${{ matrix.platform }}
+          # Include installers, auto-update metadata (.yml), and delta files
+          # (.blockmap) so the release job can upload everything via softprops.
           path: |
             packages/electron/dist/packages/*.dmg
             packages/electron/dist/packages/*.AppImage
             packages/electron/dist/packages/*.exe
+            packages/electron/dist/packages/*.yml
+            packages/electron/dist/packages/*.blockmap
 
   release:
     name: Publish GitHub release
@@ -524,6 +527,8 @@ jobs:
             dist/*.dmg
             dist/*.AppImage
             dist/*.exe
+            dist/*.yml
+            dist/*.blockmap
 
   publish-lib-npm:
     name: Publish lib to npm
