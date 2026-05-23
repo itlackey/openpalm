@@ -44,9 +44,17 @@ jobs:
 
       - name: Configure git identity
         if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN_FOR_PUSH: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # actions/checkout@v4 extraheader auth is not reliably picked up by
+          # subsequent git pull/push in shell steps (manifests as "could not
+          # read Username for https://github.com"). Embed the token in the
+          # remote URL directly — this is the workaround GitHub itself
+          # recommends.
+          git remote set-url origin "https://x-access-token:${GH_TOKEN_FOR_PUSH}@github.com/${GITHUB_REPOSITORY}.git"
 
       - name: Resolve release tag
         id: resolve
