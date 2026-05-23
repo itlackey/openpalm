@@ -10,21 +10,21 @@
  */
 import type { RequestHandler } from './$types';
 import { requireAdmin, jsonResponse, getRequestId } from '$lib/server/helpers.js';
-
-const OPENCODE_URL =
-	process.env.OP_OPENCODE_URL ??
-	process.env.OP_ASSISTANT_URL ??
-	`http://localhost:${process.env.OP_ASSISTANT_PORT ?? '3800'}`;
+import { getActiveEndpoint } from '$lib/server/endpoints.js';
 
 export const GET: RequestHandler = async (event) => {
 	const requestId = getRequestId(event);
 	const authError = requireAdmin(event, requestId);
 	if (authError) return authError;
 
-	// Quick probe of the OpenCode server — non-blocking, best-effort.
+	// Quick probe of the active OpenCode endpoint — non-blocking, best-effort.
+	const endpoint = getActiveEndpoint();
 	let opencode = false;
 	try {
-		const res = await fetch(`${OPENCODE_URL}/health`, {
+		const headers: Record<string, string> = {};
+		if (endpoint.password) headers['authorization'] = `Basic ${btoa(`:${endpoint.password}`)}`;
+		const res = await fetch(`${endpoint.url}/health`, {
+			headers,
 			signal: AbortSignal.timeout(2000),
 		});
 		opencode = res.ok;
@@ -32,5 +32,13 @@ export const GET: RequestHandler = async (event) => {
 		/* unreachable — opencode stays false */
 	}
 
-	return jsonResponse(200, { ok: true, opencode }, requestId);
+	return jsonResponse(
+		200,
+		{
+			ok: true,
+			opencode,
+			endpoint: { id: endpoint.id, label: endpoint.label, url: endpoint.url, isDefault: endpoint.isDefault },
+		},
+		requestId
+	);
 };

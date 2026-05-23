@@ -1,6 +1,7 @@
 <script lang="ts">
   import { version } from '$app/environment';
   import VoiceControl from './VoiceControl.svelte';
+  import EndpointSwitcher from './EndpointSwitcher.svelte';
 
   interface Props {
     onLogout: () => void;
@@ -20,6 +21,7 @@
       <span class="version-badge">v{version}</span>
     </div>
     <div class="navbar-actions">
+      <EndpointSwitcher />
       {#if navLink}
         <a href={navLink.href} class="btn btn-secondary btn-sm">{navLink.label}</a>
       {/if}

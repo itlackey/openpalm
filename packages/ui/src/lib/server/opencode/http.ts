@@ -1,28 +1,24 @@
 /**
- * HTTP transport for talking to the local OpenCode server.
+ * HTTP transport for talking to the active OpenCode endpoint.
  *
  * Used by sibling modules (`config.ts`, `catalog.ts`) — not part of the
- * public API of `$lib/server/opencode`.
+ * public API of `$lib/server/opencode`. Reads the active endpoint per-call
+ * so user switches in the UI take effect immediately.
  */
-
-// Lazy: read at call time so any env loading that happens during server startup
-// (e.g. reading stack.env) is reflected. OP_ASSISTANT_PORT is the HOST-side port
-// the assistant container is mapped to. The old default of 4096 was container-internal.
-function openCodeUrl(): string {
-	return (
-		process.env.OP_OPENCODE_URL ??
-		process.env.OP_ASSISTANT_URL ??
-		`http://localhost:${process.env.OP_ASSISTANT_PORT ?? '3800'}`
-	);
-}
+import { getActiveEndpoint } from '../endpoints.js';
 
 export async function opencodeFetch<T>(path: string, init?: RequestInit): Promise<T> {
-	const response = await fetch(`${openCodeUrl()}${path}`, {
-		headers: {
-			'content-type': 'application/json',
-			...(init?.headers ?? {}),
-		},
+	const endpoint = getActiveEndpoint();
+	const headers: Record<string, string> = {
+		'content-type': 'application/json',
+		...(init?.headers as Record<string, string> | undefined),
+	};
+	if (endpoint.password) {
+		headers['authorization'] = `Basic ${btoa(`:${endpoint.password}`)}`;
+	}
+	const response = await fetch(`${endpoint.url}${path}`, {
 		...init,
+		headers,
 	});
 
 	if (!response.ok) {

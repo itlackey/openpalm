@@ -4,21 +4,21 @@
 import type { RequestEvent } from "@sveltejs/kit";
 import { timingSafeEqual, createHash } from "node:crypto";
 import { getState } from "./state.js";
+import { getActiveEndpoint } from "./endpoints.js";
 import { createOpenCodeClient, normalizeCaller, type CallerType } from "@openpalm/lib";
 
 /**
- * Lazy singleton OpenCode client bound to the admin's configured base URL.
- * Routes call `getOpenCodeClient()` instead of importing factories so the
- * env-var resolution lives in one place.
+ * Lazy OpenCode client bound to the currently active endpoint. The client is
+ * recreated whenever the active endpoint URL changes so user switches in the
+ * UI take effect on the next call.
  */
 let _openCodeClient: ReturnType<typeof createOpenCodeClient> | undefined;
 let _openCodeClientUrl: string | undefined;
 export function getOpenCodeClient(): ReturnType<typeof createOpenCodeClient> {
-  const baseUrl =
-    process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL ?? `http://localhost:${process.env.OP_ASSISTANT_PORT ?? "3800"}`;
-  if (!_openCodeClient || baseUrl !== _openCodeClientUrl) {
-    _openCodeClient = createOpenCodeClient({ baseUrl });
-    _openCodeClientUrl = baseUrl;
+  const { url } = getActiveEndpoint();
+  if (!_openCodeClient || url !== _openCodeClientUrl) {
+    _openCodeClient = createOpenCodeClient({ baseUrl: url });
+    _openCodeClientUrl = url;
   }
   return _openCodeClient;
 }
