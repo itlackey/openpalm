@@ -2,15 +2,19 @@
  * Assistant endpoints — list of OpenCode servers the UI can target, with
  * one marked active. The "default" entry is synthesized from environment
  * (OP_OPENCODE_URL / OP_ASSISTANT_URL / OP_ASSISTANT_PORT) and cannot be
- * deleted. User-added endpoints are persisted to a JSON file under the
- * state directory.
+ * deleted. User-added endpoints are persisted to a JSON file in the
+ * config directory (it's user-owned configuration, not service state —
+ * see Phase 5 / D4 in docs/technical/auth-and-proxy-refactor-plan.md).
  *
- * File: ${stateDir}/admin/endpoints.json (mode 0600)
+ * File: ${configDir}/endpoints.json (mode 0600)
  * Shape: { activeId: string | null, endpoints: EndpointEntry[] }
  *   - activeId === null or "default" → use the env-derived default
  *   - activeId === "<id>" → use the matching user entry (falls back to default if not found)
+ *
+ * Legacy path: ${stateDir}/admin/endpoints.json. Old installs are
+ * migrated lazily on first read by maybeMigrateLegacyEndpointsFile().
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, unlinkSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getState } from './state.js';
@@ -43,7 +47,45 @@ const DEFAULT_ID = 'default';
 const LOCAL_ELECTRON_ID = 'local-electron';
 
 function endpointsPath(): string {
+  return `${getState().configDir}/endpoints.json`;
+}
+
+/**
+ * Legacy path used before Phase 5 of the auth/proxy refactor.
+ * See docs/technical/auth-and-proxy-refactor-plan.md § Phase 5 / D4.
+ */
+function legacyEndpointsPath(): string {
   return `${getState().stateDir}/admin/endpoints.json`;
+}
+
+/**
+ * One-shot lazy migration from the legacy state/ path to the new config/ path.
+ *
+ * Phase 5 of docs/technical/auth-and-proxy-refactor-plan.md (D6 step 3):
+ *   - If the new path already exists → no-op (already migrated).
+ *   - If the legacy path doesn't exist → no-op (fresh install).
+ *   - Otherwise copy contents to the new path (mode 0600), then unlink legacy.
+ *
+ * If the migration fails partway, the legacy file is left in place so reads
+ * fall back to it for the remainder of this session. Idempotent across
+ * process restarts because the existence check makes it a no-op after the
+ * first successful run.
+ */
+function maybeMigrateLegacyEndpointsFile(): void {
+  const newPath = endpointsPath();
+  if (existsSync(newPath)) return;
+  const oldPath = legacyEndpointsPath();
+  if (!existsSync(oldPath)) return;
+  try {
+    mkdirSync(dirname(newPath), { recursive: true });
+    const contents = readFileSync(oldPath);
+    writeFileSync(newPath, contents, { mode: 0o600 });
+    // Re-chmod in case the file already existed with looser perms.
+    try { chmodSync(newPath, 0o600); } catch { /* best effort */ }
+    unlinkSync(oldPath);
+  } catch (e) {
+    console.warn('[endpoints] Failed to migrate legacy endpoints.json from state/ to config/. Leaving the old file in place; reads will fall back to it for this session.', e);
+  }
 }
 
 function localRuntimePath(): string {
@@ -96,8 +138,21 @@ function localEndpoint(): ActiveEndpoint | null {
 }
 
 function readFile(): EndpointsFile {
-  const path = endpointsPath();
-  if (!existsSync(path)) return { activeId: null, endpoints: [] };
+  // Lazy one-shot migration from the legacy state/ path. Idempotent —
+  // a no-op after the first successful run. See Phase 5 / D4 in
+  // docs/technical/auth-and-proxy-refactor-plan.md.
+  maybeMigrateLegacyEndpointsFile();
+
+  // If the new path is present, read it. Otherwise fall back to the legacy
+  // path: it only exists here if the migration failed partway (we never
+  // unlinked it), and we want CRUD to keep working until the next restart
+  // gives migration another chance.
+  let path = endpointsPath();
+  if (!existsSync(path)) {
+    const legacy = legacyEndpointsPath();
+    if (!existsSync(legacy)) return { activeId: null, endpoints: [] };
+    path = legacy;
+  }
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Partial<EndpointsFile>;
     return {

@@ -80,6 +80,7 @@ Subtrees:
 - `automations/` — automation YAML files (read by the scheduler co-process inside the assistant container)
 - `assistant/` — user OpenCode extensions (tools, plugins, skills)
 - `akm/` — AKM configuration (LLM, embedding, and related settings in `config.json`)
+- `endpoints.json` — OpenCode connection list (URL, label, optional password per endpoint) used by the admin UI's connection switcher; mode 0600. Survives `state/` wipes by design.
 
 **Rule:** allowed writers are: user direct edits; explicit admin UI/API config actions; assistant calls through authenticated/allowlisted admin APIs on user request. Automatic lifecycle operations (install/update/startup apply/setup reruns/upgrades) are non-destructive for existing user files and only seed missing defaults or making targeted updates.
 

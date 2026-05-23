@@ -31,8 +31,10 @@ beforeEach(() => {
   }
   const state = makeTestState();
   trackDir(state.stateDir);
-  // Ensure the state dir exists so writes succeed.
+  trackDir(state.configDir);
+  // Ensure the state and config dirs exist so writes succeed.
   mkdirSync(state.stateDir, { recursive: true });
+  mkdirSync(state.configDir, { recursive: true });
   _replaceState(state);
 });
 
@@ -274,7 +276,7 @@ describe('local-electron endpoint synthesis', () => {
   it('is NOT persisted to endpoints.json when set active', () => {
     writeLocalRuntime({ url: 'http://127.0.0.1:54321', password: 'pw' });
     setActiveId('local-electron');
-    const raw = readFileSync(`${getState().stateDir}/admin/endpoints.json`, 'utf-8');
+    const raw = readFileSync(`${getState().configDir}/endpoints.json`, 'utf-8');
     const parsed = JSON.parse(raw);
     // activeId pointer is fine — but the synthetic entry itself must not be
     // serialized into the endpoints array.
@@ -288,7 +290,7 @@ describe('persistence', () => {
     const entry = addEndpoint({ label: 'A', url: 'http://10.0.0.1:3800', password: 'shh' });
     expect(listEndpoints().find((e) => e.id === entry.id)).toBeDefined();
 
-    const path = `${getState().stateDir}/admin/endpoints.json`;
+    const path = `${getState().configDir}/endpoints.json`;
     const mode = statSync(path).mode & 0o777;
     expect(mode).toBe(0o600);
     const raw = readFileSync(path, 'utf-8');
@@ -298,7 +300,7 @@ describe('persistence', () => {
   it('re-tightens 0600 perms across subsequent writes', () => {
     // First write: create the file via addEndpoint.
     const entry = addEndpoint({ label: 'A', url: 'http://10.0.0.1:3800', password: 'shh' });
-    const path = `${getState().stateDir}/admin/endpoints.json`;
+    const path = `${getState().configDir}/endpoints.json`;
     expect(statSync(path).mode & 0o777).toBe(0o600);
 
     // Simulate an out-of-band perms relaxation (e.g. an operator running
@@ -311,5 +313,40 @@ describe('persistence', () => {
     // open over time.
     updateEndpoint(entry.id, { label: 'B' });
     expect(statSync(path).mode & 0o777).toBe(0o600);
+  });
+});
+
+describe('legacy endpoints.json migration (Phase 5)', () => {
+  it('moves state/admin/endpoints.json to config/endpoints.json on first read', () => {
+    // Seed the legacy file before any read.
+    const state = getState();
+    const legacyDir = `${state.stateDir}/admin`;
+    const legacyPath = `${legacyDir}/endpoints.json`;
+    const newPath = `${state.configDir}/endpoints.json`;
+
+    mkdirSync(legacyDir, { recursive: true });
+    const payload = {
+      activeId: 'legacy-id',
+      endpoints: [
+        { id: 'legacy-id', label: 'Legacy', url: 'http://10.0.0.9:3800', password: 'shh' },
+      ],
+    };
+    writeFileSync(legacyPath, JSON.stringify(payload), { mode: 0o600 });
+    expect(existsSync(legacyPath)).toBe(true);
+    expect(existsSync(newPath)).toBe(false);
+
+    // First read triggers the lazy migration.
+    const list = listEndpoints();
+    // [default, legacy entry]
+    expect(list).toHaveLength(2);
+    expect(list[1].id).toBe('legacy-id');
+    expect(list[1].label).toBe('Legacy');
+
+    // New path now exists at 0600 with the same content; old path is gone.
+    expect(existsSync(newPath)).toBe(true);
+    expect(existsSync(legacyPath)).toBe(false);
+    expect(statSync(newPath).mode & 0o777).toBe(0o600);
+    const migrated = JSON.parse(readFileSync(newPath, 'utf-8'));
+    expect(migrated).toEqual(payload);
   });
 });

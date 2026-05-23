@@ -1,7 +1,7 @@
 /**
  * endpoints.list — return the known OpenCode endpoints from
- * ${OP_HOME}/state/admin/endpoints.json (D4 still in flight — Phase 5
- * moves this to config/).
+ * ${OP_HOME}/config/endpoints.json (Phase 5 / D4 of the auth/proxy
+ * refactor — see docs/technical/auth-and-proxy-refactor-plan.md).
  *
  * Returns ids, labels, urls — NEVER passwords. The agent has no reason to
  * see endpoint credentials.
@@ -27,7 +27,7 @@ function opHome(): string {
 }
 
 export function endpointsPath(home = opHome()): string {
-  return join(home, "state", "admin", "endpoints.json");
+  return join(home, "config", "endpoints.json");
 }
 
 export function readEndpointsFile(path: string): EndpointsFile {

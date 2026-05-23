@@ -3,7 +3,7 @@
  *
  * The "default" entry is synthesized from environment (OP_OPENCODE_URL etc.)
  * and is always first in the list. User-added endpoints are persisted to
- * state/admin/endpoints.json. Passwords are never returned — only
+ * config/endpoints.json. Passwords are never returned — only
  * `hasPassword: boolean`.
  */
 import type { RequestHandler } from './$types';

@@ -15,8 +15,8 @@ afterEach(() => {
 });
 
 describe("endpointsPath", () => {
-  it("resolves to ${OP_HOME}/state/admin/endpoints.json", () => {
-    expect(endpointsPath("/some/home")).toBe("/some/home/state/admin/endpoints.json");
+  it("resolves to ${OP_HOME}/config/endpoints.json", () => {
+    expect(endpointsPath("/some/home")).toBe("/some/home/config/endpoints.json");
   });
 });
 
@@ -58,10 +58,10 @@ describe("readEndpointsFile", () => {
 describe("contract: tool output never includes passwords", () => {
   it("the tool definition strips password from each endpoint", async () => {
     // Stage a fake endpoints.json under a temp OP_HOME and call the tool.
-    const stateAdmin = join(home, "state", "admin");
-    mkdirSync(stateAdmin, { recursive: true });
+    const configDir = join(home, "config");
+    mkdirSync(configDir, { recursive: true });
     writeFileSync(
-      join(stateAdmin, "endpoints.json"),
+      join(configDir, "endpoints.json"),
       JSON.stringify({
         activeId: "x",
         endpoints: [{ id: "x", label: "Remote", url: "http://10/", password: "DONT-LEAK-ME" }],
