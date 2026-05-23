@@ -369,12 +369,18 @@ jobs:
         # to fail when trying to parse the binary as JavaScript.
         # `--publish always` uploads the installers to the GitHub release tag
         # so users can download them directly from the Releases page.
+        # Resolving via require.resolve handles both hoisted (root) and
+        # workspace-local installs — newer electron-builder versions are not
+        # hoisted by Bun.
         working-directory: packages/electron
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TYPE: ${{ needs.prepare-tag.outputs.prerelease == 'true' && 'prerelease' || 'release' }}
           PUBLISH_MODE: ${{ needs.prepare-tag.outputs.dry_run == 'true' && 'never' || 'always' }}
-        run: node ../../node_modules/electron-builder/cli.js ${{ matrix.electron_flag }} --publish ${PUBLISH_MODE} --config.publish.releaseType=${RELEASE_TYPE}
+        run: |
+          CLI=$(node -e "console.log(require.resolve('electron-builder/cli.js'))")
+          node "$CLI" ${{ matrix.electron_flag }} --publish "${PUBLISH_MODE}" --config.publish.releaseType="${RELEASE_TYPE}"
 
       - name: Upload Electron artifacts
         uses: actions/upload-artifact@v4
