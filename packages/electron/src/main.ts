@@ -17,6 +17,7 @@ import {
   seedUiBuild,
   ensureHomeDirs,
   checkAndUpdateUiBuild,
+  parseEnvFile,
 } from '@openpalm/lib';
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
 
@@ -49,6 +50,24 @@ export function getRecentStderr(maxLines = 40): string {
 // ── Pure helpers (exported for testing) ──────────────────────────────────────
 
 /**
+ * Resolve the assistant (OpenCode) URL the UI proxy should target.
+ *
+ * The Electron app launches a separate UI Node server that proxies
+ * `/proxy/assistant/*` to the assistant container. Without OP_OPENCODE_URL set,
+ * that proxy falls back to `http://localhost:4096` (the in-container port),
+ * which doesn't exist on the host. Read the host port bound by docker compose
+ * from `${OP_HOME}/config/stack/stack.env` so the UI hits the right address.
+ */
+export function resolveAssistantUrl(homeDir: string): string {
+  const userOverride = process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL;
+  if (userOverride) return userOverride;
+  const stackEnv = parseEnvFile(join(homeDir, 'config', 'stack', 'stack.env'));
+  const bind = stackEnv.OP_ASSISTANT_BIND_ADDRESS || '127.0.0.1';
+  const port = stackEnv.OP_ASSISTANT_PORT || '3800';
+  return `http://${bind}:${port}`;
+}
+
+/**
  * Build the environment object to pass to the UI Node child process.
  * Exported as a pure function so tests can verify it without spawning anything.
  */
@@ -61,6 +80,7 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     ORIGIN: `http://127.0.0.1:${port}`,
     OP_INSIDE_ELECTRON: '1',
     OP_ELECTRON_VERSION: app.getVersion?.() ?? '',
+    OP_OPENCODE_URL: resolveAssistantUrl(homeDir),
   };
   if (update?.updateAvailable && update.latestVersion) {
     env.OP_ELECTRON_LATEST_VERSION = update.latestVersion;

@@ -7295,7 +7295,7 @@ var require_main = __commonJS((exports, module) => {
 // src/main.ts
 import { app, BrowserWindow, Tray, Menu, shell, dialog } from "electron";
 import { join as join2, dirname as dirname2 } from "node:path";
-import { existsSync as existsSync2 } from "node:fs";
+import { existsSync as existsSync3 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { spawn as spawn2 } from "node:child_process";
 // ../lib/src/logger.ts
@@ -7388,6 +7388,16 @@ var $visitAsync = visit.visitAsync;
 
 // ../lib/src/control-plane/env.ts
 var import_dotenv = __toESM(require_main(), 1);
+import { readFileSync, existsSync } from "node:fs";
+function parseEnvFile(filePath) {
+  if (!existsSync(filePath))
+    return {};
+  try {
+    return import_dotenv.parse(readFileSync(filePath, "utf-8"));
+  } catch {
+    return {};
+  }
+}
 
 // ../lib/src/control-plane/home.ts
 import { mkdirSync } from "node:fs";
@@ -7502,7 +7512,7 @@ var logger10 = createLogger("setup");
 var ALLOWED_CONFIG_KEYS = new Set(["$schema", "provider", "model", "small_model", "disabled_providers"]);
 // ../lib/src/control-plane/ui-assets.ts
 import {
-  existsSync,
+  existsSync as existsSync2,
   mkdirSync as mkdirSync2,
   readdirSync,
   copyFileSync,
@@ -10705,7 +10715,7 @@ async function fetchWithRetry(url, retries = 3) {
   throw new Error(`Failed to fetch ${url} after ${retries} attempts`);
 }
 function copyTree(src, dest, opts) {
-  if (!existsSync(src))
+  if (!existsSync2(src))
     return;
   const entries = readdirSync(src, { recursive: true, withFileTypes: true });
   for (const entry of entries) {
@@ -10715,7 +10725,7 @@ function copyTree(src, dest, opts) {
     const srcFile = join(parentDir, entry.name);
     const rel = relative(src, srcFile);
     const destFile = join(dest, rel);
-    if (opts?.skipExisting && existsSync(destFile))
+    if (opts?.skipExisting && existsSync2(destFile))
       continue;
     mkdirSync2(dirname(destFile), { recursive: true });
     copyFileSync(srcFile, destFile);
@@ -10725,7 +10735,7 @@ function resolveLocalCandidate(...strategies) {
   for (const strategy of strategies) {
     try {
       const p2 = strategy();
-      if (p2 && existsSync(p2))
+      if (p2 && existsSync2(p2))
         return p2;
     } catch {}
   }
@@ -10737,16 +10747,16 @@ function resolveLocalUiBuild() {
     if (meta.startsWith("/$bunfs/"))
       return null;
     const candidate = join(dirname(meta), "..", "..", "..", "..", "packages", "ui", "build");
-    return existsSync(join(candidate, "index.js")) ? candidate : null;
+    return existsSync2(join(candidate, "index.js")) ? candidate : null;
   }, () => {
     const binDir = dirname(realpathSync(process.execPath));
     const candidate = join(binDir, "..", "..", "..", "packages", "ui", "build");
-    return existsSync(join(candidate, "index.js")) ? candidate : null;
+    return existsSync2(join(candidate, "index.js")) ? candidate : null;
   });
 }
 function resolveUiBuildDir() {
   const stateBuild = join(resolveStateDir(), "ui");
-  if (existsSync(join(stateBuild, "index.js")))
+  if (existsSync2(join(stateBuild, "index.js")))
     return stateBuild;
   return resolveLocalUiBuild() ?? stateBuild;
 }
@@ -10836,7 +10846,7 @@ async function checkAndUpdateUiBuild(currentVersion, stateDir) {
       return { updated: false, latestVersion, error: "Latest release has no ui-build.tar.gz" };
     }
     const uiDir = join(stateDir, "ui");
-    if (existsSync(join(uiDir, "index.js"))) {
+    if (existsSync2(join(uiDir, "index.js"))) {
       const backupDir = join(stateDir, "backups", `ui-${Date.now()}`);
       mkdirSync2(join(stateDir, "backups"), { recursive: true });
       renameSync(uiDir, backupDir);
@@ -10960,6 +10970,15 @@ function getRecentStderr(maxLines = 40) {
   return stderrRing.slice(-maxLines).join(`
 `);
 }
+function resolveAssistantUrl(homeDir) {
+  const userOverride = process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL;
+  if (userOverride)
+    return userOverride;
+  const stackEnv = parseEnvFile(join2(homeDir, "config", "stack", "stack.env"));
+  const bind = stackEnv.OP_ASSISTANT_BIND_ADDRESS || "127.0.0.1";
+  const port = stackEnv.OP_ASSISTANT_PORT || "3800";
+  return `http://${bind}:${port}`;
+}
 function buildUIServerEnv(homeDir, port, update) {
   const env = {
     ...process.env,
@@ -10968,7 +10987,8 @@ function buildUIServerEnv(homeDir, port, update) {
     PORT: String(port),
     ORIGIN: `http://127.0.0.1:${port}`,
     OP_INSIDE_ELECTRON: "1",
-    OP_ELECTRON_VERSION: app.getVersion?.() ?? ""
+    OP_ELECTRON_VERSION: app.getVersion?.() ?? "",
+    OP_OPENCODE_URL: resolveAssistantUrl(homeDir)
   };
   if (update?.updateAvailable && update.latestVersion) {
     env.OP_ELECTRON_LATEST_VERSION = update.latestVersion;
@@ -11010,7 +11030,7 @@ async function startUIServer() {
     console.log(`UI update check skipped: ${updateResult.error}`);
   }
   let uiBuildDir = resolveUiBuildDir();
-  if (!existsSync2(join2(uiBuildDir, "index.js"))) {
+  if (!existsSync3(join2(uiBuildDir, "index.js"))) {
     console.log("UI build not found — seeding from release...");
     try {
       await seedUiBuild(`v${version}`, stateDir);
@@ -11171,7 +11191,7 @@ function showWindow() {
 }
 function createTray() {
   const iconPath = join2(__dirname2, "..", "assets", "tray-icon.png");
-  if (!existsSync2(iconPath)) {
+  if (!existsSync3(iconPath)) {
     return;
   }
   tray = new Tray(iconPath);
@@ -11216,6 +11236,7 @@ app.on("before-quit", () => {
 });
 export {
   waitForReady,
+  resolveAssistantUrl,
   getRecentStderr,
   buildUIServerEnv
 };

@@ -86,9 +86,10 @@ vi.mock('@openpalm/lib', () => ({
   seedUiBuild: vi.fn(() => Promise.resolve()),
   ensureHomeDirs: vi.fn(),
   checkAndUpdateUiBuild: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.11.0' })),
+  parseEnvFile: vi.fn(() => ({})),
 }));
 
-import { buildUIServerEnv, waitForReady } from '../src/main.js';
+import { buildUIServerEnv, resolveAssistantUrl, waitForReady } from '../src/main.js';
 import * as lib from '@openpalm/lib';
 
 // ── buildUIServerEnv ─────────────────────────────────────────────────────────
@@ -111,6 +112,58 @@ describe('buildUIServerEnv', () => {
   it('ORIGIN matches HOST and PORT', () => {
     const env = buildUIServerEnv('/x', 4000);
     expect(env.ORIGIN).toBe(`http://127.0.0.1:${env.PORT}`);
+  });
+
+  it('sets OP_OPENCODE_URL so the UI proxy can reach the assistant', () => {
+    const env = buildUIServerEnv('/home/user/.openpalm', 3880);
+    expect(env.OP_OPENCODE_URL).toBe('http://127.0.0.1:3800');
+  });
+});
+
+// ── resolveAssistantUrl ──────────────────────────────────────────────────────
+
+describe('resolveAssistantUrl', () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+    vi.mocked(lib.parseEnvFile).mockReset();
+  });
+
+  it('defaults to 127.0.0.1:3800 when stack.env is empty', () => {
+    vi.mocked(lib.parseEnvFile).mockReturnValue({});
+    delete process.env.OP_OPENCODE_URL;
+    delete process.env.OP_ASSISTANT_URL;
+    expect(resolveAssistantUrl('/home/user/.openpalm')).toBe('http://127.0.0.1:3800');
+  });
+
+  it('uses OP_ASSISTANT_PORT and OP_ASSISTANT_BIND_ADDRESS from stack.env', () => {
+    vi.mocked(lib.parseEnvFile).mockReturnValue({
+      OP_ASSISTANT_PORT: '4800',
+      OP_ASSISTANT_BIND_ADDRESS: '0.0.0.0',
+    });
+    delete process.env.OP_OPENCODE_URL;
+    delete process.env.OP_ASSISTANT_URL;
+    expect(resolveAssistantUrl('/home/user/.openpalm')).toBe('http://0.0.0.0:4800');
+  });
+
+  it('respects OP_OPENCODE_URL from the shell environment', () => {
+    process.env.OP_OPENCODE_URL = 'http://example.test:9999';
+    expect(resolveAssistantUrl('/home/user/.openpalm')).toBe('http://example.test:9999');
+  });
+
+  it('falls back to OP_ASSISTANT_URL when OP_OPENCODE_URL is unset', () => {
+    delete process.env.OP_OPENCODE_URL;
+    process.env.OP_ASSISTANT_URL = 'http://example.test:1234';
+    expect(resolveAssistantUrl('/home/user/.openpalm')).toBe('http://example.test:1234');
+  });
+
+  it('reads stack.env from ${homeDir}/config/stack/stack.env', () => {
+    vi.mocked(lib.parseEnvFile).mockReturnValue({});
+    delete process.env.OP_OPENCODE_URL;
+    delete process.env.OP_ASSISTANT_URL;
+    resolveAssistantUrl('/some/home');
+    expect(lib.parseEnvFile).toHaveBeenCalledWith('/some/home/config/stack/stack.env');
   });
 });
 
