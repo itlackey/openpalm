@@ -1,5 +1,5 @@
 /** Secrets and capability key management. */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSync, rmSync, renameSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
@@ -191,7 +191,21 @@ export function writeAuthJsonProviderKeys(
       const raw = readFileSync(authJsonPath, "utf-8").trim();
       if (raw && raw !== "{}") current = JSON.parse(raw) as Record<string, unknown>;
     } catch {
-      // Corrupt auth.json — start fresh; better than failing the wizard.
+      // Corrupt auth.json — rename it so the operator can recover, then start fresh.
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const corruptPath = `${authJsonPath}.corrupt-${timestamp}`;
+      try {
+        renameSync(authJsonPath, corruptPath);
+        logger.warn("corrupt auth.json renamed for recovery", {
+          original: authJsonPath,
+          renamed: corruptPath,
+        });
+      } catch (renameErr) {
+        logger.warn("could not rename corrupt auth.json; starting fresh", {
+          path: authJsonPath,
+          error: renameErr instanceof Error ? renameErr.message : String(renameErr),
+        });
+      }
       current = {};
     }
   }

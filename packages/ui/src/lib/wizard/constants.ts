@@ -19,7 +19,7 @@ export const PROVIDERS: Provider[] = [
   { id: 'together', name: 'Together AI', kind: 'cloud', group: 'cloud', order: 3, icon: '✦', desc: 'Open models at scale', needsKey: true, placeholder: '...', baseUrl: 'https://api.together.xyz', llmModel: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', embModel: '', embDims: 0 },
   { id: 'deepseek', name: 'DeepSeek', kind: 'cloud', group: 'advanced', order: 1, icon: '◎', desc: 'DeepSeek chat & reasoning', needsKey: true, placeholder: 'sk-...', baseUrl: 'https://api.deepseek.com', llmModel: 'deepseek-chat', embModel: '', embDims: 0 },
   { id: 'xai', name: 'xAI (Grok)', kind: 'cloud', group: 'advanced', order: 2, icon: '✦', desc: 'Grok models', needsKey: true, placeholder: 'xai-...', baseUrl: 'https://api.x.ai', llmModel: 'grok-2', embModel: '', embDims: 0 },
-  { id: 'openai-compatible', name: 'Custom (OpenAI-compatible)', kind: 'cloud', group: 'advanced', order: 3, icon: '🔧', desc: 'Any endpoint that speaks the OpenAI API', needsKey: false, needsUrl: true, optionalKey: true, placeholder: 'API key (optional)', baseUrl: '', llmModel: '', embModel: '', embDims: 0 },
+  { id: 'openai-compatible', name: 'Custom API server', kind: 'cloud', group: 'advanced', order: 3, icon: '🔧', desc: 'Connect any AI server that uses the standard OpenAI API format.', needsKey: false, needsUrl: true, optionalKey: true, placeholder: 'API key (optional)', baseUrl: '', llmModel: '', embModel: '', embDims: 0 },
 ];
 
 export const KNOWN_EMB_DIMS: Record<string, number> = {
@@ -31,7 +31,7 @@ export const KNOWN_EMB_DIMS: Record<string, number> = {
   'intfloat/multilingual-e5-large': 1024,
 };
 
-export const STEP_LABELS = ['System Check', 'Welcome', 'Providers', 'Models', 'Voice', 'Options', 'Review'];
+export const STEP_LABELS = ['System Check', 'Get Started', 'Providers', 'Models', 'Voice', 'Options', 'Review'];
 export const MAX_VISIBLE_MODELS = 6;
 
 export const TTS_OPTIONS: TtsOption[] = [
@@ -119,7 +119,7 @@ export const STT_ENGINES: Record<string, VoiceEngineConfig> = {
         'Where your local Whisper server is running.',
       ),
       { key: 'model', label: 'Model size', options: ['tiny', 'base', 'small', 'medium', 'large'] },
-      { key: 'language', label: 'Language', placeholder: 'en', hint: 'BCP-47 tag (e.g. en, en-US) or empty for auto-detect' },
+      { key: 'language', label: 'Language', placeholder: 'en', hint: 'A language code like `en` or `fr`, or leave blank to detect automatically.' },
     ],
   },
   'openai-stt': {
@@ -131,13 +131,13 @@ export const STT_ENGINES: Record<string, VoiceEngineConfig> = {
         'Leave empty to use the default OpenAI endpoint.',
       ),
       { key: 'model', label: 'Model', options: ['whisper-1', 'gpt-4o-mini-transcribe', 'gpt-4o-transcribe'] },
-      { key: 'language', label: 'Language', placeholder: 'en' },
+      { key: 'language', label: 'Language', placeholder: 'en', hint: 'A language code like `en` or `fr`, or leave blank to detect automatically.' },
     ],
   },
   'browser-stt': {
     id: 'browser-stt',
     fields: [
-      { key: 'language', label: 'Language', placeholder: 'en-US', hint: 'BCP-47 tag for Web Speech API' },
+      { key: 'language', label: 'Language', placeholder: 'en-US', hint: 'A language code like `en` or `fr`, or leave blank to detect automatically.' },
     ],
   },
   'skip-stt': {
@@ -168,5 +168,5 @@ export const LOCAL_PROVIDERS: OpenCodeProvider[] = [
   { id: 'ollama', name: 'Ollama', env: [], models: {}, localUrl: 'http://localhost:11434' },
   { id: 'model-runner', name: 'Docker Model Runner', env: [], models: {}, localUrl: 'http://localhost:12434' },
   { id: 'lmstudio', name: 'LM Studio', env: [], models: {}, localUrl: 'http://localhost:1234' },
-  { id: 'openai-compatible', name: 'Custom (OpenAI-compatible)', env: [], models: {}, localUrl: '' },
+  { id: 'openai-compatible', name: 'Custom API server', env: [], models: {}, localUrl: '' },
 ];

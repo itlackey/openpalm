@@ -1,5 +1,6 @@
 import { defineCommand } from 'citty';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
 import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
@@ -62,6 +63,12 @@ export default defineCommand({
       alias: 'f',
       description: 'Path to setup config file (JSON or YAML) — skips wizard',
     },
+    yes: {
+      type: 'boolean',
+      alias: 'y',
+      description: 'Auto-confirm destructive prompts (e.g. --force backup of existing OP_HOME)',
+      default: false,
+    },
   },
   async run({ args }) {
     try {
@@ -72,6 +79,7 @@ export default defineCommand({
         noStart: !args.start,
         noOpen: !args.open,
         file: args.file,
+        assumeYes: args.yes,
       });
     } catch (err) {
       console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -86,7 +94,25 @@ type InstallOptions = {
   noStart: boolean;
   noOpen: boolean;
   file?: string;
+  assumeYes: boolean;
 };
+
+/**
+ * Prompt the user for a y/N confirmation on stdin/stdout. Returns false in
+ * any non-interactive context (no TTY) so CI runs do not hang waiting on
+ * input — callers must pair this with an explicit `--yes` flag for
+ * unattended invocations.
+ */
+async function promptYesNo(question: string): Promise<boolean> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return false;
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await new Promise<string>((resolve) => rl.question(`${question} `, resolve));
+    return /^y(es)?$/i.test(answer.trim());
+  } finally {
+    rl.close();
+  }
+}
 
 async function requireCmd(cmd: string[], msg: string): Promise<void> {
   if ((await Bun.spawn(cmd, { stdout: 'ignore', stderr: 'ignore' }).exited) !== 0) throw new Error(msg);
@@ -134,6 +160,28 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   }
 
   if (alreadyInstalled && options.force) {
+    // Use the helper's own backup-path convention so the prompt is honest about
+    // where the existing install will land. Match backupOpenPalmHome():
+    // `${homeDir}.backup.${YYYYMMDD-HHMMSS}`.
+    const now = new Date();
+    const stamp =
+      `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}` +
+      `-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+    const plannedBackup = `${homeDir}.backup.${stamp}`;
+
+    // Skip the prompt when --yes was passed OR when there's no TTY (CI/scripts).
+    // Without the TTY exemption we would silently hang a non-interactive
+    // pipeline waiting for stdin, which is worse than auto-confirming.
+    const interactive = process.stdin.isTTY && process.stdout.isTTY;
+    if (!options.assumeYes && interactive) {
+      const proceed = await promptYesNo(
+        `--force will move the existing OpenPalm install at ${homeDir} to ${plannedBackup}. Continue? [y/N]`,
+      );
+      if (!proceed) {
+        console.log('Install aborted. Re-run with --yes (or -y) to skip this confirmation in non-interactive use.');
+        return;
+      }
+    }
     const backupDir = backupOpenPalmHome(homeDir);
     if (backupDir) {
       console.log(`Backed up existing OP_HOME to ${backupDir}`);
@@ -201,8 +249,13 @@ async function prepareInstallFiles(
  * The SvelteKit UI detects that setup is not complete (via hooks.server.ts)
  * and redirects to /setup where the wizard runs. Deploy is triggered from
  * within the UI process after the user completes the wizard.
+ *
+ * Pre-flight: `requireDocker()` runs FIRST so users hit our friendly Docker
+ * error before the browser opens to a wizard that will fail at the end of
+ * a 10-step flow.
  */
 async function runWizardInstall(noOpen: boolean): Promise<void> {
+  await requireDocker();
   const port = Number(process.env.OP_HOST_UI_PORT) || 3880;
   console.log(`Setup wizard: http://localhost:${port}/setup`);
   const { startUIServer } = await import('../lib/ui-server.ts');

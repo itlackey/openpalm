@@ -9,7 +9,7 @@
     error?: string;
   }
 
-  interface PortResult { port: number; available: boolean; }
+  interface PortResult { port: number; available: boolean; blocking?: boolean; }
 
   interface SystemCheckResponse {
     ok: boolean;
@@ -33,11 +33,15 @@
   let result = $state<SystemCheckResponse | null>(null);
   let errorView = $state<FriendlyErrorView | null>(null);
 
-  const allRequiredPassed = $derived(!!result?.docker.ok && !!result?.compose.ok);
   // Suppress port conflicts during a re-run — the ports are bound by the
   // running OpenPalm stack itself, which is expected.
   const portConflicts = $derived(
     isRerun ? [] : (result?.ports.filter((p) => !p.available) ?? []),
+  );
+  const blockingPortConflicts = $derived(portConflicts.filter((p) => p.blocking));
+  const hasBlockingConflict = $derived(blockingPortConflicts.length > 0);
+  const allRequiredPassed = $derived(
+    !!result?.docker.ok && !!result?.compose.ok && !hasBlockingConflict,
   );
 
   function dockerInstallLink(platform: string | undefined): { label: string; href: string } {
@@ -125,7 +129,7 @@
       {/if}
     </div>
     <div class="syscheck-body">
-      <div class="syscheck-title">Docker Compose v2 is available</div>
+      <div class="syscheck-title">Docker can run multi-container apps</div>
       {#if result?.compose.ok && result.compose.version}
         <div class="syscheck-meta">{result.compose.version}</div>
       {:else if result && !result.compose.ok}
@@ -140,18 +144,17 @@
   </div>
 
   {#if result && portConflicts.length > 0}
-    <div class="syscheck-row syscheck-row--warn">
+    <div class="syscheck-row {hasBlockingConflict ? 'syscheck-row--fail' : 'syscheck-row--warn'}">
       <div class="syscheck-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={hasBlockingConflict ? '#dc2626' : '#d97706'} stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 9v4"/><path d="M12 17h.01"/>
           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
         </svg>
       </div>
       <div class="syscheck-body">
-        <div class="syscheck-title">Port conflict</div>
+        <div class="syscheck-title">Port conflict on {portConflicts.map((p) => p.port).join(', ')}</div>
         <div class="syscheck-hint">
-          Another process is using port{portConflicts.length > 1 ? 's' : ''} {portConflicts.map((p) => p.port).join(', ')}.
-          You can continue, but OpenPalm may fail to start unless you free those ports or override them in stack.env.
+          Another program is using this port. Quit it and click Retry.
         </div>
       </div>
     </div>

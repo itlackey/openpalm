@@ -147,10 +147,3 @@ export interface VoiceEngineConfig {
   fields: VoiceEngineField[];
 }
 
-export interface RerankingOptions {
-  enabled: boolean;
-  mode: 'llm' | 'dedicated';
-  model: string;
-  topK: number;
-  topN: number;
-}

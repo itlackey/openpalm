@@ -260,6 +260,13 @@ export {
   performSetup,
 } from "./control-plane/setup.js";
 
+// ── Install Lock (shared between performSetup and startDeploy) ───────────
+export type { InstallLockHandle } from "./control-plane/install-lock.js";
+export {
+  acquireInstallLock,
+  releaseInstallLock,
+} from "./control-plane/install-lock.js";
+
 // ── Host OpenCode Import ─────────────────────────────────────────────────
 export type {
   HostOpenCodeStatus,

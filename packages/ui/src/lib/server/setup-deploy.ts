@@ -6,16 +6,21 @@
  * without a database or filesystem dependency.
  */
 import {
+  acquireInstallLock,
   applyInstall,
   buildComposeOptions,
   buildManagedServices,
+  composeDown,
   composePull,
+  composePs,
   composeUp,
   createLogger,
   isSetupComplete,
+  releaseInstallLock,
   resolveStackDir,
 } from "@openpalm/lib";
-import type { ControlPlaneState } from "@openpalm/lib";
+import type { ControlPlaneState, InstallLockHandle } from "@openpalm/lib";
+import { existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 
 const logger = createLogger("admin:setup-deploy");
 
@@ -61,6 +66,178 @@ export function resetDeployState(): void {
   };
 }
 
+// ── Docker stderr → friendly error messages ──────────────────────────────
+
+/**
+ * Map opaque Docker/compose stderr text to a human-friendly error message.
+ * If no pattern matches, the raw message is returned prefixed with a generic header.
+ */
+function mapDockerError(raw: string): string {
+  if (/cannot connect to the docker daemon|docker daemon is not running/i.test(raw)) {
+    return "Docker Desktop appears to have stopped. Start Docker, then click Retry.";
+  }
+  const portMatch = /bind: address already in use.*?:(\d+)/i.exec(raw);
+  if (portMatch) {
+    return `Port ${portMatch[1]} is already in use by another program. Free it (or quit the other app) and click Retry.`;
+  }
+  if (/Cannot find specified .* file|no such file or directory/i.test(raw)) {
+    return "A required configuration file is missing. Try re-running setup.";
+  }
+  if (/permission denied/i.test(raw)) {
+    return "Permission denied. Check that ~/.openpalm and Docker have permission to write.";
+  }
+  if (/no space left on device|ENOSPC/i.test(raw)) {
+    return "Your disk is full. Free up space and click Retry.";
+  }
+  return `Deployment ran into a problem: ${raw}`;
+}
+
+// ── Setup-complete flag (atomic write) ───────────────────────────────────
+
+/**
+ * Atomic-merge OP_SETUP_COMPLETE=true into stack.env. Called only after every
+ * container has reported healthy — until then the wizard must remain
+ * resumable, so the flag is intentionally not written by performSetup.
+ */
+function markSetupComplete(state: ControlPlaneState): void {
+  const path = `${state.stackDir}/stack.env`;
+  const existing = existsSync(path) ? readFileSync(path, "utf-8") : "";
+  // Inline mergeEnvContent semantics: if OP_SETUP_COMPLETE exists, replace it;
+  // otherwise append. Keep this dumb — one key, no edge cases worth a helper.
+  const lines = existing.split("\n");
+  let replaced = false;
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trimStart();
+    const eq = trimmed.indexOf("=");
+    if (eq > 0 && trimmed.slice(0, eq).trim() === "OP_SETUP_COMPLETE") {
+      lines[i] = "OP_SETUP_COMPLETE=true";
+      replaced = true;
+      break;
+    }
+  }
+  if (!replaced) {
+    if (lines.length > 0 && lines[lines.length - 1] === "") {
+      lines[lines.length - 1] = "OP_SETUP_COMPLETE=true";
+      lines.push("");
+    } else {
+      lines.push("OP_SETUP_COMPLETE=true");
+    }
+  }
+  let merged = lines.join("\n");
+  if (!merged.endsWith("\n")) merged += "\n";
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, merged, { mode: 0o600 });
+  renameSync(tmp, path);
+}
+
+// ── Container health polling ─────────────────────────────────────────────
+
+type ContainerState = {
+  name: string;
+  state: string;   // "running", "exited", etc.
+  health: string;  // "healthy", "unhealthy", "starting", or "" if no healthcheck
+};
+
+/**
+ * Parse `docker compose ps --format json` output into a list of container states.
+ * Compose outputs one JSON object per line (NDJSON), not a JSON array.
+ */
+function parseComposePsOutput(stdout: string): ContainerState[] {
+  const results: ContainerState[] = [];
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const obj = JSON.parse(trimmed) as Record<string, unknown>;
+      results.push({
+        name: String(obj["Name"] ?? obj["Service"] ?? ""),
+        state: String(obj["State"] ?? ""),
+        health: String(obj["Health"] ?? ""),
+      });
+    } catch {
+      // Skip unparseable lines
+    }
+  }
+  return results;
+}
+
+/**
+ * Poll container health for `services` until all are running (and healthy if
+ * they declare a healthcheck). Updates `_state.deployStatus` with intermediate
+ * labels as containers flip states.
+ *
+ * @returns null on success, or an error string if timeout fires with unhealthy services.
+ */
+async function pollContainerHealth(
+  composeOpts: Parameters<typeof composePs>[0],
+  services: string[],
+  timeoutMs: number,
+): Promise<string | null> {
+  const deadline = Date.now() + timeoutMs;
+  const POLL_INTERVAL_MS = 2_000;
+
+  while (Date.now() < deadline) {
+    await new Promise<void>((r) => setTimeout(r, POLL_INTERVAL_MS));
+
+    const psResult = await composePs(composeOpts);
+    if (!psResult.ok) {
+      // docker ps failed — not fatal yet, keep polling
+      logger.warn("composePs failed during health poll", { stderr: psResult.stderr });
+      continue;
+    }
+
+    const containers = parseComposePsOutput(psResult.stdout);
+
+    // Update per-service status labels
+    _state.deployStatus = _state.deployStatus.map((entry) => {
+      const found = containers.find(
+        (c) => c.name === entry.service || c.name.endsWith(`-${entry.service}-1`) || c.name.endsWith(`_${entry.service}_1`)
+      );
+      if (!found) return { ...entry, status: "pending", label: "Starting..." };
+      if (found.state === "running") {
+        const health = found.health;
+        if (health === "unhealthy") return { ...entry, status: "error", label: "Unhealthy" };
+        if (health === "starting") return { ...entry, status: "pending", label: "Health check running..." };
+        // healthy or no healthcheck declared
+        return { ...entry, status: "running", label: "Running" };
+      }
+      if (found.state === "exited" || found.state === "dead") {
+        return { ...entry, status: "error", label: `Exited (${found.state})` };
+      }
+      return { ...entry, status: "pending", label: `Starting (${found.state})...` };
+    });
+
+    // Check if all services are up
+    const allReady = services.every((svc) => {
+      const entry = _state.deployStatus.find((e) => e.service === svc);
+      return entry?.status === "running";
+    });
+    if (allReady) return null;
+
+    // Bail early if any service is in a terminal error state
+    const failed = _state.deployStatus.filter((e) => e.status === "error").map((e) => e.service);
+    if (failed.length > 0) {
+      const projectName = process.env.OP_PROJECT_NAME ?? process.env.COMPOSE_PROJECT_NAME ?? "openpalm";
+      return (
+        `Services started but the following did not become healthy: ${failed.join(", ")}. ` +
+        `Check logs: docker compose -p ${projectName} logs ${failed.join(" ")}.`
+      );
+    }
+  }
+
+  // Timeout — collect which services are still not running
+  const unhealthy = _state.deployStatus
+    .filter((e) => e.status !== "running")
+    .map((e) => e.service);
+  const projectName = process.env.OP_PROJECT_NAME ?? process.env.COMPOSE_PROJECT_NAME ?? "openpalm";
+  return (
+    `Services started but some did not become healthy in time: ${unhealthy.join(", ")}. ` +
+    `Check logs: docker compose -p ${projectName} logs ${unhealthy.join(" ")}.`
+  );
+}
+
+// ── Project-name collision guard ─────────────────────────────────────────
+
 /**
  * Pre-flight: refuse to deploy if existing containers in this compose
  * project belong to a DIFFERENT OP_HOME than the one we're about to deploy.
@@ -102,8 +279,20 @@ async function checkProjectNameCollision(state: ControlPlaneState): Promise<stri
   });
 }
 
+// ── Main deploy entry point ──────────────────────────────────────────────
+
 /** Kick off a background Docker Compose deploy. Returns immediately. */
 export function startDeploy(state: ControlPlaneState): void {
+  // Acquire install lock before mutating _state so concurrent calls are rejected
+  // before any deploy work begins.
+  const lockHandle: InstallLockHandle | null = acquireInstallLock(state.stateDir);
+  if (lockHandle === null) {
+    _state.deployError =
+      "install_in_progress: Another install is in progress. Wait for it to finish, or remove state/.install.lock if you're sure no install is running.";
+    logger.warn("deploy rejected: install lock already held", { stateDir: state.stateDir });
+    return;
+  }
+
   _state.deploying = true;
   _state.deployError = null;
   _state.phase = "writing-config";
@@ -123,13 +312,55 @@ export function startDeploy(state: ControlPlaneState): void {
       const services = await buildManagedServices(state);
       _state.deployStatus = services.map(s => ({ service: s, status: "pending", label: "Waiting..." }));
 
+      // Phase 1b: best-effort `compose down` (volumes preserved) to clean up
+      // any half-started containers left behind by a previous failed deploy
+      // attempt. Without this, `compose up` may try to attach to a container
+      // that exited mid-start and fail in surprising ways. Failures here are
+      // expected on first install (nothing to remove) and intentionally
+      // swallowed.
+      const composeOpts = buildComposeOptions(state);
+      try {
+        const downResult = await composeDown({ ...composeOpts, removeVolumes: false });
+        if (!downResult.ok) {
+          logger.info("pre-deploy compose down returned non-zero (likely nothing to remove)", {
+            stderr: downResult.stderr?.slice(0, 500),
+          });
+        }
+      } catch (err) {
+        logger.warn("pre-deploy compose down threw — continuing", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+
       // Phase 2: pull images. Surface this phase explicitly so the UI can
       // explain the expected wait time (multi-GB images on first install).
+      // Retry transient pull failures (network blips, registry hiccups) up to
+      // three times with 0/5s/15s back-off. Permanent failures (manifest
+      // unknown, unauthorized) bail immediately.
       _state.phase = "pulling-images";
-      const composeOpts = buildComposeOptions(state);
-      const pullResult = await composePull(composeOpts);
-      if (!pullResult.ok) {
-        const msg = pullResult.stderr?.trim() || "Image pull failed";
+      const pullDelaysMs = [0, 5_000, 15_000];
+      let pullResult: Awaited<ReturnType<typeof composePull>> | null = null;
+      for (let attempt = 0; attempt < pullDelaysMs.length; attempt++) {
+        if (pullDelaysMs[attempt] > 0) {
+          logger.info("retrying image pull", { attempt: attempt + 1, delayMs: pullDelaysMs[attempt] });
+          await new Promise<void>((r) => setTimeout(r, pullDelaysMs[attempt]));
+        }
+        pullResult = await composePull(composeOpts);
+        if (pullResult.ok) break;
+        const stderr = pullResult.stderr ?? "";
+        // Permanent errors — no point retrying.
+        if (/manifest unknown|manifest for .* not found|unauthorized|authentication required|access denied/i.test(stderr)) {
+          logger.error("image pull failed with permanent error", { stderr: stderr.slice(0, 500) });
+          break;
+        }
+        logger.warn("image pull failed (transient?)", {
+          attempt: attempt + 1,
+          stderr: stderr.slice(0, 500),
+        });
+      }
+      if (!pullResult || !pullResult.ok) {
+        const raw = pullResult?.stderr?.trim() || "Image pull failed";
+        const msg = mapDockerError(raw);
         _state.deployStatus = _state.deployStatus.map(e => ({ ...e, status: "error", label: "Image pull failed" }));
         _state.deployError = msg;
         return;
@@ -140,22 +371,55 @@ export function startDeploy(state: ControlPlaneState): void {
       _state.deployStatus = _state.deployStatus.map(e => ({ ...e, status: "pending", label: "Starting..." }));
       const result = await composeUp({ ...composeOpts, services });
 
-      if (result.ok) {
-        _state.deployStatus = _state.deployStatus.map(e => ({ ...e, status: "running", label: "Running" }));
-        _state.setupComplete = true;
-        _state.phase = "ready";
-      } else {
-        const msg = result.stderr ?? "compose up failed";
+      if (!result.ok) {
+        const raw = result.stderr ?? "compose up failed";
+        const msg = mapDockerError(raw);
         _state.deployStatus = _state.deployStatus.map(e => ({ ...e, status: "error", label: msg }));
         _state.deployError = msg;
+        return;
       }
+
+      // Phase 4: wait for containers to actually be healthy before marking ready.
+      // composeUp returning ok only means Docker accepted the start request —
+      // containers may still be crash-looping or waiting for healthchecks.
+      // 5-minute timeout: cold start of multi-GB images on slow disks
+      // regularly exceeds 60 seconds, especially when several containers race
+      // for IO. Tighter timeouts produced false "unhealthy" errors during
+      // perfectly normal first installs.
+      const healthError = await pollContainerHealth(composeOpts, services, 5 * 60_000);
+      if (healthError) {
+        _state.deployError = healthError;
+        // deployStatus entries were already updated by pollContainerHealth
+        return;
+      }
+
+      // All services healthy — persist OP_SETUP_COMPLETE=true so subsequent
+      // server restarts skip the wizard. This is the FIRST and ONLY place
+      // that flag is set; see the matching note in packages/lib setup.ts.
+      try {
+        markSetupComplete(state);
+      } catch (err) {
+        logger.error("failed to persist OP_SETUP_COMPLETE after healthy deploy", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        _state.deployError =
+          "Deployment succeeded but failed to mark setup complete. " +
+          "Try Retry; if it persists, check disk space and permissions on config/stack/stack.env.";
+        return;
+      }
+
+      // Only mark ready when ALL services are confirmed running.
+      _state.setupComplete = true;
+      _state.phase = "ready";
     } catch (err) {
-      const msg = String(err);
-      logger.error("deploy failed", { error: msg });
+      const raw = String(err);
+      const msg = mapDockerError(raw);
+      logger.error("deploy failed", { error: raw });
       _state.deployStatus = _state.deployStatus.map(e => ({ ...e, status: "error", label: msg }));
       _state.deployError = msg;
     } finally {
       _state.deploying = false;
+      releaseInstallLock(lockHandle);
     }
   })();
 }

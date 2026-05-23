@@ -1,67 +1,96 @@
 <script lang="ts">
   interface Props {
-    adminToken: string;
-    ownerName: string;
-    ownerEmail: string;
-    welcomeHeroDismissed: boolean;
     errorMessage: string;
-    onadmintoken: (v: string) => void;
-    onownername: (v: string) => void;
-    onowneremail: (v: string) => void;
-    ondismisshero: () => void;
+    detectionReady: boolean;
+    hasVerifiedProviders: boolean;
     onnext: () => void;
+    onusedefaults: () => void;
   }
   let {
-    adminToken,
-    ownerName,
-    ownerEmail,
-    welcomeHeroDismissed,
     errorMessage,
-    onadmintoken,
-    onownername,
-    onowneremail,
-    ondismisshero,
+    detectionReady,
+    hasVerifiedProviders,
     onnext,
+    onusedefaults,
   }: Props = $props();
 </script>
 
-{#if !welcomeHeroDismissed}
-  <div class="welcome-hero" id="welcome-hero">
-    <div class="welcome-icon">👋</div>
-    <h2>Welcome to OpenPalm</h2>
-    <p class="welcome-subtitle">Your self-hosted AI assistant. Pick your providers, choose models, and you're up and running.</p>
-    <div class="welcome-pills">
-      <span class="pill">Cloud or local</span>
-      <span class="pill">Smart defaults</span>
-      <span class="pill">Privacy first</span>
-    </div>
-    <button class="btn btn-primary-lg" id="btn-get-started" onclick={ondismisshero}>Get Started</button>
+<div class="welcome-hero" id="welcome-hero">
+  <div class="welcome-icon">👋</div>
+  <h2>Welcome to OpenPalm</h2>
+  <p class="welcome-subtitle">Your self-hosted AI assistant. Pick your providers, choose models, and you're up and running.</p>
+  <div class="welcome-pills">
+    <span class="pill">Cloud or local</span>
+    <span class="pill">Smart defaults</span>
+    <span class="pill">Privacy first</span>
   </div>
-{:else}
-  <div class="identity-form" id="identity-form">
-    <h2>About You</h2>
-    <p class="step-description">Set up admin credentials and optional identity details.</p>
-    <div class="field-group">
-      <label for="admin-token">Admin Token</label>
-      <input id="admin-token" type="text" autocomplete="off" placeholder="Min 8 characters"
-        value={adminToken} oninput={(e) => onadmintoken((e.currentTarget as HTMLInputElement).value)}>
-      <p class="field-hint">Protects the admin console. A random token has been generated for you.</p>
-    </div>
-    <div class="field-group">
-      <label for="owner-name">Your Name</label>
-      <input id="owner-name" type="text" placeholder="Jane Doe" autocomplete="name" required
-        value={ownerName} oninput={(e) => onownername((e.currentTarget as HTMLInputElement).value)}>
-    </div>
-    <div class="field-group">
-      <label for="owner-email">Email</label>
-      <input id="owner-email" type="email" placeholder="jane@example.com" autocomplete="email" required
-        value={ownerEmail} oninput={(e) => onowneremail((e.currentTarget as HTMLInputElement).value)}>
-    </div>
-    {#if errorMessage}
-      <div class="field-error" id="step0-error" role="alert">{errorMessage}</div>
-    {/if}
-    <div class="step-actions">
-      <button class="btn btn-primary" id="btn-step0-next" onclick={onnext}>Set Up Providers</button>
-    </div>
+  <div class="token-callout" id="token-callout">
+    We'll create a secure admin login token for you. Run <code>openpalm token</code> from a terminal anytime to see it.
   </div>
-{/if}
+  {#if errorMessage}
+    <div class="field-error" id="step0-error" role="alert">{errorMessage}</div>
+  {/if}
+  <div class="welcome-actions">
+    <button class="btn btn-primary-lg" id="btn-use-defaults" onclick={onusedefaults}
+      disabled={!detectionReady}>
+      {#if !detectionReady}
+        <span class="spinner"></span> Detecting your system… (a few seconds)
+      {:else if hasVerifiedProviders}
+        Use recommended defaults
+      {:else}
+        Use recommended defaults
+      {/if}
+    </button>
+    <button class="btn btn-secondary" id="btn-step0-next" onclick={onnext}>
+      Continue
+    </button>
+  </div>
+</div>
+
+<style>
+  .token-callout {
+    margin: 16px 0 8px;
+    padding: 10px 14px;
+    background: var(--color-surface, #f8fafc);
+    border: 1px solid var(--color-border, #e2e8f0);
+    border-radius: 8px;
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--color-text-secondary, #64748b);
+    text-align: left;
+    line-height: 1.5;
+  }
+  .token-callout code {
+    font-family: monospace;
+    background: var(--color-bg, #fff);
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: 1px solid var(--color-border, #e2e8f0);
+    font-size: 0.85em;
+  }
+  .welcome-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 20px;
+    align-items: center;
+    width: 100%;
+  }
+  .welcome-actions .btn {
+    width: 100%;
+    max-width: 320px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>

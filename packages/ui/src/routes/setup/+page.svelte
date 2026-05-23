@@ -31,12 +31,11 @@
   let showDeploy = $state(false);
   let systemCheckPassed = $state(false);
 
-  // ── Step 0: Identity ──────────────────────────────────────────────────────
+  // ── Step 0: Welcome ───────────────────────────────────────────────────────
   let adminToken = $state('');
-  let ownerName = $state('');
-  let ownerEmail = $state('');
-  let welcomeHeroDismissed = $state(false);
   let step0Error = $state('');
+  // Tracks whether the "Use recommended defaults" detection has settled
+  let detectionReady = $state(false);
 
   // ── Step 1: Providers ─────────────────────────────────────────────────────
   let providerState = $state<Record<string, ProviderState>>({});
@@ -49,6 +48,10 @@
   let ocFilterQuery = $state('');
   // Host import detection
   let hostProviderCount = $state(0);
+  let hostStatusWarning = $state<string | null>(null);
+  let allowEmptyInstall = $state(false);
+  let voiceEngineUnknownTts = $state(false);
+  let voiceEngineUnknownStt = $state(false);
   /** Generation counter per provider — discard stale verify results */
   const verifyGeneration: Record<string, number> = {};
   /** AbortControllers for in-flight OAuth long-poll requests */
@@ -72,16 +75,8 @@
   let ollamaEnabled = $state(false);
   let imageTag = $state('');
   let hostAkmEnabled = $state(false);
+  let hostAkmAvailable = $state(false);
   let step4Error = $state('');
-
-  // ── Step 2: Models (reranking) ────────────────────────────────────────────
-  let reranking = $state({
-    enabled: false,
-    mode: 'llm' as 'llm' | 'dedicated',
-    model: '',
-    topK: 20,
-    topN: 5,
-  });
 
   // ── Step 5: Review + Install ──────────────────────────────────────────────
   let installError = $state('');
@@ -93,6 +88,7 @@
     setupComplete?: boolean;
     deployStatus?: { service: string; status: string; label?: string }[];
     deployError?: string | null;
+    ports?: { admin?: number; assistant?: number; guardian?: number };
   }>({});
   let deployDone = $state(false);
   let deployError = $state<string | null>(null);
@@ -207,6 +203,8 @@
 
     // Voice engines — only persist if the user picked something explicit
     // and it isn't the "skip" sentinel.
+    // If engine is empty (not yet chosen, or rerun with missing engine),
+    // omit the field entirely to leave any existing server config intact.
     const voicePayload = (v: VoiceEngineValue) => {
       if (!v.engine || v.engine.startsWith('skip-')) return undefined;
       const out: Record<string, unknown> = { enabled: true, engine: v.engine };
@@ -221,13 +219,6 @@
     if (ttsCap) result.tts = ttsCap;
     const sttCap = voicePayload(voiceStt);
     if (sttCap) result.stt = sttCap;
-
-    if (ownerName || ownerEmail) {
-      result.owner = {
-        name: ownerName || undefined,
-        email: ownerEmail || undefined,
-      };
-    }
 
     if (Object.keys(channelCredentials).length > 0) {
       result.channelCredentials = channelCredentials;
@@ -285,25 +276,34 @@
   // ── Validation ────────────────────────────────────────────────────────────
 
   function validateStep0(): boolean {
+    // Token is always generated on mount — this is just a safety check.
     if (adminToken.trim().length < 8) {
       step0Error = 'Admin token must be at least 8 characters.';
-      return false;
-    }
-    if (!ownerName.trim()) {
-      step0Error = 'Your name is required.';
-      return false;
-    }
-    if (!ownerEmail.trim()) {
-      step0Error = 'Email is required.';
       return false;
     }
     step0Error = '';
     return true;
   }
 
+  async function handleUseDefaults(): Promise<void> {
+    // detectionReady means the background discovery has settled.
+    // Pick the most sensible path based on what was found.
+    if (verifiedProviders.length >= 1) {
+      autoSelectModels();
+      voiceTts = { engine: 'browser-tts' };
+      voiceStt = { engine: 'browser-stt' };
+      goToStep(6);
+    } else {
+      goToStep(2);
+    }
+  }
+
   function validateStep2(): boolean {
-    // Allow skipping the model step entirely when no providers are configured
-    if (verifiedProviders.length === 0) { step2Error = ''; return true; }
+    if (verifiedProviders.length === 0) {
+      if (allowEmptyInstall) { step2Error = ''; return true; }
+      step2Error = 'Connect at least one provider, or check "Install without an AI provider" on the previous step.';
+      return false;
+    }
     if (!modelSelection.llm?.model) {
       step2Error = 'Select a chat model.';
       return false;
@@ -535,8 +535,8 @@
     st.verifying = true;
     st.error = false;
 
-    const baseUrl = st.baseUrl || p.baseUrl;
-    const apiKey = st.apiKey ?? '';
+    const baseUrl = (st.baseUrl || p.baseUrl).trim();
+    const apiKey = (st.apiKey ?? '').trim();
 
     try {
       const result = await apiFetchModels(id, baseUrl, apiKey);
@@ -623,13 +623,19 @@
     const ac = new AbortController();
     oauthAbortControllers[providerId] = ac;
 
+    // Combine user-cancellation AbortController with a 10-minute timeout
+    const timeoutSignal = AbortSignal.timeout(10 * 60_000);
+    const combinedSignal = AbortSignal.any
+      ? AbortSignal.any([ac.signal, timeoutSignal])
+      : ac.signal;
+
     try {
       // The callback is a long-poll — make one call and wait (up to 10 minutes)
       const res = await fetch('/api/setup/opencode/provider/' + encodeURIComponent(providerId) + '/oauth/callback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ method: methodIndex }),
-        signal: ac.signal,
+        signal: combinedSignal,
       });
       const data = await res.json().catch(() => null);
       if (res.ok && (data as { ok?: boolean })?.ok) {
@@ -640,10 +646,16 @@
         st.errorMessage = (data as { message?: string })?.message ?? 'Authorization failed';
       }
     } catch (e) {
-      // AbortError means the user cancelled — don't show an error
-      if (e instanceof Error && e.name === 'AbortError') return;
-      st.error = true;
-      st.errorMessage = e instanceof Error ? e.message : 'Authorization failed';
+      // AbortError from user cancel — don't show an error
+      if (e instanceof Error && e.name === 'AbortError' && ac.signal.aborted) return;
+      // Timeout case
+      if (e instanceof Error && e.name === 'AbortError') {
+        st.error = true;
+        st.errorMessage = 'Authorization timed out. Try again.';
+      } else {
+        st.error = true;
+        st.errorMessage = e instanceof Error ? e.message : 'Authorization failed';
+      }
     } finally {
       delete oauthAbortControllers[providerId];
       st.oauthPolling = false;
@@ -861,9 +873,11 @@
       // Use setup-namespace endpoint — no admin auth needed during setup
       const res = await fetch('/api/setup/host-status');
       if (res.ok) {
-        const data = (await res.json()) as { providerCount: number; imageTag?: string };
+        const data = (await res.json()) as { providerCount: number; imageTag?: string; hostAkmAvailable?: boolean; warning?: string };
         hostProviderCount = data.providerCount ?? 0;
         if (data.imageTag && !imageTag) imageTag = data.imageTag;
+        if (typeof data.hostAkmAvailable === 'boolean') hostAkmAvailable = data.hostAkmAvailable;
+        hostStatusWarning = data.warning ?? null;
         // Auto-import if already on Providers step (index 2), or always on rerun
         // so models/settings have verified providers to attach to.
         if (hostProviderCount > 0 && !hostImportTriggered && (currentStep === 2 || isRerun)) {
@@ -929,8 +943,6 @@
         .then((data) => {
           if (!data) return;
           if (data.adminToken) adminToken = data.adminToken;
-          if (data.ownerName) ownerName = data.ownerName;
-          if (data.ownerEmail) ownerEmail = data.ownerEmail;
           if (data.imageTag) imageTag = data.imageTag;
           if (typeof data.hostAkm === 'boolean') hostAkmEnabled = data.hostAkm;
 
@@ -947,13 +959,25 @@
             };
           }
 
-          // Voice — pre-fill connection fields; engine choice stays as user
-          // last picked it (engine isn't persisted today; user re-picks).
+          // Voice — pre-fill connection fields only when the stored
+          // config explicitly names the engine. No URL sniffing.
           if (data.voice?.tts) {
-            voiceTts = { engine: voiceTts.engine, ...data.voice.tts };
+            const storedTts = data.voice.tts as { baseURL?: string; model?: string; voice?: string; engine?: string };
+            if (storedTts.engine) {
+              voiceTts = { ...storedTts, engine: storedTts.engine };
+            } else {
+              voiceTts = { engine: '' };
+              voiceEngineUnknownTts = true;
+            }
           }
           if (data.voice?.stt) {
-            voiceStt = { engine: voiceStt.engine, ...data.voice.stt };
+            const storedStt = data.voice.stt as { baseURL?: string; model?: string; voice?: string; language?: string; engine?: string };
+            if (storedStt.engine) {
+              voiceStt = { ...storedStt, engine: storedStt.engine };
+            } else {
+              voiceStt = { engine: '' };
+              voiceEngineUnknownStt = true;
+            }
           }
 
           // Enabled addons + channel credentials
@@ -978,11 +1002,26 @@
         .catch(() => { /* ignore */ });
     }
 
+    // If a previous deploy is still running (or errored), pick it up
+    // without re-triggering /api/setup/complete.
+    fetch('/api/setup/deploy-status')
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!data) return;
+        if (data.deploying || data.deployError) {
+          deployData = data;
+          showDeploy = true;
+          startDeployPolling();
+        }
+      })
+      .catch(() => { /* ignore */ });
+
     void loadHostStatus();
 
     checkOpenCodeAndInit()
       .then(() => detectProviders())
-      .catch(() => { /* ignore */ });
+      .catch(() => { /* ignore */ })
+      .finally(() => { detectionReady = true; });
   });
 </script>
 
@@ -1036,16 +1075,11 @@
       {:else if currentStep === 1}
         <section class="step-content" id="step-1" data-testid="step-welcome">
           <WelcomeStep
-            {adminToken}
-            {ownerName}
-            {ownerEmail}
-            {welcomeHeroDismissed}
             errorMessage={step0Error}
-            onadmintoken={(v) => adminToken = v}
-            onownername={(v) => ownerName = v}
-            onowneremail={(v) => ownerEmail = v}
-            ondismisshero={() => { welcomeHeroDismissed = true; }}
+            {detectionReady}
+            hasVerifiedProviders={verifiedProviders.length >= 1}
             onnext={() => { if (validateStep0()) goToStep(2); }}
+            onusedefaults={() => { if (validateStep0()) void handleUseDefaults(); }}
           />
         </section>
       {:else if currentStep === 2}
@@ -1066,6 +1100,8 @@
             {ocFilterQuery}
             {verifiedCount}
             {hostProviderCount}
+            {hostStatusWarning}
+            {allowEmptyInstall}
             onback={() => goToStep(1)}
             onnext={() => goToStep(3)}
             ontogglefallback={handleToggleFallback}
@@ -1085,6 +1121,7 @@
             ondeselect={handleDeselect}
             onfilterchange={(q) => ocFilterQuery = q}
             onhostimport={() => void handleHostImport()}
+            onallowemptyinstallchange={(v) => allowEmptyInstall = v}
           />
           {/if}
         </section>
@@ -1094,13 +1131,11 @@
             {verifiedProviders}
             {providerState}
             {modelSelection}
-            {reranking}
             errorMessage={step2Error}
             onback={() => goToStep(2)}
             onnext={() => { if (validateStep2()) goToStep(4); }}
             onselect={handleSelectModel}
             onselectnone={handleSelectNone}
-            onrerankingchange={(updates) => reranking = { ...reranking, ...updates }}
           />
         </section>
       {:else if currentStep === 4}
@@ -1109,10 +1144,12 @@
             tts={voiceTts.engine ? voiceTts : { engine: voiceDefaults.tts }}
             stt={voiceStt.engine ? voiceStt : { engine: voiceDefaults.stt }}
             {hasOpenAI}
+            unknownTts={voiceEngineUnknownTts}
+            unknownStt={voiceEngineUnknownStt}
             onback={() => goToStep(3)}
             onnext={() => goToStep(5)}
-            onchangetts={(v) => voiceTts = v}
-            onchangestt={(v) => voiceStt = v}
+            onchangetts={(v) => { voiceTts = v; voiceEngineUnknownTts = false; }}
+            onchangestt={(v) => { voiceStt = v; voiceEngineUnknownStt = false; }}
           />
         </section>
       {:else if currentStep === 5}
@@ -1123,6 +1160,7 @@
             {ollamaEnabled}
             {imageTag}
             {hostAkmEnabled}
+            {hostAkmAvailable}
             errorMessage={step4Error}
             onback={() => goToStep(4)}
             onnext={() => { if (validateStep4()) goToStep(6); }}
@@ -1137,18 +1175,18 @@
         <section class="step-content" id="step-6" data-testid="step-review">
           <ReviewStep
             {adminToken}
-            {ownerName}
-            {ownerEmail}
+            ownerName=""
+            ownerEmail=""
             {verifiedProviders}
             {modelSelection}
             {activeTts}
             {activeStt}
             {channelSelection}
             {ollamaEnabled}
-            {reranking}
             {payload}
             {installError}
             {installing}
+            {isRerun}
             onback={() => goToStep(5)}
             oninstall={handleInstall}
             ongostepedit={goToStep}

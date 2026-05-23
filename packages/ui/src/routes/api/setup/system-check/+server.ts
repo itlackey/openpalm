@@ -4,7 +4,7 @@ import { createServer } from "node:net";
 import type { RequestHandler } from "./$types";
 
 // Check whether a TCP port is bindable on 127.0.0.1. Used to flag conflicts
-// with the assistant (3800), admin UI (3880), and guardian (8180) defaults.
+// with the admin UI, assistant, and guardian ports the install will publish.
 async function checkPortAvailable(port: number, timeoutMs = 1000): Promise<boolean> {
   return new Promise((resolve) => {
     const srv = createServer();
@@ -22,13 +22,29 @@ async function checkPortAvailable(port: number, timeoutMs = 1000): Promise<boole
   });
 }
 
-const DEFAULT_PORTS = [3800, 3880, 8180];
+// Source the ports from the same env vars the install will publish. Defaults
+// match packages/cli/src/commands/install.ts and dev-setup.sh.
+// `blocking: true` means the install REQUIRES this port — if it's in use, the
+// UI should disable Continue until the user frees it.
+function resolvePortsToCheck(): { port: number; service: string; blocking: boolean }[] {
+  return [
+    { port: Number(process.env.OP_HOST_UI_PORT)        || 3880, service: "admin",     blocking: true },
+    { port: Number(process.env.OP_HOST_ASSISTANT_PORT) || 3800, service: "assistant", blocking: true },
+    { port: Number(process.env.OP_HOST_GUARDIAN_PORT)  || 8180, service: "guardian",  blocking: true },
+  ];
+}
 
 export const GET: RequestHandler = async () => {
   const [docker, compose] = await Promise.all([checkDocker(), checkDockerCompose()]);
 
+  const targets = resolvePortsToCheck();
   const ports = await Promise.all(
-    DEFAULT_PORTS.map(async (port) => ({ port, available: await checkPortAvailable(port) })),
+    targets.map(async (t) => ({
+      port: t.port,
+      service: t.service,
+      blocking: t.blocking,
+      available: await checkPortAvailable(t.port),
+    })),
   );
 
   return json({

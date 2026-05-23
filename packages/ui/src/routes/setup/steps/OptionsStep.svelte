@@ -9,6 +9,7 @@
     ollamaEnabled: boolean;
     imageTag: string;
     hostAkmEnabled: boolean;
+    hostAkmAvailable: boolean;
     errorMessage: string;
     onback: () => void;
     onnext: () => void;
@@ -25,6 +26,7 @@
     ollamaEnabled,
     imageTag,
     hostAkmEnabled,
+    hostAkmAvailable,
     errorMessage,
     onback,
     onnext,
@@ -46,17 +48,6 @@
 
 <h2>Options</h2>
 <p class="step-description">Configure channels and deployment options.</p>
-
-<!-- Image tag section -->
-<div class="options-section">
-  <h3 class="options-section-title">Container Image</h3>
-  <p class="options-section-desc">Tag or version of the OpenPalm images to deploy.</p>
-  <div class="field-group">
-    <label for="image-tag">Image tag</label>
-    <input id="image-tag" type="text" placeholder="dev" value={imageTag}
-      oninput={(e) => onimagtagchange((e.currentTarget as HTMLInputElement).value)}>
-  </div>
-</div>
 
 <!-- Channels -->
 <div class="options-section">
@@ -108,33 +99,53 @@
   </div>
 </div>
 
-<!-- Ollama addon (only shown when Ollama is a verified provider) -->
-{#if hasOllama}
-  <div class="addon-row" id="ollama-addon">
-    <div class="addon-toggle-row">
-      <label class="addon-toggle-label">
-        <input type="checkbox" id="ollama-enabled" checked={ollamaEnabled}
-          onchange={(e) => onollamaenabledchange((e.currentTarget as HTMLInputElement).checked)}>
-        <span class="addon-label-text">Run Ollama inside the stack</span>
-      </label>
-      <span class="addon-help">Adds an Ollama container to the compose stack so you do not need a separate install.</span>
+<!-- Advanced settings disclosure -->
+<details id="options-advanced-details">
+  <summary class="options-advanced-summary" id="options-advanced-toggle">Advanced settings</summary>
+
+  <!-- Image tag section -->
+  <div class="options-section">
+    <h3 class="options-section-title">Container Image</h3>
+    <p class="options-section-desc">Tag or version of the OpenPalm images to deploy.</p>
+    <div class="field-group">
+      <label for="image-tag">Image tag</label>
+      <div class="field-hint">Advanced — leave blank to use the default.</div>
+      <input id="image-tag" type="text" placeholder="dev" value={imageTag}
+        oninput={(e) => onimagtagchange((e.currentTarget as HTMLInputElement).value)}>
     </div>
   </div>
-{/if}
 
-<!-- Host AKM section -->
-<div class="options-section">
-  <h3 class="options-section-title">Shared AKM Environment</h3>
-  <p class="options-section-desc">Mount your host akm stash, index, and cache into the assistant container so the assistant and your local akm share the same knowledge base.</p>
-  <div class="addon-toggle-row">
-    <label class="addon-toggle-label">
-      <input type="checkbox" id="host-akm-enabled" checked={hostAkmEnabled}
-        onchange={(e) => onhostakmchange((e.currentTarget as HTMLInputElement).checked)}>
-      <span class="addon-label-text">Share host AKM environment</span>
-    </label>
-    <span class="addon-help">Mounts ~/akm, ~/.local/share/akm, ~/.local/state/akm, ~/.cache/akm, and ~/.config/akm into the container. Changes to your stash from either side are immediately visible to the other.</span>
-  </div>
-</div>
+  <!-- Ollama addon (only shown when Ollama is a verified provider) -->
+  {#if hasOllama}
+    <div class="addon-row" id="ollama-addon">
+      <div class="addon-toggle-row">
+        <label class="addon-toggle-label">
+          <input type="checkbox" id="ollama-enabled" checked={ollamaEnabled}
+            onchange={(e) => onollamaenabledchange((e.currentTarget as HTMLInputElement).checked)}>
+          <span class="addon-label-text">Run Ollama inside the stack</span>
+        </label>
+        <span class="addon-help">Adds an Ollama container to the compose stack so you do not need a separate install.</span>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Host AKM section (only shown when ~/akm exists on the host) -->
+  {#if hostAkmAvailable}
+    <div class="options-section">
+      <h3 class="options-section-title">Shared AKM Environment</h3>
+      <p class="options-section-desc">Mount your host akm stash, index, and cache into the assistant container so the assistant and your local akm share the same knowledge base.</p>
+      <div class="addon-toggle-row">
+        <label class="addon-toggle-label">
+          <input type="checkbox" id="host-akm-enabled" checked={hostAkmEnabled}
+            onchange={(e) => onhostakmchange((e.currentTarget as HTMLInputElement).checked)}>
+          <span class="addon-label-text">Share host AKM environment</span>
+        </label>
+        <span class="addon-help">Lets the assistant read and write to your personal knowledge files on this computer.</span>
+      </div>
+    </div>
+  {/if}
+
+</details>
 
 {#if errorMessage}
   <div class="field-error" role="alert">{errorMessage}</div>
@@ -144,3 +155,23 @@
   <button class="btn btn-secondary" id="btn-step4-back" onclick={onback}>Back</button>
   <button class="btn btn-primary" id="btn-step4-next" onclick={onnext}>Review</button>
 </div>
+
+<style>
+  .options-advanced-summary {
+    cursor: pointer;
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--color-text-secondary, #64748b);
+    font-weight: 500;
+    padding: 8px 0;
+    list-style: none;
+    margin-top: 8px;
+  }
+  .options-advanced-summary::-webkit-details-marker { display: none; }
+  .options-advanced-summary::before { content: '▶ '; font-size: 0.7em; }
+  details[open] .options-advanced-summary::before { content: '▼ '; }
+  .field-hint {
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--color-text-secondary, #64748b);
+    margin: 2px 0 4px;
+  }
+</style>

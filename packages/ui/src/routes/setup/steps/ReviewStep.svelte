@@ -1,6 +1,6 @@
 <script lang="ts">
   import { CHANNELS, TTS_OPTIONS, STT_OPTIONS, PROVIDERS } from '$lib/wizard/constants.js';
-  import type { Provider, ModelSelection, ChannelState, RerankingOptions } from '$lib/wizard/types.js';
+  import type { Provider, ModelSelection, ChannelState } from '$lib/wizard/types.js';
   import { isChannelEnabled as _isChannelEnabled, getCredValue as _getCredValue } from '$lib/wizard/helpers.js';
   import FriendlyError from '$lib/components/FriendlyError.svelte';
   import { friendlyError } from '$lib/wizard/error-messages.js';
@@ -15,10 +15,10 @@
     activeStt: string;
     channelSelection: Record<string, boolean | ChannelState>;
     ollamaEnabled: boolean;
-    reranking: RerankingOptions;
     payload: unknown;
     installError: string;
     installing: boolean;
+    isRerun?: boolean;
     onback: () => void;
     oninstall: () => void;
     ongostepedit: (step: number) => void;
@@ -34,16 +34,14 @@
     activeStt,
     channelSelection,
     ollamaEnabled,
-    reranking,
     payload,
     installError,
     installing,
+    isRerun = false,
     onback,
     oninstall,
     ongostepedit,
   }: Props = $props();
-
-  let showJson = $state(false);
 
   function maskToken(token: string): string {
     if (!token || token.length < 8) return '(not set)';
@@ -65,17 +63,45 @@
   function findProvider(connId: string): Provider | undefined {
     return PROVIDERS.find((p) => p.id === connId);
   }
+
+  let tokenCopied = $state(false);
+  let copyFallback = $state(false);
+  let tokenInputEl: HTMLInputElement | null = $state(null);
+
+  async function copyAdminToken(): Promise<void> {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(adminToken);
+        tokenCopied = true;
+        setTimeout(() => { tokenCopied = false; }, 2000);
+        return;
+      }
+      throw new Error('Clipboard API unavailable');
+    } catch {
+      copyFallback = true;
+      if (tokenInputEl) {
+        tokenInputEl.focus();
+        tokenInputEl.select();
+      }
+    }
+  }
 </script>
 
 <h2>Review &amp; Install</h2>
 <p class="step-description">Confirm your settings, then install.</p>
+
+{#if verifiedProviders.length === 0}
+  <div class="review-warning" role="alert">
+    ⚠ No AI provider connected — your assistant won't be able to chat until you add one from the dashboard.
+  </div>
+{/if}
 
 <div id="review-summary">
   <!-- Account -->
   <div class="review-card">
     <div class="review-card-title">
       <span>Account</span>
-      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(0)}>Edit</button>
+      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(1)}>Edit</button>
     </div>
     <div class="review-row">
       <span class="review-row-label">Admin Token</span>
@@ -99,7 +125,7 @@
   <div class="review-card">
     <div class="review-card-title">
       <span>Providers</span>
-      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(1)}>Edit</button>
+      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(2)}>Edit</button>
     </div>
     {#each verifiedProviders as p}
       <div class="review-row">
@@ -113,7 +139,7 @@
   <div class="review-card">
     <div class="review-card-title">
       <span>Models</span>
-      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(2)}>Edit</button>
+      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(3)}>Edit</button>
     </div>
     {#if modelSelection.llm}
       {@const llmProv = findProvider(modelSelection.llm.connId)}
@@ -132,12 +158,8 @@
     {#if modelSelection.embedding}
       {@const embProv = findProvider(modelSelection.embedding.connId)}
       <div class="review-row">
-        <span class="review-row-label">Embedding Model</span>
+        <span class="review-row-label">Memory Model</span>
         <span class="review-row-value">{modelSelection.embedding.model}{embProv ? ' (' + embProv.name + ')' : ''}</span>
-      </div>
-      <div class="review-row">
-        <span class="review-row-label">Embedding Dims</span>
-        <span class="review-row-value">{modelSelection.embedding.dims ?? 1536}</span>
       </div>
     {/if}
   </div>
@@ -146,7 +168,7 @@
   <div class="review-card">
     <div class="review-card-title">
       <span>Voice</span>
-      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(3)}>Edit</button>
+      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(4)}>Edit</button>
     </div>
     <div class="review-row">
       <span class="review-row-label">Text-to-Speech</span>
@@ -162,7 +184,7 @@
   <div class="review-card">
     <div class="review-card-title">
       <span>Channels</span>
-      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(4)}>Edit</button>
+      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(5)}>Edit</button>
     </div>
     {#each activeChannels as ch}
       <div class="review-row">
@@ -190,7 +212,7 @@
   <div class="review-card">
     <div class="review-card-title">
       <span>Options</span>
-      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(4)}>Edit</button>
+      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(5)}>Edit</button>
     </div>
     {#if ollamaEnabled}
       <div class="review-row">
@@ -198,41 +220,45 @@
         <span class="review-row-value">Enabled</span>
       </div>
     {/if}
-    {#if reranking.enabled}
-      <div class="review-row">
-        <span class="review-row-label">Reranking</span>
-        <span class="review-row-value">Enabled ({reranking.mode})</span>
-      </div>
-      {#if reranking.mode === 'dedicated' && reranking.model}
-        <div class="review-row">
-          <span class="review-row-label">Reranking Model</span>
-          <span class="review-row-value">{reranking.model}</span>
-        </div>
-      {/if}
-      <div class="review-row">
-        <span class="review-row-label">Reranking Top K / N</span>
-        <span class="review-row-value">{reranking.topK} / {reranking.topN}</span>
-      </div>
-    {:else}
-      <div class="review-row">
-        <span class="review-row-label">Reranking</span>
-        <span class="review-row-value">Disabled</span>
-      </div>
-    {/if}
   </div>
 </div>
 
-<div class="review-json-toggle" id="review-json-toggle">
-  <button class="btn-json-toggle" type="button" onclick={() => showJson = !showJson}>
-    {showJson ? 'Hide Setup JSON' : 'Show Setup JSON'}
-  </button>
-</div>
-
-{#if showJson}
-  <div class="review-json" id="review-json">
-    <pre id="review-json-pre">{JSON.stringify(payload, null, 2)}</pre>
+{#if !isRerun}
+  <div class="token-save-panel" id="token-save-panel">
+    <div class="token-save-header">
+      <strong>Save your admin token</strong>
+      <span class="token-save-sub">You'll need it to log in. Run <code>openpalm token</code> from a terminal anytime to see it again.</span>
+    </div>
+    {#if copyFallback}
+      <input
+        bind:this={tokenInputEl}
+        class="token-save-input"
+        type="text"
+        readonly
+        value={adminToken}
+        onfocus={(e) => (e.currentTarget as HTMLInputElement).select()}
+      />
+    {:else}
+      <div class="token-save-box">{adminToken}</div>
+    {/if}
+    <button type="button" class="btn btn-secondary token-save-copy" onclick={() => void copyAdminToken()}>
+      {tokenCopied ? 'Copied!' : 'Copy token'}
+    </button>
   </div>
 {/if}
+
+<details id="review-json-details">
+  <summary class="review-advanced-summary" id="review-json-toggle">Advanced</summary>
+  <div class="review-json" id="review-json" style="margin-top:8px">
+    {#if modelSelection.embedding}
+      <div class="review-row" style="padding:4px 0">
+        <span class="review-row-label">Embedding Dims</span>
+        <span class="review-row-value">{modelSelection.embedding.dims ?? 1536}</span>
+      </div>
+    {/if}
+    <pre id="review-json-pre">{JSON.stringify(payload, null, 2)}</pre>
+  </div>
+</details>
 
 {#if installError}
   <FriendlyError error={friendlyError(installError, 'setup-complete')} />
@@ -244,3 +270,77 @@
     {#if installing}<span class="spinner"></span> Installing...{:else}Install{/if}
   </button>
 </div>
+
+<style>
+  .review-advanced-summary {
+    cursor: pointer;
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--color-text-secondary, #64748b);
+    font-weight: 500;
+    padding: 6px 0;
+    list-style: none;
+  }
+  .review-advanced-summary::-webkit-details-marker { display: none; }
+  .review-advanced-summary::before { content: '▶ '; font-size: 0.7em; }
+  details[open] .review-advanced-summary::before { content: '▼ '; }
+
+  .review-warning {
+    margin: 12px 0;
+    padding: 10px 14px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    font-size: var(--text-sm, 0.875rem);
+    color: #92400e;
+  }
+
+  .token-save-panel {
+    margin: 16px 0;
+    padding: 14px 16px;
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .token-save-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: #78350f;
+  }
+  .token-save-sub {
+    font-size: var(--text-xs, 0.75rem);
+    color: #92400e;
+    font-weight: 400;
+  }
+  .token-save-sub code {
+    font-family: monospace;
+    background: rgba(255,255,255,0.6);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  .token-save-box {
+    font-family: monospace;
+    font-size: var(--text-sm, 0.875rem);
+    background: #fff;
+    border: 1px solid #fcd34d;
+    border-radius: 6px;
+    padding: 8px 10px;
+    word-break: break-all;
+    user-select: all;
+  }
+  .token-save-input {
+    font-family: monospace;
+    font-size: var(--text-sm, 0.875rem);
+    background: #fff;
+    border: 1px solid #fcd34d;
+    border-radius: 6px;
+    padding: 8px 10px;
+    width: 100%;
+  }
+  .token-save-copy {
+    align-self: flex-start;
+  }
+</style>

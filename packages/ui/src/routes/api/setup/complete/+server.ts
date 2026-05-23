@@ -25,7 +25,32 @@ export const POST: RequestHandler = async ({ request }) => {
   try {
     result = await performSetup(body);
   } catch (err) {
-    return json({ ok: false, error: "setup_failed", message: String(err) }, { status: 500 });
+    const msg = String(err);
+    // Map common syscall errors to stable, structured error codes so the
+    // wizard's friendly-error layer can match them by string.
+    if (/ENOSPC/i.test(msg)) {
+      return json(
+        { ok: false, error: "no_space", message: "Your disk is full. Free up some space and try again." },
+        { status: 500 }
+      );
+    }
+    if (/EACCES|EPERM/i.test(msg)) {
+      return json(
+        {
+          ok: false,
+          error: "permission_denied",
+          message: "OpenPalm couldn't write to ~/.openpalm. Check that your user owns that directory.",
+        },
+        { status: 500 }
+      );
+    }
+    if (/ENOTDIR|EISDIR/i.test(msg)) {
+      return json(
+        { ok: false, error: "bad_path", message: "An OpenPalm config path is wrong. Try a fresh install." },
+        { status: 500 }
+      );
+    }
+    return json({ ok: false, error: "setup_failed", message: msg }, { status: 500 });
   }
 
   if (!result.ok) {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { KNOWN_EMB_DIMS, MAX_VISIBLE_MODELS } from '$lib/wizard/constants.js';
-  import type { Provider, ProviderState, ModelSelection, RerankingOptions } from '$lib/wizard/types.js';
+  import type { Provider, ProviderState, ModelSelection } from '$lib/wizard/types.js';
 
   interface ModelOption {
     id: string;
@@ -15,16 +15,14 @@
     verifiedProviders: Provider[];
     providerState: Record<string, ProviderState>;
     modelSelection: { llm?: ModelSelection; embedding?: ModelSelection; small?: ModelSelection };
-    reranking: RerankingOptions;
     errorMessage: string;
     onback: () => void;
     onnext: () => void;
     onselect: (role: string, connId: string, modelId: string, dims: number) => void;
     onselectnone: (role: string) => void;
-    onrerankingchange: (updates: Partial<RerankingOptions>) => void;
   }
 
-  let { verifiedProviders, providerState, modelSelection, reranking, errorMessage, onback, onnext, onselect, onselectnone, onrerankingchange }: Props = $props();
+  let { verifiedProviders, providerState, modelSelection, errorMessage, onback, onnext, onselect, onselectnone }: Props = $props();
 
   interface Role {
     id: string;
@@ -34,8 +32,8 @@
   }
 
   const roles: Role[] = [
-    { id: 'llm', label: 'Chat Model (LLM)', tag: 'required', desc: 'Conversations, reasoning, and code' },
-    { id: 'embedding', label: 'Embedding Model', tag: 'optional', desc: 'Stash search and recall' },
+    { id: 'llm', label: 'Chat Model', tag: 'required', desc: 'Conversations, reasoning, and code' },
+    { id: 'embedding', label: 'Memory Model', tag: 'optional', desc: 'Helps the assistant remember past conversations. Optional.' },
     { id: 'small', label: 'Small Model', tag: 'optional', desc: 'Lightweight tasks like summarization' },
   ];
 
@@ -111,7 +109,6 @@
 
   function handleSelect(role: string, connId: string, modelId: string, dims: number) {
     onselect(role, connId, modelId, dims);
-    // Collapse the group after selection so the user can see all three roles at once
     collapsedRoles.add(role);
     collapsedRoles = new Set(collapsedRoles);
   }
@@ -205,53 +202,6 @@
   {/each}
 </div>
 
-<!-- Search Reranking (moved from Options step) -->
-<div class="options-section" style="margin-top:20px">
-  <h3 class="options-section-title" style="font-size:var(--text-sm);font-weight:600;margin:0 0 4px">Search Reranking</h3>
-  <p style="font-size:var(--text-xs);color:var(--color-text-secondary);margin:0 0 10px">Rerank akm stash results before they reach the assistant.</p>
-  <div class="addon-toggle-row">
-    <label class="addon-toggle-label">
-      <input type="checkbox" id="reranking-enabled" checked={reranking.enabled}
-        onchange={(e) => onrerankingchange({ enabled: (e.currentTarget as HTMLInputElement).checked })}>
-      <span class="addon-label-text">Enable reranking</span>
-    </label>
-    <span class="addon-help">Uses the chat model by default.</span>
-  </div>
-  {#if reranking.enabled}
-    <div class="reranking-options" id="reranking-options" style="margin-top:10px">
-      <div class="field-group">
-        <label for="reranking-mode">Mode</label>
-        <select id="reranking-mode" class="field-select"
-          value={reranking.mode}
-          onchange={(e) => onrerankingchange({ mode: (e.currentTarget as HTMLSelectElement).value as 'llm' | 'dedicated' })}>
-          <option value="llm">LLM-based (use chat model)</option>
-          <option value="dedicated">Dedicated reranker model</option>
-        </select>
-      </div>
-      {#if reranking.mode === 'dedicated'}
-        <div class="field-group">
-          <label for="reranking-model">Model</label>
-          <input id="reranking-model" type="text" placeholder="e.g. BAAI/bge-reranker-v2-m3"
-            value={reranking.model}
-            oninput={(e) => onrerankingchange({ model: (e.currentTarget as HTMLInputElement).value })}>
-        </div>
-      {/if}
-      <div class="field-row">
-        <div class="field-group field-group-half">
-          <label for="reranking-top-k">Top K (candidates)</label>
-          <input id="reranking-top-k" type="number" min="1" max="100" value={reranking.topK}
-            oninput={(e) => onrerankingchange({ topK: parseInt((e.currentTarget as HTMLInputElement).value, 10) || 20 })}>
-        </div>
-        <div class="field-group field-group-half">
-          <label for="reranking-top-n">Top N (results)</label>
-          <input id="reranking-top-n" type="number" min="1" max="50" value={reranking.topN}
-            oninput={(e) => onrerankingchange({ topN: parseInt((e.currentTarget as HTMLInputElement).value, 10) || 5 })}>
-        </div>
-      </div>
-    </div>
-  {/if}
-</div>
-
 <!-- Hidden fields for test compatibility and payload inspection -->
 <input type="hidden" id="llm-connection" value={modelSelection.llm?.connId ?? ''}>
 <input type="hidden" id="llm-model" value={modelSelection.llm?.model ?? ''}>
@@ -270,15 +220,3 @@
     {verifiedProviders.length === 0 ? 'Skip for now' : 'Voice Setup'}
   </button>
 </div>
-
-<style>
-  .addon-toggle-row { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
-  .addon-toggle-label { display: flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
-  .addon-help { font-size: var(--text-xs); color: var(--color-text-secondary); }
-  .options-section-title { font-size: var(--text-sm); font-weight: 600; margin: 0 0 4px; color: var(--color-text); }
-  .field-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
-  .field-group label { font-size: var(--text-xs); font-weight: 500; color: var(--color-text-secondary); }
-  .field-select { padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); font-size: var(--text-sm); }
-  .field-row { display: flex; gap: 12px; }
-  .field-group-half { flex: 1; }
-</style>

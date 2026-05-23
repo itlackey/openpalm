@@ -16,6 +16,7 @@
     deployStatus?: ServiceStatus[];
     deployError?: string | null;
     phase?: DeployPhase;
+    ports?: { admin?: number; assistant?: number; guardian?: number };
   }
 
   interface Props {
@@ -28,14 +29,20 @@
 
   let { deployData, deployDone, deployError, onback, onretry }: Props = $props();
 
-  const SERVICE_LINKS: Record<string, { port: number; label: string; path: string }> = {
-    assistant: { port: 3800, label: 'Assistant (OpenCode)', path: '' },
-    admin: { port: 3880, label: 'Admin Dashboard', path: '' },
-    guardian: { port: 3899, label: 'Guardian', path: '/health' },
-  };
+  const isElectron = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).openpalm;
 
-  // Admin UI port — same process serving this wizard
-  const adminPort = typeof window !== 'undefined' ? window.location.port || '3880' : '3880';
+  // Fall back to the current window port (admin UI serves the wizard).
+  const windowPort = typeof window !== 'undefined' ? Number(window.location.port) || 3880 : 3880;
+
+  const adminPort = $derived(deployData.ports?.admin ?? windowPort);
+  const assistantPort = $derived(deployData.ports?.assistant ?? 3800);
+  const guardianPort = $derived(deployData.ports?.guardian ?? 8180);
+
+  const serviceLinks = $derived<Record<string, { port: number; label: string; path: string }>>({
+    assistant: { port: assistantPort, label: 'Assistant (OpenCode)', path: '' },
+    admin: { port: adminPort, label: 'Admin Dashboard', path: '' },
+    guardian: { port: guardianPort, label: 'Guardian', path: '/health' },
+  });
 
   const services = $derived(deployData.deployStatus ?? []);
   const total = $derived(services.length);
@@ -138,7 +145,11 @@
     <ul>
       <li>Container images are being downloaded for the first time.</li>
       <li>The admin console will be available once all services are healthy.</li>
-      <li>You can close this page; setup will continue in the background.</li>
+      {#if isElectron}
+        <li>You can leave this window — we'll let you know when it's ready.</li>
+      {:else}
+        <li><strong>Keep this tab open while installation runs.</strong></li>
+      {/if}
     </ul>
   </aside>
 {/if}
@@ -156,10 +167,13 @@
       <p class="done-subtitle">Configuration saved. Run 'openpalm start' to start services.</p>
     {:else}
       <p class="done-subtitle">Your OpenPalm stack is up and running.</p>
+      {#if !isElectron}
+        <p class="done-close-hint">Setup is complete. You can safely close this tab now.</p>
+      {/if}
       <ul class="service-list" id="deploy-service-list">
         {#each services as svc}
           {@const name = svc.service || svc.label || ''}
-          {@const linkInfo = SERVICE_LINKS[name]}
+          {@const linkInfo = serviceLinks[name]}
           <li>
             {#if linkInfo}
               {@const url = 'http://localhost:' + linkInfo.port + linkInfo.path}
@@ -175,7 +189,7 @@
       </ul>
       <div class="done-links">
         <a href="http://localhost:{adminPort}/chat" class="btn btn-primary">Open Chat</a>
-        <a href="http://localhost:3800" target="_blank" rel="noopener" class="btn btn-secondary">OpenCode UI</a>
+        <a href="http://localhost:{assistantPort}" target="_blank" rel="noopener" class="btn btn-secondary">OpenCode UI</a>
         <a href="http://localhost:{adminPort}" class="btn btn-secondary">Admin Dashboard</a>
       </div>
     {/if}
@@ -188,3 +202,15 @@
     <button class="btn btn-primary" id="btn-deploy-retry" onclick={onretry}>Retry</button>
   </div>
 {/if}
+
+<style>
+  .done-close-hint {
+    margin: 8px 0 12px;
+    padding: 8px 12px;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 6px;
+    color: #166534;
+    font-size: var(--text-sm, 0.875rem);
+  }
+</style>

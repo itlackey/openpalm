@@ -5,7 +5,7 @@
  * This module does NOT include Docker operations (compose up, image pull, etc.)
  * — those happen separately in the caller after setup completes.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { createLogger } from "../logger.js";
@@ -14,6 +14,7 @@ import {
 } from "../provider-constants.js";
 import { mergeEnvContent } from "./env.js";
 import { ensureHomeDirs } from "./home.js";
+import { acquireInstallLock, releaseInstallLock, type InstallLockHandle } from "./install-lock.js";
 import {
   ensureSecrets,
   updateSecretsEnv,
@@ -32,6 +33,20 @@ import { getRegistryAutomation, setAddonEnabled } from "./registry.js";
 export { validateSetupSpec } from "./setup-validation.js";
 
 const logger = createLogger("setup");
+
+// ── Atomic write helper ──────────────────────────────────────────────────
+
+/**
+ * Write `content` to `path` atomically: write to `path.tmp` first, then
+ * rename over the target. On POSIX this rename is atomic — a reader always
+ * sees either the old file or the new file, never a partially-written one.
+ * If the tmp write fails the original file is untouched.
+ */
+function writeFileAtomic(path: string, content: string | Uint8Array, mode?: number): void {
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, content, mode !== undefined ? { mode } : {});
+  renameSync(tmp, path);
+}
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -105,13 +120,42 @@ export function buildAuthJsonFromSetup(
   return keys;
 }
 
+/**
+ * Build the system-secret env update.
+ *
+ * `OP_ASSISTANT_TOKEN` is critical: rotating it on a running stack would
+ * invalidate every container's auth. We therefore distinguish three cases:
+ *  - existing system env has a non-empty token → reuse it (idempotent rerun).
+ *  - existing system env explicitly contains `OP_ASSISTANT_TOKEN=` (blank)  →
+ *    throw rather than silently rotate. This means a user edited stack.env
+ *    or a previous run wrote it blank; either way silent rotation breaks the
+ *    running stack.
+ *  - the key is absent entirely → generate a fresh token (first install).
+ *
+ * If you legitimately need to rotate the token, delete the OP_ASSISTANT_TOKEN
+ * line from stack.env (rather than blanking it) before re-running setup.
+ */
 export function buildSystemSecretsFromSetup(
   adminToken: string,
   existingSystemEnv: Record<string, string> = {}
 ): Record<string, string> {
+  const hasKey = Object.prototype.hasOwnProperty.call(existingSystemEnv, "OP_ASSISTANT_TOKEN");
+  const existing = existingSystemEnv.OP_ASSISTANT_TOKEN;
+  let token: string;
+  if (existing) {
+    token = existing;
+  } else if (hasKey) {
+    throw new Error(
+      "OP_ASSISTANT_TOKEN is present but blank in config/stack/stack.env. " +
+      "Refusing to silently rotate the token (it would break the running stack). " +
+      "Restore the previous value or remove the line entirely to generate a fresh one.",
+    );
+  } else {
+    token = randomBytes(32).toString("hex");
+  }
   return {
     OP_UI_TOKEN: adminToken,
-    OP_ASSISTANT_TOKEN: existingSystemEnv.OP_ASSISTANT_TOKEN || randomBytes(32).toString("hex"),
+    OP_ASSISTANT_TOKEN: token,
   };
 }
 
@@ -162,129 +206,160 @@ export async function performSetup(
 
   const { llm, embedding, tts, stt, security, owner, connections, channelCredentials, addons, imageTag, hostAkm } = input;
   const state = opts?.state ?? createState(security.adminToken);
+
+  // Acquire install lock to prevent two concurrent setup runs from racing on
+  // the same config directory. The lock lives in stateDir so it is co-located
+  // with runtime state and the same path startDeploy uses.
+  const lockHandle: InstallLockHandle | null = acquireInstallLock(state.stateDir);
+  if (lockHandle === null) {
+    return {
+      ok: false,
+      error:
+        "install_in_progress: Another install is in progress. Wait for it to finish, or remove state/.install.lock if you're sure no install is running.",
+    };
+  }
+
   logger.info("performing setup", { connectionCount: connections.length });
   const updates = buildSecretsFromSetup(connections, owner);
   const providerKeys = buildAuthJsonFromSetup(connections);
 
-  // Persist vault env files + OpenCode auth.json
+  // Wrap all persistence work in try/finally so the lock is ALWAYS released.
   try {
-    ensureHomeDirs();
-    ensureSecrets(state);
-    const existingSystemEnv = readStackEnv(state.stackDir);
-    if (channelCredentials) Object.assign(updates, buildChannelCredentialEnvVars(channelCredentials));
-    // Pick up channel credential env vars not already provided in the spec
-    for (const mapping of Object.values(CHANNEL_CREDENTIAL_ENV_MAP)) {
-      for (const envKey of Object.values(mapping)) {
-        if (!updates[envKey] && process.env[envKey]) updates[envKey] = process.env[envKey];
+    // Persist vault env files + OpenCode auth.json
+    try {
+      ensureHomeDirs();
+      ensureSecrets(state);
+      const existingSystemEnv = readStackEnv(state.stackDir);
+      if (channelCredentials) Object.assign(updates, buildChannelCredentialEnvVars(channelCredentials));
+      // Pick up channel credential env vars not already provided in the spec
+      for (const mapping of Object.values(CHANNEL_CREDENTIAL_ENV_MAP)) {
+        for (const envKey of Object.values(mapping)) {
+          if (!updates[envKey] && process.env[envKey]) updates[envKey] = process.env[envKey];
+        }
       }
+      updateSecretsEnv(state, updates);
+      updateSystemSecretsEnv(state, buildSystemSecretsFromSetup(security.adminToken, existingSystemEnv));
+      // Provider API keys land in OpenCode's auth.json (bind-mounted into
+      // the assistant container) — never in stack.env.
+      writeAuthJsonProviderKeys(state, providerKeys);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("failed to persist setup outputs", { error: message });
+      return { ok: false, error: `Failed to persist setup outputs: ${message}` };
     }
-    updateSecretsEnv(state, updates);
-    updateSystemSecretsEnv(state, buildSystemSecretsFromSetup(security.adminToken, existingSystemEnv));
-    // Provider API keys land in OpenCode's auth.json (bind-mounted into
-    // the assistant container) — never in stack.env.
-    writeAuthJsonProviderKeys(state, providerKeys);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error("failed to persist setup outputs", { error: message });
-    return { ok: false, error: `Failed to persist setup outputs: ${message}` };
-  }
 
-  state.adminToken = security.adminToken;
-  state.assistantToken = readStackEnv(state.stackDir).OP_ASSISTANT_TOKEN ?? state.assistantToken;
+    state.adminToken = security.adminToken;
+    state.assistantToken = readStackEnv(state.stackDir).OP_ASSISTANT_TOKEN ?? state.assistantToken;
 
-  // Write stack.yml (version marker only)
-  writeStackSpec(state.stackDir, { version: 2 });
+    // Everything from here through the OP_SETUP_COMPLETE write is wrapped in a
+    // single try/catch so that a disk-full or permission-denied mid-way returns a
+    // clean error rather than leaving a broken half-installed ~/.openpalm/.
+    try {
+      // Write stack.yml (version marker only)
+      writeStackSpec(state.stackDir, { version: 2 });
 
-  // Write image tag and AKM mount paths to stack.env
-  const systemEnvForAkm = existsSync(`${state.stackDir}/stack.env`)
-    ? readFileSync(`${state.stackDir}/stack.env`, "utf-8")
-    : "";
-  const akmUpdates: Record<string, string> = {};
-  if (imageTag) akmUpdates.OP_IMAGE_TAG = imageTag;
-  if (hostAkm) {
-    const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
-    if (home) {
-      akmUpdates.OP_AKM_STASH = `${home}/akm`;
-      akmUpdates.OP_AKM_DATA = `${home}/.local/share/akm`;
-      akmUpdates.OP_AKM_STATE = `${home}/.local/state/akm`;
-      akmUpdates.OP_AKM_CACHE = `${home}/.cache/akm`;
-      akmUpdates.OP_AKM_CONFIG = `${home}/.config/akm`;
+      // Write image tag and AKM mount paths to stack.env — atomic to avoid
+      // partial writes if the process is interrupted mid-write.
+      const systemEnvForAkm = existsSync(`${state.stackDir}/stack.env`)
+        ? readFileSync(`${state.stackDir}/stack.env`, "utf-8")
+        : "";
+      const akmUpdates: Record<string, string> = {};
+      if (imageTag) akmUpdates.OP_IMAGE_TAG = imageTag;
+      if (hostAkm) {
+        const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+        if (home) {
+          akmUpdates.OP_AKM_STASH = `${home}/akm`;
+          akmUpdates.OP_AKM_DATA = `${home}/.local/share/akm`;
+          akmUpdates.OP_AKM_STATE = `${home}/.local/state/akm`;
+          akmUpdates.OP_AKM_CACHE = `${home}/.cache/akm`;
+          akmUpdates.OP_AKM_CONFIG = `${home}/.config/akm`;
+        }
+      }
+      if (Object.keys(akmUpdates).length > 0) {
+        writeFileAtomic(`${state.stackDir}/stack.env`, mergeEnvContent(systemEnvForAkm, akmUpdates), 0o600);
+      }
+
+      // Write akm config with LLM and embedding settings from setup — atomic.
+      if (llm || embedding) {
+        const akmConfigDir = join(state.configDir, "akm");
+        mkdirSync(akmConfigDir, { recursive: true });
+        const akmConfigPath = join(akmConfigDir, "config.json");
+        let existing: Record<string, unknown> = {};
+        if (existsSync(akmConfigPath)) {
+          try { existing = JSON.parse(readFileSync(akmConfigPath, "utf-8")); } catch { /* ignore corrupt */ }
+        }
+        const updated = { ...existing };
+        if (llm) {
+          const base = llm.baseUrl ? llm.baseUrl.replace(/\/+$/, "") : "";
+          updated.llm = {
+            ...((existing.llm as Record<string, unknown>) ?? {}),
+            endpoint: base ? `${base}/chat/completions` : "",
+            model: llm.model,
+            provider: llm.provider,
+          };
+        }
+        if (embedding) {
+          const base = embedding.baseUrl ? embedding.baseUrl.replace(/\/+$/, "") : "";
+          updated.embedding = {
+            ...((existing.embedding as Record<string, unknown>) ?? {}),
+            endpoint: base ? `${base}/embeddings` : "",
+            model: embedding.model,
+            provider: embedding.provider,
+            dimension: embedding.dims,
+          };
+        }
+        writeFileAtomic(akmConfigPath, JSON.stringify(updated, null, 2), 0o600);
+      }
+
+      // Write TTS/STT vars to stack.env for the voice channel
+      if (tts || stt) {
+        writeVoiceVars({ tts, stt }, state.stackDir);
+      }
+
+      // Enable requested addons (channels like discord, slack, etc.)
+      // setAddonEnabled copies the compose overlay AND generates CHANNEL_<NAME>_SECRET in guardian.env
+      if (addons) {
+        for (const [name, enabled] of Object.entries(addons)) {
+          if (enabled) setAddonEnabled(state.homeDir, state.stackDir, name, true);
+        }
+      }
+
+      ensureOpenCodeConfig();
+      ensureOpenCodeSystemConfig();
+
+      // Seed default automation into the AKM stash. Idempotent — existing files
+      // are left alone so user edits survive re-install and upgrade.
+      const tasksDir = join(state.stashDir, "tasks");
+      mkdirSync(tasksDir, { recursive: true });
+      const akmImproveDest = join(tasksDir, "akm-improve.md");
+      if (!existsSync(akmImproveDest)) {
+        const akmImproveMd = getRegistryAutomation("akm-improve");
+        if (akmImproveMd) {
+          writeFileSync(akmImproveDest, akmImproveMd);
+          logger.info("seeded default automation", { name: "akm-improve" });
+        } else {
+          logger.warn("default automation missing from registry; skipping seed", {
+            name: "akm-improve",
+          });
+        }
+      }
+
+      // NOTE: OP_SETUP_COMPLETE is intentionally NOT written here. Writing it
+      // before the Docker deploy succeeds would mark setup "complete" even
+      // when containers fail to start, sending the user to a broken admin UI
+      // with no path back to the wizard. The flag is now written by
+      // setup-deploy.ts:startDeploy AFTER pollContainerHealth confirms every
+      // container is healthy.
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("failed to complete setup persistence", { error: message });
+      return { ok: false, error: `Setup persistence failed: ${message}` };
     }
+
+    logger.info("setup complete", { connectionCount: connections.length });
+    return { ok: true };
+  } finally {
+    // Always release the install lock, whether setup succeeded or failed.
+    releaseInstallLock(lockHandle);
   }
-  if (Object.keys(akmUpdates).length > 0) {
-    writeFileSync(`${state.stackDir}/stack.env`, mergeEnvContent(systemEnvForAkm, akmUpdates), { mode: 0o600 });
-  }
-
-  // Write akm config with LLM and embedding settings from setup
-  if (llm || embedding) {
-    const akmConfigDir = join(state.configDir, "akm");
-    mkdirSync(akmConfigDir, { recursive: true });
-    const akmConfigPath = join(akmConfigDir, "config.json");
-    let existing: Record<string, unknown> = {};
-    if (existsSync(akmConfigPath)) {
-      try { existing = JSON.parse(readFileSync(akmConfigPath, "utf-8")); } catch { /* ignore corrupt */ }
-    }
-    const updated = { ...existing };
-    if (llm) {
-      const base = llm.baseUrl ? llm.baseUrl.replace(/\/+$/, "") : "";
-      updated.llm = {
-        ...((existing.llm as Record<string, unknown>) ?? {}),
-        endpoint: base ? `${base}/chat/completions` : "",
-        model: llm.model,
-        provider: llm.provider,
-      };
-    }
-    if (embedding) {
-      const base = embedding.baseUrl ? embedding.baseUrl.replace(/\/+$/, "") : "";
-      updated.embedding = {
-        ...((existing.embedding as Record<string, unknown>) ?? {}),
-        endpoint: base ? `${base}/embeddings` : "",
-        model: embedding.model,
-        provider: embedding.provider,
-        dimension: embedding.dims,
-      };
-    }
-    writeFileSync(akmConfigPath, JSON.stringify(updated, null, 2), { mode: 0o600 });
-  }
-
-  // Write TTS/STT vars to stack.env for the voice channel
-  if (tts || stt) {
-    writeVoiceVars({ tts, stt }, state.stackDir);
-  }
-
-  // Enable requested addons (channels like discord, slack, etc.)
-  // setAddonEnabled copies the compose overlay AND generates CHANNEL_<NAME>_SECRET in guardian.env
-  if (addons) {
-    for (const [name, enabled] of Object.entries(addons)) {
-      if (enabled) setAddonEnabled(state.homeDir, state.stackDir, name, true);
-    }
-  }
-
-  ensureOpenCodeConfig();
-  ensureOpenCodeSystemConfig();
-
-  // Seed default automation into the AKM stash. Idempotent — existing files
-  // are left alone so user edits survive re-install and upgrade.
-  const tasksDir = join(state.stashDir, "tasks");
-  mkdirSync(tasksDir, { recursive: true });
-  const akmImproveDest = join(tasksDir, "akm-improve.md");
-  if (!existsSync(akmImproveDest)) {
-    const akmImproveMd = getRegistryAutomation("akm-improve");
-    if (akmImproveMd) {
-      writeFileSync(akmImproveDest, akmImproveMd);
-      logger.info("seeded default automation", { name: "akm-improve" });
-    } else {
-      logger.warn("default automation missing from registry; skipping seed", {
-        name: "akm-improve",
-      });
-    }
-  }
-
-  // Mark setup complete in config/stack/stack.env (where isSetupComplete reads it)
-  const systemEnvPath = `${state.stackDir}/stack.env`;
-  const systemBase = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
-  writeFileSync(systemEnvPath, mergeEnvContent(systemBase, { OP_SETUP_COMPLETE: "true" }), { mode: 0o600 });
-
-  logger.info("setup complete", { connectionCount: connections.length });
-  return { ok: true };
 }

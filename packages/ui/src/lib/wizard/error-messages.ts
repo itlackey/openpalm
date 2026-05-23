@@ -23,7 +23,12 @@ export type FriendlyErrorContext =
   | "deploy-poll"
   | "system-check"
   | "channel"
+  | "port-conflict"
   | "generic";
+
+export interface FriendlyErrorOptions {
+  providerName?: string;
+}
 
 const DOCKER_LINK: FriendlyErrorLink = {
   label: "Docker setup",
@@ -37,16 +42,17 @@ function rawText(raw: unknown): string {
   try { return JSON.stringify(raw); } catch { return String(raw); }
 }
 
-export function friendlyError(raw: unknown, context: FriendlyErrorContext = "generic"): FriendlyErrorView {
+export function friendlyError(raw: unknown, context: FriendlyErrorContext = "generic", opts: FriendlyErrorOptions = {}): FriendlyErrorView {
   const text = rawText(raw);
   const lower = text.toLowerCase();
+  const providerLabel = opts.providerName ? `${opts.providerName} didn't accept that key` : "API key rejected";
 
   // Auth — 401/403/unauthorized
   if (/\b(401|403|unauthorized|forbidden|invalid.?api.?key)\b/i.test(text)) {
     return {
-      title: "API key rejected",
+      title: providerLabel,
       body: "The provider rejected the API key.",
-      hint: "Double-check the key and that it has access to the model you selected. Most providers show the key in their dashboard.",
+      hint: "Common causes: extra spaces, wrong account, or the key was revoked. Double-check the key and that it has access to the model you selected. Most providers show the key in their dashboard.",
       raw: text,
     };
   }
@@ -87,7 +93,7 @@ export function friendlyError(raw: unknown, context: FriendlyErrorContext = "gen
     return {
       title: "A required port is already in use",
       body: text,
-      hint: "Another program is using one of OpenPalm's default ports (3800, 3880, or 8180). Quit the other process or set a custom port in stack.env.",
+      hint: "Another program is using one of OpenPalm's default ports. Quit the conflicting app, or change OpenPalm's port from the Admin Dashboard after setup.",
       raw: text,
     };
   }
@@ -139,6 +145,13 @@ export function friendlyError(raw: unknown, context: FriendlyErrorContext = "gen
         title: "Channel credential issue",
         body: text || "A required field is missing or invalid.",
         hint: "Confirm the bot token and other required fields are correct.",
+        raw: text,
+      };
+    case "port-conflict":
+      return {
+        title: "A required port is already in use",
+        body: text || "Another process is using one of OpenPalm's ports.",
+        hint: "Another program is using one of OpenPalm's default ports. Quit the conflicting app, or change OpenPalm's port from the Admin Dashboard after setup.",
         raw: text,
       };
     default:

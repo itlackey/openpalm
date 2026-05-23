@@ -216,15 +216,21 @@ describe("Fresh Install", () => {
     expect(result.ok).toBe(true);
   });
 
-  // Scenario 4: performSetup marks setup complete in state/stack.env
-  it("performSetup marks OP_SETUP_COMPLETE=true in state/stack.env", async () => {
+  // Scenario 4: performSetup must NOT mark OP_SETUP_COMPLETE.
+  //
+  // The flag is set by setup-deploy.ts:startDeploy AFTER the Docker stack is
+  // confirmed healthy. If performSetup wrote it eagerly, a deploy failure
+  // would leave the wizard convinced setup was complete and bounce the user
+  // into a broken admin UI.
+  it("performSetup does NOT mark OP_SETUP_COMPLETE (deploy owns that flag)", async () => {
     seedMinimalEnvFiles();
 
     await performSetup(makeValidSpec());
 
     const stackEnv = readFileSync(join(stackDir, "stack.env"), "utf-8");
     const parsed = parseEnvContent(stackEnv);
-    expect(parsed.OP_SETUP_COMPLETE).toBe("true");
+    // Either entirely absent, or still the seeded "false" — never "true".
+    expect(parsed.OP_SETUP_COMPLETE === undefined || parsed.OP_SETUP_COMPLETE === "false").toBe(true);
   });
 });
 
@@ -315,8 +321,10 @@ describe("Existing Install", () => {
     expect(secondMatch![1]).toBe(firstToken);
   });
 
-  // Scenario 7: performSetup marks OP_SETUP_COMPLETE=true in state/stack.env
-  it("performSetup marks OP_SETUP_COMPLETE=true in state/stack.env", async () => {
+  // Scenario 7: performSetup must NOT mark OP_SETUP_COMPLETE — see scenario
+  // 4 in the Fresh Install block for the rationale. The deploy phase owns
+  // this flag and only writes it after the container stack is healthy.
+  it("performSetup does NOT mark OP_SETUP_COMPLETE (deploy owns that flag)", async () => {
     await performSetup(makeValidSpec());
 
     const stackEnv = readFileSync(
@@ -324,7 +332,7 @@ describe("Existing Install", () => {
       "utf-8"
     );
     const parsed = parseEnvContent(stackEnv);
-    expect(parsed.OP_SETUP_COMPLETE).toBe("true");
+    expect(parsed.OP_SETUP_COMPLETE === undefined || parsed.OP_SETUP_COMPLETE === "false").toBe(true);
   });
 
   // Scenario 8: Re-setup with different provider updates akm config
