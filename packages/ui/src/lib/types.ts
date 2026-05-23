@@ -103,3 +103,23 @@ export type ChatSessionState = {
   error: string;
 };
 
+// ── Per-endpoint session UX ─────────────────────────────────────────────
+// See docs/technical/multi-endpoint-session-ux.md.
+
+export type SessionSummary = {
+  id: string;
+  /** Empty until OpenCode summarizes; UI renders "Untitled" as fallback. */
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type EndpointChatState = {
+  /** Sorted desc by `updatedAt`. */
+  sessions: SessionSummary[];
+  sessionsLoaded: boolean;
+  sessionsLoading: boolean;
+  sessionsError: string;
+  activeSessionId: string | null;
+};
+

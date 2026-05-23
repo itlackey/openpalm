@@ -2,6 +2,7 @@
   import { version } from '$app/environment';
   import VoiceControl from './VoiceControl.svelte';
   import EndpointSwitcher from './EndpointSwitcher.svelte';
+  import SessionPicker from './SessionPicker.svelte';
 
   interface Props {
     onLogout: () => void;
@@ -26,6 +27,7 @@
     </div>
     <div class="navbar-actions">
       <EndpointSwitcher />
+      <SessionPicker />
       {#if navLink}
         <a
           href={navLink.href}

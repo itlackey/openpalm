@@ -46,13 +46,20 @@ class EndpointsService {
 
   async activate(id: string): Promise<void> {
     if (id === this.activeId) return;
+    // Mid-generation switches are blocked at the chat layer; surface the
+    // refusal here so the switcher doesn't silently flip the activeId.
+    if (chat.sending) {
+      this.error = 'Wait for the current reply to finish before switching.';
+      throw new Error(this.error);
+    }
     const previous = this.activeId;
     this.activeId = id;
     try {
       await setActiveEndpoint(id);
-      // Drop any in-flight assistant session — it lives on the previous endpoint.
-      chat.dropCurrentSession();
-      chat.error = '';
+      // Hand off to the per-endpoint chat state: load this endpoint's
+      // sessions, restore the previously-open one (or the newest), and
+      // fetch its messages. See docs/technical/multi-endpoint-session-ux.md.
+      await chat.onEndpointChanged(id);
     } catch (e) {
       this.activeId = previous;
       const err = e as { message?: string };

@@ -7,6 +7,7 @@
   import { stopSpeaking } from '$lib/voice/voice-state.svelte.js';
   import { probeChatBackend } from '$lib/api.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
+  import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
   // ── Auth state ───────────────────────────────────────────────────────
   let authLocked = $state(true);
@@ -16,12 +17,23 @@
   // ── Scroll anchor ────────────────────────────────────────────────────
   let scrollAnchorEl = $state<HTMLDivElement | undefined>();
 
+  // ── Loading state for the messages area ───────────────────────────────
+  // While the per-endpoint session list is loading we don't know which
+  // session to render, so show a skeleton. Same treatment while a chosen
+  // session's messages are being fetched.
+  const entriesLoading = $derived(chat.entriesLoading);
+  const sessionsLoading = $derived(
+    chat.byEndpoint.get(chat.activeEndpointId)?.sessionsLoading ?? false
+  );
+
   // ── Helpers ──────────────────────────────────────────────────────────
 
   async function reconnect(): Promise<void> {
     chat.error = '';
-    chat.dropCurrentSession();
-    await chat.ensureSession();
+    // Per the multi-endpoint refactor: don't drop session state, re-fetch
+    // the list from OpenCode and resume the newest/previous session.
+    await chat.loadSessions();
+    await chat.onEndpointChanged(endpointsService.activeId);
   }
 
   async function handleSend(text: string): Promise<void> {
@@ -56,8 +68,10 @@
       }
       authLocked = false;
       authError = '';
-      // Start the initial session immediately on auth
-      await chat.ensureSession();
+      // Load endpoint list + sessions for the active endpoint, restoring
+      // the most recent session (or empty state if none).
+      await endpointsService.load();
+      await chat.onEndpointChanged(endpointsService.activeId);
       return true;
     } catch {
       authError = 'Unable to reach admin API.';
@@ -93,7 +107,6 @@
         const reachable = await probeChatBackend();
         if (!reachable && !destroyed) {
           chat.error = 'Assistant is not reachable. Try reconnecting.';
-          chat.dropCurrentSession();
         }
       })();
     }
@@ -119,7 +132,10 @@
           return;
         }
         authLocked = false;
-        await chat.ensureSession();
+        // Load endpoint list + sessions for the active endpoint, restoring
+        // the most recent session.
+        await endpointsService.load();
+        await chat.onEndpointChanged(endpointsService.activeId);
       } catch {
         authLocked = true;
         authError = 'Unable to reach admin API.';
@@ -142,16 +158,14 @@
   <div class="chat-layout">
     <!-- Message history -->
     <section class="messages-area" aria-label="Chat history" aria-live="polite">
-      {#if chat.entries.length === 0 && !chat.sessionInitializing}
-        <div class="empty-state">
-          <p>Start a conversation with your assistant.</p>
-        </div>
-      {/if}
-
-      {#if chat.sessionInitializing}
+      {#if sessionsLoading || entriesLoading}
         <div class="session-loading" aria-live="polite">
           <span class="spinner" aria-hidden="true"></span>
-          <span>Connecting to assistant…</span>
+          <span>Loading messages…</span>
+        </div>
+      {:else if chat.entries.length === 0}
+        <div class="empty-state">
+          <p>No messages yet. Send something to begin.</p>
         </div>
       {/if}
 

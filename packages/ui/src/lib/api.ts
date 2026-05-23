@@ -2,6 +2,8 @@ import type {
   HealthPayload,
   ContainerListResponse,
   AutomationsResponse,
+  ChatMessage,
+  SessionSummary,
 } from './types.js';
 
 const apiBase = '';
@@ -306,11 +308,74 @@ export async function setActiveEndpoint(id: string): Promise<{ activeId: string;
  * from the browser. The active OpenCode instance is selected server-side
  * via the connection switcher.
  */
-export async function createChatSession(): Promise<{ id: string }> {
+export async function createSession(): Promise<{ id: string }> {
   const res = await requireOk(
     await request('POST', `/proxy/assistant/session`, {})
   );
   return (await res.json()) as { id: string };
+}
+
+/**
+ * List sessions on the active OpenCode endpoint.
+ *
+ * OpenCode returns `Array<Session>` with no ordering guarantee; we sort
+ * desc by `time.updated` here so consumers can rely on it. See
+ * docs/technical/multi-endpoint-session-ux.md §2.
+ */
+export async function listSessions(): Promise<SessionSummary[]> {
+  const res = await requireOk(await request('GET', '/proxy/assistant/session'));
+  const raw = (await res.json()) as Array<{
+    id: string;
+    title?: string;
+    time?: { created?: number; updated?: number };
+  }>;
+  const summaries: SessionSummary[] = raw.map((s) => ({
+    id: s.id,
+    title: s.title ?? '',
+    createdAt: s.time?.created ?? 0,
+    updatedAt: s.time?.updated ?? s.time?.created ?? 0,
+  }));
+  summaries.sort((a, b) => b.updatedAt - a.updatedAt);
+  return summaries;
+}
+
+/**
+ * Fetch the messages for a session and map them to UI `ChatMessage`s.
+ *
+ * Skips non-text parts (tool calls, files, reasoning, etc.) — they'll
+ * surface in a future Phase C. Empty-text messages are dropped so the UI
+ * doesn't render placeholder bubbles.
+ */
+export async function getSessionMessages(sessionId: string): Promise<ChatMessage[]> {
+  const res = await requireOk(
+    await request(
+      'GET',
+      `/proxy/assistant/session/${encodeURIComponent(sessionId)}/message`
+    )
+  );
+  const rows = (await res.json()) as Array<{
+    info: {
+      id: string;
+      role: 'user' | 'assistant';
+      time?: { created?: number };
+    };
+    parts: Array<{ type: string; text?: string }>;
+  }>;
+  const messages: ChatMessage[] = [];
+  for (const row of rows) {
+    const text = row.parts
+      .filter((p) => p.type === 'text' && p.text)
+      .map((p) => p.text ?? '')
+      .join('');
+    if (!text) continue;
+    messages.push({
+      id: row.info.id,
+      role: row.info.role,
+      text,
+      timestamp: row.info.time?.created ?? Date.now(),
+    });
+  }
+  return messages;
 }
 
 /**
