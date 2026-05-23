@@ -56,9 +56,17 @@
     onclick={toggle}
     aria-haspopup="menu"
     aria-expanded={open}
+    aria-label={active ? `Assistant endpoint: ${active.label}` : 'Assistant endpoints'}
     title={active ? `Connected to: ${active.label} (${active.url})` : 'Assistant endpoints'}
     disabled={switching || endpointsService.loading}
   >
+    <!-- server icon (Lucide) — single icon-only target on narrow widths -->
+    <svg class="trigger-icon" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+      <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+      <line x1="6" y1="6" x2="6.01" y2="6"/>
+      <line x1="6" y1="18" x2="6.01" y2="18"/>
+    </svg>
     <span class="dot" aria-hidden="true"></span>
     <span class="label">{active?.label ?? 'Endpoint…'}</span>
     <span class="caret" aria-hidden="true">▾</span>
@@ -120,6 +128,13 @@
     cursor: progress;
   }
 
+  /* Default (wide) view: dot + label + caret. The server icon is hidden. */
+  .trigger-icon {
+    display: none;
+    flex-shrink: 0;
+    color: var(--color-text-secondary);
+  }
+
   .dot {
     width: 8px;
     height: 8px;
@@ -140,13 +155,35 @@
     opacity: 0.6;
   }
 
+  /* Narrow widths (Electron sidecar mode, small mobile): collapse the
+     trigger to a single icon button. The dropdown menu still opens with
+     full labels + URLs — only the closed trigger shrinks. */
+  @media (max-width: 600px) {
+    .trigger {
+      width: 32px;
+      padding: 0;
+      justify-content: center;
+      gap: 0;
+      max-width: 32px;
+    }
+    .trigger-icon {
+      display: inline-block;
+    }
+    .dot,
+    .label,
+    .caret {
+      display: none;
+    }
+  }
+
   .menu {
     position: absolute;
     right: 0;
     top: calc(100% + 6px);
     z-index: 100;
-    min-width: 280px;
-    max-width: 360px;
+    /* Fit in a 300px-wide Electron sidecar with margin to spare. */
+    min-width: min(280px, calc(100vw - 24px));
+    max-width: min(360px, calc(100vw - 24px));
     background: var(--color-bg, #fff);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md, 8px);

@@ -9,6 +9,10 @@
   }
 
   let { onLogout, navLink }: Props = $props();
+
+  // Match navLink.href to an icon. Anything else falls back to the
+  // back-arrow so adding a new contextual destination doesn't crash.
+  const navIcon = $derived(navLink?.href === '/chat' ? 'chat' : navLink?.href === '/admin' ? 'admin' : 'back');
 </script>
 
 <nav class="navbar" aria-label="Main navigation">
@@ -23,10 +27,49 @@
     <div class="navbar-actions">
       <EndpointSwitcher />
       {#if navLink}
-        <a href={navLink.href} class="btn btn-secondary btn-sm">{navLink.label}</a>
+        <a
+          href={navLink.href}
+          class="icon-btn"
+          aria-label={navLink.label}
+          title={navLink.label}
+        >
+          {#if navIcon === 'chat'}
+            <!-- message-square (Lucide) -->
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          {:else if navIcon === 'admin'}
+            <!-- sliders (Lucide) -->
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
+              <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
+              <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
+              <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/>
+              <line x1="17" y1="16" x2="23" y2="16"/>
+            </svg>
+          {:else}
+            <!-- arrow-left (Lucide) -->
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+            </svg>
+          {/if}
+        </a>
       {/if}
       <VoiceControl />
-      <button class="btn btn-secondary btn-sm" type="button" onclick={onLogout}>Sign Out</button>
+      <button
+        class="icon-btn"
+        type="button"
+        onclick={onLogout}
+        aria-label="Sign out"
+        title="Sign out"
+      >
+        <!-- log-out (Lucide) -->
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </button>
     </div>
   </div>
 </nav>
@@ -55,6 +98,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
+    min-width: 0;
   }
 
   .brand-icon {
@@ -63,6 +107,7 @@
     justify-content: center;
     width: 34px;
     height: 34px;
+    flex-shrink: 0;
     img{
       max-width: 34px;
     }
@@ -78,7 +123,8 @@
   .navbar-actions {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
+    gap: var(--space-2);
+    flex-shrink: 0;
   }
 
   .version-badge {
@@ -92,6 +138,36 @@
     letter-spacing: 0.02em;
   }
 
+  /* Icon button — matches .voice-btn shape so nav icons read as a family. */
+  .icon-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-decoration: none;
+    flex-shrink: 0;
+  }
+
+  .icon-btn:hover {
+    color: var(--color-text);
+    border-color: var(--color-border-hover);
+    background: var(--color-surface-hover);
+  }
+
+  .icon-btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
+
   @media (max-width: 768px) {
     .navbar-inner {
       padding: 0 var(--space-4);
@@ -103,14 +179,22 @@
       display: none;
     }
 
-    .navbar-actions {
-      flex-shrink: 0;
-    }
-
     .brand-text {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+  }
+
+  /* Narrow Electron sidecar widths — drop the brand text so the action
+     icons keep their space. The logo + version badge already collapsed
+     above; this hides the wordmark too. */
+  @media (max-width: 360px) {
+    .brand-text {
+      display: none;
+    }
+    .navbar-inner {
+      padding: 0 var(--space-3);
     }
   }
 </style>
