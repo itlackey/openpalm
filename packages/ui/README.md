@@ -29,23 +29,82 @@ src/
 
 ## Development
 
-Local dev is package-local only; it does not represent the deployed UI addon port mapping.
+The recommended local-dev loop uses Vite HMR pointed at an isolated
+`.dev/` `OP_HOME` so your real install at `~/.openpalm/` is never touched.
+
+### Quick start: `ui:dev:isolated` against `.dev/`
 
 ```bash
-cd packages/ui
-npm install
-npm run dev
-npm run check
+# Once, from repo root — seeds .dev/ with stack.env, dev login password,
+# and offset ports. Idempotent; safe to re-run after stack.env changes.
+bun run dev:setup
+
+# Iterate:
+bun run ui:dev:isolated
 ```
 
-Repo-root shortcuts:
+This is `OP_HOME=$(pwd)/.dev vite dev --port 8100` under the hood. Vite
+binds to **`http://localhost:8100/`** — the port matches the host
+allowlist (`helpers.ts:checkHostHeader` accepts only the configured
+`ADMIN_PORT`, default `8100`); using Vite's default 5173 would 400 on
+every request.
+
+**Login**: the password lives in `.dev/config/stack/stack.env`:
 
 ```bash
+grep ^OP_UI_LOGIN_PASSWORD .dev/config/stack/stack.env | cut -d= -f2-
+```
+
+**Assistant URL**: by default `.dev/config/stack/stack.env` sets
+`OP_ASSISTANT_PORT=3800` — so the proxy reaches **your existing prod
+assistant container** (no second stack required for UI iteration).
+If you want full isolation, spin up the dev compose stack alongside:
+
+```bash
+bun run dev:stack
+```
+
+That brings up a separate assistant/guardian on the dev ports
+(8100/3800/8180 mapped to the dev project) and the UI's proxy still
+hits `localhost:3800` — same URL, isolated containers via Docker
+project name.
+
+### Why isolated?
+
+`OP_HOME=$(pwd)/.dev` keeps **every** filesystem write the dev server
+might make (`config/`, `state/`, `stash/`, `cache/`) inside the gitignored
+`.dev/` tree. `~/.openpalm/` is your production install and the
+[heightened-caution paths in CLAUDE.md](../../CLAUDE.md) forbid touching
+it during dev work.
+
+### Iteration tips
+
+- **HMR works**: edit `.svelte` / `.ts` → page reloads in <1s.
+- **Mic works**: Vite serves a real browser context, so the Web Speech
+  API isn't gated behind Electron's bundled Chromium. The MediaRecorder
+  fallback in `voice-state.svelte.ts` exercises the same `/api/transcribe`
+  path the Electron app uses — useful for verifying STT end-to-end.
+- **Switching to the prod build**: `bun run ui:build` produces
+  `packages/ui/build/` which can be swapped into `~/.openpalm/state/ui/`
+  for live testing in the Electron app.
+
+### Other variants
+
+```bash
+# Vite HMR with no .dev (default OP_HOME = ~/.openpalm — touches prod, AVOID):
 bun run ui:dev
-bun run ui:check
+
+# Run the Electron app in dev mode (no HMR; rebuilds UI + bundles main.ts):
+bun run electron:dev
 ```
 
-`npm run dev` uses Vite's local dev server. The deployed admin addon is served on `http://localhost:3880` by default.
+### Type / unit / build checks
+
+```bash
+bun run ui:check     # svelte-check + tsc
+bun run ui:test:unit # vitest
+bun run ui:build     # production SvelteKit build
+```
 
 ## API auth
 
@@ -55,13 +114,20 @@ cookie by POSTing the operator password to `/admin/auth/login`. The legacy
 Phase 2 of `docs/technical/auth-and-proxy-refactor-plan.md`.
 
 In a normal install the source of truth for the password is
-`~/.openpalm/config/stack/stack.env` as `OP_UI_TOKEN` (Phase 4 collapses this
-into the operator-facing `OP_UI_LOGIN_PASSWORD`).
+`~/.openpalm/config/stack/stack.env` as `OP_UI_LOGIN_PASSWORD`. Existing
+installs on `OP_UI_TOKEN` are auto-migrated by
+`migrateAuth0110(state)` (called from `ensureSecrets` on startup) — the
+value is preserved, the legacy key is removed, and the migration is
+logged once to `state/logs/migration-0.11.0.log`. Local dev with
+`bun run ui:dev:isolated` reads the value from
+`.dev/config/stack/stack.env` instead.
 
 ## Key environment variables
 
 | Variable | Purpose |
 |---|---|
-| `OP_HOME` | OpenPalm root mounted into the container, usually `~/.openpalm` |
-| `OP_UI_LOGIN_PASSWORD` | Operator-facing admin password (renamed from `ADMIN_TOKEN`); fed at runtime from `OP_UI_TOKEN` in stack.env |
-| `DOCKER_HOST` | Docker Socket Proxy URL inside the addon network |
+| `OP_HOME` | OpenPalm root. Prod: `~/.openpalm`. Dev: `$(pwd)/.dev` via `ui:dev:isolated`. |
+| `OP_UI_LOGIN_PASSWORD` | Operator-facing admin password (renamed from `ADMIN_TOKEN`). Stored in `${OP_HOME}/config/stack/stack.env`. |
+| `OP_OPENCODE_URL` / `OP_ASSISTANT_PORT` | Where the proxy forwards `/proxy/assistant/*`. Default `http://localhost:3800`. |
+| `OP_OPENCODE_PASSWORD` | Basic-auth password for OpenCode endpoints. Empty in dev (matches the `OPENCODE_AUTH=false` default). |
+| `DOCKER_HOST` | Docker Socket Proxy URL inside the addon network. |
