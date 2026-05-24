@@ -232,6 +232,13 @@ export {
   buildComposeCliArgs,
 } from "./control-plane/compose-args.js";
 
+// ── Compose Error Parsing ────────────────────────────────────────────────
+export type { ComposeServiceFailure } from "./control-plane/compose-errors.js";
+export {
+  parseComposeStderr,
+  summarizeComposeStderr,
+} from "./control-plane/compose-errors.js";
+
 // ── Stack Spec (v2) ──────────────────────────────────────────────────────
 export type {
   StackSpec,

@@ -202,9 +202,29 @@
     if (anyDangerousLoading) return;
     applyLoading = true;
     try {
-      await applyChanges();
-      operationResult = 'Changes applied successfully.';
-      operationResultType = 'success';
+      const result = await applyChanges();
+      if (result.overallSuccess) {
+        const summary = result.restarted.length > 0
+          ? `Changes applied successfully. Restarted: ${result.restarted.join(', ')}.`
+          : 'Changes applied successfully.';
+        operationResult = summary;
+        operationResultType = 'success';
+      } else if (result.failed.length > 0) {
+        const failures = result.failed
+          .map((f) => `${f.service}: ${f.reason}`)
+          .join('; ');
+        const restartedNote = result.restarted.length > 0
+          ? ` (other services restarted: ${result.restarted.join(', ')})`
+          : '';
+        operationResult = `Apply failed for ${result.failed.length} service(s): ${failures}${restartedNote}`;
+        operationResultType = 'error';
+      } else if (!result.dockerAvailable) {
+        operationResult = 'Config written, but Docker is unavailable — services were not restarted.';
+        operationResultType = 'error';
+      } else {
+        operationResult = `Apply failed: ${result.error ?? 'unknown error'}`;
+        operationResultType = 'error';
+      }
     } catch (e) {
       const err = e as { status?: number; message?: string };
       if (err.status === 401) {

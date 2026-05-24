@@ -110,8 +110,30 @@ export async function containerAction(
 
 // ── Lifecycle ───────────────────────────────────────────────────────────
 
-export async function applyChanges(): Promise<void> {
-  await requireOk(await request('POST', '/admin/update', {}));
+export type ApplyChangesResult = {
+  ok: boolean;
+  restarted: string[];
+  failed: { service: string; reason: string }[];
+  dockerAvailable: boolean;
+  overallSuccess: boolean;
+  error?: string;
+};
+
+export async function applyChanges(): Promise<ApplyChangesResult> {
+  // The route returns 502 when individual services fail (e.g. an addon
+  // image isn't available). The body still carries the structured result,
+  // so parse it before requireOk would throw.
+  const res = await request('POST', '/admin/update', {});
+  if (res.status === 401) {
+    throw Object.assign(new Error('Sign-in required.'), { status: 401 });
+  }
+  const contentType = res.headers.get('content-type') ?? '';
+  if (!contentType.includes('application/json')) {
+    // Non-JSON error (e.g. 500 HTML). Fall back to the generic helper.
+    throw new Error(await readErrorMessage(res, `Apply failed (HTTP ${res.status})`));
+  }
+  const data = (await res.json()) as ApplyChangesResult;
+  return data;
 }
 
 export type UpgradeStackResult = {
