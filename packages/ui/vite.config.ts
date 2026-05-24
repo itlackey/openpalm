@@ -36,10 +36,26 @@ export default defineConfig(({ mode }) => {
     plugins: [sveltekit(), devtoolsJson()],
     envDir: rootDir,
     ssr: {
-      // Bundle all SSR dependencies into the server chunks so the build/
-      // directory is self-contained and can be deployed without node_modules.
-      // Required for state/ui/ deployment where no node_modules are present.
-      noExternal: true,
+      // In PRODUCTION builds we bundle every SSR dep into the server chunks
+      // so the build/ directory is self-contained and can be deployed
+      // without node_modules (required for state/ui/ deployment).
+      //
+      // In DEV we externalize most deps — Node handles them natively via
+      // require interop, and Vite's ESM-only module runner doesn't have
+      // to evaluate CJS packages itself. Only `yaml` is force-bundled
+      // because the server code does `import { parse } from 'yaml'`
+      // directly and yaml@2.x ships pure CJS (Vite's ESM runner can't
+      // evaluate raw `require()` calls).
+      noExternal: mode === "production" ? true : ["yaml"],
+      // SSR-side dep optimizer: esbuild pre-bundles these into ESM so the
+      // module runner can evaluate them. Mirrors the client-side
+      // optimizeDeps.include below — both lists must include yaml.
+      optimizeDeps: {
+        include: ["yaml"],
+      },
+    },
+    optimizeDeps: {
+      include: ["yaml"],
     },
     test: {
       expect: { requireAssertions: true },
