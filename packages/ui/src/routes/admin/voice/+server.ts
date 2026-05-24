@@ -10,6 +10,7 @@ import type { RequestHandler } from './$types';
 import { getState } from '$lib/server/state.js';
 import {
   buildComposeOptions,
+  composeStop,
   composeUp,
   getAddonProfiles,
   getAddonProfileSelection,
@@ -68,8 +69,8 @@ export const GET: RequestHandler = async (event) => {
   const state = getState();
   const env = readStackEnv(state.stackDir);
 
-  const ttsBaseURL = env['TTS_BASE_URL'] ?? '';
-  const sttBaseURL = env['STT_BASE_URL'] ?? '';
+  const ttsBaseURL = env['OP_TTS_BASE_URL'] ?? '';
+  const sttBaseURL = env['OP_STT_BASE_URL'] ?? '';
 
   const profiles = getAddonProfiles(state.homeDir, VOICE_ADDON);
   const selectedProfile =
@@ -83,19 +84,19 @@ export const GET: RequestHandler = async (event) => {
   return jsonResponse(200, {
     tts: {
       enabled: true,
-      engine: env['TTS_ENGINE'] ?? '',
-      provider: env['TTS_PROVIDER'] ?? '',
+      engine: env['OP_TTS_ENGINE'] ?? '',
+      provider: env['OP_TTS_PROVIDER'] ?? '',
       baseURL: ttsBaseURL,
-      model: env['TTS_MODEL'] ?? '',
-      voice: env['TTS_VOICE'] ?? '',
+      model: env['OP_TTS_MODEL'] ?? '',
+      voice: env['OP_TTS_VOICE'] ?? '',
     },
     stt: {
       enabled: true,
-      engine: env['STT_ENGINE'] ?? '',
-      provider: env['STT_PROVIDER'] ?? '',
+      engine: env['OP_STT_ENGINE'] ?? '',
+      provider: env['OP_STT_PROVIDER'] ?? '',
       baseURL: sttBaseURL,
-      model: env['STT_MODEL'] ?? '',
-      language: env['STT_LANGUAGE'] ?? '',
+      model: env['OP_STT_MODEL'] ?? '',
+      language: env['OP_STT_LANGUAGE'] ?? '',
     },
     availability: {
       stt: {
@@ -325,9 +326,30 @@ export const PUT: RequestHandler = async (event) => {
       ? (availableProfiles.find((p) => p.id === activeProfile)?.services ?? [])
       : [];
     const services = profileServices.length > 0 ? profileServices : [VOICE_ADDON];
+
+    // Profile switch: stop services that belong to OTHER profiles so they
+    // release their host port binding (all variants share 8880) before we
+    // bring up the chosen one. Use composeStop, not down, to keep their
+    // images cached for a future switch back.
+    const otherProfileServices = availableProfiles
+      .filter((p) => p.id !== activeProfile)
+      .flatMap((p) => p.services)
+      .filter((svc) => !services.includes(svc));
+    if (otherProfileServices.length > 0) {
+      try {
+        await composeStop(otherProfileServices, buildComposeOptions(state));
+      } catch (e) {
+        // Best-effort — stopping a never-created service is harmless.
+        // The subsequent up will still fail loudly if there's a real
+        // port collision, so we just log and continue.
+        console.warn('[voice] composeStop other profiles failed:', e);
+      }
+    }
+
     const result = await composeUp({
       ...buildComposeOptions(state),
       services,
+      forceRecreate: true,
       ...(activeProfile ? { profiles: [activeProfile] } : {}),
     });
     composeOk = result.ok;

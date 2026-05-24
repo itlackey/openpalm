@@ -46,11 +46,23 @@ services:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-${OP_IMAGE_TAG:-v0.11.0}-cu121}
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    # Routes the container through the nvidia-container-runtime binary
+    # registered by `nvidia-ctk runtime configure --runtime=docker` (which
+    # the user already did the moment they installed nvidia-container-toolkit
+    # via apt/yum). NVIDIA_VISIBLE_DEVICES tells the runtime which GPUs to
+    # expose. Works on every toolkit install since v1.4 (2020) regardless
+    # of whether the host has CDI specs generated — the runtime handles
+    # device injection itself rather than going through Docker's `--gpus`
+    # / `deploy.resources.devices` path (which on CDI-enabled daemons
+    # requires /etc/cdi/nvidia.yaml — root setup we don't want to demand).
+    runtime: nvidia
     environment:
       OP_VOICE_PORT: "8880"
       OP_VOICE_WHISPER_MODEL: "${OP_VOICE_WHISPER_MODEL:-base.en}"
       OP_VOICE_KOKORO_VOICE: "${OP_VOICE_KOKORO_VOICE:-bf_isabella}"
       OP_VOICE_LOG_LEVEL: "${OP_VOICE_LOG_LEVEL:-info}"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     ports:
       - "${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT_HOST:-8880}:8880"
     volumes:
@@ -58,13 +70,6 @@ services:
     networks:
       assistant_net:
         aliases: [voice]
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8880/health || exit 1"]
       interval: 10s

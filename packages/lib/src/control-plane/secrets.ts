@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import { migrateAuth0110 } from './migrate-0110.js';
+import { migrateVoiceVars } from './migrate-voice-vars.js';
 import type { ControlPlaneState } from "./types.js";
 import { resolveConfigDir } from "./home.js";
 
@@ -109,6 +110,10 @@ export function ensureSecrets(state: ControlPlaneState): void {
   // Migrate pre-0.11.0 installs (OP_UI_TOKEN/OP_ASSISTANT_TOKEN → OP_UI_LOGIN_PASSWORD)
   // before any code path that reads OP_UI_LOGIN_PASSWORD sees an empty value.
   migrateAuth0110(state);
+
+  // Rename unprefixed voice vars (TTS_*/STT_*) → OP_-prefixed form so
+  // they don't collide with host-shell vars from other ecosystems.
+  migrateVoiceVars(state);
 
   ensureSystemSecrets(state);
   ensureGuardianEnv(state.stackDir);

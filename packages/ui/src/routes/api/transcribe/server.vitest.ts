@@ -39,30 +39,30 @@ let fetchSpy: ReturnType<typeof vi.spyOn> | undefined;
 
 beforeEach(() => {
 	originalHome = process.env.OP_HOME;
-	originalSttBase = process.env.STT_BASE_URL;
-	originalSttModel = process.env.STT_MODEL;
-	originalSttLang = process.env.STT_LANGUAGE;
-	originalSttKey = process.env.STT_API_KEY;
+	originalSttBase = process.env.OP_STT_BASE_URL;
+	originalSttModel = process.env.OP_STT_MODEL;
+	originalSttLang = process.env.OP_STT_LANGUAGE;
+	originalSttKey = process.env.OP_STT_API_KEY;
 
 	process.env.OP_HOME = makeTempDir();
-	delete process.env.STT_BASE_URL;
-	delete process.env.STT_MODEL;
-	delete process.env.STT_LANGUAGE;
-	delete process.env.STT_API_KEY;
+	delete process.env.OP_STT_BASE_URL;
+	delete process.env.OP_STT_MODEL;
+	delete process.env.OP_STT_LANGUAGE;
+	delete process.env.OP_STT_API_KEY;
 
 	resetState('admin-token');
 });
 
 afterEach(() => {
 	process.env.OP_HOME = originalHome;
-	if (originalSttBase === undefined) delete process.env.STT_BASE_URL;
-	else process.env.STT_BASE_URL = originalSttBase;
-	if (originalSttModel === undefined) delete process.env.STT_MODEL;
-	else process.env.STT_MODEL = originalSttModel;
-	if (originalSttLang === undefined) delete process.env.STT_LANGUAGE;
-	else process.env.STT_LANGUAGE = originalSttLang;
-	if (originalSttKey === undefined) delete process.env.STT_API_KEY;
-	else process.env.STT_API_KEY = originalSttKey;
+	if (originalSttBase === undefined) delete process.env.OP_STT_BASE_URL;
+	else process.env.OP_STT_BASE_URL = originalSttBase;
+	if (originalSttModel === undefined) delete process.env.OP_STT_MODEL;
+	else process.env.OP_STT_MODEL = originalSttModel;
+	if (originalSttLang === undefined) delete process.env.OP_STT_LANGUAGE;
+	else process.env.OP_STT_LANGUAGE = originalSttLang;
+	if (originalSttKey === undefined) delete process.env.OP_STT_API_KEY;
+	else process.env.OP_STT_API_KEY = originalSttKey;
 
 	fetchSpy?.mockRestore();
 	fetchSpy = undefined;
@@ -72,7 +72,7 @@ afterEach(() => {
 
 describe('POST /api/transcribe', () => {
 	test('requires admin auth', async () => {
-		process.env.STT_BASE_URL = 'http://stt.local';
+		process.env.OP_STT_BASE_URL = 'http://stt.local';
 		const form = new FormData();
 		form.append('audio', makeAudio(), 'recording.webm');
 		const res = await POST(makePostEvent(form, 'bad-token'));
@@ -89,14 +89,14 @@ describe('POST /api/transcribe', () => {
 	});
 
 	test('400 when audio field is missing', async () => {
-		process.env.STT_BASE_URL = 'http://stt.local';
+		process.env.OP_STT_BASE_URL = 'http://stt.local';
 		const form = new FormData();
 		const res = await POST(makePostEvent(form));
 		expect(res.status).toBe(400);
 	});
 
 	test('200 with text on 2xx upstream — no api key, default model', async () => {
-		process.env.STT_BASE_URL = 'http://stt.local';
+		process.env.OP_STT_BASE_URL = 'http://stt.local';
 		let captured: { url: string | URL | Request; init?: RequestInit } | null = null;
 		fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
 			captured = { url, init };
@@ -126,8 +126,8 @@ describe('POST /api/transcribe', () => {
 	});
 
 	test('forwards Authorization Bearer when STT_API_KEY is set', async () => {
-		process.env.STT_BASE_URL = 'http://stt.local';
-		process.env.STT_API_KEY = 'sk-secret-12345';
+		process.env.OP_STT_BASE_URL = 'http://stt.local';
+		process.env.OP_STT_API_KEY = 'sk-secret-12345';
 		let capturedAuth: string | undefined;
 		fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
 			capturedAuth = (init?.headers as Record<string, string>)?.['authorization'];
@@ -145,8 +145,8 @@ describe('POST /api/transcribe', () => {
 	});
 
 	test('language from request wins over env', async () => {
-		process.env.STT_BASE_URL = 'http://stt.local';
-		process.env.STT_LANGUAGE = 'fr';
+		process.env.OP_STT_BASE_URL = 'http://stt.local';
+		process.env.OP_STT_LANGUAGE = 'fr';
 		let sentLang: FormDataEntryValue | null = null;
 		fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
 			const sentBody = init?.body as FormData;
@@ -165,7 +165,7 @@ describe('POST /api/transcribe', () => {
 	});
 
 	test('502 when upstream returns 5xx', async () => {
-		process.env.STT_BASE_URL = 'http://stt.local';
+		process.env.OP_STT_BASE_URL = 'http://stt.local';
 		fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
 			new Response('upstream broken', { status: 502 })
 		);
@@ -180,7 +180,7 @@ describe('POST /api/transcribe', () => {
 	});
 
 	test('502 when upstream is unreachable', async () => {
-		process.env.STT_BASE_URL = 'http://stt.local';
+		process.env.OP_STT_BASE_URL = 'http://stt.local';
 		fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
 			throw new Error('connection refused');
 		});

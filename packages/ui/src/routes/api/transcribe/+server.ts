@@ -31,10 +31,14 @@ export const POST: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  const sttBaseURL = (process.env.STT_BASE_URL ?? '').trim();
-  const sttModel = (process.env.STT_MODEL ?? '').trim() || DEFAULT_MODEL;
-  const sttLanguageEnv = (process.env.STT_LANGUAGE ?? '').trim();
-  const sttApiKey = (process.env.STT_API_KEY ?? '').trim();
+  // OP_ prefix is mandatory — unprefixed STT_*/TTS_* vars are owned by
+  // other ecosystems and operators routinely have them in their shell
+  // pointing at unrelated endpoints. Reading only the namespaced names
+  // keeps a leaked shell var from silently overriding saved settings.
+  const sttBaseURL = (process.env.OP_STT_BASE_URL ?? '').trim();
+  const sttModel = (process.env.OP_STT_MODEL ?? '').trim() || DEFAULT_MODEL;
+  const sttLanguageEnv = (process.env.OP_STT_LANGUAGE ?? '').trim();
+  const sttApiKey = (process.env.OP_STT_API_KEY ?? '').trim();
 
   if (!sttBaseURL) {
     return errorResponse(

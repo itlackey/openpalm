@@ -97,14 +97,14 @@ export const GET: RequestHandler = ({ cookies }) => {
     } : null,
     voice: {
       tts: {
-        baseURL: env.TTS_BASE_URL ?? "",
-        model: env.TTS_MODEL ?? "",
-        voice: env.TTS_VOICE ?? "",
+        baseURL: env.OP_TTS_BASE_URL ?? "",
+        model: env.OP_TTS_MODEL ?? "",
+        voice: env.OP_TTS_VOICE ?? "",
       },
       stt: {
-        baseURL: env.STT_BASE_URL ?? "",
-        model: env.STT_MODEL ?? "",
-        language: env.STT_LANGUAGE ?? "",
+        baseURL: env.OP_STT_BASE_URL ?? "",
+        model: env.OP_STT_MODEL ?? "",
+        language: env.OP_STT_LANGUAGE ?? "",
       },
     },
     enabledAddons: listEnabledAddonIds(state.homeDir),

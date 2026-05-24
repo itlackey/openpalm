@@ -57,9 +57,9 @@ describe("writeVoiceVars", () => {
     }, tempDir);
 
     const content = readFileSync(join(tempDir, "stack.env"), "utf-8");
-    expect(content).toContain("TTS_BASE_URL=https://tts.example.com/v1");
-    expect(content).toContain("TTS_MODEL=tts-1");
-    expect(content).toContain("TTS_VOICE=alloy");
+    expect(content).toContain("OP_TTS_BASE_URL=https://tts.example.com/v1");
+    expect(content).toContain("OP_TTS_MODEL=tts-1");
+    expect(content).toContain("OP_TTS_VOICE=alloy");
   });
 
   test("writes STT vars to stack.env", () => {
@@ -71,9 +71,9 @@ describe("writeVoiceVars", () => {
     }, tempDir);
 
     const content = readFileSync(join(tempDir, "stack.env"), "utf-8");
-    expect(content).toContain("STT_BASE_URL=https://stt.example.com/v1");
-    expect(content).toContain("STT_MODEL=whisper-1");
-    expect(content).toContain("STT_LANGUAGE=en");
+    expect(content).toContain("OP_STT_BASE_URL=https://stt.example.com/v1");
+    expect(content).toContain("OP_STT_MODEL=whisper-1");
+    expect(content).toContain("OP_STT_LANGUAGE=en");
   });
 
   test("creates stack.env if it does not exist", () => {
@@ -84,7 +84,7 @@ describe("writeVoiceVars", () => {
     }, tempDir);
 
     const content = readFileSync(join(tempDir, "stack.env"), "utf-8");
-    expect(content).toContain("TTS_BASE_URL=https://tts.example.com/v1");
+    expect(content).toContain("OP_TTS_BASE_URL=https://tts.example.com/v1");
   });
 
   test("is a no-op when no vars are provided", () => {

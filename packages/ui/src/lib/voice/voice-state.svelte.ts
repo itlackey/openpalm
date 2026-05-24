@@ -20,6 +20,7 @@ import { transcribeAudio, fetchVoiceConfig } from '$lib/api.js';
 
 export type VoiceStatus = 'idle' | 'recording' | 'transcribing' | 'speaking';
 export type SttEngine = 'browser' | 'remote' | 'openpalm-voice' | 'disabled';
+export type TtsEngine = 'browser' | 'remote' | 'openpalm-voice' | 'disabled';
 
 /** Wall-clock cap on a single recording, regardless of engine. */
 const MAX_RECORDING_MS = 60_000;
@@ -33,6 +34,7 @@ class VoiceState {
 
 	/** Active engine resolved from /admin/voice. */
 	sttEngine = $state<SttEngine>('disabled');
+	ttsEngine = $state<TtsEngine>('disabled');
 
 	/** Optional language hint (forwarded to /api/transcribe). */
 	sttLanguage = $state('');
@@ -105,7 +107,7 @@ function normalizeEngine(raw: string): SttEngine {
  * Must be called from onMount or $effect (client-side only).
  */
 export async function initVoice(): Promise<void> {
-	voiceState.ttsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
+	const browserTts = typeof window !== 'undefined' && 'speechSynthesis' in window;
 	if (typeof window !== 'undefined') {
 		try {
 			voiceState.ttsAutoEnabled = window.localStorage.getItem(TTS_AUTO_STORAGE_KEY) === '1';
@@ -117,15 +119,28 @@ export async function initVoice(): Promise<void> {
 	try {
 		const cfg = await fetchVoiceConfig();
 		const stt = (cfg.stt ?? {}) as Record<string, unknown>;
-		const rawEngine = typeof stt.engine === 'string' ? stt.engine : '';
+		const tts = (cfg.tts ?? {}) as Record<string, unknown>;
+		const rawSttEngine = typeof stt.engine === 'string' ? stt.engine : '';
+		const rawTtsEngine = typeof tts.engine === 'string' ? tts.engine : '';
 		const language = typeof stt.language === 'string' ? stt.language : '';
 		voiceState.sttLanguage = language;
-		voiceState.sttEngine = normalizeEngine(rawEngine);
+		voiceState.sttEngine = normalizeEngine(rawSttEngine);
+		voiceState.ttsEngine = normalizeEngine(rawTtsEngine) as TtsEngine;
 	} catch {
 		// 401 (signed out) or network — the picker decides what to show; the
 		// mic stays hidden until the user signs in and re-runs initVoice.
 		voiceState.sttEngine = 'disabled';
+		voiceState.ttsEngine = 'disabled';
 	}
+
+	// ttsSupported = "can we produce audio at all". Server-side TTS
+	// (openpalm-voice or remote) plays via /api/speak; browser TTS plays
+	// via window.speechSynthesis. Either path is enough.
+	voiceState.ttsSupported =
+		voiceState.ttsEngine === 'openpalm-voice' ||
+		voiceState.ttsEngine === 'remote' ||
+		(voiceState.ttsEngine === 'browser' && browserTts) ||
+		(voiceState.ttsEngine === 'disabled' && browserTts);
 
 	// Friendly default: if no engine was configured server-side AND the
 	// browser natively supports SpeechRecognition (Chrome / Edge), default
@@ -291,29 +306,81 @@ export function stopListening(): void {
 	}
 }
 
-/** Read text aloud using browser speech synthesis. */
-export function speakText(text: string): void {
-	if (typeof window === 'undefined' || !voiceState.ttsSupported || !text.trim()) return;
+// Holds the currently-playing server-TTS audio element so stopSpeaking()
+// can cancel it. Browser TTS is cancelled via window.speechSynthesis.
+let activeAudio: HTMLAudioElement | null = null;
+let activeAudioUrl: string | null = null;
 
-	window.speechSynthesis.cancel();
+function teardownActiveAudio(): void {
+	if (activeAudio) {
+		try { activeAudio.pause(); } catch { /* noop */ }
+		activeAudio.src = '';
+		activeAudio = null;
+	}
+	if (activeAudioUrl) {
+		URL.revokeObjectURL(activeAudioUrl);
+		activeAudioUrl = null;
+	}
+}
+
+/**
+ * Read text aloud. Tries server-side TTS via /api/speak first (when the
+ * configured engine is openpalm-voice or remote); falls back to browser
+ * speech synthesis. Silent no-op if neither path is available.
+ */
+export async function speakText(text: string): Promise<void> {
+	if (typeof window === 'undefined' || !text.trim()) return;
+
+	teardownActiveAudio();
+	if ('speechSynthesis' in window) window.speechSynthesis.cancel();
 	voiceState.errorMessage = '';
 
-	const utterance = new SpeechSynthesisUtterance(text);
-	utterance.onstart = () => {
-		voiceState.status = 'speaking';
-	};
-	utterance.onend = () => {
-		voiceState.status = 'idle';
-	};
-	utterance.onerror = () => {
-		voiceState.status = 'idle';
-	};
+	const engine = voiceState.ttsEngine;
+	const useServer = engine === 'openpalm-voice' || engine === 'remote';
 
+	if (useServer) {
+		try {
+			const res = await fetch('/api/speak', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				credentials: 'include',
+				body: JSON.stringify({ text }),
+			});
+			if (res.ok && res.headers.get('content-type')?.startsWith('audio/')) {
+				const blob = await res.blob();
+				const url = URL.createObjectURL(blob);
+				const audio = new Audio(url);
+				activeAudio = audio;
+				activeAudioUrl = url;
+				audio.onended = () => {
+					voiceState.status = 'idle';
+					teardownActiveAudio();
+				};
+				audio.onerror = () => {
+					voiceState.status = 'idle';
+					voiceState.errorMessage = 'Audio playback failed.';
+					teardownActiveAudio();
+				};
+				voiceState.status = 'speaking';
+				await audio.play();
+				return;
+			}
+		} catch {
+			// Network/CORS/auth — fall through to browser TTS if available.
+		}
+	}
+
+	if (!('speechSynthesis' in window)) return;
+	const utterance = new SpeechSynthesisUtterance(text);
+	utterance.onstart = () => { voiceState.status = 'speaking'; };
+	utterance.onend = () => { voiceState.status = 'idle'; };
+	utterance.onerror = () => { voiceState.status = 'idle'; };
 	window.speechSynthesis.speak(utterance);
 }
 
 /** Cancel speech synthesis. */
 export function stopSpeaking(): void {
+	teardownActiveAudio();
 	if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
 		window.speechSynthesis.cancel();
 	}

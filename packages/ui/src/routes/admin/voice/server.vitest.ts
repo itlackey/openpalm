@@ -96,15 +96,15 @@ describe('PUT /admin/voice', () => {
 
 		const state = getState();
 		const env = readStackEnv(state.stackDir);
-		expect(env['TTS_ENGINE']).toBe('openpalm-voice');
-		expect(env['STT_ENGINE']).toBe('openpalm-voice');
+		expect(env['OP_TTS_ENGINE']).toBe('openpalm-voice');
+		expect(env['OP_STT_ENGINE']).toBe('openpalm-voice');
 		// Preset URL points at the loopback host port the voice addon
 		// publishes (config in OP_VOICE_PORT_HOST; defaults to 8880).
-		expect(env['TTS_BASE_URL']).toMatch(/^http:\/\/127\.0\.0\.1:\d+/);
-		expect(env['STT_BASE_URL']).toMatch(/^http:\/\/127\.0\.0\.1:\d+/);
-		expect(env['TTS_MODEL']).toBe('kokoro');
-		expect(env['STT_MODEL']).toBe('whisper-1');
-		expect(env['TTS_VOICE']).toBe('bf_isabella');
+		expect(env['OP_TTS_BASE_URL']).toMatch(/^http:\/\/127\.0\.0\.1:\d+/);
+		expect(env['OP_STT_BASE_URL']).toMatch(/^http:\/\/127\.0\.0\.1:\d+/);
+		expect(env['OP_TTS_MODEL']).toBe('kokoro');
+		expect(env['OP_STT_MODEL']).toBe('whisper-1');
+		expect(env['OP_TTS_VOICE']).toBe('bf_isabella');
 	});
 
 	test('openpalm-voice respects user-supplied overrides', async () => {
@@ -115,10 +115,10 @@ describe('PUT /admin/voice', () => {
 
 		const state = getState();
 		const env = readStackEnv(state.stackDir);
-		expect(env['TTS_BASE_URL']).toBe('http://elsewhere:9999');
-		expect(env['TTS_VOICE']).toBe('af_heart');
+		expect(env['OP_TTS_BASE_URL']).toBe('http://elsewhere:9999');
+		expect(env['OP_TTS_VOICE']).toBe('af_heart');
 		// Model still defaults since the user didn't override.
-		expect(env['TTS_MODEL']).toBe('kokoro');
+		expect(env['OP_TTS_MODEL']).toBe('kokoro');
 	});
 
 	test('rejects engine "remote" without baseURL', async () => {
@@ -141,10 +141,10 @@ describe('PUT /admin/voice', () => {
 		const envPath = join(state.stackDir, 'stack.env');
 		expect(existsSync(envPath)).toBe(true);
 		const env = readFileSync(envPath, 'utf-8');
-		expect(env).toContain('TTS_ENGINE=remote');
-		expect(env).toContain('TTS_BASE_URL=http://kokoro.local/v1');
-		expect(env).toContain('STT_ENGINE=remote');
-		expect(env).toContain('STT_LANGUAGE=en');
+		expect(env).toContain('OP_TTS_ENGINE=remote');
+		expect(env).toContain('OP_TTS_BASE_URL=http://kokoro.local/v1');
+		expect(env).toContain('OP_STT_ENGINE=remote');
+		expect(env).toContain('OP_STT_LANGUAGE=en');
 	});
 
 	test('saves browser engine without baseURL', async () => {

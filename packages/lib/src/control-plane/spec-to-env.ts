@@ -79,20 +79,25 @@ export function writeVoiceVars(config: VoiceVarsConfig, stackDir: string): void 
   const base = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
   const vars: Record<string, string> = {};
 
+  // OP_ prefix is mandatory: unprefixed TTS_*/STT_* names collide with
+  // other tooling (OpenAI clients, kokoro-fastapi, etc.) commonly set in
+  // operator shells. The UI server only reads OP_-prefixed vars from
+  // process.env, so a leaked host TTS_VOICE can't silently override the
+  // saved selection.
   const { tts, stt } = config;
   if (tts?.enabled !== false) {
-    if (tts?.engine) vars["TTS_ENGINE"] = tts.engine;
-    if (tts?.provider) vars["TTS_PROVIDER"] = tts.provider;
-    if (tts?.baseURL) vars["TTS_BASE_URL"] = tts.baseURL;
-    if (tts?.model) vars["TTS_MODEL"] = tts.model;
-    if (tts?.voice) vars["TTS_VOICE"] = tts.voice;
+    if (tts?.engine) vars["OP_TTS_ENGINE"] = tts.engine;
+    if (tts?.provider) vars["OP_TTS_PROVIDER"] = tts.provider;
+    if (tts?.baseURL) vars["OP_TTS_BASE_URL"] = tts.baseURL;
+    if (tts?.model) vars["OP_TTS_MODEL"] = tts.model;
+    if (tts?.voice) vars["OP_TTS_VOICE"] = tts.voice;
   }
   if (stt?.enabled !== false) {
-    if (stt?.engine) vars["STT_ENGINE"] = stt.engine;
-    if (stt?.provider) vars["STT_PROVIDER"] = stt.provider;
-    if (stt?.baseURL) vars["STT_BASE_URL"] = stt.baseURL;
-    if (stt?.model) vars["STT_MODEL"] = stt.model;
-    if (stt?.language) vars["STT_LANGUAGE"] = stt.language;
+    if (stt?.engine) vars["OP_STT_ENGINE"] = stt.engine;
+    if (stt?.provider) vars["OP_STT_PROVIDER"] = stt.provider;
+    if (stt?.baseURL) vars["OP_STT_BASE_URL"] = stt.baseURL;
+    if (stt?.model) vars["OP_STT_MODEL"] = stt.model;
+    if (stt?.language) vars["OP_STT_LANGUAGE"] = stt.language;
   }
 
   if (Object.keys(vars).length === 0) return;
