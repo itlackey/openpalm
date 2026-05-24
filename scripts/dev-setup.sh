@@ -110,32 +110,48 @@ STASH_DIR="$DEV_ROOT/stash"
 DATA_DIR="$DEV_ROOT/data"
 LOGS_DIR="$DEV_ROOT/logs"
 
+# ── Template sync ────────────────────────────────────────────────
+# `.openpalm/` in the repo IS the canonical OP_HOME template (per
+# CLAUDE.md and packages/lib/src/control-plane/home.ts). Mirror the
+# whole tree into .dev/ so any new file/dir the team adds there shows
+# up automatically — no per-file copy lines to keep in sync. Generated
+# files (stack.env, guardian.env, user.env, auth.json) are excluded
+# because they're seeded with dev-specific values further down.
+rsync_flags=(-a)
+# --force does a destructive resync (drop stale files that no longer
+# exist in the template) — useful after addon renames, doc removals,
+# etc. Default keeps user-edited files in .dev/ alone unless the
+# template version is strictly newer.
+[[ $force -eq 1 ]] && rsync_flags+=(--delete)
+
+rsync "${rsync_flags[@]}" \
+	--exclude=config/stack/stack.env \
+	--exclude=config/stack/guardian.env \
+	--exclude=config/stack/auth.json \
+	--exclude=stash/vaults/user.env \
+	"$ROOT_DIR/.openpalm/" "$DEV_ROOT/"
+
+# Always force-refresh the registry catalog. Operators don't hand-edit
+# addon manifests — they edit them in .openpalm/state/registry/ and
+# expect .dev to follow. Stale copies in .dev cause silent
+# path-mismatch bugs (see commit 5e9609b7 for one example).
+rsync -a --delete \
+	"$ROOT_DIR/.openpalm/state/registry/" "$DEV_ROOT/state/registry/"
+
+# ── Runtime-only mount targets ───────────────────────────────────
+# Dirs the compose stack expects to bind-mount but `.openpalm/` doesn't
+# ship (they're per-container state, not config). All must exist before
+# `docker compose up` or bind-mount creation runs as root.
 mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
 	"$CONFIG_DIR/automations" "$CONFIG_DIR/stack/addons" \
 	"$STASH_DIR/vaults" \
-	"$DEV_ROOT/state/registry/addons" "$DEV_ROOT/state/registry/automations" \
 	"$DATA_DIR/assistant/.config/opencode" \
 	"$DATA_DIR/guardian" \
 	"$DATA_DIR/automations" "$DATA_DIR/ollama" "$DATA_DIR/stash" "$DATA_DIR/guardian-stash" \
 	"$DATA_DIR/akm-cache" "$DATA_DIR/guardian-cache" "$DATA_DIR/workspace" \
 	"$LOGS_DIR/opencode" \
 	"$DEV_ROOT/work"
-
-# ── Seed core assets (write-once unless --force) ─────────────────
-COMPOSE_DEST="$CONFIG_DIR/stack/core.compose.yml"
-
-[[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/.openpalm/config/stack/core.compose.yml" "$COMPOSE_DEST"
-
-# Seed registry catalog from repo template.
-# Replace shipped addon directories wholesale so removed support files do not linger.
-for src_dir in "$ROOT_DIR/.openpalm/state/registry/addons/"*; do
-	[[ -d "$src_dir" ]] || continue
-	addon_name="$(basename "$src_dir")"
-	rm -rf "$DEV_ROOT/state/registry/addons/$addon_name"
-	cp -r "$src_dir" "$DEV_ROOT/state/registry/addons/$addon_name"
-done
-cp -r "$ROOT_DIR/.openpalm/state/registry/automations/"* "$DEV_ROOT/state/registry/automations/" 2>/dev/null || true
 
 # Enable requested addons in the dev runtime
 for addon in "${enabled_addons[@]}"; do
@@ -149,13 +165,9 @@ for addon in "${enabled_addons[@]}"; do
 	cp -r "$src_dir" "$dest_dir"
 done
 
-# Seed stack.yml (version marker only — LLM/embedding config lives in config/akm/config.json)
-STACK_YAML="$CONFIG_DIR/stack.yml"
-if [[ ! -f "$STACK_YAML" || $force -eq 1 ]]; then
-	cat >"$STACK_YAML" <<'SYEOF'
-version: 2
-SYEOF
-fi
+# stack.yml (version marker only — LLM/embedding config lives in
+# config/akm/config.json) is templated from .openpalm/config/stack/stack.yml
+# via the rsync above. No separate seed needed.
 
 # Seed auth.json (empty — prevents Docker creating it as directory)
 AUTH_JSON="$CONFIG_DIR/stack/auth.json"
@@ -225,6 +237,11 @@ OP_PROJECT_NAME=openpalm-dev
 OP_ASSISTANT_PORT=4800
 OP_ADMIN_PORT=9100
 OP_GUARDIAN_PORT=9180
+
+# Skip the first-boot setup wizard — the dev password above is already
+# the operator-facing secret. Production installs leave this false until
+# the wizard completes successfully.
+OP_SETUP_COMPLETE=true
 EOF
 	fi
 fi
@@ -251,16 +268,8 @@ CHANNEL_SLACK_SECRET=${channel_slack_secret}
 EOF
 fi
 
-# ── Seed OpenCode user config ─────────────────────────────────────
-# Copy all files from repo source. opencode.json references assistant.md
-# via "instructions", so both must be present.
-for src_file in "$ROOT_DIR/.openpalm/config/assistant/"*; do
-	[[ -f "$src_file" ]] || continue
-	dest_file="$CONFIG_DIR/assistant/$(basename "$src_file")"
-	if [[ ! -f "$dest_file" || $force -eq 1 ]]; then
-		cp "$src_file" "$dest_file"
-	fi
-done
+# OpenCode user config (opencode.json + assistant.md + system.md + openpalm.md)
+# comes in via the template rsync above. No per-file copy needed.
 
 # ── Initialize pass backend (optional) ───────────────────────────
 if [[ $use_pass -eq 1 ]]; then
