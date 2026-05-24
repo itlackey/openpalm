@@ -12,7 +12,7 @@ services:
     environment:
       OP_VOICE_PORT: "8880"
       OP_VOICE_WHISPER_MODEL: "${OP_VOICE_WHISPER_MODEL:-base.en}"
-      OP_VOICE_KOKORO_VOICE: "${OP_VOICE_KOKORO_VOICE:-af_bella}"
+      OP_VOICE_KOKORO_VOICE: "${OP_VOICE_KOKORO_VOICE:-bf_isabella}"
       OP_VOICE_LOG_LEVEL: "${OP_VOICE_LOG_LEVEL:-info}"
     volumes:
       - ${OP_HOME}/state/voice/models:/models

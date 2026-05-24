@@ -66,7 +66,7 @@ curl -s -X POST http://localhost:8880/v1/audio/transcriptions \
 # Speech
 curl -s -X POST http://localhost:8880/v1/audio/speech \
   -H 'content-type: application/json' \
-  -d '{"model":"kokoro","input":"Hello from OpenPalm.","voice":"af_bella","response_format":"wav"}' \
+  -d '{"model":"kokoro","input":"Hello from OpenPalm.","voice":"bf_isabella","response_format":"wav"}' \
   --output /tmp/out.wav
 file /tmp/out.wav   # RIFF (little-endian) WAVE
 ```
@@ -80,8 +80,8 @@ Environment variables (all optional, defaults in parens):
 | `OP_VOICE_PORT` | `8880` | HTTP listen port |
 | `OP_VOICE_WHISPER_MODEL` | `base.en` | faster-whisper model name |
 | `OP_VOICE_WHISPER_MODEL_DIR` | `/models/whisper` | model cache dir |
-| `OP_VOICE_KOKORO_VOICE` | `af_bella` | default voice ID |
-| `OP_VOICE_KOKORO_DIR` | `/models/kokoro` | model cache dir |
+| `OP_VOICE_KOKORO_VOICE` | `bf_isabella` | default voice ID |
+| `OP_VOICE_KOKORO_DIR` | `/opt/kokoro` | model cache dir (pre-baked in the image) |
 | `OP_VOICE_LOG_LEVEL` | `INFO` | python logging level |
 
 ## Notes
@@ -90,8 +90,12 @@ Environment variables (all optional, defaults in parens):
   to `assistant_net` with no host port, so only other containers on that
   network can reach it. If you need to publish it publicly, route it
   through a channel adapter / reverse proxy.
-- **First start is slow.** ~340 MB of model artifacts download on first
-  request to either endpoint. The healthcheck `start_period=180s` allows
-  for this on a typical home connection.
+- **Kokoro models are pre-baked** into the image at `/opt/kokoro/` (the
+  full `voices-v1.0.bin` ships all 54 voices, ~340 MB total — bumps the
+  image by that much but eliminates the first-run download for TTS).
+- **faster-whisper still downloads on first run.** ~145 MB for
+  `base.en`, fetched into the bind-mount at `/models/whisper`. The
+  healthcheck `start_period=180s` allows for this on a typical home
+  connection.
 - **GPU images.** The `cu121` variant expects `nvidia-container-toolkit`
   on the host plus driver ≥530.30.02. See the addon `gpu.compose.yml`.

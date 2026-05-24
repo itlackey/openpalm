@@ -86,7 +86,7 @@ curl -s http://voice:8880/v1/models | jq
 # /v1/audio/speech — write 16-bit WAV
 curl -s -X POST http://voice:8880/v1/audio/speech \
   -H 'content-type: application/json' \
-  -d '{"model":"kokoro","input":"OpenPalm voice online.","voice":"af_bella","response_format":"wav"}' \
+  -d '{"model":"kokoro","input":"OpenPalm voice online.","voice":"bf_isabella","response_format":"wav"}' \
   --output /tmp/voice.wav
 ls -lh /tmp/voice.wav   # ~50 KB for a short phrase
 

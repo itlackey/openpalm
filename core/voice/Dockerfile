@@ -13,6 +13,26 @@
 # user inside the container.
 # ──────────────────────────────────────────────────────────────────────────────
 
+# ── model fetch ──
+# Pre-downloads the Kokoro model + voices bundle so cold-starts don't pay
+# the ~340 MB GitHub download. faster-whisper's model is still pulled on
+# first run (per-deployment choice — the bundled voices file already covers
+# every Kokoro voice so we never need to re-fetch).
+FROM python:3.11-slim-bookworm AS modelfetch
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# kokoro-onnx model URLs — pinned to the v1.0 release artifacts. Bumping
+# the model version is a Dockerfile-level decision; runtime never refetches.
+ARG KOKORO_MODEL_URL=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
+ARG KOKORO_VOICES_URL=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+
+RUN mkdir -p /opt/kokoro \
+    && curl -fsSL --retry 5 --retry-delay 2 -o /opt/kokoro/kokoro-v1.0.onnx "$KOKORO_MODEL_URL" \
+    && curl -fsSL --retry 5 --retry-delay 2 -o /opt/kokoro/voices-v1.0.bin   "$KOKORO_VOICES_URL"
+
 # ── builder ──
 FROM python:3.11-slim-bookworm AS builder
 
@@ -67,9 +87,9 @@ ENV VOICE_VARIANT=${VARIANT} \
     PYTHONUNBUFFERED=1 \
     OP_VOICE_PORT=8880 \
     OP_VOICE_WHISPER_MODEL_DIR=/models/whisper \
-    OP_VOICE_KOKORO_DIR=/models/kokoro \
+    OP_VOICE_KOKORO_DIR=/opt/kokoro \
     OP_VOICE_WHISPER_MODEL=base.en \
-    OP_VOICE_KOKORO_VOICE=af_bella
+    OP_VOICE_KOKORO_VOICE=bf_isabella
 
 # Runtime apt deps:
 #   ffmpeg      — referenced by faster-whisper for arbitrary input decoding
@@ -88,10 +108,14 @@ RUN apt-get update \
 # the host's mapped user can own bind-mount files cleanly.
 RUN groupadd --gid 1000 op \
     && useradd --create-home --shell /usr/sbin/nologin --uid 1000 --gid 1000 op \
-    && mkdir -p /models/whisper /models/kokoro \
-    && chown -R op:op /models
+    && mkdir -p /models/whisper /models/kokoro /opt/kokoro \
+    && chown -R op:op /models /opt/kokoro
 
-COPY --from=builder /opt/venv /opt/venv
+COPY --from=builder    /opt/venv   /opt/venv
+# Pre-baked Kokoro model + voices (see modelfetch stage). Lives under
+# /opt/kokoro to keep `/models/kokoro` free for operator bind-mounts when
+# they choose to override OP_VOICE_KOKORO_DIR.
+COPY --from=modelfetch --chown=op:op /opt/kokoro/ /opt/kokoro/
 
 WORKDIR /app
 COPY app /app/app

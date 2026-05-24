@@ -20,7 +20,10 @@ logger = logging.getLogger("voice.tts")
 
 # Pinned to the v1.0 release artifacts so the URL stays stable across
 # kokoro-onnx package upgrades. The model file is the canonical Kokoro-82M
-# ONNX export; voices-v1.0.bin bundles all 54 voices including af_bella.
+# ONNX export; voices-v1.0.bin bundles all 54 voices including bf_isabella.
+# Both files are pre-baked into the image at /opt/kokoro (see the modelfetch
+# stage in the Dockerfile). `_download_if_missing` is a no-op in that case;
+# it remains for dev/test runs against an unbundled cache dir.
 _MODEL_URL = (
     "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/"
     "kokoro-v1.0.onnx"
@@ -52,7 +55,7 @@ def _download_if_missing(url: str, dest: Path) -> None:
 class TTS:
     def __init__(self) -> None:
         self._engine = None
-        self._default_voice = os.environ.get("OP_VOICE_KOKORO_VOICE", "af_bella")
+        self._default_voice = os.environ.get("OP_VOICE_KOKORO_VOICE", "bf_isabella")
         self.error: Optional[str] = None
 
     @property
@@ -67,7 +70,7 @@ class TTS:
         if self._engine is not None:
             return
 
-        cache_dir = Path(os.environ.get("OP_VOICE_KOKORO_DIR", "/models/kokoro"))
+        cache_dir = Path(os.environ.get("OP_VOICE_KOKORO_DIR", "/opt/kokoro"))
         cache_dir.mkdir(parents=True, exist_ok=True)
         model_path = cache_dir / "kokoro-v1.0.onnx"
         voices_path = cache_dir / "voices-v1.0.bin"
