@@ -35,7 +35,7 @@ class STT:
             return
 
         model_name = os.environ.get("OP_VOICE_WHISPER_MODEL", "base.en")
-        cache_dir = os.environ.get("OP_VOICE_WHISPER_MODEL_DIR", "/models/whisper")
+        cache_dir = os.environ.get("OP_VOICE_WHISPER_MODEL_DIR", "/opt/whisper")
         os.makedirs(cache_dir, exist_ok=True)
 
         # GPU detection — kept inside load() so the cpu variant never tries to

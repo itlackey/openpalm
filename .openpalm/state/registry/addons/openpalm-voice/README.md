@@ -62,14 +62,17 @@ the engines saw the GPU.
 
 | Resource | CPU variant | CUDA variant |
 |---|---|---|
-| Image (compressed) | ~420 MB | ~1.4 GB |
-| Model artifacts on disk | ~340 MB (Kokoro ~310 MB + Whisper base.en ~145 MB after dedup) | same |
+| Image (compressed) | ~750 MB | ~1.5 GB |
+| Model artifacts (baked) | ~340 MB Kokoro + ~145 MB Whisper `base.en` | same |
 | Resident RAM at idle | ~700 MB | ~1.1 GB (CUDA workspace) |
 | Resident RAM under load | ~1.0 GB | ~1.5 GB |
 
-Models download from upstream GitHub releases on first start into
-`${OP_HOME}/state/voice/models/`. Pre-seed that directory if you want to
-ship the artifacts out of band.
+Default models (Kokoro-82M + voices, faster-whisper `base.en`) are
+**pre-baked into the image** — cold-start performs no network requests.
+The bind-mounted `${OP_HOME}/state/voice/models` volume is only used
+when an operator overrides `OP_VOICE_WHISPER_MODEL` to a non-default
+size (small/medium/multilingual), which triggers a one-time HF
+download into that path.
 
 ## Smoke tests (from inside the stack)
 

@@ -14,10 +14,12 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ── model fetch ──
-# Pre-downloads the Kokoro model + voices bundle so cold-starts don't pay
-# the ~340 MB GitHub download. faster-whisper's model is still pulled on
-# first run (per-deployment choice — the bundled voices file already covers
-# every Kokoro voice so we never need to re-fetch).
+# Pre-downloads the Kokoro model + voices bundle AND the default
+# faster-whisper STT model so first-run cold-start has zero network
+# dependencies. Model files are layered into the runtime image at
+# /opt/kokoro and /opt/whisper respectively. Operators who want to use
+# a different Whisper model size override OP_VOICE_WHISPER_MODEL and
+# accept a one-time download on first request to /v1/audio/transcriptions.
 FROM python:3.11-slim-bookworm AS modelfetch
 
 RUN apt-get update \
@@ -32,6 +34,15 @@ ARG KOKORO_VOICES_URL=https://github.com/thewh1teagle/kokoro-onnx/releases/downl
 RUN mkdir -p /opt/kokoro \
     && curl -fsSL --retry 5 --retry-delay 2 -o /opt/kokoro/kokoro-v1.0.onnx "$KOKORO_MODEL_URL" \
     && curl -fsSL --retry 5 --retry-delay 2 -o /opt/kokoro/voices-v1.0.bin   "$KOKORO_VOICES_URL"
+
+# Pre-fetch the default faster-whisper model into the HF cache layout that
+# WhisperModel(download_root=...) expects. Pinned model name lives in
+# `WHISPER_MODEL`; bump together with stt.py's default if you change it.
+ARG WHISPER_MODEL=Systran/faster-whisper-base.en
+
+RUN pip install --no-cache-dir --disable-pip-version-check "huggingface-hub==0.27.0" \
+    && mkdir -p /opt/whisper \
+    && python -c "from huggingface_hub import snapshot_download; snapshot_download('${WHISPER_MODEL}', cache_dir='/opt/whisper')"
 
 # ── builder ──
 FROM python:3.11-slim-bookworm AS builder
@@ -86,7 +97,7 @@ ENV VOICE_VARIANT=${VARIANT} \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     OP_VOICE_PORT=8880 \
-    OP_VOICE_WHISPER_MODEL_DIR=/models/whisper \
+    OP_VOICE_WHISPER_MODEL_DIR=/opt/whisper \
     OP_VOICE_KOKORO_DIR=/opt/kokoro \
     OP_VOICE_WHISPER_MODEL=base.en \
     OP_VOICE_KOKORO_VOICE=bf_isabella
@@ -108,14 +119,15 @@ RUN apt-get update \
 # the host's mapped user can own bind-mount files cleanly.
 RUN groupadd --gid 1000 op \
     && useradd --create-home --shell /usr/sbin/nologin --uid 1000 --gid 1000 op \
-    && mkdir -p /models/whisper /models/kokoro /opt/kokoro \
-    && chown -R op:op /models /opt/kokoro
+    && mkdir -p /models/whisper /models/kokoro /opt/kokoro /opt/whisper \
+    && chown -R op:op /models /opt/kokoro /opt/whisper
 
 COPY --from=builder    /opt/venv   /opt/venv
-# Pre-baked Kokoro model + voices (see modelfetch stage). Lives under
-# /opt/kokoro to keep `/models/kokoro` free for operator bind-mounts when
-# they choose to override OP_VOICE_KOKORO_DIR.
-COPY --from=modelfetch --chown=op:op /opt/kokoro/ /opt/kokoro/
+# Pre-baked Kokoro + Whisper artifacts (see modelfetch stage). Live under
+# /opt/... to keep /models/ free for operator bind-mounts when they
+# override OP_VOICE_KOKORO_DIR / OP_VOICE_WHISPER_MODEL_DIR.
+COPY --from=modelfetch --chown=op:op /opt/kokoro/  /opt/kokoro/
+COPY --from=modelfetch --chown=op:op /opt/whisper/ /opt/whisper/
 
 WORKDIR /app
 COPY app /app/app

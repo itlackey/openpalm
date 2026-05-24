@@ -79,7 +79,7 @@ Environment variables (all optional, defaults in parens):
 |---|---|---|
 | `OP_VOICE_PORT` | `8880` | HTTP listen port |
 | `OP_VOICE_WHISPER_MODEL` | `base.en` | faster-whisper model name |
-| `OP_VOICE_WHISPER_MODEL_DIR` | `/models/whisper` | model cache dir |
+| `OP_VOICE_WHISPER_MODEL_DIR` | `/opt/whisper` | model cache dir (pre-baked in the image) |
 | `OP_VOICE_KOKORO_VOICE` | `bf_isabella` | default voice ID |
 | `OP_VOICE_KOKORO_DIR` | `/opt/kokoro` | model cache dir (pre-baked in the image) |
 | `OP_VOICE_LOG_LEVEL` | `INFO` | python logging level |
@@ -90,12 +90,16 @@ Environment variables (all optional, defaults in parens):
   to `assistant_net` with no host port, so only other containers on that
   network can reach it. If you need to publish it publicly, route it
   through a channel adapter / reverse proxy.
-- **Kokoro models are pre-baked** into the image at `/opt/kokoro/` (the
-  full `voices-v1.0.bin` ships all 54 voices, ~340 MB total — bumps the
-  image by that much but eliminates the first-run download for TTS).
-- **faster-whisper still downloads on first run.** ~145 MB for
-  `base.en`, fetched into the bind-mount at `/models/whisper`. The
-  healthcheck `start_period=180s` allows for this on a typical home
-  connection.
+- **All default models are pre-baked.** Kokoro lives at `/opt/kokoro/`
+  (~340 MB — model + all 54 voices). The default faster-whisper model
+  (`Systran/faster-whisper-base.en`, ~145 MB) lives at `/opt/whisper/`
+  in the HF cache layout that `WhisperModel(download_root=...)` expects.
+  Cold-start makes zero network requests for the defaults; the
+  `start_period=180s` healthcheck only matters if an operator overrides
+  `OP_VOICE_WHISPER_MODEL` to a non-bundled size.
+- **Picking a different Whisper model** (e.g. `small.en`, `medium`,
+  multilingual `base`) re-introduces a first-run download into
+  `OP_VOICE_WHISPER_MODEL_DIR`. Point it at a bind-mounted host path if
+  you want the cache to survive image upgrades.
 - **GPU images.** The `cu121` variant expects `nvidia-container-toolkit`
   on the host plus driver ≥530.30.02. See the addon `gpu.compose.yml`.
