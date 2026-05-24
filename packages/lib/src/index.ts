@@ -44,6 +44,7 @@ export {
 export type {
   AddonMutationResult,
   AddonProfile,
+  AddonProfileAvailability,
   RegistryAutomationEntry,
   RegistryComponentEntry,
   RegistryAddonConfig,
@@ -59,6 +60,8 @@ export {
   getRegistryAddonConfig,
   getAddonServiceNames,
   getAddonProfiles,
+  getAddonProfileAvailability,
+  annotateAddonProfileAvailability,
   getAddonProfileSelection,
   setAddonProfileSelection,
   listAvailableAddonIds,
@@ -258,6 +261,13 @@ export type { VoiceVarsConfig } from "./control-plane/spec-to-env.js";
 export {
   writeVoiceVars,
 } from "./control-plane/spec-to-env.js";
+
+// ── Operator UID/GID Detection ──────────────────────────────────────────
+export type { OperatorIds } from "./control-plane/operator-ids.js";
+export {
+  resolveOperatorIds,
+  hasUsableOperatorId,
+} from "./control-plane/operator-ids.js";
 
 // ── Setup ────────────────────────────────────────────────────────────────
 export type {

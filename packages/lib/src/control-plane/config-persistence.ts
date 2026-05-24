@@ -12,6 +12,7 @@ import { parseEnvFile, mergeEnvContent, expandEnvVars } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { isChannelAddon } from "./channels.js";
 import { listEnabledAddonIds } from "./registry.js";
+import { resolveOperatorIds, hasUsableOperatorId } from "./operator-ids.js";
 
 import {
   readCoreCompose,
@@ -69,6 +70,19 @@ export function writeSystemEnv(state: ControlPlaneState): void {
     OP_SETUP_COMPLETE: alreadyComplete ? "true" : "false"
   };
 
+  // Backfill OP_UID/OP_GID when the existing stack.env was written by an
+  // older code path that hard-coded 1000, or when the file was created
+  // with missing/zero values. We only override when the current value is
+  // missing or zero — an operator who manually set OP_UID=2000 (e.g.
+  // because they're running on a host with a non-1000 service account)
+  // must not be silently changed.
+  const parsed = parseEnvFile(systemEnvPath);
+  const ids = resolveOperatorIds(state.homeDir);
+  if (ids) {
+    if (!hasUsableOperatorId(parsed, "OP_UID")) adminManaged.OP_UID = String(ids.uid);
+    if (!hasUsableOperatorId(parsed, "OP_GID")) adminManaged.OP_GID = String(ids.gid);
+  }
+
   const content = mergeEnvContent(base, adminManaged, {
     sectionHeader: "# ── Admin-managed ──────────────────────────────────────────────────"
   });
@@ -77,8 +91,13 @@ export function writeSystemEnv(state: ControlPlaneState): void {
 }
 
 function generateFallbackSystemEnv(state: ControlPlaneState): string {
-  const uid = typeof process.getuid === "function" ? (process.getuid() ?? 1000) : 1000;
-  const gid = typeof process.getgid === "function" ? (process.getgid() ?? 1000) : 1000;
+  // Operator UID/GID — auto-detect from OP_HOME owner (or process UID).
+  // Skipped on Windows where containers run in WSL2 and OP_UID has no
+  // meaning on the host process.
+  const ids = resolveOperatorIds(state.homeDir);
+  const idLines: string[] = ids
+    ? [`OP_UID=${ids.uid}`, `OP_GID=${ids.gid}`]
+    : [];
 
   return [
     "# OpenPalm — System Configuration (managed by CLI/admin)",
@@ -92,8 +111,7 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "",
     "# ── Paths ──────────────────────────────────────────────────────────",
     `OP_HOME=${state.homeDir}`,
-    `OP_UID=${uid}`,
-    `OP_GID=${gid}`,
+    ...idLines,
     "",
     "# ── Images ──────────────────────────────────────────────────────────",
     `OP_IMAGE_NAMESPACE=${process.env.OP_IMAGE_NAMESPACE ?? "openpalm"}`,

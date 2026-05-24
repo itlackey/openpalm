@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deriveSystemEnvFromSpec, writeVoiceVars } from "./spec-to-env.js";
@@ -44,6 +44,18 @@ describe("deriveSystemEnvFromSpec", () => {
     const result = deriveSystemEnvFromSpec(MINIMAL_SPEC, "/home/op");
     expect(result.OP_OLLAMA_ENABLED).toBeUndefined();
     expect(result.OP_ADMIN_ENABLED).toBeUndefined();
+  });
+
+  test("auto-detects OP_UID/OP_GID from the homeDir owner (not hard-coded 1000)", () => {
+    // tempDir is owned by the test process, which on a CI runner or
+    // dev box is typically NOT root and NOT necessarily UID 1000. The
+    // assertion that matters: we read the value off statSync, not a
+    // hard-coded constant.
+    if (process.platform === "win32") return;
+    const expected = statSync(tempDir);
+    const result = deriveSystemEnvFromSpec(MINIMAL_SPEC, tempDir);
+    expect(result.OP_UID).toBe(String(expected.uid));
+    expect(result.OP_GID).toBe(String(expected.gid));
   });
 });
 

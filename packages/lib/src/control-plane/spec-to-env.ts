@@ -9,6 +9,7 @@ import type { StackSpec } from "./stack-spec.js";
 import { SPEC_DEFAULTS } from "./stack-spec.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mergeEnvContent } from "./env.js";
+import { resolveOperatorIds } from "./operator-ids.js";
 
 /**
  * Derive the system.env key-value pairs from the StackSpec.
@@ -18,9 +19,6 @@ export function deriveSystemEnvFromSpec(
   spec: StackSpec,
   homeDir: string,
 ): Record<string, string> {
-  const uid = typeof process.getuid === "function" ? (process.getuid() ?? 1000) : 1000;
-  const gid = typeof process.getgid === "function" ? (process.getgid() ?? 1000) : 1000;
-
   const ports = SPEC_DEFAULTS.ports;
   const image = SPEC_DEFAULTS.image;
 
@@ -28,8 +26,15 @@ export function deriveSystemEnvFromSpec(
 
   // Paths
   result["OP_HOME"] = homeDir;
-  result["OP_UID"] = String(uid);
-  result["OP_GID"] = String(gid);
+
+  // Operator UID/GID — auto-detect from OP_HOME owner (or process UID
+  // as fallback). Skipped on Windows where containers run in WSL2 and
+  // OP_UID has no meaning on the host process.
+  const ids = resolveOperatorIds(homeDir);
+  if (ids) {
+    result["OP_UID"] = String(ids.uid);
+    result["OP_GID"] = String(ids.gid);
+  }
   // Image
   result["OP_IMAGE_NAMESPACE"] = image.namespace;
   result["OP_IMAGE_TAG"] = image.tag;
