@@ -21,6 +21,9 @@ import {
   getRegistryAddonConfig,
   listAvailableAddonIds,
   getAddonServiceNames,
+  getAddonProfiles,
+  getAddonProfileSelection,
+  setAddonProfileSelection,
   enableAddon,
   disableAddonByName,
   setAddonEnabled,
@@ -389,6 +392,67 @@ describe("materialized registry catalog", () => {
     expect(backupDir!.startsWith(join(actualHome, 'backups'))).toBe(true);
     expect(existsSync(join(backupDir!, 'config', 'stack.yml'))).toBe(true);
     expect(existsSync(join(otherHome, 'backups', 'config', 'stack.yml'))).toBe(false);
+  });
+
+  it("parses compose profiles + openpalm.profile.* labels per addon", () => {
+    const sourceRoot = join(tmpDir, 'repo');
+    const addonDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'addons', 'voice');
+    const automationsDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'automations');
+
+    mkdirSync(addonDir, { recursive: true });
+    mkdirSync(automationsDir, { recursive: true });
+    writeFileSync(
+      join(addonDir, 'compose.yml'),
+      [
+        'services:',
+        '  voice:',
+        '    profiles: [cpu]',
+        '    image: openpalm/voice:cpu',
+        '    labels:',
+        '      openpalm.profile.label: CPU',
+        '      openpalm.profile.default: "true"',
+        '  voice-cuda:',
+        '    profiles: [cuda]',
+        '    image: openpalm/voice:cuda',
+        '    labels:',
+        '      openpalm.profile.label: NVIDIA',
+        '      openpalm.profile.requires: nvidia-container-toolkit',
+        '',
+      ].join('\n'),
+    );
+    writeFileSync(join(addonDir, '.env.schema'), 'VOICE=\n');
+    writeFileSync(join(automationsDir, 'cleanup.md'), '---\ndescription: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n---\n');
+
+    materializeRegistryCatalog(sourceRoot);
+
+    const profiles = getAddonProfiles(process.env.OP_HOME!, 'voice');
+    expect(profiles).toEqual([
+      { id: 'cpu', services: ['voice'], label: 'CPU', default: true },
+      { id: 'cuda', services: ['voice-cuda'], label: 'NVIDIA', requires: 'nvidia-container-toolkit' },
+    ]);
+  });
+
+  it("round-trips addon profile selection through stack.env", () => {
+    const sourceRoot = join(tmpDir, 'repo');
+    const addonDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'addons', 'voice');
+    const automationsDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'automations');
+
+    mkdirSync(addonDir, { recursive: true });
+    mkdirSync(automationsDir, { recursive: true });
+    writeFileSync(join(addonDir, 'compose.yml'), 'services:\n  voice:\n    profiles: [cpu]\n    image: x\n');
+    writeFileSync(join(addonDir, '.env.schema'), 'VOICE=\n');
+    writeFileSync(join(automationsDir, 'cleanup.md'), '---\ndescription: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n---\n');
+
+    materializeRegistryCatalog(sourceRoot);
+
+    const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
+    mkdirSync(stackDir, { recursive: true });
+    writeFileSync(join(stackDir, 'stack.env'), '');
+
+    expect(getAddonProfileSelection(stackDir, 'voice')).toBeNull();
+    setAddonProfileSelection(stackDir, 'voice', 'cuda');
+    expect(getAddonProfileSelection(stackDir, 'voice')).toBe('cuda');
+    expect(readFileSync(join(stackDir, 'stack.env'), 'utf-8')).toContain('OP_VOICE_PROFILE=cuda');
   });
 
   it("installs and uninstalls automations through stash/tasks", () => {

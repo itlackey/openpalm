@@ -244,9 +244,29 @@ export async function deleteUserVaultKey(key: string): Promise<{ ok: boolean }> 
 
 // ── Voice Config ────────────────────────────────────────────────────────
 
-export async function fetchVoiceConfig(): Promise<{ tts: Record<string, unknown>; stt: Record<string, unknown> }> {
+export type VoiceAddonProfile = {
+  id: string;
+  services: string[];
+  label?: string;
+  requires?: string;
+  default?: boolean;
+};
+export type VoiceAddonInfo = {
+  profiles: VoiceAddonProfile[];
+  selectedProfile: string | null;
+};
+
+export async function fetchVoiceConfig(): Promise<{
+  tts: Record<string, unknown>;
+  stt: Record<string, unknown>;
+  addon?: VoiceAddonInfo;
+}> {
   const res = await requireOk(await request('GET', '/admin/voice'));
-  return (await res.json()) as { tts: Record<string, unknown>; stt: Record<string, unknown> };
+  return (await res.json()) as {
+    tts: Record<string, unknown>;
+    stt: Record<string, unknown>;
+    addon?: VoiceAddonInfo;
+  };
 }
 
 export type VoiceAddonStep = { step: 'enable' | 'compose-up' | 'healthy'; ok: boolean; detail?: string };
@@ -259,7 +279,7 @@ export type SaveVoiceResult = {
   };
 };
 
-export async function saveVoiceConfig(config: { tts?: unknown; stt?: unknown }): Promise<SaveVoiceResult> {
+export async function saveVoiceConfig(config: { tts?: unknown; stt?: unknown; profile?: string }): Promise<SaveVoiceResult> {
   const res = await request('PUT', '/admin/voice', config);
   // 401 still throws so the auth gate can re-arm.
   if (res.status === 401) {

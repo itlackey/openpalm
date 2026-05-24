@@ -43,6 +43,7 @@ export {
 // ── Registry Catalog ─────────────────────────────────────────────────────
 export type {
   AddonMutationResult,
+  AddonProfile,
   RegistryAutomationEntry,
   RegistryComponentEntry,
   RegistryAddonConfig,
@@ -57,6 +58,9 @@ export {
   getRegistryAutomation,
   getRegistryAddonConfig,
   getAddonServiceNames,
+  getAddonProfiles,
+  getAddonProfileSelection,
+  setAddonProfileSelection,
   listAvailableAddonIds,
   listEnabledAddonIds,
   enableAddon,

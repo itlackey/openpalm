@@ -1,11 +1,18 @@
 # Addon: voice — bundled Kokoro TTS + Whisper STT in one container
 # (openpalm/voice image). OpenAI-compatible /v1/audio/speech and
 # /v1/audio/transcriptions. LAN-only — no host port binding. Other
-# services reach it as http://voice:8880 on assistant_net. CPU variant
-# by default; layer gpu.compose.yml (same directory) on top to flip to
-# the CUDA-12.1 build.
+# services reach it as http://voice:8880 on assistant_net.
+#
+# Hardware variants are exposed as Docker Compose profiles. The UI
+# (Voice Settings tab) lists every service whose `profiles:` is set,
+# reads its `openpalm.profile.*` labels, and writes the user's choice to
+# OP_VOICE_PROFILE in stack.env. composeUp then passes
+# --profile $OP_VOICE_PROFILE so exactly one variant runs at a time.
+# All variants share the network alias "voice", so dependents reach the
+# service as http://voice:8880 regardless of which profile is active.
 services:
   voice:
+    profiles: [cpu]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-${OP_IMAGE_TAG:-v0.11.0}-cpu}
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
@@ -14,13 +21,6 @@ services:
       OP_VOICE_WHISPER_MODEL: "${OP_VOICE_WHISPER_MODEL:-base.en}"
       OP_VOICE_KOKORO_VOICE: "${OP_VOICE_KOKORO_VOICE:-bf_isabella}"
       OP_VOICE_LOG_LEVEL: "${OP_VOICE_LOG_LEVEL:-info}"
-    # Loopback-only host binding. The UI server runs on the host (via
-    # Electron or `bun run ui serve`) and proxies STT/TTS through
-    # /api/transcribe + the chat endpoint; both reach the voice
-    # container as http://127.0.0.1:8880. Override the host port via
-    # OP_VOICE_PORT_HOST if 8880 is taken; the bind address stays on
-    # loopback (no LAN exposure) by default — mirrors the assistant
-    # container's pattern.
     ports:
       - "${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT_HOST:-8880}:8880"
     volumes:
@@ -38,3 +38,83 @@ services:
       openpalm.icon: mic
       openpalm.category: voice
       openpalm.healthcheck: http://voice:8880/health
+      openpalm.profile.label: CPU
+      openpalm.profile.default: "true"
+
+  voice-cuda:
+    profiles: [cuda]
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-${OP_IMAGE_TAG:-v0.11.0}-cu121}
+    restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    environment:
+      OP_VOICE_PORT: "8880"
+      OP_VOICE_WHISPER_MODEL: "${OP_VOICE_WHISPER_MODEL:-base.en}"
+      OP_VOICE_KOKORO_VOICE: "${OP_VOICE_KOKORO_VOICE:-bf_isabella}"
+      OP_VOICE_LOG_LEVEL: "${OP_VOICE_LOG_LEVEL:-info}"
+    ports:
+      - "${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT_HOST:-8880}:8880"
+    volumes:
+      - ${OP_HOME}/state/voice/models:/models
+    networks:
+      assistant_net:
+        aliases: [voice]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8880/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+    labels:
+      openpalm.name: OpenPalm Voice
+      openpalm.description: Kokoro TTS + Whisper STT on NVIDIA CUDA 12.1
+      openpalm.icon: mic
+      openpalm.category: voice
+      openpalm.healthcheck: http://voice:8880/health
+      openpalm.profile.label: NVIDIA (CUDA 12.1)
+      openpalm.profile.requires: nvidia-container-toolkit
+
+  voice-rocm:
+    profiles: [rocm]
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-${OP_IMAGE_TAG:-v0.11.0}-rocm6}
+    restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    environment:
+      OP_VOICE_PORT: "8880"
+      OP_VOICE_WHISPER_MODEL: "${OP_VOICE_WHISPER_MODEL:-base.en}"
+      OP_VOICE_KOKORO_VOICE: "${OP_VOICE_KOKORO_VOICE:-bf_isabella}"
+      OP_VOICE_LOG_LEVEL: "${OP_VOICE_LOG_LEVEL:-info}"
+      HSA_OVERRIDE_GFX_VERSION: "${HSA_OVERRIDE_GFX_VERSION:-}"
+    ports:
+      - "${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT_HOST:-8880}:8880"
+    volumes:
+      - ${OP_HOME}/state/voice/models:/models
+    networks:
+      assistant_net:
+        aliases: [voice]
+    devices:
+      - "/dev/kfd"
+      - "/dev/dri"
+    group_add:
+      - video
+      - render
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8880/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+    labels:
+      openpalm.name: OpenPalm Voice
+      openpalm.description: Kokoro TTS + Whisper STT on AMD ROCm 6.x
+      openpalm.icon: mic
+      openpalm.category: voice
+      openpalm.healthcheck: http://voice:8880/health
+      openpalm.profile.label: AMD (ROCm 6.x)
+      openpalm.profile.requires: amdgpu kernel module

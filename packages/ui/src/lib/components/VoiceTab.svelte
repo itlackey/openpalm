@@ -12,7 +12,7 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { fetchVoiceConfig, saveVoiceConfig } from '$lib/api.js';
+	import { fetchVoiceConfig, saveVoiceConfig, type VoiceAddonProfile } from '$lib/api.js';
 	import { notifications } from '$lib/notifications.svelte.js';
 
 	interface Props { tokenStored: boolean; }
@@ -46,6 +46,11 @@
 		stt: { remoteConfigured: false, remoteReachable: false },
 		tts: { remoteConfigured: false, remoteReachable: false },
 	});
+	let addonProfiles = $state<VoiceAddonProfile[]>([]);
+	let selectedProfile = $state<string>('');
+	const wantsOpenpalmVoice = $derived(
+		tts.engine === 'openpalm-voice' || stt.engine === 'openpalm-voice',
+	);
 
 	// Browser Web Speech availability — probed once on mount.
 	let browserSttAvailable = $state(false);
@@ -80,6 +85,13 @@
 			stt = readSection(res.stt as Record<string, unknown> | undefined, 'stt');
 			const a = (res as { availability?: Availability }).availability;
 			if (a) availability = a;
+			if (res.addon) {
+				addonProfiles = res.addon.profiles ?? [];
+				selectedProfile =
+					res.addon.selectedProfile ??
+					(addonProfiles.find((p) => p.default) ?? addonProfiles[0])?.id ??
+					'';
+			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load voice settings.';
 		} finally {
@@ -134,6 +146,7 @@
 			const result = await saveVoiceConfig({
 				tts: buildPayload(tts, 'tts'),
 				stt: buildPayload(stt, 'stt'),
+				...(wantsOpenpalmVoice && selectedProfile ? { profile: selectedProfile } : {}),
 			});
 
 			if (bumpTimer) {
@@ -218,6 +231,33 @@
 			Configure how the assistant listens and speaks. Choose an engine for each;
 			the in-app mic uses STT and the optional auto-speak toggle uses TTS.
 		</p>
+
+		{#if wantsOpenpalmVoice && addonProfiles.length > 0}
+			<section class="engine-section">
+				<h3 class="engine-heading">Hardware profile</h3>
+				<p class="engine-subheading">Which prebuilt openpalm/voice image runs in the container.</p>
+				<div class="form-field">
+					<label class="form-label" for="voice-profile">Profile</label>
+					<select
+						id="voice-profile"
+						class="form-input"
+						value={selectedProfile}
+						onchange={(e) => selectedProfile = (e.currentTarget as HTMLSelectElement).value}
+					>
+						{#each addonProfiles as profile (profile.id)}
+							<option value={profile.id}>
+								{profile.label ?? profile.id}{profile.default ? ' (default)' : ''}
+							</option>
+						{/each}
+					</select>
+					{#if addonProfiles.find((p) => p.id === selectedProfile)?.requires}
+						<span class="field-hint">
+							Requires: {addonProfiles.find((p) => p.id === selectedProfile)?.requires}
+						</span>
+					{/if}
+				</div>
+			</section>
+		{/if}
 
 		<section class="engine-section">
 			<h3 class="engine-heading">Text-to-Speech</h3>

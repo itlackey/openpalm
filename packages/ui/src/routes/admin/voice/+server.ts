@@ -11,12 +11,16 @@ import { getState } from '$lib/server/state.js';
 import {
   buildComposeOptions,
   composeUp,
+  getAddonProfiles,
+  getAddonProfileSelection,
   listEnabledAddonIds,
   parseComposeStderr,
   readStackEnv,
   setAddonEnabled,
+  setAddonProfileSelection,
   writeVoiceVars,
 } from '@openpalm/lib';
+import type { AddonProfile } from '@openpalm/lib';
 import {
   errorResponse,
   getRequestId,
@@ -51,6 +55,11 @@ async function probeReachable(baseURL: string): Promise<boolean> {
   }
 }
 
+function resolveDefaultProfile(profiles: AddonProfile[]): string | null {
+  if (profiles.length === 0) return null;
+  return (profiles.find((p) => p.default) ?? profiles[0]).id;
+}
+
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const authError = requireAdmin(event, requestId);
@@ -61,6 +70,10 @@ export const GET: RequestHandler = async (event) => {
 
   const ttsBaseURL = env['TTS_BASE_URL'] ?? '';
   const sttBaseURL = env['STT_BASE_URL'] ?? '';
+
+  const profiles = getAddonProfiles(state.homeDir, VOICE_ADDON);
+  const selectedProfile =
+    getAddonProfileSelection(state.stackDir, VOICE_ADDON) ?? resolveDefaultProfile(profiles);
 
   const [sttReachable, ttsReachable] = await Promise.all([
     probeReachable(sttBaseURL),
@@ -93,6 +106,10 @@ export const GET: RequestHandler = async (event) => {
         remoteConfigured: Boolean(ttsBaseURL),
         remoteReachable: ttsReachable,
       },
+    },
+    addon: {
+      profiles,
+      selectedProfile,
     },
   }, requestId);
 };
@@ -239,6 +256,32 @@ export const PUT: RequestHandler = async (event) => {
     return jsonResponse(200, { ok: true }, requestId);
   }
 
+  // Resolve which compose profile (cpu/cuda/rocm/…) to bring up. Body
+  // wins; falls back to whatever is already in stack.env; if neither is
+  // set, picks the profile marked openpalm.profile.default in the
+  // addon compose.yml (else the first one). Unknown profile ids are
+  // rejected against the addon's declared profile catalog.
+  const availableProfiles = getAddonProfiles(state.homeDir, VOICE_ADDON);
+  const requestedProfile = typeof b.profile === 'string' ? b.profile.trim() : '';
+  let activeProfile: string | null = null;
+  if (requestedProfile) {
+    if (!availableProfiles.some((p) => p.id === requestedProfile)) {
+      return errorResponse(
+        400,
+        'invalid_profile',
+        `Unknown voice profile "${requestedProfile}". Available: ${availableProfiles.map((p) => p.id).join(', ') || '(none)'}`,
+        {},
+        requestId,
+      );
+    }
+    activeProfile = requestedProfile;
+    setAddonProfileSelection(state.stackDir, VOICE_ADDON, activeProfile);
+  } else {
+    activeProfile =
+      getAddonProfileSelection(state.stackDir, VOICE_ADDON) ??
+      resolveDefaultProfile(availableProfiles);
+  }
+
   const enabledIds = listEnabledAddonIds(state.homeDir);
   const wasAlreadyEnabled = enabledIds.includes(VOICE_ADDON);
 
@@ -278,9 +321,14 @@ export const PUT: RequestHandler = async (event) => {
   let composeOk = true;
   let composeErr: string | undefined;
   try {
+    const profileServices = activeProfile
+      ? (availableProfiles.find((p) => p.id === activeProfile)?.services ?? [])
+      : [];
+    const services = profileServices.length > 0 ? profileServices : [VOICE_ADDON];
     const result = await composeUp({
       ...buildComposeOptions(state),
-      services: [VOICE_ADDON],
+      services,
+      ...(activeProfile ? { profiles: [activeProfile] } : {}),
     });
     composeOk = result.ok;
     if (!result.ok) {
@@ -288,7 +336,7 @@ export const PUT: RequestHandler = async (event) => {
       // same way /admin/update does, so the toast can show "voice: pull
       // access denied" instead of an opaque exit code.
       const failures = parseComposeStderr(result.stderr);
-      const voiceFailure = failures.find((f) => f.service === VOICE_ADDON);
+      const voiceFailure = failures.find((f) => services.includes(f.service));
       composeErr = voiceFailure?.reason ?? result.stderr ?? `compose up exited ${result.code}`;
     }
   } catch (e) {

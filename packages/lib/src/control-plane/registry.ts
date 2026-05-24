@@ -12,6 +12,7 @@ import { parse as parseYaml } from 'yaml';
 import { createLogger } from '../logger.js';
 import { isChannelAddon } from './channels.js';
 import { randomHex, writeChannelSecrets } from './config-persistence.js';
+import { patchSecretsEnvFile, readStackEnv } from './secrets.js';
 import {
   resolveRegistryAddonsDir,
   resolveRegistryAutomationsDir,
@@ -337,6 +338,118 @@ export function getAddonServiceNames(homeDir: string, name: string): string[] {
   }
 
   return [];
+}
+
+export type AddonProfile = {
+  id: string;
+  services: string[];
+  label?: string;
+  requires?: string;
+  default?: boolean;
+};
+
+function readAddonProfiles(composePath: string): AddonProfile[] {
+  if (!existsSync(composePath)) return [];
+
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(readFileSync(composePath, "utf-8"));
+  } catch (error) {
+    logger.warn("failed to parse addon compose profiles", {
+      composePath,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+
+  const services = parsed && typeof parsed === "object"
+    ? (parsed as { services?: unknown }).services
+    : undefined;
+  if (!services || typeof services !== "object" || Array.isArray(services)) return [];
+
+  const byProfile = new Map<string, AddonProfile>();
+  for (const [svcName, svcRaw] of Object.entries(services as Record<string, unknown>)) {
+    if (!svcRaw || typeof svcRaw !== "object") continue;
+    const svc = svcRaw as { profiles?: unknown; labels?: unknown };
+    if (!Array.isArray(svc.profiles)) continue;
+    const profileIds = svc.profiles.filter((p): p is string => typeof p === "string");
+    if (profileIds.length === 0) continue;
+
+    const labels = readServiceLabels(svc.labels);
+    const label = labels["openpalm.profile.label"];
+    const requires = labels["openpalm.profile.requires"];
+    const isDefault = labels["openpalm.profile.default"] === "true";
+
+    for (const id of profileIds) {
+      const existing = byProfile.get(id);
+      if (existing) {
+        existing.services.push(svcName);
+        if (!existing.label && label) existing.label = label;
+        if (!existing.requires && requires) existing.requires = requires;
+        if (!existing.default && isDefault) existing.default = true;
+      } else {
+        const profile: AddonProfile = { id, services: [svcName] };
+        if (label) profile.label = label;
+        if (requires) profile.requires = requires;
+        if (isDefault) profile.default = true;
+        byProfile.set(id, profile);
+      }
+    }
+  }
+
+  return [...byProfile.values()];
+}
+
+function readServiceLabels(raw: unknown): Record<string, string> {
+  if (!raw) return {};
+  const out: Record<string, string> = {};
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      if (typeof entry !== "string") continue;
+      const eq = entry.indexOf("=");
+      if (eq < 0) continue;
+      out[entry.slice(0, eq)] = entry.slice(eq + 1);
+    }
+  } else if (typeof raw === "object") {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (v == null) continue;
+      out[k] = String(v);
+    }
+  }
+  return out;
+}
+
+export function getAddonProfiles(homeDir: string, name: string): AddonProfile[] {
+  if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
+
+  const composeCandidates = [
+    join(homeDir, "config", "stack", "addons", name, "compose.yml"),
+    join(homeDir, "state", "registry", "addons", name, "compose.yml"),
+  ];
+
+  for (const composePath of composeCandidates) {
+    const profiles = readAddonProfiles(composePath);
+    if (profiles.length > 0) return profiles;
+  }
+
+  return [];
+}
+
+function profileEnvKey(name: string): string {
+  if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
+  return `OP_${name.replace(/-/g, '_').toUpperCase()}_PROFILE`;
+}
+
+export function getAddonProfileSelection(stackDir: string, name: string): string | null {
+  const env = readStackEnv(stackDir);
+  const value = env[profileEnvKey(name)];
+  return value && value.trim() ? value.trim() : null;
+}
+
+export function setAddonProfileSelection(stackDir: string, name: string, profile: string): void {
+  const trimmed = profile.trim();
+  if (!trimmed) throw new Error('Profile id cannot be empty');
+  patchSecretsEnvFile(stackDir, { [profileEnvKey(name)]: trimmed });
 }
 
 export function enableAddon(homeDir: string, name: string): MutationResult {
