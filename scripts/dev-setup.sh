@@ -201,10 +201,12 @@ if [[ $seed_env -eq 1 ]]; then
 		cat >"$env_dest" <<USEREOF
 # OpenPalm user.env — dev environment
 # Seeded by dev-setup.sh; safe to edit.
-
-# LLM provider (Ollama for local dev)
-OPENAI_API_KEY=ollama
-OPENAI_BASE_URL=http://host.docker.internal:11434/v1
+#
+# Provider credentials are NOT seeded here — they live in OpenCode's
+# auth.json (mounted from config/auth.json). Import them from the host
+# via the Providers panel, or set OPENAI_API_KEY / OPENAI_BASE_URL
+# below if you want to override a provider globally (e.g. point the
+# openai provider at a local Ollama for offline dev).
 USEREOF
 	fi
 

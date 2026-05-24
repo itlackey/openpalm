@@ -11,6 +11,9 @@
  * - Live push: best-effort PUT to OpenCode /auth/{id} per credential.
  *   If OpenCode is unreachable, the file copy still applies and OpenCode
  *   will pick up the credentials on next restart.
+ * - Service restart: assistant + guardian are restarted after the import
+ *   so opencode.json provider blocks and user.env-derived process env are
+ *   re-read (live push only updates the auth store, not config).
  *
  * Body (optional JSON):
  *   { overwriteConflicts?: boolean }   — default false
@@ -26,9 +29,48 @@ import {
 	getRequestId,
 	parseJsonBody,
 } from '$lib/server/helpers.js';
-import { importHostOpenCode, detectHostOpenCode } from '@openpalm/lib';
+import {
+	importHostOpenCode,
+	detectHostOpenCode,
+	buildComposeOptions,
+	checkDocker,
+} from '@openpalm/lib';
+import { composeRestart } from '$lib/server/docker.js';
 import { getState } from '$lib/server/state.js';
 import { opencodeFetch } from '$lib/server/opencode/http.js';
+
+/**
+ * Restart services that hold provider state in their process env / startup config.
+ * Best-effort: the file-level import is the durable part; this is the polish
+ * that makes the change visible without the user having to bounce things by hand.
+ * OpenCode caches auth.json + opencode.json at startup, and the entrypoint
+ * sources user.env into its own env tree — both need a fresh process to pick up
+ * imported provider config.
+ */
+async function restartProviderConsumers(): Promise<{
+	restarted: string[];
+	failed: { service: string; error: string }[];
+}> {
+	const services = ['assistant', 'guardian'];
+	const docker = await checkDocker();
+	if (!docker.ok) {
+		return { restarted: [], failed: services.map((s) => ({ service: s, error: 'docker unavailable' })) };
+	}
+	const state = getState();
+	const opts = buildComposeOptions(state);
+	const restarted: string[] = [];
+	const failed: { service: string; error: string }[] = [];
+	for (const service of services) {
+		try {
+			const r = await composeRestart([service], opts);
+			if (r.ok) restarted.push(service);
+			else failed.push({ service, error: r.stderr || `exit ${r.code}` });
+		} catch (err) {
+			failed.push({ service, error: err instanceof Error ? err.message : String(err) });
+		}
+	}
+	return { restarted, failed };
+}
 
 /** Push each auth.json entry to OpenCode's /auth/{id} so the running process sees them. */
 async function pushAuthToOpenCode(authPath: string): Promise<{ pushed: number; failed: string[] }> {
@@ -89,6 +131,12 @@ export const POST: RequestHandler = async (event) => {
 		livePush = await pushAuthToOpenCode(hostStatus.authPath);
 	}
 
+	// Restart assistant + guardian so they re-read auth.json / opencode.json /
+	// user.env. Live push handles the OpenCode auth store at runtime, but
+	// opencode.json provider blocks and any provider-derived env from user.env
+	// are only loaded at process start.
+	const restart = await restartProviderConsumers();
+
 	return jsonResponse(
 		200,
 		{
@@ -97,6 +145,8 @@ export const POST: RequestHandler = async (event) => {
 			conflicts: result.conflicts,
 			livePushed: livePush.pushed,
 			livePushFailed: livePush.failed,
+			restarted: restart.restarted,
+			restartFailed: restart.failed,
 		},
 		requestId
 	);

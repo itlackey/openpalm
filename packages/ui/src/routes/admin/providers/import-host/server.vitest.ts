@@ -6,7 +6,9 @@ import { tmpdir } from 'node:os';
 import { resetState } from '$lib/server/test-helpers.js';
 import { POST } from './+server.js';
 
-// Mock importHostOpenCode + detectHostOpenCode so tests don't depend on the host filesystem
+// Mock importHostOpenCode + detectHostOpenCode so tests don't depend on the host filesystem.
+// Also mock checkDocker — without this, the post-import restart hook would talk to a
+// real docker daemon (flaky depending on the dev machine).
 vi.mock('@openpalm/lib', async (importOriginal) => {
 	const original = await importOriginal<typeof import('@openpalm/lib')>();
 	return {
@@ -16,6 +18,7 @@ vi.mock('@openpalm/lib', async (importOriginal) => {
 			conflicts: [],
 		})),
 		detectHostOpenCode: vi.fn(() => ({ providerCount: 0, credentialCount: 0 })),
+		checkDocker: vi.fn(async () => ({ ok: true, stdout: '', stderr: '', code: 0 })),
 	};
 });
 
@@ -23,8 +26,14 @@ vi.mock('$lib/server/opencode/http.js', () => ({
 	opencodeFetch: vi.fn(async () => undefined),
 }));
 
-import { importHostOpenCode, detectHostOpenCode } from '@openpalm/lib';
+// Mock the docker wrapper so composeRestart doesn't actually bounce real containers.
+vi.mock('$lib/server/docker.js', () => ({
+	composeRestart: vi.fn(async () => ({ ok: true, stdout: '', stderr: '', code: 0 })),
+}));
+
+import { importHostOpenCode, detectHostOpenCode, checkDocker } from '@openpalm/lib';
 import { opencodeFetch } from '$lib/server/opencode/http.js';
+import { composeRestart } from '$lib/server/docker.js';
 
 let rootDir = '';
 let originalHome: string | undefined;
@@ -65,6 +74,8 @@ beforeEach(() => {
 	// Default: no host OpenCode found — prevents isolation leak from real XDG paths
 	vi.mocked(detectHostOpenCode).mockReturnValue({ providerCount: 0, credentialCount: 0 });
 	vi.mocked(opencodeFetch).mockResolvedValue(undefined);
+	vi.mocked(checkDocker).mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
+	vi.mocked(composeRestart).mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
 });
 
 afterEach(() => {
@@ -154,6 +165,39 @@ describe('POST /admin/providers/import-host', () => {
 		expect(vi.mocked(opencodeFetch)).toHaveBeenCalledTimes(2);
 		expect(vi.mocked(opencodeFetch)).toHaveBeenCalledWith('/auth/openai', expect.objectContaining({ method: 'PUT' }));
 		expect(vi.mocked(opencodeFetch)).toHaveBeenCalledWith('/auth/groq', expect.objectContaining({ method: 'PUT' }));
+	});
+
+	test('restarts assistant + guardian after a successful import', async () => {
+		const res = await POST(makeEvent());
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { restarted: string[]; restartFailed: { service: string }[] };
+		expect(body.restarted).toEqual(['assistant', 'guardian']);
+		expect(body.restartFailed).toHaveLength(0);
+		expect(vi.mocked(composeRestart)).toHaveBeenCalledTimes(2);
+		expect(vi.mocked(composeRestart)).toHaveBeenCalledWith(['assistant'], expect.any(Object));
+		expect(vi.mocked(composeRestart)).toHaveBeenCalledWith(['guardian'], expect.any(Object));
+	});
+
+	test('reports restartFailed without failing the import when docker is down', async () => {
+		vi.mocked(checkDocker).mockResolvedValue({ ok: false, stdout: '', stderr: 'no daemon', code: 1 });
+		const res = await POST(makeEvent());
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { ok: boolean; restarted: string[]; restartFailed: { service: string; error: string }[] };
+		expect(body.ok).toBe(true);
+		expect(body.restarted).toHaveLength(0);
+		expect(body.restartFailed.map((f) => f.service)).toEqual(['assistant', 'guardian']);
+		expect(vi.mocked(composeRestart)).not.toHaveBeenCalled();
+	});
+
+	test('one service restart failure does not block the other', async () => {
+		vi.mocked(composeRestart)
+			.mockResolvedValueOnce({ ok: false, stdout: '', stderr: 'no such service', code: 1 })
+			.mockResolvedValueOnce({ ok: true, stdout: '', stderr: '', code: 0 });
+		const res = await POST(makeEvent());
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { restarted: string[]; restartFailed: { service: string; error: string }[] };
+		expect(body.restarted).toEqual(['guardian']);
+		expect(body.restartFailed).toEqual([{ service: 'assistant', error: 'no such service' }]);
 	});
 
 	test('live push: one provider fails → livePushFailed includes that provider ID and livePushed:1', async () => {

@@ -9,7 +9,13 @@
  */
 import { readFileSync } from 'node:fs';
 import { json } from '@sveltejs/kit';
-import { importHostOpenCode, detectHostOpenCode } from '@openpalm/lib';
+import {
+  importHostOpenCode,
+  detectHostOpenCode,
+  buildComposeOptions,
+  checkDocker,
+} from '@openpalm/lib';
+import { composeRestart } from '$lib/server/docker.js';
 import { getState } from '$lib/server/state.js';
 import { opencodeFetch } from '$lib/server/opencode/http.js';
 import type { RequestHandler } from './$types';
@@ -49,6 +55,31 @@ async function pushAuthToOpenCode(authPath: string): Promise<PushResult> {
   return { pushed, errors };
 }
 
+/** Restart provider-consuming services so they re-read auth.json / user.env. */
+async function restartProviderConsumers(state: ReturnType<typeof getState>): Promise<{
+  restarted: string[];
+  failed: { service: string; error: string }[];
+}> {
+  const services = ['assistant', 'guardian'];
+  const docker = await checkDocker();
+  if (!docker.ok) {
+    return { restarted: [], failed: services.map((s) => ({ service: s, error: 'docker unavailable' })) };
+  }
+  const opts = buildComposeOptions(state);
+  const restarted: string[] = [];
+  const failed: { service: string; error: string }[] = [];
+  for (const service of services) {
+    try {
+      const r = await composeRestart([service], opts);
+      if (r.ok) restarted.push(service);
+      else failed.push({ service, error: r.stderr || `exit ${r.code}` });
+    } catch (err) {
+      failed.push({ service, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return { restarted, failed };
+}
+
 export const POST: RequestHandler = async () => {
   try {
     const state = getState();
@@ -58,6 +89,7 @@ export const POST: RequestHandler = async () => {
     if (hostStatus.authPath) {
       pushResult = await pushAuthToOpenCode(hostStatus.authPath);
     }
+    const restart = await restartProviderConsumers(state);
     return json({
       ok: true,
       imported: result.imported,
@@ -65,6 +97,8 @@ export const POST: RequestHandler = async () => {
       livePushed: pushResult.pushed.length,
       pushedProviders: pushResult.pushed,
       errors: pushResult.errors,
+      restarted: restart.restarted,
+      restartFailed: restart.failed,
     });
   } catch (err) {
     return json({ ok: false, error: err instanceof Error ? err.message : 'Import failed' }, { status: 500 });
