@@ -15,6 +15,11 @@ Options:
                       Repeat to enable multiple dev addons.
   --pass              Initialize a pass backend for secret storage (requires GPG key).
   --gpg-id <key>      GPG key ID for the pass backend (required with --pass).
+  --rebuild-voice     Force a rebuild of openpalm/voice:dev-cpu (~5-15 min cold,
+                      seconds on a warm cache). Default: build only when missing.
+  --skip-voice-build  Skip the openpalm/voice:dev-cpu build entirely. Enabling
+                      the voice addon will fail with "image not found" until
+                      built manually via \`docker build -t openpalm/voice:dev-cpu core/voice\`.
   -h, --help          Show this help
 EOF
 }
@@ -24,6 +29,8 @@ force=0
 use_pass=0
 gpg_id=""
 enabled_addons=()
+rebuild_voice=0
+skip_voice_build=0
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -50,6 +57,14 @@ while [[ $# -gt 0 ]]; do
 	--gpg-id)
 		gpg_id="${2:-}"
 		shift 2
+		;;
+	--rebuild-voice)
+		rebuild_voice=1
+		shift
+		;;
+	--skip-voice-build)
+		skip_voice_build=1
+		shift
 		;;
 	-h | --help)
 		usage
@@ -310,6 +325,36 @@ if [[ $EUID -ne 0 ]]; then
 	chown -R "$(id -u):$(id -g)" "$CONFIG_DIR" "$STASH_DIR" "$DATA_DIR" "$LOGS_DIR" 2>/dev/null || true
 else
 	echo "Note: running as root; ownership left as-is." >&2
+fi
+
+# ── Build openpalm/voice:dev-cpu (skip if present unless forced) ─
+# The voice addon's compose overlay references openpalm/voice:dev-cpu
+# (resolved from OP_IMAGE_NAMESPACE + OP_IMAGE_TAG + the -cpu suffix in
+# the overlay). The image isn't on any public registry, so without a
+# local build the addon silently fails to start: docker compose tries
+# to pull, gets "access denied", and the UI's update endpoint reports a
+# successful restart of unrelated services (see PR review for the fix
+# to surface pull failures upstream). Building here makes "enable
+# voice → apply" Just Work after `bun run dev:setup`.
+if [[ $skip_voice_build -eq 1 ]]; then
+	echo "Skipping voice image build (--skip-voice-build)."
+elif ! command -v docker &>/dev/null; then
+	echo "WARNING: docker CLI not found; skipping voice image build." >&2
+	echo "  Install docker, then run: docker build -t openpalm/voice:dev-cpu core/voice" >&2
+elif ! docker info >/dev/null 2>&1; then
+	echo "WARNING: docker daemon unreachable; skipping voice image build." >&2
+elif [[ $rebuild_voice -eq 1 ]] || ! docker image inspect openpalm/voice:dev-cpu >/dev/null 2>&1; then
+	echo "Building openpalm/voice:dev-cpu from core/voice/ (first build ~5-15 min;"
+	echo "subsequent rebuilds use the layer cache and complete in seconds)…"
+	if docker build -t openpalm/voice:dev-cpu "$ROOT_DIR/core/voice"; then
+		echo "Voice image built: openpalm/voice:dev-cpu"
+	else
+		echo "WARNING: voice image build failed. The voice addon won't start." >&2
+		echo "  Retry manually: docker build -t openpalm/voice:dev-cpu core/voice" >&2
+	fi
+else
+	echo "Voice image already present (openpalm/voice:dev-cpu) — skipping build."
+	echo "  Use --rebuild-voice to force a rebuild."
 fi
 
 echo "Dev setup complete."
