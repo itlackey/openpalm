@@ -161,9 +161,8 @@
 					id: 'openpalm-voice',
 					name: 'OpenPalm Voice',
 					desc: 'Local Kokoro TTS + Whisper STT bundled together.',
-					subtitle: 'Coming in a follow-up — install via Add-ons when available.',
+					subtitle: 'Uses the bundled openpalm/voice addon. Enable it in Add-ons first.',
 					selected: tts.engine === 'openpalm-voice',
-					disabled: true,
 					recommended: true,
 				})}
 				{@render engineCard({
@@ -239,9 +238,8 @@
 					id: 'openpalm-voice',
 					name: 'OpenPalm Voice',
 					desc: 'Local Kokoro TTS + Whisper STT bundled together.',
-					subtitle: 'Coming in a follow-up — install via Add-ons when available.',
+					subtitle: 'Uses the bundled openpalm/voice addon. Enable it in Add-ons first.',
 					selected: stt.engine === 'openpalm-voice',
-					disabled: true,
 					recommended: true,
 				})}
 				{@render engineCard({

@@ -127,6 +127,15 @@ export async function initVoice(): Promise<void> {
 		voiceState.sttEngine = 'disabled';
 	}
 
+	// Friendly default: if no engine was configured server-side AND the
+	// browser natively supports SpeechRecognition (Chrome / Edge), default
+	// to the browser engine so the mic appears immediately. This is
+	// client-side only — picking an explicit engine in admin → voice
+	// overrides on the next page load.
+	if (voiceState.sttEngine === 'disabled' && getSpeechRecognitionCtor()) {
+		voiceState.sttEngine = 'browser';
+	}
+
 	voiceState.sttSupported = resolveEngineSupport(voiceState.sttEngine);
 }
 

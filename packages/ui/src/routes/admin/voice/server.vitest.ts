@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { resetState, trackDir, cleanupTempDirs } from '$lib/server/test-helpers.js';
 import { getState } from '$lib/server/state.js';
+import { readStackEnv } from '@openpalm/lib';
 import { GET, PUT } from './+server.js';
 
 function makeTempDir(): string {
@@ -65,14 +66,42 @@ describe('PUT /admin/voice', () => {
 		expect(res.status).toBe(401);
 	});
 
-	test('rejects engine "openpalm-voice" with clear message', async () => {
+	test('accepts engine "openpalm-voice" and auto-fills the preset baseURL/model', async () => {
+		// The user selects the engine in the UI; the form may not include
+		// baseURL/model at all. The route should fill those in from the
+		// openpalm/voice addon preset (loopback host port + canonical model
+		// names) so writeVoiceVars receives a complete config.
 		const res = await PUT(makePutEvent({
+			tts: { engine: 'openpalm-voice' },
 			stt: { engine: 'openpalm-voice' },
 		}));
-		expect(res.status).toBe(400);
-		const body = (await res.json()) as { error: string; message: string };
-		expect(body.error).toBe('invalid_stt');
-		expect(body.message).toMatch(/OpenPalm Voice is not available/i);
+		expect(res.status).toBe(200);
+
+		const state = getState();
+		const env = readStackEnv(state.stackDir);
+		expect(env['TTS_ENGINE']).toBe('openpalm-voice');
+		expect(env['STT_ENGINE']).toBe('openpalm-voice');
+		// Preset URL points at the loopback host port the voice addon
+		// publishes (config in OP_VOICE_PORT_HOST; defaults to 8880).
+		expect(env['TTS_BASE_URL']).toMatch(/^http:\/\/127\.0\.0\.1:\d+/);
+		expect(env['STT_BASE_URL']).toMatch(/^http:\/\/127\.0\.0\.1:\d+/);
+		expect(env['TTS_MODEL']).toBe('kokoro');
+		expect(env['STT_MODEL']).toBe('whisper-1');
+		expect(env['TTS_VOICE']).toBe('bf_isabella');
+	});
+
+	test('openpalm-voice respects user-supplied overrides', async () => {
+		const res = await PUT(makePutEvent({
+			tts: { engine: 'openpalm-voice', baseURL: 'http://elsewhere:9999', voice: 'af_heart' },
+		}));
+		expect(res.status).toBe(200);
+
+		const state = getState();
+		const env = readStackEnv(state.stackDir);
+		expect(env['TTS_BASE_URL']).toBe('http://elsewhere:9999');
+		expect(env['TTS_VOICE']).toBe('af_heart');
+		// Model still defaults since the user didn't override.
+		expect(env['TTS_MODEL']).toBe('kokoro');
 	});
 
 	test('rejects engine "remote" without baseURL', async () => {

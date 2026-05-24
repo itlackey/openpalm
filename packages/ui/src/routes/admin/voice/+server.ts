@@ -104,18 +104,49 @@ function readSection(raw: Record<string, unknown> | undefined, kind: 'tts' | 'st
   return section;
 }
 
+// Preset values for the bundled openpalm/voice addon. The voice container
+// exposes both endpoints on a single host:port and the UI server reaches
+// it through the loopback binding in the voice addon's compose overlay.
+// Host port is overridable via OP_VOICE_PORT_HOST in stack.env (defaults
+// to 8880, matching the container's internal port).
+function openpalmVoiceBaseURL(): string {
+  const port = process.env.OP_VOICE_PORT_HOST?.trim() || '8880';
+  return `http://127.0.0.1:${port}`;
+}
+
+const OPENPALM_VOICE_TTS_MODEL = 'kokoro';
+const OPENPALM_VOICE_STT_MODEL = 'whisper-1';
+const OPENPALM_VOICE_DEFAULT_VOICE = 'bf_isabella';
+
+/**
+ * For `engine === 'openpalm-voice'`, fill in baseURL/model with the addon's
+ * preset values when the user didn't provide them. This is the auto-config
+ * that makes "select OpenPalm Voice → Save" Just Work as long as the addon
+ * is enabled. The user can still override (e.g. point at a different
+ * voice host on the LAN).
+ */
+function applyOpenPalmVoicePreset(section: VoiceSection, kind: 'tts' | 'stt'): void {
+  if (section.engine !== 'openpalm-voice') return;
+  if (!section.baseURL || !section.baseURL.trim()) section.baseURL = openpalmVoiceBaseURL();
+  if (!section.model || !section.model.trim()) {
+    section.model = kind === 'tts' ? OPENPALM_VOICE_TTS_MODEL : OPENPALM_VOICE_STT_MODEL;
+  }
+  if (kind === 'tts' && (!section.voice || !section.voice.trim())) {
+    section.voice = OPENPALM_VOICE_DEFAULT_VOICE;
+  }
+}
+
 function validateSection(section: VoiceSection | null, kind: 'tts' | 'stt'): string | null {
   if (!section || !section.engine) return null;
-  // OpenPalm Voice slot is reserved in the UI but the addon ships later.
-  if (section.engine === 'openpalm-voice') {
-    return 'OpenPalm Voice is not available in this build. Pick a different engine.';
-  }
-  // 'browser' engines store no server-side URL — fine.
+  // `browser` engines store no server-side URL — fine.
   if (section.engine === 'browser' || section.engine === 'browser-stt' || section.engine === 'browser-tts') {
     return null;
   }
   if (section.engine.startsWith('skip-')) return null;
-  // Everything else is a remote engine; require a baseURL.
+  // openpalm-voice gets its baseURL/model auto-filled from the preset
+  // before validation runs, so it always satisfies the remote check.
+  // Any remote (including openpalm-voice with a user-supplied URL) must
+  // end up with a non-empty baseURL.
   if (!section.baseURL || !section.baseURL.trim()) {
     return `Remote ${kind.toUpperCase()} requires an endpoint URL.`;
   }
@@ -142,6 +173,12 @@ export const PUT: RequestHandler = async (event) => {
   const b = body as Record<string, unknown>;
   const ttsSection = readSection(b.tts as Record<string, unknown> | undefined, 'tts');
   const sttSection = readSection(b.stt as Record<string, unknown> | undefined, 'stt');
+
+  // Apply the openpalm-voice preset BEFORE validation — selecting the
+  // engine alone (no URL/model in the form) is enough; the preset fills
+  // the gaps so the remote-baseURL check passes.
+  if (ttsSection) applyOpenPalmVoicePreset(ttsSection, 'tts');
+  if (sttSection) applyOpenPalmVoicePreset(sttSection, 'stt');
 
   const ttsErr = validateSection(ttsSection, 'tts');
   if (ttsErr) return errorResponse(400, 'invalid_tts', ttsErr, {}, requestId);
