@@ -36,12 +36,59 @@ import {
   requireAdmin,
 } from '$lib/server/helpers.js';
 import { translateDockerError } from '$lib/server/voice-errors.js';
+import { withSerialQueue } from '$lib/server/serial-queue.js';
 
 const VOICE_ADDON = 'voice';
 // compose.yml advertises start_period: 180s. The probe must wait at least
 // that long on a cold-disk first launch (model download + warm-up).
 const VOICE_PROBE_TIMEOUT_MS = 180_000;
 const VOICE_PROBE_INTERVAL_MS = 1_000;
+
+// ── Background-pull job state ────────────────────────────────────────
+// First-time image pulls can take many minutes on slow connections.
+// Browser fetch timeouts (90–120s typical) and the route's 180s health
+// poll both fire long before a 2–8 GB pull finishes — operators end up
+// staring at a "network error" while the pull is still running. To
+// decouple, when we detect an absent large-tag image we kick off the
+// long work (composeUp + health poll) in the background, return 202
+// immediately, and have the UI poll GET /admin/voice for status.
+type VoiceJobState = 'pulling' | 'starting' | 'healthy' | 'error';
+type VoiceJobStep = { step: string; ok: boolean; detail?: string };
+export type VoiceActiveJob = {
+  state: VoiceJobState;
+  steps: VoiceJobStep[];
+  error?: string;
+  startedAt: number;
+  finishedAt?: number;
+  profile?: string;
+};
+const JOB_RETAIN_MS = 5 * 60_000;
+const activeJobs = new Map<string, VoiceActiveJob>();
+
+function setJob(addon: string, patch: Partial<VoiceActiveJob>): VoiceActiveJob {
+  const existing = activeJobs.get(addon);
+  const next: VoiceActiveJob = existing
+    ? { ...existing, ...patch }
+    : {
+        state: 'pulling',
+        steps: [],
+        startedAt: Date.now(),
+        ...patch,
+      };
+  activeJobs.set(addon, next);
+  return next;
+}
+
+function getActiveJob(addon: string): VoiceActiveJob | undefined {
+  const job = activeJobs.get(addon);
+  if (!job) return undefined;
+  const age = Date.now() - (job.finishedAt ?? job.startedAt);
+  if (age > JOB_RETAIN_MS) {
+    activeJobs.delete(addon);
+    return undefined;
+  }
+  return job;
+}
 
 const REACHABILITY_TIMEOUT_MS = 1_500;
 const PORT_PROBE_TIMEOUT_MS = 750;
@@ -134,6 +181,7 @@ export const GET: RequestHandler = async (event) => {
     addon: {
       profiles,
       selectedProfile,
+      ...(getActiveJob(VOICE_ADDON) ? { activeJob: getActiveJob(VOICE_ADDON) } : {}),
     },
   }, requestId);
 };
@@ -471,17 +519,10 @@ function writeRootlessOverlayIfNeeded(homeDir: string): string | null {
 // Per-process serialization: rapid double-saves (double-click on Save,
 // or two operators racing) used to race two composeUp --force-recreate
 // invocations on the same project, killing each other's containers
-// mid-healthcheck. The mutex chains saves through one promise so the
-// second waits for the first to finish before starting its own work.
-let putInFlight: Promise<Response> = Promise.resolve(
-  new Response(null, { status: 204 }),
-);
-
-export const PUT: RequestHandler = async (event) => {
-  const next = putInFlight.then(() => handlePut(event));
-  // Don't leak prior rejections into the queue.
-  putInFlight = next.catch(() => new Response(null, { status: 204 }));
-  return next;
+// mid-healthcheck. The serial queue chains saves through one promise so
+// the second waits for the first to finish before starting its own work.
+export const PUT: RequestHandler = (event) => {
+  return withSerialQueue('admin:voice:put', () => handlePut(event));
 };
 
 async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response> {
@@ -663,8 +704,9 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
 
   // ── Pre-flight image inspect ─────────────────────────────────────
   // If the image is missing locally AND its tag is a known large one,
-  // emit a `pulling` step so the toast can show "first-time download
-  // — several minutes for several GB" instead of just spinning.
+  // we'll fork the long work (composeUp + healthcheck) into a
+  // background job so the UI can return immediately and poll
+  // GET /admin/voice for progress.
   const profileServices = activeProfile
     ? (availableProfiles.find((p) => p.id === activeProfile)?.services ?? [])
     : [];
@@ -672,11 +714,13 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
 
   const composeFilesBase = buildComposeOptions(state).files;
   const primaryService = services[0];
+  let backgroundPull = false;
   if (primaryService && !inVitest) {
     const imageRef = await resolveServiceImage(composeFilesBase, primaryService);
     if (imageRef && isLargeImageTag(imageRef)) {
       const present = await dockerImagePresent(imageRef);
       if (!present) {
+        backgroundPull = true;
         steps.push({
           step: 'pulling',
           ok: true,
@@ -741,17 +785,125 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
     }
   }
 
-  // composeUp the voice service. compose pulls the image (no-op if
-  // already present), creates the container, starts it. We wait for
-  // the /health endpoint to return 200 so the operator gets a real
-  // "ready" signal instead of a "kicked off" one.
+  // ── Background-pull short-circuit ────────────────────────────────
+  // When the image is missing AND large, fork the rest of the work
+  // (composeStop, composeUp, /health poll) into a job that updates the
+  // module-level activeJobs map. Return 202 immediately so the
+  // browser/SvelteKit fetch doesn't time out during the multi-minute
+  // pull. UI polls GET /admin/voice for the activeJob status.
+  if (backgroundPull) {
+    setJob(VOICE_ADDON, {
+      state: 'pulling',
+      steps: [...steps],
+      startedAt: Date.now(),
+      profile: activeProfile ?? undefined,
+      finishedAt: undefined,
+      error: undefined,
+    });
+    // Fire-and-forget. The job runner writes its own terminal state into
+    // activeJobs; we never await it.
+    void runBringUpJob({
+      state,
+      services,
+      activeProfile,
+      extraFiles,
+      availableProfiles,
+      baseSteps: [...steps],
+    });
+    return jsonResponse(
+      202,
+      {
+        ok: true,
+        voiceAddon: {
+          wasAlreadyEnabled,
+          status: 'pulling',
+          steps,
+          message:
+            'Voice image is downloading in the background (~2–8 GB). ' +
+            'Poll GET /admin/voice for progress; UI auto-refreshes.',
+        },
+      },
+      requestId,
+    );
+  }
+
+  // ── Synchronous path ─────────────────────────────────────────────
+  // The image is already present (or we couldn't tell). Run the
+  // compose-up + health poll inline so the caller gets the terminal
+  // state in one round trip.
+  const outcome = await runBringUp({
+    state,
+    services,
+    activeProfile,
+    extraFiles,
+    availableProfiles,
+    steps,
+  });
+
+  if (!outcome.composeOk) {
+    return jsonResponse(
+      502,
+      {
+        ok: false,
+        voiceAddon: {
+          wasAlreadyEnabled,
+          steps: outcome.steps,
+          error: `Voice addon failed to start: ${outcome.composeErr ?? 'unknown error'}`,
+        },
+      },
+      requestId,
+    );
+  }
+
+  return jsonResponse(
+    outcome.healthy || outcome.warming ? 200 : 502,
+    {
+      ok: outcome.healthy || outcome.warming,
+      voiceAddon: {
+        wasAlreadyEnabled,
+        steps: outcome.steps,
+        ...(outcome.warming ? { warming: true } : {}),
+        ...(outcome.healthy || outcome.warming
+          ? {}
+          : { error: 'Voice addon is starting but did not become healthy in time.' }),
+      },
+    },
+    requestId,
+  );
+}
+
+type BringUpInput = {
+  state: ReturnType<typeof getState>;
+  services: string[];
+  activeProfile: string | null;
+  extraFiles: string[];
+  availableProfiles: AddonProfile[];
+  steps: VoiceJobStep[];
+};
+
+type BringUpOutcome = {
+  composeOk: boolean;
+  composeErr?: string;
+  healthy: boolean;
+  warming: boolean;
+  steps: VoiceJobStep[];
+};
+
+/**
+ * Inline composeStop-other-profiles + composeUp + /health poll. Returns
+ * the terminal state. Pushed `steps` get mutated in place so the caller
+ * (sync or background) can read progress as it happens.
+ */
+async function runBringUp(input: BringUpInput): Promise<BringUpOutcome> {
+  const { state, services, activeProfile, extraFiles, availableProfiles, steps } = input;
+
   let composeOk = true;
   let composeErr: string | undefined;
   try {
-    // Profile switch: stop services that belong to OTHER profiles so they
-    // release their host port binding (all variants share 8880) before we
-    // bring up the chosen one. Use composeStop, not down, to keep their
-    // images cached for a future switch back.
+    // Profile switch: stop services from OTHER profiles so they release
+    // their host port binding (all variants share 8880) before we bring
+    // up the chosen one. composeStop, not down, keeps their images
+    // cached for a future switch back.
     const otherProfileServices = availableProfiles
       .filter((p) => p.id !== activeProfile)
       .flatMap((p) => p.services)
@@ -760,9 +912,6 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
       try {
         await composeStop(otherProfileServices, buildComposeOptions(state));
       } catch (e) {
-        // Best-effort — stopping a never-created service is harmless.
-        // The subsequent up will still fail loudly if there's a real
-        // port collision, so we just log and continue.
         console.warn('[voice] composeStop other profiles failed:', e);
       }
     }
@@ -777,8 +926,6 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
     });
     composeOk = result.ok;
     if (!result.ok) {
-      // Surface per-service failure detail (image pull error, etc.) the
-      // same way /admin/update does, then translate to operator copy.
       const failures = parseComposeStderr(result.stderr);
       const voiceFailure = failures.find((f) => services.includes(f.service));
       const rawDetail = voiceFailure?.reason ?? result.stderr ?? `compose up exited ${result.code}`;
@@ -795,22 +942,10 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
   });
 
   if (!composeOk) {
-    return jsonResponse(
-      502,
-      {
-        ok: false,
-        voiceAddon: {
-          wasAlreadyEnabled,
-          steps,
-          error: `Voice addon failed to start: ${composeErr ?? 'unknown error'}`,
-        },
-      },
-      requestId,
-    );
+    return { composeOk, composeErr, healthy: false, warming: false, steps };
   }
 
-  // Poll /health until ready (or timeout). Probe URL is the same host
-  // port the loopback `ports:` binding exposes (default 8880).
+  // Poll /health until ready (or timeout).
   const probeBase = openpalmVoiceBaseURL();
   const probeUrl = `${probeBase}/health`;
   const deadline = Date.now() + VOICE_PROBE_TIMEOUT_MS;
@@ -828,18 +963,13 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
     await new Promise((r) => setTimeout(r, VOICE_PROBE_INTERVAL_MS));
   }
 
-  // If the probe ran out the clock, ask Docker whether the container's
-  // healthcheck is still in `starting` state. If so, treat it as success
-  // with `warming: true` so the UI can show "still warming up" rather
-  // than a hard error — the start_period grace window can be > 180s on
-  // a cold disk.
   let warming = false;
   if (!healthy) {
     try {
       const health = await readContainerHealthStatus('openpalm-voice');
       if (health === 'starting') warming = true;
     } catch {
-      // ignore — fall through to the unhealthy response
+      /* ignore */
     }
   }
 
@@ -853,20 +983,47 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
         : { detail: `did not respond at ${probeUrl} within ${VOICE_PROBE_TIMEOUT_MS / 1000}s` }),
   });
 
-  return jsonResponse(
-    healthy || warming ? 200 : 502,
-    {
-      ok: healthy || warming,
-      voiceAddon: {
-        wasAlreadyEnabled,
-        steps,
-        ...(warming ? { warming: true } : {}),
-        ...(healthy || warming ? {} : { error: 'Voice addon is starting but did not become healthy in time.' }),
-      },
-    },
-    requestId,
-  );
-};
+  return { composeOk, healthy, warming, steps };
+}
+
+type BringUpJobInput = Omit<BringUpInput, 'steps'> & { baseSteps: VoiceJobStep[] };
+
+/**
+ * Background variant: runs runBringUp and persists state transitions
+ * into the activeJobs map. Returns nothing — the UI polls GET
+ * /admin/voice to observe completion.
+ */
+async function runBringUpJob(input: BringUpJobInput): Promise<void> {
+  const steps = [...input.baseSteps];
+  try {
+    setJob(VOICE_ADDON, { state: 'starting', steps });
+    const outcome = await runBringUp({ ...input, steps });
+    if (!outcome.composeOk) {
+      setJob(VOICE_ADDON, {
+        state: 'error',
+        steps: outcome.steps,
+        error: `Voice addon failed to start: ${outcome.composeErr ?? 'unknown error'}`,
+        finishedAt: Date.now(),
+      });
+      return;
+    }
+    setJob(VOICE_ADDON, {
+      state: outcome.healthy ? 'healthy' : outcome.warming ? 'starting' : 'error',
+      steps: outcome.steps,
+      ...(outcome.healthy || outcome.warming
+        ? { error: undefined }
+        : { error: 'Voice addon is starting but did not become healthy in time.' }),
+      finishedAt: Date.now(),
+    });
+  } catch (e) {
+    setJob(VOICE_ADDON, {
+      state: 'error',
+      steps,
+      error: e instanceof Error ? e.message : String(e),
+      finishedAt: Date.now(),
+    });
+  }
+}
 
 /**
  * Lightweight wrapper around `docker info` to check whether the

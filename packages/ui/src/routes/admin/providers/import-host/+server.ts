@@ -38,6 +38,7 @@ import {
 import { composeRestart } from '$lib/server/docker.js';
 import { getState } from '$lib/server/state.js';
 import { opencodeFetch } from '$lib/server/opencode/http.js';
+import { withSerialQueue } from '$lib/server/serial-queue.js';
 
 /**
  * Restart services that hold provider state in their process env / startup config.
@@ -105,49 +106,51 @@ export const POST: RequestHandler = async (event) => {
 	const authError = requireAdmin(event, requestId);
 	if (authError) return authError;
 
-	const state = getState();
+	return withSerialQueue('admin:providers:import-host', async () => {
+		const state = getState();
 
-	let overwriteConflicts = false;
-	const contentType = event.request.headers.get('content-type') ?? '';
-	if (contentType.includes('application/json')) {
-		const parsed = await parseJsonBody(event.request);
-		if (!('error' in parsed)) {
-			overwriteConflicts = parsed.data.overwriteConflicts === true;
+		let overwriteConflicts = false;
+		const contentType = event.request.headers.get('content-type') ?? '';
+		if (contentType.includes('application/json')) {
+			const parsed = await parseJsonBody(event.request);
+			if (!('error' in parsed)) {
+				overwriteConflicts = parsed.data.overwriteConflicts === true;
+			}
 		}
-	}
 
-	// File-level import (durable)
-	let result;
-	try {
-		result = importHostOpenCode(state, { overwriteConflicts });
-	} catch (err) {
-		return errorResponse(500, 'import_failed', err instanceof Error ? err.message : 'Import failed', {}, requestId);
-	}
+		// File-level import (durable)
+		let result;
+		try {
+			result = importHostOpenCode(state, { overwriteConflicts });
+		} catch (err) {
+			return errorResponse(500, 'import_failed', err instanceof Error ? err.message : 'Import failed', {}, requestId);
+		}
 
-	// Live push to OpenCode (best-effort — if OpenCode isn't up, the file copy is enough)
-	const hostStatus = detectHostOpenCode();
-	let livePush: { pushed: number; failed: string[] } = { pushed: 0, failed: [] };
-	if (hostStatus.authPath) {
-		livePush = await pushAuthToOpenCode(hostStatus.authPath);
-	}
+		// Live push to OpenCode (best-effort — if OpenCode isn't up, the file copy is enough)
+		const hostStatus = detectHostOpenCode();
+		let livePush: { pushed: number; failed: string[] } = { pushed: 0, failed: [] };
+		if (hostStatus.authPath) {
+			livePush = await pushAuthToOpenCode(hostStatus.authPath);
+		}
 
-	// Restart assistant + guardian so they re-read auth.json / opencode.json /
-	// user.env. Live push handles the OpenCode auth store at runtime, but
-	// opencode.json provider blocks and any provider-derived env from user.env
-	// are only loaded at process start.
-	const restart = await restartProviderConsumers();
+		// Restart assistant + guardian so they re-read auth.json / opencode.json /
+		// user.env. Live push handles the OpenCode auth store at runtime, but
+		// opencode.json provider blocks and any provider-derived env from user.env
+		// are only loaded at process start.
+		const restart = await restartProviderConsumers();
 
-	return jsonResponse(
-		200,
-		{
-			ok: true,
-			imported: result.imported,
-			conflicts: result.conflicts,
-			livePushed: livePush.pushed,
-			livePushFailed: livePush.failed,
-			restarted: restart.restarted,
-			restartFailed: restart.failed,
-		},
-		requestId
-	);
+		return jsonResponse(
+			200,
+			{
+				ok: true,
+				imported: result.imported,
+				conflicts: result.conflicts,
+				livePushed: livePush.pushed,
+				livePushFailed: livePush.failed,
+				restarted: restart.restarted,
+				restartFailed: restart.failed,
+			},
+			requestId
+		);
+	});
 };

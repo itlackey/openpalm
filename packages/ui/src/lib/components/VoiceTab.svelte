@@ -195,7 +195,18 @@
 
 			if (wantsVoiceAddon && progressToastId) {
 				const va = result.voiceAddon;
-				if (result.ok && va) {
+				if (result.status === 202 && va) {
+					// Background pull kicked off. Switch the sticky toast to
+					// the "downloading" copy and start polling /admin/voice
+					// for completion.
+					notifications.push(
+						'info',
+						va.message ?? 'Voice image is downloading — this can take several minutes.',
+						{ sticky: true, replaceId: progressToastId },
+					);
+					void pollUntilVoiceJobFinishes(progressToastId);
+					progressToastId = null;
+				} else if (result.ok && va) {
 					// Healthy. Replace the sticky "enabling" toast with a
 					// friendly success message that auto-dismisses.
 					notifications.push(
@@ -238,6 +249,71 @@
 		} finally {
 			saving = false;
 		}
+	}
+
+	/**
+	 * Background voice-job poll. The PUT returned 202 (image is being
+	 * pulled in the background); we now poll GET /admin/voice every 3s,
+	 * watching `addon.activeJob.state` until it flips to healthy or
+	 * error. Caps at 30 minutes; gives the operator one last toast at
+	 * the timeout cap regardless. The sticky toast id is passed in so we
+	 * update the SAME toast — no spammy duplicates.
+	 */
+	async function pollUntilVoiceJobFinishes(stickyToastId: string): Promise<void> {
+		const POLL_INTERVAL_MS = 3_000;
+		const POLL_DEADLINE_MS = 30 * 60_000;
+		const deadline = Date.now() + POLL_DEADLINE_MS;
+		let lastState: string = 'pulling';
+		while (Date.now() < deadline) {
+			await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+			try {
+				const cfg = await fetchVoiceConfig();
+				const job = cfg.addon?.activeJob;
+				if (!job) {
+					// Job disappeared (server retention expired). Treat as
+					// success — the addon probably finished healthy and aged out.
+					notifications.push('success', "Voice addon ready — let's chat!", {
+						replaceId: stickyToastId,
+					});
+					await load();
+					return;
+				}
+				if (job.state === 'healthy') {
+					notifications.push('success', "Voice addon ready — let's chat!", {
+						replaceId: stickyToastId,
+					});
+					await load();
+					return;
+				}
+				if (job.state === 'error') {
+					notifications.push(
+						'error',
+						job.error ?? 'Voice addon failed to start.',
+						{ replaceId: stickyToastId },
+					);
+					await load();
+					return;
+				}
+				// Still pulling/starting. Update copy on state transition only
+				// so the toast doesn't churn.
+				if (job.state !== lastState) {
+					lastState = job.state;
+					const message =
+						job.state === 'starting'
+							? 'Voice container started — warming up models…'
+							: 'Voice image still downloading…';
+					notifications.push('info', message, { sticky: true, replaceId: stickyToastId });
+				}
+			} catch {
+				// Network blip / 401. Don't spam; just retry next tick.
+			}
+		}
+		notifications.push(
+			'error',
+			'Voice addon is taking longer than 30 minutes. Check Docker logs for openpalm-voice.',
+			{ replaceId: stickyToastId },
+		);
+		await load();
 	}
 
 	/**

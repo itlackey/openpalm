@@ -258,6 +258,77 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=max
 
+  push-voice-images:
+    name: Build and push voice Docker images
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # Voice images are additive — operators can install the rest of the
+    # stack even if a voice build fails. This job is intentionally NOT a
+    # dependency of `release`, so a voice build failure won't block the
+    # GitHub release page or npm publishes.
+    needs:
+      - prepare-tag
+    strategy:
+      # Don't let a cu121 failure cancel the cpu build (or vice versa) —
+      # operators on Apple Silicon need at least the cpu+arm64 image.
+      fail-fast: false
+      matrix:
+        include:
+          - variant: cpu
+            platforms: linux/amd64,linux/arm64
+            tag_suffix: cpu
+          # cu121 is amd64-only: PyTorch CUDA wheels and onnxruntime-gpu
+          # do not publish linux/arm64 builds, so an arm64 image would
+          # fail at pip install time.
+          - variant: cu121
+            platforms: linux/amd64
+            tag_suffix: cu121
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-tag.outputs.tag }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        if: needs.prepare-tag.outputs.dry_run != 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          context: git
+          images: openpalm/voice
+          tags: |
+            type=raw,value=latest-${{ matrix.tag_suffix }},enable=${{ needs.prepare-tag.outputs.prerelease != 'true' }}
+            type=raw,value=v${{ needs.prepare-tag.outputs.version }}-${{ matrix.tag_suffix }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: core/voice
+          file: core/voice/Dockerfile
+          platforms: ${{ matrix.platforms }}
+          push: ${{ needs.prepare-tag.outputs.dry_run != 'true' }}
+          build-args: |
+            VARIANT=${{ matrix.variant }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Cache scopes are per-variant so cpu and cu121 don't clobber
+          # each other's wheel layers (different torch/onnxruntime builds).
+          cache-from: type=gha,scope=openpalm/voice-${{ matrix.variant }}
+          cache-to: type=gha,scope=openpalm/voice-${{ matrix.variant }},mode=max
+
   build-ui-artifact:
     name: Build UI artifact
     runs-on: ubuntu-latest
@@ -491,6 +562,8 @@ jobs:
             | [openpalm/assistant](https://hub.docker.com/r/openpalm/assistant) | `docker pull openpalm/assistant:v${{ needs.prepare-tag.outputs.version }}` |
             | [openpalm/guardian](https://hub.docker.com/r/openpalm/guardian) | `docker pull openpalm/guardian:v${{ needs.prepare-tag.outputs.version }}` |
             | [openpalm/channel](https://hub.docker.com/r/openpalm/channel) | `docker pull openpalm/channel:v${{ needs.prepare-tag.outputs.version }}` |
+            | [openpalm/voice (CPU)](https://hub.docker.com/r/openpalm/voice) | `docker pull openpalm/voice:v${{ needs.prepare-tag.outputs.version }}-cpu` |
+            | [openpalm/voice (CUDA 12.1)](https://hub.docker.com/r/openpalm/voice) | `docker pull openpalm/voice:v${{ needs.prepare-tag.outputs.version }}-cu121` |
 
             ## npm Packages
 

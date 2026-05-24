@@ -4,6 +4,7 @@ import {
   requireAdmin,
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
+import { withSerialQueue } from "$lib/server/serial-queue.js";
 import {
   applyUninstall,
   buildComposeOptions,
@@ -21,19 +22,21 @@ export const POST: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  const state = getState();
+  return withSerialQueue("admin:uninstall", async () => {
+    const state = getState();
 
-  // Stop Docker containers first
-  const dockerCheck = await checkDocker();
-  let dockerResult = null;
-  if (dockerCheck.ok) {
-    dockerResult = await composeDown(buildComposeOptions(state));
-  }
+    // Stop Docker containers first
+    const dockerCheck = await checkDocker();
+    let dockerResult = null;
+    if (dockerCheck.ok) {
+      dockerResult = await composeDown(buildComposeOptions(state));
+    }
 
-  logger.info("stopping containers and applying uninstall", { requestId, dockerAvailable: dockerCheck.ok });
-  // OpenCode session logs are the audit trail (D6a).
-  const result = await applyUninstall(state);
-  logger.info("uninstall completed", { requestId, stopped: result.stopped });
+    logger.info("stopping containers and applying uninstall", { requestId, dockerAvailable: dockerCheck.ok });
+    // OpenCode session logs are the audit trail (D6a).
+    const result = await applyUninstall(state);
+    logger.info("uninstall completed", { requestId, stopped: result.stopped });
 
-  return jsonResponse(200, { ok: true, ...result, dockerAvailable: dockerCheck.ok }, requestId);
+    return jsonResponse(200, { ok: true, ...result, dockerAvailable: dockerCheck.ok }, requestId);
+  });
 };
