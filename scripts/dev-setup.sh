@@ -11,7 +11,7 @@ Options:
   --seed-env          Seed .dev/stash/vaults/user.env from the user.env.schema template
                       (if missing) and generate .dev/config/stack/stack.env with auto-detected values.
   --force             Overwrite seeded files even if they already exist.
-  --enable-addon <n>  Copy .dev/registry/addons/<n>/ into .dev/config/stack/addons/<n>/.
+  --enable-addon <n>  Copy .dev/state/registry/addons/<n>/ into .dev/config/stack/addons/<n>/.
                       Repeat to enable multiple dev addons.
   --pass              Initialize a pass backend for secret storage (requires GPG key).
   --gpg-id <key>      GPG key ID for the pass backend (required with --pass).
@@ -114,7 +114,7 @@ mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
 	"$CONFIG_DIR/automations" "$CONFIG_DIR/stack/addons" \
 	"$STASH_DIR/vaults" \
-	"$DEV_ROOT/registry/addons" "$DEV_ROOT/registry/automations" \
+	"$DEV_ROOT/state/registry/addons" "$DEV_ROOT/state/registry/automations" \
 	"$DATA_DIR/assistant/.config/opencode" \
 	"$DATA_DIR/guardian" \
 	"$DATA_DIR/automations" "$DATA_DIR/ollama" "$DATA_DIR/stash" "$DATA_DIR/guardian-stash" \
@@ -132,14 +132,14 @@ COMPOSE_DEST="$CONFIG_DIR/stack/core.compose.yml"
 for src_dir in "$ROOT_DIR/.openpalm/state/registry/addons/"*; do
 	[[ -d "$src_dir" ]] || continue
 	addon_name="$(basename "$src_dir")"
-	rm -rf "$DEV_ROOT/registry/addons/$addon_name"
-	cp -r "$src_dir" "$DEV_ROOT/registry/addons/$addon_name"
+	rm -rf "$DEV_ROOT/state/registry/addons/$addon_name"
+	cp -r "$src_dir" "$DEV_ROOT/state/registry/addons/$addon_name"
 done
-cp -r "$ROOT_DIR/.openpalm/state/registry/automations/"* "$DEV_ROOT/registry/automations/" 2>/dev/null || true
+cp -r "$ROOT_DIR/.openpalm/state/registry/automations/"* "$DEV_ROOT/state/registry/automations/" 2>/dev/null || true
 
 # Enable requested addons in the dev runtime
 for addon in "${enabled_addons[@]}"; do
-	src_dir="$DEV_ROOT/registry/addons/$addon"
+	src_dir="$DEV_ROOT/state/registry/addons/$addon"
 	dest_dir="$CONFIG_DIR/stack/addons/$addon"
 	if [[ ! -d "$src_dir" ]]; then
 		echo "Error: dev registry addon not found: $addon" >&2
