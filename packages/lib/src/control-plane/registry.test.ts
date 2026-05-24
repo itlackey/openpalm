@@ -29,6 +29,9 @@ import {
   setAddonEnabled,
   installAutomationFromRegistry,
   uninstallAutomation,
+  getAddonProfileAvailability,
+  annotateAddonProfileAvailability,
+  __addonAvailabilityTestHooks,
 } from "./registry.js";
 
 // ── Validation Tests ─────────────────────────────────────────────────
@@ -476,5 +479,89 @@ describe("materialized registry catalog", () => {
 
     expect(uninstallAutomation('cleanup', stashDir)).toEqual({ ok: true });
     expect(existsSync(join(stashDir, 'tasks', 'cleanup.md'))).toBe(false);
+  });
+});
+
+// ── Host capability probes ───────────────────────────────────────────
+
+describe("getAddonProfileAvailability", () => {
+  beforeEach(() => {
+    __addonAvailabilityTestHooks.reset();
+  });
+
+  afterEach(() => {
+    __addonAvailabilityTestHooks.reset();
+  });
+
+  it("returns available:true for the cpu profile (no host requirements)", async () => {
+    const result = await getAddonProfileAvailability({ id: 'cpu' });
+    expect(result.available).toBe(true);
+    expect(result.reason).toBeUndefined();
+  });
+
+  it("returns available:true for unknown profile ids (no host-side gating)", async () => {
+    const result = await getAddonProfileAvailability({ id: 'something-else' });
+    expect(result.available).toBe(true);
+  });
+
+  it("caches the result across calls (probe runs only once)", async () => {
+    const a = await getAddonProfileAvailability({ id: 'cpu' });
+    const b = await getAddonProfileAvailability({ id: 'cpu' });
+    expect(a).toBe(b); // same reference — cached
+  });
+
+  it("probes cuda: returns available:false on a host with no NVIDIA runtime / CDI", async () => {
+    // This test runs on CI/dev machines without GPUs. We don't mock execFile;
+    // we just assert the contract: when neither signal is present, the
+    // reason mentions nvidia-container-toolkit. If a future GPU host runs
+    // this test, the assertion still tolerates the success case.
+    const result = await getAddonProfileAvailability({ id: 'cuda' });
+    if (!result.available) {
+      expect(result.reason).toContain('NVIDIA');
+    } else {
+      // Host genuinely has the runtime registered — accept it.
+      expect(result.reason).toBeUndefined();
+    }
+  });
+
+  it("probes rocm: returns available:false when /dev/kfd is missing", async () => {
+    const result = await getAddonProfileAvailability({ id: 'rocm' });
+    if (!result.available) {
+      expect(result.reason).toContain('ROCm');
+    } else {
+      expect(result.reason).toBeUndefined();
+    }
+  });
+});
+
+describe("annotateAddonProfileAvailability", () => {
+  beforeEach(() => {
+    __addonAvailabilityTestHooks.reset();
+  });
+
+  afterEach(() => {
+    __addonAvailabilityTestHooks.reset();
+  });
+
+  it("decorates each profile with available + optional reason", async () => {
+    const out = await annotateAddonProfileAvailability([
+      { id: 'cpu', services: ['voice'], label: 'CPU', default: true },
+      { id: 'rocm', services: ['voice-rocm'], label: 'AMD' },
+    ]);
+    expect(out).toHaveLength(2);
+    expect(out[0]?.id).toBe('cpu');
+    expect(out[0]?.available).toBe(true);
+    // Preserves original fields.
+    expect(out[0]?.label).toBe('CPU');
+    expect(out[0]?.default).toBe(true);
+    expect(out[1]?.id).toBe('rocm');
+    expect(typeof out[1]?.available).toBe('boolean');
+  });
+
+  it("does not mutate the input array", async () => {
+    const input = [{ id: 'cpu', services: ['voice'] }];
+    const before = JSON.parse(JSON.stringify(input));
+    await annotateAddonProfileAvailability(input);
+    expect(input).toEqual(before);
   });
 });

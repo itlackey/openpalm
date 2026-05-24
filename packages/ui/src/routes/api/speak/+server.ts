@@ -2,7 +2,7 @@
  * POST /api/speak — proxy text → audio via the configured TTS endpoint.
  *
  * Body: { text: string, voice?: string, format?: string }
- * Response: streamed audio bytes (audio/mpeg by default) on 200,
+ * Response: streamed audio bytes (audio/wav by default) on 200,
  *           or 503 if TTS isn't configured server-side.
  *
  * Mirrors /api/transcribe: the voice container binds to loopback
@@ -18,7 +18,10 @@ import {
 
 const DEFAULT_MODEL = 'kokoro';
 const DEFAULT_VOICE = 'bf_isabella';
-const DEFAULT_FORMAT = 'mp3';
+// WAV is universal across browsers and Electron builds; mp3 fails on some
+// Linux/Firefox configs and bare Electron without ffmpeg. Voice container
+// (kokoro-fastapi) supports wav via `response_format`.
+const DEFAULT_FORMAT = 'wav';
 const UPSTREAM_TIMEOUT_MS = 60_000;
 
 function redactKey(s: string): string {
@@ -102,7 +105,7 @@ export const POST: RequestHandler = async (event) => {
 
   // Stream the audio response back unchanged.
   const responseHeaders = new Headers();
-  responseHeaders.set('content-type', upstream.headers.get('content-type') ?? 'audio/mpeg');
+  responseHeaders.set('content-type', upstream.headers.get('content-type') ?? 'audio/wav');
   const contentLength = upstream.headers.get('content-length');
   if (contentLength) responseHeaders.set('content-length', contentLength);
   responseHeaders.set('x-request-id', requestId);

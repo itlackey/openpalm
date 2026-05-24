@@ -1,15 +1,33 @@
 # Addon: voice — bundled Kokoro TTS + Whisper STT in one container
 # (openpalm/voice image). OpenAI-compatible /v1/audio/speech and
-# /v1/audio/transcriptions. LAN-only — no host port binding. Other
-# services reach it as http://voice:8880 on assistant_net.
+# /v1/audio/transcriptions.
 #
 # Hardware variants are exposed as Docker Compose profiles. The UI
 # (Voice Settings tab) lists every service whose `profiles:` is set,
 # reads its `openpalm.profile.*` labels, and writes the user's choice to
 # OP_VOICE_PROFILE in stack.env. composeUp then passes
 # --profile $OP_VOICE_PROFILE so exactly one variant runs at a time.
-# All variants share the network alias "voice", so dependents reach the
-# service as http://voice:8880 regardless of which profile is active.
+# All variants share the network alias "voice", so dependents inside
+# Docker reach the service as http://voice:8880 regardless of which
+# profile is active.
+#
+# ── Host port binding ────────────────────────────────────────────────
+# Every variant publishes 127.0.0.1:${OP_VOICE_PORT_HOST:-8880}:8880.
+# The bind is loopback-only (safe by default) and exists because the
+# UI server's /api/speak proxy runs on the HOST (not inside the
+# assistant_net network) and needs a routable address to forward
+# the operator's audio uploads to.
+#
+# If you hit a port collision (something else already binds 8880),
+# set OP_VOICE_PORT_HOST in OP_HOME/config/stack/stack.env to a free
+# port (e.g. 8881). The /api/speak proxy reads the same variable to
+# stay in sync — no other change required.
+#
+# We deliberately do NOT switch to "no host bind" by default, because
+# /api/speak (host process) cannot reach the container by DNS alias
+# from outside the docker network. A future change can introduce a
+# sidecar reverse proxy on assistant_net to avoid the host bind, but
+# that's a UX-impacting change that belongs in its own PR.
 services:
   voice:
     profiles: [cpu]

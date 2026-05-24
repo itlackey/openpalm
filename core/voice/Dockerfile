@@ -76,8 +76,17 @@ COPY requirements.txt /build/requirements.txt
 # Branch on VARIANT to pick the right torch + onnxruntime wheels. Same
 # requirements.txt feeds both; only torch (cpu vs cu121 index) and the
 # onnxruntime package name differ.
+#
+# The rocm6 branch is an explicit guard: ROCm support has not been
+# implemented yet, but compose overlays / docs still reference a `rocm6`
+# tag. Failing the build loudly here prevents an ad-hoc
+# `docker build --build-arg VARIANT=rocm6` from silently producing a
+# CPU-only image mislabelled `rocm6`.
 RUN set -eux; \
-    if [ "$VARIANT" = "cu121" ]; then \
+    if [ "$VARIANT" = "rocm6" ]; then \
+        echo "rocm6 variant not implemented yet" >&2 ; \
+        exit 1 ; \
+    elif [ "$VARIANT" = "cu121" ]; then \
         pip install --extra-index-url https://download.pytorch.org/whl/cu121 \
             "torch==2.5.1+cu121" ; \
         pip install "onnxruntime-gpu==1.20.1" ; \

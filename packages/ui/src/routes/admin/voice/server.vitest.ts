@@ -17,13 +17,34 @@ vi.mock('@openpalm/lib', async (importOriginal) => {
 		listEnabledAddonIds: vi.fn(() => ['voice']),
 		setAddonEnabled: vi.fn(() => ({ changed: false } as never)),
 		composeUp: vi.fn(async () => ({ ok: true, stdout: '', stderr: '', code: 0 })),
+		composeStop: vi.fn(async () => ({ ok: true, stdout: '', stderr: '', code: 0 })),
+		// Voice addon profiles for the GET response + PUT routing. The route
+		// re-runs annotateAddonProfileAvailability over these.
+		getAddonProfiles: vi.fn(() => [
+			{ id: 'cpu', services: ['voice'], label: 'CPU', default: true },
+			{ id: 'cuda', services: ['voice-cuda'], label: 'NVIDIA', requires: 'nvidia-container-toolkit' },
+		]),
+		// Force the host probes to deterministic values for tests. On CI
+		// (no GPU) the real probes would return cuda:unavailable anyway,
+		// but mocking is more deterministic.
+		annotateAddonProfileAvailability: vi.fn(async (profiles) => {
+			return profiles.map((p: { id: string; label?: string; default?: boolean; services: string[] }) => ({
+				...p,
+				available: p.id === 'cpu',
+				...(p.id === 'cuda' ? { reason: 'NVIDIA runtime not registered.' } : {}),
+			}));
+		}),
+		getAddonProfileAvailability: vi.fn(async (p: { id: string }) => {
+			if (p.id === 'cpu') return { available: true };
+			return { available: false, reason: 'NVIDIA runtime not registered.' };
+		}),
 	};
 });
 
 import { resetState, trackDir, cleanupTempDirs } from '$lib/server/test-helpers.js';
 import { getState } from '$lib/server/state.js';
 import { readStackEnv } from '@openpalm/lib';
-import { GET, PUT } from './+server.js';
+import { GET, PUT, translateDockerError } from './+server.js';
 
 function makeTempDir(): string {
 	const dir = join(tmpdir(), `openpalm-voice-${randomBytes(4).toString('hex')}`);
@@ -63,7 +84,9 @@ beforeEach(() => {
 	originalHome = process.env.OP_HOME;
 	process.env.OP_HOME = makeTempDir();
 	resetState('admin-token');
-	// Stub fetch so the reachability probe in GET doesn't reach the network.
+	// Stub fetch so the reachability probe in GET doesn't reach the network,
+	// and the /health poll in PUT returns 200 immediately. Both reachability
+	// and health calls land here.
 	fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
 		return new Response('', { status: 200 });
 	});
@@ -153,6 +176,16 @@ describe('PUT /admin/voice', () => {
 		}));
 		expect(res.status).toBe(200);
 	});
+
+	test('rejects an unknown profile id', async () => {
+		const res = await PUT(makePutEvent({
+			tts: { engine: 'openpalm-voice' },
+			profile: 'totally-fake',
+		}));
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as { error: string };
+		expect(body.error).toBe('invalid_profile');
+	});
 });
 
 describe('GET /admin/voice', () => {
@@ -168,5 +201,70 @@ describe('GET /admin/voice', () => {
 		expect(body.availability).toBeDefined();
 		expect(typeof body.availability.stt.remoteConfigured).toBe('boolean');
 		expect(typeof body.availability.tts.remoteReachable).toBe('boolean');
+	});
+
+	test('annotates profiles with available + reason', async () => {
+		const res = await GET(makeGetEvent());
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			addon: {
+				profiles: Array<{ id: string; available?: boolean; reason?: string; default?: boolean }>;
+				selectedProfile: string | null;
+			};
+		};
+		const cpu = body.addon.profiles.find((p) => p.id === 'cpu');
+		const cuda = body.addon.profiles.find((p) => p.id === 'cuda');
+		expect(cpu?.available).toBe(true);
+		expect(cpu?.reason).toBeUndefined();
+		expect(cuda?.available).toBe(false);
+		expect(cuda?.reason).toMatch(/NVIDIA/);
+		// resolveDefaultProfile must prefer cpu (the only available one)
+		// over the labelled default even when both are present.
+		expect(body.addon.selectedProfile).toBe('cpu');
+	});
+});
+
+describe('translateDockerError', () => {
+	test('pull access denied → CPU-profile hint', () => {
+		const out = translateDockerError(
+			'Error response from daemon: pull access denied for openpalm/voice, repository does not exist or may require authorization',
+		);
+		expect(out).toMatch(/isn't published/);
+		expect(out).toMatch(/CPU profile/);
+	});
+
+	test('port collision → explicit port-in-use copy', () => {
+		const out = translateDockerError(
+			'Bind for 127.0.0.1:8880 failed: port is already allocated',
+		);
+		expect(out).toMatch(/8880/);
+		expect(out).toMatch(/in use/);
+	});
+
+	test('unknown nvidia runtime → install hint', () => {
+		const out = translateDockerError(
+			'Error response from daemon: Unknown runtime specified nvidia',
+		);
+		expect(out).toMatch(/NVIDIA Docker runtime/);
+		expect(out).toMatch(/nvidia-container-toolkit/);
+	});
+
+	test('CDI hook failure → CDI hint', () => {
+		const out = translateDockerError(
+			'failed to create task for container: error invoking the NVIDIA Container Runtime Hook',
+		);
+		expect(out).toMatch(/CDI/);
+	});
+
+	test('unknown stderr → first 300 chars verbatim', () => {
+		const raw = 'something exploded ' + 'x'.repeat(400);
+		const out = translateDockerError(raw);
+		expect(out.length).toBeLessThanOrEqual(300);
+		expect(out.startsWith('something exploded')).toBe(true);
+	});
+
+	test('empty stderr → fallback message', () => {
+		const out = translateDockerError('');
+		expect(out).toMatch(/unknown/);
 	});
 });

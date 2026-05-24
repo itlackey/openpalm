@@ -250,6 +250,10 @@ export type VoiceAddonProfile = {
   label?: string;
   requires?: string;
   default?: boolean;
+  /** Set by the server when the host can actually run this profile (e.g. NVIDIA drivers detected). */
+  available?: boolean;
+  /** Human-readable explanation surfaced as a tooltip when `available` is false. */
+  reason?: string;
 };
 export type VoiceAddonInfo = {
   profiles: VoiceAddonProfile[];

@@ -5,7 +5,7 @@
  * Install seeds it once; refresh replaces it explicitly.
  */
 import { cpSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parse as parseYaml } from 'yaml';
@@ -346,7 +346,152 @@ export type AddonProfile = {
   label?: string;
   requires?: string;
   default?: boolean;
+  /**
+   * Whether the host can run this profile.
+   *
+   * Populated by `getAddonProfileAvailability()`. When the value is missing
+   * (e.g. older catalogs), callers should treat the profile as available.
+   */
+  available?: boolean;
+  /** Human-readable reason when `available === false`. */
+  reason?: string;
 };
+
+// ── Host capability probes ─────────────────────────────────────────────
+
+export type AddonProfileAvailability = { available: boolean; reason?: string };
+
+const HOST_PROBE_TIMEOUT_MS = 2_000;
+
+// Process-lifetime cache. Hardware presence does not change while the UI
+// server is running, so probing once is enough.
+const availabilityCache = new Map<string, AddonProfileAvailability>();
+
+/**
+ * Reset the host-capability cache. Test-only — not exported.
+ */
+function _resetAvailabilityCacheForTests(): void {
+  availabilityCache.clear();
+}
+
+// Exported under a deliberately ugly name so test files can reach it.
+export const __addonAvailabilityTestHooks = {
+  reset: _resetAvailabilityCacheForTests,
+};
+
+function execFileNoThrow(
+  cmd: string,
+  args: string[],
+  timeoutMs: number,
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    execFile(cmd, args, { timeout: timeoutMs }, (error, stdout, stderr) => {
+      resolve({
+        ok: !error,
+        stdout: stdout?.toString() ?? '',
+        stderr: stderr?.toString() ?? '',
+      });
+    });
+  });
+}
+
+async function probeCuda(): Promise<AddonProfileAvailability> {
+  // Two acceptance signals:
+  //   1. `docker info` reports an `nvidia` runtime (toolkit installed +
+  //      `nvidia-ctk runtime configure --runtime=docker` was run).
+  //   2. `/etc/cdi/nvidia.yaml` exists (CDI-mode daemon with a generated
+  //      spec). We don't require the runtime in this case — the route's
+  //      CDI fallback can switch the compose to driver:cdi.
+  try {
+    if (existsSync('/etc/cdi/nvidia.yaml')) return { available: true };
+  } catch {
+    // existsSync only throws on path-syntax issues; ignore and probe docker.
+  }
+
+  const result = await execFileNoThrow(
+    'docker',
+    ['info', '--format', '{{json .Runtimes}}'],
+    HOST_PROBE_TIMEOUT_MS,
+  );
+  if (result.ok && result.stdout.includes('"nvidia"')) {
+    return { available: true };
+  }
+  return {
+    available: false,
+    reason: 'NVIDIA runtime not registered. Install nvidia-container-toolkit or enable CDI.',
+  };
+}
+
+function probeRocm(): AddonProfileAvailability {
+  try {
+    if (existsSync('/dev/kfd') && existsSync('/dev/dri')) return { available: true };
+  } catch {
+    // fallthrough
+  }
+  return {
+    available: false,
+    reason: 'AMD ROCm devices not present on this host.',
+  };
+}
+
+/**
+ * Probe the host for the capabilities required by an addon profile.
+ *
+ * Results are cached for the lifetime of the process — hardware doesn't
+ * change while the UI server runs. All probes use execFile (no shell)
+ * and never throw: errors collapse to `{ available: false, reason }`.
+ *
+ * Unknown profile ids default to `available: true` so unrelated addons
+ * (e.g. a future "high-mem" profile that doesn't probe hardware) keep
+ * working without code changes here.
+ */
+export async function getAddonProfileAvailability(
+  profile: Pick<AddonProfile, 'id'>,
+): Promise<AddonProfileAvailability> {
+  const cacheKey = profile.id;
+  const cached = availabilityCache.get(cacheKey);
+  if (cached) return cached;
+
+  let result: AddonProfileAvailability;
+  try {
+    if (profile.id === 'cpu') {
+      result = { available: true };
+    } else if (profile.id === 'cuda') {
+      result = await probeCuda();
+    } else if (profile.id === 'rocm') {
+      result = probeRocm();
+    } else {
+      // Unknown profile id — assume available; caller is responsible for
+      // labelling profiles that need host capability gating.
+      result = { available: true };
+    }
+  } catch (err) {
+    // Belt-and-braces: any unexpected throw collapses to unavailable.
+    const reason = err instanceof Error ? err.message : String(err);
+    result = { available: false, reason: `probe failed: ${reason}` };
+  }
+
+  availabilityCache.set(cacheKey, result);
+  return result;
+}
+
+/**
+ * Decorate a list of profiles with `available`/`reason` based on the host
+ * capability probes. Returns a fresh array; does not mutate inputs.
+ */
+export async function annotateAddonProfileAvailability(
+  profiles: AddonProfile[],
+): Promise<AddonProfile[]> {
+  const results = await Promise.all(
+    profiles.map(async (p) => {
+      const a = await getAddonProfileAvailability(p);
+      const annotated: AddonProfile = { ...p, available: a.available };
+      if (a.reason) annotated.reason = a.reason;
+      return annotated;
+    }),
+  );
+  return results;
+}
 
 function readAddonProfiles(composePath: string): AddonProfile[] {
   if (!existsSync(composePath)) return [];

@@ -14,6 +14,11 @@
 	import { onMount } from 'svelte';
 	import { fetchVoiceConfig, saveVoiceConfig, type VoiceAddonProfile } from '$lib/api.js';
 	import { notifications } from '$lib/notifications.svelte.js';
+	import {
+		voiceState,
+		setTtsAutoEnabled,
+		speakText,
+	} from '$lib/voice/voice-state.svelte.js';
 
 	interface Props { tokenStored: boolean; }
 	let { tokenStored }: Props = $props();
@@ -51,10 +56,26 @@
 	const wantsOpenpalmVoice = $derived(
 		tts.engine === 'openpalm-voice' || stt.engine === 'openpalm-voice',
 	);
+	const advancedProfiles = $derived(
+		addonProfiles.filter((p) => p.id !== 'cpu'),
+	);
+	const hasAdvancedProfiles = $derived(advancedProfiles.length > 0);
+	const selectedProfileInfo = $derived(
+		addonProfiles.find((p) => p.id === selectedProfile),
+	);
+	const usingAdvancedProfile = $derived(
+		Boolean(selectedProfileInfo && selectedProfileInfo.id !== 'cpu'),
+	);
 
 	// Browser Web Speech availability — probed once on mount.
 	let browserSttAvailable = $state(false);
 	let browserTtsAvailable = $state(false);
+
+	// "Test voice" button state — tied to the same speakText pipeline the
+	// chat page uses, so a green ✓ here means it'll work in chat too.
+	let testingVoice = $state(false);
+	let testResult = $state<'success' | 'error' | null>(null);
+	let testError = $state('');
 
 	function normalizeEngine(raw: unknown, kind: 'tts' | 'stt'): EngineId | '' {
 		if (typeof raw !== 'string') return '';
@@ -87,10 +108,28 @@
 			if (a) availability = a;
 			if (res.addon) {
 				addonProfiles = res.addon.profiles ?? [];
-				selectedProfile =
-					res.addon.selectedProfile ??
-					(addonProfiles.find((p) => p.default) ?? addonProfiles[0])?.id ??
-					'';
+				const isAvailable = (p: VoiceAddonProfile | undefined): boolean =>
+					!!p && p.available !== false;
+				const serverSelected = res.addon.selectedProfile ?? '';
+				const serverSelectedProfile = addonProfiles.find((p) => p.id === serverSelected);
+				if (isAvailable(serverSelectedProfile)) {
+					selectedProfile = serverSelected;
+				} else {
+					// Server-recorded profile isn't actually runnable on this
+					// host (driver missing / new hardware). Fall back to CPU
+					// (or first available) and warn the operator.
+					const fallback =
+						addonProfiles.find((p) => p.id === 'cpu' && isAvailable(p))
+						?? addonProfiles.find((p) => p.default && isAvailable(p))
+						?? addonProfiles.find((p) => isAvailable(p));
+					selectedProfile = fallback?.id ?? '';
+					if (serverSelectedProfile && fallback && serverSelected !== fallback.id) {
+						notifications.push(
+							'info',
+							`"${serverSelectedProfile.label ?? serverSelected}" profile isn't available on this host${serverSelectedProfile.reason ? ` (${serverSelectedProfile.reason})` : ''}. Using "${fallback.label ?? fallback.id}" instead.`,
+						);
+					}
+				}
 			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load voice settings.';
@@ -201,6 +240,42 @@
 		}
 	}
 
+	/**
+	 * "Test voice" — uses the same speakText path the chat page uses so a
+	 * green ✓ here means assistant replies will play. We watch voiceState
+	 * for the transition out of 'speaking' to know it finished, and check
+	 * errorMessage at the start to detect autoplay/transport failures.
+	 */
+	async function runVoiceTest(): Promise<void> {
+		if (testingVoice) return;
+		testingVoice = true;
+		testResult = null;
+		testError = '';
+		try {
+			// speakText sets voiceState.errorMessage on failure paths
+			// (autoplay block, 5xx upstream, no-fallback). Clear it first so
+			// we can detect a fresh failure.
+			voiceState.errorMessage = '';
+			await speakText('Hello! Your voice is working.');
+			// speakText returns once the audio.play() promise resolves OR
+			// rejects (then it sets errorMessage). If errorMessage is set,
+			// surface that as the test failure.
+			if (voiceState.errorMessage) {
+				testResult = 'error';
+				testError = voiceState.errorMessage;
+			} else {
+				testResult = 'success';
+			}
+		} catch (e) {
+			testResult = 'error';
+			testError = e instanceof Error ? e.message : 'Voice test failed.';
+		} finally {
+			testingVoice = false;
+			// Auto-clear the ✓/✗ badge after a few seconds.
+			setTimeout(() => { testResult = null; testError = ''; }, 5000);
+		}
+	}
+
 	onMount(() => {
 		// Probe Web Speech APIs (client-only).
 		browserSttAvailable = 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window;
@@ -235,27 +310,48 @@
 		{#if wantsOpenpalmVoice && addonProfiles.length > 0}
 			<section class="engine-section">
 				<h3 class="engine-heading">Hardware profile</h3>
-				<p class="engine-subheading">Which prebuilt openpalm/voice image runs in the container.</p>
-				<div class="form-field">
-					<label class="form-label" for="voice-profile">Profile</label>
-					<select
-						id="voice-profile"
-						class="form-input"
-						value={selectedProfile}
-						onchange={(e) => selectedProfile = (e.currentTarget as HTMLSelectElement).value}
-					>
-						{#each addonProfiles as profile (profile.id)}
-							<option value={profile.id}>
-								{profile.label ?? profile.id}{profile.default ? ' (default)' : ''}
-							</option>
-						{/each}
-					</select>
-					{#if addonProfiles.find((p) => p.id === selectedProfile)?.requires}
-						<span class="field-hint">
-							Requires: {addonProfiles.find((p) => p.id === selectedProfile)?.requires}
-						</span>
-					{/if}
-				</div>
+				{#if !hasAdvancedProfiles}
+					<!-- Only one profile (CPU) available. No dropdown — just confirm it. -->
+					<p class="engine-subheading">
+						Running on CPU{selectedProfileInfo?.label ? ` (${selectedProfileInfo.label})` : ''}.
+					</p>
+				{:else}
+					<p class="engine-subheading">
+						Defaults to CPU. Pick a GPU profile below only if your host has the matching drivers installed.
+					</p>
+					<details class="advanced-profiles" open={usingAdvancedProfile}>
+						<summary>Advanced — use GPU acceleration</summary>
+						<div class="form-field">
+							<label class="form-label" for="voice-profile">Profile</label>
+							<select
+								id="voice-profile"
+								class="form-input"
+								value={selectedProfile}
+								onchange={(e) => selectedProfile = (e.currentTarget as HTMLSelectElement).value}
+							>
+								{#each addonProfiles as profile (profile.id)}
+									<option
+										value={profile.id}
+										disabled={profile.available === false}
+										title={profile.available === false ? (profile.reason ?? 'Not available on this host') : undefined}
+									>
+										{profile.label ?? profile.id}{profile.default ? ' (default)' : ''}{profile.available === false ? ' — unavailable' : ''}
+									</option>
+								{/each}
+							</select>
+							{#if selectedProfileInfo?.requires}
+								<span class="field-hint">
+									Requires: {selectedProfileInfo.requires}
+								</span>
+							{/if}
+							{#if selectedProfileInfo && selectedProfileInfo.available === false}
+								<span class="field-hint field-hint--warning">
+									{selectedProfileInfo.reason ?? 'This profile is not available on the current host.'}
+								</span>
+							{/if}
+						</div>
+					</details>
+				{/if}
 			</section>
 		{/if}
 
@@ -269,7 +365,7 @@
 					id: 'openpalm-voice',
 					name: 'OpenPalm Voice',
 					desc: 'Local Kokoro TTS + Whisper STT bundled together.',
-					subtitle: 'Uses the bundled openpalm/voice addon. Enable it in Add-ons first.',
+					subtitle: 'Bundled — enabled automatically when you save.',
 					selected: tts.engine === 'openpalm-voice',
 					recommended: true,
 				})}
@@ -334,6 +430,36 @@
 					</div>
 				</div>
 			{/if}
+
+			{#if tts.engine}
+				<div class="tts-extras">
+					<div class="test-voice-row">
+						<button
+							type="button"
+							class="btn btn-secondary btn-sm"
+							onclick={() => void runVoiceTest()}
+							disabled={testingVoice || saving || loading}
+						>
+							{#if testingVoice}<span class="spinner"></span>{/if}
+							Test voice
+						</button>
+						{#if testResult === 'success'}
+							<span class="test-result test-result--ok" aria-live="polite">✓ Working</span>
+						{:else if testResult === 'error'}
+							<span class="test-result test-result--err" aria-live="polite">✗ {testError || 'Failed'}</span>
+						{/if}
+					</div>
+
+					<label class="auto-speak-toggle">
+						<input
+							type="checkbox"
+							checked={voiceState.ttsAutoEnabled}
+							onchange={(e) => setTtsAutoEnabled((e.currentTarget as HTMLInputElement).checked)}
+						/>
+						<span>Speak assistant replies aloud automatically</span>
+					</label>
+				</div>
+			{/if}
 		</section>
 
 		<section class="engine-section">
@@ -346,7 +472,7 @@
 					id: 'openpalm-voice',
 					name: 'OpenPalm Voice',
 					desc: 'Local Kokoro TTS + Whisper STT bundled together.',
-					subtitle: 'Uses the bundled openpalm/voice addon. Enable it in Add-ons first.',
+					subtitle: 'Bundled — enabled automatically when you save.',
 					selected: stt.engine === 'openpalm-voice',
 					recommended: true,
 				})}
@@ -527,6 +653,49 @@
 		background: var(--color-bg-secondary);
 		border-left: 2px solid var(--color-primary);
 		border-radius: 0 var(--radius-md) var(--radius-md) 0;
+	}
+
+	.advanced-profiles { margin-top: var(--space-2); }
+	.advanced-profiles > summary {
+		cursor: pointer;
+		font-size: var(--text-xs);
+		color: var(--color-text-secondary);
+		padding: var(--space-1) 0;
+		user-select: none;
+	}
+	.advanced-profiles > summary:hover { color: var(--color-text); }
+	.advanced-profiles > .form-field { margin-top: var(--space-2); }
+
+	.field-hint {
+		font-size: var(--text-xs);
+		color: var(--color-text-tertiary);
+		margin-top: 2px;
+	}
+	.field-hint--warning {
+		color: var(--color-error, #dc2626);
+	}
+
+	.tts-extras {
+		display: flex; flex-direction: column; gap: var(--space-3);
+		margin-top: var(--space-3);
+		padding-top: var(--space-3);
+		border-top: 1px solid var(--color-border);
+	}
+	.test-voice-row {
+		display: flex; align-items: center; gap: var(--space-3);
+	}
+	.test-result {
+		font-size: var(--text-xs);
+	}
+	.test-result--ok { color: var(--color-success, #16a34a); }
+	.test-result--err { color: var(--color-error, #dc2626); }
+	.auto-speak-toggle {
+		display: flex; align-items: center; gap: var(--space-2);
+		font-size: var(--text-sm); color: var(--color-text);
+		cursor: pointer;
+	}
+	.auto-speak-toggle input[type='checkbox'] {
+		width: 16px; height: 16px; cursor: pointer;
 	}
 
 	.error-banner {
