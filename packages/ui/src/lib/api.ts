@@ -249,9 +249,31 @@ export async function fetchVoiceConfig(): Promise<{ tts: Record<string, unknown>
   return (await res.json()) as { tts: Record<string, unknown>; stt: Record<string, unknown> };
 }
 
-export async function saveVoiceConfig(config: { tts?: unknown; stt?: unknown }): Promise<{ ok: boolean }> {
-  const res = await requireOk(await request('PUT', '/admin/voice', config));
-  return (await res.json()) as { ok: boolean };
+export type VoiceAddonStep = { step: 'enable' | 'compose-up' | 'healthy'; ok: boolean; detail?: string };
+export type SaveVoiceResult = {
+  ok: boolean;
+  voiceAddon?: {
+    wasAlreadyEnabled: boolean;
+    steps: VoiceAddonStep[];
+    error?: string;
+  };
+};
+
+export async function saveVoiceConfig(config: { tts?: unknown; stt?: unknown }): Promise<SaveVoiceResult> {
+  const res = await request('PUT', '/admin/voice', config);
+  // 401 still throws so the auth gate can re-arm.
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  // 200 (saved + voice ready) and 502 (saved, but voice addon failed
+  // somewhere along enable / compose-up / healthcheck) both carry a
+  // structured `voiceAddon` payload — caller turns it into toasts.
+  if (res.status === 200 || res.status === 502) {
+    return (await res.json()) as SaveVoiceResult;
+  }
+  // Other failure modes (400 invalid_tts / invalid_stt etc.) → throw
+  // with a message the form can render.
+  throw new Error(await readErrorMessage(res));
 }
 
 /**

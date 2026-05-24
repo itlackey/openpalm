@@ -3,6 +3,23 @@ import { mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
+
+// Stub the docker + addon-registry surface of @openpalm/lib so PUT
+// /admin/voice's auto-enable + compose-up + healthcheck flow doesn't
+// reach for a real docker daemon. The save-path semantics (preset
+// auto-fill, validation, writeVoiceVars) live in the route itself
+// and are exercised below; whether docker actually starts the voice
+// container is covered by the integration tests, not unit tests.
+vi.mock('@openpalm/lib', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('@openpalm/lib')>();
+	return {
+		...actual,
+		listEnabledAddonIds: vi.fn(() => ['voice']),
+		setAddonEnabled: vi.fn(() => ({ changed: false } as never)),
+		composeUp: vi.fn(async () => ({ ok: true, stdout: '', stderr: '', code: 0 })),
+	};
+});
+
 import { resetState, trackDir, cleanupTempDirs } from '$lib/server/test-helpers.js';
 import { getState } from '$lib/server/state.js';
 import { readStackEnv } from '@openpalm/lib';

@@ -8,13 +8,25 @@
  */
 import type { RequestHandler } from './$types';
 import { getState } from '$lib/server/state.js';
-import { readStackEnv, writeVoiceVars } from '@openpalm/lib';
+import {
+  buildComposeOptions,
+  composeUp,
+  listEnabledAddonIds,
+  parseComposeStderr,
+  readStackEnv,
+  setAddonEnabled,
+  writeVoiceVars,
+} from '@openpalm/lib';
 import {
   errorResponse,
   getRequestId,
   jsonResponse,
   requireAdmin,
 } from '$lib/server/helpers.js';
+
+const VOICE_ADDON = 'voice';
+const VOICE_PROBE_TIMEOUT_MS = 30_000;
+const VOICE_PROBE_INTERVAL_MS = 1_000;
 
 const REACHABILITY_TIMEOUT_MS = 1_500;
 
@@ -210,5 +222,129 @@ export const PUT: RequestHandler = async (event) => {
 
   writeVoiceVars(config, state.stackDir);
 
-  return jsonResponse(200, { ok: true }, requestId);
+  // If either side targets OpenPalm Voice, make sure the addon is
+  // enabled + running before we tell the operator "saved". This is the
+  // one extra step that makes "select the engine → save" actually
+  // produce a working setup, instead of saving the config and leaving
+  // the user to discover the addon needs to be enabled separately.
+  const wantsVoiceAddon =
+    ttsSection?.engine === 'openpalm-voice' || sttSection?.engine === 'openpalm-voice';
+
+  if (!wantsVoiceAddon) {
+    return jsonResponse(200, { ok: true }, requestId);
+  }
+
+  const enabledIds = listEnabledAddonIds(state.homeDir);
+  const wasAlreadyEnabled = enabledIds.includes(VOICE_ADDON);
+
+  // Track each side-effect for the operator-facing toast in VoiceTab.
+  const steps: Array<{ step: string; ok: boolean; detail?: string }> = [];
+
+  if (!wasAlreadyEnabled) {
+    try {
+      setAddonEnabled(state.homeDir, state.stackDir, VOICE_ADDON, true);
+      steps.push({ step: 'enable', ok: true });
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      steps.push({ step: 'enable', ok: false, detail });
+      return jsonResponse(
+        502,
+        {
+          ok: false,
+          voiceAddon: {
+            wasAlreadyEnabled,
+            steps,
+            error: `Could not enable voice addon: ${detail}`,
+          },
+        },
+        requestId,
+      );
+    }
+  } else {
+    steps.push({ step: 'enable', ok: true, detail: 'already enabled' });
+  }
+
+  // composeUp the voice service. compose pulls the image (no-op if
+  // already present), creates the container, starts it. We wait for
+  // the /health endpoint to return 200 so the operator gets a real
+  // "ready" signal instead of a "kicked off" one — first-launch
+  // model load is fast (~3s) because Kokoro + Whisper base.en are
+  // baked into the image.
+  let composeOk = true;
+  let composeErr: string | undefined;
+  try {
+    const result = await composeUp({
+      ...buildComposeOptions(state),
+      services: [VOICE_ADDON],
+    });
+    composeOk = result.ok;
+    if (!result.ok) {
+      // Surface per-service failure detail (image pull error, etc.) the
+      // same way /admin/update does, so the toast can show "voice: pull
+      // access denied" instead of an opaque exit code.
+      const failures = parseComposeStderr(result.stderr);
+      const voiceFailure = failures.find((f) => f.service === VOICE_ADDON);
+      composeErr = voiceFailure?.reason ?? result.stderr ?? `compose up exited ${result.code}`;
+    }
+  } catch (e) {
+    composeOk = false;
+    composeErr = e instanceof Error ? e.message : String(e);
+  }
+  steps.push({
+    step: 'compose-up',
+    ok: composeOk,
+    ...(composeErr ? { detail: composeErr.slice(0, 500) } : {}),
+  });
+
+  if (!composeOk) {
+    return jsonResponse(
+      502,
+      {
+        ok: false,
+        voiceAddon: {
+          wasAlreadyEnabled,
+          steps,
+          error: `Voice addon failed to start: ${composeErr ?? 'unknown error'}`,
+        },
+      },
+      requestId,
+    );
+  }
+
+  // Poll /health until ready (or timeout). Probe URL is the same host
+  // port the loopback `ports:` binding exposes (default 8880).
+  const probeBase = openpalmVoiceBaseURL();
+  const probeUrl = `${probeBase}/health`;
+  const deadline = Date.now() + VOICE_PROBE_TIMEOUT_MS;
+  let healthy = false;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(probeUrl, { signal: AbortSignal.timeout(1500) });
+      if (res.ok) {
+        healthy = true;
+        break;
+      }
+    } catch {
+      /* keep polling until deadline */
+    }
+    await new Promise((r) => setTimeout(r, VOICE_PROBE_INTERVAL_MS));
+  }
+  steps.push({
+    step: 'healthy',
+    ok: healthy,
+    ...(healthy ? {} : { detail: `did not respond at ${probeUrl} within ${VOICE_PROBE_TIMEOUT_MS / 1000}s` }),
+  });
+
+  return jsonResponse(
+    healthy ? 200 : 502,
+    {
+      ok: healthy,
+      voiceAddon: {
+        wasAlreadyEnabled,
+        steps,
+        ...(healthy ? {} : { error: 'Voice addon is starting but did not become healthy in time.' }),
+      },
+    },
+    requestId,
+  );
 };

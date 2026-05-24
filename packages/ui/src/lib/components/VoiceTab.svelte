@@ -13,6 +13,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { fetchVoiceConfig, saveVoiceConfig } from '$lib/api.js';
+	import { notifications } from '$lib/notifications.svelte.js';
 
 	interface Props { tokenStored: boolean; }
 	let { tokenStored }: Props = $props();
@@ -104,17 +105,84 @@
 		saving = true;
 		error = '';
 		saved = false;
+
+		const wantsVoiceAddon =
+			tts.engine === 'openpalm-voice' || stt.engine === 'openpalm-voice';
+
+		// Sticky in-progress toast that we update in-place as the route
+		// works through its steps. Pre-emptive — even if the addon was
+		// already running, the operator gets one beat of feedback so the
+		// click feels acknowledged.
+		let progressToastId: string | null = null;
+		let bumpTimer: ReturnType<typeof setTimeout> | null = null;
+		if (wantsVoiceAddon) {
+			progressToastId = notifications.push('info', 'Enabling voice addon…', { sticky: true });
+			// If the server takes longer than the visible blink of an
+			// "Enabling…" message, bump the toast to the "may take a
+			// moment" variant so the user doesn't think we're stuck.
+			bumpTimer = setTimeout(() => {
+				if (progressToastId) {
+					notifications.push('info', 'Starting voice addon — this may take a moment…', {
+						sticky: true,
+						replaceId: progressToastId,
+					});
+				}
+			}, 1500);
+		}
+
 		try {
-			await saveVoiceConfig({
+			const result = await saveVoiceConfig({
 				tts: buildPayload(tts, 'tts'),
 				stt: buildPayload(stt, 'stt'),
 			});
+
+			if (bumpTimer) {
+				clearTimeout(bumpTimer);
+				bumpTimer = null;
+			}
+
+			if (wantsVoiceAddon && progressToastId) {
+				const va = result.voiceAddon;
+				if (result.ok && va) {
+					// Healthy. Replace the sticky "enabling" toast with a
+					// friendly success message that auto-dismisses.
+					notifications.push(
+						'success',
+						va.wasAlreadyEnabled
+							? "Voice addon ready — let's chat!"
+							: "Voice addon started, let's chat!",
+						{ replaceId: progressToastId },
+					);
+				} else if (va) {
+					// Server-side flow saw a step fail (compose pull, container
+					// start, healthcheck timeout). The error string is already
+					// human-readable.
+					notifications.push('error', va.error ?? 'Voice addon failed to start.', {
+						replaceId: progressToastId,
+					});
+				} else {
+					// 200 but no voiceAddon block — shouldn't happen for an
+					// openpalm-voice save, but be defensive.
+					notifications.push('success', 'Voice settings saved.', { replaceId: progressToastId });
+				}
+			}
+
 			saved = true;
 			setTimeout(() => { saved = false; }, 3000);
 			// Refresh availability after saving — the URL may have changed.
 			await load();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to save voice settings.';
+			if (bumpTimer) {
+				clearTimeout(bumpTimer);
+				bumpTimer = null;
+			}
+			const msg = e instanceof Error ? e.message : 'Failed to save voice settings.';
+			error = msg;
+			if (progressToastId) {
+				notifications.push('error', msg, { replaceId: progressToastId });
+			} else if (wantsVoiceAddon) {
+				notifications.push('error', msg);
+			}
 		} finally {
 			saving = false;
 		}
