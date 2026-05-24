@@ -232,6 +232,33 @@ export async function saveVoiceConfig(config: { tts?: unknown; stt?: unknown }):
   return (await res.json()) as { ok: boolean };
 }
 
+/**
+ * POST a recorded audio Blob to /api/transcribe.
+ *
+ * Goes through the SvelteKit server-side proxy (cookie-auth) which
+ * forwards to the configured STT_BASE_URL. Returns the transcript text.
+ */
+export async function transcribeAudio(
+  blob: Blob,
+  opts?: { language?: string; prompt?: string }
+): Promise<string> {
+  const form = new FormData();
+  form.append('audio', blob, 'recording.webm');
+  if (opts?.language) form.append('language', opts.language);
+  if (opts?.prompt) form.append('prompt', opts.prompt);
+
+  const res = await requireOk(
+    await fetch('/api/transcribe', {
+      method: 'POST',
+      headers: buildHeaders(),
+      credentials: 'include',
+      body: form,
+    })
+  );
+  const data = (await res.json()) as { text?: string };
+  return typeof data.text === 'string' ? data.text : '';
+}
+
 // ── AKM Config ──────────────────────────────────────────────────────
 
 export async function fetchAkmConfig(): Promise<{ config: Record<string, unknown> }> {

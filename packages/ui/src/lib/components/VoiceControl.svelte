@@ -14,23 +14,30 @@
 	let mounted = $state(false);
 
 	onMount(() => {
-		initVoice();
-		mounted = true;
+		void initVoice().then(() => {
+			mounted = true;
+		});
 	});
 
 	onDestroy(() => {
 		destroyVoice();
 	});
 
-	let supported = $derived(mounted && voiceState.isSupported);
+	// Mic only renders when a usable STT engine is configured AND available
+	// in this browser. (e.g. don't render "browser" mic on Firefox.)
+	let supported = $derived(
+		mounted && voiceState.sttEngine !== 'disabled' && voiceState.sttSupported
+	);
 	let ttsAvailable = $derived(mounted && voiceState.ttsSupported);
 
 	// Mic states (mutually exclusive, evaluated in priority order):
-	//   listening — actively recording
+	//   recording — actively capturing audio
+	//   transcribing — recorded audio is being sent to /api/transcribe
 	//   processing — message in flight to the assistant
 	//   idle — neutral
-	let isRecording = $derived(voiceState.status === 'listening');
-	let isProcessing = $derived(!isRecording && chat.sending);
+	let isRecording = $derived(voiceState.status === 'recording');
+	let isTranscribing = $derived(voiceState.status === 'transcribing');
+	let isProcessing = $derived(!isRecording && !isTranscribing && chat.sending);
 
 	// Speaker is "speaking" only when the auto-TTS is on AND an utterance is
 	// currently playing. With the toggle off, the speechSynthesis queue
@@ -44,8 +51,12 @@
 	 * Navbar (containing this component) is mounted everywhere.
 	 */
 	function handleMicClick(): void {
-		if (voiceState.status === 'listening') {
+		if (isRecording) {
 			stopListening();
+			return;
+		}
+		if (isTranscribing) {
+			// Mid-transcription click is a no-op (the result is pending).
 			return;
 		}
 		// If TTS is mid-utterance, stop it so we don't hear ourselves over
@@ -74,23 +85,27 @@
 			<button
 				class="voice-btn"
 				class:voice-btn-active={isRecording}
-				class:voice-btn-processing={isProcessing}
+				class:voice-btn-processing={isProcessing || isTranscribing}
 				disabled={isProcessing}
 				onclick={handleMicClick}
 				aria-label={isRecording
 					? 'Stop recording'
-					: isProcessing
-						? 'Sending message…'
-						: 'Start recording'}
+					: isTranscribing
+						? 'Transcribing…'
+						: isProcessing
+							? 'Sending message…'
+							: 'Start recording'}
 				aria-pressed={isRecording}
 				title={isRecording
 					? 'Stop recording'
-					: isProcessing
-						? 'Sending message…'
-						: 'Speak — message will be sent to the selected assistant'}
+					: isTranscribing
+						? 'Transcribing…'
+						: isProcessing
+							? 'Sending message…'
+							: 'Speak — message will be sent to the selected assistant'}
 			>
-				{#if isProcessing}
-					<!-- Spinner while the assistant is processing the message -->
+				{#if isTranscribing || isProcessing}
+					<!-- Spinner while audio is being transcribed or the message is in flight -->
 					<span class="voice-spinner" aria-hidden="true"></span>
 				{:else if isRecording}
 					<!-- Stop-square: clicking again ends the recording -->
@@ -168,13 +183,15 @@
 		<span class="sr-only" aria-live="polite">
 			{isRecording
 				? 'Recording'
-				: isProcessing
-					? 'Sending message to assistant'
-					: isSpeaking
-						? 'Assistant is speaking'
-						: voiceState.ttsAutoEnabled
-							? 'Spoken responses on'
-							: ''}
+				: isTranscribing
+					? 'Transcribing'
+					: isProcessing
+						? 'Sending message to assistant'
+						: isSpeaking
+							? 'Assistant is speaking'
+							: voiceState.ttsAutoEnabled
+								? 'Spoken responses on'
+								: ''}
 		</span>
 	</div>
 {/if}
