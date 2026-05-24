@@ -343,8 +343,9 @@ describe("registry component sensitive fields", () => {
 
   for (const id of fullAddonIds) {
     it(`${id}: has at least one @sensitive field (channel secret)`, () => {
-      // ollama is a local inference server — no channel secret or API key needed
-      if (id === "ollama") return;
+      // ollama and openpalm-voice are local inference servers — no channel
+      // secret or upstream API key needed (LAN-only, no auth by design).
+      if (id === "ollama" || id === "openpalm-voice") return;
       const schema = readComponentFile(id, ".env.schema");
       const entries = parseEnvSchema(schema);
       const sensitiveEntries = entries.filter((e) =>

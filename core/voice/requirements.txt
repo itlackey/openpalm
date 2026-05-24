@@ -1,0 +1,21 @@
+# Pinned runtime dependencies for openpalm/voice.
+# Two install paths from the same Dockerfile:
+#   VARIANT=cpu   — onnxruntime (CPU only), torch+cpu (default index)
+#   VARIANT=cu121 — onnxruntime-gpu, torch+cu121 (pytorch CUDA wheel index)
+#
+# faster-whisper picks up its CT2 backend automatically; kokoro-onnx uses
+# whichever onnxruntime variant is installed.
+
+faster-whisper==1.1.0
+kokoro-onnx==0.4.9
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+soundfile==0.12.1
+pydantic==2.10.4
+numpy==2.2.1
+httpx==0.28.1
+# faster-whisper 1.1.0's `utils.py` does `import requests` but the package
+# manifest doesn't declare it as a runtime dep. Pin it here explicitly so
+# the venv resolves cleanly.
+requests==2.32.3

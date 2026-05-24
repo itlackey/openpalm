@@ -1,0 +1,31 @@
+# Addon: openpalm-voice — bundled Kokoro TTS + Whisper STT in one container.
+# OpenAI-compatible /v1/audio/speech and /v1/audio/transcriptions.
+# LAN-only — no host port binding. Other services reach it as
+# http://voice:8880 on assistant_net. CPU variant by default; layer the
+# openpalm-voice-gpu overlay (gpu.compose.yml in this directory) on top to
+# flip to the CUDA-12.1 build.
+services:
+  voice:
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-${OP_IMAGE_TAG:-v0.11.0}-cpu}
+    restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    environment:
+      OP_VOICE_PORT: "8880"
+      OP_VOICE_WHISPER_MODEL: "${OP_VOICE_WHISPER_MODEL:-base.en}"
+      OP_VOICE_KOKORO_VOICE: "${OP_VOICE_KOKORO_VOICE:-af_bella}"
+      OP_VOICE_LOG_LEVEL: "${OP_VOICE_LOG_LEVEL:-info}"
+    volumes:
+      - ${OP_HOME}/state/voice/models:/models
+    networks: [assistant_net]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8880/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+    labels:
+      openpalm.name: OpenPalm Voice
+      openpalm.description: Local Kokoro TTS + Whisper STT (OpenAI-compatible)
+      openpalm.icon: mic
+      openpalm.category: voice
+      openpalm.healthcheck: http://voice:8880/health
