@@ -34,12 +34,17 @@ async function probeReachable(baseURL: string): Promise<boolean> {
   if (!baseURL) return false;
   const url = baseURL.replace(/\/+$/, '') + '/v1/models';
   try {
+    // Use GET, not HEAD. FastAPI (openpalm/voice's framework) doesn't
+    // auto-derive a HEAD handler from a GET route — Starlette would
+    // 405 every probe and the upstream container log fills with noise.
+    // The response body is tiny (a model list), so the cost vs HEAD is
+    // negligible.
     const res = await fetch(url, {
-      method: 'HEAD',
+      method: 'GET',
       signal: AbortSignal.timeout(REACHABILITY_TIMEOUT_MS),
     });
-    // Any non-network-error response counts: even 401 means the endpoint
-    // exists and is listening. 405 (HEAD unsupported) is fine too.
+    // Any non-network-error response counts as "reachable": even 401
+    // (auth required) means the endpoint exists and is listening.
     return res.status < 500;
   } catch {
     return false;
