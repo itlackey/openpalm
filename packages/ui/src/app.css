@@ -137,6 +137,16 @@ body {
   min-height: 100vh;
 }
 
+/* Set by chat/+page.svelte while it's mounted. The chat page is the only
+   route that wants exactly viewport-height with its own internal scroll;
+   every other page keeps the default flow. */
+html.chat-locked,
+body.chat-locked {
+  overflow: hidden;
+  height: 100dvh;
+  min-height: 0;
+}
+
 /* ── Scrollbar ─────────────────────────────────────────────────────── */
 
 * {

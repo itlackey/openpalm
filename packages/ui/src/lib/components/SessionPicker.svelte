@@ -306,6 +306,18 @@
     padding: var(--space-2);
   }
 
+  /* On narrow widths, the picker trigger sits mid-navbar (between the
+     endpoint switcher and the navlink), so anchoring `right: 0` to the
+     trigger pushes the menu off-screen. Pin to the viewport's top-right
+     just below the navbar instead — same trick as EndpointSwitcher. */
+  @media (max-width: 600px) {
+    .menu {
+      position: fixed;
+      top: calc(var(--nav-height) + 6px);
+      right: var(--space-3);
+    }
+  }
+
   .menu-header {
     padding: var(--space-2) var(--space-3);
     font-size: var(--text-xs);

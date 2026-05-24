@@ -68,55 +68,57 @@
 	}
 </script>
 
-{#if supported}
+{#if supported || ttsAvailable}
 	<div class="voice-control" role="toolbar" aria-label="Voice controls">
-		<button
-			class="voice-btn"
-			class:voice-btn-active={isRecording}
-			class:voice-btn-processing={isProcessing}
-			disabled={isProcessing}
-			onclick={handleMicClick}
-			aria-label={isRecording
-				? 'Stop recording'
-				: isProcessing
-					? 'Sending message…'
-					: 'Start recording'}
-			aria-pressed={isRecording}
-			title={isRecording
-				? 'Stop recording'
-				: isProcessing
-					? 'Sending message…'
-					: 'Speak — message will be sent to the selected assistant'}
-		>
-			{#if isProcessing}
-				<!-- Spinner while the assistant is processing the message -->
-				<span class="voice-spinner" aria-hidden="true"></span>
-			{:else if isRecording}
-				<!-- Stop-square: clicking again ends the recording -->
-				<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-					<rect x="6" y="6" width="12" height="12" rx="1.5" />
-				</svg>
-				<span class="voice-pulse" aria-hidden="true"></span>
-			{:else}
-				<!-- Idle mic -->
-				<svg
-					aria-hidden="true"
-					width="16"
-					height="16"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				>
-					<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-					<path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-					<line x1="12" y1="19" x2="12" y2="23" />
-					<line x1="8" y1="23" x2="16" y2="23" />
-				</svg>
-			{/if}
-		</button>
+		{#if supported}
+			<button
+				class="voice-btn"
+				class:voice-btn-active={isRecording}
+				class:voice-btn-processing={isProcessing}
+				disabled={isProcessing}
+				onclick={handleMicClick}
+				aria-label={isRecording
+					? 'Stop recording'
+					: isProcessing
+						? 'Sending message…'
+						: 'Start recording'}
+				aria-pressed={isRecording}
+				title={isRecording
+					? 'Stop recording'
+					: isProcessing
+						? 'Sending message…'
+						: 'Speak — message will be sent to the selected assistant'}
+			>
+				{#if isProcessing}
+					<!-- Spinner while the assistant is processing the message -->
+					<span class="voice-spinner" aria-hidden="true"></span>
+				{:else if isRecording}
+					<!-- Stop-square: clicking again ends the recording -->
+					<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+						<rect x="6" y="6" width="12" height="12" rx="1.5" />
+					</svg>
+					<span class="voice-pulse" aria-hidden="true"></span>
+				{:else}
+					<!-- Idle mic -->
+					<svg
+						aria-hidden="true"
+						width="16"
+						height="16"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+						<path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+						<line x1="12" y1="19" x2="12" y2="23" />
+						<line x1="8" y1="23" x2="16" y2="23" />
+					</svg>
+				{/if}
+			</button>
+		{/if}
 
 		{#if ttsAvailable}
 			<button

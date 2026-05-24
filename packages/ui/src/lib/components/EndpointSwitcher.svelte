@@ -191,6 +191,20 @@
     padding: var(--space-2);
   }
 
+  /* On narrow widths, anchor the menu to the viewport's top-right corner
+     (just below the navbar) rather than the trigger button. Because the
+     trigger is one of several icon buttons in navbar-actions, its right
+     edge is NOT the viewport's right edge — `right: 0` on the trigger
+     parent pushes the menu off-screen to the left when the trigger sits
+     mid-navbar. Fixed positioning fixes that. */
+  @media (max-width: 600px) {
+    .menu {
+      position: fixed;
+      top: calc(var(--nav-height) + 6px);
+      right: var(--space-3);
+    }
+  }
+
   .menu-header {
     padding: var(--space-2) var(--space-3);
     font-size: var(--text-xs);

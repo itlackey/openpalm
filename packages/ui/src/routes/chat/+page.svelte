@@ -93,6 +93,22 @@
     chat.reset();
   }
 
+  // ── Body scroll lock (chat-page only) ────────────────────────────────
+  // The chat layout is exactly viewport-height with internal scroll on the
+  // messages area. Suppress body scroll while we're on this page so we
+  // don't get a redundant outer scrollbar. $effect cleanup guarantees the
+  // class is removed on navigation away, even if SvelteKit's CSS handling
+  // doesn't tear down :global rules reliably for adapter-node builds.
+  $effect(() => {
+    if (typeof document === 'undefined') return;
+    document.documentElement.classList.add('chat-locked');
+    document.body.classList.add('chat-locked');
+    return () => {
+      document.documentElement.classList.remove('chat-locked');
+      document.body.classList.remove('chat-locked');
+    };
+  });
+
   // ── Visibility-change reconnect ───────────────────────────────────────
   // When the tab regains focus, probe the current backend. (Uses $effect
   // because we need a DOM event subscription with cleanup — this is a
@@ -203,16 +219,11 @@
 {/if}
 
 <style>
-  /* Chat is the one page that wants exactly viewport-height: the navbar
-     fills nav-height, the chat-layout fills the rest, and the messages-
-     area scrolls internally. Suppress body scroll so we don't end up with
-     two scrollbars (page + messages). Scoped to the chat page via :global,
-     so other admin pages keep their normal flow. */
-  :global(html),
-  :global(body) {
-    overflow: hidden;
-    height: 100dvh;
-  }
+  /* Body lock is applied via a class added in a $effect (see <script>)
+     instead of `:global(body)` here, because Svelte's :global rules don't
+     reliably detach on client-side navigation in adapter-node — the
+     stylesheet for a page can stay loaded after we leave it, breaking
+     scroll on other pages. The class-based approach guarantees cleanup. */
 
   .chat-layout {
     display: flex;
