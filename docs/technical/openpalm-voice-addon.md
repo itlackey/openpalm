@@ -97,7 +97,7 @@ orthogonal addons.
 ### Directory layout
 
 ```
-.openpalm/state/registry/addons/openpalm-voice/
+.openpalm/state/registry/addons/voice/
 ├── compose.yml
 ├── .env.schema
 └── README.md
@@ -112,7 +112,7 @@ docker; using only `assistant_net` would make the URLs unreachable from
 the browser. See §4 for the URL story.
 
 ```yaml
-# Addon: openpalm-voice — local CPU-friendly TTS + STT
+# Addon: voice — local CPU-friendly TTS + STT
 # Serves OpenAI-compatible /v1/audio/speech (TTS) and
 # /v1/audio/transcriptions (STT) on host loopback ports.
 # The voice channel browser UI reads these URLs from /config/defaults.
@@ -225,7 +225,7 @@ End-to-end on click of **"Enable OpenPalm Voice"** in the Voice tab:
   → POST /admin/voice/openpalm-voice/enable
 [Server runs in order]
   1. setAddonEnabled(homeDir, stackDir, "openpalm-voice", true)
-     — copies registry overlay into config/stack/addons/openpalm-voice/
+     — copies registry overlay into config/stack/addons/voice/
      — mkdirs state/voice/{tts-cache,stt-cache} as OP_UID:OP_GID
   2. writeVoiceVars({
        tts: { enabled: true, engine: "openpalm-voice", provider: "kokoro",
@@ -284,7 +284,7 @@ the enable endpoint all use one constant.
 
 `POST /admin/voice/openpalm-voice/disable`:
 1. `composeStop(["voice-tts", "voice-stt"], options)` — `performAddonToggle`
-   already does this for us, so we reuse `POST /admin/addons/openpalm-voice`
+   already does this for us, so we reuse `POST /admin/addons/voice`
    with `{ enabled: false }`.
 2. **Do NOT clear `TTS_BASE_URL` / `STT_BASE_URL` from `stack.env`.** Leaving
    them lets re-enable be instant. If the user explicitly switches to a
@@ -406,7 +406,7 @@ The base addon is CPU-only. A future enhancement would:
 The cleanest shape is a per-addon `variants.yml`:
 
 ```yaml
-# .openpalm/state/registry/addons/openpalm-voice/variants.yml
+# .openpalm/state/registry/addons/voice/variants.yml
 default: cpu
 variants:
   cpu:
@@ -483,7 +483,7 @@ Phases are sequential. Sizes: S = ≤50 LOC, M = 50–150 LOC, L = 150–400 LOC
 
 | Phase | Size | LOC | Description | Depends on |
 |---|---|---|---|---|
-| A. Addon manifest | S | ~120 | New `state/registry/addons/openpalm-voice/{compose.yml,.env.schema,README.md}`. Pin image digests. Add to registry tests. | — |
+| A. Addon manifest | S | ~120 | New `state/registry/addons/voice/{compose.yml,.env.schema,README.md}`. Pin image digests. Add to registry tests. | — |
 | B. Lib: voice presets | S | ~50 | New `packages/lib/src/control-plane/voice-presets.ts` with `OPENPALM_VOICE_PRESET` constant (engine name, default URLs, default models, default voice). Export from lib barrel. Used by the enable endpoint AND the wizard. | — |
 | C. Server endpoints | M | ~250 | New `routes/admin/voice/openpalm-voice/+server.ts` (POST enable/disable wraps addon toggle + writeVoiceVars + composeUp). New `routes/admin/voice/probe/+server.ts`. Host-aware URL resolution. | A, B |
 | D. UI: VoiceTab integration | M | ~200 | Add `openpalm-voice` to `TTS_OPTIONS` / `STT_OPTIONS`. New `OpenPalmVoiceCard.svelte` rendering the 4 states from §8. Polling hook. | C |

@@ -1,40 +1,31 @@
-# Addon: Voice — voice chat web UI
-# Serves a static web app that talks directly to OpenCode's session API.
-# Provider selection (agent, STT, TTS) is configured in the browser UI.
+# Addon: voice — bundled Kokoro TTS + Whisper STT in one container
+# (openpalm/voice image). OpenAI-compatible /v1/audio/speech and
+# /v1/audio/transcriptions. LAN-only — no host port binding. Other
+# services reach it as http://voice:8880 on assistant_net. CPU variant
+# by default; layer gpu.compose.yml (same directory) on top to flip to
+# the CUDA-12.1 build.
 services:
   voice:
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-${OP_IMAGE_TAG:-v0.11.0}-cpu}
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
-    ports:
-      - "${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT:-3810}:8186"
     environment:
-      PORT: "8186"
-      CHANNEL_PACKAGE: "@openpalm/channel-voice"
-      # Voice runs its own Bun.serve (not BaseChannel), so override the
-      # default channel-entrypoint with the package's own index. start.sh
-      # still installs CHANNEL_PACKAGE first.
-      CHANNEL_ENTRYPOINT: "node_modules/@openpalm/channel-voice/src/index.ts"
-      # STT/TTS defaults — voice browser fetches GET /config/defaults
-      # on first load and seeds localStorage from these values. Written
-      # by writeCapabilityVars() in @openpalm/lib.
-      STT_BASE_URL: "${STT_BASE_URL:-}"
-      STT_API_KEY: "${STT_API_KEY:-}"
-      STT_MODEL: "${STT_MODEL:-}"
-      STT_LANGUAGE: "${STT_LANGUAGE:-}"
-      TTS_BASE_URL: "${TTS_BASE_URL:-}"
-      TTS_API_KEY: "${TTS_API_KEY:-}"
-      TTS_MODEL: "${TTS_MODEL:-}"
-      TTS_VOICE: "${TTS_VOICE:-}"
-    networks: [channel_lan]
+      OP_VOICE_PORT: "8880"
+      OP_VOICE_WHISPER_MODEL: "${OP_VOICE_WHISPER_MODEL:-base.en}"
+      OP_VOICE_KOKORO_VOICE: "${OP_VOICE_KOKORO_VOICE:-bf_isabella}"
+      OP_VOICE_LOG_LEVEL: "${OP_VOICE_LOG_LEVEL:-info}"
+    volumes:
+      - ${OP_HOME}/state/voice/models:/models
+    networks: [assistant_net]
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8186' || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8880/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 180s
     labels:
-      openpalm.name: Voice
-      openpalm.description: Voice chat web UI with configurable agent, STT, and TTS providers
+      openpalm.name: OpenPalm Voice
+      openpalm.description: Local Kokoro TTS + Whisper STT (OpenAI-compatible)
       openpalm.icon: mic
-      openpalm.category: messaging
-      openpalm.healthcheck: http://voice:8186/health
+      openpalm.category: voice
+      openpalm.healthcheck: http://voice:8880/health

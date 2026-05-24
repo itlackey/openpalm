@@ -285,10 +285,10 @@ install to keep the layer small.
 
 ## 9. Compose addon overlay
 
-`.openpalm/state/registry/addons/openpalm-voice/compose.yml`:
+`.openpalm/state/registry/addons/voice/compose.yml`:
 
 ```yaml
-# Addon: openpalm-voice — bundled Kokoro TTS + Whisper STT in one container.
+# Addon: voice — bundled Kokoro TTS + Whisper STT in one container.
 # OpenAI-compatible /v1/audio/speech and /v1/audio/transcriptions.
 # CPU by default; the openpalm-voice-gpu addon variant flips to the cu121 image.
 services:
@@ -326,10 +326,10 @@ assistant talk on the internal net.
 
 ### GPU passthrough (optional second overlay file)
 
-`.openpalm/state/registry/addons/openpalm-voice-gpu/compose.yml`:
+`.openpalm/state/registry/addons/voice/gpu.compose.yml referenced inline; not a separate addoncompose.yml`:
 
 ```yaml
-# Addon: openpalm-voice-gpu — layered on top of openpalm-voice.
+# Addon overlay: voice-gpu (file in addons/voice/) — layered on top of voice.
 # Requires nvidia-container-toolkit on the host. Otherwise this overlay
 # does nothing harmful — Docker will refuse to start the service with a
 # clear error, leaving the CPU variant available.
