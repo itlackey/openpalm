@@ -61,6 +61,38 @@ describe("resolveOperatorIds", () => {
     expect(ids!.gid).toBeGreaterThan(0);
   });
 
+  test("returns null when BOTH homeDir owner and process UID/GID are 0 (root install on root-owned OP_HOME)", () => {
+    if (process.platform === "win32") {
+      // win32 short-circuits before any of this logic
+      expect(resolveOperatorIds(tempDir)).toBeNull();
+      return;
+    }
+
+    // Stub process.getuid / getgid to simulate running as root. On Linux,
+    // `/` is owned by uid=0 gid=0, so passing "/" gives us a root-owned
+    // homeDir. Combined with the stubbed process IDs, this hits the
+    // "both signals are root" branch that previously returned {0,0}.
+    const origGetuid = process.getuid;
+    const origGetgid = process.getgid;
+    try {
+      (process as unknown as { getuid: () => number }).getuid = () => 0;
+      (process as unknown as { getgid: () => number }).getgid = () => 0;
+      // Sanity-check the assumption that "/" is root-owned in this env
+      // before relying on it as a fixture. On macOS / Linux CI runners
+      // this holds; if a future weird env breaks it, the assertion
+      // surfaces clearly rather than producing a confusing pass.
+      const rootStat = statSync("/");
+      expect(rootStat.uid).toBe(0);
+      expect(rootStat.gid).toBe(0);
+
+      const ids = resolveOperatorIds("/");
+      expect(ids).toBeNull();
+    } finally {
+      (process as unknown as { getuid: typeof origGetuid }).getuid = origGetuid;
+      (process as unknown as { getgid: typeof origGetgid }).getgid = origGetgid;
+    }
+  });
+
   test("returns null on win32", () => {
     // This test is informational; on non-win32 it doesn't run the win32
     // branch. The check is left here for documentation and runs as a

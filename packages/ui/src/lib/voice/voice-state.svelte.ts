@@ -17,6 +17,7 @@
 
 import { startRecording, type RecordingSession } from './media-recorder.js';
 import { transcribeAudio, fetchVoiceConfig } from '$lib/api.js';
+import { notifications } from '$lib/notifications.svelte.js';
 
 export type VoiceStatus = 'idle' | 'recording' | 'transcribing' | 'speaking';
 export type SttEngine = 'browser' | 'remote' | 'openpalm-voice' | 'disabled';
@@ -41,6 +42,23 @@ class VoiceState {
 
 	/** Global toggle: when true, assistant chat replies are spoken automatically. */
 	ttsAutoEnabled = $state(false);
+
+	/**
+	 * True when an audio.play() was rejected by the browser's autoplay
+	 * policy and we have a pending utterance waiting for a user gesture.
+	 * The chat UI renders a small "click to resume" banner; clicking it
+	 * calls resumeAutoplay() to actually play.
+	 */
+	autoplayBlocked = $state(false);
+
+	/**
+	 * Set when the configured STT engine is technically present in the
+	 * window but known to fail at runtime on this UA (e.g. iOS Safari
+	 * exposes SpeechRecognition but `start()` immediately errors with
+	 * `service-not-allowed`). The Voice settings tab uses this to hide or
+	 * disable the Browser STT card with the reason as a tooltip.
+	 */
+	browserSttUnsupportedReason = $state('');
 }
 
 export const voiceState = new VoiceState();
@@ -114,6 +132,24 @@ function getSpeechRecognitionCtor(): SpeechRecognitionConstructor | undefined {
 	return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? undefined;
 }
 
+/**
+ * iOS Safari (and all WebKit-based browsers on iOS — Chrome/Edge/Firefox
+ * on iOS are required by Apple to use WebKit) exposes SpeechRecognition
+ * but `start()` immediately fires `error: service-not-allowed`. Detect
+ * the UA up front so the picker can hide the Browser STT card rather
+ * than let the user click a mic that silently does nothing.
+ *
+ * `MSStream` excludes old IE on Windows Phone, which used to spoof iPad
+ * in the UA; harmless on modern browsers (always undefined).
+ */
+export function isIosSafari(): boolean {
+	if (typeof navigator === 'undefined') return false;
+	const ua = navigator.userAgent ?? '';
+	const isIos = /iPad|iPhone|iPod/.test(ua);
+	const msStream = (window as unknown as { MSStream?: unknown }).MSStream;
+	return isIos && !msStream;
+}
+
 function isMediaRecorderSupported(): boolean {
 	if (typeof window === 'undefined') return false;
 	if (typeof MediaRecorder === 'undefined') return false;
@@ -124,6 +160,9 @@ function isMediaRecorderSupported(): boolean {
 function resolveEngineSupport(engine: SttEngine): boolean {
 	switch (engine) {
 		case 'browser':
+			// iOS Safari exposes the constructor but `start()` is a no-op
+			// — refuse to claim it as supported.
+			if (voiceState.browserSttUnsupportedReason) return false;
 			return Boolean(getSpeechRecognitionCtor());
 		case 'remote':
 		case 'openpalm-voice':
@@ -183,12 +222,31 @@ export async function initVoice(): Promise<void> {
 		voiceState.ttsEngine === 'remote' ||
 		(voiceState.ttsEngine === 'browser' && browserTts);
 
+	// iOS Safari: SpeechRecognition is present in the window but `start()`
+	// errors immediately. Flag it so the picker can hide the card, and if
+	// the resolved engine happens to be 'browser', degrade to 'disabled'
+	// so the navbar mic isn't dangling either.
+	if (isIosSafari() && getSpeechRecognitionCtor()) {
+		voiceState.browserSttUnsupportedReason =
+			'iOS Safari does not support Web Speech recognition';
+		if (voiceState.sttEngine === 'browser') {
+			voiceState.sttEngine = 'disabled';
+		}
+	} else {
+		voiceState.browserSttUnsupportedReason = '';
+	}
+
 	// Friendly default: if no engine was configured server-side AND the
 	// browser natively supports SpeechRecognition (Chrome / Edge), default
 	// to the browser engine so the mic appears immediately. This is
 	// client-side only — picking an explicit engine in admin → voice
-	// overrides on the next page load.
-	if (voiceState.sttEngine === 'disabled' && getSpeechRecognitionCtor()) {
+	// overrides on the next page load. Skip the default on iOS Safari
+	// (see above).
+	if (
+		voiceState.sttEngine === 'disabled' &&
+		getSpeechRecognitionCtor() &&
+		!voiceState.browserSttUnsupportedReason
+	) {
 		voiceState.sttEngine = 'browser';
 	}
 
@@ -357,11 +415,18 @@ let activeAudioUrl: string | null = null;
 const SPEAK_QUEUE_MAX = 3;
 const speakQueue: string[] = [];
 
+// Have we already toasted the user about an overflow drop in the current
+// burst? Reset back to false when the queue drains so a NEW burst can
+// surface a fresh notification (rather than the user getting spammed
+// once per dropped utterance).
+let overflowNoticed = false;
+
 // Autoplay retry — when the browser rejects audio.play(), we stash the
-// audio and wait for the next user click to retry.
+// audio and wait for the user to click the dedicated "click to resume"
+// banner (rendered in VoiceControl). Listening on `document` is what
+// caused arbitrary clicks elsewhere on the page to trigger stale audio.
 let pendingAutoplayAudio: HTMLAudioElement | null = null;
 let pendingAutoplayUrl: string | null = null;
-let pendingAutoplayHandler: (() => void) | null = null;
 
 function teardownActiveAudio(): void {
 	if (activeAudio) {
@@ -385,10 +450,34 @@ function teardownPendingAutoplay(): void {
 		URL.revokeObjectURL(pendingAutoplayUrl);
 		pendingAutoplayUrl = null;
 	}
-	if (pendingAutoplayHandler && typeof document !== 'undefined') {
-		document.removeEventListener('click', pendingAutoplayHandler);
+	voiceState.autoplayBlocked = false;
+}
+
+/**
+ * User clicked the "click to resume" banner — promote the stashed audio
+ * to the active slot and play. Called from VoiceControl's banner button;
+ * the click on the button itself satisfies the autoplay-policy gesture
+ * requirement.
+ */
+export function resumeAutoplay(): void {
+	const a = pendingAutoplayAudio;
+	if (!a) {
+		voiceState.autoplayBlocked = false;
+		return;
 	}
-	pendingAutoplayHandler = null;
+	voiceState.autoplayBlocked = false;
+	voiceState.errorMessage = '';
+	voiceState.status = 'speaking';
+	// Promote pending → active so onended/onerror/teardown work.
+	activeAudio = a;
+	activeAudioUrl = pendingAutoplayUrl;
+	pendingAutoplayAudio = null;
+	pendingAutoplayUrl = null;
+	a.play().catch(() => {
+		voiceState.status = 'idle';
+		voiceState.errorMessage = 'Audio playback failed.';
+		teardownActiveAudio();
+	});
 }
 
 /**
@@ -406,8 +495,20 @@ export async function speakText(text: string): Promise<void> {
 	// drains the queue.
 	if (voiceState.status === 'speaking') {
 		speakQueue.push(text);
-		// Drop oldest if over cap.
-		while (speakQueue.length > SPEAK_QUEUE_MAX) speakQueue.shift();
+		// Drop oldest if over cap, and let the user know once per burst
+		// so they understand WHY they're missing replies.
+		let dropped = 0;
+		while (speakQueue.length > SPEAK_QUEUE_MAX) {
+			speakQueue.shift();
+			dropped += 1;
+		}
+		if (dropped > 0 && !overflowNoticed) {
+			overflowNoticed = true;
+			notifications.push(
+				'info',
+				`Skipped ${dropped} spoken ${dropped === 1 ? 'reply' : 'replies'} — too much overlap. Lower the auto-speak chat rate.`,
+			);
+		}
 		return;
 	}
 
@@ -453,6 +554,7 @@ async function playOne(text: string): Promise<void> {
 				// Drain the queue.
 				const next = speakQueue.shift();
 				if (next) void playOne(next);
+				else overflowNoticed = false;
 			};
 			audio.onerror = () => {
 				voiceState.status = 'idle';
@@ -460,44 +562,28 @@ async function playOne(text: string): Promise<void> {
 				teardownActiveAudio();
 				const next = speakQueue.shift();
 				if (next) void playOne(next);
+				else overflowNoticed = false;
 			};
 			voiceState.status = 'speaking';
 			try {
 				await audio.play();
 			} catch {
 				// Autoplay was blocked (Safari, Firefox autoplay off, fresh
-				// Chrome profile with no prior gesture). Stash the audio,
-				// surface a hint to the user, and retry on the next click.
+				// Chrome profile with no prior gesture). Stash the audio
+				// and surface a scoped "click to resume" banner via
+				// `voiceState.autoplayBlocked`. The VoiceControl renders
+				// the banner; clicking it calls resumeAutoplay(). We
+				// deliberately do NOT register a document-wide click
+				// handler — any click anywhere would otherwise trigger
+				// stale audio at the wrong moment (Save buttons, tabs,
+				// etc.).
 				voiceState.status = 'idle';
-				voiceState.errorMessage = 'Click anywhere to enable audio';
 				// Hand ownership of the blob to the pending-autoplay slot.
 				pendingAutoplayAudio = audio;
 				pendingAutoplayUrl = url;
 				activeAudio = null;
 				activeAudioUrl = null;
-				if (typeof document !== 'undefined') {
-					const handler = (): void => {
-						const a = pendingAutoplayAudio;
-						pendingAutoplayHandler = null;
-						if (!a) return;
-						voiceState.errorMessage = '';
-						voiceState.status = 'speaking';
-						// Promote pending → active so onended/onerror/teardown work.
-						activeAudio = a;
-						activeAudioUrl = pendingAutoplayUrl;
-						pendingAutoplayAudio = null;
-						pendingAutoplayUrl = null;
-						a.play().catch(() => {
-							voiceState.status = 'idle';
-							voiceState.errorMessage = 'Audio playback failed.';
-							teardownActiveAudio();
-						});
-					};
-					pendingAutoplayHandler = handler;
-					document.addEventListener('click', handler, { once: true });
-				} else {
-					teardownPendingAutoplay();
-				}
+				voiceState.autoplayBlocked = true;
 			}
 			return;
 		}
@@ -523,11 +609,13 @@ async function playOne(text: string): Promise<void> {
 		voiceState.status = 'idle';
 		const next = speakQueue.shift();
 		if (next) void playOne(next);
+		else overflowNoticed = false;
 	};
 	utterance.onerror = () => {
 		voiceState.status = 'idle';
 		const next = speakQueue.shift();
 		if (next) void playOne(next);
+		else overflowNoticed = false;
 	};
 	window.speechSynthesis.speak(utterance);
 }
@@ -557,6 +645,7 @@ async function extractSpeakError(res: Response): Promise<string> {
 /** Cancel speech synthesis. Drops the entire queue. */
 export function stopSpeaking(): void {
 	speakQueue.length = 0;
+	overflowNoticed = false;
 	teardownPendingAutoplay();
 	teardownActiveAudio();
 	if (typeof window !== 'undefined' && 'speechSynthesis' in window) {

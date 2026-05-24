@@ -8,6 +8,7 @@
 		stopListening,
 		stopSpeaking,
 		setTtsAutoEnabled,
+		resumeAutoplay,
 	} from '$lib/voice/voice-state.svelte.js';
 	import { chat } from '$lib/chat/chat-state.svelte.js';
 
@@ -79,8 +80,28 @@
 	}
 </script>
 
-{#if supported || ttsAvailable}
+{#if supported || ttsAvailable || voiceState.autoplayBlocked}
 	<div class="voice-control" role="toolbar" aria-label="Voice controls">
+		{#if voiceState.autoplayBlocked}
+			<!-- Scoped autoplay-resume button. Only THIS click triggers
+			     playback — we no longer listen on `document`, so Save
+			     buttons, tabs, and accidental clicks elsewhere can't fire
+			     stale audio. -->
+			<button
+				type="button"
+				class="voice-autoplay-banner"
+				onclick={() => resumeAutoplay()}
+				aria-label="Resume paused audio"
+				title="Audio was blocked by the browser. Click to resume."
+			>
+				<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+					<line x1="23" y1="9" x2="17" y2="15" />
+					<line x1="17" y1="9" x2="23" y2="15" />
+				</svg>
+				<span>Audio paused — click to resume</span>
+			</button>
+		{/if}
 		{#if supported}
 			<button
 				class="voice-btn"
@@ -201,6 +222,32 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
+	}
+
+	/* Scoped "click to resume" banner — replaces the old document-wide
+	   click listener so unrelated clicks never trigger stale audio. */
+	.voice-autoplay-banner {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		padding: 4px var(--space-3);
+		height: 32px;
+		background: var(--color-primary-subtle);
+		border: 1px solid var(--color-primary);
+		border-radius: var(--radius-md);
+		color: var(--color-primary);
+		font-size: var(--text-xs);
+		font-weight: var(--font-medium);
+		cursor: pointer;
+		white-space: nowrap;
+		transition: filter var(--transition-fast);
+	}
+	.voice-autoplay-banner:hover {
+		filter: brightness(1.05);
+	}
+	.voice-autoplay-banner:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 2px;
 	}
 
 	.voice-btn {

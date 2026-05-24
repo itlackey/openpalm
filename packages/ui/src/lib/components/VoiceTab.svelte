@@ -484,13 +484,23 @@
 					selected: stt.engine === 'remote',
 					reachable: availability.stt,
 				})}
-				{#if browserSttAvailable}
+				{#if browserSttAvailable && !voiceState.browserSttUnsupportedReason}
 					{@render engineCard({
 						kind: 'stt',
 						id: 'browser',
 						name: 'Browser',
 						desc: 'Web Speech API on this device. Chrome/Edge only on desktop.',
 						selected: stt.engine === 'browser',
+					})}
+				{:else if browserSttAvailable && voiceState.browserSttUnsupportedReason}
+					{@render engineCard({
+						kind: 'stt',
+						id: 'browser',
+						name: 'Browser',
+						desc: 'Web Speech API on this device. Chrome/Edge only on desktop.',
+						selected: stt.engine === 'browser',
+						disabled: true,
+						subtitle: voiceState.browserSttUnsupportedReason,
 					})}
 				{/if}
 			</div>

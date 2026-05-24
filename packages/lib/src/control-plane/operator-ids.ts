@@ -63,6 +63,16 @@ export function resolveOperatorIds(homeDir: string): OperatorIds | null {
         : ownerGid;
 
   if (uid === undefined || gid === undefined) return null;
+
+  // Final guard: never return 0 (root). This happens when BOTH the OP_HOME
+  // owner AND the process UID are root (e.g. `sudo openpalm install` on a
+  // freshly-created root-owned OP_HOME, common in CI builds and Docker-based
+  // installer flows). Returning null causes the caller to skip writing
+  // OP_UID/OP_GID to stack.env, and compose's `${OP_UID:-1000}` default
+  // kicks in — container runs as 1000:1000, which is the sane fallback
+  // when no real operator can be detected.
+  if (uid === 0 || gid === 0) return null;
+
   return { uid, gid };
 }
 

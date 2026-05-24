@@ -532,6 +532,50 @@ describe("getAddonProfileAvailability", () => {
       expect(result.reason).toBeUndefined();
     }
   });
+
+  it("probes rocm: when devices exist, reports unpublished image distinctly from missing-device case", async () => {
+    // On a host without /dev/kfd, we hit the device-missing branch and
+    // get the "devices not present" copy. On a ROCm host, we'd fall
+    // through to the manifest-inspect probe and (until 0.11.0-rocm6
+    // ships) get the "image not published yet" copy. Both must mention
+    // ROCm so operator-facing copy stays consistent.
+    const result = await getAddonProfileAvailability({ id: 'rocm' });
+    if (!result.available && existsSync('/dev/kfd') && existsSync('/dev/dri')) {
+      expect(result.reason).toMatch(/image not published|CPU profile/i);
+    }
+    if (!result.available && !(existsSync('/dev/kfd') && existsSync('/dev/dri'))) {
+      expect(result.reason).toMatch(/devices not present/i);
+    }
+  });
+});
+
+describe("execFileNoThrow (ENOENT capture)", () => {
+  it("captures ENOENT for a missing binary as 'spawn <cmd> ENOENT' stderr", async () => {
+    const result = await __addonAvailabilityTestHooks.execFileNoThrow(
+      '/nonexistent/path/to/openpalm-test-no-such-binary-zzz',
+      ['--help'],
+      2_000,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.stderr).toMatch(/ENOENT/);
+    // When the binary is "docker", the synthetic stderr becomes
+    // `spawn docker ENOENT: command not found` — that string matches the
+    // translateDockerError regex `/spawn .*docker.*ENOENT/i` so the
+    // operator gets actionable copy instead of "unknown error (no stderr)".
+    expect(result.stderr).toMatch(/spawn\s+\S*\s*ENOENT/);
+  });
+
+  it("formats ENOENT for `docker` so translateDockerError can match it", async () => {
+    // Use an absolute path that we know doesn't exist so the test is
+    // deterministic regardless of whether docker is installed on the host.
+    const result = await __addonAvailabilityTestHooks.execFileNoThrow(
+      'docker-not-installed-zzz',
+      ['info'],
+      2_000,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.stderr).toBe('spawn docker-not-installed-zzz ENOENT: command not found');
+  });
 });
 
 describe("annotateAddonProfileAvailability", () => {

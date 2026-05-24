@@ -377,6 +377,13 @@ function _resetAvailabilityCacheForTests(): void {
 // Exported under a deliberately ugly name so test files can reach it.
 export const __addonAvailabilityTestHooks = {
   reset: _resetAvailabilityCacheForTests,
+  /**
+   * Test-only: exposes the internal exec wrapper so tests can verify
+   * ENOENT (missing binary) is surfaced as actionable stderr that the
+   * docker-error translator can recognise.
+   */
+  execFileNoThrow: (cmd: string, args: string[], timeoutMs: number) =>
+    execFileNoThrow(cmd, args, timeoutMs),
 };
 
 function execFileNoThrow(
@@ -386,13 +393,60 @@ function execFileNoThrow(
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     execFile(cmd, args, { timeout: timeoutMs }, (error, stdout, stderr) => {
+      // ENOENT (binary missing) surfaces here with no stderr — child_process
+      // never gets to exec the program. Inject a synthetic stderr that
+      // matches the translateDockerError ENOENT regex so callers get
+      // actionable copy instead of "unknown error (no stderr)".
+      let mergedStderr = stderr?.toString() ?? '';
+      const code = (error as NodeJS.ErrnoException | null)?.code;
+      if (code && !mergedStderr) {
+        if (code === 'ENOENT') {
+          mergedStderr = `spawn ${cmd} ENOENT: command not found`;
+        } else {
+          mergedStderr = `spawn ${cmd} ${code}`;
+        }
+      }
       resolve({
         ok: !error,
         stdout: stdout?.toString() ?? '',
-        stderr: stderr?.toString() ?? '',
+        stderr: mergedStderr,
       });
     });
   });
+}
+
+/**
+ * Compute the openpalm/voice image ref for a given GPU variant, matching
+ * the substitution chain in the addon compose file:
+ *   ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-${OP_IMAGE_TAG:-v0.11.0}-<variant>}
+ */
+function voiceImageRef(variant: 'cpu' | 'cu121' | 'rocm6'): string {
+  const namespace = process.env.OP_IMAGE_NAMESPACE?.trim() || 'openpalm';
+  const explicit = process.env.OP_VOICE_IMAGE_TAG?.trim();
+  if (explicit) return `${namespace}/voice:${explicit}`;
+  const baseTag = process.env.OP_IMAGE_TAG?.trim() || 'v0.11.0';
+  return `${namespace}/voice:${baseTag}-${variant}`;
+}
+
+/**
+ * `docker manifest inspect <ref>` returns 0 only when the registry can
+ * resolve a manifest for that ref. We use it as the cheap "is this image
+ * actually published?" check — no pull required. The retry handles
+ * transient registry hiccups. Timeout is short because the manifest blob
+ * is a few KB.
+ */
+async function dockerManifestExists(imageRef: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await execFileNoThrow(
+      'docker',
+      ['manifest', 'inspect', imageRef],
+      5_000,
+    );
+    if (res.ok) return true;
+    // If docker itself is missing (ENOENT), retrying won't help.
+    if (/ENOENT/.test(res.stderr)) return false;
+  }
+  return false;
 }
 
 async function probeCuda(): Promise<AddonProfileAvailability> {
@@ -422,16 +476,33 @@ async function probeCuda(): Promise<AddonProfileAvailability> {
   };
 }
 
-function probeRocm(): AddonProfileAvailability {
+async function probeRocm(): Promise<AddonProfileAvailability> {
+  // Hardware gate: ROCm needs both the KFD char device and the GPU DRI nodes.
+  let devicesPresent = false;
   try {
-    if (existsSync('/dev/kfd') && existsSync('/dev/dri')) return { available: true };
+    devicesPresent = existsSync('/dev/kfd') && existsSync('/dev/dri');
   } catch {
-    // fallthrough
+    devicesPresent = false;
   }
-  return {
-    available: false,
-    reason: 'AMD ROCm devices not present on this host.',
-  };
+  if (!devicesPresent) {
+    return {
+      available: false,
+      reason: 'AMD ROCm devices not present on this host.',
+    };
+  }
+
+  // Image gate: the openpalm/voice:*-rocm6 image isn't published yet, so
+  // even on a fully-functional ROCm host the compose-up would fail with a
+  // manifest-unknown pull error. Refuse the profile until the image lands.
+  const imageRef = voiceImageRef('rocm6');
+  const published = await dockerManifestExists(imageRef);
+  if (!published) {
+    return {
+      available: false,
+      reason: 'AMD ROCm image not published yet. Check back in a future release or use the CPU profile.',
+    };
+  }
+  return { available: true };
 }
 
 /**
@@ -459,7 +530,7 @@ export async function getAddonProfileAvailability(
     } else if (profile.id === 'cuda') {
       result = await probeCuda();
     } else if (profile.id === 'rocm') {
-      result = probeRocm();
+      result = await probeRocm();
     } else {
       // Unknown profile id — assume available; caller is responsible for
       // labelling profiles that need host capability gating.

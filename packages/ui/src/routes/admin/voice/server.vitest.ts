@@ -44,7 +44,8 @@ vi.mock('@openpalm/lib', async (importOriginal) => {
 import { resetState, trackDir, cleanupTempDirs } from '$lib/server/test-helpers.js';
 import { getState } from '$lib/server/state.js';
 import { readStackEnv } from '@openpalm/lib';
-import { GET, PUT, translateDockerError } from './+server.js';
+import { GET, PUT } from './+server.js';
+import { translateDockerError } from '$lib/server/voice-errors.js';
 
 function makeTempDir(): string {
 	const dir = join(tmpdir(), `openpalm-voice-${randomBytes(4).toString('hex')}`);
@@ -221,6 +222,87 @@ describe('GET /admin/voice', () => {
 		// resolveDefaultProfile must prefer cpu (the only available one)
 		// over the labelled default even when both are present.
 		expect(body.addon.selectedProfile).toBe('cpu');
+	});
+});
+
+describe('PUT /admin/voice — host fallback overlays', () => {
+	test('skips rootless + cdi fallback when VITEST is set (deterministic test env)', async () => {
+		// VITEST=1 is set by vitest; the route short-circuits the docker-info
+		// probes so tests don't have to mock child_process. Confirm the
+		// success path still pushes the core compose-up step but does NOT
+		// push any `rootless-fallback` / `cdi-fallback` step.
+		expect(process.env.VITEST).toBeTruthy();
+		const res = await PUT(makePutEvent({
+			tts: { engine: 'openpalm-voice' },
+		}));
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			voiceAddon?: { steps?: Array<{ step: string; ok: boolean }> };
+		};
+		const stepNames = body.voiceAddon?.steps?.map((s) => s.step) ?? [];
+		expect(stepNames).not.toContain('rootless-fallback');
+		expect(stepNames).not.toContain('cdi-fallback');
+		expect(stepNames).toContain('compose-up');
+	});
+
+	test('falls back gracefully when rootless detection cannot reach docker', async () => {
+		// Temporarily unset VITEST so the rootless detection runs. The probe
+		// will fail (no docker daemon in the test environment), but the
+		// route MUST NOT 502 — it just skips the overlay and continues.
+		const prevVitest = process.env.VITEST;
+		delete process.env.VITEST;
+		try {
+			const res = await PUT(makePutEvent({
+				tts: { engine: 'openpalm-voice' },
+			}));
+			// The detection failure does not block the save; the (mocked)
+			// composeUp still succeeds and the route returns 200.
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as {
+				voiceAddon?: { steps?: Array<{ step: string; ok: boolean; detail?: string }> };
+			};
+			const steps = body.voiceAddon?.steps ?? [];
+			// Either no rootless step (detection returned false / threw) or a
+			// truthy one. Either is acceptable — what's NOT acceptable is the
+			// overall save failing.
+			const rootless = steps.find((s) => s.step === 'rootless-fallback');
+			if (rootless) expect(rootless.ok).toBe(true);
+			expect(steps.some((s) => s.step === 'compose-up' && s.ok)).toBe(true);
+		} finally {
+			if (prevVitest === undefined) delete process.env.VITEST;
+			else process.env.VITEST = prevVitest;
+		}
+	});
+
+	test('on Windows, the CDI fallback is skipped even when the profile is cuda', async () => {
+		// process.platform is a getter; redefine it for the duration of
+		// this test. We also temporarily clear VITEST so the host-probe
+		// branch is reachable. The CDI path requires:
+		//   1. !inVitest
+		//   2. activeProfile === 'cuda'
+		//   3. process.platform !== 'win32'  ← gating we're verifying
+		// Forcing (3) false MUST suppress any `cdi-fallback` step.
+		const prevPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+		const prevVitest = process.env.VITEST;
+		Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+		delete process.env.VITEST;
+		try {
+			const res = await PUT(makePutEvent({
+				tts: { engine: 'openpalm-voice' },
+				profile: 'cuda',
+			}));
+			// 200 or 502 depending on (mocked) composeUp; we only care about
+			// the absence of the cdi-fallback step.
+			const body = (await res.json()) as {
+				voiceAddon?: { steps?: Array<{ step: string; ok: boolean }> };
+			};
+			const stepNames = body.voiceAddon?.steps?.map((s) => s.step) ?? [];
+			expect(stepNames).not.toContain('cdi-fallback');
+		} finally {
+			if (prevPlatform) Object.defineProperty(process, 'platform', prevPlatform);
+			if (prevVitest === undefined) delete process.env.VITEST;
+			else process.env.VITEST = prevVitest;
+		}
 	});
 });
 

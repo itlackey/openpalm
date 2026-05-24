@@ -35,6 +35,7 @@ import {
   jsonResponse,
   requireAdmin,
 } from '$lib/server/helpers.js';
+import { translateDockerError } from '$lib/server/voice-errors.js';
 
 const VOICE_ADDON = 'voice';
 // compose.yml advertises start_period: 180s. The probe must wait at least
@@ -217,43 +218,6 @@ function validateSection(section: VoiceSection | null, kind: 'tts' | 'stt'): str
 
 // ── Docker error translation ─────────────────────────────────────────
 
-/**
- * Translate raw docker / compose stderr into operator-actionable copy.
- *
- * Exported for tests. Pattern matches are intentionally case-insensitive
- * and tolerant of compose-CLI prefix decoration. Order matters: the more
- * specific patterns are tried first.
- */
-export function translateDockerError(stderr: string | undefined | null): string {
-  const raw = (stderr ?? '').trim();
-  if (!raw) return 'Docker reported an unknown error (no stderr).';
-
-  // Pull failures: image missing or auth denied.
-  if (/pull access denied|manifest unknown|repository does not exist|not found: manifest unknown/i.test(raw)) {
-    return "The voice image for this profile isn't published yet. Try the CPU profile.";
-  }
-
-  // Port collisions.
-  if (/port is already allocated|bind.*address already in use|address already in use/i.test(raw)) {
-    return 'Port 8880 is already in use on this host. Free it or change the host port.';
-  }
-
-  // NVIDIA runtime missing (legacy --runtime path).
-  if (/unknown[^\n]*runtime[^\n]*nvidia|runtime\s+"nvidia"\s+not\s+found|nvidia.*runtime.*not[^a-z]+(found|registered)/i.test(raw)) {
-    return "The NVIDIA Docker runtime isn't registered on this machine. Try the CPU profile, or install nvidia-container-toolkit.";
-  }
-
-  // CDI-mode daemon with no spec generated.
-  if (/invoking the NVIDIA Container Runtime Hook/i.test(raw)) {
-    return 'Docker is in CDI mode but no CDI spec is registered. Try the CPU profile.';
-  }
-
-  // Default: include the first ~300 chars verbatim so the operator at
-  // least has something searchable.
-  const slice = raw.length > 300 ? raw.slice(0, 297) + '…' : raw;
-  return slice;
-}
-
 // ── Helpers: docker image inspect, port probe, container probe ─────
 
 function execFileNoThrow(
@@ -263,10 +227,23 @@ function execFileNoThrow(
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     execFile(cmd, args, { timeout: timeoutMs }, (error, stdout, stderr) => {
+      // ENOENT (binary missing) lands here with no stderr because the
+      // child never executed. Synthesise stderr that matches the
+      // translateDockerError ENOENT regex so the operator sees the
+      // "Docker isn't installed" copy rather than "unknown error".
+      let mergedStderr = stderr?.toString() ?? '';
+      const code = (error as NodeJS.ErrnoException | null)?.code;
+      if (code && !mergedStderr) {
+        if (code === 'ENOENT') {
+          mergedStderr = `spawn ${cmd} ENOENT: command not found`;
+        } else {
+          mergedStderr = `spawn ${cmd} ${code}`;
+        }
+      }
       resolve({
         ok: !error,
         stdout: stdout?.toString() ?? '',
-        stderr: stderr?.toString() ?? '',
+        stderr: mergedStderr,
       });
     });
   });
@@ -394,6 +371,8 @@ async function readContainerHealthStatus(containerNamePrefix: string): Promise<s
  */
 function writeCdiOverlayIfNeeded(homeDir: string): string | null {
   const addonDir = join(homeDir, 'config', 'stack', 'addons', VOICE_ADDON);
+  // No addon directory → nothing to overlay onto. Returning null keeps
+  // composeUp's file list valid (no stray reference to a non-existent file).
   if (!existsSync(addonDir)) return null;
   const overlayPath = join(addonDir, 'compose.cdi.yml');
   const yaml = [
@@ -416,7 +395,96 @@ function writeCdiOverlayIfNeeded(homeDir: string): string | null {
   return overlayPath;
 }
 
+// ── Rootless Docker fallback ─────────────────────────────────────────
+
+/**
+ * Detect rootless Docker. The compose `user: "${OP_UID:-1000}:${OP_GID:-1000}"`
+ * directive bakes the host UID into the container — but on a rootless
+ * daemon the bind-mount UID inside the container is subuid-remapped, so
+ * the resulting container UID has no write permission against
+ * `${OP_HOME}/state/voice/models`. Removing the `user:` directive lets
+ * Docker pick whatever UID the rootless mapping translates to inside the
+ * user namespace, which DOES have write access to the bind-mount.
+ *
+ * `docker info` is the authoritative source: rootless daemons advertise
+ * `SecurityOptions: ... name=rootless` and `CgroupDriver: ... rootless`.
+ * We accept either signal.
+ */
+async function detectRootlessDocker(): Promise<boolean> {
+  const res = await execFileNoThrow(
+    'docker',
+    ['info', '--format', '{{json .}}'],
+    5_000,
+  );
+  if (!res.ok || !res.stdout) return false;
+  try {
+    const parsed = JSON.parse(res.stdout) as {
+      SecurityOptions?: unknown;
+      CgroupDriver?: unknown;
+    };
+    const sec = Array.isArray(parsed.SecurityOptions)
+      ? parsed.SecurityOptions.map((s) => String(s))
+      : [];
+    if (sec.some((s) => /name=rootless/i.test(s))) return true;
+    if (typeof parsed.CgroupDriver === 'string' && /rootless/i.test(parsed.CgroupDriver)) {
+      return true;
+    }
+    return false;
+  } catch {
+    // Fall back to a stringy contains-check if the JSON shape changes.
+    return /name=rootless|cgroup\s*driver:.*rootless/i.test(res.stdout);
+  }
+}
+
+/**
+ * Write a sibling overlay that drops the `user:` directive from each
+ * voice service. Mirrors writeCdiOverlayIfNeeded: caller includes the
+ * returned path in composeUp's file list. Returns null when there is
+ * no enabled voice addon directory to write into (so the file list
+ * stays valid and Docker doesn't blow up on a missing -f arg).
+ */
+function writeRootlessOverlayIfNeeded(homeDir: string): string | null {
+  const addonDir = join(homeDir, 'config', 'stack', 'addons', VOICE_ADDON);
+  if (!existsSync(addonDir)) return null;
+  const overlayPath = join(addonDir, 'compose.rootless.yml');
+  // `user: null` in YAML drops the directive when compose merges files.
+  // We cover all three voice service variants so the overlay works no
+  // matter which profile is active.
+  const yaml = [
+    '# Generated overlay — removes the `user:` directive from voice services.',
+    '# Applied only when `docker info` reports a rootless daemon. On rootless',
+    '# Docker the compose-baked UID has no write access to the bind-mounted',
+    '# state directory; letting Docker pick the namespaced UID restores it.',
+    'services:',
+    '  voice:',
+    '    user: null',
+    '  voice-cuda:',
+    '    user: null',
+    '  voice-rocm:',
+    '    user: null',
+    '',
+  ].join('\n');
+  writeFileSync(overlayPath, yaml);
+  return overlayPath;
+}
+
+// Per-process serialization: rapid double-saves (double-click on Save,
+// or two operators racing) used to race two composeUp --force-recreate
+// invocations on the same project, killing each other's containers
+// mid-healthcheck. The mutex chains saves through one promise so the
+// second waits for the first to finish before starting its own work.
+let putInFlight: Promise<Response> = Promise.resolve(
+  new Response(null, { status: 204 }),
+);
+
 export const PUT: RequestHandler = async (event) => {
+  const next = putInFlight.then(() => handlePut(event));
+  // Don't leak prior rejections into the queue.
+  putInFlight = next.catch(() => new Response(null, { status: 204 }));
+  return next;
+};
+
+async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response> {
   const requestId = getRequestId(event);
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
@@ -624,8 +692,13 @@ export const PUT: RequestHandler = async (event) => {
   // voice-cuda to use deploy.resources.reservations.devices+driver:cdi.
   // The canonical compose stays the runtime-nvidia form (no manual
   // setup case). Overlay is applied only for this one composeUp.
+  //
+  // Skipped on Windows: the operator must use Docker Desktop with WSL2
+  // GPU integration there, and CDI specs live inside WSL2 — the Node
+  // host can't read /etc/cdi/* and the probe would always fail.
   const extraFiles: string[] = [];
-  if (activeProfile === 'cuda' && !inVitest) {
+  const cdiFallbackSupported = process.platform !== 'win32';
+  if (activeProfile === 'cuda' && !inVitest && cdiFallbackSupported) {
     const cudaAvailability = await getAddonProfileAvailability({ id: 'cuda' });
     const runtimeMissing = cudaAvailability.available === false
       || !await dockerHasNvidiaRuntime();
@@ -636,6 +709,35 @@ export const PUT: RequestHandler = async (event) => {
         extraFiles.push(overlay);
         steps.push({ step: 'cdi-fallback', ok: true, detail: 'using CDI device reservation' });
       }
+    }
+  }
+
+  // ── Rootless Docker fallback ─────────────────────────────────────
+  // On rootless Docker the compose-baked `user: ${OP_UID}:${OP_GID}`
+  // directive resolves to a UID that the namespaced container can't use
+  // to write the bind-mounted models directory. Drop the directive via
+  // a sibling overlay; Docker then picks the in-namespace UID, which
+  // has the right permission against the subuid-remapped bind mount.
+  if (!inVitest) {
+    try {
+      const rootless = await detectRootlessDocker();
+      if (rootless) {
+        const overlay = writeRootlessOverlayIfNeeded(state.homeDir);
+        if (overlay) {
+          extraFiles.push(overlay);
+          steps.push({
+            step: 'rootless-fallback',
+            ok: true,
+            detail: 'dropping user: directive for rootless Docker',
+          });
+        }
+      }
+    } catch (e) {
+      // Detection failures fall through to the un-overlayed path. The
+      // operator can still complete the save; if they hit a permission
+      // error inside the container, the existing translateDockerError
+      // copy points them at the underlying cause.
+      console.warn('[voice] rootless detection failed:', e);
     }
   }
 
