@@ -1,5 +1,8 @@
 /**
- * Automation Scheduler — Stack-dependent E2E tests.
+ * Automation Scheduler — MANUAL smoke script (NOT an automated test).
+ *
+ * Renamed from `.pw.ts` to `.manual.ts`. Requires a live dev stack +
+ * standalone UI listening on ADMIN_URL. See e2e/README.md.
  *
  * The scheduler runs as a co-process inside the assistant container and has
  * no HTTP API. All control flows through the admin API onto the filesystem:

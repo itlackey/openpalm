@@ -1,5 +1,8 @@
 /**
- * AKM Configuration — Stack-dependent E2E tests.
+ * AKM Configuration — MANUAL smoke script (NOT an automated test).
+ *
+ * Renamed from `.pw.ts` to `.manual.ts`. Requires a live dev stack +
+ * standalone UI listening on ADMIN_URL. See e2e/README.md.
  *
  * Tests the /admin/akm GET and PATCH routes end-to-end:
  * - Auth enforcement

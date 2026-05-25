@@ -1,5 +1,11 @@
 /**
- * Admin Health & Connections — Stack-dependent E2E tests.
+ * Admin Health & Connections — MANUAL smoke script (NOT an automated test).
+ *
+ * Renamed from `.pw.ts` to `.manual.ts` so it no longer runs as part
+ * of the default Playwright suite. Requires a live dev stack +
+ * standalone UI listening on ADMIN_URL. See e2e/README.md for the
+ * convention. Self-contained vitest coverage of /admin/health +
+ * /admin/providers (mocking @openpalm/lib) is a worthwhile follow-up.
  *
  * Validates:
  * - GET /admin/health: session probe (auth gate, assistant reachability)

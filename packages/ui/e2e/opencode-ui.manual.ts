@@ -1,3 +1,9 @@
+/**
+ * OpenCode UI reachability — MANUAL smoke script (NOT an automated test).
+ *
+ * Renamed from `.pw.ts` to `.manual.ts`. Requires a live dev stack
+ * with the assistant container running. See e2e/README.md.
+ */
 import { expect, test } from '@playwright/test';
 
 // The assistant container maps host port OP_ASSISTANT_PORT (default 4800 for test stacks) → container port 4096.

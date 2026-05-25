@@ -1,3 +1,10 @@
+/**
+ * Channel → Guardian pipeline — MANUAL smoke script (NOT an automated test).
+ *
+ * Renamed from `.pw.ts` to `.manual.ts`. Requires a live dev stack
+ * with assistant + guardian containers running + standalone UI on
+ * ADMIN_URL. See e2e/README.md.
+ */
 import { expect, test } from '@playwright/test';
 import { createHmac, randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync, appendFileSync, openSync, ftruncateSync, writeSync, closeSync } from 'node:fs';
