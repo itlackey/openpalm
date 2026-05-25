@@ -313,9 +313,13 @@ export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
 export function writeRuntimeFiles(
   state: ControlPlaneState
 ): void {
-  // Write core compose to config/stack/
+  // Write core compose to config/stack/ only on first install —
+  // refreshCoreAssets() is the canonical writer on update.
   mkdirSync(state.stackDir, { recursive: true });
-  writeFileSync(`${state.stackDir}/core.compose.yml`, state.artifacts.compose);
+  const composePath = `${state.stackDir}/core.compose.yml`;
+  if (!existsSync(composePath)) {
+    writeFileSync(composePath, state.artifacts.compose);
+  }
 
   // Load persisted channel HMAC secrets from guardian.env,
   // then generate new ones for new channel addons.

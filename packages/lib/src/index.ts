@@ -143,6 +143,7 @@ export {
   ensureOpenCodeSystemConfig,
   refreshCoreAssets,
   seedStashAssets,
+  seedAssistantPersonaFiles,
 } from "./control-plane/core-assets.js";
 
 // ── Configuration Persistence ────────────────────────────────────────────
