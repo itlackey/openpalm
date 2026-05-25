@@ -63,6 +63,7 @@
   // ── Step 2: Models ────────────────────────────────────────────────────────
   let modelSelection = $state<{ llm?: ModelSelection; embedding?: ModelSelection; small?: ModelSelection }>({});
   let step2Error = $state('');
+  let step2EmbDimWarning = $state('');
 
   // ── Step 3: Voice ─────────────────────────────────────────────────────────
   // VoiceEngineValue holds engine id + per-engine settings (model/voice/language).
@@ -380,6 +381,9 @@
       if (options.length === 0) continue;
       const defaultOpt = options.find((o) => o.isDefault) ?? options[0];
       modelSelection[roleId] = { connId: defaultOpt.connId, model: defaultOpt.id, dims: defaultOpt.dims };
+      if (roleId === 'embedding' && (defaultOpt.dims <= 0)) {
+        step2EmbDimWarning = 'Unknown embedding model dimensions — set manually in akm config after install.';
+      }
     }
     // small model defaults to "same as chat" (no selection)
   }
@@ -846,6 +850,11 @@
 
   function handleSelectModel(role: string, connId: string, modelId: string, dims: number): void {
     modelSelection[role as 'llm' | 'embedding' | 'small'] = { connId, model: modelId, dims };
+    if (role === 'embedding' && (dims <= 0 || dims === undefined)) {
+      step2EmbDimWarning = 'Unknown embedding model dimensions — set manually in akm config after install.';
+    } else if (role === 'embedding') {
+      step2EmbDimWarning = '';
+    }
   }
 
   function handleSelectNone(role: string): void {
@@ -953,7 +962,9 @@
         .then((r) => r.ok ? r.json() : null)
         .then((data) => {
           if (!data) return;
-          if (data.uiLoginPassword) uiLoginPassword = data.uiLoginPassword;
+          // S3: current-config no longer returns the plaintext password.
+          // On rerun the wizard keeps the generated password unless the user
+          // edits it — hasPassword just confirms a password is already set.
           if (data.imageTag) imageTag = data.imageTag;
           if (typeof data.hostAkm === 'boolean') hostAkmEnabled = data.hostAkm;
 
@@ -1029,10 +1040,14 @@
 
     void loadHostStatus();
 
+    // U3: Ensure detectionReady is set after at most 10 s so the
+    // "Use recommended defaults" button is never permanently disabled.
+    const detectionTimeout = setTimeout(() => { detectionReady = true; }, 10_000);
+
     checkOpenCodeAndInit()
       .then(() => detectProviders())
       .catch(() => { /* ignore */ })
-      .finally(() => { detectionReady = true; });
+      .finally(() => { clearTimeout(detectionTimeout); detectionReady = true; });
   });
 </script>
 
@@ -1138,6 +1153,9 @@
         </section>
       {:else if currentStep === 3}
         <section class="step-content" id="step-3" data-testid="step-models">
+          {#if step2EmbDimWarning}
+            <div class="field-warning" role="alert">{step2EmbDimWarning}</div>
+          {/if}
           <ModelsStep
             {verifiedProviders}
             {providerState}

@@ -3,7 +3,7 @@ import { readStackEnv, listEnabledAddonIds } from "@openpalm/lib";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { getState } from "$lib/server/state.js";
-import { getUiLoginPassword, safeTokenCompare } from "$lib/server/helpers.js";
+import { getUiLoginPassword, requireAdmin, getRequestId } from "$lib/server/helpers.js";
 import type { RequestHandler } from "./$types";
 
 // Returns the full set of pre-fill data for re-running the setup wizard.
@@ -35,13 +35,13 @@ function deriveBaseUrl(endpoint: string | undefined): string {
     .replace(/\/+$/, "");
 }
 
-export const GET: RequestHandler = ({ cookies }) => {
+export const GET: RequestHandler = (event) => {
+  const requestId = getRequestId(event);
+  const authError = requireAdmin(event, requestId);
+  if (authError) return authError;
+
   const state = getState();
-  const sessionToken = cookies.get("op_session") ?? "";
   const configured = getUiLoginPassword();
-  if (!configured || !safeTokenCompare(sessionToken, configured)) {
-    return json({ ok: false }, { status: 401 });
-  }
 
   const env = readStackEnv(state.stackDir);
   const akm = readAkmConfig(state.configDir);
@@ -76,10 +76,9 @@ export const GET: RequestHandler = ({ cookies }) => {
 
   return json({
     ok: true,
-    // The wizard's "rerun" path uses this to pre-fill the password field.
-    // Returning the env-resolved password (not state.adminToken — that's
-    // gone after Phase 4) keeps the existing UX.
-    uiLoginPassword: configured,
+    // S3: Never return the plaintext password. The wizard rerun path checks
+    // whether a password is set so it can show the field as pre-filled.
+    hasPassword: typeof configured === "string" && configured.length > 0,
     imageTag: env.OP_IMAGE_TAG ?? "",
     hostAkm,
     llm: akm.llm ? {

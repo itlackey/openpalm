@@ -502,6 +502,17 @@ body {
   line-height: 1.5;
 }
 
+.field-warning {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-md);
+  color: #92400e;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
 /* ── Provider Card Grid ──────────────────────────────────────────────── */
 .provider-grid {
   display: flex;

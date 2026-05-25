@@ -86,14 +86,9 @@ function resolvePortsToCheck(): { port: number; service: string; blocking: boole
 export const GET: RequestHandler = async () => {
   const [docker, compose] = await Promise.all([checkDocker(), checkDockerCompose()]);
 
-  // The wizard's own listen port is, by definition, in use by us — but
-  // it'd be a false conflict to flag it. SvelteKit's adapter-node binds
-  // process.env.PORT, so any matching target port is "ours".
-  const selfPort = Number(process.env.PORT);
   const targets = resolvePortsToCheck();
   const ports = await Promise.all(
     targets.map(async (t) => {
-      if (t.port === selfPort) return { ...t, available: true };
       if (await checkPortAvailable(t.port)) return { ...t, available: true };
       // Port is in use — but if it's one of our own containers, the
       // install will recreate it, not collide. Don't flag as blocking.

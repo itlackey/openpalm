@@ -6,6 +6,7 @@ import { timingSafeEqual, createHash } from "node:crypto";
 import { getState } from "./state.js";
 import { getActiveEndpoint } from "./endpoints.js";
 import { createOpenCodeClient } from "@openpalm/lib";
+import { validateSession } from "./session-store.js";
 
 /**
  * Lazy OpenCode client bound to the currently active endpoint. The client is
@@ -113,7 +114,7 @@ export function requireAdmin(event: RequestEvent, requestId: string): Response |
     );
   }
   const token = extractToken(event);
-  if (!safeTokenCompare(token, password)) {
+  if (!validateSession(token)) {
     return errorResponse(
       401,
       "unauthorized",
@@ -128,15 +129,13 @@ export function requireAdmin(event: RequestEvent, requestId: string): Response |
 /**
  * Identify caller by the presented `op_session` cookie.
  *
- * Phase 4 collapsed the assistant/admin distinction at the cookie layer:
- * there is one credential (the operator's UI login password) and one
- * caller identity ("admin") when it matches.
+ * Returns "admin" when the cookie holds a valid session token.
  */
 export function identifyCallerByToken(event: RequestEvent): "admin" | null {
   const password = getUiLoginPassword();
   if (!password) return null;
   const token = extractToken(event);
-  if (safeTokenCompare(token, password)) return "admin";
+  if (validateSession(token)) return "admin";
   return null;
 }
 
@@ -213,7 +212,11 @@ export function checkHostHeader(request: Request, port: number): Response | null
   const allowed = [`localhost:${port}`, `127.0.0.1:${port}`];
   if (allowed.includes(normalized)) return null;
   return new Response(
-    JSON.stringify({ error: "invalid_host", host: normalized }),
+    JSON.stringify({
+      error: "invalid_host",
+      host: normalized,
+      message: "Request rejected: Host header does not match allowed hosts. To allow remote access, set OP_ADMIN_BIND_ADDRESS=0.0.0.0 and restart.",
+    }),
     { status: 400, headers: { "content-type": "application/json" } }
   );
 }

@@ -5,14 +5,12 @@
  * after verifying the operator-supplied password in the request body against
  * `process.env.OP_UI_LOGIN_PASSWORD`.
  *
- * Phase 4 of docs/technical/auth-and-proxy-refactor-plan.md deleted the
- * `state.adminToken` field and the legacy `OP_UI_TOKEN`/`OP_ASSISTANT_TOKEN`
- * env vars. The cookie value IS the password — every `requireAdmin()` call
- * re-reads the env var and constant-time-compares the cookie against it.
- * No in-memory session store.
+ * The cookie value is a random UUID session token — NOT the plaintext password.
+ * `requireAdmin()` validates the token against the in-memory session store.
  */
 import type { RequestHandler } from "./$types";
 import { safeTokenCompare, getRequestId, errorResponse, getUiLoginPassword } from "$lib/server/helpers.js";
+import { createSession } from "$lib/server/session-store.js";
 
 const COOKIE_NAME = "op_session";
 const COOKIE_OPTS = "HttpOnly; SameSite=Strict; Path=/; Max-Age=86400";
@@ -48,11 +46,12 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(401, "unauthorized", "Invalid password", {}, requestId);
   }
 
+  const sessionToken = createSession();
   return new Response(JSON.stringify({ ok: true, role: "admin" }), {
     status: 200,
     headers: {
       "content-type": "application/json",
-      "set-cookie": `${COOKIE_NAME}=${password}; ${COOKIE_OPTS}`,
+      "set-cookie": `${COOKIE_NAME}=${sessionToken}; ${COOKIE_OPTS}`,
       "x-request-id": requestId
     }
   });

@@ -2,7 +2,9 @@ import { json } from "@sveltejs/kit";
 import { performSetup, checkDocker, type SetupSpec } from "@openpalm/lib";
 import { resetState, getState } from "$lib/server/state.js";
 import { startDeploy, resetDeployState } from "$lib/server/setup-deploy.js";
-import { getUiLoginPassword } from "$lib/server/helpers.js";
+import { getUiLoginPassword, requireAdmin, getRequestId, errorResponse } from "$lib/server/helpers.js";
+import { isSetupComplete, resolveStackDir } from "@openpalm/lib";
+import { createSession } from "$lib/server/session-store.js";
 import type { RequestHandler } from "./$types";
 
 interface CompleteBody extends SetupSpec {
@@ -12,7 +14,15 @@ interface CompleteBody extends SetupSpec {
   dryRun?: boolean;
 }
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+  // S2: Once setup is complete, re-running it is an admin-only action.
+  if (isSetupComplete(resolveStackDir())) {
+    const requestId = getRequestId(event);
+    const authError = requireAdmin(event, requestId);
+    if (authError) return authError;
+  }
+
+  const { request } = event;
   let body: CompleteBody;
   try {
     body = await request.json() as CompleteBody;
@@ -73,21 +83,17 @@ export const POST: RequestHandler = async ({ request }) => {
     }
   }
 
-  // Set session cookie so the user is automatically authenticated. The
-  // cookie value IS the operator-supplied UI login password (Phase 4) —
-  // we read what the wizard just persisted into stack.env and the host
-  // process must have loaded into its environment before this request.
+  // Set session cookie so the user is automatically authenticated after install.
+  // The cookie value is an opaque session token (not the plaintext password).
   const headers = new Headers({ "content-type": "application/json" });
-  // Prefer the freshly-supplied password from the request body so the user
-  // is authenticated on the same response even if the host process hasn't
-  // re-sourced stack.env yet. Falls back to the env var.
-  const sessionPassword =
+  const hasPassword =
     (typeof body.security?.uiLoginPassword === "string" && body.security.uiLoginPassword) ||
     getUiLoginPassword();
-  if (sessionPassword) {
+  if (hasPassword) {
+    const sessionToken = createSession();
     headers.set(
       "set-cookie",
-      `op_session=${sessionPassword}; Path=/; HttpOnly; SameSite=Strict`
+      `op_session=${sessionToken}; Path=/; HttpOnly; SameSite=Strict`
     );
   }
 

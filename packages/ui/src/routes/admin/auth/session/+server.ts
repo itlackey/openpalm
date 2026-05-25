@@ -4,13 +4,11 @@
  * Issues an `op_session` cookie after verifying the operator-supplied password
  * against `process.env.OP_UI_LOGIN_PASSWORD`.
  *
- * Phase 4 of docs/technical/auth-and-proxy-refactor-plan.md collapsed the
- * `state.adminToken` field; the cookie value IS the password and is
- * constant-time-compared on every authenticated request. Kept alongside
- * `/admin/auth/login` as an alias so the host admin gateway and wizard
- * clients keep working without a coordinated client update.
+ * The cookie value is a random UUID session token — NOT the plaintext password.
+ * Kept alongside `/admin/auth/login` as an alias so existing clients keep working.
  */
 import { safeTokenCompare, getRequestId, errorResponse, getUiLoginPassword } from "$lib/server/helpers.js";
+import { createSession } from "$lib/server/session-store.js";
 import type { RequestHandler } from "./$types";
 
 export const POST: RequestHandler = async (event) => {
@@ -43,11 +41,13 @@ export const POST: RequestHandler = async (event) => {
   }
 
   // HttpOnly prevents JS access; SameSite=Strict blocks CSRF.
+  // Cookie value is an opaque session token — not the plaintext password.
+  const sessionToken = createSession();
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,
     headers: {
       "content-type": "application/json",
-      "set-cookie": `op_session=${password}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400`,
+      "set-cookie": `op_session=${sessionToken}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400`,
       "x-request-id": requestId,
     },
   });
