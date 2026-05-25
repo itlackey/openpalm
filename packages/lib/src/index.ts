@@ -117,11 +117,6 @@ export {
 } from "./control-plane/secrets.js";
 export { migrateAuth0110 } from "./control-plane/migrate-0110.js";
 export type { MigrateAuth0110Result } from "./control-plane/migrate-0110.js";
-export {
-  detectSecretBackend,
-  validatePassEntryName,
-} from "./control-plane/secret-backend.js";
-export type { SecretBackend } from "./control-plane/secret-backend.js";
 // ── Setup Status ────────────────────────────────────────────────────────
 export {
   isSetupComplete,
