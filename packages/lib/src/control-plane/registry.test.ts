@@ -24,8 +24,6 @@ import {
   getAddonProfiles,
   getAddonProfileSelection,
   setAddonProfileSelection,
-  enableAddon,
-  disableAddonByName,
   setAddonEnabled,
   installAutomationFromRegistry,
   uninstallAutomation,
@@ -312,10 +310,11 @@ describe("materialized registry catalog", () => {
 
     materializeRegistryCatalog(sourceRoot);
 
-    expect(enableAddon(process.env.OP_HOME!, 'chat')).toEqual({ ok: true });
+    const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
+    expect(setAddonEnabled(process.env.OP_HOME!, stackDir, 'chat', true)).toMatchObject({ ok: true });
     expect(existsSync(join(process.env.OP_HOME!, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
 
-    expect(disableAddonByName(process.env.OP_HOME!, 'chat')).toEqual({ ok: true });
+    expect(setAddonEnabled(process.env.OP_HOME!, stackDir, 'chat', false)).toMatchObject({ ok: true });
     expect(existsSync(join(process.env.OP_HOME!, 'config', 'stack', 'addons', 'chat'))).toBe(false);
   });
 

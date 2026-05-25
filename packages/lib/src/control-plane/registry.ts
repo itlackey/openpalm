@@ -84,7 +84,7 @@ export type RegistryCatalogVerification = {
   automationCount: number;
 };
 
-export type MutationResult = { ok: true } | { ok: false; error: string };
+type MutationResult = { ok: true } | { ok: false; error: string };
 export type AddonMutationResult = (
   | { ok: true; enabled: boolean; changed: boolean; services: string[] }
   | { ok: false; error: string }
@@ -668,7 +668,7 @@ export function setAddonProfileSelection(stackDir: string, name: string, profile
   patchSecretsEnvFile(stackDir, { [profileEnvKey(name)]: trimmed });
 }
 
-export function enableAddon(homeDir: string, name: string): MutationResult {
+function enableAddon(homeDir: string, name: string): MutationResult {
   try {
     copyAddonFromRegistry(homeDir, name);
     // Pre-create the addon services directory so Docker doesn't create it as root
@@ -679,7 +679,7 @@ export function enableAddon(homeDir: string, name: string): MutationResult {
   }
 }
 
-export function disableAddonByName(homeDir: string, name: string): MutationResult {
+function disableAddonByName(homeDir: string, name: string): MutationResult {
   try {
     removeEnabledAddon(homeDir, name);
     return { ok: true };

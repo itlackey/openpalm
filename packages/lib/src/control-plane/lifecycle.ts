@@ -25,7 +25,7 @@ import { refreshCoreAssets } from "./core-assets.js";
 import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName } from "./docker.js";
-import { acquireLock, releaseLock } from "./lock.js";
+import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import { listEnabledAddonIds } from "./registry.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
@@ -125,7 +125,8 @@ async function reconcileCore(
 }
 
 export async function applyInstall(state: ControlPlaneState): Promise<void> {
-  const lock = acquireLock(state.homeDir, "install");
+  const lock = acquireInstallLock(state.stateDir);
+  if (!lock) throw new Error("Another install is already in progress");
   try {
     await reconcileCore(state, { activateServices: true });
     // Pre-create host-side volume mount targets as the current user so
@@ -133,25 +134,27 @@ export async function applyInstall(state: ControlPlaneState): Promise<void> {
     // non-root containers).
     ensureComposeVolumeTargets(state);
   } finally {
-    releaseLock(lock);
+    releaseInstallLock(lock);
   }
 }
 
 export async function applyUpdate(state: ControlPlaneState): Promise<{ restarted: string[] }> {
-  const lock = acquireLock(state.homeDir, "update");
+  const lock = acquireInstallLock(state.stateDir);
+  if (!lock) throw new Error("Another install is already in progress");
   try {
     return { restarted: await reconcileCore(state, {}) };
   } finally {
-    releaseLock(lock);
+    releaseInstallLock(lock);
   }
 }
 
 export async function applyUninstall(state: ControlPlaneState): Promise<{ stopped: string[] }> {
-  const lock = acquireLock(state.homeDir, "uninstall");
+  const lock = acquireInstallLock(state.stateDir);
+  if (!lock) throw new Error("Another install is already in progress");
   try {
     return { stopped: await reconcileCore(state, { deactivateServices: true }) };
   } finally {
-    releaseLock(lock);
+    releaseInstallLock(lock);
   }
 }
 
@@ -218,13 +221,14 @@ export async function applyUpgrade(
   updated: string[];
   restarted: string[];
 }> {
-  const lock = acquireLock(state.homeDir, "upgrade");
+  const lock = acquireInstallLock(state.stateDir);
+  if (!lock) throw new Error("Another install is already in progress");
   try {
     const { backupDir, updated } = await refreshCoreAssets();
     const restarted = await reconcileCore(state, {});
     return { backupDir, updated, restarted };
   } finally {
-    releaseLock(lock);
+    releaseInstallLock(lock);
   }
 }
 

@@ -64,8 +64,6 @@ export {
   setAddonProfileSelection,
   listAvailableAddonIds,
   listEnabledAddonIds,
-  enableAddon,
-  disableAddonByName,
   setAddonEnabled,
   installAutomationFromRegistry,
   uninstallAutomation,

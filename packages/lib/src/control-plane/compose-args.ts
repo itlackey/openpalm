@@ -11,10 +11,6 @@ import { buildComposeFileList } from "./lifecycle.js";
 import { buildEnvFiles } from "./config-persistence.js";
 import { resolveComposeProjectName } from "./docker.js";
 
-// ── Constants ────────────────────────────────────────────────────────────
-
-export const COMPOSE_PROJECT_NAME = "openpalm";
-
 // ── Types ────────────────────────────────────────────────────────────────
 
 export type ComposeOptions = {

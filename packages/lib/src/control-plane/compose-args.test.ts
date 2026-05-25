@@ -6,7 +6,6 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  COMPOSE_PROJECT_NAME,
   buildComposeOptions,
   buildComposeCliArgs,
 } from "./compose-args.js";
@@ -61,14 +60,6 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(tempDir, { recursive: true, force: true });
-});
-
-// ── COMPOSE_PROJECT_NAME ─────────────────────────────────────────────────
-
-describe("COMPOSE_PROJECT_NAME", () => {
-  it("is 'openpalm'", () => {
-    expect(COMPOSE_PROJECT_NAME).toBe("openpalm");
-  });
 });
 
 // ── buildComposeOptions ──────────────────────────────────────────────────

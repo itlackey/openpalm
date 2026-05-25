@@ -17,12 +17,11 @@ import { acquireInstallLock, releaseInstallLock, type InstallLockHandle } from "
 import {
   ensureSecrets,
   updateSecretsEnv,
-  updateSystemSecretsEnv,
+  patchSecretsEnvFile,
   ensureOpenCodeConfig,
   readStackEnv,
   writeAuthJsonProviderKeys,
 } from "./secrets.js";
-import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { createState } from "./lifecycle.js";
 import { writeStackSpec } from "./stack-spec.js";
 import { writeVoiceVars } from "./spec-to-env.js";
@@ -227,7 +226,7 @@ export async function performSetup(
         }
       }
       updateSecretsEnv(state, updates);
-      updateSystemSecretsEnv(state, buildSystemSecretsFromSetup(security.uiLoginPassword, existingSystemEnv));
+      patchSecretsEnvFile(state.stackDir, buildSystemSecretsFromSetup(security.uiLoginPassword, existingSystemEnv));
       // Provider API keys land in OpenCode's auth.json (bind-mounted into
       // the assistant container) — never in stack.env.
       writeAuthJsonProviderKeys(state, providerKeys);
@@ -311,7 +310,6 @@ export async function performSetup(
       }
 
       ensureOpenCodeConfig();
-      ensureOpenCodeSystemConfig();
 
       // Seed default automation into the AKM stash. Idempotent — existing files
       // are left alone so user edits survive re-install and upgrade.
