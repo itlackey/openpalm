@@ -179,20 +179,36 @@ export function resolveLocalUiBuild(): string | null {
   );
 }
 
+function readUiVersionFile(dir: string): string | null {
+  try { return readFileSync(join(dir, 'version.txt'), 'utf-8').trim(); } catch { return null; }
+}
+
 /**
  * Resolve the best available UI build directory at runtime.
  *
  * Priority:
- *   1. OP_HOME/state/ui/ — installed by seedUiBuild (production)
- *   2. Local packages/ui/build/ — dev / source install fallback
+ *   1. OP_HOME/state/ui/ — if its version.txt is NEWER than the bundled build
+ *   2. Bundled / local build (Electron extraResources, source checkout)
+ *   3. OP_HOME/state/ui/ — fallback when no bundled build exists
+ *
+ * This means GitHub-downloaded updates are applied automatically (disk wins
+ * when newer), but a fresh AppImage install always works without a download.
  */
 export function resolveUiBuildDir(): string {
-  // Prefer embedded/local build (Electron extraResources, source checkout) over
-  // the cached state/ui copy — local always reflects the current app version.
-  const local = resolveLocalUiBuild();
-  if (local) return local;
-  // Fallback: state/ui installed by CLI or downloaded from GitHub
-  return join(resolveStateDir(), 'ui');
+  const stateBuild = join(resolveStateDir(), 'ui');
+  const localBuild = resolveLocalUiBuild();
+
+  if (existsSync(join(stateBuild, 'index.js')) && localBuild) {
+    const diskVer    = readUiVersionFile(stateBuild);
+    const bundledVer = readUiVersionFile(localBuild);
+    if (diskVer && bundledVer && compareVersionTags(diskVer, bundledVer) > 0) {
+      return stateBuild;
+    }
+    return localBuild;
+  }
+
+  if (localBuild) return localBuild;
+  return stateBuild;
 }
 
 /**
@@ -233,6 +249,7 @@ export async function seedUiBuild(repoRef: string, stateDir: string): Promise<vo
   if (local) {
     logger.debug('seeding UI build from local source', { src: local });
     copyTree(local, uiDir);
+    writeFileSync(join(uiDir, 'version.txt'), repoRef.replace(/^v/, ''));
     return;
   }
 
@@ -269,6 +286,7 @@ export async function seedUiBuild(repoRef: string, stateDir: string): Promise<vo
 
     // Cross-platform extraction via the `tar` npm package — no shell dependency
     await tarExtract({ file: tmpTar, cwd: uiDir, strip: 1 });
+    writeFileSync(join(uiDir, 'version.txt'), repoRef.replace(/^v/, ''));
   } finally {
     rmSync(tmpTar, { force: true });
   }
