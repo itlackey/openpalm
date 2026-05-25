@@ -1,4 +1,4 @@
-import { BaseChannel, createLogger, splitMessage, type HandleResult } from "@openpalm/channels-sdk";
+import { BaseChannel, ConversationQueue, createLogger, splitMessage, type HandleResult } from "@openpalm/channels-sdk";
 import {
   Client,
   Events,
@@ -14,11 +14,6 @@ import {
 } from "discord.js";
 import { buildCommandRegistry, parseCustomCommands, resolvePromptTemplate } from "./commands.ts";
 import { checkPermissions, loadPermissionConfig } from "./permissions.ts";
-import {
-  buildThreadSessionKey,
-  ConversationQueue,
-  resolveInteractionSessionKey,
-} from "./session.ts";
 import type { PermissionConfig, UserInfo } from "./types.ts";
 
 const log = createLogger("channel-discord");
@@ -231,7 +226,9 @@ export default class DiscordChannel extends BaseChannel {
     const stopTyping = await this.sendTypingLoop(thread);
 
     try {
-      const answer = await this.forwardToGuardian(userInfo.userId, text, metadata, this.forwardTimeoutMs || undefined);
+      const resp = await this.forward({ userId: `discord:${userInfo.userId}`, text, metadata }, undefined, this.forwardTimeoutMs || undefined);
+      if (!resp.ok) throw new Error(`Guardian returned status ${resp.status}`);
+      const { answer = "No response received." } = await resp.json() as { answer?: string };
       stopTyping();
       await this.sendSplitMessage(thread, answer);
       log.info("message_completed", {
@@ -305,7 +302,7 @@ export default class DiscordChannel extends BaseChannel {
 
       this.touchThread(thread.id);
 
-      const sessionKey = buildThreadSessionKey(thread.id);
+      const sessionKey = `discord:thread:${thread.id}`;
       await this.conversationQueue.runOrQueue(sessionKey, {
         onQueued: async () => {
           if (message.channel.isThread()) {
@@ -450,11 +447,10 @@ export default class DiscordChannel extends BaseChannel {
       return;
     }
 
-    const sessionKey = resolveInteractionSessionKey({
-      channelId: interaction.channelId,
-      userId: userInfo.userId,
-      threadId: interaction.channel?.isThread() ? interaction.channel.id : null,
-    });
+    const interactionThreadId = interaction.channel?.isThread() ? interaction.channel.id : null;
+    const sessionKey = interactionThreadId?.trim()
+      ? `discord:thread:${interactionThreadId}`
+      : `discord:channel:${interaction.channelId}:user:${userInfo.userId}`;
     const isBusy = this.conversationQueue.isProcessing(sessionKey);
     const shouldQueue = forceQueue && isBusy;
 
@@ -467,13 +463,19 @@ export default class DiscordChannel extends BaseChannel {
     await this.conversationQueue.runOrQueue(sessionKey, {
       run: async () => {
         try {
-          const answer = await this.forwardToGuardian(userInfo.userId, text, {
-            guildId: userInfo.guildId,
-            username: userInfo.username,
-            command: commandName,
-            channelId: interaction.channelId,
-            sessionKey,
-          }, this.forwardTimeoutMs || undefined);
+          const resp = await this.forward({
+            userId: `discord:${userInfo.userId}`,
+            text,
+            metadata: {
+              guildId: userInfo.guildId,
+              username: userInfo.username,
+              command: commandName,
+              channelId: interaction.channelId,
+              sessionKey,
+            },
+          }, undefined, this.forwardTimeoutMs || undefined);
+          if (!resp.ok) throw new Error(`Guardian returned status ${resp.status}`);
+          const { answer = "No response received." } = await resp.json() as { answer?: string };
 
           const chunks = splitMessage(answer, MAX_MESSAGE_LENGTH);
           const firstChunk = chunks[0] ?? "No response received.";
@@ -515,11 +517,10 @@ export default class DiscordChannel extends BaseChannel {
   ): Promise<void> {
     await interaction.deferReply({ ephemeral: true });
 
-    const sessionKey = resolveInteractionSessionKey({
-      channelId: interaction.channelId,
-      userId: userInfo.userId,
-      threadId: interaction.channel?.isThread() ? interaction.channel.id : null,
-    });
+    const clearThreadId = interaction.channel?.isThread() ? interaction.channel.id : null;
+    const sessionKey = clearThreadId?.trim()
+      ? `discord:thread:${clearThreadId}`
+      : `discord:channel:${interaction.channelId}:user:${userInfo.userId}`;
 
     try {
       const resp = await this.forward({

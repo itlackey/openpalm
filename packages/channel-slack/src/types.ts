@@ -4,10 +4,7 @@ export type PermissionConfig = {
   blockedUsers: Set<string>;
 };
 
-export type PermissionResult = {
-  allowed: boolean;
-  reason?: string;
-};
+export type { PermissionResult } from "@openpalm/channels-sdk";
 
 export type UserInfo = {
   userId: string;

@@ -1,13 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import SlackChannel, { DEFAULT_FORWARD_TIMEOUT_MS, parseForwardTimeoutMs, splitMessage } from "./index.ts";
 import { checkPermissions, loadPermissionConfig, parseIdList } from "./permissions.ts";
-import {
-  buildChannelUserSessionKey,
-  buildDMSessionKey,
-  buildThreadSessionKey,
-  ConversationQueue,
-  resolveSessionKey,
-} from "./session.ts";
+import { ConversationQueue } from "@openpalm/channels-sdk";
 import type { PermissionConfig, PermissionResult, UserInfo } from "./types.ts";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -276,84 +270,6 @@ describe("loadPermissionConfig", () => {
     });
     expect(config.allowedChannels.has("C1")).toBe(true);
     expect(config.allowedChannels.has("C2")).toBe(true);
-  });
-});
-
-// ── Session Keys ────────────────────────────────────────────────────────────
-
-describe("session keys", () => {
-  it("builds thread session key with channel and thread_ts", () => {
-    expect(buildThreadSessionKey("C123", "1234567890.123456")).toBe(
-      "slack:thread:C123:1234567890.123456",
-    );
-  });
-
-  it("builds DM session key", () => {
-    expect(buildDMSessionKey("U123")).toBe("slack:dm:U123");
-  });
-
-  it("builds channel-user session key", () => {
-    expect(buildChannelUserSessionKey("C123", "U456")).toBe("slack:channel:C123:user:U456");
-  });
-
-  it("resolves to thread key when thread_ts present", () => {
-    const key = resolveSessionKey({
-      channelId: "C123",
-      userId: "U456",
-      threadTs: "1234567890.123456",
-      isDM: false,
-    });
-    expect(key).toBe("slack:thread:C123:1234567890.123456");
-  });
-
-  it("resolves to DM key for DMs without thread", () => {
-    const key = resolveSessionKey({
-      channelId: "D123",
-      userId: "U456",
-      isDM: true,
-    });
-    expect(key).toBe("slack:dm:U456");
-  });
-
-  it("resolves to channel-user key for non-DM without thread", () => {
-    const key = resolveSessionKey({
-      channelId: "C123",
-      userId: "U456",
-      isDM: false,
-    });
-    expect(key).toBe("slack:channel:C123:user:U456");
-  });
-
-  it("thread_ts takes precedence over isDM", () => {
-    const key = resolveSessionKey({
-      channelId: "D123",
-      userId: "U456",
-      threadTs: "1234567890.123456",
-      isDM: true,
-    });
-    expect(key).toBe("slack:thread:D123:1234567890.123456");
-  });
-
-  it("different threads produce different session keys", () => {
-    const key1 = resolveSessionKey({
-      channelId: "C123",
-      userId: "U456",
-      threadTs: "1111111111.111111",
-      isDM: false,
-    });
-    const key2 = resolveSessionKey({
-      channelId: "C123",
-      userId: "U456",
-      threadTs: "2222222222.222222",
-      isDM: false,
-    });
-    expect(key1).not.toBe(key2);
-  });
-
-  it("different users in same channel produce different keys", () => {
-    const key1 = resolveSessionKey({ channelId: "C123", userId: "U111", isDM: false });
-    const key2 = resolveSessionKey({ channelId: "C123", userId: "U222", isDM: false });
-    expect(key1).not.toBe(key2);
   });
 });
 
@@ -1661,74 +1577,6 @@ describe("runConversation", () => {
   });
 });
 
-// ── Guardian forwarding ─────────────────────────────────────────────────────
-
-describe("forwardToGuardian", () => {
-  it("prepends 'slack:' to userId", async () => {
-    const channel = new SlackChannel();
-    const forward = mock(async () =>
-      new Response(JSON.stringify({ answer: "ok" }), { status: 200 }),
-    );
-    Object.assign(channel, { forward });
-
-    await (channel as unknown as {
-      forwardToGuardian: (userId: string, text: string, metadata: Record<string, unknown>) => Promise<string>;
-    }).forwardToGuardian("U123", "hello", { sessionKey: "k1" });
-
-    expect(forward.mock.calls[0]?.[0].userId).toBe("slack:U123");
-  });
-
-  it("throws on non-ok guardian response", async () => {
-    const channel = new SlackChannel();
-    const forward = mock(async () => new Response("{}", { status: 502 }));
-    Object.assign(channel, { forward });
-
-    try {
-      await (channel as unknown as {
-        forwardToGuardian: (userId: string, text: string, metadata: Record<string, unknown>) => Promise<string>;
-      }).forwardToGuardian("U123", "hello", {});
-      expect(true).toBe(false); // should not reach
-    } catch (e) {
-      expect((e as Error).message).toBe("Guardian returned status 502");
-    }
-  });
-
-  it("returns 'No response received.' when answer is missing", async () => {
-    const channel = new SlackChannel();
-    const forward = mock(async () =>
-      new Response(JSON.stringify({ sessionId: "s1" }), { status: 200 }),
-    );
-    Object.assign(channel, { forward });
-
-    const result = await (channel as unknown as {
-      forwardToGuardian: (userId: string, text: string, metadata: Record<string, unknown>) => Promise<string>;
-    }).forwardToGuardian("U123", "hello", {});
-
-    expect(result).toBe("No response received.");
-  });
-
-  it("passes metadata through to forward", async () => {
-    const channel = new SlackChannel();
-    const forward = mock(async () =>
-      new Response(JSON.stringify({ answer: "ok" }), { status: 200 }),
-    );
-    Object.assign(channel, { forward });
-
-    await (channel as unknown as {
-      forwardToGuardian: (userId: string, text: string, metadata: Record<string, unknown>) => Promise<string>;
-    }).forwardToGuardian("U123", "hello", {
-      sessionKey: "key1",
-      teamId: "T1",
-      command: "ask",
-    });
-
-    expect(forward.mock.calls[0]?.[0].metadata).toMatchObject({
-      sessionKey: "key1",
-      teamId: "T1",
-      command: "ask",
-    });
-  });
-});
 
 // ── Utility: stripMention ───────────────────────────────────────────────────
 
