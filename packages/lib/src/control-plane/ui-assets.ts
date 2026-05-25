@@ -187,9 +187,12 @@ export function resolveLocalUiBuild(): string | null {
  *   2. Local packages/ui/build/ — dev / source install fallback
  */
 export function resolveUiBuildDir(): string {
-  const stateBuild = join(resolveStateDir(), 'ui');
-  if (existsSync(join(stateBuild, 'index.js'))) return stateBuild;
-  return resolveLocalUiBuild() ?? stateBuild; // fall back even if missing (error surfaces later)
+  // Prefer embedded/local build (Electron extraResources, source checkout) over
+  // the cached state/ui copy — local always reflects the current app version.
+  const local = resolveLocalUiBuild();
+  if (local) return local;
+  // Fallback: state/ui installed by CLI or downloaded from GitHub
+  return join(resolveStateDir(), 'ui');
 }
 
 /**
