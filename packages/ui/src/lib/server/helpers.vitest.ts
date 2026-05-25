@@ -6,9 +6,7 @@
  * 2. errorResponse builds structured error envelopes per api-spec.md
  * 3. getRequestId extracts from header or generates UUID
  * 4. requireAdmin enforces timing-safe token comparison (security invariant)
- * 5. getActor derives actor from auth state, not caller-controlled headers
- * 6. getCallerType normalizes x-requested-by header
- * 7. parseJsonBody returns discriminated result with data or error type
+ * 5. parseJsonBody returns discriminated result with data or error type
  */
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import {
@@ -18,8 +16,6 @@ import {
   requireAdmin,
   requireAuth,
   identifyCallerByToken,
-  getActor,
-  getCallerType,
   parseJsonBody,
 } from "./helpers.js";
 import { resetState } from "./test-helpers.js";
@@ -195,45 +191,6 @@ describe("requireAdmin", () => {
   });
 });
 
-// ── getActor ────────────────────────────────────────────────────────────
-
-describe("getActor", () => {
-  beforeEach(() => {
-    resetState("test-admin-token-12345");
-  });
-
-  test("returns 'admin' when cookie matches configured token", () => {
-    const event = makeEvent({ cookie: "op_session=test-admin-token-12345" });
-    expect(getActor(event as never)).toBe("admin");
-  });
-
-  // Phase 2: x-admin-token header fallback was removed.
-  test("returns 'unauthenticated' when admin token presented via x-admin-token header", () => {
-    const event = makeEvent({ "x-admin-token": "test-admin-token-12345" });
-    expect(getActor(event as never)).toBe("unauthenticated");
-  });
-
-  // Phase 4: assistantToken was deleted from ControlPlaneState. There is no
-  // longer a second token to test against — the only valid credential is
-  // the operator-supplied UI login password.
-
-  test("returns 'unauthenticated' when cookie token is wrong", () => {
-    const event = makeEvent({ cookie: "op_session=wrong-token" });
-    expect(getActor(event as never)).toBe("unauthenticated");
-  });
-
-  test("returns 'unauthenticated' when no token", () => {
-    const event = makeEvent({});
-    expect(getActor(event as never)).toBe("unauthenticated");
-  });
-
-  test("actor is derived from auth state, not caller-controlled (security)", () => {
-    // Even if x-requested-by claims "admin", actor is based on token verification
-    const event = makeEvent({ "x-requested-by": "admin" });
-    expect(getActor(event as never)).toBe("unauthenticated");
-  });
-});
-
 describe("identifyCallerByToken / requireAuth (cookie-only after Phase 2)", () => {
   beforeEach(() => {
     resetState("test-admin-token-12345");
@@ -284,26 +241,6 @@ describe("identifyCallerByToken / requireAuth (cookie-only after Phase 2)", () =
     expect(result!.status).toBe(401);
     const body = await result!.json();
     expect(body.requestId).toBe("req-bad");
-  });
-});
-
-// ── getCallerType ───────────────────────────────────────────────────────
-
-describe("getCallerType", () => {
-  test("normalizes valid x-requested-by header values", () => {
-    expect(getCallerType(makeEvent({ "x-requested-by": "ui" }) as never)).toBe("ui");
-    expect(getCallerType(makeEvent({ "x-requested-by": "cli" }) as never)).toBe("cli");
-    expect(getCallerType(makeEvent({ "x-requested-by": "assistant" }) as never)).toBe("assistant");
-    expect(getCallerType(makeEvent({ "x-requested-by": "system" }) as never)).toBe("system");
-    expect(getCallerType(makeEvent({ "x-requested-by": "test" }) as never)).toBe("test");
-  });
-
-  test("returns 'unknown' for missing header", () => {
-    expect(getCallerType(makeEvent({}) as never)).toBe("unknown");
-  });
-
-  test("returns 'unknown' for invalid value", () => {
-    expect(getCallerType(makeEvent({ "x-requested-by": "hacker" }) as never)).toBe("unknown");
   });
 });
 

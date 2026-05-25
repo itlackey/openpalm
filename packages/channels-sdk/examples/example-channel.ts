@@ -12,8 +12,9 @@
  *
  * Environment variables (auto-configured by OpenPalm):
  *   PORT                    — HTTP port (default: 8080)
- *   GUARDIAN_URL             — Guardian endpoint (default: http://guardian:8080)
  *   CHANNEL_EXAMPLE_SECRET  — HMAC secret (auto-generated on install)
+ *
+ * Guardian is hardcoded at `http://guardian:8080` (in-network Docker DNS).
  */
 
 import { BaseChannel, type HandleResult } from "@openpalm/channels-sdk";

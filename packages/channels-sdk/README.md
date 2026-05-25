@@ -36,7 +36,7 @@ Set `CHANNEL_PACKAGE=@scope/my-channel` in your registry overlay to have the cha
 |---|---|
 | `name` | Channel identifier — used to resolve the `CHANNEL_<NAME>_SECRET` env var |
 | `port` | Listen port (default: `PORT` env or `8080`) |
-| `guardianUrl` | Guardian target (default: `GUARDIAN_URL` env) |
+| `guardianUrl` | Guardian target — hardcoded to `http://guardian:8080` (the in-network service name) |
 | `secret` | HMAC secret — auto-resolved from env |
 | `handleRequest(req)` | **Implement this** — parse request, return `{ userId, text }` or `null` |
 | `route(req, url)` | Optional — override for custom routing before `handleRequest` |

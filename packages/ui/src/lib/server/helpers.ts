@@ -5,7 +5,7 @@ import type { RequestEvent } from "@sveltejs/kit";
 import { timingSafeEqual, createHash } from "node:crypto";
 import { getState } from "./state.js";
 import { getActiveEndpoint } from "./endpoints.js";
-import { createOpenCodeClient, normalizeCaller, type CallerType } from "@openpalm/lib";
+import { createOpenCodeClient } from "@openpalm/lib";
 
 /**
  * Lazy OpenCode client bound to the currently active endpoint. The client is
@@ -81,20 +81,6 @@ export function getRequestId(event: RequestEvent): string {
  */
 export function getUiLoginPassword(): string {
   return process.env.OP_UI_LOGIN_PASSWORD ?? "";
-}
-
-/** Guard: returns 503 if the UI login password has not been configured yet. */
-export function requireNonEmptyAdminToken(_state: unknown, requestId: string): Response | null {
-  if (!getUiLoginPassword()) {
-    return errorResponse(
-      503,
-      'admin_not_configured',
-      'OP_UI_LOGIN_PASSWORD has not been set. Complete setup first.',
-      {},
-      requestId,
-    );
-  }
-  return null;
 }
 
 /**
@@ -184,16 +170,6 @@ export function requireAuth(event: RequestEvent, requestId: string): Response | 
     {},
     requestId
   );
-}
-
-/** Extract actor from request — derived from auth state, not caller-controlled. */
-export function getActor(event: RequestEvent): string {
-  return identifyCallerByToken(event) ?? "unauthenticated";
-}
-
-/** Extract caller type from request */
-export function getCallerType(event: RequestEvent): CallerType {
-  return normalizeCaller(event.request.headers.get("x-requested-by"));
 }
 
 /** Discriminated result from parseJsonBody */

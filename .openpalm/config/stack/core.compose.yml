@@ -136,8 +136,7 @@ services:
     # channel_lan / assistant_net Docker networks as `http://guardian:8080`.
     # Channels (api, discord, slack, chat) talk to it over channel_lan; the
     # host UI checks its health via `docker container inspect` instead of HTTP.
-    # To temporarily expose for debugging, set OP_GUARDIAN_DEBUG_PORT and
-    # add a one-off override file or use `docker exec openpalm-guardian-1 ...`.
+    # To debug, use `docker exec openpalm-guardian-1 curl localhost:8080/health`.
     volumes:
       - ${OP_HOME}/state/guardian:/app/data
       - ${OP_HOME}/state/logs:/app/audit

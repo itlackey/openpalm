@@ -25,14 +25,12 @@ export {
 export type {
   ControlPlaneState,
   CoreServiceName,
-  OptionalServiceName,
   ChannelInfo,
   CallerType,
   ArtifactMeta,
 } from "./control-plane/types.js";
 export {
   CORE_SERVICES,
-  OPTIONAL_SERVICES,
 } from "./control-plane/types.js";
 
 // ── Backups ───────────────────────────────────────────────────────────────

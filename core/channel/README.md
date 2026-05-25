@@ -16,7 +16,6 @@ Docker image used by all registry-backed channel adapters. It bundles the `@open
 | `PORT` | `8080` | HTTP listen port |
 | `CHANNEL_PACKAGE` | — | npm package to install and run (e.g. `@openpalm/channel-chat`) |
 | `CHANNEL_FILE` | `/app/channel.ts` | Path to a local `.ts` file (fallback when `CHANNEL_PACKAGE` is unset) |
-| `GUARDIAN_URL` | `http://guardian:8080` | Guardian forwarding target |
 | `CHANNEL_<NAME>_SECRET` | — | HMAC secret for the channel |
 
 ## Registry usage

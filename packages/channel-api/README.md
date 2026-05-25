@@ -44,6 +44,5 @@ current install API instead of editing the compose file list by hand.
 | Variable | Purpose |
 |---|---|
 | `PORT` | Container listen port, default `8182` |
-| `GUARDIAN_URL` | Guardian forwarding target |
 | `CHANNEL_API_SECRET` | Guardian HMAC secret |
 | `OPENAI_COMPAT_API_KEY` | Optional incoming Bearer or `x-api-key` auth token; the shipped addon overlay reads it from `stash/vaults/user.env` via `env_file` |

@@ -32,4 +32,4 @@ export { createLogger, type LogLevel } from "./logger.ts";
 export { asRecord, extractChatText, splitMessage } from "./utils.ts";
 
 // ── Assistant client ─────────────────────────────────────────────────────
-export { askAssistant, type AssistantClientOptions } from "./assistant-client.ts";
+export { type AssistantClientOptions } from "./assistant-client.ts";

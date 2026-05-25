@@ -21,7 +21,6 @@ import {
   normalizeCaller,
   randomHex,
   CORE_SERVICES,
-  OPTIONAL_SERVICES,
 } from "@openpalm/lib";
 import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
@@ -180,16 +179,10 @@ describe("CORE_SERVICES", () => {
 
   test("admin is not a service (host binary, not a container)", () => {
     expect(CORE_SERVICES).not.toContain("admin");
-    expect(OPTIONAL_SERVICES).not.toContain("admin");
-    expect(OPTIONAL_SERVICES).not.toContain("docker-socket-proxy");
   });
 
   test("has exactly 2 core services", () => {
     expect(CORE_SERVICES).toHaveLength(2);
-  });
-
-  test("has 0 optional services (admin is now a host binary)", () => {
-    expect(OPTIONAL_SERVICES).toHaveLength(0);
   });
 });
 

@@ -57,7 +57,6 @@ These env vars matter when running the package directly or when overriding addon
 | Variable | Default | Purpose |
 |---|---|---|
 | `PORT` | `8186` | HTTP server port |
-| `GUARDIAN_URL` | `http://guardian:8080` | Guardian URL in Docker |
 | `CHANNEL_VOICE_SECRET` | - | Guardian HMAC secret |
 | `OPENAI_API_KEY` | - | Shared fallback API key |
 | `LLM_BASE_URL` | `http://localhost:11434` | Standalone/dev LLM URL |

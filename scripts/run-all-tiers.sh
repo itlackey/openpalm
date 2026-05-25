@@ -16,15 +16,6 @@
 set -euo pipefail
 
 REPEATS="${1:-3}"
-# Reserved for future use; test-tier.sh currently always rebuilds for tiers
-# that need a running stack. The flag is accepted (and ignored) so callers
-# do not break.
-SKIP_FIRST_BUILD=0
-for arg in "$@"; do
-	case "$arg" in
-	--skip-first-build) SKIP_FIRST_BUILD=1 ;;
-	esac
-done
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"

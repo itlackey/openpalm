@@ -8,8 +8,6 @@ export type CoreServiceName =
   | "assistant"
   | "guardian";
 
-export type OptionalServiceName = never;
-
 export type AccessScope = "host" | "lan";
 export type CallerType = "assistant" | "cli" | "ui" | "system" | "test" | "unknown";
 
@@ -50,6 +48,4 @@ export const CORE_SERVICES: CoreServiceName[] = [
   "assistant",
   "guardian",
 ];
-
-export const OPTIONAL_SERVICES: OptionalServiceName[] = [];
 
