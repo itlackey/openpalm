@@ -244,7 +244,11 @@ export async function deleteAkmVaultKey(
   const vaultPath = await ensureAkmUserVault(state, env);
   if (!vaultPath) return false;
   try {
-    await execAkm(["vault", "unset", AKM_USER_VAULT_REF, key], env);
+    // --yes: newer akm versions require explicit confirmation for any
+    // destructive operation in non-interactive mode. Without this flag
+    // the command exits with NON_INTERACTIVE_REQUIRES_YES and our
+    // delete looks like a hard failure instead of an idempotent unset.
+    await execAkm(["vault", "unset", "--yes", AKM_USER_VAULT_REF, key], env);
   } catch (err) {
     // `unset` of a missing key is a benign no-op; many akm versions exit 0
     // anyway. If akm hard-fails (non-zero, non-empty stderr) we surface it.

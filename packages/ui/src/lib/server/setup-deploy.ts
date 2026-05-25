@@ -368,11 +368,25 @@ export function startDeploy(state: ControlPlaneState): void {
         });
       }
       if (!pullResult || !pullResult.ok) {
-        const raw = pullResult?.stderr?.trim() || "Image pull failed";
-        const msg = mapDockerError(raw);
-        _state.deployStatus = _state.deployStatus.map(e => ({ ...e, status: "error", label: "Image pull failed" }));
-        _state.deployError = msg;
-        return;
+        // Dev-mode fallback: locally-built images (typically tagged
+        // `:dev`) aren't in any registry, so `docker compose pull`
+        // legitimately fails with "manifest unknown". Check if every
+        // service's image is already present on the daemon — if so the
+        // pull is a no-op and we can proceed with composeUp. Production
+        // installs pull real published tags and never hit this branch.
+        const allPresent = await allServiceImagesPresent(composeOpts, services);
+        if (allPresent) {
+          logger.info("image pull failed but all images present locally — continuing", {
+            services,
+            stderrSlice: (pullResult?.stderr ?? "").slice(0, 200),
+          });
+        } else {
+          const raw = pullResult?.stderr?.trim() || "Image pull failed";
+          const msg = mapDockerError(raw);
+          _state.deployStatus = _state.deployStatus.map(e => ({ ...e, status: "error", label: "Image pull failed" }));
+          _state.deployError = msg;
+          return;
+        }
       }
 
       // Phase 3: start containers.
@@ -449,6 +463,52 @@ export function startDeploy(state: ControlPlaneState): void {
 
 const VOICE_ADDON = "voice";
 const VOICE_HEALTH_TIMEOUT_MS = 10 * 60_000; // 10 min for first-launch model load
+
+/**
+ * Resolve each service's image via `docker compose config` and verify
+ * `docker image inspect` finds it locally. Lets the deploy proceed
+ * after a registry-pull failure when the operator has the images
+ * cached (e.g. dev mode with locally-built `:dev` tags). Returns false
+ * on any service whose image we can't confirm is present, including
+ * services with no resolvable image and any docker-side error.
+ */
+async function allServiceImagesPresent(
+  composeOpts: ReturnType<typeof buildComposeOptions>,
+  services: string[],
+): Promise<boolean> {
+  if (services.length === 0) return false;
+  const { execFile } = await import("node:child_process");
+  const args = [
+    "compose",
+    ...composeOpts.files.flatMap((f) => ["-f", f]),
+    ...(composeOpts.envFiles ?? []).filter((f) => existsSync(f)).flatMap((f) => ["--env-file", f]),
+    "config",
+    "--format",
+    "json",
+  ];
+  const config: { services?: Record<string, { image?: string }> } = await new Promise((resolve) => {
+    execFile("docker", args, { timeout: 30_000 }, (err, stdout) => {
+      if (err) return resolve({});
+      try {
+        resolve(JSON.parse(stdout.toString()));
+      } catch {
+        resolve({});
+      }
+    });
+  });
+  const serviceConfig = config.services ?? {};
+  for (const svc of services) {
+    const image = serviceConfig[svc]?.image;
+    if (!image) return false;
+    const present = await new Promise<boolean>((resolve) => {
+      execFile("docker", ["image", "inspect", image], { timeout: 5_000 }, (err) => {
+        resolve(!err);
+      });
+    });
+    if (!present) return false;
+  }
+  return true;
+}
 
 /**
  * Pull + bring up the voice addon's chosen profile (default: cpu) if
