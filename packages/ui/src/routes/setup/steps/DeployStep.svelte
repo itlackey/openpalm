@@ -8,7 +8,12 @@
     label?: string;
   }
 
-  type DeployPhase = 'writing-config' | 'pulling-images' | 'starting' | 'ready';
+  type DeployPhase =
+    | 'writing-config'
+    | 'pulling-images'
+    | 'starting'
+    | 'starting-voice'
+    | 'ready';
 
   interface DeployData {
     deploying?: boolean;
@@ -51,13 +56,26 @@
 
   const phase = $derived(deployData.phase ?? 'writing-config');
 
+  // The voice addon ships a 2.4 GB image (CPU build) — much larger
+  // than the other ~150-300 MB stack containers — so pulling it for
+  // the first time on a typical home connection is the dominant
+  // wait. Extend the messaging when the operator enabled it so they
+  // don't think the install is stuck.
+  const voiceEnabled = $derived(
+    services.some((s) => /^voice(-cuda|-rocm)?$/.test(s.service ?? '')),
+  );
+
   const deployTitle = $derived.by(() => {
     if (deployDone) return 'Setup Complete';
     if (deployError) return 'Deployment Issue';
     switch (phase) {
       case 'writing-config': return 'Preparing Configuration…';
-      case 'pulling-images': return 'Downloading Images…';
+      case 'pulling-images':
+        return voiceEnabled
+          ? 'Downloading Images (incl. Voice ~2.4 GB)…'
+          : 'Downloading Images…';
       case 'starting': return 'Starting Services…';
+      case 'starting-voice': return 'Starting Voice Addon…';
       case 'ready': return 'Setup Complete';
     }
     return 'Deploying…';
@@ -68,8 +86,13 @@
     if (deployError) return 'Setup could not finish starting the stack.';
     switch (phase) {
       case 'writing-config': return 'Writing config files and validating settings.';
-      case 'pulling-images': return 'Downloading container images — first install can take 3–8 minutes depending on connection.';
+      case 'pulling-images':
+        return voiceEnabled
+          ? 'Downloading container images. The voice model (~2.4 GB) is the largest — on a typical home connection this step can take 10–30 minutes. The wizard will wait — keep this tab open.'
+          : 'Downloading container images — first install can take 3–8 minutes depending on connection.';
       case 'starting': return `${running} of ${total} services running.`;
+      case 'starting-voice':
+        return 'Pulling the voice image (~2.4 GB) and warming up Kokoro + Whisper models. First launch can take 5–30 minutes on slow connections — the wizard will wait.';
       case 'ready': return 'All services are up.';
     }
     return 'Writing configuration and starting services.';
@@ -140,10 +163,15 @@
   <aside class="deploy-tips" id="deploy-tips">
     <div class="deploy-tips-header">
       <span class="deploy-tips-kicker">Tips</span>
-      <h3>First startup takes a few minutes</h3>
+      <h3>{voiceEnabled ? 'First install may take 10–30 minutes' : 'First startup takes a few minutes'}</h3>
     </div>
     <ul>
-      <li>Container images are being downloaded for the first time.</li>
+      {#if voiceEnabled}
+        <li>The OpenPalm Voice image is ~2.4 GB — the largest piece by far. Download speed depends on your internet connection.</li>
+        <li>The wizard waits as long as the download takes. Progress bars below show each service's state.</li>
+      {:else}
+        <li>Container images are being downloaded for the first time.</li>
+      {/if}
       <li>The admin console will be available once all services are healthy.</li>
       {#if isElectron}
         <li>You can leave this window — we'll let you know when it's ready.</li>

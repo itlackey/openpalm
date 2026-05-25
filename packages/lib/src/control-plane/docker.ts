@@ -295,26 +295,37 @@ export async function composeLogs(
   return run(args, undefined);
 }
 
+// 60-minute pull timeout. Voice addon ships a ~2.4 GB image (CPU) /
+// ~7.6 GB (CUDA); on a 1-2 Mbps home connection these legitimately take
+// 30+ minutes. The previous 5-min cap silently killed pulls mid-stream
+// on first install, surfacing as an opaque "pull failed". The wizard's
+// retry layer wraps this, so an actually-hung pull is bounded by the
+// outer retry budget; this just gives any progressing pull room to
+// finish on slow connections.
+const PULL_TIMEOUT_MS = 60 * 60_000;
+
 /**
  * Pull image for a single service.
  */
 export async function composePullService(
   service: string,
-  options: { files: string[]; envFiles?: string[] }
+  options: { files: string[]; envFiles?: string[]; profiles?: string[] }
 ): Promise<DockerResult> {
   await runPreflight(options);
   const args = buildComposeArgs(options);
+  for (const p of options.profiles ?? []) args.push("--profile", p);
   args.push("pull", service);
-  return run(args, undefined, 300_000, collectEnvOverrides(options.envFiles));
+  return run(args, undefined, PULL_TIMEOUT_MS, collectEnvOverrides(options.envFiles));
 }
 
 export async function composePull(
-  options: { files: string[]; envFiles?: string[] }
+  options: { files: string[]; envFiles?: string[]; profiles?: string[] }
 ): Promise<DockerResult> {
   await runPreflight(options);
   const args = buildComposeArgs(options);
+  for (const p of options.profiles ?? []) args.push("--profile", p);
   args.push("pull");
-  return run(args, undefined, 300_000, collectEnvOverrides(options.envFiles));
+  return run(args, undefined, PULL_TIMEOUT_MS, collectEnvOverrides(options.envFiles));
 }
 
 /**

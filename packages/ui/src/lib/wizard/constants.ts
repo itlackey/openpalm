@@ -35,15 +35,14 @@ export const STEP_LABELS = ['System Check', 'Get Started', 'Providers', 'Models'
 export const MAX_VISIBLE_MODELS = 6;
 
 export const TTS_OPTIONS: TtsOption[] = [
-  { id: 'kokoro', name: 'Kokoro TTS', type: 'local', recommended: true, desc: 'High-quality local TTS — runs on CPU' },
-  { id: 'piper', name: 'Piper TTS', type: 'local', desc: 'Ultra-lightweight — great for low-power hardware' },
+  { id: 'openpalm-voice', name: 'OpenPalm Voice', type: 'local', recommended: true, desc: 'Bundled Kokoro TTS + Whisper STT — runs locally, no cloud. First install downloads ~2.4 GB.' },
   { id: 'openai-tts', name: 'OpenAI TTS', type: 'cloud', desc: 'Cloud voices. Uses your OpenAI API key' },
   { id: 'browser-tts', name: 'Browser Built-in', type: 'builtin', desc: 'Native speech synthesis. No setup needed' },
   { id: 'skip-tts', name: 'Skip — text only', type: 'skip', desc: 'Add TTS later from the dashboard' },
 ];
 
 export const STT_OPTIONS: SttOption[] = [
-  { id: 'whisper-local', name: 'Whisper (local)', type: 'local', recommended: true, desc: 'Whisper in Docker. Accurate, private' },
+  { id: 'openpalm-voice', name: 'OpenPalm Voice', type: 'local', recommended: true, desc: 'Bundled Kokoro TTS + Whisper STT — runs locally, no cloud. First install downloads ~2.4 GB.' },
   { id: 'openai-stt', name: 'OpenAI Whisper', type: 'cloud', desc: 'Cloud Whisper API. Uses OpenAI key' },
   { id: 'browser-stt', name: 'Browser Built-in', type: 'builtin', desc: 'Web Speech API. No setup' },
   { id: 'skip-stt', name: 'Skip — text only', type: 'skip', desc: 'Add STT later from the dashboard' },
@@ -65,27 +64,14 @@ const BASE_URL_FIELD = (placeholder: string, hint: string) => ({
 });
 
 export const TTS_ENGINES: Record<string, VoiceEngineConfig> = {
-  kokoro: {
-    id: 'kokoro',
-    provider: 'kokoro',
-    fields: [
-      BASE_URL_FIELD(
-        'http://host.docker.internal:8880/v1',
-        'Where your Kokoro server is running (OpenAI-compatible /v1/audio/speech).',
-      ),
-      { key: 'voice', label: 'Voice', placeholder: 'af_bella', hint: 'Kokoro voice ID (e.g. af_bella, am_michael)' },
-    ],
-  },
-  piper: {
-    id: 'piper',
-    provider: 'piper',
-    fields: [
-      BASE_URL_FIELD(
-        'http://host.docker.internal:5000',
-        'Where your Piper server is running.',
-      ),
-      { key: 'voice', label: 'Voice', placeholder: 'en_US-amy-low', hint: 'Piper voice model name' },
-    ],
+  // Bundled openpalm/voice container — same engine the admin Voice tab
+  // calls 'openpalm-voice'. No URL/model fields: the route writes the
+  // loopback preset (http://127.0.0.1:8880, kokoro, bf_isabella) at
+  // save time so the operator never has to think about it.
+  'openpalm-voice': {
+    id: 'openpalm-voice',
+    provider: 'openpalm-voice',
+    fields: [],
   },
   'openai-tts': {
     id: 'openai-tts',
@@ -110,17 +96,13 @@ export const TTS_ENGINES: Record<string, VoiceEngineConfig> = {
 };
 
 export const STT_ENGINES: Record<string, VoiceEngineConfig> = {
-  'whisper-local': {
-    id: 'whisper-local',
-    provider: 'whisper-local',
-    fields: [
-      BASE_URL_FIELD(
-        'http://host.docker.internal:9000/v1',
-        'Where your local Whisper server is running.',
-      ),
-      { key: 'model', label: 'Model size', options: ['tiny', 'base', 'small', 'medium', 'large'] },
-      { key: 'language', label: 'Language', placeholder: 'en', hint: 'A language code like `en` or `fr`, or leave blank to detect automatically.' },
-    ],
+  // Bundled openpalm/voice container (same engine as TTS — one image
+  // serves both endpoints). No URL/model fields: the route writes the
+  // loopback preset (http://127.0.0.1:8880, whisper-1) at save time.
+  'openpalm-voice': {
+    id: 'openpalm-voice',
+    provider: 'openpalm-voice',
+    fields: [],
   },
   'openai-stt': {
     id: 'openai-stt',

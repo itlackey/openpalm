@@ -15,9 +15,13 @@ import {
   composePs,
   composeUp,
   createLogger,
+  getAddonProfiles,
+  getAddonProfileSelection,
   isSetupComplete,
+  listEnabledAddonIds,
   releaseInstallLock,
   resolveStackDir,
+  setAddonProfileSelection,
 } from "@openpalm/lib";
 import type { ControlPlaneState, InstallLockHandle } from "@openpalm/lib";
 import { existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
@@ -30,7 +34,12 @@ export type DeployEntry = {
   label: string;
 };
 
-export type DeployPhase = "writing-config" | "pulling-images" | "starting" | "ready";
+export type DeployPhase =
+  | "writing-config"
+  | "pulling-images"
+  | "starting"
+  | "starting-voice"
+  | "ready";
 
 type DeployState = {
   deploying: boolean;
@@ -393,6 +402,20 @@ export function startDeploy(state: ControlPlaneState): void {
         return;
       }
 
+      // Voice addon bring-up (optional). The core stack is healthy; if
+      // the operator enabled the voice addon in the wizard, the voice
+      // services are profile-gated and therefore inactive from the
+      // baseline composePull/composeUp calls above. Bring them up
+      // explicitly with --profile cpu (the wizard always picks cpu;
+      // admin can switch to cuda/rocm later). This is what makes
+      // "Install completes" actually mean "voice is ready to use",
+      // not "voice will start later when you click Save in admin".
+      const voiceError = await bringUpVoiceIfEnabled(state, composeOpts);
+      if (voiceError) {
+        _state.deployError = voiceError;
+        return;
+      }
+
       // All services healthy — persist OP_SETUP_COMPLETE=true so subsequent
       // server restarts skip the wizard. This is the FIRST and ONLY place
       // that flag is set; see the matching note in packages/lib setup.ts.
@@ -422,4 +445,140 @@ export function startDeploy(state: ControlPlaneState): void {
       releaseInstallLock(lockHandle);
     }
   })();
+}
+
+const VOICE_ADDON = "voice";
+const VOICE_HEALTH_TIMEOUT_MS = 10 * 60_000; // 10 min for first-launch model load
+
+/**
+ * Pull + bring up the voice addon's chosen profile (default: cpu) if
+ * the addon is enabled. Runs after the core stack is healthy so the
+ * deploy progress UI shows voice as a distinct phase ("starting-voice")
+ * with its own status row.
+ *
+ * Returns null on success or a user-friendly error string on failure.
+ * The caller surfaces the error via _state.deployError.
+ */
+async function bringUpVoiceIfEnabled(
+  state: ControlPlaneState,
+  composeOpts: ReturnType<typeof buildComposeOptions>,
+): Promise<string | null> {
+  const enabled = listEnabledAddonIds(state.homeDir);
+  if (!enabled.includes(VOICE_ADDON)) return null;
+
+  // Resolve the chosen profile. The wizard's payload doesn't currently
+  // include a profile field (admin-only) so we default to cpu and
+  // persist it so the admin Voice tab loads with the same selection.
+  const profiles = getAddonProfiles(state.homeDir, VOICE_ADDON);
+  const stored = getAddonProfileSelection(state.stackDir, VOICE_ADDON);
+  const profileId =
+    stored ?? profiles.find((p) => p.id === "cpu")?.id ?? profiles[0]?.id ?? "cpu";
+  if (!stored) {
+    try {
+      setAddonProfileSelection(state.stackDir, VOICE_ADDON, profileId);
+    } catch (err) {
+      // Persistence failure is non-fatal — we still attempt the bring-up,
+      // operator just needs to re-pick the profile in admin if they want
+      // to switch later.
+      logger.warn("voice: failed to persist profile selection (continuing)", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  const profileServices = profiles.find((p) => p.id === profileId)?.services ?? [];
+  if (profileServices.length === 0) {
+    logger.warn("voice: no services found for chosen profile (skipping)", { profileId });
+    return null;
+  }
+
+  _state.phase = "starting-voice";
+  _state.deployStatus = [
+    ..._state.deployStatus,
+    ...profileServices.map((svc) => ({
+      service: svc,
+      status: "pending" as const,
+      label: "Voice — downloading image…",
+    })),
+  ];
+
+  // Pull the voice image. The 60-min timeout (PULL_TIMEOUT_MS in
+  // docker.ts) gives slow connections room to finish the ~2.4 GB
+  // download. composePull with --profile cpu only pulls voice-related
+  // services from the profile.
+  const pullResult = await composePull({ ...composeOpts, profiles: [profileId] });
+  if (!pullResult.ok) {
+    const msg = mapDockerError(pullResult.stderr ?? "Voice image pull failed");
+    _state.deployStatus = _state.deployStatus.map((e) =>
+      profileServices.includes(e.service)
+        ? { ...e, status: "error" as const, label: "Voice — image pull failed" }
+        : e,
+    );
+    return `Voice addon: ${msg}`;
+  }
+
+  _state.deployStatus = _state.deployStatus.map((e) =>
+    profileServices.includes(e.service)
+      ? { ...e, status: "pending" as const, label: "Voice — starting container…" }
+      : e,
+  );
+
+  const upResult = await composeUp({
+    ...composeOpts,
+    services: profileServices,
+    profiles: [profileId],
+    forceRecreate: true,
+  });
+  if (!upResult.ok) {
+    const msg = mapDockerError(upResult.stderr ?? "Voice container failed to start");
+    _state.deployStatus = _state.deployStatus.map((e) =>
+      profileServices.includes(e.service)
+        ? { ...e, status: "error" as const, label: msg }
+        : e,
+    );
+    return `Voice addon: ${msg}`;
+  }
+
+  // Health-poll voice /health for up to 10 min — covers the
+  // start_period (180s) plus first-launch model load on slow disks.
+  // The voice container binds to loopback 127.0.0.1:8880 by default.
+  const probeUrl = "http://127.0.0.1:8880/health";
+  const deadline = Date.now() + VOICE_HEALTH_TIMEOUT_MS;
+  let healthy = false;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(probeUrl, { signal: AbortSignal.timeout(1500) });
+      if (res.ok) {
+        healthy = true;
+        break;
+      }
+    } catch {
+      /* keep polling */
+    }
+    await new Promise((r) => setTimeout(r, 2_000));
+  }
+
+  if (!healthy) {
+    _state.deployStatus = _state.deployStatus.map((e) =>
+      profileServices.includes(e.service)
+        ? {
+          ...e,
+          status: "error" as const,
+          label: "Voice is still warming up. You can finish setup; check the Voice tab in admin.",
+        }
+        : e,
+    );
+    // Don't fail the entire install — the operator can re-trigger
+    // voice from admin. Just surface a non-blocking notice.
+    logger.warn("voice: container did not become healthy in time", {
+      timeoutMs: VOICE_HEALTH_TIMEOUT_MS,
+    });
+    return null;
+  }
+
+  _state.deployStatus = _state.deployStatus.map((e) =>
+    profileServices.includes(e.service)
+      ? { ...e, status: "running" as const, label: "Voice — ready" }
+      : e,
+  );
+  return null;
 }

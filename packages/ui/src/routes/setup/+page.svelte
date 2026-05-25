@@ -170,6 +170,14 @@
 
     const addons: Record<string, boolean> = {};
     if (ollamaEnabled) addons.ollama = true;
+    // Enable the bundled voice addon when either side targets it.
+    // performSetup -> setAddonEnabled copies the compose overlay, then
+    // startDeploy's composePull picks up the openpalm/voice image so
+    // it lands in the same first-install pull cycle as the rest of the
+    // stack.
+    if (voiceTts.engine === 'openpalm-voice' || voiceStt.engine === 'openpalm-voice') {
+      addons.voice = true;
+    }
 
     const channelCredentials: Record<string, Record<string, string>> = {};
     const channelsConfig = buildChannelsConfig();
