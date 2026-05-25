@@ -81,10 +81,19 @@ export function seedStashAssets(seeds: Record<string, string>): string[] {
 // ── Asset Refresh (GitHub download) ──────────────────────────────────
 
 const REPO = "itlackey/openpalm";
-const _pkgJson = JSON.parse(
-  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../package.json"), "utf-8")
-);
-const VERSION = process.env.OP_ASSET_VERSION ?? `v${_pkgJson.version}`;
+
+function resolveAssetVersion(): string {
+  if (process.env.OP_ASSET_VERSION) return process.env.OP_ASSET_VERSION;
+  try {
+    const pkgJson = JSON.parse(
+      readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../package.json"), "utf-8")
+    );
+    return `v${pkgJson.version}`;
+  } catch {
+    return "main";
+  }
+}
+const VERSION = resolveAssetVersion();
 
 // Persona files (openpalm.md, system.md) and stash seeds are intentionally NOT
 // in this list — they are user-customizable and use seedAssistantPersonaFiles()
