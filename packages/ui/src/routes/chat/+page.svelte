@@ -217,8 +217,7 @@
     display: flex;
     flex-direction: column;
     height: calc(100dvh - var(--nav-height));
-    max-width: var(--max-width);
-    margin: 0 auto;
+    margin: 0;
   }
 
   .messages-area {
