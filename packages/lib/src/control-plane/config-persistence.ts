@@ -228,10 +228,15 @@ export function writeChannelSecrets(vaultDir: string, secrets: Record<string, st
 export function writeRuntimeFiles(
   state: ControlPlaneState
 ): void {
-  // Write core compose to stack/
+  // Write core compose to stack/ (only if it does not already exist —
+  // refreshCoreAssets() is the canonical writer; do not overwrite user
+  // modifications or a file already placed by install).
   const stackDir = `${state.homeDir}/stack`;
   mkdirSync(stackDir, { recursive: true });
-  writeFileSync(`${stackDir}/core.compose.yml`, state.artifacts.compose);
+  const composePath = `${stackDir}/core.compose.yml`;
+  if (!existsSync(composePath)) {
+    writeFileSync(composePath, state.artifacts.compose);
+  }
 
   // Load persisted channel HMAC secrets from guardian.env,
   // then generate new ones for new channel addons.

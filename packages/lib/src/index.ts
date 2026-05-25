@@ -143,6 +143,7 @@ export {
   readCoreCompose,
   ensureOpenCodeSystemConfig,
   refreshCoreAssets,
+  seedAssistantPersonaFiles,
 } from "./control-plane/core-assets.js";
 
 // ── Configuration Persistence ────────────────────────────────────────────

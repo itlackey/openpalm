@@ -14,6 +14,7 @@
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { resolveDataDir, resolveVaultDir, resolveOpenPalmHome, resolveBackupsDir } from "./home.js";
 import { createLogger } from "../logger.js";
 import { sha256 } from "./crypto.js";
@@ -84,14 +85,19 @@ export function ensureOpenCodeSystemConfig(): void {
 // ── Asset Refresh (GitHub download) ──────────────────────────────────
 
 const REPO = "itlackey/openpalm";
-const VERSION = process.env.OP_ASSET_VERSION ?? "main";
+const _pkgJson = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../package.json"), "utf-8")
+);
+const VERSION = process.env.OP_ASSET_VERSION ?? `v${_pkgJson.version}`;
 
+// Persona files (openpalm.md, system.md) are intentionally NOT in this list —
+// they are user-customizable and use seedAssistantPersonaFiles() which never
+// overwrites existing files (user edits win on re-install).
 const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
-  { relPath: "stack/core.compose.yml", githubFilename: ".openpalm/stack/core.compose.yml" },
-  { relPath: "data/assistant/opencode.jsonc", githubFilename: "core/assistant/opencode/opencode.jsonc" },
-  { relPath: "data/assistant/AGENTS.md", githubFilename: "core/assistant/opencode/AGENTS.md" },
-  { relPath: "vault/user/user.env.schema", githubFilename: ".openpalm/vault/user/user.env.schema" },
-  { relPath: "vault/stack/stack.env.schema", githubFilename: ".openpalm/vault/stack/stack.env.schema" },
+  { relPath: "stack/core.compose.yml",          githubFilename: ".openpalm/stack/core.compose.yml" },
+  { relPath: "data/assistant/opencode.jsonc",   githubFilename: "core/assistant/opencode/opencode.jsonc" },
+  { relPath: "vault/user/user.env.schema",      githubFilename: ".openpalm/vault/user/user.env.schema" },
+  { relPath: "vault/stack/stack.env.schema",    githubFilename: ".openpalm/vault/stack/stack.env.schema" },
 ];
 
 async function downloadAsset(filename: string): Promise<string> {
@@ -141,4 +147,33 @@ export async function refreshCoreAssets(): Promise<{
   }
 
   return { backupDir, updated };
+}
+
+// ── Assistant Persona File Seeding ────────────────────────────────────
+
+/**
+ * Seed assistant persona files (openpalm.md, system.md) into OP_HOME.
+ *
+ * Idempotent: **never overwrites** an existing file — user edits always
+ * win. This preserves the "config/ is user-owned" contract: persona files
+ * are seeded once on first install and never touched again on update.
+ *
+ * `seeds` maps relative path keys (e.g. `"config/assistant/openpalm.md"`)
+ * to file content. Each file is written to `resolveOpenPalmHome()/<relPath>`
+ * only if the file does not already exist.
+ *
+ * Returns the list of relative paths that were actually written (empty on
+ * re-run when every seed already exists on disk).
+ */
+export function seedAssistantPersonaFiles(seeds: Record<string, string>): string[] {
+  const homeDir = resolveOpenPalmHome();
+  const written: string[] = [];
+  for (const [relPath, content] of Object.entries(seeds)) {
+    const targetPath = join(homeDir, relPath);
+    if (existsSync(targetPath)) continue;
+    mkdirSync(dirname(targetPath), { recursive: true });
+    writeFileSync(targetPath, content);
+    written.push(relPath);
+  }
+  return written;
 }
