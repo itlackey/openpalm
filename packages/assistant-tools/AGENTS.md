@@ -1,11 +1,10 @@
 # assistant-tools (contributor reference)
 
 This package ships the OpenCode plugin loaded into the OpenPalm assistant
-container. It registers two direct tools:
+container. It registers one direct tool:
 
 - `load_vault` — loads user secrets (prefers the shared akm `vault:user`
   store, falls back to `/etc/vault/user.env`).
-- `health-check` — reports the health of core platform services.
 
 Everything else the assistant uses (memory, skills, lessons, agents,
 workflows, vaults) comes from the `akm-opencode` plugin via the `akm_*`

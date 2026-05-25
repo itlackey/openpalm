@@ -1,5 +1,5 @@
 import { tool } from "@opencode-ai/plugin";
-import { readFile, access } from "fs/promises";
+import { readFile } from "fs/promises";
 
 /**
  * `vault:user` is the akm-cli ref for the user-managed env vault. Phase 2
@@ -69,12 +69,7 @@ async function resolveVaultPath(): Promise<string | null> {
     if (exitCode !== 0) return null;
     const path = stdout.trim();
     if (!path) return null;
-    try {
-      await access(path);
-      return path;
-    } catch {
-      return null;
-    }
+    return path;
   } catch {
     return null;
   }

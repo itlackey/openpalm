@@ -5,7 +5,6 @@ OpenCode plugin that registers the small set of OpenPalm-specific assistant tool
 ## What it provides
 
 - **`load_vault`** — load user-managed secrets from `/etc/vault/user.env`
-- **`health-check`** — quick reachability check for the guardian (used by the assistant during diagnostics)
 
 Persistent memory, lessons, skills, commands, workflows, wikis, and shared agent dispatch are all served by the akm-cli stash that ships in the assistant container (see `core/assistant/README.md`). That makes the assistant-tools surface intentionally tiny.
 
@@ -14,8 +13,8 @@ Admin operations (containers, channels, lifecycle, config, connections, artifact
 ## Structure
 
 ```
-src/index.ts              # Plugin entry — registers the load_vault and health-check tools
-opencode/tools/           # One file per tool (load_vault.ts, health-check.ts)
+src/index.ts              # Plugin entry — registers the load_vault tool
+opencode/tools/           # One file per tool (load_vault.ts)
 AGENTS.md                 # Assistant persona and behavioral guidelines
 ```
 

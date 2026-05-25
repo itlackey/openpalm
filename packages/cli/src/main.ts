@@ -10,7 +10,7 @@ export type { HostInfo } from './lib/host-info.ts';
 
 const SUBCOMMAND_NAMES = new Set([
   'install', 'uninstall', 'update', 'self-update', 'addon',
-  'start', 'stop', 'restart', 'logs', 'status', 'service',
+  'start', 'stop', 'restart', 'logs', 'status',
   'validate', 'scan', 'rollback', 'automations',
   '--help', '-h', 'help',
 ]);
@@ -114,7 +114,6 @@ export const mainCommand = defineCommand({
     restart: () => import('./commands/restart.ts').then((m) => m.default),
     logs: () => import('./commands/logs.ts').then((m) => m.default),
     status: () => import('./commands/status.ts').then((m) => m.default),
-    service: () => import('./commands/service.ts').then((m) => m.default),
     validate: () => import('./commands/validate.ts').then((m) => m.default),
     scan: () => import('./commands/scan.ts').then((m) => m.default),
     rollback: () => import('./commands/rollback.ts').then((m) => m.default),
