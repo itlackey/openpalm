@@ -62,16 +62,13 @@ This file holds system-managed values, provider API keys, and owner identity:
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`
 - `ANTHROPIC_API_KEY`
-- `OWNER_NAME`
-- `OWNER_EMAIL`
 
 LLM and embedding configuration lives in `config/akm/config.json` and is managed
 via the AKM tab in the admin UI — not in `stack.env`.
 
 It also includes system-managed values such as:
 
-- `OP_UI_TOKEN`
-- `OP_ASSISTANT_TOKEN`
+- `OP_UI_LOGIN_PASSWORD`
 - `OP_HOME`, `OP_UID`, `OP_GID`
 - `OP_ASSISTANT_PORT`, `OP_ADMIN_PORT`, `OP_CHAT_PORT`
 
@@ -81,7 +78,7 @@ paths.
 ### `~/.openpalm/stash/vaults/user.env`
 
 Optional user-managed extension settings. Starts empty; use for custom
-preferences. Owner name and email live in `stack.env`.
+preferences and addon-specific values.
 
 ---
 

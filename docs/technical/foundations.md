@@ -84,7 +84,6 @@ Key env:
 - `OPENCODE_PORT=4096`
 - `OPENCODE_AUTH=false` (safe because host bind defaults to 127.0.0.1; see § Security invariants #4 in core-principles.md)
 - `OPENCODE_ENABLE_SSH`
-- `OP_ASSISTANT_TOKEN`
 - `AKM_STASH_DIR=/akm` (and matching `AKM_DATA_DIR`, `AKM_STATE_DIR`, `AKM_CONFIG_DIR`, `AKM_CACHE_DIR`)
 - `OP_UID`, `OP_GID`
 
