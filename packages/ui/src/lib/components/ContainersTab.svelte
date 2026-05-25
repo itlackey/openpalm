@@ -1,20 +1,9 @@
 <script lang="ts">
-  import type { ContainerListResponse, DockerContainer } from '$lib/types.js';
-
-  /** Unified display entry for the containers list */
-  type ServiceEntry = {
-    /** Unique ID for toggle — Docker container ID or service name */
-    id: string;
-    /** Compose service name */
-    service: string;
-    /** 'running' | 'stopped' | 'exited' | 'not created' etc. */
-    state: string;
-    /** Full Docker container data when available */
-    docker: DockerContainer | null;
-  };
+  import type { ContainerListResponse, ServiceEntry } from '$lib/types.js';
 
   interface Props {
     containerData: ContainerListResponse | null;
+    serviceEntries: ServiceEntry[];
     loading: boolean;
     error: string;
     tokenStored: boolean;
@@ -31,6 +20,7 @@
 
   let {
     containerData,
+    serviceEntries,
     loading,
     error,
     tokenStored,
@@ -44,45 +34,6 @@
     lastUpdated,
     pullLoading
   }: Props = $props();
-
-  /** Merge both data sources into a unified ServiceEntry list */
-  let serviceEntries = $derived.by((): ServiceEntry[] => {
-    if (!containerData) return [];
-    const byService = new Map<string, ServiceEntry>();
-
-    // Seed from the state.services map (core services, always present)
-    if (containerData.containers) {
-      for (const [name, state] of Object.entries(containerData.containers)) {
-        byService.set(name, { id: name, service: name, state, docker: null });
-      }
-    }
-
-    // Overlay with real Docker container data (includes channel containers and other addons)
-    if (containerData.dockerContainers) {
-      for (const c of containerData.dockerContainers) {
-        const existing = byService.get(c.Service);
-        if (existing) {
-          existing.state = c.State;
-          existing.docker = c;
-          existing.id = c.ID;
-        } else {
-          byService.set(c.Service, {
-            id: c.ID,
-            service: c.Service || c.Name,
-            state: c.State,
-            docker: c
-          });
-        }
-      }
-    }
-
-    // Sort: running first, then alphabetical
-    return [...byService.values()].sort((a, b) => {
-      if (a.state === 'running' && b.state !== 'running') return -1;
-      if (a.state !== 'running' && b.state === 'running') return 1;
-      return a.service.localeCompare(b.service);
-    });
-  });
 
   let hasEntries = $derived(serviceEntries.length > 0);
 

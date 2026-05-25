@@ -75,8 +75,8 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 
 RUN uv venv /opt/assistant-tools \
     && uv pip install --python /opt/assistant-tools/bin/python apprise
 ENV PATH="/opt/assistant-tools/bin:$PATH"
-ENV APPRISE_CONFIG="/etc/vault/apprise.conf"
-ENV CLOUDSDK_CONFIG="/etc/vault/.gcloud"
+ENV APPRISE_CONFIG="/etc/openpalm/apprise.conf"
+ENV CLOUDSDK_CONFIG="/etc/openpalm/gcloud"
 # GOOGLE_APPLICATION_CREDENTIALS is NOT set here — it must be supplied at
 # runtime via stack.env or user.env if Google Cloud tools are needed.
 # Baking a path here causes OpenCode to detect google-vertex-anthropic as

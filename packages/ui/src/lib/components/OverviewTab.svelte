@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { HealthPayload, ContainerListResponse, AutomationsResponse } from '$lib/types.js';
+  import type { HealthPayload, AutomationsResponse } from '$lib/types.js';
 
   interface Props {
     adminHealth: HealthPayload | null;
@@ -11,7 +11,7 @@
     upgradeLoading: boolean;
     anyDangerousLoading: boolean;
     automationsData: AutomationsResponse | null;
-    containerData: ContainerListResponse | null;
+    mergedServices: Map<string, string>;
     onCheckHealth: () => void;
     onApplyChanges: () => void;
     onUpgradeStack: () => void;
@@ -28,7 +28,7 @@
     upgradeLoading,
     anyDangerousLoading,
     automationsData,
-    containerData,
+    mergedServices,
     onCheckHealth,
     onApplyChanges,
     onUpgradeStack,
@@ -40,27 +40,6 @@
   let enabledAutomationCount = $derived(
     automationsData?.automations.filter(a => a.enabled).length ?? 0
   );
-
-  // Build a unified service → state map merging both data sources.
-  // dockerContainers (live Docker data) overwrites state.services (in-memory map)
-  // so the UI always reflects the real Docker state.
-  let mergedServices = $derived.by(() => {
-    if (!containerData) return new Map<string, string>();
-    const merged = new Map<string, string>();
-    // Seed from state.services (8 core services)
-    if (containerData.containers) {
-      for (const [name, state] of Object.entries(containerData.containers)) {
-        merged.set(name, state);
-      }
-    }
-    // Overlay from live Docker data (wins on conflict; adds extras like channels and addons)
-    if (containerData.dockerContainers) {
-      for (const c of containerData.dockerContainers) {
-        merged.set(c.Service, c.State);
-      }
-    }
-    return merged;
-  });
 
   // Derived: overall container health counts
   let containerCounts = $derived.by(() => {

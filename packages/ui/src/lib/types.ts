@@ -21,6 +21,18 @@ export type ContainerListResponse = {
   dockerAvailable: boolean;
 };
 
+/** Unified display entry for the containers list */
+export type ServiceEntry = {
+  /** Unique ID for toggle — Docker container ID or service name */
+  id: string;
+  /** Compose service name */
+  service: string;
+  /** 'running' | 'stopped' | 'exited' | 'not created' etc. */
+  state: string;
+  /** Full Docker container data when available */
+  docker: DockerContainer | null;
+};
+
 export type AutomationActionInfo = {
   type: 'api' | 'http' | 'shell' | 'assistant';
   method?: string;

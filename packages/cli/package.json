@@ -16,7 +16,7 @@
     "start": "bun run src/main.ts",
     "test": "bun test",
     "test:e2e": "npx playwright test",
-    "wizard:dev": "bun run src/main.ts install --no-start --force",
+    "wizard:local": "bun run src/main.ts install --no-start --force",
     "_build_note": "Run 'bun run ui:build:tar' from repo root before any build:* target (Bun does not run prebuild hooks)",
     "prebuild": "cd ../ui && npm run build && npm run build:tar",
     "build": "bun build src/main.ts --compile --outfile dist/openpalm-cli",

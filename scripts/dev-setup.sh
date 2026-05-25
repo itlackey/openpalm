@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/dev-setup.sh [--seed-env] [--force] [--enable-addon <name>] [--pass [--gpg-id <key>]]
+Usage: scripts/dev-setup.sh [--seed-env] [--force] [--enable-addon <name>]
 
 Creates local .dev directories and seeds dev config files.
 
@@ -13,8 +13,6 @@ Options:
   --force             Overwrite seeded files even if they already exist.
   --enable-addon <n>  Copy .dev/state/registry/addons/<n>/ into .dev/config/stack/addons/<n>/.
                       Repeat to enable multiple dev addons.
-  --pass              Initialize a pass backend for secret storage (requires GPG key).
-  --gpg-id <key>      GPG key ID for the pass backend (required with --pass).
   --rebuild-voice     Force a rebuild of openpalm/voice:dev-cpu (~5-15 min cold,
                       seconds on a warm cache). Default: build only when missing.
   --skip-voice-build  Skip the openpalm/voice:dev-cpu build entirely. Enabling
@@ -26,8 +24,6 @@ EOF
 
 seed_env=0
 force=0
-use_pass=0
-gpg_id=""
 enabled_addons=()
 rebuild_voice=0
 skip_voice_build=0
@@ -48,14 +44,6 @@ while [[ $# -gt 0 ]]; do
 			exit 1
 		fi
 		enabled_addons+=("$2")
-		shift 2
-		;;
-	--pass)
-		use_pass=1
-		shift
-		;;
-	--gpg-id)
-		gpg_id="${2:-}"
 		shift 2
 		;;
 	--rebuild-voice)
@@ -287,34 +275,6 @@ fi
 
 # OpenCode user config (opencode.json + assistant.md + system.md + openpalm.md)
 # comes in via the template rsync above. No per-file copy needed.
-
-# ── Initialize pass backend (optional) ───────────────────────────
-if [[ $use_pass -eq 1 ]]; then
-	if [[ -z "$gpg_id" ]]; then
-		echo "Error: --pass requires --gpg-id <key>" >&2
-		exit 1
-	fi
-
-	if ! command -v pass &>/dev/null; then
-		echo "Error: 'pass' is not installed. Install it first (e.g. apt install pass)." >&2
-		exit 1
-	fi
-
-	if ! gpg --list-keys "$gpg_id" >/dev/null 2>&1; then
-		echo "Error: GPG key not found: $gpg_id" >&2
-		exit 1
-	fi
-
-	echo "Initializing pass backend..."
-	"$ROOT_DIR/scripts/pass-init.sh" --gpg-id "$gpg_id" --home "$DEV_ROOT"
-
-	# Seed test secrets into the pass store
-	SECRETS_DIR="$DATA_DIR/secrets"
-	export PASSWORD_STORE_DIR="$SECRETS_DIR/pass-store"
-	echo "dev-admin-token" | pass insert -m -f openpalm/openpalm/admin-token 2>/dev/null || true
-	echo "dev-assistant-token" | pass insert -m -f openpalm/openpalm/assistant-token 2>/dev/null || true
-	echo "Seeded test secrets into pass store."
-fi
 
 # ── Fix ownership ────────────────────────────────────────────────
 # Use Docker to fix root-owned files created by containers (qdrant, opencode, etc.)

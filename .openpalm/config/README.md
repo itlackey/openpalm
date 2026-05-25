@@ -8,8 +8,7 @@ overwrite existing user files.
 
 | File | Purpose |
 |------|---------|
-| `stack.yml` | Optional capability metadata. Connections and model assignments for helper tooling. |
-| `host.yaml` | Host environment snapshot (platform, Docker status, local LLM availability). Written at install time by the CLI. Not committed to the repo. |
+| `stack.yml` | Install marker. Contains `version: 2` only; LLM/embedding config lives in `config/akm/config.json`. |
 
 ## Subdirectories
 
@@ -21,38 +20,8 @@ overwrite existing user files.
 
 ## stack.yml
 
-This file is optional. It can describe capability settings,
-but the runtime stack is still defined by the compose files in
-`~/.openpalm/config/stack/`. If `stack.yml` disagrees with an explicit compose
-command, the explicit compose command wins.
-
-```yaml
-version: 1
-
-connections:          # LLM provider connections
-  - id: openai
-    name: OpenAI
-    kind: openai_compatible_remote
-    provider: openai
-    baseUrl: https://api.openai.com
-    auth:
-      mode: api_key
-      apiKeySecretRef: "env:OPENAI_API_KEY"
-
-assignments:          # Which connection + model to use for each capability
-  llm:
-    connectionId: openai
-    model: gpt-4o
-  embeddings:
-    connectionId: openai
-    model: text-embedding-3-small
-    embeddingDims: 1536
-
-addons:               # Enabled addon services
-  - admin
-  - chat
-  - ollama
-```
+Install marker only. Contains `{ version: 2 }`. LLM/embedding config lives in
+`config/akm/config.json` (managed by the akm CLI).
 
 Select addons by adding their compose files as `-f` flags to `docker compose`.
 See the [Manual Compose Runbook](../../docs/operations/manual-compose-runbook.md)

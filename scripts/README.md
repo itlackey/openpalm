@@ -29,14 +29,13 @@ Creates a local `.dev/` OpenPalm home for development.
 - Copies the repo registry catalog into `.dev/registry/`
 - Copies `.dev/registry/addons/<name>/` into `.dev/config/stack/addons/<name>/` when `--enable-addon <name>` is used
 - Seeds a local OpenCode config and memory `default_config.json`
-- Can initialize the optional `pass` backend
 
 Examples:
 
 ```bash
 ./scripts/dev-setup.sh --seed-env
 ./scripts/dev-setup.sh --seed-env --force
-./scripts/dev-setup.sh --seed-env --pass --gpg-id <key>
+./scripts/dev-setup.sh --seed-env --enable-addon voice
 ```
 
 Notes:
@@ -51,7 +50,6 @@ Notes:
 - `upgrade-test.sh` - upgrade scenario checks
 - `validate-registry.sh` - registry validation
 - `install-hooks.sh` - git hook setup
-- `pass-init.sh` - pass backend bootstrap
 
 ## ISO helper
 

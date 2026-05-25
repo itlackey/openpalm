@@ -19,8 +19,8 @@ export {
   type GuardianErrorResponse,
 } from "./channel.ts";
 
-// ── SDK helpers ──────────────────────────────────────────────────────────
-export { forwardChannelMessage } from "./channel-sdk.ts";
+// ── Conversation queue ───────────────────────────────────────────────────
+export { ConversationQueue } from "./conversation-queue.ts";
 
 // ── Conversation queue ───────────────────────────────────────────────────
 export { ConversationQueue } from "./conversation-queue.ts";

@@ -11,7 +11,7 @@ services:
     environment:
       OLLAMA_MODELS: /data/models
     volumes:
-      - ${OP_HOME}/data/ollama:/data
+      - ${OP_HOME}/state/ollama:/data
     networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]

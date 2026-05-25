@@ -22,7 +22,7 @@
     containerAction,
     pullImages,
   } from '$lib/api.js';
-  import type { HealthPayload, ContainerListResponse, AutomationsResponse } from '$lib/types.js';
+  import type { HealthPayload, ContainerListResponse, AutomationsResponse, ServiceEntry } from '$lib/types.js';
 
   // ── Auth state ──────────────────────────────────────────────────────────────
   let authLocked = $state(true);
@@ -82,6 +82,56 @@
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   let anyDangerousLoading = $derived(applyLoading || upgradeLoading);
+
+  /** Merged service → state map (used by OverviewTab for health indicators) */
+  let mergedServices = $derived.by((): Map<string, string> => {
+    if (!containerData) return new Map<string, string>();
+    const merged = new Map<string, string>();
+    if (containerData.containers) {
+      for (const [name, state] of Object.entries(containerData.containers)) {
+        merged.set(name, state);
+      }
+    }
+    if (containerData.dockerContainers) {
+      for (const c of containerData.dockerContainers) {
+        merged.set(c.Service, c.State);
+      }
+    }
+    return merged;
+  });
+
+  /** Full merged ServiceEntry list (used by ContainersTab for detail rows) */
+  let serviceEntries = $derived.by((): ServiceEntry[] => {
+    if (!containerData) return [];
+    const byService = new Map<string, ServiceEntry>();
+    if (containerData.containers) {
+      for (const [name, state] of Object.entries(containerData.containers)) {
+        byService.set(name, { id: name, service: name, state, docker: null });
+      }
+    }
+    if (containerData.dockerContainers) {
+      for (const c of containerData.dockerContainers) {
+        const existing = byService.get(c.Service);
+        if (existing) {
+          existing.state = c.State;
+          existing.docker = c;
+          existing.id = c.ID;
+        } else {
+          byService.set(c.Service, {
+            id: c.ID,
+            service: c.Service || c.Name,
+            state: c.State,
+            docker: c
+          });
+        }
+      }
+    }
+    return [...byService.values()].sort((a, b) => {
+      if (a.state === 'running' && b.state !== 'running') return -1;
+      if (a.state !== 'running' && b.state === 'running') return 1;
+      return a.service.localeCompare(b.service);
+    });
+  });
 
   // ── Auth helpers ─────────────────────────────────────────────────────────────
 
@@ -365,7 +415,7 @@
         {upgradeLoading}
         {anyDangerousLoading}
         {automationsData}
-        {containerData}
+        {mergedServices}
         onCheckHealth={loadHealth}
         onApplyChanges={handleApplyChanges}
         onUpgradeStack={handleUpgradeStack}
@@ -378,6 +428,7 @@
     {:else if activeTab === 'containers'}
       <ContainersTab
         {containerData}
+        {serviceEntries}
         loading={containersLoading}
         error={containerError}
         tokenStored={true}
