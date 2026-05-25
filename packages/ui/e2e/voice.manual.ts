@@ -1,5 +1,22 @@
 /**
- * Voice addon — Stack-dependent E2E tests.
+ * Voice addon — MANUAL smoke script (NOT an automated test).
+ *
+ * Renamed to `.manual.ts` so Playwright's default `testMatch: '*.pw.ts'`
+ * skips it. Run only when an operator explicitly invokes it against a
+ * live stack — see e2e/README.md.
+ *
+ * Why manual? This script requires a live OpenPalm stack with the voice
+ * container running and a standalone UI server already listening on
+ * ADMIN_URL. The route logic these checks cover (compose orchestration,
+ * error translation, OP_TTS_* env resolution, /api/speak proxy behavior)
+ * is already covered by the vitest suites in
+ * src/routes/admin/voice/server.vitest.ts and
+ * src/routes/api/transcribe/server.vitest.ts with mocked docker. This
+ * file is for pre-release smoke against the real stack.
+ *
+ * Originally written as automated e2e (voice.pw.ts) — reclassified
+ * after the realisation that "tests that need a production stack" are
+ * not tests, they're scripted manual QA.
  *
  * Validates the full happy-path of OpenPalm Voice (Kokoro TTS + Whisper STT
  * via the openpalm/voice container) plus error / edge paths:

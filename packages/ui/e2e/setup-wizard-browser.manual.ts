@@ -1,5 +1,8 @@
 /**
- * Setup wizard — browser smoke test (page-load only).
+ * Setup wizard — MANUAL browser smoke (NOT an automated test).
+ *
+ * Renamed to `.manual.ts` so Playwright's default `testMatch: '*.pw.ts'`
+ * skips it. Run only against a live dev stack — see e2e/README.md.
  *
  * Resets stack.env, loads /setup in a real browser, and confirms the
  * setup guard renders the wizard (System Check step appears).

@@ -1,5 +1,15 @@
 /**
- * Setup wizard — API-only walkthrough (fast path).
+ * Setup wizard — MANUAL API smoke script (NOT an automated test).
+ *
+ * Renamed to `.manual.ts` so Playwright's default `testMatch: '*.pw.ts'`
+ * skips it. Run only when an operator explicitly invokes it against a
+ * live dev stack — see e2e/README.md.
+ *
+ * The route + deploy logic this exercises (performSetup, startDeploy,
+ * compose pull/up, image-fallback, profile bring-up) is covered by the
+ * vitest suites in src/lib/server (no docker needed). This file is for
+ * pre-release smoke that proves the actual compose orchestration works
+ * end-to-end against a real Docker daemon.
  *
  * Resets stack.env to the pre-setup state, hits every wizard API
  * endpoint in the same order the browser flow does, and asserts the
