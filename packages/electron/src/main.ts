@@ -286,7 +286,7 @@ async function createWindow(): Promise<void> {
     title,
     show: false,
     webPreferences: {
-      preload: join(__dirname, 'preload.js'),
+      preload: join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
     },

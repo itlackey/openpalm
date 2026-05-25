@@ -8,7 +8,7 @@ directories:
 
 files:
   - dist/main.js
-  - dist/preload.js
+  - dist/preload.cjs
   - assets/**/*
   - package.json
 

@@ -9,7 +9,7 @@
   "scripts": {
     "start": "electron .",
     "typecheck": "tsc --noEmit",
-    "bundle": "bun build src/main.ts --bundle --target=node --outfile dist/main.js --external electron && bun build src/preload.ts --bundle --target=node --outfile dist/preload.js --external electron",
+    "bundle": "bun build src/main.ts --bundle --target=node --outfile dist/main.js --external electron && bun build src/preload.ts --bundle --target=node --format=cjs --outfile dist/preload.cjs --external electron",
     "build:mac": "bun run bundle && electron-builder --mac",
     "build:linux": "bun run bundle && electron-builder --linux",
     "build:win": "bun run bundle && electron-builder --win",

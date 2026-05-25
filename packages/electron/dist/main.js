@@ -9160,7 +9160,7 @@ var require_cross_spawn = __commonJS((exports, module) => {
   var cp = __require("child_process");
   var parse = require_parse();
   var enoent = require_enoent();
-  function spawn2(command, args, options) {
+  function spawn(command, args, options) {
     const parsed = parse(command, args, options);
     const spawned = cp.spawn(parsed.command, parsed.args, parsed.options);
     enoent.hookChildProcess(spawned, parsed);
@@ -9172,8 +9172,8 @@ var require_cross_spawn = __commonJS((exports, module) => {
     result.error = result.error || enoent.verifyENOENTSync(result.status, parsed);
     return result;
   }
-  module.exports = spawn2;
-  module.exports.spawn = spawn2;
+  module.exports = spawn;
+  module.exports.spawn = spawn;
   module.exports.sync = spawnSync;
   module.exports._parse = parse;
   module.exports._enoent = enoent;
@@ -9358,7 +9358,7 @@ import { app, BrowserWindow, Tray, Menu, shell, dialog } from "electron";
 import { join as join3, dirname as dirname2 } from "node:path";
 import { existsSync as existsSync4 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
-import { spawn as spawn2 } from "node:child_process";
+import { spawn } from "node:child_process";
 // ../lib/src/logger.ts
 var REDACT_PATTERN = /(?:^|_)(?:TOKEN|SECRET|KEY|PASSWORD|HMAC)(?:_|$)/i;
 function isSensitiveEnvKey(key) {
@@ -9535,20 +9535,8 @@ var PLAIN_CONFIG_KEYS = new Set([
 // ../lib/src/control-plane/registry.ts
 var logger3 = createLogger("registry");
 var availabilityCache = new Map;
-// ../lib/src/control-plane/secret-backend.ts
-import { execFile as execFileCb2, spawn } from "node:child_process";
-import { promisify as promisify2 } from "node:util";
-
-// ../lib/src/control-plane/akm-vault.ts
-import { execFile as execFileCb } from "node:child_process";
-import { promisify } from "node:util";
-var execFile = promisify(execFileCb);
-var logger4 = createLogger("akm-vault");
-
-// ../lib/src/control-plane/secret-backend.ts
-var execFile2 = promisify2(execFileCb2);
 // ../lib/src/control-plane/docker.ts
-var logger5 = createLogger("lib:docker");
+var logger4 = createLogger("lib:docker");
 var PULL_TIMEOUT_MS = 60 * 60000;
 
 // ../lib/src/control-plane/lifecycle.ts
@@ -9560,20 +9548,25 @@ var VALID_CALLERS = new Set([
   "test"
 ]);
 // ../lib/src/control-plane/markdown-task.ts
-var logger6 = createLogger("markdown-task");
+var logger5 = createLogger("markdown-task");
 
 // ../lib/src/control-plane/scheduler.ts
-var logger7 = createLogger("scheduler");
+var logger6 = createLogger("scheduler");
 // ../lib/src/control-plane/model-runner.ts
-var logger8 = createLogger("local-providers");
+var logger7 = createLogger("local-providers");
 // ../lib/src/control-plane/install-lock.ts
-var logger9 = createLogger("install-lock");
+var logger8 = createLogger("install-lock");
 var STALE_AFTER_MS = 30 * 60 * 1000;
 
 // ../lib/src/control-plane/setup.ts
-var logger10 = createLogger("setup");
+var logger9 = createLogger("setup");
 // ../lib/src/control-plane/host-opencode.ts
 var ALLOWED_CONFIG_KEYS = new Set(["$schema", "provider", "model", "small_model", "disabled_providers"]);
+// ../lib/src/control-plane/akm-vault.ts
+import { execFile as execFileCb } from "node:child_process";
+import { promisify } from "node:util";
+var execFile = promisify(execFileCb);
+var logger10 = createLogger("akm-vault");
 // ../lib/src/control-plane/ui-assets.ts
 import {
   existsSync as existsSync2,
@@ -13300,7 +13293,7 @@ async function startUIServer() {
       return;
     }
   }
-  uiProcess = spawn2("node", [join3(uiBuildDir, "index.js")], {
+  uiProcess = spawn("node", [join3(uiBuildDir, "index.js")], {
     cwd: uiBuildDir,
     env: buildUIServerEnv(homeDir, UI_PORT, appUpdate),
     stdio: ["ignore", "inherit", "pipe"]
@@ -13412,7 +13405,7 @@ async function createWindow() {
     title,
     show: false,
     webPreferences: {
-      preload: join3(__dirname2, "preload.js"),
+      preload: join3(__dirname2, "preload.cjs"),
       nodeIntegration: false,
       contextIsolation: true
     }

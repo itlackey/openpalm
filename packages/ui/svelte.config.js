@@ -30,6 +30,12 @@ const config = {
         "style-src": ["self", "unsafe-inline", "https://fonts.googleapis.com"],
         "font-src": ["self", "https://fonts.gstatic.com"],
         "img-src": ["self", "data:"],
+        // Voice TTS playback uses `new Audio(URL.createObjectURL(blob))`.
+        // Without an explicit media-src directive, CSP falls back to
+        // default-src 'self' which blocks blob: URIs and the audio element
+        // refuses to play. Allow self + blob: so MP3/WAV responses streamed
+        // from /api/speak can be loaded into <audio>.
+        "media-src": ["self", "blob:"],
         "connect-src": ["self"],
         "object-src": ["none"],
         "base-uri": ["none"],
