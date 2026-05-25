@@ -27,6 +27,8 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
+import { resolve } from 'node:path';
 import {
 	resetWizardState,
 	restoreWizardState,
@@ -58,7 +60,35 @@ test.describe('Setup wizard — API walkthrough (fast)', () => {
 	});
 
 	test.afterAll(() => {
-		restoreWizardState(resolveOpHome());
+		// Tear the wizard-installed stack back down so the next test file
+		// starts clean. Without this, subsequent runs collide on
+		// container names + ports + the project-name-collision guard.
+		// Best-effort — failures here are logged but don't fail the suite.
+		const home = resolveOpHome();
+		const stackDir = resolve(home, 'config/stack');
+		const composeFile = resolve(stackDir, 'core.compose.yml');
+		const stackEnv = resolve(stackDir, 'stack.env');
+		const guardianEnv = resolve(stackDir, 'guardian.env');
+		const userVault = resolve(home, 'stash/vaults/user.env');
+		try {
+			execFileSync(
+				'docker',
+				[
+					'compose',
+					'--project-directory', home,
+					'--project-name', process.env.OP_PROJECT_NAME ?? 'openpalm-dev',
+					'-f', composeFile,
+					'--env-file', stackEnv,
+					'--env-file', guardianEnv,
+					'--env-file', userVault,
+					'down',
+				],
+				{ stdio: 'ignore', timeout: 60_000 },
+			);
+		} catch (err) {
+			console.warn('[wizard-api] composeDown cleanup failed:', err);
+		}
+		restoreWizardState(home);
 	});
 
 	test('GET /api/setup/status reports not complete after reset', async ({ request }) => {
