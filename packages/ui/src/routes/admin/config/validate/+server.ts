@@ -11,7 +11,7 @@ import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
-  requireAuth,
+  requireAdmin,
   getRequestId,
 } from "$lib/server/helpers.js";
 import { validateProposedState, createLogger } from "@openpalm/lib";
@@ -20,7 +20,7 @@ const logger = createLogger("admin.config.validate");
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authErr = requireAuth(event, requestId);
+  const authErr = requireAdmin(event, requestId);
   if (authErr) return authErr;
 
   const state = getState();

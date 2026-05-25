@@ -87,9 +87,8 @@
   let hasEntries = $derived(serviceEntries.length > 0);
 
   // ── Per-entry row state (inlined from ContainerRow) ──────────────────
-  let actionInFlight = $state<Map<string, 'start' | 'stop' | 'restart'>>(new Map());
-  let confirmAction = $state<Map<string, 'start' | 'stop' | 'restart'>>(new Map());
-  let feedback = $state<Map<string, { type: 'success' | 'error'; message: string }>>(new Map());
+  type RowState = { inFlight: 'start' | 'stop' | 'restart' | null; confirm: 'start' | 'stop' | 'restart' | null; feedback: { type: 'success' | 'error'; message: string } | null };
+  let rowState = $state<Record<string, RowState>>({});
 
   function parseImageTag(image: string): { name: string; tag: string } {
     const atIdx = image.indexOf('@');
@@ -108,42 +107,38 @@
     return 'idle';
   }
 
+  function rowFor(id: string): RowState {
+    if (!rowState[id]) rowState[id] = { inFlight: null, confirm: null, feedback: null };
+    return rowState[id];
+  }
+
   function requestRowAction(id: string, action: 'start' | 'stop' | 'restart', e: MouseEvent): void {
     e.stopPropagation();
-    confirmAction = new Map(confirmAction).set(id, action);
+    rowFor(id).confirm = action;
   }
 
   function cancelConfirm(id: string, e: MouseEvent): void {
     e.stopPropagation();
-    const next = new Map(confirmAction);
-    next.delete(id);
-    confirmAction = next;
+    rowFor(id).confirm = null;
   }
 
   async function executeAction(id: string, service: string, action: 'start' | 'stop' | 'restart', e: MouseEvent): Promise<void> {
     e.stopPropagation();
-    const nextConfirm = new Map(confirmAction);
-    nextConfirm.delete(id);
-    confirmAction = nextConfirm;
-    actionInFlight = new Map(actionInFlight).set(id, action);
-    const nextFeedback = new Map(feedback);
-    nextFeedback.delete(id);
-    feedback = nextFeedback;
+    const row = rowFor(id);
+    row.confirm = null;
+    row.inFlight = action;
+    row.feedback = null;
     try {
       if (action === 'start') onStart(service);
       else if (action === 'stop') onStop(service);
       else onRestart(service);
-      feedback = new Map(feedback).set(id, { type: 'success', message: `${action.charAt(0).toUpperCase() + action.slice(1)} initiated` });
+      row.feedback = { type: 'success', message: `${action.charAt(0).toUpperCase() + action.slice(1)} initiated` };
     } catch (err) {
-      feedback = new Map(feedback).set(id, { type: 'error', message: `${action} failed: ${err instanceof Error ? err.message : err}` });
+      row.feedback = { type: 'error', message: `${action} failed: ${err instanceof Error ? err.message : err}` };
     }
-    const nextInflight = new Map(actionInFlight);
-    nextInflight.delete(id);
-    actionInFlight = nextInflight;
+    row.inFlight = null;
     setTimeout(() => {
-      const next = new Map(feedback);
-      next.delete(id);
-      feedback = next;
+      row.feedback = null;
     }, 3000);
   }
 </script>
@@ -181,9 +176,9 @@
         </div>
         {#each serviceEntries as entry (entry.id)}
           {@const selected = selectedContainerId === entry.id}
-          {@const entryActionInFlight = actionInFlight.get(entry.id) ?? null}
-          {@const entryConfirmAction = confirmAction.get(entry.id) ?? null}
-          {@const entryFeedback = feedback.get(entry.id) ?? null}
+          {@const entryActionInFlight = rowState[entry.id]?.inFlight ?? null}
+          {@const entryConfirmAction = rowState[entry.id]?.confirm ?? null}
+          {@const entryFeedback = rowState[entry.id]?.feedback ?? null}
           {@const img = entry.docker ? parseImageTag(entry.docker.Image) : null}
           {@const isAnyActionInFlight = entryActionInFlight !== null}
           {@const isNotCreated = !entry.docker}

@@ -1,7 +1,7 @@
 import {
   getRequestId,
   jsonResponse,
-  requireAuth,
+  requireAdmin,
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import { buildComposeOptions } from "@openpalm/lib";
@@ -10,7 +10,7 @@ import type { RequestHandler } from "./$types";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authError = requireAuth(event, requestId);
+  const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
   const state = getState();

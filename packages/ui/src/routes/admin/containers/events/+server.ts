@@ -2,14 +2,14 @@ import {
   getRequestId,
   jsonResponse,
   errorResponse,
-  requireAuth,
+  requireAdmin,
 } from "$lib/server/helpers.js";
 import { getDockerEvents, checkDocker } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authError = requireAuth(event, requestId);
+  const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
   const since = event.url.searchParams.get("since") || "1h";

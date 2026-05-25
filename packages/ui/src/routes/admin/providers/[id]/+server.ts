@@ -26,9 +26,8 @@ import {
   patchConfig,
   getCurrentConfig,
   registerProvider,
-  actionSuccess,
-  actionFailure,
-} from '$lib/server/opencode/index.js';
+} from '$lib/server/opencode/config.js';
+import type { ProviderActionResult } from '$lib/types/providers.js';
 import { detectLocalProviders } from '@openpalm/lib';
 import { createLogger } from '@openpalm/lib';
 import {
@@ -82,9 +81,9 @@ export const PATCH: RequestHandler = async (event) => {
         headers: headers && Object.keys(headers).length > 0 ? headers : null,
       });
 
-      return jsonResponse(200, actionSuccess('Provider settings saved.', providerId), requestId);
+      return jsonResponse(200, { ok: true, message: 'Provider settings saved.', selectedProviderId: providerId } satisfies ProviderActionResult, requestId);
     } catch (error) {
-      return jsonResponse(200, actionFailure(error instanceof Error ? error.message : 'Internal error'), requestId);
+      return jsonResponse(200, { ok: false, message: error instanceof Error ? error.message : 'Internal error', selectedProviderId: undefined } satisfies ProviderActionResult, requestId);
     }
   }
 
@@ -94,12 +93,9 @@ export const PATCH: RequestHandler = async (event) => {
       const nextState = asStringOrEmpty(body.enabled) === 'true' || body.enabled === true;
       const config = await getCurrentConfig();
       await patchConfig(setProviderEnabled(config, providerId, nextState));
-      return jsonResponse(200, actionSuccess(
-        nextState ? 'Provider enabled for model selection.' : 'Provider disabled for this workspace.',
-        providerId,
-      ), requestId);
+      return jsonResponse(200, { ok: true, message: nextState ? 'Provider enabled for model selection.' : 'Provider disabled for this workspace.', selectedProviderId: providerId } satisfies ProviderActionResult, requestId);
     } catch (error) {
-      return jsonResponse(200, actionFailure(error instanceof Error ? error.message : 'Internal error'), requestId);
+      return jsonResponse(200, { ok: false, message: error instanceof Error ? error.message : 'Internal error', selectedProviderId: undefined } satisfies ProviderActionResult, requestId);
     }
   }
 
@@ -112,10 +108,7 @@ export const PATCH: RequestHandler = async (event) => {
       const detected = await detectLocalProviders();
       const match = detected.find((d) => d.provider === providerId);
       if (!match || !match.available) {
-        return jsonResponse(200, actionFailure(
-          `No reachable ${LOCAL_PROVIDER_LABELS[providerId] ?? providerId} endpoint found.`,
-          providerId,
-        ), requestId);
+        return jsonResponse(200, { ok: false, message: `No reachable ${LOCAL_PROVIDER_LABELS[providerId] ?? providerId} endpoint found.`, selectedProviderId: providerId } satisfies ProviderActionResult, requestId);
       }
 
       const config = await getCurrentConfig();
@@ -127,12 +120,9 @@ export const PATCH: RequestHandler = async (event) => {
         options: { ...existingOptions, baseURL: match.url },
       }, true);
 
-      return jsonResponse(200, actionSuccess(
-        `Registered ${LOCAL_PROVIDER_LABELS[providerId] ?? providerId} at ${match.url}.`,
-        providerId,
-      ), requestId);
+      return jsonResponse(200, { ok: true, message: `Registered ${LOCAL_PROVIDER_LABELS[providerId] ?? providerId} at ${match.url}.`, selectedProviderId: providerId } satisfies ProviderActionResult, requestId);
     } catch (err) {
-      return jsonResponse(200, actionFailure(err instanceof Error ? err.message : String(err), providerId), requestId);
+      return jsonResponse(200, { ok: false, message: err instanceof Error ? err.message : String(err), selectedProviderId: providerId } satisfies ProviderActionResult, requestId);
     }
   }
 
@@ -145,10 +135,10 @@ export const PATCH: RequestHandler = async (event) => {
       const confirmOverwrite = asStringOrEmpty(body.confirmOverwrite) === 'true';
 
       if (!CUSTOM_PROVIDER_ID_PATTERN.test(providerId)) {
-        return jsonResponse(200, actionFailure('Use a lowercase provider id with letters, numbers, hyphens, or underscores.'), requestId);
+        return jsonResponse(200, { ok: false, message: 'Use a lowercase provider id with letters, numbers, hyphens, or underscores.', selectedProviderId: undefined } satisfies ProviderActionResult, requestId);
       }
       if (!displayName || !baseURL) {
-        return jsonResponse(200, actionFailure('Display name and base URL are required for a custom provider.', providerId), requestId);
+        return jsonResponse(200, { ok: false, message: 'Display name and base URL are required for a custom provider.', selectedProviderId: providerId } satisfies ProviderActionResult, requestId);
       }
 
       const models = parseModels(asStringOrEmpty(body.modelsJson));
@@ -167,7 +157,7 @@ export const PATCH: RequestHandler = async (event) => {
 
       const result = await registerProvider(providerId, entry, confirmOverwrite);
       if (result.alreadyExists) {
-        return jsonResponse(200, actionFailure('A provider with this ID already exists. Enable overwrite to replace it.', providerId), requestId);
+        return jsonResponse(200, { ok: false, message: 'A provider with this ID already exists. Enable overwrite to replace it.', selectedProviderId: providerId } satisfies ProviderActionResult, requestId);
       }
 
       if (apiKey) {
@@ -181,9 +171,9 @@ export const PATCH: RequestHandler = async (event) => {
         }
       }
 
-      return jsonResponse(200, actionSuccess('Custom provider saved.', providerId), requestId);
+      return jsonResponse(200, { ok: true, message: 'Custom provider saved.', selectedProviderId: providerId } satisfies ProviderActionResult, requestId);
     } catch (error) {
-      return jsonResponse(200, actionFailure(error instanceof Error ? error.message : 'Internal error'), requestId);
+      return jsonResponse(200, { ok: false, message: error instanceof Error ? error.message : 'Internal error', selectedProviderId: undefined } satisfies ProviderActionResult, requestId);
     }
   }
 
@@ -193,15 +183,12 @@ export const PATCH: RequestHandler = async (event) => {
       const modelId = asStringOrEmpty(body.modelId);
       const target = asStringOrEmpty(body.target);
       if (!modelId || (target !== 'model' && target !== 'small_model')) {
-        return jsonResponse(200, actionFailure('Choose a provider model before saving it.'), requestId);
+        return jsonResponse(200, { ok: false, message: 'Choose a provider model before saving it.', selectedProviderId: undefined } satisfies ProviderActionResult, requestId);
       }
       await setMainModel(providerId, modelId, target);
-      return jsonResponse(200, actionSuccess(
-        target === 'model' ? 'Main model updated for this project.' : 'Small model updated for lightweight tasks.',
-        providerId,
-      ), requestId);
+      return jsonResponse(200, { ok: true, message: target === 'model' ? 'Main model updated for this project.' : 'Small model updated for lightweight tasks.', selectedProviderId: providerId } satisfies ProviderActionResult, requestId);
     } catch (error) {
-      return jsonResponse(200, actionFailure(error instanceof Error ? error.message : 'Internal error'), requestId);
+      return jsonResponse(200, { ok: false, message: error instanceof Error ? error.message : 'Internal error', selectedProviderId: undefined } satisfies ProviderActionResult, requestId);
     }
   }
 

@@ -6,7 +6,7 @@ import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
   errorResponse,
-  requireAuth,
+  requireAdmin,
   getRequestId,
 } from "$lib/server/helpers.js";
 import { buildComposeOptions, isAllowedService } from "@openpalm/lib";
@@ -14,7 +14,7 @@ import { composeLogs, checkDocker } from "@openpalm/lib";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authError = requireAuth(event, requestId);
+  const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
   const state = getState();

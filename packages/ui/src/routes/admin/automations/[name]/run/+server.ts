@@ -9,7 +9,7 @@ import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
   errorResponse,
-  requireAuth,
+  requireAdmin,
   getRequestId,
 } from "$lib/server/helpers.js";
 import {
@@ -22,7 +22,7 @@ const SAFE_NAME_RE = /^[a-zA-Z0-9._-]+(?:\.md)?$/;
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authErr = requireAuth(event, requestId);
+  const authErr = requireAdmin(event, requestId);
   if (authErr) return authErr;
 
   const state = getState();
