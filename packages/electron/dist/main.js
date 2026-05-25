@@ -9522,17 +9522,19 @@ var VERSION = process.env.OP_ASSET_VERSION ?? "main";
 // ../lib/src/control-plane/config-persistence.ts
 var DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
 
-// ../lib/src/control-plane/registry.ts
-var logger2 = createLogger("registry");
 // ../lib/src/control-plane/secrets.ts
 var OPENCODE_STARTER_CONFIG = JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2) + `
 `;
-var logger3 = createLogger("secrets");
+var logger2 = createLogger("secrets");
 var PLAIN_CONFIG_KEYS = new Set([
   "OPENAI_BASE_URL",
-  "OWNER_NAME",
-  "OWNER_EMAIL"
+  "OP_OWNER_NAME",
+  "OP_OWNER_EMAIL"
 ]);
+
+// ../lib/src/control-plane/registry.ts
+var logger3 = createLogger("registry");
+var availabilityCache = new Map;
 // ../lib/src/control-plane/secret-backend.ts
 import { execFile as execFileCb2, spawn } from "node:child_process";
 import { promisify as promisify2 } from "node:util";
@@ -9547,6 +9549,7 @@ var logger4 = createLogger("akm-vault");
 var execFile2 = promisify2(execFileCb2);
 // ../lib/src/control-plane/docker.ts
 var logger5 = createLogger("lib:docker");
+var PULL_TIMEOUT_MS = 60 * 60000;
 
 // ../lib/src/control-plane/lifecycle.ts
 var VALID_CALLERS = new Set([

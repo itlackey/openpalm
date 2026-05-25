@@ -2,7 +2,7 @@
  * Orchestrator lock — prevents concurrent mutating operations.
  *
  * Uses O_CREAT | O_EXCL for atomic exclusive file creation.
- * Lock file lives at {dataDir}/.openpalm.lock containing JSON
+ * Lock file lives at {opHome}/state/.openpalm.lock containing JSON
  * with { pid, operation, acquiredAt }.
  *
  * Uses node:fs (not Bun) since lib must be Node-compatible for SvelteKit admin.
@@ -41,7 +41,7 @@ export class LockAcquisitionError extends Error {
 // ── Path ─────────────────────────────────────────────────────────────────
 
 export function lockPath(opHome: string): string {
-  return `${opHome}/data/.openpalm.lock`;
+  return `${opHome}/state/.openpalm.lock`;
 }
 
 // ── Stale PID Detection ──────────────────────────────────────────────────

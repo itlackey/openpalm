@@ -257,7 +257,7 @@ export function writeChannelSecrets(stackDir: string, secrets: Record<string, st
  * (e.g. `/var/run/docker.sock`) are left alone.
  */
 export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
-  const composeFiles = discoverStackOverlays(`${state.homeDir}/stack`);
+  const composeFiles = discoverStackOverlays(state.stackDir);
   if (composeFiles.length === 0) return;
 
   const envVars: Record<string, string> = {

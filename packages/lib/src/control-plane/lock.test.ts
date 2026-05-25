@@ -18,7 +18,7 @@ let opHome: string;
 
 beforeEach(() => {
   opHome = mkdtempSync(join(tmpdir(), "lock-test-"));
-  mkdirSync(join(opHome, "data"), { recursive: true });
+  mkdirSync(join(opHome, "state"), { recursive: true });
 });
 
 afterEach(() => {
@@ -49,9 +49,9 @@ describe("acquireLock", () => {
     releaseLock(handle);
   });
 
-  it("places lock at {opHome}/data/.openpalm.lock", () => {
+  it("places lock at {opHome}/state/.openpalm.lock", () => {
     const handle = acquireLock(opHome, "test");
-    expect(handle.path).toBe(join(opHome, "data", ".openpalm.lock"));
+    expect(handle.path).toBe(join(opHome, "state", ".openpalm.lock"));
     releaseLock(handle);
   });
 });
@@ -189,6 +189,6 @@ describe("releaseLock", () => {
 
 describe("lockPath", () => {
   it("returns the correct path", () => {
-    expect(lockPath("/home/user/.openpalm")).toBe("/home/user/.openpalm/data/.openpalm.lock");
+    expect(lockPath("/home/user/.openpalm")).toBe("/home/user/.openpalm/state/.openpalm.lock");
   });
 });
