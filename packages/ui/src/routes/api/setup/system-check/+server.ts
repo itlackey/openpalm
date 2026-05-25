@@ -1,7 +1,37 @@
 import { json } from "@sveltejs/kit";
 import { checkDocker, checkDockerCompose } from "@openpalm/lib";
 import { createServer } from "node:net";
+import { execFile } from "node:child_process";
 import type { RequestHandler } from "./$types";
+
+/**
+ * Returns true when the named port is published by an openpalm-managed
+ * docker container — i.e. it's "in use" but the wizard's install will
+ * either recreate or no-op on the same container, so flagging it as a
+ * conflict is a false positive. Best-effort: returns false on any
+ * docker error.
+ */
+async function portHeldByOurContainer(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile(
+      "docker",
+      ["ps", "--format", "{{.Names}}\t{{.Ports}}"],
+      { timeout: 5_000 },
+      (err, stdout) => {
+        if (err) return resolve(false);
+        const lines = stdout.toString().split("\n").map((l) => l.trim()).filter(Boolean);
+        for (const line of lines) {
+          const [name, ports] = line.split("\t");
+          if (!name || !name.startsWith("openpalm-")) continue;
+          if (ports && ports.includes(`:${port}->`)) {
+            return resolve(true);
+          }
+        }
+        resolve(false);
+      },
+    );
+  });
+}
 
 // Check whether a TCP port is bindable on 127.0.0.1. Used to flag conflicts
 // with the admin UI, assistant, and guardian ports the install will publish.
@@ -59,12 +89,14 @@ export const GET: RequestHandler = async () => {
   const selfPort = Number(process.env.PORT);
   const targets = resolvePortsToCheck();
   const ports = await Promise.all(
-    targets.map(async (t) => ({
-      port: t.port,
-      service: t.service,
-      blocking: t.blocking,
-      available: t.port === selfPort ? true : await checkPortAvailable(t.port),
-    })),
+    targets.map(async (t) => {
+      if (t.port === selfPort) return { ...t, available: true };
+      if (await checkPortAvailable(t.port)) return { ...t, available: true };
+      // Port is in use — but if it's one of our own containers, the
+      // install will recreate it, not collide. Don't flag as blocking.
+      if (await portHeldByOurContainer(t.port)) return { ...t, available: true };
+      return { ...t, available: false };
+    }),
   );
 
   return json({
