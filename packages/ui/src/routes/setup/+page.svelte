@@ -1186,8 +1186,6 @@
         <section class="step-content" id="step-6" data-testid="step-review">
           <ReviewStep
             {uiLoginPassword}
-            ownerName=""
-            ownerEmail=""
             {verifiedProviders}
             {modelSelection}
             {activeTts}

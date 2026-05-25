@@ -7,8 +7,6 @@
 
   interface Props {
     uiLoginPassword: string;
-    ownerName: string;
-    ownerEmail: string;
     verifiedProviders: Provider[];
     modelSelection: { llm?: ModelSelection; embedding?: ModelSelection; small?: ModelSelection };
     activeTts: string;
@@ -26,8 +24,6 @@
 
   let {
     uiLoginPassword,
-    ownerName,
-    ownerEmail,
     verifiedProviders,
     modelSelection,
     activeTts,
@@ -107,18 +103,6 @@
       <span class="review-row-label">UI Login Password</span>
       <span class="review-row-value">{maskSecret(uiLoginPassword)}</span>
     </div>
-    {#if ownerName}
-      <div class="review-row">
-        <span class="review-row-label">Name</span>
-        <span class="review-row-value">{ownerName}</span>
-      </div>
-    {/if}
-    {#if ownerEmail}
-      <div class="review-row">
-        <span class="review-row-label">Email</span>
-        <span class="review-row-value">{ownerEmail}</span>
-      </div>
-    {/if}
   </div>
 
   <!-- Providers -->
