@@ -4,6 +4,9 @@
   "license": "MPL-2.0",
   "type": "module",
   "description": "Shared control-plane library for OpenPalm — lifecycle, staging, secrets, channels, connections, scheduler",
+  "engines": {
+    "bun": ">=1.0.0"
+  },
   "scripts": {
     "test": "bun test"
   },

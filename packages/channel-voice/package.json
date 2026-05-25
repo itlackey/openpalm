@@ -10,6 +10,9 @@
     "directory": "packages/channel-voice"
   },
   "access": "public",
+  "engines": {
+    "bun": ">=1.0.0"
+  },
   "main": "src/index.ts",
   "files": [
     "src",
