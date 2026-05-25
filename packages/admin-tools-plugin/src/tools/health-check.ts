@@ -8,7 +8,7 @@
 import { tool } from "@opencode-ai/plugin";
 
 const DEFAULTS: Record<string, string> = {
-  guardian: process.env.GUARDIAN_URL || "http://127.0.0.1:8180",
+  guardian: process.env.OP_GUARDIAN_URL || "http://127.0.0.1:8180",
   assistant: process.env.OP_OPENCODE_URL || process.env.OP_ASSISTANT_URL || "http://127.0.0.1:3800",
   ui: process.env.OP_HOST_UI_URL || "http://127.0.0.1:3880",
 };

@@ -98,8 +98,8 @@ export function buildSecretsFromSetup(
   const updates: Record<string, string> = {};
   const ownerName = (owner?.name?.trim() ?? "").replace(/[\r\n\0]/g, "").slice(0, 200);
   const ownerEmail = (owner?.email?.trim() ?? "").replace(/[\r\n\0]/g, "").slice(0, 200);
-  if (ownerName) updates.OWNER_NAME = ownerName;
-  if (ownerEmail) updates.OWNER_EMAIL = ownerEmail;
+  if (ownerName) updates.OP_OWNER_NAME = ownerName;
+  if (ownerEmail) updates.OP_OWNER_EMAIL = ownerEmail;
   void connections;
   return updates;
 }

@@ -272,8 +272,8 @@ describe("maskSecretValue", () => {
     }
   });
 
-  test("OWNER_NAME is returned unmasked", () => {
-    expect(maskSecretValue("OWNER_NAME", "Test User")).toBe("Test User");
+  test("OP_OWNER_NAME is returned unmasked", () => {
+    expect(maskSecretValue("OP_OWNER_NAME", "Test User")).toBe("Test User");
   });
 
 });

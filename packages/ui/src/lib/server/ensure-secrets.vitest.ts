@@ -35,7 +35,7 @@ describe("ensureSecrets", () => {
 
     const stackEnv = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(stackEnv).toContain("OPENAI_API_KEY=");
-    expect(stackEnv).toContain("OWNER_NAME=");
+    expect(stackEnv).toContain("OP_OWNER_NAME=");
     expect(stackEnv).toContain("OP_UI_LOGIN_PASSWORD=");
   });
 

@@ -218,15 +218,15 @@ describe("buildSecretsFromSetup", () => {
   it("sets owner info when provided", () => {
     const spec = makeValidSpec();
     const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
-    expect(secrets.OWNER_NAME).toBe("Test User");
-    expect(secrets.OWNER_EMAIL).toBe("test@example.com");
+    expect(secrets.OP_OWNER_NAME).toBe("Test User");
+    expect(secrets.OP_OWNER_EMAIL).toBe("test@example.com");
   });
 
   it("omits owner info when empty", () => {
     const spec = makeValidSpec({ owner: { name: "", email: "" } });
     const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
-    expect(secrets.OWNER_NAME).toBeUndefined();
-    expect(secrets.OWNER_EMAIL).toBeUndefined();
+    expect(secrets.OP_OWNER_NAME).toBeUndefined();
+    expect(secrets.OP_OWNER_EMAIL).toBeUndefined();
   });
 
   it("does NOT include provider API keys in stack.env updates", () => {
@@ -367,8 +367,8 @@ describe("performSetup", () => {
         "GROQ_API_KEY=",
         "MISTRAL_API_KEY=",
         "GOOGLE_API_KEY=",
-        "OWNER_NAME=",
-        "OWNER_EMAIL=",
+        "OP_OWNER_NAME=",
+        "OP_OWNER_EMAIL=",
         "",
       ].join("\n")
     );

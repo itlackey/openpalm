@@ -80,8 +80,8 @@ export const GET: RequestHandler = ({ cookies }) => {
     // Returning the env-resolved password (not state.adminToken — that's
     // gone after Phase 4) keeps the existing UX.
     uiLoginPassword: configured,
-    ownerName: env.OWNER_NAME ?? "",
-    ownerEmail: env.OWNER_EMAIL ?? "",
+    ownerName: env.OP_OWNER_NAME ?? "",
+    ownerEmail: env.OP_OWNER_EMAIL ?? "",
     imageTag: env.OP_IMAGE_TAG ?? "",
     hostAkm,
     llm: akm.llm ? {

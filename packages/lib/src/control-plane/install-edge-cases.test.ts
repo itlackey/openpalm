@@ -142,8 +142,8 @@ function seedMinimalEnvFiles(): void {
       "GROQ_API_KEY=",
       "MISTRAL_API_KEY=",
       "GOOGLE_API_KEY=",
-      "OWNER_NAME=",
-      "OWNER_EMAIL=",
+      "OP_OWNER_NAME=",
+      "OP_OWNER_EMAIL=",
       "",
     ].join("\n")
   );
@@ -187,7 +187,7 @@ describe("Fresh Install", () => {
     // API keys and owner info are seeded in state/stack.env.
     const stackContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(stackContent).toContain("OPENAI_API_KEY=");
-    expect(stackContent).toContain("OWNER_NAME=");
+    expect(stackContent).toContain("OP_OWNER_NAME=");
   });
 
   // Scenario 2: isSetupComplete returns false before setup

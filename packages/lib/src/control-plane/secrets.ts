@@ -14,8 +14,8 @@ const logger = createLogger("secrets");
 /** Keys whose values are shown unmasked in the UI (not secrets). */
 export const PLAIN_CONFIG_KEYS = new Set([
   "OPENAI_BASE_URL",
-  "OWNER_NAME",
-  "OWNER_EMAIL",
+  "OP_OWNER_NAME",
+  "OP_OWNER_EMAIL",
 ]);
 
 
@@ -91,8 +91,8 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
       "LMSTUDIO_API_KEY=",
       "",
       "# ── Owner ────────────────────────────────────────────────────────────",
-      `OWNER_NAME=${process.env.OWNER_NAME ?? ""}`,
-      `OWNER_EMAIL=${process.env.OWNER_EMAIL ?? ""}`,
+      `OP_OWNER_NAME=${process.env.OP_OWNER_NAME ?? ""}`,
+      `OP_OWNER_EMAIL=${process.env.OP_OWNER_EMAIL ?? ""}`,
       "",
     ].join("\n");
     const content = mergeEnvContent(header, updates);

@@ -34,7 +34,7 @@ describe('redactValue', () => {
   });
 
   test('leaves non-secret values alone', () => {
-    expect(redactValue('OWNER_NAME', 'alice')).toBe('alice');
+    expect(redactValue('OP_OWNER_NAME', 'alice')).toBe('alice');
     expect(redactValue('OP_HOME', '/openpalm')).toBe('/openpalm');
     expect(redactValue('OP_ASSISTANT_PORT', '3800')).toBe('3800');
   });
@@ -71,7 +71,7 @@ describe('isSensitiveEnvKey', () => {
   });
 
   test('returns false for ordinary keys', () => {
-    expect(isSensitiveEnvKey('OWNER_NAME')).toBe(false);
+    expect(isSensitiveEnvKey('OP_OWNER_NAME')).toBe(false);
     expect(isSensitiveEnvKey('OP_HOME')).toBe(false);
     expect(isSensitiveEnvKey('OP_ASSISTANT_PORT')).toBe(false);
   });
@@ -81,11 +81,11 @@ describe('redactExtra', () => {
   test('masks top-level secret string values', () => {
     const result = redactExtra({
       OPENAI_API_KEY: 'sk-abc',
-      OWNER_NAME: 'alice',
+      OP_OWNER_NAME: 'alice',
     });
     expect(result).toEqual({
       OPENAI_API_KEY: '***REDACTED***',
-      OWNER_NAME: 'alice',
+      OP_OWNER_NAME: 'alice',
     });
   });
 
@@ -93,13 +93,13 @@ describe('redactExtra', () => {
     const result = redactExtra({
       env: {
         OPENAI_API_KEY: 'sk-abc',
-        OWNER_NAME: 'alice',
+        OP_OWNER_NAME: 'alice',
       },
     });
     expect(result).toEqual({
       env: {
         OPENAI_API_KEY: '***REDACTED***',
-        OWNER_NAME: 'alice',
+        OP_OWNER_NAME: 'alice',
       },
     });
   });
@@ -108,13 +108,13 @@ describe('redactExtra', () => {
     const result = redactExtra({
       items: [
         { OPENAI_API_KEY: 'sk-1' },
-        { OWNER_NAME: 'bob' },
+        { OP_OWNER_NAME: 'bob' },
       ],
     });
     expect(result).toEqual({
       items: [
         { OPENAI_API_KEY: '***REDACTED***' },
-        { OWNER_NAME: 'bob' },
+        { OP_OWNER_NAME: 'bob' },
       ],
     });
   });
@@ -129,12 +129,12 @@ describe('redactExtra', () => {
     const result = redactExtra({
       OP_UI_TOKEN: 12345,
       OPENAI_API_KEY: true,
-      OWNER_NAME: 'alice',
+      OP_OWNER_NAME: 'alice',
     });
     expect(result).toEqual({
       OP_UI_TOKEN: '***REDACTED***',
       OPENAI_API_KEY: '***REDACTED***',
-      OWNER_NAME: 'alice',
+      OP_OWNER_NAME: 'alice',
     });
   });
 
@@ -181,10 +181,10 @@ describe('createLogger', () => {
 
   test('redacts sensitive keys in the extra payload before writing the log line', () => {
     const logger = createLogger('test');
-    logger.info('msg', { OPENAI_API_KEY: 'sk-leak', OWNER_NAME: 'alice' });
+    logger.info('msg', { OPENAI_API_KEY: 'sk-leak', OP_OWNER_NAME: 'alice' });
     expect(logged.length).toBe(1);
     expect(logged[0]).toContain('"OPENAI_API_KEY":"***REDACTED***"');
-    expect(logged[0]).toContain('"OWNER_NAME":"alice"');
+    expect(logged[0]).toContain('"OP_OWNER_NAME":"alice"');
     expect(logged[0]).not.toContain('sk-leak');
   });
 
