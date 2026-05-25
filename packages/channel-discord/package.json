@@ -9,6 +9,13 @@
     "url": "https://github.com/itlackey/openpalm.git",
     "directory": "packages/channel-discord"
   },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
   "main": "src/index.ts",
   "dependencies": {
     "discord.js": "^14.16.3"

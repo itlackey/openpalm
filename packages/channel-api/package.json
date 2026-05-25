@@ -9,6 +9,13 @@
     "url": "https://github.com/itlackey/openpalm",
     "directory": "packages/channel-api"
   },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
   "main": "src/index.ts",
   "peerDependencies": {
     "@openpalm/channels-sdk": ">=0.8.0 <1.0.0"

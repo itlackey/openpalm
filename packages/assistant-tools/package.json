@@ -8,6 +8,9 @@
   "exports": {
     ".": "./dist/index.js"
   },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
   "files": [
     "dist",
     "opencode",

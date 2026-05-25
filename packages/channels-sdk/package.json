@@ -9,6 +9,13 @@
     "url": "https://github.com/itlackey/openpalm",
     "directory": "packages/channels-sdk"
   },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
   "main": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
