@@ -22,6 +22,9 @@ export {
 // ── SDK helpers ──────────────────────────────────────────────────────────
 export { forwardChannelMessage } from "./channel-sdk.ts";
 
+// ── Conversation queue ───────────────────────────────────────────────────
+export { ConversationQueue } from "./conversation-queue.ts";
+
 // ── Crypto ───────────────────────────────────────────────────────────────
 export { constantTimeEqual, signPayload, verifySignature } from "./crypto.ts";
 
@@ -30,6 +33,9 @@ export { createLogger, type LogLevel } from "./logger.ts";
 
 // ── Utilities ────────────────────────────────────────────────────────────
 export { asRecord, extractChatText, splitMessage } from "./utils.ts";
+
+// ── Permission helpers ───────────────────────────────────────────────────
+export { parseIdList, type PermissionResult } from "./permissions.ts";
 
 // ── Assistant client ─────────────────────────────────────────────────────
 export { type AssistantClientOptions } from "./assistant-client.ts";

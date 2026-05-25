@@ -8,7 +8,6 @@ import {
 } from "./commands.ts";
 import DiscordChannel from "./index.ts";
 import { checkPermissions, loadPermissionConfig, parseIdList } from "./permissions.ts";
-import { buildThreadSessionKey } from "./session.ts";
 import type { CustomCommandDef, PermissionConfig, UserInfo } from "./types.ts";
 import { CommandOptionType } from "./types.ts";
 
@@ -711,8 +710,8 @@ describe("discord command behavior", () => {
     await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(firstInteraction);
     await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(secondInteraction);
 
-    expect(forward.mock.calls[0]?.[0]).toMatchObject({ metadata: { sessionKey: buildThreadSessionKey("thread-1") } });
-    expect(forward.mock.calls[1]?.[0]).toMatchObject({ metadata: { sessionKey: buildThreadSessionKey("thread-2") } });
+    expect(forward.mock.calls[0]?.[0]).toMatchObject({ metadata: { sessionKey: "discord:thread:thread-1" } });
+    expect(forward.mock.calls[1]?.[0]).toMatchObject({ metadata: { sessionKey: "discord:thread:thread-2" } });
   });
 
   it("thread ask and clear use the same thread session key", async () => {
@@ -734,10 +733,10 @@ describe("discord command behavior", () => {
     await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(askInteraction);
     await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(clearInteraction);
 
-    expect(forward.mock.calls[0]?.[0]).toMatchObject({ metadata: { sessionKey: buildThreadSessionKey("thread-77") } });
+    expect(forward.mock.calls[0]?.[0]).toMatchObject({ metadata: { sessionKey: "discord:thread:thread-77" } });
     expect(forward.mock.calls[1]?.[0]).toMatchObject({
       metadata: {
-        sessionKey: buildThreadSessionKey("thread-77"),
+        sessionKey: "discord:thread:thread-77",
         clearSession: true,
       },
     });

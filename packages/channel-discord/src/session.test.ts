@@ -1,10 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-  buildChannelUserSessionKey,
-  buildThreadSessionKey,
-  ConversationQueue,
-  resolveInteractionSessionKey,
-} from "./session.ts";
+import { ConversationQueue } from "@openpalm/channels-sdk";
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve = () => {};
@@ -13,35 +8,6 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   });
   return { promise, resolve };
 }
-
-describe("session keys", () => {
-  it("builds a thread-scoped session key", () => {
-    expect(buildThreadSessionKey("thread-123")).toBe("discord:thread:thread-123");
-  });
-
-  it("builds a channel-user session key", () => {
-    expect(buildChannelUserSessionKey("channel-1", "user-1")).toBe("discord:channel:channel-1:user:user-1");
-  });
-
-  it("prefers thread session keys for interactions", () => {
-    expect(
-      resolveInteractionSessionKey({
-        channelId: "channel-1",
-        userId: "user-1",
-        threadId: "thread-1",
-      }),
-    ).toBe("discord:thread:thread-1");
-  });
-
-  it("falls back to channel-user session keys for non-thread interactions", () => {
-    expect(
-      resolveInteractionSessionKey({
-        channelId: "channel-1",
-        userId: "user-1",
-      }),
-    ).toBe("discord:channel:channel-1:user:user-1");
-  });
-});
 
 describe("ConversationQueue", () => {
   it("runs queued work sequentially", async () => {

@@ -1,17 +1,10 @@
-import { createLogger } from "@openpalm/channels-sdk";
-import type { PermissionConfig, PermissionResult, UserInfo } from "./types.ts";
+import { createLogger, parseIdList } from "@openpalm/channels-sdk";
+import type { PermissionConfig, UserInfo } from "./types.ts";
+import type { PermissionResult } from "@openpalm/channels-sdk";
+
+export { parseIdList };
 
 const log = createLogger("channel-slack");
-
-export function parseIdList(raw: string | undefined): Set<string> {
-  if (!raw) return new Set();
-  return new Set(
-    raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
-  );
-}
 
 export function loadPermissionConfig(env: Record<string, string | undefined> = Bun.env): PermissionConfig {
   const config: PermissionConfig = {

@@ -1,7 +1,6 @@
-import { BaseChannel, createLogger, splitMessage, type HandleResult } from "@openpalm/channels-sdk";
+import { BaseChannel, ConversationQueue, createLogger, splitMessage, type HandleResult } from "@openpalm/channels-sdk";
 import { App, type GenericMessageEvent, type KnownEventFromType } from "@slack/bolt";
 import { checkPermissions, loadPermissionConfig } from "./permissions.ts";
-import { ConversationQueue, resolveSessionKey } from "./session.ts";
 import type { PermissionConfig, UserInfo } from "./types.ts";
 
 const log = createLogger("channel-slack");
@@ -210,12 +209,11 @@ export default class SlackChannel extends BaseChannel {
     if (!text) return;
 
     const threadTs = event.thread_ts ?? event.ts;
-    const sessionKey = resolveSessionKey({
-      channelId: event.channel,
-      userId: event.user,
-      threadTs: event.thread_ts,
-      isDM,
-    });
+    const sessionKey = event.thread_ts
+      ? `slack:thread:${event.channel}:${event.thread_ts}`
+      : isDM
+        ? `slack:dm:${event.user}`
+        : `slack:channel:${event.channel}:user:${event.user}`;
 
     if (inTrackedThread) {
       this.touchThread(event.channel, event.thread_ts!);
@@ -264,12 +262,9 @@ export default class SlackChannel extends BaseChannel {
     // Track this thread so the bot responds to follow-up messages without a mention
     this.touchThread(event.channel, threadTs);
 
-    const sessionKey = resolveSessionKey({
-      channelId: event.channel,
-      userId: event.user,
-      threadTs: threadTs,
-      isDM: false,
-    });
+    const sessionKey = threadTs
+      ? `slack:thread:${event.channel}:${threadTs}`
+      : `slack:channel:${event.channel}:user:${event.user}`;
 
     await this.conversationQueue.runOrQueue(sessionKey, {
       onQueued: async () => {
@@ -432,12 +427,11 @@ export default class SlackChannel extends BaseChannel {
         return;
       }
 
-      const sessionKey = resolveSessionKey({
-        channelId,
-        userId: userInfo.userId,
-        threadTs: metadata.threadTs,
-        isDM: channelId.startsWith("D"),
-      });
+      const sessionKey = metadata.threadTs
+        ? `slack:thread:${channelId}:${metadata.threadTs}`
+        : channelId.startsWith("D")
+          ? `slack:dm:${userInfo.userId}`
+          : `slack:channel:${channelId}:user:${userInfo.userId}`;
 
       await this.conversationQueue.runOrQueue(sessionKey, {
         onQueued: async () => {
@@ -460,13 +454,19 @@ export default class SlackChannel extends BaseChannel {
           const thinkingTs = thinkingResult.ts;
 
           try {
-            const answer = await this.forwardToGuardian(userInfo.userId, text, {
-              teamId: userInfo.teamId,
-              username: userInfo.username,
-              command: "ask_modal",
-              channelId,
-              sessionKey,
-            }, this.forwardTimeoutMs);
+            const resp = await this.forward({
+              userId: `slack:${userInfo.userId}`,
+              text,
+              metadata: {
+                teamId: userInfo.teamId,
+                username: userInfo.username,
+                command: "ask_modal",
+                channelId,
+                sessionKey,
+              },
+            }, undefined, this.forwardTimeoutMs);
+            if (!resp.ok) throw new Error(`Guardian returned status ${resp.status}`);
+            const { answer = "No response received." } = await resp.json() as { answer?: string };
 
             const chunks = splitMessage(answer, MAX_MESSAGE_LENGTH);
             const firstChunk = chunks[0] ?? "No response received.";
@@ -592,11 +592,7 @@ export default class SlackChannel extends BaseChannel {
       return;
     }
 
-    const sessionKey = resolveSessionKey({
-      channelId: command.channel_id,
-      userId: command.user_id,
-      isDM: false,
-    });
+    const sessionKey = `slack:channel:${command.channel_id}:user:${command.user_id}`;
 
     await this.conversationQueue.runOrQueue(sessionKey, {
       onQueued: async () => {
@@ -611,13 +607,19 @@ export default class SlackChannel extends BaseChannel {
         const thinkingTs = thinkingResult.ts;
 
         try {
-          const answer = await this.forwardToGuardian(userInfo.userId, text, {
-            teamId: userInfo.teamId,
-            username: userInfo.username,
-            command: "ask",
-            channelId: command.channel_id,
-            sessionKey,
-          }, this.forwardTimeoutMs);
+          const resp = await this.forward({
+            userId: `slack:${userInfo.userId}`,
+            text,
+            metadata: {
+              teamId: userInfo.teamId,
+              username: userInfo.username,
+              command: "ask",
+              channelId: command.channel_id,
+              sessionKey,
+            },
+          }, undefined, this.forwardTimeoutMs);
+          if (!resp.ok) throw new Error(`Guardian returned status ${resp.status}`);
+          const { answer = "No response received." } = await resp.json() as { answer?: string };
 
           // Replace thinking message with answer
           const chunks = splitMessage(answer, MAX_MESSAGE_LENGTH);
@@ -676,11 +678,7 @@ export default class SlackChannel extends BaseChannel {
       return;
     }
 
-    const sessionKey = resolveSessionKey({
-      channelId: command.channel_id,
-      userId: command.user_id,
-      isDM: false,
-    });
+    const sessionKey = `slack:channel:${command.channel_id}:user:${command.user_id}`;
 
     try {
       // Use this.forward directly — clear should not throw, we handle resp.ok manually
@@ -764,12 +762,18 @@ export default class SlackChannel extends BaseChannel {
     }
 
     try {
-      const answer = await this.forwardToGuardian(userInfo.userId, text, {
-        teamId: userInfo.teamId,
-        username: userInfo.username,
-        channelId: channel,
-        sessionKey,
-      }, this.forwardTimeoutMs);
+      const resp = await this.forward({
+        userId: `slack:${userInfo.userId}`,
+        text,
+        metadata: {
+          teamId: userInfo.teamId,
+          username: userInfo.username,
+          channelId: channel,
+          sessionKey,
+        },
+      }, undefined, this.forwardTimeoutMs);
+      if (!resp.ok) throw new Error(`Guardian returned status ${resp.status}`);
+      const { answer = "No response received." } = await resp.json() as { answer?: string };
 
       // Replace thinking message with first chunk, post remaining as follow-ups
       const chunks = splitMessage(answer, MAX_MESSAGE_LENGTH);

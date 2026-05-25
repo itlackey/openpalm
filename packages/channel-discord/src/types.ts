@@ -35,10 +35,7 @@ export type PermissionConfig = {
   blockedUsers: Set<string>;
 };
 
-export type PermissionResult = {
-  allowed: boolean;
-  reason?: string;
-};
+export type { PermissionResult } from "@openpalm/channels-sdk";
 
 /** Simple user info extracted from discord.js Message or Interaction objects. */
 export type UserInfo = {

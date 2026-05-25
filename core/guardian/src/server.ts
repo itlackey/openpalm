@@ -112,14 +112,6 @@ Bun.serve({
     }
 
     if (url.pathname === "/channel/inbound" && req.method === "POST") {
-      // H8: Request body size limit (100KB)
-      const contentLength = req.headers.get("content-length");
-      if (contentLength && Number(contentLength) > 102_400) {
-        countRequest(ERROR_CODES.PAYLOAD_TOO_LARGE);
-        logger.warn("payload_too_large", { requestId: rid, contentLength: Number(contentLength) });
-        return json(413, { error: ERROR_CODES.PAYLOAD_TOO_LARGE, requestId: rid });
-      }
-
       const raw = await req.text();
 
       if (raw.length > 102_400) {

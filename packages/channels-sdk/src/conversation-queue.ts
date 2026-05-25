@@ -1,9 +1,3 @@
-export type InteractionSessionContext = {
-  channelId: string;
-  userId: string;
-  threadId?: string | null;
-};
-
 type SessionTask = {
   run: () => Promise<void>;
   onQueued?: () => Promise<void>;
@@ -13,22 +7,6 @@ type SessionState = {
   processing: boolean;
   queue: SessionTask[];
 };
-
-export function buildThreadSessionKey(threadId: string): string {
-  return `discord:thread:${threadId}`;
-}
-
-export function buildChannelUserSessionKey(channelId: string, userId: string): string {
-  return `discord:channel:${channelId}:user:${userId}`;
-}
-
-export function resolveInteractionSessionKey(context: InteractionSessionContext): string {
-  if (context.threadId?.trim()) {
-    return buildThreadSessionKey(context.threadId);
-  }
-
-  return buildChannelUserSessionKey(context.channelId, context.userId);
-}
 
 export class ConversationQueue {
   private states = new Map<string, SessionState>();
