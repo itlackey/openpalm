@@ -430,6 +430,13 @@ let pendingAutoplayUrl: string | null = null;
 
 function teardownActiveAudio(): void {
 	if (activeAudio) {
+		// Detach handlers BEFORE clearing src. Setting `audio.src = ''`
+		// synthesizes a MediaError code 4 (SRC_NOT_SUPPORTED) on most
+		// browsers; if onerror is still wired, it fires and surfaces
+		// "Audio playback failed." even though playback completed
+		// successfully (onended just ran and called us).
+		activeAudio.onerror = null;
+		activeAudio.onended = null;
 		try { activeAudio.pause(); } catch { /* noop */ }
 		activeAudio.src = '';
 		activeAudio = null;
@@ -442,6 +449,12 @@ function teardownActiveAudio(): void {
 
 function teardownPendingAutoplay(): void {
 	if (pendingAutoplayAudio) {
+		// Same handler-clear-before-src=''-trick as teardownActiveAudio:
+		// the assignment fires a phantom MediaError on cleanup, and any
+		// onerror handler attached later (resumeAutoplay reuses this
+		// element) would receive it.
+		pendingAutoplayAudio.onerror = null;
+		pendingAutoplayAudio.onended = null;
 		try { pendingAutoplayAudio.pause(); } catch { /* noop */ }
 		pendingAutoplayAudio.src = '';
 		pendingAutoplayAudio = null;
