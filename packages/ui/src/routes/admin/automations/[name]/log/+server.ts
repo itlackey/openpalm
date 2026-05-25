@@ -12,7 +12,7 @@ import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
   errorResponse,
-  requireAuth,
+  requireAdmin,
   getRequestId,
 } from "$lib/server/helpers.js";
 import { readAutomationLogs } from "@openpalm/lib";
@@ -23,7 +23,7 @@ const MAX_LIMIT = 500;
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authErr = requireAuth(event, requestId);
+  const authErr = requireAdmin(event, requestId);
   if (authErr) return authErr;
 
   const state = getState();

@@ -9,14 +9,14 @@ import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
-  requireAuth,
+  requireAdmin,
   getRequestId,
 } from "$lib/server/helpers.js";
 import { loadAutomations } from "@openpalm/lib";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authErr = requireAuth(event, requestId);
+  const authErr = requireAdmin(event, requestId);
   if (authErr) return authErr;
 
   const state = getState();
@@ -25,12 +25,14 @@ export const GET: RequestHandler = async (event) => {
     name: c.name,
     description: c.description,
     schedule: c.schedule,
+    timezone: c.timezone,
     enabled: c.enabled,
     action: {
       type: c.action.type,
       content: c.action.content,
       agent: c.action.agent
     },
+    on_failure: c.on_failure,
     fileName: c.fileName,
   }));
 

@@ -140,37 +140,6 @@ export function identifyCallerByToken(event: RequestEvent): "admin" | null {
   return null;
 }
 
-/**
- * Check for a valid admin session — returns error Response or null if OK.
- *
- * Phase 4: this is equivalent to `requireAdmin` now that the assistant
- * token is gone. The signature is preserved so existing route handlers
- * keep compiling; future cleanup may collapse the two.
- */
-export function requireAuth(event: RequestEvent, requestId: string): Response | null {
-  const password = getUiLoginPassword();
-  if (!password) {
-    return errorResponse(
-      503,
-      'admin_not_configured',
-      'OP_UI_LOGIN_PASSWORD has not been set. Complete setup first.',
-      {},
-      requestId,
-    );
-  }
-
-  if (identifyCallerByToken(event)) {
-    return null;
-  }
-
-  return errorResponse(
-    401,
-    "unauthorized",
-    "Missing or invalid session cookie",
-    {},
-    requestId
-  );
-}
 
 /** Discriminated result from parseJsonBody */
 export type ParseJsonBodyError = { error: "too_large" | "invalid_json" };

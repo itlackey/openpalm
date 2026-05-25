@@ -1,8 +1,8 @@
 import type { RequestHandler } from './$types';
 import { jsonResponse, withAdminBody } from '$lib/server/helpers.js';
-import { actionSuccess, actionFailure } from '$lib/server/opencode/index.js';
 import { opencodeFetch } from '$lib/server/opencode/http.js';
 import { asStringOrEmpty, extractInputs } from '../../_helpers.js';
+import type { ProviderActionResult } from '$lib/types/providers.js';
 
 /**
  * POST /admin/providers/oauth/start — Begin an OpenCode-mediated OAuth
@@ -22,7 +22,7 @@ export const POST: RequestHandler = (event) => withAdminBody(event, async ({ req
 		if (!providerId || Number.isNaN(methodIndex)) {
 			return jsonResponse(
 				200,
-				actionFailure('Choose a provider sign-in method first.'),
+				{ ok: false, message: 'Choose a provider sign-in method first.', selectedProviderId: undefined } satisfies ProviderActionResult,
 				requestId,
 			);
 		}
@@ -38,20 +38,11 @@ export const POST: RequestHandler = (event) => withAdminBody(event, async ({ req
 
 		return jsonResponse(
 			200,
-			actionSuccess('OAuth flow prepared. Open the link below to continue.', providerId, {
-				oauth: {
-					providerId,
-					methodIndex,
-					url: oauth.url,
-					mode: oauth.method,
-					instructions: oauth.instructions,
-					inputs,
-				},
-			}),
+			{ ok: true, message: 'OAuth flow prepared. Open the link below to continue.', selectedProviderId: providerId, oauth: { providerId, methodIndex, url: oauth.url, mode: oauth.method, instructions: oauth.instructions, inputs } } satisfies ProviderActionResult,
 			requestId,
 		);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Internal error';
-		return jsonResponse(200, actionFailure(message), requestId);
+		return jsonResponse(200, { ok: false, message, selectedProviderId: undefined } satisfies ProviderActionResult, requestId);
 	}
 });

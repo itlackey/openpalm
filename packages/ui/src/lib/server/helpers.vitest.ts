@@ -14,7 +14,6 @@ import {
   errorResponse,
   getRequestId,
   requireAdmin,
-  requireAuth,
   identifyCallerByToken,
   parseJsonBody,
 } from "./helpers.js";
@@ -191,7 +190,7 @@ describe("requireAdmin", () => {
   });
 });
 
-describe("identifyCallerByToken / requireAuth (cookie-only after Phase 2)", () => {
+describe("identifyCallerByToken / requireAdmin (cookie-only after Phase 2)", () => {
   beforeEach(() => {
     resetState("test-admin-token-12345");
   });
@@ -214,29 +213,29 @@ describe("identifyCallerByToken / requireAuth (cookie-only after Phase 2)", () =
     expect(identifyCallerByToken(event as never)).toBeNull();
   });
 
-  test("requireAuth rejects unknown cookie values", async () => {
+  test("requireAdmin rejects unknown cookie values", async () => {
     resetState("test-admin-token-12345");
     const event = makeEvent({ cookie: "op_session=some-stale-value" });
-    const result = requireAuth(event as never, "req-stale");
+    const result = requireAdmin(event as never, "req-stale");
     expect(result).not.toBeNull();
     expect(result!.status).toBe(401);
   });
 
-  test("requireAuth rejects admin token presented via x-admin-token header", async () => {
+  test("requireAdmin rejects admin token presented via x-admin-token header", async () => {
     const event = makeEvent({ "x-admin-token": "test-admin-token-12345" });
-    const result = requireAuth(event as never, "req-header");
+    const result = requireAdmin(event as never, "req-header");
     expect(result).not.toBeNull();
     expect(result!.status).toBe(401);
   });
 
-  test("requireAuth passes for admin token via cookie", () => {
+  test("requireAdmin passes for admin token via cookie", () => {
     const event = makeEvent({ cookie: "op_session=test-admin-token-12345" });
-    expect(requireAuth(event as never, "req-admin")).toBeNull();
+    expect(requireAdmin(event as never, "req-admin")).toBeNull();
   });
 
-  test("requireAuth rejects unknown cookie value", async () => {
+  test("requireAdmin rejects unknown cookie value", async () => {
     const event = makeEvent({ cookie: "op_session=nope" });
-    const result = requireAuth(event as never, "req-bad");
+    const result = requireAdmin(event as never, "req-bad");
     expect(result).not.toBeNull();
     expect(result!.status).toBe(401);
     const body = await result!.json();

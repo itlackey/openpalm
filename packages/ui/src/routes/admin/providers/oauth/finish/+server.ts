@@ -1,8 +1,8 @@
 import type { RequestHandler } from './$types';
 import { jsonResponse, withAdminBody } from '$lib/server/helpers.js';
-import { actionSuccess, actionFailure } from '$lib/server/opencode/index.js';
 import { opencodeFetch } from '$lib/server/opencode/http.js';
 import { asStringOrEmpty } from '../../_helpers.js';
+import type { ProviderActionResult } from '$lib/types/providers.js';
 
 /**
  * POST /admin/providers/oauth/finish — Complete an OAuth code-mode
@@ -18,7 +18,7 @@ export const POST: RequestHandler = (event) => withAdminBody(event, async ({ req
 		if (!providerId || Number.isNaN(methodIndex) || !code) {
 			return jsonResponse(
 				200,
-				actionFailure('Paste the authorization code before finishing sign-in.', providerId),
+				{ ok: false, message: 'Paste the authorization code before finishing sign-in.', selectedProviderId: providerId } satisfies ProviderActionResult,
 				requestId,
 			);
 		}
@@ -31,9 +31,9 @@ export const POST: RequestHandler = (event) => withAdminBody(event, async ({ req
 			},
 		);
 
-		return jsonResponse(200, actionSuccess('OAuth connection completed.', providerId), requestId);
+		return jsonResponse(200, { ok: true, message: 'OAuth connection completed.', selectedProviderId: providerId } satisfies ProviderActionResult, requestId);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Internal error';
-		return jsonResponse(200, actionFailure(message), requestId);
+		return jsonResponse(200, { ok: false, message, selectedProviderId: undefined } satisfies ProviderActionResult, requestId);
 	}
 });
