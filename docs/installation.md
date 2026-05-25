@@ -65,13 +65,10 @@ This file holds system-managed values, provider API keys, and owner identity:
 - `SYSTEM_LLM_PROVIDER`
 - `SYSTEM_LLM_MODEL`
 - `MEMORY_USER_ID`
-- `OWNER_NAME`
-- `OWNER_EMAIL`
 
 It also includes system-managed values such as:
 
-- `OP_ADMIN_TOKEN`
-- `OP_ASSISTANT_TOKEN`
+- `OP_UI_LOGIN_PASSWORD`
 - `OP_MEMORY_TOKEN`
 - `OP_HOME`, `OP_UID`, `OP_GID`
 - `OP_ASSISTANT_PORT`, `OP_ADMIN_PORT`, `OP_MEMORY_PORT`, `OP_CHAT_PORT`
@@ -82,7 +79,7 @@ paths.
 ### `~/.openpalm/vault/user/user.env`
 
 Optional user-managed extension settings. Starts empty; use for custom
-preferences. Owner name and email live in `stack.env`.
+preferences and addon-specific values.
 
 ---
 

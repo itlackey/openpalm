@@ -115,7 +115,6 @@ Key env:
 - `OPENCODE_AUTH=false` (safe because host bind defaults to 127.0.0.1; see § Security invariants #4 in core-principles.md)
 - `OPENCODE_ENABLE_SSH`
 - `OP_ADMIN_API_URL`
-- `OP_ASSISTANT_TOKEN`
 - `MEMORY_API_URL=http://memory:8765`
 - `MEMORY_AUTH_TOKEN` (set from `OP_MEMORY_TOKEN` in stack.env)
 - `MEMORY_USER_ID`

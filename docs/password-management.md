@@ -50,8 +50,7 @@ Important keys include:
 
 | Key | Notes |
 |---|---|
-| `OP_ADMIN_TOKEN` | Admin UI/API authentication token |
-| `OP_ASSISTANT_TOKEN` | Assistant/scheduler auth token for admin API access |
+| `OP_UI_LOGIN_PASSWORD` | Admin UI login password (set during setup) |
 | `OP_MEMORY_TOKEN` | Memory API auth token |
 | `OP_HOME` | OpenPalm home directory |
 | `OP_UID` / `OP_GID` | Host user/group mapping |
@@ -64,8 +63,6 @@ Important keys include:
 | `OP_API_PORT` | API addon host port, default `3821` |
 | `OP_VOICE_PORT` | Voice addon host port, default `3810` |
 | `OP_ASSISTANT_SSH_PORT` | Optional assistant SSH port, default `2222` |
-| `OWNER_NAME` | Operator display name |
-| `OWNER_EMAIL` | Operator email |
 | `OPENAI_API_KEY` | OpenAI-compatible provider key |
 | `OPENAI_BASE_URL` | Alternate OpenAI-compatible endpoint |
 | `ANTHROPIC_API_KEY` | Anthropic key |
@@ -103,21 +100,17 @@ access to stack secrets by filesystem path.
 
 ---
 
-## Authentication tokens
+## Authentication
 
-### `OP_ADMIN_TOKEN`
+### `OP_UI_LOGIN_PASSWORD`
 
-- primary admin credential
-- used for privileged admin UI/API operations
-- sent in the `x-admin-token` header
+- single password for the admin UI
+- set during setup; a secure value is auto-generated if you do not supply one
+- used to log in at the admin UI; the session is maintained via a cookie
 
-### `OP_ASSISTANT_TOKEN`
-
-- separate operational token for the assistant and scheduler
-- exposed inside the assistant as `OP_ASSISTANT_TOKEN`
-- also sent in the `x-admin-token` header when assistant tooling calls the admin API
-
-OpenPalm does not use `Authorization: Bearer` for these admin endpoints.
+The admin UI does not use token headers for browser sessions. The assistant
+communicates with the admin API internally and does not require a separate
+user-facing credential.
 
 ---
 

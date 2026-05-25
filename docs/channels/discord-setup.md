@@ -7,8 +7,7 @@ Compose files are the source of truth; the admin UI/API is optional convenience.
 
 - A working OpenPalm install; see [manual compose runbook](../operations/manual-compose-runbook.md)
 - Discord app/bot creation access
-- The `discord` addon included in your compose file set, or an admin addon if you want the optional install API
-- `OP_ADMIN_TOKEN` from `~/.openpalm/vault/stack/stack.env` if you use admin endpoints
+- The `discord` addon included in your compose file set, or an admin addon if you want the optional install UI
 
 ## 1. Create the Discord app and bot
 
