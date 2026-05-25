@@ -7,7 +7,6 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8184"
-      GUARDIAN_URL: http://guardian:8080
       CHANNEL_NAME: "Discord Bot"
       CHANNEL_PACKAGE: "@openpalm/channel-discord"
       CHANNEL_DISCORD_SECRET: ${CHANNEL_DISCORD_SECRET:-}

@@ -91,7 +91,7 @@
     setupComplete?: boolean;
     deployStatus?: { service: string; status: string; label?: string }[];
     deployError?: string | null;
-    ports?: { admin?: number; assistant?: number; guardian?: number };
+    ports?: { admin?: number; assistant?: number };
   }>({});
   let deployDone = $state(false);
   let deployError = $state<string | null>(null);

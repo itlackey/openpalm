@@ -4,6 +4,24 @@
  * Renamed from `.pw.ts` to `.manual.ts`. Requires a live dev stack
  * with assistant + guardian containers running + standalone UI on
  * ADMIN_URL. See e2e/README.md.
+ *
+ * ── Guardian is no longer host-published ──
+ * As of the 0.11.0 port-simplification pass, guardian has no host port
+ * mapping — it's only reachable inside the channel_lan/assistant_net Docker
+ * networks. To run this smoke against an arbitrary dev stack, temporarily
+ * add an override that re-publishes 8080 to a host port:
+ *
+ *   cat > /tmp/guardian-expose.yml <<'YAML'
+ *   services:
+ *     guardian:
+ *       ports:
+ *         - "127.0.0.1:9180:8080"
+ *   YAML
+ *   docker compose ... -f /tmp/guardian-expose.yml up -d
+ *   OP_GUARDIAN_PORT=9180 bun run ui:test:e2e e2e/channel-guardian-pipeline.manual.ts
+ *
+ * Future work: rewrite as a docker-exec wrapper so this runs against the
+ * stock stack with no override needed.
  */
 import { expect, test } from '@playwright/test';
 import { createHmac, randomUUID } from 'node:crypto';

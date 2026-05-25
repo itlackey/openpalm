@@ -118,7 +118,8 @@ OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=dev
 OP_UI_LOGIN_PASSWORD=e2e-test-password-$(date +%s)
 OP_ASSISTANT_PORT=${OP_E2E_ASSISTANT_PORT:-3891}
-OP_GUARDIAN_PORT=${OP_E2E_GUARDIAN_PORT:-8181}
+# Guardian has no host port mapping (network-only). Channels reach it via
+# http://guardian:8080 over the channel_lan Docker network.
 OP_VOICE_PORT=${OP_E2E_VOICE_PORT:-8187}
 OP_HOST_UI_PORT=${OP_E2E_UI_PORT}
 OP_ADMIN_PORT=${OP_E2E_UI_PORT}

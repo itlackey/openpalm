@@ -46,7 +46,7 @@ export default async function globalSetup() {
 	const content = readFileSync(STACK_ENV, "utf8");
 
 	// Load stack.env vars into process.env (backfill only) so integration
-	// tests can use OP_GUARDIAN_PORT, OP_ADMIN_PORT, etc.
+	// tests can use OP_ADMIN_PORT, OP_ASSISTANT_PORT, etc.
 	const stackVars = dotenvParse(content);
 	for (const [key, value] of Object.entries(stackVars)) {
 		if (!process.env[key] && value) {

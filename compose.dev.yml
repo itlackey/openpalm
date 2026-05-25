@@ -21,11 +21,10 @@ services:
       context: .
       dockerfile: core/guardian/Dockerfile
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:dev
-    # Dev override: publish guardian to host for integration tests.
-    # Uses OP_GUARDIAN_PORT (default 8180) to avoid conflict with the legacy
-    # ingress port 8080 (which tests expect to be ECONNREFUSED).
-    ports:
-      - "${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-8180}:8080"
+    # Guardian is intentionally NOT host-published. It is reachable only on
+    # the channel_lan / assistant_net networks as `http://guardian:8080`.
+    # Manual smoke tests that previously hit a host-published port must
+    # either run inside the network or use `docker exec openpalm-guardian-1`.
 
   assistant:
     build:

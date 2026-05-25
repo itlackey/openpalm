@@ -39,11 +39,12 @@ export function deriveSystemEnvFromSpec(
   result["OP_IMAGE_NAMESPACE"] = image.namespace;
   result["OP_IMAGE_TAG"] = image.tag;
 
-  // Ports
+  // Ports — only the services that publish to the host. Guardian is
+  // network-only (no host port mapping) so OP_GUARDIAN_PORT is no longer
+  // emitted; channels reach it via Docker DNS at http://guardian:8080.
   result["OP_ASSISTANT_PORT"] = String(ports.assistant);
   result["OP_ADMIN_PORT"] = String(ports.admin);
   result["OP_ADMIN_OPENCODE_PORT"] = String(ports.adminOpencode);
-  result["OP_GUARDIAN_PORT"] = String(ports.guardian);
   result["OP_ASSISTANT_SSH_PORT"] = String(ports.assistantSsh);
 
   void spec; // spec reserved for future use; ports/image come from SPEC_DEFAULTS

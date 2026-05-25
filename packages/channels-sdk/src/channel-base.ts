@@ -37,8 +37,13 @@ export abstract class BaseChannel {
   /** Port to listen on. Defaults to env PORT or 8080. */
   port: number = Number(Bun.env.PORT) || 8080;
 
-  /** Guardian URL. Defaults to env GUARDIAN_URL. */
-  guardianUrl: string = Bun.env.GUARDIAN_URL ?? "http://guardian:8080";
+  /**
+   * Guardian URL. Hardcoded to the in-network service name — channels always
+   * run in the same compose project as guardian, so Docker DNS resolves this
+   * deterministically. No env override (we tried; the override only ever
+   * caused stale-config bugs).
+   */
+  guardianUrl: string = "http://guardian:8080";
 
   /**
    * HMAC shared secret. Auto-resolved from CHANNEL_<NAME>_SECRET env var.

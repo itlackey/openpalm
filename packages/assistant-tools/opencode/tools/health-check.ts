@@ -11,8 +11,10 @@ export default tool({
       ? args.services.split(",").map((service) => service.trim()).filter(Boolean)
       : ALL;
     const targets = [...new Set(requested)];
+    // Guardian is always on assistant_net at the service-name alias.
+    // No env override: the URL is deterministic inside the compose project.
     const urlMap: Record<string, string> = {
-      guardian: process.env.GUARDIAN_URL || "http://guardian:8080",
+      guardian: "http://guardian:8080",
     };
     const results: Record<string, { status: string; latencyMs?: number }> = {};
     await Promise.all(

@@ -57,11 +57,15 @@ async function checkPortAvailable(port: number, timeoutMs = 1000): Promise<boole
 // `blocking: true` means the install REQUIRES this port — if it's in use, the
 // UI should disable Continue until the user frees it.
 //
-// Env-name resolution honors BOTH the historic OP_ADMIN_PORT / OP_ASSISTANT_PORT /
-// OP_GUARDIAN_PORT (used by dev-setup.sh and existing dev installs) and the
-// newer OP_HOST_* names. OP_HOST_* wins when present; falls back to the
-// legacy name; falls back to the stock default. Avoids a false "port in use"
-// on dev stacks whose stack.env predates the rename.
+// Guardian is intentionally NOT in this list: it has no host port mapping —
+// channels reach it via Docker DNS (http://guardian:8080) and the host
+// admin-tools health-check uses `docker container inspect` instead of HTTP.
+//
+// Env-name resolution honors BOTH the historic OP_ADMIN_PORT / OP_ASSISTANT_PORT
+// (used by dev-setup.sh and existing dev installs) and the newer OP_HOST_*
+// names. OP_HOST_* wins when present; falls back to the legacy name; falls back
+// to the stock default. Avoids a false "port in use" on dev stacks whose
+// stack.env predates the rename.
 function pickPort(...envNames: string[]): number | null {
   for (const name of envNames) {
     const raw = process.env[name];
@@ -76,7 +80,6 @@ function resolvePortsToCheck(): { port: number; service: string; blocking: boole
   return [
     { port: pickPort("OP_HOST_UI_PORT", "OP_ADMIN_PORT")            ?? 3880, service: "admin",     blocking: true },
     { port: pickPort("OP_HOST_ASSISTANT_PORT", "OP_ASSISTANT_PORT") ?? 3800, service: "assistant", blocking: true },
-    { port: pickPort("OP_HOST_GUARDIAN_PORT", "OP_GUARDIAN_PORT")   ?? 8180, service: "guardian",  blocking: true },
   ];
 }
 

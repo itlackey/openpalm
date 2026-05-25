@@ -19,9 +19,11 @@ function isValidChannelName(name: string): boolean {
 // ── Channel Discovery ─────────────────────────────────────────────────
 
 /**
- * Check if a compose file defines a channel service (has CHANNEL_NAME or GUARDIAN_URL).
- * This is compose-derived: we parse the actual compose content rather than
- * relying on filename patterns or directory naming conventions.
+ * Check if a compose file defines a channel service (has CHANNEL_NAME).
+ * Compose-derived: we parse the actual compose content rather than rely on
+ * filename or directory naming conventions. (GUARDIAN_URL used to be a
+ * fallback signal — it's been removed since channels-sdk now hardcodes the
+ * in-network guardian URL.)
  */
 export function isChannelAddon(composePath: string): boolean {
   try {
@@ -36,9 +38,9 @@ export function isChannelAddon(composePath: string): boolean {
       const env = (svcDef as Record<string, unknown>).environment;
       if (typeof env === "object" && env !== null) {
         if (Array.isArray(env)) {
-          if (env.some((e: unknown) => typeof e === "string" && (e.startsWith("CHANNEL_NAME=") || e.startsWith("GUARDIAN_URL=")))) return true;
+          if (env.some((e: unknown) => typeof e === "string" && e.startsWith("CHANNEL_NAME="))) return true;
         } else {
-          if ("CHANNEL_NAME" in (env as Record<string, unknown>) || "GUARDIAN_URL" in (env as Record<string, unknown>)) return true;
+          if ("CHANNEL_NAME" in (env as Record<string, unknown>)) return true;
         }
       }
     }
@@ -51,7 +53,7 @@ export function isChannelAddon(composePath: string): boolean {
 /**
  * Discover installed channels by scanning stack/addons/ for channel addons.
  * A channel addon is identified by compose-derived truth: its compose.yml
- * defines services with CHANNEL_NAME or GUARDIAN_URL environment variables.
+ * defines services with a CHANNEL_NAME environment variable.
  *
  * Non-channel addons (admin, ollama, etc.) are excluded.
  *

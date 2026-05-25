@@ -7,7 +7,6 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8185"
-      GUARDIAN_URL: http://guardian:8080
       CHANNEL_NAME: "Slack Bot"
       CHANNEL_PACKAGE: "@openpalm/channel-slack"
       CHANNEL_SLACK_SECRET: ${CHANNEL_SLACK_SECRET:-}

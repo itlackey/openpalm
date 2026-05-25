@@ -132,8 +132,12 @@ services:
       # OP_OPENCODE_PASSWORD plumbing.
       OPENCODE_SERVER_USERNAME: ${OP_OPENCODE_USERNAME:-}
       OPENCODE_SERVER_PASSWORD: ${OP_OPENCODE_PASSWORD:-}
-    ports:
-      - "${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-8180}:8080"
+    # No host port mapping: guardian is reachable only via the
+    # channel_lan / assistant_net Docker networks as `http://guardian:8080`.
+    # Channels (api, discord, slack, chat) talk to it over channel_lan; the
+    # host UI checks its health via `docker container inspect` instead of HTTP.
+    # To temporarily expose for debugging, set OP_GUARDIAN_DEBUG_PORT and
+    # add a one-off override file or use `docker exec openpalm-guardian-1 ...`.
     volumes:
       - ${OP_HOME}/state/guardian:/app/data
       - ${OP_HOME}/state/logs:/app/audit

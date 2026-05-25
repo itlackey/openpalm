@@ -118,10 +118,11 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     `OP_IMAGE_TAG=${DEFAULT_IMAGE_TAG}`,
     "",
     "# ── Ports (38XX range) ──────────────────────────────────────────────",
+    "# Guardian is network-only (no host port) — channels reach it via",
+    "# http://guardian:8080 over the channel_lan Docker network.",
     `OP_ASSISTANT_PORT=3800`,
     `OP_ADMIN_PORT=3880`,
     `OP_ADMIN_OPENCODE_PORT=3881`,
-    `OP_GUARDIAN_PORT=3899`,
     ""
   ].join("\n");
 }

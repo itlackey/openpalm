@@ -25,7 +25,11 @@ describe("deriveSystemEnvFromSpec", () => {
   test("produces default port values", () => {
     const result = deriveSystemEnvFromSpec(MINIMAL_SPEC, "/home/op");
     expect(result.OP_ASSISTANT_PORT).toBe("3800");
-    expect(result.OP_GUARDIAN_PORT).toBe("3899");
+  });
+
+  test("does not emit OP_GUARDIAN_PORT (guardian is network-only, no host mapping)", () => {
+    const result = deriveSystemEnvFromSpec(MINIMAL_SPEC, "/home/op");
+    expect(result.OP_GUARDIAN_PORT).toBeUndefined();
   });
 
   test("does not include the retired memory service port", () => {

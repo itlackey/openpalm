@@ -52,7 +52,7 @@ describe("discoverChannels", () => {
 
   test("discovers channel addons (those with CHANNEL_NAME)", () => {
     seedChannelAddons(homeDir, [
-      { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n      GUARDIAN_URL: http://guardian:8080\n" }
+      { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" }
     ]);
 
     const result = discoverChannels(configDir);
@@ -63,9 +63,9 @@ describe("discoverChannels", () => {
 
   test("discovers multiple channels", () => {
     seedChannelAddons(homeDir, [
-      { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n      GUARDIAN_URL: http://guardian:8080\n" },
-      { name: "discord", yml: "services:\n  discord:\n    environment:\n      CHANNEL_NAME: Discord\n      GUARDIAN_URL: http://guardian:8080\n" },
-      { name: "api", yml: "services:\n  api:\n    environment:\n      CHANNEL_NAME: API\n      GUARDIAN_URL: http://guardian:8080\n" }
+      { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" },
+      { name: "discord", yml: "services:\n  discord:\n    environment:\n      CHANNEL_NAME: Discord\n" },
+      { name: "api", yml: "services:\n  api:\n    environment:\n      CHANNEL_NAME: API\n" }
     ]);
 
     const result = discoverChannels(configDir);
