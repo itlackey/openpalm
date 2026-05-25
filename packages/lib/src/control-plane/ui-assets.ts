@@ -156,7 +156,13 @@ export function resolveLocalUiBuild(): string | null {
     () => process.env.OPENPALM_REPO_ROOT
       ? join(process.env.OPENPALM_REPO_ROOT, 'packages', 'ui', 'build')
       : null,
-    // 2. Relative to this source file (dev / bun run)
+    // 2. Electron extraResources — ui-build/ is placed alongside the asar
+    () => {
+      const rp = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+      if (!rp) return null;
+      return join(rp, 'ui-build');
+    },
+    // 3. Relative to this source file (dev / bun run)
     () => {
       const meta = fileURLToPath(import.meta.url);
       if (meta.startsWith('/$bunfs/')) return null;
@@ -164,7 +170,7 @@ export function resolveLocalUiBuild(): string | null {
       const candidate = join(dirname(meta), '..', '..', '..', '..', 'packages', 'ui', 'build');
       return existsSync(join(candidate, 'index.js')) ? candidate : null;
     },
-    // 3. Relative to compiled binary / Electron executable
+    // 4. Relative to compiled binary / Electron executable
     () => {
       const binDir = dirname(realpathSync(process.execPath));
       const candidate = join(binDir, '..', '..', '..', 'packages', 'ui', 'build');

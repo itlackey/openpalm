@@ -12,6 +12,11 @@ files:
   - assets/**/*
   - package.json
 
+extraResources:
+  - from: ../../packages/ui/build
+    to: ui-build
+    filter: "**/*"
+
 mac:
   category: public.app-category.developer-tools
   target:
