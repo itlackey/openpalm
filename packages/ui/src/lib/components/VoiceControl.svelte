@@ -102,6 +102,47 @@
 				<span>Audio paused — click to resume</span>
 			</button>
 		{/if}
+		{#if ttsAvailable}
+			<button
+				class="voice-btn"
+				class:voice-btn-on={voiceState.ttsAutoEnabled}
+				class:voice-btn-speaking={isSpeaking}
+				onclick={handleSpeakerClick}
+				aria-label={voiceState.ttsAutoEnabled
+					? 'Turn off spoken responses'
+					: 'Turn on spoken responses'}
+				aria-pressed={voiceState.ttsAutoEnabled}
+				title={isSpeaking
+					? 'Speaking — click to turn off spoken responses'
+					: voiceState.ttsAutoEnabled
+						? 'Spoken responses are on — click to turn off'
+						: 'Spoken responses are off — click to turn on'}
+			>
+				<svg
+					aria-hidden="true"
+					width="16"
+					height="16"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+					{#if voiceState.ttsAutoEnabled}
+						<!-- Sound waves: one when idle, both animated when speaking -->
+						<path d="M15.54 8.46a5 5 0 0 1 0 7.07" class:wave-anim={isSpeaking} />
+						<path d="M19.07 4.93a10 10 0 0 1 0 14.14" class:wave-anim-2={isSpeaking} />
+					{:else}
+						<!-- Muted: cross-out in place of the waves -->
+						<line x1="23" y1="9" x2="17" y2="15" />
+						<line x1="17" y1="9" x2="23" y2="15" />
+					{/if}
+				</svg>
+			</button>
+		{/if}
+
 		{#if supported}
 			<button
 				class="voice-btn"
@@ -153,47 +194,6 @@
 						<line x1="8" y1="23" x2="16" y2="23" />
 					</svg>
 				{/if}
-			</button>
-		{/if}
-
-		{#if ttsAvailable}
-			<button
-				class="voice-btn"
-				class:voice-btn-on={voiceState.ttsAutoEnabled}
-				class:voice-btn-speaking={isSpeaking}
-				onclick={handleSpeakerClick}
-				aria-label={voiceState.ttsAutoEnabled
-					? 'Turn off spoken responses'
-					: 'Turn on spoken responses'}
-				aria-pressed={voiceState.ttsAutoEnabled}
-				title={isSpeaking
-					? 'Speaking — click to turn off spoken responses'
-					: voiceState.ttsAutoEnabled
-						? 'Spoken responses are on — click to turn off'
-						: 'Spoken responses are off — click to turn on'}
-			>
-				<svg
-					aria-hidden="true"
-					width="16"
-					height="16"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				>
-					<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-					{#if voiceState.ttsAutoEnabled}
-						<!-- Sound waves: one when idle, both animated when speaking -->
-						<path d="M15.54 8.46a5 5 0 0 1 0 7.07" class:wave-anim={isSpeaking} />
-						<path d="M19.07 4.93a10 10 0 0 1 0 14.14" class:wave-anim-2={isSpeaking} />
-					{:else}
-						<!-- Muted: cross-out in place of the waves -->
-						<line x1="23" y1="9" x2="17" y2="15" />
-						<line x1="17" y1="9" x2="23" y2="15" />
-					{/if}
-				</svg>
 			</button>
 		{/if}
 

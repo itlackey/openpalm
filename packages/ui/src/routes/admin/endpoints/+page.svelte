@@ -57,15 +57,6 @@
     }
   }
 
-  async function handleLogout(): Promise<void> {
-    try {
-      await fetch('/admin/auth/logout', { method: 'POST', credentials: 'include' });
-    } catch {
-      /* best-effort */
-    }
-    authLocked = true;
-  }
-
   onMount(() => {
     void (async () => {
       authLoading = true;
@@ -183,7 +174,7 @@
 {#if authLocked}
   <AuthGate onSuccess={handleAuthSuccess} loading={authLoading} error={authError} />
 {:else}
-  <Navbar onLogout={handleLogout} navLink={{ href: '/chat', label: '← Back to Chat' }} />
+  <Navbar navLink={{ href: '/chat', label: '← Back to Chat' }} />
 
   <main class="page">
     <header class="page-header">

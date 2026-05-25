@@ -81,18 +81,6 @@
     }
   }
 
-  async function handleLogout(): Promise<void> {
-    stopSpeaking();
-    try {
-      await fetch('/admin/auth/logout', { method: 'POST', credentials: 'include' });
-    } catch {
-      // best-effort
-    }
-    authLocked = true;
-    authError = '';
-    chat.reset();
-  }
-
   // ── Body scroll lock (chat-page only) ────────────────────────────────
   // The chat layout is exactly viewport-height with internal scroll on the
   // messages area. Suppress body scroll while we're on this page so we
@@ -169,7 +157,7 @@
 {#if authLocked}
   <AuthGate onSuccess={handleAuthSuccess} loading={authLoading} error={authError} />
 {:else}
-  <Navbar onLogout={handleLogout} navLink={{ href: '/admin', label: 'Admin' }} />
+  <Navbar navLink={{ href: '/admin', label: 'Admin' }} />
 
   <div class="chat-layout">
     <!-- Message history -->

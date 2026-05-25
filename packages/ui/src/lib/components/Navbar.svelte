@@ -5,11 +5,10 @@
   import SessionPicker from './SessionPicker.svelte';
 
   interface Props {
-    onLogout: () => void;
     navLink?: { href: string; label: string };
   }
 
-  let { onLogout, navLink }: Props = $props();
+  let { navLink }: Props = $props();
 
   // Match navLink.href to an icon. Anything else falls back to the
   // back-arrow so adding a new contextual destination doesn't crash.
@@ -58,20 +57,6 @@
         </a>
       {/if}
       <VoiceControl />
-      <button
-        class="icon-btn"
-        type="button"
-        onclick={onLogout}
-        aria-label="Sign out"
-        title="Sign out"
-      >
-        <!-- log-out (Lucide) -->
-        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-          <polyline points="16 17 21 12 16 7"/>
-          <line x1="21" y1="12" x2="9" y2="12"/>
-        </svg>
-      </button>
     </div>
   </div>
 </nav>

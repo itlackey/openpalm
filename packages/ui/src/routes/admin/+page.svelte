@@ -91,22 +91,6 @@
     adminStatus = 'Invalid admin token.';
   }
 
-  async function handleLogout(): Promise<void> {
-    stopContainerPolling();
-    try {
-      await fetch('/admin/auth/logout', { method: 'POST', credentials: 'include' });
-    } catch {
-      // best-effort
-    }
-    authLocked = true;
-    authError = '';
-    adminStatus = '';
-    operationResult = '';
-    operationResultType = 'info';
-    containerData = null;
-    containersLastUpdated = null;
-    selectedContainerId = null;
-  }
 
   async function handleAuthSuccess(token: string): Promise<boolean> {
     if (authLoading) return false;
@@ -365,7 +349,7 @@
 {#if authLocked}
   <AuthGate onSuccess={handleAuthSuccess} loading={authLoading} error={authError} />
 {:else}
-  <Navbar onLogout={handleLogout} navLink={{ href: '/chat', label: 'Chat' }} />
+  <Navbar navLink={{ href: '/chat', label: 'Chat' }} />
 
   <main>
     <TabBar active={activeTab} onSelect={handleTabSelect} />
