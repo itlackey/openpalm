@@ -26,8 +26,8 @@ We follow coordinated disclosure — we'll work with you on timing before any de
 
 | Version | Supported |
 |---------|-----------|
-| 0.9.x (current RC) | ✅ Active development |
-| < 0.9.0 | ❌ No backports |
+| 0.11.x (current) | ✅ Active development |
+| < 0.11.0 | ❌ No backports |
 
 Once v1.0.0 ships, this table will be updated with a formal support window.
 
@@ -37,7 +37,7 @@ OpenPalm uses defense-in-depth with multiple independent layers. For the full br
 
 Key boundaries:
 
-- **Network isolation** — Caddy reverse proxy restricts admin access to LAN by default; all inter-service traffic stays on private Docker networks.
+- **Network isolation** — Admin and assistant services bind to localhost by default; all inter-service traffic stays on private Docker networks.
 - **Signed messages** — Every channel message is HMAC-SHA256 signed and verified by the guardian before reaching the assistant.
 - **Rate limiting** — Per-user (120 req/min) and per-channel (200 req/min) throttling with replay detection.
 - **Assistant isolation** — The assistant container has no Docker socket access. All stack operations go through the authenticated admin API.

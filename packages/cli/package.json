@@ -1,6 +1,6 @@
 {
   "name": "openpalm",
-  "version": "0.11.0-beta.7",
+  "version": "0.11.0-beta.8",
   "type": "module",
   "license": "MPL-2.0",
   "description": "OpenPalm CLI — install and manage a self-hosted OpenPalm stack",
@@ -12,6 +12,11 @@
   "bin": {
     "openpalm": "./bin/openpalm.js"
   },
+  "files": [
+    "bin",
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "start": "bun run src/main.ts",
     "test": "bun test",

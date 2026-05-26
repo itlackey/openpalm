@@ -1,4 +1,5 @@
 import {
+  errorResponse,
   getRequestId,
   jsonResponse,
   requireAdmin,
@@ -29,51 +30,57 @@ export const POST: RequestHandler = async (event) => {
   if (authError) return authError;
 
   return withSerialQueue("admin:install", async () => {
-    const state = getState();
+    try {
+      const state = getState();
 
-    // 1. Ensure home directory tree exists
-    logger.info("ensuring home directories and seeding config", { requestId });
-    ensureHomeDirs();
+      // 1. Ensure home directory tree exists
+      logger.info("ensuring home directories and seeding config", { requestId });
+      ensureHomeDirs();
 
-    // 2. Seed starter OpenCode config (opencode.json + tools/plugins/skills dirs)
-    ensureOpenCodeConfig();
-    ensureOpenCodeSystemConfig();
+      // 2. Seed starter OpenCode config (opencode.json + tools/plugins/skills dirs)
+      ensureOpenCodeConfig();
+      ensureOpenCodeSystemConfig();
 
-    // 3. Write consolidated secrets file
-    ensureSecrets(state);
+      // 3. Write consolidated secrets file
+      ensureSecrets(state);
 
-    // 4. Update state and generate artifacts. OpenCode session logs are the
-    // audit trail (D6a in docs/technical/auth-and-proxy-refactor-plan.md).
-    await applyInstall(state);
+      // 4. Update state and generate artifacts. OpenCode session logs are the
+      // audit trail (D6a in docs/technical/auth-and-proxy-refactor-plan.md).
+      await applyInstall(state);
 
-    // 5. Run docker compose up — managed services derived from compose config
-    const managedServices = await buildManagedServices(state);
-    logger.info("checking Docker availability", { requestId });
-    const dockerCheck = await checkDocker();
-    let dockerResult = null;
-    if (dockerCheck.ok) {
-      logger.info("starting compose up", { requestId, services: managedServices });
-      dockerResult = await composeUp({
-        ...buildComposeOptions(state),
-        services: managedServices
-      });
+      // 5. Run docker compose up — managed services derived from compose config
+      const managedServices = await buildManagedServices(state);
+      logger.info("checking Docker availability", { requestId });
+      const dockerCheck = await checkDocker();
+      let dockerResult = null;
+      if (dockerCheck.ok) {
+        logger.info("starting compose up", { requestId, services: managedServices });
+        dockerResult = await composeUp({
+          ...buildComposeOptions(state),
+          services: managedServices
+        });
+      }
+
+      const started = [...CORE_SERVICES];
+
+      logger.info("install completed", { requestId, started, dockerAvailable: dockerCheck.ok, composeOk: dockerResult?.ok ?? null });
+
+      return jsonResponse(
+        200,
+        {
+          ok: true,
+          started,
+          dockerAvailable: dockerCheck.ok,
+          composeResult: dockerResult
+            ? { ok: dockerResult.ok, stderr: dockerResult.stderr }
+            : null
+        },
+        requestId
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error("install failed", { requestId, error: msg });
+      return errorResponse(500, "install_failed", msg, {}, requestId);
     }
-
-    const started = [...CORE_SERVICES];
-
-    logger.info("install completed", { requestId, started, dockerAvailable: dockerCheck.ok, composeOk: dockerResult?.ok ?? null });
-
-    return jsonResponse(
-      200,
-      {
-        ok: true,
-        started,
-        dockerAvailable: dockerCheck.ok,
-        composeResult: dockerResult
-          ? { ok: dockerResult.ok, stderr: dockerResult.stderr }
-          : null
-      },
-      requestId
-    );
   });
 };

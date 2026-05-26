@@ -5,6 +5,28 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0-beta.8] - 2026-05-26
+
+### Fixed
+
+- **npm `files` whitelist added to `packages/cli`** — the CLI package had no
+  `files` field or `.npmignore`, so `npm publish` would have included `src/`,
+  test files, and `playwright.config.ts`. Now limited to `bin/`, `dist/`, and
+  `README.md`.
+- **`install`, `update`, `uninstall` endpoints now return structured errors** —
+  unhandled exceptions inside the serial-queue lifecycle callbacks previously
+  fell through to a raw SvelteKit 500. Each handler now catches errors and
+  returns `errorResponse()` with code `install_failed` / `update_failed` /
+  `uninstall_failed`.
+- **`@openpalm/lib` now exports `types` field** — TypeScript consumers using
+  older toolchains that don't resolve via `exports` can now auto-discover types.
+
+### Docs
+
+- **`SECURITY.md` updated** — supported versions table now shows `0.11.x`
+  (was `0.9.x`); stale reference to Caddy reverse proxy replaced with the
+  current localhost-binding architecture.
+
 ## [0.11.0-beta.7] - 2026-05-26
 
 ### Security

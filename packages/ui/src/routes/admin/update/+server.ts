@@ -1,4 +1,5 @@
 import {
+  errorResponse,
   getRequestId,
   jsonResponse,
   requireAdmin,
@@ -29,6 +30,7 @@ export const POST: RequestHandler = async (event) => {
   if (authError) return authError;
 
   return withSerialQueue("admin:update", async () => {
+    try {
     const state = getState();
 
     ensureHomeDirs();
@@ -112,5 +114,10 @@ export const POST: RequestHandler = async (event) => {
       },
       requestId,
     );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error("update failed", { requestId, error: msg });
+      return errorResponse(500, "update_failed", msg, {}, requestId);
+    }
   });
 };
