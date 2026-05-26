@@ -21,6 +21,9 @@
     upgradeStack,
     containerAction,
     pullImages,
+    fetchVersions,
+    setStackVersion,
+    downloadUiVersion,
   } from '$lib/api.js';
   import type { HealthPayload, ContainerListResponse, AutomationsResponse, ServiceEntry } from '$lib/types.js';
 
@@ -54,6 +57,14 @@
   // ── Tab ─────────────────────────────────────────────────────────────────────
   let activeTab: 'overview' | 'addons' | 'automations' | 'connections' | 'secrets' | 'voice' | 'akm' | 'containers' | 'logs' = $state('overview');
   let pullLoading = $state(false);
+
+  // ── Version management ──────────────────────────────────────────────────────
+  let currentImageTag = $state('');
+  let currentUiVersion = $state<string | null>(null);
+  let inElectron = $state(false);
+  let tagChangeLoading = $state(false);
+  let uiDownloadLoading = $state(false);
+  let uiDownloadReady = $state(false);
 
   // ── Container polling ──────────────────────────────────────────────────────
   const POLL_INTERVAL_MS = 10_000;
@@ -165,6 +176,7 @@
       await loadHealth();
       void loadContainers();
       void loadAutomations();
+      void loadVersions();
       return true;
     } catch (e) {
       console.warn('[page] Auth failed:', e);
@@ -230,6 +242,17 @@
     automationsLoading = false;
   }
 
+  async function loadVersions(): Promise<void> {
+    try {
+      const data = await fetchVersions();
+      currentImageTag = data.imageTag;
+      currentUiVersion = data.uiVersion;
+      inElectron = data.inElectron;
+    } catch {
+      // Non-fatal — version info is supplementary
+    }
+  }
+
   // ── Actions ──────────────────────────────────────────────────────────────────
 
   async function handleApplyChanges(): Promise<void> {
@@ -288,6 +311,42 @@
       }
     }
     upgradeLoading = false;
+  }
+
+  async function handleSetImageTag(tag: string): Promise<void> {
+    if (tagChangeLoading) return;
+    tagChangeLoading = true;
+    try {
+      const result = await setStackVersion(tag);
+      currentImageTag = result.imageTag;
+      operationResult = `Image tag set to ${result.imageTag}. Restarted: ${result.restarted.join(', ') || 'none'}.`;
+      operationResultType = 'success';
+    } catch (e) {
+      const err = e as { message?: string };
+      operationResult = `Failed to apply image tag: ${err.message ?? e}`;
+      operationResultType = 'error';
+    }
+    tagChangeLoading = false;
+  }
+
+  async function handleDownloadUiVersion(tag: string): Promise<void> {
+    if (uiDownloadLoading) return;
+    uiDownloadLoading = true;
+    uiDownloadReady = false;
+    try {
+      const result = await downloadUiVersion(tag);
+      currentUiVersion = result.version;
+      uiDownloadReady = true;
+    } catch (e) {
+      const err = e as { message?: string };
+      operationResult = `Failed to download UI version: ${err.message ?? e}`;
+      operationResultType = 'error';
+    }
+    uiDownloadLoading = false;
+  }
+
+  function handleRestartApp(): void {
+    (window as unknown as { openpalm?: { restart?: () => void } }).openpalm?.restart?.();
   }
 
   async function handleContainerAction(
@@ -381,6 +440,7 @@
         void loadHealth();
         void loadContainers();
         void loadAutomations();
+        void loadVersions();
         } catch (e) {
         console.warn('[page] Session probe on mount failed:', e);
         authLocked = true;
@@ -416,10 +476,19 @@
         {anyDangerousLoading}
         {automationsData}
         {mergedServices}
+        {currentImageTag}
+        {currentUiVersion}
+        {tagChangeLoading}
+        {uiDownloadLoading}
+        {uiDownloadReady}
+        {inElectron}
         onCheckHealth={loadHealth}
         onApplyChanges={handleApplyChanges}
         onUpgradeStack={handleUpgradeStack}
         onDismissResult={() => { operationResult = ''; operationResultType = 'info'; }}
+        onSetImageTag={handleSetImageTag}
+        onDownloadUiVersion={handleDownloadUiVersion}
+        onRestartApp={handleRestartApp}
       />
     {:else if activeTab === 'addons'}
       <AddonsTab

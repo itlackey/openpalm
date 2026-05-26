@@ -2,7 +2,7 @@
 // The UI prefers HTTP (via /api/electron/update-status) but can also call
 // `window.openpalm.updateStatus()` when running inside the Electron shell.
 
-import { contextBridge } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
 
 interface UpdateStatus {
   inElectron: boolean;
@@ -34,5 +34,10 @@ contextBridge.exposeInMainWorld('openpalm', {
    */
   notify(title: string, body: string): void {
     new Notification(title, { body });
+  },
+
+  /** Restart the Electron app (relaunch + quit). Only works inside Electron. */
+  restart(): Promise<void> {
+    return ipcRenderer.invoke('restart-app');
   },
 });

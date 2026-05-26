@@ -150,6 +150,23 @@ export async function upgradeStack(): Promise<UpgradeStackResult> {
   return (await res.json()) as UpgradeStackResult;
 }
 
+// ── Version management ───────────────────────────────────────────────────
+
+export async function fetchVersions(): Promise<{ imageTag: string; uiVersion: string | null; inElectron: boolean }> {
+  const res = await requireOk(await request('GET', '/admin/versions'));
+  return (await res.json()) as { imageTag: string; uiVersion: string | null; inElectron: boolean };
+}
+
+export async function setStackVersion(tag: string): Promise<{ ok: boolean; imageTag: string; restarted: string[] }> {
+  const res = await requireOk(await request('PATCH', '/admin/stack-version', { tag }));
+  return (await res.json()) as { ok: boolean; imageTag: string; restarted: string[] };
+}
+
+export async function downloadUiVersion(tag: string): Promise<{ ok: boolean; version: string }> {
+  const res = await requireOk(await request('POST', '/admin/ui-version', { tag }));
+  return (await res.json()) as { ok: boolean; version: string };
+}
+
 // ── Automations ─────────────────────────────────────────────────────────
 
 export async function fetchAutomations(): Promise<AutomationsResponse> {

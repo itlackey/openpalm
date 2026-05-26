@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, shell, dialog } from 'electron';
+import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain } from 'electron';
 import { join, dirname } from 'node:path';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -82,6 +82,7 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     ORIGIN: `http://127.0.0.1:${port}`,
     OP_INSIDE_ELECTRON: '1',
     OP_ELECTRON_VERSION: app.getVersion?.() ?? '',
+    OP_IMAGE_TAG: process.env.OP_IMAGE_TAG || app.getVersion?.() || 'latest',
     OP_OPENCODE_URL: resolveAssistantUrl(homeDir),
   };
   if (update?.updateAvailable && update.latestVersion) {
@@ -399,6 +400,11 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   // Keep running in tray on all platforms
+});
+
+ipcMain.handle('restart-app', () => {
+  app.relaunch();
+  app.quit();
 });
 
 app.on('before-quit', () => {

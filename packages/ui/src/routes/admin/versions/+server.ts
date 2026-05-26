@@ -1,0 +1,24 @@
+import { existsSync, readFileSync } from "node:fs";
+import { json } from "@sveltejs/kit";
+import { getState } from "$lib/server/state.js";
+import { requireAdmin, getRequestId } from "$lib/server/helpers.js";
+import { parseEnvFile, readCurrentUiBuildVersion, resolveStateDir } from "@openpalm/lib";
+import type { RequestHandler } from "./$types";
+
+export const GET: RequestHandler = (event) => {
+  const requestId = getRequestId(event);
+  const authError = requireAdmin(event, requestId);
+  if (authError) return authError;
+
+  const state = getState();
+  const stackEnvPath = `${state.stackDir}/stack.env`;
+  const envVars = existsSync(stackEnvPath) ? parseEnvFile(stackEnvPath) : {};
+  const imageTag = envVars.OP_IMAGE_TAG ?? process.env.OP_IMAGE_TAG ?? "latest";
+
+  const stateDir = resolveStateDir();
+  const uiVersion = readCurrentUiBuildVersion(stateDir);
+
+  const inElectron = process.env.OP_INSIDE_ELECTRON === "1";
+
+  return json({ imageTag, uiVersion, inElectron });
+};

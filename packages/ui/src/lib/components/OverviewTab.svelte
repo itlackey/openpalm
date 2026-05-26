@@ -12,10 +12,19 @@
     anyDangerousLoading: boolean;
     automationsData: AutomationsResponse | null;
     mergedServices: Map<string, string>;
+    currentImageTag: string;
+    currentUiVersion: string | null;
+    tagChangeLoading: boolean;
+    uiDownloadLoading: boolean;
+    uiDownloadReady: boolean;
+    inElectron: boolean;
     onCheckHealth: () => void;
     onApplyChanges: () => void;
     onUpgradeStack: () => void;
     onDismissResult: () => void;
+    onSetImageTag: (tag: string) => void;
+    onDownloadUiVersion: (tag: string) => void;
+    onRestartApp: () => void;
   }
 
   let {
@@ -29,11 +38,23 @@
     anyDangerousLoading,
     automationsData,
     mergedServices,
+    currentImageTag,
+    currentUiVersion,
+    tagChangeLoading,
+    uiDownloadLoading,
+    uiDownloadReady,
+    inElectron,
     onCheckHealth,
     onApplyChanges,
     onUpgradeStack,
-    onDismissResult
+    onDismissResult,
+    onSetImageTag,
+    onDownloadUiVersion,
+    onRestartApp,
   }: Props = $props();
+
+  let pendingImageTag = $state('');
+  let pendingUiTag = $state('');
 
   // Derived: automation count
   let automationCount = $derived(automationsData?.automations.length ?? 0);
@@ -271,6 +292,83 @@
             {/if}
           </span>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Versions Panel -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Version Management</h2>
+    </div>
+    <div class="panel-body">
+      <div class="version-section">
+        <div class="version-row">
+          <span class="version-label">Stack images</span>
+          <code class="version-value">{currentImageTag || '—'}</code>
+        </div>
+        <div class="version-input-row">
+          <input
+            class="version-input"
+            type="text"
+            placeholder="e.g. 0.11.0 or latest"
+            bind:value={pendingImageTag}
+            disabled={tagChangeLoading || anyDangerousLoading}
+          />
+          <button
+            class="btn btn-sm"
+            onclick={() => { if (pendingImageTag.trim()) onSetImageTag(pendingImageTag.trim()); }}
+            disabled={!pendingImageTag.trim() || tagChangeLoading || anyDangerousLoading}
+          >
+            {#if tagChangeLoading}
+              <span class="spinner spinner-sm"></span> Applying…
+            {:else}
+              Pull &amp; Restart
+            {/if}
+          </button>
+        </div>
+        <p class="version-hint">Changes the <code>OP_IMAGE_TAG</code> in stack.env, pulls the new images, and restarts services.</p>
+      </div>
+
+      <div class="version-divider"></div>
+
+      <div class="version-section">
+        <div class="version-row">
+          <span class="version-label">UI build</span>
+          <code class="version-value">{currentUiVersion || '(bundled)'}</code>
+        </div>
+        <div class="version-input-row">
+          <input
+            class="version-input"
+            type="text"
+            placeholder="e.g. 0.11.0-beta.7"
+            bind:value={pendingUiTag}
+            disabled={uiDownloadLoading}
+          />
+          <button
+            class="btn btn-sm"
+            onclick={() => { if (pendingUiTag.trim()) onDownloadUiVersion(pendingUiTag.trim()); }}
+            disabled={!pendingUiTag.trim() || uiDownloadLoading}
+          >
+            {#if uiDownloadLoading}
+              <span class="spinner spinner-sm"></span> Downloading…
+            {:else}
+              Download
+            {/if}
+          </button>
+        </div>
+        {#if uiDownloadReady}
+          <div class="version-restart-prompt">
+            UI updated.
+            {#if inElectron}
+              <button class="btn btn-sm btn-primary" onclick={onRestartApp}>Restart App</button>
+            {:else}
+              Restart the app to apply.
+            {/if}
+          </div>
+        {:else}
+          <p class="version-hint">Downloads a specific UI release from GitHub and stores it on disk. Takes effect on next app restart.</p>
+        {/if}
       </div>
     </div>
   </div>
@@ -575,6 +673,101 @@
     .status-row {
       grid-template-columns: 1fr;
     }
+  }
+
+  .version-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .version-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .version-label {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+  }
+
+  .version-value {
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
+    background: var(--color-bg-secondary);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+  }
+
+  .version-input-row {
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .version-input {
+    flex: 1;
+    min-width: 0;
+    padding: var(--space-1-5) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-size: var(--text-sm);
+    font-family: var(--font-mono);
+  }
+
+  .version-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .version-hint {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .version-hint code {
+    font-family: var(--font-mono);
+    background: var(--color-bg-secondary);
+    padding: 1px 4px;
+    border-radius: var(--radius-sm);
+    font-size: 0.9em;
+  }
+
+  .version-divider {
+    height: 1px;
+    background: var(--color-border);
+    margin: var(--space-3) 0;
+  }
+
+  .version-restart-prompt {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--color-success);
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-success-bg);
+    border-radius: var(--radius-md);
+  }
+
+  .btn-sm {
+    padding: var(--space-1-5) var(--space-3);
+    font-size: var(--text-sm);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .spinner-sm {
+    width: 12px;
+    height: 12px;
   }
 
 </style>

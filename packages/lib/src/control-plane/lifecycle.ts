@@ -300,6 +300,24 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
   };
 }
 
+/**
+ * Set a specific image tag in stack.env then pull images and restart containers.
+ * Used by the admin "set version" action — skips the auto-detect step in performUpgrade.
+ */
+export async function applyTagChange(state: ControlPlaneState, tag: string): Promise<UpgradeResult> {
+  const stackEnvPath = `${state.stackDir}/stack.env`;
+  const currentContent = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
+  writeFileSync(stackEnvPath, mergeEnvContent(currentContent, { OP_IMAGE_TAG: tag }, { uncomment: true }));
+  const upgradeResult = await applyUpgrade(state);
+  return {
+    imageTag: tag,
+    namespace: "openpalm",
+    backupDir: upgradeResult.backupDir,
+    assetsUpdated: upgradeResult.updated,
+    restarted: upgradeResult.restarted,
+  };
+}
+
 export function buildComposeFileList(state: ControlPlaneState): string[] {
   return discoverStackOverlays(state.stackDir);
 }

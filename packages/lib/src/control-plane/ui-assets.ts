@@ -241,11 +241,17 @@ function parseChecksumsFile(content: string): Map<string, string> {
   return map;
 }
 
-export async function seedUiBuild(repoRef: string, stateDir: string): Promise<void> {
+export function readCurrentUiBuildVersion(stateDir: string): string | null {
+  const versionFile = join(stateDir, 'ui', 'version.txt');
+  if (!existsSync(versionFile)) return null;
+  return readFileSync(versionFile, 'utf-8').trim() || null;
+}
+
+export async function seedUiBuild(repoRef: string, stateDir: string, options?: { forceRemote?: boolean }): Promise<void> {
   const uiDir = join(stateDir, 'ui');
   mkdirSync(uiDir, { recursive: true });
 
-  const local = resolveLocalUiBuild();
+  const local = options?.forceRemote ? null : resolveLocalUiBuild();
   if (local) {
     logger.debug('seeding UI build from local source', { src: local });
     copyTree(local, uiDir);
