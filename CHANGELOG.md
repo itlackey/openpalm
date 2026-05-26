@@ -5,6 +5,33 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0-beta.7] - 2026-05-26
+
+### Security
+
+- **`stack.env` now written with mode 0o600** — the system env file containing
+  `OP_UI_LOGIN_PASSWORD` and HMAC secrets was created world-readable (0o644).
+  It is now created with `0o600` and `chmodSync` is applied to enforce the
+  permission on pre-existing files.
+
+### Fixed
+
+- **`opencode.jsonc` no longer overwritten on upgrade** — `config/assistant/opencode.jsonc`
+  was in the managed-assets refresh list and would silently reset user-customised
+  model/agent settings on every `openpalm update`. It is now seeded-only: written
+  on first install (or when missing), never overwritten by the upgrade path.
+- **Corrupt `stack.env` now backed up before silent discard** — `parseEnvFile`
+  previously returned `{}` on any parse error, causing the next write to silently
+  discard all existing env vars. It now copies the corrupt file to
+  `stack.env.corrupt-<timestamp>` before returning empty.
+- **UI tarball extraction clears stale build files** — `seedUiBuild` now removes
+  and recreates `state/ui/` before extracting a downloaded tarball, preventing
+  old build files from persisting across version changes.
+- **Admin API error envelopes** — `stack-version`, `ui-version`, and `versions`
+  endpoints now use `errorResponse()` consistently (matching the API contract)
+  instead of raw `json({ error })` calls; `versions` also guards against a
+  missing `stackDir` before setup completes.
+
 ## [0.11.0-beta.6] - 2026-05-26
 
 ### Fixed
