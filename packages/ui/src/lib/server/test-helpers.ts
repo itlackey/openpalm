@@ -10,6 +10,7 @@ import { rmSync } from "node:fs";
 import type { ControlPlaneState } from "@openpalm/lib";
 import { createState } from "@openpalm/lib";
 import { _replaceState, getState } from "./state.js";
+import { _seedSession, _clearSessions } from "./session-store.js";
 
 let tempDirs: string[] = [];
 
@@ -79,6 +80,10 @@ export function registerCleanup(): void {
 export function resetState(uiLoginPassword?: string): ControlPlaneState {
   if (uiLoginPassword !== undefined) {
     process.env.OP_UI_LOGIN_PASSWORD = uiLoginPassword;
+    // Seed the password value as a valid session token so tests can pass it
+    // directly as the op_session cookie value without calling createSession().
+    _clearSessions();
+    _seedSession(uiLoginPassword);
   }
   const state = createState();
   _replaceState(state);

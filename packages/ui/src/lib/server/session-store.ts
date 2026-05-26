@@ -47,3 +47,13 @@ export function validateSession(token: string): boolean {
 export function invalidateSession(token: string): void {
   sessions.delete(token);
 }
+
+/** For tests only — seed a known token and optional clear of the entire map. */
+export function _seedSession(token: string, ttlMs = SESSION_TTL_MS): void {
+  sessions.set(token, Date.now() + ttlMs);
+}
+
+/** For tests only — clear all sessions. */
+export function _clearSessions(): void {
+  sessions.clear();
+}

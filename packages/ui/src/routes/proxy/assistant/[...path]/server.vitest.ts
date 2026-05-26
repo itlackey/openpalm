@@ -21,6 +21,7 @@ import { POST } from './+server.js';
 import type { RequestHandler } from './$types';
 import { _replaceState } from '$lib/server/state.js';
 import { makeTestState } from '$lib/server/test-helpers.js';
+import { _seedSession, _clearSessions } from '$lib/server/session-store.js';
 
 const ENV_KEYS = ['OP_OPENCODE_URL', 'OP_ASSISTANT_URL', 'OP_ASSISTANT_PORT', 'OPENCODE_SERVER_PASSWORD', 'OP_UI_LOGIN_PASSWORD'] as const;
 const savedEnv: Record<string, string | undefined> = {};
@@ -34,9 +35,9 @@ beforeEach(async () => {
     delete process.env[k];
   }
   _replaceState(makeTestState());
-  // Phase 4: requireAdmin compares the cookie value against
-  // process.env.OP_UI_LOGIN_PASSWORD. Seed it so makeAuthedEvent() passes.
   process.env.OP_UI_LOGIN_PASSWORD = 'test-admin-token';
+  _clearSessions();
+  _seedSession('test-admin-token');
 
   // Stand up an SSE emitter that writes 4 chunks with 80ms gaps between them.
   sseServer = createServer((req, res) => {
