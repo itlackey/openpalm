@@ -85,7 +85,13 @@ const SETUP_PATHS = ["/setup", "/api/setup", "/health", "/guardian/health"];
 // ── SEC-1: Host header allowlist (DNS rebinding protection) ──────────────
 // ── SEC-2: Origin check for state-mutating requests (CSRF protection) ────
 // ── SEC-3: Security headers (see above) ──────────────────────────────────
+// ── SEC-4: Setup routes are localhost-only until setup is complete ────────
 // ── Setup guard: redirect to /setup when first-time setup not complete ───
+
+function isLocalhostAddress(ip: string): boolean {
+  return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+}
+
 export const handle: Handle = async ({ event, resolve }) => {
   const hostError = checkHostHeader(event.request, ADMIN_PORT);
   if (hostError) return hostError;
@@ -94,6 +100,24 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   const path = event.url.pathname;
   const isSetupPath = SETUP_PATHS.some(p => path === p || path.startsWith(p + "/"));
+
+  // SEC-4: While setup is not yet complete the /setup routes are unauthenticated
+  // by design (first-run). Restrict them to the local machine so a remote actor
+  // can't race the owner to configure the stack. After setup completes the
+  // re-run path at /setup?rerun=1 requires admin auth and this guard is skipped.
+  if (isSetupPath && !isSetupComplete(resolveStackDir())) {
+    const clientIp = event.getClientAddress();
+    if (!isLocalhostAddress(clientIp)) {
+      return new Response(
+        JSON.stringify({
+          error: "setup_localhost_only",
+          message: "Setup is only accessible from the host machine until installation is complete.",
+        }),
+        { status: 403, headers: { "content-type": "application/json" } },
+      );
+    }
+  }
+
   if (!isSetupPath && !isSetupComplete(resolveStackDir())) {
     redirect(302, "/setup");
   }

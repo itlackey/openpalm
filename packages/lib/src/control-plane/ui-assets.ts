@@ -12,7 +12,7 @@
  */
 import {
   existsSync, mkdirSync, readdirSync, copyFileSync,
-  writeFileSync, rmSync, realpathSync, renameSync,
+  readFileSync, writeFileSync, rmSync, realpathSync, renameSync,
 } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';

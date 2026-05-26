@@ -36,11 +36,11 @@ No proprietary orchestration layer, no magic runtime, no lock-in. Just container
 
 ## Where things stand
 
-OpenPalm is in active development. It works — I use it every day — but there's a lot of rough edges being sanded down right now:
+**0.11.0** is a refactor and simplification release. The architecture is stable — assistant, guardian, channels, and the AKM memory/skills layer all work and are in daily use. This release consolidates the stack layout, removes a lot of incidental complexity, and ships the revised setup wizard.
 
-- **Stabilizing the core** — The assistant and guardian are solid, but the install and upgrade lifecycle is still getting hardened.
-- **Improving setup** — The setup wizard works, but the goal is a one-command install that just does the right thing on any Docker host.
-- **Extending the assistant** — More built-in tools, better memory integration, and first-class support for plugins and automations.
+**0.12.x** will focus on stabilization and hardening: install/upgrade lifecycle robustness, better error recovery, and closing the remaining rough edges before v1.
+
+If you're running OpenPalm today, 0.11.0 is the release to be on. If you need production stability guarantees, watch for 0.12.x.
 
 
 ## What you get

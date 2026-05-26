@@ -3,15 +3,21 @@
     errorMessage: string;
     detectionReady: boolean;
     hasVerifiedProviders: boolean;
+    autoModeImporting: boolean;
+    enableVoice: boolean;
     onnext: () => void;
     onusedefaults: () => void;
+    onenablevoicechange: (v: boolean) => void;
   }
   let {
     errorMessage,
     detectionReady,
     hasVerifiedProviders,
+    autoModeImporting,
+    enableVoice,
     onnext,
     onusedefaults,
+    onenablevoicechange,
   }: Props = $props();
 </script>
 
@@ -27,16 +33,20 @@
   <div class="token-callout" id="token-callout">
     We'll generate a secure UI login password for you. It's also stored in <code>~/.openpalm/config/stack/stack.env</code> as <code>OP_UI_LOGIN_PASSWORD</code>.
   </div>
+  <label class="voice-toggle" id="voice-toggle-label">
+    <input type="checkbox" checked={enableVoice} onchange={(e) => onenablevoicechange((e.target as HTMLInputElement).checked)} />
+    <span class="voice-toggle-text">Enable Voice <span class="voice-toggle-hint">(local CPU, ~2.4 GB download)</span></span>
+  </label>
   {#if errorMessage}
     <div class="field-error" id="step0-error" role="alert">{errorMessage}</div>
   {/if}
   <div class="welcome-actions">
     <button class="btn btn-primary-lg" id="btn-use-defaults" onclick={onusedefaults}
-      disabled={!detectionReady}>
-      {#if !detectionReady}
+      disabled={!detectionReady || autoModeImporting}>
+      {#if autoModeImporting}
+        <span class="spinner"></span> Importing providers…
+      {:else if !detectionReady}
         <span class="spinner"></span> Detecting your system… (a few seconds)
-      {:else if hasVerifiedProviders}
-        Use recommended defaults
       {:else}
         Use recommended defaults
       {/if}
@@ -93,4 +103,25 @@
     animation: spin 0.7s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+  .voice-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 14px 0 4px;
+    cursor: pointer;
+    user-select: none;
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--color-text, #1e293b);
+  }
+  .voice-toggle input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-primary, #4f6ef7);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .voice-toggle-hint {
+    color: var(--color-text-secondary, #64748b);
+    font-size: 0.85em;
+  }
 </style>

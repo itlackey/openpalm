@@ -137,11 +137,15 @@ export default class ApiChannel extends BaseChannel {
     if (!text) return this.json(400, openAIError("messages with user content is required"));
 
     const model = typeof body.model === "string" && body.model.trim() ? body.model : "openpalm";
-    const userId = typeof body.user === "string" && body.user.trim() ? body.user : "api-user";
+    const rawUser = typeof body.user === "string" && body.user.trim() ? body.user : "api-user";
+    const userId = `${this.name}:${rawUser}`;
 
     let answer: string;
     try {
-      answer = await this.forwardToGuardian(userId, text, { model });
+      const guardResp = await this.forward({ userId, text, metadata: { model } });
+      if (!guardResp.ok) throw new Error(`Guardian returned status ${guardResp.status}`);
+      const data = await guardResp.json() as { answer?: string };
+      answer = data.answer ?? "";
     } catch (err) {
       this.log("error", "guardian_error", { requestId, error: err instanceof Error ? err.message : String(err) });
       return guardianErrorResponse(err, openAIError, (s, d) => this.json(s, d));
@@ -188,11 +192,15 @@ export default class ApiChannel extends BaseChannel {
     if (!text) return this.json(400, openAIError("prompt is required"));
 
     const model = typeof body.model === "string" && body.model.trim() ? body.model : "openpalm";
-    const userId = typeof body.user === "string" && body.user.trim() ? body.user : "api-user";
+    const rawUser = typeof body.user === "string" && body.user.trim() ? body.user : "api-user";
+    const userId = `${this.name}:${rawUser}`;
 
     let answer: string;
     try {
-      answer = await this.forwardToGuardian(userId, text, { model });
+      const guardResp = await this.forward({ userId, text, metadata: { model } });
+      if (!guardResp.ok) throw new Error(`Guardian returned status ${guardResp.status}`);
+      const data = await guardResp.json() as { answer?: string };
+      answer = data.answer ?? "";
     } catch (err) {
       this.log("error", "guardian_error", { requestId, error: err instanceof Error ? err.message : String(err) });
       return guardianErrorResponse(err, openAIError, (s, d) => this.json(s, d));
@@ -231,13 +239,17 @@ export default class ApiChannel extends BaseChannel {
     const model = typeof body.model === "string" && body.model.trim() ? body.model : "openpalm";
     // Anthropic doesn't have a top-level `user` field; use metadata.user_id if present
     const meta = asRecord(body.metadata);
-    const userId = (meta && typeof meta.user_id === "string" && meta.user_id.trim())
+    const rawUser = (meta && typeof meta.user_id === "string" && meta.user_id.trim())
       ? meta.user_id
       : "api-user";
+    const userId = `${this.name}:${rawUser}`;
 
     let answer: string;
     try {
-      answer = await this.forwardToGuardian(userId, text, { model });
+      const guardResp = await this.forward({ userId, text, metadata: { model } });
+      if (!guardResp.ok) throw new Error(`Guardian returned status ${guardResp.status}`);
+      const data = await guardResp.json() as { answer?: string };
+      answer = data.answer ?? "";
     } catch (err) {
       this.log("error", "guardian_error", { requestId, error: err instanceof Error ? err.message : String(err) });
       return guardianErrorResponse(err, anthropicError, (s, d) => this.json(s, d));

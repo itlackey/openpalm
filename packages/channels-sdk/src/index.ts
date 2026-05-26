@@ -22,9 +22,6 @@ export {
 // ── Conversation queue ───────────────────────────────────────────────────
 export { ConversationQueue } from "./conversation-queue.ts";
 
-// ── Conversation queue ───────────────────────────────────────────────────
-export { ConversationQueue } from "./conversation-queue.ts";
-
 // ── Crypto ───────────────────────────────────────────────────────────────
 export { constantTimeEqual, signPayload, verifySignature } from "./crypto.ts";
 

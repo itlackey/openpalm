@@ -3,6 +3,8 @@
 Shared control-plane library for OpenPalm.
 CLI, admin, and scheduler use this package so stack behavior stays consistent.
 
+> **Bun required.** This package ships TypeScript source and relies on Bun's native TS execution. It does not compile to JavaScript and is not compatible with Node.js.
+
 The current model is direct-write over `~/.openpalm/` plus native Docker Compose.
 Compose files in `stack/` and env files in `vault/` are the live runtime inputs.
 

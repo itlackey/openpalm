@@ -15,6 +15,7 @@
     ok: boolean;
     docker: CheckResult;
     compose: CheckResult;
+    portCheckReliable: boolean;
     ports: PortResult[];
     platform: string;
   }
@@ -154,7 +155,11 @@
       <div class="syscheck-body">
         <div class="syscheck-title">Port conflict on {portConflicts.map((p) => p.port).join(', ')}</div>
         <div class="syscheck-hint">
-          Another program is using this port. Quit it and click Retry.
+          {#if !result.portCheckReliable}
+            Docker is not running — start Docker and click Retry to confirm.
+          {:else}
+            Another program is using this port. Quit it and click Retry.
+          {/if}
         </div>
       </div>
     </div>

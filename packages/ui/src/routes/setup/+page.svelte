@@ -39,6 +39,10 @@
   let step0Error = $state('');
   // Tracks whether the "Use recommended defaults" detection has settled
   let detectionReady = $state(false);
+  // True while auto mode is performing a host provider import before jumping to Review
+  let autoModeImporting = $state(false);
+  // Enable Voice toggle on the Welcome step (auto-mode only)
+  let enableVoice = $state(false);
 
   // ── Step 1: Providers ─────────────────────────────────────────────────────
   let providerState = $state<Record<string, ProviderState>>({});
@@ -141,8 +145,6 @@
     ? { tts: 'openai-tts', stt: 'openai-stt' }
     : { tts: 'browser-tts', stt: 'browser-stt' });
 
-  const activeTts = $derived(voiceTts.engine || voiceDefaults.tts);
-  const activeStt = $derived(voiceStt.engine || voiceDefaults.stt);
 
   // Build the install payload for /api/setup/complete
   const payload = $derived.by(() => {
@@ -298,16 +300,40 @@
   }
 
   async function handleUseDefaults(): Promise<void> {
-    // detectionReady means the background discovery has settled.
-    // Pick the most sensible path based on what was found.
+    const voiceEngine = enableVoice ? 'openpalm-voice' : '';
+
     if (verifiedProviders.length >= 1) {
+      // Fast path: providers already verified by background detection.
       autoSelectModels();
-      voiceTts = { engine: 'browser-tts' };
-      voiceStt = { engine: 'browser-stt' };
+      voiceTts = { engine: voiceEngine };
+      voiceStt = { engine: voiceEngine };
       goToStep(6);
-    } else {
-      goToStep(2);
+      return;
     }
+
+    // Slow path: try a host import without navigating to the Providers step.
+    // Shows a spinner on the button while waiting.
+    if (hostProviderCount > 0 && !hostImportTriggered) {
+      autoModeImporting = true;
+      hostImportTriggered = true;
+      try {
+        const res = await fetch('/api/setup/import-host', { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json() as { ok: boolean };
+          if (data.ok && opencodeAvailable) await loadOpenCodeProviders();
+        }
+      } catch {
+        // proceed without provider — user can add one from admin panel
+      }
+      autoModeImporting = false;
+    }
+
+    // Pick models from whatever was imported; allow empty install as fallback.
+    autoSelectModels();
+    voiceTts = { engine: voiceEngine };
+    voiceStt = { engine: voiceEngine };
+    allowEmptyInstall = true;
+    goToStep(6);
   }
 
   function validateStep2(): boolean {
@@ -1015,13 +1041,13 @@
             }
           }
         })
-        .catch(() => { /* fall through with generated token */ });
+        .catch((e) => { console.error('[setup] failed to load existing config:', e); });
     } else {
       uiLoginPassword = generatePassword();
       fetch('/api/setup/status')
         .then((r) => r.json())
         .then((data) => { if (data.setupComplete) window.location.href = '/'; })
-        .catch(() => { /* ignore */ });
+        .catch((e) => { console.error('[setup] failed to check setup status:', e); });
     }
 
     // If a previous deploy is still running (or errored), pick it up
@@ -1036,7 +1062,7 @@
           startDeployPolling();
         }
       })
-      .catch(() => { /* ignore */ });
+      .catch((e) => { console.error('[setup] failed to fetch deploy status:', e); });
 
     void loadHostStatus();
 
@@ -1046,7 +1072,7 @@
 
     checkOpenCodeAndInit()
       .then(() => detectProviders())
-      .catch(() => { /* ignore */ })
+      .catch((e) => { console.error('[setup] provider detection failed:', e); })
       .finally(() => { clearTimeout(detectionTimeout); detectionReady = true; });
   });
 </script>
@@ -1104,8 +1130,11 @@
             errorMessage={step0Error}
             {detectionReady}
             hasVerifiedProviders={verifiedProviders.length >= 1}
+            {autoModeImporting}
+            {enableVoice}
             onnext={() => { if (validateStep0()) goToStep(2); }}
             onusedefaults={() => { if (validateStep0()) void handleUseDefaults(); }}
+            onenablevoicechange={(v) => { enableVoice = v; }}
           />
         </section>
       {:else if currentStep === 2}
@@ -1206,8 +1235,8 @@
             {uiLoginPassword}
             {verifiedProviders}
             {modelSelection}
-            {activeTts}
-            {activeStt}
+            activeTts={voiceTts.engine}
+            activeStt={voiceStt.engine}
             {channelSelection}
             {ollamaEnabled}
             {payload}

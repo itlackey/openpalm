@@ -5,7 +5,71 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0-beta.6] - 2026-05-26
+
+### Fixed
+
+- **`channel-api`: `forwardToGuardian` not a function** — all three API handlers
+  (`/v1/chat/completions`, `/v1/completions`, `/v1/messages`) were calling a
+  non-existent method and returning 502 for every request. Replaced with the
+  correct `this.forward({ userId, text, metadata })` pattern from `BaseChannel`.
+- **`channel-api`: userId not namespaced** — API channel was passing raw user
+  values (`u1`, `api-user`) to the guardian without the required
+  `${channel}:` prefix. External callers could accidentally collide with other
+  channels. Fixed to `${this.name}:${rawUser}` in all three handlers.
+
+### Added
+
+- **"Enable Voice" toggle on Welcome step** — the one-click auto-mode path now
+  includes a checkbox (off by default). When checked, the CPU voice addon is
+  deployed on first boot (~2.4 GB download). When unchecked, voice is fully
+  disabled (no browser fallback). Engine value is passed through directly so
+  the Review step shows "Disabled" when unchecked.
+
 ## [Unreleased]
+
+### Security
+
+- **SEC-4: Setup routes restricted to localhost until setup completes** —
+  `hooks.server.ts` now checks the TCP client IP on all `/setup` and
+  `/api/setup/*` paths while `isSetupComplete()` is false. Remote clients
+  receive a 403; this prevents a race where a remote actor reaches the
+  unauthenticated first-run wizard before the owner does. Post-install
+  re-runs (`/setup?rerun=1`) require admin auth and are not affected.
+
+### Fixed
+
+- **`readFileSync` missing import in `ui-assets.ts`** — `svelte-check` was
+  reporting a TS error; added `readFileSync` to the `node:fs` import.
+- **Silent error swallowing in setup wizard** — five `.catch(() => { /* ignore */ })`
+  and `.catch(() => { /* fall through */ })` calls now log to `console.error`
+  so wizard failures are visible in browser devtools without changing UX.
+- **Port conflict message when Docker is unreachable** — system-check response
+  now carries `portCheckReliable: boolean`; when false, the conflict hint reads
+  "Docker is not running — start Docker and click Retry to confirm" instead of
+  "Another program is using this port".
+
+### Added
+
+- **"Use recommended defaults" is now a true one-click auto-install path** —
+  clicking the primary button on the Welcome step now completes setup without
+  walking through Providers, Models, Voice, or Options:
+  - If host providers were already detected (OpenCode running on the host),
+    they are imported in the background (spinner: "Importing providers…") and
+    the best model defaults are selected automatically.
+  - If nothing is detected, the stack installs without a provider and the user
+    can add one from the admin panel after first boot.
+  - Voice defaults to browser TTS/STT; all other options use their defaults.
+
+### Changed
+
+- **README "Where things stand"** — updated to describe 0.11.0 as a refactor
+  and simplification release; 0.12.x will focus on stabilization and hardening
+  before v1.
+- **`@openpalm/lib` and `@openpalm/channels-sdk` READMEs** — added Bun-only
+  notice: these packages ship TypeScript source and require Bun.
+- **CLI `_build_note`** — clarified that `prebuild` is npm-only and Bun does
+  not run lifecycle hooks.
 
 ### Added
 

@@ -2,6 +2,8 @@
 
 Public SDK for building OpenPalm channel adapters. Extend `BaseChannel` and implement `handleRequest()` to create a new channel — boilerplate for health checks, HMAC signing, guardian forwarding, and structured logging is handled for you.
 
+> **Bun required.** This package ships TypeScript source and relies on Bun's native TS execution. It does not compile to JavaScript and is not compatible with Node.js.
+
 ## Install
 
 ```bash

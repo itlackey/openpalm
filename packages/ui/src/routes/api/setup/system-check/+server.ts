@@ -109,6 +109,10 @@ export const GET: RequestHandler = async () => {
       version: compose.stdout?.trim().split("\n")[0] || undefined,
       error: !compose.ok ? (compose.stderr?.trim() || "Docker Compose v2 not found") : undefined,
     },
+    // portCheckReliable is false when Docker is unreachable — port checks
+    // still run (TCP bind) but we can't confirm whether our own containers
+    // hold them, so conflicts may be false positives.
+    portCheckReliable: docker.ok,
     ports,
     platform: process.platform,
   });
