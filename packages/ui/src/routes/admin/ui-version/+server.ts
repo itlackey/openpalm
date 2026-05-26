@@ -1,4 +1,3 @@
-import { json } from "@sveltejs/kit";
 import {
   getRequestId,
   jsonResponse,
@@ -16,11 +15,11 @@ export const POST: RequestHandler = async (event) => {
   if (authError) return authError;
 
   let body: { tag?: string };
-  try { body = await event.request.json(); } catch { return json({ error: "Invalid JSON" }, { status: 400 }); }
+  try { body = await event.request.json(); } catch { return errorResponse(400, "invalid_json", "Request body must be valid JSON", {}, requestId); }
 
   const tag = typeof body.tag === "string" ? body.tag.trim() : "";
-  if (!tag) return json({ error: "tag is required" }, { status: 400 });
-  if (!/^[a-zA-Z0-9._\-]+$/.test(tag)) return json({ error: "invalid tag format" }, { status: 400 });
+  if (!tag) return errorResponse(400, "tag_required", "tag is required", {}, requestId);
+  if (!/^[a-zA-Z0-9._\-]+$/.test(tag)) return errorResponse(400, "invalid_tag", "Tag must be alphanumeric with . _ or - only", {}, requestId);
 
   const stateDir = resolveStateDir();
   const repoRef = tag.startsWith("v") ? tag : `v${tag}`;

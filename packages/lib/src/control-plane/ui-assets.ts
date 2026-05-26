@@ -290,6 +290,9 @@ export async function seedUiBuild(repoRef: string, stateDir: string, options?: {
 
     writeFileSync(tmpTar, tarData);
 
+    // Clear stale files before extracting so old build files don't persist
+    rmSync(uiDir, { recursive: true, force: true });
+    mkdirSync(uiDir, { recursive: true });
     // Cross-platform extraction via the `tar` npm package — no shell dependency
     await tarExtract({ file: tmpTar, cwd: uiDir, strip: 1 });
     writeFileSync(join(uiDir, 'version.txt'), repoRef.replace(/^v/, ''));

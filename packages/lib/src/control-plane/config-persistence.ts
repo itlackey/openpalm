@@ -87,7 +87,8 @@ export function writeSystemEnv(state: ControlPlaneState): void {
     sectionHeader: "# ── Admin-managed ──────────────────────────────────────────────────"
   });
 
-  writeFileSync(systemEnvPath, content);
+  writeFileSync(systemEnvPath, content, { mode: 0o600 });
+  chmodSync(systemEnvPath, 0o600);
 }
 
 function generateFallbackSystemEnv(state: ControlPlaneState): string {

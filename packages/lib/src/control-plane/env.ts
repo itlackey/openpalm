@@ -1,5 +1,5 @@
 import { parse as dotenvParse } from 'dotenv';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, copyFileSync } from 'node:fs';
 
 export function parseEnvContent(content: string): Record<string, string> {
   return dotenvParse(content);
@@ -10,6 +10,9 @@ export function parseEnvFile(filePath: string): Record<string, string> {
   try {
     return dotenvParse(readFileSync(filePath, 'utf-8'));
   } catch {
+    // File is unreadable or malformed — back it up before returning empty so
+    // the next write doesn't silently discard all existing values.
+    try { copyFileSync(filePath, `${filePath}.corrupt-${Date.now()}`); } catch { /* best-effort */ }
     return {};
   }
 }

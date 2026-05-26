@@ -1,7 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { json } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
-import { requireAdmin, getRequestId } from "$lib/server/helpers.js";
+import { requireAdmin, getRequestId, errorResponse } from "$lib/server/helpers.js";
 import { parseEnvFile, readCurrentUiBuildVersion, resolveStateDir } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
@@ -11,6 +11,7 @@ export const GET: RequestHandler = (event) => {
   if (authError) return authError;
 
   const state = getState();
+  if (!state.stackDir) return errorResponse(503, "not_initialized", "Stack directory not configured", {}, requestId);
   const stackEnvPath = `${state.stackDir}/stack.env`;
   const envVars = existsSync(stackEnvPath) ? parseEnvFile(stackEnvPath) : {};
   const imageTag = envVars.OP_IMAGE_TAG ?? process.env.OP_IMAGE_TAG ?? "latest";

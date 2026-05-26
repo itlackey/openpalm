@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/assistant-tools",
-  "version": "0.11.0-beta.5",
+  "version": "0.11.0-beta.6",
   "type": "module",
   "license": "MPL-2.0",
   "description": "Core OpenPalm assistant extensions for OpenCode",
