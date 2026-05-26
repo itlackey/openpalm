@@ -83,12 +83,18 @@ function resolvePortsToCheck(): { port: number; service: string; blocking: boole
   ];
 }
 
+// The SvelteKit adapter-node server listens on PORT. Trying to bind another
+// TCP server on this same port always fails — suppress the false conflict.
+const SERVER_PORT = Number(process.env.PORT ?? process.env.OP_HOST_UI_PORT ?? 3880);
+
 export const GET: RequestHandler = async () => {
   const [docker, compose] = await Promise.all([checkDocker(), checkDockerCompose()]);
 
   const targets = resolvePortsToCheck();
   const ports = await Promise.all(
     targets.map(async (t) => {
+      // Port is held by this process — not a conflict.
+      if (t.port === SERVER_PORT) return { ...t, available: true };
       if (await checkPortAvailable(t.port)) return { ...t, available: true };
       // Port is in use — but if it's one of our own containers, the
       // install will recreate it, not collide. Don't flag as blocking.
