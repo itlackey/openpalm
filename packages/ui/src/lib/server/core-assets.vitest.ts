@@ -162,10 +162,14 @@ describe("refreshCoreAssets", () => {
     mockFetchAll();
 
     const result = await refreshCoreAssets();
+    // core.compose.yml is always managed (overwritten on change)
     expect(result.updated).toContain("config/stack/core.compose.yml");
+    // opencode.jsonc is seeded-only: written when missing, never overwritten
     expect(result.updated).toContain("config/assistant/opencode.jsonc");
-    expect(result.updated).toContain("config/assistant/openpalm.md");
-    expect(result.updated).toContain("config/assistant/system.md");
+    // Persona files (openpalm.md, system.md) are seeded via seedOpenPalmDir,
+    // not by refreshCoreAssets — they must not appear here.
+    expect(result.updated).not.toContain("config/assistant/openpalm.md");
+    expect(result.updated).not.toContain("config/assistant/system.md");
     // Pre-v0.11 paths must not be resurrected.
     expect(result.updated).not.toContain("state/assistant/opencode.jsonc");
     expect(result.updated).not.toContain("state/assistant/AGENTS.md");
@@ -175,41 +179,29 @@ describe("refreshCoreAssets", () => {
 
     expect(existsSync(join(homeDir, "config/stack/core.compose.yml"))).toBe(true);
     expect(existsSync(join(homeDir, "config/assistant/opencode.jsonc"))).toBe(true);
-    expect(existsSync(join(homeDir, "config/assistant/openpalm.md"))).toBe(true);
-    expect(existsSync(join(homeDir, "config/assistant/system.md"))).toBe(true);
     expect(existsSync(join(homeDir, "vault/user/user.env.schema"))).toBe(false);
     expect(existsSync(join(homeDir, "config/stack/stack.env.schema"))).toBe(false);
   });
 
-  test("backs up changed files before overwriting", async () => {
+  test("backs up and overwrites managed assets; preserves seeded user-editable files", async () => {
     const homeDir = process.env.OP_HOME!;
     mkdirSync(join(homeDir, "config/stack"), { recursive: true });
     writeFileSync(join(homeDir, "config/stack/core.compose.yml"), "old-compose-content");
     mkdirSync(join(homeDir, "config/assistant"), { recursive: true });
-    writeFileSync(join(homeDir, "config/assistant/opencode.jsonc"), "old-opencode-content");
-    writeFileSync(join(homeDir, "config/assistant/openpalm.md"), "old-openpalm-content");
-    writeFileSync(join(homeDir, "config/assistant/system.md"), "old-system-content");
+    writeFileSync(join(homeDir, "config/assistant/opencode.jsonc"), "user-customized-opencode");
     mockFetchAll();
 
     const result = await refreshCoreAssets();
-    expect(result.updated.length).toBeGreaterThanOrEqual(4);
+    // core.compose.yml is managed — backed up and overwritten
+    expect(result.updated).toContain("config/stack/core.compose.yml");
     expect(result.backupDir).not.toBeNull();
-
-    // Verify backup contains old content
     const backupCompose = readFileSync(join(result.backupDir!, "config/stack/core.compose.yml"), "utf-8");
     expect(backupCompose).toBe("old-compose-content");
-    const backupOpencode = readFileSync(join(result.backupDir!, "config/assistant/opencode.jsonc"), "utf-8");
-    expect(backupOpencode).toBe("old-opencode-content");
-    const backupOpenpalm = readFileSync(join(result.backupDir!, "config/assistant/openpalm.md"), "utf-8");
-    expect(backupOpenpalm).toBe("old-openpalm-content");
-    const backupSystem = readFileSync(join(result.backupDir!, "config/assistant/system.md"), "utf-8");
-    expect(backupSystem).toBe("old-system-content");
-
-    // Verify new content written
     expect(readFileSync(join(homeDir, "config/stack/core.compose.yml"), "utf-8")).not.toBe("old-compose-content");
-    expect(readFileSync(join(homeDir, "config/assistant/opencode.jsonc"), "utf-8")).not.toBe("old-opencode-content");
-    expect(readFileSync(join(homeDir, "config/assistant/openpalm.md"), "utf-8")).not.toBe("old-openpalm-content");
-    expect(readFileSync(join(homeDir, "config/assistant/system.md"), "utf-8")).not.toBe("old-system-content");
+
+    // opencode.jsonc is seeded-only — existing user customizations must be preserved
+    expect(result.updated).not.toContain("config/assistant/opencode.jsonc");
+    expect(readFileSync(join(homeDir, "config/assistant/opencode.jsonc"), "utf-8")).toBe("user-customized-opencode");
   });
 
   test("skips assets with identical content", async () => {

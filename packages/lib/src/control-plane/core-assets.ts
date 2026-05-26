@@ -95,11 +95,16 @@ function resolveAssetVersion(): string {
 }
 const VERSION = resolveAssetVersion();
 
-// Persona files (openpalm.md, system.md) and stash seeds are intentionally NOT
-// in this list — they are user-customizable and use seedAssistantPersonaFiles()
-// / seedStashAssets() which never overwrite existing files (user edits win).
+// Persona files (openpalm.md, system.md), stash seeds, and user-editable config
+// files are intentionally NOT in this list. They are seeded once (never
+// overwritten) via seedOpenPalmDir (skipExisting) or SEEDED_ASSETS below.
 const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
-  { relPath: "config/stack/core.compose.yml",   githubFilename: ".openpalm/config/stack/core.compose.yml" },
+  { relPath: "config/stack/core.compose.yml", githubFilename: ".openpalm/config/stack/core.compose.yml" },
+];
+
+// Seeded once — written only when the file does not exist yet.
+// User edits always win; upgrade never touches these files.
+const SEEDED_ASSETS: { relPath: string; githubFilename: string }[] = [
   { relPath: "config/assistant/opencode.jsonc", githubFilename: ".openpalm/config/assistant/opencode.jsonc" },
 ];
 
@@ -144,6 +149,16 @@ export async function refreshCoreAssets(): Promise<{
       copyFileSync(targetPath, backupPath);
     }
 
+    mkdirSync(dirname(targetPath), { recursive: true });
+    writeFileSync(targetPath, freshContent);
+    updated.push(asset.relPath);
+  }
+
+  // Seed user-editable assets only when missing — never overwrite.
+  for (const asset of SEEDED_ASSETS) {
+    const targetPath = join(homeDir, asset.relPath);
+    if (existsSync(targetPath)) continue;
+    const freshContent = await downloadAsset(asset.githubFilename);
     mkdirSync(dirname(targetPath), { recursive: true });
     writeFileSync(targetPath, freshContent);
     updated.push(asset.relPath);
