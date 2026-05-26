@@ -83,12 +83,17 @@
     padding: var(--space-3) var(--space-4);
     border-top: 1px solid var(--color-border);
     background: var(--color-bg);
+    
+    justify-items: center;
+    width: stretch;
   }
 
   .input-area {
     display: flex;
     align-items: flex-end;
     gap: var(--space-2);
+    width: stretch;
+    max-width: var(--max-width);
   }
 
   textarea {

@@ -21,12 +21,12 @@
       <span class="brand-icon">
         <img src="/logo-128.png" alt="OpenPalm Logo">
       </span>
+      <div>
       <span class="brand-text">OpenPalm</span>
       <span class="version-badge">v{version}</span>
+      </div>
     </div>
     <div class="navbar-actions">
-      <EndpointSwitcher />
-      <SessionPicker />
       {#if navLink}
         <a
           href={navLink.href}
@@ -56,6 +56,8 @@
           {/if}
         </a>
       {/if}
+      <EndpointSwitcher />
+      <SessionPicker />
       <VoiceControl />
     </div>
   </div>
@@ -115,7 +117,7 @@
   }
 
   .version-badge {
-    font-size: var(--text-xs);
+    font-size: calc(var(--text-xs) - 2.5pt);
     font-weight: var(--font-medium);
     font-family: var(--font-mono);
     color: var(--color-text-tertiary);

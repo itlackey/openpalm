@@ -7312,7 +7312,7 @@ var init_types_gen = () => {};
 // ../../node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/gen/core/serverSentEvents.gen.js
 var createSseClient = ({ onSseError, onSseEvent, responseTransformer, responseValidator, sseDefaultRetryDelay, sseMaxRetryAttempts, sseMaxRetryDelay, sseSleepFn, url, ...options }) => {
   let lastEventId;
-  const sleep = sseSleepFn ?? ((ms2) => new Promise((resolve) => setTimeout(resolve, ms2)));
+  const sleep = sseSleepFn ?? ((ms2) => new Promise((resolve2) => setTimeout(resolve2, ms2)));
   const createStream = async function* () {
     let retryDelay = sseDefaultRetryDelay ?? 3000;
     let attempt = 0;
@@ -8812,12 +8812,12 @@ var require_isexe = __commonJS((exports, module) => {
       if (typeof Promise !== "function") {
         throw new TypeError("callback not provided");
       }
-      return new Promise(function(resolve, reject) {
+      return new Promise(function(resolve2, reject) {
         isexe(path, options || {}, function(er2, is2) {
           if (er2) {
             reject(er2);
           } else {
-            resolve(is2);
+            resolve2(is2);
           }
         });
       });
@@ -8879,27 +8879,27 @@ var require_which = __commonJS((exports, module) => {
       opt = {};
     const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
     const found = [];
-    const step = (i) => new Promise((resolve, reject) => {
+    const step = (i) => new Promise((resolve2, reject) => {
       if (i === pathEnv.length)
-        return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
+        return opt.all && found.length ? resolve2(found) : reject(getNotFoundError(cmd));
       const ppRaw = pathEnv[i];
       const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
       const pCmd = path.join(pathPart, cmd);
       const p2 = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
-      resolve(subStep(p2, i, 0));
+      resolve2(subStep(p2, i, 0));
     });
-    const subStep = (p2, i, ii2) => new Promise((resolve, reject) => {
+    const subStep = (p2, i, ii2) => new Promise((resolve2, reject) => {
       if (ii2 === pathExt.length)
-        return resolve(step(i + 1));
+        return resolve2(step(i + 1));
       const ext = pathExt[ii2];
       isexe(p2 + ext, { pathExt: pathExtExe }, (er2, is2) => {
         if (!er2 && is2) {
           if (opt.all)
             found.push(p2 + ext);
           else
-            return resolve(p2 + ext);
+            return resolve2(p2 + ext);
         }
-        return resolve(subStep(p2, i, ii2 + 1));
+        return resolve2(subStep(p2, i, ii2 + 1));
       });
     });
     return cb ? step(0).then((res) => cb(null, res), cb) : step(0);
@@ -9230,7 +9230,7 @@ async function createOpencodeServer(options) {
     }
   });
   let clear = () => {};
-  const url = await new Promise((resolve, reject) => {
+  const url = await new Promise((resolve2, reject) => {
     const id = setTimeout(() => {
       clear();
       stop(proc);
@@ -9256,7 +9256,7 @@ async function createOpencodeServer(options) {
           }
           clearTimeout(id);
           resolved = true;
-          resolve(match[1]);
+          resolve2(match[1]);
           return;
         }
       }
@@ -9355,9 +9355,9 @@ var init_dist = __esm(() => {
 
 // src/main.ts
 import { app, BrowserWindow, Tray, Menu, shell, dialog } from "electron";
-import { join as join3, dirname as dirname2 } from "node:path";
-import { existsSync as existsSync4 } from "node:fs";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
+import { join as join4, dirname as dirname3 } from "node:path";
+import { existsSync as existsSync5 } from "node:fs";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
 import { spawn } from "node:child_process";
 // ../lib/src/logger.ts
 var REDACT_PATTERN = /(?:^|_)(?:TOKEN|SECRET|KEY|PASSWORD|HMAC)(?:_|$)/i;
@@ -9449,16 +9449,21 @@ var $visitAsync = visit.visitAsync;
 
 // ../lib/src/control-plane/env.ts
 var import_dotenv = __toESM(require_main(), 1);
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync as readFileSync2, existsSync } from "node:fs";
 function parseEnvFile(filePath) {
   if (!existsSync(filePath))
     return {};
   try {
-    return import_dotenv.parse(readFileSync(filePath, "utf-8"));
+    return import_dotenv.parse(readFileSync2(filePath, "utf-8"));
   } catch {
     return {};
   }
 }
+
+// ../lib/src/control-plane/core-assets.ts
+import { mkdirSync as mkdirSync2, writeFileSync, readFileSync as readFileSync3, existsSync as existsSync2, copyFileSync } from "node:fs";
+import { dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // ../lib/src/control-plane/home.ts
 import { mkdirSync } from "node:fs";
@@ -9518,7 +9523,17 @@ function ensureHomeDirs() {
 
 // ../lib/src/control-plane/core-assets.ts
 var logger = createLogger("core-assets");
-var VERSION = process.env.OP_ASSET_VERSION ?? "main";
+function resolveAssetVersion() {
+  if (process.env.OP_ASSET_VERSION)
+    return process.env.OP_ASSET_VERSION;
+  try {
+    const pkgJson = JSON.parse(readFileSync3(join(dirname(fileURLToPath(import.meta.url)), "../../package.json"), "utf-8"));
+    return `v${pkgJson.version}`;
+  } catch {
+    return "main";
+  }
+}
+var VERSION = resolveAssetVersion();
 // ../lib/src/control-plane/config-persistence.ts
 var DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
 
@@ -9539,6 +9554,10 @@ var availabilityCache = new Map;
 var logger4 = createLogger("lib:docker");
 var PULL_TIMEOUT_MS = 60 * 60000;
 
+// ../lib/src/control-plane/install-lock.ts
+var logger5 = createLogger("install-lock");
+var STALE_AFTER_MS = 30 * 60 * 1000;
+
 // ../lib/src/control-plane/lifecycle.ts
 var VALID_CALLERS = new Set([
   "assistant",
@@ -9548,16 +9567,12 @@ var VALID_CALLERS = new Set([
   "test"
 ]);
 // ../lib/src/control-plane/markdown-task.ts
-var logger5 = createLogger("markdown-task");
+var logger6 = createLogger("markdown-task");
 
 // ../lib/src/control-plane/scheduler.ts
-var logger6 = createLogger("scheduler");
+var logger7 = createLogger("scheduler");
 // ../lib/src/control-plane/model-runner.ts
-var logger7 = createLogger("local-providers");
-// ../lib/src/control-plane/install-lock.ts
-var logger8 = createLogger("install-lock");
-var STALE_AFTER_MS = 30 * 60 * 1000;
-
+var logger8 = createLogger("local-providers");
 // ../lib/src/control-plane/setup.ts
 var logger9 = createLogger("setup");
 // ../lib/src/control-plane/host-opencode.ts
@@ -9569,17 +9584,17 @@ var execFile = promisify(execFileCb);
 var logger10 = createLogger("akm-vault");
 // ../lib/src/control-plane/ui-assets.ts
 import {
-  existsSync as existsSync2,
-  mkdirSync as mkdirSync2,
+  existsSync as existsSync3,
+  mkdirSync as mkdirSync3,
   readdirSync,
-  copyFileSync,
-  writeFileSync,
+  copyFileSync as copyFileSync2,
+  writeFileSync as writeFileSync2,
   rmSync,
   realpathSync,
   renameSync
 } from "node:fs";
-import { join, dirname, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join as join2, dirname as dirname2, relative } from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { createHash } from "node:crypto";
 
 // ../../node_modules/.bun/tar@7.5.15/node_modules/tar/dist/esm/index.min.js
@@ -12772,50 +12787,71 @@ async function fetchWithRetry(url, retries = 3) {
   throw new Error(`Failed to fetch ${url} after ${retries} attempts`);
 }
 function copyTree(src, dest, opts) {
-  if (!existsSync2(src))
+  if (!existsSync3(src))
     return;
   const entries = readdirSync(src, { recursive: true, withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isFile())
       continue;
     const parentDir = entry.parentPath ?? entry.path;
-    const srcFile = join(parentDir, entry.name);
+    const srcFile = join2(parentDir, entry.name);
     const rel = relative(src, srcFile);
-    const destFile = join(dest, rel);
-    if (opts?.skipExisting && existsSync2(destFile))
+    const destFile = join2(dest, rel);
+    if (opts?.skipExisting && existsSync3(destFile))
       continue;
-    mkdirSync2(dirname(destFile), { recursive: true });
-    copyFileSync(srcFile, destFile);
+    mkdirSync3(dirname2(destFile), { recursive: true });
+    copyFileSync2(srcFile, destFile);
   }
 }
 function resolveLocalCandidate(...strategies) {
   for (const strategy of strategies) {
     try {
       const p2 = strategy();
-      if (p2 && existsSync2(p2))
+      if (p2 && existsSync3(p2))
         return p2;
     } catch {}
   }
   return null;
 }
 function resolveLocalUiBuild() {
-  return resolveLocalCandidate(() => process.env.OPENPALM_REPO_ROOT ? join(process.env.OPENPALM_REPO_ROOT, "packages", "ui", "build") : null, () => {
-    const meta = fileURLToPath(import.meta.url);
+  return resolveLocalCandidate(() => process.env.OPENPALM_REPO_ROOT ? join2(process.env.OPENPALM_REPO_ROOT, "packages", "ui", "build") : null, () => {
+    const rp = process.resourcesPath;
+    if (!rp)
+      return null;
+    return join2(rp, "ui-build");
+  }, () => {
+    const meta = fileURLToPath2(import.meta.url);
     if (meta.startsWith("/$bunfs/"))
       return null;
-    const candidate = join(dirname(meta), "..", "..", "..", "..", "packages", "ui", "build");
-    return existsSync2(join(candidate, "index.js")) ? candidate : null;
+    const candidate = join2(dirname2(meta), "..", "..", "..", "..", "packages", "ui", "build");
+    return existsSync3(join2(candidate, "index.js")) ? candidate : null;
   }, () => {
-    const binDir = dirname(realpathSync(process.execPath));
-    const candidate = join(binDir, "..", "..", "..", "packages", "ui", "build");
-    return existsSync2(join(candidate, "index.js")) ? candidate : null;
+    const binDir = dirname2(realpathSync(process.execPath));
+    const candidate = join2(binDir, "..", "..", "..", "packages", "ui", "build");
+    return existsSync3(join2(candidate, "index.js")) ? candidate : null;
   });
 }
+function readUiVersionFile(dir) {
+  try {
+    return readFileSync(join2(dir, "version.txt"), "utf-8").trim();
+  } catch {
+    return null;
+  }
+}
 function resolveUiBuildDir() {
-  const stateBuild = join(resolveStateDir(), "ui");
-  if (existsSync2(join(stateBuild, "index.js")))
-    return stateBuild;
-  return resolveLocalUiBuild() ?? stateBuild;
+  const stateBuild = join2(resolveStateDir(), "ui");
+  const localBuild = resolveLocalUiBuild();
+  if (existsSync3(join2(stateBuild, "index.js")) && localBuild) {
+    const diskVer = readUiVersionFile(stateBuild);
+    const bundledVer = readUiVersionFile(localBuild);
+    if (diskVer && bundledVer && compareVersionTags(diskVer, bundledVer) > 0) {
+      return stateBuild;
+    }
+    return localBuild;
+  }
+  if (localBuild)
+    return localBuild;
+  return stateBuild;
 }
 function sha256Hex(data) {
   return createHash("sha256").update(data).digest("hex");
@@ -12832,19 +12868,20 @@ function parseChecksumsFile(content) {
   return map;
 }
 async function seedUiBuild(repoRef, stateDir) {
-  const uiDir = join(stateDir, "ui");
-  mkdirSync2(uiDir, { recursive: true });
+  const uiDir = join2(stateDir, "ui");
+  mkdirSync3(uiDir, { recursive: true });
   const local = resolveLocalUiBuild();
   if (local) {
     logger11.debug("seeding UI build from local source", { src: local });
     copyTree(local, uiDir);
+    writeFileSync2(join2(uiDir, "version.txt"), repoRef.replace(/^v/, ""));
     return;
   }
   const base = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${repoRef}`;
   const tarballUrl = `${base}/ui-build.tar.gz`;
   const checksumUrl = `${base}/checksums-sha256.txt`;
   logger11.debug("downloading UI build", { url: tarballUrl });
-  const tmpTar = join(stateDir, ".ui-build.tar.gz.tmp");
+  const tmpTar = join2(stateDir, ".ui-build.tar.gz.tmp");
   try {
     const [tarRes, csRes] = await Promise.all([
       fetchWithRetry(tarballUrl),
@@ -12864,8 +12901,9 @@ async function seedUiBuild(repoRef, stateDir) {
         logger11.debug("UI build checksum verified", { sha256: actual });
       }
     }
-    writeFileSync(tmpTar, tarData);
+    writeFileSync2(tmpTar, tarData);
     await fo({ file: tmpTar, cwd: uiDir, strip: 1 });
+    writeFileSync2(join2(uiDir, "version.txt"), repoRef.replace(/^v/, ""));
   } finally {
     rmSync(tmpTar, { force: true });
   }
@@ -12902,10 +12940,10 @@ async function checkAndUpdateUiBuild(currentVersion, stateDir) {
     if (!release.assets.some((a) => a.name === "ui-build.tar.gz")) {
       return { updated: false, latestVersion, error: "Latest release has no ui-build.tar.gz" };
     }
-    const uiDir = join(stateDir, "ui");
-    if (existsSync2(join(uiDir, "index.js"))) {
-      const backupDir = join(stateDir, "backups", `ui-${Date.now()}`);
-      mkdirSync2(join(stateDir, "backups"), { recursive: true });
+    const uiDir = join2(stateDir, "ui");
+    if (existsSync3(join2(uiDir, "index.js"))) {
+      const backupDir = join2(stateDir, "backups", `ui-${Date.now()}`);
+      mkdirSync3(join2(stateDir, "backups"), { recursive: true });
       renameSync(uiDir, backupDir);
       logger11.debug("backed up UI build before update", { backup: backupDir });
     }
@@ -13006,28 +13044,28 @@ function getCachedUpdateInfo() {
 
 // src/local-opencode.ts
 import {
-  mkdirSync as mkdirSync3,
-  writeFileSync as writeFileSync2,
-  readFileSync as readFileSync2,
-  existsSync as existsSync3,
+  mkdirSync as mkdirSync4,
+  writeFileSync as writeFileSync3,
+  readFileSync as readFileSync4,
+  existsSync as existsSync4,
   unlinkSync,
   chmodSync
 } from "node:fs";
-import { join as join2 } from "node:path";
+import { join as join3 } from "node:path";
 import { randomBytes } from "node:crypto";
 var USERNAME = "openpalm";
 var STOP_GRACE_MS = 5000;
 function runtimePath(stateDir) {
-  return join2(stateDir, "local-opencode.runtime.json");
+  return join3(stateDir, "local-opencode.runtime.json");
 }
 function pidfilePath(stateDir) {
-  return join2(stateDir, "local-opencode.pid");
+  return join3(stateDir, "local-opencode.pid");
 }
 function unavailableSentinelPath(stateDir) {
-  return join2(stateDir, "local-opencode.unavailable");
+  return join3(stateDir, "local-opencode.unavailable");
 }
 function adminOpencodeHome(stateDir) {
-  return join2(stateDir, "admin-opencode-home");
+  return join3(stateDir, "admin-opencode-home");
 }
 function generatePassword() {
   return randomBytes(32).toString("base64url");
@@ -13053,15 +13091,15 @@ function isPidAlive(pid) {
 }
 function stageAdminHome(stateDir) {
   const home = adminOpencodeHome(stateDir);
-  const configDir = join2(home, ".config", "opencode");
-  const shareDir = join2(home, ".local", "share", "opencode");
-  const ocStateDir = join2(home, ".local", "state", "opencode");
-  mkdirSync3(configDir, { recursive: true });
-  mkdirSync3(shareDir, { recursive: true });
-  mkdirSync3(ocStateDir, { recursive: true });
-  const configPath = join2(configDir, "opencode.json");
-  if (!existsSync3(configPath)) {
-    writeFileSync2(configPath, JSON.stringify({
+  const configDir = join3(home, ".config", "opencode");
+  const shareDir = join3(home, ".local", "share", "opencode");
+  const ocStateDir = join3(home, ".local", "state", "opencode");
+  mkdirSync4(configDir, { recursive: true });
+  mkdirSync4(shareDir, { recursive: true });
+  mkdirSync4(ocStateDir, { recursive: true });
+  const configPath = join3(configDir, "opencode.json");
+  if (!existsSync4(configPath)) {
+    writeFileSync3(configPath, JSON.stringify({
       $schema: "https://opencode.ai/config.json",
       plugin: ["@openpalm/admin-tools-plugin"]
     }, null, 2), { encoding: "utf-8" });
@@ -13070,16 +13108,16 @@ function stageAdminHome(stateDir) {
 }
 function writeRuntimeFile(stateDir, data) {
   const path = runtimePath(stateDir);
-  mkdirSync3(stateDir, { recursive: true });
-  writeFileSync2(path, JSON.stringify(data, null, 2), { encoding: "utf-8", mode: 384 });
+  mkdirSync4(stateDir, { recursive: true });
+  writeFileSync3(path, JSON.stringify(data, null, 2), { encoding: "utf-8", mode: 384 });
   try {
     chmodSync(path, 384);
   } catch {}
 }
 function writePidFile(stateDir, pid) {
   const path = pidfilePath(stateDir);
-  mkdirSync3(stateDir, { recursive: true });
-  writeFileSync2(path, `${pid}
+  mkdirSync4(stateDir, { recursive: true });
+  writeFileSync3(path, `${pid}
 `, { encoding: "utf-8", mode: 384 });
   try {
     chmodSync(path, 384);
@@ -13087,10 +13125,10 @@ function writePidFile(stateDir, pid) {
 }
 function readPidFile(stateDir) {
   const path = pidfilePath(stateDir);
-  if (!existsSync3(path))
+  if (!existsSync4(path))
     return null;
   try {
-    const raw = readFileSync2(path, "utf-8").trim();
+    const raw = readFileSync4(path, "utf-8").trim();
     const pid = Number.parseInt(raw, 10);
     return Number.isInteger(pid) && pid > 0 ? pid : null;
   } catch {
@@ -13099,7 +13137,7 @@ function readPidFile(stateDir) {
 }
 function unlinkSafely(path) {
   try {
-    if (existsSync3(path))
+    if (existsSync4(path))
       unlinkSync(path);
   } catch {}
 }
@@ -13122,7 +13160,7 @@ var _sdkLoader = async () => {
 };
 async function startLocalOpenCode(opts) {
   const { stateDir } = opts;
-  mkdirSync3(stateDir, { recursive: true });
+  mkdirSync4(stateDir, { recursive: true });
   sweepStalePid(stateDir);
   const password = generatePassword();
   const { home } = stageAdminHome(stateDir);
@@ -13163,7 +13201,7 @@ async function startLocalOpenCode(opts) {
     const reason = looksMissing ? "opencode binary not on PATH" : `opencode spawn failed: ${msg}`;
     console.warn(`[local-opencode] ${reason}. Local admin OpenCode unavailable; remote endpoints still work.`);
     try {
-      writeFileSync2(unavailableSentinelPath(stateDir), JSON.stringify({ reason, at: new Date().toISOString() }, null, 2), { encoding: "utf-8", mode: 384 });
+      writeFileSync3(unavailableSentinelPath(stateDir), JSON.stringify({ reason, at: new Date().toISOString() }, null, 2), { encoding: "utf-8", mode: 384 });
     } catch {}
     return null;
   }
@@ -13191,7 +13229,7 @@ async function startLocalOpenCode(opts) {
       try {
         server2.close();
       } catch {}
-      await new Promise((resolve) => setTimeout(resolve, STOP_GRACE_MS));
+      await new Promise((resolve2) => setTimeout(resolve2, STOP_GRACE_MS));
       unlinkSafely(runtimePath(stateDir));
       unlinkSafely(pidfilePath(stateDir));
     }
@@ -13202,8 +13240,8 @@ async function startLocalOpenCode(opts) {
 if (!globalThis.Bun) {
   globalThis.Bun = { env: process.env };
 }
-var __filename2 = fileURLToPath2(import.meta.url);
-var __dirname2 = dirname2(__filename2);
+var __filename2 = fileURLToPath3(import.meta.url);
+var __dirname2 = dirname3(__filename2);
 var UI_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;
 var READY_TIMEOUT_MS = 60000;
 var mainWindow = null;
@@ -13226,7 +13264,7 @@ function resolveAssistantUrl(homeDir) {
   const userOverride = process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL;
   if (userOverride)
     return userOverride;
-  const stackEnv = parseEnvFile(join3(homeDir, "config", "stack", "stack.env"));
+  const stackEnv = parseEnvFile(join4(homeDir, "config", "stack", "stack.env"));
   const bind = stackEnv.OP_ASSISTANT_BIND_ADDRESS || "127.0.0.1";
   const port = stackEnv.OP_ASSISTANT_PORT || "3800";
   return `http://${bind}:${port}`;
@@ -13282,7 +13320,7 @@ async function startUIServer() {
     console.log(`UI update check skipped: ${updateResult.error}`);
   }
   let uiBuildDir = resolveUiBuildDir();
-  if (!existsSync4(join3(uiBuildDir, "index.js"))) {
+  if (!existsSync5(join4(uiBuildDir, "index.js"))) {
     console.log("UI build not found — seeding from release...");
     try {
       await seedUiBuild(`v${version}`, stateDir);
@@ -13293,7 +13331,7 @@ async function startUIServer() {
       return;
     }
   }
-  uiProcess = spawn("node", [join3(uiBuildDir, "index.js")], {
+  uiProcess = spawn("node", [join4(uiBuildDir, "index.js")], {
     cwd: uiBuildDir,
     env: buildUIServerEnv(homeDir, UI_PORT, appUpdate),
     stdio: ["ignore", "inherit", "pipe"]
@@ -13405,7 +13443,7 @@ async function createWindow() {
     title,
     show: false,
     webPreferences: {
-      preload: join3(__dirname2, "preload.cjs"),
+      preload: join4(__dirname2, "preload.cjs"),
       nodeIntegration: false,
       contextIsolation: true
     }
@@ -13442,8 +13480,8 @@ function showWindow() {
   }
 }
 function createTray() {
-  const iconPath = join3(__dirname2, "..", "assets", "tray-icon.png");
-  if (!existsSync4(iconPath)) {
+  const iconPath = join4(__dirname2, "..", "assets", "tray-icon.png");
+  if (!existsSync5(iconPath)) {
     return;
   }
   tray = new Tray(iconPath);
