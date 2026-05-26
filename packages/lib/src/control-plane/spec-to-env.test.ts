@@ -4,8 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deriveSystemEnvFromSpec, writeVoiceVars } from "./spec-to-env.js";
 
-const MINIMAL_SPEC = { version: 2 as const };
-
 let tempDir = "";
 
 beforeEach(() => {
@@ -18,34 +16,34 @@ afterEach(() => {
 
 describe("deriveSystemEnvFromSpec", () => {
   test("produces OP_HOME", () => {
-    const result = deriveSystemEnvFromSpec(MINIMAL_SPEC, "/home/op");
+    const result = deriveSystemEnvFromSpec("/home/op");
     expect(result.OP_HOME).toBe("/home/op");
   });
 
   test("produces default port values", () => {
-    const result = deriveSystemEnvFromSpec(MINIMAL_SPEC, "/home/op");
+    const result = deriveSystemEnvFromSpec("/home/op");
     expect(result.OP_ASSISTANT_PORT).toBe("3800");
   });
 
   test("does not emit OP_GUARDIAN_PORT (guardian is network-only, no host mapping)", () => {
-    const result = deriveSystemEnvFromSpec(MINIMAL_SPEC, "/home/op");
+    const result = deriveSystemEnvFromSpec("/home/op");
     expect(result.OP_GUARDIAN_PORT).toBeUndefined();
   });
 
   test("does not include the retired memory service port", () => {
-    const result = deriveSystemEnvFromSpec(MINIMAL_SPEC, "/home/op");
+    const result = deriveSystemEnvFromSpec("/home/op");
     const retired = "OP_" + "MEMORY_PORT";
     expect(result[retired]).toBeUndefined();
   });
 
   test("does not include LLM provider in system env", () => {
-    const result = deriveSystemEnvFromSpec(MINIMAL_SPEC, "/home/op");
+    const result = deriveSystemEnvFromSpec("/home/op");
     expect(result.SYSTEM_LLM_PROVIDER).toBeUndefined();
     expect(result.SYSTEM_LLM_MODEL).toBeUndefined();
   });
 
   test("does not include removed feature flags", () => {
-    const result = deriveSystemEnvFromSpec(MINIMAL_SPEC, "/home/op");
+    const result = deriveSystemEnvFromSpec("/home/op");
     expect(result.OP_OLLAMA_ENABLED).toBeUndefined();
     expect(result.OP_ADMIN_ENABLED).toBeUndefined();
   });
@@ -57,7 +55,7 @@ describe("deriveSystemEnvFromSpec", () => {
     // hard-coded constant.
     if (process.platform === "win32") return;
     const expected = statSync(tempDir);
-    const result = deriveSystemEnvFromSpec(MINIMAL_SPEC, tempDir);
+    const result = deriveSystemEnvFromSpec(tempDir);
     expect(result.OP_UID).toBe(String(expected.uid));
     expect(result.OP_GID).toBe(String(expected.gid));
   });

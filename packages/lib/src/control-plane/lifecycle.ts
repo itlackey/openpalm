@@ -20,7 +20,6 @@ import {
   discoverStackOverlays,
   ensureComposeVolumeTargets,
 } from "./config-persistence.js";
-import { readStackSpec } from "./stack-spec.js";
 import { refreshCoreAssets } from "./core-assets.js";
 import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";

@@ -36,14 +36,10 @@ export const SPEC_DEFAULTS = {
 
 // ── Read / Write ────────────────────────────────────────────────────────
 
-export function stackSpecPath(configDir: string): string {
-  return `${configDir}/${STACK_SPEC_FILENAME}`;
-}
-
 export function writeStackSpec(configDir: string, spec: StackSpec): void {
   mkdirSync(configDir, { recursive: true });
   const content = yamlStringify(spec, { indent: 2 });
-  writeFileSync(stackSpecPath(configDir), content);
+  writeFileSync(`${configDir}/${STACK_SPEC_FILENAME}`, content);
 }
 
 /**
@@ -51,7 +47,7 @@ export function writeStackSpec(configDir: string, spec: StackSpec): void {
  * Only the version field is checked; legacy capability fields are ignored.
  */
 export function readStackSpec(configDir: string): StackSpec | null {
-  const path = stackSpecPath(configDir);
+  const path = `${configDir}/${STACK_SPEC_FILENAME}`;
   if (!existsSync(path)) return null;
 
   let raw: unknown;

@@ -50,8 +50,8 @@ export const STT_OPTIONS: SttOption[] = [
 
 /**
  * Per-engine configuration fields. Empty `fields` means "no extra settings".
- * `provider` is what gets written to stack.yml `capabilities.tts.provider`
- * (and STT) so spec-to-env can resolve the runtime URL.
+ * `provider` is written to stack.env as OP_TTS_PROVIDER / OP_STT_PROVIDER
+ * so the voice channel can resolve the runtime URL.
  *
  * Shared between the setup wizard's VoiceStep and the admin Capabilities tab.
  */

@@ -5,7 +5,6 @@
  * Voice channel vars (TTS/STT) are written separately via writeVoiceVars.
  */
 
-import type { StackSpec } from "./stack-spec.js";
 import { SPEC_DEFAULTS } from "./stack-spec.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mergeEnvContent } from "./env.js";
@@ -15,10 +14,7 @@ import { resolveOperatorIds } from "./operator-ids.js";
  * Derive the system.env key-value pairs from the StackSpec.
  * Secrets (tokens, API keys, HMAC) are NOT included — the caller merges them.
  */
-export function deriveSystemEnvFromSpec(
-  spec: StackSpec,
-  homeDir: string,
-): Record<string, string> {
+export function deriveSystemEnvFromSpec(homeDir: string): Record<string, string> {
   const ports = SPEC_DEFAULTS.ports;
   const image = SPEC_DEFAULTS.image;
 
@@ -46,8 +42,6 @@ export function deriveSystemEnvFromSpec(
   result["OP_ADMIN_PORT"] = String(ports.admin);
   result["OP_ADMIN_OPENCODE_PORT"] = String(ports.adminOpencode);
   result["OP_ASSISTANT_SSH_PORT"] = String(ports.assistantSsh);
-
-  void spec; // spec reserved for future use; ports/image come from SPEC_DEFAULTS
 
   return result;
 }

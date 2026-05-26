@@ -31,8 +31,6 @@ export const assistantConfigDir    = (s: ControlPlaneState): string => `${s.conf
 export const stackEnvPath          = (s: ControlPlaneState): string => `${s.stackDir}/stack.env`;
 /** Guardian HMAC channel secrets */
 export const guardianEnvPath       = (s: ControlPlaneState): string => `${s.stackDir}/guardian.env`;
-/** Stack spec: capability assignments */
-export const stackSpecFilePath     = (s: ControlPlaneState): string => `${s.stackDir}/stack.yml`;
 
 // ── Cache directory — regenerable/semi-persistent ───────────────────────────
 

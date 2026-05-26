@@ -5,6 +5,17 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0-beta.10] - 2026-05-26
+
+### Changed
+
+- **Removed dead code left by the capabilities → akm migration** — `readStackSpec`
+  dead import in `lifecycle.ts`, unused `stackSpecFilePath` export in `paths.ts`,
+  `stackSpecPath` helper in `stack-spec.ts` (never called in production), and the
+  unused `spec: StackSpec` parameter in `deriveSystemEnvFromSpec`. Stale wizard
+  comment referencing `stack.yml capabilities.tts.provider` updated to reflect
+  current stack.env path.
+
 ## [0.11.0-beta.9] - 2026-05-26
 
 ### Fixed

@@ -11,7 +11,6 @@ import {
   readStackSpec,
   writeStackSpec,
   STACK_SPEC_FILENAME,
-  stackSpecPath,
 } from "./stack-spec.js";
 import type { StackSpec } from "./stack-spec.js";
 
@@ -40,9 +39,8 @@ describe("readStackSpec / writeStackSpec round-trip", () => {
   it("writes to the canonical filename", () => {
     writeStackSpec(configDir, MINIMAL_SPEC);
     const expectedPath = join(configDir, STACK_SPEC_FILENAME);
-    const read = readStackSpec(configDir);
-    expect(read).not.toBeNull();
-    expect(stackSpecPath(configDir)).toBe(expectedPath);
+    expect(expectedPath).toBe(join(configDir, "stack.yml"));
+    expect(readStackSpec(configDir)).not.toBeNull();
   });
 
   it("ignores legacy capabilities fields on read", () => {
@@ -81,14 +79,10 @@ describe("readStackSpec edge cases", () => {
   });
 });
 
-// ── stackSpecPath / STACK_SPEC_FILENAME ──────────────────────────────────
+// ── STACK_SPEC_FILENAME ───────────────────────────────────────────────────
 
-describe("stackSpecPath", () => {
-  it("returns stackDir/stack.yml", () => {
-    expect(stackSpecPath("/foo/config/stack")).toBe("/foo/config/stack/stack.yml");
-  });
-
-  it("uses STACK_SPEC_FILENAME constant", () => {
+describe("STACK_SPEC_FILENAME", () => {
+  it("is stack.yml", () => {
     expect(STACK_SPEC_FILENAME).toBe("stack.yml");
   });
 });
