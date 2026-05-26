@@ -16,8 +16,13 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    const services = args._ ?? [];
-    await runStartAction(services);
+    try {
+      const services = args._ ?? [];
+      await runStartAction(services);
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
   },
 });
 

@@ -22,22 +22,27 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    const state = ensureValidState();
-    const downArgs = args.volumes || args.purge ? ['down', '-v'] : ['down'];
-    await runComposeWithPreflight(state, downArgs);
+    try {
+      const state = ensureValidState();
+      const downArgs = args.volumes || args.purge ? ['down', '-v'] : ['down'];
+      await runComposeWithPreflight(state, downArgs);
 
-    if (args.purge) {
-      const dirs = [resolveConfigDir(), resolveStateDir(), resolveStashDir(), resolveWorkspaceDir()];
-      for (const dir of dirs) {
-        console.log(`Removing ${dir}`);
-        rmSync(dir, { recursive: true, force: true });
+      if (args.purge) {
+        const dirs = [resolveConfigDir(), resolveStateDir(), resolveStashDir(), resolveWorkspaceDir()];
+        for (const dir of dirs) {
+          console.log(`Removing ${dir}`);
+          rmSync(dir, { recursive: true, force: true });
+        }
+        console.log('OpenPalm stack and all data removed.');
+      } else {
+        console.log('OpenPalm stack stopped and removed.');
+        if (!args.volumes) {
+          console.log('Config and data directories are preserved. Use --purge to remove everything.');
+        }
       }
-      console.log('OpenPalm stack and all data removed.');
-    } else {
-      console.log('OpenPalm stack stopped and removed.');
-      if (!args.volumes) {
-        console.log('Config and data directories are preserved. Use --purge to remove everything.');
-      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
     }
   },
 });

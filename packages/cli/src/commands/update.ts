@@ -8,7 +8,12 @@ export default defineCommand({
     description: 'Refresh stack assets, pull latest images, and recreate containers',
   },
   async run() {
-    await runUpgradeAction();
+    try {
+      await runUpgradeAction();
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
   },
 });
 

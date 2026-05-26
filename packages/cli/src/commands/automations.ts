@@ -56,7 +56,12 @@ export default defineCommand({
         description: 'Report automation task registration status',
       },
       async run() {
-        await automationsCheck();
+        try {
+          await automationsCheck();
+        } catch (err) {
+          console.error(err instanceof Error ? err.message : String(err));
+          process.exit(1);
+        }
       },
     }),
   },

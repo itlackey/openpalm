@@ -5,6 +5,26 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0-beta.9] - 2026-05-26
+
+### Fixed
+
+- **All CLI commands now guarantee exit code 1 on failure** — ten command
+  `run()` handlers (`logs`, `restart`, `start`, `stop`, `status`, `update`,
+  `automations`, `scan`, `rollback`, `uninstall`) were missing try-catch.
+  Unhandled rejections could leave the process with exit code 0 in scripts and
+  CI pipelines. Each handler now catches, prints the error message, and calls
+  `process.exit(1)`.
+- **`stack.yml` seed file stripped to `version: 2` only** — the repo-shipped
+  seed contained a full `capabilities:` block (LLM provider, embedding model,
+  memory config) that was removed in the capabilities-to-akm-config migration.
+  The stale block was a documentation hazard and incompatible with the current
+  `StackSpec` type.
+- **CHANGELOG stale `OP_CAP_*` references corrected** — two lines in the
+  `[0.11.0]` section described provider/model config as driven by `OP_CAP_*`
+  env vars and `stack.yml` capabilities; updated to reflect that config now
+  lives in `config/akm/config.json`.
+
 ## [0.11.0-beta.8] - 2026-05-26
 
 ### Fixed
@@ -265,8 +285,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - `state/` — service-persistent data (replaces `data/`)
   - `cache/` — regenerable data (akm cache, rollback snapshots)
   - `workspace/` — shared `/work` mount
-- **Provider/model configuration uses `OP_CAP_*` capability env vars** —
-  driven by `config/stack/stack.yml` capabilities. No more env-schema files.
+- **Provider/model configuration moved to `config/akm/config.json`** —
+  `OP_CAP_*` env vars and `stack.yml` capabilities removed. No more env-schema files.
 - **akm secret store replaces vault/user** — user secrets live in the akm
   `vault:user` store at `stash/vaults/user.env`. The assistant entrypoint
   sources this at startup; compose no longer passes it as `--env-file`.
@@ -307,7 +327,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   OpenMemory integration deleted. Memory and knowledge recall now live in the
   shared akm stash.
 - **`*.env.schema` files and varlock** — env-schema validation removed.
-  Provider/model configuration migrated to `OP_CAP_*` capability vars.
+  Provider/model configuration migrated to `config/akm/config.json`.
 - **Standalone `scheduler` compose service** — replaced by the in-process
   co-process inside the assistant container.
 - **OpenViking roadmap documents** — superseded project planning documents

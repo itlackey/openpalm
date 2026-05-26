@@ -37,44 +37,49 @@ export default defineCommand({
       process.exit(2);
     }
 
-    const stackDir = resolveStackDir();
-    const targets = [
-      join(stackDir, 'stack.env'),
-      join(stackDir, 'guardian.env'),
-    ];
+    try {
+      const stackDir = resolveStackDir();
+      const targets = [
+        join(stackDir, 'stack.env'),
+        join(stackDir, 'guardian.env'),
+      ];
 
-    type FileResult = { path: string; keys: Array<{ name: string; set: boolean }> };
-    const results: FileResult[] = [];
+      type FileResult = { path: string; keys: Array<{ name: string; set: boolean }> };
+      const results: FileResult[] = [];
 
-    for (const path of targets) {
-      if (!existsSync(path)) continue;
-      const parsed = parseEnvFile(path);
-      const sensitive = Object.keys(parsed)
-        .filter((k) => isSensitiveEnvKey(k))
-        .sort();
-      if (sensitive.length === 0) continue;
-      results.push({
-        path,
-        keys: sensitive.map((name) => ({
-          name,
-          set: typeof parsed[name] === 'string' && parsed[name].length > 0,
-        })),
-      });
-    }
+      for (const path of targets) {
+        if (!existsSync(path)) continue;
+        const parsed = parseEnvFile(path);
+        const sensitive = Object.keys(parsed)
+          .filter((k) => isSensitiveEnvKey(k))
+          .sort();
+        if (sensitive.length === 0) continue;
+        results.push({
+          path,
+          keys: sensitive.map((name) => ({
+            name,
+            set: typeof parsed[name] === 'string' && parsed[name].length > 0,
+          })),
+        });
+      }
 
-    if (format === 'json') {
-      console.log(JSON.stringify({ files: results }));
-    } else {
-      if (results.length === 0) {
-        console.log('No vault env files found. Run `openpalm install` first.');
+      if (format === 'json') {
+        console.log(JSON.stringify({ files: results }));
       } else {
-        for (const file of results) {
-          console.log(`# ${file.path}`);
-          for (const key of file.keys) {
-            console.log(`  ${key.name}\t${key.set ? 'set' : 'empty'}`);
+        if (results.length === 0) {
+          console.log('No vault env files found. Run `openpalm install` first.');
+        } else {
+          for (const file of results) {
+            console.log(`# ${file.path}`);
+            for (const key of file.keys) {
+              console.log(`  ${key.name}\t${key.set ? 'set' : 'empty'}`);
+            }
           }
         }
       }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
     }
     process.exit(0);
   },

@@ -8,7 +8,12 @@ export default defineCommand({
     description: 'Show container status',
   },
   async run() {
-    const state = ensureValidState();
-    await runComposeReadOnly(state, ['ps', '--format', 'table']);
+    try {
+      const state = ensureValidState();
+      await runComposeReadOnly(state, ['ps', '--format', 'table']);
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
   },
 });

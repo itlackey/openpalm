@@ -5,11 +5,3 @@
 # valid v2 reference. See docs/technical/core-principles.md for the
 # authoritative format.
 version: 2
-capabilities:
-  llm: openai/gpt-4o
-  embeddings:
-    provider: openai
-    model: text-embedding-3-small
-    dims: 1536
-  memory:
-    userId: default_user

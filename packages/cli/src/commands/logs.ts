@@ -20,6 +20,11 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    await runLogsAction(args._ ?? []);
+    try {
+      await runLogsAction(args._ ?? []);
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
   },
 });
