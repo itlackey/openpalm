@@ -13,7 +13,7 @@ FROM node:22-trixie-slim
 
 ARG OPENCODE_VERSION=1.3.3
 ARG BUN_VERSION=bun-v1.3.10
-ARG AKM_CLI_VERSION=^0.8.0-rc2
+ARG AKM_CLI_VERSION=0.8.0-rc2
 
 # Re-export for runtime introspection.
 ENV OPENCODE_VERSION=${OPENCODE_VERSION} \

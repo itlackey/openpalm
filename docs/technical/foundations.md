@@ -146,7 +146,6 @@ Key env:
 - `PORT=8080`
 - `OP_ASSISTANT_URL=http://assistant:4096`
 - `OPENCODE_TIMEOUT_MS=0`
-- `OP_UI_TOKEN=${OP_UI_TOKEN:-}`
 - `GUARDIAN_AUDIT_PATH=/app/audit/guardian-audit.log`
 - `CHANNEL_<n>_SECRET`
 
@@ -215,7 +214,6 @@ Control plane:
 Env sources (inherits the assistant container's environment):
 
 - `OP_HOME=/openpalm`
-- `OP_ASSISTANT_TOKEN` — used as the admin API token for `api` actions
 - `OPENCODE_API_URL=http://localhost:4096` (co-resident OpenCode; auth disabled on this interface)
 
 Mounts (provided by the assistant service):
@@ -228,9 +226,8 @@ Mounts (provided by the assistant service):
 
 Design note — scheduler scope: The scheduler runs as part of the
 assistant container, so it shares the assistant's identity and trust
-posture. It uses `OP_ASSISTANT_TOKEN` to authenticate to the admin API
-when an automation has an `api` action. Because it has no network
-listener, no separate admin↔scheduler token is required.
+posture. Because it has no network listener, no separate admin↔scheduler
+token is required.
 
 Ports and network:
 
@@ -254,7 +251,7 @@ Key env:
 
 - `PORT` — listen port (default: `3880`)
 - `OP_HOME` — resolved from the host environment
-- `OP_UI_TOKEN` — read from `$OP_HOME/config/stack/stack.env`
+- `OP_UI_LOGIN_PASSWORD` — read from `$OP_HOME/config/stack/stack.env`; used to verify the admin login form
 
 Bind address:
 

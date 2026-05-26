@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 # Pinned via build arg so the install step is reproducible. Install globally
 # into /usr/local so the unprivileged bun user (set with USER below) can
 # execute it without writing to its own $HOME.
-ARG AKM_CLI_VERSION=^0.8.0-rc2
+ARG AKM_CLI_VERSION=0.8.0-rc2
 RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
     && chmod -R a+rX /usr/local/install/global \
     && chmod 755 /usr/local/bin/akm \

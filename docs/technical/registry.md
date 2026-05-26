@@ -99,9 +99,9 @@ Schema conventions:
 
 ## Admin API endpoints
 
-All endpoints require authentication. The admin UI authenticates via the
-`op_session` cookie established at login. CLI and automation callers supply
-the `x-admin-token` header.
+All endpoints require authentication via the `op_session` cookie. Non-browser
+callers must `POST /admin/auth/login` with `{ "password": "<OP_UI_LOGIN_PASSWORD>" }`
+to receive the cookie, then include it on subsequent requests.
 
 ### `GET /admin/automations/catalog`
 
