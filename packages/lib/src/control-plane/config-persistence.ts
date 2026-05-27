@@ -71,7 +71,7 @@ export function writeSystemEnv(state: ControlPlaneState): void {
   const parsed = parseEnvFile(systemEnvPath);
   const effectivelyComplete =
     parsed.OP_SETUP_COMPLETE === "true" ||
-    (!("OP_SETUP_COMPLETE" in parsed) && (parsed.OP_UI_LOGIN_PASSWORD ?? "").length > 0);
+    (parsed.OP_UI_LOGIN_PASSWORD ?? "").length > 0;
 
   const adminManaged: Record<string, string> = {
     OP_SETUP_COMPLETE: effectivelyComplete ? "true" : "false"

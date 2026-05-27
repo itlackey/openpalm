@@ -638,9 +638,13 @@ function readServiceLabels(raw: unknown): Record<string, string> {
 export function getAddonProfiles(homeDir: string, name: string): AddonProfile[] {
   if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
 
+  // Registry is authoritative for the profile catalog — it always reflects
+  // the current release. The enabled-addon copy in config/stack/addons/ can
+  // be stale (copied from an earlier release that had fewer profiles), so
+  // we only fall back to it when the registry entry is missing entirely.
   const composeCandidates = [
-    join(homeDir, "config", "stack", "addons", name, "compose.yml"),
     join(homeDir, "state", "registry", "addons", name, "compose.yml"),
+    join(homeDir, "config", "stack", "addons", name, "compose.yml"),
   ];
 
   for (const composePath of composeCandidates) {

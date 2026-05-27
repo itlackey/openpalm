@@ -10,9 +10,11 @@ import { parseEnvFile } from './env.js';
  */
 export function isSetupComplete(stackDir: string): boolean {
   const parsed = parseEnvFile(`${stackDir}/stack.env`);
-  if ("OP_SETUP_COMPLETE" in parsed) {
-    return parsed.OP_SETUP_COMPLETE.toLowerCase() === "true";
-  }
-
+  if (parsed.OP_SETUP_COMPLETE === "true") return true;
+  // Password present means setup ran at some point. Covers pre-flag installs
+  // and installs where writeSystemEnv wrote OP_SETUP_COMPLETE=false before
+  // the password fallback was added (beta.10 and earlier wrote false whenever
+  // the explicit flag was absent, which broke upgrades for users whose deploy
+  // never made all containers healthy before the flag was first written).
   return (parsed.OP_UI_LOGIN_PASSWORD ?? "").length > 0;
 }
