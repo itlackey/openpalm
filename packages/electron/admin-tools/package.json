@@ -1,30 +1,27 @@
 {
-  "name": "@openpalm/assistant-tools",
-  "version": "0.11.0-beta.6",
+  "name": "@openpalm/admin-tools-plugin",
+  "version": "0.11.0-beta.10",
   "type": "module",
   "license": "MPL-2.0",
-  "description": "Core OpenPalm assistant extensions for OpenCode",
+  "description": "Admin OpenCode tools for the Electron-spawned ephemeral OpenCode server (Phase 3 of the auth/proxy refactor)",
   "main": "./dist/index.js",
   "exports": {
     ".": "./dist/index.js"
   },
-  "engines": {
-    "bun": ">=1.0.0"
-  },
   "files": [
     "dist",
     "opencode",
-    "AGENTS.md"
+    "src"
   ],
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --format esm --target node",
+    "build": "bun build src/index.ts --bundle --outfile dist/index.js --format esm --target node",
     "test": "bun test",
     "prepublishOnly": "bun run build"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/itlackey/openpalm",
-    "directory": "packages/assistant-tools"
+    "directory": "packages/electron/admin-tools"
   },
   "dependencies": {
     "@opencode-ai/plugin": "^1.15.9"

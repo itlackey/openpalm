@@ -259,7 +259,6 @@ guardian_env="$CONFIG_DIR/stack/guardian.env"
 if [[ ! -f "$guardian_env" || $force -eq 1 ]]; then
 	channel_chat_secret=$(openssl rand -hex 16)
 	channel_api_secret=$(openssl rand -hex 16)
-	channel_voice_secret=$(openssl rand -hex 16)
 	channel_discord_secret=$(openssl rand -hex 16)
 	channel_slack_secret=$(openssl rand -hex 16)
 
@@ -267,7 +266,6 @@ if [[ ! -f "$guardian_env" || $force -eq 1 ]]; then
 # Guardian channel HMAC secrets — managed by openpalm
 CHANNEL_CHAT_SECRET=${channel_chat_secret}
 CHANNEL_API_SECRET=${channel_api_secret}
-CHANNEL_VOICE_SECRET=${channel_voice_secret}
 CHANNEL_DISCORD_SECRET=${channel_discord_secret}
 CHANNEL_SLACK_SECRET=${channel_slack_secret}
 EOF

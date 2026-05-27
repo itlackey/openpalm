@@ -283,8 +283,8 @@ jobs:
       - name: Install Bun workspace dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build admin-tools-plugin
-        run: bun run --cwd packages/admin-tools-plugin build
+      - name: Build admin-tools
+        run: bun run --cwd packages/electron/admin-tools build
 
       - name: Run Electron unit tests
         run: bun run --cwd packages/electron test

@@ -203,6 +203,16 @@ start_opencode() {
   exec "${cmd[@]}"
 }
 
+seed_default_agents_md() {
+  # Seed the baked-in AGENTS.md into OPENCODE_CONFIG_DIR if the operator has
+  # not placed their own copy there. The config dir is bind-mounted from
+  # OP_HOME/config/assistant/ so we cannot rely on the image copy surviving;
+  # this one-shot copy runs before start_opencode and respects user overrides.
+  local src="/usr/local/share/openpalm/AGENTS.md"
+  local dest="${OPENCODE_CONFIG_DIR:-/etc/openpalm/assistant}/AGENTS.md"
+  [ -f "$src" ] && [ ! -f "$dest" ] && cp "$src" "$dest" 2>/dev/null || true
+}
+
 maybe_adjust_uid_gid
 ensure_home_layout
 maybe_enable_ssh
@@ -211,6 +221,7 @@ maybe_enable_ssh
 # Runs as root because gosu has not been invoked yet — root can read the
 # 0600 vault file and re-export to children.
 maybe_source_akm_user_vault
+seed_default_agents_md
 
 # Validate akm config is present (written by admin UI or setup wizard)
 if [ ! -f "${AKM_CONFIG_DIR}/config.json" ]; then

@@ -26,17 +26,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * Resolve the admin-tools-plugin path. Priority:
+ * Resolve the admin-tools path. Priority:
  *   1. extraResources path (packaged Electron build)
  *   2. Workspace dist path (running from source in dev)
  *   3. npm package name (last-resort fallback)
  */
 function resolveAdminToolsPluginPath(): string {
-  // Production: electron-builder copies to resources/admin-tools-plugin/index.js
-  const packed = join(process.resourcesPath ?? '', 'admin-tools-plugin', 'index.js');
+  // Production: electron-builder copies to resources/admin-tools/index.js
+  const packed = join(process.resourcesPath ?? '', 'admin-tools', 'index.js');
   if (existsSync(packed)) return packed;
-  // Dev: __dirname is packages/electron/dist/ → walk up to packages/admin-tools-plugin/dist/
-  const dev = join(__dirname, '..', '..', 'admin-tools-plugin', 'dist', 'index.js');
+  // Dev: __dirname is packages/electron/dist/ → sibling admin-tools/dist/
+  const dev = join(__dirname, '..', 'admin-tools', 'dist', 'index.js');
   if (existsSync(dev)) return dev;
   return '@openpalm/admin-tools-plugin';
 }

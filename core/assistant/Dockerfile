@@ -128,10 +128,11 @@ ENV BUN_INSTALL_CACHE_DIR=/home/opencode/.cache/bun/install
 #   /usr/local/bin            — image-baked tools
 ENV PATH="/opt/persistent/bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:$PATH"
 
-# OpenCode config (opencode.jsonc, openpalm.md, system.md) now lives in
+# OpenCode config (opencode.jsonc, openpalm.md, system.md) lives in
 # OP_HOME/config/assistant/ and is bind-mounted at OPENCODE_CONFIG_DIR.
-# Nothing needs to be baked into the image.
-
+# AGENTS.md is baked here as a default; the entrypoint seeds it into
+# OPENCODE_CONFIG_DIR only if the operator has not placed their own copy there.
+COPY core/assistant/AGENTS.md /usr/local/share/openpalm/AGENTS.md
 
 EXPOSE 4096 22
 

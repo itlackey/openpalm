@@ -10,6 +10,8 @@
 		setTtsAutoEnabled,
 		resumeAutoplay,
 	} from '$lib/voice/voice-state.svelte.js';
+
+	const MAX_INTERIM_CHARS = 48;
 	import { chat } from '$lib/chat/chat-state.svelte.js';
 
 	let mounted = $state(false);
@@ -82,6 +84,13 @@
 
 {#if supported || ttsAvailable || voiceState.autoplayBlocked}
 	<div class="voice-control" role="toolbar" aria-label="Voice controls">
+		{#if isRecording && voiceState.interimTranscript}
+			<span class="voice-interim" aria-hidden="true" title={voiceState.interimTranscript}>
+				{voiceState.interimTranscript.length > MAX_INTERIM_CHARS
+					? voiceState.interimTranscript.slice(0, MAX_INTERIM_CHARS) + '…'
+					: voiceState.interimTranscript}
+			</span>
+		{/if}
 		{#if voiceState.autoplayBlocked}
 			<!-- Scoped autoplay-resume button. Only THIS click triggers
 			     playback — we no longer listen on `document`, so Save
@@ -202,7 +211,9 @@
 		     navbar to overflow horizontally on narrow widths. -->
 
 		<span class="sr-only" aria-live="polite">
-			{isRecording
+			{isRecording && voiceState.interimTranscript
+				? voiceState.interimTranscript
+				: isRecording
 				? 'Recording'
 				: isTranscribing
 					? 'Transcribing'
@@ -222,6 +233,21 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
+	}
+
+	.voice-interim {
+		max-width: 200px;
+		font-size: var(--text-xs);
+		color: var(--color-text-secondary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		padding: 2px var(--space-2);
+		background: var(--color-surface-hover);
+		border-radius: var(--radius-sm);
+		border: 1px solid var(--color-border);
+		flex-shrink: 1;
+		min-width: 0;
 	}
 
 	/* Scoped "click to resume" banner — replaces the old document-wide

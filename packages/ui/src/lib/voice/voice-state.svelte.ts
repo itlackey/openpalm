@@ -32,6 +32,8 @@ class VoiceState {
 	sttSupported = $state(false);
 	ttsSupported = $state(false);
 	errorMessage = $state('');
+	/** Partial transcript text while browser STT is mid-utterance. Cleared on stop/error. */
+	interimTranscript = $state('');
 
 	/** Active engine resolved from /admin/voice. */
 	sttEngine = $state<SttEngine>('disabled');
@@ -286,13 +288,25 @@ function startBrowserRecognition(onResult: (transcript: string) => void): void {
 	const instance = new SR();
 	activeRecognition = instance;
 	instance.lang = voiceState.sttLanguage || navigator?.language || 'en-US';
-	instance.interimResults = false;
+	instance.interimResults = true;
 	instance.maxAlternatives = 1;
 	instance.continuous = false;
 
+	// Accumulate final segments across multiple `onresult` events (continuous=false
+	// normally delivers one result, but some browsers split long utterances).
+	let finalAccumulated = '';
+
 	instance.onresult = (event: SpeechRecognitionEvent) => {
-		const transcript: string = event.results?.[0]?.[0]?.transcript ?? '';
-		if (transcript) onResult(transcript);
+		let interim = '';
+		for (let i = event.resultIndex; i < event.results.length; i++) {
+			const result = event.results[i];
+			if (result.isFinal) {
+				finalAccumulated += result[0]?.transcript ?? '';
+			} else {
+				interim += result[0]?.transcript ?? '';
+			}
+		}
+		voiceState.interimTranscript = finalAccumulated + interim;
 	};
 
 	instance.onerror = (event: SpeechRecognitionErrorEvent) => {
@@ -305,6 +319,7 @@ function startBrowserRecognition(onResult: (transcript: string) => void): void {
 		} else {
 			voiceState.errorMessage = `Speech error: ${error}`;
 		}
+		voiceState.interimTranscript = '';
 		voiceState.status = 'idle';
 		activeRecognition = null;
 		activeOnResult = null;
@@ -312,6 +327,9 @@ function startBrowserRecognition(onResult: (transcript: string) => void): void {
 
 	instance.onend = () => {
 		if (activeRecognition !== instance) return;
+		// Deliver the accumulated final transcript to the caller.
+		if (finalAccumulated.trim() && onResult) onResult(finalAccumulated.trim());
+		voiceState.interimTranscript = '';
 		voiceState.status = 'idle';
 		activeRecognition = null;
 		activeOnResult = null;
@@ -396,7 +414,7 @@ export function stopListening(): void {
 		} catch {
 			/* already stopped */
 		}
-		// onend will clear activeRecognition + activeOnResult.
+		// onend will deliver the final transcript + clear interimTranscript.
 		return;
 	}
 
@@ -699,6 +717,7 @@ export function destroyVoice(): void {
 		activeRecognition = null;
 	}
 	activeOnResult = null;
+	voiceState.interimTranscript = '';
 	voiceState.status = 'idle';
 }
 

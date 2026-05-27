@@ -22,8 +22,7 @@ fi
 # in #391; secret hygiene now lives in the in-process logger redactor
 # (`@openpalm/lib/logger`) and the `akm vault` secret store.
 #
-# Channels that do not extend BaseChannel (e.g. channel-voice runs its own
-# Bun.serve) can override this by setting CHANNEL_ENTRYPOINT to a path
-# inside the installed package.
+# Channels that do not use the default BaseChannel entrypoint can override
+# this by setting CHANNEL_ENTRYPOINT to a path inside the installed package.
 ENTRYPOINT="${CHANNEL_ENTRYPOINT:-node_modules/@openpalm/channels-sdk/src/channel-entrypoint.ts}"
 exec bun run "$ENTRYPOINT"
