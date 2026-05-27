@@ -106,7 +106,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   disabled (no browser fallback). Engine value is passed through directly so
   the Review step shows "Disabled" when unchecked.
 
-## [Unreleased]
+## [0.11.0] - 2026-05-26
 
 ### Security
 
@@ -116,43 +116,20 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   receive a 403; this prevents a race where a remote actor reaches the
   unauthenticated first-run wizard before the owner does. Post-install
   re-runs (`/setup?rerun=1`) require admin auth and are not affected.
-
-### Fixed
-
-- **`readFileSync` missing import in `ui-assets.ts`** — `svelte-check` was
-  reporting a TS error; added `readFileSync` to the `node:fs` import.
-- **Silent error swallowing in setup wizard** — five `.catch(() => { /* ignore */ })`
-  and `.catch(() => { /* fall through */ })` calls now log to `console.error`
-  so wizard failures are visible in browser devtools without changing UX.
-- **Port conflict message when Docker is unreachable** — system-check response
-  now carries `portCheckReliable: boolean`; when false, the conflict hint reads
-  "Docker is not running — start Docker and click Retry to confirm" instead of
-  "Another program is using this port".
+- **HMAC constant-time compare** — guardian uses timing-safe comparison for all
+  channel HMAC validation.
+- **Path traversal rejection** — assistant-client rejects path-escape requests.
+- **argv-leak prevention** — `akm vault` secret operations pass secrets via
+  stdin; unconditional CI test coverage verifies this.
 
 ### Added
 
 - **"Use recommended defaults" is now a true one-click auto-install path** —
   clicking the primary button on the Welcome step now completes setup without
-  walking through Providers, Models, Voice, or Options:
-  - If host providers were already detected (OpenCode running on the host),
-    they are imported in the background (spinner: "Importing providers…") and
-    the best model defaults are selected automatically.
-  - If nothing is detected, the stack installs without a provider and the user
-    can add one from the admin panel after first boot.
-  - Voice defaults to browser TTS/STT; all other options use their defaults.
-
-### Changed
-
-- **README "Where things stand"** — updated to describe 0.11.0 as a refactor
-  and simplification release; 0.12.x will focus on stabilization and hardening
-  before v1.
-- **`@openpalm/lib` and `@openpalm/channels-sdk` READMEs** — added Bun-only
-  notice: these packages ship TypeScript source and require Bun.
-- **CLI `_build_note`** — clarified that `prebuild` is npm-only and Bun does
-  not run lifecycle hooks.
-
-### Added
-
+  walking through Providers, Models, Voice, or Options. If host providers were
+  already detected (OpenCode running on the host), they are imported in the
+  background and the best model defaults are selected automatically. If nothing
+  is detected, the stack installs without a provider.
 - **"System Check" wizard step (index 0)** — runs Docker + Compose v2 detection
   via `/api/setup/system-check`, with platform-specific install/start guidance
   and port-availability warnings. Blocks navigation forward until Docker is
@@ -168,31 +145,31 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Wizard re-run from admin** — "Update Settings" in the admin overview links
   to `/setup?rerun=1`. The wizard pre-populates admin token, owner, image tag,
   host AKM toggle, LLM/embedding selections, voice fields, enabled addons, and
-  channel credentials from the existing install. System Check still runs but
-  doesn't block; auto-redirect on completion is skipped.
+  channel credentials from the existing install.
 - **Electron update banner (notify-only)** — Electron checks the latest
   GitHub release on startup (5 s timeout, 6 h cache). When a newer version
-  exists, env vars + a `contextBridge` API are injected into the UI; the new
-  `UpdateBanner` component renders a dismissible banner with a download link.
-  Dismissal persists per-version in `localStorage`.
+  exists, a dismissible banner is shown with a download link. Dismissal
+  persists per-version in `localStorage`.
 - **Electron startup polish** — frameless splash window while `startUIServer`
   runs; main window shows only after the UI server reports ready. The window
-  navigates directly to `/setup` or `/chat` based on `setupComplete` status,
-  removing the `/` → redirect bounce on first run.
-- **Electron auto-publish to GitHub releases** — `electron-builder.yml` now
+  navigates directly to `/setup` or `/chat` based on `setupComplete` status.
+- **Electron auto-publish to GitHub releases** — `electron-builder.yml`
   publishes installers (`.dmg`, `.exe`, `.AppImage`) to the GitHub release tag
-  automatically via `--publish always` in CI.
+  automatically via CI.
+- **`@openpalm/admin-tools-plugin` bundled in Electron** — the admin OpenCode
+  plugin is now prebuilt and shipped as an Electron `extraResource` instead of
+  resolving from npm. The plugin path is resolved from `process.resourcesPath`
+  (packaged) or the workspace `dist/` directory (dev), with an npm name as a
+  last-resort fallback. `@openpalm/admin-tools-plugin` added to platform
+  manifests so it version-syncs with the rest of the release.
 - **Persistent install prefix (`/opt/persistent`)** — named volume
   `assistant-persistent` mounted into the assistant container; first on
-  `$PATH`. Survives `--force-recreate` and image upgrades. Documented in
-  `docs/operations/persistent-assistant-tools.md` along with optional
-  Pattern 2 (apt manifest) and Pattern 3 (Dockerfile bake).
+  `$PATH`. Survives `--force-recreate` and image upgrades.
 - **`/api/setup/complete` `dryRun` flag** — persist config without triggering
   a Docker deploy. Used by tests and any validation flow.
 - **Cross-OP_HOME compose-project collision guard** — `startDeploy` refuses
   to deploy if existing containers in the same compose project belong to a
-  different `OP_HOME`. Prevents the dev/host stacks from clobbering each
-  other when both default to project name `openpalm`.
+  different `OP_HOME`. Prevents the dev/host stacks from clobbering each other.
 - **Distinct dev compose project name** — `OP_PROJECT_NAME=openpalm-dev`
   is seeded by `scripts/dev-setup.sh` so the dev stack can never collide
   with a production stack on the same machine.
@@ -203,63 +180,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   explicit guidance on where to install tools (`$HOME`-based installers
   persist for free, `/opt/persistent` for prefix-style installs, `apt` for
   one-off session-only tools).
-
-### Changed
-
-- **`MANAGED_ASSETS` points at the v0.11 paths** — `core-assets.ts` now
-  refreshes `config/assistant/opencode.jsonc`, `openpalm.md`, and `system.md`
-  from `.openpalm/config/assistant/` (was the now-deleted
-  `core/assistant/opencode/` directory).
-- **`seedOpenPalmDir` always refreshes `state/registry/`** — system-managed
-  registry overlays now update on every install/upgrade, fixing the case
-  where stale addon overlays (e.g. an old discord overlay missing
-  `DISCORD_BOT_TOKEN`) persisted through reinstalls.
-- **`performSetup` enables addons end-to-end** — `addons: { discord: true }`
-  in the wizard payload now calls `setAddonEnabled`, which copies the
-  compose overlay AND generates `CHANNEL_<NAME>_SECRET` in `guardian.env`.
-  Previously the addon was never enabled.
-- **Provider verification error UX** — inline provider errors run through
-  `friendlyError` so raw `Failed to fetch models (HTTP 401)` becomes
-  "API key rejected — double-check the key and that it has access to the
-  selected model".
-
-### Removed (hard break — no migration path)
-
-- **`core/assistant/opencode/`** — legacy assistant config location. Now lives
-  solely at `.openpalm/config/assistant/`.
-- **`ControlPlaneState.setupToken`** — field, generator, all test fixtures,
-  and the `state.vitest.ts` "generates setupToken on each reset" test.
-  Was unused everywhere outside tests.
-- **`mirrorUserVaultToAkm()` and `migrateAndCleanupLegacyUserEnv()`** —
-  no-op stubs "retained for API compatibility" alongside their call sites
-  in `setup.ts` + `lifecycle.ts`, `MirrorResult` type, re-exports in
-  `index.ts`, and their test `describe` blocks (~330 lines of test code).
-- **Legacy planning artifacts** — `docs/technical/capability-injection.md`,
-  `admin-simplification-plan.md`, `akm-capabilities-refactoring-audit.md`,
-  `connections-simplification-plan.md`, `release-publish-remediation-plan.md`,
-  `proposals/`.
-- **`maybe_configure_lmstudio_provider()` in the assistant entrypoint** —
-  superseded by OpenCode's auth.json + Connections tab provider management.
-  `LMSTUDIO_BASE_URL` plumbing removed from `core.compose.yml`.
-- **Commented-out legacy env block** — `core.compose.yml` no longer carries
-  the `OP_CAP_*`, `LMSTUDIO_BASE_URL`, or `GOOGLE_APPLICATION_CREDENTIALS`
-  commented placeholders.
-- **Stale historical comments** — "Phase N of #388 (closes #406)" prefixes
-  scrubbed from every active source file and replaced with current-state
-  notes. `setup-token.txt` migration comments removed.
-- **`release-e2e-test.sh` capability check** — checks for
-  `config/akm/config.json` existence instead of `OP_CAP_LLM_PROVIDER` /
-  `OP_CAP_LLM_MODEL` in `stack.env`.
-
-### Versioning
-
-- All workspace packages aligned at `0.11.0` (`@openpalm/assistant-tools`,
-  `@openpalm/channel-api/discord/slack/voice` were on `0.10.x`).
-
-## [0.11.0] - 2026-05-14
-
-### Added
-
 - **UI as a host process** — the bare `openpalm` command starts the
   SvelteKit UI directly on the host at `http://localhost:3880`. No UI
   container, no docker-socket-proxy. The setup wizard runs at `/setup`
@@ -289,6 +209,24 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`MANAGED_ASSETS` points at the v0.11 paths** — `core-assets.ts` now
+  refreshes `config/assistant/opencode.jsonc`, `openpalm.md`, and `system.md`
+  from `.openpalm/config/assistant/`.
+- **`seedOpenPalmDir` always refreshes `state/registry/`** — system-managed
+  registry overlays now update on every install/upgrade, fixing the case
+  where stale addon overlays persisted through reinstalls.
+- **`performSetup` enables addons end-to-end** — `addons: { discord: true }`
+  in the wizard payload now calls `setAddonEnabled`, which copies the
+  compose overlay AND generates `CHANNEL_<NAME>_SECRET` in `guardian.env`.
+  Previously the addon was never enabled.
+- **Provider verification error UX** — inline provider errors run through
+  `friendlyError` so raw `Failed to fetch models (HTTP 401)` becomes a
+  user-actionable card.
+- **README "Where things stand"** — updated to describe 0.11.0 as a refactor
+  and simplification release; 0.12.x will focus on stabilization and hardening
+  before v1.
+- **`@openpalm/lib` and `@openpalm/channels-sdk` READMEs** — added Bun-only
+  notice: these packages ship TypeScript source and require Bun.
 - **Directory layout restructured** — the `OP_HOME` layout is now:
   - `config/stack/` — compose runtime: `core.compose.yml`, `stack.env`,
     `guardian.env`, `addons/`
@@ -307,12 +245,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   interface indirection removed across packages.
 - **Channel SDK unified** — channel adapter internals consolidated.
 - **`readUserVaultSync` removed** — replaced with async `readUserVault`.
-- **socat lmstudio proxy** — `core/assistant/entrypoint.sh` now includes an
-  explicit guard and documentation for the 127.0.0.1:1234 → LMSTUDIO_BASE_URL
-  proxy pattern.
 
 ### Fixed
 
+- **`readFileSync` missing import in `ui-assets.ts`** — `svelte-check` was
+  reporting a TS error; added `readFileSync` to the `node:fs` import.
+- **Silent error swallowing in setup wizard** — five `.catch(() => { /* ignore */ })`
+  and `.catch(() => { /* fall through */ })` calls now log to `console.error`
+  so wizard failures are visible in browser devtools without changing UX.
+- **Port conflict message when Docker is unreachable** — system-check response
+  now carries `portCheckReliable: boolean`; when false, the conflict hint reads
+  "Docker is not running — start Docker and click Retry to confirm" instead of
+  "Another program is using this port".
 - **Path traversal guard in assistant-client** — requests escaping the allowed
   path prefix are rejected before reaching the assistant.
 - **HMAC constant-time comparison in guardian** — timing-safe comparison for all
@@ -326,14 +270,29 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- **`core/assistant/opencode/`** — legacy assistant config location. Now lives
+  solely at `.openpalm/config/assistant/`.
+- **`ControlPlaneState.setupToken`** — field, generator, all test fixtures,
+  and the `state.vitest.ts` "generates setupToken on each reset" test.
+  Was unused everywhere outside tests.
+- **`mirrorUserVaultToAkm()` and `migrateAndCleanupLegacyUserEnv()`** —
+  no-op stubs alongside their call sites in `setup.ts` + `lifecycle.ts`,
+  `MirrorResult` type, re-exports in `index.ts`, and their test `describe`
+  blocks (~330 lines of test code).
+- **Legacy planning artifacts** — `docs/technical/capability-injection.md`,
+  `admin-simplification-plan.md`, `akm-capabilities-refactoring-audit.md`,
+  `connections-simplification-plan.md`, `release-publish-remediation-plan.md`,
+  `proposals/`.
+- **`maybe_configure_lmstudio_provider()` in the assistant entrypoint** —
+  superseded by OpenCode's auth.json + Connections tab provider management.
+  `LMSTUDIO_BASE_URL` plumbing removed from `core.compose.yml`.
 - **Admin container** — `openpalm/admin` Docker image is gone. The UI runs
   as a host process via the bare `openpalm` command. `docker-socket-proxy`
   also removed.
 - **`admin`/`ui` subcommand** — folded into the bare `openpalm` command.
   Use `openpalm --no-open` for headless invocation (systemd, scripts).
 - **Shared `openpalm-base` Docker image** — inlined into
-  `core/assistant/Dockerfile` since it was the only consumer. Removes the
-  separate `build-base-image` CI job and the two-step `dev:build`.
+  `core/assistant/Dockerfile` since it was the only consumer.
 - **Memory service** (`packages/memory`) — the Bun-based memory service and all
   OpenMemory integration deleted. Memory and knowledge recall now live in the
   shared akm stash.
@@ -341,19 +300,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Provider/model configuration migrated to `config/akm/config.json`.
 - **Standalone `scheduler` compose service** — replaced by the in-process
   co-process inside the assistant container.
-- **OpenViking roadmap documents** — superseded project planning documents
-  removed.
 - **Dead code and dead exports** — unused functions, types, and barrel re-exports
   deleted across all packages.
 - **SSH port binding from core compose** — SSH is no longer exposed by default.
-
-### Security
-
-- **HMAC constant-time compare** — guardian uses timing-safe comparison for all
-  channel HMAC validation.
-- **Path traversal rejection** — assistant-client rejects path-escape requests.
-- **argv-leak prevention** — `akm vault` secret operations pass secrets via
-  stdin; unconditional CI test coverage verifies this.
+- **Stale historical comments** — "Phase N of #388 (closes #406)" prefixes
+  scrubbed from every active source file. `setup-token.txt` migration comments
+  removed.
 
 ## [0.9.0-rc2] - 2026-03-10
 

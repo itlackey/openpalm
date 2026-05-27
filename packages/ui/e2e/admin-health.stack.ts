@@ -1,18 +1,12 @@
 /**
- * Admin Health & Connections — MANUAL smoke script (NOT an automated test).
+ * Admin Health & Connections — stack integration test.
  *
- * Renamed from `.pw.ts` to `.manual.ts` so it no longer runs as part
- * of the default Playwright suite. Requires a live dev stack +
- * standalone UI listening on ADMIN_URL. See e2e/README.md for the
- * convention. Self-contained vitest coverage of /admin/health +
- * /admin/providers (mocking @openpalm/lib) is a worthwhile follow-up.
+ * Collected by Playwright when RUN_DOCKER_STACK_TESTS=1 (*.stack.ts pattern).
+ * Run via: ./scripts/dev-e2e-test.sh --skip-build --playwright
  *
  * Validates:
  * - GET /admin/health: session probe (auth gate, assistant reachability)
  * - GET /admin/providers: Connections tab availability with running assistant
- *
- * Run with:
- *   RUN_DOCKER_STACK_TESTS=1 OP_UI_LOGIN_PASSWORD=dev-admin-token bun run ui:test:e2e
  */
 
 import { expect, test } from '@playwright/test';
@@ -100,5 +94,38 @@ test.describe('Connections Tab — Providers', () => {
     const body = await res.json();
     expect(typeof body.stats?.total).toBe('number');
     expect(typeof body.stats?.connected).toBe('number');
+  });
+});
+
+test.describe('Guardian liveness', () => {
+  test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
+
+  test('GET /guardian/health returns 200 via admin proxy (no auth required)', async ({ request }) => {
+    // /guardian/health is in SETUP_PATHS — accessible without a session cookie
+    const res = await request.get(`${ADMIN_URL}/guardian/health`, {
+      headers: { 'x-request-id': crypto.randomUUID() },
+    });
+    expect(res.status()).toBe(200);
+  });
+
+  test('GET /guardian/health response body indicates guardian is up', async ({ request }) => {
+    const res = await request.get(`${ADMIN_URL}/guardian/health`, {
+      headers: { 'x-request-id': crypto.randomUUID() },
+    });
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    // Guardian health returns { status: 'ok' } or similar
+    expect(body.status ?? body.ok).toBeTruthy();
+  });
+
+  test('GET /admin/health includes opencode field (guardian has no separate health field)', async ({ request }) => {
+    // Admin health covers the OpenCode assistant. Guardian liveness is separate
+    // (proxied above). Verify the admin health response shape hasn't regressed.
+    const res = await request.get(`${ADMIN_URL}/admin/health`, { headers: headers() });
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(typeof body.opencode).toBe('boolean');
+    expect(body.endpoint).toBeDefined();
   });
 });

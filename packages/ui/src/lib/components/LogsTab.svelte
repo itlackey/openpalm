@@ -9,6 +9,7 @@
   let { tokenStored, services }: Props = $props();
 
   let logs = $state('');
+  let logsLoaded = $state(false);
   let loading = $state(false);
   let error = $state('');
   let selectedService = $state('');
@@ -27,6 +28,7 @@
       });
       if (result.ok) {
         logs = result.logs;
+        logsLoaded = true;
         if (autoScroll && logContainer) {
           requestAnimationFrame(() => {
             if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
@@ -110,7 +112,11 @@
           <line x1="16" y1="13" x2="8" y2="13" />
           <line x1="16" y1="17" x2="8" y2="17" />
         </svg>
-        <p>Select a service and click "Load Logs" to view container output.</p>
+        {#if logsLoaded}
+          <p>No log output — the container may not be running or has no recent output.</p>
+        {:else}
+          <p>Select a service and click "Load Logs" to view container output.</p>
+        {/if}
       </div>
     {/if}
   </div>

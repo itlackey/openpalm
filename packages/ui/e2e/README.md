@@ -2,68 +2,82 @@
 
 ## TL;DR
 
-There are currently **no automated browser tests** in this project.
-Every stack-dependent script has been moved out of the default
-Playwright suite (renamed `.pw.ts` → `.manual.ts`).
+**On-demand full-stack e2e** — spin up an isolated stack and run all browser tests in one command:
 
-Real automated coverage lives in the vitest / bun-test suites:
-- `packages/ui/src/**/*.vitest.ts` — SvelteKit route + server-module
-  tests with `@openpalm/lib` mocked
+```bash
+./scripts/dev-e2e-test.sh --skip-build --playwright
+```
+
+Unit/integration coverage (~1130 tests, no Docker required):
+- `packages/ui/src/**/*.vitest.ts` — SvelteKit routes + server modules (mocked lib)
 - `packages/lib/src/**/*.test.ts` — control-plane logic
-- `packages/cli/src/*.test.ts`, `packages/channels-sdk/src/*.test.ts`,
-  `core/guardian/src/*.test.ts`
+- `packages/cli/src/*.test.ts`, `packages/channels-sdk/src/*.test.ts`, `core/guardian/src/*.test.ts`
 
-Together: ~1130 tests, run anywhere, no docker required, no
-operator-provisioned environment.
+## File conventions
 
-## File conventions in this directory
+### `*.pw.ts` — self-contained Playwright tests (default suite)
 
-### `*.pw.ts` — Playwright tests (default suite)
+Collected by `testMatch: '*.pw.ts'`. Run via `bun run ui:test:e2e`.
+Must pass with no live stack and no host-side env vars.
 
-Collected by Playwright's default `testMatch: '*.pw.ts'`. Run via
-`bun run ui:test:e2e`. **Must be self-contained** — no live stack,
-no host-side env required to pass.
+The only current file is `_placeholder.pw.ts` — exists so `npx playwright test`
+doesn't exit non-zero with "no tests found". Replace it when a genuinely
+self-contained browser test is added.
 
-Today the only file matching is `_placeholder.pw.ts`, which exists
-solely to keep `npx playwright test` from exiting non-zero with
-"no tests found". When someone adds a genuinely self-contained
-browser test (mocked docker, fixture data) it should be a new
-`*.pw.ts` file and the placeholder can be deleted.
+### `*.stack.ts` — stack integration tests (isolated environment)
 
-### `*.manual.ts` — scripted smoke checks for humans
+Collected by Playwright **only** when `RUN_DOCKER_STACK_TESTS=1`. Require a
+running isolated stack (managed by `dev-e2e-test.sh --playwright`). Each file
+guards itself with `test.skip(!process.env.RUN_DOCKER_STACK_TESTS, ...)`.
 
-NOT picked up by the default Playwright run. Reference scripts an
-operator invokes by hand before a release to prove the live stack
-actually works end-to-end (compose pull/up, real Docker daemon,
-real openpalm-voice container, etc.). They are explicitly NOT
-automated tests — they require the operator to provision the
-preconditions (running dev stack on known ports, standalone UI
-server listening on `ADMIN_URL`, sometimes a built voice image
-cached locally).
+Current stack tests:
 
-Run a specific manual smoke:
+| File | What it covers |
+|------|---------------|
+| `admin-health.stack.ts` | `/admin/health` auth + `/admin/providers` with live assistant + guardian liveness via proxy |
+| `opencode-ui.stack.ts` | OpenCode web UI reachability on assistant port |
+| `setup-wizard-api.stack.ts` | Full wizard API contract: reset → system-check → POST /complete → deploy poll |
+| `setup-wizard-browser.stack.ts` | Wizard browser rendering: System Check step loads, Continue works |
+| `chat-ui.stack.ts` | Chat page renders, message input accepts text, send button enabled |
+| `install-flow.stack.ts` | Wizard walk-through to Review step; Install button present and enabled |
+| `auth-boundary.stack.ts` | All critical admin endpoints: 401 without auth, 401 wrong cookie, 200 valid cookie |
+| `secrets.stack.ts` | Vault CRUD: POST key → GET confirms in list → DELETE → GET confirms gone; input validation |
+| `admin-panel-browser.stack.ts` | Browser smoke: Overview containers, Logs tab, Connections tab, Secrets tab; no raw error text |
 
+Run all stack tests via the composite script:
+
+```bash
+# First time (builds UI + images from source, ~5 min):
+./scripts/dev-e2e-test.sh --playwright
+
+# Subsequent runs (reuses built images, ~60s):
+./scripts/dev-e2e-test.sh --skip-build --playwright
 ```
-cd packages/ui
+
+Or run a single file against an already-running isolated stack:
+
+```bash
 RUN_DOCKER_STACK_TESTS=1 \
-  OP_HOME=$(realpath ../../.dev) \
-  OP_UI_LOGIN_PASSWORD=<password> \
-  ADMIN_URL=http://localhost:9100 \
-  npx playwright test e2e/setup-wizard-api.manual.ts
+  ADMIN_URL=http://127.0.0.1:3890 \
+  OP_HOME=.dev-e2e \
+  OP_UI_LOGIN_PASSWORD=<token> \
+  npm --prefix packages/ui run test:e2e -- e2e/chat-ui.stack.ts
 ```
 
-The header comment in each `.manual.ts` file describes its
-preconditions and what it covers.
+### `*.manual.ts` — human-operated smoke checks
 
-## Why the split
+NOT collected by Playwright (neither `*.pw.ts` nor `*.stack.ts`). Scripts that
+require special operator setup beyond the isolated stack (real voice hardware,
+channel credentials, AKM stash configuration, etc.).
 
-Automated tests should run anywhere with no operator setup. A test
-that says "first manually start a Docker stack, then point this at
-the right URL, then check the right env" is a scripted manual QA
-checklist wearing a test framework — useful, but not a test.
+Current manual-only files: `voice.manual.ts`, `channel-guardian-pipeline.manual.ts`,
+`scheduler.manual.ts`, `akm-config.manual.ts`.
 
-Migrating each `.manual.ts` to a self-contained `.pw.ts` (or
-absorbing its contract into vitest) is good follow-up work; the
-rename surfaces the gap honestly rather than papering over it with
-a `RUN_DOCKER_STACK_TESTS=1` gate that made the suite green-ish in
-the default path while actually skipping every test.
+## Isolation guarantees
+
+`dev-e2e-test.sh` creates a completely isolated environment:
+
+- `COMPOSE_PROJECT_NAME=openpalm-e2e` — never touches user's running stack
+- `OP_E2E_HOME=.dev-e2e` — never touches `.dev/` or `~/.openpalm/`
+- Ports: UI=3890, assistant=3891, voice=8187 — offset from dev (9100/4800/9180)
+- Cleanup trap removes containers + `.dev-e2e/` on exit (unless `--keep`)

@@ -1,33 +1,19 @@
 /**
- * Setup wizard — MANUAL API smoke script (NOT an automated test).
+ * Setup wizard — API integration test.
  *
- * Renamed to `.manual.ts` so Playwright's default `testMatch: '*.pw.ts'`
- * skips it. Run only when an operator explicitly invokes it against a
- * live dev stack — see e2e/README.md.
- *
- * The route + deploy logic this exercises (performSetup, startDeploy,
- * compose pull/up, image-fallback, profile bring-up) is covered by the
- * vitest suites in src/lib/server (no docker needed). This file is for
- * pre-release smoke that proves the actual compose orchestration works
- * end-to-end against a real Docker daemon.
+ * Collected by Playwright when RUN_DOCKER_STACK_TESTS=1 (*.stack.ts pattern).
+ * Run via: ./scripts/dev-e2e-test.sh --skip-build --playwright
  *
  * Resets stack.env to the pre-setup state, hits every wizard API
  * endpoint in the same order the browser flow does, and asserts the
- * deploy finishes with setupComplete=true. ~30s on a warm dev stack
- * (containers already pulled).
+ * deploy finishes with setupComplete=true. ~30s on a warm dev stack.
  *
- * What this covers:
+ * Covers:
  *   - GET /api/setup/status → not complete after reset
  *   - GET /api/setup/system-check → docker available
- *   - POST /api/setup/complete with the minimum-viable payload
- *     (browser-tts/browser-stt, no providers, allowEmpty)
+ *   - POST /api/setup/complete with minimum-viable payload
  *   - GET /api/setup/deploy-status polled until terminal
  *   - GET /api/setup/status → complete after deploy
- *
- * What it does NOT cover:
- *   - UI rendering / click flow (see setup-wizard-browser.pw.ts)
- *   - OpenPalm Voice container pull (separate slow test, gated by
- *     RUN_SLOW_E2E)
  *
  * Run with:
  *   RUN_DOCKER_STACK_TESTS=1 \

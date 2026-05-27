@@ -1,8 +1,8 @@
 /**
- * OpenCode UI reachability — MANUAL smoke script (NOT an automated test).
+ * OpenCode UI reachability — stack integration test.
  *
- * Renamed from `.pw.ts` to `.manual.ts`. Requires a live dev stack
- * with the assistant container running. See e2e/README.md.
+ * Collected by Playwright when RUN_DOCKER_STACK_TESTS=1 (*.stack.ts pattern).
+ * Run via: ./scripts/dev-e2e-test.sh --skip-build --playwright
  */
 import { expect, test } from '@playwright/test';
 

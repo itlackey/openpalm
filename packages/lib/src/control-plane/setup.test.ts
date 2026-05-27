@@ -498,4 +498,22 @@ describe("performSetup", () => {
     expect(stackEnvContent).toContain("discord-bot-token-xyz");
     expect(stackEnvContent).toContain("discord-app-id-123");
   });
+
+  it("ensureOpenCodeConfig never writes forbidden keys (providers, smallModel, model) to the user config", async () => {
+    // OpenCode v1.2.24+ rejects these keys with ConfigInvalidError at startup.
+    // This test locks the starter config shape so future changes can't
+    // accidentally introduce keys that would crash the assistant on boot.
+    const { ensureOpenCodeConfig } = await import("./secrets.js");
+    ensureOpenCodeConfig();
+
+    const configPath = join(homeDir, "config", "assistant", "opencode.json");
+    expect(existsSync(configPath)).toBe(true);
+
+    const config = JSON.parse(readFileSync(configPath, "utf-8"));
+    expect(config).not.toHaveProperty("providers");
+    expect(config).not.toHaveProperty("smallModel");
+    expect(config).not.toHaveProperty("model");
+    // $schema is the only required key
+    expect(config.$schema).toBeTruthy();
+  });
 });

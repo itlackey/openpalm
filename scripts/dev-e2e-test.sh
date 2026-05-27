@@ -21,22 +21,26 @@
 #   - OP_E2E_UI_PORT (default: 3890) — avoids :3880 if user has admin up
 #
 # Usage:
-#   ./scripts/dev-e2e-test.sh [--skip-build] [--keep]
+#   ./scripts/dev-e2e-test.sh [--skip-build] [--keep] [--playwright]
 #
 # Options:
 #   --skip-build   Reuse existing images instead of rebuilding
 #   --keep         Leave the stack/admin running after tests for inspection
+#   --playwright   Also run Playwright browser tests (*.stack.ts) against the isolated stack
 #
 set -euo pipefail
 
 SKIP_BUILD=0
 KEEP=0
+RUN_PLAYWRIGHT=0
 for arg in "$@"; do
 	case "$arg" in
 	--skip-build) SKIP_BUILD=1 ;;
 	--keep) KEEP=1 ;;
+	--playwright) RUN_PLAYWRIGHT=1 ;;
 	-h | --help)
-		echo "Usage: $0 [--skip-build] [--keep]"
+		echo "Usage: $0 [--skip-build] [--keep] [--playwright]"
+		echo "  --playwright  Run Playwright stack tests against the isolated stack after curl checks"
 		exit 0
 		;;
 	*) echo "Unknown option: $arg" >&2; exit 1 ;;
@@ -262,6 +266,28 @@ if echo "$list" | grep -q '"assistant"' && echo "$list" | grep -q '"guardian"'; 
 	pass "Admin reports both assistant and guardian containers"
 else
 	fail "Admin container list missing services: $list"
+fi
+
+# ── Step 9 (optional): Playwright browser tests ──────────────────────
+if [[ $RUN_PLAYWRIGHT -eq 1 ]]; then
+	echo ""
+	echo "=== Step 9: Playwright stack tests ==="
+	OP_E2E_ASSISTANT_PORT="${OP_E2E_ASSISTANT_PORT:-3891}"
+	PW_EXIT=0
+	STACK_ENV_PATH="${OP_E2E_HOME}/config/stack/stack.env" \
+	OP_HOME="${OP_E2E_HOME}" \
+	RUN_DOCKER_STACK_TESTS=1 \
+	ADMIN_URL="${UI_URL}" \
+	OP_UI_LOGIN_PASSWORD="${UI_TOKEN}" \
+	ADMIN_TOKEN="${UI_TOKEN}" \
+	ASSISTANT_URL="http://127.0.0.1:${OP_E2E_ASSISTANT_PORT}" \
+	npm --prefix packages/ui run test:e2e || PW_EXIT=$?
+
+	if [[ $PW_EXIT -eq 0 ]]; then
+		pass "Playwright stack tests passed"
+	else
+		fail "Playwright stack tests failed (exit $PW_EXIT)"
+	fi
 fi
 
 # ── Results ──────────────────────────────────────────────────────────

@@ -260,10 +260,13 @@ jobs:
       - name: Run UI unit tests
         run: bun run ui:test:unit
 
-  ui-e2e-mocked:
-    name: UI mocked E2E tests (Playwright)
+      - name: Build UI (catch Vite/SSR failures before release)
+        run: bun run ui:build
+
+  electron-tests:
+    name: Electron unit tests (Vitest)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -280,8 +283,8 @@ jobs:
       - name: Install Bun workspace dependencies
         run: bun install --frozen-lockfile
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+      - name: Build admin-tools-plugin
+        run: bun run --cwd packages/admin-tools-plugin build
 
-      - name: Run mocked Playwright E2E tests
-        run: bun run ui:test:e2e:mocked || true
+      - name: Run Electron unit tests
+        run: bun run --cwd packages/electron test

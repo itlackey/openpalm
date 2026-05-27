@@ -34,7 +34,7 @@ done < <(
       console.error('Error: platformManifests must be an array.');
       process.exit(1);
     }
-    process.stdout.write(groups.platformManifests.join('\n'));
+    console.log(groups.platformManifests.join('\n'));
   " "${GROUPS_JSON}"
 )
 

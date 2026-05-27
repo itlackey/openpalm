@@ -203,7 +203,6 @@
 		{#if !pageState.available && !loading}
 			<div class="empty-state">
 				<p>The assistant (OpenCode server) is not reachable. Start the assistant container and refresh.</p>
-				{#if pageState.error}<p class="error-detail">{pageState.error}</p>{/if}
 			</div>
 		{:else if loading && pageState.providers.length === 0}
 			<div class="loading-state">
@@ -371,8 +370,4 @@
 		color: var(--color-text-tertiary);
 	}
 
-	.error-detail {
-		font-size: var(--text-xs);
-		color: var(--color-danger);
-	}
 </style>

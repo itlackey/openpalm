@@ -75,6 +75,7 @@ vi.mock('electron', () => ({
   },
   Menu: { buildFromTemplate: vi.fn(() => ({})) },
   shell: { openExternal: vi.fn() },
+  ipcMain: { handle: vi.fn() },
 }));
 
 // ── Mock @openpalm/lib ───────────────────────────────────────────────────────

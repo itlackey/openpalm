@@ -16,6 +16,8 @@ extraResources:
   - from: ../../packages/ui/build
     to: ui-build
     filter: "**/*"
+  - from: ../../packages/admin-tools-plugin/dist/index.js
+    to: admin-tools-plugin/index.js
 
 mac:
   category: public.app-category.developer-tools

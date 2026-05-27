@@ -1,0 +1,76 @@
+/**
+ * ProvidersPanel component regression tests.
+ *
+ * Guards the raw-error-text bug (removed pageState.error display):
+ *  - When available=false: shows the human-readable "assistant not reachable" message
+ *  - Never shows raw "fetch failed" or "[object Object]" strings
+ *  - When available=true: shows provider list, not the unavailable message
+ */
+import { describe, expect, test, vi } from 'vitest';
+import { render } from 'vitest-browser-svelte';
+import { page } from 'vitest/browser';
+import ProvidersPanel from './ProvidersPanel.svelte';
+
+const unavailableResponse = {
+  available: false,
+  providers: [],
+  defaultModels: {},
+  allowlistActive: false,
+  providerCountLabel: '',
+  stats: { total: 0, connected: 0, configured: 0, disabled: 0 },
+};
+
+const availableResponse = {
+  available: true,
+  providers: [
+    { id: 'openai', name: 'OpenAI', connected: true, enabled: true, credentialType: 'api', models: [] },
+  ],
+  defaultModels: {},
+  allowlistActive: false,
+  providerCountLabel: '1 provider',
+  stats: { total: 1, connected: 1, configured: 1, disabled: 0 },
+};
+
+function mockFetch(body: object, ok = true) {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok,
+    json: async () => body,
+  }));
+}
+
+describe('ProvidersPanel — assistant unavailable', () => {
+  test('shows human-readable unavailability message when available=false', async () => {
+    mockFetch(unavailableResponse);
+    render(ProvidersPanel);
+
+    await expect.element(
+      page.getByText(/The assistant \(OpenCode server\) is not reachable/i)
+    ).toBeVisible({ timeout: 5000 });
+  });
+
+  test('never shows raw "fetch failed" string', async () => {
+    mockFetch(unavailableResponse);
+    render(ProvidersPanel);
+
+    await expect.element(page.getByText(/fetch failed/i)).not.toBeInTheDocument();
+  });
+
+  test('never shows "[object Object]" string', async () => {
+    mockFetch(unavailableResponse);
+    render(ProvidersPanel);
+
+    await expect.element(page.getByText(/\[object Object\]/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('ProvidersPanel — assistant available', () => {
+  test('shows provider name when available=true', async () => {
+    mockFetch(availableResponse);
+    render(ProvidersPanel);
+
+    await expect.element(page.getByText(/OpenAI/i)).toBeVisible({ timeout: 5000 });
+    await expect.element(
+      page.getByText(/The assistant \(OpenCode server\) is not reachable/i)
+    ).not.toBeInTheDocument();
+  });
+});

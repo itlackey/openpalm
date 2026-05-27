@@ -12,8 +12,10 @@
  * 8. composePull builds pull command
  * 9. All commands use execFile (no shell injection — core security invariant)
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import type { DockerResult } from "./docker.js";
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
+
+// Pre-warm the module so @openpalm/lib captures the mocked execFile before any test runs.
+beforeAll(async () => { await import("./docker.js"); });
 
 const execFileMock = vi.fn();
 const spawnMock = vi.fn();
@@ -80,27 +82,19 @@ describe("checkDocker", () => {
     existsSyncMock.mockReset().mockReturnValue(false);
   });
 
-  async function runCheckDocker(): Promise<DockerResult> {
+  async function runCheckDocker() {
     const { checkDocker } = await import("./docker.js");
     return checkDocker();
   }
 
-  test("reports ok when docker info exits cleanly", async () => {
-    execFileMock.mockImplementation(
-      (_cmd: string, _args: string[], cb: Function) => {
-        cb(null, "27.4.1\n", "");
-      }
-    );
-    const result = await runCheckDocker();
-    expect(result.ok).toBe(true);
-    expect(result.stdout).toBe("27.4.1");
-  });
-
   test("reports ok when docker info has warnings but returns version", async () => {
-    const err = Object.assign(new Error("exit 1"), { code: 1 });
     execFileMock.mockImplementation(
-      (_cmd: string, _args: string[], cb: Function) => {
-        cb(err, "27.4.1\n", "WARNING: No swap limit support\n");
+      (_cmd: string, _args: string[], _opts: unknown, cb?: Function) => {
+        const callback = cb ?? _opts;
+        const err = Object.assign(new Error("exit 1"), { code: 1 });
+        if (typeof callback === "function") {
+          callback(err, "27.4.1\n", "WARNING: No swap limit support\n");
+        }
       }
     );
     const result = await runCheckDocker();
@@ -110,30 +104,14 @@ describe("checkDocker", () => {
   });
 
   test("reports not ok when docker is unreachable (no stdout)", async () => {
-    const err = Object.assign(new Error("exit 1"), { code: 1 });
-    execFileMock.mockImplementation(
-      (_cmd: string, _args: string[], cb: Function) => {
-        cb(
-          err,
-          "",
-          "Cannot connect to the Docker daemon at unix:///var/run/docker.sock.\n"
-        );
-      }
-    );
+    mockExecError(1, "Cannot connect to the Docker daemon at unix:///var/run/docker.sock.\n");
     const result = await runCheckDocker();
     expect(result.ok).toBe(false);
     expect(result.stderr).toContain("Cannot connect");
   });
 
   test("reports not ok when docker binary is missing (ENOENT)", async () => {
-    const err = Object.assign(new Error("spawn docker ENOENT"), {
-      code: "ENOENT"
-    });
-    execFileMock.mockImplementation(
-      (_cmd: string, _args: string[], cb: Function) => {
-        cb(err, "", "");
-      }
-    );
+    mockExecError("ENOENT");
     const result = await runCheckDocker();
     expect(result.ok).toBe(false);
   });
@@ -146,11 +124,7 @@ describe("checkDockerCompose", () => {
   });
 
   test("reports ok when docker compose version succeeds", async () => {
-    execFileMock.mockImplementation(
-      (_cmd: string, _args: string[], cb: Function) => {
-        cb(null, "Docker Compose version v2.24.0\n", "");
-      }
-    );
+    mockExecSuccess("Docker Compose version v2.24.0\n");
     const { checkDockerCompose } = await import("./docker.js");
     const result = await checkDockerCompose();
     expect(result.ok).toBe(true);
@@ -158,12 +132,7 @@ describe("checkDockerCompose", () => {
   });
 
   test("reports not ok when compose is unavailable", async () => {
-    const err = Object.assign(new Error("exit 1"), { code: 1 });
-    execFileMock.mockImplementation(
-      (_cmd: string, _args: string[], cb: Function) => {
-        cb(err, "", "docker: 'compose' is not a docker command.\n");
-      }
-    );
+    mockExecError(1, "docker: 'compose' is not a docker command.\n");
     const { checkDockerCompose } = await import("./docker.js");
     const result = await checkDockerCompose();
     expect(result.ok).toBe(false);

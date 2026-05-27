@@ -111,8 +111,12 @@ export function isPidAlive(pid: number): boolean {
  * the admin-tools plugin. Mirrors the cli-subprocess pattern but does NOT
  * symlink auth.json — the admin OpenCode is a fresh server with no provider
  * credentials, and we don't want the agent reading the user's LLM keys.
+ *
+ * @param pluginPath Absolute path to the bundled admin-tools-plugin index.js,
+ *   or a bare npm package name as a fallback. Callers should resolve this from
+ *   process.resourcesPath (packaged) or the workspace dist dir (dev).
  */
-export function stageAdminHome(stateDir: string): { home: string; configDir: string } {
+export function stageAdminHome(stateDir: string, pluginPath: string): { home: string; configDir: string } {
   const home = adminOpencodeHome(stateDir);
   const configDir = join(home, ".config", "opencode");
   const shareDir = join(home, ".local", "share", "opencode");
@@ -120,15 +124,13 @@ export function stageAdminHome(stateDir: string): { home: string; configDir: str
   mkdirSync(configDir, { recursive: true });
   mkdirSync(shareDir, { recursive: true });
   mkdirSync(ocStateDir, { recursive: true });
-  // opencode.json declares the admin-tools plugin. OpenCode resolves
-  // plugin names via Node module resolution from this directory.
   const configPath = join(configDir, "opencode.json");
   if (!existsSync(configPath)) {
     writeFileSync(
       configPath,
       JSON.stringify({
         $schema: "https://opencode.ai/config.json",
-        plugin: ["@openpalm/admin-tools-plugin"],
+        plugin: [pluginPath],
       }, null, 2),
       { encoding: "utf-8" },
     );
@@ -218,6 +220,8 @@ export function _setSdkLoader(loader: typeof _sdkLoader): void {
 
 export type StartOptions = {
   stateDir: string;
+  /** Absolute path to the bundled admin-tools-plugin, or a package name fallback. */
+  pluginPath: string;
   /** Optional override for opencode hostname (defaults 127.0.0.1). */
   hostname?: string;
   /** Optional override for the spawn env factory (test seam). */
@@ -230,7 +234,7 @@ export type StartOptions = {
  * and a sentinel file is written so the UI can show a clear message.
  */
 export async function startLocalOpenCode(opts: StartOptions): Promise<LocalOpencodeHandle | null> {
-  const { stateDir } = opts;
+  const { stateDir, pluginPath } = opts;
   mkdirSync(stateDir, { recursive: true });
 
   // Always sweep stale state before spawning. If we crashed last time the
@@ -238,7 +242,7 @@ export async function startLocalOpenCode(opts: StartOptions): Promise<LocalOpenc
   sweepStalePid(stateDir);
 
   const password = generatePassword();
-  const { home } = stageAdminHome(stateDir);
+  const { home } = stageAdminHome(stateDir, pluginPath);
 
   const env: NodeJS.ProcessEnv = {
     ...(opts.envOverride ?? process.env),

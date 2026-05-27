@@ -15,6 +15,6 @@ export default defineConfig({
 	use: { baseURL },
 	webServer: STACK_TESTS ? undefined : { command: 'npm run build && npm run preview', port: 4173 },
 	testDir: 'e2e',
-	testMatch: '*.pw.ts',
+	testMatch: STACK_TESTS ? ['*.pw.ts', '*.stack.ts'] : '*.pw.ts',
 	timeout: 60000,
 });

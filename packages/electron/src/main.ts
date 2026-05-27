@@ -25,6 +25,22 @@ import { startLocalOpenCode, type LocalOpencodeHandle } from './local-opencode.j
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+/**
+ * Resolve the admin-tools-plugin path. Priority:
+ *   1. extraResources path (packaged Electron build)
+ *   2. Workspace dist path (running from source in dev)
+ *   3. npm package name (last-resort fallback)
+ */
+function resolveAdminToolsPluginPath(): string {
+  // Production: electron-builder copies to resources/admin-tools-plugin/index.js
+  const packed = join(process.resourcesPath ?? '', 'admin-tools-plugin', 'index.js');
+  if (existsSync(packed)) return packed;
+  // Dev: __dirname is packages/electron/dist/ → walk up to packages/admin-tools-plugin/dist/
+  const dev = join(__dirname, '..', '..', 'admin-tools-plugin', 'dist', 'index.js');
+  if (existsSync(dev)) return dev;
+  return '@openpalm/admin-tools-plugin';
+}
+
 const UI_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;
 const READY_TIMEOUT_MS = 60_000;
 
@@ -377,7 +393,7 @@ app.whenReady().then(async () => {
   // continue to work.
   try {
     const stateDir = `${resolveOpenPalmHome()}/state`;
-    localOpencode = await startLocalOpenCode({ stateDir });
+    localOpencode = await startLocalOpenCode({ stateDir, pluginPath: resolveAdminToolsPluginPath() });
     if (localOpencode) {
       console.log(`Local OpenCode listening on ${localOpencode.url}`);
     }

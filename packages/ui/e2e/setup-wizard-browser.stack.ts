@@ -1,22 +1,15 @@
 /**
- * Setup wizard — MANUAL browser smoke (NOT an automated test).
+ * Setup wizard — browser smoke test.
  *
- * Renamed to `.manual.ts` so Playwright's default `testMatch: '*.pw.ts'`
- * skips it. Run only against a live dev stack — see e2e/README.md.
+ * Collected by Playwright when RUN_DOCKER_STACK_TESTS=1 (*.stack.ts pattern).
+ * Run via: ./scripts/dev-e2e-test.sh --skip-build --playwright
  *
- * Resets stack.env, loads /setup in a real browser, and confirms the
- * setup guard renders the wizard (System Check step appears).
+ * Resets stack.env, loads /setup in a real browser, confirms the wizard
+ * renders and the System Check step passes in a real Docker environment.
  *
- * Why so narrow? The full UI walkthrough is environment-sensitive —
- * the Providers step's button-disabled state depends on what local
- * providers (Ollama / LMStudio / OpenAI auth.json) the host happens
- * to have, the Voice step's available choices depend on whether
- * SpeechRecognition is in the browser, etc. Driving every click
- * reliably across environments requires either heavy mocking (which
- * defeats the e2e purpose) or per-step data-testids the source
- * doesn't expose yet. Until those land, the API walkthrough in
- * setup-wizard-api.pw.ts covers the contract end-to-end; this file
- * just proves the wizard loads.
+ * Intentionally narrow — environment-sensitive steps (Providers, Voice)
+ * depend on the host's local providers and browser speech APIs. The API
+ * contract for those steps is covered by setup-wizard-api.stack.ts.
  *
  * Run with:
  *   RUN_DOCKER_STACK_TESTS=1 \

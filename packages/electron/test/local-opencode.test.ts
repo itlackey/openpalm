@@ -104,20 +104,21 @@ describe('isPidAlive', () => {
 });
 
 describe('stageAdminHome', () => {
-  it('creates the HOME tree and writes opencode.json declaring the admin-tools plugin', () => {
-    const { home, configDir } = stageAdminHome(stateDir);
+  it('writes opencode.json with the supplied plugin path', () => {
+    const pluginPath = '/opt/resources/admin-tools-plugin/index.js';
+    const { home, configDir } = stageAdminHome(stateDir, pluginPath);
     expect(home).toBe(adminOpencodeHome(stateDir));
     const configPath = join(configDir, 'opencode.json');
     expect(existsSync(configPath)).toBe(true);
     const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
-    expect(cfg.plugin).toEqual(['@openpalm/admin-tools-plugin']);
+    expect(cfg.plugin).toEqual([pluginPath]);
   });
 
   it('is idempotent — does not overwrite an existing opencode.json', () => {
-    const { configDir } = stageAdminHome(stateDir);
+    const { configDir } = stageAdminHome(stateDir, '/some/path/index.js');
     const configPath = join(configDir, 'opencode.json');
     writeFileSync(configPath, JSON.stringify({ plugin: ['user-customised'] }));
-    stageAdminHome(stateDir);
+    stageAdminHome(stateDir, '/other/path/index.js');
     const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
     expect(cfg.plugin).toEqual(['user-customised']);
   });
@@ -181,7 +182,7 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
       }),
     }));
 
-    const handle = await startLocalOpenCode({ stateDir });
+    const handle = await startLocalOpenCode({ stateDir, pluginPath: '/test/admin-tools-plugin/index.js' });
     expect(handle).not.toBeNull();
     expect(handle!.url).toBe('http://127.0.0.1:54321');
     expect(handle!.username).toBe('openpalm');
@@ -219,7 +220,7 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
       },
     }));
 
-    const handle = await startLocalOpenCode({ stateDir });
+    const handle = await startLocalOpenCode({ stateDir, pluginPath: '/test/admin-tools-plugin/index.js' });
     expect(handle).toBeNull();
     expect(existsSync(unavailableSentinelPath(stateDir))).toBe(true);
     const sentinel = JSON.parse(readFileSync(unavailableSentinelPath(stateDir), 'utf-8'));
@@ -245,7 +246,7 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
       }),
     }));
 
-    const handle = await startLocalOpenCode({ stateDir });
+    const handle = await startLocalOpenCode({ stateDir, pluginPath: '/test/admin-tools-plugin/index.js' });
     expect(handle).not.toBeNull();
     const rt = JSON.parse(readFileSync(runtimePath(stateDir), 'utf-8'));
     expect(rt.url).toBe('http://127.0.0.1:9999');
