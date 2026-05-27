@@ -1,6 +1,6 @@
 {
   "name": "openpalm",
-  "version": "0.11.0-beta.10",
+  "version": "0.11.0-beta.11",
   "private": true,
   "license": "MPL-2.0",
   "workspaces": [
@@ -34,7 +34,7 @@
     "channel:api:dev": "bun run packages/channel-api/src/index.ts",
     "channel:discord:dev": "bun run packages/channel-discord/src/index.ts",
     "channel:slack:dev": "bun run packages/channel-slack/src/index.ts",
-"cli:test": "bun test --cwd packages/cli",
+    "cli:test": "bun test --cwd packages/cli",
     "wizard:dev": "rm -rf /tmp/openpalm/.dev && OP_HOME=/tmp/openpalm/.dev OP_IMAGE_TAG=dev bun run packages/cli/src/main.ts install --no-start",
     "wizard-upgrade:dev": "rm -rf /tmp/openpalm/.dev && cp -r .openpalm /tmp/openpalm/.dev && OP_HOME=/tmp/openpalm/.dev OP_IMAGE_TAG=dev bun run packages/cli/src/main.ts install --no-start",
     "wizard:test:e2e": "cd packages/cli && npx playwright test",
