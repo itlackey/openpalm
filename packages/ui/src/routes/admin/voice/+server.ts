@@ -115,16 +115,17 @@ async function probeReachable(baseURL: string): Promise<boolean> {
 }
 
 /**
- * Prefer the labelled default, but skip it if it's known-unavailable on
- * the host. Falls back to the first available profile, then the first
- * profile, then null.
+ * Pick the best profile for this host. Prefers the first available GPU
+ * profile (anything that isn't 'cpu') so operators with NVIDIA/AMD hardware
+ * get the accelerated variant auto-selected. Falls back to the labelled
+ * default, then first available, then first profile.
  */
 function resolveDefaultProfile(profiles: AddonProfile[]): string | null {
   if (profiles.length === 0) return null;
+  const availableGpu = profiles.find((p) => p.id !== 'cpu' && p.available !== false);
+  if (availableGpu) return availableGpu.id;
   const labelledDefault = profiles.find((p) => p.default);
-  if (labelledDefault && labelledDefault.available !== false) {
-    return labelledDefault.id;
-  }
+  if (labelledDefault && labelledDefault.available !== false) return labelledDefault.id;
   const firstAvailable = profiles.find((p) => p.available !== false);
   if (firstAvailable) return firstAvailable.id;
   return profiles[0].id;

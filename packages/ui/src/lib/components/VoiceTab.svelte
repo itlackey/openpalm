@@ -56,15 +56,8 @@
 	const wantsOpenpalmVoice = $derived(
 		tts.engine === 'openpalm-voice' || stt.engine === 'openpalm-voice',
 	);
-	const advancedProfiles = $derived(
-		addonProfiles.filter((p) => p.id !== 'cpu'),
-	);
-	const hasAdvancedProfiles = $derived(advancedProfiles.length > 0);
 	const selectedProfileInfo = $derived(
 		addonProfiles.find((p) => p.id === selectedProfile),
-	);
-	const usingAdvancedProfile = $derived(
-		Boolean(selectedProfileInfo && selectedProfileInfo.id !== 'cpu'),
 	);
 
 	// Browser Web Speech availability — probed once on mount.
@@ -386,47 +379,43 @@
 		{#if wantsOpenpalmVoice && addonProfiles.length > 0}
 			<section class="engine-section">
 				<h3 class="engine-heading">Hardware profile</h3>
-				{#if !hasAdvancedProfiles}
-					<!-- Only one profile (CPU) available. No dropdown — just confirm it. -->
+				{#if addonProfiles.length === 1}
 					<p class="engine-subheading">
 						Running on CPU{selectedProfileInfo?.label ? ` (${selectedProfileInfo.label})` : ''}.
 					</p>
 				{:else}
 					<p class="engine-subheading">
-						Defaults to CPU. Pick a GPU profile below only if your host has the matching drivers installed.
+						Select the profile that matches your hardware. GPU profiles are auto-selected when available.
 					</p>
-					<details class="advanced-profiles" open={usingAdvancedProfile}>
-						<summary>Advanced — use GPU acceleration</summary>
-						<div class="form-field">
-							<label class="form-label" for="voice-profile">Profile</label>
-							<select
-								id="voice-profile"
-								class="form-input"
-								value={selectedProfile}
-								onchange={(e) => selectedProfile = (e.currentTarget as HTMLSelectElement).value}
-							>
-								{#each addonProfiles as profile (profile.id)}
-									<option
-										value={profile.id}
-										disabled={profile.available === false}
-										title={profile.available === false ? (profile.reason ?? 'Not available on this host') : undefined}
-									>
-										{profile.label ?? profile.id}{profile.default ? ' (default)' : ''}{profile.available === false ? ' — unavailable' : ''}
-									</option>
-								{/each}
-							</select>
-							{#if selectedProfileInfo?.requires}
-								<span class="field-hint">
-									Requires: {selectedProfileInfo.requires}
-								</span>
-							{/if}
-							{#if selectedProfileInfo && selectedProfileInfo.available === false}
-								<span class="field-hint field-hint--warning">
-									{selectedProfileInfo.reason ?? 'This profile is not available on the current host.'}
-								</span>
-							{/if}
-						</div>
-					</details>
+					<div class="form-field">
+						<label class="form-label" for="voice-profile">Profile</label>
+						<select
+							id="voice-profile"
+							class="form-input"
+							value={selectedProfile}
+							onchange={(e) => selectedProfile = (e.currentTarget as HTMLSelectElement).value}
+						>
+							{#each addonProfiles as profile (profile.id)}
+								<option
+									value={profile.id}
+									disabled={profile.available === false}
+									title={profile.available === false ? (profile.reason ?? 'Not available on this host') : undefined}
+								>
+									{profile.label ?? profile.id}{profile.available === false ? ' — unavailable' : ''}
+								</option>
+							{/each}
+						</select>
+						{#if selectedProfileInfo?.requires}
+							<span class="field-hint">
+								Requires: {selectedProfileInfo.requires}
+							</span>
+						{/if}
+						{#if selectedProfileInfo?.available === false}
+							<span class="field-hint field-hint--warning">
+								{selectedProfileInfo.reason ?? 'This profile is not available on the current host.'}
+							</span>
+						{/if}
+					</div>
 				{/if}
 			</section>
 		{/if}
@@ -741,18 +730,7 @@
 		border-radius: 0 var(--radius-md) var(--radius-md) 0;
 	}
 
-	.advanced-profiles { margin-top: var(--space-2); }
-	.advanced-profiles > summary {
-		cursor: pointer;
-		font-size: var(--text-xs);
-		color: var(--color-text-secondary);
-		padding: var(--space-1) 0;
-		user-select: none;
-	}
-	.advanced-profiles > summary:hover { color: var(--color-text); }
-	.advanced-profiles > .form-field { margin-top: var(--space-2); }
-
-	.field-hint {
+.field-hint {
 		font-size: var(--text-xs);
 		color: var(--color-text-tertiary);
 		margin-top: 2px;

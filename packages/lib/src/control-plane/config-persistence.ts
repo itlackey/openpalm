@@ -63,11 +63,18 @@ export function writeSystemEnv(state: ControlPlaneState): void {
     base = generateFallbackSystemEnv(state);
   }
 
-  // Preserve existing OP_SETUP_COMPLETE=true
-  const alreadyComplete = /^OP_SETUP_COMPLETE=true$/mi.test(base);
+  // Determine effective setup completion. Mirrors isSetupComplete() semantics:
+  // explicit OP_SETUP_COMPLETE takes priority; when absent, OP_UI_LOGIN_PASSWORD
+  // being set (legacy installs that pre-date the flag) counts as complete.
+  // Writing "false" when the password fallback would return true caused setup
+  // redirects on upgrade for users whose deploy never wrote the explicit flag.
+  const parsed = parseEnvFile(systemEnvPath);
+  const effectivelyComplete =
+    parsed.OP_SETUP_COMPLETE === "true" ||
+    (!("OP_SETUP_COMPLETE" in parsed) && (parsed.OP_UI_LOGIN_PASSWORD ?? "").length > 0);
 
   const adminManaged: Record<string, string> = {
-    OP_SETUP_COMPLETE: alreadyComplete ? "true" : "false"
+    OP_SETUP_COMPLETE: effectivelyComplete ? "true" : "false"
   };
 
   // Backfill OP_UID/OP_GID when the existing stack.env was written by an
@@ -76,7 +83,6 @@ export function writeSystemEnv(state: ControlPlaneState): void {
   // missing or zero — an operator who manually set OP_UID=2000 (e.g.
   // because they're running on a host with a non-1000 service account)
   // must not be silently changed.
-  const parsed = parseEnvFile(systemEnvPath);
   const ids = resolveOperatorIds(state.homeDir);
   if (ids) {
     if (!hasUsableOperatorId(parsed, "OP_UID")) adminManaged.OP_UID = String(ids.uid);
