@@ -409,14 +409,16 @@ describe("Broken/Corrupt State", () => {
     expect(isSetupComplete(stackDir)).toBe(false);
   });
 
-  it("isSetupComplete falls back to true when UI login password is set but OP_SETUP_COMPLETE missing", () => {
+  it("isSetupComplete returns false when OP_UI_LOGIN_PASSWORD is set but OP_SETUP_COMPLETE is missing", () => {
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
       join(stackDir, "stack.env"),
       "OP_IMAGE_TAG=latest\nexport OP_UI_LOGIN_PASSWORD=my-real-password\n"
     );
 
-    expect(isSetupComplete(stackDir)).toBe(true);
+    // Password alone is no longer a proxy for setup completion.
+    // Only OP_SETUP_COMPLETE=true counts.
+    expect(isSetupComplete(stackDir)).toBe(false);
   });
 
   // Scenario 12: API key with special characters round-trips
@@ -489,15 +491,15 @@ describe("Environment Edge Cases", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  // Scenario 16: isSetupComplete picks up OP_UI_LOGIN_PASSWORD when set
-  it("isSetupComplete detects OP_UI_LOGIN_PASSWORD", () => {
+  // Scenario 16: isSetupComplete requires explicit OP_SETUP_COMPLETE=true
+  it("isSetupComplete returns false when only OP_UI_LOGIN_PASSWORD is set", () => {
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
       join(stackDir, "stack.env"),
       "SOME_OTHER_KEY=value\nexport OP_UI_LOGIN_PASSWORD=real-password-here\n"
     );
 
-    expect(isSetupComplete(stackDir)).toBe(true);
+    expect(isSetupComplete(stackDir)).toBe(false);
   });
 
   // Scenario 17: export prefix on env vars

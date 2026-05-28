@@ -9570,7 +9570,7 @@ var VALID_CALLERS = new Set([
   "test"
 ]);
 // ../lib/src/control-plane/markdown-task.ts
-var logger6 = createLogger("markdown-task");
+var logger6 = createLogger("task-file");
 
 // ../lib/src/control-plane/scheduler.ts
 var logger7 = createLogger("scheduler");

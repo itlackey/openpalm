@@ -63,17 +63,12 @@ export function writeSystemEnv(state: ControlPlaneState): void {
     base = generateFallbackSystemEnv(state);
   }
 
-  // Determine effective setup completion. Mirrors isSetupComplete() semantics:
-  // explicit "true" wins, then explicit "false" wins (covers fresh installs
-  // where ensureSecrets seeds a password before the wizard runs), then fall
-  // back to password presence for legacy installs that pre-date the flag.
+  // Preserve the existing OP_SETUP_COMPLETE flag as-is.
+  // Only the wizard completion path (buildSystemSecretsFromSetup) writes "true".
+  // Defaulting to "false" here ensures a fresh install always shows the wizard.
   const parsed = parseEnvFile(systemEnvPath);
-  const effectivelyComplete =
-    parsed.OP_SETUP_COMPLETE === "true" ||
-    (parsed.OP_SETUP_COMPLETE !== "false" && (parsed.OP_UI_LOGIN_PASSWORD ?? "").length > 0);
-
   const adminManaged: Record<string, string> = {
-    OP_SETUP_COMPLETE: effectivelyComplete ? "true" : "false"
+    OP_SETUP_COMPLETE: parsed.OP_SETUP_COMPLETE === "true" ? "true" : "false",
   };
 
   // Backfill OP_UID/OP_GID when the existing stack.env was written by an
