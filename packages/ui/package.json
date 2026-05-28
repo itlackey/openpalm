@@ -6,7 +6,7 @@
   "license": "MPL-2.0",
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
+    "dev": "PORT=5173 vite dev",
     "dev:local": "PORT=5173 OP_OPENCODE_URL=${OP_OPENCODE_URL:-http://localhost:3800} vite dev",
     "build": "svelte-kit sync && vite build",
     "preview": "vite preview",

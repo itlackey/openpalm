@@ -2,7 +2,7 @@
  * POST /admin/automations/:name/run — Manually trigger an automation.
  *
  * Spawns `akm tasks run <id>` directly (no sentinel files). The task
- * must exist in ${stashDir}/tasks/<name>.md to be accepted.
+ * must exist in ${stashDir}/tasks/<name>.yml to be accepted.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -18,7 +18,7 @@ import {
   buildAkmEnv,
 } from "@openpalm/lib";
 
-const SAFE_NAME_RE = /^[a-zA-Z0-9._-]+(?:\.md)?$/;
+const SAFE_NAME_RE = /^[a-zA-Z0-9._-]+(?:\.ya?ml)?$/;
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -29,7 +29,7 @@ export const POST: RequestHandler = async (event) => {
   const rawName = event.params.name ?? "";
 
   // Accept both bare IDs and full filenames; normalize to bare ID.
-  const taskId = rawName.endsWith(".md") ? rawName.slice(0, -3) : rawName;
+  const taskId = rawName.replace(/\.ya?ml$/, '');
 
   if (!SAFE_NAME_RE.test(rawName) || rawName.includes("..") || rawName.includes("/")) {
     return errorResponse(400, "invalid_input", "name must match /^[a-zA-Z0-9._-]+$/", {}, requestId);

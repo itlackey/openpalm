@@ -12,10 +12,10 @@ import type { FriendlyErrorView } from '$lib/wizard/error-messages.js';
 
 const base: FriendlyErrorView = {
   title: 'Something went wrong',
-  body: undefined,
+  body: '',
   hint: undefined,
   links: [],
-  raw: undefined,
+  raw: '',
 };
 
 describe('FriendlyError — null / empty', () => {
@@ -54,7 +54,7 @@ describe('FriendlyError — optional sections', () => {
   });
 
   test('does not render body element when body is absent', async () => {
-    render(FriendlyError, { props: { error: { ...base, body: undefined } } });
+    render(FriendlyError, { props: { error: { ...base, body: '' } } });
     // Only title should be present
     await expect.element(page.getByText('Something went wrong')).toBeVisible();
   });

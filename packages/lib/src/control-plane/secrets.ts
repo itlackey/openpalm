@@ -74,6 +74,7 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
       "# All secrets and configuration live here. Advanced users may edit directly.",
       "",
       "# ── Authentication ──────────────────────────────────────────────────",
+      "OP_SETUP_COMPLETE=false",
       "OP_UI_LOGIN_PASSWORD=",
       "",
       "# ── Service Auth ─────────────────────────────────────────────────────",

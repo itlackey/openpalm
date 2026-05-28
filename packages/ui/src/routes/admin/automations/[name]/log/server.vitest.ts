@@ -127,13 +127,13 @@ describe('GET /admin/automations/:name/log', () => {
     expect(body.lines).toHaveLength(3);
   });
 
-  test('strips .md suffix from name', async () => {
+  test('strips .yml suffix from name', async () => {
     const state = getState();
     seedTaskLogs(state.cacheDir, 'health-check', [
       { ts: '2026-05-16T03-00-00-000Z', content: 'found-entry' },
     ]);
 
-    const res = await GET(makeLogEvent('health-check.md'));
+    const res = await GET(makeLogEvent('health-check.yml'));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { name: string; lines: string[] };
     expect(body.name).toBe('health-check');

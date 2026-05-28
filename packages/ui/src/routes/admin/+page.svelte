@@ -22,8 +22,10 @@
     containerAction,
     pullImages,
     fetchVersions,
+    fetchReleases,
     setStackVersion,
     downloadUiVersion,
+    type ReleaseEntry,
   } from '$lib/api.js';
   import type { HealthPayload, ContainerListResponse, AutomationsResponse, ServiceEntry } from '$lib/types.js';
 
@@ -60,11 +62,14 @@
 
   // ── Version management ──────────────────────────────────────────────────────
   let currentImageTag = $state('');
-  let currentUiVersion = $state<string | null>(null);
   let inElectron = $state(false);
   let tagChangeLoading = $state(false);
   let uiDownloadLoading = $state(false);
   let uiDownloadReady = $state(false);
+  let selectedImageTag = $state('latest');
+  let selectedUiTag = $state('');
+  let releases = $state<ReleaseEntry[]>([]);
+  let releasesLoading = $state(false);
 
   // ── Container polling ──────────────────────────────────────────────────────
   const POLL_INTERVAL_MS = 10_000;
@@ -177,6 +182,7 @@
       void loadContainers();
       void loadAutomations();
       void loadVersions();
+      void loadReleases();
       return true;
     } catch (e) {
       console.warn('[page] Auth failed:', e);
@@ -246,11 +252,24 @@
     try {
       const data = await fetchVersions();
       currentImageTag = data.imageTag;
-      currentUiVersion = data.uiVersion;
       inElectron = data.inElectron;
+      // Do not reset selectedImageTag/selectedUiTag here — loadReleases initializes them
     } catch {
       // Non-fatal — version info is supplementary
     }
+  }
+
+  async function loadReleases(): Promise<void> {
+    releasesLoading = true;
+    try {
+      const data = await fetchReleases();
+      releases = data.releases;
+      const latestUiBuild = data.releases.find((r) => r.hasUiBuild);
+      if (latestUiBuild) selectedUiTag = latestUiBuild.tag;
+    } catch {
+      // Non-fatal
+    }
+    releasesLoading = false;
   }
 
   // ── Actions ──────────────────────────────────────────────────────────────────
@@ -319,6 +338,7 @@
     try {
       const result = await setStackVersion(tag);
       currentImageTag = result.imageTag;
+      selectedImageTag = result.imageTag;
       operationResult = `Image tag set to ${result.imageTag}. Restarted: ${result.restarted.join(', ') || 'none'}.`;
       operationResultType = 'success';
     } catch (e) {
@@ -334,8 +354,8 @@
     uiDownloadLoading = true;
     uiDownloadReady = false;
     try {
-      const result = await downloadUiVersion(tag);
-      currentUiVersion = result.version;
+      await downloadUiVersion(tag);
+      selectedUiTag = tag;
       uiDownloadReady = true;
     } catch (e) {
       const err = e as { message?: string };
@@ -441,6 +461,7 @@
         void loadContainers();
         void loadAutomations();
         void loadVersions();
+        void loadReleases();
         } catch (e) {
         console.warn('[page] Session probe on mount failed:', e);
         authLocked = true;
@@ -477,11 +498,14 @@
         {automationsData}
         {mergedServices}
         {currentImageTag}
-        {currentUiVersion}
         {tagChangeLoading}
         {uiDownloadLoading}
         {uiDownloadReady}
         {inElectron}
+        {selectedImageTag}
+        {selectedUiTag}
+        {releases}
+        {releasesLoading}
         onCheckHealth={loadHealth}
         onApplyChanges={handleApplyChanges}
         onUpgradeStack={handleUpgradeStack}
@@ -489,6 +513,8 @@
         onSetImageTag={handleSetImageTag}
         onDownloadUiVersion={handleDownloadUiVersion}
         onRestartApp={handleRestartApp}
+        onSelectedImageTagChange={(t) => { selectedImageTag = t; }}
+        onSelectedUiTagChange={(t) => { selectedUiTag = t; }}
       />
     {:else if activeTab === 'addons'}
       <AddonsTab

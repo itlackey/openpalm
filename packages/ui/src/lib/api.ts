@@ -152,9 +152,26 @@ export async function upgradeStack(): Promise<UpgradeStackResult> {
 
 // ── Version management ───────────────────────────────────────────────────
 
-export async function fetchVersions(): Promise<{ imageTag: string; uiVersion: string | null; inElectron: boolean }> {
+export async function fetchVersions(): Promise<{ imageTag: string; inElectron: boolean }> {
   const res = await requireOk(await request('GET', '/admin/versions'));
-  return (await res.json()) as { imageTag: string; uiVersion: string | null; inElectron: boolean };
+  return (await res.json()) as { imageTag: string; inElectron: boolean };
+}
+
+export interface ReleaseEntry {
+  tag: string;
+  prerelease: boolean;
+  publishedAt: string;
+  hasUiBuild: boolean;
+}
+
+export async function fetchReleases(): Promise<{ releases: ReleaseEntry[]; error?: string }> {
+  try {
+    const res = await request('GET', '/admin/versions/releases');
+    if (!res.ok) return { releases: [] };
+    return (await res.json()) as { releases: ReleaseEntry[]; error?: string };
+  } catch {
+    return { releases: [] };
+  }
 }
 
 export async function setStackVersion(tag: string): Promise<{ ok: boolean; imageTag: string; restarted: string[] }> {
@@ -162,9 +179,9 @@ export async function setStackVersion(tag: string): Promise<{ ok: boolean; image
   return (await res.json()) as { ok: boolean; imageTag: string; restarted: string[] };
 }
 
-export async function downloadUiVersion(tag: string): Promise<{ ok: boolean; version: string }> {
+export async function downloadUiVersion(tag: string): Promise<{ ok: boolean; tag: string }> {
   const res = await requireOk(await request('POST', '/admin/ui-version', { tag }));
-  return (await res.json()) as { ok: boolean; version: string };
+  return (await res.json()) as { ok: boolean; tag: string };
 }
 
 // ── Automations ─────────────────────────────────────────────────────────

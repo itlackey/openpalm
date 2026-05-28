@@ -1,8 +1,8 @@
 /**
  * GET /admin/automations — List automation configs from stash/tasks/.
  *
- * Read-only endpoint. Automations are AKM markdown task files at
- * ${stashDir}/tasks/*.md. The OS cron daemon (in the assistant container)
+ * Read-only endpoint. Automations are AKM task files at
+ * ${stashDir}/tasks/*.yml. The OS cron daemon (in the assistant container)
  * handles scheduling; `akm tasks run <id>` handles execution.
  */
 import type { RequestHandler } from "./$types";

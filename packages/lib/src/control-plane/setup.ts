@@ -315,11 +315,11 @@ export async function performSetup(
       // are left alone so user edits survive re-install and upgrade.
       const tasksDir = join(state.stashDir, "tasks");
       mkdirSync(tasksDir, { recursive: true });
-      const akmImproveDest = join(tasksDir, "akm-improve.md");
+      const akmImproveDest = join(tasksDir, "akm-improve.yml");
       if (!existsSync(akmImproveDest)) {
-        const akmImproveMd = getRegistryAutomation("akm-improve");
-        if (akmImproveMd) {
-          writeFileSync(akmImproveDest, akmImproveMd);
+        const akmImproveTask = getRegistryAutomation("akm-improve");
+        if (akmImproveTask) {
+          writeFileSync(akmImproveDest, akmImproveTask);
           logger.info("seeded default automation", { name: "akm-improve" });
         } else {
           logger.warn("default automation missing from registry; skipping seed", {

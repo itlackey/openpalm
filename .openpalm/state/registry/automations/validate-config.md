@@ -1,9 +1,0 @@
----
-schedule: "0 3 * * *"
-enabled: true
-description: Periodic check of environment configuration against the schema
-tags: [openpalm, maintenance]
-timeoutMs: 15000
-type: assistant
-command: ["sh","-c","openpalm validate"]
----

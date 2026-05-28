@@ -1,8 +1,0 @@
----
-schedule: "0 3 * * *"
-enabled: true
-description: Run akm improve to consolidate memories, run inference, and update graph extraction
-tags: [openpalm, akm]
-timeoutMs: 3600000
-command: ["akm","improve","--auto-accept","safe","--timeout-ms","3600000"]
----

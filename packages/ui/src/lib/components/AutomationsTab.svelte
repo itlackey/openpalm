@@ -37,7 +37,10 @@
 
 <div class="panel" role="tabpanel">
   <div class="panel-header">
-    <h2>Automations</h2>
+    <div>
+      <h2>Automations</h2>
+      <p class="panel-subtitle">Scheduled tasks read from <code>~/.openpalm/stash/tasks/</code>. Add or edit task files there to manage automations — changes take effect on refresh.</p>
+    </div>
     <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
       {#if loading}
         <span class="spinner"></span>

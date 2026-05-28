@@ -1,6 +1,6 @@
 /**
  * GET  /admin/akm  — Return current akm config from OP_HOME/config/akm/config.json
- * PATCH /admin/akm — Update config fields (profiles, connections, features, behavior, tuning)
+ * PATCH /admin/akm — Update config fields aligned with AKM 0.8.0 schema
  */
 import type { RequestHandler } from './$types';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -60,12 +60,6 @@ function validateLlmProfile(raw: Rec, prefix: string): Error | null {
   if ('concurrency' in raw) { const r = expectPosInt(raw.concurrency, `${prefix}.concurrency`); if (r instanceof Error) return r; }
   if ('contextLength' in raw) { const r = expectPosInt(raw.contextLength, `${prefix}.contextLength`); if (r instanceof Error) return r; }
   if ('supportsJsonSchema' in raw) { const r = expectBool(raw.supportsJsonSchema, `${prefix}.supportsJsonSchema`); if (r instanceof Error) return r; }
-  if ('features' in raw) {
-    if (!isRec(raw.features)) return new Error(`${prefix}.features must be an object`);
-    for (const k of ['memory_inference','memory_consolidation','feedback_distillation','graph_extraction','curate_rerank','lesson_quality_gate','proposal_quality_gate','metadata_enhance','memory_contradiction_detection']) {
-      if (k in raw.features) { const r = expectBool((raw.features as Rec)[k], `${prefix}.features.${k}`); if (r instanceof Error) return r; }
-    }
-  }
   return null;
 }
 
@@ -73,19 +67,27 @@ function pickLlmProfile(raw: Rec): Rec {
   const out: Rec = {};
   const strFields = ['endpoint','model','provider','judgeModel'] as const;
   for (const f of strFields) if (f in raw && raw[f]) out[f] = raw[f];
-  // apiKey: write if non-empty, omit to clear
   if ('apiKey' in raw) { if (raw.apiKey) out.apiKey = raw.apiKey; }
   const numFields = ['temperature','maxTokens','timeoutMs','concurrency','contextLength'] as const;
   for (const f of numFields) if (f in raw && raw[f] !== undefined) out[f] = raw[f];
   if ('supportsJsonSchema' in raw) out.supportsJsonSchema = raw.supportsJsonSchema;
-  if ('features' in raw && isRec(raw.features)) {
-    const feats: Rec = {};
-    for (const k of ['memory_inference','memory_consolidation','feedback_distillation','graph_extraction','curate_rerank','lesson_quality_gate','proposal_quality_gate','metadata_enhance','memory_contradiction_detection']) {
-      if (k in raw.features) feats[k] = (raw.features as Rec)[k];
-    }
-    out.features = feats;
-  }
   return out;
+}
+
+const ALLOWED_IMPROVE_PROCESSES = new Set(['reflect','distill','consolidate','memoryInference','graphExtraction','validation','extract']);
+const FEAT_MODES = new Set(['llm','agent','sdk']);
+const AGENT_PLATFORMS = new Set(['opencode','claude','opencode-sdk']);
+const SEMANTIC_SEARCH_MODES = new Set(['auto','off']);
+const OUTPUT_FORMATS = new Set(['json','yaml','text']);
+const OUTPUT_DETAILS = new Set(['brief','normal','full']);
+
+function validateImproveProcess(proc: Rec, path: string): Error | null {
+  if ('enabled' in proc) { const r = expectBool(proc.enabled, `${path}.enabled`); if (r instanceof Error) return r; }
+  if ('mode' in proc && (typeof proc.mode !== 'string' || !FEAT_MODES.has(proc.mode as string)))
+    return new Error(`${path}.mode must be llm, agent, or sdk`);
+  if ('profile' in proc) { const r = expectStr(proc.profile, `${path}.profile`); if (r instanceof Error) return r; }
+  if ('timeoutMs' in proc && proc.timeoutMs !== null) { const r = expectPosInt(proc.timeoutMs, `${path}.timeoutMs`); if (r instanceof Error) return r; }
+  return null;
 }
 
 export const GET: RequestHandler = async (event) => {
@@ -96,14 +98,6 @@ export const GET: RequestHandler = async (event) => {
   const state = getState();
   return jsonResponse(200, { config: readAkmConfig(state.configDir) }, requestId);
 };
-
-const SEMANTIC_SEARCH_MODES = new Set(['auto','off']);
-const OUTPUT_FORMATS = new Set(['json','yaml','text']);
-const OUTPUT_DETAILS = new Set(['brief','normal','full']);
-const IMPROVE_PRESETS = new Set(['fast','thorough','mixed','custom']);
-const STASH_INHERITANCE = new Set(['merge','replace']);
-const AGENT_PLATFORMS = new Set(['opencode','claude','opencode-sdk']);
-const CONFIDENCE_MODES = new Set(['off','blend','multiply']);
 
 export const PATCH: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -145,40 +139,37 @@ export const PATCH: RequestHandler = async (event) => {
     }
   }
 
+  // profiles.improve — named improve profiles (0.8.0 schema)
+  const profilesImproveBody = profilesBody?.improve as Rec | undefined;
+  if (profilesImproveBody !== undefined) {
+    if (!isRec(profilesImproveBody)) return errorResponse(400, 'bad_request', 'profiles.improve must be an object', {}, requestId);
+    for (const [name, entry] of Object.entries(profilesImproveBody)) {
+      if (!isRec(entry)) return errorResponse(400, 'bad_request', `profiles.improve.${name} must be an object`, {}, requestId);
+      if ('description' in entry) { const r = expectStr(entry.description, `profiles.improve.${name}.description`); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+      if ('limit' in entry) { const r = expectPosInt(entry.limit, `profiles.improve.${name}.limit`); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+      if ('autoAccept' in entry && (typeof entry.autoAccept !== 'number' || entry.autoAccept < 0))
+        return errorResponse(400, 'bad_request', `profiles.improve.${name}.autoAccept must be a non-negative number`, {}, requestId);
+      if ('processes' in entry) {
+        if (!isRec(entry.processes)) return errorResponse(400, 'bad_request', `profiles.improve.${name}.processes must be an object`, {}, requestId);
+        for (const [procName, proc] of Object.entries(entry.processes as Rec)) {
+          if (!ALLOWED_IMPROVE_PROCESSES.has(procName))
+            return errorResponse(400, 'bad_request', `profiles.improve.${name}.processes.${procName} is not a recognized process name`, {}, requestId);
+          if (!isRec(proc)) return errorResponse(400, 'bad_request', `profiles.improve.${name}.processes.${procName} must be an object`, {}, requestId);
+          const err = validateImproveProcess(proc as Rec, `profiles.improve.${name}.processes.${procName}`);
+          if (err) return errorResponse(400, 'bad_request', err.message, {}, requestId);
+        }
+      }
+    }
+  }
+
   // ── defaults ──────────────────────────────────────────────────────────────
   const defaultsBody = body.defaults as Rec | undefined;
   if (defaultsBody !== undefined && !isRec(defaultsBody))
     return errorResponse(400, 'bad_request', 'defaults must be an object', {}, requestId);
   if (defaultsBody?.llm !== undefined) { const r = expectStr(defaultsBody.llm, 'defaults.llm'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
   if (defaultsBody?.agent !== undefined) { const r = expectStr(defaultsBody.agent, 'defaults.agent'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
-  const improveBody = defaultsBody?.improve as Rec | undefined;
-  if (improveBody !== undefined) {
-    if (!isRec(improveBody)) return errorResponse(400, 'bad_request', 'defaults.improve must be an object', {}, requestId);
-    if ('limit' in improveBody) { const r = expectPosInt(improveBody.limit, 'defaults.improve.limit'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
-    if ('preset' in improveBody && (typeof improveBody.preset !== 'string' || !IMPROVE_PRESETS.has(improveBody.preset as string)))
-      return errorResponse(400, 'bad_request', 'defaults.improve.preset must be fast, thorough, mixed, or custom', {}, requestId);
-  }
-
-  // ── features ──────────────────────────────────────────────────────────────
-  const featuresBody = body.features as Rec | undefined;
-  if (featuresBody !== undefined) {
-    if (!isRec(featuresBody)) return errorResponse(400, 'bad_request', 'features must be an object', {}, requestId);
-    const FEAT_MODES = new Set(['llm','agent','sdk']);
-    for (const section of ['improve','index','search']) {
-      const sec = featuresBody[section] as Rec | undefined;
-      if (sec === undefined) continue;
-      if (!isRec(sec)) return errorResponse(400, 'bad_request', `features.${section} must be an object`, {}, requestId);
-      for (const [op, entry] of Object.entries(sec)) {
-        if (typeof entry === 'boolean') continue;
-        if (!isRec(entry)) return errorResponse(400, 'bad_request', `features.${section}.${op} must be boolean or a config object`, {}, requestId);
-        if ('enabled' in entry) { const r = expectBool(entry.enabled, `features.${section}.${op}.enabled`); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
-        if ('mode' in entry && (typeof entry.mode !== 'string' || !FEAT_MODES.has(entry.mode as string)))
-          return errorResponse(400, 'bad_request', `features.${section}.${op}.mode must be llm, agent, or sdk`, {}, requestId);
-        if ('profile' in entry) { const r = expectStr(entry.profile, `features.${section}.${op}.profile`); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
-        if ('timeoutMs' in entry && entry.timeoutMs !== null) { const r = expectPosInt(entry.timeoutMs, `features.${section}.${op}.timeoutMs`); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
-      }
-    }
-  }
+  // defaults.improve is a string profile name (0.8.0 schema)
+  if (defaultsBody?.improve !== undefined) { const r = expectStr(defaultsBody.improve, 'defaults.improve'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
 
   // ── embedding ─────────────────────────────────────────────────────────────
   const embBody = body.embedding as Rec | undefined;
@@ -202,14 +193,7 @@ export const PATCH: RequestHandler = async (event) => {
   // ── scalar behavior fields ────────────────────────────────────────────────
   if ('semanticSearchMode' in body && (typeof body.semanticSearchMode !== 'string' || !SEMANTIC_SEARCH_MODES.has(body.semanticSearchMode as string)))
     return errorResponse(400, 'bad_request', 'semanticSearchMode must be "auto" or "off"', {}, requestId);
-  if ('archiveRetentionDays' in body) {
-    if (typeof body.archiveRetentionDays !== 'number' || !Number.isInteger(body.archiveRetentionDays) || body.archiveRetentionDays < 0)
-      return errorResponse(400, 'bad_request', 'archiveRetentionDays must be a non-negative integer', {}, requestId);
-  }
-  if ('stashInheritance' in body && (typeof body.stashInheritance !== 'string' || !STASH_INHERITANCE.has(body.stashInheritance as string)))
-    return errorResponse(400, 'bad_request', 'stashInheritance must be "merge" or "replace"', {}, requestId);
   if ('stashDir' in body) { const r = expectStr(body.stashDir, 'stashDir'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
-  if ('defaultWriteTarget' in body) { const r = expectStr(body.defaultWriteTarget, 'defaultWriteTarget'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
 
   // ── output ────────────────────────────────────────────────────────────────
   const outputBody = body.output as Rec | undefined;
@@ -221,53 +205,6 @@ export const PATCH: RequestHandler = async (event) => {
       return errorResponse(400, 'bad_request', 'output.detail must be brief, normal, or full', {}, requestId);
   }
 
-  // ── improve (top-level pipeline tuning) ──────────────────────────────────
-  const improveTopBody = body.improve as Rec | undefined;
-  if (improveTopBody !== undefined) {
-    if (!isRec(improveTopBody)) return errorResponse(400, 'bad_request', 'improve must be an object', {}, requestId);
-    if ('reflectCooldownByType' in improveTopBody && !isRec(improveTopBody.reflectCooldownByType))
-      return errorResponse(400, 'bad_request', 'improve.reflectCooldownByType must be an object', {}, requestId);
-    if (isRec(improveTopBody.reflectCooldownByType)) {
-      for (const [k, v] of Object.entries(improveTopBody.reflectCooldownByType as Rec)) {
-        if (typeof v !== 'number' || v < 0) return errorResponse(400, 'bad_request', `improve.reflectCooldownByType.${k} must be a non-negative number`, {}, requestId);
-      }
-    }
-    if ('utilityDecay' in improveTopBody) {
-      const ud = improveTopBody.utilityDecay as Rec;
-      if (!isRec(ud)) return errorResponse(400, 'bad_request', 'improve.utilityDecay must be an object', {}, requestId);
-      if ('halfLifeDays' in ud && (typeof ud.halfLifeDays !== 'number' || ud.halfLifeDays < 0.1))
-        return errorResponse(400, 'bad_request', 'improve.utilityDecay.halfLifeDays must be >= 0.1', {}, requestId);
-      if ('feedbackStabilityBoost' in ud && (typeof ud.feedbackStabilityBoost !== 'number' || ud.feedbackStabilityBoost < 1))
-        return errorResponse(400, 'bad_request', 'improve.utilityDecay.feedbackStabilityBoost must be >= 1', {}, requestId);
-    }
-  }
-
-  // ── search ────────────────────────────────────────────────────────────────
-  const searchBody = body.search as Rec | undefined;
-  if (searchBody !== undefined) {
-    if (!isRec(searchBody)) return errorResponse(400, 'bad_request', 'search must be an object', {}, requestId);
-    if ('minScore' in searchBody) { const r = expectNum(searchBody.minScore, 'search.minScore', 0, 1); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
-    if ('graphBoost' in searchBody && isRec(searchBody.graphBoost)) {
-      const gb = searchBody.graphBoost as Rec;
-      const numFields = ['directBoostPerEntity','directBoostCap','hopBoostPerEntity','hopBoostCap','confidenceWeight'] as const;
-      for (const f of numFields) {
-        if (f in gb && typeof gb[f] !== 'number') return errorResponse(400, 'bad_request', `search.graphBoost.${f} must be a number`, {}, requestId);
-      }
-      if ('maxHops' in gb) { const r = expectPosInt(gb.maxHops, 'search.graphBoost.maxHops'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
-      if ('confidenceMode' in gb && (typeof gb.confidenceMode !== 'string' || !CONFIDENCE_MODES.has(gb.confidenceMode as string)))
-        return errorResponse(400, 'bad_request', 'search.graphBoost.confidenceMode must be off, blend, or multiply', {}, requestId);
-    }
-  }
-
-  // ── feedback ──────────────────────────────────────────────────────────────
-  const feedbackBody = body.feedback as Rec | undefined;
-  if (feedbackBody !== undefined) {
-    if (!isRec(feedbackBody)) return errorResponse(400, 'bad_request', 'feedback must be an object', {}, requestId);
-    if ('requireReason' in feedbackBody) { const r = expectBool(feedbackBody.requireReason, 'feedback.requireReason'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
-    if ('allowedFailureModes' in feedbackBody && !Array.isArray(feedbackBody.allowedFailureModes))
-      return errorResponse(400, 'bad_request', 'feedback.allowedFailureModes must be an array', {}, requestId);
-  }
-
   // ── Merge and write ───────────────────────────────────────────────────────
   try {
     const existing = readAkmConfig(state.configDir);
@@ -277,6 +214,7 @@ export const PATCH: RequestHandler = async (event) => {
     if (profilesBody !== undefined) {
       const existingProfiles = (existing.profiles as Rec) ?? {};
       const newProfiles: Rec = { ...existingProfiles };
+
       if (profilesLlmBody !== undefined) {
         const built: Rec = {};
         for (const [name, entry] of Object.entries(profilesLlmBody)) {
@@ -284,6 +222,7 @@ export const PATCH: RequestHandler = async (event) => {
         }
         newProfiles.llm = built;
       }
+
       if (profilesAgentBody !== undefined) {
         const built: Rec = {};
         for (const [name, entry] of Object.entries(profilesAgentBody)) {
@@ -298,51 +237,49 @@ export const PATCH: RequestHandler = async (event) => {
         }
         newProfiles.agent = built;
       }
+
+      if (profilesImproveBody !== undefined) {
+        const existingImprove = (existingProfiles.improve as Rec) ?? {};
+        const builtImprove: Rec = {};
+        for (const [name, entry] of Object.entries(profilesImproveBody)) {
+          const raw = entry as Rec;
+          const existingProfile = (existingImprove[name] as Rec) ?? {};
+          const profileEntry: Rec = { ...existingProfile };
+          if ('description' in raw && raw.description) profileEntry.description = raw.description;
+          if ('limit' in raw) profileEntry.limit = raw.limit;
+          if ('autoAccept' in raw) profileEntry.autoAccept = raw.autoAccept;
+          if ('processes' in raw && isRec(raw.processes)) {
+            const existingProcs = (existingProfile.processes as Rec) ?? {};
+            const newProcs: Rec = { ...existingProcs };
+            for (const [procName, proc] of Object.entries(raw.processes as Rec)) {
+              const p = proc as Rec;
+              const existingProc = (existingProcs[procName] as Rec) ?? {};
+              const mergedProc: Rec = { ...existingProc };
+              if ('enabled' in p) mergedProc.enabled = p.enabled;
+              if ('mode' in p) { if (p.mode) mergedProc.mode = p.mode; else delete mergedProc.mode; }
+              if ('profile' in p) { if (p.profile) mergedProc.profile = p.profile; else delete mergedProc.profile; }
+              if ('timeoutMs' in p) { if (p.timeoutMs !== null && p.timeoutMs !== undefined) mergedProc.timeoutMs = p.timeoutMs; else delete mergedProc.timeoutMs; }
+              newProcs[procName] = mergedProc;
+            }
+            profileEntry.processes = newProcs;
+          }
+          builtImprove[name] = profileEntry;
+        }
+        newProfiles.improve = builtImprove;
+      }
+
       updated.profiles = newProfiles;
     }
 
-    // defaults
+    // defaults — defaults.improve is a string (profile name)
     if (defaultsBody !== undefined) {
       const existingDefaults = (existing.defaults as Rec) ?? {};
-      const existingImprove = (existingDefaults.improve as Rec) ?? {};
-      const mergedImprove = improveBody !== undefined
-        ? {
-            ...existingImprove,
-            ...('limit' in improveBody ? { limit: improveBody.limit } : {}),
-            ...('preset' in improveBody ? { preset: improveBody.preset } : {}),
-          }
-        : existingImprove;
       updated.defaults = {
         ...existingDefaults,
         ...('llm' in defaultsBody ? { llm: defaultsBody.llm } : {}),
         ...('agent' in defaultsBody ? { agent: defaultsBody.agent } : {}),
-        improve: mergedImprove,
+        ...('improve' in defaultsBody ? { improve: defaultsBody.improve } : {}),
       };
-    }
-
-    // features (v2 — merge per-section per-operation)
-    if (featuresBody !== undefined) {
-      const existingFeatures = (existing.features as Rec) ?? {};
-      const newFeatures: Rec = { ...existingFeatures };
-      for (const section of ['improve','index','search']) {
-        const secBody = featuresBody[section] as Rec | undefined;
-        if (!secBody || !isRec(secBody)) continue;
-        const existingSec = (existingFeatures[section] as Rec) ?? {};
-        const newSec: Rec = { ...existingSec };
-        for (const [op, entry] of Object.entries(secBody)) {
-          if (typeof entry === 'boolean') { newSec[op] = entry; continue; }
-          if (!isRec(entry)) continue;
-          const existingOp = (existingSec[op] as Rec) ?? {};
-          const mergedOp: Rec = { ...existingOp };
-          if ('enabled' in entry) mergedOp.enabled = entry.enabled;
-          if ('mode' in entry) { if (entry.mode) mergedOp.mode = entry.mode; else delete mergedOp.mode; }
-          if ('profile' in entry) { if (entry.profile) mergedOp.profile = entry.profile; else delete mergedOp.profile; }
-          if ('timeoutMs' in entry) { if (entry.timeoutMs !== null && entry.timeoutMs !== undefined) mergedOp.timeoutMs = entry.timeoutMs; else mergedOp.timeoutMs = null; }
-          newSec[op] = mergedOp;
-        }
-        newFeatures[section] = newSec;
-      }
-      updated.features = newFeatures;
     }
 
     // embedding
@@ -363,24 +300,9 @@ export const PATCH: RequestHandler = async (event) => {
       updated.embedding = merged;
     }
 
-    // top-level llm (default connection — written by setup wizard, editable via AKM tab)
-    if (isRec(body.llm)) {
-      const existingLlm = (existing.llm as Rec) ?? {};
-      const llmUpdate = body.llm as Rec;
-      const merged: Rec = { ...existingLlm };
-      for (const f of ['endpoint', 'model', 'provider'] as const) {
-        if (f in llmUpdate && typeof llmUpdate[f] === 'string') merged[f] = llmUpdate[f];
-      }
-      if ('apiKey' in llmUpdate) { if (llmUpdate.apiKey) merged.apiKey = llmUpdate.apiKey; else delete merged.apiKey; }
-      updated.llm = merged;
-    }
-
     // scalars
     if ('semanticSearchMode' in body) updated.semanticSearchMode = body.semanticSearchMode;
-    if ('archiveRetentionDays' in body) updated.archiveRetentionDays = body.archiveRetentionDays;
-    if ('stashInheritance' in body) updated.stashInheritance = body.stashInheritance;
     if ('stashDir' in body) { if (body.stashDir) updated.stashDir = body.stashDir; else delete updated.stashDir; }
-    if ('defaultWriteTarget' in body) { if (body.defaultWriteTarget) updated.defaultWriteTarget = body.defaultWriteTarget; else delete updated.defaultWriteTarget; }
 
     // output
     if (outputBody !== undefined) {
@@ -389,54 +311,6 @@ export const PATCH: RequestHandler = async (event) => {
         ...existingOutput,
         ...('format' in outputBody ? { format: outputBody.format } : {}),
         ...('detail' in outputBody ? { detail: outputBody.detail } : {}),
-      };
-    }
-
-    // improve (top-level pipeline)
-    if (improveTopBody !== undefined) {
-      const existingImproveTop = (existing.improve as Rec) ?? {};
-      const existingDecay = (existingImproveTop.utilityDecay as Rec) ?? {};
-      const udBody = improveTopBody.utilityDecay as Rec | undefined;
-      const mergedDecay = udBody !== undefined
-        ? {
-            ...existingDecay,
-            ...('halfLifeDays' in udBody ? { halfLifeDays: udBody.halfLifeDays } : {}),
-            ...('feedbackStabilityBoost' in udBody ? { feedbackStabilityBoost: udBody.feedbackStabilityBoost } : {}),
-          }
-        : existingDecay;
-      updated.improve = {
-        ...existingImproveTop,
-        ...('reflectCooldownByType' in improveTopBody ? { reflectCooldownByType: improveTopBody.reflectCooldownByType } : {}),
-        utilityDecay: mergedDecay,
-      };
-    }
-
-    // search
-    if (searchBody !== undefined) {
-      const existingSearch = (existing.search as Rec) ?? {};
-      const existingGb = (existingSearch.graphBoost as Rec) ?? {};
-      const gbBody = searchBody.graphBoost as Rec | undefined;
-      const mergedGb = gbBody !== undefined
-        ? {
-            ...existingGb,
-            ...(['directBoostPerEntity','directBoostCap','hopBoostPerEntity','hopBoostCap','maxHops','confidenceMode','confidenceWeight']
-              .reduce((acc, k) => { if (k in gbBody) acc[k] = gbBody[k]; return acc; }, {} as Rec)),
-          }
-        : existingGb;
-      updated.search = {
-        ...existingSearch,
-        ...('minScore' in searchBody ? { minScore: searchBody.minScore } : {}),
-        ...( gbBody !== undefined ? { graphBoost: mergedGb } : {}),
-      };
-    }
-
-    // feedback
-    if (feedbackBody !== undefined) {
-      const existingFeedback = (existing.feedback as Rec) ?? {};
-      updated.feedback = {
-        ...existingFeedback,
-        ...('requireReason' in feedbackBody ? { requireReason: feedbackBody.requireReason } : {}),
-        ...('allowedFailureModes' in feedbackBody ? { allowedFailureModes: feedbackBody.allowedFailureModes } : {}),
       };
     }
 

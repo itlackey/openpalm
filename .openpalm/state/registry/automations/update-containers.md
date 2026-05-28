@@ -1,9 +1,0 @@
----
-schedule: "0 3 * * 0"
-enabled: true
-description: Download latest assets, pull images, and restart services weekly
-tags: [openpalm, maintenance]
-timeoutMs: 300000
-type: assistant
-command: ["sh","-c","openpalm update"]
----

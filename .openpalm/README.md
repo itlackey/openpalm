@@ -23,7 +23,7 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
 
   stash/
     vaults/            User-managed secrets (akm vault:user)
-    tasks/             Scheduled automation task files (*.md)
+    tasks/             Scheduled automation task files (*.yml)
 
   cache/
     akm/               AKM cache (regenerable)

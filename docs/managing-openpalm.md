@@ -187,22 +187,18 @@ from the Registry tab in the admin console:
 |---|---|
 | `health-check.md` | Check admin health every 5 minutes |
 | `prompt-assistant.md` | Send a daily prompt to the assistant via the chat channel |
-| `cleanup-logs.md` | Weekly trim audit logs to prevent unbounded disk growth |
+| `cleanup-logs.yml` | Weekly trim audit logs to prevent unbounded disk growth |
 | `update-containers.md` | Weekly pull latest images and recreate containers |
 
-### Automation markdown format
+### Automation YAML format
 
-```markdown
----
+```yaml
 schedule: "0 9 * * *"       # standard cron expression (required)
 enabled: true                # optional, default true
 description: What it does    # optional
 tags: [openpalm]             # optional
 timeoutMs: 30000             # optional, milliseconds
 command: ["sh","-c","..."]  # shell command (mutually exclusive with prompt:)
----
-
-Body text here is used as the prompt when `prompt: inline` is set in frontmatter.
 ```
 
 ### Action types
@@ -233,8 +229,8 @@ Or use standard cron syntax directly (e.g., `"0 2 * * *"` for daily at 2 AM).
 
 ### Rules
 
-- **Filenames** must use `.md` extension (e.g., `backup.md`, `weekly-cleanup.md`)
-- Filenames must be lowercase letters, numbers, and hyphens only (before the `.md` extension)
+- **Filenames** must use `.yml` extension (e.g., `backup.yml`, `weekly-cleanup.yml`)
+- Filenames must be lowercase letters, numbers, and hyphens only (before the `.yml` extension)
 - Automations are AKM task files in `~/.openpalm/stash/tasks/`, registered with OS cron by `akm tasks sync`
 - `command` arrays use `Bun.spawn` argument form — no shell interpolation; use `["sh","-c","..."]` explicitly when needed
 
@@ -341,7 +337,7 @@ All ports are `127.0.0.1`-bound by default.
 3. Sign out and sign in again with the new password
 
 **Add an automation:**
-1. Install from the Registry tab in admin, or create `~/.openpalm/stash/tasks/my-job.md` with frontmatter `schedule` and `command`/`prompt`
+1. Install from the Registry tab in admin, or create `~/.openpalm/stash/tasks/my-job.yml` with YAML fields like `schedule` and `command`/`prompt`
 2. The assistant container picks it up within 60 s via the background `akm tasks sync` loop.
 
 **View audit / activity logs:**

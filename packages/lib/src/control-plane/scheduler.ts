@@ -1,7 +1,7 @@
 /**
  * Automation scheduler — types and akm CLI integration.
  *
- * Automations are AKM markdown task files at ${stashDir}/tasks/*.md.
+ * Automations are AKM task files at ${stashDir}/tasks/*.yml.
  * Scheduling is handled by the OS cron daemon (via `akm tasks sync`).
  * Execution is handled by `akm tasks run <id>`.
  */
@@ -69,8 +69,8 @@ export async function executeAutomation(
   id: string,
   akmEnv: NodeJS.ProcessEnv,
 ): Promise<AutomationRunResult> {
-  // Strip .md suffix if caller passes the full filename
-  const taskId = id.replace(/\.md$/, "");
+  // Strip file suffix if caller passes the full filename.
+  const taskId = id.replace(/\.ya?ml$/, "");
   return new Promise((resolve) => {
     execFile(
       "akm",
@@ -89,7 +89,7 @@ export async function executeAutomation(
   });
 }
 
-// ── Sync crontab with stash/tasks/*.md ───────────────────────────────────
+// ── Sync crontab with stash/tasks/*.yml ──────────────────────────────────
 
 export async function syncAutomations(akmEnv: NodeJS.ProcessEnv): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -115,7 +115,7 @@ export function readAutomationLogs(
   cacheDir: string,
   limit: number = 50,
 ): string[] {
-  const taskId = id.replace(/\.md$/, "");
+  const taskId = id.replace(/\.ya?ml$/, "");
   const logDir = join(cacheDir, "akm", "tasks", "logs", taskId);
   if (!existsSync(logDir)) return [];
 

@@ -39,7 +39,7 @@ Current addons in the registry: `api`, `chat`, `discord`, `ollama`, `slack`, `vo
 
 ### Automations
 
-Registry automations live in `.openpalm/state/registry/automations/<name>.md` in the repo source and are materialized into `~/.openpalm/state/registry/automations/<name>.md` on install or refresh. They become active only after being installed into `~/.openpalm/stash/tasks/` via the admin catalog API or UI.
+Registry automations live in `.openpalm/state/registry/automations/<name>.yml` in the repo source and are materialized into `~/.openpalm/state/registry/automations/<name>.yml` on install or refresh. They become active only after being installed into `~/.openpalm/stash/tasks/` via the admin catalog API or UI.
 
 ## Addon structure
 
@@ -134,7 +134,7 @@ Request body:
 { "name": "health-check", "type": "automation" }
 ```
 
-Copies the automation markdown from `~/.openpalm/state/registry/automations/` into `~/.openpalm/stash/tasks/<name>.md`. Fails if the automation is already installed or not found in the registry. The assistant container picks it up within 60 s via its background `akm tasks sync` loop.
+Copies the automation YAML task from `~/.openpalm/state/registry/automations/` into `~/.openpalm/stash/tasks/<name>.yml`. Fails if the automation is already installed or not found in the registry. The assistant container picks it up within 60 s via its background `akm tasks sync` loop.
 
 Channel addons are not installed through this endpoint. Use `POST /admin/addons` instead.
 
@@ -148,7 +148,7 @@ Request body:
 { "name": "health-check", "type": "automation" }
 ```
 
-Deletes `stash/tasks/<name>.md` from disk. The assistant container drops the cron entry within 60 s.
+Deletes `stash/tasks/<name>.yml` from disk. The assistant container drops the cron entry within 60 s.
 
 ### `POST /admin/automations/catalog/refresh`
 

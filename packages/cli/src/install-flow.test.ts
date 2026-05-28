@@ -189,7 +189,7 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(existsSync(join(homeDir, 'config/stack/addons/chat/compose.yml'))).toBe(true);
 
     expect(existsSync(join(homeDir, 'state/registry/addons/chat/compose.yml'))).toBe(true);
-    expect(existsSync(join(homeDir, 'state/registry/automations/cleanup-logs.md'))).toBe(true);
+    expect(existsSync(join(homeDir, 'state/registry/automations/cleanup-logs.yml'))).toBe(true);
 
     // ── Validate vault files are regular files (not directories) ─────
     // Note: vault/user/user.env is no longer
@@ -259,17 +259,17 @@ describe('install flow — tier 1 (file validation)', () => {
     const tasksDir = join(homeDir, 'stash/tasks');
     expect(existsSync(tasksDir)).toBe(true);
     const tasks = readdirSync(tasksDir).sort();
-    expect(tasks).toEqual(['akm-improve.md']);
+    expect(tasks).toEqual(['akm-improve.yml']);
 
-    const akmImprovePath = join(homeDir, 'stash/tasks/akm-improve.md');
+    const akmImprovePath = join(homeDir, 'stash/tasks/akm-improve.yml');
     const akmImproveContent = readFileSync(akmImprovePath, 'utf-8');
     expect(akmImproveContent).toContain('akm');
     expect(akmImproveContent).toContain('improve');
     // Confirm we're on the 0.8.0+ command, not the removed `index --enrich`.
     expect(akmImproveContent).not.toMatch(/--enrich\b/);
 
-    // ── Re-run setup: user edits to akm-improve.md must survive ─────
-    const userEdited = '---\nschedule: "0 9 * * *"\nenabled: false\ncommand: ["akm","improve","--auto-accept","safe"]\n---\n';
+    // ── Re-run setup: user edits to akm-improve.yml must survive ─────
+    const userEdited = 'schedule: "0 9 * * *"\nenabled: false\ncommand: ["akm","improve","--auto-accept","safe"]\n';
     writeFileSync(akmImprovePath, userEdited);
     const reSetup = await performSetup(spec as any);
     expect(reSetup.ok).toBe(true);

@@ -32,9 +32,9 @@ export async function runUpgradeAction(): Promise<void> {
   // release (including the one just upgraded to) triggers a download.
   // Existing state/ui/ is backed up to state/backups/ui-{timestamp}/ before
   // replacement. Non-fatal — existing build remains on any error.
-  const currentUiVersion = state.imageTag ?? '0.0.0';
+  const currentVersion = state.imageTag ?? '0.0.0';
   console.log('Checking for UI build update...');
-  const uiResult = await checkAndUpdateUiBuild(currentUiVersion, state.stateDir);
+  const uiResult = await checkAndUpdateUiBuild(currentVersion, state.stateDir);
   if (uiResult.updated) {
     console.log(`UI build updated to v${uiResult.latestVersion}.`);
   } else if (uiResult.error) {

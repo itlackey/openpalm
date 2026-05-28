@@ -61,9 +61,9 @@ function seedRequiredAssets(homeDir: string): void {
   mkdirSync(join(homeDir, "state"), { recursive: true });
   // Automations live in state/registry/automations (shipped catalog) and stash/tasks (user tasks)
   mkdirSync(join(homeDir, "state", "registry", "automations"), { recursive: true });
-  writeFileSync(join(homeDir, "state", "registry", "automations", "cleanup-logs.md"), "---\nschedule: \"0 4 * * 0\"\ndescription: cleanup logs\n---\n");
-  writeFileSync(join(homeDir, "state", "registry", "automations", "cleanup-data.md"), "---\nschedule: \"0 5 * * 0\"\ndescription: cleanup data\n---\n");
-  writeFileSync(join(homeDir, "state", "registry", "automations", "validate-config.md"), "---\nschedule: \"0 3 * * *\"\ndescription: validate config\n---\n");
+  writeFileSync(join(homeDir, "state", "registry", "automations", "cleanup-logs.yml"), "schedule: \"0 4 * * 0\"\ndescription: cleanup logs\ncommand: [\"echo\",\"clean\"]\n");
+  writeFileSync(join(homeDir, "state", "registry", "automations", "cleanup-data.yml"), "schedule: \"0 5 * * 0\"\ndescription: cleanup data\ncommand: [\"echo\",\"clean\"]\n");
+  writeFileSync(join(homeDir, "state", "registry", "automations", "validate-config.yml"), "schedule: \"0 3 * * *\"\ndescription: validate config\ncommand: [\"echo\",\"clean\"]\n");
 }
 
 // ── Shared test fixture ──────────────────────────────────────────────────

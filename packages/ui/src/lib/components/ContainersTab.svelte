@@ -306,7 +306,7 @@
                       {#if entryActionInFlight === 'start'}<span class="spinner-inline"></span>{/if}
                       Start
                     </button>
-                    <button class="btn btn-secondary btn-sm" disabled={isAnyActionInFlight} onclick={(e) => requestRowAction(entry.id, 'stop', e)}>
+                    <button class="btn btn-danger btn-sm" disabled={isAnyActionInFlight} onclick={(e) => requestRowAction(entry.id, 'stop', e)}>
                       {#if entryActionInFlight === 'stop'}<span class="spinner-inline"></span>{/if}
                       Stop
                     </button>

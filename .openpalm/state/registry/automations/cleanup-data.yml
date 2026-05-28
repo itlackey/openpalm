@@ -1,12 +1,13 @@
----
-schedule: "0 5 * * 0"
+schedule: '0 5 * * 0'
 enabled: true
 description: Compact memory database and remove stale temporary files
-tags: [openpalm, maintenance]
+tags:
+  - openpalm
+  - maintenance
 timeoutMs: 60000
 command:
   - /bin/bash
-  - "-c"
+  - -c
   - |
     DATA_DIR="${OP_HOME:?OP_HOME is required}/data"
 
@@ -23,4 +24,3 @@ command:
       [ -d "$bdir" ] || continue
       find "$bdir" -type f -mtime +30 -delete 2>/dev/null || true
     done
----

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { fetchUserVault, writeUserVaultKey, deleteUserVaultKey } from '$lib/api.js';
+  import { notifications } from '$lib/notifications.svelte.js';
 
   interface Props {
     tokenStored: boolean;
@@ -13,9 +14,8 @@
   let available = $state(false);
   let loading = $state(false);
   let error = $state('');
-  let actionSuccess = $state('');
-  let actionError = $state('');
   let actionLoading = $state<string | null>(null); // key being acted on, or 'write' for new
+  let deleteConfirmKey = $state<string | null>(null);
 
   let showWriteForm = $state(false);
   let writeKey = $state('');
@@ -42,37 +42,41 @@
     const k = writeKey.trim();
     if (!k || !writeValue) return;
     if (!KEY_RE.test(k)) {
-      actionError = 'Key must match [A-Za-z_][A-Za-z0-9_]* (env var format).';
+      notifications.push('error', 'Key must match [A-Za-z_][A-Za-z0-9_]* (env var format).');
       return;
     }
     actionLoading = 'write';
-    actionError = '';
-    actionSuccess = '';
     try {
       await writeUserVaultKey(k, writeValue);
-      actionSuccess = `Saved "${k}" to akm vault. Recreate the assistant container for it to pick up the new value.`;
+      notifications.push('success', `Saved "${k}" to akm vault. Recreate the assistant container to pick up the new value.`);
       writeKey = '';
       writeValue = '';
       showWriteForm = false;
       await loadKeys();
     } catch (e) {
-      actionError = e instanceof Error ? e.message : 'Failed to write to vault.';
+      notifications.push('error', e instanceof Error ? e.message : 'Failed to write to vault.');
     } finally {
       actionLoading = null;
     }
   }
 
-  async function handleDelete(key: string): Promise<void> {
-    if (!confirm(`Delete "${key}" from akm user vault? This cannot be undone.`)) return;
+  function requestDelete(key: string): void {
+    deleteConfirmKey = key;
+  }
+
+  function cancelDelete(): void {
+    deleteConfirmKey = null;
+  }
+
+  async function confirmDelete(key: string): Promise<void> {
+    deleteConfirmKey = null;
     actionLoading = key;
-    actionError = '';
-    actionSuccess = '';
     try {
       await deleteUserVaultKey(key);
-      actionSuccess = `Removed "${key}".`;
+      notifications.push('success', `Removed "${key}".`);
       await loadKeys();
     } catch (e) {
-      actionError = e instanceof Error ? e.message : 'Failed to remove key.';
+      notifications.push('error', e instanceof Error ? e.message : 'Failed to remove key.');
     } finally {
       actionLoading = null;
     }
@@ -106,23 +110,6 @@
   {#if !available && !loading && !error}
     <div class="error-banner">
       <span>akm vault is unavailable. Install akm and run <code>akm vault init user</code> to enable user-vault management.</span>
-    </div>
-  {/if}
-
-  {#if actionSuccess}
-    <div class="feedback feedback--success">
-      <span>{actionSuccess}</span>
-      <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => actionSuccess = ''}>
-        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-      </button>
-    </div>
-  {/if}
-  {#if actionError}
-    <div class="feedback feedback--error">
-      <span>{actionError}</span>
-      <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => actionError = ''}>
-        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-      </button>
     </div>
   {/if}
 
@@ -164,9 +151,19 @@
               <code>{key}</code>
             </span>
             <span class="key-col key-col--actions">
-              <button class="btn btn-sm btn-danger" onclick={() => void handleDelete(key)} disabled={actionLoading === key}>
-                {#if actionLoading === key}<span class="spinner"></span>{/if} Delete
-              </button>
+              {#if deleteConfirmKey === key}
+                <span class="confirm-bar" role="alert">
+                  <span class="confirm-text">Delete <strong>{key}</strong>?</span>
+                  <button class="btn btn-sm btn-danger" onclick={() => void confirmDelete(key)} disabled={actionLoading === key}>
+                    {#if actionLoading === key}<span class="spinner"></span>{/if} Confirm
+                  </button>
+                  <button class="btn btn-sm btn-secondary" onclick={cancelDelete}>Cancel</button>
+                </span>
+              {:else}
+                <button class="btn btn-sm btn-danger" onclick={() => requestDelete(key)} disabled={actionLoading === key}>
+                  {#if actionLoading === key}<span class="spinner"></span>{/if} Delete
+                </button>
+              {/if}
             </span>
           </div>
         {/each}
@@ -194,18 +191,14 @@
 
   .key-table { display: flex; flex-direction: column; width: 100%; }
   .key-table-header { display: flex; align-items: center; padding: var(--space-2) var(--space-5); background: var(--color-bg-tertiary); border-bottom: 1px solid var(--color-border); font-size: var(--text-xs); font-weight: var(--font-semibold); color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
-  .key-row { display: flex; align-items: center; padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--color-bg-tertiary); }
+  .key-row { display: flex; align-items: center; padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--color-bg-tertiary); gap: var(--space-3); }
+  .confirm-bar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
   .key-row:last-child { border-bottom: none; }
   .key-row:hover { background: var(--color-surface-hover); }
   .key-col { display: flex; align-items: center; }
   .key-col--name { flex: 1; min-width: 0; }
   .key-col--name code { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-text); }
   .key-col--actions { flex: 0 0 auto; }
-
-  .feedback { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-5); font-size: var(--text-sm); }
-  .feedback span { flex: 1; }
-  .feedback--success { background: var(--color-success-bg); border-bottom: 1px solid var(--color-success-border); color: var(--color-text); }
-  .feedback--error { background: var(--color-danger-bg); border-bottom: 1px solid var(--color-danger-border, rgba(255,107,107,0.25)); color: var(--color-text); }
 
   .error-banner { padding: var(--space-3) var(--space-5); background: var(--color-danger-bg); border-bottom: 1px solid var(--color-danger-border, rgba(255,107,107,0.25)); color: var(--color-danger); font-size: var(--text-sm); }
   .error-banner code { font-family: var(--font-mono); background: rgba(0,0,0,0.1); padding: 1px 6px; border-radius: var(--radius-sm); }

@@ -17,7 +17,7 @@ import {
 } from "$lib/server/helpers.js";
 import { readAutomationLogs } from "@openpalm/lib";
 
-const SAFE_NAME_RE = /^[a-zA-Z0-9._-]+(?:\.md)?$/;
+const SAFE_NAME_RE = /^[a-zA-Z0-9._-]+(?:\.ya?ml)?$/;
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 
@@ -28,7 +28,7 @@ export const GET: RequestHandler = async (event) => {
 
   const state = getState();
   const rawName = event.params.name ?? "";
-  const taskId = rawName.endsWith(".md") ? rawName.slice(0, -3) : rawName;
+  const taskId = rawName.replace(/\.ya?ml$/, '');
 
   if (!SAFE_NAME_RE.test(rawName) || rawName.includes("..") || rawName.includes("/")) {
     return errorResponse(400, "invalid_input", "name must match /^[a-zA-Z0-9._-]+$/", {}, requestId);

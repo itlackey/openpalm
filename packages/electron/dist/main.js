@@ -9354,7 +9354,7 @@ var init_dist = __esm(() => {
 });
 
 // src/main.ts
-import { app, BrowserWindow, Tray, Menu, shell, dialog } from "electron";
+import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain } from "electron";
 import { join as join4, dirname as dirname3 } from "node:path";
 import { existsSync as existsSync5 } from "node:fs";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
@@ -9449,19 +9449,22 @@ var $visitAsync = visit.visitAsync;
 
 // ../lib/src/control-plane/env.ts
 var import_dotenv = __toESM(require_main(), 1);
-import { readFileSync as readFileSync2, existsSync } from "node:fs";
+import { readFileSync, existsSync, copyFileSync } from "node:fs";
 function parseEnvFile(filePath) {
   if (!existsSync(filePath))
     return {};
   try {
-    return import_dotenv.parse(readFileSync2(filePath, "utf-8"));
+    return import_dotenv.parse(readFileSync(filePath, "utf-8"));
   } catch {
+    try {
+      copyFileSync(filePath, `${filePath}.corrupt-${Date.now()}`);
+    } catch {}
     return {};
   }
 }
 
 // ../lib/src/control-plane/core-assets.ts
-import { mkdirSync as mkdirSync2, writeFileSync, readFileSync as readFileSync3, existsSync as existsSync2, copyFileSync } from "node:fs";
+import { mkdirSync as mkdirSync2, writeFileSync, readFileSync as readFileSync2, existsSync as existsSync2, copyFileSync as copyFileSync2 } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9527,7 +9530,7 @@ function resolveAssetVersion() {
   if (process.env.OP_ASSET_VERSION)
     return process.env.OP_ASSET_VERSION;
   try {
-    const pkgJson = JSON.parse(readFileSync3(join(dirname(fileURLToPath(import.meta.url)), "../../package.json"), "utf-8"));
+    const pkgJson = JSON.parse(readFileSync2(join(dirname(fileURLToPath(import.meta.url)), "../../package.json"), "utf-8"));
     return `v${pkgJson.version}`;
   } catch {
     return "main";
@@ -9587,7 +9590,7 @@ import {
   existsSync as existsSync3,
   mkdirSync as mkdirSync3,
   readdirSync,
-  copyFileSync as copyFileSync2,
+  copyFileSync as copyFileSync3,
   writeFileSync as writeFileSync2,
   rmSync,
   realpathSync,
@@ -12800,7 +12803,7 @@ function copyTree(src, dest, opts) {
     if (opts?.skipExisting && existsSync3(destFile))
       continue;
     mkdirSync3(dirname2(destFile), { recursive: true });
-    copyFileSync2(srcFile, destFile);
+    copyFileSync3(srcFile, destFile);
   }
 }
 function resolveLocalCandidate(...strategies) {
@@ -12831,27 +12834,11 @@ function resolveLocalUiBuild() {
     return existsSync3(join2(candidate, "index.js")) ? candidate : null;
   });
 }
-function readUiVersionFile(dir) {
-  try {
-    return readFileSync(join2(dir, "version.txt"), "utf-8").trim();
-  } catch {
-    return null;
-  }
-}
 function resolveUiBuildDir() {
   const stateBuild = join2(resolveStateDir(), "ui");
-  const localBuild = resolveLocalUiBuild();
-  if (existsSync3(join2(stateBuild, "index.js")) && localBuild) {
-    const diskVer = readUiVersionFile(stateBuild);
-    const bundledVer = readUiVersionFile(localBuild);
-    if (diskVer && bundledVer && compareVersionTags(diskVer, bundledVer) > 0) {
-      return stateBuild;
-    }
-    return localBuild;
-  }
-  if (localBuild)
-    return localBuild;
-  return stateBuild;
+  if (existsSync3(join2(stateBuild, "index.js")))
+    return stateBuild;
+  return resolveLocalUiBuild() ?? stateBuild;
 }
 function sha256Hex(data) {
   return createHash("sha256").update(data).digest("hex");
@@ -12867,14 +12854,13 @@ function parseChecksumsFile(content) {
   }
   return map;
 }
-async function seedUiBuild(repoRef, stateDir) {
+async function seedUiBuild(repoRef, stateDir, options) {
   const uiDir = join2(stateDir, "ui");
   mkdirSync3(uiDir, { recursive: true });
-  const local = resolveLocalUiBuild();
+  const local = options?.forceRemote ? null : resolveLocalUiBuild();
   if (local) {
     logger11.debug("seeding UI build from local source", { src: local });
     copyTree(local, uiDir);
-    writeFileSync2(join2(uiDir, "version.txt"), repoRef.replace(/^v/, ""));
     return;
   }
   const base = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${repoRef}`;
@@ -12902,23 +12888,61 @@ async function seedUiBuild(repoRef, stateDir) {
       }
     }
     writeFileSync2(tmpTar, tarData);
+    rmSync(uiDir, { recursive: true, force: true });
+    mkdirSync3(uiDir, { recursive: true });
     await fo({ file: tmpTar, cwd: uiDir, strip: 1 });
-    writeFileSync2(join2(uiDir, "version.txt"), repoRef.replace(/^v/, ""));
   } finally {
     rmSync(tmpTar, { force: true });
   }
 }
 var GITHUB_API = "https://api.github.com";
 function compareVersionTags(a, b2) {
-  const parse = (v2) => v2.replace(/^v/, "").split(".").map(Number);
-  const [aM, am, ap] = parse(a);
-  const [bM, bm, bp] = parse(b2);
+  const parse = (v2) => {
+    const clean = v2.replace(/^v/, "");
+    const dashIdx = clean.indexOf("-");
+    const main = dashIdx === -1 ? clean : clean.slice(0, dashIdx);
+    const pre = dashIdx === -1 ? null : clean.slice(dashIdx + 1);
+    const parts = main.split(".").map(Number);
+    return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0, pre];
+  };
+  const comparePre = (x, y2) => {
+    const xp = x.split(".");
+    const yp = y2.split(".");
+    for (let i = 0;i < Math.max(xp.length, yp.length); i++) {
+      if (i >= xp.length)
+        return -1;
+      if (i >= yp.length)
+        return 1;
+      const xn2 = Number(xp[i]);
+      const yn2 = Number(yp[i]);
+      const xIsNum = !isNaN(xn2);
+      const yIsNum = !isNaN(yn2);
+      if (xIsNum && yIsNum) {
+        if (xn2 !== yn2)
+          return xn2 > yn2 ? 1 : -1;
+      } else if (xIsNum !== yIsNum) {
+        return xIsNum ? -1 : 1;
+      } else {
+        if (xp[i] !== yp[i])
+          return xp[i] > yp[i] ? 1 : -1;
+      }
+    }
+    return 0;
+  };
+  const [aM, am, ap, aPre] = parse(a);
+  const [bM, bm, bp, bPre] = parse(b2);
   if (aM !== bM)
     return aM > bM ? 1 : -1;
   if (am !== bm)
     return am > bm ? 1 : -1;
   if (ap !== bp)
     return ap > bp ? 1 : -1;
+  if (aPre === null && bPre !== null)
+    return 1;
+  if (aPre !== null && bPre === null)
+    return -1;
+  if (aPre !== null && bPre !== null)
+    return comparePre(aPre, bPre);
   return 0;
 }
 async function checkAndUpdateUiBuild(currentVersion, stateDir) {
@@ -13046,7 +13070,7 @@ function getCachedUpdateInfo() {
 import {
   mkdirSync as mkdirSync4,
   writeFileSync as writeFileSync3,
-  readFileSync as readFileSync4,
+  readFileSync as readFileSync3,
   existsSync as existsSync4,
   unlinkSync,
   chmodSync
@@ -13089,7 +13113,7 @@ function isPidAlive(pid) {
     return false;
   }
 }
-function stageAdminHome(stateDir) {
+function stageAdminHome(stateDir, pluginPath) {
   const home = adminOpencodeHome(stateDir);
   const configDir = join3(home, ".config", "opencode");
   const shareDir = join3(home, ".local", "share", "opencode");
@@ -13101,7 +13125,7 @@ function stageAdminHome(stateDir) {
   if (!existsSync4(configPath)) {
     writeFileSync3(configPath, JSON.stringify({
       $schema: "https://opencode.ai/config.json",
-      plugin: ["@openpalm/admin-tools-plugin"]
+      plugin: [pluginPath]
     }, null, 2), { encoding: "utf-8" });
   }
   return { home, configDir };
@@ -13128,7 +13152,7 @@ function readPidFile(stateDir) {
   if (!existsSync4(path))
     return null;
   try {
-    const raw = readFileSync4(path, "utf-8").trim();
+    const raw = readFileSync3(path, "utf-8").trim();
     const pid = Number.parseInt(raw, 10);
     return Number.isInteger(pid) && pid > 0 ? pid : null;
   } catch {
@@ -13159,11 +13183,11 @@ var _sdkLoader = async () => {
   return await Promise.resolve().then(() => (init_dist(), exports_dist));
 };
 async function startLocalOpenCode(opts) {
-  const { stateDir } = opts;
+  const { stateDir, pluginPath } = opts;
   mkdirSync4(stateDir, { recursive: true });
   sweepStalePid(stateDir);
   const password = generatePassword();
-  const { home } = stageAdminHome(stateDir);
+  const { home } = stageAdminHome(stateDir, pluginPath);
   const env = {
     ...opts.envOverride ?? process.env,
     HOME: home,
@@ -13242,6 +13266,15 @@ if (!globalThis.Bun) {
 }
 var __filename2 = fileURLToPath3(import.meta.url);
 var __dirname2 = dirname3(__filename2);
+function resolveAdminToolsPluginPath() {
+  const packed = join4(process.resourcesPath ?? "", "admin-tools", "index.js");
+  if (existsSync5(packed))
+    return packed;
+  const dev = join4(__dirname2, "..", "admin-tools", "dist", "index.js");
+  if (existsSync5(dev))
+    return dev;
+  return "@openpalm/admin-tools-plugin";
+}
 var UI_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;
 var READY_TIMEOUT_MS = 60000;
 var mainWindow = null;
@@ -13278,6 +13311,7 @@ function buildUIServerEnv(homeDir, port, update) {
     ORIGIN: `http://127.0.0.1:${port}`,
     OP_INSIDE_ELECTRON: "1",
     OP_ELECTRON_VERSION: app.getVersion?.() ?? "",
+    OP_IMAGE_TAG: process.env.OP_IMAGE_TAG || app.getVersion?.() || "latest",
     OP_OPENCODE_URL: resolveAssistantUrl(homeDir)
   };
   if (update?.updateAvailable && update.latestVersion) {
@@ -13512,7 +13546,7 @@ app.whenReady().then(async () => {
   }
   try {
     const stateDir = `${resolveOpenPalmHome()}/state`;
-    localOpencode = await startLocalOpenCode({ stateDir });
+    localOpencode = await startLocalOpenCode({ stateDir, pluginPath: resolveAdminToolsPluginPath() });
     if (localOpencode) {
       console.log(`Local OpenCode listening on ${localOpencode.url}`);
     }
@@ -13529,6 +13563,10 @@ app.whenReady().then(async () => {
   });
 });
 app.on("window-all-closed", () => {});
+ipcMain.handle("restart-app", () => {
+  app.relaunch();
+  app.quit();
+});
 app.on("before-quit", () => {
   app.isQuitting = true;
   stopUIServer();

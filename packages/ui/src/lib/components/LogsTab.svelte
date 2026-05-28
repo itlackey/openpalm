@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { fetchServiceLogs } from '$lib/api.js';
 
   interface Props {
@@ -15,6 +16,7 @@
   let selectedService = $state('');
   let tailLines = $state(100);
   let autoScroll = $state(true);
+  let copied = $state(false);
 
   let logContainer: HTMLPreElement | undefined = $state();
 
@@ -43,12 +45,26 @@
       loading = false;
     }
   }
+
+  async function copyLogs(): Promise<void> {
+    if (!logs) return;
+    await navigator.clipboard.writeText(logs);
+    copied = true;
+    setTimeout(() => { copied = false; }, 2000);
+  }
+
+  onMount(() => {
+    if (tokenStored) void loadLogs();
+  });
 </script>
 
 <div class="panel" role="tabpanel">
   <div class="panel-header">
     <h2>Service Logs</h2>
     <div class="panel-header-actions">
+      <button class="btn btn-secondary btn-sm" onclick={() => void copyLogs()} disabled={!logs}>
+        {copied ? 'Copied!' : 'Copy'}
+      </button>
       <button class="btn btn-secondary btn-sm" onclick={() => void loadLogs()} disabled={loading || !tokenStored}>
         {#if loading}
           <span class="spinner"></span>

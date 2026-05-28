@@ -44,8 +44,9 @@ describe('ProvidersPanel — assistant unavailable', () => {
     render(ProvidersPanel);
 
     await expect.element(
-      page.getByText(/The assistant \(OpenCode server\) is not reachable/i)
-    ).toBeVisible({ timeout: 5000 });
+      page.getByText(/The assistant \(OpenCode server\) is not reachable/i),
+      { timeout: 5000 }
+    ).toBeVisible();
   });
 
   test('never shows raw "fetch failed" string', async () => {
@@ -68,7 +69,7 @@ describe('ProvidersPanel — assistant available', () => {
     mockFetch(availableResponse);
     render(ProvidersPanel);
 
-    await expect.element(page.getByText(/OpenAI/i)).toBeVisible({ timeout: 5000 });
+    await expect.element(page.getByText(/OpenAI/i), { timeout: 5000 }).toBeVisible();
     await expect.element(
       page.getByText(/The assistant \(OpenCode server\) is not reachable/i)
     ).not.toBeInTheDocument();

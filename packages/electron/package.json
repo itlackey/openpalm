@@ -10,10 +10,10 @@
     "start": "electron .",
     "typecheck": "tsc --noEmit",
     "bundle": "bun run --cwd admin-tools build && bun build src/main.ts --bundle --target=node --outfile dist/main.js --external electron && bun build src/preload.ts --bundle --target=node --format=cjs --outfile dist/preload.cjs --external electron",
-    "stamp-ui": "node -e \"const v=require('../../packages/ui/package.json').version;require('fs').writeFileSync('../../packages/ui/build/version.txt',v);console.log('stamped ui version:',v)\"",
-    "build:mac": "bun run bundle && bun run stamp-ui && electron-builder --mac",
-    "build:linux": "bun run bundle && bun run stamp-ui && electron-builder --linux",
-    "build:win": "bun run bundle && bun run stamp-ui && electron-builder --win",
+    "build:mac": "bun run bundle && electron-builder --mac",
+    "build:linux": "bun run bundle && electron-builder --linux",
+    "build:linux-x64": "bun run bundle && electron-builder --linux --x64",
+    "build:win": "bun run bundle && electron-builder --win",
     "test": "vitest run"
   },
   "dependencies": {

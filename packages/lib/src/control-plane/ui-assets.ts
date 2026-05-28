@@ -12,7 +12,7 @@
  */
 import {
   existsSync, mkdirSync, readdirSync, copyFileSync,
-  readFileSync, writeFileSync, rmSync, realpathSync, renameSync,
+  writeFileSync, rmSync, realpathSync, renameSync,
 } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -179,36 +179,17 @@ export function resolveLocalUiBuild(): string | null {
   );
 }
 
-function readUiVersionFile(dir: string): string | null {
-  try { return readFileSync(join(dir, 'version.txt'), 'utf-8').trim(); } catch { return null; }
-}
-
 /**
  * Resolve the best available UI build directory at runtime.
  *
  * Priority:
- *   1. OP_HOME/state/ui/ — if its version.txt is NEWER than the bundled build
- *   2. Bundled / local build (Electron extraResources, source checkout)
- *   3. OP_HOME/state/ui/ — fallback when no bundled build exists
- *
- * This means GitHub-downloaded updates are applied automatically (disk wins
- * when newer), but a fresh AppImage install always works without a download.
+ *   1. OP_HOME/state/ui/ — user-installed or auto-updated build
+ *   2. Bundled / local build (Electron extraResources, OPENPALM_REPO_ROOT, source checkout)
  */
 export function resolveUiBuildDir(): string {
   const stateBuild = join(resolveStateDir(), 'ui');
-  const localBuild = resolveLocalUiBuild();
-
-  if (existsSync(join(stateBuild, 'index.js')) && localBuild) {
-    const diskVer    = readUiVersionFile(stateBuild);
-    const bundledVer = readUiVersionFile(localBuild);
-    if (diskVer && bundledVer && compareVersionTags(diskVer, bundledVer) > 0) {
-      return stateBuild;
-    }
-    return localBuild;
-  }
-
-  if (localBuild) return localBuild;
-  return stateBuild;
+  if (existsSync(join(stateBuild, 'index.js'))) return stateBuild;
+  return resolveLocalUiBuild() ?? stateBuild;
 }
 
 /**
@@ -241,12 +222,6 @@ function parseChecksumsFile(content: string): Map<string, string> {
   return map;
 }
 
-export function readCurrentUiBuildVersion(stateDir: string): string | null {
-  const versionFile = join(stateDir, 'ui', 'version.txt');
-  if (!existsSync(versionFile)) return null;
-  return readFileSync(versionFile, 'utf-8').trim() || null;
-}
-
 export async function seedUiBuild(repoRef: string, stateDir: string, options?: { forceRemote?: boolean }): Promise<void> {
   const uiDir = join(stateDir, 'ui');
   mkdirSync(uiDir, { recursive: true });
@@ -255,7 +230,6 @@ export async function seedUiBuild(repoRef: string, stateDir: string, options?: {
   if (local) {
     logger.debug('seeding UI build from local source', { src: local });
     copyTree(local, uiDir);
-    writeFileSync(join(uiDir, 'version.txt'), repoRef.replace(/^v/, ''));
     return;
   }
 
@@ -295,7 +269,6 @@ export async function seedUiBuild(repoRef: string, stateDir: string, options?: {
     mkdirSync(uiDir, { recursive: true });
     // Cross-platform extraction via the `tar` npm package — no shell dependency
     await tarExtract({ file: tmpTar, cwd: uiDir, strip: 1 });
-    writeFileSync(join(uiDir, 'version.txt'), repoRef.replace(/^v/, ''));
   } finally {
     rmSync(tmpTar, { force: true });
   }

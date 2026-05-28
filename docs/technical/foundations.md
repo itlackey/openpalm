@@ -206,7 +206,7 @@ network port and no Docker socket.
 
 Control plane:
 
-- Definitions: `${OP_HOME}/stash/tasks/*.md` (AKM markdown task files; `akm tasks sync` registers with OS cron)
+- Definitions: `${OP_HOME}/stash/tasks/*.yml` (AKM YAML task files; `akm tasks sync` registers with OS cron)
 - Manual triggers: `POST /admin/automations/<name>/run` spawns `akm tasks run <name>` directly
 - Per-run logs: `${OP_HOME}/cache/akm/tasks/logs/<name>/` (written by akm)
 - Sync log: `${OP_HOME}/state/logs/akm-tasks-sync.log`
@@ -219,7 +219,7 @@ Env sources (inherits the assistant container's environment):
 Mounts (provided by the assistant service):
 
 - `$OP_HOME/config -> /etc/openpalm:ro`
-- `$OP_HOME/stash/tasks -> /akm/tasks` (rw, AKM task markdown files)
+- `$OP_HOME/stash/tasks -> /akm/tasks` (rw, AKM YAML task files)
 - `$OP_HOME/cache/akm -> /akm-cache` (rw, per-run task logs)
 - `$OP_HOME/state/akm -> /akm-op` (rw, akm state.db)
 - `$OP_HOME/state/logs -> /openpalm/logs` (rw)

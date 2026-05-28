@@ -64,14 +64,13 @@ export function writeSystemEnv(state: ControlPlaneState): void {
   }
 
   // Determine effective setup completion. Mirrors isSetupComplete() semantics:
-  // explicit OP_SETUP_COMPLETE takes priority; when absent, OP_UI_LOGIN_PASSWORD
-  // being set (legacy installs that pre-date the flag) counts as complete.
-  // Writing "false" when the password fallback would return true caused setup
-  // redirects on upgrade for users whose deploy never wrote the explicit flag.
+  // explicit "true" wins, then explicit "false" wins (covers fresh installs
+  // where ensureSecrets seeds a password before the wizard runs), then fall
+  // back to password presence for legacy installs that pre-date the flag.
   const parsed = parseEnvFile(systemEnvPath);
   const effectivelyComplete =
     parsed.OP_SETUP_COMPLETE === "true" ||
-    (parsed.OP_UI_LOGIN_PASSWORD ?? "").length > 0;
+    (parsed.OP_SETUP_COMPLETE !== "false" && (parsed.OP_UI_LOGIN_PASSWORD ?? "").length > 0);
 
   const adminManaged: Record<string, string> = {
     OP_SETUP_COMPLETE: effectivelyComplete ? "true" : "false"

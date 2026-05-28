@@ -7,6 +7,7 @@
     saveAddonCredentials,
     type AddonCredentialField,
   } from '$lib/api.js';
+  import { notifications } from '$lib/notifications.svelte.js';
 
   interface Props {
     onAuthError: () => void;
@@ -27,7 +28,6 @@
   let credValues = $state<Record<string, Record<string, string>>>({});
   let credLoading = $state<string | null>(null);
   let credSaving = $state<string | null>(null);
-  let credMessage = $state<{ addon: string; type: 'ok' | 'err'; text: string } | null>(null);
 
   async function loadAddons(): Promise<void> {
     loading = true;
@@ -63,7 +63,6 @@
       return;
     }
     expanded = name;
-    credMessage = null;
     if (!credFields[name]) {
       credLoading = name;
       try {
@@ -75,7 +74,7 @@
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('401') || msg.includes('403')) { onAuthError(); return; }
-        credMessage = { addon: name, type: 'err', text: `Could not load credentials: ${msg}` };
+        notifications.push('error', `Could not load credentials: ${msg}`);
       } finally {
         credLoading = null;
       }
@@ -84,7 +83,6 @@
 
   async function saveCredentials(name: string): Promise<void> {
     credSaving = name;
-    credMessage = null;
     try {
       // Drop empty values for sensitive fields (user didn't change them);
       // leave non-sensitive empties so the user can clear a value.
@@ -97,11 +95,11 @@
         submitted[k] = v;
       }
       if (Object.keys(submitted).length === 0) {
-        credMessage = { addon: name, type: 'err', text: 'Nothing to save.' };
+        notifications.push('error', 'Nothing to save.');
         return;
       }
       const { updated } = await saveAddonCredentials(name, submitted);
-      credMessage = { addon: name, type: 'ok', text: `Saved ${updated.length} field(s). Recreate the addon container to apply.` };
+      notifications.push('success', `Saved ${updated.length} field(s). Recreate the addon container to apply.`);
       // Re-fetch to refresh `set` flags
       const fresh = await fetchAddonCredentials(name);
       credFields[name] = fresh;
@@ -111,7 +109,7 @@
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('401') || msg.includes('403')) { onAuthError(); return; }
-      credMessage = { addon: name, type: 'err', text: `Save failed: ${msg}` };
+      notifications.push('error', `Save failed: ${msg}`);
     } finally {
       credSaving = null;
     }
@@ -124,7 +122,7 @@
   <div class="panel-header">
     <div>
       <h2>Addons</h2>
-      <p class="panel-subtitle">Catalog lives in <code>state/registry/addons/</code>. Put addon values in <code>stash/vaults/user.env</code>.</p>
+      <p class="panel-subtitle">Optional features you can enable or disable. Credentials are written to the stack config and applied when the addon container restarts.</p>
     </div>
     <button class="btn btn-secondary btn-sm" onclick={() => loadAddons()} disabled={loading}>
       {#if loading}
@@ -173,7 +171,7 @@
                 disabled={!addon.available}
                 aria-expanded={expanded === addon.name}
               >
-                {expanded === addon.name ? 'Hide' : 'Configure'}
+                {expanded === addon.name ? 'Hide' : 'Credentials'}
               </button>
               <button
                 class="btn btn-sm"
@@ -216,11 +214,6 @@
                     />
                   </div>
                 {/each}
-                {#if credMessage && credMessage.addon === addon.name}
-                  <div class="creds-message" class:creds-message--err={credMessage.type === 'err'} class:creds-message--ok={credMessage.type === 'ok'}>
-                    {credMessage.text}
-                  </div>
-                {/if}
                 <div class="creds-actions">
                   <button class="btn btn-primary btn-sm" disabled={credSaving === addon.name} onclick={() => void saveCredentials(addon.name)}>
                     {#if credSaving === addon.name}<span class="spinner"></span>{/if} Save
@@ -407,14 +400,6 @@
     font-family: inherit;
   }
   .form-input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-subtle); }
-
-  .creds-message {
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-md);
-    font-size: var(--text-xs);
-  }
-  .creds-message--ok { background: var(--color-success-bg); color: var(--color-text); }
-  .creds-message--err { background: var(--color-danger-bg); color: var(--color-text); }
 
   .creds-actions {
     display: flex;

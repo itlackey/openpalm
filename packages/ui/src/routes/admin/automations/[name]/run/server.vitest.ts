@@ -41,8 +41,8 @@ function seedInstalledTask(stashDir: string, id: string): void {
   const tasksDir = join(stashDir, 'tasks');
   mkdirSync(tasksDir, { recursive: true });
   writeFileSync(
-    join(tasksDir, `${id}.md`),
-    `---\nschedule: "0 3 * * *"\ncommand: ["echo","hello"]\n---\n`,
+    join(tasksDir, `${id}.yml`),
+    `schedule: "0 3 * * *"\ncommand: ["echo","hello"]\n`,
   );
 }
 
@@ -100,7 +100,7 @@ describe('POST /admin/automations/:name/run', () => {
     expect(body.status).toBe('completed');
   });
 
-  test('accepts a bare base name without .md', async () => {
+  test('accepts a bare base name without .yml', async () => {
     const state = getState();
     seedInstalledTask(state.stashDir, 'health-check');
 

@@ -309,5 +309,4 @@ export {
   resolveUiBuildDir,
   seedUiBuild,
   checkAndUpdateUiBuild,
-  readCurrentUiBuildVersion,
 } from "./control-plane/ui-assets.js";

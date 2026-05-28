@@ -194,7 +194,7 @@
 			<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
 			<path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
 		</svg>
-		AKM
+		Knowledge
 	</button>
 	<button
 		class="tab"
@@ -263,6 +263,19 @@
 		top: var(--nav-height);
 		z-index: 40;
 		background: var(--color-bg-secondary);
+	}
+
+	@media (max-width: 480px) {
+		.tabs::after {
+			content: '';
+			position: sticky;
+			right: 0;
+			flex-shrink: 0;
+			width: 40px;
+			background: linear-gradient(to right, transparent, var(--color-bg-secondary));
+			pointer-events: none;
+			align-self: stretch;
+		}
 	}
 
 	.tab {

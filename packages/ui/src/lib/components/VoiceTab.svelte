@@ -43,7 +43,6 @@
 	let loading = $state(false);
 	let saving = $state(false);
 	let error = $state('');
-	let saved = $state(false);
 
 	let tts = $state<VoiceSection>(EMPTY_SECTION());
 	let stt = $state<VoiceSection>(EMPTY_SECTION());
@@ -148,7 +147,6 @@
 	async function save(): Promise<void> {
 		saving = true;
 		error = '';
-		saved = false;
 
 		const wantsVoiceAddon =
 			tts.engine === 'openpalm-voice' || stt.engine === 'openpalm-voice';
@@ -223,8 +221,9 @@
 				}
 			}
 
-			saved = true;
-			setTimeout(() => { saved = false; }, 3000);
+			if (!wantsVoiceAddon) {
+				notifications.push('success', 'Voice settings saved.');
+			}
 			// Refresh availability after saving — the URL may have changed.
 			await load();
 		} catch (e) {
@@ -363,7 +362,7 @@
 			</button>
 			<button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || !tokenStored}>
 				{#if saving}<span class="spinner"></span>{/if}
-				{saved ? 'Saved' : 'Save'}
+				Save
 			</button>
 		</div>
 	</div>
@@ -375,50 +374,6 @@
 			Configure how the assistant listens and speaks. Choose an engine for each;
 			the in-app mic uses STT and the optional auto-speak toggle uses TTS.
 		</p>
-
-		{#if wantsOpenpalmVoice && addonProfiles.length > 0}
-			<section class="engine-section">
-				<h3 class="engine-heading">Hardware profile</h3>
-				{#if addonProfiles.length === 1}
-					<p class="engine-subheading">
-						Running on CPU{selectedProfileInfo?.label ? ` (${selectedProfileInfo.label})` : ''}.
-					</p>
-				{:else}
-					<p class="engine-subheading">
-						Select the profile that matches your hardware. GPU profiles are auto-selected when available.
-					</p>
-					<div class="form-field">
-						<label class="form-label" for="voice-profile">Profile</label>
-						<select
-							id="voice-profile"
-							class="form-input"
-							value={selectedProfile}
-							onchange={(e) => selectedProfile = (e.currentTarget as HTMLSelectElement).value}
-						>
-							{#each addonProfiles as profile (profile.id)}
-								<option
-									value={profile.id}
-									disabled={profile.available === false}
-									title={profile.available === false ? (profile.reason ?? 'Not available on this host') : undefined}
-								>
-									{profile.label ?? profile.id}{profile.available === false ? ' — unavailable' : ''}
-								</option>
-							{/each}
-						</select>
-						{#if selectedProfileInfo?.requires}
-							<span class="field-hint">
-								Requires: {selectedProfileInfo.requires}
-							</span>
-						{/if}
-						{#if selectedProfileInfo?.available === false}
-							<span class="field-hint field-hint--warning">
-								{selectedProfileInfo.reason ?? 'This profile is not available on the current host.'}
-							</span>
-						{/if}
-					</div>
-				{/if}
-			</section>
-		{/if}
 
 		<section class="engine-section">
 			<h3 class="engine-heading">Text-to-Speech</h3>
@@ -509,9 +464,15 @@
 							Test voice
 						</button>
 						{#if testResult === 'success'}
-							<span class="test-result test-result--ok" aria-live="polite">✓ Working</span>
+							<span class="test-result test-result--ok" aria-live="polite">
+								<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+								Working
+							</span>
 						{:else if testResult === 'error'}
-							<span class="test-result test-result--err" aria-live="polite">✗ {testError || 'Failed'}</span>
+							<span class="test-result test-result--err" aria-live="polite">
+								<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+								{testError || 'Failed'}
+							</span>
 						{/if}
 					</div>
 
@@ -629,6 +590,50 @@
 				</div>
 			{/if}
 		</section>
+
+		{#if wantsOpenpalmVoice && addonProfiles.length > 0}
+			<section class="engine-section">
+				<h3 class="engine-heading">Hardware profile</h3>
+				{#if addonProfiles.length === 1}
+					<p class="engine-subheading">
+						Running on CPU{selectedProfileInfo?.label ? ` (${selectedProfileInfo.label})` : ''}.
+					</p>
+				{:else}
+					<p class="engine-subheading">
+						Select the profile that matches your hardware. GPU profiles are auto-selected when available.
+					</p>
+					<div class="form-field">
+						<label class="form-label" for="voice-profile">Profile</label>
+						<select
+							id="voice-profile"
+							class="form-input"
+							value={selectedProfile}
+							onchange={(e) => selectedProfile = (e.currentTarget as HTMLSelectElement).value}
+						>
+							{#each addonProfiles as profile (profile.id)}
+								<option
+									value={profile.id}
+									disabled={profile.available === false}
+									title={profile.available === false ? (profile.reason ?? 'Not available on this host') : undefined}
+								>
+									{profile.label ?? profile.id}{profile.available === false ? ' — unavailable' : ''}
+								</option>
+							{/each}
+						</select>
+						{#if selectedProfileInfo?.requires}
+							<span class="field-hint">
+								Requires: {selectedProfileInfo.requires}
+							</span>
+						{/if}
+						{#if selectedProfileInfo?.available === false}
+							<span class="field-hint field-hint--warning">
+								{selectedProfileInfo.reason ?? 'This profile is not available on the current host.'}
+							</span>
+						{/if}
+					</div>
+				{/if}
+			</section>
+		{/if}
 	</div>
 </div>
 
@@ -671,8 +676,12 @@
 
 <style>
 	.panel-header {
+		position: sticky; top: 0; z-index: 10;
+		background: var(--color-surface);
 		display: flex; align-items: center; justify-content: space-between;
-		margin-bottom: var(--space-6);
+		padding: var(--space-4) var(--space-5);
+		border-bottom: 1px solid var(--color-border);
+		margin-bottom: 0;
 	}
 	.panel-header h2 { font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text); margin: 0; }
 	.panel-header-actions { display: flex; gap: var(--space-2); }

@@ -107,8 +107,8 @@ function countValidAutomations(rootDir: string): number {
   const automationsDir = join(rootDir, 'automations');
   if (!existsSync(automationsDir)) return 0;
   return readdirSync(automationsDir).filter((file) => {
-    if (!file.endsWith('.md')) return false;
-    return isValidComponentName(file.replace(/\.md$/, ''));
+    if (!file.endsWith('.yml')) return false;
+    return isValidComponentName(file.replace(/\.yml$/, ''));
   }).length;
 }
 
@@ -209,25 +209,21 @@ export function discoverRegistryAutomations(stashDir: string): RegistryAutomatio
   if (!existsSync(automationsDir)) return [];
 
   return readdirSync(automationsDir)
-    .filter((file) => file.endsWith('.md'))
+    .filter((file) => file.endsWith('.yml'))
     .map((file) => {
-      const name = file.replace(/\.md$/, '');
+      const name = file.replace(/\.yml$/, '');
       if (!VALID_NAME_RE.test(name)) return null;
 
       const content = readFileSync(join(automationsDir, file), 'utf-8');
       let description = '';
       let schedule = '';
 
-      // Extract frontmatter metadata (between --- delimiters)
+      // Extract YAML metadata.
       try {
-        const after = content.startsWith('---') ? content.slice(3) : '';
-        const end = after.indexOf('\n---');
-        if (end !== -1) {
-          const parsed = parseYaml(after.slice(0, end));
-          if (parsed && typeof parsed === 'object') {
-            description = (parsed as Record<string, unknown>).description as string ?? '';
-            schedule = (parsed as Record<string, unknown>).schedule as string ?? '';
-          }
+        const parsed = parseYaml(content);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          description = (parsed as Record<string, unknown>).description as string ?? '';
+          schedule = (parsed as Record<string, unknown>).schedule as string ?? '';
         }
       } catch {
         // best-effort metadata extraction
@@ -246,9 +242,9 @@ export function discoverRegistryAutomations(stashDir: string): RegistryAutomatio
 
 export function getRegistryAutomation(name: string): string | null {
   if (!VALID_NAME_RE.test(name)) return null;
-  const mdPath = join(resolveRegistryAutomationsDir(), `${name}.md`);
-  if (!existsSync(mdPath)) return null;
-  return readFileSync(mdPath, 'utf-8');
+  const ymlPath = join(resolveRegistryAutomationsDir(), `${name}.yml`);
+  if (!existsSync(ymlPath)) return null;
+  return readFileSync(ymlPath, 'utf-8');
 }
 
 export function getRegistryAddonConfig(homeDir: string, name: string): RegistryAddonConfig {
@@ -736,20 +732,20 @@ export function installAutomationFromRegistry(name: string, stashDir: string): M
     return { ok: false, error: `Invalid automation name: ${name}` };
   }
 
-  const markdownContent = getRegistryAutomation(name);
-  if (!markdownContent) {
+  const taskContent = getRegistryAutomation(name);
+  if (!taskContent) {
     return { ok: false, error: `Automation "${name}" not found in registry` };
   }
 
   const tasksDir = join(stashDir, 'tasks');
   mkdirSync(tasksDir, { recursive: true });
 
-  const mdPath = join(tasksDir, `${name}.md`);
-  if (existsSync(mdPath)) {
+  const ymlPath = join(tasksDir, `${name}.yml`);
+  if (existsSync(ymlPath)) {
     return { ok: false, error: `Automation "${name}" is already installed` };
   }
 
-  writeFileSync(mdPath, markdownContent);
+  writeFileSync(ymlPath, taskContent);
   // The assistant container's 60-second akm tasks sync loop picks up the new
   // file from the shared stash mount and registers it with OS cron.
   return { ok: true };
@@ -760,12 +756,12 @@ export function uninstallAutomation(name: string, stashDir: string): MutationRes
     return { ok: false, error: `Invalid automation name: ${name}` };
   }
 
-  const mdPath = join(stashDir, 'tasks', `${name}.md`);
-  if (!existsSync(mdPath)) {
+  const ymlPath = join(stashDir, 'tasks', `${name}.yml`);
+  if (!existsSync(ymlPath)) {
     return { ok: false, error: `Automation "${name}" is not installed` };
   }
 
-  rmSync(mdPath, { force: true });
+  rmSync(ymlPath, { force: true });
   // The assistant container's 60-second akm tasks sync will notice the file
   // is gone and deregister it from OS cron on next sync.
   return { ok: true };

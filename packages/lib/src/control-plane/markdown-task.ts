@@ -1,12 +1,9 @@
 /**
- * AKM markdown task parser.
+ * AKM task parser.
  *
- * Task files are markdown with YAML frontmatter. The frontmatter defines the
- * schedule and target; for inline-prompt tasks the markdown body is the prompt.
- *
- * Supported target types:
- *   command  — `command: [...]` YAML array (argv), run via Bun.spawn / akm tasks run
- *   prompt   — `prompt: inline` + markdown body as the prompt text
+ * Task files are YAML documents in stash/tasks/. Supported target types:
+ *   command  — `command: [...]` YAML array (argv)
+ *   prompt   — `prompt: <text>` inline prompt text
  *   workflow — `workflow: workflow:<ref>` + optional `params` map
  */
 import { parse as parseYaml } from "yaml";
@@ -15,7 +12,7 @@ import { join } from "node:path";
 import type { AutomationConfig } from "./scheduler.js";
 import { createLogger } from "../logger.js";
 
-const logger = createLogger("markdown-task");
+const logger = createLogger("task-file");
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -35,29 +32,10 @@ export type MarkdownTaskTarget =
   | { kind: "prompt"; profile?: string; body: string }
   | { kind: "workflow"; ref: string; params: Record<string, unknown> };
 
-// ── Frontmatter splitter ──────────────────────────────────────────────────
-
-interface ParsedFile {
-  frontmatter: string;
-  body: string;
-}
-
-function splitFrontmatter(content: string): ParsedFile | null {
-  // Must start with ---
-  if (!content.startsWith("---")) return null;
-  const after = content.slice(3);
-  const end = after.indexOf("\n---");
-  if (end === -1) return null;
-  return {
-    frontmatter: after.slice(0, end).trim(),
-    body: after.slice(end + 4).trim(),
-  };
-}
-
 // ── Parser ────────────────────────────────────────────────────────────────
 
 export function parseMarkdownTask(filePath: string): MarkdownTask | null {
-  const id = filePath.replace(/.*[\\/]/, "").replace(/\.md$/, "");
+  const id = filePath.replace(/.*[\\/]/, "").replace(/\.ya?ml$/, "");
   let raw: string;
   try {
     raw = readFileSync(filePath, "utf-8");
@@ -66,22 +44,16 @@ export function parseMarkdownTask(filePath: string): MarkdownTask | null {
     return null;
   }
 
-  const parts = splitFrontmatter(raw);
-  if (!parts) {
-    logger.warn("task file missing frontmatter delimiters", { filePath });
-    return null;
-  }
-
   let fm: Record<string, unknown>;
   try {
-    fm = parseYaml(parts.frontmatter) as Record<string, unknown>;
+    const parsed = parseYaml(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      logger.warn("task YAML is not an object", { filePath });
+      return null;
+    }
+    fm = parsed as Record<string, unknown>;
   } catch (err) {
-    logger.warn("failed to parse task frontmatter", { filePath, error: String(err) });
-    return null;
-  }
-
-  if (!fm || typeof fm !== "object") {
-    logger.warn("task frontmatter is not an object", { filePath });
+    logger.warn("failed to parse task YAML", { filePath, error: String(err) });
     return null;
   }
 
@@ -106,19 +78,14 @@ export function parseMarkdownTask(filePath: string): MarkdownTask | null {
     }
     target = { kind: "command", cmd };
   } else if (fm.prompt !== undefined) {
-    if (fm.prompt !== "inline") {
-      // Future: handle asset-ref and file-path prompt sources
-      logger.warn("task 'prompt' supports only 'inline' currently", { filePath });
-      return null;
-    }
-    if (!parts.body) {
-      logger.warn("prompt:inline task has no markdown body", { filePath });
+    if (typeof fm.prompt !== "string" || !fm.prompt.trim()) {
+      logger.warn("task 'prompt' must be a non-empty string", { filePath });
       return null;
     }
     target = {
       kind: "prompt",
       profile: typeof fm.profile === "string" ? fm.profile : undefined,
-      body: parts.body,
+      body: fm.prompt.trim(),
     };
   } else if (fm.workflow !== undefined) {
     if (typeof fm.workflow !== "string") {
@@ -155,7 +122,7 @@ export function loadMarkdownTasks(stashDir: string): MarkdownTask[] {
 
   const tasks: MarkdownTask[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+    if (!entry.isFile() || (!entry.name.endsWith(".yml") && !entry.name.endsWith(".yaml"))) continue;
     const task = parseMarkdownTask(join(dir, entry.name));
     if (task) tasks.push(task);
   }
@@ -195,6 +162,6 @@ export function taskToAutomationConfig(task: MarkdownTask): AutomationConfig {
       agent,
     },
     on_failure: "log",
-    fileName: `${task.id}.md`,
+    fileName: `${task.id}.yml`,
   };
 }

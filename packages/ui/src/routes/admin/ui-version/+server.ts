@@ -4,7 +4,7 @@ import {
   errorResponse,
   requireAdmin,
 } from "$lib/server/helpers.js";
-import { seedUiBuild, readCurrentUiBuildVersion, resolveStateDir, createLogger } from "@openpalm/lib";
+import { seedUiBuild, resolveStateDir, createLogger } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("ui-version");
@@ -32,7 +32,6 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(502, "download_failed", msg, { message: msg }, requestId);
   }
 
-  const version = readCurrentUiBuildVersion(stateDir) ?? tag;
-  logger.info("ui-version downloaded", { requestId, version });
-  return jsonResponse(200, { ok: true, version }, requestId);
+  logger.info("ui-version downloaded", { requestId, tag });
+  return jsonResponse(200, { ok: true, tag }, requestId);
 };

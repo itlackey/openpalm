@@ -13,7 +13,7 @@ async function automationsCheck(): Promise<void> {
     process.exit(0);
   }
 
-  const taskFiles = readdirSync(tasksDir).filter((f) => f.endsWith('.md'));
+  const taskFiles = readdirSync(tasksDir).filter((f) => f.endsWith('.yml'));
   if (taskFiles.length === 0) {
     console.log('No automation tasks installed.');
     process.exit(0);
@@ -21,7 +21,7 @@ async function automationsCheck(): Promise<void> {
 
   console.log(`Found ${taskFiles.length} automation task(s):`);
   for (const file of taskFiles) {
-    console.log(`  - ${file.replace('.md', '')}`);
+    console.log(`  - ${file.replace('.yml', '')}`);
   }
 
   // Check crontab for registered tasks
@@ -32,7 +32,7 @@ async function automationsCheck(): Promise<void> {
         resolve();
         return;
       }
-      const registered = taskFiles.filter((f) => stdout.includes(f.replace('.md', '')));
+      const registered = taskFiles.filter((f) => stdout.includes(f.replace('.yml', '')));
       console.log(`Registered in crontab: ${registered.length}/${taskFiles.length}`);
       if (registered.length < taskFiles.length) {
         console.log(

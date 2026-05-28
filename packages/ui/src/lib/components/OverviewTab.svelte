@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { HealthPayload, AutomationsResponse } from '$lib/types.js';
+  import type { ReleaseEntry } from '$lib/api.js';
 
   interface Props {
     adminHealth: HealthPayload | null;
@@ -13,11 +14,14 @@
     automationsData: AutomationsResponse | null;
     mergedServices: Map<string, string>;
     currentImageTag: string;
-    currentUiVersion: string | null;
     tagChangeLoading: boolean;
     uiDownloadLoading: boolean;
     uiDownloadReady: boolean;
     inElectron: boolean;
+    selectedImageTag: string;
+    selectedUiTag: string;
+    releases: ReleaseEntry[];
+    releasesLoading: boolean;
     onCheckHealth: () => void;
     onApplyChanges: () => void;
     onUpgradeStack: () => void;
@@ -25,6 +29,8 @@
     onSetImageTag: (tag: string) => void;
     onDownloadUiVersion: (tag: string) => void;
     onRestartApp: () => void;
+    onSelectedImageTagChange: (tag: string) => void;
+    onSelectedUiTagChange: (tag: string) => void;
   }
 
   let {
@@ -39,11 +45,14 @@
     automationsData,
     mergedServices,
     currentImageTag,
-    currentUiVersion,
     tagChangeLoading,
     uiDownloadLoading,
     uiDownloadReady,
     inElectron,
+    selectedImageTag,
+    selectedUiTag,
+    releases,
+    releasesLoading,
     onCheckHealth,
     onApplyChanges,
     onUpgradeStack,
@@ -51,10 +60,12 @@
     onSetImageTag,
     onDownloadUiVersion,
     onRestartApp,
+    onSelectedImageTagChange,
+    onSelectedUiTagChange,
   }: Props = $props();
 
-  let pendingImageTag = $state('');
-  let pendingUiTag = $state('');
+  // Releases that have a ui-build asset — for the UI build dropdown
+  let uiBuildReleases = $derived(releases.filter((r) => r.hasUiBuild));
 
   // Derived: automation count
   let automationCount = $derived(automationsData?.automations.length ?? 0);
@@ -88,8 +99,24 @@
     return 'unknown' as const;
   });
 
+  // Derived: top-level system health summary
+  let healthSummary = $derived.by((): { status: 'ok' | 'warning' | 'unknown'; message: string } => {
+    if (!containerCounts) return { status: 'unknown', message: 'Checking services…' };
+    if (containerCounts.running === containerCounts.total && containerCounts.total > 0) {
+      return { status: 'ok', message: `All ${containerCounts.total} services running` };
+    }
+    const down = containerCounts.total - containerCounts.running;
+    return { status: 'warning', message: `${down} of ${containerCounts.total} services not running — check the Containers tab` };
+  });
+
 </script>
 
+
+<!-- System health summary bar -->
+<div class="health-summary health-summary--{healthSummary.status}" role="status" aria-live="polite">
+  <span class="health-dot"></span>
+  <span class="health-msg">{healthSummary.message}</span>
+</div>
 
 <!-- Operation Output -->
 {#if operationResult}
@@ -160,30 +187,6 @@
           </span>
         </button>
 
-        <button class="action-item" onclick={onUpgradeStack} disabled={anyDangerousLoading || !tokenStored}>
-          <span class="action-icon action-icon--amber">
-            {#if upgradeLoading}
-              <span class="spinner"></span>
-            {:else}
-              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="17 1 21 5 17 9" />
-                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                <polyline points="7 23 3 19 7 15" />
-                <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-              </svg>
-            {/if}
-          </span>
-          <div class="action-content">
-            <span class="action-title">Upgrade Stack</span>
-            <span class="action-desc">Download latest assets, pull images, restart services</span>
-            <span class="action-hint">Backs up current config before overwriting.</span>
-          </div>
-          <span class="action-arrow">
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </span>
-        </button>
 
         <a class="action-item" href="/setup?rerun=1">
           <span class="action-icon action-icon--purple">
@@ -211,7 +214,7 @@
           </span>
           <div class="action-content">
             <span class="action-title">Open OpenCode UI</span>
-            <span class="action-desc">Open the assistant web interface</span>
+            <span class="action-desc">Open the assistant web interface (localhost:4096 — host machine only)</span>
           </div>
           <span class="action-arrow">
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -302,23 +305,42 @@
       <h2>Version Management</h2>
     </div>
     <div class="panel-body">
+
+      <!-- Stack images -->
       <div class="version-section">
         <div class="version-row">
           <span class="version-label">Stack images</span>
-          <code class="version-value">{currentImageTag || '—'}</code>
+          <code class="version-value version-value--active">{currentImageTag || '—'}</code>
         </div>
         <div class="version-input-row">
-          <input
-            class="version-input"
-            type="text"
-            placeholder="e.g. 0.11.0 or latest"
-            bind:value={pendingImageTag}
-            disabled={tagChangeLoading || anyDangerousLoading}
-          />
+          {#if releasesLoading}
+            <div class="version-select-skeleton"></div>
+          {:else if releases.length > 0}
+            <select
+              class="version-select"
+              value={selectedImageTag}
+              onchange={(e) => onSelectedImageTagChange((e.currentTarget as HTMLSelectElement).value)}
+              disabled={tagChangeLoading || anyDangerousLoading}
+            >
+              <option value="latest">latest</option>
+              {#each releases as r (r.tag)}
+                <option value={r.tag}>{r.tag}{r.prerelease ? ' (pre-release)' : ''}</option>
+              {/each}
+            </select>
+          {:else}
+            <input
+              class="version-input"
+              type="text"
+              placeholder="e.g. 0.11.0 or latest"
+              value={selectedImageTag}
+              oninput={(e) => onSelectedImageTagChange((e.currentTarget as HTMLInputElement).value)}
+              disabled={tagChangeLoading || anyDangerousLoading}
+            />
+          {/if}
           <button
             class="btn btn-sm"
-            onclick={() => { if (pendingImageTag.trim()) onSetImageTag(pendingImageTag.trim()); }}
-            disabled={!pendingImageTag.trim() || tagChangeLoading || anyDangerousLoading}
+            onclick={() => { if (selectedImageTag.trim()) onSetImageTag(selectedImageTag.trim()); }}
+            disabled={!selectedImageTag.trim() || tagChangeLoading || anyDangerousLoading}
           >
             {#if tagChangeLoading}
               <span class="spinner spinner-sm"></span> Applying…
@@ -327,54 +349,119 @@
             {/if}
           </button>
         </div>
-        <p class="version-hint">Changes the <code>OP_IMAGE_TAG</code> in stack.env, pulls the new images, and restarts services.</p>
+        <p class="version-hint">Pulls the selected images and restarts services.</p>
       </div>
 
       <div class="version-divider"></div>
 
+      <!-- Upgrade Stack -->
       <div class="version-section">
         <div class="version-row">
-          <span class="version-label">UI build</span>
-          <code class="version-value">{currentUiVersion || '(bundled)'}</code>
+          <span class="version-label">Upgrade Stack</span>
         </div>
         <div class="version-input-row">
-          <input
-            class="version-input"
-            type="text"
-            placeholder="e.g. 0.11.0-beta.7"
-            bind:value={pendingUiTag}
-            disabled={uiDownloadLoading}
-          />
           <button
-            class="btn btn-sm"
-            onclick={() => { if (pendingUiTag.trim()) onDownloadUiVersion(pendingUiTag.trim()); }}
-            disabled={!pendingUiTag.trim() || uiDownloadLoading}
+            class="btn btn-sm btn-warning"
+            onclick={onUpgradeStack}
+            disabled={anyDangerousLoading || !tokenStored}
           >
-            {#if uiDownloadLoading}
-              <span class="spinner spinner-sm"></span> Downloading…
+            {#if upgradeLoading}
+              <span class="spinner spinner-sm"></span> Upgrading…
             {:else}
-              Download
+              Upgrade to Latest
             {/if}
           </button>
         </div>
-        {#if uiDownloadReady}
-          <div class="version-restart-prompt">
-            UI updated.
-            {#if inElectron}
-              <button class="btn btn-sm btn-primary" onclick={onRestartApp}>Restart App</button>
-            {:else}
-              Restart the app to apply.
-            {/if}
-          </div>
-        {:else}
-          <p class="version-hint">Downloads a specific UI release from GitHub and stores it on disk. Takes effect on next app restart.</p>
-        {/if}
+        <p class="version-hint">Downloads the latest assets, pulls images, and restarts services. Backs up current config first.</p>
       </div>
+
+      <div class="version-divider"></div>
+
+      <!-- UI build (Electron only) -->
+      {#if inElectron}
+        <div class="version-section">
+          <div class="version-input-row">
+            {#if releasesLoading}
+              <div class="version-select-skeleton"></div>
+            {:else if uiBuildReleases.length > 0}
+              <select
+                class="version-select"
+                value={selectedUiTag}
+                onchange={(e) => onSelectedUiTagChange((e.currentTarget as HTMLSelectElement).value)}
+                disabled={uiDownloadLoading}
+              >
+                {#each uiBuildReleases as r (r.tag)}
+                  <option value={r.tag}>{r.tag}{r.prerelease ? ' (pre-release)' : ''}</option>
+                {/each}
+              </select>
+            {:else}
+              <input
+                class="version-input"
+                type="text"
+                placeholder="e.g. 0.11.0-beta.7"
+                value={selectedUiTag}
+                oninput={(e) => onSelectedUiTagChange((e.currentTarget as HTMLInputElement).value)}
+                disabled={uiDownloadLoading}
+              />
+            {/if}
+            <button
+              class="btn btn-sm"
+              onclick={() => { if (selectedUiTag.trim()) onDownloadUiVersion(selectedUiTag.trim()); }}
+              disabled={!selectedUiTag.trim() || uiDownloadLoading}
+            >
+              {#if uiDownloadLoading}
+                <span class="spinner spinner-sm"></span> Downloading…
+              {:else}
+                Download
+              {/if}
+            </button>
+          </div>
+          {#if uiDownloadReady}
+            <div class="version-restart-prompt">
+              UI updated.
+              <button class="btn btn-sm btn-primary" onclick={onRestartApp}>Restart App</button>
+            </div>
+          {:else}
+            <p class="version-hint">Downloads and replaces the UI from GitHub. Takes effect on restart.</p>
+          {/if}
+        </div>
+      {/if}
+
     </div>
   </div>
 </div>
 
 <style>
+  /* Health Summary */
+  .health-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-5);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    margin-bottom: var(--space-6);
+    border: 1px solid transparent;
+  }
+  .health-summary--ok { background: var(--color-success-bg); color: var(--color-success); border-color: var(--color-success-border); }
+  .health-summary--warning { background: var(--color-warning-bg); color: var(--color-text); border-color: var(--color-warning); }
+  .health-summary--unknown { background: var(--color-bg-secondary); color: var(--color-text-secondary); border-color: var(--color-border); }
+  .health-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .health-summary--ok .health-dot { background: var(--color-success); }
+  .health-summary--warning .health-dot { background: var(--color-warning); }
+  .health-summary--unknown .health-dot { background: var(--color-border); }
+
+  /* btn-warning for Upgrade Stack */
+  .btn-warning {
+    background: var(--color-warning-bg);
+    color: var(--color-text);
+    border: 1px solid var(--color-warning);
+  }
+  .btn-warning:hover:not(:disabled) { background: var(--color-warning); }
+
   /* Status Cards */
   .status-row {
     display: grid;
@@ -733,14 +820,6 @@
     line-height: 1.5;
   }
 
-  .version-hint code {
-    font-family: var(--font-mono);
-    background: var(--color-bg-secondary);
-    padding: 1px 4px;
-    border-radius: var(--radius-sm);
-    font-size: 0.9em;
-  }
-
   .version-divider {
     height: 1px;
     background: var(--color-border);
@@ -758,16 +837,40 @@
     border-radius: var(--radius-md);
   }
 
-  .btn-sm {
+  .version-select {
+    flex: 1;
+    min-width: 0;
     padding: var(--space-1-5) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    color: var(--color-text);
     font-size: var(--text-sm);
-    white-space: nowrap;
-    flex-shrink: 0;
+    font-family: var(--font-mono);
   }
 
-  .spinner-sm {
-    width: 12px;
-    height: 12px;
+  .version-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .version-select-skeleton {
+    flex: 1;
+    height: 34px;
+    border-radius: var(--radius-md);
+    background: linear-gradient(
+      90deg,
+      var(--color-bg-secondary) 25%,
+      var(--color-bg-tertiary) 50%,
+      var(--color-bg-secondary) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  }
+
+  @keyframes skeleton-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
   }
 
 </style>

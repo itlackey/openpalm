@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { json } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
 import { requireAdmin, getRequestId, errorResponse } from "$lib/server/helpers.js";
-import { parseEnvFile, readCurrentUiBuildVersion, resolveStateDir } from "@openpalm/lib";
+import { parseEnvFile } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 export const GET: RequestHandler = (event) => {
@@ -16,10 +16,7 @@ export const GET: RequestHandler = (event) => {
   const envVars = existsSync(stackEnvPath) ? parseEnvFile(stackEnvPath) : {};
   const imageTag = envVars.OP_IMAGE_TAG ?? process.env.OP_IMAGE_TAG ?? "latest";
 
-  const stateDir = resolveStateDir();
-  const uiVersion = readCurrentUiBuildVersion(stateDir);
-
   const inElectron = process.env.OP_INSIDE_ELECTRON === "1";
 
-  return json({ imageTag, uiVersion, inElectron });
+  return json({ imageTag, inElectron });
 };
