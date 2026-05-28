@@ -9356,7 +9356,7 @@ var init_dist = __esm(() => {
 // src/main.ts
 import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain } from "electron";
 import { join as join4, dirname as dirname3 } from "node:path";
-import { existsSync as existsSync5 } from "node:fs";
+import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync as writeFileSync4, rmSync as rmSync2 } from "node:fs";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 import { spawn } from "node:child_process";
 // ../lib/src/logger.ts
@@ -12816,6 +12816,42 @@ function resolveLocalCandidate(...strategies) {
   }
   return null;
 }
+function resolveLocalOpenpalmDir() {
+  return resolveLocalCandidate(() => process.env.OPENPALM_REPO_ROOT ? join2(process.env.OPENPALM_REPO_ROOT, ".openpalm") : null, () => process.env.OPENPALM_SKELETON_DIR ?? null, () => {
+    const meta = fileURLToPath2(import.meta.url);
+    if (meta.startsWith("/$bunfs/"))
+      return null;
+    return join2(dirname2(meta), "..", "..", "..", "..", ".openpalm");
+  }, () => join2(dirname2(realpathSync(process.execPath)), "..", "..", "..", ".openpalm"));
+}
+async function seedOpenPalmDir(repoRef, homeDir, _configDir, _stateDir) {
+  const local = resolveLocalOpenpalmDir();
+  if (local) {
+    logger11.debug("seeding .openpalm from local source", { src: local });
+    copyTree(local, homeDir, { skipExisting: true });
+    copyTree(join2(local, "state", "registry"), join2(homeDir, "state", "registry"));
+    return;
+  }
+  const tarballUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/archive/${repoRef}.tar.gz`;
+  logger11.debug("downloading .openpalm skeleton", { url: tarballUrl });
+  const tmpDir = join2(homeDir, ".seed-tmp");
+  const tmpTar = join2(tmpDir, "repo.tar.gz");
+  mkdirSync3(tmpDir, { recursive: true });
+  try {
+    const res = await fetchWithRetry(tarballUrl);
+    if (!res.ok)
+      throw new Error(`Failed to download tarball (HTTP ${res.status})`);
+    writeFileSync2(tmpTar, new Uint8Array(await res.arrayBuffer()));
+    await fo({ file: tmpTar, cwd: tmpDir, strip: 1 });
+    const srcOpenpalm = join2(tmpDir, ".openpalm");
+    if (!existsSync3(srcOpenpalm))
+      throw new Error(".openpalm/ not found in tarball");
+    copyTree(srcOpenpalm, homeDir, { skipExisting: true });
+    copyTree(join2(srcOpenpalm, "state", "registry"), join2(homeDir, "state", "registry"));
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
 function resolveLocalUiBuild() {
   return resolveLocalCandidate(() => process.env.OPENPALM_REPO_ROOT ? join2(process.env.OPENPALM_REPO_ROOT, "packages", "ui", "build") : null, () => {
     const rp = process.resourcesPath;
@@ -13314,12 +13350,44 @@ function buildUIServerEnv(homeDir, port, update) {
     OP_IMAGE_TAG: process.env.OP_IMAGE_TAG || app.getVersion?.() || "latest",
     OP_OPENCODE_URL: resolveAssistantUrl(homeDir)
   };
+  const skeletonDir = join4(process.resourcesPath ?? "", "openpalm-skeleton");
+  if (existsSync5(skeletonDir)) {
+    env.OPENPALM_SKELETON_DIR = skeletonDir;
+  }
   if (update?.updateAvailable && update.latestVersion) {
     env.OP_ELECTRON_LATEST_VERSION = update.latestVersion;
     if (update.latestUrl)
       env.OP_ELECTRON_LATEST_URL = update.latestUrl;
   }
   return env;
+}
+async function killStaleUIServer(pidFile) {
+  let pid = null;
+  try {
+    const raw = readFileSync4(pidFile, "utf-8").trim();
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n) && n > 0)
+      pid = n;
+  } catch {
+    return;
+  }
+  if (!pid)
+    return;
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return;
+  }
+  console.log(`Killing stale UI server (PID ${pid})…`);
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  await new Promise((r) => setTimeout(r, 2000));
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {}
 }
 async function waitForReady(port, timeoutMs = READY_TIMEOUT_MS) {
   const deadline = Date.now() + timeoutMs;
@@ -13340,6 +13408,15 @@ async function startUIServer() {
   const stateDir = resolveStateDir();
   resolveConfigDir();
   ensureHomeDirs();
+  const skeletonDir = join4(process.resourcesPath ?? "", "openpalm-skeleton");
+  if (existsSync5(skeletonDir)) {
+    process.env.OPENPALM_SKELETON_DIR = skeletonDir;
+    try {
+      await seedOpenPalmDir(`v${app.getVersion()}`, homeDir, resolveConfigDir(), stateDir);
+    } catch (err) {
+      console.warn("Skeleton seed failed (non-fatal):", err instanceof Error ? err.message : String(err));
+    }
+  }
   const version = app.getVersion();
   const appUpdate = await checkForElectronUpdate(version);
   if (appUpdate.updateAvailable) {
@@ -13365,11 +13442,18 @@ async function startUIServer() {
       return;
     }
   }
+  const uiPidFile = join4(stateDir, ".ui-server.pid");
+  await killStaleUIServer(uiPidFile);
   uiProcess = spawn("node", [join4(uiBuildDir, "index.js")], {
     cwd: uiBuildDir,
     env: buildUIServerEnv(homeDir, UI_PORT, appUpdate),
     stdio: ["ignore", "inherit", "pipe"]
   });
+  if (uiProcess.pid) {
+    try {
+      writeFileSync4(uiPidFile, String(uiProcess.pid));
+    } catch {}
+  }
   uiProcess.stderr?.on("data", (chunk) => {
     const text = chunk.toString();
     process.stderr.write(text);
@@ -13413,6 +13497,9 @@ function stopUIServer() {
   if (uiProcess) {
     uiProcess.kill("SIGTERM");
     uiProcess = null;
+    try {
+      rmSync2(join4(resolveStateDir(), ".ui-server.pid"), { force: true });
+    } catch {}
   }
 }
 function createSplashWindow() {

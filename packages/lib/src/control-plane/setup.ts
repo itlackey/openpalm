@@ -27,7 +27,7 @@ import { writeStackSpec } from "./stack-spec.js";
 import { writeVoiceVars } from "./spec-to-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
-import { getRegistryAutomation, setAddonEnabled } from "./registry.js";
+import { getRegistryAutomation, setAddonEnabled, setAddonProfileSelection } from "./registry.js";
 export { validateSetupSpec } from "./setup-validation.js";
 
 const logger = createLogger("setup");
@@ -78,6 +78,7 @@ export type SetupSpec = {
   connections: SetupConnection[];
   channelCredentials?: Record<string, Record<string, string>>;
   addons?: Record<string, boolean>;
+  voiceProfile?: string;
   imageTag?: string;
   hostAkm?: boolean;
 };
@@ -192,7 +193,7 @@ export async function performSetup(
   const validation = validateSetupSpec(input);
   if (!validation.valid) return { ok: false, error: validation.errors.join("; ") };
 
-  const { llm, embedding, tts, stt, security, owner, connections, channelCredentials, addons, imageTag, hostAkm } = input;
+  const { llm, embedding, tts, stt, security, owner, connections, channelCredentials, addons, voiceProfile, imageTag, hostAkm } = input;
   const state = opts?.state ?? createState();
 
   // Acquire install lock to prevent two concurrent setup runs from racing on
@@ -307,6 +308,11 @@ export async function performSetup(
         for (const [name, enabled] of Object.entries(addons)) {
           if (enabled) setAddonEnabled(state.homeDir, state.stackDir, name, true);
         }
+      }
+
+
+      if (voiceProfile?.trim()) {
+        setAddonProfileSelection(state.stackDir, 'voice', voiceProfile.trim());
       }
 
       ensureOpenCodeConfig();

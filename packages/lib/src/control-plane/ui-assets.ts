@@ -87,13 +87,15 @@ export function resolveLocalOpenpalmDir(): string | null {
     () => process.env.OPENPALM_REPO_ROOT
       ? join(process.env.OPENPALM_REPO_ROOT, '.openpalm')
       : null,
-    // 2. Relative to this source file (dev / bun run)
+    // 2. Electron extraResources — openpalm-skeleton/ placed alongside the asar
+    () => process.env.OPENPALM_SKELETON_DIR ?? null,
+    // 3. Relative to this source file (dev / bun run)
     () => {
       const meta = fileURLToPath(import.meta.url);
       if (meta.startsWith('/$bunfs/')) return null;
       return join(dirname(meta), '..', '..', '..', '..', '.openpalm');
     },
-    // 3. Relative to the compiled binary on disk
+    // 4. Relative to the compiled binary on disk
     () => join(dirname(realpathSync(process.execPath)), '..', '..', '..', '.openpalm'),
   );
 }

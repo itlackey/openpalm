@@ -19,6 +19,14 @@
 		setTtsAutoEnabled,
 		speakText,
 	} from '$lib/voice/voice-state.svelte.js';
+	import VoiceEngineSelector from '$lib/components/voice/VoiceEngineSelector.svelte';
+	import VoiceProfileSelector from '$lib/components/voice/VoiceProfileSelector.svelte';
+	import type {
+		SttOption,
+		TtsOption,
+		VoiceEngineConfig,
+		VoiceEngineValue,
+	} from '$lib/wizard/types.js';
 
 	interface Props { tokenStored: boolean; }
 	let { tokenStored }: Props = $props();
@@ -38,6 +46,94 @@
 		tts: { remoteConfigured: boolean; remoteReachable: boolean };
 	};
 
+	const ADMIN_TTS_OPTIONS: TtsOption[] = [
+		{
+			id: 'openpalm-voice',
+			name: 'OpenPalm Voice',
+			type: 'local',
+			recommended: true,
+			desc: 'Local Kokoro TTS + Whisper STT bundled together.',
+		},
+		{
+			id: 'remote',
+			name: 'Remote (OpenAI-compatible)',
+			type: 'cloud',
+			desc: 'Point at any /v1/audio/speech endpoint (OpenAI, Kokoro, Piper, …).',
+		},
+		{
+			id: 'browser',
+			name: 'Browser',
+			type: 'builtin',
+			desc: 'Web Speech API on this device. No setup, voice quality varies.',
+		},
+	];
+
+	const ADMIN_STT_OPTIONS: SttOption[] = [
+		{
+			id: 'openpalm-voice',
+			name: 'OpenPalm Voice',
+			type: 'local',
+			recommended: true,
+			desc: 'Local Kokoro TTS + Whisper STT bundled together.',
+		},
+		{
+			id: 'remote',
+			name: 'Remote (OpenAI-compatible)',
+			type: 'cloud',
+			desc: 'Point at any /v1/audio/transcriptions endpoint (Whisper, …).',
+		},
+		{
+			id: 'browser',
+			name: 'Browser',
+			type: 'builtin',
+			desc: 'Web Speech API on this device. Chrome/Edge only on desktop.',
+		},
+	];
+
+	const ADMIN_TTS_ENGINES: Record<string, VoiceEngineConfig> = {
+		'openpalm-voice': { id: 'openpalm-voice', fields: [] },
+		remote: {
+			id: 'remote',
+			fields: [
+				{
+					key: 'baseURL',
+					label: 'Endpoint URL',
+					placeholder: 'http://host.docker.internal:8880/v1',
+					hint: 'OpenAI-compatible /v1/audio/speech endpoint.',
+				},
+				{ key: 'model', label: 'Model', placeholder: 'tts-1' },
+				{ key: 'voice', label: 'Voice', placeholder: 'alloy' },
+			],
+		},
+		browser: { id: 'browser', fields: [] },
+	};
+
+	const ADMIN_STT_ENGINES: Record<string, VoiceEngineConfig> = {
+		'openpalm-voice': { id: 'openpalm-voice', fields: [] },
+		remote: {
+			id: 'remote',
+			fields: [
+				{
+					key: 'baseURL',
+					label: 'Endpoint URL',
+					placeholder: 'http://host.docker.internal:9000/v1',
+					hint: 'OpenAI-compatible /v1/audio/transcriptions endpoint.',
+				},
+				{ key: 'model', label: 'Model', placeholder: 'whisper-1' },
+				{
+					key: 'language',
+					label: 'Language',
+					placeholder: 'en',
+					hint: 'A code like `en` or `fr`, or leave blank to detect.',
+				},
+			],
+		},
+		browser: {
+			id: 'browser',
+			fields: [{ key: 'language', label: 'Language', placeholder: 'en-US' }],
+		},
+	};
+
 	const EMPTY_SECTION = (): VoiceSection => ({ engine: '', baseURL: '', model: '', voice: '', language: '' });
 
 	let loading = $state(false);
@@ -55,9 +151,6 @@
 	const wantsOpenpalmVoice = $derived(
 		tts.engine === 'openpalm-voice' || stt.engine === 'openpalm-voice',
 	);
-	const selectedProfileInfo = $derived(
-		addonProfiles.find((p) => p.id === selectedProfile),
-	);
 
 	// Browser Web Speech availability — probed once on mount.
 	let browserSttAvailable = $state(false);
@@ -68,6 +161,47 @@
 	let testingVoice = $state(false);
 	let testResult = $state<'success' | 'error' | null>(null);
 	let testError = $state('');
+
+	// Convert VoiceSection ↔ VoiceEngineValue for the shared component
+	function sectionToValue(s: VoiceSection): VoiceEngineValue {
+		return {
+			engine: s.engine,
+			...(s.baseURL ? { baseURL: s.baseURL } : {}),
+			...(s.model ? { model: s.model } : {}),
+			...(s.voice ? { voice: s.voice } : {}),
+			...(s.language ? { language: s.language } : {}),
+		};
+	}
+
+	function applyTtsChange(v: VoiceEngineValue): void {
+		tts.engine = (v.engine || '') as EngineId | '';
+		tts.baseURL = v.baseURL ?? '';
+		tts.model = v.model ?? '';
+		tts.voice = v.voice ?? '';
+	}
+
+	function applySttChange(v: VoiceEngineValue): void {
+		stt.engine = (v.engine || '') as EngineId | '';
+		stt.baseURL = v.baseURL ?? '';
+		stt.model = v.model ?? '';
+		stt.language = v.language ?? '';
+	}
+
+	// Browser STT disabled state for the shared component
+	const sttDisabledEngines = $derived.by(() => {
+		const map: Record<string, { disabled: boolean; reason?: string }> = {};
+		if (browserSttAvailable && voiceState.browserSttUnsupportedReason) {
+			map['browser'] = { disabled: true, reason: voiceState.browserSttUnsupportedReason };
+		}
+		return map;
+	});
+
+	const ttsHiddenEngines = $derived(
+		browserTtsAvailable ? undefined : new Set(['browser']),
+	);
+	const sttHiddenEngines = $derived(
+		!browserSttAvailable ? new Set(['browser']) : undefined,
+	);
 
 	function normalizeEngine(raw: unknown, kind: 'tts' | 'stt'): EngineId | '' {
 		if (typeof raw !== 'string') return '';
@@ -379,77 +513,16 @@
 			<h3 class="engine-heading">Text-to-Speech</h3>
 			<p class="engine-subheading">How your assistant speaks</p>
 
-			<div class="engine-list">
-				{@render engineCard({
-					kind: 'tts',
-					id: 'openpalm-voice',
-					name: 'OpenPalm Voice',
-					desc: 'Local Kokoro TTS + Whisper STT bundled together.',
-					subtitle: 'Bundled — enabled automatically when you save.',
-					selected: tts.engine === 'openpalm-voice',
-					recommended: true,
-				})}
-				{@render engineCard({
-					kind: 'tts',
-					id: 'remote',
-					name: 'Remote (OpenAI-compatible)',
-					desc: 'Point at any /v1/audio/speech endpoint (OpenAI, Kokoro, Piper, …).',
-					selected: tts.engine === 'remote',
-					reachable: availability.tts,
-				})}
-				{#if browserTtsAvailable}
-					{@render engineCard({
-						kind: 'tts',
-						id: 'browser',
-						name: 'Browser',
-						desc: 'Web Speech API on this device. No setup, voice quality varies.',
-						selected: tts.engine === 'browser',
-					})}
-				{/if}
-			</div>
-
-			{#if tts.engine === 'remote'}
-				<div class="engine-config">
-					<div class="form-field">
-						<label class="form-label" for="voice-tts-baseURL">Endpoint URL</label>
-						<input
-							id="voice-tts-baseURL"
-							type="url"
-							class="form-input"
-							value={tts.baseURL}
-							placeholder="http://host.docker.internal:8880/v1"
-							autocomplete="off"
-							spellcheck={false}
-							oninput={(e) => tts.baseURL = (e.currentTarget as HTMLInputElement).value}
-						/>
-						<span class="field-hint">OpenAI-compatible /v1/audio/speech endpoint.</span>
-					</div>
-					<div class="form-field">
-						<label class="form-label" for="voice-tts-model">Model</label>
-						<input
-							id="voice-tts-model"
-							type="text"
-							class="form-input"
-							value={tts.model}
-							placeholder="tts-1"
-							autocomplete="off"
-							oninput={(e) => tts.model = (e.currentTarget as HTMLInputElement).value}
-						/>
-					</div>
-					<div class="form-field">
-						<label class="form-label" for="voice-tts-voice">Voice</label>
-						<input
-							id="voice-tts-voice"
-							type="text"
-							class="form-input"
-							value={tts.voice}
-							placeholder="alloy"
-							autocomplete="off"
-							oninput={(e) => tts.voice = (e.currentTarget as HTMLInputElement).value}
-						/>
-					</div>
-				</div>
-			{/if}
+			<VoiceEngineSelector
+				kind="tts"
+				value={sectionToValue(tts)}
+				onchange={applyTtsChange}
+				engineOptions={ADMIN_TTS_OPTIONS}
+				engineConfigs={ADMIN_TTS_ENGINES}
+				reachable={availability.tts}
+				reachabilityEngineId="remote"
+				hiddenEngines={ttsHiddenEngines}
+			/>
 
 			{#if tts.engine}
 				<div class="tts-extras">
@@ -492,187 +565,31 @@
 			<h3 class="engine-heading">Speech-to-Text</h3>
 			<p class="engine-subheading">How your assistant listens</p>
 
-			<div class="engine-list">
-				{@render engineCard({
-					kind: 'stt',
-					id: 'openpalm-voice',
-					name: 'OpenPalm Voice',
-					desc: 'Local Kokoro TTS + Whisper STT bundled together.',
-					subtitle: 'Bundled — enabled automatically when you save.',
-					selected: stt.engine === 'openpalm-voice',
-					recommended: true,
-				})}
-				{@render engineCard({
-					kind: 'stt',
-					id: 'remote',
-					name: 'Remote (OpenAI-compatible)',
-					desc: 'Point at any /v1/audio/transcriptions endpoint (Whisper, …).',
-					selected: stt.engine === 'remote',
-					reachable: availability.stt,
-				})}
-				{#if browserSttAvailable && !voiceState.browserSttUnsupportedReason}
-					{@render engineCard({
-						kind: 'stt',
-						id: 'browser',
-						name: 'Browser',
-						desc: 'Web Speech API on this device. Chrome/Edge only on desktop.',
-						selected: stt.engine === 'browser',
-					})}
-				{:else if browserSttAvailable && voiceState.browserSttUnsupportedReason}
-					{@render engineCard({
-						kind: 'stt',
-						id: 'browser',
-						name: 'Browser',
-						desc: 'Web Speech API on this device. Chrome/Edge only on desktop.',
-						selected: stt.engine === 'browser',
-						disabled: true,
-						subtitle: voiceState.browserSttUnsupportedReason,
-					})}
-				{/if}
-			</div>
-
-			{#if stt.engine === 'remote'}
-				<div class="engine-config">
-					<div class="form-field">
-						<label class="form-label" for="voice-stt-baseURL">Endpoint URL</label>
-						<input
-							id="voice-stt-baseURL"
-							type="url"
-							class="form-input"
-							value={stt.baseURL}
-							placeholder="http://host.docker.internal:9000/v1"
-							autocomplete="off"
-							spellcheck={false}
-							oninput={(e) => stt.baseURL = (e.currentTarget as HTMLInputElement).value}
-						/>
-						<span class="field-hint">OpenAI-compatible /v1/audio/transcriptions endpoint.</span>
-					</div>
-					<div class="form-field">
-						<label class="form-label" for="voice-stt-model">Model</label>
-						<input
-							id="voice-stt-model"
-							type="text"
-							class="form-input"
-							value={stt.model}
-							placeholder="whisper-1"
-							autocomplete="off"
-							oninput={(e) => stt.model = (e.currentTarget as HTMLInputElement).value}
-						/>
-					</div>
-					<div class="form-field">
-						<label class="form-label" for="voice-stt-language">Language</label>
-						<input
-							id="voice-stt-language"
-							type="text"
-							class="form-input"
-							value={stt.language}
-							placeholder="en"
-							autocomplete="off"
-							oninput={(e) => stt.language = (e.currentTarget as HTMLInputElement).value}
-						/>
-						<span class="field-hint">A code like <code>en</code> or <code>fr</code>, or leave blank to detect.</span>
-					</div>
-				</div>
-			{:else if stt.engine === 'browser'}
-				<div class="engine-config">
-					<div class="form-field">
-						<label class="form-label" for="voice-stt-browser-language">Language</label>
-						<input
-							id="voice-stt-browser-language"
-							type="text"
-							class="form-input"
-							value={stt.language}
-							placeholder="en-US"
-							autocomplete="off"
-							oninput={(e) => stt.language = (e.currentTarget as HTMLInputElement).value}
-						/>
-					</div>
-				</div>
-			{/if}
+			<VoiceEngineSelector
+				kind="stt"
+				value={sectionToValue(stt)}
+				onchange={applySttChange}
+				engineOptions={ADMIN_STT_OPTIONS}
+				engineConfigs={ADMIN_STT_ENGINES}
+				reachable={availability.stt}
+				reachabilityEngineId="remote"
+				disabledEngines={sttDisabledEngines}
+				hiddenEngines={sttHiddenEngines}
+			/>
 		</section>
 
 		{#if wantsOpenpalmVoice && addonProfiles.length > 0}
 			<section class="engine-section">
 				<h3 class="engine-heading">Hardware profile</h3>
-				{#if addonProfiles.length === 1}
-					<p class="engine-subheading">
-						Running on CPU{selectedProfileInfo?.label ? ` (${selectedProfileInfo.label})` : ''}.
-					</p>
-				{:else}
-					<p class="engine-subheading">
-						Select the profile that matches your hardware. GPU profiles are auto-selected when available.
-					</p>
-					<div class="form-field">
-						<label class="form-label" for="voice-profile">Profile</label>
-						<select
-							id="voice-profile"
-							class="form-input"
-							value={selectedProfile}
-							onchange={(e) => selectedProfile = (e.currentTarget as HTMLSelectElement).value}
-						>
-							{#each addonProfiles as profile (profile.id)}
-								<option
-									value={profile.id}
-									disabled={profile.available === false}
-									title={profile.available === false ? (profile.reason ?? 'Not available on this host') : undefined}
-								>
-									{profile.label ?? profile.id}{profile.available === false ? ' — unavailable' : ''}
-								</option>
-							{/each}
-						</select>
-						{#if selectedProfileInfo?.requires}
-							<span class="field-hint">
-								Requires: {selectedProfileInfo.requires}
-							</span>
-						{/if}
-						{#if selectedProfileInfo?.available === false}
-							<span class="field-hint field-hint--warning">
-								{selectedProfileInfo.reason ?? 'This profile is not available on the current host.'}
-							</span>
-						{/if}
-					</div>
-				{/if}
+				<VoiceProfileSelector
+					profiles={addonProfiles}
+					{selectedProfile}
+					onchange={(id) => selectedProfile = id}
+				/>
 			</section>
 		{/if}
 	</div>
 </div>
-
-{#snippet engineCard(opts: {
-	kind: 'tts' | 'stt';
-	id: EngineId;
-	name: string;
-	desc: string;
-	subtitle?: string;
-	selected: boolean;
-	disabled?: boolean;
-	recommended?: boolean;
-	reachable?: { remoteConfigured: boolean; remoteReachable: boolean };
-})}
-	<button
-		type="button"
-		class="engine-card"
-		class:engine-card--selected={opts.selected}
-		class:engine-card--disabled={opts.disabled}
-		disabled={opts.disabled}
-		onclick={() => {
-			if (opts.disabled) return;
-			if (opts.kind === 'tts') tts.engine = opts.id;
-			else stt.engine = opts.id;
-		}}
-	>
-		<div class="engine-body">
-			<span class="engine-name">{opts.name}</span>
-			<span class="engine-desc">{opts.desc}</span>
-			{#if opts.subtitle}<span class="engine-subtitle">{opts.subtitle}</span>{/if}
-			{#if opts.reachable?.remoteConfigured}
-				<span class="engine-reachability" class:engine-reachability--ok={opts.reachable.remoteReachable}>
-					{opts.reachable.remoteReachable ? '● Endpoint reachable' : '○ Endpoint not reachable'}
-				</span>
-			{/if}
-		</div>
-		{#if opts.recommended}<span class="badge badge-recommended">Recommended</span>{/if}
-	</button>
-{/snippet}
 
 <style>
 	.panel-header {
@@ -690,63 +607,6 @@
 	.engine-section { display: flex; flex-direction: column; gap: var(--space-3); }
 	.engine-heading { font-size: var(--text-sm); font-weight: var(--font-semibold); text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text); margin: 0; }
 	.engine-subheading { font-size: var(--text-xs); color: var(--color-text-secondary); margin: 0; }
-
-	.engine-list { display: flex; flex-direction: column; gap: var(--space-2); }
-	.engine-card {
-		display: flex; align-items: flex-start; gap: var(--space-3);
-		padding: var(--space-3) var(--space-4);
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		text-align: left;
-		cursor: pointer;
-		transition: all var(--transition-fast);
-	}
-	.engine-card:hover:not(:disabled) {
-		border-color: var(--color-border-hover);
-		background: var(--color-surface-hover);
-	}
-	.engine-card--selected {
-		border-color: var(--color-primary);
-		background: var(--color-primary-subtle);
-	}
-	.engine-card--disabled {
-		opacity: 0.6; cursor: not-allowed;
-	}
-	.engine-body {
-		display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0;
-	}
-	.engine-name {
-		font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text);
-	}
-	.engine-desc {
-		font-size: var(--text-xs); color: var(--color-text-tertiary);
-	}
-	.engine-subtitle {
-		font-size: var(--text-xs); color: var(--color-text-tertiary); font-style: italic; margin-top: 2px;
-	}
-	.engine-reachability {
-		font-size: var(--text-xs); color: var(--color-text-tertiary); margin-top: 4px;
-	}
-	.engine-reachability--ok { color: var(--color-success, #16a34a); }
-
-	.engine-config {
-		display: flex; flex-direction: column; gap: var(--space-3);
-		margin: calc(-1 * var(--space-1)) 0 var(--space-2) var(--space-4);
-		padding: var(--space-3) var(--space-4);
-		background: var(--color-bg-secondary);
-		border-left: 2px solid var(--color-primary);
-		border-radius: 0 var(--radius-md) var(--radius-md) 0;
-	}
-
-.field-hint {
-		font-size: var(--text-xs);
-		color: var(--color-text-tertiary);
-		margin-top: 2px;
-	}
-	.field-hint--warning {
-		color: var(--color-error, #dc2626);
-	}
 
 	.tts-extras {
 		display: flex; flex-direction: column; gap: var(--space-3);

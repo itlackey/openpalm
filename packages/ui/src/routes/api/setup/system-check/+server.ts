@@ -4,6 +4,22 @@ import { createServer } from "node:net";
 import { execFile } from "node:child_process";
 import type { RequestHandler } from "./$types";
 
+// Detect GPU via nvidia-smi — returns name if found, null otherwise.
+function detectGpu(): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile(
+      "nvidia-smi",
+      ["--query-gpu=name", "--format=csv,noheader"],
+      { timeout: 3_000 },
+      (err, stdout) => {
+        if (err) return resolve(null);
+        const name = stdout?.toString().trim().split("\n")[0]?.trim();
+        resolve(name || null);
+      },
+    );
+  });
+}
+
 /**
  * Returns true when the named port is published by an openpalm-managed
  * docker container — i.e. it's "in use" but the wizard's install will
@@ -88,7 +104,7 @@ function resolvePortsToCheck(): { port: number; service: string; blocking: boole
 const SERVER_PORT = Number(process.env.PORT ?? process.env.OP_HOST_UI_PORT ?? 3880);
 
 export const GET: RequestHandler = async () => {
-  const [docker, compose] = await Promise.all([checkDocker(), checkDockerCompose()]);
+  const [docker, compose, gpu] = await Promise.all([checkDocker(), checkDockerCompose(), detectGpu()]);
 
   const targets = resolvePortsToCheck();
   const ports = await Promise.all(
@@ -121,6 +137,7 @@ export const GET: RequestHandler = async () => {
     portCheckReliable: docker.ok,
     ports,
     platform: process.platform,
+    gpu: gpu ?? undefined,
   });
 };
 

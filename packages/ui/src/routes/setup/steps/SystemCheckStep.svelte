@@ -18,17 +18,19 @@
     portCheckReliable: boolean;
     ports: PortResult[];
     platform: string;
+    gpu?: string;
   }
 
   interface Props {
     onnext: () => void;
     onpass: () => void;
+    ongpudetected?: (gpu: string) => void;
     /** True when re-running an existing install; suppresses misleading
      *  port-conflict warnings that just reflect the running stack itself. */
     isRerun?: boolean;
   }
 
-  let { onnext, onpass, isRerun = false }: Props = $props();
+  let { onnext, onpass, ongpudetected, isRerun = false }: Props = $props();
 
   let loading = $state(true);
   let result = $state<SystemCheckResponse | null>(null);
@@ -65,6 +67,7 @@
       const data = await res.json() as SystemCheckResponse;
       result = data;
       if (data.docker.ok && data.compose.ok) onpass();
+      if (data.gpu) ongpudetected?.(data.gpu);
     } catch (err) {
       errorView = friendlyError(err, 'system-check');
       result = null;
@@ -143,6 +146,20 @@
       {/if}
     </div>
   </div>
+
+  {#if result?.gpu}
+    <div class="syscheck-row syscheck-row--ok">
+      <div class="syscheck-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-success, #16a34a)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      </div>
+      <div class="syscheck-body">
+        <div class="syscheck-title">GPU detected</div>
+        <div class="syscheck-meta">{result.gpu}</div>
+      </div>
+    </div>
+  {/if}
 
   {#if result && portConflicts.length > 0}
     <div class="syscheck-row {hasBlockingConflict ? 'syscheck-row--fail' : 'syscheck-row--warn'}">

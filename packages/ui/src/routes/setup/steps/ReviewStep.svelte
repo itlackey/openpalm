@@ -11,6 +11,7 @@
     modelSelection: { llm?: ModelSelection; embedding?: ModelSelection; small?: ModelSelection };
     activeTts: string;
     activeStt: string;
+    voiceProfileLabel?: string;
     channelSelection: Record<string, boolean | ChannelState>;
     ollamaEnabled: boolean;
     payload: unknown;
@@ -28,6 +29,7 @@
     modelSelection,
     activeTts,
     activeStt,
+    voiceProfileLabel = '',
     channelSelection,
     ollamaEnabled,
     payload,
@@ -64,6 +66,16 @@
   let copyFallback = $state(false);
   let passwordInputEl: HTMLInputElement | null = $state(null);
 
+  function saveConfig(config: unknown): void {
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'openpalm-setup.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function copyPassword(): Promise<void> {
     try {
       if (navigator.clipboard?.writeText) {
@@ -99,24 +111,40 @@
       <span>Account</span>
       <button class="review-edit-btn" type="button" onclick={() => ongostepedit(1)}>Edit</button>
     </div>
-    <div class="review-row">
-      <span class="review-row-label">UI Login Password</span>
-      <span class="review-row-value">{maskSecret(uiLoginPassword)}</span>
-    </div>
-  </div>
-
-  <!-- Providers -->
-  <div class="review-card">
-    <div class="review-card-title">
-      <span>Providers</span>
-      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(2)}>Edit</button>
-    </div>
-    {#each verifiedProviders as p}
-      <div class="review-row">
-        <span class="review-row-label">{p.icon} {p.name}</span>
-        <span class="review-row-value review-row-value-ok">Connected ✓</span>
+    {#if !isRerun}
+      <div class="review-row review-row--alert">
+        <span class="review-row-label">UI Login Password</span>
+        <span class="review-row-value">
+          {#if copyFallback}
+            <input
+              bind:this={passwordInputEl}
+              class="token-save-input"
+              type="password"
+              readonly
+              value={uiLoginPassword}
+              onfocus={(e) => (e.currentTarget as HTMLInputElement).select()}
+            />
+          {:else}
+            <span class="token-save-box">{uiLoginPassword.substring(0,2)}*********</span>
+          {/if}
+        </span>
       </div>
-    {/each}
+      <div class="review-row review-row--alert">
+        <span class="review-row-label">  <span class="token-save-hint">You'll need this to sign in. Also saved in <code>stack.env</code>.</span>
+        </span>
+        <span class="review-row-value"> 
+       
+          <button type="button" class="btn btn-secondary btn-sm" onclick={() => void copyPassword()}>
+            {passwordCopied ? 'Copied!' : 'Copy password'}
+          </button>
+        </span>
+      </div>
+    {:else}
+      <div class="review-row">
+        <span class="review-row-label">UI Login Password</span>
+        <span class="review-row-value">{maskSecret(uiLoginPassword)}</span>
+      </div>
+    {/if}
   </div>
 
   <!-- Models -->
@@ -143,26 +171,16 @@
       {@const embProv = findProvider(modelSelection.embedding.connId)}
       <div class="review-row">
         <span class="review-row-label">Memory Model</span>
-        <span class="review-row-value">{modelSelection.embedding.model}{embProv ? ' (' + embProv.name + ')' : ''}</span>
+        <span class="review-row-value">{modelSelection.embedding.model}{embProv ? ' (' + embProv.name + ')' : ''}</span>     
+     
+      </div>
+       <div class="review-row" style="padding:4px 0">
+        <span class="review-row-label">Embedding Dims</span>
+        <span class="review-row-value">{modelSelection.embedding.dims ?? 1536}</span>
       </div>
     {/if}
   </div>
 
-  <!-- Voice -->
-  <div class="review-card">
-    <div class="review-card-title">
-      <span>Voice</span>
-      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(4)}>Edit</button>
-    </div>
-    <div class="review-row">
-      <span class="review-row-label">Text-to-Speech</span>
-      <span class="review-row-value">{ttsOpt ? ttsOpt.name : 'Disabled'}</span>
-    </div>
-    <div class="review-row">
-      <span class="review-row-label">Speech-to-Text</span>
-      <span class="review-row-value">{sttOpt ? sttOpt.name : 'Disabled'}</span>
-    </div>
-  </div>
 
   <!-- Channels -->
   <div class="review-card">
@@ -192,6 +210,29 @@
     {/each}
   </div>
 
+  <!-- Voice -->
+  <div class="review-card">
+    <div class="review-card-title">
+      <span>Voice</span>
+      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(4)}>Edit</button>
+    </div>
+    <div class="review-row">
+      <span class="review-row-label">Text-to-Speech</span>
+      <span class="review-row-value">{ttsOpt ? ttsOpt.name : 'Disabled'}</span>
+    </div>
+    <div class="review-row">
+      <span class="review-row-label">Speech-to-Text</span>
+      <span class="review-row-value">{sttOpt ? sttOpt.name : 'Disabled'}</span>
+    </div>
+    {#if voiceProfileLabel && (activeTts === 'openpalm-voice' || activeStt === 'openpalm-voice')}
+      <div class="review-row">
+        <span class="review-row-label">Voice Container</span>
+        <span class="review-row-value">{voiceProfileLabel}</span>
+      </div>
+    {/if}
+  </div>
+
+
   <!-- Options -->
   <div class="review-card">
     <div class="review-card-title">
@@ -205,50 +246,29 @@
       </div>
     {/if}
   </div>
-</div>
 
-{#if !isRerun}
-  <div class="token-save-panel" id="token-save-panel">
-    <div class="token-save-header">
-      <strong>Save your UI login password</strong>
-      <span class="token-save-sub">You'll need it to sign in to OpenPalm. It's also stored in <code>~/.openpalm/config/stack/stack.env</code> as <code>OP_UI_LOGIN_PASSWORD</code>.</span>
+  <!-- Providers -->
+  <div class="review-card">
+    <div class="review-card-title">
+      <span>Providers</span>
+      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(2)}>Edit</button>
     </div>
-    {#if copyFallback}
-      <input
-        bind:this={passwordInputEl}
-        class="token-save-input"
-        type="text"
-        readonly
-        value={uiLoginPassword}
-        onfocus={(e) => (e.currentTarget as HTMLInputElement).select()}
-      />
-    {:else}
-      <div class="token-save-box">{uiLoginPassword}</div>
-    {/if}
-    <button type="button" class="btn btn-secondary token-save-copy" onclick={() => void copyPassword()}>
-      {passwordCopied ? 'Copied!' : 'Copy password'}
-    </button>
-  </div>
-{/if}
-
-<details id="review-json-details">
-  <summary class="review-advanced-summary" id="review-json-toggle">Advanced</summary>
-  <div class="review-json" id="review-json" style="margin-top:8px">
-    {#if modelSelection.embedding}
-      <div class="review-row" style="padding:4px 0">
-        <span class="review-row-label">Embedding Dims</span>
-        <span class="review-row-value">{modelSelection.embedding.dims ?? 1536}</span>
+    {#each verifiedProviders as p}
+      <div class="review-row">
+        <span class="review-row-label">{p.icon} {p.name}</span>
+        <span class="review-row-value review-row-value-ok">Connected ✓</span>
       </div>
-    {/if}
-    <pre id="review-json-pre">{JSON.stringify(payload, null, 2)}</pre>
+    {/each}
   </div>
-</details>
-
+</div>
 {#if installError}
   <FriendlyError error={friendlyError(installError, 'setup-complete')} />
 {/if}
 
 <div class="step-actions" id="review-actions">
+  <button type="button" class="btn btn-info" onclick={() => saveConfig(payload)}>
+    Save configuration
+  </button>
   <button class="btn btn-secondary" onclick={onback}>Back</button>
   <button class="btn btn-primary" id="btn-install" onclick={oninstall} disabled={installing}>
     {#if installing}<span class="spinner"></span> Installing...{:else}Install{/if}
@@ -256,17 +276,11 @@
 </div>
 
 <style>
-  .review-advanced-summary {
-    cursor: pointer;
-    font-size: var(--text-sm, 0.875rem);
-    color: var(--color-text-secondary, #64748b);
-    font-weight: 500;
-    padding: 6px 0;
-    list-style: none;
+  .review-actions-secondary {
+    display: flex;
+    justify-content: center;
+    margin: 12px 0 4px;
   }
-  .review-advanced-summary::-webkit-details-marker { display: none; }
-  .review-advanced-summary::before { content: '▶ '; font-size: 0.7em; }
-  details[open] .review-advanced-summary::before { content: '▼ '; }
 
   .review-warning {
     margin: 12px 0;
@@ -278,53 +292,38 @@
     color: #92400e;
   }
 
-  .token-save-panel {
-    margin: 16px 0;
-    padding: 14px 16px;
-    background: #fef3c7;
-    border: 1px solid #fcd34d;
-    border-radius: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .token-save-header {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    color: #78350f;
-  }
-  .token-save-sub {
-    font-size: var(--text-xs, 0.75rem);
-    color: #92400e;
-    font-weight: 400;
-  }
-  .token-save-sub code {
-    font-family: monospace;
-    background: rgba(255,255,255,0.6);
-    padding: 1px 5px;
-    border-radius: 4px;
+  .review-row--alert {
+    align-items: flex-start;
   }
   .token-save-box {
     font-family: monospace;
     font-size: var(--text-sm, 0.875rem);
     background: #fff;
-    border: 1px solid #fcd34d;
+    border: 1px solid var(--color-border, #e2e8f0);
     border-radius: 6px;
-    padding: 8px 10px;
+    padding: 4px 8px;
     word-break: break-all;
     user-select: all;
+    display: inline-block;
   }
   .token-save-input {
     font-family: monospace;
     font-size: var(--text-sm, 0.875rem);
     background: #fff;
-    border: 1px solid #fcd34d;
+    border: 1px solid var(--color-border, #e2e8f0);
     border-radius: 6px;
-    padding: 8px 10px;
+    padding: 4px 8px;
     width: 100%;
   }
-  .token-save-copy {
-    align-self: flex-start;
+  .token-save-hint {
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--color-text-tertiary, #94a3b8);
+    margin-left: 8px;
+  }
+  .token-save-hint code {
+    font-family: monospace;
+    background: var(--color-bg-secondary, #f1f5f9);
+    padding: 1px 5px;
+    border-radius: 4px;
   }
 </style>

@@ -18,6 +18,9 @@ extraResources:
     filter: "**/*"
   - from: admin-tools/dist/index.js
     to: admin-tools/index.js
+  - from: ../../.openpalm
+    to: openpalm-skeleton
+    filter: "**/*"
 
 mac:
   category: public.app-category.developer-tools

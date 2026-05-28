@@ -1,5 +1,5 @@
 import { json } from "@sveltejs/kit";
-import { readStackEnv, listEnabledAddonIds } from "@openpalm/lib";
+import { readStackEnv, listEnabledAddonIds, getAddonProfiles, annotateAddonProfileAvailability, getAddonProfileSelection } from "@openpalm/lib";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { getState } from "$lib/server/state.js";
@@ -35,7 +35,7 @@ function deriveBaseUrl(endpoint: string | undefined): string {
     .replace(/\/+$/, "");
 }
 
-export const GET: RequestHandler = (event) => {
+export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
@@ -45,6 +45,11 @@ export const GET: RequestHandler = (event) => {
 
   const env = readStackEnv(state.stackDir);
   const akm = readAkmConfig(state.configDir);
+
+  // Voice addon hardware profiles (CPU / CUDA / …)
+  const rawProfiles = getAddonProfiles(state.homeDir, 'voice');
+  const voiceProfiles = await annotateAddonProfileAvailability(rawProfiles);
+  const selectedVoiceProfile = getAddonProfileSelection(state.stackDir, 'voice');
 
   const hostHome = process.env.HOME ?? process.env.USERPROFILE ?? "";
   const hostAkm =
@@ -94,15 +99,19 @@ export const GET: RequestHandler = (event) => {
     } : null,
     voice: {
       tts: {
+        engine: env.OP_TTS_ENGINE ?? "",
         baseURL: env.OP_TTS_BASE_URL ?? "",
         model: env.OP_TTS_MODEL ?? "",
         voice: env.OP_TTS_VOICE ?? "",
       },
       stt: {
+        engine: env.OP_STT_ENGINE ?? "",
         baseURL: env.OP_STT_BASE_URL ?? "",
         model: env.OP_STT_MODEL ?? "",
         language: env.OP_STT_LANGUAGE ?? "",
       },
+      profiles: voiceProfiles,
+      selectedProfile: selectedVoiceProfile,
     },
     enabledAddons: listEnabledAddonIds(state.homeDir),
     channelCredentials,

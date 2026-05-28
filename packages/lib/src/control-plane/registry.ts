@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parse as parseYaml } from 'yaml';
 import { createLogger } from '../logger.js';
+import { resolveLocalOpenpalmDir } from './ui-assets.js';
 import { isChannelAddon } from './channels.js';
 import { randomHex, writeChannelSecrets } from './config-persistence.js';
 import { patchSecretsEnvFile, readStackEnv } from './secrets.js';
@@ -642,6 +643,11 @@ export function getAddonProfiles(homeDir: string, name: string): AddonProfile[] 
     join(homeDir, "state", "registry", "addons", name, "compose.yml"),
     join(homeDir, "config", "stack", "addons", name, "compose.yml"),
   ];
+
+	const localOpenpalmDir = resolveLocalOpenpalmDir();
+	if (localOpenpalmDir) {
+		composeCandidates.push(join(localOpenpalmDir, 'state', 'registry', 'addons', name, 'compose.yml'));
+	}
 
   for (const composePath of composeCandidates) {
     const profiles = readAddonProfiles(composePath);

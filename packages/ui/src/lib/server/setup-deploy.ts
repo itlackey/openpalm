@@ -6,7 +6,6 @@
  * without a database or filesystem dependency.
  */
 import {
-  acquireInstallLock,
   applyInstall,
   buildComposeOptions,
   buildManagedServices,
@@ -19,11 +18,10 @@ import {
   getAddonProfileSelection,
   isSetupComplete,
   listEnabledAddonIds,
-  releaseInstallLock,
   resolveStackDir,
   setAddonProfileSelection,
 } from "@openpalm/lib";
-import type { ControlPlaneState, InstallLockHandle } from "@openpalm/lib";
+import type { ControlPlaneState } from "@openpalm/lib";
 import { existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 
 const logger = createLogger("admin:setup-deploy");
@@ -292,13 +290,14 @@ async function checkProjectNameCollision(state: ControlPlaneState): Promise<stri
 
 /** Kick off a background Docker Compose deploy. Returns immediately. */
 export function startDeploy(state: ControlPlaneState): void {
-  // Acquire install lock before mutating _state so concurrent calls are rejected
-  // before any deploy work begins.
-  const lockHandle: InstallLockHandle | null = acquireInstallLock(state.stateDir);
-  if (lockHandle === null) {
+  // Use _state.deploying as the in-process concurrency guard. JS is
+  // single-threaded so the check+set is atomic — no race between deploys.
+  // applyInstall() acquires the file-level install lock for config writing;
+  // holding a SECOND outer lock here caused a deadlock (lock re-acquisition).
+  if (_state.deploying) {
     _state.deployError =
-      "install_in_progress: Another install is in progress. Wait for it to finish, or remove state/.install.lock if you're sure no install is running.";
-    logger.warn("deploy rejected: install lock already held", { stateDir: state.stateDir });
+      "install_in_progress: A deploy is already running. Wait for it to finish.";
+    logger.warn("deploy rejected: deploy already in progress");
     return;
   }
 
@@ -456,7 +455,6 @@ export function startDeploy(state: ControlPlaneState): void {
       _state.deployError = msg;
     } finally {
       _state.deploying = false;
-      releaseInstallLock(lockHandle);
     }
   })();
 }
@@ -511,7 +509,7 @@ async function allServiceImagesPresent(
 }
 
 /**
- * Pull + bring up the voice addon's chosen profile (default: cpu) if
+ * Pull + bring up the voice addon's chosen profile if
  * the addon is enabled. Runs after the core stack is healthy so the
  * deploy progress UI shows voice as a distinct phase ("starting-voice")
  * with its own status row.
@@ -526,9 +524,8 @@ async function bringUpVoiceIfEnabled(
   const enabled = listEnabledAddonIds(state.homeDir);
   if (!enabled.includes(VOICE_ADDON)) return null;
 
-  // Resolve the chosen profile. The wizard's payload doesn't currently
-  // include a profile field (admin-only) so we default to cpu and
-  // persist it so the admin Voice tab loads with the same selection.
+  // Resolve the chosen profile. Setup/admin persist the selection to
+  // stack.env ahead of deploy; if nothing is stored yet, fall back to cpu.
   const profiles = getAddonProfiles(state.homeDir, VOICE_ADDON);
   const stored = getAddonProfileSelection(state.stackDir, VOICE_ADDON);
   const profileId =

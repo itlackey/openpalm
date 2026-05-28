@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { VoiceEngineValue } from '$lib/wizard/types.js';
+  import type { VoiceAddonProfile } from '$lib/api.js';
   import VoiceEngineSelector from '$lib/components/voice/VoiceEngineSelector.svelte';
+  import VoiceProfileSelector from '$lib/components/voice/VoiceProfileSelector.svelte';
   import { TTS_OPTIONS, STT_OPTIONS } from '$lib/wizard/constants.js';
 
   interface Props {
@@ -9,13 +11,20 @@
     hasOpenAI: boolean;
     unknownTts?: boolean;
     unknownStt?: boolean;
+    profiles?: VoiceAddonProfile[];
+    selectedVoiceProfile?: string;
     onback: () => void;
     onnext: () => void;
     onchangetts: (v: VoiceEngineValue) => void;
     onchangestt: (v: VoiceEngineValue) => void;
+    onprofilechange?: (id: string) => void;
   }
 
-  let { tts, stt, hasOpenAI, unknownTts = false, unknownStt = false, onback, onnext, onchangetts, onchangestt }: Props = $props();
+  let {
+    tts, stt, hasOpenAI, unknownTts = false, unknownStt = false,
+    profiles = [], selectedVoiceProfile = '',
+    onback, onnext, onchangetts, onchangestt, onprofilechange,
+  }: Props = $props();
 
   let configureOpen = $state(false);
 
@@ -30,6 +39,12 @@
   const usesBundledVoice = $derived(
     tts.engine === 'openpalm-voice' || stt.engine === 'openpalm-voice',
   );
+
+  const selectedProfileLabel = $derived.by(() => {
+    if (!selectedVoiceProfile) return '';
+    const profile = profiles.find((p) => p.id === selectedVoiceProfile);
+    return profile?.label ?? profile?.id ?? selectedVoiceProfile;
+  });
 </script>
 
 <h2>Voice Capabilities</h2>
@@ -62,7 +77,29 @@
     <span class="voice-summary-label">Speech-to-Text</span>
     <span class="voice-summary-value">{sttLabel}</span>
   </div>
+  {#if usesBundledVoice && selectedProfileLabel}
+    <div class="voice-summary-row">
+      <span class="voice-summary-label">Voice Container</span>
+      <span class="voice-summary-value">{selectedProfileLabel}</span>
+    </div>
+  {/if}
 </div>
+
+{#if usesBundledVoice}
+  <div class="voice-profile-inline">
+    <div class="voice-profile-inline-title">Voice container profile</div>
+    {#if profiles.length > 0 && onprofilechange}
+      <VoiceProfileSelector
+        {profiles}
+        selectedProfile={selectedVoiceProfile}
+        onchange={onprofilechange}
+        showDescription={false}
+      />
+    {:else}
+      <p class="voice-profile-inline-loading">Checking available hardware profiles…</p>
+    {/if}
+  </div>
+{/if}
 
 <details bind:open={configureOpen} id="voice-configure-details">
   <summary class="voice-configure-summary" id="voice-configure-toggle">Configure voice…</summary>
@@ -162,5 +199,19 @@
   }
   .voice-download-notice strong {
     color: #1e40af;
+  }
+  .voice-profile-inline {
+    margin: -2px 0 16px;
+  }
+  .voice-profile-inline-title {
+    font-size: var(--text-sm, 0.875rem);
+    font-weight: 600;
+    color: var(--color-text, #1e293b);
+    margin-bottom: 8px;
+  }
+  .voice-profile-inline-loading {
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--color-text-secondary, #64748b);
+    margin: 0;
   }
 </style>

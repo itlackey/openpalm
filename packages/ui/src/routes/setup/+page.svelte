@@ -7,6 +7,7 @@
     ProviderState, ModelSelection, DetectedProvider, ChannelState,
     OpenCodeProvider, AuthMethod, VoiceEngineValue,
   } from '$lib/wizard/types.js';
+  import type { VoiceAddonProfile } from '$lib/api.js';
   import { friendlyError, type FriendlyErrorView } from '$lib/wizard/error-messages.js';
   import ProgressBar from './ProgressBar.svelte';
   import SystemCheckStep from './steps/SystemCheckStep.svelte';
@@ -43,6 +44,10 @@
   let autoModeImporting = $state(false);
   // Enable Voice toggle on the Welcome step (auto-mode only)
   let enableVoice = $state(false);
+  // Include Ollama in the stack toggle on the Welcome step
+  let includeOllama = $state(false);
+  // Set when System Check detects a GPU — used to auto-select CUDA voice profile
+  let gpuDetected = $state(false);
 
   // ── Step 1: Providers ─────────────────────────────────────────────────────
   let providerState = $state<Record<string, ProviderState>>({});
@@ -74,6 +79,13 @@
   // Empty engine = not yet chosen; we fall back to voiceDefaults at render time.
   let voiceTts = $state<VoiceEngineValue>({ engine: '' });
   let voiceStt = $state<VoiceEngineValue>({ engine: '' });
+  // Hardware profiles for the bundled OpenPalm Voice addon (CPU / CUDA / …)
+  let voiceProfiles = $state<VoiceAddonProfile[]>([]);
+  let selectedVoiceProfile = $state('');
+
+  // Imported OpenCode model preferences (from host opencode.json)
+  let importedLlmModel = $state<string | undefined>(undefined);
+  let importedSmallModel = $state<string | undefined>(undefined);
 
   // ── Step 4: Options ───────────────────────────────────────────────────────
   let channelSelection = $state<Record<string, boolean | ChannelState>>({
@@ -114,7 +126,7 @@
 
   const verifiedProviders = $derived.by(() => {
     if (opencodeAvailable) {
-      return opencodeProviders
+      const fromOpenCode = opencodeProviders
         .filter((p) => providerState[p.id]?.verified)
         .map((p) => {
           const st = providerState[p.id];
@@ -129,6 +141,20 @@
             embDims: fallback?.embDims ?? 0,
           };
         });
+      // Also include verified static providers not already in the OpenCode list
+      // (e.g. Ollama added by the wizard's "Include Ollama" toggle)
+      const openCodeIds = new Set(fromOpenCode.map((p) => p.id));
+      const fromStatic = PROVIDERS
+        .filter((p) => !openCodeIds.has(p.id) && providerState[p.id]?.verified)
+        .map((p) => {
+          const st = providerState[p.id];
+          return {
+            id: p.id, name: p.name, kind: p.kind, group: p.group, order: p.order,
+            icon: p.icon, desc: p.desc, baseUrl: st?.baseUrl ?? p.baseUrl,
+            llmModel: p.llmModel, embModel: p.embModel, embDims: p.embDims,
+          };
+        });
+      return [...fromOpenCode, ...fromStatic];
     }
     return PROVIDERS.filter((p) => providerState[p.id]?.verified);
   });
@@ -144,6 +170,36 @@
   const voiceDefaults = $derived(hasOpenAI
     ? { tts: 'openai-tts', stt: 'openai-stt' }
     : { tts: 'browser-tts', stt: 'browser-stt' });
+
+  const displayedVoiceTts = $derived.by(() => {
+    if (voiceTts.engine) return voiceTts;
+    if (enableVoice) return { engine: 'openpalm-voice' };
+    return { engine: voiceDefaults.tts };
+  });
+
+  const displayedVoiceStt = $derived.by(() => {
+    if (voiceStt.engine) return voiceStt;
+    if (enableVoice) return { engine: 'openpalm-voice' };
+    return { engine: voiceDefaults.stt };
+  });
+
+  const persistedVoiceTts = $derived.by(() => {
+    if (voiceTts.engine) return voiceTts;
+    if (enableVoice) return { engine: 'openpalm-voice' };
+    return { engine: '' };
+  });
+
+  const persistedVoiceStt = $derived.by(() => {
+    if (voiceStt.engine) return voiceStt;
+    if (enableVoice) return { engine: 'openpalm-voice' };
+    return { engine: '' };
+  });
+
+  const selectedVoiceProfileLabel = $derived.by(() => {
+    if (!selectedVoiceProfile) return '';
+    const profile = voiceProfiles.find((p) => p.id === selectedVoiceProfile);
+    return profile?.label ?? profile?.id ?? selectedVoiceProfile;
+  });
 
 
   // Build the install payload for /api/setup/complete
@@ -178,7 +234,7 @@
     // startDeploy's composePull picks up the openpalm/voice image so
     // it lands in the same first-install pull cycle as the rest of the
     // stack.
-    if (voiceTts.engine === 'openpalm-voice' || voiceStt.engine === 'openpalm-voice') {
+    if (persistedVoiceTts.engine === 'openpalm-voice' || persistedVoiceStt.engine === 'openpalm-voice') {
       addons.voice = true;
     }
 
@@ -229,10 +285,15 @@
       if (v.language) out.language = v.language;
       return out;
     };
-    const ttsCap = voicePayload(voiceTts);
+    const ttsCap = voicePayload(persistedVoiceTts);
     if (ttsCap) result.tts = ttsCap;
-    const sttCap = voicePayload(voiceStt);
+    const sttCap = voicePayload(persistedVoiceStt);
     if (sttCap) result.stt = sttCap;
+
+    // Include the selected hardware profile when using the bundled voice addon
+    if ((persistedVoiceTts.engine === 'openpalm-voice' || persistedVoiceStt.engine === 'openpalm-voice') && selectedVoiceProfile) {
+      result.voiceProfile = selectedVoiceProfile;
+    }
 
     if (Object.keys(channelCredentials).length > 0) {
       result.channelCredentials = channelCredentials;
@@ -276,6 +337,38 @@
     return result;
   }
 
+  async function loadVoiceProfiles(): Promise<void> {
+    try {
+      const res = await fetch('/api/setup/voice-profiles');
+      if (!res.ok) return;
+      const data = await res.json() as {
+        ok?: boolean;
+        profiles?: VoiceAddonProfile[];
+        selectedProfile?: string | null;
+      };
+      if (!Array.isArray(data.profiles)) return;
+      voiceProfiles = data.profiles;
+
+      // Auto-select the best profile: CUDA if GPU detected, otherwise CPU/default
+      const fallback = gpuDetected
+        ? data.profiles.find((p) => p.id === 'cuda' && p.available !== false)
+          ?? data.profiles.find((p) => p.default && p.available !== false)
+          ?? data.profiles.find((p) => p.available !== false)
+        : data.profiles.find((p) => p.id === 'cpu' && p.available !== false)
+          ?? data.profiles.find((p) => p.default && p.available !== false)
+          ?? data.profiles.find((p) => p.available !== false);
+      if (fallback) selectedVoiceProfile = fallback.id;
+
+      // gpuDetected may have been set after this fetch started — upgrade now
+      if (gpuDetected && selectedVoiceProfile !== 'cuda') {
+        const cuda = voiceProfiles.find((p) => p.id === 'cuda' && p.available !== false);
+        if (cuda) selectedVoiceProfile = cuda.id;
+      }
+    } catch {
+      // non-critical
+    }
+  }
+
   function initProviderState(): void {
     const state: Record<string, ProviderState> = {};
     for (const p of PROVIDERS) {
@@ -302,9 +395,25 @@
   async function handleUseDefaults(): Promise<void> {
     const voiceEngine = enableVoice ? 'openpalm-voice' : '';
 
+    // If Ollama was enabled on the Welcome step, configure it as a provider
+    if (includeOllama) {
+      ollamaEnabled = true;
+      const st = providerState['ollama'];
+      if (st) {
+        st.selected = true;
+        st.verified = true;
+        st.baseUrl = 'http://localhost:11434';
+        // Pre-populate with a small embedding model for memory
+        if (st.models.length === 0) {
+          st.models = ['nomic-embed-text', 'qwen3:4b'];
+        }
+      }
+    }
+
     if (verifiedProviders.length >= 1) {
       // Fast path: providers already verified by background detection.
       autoSelectModels();
+      applyImportedModelPreferences();
       voiceTts = { engine: voiceEngine };
       voiceStt = { engine: voiceEngine };
       goToStep(6);
@@ -387,7 +496,10 @@
     if (n > maxVisitedStep) maxVisitedStep = n;
     showDeploy = false;
     // Auto-select model defaults when entering Models step (index 3)
-    if (n === 3) autoSelectModels();
+    if (n === 3) {
+      autoSelectModels();
+      applyImportedModelPreferences();
+    }
     // Sync ollamaEnabled from ollamaMode when entering Options step (index 5)
     if (n === 5 && hasOllamaVerified) {
       ollamaEnabled = providerState.ollama?.ollamaMode === 'instack';
@@ -400,18 +512,20 @@
   }
 
   function autoSelectModels(): void {
-    const roles = ['llm', 'embedding'] as const;
+    const roles = ['llm', 'embedding', 'small'] as const;
     for (const roleId of roles) {
       if (modelSelection[roleId]) continue;
       const options = getModelOptionsForRole(roleId);
       if (options.length === 0) continue;
-      const defaultOpt = options.find((o) => o.isDefault) ?? options[0];
+      // When Ollama is enabled, prefer its embedding model for memory
+      const defaultOpt = roleId === 'embedding' && ollamaEnabled
+        ? options.find((o) => o.connId === 'ollama') ?? options.find((o) => o.isDefault) ?? options[0]
+        : options.find((o) => o.isDefault) ?? options[0];
       modelSelection[roleId] = { connId: defaultOpt.connId, model: defaultOpt.id, dims: defaultOpt.dims };
       if (roleId === 'embedding' && (defaultOpt.dims <= 0)) {
         step2EmbDimWarning = 'Unknown embedding model dimensions — set manually in akm config after install.';
       }
     }
-    // small model defaults to "same as chat" (no selection)
   }
 
   function getModelOptionsForRole(roleId: 'llm' | 'embedding' | 'small'): Array<{ id: string; connId: string; isDefault: boolean; dims: number }> {
@@ -435,11 +549,73 @@
         options.push({ id: m, connId: p.id, isDefault: false, dims });
       }
     }
+    // When Ollama is enabled, ensure its embedding model is available
+    if (roleId === 'embedding' && ollamaEnabled) {
+      const ollamaSt = providerState['ollama'];
+      if (ollamaSt?.verified && !options.some((o) => o.connId === 'ollama')) {
+        const embModel = 'nomic-embed-text';
+        if (ollamaSt.models.includes(embModel) || ollamaSt.models.length > 0) {
+          const dims = KNOWN_EMB_DIMS[embModel] ?? 768;
+          options.unshift({ id: embModel, connId: 'ollama', isDefault: false, dims });
+        }
+      }
+    }
     if (roleId === 'embedding') {
       const filtered = options.filter((o) => o.isDefault || o.dims > 0);
       if (filtered.length > 0) return filtered;
     }
     return options;
+  }
+
+  function resolvePreferredModelSelection(
+    roleId: 'llm' | 'small',
+    preferredModel: string | undefined,
+  ): { connId: string; model: string; dims: number } | undefined {
+    if (!preferredModel) return undefined;
+    const options = getModelOptionsForRole(roleId);
+    if (options.length === 0) return undefined;
+
+    const slashIdx = preferredModel.indexOf('/');
+    const providerHint = slashIdx > 0 ? preferredModel.slice(0, slashIdx) : '';
+    const modelIdPart = slashIdx > 0 ? preferredModel.slice(slashIdx + 1) : preferredModel;
+
+    // Exact match on full id (e.g. "openai/gpt-4o")
+    const exactFull = options.find((o) => o.id === preferredModel);
+    if (exactFull) return { connId: exactFull.connId, model: exactFull.id, dims: exactFull.dims };
+
+    // Match by provider hint + model name part (e.g. "github-copilot" + "gpt-5.4")
+    const providerMatch = providerHint
+      ? options.find((o) => o.connId === providerHint && o.id === modelIdPart)
+      : undefined;
+    if (providerMatch) return { connId: providerMatch.connId, model: providerMatch.id, dims: providerMatch.dims };
+
+    // Match by model name part alone
+    const nameMatch = options.find((o) => o.id === modelIdPart);
+    if (nameMatch) return { connId: nameMatch.connId, model: nameMatch.id, dims: nameMatch.dims };
+
+    return undefined;
+  }
+
+  function applyImportedOpenCodeModelSelections(selectedModels?: { llm?: string; small?: string }): void {
+    if (!selectedModels) return;
+
+    // Store for re-application after autoSelectModels
+    if (selectedModels.llm) importedLlmModel = selectedModels.llm;
+    if (selectedModels.small) importedSmallModel = selectedModels.small;
+
+    applyImportedModelPreferences();
+  }
+
+  function applyImportedModelPreferences(): void {
+    if (!modelSelection.llm?.model && importedLlmModel) {
+      const llmSelection = resolvePreferredModelSelection('llm', importedLlmModel);
+      if (llmSelection) modelSelection.llm = llmSelection;
+    }
+
+    if (!modelSelection.small?.model && importedSmallModel) {
+      const smallSelection = resolvePreferredModelSelection('small', importedSmallModel);
+      if (smallSelection) modelSelection.small = smallSelection;
+    }
   }
 
   // ── Provider API calls ────────────────────────────────────────────────────
@@ -513,6 +689,8 @@
       }
     }
     providerState = newState;
+
+    applyImportedOpenCodeModelSelections(data.selectedModels as { llm?: string; small?: string } | undefined);
   }
 
   async function detectProviders(): Promise<void> {
@@ -1028,6 +1206,10 @@
             }
           }
 
+          if (data.voice?.selectedProfile && typeof data.voice.selectedProfile === 'string') {
+            selectedVoiceProfile = data.voice.selectedProfile;
+          }
+
           // Enabled addons + channel credentials
           const enabled: string[] = Array.isArray(data.enabledAddons) ? data.enabledAddons : [];
           if (enabled.includes('ollama')) ollamaEnabled = true;
@@ -1065,6 +1247,7 @@
       .catch((e) => { console.error('[setup] failed to fetch deploy status:', e); });
 
     void loadHostStatus();
+    void loadVoiceProfiles();
 
     // U3: Ensure detectionReady is set after at most 10 s so the
     // "Use recommended defaults" button is never permanently disabled.
@@ -1122,6 +1305,14 @@
             {isRerun}
             onpass={() => { systemCheckPassed = true; }}
             onnext={() => { systemCheckPassed = true; goToStep(1); }}
+            ongpudetected={(gpu) => {
+              gpuDetected = true;
+              // If profiles already loaded, upgrade to CUDA now
+              if (voiceProfiles.length > 0 && selectedVoiceProfile !== 'cuda') {
+                const cuda = voiceProfiles.find((p) => p.id === 'cuda' && p.available !== false);
+                if (cuda) selectedVoiceProfile = cuda.id;
+              }
+            }}
           />
         </section>
       {:else if currentStep === 1}
@@ -1132,9 +1323,11 @@
             hasVerifiedProviders={verifiedProviders.length >= 1}
             {autoModeImporting}
             {enableVoice}
+            {includeOllama}
             onnext={() => { if (validateStep0()) goToStep(2); }}
             onusedefaults={() => { if (validateStep0()) void handleUseDefaults(); }}
             onenablevoicechange={(v) => { enableVoice = v; }}
+            onollamachange={(v) => { includeOllama = v; }}
           />
         </section>
       {:else if currentStep === 2}
@@ -1199,15 +1392,18 @@
       {:else if currentStep === 4}
         <section class="step-content" id="step-4" data-testid="step-voice">
           <VoiceStep
-            tts={voiceTts.engine ? voiceTts : { engine: voiceDefaults.tts }}
-            stt={voiceStt.engine ? voiceStt : { engine: voiceDefaults.stt }}
+            tts={displayedVoiceTts}
+            stt={displayedVoiceStt}
             {hasOpenAI}
             unknownTts={voiceEngineUnknownTts}
             unknownStt={voiceEngineUnknownStt}
+            profiles={voiceProfiles}
+            {selectedVoiceProfile}
             onback={() => goToStep(3)}
             onnext={() => goToStep(5)}
             onchangetts={(v) => { voiceTts = v; voiceEngineUnknownTts = false; }}
             onchangestt={(v) => { voiceStt = v; voiceEngineUnknownStt = false; }}
+            onprofilechange={(id) => { selectedVoiceProfile = id; }}
           />
         </section>
       {:else if currentStep === 5}
@@ -1235,8 +1431,9 @@
             {uiLoginPassword}
             {verifiedProviders}
             {modelSelection}
-            activeTts={voiceTts.engine}
-            activeStt={voiceStt.engine}
+            activeTts={persistedVoiceTts.engine}
+            activeStt={persistedVoiceStt.engine}
+            voiceProfileLabel={selectedVoiceProfileLabel}
             {channelSelection}
             {ollamaEnabled}
             {payload}

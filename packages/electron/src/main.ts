@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain } from 'electron';
 import { join, dirname } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { spawn, type ChildProcess } from 'node:child_process';
 
@@ -15,6 +15,7 @@ import {
   resolveConfigDir,
   resolveUiBuildDir,
   seedUiBuild,
+  seedOpenPalmDir,
   ensureHomeDirs,
   checkAndUpdateUiBuild,
   parseEnvFile,
@@ -101,6 +102,12 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     OP_IMAGE_TAG: process.env.OP_IMAGE_TAG || app.getVersion?.() || 'latest',
     OP_OPENCODE_URL: resolveAssistantUrl(homeDir),
   };
+  // Pass the bundled skeleton path so the UI server can refresh the registry
+  // on startup without needing the source repo or a network download.
+  const skeletonDir = join(process.resourcesPath ?? '', 'openpalm-skeleton');
+  if (existsSync(skeletonDir)) {
+    env.OPENPALM_SKELETON_DIR = skeletonDir;
+  }
   if (update?.updateAvailable && update.latestVersion) {
     env.OP_ELECTRON_LATEST_VERSION = update.latestVersion;
     if (update.latestUrl) env.OP_ELECTRON_LATEST_URL = update.latestUrl;
@@ -109,6 +116,24 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
 }
 
 // ── UI server lifecycle ──────────────────────────────────────────────────────
+
+/** Kill an orphaned UI server left by a previous crashed Electron instance. */
+async function killStaleUIServer(pidFile: string): Promise<void> {
+  let pid: number | null = null;
+  try {
+    const raw = readFileSync(pidFile, 'utf-8').trim();
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n) && n > 0) pid = n;
+  } catch {
+    return; // no PID file — nothing to do
+  }
+  if (!pid) return;
+  try { process.kill(pid, 0); } catch { return; } // already dead
+  console.log(`Killing stale UI server (PID ${pid})…`);
+  try { process.kill(pid, 'SIGTERM'); } catch { return; }
+  await new Promise(r => setTimeout(r, 2000));
+  try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+}
 
 export async function waitForReady(port: number, timeoutMs = READY_TIMEOUT_MS): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
@@ -135,6 +160,19 @@ async function startUIServer(): Promise<void> {
   resolveConfigDir();
 
   ensureHomeDirs();
+
+  // Seed .openpalm skeleton (registry, default configs) from the bundled
+  // extraResources. This refreshes the registry on every launch so addon
+  // profiles stay current without requiring a source checkout or network fetch.
+  const skeletonDir = join(process.resourcesPath ?? '', 'openpalm-skeleton');
+  if (existsSync(skeletonDir)) {
+    process.env.OPENPALM_SKELETON_DIR = skeletonDir;
+    try {
+      await seedOpenPalmDir(`v${app.getVersion()}`, homeDir, resolveConfigDir(), stateDir);
+    } catch (err) {
+      console.warn('Skeleton seed failed (non-fatal):', err instanceof Error ? err.message : String(err));
+    }
+  }
 
   const version = app.getVersion();
 
@@ -170,12 +208,18 @@ async function startUIServer(): Promise<void> {
     }
   }
 
+  const uiPidFile = join(stateDir, '.ui-server.pid');
+  await killStaleUIServer(uiPidFile);
+
   uiProcess = spawn('node', [join(uiBuildDir, 'index.js')], {
     cwd: uiBuildDir,
     env: buildUIServerEnv(homeDir, UI_PORT, appUpdate),
     // stdout inherits so terminal users see it; stderr is piped for diagnostics
     stdio: ['ignore', 'inherit', 'pipe'],
   });
+  if (uiProcess.pid) {
+    try { writeFileSync(uiPidFile, String(uiProcess.pid)); } catch { /* best-effort */ }
+  }
 
   // Tail UI server stderr into the ring buffer and re-emit to process.stderr
   // so terminal users still see the output.
@@ -226,6 +270,7 @@ function stopUIServer(): void {
   if (uiProcess) {
     uiProcess.kill('SIGTERM');
     uiProcess = null;
+    try { rmSync(join(resolveStateDir(), '.ui-server.pid'), { force: true }); } catch { /* best-effort */ }
   }
 }
 
