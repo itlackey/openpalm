@@ -14,6 +14,8 @@ import { resolveLocalOpenpalmDir } from './ui-assets.js';
 import { isChannelAddon } from './channels.js';
 import { randomHex, writeChannelSecrets } from './config-persistence.js';
 import { patchSecretsEnvFile, readStackEnv } from './secrets.js';
+import { writeRunScript } from './compose-args.js';
+import type { ControlPlaneState } from './types.js';
 import {
   resolveRegistryAddonsDir,
   resolveRegistryAutomationsDir,
@@ -415,13 +417,13 @@ function execFileNoThrow(
 /**
  * Compute the openpalm/voice image ref for a given GPU variant, matching
  * the substitution chain in the addon compose file:
- *   ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-${OP_IMAGE_TAG:-v0.11.0}-<variant>}
+ *   ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}-<variant>}
  */
 function voiceImageRef(variant: 'cpu' | 'cu121' | 'rocm6'): string {
   const namespace = process.env.OP_IMAGE_NAMESPACE?.trim() || 'openpalm';
   const explicit = process.env.OP_VOICE_IMAGE_TAG?.trim();
   if (explicit) return `${namespace}/voice:${explicit}`;
-  const baseTag = process.env.OP_IMAGE_TAG?.trim() || 'v0.11.0';
+  const baseTag = process.env.OP_IMAGE_TAG?.trim() || 'latest';
   return `${namespace}/voice:${baseTag}-${variant}`;
 }
 
@@ -668,10 +670,11 @@ export function getAddonProfileSelection(stackDir: string, name: string): string
   return value && value.trim() ? value.trim() : null;
 }
 
-export function setAddonProfileSelection(stackDir: string, name: string, profile: string): void {
+export function setAddonProfileSelection(stackDir: string, name: string, profile: string, state?: ControlPlaneState): void {
   const trimmed = profile.trim();
   if (!trimmed) throw new Error('Profile id cannot be empty');
   patchSecretsEnvFile(stackDir, { [profileEnvKey(name)]: trimmed });
+  if (state) writeRunScript(state);
 }
 
 function enableAddon(homeDir: string, name: string): MutationResult {
@@ -694,7 +697,7 @@ function disableAddonByName(homeDir: string, name: string): MutationResult {
   }
 }
 
-export function setAddonEnabled(homeDir: string, stackDir: string, name: string, enabled: boolean): AddonMutationResult {
+export function setAddonEnabled(homeDir: string, stackDir: string, name: string, enabled: boolean, state?: ControlPlaneState): AddonMutationResult {
   if (!VALID_NAME_RE.test(name)) {
     return { ok: false, error: `Invalid addon name: ${name}` };
   }
@@ -724,6 +727,8 @@ export function setAddonEnabled(homeDir: string, stackDir: string, name: string,
       writeChannelSecrets(stackDir, { [name]: randomHex(16) });
     }
   }
+
+  if (state) writeRunScript(state);
 
   return {
     ok: true,

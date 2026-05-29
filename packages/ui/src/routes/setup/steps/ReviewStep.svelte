@@ -12,6 +12,7 @@
     activeTts: string;
     activeStt: string;
     voiceProfileLabel?: string;
+    ollamaProfileLabel?: string;
     channelSelection: Record<string, boolean | ChannelState>;
     ollamaEnabled: boolean;
     payload: unknown;
@@ -30,6 +31,7 @@
     activeTts,
     activeStt,
     voiceProfileLabel = '',
+    ollamaProfileLabel = '',
     channelSelection,
     ollamaEnabled,
     payload,
@@ -244,6 +246,12 @@
         <span class="review-row-label">Ollama In-Stack</span>
         <span class="review-row-value">Enabled</span>
       </div>
+      {#if ollamaProfileLabel}
+        <div class="review-row">
+          <span class="review-row-label">Ollama Profile</span>
+          <span class="review-row-value">{ollamaProfileLabel}</span>
+        </div>
+      {/if}
     {/if}
   </div>
 
@@ -276,12 +284,6 @@
 </div>
 
 <style>
-  .review-actions-secondary {
-    display: flex;
-    justify-content: center;
-    margin: 12px 0 4px;
-  }
-
   .review-warning {
     margin: 12px 0;
     padding: 10px 14px;

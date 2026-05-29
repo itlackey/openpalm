@@ -93,6 +93,8 @@
     slack: { enabled: false, slackBotToken: '', slackAppToken: '' },
   });
   let ollamaEnabled = $state(false);
+  let ollamaProfiles = $state<VoiceAddonProfile[]>([]);
+  let selectedOllamaProfile = $state('');
   let imageTag = $state('');
   let hostAkmEnabled = $state(false);
   let hostAkmAvailable = $state(false);
@@ -201,6 +203,12 @@
     return profile?.label ?? profile?.id ?? selectedVoiceProfile;
   });
 
+  const selectedOllamaProfileLabel = $derived.by(() => {
+    if (!selectedOllamaProfile) return '';
+    const profile = ollamaProfiles.find((p) => p.id === selectedOllamaProfile);
+    return profile?.label ?? profile?.id ?? selectedOllamaProfile;
+  });
+
 
   // Build the install payload for /api/setup/complete
   const payload = $derived.by(() => {
@@ -295,6 +303,11 @@
       result.voiceProfile = selectedVoiceProfile;
     }
 
+    // Include the Ollama hardware profile when Ollama is enabled in-stack
+    if (ollamaEnabled && selectedOllamaProfile) {
+      result.ollamaProfile = selectedOllamaProfile;
+    }
+
     if (Object.keys(channelCredentials).length > 0) {
       result.channelCredentials = channelCredentials;
     }
@@ -369,6 +382,35 @@
     }
   }
 
+  async function loadOllamaProfiles(): Promise<void> {
+    try {
+      const res = await fetch('/api/setup/ollama-profiles');
+      if (!res.ok) return;
+      const data = await res.json() as {
+        ok?: boolean;
+        profiles?: VoiceAddonProfile[];
+        selectedProfile?: string | null;
+      };
+      if (!Array.isArray(data.profiles)) return;
+      ollamaProfiles = data.profiles;
+
+      const fallback = gpuDetected
+        ? data.profiles.find((p) => p.id === 'cuda' && p.available !== false)
+          ?? data.profiles.find((p) => p.default && p.available !== false)
+          ?? data.profiles.find((p) => p.available !== false)
+        : data.profiles.find((p) => p.id === 'cpu' && p.available !== false)
+          ?? data.profiles.find((p) => p.default && p.available !== false)
+          ?? data.profiles.find((p) => p.available !== false);
+      if (data.selectedProfile && typeof data.selectedProfile === 'string') {
+        selectedOllamaProfile = data.selectedProfile;
+      } else if (fallback) {
+        selectedOllamaProfile = fallback.id;
+      }
+    } catch {
+      // non-critical
+    }
+  }
+
   function initProviderState(): void {
     const state: Record<string, ProviderState> = {};
     for (const p of PROVIDERS) {
@@ -395,6 +437,16 @@
   async function handleUseDefaults(): Promise<void> {
     const voiceEngine = enableVoice ? 'openpalm-voice' : '';
 
+    // Ensure a voice profile is selected when voice is enabled.
+    // loadVoiceProfiles() is async and may not have resolved yet.
+    if (enableVoice && !selectedVoiceProfile) {
+      const preferred = gpuDetected ? 'cuda' : 'cpu';
+      const match = voiceProfiles.find((p) => p.id === preferred && p.available !== false)
+        ?? voiceProfiles.find((p) => p.id === 'cpu' && p.available !== false)
+        ?? voiceProfiles.find((p) => p.available !== false);
+      selectedVoiceProfile = match?.id ?? 'cpu';
+    }
+
     // If Ollama was enabled on the Welcome step, configure it as a provider
     if (includeOllama) {
       ollamaEnabled = true;
@@ -402,11 +454,16 @@
       if (st) {
         st.selected = true;
         st.verified = true;
-        st.baseUrl = 'http://localhost:11434';
+        // In-stack Ollama is reachable via Docker network DNS
+        st.baseUrl = 'http://ollama:11434';
         // Pre-populate with a small embedding model for memory
         if (st.models.length === 0) {
           st.models = ['nomic-embed-text', 'qwen3:4b'];
         }
+      }
+      // Auto-select Ollama hardware profile based on GPU detection
+      if (!selectedOllamaProfile) {
+        selectedOllamaProfile = gpuDetected ? 'cuda' : 'cpu';
       }
     }
 
@@ -889,6 +946,22 @@
     installError = '';
     installing = true;
 
+    // Ensure a voice profile is selected when voice is enabled.
+    // loadVoiceProfiles() is async and may not have resolved yet.
+    const usesBundledVoice = persistedVoiceTts.engine === 'openpalm-voice' || persistedVoiceStt.engine === 'openpalm-voice';
+    if (usesBundledVoice && !selectedVoiceProfile) {
+      const preferred = gpuDetected ? 'cuda' : 'cpu';
+      const match = voiceProfiles.find((p) => p.id === preferred && p.available !== false)
+        ?? voiceProfiles.find((p) => p.id === 'cpu' && p.available !== false)
+        ?? voiceProfiles.find((p) => p.available !== false);
+      selectedVoiceProfile = match?.id ?? 'cpu';
+    }
+
+    // Ensure an Ollama profile is selected when Ollama is enabled in-stack.
+    if (ollamaEnabled && !selectedOllamaProfile) {
+      selectedOllamaProfile = gpuDetected ? 'cuda' : 'cpu';
+    }
+
     try {
       const res = await fetch('/api/setup/complete', {
         method: 'POST',
@@ -1213,6 +1286,9 @@
           // Enabled addons + channel credentials
           const enabled: string[] = Array.isArray(data.enabledAddons) ? data.enabledAddons : [];
           if (enabled.includes('ollama')) ollamaEnabled = true;
+          if (data.ollama?.selectedProfile && typeof data.ollama.selectedProfile === 'string') {
+            selectedOllamaProfile = data.ollama.selectedProfile;
+          }
           const creds = data.channelCredentials ?? {};
           for (const chId of ['discord', 'slack']) {
             const sel = channelSelection[chId];
@@ -1248,6 +1324,7 @@
 
     void loadHostStatus();
     void loadVoiceProfiles();
+    void loadOllamaProfiles();
 
     // U3: Ensure detectionReady is set after at most 10 s so the
     // "Use recommended defaults" button is never permanently disabled.
@@ -1412,6 +1489,8 @@
             {channelSelection}
             hasOllama={hasOllamaVerified}
             {ollamaEnabled}
+            ollamaProfiles={ollamaProfiles}
+            selectedOllamaProfile={selectedOllamaProfile}
             {imageTag}
             {hostAkmEnabled}
             {hostAkmAvailable}
@@ -1421,6 +1500,7 @@
             onchanneltoggle={handleChannelToggle}
             oncredentialchange={handleCredentialChange}
             onollamaenabledchange={(v) => ollamaEnabled = v}
+            onollamaprofilechange={(id) => selectedOllamaProfile = id}
             onimagtagchange={(v) => imageTag = v}
             onhostakmchange={(v) => hostAkmEnabled = v}
           />
@@ -1434,6 +1514,7 @@
             activeTts={persistedVoiceTts.engine}
             activeStt={persistedVoiceStt.engine}
             voiceProfileLabel={selectedVoiceProfileLabel}
+            ollamaProfileLabel={selectedOllamaProfileLabel}
             {channelSelection}
             {ollamaEnabled}
             {payload}

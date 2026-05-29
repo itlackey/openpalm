@@ -20,6 +20,7 @@ import {
   listEnabledAddonIds,
   resolveStackDir,
   setAddonProfileSelection,
+  writeRunScript,
 } from "@openpalm/lib";
 import type { ControlPlaneState } from "@openpalm/lib";
 import { existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
@@ -317,6 +318,21 @@ export function startDeploy(state: ControlPlaneState): void {
 
       // Phase 1: write compose files, env, etc.
       await applyInstall(state);
+
+      // Ensure addon profiles are set before building compose options.
+      // If Ollama is enabled but no profile is stored, default to cpu.
+      const enabledAddons = listEnabledAddonIds(state.homeDir);
+      if (enabledAddons.includes('ollama') && !getAddonProfileSelection(state.stackDir, 'ollama')) {
+        try {
+          setAddonProfileSelection(state.stackDir, 'ollama', 'cpu', state);
+        } catch (err) {
+          logger.warn("ollama: failed to persist default profile selection (continuing)", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      writeRunScript(state);
       const services = await buildManagedServices(state);
       _state.deployStatus = services.map(s => ({ service: s, status: "pending", label: "Waiting..." }));
 
@@ -345,6 +361,10 @@ export function startDeploy(state: ControlPlaneState): void {
       // Retry transient pull failures (network blips, registry hiccups) up to
       // three times with 0/5s/15s back-off. Permanent failures (manifest
       // unknown, unauthorized) bail immediately.
+      //
+      // Profiles are included so all services (core + addons) are pulled
+      // in a single pass. The dev-mode fallback handles local images that
+      // don't exist in any registry.
       _state.phase = "pulling-images";
       const pullDelaysMs = [0, 5_000, 15_000];
       let pullResult: Awaited<ReturnType<typeof composePull>> | null = null;
@@ -391,7 +411,7 @@ export function startDeploy(state: ControlPlaneState): void {
       // Phase 3: start containers.
       _state.phase = "starting";
       _state.deployStatus = _state.deployStatus.map(e => ({ ...e, status: "pending", label: "Starting..." }));
-      const result = await composeUp({ ...composeOpts, services });
+      const result = await composeUp(composeOpts);
 
       if (!result.ok) {
         const raw = result.stderr ?? "compose up failed";
@@ -480,6 +500,7 @@ async function allServiceImagesPresent(
     "compose",
     ...composeOpts.files.flatMap((f) => ["-f", f]),
     ...(composeOpts.envFiles ?? []).filter((f) => existsSync(f)).flatMap((f) => ["--env-file", f]),
+    ...composeOpts.profiles.flatMap((p) => ["--profile", p]),
     "config",
     "--format",
     "json",
@@ -532,7 +553,7 @@ async function bringUpVoiceIfEnabled(
     stored ?? profiles.find((p) => p.id === "cpu")?.id ?? profiles[0]?.id ?? "cpu";
   if (!stored) {
     try {
-      setAddonProfileSelection(state.stackDir, VOICE_ADDON, profileId);
+      setAddonProfileSelection(state.stackDir, VOICE_ADDON, profileId, state);
     } catch (err) {
       // Persistence failure is non-fatal — we still attempt the bring-up,
       // operator just needs to re-pick the profile in admin if they want
@@ -554,31 +575,12 @@ async function bringUpVoiceIfEnabled(
     ...profileServices.map((svc) => ({
       service: svc,
       status: "pending" as const,
-      label: "Voice — downloading image…",
+      label: "Voice — starting container…",
     })),
   ];
 
-  // Pull the voice image. The 60-min timeout (PULL_TIMEOUT_MS in
-  // docker.ts) gives slow connections room to finish the ~2.4 GB
-  // download. composePull with --profile cpu only pulls voice-related
-  // services from the profile.
-  const pullResult = await composePull({ ...composeOpts, profiles: [profileId] });
-  if (!pullResult.ok) {
-    const msg = mapDockerError(pullResult.stderr ?? "Voice image pull failed");
-    _state.deployStatus = _state.deployStatus.map((e) =>
-      profileServices.includes(e.service)
-        ? { ...e, status: "error" as const, label: "Voice — image pull failed" }
-        : e,
-    );
-    return `Voice addon: ${msg}`;
-  }
-
-  _state.deployStatus = _state.deployStatus.map((e) =>
-    profileServices.includes(e.service)
-      ? { ...e, status: "pending" as const, label: "Voice — starting container…" }
-      : e,
-  );
-
+  // The voice image was already pulled in phase 2 (composePull with profiles).
+  // Just start the container.
   const upResult = await composeUp({
     ...composeOpts,
     services: profileServices,

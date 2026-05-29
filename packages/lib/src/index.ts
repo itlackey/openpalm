@@ -230,6 +230,8 @@ export { detectLocalProviders } from "./control-plane/model-runner.js";
 export {
   buildComposeOptions,
   buildComposeCliArgs,
+  resolveActiveProfiles,
+  writeRunScript,
 } from "./control-plane/compose-args.js";
 
 // ── Compose Error Parsing ────────────────────────────────────────────────

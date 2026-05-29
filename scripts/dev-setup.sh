@@ -110,8 +110,8 @@ fi
 DEV_ROOT="$ROOT_DIR/.dev"
 CONFIG_DIR="$DEV_ROOT/config"
 STASH_DIR="$DEV_ROOT/stash"
-DATA_DIR="$DEV_ROOT/data"
-LOGS_DIR="$DEV_ROOT/logs"
+STATE_DIR="$DEV_ROOT/state"
+LOGS_DIR="$STATE_DIR/logs"
 
 # ── Template sync ────────────────────────────────────────────────
 # `.openpalm/` in the repo IS the canonical OP_HOME template (per
@@ -130,7 +130,7 @@ rsync_flags=(-a)
 rsync "${rsync_flags[@]}" \
 	--exclude=config/stack/stack.env \
 	--exclude=config/stack/guardian.env \
-	--exclude=config/stack/auth.json \
+	--exclude=config/auth.json \
 	--exclude=stash/vaults/user.env \
 	"$ROOT_DIR/.openpalm/" "$DEV_ROOT/"
 
@@ -145,16 +145,17 @@ rsync -a --delete \
 # Dirs the compose stack expects to bind-mount but `.openpalm/` doesn't
 # ship (they're per-container state, not config). All must exist before
 # `docker compose up` or bind-mount creation runs as root.
-mkdir -p \
+	mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
 	"$CONFIG_DIR/automations" "$CONFIG_DIR/stack/addons" \
 	"$STASH_DIR/vaults" \
-	"$DATA_DIR/assistant/.config/opencode" \
-	"$DATA_DIR/guardian" \
-	"$DATA_DIR/automations" "$DATA_DIR/ollama" "$DATA_DIR/stash" "$DATA_DIR/guardian-stash" \
-	"$DATA_DIR/akm-cache" "$DATA_DIR/guardian-cache" "$DATA_DIR/workspace" \
+	"$STATE_DIR" "$STATE_DIR/admin" "$STATE_DIR/assistant" "$STATE_DIR/assistant/.config/opencode" "$STATE_DIR/guardian" \
+	"$STATE_DIR/akm" "$STATE_DIR/akm/data" "$STATE_DIR/akm/state" \
+	"$STATE_DIR/logs" "$STATE_DIR/logs/opencode" \
+	"$STATE_DIR/backups" "$STATE_DIR/registry" "$STATE_DIR/registry/addons" "$STATE_DIR/registry/automations" \
+	"$STATE_DIR/voice" "$STATE_DIR/voice/models" "$STATE_DIR/ollama" \
 	"$LOGS_DIR/opencode" \
-	"$DEV_ROOT/work"
+	"$DEV_ROOT/workspace"
 
 # Enable requested addons in the dev runtime
 for addon in "${enabled_addons[@]}"; do
@@ -173,7 +174,7 @@ done
 # via the rsync above. No separate seed needed.
 
 # Seed auth.json (empty — prevents Docker creating it as directory)
-AUTH_JSON="$CONFIG_DIR/stack/auth.json"
+AUTH_JSON="$CONFIG_DIR/auth.json"
 if [[ ! -f "$AUTH_JSON" || $force -eq 1 ]]; then
 	echo '{}' >"$AUTH_JSON"
 	chmod 600 "$AUTH_JSON"
@@ -282,7 +283,7 @@ if docker info >/dev/null 2>&1; then
 fi
 
 if [[ $EUID -ne 0 ]]; then
-	chown -R "$(id -u):$(id -g)" "$CONFIG_DIR" "$STASH_DIR" "$DATA_DIR" "$LOGS_DIR" 2>/dev/null || true
+	chown -R "$(id -u):$(id -g)" "$CONFIG_DIR" "$STASH_DIR" "$STATE_DIR" "$LOGS_DIR" 2>/dev/null || true
 else
 	echo "Note: running as root; ownership left as-is." >&2
 fi

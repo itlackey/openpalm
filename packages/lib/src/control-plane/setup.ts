@@ -79,6 +79,7 @@ export type SetupSpec = {
   channelCredentials?: Record<string, Record<string, string>>;
   addons?: Record<string, boolean>;
   voiceProfile?: string;
+  ollamaProfile?: string;
   imageTag?: string;
   hostAkm?: boolean;
 };
@@ -193,7 +194,7 @@ export async function performSetup(
   const validation = validateSetupSpec(input);
   if (!validation.valid) return { ok: false, error: validation.errors.join("; ") };
 
-  const { llm, embedding, tts, stt, security, owner, connections, channelCredentials, addons, voiceProfile, imageTag, hostAkm } = input;
+  const { llm, embedding, tts, stt, security, owner, connections, channelCredentials, addons, voiceProfile, ollamaProfile, imageTag, hostAkm } = input;
   const state = opts?.state ?? createState();
 
   // Acquire install lock to prevent two concurrent setup runs from racing on
@@ -306,13 +307,17 @@ export async function performSetup(
       // setAddonEnabled copies the compose overlay AND generates CHANNEL_<NAME>_SECRET in guardian.env
       if (addons) {
         for (const [name, enabled] of Object.entries(addons)) {
-          if (enabled) setAddonEnabled(state.homeDir, state.stackDir, name, true);
+          if (enabled) setAddonEnabled(state.homeDir, state.stackDir, name, true, state);
         }
       }
 
 
       if (voiceProfile?.trim()) {
-        setAddonProfileSelection(state.stackDir, 'voice', voiceProfile.trim());
+        setAddonProfileSelection(state.stackDir, 'voice', voiceProfile.trim(), state);
+      }
+
+      if (ollamaProfile?.trim()) {
+        setAddonProfileSelection(state.stackDir, 'ollama', ollamaProfile.trim(), state);
       }
 
       ensureOpenCodeConfig();

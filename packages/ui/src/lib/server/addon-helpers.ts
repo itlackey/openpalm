@@ -42,7 +42,7 @@ export async function performAddonToggle(
     }
   }
 
-  const mutation = setAddonEnabled(state.homeDir, state.stackDir, name, nextEnabled);
+  const mutation = setAddonEnabled(state.homeDir, state.stackDir, name, nextEnabled, state);
   if (!mutation.ok) return mutation;
 
   const resultEnabled = listEnabledAddonIds(state.homeDir).includes(name);

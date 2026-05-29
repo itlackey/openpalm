@@ -36,7 +36,7 @@ export async function runAddonListAction(): Promise<void> {
 export async function runAddonEnableAction(name: string): Promise<void> {
   requireKnownAddon(name);
   const state = ensureValidState();
-  const mutation = setAddonEnabled(state.homeDir, state.stackDir, name, true);
+  const mutation = setAddonEnabled(state.homeDir, state.stackDir, name, true, state);
   if (!mutation.ok) throw new Error(mutation.error);
 
   if (!mutation.changed) {
@@ -76,7 +76,7 @@ export async function runAddonDisableAction(name: string): Promise<void> {
     }
   }
 
-  const mutation = setAddonEnabled(state.homeDir, state.stackDir, name, false);
+  const mutation = setAddonEnabled(state.homeDir, state.stackDir, name, false, state);
   if (!mutation.ok) throw new Error(mutation.error);
 
   if (!mutation.changed) {

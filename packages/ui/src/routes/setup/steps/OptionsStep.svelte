@@ -2,11 +2,15 @@
   import { CHANNELS } from '$lib/wizard/constants.js';
   import type { ChannelState } from '$lib/wizard/types.js';
   import { isChannelEnabled as _isChannelEnabled, getCredValue as _getCredValue } from '$lib/wizard/helpers.js';
+  import type { VoiceAddonProfile } from '$lib/api.js';
+  import VoiceProfileSelector from '$lib/components/voice/VoiceProfileSelector.svelte';
 
   interface Props {
     channelSelection: Record<string, boolean | ChannelState>;
     hasOllama: boolean;
     ollamaEnabled: boolean;
+    ollamaProfiles?: VoiceAddonProfile[];
+    selectedOllamaProfile?: string;
     imageTag: string;
     hostAkmEnabled: boolean;
     hostAkmAvailable: boolean;
@@ -16,6 +20,7 @@
     onchanneltoggle: (id: string) => void;
     oncredentialchange: (chId: string, credKey: string, value: string) => void;
     onollamaenabledchange: (v: boolean) => void;
+    onollamaprofilechange?: (id: string) => void;
     onimagtagchange: (v: string) => void;
     onhostakmchange: (v: boolean) => void;
   }
@@ -24,6 +29,8 @@
     channelSelection,
     hasOllama,
     ollamaEnabled,
+    ollamaProfiles = [],
+    selectedOllamaProfile = '',
     imageTag,
     hostAkmEnabled,
     hostAkmAvailable,
@@ -33,6 +40,7 @@
     onchanneltoggle,
     oncredentialchange,
     onollamaenabledchange,
+    onollamaprofilechange,
     onimagtagchange,
     onhostakmchange,
   }: Props = $props();
@@ -126,6 +134,16 @@
         </label>
         <span class="addon-help">Adds an Ollama container to the compose stack so you do not need a separate install.</span>
       </div>
+      {#if ollamaEnabled && ollamaProfiles.length > 0 && onollamaprofilechange}
+        <div class="ollama-profile-row">
+          <div class="field-hint">Choose the hardware profile Ollama should use inside the stack.</div>
+          <VoiceProfileSelector
+            profiles={ollamaProfiles}
+            selectedProfile={selectedOllamaProfile}
+            onchange={onollamaprofilechange}
+          />
+        </div>
+      {/if}
     </div>
   {/if}
 

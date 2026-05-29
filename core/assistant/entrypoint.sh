@@ -5,13 +5,11 @@ PORT="${OPENCODE_PORT:-4096}"
 ENABLE_SSH="${OPENCODE_ENABLE_SSH:-0}"
 TARGET_UID="${OP_UID:-1000}"
 TARGET_GID="${OP_GID:-1000}"
+IS_ROOT=$([ "$(id -u)" = "0" ] && echo 1 || echo 0)
 
 maybe_adjust_uid_gid() {
-  # The Dockerfile creates the "opencode" user at 1000:1000. If the host
-  # user has a different UID/GID (passed via OP_UID/OP_GID), adjust here.
-  if [ "$(id -u)" != "0" ]; then
-    return 0
-  fi
+  # Only when running as root (first entrypoint before gosu).
+  if [ "$IS_ROOT" = "0" ]; then return 0; fi
 
   local current_uid current_gid
   current_uid="$(id -u opencode 2>/dev/null || echo 1000)"
@@ -28,31 +26,21 @@ maybe_adjust_uid_gid() {
 ensure_home_layout() {
   # Create directories that may not exist on first run inside bind-mounted
   # /home/opencode (which shadows whatever was baked into the Dockerfile).
-  # We chown here when running as root before gosu drops privileges.
   mkdir -p \
     /home/opencode \
     /home/opencode/.cache \
+    /home/opencode/.cache/opencode \
     /home/opencode/.config/opencode \
     /home/opencode/.local/bin \
     /home/opencode/.local/state/opencode \
     /home/opencode/.local/share/opencode \
     /work
 
-  if [ "$(id -u)" = "0" ]; then
-    # New dirs created above are root-owned; chown so the opencode user
-    # (mapped to TARGET_UID/GID) can write into .cache and .config at runtime.
-    chown "$TARGET_UID:$TARGET_GID" \
-      /home/opencode \
-      /home/opencode/.cache \
-      /home/opencode/.config \
-      /home/opencode/.config/opencode \
-      /home/opencode/.local \
-      /home/opencode/.local/bin \
-      /home/opencode/.local/state \
-      /home/opencode/.local/state/opencode \
-      /home/opencode/.local/share \
-      /home/opencode/.local/share/opencode \
-      2>/dev/null || true
+  if [ "$IS_ROOT" = "1" ]; then
+    # Recursively fix ownership. Previous container runs may have created
+    # directories as root when OP_UID/OP_GID differed. A targeted chown
+    # misses nested dirs created by third-party tools between invocations.
+    chown -R "$TARGET_UID:$TARGET_GID" /home/opencode 2>/dev/null || true
 
     mkdir -p /var/run/sshd
   fi
@@ -63,115 +51,93 @@ maybe_enable_ssh() {
     return 0
   fi
 
-  local is_root=0
-  [ "$(id -u)" = "0" ] && is_root=1
-
   mkdir -p /var/run/sshd /home/opencode/.ssh
   touch /home/opencode/.ssh/authorized_keys
+  chown -R "$TARGET_UID:$TARGET_GID" /home/opencode/.ssh 2>/dev/null || true
+  chmod 700 /home/opencode/.ssh
+  chmod 600 /home/opencode/.ssh/authorized_keys 2>/dev/null || true
 
-  if [ "$is_root" = "1" ]; then
-    chown -R "$TARGET_UID:$TARGET_GID" /home/opencode/.ssh
-    chmod 755 /home/opencode
-    chmod 700 /home/opencode/.ssh
-    chmod 600 /home/opencode/.ssh/authorized_keys
-
-    if command -v openssl >/dev/null 2>&1; then
-      usermod -p "$(openssl passwd -6 "$(openssl rand -hex 16)")" opencode 2>/dev/null || true
-    fi
-
-    if [ ! -f /etc/ssh/ssh_host_ed25519_key ]; then
-      ssh-keygen -A
-    fi
+  if [ "$IS_ROOT" = "1" ] && [ ! -f /etc/ssh/sshd_config ]; then
+    return 0
   fi
 
-  /usr/sbin/sshd \
-    -o PasswordAuthentication=no \
-    -o PermitRootLogin=no \
-    -o AuthorizedKeysFile=/home/opencode/.ssh/authorized_keys \
-    -o AllowTcpForwarding=no \
-    -o X11Forwarding=no \
-    -o PermitTunnel=no \
-    -o UsePAM=no \
-    -o PubkeyAuthentication=yes \
-    -o StrictModes=yes
-}
-
-
-start_cron_and_sync_tasks() {
-  # Register AKM markdown tasks with the OS cron daemon.
-  # Tasks are markdown files at /akm/tasks/*.md (AKM_STASH_DIR).
-  # Scheduling, execution, and history are delegated to `akm tasks run`.
-  command -v akm >/dev/null 2>&1 || return 0
-
-  local op_home="${OP_HOME:-/openpalm}"
-  # /openpalm/logs is bind-mounted from ${OP_HOME}/state/logs — writes are persisted.
-  local sync_log="/openpalm/logs/akm-tasks-sync.log"
-  mkdir -p /openpalm/logs || true
-
-  # Build the crontab env preamble. Cron jobs run in a stripped environment
-  # so every variable our automations need must be listed here.
-  local preamble
-  preamble=$(
-    printf '# openpalm-env — rebuilt at container start, do not edit\n'
-    printf 'PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin\n'
-    printf 'AKM_STASH_DIR=/akm\n'
-    printf 'AKM_CONFIG_DIR=/etc/openpalm/akm\n'
-    printf 'AKM_DATA_DIR=/akm-op/data\n'
-    printf 'AKM_STATE_DIR=/akm-op/state\n'
-    printf 'AKM_CACHE_DIR=/akm-cache\n'
-    printf 'OP_HOME=/openpalm\n'
-    printf 'TZ=%s\n' "${TZ:-UTC}"
-    # Include all vault:user keys (LLM API keys etc.) so automation commands
-    # that call external services have the keys in their environment.
-    local vault_path
-    vault_path="$(akm vault path vault:user 2>/dev/null || true)"
-    if [ -n "$vault_path" ] && [ -f "$vault_path" ]; then
-      grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$vault_path" 2>/dev/null || true
-    fi
-  )
-
-  # Write preamble to crontab. `akm tasks sync` appends task entries below it.
-  printf '%s\n' "$preamble" | crontab -
-
-  # Start the cron daemon.
-  cron
-
-  # Register all stash/tasks/*.md with cron (idempotent).
-  akm tasks sync >>"$sync_log" 2>&1 || true
-
-  # Background loop: re-sync every 60 s to pick up task files written by the
-  # host admin process into the shared stash/tasks/ directory.
-  (while sleep 60; do akm tasks sync >>"$sync_log" 2>&1 || true; done) &
+  if [ "$IS_ROOT" = "1" ]; then
+    ssh-keygen -A 2>/dev/null || true
+    /usr/sbin/sshd 2>/dev/null || true
+  fi
 }
 
 maybe_source_akm_user_vault() {
-  # User-managed env secrets live in the akm `vault:user` store at
-  # <stash>/vaults/user.env (akm-cli >= 0.8.0 layout). We ask akm for the
-  # resolved vault path and source it inline so OpenCode and the
-  # scheduler co-process inherit every key. Sourcing happens AFTER the
-  # gosu drop in start_opencode, so the values land in the same process
-  # tree as opencode itself.
-  #
-  # We deliberately do NOT shell out to `akm vault run` — that would put
-  # akm in the supervisor path. A static one-shot source keeps the
-  # entrypoint dependency-free post-startup.
-  if ! command -v akm >/dev/null 2>&1; then
-    return 0
+  # Source the akm vault:user env file so secrets land in the process
+  # environment. Must run before start_cron so vault keys appear in the
+  # crontab preamble. Only possible as root (vault file is 0600).
+  if [ "$IS_ROOT" = "0" ]; then return 0; fi
+
+  local vault_path=""
+  if [ -n "${AKM_STASH_DIR:-}" ] && [ -f "${AKM_STASH_DIR}/vaults/user.env" ]; then
+    vault_path="${AKM_STASH_DIR}/vaults/user.env"
+  elif [ -f "/etc/vault/user.env" ]; then
+    vault_path="/etc/vault/user.env"
   fi
-  local vault_path
-  vault_path="$(akm vault path vault:user 2>/dev/null || true)"
-  if [ -z "$vault_path" ] || [ ! -f "$vault_path" ]; then
-    return 0
-  fi
-  # `set -a` exports every variable assigned by the sourced file. The .env
-  # format produced by akm is plain `KEY=value` (no `export ` prefix), so
-  # this is the standard way to load it without parsing line-by-line.
-  set -a
+
+  if [ -z "$vault_path" ]; then return 0; fi
+
+  set +a
   # shellcheck disable=SC1090
   . "$vault_path"
   set +a
 }
 
+seed_default_agents_md() {
+  local src="/usr/local/share/openpalm/AGENTS.md"
+  local dest="${OPENCODE_CONFIG_DIR:-/etc/openpalm/assistant}/AGENTS.md"
+  [ -f "$src" ] && [ ! -f "$dest" ] && cp "$src" "$dest" 2>/dev/null || true
+}
+
+start_cron_and_sync_tasks() {
+  # Build a crontab preamble with environment variables and vault keys
+  # so cron jobs inherit the same secrets as the main process.
+  local crontab_file="/tmp/crontab"
+  echo "# Auto-generated by entrypoint — do not edit" > "$crontab_file"
+  echo "SHELL=/bin/bash" >> "$crontab_file"
+  echo "PATH=/usr/local/bin:/usr/bin:/bin:/opt/persistent/bin" >> "$crontab_file"
+
+  # Forward selected env vars into cron jobs
+  for var in HOME AKM_STASH_DIR AKM_CONFIG_DIR AKM_DATA_DIR AKM_STATE_DIR AKM_CACHE_DIR \
+             OPENCODE_API_URL OPENCODE_CONFIG_DIR OP_HOME; do
+    if [ -n "${!var:-}" ]; then
+      echo "export $var=\"${!var}\"" >> "$crontab_file"
+    fi
+  done
+
+  # Forward vault keys (already sourced into env by maybe_source_akm_user_vault)
+  if [ -n "${VAULT_KEYS_EXPORTED:-}" ]; then
+    echo "export VAULT_KEYS_EXPORTED=\"$VAULT_KEYS_EXPORTED\"" >> "$crontab_file"
+  fi
+
+  # Sync automation tasks from the akm stash into cron, then start cron
+  local tasks_dir="${AKM_STASH_DIR:-/akm}/tasks"
+  if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
+    akm tasks sync 2>/dev/null || true
+  fi
+
+  # Install crontab if there are any cron entries (akm tasks sync adds them)
+  if [ -f "$crontab_file" ]; then
+    crontab "$crontab_file" 2>/dev/null || true
+    rm -f "$crontab_file"
+    cron 2>/dev/null || true
+  fi
+
+  # Background re-sync loop: picks up task file changes without restart
+  (
+    while true; do
+      sleep 60
+      if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
+        akm tasks sync 2>/dev/null || true
+      fi
+    done
+  ) &
+}
 
 start_opencode() {
   cd /work
@@ -180,18 +146,16 @@ start_opencode() {
   mkdir -p "${BUN_INSTALL:-/home/opencode/.bun}/bin" \
            "${BUN_INSTALL_CACHE_DIR:-/home/opencode/.cache/bun/install}"
 
-  # Note: varlock-based runtime redaction was retired in #391. Secret
-  # values now never reach the logger's structured `extra` payload thanks
-  # to the in-process redactor in `@openpalm/lib/logger`. Bash tool output
-  # still goes straight to stdout — OpenCode operators who want extra
-  # redaction in tool output should rely on the akm secret store rather
-  # than an LD_PRELOAD-style shell wrapper.
+  # Fix ownership of bun dirs if we're still root (before gosu).
+  if [ "$IS_ROOT" = "1" ]; then
+    chown -R "$TARGET_UID:$TARGET_GID" \
+      "${BUN_INSTALL:-/home/opencode/.bun}" \
+      "${BUN_INSTALL_CACHE_DIR:-/home/opencode/.cache/bun}" \
+      2>/dev/null || true
+  fi
 
-  # Build the opencode command. If running as root, prepend gosu so we
-  # drop to the opencode user. gosu resets HOME from /etc/passwd, so forward
-  # HOME explicitly via env.
   local cmd=(opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs)
-  if [ "$(id -u)" = "0" ]; then
+  if [ "$IS_ROOT" = "1" ]; then
     if ! command -v gosu >/dev/null 2>&1; then
       echo "ERROR: gosu not found — cannot drop privileges. Install gosu in the Dockerfile." >&2
       exit 1
@@ -203,29 +167,10 @@ start_opencode() {
   exec "${cmd[@]}"
 }
 
-seed_default_agents_md() {
-  # Seed the baked-in AGENTS.md into OPENCODE_CONFIG_DIR if the operator has
-  # not placed their own copy there. The config dir is bind-mounted from
-  # OP_HOME/config/assistant/ so we cannot rely on the image copy surviving;
-  # this one-shot copy runs before start_opencode and respects user overrides.
-  local src="/usr/local/share/openpalm/AGENTS.md"
-  local dest="${OPENCODE_CONFIG_DIR:-/etc/openpalm/assistant}/AGENTS.md"
-  [ -f "$src" ] && [ ! -f "$dest" ] && cp "$src" "$dest" 2>/dev/null || true
-}
-
 maybe_adjust_uid_gid
 ensure_home_layout
 maybe_enable_ssh
-# Source the akm `vault:user` env file before starting cron so vault keys
-# land in the crontab preamble that start_cron_and_sync_tasks builds.
-# Runs as root because gosu has not been invoked yet — root can read the
-# 0600 vault file and re-export to children.
 maybe_source_akm_user_vault
 seed_default_agents_md
-
-# Validate akm config is present (written by admin UI or setup wizard)
-if [ ! -f "${AKM_CONFIG_DIR}/config.json" ]; then
-  echo "WARN: akm config not found at ${AKM_CONFIG_DIR}/config.json — akm will use defaults" >&2
-fi
 start_cron_and_sync_tasks
 start_opencode

@@ -633,7 +633,7 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
       );
     }
     activeProfile = requestedProfile;
-    setAddonProfileSelection(state.stackDir, VOICE_ADDON, activeProfile);
+    setAddonProfileSelection(state.stackDir, VOICE_ADDON, activeProfile, state);
   } else {
     activeProfile =
       getAddonProfileSelection(state.stackDir, VOICE_ADDON) ??
@@ -648,7 +648,7 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
 
   if (!wasAlreadyEnabled) {
     try {
-      setAddonEnabled(state.homeDir, state.stackDir, VOICE_ADDON, true);
+      setAddonEnabled(state.homeDir, state.stackDir, VOICE_ADDON, true, state);
       steps.push({ step: 'enable', ok: true });
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);

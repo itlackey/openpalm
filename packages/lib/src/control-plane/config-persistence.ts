@@ -83,6 +83,10 @@ export function writeSystemEnv(state: ControlPlaneState): void {
     if (!hasUsableOperatorId(parsed, "OP_GID")) adminManaged.OP_GID = String(ids.gid);
   }
 
+  // Backfill OP_HOME when missing — compose files reference ${OP_HOME}
+  // for all volume mounts. Without this, Docker Compose defaults to blank.
+  if (!parsed.OP_HOME) adminManaged.OP_HOME = state.homeDir;
+
   const content = mergeEnvContent(base, adminManaged, {
     sectionHeader: "# ── Admin-managed ──────────────────────────────────────────────────"
   });

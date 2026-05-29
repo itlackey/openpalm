@@ -87,12 +87,13 @@ export async function checkDockerCompose(): Promise<DockerResult> {
   });
 }
 
-/** Build common prefix: compose -f ... --project-name ... --env-file ... */
-function buildComposeArgs(options: { files: string[]; envFiles?: string[] }): string[] {
+/** Build common prefix: compose -f ... --project-name ... --env-file ... --profile ... */
+function buildComposeArgs(options: { files: string[]; envFiles?: string[]; profiles?: string[] }): string[] {
   const args = ["compose", ...options.files.flatMap((f) => ["-f", f]), "--project-name", resolveComposeProjectName()];
   for (const ef of options.envFiles ?? []) {
     if (existsSync(ef)) args.push("--env-file", ef);
   }
+  for (const p of options.profiles ?? []) args.push("--profile", p);
   return args;
 }
 
@@ -108,7 +109,7 @@ function collectEnvOverrides(envFiles?: string[]): Record<string, string> {
  * Must be called before any lifecycle mutation (install/apply/update).
  */
 export async function composePreflight(
-  options: { files: string[]; envFiles?: string[] }
+  options: { files: string[]; envFiles?: string[]; profiles?: string[] }
 ): Promise<DockerResult> {
   const args = buildComposeArgs(options);
   args.push("config", "--quiet");
@@ -119,22 +120,23 @@ export async function composePreflight(
  * Run compose config preflight validation before any mutation.
  * Skipped when OP_SKIP_COMPOSE_PREFLIGHT is set (tests, CI).
  */
-async function runPreflight(options: { files: string[]; envFiles?: string[] }): Promise<void> {
+async function runPreflight(options: { files: string[]; envFiles?: string[]; profiles?: string[] }): Promise<void> {
   if (options.files.length === 0 || process.env.OP_SKIP_COMPOSE_PREFLIGHT) return;
   const result = await composePreflight(options);
   if (!result.ok) {
     const project = resolveComposeProjectName();
     const fileArgs = options.files.map((f) => `-f ${f}`).join(" ");
     const envArgs = (options.envFiles ?? []).map((f) => `--env-file ${f}`).join(" ");
+    const profileArgs = (options.profiles ?? []).map((p) => `--profile ${p}`).join(" ");
     throw new Error(
       `Compose preflight failed: ${result.stderr}\n` +
-      `Resolved command: docker compose ${fileArgs} --project-name ${project} ${envArgs} config --quiet`
+      `Resolved command: docker compose ${fileArgs} --project-name ${project} ${envArgs} ${profileArgs} config --quiet`
     );
   }
 }
 
 export async function composeConfigServices(
-  options: { files: string[]; envFiles?: string[] }
+  options: { files: string[]; envFiles?: string[]; profiles?: string[] }
 ): Promise<{ ok: boolean; services: string[] }> {
   const args = buildComposeArgs(options);
   args.push("config", "--services");

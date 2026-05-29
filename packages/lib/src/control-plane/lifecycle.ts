@@ -24,6 +24,7 @@ import { refreshCoreAssets } from "./core-assets.js";
 import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName } from "./docker.js";
+import { buildComposeOptions, writeRunScript } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import { listEnabledAddonIds } from "./registry.js";
 
@@ -246,8 +247,7 @@ export type UpgradeResult = {
  * Callers handle their own audit logging and admin self-recreation.
  */
 export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeResult> {
-  const files = buildComposeFileList(state);
-  const envFiles = buildEnvFiles(state);
+  const composeOpts = buildComposeOptions(state);
 
   // Compose preflight runs inside `applyUpgrade` -> `reconcileCore`, so we
   // skip the redundant top-level call. Any merge failure aborts before
@@ -277,18 +277,21 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
     throw e;
   }
 
-  // 3. Pull images
-  const pullResult = await composePull({ files, envFiles });
+  // 3. Pull all images (core + addons, including profile-gated voice)
+  const pullResult = await composePull(composeOpts);
   if (!pullResult.ok) {
     throw new Error(`Failed to pull images: ${pullResult.stderr}`);
   }
 
-  // 4. Recreate containers
+  // 4. Recreate containers (includes profiles for voice addon)
   const services = await buildManagedServices(state);
-  const upResult = await composeUp({ files, envFiles, services, removeOrphans: true });
+  const upResult = await composeUp({ ...composeOpts, services, removeOrphans: true });
   if (!upResult.ok) {
     throw new Error(`Images pulled but failed to recreate containers: ${upResult.stderr}`);
   }
+
+  // 5. Write run.sh with the final compose command
+  writeRunScript(state);
 
   return {
     imageTag,
@@ -308,6 +311,7 @@ export async function applyTagChange(state: ControlPlaneState, tag: string): Pro
   const currentContent = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
   writeFileSync(stackEnvPath, mergeEnvContent(currentContent, { OP_IMAGE_TAG: tag }, { uncomment: true }));
   const upgradeResult = await applyUpgrade(state);
+  writeRunScript(state);
   return {
     imageTag: tag,
     namespace: "openpalm",
@@ -322,12 +326,11 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
 }
 
 export async function buildManagedServices(state: ControlPlaneState): Promise<string[]> {
-  const files = buildComposeFileList(state);
-  const envFiles = buildEnvFiles(state);
+  const composeOpts = buildComposeOptions(state);
 
   // Prefer compose-derived service list when Docker is available
-  if (files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
-    const result = await composeConfigServices({ files, envFiles });
+  if (composeOpts.files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
+    const result = await composeConfigServices(composeOpts);
     if (result.ok && result.services.length > 0) {
       return result.services;
     }

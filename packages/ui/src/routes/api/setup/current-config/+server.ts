@@ -46,10 +46,13 @@ export const GET: RequestHandler = async (event) => {
   const env = readStackEnv(state.stackDir);
   const akm = readAkmConfig(state.configDir);
 
-  // Voice addon hardware profiles (CPU / CUDA / …)
-  const rawProfiles = getAddonProfiles(state.homeDir, 'voice');
-  const voiceProfiles = await annotateAddonProfileAvailability(rawProfiles);
+  // Addon hardware profiles (CPU / CUDA / …)
+  const rawVoiceProfiles = getAddonProfiles(state.homeDir, 'voice');
+  const voiceProfiles = await annotateAddonProfileAvailability(rawVoiceProfiles);
   const selectedVoiceProfile = getAddonProfileSelection(state.stackDir, 'voice');
+  const rawOllamaProfiles = getAddonProfiles(state.homeDir, 'ollama');
+  const ollamaProfiles = await annotateAddonProfileAvailability(rawOllamaProfiles);
+  const selectedOllamaProfile = getAddonProfileSelection(state.stackDir, 'ollama');
 
   const hostHome = process.env.HOME ?? process.env.USERPROFILE ?? "";
   const hostAkm =
@@ -112,6 +115,10 @@ export const GET: RequestHandler = async (event) => {
       },
       profiles: voiceProfiles,
       selectedProfile: selectedVoiceProfile,
+    },
+    ollama: {
+      profiles: ollamaProfiles,
+      selectedProfile: selectedOllamaProfile,
     },
     enabledAddons: listEnabledAddonIds(state.homeDir),
     channelCredentials,
