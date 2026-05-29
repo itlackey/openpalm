@@ -4,7 +4,7 @@
  * Used by the admin capabilities test endpoint and the CLI setup wizard
  * to enumerate the models a configured provider exposes.
  */
-import { readStackEnv } from "./secrets.js";
+import { readStackRuntimeEnv } from "./secrets.js";
 import { PROVIDER_DEFAULT_URLS } from "../provider-constants.js";
 
 /** Static model list for Anthropic (no listing API available). */
@@ -24,7 +24,7 @@ const ANTHROPIC_MODELS = [
  *
  * - Empty input → empty string.
  * - `env:NAME` form → looks up `NAME` in `process.env` first, then falls back
- *   to `config/stack/stack.env` resolved against `stackDir`.
+   *   to `config/stack/secrets/<NAME>` resolved against `stackDir`.
  * - Anything else → returned verbatim (treated as a literal key value).
  */
 function resolveApiKey(apiKeyRef: string, stackDir: string): string {
@@ -34,7 +34,7 @@ function resolveApiKey(apiKeyRef: string, stackDir: string): string {
   const varName = apiKeyRef.slice(4);
   if (process.env[varName]) return process.env[varName]!;
 
-  const secrets = readStackEnv(stackDir);
+  const secrets = readStackRuntimeEnv(stackDir);
   return secrets[varName] ?? "";
 }
 

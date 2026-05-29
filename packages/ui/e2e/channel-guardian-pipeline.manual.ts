@@ -25,7 +25,7 @@
  */
 import { expect, test } from '@playwright/test';
 import { createHmac, randomUUID } from 'node:crypto';
-import { readFileSync, writeFileSync, appendFileSync, openSync, ftruncateSync, writeSync, closeSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -58,7 +58,8 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../..');
-const GUARDIAN_ENV_PATH = resolve(REPO_ROOT, '.dev/config/stack/guardian.env');
+const TEST_CHANNEL = 'chat';
+const CHANNEL_SECRET_PATH = resolve(REPO_ROOT, `.dev/config/stack/secrets/channel_${TEST_CHANNEL}_secret`);
 
 /**
  * Guardian URL: In test mode, guardian is published on OP_GUARDIAN_PORT
@@ -71,8 +72,7 @@ const GUARDIAN_PORT = process.env.OP_GUARDIAN_PORT ?? '9180';
 // and `localhost` may resolve to ::1 first → ECONNREFUSED.
 const GUARDIAN_URL = `http://127.0.0.1:${GUARDIAN_PORT}`;
 
-const TEST_CHANNEL = 'e2etest';
-const TEST_SECRET = `e2e-test-secret-${Date.now()}`;
+let testSecret = '';
 
 // ── HMAC helpers (pure Node.js — no Bun dependency) ─────────────────────
 
@@ -91,62 +91,17 @@ function makePayload(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-// ── Guardian.env secret management ──────────────────────────────────────
-
-let originalGuardianEnv: string | null = null;
+// ── Channel secret file management ───────────────────────────────────────
 
 /**
- * Seeds CHANNEL_E2ETEST_SECRET into guardian.env so the guardian can verify
- * our test messages. The guardian re-reads the file on each request
- * (via GUARDIAN_SECRETS_PATH), so no container restart is needed.
- *
- * IMPORTANT: Uses appendFileSync (not writeFileSync) to preserve the
- * same inode. Docker bind mounts track the inode — if the admin container
- * did an atomic write (temp+rename) to guardian.env, a writeFileSync here
- * would create yet another inode, invisible to the guardian container.
- * Appending modifies the existing file in-place, keeping the inode.
+ * Reads the HMAC secret file granted to the channel and guardian by Compose.
  */
-function seedTestSecret(): boolean {
+function loadTestSecret(): boolean {
 	try {
-		originalGuardianEnv = readFileSync(GUARDIAN_ENV_PATH, 'utf8');
-		const secretLine = `CHANNEL_E2ETEST_SECRET=${TEST_SECRET}`;
-		if (originalGuardianEnv.includes('CHANNEL_E2ETEST_SECRET=')) {
-			// Replace existing — truncate+write to keep inode (Docker bind mount)
-			const updated = originalGuardianEnv.replace(
-				/^CHANNEL_E2ETEST_SECRET=.*$/m,
-				secretLine
-			);
-			const fd = openSync(GUARDIAN_ENV_PATH, 'r+');
-			try {
-				ftruncateSync(fd, 0);
-				writeSync(fd, updated, 0);
-			} finally {
-				closeSync(fd);
-			}
-		} else {
-			// Append in-place — preserves inode
-			appendFileSync(GUARDIAN_ENV_PATH, '\n' + secretLine + '\n');
-		}
-		return true;
+		testSecret = readFileSync(CHANNEL_SECRET_PATH, 'utf8').replace(/[\r\n]+$/, '');
+		return testSecret.length > 0;
 	} catch {
 		return false;
-	}
-}
-
-function restoreGuardianEnv(): void {
-	if (originalGuardianEnv !== null) {
-		try {
-			// Truncate+write to preserve inode (Docker bind mount compatibility)
-			const fd = openSync(GUARDIAN_ENV_PATH, 'r+');
-			try {
-				ftruncateSync(fd, 0);
-				writeSync(fd, originalGuardianEnv, 0);
-			} finally {
-				closeSync(fd);
-			}
-		} catch {
-			// Best-effort restore
-		}
 	}
 }
 
@@ -156,14 +111,10 @@ test.describe('Channel -> Guardian -> Assistant Pipeline', () => {
 	const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 	test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
 
-	let secretSeeded = false;
+	let secretLoaded = false;
 
 	test.beforeAll(() => {
-		secretSeeded = seedTestSecret();
-	});
-
-	test.afterAll(() => {
-		restoreGuardianEnv();
+		secretLoaded = loadTestSecret();
 	});
 
 	// ── Group 1: Guardian reachability (no LLM needed) ──────────────
@@ -176,19 +127,19 @@ test.describe('Channel -> Guardian -> Assistant Pipeline', () => {
 		expect(body.service).toBe('guardian');
 	});
 
-	test('test channel secret is seeded in guardian.env', () => {
-		expect(secretSeeded).toBe(true);
+	test('test channel secret file is available', () => {
+		expect(secretLoaded).toBe(true);
 	});
 
 	// ── Group 2: HMAC verification (no LLM needed) ──────────────────
 
 	test('valid HMAC-signed message is accepted by guardian', async ({ request }) => {
-		test.skip(!secretSeeded, 'Could not seed test secret');
+		test.skip(!secretLoaded, 'Could not load test channel secret');
 		test.setTimeout(130_000);
 
 		const payload = makePayload();
 		const body = JSON.stringify(payload);
-		const signature = signPayload(TEST_SECRET, body);
+		const signature = signPayload(testSecret, body);
 
 		const res = await request.post(`${GUARDIAN_URL}/channel/inbound`, {
 			headers: {
@@ -216,7 +167,7 @@ test.describe('Channel -> Guardian -> Assistant Pipeline', () => {
 	});
 
 	test('invalid HMAC signature is rejected with 403', async ({ request }) => {
-		test.skip(!secretSeeded, 'Could not seed test secret');
+		test.skip(!secretLoaded, 'Could not load test channel secret');
 
 		const payload = makePayload();
 		const body = JSON.stringify(payload);
@@ -236,7 +187,7 @@ test.describe('Channel -> Guardian -> Assistant Pipeline', () => {
 	});
 
 	test('missing signature header is rejected with 403', async ({ request }) => {
-		test.skip(!secretSeeded, 'Could not seed test secret');
+		test.skip(!secretLoaded, 'Could not load test channel secret');
 
 		const payload = makePayload();
 
@@ -254,13 +205,13 @@ test.describe('Channel -> Guardian -> Assistant Pipeline', () => {
 	// ── Group 3: Nonce replay protection (no LLM needed) ───────────
 
 	test('replayed nonce is rejected with 409', async ({ request }) => {
-		test.skip(!secretSeeded, 'Could not seed test secret');
+		test.skip(!secretLoaded, 'Could not load test channel secret');
 		test.setTimeout(130_000);
 
 		const nonce = randomUUID();
 		const payload1 = makePayload({ nonce });
 		const body1 = JSON.stringify(payload1);
-		const sig1 = signPayload(TEST_SECRET, body1);
+		const sig1 = signPayload(testSecret, body1);
 
 		// First request should succeed (or 502 if assistant is down)
 		const res1 = await request.post(`${GUARDIAN_URL}/channel/inbound`, {
@@ -279,7 +230,7 @@ test.describe('Channel -> Guardian -> Assistant Pipeline', () => {
 		// Second request with same nonce should be rejected as replay
 		const payload2 = makePayload({ nonce, userId: payload1.userId });
 		const body2 = JSON.stringify(payload2);
-		const sig2 = signPayload(TEST_SECRET, body2);
+		const sig2 = signPayload(testSecret, body2);
 
 		const res2 = await request.post(`${GUARDIAN_URL}/channel/inbound`, {
 			headers: {
@@ -295,11 +246,11 @@ test.describe('Channel -> Guardian -> Assistant Pipeline', () => {
 	});
 
 	test('expired timestamp is rejected with 409', async ({ request }) => {
-		test.skip(!secretSeeded, 'Could not seed test secret');
+		test.skip(!secretLoaded, 'Could not load test channel secret');
 
 		const payload = makePayload({ timestamp: Date.now() - 6 * 60 * 1000 });
 		const body = JSON.stringify(payload);
-		const signature = signPayload(TEST_SECRET, body);
+		const signature = signPayload(testSecret, body);
 
 		const res = await request.post(`${GUARDIAN_URL}/channel/inbound`, {
 			headers: {
@@ -317,11 +268,11 @@ test.describe('Channel -> Guardian -> Assistant Pipeline', () => {
 	// ── Group 4: Payload validation (no LLM needed) ─────────────────
 
 	test('missing required fields returns 400', async ({ request }) => {
-		test.skip(!secretSeeded, 'Could not seed test secret');
+		test.skip(!secretLoaded, 'Could not load test channel secret');
 
 		const incomplete = { userId: 'u1' };
 		const body = JSON.stringify(incomplete);
-		const signature = signPayload(TEST_SECRET, body);
+		const signature = signPayload(testSecret, body);
 
 		const res = await request.post(`${GUARDIAN_URL}/channel/inbound`, {
 			headers: {
@@ -358,14 +309,14 @@ test.describe('Channel -> Guardian -> Assistant Pipeline', () => {
 	test('HMAC-signed message gets LLM response through full chain', async ({ request }) => {
 		const SKIP_LLM = !process.env.RUN_LLM_TESTS;
 		test.skip(!!SKIP_LLM, 'Requires RUN_LLM_TESTS=1 (LLM inference through guardian)');
-		test.skip(!secretSeeded, 'Could not seed test secret');
+		test.skip(!secretLoaded, 'Could not load test channel secret');
 		test.setTimeout(180_000);
 
 		const payload = makePayload({
 			text: 'Reply with exactly the word "channel-pipeline-ok". Nothing else.'
 		});
 		const body = JSON.stringify(payload);
-		const signature = signPayload(TEST_SECRET, body);
+		const signature = signPayload(testSecret, body);
 
 		const res = await request.post(`${GUARDIAN_URL}/channel/inbound`, {
 			headers: {

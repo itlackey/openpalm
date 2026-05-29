@@ -8,7 +8,7 @@
  */
 import { parse as parseYaml } from "yaml";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { AutomationConfig } from "./scheduler.js";
 import { createLogger } from "../logger.js";
 
@@ -35,7 +35,8 @@ export type MarkdownTaskTarget =
 // ── Parser ────────────────────────────────────────────────────────────────
 
 export function parseMarkdownTask(filePath: string): MarkdownTask | null {
-  const id = filePath.replace(/.*[\\/]/, "").replace(/\.ya?ml$/, "");
+  const fileName = basename(filePath);
+  const id = fileName.replace(/\.(?:ya?ml|md)$/, "");
   let raw: string;
   try {
     raw = readFileSync(filePath, "utf-8");
@@ -44,9 +45,10 @@ export function parseMarkdownTask(filePath: string): MarkdownTask | null {
     return null;
   }
 
+  const { frontmatter, body } = splitTaskSource(raw);
   let fm: Record<string, unknown>;
   try {
-    const parsed = parseYaml(raw);
+    const parsed = parseYaml(frontmatter);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       logger.warn("task YAML is not an object", { filePath });
       return null;
@@ -82,10 +84,15 @@ export function parseMarkdownTask(filePath: string): MarkdownTask | null {
       logger.warn("task 'prompt' must be a non-empty string", { filePath });
       return null;
     }
+    const promptBody = fm.prompt.trim() === "inline" ? body.trim() : fm.prompt.trim();
+    if (!promptBody) {
+      logger.warn("task prompt body is empty", { filePath });
+      return null;
+    }
     target = {
       kind: "prompt",
       profile: typeof fm.profile === "string" ? fm.profile : undefined,
-      body: fm.prompt.trim(),
+      body: promptBody,
     };
   } else if (fm.workflow !== undefined) {
     if (typeof fm.workflow !== "string") {
@@ -116,13 +123,19 @@ export function parseMarkdownTask(filePath: string): MarkdownTask | null {
   };
 }
 
+function splitTaskSource(raw: string): { frontmatter: string; body: string } {
+  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!match) return { frontmatter: raw, body: "" };
+  return { frontmatter: match[1] ?? "", body: match[2] ?? "" };
+}
+
 export function loadMarkdownTasks(stashDir: string): MarkdownTask[] {
   const dir = join(stashDir, "tasks");
   if (!existsSync(dir)) return [];
 
   const tasks: MarkdownTask[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isFile() || (!entry.name.endsWith(".yml") && !entry.name.endsWith(".yaml"))) continue;
+    if (!entry.isFile() || (!entry.name.endsWith(".md") && !entry.name.endsWith(".yml") && !entry.name.endsWith(".yaml"))) continue;
     const task = parseMarkdownTask(join(dir, entry.name));
     if (task) tasks.push(task);
   }
@@ -162,6 +175,6 @@ export function taskToAutomationConfig(task: MarkdownTask): AutomationConfig {
       agent,
     },
     on_failure: "log",
-    fileName: `${task.id}.yml`,
+    fileName: basename(task.source.path),
   };
 }

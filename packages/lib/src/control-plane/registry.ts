@@ -12,9 +12,10 @@ import { parse as parseYaml } from 'yaml';
 import { createLogger } from '../logger.js';
 import { resolveLocalOpenpalmDir } from './ui-assets.js';
 import { isChannelAddon } from './channels.js';
-import { randomHex, writeChannelSecrets } from './config-persistence.js';
+import { ensureChannelSecret } from './config-persistence.js';
 import { patchSecretsEnvFile, readStackEnv } from './secrets.js';
 import { writeRunScript } from './compose-args.js';
+import { canonicalAddonProfileSelection, resolveHardwareProfileVariant } from './profile-ids.js';
 import type { ControlPlaneState } from './types.js';
 import {
   resolveRegistryAddonsDir,
@@ -524,11 +525,12 @@ export async function getAddonProfileAvailability(
 
   let result: AddonProfileAvailability;
   try {
-    if (profile.id === 'cpu') {
+    const variant = resolveHardwareProfileVariant(profile.id);
+    if (variant === 'cpu') {
       result = { available: true };
-    } else if (profile.id === 'cuda') {
+    } else if (variant === 'cuda') {
       result = await probeCuda();
-    } else if (profile.id === 'rocm') {
+    } else if (variant === 'rocm') {
       result = await probeRocm();
     } else {
       // Unknown profile id — assume available; caller is responsible for
@@ -667,12 +669,13 @@ function profileEnvKey(name: string): string {
 export function getAddonProfileSelection(stackDir: string, name: string): string | null {
   const env = readStackEnv(stackDir);
   const value = env[profileEnvKey(name)];
-  return value && value.trim() ? value.trim() : null;
+  const normalized = value ? canonicalAddonProfileSelection(name, value) : '';
+  return normalized ? normalized : null;
 }
 
 export function setAddonProfileSelection(stackDir: string, name: string, profile: string, state?: ControlPlaneState): void {
-  const trimmed = profile.trim();
-  if (!trimmed) throw new Error('Profile id cannot be empty');
+  const trimmed = canonicalAddonProfileSelection(name, profile);
+  if (!trimmed) throw new Error(`Invalid canonical profile id for addon ${name}: ${profile}`);
   patchSecretsEnvFile(stackDir, { [profileEnvKey(name)]: trimmed });
   if (state) writeRunScript(state);
 }
@@ -724,7 +727,7 @@ export function setAddonEnabled(homeDir: string, stackDir: string, name: string,
   if (enabled) {
     const composePath = join(homeDir, "config", "stack", "addons", name, "compose.yml");
     if (isChannelAddon(composePath)) {
-      writeChannelSecrets(stackDir, { [name]: randomHex(16) });
+      ensureChannelSecret(stackDir, name);
     }
   }
 

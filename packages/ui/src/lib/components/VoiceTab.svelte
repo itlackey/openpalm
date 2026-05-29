@@ -236,6 +236,7 @@
 				addonProfiles = res.addon.profiles ?? [];
 				const isAvailable = (p: VoiceAddonProfile | undefined): boolean =>
 					!!p && p.available !== false;
+				const cpuProfileId = 'addon.voice.cpu';
 				const serverSelected = res.addon.selectedProfile ?? '';
 				const serverSelectedProfile = addonProfiles.find((p) => p.id === serverSelected);
 				if (isAvailable(serverSelectedProfile)) {
@@ -245,7 +246,7 @@
 					// host (driver missing / new hardware). Fall back to CPU
 					// (or first available) and warn the operator.
 					const fallback =
-						addonProfiles.find((p) => p.id === 'cpu' && isAvailable(p))
+						addonProfiles.find((p) => p.id === cpuProfileId && isAvailable(p))
 						?? addonProfiles.find((p) => p.default && isAvailable(p))
 						?? addonProfiles.find((p) => isAvailable(p));
 					selectedProfile = fallback?.id ?? '';

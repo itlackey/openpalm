@@ -1,9 +1,8 @@
 # Password & Secret Management
 
-OpenPalm keeps secrets in two separate locations: user secrets under `~/.openpalm/stash/vaults/`
-and stack secrets under `~/.openpalm/config/stack/`.
-The current model is simple: one user-managed override env, one stack env,
-and one guardian secret env.
+OpenPalm keeps user secrets under `~/.openpalm/stash/vaults/` and system-managed
+service secrets under `~/.openpalm/config/stack/secrets/`. `stack.env` is
+non-secret runtime configuration only.
 
 ---
 
@@ -13,43 +12,40 @@ and one guardian secret env.
 ~/.openpalm/
   config/stack/
     stack.env
-    guardian.env
+    secrets/
   stash/vaults/
     user.env
 ```
 
-- `stash/vaults/user.env` is the recommended user-managed override file for addon and operator values.
-- `config/stack/stack.env` is system-managed runtime env + secrets.
-- `config/stack/guardian.env` holds channel HMAC secrets.
-- Compose is run with both files, usually as:
-  `--env-file ../config/stack/stack.env --env-file ../stash/vaults/user.env`.
+- `stash/vaults/user.env` is the AKM vault backing file for user-managed secrets.
+- `config/stack/stack.env` is system-managed non-secret runtime env.
+- `config/stack/secrets/` holds system-managed secret files; directory mode is `0700`, files are `0600`.
+- Compose is run with `--env-file ../config/stack/stack.env` for non-secret substitution only.
 
 ---
 
 ## `stash/vaults/user.env`
 
-This file is for user-managed addon overrides, operator values, and custom preferences.
-It starts empty and is never overwritten by normal lifecycle operations.
+This file is for the AKM user vault. It starts empty and is never overwritten by normal lifecycle operations.
 
 Behavior:
 
 - safe to edit directly on the host
-- mounted into the assistant via the `stash/vaults/` directory mount
-- also passed as container environment via Compose
+- available to the assistant through the `/akm` stash mount and `akm vault:user`
+- never passed as container environment via Compose
 - not overwritten by normal lifecycle operations
 
 ---
 
 ## `config/stack/stack.env`
 
-This file is for stack-level tokens, host paths, ports, API keys, provider
-configuration, and other runtime settings used by Compose.
+This file is for host paths, ports, image tags, profiles, and other non-secret
+runtime settings used by Compose.
 
 Important keys include:
 
 | Key | Notes |
 |---|---|
-| `OP_UI_LOGIN_PASSWORD` | Admin UI login password (set during setup) |
 | `OP_HOME` | OpenPalm home directory |
 | `OP_UID` / `OP_GID` | Host user/group mapping |
 | `OP_IMAGE_NAMESPACE` / `OP_IMAGE_TAG` | Image source and tag |
@@ -59,19 +55,14 @@ Important keys include:
 | `OP_API_PORT` | API addon host port, default `3821` |
 | `OP_VOICE_PORT` | Voice addon host port, default `3810` |
 | `OP_ASSISTANT_SSH_PORT` | Optional assistant SSH port, default `2222` |
-| `OPENAI_API_KEY` | OpenAI-compatible provider key |
 | `OPENAI_BASE_URL` | Alternate OpenAI-compatible endpoint |
-| `ANTHROPIC_API_KEY` | Anthropic key |
-| `GROQ_API_KEY` | Groq key |
-| `MISTRAL_API_KEY` | Mistral key |
-| `GOOGLE_API_KEY` | Google AI key |
 
 > **Note:** LLM and embedding configuration lives in `config/akm/config.json`, not in `stack.env`.
 
 Behavior:
 
-- read directly by Docker Compose
-- normally written by CLI/admin tooling, but still plain text on the host
+- read directly by Docker Compose for non-secret substitution
+- normally written by CLI/admin tooling
 - changes usually require recreating containers to take effect
 
 ---

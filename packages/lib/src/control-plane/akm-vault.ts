@@ -6,9 +6,8 @@
  * canonical home for user-managed environment secrets. The assistant
  * entrypoint sources this file directly at startup.
  *
- * `stack.env` and `guardian.env` are operator-managed and NOT mirrored
- * into akm — mirroring them would break guardian's HMAC env_file
- * hot-reload contract.
+ * `stack.env` and `config/stack/secrets/` are operator-managed and NOT
+ * mirrored into akm; service secrets are granted as Compose secret files.
  *
  * SECURITY: every write into the akm vault is performed by spawning
  * `akm vault set <ref> <key>` with the secret VALUE delivered via stdin
@@ -22,7 +21,7 @@
  *   cache/akm/     — AKM_CACHE_DIR: regenerable registry artifacts
  */
 import { existsSync, readFileSync } from "node:fs";
-import { execFile as execFileCb } from "node:child_process";
+import { execFile as execFileCb, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { parseEnvFile } from "./env.js";
 import { createLogger } from "../logger.js";
@@ -161,48 +160,34 @@ async function akmVaultSetViaStdin(
   value: string,
   env: NodeJS.ProcessEnv,
 ): Promise<void> {
-  // We use Bun.spawn directly because it supports an in-memory stdin pipe
-  // (a buffer/string stream) without dragging in an extra dependency, and
-  // because akm-cli on >= 0.8.0 reads the value from stdin when no
-  // positional `<value>` is provided. (The CLI silently switched stdin to
-  // the default in commit c50f9f4; explicit `--stdin` is still accepted
-  // for older binaries — but since we pin akm-cli >= 0.8.0-rc2 across all
-  // images via Dockerfile ARGs, the implicit form is enough.)
-  const child = Bun.spawn(["akm", "vault", "set", ref, key], {
-    env,
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn("akm", ["vault", "set", ref, key], {
+      env,
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+    const stderr: Buffer[] = [];
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error(`akm vault set ${key} timed out after ${AKM_EXEC_TIMEOUT_MS}ms`));
+    }, AKM_EXEC_TIMEOUT_MS);
+    timer.unref?.();
+
+    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`akm vault set ${key} failed (exit ${code ?? "unknown"}): ${Buffer.concat(stderr).toString("utf-8").trim()}`));
+    });
+
+    child.stdin.end(value);
   });
-
-  // Feed the secret. `child.stdin` is a FileSink in Bun — write+end then
-  // wait for exit. We don't use `await child.stdin.end(value)` because
-  // some Bun versions return undefined here; explicit write+end is portable.
-  if (child.stdin) {
-    // child.stdin is typed as FileSink in Bun
-    const sink = child.stdin as { write: (data: string) => unknown; end: () => unknown };
-    sink.write(value);
-    sink.end();
-  }
-
-  // Wall-clock bound — mirror of the execAkm pattern. On timeout we also
-  // SIGKILL the child so the orphaned subprocess doesn't outlive us.
-  let exitCode: number;
-  try {
-    exitCode = await raceWithTimeout(
-      child.exited,
-      AKM_EXEC_TIMEOUT_MS,
-      `akm vault set ${key}`,
-    );
-  } catch (err) {
-    try { child.kill(); } catch { /* best-effort */ }
-    throw err;
-  }
-
-  if (exitCode !== 0) {
-    const stderrText = child.stderr ? await new Response(child.stderr).text() : "";
-    throw new Error(`akm vault set ${key} failed (exit ${exitCode}): ${stderrText.trim()}`);
-  }
 }
 
 /**

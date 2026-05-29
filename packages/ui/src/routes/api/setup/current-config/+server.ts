@@ -1,5 +1,5 @@
 import { json } from "@sveltejs/kit";
-import { readStackEnv, listEnabledAddonIds, getAddonProfiles, annotateAddonProfileAvailability, getAddonProfileSelection } from "@openpalm/lib";
+import { readStackEnv, readStackSecretEnv, listEnabledAddonIds, getAddonProfiles, annotateAddonProfileAvailability, getAddonProfileSelection } from "@openpalm/lib";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { getState } from "$lib/server/state.js";
@@ -44,6 +44,7 @@ export const GET: RequestHandler = async (event) => {
   const configured = getUiLoginPassword();
 
   const env = readStackEnv(state.stackDir);
+  const secretEnv = readStackSecretEnv(state.stackDir);
   const akm = readAkmConfig(state.configDir);
 
   // Addon hardware profiles (CPU / CUDA / …)
@@ -60,25 +61,32 @@ export const GET: RequestHandler = async (event) => {
     env.OP_AKM_STASH === `${hostHome}/akm` &&
     env.OP_AKM_CONFIG === `${hostHome}/.config/akm`;
 
-  // Channel credentials currently saved in stack.env. Mirror the inverse of
-  // CHANNEL_CREDENTIAL_ENV_MAP in setup.ts.
-  const discord: Record<string, string> = {};
-  if (env.DISCORD_BOT_TOKEN) discord.botToken = env.DISCORD_BOT_TOKEN;
-  if (env.DISCORD_APPLICATION_ID) discord.applicationId = env.DISCORD_APPLICATION_ID;
-  if (env.DISCORD_ALLOWED_GUILDS) discord.allowedGuilds = env.DISCORD_ALLOWED_GUILDS;
-  if (env.DISCORD_ALLOWED_ROLES) discord.allowedRoles = env.DISCORD_ALLOWED_ROLES;
-  if (env.DISCORD_ALLOWED_USERS) discord.allowedUsers = env.DISCORD_ALLOWED_USERS;
-  if (env.DISCORD_BLOCKED_USERS) discord.blockedUsers = env.DISCORD_BLOCKED_USERS;
-  if (env.DISCORD_REGISTER_COMMANDS) discord.registerCommands = env.DISCORD_REGISTER_COMMANDS;
+  const meta = (envKey: string) => ({ envKey, present: Boolean(secretEnv[envKey]) });
+  const discord: Record<string, { envKey: string; present: boolean }> = {};
+  for (const [field, envKey] of Object.entries({
+    botToken: 'DISCORD_BOT_TOKEN',
+    applicationId: 'DISCORD_APPLICATION_ID',
+    registerCommands: 'DISCORD_REGISTER_COMMANDS',
+    allowedGuilds: 'DISCORD_ALLOWED_GUILDS',
+    allowedRoles: 'DISCORD_ALLOWED_ROLES',
+    allowedUsers: 'DISCORD_ALLOWED_USERS',
+    blockedUsers: 'DISCORD_BLOCKED_USERS',
+  })) {
+    if (secretEnv[envKey]) discord[field] = meta(envKey);
+  }
 
-  const slack: Record<string, string> = {};
-  if (env.SLACK_BOT_TOKEN) slack.slackBotToken = env.SLACK_BOT_TOKEN;
-  if (env.SLACK_APP_TOKEN) slack.slackAppToken = env.SLACK_APP_TOKEN;
-  if (env.SLACK_ALLOWED_CHANNELS) slack.allowedChannels = env.SLACK_ALLOWED_CHANNELS;
-  if (env.SLACK_ALLOWED_USERS) slack.allowedUsers = env.SLACK_ALLOWED_USERS;
-  if (env.SLACK_BLOCKED_USERS) slack.blockedUsers = env.SLACK_BLOCKED_USERS;
+  const slack: Record<string, { envKey: string; present: boolean }> = {};
+  for (const [field, envKey] of Object.entries({
+    slackBotToken: 'SLACK_BOT_TOKEN',
+    slackAppToken: 'SLACK_APP_TOKEN',
+    allowedChannels: 'SLACK_ALLOWED_CHANNELS',
+    allowedUsers: 'SLACK_ALLOWED_USERS',
+    blockedUsers: 'SLACK_BLOCKED_USERS',
+  })) {
+    if (secretEnv[envKey]) slack[field] = meta(envKey);
+  }
 
-  const channelCredentials: Record<string, Record<string, string>> = {};
+  const channelCredentials: Record<string, Record<string, { envKey: string; present: boolean }>> = {};
   if (Object.keys(discord).length > 0) channelCredentials.discord = discord;
   if (Object.keys(slack).length > 0) channelCredentials.slack = slack;
 

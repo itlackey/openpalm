@@ -69,7 +69,6 @@ dev_compose() {
 		-f "${OP_E2E_HOME}/config/stack/core.compose.yml" \
 		-f compose.dev.yml \
 		--env-file "${OP_E2E_HOME}/config/stack/stack.env" \
-		--env-file "${OP_E2E_HOME}/config/stack/guardian.env" \
 		--project-name "$COMPOSE_PROJECT_NAME" "$@"
 }
 
@@ -110,8 +109,8 @@ echo "=== Step 2: Seed isolated OP_HOME at $OP_E2E_HOME ==="
 mkdir -p "${OP_E2E_HOME}"
 cp -r .openpalm/. "${OP_E2E_HOME}/"
 
-# Seed stack.env with isolated values
-mkdir -p "${OP_E2E_HOME}/config/stack"
+# Seed stack.env with isolated non-secret values
+mkdir -p "${OP_E2E_HOME}/config/stack/secrets"
 docker_sock="/var/run/docker.sock"
 cat > "${OP_E2E_HOME}/config/stack/stack.env" <<EOF
 OP_HOME=${OP_E2E_HOME}
@@ -120,7 +119,6 @@ OP_GID=$(id -g)
 OP_DOCKER_SOCK=${docker_sock}
 OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=dev
-OP_UI_LOGIN_PASSWORD=e2e-test-password-$(date +%s)
 OP_ASSISTANT_PORT=${OP_E2E_ASSISTANT_PORT:-3891}
 # Guardian has no host port mapping (network-only). Channels reach it via
 # http://guardian:8080 over the channel_lan Docker network.
@@ -132,8 +130,13 @@ OP_SETUP_COMPLETE=true
 EOF
 chmod 600 "${OP_E2E_HOME}/config/stack/stack.env"
 
-touch "${OP_E2E_HOME}/config/stack/guardian.env"
-chmod 600 "${OP_E2E_HOME}/config/stack/guardian.env"
+printf '%s\n' "e2e-test-password-$(date +%s)" > "${OP_E2E_HOME}/config/stack/secrets/op_ui_login_password"
+openssl rand -hex 16 > "${OP_E2E_HOME}/config/stack/secrets/channel_chat_secret"
+openssl rand -hex 16 > "${OP_E2E_HOME}/config/stack/secrets/channel_api_secret"
+openssl rand -hex 16 > "${OP_E2E_HOME}/config/stack/secrets/channel_discord_secret"
+openssl rand -hex 16 > "${OP_E2E_HOME}/config/stack/secrets/channel_slack_secret"
+chmod 700 "${OP_E2E_HOME}/config/stack/secrets"
+chmod 600 "${OP_E2E_HOME}/config/stack/secrets/"*
 
 # Empty user.env (akm vault:user is the source of truth at runtime)
 mkdir -p "${OP_E2E_HOME}/stash/vaults"
@@ -227,7 +230,7 @@ fi
 # ── Step 7: Verify UI endpoints ───────────────────────────────────
 echo ""
 echo "=== Step 7: Verify UI endpoints ==="
-UI_TOKEN=$(grep '^OP_UI_LOGIN_PASSWORD=' "${OP_E2E_HOME}/config/stack/stack.env" | cut -d= -f2-)
+UI_TOKEN=$(tr -d '\n' < "${OP_E2E_HOME}/config/stack/secrets/op_ui_login_password")
 
 # /health
 status=$(curl -s -o /dev/null -w "%{http_code}" "${UI_URL}/health")
@@ -279,7 +282,6 @@ if [[ $RUN_PLAYWRIGHT -eq 1 ]]; then
 	RUN_DOCKER_STACK_TESTS=1 \
 	ADMIN_URL="${UI_URL}" \
 	OP_UI_LOGIN_PASSWORD="${UI_TOKEN}" \
-	ADMIN_TOKEN="${UI_TOKEN}" \
 	ASSISTANT_URL="http://127.0.0.1:${OP_E2E_ASSISTANT_PORT}" \
 	npm --prefix packages/ui run test:e2e || PW_EXIT=$?
 

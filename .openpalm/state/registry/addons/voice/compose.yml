@@ -2,8 +2,8 @@
 # (openpalm/voice image). OpenAI-compatible /v1/audio/speech and
 # /v1/audio/transcriptions.
 #
-# Hardware variants are exposed as Docker Compose profiles. The UI
-# (Voice Settings tab) lists every service whose `profiles:` is set,
+# Hardware variants are exposed as addon-scoped Docker Compose profiles.
+# The UI (Voice Settings tab) lists every service whose `profiles:` is set,
 # reads its `openpalm.profile.*` labels, and writes the user's choice to
 # OP_VOICE_PROFILE in stack.env. composeUp then passes
 # --profile $OP_VOICE_PROFILE so exactly one variant runs at a time.
@@ -30,7 +30,7 @@
 # that's a UX-impacting change that belongs in its own PR.
 services:
   voice:
-    profiles: [cpu]
+    profiles: ["addon.voice.cpu"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}-cpu}
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
@@ -60,7 +60,7 @@ services:
       openpalm.profile.default: "true"
 
   voice-cuda:
-    profiles: [cuda]
+    profiles: ["addon.voice.cuda"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}-cu121}
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
@@ -104,7 +104,7 @@ services:
       openpalm.profile.requires: nvidia-container-toolkit
 
   voice-rocm:
-    profiles: [rocm]
+    profiles: ["addon.voice.rocm"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}-rocm6}
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"

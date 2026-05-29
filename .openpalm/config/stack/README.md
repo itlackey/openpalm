@@ -11,7 +11,6 @@ cd ~/.openpalm/config/stack
 docker compose \
   --project-name openpalm \
   --env-file stack.env \
-  --env-file guardian.env \
   -f core.compose.yml \
   up -d
 
@@ -19,7 +18,6 @@ docker compose \
 docker compose \
   --project-name openpalm \
   --env-file stack.env \
-  --env-file guardian.env \
   -f core.compose.yml \
   -f addons/chat/compose.yml \
   up -d
@@ -66,15 +64,14 @@ Repo addon sources live under `.openpalm/state/registry/addons/`. At runtime,
 | File | Purpose | Owner |
 |------|---------|-------|
 | `stack.yml` | Capabilities only (metadata) | User, explicit admin actions |
-| `stack.env` | System-managed environment variables (API keys, etc.) | CLI/admin (automated) |
-| `guardian.env` | Channel HMAC secrets (hot-loaded at runtime) | CLI/admin (automated) |
+| `stack.env` | Non-secret runtime configuration | CLI/admin (automated) |
+| `secrets/` | File-based service secrets, mode 0700 | CLI/admin (automated) |
 | `core.compose.yml` | Core service definition (always used) | System (managed via CLI/admin) |
 | `addons/` | Enabled addon compose overlays | CLI/admin (via install/enable operations) |
 
 ## Env files
 
-Compose receives **only two env files** from this directory:
-- `stack.env` — System-managed environment variables (LLM API keys, OpenCode config, etc.)
-- `guardian.env` — Channel HMAC secrets for guardian ingress validation
+Compose receives **only one env file** from this directory:
+- `stack.env` — Non-secret runtime configuration only
 
-All other configuration (secrets, vaults, automations) is loaded by services at runtime from their respective mounts (`stash/`, `config/`, etc.). Do not add other `--env-file` arguments to the compose command.
+Secrets live in `secrets/` and are granted to services through Compose `secrets:` entries. Do not add other `--env-file` arguments to the compose command.

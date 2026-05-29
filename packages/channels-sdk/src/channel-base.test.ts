@@ -6,6 +6,7 @@ import { BaseChannel, type HandleResult } from "./channel-base.ts";
 
 class TestChannel extends BaseChannel {
   name = "test";
+  override get secret(): string { return "test-secret"; }
 
   constructor(private handler: (req: Request) => Promise<HandleResult | null>) {
     super();
@@ -18,6 +19,7 @@ class TestChannel extends BaseChannel {
 
 class RoutedChannel extends BaseChannel {
   name = "routed";
+  override get secret(): string { return "test-secret"; }
 
   async handleRequest(_req: Request): Promise<HandleResult | null> {
     return { userId: "u1", text: "hello" };

@@ -1,7 +1,7 @@
 # Addon: Ollama — Local LLM inference server
 #
-# Hardware variants are exposed as Docker Compose profiles. The UI
-# auto-selects the best profile based on GPU detection during setup.
+# Hardware variants are exposed as addon-scoped Docker Compose profiles.
+# The UI auto-selects the best profile based on GPU detection during setup.
 # The chosen profile is persisted to OP_OLLAMA_PROFILE in stack.env.
 # composeUp passes --profile $OP_OLLAMA_PROFILE so exactly one variant
 # runs at a time. All variants share the network alias "ollama", so
@@ -12,7 +12,7 @@
 # This avoids conflicts with a host Ollama instance.
 services:
   ollama:
-    profiles: [cpu]
+    profiles: ["addon.ollama.cpu"]
     image: ollama/ollama:latest
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
@@ -36,7 +36,7 @@ services:
       openpalm.profile.default: "true"
 
   ollama-cuda:
-    profiles: [cuda]
+    profiles: ["addon.ollama.cuda"]
     image: ollama/ollama:latest
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
@@ -65,7 +65,7 @@ services:
       openpalm.profile.requires: nvidia-container-toolkit
 
   ollama-rocm:
-    profiles: [rocm]
+    profiles: ["addon.ollama.rocm"]
     image: ollama/ollama:latest
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"

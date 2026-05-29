@@ -15,7 +15,6 @@ import { resolveRollbackDir } from "./home.js";
  *  are never overwritten by lifecycle operations. */
 const SNAPSHOT_FILES = [
   "config/stack/stack.env",
-  "config/stack/guardian.env",
   "config/auth.json",
 ];
 

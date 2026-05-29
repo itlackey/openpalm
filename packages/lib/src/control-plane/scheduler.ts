@@ -70,7 +70,7 @@ export async function executeAutomation(
   akmEnv: NodeJS.ProcessEnv,
 ): Promise<AutomationRunResult> {
   // Strip file suffix if caller passes the full filename.
-  const taskId = id.replace(/\.ya?ml$/, "");
+  const taskId = id.replace(/\.(?:ya?ml|md)$/, "");
   return new Promise((resolve) => {
     execFile(
       "akm",
@@ -115,7 +115,7 @@ export function readAutomationLogs(
   cacheDir: string,
   limit: number = 50,
 ): string[] {
-  const taskId = id.replace(/\.ya?ml$/, "");
+  const taskId = id.replace(/\.(?:ya?ml|md)$/, "");
   const logDir = join(cacheDir, "akm", "tasks", "logs", taskId);
   if (!existsSync(logDir)) return [];
 

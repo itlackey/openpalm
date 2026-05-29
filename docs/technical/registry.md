@@ -55,7 +55,9 @@ services:
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
-      CHANNEL_EXAMPLE_SECRET: ${CHANNEL_EXAMPLE_SECRET:-}
+      CHANNEL_EXAMPLE_SECRET_FILE: /run/secrets/channel_example_hmac
+    secrets:
+      - channel_example_hmac
     networks: [channel_lan]
     depends_on:
       guardian:
@@ -83,10 +85,9 @@ Required conventions enforced by tests:
 **`.env.schema`** -- Annotated variable declarations:
 
 ```
-# HMAC secret used to sign messages sent to the guardian.
-# Auto-generated during instance creation if left blank.
-# @required @sensitive
-CHANNEL_EXAMPLE_SECRET=
+# Optional package-specific non-secret setting.
+# @optional
+EXAMPLE_MODE=
 ```
 
 Schema conventions:
@@ -94,7 +95,7 @@ Schema conventions:
 - Every variable must have at least one comment line above it
 - Variable names are uppercase with underscores (`[A-Z_][A-Z0-9_]*`)
 - Annotations: `@required` marks mandatory variables, `@sensitive` marks secrets
-- Channel addons must have at least one `@sensitive` field (the HMAC secret)
+- Channel HMAC secrets are generated as file-based system secrets and must not appear in `.env.schema`
 - Must not reference `vault/`, `INSTANCE_ID`, or `INSTANCE_DIR`
 
 ## Admin API endpoints

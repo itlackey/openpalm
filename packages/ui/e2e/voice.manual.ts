@@ -27,7 +27,7 @@
  *     available + reason)
  *   - PUT /admin/voice validation (missing baseURL, unknown profile id)
  *   - PUT engine=browser stops the running voice container (auto-stop)
- *   - PUT engine=openpalm-voice + profile=cuda brings the container back up
+ *   - PUT engine=openpalm-voice + profile=addon.voice.cuda brings the container back up
  *   - POST /api/speak with text returns audio/wav
  *   - POST /api/speak with empty text returns 400
  *   - Profile selection persists to stack.env
@@ -40,7 +40,7 @@
  *
  * Run with:
  *   RUN_DOCKER_STACK_TESTS=1 \
- *     OP_UI_LOGIN_PASSWORD=<your-stack.env-password> \
+ *     OP_UI_LOGIN_PASSWORD=<your-admin-password> \
  *     ADMIN_URL=http://127.0.0.1:8100 \
  *     bun run ui:test:e2e
  *
@@ -53,11 +53,17 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { addonProfileId } from '@openpalm/lib';
 import { execFileSync } from 'node:child_process';
 
 const ADMIN_URL = process.env.ADMIN_URL ?? 'http://127.0.0.1:9100';
 const OP_UI_LOGIN_PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? '';
 const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
+const VOICE_PROFILE_IDS = [
+  addonProfileId('voice', 'cpu'),
+  addonProfileId('voice', 'cuda'),
+  addonProfileId('voice', 'rocm'),
+];
 
 function authHeaders(): Record<string, string> {
   return {
@@ -147,9 +153,9 @@ test.describe('Voice addon — GET /admin/voice response shape', () => {
     // Three canonical voice profiles.
     expect(body.addon.profiles).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: 'cpu' }),
-        expect.objectContaining({ id: 'cuda' }),
-        expect.objectContaining({ id: 'rocm' }),
+        expect.objectContaining({ id: addonProfileId('voice', 'cpu') }),
+        expect.objectContaining({ id: addonProfileId('voice', 'cuda') }),
+        expect.objectContaining({ id: addonProfileId('voice', 'rocm') }),
       ]),
     );
 
@@ -164,7 +170,7 @@ test.describe('Voice addon — GET /admin/voice response shape', () => {
 
     // ROCm should be unavailable on every non-AMD-ROCm host (which CI is)
     // with a friendly user-actionable reason.
-    const rocm = body.addon.profiles.find((p: { id: string }) => p.id === 'rocm');
+    const rocm = body.addon.profiles.find((p: { id: string }) => p.id === addonProfileId('voice', 'rocm'));
     expect(rocm.available).toBe(false);
     expect(rocm.reason).toMatch(/AMD|ROCm|published|kfd/i);
   });
@@ -234,13 +240,13 @@ test.describe('Voice addon — engine switch lifecycle', () => {
     expect(runningVoiceContainer()).toBeNull();
   });
 
-  test('switching back to engine=openpalm-voice with profile=cuda starts the container', async ({ request }) => {
+  test('switching back to engine=openpalm-voice with profile=addon.voice.cuda starts the container', async ({ request }) => {
     const res = await request.put(`${ADMIN_URL}/admin/voice`, {
       headers: authHeaders(),
       data: {
         tts: { enabled: true, engine: 'openpalm-voice' },
         stt: { enabled: true, engine: 'openpalm-voice' },
-        profile: 'cuda',
+        profile: addonProfileId('voice', 'cuda'),
       },
     });
     // 200 = healthy or warming, 202 = background pull kicked off (first
@@ -266,9 +272,9 @@ test.describe('Voice addon — engine switch lifecycle', () => {
   test('GET /admin/voice after save persists OP_VOICE_PROFILE', async ({ request }) => {
     const res = await request.get(`${ADMIN_URL}/admin/voice`, { headers: authHeaders() });
     const body = await res.json();
-    // Whatever profile we just saved (cuda from the previous test) should
+    // Whatever profile we just saved (addon.voice.cuda from the previous test) should
     // come back as the selectedProfile.
-    expect(['cpu', 'cuda', 'rocm']).toContain(body.addon.selectedProfile);
+    expect(VOICE_PROFILE_IDS).toContain(body.addon.selectedProfile);
   });
 });
 

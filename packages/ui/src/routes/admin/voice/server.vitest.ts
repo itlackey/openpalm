@@ -12,6 +12,8 @@ import { tmpdir } from 'node:os';
 // container is covered by the integration tests, not unit tests.
 vi.mock('@openpalm/lib', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('@openpalm/lib')>();
+	const voiceCpu = actual.addonProfileId('voice', 'cpu');
+	const voiceCuda = actual.addonProfileId('voice', 'cuda');
 	return {
 		...actual,
 		listEnabledAddonIds: vi.fn(() => ['voice']),
@@ -21,8 +23,8 @@ vi.mock('@openpalm/lib', async (importOriginal) => {
 		// Voice addon profiles for the GET response + PUT routing. The route
 		// re-runs annotateAddonProfileAvailability over these.
 		getAddonProfiles: vi.fn(() => [
-			{ id: 'cpu', services: ['voice'], label: 'CPU', default: true },
-			{ id: 'cuda', services: ['voice-cuda'], label: 'NVIDIA', requires: 'nvidia-container-toolkit' },
+			{ id: voiceCpu, services: ['voice'], label: 'CPU', default: true },
+			{ id: voiceCuda, services: ['voice-cuda'], label: 'NVIDIA', requires: 'nvidia-container-toolkit' },
 		]),
 		// Force the host probes to deterministic values for tests. On CI
 		// (no GPU) the real probes would return cuda:unavailable anyway,
@@ -30,12 +32,12 @@ vi.mock('@openpalm/lib', async (importOriginal) => {
 		annotateAddonProfileAvailability: vi.fn(async (profiles) => {
 			return profiles.map((p: { id: string; label?: string; default?: boolean; services: string[] }) => ({
 				...p,
-				available: p.id === 'cpu',
-				...(p.id === 'cuda' ? { reason: 'NVIDIA runtime not registered.' } : {}),
+				available: p.id === voiceCpu,
+				...(p.id === voiceCuda ? { reason: 'NVIDIA runtime not registered.' } : {}),
 			}));
 		}),
 		getAddonProfileAvailability: vi.fn(async (p: { id: string }) => {
-			if (p.id === 'cpu') return { available: true };
+			if (p.id === voiceCpu) return { available: true };
 			return { available: false, reason: 'NVIDIA runtime not registered.' };
 		}),
 	};
@@ -43,7 +45,7 @@ vi.mock('@openpalm/lib', async (importOriginal) => {
 
 import { resetState, trackDir, cleanupTempDirs } from '$lib/server/test-helpers.js';
 import { getState } from '$lib/server/state.js';
-import { readStackEnv } from '@openpalm/lib';
+import { addonProfileId, readStackEnv } from '@openpalm/lib';
 import { GET, PUT } from './+server.js';
 import { translateDockerError } from '$lib/server/voice-errors.js';
 
@@ -79,11 +81,14 @@ function makePutEvent(body: Record<string, unknown>, token = 'admin-token'): Par
 }
 
 let originalHome: string | undefined;
+let originalVoicePort: string | undefined;
 let fetchSpy: ReturnType<typeof vi.spyOn> | undefined;
 
 beforeEach(() => {
 	originalHome = process.env.OP_HOME;
+	originalVoicePort = process.env.OP_VOICE_PORT_HOST;
 	process.env.OP_HOME = makeTempDir();
+	process.env.OP_VOICE_PORT_HOST = '18980';
 	resetState('admin-token');
 	// Stub fetch so the reachability probe in GET doesn't reach the network,
 	// and the /health poll in PUT returns 200 immediately. Both reachability
@@ -95,6 +100,8 @@ beforeEach(() => {
 
 afterEach(() => {
 	process.env.OP_HOME = originalHome;
+	if (originalVoicePort === undefined) delete process.env.OP_VOICE_PORT_HOST;
+	else process.env.OP_VOICE_PORT_HOST = originalVoicePort;
 	fetchSpy?.mockRestore();
 	fetchSpy = undefined;
 	cleanupTempDirs();
@@ -213,15 +220,15 @@ describe('GET /admin/voice', () => {
 				selectedProfile: string | null;
 			};
 		};
-		const cpu = body.addon.profiles.find((p) => p.id === 'cpu');
-		const cuda = body.addon.profiles.find((p) => p.id === 'cuda');
+		const cpu = body.addon.profiles.find((p) => p.id === addonProfileId('voice', 'cpu'));
+		const cuda = body.addon.profiles.find((p) => p.id === addonProfileId('voice', 'cuda'));
 		expect(cpu?.available).toBe(true);
 		expect(cpu?.reason).toBeUndefined();
 		expect(cuda?.available).toBe(false);
 		expect(cuda?.reason).toMatch(/NVIDIA/);
 		// resolveDefaultProfile must prefer cpu (the only available one)
 		// over the labelled default even when both are present.
-		expect(body.addon.selectedProfile).toBe('cpu');
+		expect(body.addon.selectedProfile).toBe(addonProfileId('voice', 'cpu'));
 	});
 });
 
@@ -274,12 +281,12 @@ describe('PUT /admin/voice — host fallback overlays', () => {
 		}
 	});
 
-	test('on Windows, the CDI fallback is skipped even when the profile is cuda', async () => {
+	test('on Windows, the CDI fallback is skipped even when the profile is canonical CUDA', async () => {
 		// process.platform is a getter; redefine it for the duration of
 		// this test. We also temporarily clear VITEST so the host-probe
 		// branch is reachable. The CDI path requires:
 		//   1. !inVitest
-		//   2. activeProfile === 'cuda'
+		//   2. activeProfile === addonProfileId('voice', 'cuda')
 		//   3. process.platform !== 'win32'  ← gating we're verifying
 		// Forcing (3) false MUST suppress any `cdi-fallback` step.
 		const prevPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
@@ -289,7 +296,7 @@ describe('PUT /admin/voice — host fallback overlays', () => {
 		try {
 			const res = await PUT(makePutEvent({
 				tts: { engine: 'openpalm-voice' },
-				profile: 'cuda',
+				profile: addonProfileId('voice', 'cuda'),
 			}));
 			// 200 or 502 depending on (mocked) composeUp; we only care about
 			// the absence of the cdi-fallback step.

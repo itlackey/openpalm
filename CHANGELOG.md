@@ -62,10 +62,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
-- **`stack.env` now written with mode 0o600** — the system env file containing
-  `OP_UI_LOGIN_PASSWORD` and HMAC secrets was created world-readable (0o644).
-  It is now created with `0o600` and `chmodSync` is applied to enforce the
-  permission on pre-existing files.
+- **System-managed config files now written with restrictive modes** —
+  `stack.env` and files under `config/stack/secrets/` are created with
+  restrictive permissions, and `chmodSync` is applied to enforce permissions on
+  pre-existing files.
 
 ### Fixed
 
@@ -184,7 +184,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   SvelteKit UI directly on the host at `http://localhost:3880`. No UI
   container, no docker-socket-proxy. The setup wizard runs at `/setup`
   on first boot and auto-redirects there until setup is complete.
-  Configurable via `OP_HOST_UI_PORT`; auth token in `OP_UI_TOKEN`.
+  Configurable via `OP_HOST_UI_PORT`; operator password is stored in
+  `config/stack/secrets/op_ui_login_password`.
 - **`openpalm` smart default** — running the bare command detects state
   and does the right thing: bootstraps the install if not installed,
   starts the Docker stack if it's down, then runs the UI server in the
@@ -217,7 +218,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   where stale addon overlays persisted through reinstalls.
 - **`performSetup` enables addons end-to-end** — `addons: { discord: true }`
   in the wizard payload now calls `setAddonEnabled`, which copies the
-  compose overlay AND generates `CHANNEL_<NAME>_SECRET` in `guardian.env`.
+  compose overlay AND generates the channel HMAC secret file under
+  `config/stack/secrets/`.
   Previously the addon was never enabled.
 - **Provider verification error UX** — inline provider errors run through
   `friendlyError` so raw `Failed to fetch models (HTTP 401)` becomes a
@@ -228,8 +230,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`@openpalm/lib` and `@openpalm/channels-sdk` READMEs** — added Bun-only
   notice: these packages ship TypeScript source and require Bun.
 - **Directory layout restructured** — the `OP_HOME` layout is now:
-  - `config/stack/` — compose runtime: `core.compose.yml`, `stack.env`,
-    `guardian.env`, `addons/`
+  - `config/stack/` — compose runtime: `core.compose.yml`, non-secret
+    `stack.env`, file-based `secrets/`, `addons/`
   - `stash/` — akm knowledge; `stash/vaults/user.env` replaces `vault/user/`
   - `state/` — service-persistent data (replaces `data/`)
   - `cache/` — regenerable data (akm cache, rollback snapshots)
@@ -237,8 +239,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Provider/model configuration moved to `config/akm/config.json`** —
   `OP_CAP_*` env vars and `stack.yml` capabilities removed. No more env-schema files.
 - **akm secret store replaces vault/user** — user secrets live in the akm
-  `vault:user` store at `stash/vaults/user.env`. The assistant entrypoint
-  sources this at startup; compose no longer passes it as `--env-file`.
+  `vault:user` store at `stash/vaults/user.env`. It is not passed to Compose as
+  an env-file; stack/service secrets live under `config/stack/secrets/`.
 - **`opencode-providers.ts` split into focused modules** — provider logic split
   into `providers-read`, `providers-write`, and `providers-dispatch`.
 - **Single-implementation interfaces converted to type aliases** — unnecessary

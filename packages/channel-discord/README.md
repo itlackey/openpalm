@@ -15,8 +15,8 @@ It runs behind guardian and is normally deployed by including `addons/discord/co
 
 - Shipped addon source: `.openpalm/state/registry/addons/discord/compose.yml`
 - Enabled runtime overlay: `~/.openpalm/config/stack/addons/discord/compose.yml`
-- User-managed values: `~/.openpalm/stash/vaults/user.env`
-- System-managed HMAC secret: `CHANNEL_DISCORD_SECRET` in `~/.openpalm/config/stack/guardian.env`
+- Non-secret values: `~/.openpalm/config/stack/stack.env`
+- Secret values: files under `~/.openpalm/config/stack/secrets/`
 
 Manual start example:
 
@@ -24,8 +24,7 @@ Manual start example:
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
-  --env-file ../config/stack/stack.env \
-  --env-file ../stash/vaults/user.env \
+  --env-file stack.env \
   -f core.compose.yml \
   -f addons/discord/compose.yml \
   up -d
@@ -33,16 +32,15 @@ docker compose \
 
 See `docs/channels/discord-setup.md` for the full walkthrough.
 
-The shipped addon overlay loads `config/stack/stack.env` and `stash/vaults/user.env`
-with `env_file`, so Discord credentials placed in `user.env` are passed into the container.
+The shipped addon overlay uses explicit non-secret environment entries and Docker secret grants. It does not use service-level `env_file`.
 
 ## Environment variables
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `CHANNEL_DISCORD_SECRET` | system-managed | Guardian HMAC secret |
+| `CHANNEL_DISCORD_SECRET_FILE` | system-managed | Guardian HMAC secret file path |
 | `DISCORD_APPLICATION_ID` | yes for command registration | Discord application ID |
-| `DISCORD_BOT_TOKEN` | yes | Bot token |
+| `DISCORD_BOT_TOKEN_FILE` | yes | Bot token file path |
 | `DISCORD_REGISTER_COMMANDS` | no | Disable startup command registration when `false` |
 | `DISCORD_ALLOWED_GUILDS` | no | Comma-separated guild allowlist |
 | `DISCORD_ALLOWED_ROLES` | no | Comma-separated role allowlist |

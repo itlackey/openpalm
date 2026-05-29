@@ -6,7 +6,7 @@
  *
  * Layout:
  *   config/        — user-editable config + system config files (auth.json, akm/)
- *   config/stack/  — compose runtime + stack config (stack.env, guardian.env, stack.yml, addons/)
+ *   config/stack/  — compose runtime + stack config (stack.env, secrets/, stack.yml, addons/)
  *   cache/         — regenerable/semi-persistent data (akm cache, guardian cache, rollback)
  *   state/         — persistent service data (assistant, admin, guardian, logs, backups, registry)
  *   stash/         — akm knowledge (skills, vaults, agents)
@@ -27,10 +27,8 @@ export const assistantConfigDir    = (s: ControlPlaneState): string => `${s.conf
 
 // ── Config/stack directory — compose runtime + stack config ─────────────────
 
-/** System env: capabilities, secrets, tokens */
+/** System env: non-secret runtime configuration */
 export const stackEnvPath          = (s: ControlPlaneState): string => `${s.stackDir}/stack.env`;
-/** Guardian HMAC channel secrets */
-export const guardianEnvPath       = (s: ControlPlaneState): string => `${s.stackDir}/guardian.env`;
 
 // ── Cache directory — regenerable/semi-persistent ───────────────────────────
 

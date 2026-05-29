@@ -18,15 +18,16 @@
 #
 #   3. Seed some user state:
 #      - Install a channel
-#      - Note the ADMIN_TOKEN in config/stack/stack.env
+#      - Note the operator password in config/stack/secrets/op_ui_login_password
 #
 #   4. Upgrade to the target version:
 #        curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh \
 #          | bash -s -- --force --version <target>
 #
 #   5. Verify:
-#      - stash/vaults/user.env is NOT overwritten (custom keys preserved)
-#      - config/stack/stack.env is NOT overwritten (ADMIN_TOKEN, paths, UID/GID preserved)
+#      - stash/vaults/user.env is NOT overwritten (custom user vault keys preserved)
+#      - config/stack/stack.env is NOT overwritten (paths, UID/GID preserved)
+#      - config/stack/secrets/ files are NOT overwritten (operator password preserved)
 #      - All services come back healthy
 #      - No errors in container logs
 #
@@ -90,6 +91,7 @@ cd "$ROOT_DIR"
 TEST_ROOT="${ROOT_DIR}/.upgrade-test"
 export OP_HOME="${OP_HOME:-${TEST_ROOT}}"
 STACK_DIR="${OP_HOME}/config/stack"
+SECRETS_DIR="${STACK_DIR}/secrets"
 STASH_DIR="${OP_HOME}/stash"
 STATE_DIR="${OP_HOME}/state"
 CACHE_DIR="${OP_HOME}/cache"
@@ -134,7 +136,8 @@ cleanup() {
 trap cleanup EXIT
 
 # ── Helper: compose command ──────────────────────────────────────────
-# v0.11.0: two env files — config/stack/stack.env + config/stack/guardian.env
+# Compose uses config/stack/stack.env for non-secret values only. Service secrets
+# live as files under config/stack/secrets and are granted by compose overlays.
 # No admin container. Admin is a host process (openpalm).
 
 compose_cmd() {
@@ -142,7 +145,6 @@ compose_cmd() {
     --project-name "$PROJECT_NAME" \
     -f "${STACK_DIR}/core.compose.yml" \
     --env-file "${STACK_DIR}/stack.env" \
-    --env-file "${STACK_DIR}/guardian.env" \
     "$@"
 }
 
@@ -190,6 +192,7 @@ rm -rf "${TEST_ROOT}" 2>/dev/null || true
 mkdir -p \
   "${STACK_DIR}" \
   "${STACK_DIR}/addons" \
+  "${SECRETS_DIR}" \
   "${OP_HOME}/config/assistant" \
   "${OP_HOME}/config/akm" \
   "${STASH_DIR}/vaults" \
@@ -215,14 +218,13 @@ fi
 # Seed stash/vaults/user.env — user-managed secrets (akm vault:user)
 cat >"${STASH_DIR}/vaults/user.env" <<EOF
 # Upgrade test user-managed env
-OPENAI_API_KEY=
 OPENAI_BASE_URL=
 # Custom user key that must survive upgrade
 MY_CUSTOM_KEY=my-custom-value-12345
 EOF
 chmod 600 "${STASH_DIR}/vaults/user.env"
 
-# Seed config/stack/stack.env (system-managed)
+# Seed config/stack/stack.env (system-managed, non-secret)
 cat >"${STACK_DIR}/stack.env" <<EOF
 OP_HOME=${OP_HOME}
 OP_UID=$(id -u)
@@ -230,13 +232,17 @@ OP_GID=$(id -g)
 OP_DOCKER_SOCK=${docker_sock}
 OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=dev
-OP_UI_LOGIN_PASSWORD=${OP_UI_LOGIN_PASSWORD}
 EOF
 chmod 600 "${STACK_DIR}/stack.env"
 
-# Seed guardian.env (channel HMAC secrets)
-touch "${STACK_DIR}/guardian.env"
-chmod 600 "${STACK_DIR}/guardian.env"
+# Seed file-based system secrets
+printf '%s\n' "${OP_UI_LOGIN_PASSWORD}" >"${SECRETS_DIR}/op_ui_login_password"
+openssl rand -hex 16 >"${SECRETS_DIR}/channel_chat_secret"
+openssl rand -hex 16 >"${SECRETS_DIR}/channel_api_secret"
+openssl rand -hex 16 >"${SECRETS_DIR}/channel_discord_secret"
+openssl rand -hex 16 >"${SECRETS_DIR}/channel_slack_secret"
+chmod 700 "${SECRETS_DIR}"
+chmod 600 "${SECRETS_DIR}/"*
 
 # Seed core.compose.yml into config/stack/
 cp "${ROOT_DIR}/.openpalm/config/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
@@ -258,7 +264,6 @@ if [[ $SKIP_BUILD -eq 0 && -z "$FROM_VERSION" ]]; then
     -f "${STACK_DIR}/core.compose.yml" \
     -f compose.dev.yml \
     --env-file "${STACK_DIR}/stack.env" \
-    --env-file "${STACK_DIR}/guardian.env" \
     --project-name "$PROJECT_NAME" build 2>&1 | tail -5
   pass "Images built from source"
 fi
@@ -320,6 +325,10 @@ echo "  user.env checksum:    ${SECRETS_CHECKSUM_BEFORE}"
 STACK_ENV_CHECKSUM_BEFORE=$(sha256sum "${STACK_DIR}/stack.env" | awk '{print $1}')
 echo "  system.env checksum:  ${STACK_ENV_CHECKSUM_BEFORE}"
 
+# Checksum operator password secret
+PASSWORD_CHECKSUM_BEFORE=$(sha256sum "${SECRETS_DIR}/op_ui_login_password" | awk '{print $1}')
+echo "  password checksum:    ${PASSWORD_CHECKSUM_BEFORE}"
+
 # Record running services
 SERVICES_BEFORE=$(compose_cmd ps --format '{{.Service}}' 2>/dev/null | sort | tr '\n' ',' | sed 's/,$//')
 echo "  Running services:     ${SERVICES_BEFORE}"
@@ -340,7 +349,7 @@ header "Phase 4: Simulate upgrade"
 #   1. Detects existing install (stash/vaults/user.env exists)
 #   2. Re-creates directory tree (mkdir -p, idempotent)
 #   3. Refreshes compose to config/stack/
-#   4. Does NOT overwrite stash/vaults/user.env or config/stack/stack.env
+#   4. Does NOT overwrite stash/vaults/user.env, config/stack/stack.env, or config/stack/secrets/
 #   5. Restarts services with compose up
 
 echo "  Simulating setup.sh re-run..."
@@ -348,6 +357,7 @@ echo "  Simulating setup.sh re-run..."
 # Step 1: Directory creation (idempotent)
 mkdir -p \
   "${STACK_DIR}" "${STACK_DIR}/addons" \
+  "${SECRETS_DIR}" \
   "${OP_HOME}/config/assistant" "${OP_HOME}/config/akm" \
   "${STASH_DIR}/vaults" "${STASH_DIR}/tasks" \
   "${STATE_DIR}/assistant" "${STATE_DIR}/guardian" \
@@ -412,9 +422,9 @@ else
   fail "stash/vaults/user.env was modified during upgrade (before: ${SECRETS_CHECKSUM_BEFORE}, after: ${SECRETS_CHECKSUM_AFTER})"
 fi
 
-OP_UI_LOGIN_PASSWORD_VALUE=$(grep "^OP_UI_LOGIN_PASSWORD=" "${STACK_DIR}/stack.env" | head -1 | cut -d= -f2-)
+OP_UI_LOGIN_PASSWORD_VALUE=$(tr -d '\n' <"${SECRETS_DIR}/op_ui_login_password")
 if [[ "$OP_UI_LOGIN_PASSWORD_VALUE" == "$OP_UI_LOGIN_PASSWORD" ]]; then
-  pass "OP_UI_LOGIN_PASSWORD preserved in config/stack/stack.env"
+  pass "OP_UI_LOGIN_PASSWORD preserved in config/stack/secrets/op_ui_login_password"
 else
   fail "OP_UI_LOGIN_PASSWORD changed (expected '${OP_UI_LOGIN_PASSWORD}', got '${OP_UI_LOGIN_PASSWORD_VALUE}')"
 fi
@@ -485,13 +495,19 @@ done
 echo ""
 echo "=== 5f: UI login password preservation ==="
 
-# Admin is a host process — no HTTP auth check here.
-# Verify the password value is still in stack.env.
-PASSWORD_AFTER=$(grep "^OP_UI_LOGIN_PASSWORD=" "${STACK_DIR}/stack.env" | head -1 | cut -d= -f2-)
+# Admin is a host process — no HTTP auth check here. Verify the password secret file.
+PASSWORD_AFTER=$(tr -d '\n' <"${SECRETS_DIR}/op_ui_login_password")
 if [[ "$PASSWORD_AFTER" == "$OP_UI_LOGIN_PASSWORD" ]]; then
-  pass "OP_UI_LOGIN_PASSWORD preserved in config/stack/stack.env after upgrade"
+  pass "OP_UI_LOGIN_PASSWORD preserved in config/stack/secrets/op_ui_login_password after upgrade"
 else
   fail "OP_UI_LOGIN_PASSWORD changed after upgrade (expected '${OP_UI_LOGIN_PASSWORD}', got '${PASSWORD_AFTER}')"
+fi
+
+PASSWORD_CHECKSUM_AFTER=$(sha256sum "${SECRETS_DIR}/op_ui_login_password" | awk '{print $1}')
+if [[ "$PASSWORD_CHECKSUM_BEFORE" == "$PASSWORD_CHECKSUM_AFTER" ]]; then
+  pass "operator password secret checksum unchanged"
+else
+  fail "operator password secret changed during upgrade"
 fi
 
 # ── 5g: No errors in container logs ─────────────────────────────────

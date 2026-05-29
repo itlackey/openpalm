@@ -1,4 +1,4 @@
-import { BaseChannel, ConversationQueue, createLogger, splitMessage, type HandleResult } from "@openpalm/channels-sdk";
+import { BaseChannel, ConversationQueue, createLogger, readRequiredSecretFile, splitMessage, type HandleResult } from "@openpalm/channels-sdk";
 import {
   Client,
   Events,
@@ -47,7 +47,7 @@ export default class DiscordChannel extends BaseChannel {
   private forwardTimeoutMs = Number(Bun.env.DISCORD_FORWARD_TIMEOUT_MS) || 0;
 
   get botToken(): string {
-    return Bun.env.DISCORD_BOT_TOKEN ?? "";
+    return readRequiredSecretFile("DISCORD_BOT_TOKEN_FILE");
   }
 
   get applicationId(): string {
@@ -69,8 +69,11 @@ export default class DiscordChannel extends BaseChannel {
   // ── Gateway Connection ──────────────────────────────────────────────────
 
   private async connectGateway(): Promise<void> {
-    if (!this.botToken) {
-      log.error("startup_error", { reason: "DISCORD_BOT_TOKEN not set" });
+    let botToken: string;
+    try {
+      botToken = this.botToken;
+    } catch (err) {
+      log.error("startup_error", { reason: err instanceof Error ? err.message : "DISCORD_BOT_TOKEN_FILE could not be read" });
       process.exit(1);
     }
 
@@ -92,7 +95,7 @@ export default class DiscordChannel extends BaseChannel {
       }
     });
 
-    await this.client.login(this.botToken);
+    await this.client.login(botToken);
   }
 
   private onReady(client: Client<true>): void {

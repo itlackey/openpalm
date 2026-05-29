@@ -80,12 +80,17 @@ export function registerCleanup(): void {
 export function resetState(uiLoginPassword?: string): ControlPlaneState {
   if (uiLoginPassword !== undefined) {
     process.env.OP_UI_LOGIN_PASSWORD = uiLoginPassword;
+  }
+  const state = createState();
+  if (uiLoginPassword !== undefined) {
+    // createState() loads file-based stack secrets into process.env; restore
+    // the test-provided login password after that bootstrap read.
+    process.env.OP_UI_LOGIN_PASSWORD = uiLoginPassword;
     // Seed the password value as a valid session token so tests can pass it
     // directly as the op_session cookie value without calling createSession().
     _clearSessions();
     _seedSession(uiLoginPassword);
   }
-  const state = createState();
   _replaceState(state);
   return state;
 }

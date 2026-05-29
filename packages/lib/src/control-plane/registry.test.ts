@@ -31,6 +31,7 @@ import {
   annotateAddonProfileAvailability,
   __addonAvailabilityTestHooks,
 } from "./registry.js";
+import { readSecret } from './secrets-files.js';
 
 // ── Validation Tests ─────────────────────────────────────────────────
 
@@ -354,7 +355,7 @@ describe("materialized registry catalog", () => {
       services: ['chat'],
     });
     expect(existsSync(join(process.env.OP_HOME!, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
-    expect(readFileSync(join(process.env.OP_HOME!, 'config', 'stack', 'guardian.env'), 'utf-8')).toMatch(/CHANNEL_CHAT_SECRET=/);
+    expect(readSecret(join(process.env.OP_HOME!, 'config', 'stack'), 'channel_chat_secret')).toBeTruthy();
 
     expect(setAddonEnabled(process.env.OP_HOME!, join(process.env.OP_HOME!, 'config', 'stack'), 'chat', false)).toEqual({
       ok: true,
@@ -408,13 +409,13 @@ describe("materialized registry catalog", () => {
       [
         'services:',
         '  voice:',
-        '    profiles: [cpu]',
+        '    profiles: ["addon.voice.cpu"]',
         '    image: openpalm/voice:cpu',
         '    labels:',
         '      openpalm.profile.label: CPU',
         '      openpalm.profile.default: "true"',
         '  voice-cuda:',
-        '    profiles: [cuda]',
+        '    profiles: ["addon.voice.cuda"]',
         '    image: openpalm/voice:cuda',
         '    labels:',
         '      openpalm.profile.label: NVIDIA',
@@ -429,8 +430,8 @@ describe("materialized registry catalog", () => {
 
     const profiles = getAddonProfiles(process.env.OP_HOME!, 'voice');
     expect(profiles).toEqual([
-      { id: 'cpu', services: ['voice'], label: 'CPU', default: true },
-      { id: 'cuda', services: ['voice-cuda'], label: 'NVIDIA', requires: 'nvidia-container-toolkit' },
+      { id: 'addon.voice.cpu', services: ['voice'], label: 'CPU', default: true },
+      { id: 'addon.voice.cuda', services: ['voice-cuda'], label: 'NVIDIA', requires: 'nvidia-container-toolkit' },
     ]);
   });
 
@@ -441,7 +442,7 @@ describe("materialized registry catalog", () => {
 
     mkdirSync(addonDir, { recursive: true });
     mkdirSync(automationsDir, { recursive: true });
-    writeFileSync(join(addonDir, 'compose.yml'), 'services:\n  voice:\n    profiles: [cpu]\n    image: x\n');
+    writeFileSync(join(addonDir, 'compose.yml'), 'services:\n  voice:\n    profiles: ["addon.voice.cpu"]\n    image: x\n');
     writeFileSync(join(addonDir, '.env.schema'), 'VOICE=\n');
     writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n');
 
@@ -452,9 +453,17 @@ describe("materialized registry catalog", () => {
     writeFileSync(join(stackDir, 'stack.env'), '');
 
     expect(getAddonProfileSelection(stackDir, 'voice')).toBeNull();
-    setAddonProfileSelection(stackDir, 'voice', 'cuda');
-    expect(getAddonProfileSelection(stackDir, 'voice')).toBe('cuda');
-    expect(readFileSync(join(stackDir, 'stack.env'), 'utf-8')).toContain('OP_VOICE_PROFILE=cuda');
+    setAddonProfileSelection(stackDir, 'voice', 'addon.voice.cuda');
+    expect(getAddonProfileSelection(stackDir, 'voice')).toBe('addon.voice.cuda');
+    expect(readFileSync(join(stackDir, 'stack.env'), 'utf-8')).toContain('OP_VOICE_PROFILE=addon.voice.cuda');
+  });
+
+  it("ignores non-canonical addon profile values when reading stack.env", () => {
+    const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
+    mkdirSync(stackDir, { recursive: true });
+    writeFileSync(join(stackDir, 'stack.env'), 'OP_VOICE_PROFILE=not-canonical\n');
+
+    expect(getAddonProfileSelection(stackDir, 'voice')).toBeNull();
   });
 
   it("installs and uninstalls automations through stash/tasks", () => {
@@ -493,7 +502,7 @@ describe("getAddonProfileAvailability", () => {
   });
 
   it("returns available:true for the cpu profile (no host requirements)", async () => {
-    const result = await getAddonProfileAvailability({ id: 'cpu' });
+    const result = await getAddonProfileAvailability({ id: 'addon.voice.cpu' });
     expect(result.available).toBe(true);
     expect(result.reason).toBeUndefined();
   });
@@ -504,8 +513,8 @@ describe("getAddonProfileAvailability", () => {
   });
 
   it("caches the result across calls (probe runs only once)", async () => {
-    const a = await getAddonProfileAvailability({ id: 'cpu' });
-    const b = await getAddonProfileAvailability({ id: 'cpu' });
+    const a = await getAddonProfileAvailability({ id: 'addon.voice.cpu' });
+    const b = await getAddonProfileAvailability({ id: 'addon.voice.cpu' });
     expect(a).toBe(b); // same reference — cached
   });
 
@@ -514,7 +523,7 @@ describe("getAddonProfileAvailability", () => {
     // we just assert the contract: when neither signal is present, the
     // reason mentions nvidia-container-toolkit. If a future GPU host runs
     // this test, the assertion still tolerates the success case.
-    const result = await getAddonProfileAvailability({ id: 'cuda' });
+    const result = await getAddonProfileAvailability({ id: 'addon.voice.cuda' });
     if (!result.available) {
       expect(result.reason).toContain('NVIDIA');
     } else {
@@ -524,7 +533,7 @@ describe("getAddonProfileAvailability", () => {
   });
 
   it("probes rocm: returns available:false when /dev/kfd is missing", async () => {
-    const result = await getAddonProfileAvailability({ id: 'rocm' });
+    const result = await getAddonProfileAvailability({ id: 'addon.voice.rocm' });
     if (!result.available) {
       expect(result.reason).toContain('ROCm');
     } else {
@@ -538,7 +547,7 @@ describe("getAddonProfileAvailability", () => {
     // through to the manifest-inspect probe and (until 0.11.0-rocm6
     // ships) get the "image not published yet" copy. Both must mention
     // ROCm so operator-facing copy stays consistent.
-    const result = await getAddonProfileAvailability({ id: 'rocm' });
+    const result = await getAddonProfileAvailability({ id: 'addon.voice.rocm' });
     if (!result.available && existsSync('/dev/kfd') && existsSync('/dev/dri')) {
       expect(result.reason).toMatch(/image not published|CPU profile/i);
     }
@@ -588,21 +597,21 @@ describe("annotateAddonProfileAvailability", () => {
 
   it("decorates each profile with available + optional reason", async () => {
     const out = await annotateAddonProfileAvailability([
-      { id: 'cpu', services: ['voice'], label: 'CPU', default: true },
-      { id: 'rocm', services: ['voice-rocm'], label: 'AMD' },
+      { id: 'addon.voice.cpu', services: ['voice'], label: 'CPU', default: true },
+      { id: 'addon.voice.rocm', services: ['voice-rocm'], label: 'AMD' },
     ]);
     expect(out).toHaveLength(2);
-    expect(out[0]?.id).toBe('cpu');
+    expect(out[0]?.id).toBe('addon.voice.cpu');
     expect(out[0]?.available).toBe(true);
     // Preserves original fields.
     expect(out[0]?.label).toBe('CPU');
     expect(out[0]?.default).toBe(true);
-    expect(out[1]?.id).toBe('rocm');
+    expect(out[1]?.id).toBe('addon.voice.rocm');
     expect(typeof out[1]?.available).toBe('boolean');
   });
 
   it("does not mutate the input array", async () => {
-    const input = [{ id: 'cpu', services: ['voice'] }];
+    const input = [{ id: 'addon.voice.cpu', services: ['voice'] }];
     const before = JSON.parse(JSON.stringify(input));
     await annotateAddonProfileAvailability(input);
     expect(input).toEqual(before);

@@ -15,7 +15,7 @@
 import { test, expect } from '@playwright/test';
 
 const ADMIN_URL = process.env.ADMIN_URL ?? 'http://127.0.0.1:9100';
-const PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? process.env.ADMIN_TOKEN ?? '';
+const PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? '';
 const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 
 function authCookie(): Record<string, string> {

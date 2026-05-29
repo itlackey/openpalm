@@ -1,18 +1,14 @@
 /**
  * GET  /admin/addons/:name/credentials — Return the addon's .env.schema as
- *   structured fields plus the current value of each from stack.env.
- *   Sensitive values are masked (returned as boolean `set` flag, not the
- *   raw value).
- * POST /admin/addons/:name/credentials — Write supplied fields into stack.env.
+ *   structured fields plus secret presence metadata.
+ * POST /admin/addons/:name/credentials — Write supplied fields into
+ *   config/stack/secrets/<ENV_KEY>.
  *   Body shape: { values: { KEY: VALUE | "" } }. Empty strings clear the key.
  *
  * Addon credentials (Discord/Slack bot tokens, channel HMAC secrets, etc.)
- * are read by the channel containers via compose `--env-file=stack.env`,
- * so this endpoint is the post-install replacement for the wizard-only
- * credential entry path.
+ * are read by channel containers as file-backed compose secrets.
  */
 import type { RequestHandler } from "./$types";
-import { existsSync, readFileSync } from "node:fs";
 import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
@@ -26,8 +22,8 @@ import {
   createLogger,
   getRegistryAddonConfig,
   listAvailableAddonIds,
-  parseEnvContent,
-  updateSecretsEnv,
+  readStackSecretEnv,
+  writeStackSecretEnv,
 } from "@openpalm/lib";
 
 const logger = createLogger("addons.name.credentials");
@@ -96,16 +92,6 @@ function parseEnvSchema(text: string): SchemaField[] {
   return fields;
 }
 
-function readStackEnv(stackDir: string): Record<string, string> {
-  const path = `${stackDir}/stack.env`;
-  if (!existsSync(path)) return {};
-  try {
-    return parseEnvContent(readFileSync(path, "utf-8"));
-  } catch {
-    return {};
-  }
-}
-
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const authErr = requireAdmin(event, requestId);
@@ -127,19 +113,18 @@ export const GET: RequestHandler = async (event) => {
   }
 
   const schemaFields = parseEnvSchema(config.envSchema);
-  const stackEnv = readStackEnv(state.stackDir);
+  const secretEnv = readStackSecretEnv(state.stackDir);
 
   const fields = schemaFields.map((f) => {
-    const set = (stackEnv[f.key] ?? "").length > 0;
+    const set = (secretEnv[f.key] ?? "").length > 0;
     return {
       key: f.key,
       sensitive: f.sensitive,
       description: f.description,
       default: f.default,
       set,
-      // Non-sensitive values are returned as-is so the form can show
-      // them; sensitive values stay masked (caller sees `set: true`).
-      value: f.sensitive ? "" : (stackEnv[f.key] ?? ""),
+      secret: { envKey: f.key, present: set },
+      value: "",
     };
   });
 
@@ -171,9 +156,7 @@ export const POST: RequestHandler = async (event) => {
   }
   const allowedKeys = new Set(parseEnvSchema(config.envSchema).map((f) => f.key));
 
-  // Only accept keys declared in the schema; silently drop anything else
-  // so a malicious caller can't smuggle arbitrary env vars into stack.env
-  // through this endpoint.
+  // Only accept keys declared in the schema; silently drop anything else.
   const updates: Record<string, string> = {};
   for (const [k, v] of Object.entries(valuesRaw)) {
     if (!allowedKeys.has(k)) continue;
@@ -185,7 +168,7 @@ export const POST: RequestHandler = async (event) => {
   }
 
   try {
-    updateSecretsEnv(state, updates);
+    writeStackSecretEnv(state, updates);
   } catch (err) {
     logger.error("write failed", { name, error: String(err), requestId });
     return errorResponse(500, "internal_error", err instanceof Error ? err.message : "write failed", {}, requestId);

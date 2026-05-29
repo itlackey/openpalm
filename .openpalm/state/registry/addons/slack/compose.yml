@@ -9,12 +9,16 @@ services:
       PORT: "8185"
       CHANNEL_NAME: "Slack Bot"
       CHANNEL_PACKAGE: "@openpalm/channel-slack"
-      CHANNEL_SLACK_SECRET: ${CHANNEL_SLACK_SECRET:-}
-      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
-      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      CHANNEL_SECRET_FILE: /run/secrets/channel_slack_secret
+      SLACK_BOT_TOKEN_FILE: /run/secrets/slack_bot_token
+      SLACK_APP_TOKEN_FILE: /run/secrets/slack_app_token
       SLACK_ALLOWED_CHANNELS: ${SLACK_ALLOWED_CHANNELS:-}
       SLACK_ALLOWED_USERS: ${SLACK_ALLOWED_USERS:-}
       SLACK_BLOCKED_USERS: ${SLACK_BLOCKED_USERS:-}
+    secrets:
+      - channel_slack_secret
+      - slack_bot_token
+      - slack_app_token
     networks: [channel_lan]
     depends_on:
       guardian:
@@ -30,3 +34,17 @@ services:
       openpalm.icon: hash
       openpalm.category: messaging
       openpalm.healthcheck: http://slack:8185/health
+
+  guardian:
+    environment:
+      CHANNEL_SLACK_SECRET_FILE: /run/secrets/channel_slack_secret
+    secrets:
+      - channel_slack_secret
+
+secrets:
+  channel_slack_secret:
+    file: ${OP_HOME}/config/stack/secrets/channel_slack_secret
+  slack_bot_token:
+    file: ${OP_HOME}/config/stack/secrets/slack_bot_token
+  slack_app_token:
+    file: ${OP_HOME}/config/stack/secrets/slack_app_token

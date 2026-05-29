@@ -3,9 +3,10 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSyn
 import { randomBytes } from "node:crypto";
 import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
-import { migrateAuth0110 } from './migrate-0110.js';
 import type { ControlPlaneState } from "./types.js";
 import { resolveConfigDir } from "./home.js";
+import { listSecretNames, readSecret, resolveSecretsDir, writeSecret } from './secrets-files.js';
+import { PROVIDER_KEY_MAP } from '../provider-constants.js';
 
 const OPENCODE_STARTER_CONFIG = JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2) + "\n";
 const logger = createLogger("secrets");
@@ -21,6 +22,22 @@ export const PLAIN_CONFIG_KEYS = new Set([
 
 const VAULT_DIR_MODE = 0o700;
 const VAULT_FILE_MODE = 0o600;
+
+export const SECRET_ENV_KEY_RE = /(?:^OP_UI_LOGIN_PASSWORD$|^OP_OPENCODE_PASSWORD$|_API_KEY$|_TOKEN$|_SECRET$|_PASSWORD$)/;
+const SECRET_LIKE_STACK_ENV_KEY_RE = /(SECRET|TOKEN|PASSWORD|API_KEY|PRIVATE_KEY|CLIENT_SECRET|AUTH_JSON|CREDENTIALS)/;
+const NON_SECRET_STACK_ENV_KEY_ALLOWLIST = new Set<string>();
+
+export function isSecretLikeStackEnvKey(key: string): boolean {
+  return SECRET_LIKE_STACK_ENV_KEY_RE.test(key) && !NON_SECRET_STACK_ENV_KEY_ALLOWLIST.has(key);
+}
+
+export function assertNoSecretLikeStackEnvKeys(updates: Record<string, string>): void {
+  for (const key of Object.keys(updates)) {
+    if (isSecretLikeStackEnvKey(key)) {
+      throw new Error(`Refusing to write secret-like key to stack.env: ${key}`);
+    }
+  }
+}
 
 function enforceVaultDirMode(vaultDir: string): void {
   mkdirSync(vaultDir, { recursive: true, mode: VAULT_DIR_MODE });
@@ -46,8 +63,39 @@ function writeVaultFile(path: string, content: string): void {
   }
 }
 
+export function stackSecretsDir(stackDir: string): string {
+  return resolveSecretsDir(stackDir);
+}
+
+export function stackSecretPath(stackDir: string, envKey: string): string {
+  return `${stackSecretsDir(stackDir)}/${envKey.toLowerCase()}`;
+}
+
+export function readStackSecretEnv(stackDir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of listSecretNames(stackDir)) {
+    const envKey = name.toUpperCase();
+    try {
+      out[envKey] = (readSecret(stackDir, name) ?? '').replace(/[\r\n]+$/, '');
+    } catch {
+      // ignore unreadable secret files; callers treat missing values as absent
+    }
+  }
+  return out;
+}
+
+export function writeStackSecretEnv(state: ControlPlaneState, updates: Record<string, string>): void {
+  if (Object.keys(updates).length === 0) return;
+  resolveSecretsDir(state.stackDir);
+  for (const [envKey, value] of Object.entries(updates)) {
+    if (!/^[A-Z0-9_]+$/.test(envKey)) throw new Error(`Invalid secret env key: ${envKey}`);
+    writeSecret(state.stackDir, envKey.toLowerCase(), value.endsWith('\n') ? value : `${value}\n`);
+  }
+}
+
 function mergeVaultEnvFile(path: string, updates: Record<string, string>, uncomment = false): void {
   if (Object.keys(updates).length === 0) return;
+  assertNoSecretLikeStackEnvKeys(updates);
   const raw = existsSync(path) ? readFileSync(path, "utf-8") : "";
   let merged = mergeEnvContent(raw, updates, { uncomment });
   if (!merged.endsWith("\n")) merged += "\n";
@@ -56,7 +104,7 @@ function mergeVaultEnvFile(path: string, updates: Record<string, string>, uncomm
 
 function ensureSystemSecrets(state: ControlPlaneState): void {
   const systemEnvPath = `${state.stackDir}/stack.env`;
-  const existing = existsSync(systemEnvPath) ? parseEnvFile(systemEnvPath) : {};
+  const existing = readStackSecretEnv(state.stackDir);
   const updates: Record<string, string> = {};
 
   // OP_UI_LOGIN_PASSWORD seeds the operator login secret. ensureSecrets
@@ -65,74 +113,33 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
   // overwrites it with the operator's chosen value via
   // buildSystemSecretsFromSetup().
   if (!existing.OP_UI_LOGIN_PASSWORD) {
-    updates.OP_UI_LOGIN_PASSWORD = randomBytes(32).toString("hex");
+    updates.OP_UI_LOGIN_PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? randomBytes(32).toString("hex");
   }
+  if (!existing.OP_OPENCODE_PASSWORD) {
+    updates.OP_OPENCODE_PASSWORD = process.env.OP_OPENCODE_PASSWORD ?? randomBytes(32).toString("hex");
+  }
+
+  writeStackSecretEnv(state, updates);
 
   if (!existsSync(systemEnvPath)) {
     const header = [
       "# OpenPalm — Stack Configuration",
-      "# All secrets and configuration live here. Advanced users may edit directly.",
+      "# Non-secret stack configuration only. Secrets live in config/stack/secrets/.",
       "",
       "# ── Authentication ──────────────────────────────────────────────────",
       "OP_SETUP_COMPLETE=false",
-      "OP_UI_LOGIN_PASSWORD=",
-      "",
-      "# ── Service Auth ─────────────────────────────────────────────────────",
-      "OP_OPENCODE_PASSWORD=",
-      "",
-      "# ── Provider API Keys ────────────────────────────────────────────────",
-      "OPENAI_API_KEY=",
-      "OPENAI_BASE_URL=",
-      "ANTHROPIC_API_KEY=",
-      "GROQ_API_KEY=",
-      "MISTRAL_API_KEY=",
-      "GOOGLE_API_KEY=",
-      "MCP_API_KEY=",
-      "EMBEDDING_API_KEY=",
-      "LMSTUDIO_API_KEY=",
-      "",
-      "# ── Owner ────────────────────────────────────────────────────────────",
-      `OP_OWNER_NAME=${process.env.OP_OWNER_NAME ?? ""}`,
-      `OP_OWNER_EMAIL=${process.env.OP_OWNER_EMAIL ?? ""}`,
       "",
     ].join("\n");
-    const content = mergeEnvContent(header, updates);
-    writeVaultFile(systemEnvPath, content.endsWith("\n") ? content : content + "\n");
+    writeVaultFile(systemEnvPath, header.endsWith("\n") ? header : header + "\n");
     return;
   }
-
-  mergeVaultEnvFile(systemEnvPath, updates, true);
 }
 
 export function ensureSecrets(state: ControlPlaneState): void {
   enforceVaultDirMode(state.stackDir);
 
-  // Migrate pre-0.11.0 installs (OP_UI_TOKEN/OP_ASSISTANT_TOKEN → OP_UI_LOGIN_PASSWORD)
-  // before any code path that reads OP_UI_LOGIN_PASSWORD sees an empty value.
-  migrateAuth0110(state);
-
   ensureSystemSecrets(state);
-  ensureGuardianEnv(state.stackDir);
   ensureAuthJson(state.configDir);
-}
-
-/**
- * Ensure config/stack/guardian.env exists.
- * Channel HMAC secrets (CHANNEL_<NAME>_SECRET) live here exclusively.
- * This file is loaded by the guardian as an env_file and via GUARDIAN_SECRETS_PATH.
- */
-function ensureGuardianEnv(stackDir: string): void {
-  const guardianEnvPath = `${stackDir}/guardian.env`;
-  mkdirSync(stackDir, { recursive: true, mode: VAULT_DIR_MODE });
-  if (!existsSync(guardianEnvPath)) {
-    writeVaultFile(guardianEnvPath, [
-      "# Guardian channel HMAC secrets — managed by openpalm",
-      "# Each enabled channel gets a CHANNEL_<NAME>_SECRET entry.",
-      "",
-    ].join("\n"));
-  } else {
-    try { chmodSync(guardianEnvPath, VAULT_FILE_MODE); } catch { /* best-effort */ }
-  }
 }
 
 function ensureAuthJson(configDir: string): void {
@@ -163,12 +170,14 @@ export function updateSecretsEnv(
   state: ControlPlaneState,
   updates: Record<string, string>
 ): void {
-  const stackEnvPath = `${state.stackDir}/stack.env`;
-  if (!existsSync(stackEnvPath)) {
-    throw new Error("config/stack/stack.env does not exist — run setup first");
+  const secretUpdates: Record<string, string> = {};
+  const stackUpdates: Record<string, string> = {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (SECRET_ENV_KEY_RE.test(key)) secretUpdates[key] = value;
+    else stackUpdates[key] = value;
   }
-
-  mergeVaultEnvFile(stackEnvPath, updates, true);
+  writeStackSecretEnv(state, secretUpdates);
+  if (Object.keys(stackUpdates).length > 0) patchSecretsEnvFile(state.stackDir, stackUpdates);
 }
 
 /**
@@ -188,6 +197,13 @@ export function writeAuthJsonProviderKeys(
   providerKeys: Record<string, string>
 ): void {
   if (Object.keys(providerKeys).length === 0) return;
+
+  const secretUpdates: Record<string, string> = {};
+  for (const [providerId, key] of Object.entries(providerKeys)) {
+    const envKey = PROVIDER_KEY_MAP[providerId] ?? `${providerId.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_API_KEY`;
+    secretUpdates[envKey] = key;
+  }
+  writeStackSecretEnv(state, secretUpdates);
 
   const authJsonPath = `${state.configDir}/auth.json`;
   mkdirSync(state.configDir, { recursive: true, mode: VAULT_DIR_MODE });
@@ -230,7 +246,16 @@ export function writeAuthJsonProviderKeys(
 
 /** Read and parse config/stack/stack.env. Returns {} if the file does not exist. */
 export function readStackEnv(stackDir: string): Record<string, string> {
-  return parseEnvFile(`${stackDir}/stack.env`);
+  const parsed = parseEnvFile(`${stackDir}/stack.env`);
+  const nonSecret: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (!isSecretLikeStackEnvKey(key)) nonSecret[key] = value;
+  }
+  return nonSecret;
+}
+
+export function readStackRuntimeEnv(stackDir: string): Record<string, string> {
+  return { ...readStackEnv(stackDir), ...readStackSecretEnv(stackDir) };
 }
 
 export function updateSystemSecretsEnv(
@@ -251,6 +276,18 @@ export function patchSecretsEnvFile(
 ): void {
   if (Object.keys(patches).length === 0) return;
 
+  const stackPatches: Record<string, string> = {};
+  const secretPatches: Record<string, string> = {};
+  for (const [key, value] of Object.entries(patches)) {
+    if (SECRET_ENV_KEY_RE.test(key)) secretPatches[key] = value;
+    else stackPatches[key] = value;
+  }
+  if (Object.keys(secretPatches).length > 0) {
+    writeStackSecretEnv({ stackDir, homeDir: '', configDir: '', stashDir: '', workspaceDir: '', cacheDir: '', stateDir: '', services: {}, artifacts: { compose: '' }, artifactMeta: [] }, secretPatches);
+  }
+  if (Object.keys(stackPatches).length === 0) return;
+  assertNoSecretLikeStackEnvKeys(stackPatches);
+
   const stackEnvPath = `${stackDir}/stack.env`;
   enforceVaultDirMode(stackDir);
   mkdirSync(stackDir, { recursive: true, mode: VAULT_DIR_MODE });
@@ -264,7 +301,7 @@ export function patchSecretsEnvFile(
     // start fresh
   }
 
-  let result = mergeEnvContent(existingContent, patches);
+  let result = mergeEnvContent(existingContent, stackPatches);
   if (!result.endsWith("\n")) result += "\n";
   writeVaultFile(stackEnvPath, result);
 }

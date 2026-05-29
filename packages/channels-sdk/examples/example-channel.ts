@@ -12,7 +12,7 @@
  *
  * Environment variables (auto-configured by OpenPalm):
  *   PORT                    — HTTP port (default: 8080)
- *   CHANNEL_EXAMPLE_SECRET  — HMAC secret (auto-generated on install)
+ *   CHANNEL_SECRET_FILE  — path to the HMAC secret file (auto-generated on install)
  *
  * Guardian is hardcoded at `http://guardian:8080` (in-network Docker DNS).
  */

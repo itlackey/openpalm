@@ -18,8 +18,9 @@ import {
   discoverStackOverlays,
   buildEnvFiles,
   writeRuntimeFiles,
-  readChannelSecrets,
-  writeChannelSecrets,
+  readSecret,
+  writeSecret,
+  secretPath,
 } from "@openpalm/lib";
 import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
@@ -152,7 +153,7 @@ describe("buildEnvFiles", () => {
     expect(buildEnvFiles(state)).toEqual([]);
   });
 
-  test("returns stack.env and guardian.env in correct order when they exist", () => {
+  test("returns stack.env when it exists", () => {
     // Note: user.env is no longer a compose
     // env_file. User-managed env secrets live in the akm `vault:user` store
     // and are sourced by the assistant entrypoint at container startup.
@@ -163,17 +164,15 @@ describe("buildEnvFiles", () => {
     writeFileSync(join(state.stackDir, "stack.env"), "KEY=val");
     // user.env may still exist on disk during migration but must NOT be
     // surfaced as a compose env_file (compose would shadow akm-sourced values).
-    writeFileSync(join(state.stackDir, "guardian.env"), "CHANNEL_CHAT_SECRET=abc");
 
     const files = buildEnvFiles(state);
-    expect(files).toHaveLength(2);
+    expect(files).toHaveLength(1);
     expect(files[0]).toContain("stack.env");
-    expect(files[1]).toContain("guardian.env");
     // user.env must never appear in the env file list.
     expect(files.some((f) => f.includes("user.env"))).toBe(false);
   });
 
-  test("returns only stack.env when guardian.env is missing", () => {
+  test("returns only stack.env", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
@@ -186,19 +185,7 @@ describe("buildEnvFiles", () => {
     expect(files.some((f) => f.includes("user.env"))).toBe(false);
   });
 
-  test("returns only stack.env when guardian.env is missing", () => {
-    const state = makeTestState();
-    trackDir(state.homeDir);
-
-    mkdirSync(state.stackDir, { recursive: true });
-    writeFileSync(join(state.stackDir, "stack.env"), "KEY=val");
-
-    const files = buildEnvFiles(state);
-    expect(files).toHaveLength(1);
-    expect(files[0]).toContain("stack.env");
-  });
-
-  test("returns empty list when stack.env and guardian.env are missing", () => {
+  test("returns empty list when stack.env is missing", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
@@ -207,18 +194,6 @@ describe("buildEnvFiles", () => {
     expect(files).toEqual([]);
   });
 
-  test("guardian.env is last (takes precedence for channel secrets)", () => {
-    const state = makeTestState();
-    trackDir(state.homeDir);
-
-    mkdirSync(state.stackDir, { recursive: true });
-    writeFileSync(join(state.stackDir, "stack.env"), "KEY=val");
-    writeFileSync(join(state.stackDir, "guardian.env"), "CHANNEL_CHAT_SECRET=abc");
-
-    const files = buildEnvFiles(state);
-    const guardianIdx = files.findIndex(f => f.includes("guardian.env"));
-    expect(guardianIdx).toBe(files.length - 1);
-  });
 });
 
 // ── Persist Configuration (Integration) ─────────────────────────────────
@@ -244,17 +219,15 @@ describe("writeRuntimeFiles", () => {
     expect(readFileSync(composePath, "utf-8")).toBe(state.artifacts.compose);
   });
 
-  test("generates channel secrets for discovered channels in guardian.env", () => {
+  test("generates file-based channel secrets for discovered channels", () => {
     seedChannelAddons(state.homeDir, [
       { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" }
     ]);
 
     writeRuntimeFiles(state);
 
-    const guardianPath = join(state.stackDir, "guardian.env");
-    expect(existsSync(guardianPath)).toBe(true);
-    const content = readFileSync(guardianPath, "utf-8");
-    expect(content).toContain("CHANNEL_CHAT_SECRET=");
+    expect(existsSync(join(state.stackDir, "guardian.env"))).toBe(false);
+    expect(readSecret(state.stackDir, "channel_chat_secret")).toBeTruthy();
 
     // Channel secrets must NOT be in stack.env
     const stackContent = readFileSync(join(state.stackDir, "stack.env"), "utf-8");
@@ -276,18 +249,12 @@ describe("writeRuntimeFiles", () => {
 
     const systemEnvPath = join(state.stackDir, "stack.env");
     const content = readFileSync(systemEnvPath, "utf-8");
-    // OP_UI_TOKEN is a system secret and correctly lives in stack.env.
-    // Only the legacy bare ADMIN_TOKEN (without OP_ prefix) should not appear.
     const lines = content.split("\n");
-    expect(lines.some((l) => /^ADMIN_TOKEN=/.test(l))).toBe(false);
+    expect(lines.some((l) => /^OP_UI_LOGIN_PASSWORD=/.test(l))).toBe(false);
   });
 
-  test("preserves existing channel secrets in guardian.env (does not regenerate)", () => {
-    // Pre-seed a channel secret in state/guardian.env
-    writeFileSync(
-      join(state.stackDir, "guardian.env"),
-      "CHANNEL_CHAT_SECRET=pre-existing-secret-value\n"
-    );
+  test("preserves existing file-based channel secrets (does not regenerate)", () => {
+    writeSecret(state.stackDir, "channel_chat_secret", "pre-existing-secret-value");
 
     seedChannelAddons(state.homeDir, [
       { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" }
@@ -295,67 +262,42 @@ describe("writeRuntimeFiles", () => {
 
     writeRuntimeFiles(state);
 
-    // The pre-existing secret should be preserved, not regenerated
-    const guardianPath = join(state.stackDir, "guardian.env");
-    const content = readFileSync(guardianPath, "utf-8");
-    expect(content).toContain("CHANNEL_CHAT_SECRET=pre-existing-secret-value");
+    expect(readSecret(state.stackDir, "channel_chat_secret")).toBe("pre-existing-secret-value");
   });
 
 });
 
-// ── Channel Secrets API ──────────────────────────────────────────────────
+// ── Channel Secret Files ─────────────────────────────────────────────────
 
-describe("readChannelSecrets", () => {
-  test("reads from guardian.env", () => {
+describe("channel secret files", () => {
+  test("reads from config/stack/secrets", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(state.stackDir, { recursive: true });
-    writeFileSync(
-      join(state.stackDir, "guardian.env"),
-      "CHANNEL_CHAT_SECRET=abc123\nCHANNEL_API_SECRET=def456\n"
-    );
+    writeSecret(state.stackDir, "channel_chat_secret", "abc123");
+    writeSecret(state.stackDir, "channel_api_secret", "def456");
 
-    const secrets = readChannelSecrets(state.stackDir);
-    expect(secrets).toEqual({ chat: "abc123", api: "def456" });
+    expect(readSecret(state.stackDir, "channel_chat_secret")).toBe("abc123");
+    expect(readSecret(state.stackDir, "channel_api_secret")).toBe("def456");
   });
 
-  test("returns empty when no secrets exist", () => {
+  test("returns null when no secret file exists", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
     mkdirSync(state.stackDir, { recursive: true });
 
-    const secrets = readChannelSecrets(state.stackDir);
-    expect(secrets).toEqual({});
+    expect(readSecret(state.stackDir, "channel_chat_secret")).toBeNull();
   });
-});
 
-describe("writeChannelSecrets", () => {
-  test("writes secrets to guardian.env", () => {
+  test("writes secrets to config/stack/secrets", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    writeChannelSecrets(state.stackDir, { chat: "abc", api: "def" });
+    writeSecret(state.stackDir, "channel_chat_secret", "abc");
+    writeSecret(state.stackDir, "channel_api_secret", "def");
 
-    const content = readFileSync(join(state.stackDir, "guardian.env"), "utf-8");
-    expect(content).toContain("CHANNEL_CHAT_SECRET=abc");
-    expect(content).toContain("CHANNEL_API_SECRET=def");
-  });
-
-  test("merges with existing guardian.env content", () => {
-    const state = makeTestState();
-    trackDir(state.homeDir);
-
-    mkdirSync(state.stackDir, { recursive: true });
-    writeFileSync(
-      join(state.stackDir, "guardian.env"),
-      "CHANNEL_CHAT_SECRET=existing\n"
-    );
-
-    writeChannelSecrets(state.stackDir, { api: "new-secret" });
-
-    const content = readFileSync(join(state.stackDir, "guardian.env"), "utf-8");
-    expect(content).toContain("CHANNEL_CHAT_SECRET=existing");
-    expect(content).toContain("CHANNEL_API_SECRET=new-secret");
+    expect(readFileSync(secretPath(state.stackDir, "channel_chat_secret"), "utf-8")).toBe("abc");
+    expect(readFileSync(secretPath(state.stackDir, "channel_api_secret"), "utf-8")).toBe("def");
+    expect(existsSync(join(state.stackDir, "guardian.env"))).toBe(false);
   });
 });

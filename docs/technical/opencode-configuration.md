@@ -15,8 +15,9 @@ Primary runtime sources:
 - The running assistant is defined by `.openpalm/config/stack/core.compose.yml`.
 - The optional admin-side OpenCode runtime is started by `openpalm` as a host subprocess on a random loopback port.
 - `~/.openpalm/config/assistant/` is the user-editable OpenCode extension surface.
-- `~/.openpalm/config/stack/stack.env` provides runtime provider keys and resolved capability env values.
-- `~/.openpalm/stash/vaults/user.env` is the recommended place for addon overrides and operator-managed values.
+- `~/.openpalm/config/stack/stack.env` provides non-secret runtime and resolved capability env values.
+- `~/.openpalm/config/stack/secrets/` stores file-based service secrets; provider keys are stored in OpenCode auth state or narrow secret files.
+- `~/.openpalm/stash/vaults/user.env` is the AKM user vault backing file, not a Compose env file.
 - Project-local OpenCode config inside `/work` still works per normal OpenCode behavior, but OpenPalm's container wiring is controlled by Compose.
 
 ---
@@ -45,7 +46,6 @@ Primary runtime sources:
 | `OPENCODE_AUTH` | `false` | Disabled by default because host exposure is loopback-only |
 | `OPENCODE_ENABLE_SSH` | from `stack.env` | Optional SSH server toggle |
 | `HOME` | `/home/opencode` | Runtime home |
-| `OP_ASSISTANT_TOKEN` | mapped from `OP_ASSISTANT_TOKEN` in `stack.env` | Assistant auth token for admin API calls |
 | `AKM_STASH_DIR` | `/akm` | Shared akm stash bind-mounted from `${OP_HOME}/stash` (memory + skills) |
 | `AKM_CACHE_DIR` | `/akm-cache` | akm cache bind-mounted from `${OP_HOME}/data/akm-cache` |
 
@@ -77,7 +77,7 @@ Compose remains the source of truth for that contract.
 
 - The assistant has no Docker socket.
 - The assistant mounts `stash/` at `/akm` for the shared AKM stash (memory, skills, vaults). User secrets are accessed via the akm CLI, not a separate `/etc/vault/` mount.
-- Stack-level secrets such as `OP_UI_TOKEN` remain in `config/stack/stack.env`. Channel HMAC secrets live in `config/stack/guardian.env`. Neither is mounted as a file into the assistant.
+- Stack-level secrets live as files under `config/stack/secrets/` and are granted only to services that need them. `stack.env` is non-secret Compose/runtime configuration.
 - Admin is a host process. It accesses the Docker socket directly on the host — no container is involved in admin operations.
 
 ---
@@ -85,6 +85,6 @@ Compose remains the source of truth for that contract.
 ## Day-To-Day Changes
 
 - Add tools, plugins, commands, or skills under `~/.openpalm/config/assistant/`.
-- Update provider keys and model-related env in `~/.openpalm/config/stack/stack.env`.
+- Update provider keys through OpenCode auth state or file-based secret management; keep model-related non-secret env in `~/.openpalm/config/stack/stack.env`.
 - Change service wiring by editing the compose file set in `~/.openpalm/config/stack/`.
 - Verify the exact runtime by reading `~/.openpalm/config/stack/core.compose.yml` and any addon overlays used for startup.

@@ -209,6 +209,10 @@
     return profile?.label ?? profile?.id ?? selectedOllamaProfile;
   });
 
+  function addonProfileId(addon: 'voice' | 'ollama', variant: 'cpu' | 'cuda' | 'rocm'): string {
+    return `addon.${addon}.${variant}`;
+  }
+
 
   // Build the install payload for /api/setup/complete
   const payload = $derived.by(() => {
@@ -364,17 +368,17 @@
 
       // Auto-select the best profile: CUDA if GPU detected, otherwise CPU/default
       const fallback = gpuDetected
-        ? data.profiles.find((p) => p.id === 'cuda' && p.available !== false)
+        ? data.profiles.find((p) => p.id === addonProfileId('voice', 'cuda') && p.available !== false)
           ?? data.profiles.find((p) => p.default && p.available !== false)
           ?? data.profiles.find((p) => p.available !== false)
-        : data.profiles.find((p) => p.id === 'cpu' && p.available !== false)
+        : data.profiles.find((p) => p.id === addonProfileId('voice', 'cpu') && p.available !== false)
           ?? data.profiles.find((p) => p.default && p.available !== false)
           ?? data.profiles.find((p) => p.available !== false);
       if (fallback) selectedVoiceProfile = fallback.id;
 
       // gpuDetected may have been set after this fetch started — upgrade now
-      if (gpuDetected && selectedVoiceProfile !== 'cuda') {
-        const cuda = voiceProfiles.find((p) => p.id === 'cuda' && p.available !== false);
+      if (gpuDetected && selectedVoiceProfile !== addonProfileId('voice', 'cuda')) {
+        const cuda = voiceProfiles.find((p) => p.id === addonProfileId('voice', 'cuda') && p.available !== false);
         if (cuda) selectedVoiceProfile = cuda.id;
       }
     } catch {
@@ -395,10 +399,10 @@
       ollamaProfiles = data.profiles;
 
       const fallback = gpuDetected
-        ? data.profiles.find((p) => p.id === 'cuda' && p.available !== false)
+        ? data.profiles.find((p) => p.id === addonProfileId('ollama', 'cuda') && p.available !== false)
           ?? data.profiles.find((p) => p.default && p.available !== false)
           ?? data.profiles.find((p) => p.available !== false)
-        : data.profiles.find((p) => p.id === 'cpu' && p.available !== false)
+        : data.profiles.find((p) => p.id === addonProfileId('ollama', 'cpu') && p.available !== false)
           ?? data.profiles.find((p) => p.default && p.available !== false)
           ?? data.profiles.find((p) => p.available !== false);
       if (data.selectedProfile && typeof data.selectedProfile === 'string') {
@@ -440,11 +444,11 @@
     // Ensure a voice profile is selected when voice is enabled.
     // loadVoiceProfiles() is async and may not have resolved yet.
     if (enableVoice && !selectedVoiceProfile) {
-      const preferred = gpuDetected ? 'cuda' : 'cpu';
+      const preferred = addonProfileId('voice', gpuDetected ? 'cuda' : 'cpu');
       const match = voiceProfiles.find((p) => p.id === preferred && p.available !== false)
-        ?? voiceProfiles.find((p) => p.id === 'cpu' && p.available !== false)
+        ?? voiceProfiles.find((p) => p.id === addonProfileId('voice', 'cpu') && p.available !== false)
         ?? voiceProfiles.find((p) => p.available !== false);
-      selectedVoiceProfile = match?.id ?? 'cpu';
+      selectedVoiceProfile = match?.id ?? addonProfileId('voice', 'cpu');
     }
 
     // If Ollama was enabled on the Welcome step, configure it as a provider
@@ -463,7 +467,7 @@
       }
       // Auto-select Ollama hardware profile based on GPU detection
       if (!selectedOllamaProfile) {
-        selectedOllamaProfile = gpuDetected ? 'cuda' : 'cpu';
+        selectedOllamaProfile = addonProfileId('ollama', gpuDetected ? 'cuda' : 'cpu');
       }
     }
 
@@ -950,16 +954,16 @@
     // loadVoiceProfiles() is async and may not have resolved yet.
     const usesBundledVoice = persistedVoiceTts.engine === 'openpalm-voice' || persistedVoiceStt.engine === 'openpalm-voice';
     if (usesBundledVoice && !selectedVoiceProfile) {
-      const preferred = gpuDetected ? 'cuda' : 'cpu';
+      const preferred = addonProfileId('voice', gpuDetected ? 'cuda' : 'cpu');
       const match = voiceProfiles.find((p) => p.id === preferred && p.available !== false)
-        ?? voiceProfiles.find((p) => p.id === 'cpu' && p.available !== false)
+        ?? voiceProfiles.find((p) => p.id === addonProfileId('voice', 'cpu') && p.available !== false)
         ?? voiceProfiles.find((p) => p.available !== false);
-      selectedVoiceProfile = match?.id ?? 'cpu';
+      selectedVoiceProfile = match?.id ?? addonProfileId('voice', 'cpu');
     }
 
     // Ensure an Ollama profile is selected when Ollama is enabled in-stack.
     if (ollamaEnabled && !selectedOllamaProfile) {
-      selectedOllamaProfile = gpuDetected ? 'cuda' : 'cpu';
+      selectedOllamaProfile = addonProfileId('ollama', gpuDetected ? 'cuda' : 'cpu');
     }
 
     try {
@@ -1382,11 +1386,11 @@
             {isRerun}
             onpass={() => { systemCheckPassed = true; }}
             onnext={() => { systemCheckPassed = true; goToStep(1); }}
-            ongpudetected={(gpu) => {
+            ongpudetected={(_gpu) => {
               gpuDetected = true;
               // If profiles already loaded, upgrade to CUDA now
-              if (voiceProfiles.length > 0 && selectedVoiceProfile !== 'cuda') {
-                const cuda = voiceProfiles.find((p) => p.id === 'cuda' && p.available !== false);
+              if (voiceProfiles.length > 0 && selectedVoiceProfile !== addonProfileId('voice', 'cuda')) {
+                const cuda = voiceProfiles.find((p) => p.id === addonProfileId('voice', 'cuda') && p.available !== false);
                 if (cuda) selectedVoiceProfile = cuda.id;
               }
             }}

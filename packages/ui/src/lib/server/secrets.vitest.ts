@@ -14,6 +14,7 @@ import {
   ensureSecrets,
   updateSecretsEnv,
   readStackEnv,
+  readSecret,
   patchSecretsEnvFile,
   maskSecretValue,
   ensureOpenCodeConfig,
@@ -37,19 +38,21 @@ describe("ensureSecrets", () => {
     mkdirSync(stackDir, { recursive: true });
   });
 
-  test("seeds stack.env with API key placeholders on first run", () => {
+  test("seeds stack.env without secret placeholders on first run", () => {
     const state = { stackDir, configDir } as ControlPlaneState;
 
     ensureSecrets(state);
 
     const secrets = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(secrets).toContain("OPENAI_API_KEY=");
-    expect(secrets).toContain("OP_UI_LOGIN_PASSWORD=");
+    expect(secrets).toContain("OP_SETUP_COMPLETE=false");
+    expect(secrets).not.toContain("OPENAI_API_KEY=");
+    expect(secrets).not.toContain("OP_UI_LOGIN_PASSWORD=");
+    expect(readSecret(stackDir, "op_ui_login_password")).toBeTruthy();
   });
 
-  test("is idempotent — does not overwrite existing stack.env", () => {
+  test("is idempotent — does not overwrite existing non-secret stack.env", () => {
     const state = { stackDir, configDir } as ControlPlaneState;
-    const existingContent = "OP_UI_LOGIN_PASSWORD=my-password\nOPENAI_API_KEY=sk-test\n";
+    const existingContent = "OP_SETUP_COMPLETE=false\nOP_OWNER_NAME=alice\n";
     seedSecretsEnv(stackDir, existingContent);
 
     ensureSecrets(state);
@@ -58,15 +61,15 @@ describe("ensureSecrets", () => {
     expect(result).toBe(existingContent);
   });
 
-  test("includes LLM provider key placeholders in stack.env", () => {
+  test("does not include LLM provider key placeholders in stack.env", () => {
     const state = { stackDir, configDir } as ControlPlaneState;
     ensureSecrets(state);
 
     const secrets = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(secrets).toContain("OPENAI_API_KEY=");
-    expect(secrets).toContain("GROQ_API_KEY=");
-    expect(secrets).toContain("MISTRAL_API_KEY=");
-    expect(secrets).toContain("GOOGLE_API_KEY=");
+    expect(secrets).not.toContain("OPENAI_API_KEY=");
+    expect(secrets).not.toContain("GROQ_API_KEY=");
+    expect(secrets).not.toContain("MISTRAL_API_KEY=");
+    expect(secrets).not.toContain("GOOGLE_API_KEY=");
   });
 
   test("creates stackDir if missing", () => {
@@ -86,49 +89,49 @@ describe("updateSecretsEnv", () => {
     stackDir = trackDir(makeTempDir());
   });
 
-  test("throws when stack.env does not exist", () => {
+  test("creates stack.env when stack.env does not exist", () => {
     const state = { stackDir } as ControlPlaneState;
-    expect(() => updateSecretsEnv(state, { KEY: "val" })).toThrow(
-      "stack.env does not exist"
-    );
+    updateSecretsEnv(state, { KEY: "val" });
+    expect(readFileSync(join(stackDir, "stack.env"), "utf-8")).toContain("KEY=val");
   });
 
-  test("updates existing key in-place", () => {
-    seedSecretsEnv(stackDir, "ADMIN_TOKEN=token\nOPENAI_API_KEY=old\n");
+  test("routes secret keys to file-based secrets", () => {
+    seedSecretsEnv(stackDir, "OP_OWNER_NAME=alice\n");
     const state = { stackDir } as ControlPlaneState;
 
     updateSecretsEnv(state, { OPENAI_API_KEY: "sk-new" });
 
     const result = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(result).toContain("OPENAI_API_KEY=sk-new");
-    expect(result).not.toContain("old");
-    expect(result).toContain("ADMIN_TOKEN=token");
+    expect(result).not.toContain("OPENAI_API_KEY=");
+    expect(result).toContain("OP_OWNER_NAME=alice");
+    expect(readSecret(stackDir, "openai_api_key")).toBe("sk-new\n");
   });
 
-  test("uncomments and updates commented-out keys", () => {
-    seedSecretsEnv(stackDir, "ADMIN_TOKEN=token\n# OPENAI_API_KEY=\n");
+  test("ignores commented-out secret keys in stack.env", () => {
+    seedSecretsEnv(stackDir, "OP_OWNER_NAME=alice\n# OPENAI_API_KEY=\n");
     const state = { stackDir } as ControlPlaneState;
 
     updateSecretsEnv(state, { OPENAI_API_KEY: "sk-uncommented" });
 
     const result = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(result).toContain("OPENAI_API_KEY=sk-uncommented");
-    expect(result).not.toContain("# OPENAI_API_KEY");
+    expect(result).not.toContain("OPENAI_API_KEY=sk-uncommented");
+    expect(result).toContain("# OPENAI_API_KEY=");
+    expect(readSecret(stackDir, "openai_api_key")).toBe("sk-uncommented\n");
   });
 
   test("appends keys not found in file", () => {
-    seedSecretsEnv(stackDir, "ADMIN_TOKEN=token\n");
+    seedSecretsEnv(stackDir, "OP_OWNER_NAME=alice\n");
     const state = { stackDir } as ControlPlaneState;
 
     updateSecretsEnv(state, { NEW_KEY: "new-value" });
 
     const result = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(result).toContain("NEW_KEY=new-value");
-    expect(result).toContain("ADMIN_TOKEN=token");
+    expect(result).toContain("OP_OWNER_NAME=alice");
   });
 
   test("empty updates leave file unchanged", () => {
-    const original = "ADMIN_TOKEN=token\n";
+    const original = "OP_OWNER_NAME=alice\n";
     seedSecretsEnv(stackDir, original);
     const state = { stackDir } as ControlPlaneState;
 
@@ -151,44 +154,44 @@ describe("readStackEnv", () => {
     expect(readStackEnv(stackDir)).toEqual({});
   });
 
-  test("reads all keys from stack.env", () => {
+  test("reads only non-secret keys from stack.env", () => {
     seedSecretsEnv(
       stackDir,
-      "ADMIN_TOKEN=secret\nOPENAI_API_KEY=sk-test\nCUSTOM_KEY=val\n"
+      "OP_UI_LOGIN_PASSWORD=secret\nOPENAI_API_KEY=sk-test\nCUSTOM_KEY=val\n"
     );
 
     const result = readStackEnv(stackDir);
-    expect(result.OPENAI_API_KEY).toBe("sk-test");
-    expect(result.ADMIN_TOKEN).toBe("secret");
+    expect(result.OPENAI_API_KEY).toBeUndefined();
+    expect(result.OP_UI_LOGIN_PASSWORD).toBeUndefined();
     expect(result.CUSTOM_KEY).toBe("val");
   });
 
   test("skips comments and blank lines", () => {
-    seedSecretsEnv(stackDir, "# A comment\n\nOPENAI_API_KEY=sk-test\n# another\n");
+    seedSecretsEnv(stackDir, "# A comment\n\nOP_OWNER_NAME=alice\n# another\n");
     const result = readStackEnv(stackDir);
-    expect(result.OPENAI_API_KEY).toBe("sk-test");
+    expect(result.OP_OWNER_NAME).toBe("alice");
   });
 
   test("strips inline comments from values", () => {
-    seedSecretsEnv(stackDir, "OPENAI_API_KEY=sk-test # my key\n");
+    seedSecretsEnv(stackDir, "OP_OWNER_NAME=alice # owner\n");
     const result = readStackEnv(stackDir);
-    expect(result.OPENAI_API_KEY).toBe("sk-test");
+    expect(result.OP_OWNER_NAME).toBe("alice");
   });
 
   test("unquotes single and double quoted values", () => {
     seedSecretsEnv(
       stackDir,
-      'OPENAI_API_KEY="sk-double"\nGROQ_API_KEY=\'sk-single\'\n'
+      'OP_OWNER_NAME="Alice"\nOPENAI_BASE_URL=\'http://localhost:11434/v1\'\n'
     );
     const result = readStackEnv(stackDir);
-    expect(result.OPENAI_API_KEY).toBe("sk-double");
-    expect(result.GROQ_API_KEY).toBe("sk-single");
+    expect(result.OP_OWNER_NAME).toBe("Alice");
+    expect(result.OPENAI_BASE_URL).toBe("http://localhost:11434/v1");
   });
 
   test("returns empty string for keys with no value", () => {
-    seedSecretsEnv(stackDir, "OPENAI_API_KEY=\n");
+    seedSecretsEnv(stackDir, "OPENAI_BASE_URL=\n");
     const result = readStackEnv(stackDir);
-    expect(result.OPENAI_API_KEY).toBe("");
+    expect(result.OPENAI_BASE_URL).toBe("");
   });
 });
 
@@ -199,37 +202,40 @@ describe("patchSecretsEnvFile", () => {
     stackDir = trackDir(makeTempDir());
   });
 
-  test("patches any key passed to it", () => {
-    seedSecretsEnv(stackDir, "ADMIN_TOKEN=token\nOPENAI_API_KEY=old\n");
+  test("routes secret-like patches to files and writes non-secrets to stack.env", () => {
+    seedSecretsEnv(stackDir, "OP_OWNER_NAME=alice\n");
     patchSecretsEnvFile(stackDir, {
       OPENAI_API_KEY: "sk-new",
-      ADMIN_TOKEN: "updated",
+      OP_UI_LOGIN_PASSWORD: "updated",
       CUSTOM_KEY: "injected"
     });
 
     const result = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(result).toContain("OPENAI_API_KEY=sk-new");
-    expect(result).toContain("ADMIN_TOKEN=updated");
+    expect(result).not.toContain("OPENAI_API_KEY=");
+    expect(result).not.toContain("OP_UI_LOGIN_PASSWORD=");
     expect(result).toContain("CUSTOM_KEY=injected");
+    expect(readSecret(stackDir, "openai_api_key")).toBe("sk-new\n");
+    expect(readSecret(stackDir, "op_ui_login_password")).toBe("updated\n");
   });
 
-  test("appends new keys when not in file", () => {
-    seedSecretsEnv(stackDir, "OPENAI_API_KEY=existing\n");
+  test("appends new non-secret keys when not in file", () => {
+    seedSecretsEnv(stackDir, "OP_OWNER_NAME=alice\n");
     patchSecretsEnvFile(stackDir, { GROQ_API_KEY: "gsk-new" });
 
     const result = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(result).toContain("OPENAI_API_KEY=existing");
-    expect(result).toContain("GROQ_API_KEY=gsk-new");
+    expect(result).toContain("OP_OWNER_NAME=alice");
+    expect(result).not.toContain("GROQ_API_KEY=");
+    expect(readSecret(stackDir, "groq_api_key")).toBe("gsk-new\n");
   });
 
   test("creates file if it does not exist", () => {
     patchSecretsEnvFile(stackDir, { OPENAI_API_KEY: "sk-created" });
-    const result = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(result).toContain("OPENAI_API_KEY=sk-created");
+    expect(existsSync(join(stackDir, "stack.env"))).toBe(false);
+    expect(readSecret(stackDir, "openai_api_key")).toBe("sk-created\n");
   });
 
   test("no-op when patches is empty", () => {
-    const original = "ADMIN_TOKEN=keep\n";
+    const original = "OP_OWNER_NAME=alice\n";
     seedSecretsEnv(stackDir, original);
     patchSecretsEnvFile(stackDir, {});
     expect(readFileSync(join(stackDir, "stack.env"), "utf-8")).toBe(original);
@@ -238,15 +244,15 @@ describe("patchSecretsEnvFile", () => {
   test("preserves comments and existing keys", () => {
     seedSecretsEnv(
       stackDir,
-      "# Config\nADMIN_TOKEN=secret\nOPENAI_API_KEY=old\nCUSTOM=val\n"
+      "# Config\nOP_OWNER_NAME=alice\nCUSTOM=val\n"
     );
-    patchSecretsEnvFile(stackDir, { OPENAI_API_KEY: "sk-updated" });
+    patchSecretsEnvFile(stackDir, { OP_OWNER_EMAIL: "alice@example.com" });
 
     const result = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(result).toContain("# Config");
-    expect(result).toContain("ADMIN_TOKEN=secret");
+    expect(result).toContain("OP_OWNER_NAME=alice");
     expect(result).toContain("CUSTOM=val");
-    expect(result).toContain("OPENAI_API_KEY=sk-updated");
+    expect(result).toContain("OP_OWNER_EMAIL=alice@example.com");
   });
 });
 

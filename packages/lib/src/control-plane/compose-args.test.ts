@@ -2,12 +2,13 @@
  * Tests for canonical compose argument builder.
  */
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   buildComposeOptions,
   buildComposeCliArgs,
+  writeRunScript,
 } from "./compose-args.js";
 import type { ControlPlaneState } from "./types.js";
 
@@ -36,15 +37,11 @@ function seedCoreCompose(): void {
   writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
 }
 
-function seedEnvFiles(files: { stack?: boolean; guardian?: boolean } = {}): void {
+function seedEnvFiles(files: { stack?: boolean } = {}): void {
   const stackDir = join(tempDir, "config", "stack");
   if (files.stack) {
     mkdirSync(stackDir, { recursive: true });
     writeFileSync(join(stackDir, "stack.env"), "KEY=val");
-  }
-  if (files.guardian) {
-    mkdirSync(stackDir, { recursive: true });
-    writeFileSync(join(stackDir, "guardian.env"), "CHANNEL_CHAT_SECRET=abc");
   }
 }
 
@@ -85,15 +82,14 @@ describe("buildComposeOptions", () => {
 
   it("returns env files in correct order", () => {
     // Note: vault/user/user.env is no longer a
-    // compose env_file. The runtime env file list is: stack.env, guardian.env.
+    // compose env_file. The runtime env file list is stack.env only.
     // Even when a legacy user.env is present on disk, it is intentionally
     // excluded from the compose args.
-    seedEnvFiles({ stack: true, guardian: true });
+    seedEnvFiles({ stack: true });
     const state = makeState();
     const opts = buildComposeOptions(state);
-    expect(opts.envFiles).toHaveLength(2);
+    expect(opts.envFiles).toHaveLength(1);
     expect(opts.envFiles[0]).toContain("stack.env");
-    expect(opts.envFiles[1]).toContain("guardian.env");
   });
 
   it("excludes missing env files", () => {
@@ -115,6 +111,36 @@ describe("buildComposeCliArgs", () => {
     expect(args[1]).toBe("openpalm");
   });
 
+  it("uses OP_PROJECT_NAME from stack.env", () => {
+    seedCoreCompose();
+    seedEnvFiles({ stack: true });
+    writeFileSync(join(tempDir, "config", "stack", "stack.env"), "OP_PROJECT_NAME=openpalm-test\n");
+    const state = makeState();
+    const args = buildComposeCliArgs(state);
+    expect(args[0]).toBe("--project-name");
+    expect(args[1]).toBe("openpalm-test");
+  });
+
+  it("uses canonical voice and ollama profile ids", () => {
+    seedCoreCompose();
+    writeFileSync(join(tempDir, "config", "stack", "stack.env"), "OP_VOICE_PROFILE=addon.voice.cuda\nOP_OLLAMA_PROFILE=addon.ollama.cpu\n");
+    const state = makeState();
+    const args = buildComposeCliArgs(state);
+    expect(args).toContain("addon.voice.cuda");
+    expect(args).toContain("addon.ollama.cpu");
+  });
+
+  it("ignores non-canonical addon profile ids", () => {
+    seedCoreCompose();
+    writeFileSync(join(tempDir, "config", "stack", "stack.env"), "OP_VOICE_PROFILE=not-canonical\nOP_OLLAMA_PROFILE=also-not-canonical\n");
+    const state = makeState();
+    const args = buildComposeCliArgs(state);
+    expect(args).not.toContain("not-canonical");
+    expect(args).not.toContain("also-not-canonical");
+    expect(args).not.toContain("addon.voice.cuda");
+    expect(args).not.toContain("addon.ollama.cpu");
+  });
+
   it("includes -f flags for compose files", () => {
     seedCoreCompose();
     const state = makeState();
@@ -126,8 +152,7 @@ describe("buildComposeCliArgs", () => {
 
   it("includes --env-file flags for env files that exist", () => {
     // Note: vault/user/user.env is no longer
-    // listed in the compose env_file set. Only stack.env and guardian.env
-    // (when present) are passed via --env-file.
+    // listed in the compose env_file set. Only stack.env is passed via --env-file.
     seedCoreCompose();
     seedEnvFiles({ stack: true, guardian: true });
     const state = makeState();
@@ -136,7 +161,7 @@ describe("buildComposeCliArgs", () => {
       if (arg === "--env-file") acc.push(i);
       return acc;
     }, []);
-    expect(envFileIndices).toHaveLength(2);
+    expect(envFileIndices).toHaveLength(1);
   });
 
   it("does not include --env-file for missing files", () => {
@@ -158,5 +183,27 @@ describe("buildComposeCliArgs", () => {
     }, []);
     expect(fFlags).toHaveLength(2);
     expect(fFlags[1]).toContain("chat");
+  });
+});
+
+// ── writeRunScript ───────────────────────────────────────────────────────
+
+describe("writeRunScript", () => {
+  it("sources stack.env and skips empty profile vars", () => {
+    seedCoreCompose();
+    seedEnvFiles({ stack: true, guardian: true });
+    const state = makeState();
+
+    writeRunScript(state);
+
+    const script = readFileSync(join(tempDir, "run.sh"), "utf-8");
+    expect(script).toContain("set -a");
+    expect(script).toContain('OP_HOME="${OP_HOME:-$SCRIPT_DIR}"');
+    expect(script).toContain('source "${OP_HOME}/config/stack/stack.env"');
+    expect(script).toContain('for profile in "${OP_VOICE_PROFILE:-}" "${OP_OLLAMA_PROFILE:-}"; do');
+    expect(script).toContain('if [[ -n "$profile" ]]; then');
+    expect(script).toContain('docker compose --project-name "${OP_PROJECT_NAME:-${COMPOSE_PROJECT_NAME:-openpalm}}"');
+    expect(script).not.toContain('--profile ${OP_VOICE_PROFILE}');
+    expect(script).not.toContain('--profile ${OP_OLLAMA_PROFILE}');
   });
 });

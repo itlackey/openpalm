@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { detectHostInfo, main } from './main.ts';
-import { reconcileStackEnvImageTag, resolveRequestedImageTag, upsertEnvValue } from '@openpalm/lib';
+import { readSecret, reconcileStackEnvImageTag, resolveRequestedImageTag, upsertEnvValue } from '@openpalm/lib';
 import { canReplaceCurrentExecutable, resolveCliArtifactName } from './commands/self-update.ts';
 
 /** Write a minimal SetupSpec YAML file that satisfies validation, allowing --file installs to skip the wizard. */
@@ -160,11 +160,7 @@ describe('cli main', () => {
       expect(existsSync(join(base, 'state', 'admin'))).toBe(true);
       expect(existsSync(join(base, 'state', 'registry', 'addons', 'chat', 'compose.yml'))).toBe(true);
       expect(existsSync(join(base, 'state', 'registry', 'automations', 'cleanup-logs.yml'))).toBe(true);
-      // guardian.env must be a file (not directory) — Docker creates a directory
-      // when bind-mounting a non-existent source path, breaking compose up.
-      const guardianEnv = join(base, 'config', 'stack', 'guardian.env');
-      expect(existsSync(guardianEnv)).toBe(true);
-      expect(statSync(guardianEnv).isFile()).toBe(true);
+      expect(existsSync(join(base, 'config', 'stack', 'guardian.env'))).toBe(false);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
@@ -255,7 +251,7 @@ describe('cli main', () => {
     // carries forward existing content.
     mkdirSync(join(base, 'state'), { recursive: true });
     mkdirSync(join(base, 'config', 'stack'), { recursive: true });
-    writeFileSync(join(base, 'config', 'stack', 'stack.env'), 'OP_UI_LOGIN_PASSWORD=existing-password\n');
+    writeFileSync(join(base, 'config', 'stack', 'stack.env'), 'OP_OWNER_NAME=existing-owner\n');
     writeFileSync(stackConfig, 'llm: old\n');
 
     process.env.OP_HOME = base;
@@ -284,7 +280,7 @@ describe('cli main', () => {
       const backups = readdirSync(backupsDir);
       expect(backups.length).toBeGreaterThan(0);
       expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack.yml'), 'utf8')).toContain('llm: old');
-      expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack', 'stack.env'), 'utf8')).toContain('OP_UI_LOGIN_PASSWORD=existing-password');
+      expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack', 'stack.env'), 'utf8')).toContain('OP_OWNER_NAME=existing-owner');
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
@@ -295,7 +291,6 @@ describe('cli main', () => {
     const coreCompose = join(base, 'config', 'stack', 'core.compose.yml');
     const adminAddonDir = join(base, 'state', 'registry', 'addons', 'admin');
     const chatAddonDir = join(base, 'state', 'registry', 'addons', 'chat');
-    const guardianEnv = join(base, 'config', 'stack', 'guardian.env');
     const logs: string[] = [];
 
     mkdirSync(join(base, 'config', 'stack'), { recursive: true });
@@ -307,7 +302,6 @@ describe('cli main', () => {
     writeFileSync(join(adminAddonDir, '.env.schema'), 'OP_UI_LOGIN_PASSWORD=\n');
     writeFileSync(join(chatAddonDir, 'compose.yml'), 'services:\n  chat:\n    image: chat\n    environment:\n      CHANNEL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
     writeFileSync(join(chatAddonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
-    writeFileSync(guardianEnv, '# Guardian channel HMAC secrets — managed by openpalm\n');
 
     process.env.OP_HOME = base;
     process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
@@ -318,7 +312,7 @@ describe('cli main', () => {
     try {
       await main(['addon', 'enable', 'chat']);
       expect(existsSync(join(base, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
-      expect(readFileSync(guardianEnv, 'utf8')).toMatch(/CHANNEL_CHAT_SECRET=/);
+      expect(readSecret(join(base, 'config', 'stack'), 'channel_chat_secret')).toBeTruthy();
 
       await main(['addon', 'disable', 'chat']);
       expect(existsSync(join(base, 'config', 'stack', 'addons', 'chat'))).toBe(false);
@@ -407,11 +401,13 @@ describe('npm bin launcher', () => {
 });
 
 describe('validate command', () => {
-  it('is a recognized command and exits 0 when stack.env carries the required tokens', async () => {
+  it('is a recognized command and exits 0 when file-based required secrets exist', async () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
     const stackDir = join(tempHome, 'config', 'stack');
     mkdirSync(stackDir, { recursive: true });
-    writeFileSync(join(stackDir, 'stack.env'), 'OP_UI_LOGIN_PASSWORD=abc\n');
+    mkdirSync(join(stackDir, 'secrets'), { recursive: true, mode: 0o700 });
+    writeFileSync(join(stackDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
+    writeFileSync(join(stackDir, 'secrets', 'op_ui_login_password'), 'abc\n', { mode: 0o600 });
 
     const originalHome = process.env.OP_HOME;
     const originalExit = process.exit;
@@ -445,6 +441,32 @@ describe('scan command', () => {
 
     try {
       const err = await main(['scan']).catch((e: unknown) => e);
+      const message = err instanceof Error ? err.message : String(err);
+      expect(message).not.toContain('Unknown command');
+      expect(message).toBe('process.exit(0)');
+    } finally {
+      process.exit = originalExit;
+      process.env.OP_HOME = originalHome;
+      rmSync(tempHome, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('audit-secrets command', () => {
+  it('is a recognized command and exits 0 for file-based secrets', async () => {
+    const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
+    const stackDir = join(tempHome, 'config', 'stack');
+    mkdirSync(join(stackDir, 'secrets'), { recursive: true, mode: 0o700 });
+    writeFileSync(join(stackDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
+    writeFileSync(join(stackDir, 'secrets', 'op_ui_login_password'), 'abc\n', { mode: 0o600 });
+
+    const originalHome = process.env.OP_HOME;
+    const originalExit = process.exit;
+    process.env.OP_HOME = tempHome;
+    process.exit = mock((_code?: number) => { throw new Error(`process.exit(${_code})`); }) as typeof process.exit;
+
+    try {
+      const err = await main(['audit-secrets']).catch((e: unknown) => e);
       const message = err instanceof Error ? err.message : String(err);
       expect(message).not.toContain('Unknown command');
       expect(message).toBe('process.exit(0)');

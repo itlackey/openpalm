@@ -106,7 +106,7 @@ bun run ui:test:e2e
 
 All three required env vars for the first form:
 - `RUN_DOCKER_STACK_TESTS=1` — gates are skipped by default; this unlocks them
-- `OP_UI_LOGIN_PASSWORD=dev-admin-token` — the admin password seeded by `dev-setup.sh` (renamed from `ADMIN_TOKEN` in Phase 2 of the auth/proxy refactor)
+- `OP_UI_LOGIN_PASSWORD=dev-admin-token` — the admin password seeded by `dev-setup.sh`
 - `ADMIN_URL=http://127.0.0.1:9100` — admin host URL (auto-built if `STACK_ENV_PATH` is used)
 
 Expected results (with assistant running):

@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, rmSync, statSync, existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureSecrets, type ControlPlaneState } from "@openpalm/lib";
+import { ensureSecrets, readSecret, type ControlPlaneState } from "@openpalm/lib";
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `openpalm-test-${randomBytes(4).toString("hex")}`);
@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe("ensureSecrets", () => {
-  test("seeds state env files with default keys on first run", () => {
+  test("seeds non-secret stack env and file-based system secrets on first run", () => {
     const stackDir = join(rootDir, "config", "stack");
     mkdirSync(stackDir, { recursive: true });
 
@@ -34,9 +34,10 @@ describe("ensureSecrets", () => {
     ensureSecrets(state);
 
     const stackEnv = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(stackEnv).toContain("OPENAI_API_KEY=");
-    expect(stackEnv).toContain("OP_OWNER_NAME=");
-    expect(stackEnv).toContain("OP_UI_LOGIN_PASSWORD=");
+    expect(stackEnv).toContain("OP_SETUP_COMPLETE=false");
+    expect(stackEnv).not.toContain("OPENAI_API_KEY=");
+    expect(stackEnv).not.toContain("OP_UI_LOGIN_PASSWORD=");
+    expect(readSecret(stackDir, "op_ui_login_password")).toBeTruthy();
   });
 
   test("applies strict permissions to state files", () => {

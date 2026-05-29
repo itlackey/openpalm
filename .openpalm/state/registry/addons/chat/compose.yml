@@ -1,6 +1,6 @@
 # Addon: Chat — chat-focused API edge
 # Uses the same @openpalm/channel-api package as the API addon, with CHANNEL_ID=chat
-# so the guardian sees channel="chat" and the HMAC secret comes from CHANNEL_CHAT_SECRET.
+# so the guardian sees channel="chat" and the HMAC secret comes from CHANNEL_CHAT_SECRET_FILE.
 services:
   chat:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
@@ -13,7 +13,9 @@ services:
       CHANNEL_NAME: "Chat"
       CHANNEL_ID: "chat"
       CHANNEL_PACKAGE: "@openpalm/channel-api"
-      CHANNEL_CHAT_SECRET: ${CHANNEL_CHAT_SECRET:-}
+      CHANNEL_SECRET_FILE: /run/secrets/channel_chat_secret
+    secrets:
+      - channel_chat_secret
     networks: [channel_lan]
     depends_on:
       guardian:
@@ -29,3 +31,13 @@ services:
       openpalm.icon: message-circle
       openpalm.category: messaging
       openpalm.healthcheck: http://chat:8181/health
+
+  guardian:
+    environment:
+      CHANNEL_CHAT_SECRET_FILE: /run/secrets/channel_chat_secret
+    secrets:
+      - channel_chat_secret
+
+secrets:
+  channel_chat_secret:
+    file: ${OP_HOME}/config/stack/secrets/channel_chat_secret

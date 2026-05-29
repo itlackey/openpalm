@@ -17,12 +17,20 @@ Compose files are the source of truth; the admin UI/API is optional convenience.
 3. In **Bot**, create or reset the bot token and copy it as `DISCORD_BOT_TOKEN`.
 4. Enable **Message Content Intent** under **Privileged Gateway Intents**.
 
-## 2. Add Discord secrets to `stack.env`
+## 2. Add Discord credentials
 
-Edit `~/.openpalm/config/stack/stack.env`:
+Store the bot token as a file-based secret and keep the application ID in `stack.env`:
+
+```bash
+mkdir -p ~/.openpalm/config/stack/secrets
+printf '%s\n' 'your-bot-token' > ~/.openpalm/config/stack/secrets/discord_bot_token
+chmod 700 ~/.openpalm/config/stack/secrets
+chmod 600 ~/.openpalm/config/stack/secrets/discord_bot_token
+```
+
+Add non-secret Discord settings to `~/.openpalm/config/stack/stack.env`:
 
 ```dotenv
-DISCORD_BOT_TOKEN=your-bot-token
 DISCORD_APPLICATION_ID=your-application-id
 ```
 
@@ -45,8 +53,6 @@ cd "$HOME/.openpalm/stack"
 docker compose \
   --project-name openpalm \
   --env-file ../config/stack/stack.env \
-  --env-file ../config/stack/guardian.env \
-  --env-file ../stash/vaults/user.env \
   -f core.compose.yml \
   -f addons/discord/compose.yml \
   up -d
@@ -90,8 +96,8 @@ Conversation notes:
 
 ## Troubleshooting
 
-- No bot replies: confirm `DISCORD_BOT_TOKEN`, Message Content Intent, and that the `discord` service is running
-- Slash commands missing: confirm `DISCORD_APPLICATION_ID`, `DISCORD_BOT_TOKEN`, and `DISCORD_REGISTER_COMMANDS!=false`
+- No bot replies: confirm the `discord_bot_token` secret file, Message Content Intent, and that the `discord` service is running
+- Slash commands missing: confirm `DISCORD_APPLICATION_ID`, the bot token secret file, and `DISCORD_REGISTER_COMMANDS!=false`
 - Bot still appears offline: confirm the bot token, gateway intents, and that the `discord` container can reach Discord
 - Forwarding issues: inspect `docker compose logs guardian discord`
 
@@ -107,4 +113,4 @@ Conversation notes:
 | `DISCORD_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `DISCORD_BLOCKED_USERS` | no | Comma-separated user blocklist |
 | `DISCORD_CUSTOM_COMMANDS` | no | JSON array of custom slash commands |
-| `CHANNEL_DISCORD_SECRET` | system-managed | Guardian HMAC secret from `config/stack/guardian.env` |
+| `CHANNEL_DISCORD_SECRET_FILE` | system-managed | Path to Guardian HMAC secret file granted from `config/stack/secrets/` |

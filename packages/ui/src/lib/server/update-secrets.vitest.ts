@@ -1,13 +1,6 @@
 /**
- * Tests for updateSecretsEnv — user.env patching utility used by the capabilities API.
- *
- * Verifies:
- * 1. All provided keys are written
- * 2. Existing lines are updated in-place
- * 3. Commented-out lines are uncommented and updated
- * 4. New keys are appended when not present in file
- * 5. Throws when user.env does not exist
- * 6. Comments and blank lines are preserved
+ * Tests for updateSecretsEnv — stack.env + file-based secret patching used by
+ * the capabilities API.
  */
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import {
@@ -15,31 +8,11 @@ import {
   writeFileSync,
   readFileSync,
   rmSync,
-  existsSync
 } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mergeEnvContent } from '@openpalm/lib';
-
-// ── Inline implementation (mirrors control-plane.ts) ────────────────────
-// Uses mergeEnvContent from the shared env utility. We keep the file I/O
-// inline to avoid importing control-plane.ts (which has Vite-specific deps).
-
-type TestState = { configDir: string };
-
-function updateSecretsEnv(
-  state: TestState,
-  updates: Record<string, string>
-): void {
-  const secretsPath = `${state.configDir}/user.env`;
-  if (!existsSync(secretsPath)) {
-    throw new Error("user.env does not exist — run setup first");
-  }
-
-  const raw = readFileSync(secretsPath, "utf-8");
-  writeFileSync(secretsPath, mergeEnvContent(raw, updates, { uncomment: true }));
-}
+import { readSecret, updateSecretsEnv, type ControlPlaneState } from '@openpalm/lib';
 
 // ── Test helpers ────────────────────────────────────────────────────────
 
@@ -49,164 +22,167 @@ function makeTempDir(): string {
   return dir;
 }
 
-function seedSecrets(configDir: string, content: string): void {
-  mkdirSync(configDir, { recursive: true });
-  writeFileSync(join(configDir, "user.env"), content);
+function makeState(homeDir: string): ControlPlaneState {
+  return {
+    homeDir,
+    configDir: join(homeDir, "config"),
+    stashDir: join(homeDir, "stash"),
+    workspaceDir: join(homeDir, "workspace"),
+    cacheDir: join(homeDir, "cache"),
+    stateDir: join(homeDir, "state"),
+    stackDir: join(homeDir, "config", "stack"),
+    services: {},
+    artifacts: { compose: "" },
+    artifactMeta: [],
+  };
 }
 
-function readSecrets(configDir: string): string {
-  return readFileSync(join(configDir, "user.env"), "utf-8");
+function seedStackEnv(stackDir: string, content: string): void {
+  mkdirSync(stackDir, { recursive: true });
+  writeFileSync(join(stackDir, "stack.env"), content);
+}
+
+function readStackEnv(stackDir: string): string {
+  return readFileSync(join(stackDir, "stack.env"), "utf-8");
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
-let configDir: string;
+let state: ControlPlaneState;
 
 beforeEach(() => {
-  configDir = makeTempDir();
+  state = makeState(makeTempDir());
 });
 
 afterEach(() => {
-  rmSync(configDir, { recursive: true, force: true });
+  rmSync(state.homeDir, { recursive: true, force: true });
 });
 
 describe("updateSecretsEnv", () => {
-  test("throws when user.env does not exist", () => {
-    const state: TestState = { configDir };
-    expect(() => updateSecretsEnv(state, { OPENAI_API_KEY: "sk-test" })).toThrow(
-      "user.env does not exist — run setup first"
-    );
-  });
-
-  test("updates existing key in-place", () => {
-    seedSecrets(configDir, [
-      "ADMIN_TOKEN=my-admin-token",
-      "OPENAI_API_KEY=old-key",
+  test("writes secret-like keys to file-based secrets", () => {
+    seedStackEnv(state.stackDir, [
+      "USER_SETTING=my-admin-value",
       ""
     ].join("\n"));
 
-    const state: TestState = { configDir };
     updateSecretsEnv(state, { OPENAI_API_KEY: "sk-new-key" });
 
-    const result = readSecrets(configDir);
-    expect(result).toContain("OPENAI_API_KEY=sk-new-key");
-    expect(result).not.toContain("old-key");
-    expect(result).toContain("ADMIN_TOKEN=my-admin-token");
+    const result = readStackEnv(state.stackDir);
+    expect(result).not.toContain("OPENAI_API_KEY=");
+    expect(result).toContain("USER_SETTING=my-admin-value");
+    expect(readSecret(state.stackDir, "openai_api_key")).toBe("sk-new-key\n");
   });
 
-  test("uncomments commented-out key and sets value", () => {
-    seedSecrets(configDir, [
-      "ADMIN_TOKEN=token",
+  test("leaves commented secret placeholders untouched and writes a secret file", () => {
+    seedStackEnv(state.stackDir, [
+      "USER_SETTING=token",
       "# OPENAI_API_KEY=",
       ""
     ].join("\n"));
 
-    const state: TestState = { configDir };
     updateSecretsEnv(state, { OPENAI_API_KEY: "sk-uncommented" });
 
-    const result = readSecrets(configDir);
-    expect(result).toContain("OPENAI_API_KEY=sk-uncommented");
-    expect(result).not.toContain("# OPENAI_API_KEY");
+    const result = readStackEnv(state.stackDir);
+    expect(result).not.toContain("OPENAI_API_KEY=sk-uncommented");
+    expect(result).toContain("# OPENAI_API_KEY=");
+    expect(readSecret(state.stackDir, "openai_api_key")).toBe("sk-uncommented\n");
   });
 
-  test("appends new key when not in file", () => {
-    seedSecrets(configDir, [
-      "ADMIN_TOKEN=token",
-      "OPENAI_API_KEY=existing",
+  test("appends non-secret keys when not in stack.env", () => {
+    seedStackEnv(state.stackDir, [
+      "USER_SETTING=token",
       ""
     ].join("\n"));
 
-    const state: TestState = { configDir };
     updateSecretsEnv(state, { OPENAI_BASE_URL: "http://localhost:11434/v1" });
 
-    const result = readSecrets(configDir);
+    const result = readStackEnv(state.stackDir);
     expect(result).toContain("OPENAI_BASE_URL=http://localhost:11434/v1");
-    expect(result).toContain("ADMIN_TOKEN=token");
-    expect(result).toContain("OPENAI_API_KEY=existing");
+    expect(result).toContain("USER_SETTING=token");
   });
 
-  test("writes any key including ADMIN_TOKEN", () => {
-    seedSecrets(configDir, [
-      "ADMIN_TOKEN=",
+  test("splits mixed updates between stack.env and secret files", () => {
+    seedStackEnv(state.stackDir, [
+      "USER_SETTING=token",
       ""
     ].join("\n"));
 
-    const state: TestState = { configDir };
     updateSecretsEnv(state, {
-      ADMIN_TOKEN: "new-secure-token",
+      CUSTOM_SECRET: "new-secure-token",
       OPENAI_API_KEY: "sk-legit"
     });
 
-    const result = readSecrets(configDir);
-    expect(result).toContain("ADMIN_TOKEN=new-secure-token");
-    expect(result).toContain("OPENAI_API_KEY=sk-legit");
+    const result = readStackEnv(state.stackDir);
+    expect(result).not.toContain("CUSTOM_SECRET=new-secure-token");
+    expect(result).not.toContain("OPENAI_API_KEY=sk-legit");
+    expect(result).toContain("USER_SETTING=token");
+    expect(readSecret(state.stackDir, "custom_secret")).toBe("new-secure-token\n");
+    expect(readSecret(state.stackDir, "openai_api_key")).toBe("sk-legit\n");
   });
 
   test("handles multiple updates at once", () => {
-    seedSecrets(configDir, [
-      "ADMIN_TOKEN=token",
-      "OPENAI_API_KEY=",
+    seedStackEnv(state.stackDir, [
+      "USER_SETTING=token",
       "# GROQ_API_KEY=",
       ""
     ].join("\n"));
 
-    const state: TestState = { configDir };
     updateSecretsEnv(state, {
       OPENAI_API_KEY: "sk-openai",
       GROQ_API_KEY: "gsk-groq",
       OP_OWNER_NAME: "alice"
     });
 
-    const result = readSecrets(configDir);
-    expect(result).toContain("OPENAI_API_KEY=sk-openai");
-    expect(result).toContain("GROQ_API_KEY=gsk-groq");
+    const result = readStackEnv(state.stackDir);
+    expect(result).not.toContain("OPENAI_API_KEY=");
+    expect(result).not.toContain("GROQ_API_KEY=gsk-groq");
+    expect(result).toContain("# GROQ_API_KEY=");
     expect(result).toContain("OP_OWNER_NAME=alice");
-    expect(result).toContain("ADMIN_TOKEN=token");
+    expect(result).toContain("USER_SETTING=token");
+    expect(readSecret(state.stackDir, "openai_api_key")).toBe("sk-openai\n");
+    expect(readSecret(state.stackDir, "groq_api_key")).toBe("gsk-groq\n");
   });
 
   test("preserves comments and blank lines", () => {
     const original = [
       "# OpenPalm Secrets",
-      "# Edit this file to update admin token and LLM keys.",
+      "# Edit this file to update user vault keys.",
       "",
-      "ADMIN_TOKEN=token123",
+      "USER_SETTING=token123",
       "",
       "# LLM provider keys",
-      "OPENAI_API_KEY=old",
       ""
     ].join("\n");
-    seedSecrets(configDir, original);
+    seedStackEnv(state.stackDir, original);
 
-    const state: TestState = { configDir };
     updateSecretsEnv(state, { OPENAI_API_KEY: "sk-updated" });
 
-    const result = readSecrets(configDir);
+    const result = readStackEnv(state.stackDir);
     expect(result).toContain("# OpenPalm Secrets");
-    expect(result).toContain("# Edit this file to update admin token and LLM keys.");
-    expect(result).toContain("ADMIN_TOKEN=token123");
-    expect(result).toContain("OPENAI_API_KEY=sk-updated");
+    expect(result).toContain("# Edit this file to update user vault keys.");
+    expect(result).toContain("USER_SETTING=token123");
+    expect(result).not.toContain("OPENAI_API_KEY=sk-updated");
+    expect(readSecret(state.stackDir, "openai_api_key")).toBe("sk-updated\n");
   });
 
   test("appends keys that don't exist in the file at all", () => {
-    seedSecrets(configDir, "ADMIN_TOKEN=token\n");
+    seedStackEnv(state.stackDir, "USER_SETTING=token\n");
 
-    const state: TestState = { configDir };
     updateSecretsEnv(state, { CUSTOM_KEY: "value1", ANOTHER: "val2" });
 
-    const result = readSecrets(configDir);
+    const result = readStackEnv(state.stackDir);
     expect(result).toContain("CUSTOM_KEY=value1");
     expect(result).toContain("ANOTHER=val2");
-    expect(result).toContain("ADMIN_TOKEN=token");
+    expect(result).toContain("USER_SETTING=token");
   });
 
   test("empty updates leave file unchanged", () => {
-    const original = "ADMIN_TOKEN=token\nOPENAI_API_KEY=sk-key\n";
-    seedSecrets(configDir, original);
+    const original = "USER_SETTING=token\nOPENAI_BASE_URL=http://localhost:11434/v1\n";
+    seedStackEnv(state.stackDir, original);
 
-    const state: TestState = { configDir };
     updateSecretsEnv(state, {});
 
-    const result = readSecrets(configDir);
+    const result = readStackEnv(state.stackDir);
     expect(result).toBe(original);
   });
 });

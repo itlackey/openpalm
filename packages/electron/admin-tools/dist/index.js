@@ -12440,7 +12440,7 @@ var compose_ps_default = tool({
 });
 
 // src/tools/secrets-list-keys.ts
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 function parseEnvKeys(content) {
   const keys = [];
@@ -12464,20 +12464,23 @@ function opHome() {
   return process.env.OP_HOME ?? join(process.env.HOME ?? "", ".openpalm");
 }
 var secrets_list_keys_default = tool({
-  description: "List the NAMES of secrets in the OpenPalm env files (stack.env, " + "guardian.env, user vault). Never returns values. Use the admin UI to " + "view or change a value.",
+  description: "List stack.env keys and config/stack/secrets file names. " + "Never returns values. Use the admin UI to " + "view or change a value.",
   args: {
-    file: tool.schema.enum(["stack", "guardian", "user", "all"]).optional().default("all").describe("Which env file to inspect. Defaults to all.")
+    file: tool.schema.enum(["stack", "secrets", "all"]).optional().default("all").describe("Which source to inspect. Defaults to all.")
   },
   async execute(args) {
     const home = opHome();
     const files = {
-      stack: join(home, "config", "stack", "stack.env"),
-      guardian: join(home, "config", "stack", "guardian.env"),
-      user: join(home, "stash", "vaults", "user.env")
+      stack: join(home, "config", "stack", "stack.env")
     };
-    const targets = args.file === "all" ? Object.keys(files) : [args.file];
+    const targets = args.file === "all" ? ["stack", "secrets"] : [args.file];
     const result = {};
     for (const t of targets) {
+      if (t === "secrets") {
+        const secretsDir = join(home, "config", "stack", "secrets");
+        result[t] = existsSync(secretsDir) ? { exists: true, keys: readdirSync(secretsDir).sort() } : { exists: false, keys: [] };
+        continue;
+      }
       const path = files[t];
       if (!path || !existsSync(path)) {
         result[t] = { exists: false, keys: [] };

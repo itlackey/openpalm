@@ -4,7 +4,7 @@
  * Verifies that:
  * 1. Stack compose overlays live in config/stack/ (not config/components/)
  * 2. Compose file list uses config/stack/ paths
- * 3. User extensions live in vault/user/user.env (secrets live in config/stack/stack.env)
+ * 3. User vault data lives in stash/vaults/user.env; stack secrets live in config/stack/secrets/
  * 4. Runtime validation checks the stack spec for channels
  * 5. Configuration persistence is idempotent
  */
@@ -119,7 +119,7 @@ describe("Stack overlay discovery — stack/ layout", () => {
 describe("User extensions in stash/vaults/user.env (akm vault:user store)", () => {
   test("user.env is read from stash/vaults/", () => {
     const state = makeState(baseDir);
-    const secretsContent = "ADMIN_TOKEN=test-token\n";
+    const secretsContent = "CUSTOM_SECRET=test-token\n";
     seedUserEnv(state.stashDir, secretsContent);
 
     const userEnvPath = join(state.stashDir, "vaults", "user.env");
@@ -153,4 +153,3 @@ describe("Runtime validation uses stack/addons/", () => {
     expect(isValidChannel("unstaged", state.configDir)).toBe(false);
   });
 });
-

@@ -52,7 +52,7 @@ Responsibilities:
 The security checkpoint for all inbound channel traffic.
 
 For every inbound message it:
-1. Verifies HMAC signature (`CHANNEL_<NAME>_SECRET`)
+1. Verifies HMAC signature using the channel secret file granted through `CHANNEL_<NAME>_SECRET_FILE`
 2. Rejects replayed messages (5-minute replay cache)
 3. Enforces rate limits (120 req/min per user)
 4. Validates payload shape (channel, userId, message, timestamp)
@@ -99,7 +99,8 @@ User sends message via chat client
         |
         v
 chat :3820 (host) -> :8181 (container)
-  Signs message: HMAC-SHA256(CHANNEL_CHAT_SECRET, payload)
+  Reads CHANNEL_CHAT_SECRET_FILE
+  Signs message: HMAC-SHA256(channel secret, payload)
   POSTs to guardian:8080/channel/inbound
         |
         v
@@ -175,13 +176,14 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
 ~/.openpalm/config/stack/core.compose.yml         -> base compose definition
 ~/.openpalm/config/stack/addons/chat/compose.yml  -> addon overlay
 ~/.openpalm/state/registry/addons/chat/.env.schema -> addon config contract
-~/.openpalm/config/stack/stack.env          -> passed via --env-file
-~/.openpalm/stash/vaults/user.env            -> user-managed secrets (akm vault:user)
+~/.openpalm/config/stack/stack.env          -> non-secret values passed via --env-file
+~/.openpalm/config/stack/secrets/           -> system-managed Compose secret files
+~/.openpalm/stash/vaults/user.env           -> user-managed secrets (akm vault:user)
 ```
 
-Docker reads compose files and env files directly from their final locations.
+Docker reads compose files, the non-secret env file, and secret files directly from their final locations.
 There is no intermediate staging step. The standard wrapper includes
-`config/stack/stack.env` and `config/stack/guardian.env`.
+`config/stack/stack.env`; Compose `secrets:` grants files from `config/stack/secrets/`.
 
 ---
 
@@ -196,10 +198,10 @@ There is no intermediate staging step. The standard wrapper includes
 
 ### HMAC signing
 
-Each channel has its own secret (`CHANNEL_<NAME>_SECRET`). The channel adapter
-signs the full JSON payload with HMAC-SHA256 before sending. Guardian verifies
-the signature using the same secret. A message with a wrong or missing signature
-is rejected at the door.
+Each channel has its own secret file. The channel adapter reads the path from
+`CHANNEL_<NAME>_SECRET_FILE` and signs the full JSON payload with HMAC-SHA256
+before sending. Guardian receives the same secret through an explicit Compose
+secret grant and rejects messages with wrong or missing signatures at the door.
 
 ### Allowlist enforcement
 

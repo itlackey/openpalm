@@ -12,7 +12,7 @@
  *   GET  /health                — Health check
  */
 
-import { BaseChannel, constantTimeEqual, asRecord, extractChatText } from "@openpalm/channels-sdk";
+import { BaseChannel, constantTimeEqual, asRecord, extractChatText, readOptionalSecretFile } from "@openpalm/channels-sdk";
 
 // ── Error helpers ────────────────────────────────────────────────────────
 
@@ -54,7 +54,7 @@ export default class ApiChannel extends BaseChannel {
 
   /** API key for Bearer / x-api-key auth. Empty = no auth required. */
   get apiKey(): string {
-    return Bun.env.OPENAI_COMPAT_API_KEY ?? "";
+    return readOptionalSecretFile("OPENAI_COMPAT_API_KEY_FILE");
   }
 
   // ── Auth ─────────────────────────────────────────────────────────────

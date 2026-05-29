@@ -18,8 +18,8 @@ It normally runs via `addons/slack/compose.yml` and connects outbound to Slack, 
 
 - Shipped addon source: `.openpalm/state/registry/addons/slack/compose.yml`
 - Enabled runtime overlay: `~/.openpalm/config/stack/addons/slack/compose.yml`
-- User-managed values: `~/.openpalm/stash/vaults/user.env`
-- System-managed HMAC secret: `CHANNEL_SLACK_SECRET` in `~/.openpalm/config/stack/guardian.env`
+- Non-secret values: `~/.openpalm/config/stack/stack.env`
+- Secret values: files under `~/.openpalm/config/stack/secrets/`
 
 Manual start example:
 
@@ -27,17 +27,15 @@ Manual start example:
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
-  --env-file ../config/stack/stack.env \
-  --env-file ../stash/vaults/user.env \
+  --env-file stack.env \
   -f core.compose.yml \
   -f addons/slack/compose.yml \
   up -d
 ```
 
-The shipped addon overlay loads `config/stack/stack.env` and `stash/vaults/user.env`
-with `env_file`, so Slack credentials placed in `user.env` are passed into the container.
+The shipped addon overlay uses explicit non-secret environment entries and Docker secret grants. It does not use service-level `env_file`.
 
-`CHANNEL_SLACK_SECRET` remains system-managed in `config/stack/guardian.env`.
+`CHANNEL_SLACK_SECRET_FILE` points to the system-managed secret grant from `config/stack/secrets/`.
 
 See `docs/channels/slack-setup.md` for the full setup guide.
 
@@ -45,9 +43,9 @@ See `docs/channels/slack-setup.md` for the full setup guide.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `CHANNEL_SLACK_SECRET` | system-managed | Guardian HMAC secret |
-| `SLACK_BOT_TOKEN` | yes | Bot User OAuth token (`xoxb-...`) |
-| `SLACK_APP_TOKEN` | yes | App-level Socket Mode token (`xapp-...`) |
+| `CHANNEL_SLACK_SECRET_FILE` | system-managed | Guardian HMAC secret file path |
+| `SLACK_BOT_TOKEN_FILE` | yes | Bot User OAuth token file path |
+| `SLACK_APP_TOKEN_FILE` | yes | App-level Socket Mode token file path |
 | `SLACK_ALLOWED_CHANNELS` | no | Comma-separated channel allowlist |
 | `SLACK_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `SLACK_BLOCKED_USERS` | no | Comma-separated user blocklist |

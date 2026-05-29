@@ -1,7 +1,7 @@
 # Slack Bot Setup
 
 This guide connects a Slack bot to OpenPalm's Slack addon.
-OpenPalm is compose-first: add the Slack overlay to your compose file set, put Slack tokens in `user.env`, and restart the stack.
+OpenPalm is compose-first: add the Slack overlay to your compose file set, store Slack tokens as file-based secrets, and restart the stack.
 
 ## Prerequisites
 
@@ -40,13 +40,16 @@ OpenPalm is compose-first: add the Slack overlay to your compose file set, put S
 8. In **App Home**, enable the Home tab.
 9. Install the app to the workspace and copy the bot token as `SLACK_BOT_TOKEN`.
 
-## 2. Add Slack tokens to `user.env`
+## 2. Add Slack token secrets
 
-Edit `~/.openpalm/stash/vaults/user.env`:
+Store Slack tokens under `config/stack/secrets/`:
 
-```dotenv
-SLACK_BOT_TOKEN=xoxb-your-bot-token
-SLACK_APP_TOKEN=xapp-your-app-token
+```bash
+mkdir -p ~/.openpalm/config/stack/secrets
+printf '%s\n' 'xoxb-your-bot-token' > ~/.openpalm/config/stack/secrets/slack_bot_token
+printf '%s\n' 'xapp-your-app-token' > ~/.openpalm/config/stack/secrets/slack_app_token
+chmod 700 ~/.openpalm/config/stack/secrets
+chmod 600 ~/.openpalm/config/stack/secrets/slack_bot_token ~/.openpalm/config/stack/secrets/slack_app_token
 ```
 
 Optional access controls:
@@ -57,7 +60,7 @@ SLACK_ALLOWED_USERS=U01ABCDEF23
 SLACK_BLOCKED_USERS=U09ZZZZZZ99
 ```
 
-`CHANNEL_SLACK_SECRET` is system-managed and stays in `~/.openpalm/config/stack/guardian.env`.
+`CHANNEL_SLACK_SECRET_FILE` is system-managed and points to the channel HMAC secret granted from `~/.openpalm/config/stack/secrets/`.
 
 ## 3. Start the addon
 
@@ -68,8 +71,6 @@ cd "$HOME/.openpalm/stack"
 docker compose \
   --project-name openpalm \
   --env-file ../config/stack/stack.env \
-  --env-file ../config/stack/guardian.env \
-  --env-file ../stash/vaults/user.env \
   -f core.compose.yml \
   -f addons/slack/compose.yml \
   up -d
@@ -107,7 +108,7 @@ Conversation notes:
 
 ## Troubleshooting
 
-- No replies: verify `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` in `~/.openpalm/stash/vaults/user.env`, Socket Mode, and subscribed events
+- No replies: verify `slack_bot_token` and `slack_app_token` in `~/.openpalm/config/stack/secrets/`, Socket Mode, and subscribed events
 - DMs fail: verify `im:history` and `message.im`
 - Channel thread follow-ups fail: verify `channels:history` + `message.channels` (public) and `groups:history` + `message.groups` (private)
 - Slash commands missing: add `commands`, create the commands in Slack, then reinstall the app
@@ -125,4 +126,4 @@ Conversation notes:
 | `SLACK_ALLOWED_CHANNELS` | no | Comma-separated channel allowlist |
 | `SLACK_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `SLACK_BLOCKED_USERS` | no | Comma-separated user blocklist |
-| `CHANNEL_SLACK_SECRET` | system-managed | Guardian HMAC secret from `config/stack/guardian.env` |
+| `CHANNEL_SLACK_SECRET_FILE` | system-managed | Path to Guardian HMAC secret file granted from `config/stack/secrets/` |

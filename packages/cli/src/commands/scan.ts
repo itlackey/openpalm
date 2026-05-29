@@ -1,7 +1,7 @@
 import { defineCommand } from 'citty';
 import { join } from 'node:path';
-import { existsSync } from 'node:fs';
-import { resolveStackDir } from '@openpalm/lib';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolveStackDir, resolveSecretsDir, listSecretNames } from '@openpalm/lib';
 import { parseEnvFile, isSensitiveEnvKey } from '@openpalm/lib';
 
 /**
@@ -39,27 +39,35 @@ export default defineCommand({
 
     try {
       const stackDir = resolveStackDir();
-      const targets = [
-        join(stackDir, 'stack.env'),
-        join(stackDir, 'guardian.env'),
-      ];
-
       type FileResult = { path: string; keys: Array<{ name: string; set: boolean }> };
       const results: FileResult[] = [];
 
-      for (const path of targets) {
-        if (!existsSync(path)) continue;
-        const parsed = parseEnvFile(path);
+      const stackEnvPath = join(stackDir, 'stack.env');
+      if (existsSync(stackEnvPath)) {
+        const parsed = parseEnvFile(stackEnvPath);
         const sensitive = Object.keys(parsed)
           .filter((k) => isSensitiveEnvKey(k))
           .sort();
-        if (sensitive.length === 0) continue;
+        if (sensitive.length > 0) {
+          results.push({
+            path: stackEnvPath,
+            keys: sensitive.map((name) => ({
+              name,
+              set: typeof parsed[name] === 'string' && parsed[name].length > 0,
+            })),
+          });
+        }
+      }
+
+      for (const name of listSecretNames(stackDir)) {
+        const path = join(resolveSecretsDir(stackDir), name);
+        if (!existsSync(path)) continue;
         results.push({
           path,
-          keys: sensitive.map((name) => ({
+          keys: [{
             name,
-            set: typeof parsed[name] === 'string' && parsed[name].length > 0,
-          })),
+            set: readFileSync(path, 'utf-8').length > 0,
+          }],
         });
       }
 

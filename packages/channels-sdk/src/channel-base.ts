@@ -18,6 +18,7 @@
 import type { ChannelPayload } from "./channel.ts";
 import { buildChannelMessage, forwardChannelMessage } from "./channel-sdk.ts";
 import { createLogger } from "./logger.ts";
+import { readRequiredSecretFile, SecretFileError } from "./secret-file.ts";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -46,12 +47,11 @@ export abstract class BaseChannel {
   guardianUrl: string = "http://guardian:8080";
 
   /**
-   * HMAC shared secret. Auto-resolved from CHANNEL_<NAME>_SECRET env var.
+   * HMAC shared secret. Auto-resolved from CHANNEL_SECRET_FILE.
    * Can be overridden for testing.
    */
   get secret(): string {
-    const envKey = `CHANNEL_${this.name.toUpperCase().replace(/-/g, "_")}_SECRET`;
-    return Bun.env[envKey] ?? "";
+    return readRequiredSecretFile("CHANNEL_SECRET_FILE");
   }
 
   /**
@@ -199,8 +199,12 @@ export abstract class BaseChannel {
 
   /** Start the Bun HTTP server. Called by the entrypoint loader. */
   start(): void {
-    if (!this.secret) {
-      this.log("error", `CHANNEL_${this.name.toUpperCase().replace(/-/g, "_")}_SECRET is not set, exiting`);
+    try {
+      this.secret;
+    } catch (err) {
+      this.log("error", "startup_error", {
+        reason: err instanceof SecretFileError ? err.message : "CHANNEL_SECRET_FILE could not be read",
+      });
       process.exit(1);
     }
 

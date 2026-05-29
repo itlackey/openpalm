@@ -11,7 +11,7 @@ export type { HostInfo } from './lib/host-info.ts';
 const SUBCOMMAND_NAMES = new Set([
   'install', 'uninstall', 'update', 'self-update', 'addon',
   'start', 'stop', 'restart', 'logs', 'status',
-  'validate', 'scan', 'rollback', 'automations',
+  'validate', 'scan', 'audit-secrets', 'rollback', 'automations',
   '--help', '-h', 'help',
 ]);
 
@@ -116,6 +116,7 @@ export const mainCommand = defineCommand({
     status: () => import('./commands/status.ts').then((m) => m.default),
     validate: () => import('./commands/validate.ts').then((m) => m.default),
     scan: () => import('./commands/scan.ts').then((m) => m.default),
+    'audit-secrets': () => import('./commands/audit-secrets.ts').then((m) => m.default),
     rollback: () => import('./commands/rollback.ts').then((m) => m.default),
     automations: () => import('./commands/automations.ts').then((m) => m.default),
   },

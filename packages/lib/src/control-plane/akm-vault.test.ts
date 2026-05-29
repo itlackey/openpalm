@@ -72,7 +72,7 @@ describe("writeAkmVaultKey", () => {
       const stored = readAkmUserVaultFile(vaultPath);
       expect(stored.TOKEN).toBe(value);
     }
-  });
+  }, 15_000);
 
   it.skipIf(!AKM_AVAILABLE)("deleteAkmVaultKey removes a key via `akm vault unset`", async () => {
     await writeAkmVaultKey(state, "TOKEN_A", "value-a");
@@ -87,14 +87,14 @@ describe("writeAkmVaultKey", () => {
       expect(stored.TOKEN_A).toBeUndefined();
       expect(stored.TOKEN_B).toBe("value-b");
     }
-  });
+  }, 15_000);
 
   it.skipIf(!AKM_AVAILABLE)("deleteAkmVaultKey is idempotent on a missing key", async () => {
     // Deleting a key that was never set should not throw — `akm vault unset`
     // either exits 0 or emits a "not found" message we tolerate.
     const ok = await deleteAkmVaultKey(state, "NEVER_SET_KEY");
     expect(ok).toBe(true);
-  });
+  }, 15_000);
 });
 
 

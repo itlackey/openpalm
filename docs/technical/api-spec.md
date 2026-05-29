@@ -9,9 +9,9 @@ This document describes the Admin API routes currently implemented in
 - Protected endpoints require the `op_session` cookie (HttpOnly, SameSite=Strict).
   The browser obtains the cookie via `POST /admin/auth/login` (password in body).
   The legacy `x-admin-token` / `Authorization: Bearer` header fallbacks were
-  removed in Phase 2 of `docs/technical/auth-and-proxy-refactor-plan.md`. The
-  operator-facing env var seeding the password was renamed from `ADMIN_TOKEN`
-  to `OP_UI_LOGIN_PASSWORD`.
+  removed in Phase 2 of `docs/technical/auth-and-proxy-refactor-plan.md`.
+  `OP_UI_LOGIN_PASSWORD` is supplied to the admin process from
+  `config/stack/secrets/op_ui_login_password`.
 - Optional caller attribution: `x-requested-by: assistant|cli|ui|system|test`
 - Optional correlation: `x-request-id: <uuid>`
 
@@ -106,7 +106,7 @@ Policy for this section:
 - Ensures directories + OpenCode starter config + starter user secrets.
 - Seeds only missing defaults in `config/`; never overwrites existing user files.
 - Writes configuration files to their final locations.
-- Runs `docker compose up -d` using `stack/core.compose.yml`, installed addon overlays, and vault env files.
+- Runs `docker compose up -d` using `stack/core.compose.yml`, installed addon overlays, non-secret `stack.env`, and file-based Compose secret grants.
 
 Response:
 
@@ -551,10 +551,10 @@ Response:
 
 ### `GET /admin/config/validate`
 
-Run the in-house key-presence check against the live vault env files
-(`config/stack/stack.env`, `config/stack/guardian.env`).
-The validator confirms that the canonical secret slots are present and that
-every required token is non-empty — no varlock binary, no schema file. Always
+Run the in-house key-presence and secret-audit checks against non-secret
+`config/stack/stack.env`, resolved Compose config, and `config/stack/secrets/`.
+The validator confirms secret-like values use file grants and that required
+secret files are present — no varlock binary, no schema file. Always
 returns 200; validation failures are non-fatal and are logged to the audit
 trail.
 
@@ -571,7 +571,7 @@ When validation finds issues:
 ```json
 {
   "ok": false,
-  "errors": ["ERROR: ADMIN_TOKEN is required but not set"],
+  "errors": ["ERROR: required secret OP_UI_LOGIN_PASSWORD is missing or empty in config/stack/secrets/op_ui_login_password"],
   "warnings": ["WARN: OPENAI_BASE_URL is not a valid URL"]
 }
 ```

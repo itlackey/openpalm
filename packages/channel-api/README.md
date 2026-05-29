@@ -21,7 +21,7 @@ Streaming is not supported.
 - Enabled runtime overlay: `~/.openpalm/config/stack/addons/api/compose.yml`
 - Default host URL: `http://localhost:3821`
 - Container port: `8182`
-- System-managed HMAC secret: `CHANNEL_API_SECRET` in `~/.openpalm/config/stack/guardian.env`
+- System-managed HMAC secret: file under `~/.openpalm/config/stack/secrets/`
 
 Manual start example:
 
@@ -29,8 +29,7 @@ Manual start example:
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
-  --env-file ../config/stack/stack.env \
-  --env-file ../stash/vaults/user.env \
+  --env-file stack.env \
   -f core.compose.yml \
   -f addons/api/compose.yml \
   up -d
@@ -44,5 +43,5 @@ current install API instead of editing the compose file list by hand.
 | Variable | Purpose |
 |---|---|
 | `PORT` | Container listen port, default `8182` |
-| `CHANNEL_API_SECRET` | Guardian HMAC secret |
-| `OPENAI_COMPAT_API_KEY` | Optional incoming Bearer or `x-api-key` auth token; the shipped addon overlay reads it from `stash/vaults/user.env` via `env_file` |
+| `CHANNEL_API_SECRET_FILE` | Guardian HMAC secret file path |
+| `OPENAI_COMPAT_API_KEY_FILE` | Optional incoming Bearer or `x-api-key` auth token file path |

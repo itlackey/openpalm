@@ -1,4 +1,4 @@
-import { BaseChannel, ConversationQueue, createLogger, splitMessage, type HandleResult } from "@openpalm/channels-sdk";
+import { BaseChannel, ConversationQueue, createLogger, readRequiredSecretFile, splitMessage, type HandleResult } from "@openpalm/channels-sdk";
 import { App, type GenericMessageEvent, type KnownEventFromType } from "@slack/bolt";
 import { checkPermissions, loadPermissionConfig } from "./permissions.ts";
 import type { PermissionConfig, UserInfo } from "./types.ts";
@@ -45,11 +45,11 @@ export default class SlackChannel extends BaseChannel {
   private forwardTimeoutMs = parseForwardTimeoutMs(Bun.env.SLACK_FORWARD_TIMEOUT_MS);
 
   get botToken(): string {
-    return Bun.env.SLACK_BOT_TOKEN ?? "";
+    return readRequiredSecretFile("SLACK_BOT_TOKEN_FILE");
   }
 
   get appToken(): string {
-    return Bun.env.SLACK_APP_TOKEN ?? "";
+    return readRequiredSecretFile("SLACK_APP_TOKEN_FILE");
   }
 
   /** BaseChannel requires this — not used for Socket Mode events. */
@@ -65,18 +65,19 @@ export default class SlackChannel extends BaseChannel {
   // ── Socket Mode Connection ────────────────────────────────────────────
 
   private async connectSocketMode(): Promise<void> {
-    if (!this.botToken) {
-      log.error("startup_error", { reason: "SLACK_BOT_TOKEN not set" });
-      process.exit(1);
-    }
-    if (!this.appToken) {
-      log.error("startup_error", { reason: "SLACK_APP_TOKEN not set" });
+    let botToken: string;
+    let appToken: string;
+    try {
+      botToken = this.botToken;
+      appToken = this.appToken;
+    } catch (err) {
+      log.error("startup_error", { reason: err instanceof Error ? err.message : "Slack secret file could not be read" });
       process.exit(1);
     }
 
     this.app = new App({
-      token: this.botToken,
-      appToken: this.appToken,
+      token: botToken,
+      appToken,
       socketMode: true,
     });
 
@@ -136,7 +137,7 @@ export default class SlackChannel extends BaseChannel {
 
     // Resolve the bot's own user ID so we can strip self-mentions
     try {
-      const authResult = await this.app.client.auth.test({ token: this.botToken });
+      const authResult = await this.app.client.auth.test({ token: botToken });
       this.botUserId = (authResult.user_id as string) ?? null;
     } catch {
       log.warn("auth_test_failed", { reason: "Could not resolve bot user ID" });

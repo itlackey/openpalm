@@ -8,9 +8,10 @@ set -euo pipefail
 export OP_HOME='/var/lib/openpalm'
 INSTALL_HOME='/opt/openpalm'
 
-mkdir -p \
+	mkdir -p \
 	"$OP_HOME/config/stack" \
 	"$OP_HOME/config/stack/addons" \
+	"$OP_HOME/config/stack/secrets" \
 	"$OP_HOME/config/assistant" \
 	"$OP_HOME/config/akm" \
 	"$OP_HOME/stash/vaults" \
@@ -32,10 +33,7 @@ if [[ ! -f "$OP_HOME/config/stack/stack.env" ]]; then
 	chmod 600 "$OP_HOME/config/stack/stack.env"
 fi
 
-if [[ ! -f "$OP_HOME/config/stack/guardian.env" ]]; then
-	touch "$OP_HOME/config/stack/guardian.env"
-	chmod 600 "$OP_HOME/config/stack/guardian.env"
-fi
+chmod 700 "$OP_HOME/config/stack/secrets"
 
 # Seed core compose into config/stack/ (source of truth for compose)
 if [[ ! -f "$OP_HOME/config/stack/core.compose.yml" ]]; then
@@ -50,6 +48,4 @@ fi
 docker compose \
 	--project-name openpalm \
 	--env-file "$OP_HOME/config/stack/stack.env" \
-	--env-file "$OP_HOME/stash/vaults/user.env" \
-	--env-file "$OP_HOME/config/stack/guardian.env" \
 	-f "$OP_HOME/config/stack/core.compose.yml" up -d

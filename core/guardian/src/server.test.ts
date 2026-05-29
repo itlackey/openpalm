@@ -92,8 +92,8 @@ beforeAll(async () => {
 
   // Create temp secrets file
   tmpDir = mkdtempSync(join(tmpdir(), "guardian-test-"));
-  const secretsPath = join(tmpDir, "secrets.env");
-  writeFileSync(secretsPath, `CHANNEL_TEST_SECRET=${TEST_SECRET}\n`);
+  const secretPath = join(tmpDir, "test-secret");
+  writeFileSync(secretPath, `${TEST_SECRET}\n`);
 
   const auditPath = join(tmpDir, "audit.log");
 
@@ -149,7 +149,7 @@ beforeAll(async () => {
     env: {
       ...process.env,
       PORT: String(guardianPort),
-      GUARDIAN_SECRETS_PATH: secretsPath,
+      CHANNEL_TEST_SECRET_FILE: secretPath,
       OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: auditPath,
     },

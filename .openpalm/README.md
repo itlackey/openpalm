@@ -14,8 +14,8 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
     stack/             Stack configuration and composition
       core.compose.yml Core services (always used)
       stack.yml        Capabilities only (metadata)
-      stack.env        System-managed env vars (written by CLI/admin)
-      guardian.env     Channel HMAC secrets (written by CLI/admin)
+      stack.env        System-managed non-secret env vars (written by CLI/admin)
+      secrets/         System-managed service secrets (0600 files)
       addons/          Enabled addon overlays
     assistant/         OpenCode user tools, plugins, skills, commands
     akm/               AKM config directory
@@ -77,7 +77,6 @@ $EDITOR ~/.openpalm/config/stack/stack.env
 docker compose \
   --project-name openpalm \
   --env-file ~/.openpalm/config/stack/stack.env \
-  --env-file ~/.openpalm/config/stack/guardian.env \
   -f ~/.openpalm/config/stack/core.compose.yml \
   -f ~/.openpalm/config/stack/addons/chat/compose.yml \
   up -d
@@ -102,7 +101,7 @@ truth.
 | Directory | Owner | Who writes |
 |---|---|---|
 | `config/` | User | User edits, explicit admin actions, assistant via authenticated admin API |
-| `config/stack/` | System | CLI/admin (stack.env, guardian.env, core.compose.yml, addons/) |
+| `config/stack/` | System | CLI/admin (`stack.env`, `secrets/`, `core.compose.yml`, `addons/`) |
 | `stash/vaults/` | User | User edits via akm vault CLI or admin UI secret updates |
 | `stash/tasks/` | User/Services | User creates task markdown; assistant registers with OS cron |
 | `state/` | Services | Containers and processes at runtime |
@@ -111,8 +110,8 @@ truth.
 
 ## Runtime notes
 
-- Docker Compose global env files: `config/stack/stack.env` (system-managed) and `config/stack/guardian.env` (channel HMAC secrets).
-- Guardian loads channel HMAC secrets from `config/stack/guardian.env` with hot-reload support (via `GUARDIAN_SECRETS_PATH`).
+- Docker Compose global env file: `config/stack/stack.env` (system-managed, non-secret).
+- Service secrets live under `config/stack/secrets/` and are granted narrowly through Compose `secrets:` with `*_FILE` environment variables.
 - The assistant workspace is `workspace/`, mounted at `/work`.
 - The CLI always runs from the host and manages Docker Compose directly. Admin UI is a host process started by `openpalm` — no container is needed.
 - Scheduled automations are stored as markdown task files in `stash/tasks/` and registered with OS cron by the assistant at startup via `akm tasks sync`.

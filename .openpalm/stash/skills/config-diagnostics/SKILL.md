@@ -56,10 +56,10 @@ and guide them — without ever exposing actual secret values.
 
 **Assistant:**
 1. Calls `GET /admin/config/validate`
-2. Reads `stash/vaults/user.env.schema` to find OPENAI_API_KEY description
+2. Reads non-secret provider configuration and secret presence metadata
 3. Responds: "Validation shows OPENAI_API_KEY is not set. This variable holds
-   your OpenAI API key — set it in Settings > Secrets in the admin UI, or add
-   `OPENAI_API_KEY=<your-key>` to `~/.openpalm/stash/vaults/user.env`."
+   your OpenAI API key — set it in Settings > Secrets in the admin UI, or write
+   the value to `~/.openpalm/config/stack/secrets/openai_api_key` with mode 0600."
 
 **User:** "Can you show me my vault files?"
 

@@ -8,7 +8,9 @@ import {
   jsonBodyError,
   getOpenCodeClient,
 } from '$lib/server/helpers.js';
-import { createLogger } from '@openpalm/lib';
+import { createLogger, writeStackSecretEnv } from '@openpalm/lib';
+import { getState } from '$lib/server/state.js';
+import { PROVIDER_KEY_MAP } from '@openpalm/lib';
 
 const logger = createLogger('opencode.auth');
 
@@ -123,7 +125,10 @@ export const POST: RequestHandler = async (event) => {
       return errorResponse(result.status, result.code, result.message, {}, requestId);
     }
 
-    logger.info('provider API key saved via OpenCode /auth/{providerID}', { providerId, requestId });
+    const envKey = PROVIDER_KEY_MAP[providerId] ?? `${providerId.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_API_KEY`;
+    writeStackSecretEnv(getState(), { [envKey]: apiKey });
+
+    logger.info('provider API key saved', { providerId, envKey, requestId });
 
     return jsonResponse(200, { ok: true, mode: 'api_key' }, requestId);
   }

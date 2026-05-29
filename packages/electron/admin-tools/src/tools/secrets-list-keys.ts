@@ -1,12 +1,12 @@
 /**
- * secrets.list-keys — list the *names* of secrets in stack.env / user vault.
+ * secrets.list-keys — list configured runtime env keys and secret file names.
  *
  * SECURITY: This tool NEVER returns values. It returns only the set of keys
  * present in the env files the operator can manage. To set or get a value,
  * the operator uses the admin UI (cookie-gated) — never the agent.
  */
 import { tool } from "@opencode-ai/plugin";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 export function parseEnvKeys(content: string): string[] {
@@ -29,26 +29,31 @@ function opHome(): string {
 
 export default tool({
   description:
-    "List the NAMES of secrets in the OpenPalm env files (stack.env, " +
-    "guardian.env, user vault). Never returns values. Use the admin UI to " +
+    "List stack.env keys and config/stack/secrets file names. " +
+    "Never returns values. Use the admin UI to " +
     "view or change a value.",
   args: {
     file: tool.schema
-      .enum(["stack", "guardian", "user", "all"])
+      .enum(["stack", "secrets", "all"])
       .optional()
       .default("all")
-      .describe("Which env file to inspect. Defaults to all."),
+      .describe("Which source to inspect. Defaults to all."),
   },
   async execute(args) {
     const home = opHome();
     const files: Record<string, string> = {
       stack: join(home, "config", "stack", "stack.env"),
-      guardian: join(home, "config", "stack", "guardian.env"),
-      user: join(home, "stash", "vaults", "user.env"),
     };
-    const targets = args.file === "all" ? Object.keys(files) : [args.file];
+    const targets = args.file === "all" ? ["stack", "secrets"] : [args.file];
     const result: Record<string, { exists: boolean; keys: string[] }> = {};
     for (const t of targets) {
+      if (t === "secrets") {
+        const secretsDir = join(home, "config", "stack", "secrets");
+        result[t] = existsSync(secretsDir)
+          ? { exists: true, keys: readdirSync(secretsDir).sort() }
+          : { exists: false, keys: [] };
+        continue;
+      }
       const path = files[t];
       if (!path || !existsSync(path)) {
         result[t] = { exists: false, keys: [] };

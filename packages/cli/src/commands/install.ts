@@ -233,7 +233,6 @@ async function prepareInstallFiles(
   await ensureStackEnv(homeDir, configDir, workDir, version, resolveRequestedImageTag(version) ?? undefined);
 
   for (const [path, content] of [
-    [join(configDir, 'stack', 'guardian.env'), '# Guardian channel HMAC secrets — managed by openpalm\n'],
     [join(configDir, 'stack', 'auth.json'), '{}\n'],
     [join(homeDir, 'stash', 'vaults', 'user.env'), '# OpenPalm user vault — add LLM API keys and other secrets here\n'],
   ] as const) {
@@ -301,5 +300,4 @@ async function runFileInstall(filePath: string, noStart: boolean): Promise<void>
   await requireDocker();
   await deployServices('install');
 }
-
 

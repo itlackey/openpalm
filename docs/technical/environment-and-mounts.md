@@ -20,9 +20,9 @@ OpenPalm stores runtime state under `OP_HOME`, which defaults to `~/.openpalm`.
 | Host path | Purpose |
 |---|---|
 | `~/.openpalm/config/` | User-editable, non-secret config |
-| `~/.openpalm/config/stack/` | Live compose assembly; system-managed secrets and runtime env (`stack.env`, `guardian.env`, `core.compose.yml`, `addons/`) |
+| `~/.openpalm/config/stack/` | Live compose assembly; non-secret runtime env (`stack.env`), file-based service secrets (`secrets/`), `core.compose.yml`, `addons/` |
 | `~/.openpalm/stash/` | AKM knowledge base (user-managed: `vaults/`, `tasks/`) |
-| `~/.openpalm/stash/vaults/` | User-managed secrets (`user.env`) |
+| `~/.openpalm/stash/vaults/` | User-managed secrets (`user.env`, AKM vault backing store) |
 | `~/.openpalm/state/` | Durable service data |
 | `~/.openpalm/state/registry/` | Available addon and automation catalog |
 | `~/.openpalm/state/logs/` | Audit and debug logs |
@@ -45,21 +45,19 @@ mounted at `/akm` for the assistant). There is no separate memory service.
 
 ---
 
-## Compose Env Files
+## Compose Env And Secrets
 
-Docker Compose is invoked with these env files (see [Manual Compose Runbook](../operations/manual-compose-runbook.md)):
+Docker Compose is invoked with the non-secret stack env file (see [Manual Compose Runbook](../operations/manual-compose-runbook.md)):
 
 ```bash
 --env-file "$OP_HOME/config/stack/stack.env"
---env-file "$OP_HOME/stash/vaults/user.env"
---env-file "$OP_HOME/config/stack/guardian.env"
 ```
 
 That means the effective env model is:
 
-- `config/stack/stack.env` - system-managed runtime env and secrets (admin token, paths, UID/GID, image tags, bind ports, API keys, provider config, owner identity)
-- `stash/vaults/user.env` - recommended user-managed addon overrides and operator settings
-- `config/stack/guardian.env` - channel HMAC secrets (loaded by guardian as env_file and via GUARDIAN_SECRETS_PATH)
+- `config/stack/stack.env` - system-managed non-secret runtime env (paths, UID/GID, image tags, bind ports, profiles, feature flags, owner identity)
+- `config/stack/secrets/` - system-managed secret files, directory mode `0700`, file mode `0600`; granted to containers with Compose `secrets:` and exposed as `*_FILE` variables
+- `stash/vaults/user.env` - AKM vault backing file for user-managed secrets; never a Compose env-file
 
 ---
 
@@ -110,7 +108,6 @@ Key env:
 | `OPENCODE_ENABLE_SSH` | `stack.env` | Optional SSH enablement |
 | `HOME` | `/home/opencode` | Runtime home |
 | `AKM_STASH_DIR` | `/akm` | AKM stash location hint |
-| `OP_ASSISTANT_TOKEN` | `OP_ASSISTANT_TOKEN` from `stack.env` | Assistant-scoped auth token |
 | `OP_UID` / `OP_GID` | `stack.env` | Entrypoint privilege drop target |
 
 Notes:
@@ -129,7 +126,7 @@ Mounts:
 |---|---|---|---|
 | `$OP_HOME/state/guardian` | `/app/data` | rw | Runtime nonce / rate-limit state |
 | `$OP_HOME/state/logs` | `/app/audit` | rw | Guardian audit log directory |
-| `$OP_HOME/config/stack/guardian.env` | `/app/secrets/guardian.env` | ro | Channel HMAC secrets for hot-reload |
+| `$OP_HOME/config/stack/secrets/<guardian-or-channel-secret>` | `/run/secrets/<name>` | ro | Guardian and channel HMAC secret files granted by Compose |
 
 Ports and networks:
 
@@ -147,16 +144,14 @@ Key env:
 | `PORT` | `8080` | HTTP listen port |
 | `OP_ASSISTANT_URL` | `http://assistant:4096` | Assistant forward target |
 | `OPENCODE_TIMEOUT_MS` | `0` | Guardian-side timeout override |
-| `OP_UI_LOGIN_PASSWORD` | `${OP_UI_TOKEN:-}` | Operator admin password forwarded from stack env (renamed from `ADMIN_TOKEN` in Phase 2 of the auth/proxy refactor; the `op_session` cookie value is compared against this) |
 | `GUARDIAN_AUDIT_PATH` | `/app/audit/guardian-audit.log` | Audit log path |
-| `GUARDIAN_SECRETS_PATH` | `/app/secrets/guardian.env` | Path to mounted guardian secrets for hot-reload |
-| `CHANNEL_<NAME>_SECRET` | `config/stack/guardian.env` (via env_file) | Channel HMAC verification secrets |
+| `CHANNEL_<NAME>_SECRET_FILE` | `/run/secrets/channel_<name>_hmac` | Channel HMAC verification secret file |
 
 Notes:
 
 - Guardian is internal-only from the host perspective.
 - It is the only bridge between addon ingress networks and `assistant_net`.
-- Guardian loads `config/stack/guardian.env` as a compose `env_file` for channel HMAC secrets. The same file is bind-mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload. Non-secret config (`OP_UI_TOKEN`) is passed via `${VAR}` substitution in the compose `environment:` block.
+- Guardian receives only explicitly granted secret files from `config/stack/secrets/`; it must not use service-level `env_file` or raw secret env values.
 
 ### Scheduler co-process
 
@@ -193,7 +188,7 @@ Key env (host process, not container):
 |---|---|---|
 | `PORT` | `OP_HOST_UI_PORT` or `3880` | Admin HTTP listen port |
 | `OP_HOME` | resolved from host env | OpenPalm home directory |
-| `OP_UI_LOGIN_PASSWORD` | `$OP_HOME/state/admin/token` | Operator admin password (renamed from `ADMIN_TOKEN` in Phase 2 of the auth/proxy refactor) |
+| `OP_UI_LOGIN_PASSWORD` | `$OP_HOME/config/stack/secrets/op_ui_login_password` | Operator admin password promoted into the host admin process environment |
 
 ---
 
@@ -208,7 +203,7 @@ Key env (host process, not container):
 | `slack` | none | service-specific | `channel_lan` | No host port exposure |
 | `ollama` | `${OP_OLLAMA_BIND_ADDRESS:-127.0.0.1}:11434` | `11434` | `assistant_net` | Mounts `$OP_HOME/data/ollama:/data`, `user: ${OP_UID}:${OP_GID}`, `OLLAMA_MODELS=/data/models` |
 
-All addon and channel services use `user: "${OP_UID:-1000}:${OP_GID:-1000}"` to ensure bind-mounted files are owned by the host user. All shipped channel overlays depend on guardian and receive only their own HMAC secret via `${VAR}` substitution from `config/stack/guardian.env` (passed as a compose `--env-file`).
+All addon and channel services use `user: "${OP_UID:-1000}:${OP_GID:-1000}"` to ensure bind-mounted files are owned by the host user. Shipped channel overlays depend on guardian and receive only their own HMAC secret file through Compose `secrets:` plus a matching `*_FILE` environment variable.
 
 ---
 
@@ -238,24 +233,17 @@ These variables are consumed by Compose and service env blocks.
 | `OP_CHAT_BIND_ADDRESS`, `OP_CHAT_PORT` | Chat addon host bind |
 | `OP_API_BIND_ADDRESS`, `OP_API_PORT` | API addon host bind |
 | `OP_VOICE_BIND_ADDRESS`, `OP_VOICE_PORT` | Voice addon host bind |
-| `OP_UI_TOKEN` | Admin auth token |
-| `OP_ASSISTANT_TOKEN` | Assistant operational token (also used by the scheduler co-process for admin API calls) |
-| `OP_OPENCODE_PASSWORD` | OpenCode server password |
-| `OWNER_NAME` | Operator display name |
-| `OWNER_EMAIL` | Operator email |
-| `CHANNEL_<NAME>_SECRET` | Guardian / channel HMAC secrets (lives in `guardian.env`, not `stack.env`) |
+| `OP_OWNER_NAME` | Operator display name |
+| `OP_OWNER_EMAIL` | Operator email |
 
 ---
 
-## User Variables From `user.env`
+## User Secrets From `user.env`
 
-This file is an optional user-managed extension env. It starts empty and can
-hold custom preferences. `OWNER_NAME` and `OWNER_EMAIL` live in `stack.env`
-(see above).
+This file is the AKM vault backing file for user-managed secrets. It is not
+passed to Docker Compose and is not mounted directly into containers.
 
-API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, etc.) and
-provider/model selections live in `stack.env`. LLM and embedding configuration
-lives in `config/akm/config.json` and is managed via the AKM tab in the admin UI.
-The assistant receives raw provider API keys directly for OpenCode
-compatibility. Channels receive only their own HMAC secret via `${VAR}`
-substitution from `guardian.env`.
+Provider/model selections and other non-secret preferences live in `stack.env`
+or `config/akm/config.json`. System-managed service secrets live as files under
+`config/stack/secrets/` and are granted only to the service that needs them.
+Secret-like container environment variables must use `*_FILE` paths.

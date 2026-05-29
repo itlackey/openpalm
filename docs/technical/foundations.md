@@ -23,7 +23,7 @@ All persistent runtime state lives under `OP_HOME`, which defaults to `~/.openpa
 ```text
 ~/.openpalm/
 ├── config/          user-editable config (assistant/, akm/, guardian/)
-│   └── stack/       live compose assembly (core.compose.yml, stack.env, guardian.env, addons/)
+│   └── stack/       live compose assembly (core.compose.yml, stack.env, secrets/, addons/)
 ├── stash/           AKM knowledge base (vaults/, tasks/, skills/)
 │   └── vaults/      user-managed secrets (user.env = vault:user)
 ├── state/           durable service data (assistant/, guardian/, akm/, logs/, registry/)
@@ -38,9 +38,9 @@ Ephemeral backups live under `~/.openpalm/state/backups/`.
 
 The standard startup path uses:
 
-- `config/stack/stack.env` — primary: all config, secrets, and infrastructure env vars
-- `stash/vaults/user.env` — extension: optional user additions, loaded alongside stack.env
-- `config/stack/guardian.env` — guardian-specific: channel HMAC secrets. Not shipped in the bundle; created by the CLI installer when the first channel is installed. Compose marks it `required: false`.
+- `config/stack/stack.env` — non-secret Compose substitution values: paths, ports, image tags, profiles, feature flags
+- `config/stack/secrets/` — system-managed secret files granted to services through Compose `secrets:` and exposed as `*_FILE` variables
+- `stash/vaults/user.env` — AKM vault backing file for user-managed secrets; not a Compose env file
 
 ### Security boundaries
 
@@ -75,8 +75,8 @@ Role:
 Env sources:
 
 - direct compose `environment:` block
-- `user.env` bind-mounted into the container (optional user additions)
 - selected values from `stack.env` (via compose `${VAR}` substitution)
+- explicit secret file grants via Compose `secrets:` when needed
 
 Key env:
 
@@ -109,9 +109,9 @@ Ports and network:
 - container SSH: `22`
 - network: `assistant_net`
 
-Security — provider-key pruning:
+Security — provider secrets:
 
-The entrypoint removes unused provider API keys from the process environment based on `SYSTEM_LLM_PROVIDER`. For example, if the provider is `openai`, keys for Anthropic, Groq, Mistral, and Google are unset before OpenCode starts, reducing secret exposure in the LLM context. Local-only providers (`ollama`, `lmstudio`, `model-runner`) unset all cloud provider keys.
+Provider keys are not stored in `stack.env`. They are stored as file-based secrets or OpenCode auth state and exposed to services through narrow grants. Secret-like environment variables must be `*_FILE` paths.
 
 SSH (optional, gated by `OPENCODE_ENABLE_SSH=1`):
 
@@ -138,8 +138,7 @@ Role:
 Env sources:
 
 - direct compose `environment:` block (non-secret config via ${VAR} substitution)
-- `config/stack/guardian.env` as compose `env_file` (channel HMAC secrets). This file is not shipped; it is created by the CLI installer when the first channel is installed. Compose marks it `required: false`, so the guardian starts without it.
-- same file mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload
+- channel HMAC secret files granted through Compose `secrets:` from `config/stack/secrets/`
 
 Key env:
 
@@ -147,13 +146,13 @@ Key env:
 - `OP_ASSISTANT_URL=http://assistant:4096`
 - `OPENCODE_TIMEOUT_MS=0`
 - `GUARDIAN_AUDIT_PATH=/app/audit/guardian-audit.log`
-- `CHANNEL_<n>_SECRET`
+- `CHANNEL_<n>_SECRET_FILE`
 
 Mounts:
 
 - `$OP_HOME/state/guardian -> /app/data`
 - `$OP_HOME/state/logs -> /app/audit`
-- `$OP_HOME/config/stack/guardian.env -> /app/secrets/guardian.env:ro` (created by CLI installer; absent until first channel install)
+- Compose secret mounts under `/run/secrets/<name>` for guardian/channel HMAC verification
 
 Ports and network:
 
@@ -163,8 +162,6 @@ Ports and network:
 
 Additional env:
 
-- `GUARDIAN_SECRETS_PATH` -- File path to a dotenv file containing `CHANNEL_<n>_SECRET` entries. When set, secrets are loaded from this file with mtime-based hot-reload instead of from `process.env`. This allows channel secrets to be updated without restarting the guardian container.
-- `GUARDIAN_SECRETS_CACHE_TTL_MS` -- Cache TTL in milliseconds for the secrets file (default `30000`). The file is re-read when the mtime changes or the TTL expires.
 - `GUARDIAN_SESSION_TTL_MS` -- Session TTL in milliseconds (default `900000` / 15 minutes). Sessions idle longer than this are evicted from the cache.
 
 Channel payload metadata fields:
@@ -251,7 +248,7 @@ Key env:
 
 - `PORT` — listen port (default: `3880`)
 - `OP_HOME` — resolved from the host environment
-- `OP_UI_LOGIN_PASSWORD` — read from `$OP_HOME/config/stack/stack.env`; used to verify the admin login form
+- `OP_UI_LOGIN_PASSWORD` — read from `$OP_HOME/config/stack/secrets/op_ui_login_password`; used to verify the admin login form
 
 Bind address:
 
@@ -265,12 +262,12 @@ UI-first principle: the admin UI is the primary operator interface. CLI commands
 
 Shipped channel-style addons follow the same basic pattern:
 
-- receive their channel HMAC secret via `${VAR}` substitution from `config/stack/guardian.env` (passed as a compose `--env-file`)
+- receive their channel HMAC secret via a Compose secret file grant from `config/stack/secrets/` and a matching `*_FILE` environment variable
 - join `channel_lan` by default (or `channel_public` for internet-facing channels once that network's access semantics are finalized)
 - depend on `guardian`
 - send signed traffic to guardian, not directly to assistant
 
-Channel secret distribution: when a channel addon is installed, a shared HMAC secret is generated and written to both the channel's addon env and `config/stack/guardian.env` as a `CHANNEL_<n>_SECRET` entry. This file is loaded by the guardian as a compose `env_file` and bind-mounted at `GUARDIAN_SECRETS_PATH` for mtime-based hot-reload. The channel SDK uses this secret to sign outbound requests; the guardian uses it to verify inbound requests. See the Guardian section above for hot-reload details.
+Channel secret distribution: when a channel addon is installed, a shared HMAC secret is generated as a `0600` file under `config/stack/secrets/`. Compose grants that file only to the matching channel service and the guardian. The channel SDK uses this secret to sign outbound requests; the guardian uses it to verify inbound requests.
 
 Default host binds for shipped HTTP-ish edges:
 

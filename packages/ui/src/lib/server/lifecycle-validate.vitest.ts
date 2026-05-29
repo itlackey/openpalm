@@ -2,7 +2,7 @@
  * Tests for validateProposedState().
  *
  * Post-#391 the validator no longer shells out to varlock. It reads the live
- * `config/stack/stack.env` and `vault/user/user.env` files directly and emits
+ * `config/stack/stack.env` and `config/stack/secrets/` files directly and emits
  * presence-based errors/warnings. These tests stub the on-disk files and
  * assert the resulting shape.
  */
@@ -20,11 +20,17 @@ function seedStack(stateDir: string, env: string): void {
   writeFileSync(join(stateDir, "stack.env"), env);
 }
 
+function seedLoginSecret(stackDir: string, value: string): void {
+  mkdirSync(join(stackDir, "secrets"), { recursive: true, mode: 0o700 });
+  writeFileSync(join(stackDir, "secrets", "op_ui_login_password"), value, { mode: 0o600 });
+}
+
 describe("validateProposedState", () => {
   test("ok=true when required keys are present", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    seedStack(state.stackDir, "OP_UI_LOGIN_PASSWORD=abc\n");
+    seedStack(state.stackDir, "OP_SETUP_COMPLETE=true\n");
+    seedLoginSecret(state.stackDir, "abc\n");
 
     const result = await validateProposedState(state);
     expect(result.ok).toBe(true);
@@ -43,7 +49,8 @@ describe("validateProposedState", () => {
   test("ok=false when OP_UI_LOGIN_PASSWORD is empty", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    seedStack(state.stackDir, "OP_UI_LOGIN_PASSWORD=\n");
+    seedStack(state.stackDir, "OP_SETUP_COMPLETE=true\n");
+    seedLoginSecret(state.stackDir, "\n");
 
     const result = await validateProposedState(state);
     expect(result.ok).toBe(false);
@@ -53,7 +60,8 @@ describe("validateProposedState", () => {
   test("warns about missing optional canonical slots", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    seedStack(state.stackDir, "OP_UI_LOGIN_PASSWORD=abc\n");
+    seedStack(state.stackDir, "OP_SETUP_COMPLETE=true\n");
+    seedLoginSecret(state.stackDir, "abc\n");
 
     const result = await validateProposedState(state);
     expect(result.ok).toBe(true);

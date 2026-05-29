@@ -92,7 +92,6 @@ docker compose \
   -f core.compose.yml \
   -f addons/chat/compose.yml \
   --env-file stack.env \
-  --env-file ../../stash/vaults/user.env \
   up -d
 ```
 
@@ -108,13 +107,14 @@ reading it.
 **Fix:**
 
 1. check the assistant container status and logs
-2. verify at least one provider is configured in `~/.openpalm/config/stack/stack.env`
+2. verify at least one provider is configured in OpenCode auth state or `~/.openpalm/config/stack/secrets/`
 3. confirm the provider endpoint is reachable from Docker if you use a local model server
 
 Useful checks:
 
 ```bash
-grep -E 'API_KEY|BASE_URL' ~/.openpalm/config/stack/stack.env
+ls ~/.openpalm/config/stack/secrets
+grep -E 'BASE_URL' ~/.openpalm/config/stack/stack.env
 ```
 
 ```bash
@@ -122,7 +122,6 @@ cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
   --env-file stack.env \
-  --env-file ../../stash/vaults/user.env \
   logs assistant
 ```
 
@@ -151,11 +150,11 @@ Then recreate any services that depend on that value.
 **Fix:**
 
 - verify the channel addon is part of the compose file set you started
-- check `~/.openpalm/config/stack/guardian.env` for the relevant `CHANNEL_*_SECRET`
+- check `~/.openpalm/config/stack/secrets/` for the relevant channel HMAC secret file and verify the service has a matching `*_FILE` grant
 - recreate the affected channel and guardian services after changing secrets
 
 There is no separate staging/artifacts file to inspect in the current model; the
-live values come straight from `config/stack/stack.env`.
+live non-secret values come straight from `config/stack/stack.env`; service secrets come from `config/stack/secrets/`.
 
 ---
 
@@ -190,7 +189,7 @@ restart-loop.
 - rerun `docker compose pull` and then `docker compose up -d` with the same file set
 
 There is no XDG staging or artifacts directory to clear. The live deployment is
-the compose files under `~/.openpalm/config/stack/` plus the two vault env files.
+the compose files under `~/.openpalm/config/stack/`, non-secret `stack.env`, and file-based secrets under `config/stack/secrets/`.
 
 ---
 
@@ -204,7 +203,6 @@ docker compose \
   -f core.compose.yml \
   -f addons/chat/compose.yml \
   --env-file stack.env \
-  --env-file ../../stash/vaults/user.env \
   down -v
 
 rm -rf "$HOME/.openpalm"

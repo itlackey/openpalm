@@ -3,9 +3,10 @@
 # This file defines the core infrastructure. Addon services are added
 # via compose overlays in config/stack/addons/.
 #
-# Docker Compose reads variable values via --env-file for two env files:
-#   config/stack/stack.env    — system config (admin token, ports, image tag)
-#   config/stack/guardian.env — channel HMAC secrets (loaded by guardian)
+# Docker Compose reads variable values via --env-file for stack config:
+#   config/stack/stack.env    — system config (ports, image tag)
+# Channel and bot secrets are mounted per service via Compose secrets in
+# addon overlays and exposed to containers as *_FILE variables.
 #
 # User-managed env secrets live in the akm `vault:user` store at
 # stash/vaults/user.env (akm-cli >= 0.8.0 layout). The assistant
@@ -42,10 +43,8 @@ services:
       # scheduler now runs as a co-process inside this container so it
       # reaches OpenCode via http://localhost:4096.
       # If you change OP_ASSISTANT_BIND_ADDRESS to 0.0.0.0, you MUST set
-      # OP_OPENCODE_PASSWORD in stack.env and set OPENCODE_AUTH to "true".
-      # NON-CHANGE (#388 §B.1): OP_OPENCODE_PASSWORD compose plumbing
-      # is intentional for the LAN-exposed assistant case. Do NOT strip
-      # it as part of vault cleanup.
+      # op_opencode_password in config/stack/secrets/
+      # and set OPENCODE_AUTH to "true".
       OPENCODE_AUTH: "false"
       OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
       TERM: xterm-256color
@@ -107,31 +106,17 @@ services:
       start_period: 30s
 
   # ── Guardian ────────────────────────────────────────────────────────
-  # Channel HMAC secrets are loaded via env_file so newly installed
-  # channels automatically receive their credentials without modifying
-  # this file. Installing a channel triggers a guardian recreate (~2 s).
+  # Channel HMAC secrets are granted by channel addon overlays as Compose
+  # secrets. Guardian receives only channel_* secret files for enabled channels.
   guardian:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
-    env_file:
-      - path: ${OP_HOME}/config/stack/guardian.env
-        required: false
     environment:
       HOME: /app/data
       PORT: "8080"
       OP_ASSISTANT_URL: http://assistant:4096
       OPENCODE_TIMEOUT_MS: "0"
       GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
-      GUARDIAN_SECRETS_PATH: /app/secrets/guardian.env
-      OPENCODE_AUTH_JSON: /etc/openpalm/auth.json
-      # Basic-auth credentials forwarded by the guardian to the assistant
-      # OpenCode server. Read in core/guardian/src/forward.ts. Both default
-      # to blank when the assistant runs with OPENCODE_AUTH=false; they
-      # become required once OPENCODE_AUTH is flipped to "true" (LAN-exposed
-      # assistant case). See the assistant block above for the matching
-      # OP_OPENCODE_PASSWORD plumbing.
-      OPENCODE_SERVER_USERNAME: ${OP_OPENCODE_USERNAME:-}
-      OPENCODE_SERVER_PASSWORD: ${OP_OPENCODE_PASSWORD:-}
     # No host port mapping: guardian is reachable only via the
     # channel_lan / assistant_net Docker networks as `http://guardian:8080`.
     # Channels (api, discord, slack, chat) talk to it over channel_lan; the
@@ -140,8 +125,6 @@ services:
     volumes:
       - ${OP_HOME}/state/guardian:/app/data
       - ${OP_HOME}/state/logs:/app/audit
-      - ${OP_HOME}/config/stack/guardian.env:/app/secrets/guardian.env:ro
-      - ${OP_HOME}/config/auth.json:/etc/openpalm/auth.json:ro
     networks: [ channel_lan, assistant_net ]
     depends_on:
       assistant:

@@ -6,9 +6,11 @@
  * the rollback module (snapshot to ~/.cache/openpalm/rollback/).
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, chmodSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve as resolvePath } from "node:path";
 import { parse as yamlParse } from "yaml";
-import { parseEnvFile, mergeEnvContent, expandEnvVars } from './env.js';
+import { parseEnvContent, parseEnvFile, mergeEnvContent, expandEnvVars } from './env.js';
+import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secrets.js';
+import { ensureSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { isChannelAddon } from "./channels.js";
 import { listEnabledAddonIds } from "./registry.js";
@@ -28,7 +30,8 @@ const DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
  * Return the env files used for docker compose --env-file args.
  * These are the live vault env files.
  *
- * Order: stack.env -> guardian.env
+ * Order: stack.env. Secret values live in config/stack/secrets/<ENV_KEY>
+ * and are loaded explicitly by the services/control plane that need them.
  *
  * Note: `vault/user/user.env` is no longer a
  * compose env_file. User-managed env secrets live in the akm
@@ -41,15 +44,14 @@ const DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
 export function buildEnvFiles(state: ControlPlaneState): string[] {
   return [
     `${state.stackDir}/stack.env`,
-    `${state.stackDir}/guardian.env`,
   ].filter(existsSync);
 }
 
 /**
  * Write system-managed values to config/stack/stack.env.
  *
- * Channel HMAC secrets are NOT written here — they belong in guardian.env.
- * Use writeChannelSecrets() for channel secrets.
+ * Secret-like keys are NOT written here — they belong in config/stack/secrets/.
+ * Use ensureChannelSecret() for channel secrets.
  */
 export function writeSystemEnv(state: ControlPlaneState): void {
   mkdirSync(state.stackDir, { recursive: true });
@@ -87,12 +89,29 @@ export function writeSystemEnv(state: ControlPlaneState): void {
   // for all volume mounts. Without this, Docker Compose defaults to blank.
   if (!parsed.OP_HOME) adminManaged.OP_HOME = state.homeDir;
 
+  base = stripSecretLikeEnvKeys(base);
+  assertNoSecretLikeStackEnvKeys(parseEnvContent(base));
+  assertNoSecretLikeStackEnvKeys(adminManaged);
+
   const content = mergeEnvContent(base, adminManaged, {
     sectionHeader: "# ── Admin-managed ──────────────────────────────────────────────────"
   });
 
   writeFileSync(systemEnvPath, content, { mode: 0o600 });
   chmodSync(systemEnvPath, 0o600);
+}
+
+function stripSecretLikeEnvKeys(content: string): string {
+  return content
+    .split('\n')
+    .filter((line) => {
+      let trimmed = line.trim();
+      if (trimmed.startsWith('export ')) trimmed = trimmed.slice(7).trimStart();
+      const eq = trimmed.indexOf('=');
+      if (eq <= 0) return true;
+      return !isSecretLikeStackEnvKey(trimmed.slice(0, eq).trim());
+    })
+    .join('\n');
 }
 
 function generateFallbackSystemEnv(state: ControlPlaneState): string {
@@ -107,12 +126,6 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
   return [
     "# OpenPalm — System Configuration (managed by CLI/admin)",
     "# Auto-generated fallback.",
-    "",
-    "# ── Authentication ──────────────────────────────────────────────────",
-    `OP_UI_LOGIN_PASSWORD=\${OP_UI_LOGIN_PASSWORD}`,
-    "",
-    "# ── Service Auth ─────────────────────────────────────────────────────",
-    "OP_OPENCODE_PASSWORD=",
     "",
     "# ── Paths ──────────────────────────────────────────────────────────",
     `OP_HOME=${state.homeDir}`,
@@ -196,70 +209,28 @@ export function buildRuntimeFileMeta(artifacts: {
 }
 
 // ── Channel Secrets ────────────────────────────────────────────────────
-// Channel HMAC secrets live exclusively in vault/stack/guardian.env.
 
-const CHANNEL_SECRET_RE = /^CHANNEL_([A-Z0-9_]+)_SECRET$/;
-
-/** Extract channel secrets from parsed env entries. */
-function extractChannelSecrets(parsed: Record<string, string>): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(parsed)) {
-    const match = key.match(CHANNEL_SECRET_RE);
-    if (match?.[1] && value) result[match[1].toLowerCase()] = value;
-  }
-  return result;
+export function channelSecretName(addon: string): string {
+  return `channel_${addon.replace(/-/g, '_')}_secret`;
 }
 
-/**
- * Read channel HMAC secrets from config/stack/guardian.env.
- */
-export function readChannelSecrets(stackDir: string): Record<string, string> {
-  return extractChannelSecrets(parseEnvFile(`${stackDir}/guardian.env`));
-}
-
-/**
- * Write channel HMAC secrets to state/guardian.env.
- * Merges with existing content; does not overwrite unrelated entries.
- */
-export function writeChannelSecrets(stackDir: string, secrets: Record<string, string>): void {
-  const guardianPath = `${stackDir}/guardian.env`;
-  mkdirSync(stackDir, { recursive: true });
-
-  let base = "";
-  if (existsSync(guardianPath)) {
-    base = readFileSync(guardianPath, "utf-8");
-  } else {
-    base = "# Guardian channel HMAC secrets — managed by openpalm\n";
-  }
-
-  const updates: Record<string, string> = {};
-  for (const [ch, secret] of Object.entries(secrets)) {
-    updates[`CHANNEL_${ch.toUpperCase()}_SECRET`] = secret;
-  }
-
-  const content = mergeEnvContent(base, updates);
-  writeFileSync(guardianPath, content, { mode: 0o600 });
-  // Ensure correct permissions even if file already existed with wrong mode
-  chmodSync(guardianPath, 0o600);
+export function ensureChannelSecret(stackDir: string, addon: string): string {
+  return ensureSecret(stackDir, channelSecretName(addon), () => randomHex(16));
 }
 
 // ── Volume Mount Targets ───────────────────────────────────────────────
 
 /**
- * Parse all enabled compose files and pre-create every host-side volume
- * mount target as the current user. This prevents Docker from creating
- * them as root-owned, which causes EACCES inside non-root containers.
- *
- * For file mounts (basename contains a `.`), creates an empty file.
- * For directory mounts (basename has no `.`), creates the directory.
- *
- * Heuristic: a basename containing a `.` is treated as a file. This
- * intentionally includes leading-dot files (e.g. `.env`) because Docker
- * bind mounts to them must be regular files. Bare directory names like
- * `stack` or `addons` lack extensions and are created as directories.
+ * Parse enabled compose files and pre-create host-side volume mount
+ * targets under OP_HOME as the current user. This prevents Docker from
+ * creating them as root-owned, which causes EACCES inside non-root
+ * containers.
  *
  * Only mount sources under `state.homeDir` are touched; external paths
  * (e.g. `/var/run/docker.sock`) are left alone.
+ *
+ * The file-vs-directory distinction is best-effort and only applies to
+ * explicit OP_HOME paths.
  */
 export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
   const composeFiles = discoverStackOverlays(state.stackDir);
@@ -269,6 +240,7 @@ export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
     ...(process.env as Record<string, string>),
     ...parseEnvFile(`${state.stackDir}/stack.env`),
   };
+  const homeRoot = resolvePath(state.homeDir);
 
   for (const file of composeFiles) {
     let doc: Record<string, unknown>;
@@ -295,18 +267,20 @@ export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
 
         const hostPath = expandEnvVars(rawSource, envVars);
         if (!hostPath || !hostPath.startsWith('/')) continue;
-        if (existsSync(hostPath)) continue;
+        const resolvedHostPath = resolvePath(hostPath);
+        if (!resolvedHostPath.startsWith(`${homeRoot}/`) && resolvedHostPath !== homeRoot) continue;
+        if (existsSync(resolvedHostPath)) continue;
 
-        // A basename containing a `.` (anywhere, including leading) is a file.
-        // Bare names like `stack` or `data` are directories.
-        const basename = hostPath.split('/').pop() ?? '';
+        // Only create mounts under OP_HOME. For now, treat existing explicit
+        // file paths as files and directory paths as directories.
+        const basename = resolvedHostPath.split('/').pop() ?? '';
         const isFile = basename.includes('.');
 
         if (isFile) {
-          mkdirSync(dirname(hostPath), { recursive: true });
-          writeFileSync(hostPath, '');
+          mkdirSync(dirname(resolvedHostPath), { recursive: true });
+          writeFileSync(resolvedHostPath, '');
         } else {
-          mkdirSync(hostPath, { recursive: true });
+          mkdirSync(resolvedHostPath, { recursive: true });
         }
       }
     }
@@ -326,20 +300,14 @@ export function writeRuntimeFiles(
     writeFileSync(composePath, state.artifacts.compose);
   }
 
-  // Load persisted channel HMAC secrets from guardian.env,
-  // then generate new ones for new channel addons.
-  const channelSecrets = readChannelSecrets(state.stackDir);
   for (const addon of listEnabledAddonIds(state.homeDir)) {
     const composePath = `${state.stackDir}/addons/${addon}/compose.yml`;
-    if (isChannelAddon(composePath) && !channelSecrets[addon]) {
-      channelSecrets[addon] = randomHex(16);
+    if (isChannelAddon(composePath)) {
+      ensureChannelSecret(state.stackDir, addon);
     }
   }
 
-  // Write channel secrets to guardian.env (the canonical source)
-  writeChannelSecrets(state.stackDir, channelSecrets);
-
-  // Write system.env (no channel secrets — those live in guardian.env)
+  // Write stack.env (no secrets — those live in config/stack/secrets/)
   writeSystemEnv(state);
 
   // Ensure state directory exists

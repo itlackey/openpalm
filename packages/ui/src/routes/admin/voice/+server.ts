@@ -15,6 +15,7 @@ import type { RequestHandler } from './$types';
 import { getState } from '$lib/server/state.js';
 import {
   annotateAddonProfileAvailability,
+  addonProfileId,
   buildComposeOptions,
   composeStop,
   composeUp,
@@ -116,13 +117,13 @@ async function probeReachable(baseURL: string): Promise<boolean> {
 
 /**
  * Pick the best profile for this host. Prefers the first available GPU
- * profile (anything that isn't 'cpu') so operators with NVIDIA/AMD hardware
+ * profile (anything that isn't the canonical CPU profile) so operators with NVIDIA/AMD hardware
  * get the accelerated variant auto-selected. Falls back to the labelled
  * default, then first available, then first profile.
  */
 function resolveDefaultProfile(profiles: AddonProfile[]): string | null {
   if (profiles.length === 0) return null;
-  const availableGpu = profiles.find((p) => p.id !== 'cpu' && p.available !== false);
+  const availableGpu = profiles.find((p) => p.id !== addonProfileId(VOICE_ADDON, 'cpu') && p.available !== false);
   if (availableGpu) return availableGpu.id;
   const labelledDefault = profiles.find((p) => p.default);
   if (labelledDefault && labelledDefault.available !== false) return labelledDefault.id;
@@ -613,7 +614,7 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
     return jsonResponse(200, { ok: true }, requestId);
   }
 
-  // Resolve which compose profile (cpu/cuda/rocm/…) to bring up. Body
+  // Resolve which canonical compose profile to bring up. Body
   // wins; falls back to whatever is already in stack.env; if neither is
   // set, picks the profile marked openpalm.profile.default in the
   // addon compose.yml (else the first one). Unknown profile ids are
@@ -731,7 +732,7 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
     }
   }
 
-  // ── CDI fallback for cuda profile ───────────────────────────────
+  // ── CDI fallback for canonical CUDA profile ─────────────────────
   // When the operator picks `cuda` but the host has only CDI (no
   // legacy nvidia runtime), generate a sibling overlay that rewrites
   // voice-cuda to use deploy.resources.reservations.devices+driver:cdi.
@@ -743,8 +744,8 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
   // host can't read /etc/cdi/* and the probe would always fail.
   const extraFiles: string[] = [];
   const cdiFallbackSupported = process.platform !== 'win32';
-  if (activeProfile === 'cuda' && !inVitest && cdiFallbackSupported) {
-    const cudaAvailability = await getAddonProfileAvailability({ id: 'cuda' });
+  if (activeProfile === addonProfileId(VOICE_ADDON, 'cuda') && !inVitest && cdiFallbackSupported) {
+    const cudaAvailability = await getAddonProfileAvailability({ id: addonProfileId(VOICE_ADDON, 'cuda') });
     const runtimeMissing = cudaAvailability.available === false
       || !await dockerHasNvidiaRuntime();
     const cdiSpecPresent = existsSync('/etc/cdi/nvidia.yaml');
@@ -1029,7 +1030,7 @@ async function runBringUpJob(input: BringUpJobInput): Promise<void> {
 /**
  * Lightweight wrapper around `docker info` to check whether the
  * `nvidia` runtime is registered. Used as a second signal alongside the
- * cached `getAddonProfileAvailability('cuda')` result.
+ * cached canonical CUDA profile availability result.
  */
 async function dockerHasNvidiaRuntime(): Promise<boolean> {
   const res = await execFileNoThrow(

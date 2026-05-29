@@ -6,10 +6,8 @@
 #   source scripts/load-test-env.sh
 #
 # Exports:
-#   OP_UI_LOGIN_PASSWORD — read directly from .dev/config/stack/stack.env.
-#     Phase 4 of docs/technical/auth-and-proxy-refactor-plan.md collapsed the
-#     legacy OP_UI_TOKEN / OP_ASSISTANT_TOKEN pair into this single operator
-#     login secret.
+#   OP_UI_LOGIN_PASSWORD — read directly from .dev/config/stack/secrets/op_ui_login_password.
+#     Exported for Playwright tests that authenticate against the host UI.
 
 # Guard: this script must be sourced, not executed. Direct execution would
 # silently set vars in a child shell that exits immediately, leaving the
@@ -22,11 +20,11 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-STACK_ENV="$ROOT_DIR/.dev/config/stack/stack.env"
+LOGIN_PASSWORD_SECRET="$ROOT_DIR/.dev/config/stack/secrets/op_ui_login_password"
 
-if [[ -f "$STACK_ENV" ]]; then
+if [[ -f "$LOGIN_PASSWORD_SECRET" ]]; then
   export OP_UI_LOGIN_PASSWORD
-  OP_UI_LOGIN_PASSWORD=$(grep -E '^OP_UI_LOGIN_PASSWORD=' "$STACK_ENV" 2>/dev/null | cut -d= -f2-)
+  OP_UI_LOGIN_PASSWORD=$(tr -d '\n' < "$LOGIN_PASSWORD_SECRET")
 else
-  echo "Warning: $STACK_ENV not found. Run 'bun run dev:setup' first." >&2
+  echo "Warning: $LOGIN_PASSWORD_SECRET not found. Run 'bun run dev:setup' first." >&2
 fi

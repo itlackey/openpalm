@@ -39,10 +39,12 @@ function run(
 
 /**
  * Resolve the Docker Compose project name.
- * Honors COMPOSE_PROJECT_NAME (Docker standard) and OP_PROJECT_NAME (legacy).
+ * Honors OP_PROJECT_NAME first for OpenPalm stacks, then COMPOSE_PROJECT_NAME.
  */
-export function resolveComposeProjectName(): string {
+export function resolveComposeProjectName(envOverrides: Record<string, string> = {}): string {
   return (
+    envOverrides.OP_PROJECT_NAME?.trim() ||
+    envOverrides.COMPOSE_PROJECT_NAME?.trim() ||
     process.env.OP_PROJECT_NAME?.trim() ||
     process.env.COMPOSE_PROJECT_NAME?.trim() ||
     "openpalm"
@@ -89,7 +91,8 @@ export async function checkDockerCompose(): Promise<DockerResult> {
 
 /** Build common prefix: compose -f ... --project-name ... --env-file ... --profile ... */
 function buildComposeArgs(options: { files: string[]; envFiles?: string[]; profiles?: string[] }): string[] {
-  const args = ["compose", ...options.files.flatMap((f) => ["-f", f]), "--project-name", resolveComposeProjectName()];
+  const envOverrides = collectEnvOverrides(options.envFiles);
+  const args = ["compose", ...options.files.flatMap((f) => ["-f", f]), "--project-name", resolveComposeProjectName(envOverrides)];
   for (const ef of options.envFiles ?? []) {
     if (existsSync(ef)) args.push("--env-file", ef);
   }
@@ -124,7 +127,7 @@ async function runPreflight(options: { files: string[]; envFiles?: string[]; pro
   if (options.files.length === 0 || process.env.OP_SKIP_COMPOSE_PREFLIGHT) return;
   const result = await composePreflight(options);
   if (!result.ok) {
-    const project = resolveComposeProjectName();
+    const project = resolveComposeProjectName(collectEnvOverrides(options.envFiles));
     const fileArgs = options.files.map((f) => `-f ${f}`).join(" ");
     const envArgs = (options.envFiles ?? []).map((f) => `--env-file ${f}`).join(" ");
     const profileArgs = (options.profiles ?? []).map((p) => `--profile ${p}`).join(" ");
@@ -165,7 +168,6 @@ export async function composeUp(
     return { ok: false, stdout: "", stderr: "Compose file not found", code: 1 };
   }
   const args = buildComposeArgs(options);
-  for (const p of options.profiles ?? []) args.push("--profile", p);
   args.push("up", "-d");
   if (options.forceRecreate) args.push("--force-recreate");
   if (options.removeOrphans) args.push("--remove-orphans");
@@ -189,7 +191,6 @@ export async function composeDown(
     return { ok: false, stdout: "", stderr: "Compose file not found", code: 1 };
   }
   const args = buildComposeArgs(options);
-  for (const p of options.profiles ?? []) args.push("--profile", p);
   args.push("down");
   if (options.removeVolumes) args.push("-v");
   return run(args, undefined);
@@ -315,7 +316,6 @@ export async function composePullService(
 ): Promise<DockerResult> {
   await runPreflight(options);
   const args = buildComposeArgs(options);
-  for (const p of options.profiles ?? []) args.push("--profile", p);
   args.push("pull", service);
   return run(args, undefined, PULL_TIMEOUT_MS, collectEnvOverrides(options.envFiles));
 }
@@ -325,7 +325,6 @@ export async function composePull(
 ): Promise<DockerResult> {
   await runPreflight(options);
   const args = buildComposeArgs(options);
-  for (const p of options.profiles ?? []) args.push("--profile", p);
   args.push("pull");
   return run(args, undefined, PULL_TIMEOUT_MS, collectEnvOverrides(options.envFiles));
 }

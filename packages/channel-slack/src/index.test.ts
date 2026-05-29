@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import SlackChannel, { DEFAULT_FORWARD_TIMEOUT_MS, parseForwardTimeoutMs } from "./index.ts";
 import { checkPermissions, loadPermissionConfig, parseIdList } from "./permissions.ts";
 import { ConversationQueue } from "@openpalm/channels-sdk";
@@ -22,6 +25,21 @@ function testUser(overrides: Partial<UserInfo> = {}): UserInfo {
     username: "testuser",
     ...overrides,
   };
+}
+
+function withSecretFile(envKey: string, value: string, run: () => void): void {
+  const original = Bun.env[envKey];
+  const dir = mkdtempSync(join(tmpdir(), "openpalm-channel-test-"));
+  const path = join(dir, envKey.toLowerCase());
+  writeFileSync(path, `${value}\n`);
+  try {
+    Bun.env[envKey] = path;
+    run();
+  } finally {
+    if (original === undefined) delete Bun.env[envKey];
+    else Bun.env[envKey] = original;
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -517,14 +535,18 @@ describe("SlackChannel", () => {
     expect(resp.status).toBe(404);
   });
 
-  it("botToken reads from env", () => {
-    const channel = new SlackChannel();
-    expect(typeof channel.botToken).toBe("string");
+  it("botToken reads from SLACK_BOT_TOKEN_FILE", () => {
+    withSecretFile("SLACK_BOT_TOKEN_FILE", "slack-bot-token", () => {
+      const channel = new SlackChannel();
+      expect(channel.botToken).toBe("slack-bot-token");
+    });
   });
 
-  it("appToken reads from env", () => {
-    const channel = new SlackChannel();
-    expect(typeof channel.appToken).toBe("string");
+  it("appToken reads from SLACK_APP_TOKEN_FILE", () => {
+    withSecretFile("SLACK_APP_TOKEN_FILE", "slack-app-token", () => {
+      const channel = new SlackChannel();
+      expect(channel.appToken).toBe("slack-app-token");
+    });
   });
 
   it("inherits port from env or defaults to 8080", () => {
@@ -538,9 +560,11 @@ describe("SlackChannel", () => {
     expect(channel.guardianUrl).toContain("guardian");
   });
 
-  it("secret resolves from CHANNEL_SLACK_SECRET env", () => {
-    const channel = new SlackChannel();
-    expect(typeof channel.secret).toBe("string");
+  it("secret resolves from CHANNEL_SECRET_FILE", () => {
+    withSecretFile("CHANNEL_SECRET_FILE", "channel-secret", () => {
+      const channel = new SlackChannel();
+      expect(channel.secret).toBe("channel-secret");
+    });
   });
 });
 

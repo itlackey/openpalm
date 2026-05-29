@@ -7,6 +7,7 @@
  */
 import {
   applyInstall,
+  addonProfileId,
   buildComposeOptions,
   buildManagedServices,
   composeDown,
@@ -18,6 +19,8 @@ import {
   getAddonProfileSelection,
   isSetupComplete,
   listEnabledAddonIds,
+  parseEnvFile,
+  resolveComposeProjectName,
   resolveStackDir,
   setAddonProfileSelection,
   writeRunScript,
@@ -26,6 +29,14 @@ import type { ControlPlaneState } from "@openpalm/lib";
 import { existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 
 const logger = createLogger("admin:setup-deploy");
+
+function projectNameForState(state: ControlPlaneState): string {
+  return resolveComposeProjectName(parseEnvFile(`${state.stackDir}/stack.env`));
+}
+
+function projectNameForComposeOptions(composeOpts: Parameters<typeof composePs>[0]): string {
+  return resolveComposeProjectName(Object.assign({}, ...(composeOpts.envFiles ?? []).map((f) => parseEnvFile(f))));
+}
 
 export type DeployEntry = {
   service: string;
@@ -225,7 +236,7 @@ async function pollContainerHealth(
     // Bail early if any service is in a terminal error state
     const failed = _state.deployStatus.filter((e) => e.status === "error").map((e) => e.service);
     if (failed.length > 0) {
-      const projectName = process.env.OP_PROJECT_NAME ?? process.env.COMPOSE_PROJECT_NAME ?? "openpalm";
+      const projectName = projectNameForComposeOptions(composeOpts);
       return (
         `Services started but the following did not become healthy: ${failed.join(", ")}. ` +
         `Check logs: docker compose -p ${projectName} logs ${failed.join(" ")}.`
@@ -237,7 +248,7 @@ async function pollContainerHealth(
   const unhealthy = _state.deployStatus
     .filter((e) => e.status !== "running")
     .map((e) => e.service);
-  const projectName = process.env.OP_PROJECT_NAME ?? process.env.COMPOSE_PROJECT_NAME ?? "openpalm";
+  const projectName = projectNameForComposeOptions(composeOpts);
   return (
     `Services started but some did not become healthy in time: ${unhealthy.join(", ")}. ` +
     `Check logs: docker compose -p ${projectName} logs ${unhealthy.join(" ")}.`
@@ -259,7 +270,7 @@ async function checkProjectNameCollision(state: ControlPlaneState): Promise<stri
   return new Promise((resolve) => {
     execFile(
       "docker",
-      ["ps", "-q", "--filter", `label=com.docker.compose.project=${process.env.OP_PROJECT_NAME ?? "openpalm"}`],
+      ["ps", "-q", "--filter", `label=com.docker.compose.project=${projectNameForState(state)}`],
       (err, stdout) => {
         if (err) return resolve(null); // docker not running / no permissions — let composeUp surface it
         const ids = stdout.toString().trim().split(/\s+/).filter(Boolean);
@@ -273,7 +284,7 @@ async function checkProjectNameCollision(state: ControlPlaneState): Promise<stri
             const runningHome = stdout2.toString().trim();
             if (runningHome && runningHome !== state.homeDir) {
               resolve(
-                `Refusing to deploy: docker project "${process.env.OP_PROJECT_NAME ?? "openpalm"}" is already running with OP_HOME=${runningHome}, ` +
+                `Refusing to deploy: docker project "${projectNameForState(state)}" is already running with OP_HOME=${runningHome}, ` +
                 `but this deploy would use OP_HOME=${state.homeDir}. Set OP_PROJECT_NAME to a distinct value in stack.env, ` +
                 `or stop the existing stack first.`
               );
@@ -320,11 +331,11 @@ export function startDeploy(state: ControlPlaneState): void {
       await applyInstall(state);
 
       // Ensure addon profiles are set before building compose options.
-      // If Ollama is enabled but no profile is stored, default to cpu.
+      // If Ollama is enabled but no profile is stored, default to canonical CPU.
       const enabledAddons = listEnabledAddonIds(state.homeDir);
       if (enabledAddons.includes('ollama') && !getAddonProfileSelection(state.stackDir, 'ollama')) {
         try {
-          setAddonProfileSelection(state.stackDir, 'ollama', 'cpu', state);
+          setAddonProfileSelection(state.stackDir, 'ollama', addonProfileId('ollama', 'cpu'), state);
         } catch (err) {
           logger.warn("ollama: failed to persist default profile selection (continuing)", {
             error: err instanceof Error ? err.message : String(err),
@@ -439,8 +450,8 @@ export function startDeploy(state: ControlPlaneState): void {
       // the operator enabled the voice addon in the wizard, the voice
       // services are profile-gated and therefore inactive from the
       // baseline composePull/composeUp calls above. Bring them up
-      // explicitly with --profile cpu (the wizard always picks cpu;
-      // admin can switch to cuda/rocm later). This is what makes
+      // explicitly with the canonical CPU profile (the wizard always picks CPU;
+      // admin can switch to CUDA/ROCm later). This is what makes
       // "Install completes" actually mean "voice is ready to use",
       // not "voice will start later when you click Save in admin".
       const voiceError = await bringUpVoiceIfEnabled(state, composeOpts);
@@ -546,11 +557,11 @@ async function bringUpVoiceIfEnabled(
   if (!enabled.includes(VOICE_ADDON)) return null;
 
   // Resolve the chosen profile. Setup/admin persist the selection to
-  // stack.env ahead of deploy; if nothing is stored yet, fall back to cpu.
+  // stack.env ahead of deploy; if nothing is stored yet, fall back to CPU.
   const profiles = getAddonProfiles(state.homeDir, VOICE_ADDON);
   const stored = getAddonProfileSelection(state.stackDir, VOICE_ADDON);
   const profileId =
-    stored ?? profiles.find((p) => p.id === "cpu")?.id ?? profiles[0]?.id ?? "cpu";
+    stored ?? profiles.find((p) => p.id === addonProfileId(VOICE_ADDON, 'cpu'))?.id ?? profiles[0]?.id ?? addonProfileId(VOICE_ADDON, 'cpu');
   if (!stored) {
     try {
       setAddonProfileSelection(state.stackDir, VOICE_ADDON, profileId, state);

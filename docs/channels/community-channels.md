@@ -39,11 +39,14 @@ services:
       PORT: '8187'
       GUARDIAN_URL: http://guardian:8080
       CHANNEL_PACKAGE: '@your-scope/openpalm-channel-my-channel'
-    env_file:
-      - ${OP_HOME}/config/stack/stack.env
-      - ${OP_HOME}/config/stack/guardian.env
-      - ${OP_HOME}/stash/vaults/user.env
+      CHANNEL_MY_CHANNEL_SECRET_FILE: /run/secrets/channel_my_channel_hmac
+    secrets:
+      - channel_my_channel_hmac
     networks: [channel_lan]
+
+secrets:
+  channel_my_channel_hmac:
+    file: ${OP_HOME}/config/stack/secrets/channel_my_channel_hmac
 ```
 
 ## What the SDK gives you
@@ -62,7 +65,7 @@ You implement `handleRequest(req)` and return `{ userId, text }` or `null`.
 |---|---|
 | `PORT` | Listen port inside the container |
 | `GUARDIAN_URL` | Guardian forwarding target |
-| `CHANNEL_<NAME>_SECRET` | Guardian HMAC secret |
+| `CHANNEL_<NAME>_SECRET_FILE` | Path to the granted Guardian HMAC secret file |
 | `CHANNEL_PACKAGE` | npm package to import |
 | `CHANNEL_FILE` | Local module path when not using a package |
 

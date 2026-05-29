@@ -83,7 +83,7 @@ describe("GET /admin/config/validate", () => {
   test("returns 200 with { ok: false } when validation finds errors", async () => {
     vi.mocked(validateProposedState).mockResolvedValue({
       ok: false,
-      errors: ["ERROR: ADMIN_TOKEN is required but not set"],
+      errors: ["ERROR: required secret OP_UI_LOGIN_PASSWORD is missing or empty in config/stack/secrets/op_ui_login_password"],
       warnings: []
     });
 
@@ -92,7 +92,7 @@ describe("GET /admin/config/validate", () => {
     const body = await res.json() as { ok: boolean; errors: string[]; warnings: string[] };
     expect(body.ok).toBe(false);
     expect(body.errors).toHaveLength(1);
-    expect(body.errors[0]).toContain("ADMIN_TOKEN");
+    expect(body.errors[0]).toContain("OP_UI_LOGIN_PASSWORD");
   });
 
   test("returns 401 without admin token", async () => {

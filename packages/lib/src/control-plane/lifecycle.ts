@@ -12,7 +12,7 @@ import {
   resolveStateDir,
   resolveStackDir,
 } from "./home.js";
-import { ensureSecrets } from "./secrets.js";
+import { ensureSecrets, readStackSecretEnv } from "./secrets.js";
 import {
   resolveRuntimeFiles,
   writeRuntimeFiles,
@@ -60,6 +60,7 @@ export function createState(): ControlPlaneState {
   };
 
   ensureSecrets(bootstrapState);
+  Object.assign(process.env, readStackSecretEnv(stackDir));
 
   return bootstrapState;
 }
@@ -101,7 +102,7 @@ async function reconcileCore(
     }
     const preflight = await composePreflight({ files, envFiles });
     if (!preflight.ok) {
-      const projectName = resolveComposeProjectName();
+      const projectName = resolveComposeProjectName(Object.assign({}, ...envFiles.map((f) => parseEnvFile(f))));
       const fileArgs = files.flatMap((f) => ["-f", f]).join(" ");
       const envArgs = envFiles.filter(existsSync).flatMap((f) => ["--env-file", f]).join(" ");
       const resolvedCmd = `docker compose ${fileArgs} --project-name ${projectName} ${envArgs} config --quiet`;

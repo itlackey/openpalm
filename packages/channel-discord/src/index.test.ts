@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   BUILTIN_COMMANDS,
   buildCommandRegistry,
@@ -30,6 +33,21 @@ function testUser(overrides: Partial<UserInfo> = {}): UserInfo {
     username: "testuser",
     ...overrides,
   };
+}
+
+function withSecretFile(envKey: string, value: string, run: () => void): void {
+  const original = Bun.env[envKey];
+  const dir = mkdtempSync(join(tmpdir(), "openpalm-channel-test-"));
+  const path = join(dir, envKey.toLowerCase());
+  writeFileSync(path, `${value}\n`);
+  try {
+    Bun.env[envKey] = path;
+    run();
+  } finally {
+    if (original === undefined) delete Bun.env[envKey];
+    else Bun.env[envKey] = original;
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 type TestInteraction = {
@@ -815,10 +833,11 @@ describe("DiscordChannel", () => {
     expect(channel.name).toBe("discord");
   });
 
-  it("botToken reads from env", () => {
-    const channel = new DiscordChannel();
-    // In test env, DISCORD_BOT_TOKEN is not set
-    expect(typeof channel.botToken).toBe("string");
+  it("botToken reads from DISCORD_BOT_TOKEN_FILE", () => {
+    withSecretFile("DISCORD_BOT_TOKEN_FILE", "discord-token", () => {
+      const channel = new DiscordChannel();
+      expect(channel.botToken).toBe("discord-token");
+    });
   });
 
   it("applicationId reads from env", () => {
@@ -837,10 +856,11 @@ describe("DiscordChannel", () => {
     expect(channel.guardianUrl).toContain("guardian");
   });
 
-  it("secret resolves from CHANNEL_DISCORD_SECRET env", () => {
-    const channel = new DiscordChannel();
-    // Just verifying it doesn't throw
-    expect(typeof channel.secret).toBe("string");
+  it("secret resolves from CHANNEL_SECRET_FILE", () => {
+    withSecretFile("CHANNEL_SECRET_FILE", "channel-secret", () => {
+      const channel = new DiscordChannel();
+      expect(channel.secret).toBe("channel-secret");
+    });
   });
 });
 

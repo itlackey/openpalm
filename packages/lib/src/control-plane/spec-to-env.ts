@@ -9,6 +9,7 @@ import { SPEC_DEFAULTS } from "./stack-spec.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mergeEnvContent } from "./env.js";
 import { resolveOperatorIds } from "./operator-ids.js";
+import { assertNoSecretLikeStackEnvKeys } from './secrets.js';
 
 /**
  * Derive the system.env key-value pairs from the StackSpec.
@@ -101,6 +102,7 @@ export function writeVoiceVars(config: VoiceVarsConfig, stackDir: string): void 
   }
 
   if (Object.keys(vars).length === 0) return;
+  assertNoSecretLikeStackEnvKeys(vars);
 
   let content = mergeEnvContent(base, vars, {
     sectionHeader: "# ── Voice Channel (TTS/STT) ──────────────────────────────────────────",

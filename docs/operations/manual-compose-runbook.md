@@ -1,8 +1,9 @@
 # Manual Compose Runbook
 
 This runbook is for operators who want to manage their OpenPalm stack directly
-using `docker compose` without the CLI or admin tooling. The compose file list
-is the deployment truth — what you pass with `-f` is exactly what runs.
+using `docker compose` without the CLI or admin tooling. The generated
+`$OP_HOME/run.sh` is the operator-facing entrypoint; it reproduces the live
+compose invocation used by the stack.
 
 ---
 
@@ -28,9 +29,8 @@ variable). The relevant files for running the stack are:
 |---|---|
 | `~/.openpalm/config/stack/core.compose.yml` | Core services: assistant (also runs the scheduler co-process), guardian |
 | `~/.openpalm/config/stack/addons/<name>/compose.yml` | One file per enabled addon (admin, chat, api, etc.) |
-| `~/.openpalm/config/stack/stack.env` | System-managed values: tokens, ports, UID/GID, image tags |
-| `~/.openpalm/stash/vaults/user.env` | User-managed settings: owner info, custom preferences |
-| `~/.openpalm/config/stack/guardian.env` | Channel HMAC secrets (loaded by guardian; compose marks it `required: false`) |
+| `~/.openpalm/config/stack/stack.env` | System-managed non-secret values: ports, UID/GID, image tags, profiles, paths |
+| `~/.openpalm/config/stack/secrets/` | System-managed secret files; directory mode `0700`, file mode `0600` |
 | `~/.openpalm/config/stack.yml` | Optional tooling metadata (helper scripts read this; it is not deployment truth) |
 
 The project name defaults to `openpalm` and can be overridden with the
@@ -46,20 +46,32 @@ ls ~/.openpalm/config/stack/addons/
 
 ## Building the Compose Command
 
-Construct the full `docker compose` command by naming every file you want active.
-Only files passed with `-f` are part of the running stack.
+Use the generated `run.sh` for the exact live stack command. It already
+includes the correct compose files, non-secret env file, and profile selection.
 
 ### Helper: `op` shell function
 
 Typing the full command every time is tedious. Add this shell function to your
-`~/.bashrc` or `~/.zshrc` to auto-discover enabled addons:
+`~/.bashrc` or `~/.zshrc` for ad hoc compose operations:
 
 ```bash
 op() {
   local OP_HOME="${OP_HOME:-$HOME/.openpalm}"
   local PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
-
   local addon_files=""
+  local profile_args=""
+
+  if [ -f "$OP_HOME/config/stack/stack.env" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$OP_HOME/config/stack/stack.env"
+    set +a
+  fi
+
+  for profile in "${OP_VOICE_PROFILE:-}" "${OP_OLLAMA_PROFILE:-}"; do
+    [ -n "$profile" ] && profile_args="$profile_args --profile $profile"
+  done
+
   for f in "$OP_HOME"/config/stack/addons/*/compose.yml; do
     [ -f "$f" ] && addon_files="$addon_files -f $f"
   done
@@ -67,30 +79,20 @@ op() {
   docker compose \
     --project-name "$PROJECT_NAME" \
     --env-file "$OP_HOME/config/stack/stack.env" \
-    --env-file "$OP_HOME/stash/vaults/user.env" \
-    --env-file "$OP_HOME/config/stack/guardian.env" \
     -f "$OP_HOME/config/stack/core.compose.yml" \
     $addon_files \
+    $profile_args \
     "$@"
 }
 ```
 
-After sourcing, every compose operation becomes:
-
-```bash
-op up -d
-op down
-op ps
-op logs -f assistant
-```
-
-The function discovers all `compose.yml` files under `config/stack/addons/` and passes
-them as `-f` arguments automatically. Only addons you have enabled (i.e.,
-directories present under `config/stack/addons/`) are included.
+The generated `run.sh` remains the primary operator-facing entrypoint for
+starting/restarting the stack. It discovers enabled addons and keeps the live
+stack command aligned with the current runtime state.
 
 ### Manual command (without the helper)
 
-If you prefer not to use the helper, construct the command explicitly:
+If you need the raw compose invocation for debugging, use:
 
 ```bash
 OP_HOME="${OP_HOME:-$HOME/.openpalm}"
@@ -99,9 +101,9 @@ PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
 docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/config/stack/stack.env" \
-  --env-file "$OP_HOME/stash/vaults/user.env" \
-  --env-file "$OP_HOME/config/stack/guardian.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
+  --profile "$OP_VOICE_PROFILE" \
+  --profile "$OP_OLLAMA_PROFILE" \
   -f "$OP_HOME/config/stack/addons/chat/compose.yml" \
   <command>
 ```
@@ -118,22 +120,32 @@ misconfiguration early — before containers are affected.
 
 ```bash
 # Validate compose merge and variable substitution (exits non-zero on error)
-op config --quiet
+docker compose \
+  --project-name "$PROJECT_NAME" \
+  --env-file "$OP_HOME/config/stack/stack.env" \
+  -f "$OP_HOME/config/stack/core.compose.yml" \
+  -f "$OP_HOME/config/stack/addons/chat/compose.yml" \
+  config --quiet
 
 # List resolved service names
-op config --services
+docker compose \
+  --project-name "$PROJECT_NAME" \
+  --env-file "$OP_HOME/config/stack/stack.env" \
+  -f "$OP_HOME/config/stack/core.compose.yml" \
+  -f "$OP_HOME/config/stack/addons/chat/compose.yml" \
+  config --services
 ```
 
 <details>
-<summary>Without the helper function</summary>
+<summary>Without the wrapper</summary>
 
 ```bash
 docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/config/stack/stack.env" \
-  --env-file "$OP_HOME/stash/vaults/user.env" \
-  --env-file "$OP_HOME/config/stack/guardian.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
+  --profile "$OP_VOICE_PROFILE" \
+  --profile "$OP_OLLAMA_PROFILE" \
   config --quiet
 ```
 
@@ -259,29 +271,29 @@ Precedence for substitution (highest to lowest):
 
 1. **Process environment (host shell)** — any variable already exported in your
    shell overrides everything else, including `--env-file` contents.
-2. **`--env-file` flags in order** — later files override earlier ones for the
-   same key. `user.env` is passed after `stack.env`, so user values win on any
-   key that appears in both.
+2. **`--env-file` flags** — `stack.env` supplies non-secret substitution values.
 3. **Compose file `environment:` defaults** — inline fallback values.
 
-### Stage 2: Container runtime environment (`env_file:` in compose services)
+### Stage 2: Container runtime environment and secret files
 
-Service-level `env_file:` entries inject variables into the running container's
-process environment at startup. This is separate from substitution — it is what
-the application inside the container sees.
+Service-level `environment:` entries become the container process environment.
+Secret-like values must not be placed there directly; expose only a `*_FILE`
+variable that points at a Compose secret mounted from `config/stack/secrets/`.
 
-**Do not remove `env_file:` entries from service definitions.** The `--env-file`
-flags on the `docker compose` command and the `env_file:` entries inside service
-blocks serve different purposes and both are needed.
+Service-level `env_file:` is intentionally disallowed because it grants broad,
+hard-to-audit environment access. Grant each service only the secret files it
+needs with Compose `secrets:`.
 
 ### Host shell override warning
 
-If your shell has a variable like `GROQ_API_KEY` exported, it will shadow the
-value from `user.env` regardless of what that file contains. Clear or unset
-host variables you do not want to leak before running compose:
+If your shell has a variable like `OPENAI_API_KEY` exported, Compose can still
+substitute it into any matching `${OPENAI_API_KEY}` expression in custom compose
+overlays. Secret-like substitutions are not allowed in shipped files; clear or
+unset host variables you do not want custom overlays to see before running
+compose:
 
 ```bash
-unset GROQ_API_KEY
+unset OPENAI_API_KEY
 docker compose ... up -d
 ```
 
@@ -319,22 +331,25 @@ file that contains the `extends` directive.
 
 ## Secret Rotation
 
-### LLM provider keys and system secrets (`config/stack/stack.env`)
+### LLM provider keys and system secrets (`config/stack/secrets/`)
 
-API keys, provider config, admin token, HMAC secrets, and service auth tokens
-all live in `stack.env`. Changes require a full container recreate to take
-effect:
+API keys, HMAC secrets, and service auth tokens live as files under
+`config/stack/secrets/` and are granted through Compose `secrets:`. `stack.env`
+is non-secret. Changes require a full container recreate for services that read
+the file only at startup:
 
 ```bash
-$EDITOR ~/.openpalm/config/stack/stack.env
+chmod 700 ~/.openpalm/config/stack/secrets
+install -m 600 /dev/null ~/.openpalm/config/stack/secrets/provider_openai_api_key
+$EDITOR ~/.openpalm/config/stack/secrets/provider_openai_api_key
 
 # Recreate all containers to pick up new values
 op up -d --force-recreate
 ```
 
-Note: `docker compose restart` does NOT re-read `--env-file` values. You must
-use `up -d --force-recreate` (or `down` followed by `up -d`) to apply env file
-changes to running containers.
+Note: `docker compose restart` may not re-read every startup-only secret path.
+Use `up -d --force-recreate` (or `down` followed by `up -d`) when rotating
+service secrets.
 
 ---
 
@@ -346,8 +361,8 @@ changes to running containers.
 tar czf openpalm-backup-$(date +%Y%m%d).tar.gz ~/.openpalm
 ```
 
-This archives the complete stack: compose files, vault env files, config, and
-all persistent service data.
+This archives the complete stack: compose files, file-based secrets, AKM vault
+data, config, and all persistent service data.
 
 ### Restore
 

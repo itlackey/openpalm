@@ -28,6 +28,7 @@ import {
 import type { SetupSpec, SetupConnection } from "./setup.js";
 import type { ControlPlaneState } from "./types.js";
 import { STACK_SPEC_FILENAME, readStackSpec } from "./stack-spec.js";
+import { readSecret } from './secrets-files.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -135,13 +136,7 @@ function seedMinimalEnvFiles(): void {
     join(stackDir, "stack.env"),
     [
       "# OpenPalm — Stack Configuration",
-      "OP_UI_LOGIN_PASSWORD=",
-      "OPENAI_API_KEY=",
       "OPENAI_BASE_URL=",
-      "ANTHROPIC_API_KEY=",
-      "GROQ_API_KEY=",
-      "MISTRAL_API_KEY=",
-      "GOOGLE_API_KEY=",
       "OP_OWNER_NAME=",
       "OP_OWNER_EMAIL=",
       "",
@@ -184,10 +179,11 @@ describe("Fresh Install", () => {
 
     ensureSecrets(state);
 
-    // API keys and owner info are seeded in state/stack.env.
+    // stack.env only carries non-secret setup/config keys.
     const stackContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(stackContent).toContain("OPENAI_API_KEY=");
-    expect(stackContent).toContain("OP_OWNER_NAME=");
+    expect(stackContent).not.toContain("OPENAI_API_KEY=");
+    expect(stackContent).toContain("OP_SETUP_COMPLETE=false");
+    expect(readSecret(stackDir, 'op_ui_login_password')).toBeTruthy();
   });
 
   // Scenario 2: isSetupComplete returns false before setup
@@ -246,10 +242,10 @@ describe("Existing Install", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  // Scenario 5: ensureSecrets does NOT overwrite existing stack.env
-  it("ensureSecrets does not overwrite existing stack.env tokens", () => {
+  // Scenario 5: ensureSecrets creates file-based secrets without stack.env tokens
+  it("ensureSecrets creates file-based system secrets", () => {
     mkdirSync(stateDir, { recursive: true });
-    writeFileSync(join(stackDir, "stack.env"), "OP_UI_LOGIN_PASSWORD=my-custom-password\n");
+    writeFileSync(join(stackDir, "stack.env"), "OP_SETUP_COMPLETE=false\n");
 
     const state: ControlPlaneState = {
       homeDir,
@@ -266,25 +262,23 @@ describe("Existing Install", () => {
 
     ensureSecrets(state);
 
-    // Existing password must be preserved
     const afterContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(afterContent).toContain("OP_UI_LOGIN_PASSWORD=my-custom-password");
+    expect(afterContent).not.toContain("OP_UI_LOGIN_PASSWORD=");
+    expect(readSecret(stackDir, 'op_ui_login_password')).toBeTruthy();
   });
 
   // Scenario 6: performSetup re-run rewrites OP_UI_LOGIN_PASSWORD when the
   // operator supplies a new one in the spec. This is intentional — the
   // wizard "rerun" path is how an operator rotates the password. The
   // legacy OP_ASSISTANT_TOKEN preservation test was removed with the token.
-  it("performSetup re-run rewrites OP_UI_LOGIN_PASSWORD when spec changes", async () => {
+  it("performSetup re-run rewrites OP_UI_LOGIN_PASSWORD secret file when spec changes", async () => {
     await performSetup(makeValidSpec({ security: { uiLoginPassword: "first-password-12345" } }));
 
-    const afterFirst = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(afterFirst).toContain("OP_UI_LOGIN_PASSWORD=first-password-12345");
+    expect(readSecret(stackDir, 'op_ui_login_password')).toBe("first-password-12345\n");
 
     await performSetup(makeValidSpec({ security: { uiLoginPassword: "second-password-12345" } }));
 
-    const afterSecond = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(afterSecond).toContain("OP_UI_LOGIN_PASSWORD=second-password-12345");
+    expect(readSecret(stackDir, 'op_ui_login_password')).toBe("second-password-12345\n");
   });
 
   // Scenario 7: performSetup must NOT mark OP_SETUP_COMPLETE — see scenario
@@ -328,9 +322,8 @@ describe("Existing Install", () => {
     expect(specAfterSecond).not.toBeNull();
     expect(specAfterSecond!.version).toBe(2);
 
-    // stack.env should retain both keys
-    const secrets = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(secrets).toContain("GROQ_API_KEY");
+    const auth = JSON.parse(readFileSync(join(configDir, "auth.json"), "utf-8"));
+    expect(auth.groq.key).toBe("gsk-test-key-456");
   });
 });
 
@@ -352,7 +345,7 @@ describe("Broken/Corrupt State", () => {
   // Scenario 9: ensureSecrets is idempotent on repeated calls
   it("ensureSecrets is idempotent — second call does not overwrite existing stack.env", () => {
     mkdirSync(stateDir, { recursive: true });
-    writeFileSync(join(stackDir, "stack.env"), "OP_UI_LOGIN_PASSWORD=existing-password\n");
+    writeFileSync(join(stackDir, "stack.env"), "OP_SETUP_COMPLETE=false\n");
 
     const state: ControlPlaneState = {
       homeDir,
@@ -369,9 +362,10 @@ describe("Broken/Corrupt State", () => {
 
     ensureSecrets(state);
 
-    // Existing password must be preserved
+    // Existing non-secret stack config must be preserved.
     const content = readFileSync(join(stackDir, "stack.env"), "utf-8");
-    expect(content).toContain("OP_UI_LOGIN_PASSWORD=existing-password");
+    expect(content).toContain("OP_SETUP_COMPLETE=false");
+    expect(content).not.toContain("OP_UI_LOGIN_PASSWORD=");
   });
 
   // Scenario 10: env file with malformed lines
@@ -669,11 +663,10 @@ describe("performSetup end-to-end artifacts", () => {
     ).toBe(true);
   });
 
-  it("writes the UI login password to stack.env", async () => {
+  it("writes the UI login password to a secret file", async () => {
     await performSetup(makeValidSpec());
 
-    const secrets = parseEnvFile(join(stackDir, "stack.env"));
-    expect(secrets.OP_UI_LOGIN_PASSWORD).toBe("test-admin-token-12345");
+    expect(readSecret(stackDir, 'op_ui_login_password')).toBe("test-admin-token-12345\n");
   });
 
   it("writes akm config with llm provider and model", async () => {

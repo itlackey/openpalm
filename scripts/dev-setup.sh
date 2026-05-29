@@ -8,8 +8,9 @@ Usage: scripts/dev-setup.sh [--seed-env] [--force] [--enable-addon <name>]
 Creates local .dev directories and seeds dev config files.
 
 Options:
-  --seed-env          Seed .dev/stash/vaults/user.env from the user.env.schema template
-                      (if missing) and generate .dev/config/stack/stack.env with auto-detected values.
+  --seed-env          Seed .dev/stash/vaults/user.env for akm vault:user, generate
+                      .dev/config/stack/stack.env with auto-detected values, and
+                      write system secrets under .dev/config/stack/secrets/.
   --force             Overwrite seeded files even if they already exist.
   --enable-addon <n>  Copy .dev/state/registry/addons/<n>/ into .dev/config/stack/addons/<n>/.
                       Repeat to enable multiple dev addons.
@@ -118,7 +119,7 @@ LOGS_DIR="$STATE_DIR/logs"
 # CLAUDE.md and packages/lib/src/control-plane/home.ts). Mirror the
 # whole tree into .dev/ so any new file/dir the team adds there shows
 # up automatically — no per-file copy lines to keep in sync. Generated
-# files (stack.env, guardian.env, user.env, auth.json) are excluded
+# files (stack.env, secrets/, user.env, auth.json) are excluded
 # because they're seeded with dev-specific values further down.
 rsync_flags=(-a)
 # --force does a destructive resync (drop stale files that no longer
@@ -129,7 +130,7 @@ rsync_flags=(-a)
 
 rsync "${rsync_flags[@]}" \
 	--exclude=config/stack/stack.env \
-	--exclude=config/stack/guardian.env \
+	--exclude=config/stack/secrets \
 	--exclude=config/auth.json \
 	--exclude=stash/vaults/user.env \
 	"$ROOT_DIR/.openpalm/" "$DEV_ROOT/"
@@ -147,7 +148,7 @@ rsync -a --delete \
 # `docker compose up` or bind-mount creation runs as root.
 	mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
-	"$CONFIG_DIR/automations" "$CONFIG_DIR/stack/addons" \
+	"$CONFIG_DIR/automations" "$CONFIG_DIR/stack/addons" "$CONFIG_DIR/stack/secrets" \
 	"$STASH_DIR/vaults" \
 	"$STATE_DIR" "$STATE_DIR/admin" "$STATE_DIR/assistant" "$STATE_DIR/assistant/.config/opencode" "$STATE_DIR/guardian" \
 	"$STATE_DIR/akm" "$STATE_DIR/akm/data" "$STATE_DIR/akm/state" \
@@ -215,11 +216,6 @@ USEREOF
 		cat >"$system_env" <<EOF
 # OpenPalm System Environment — system-managed, do not edit
 
-# WARNING: dev-admin-token is for local development only.
-# NEVER use this value in production — generate a strong random password.
-OP_UI_LOGIN_PASSWORD=dev-admin-token
-OP_OPENCODE_PASSWORD=
-
 OP_HOME=$DEV_ROOT
 
 OP_UID=$(id -u)
@@ -250,27 +246,32 @@ OP_ADMIN_PORT=9100
 OP_SETUP_COMPLETE=true
 EOF
 	fi
+
+	secrets_dir="$CONFIG_DIR/stack/secrets"
+	mkdir -p "$secrets_dir"
+	chmod 700 "$secrets_dir"
+	if [[ ! -f "$secrets_dir/op_ui_login_password" || $force -eq 1 ]]; then
+		printf '%s\n' 'dev-admin-token' >"$secrets_dir/op_ui_login_password"
+		chmod 600 "$secrets_dir/op_ui_login_password"
+	fi
+	if [[ ! -f "$secrets_dir/op_opencode_password" || $force -eq 1 ]]; then
+		: >"$secrets_dir/op_opencode_password"
+		chmod 600 "$secrets_dir/op_opencode_password"
+	fi
 fi
 
-# Ensure env files exist (compose needs them even if empty)
+# Ensure non-secret env and user vault files exist.
 touch "$STASH_DIR/vaults/user.env" "$CONFIG_DIR/stack/stack.env"
 
-# Generate channel HMAC secrets in guardian.env (the canonical location)
-guardian_env="$CONFIG_DIR/stack/guardian.env"
-if [[ ! -f "$guardian_env" || $force -eq 1 ]]; then
-	channel_chat_secret=$(openssl rand -hex 16)
-	channel_api_secret=$(openssl rand -hex 16)
-	channel_discord_secret=$(openssl rand -hex 16)
-	channel_slack_secret=$(openssl rand -hex 16)
-
-	cat >"$guardian_env" <<EOF
-# Guardian channel HMAC secrets — managed by openpalm
-CHANNEL_CHAT_SECRET=${channel_chat_secret}
-CHANNEL_API_SECRET=${channel_api_secret}
-CHANNEL_DISCORD_SECRET=${channel_discord_secret}
-CHANNEL_SLACK_SECRET=${channel_slack_secret}
-EOF
-fi
+secrets_dir="$CONFIG_DIR/stack/secrets"
+mkdir -p "$secrets_dir"
+chmod 700 "$secrets_dir"
+for secret_name in channel_chat_secret channel_api_secret channel_discord_secret channel_slack_secret; do
+	if [[ ! -f "$secrets_dir/$secret_name" || $force -eq 1 ]]; then
+		openssl rand -hex 16 >"$secrets_dir/$secret_name"
+		chmod 600 "$secrets_dir/$secret_name"
+	fi
+done
 
 # OpenCode user config (opencode.json + assistant.md + system.md + openpalm.md)
 # comes in via the template rsync above. No per-file copy needed.

@@ -18,7 +18,7 @@ import { ERROR_CODES, validatePayload } from "@openpalm/channels-sdk/channel";
 import { verifySignature } from "@openpalm/channels-sdk/crypto";
 import { createLogger } from "@openpalm/channels-sdk/logger";
 
-import { loadChannelSecrets } from "./signature";
+import { GuardianSecretFileError, loadChannelSecrets } from "./signature";
 import { checkNonce, nonceCacheSize, NONCE_WINDOW_MS, NONCE_MAX_SIZE } from "./replay";
 import {
   allow,
@@ -43,6 +43,15 @@ const logger = createLogger("guardian");
 // ── Config ──────────────────────────────────────────────────────────────
 
 const PORT = Number(Bun.env.PORT ?? 8080);
+
+try {
+  loadChannelSecrets();
+} catch (err) {
+  logger.error("startup_error", {
+    reason: err instanceof GuardianSecretFileError ? err.message : "channel secret file could not be read",
+  });
+  process.exit(1);
+}
 
 // ── Uptime & request counters ───────────────────────────────────────────
 
@@ -139,9 +148,18 @@ Bun.serve({
 
       // C1: Use dummy secret for unknown channels to prevent channel name enumeration.
       // Both unknown channels and bad signatures return invalid_signature.
-      const channelSecrets = await loadChannelSecrets();
+      let channelSecrets: Record<string, string>;
+      try {
+        channelSecrets = loadChannelSecrets();
+      } catch (err) {
+        logger.error("channel_secret_load_failed", {
+          requestId: rid,
+          reason: err instanceof GuardianSecretFileError ? err.message : "channel secret file could not be read",
+        });
+        return json(500, { error: ERROR_CODES.ASSISTANT_UNAVAILABLE, requestId: rid });
+      }
       // Normalize channel name: SDK uses this.name (may contain hyphens like "my-channel"),
-      // but env vars use underscores (CHANNEL_MY_CHANNEL_SECRET → key "my_channel").
+      // but guardian file vars use underscores (CHANNEL_MY_CHANNEL_SECRET_FILE -> key "my_channel").
       const secret = channelSecrets[payload.channel.toLowerCase().replace(/-/g, "_")] ?? "";
 
       const sig = req.headers.get("x-channel-signature") ?? "";

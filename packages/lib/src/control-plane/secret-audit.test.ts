@@ -1,0 +1,159 @@
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  auditComposeSecrets,
+  auditFileBasedSecrets,
+  auditSecretFilesystem,
+  auditStackEnv,
+  isSecretLikeKey,
+} from './secret-audit.js';
+
+let tempDir: string;
+
+beforeEach(() => {
+  tempDir = mkdtempSync(join(tmpdir(), 'secret-audit-test-'));
+});
+
+afterEach(() => {
+  rmSync(tempDir, { recursive: true, force: true });
+});
+
+describe('isSecretLikeKey', () => {
+  it('detects secret-like keys but allows file indirection keys', () => {
+    expect(isSecretLikeKey('OPENAI_API_KEY')).toBe(true);
+    expect(isSecretLikeKey('OP_UI_LOGIN_PASSWORD')).toBe(true);
+    expect(isSecretLikeKey('CHANNEL_CHAT_SECRET')).toBe(true);
+    expect(isSecretLikeKey('OPENAI_API_KEY_FILE')).toBe(false);
+    expect(isSecretLikeKey('OP_IMAGE_TAG')).toBe(false);
+  });
+});
+
+describe('auditStackEnv', () => {
+  it('rejects secret-like keys in stack.env', () => {
+    const issues = auditStackEnv({
+      OP_HOME: '/home/me/.openpalm',
+      OP_IMAGE_TAG: 'latest',
+      OPENAI_API_KEY: 'sk-test',
+      OP_UI_LOGIN_PASSWORD: 'secret',
+    });
+
+    expect(issues.map((entry) => entry.code)).toEqual([
+      'stack-env-secret-key',
+      'stack-env-secret-key',
+    ]);
+  });
+
+  it('accepts non-secret runtime configuration', () => {
+    expect(auditStackEnv({
+      OP_HOME: '/home/me/.openpalm',
+      OP_UID: '1000',
+      OP_GID: '1000',
+      OP_ASSISTANT_PORT: '3800',
+      OPENAI_BASE_URL: 'http://localhost:11434/v1',
+    })).toEqual([]);
+  });
+});
+
+describe('auditComposeSecrets', () => {
+  it('rejects service env_file and direct secret-like environment values', () => {
+    const issues = auditComposeSecrets(`
+services:
+  guardian:
+    env_file:
+      - ./service.env
+    environment:
+      OPENCODE_SERVER_PASSWORD: secret
+`);
+
+    expect(issues.map((entry) => entry.code)).toEqual([
+      'compose-service-env-file',
+      'compose-secret-env-var',
+    ]);
+  });
+
+  it('accepts *_FILE environment variables and in-boundary secret grants', () => {
+    const issues = auditComposeSecrets({
+      services: {
+        assistant: {
+          environment: {
+            OPENAI_API_KEY_FILE: '/run/secrets/provider_openai_api_key',
+          },
+          secrets: ['provider_openai_api_key'],
+        },
+        guardian: {
+          environment: ['GUARDIAN_CHANNEL_SECRET_FILE=/run/secrets/guardian_channel_secret'],
+          secrets: [{ source: 'guardian_channel_secret' }, { source: 'channel_chat_hmac' }],
+        },
+        chat: {
+          image: 'openpalm/channel:latest',
+          secrets: ['channel_chat_hmac'],
+        },
+      },
+    });
+
+    expect(issues).toEqual([]);
+  });
+
+  it('rejects cross-boundary secret grants', () => {
+    const issues = auditComposeSecrets({
+      services: {
+        assistant: { secrets: ['guardian_channel_secret'] },
+        chat: { image: 'openpalm/channel:latest', secrets: ['channel_slack_hmac'] },
+        guardian: { secrets: ['admin_session_key'] },
+      },
+    });
+
+    expect(issues.map((entry) => entry.code)).toEqual([
+      'compose-secret-boundary',
+      'compose-secret-boundary',
+      'compose-secret-boundary',
+    ]);
+  });
+});
+
+describe('auditSecretFilesystem', () => {
+  it('requires a 0700 secrets directory and 0600 secret files', () => {
+    const secretsDir = join(tempDir, 'config', 'stack', 'secrets');
+    mkdirSync(secretsDir, { recursive: true, mode: 0o700 });
+    chmodSync(secretsDir, 0o700);
+    const secretPath = join(secretsDir, 'provider_openai_api_key');
+    writeFileSync(secretPath, 'sk-test\n', { mode: 0o600 });
+    chmodSync(secretPath, 0o600);
+
+    expect(auditSecretFilesystem(secretsDir)).toEqual([]);
+  });
+
+  it('reports unsafe directory and file permissions', () => {
+    const secretsDir = join(tempDir, 'secrets');
+    mkdirSync(secretsDir, { recursive: true, mode: 0o755 });
+    chmodSync(secretsDir, 0o755);
+    const secretPath = join(secretsDir, 'admin_session_key');
+    writeFileSync(secretPath, 'secret\n', { mode: 0o644 });
+    chmodSync(secretPath, 0o644);
+
+    expect(auditSecretFilesystem(secretsDir).map((entry) => entry.code)).toEqual([
+      'secrets-dir-mode',
+      'secret-file-mode',
+    ]);
+  });
+});
+
+describe('auditFileBasedSecrets', () => {
+  it('combines stack env, compose, and filesystem checks', () => {
+    const secretsDir = join(tempDir, 'secrets');
+    mkdirSync(secretsDir, { recursive: true, mode: 0o700 });
+    chmodSync(secretsDir, 0o700);
+    writeFileSync(join(secretsDir, 'provider_openai_api_key'), 'sk-test\n', { mode: 0o600 });
+
+    const result = auditFileBasedSecrets({
+      stackEnvContent: 'OP_HOME=/tmp/openpalm\nOPENAI_API_KEY=bad\n',
+      composeConfig: 'services:\n  assistant:\n    environment:\n      OPENAI_API_KEY_FILE: /run/secrets/provider_openai_api_key\n',
+      secretsDir,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((entry) => entry.code)).toEqual(['stack-env-secret-key']);
+  });
+});

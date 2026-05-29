@@ -28,6 +28,9 @@ export { constantTimeEqual, signPayload, verifySignature } from "./crypto.ts";
 // ── Logger ───────────────────────────────────────────────────────────────
 export { createLogger, type LogLevel } from "./logger.ts";
 
+// ── Secret files ─────────────────────────────────────────────────────────
+export { SecretFileError, readOptionalSecretFile, readRequiredSecretFile } from "./secret-file.ts";
+
 // ── Utilities ────────────────────────────────────────────────────────────
 export { asRecord, extractChatText, splitMessage } from "./utils.ts";
 

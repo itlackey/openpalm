@@ -5,8 +5,8 @@
  * hooks.server.ts returns false and the wizard re-runs end-to-end:
  *   - backs up stack.env (caller restores after the test via
  *     restoreWizardState)
- *   - rewrites stack.env without OP_SETUP_COMPLETE and without
- *     OP_UI_LOGIN_PASSWORD (the two flags isSetupComplete checks)
+ *   - rewrites stack.env without OP_SETUP_COMPLETE (the only setup-complete
+ *     sentinel; login secrets live in config/stack/secrets/)
  *   - removes any persisted voice profile selection so the wizard
  *     starts from a known blank state
  *
@@ -70,7 +70,6 @@ export function resetWizardState(homeDir: string = resolveOpHome()): void {
 		.filter((line) => {
 			const trimmed = line.trim();
 			if (trimmed.startsWith('OP_SETUP_COMPLETE=')) return false;
-			if (trimmed.startsWith('OP_UI_LOGIN_PASSWORD=')) return false;
 			if (trimmed.startsWith('OP_VOICE_PROFILE=')) return false;
 			return true;
 		})

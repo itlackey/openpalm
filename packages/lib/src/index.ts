@@ -10,6 +10,7 @@
 export {
   LLM_PROVIDERS,
   EMBEDDING_DIMS,
+  PROVIDER_KEY_MAP,
   lookupEmbeddingDims,
 } from "./provider-constants.js";
 
@@ -109,12 +110,36 @@ export {
   updateSecretsEnv,
   writeAuthJsonProviderKeys,
   readStackEnv,
+  readStackSecretEnv,
+  readStackRuntimeEnv,
+  writeStackSecretEnv,
   patchSecretsEnvFile,
   maskSecretValue,
   ensureOpenCodeConfig,
+  assertNoSecretLikeStackEnvKeys,
 } from "./control-plane/secrets.js";
-export { migrateAuth0110 } from "./control-plane/migrate-0110.js";
-export type { MigrateAuth0110Result } from "./control-plane/migrate-0110.js";
+export {
+  resolveSecretsDir,
+  secretPath,
+  readSecret,
+  writeSecret,
+  ensureSecret,
+  removeSecret,
+  listSecretNames,
+} from './control-plane/secrets-files.js';
+export type {
+  SecretAuditIssue,
+  SecretAuditOptions,
+  SecretAuditResult,
+  SecretAuditSeverity,
+} from "./control-plane/secret-audit.js";
+export {
+  auditComposeSecrets,
+  auditFileBasedSecrets,
+  auditSecretFilesystem,
+  auditStackEnv,
+  isSecretLikeKey,
+} from "./control-plane/secret-audit.js";
 // ── Setup Status ────────────────────────────────────────────────────────
 export {
   isSetupComplete,
@@ -156,8 +181,8 @@ export {
   buildRuntimeFileMeta,
   writeRuntimeFiles,
   writeSystemEnv,
-  readChannelSecrets,
-  writeChannelSecrets,
+  channelSecretName,
+  ensureChannelSecret,
   ensureComposeVolumeTargets,
 } from "./control-plane/config-persistence.js";
 
@@ -233,6 +258,12 @@ export {
   resolveActiveProfiles,
   writeRunScript,
 } from "./control-plane/compose-args.js";
+
+export {
+  addonProfileId,
+  canonicalAddonProfileSelection,
+  resolveHardwareProfileVariant,
+} from "./control-plane/profile-ids.js";
 
 // ── Compose Error Parsing ────────────────────────────────────────────────
 export type { ComposeServiceFailure } from "./control-plane/compose-errors.js";

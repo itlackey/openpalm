@@ -64,8 +64,6 @@ test.describe('Setup wizard — API walkthrough (fast)', () => {
 		const stackDir = resolve(home, 'config/stack');
 		const composeFile = resolve(stackDir, 'core.compose.yml');
 		const stackEnv = resolve(stackDir, 'stack.env');
-		const guardianEnv = resolve(stackDir, 'guardian.env');
-		const userVault = resolve(home, 'stash/vaults/user.env');
 		try {
 			execFileSync(
 				'docker',
@@ -75,8 +73,6 @@ test.describe('Setup wizard — API walkthrough (fast)', () => {
 					'--project-name', process.env.OP_PROJECT_NAME ?? 'openpalm-dev',
 					'-f', composeFile,
 					'--env-file', stackEnv,
-					'--env-file', guardianEnv,
-					'--env-file', userVault,
 					'down',
 				],
 				{ stdio: 'ignore', timeout: 60_000 },

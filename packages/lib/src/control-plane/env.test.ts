@@ -86,25 +86,25 @@ describe("quoteEnvValue quoting strategy (via mergeEnvContent)", () => {
 
 describe("mergeEnvContent updates existing keys with special char values", () => {
   it("updates an existing key to a value with =", () => {
-    const input = "export ADMIN_TOKEN=old_value\n";
-    const result = mergeEnvContent(input, { ADMIN_TOKEN: "new=value=here" });
+    const input = "export TEST_VALUE=old_value\n";
+    const result = mergeEnvContent(input, { TEST_VALUE: "new=value=here" });
     const parsed = parseEnvContent(result);
-    expect(parsed.ADMIN_TOKEN).toBe("new=value=here");
+    expect(parsed.TEST_VALUE).toBe("new=value=here");
   });
 
   it("updates an existing key to a value with $", () => {
-    const input = "export ADMIN_TOKEN=old_value\n";
-    const result = mergeEnvContent(input, { ADMIN_TOKEN: "tok$en" });
+    const input = "export TEST_VALUE=old_value\n";
+    const result = mergeEnvContent(input, { TEST_VALUE: "tok$en" });
     const parsed = parseEnvContent(result);
-    expect(parsed.ADMIN_TOKEN).toBe("tok$en");
+    expect(parsed.TEST_VALUE).toBe("tok$en");
   });
 
   it("preserves export prefix when updating with special chars", () => {
-    const input = "export ADMIN_TOKEN=old_value\n";
-    const result = mergeEnvContent(input, { ADMIN_TOKEN: "new#value" });
-    expect(result).toMatch(/^export ADMIN_TOKEN=/m);
+    const input = "export TEST_VALUE=old_value\n";
+    const result = mergeEnvContent(input, { TEST_VALUE: "new#value" });
+    expect(result).toMatch(/^export TEST_VALUE=/m);
     const parsed = parseEnvContent(result);
-    expect(parsed.ADMIN_TOKEN).toBe("new#value");
+    expect(parsed.TEST_VALUE).toBe("new#value");
   });
 });
 

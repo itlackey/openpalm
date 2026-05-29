@@ -15,7 +15,7 @@ material it depends on, typically `${GNUPGHOME:-~/.gnupg}`.
 
 | Path | Contains | Back up? |
 |---|---|---|
-| `~/.openpalm/config/stack/` | `stack.env`, `guardian.env`, live compose files and helper scripts | Yes |
+| `~/.openpalm/config/stack/` | `stack.env`, `secrets/`, live compose files and helper scripts | Yes |
 | `~/.openpalm/stash/vaults/` | `user.env` (optional user-managed secrets) | Yes |
 | `~/.openpalm/config/` | assistant config, enabled automations, `stack.yml` capabilities | Yes |
 | `~/.openpalm/state/registry/` | available addon and automation catalog | Yes |
@@ -40,8 +40,6 @@ docker compose \
   -f core.compose.yml \
   -f addons/chat/compose.yml \
   --env-file stack.env \
-  --env-file guardian.env \
-  --env-file ../../stash/vaults/user.env \
   down
 ```
 
@@ -87,8 +85,6 @@ docker compose \
   -f core.compose.yml \
   -f addons/chat/compose.yml \
   --env-file stack.env \
-  --env-file guardian.env \
-  --env-file ../../stash/vaults/user.env \
   up -d
 ```
 
@@ -113,9 +109,9 @@ the current model.
 
 | File or directory | Purpose |
 |---|---|
-| `~/.openpalm/stash/vaults/user.env` | Optional user extension env |
-| `~/.openpalm/config/stack/stack.env` | Stack tokens, ports, paths, image tags |
-| `~/.openpalm/config/stack/guardian.env` | Channel HMAC secrets for guardian/channel verification |
+| `~/.openpalm/stash/vaults/user.env` | AKM vault backing file for user-managed secrets |
+| `~/.openpalm/config/stack/stack.env` | Non-secret ports, paths, image tags, profiles |
+| `~/.openpalm/config/stack/secrets/` | System-managed service secret files |
 | `~/.openpalm/state/registry/addons/<name>/` | Available addon catalog entries |
 | `~/.openpalm/state/registry/automations/` | Available automation catalog entries |
 | `~/.openpalm/config/stack/core.compose.yml` | Base stack definition |

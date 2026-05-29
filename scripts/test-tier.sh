@@ -43,8 +43,6 @@ dev_compose() {
 		-f .dev/config/stack/core.compose.yml \
 		-f compose.dev.yml \
 		--env-file .dev/config/stack/stack.env \
-		--env-file .dev/stash/vaults/user.env \
-		--env-file .dev/config/stack/guardian.env \
 		--project-name "${COMPOSE_PROJECT_NAME:-openpalm}" "$@"
 }
 

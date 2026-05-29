@@ -40,8 +40,10 @@
 
   async function handleWrite(): Promise<void> {
     const k = writeKey.trim();
+    error = '';
     if (!k || !writeValue) return;
     if (!KEY_RE.test(k)) {
+      error = 'Key must match [A-Za-z_][A-Za-z0-9_]* (env var format).';
       notifications.push('error', 'Key must match [A-Za-z_][A-Za-z0-9_]* (env var format).');
       return;
     }

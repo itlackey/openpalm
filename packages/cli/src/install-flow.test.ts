@@ -70,9 +70,6 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
 
   // Seed file-based volume mount targets (CLI bootstrapInstall does this)
   mkdirSync(stackDir, { recursive: true });
-  if (!existsSync(join(stackDir, 'guardian.env'))) {
-    Bun.spawnSync(['touch', join(stackDir, 'guardian.env')]);
-  }
   if (!existsSync(join(configDir, 'auth.json'))) {
     writeFileSync(join(configDir, 'auth.json'), '{}\n');
   }
@@ -199,13 +196,13 @@ describe('install flow — tier 1 (file validation)', () => {
     // has been removed too.
     for (const relPath of [
       'config/stack/stack.env',
-      'config/stack/guardian.env',
       'config/auth.json',
     ]) {
       const fullPath = join(homeDir, relPath);
       expect(existsSync(fullPath)).toBe(true);
       expect(statSync(fullPath).isFile()).toBe(true);
     }
+    expect(existsSync(join(homeDir, 'config/stack/guardian.env'))).toBe(false);
 
     // ── Validate all volume mount targets exist as user-owned ────────
     const stackEnvVars = {
@@ -297,9 +294,7 @@ describe('install flow — tier 1 (file validation)', () => {
     ensureComposeVolumeTargets(createState());
 
     // Run docker compose config --quiet
-    // Note: vault/user/user.env is no longer a
-    // compose env_file. Only stack.env (and guardian.env, when present)
-    // are passed to compose.
+    // Note: vault/user/user.env and legacy guardian.env are no longer compose env_files.
     const proc = Bun.spawnSync([
       'docker', 'compose', '--project-name', 'openpalm-test',
       '-f', composeFiles[0],
